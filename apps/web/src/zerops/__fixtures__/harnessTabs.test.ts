@@ -60,33 +60,31 @@ describe("harness tabs", () => {
 // than the test's 15 s — and its tab went on opening into the tests after it: the globals moved to
 // its window, and every test after it in the file read an empty page.
 describe("a tab whose test ended while it opened", () => {
-  let release = () => {};
-  let late: Promise<unknown> = Promise.resolve();
-
-  it("ends with its tab still opening", async () => {
+  it("never opens into the next test", async () => {
     const harness = makeAccountHarness({ people: [{ user: person, password: "secret" }] });
+    let release = () => {};
+    let entered = () => {};
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
-    late = mountTab(harness, harness.browser.openTab(), {
+    const opening = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const late = mountTab(harness, harness.browser.openTab(), {
       path: "/zerops/late",
       page: async () => {
+        entered();
         await gate;
         return null;
       },
     }).catch((cause: unknown) => cause);
-    await settle();
-  });
-
-  it("never opens into the next test", async () => {
-    const harness = makeAccountHarness({ people: [{ user: person, password: "secret" }] });
+    await opening;
+    await unmountTabs();
     const next = await mountTab(harness, harness.browser.openTab(), { path: "/zerops/next" });
 
     release();
-    await settle();
-
-    expect(globalThis.window.location).toBe(next.location());
     expect(await late).toBeInstanceOf(Error);
+    expect(globalThis.window.location).toBe(next.location());
   });
 });
 
@@ -94,15 +92,33 @@ describe("a tab whose test ended while it opened", () => {
 // test's 15 s under load (8 workers beside client-runtime's, measured 2026-10-03).
 describe("a file's slow first load of its tabs' modules", () => {
   let loads = 0;
-  /** A module whose first load takes 2 s, as a cold module graph does under load. */
+  let loaded = false;
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  /** A cold module graph can remain pending until after the file's setup starts. */
   const load = async () => {
     loads += 1;
-    if (loads === 1) await new Promise((resolve) => setTimeout(resolve, 2_000));
+    if (loads === 1) {
+      await held;
+      loaded = true;
+    }
     return "a page";
   };
-  preloadTabs(load);
+  preloadTabs(
+    load,
+    () =>
+      new Promise<void>((resolve) => {
+        setImmediate(() => {
+          release();
+          resolve();
+        });
+      }),
+  );
 
   it("is the file's setup, never its first test's time", { timeout: 1_000 }, async () => {
+    expect(loaded).toBe(true);
     const harness = makeAccountHarness({ people: [{ user: person, password: "secret" }] });
     const tab = await mountTab(harness, harness.browser.openTab(), { page: load });
 

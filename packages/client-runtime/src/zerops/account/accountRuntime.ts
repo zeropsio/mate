@@ -7,7 +7,7 @@ import * as Stream from "effect/Stream";
 import type { AtomRegistry } from "effect/reactivity";
 import { makeMateAdapter } from "../../data/adapters/mate.ts";
 import type { AccountStore } from "../../data/store.ts";
-import { ZeropsOrganizationId, type AccountScope } from "../data/types.ts";
+import type { AccountScope } from "../data/types.ts";
 import {
   makeInvalidationBus,
   type InvalidationBus,
@@ -19,14 +19,13 @@ import {
   type AccountEnvironmentPorts,
   type AccountEnvironments,
 } from "./environments.ts";
-import { followHqView } from "./hqView.ts";
+import { followAccessChanges } from "./accessChanges.ts";
 import { makeStops, type Stops } from "./stops.ts";
 export type { Stops } from "./stops.ts";
 export type {
   AccountEnvironmentPorts,
   AccountEnvironments,
   CatalogListener,
-  CloseOffHold,
   DoorCredential,
   DoorRequest,
   RegisteredEnvironment,
@@ -89,23 +88,11 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
       built.dispose();
     }),
   );
-  // HQ's view of the person changing is the receipt that their Zerops access did: the listing
-  // is read again once. A Mate HQ places for them again is asked again; one that left needs no
-  // ask, and asking would show its refused conversation again until the listing drops it.
-  const stopFollowingHq = followHqView(ports.atomRegistry, ({ orgId, entered }) => {
-    for (const projectId of entered) built.accessChanged(projectId);
-    Effect.runSync(
-      invalidations.invalidate({
-        topic: "inventory",
-        organization: {
-          kind: "organization",
-          account: ports.account.account,
-          organizationId: ZeropsOrganizationId.make(orgId),
-        },
-      }),
-    );
+  // The person's access to a project moving in Zerops' own data asks its Mate refused to them again.
+  const stopFollowingRoles = followAccessChanges(ports.atomRegistry, (projects) => {
+    for (const projectId of projects) built.roleChanged(projectId);
   });
-  yield* Scope.addFinalizer(scope, Effect.sync(stopFollowingHq));
+  yield* Scope.addFinalizer(scope, Effect.sync(stopFollowingRoles));
   const subscription = yield* invalidations.subscribe.pipe(Scope.provide(scope));
   yield* PubSub.take(subscription).pipe(
     Effect.tap((invalidation) =>

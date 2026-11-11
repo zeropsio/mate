@@ -4,6 +4,10 @@ import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
 import { operationProgress } from "./operation.ts";
 
+/** A lost answer stays pending under its request: the person waits for HQ's record, never repeats it. */
+export const KEPT_GIT_UNCONFIRMED =
+  "HQ has not confirmed your answer. Do not answer again: the question closes when HQ records it. Reload to read HQ's record.";
+
 export interface KeptGitQuestionView {
   readonly question: KeptGitQuestion;
   readonly requestId: string;
@@ -36,7 +40,7 @@ export const hqKeptGitQuestions: Projection<string, ReadonlyArray<KeptGitQuestio
               : retryable
                 ? (progress.reason ?? "HQ did not take this answer.")
                 : progress.stage === "uncertain" || progress.stage === "unresolved"
-                  ? "HQ has not confirmed your answer."
+                  ? KEPT_GIT_UNCONFIRMED
                   : progress.stage === "done"
                     ? "Answer sent. Waiting for HQ to close this question."
                     : "Sending your answer…",

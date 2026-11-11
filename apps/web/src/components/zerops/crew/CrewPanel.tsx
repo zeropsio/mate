@@ -22,7 +22,11 @@ import {
   zeropsAgentAuthView,
   zeropsAgentSignInRequired,
 } from "@t3tools/client-runtime/zerops/agentLogin";
-import type { CrewAccess, CrewLock } from "@t3tools/client-runtime/zerops/crew/crewAccess";
+import type {
+  CrewAccess,
+  CrewLock,
+  CrewLoginLock,
+} from "@t3tools/client-runtime/zerops/crew/crewAccess";
 import { crewRefusalSentence } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { EnvironmentId, ScopedThreadRef, ZeropsAgentId } from "@t3tools/contracts";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
@@ -129,7 +133,7 @@ export interface CrewPanelBodyProps {
   /** The chat an ask for the Mate goes to is not this viewer's to run; `null` where it is. */
   readonly askLock: CrewLock | null;
   /** A closed crew's one way out: the viewer's own sign-in on its login's agent. */
-  readonly onSignIn: (lock: CrewLock) => void;
+  readonly onSignIn: (lock: CrewLoginLock) => void;
   /** Where the setup's *Let Fen suggest a crew* runs, or why it can't for this viewer. */
   readonly proposeWith: CrewProposeWith;
 }

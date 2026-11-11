@@ -3,7 +3,7 @@ import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { expect, it } from "vite-plus/test";
-import { seedCoreWorld } from "../../../../hq/test/harness/runningCore.ts";
+import { seedCoreWorld } from "../harness/coreSeed.ts";
 import { openBrowser } from "../harness/browser.ts";
 import { serve } from "../harness/http.ts";
 import { ZeropsFake } from "./zerops.ts";

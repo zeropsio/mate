@@ -77,31 +77,6 @@ describe("same-origin Zerops identity bootstrap", () => {
     expect(retryIdentity).not.toHaveBeenCalled();
   });
 
-  it("preserves account selection behavior", () => {
-    const attempted = { current: false };
-    const connect = vi.fn();
-    const input = {
-      attempted,
-      status: "signed-in" as const,
-      zeropsToken: "zerops-account-token",
-      appOrigin: APP_ORIGIN,
-      authGate: ZEROPS_DOOR_GATE,
-      candidates: [SAME_ORIGIN_CANDIDATE],
-      connect,
-    };
-
-    autoConnectServedZeropsEnvironment(input);
-    autoConnectServedZeropsEnvironment(input);
-
-    // The bar above carries the brand; the title row does not repeat it, and
-    // no sentence sits under the title — the projects below say what it is. The
-    // list keeps itself current: no reload on it (the owner, 2026-10-11).
-    const header = renderToStaticMarkup(createElement(ZeropsProjectsHeader));
-    expect(header).toContain("New project");
-    expect(header).not.toContain('aria-label="Refresh"');
-    expect(connect).toHaveBeenCalledTimes(1);
-  });
-
   it("fires exactly once for the unauthenticated container that served the app", () => {
     const attempted = { current: false };
     const connect = vi.fn();
@@ -385,15 +360,6 @@ describe("hasNoZeropsProject", () => {
     ["only a tool", [candidate([], undefined, "gitea")], true],
   ] as const)("says an account with %s has no project: %s", (_case, candidates, expected) => {
     expect(hasNoZeropsProject({ listing: listing(candidates) })).toBe(expected);
-  });
-
-  it("an organization holding only its HQ has no project yet: HQ is never a project to start in", () => {
-    const hq = candidate([]);
-    const hqProjectId = (hq as { project: { id: string } }).project.id;
-    expect(hasNoZeropsProject({ listing: listing([hq]), hqProjectId })).toBe(true);
-    expect(hasNoZeropsProject({ listing: listing([hq, candidate([], "aaa")]), hqProjectId })).toBe(
-      false,
-    );
   });
 
   it.each<{ readonly name: string; readonly listing: Known<ReadonlyArray<ZeropsCandidate>> }>([
@@ -690,6 +656,7 @@ it("Decision: the owner asked for the review and its fixes; existing flows are r
   // Find is the menu's search (⌘K) since the round-5 overview: the title row keeps New project.
   expect(html).toContain(">Overview<");
   expect(html).toContain(">New project<");
+  expect(html).not.toContain('aria-label="Refresh"');
 });
 
 describe("the overview's freshness", () => {

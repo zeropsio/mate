@@ -239,6 +239,8 @@ export interface EnvironmentGuards {
   readonly zeropsState: "unknown" | "live" | "unavailable";
   /** The tab's exchange budget has a token. */
   readonly budget: boolean;
+  /** The platform says the Mate's server is down (its container restarting, stopped…). */
+  readonly serverDown?: boolean;
 }
 
 export const IDLE_GUARDS: EnvironmentGuards = {
@@ -454,11 +456,24 @@ const after = (instant: Instant, ms: number): Instant => ({
 /** True once either clock has passed `at`. */
 const reached = (at: Instant, now: Instant): boolean => now.wall >= at.wall || now.mono >= at.mono;
 
-/** Container levels an exchange waits out; `ready` and `unknown` let it run. */
-const containerHolds = (machine: EnvironmentMachine): boolean =>
-  machine.link.phase !== "connected" &&
-  machine.container.level !== "ready" &&
-  machine.container.level !== "unknown";
+/**
+ * Container levels an exchange waits out; `ready` and `unknown` let it run, and so do a restart and
+ * an update once the platform no longer says the server is down: a connect since they began is
+ * what ends them, so an exchange waiting on them would wait on itself.
+ */
+const containerHolds = (machine: EnvironmentMachine): boolean => {
+  if (machine.link.phase === "connected") return false;
+  switch (machine.container.level) {
+    case "ready":
+    case "unknown":
+      return false;
+    case "restarting":
+    case "updating":
+      return machine.guards.serverDown === true;
+    default:
+      return true;
+  }
+};
 
 /** Where the Mate is reached: the origin the inventory lists, or the one its record kept. */
 const originOf = (presence: Presence): string | null =>

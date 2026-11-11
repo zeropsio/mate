@@ -1,5 +1,4 @@
 import type { ChangeReceiptPart } from "@t3tools/shared/hqChanges";
-import { releaseReview, type ReleaseOutcome } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -26,16 +25,13 @@ import {
   reviewOrigin,
   outsideCommitsWords,
   rollbackListNote,
-  runWords,
   sizeWords,
   changeChecks,
   changeReceipt,
   mergeFoot,
-  productionNow,
-  productionNowLine,
-  releaseFoot,
-  releaseHeading,
-  releaseLine,
+  stageDeploysMerges,
+  tryItPreviews,
+  tryItWords,
   sinceWords,
   whySaid,
   productionBefore,
@@ -84,31 +80,23 @@ describe("pressesPrimary: ⌘↵ presses it when it is safe (R5)", () => {
   });
 });
 
-describe("reviewDescription: the change's own words first, the run's when it wrote none", () => {
+// Lukas, 2026-10-28: change #4's "What it does" opened with its Mate's reply about #1 and #3. A
+// run's reply may describe other changes; only the change's own description says what it does.
+describe("reviewDescription: what a change does is its own description, never a run's reply", () => {
   it.each([
     [
-      "its description, whatever the run said",
-      { description: "Adds a /status page.", run: { words: "Added it.", reading: false } },
+      "its description",
+      { description: "Adds a /status page.", reading: false },
       { kind: "body", text: "Adds a /status page." },
     ],
     [
-      "its description while the run is still read",
-      { description: "Adds a /status page.", run: { words: undefined, reading: true } },
-      { kind: "body", text: "Adds a /status page." },
-    ],
-    [
-      "what the run said, where it wrote no description",
-      { description: undefined, run: { words: "Added it.", reading: false } },
-      { kind: "run", words: "Added it." },
-    ],
-    [
-      "the room of the run's words while its conversation is read",
-      { description: undefined, run: { words: undefined, reading: true } },
+      "the room of its description while the change's record is read",
+      { description: undefined, reading: true },
       { kind: "reading" },
     ],
     [
-      "nothing at all where neither said anything: no empty heading",
-      { description: undefined, run: { words: undefined, reading: false } },
+      "nothing at all where its Mate wrote none: no empty heading, no borrowed words",
+      { description: undefined, reading: false },
       { kind: "none" },
     ],
   ] as const)("%s", (_case, input, shown) => {
@@ -266,50 +254,6 @@ describe("remarkFold: the dialog, a quick look, shows the newest of a long conve
     ["a long one, opened", "dialog", 9, true, { hidden: 0 }],
   ] as const)("%s", (_case, frame, total, all, fold) => {
     expect(remarkFold({ frame, total, all })).toEqual(fold);
-  });
-});
-
-describe("runWords: what it does, in the Mate's words (R3)", () => {
-  const link = "https://hq.example.test/changes/g1/appdev/2";
-  it("keeps the run's own sentences and leaves the link to the change out", () => {
-    const text = `Added a **/status** route that lists the app's uptime and its last deploy, refreshed on each visit. It stays behind the sign-in, like the rest of the admin pages.\n\nThe change carrying this to main, ready for a person to merge: ${link}`;
-    expect(runWords(text)).toBe(
-      "Added a /status route that lists the app's uptime and its last deploy, refreshed on each visit. It stays behind the sign-in, like the rest of the admin pages.",
-    );
-  });
-
-  it("stops at a sentence once four lines' worth is said", () => {
-    const sentence = "This sentence is exactly seventy-five characters long, give or take a few.";
-    const words = runWords(Array.from({ length: 12 }, () => sentence).join(" "));
-    expect(words?.length).toBeLessThanOrEqual(400);
-    expect(words?.endsWith(".")).toBe(true);
-  });
-
-  it("says nothing where the run said only the link", () => {
-    expect(runWords(`Opened ${link}`)).toBeUndefined();
-  });
-
-  it("reads a list as sentences, not as its bullets", () => {
-    expect(runWords("- Added the route.\n- Wrote a test for it.\n")).toBe(
-      "Added the route. Wrote a test for it.",
-    );
-  });
-
-  it("reads a quote as its words, not as its markers", () => {
-    expect(
-      runWords("Added the route.\n\n> It stays behind the sign-in.\n> > Like the rest.\n"),
-    ).toBe("Added the route. It stays behind the sign-in. Like the rest.");
-  });
-
-  // e2e 2026-10-03: "What it does" printed "> [!WARNING] > My earlier claim was incorrect…".
-  it("says a callout's word into its first line, as the chat draws it", () => {
-    expect(
-      runWords(
-        `Opened change #2 for review.\n\n> [!WARNING]\n> My earlier claim was incorrect: the scaling option supports this update.\n\n${link}`,
-      ),
-    ).toBe(
-      "Opened change #2 for review. Warning: My earlier claim was incorrect: the scaling option supports this update.",
-    );
   });
 });
 
@@ -625,7 +569,7 @@ describe("changeReadVerdict: a change the flow does not hold, until it is read",
       "HQ knows no such project",
       { read: { kind: "idle" }, projectKnown: false },
       "attention",
-      "This change's project isn't known here",
+      "No access",
     ],
   ] as const)("%s", (_case, over, tone, title) => {
     const verdict = changeReadVerdict({ ...base, ...over });
@@ -676,146 +620,50 @@ describe("the sheet's footnote: what happens next", () => {
   it.each([
     [
       "a change ready to merge, with a stage and a production",
-      { state: "ready", stage: "stage", live: "v2.3.1" },
-      "Merging puts it on stage. Production keeps v2.3.1 until you release.",
+      { state: "ready", stages: ["stage"], live: "v2.3.1" },
+      "Lands on main; Stage deploys it. Production keeps v2.3.1 until you release.",
     ],
     [
       "nothing released yet",
-      { state: "ready", stage: "stage", live: undefined },
-      "Merging puts it on stage.",
+      { state: "ready", stages: ["stage"], live: undefined },
+      "Lands on main; Stage deploys it.",
     ],
     [
       "behind main but clean",
-      { state: "behind-clean", stage: "staging", live: "v1.0.0" },
-      "Merging puts it on staging. Production keeps v1.0.0 until you release.",
+      { state: "behind-clean", stages: ["staging"], live: "v1.0.0" },
+      "Lands on main; Staging deploys it. Production keeps v1.0.0 until you release.",
+    ],
+    [
+      "several stages follow main: each deploys it",
+      { state: "ready", stages: ["stage", "staging", "demo"], live: "v2" },
+      "Lands on main; Stage, Staging and Demo deploy it. Production keeps v2 until you release.",
+    ],
+    [
+      "a stage HQ names after its project: by its title, as its row reads it",
+      { state: "ready", stages: ["demo-app-stage"], live: undefined },
+      "Lands on main; Stage deploys it.",
     ],
     [
       "no stage: the review's own words",
-      { state: "ready", stage: undefined, live: "v1" },
+      { state: "ready", stages: [], live: "v1" },
+      "Adds this change to main.",
+    ],
+    [
+      "a setup change: the review's own words of the environments, never a deploy",
+      { state: "ready", stages: ["stage"], live: "v1", recipe: true },
       "Adds this change to main.",
     ],
     [
       "merged: the review's own words",
-      { state: "merged", stage: "stage", live: "v1" },
+      { state: "merged", stages: ["stage"], live: "v1" },
       "Adds this change to main.",
     ],
   ] as const)("%s", (_case, input, words) => {
     expect(mergeFoot({ ...input, consequence: "Adds this change to main." })).toBe(words);
   });
-
-  it.each([
-    [
-      "a release ready to go",
-      { state: "release-ready", live: "v2.3.1" },
-      "It takes a minute or two. You can roll back to v2.3.1 from production's panel.",
-    ],
-    ["the first release", { state: "release-ready", live: undefined }, "It takes a minute or two."],
-    [
-      "a release on its way: the review's own words",
-      { state: "releasing", live: "v1" },
-      "Follows.",
-    ],
-  ] as const)("%s", (_case, input, words) => {
-    expect(releaseFoot({ ...input, consequence: "Follows." })).toBe(words);
-  });
 });
 
 describe("the release sheet's lines", () => {
-  it.each([
-    [
-      "every change on the stage",
-      { changes: 4, stage: "stage", since: "14:10", onStage: { total: 4, running: 4 } },
-      "4 changes, on stage since 14:10.",
-    ],
-    [
-      "one change, the stage's time unknown",
-      { changes: 1, stage: "stage", since: undefined, onStage: { total: 1, running: 1 } },
-      "1 change, on stage.",
-    ],
-    [
-      "some not on the stage yet",
-      { changes: 3, stage: "stage", since: "14:10", onStage: { total: 3, running: 1 } },
-      "3 changes, 1 of them on stage so far.",
-    ],
-    [
-      "no stage: since the release production runs",
-      { changes: 2, stage: undefined, since: undefined, onStage: undefined, live: "v0.1.4" },
-      "2 changes since v0.1.4.",
-    ],
-    [
-      "no stage, nothing released",
-      { changes: 2, stage: undefined, since: undefined, onStage: undefined },
-      "2 changes, the first release.",
-    ],
-    // The onboarding run: "0 changes" for 0.4 s, then "1 change".
-    [
-      "no count while what goes out is still compared",
-      { changes: undefined, stage: "stage", since: undefined, onStage: undefined },
-      "The first release.",
-    ],
-    [
-      "no count while compared, after a release",
-      {
-        changes: undefined,
-        stage: undefined,
-        since: undefined,
-        onStage: undefined,
-        live: "v0.1.4",
-      },
-      "Since v0.1.4.",
-    ],
-  ] as const)("says %s", (_case, input, words) => {
-    expect(releaseLine({ live: undefined, ...input })).toBe(words);
-  });
-
-  it.each([
-    [
-      "what runs, since when and where",
-      { live: "v2.3.1", since: "Tue", host: "shop.acme.com" },
-      "Runs v2.3.1 since Tue at shop.acme.com.",
-    ],
-    ["what runs alone", { live: "v2.3.1", since: undefined, host: undefined }, "Runs v2.3.1."],
-    [
-      "nothing released",
-      { live: undefined, since: undefined, host: "shop.acme.com" },
-      "Nothing released yet.",
-    ],
-  ] as const)("says %s of production", (_case, input, words) => {
-    expect(productionNowLine(input)).toBe(words);
-  });
-
-  describe("Release review has one row per part", () => {
-    const web = { service: "web", url: "https://web-1.prg1.zerops.app" };
-    const api = { service: "api", url: "https://api-1.prg1.zerops.app/" };
-    it.each([
-      {
-        name: "A one-part release review shows its address when it is the only one",
-        parts: [{ hostname: "app", version: "v2.3.1" }],
-        addresses: [{ service: "app", url: "https://shop.acme.com" }],
-        expected: { line: "Runs v2.3.1 since Tue at shop.acme.com.", rows: [] },
-      },
-      {
-        name: "three parts: each its version and its own address, none named for the whole",
-        parts: [
-          { hostname: "api", version: "v2.3.0" },
-          { hostname: "web", version: "v2.3.1" },
-          { hostname: "worker", version: undefined },
-        ],
-        addresses: [web, api],
-        expected: {
-          line: "Runs v2.3.1 since Tue.",
-          rows: [
-            "api · v2.3.0 · api-1.prg1.zerops.app",
-            "web · v2.3.1 · web-1.prg1.zerops.app",
-            "worker · runs nothing",
-          ],
-        },
-      },
-    ])("$name", ({ parts, addresses, expected }) => {
-      expect(productionNow({ live: "v2.3.1", since: "Tue", parts, addresses })).toEqual(expected);
-    });
-  });
-
   describe("Production now is what ran as the release was offered", () => {
     const releases = [
       { tag: "v0.1.1", taggedAt: "2026-10-16T19:44:40Z", entries: [{ service: "app" }] },
@@ -948,83 +796,15 @@ describe("a change's receipt: each part's preview", () => {
       mergeFoot({
         state: "ready",
         consequence: "Adds this change to main.",
-        stage: "stage",
+        stages: ["stage"],
         live: undefined,
         warning: gaps?.warning,
       }),
     ).toBe(
-      "Not tried at this change: web (older commit), api (uncommitted), worker (failed), auth (not verified). Merging puts it on stage.",
+      "Not tried at this change: web (older commit), api (uncommitted), worker (failed), auth (not verified). Lands on main; Stage deploys it.",
     );
     const tried = changeReceipt({ receipt: receipt(part("web"), part("api")), head: HEAD });
     expect(tried?.warning).toBeUndefined();
-  });
-});
-
-describe("releaseHeading: a release's head says where it stands once", () => {
-  const NOW = Date.parse("2026-10-19T10:30:00Z");
-  const heading = (outcome: ReleaseOutcome) => {
-    const model = releaseReview({
-      tag: "v0.1.4",
-      gate: { allowed: true },
-      permission: { allowed: true },
-      changes: 1,
-      onStage: { total: 1, running: 1 },
-      services: ["app"],
-      replaces: { kind: "release", tag: "v0.1.3" },
-      outcome,
-      productionMoved: outcome.kind === "failed" ? false : undefined,
-      now: NOW,
-    });
-    return releaseHeading({
-      tag: "v0.1.4",
-      model,
-      line: "1 change, on stage since 10:19.",
-      live: "v0.1.3",
-    });
-  };
-
-  it("a running release says once that it is releasing, with its step and clock", () => {
-    expect(
-      heading({ kind: "releasing", progress: "Putting v0.1.4 live · 8s", clock: "8s" }),
-    ).toEqual({
-      title: "Releasing v0.1.4 to production",
-      meta: undefined,
-      state: "Putting v0.1.4 live · 8s",
-      note: "You can close this. Production's line on the project's card follows it.",
-      foot: "",
-    });
-  });
-
-  it("a released one says it is live, and the way back", () => {
-    expect(heading({ kind: "released", at: "2026-10-19T10:27:00Z" })).toEqual({
-      title: "v0.1.4 is live",
-      meta: undefined,
-      state: "Production runs it · released 3 minutes ago",
-      note: "Roll back to v0.1.3 from production's menu. It gets its own review.",
-      foot: "",
-    });
-  });
-
-  it("a failed one says its cause, its fix beside it", () => {
-    expect(
-      heading({ kind: "failed", detail: "The deploy of app failed", services: ["app"] }),
-    ).toEqual({
-      title: "v0.1.4 didn't go out",
-      meta: undefined,
-      state: undefined,
-      note: "The deploy of app failed.",
-      foot: "",
-    });
-  });
-
-  it("an offered one says what goes out, and under its button what pressing does", () => {
-    expect(heading({ kind: "offered" })).toEqual({
-      title: "Release v0.1.4 to production",
-      meta: "1 change, on stage since 10:19.",
-      state: undefined,
-      note: undefined,
-      foot: "It takes a minute or two. You can roll back to v0.1.3 from production's panel.",
-    });
   });
 });
 
@@ -1128,5 +908,125 @@ describe("outsideCommitsWords: the commits no change landed", () => {
     [10000, true, "10000+ commits outside changes"],
   ] as const)("%i, at least %s: %s", (count, atLeast, words) => {
     expect(outsideCommitsWords(count, atLeast)).toBe(words);
+  });
+});
+
+// Larkspur, 2026-10-28: its stage followed main and had never deployed from it, while the
+// review said "stage deploys it"; Nebius's stage deploys every merge.
+describe("stageDeploysMerges: a stage the foot names", () => {
+  const job = (state: "live" | "failed" | "skipped") => ({ kind: "deploy" as const, state });
+  it.each([
+    {
+      case: "a stage that follows main and ran a deploy of it (Nebius)",
+      row: { tier: "stage", source: "main", commit: "dc3837a", deploys: [job("live")] },
+      names: true,
+    },
+    {
+      case: "a stage that follows main and runs what HQ deployed, its newest job failed",
+      row: { tier: "stage", source: "main", commit: "dc3837a", deploys: [job("failed")] },
+      names: true,
+    },
+    {
+      case: "a stage that follows main and never deployed from it (Larkspur)",
+      row: { tier: "stage", source: "main", commit: undefined, deploys: [] },
+      names: false,
+    },
+    {
+      case: "a stage whose every deploy was skipped",
+      row: { tier: "stage", source: "main", commit: undefined, deploys: [job("skipped")] },
+      names: false,
+    },
+    {
+      case: "a stage that follows another branch",
+      row: { tier: "stage", source: "develop", commit: "dc3837a", deploys: [job("live")] },
+      names: false,
+    },
+    {
+      case: "a production, which a release deploys",
+      row: { tier: "production", source: "release", commit: "dc3837a", deploys: [job("live")] },
+      names: false,
+    },
+  ] as const)("$case: $names", ({ row, names }) => {
+    expect(stageDeploysMerges(row)).toBe(names);
+  });
+});
+
+// Larkspur, 2026-10-28: Wren's review offered "shop shopstage-7c1e-5195.prg1.zerops.app".
+describe("tryItWords: Try it names whose preview it opens, and which part", () => {
+  it.each([
+    {
+      case: "a Mate's one part",
+      mate: "Wren",
+      part: "shopstage",
+      words: "Wren's preview · shopstage",
+    },
+    {
+      case: "one of several parts",
+      mate: "Odin",
+      part: "apistage",
+      words: "Odin's preview · apistage",
+    },
+    {
+      case: "a name ending in s",
+      mate: "Ines",
+      part: "appstage",
+      words: "Ines' preview · appstage",
+    },
+    {
+      case: "a Mate not named yet",
+      mate: "the Mate",
+      part: "appstage",
+      words: "The Mate's preview · appstage",
+    },
+  ])("$case: $words", ({ mate, part, words }) => {
+    const said = tryItWords(mate, part);
+    expect(`${said.preview} · ${said.part}`).toBe(words);
+  });
+});
+
+// The live audit, 2026-10-28: Kara's and Odin's reviews offered no Try it, their previews paired with
+// dev pools the old reading never looked at, and Noola's named its parts by their setups (apiprod).
+describe("tryItPreviews: Try it offers each part's preview by its real hostname", () => {
+  const route = (service: string) => ({
+    service,
+    port: 80,
+    url: `https://${service}-1.prg1.zerops.app`,
+    host: `${service}-1.prg1.zerops.app`,
+  });
+  it.each([
+    {
+      case: "a pool-era Mate's change offers every part's preview, its repository no part's dev",
+      input: {
+        routes: [route("apistage"), route("webstage"), route("zcp")],
+        hostnames: [
+          "apipool",
+          "apistage",
+          "webpool",
+          "webstage",
+          "runnerpool",
+          "runnerstage",
+          "zcp",
+        ],
+        pools: ["apipool", "webpool", "runnerpool"],
+        controlPlane: "zcp",
+        tier: undefined,
+        repository: "noola",
+      },
+      offered: ["apistage", "webstage"],
+    },
+    {
+      case: "a change of one repository offers its own pair's preview",
+      input: {
+        routes: [route("appdev"), route("appstage"), route("docsdev"), route("docsstage")],
+        hostnames: ["appdev", "appstage", "docsdev", "docsstage"],
+        pools: undefined,
+        controlPlane: undefined,
+        tier: undefined,
+        repository: "docsdev",
+      },
+      offered: ["docsstage"],
+    },
+  ])("$case", ({ input, offered }) => {
+    expect(tryItPreviews(input).map((preview) => preview.service)).toEqual(offered);
   });
 });

@@ -6,7 +6,6 @@ import {
 } from "@t3tools/client-runtime/connection";
 import { makeAccountStore, makeMateAdapter, type MateAdapter } from "@t3tools/client-runtime/data";
 import {
-  closedOffOf,
   initialEnvironment,
   selectReachability,
   mateVoice,
@@ -19,9 +18,12 @@ import { makeHqApi } from "@t3tools/client-runtime/zerops/hq";
 import * as Effect from "effect/Effect";
 import { AtomRegistry } from "effect/reactivity";
 import { describe, expect, it } from "@effect/vitest";
+import { vi } from "vite-plus/test";
 
 import { zeropsSessionAtom } from "../state/zerops";
-import { closeOffPort, hqIndexPort, linkPhaseOf } from "./environmentPorts";
+import { setMateTicketHq } from "~/connection/platform";
+import { hqIndexPort, linkPhaseOf, webEnvironmentPorts } from "./environmentPorts";
+import { mateDescriptors } from "./mateDescriptors";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 
 const ENVIRONMENT_ID = EnvironmentId.make("environment-1");
@@ -242,32 +244,6 @@ describe("repair is the Mate adapter's", () => {
   });
 });
 
-describe("closeOffPort: HQ's word on which Mates' projects are closed off", () => {
-  const structure = {
-    ungrouped: [
-      { projectId: "p-closed", name: "Ada", mate: { closedOff: true } },
-      { projectId: "p-open", name: "Bo", mate: { closedOff: false } },
-    ],
-    apps: [],
-  } as never;
-  const word = (current: boolean | null) => {
-    const registry = AtomRegistry.make();
-    if (current !== null) {
-      mountHqNavigation(registry, "org-1", { structure: structure, live: current });
-    }
-    return closeOffPort(registry).read();
-  };
-  it.each([
-    { case: "HQ's answer now, closed off", current: true, projectId: "p-closed", want: true },
-    { case: "HQ's answer now, not closed off", current: true, projectId: "p-open", want: false },
-    { case: "a stale word, closed off", current: false, projectId: "p-closed", want: true },
-    { case: "a stale word, not closed off", current: false, projectId: "p-open", want: "unknown" },
-    { case: "no word", current: null, projectId: "p-closed", want: "unknown" },
-  ] as const)("$case: $want", ({ current, projectId, want }) => {
-    expect(closedOffOf(word(current), "org-1", projectId)).toBe(want);
-  });
-});
-
 const presence = (online: boolean) => ({
   presence: { online, since: "2026-10-03T10:00:00.000Z", overview: online ? "live" : "stored" },
 });
@@ -325,7 +301,7 @@ describe("HQ ticket refusal on the Mate's state", () => {
         const hq = makeHqApi({
           address: "https://hq.example",
           orgId: "org-1",
-          accessToken: async () => "access",
+          accessToken: async () => ({ token: "access" }),
           openSocket: () => {
             throw new Error("unexpected socket");
           },
@@ -393,4 +369,41 @@ describe("HQ ticket refusal on the Mate's state", () => {
         }
       }),
   );
+});
+
+describe("the route's exchange at its Mate's door", () => {
+  it("asks HQ for the Mate's connection ticket while its descriptor is still being read", async () => {
+    const events: Array<string> = [];
+    const reset = setMateTicketHq(() => ({
+      mateTicket: async (projectId) => {
+        events.push(`ticket ${projectId}`);
+        return { ticket: "T1", expiresIn: 60, origin: ORIGIN };
+      },
+    }));
+    vi.stubGlobal("window", { location: { origin: "https://mate.example.test" } });
+    const descriptor = vi.spyOn(mateDescriptors, "descriptor").mockImplementation(() => {
+      events.push("descriptor");
+      return new Promise(() => undefined);
+    });
+    try {
+      const ports = webEnvironmentPorts(AtomRegistry.make());
+      void ports.door.exchange({
+        key: KEY,
+        origin: ORIGIN,
+        expected: null,
+        reason: "restore",
+        asked: true,
+        signal: new AbortController().signal,
+        projectId: "project-1",
+        organizationId: "org-1",
+      });
+      await Promise.resolve();
+
+      expect(events).toEqual(["ticket project-1", "descriptor"]);
+    } finally {
+      descriptor.mockRestore();
+      vi.unstubAllGlobals();
+      reset();
+    }
+  });
 });

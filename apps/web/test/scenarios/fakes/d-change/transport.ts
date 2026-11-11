@@ -33,13 +33,13 @@ export class MergeGate {
 export class HqFrameHold {
   private holding = false;
   private frames: { client: WebSocket; frame: string }[] = [];
-  private receipt = Promise.resolve();
-  private arrived: (() => void) | undefined;
+  private receipt: Promise<string> = Promise.resolve("");
+  private arrived: ((frame: string) => void) | undefined;
   private accepts: (frame: string) => boolean = () => true;
   hold(accepts: (frame: string) => boolean = () => true) {
     this.accepts = accepts;
     this.holding = true;
-    this.receipt = new Promise<void>((resolve) => {
+    this.receipt = new Promise<string>((resolve) => {
       this.arrived = resolve;
     });
   }
@@ -50,7 +50,7 @@ export class HqFrameHold {
       return;
     }
     this.frames.push({ client, frame });
-    this.arrived?.();
+    this.arrived?.(frame);
   }
   received() {
     return deadline(this.receipt, "HQ socket frame buffered");

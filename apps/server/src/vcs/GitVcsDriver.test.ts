@@ -1,4 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -19,7 +20,7 @@ const ServerConfigLayer = ServerConfig.layerTest(process.cwd(), {
 const GitContractLayer = Layer.mergeAll(GitVcsDriver.vcsLayer, GitVcsDriver.layer).pipe(
   Layer.provide(ServerConfigLayer),
   Layer.provideMerge(VcsProcess.layer),
-  Layer.provideMerge(NodeServices.layer),
+  Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
 );
 
 const runGit = (cwd: string, args: ReadonlyArray<string>) =>
@@ -93,6 +94,7 @@ it.effect("GitVcsDriver forwards execute env to the VCS process", () => {
     Effect.provide(
       Layer.mergeAll(
         NodeServices.layer,
+        NodeCrypto.layer,
         Layer.mock(VcsProcess.VcsProcess)({
           run: (input) =>
             Effect.sync(() => {

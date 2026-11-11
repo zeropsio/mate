@@ -11,7 +11,7 @@ import {
   candidateContainerRuns,
   type ZeropsCandidate,
 } from "@t3tools/client-runtime/zerops/candidates";
-import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
+import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/gui";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 
@@ -28,6 +28,8 @@ export interface ZeropsMateIdentity {
   readonly shape: MateShapeId;
   /** The project the Mate belongs to, as HQ names it; absent for one in no project. */
   readonly project: string | undefined;
+  /** That project's application, whose page is the project's own (`mateProjectPage`). */
+  readonly groupId?: string | undefined;
   /** The Mate's project on the Zerops dashboard: where a conversation's "Open in Zerops" goes. */
   readonly projectUrl: string;
   /**
@@ -54,6 +56,30 @@ export interface ZeropsMateIdentity {
   readonly chief?: boolean | undefined;
 }
 
+/**
+ * Whether a Mate's project has a page of its own (`/group/$groupId/flow`), from who the Mate is
+ * alone: HQ names its application with it, and the last visit remembered both, so a conversation's
+ * header knows on its first frame. `none` for a Mate HQ holds in no project. `unknown` only for a
+ * Mate a visit from before the application was remembered left by its project's name: HQ's answer
+ * settles it.
+ */
+export type MateProjectPage =
+  | { readonly kind: "page"; readonly groupId: string; readonly projectName: string | undefined }
+  | { readonly kind: "none" }
+  | { readonly kind: "unknown" };
+
+const NO_PROJECT_PAGE: MateProjectPage = { kind: "none" };
+const PROJECT_PAGE_UNKNOWN: MateProjectPage = { kind: "unknown" };
+
+export function mateProjectPage(
+  mate: Pick<ZeropsMateIdentity, "groupId" | "project">,
+): MateProjectPage {
+  if (mate.groupId !== undefined) {
+    return { kind: "page", groupId: mate.groupId, projectName: mate.project };
+  }
+  return mate.project === undefined ? NO_PROJECT_PAGE : PROJECT_PAGE_UNKNOWN;
+}
+
 /** What a Mate's face reads of where it is in its life, from who lives there (`mateFaceFor`). */
 export function mateIdentityPose(
   mate: Pick<ZeropsMateIdentity, "arrivingUntil">,
@@ -77,6 +103,7 @@ export function zeropsMateIdentityOf(
     tint,
     shape: mateShapeOf(candidate.project, tint),
     project: tags.label,
+    ...(tags.groupId === undefined ? {} : { groupId: tags.groupId }),
     projectUrl: zeropsProjectUrl(candidate.project.id),
     connected: candidate.group === "connected",
     running: candidateContainerRuns(candidate),

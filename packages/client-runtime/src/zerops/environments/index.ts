@@ -3,9 +3,7 @@
 // candidate listings and the targets they and the kept sessions name (DESIGN §4.4, §4.8, §2.B B4,
 // §2.C C1); the container machine, what a probe of it reads and the rows' words for them (§4.5),
 // the words its connection is driven in (`exchange.ts`; the Mate adapter runs them), and the Mate
-// flag read the birth worker shares; the close-off gate that holds a Mate whose project is not
-// closed off.
-export * from "./closeOff.ts";
+// flag read the birth worker shares.
 export * from "./containerMachine.ts";
 export * from "./containerRows.ts";
 export * from "./descriptorIndex.ts";

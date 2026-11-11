@@ -1,4 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { expect, it } from "@effect/vitest";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -16,9 +17,7 @@ import * as AuthSessions from "../persistence/AuthSessions.ts";
 import * as SessionStore from "./SessionStore.ts";
 import * as ServerSecretStore from "./ServerSecretStore.ts";
 
-const makeServerConfigLayer = (
-  overrides?: Partial<Pick<ServerConfig.ServerConfig["Service"], "desktopBootstrapToken">>,
-) =>
+const makeServerConfigLayer = () =>
   Layer.effect(
     ServerConfig.ServerConfig,
     Effect.gen(function* () {
@@ -26,18 +25,15 @@ const makeServerConfigLayer = (
       return {
         ...config,
         zeropsFixtures: undefined,
-        ...overrides,
       } satisfies ServerConfig.ServerConfig["Service"];
     }),
   ).pipe(Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-auth-session-test-" })));
 
-const makeSessionStoreLayer = (
-  overrides?: Partial<Pick<ServerConfig.ServerConfig["Service"], "desktopBootstrapToken">>,
-) =>
+const makeSessionStoreLayer = () =>
   SessionStore.layer.pipe(
     Layer.provide(SqlitePersistenceMemory),
     Layer.provide(ServerSecretStore.layer),
-    Layer.provide(makeServerConfigLayer(overrides)),
+    Layer.provide(makeServerConfigLayer()),
   );
 
 const relaySessionInput = {
@@ -75,7 +71,7 @@ const failingSessionLookupCredentialLayer = Layer.effect(
   Layer.provide(makeServerConfigLayer()),
 );
 
-it.layer(NodeServices.layer)("SessionStore.layer", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("SessionStore.layer", (it) => {
   it.effect("issues and verifies signed browser session tokens", () =>
     Effect.gen(function* () {
       const sessions = yield* SessionStore.SessionStore;

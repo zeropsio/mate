@@ -1,11 +1,11 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { environmentFixture } from "./fake.ts";
 import { environmentActions } from "./dsl.ts";
 
 describe("E: release failure history", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     // A newer release must not erase the failed deployment of an earlier release.
     it.effect(
       "failed release stays failed while a colleague starts the next release",

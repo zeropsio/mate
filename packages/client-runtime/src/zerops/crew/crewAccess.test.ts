@@ -83,7 +83,14 @@ const access = (
   snapshot: CrewSnapshot | null,
   closed: ReadonlyArray<string>,
   defaultLogin = "claudeAgent",
-) => crewAccess({ snapshot, lockOf: lockOn(closed), defaultLogin, reading: false });
+) =>
+  crewAccess({
+    readsAlong: false,
+    snapshot,
+    lockOf: lockOn(closed),
+    defaultLogin,
+    reading: false,
+  });
 
 const locked = (login: string): CrewLock => ({
   login,

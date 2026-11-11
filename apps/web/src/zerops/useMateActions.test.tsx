@@ -6,31 +6,40 @@
  * Mate's (D3).
  */
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
-import { readZeropsMembership, type ZeropsMateFace } from "@t3tools/client-runtime/zerops";
+import { ZeropsApiClient, type ZeropsMateFace } from "@t3tools/client-runtime/zerops";
 import {
   makeAccountStore,
   creationPressStoreAtom,
   makeOperations,
   makeHqExecutor,
+  makeZeropsExecutor,
+  accountReadsAtom,
+  historyScope,
+  projectsScope,
+  sharedBirthsAtom,
   operationProgress,
   runToEnd,
   type AccountStore,
   type Operations,
   type RunToEnd,
   type Projection,
+  shownMateVisibilitiesAtom,
 } from "@t3tools/client-runtime/data";
+import { liveProjects, membershipInputs } from "@t3tools/client-runtime/data/fixtures";
 import { Atom } from "effect/reactivity";
 import { HqError } from "@t3tools/client-runtime/zerops/hq";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
 import type { HqMateOfferStates, HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { EnvironmentId, ThreadId, TurnId } from "@t3tools/contracts";
 import { AtomRegistry } from "effect/reactivity";
-import { act } from "react";
+import { act, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Menu } from "../components/ui/menu";
 import { MateMenuItems } from "../components/zerops/SidebarMateMenu";
+import { SharedBirthStage } from "../components/zerops/ZeropsMateComingPage";
+import { SidebarZeropsTree } from "../components/zerops/SidebarZeropsTree";
 import { sidebarMateVerbs } from "./useSidebarMateMenus";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { ZeropsMenuAction } from "../components/zerops/ZeropsProjectMenu";
@@ -41,22 +50,24 @@ import {
   closeAccountLifetime,
   openAccountLifetime,
 } from "./accountLifetime";
-import { mateAddedBy, useMateActions, type MateActions } from "./useMateActions";
+import { useMateActions, type MateActions } from "./useMateActions";
+import { menuRowsAtom } from "./menuRows";
 import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 import { useDeleteApplicationDialog } from "~/zerops/deleteApplicationDialog";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
+import * as accountData from "./ZeropsAccountData";
+import * as sessionContext from "./sessionContext";
 
 interface AssignDialogProps {
-  readonly candidates: ReadonlyArray<{ readonly clientUserId: string; readonly name: string }>;
+  readonly candidates: ReadonlyArray<{ readonly userId: string; readonly name: string }>;
   readonly readingOrganization?: string | undefined;
   readonly readFailed?:
     | { readonly organization: string; readonly onReadAgain: () => void }
     | undefined;
-  readonly readRefused?: { readonly organization: string } | undefined;
   readonly pending: boolean;
   readonly error: string | null;
-  readonly onSubmit: (clientUserId: string) => void;
+  readonly onSubmit: (ownerUserId: string) => void;
 }
 
 interface FaceDialogProps {
@@ -75,7 +86,6 @@ const KINDS = ["mate", "devstage", "stage", "production"];
 /** What HQ offers an org owner of a Mate: everything, anywhere. */
 const OWNER_OFFERS: HqMateOfferStates = {
   held: true,
-  observe: { kind: "allowed" },
   edit: { kind: "allowed" },
   detach: { kind: "allowed" },
 };
@@ -102,6 +112,8 @@ const mock = vi.hoisted(() => ({
   faceRegistry: null as AtomRegistry.AtomRegistry | null,
   faceOperations: null as Operations | null,
   faceRun: null as RunToEnd | null,
+  deleteRun: null as RunToEnd | null,
+  liveBirths: false,
   /** HQ's move of a project, and its creation of an application a Mate is moved into. */
   moveProject: vi.fn(),
   moveRemainders: new Map<
@@ -112,6 +124,9 @@ const mock = vi.hoisted(() => ({
   runReceipts: new Map<string, unknown>(),
   createApp: vi.fn(),
   restartContainer: vi.fn(),
+  births: [] as Array<import("@t3tools/client-runtime/data").SharedBirth>,
+  proceedBirth: vi.fn(),
+  deleteBirthOnly: vi.fn(),
   coming: undefined as import("@t3tools/client-runtime/data").MateComing | undefined,
   deployDialog: null as { candidate: ZeropsCandidatePresentation; onClose: () => void } | null,
   threads: [] as Array<{
@@ -129,18 +144,15 @@ const mock = vi.hoisted(() => ({
   },
   /** The platform's rename of a project, as the account's operation: resolves once Zerops took it. */
   renameProject: vi.fn(),
-  /** *Finish setup*'s steps, as the hook hands them over. */
-  finishMateSetup: vi.fn(),
   roleCode: "OWNER",
   organizationId: "org-acme",
   /** Who the session says is signed in; null where it names nobody. */
   user: { id: "user-ada" } as { readonly id: string } | null,
   listing: { current: undefined as unknown },
   /** The press's marker on each container, by service id, as the store states it. */
-  markers: new Map<string, boolean | "unknown" | "unread">(),
   dialog: { current: null as FaceDialogProps | null },
   /** The account's hand-over operation, answered with where it stands: a promise the test answers. */
-  assignMateOwner: vi.fn(),
+  handOverMate: vi.fn(),
   assignDialog: { current: null as AssignDialogProps | null },
   /** What the hook asked the account's bus to read again. */
   invalidated: [] as Array<unknown>,
@@ -163,6 +175,8 @@ const mock = vi.hoisted(() => ({
       readonly onOpenChange: (open: boolean) => void;
       readonly onConfirm: (alsoApplication?: boolean) => void;
       readonly error: string | null;
+      readonly name: string;
+      readonly words: { readonly label: string; readonly submit: string };
       readonly cleanup?: boolean;
       readonly application?: { readonly name: string };
     } | null,
@@ -171,14 +185,15 @@ const mock = vi.hoisted(() => ({
   asked: [] as Array<string>,
   /** The organization's token list, as the platform would answer it were it read. */
   tokens: [] as Array<unknown>,
-  /** The Mates HQ was asked whom to hand over to, in order. */
-  handoverAsked: [] as Array<string>,
-  /** HQ's answer of whom a Mate may be handed over to. */
-  handoverAnswer: (): Promise<ReadonlyArray<unknown>> => Promise.resolve([]),
-  /** No account data is mounted: there is no HQ to ask. */
-  noAccountData: false,
-  /** The account HQ's read of the member list again. */
-  reread: vi.fn(),
+  /** The organization's members as the person's own Zerops read holds them. */
+  members: { status: "loading", members: [] } as {
+    readonly status: string;
+    readonly members: ReadonlyArray<unknown>;
+  },
+  /** The details the hook held, by family and owner, in order. */
+  demanded: [] as Array<string>,
+  /** The details the hook asked to read again. */
+  retried: [] as Array<unknown>,
   /** The Move dialog as the hook mounts it: where it offers the Mate to go. */
   moveDialog: {
     current: null as {
@@ -196,8 +211,12 @@ const mock = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("../state/entities", () => ({ useThreadShells: () => mock.threads }));
-vi.mock("./useHqOffers", () => ({
+vi.mock("../state/entities", async (original) => ({
+  ...(await original<typeof import("../state/entities")>()),
+  useThreadShells: () => mock.threads,
+}));
+vi.mock("./useHqOffers", async (original) => ({
+  ...(await original<typeof import("./useHqOffers")>()),
   useMateOffers: () => mock.mateOffers,
   // HQ offers writing the structure to the org's owners and admins (`create_app`).
   useOrgOffers: () => () =>
@@ -205,53 +224,46 @@ vi.mock("./useHqOffers", () => ({
       ? { kind: "allowed" }
       : { kind: "refused", reason: "not_structure_writer" },
 }));
-vi.mock("./ZeropsAccountData", () => ({
-  useProjection: (
-    projection: Projection<unknown, unknown>,
-    key: unknown,
-    fallback: Atom.Atom<unknown>,
-  ) => {
-    const value = useAtomValue(
-      projection.name === "faceAction" && key !== null && mock.faceStore !== null
-        ? mock.faceStore.data.project(projection, key)
-        : fallback,
-    );
-    if (projection.name === "faceAction") return value;
-    return {
-      renames: currentAccountId() === mock.user?.id ? mock.moveRemainders : new Map(),
-      deletions: [],
-    };
-  },
-  useAccountOrgId: () => null,
-  useAccountDataOptional: () =>
-    mock.noAccountData
-      ? null
-      : {
-          moveOffers: () =>
-            (mock.moveAnswer?.() ?? Promise.resolve(mock.moveTo)).then((moveTo) => ({
-              moveTo,
-              refused: {},
-            })),
-          handoverCandidates: (projectId: string) => {
-            mock.handoverAsked.push(projectId);
-            return mock.handoverAnswer();
-          },
-        },
-}));
-vi.mock("./deleteProject", () => ({
+vi.mock("./deleteProject", async (original) => ({
+  ...(await original<typeof import("./deleteProject")>()),
   useDeleteProject: () => mock.deleteProject,
 }));
-vi.mock("./useMenuMateReadings", () => ({ useMateComingOf: () => () => mock.coming }));
+vi.mock("./useMenuMateReadings", async (original) => ({
+  ...(await original<typeof import("./useMenuMateReadings")>()),
+  useMateComingOf: () => () => mock.coming,
+}));
+vi.mock("./useNowMs", async (original) => {
+  const actual = await original<typeof import("./useNowMs")>();
+  return {
+    ...actual,
+    useNowMs: () => (mock.liveBirths ? 0 : actual.useNowMs()),
+    useSecondsNowMs: (active: boolean) => (mock.liveBirths ? 0 : actual.useSecondsNowMs(active)),
+    useWakeAt: (deadlines: ReadonlyArray<number>) =>
+      mock.liveBirths ? 0 : actual.useWakeAt(deadlines),
+  };
+});
+vi.mock("./sharedBirths", async (original) => {
+  const actual = await original<typeof import("./sharedBirths")>();
+  return {
+    ...actual,
+    useSharedBirths: () => (mock.liveBirths ? actual.useSharedBirths() : mock.births),
+  };
+});
+vi.mock("./useBirthActions", () => ({
+  useBirthActions: () => ({ proceed: mock.proceedBirth, deleteBirthOnly: mock.deleteBirthOnly }),
+}));
 vi.mock("./MateDeployConfirmation", () => ({
   MateDeployConfirmation: (props: NonNullable<typeof mock.deployDialog>) => {
     mock.deployDialog = props;
     return null;
   },
 }));
-vi.mock("./mateRestart", () => ({
+vi.mock("./mateRestart", async (original) => ({
+  ...(await original<typeof import("./mateRestart")>()),
   useRestartMate: () => mock.restartContainer,
 }));
-vi.mock("./zeropsContainers", () => ({
+vi.mock("./zeropsContainers", async (original) => ({
+  ...(await original<typeof import("./zeropsContainers")>()),
   readContainerInitAt: async () => null,
   intendContainer: () => {},
 }));
@@ -262,39 +274,24 @@ vi.mock("../components/zerops/ZeropsRestartMateDialog", () => ({
   },
 }));
 
-vi.mock("./accountEnvironments", () => ({
+vi.mock("./accountEnvironments", async (original) => ({
+  ...(await original<typeof import("./accountEnvironments")>()),
   currentAccountEnvironments: () => ({ setDeleting: mock.setDeleting }),
 }));
 
-vi.mock("./accountInvalidations", () => ({
+vi.mock("./accountInvalidations", async (original) => ({
+  ...(await original<typeof import("./accountInvalidations")>()),
   invalidateZerops: (invalidation: unknown) => {
     mock.invalidated.push(invalidation);
   },
 }));
 
-vi.mock("./ZeropsSessionProvider", () => ({
-  useZeropsSession: () => ({
-    activeOrganization: {
-      id: mock.organizationId,
-      membershipId: "member-ada",
-      name: "Acme",
-      roleCode: mock.roleCode,
-      canCreateProjects: true,
-    },
-    client: {
-      deleteIntegrationToken: async ({ tokenId }: { readonly tokenId: string }) => {
-        mock.deletedTokens.push(tokenId);
-        if (mock.deleteTokenFailure) throw new Error("Key retirement refused");
-      },
-    },
-    user: mock.user,
-  }),
-}));
 // The account's operations: a rename Zerops refuses is said with its reason.
-vi.mock("./accountOperations", () => ({
+vi.mock("./accountOperations", async (original) => ({
+  ...(await original<typeof import("./accountOperations")>()),
   useAccountOperations: () => ({
     submit: async (intent: { readonly kind: string }) => {
-      if (intent.kind === "assign-mate-owner") return mock.assignMateOwner(intent);
+      if (intent.kind === "hand-over-mate") return mock.handOverMate(intent);
       try {
         await mock.renameProject(intent);
         if ("projectId" in intent) mock.moveRemainders.delete(String(intent.projectId));
@@ -348,6 +345,15 @@ vi.mock("./accountOperations", () => ({
       },
       options: { requestId?: string; orgId?: string; unobserved?: string },
     ) => {
+      if (intent.kind === "delete-project" && mock.deleteRun !== null)
+        return mock.deleteRun(
+          { kind: "delete-project", orgId: intent.orgId!, projectId: intent.projectId! },
+          {
+            ...(options.requestId === undefined ? {} : { requestId: options.requestId }),
+            orgId: options.orgId!,
+            unobserved: options.unobserved!,
+          },
+        );
       if (intent.kind === "update-mate-face")
         return mock.faceRun!(
           {
@@ -412,62 +418,46 @@ vi.mock("./accountOperations", () => ({
   }),
 }));
 // The account's runtime: no platform command is answered here.
-vi.mock("./zeropsDataContext", () => ({
+vi.mock("./zeropsDataContext", async (original) => ({
+  ...(await original<typeof import("./zeropsDataContext")>()),
   useZeropsData: () => ({
     organizationRef: (organizationId: string) => ({ organizationId }),
     projectRef: (organizationId: string, projectId: string) => ({ organizationId, projectId }),
     runtime: {},
   }),
-  // Navigation supplies setup evidence for each project's Mate.
-  useZeropsAtomSelections: (selections: ReadonlyArray<readonly [string, unknown]>) => {
-    const listing = mock.listing.current as {
-      readonly state: string;
-      readonly value?: ReadonlyArray<ZeropsCandidatePresentation>;
-    };
-    return new Map(
-      selections.map(([projectId]) => {
-        const candidate =
-          listing.state === "known"
-            ? listing.value?.find((candidate) => candidate.project.id === projectId)
-            : undefined;
-        return [
-          projectId,
-          {
-            closedOff: candidate?.project.hq?.mate?.closedOff ?? "unknown",
-            marker: mock.markers.get(candidate?.service?.id ?? "") ?? false,
-          },
-        ];
-      }),
-    );
-  },
 }));
-vi.mock("./useZeropsCandidates", () => ({
+vi.mock("./useZeropsCandidates", async (original) => ({
+  ...(await original<typeof import("./useZeropsCandidates")>()),
   useZeropsDetailCandidates: () => ({ listing: mock.listing.current, refresh: () => {} }),
   useTakenBotNames: () => ({ names: [], complete: true }),
 }));
-vi.mock("@tanstack/react-router", () => ({
+vi.mock("@tanstack/react-router", async (original) => ({
+  ...(await original<typeof import("@tanstack/react-router")>()),
   useRouter: () => ({ state: { matches: [] }, navigate: () => {} }),
+  useNavigate: () => () => undefined,
 }));
-vi.mock("./useOpenMate", () => ({ useOpenMate: () => () => {} }));
-vi.mock("../routes/-environmentTargets", () => ({
+vi.mock("./useOpenMate", async (original) => ({
+  ...(await original<typeof import("./useOpenMate")>()),
+  useOpenMate: () => () => {},
+}));
+vi.mock("../routes/-environmentTargets", async (original) => ({
+  ...(await original<typeof import("../routes/-environmentTargets")>()),
   useEnvironmentLinks: () => ({ linkTarget: () => undefined }),
 }));
-vi.mock("./usePressesElsewhere", () => ({
+vi.mock("./usePressesElsewhere", async (original) => ({
+  ...(await original<typeof import("./usePressesElsewhere")>()),
   usePressesElsewhere: () => (projectId: string) => mock.pressElsewhere(projectId),
 }));
-vi.mock("./inventoryContext", async () => {
+vi.mock("./inventoryContext", async (original) => {
   const { useDialogState } = await import("./useDialogState");
-  return { useProjectDialog: useDialogState };
+  return {
+    ...(await original<typeof import("./inventoryContext")>()),
+    useProjectDialog: useDialogState,
+  };
 });
-// The organization's official HQ, where a Mate's face is written.
 vi.mock("./accountHq", async (original) => ({
-  officialHq: (await original<typeof import("./accountHq")>()).officialHq,
-  useAccountHq: () => ({
-    status: "ready",
-    hq: { kind: "official", projectId: "p-hq", address: "https://hq.example.test" },
-    admins: [],
-    reread: mock.reread,
-  }),
+  ...(await original<typeof import("./accountHq")>()),
+  configuredHq: () => ({ projectId: "p-hq", address: "https://hq.example.test" }),
   accountHqApi: () => ({
     updateMate: mock.updateMate,
     moveProject: mock.moveProject,
@@ -476,12 +466,9 @@ vi.mock("./accountHq", async (original) => ({
     completeProjectDeletion: mock.completeProjectDeletion,
   }),
 }));
-vi.mock("./projectOrderPreference", () => ({ useProjectOrderOptions: () => ({ order: "name" }) }));
-// The press's steps, not run here: what *Finish setup* hands them is the case.
-vi.mock("./matePress", async (original) => ({
-  ...(await original<typeof import("./matePress")>()),
-  beginPress: () => {},
-  finishMateSetup: mock.finishMateSetup,
+vi.mock("./projectOrderPreference", async (original) => ({
+  ...(await original<typeof import("./projectOrderPreference")>()),
+  useProjectOrderOptions: () => ({ order: "name" }),
 }));
 vi.mock("../components/zerops/ZeropsDeleteMateDialog", () => ({
   ZeropsDeleteMateDialog: (props: NonNullable<typeof mock.deleteDialog.current>) => {
@@ -545,19 +532,83 @@ const QUINN = mate("Quinn", "coral:gem");
 const seen: Array<MateActions> = [];
 const actions = () => seen.at(-1)!;
 function Probe() {
-  const handed = useMateActions({
-    registry: { registry: mock.registry },
-    serverVersions: new Map(),
-  });
+  const handed = useMateActions({ serverVersions: new Map() });
   seen.push(handed);
   return <>{handed.dialogs}</>;
 }
 
+function SharedBirthProbe() {
+  const birth = useAtomValue(sharedBirthsAtom("user-ada")).open[0];
+  return birth === undefined ? null : <SharedBirthStage birth={birth} />;
+}
+
+const renderedText = (node: ReactTestInstance | string): string =>
+  typeof node === "string" ? node : node.children.map(renderedText).join("");
+
 const mounted: ReactTestRenderer[] = [];
 beforeEach(() => {
+  vi.spyOn(sessionContext, "useZeropsSession").mockImplementation(
+    () =>
+      ({
+        activeOrganization: {
+          id: mock.organizationId,
+          membershipId: "member-ada",
+          name: "Acme",
+          roleCode: mock.roleCode,
+          canCreateProjects: true,
+        },
+        client: {
+          deleteIntegrationToken: async ({ tokenId }: { readonly tokenId: string }) => {
+            mock.deletedTokens.push(tokenId);
+            if (mock.deleteTokenFailure) throw new Error("Key retirement refused");
+          },
+        },
+        user: mock.user,
+      }) as unknown as ReturnType<typeof sessionContext.useZeropsSession>,
+  );
+  vi.spyOn(accountData, "useProjection").mockImplementation(((
+    projection: Projection<unknown, unknown>,
+    key: unknown,
+    fallback: Atom.Atom<unknown>,
+  ) => {
+    const value = useAtomValue(
+      (mock.liveBirths || projection.name === "faceAction") &&
+        key !== null &&
+        mock.faceStore !== null
+        ? mock.faceStore.data.project(projection, key)
+        : fallback,
+    );
+    if (mock.liveBirths || projection.name === "faceAction") return value;
+    if (projection.name === "organizationMembers") return key === null ? value : mock.members;
+    return {
+      renames: currentAccountId() === mock.user?.id ? mock.moveRemainders : new Map(),
+      deletions: [],
+    };
+  }) as typeof accountData.useProjection);
+  vi.spyOn(accountData, "useAccountOrgId").mockImplementation(() =>
+    mock.liveBirths ? mock.organizationId : null,
+  );
+  vi.spyOn(accountData, "useDetailDemand").mockImplementation((family, _listing, ownerId) => {
+    if (ownerId !== null) mock.demanded.push(`${family}:${ownerId}`);
+  });
+  vi.spyOn(accountData, "useAccountDataOptional").mockReturnValue({
+    moveOffers: () =>
+      (mock.moveAnswer?.() ?? Promise.resolve(mock.moveTo)).then((moveTo) => ({
+        moveTo,
+        refused: {},
+      })),
+    retryDetail: (demand: unknown) => {
+      mock.retried.push(demand);
+    },
+  } as unknown as ReturnType<typeof accountData.useAccountDataOptional>);
   openAccountLifetime("user-ada");
   appAtomRegistry.set(creationPressStoreAtom, makeAccountStore(appAtomRegistry));
   mock.coming = undefined;
+  mock.births = [];
+  mock.liveBirths = false;
+  mock.deleteRun = null;
+  mock.proceedBirth.mockReset().mockResolvedValue("started");
+  mock.deleteBirthOnly.mockReset().mockResolvedValue(undefined);
   mock.deployDialog = null;
   mock.restartContainer.mockReset();
   mock.restartContainer.mockResolvedValue(undefined);
@@ -569,12 +620,11 @@ beforeEach(() => {
   mock.moveTo = { acme: KINDS, new: KINDS };
   mock.moveAnswer = null;
   mock.user = { id: "user-ada" };
-  mock.markers.clear();
   mock.pressElsewhere = () => "stopped";
   mock.registry = { groups: [] };
   mock.dialog.current = null;
   mock.assignDialog.current = null;
-  mock.assignMateOwner.mockReset();
+  mock.handOverMate.mockReset();
   mock.invalidated = [];
   mock.deletedTokens = [];
   mock.retirementCompleted.mockClear();
@@ -585,10 +635,9 @@ beforeEach(() => {
   mock.completeProjectDeletion.mockReset().mockResolvedValue(undefined);
   mock.deleteProject.mockReset().mockResolvedValue({ value: undefined });
   mock.setDeleting.mockReset();
-  mock.handoverAsked = [];
-  mock.handoverAnswer = () => Promise.resolve([]);
-  mock.noAccountData = false;
-  mock.reread.mockReset();
+  mock.members = { status: "loading", members: [] };
+  mock.demanded = [];
+  mock.retried = [];
   mock.mateKey = null;
   mock.keyAnswer = null;
   mock.deleteDialog.current = null;
@@ -600,7 +649,6 @@ beforeEach(() => {
   mock.moveProject.mockReset();
   mock.createApp.mockReset();
   mock.renameProject.mockReset();
-  mock.finishMateSetup.mockReset();
   seen.length = 0;
   mock.listing.current = {
     state: "known",
@@ -619,13 +667,20 @@ afterEach(() => {
   closeAccountLifetime();
   appAtomRegistry.get(creationPressStoreAtom)?.close();
   appAtomRegistry.set(creationPressStoreAtom, null);
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 /** The hook mounted, over `registry` where the case seeds HQ's structure in one. */
-function mount(registry?: AtomRegistry.AtomRegistry): void {
+function mount(
+  registry?: AtomRegistry.AtomRegistry,
+  seed?: (store: AccountStore) => void,
+  element: ReactElement = <Probe />,
+): void {
   registry ??= AtomRegistry.make();
   mock.faceRegistry = registry;
   mock.faceStore = makeAccountStore(registry);
+  seed?.(mock.faceStore);
   const unused = () => Promise.reject(new Error("Unexpected HQ write"));
   mock.faceOperations = makeOperations({
     makeId: () => "unnamed-face",
@@ -635,6 +690,7 @@ function mount(registry?: AtomRegistry.AtomRegistry): void {
         zerops: { mintIntegrationToken: unused, deleteIntegrationToken: unused },
         apiOf: () => ({
           answerKeptGit: unused,
+          completeProjectDeletion: unused,
           updateMate: mock.updateMate,
           commentOnChange: unused,
           renameApp: unused,
@@ -642,6 +698,10 @@ function mount(registry?: AtomRegistry.AtomRegistry): void {
           createApp: unused,
           recordBirth: unused,
           bindBirth: unused,
+          registerBirthChief: unused,
+          deleteBirth: unused,
+          claimBirthAttempt: unused,
+          endBirthAttempt: unused,
           attachProject: unused,
           createMate: unused,
           recordClosedOff: unused,
@@ -655,6 +715,7 @@ function mount(registry?: AtomRegistry.AtomRegistry): void {
           handChange: unused,
           setChief: unused,
           decideProposal: unused,
+          handOver: unused,
         }),
       }),
     },
@@ -665,11 +726,9 @@ function mount(registry?: AtomRegistry.AtomRegistry): void {
     mounted.push(
       create(
         registry === undefined ? (
-          <Probe />
+          element
         ) : (
-          <RegistryContext.Provider value={registry}>
-            <Probe />
-          </RegistryContext.Provider>
+          <RegistryContext.Provider value={registry}>{element}</RegistryContext.Provider>
         ),
       ),
     );
@@ -680,6 +739,278 @@ const verbs = (candidate: ZeropsCandidatePresentation) =>
   actions()
     .actionsFor(candidate, { mate: true, groupId: "acme", role: "dev" } as never)
     .filter((entry): entry is ZeropsMenuAction => !("separator" in entry));
+
+it("a bound shared birth offers Continue and Delete through the same Mate actions", async () => {
+  mock.births = [
+    {
+      id: "birth",
+      appId: "acme",
+      appName: "Acme",
+      face: "",
+      projectId: FEN.project.id,
+      importProcessId: null,
+      placement: "attached",
+      intent: undefined,
+      progress: { phase: "project-created", next: { kind: "import" }, reason: null },
+      canContinue: true,
+      canDelete: true,
+    },
+  ];
+  mount();
+  expect(verbs(FEN).map((entry) => entry.id)).toEqual(["continue", "delete"]);
+  await act(async () => {
+    verbs(FEN)[0]!.onSelect();
+  });
+  expect(mock.proceedBirth).toHaveBeenCalledWith("birth");
+  mock.births = [{ ...mock.births[0]!, canContinue: false }];
+  act(() => {
+    mounted[0]!.update(
+      <RegistryContext.Provider value={mock.faceRegistry!}>
+        <Probe />
+      </RegistryContext.Provider>,
+    );
+  });
+  expect(verbs(FEN).map((entry) => entry.id)).toEqual(["delete"]);
+});
+
+/** A birth's stage mounted where no DOM is: its arrival focus and listeners find none. */
+function stubNoDom(): void {
+  const noDom = Object.fromEntries(
+    ["Node", "Element", "HTMLElement", "ShadowRoot"].map((name) => [name, function none() {}]),
+  );
+  vi.stubGlobal("window", Object.assign(new EventTarget(), noDom, { setTimeout, clearTimeout }));
+  vi.stubGlobal("document", Object.assign(new EventTarget(), { activeElement: null, body: {} }));
+  for (const [name, type] of Object.entries(noDom)) vi.stubGlobal(name, type);
+}
+
+it("Remove cleans up only the failed creation's project", async () => {
+  const registry = AtomRegistry.make();
+  stubNoDom();
+  const orgId = "org-acme";
+  const projects = new Map([
+    ["Ada", { id: "Ada", name: "Shop - Ada", status: "ACTIVE", clientId: orgId }],
+    ["created-1", { id: "created-1", name: "Shop - Nova", status: "ACTIVE", clientId: orgId }],
+  ]);
+  mock.liveBirths = true;
+  mock.listing.current = {
+    state: "known",
+    value: [],
+    asOf: { ordinal: 1, atMs: 1_000 },
+    coverage: "complete",
+    freshness: { kind: "live" },
+  };
+  registry.set(zeropsSessionAtom, {
+    status: "signed-in",
+    organizationStatus: "selected",
+    activeOrganization: { organizationId: orgId, id: orgId },
+  } as never);
+  mount(
+    registry,
+    (store) => {
+      registry.set(accountReadsAtom, {
+        data: store.data,
+        orgId,
+        demandDetail: () => () => {},
+        renewHeld: () => {},
+      });
+      liveProjects(orgId, [...projects.values()]).forEach(store.dispatch);
+      membershipInputs("OWNER", true, 1, orgId).forEach(store.dispatch);
+      const history = historyScope(orgId, "created-1");
+      store.dispatch({
+        kind: "stream",
+        key: history,
+        now: 0,
+        event: { kind: "demand", demanded: true },
+      });
+      store.dispatch({ kind: "stream", key: history, now: 0, event: { kind: "attempt" } });
+      store.dispatch({ kind: "stream", key: history, now: 0, event: { kind: "handshake" } });
+      store.dispatch({ kind: "baseline-begin", scope: history, generation: 1 });
+      store.dispatch({
+        kind: "baseline-commit",
+        scope: history,
+        generation: 1,
+        via: "zerops-read",
+        members: ["created-1-creation"],
+        rows: [
+          {
+            family: "process",
+            id: "created-1-creation",
+            value: {
+              id: "created-1-creation",
+              projectId: "created-1",
+              serviceStackIds: [],
+              status: "FAILED",
+              actionName: "project.create",
+              created: "2026-11-05T10:00:00Z",
+              error: { code: "creationFailed", message: "Project capacity exhausted." },
+            },
+            revision: { kind: "zerops", version: 1 },
+          },
+        ],
+      });
+      store.dispatch({
+        kind: "stream",
+        key: history,
+        now: 0,
+        event: { kind: "baseline-committed" },
+      });
+      mountHqNavigation(
+        registry,
+        orgId,
+        {
+          structure: {
+            apps: [
+              {
+                id: "shop",
+                name: "Shop",
+                projects: [
+                  { projectId: "Ada", name: "Shop - Ada", kind: "mate", mate: { face: "" } },
+                ],
+                births: [
+                  {
+                    id: "birth",
+                    projectId: "created-1",
+                    face: "rose:seal",
+                    madeBy: "user-ada",
+                    intent: {
+                      projectName: "Shop - Nova",
+                      recipe: { kind: "none" },
+                      agents: ["codex"],
+                      standUp: false,
+                      automated: false,
+                      placement: { role: "dev", name: "Nova", chief: false },
+                      location: null,
+                      userRoles: [],
+                    },
+                    attempts: {},
+                  },
+                ],
+              },
+            ],
+            ungrouped: [],
+          },
+        },
+        store,
+      );
+    },
+    <SharedBirthProbe />,
+  );
+  const store = mock.faceStore!;
+  const calls: Array<{ method: string; path: string; status: number }> = [];
+  const client = new ZeropsApiClient({
+    baseUrl: "https://api.example.test",
+    fetch: async (url, init) => {
+      const method = init?.method ?? "GET";
+      const path = new URL(url).pathname;
+      const projectId = path.split("/").at(-1)!;
+      if (method !== "DELETE" || !projects.has(projectId))
+        throw new Error(`Unexpected ${method} ${path}`);
+      projects.delete(projectId);
+      const response = Response.json({
+        id: "proc-delete",
+        actionName: "project.delete",
+        status: "PENDING",
+      });
+      calls.push({ method, path, status: response.status });
+      store.dispatch({
+        kind: "membership",
+        scope: projectsScope(orgId),
+        generation: 1,
+        delta: { add: [], remove: [projectId] },
+      });
+      store.dispatch({
+        kind: "proven-deletion",
+        family: "project",
+        id: projectId,
+        evidence: "The fake platform completed deletion",
+      });
+      return response;
+    },
+  });
+  client.restoreSession({
+    accessToken: "test",
+    refreshToken: "test",
+    expiresIn: 432_000,
+    userId: "user-ada",
+  });
+  const executor = makeZeropsExecutor({
+    client,
+    hqApiOf: () => null,
+    viewerOf: () => ({ id: orgId, name: "Acme", membershipId: "member", roleCode: "OWNER" }),
+    active: () => true,
+    readDetail: async () => false,
+    store,
+    registry,
+    demandDetail: () => () => {},
+    revalidate: () => {},
+    nowMs: () => 0,
+    run: () => Promise.reject(new Error("Unexpected nested operation")),
+    makeId: () => "nested",
+  });
+  const operations = makeOperations({
+    store,
+    executors: { zerops: executor },
+    makeId: () => "delete",
+  });
+  const run = runToEnd({ operations, store, registry });
+  const completed = Promise.withResolvers<void>();
+  mock.deleteRun = async (intent, options) => {
+    try {
+      return await run(intent, options);
+    } catch (error) {
+      completed.reject(error);
+      throw error;
+    }
+  };
+  mock.completeProjectDeletion.mockImplementation(async () => completed.resolve());
+
+  expect(registry.get(sharedBirthsAtom("user-ada")).open).toMatchObject([
+    { id: "birth", projectId: "created-1", canDelete: true },
+  ]);
+  const stage = mounted.at(-1)!;
+  expect(renderedText(stage.root)).toContain("Project capacity exhausted.");
+  const deleteButton = stage.root.find(
+    (node) => node.type === "button" && renderedText(node) === "Delete",
+  );
+  act(() => {
+    deleteButton.props.onClick();
+  });
+  expect(mock.deleteDialog.current).toMatchObject({
+    name: "Nova",
+    words: { label: "Type Nova to confirm", submit: "Delete Nova" },
+  });
+  await act(async () => {
+    mock.deleteDialog.current!.onConfirm();
+  });
+
+  expect(mock.deleteDialog.current?.error ?? null).toBeNull();
+  expect(calls).toEqual([
+    { method: "DELETE", path: "/api/rest/public/project/created-1", status: 200 },
+  ]);
+  await act(async () => {
+    await completed.promise;
+  });
+  expect([...projects.keys()]).toEqual(["Ada"]);
+  const menu = registry.get(menuRowsAtom(orgId, [], { waitedOut: false, drawn: true }));
+  let sidebar: ReactTestRenderer | undefined;
+  act(() => {
+    sidebar = create(
+      <RegistryContext.Provider value={registry}>
+        <SidebarZeropsTree
+          candidates={menu.rows}
+          complete={menu.settled}
+          onSelect={() => {}}
+          onBrowseProjects={() => {}}
+        />
+      </RegistryContext.Provider>,
+    );
+  });
+  mounted.push(sidebar!);
+  const names = sidebar!.root.findAll(
+    (node) => node.props["data-zerops-surface"] === "sidebar-mate-name",
+  );
+  expect(names.map(renderedText).join(" ")).toContain("Ada");
+});
 
 function openFace(candidate: ZeropsCandidatePresentation): void {
   const entry = verbs(candidate).find((verb) => verb.id === "face");
@@ -728,7 +1059,6 @@ describe("useMateActions — Change face…", () => {
     const unsaid = { kind: "unknown" } as const;
     mock.mateOffers = () => ({
       held: true,
-      observe: unsaid,
       edit: unsaid,
       detach: unsaid,
     });
@@ -901,9 +1231,38 @@ describe("useMateActions — Change face…", () => {
   });
 });
 
-// E2E F7: a refused hand-over closed its dialog and said nothing. The dialog stays until the
-// platform answers, says a refusal there, and closes only on the platform's yes.
+/** The hook mounted over HQ's navigation holding `candidates` in Acme Docs. */
+function mountHeld(candidates: ReadonlyArray<ZeropsCandidatePresentation> = [FEN]): void {
+  const registry = AtomRegistry.make();
+  mountHqNavigation(registry, "org-acme", {
+    structure: {
+      ungrouped: [],
+      apps: [
+        {
+          id: "acme",
+          name: "Acme Docs",
+          projects: candidates.map((candidate) => ({
+            projectId: candidate.project.id,
+            kind: "mate",
+            mate: { name: candidate.project.name, face: "" },
+          })),
+        },
+      ],
+    } as never,
+    person: {
+      mine: false,
+      ownerUserId: null,
+      waitsOnViewer: false,
+      unseen: null,
+    },
+  });
+  mount(registry);
+}
+
+// E2E F7: a refused hand-over closed its dialog and said nothing. The dialog stays until HQ
+// answers, says a refusal there, and closes only on HQ's yes.
 describe("useMateActions — Hand this Mate over", () => {
+  const EVA = { id: "cu-eva", userId: "u-eva", status: "ACTIVE", user: { fullName: "Eva" } };
   const openAssign = () => {
     const entry = verbs(FEN).find((verb) => verb.id === "assign");
     act(() => {
@@ -911,69 +1270,47 @@ describe("useMateActions — Hand this Mate over", () => {
     });
   };
 
-  // Whom a Mate may be handed over to is HQ's answer, asked as the picker opens.
-  it("asks HQ whom to hand it to once its picker opens, never on load", () => {
-    mount();
-    expect(mock.handoverAsked).toEqual([]);
-    openAssign();
-    expect(mock.handoverAsked).toEqual([FEN.project.id]);
-  });
+  // The person's role in the organization, as Zerops reads it, puts the verb in the Mate's menu.
+  it.each([
+    ["OWNER", true],
+    ["ADMIN", true],
+    ["BASIC_USER", false],
+    ["READ_ONLY", false],
+  ])(
+    "offers Hand over this Mate in the Mate's menu to an owner or admin of the organization, and nowhere else: %s",
+    (role, offered) => {
+      mock.roleCode = role;
+      mountHeld();
+      expect(verbs(FEN).some((verb) => verb.id === "assign")).toBe(offered);
+    },
+  );
 
-  it("lists the people HQ answers", async () => {
-    const ADA = { userId: "u-ada", clientUserId: "cu-ada", name: "Ada", avatarUrl: null };
-    mock.handoverAnswer = () => Promise.resolve([ADA]);
-    mount();
-    await act(async () => {
-      verbs(FEN)
-        .find((verb) => verb.id === "assign")!
-        .onSelect();
-    });
-    expect(mock.assignDialog.current?.candidates).toEqual([ADA]);
+  // Whom to hand it to is the organization's members, read with the person's own Zerops token.
+  it("reads the organization's members once its picker opens, never on load, and lists them by person", () => {
+    mock.members = { status: "ready", members: [EVA] };
+    mountHeld();
+    expect(mock.demanded).toEqual([]);
+    openAssign();
+    expect(mock.demanded).toContain("organizationMembers:org-acme");
+    expect(mock.assignDialog.current?.candidates).toEqual([{ userId: "u-eva", name: "Eva" }]);
     expect(mock.assignDialog.current?.readingOrganization).toBeUndefined();
   });
 
   it("says it reads the organization until its people are there to pick", () => {
-    mock.handoverAnswer = () => new Promise(() => {});
-    mount();
+    mountHeld();
     openAssign();
     expect(mock.assignDialog.current?.readingOrganization).toBe("Acme");
   });
 
-  it("says it could not read the organization's people, and asks again on Try again", async () => {
-    mock.handoverAnswer = () => Promise.reject(new Error("refused"));
-    mount();
-    await act(async () => {
-      verbs(FEN)
-        .find((verb) => verb.id === "assign")!
-        .onSelect();
-    });
+  it("says it could not read the organization's people, and asks again on Try again", () => {
+    mock.members = { status: "failed", members: [] };
+    mountHeld();
+    openAssign();
     expect(mock.assignDialog.current?.readFailed?.organization).toBe("Acme");
-    await act(async () => {
+    act(() => {
       mock.assignDialog.current!.readFailed!.onReadAgain();
     });
-    expect(mock.handoverAsked).toEqual([FEN.project.id, FEN.project.id]);
-  });
-
-  it("says HQ refused to list them, and asks nothing again", async () => {
-    mock.handoverAnswer = () =>
-      Promise.reject({ outcome: "definitive-refusal", message: "HQ refused." });
-    mount();
-    await act(async () => {
-      verbs(FEN)
-        .find((verb) => verb.id === "assign")!
-        .onSelect();
-    });
-    expect(mock.assignDialog.current?.readRefused?.organization).toBe("Acme");
-    expect(mock.assignDialog.current?.readFailed).toBeUndefined();
-    expect(mock.assignDialog.current?.readingOrganization).toBeUndefined();
-  });
-
-  it("says it could not read them where there is no HQ to ask, never reading forever", () => {
-    mock.noAccountData = true;
-    mount();
-    openAssign();
-    expect(mock.assignDialog.current?.readingOrganization).toBeUndefined();
-    expect(mock.assignDialog.current?.readFailed?.organization).toBe("Acme");
+    expect(mock.retried).toEqual([{ family: "organizationMembers", ownerId: "org-acme" }]);
   });
 
   const answered = (progress: unknown, evidence: string | null = null) => ({
@@ -983,66 +1320,61 @@ describe("useMateActions — Hand this Mate over", () => {
   });
 
   it("says a refused hand-over's reason in the dialog, which stays open", async () => {
-    mock.assignMateOwner.mockResolvedValue(
-      answered({ stage: "refused", reason: "Zerops refused the hand-over." }),
+    mock.handOverMate.mockResolvedValue(
+      answered({ stage: "refused", reason: "HQ refused the hand-over." }),
     );
-    mount();
+    mountHeld();
     openAssign();
     expect(mock.assignDialog.current).toMatchObject({ pending: false, error: null });
     await act(async () => {
-      mock.assignDialog.current!.onSubmit("cu-eva");
+      mock.assignDialog.current!.onSubmit("u-eva");
     });
-    expect(mock.assignMateOwner).toHaveBeenCalledWith({
-      kind: "assign-mate-owner",
+    expect(mock.handOverMate).toHaveBeenCalledWith({
+      kind: "hand-over-mate",
       orgId: "org-acme",
       projectId: FEN.project.id,
-      clientUserId: "cu-eva",
+      ownerUserId: "u-eva",
     });
     expect(mock.assignDialog.current).toMatchObject({
       pending: false,
-      error: "Zerops refused the hand-over.",
+      error: "HQ refused the hand-over.",
     });
     // Nothing changed hands: the grant is not asked again.
     expect(mock.invalidated).toEqual([]);
   });
 
-  // F11: the person who handed a Mate over sees its new owner at once — the grant's round reads
-  // the project's grants again — never only after the next round.
-  it("asks the access grant to read the projects again once the platform takes it", async () => {
-    mock.assignMateOwner.mockResolvedValue(
-      answered({ stage: "done", operationId: FEN.project.id, outcome: "succeeded" }),
+  // HQ stopped part way: its owner may have moved already, so the grants are read again.
+  it("names the phase HQ stopped the hand-over at in the dialog, and reads the grants again", async () => {
+    const stopped =
+      "The hand-over stopped while installing its new key (unavailable). Hand it over again to finish.";
+    mock.handOverMate.mockResolvedValue(
+      answered({ stage: "refused", reason: stopped, code: "handover_unfinished" }),
     );
-    mount();
+    mountHeld();
     openAssign();
     await act(async () => {
-      mock.assignDialog.current!.onSubmit("cu-eva");
+      mock.assignDialog.current!.onSubmit("u-eva");
     });
+    expect(mock.assignDialog.current).toMatchObject({ pending: false, error: stopped });
     expect(mock.invalidated).toEqual([{ topic: "access", change: "grants-written" }]);
   });
 
-  // F23 (e2e, 2026-10-03): a Mate has one OWNER. A hand over its previous owner still holds is
-  // not complete, and says so; the first write landed, so the grant is read again.
-  it("says the hand over is not complete where its previous owner keeps it, and reads the grants again", async () => {
-    mock.assignMateOwner.mockResolvedValue(
-      answered(
-        { stage: "done", operationId: FEN.project.id, outcome: "failed" },
-        "It was handed over, but its previous owner still owns it too: Zerops refused it.",
-      ),
+  // F11: the person who handed a Mate over sees its new owner at once — the grant's round reads
+  // the project's grants again — never only after the next round.
+  it("asks the access grant to read the projects again once the platform takes it", async () => {
+    mock.handOverMate.mockResolvedValue(
+      answered({ stage: "done", operationId: FEN.project.id, outcome: "succeeded" }),
     );
-    mount();
+    mountHeld();
     openAssign();
     await act(async () => {
-      mock.assignDialog.current!.onSubmit("cu-eva");
-    });
-    expect(mock.assignDialog.current).toMatchObject({
-      pending: false,
-      error: "It was handed over, but its previous owner still owns it too: Zerops refused it.",
+      mock.assignDialog.current!.onSubmit("u-eva");
     });
     expect(mock.invalidated).toEqual([{ topic: "access", change: "grants-written" }]);
   });
 
   it("says a hand-over it could not tell landed, and reads the grants again", async () => {
-    mock.assignMateOwner.mockResolvedValue(
+    mock.handOverMate.mockResolvedValue(
       answered({
         stage: "unresolved",
         operationId: null,
@@ -1050,10 +1382,10 @@ describe("useMateActions — Hand this Mate over", () => {
         nextAction: "Check who owns the Mate, then hand it over again",
       }),
     );
-    mount();
+    mountHeld();
     openAssign();
     await act(async () => {
-      mock.assignDialog.current!.onSubmit("cu-eva");
+      mock.assignDialog.current!.onSubmit("u-eva");
     });
     expect(mock.assignDialog.current).toMatchObject({
       pending: false,
@@ -1064,15 +1396,15 @@ describe("useMateActions — Hand this Mate over", () => {
 
   it("closes once the platform takes it", async () => {
     let answer: (value: unknown) => void = () => {};
-    mock.assignMateOwner.mockReturnValue(
+    mock.handOverMate.mockReturnValue(
       new Promise((resolve) => {
         answer = resolve;
       }),
     );
-    mount();
+    mountHeld();
     openAssign();
     await act(async () => {
-      mock.assignDialog.current!.onSubmit("cu-eva");
+      mock.assignDialog.current!.onSubmit("u-eva");
     });
     expect(mock.assignDialog.current).toMatchObject({ pending: true, error: null });
     mock.assignDialog.current = null;
@@ -1080,419 +1412,27 @@ describe("useMateActions — Hand this Mate over", () => {
       answer(answered({ stage: "done", operationId: FEN.project.id, outcome: "succeeded" }));
     });
     act(() => {
-      mounted[0]!.update(<Probe />);
+      mounted.at(-1)!.update(<Probe />);
     });
     expect(mock.assignDialog.current).toBeNull();
   });
 });
 
-// A Mate its press left open — marker present, not closed off, no press holding it — is finished by
-// whoever may: an owner or an admin, or, for its close-off, the member who added it. Read off the
-// store's markers, so a reload keeps it (pass 28 review).
-describe("useMateActions — Finish setup on a Mate its press left open", () => {
-  const LONG_AGO = "2026-09-01T10:00:00Z";
-  const left = (made: { readonly by?: string; readonly container?: boolean } = {}) => {
-    const base = mate("Ivo", "", made.by);
-    const { service, ...rest } = base;
-    return {
-      ...rest,
-      group: "ready",
-      project: { ...base.project, created: LONG_AGO },
-      ...(made.container === false ? {} : { service }),
-    } as ZeropsCandidatePresentation;
-  };
-  const offered = (candidate: ZeropsCandidatePresentation) =>
-    verbs(candidate).some((verb) => verb.id === "finish-setup");
-  const listing = (candidate: ZeropsCandidatePresentation) => {
-    mock.listing.current = {
-      state: "known",
-      value: [candidate],
-      asOf: { ordinal: 1, atMs: 1_000 },
-      coverage: "complete",
-      freshness: { kind: "live" },
-    };
-  };
-
-  it.each([
-    { who: "an owner", role: "OWNER", by: "user-eva", container: true, want: true },
-    {
-      who: "the member who added it",
-      role: "BASIC_USER",
-      by: "user-ada",
-      container: true,
-      want: true,
-    },
-    { who: "another member", role: "BASIC_USER", by: "user-eva", container: true, want: false },
-    // Nothing for a close-off to finish: an owner or an admin makes its container.
-    {
-      who: "the member who added it, with no container",
-      role: "BASIC_USER",
-      by: "user-ada",
-      container: false,
-      want: false,
-    },
-  ])("$who: offered $want", ({ role, by, container, want }) => {
-    mock.roleCode = role;
-    const candidate = left({ by, container });
-    if (candidate.service !== undefined) mock.markers.set(candidate.service.id, true);
-    listing(candidate);
-    mount();
-    expect(offered(candidate)).toBe(want);
-  });
-
-  it("offers nothing where the marker reads absent: an older Mate, made before the press", () => {
-    mock.roleCode = "BASIC_USER";
-    const candidate = left({ by: "user-ada" });
-    listing(candidate);
-    mount();
-    expect(offered(candidate)).toBe(false);
-  });
-
-  // Step A, A11: the organization's token list is not read on a load; a key still ADMIN is
-  // lowered when a person finishes setting the Mate up, never offered from that list.
-  it("offers no harden from a token read on load", () => {
-    mock.roleCode = "BASIC_USER";
-    const candidate = left({ by: "user-ada" });
-    listing(candidate);
-    mount();
-    expect(offered(candidate)).toBe(false);
-  });
-});
-
 // A Mate HQ holds no record of — claimed from the pool, or its record lost — is finished by whoever
-// HQ's rule lets create the record (`create_mate_record`): its record, then its birth, closed off.
+// HQ's rule lets create the record (`create_mate_record`): its record, its key lowered.
 // Only once HQ's structure is known does a Mate it places nowhere have no record.
-describe("useMateActions — Finish setup on a Mate HQ holds no record of", () => {
-  const unrecorded = (() => {
-    const base = mate("Ivo");
-    const { hq: _placed, ...project } = base.project;
-    return {
-      ...base,
-      group: "ready",
-      project: { ...project, created: "2026-09-01T10:00:00Z" },
-    } as ZeropsCandidatePresentation;
-  })();
-  /** The registry with the session's organization, and HQ's structure of it where `known`. */
-  const hqRegistry = (known: boolean) => {
-    const registry = AtomRegistry.make();
-    registry.set(zeropsSessionAtom, {
-      status: "signed-in",
-      organizationStatus: "selected",
-      activeOrganization: { organizationId: "org-acme" },
-    } as never);
-    if (known) {
-      mountHqNavigation(registry, "org-acme", { structure: { ungrouped: [], apps: [] } });
-    }
-    return registry;
-  };
-  // Its membership as HQ places it: nowhere, so in no application.
-  const finishVerb = () =>
-    actions()
-      .actionsFor(unrecorded, { mate: true } as never)
-      .filter((entry): entry is ZeropsMenuAction => !("separator" in entry))
-      .find((verb) => verb.id === "finish-setup");
-  const listing = () => {
-    mock.listing.current = {
-      state: "known",
-      value: [unrecorded],
-      asOf: { ordinal: 1, atMs: 1_000 },
-      coverage: "complete",
-      freshness: { kind: "live" },
-    };
-  };
-
-  it.each([
-    { who: "an owner, HQ's structure known", role: "OWNER", known: true, want: true },
-    {
-      who: "a member HQ's rule does not let create it",
-      role: "BASIC_USER",
-      known: true,
-      want: false,
-    },
-    { who: "an owner, HQ's structure not known yet", role: "OWNER", known: false, want: false },
-  ])("$who: offered $want", ({ role, known, want }) => {
-    mock.roleCode = role;
-    // HQ offers writing its record to whom its rule lets.
-    mock.mateOffers = () => ({
-      held: false,
-      createRecord:
-        role === "OWNER" ? { kind: "allowed" } : { kind: "refused", reason: "not_project_admin" },
-    });
-    listing();
-    mount(hqRegistry(known));
-    expect(finishVerb() !== undefined).toBe(want);
-  });
-
-  it("writes its record, then its birth closed off, with nobody's stand-up asked", async () => {
-    mock.finishMateSetup.mockResolvedValue({ ok: true });
-    mock.mateOffers = () => ({ held: false, createRecord: { kind: "allowed" } });
-    listing();
-    mount(hqRegistry(true));
-    await act(async () => {
-      finishVerb()!.onSelect();
-    });
-    expect(mock.finishMateSetup).toHaveBeenCalledTimes(1);
-    expect(mock.finishMateSetup.mock.calls[0]![0]).toMatchObject({
-      projectId: unrecorded.project.id,
-      registration: {
-        hq: { kind: "official", projectId: "p-hq" },
-        kind: "mate-record",
-        record: { face: expect.any(String) },
-        standUp: false,
-      },
-      hq: { kind: "official", projectId: "p-hq" },
-      // Adopted: its key lowered from ADMIN, as the harden finds it.
-      harden: true,
-    });
-  });
-});
 
 // F6b (e2e, 2026-10-03): Dan's press, for the application mate-rig-e2e-d, stopped before his
 // container and before HQ's record — his project tagged `mate`, in no application, with no container.
 // The press this tab still holds knows his application, his name and his face; Finish setup wrote a
 // new Mate, "Asha", in no application, instead of finishing Dan into his.
-describe("useMateActions — Finish setup on a Mate whose press here stopped before its container", () => {
-  const FACE = { tint: "coral", shape: "gem" } as const;
-  const startedAt = Date.now() - 2 * 60 * 60 * 1000;
-  const DAN = {
-    key: "dan-project",
-    group: "unavailable",
-    // Its project's services read, and no zcp among them: its press stopped before its container.
-    missingContainer: true,
-    presence: "known",
-    environmentId: EnvironmentId.make("env-dan"),
-    project: {
-      id: "dan-project",
-      name: "mate-rig-e2e-d - Dan",
-      status: "ACTIVE",
-      clientId: "org-acme",
-      tagList: ["mate"],
-      created: new Date(startedAt).toISOString(),
-    },
-  } as ZeropsCandidatePresentation;
-  /** HQ's structure of the organization, known: Dan's application, holding nothing yet. */
-  const known = () => {
-    const registry = AtomRegistry.make();
-    registry.set(zeropsSessionAtom, {
-      status: "signed-in",
-      organizationStatus: "selected",
-      activeOrganization: { organizationId: "org-acme" },
-    } as never);
-    mountHqNavigation(registry, "org-acme", { structure: { ungrouped: [], apps: [] } });
-    return registry;
-  };
-  // His membership as HQ places him: nowhere.
-  const finishVerb = () =>
-    actions()
-      .actionsFor(DAN, { mate: true } as never)
-      .filter((entry): entry is ZeropsMenuAction => !("separator" in entry))
-      .find((verb) => verb.id === "finish-setup");
-
-  beforeEach(async () => {
-    const press = await vi.importActual<typeof import("./matePress")>("./matePress");
-    press.beginPress({
-      projectId: "dan-project",
-      organizationId: "org-acme",
-      startedAt,
-      placement: {
-        groupId: "app-d",
-        groupName: "mate-rig-e2e-d",
-        kind: "mate",
-        displayName: "mate-rig-e2e-d - Dan",
-        face: FACE,
-      },
-      container: true,
-    });
-    // HQ holds Dan nowhere, and offers his owner writing his record.
-    mock.mateOffers = () => ({ held: false, createRecord: { kind: "allowed" } });
-    mock.listing.current = {
-      state: "known",
-      value: [DAN],
-      asOf: { ordinal: 1, atMs: 1_000 },
-      coverage: "complete",
-      freshness: { kind: "live" },
-    };
-  });
-  afterEach(async () => {
-    (await vi.importActual<typeof import("./matePress")>("./matePress")).forgetPress("dan-project");
-  });
-
-  it("is offered to an owner", () => {
-    mount(known());
-    expect(finishVerb()?.label).toBe("Finish setup");
-  });
-
-  it("waits for services before finishing an accepted, unregistered birth", () => {
-    const { missingContainer: _read, ...unread } = DAN;
-    mount(known());
-    expect(
-      actions()
-        .actionsFor(unread as ZeropsCandidatePresentation, { mate: true } as never)
-        .some((entry) => "id" in entry && entry.id === "finish-setup"),
-    ).toBe(false);
-  });
-
-  it("finishes Dan into his application, under his name and face, and writes no new Mate", async () => {
-    mock.finishMateSetup.mockResolvedValue({ ok: true });
-    mount(known());
-    await act(async () => {
-      finishVerb()!.onSelect();
-    });
-    expect(mock.finishMateSetup).toHaveBeenCalledTimes(1);
-    const handed = mock.finishMateSetup.mock.calls[0]![0];
-    expect(handed).toMatchObject({
-      projectId: "dan-project",
-      container: { agents: [] },
-      registration: {
-        kind: "mate",
-        groupId: "app-d",
-        mate: { face: FACE },
-      },
-    });
-  });
-});
 
 // F6b (2026-10-03): its record in its application before its container, so a press whose container
 // never came leaves a Mate HQ holds there — finished from HQ's record in any browser, under HQ's
 // name, never as a new Mate.
-describe("useMateActions — Finish setup on a Mate HQ holds in its application, its container never come", () => {
-  const IVO = (() => {
-    const { service: _none, ...base } = mate("Ivo", "coral:gem");
-    return {
-      ...base,
-      group: "unavailable",
-      // Its project's services read, and no zcp among them.
-      missingContainer: true,
-      project: { ...base.project, created: "2026-09-01T10:00:00Z" },
-    } as ZeropsCandidatePresentation;
-  })();
-  const known = () => {
-    const registry = AtomRegistry.make();
-    registry.set(zeropsSessionAtom, {
-      status: "signed-in",
-      organizationStatus: "selected",
-      activeOrganization: { organizationId: "org-acme" },
-    } as never);
-    mountHqNavigation(registry, "org-acme", {
-      structure: {
-        ungrouped: [],
-        apps: [
-          {
-            id: "acme",
-            name: "Acme Docs",
-            projects: [
-              {
-                projectId: IVO.project.id,
-                kind: "mate",
-                mate: { face: "coral:gem" },
-              },
-            ],
-          },
-        ],
-      } as never,
-    });
-    return registry;
-  };
-
-  // Live, Example Org 2026-10-05: unknown is never missing. A Mate whose project's services are not read
-  // yet — or could not be — has no container this browser knows of, and none it knows is missing:
-  // no Finish setup, and no container imported for it.
-  it("offers no Finish setup while its project's services are not read", () => {
-    // Registered in its application, so only its container could make it half made.
-    mock.registry = {
-      groups: [
-        {
-          groupId: "acme",
-          name: "Acme Docs",
-          projects: [{ projectId: IVO.project.id, kind: "mate" }],
-        },
-      ],
-    };
-    const { missingContainer: _read, ...unread } = IVO;
-    mock.listing.current = {
-      state: "known",
-      value: [unread as ZeropsCandidatePresentation],
-      asOf: { ordinal: 1, atMs: 1_000 },
-      coverage: "complete",
-      freshness: { kind: "live" },
-    };
-    mount(known());
-    expect(
-      verbs(unread as ZeropsCandidatePresentation).some((verb) => verb.id === "finish-setup"),
-    ).toBe(false);
-  });
-
-  it("preserves its existing HQ record while finishing its container", async () => {
-    mock.finishMateSetup.mockResolvedValue({ ok: true });
-    mock.listing.current = {
-      state: "known",
-      value: [IVO],
-      asOf: { ordinal: 1, atMs: 1_000 },
-      coverage: "complete",
-      freshness: { kind: "live" },
-    };
-    mount(known());
-    const finish = verbs(IVO).find((verb) => verb.id === "finish-setup");
-    expect(finish?.label).toBe("Finish setup");
-    await act(async () => {
-      finish!.onSelect();
-    });
-    expect(mock.finishMateSetup.mock.calls[0]![0]).toMatchObject({
-      projectId: IVO.project.id,
-      container: { agents: [] },
-      registration: null,
-      // A Mate HQ holds is not adopted: its key is not touched.
-      harden: false,
-    });
-  });
-});
 
 // B5: two browsers. A slow press the other one still holds at HQ is no half-made Mate, however
-// old its project; the moment its hold runs out — its tab closed — it is, for Finish setup.
-describe("useMateActions — Finish setup on a Mate another browser still presses", () => {
-  const SLOW = (() => {
-    const { service: _none, ...base } = mate("Una", "coral:gem");
-    return {
-      ...base,
-      group: "unavailable",
-      missingContainer: true,
-      project: { ...base.project, created: "2026-09-01T10:00:00Z" },
-    } as ZeropsCandidatePresentation;
-  })();
-
-  it.each([
-    { held: "pressing", offered: false },
-    { held: "unknown", offered: false },
-    { held: "stopped", offered: true },
-  ] as const)("its press elsewhere $held: Finish setup offered $offered", ({ held, offered }) => {
-    mock.pressElsewhere = (projectId) => (projectId === SLOW.project.id ? held : "stopped");
-    mount();
-    expect(verbs(SLOW).some((verb) => verb.id === "finish-setup")).toBe(offered);
-  });
-
-  // A stage's press cut short before its registration: its record places it in its application
-  // as a stage, and a stage is never set up as a Mate.
-  it("offers no Mate's Finish setup on a stage its press's record places", () => {
-    const STAGE = {
-      ...SLOW,
-      project: {
-        ...SLOW.project,
-        hq: {
-          appId: "acme",
-          appName: "Acme Docs",
-          kind: "stage",
-          mate: null,
-          unregistered: true,
-        },
-      },
-    } as ZeropsCandidatePresentation;
-    mount();
-    const offered = actions()
-      .actionsFor(STAGE, readZeropsMembership(STAGE.project))
-      .filter((entry): entry is ZeropsMenuAction => !("separator" in entry));
-    expect(offered.some((verb) => verb.id === "finish-setup")).toBe(false);
-  });
-});
+// old its project. An expired hold awaits evidence; only a terminal import permits Finish setup.
 
 describe("useMateActions — a Mate's own verbs, where its door opens for this person", () => {
   const STOPPED = {
@@ -1503,10 +1443,18 @@ describe("useMateActions — a Mate's own verbs, where its door opens for this p
   const ids = () => verbs(STOPPED).map((verb) => verb.id);
 
   it.each([
-    { who: "a member", role: "BASIC_USER", user: { id: "user-ada" }, known: true, offered: true },
+    {
+      who: "a member",
+      role: "BASIC_USER",
+      visibility: "open",
+      user: { id: "user-ada" },
+      known: true,
+      offered: true,
+    },
     {
       who: "a read-only member, whose Mate is listed",
       role: "READ_ONLY",
+      visibility: "listed",
       user: { id: "user-ada" },
       known: true,
       offered: false,
@@ -1515,24 +1463,17 @@ describe("useMateActions — a Mate's own verbs, where its door opens for this p
     {
       who: "a member HQ has said nothing of yet",
       role: "BASIC_USER",
+      visibility: "open",
       user: { id: "user-ada" },
       known: false,
       offered: true,
     },
-  ])("$who: Start offered $offered", ({ role, user, known, offered }) => {
+  ] as const)("$who: Start offered $offered", ({ role, visibility, user, known, offered }) => {
     mock.roleCode = role;
     mock.user = user;
-    // HQ offers following the Mate to whom its door opens; it may not have said yet.
-    mock.mateOffers = () =>
-      known
-        ? {
-            ...OWNER_OFFERS,
-            observe:
-              role === "READ_ONLY"
-                ? { kind: "refused", reason: "not_mate_operator" }
-                : { kind: "allowed" },
-          }
-        : undefined;
+    // Whether its door opens is the Mate's visibility, as the account reads it from the person's
+    // Zerops role (`mateVisibility`); HQ may not have said anything yet.
+    mock.mateOffers = () => (known ? OWNER_OFFERS : undefined);
     mock.listing.current = {
       state: "known",
       value: [STOPPED],
@@ -1540,7 +1481,13 @@ describe("useMateActions — a Mate's own verbs, where its door opens for this p
       coverage: "complete",
       freshness: { kind: "live" },
     };
-    mount();
+    mount(
+      AtomRegistry.make({
+        initialValues: [
+          [shownMateVisibilitiesAtom(STOPPED.project.id), { [STOPPED.project.id]: visibility }],
+        ],
+      }),
+    );
     expect(ids().includes("start")).toBe(offered);
   });
 });
@@ -1889,37 +1836,6 @@ describe("useMateActions — Move, for the person who made the Mate", () => {
   });
 });
 
-// Whether the viewer added a Mate reads who HQ's record says made it, so a Mate made by New
-// project is its maker's to finish as one made by Add a Mate is.
-describe("mateAddedBy — whether the viewer added this Mate", () => {
-  const placed = (mate: Partial<NonNullable<HqPlacement["mate"]>>): HqPlacement => ({
-    appId: "app-1",
-    appName: "Acme",
-    kind: "mate",
-    mate: { face: "", ...mate },
-  });
-  it.each([
-    { case: "HQ names its maker (New project)", hq: placed({ madeBy: "user-ada" }), added: true },
-    {
-      case: "its stand-up asked by them (a Mate recorded before HQ kept its maker)",
-      hq: placed({ madeBy: null, standupRequestedBy: "user-ada" }),
-      added: true,
-    },
-    { case: "somebody else made it", hq: placed({ madeBy: "user-fen" }), added: false },
-    { case: "nothing names anybody", hq: placed({}), added: false },
-    {
-      case: "HQ says it waits on them (they signed it in)",
-      hq: placed({}),
-      waitsOnViewer: true,
-      added: true,
-    },
-  ])("$case: $added", ({ hq, added, ...rest }) => {
-    expect(mateAddedBy({ hq }, "user-ada", "waitsOnViewer" in rest && rest.waitsOnViewer)).toBe(
-      added,
-    );
-  });
-});
-
 // Audit K3: deleting a Mate deleted its project and left its key on the account — 59 such orphans
 // on Example Org, and a member holding tokens cannot be taken off the org. The key goes with it now, by the
 // id the Mate named to HQ; none is matched by name where it named none.
@@ -1938,7 +1854,7 @@ describe("useMateActions — Delete Mate takes its key with it", () => {
     await act(async () => {
       mock.deleteDialog.current!.onConfirm();
     });
-    await vi.waitFor(() => expect(mock.retirementCompleted).toHaveBeenCalledOnce());
+    expect(mock.retirementCompleted).toHaveBeenCalledOnce();
     expect(mock.deletedTokens).toEqual(retired);
   });
 });
@@ -1956,12 +1872,14 @@ describe("useMateActions — the last Mate's Delete", () => {
     service: undefined,
   } as unknown as ZeropsCandidatePresentation;
 
+  // witness: apps/web/src/zerops/useMateActions.tsx | if (application !== undefined && !application.also && isCurrent()) → if (false)
   it.each([
     {
       case: "the last Mate deleting its project too opens the project's Delete, confirmed, once the Mate is gone",
       listed: [FEN, STAGE],
       also: true,
       asked: "Acme Docs",
+      keptGit: [],
       opened: {
         confirmed: true,
         target: {
@@ -1977,6 +1895,15 @@ describe("useMateActions — the last Mate's Delete", () => {
       listed: [FEN, STAGE],
       also: false,
       asked: "Acme Docs",
+      keptGit: [{ kind: "answer-kept-git", orgId: "org-acme", appId: "acme", answer: "keep" }],
+      opened: null,
+    },
+    {
+      case: "the last Mate keeping its project answers HQ's question whether to keep the project's Git with keep, once the Mate is gone",
+      listed: [FEN, STAGE],
+      also: false,
+      asked: "Acme Docs",
+      keptGit: [{ kind: "answer-kept-git", orgId: "org-acme", appId: "acme", answer: "keep" }],
       opened: null,
     },
     {
@@ -1984,9 +1911,10 @@ describe("useMateActions — the last Mate's Delete", () => {
       listed: [FEN, QUINN],
       also: true,
       asked: undefined,
+      keptGit: [],
       opened: null,
     },
-  ])("$case", async ({ listed, also, asked, opened }) => {
+  ])("$case", async ({ listed, also, asked, keptGit, opened }) => {
     useDeleteApplicationDialog.getState().close();
     mock.listing.current = { ...(mock.listing.current as object), value: listed };
     mount();
@@ -1999,8 +1927,13 @@ describe("useMateActions — the last Mate's Delete", () => {
     await act(async () => {
       mock.deleteDialog.current!.onConfirm(also);
     });
-    await vi.waitFor(() => expect(mock.retirementCompleted).toHaveBeenCalledOnce());
-    await vi.waitFor(() => expect(useDeleteApplicationDialog.getState().request).toEqual(opened));
+    expect(mock.retirementCompleted).toHaveBeenCalledOnce();
+    expect(
+      mock.renameProject.mock.calls
+        .map(([intent]) => intent)
+        .filter((intent) => intent.kind === "answer-kept-git"),
+    ).toEqual(keptGit);
+    expect(useDeleteApplicationDialog.getState().request).toEqual(opened);
   });
 });
 
@@ -2017,7 +1950,12 @@ describe("useMateActions — Restart", () => {
       expected:
         "Fen is working on Fix the build and Ship the app; restarting interrupts those turns.",
     },
-    { label: "idle Mate", titles: [], expected: "Restart Fen?" },
+    {
+      label: "idle Mate",
+      titles: [],
+      expected:
+        "Fen's container stops and starts again, which takes a minute or two. Its conversations stay.",
+    },
   ])("confirms before restarting: $label", async ({ titles, expected }) => {
     mock.threads = [
       ...titles.map((title) => ({
@@ -2076,8 +2014,20 @@ it("uses only live HQ readings for an unopened Mate's confirmation", () => {
       online: true,
       expected: "Fen is working on Fix the build; restarting interrupts that turn.",
     },
-    { label: "stale", current: false, online: true, expected: "Restart Fen?" },
-    { label: "offline", current: true, online: false, expected: "Restart Fen?" },
+    {
+      label: "stale",
+      current: false,
+      online: true,
+      expected:
+        "Fen's container stops and starts again, which takes a minute or two. Its conversations stay.",
+    },
+    {
+      label: "offline",
+      current: true,
+      online: false,
+      expected:
+        "Fen's container stops and starts again, which takes a minute or two. Its conversations stay.",
+    },
   ]) {
     const registry = AtomRegistry.make();
     registry.set(zeropsSessionAtom, {
@@ -2342,7 +2292,7 @@ describe("B: Mate menu access", () => {
         userRoles: grant === undefined ? [] : [{ clientUserId: "member-ada", roleCode: grant }],
       },
     };
-    mount();
+    mountHeld([candidate]);
     const html = renderToStaticMarkup(
       <Menu>
         <MateMenuItems
@@ -2387,4 +2337,158 @@ it("a Mate with no deployment opens its Redeploy recovery from the shared menu",
   act(() => redeploy!.onSelect());
   expect(mock.deployDialog?.candidate).toEqual(candidate);
   expect(mock.restartContainer).not.toHaveBeenCalled();
+});
+
+// witness: apps/web/src/zerops/useMateActions.tsx | if (open.projectId !== null && open.adopted !== true) { → if (open.projectId !== null) {
+it("an interrupted existing-project adoption follows the decided deletion policy", async () => {
+  const registry = AtomRegistry.make();
+  stubNoDom();
+  const orgId = "org-acme";
+  const id = "9b4d065c-191d-413e-92ce-2bcdd08e0ee8";
+  mock.liveBirths = true;
+  mount(
+    registry,
+    (store) => {
+      registry.set(accountReadsAtom, {
+        data: store.data,
+        orgId,
+        demandDetail: () => () => {},
+        renewHeld: () => {},
+      });
+      liveProjects(orgId, [
+        { id: "Existing", name: "Existing", status: "ACTIVE", clientId: orgId },
+      ]).forEach(store.dispatch);
+      membershipInputs("OWNER", true, 1, orgId).forEach(store.dispatch);
+      // HQ's adoption of the existing project, its import claimed and then refused by Zerops.
+      mountHqNavigation(
+        registry,
+        orgId,
+        {
+          structure: {
+            apps: [
+              {
+                id: "shop",
+                name: "Shop",
+                projects: [{ projectId: "Existing", name: "Existing", kind: "plain", mate: null }],
+                births: [
+                  {
+                    id,
+                    projectId: "Existing",
+                    adopted: true,
+                    face: "rose:seal",
+                    madeBy: "user-ada",
+                    intent: {
+                      projectName: "Existing",
+                      recipe: { kind: "none" },
+                      agents: ["codex"],
+                      standUp: false,
+                      automated: false,
+                      placement: { role: "dev", name: "Nova", chief: false },
+                      location: null,
+                      userRoles: [],
+                    },
+                    attempts: {
+                      import: {
+                        by: "user-ada",
+                        at: "2026-11-05T10:00:00.000Z",
+                        refused: {
+                          at: "2026-11-05T10:00:01.000Z",
+                          reason: "Import refused by Zerops.",
+                        },
+                      },
+                    },
+                  },
+                ],
+              },
+            ],
+            ungrouped: [],
+          },
+        },
+        store,
+      );
+    },
+    <SharedBirthProbe />,
+  );
+  const store = mock.faceStore!;
+  const captured: Array<string> = [];
+  mock.deleteBirthOnly.mockImplementation(async (birthId: string, projectId: string | null) => {
+    captured.push(`delete birth ${birthId} of ${projectId}`);
+  });
+  mock.prepareProjectDeletion.mockImplementation(async () => {
+    captured.push("prepare project deletion");
+    return "completion";
+  });
+  mock.deleteRun = async (intent) => {
+    captured.push(intent.kind);
+    return undefined as never;
+  };
+  const stage = mounted.at(-1)!;
+  // What a person reads: a state the stage has swapped away from leaves hidden from them.
+  const readable = (node: ReactTestInstance | string): string =>
+    typeof node === "string"
+      ? node
+      : node.props["aria-hidden"] === "true"
+        ? ""
+        : node.children.map(readable).join("");
+  const hidden = (node: ReactTestInstance | null): boolean =>
+    node !== null && (node.props["aria-hidden"] === "true" || hidden(node.parent));
+  const buttons = () => stage.root.findAll((node) => node.type === "button" && !hidden(node));
+  const shown = () => ({
+    text: readable(stage.root),
+    buttons: buttons().map((node) => readable(node).trim()),
+  });
+
+  // The project's history read held: the birth and its Delete reach the page first.
+  expect(shown().text).toContain("Project created");
+  expect(shown().text).toContain("Waiting for project creation history");
+  expect(shown().buttons).toContain("Delete");
+
+  // The project's history answers empty.
+  const history = historyScope(orgId, "Existing");
+  act(() => {
+    store.dispatch({
+      kind: "stream",
+      key: history,
+      now: 0,
+      event: { kind: "demand", demanded: true },
+    });
+    store.dispatch({ kind: "stream", key: history, now: 0, event: { kind: "attempt" } });
+    store.dispatch({ kind: "stream", key: history, now: 0, event: { kind: "handshake" } });
+    store.dispatch({ kind: "baseline-begin", scope: history, generation: 1 });
+    store.dispatch({
+      kind: "baseline-commit",
+      scope: history,
+      generation: 1,
+      via: "zerops-read",
+      members: [],
+      rows: [],
+    });
+    store.dispatch({ kind: "stream", key: history, now: 0, event: { kind: "baseline-committed" } });
+  });
+  const state = shown();
+  expect(state.text).toContain("Project created");
+  expect(state.text).not.toContain("Waiting for project creation history");
+  expect(state.text).toContain("Import refused by Zerops.");
+  expect(state.text).toContain("Continue will register the Mate and submit the import.");
+  expect(state.text).toContain(
+    "Delete stops setting up the Mate and leaves the project untouched.",
+  );
+  expect(state.buttons).toContain("Continue");
+  expect(state.buttons).toContain("Delete");
+
+  const deleteButton = buttons().find((node) => readable(node).trim() === "Delete")!;
+  act(() => {
+    deleteButton.props.onClick();
+  });
+  expect(mock.deleteDialog.current).toMatchObject({
+    words: {
+      body: "This stops setting up the Mate and leaves the existing project and its services untouched.",
+      label: "Type Nova to confirm",
+      submit: "Delete Nova",
+    },
+  });
+  await act(async () => {
+    mock.deleteDialog.current!.onConfirm();
+  });
+  expect(captured).toEqual([`delete birth ${id} of Existing`]);
 });

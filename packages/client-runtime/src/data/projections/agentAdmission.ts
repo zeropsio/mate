@@ -1,6 +1,6 @@
 import type { Projection } from "../store.ts";
 import type { MateProjectKey } from "./mateAttention.ts";
-import { hqMateOverview, hqMatePresence } from "./hqMates.ts";
+import { hqMateOverview } from "./hqMates.ts";
 import { sameValue } from "./equal.ts";
 import type {
   ProviderInstanceId,
@@ -9,12 +9,17 @@ import type {
   ZeropsAgentAuthSnapshot,
   AgentAdmissionRefusal,
   RunEnd,
+  ZeropsLoginState,
 } from "@t3tools/contracts";
 import { agentIdForDriverKind, agentIdForProviderInstance } from "@t3tools/contracts";
 import type { Known } from "../../zerops/knowledge/index.ts";
 import { resolveSpentLogin } from "../../zerops/logins.ts";
 import { signedOutAgent } from "../../zerops/agentSignIn.ts";
 import { MATE_READ_ACCESS_LINE } from "../../zerops/mateAccess.ts";
+import {
+  agentOwnershipComposerNotice,
+  resolveAgentOwnership,
+} from "../../zerops/agentOwnership.ts";
 import {
   classifyZeropsAgentAuth,
   zeropsAgentUnavailableReason,
@@ -65,7 +70,21 @@ export function admissionNeedsSignIn(
   return snapshot !== null && zeropsAgentSignInRequired(snapshot, providers);
 }
 
-/** Auth establishes admission; a signer's identity establishes no client permission. */
+/**
+ * Whether the viewer only reads along: a colleague's Mate as HQ records it, or a project they may
+ * not operate. Admission's read-only, without its auth read.
+ */
+export function readsAlong(input: {
+  readonly operate?: boolean | undefined;
+  readonly owner?: { readonly mine: boolean } | null | undefined;
+}): boolean {
+  return input.owner?.mine === false || input.operate === false;
+}
+
+/**
+ * Auth establishes admission, and so does whose sign-in the agent spends: an agent another project
+ * member signed in is read along, as the server refuses its turn (D6, `loginTurnRefusal`).
+ */
 export function agentAdmission(input: {
   readonly environmentId: string;
   readonly instanceId: string | undefined;
@@ -91,10 +110,10 @@ export function agentAdmission(input: {
    * says it waits for the organization's API key (`automatedAgentUsable`).
    */
   readonly automated?: boolean | undefined;
+  /** Who HQ records signed each login in (its project's `everSignedIn`), by login key. */
+  readonly hqSigners?: Readonly<Record<string, string>> | undefined;
 }) {
   if (input.automated === true) return automatedAdmission(input);
-  const colleagues = input.owner?.mine === false;
-  const readOnly = colleagues || input.operate === false;
   const snapshot = input.read?.state === "known" ? input.read.value : null;
   const provider = input.providers.find((p) => p.instanceId === input.instanceId) ?? null;
   const spent = resolveSpentLogin(input.instanceId, snapshot, input.providers);
@@ -102,6 +121,25 @@ export function agentAdmission(input: {
   const cold =
     input.owner === undefined || input.read?.state === "unread" || input.read?.state === "reading";
   const auth = spent === undefined ? null : classifyZeropsAgentAuth(spent.agent).kind;
+  // Whose sign-in it spends (D6), as before the admission refactor: the Mate's recorded signer,
+  // or HQ's record of it while the Mate's snapshot names none. A credential nobody is recorded for
+  // and one another member signed in are both read along; a project token is the project's.
+  const signer =
+    spent?.agent.authorizedBy?.subject || (spent ? input.hqSigners?.[spent.key] : undefined);
+  const ownership =
+    spent === undefined ||
+    cold ||
+    spent.agent.flagToken ||
+    input.viewerSubject === undefined ||
+    (auth !== "authorized" && auth !== "registering")
+      ? "none"
+      : resolveAgentOwnership({
+          credPresent: spent.agent.credPresent,
+          authorizedBy: signer ? { subject: signer } : undefined,
+          viewerSubject: input.viewerSubject,
+        });
+  const signerRefuses = ownership === "someone-else" || ownership === "unrecorded";
+  const readOnly = readsAlong(input) || signerRefuses;
   const pending = spent?.agent.login;
   const inProgress =
     pending !== undefined &&
@@ -110,18 +148,17 @@ export function agentAdmission(input: {
     pending.phase !== "cancelled";
   const cause = cold
     ? null
-    : auth === "authorized" || auth === "registering"
+    : auth !== null && loginSignInCause(auth) === null
       ? null
       : inProgress
         ? "sign-in-in-progress"
-        : auth === "needs-reauth" || auth === "reconnect"
-          ? "expired-login"
-          : auth === "not-authorized" ||
-              (spent === undefined &&
-                provider !== null &&
-                (providerNeedsSignIn(provider) ||
-                  configAuthKind(provider, snapshot, input.providers) === "not-authorized" ||
-                  configAuthKind(provider, snapshot, input.providers) === "needs-reauth"))
+        : auth !== null
+          ? loginSignInCause(auth)
+          : spent === undefined &&
+              provider !== null &&
+              (providerNeedsSignIn(provider) ||
+                configAuthKind(provider, snapshot, input.providers) === "not-authorized" ||
+                configAuthKind(provider, snapshot, input.providers) === "needs-reauth")
             ? "missing-sign-in"
             : null;
   const anotherStarted =
@@ -154,7 +191,12 @@ export function agentAdmission(input: {
         });
   const needsSignIn = input.empty === true && admissionNeedsSignIn(input.read, input.providers);
   const holdsComposer = input.standUpHolds === true || needsSignIn;
-  const refusal = input.operate === false ? MATE_READ_ACCESS_LINE : (attention?.text ?? null);
+  const refusal =
+    input.operate === false
+      ? MATE_READ_ACCESS_LINE
+      : signerRefuses
+        ? (agentOwnershipComposerNotice(ownership) ?? null)
+        : (attention?.text ?? null);
   const held =
     readOnly || cold
       ? null
@@ -174,11 +216,25 @@ export function agentAdmission(input: {
     // Held a moment — its agents' sign-in still read, or its person's stand-up on its way — a send
     // goes by itself once that is over: a request waits for it (`composerAdmits`).
     sendWaits: refusal === null && !readOnly && (cold || input.standUpHolds === true),
-    // Signer records establish no client permission, including compact HQ records; HQ's recorded
-    // owner does.
+    // HQ's recorded owner, the project's operate permission, and the agent's signer each make it read along.
     readOnly,
     holdsComposer,
   };
+}
+
+/**
+ * What a login's state asks of its person, wherever a Mate's admission is drawn — its composer from
+ * the live agent rows, its menu row and overview card from the overview's digest: nothing while
+ * it can run, a sign-in again once its login no longer works, a sign-in where it has none.
+ */
+function loginSignInCause(
+  state: ZeropsLoginState,
+): Exclude<AgentAdmissionAttention["cause"], "sign-in-in-progress"> | null {
+  return state === "authorized" || state === "registering"
+    ? null
+    : state === "needs-reauth" || state === "reconnect"
+      ? "expired-login"
+      : "missing-sign-in";
 }
 
 /** Why a composer its person's stand-up holds takes no message yet. */
@@ -198,7 +254,7 @@ export function automatedAgentUsable(providers: ReadonlyArray<ServerProvider>): 
 
 /** `agentAdmission` for an automated Mate: nobody signs it in; the organization's key runs it. */
 function automatedAdmission(input: Parameters<typeof agentAdmission>[0]) {
-  const readOnly = input.owner?.mine === false || input.operate === false;
+  const readOnly = readsAlong(input);
   const cold = input.owner === undefined;
   const usable = automatedAgentUsable(input.providers);
   const holdsComposer = input.standUpHolds === true;
@@ -309,7 +365,11 @@ function admissionAttention(input: {
   };
 }
 
-/** HQ's existing compact login facts can show absence, never infer permission from a signer. */
+/**
+ * A Mate no login of which can run, from its overview's digest as HQ forwards it: the composer's
+ * cause (`loginSignInCause`) and words for its agent's login. It never infers permission from a
+ * signer; a Mate older than the digest's `state` says only whether a credential is there.
+ */
 export const mateAdmissionSummary: Projection<
   MateProjectKey & { readonly viewerSubject: string | undefined; readonly mateName: string },
   AgentAdmissionAttention | null
@@ -323,7 +383,6 @@ export const mateAdmissionSummary: Projection<
     if (placed.kind === "known" && placed.value.mate?.automated === true) return null;
     const overview = hqMateOverview.derive(read, key);
     if (
-      !hqMatePresence.derive(read, key).live ||
       overview?.presence.overview !== "live" ||
       overview.presence.online !== true ||
       overview.identity?.environmentId === undefined ||
@@ -331,17 +390,26 @@ export const mateAdmissionSummary: Projection<
       overview.identity.runsWithoutSignIn
     )
       return null;
-    const entries = Object.entries(overview.logins);
-    if (entries.some(([, login]) => login.present)) return null;
-    const entry = entries.find(([id]) => id === "claude-code" || id === "codex");
+    const entries = Object.entries(overview.logins).map(([id, login]) => ({
+      id,
+      cause:
+        login.state === undefined
+          ? login.present
+            ? null
+            : ("missing-sign-in" as const)
+          : loginSignInCause(login.state),
+    }));
+    if (entries.some((login) => login.cause === null)) return null;
+    const agents = entries.filter(({ id }) => id === "claude-code" || id === "codex");
+    const entry = agents.find(({ cause }) => cause === "expired-login") ?? agents[0];
     if (entry === undefined) return null;
-    const agentId = entry[0] as ZeropsAgentId;
+    const agentId = entry.id as ZeropsAgentId;
     return admissionAttention({
       environmentId: overview.identity.environmentId,
       instanceId: agentId === "claude-code" ? "claudeAgent" : "codex",
       loginKey: agentId,
       agentId,
-      cause: "missing-sign-in",
+      cause: entry.cause ?? "missing-sign-in",
       mateName: key.mateName,
       agentName: "coding agent",
       action: "sign-in",

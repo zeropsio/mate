@@ -1,4 +1,5 @@
 /** A dialog waits for HQ's answer to one application verb, preserving its refusal. */
+import { KEPT_GIT_UNCONFIRMED } from "@t3tools/client-runtime/data";
 import type { AccountOperations } from "./accountOperations";
 
 type AppWrite = Extract<
@@ -20,7 +21,7 @@ export async function submitHqAppWrite(
     case "uncertain":
       throw new Error(
         intent.kind === "answer-kept-git"
-          ? "HQ has not confirmed your answer."
+          ? KEPT_GIT_UNCONFIRMED
           : "HQ may have accepted this change, but its answer was lost. Check the project before trying again.",
       );
     case "unresolved":

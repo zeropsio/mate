@@ -5,17 +5,32 @@ import {
   changeReadRequest,
   changeMetadataScope,
   changeCommitsScope,
+  changeVerdictScope,
   readsOfState,
   streamOf,
   classifyHqCall,
   accountReadsAtom,
 } from "@t3tools/client-runtime/data";
-import type { ChangeMetadataResponse, ChangeCommitsResponse } from "@t3tools/shared/hqChanges";
+import type {
+  ChangeMetadataResponse,
+  ChangeCommitsResponse,
+  ChangeDetailResponse,
+} from "@t3tools/shared/hqChanges";
 import { HqError } from "@t3tools/client-runtime/zerops/hq";
 import { AtomRegistry } from "effect/reactivity";
 import type { AccountData } from "../ZeropsAccountData";
 
-type Family = "hqChangeMetadata" | "hqChangeCommits";
+type Family = "hqChangeMetadata" | "hqChangeCommits" | "hqChangeVerdict";
+const FAMILIES: ReadonlySet<string> = new Set<Family>([
+  "hqChangeMetadata",
+  "hqChangeCommits",
+  "hqChangeVerdict",
+]);
+const SCOPES = {
+  hqChangeMetadata: changeMetadataScope,
+  hqChangeCommits: changeCommitsScope,
+  hqChangeVerdict: changeVerdictScope,
+};
 
 export function reviewAccount(
   metadata: (
@@ -24,13 +39,15 @@ export function reviewAccount(
   commits?: (
     request: NonNullable<ReturnType<typeof changeReadRequest>>,
   ) => Promise<ChangeCommitsResponse>,
+  verdict?: (
+    request: NonNullable<ReturnType<typeof changeReadRequest>>,
+  ) => Promise<ChangeDetailResponse>,
 ) {
   const registry = AtomRegistry.make();
   const store = makeAccountStore(registry);
   const orgId = "org";
   const held = new Set<string>();
-  const scopeOf = (family: Family, owner: string) =>
-    (family === "hqChangeMetadata" ? changeMetadataScope : changeCommitsScope)(orgId, owner);
+  const scopeOf = (family: Family, owner: string) => SCOPES[family](orgId, owner);
   const ask = (family: Family, owner: string) => {
     const scope = scopeOf(family, owner);
     store.dispatch({
@@ -43,13 +60,15 @@ export function reviewAccount(
     store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "handshake" } });
     const generation = streamOf(store.state(), scope).generation;
     store.dispatch({ kind: "baseline-begin", scope, generation });
-    // A scenario that reads no commits gets a reader that refuses them.
+    // A scenario that reads no commits, or no judgement, gets a reader that refuses them.
     const reader: (
       request: NonNullable<ReturnType<typeof changeReadRequest>>,
-    ) => Promise<ChangeMetadataResponse | ChangeCommitsResponse> =
+    ) => Promise<ChangeMetadataResponse | ChangeCommitsResponse | ChangeDetailResponse> =
       family === "hqChangeMetadata"
         ? metadata
-        : (commits ?? (() => Promise.reject(new Error("This scenario reads no commits."))));
+        : family === "hqChangeCommits"
+          ? (commits ?? (() => Promise.reject(new Error("This scenario reads no commits."))))
+          : (verdict ?? (() => Promise.reject(new Error("This scenario reads no judgement."))));
     void reader(changeReadRequest(owner)!).then(
       (value) => {
         store.dispatch({
@@ -98,21 +117,22 @@ export function reviewAccount(
     data: store.data,
     orgId,
     demandDetail: (demand: DetailDemand) => {
-      if (demand.family === "hqChangeMetadata" || demand.family === "hqChangeCommits") {
-        held.add(demand.ownerId);
+      if (FAMILIES.has(demand.family)) {
+        const family = demand.family as Family;
+        held.add(`${family} ${demand.ownerId}`);
         if (
-          readsOfState(store.state()).fact(demand.family, changeReadId(orgId, demand.ownerId))
-            .kind !== "known" &&
-          streamOf(store.state(), scopeOf(demand.family, demand.ownerId)).phase !== "refused"
+          readsOfState(store.state()).fact(family, changeReadId(orgId, demand.ownerId)).kind !==
+            "known" &&
+          streamOf(store.state(), scopeOf(family, demand.ownerId)).phase !== "refused"
         )
-          ask(demand.family, demand.ownerId);
+          ask(family, demand.ownerId);
       }
       return () => {
-        held.delete(demand.ownerId);
+        held.delete(`${demand.family} ${demand.ownerId}`);
       };
     },
     retryDetail: (demand: DetailDemand) => {
-      if (held.has(demand.ownerId)) {
+      if (held.has(`${demand.family} ${demand.ownerId}`)) {
         store.dispatch({
           kind: "stream",
           key: scopeOf(demand.family as Family, demand.ownerId),

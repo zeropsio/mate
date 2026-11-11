@@ -1,4 +1,4 @@
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import { Atom } from "effect/reactivity";
 import {
   WS_METHODS,
@@ -31,6 +31,7 @@ import type { EnvironmentRegistry } from "../connection/registry.ts";
 import {
   engineContinueAfterLimit,
   engineCreateThread,
+  engineAnswerMirrorAsk,
   engineAnswerOriginAsk,
   engineAnswerVaultAsk,
   engineSetArchived,
@@ -44,6 +45,7 @@ import {
   engineRespondToUserInput,
   engineStartTurn,
   viaEngine,
+  type MirrorAskAnswerInput,
   type OriginAskAnswerInput,
   type VaultAskAnswerInput,
 } from "../data/engineCommands.ts";
@@ -64,7 +66,7 @@ export type {
 } from "../operations/commands.ts";
 
 export function createThreadEnvironmentAtoms<R, E>(
-  runtime: Atom.AtomRuntime<EnvironmentRegistry | Crypto.Crypto | R, E>,
+  runtime: Atom.AtomRuntime<EnvironmentRegistry | SecureRandom.SecureRandom | R, E>,
   snapshotAtom: (environmentId: EnvironmentId) => Atom.Atom<OrchestrationShellSnapshot | null>,
   options: {
     /** A Mate's providers, so an engine conversation judges a model options change by its defaults. */
@@ -176,6 +178,17 @@ export function createThreadEnvironmentAtoms<R, E>(
       label: "environment-data:commands:thread:answer-origin-ask",
       execute: (input: OriginAskAnswerInput, registry, environmentId) =>
         viaEngine(registry, environmentId, engineAnswerOriginAsk(environmentId, input)),
+      scheduler,
+      concurrency,
+    }),
+    /**
+     * A repository the Mate asked to connect to GitHub, answered on its card: connected (the card
+     * connected it in HQ itself, at the address it names) or declined.
+     */
+    answerMirrorAsk: createEnvironmentCommand(runtime, {
+      label: "environment-data:commands:thread:answer-mirror-ask",
+      execute: (input: MirrorAskAnswerInput, registry, environmentId) =>
+        viaEngine(registry, environmentId, engineAnswerMirrorAsk(environmentId, input)),
       scheduler,
       concurrency,
     }),

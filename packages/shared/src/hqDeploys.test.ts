@@ -78,6 +78,17 @@ describe("HqDeployAnswer — where each job an event asked for stands once HQ su
     expect(decode({ jobs: deploys, note: null })).toEqual({ jobs: deploys, note: null });
   });
 
+  it.each([undefined, null, 0, 1_305_166_613])(
+    "a deployment answer preserves only its job's measured source archive bytes: %j",
+    (sourceArchiveBytes) => {
+      const job = {
+        ...outcome,
+        ...(sourceArchiveBytes === undefined ? {} : { sourceArchiveBytes }),
+      };
+      expect(decode({ jobs: [job], note: null }).jobs).toEqual([job]);
+    },
+  );
+
   it("refuses a state no job is in", () => {
     expect(() => decode({ jobs: [{ ...outcome, state: "retrying" }], note: null })).toThrow();
   });

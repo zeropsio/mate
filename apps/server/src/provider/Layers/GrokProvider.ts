@@ -7,9 +7,10 @@ import {
   type ServerProviderModel,
   type ServerProviderSlashCommand,
 } from "@t3tools/contracts";
-import * as EffectAcpSchema from "effect-acp/schema";
+import type * as EffectAcpSchema from "effect-acp/compat";
+import * as AcpWireSchema from "effect-acp/schema-v1";
 import { causeErrorTag } from "@t3tools/shared/observability";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -42,7 +43,7 @@ import {
   resolveGrokAcpBaseModelId,
 } from "../acp/GrokAcpSupport.ts";
 import { sessionModelStateFromInitialize } from "../acp/AcpRuntimeModel.ts";
-import { discoverGrokSkills } from "../Drivers/GrokSkills.ts";
+import { discoverGrokSkills, grokProbeEnvironment } from "../Drivers/GrokSkills.ts";
 
 const GROK_PRESENTATION = {
   displayName: "Grok",
@@ -310,7 +311,7 @@ const runGrokCliCommand = (
   });
 
 const decodeAvailableCommands = Schema.decodeUnknownOption(Schema.Array(Schema.Unknown));
-const decodeAvailableCommand = Schema.decodeUnknownOption(EffectAcpSchema.AvailableCommand);
+const decodeAvailableCommand = Schema.decodeUnknownOption(AcpWireSchema.AvailableCommand);
 
 export function grokSlashCommandsFromInitialize(
   initialized: EffectAcpSchema.InitializeResponse,
@@ -370,7 +371,7 @@ export const checkGrokProviderStatus = Effect.fn("checkGrokProviderStatus")(func
 ): Effect.fn.Return<
   ServerProviderDraft,
   never,
-  ChildProcessSpawner.ChildProcessSpawner | Crypto.Crypto
+  ChildProcessSpawner.ChildProcessSpawner | SecureRandom.SecureRandom
 > {
   const checkedAt = DateTime.formatIso(yield* DateTime.now);
   const fallbackModels = grokModelsFromSettings(grokSettings.customModels);
@@ -391,10 +392,13 @@ export const checkGrokProviderStatus = Effect.fn("checkGrokProviderStatus")(func
     });
   }
 
-  const versionResult = yield* runGrokCliCommand(grokSettings, ["--version"], environment).pipe(
-    Effect.timeoutOption(VERSION_PROBE_TIMEOUT_MS),
-    Effect.result,
-  );
+  const probeEnvironment = grokProbeEnvironment(environment);
+
+  const versionResult = yield* runGrokCliCommand(
+    grokSettings,
+    ["--version"],
+    probeEnvironment,
+  ).pipe(Effect.timeoutOption(VERSION_PROBE_TIMEOUT_MS), Effect.result);
 
   if (Result.isFailure(versionResult)) {
     const error = versionResult.failure;
@@ -458,7 +462,7 @@ export const checkGrokProviderStatus = Effect.fn("checkGrokProviderStatus")(func
   }
 
   // `grok models` reports login state and model slugs without starting the agent.
-  const modelsResult = yield* runGrokCliCommand(grokSettings, ["models"], environment).pipe(
+  const modelsResult = yield* runGrokCliCommand(grokSettings, ["models"], probeEnvironment).pipe(
     Effect.timeoutOption(AUTH_PROBE_TIMEOUT_MS),
     Effect.result,
   );
@@ -491,12 +495,13 @@ export const checkGrokProviderStatus = Effect.fn("checkGrokProviderStatus")(func
         ? { status: "unauthenticated" }
         : { status: "unknown" };
 
+  // Skill discovery applies the probe environment itself.
   const skills = yield* discoverGrokSkills(grokSettings, environment, cwd).pipe(
     Effect.tapError((cause) => Effect.logDebug("Grok skill discovery failed.", { cause })),
     Effect.orElseSucceed(() => []),
   );
 
-  const acpExit = yield* discoverGrokMetadataViaAcpInitialize(grokSettings, environment).pipe(
+  const acpExit = yield* discoverGrokMetadataViaAcpInitialize(grokSettings, probeEnvironment).pipe(
     Effect.timeoutOption(GROK_ACP_INITIALIZE_TIMEOUT_MS),
     Effect.exit,
   );

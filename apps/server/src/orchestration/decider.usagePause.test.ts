@@ -7,6 +7,8 @@ import {
   type OrchestrationReadModel,
 } from "@t3tools/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as Layer from "effect/Layer";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -76,7 +78,7 @@ const autoResumeCommand = (enabled: boolean) =>
     enabled,
   }) as const;
 
-it.layer(NodeServices.layer)("usage pause decider", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("usage pause decider", (it) => {
   it.effect.each([
     { name: "sets the pause the server read off the provider", usagePause: PAUSE },
     { name: "clears it with null", usagePause: null },

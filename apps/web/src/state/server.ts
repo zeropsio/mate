@@ -53,6 +53,10 @@ export const serverEnvironment = {
   settingsValueAtom: Atom.family((environmentId: EnvironmentId) =>
     Atom.make((get) => get(configValueAtom(environmentId))?.settings ?? null),
   ),
+  /** HQ's word on the Mate's key, as its own config says it; none while none stands. */
+  hqKeyValueAtom: Atom.family((environmentId: EnvironmentId | null) =>
+    Atom.make((get) => get(configValueAtom(environmentId))?.hqKey),
+  ),
   providersValueAtom: Atom.family((environmentId: EnvironmentId) =>
     Atom.make((get) => get(configValueAtom(environmentId))?.providers ?? null),
   ),

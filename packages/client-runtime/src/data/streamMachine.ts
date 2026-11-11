@@ -13,6 +13,8 @@
  * @module data/streamMachine
  */
 
+import type { HqProblem } from "@t3tools/shared/hqProblems";
+
 export type Phase =
   | "idle"
   | "connecting"
@@ -52,12 +54,18 @@ export type StreamOutcome = Extract<
 >;
 
 export interface StreamFault {
+  readonly problems?: ReadonlyArray<HqProblem>;
   readonly outcome: StreamOutcome;
   readonly message: string;
   /** The source's own code for it (HQ's `scope-error` code), where it named one. */
   readonly code?: string;
   /** What the source asked for (`Retry-After`), ms. */
   readonly retryAfterMs?: number;
+  /**
+   * The source ended the last connection as planned and the next did not open: it is restarting
+   * (HQ's `4410`, which also ends every segment), not gone.
+   */
+  readonly plannedEnd?: true;
 }
 
 export type NextAction =
@@ -122,6 +130,11 @@ export interface StreamState {
    * ({@link streamTrouble}). Nothing was read, so nothing reads as live.
    */
   readonly patientSince?: number;
+  /**
+   * It was lost on a fault with {@link StreamFault.plannedEnd}: its source is restarting. Kept, as
+   * {@link lostAt} is, until it is live again.
+   */
+  readonly restarting?: true;
 }
 
 export type StreamEvent =
@@ -138,11 +151,10 @@ export type StreamEvent =
    */
   | { readonly kind: "socket-created" }
   /**
-   * `ages`: a source read once answered with a value that still changes without any write of
-   * ours (an invitation waiting on its invitee), so it is read again on the cadence until it
-   * answers settled.
+   * `freshUntil`: when the value read stops being fresh by its family's own age; a sampled source
+   * is read again then, on the cadence where it names none.
    */
-  | { readonly kind: "baseline-committed"; readonly ages?: boolean }
+  | { readonly kind: "baseline-committed"; readonly freshUntil?: number | undefined }
   /** `jitter` is a uniform draw in [0, 1] the caller supplies, so the function stays pure. */
   | { readonly kind: "fault"; readonly fault: StreamFault; readonly jitter: number }
   /** The retry the stream named came due. */
@@ -198,7 +210,10 @@ export const STREAM_POLICY = {
   baselineTimeoutMs: 20_000,
   backoffBaseMs: 1_000,
   backoffCapMs: 60_000,
-  /** Where realtime is unverified, a demanded sampled source revalidates this often. */
+  /**
+   * A demanded sampled source whose value names no age of its own revalidates this often, as does
+   * a value read once while it still changes.
+   */
   sampledIntervalMs: 30_000,
   /**
    * How long a stream that was live and is reconnecting still reads live: HQ's planned segment
@@ -338,14 +353,25 @@ export function streamTrouble(stream: StreamState): "stopped" | "retrying" | nul
 
 /**
  * One rule for every stream: leaving live for a reconnect holds what it read as current for the
- * grace, and dates the loss; a first attempt is given the same grace before a failure is
+ * grace, and dates the loss (marking it restarting where its source ended it as planned); a first attempt is given the same grace before a failure is
  * trouble; live again forgets all of it; a refusal, a pause or a close ends either grace.
  */
 function hold(before: StreamState, after: StreamState, now: number): StreamState {
   if (after.phase === "live") {
-    if (after.lostAt === undefined && after.held === undefined && after.patientSince === undefined)
+    if (
+      after.lostAt === undefined &&
+      after.held === undefined &&
+      after.patientSince === undefined &&
+      after.restarting === undefined
+    )
       return after;
-    const { lostAt: _lostAt, held: _held, patientSince: _patientSince, ...rest } = after;
+    const {
+      lostAt: _lostAt,
+      held: _held,
+      patientSince: _patientSince,
+      restarting: _restarting,
+      ...rest
+    } = after;
     return rest;
   }
   if (!RECONNECTING.has(after.phase)) {
@@ -353,7 +379,13 @@ function hold(before: StreamState, after: StreamState, now: number): StreamState
     const { held: _held, patientSince: _patientSince, ...rest } = after;
     return rest;
   }
-  if (before.phase === "live") return { ...after, lostAt: now, held: true };
+  if (before.phase === "live")
+    return {
+      ...after,
+      lostAt: now,
+      held: true,
+      ...(after.fault?.plannedEnd === true ? { restarting: true as const } : {}),
+    };
   // A stream never lost from live starts its grace with its first attempt — from rest, or a child's
   // first registration on its parent — never while it only waits for its parent.
   const firstTry =
@@ -440,8 +472,11 @@ function step(state: StreamState, event: StreamEvent, now: number): StreamTransi
             repaired: false,
             fault: null,
             next:
-              state.mode === "sampled" || (state.mode === "once" && event.ages === true)
-                ? { kind: "revalidate", at: now + STREAM_POLICY.sampledIntervalMs }
+              state.mode === "sampled"
+                ? {
+                    kind: "revalidate",
+                    at: event.freshUntil ?? now + STREAM_POLICY.sampledIntervalMs,
+                  }
                 : state.mode === "once"
                   ? { kind: "await-input-change" }
                   : { kind: "await-changes" },

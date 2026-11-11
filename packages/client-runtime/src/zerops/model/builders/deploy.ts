@@ -25,7 +25,7 @@ import {
   gitPushVoice,
   operationClosing,
 } from "../../operations/phrases.ts";
-import { zeropsProjectUrl } from "../../serviceMap.ts";
+import { zeropsProjectUrl } from "../../gui.ts";
 import type {
   ZeropsCall,
   ZeropsOperationLink,

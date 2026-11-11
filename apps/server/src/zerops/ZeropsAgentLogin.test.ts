@@ -9,7 +9,7 @@ import type {
   TerminalWriteInput,
   ZeropsAgentId,
 } from "@t3tools/contracts";
-import { TerminalNotRunningError, ZeropsAgentLoginError } from "@t3tools/contracts";
+import { AuthSessionId, TerminalNotRunningError, ZeropsAgentLoginError } from "@t3tools/contracts";
 import { latestSucceededSignIn } from "@t3tools/shared/zeropsAgentAuth";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
@@ -26,15 +26,22 @@ import * as TestClock from "effect/testing/TestClock";
 
 import type { TerminalManager } from "../terminal/Manager.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
-import { makeSignInStore, memorySignInStore, type SignInRecords } from "./zeropsSignIns.ts";
+import { memorySignInStore, type SignInRecords } from "./zeropsSignIns.ts";
 import type { ZeropsAgentLoginByAgent, ZeropsAgentLoginOptions } from "./ZeropsAgentLogin.ts";
+import { manualFileWatch } from "./testing/manualFileWatch.ts";
 import { makeLoginHomes, type LoginHomes, type LoginHomesOptions } from "./zeropsLoginHomes.ts";
 import { mateLoginEnvironment } from "./ZeropsLogins.ts";
 
 type TerminalManagerService = Pick<
   TerminalManager["Service"],
-  "open" | "write" | "attachStream" | "close"
+  "open" | "write" | "attachStream" | "close" | "closeOpenedBy"
 >;
+
+/** The connection a test's sign-ins start on: the test's own scope is its lifetime. */
+const connection = Effect.map(Effect.scope, (scope): ZeropsAgentLoginModule.LoginConnection => ({
+  id: AuthSessionId.make("connection-1"),
+  scope,
+}));
 
 interface WriteRecord {
   readonly threadId: string;
@@ -137,6 +144,7 @@ const makeFakeTerminalManager = (): Effect.Effect<FakeTerminalManager> =>
             deleteHistory: input.deleteHistory === true,
           },
         ]).pipe(Effect.asVoid),
+      closeOpenedBy: () => Effect.succeed(0),
     };
 
     const emit = (threadId: string, terminalId: string, data: string): Effect.Effect<void> =>
@@ -222,7 +230,7 @@ it.effect("start opens a dedicated terminal, writes the login command, and reach
         isZeropsEnvironment: true,
       });
 
-      const result = yield* feed.start("claude-code", "thread-1", "user-test");
+      const result = yield* feed.start("claude-code", "thread-1", "user-test", yield* connection);
       assert.equal(result.terminalId, "agent-login-claude-code");
 
       const opened = yield* Ref.get(fakeTerminal.opened);
@@ -260,8 +268,8 @@ it.effect(
           isZeropsEnvironment: true,
         });
 
-        const first = yield* feed.start("claude-code", "thread-1", "user-test");
-        const second = yield* feed.start("claude-code", "thread-1", "user-test");
+        const first = yield* feed.start("claude-code", "thread-1", "user-test", yield* connection);
+        const second = yield* feed.start("claude-code", "thread-1", "user-test", yield* connection);
         assert.equal(second.terminalId, first.terminalId);
 
         const writes = yield* Ref.get(fakeTerminal.writes);
@@ -283,7 +291,7 @@ it.effect("an auth URL chunk moves the phase to awaiting-browser with the url", 
         isZeropsEnvironment: true,
       });
 
-      yield* feed.start("claude-code", "thread-1", "user-test");
+      yield* feed.start("claude-code", "thread-1", "user-test", yield* connection);
       const subscription = yield* feed.subscribe;
 
       yield* fakeTerminal.emit(
@@ -317,7 +325,7 @@ it.effect(
           isZeropsEnvironment: true,
         });
 
-        yield* feed.start("claude-code", "thread-1", "user-test");
+        yield* feed.start("claude-code", "thread-1", "user-test", yield* connection);
         const subscription = yield* feed.subscribe;
         const firstPublished = yield* Stream.runHead(subscription.changes).pipe(Effect.forkChild);
 
@@ -356,7 +364,7 @@ it.effect("codex: url and device code together move to awaiting-browser with bot
         isZeropsEnvironment: true,
       });
 
-      yield* feed.start("codex", "thread-1", "user-test");
+      yield* feed.start("codex", "thread-1", "user-test", yield* connection);
       const subscription = yield* feed.subscribe;
 
       yield* fakeTerminal.emit(
@@ -389,7 +397,7 @@ it.effect(
           isZeropsEnvironment: true,
         });
 
-        yield* feed.start("claude-code", "thread-1", "user-test");
+        yield* feed.start("claude-code", "thread-1", "user-test", yield* connection);
         const subscription = yield* feed.subscribe;
 
         yield* fakeTerminal.emit(
@@ -407,7 +415,7 @@ it.effect(
 
         // The session is no longer active — a fresh start opens a NEW terminal
         // session (a second `open` + a second write of the login command).
-        yield* feed.start("claude-code", "thread-1", "user-test");
+        yield* feed.start("claude-code", "thread-1", "user-test", yield* connection);
         const opened = yield* Ref.get(fakeTerminal.opened);
         assert.equal(opened.length, 2);
         const writes = yield* Ref.get(fakeTerminal.writes);
@@ -427,7 +435,7 @@ it.effect("cancel writes Ctrl-C, closes the terminal, and publishes cancelled", 
         isZeropsEnvironment: true,
       });
 
-      yield* feed.start("claude-code", "thread-1", "user-test");
+      yield* feed.start("claude-code", "thread-1", "user-test", yield* connection);
       yield* feed.cancel("claude-code");
 
       const writes = yield* Ref.get(fakeTerminal.writes);
@@ -477,7 +485,9 @@ it.effect("outside a Zerops environment, start and cancel both fail as unavailab
         isZeropsEnvironment: false,
       });
 
-      const startError = yield* Effect.flip(feed.start("claude-code", "thread-1", "user-test"));
+      const startError = yield* Effect.flip(
+        feed.start("claude-code", "thread-1", "user-test", yield* connection),
+      );
       assert.instanceOf(startError, ZeropsAgentLoginError);
       const cancelError = yield* Effect.flip(feed.cancel("claude-code"));
       assert.instanceOf(cancelError, ZeropsAgentLoginError);
@@ -501,7 +511,9 @@ it.effect("an automated Mate answers every sign-in with a refusal: nobody signs 
       });
 
       for (const agentId of ["claude-code", "codex"] as const) {
-        const error = yield* Effect.flip(feed.start(agentId, "thread-1", "user-test"));
+        const error = yield* Effect.flip(
+          feed.start(agentId, "thread-1", "user-test", yield* connection),
+        );
         assert.equal(reasonOf(error), "automated");
         assert.equal(
           error.message,
@@ -528,7 +540,7 @@ it.layer(NodeServices.layer)("ZeropsAgentLogin — stall timer", (it) => {
             isZeropsEnvironment: true,
           });
 
-          yield* feed.start("claude-code", "thread-1", "user-test");
+          yield* feed.start("claude-code", "thread-1", "user-test", yield* connection);
           yield* fakeTerminal.emit(
             "thread-1",
             "agent-login-claude-code",
@@ -566,7 +578,7 @@ it.effect("asks the auth feed to republish when a login succeeds", () =>
         isZeropsEnvironment: true,
       });
 
-      yield* feed.start("claude-code", "thread-1", "zerops-user-a");
+      yield* feed.start("claude-code", "thread-1", "zerops-user-a", yield* connection);
       const subscription = yield* feed.subscribe;
 
       yield* fakeTerminal.emit(
@@ -610,7 +622,7 @@ it.effect("a start that fails leaves the latest success standing", () =>
         isZeropsEnvironment: true,
       });
 
-      yield* feed.start("claude-code", "thread-1", "zerops-user-eva");
+      yield* feed.start("claude-code", "thread-1", "zerops-user-eva", yield* connection);
       yield* fakeTerminal.emit(
         "thread-1",
         "agent-login-claude-code",
@@ -620,7 +632,9 @@ it.effect("a start that fails leaves the latest success standing", () =>
       assert.equal(evas?.phase, "succeeded");
 
       openFails = true;
-      yield* Effect.flip(feed.start("claude-code", "thread-1", "zerops-user-jan"));
+      yield* Effect.flip(
+        feed.start("claude-code", "thread-1", "zerops-user-jan", yield* connection),
+      );
 
       const after = loginOf(yield* feed.latest, "claude-code");
       assert.equal(latestSucceededSignIn(after)?.startedBy, evas?.startedBy);
@@ -629,13 +643,13 @@ it.effect("a start that fails leaves the latest success standing", () =>
   ),
 );
 
-// Who signed a login in last is kept across restarts (`zeropsSignIns`): written with every
-// success, a fresh one replacing it, and gone with the credential.
+// Who signed a login in last is recorded (`zeropsSignIns`): written with every success, a fresh
+// one replacing it, and gone with the credential.
 it.effect("keeps who signed in last, and lets it go with the credential", () =>
   Effect.scoped(
     Effect.gen(function* () {
       const fakeTerminal = yield* makeFakeTerminalManager();
-      const store = yield* memorySignInStore({ codex: { by: "user-gone", at: 1 } });
+      const store = yield* memorySignInStore({ codex: { by: "user-gone" } });
       const held = yield* Queue.unbounded<ReadonlyArray<readonly [string, boolean]>>();
       const feed = yield* makeFeed({
         terminalManager: fakeTerminal.service,
@@ -648,7 +662,7 @@ it.effect("keeps who signed in last, and lets it go with the credential", () =>
       const gone = TestClock.adjust(ZeropsAgentLoginModule.CREDENTIAL_GONE_AFTER);
       const succeed = (subject: string) =>
         Effect.gen(function* () {
-          yield* feed.start("claude-code", "thread-1", subject);
+          yield* feed.start("claude-code", "thread-1", subject, yield* connection);
           yield* fakeTerminal.emit(
             "thread-1",
             "agent-login-claude-code",
@@ -703,7 +717,7 @@ it.effect.each(
 )("$title", ({ readings, kept }) =>
   Effect.scoped(
     Effect.gen(function* () {
-      const store = yield* memorySignInStore({ "claude-code": { by: "user-eva", at: 1 } });
+      const store = yield* memorySignInStore({ "claude-code": { by: "user-eva" } });
       const held = yield* Queue.unbounded<ReadonlyArray<readonly [string, boolean]>>();
       yield* makeFeed({
         terminalManager: (yield* makeFakeTerminalManager()).service,
@@ -744,7 +758,7 @@ it.effect("a sign-in made while its credential reads absent outlives that absenc
       });
       yield* Queue.offer(held, [["claude-code", false]]);
       yield* TestClock.adjust(Duration.seconds(2));
-      yield* feed.start("claude-code", "thread-1", "zerops-user-eva");
+      yield* feed.start("claude-code", "thread-1", "zerops-user-eva", yield* connection);
       yield* fakeTerminal.emit(
         "thread-1",
         "agent-login-claude-code",
@@ -757,22 +771,24 @@ it.effect("a sign-in made while its credential reads absent outlives that absenc
   ),
 );
 
-it.effect("starts over a kept sign-in no instant can hold, and keeps nobody for it", () =>
+it.effect("an HQ signer does not create a completed login on the Mate", () =>
   Effect.scoped(
     Effect.gen(function* () {
-      const fakeTerminal = yield* makeFakeTerminalManager();
+      const signIns = yield* memorySignInStore();
+      yield* signIns.heard({ "claude-code": "user-eva", codex: "user-ada" });
       const feed = yield* makeFeed({
-        terminalManager: fakeTerminal.service,
+        terminalManager: (yield* makeFakeTerminalManager()).service,
         zeropsAgentAuth: yield* makeFakeAuth(),
         isZeropsEnvironment: true,
-        signIns: yield* memorySignInStore({
-          "claude-code": { by: "user-eva", at: 1e20 },
-          codex: { by: "user-ada", at: Number.NaN },
-        }),
+        signIns,
       });
       const latest = yield* feed.latest;
       assert.isUndefined(loginOf(latest, "claude-code"));
       assert.isUndefined(loginOf(latest, "codex"));
+      assert.deepEqual(yield* signIns.lastSigners, {
+        "claude-code": "user-eva",
+        codex: "user-ada",
+      });
     }),
   ),
 );
@@ -791,7 +807,7 @@ it.effect("a login whose process ends before it finished is failed with how it e
         isZeropsEnvironment: true,
       });
 
-      yield* feed.start("codex", "thread-1", "user-test");
+      yield* feed.start("codex", "thread-1", "user-test", yield* connection);
       assert.equal(loginOf(yield* feed.latest, "codex")?.phase, "menu");
 
       yield* fakeTerminal.exit("thread-1", "agent-login-codex", { exitCode: 1, exitSignal: null });
@@ -805,9 +821,38 @@ it.effect("a login whose process ends before it finished is failed with how it e
       assert.deepEqual(yield* Ref.get(fakeAuth.calls), []);
 
       // Over: a new start opens a fresh terminal rather than re-attaching.
-      yield* feed.start("codex", "thread-1", "user-test");
+      yield* feed.start("codex", "thread-1", "user-test", yield* connection);
       assert.equal((yield* Ref.get(fakeTerminal.opened)).length, 2);
       assert.equal(loginOf(yield* feed.latest, "codex")?.phase, "menu");
+    }),
+  ),
+);
+
+it.effect.each(
+  Array.from(["claude-code", "codex"] as const, (agentId) => ({
+    title: `${agentId}: a successful manual sign-in replaces the signer received from HQ`,
+    agentId,
+  })),
+)("$title", ({ agentId }) =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const terminal = yield* makeFakeTerminalManager();
+      const signIns = yield* memorySignInStore();
+      yield* signIns.heard({ [agentId]: "user-jan" });
+      const feed = yield* makeFeed({
+        terminalManager: terminal.service,
+        zeropsAgentAuth: yield* makeFakeAuth(),
+        isZeropsEnvironment: true,
+        signIns,
+      });
+      yield* feed.start(agentId, "thread-1", "user-eva", yield* connection);
+      yield* terminal.emit(
+        "thread-1",
+        ZeropsAgentLoginModule.loginTerminalId(agentId),
+        agentId === "claude-code" ? "Login successful. Press Enter to continue…\n" : CODEX_SUCCESS,
+      );
+      assert.equal((yield* feed.latest)[agentId]?.phase, "succeeded");
+      assert.equal((yield* signIns.load)[agentId]?.by, "user-eva");
     }),
   ),
 );
@@ -823,7 +868,7 @@ it.effect("a login ended by a signal says so", () =>
         isZeropsEnvironment: true,
       });
 
-      yield* feed.start("claude-code", "thread-1", "user-test");
+      yield* feed.start("claude-code", "thread-1", "user-test", yield* connection);
       yield* fakeTerminal.exit("thread-1", "agent-login-claude-code", {
         exitCode: null,
         exitSignal: 9,
@@ -848,7 +893,7 @@ it.effect("an exit after the login succeeded changes nothing", () =>
         isZeropsEnvironment: true,
       });
 
-      yield* feed.start("claude-code", "thread-1", "user-test");
+      yield* feed.start("claude-code", "thread-1", "user-test", yield* connection);
       yield* fakeTerminal.emit(
         "thread-1",
         "agent-login-claude-code",
@@ -881,7 +926,7 @@ const claudeAtCodePrompt = Effect.gen(function* () {
     zeropsAgentAuth: fakeAuth,
     isZeropsEnvironment: true,
   });
-  yield* feed.start("claude-code", "thread-1", "zerops-user:user-1");
+  yield* feed.start("claude-code", "thread-1", "zerops-user:user-1", yield* connection);
   yield* fakeTerminal.emit("thread-1", "agent-login-claude-code", CLAUDE_URL_SCREEN);
   assert.equal(loginOf(yield* feed.latest, "claude-code")?.phase, "awaiting-browser");
   return { fakeTerminal, fakeAuth, feed };
@@ -900,7 +945,7 @@ it.effect(
           isZeropsEnvironment: true,
         });
 
-        yield* feed.start("claude-code", "thread-1", "user-test");
+        yield* feed.start("claude-code", "thread-1", "user-test", yield* connection);
 
         assert.deepEqual(yield* Ref.get(fakeTerminal.closed), [
           { threadId: "thread-1", terminalId: "agent-login-claude-code", deleteHistory: true },
@@ -1021,12 +1066,12 @@ it.effect("submitCode is refused when no login waits for a code", () =>
       assert.equal(reasonOf(none), "not-awaiting-code");
 
       // A session still in its menu, before any prompt.
-      yield* feed.start("claude-code", "thread-1", "user-test");
+      yield* feed.start("claude-code", "thread-1", "user-test", yield* connection);
       const early = yield* Effect.flip(feed.submitCode("claude-code", "abc#def"));
       assert.equal(reasonOf(early), "not-awaiting-code");
 
       // Codex's device flow never takes a code back.
-      yield* feed.start("codex", "thread-1", "user-test");
+      yield* feed.start("codex", "thread-1", "user-test", yield* connection);
       yield* fakeTerminal.emit(
         "thread-1",
         "agent-login-codex",
@@ -1068,7 +1113,13 @@ it.effect(
       Effect.gen(function* () {
         const { fakeTerminal, feed } = yield* makeWithLogins;
 
-        const result = yield* feed.start("claude-code", "thread-1", "user-test", WORK);
+        const result = yield* feed.start(
+          "claude-code",
+          "thread-1",
+          "user-test",
+          yield* connection,
+          WORK,
+        );
 
         assert.equal(result.terminalId, "agent-login-claudeAgent-work");
         assert.deepEqual(yield* Ref.get(fakeTerminal.opened), [
@@ -1090,7 +1141,7 @@ it.effect("another login's success asks that login's own check, never its agent'
   Effect.scoped(
     Effect.gen(function* () {
       const { fakeTerminal, fakeAuth, loginChecks, feed } = yield* makeWithLogins;
-      yield* feed.start("claude-code", "thread-1", "user-test", WORK);
+      yield* feed.start("claude-code", "thread-1", "user-test", yield* connection, WORK);
 
       yield* fakeTerminal.emit(
         "thread-1",
@@ -1109,8 +1160,8 @@ it.effect("an agent's default login and another of its logins sign in side by si
   Effect.scoped(
     Effect.gen(function* () {
       const { fakeTerminal, feed } = yield* makeWithLogins;
-      yield* feed.start("claude-code", "thread-1", "user-test");
-      yield* feed.start("claude-code", "thread-1", "user-test", WORK);
+      yield* feed.start("claude-code", "thread-1", "user-test", yield* connection);
+      yield* feed.start("claude-code", "thread-1", "user-test", yield* connection, WORK);
       assert.lengthOf(yield* Ref.get(fakeTerminal.opened), 2);
 
       yield* feed.cancel("claude-code", WORK.id);
@@ -1126,7 +1177,7 @@ it.effect("submitCode with a login id types into that login's terminal", () =>
   Effect.scoped(
     Effect.gen(function* () {
       const { fakeTerminal, feed } = yield* makeWithLogins;
-      yield* feed.start("claude-code", "thread-1", "user-test", WORK);
+      yield* feed.start("claude-code", "thread-1", "user-test", yield* connection, WORK);
       yield* fakeTerminal.emit("thread-1", "agent-login-claudeAgent-work", CLAUDE_URL_SCREEN);
       const before = (yield* Ref.get(fakeTerminal.writes)).length;
 
@@ -1402,7 +1453,7 @@ const startReal = (row: RealLogin, home: string, options?: RealFeedOptions) =>
     const server = yield* realFeed(home, options);
     const login = row.login?.(home);
     const key = login?.id ?? row.agentId;
-    yield* server.feed.start(row.agentId, "thread-1", JAN, login);
+    yield* server.feed.start(row.agentId, "thread-1", JAN, yield* connection, login);
     const scratch = (yield* Ref.get(server.fakeTerminal.opened))[0]?.env?.[row.variable];
     if (scratch === undefined)
       return yield* Effect.die("the sign-in opened without a scratch home");
@@ -1458,7 +1509,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
             homes: yield* makeLoginHomes(home),
           });
 
-          yield* Effect.flip(feed.start("claude-code", "thread-1", JAN));
+          yield* Effect.flip(feed.start("claude-code", "thread-1", JAN, yield* connection));
 
           assert.isFalse(yield* fs.exists(`${home}/.mate/pending/claude-code`));
           assert.equal(yield* fs.readFileString(`${home}/.claude/.credentials.json`), "old");
@@ -1545,7 +1596,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
           const fs = yield* FileSystem.FileSystem;
           const home = yield* seedHome(row);
           const key = row.login?.(home).id ?? row.agentId;
-          const eva = { by: "user-eva", at: 1 };
+          const eva = { by: "user-eva" };
           const { fakeTerminal, feed, login, signIns, scratch } = yield* startReal(row, home, {
             signedIn: { [key]: eva },
           });
@@ -1559,7 +1610,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
           assert.equal(yield* fs.readFileString(row.credential(home)), "old");
           assert.deepEqual(yield* signIns.load, { [key]: eva });
 
-          yield* feed.start(row.agentId, "thread-1", JAN, login);
+          yield* feed.start(row.agentId, "thread-1", JAN, yield* connection, login);
           yield* fs.writeFileString(`${scratch}/${row.file}`, "jan");
           yield* fakeTerminal.emit(
             "thread-1",
@@ -1616,7 +1667,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
           // Whatever the abandoned CLI still wrote never reaches the next attempt.
           yield* fs.makeDirectory(scratch, { recursive: true });
           yield* fs.writeFileString(`${scratch}/${row.file}`, "stray");
-          yield* next.feed.start(row.agentId, "thread-1", JAN, login);
+          yield* next.feed.start(row.agentId, "thread-1", JAN, yield* connection, login);
           assert.isFalse(yield* fs.exists(`${scratch}/${row.file}`));
           assert.equal(yield* fs.readFileString(row.credential(home)), "old");
         }),
@@ -1632,9 +1683,11 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
         Effect.gen(function* () {
           const fs = yield* FileSystem.FileSystem;
           const home = yield* seedHome(row);
+          const changes = yield* manualFileWatch;
           const { fakeTerminal, feed, key, scratch, waitingCredential } = yield* startReal(
             row,
             home,
+            { watch: () => changes.watch },
           );
 
           const success = yield* fakeTerminal
@@ -1642,6 +1695,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
             .pipe(Effect.forkChild);
           yield* waitingCredential;
           yield* fs.writeFileString(`${scratch}/${row.file}`, "new");
+          yield* changes.change;
           yield* Fiber.join(success);
 
           assert.equal((yield* feed.latest)[key]?.phase, "succeeded");
@@ -1747,48 +1801,4 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
       ),
     );
   },
-);
-
-it.effect.each(
-  Array.from(["claude-code", "codex"] as const, (agentId) => ({
-    title: `${agentId}: a signer write failure is visible and a fresh manual sign-in recovers`,
-    agentId,
-  })),
-)("$title", ({ agentId }) =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const terminal = yield* makeFakeTerminalManager();
-      const auth = yield* makeFakeAuth();
-      let writable = false;
-      const store = yield* makeSignInStore({
-        read: Effect.succeed(undefined),
-        write: () => Effect.sync(() => writable),
-        remove: Effect.succeed(true),
-      });
-      const feed = yield* makeFeed({
-        terminalManager: terminal.service,
-        zeropsAgentAuth: auth,
-        isZeropsEnvironment: true,
-        signIns: store,
-      });
-      const succeed = Effect.gen(function* () {
-        yield* feed.start(agentId, "thread-1", "user-eva");
-        yield* terminal.emit(
-          "thread-1",
-          ZeropsAgentLoginModule.loginTerminalId(agentId),
-          agentId === "claude-code"
-            ? "Login successful. Press Enter to continue…\n"
-            : CODEX_SUCCESS,
-        );
-      });
-      yield* succeed;
-      assert.equal((yield* feed.latest)[agentId]?.phase, "failed");
-      assert.match((yield* feed.latest)[agentId]?.message ?? "", /could not be recorded/);
-      assert.deepEqual(yield* store.load, {});
-      writable = true;
-      yield* succeed;
-      assert.equal((yield* feed.latest)[agentId]?.phase, "succeeded");
-      assert.equal((yield* store.load)[agentId]?.by, "user-eva");
-    }),
-  ),
 );

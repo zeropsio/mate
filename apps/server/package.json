@@ -18,7 +18,7 @@
     "dev": "node --watch src/bin.ts",
     "build:bundle": "vp pack",
     "start": "node dist/bin.mjs",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "effect-tsgo tsrs --noEmit",
     "test": "vp test run"
   },
   "dependencies": {
@@ -39,7 +39,7 @@
     "pngjs": "7.0.0",
     "sharp": "^0.35.5",
     "stream-chain": "^4.2.6",
-    "stream-json": "3.6.0",
+    "stream-json": "3.7.0",
     "yaml": "catalog:",
     "yauzl": "^3.4.0"
   },

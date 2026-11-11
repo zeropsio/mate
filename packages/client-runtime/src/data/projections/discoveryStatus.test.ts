@@ -10,14 +10,19 @@ import { makeAccountStore, readsOfState } from "../store.ts";
 import { initialContainer } from "../../zerops/environments/containerMachine.ts";
 import { discoveryStatus } from "./discoveryStatus.ts";
 
-const key = { orgId: "org", hqAbsent: true };
-const read = (state: AccountState, hqAbsent = true) =>
-  discoveryStatus.derive(readsOfState(state), { ...key, hqAbsent });
-const based = () =>
-  [...liveProjects("org", []), ...liveServices("org", [])].reduce(
-    (s, input) => reduceAccount(s, input).state,
-    emptyAccount,
-  );
+const read = (state: AccountState) => discoveryStatus.derive(readsOfState(state), "org");
+const platform = () => [...liveProjects("org", []), ...liveServices("org", [])];
+/** The platform read and HQ's navigation read: discovery has nothing left to wait for. */
+const based = () => {
+  const registry = AtomRegistry.make();
+  const store = makeAccountStore(registry);
+  platform().forEach(store.dispatch);
+  seedHqNavigation(store, "org", {});
+  const state = store.state();
+  store.close();
+  registry.dispose();
+  return state;
+};
 
 it("unknown, partial and refused discovery never prove no projects", () => {
   expect(read(emptyAccount)).toBe("incomplete");
@@ -43,10 +48,10 @@ it("unknown, partial and refused discovery never prove no projects", () => {
 it("HQ's unread navigation is independent of platform coverage", () => {
   const registry = AtomRegistry.make();
   const store = makeAccountStore(registry);
-  [...liveProjects("org", []), ...liveServices("org", [])].forEach(store.dispatch);
-  expect(read(store.state(), false)).toBe("incomplete");
+  platform().forEach(store.dispatch);
+  expect(read(store.state())).toBe("incomplete");
   seedHqNavigation(store, "org", {});
-  expect(read(store.state(), false)).toBe("complete");
+  expect(read(store.state())).toBe("complete");
   store.close();
   registry.dispose();
 });

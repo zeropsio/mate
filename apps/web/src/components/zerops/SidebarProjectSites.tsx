@@ -1,6 +1,8 @@
 import { ProductionRemoval } from "./GitStopDetail";
+import { runningShort } from "@t3tools/client-runtime/zerops/activity/runningNow";
 import { useProjectRoleOffers } from "~/zerops/usePlatformCapabilities";
 import { GitDeliveryStatus } from "./GitDeliveryStatus";
+import { RunningClock } from "./system";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 /**
  * A project's places on its row (the menu by project): one popover of every address the app knows
@@ -10,16 +12,18 @@ import { useHqAppDetail } from "~/zerops/useHqAppDetail";
  *
  * A place's section is what its chip's menu said (`ChipMenu`): its state, what went wrong, the fix
  * for the viewer's own Mate, its public access, its links and its way to Zerops. A Mate's section
- * is its own project's addresses, its dev and its pair's preview named, and its dev pools'
- * workspaces — one per lease, read from a conversation of the Mate (`useMatesLeases`). Each address
- * is listed once, opens in a new tab, and copies from its row (`c`, ⌘C, or the button its hover
+ * is one row per service by its real hostname (`mateParts`), as a place's addresses are — each
+ * part's dev, then its stage; a pool's dev is each workspace zcp holds on it, by its alias, read
+ * from a conversation of the Mate (`useMatesLeases`) — then its other addresses. A place with nothing
+ * deployed is its head alone. Each address is listed once, opens in a
+ * new tab, and copies from its row or its link (`c`, ⌘C, or the button an address row's hover
  * shows).
  *
  * What it says is `SidebarProjectSites.logic.ts`'s; this draws it.
  */
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
-import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
+import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/gui";
 import {
   ArrowUpRightIcon,
   CheckIcon,
@@ -34,6 +38,7 @@ import {
   useEffect,
   useId,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -47,6 +52,7 @@ import { useAddressesSheet } from "~/zerops/addressesSheet";
 import type { FixProblem } from "~/zerops/fixRequest";
 import { usePublicAccess } from "~/zerops/usePublicAccess";
 import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
+import { useRunningNow } from "~/zerops/activity/useRunningNow";
 import { useLacksOwnDomain } from "~/zerops/ownDomain";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { useMatesLeases, type MatesLeases } from "~/zerops/useMatesLeases";
@@ -60,6 +66,7 @@ import { ownerMark } from "./SidebarMateRow.logic";
 import { AskToFix, ChipPortal, EnvDot, OpenInZerops, type ChipMate } from "./SidebarProductionChip";
 import type { ChipMenuModel, ChipMenuStop, ProductionChip } from "./SidebarProductionChip.logic";
 import {
+  answeringSections,
   filterSites,
   productionUrl,
   projectSitesSections,
@@ -69,8 +76,8 @@ import {
   sitesLinkCount,
   type SitesLink,
   type SitesMateFacts,
+  type SitesService,
   type SitesStatus,
-  type SitesWorkspace,
 } from "./SidebarProjectSites.logic";
 import { StopPublicAccessStatus } from "./StopPublicAccess";
 import { StopReadAgain } from "./StopReadAgain";
@@ -100,7 +107,7 @@ export interface ProjectSitesInput {
   readonly stages: ((nowMs: number) => ChipMenuModel) | undefined;
   /** Every Mate of the project, in the menu's kid order (yours first, then colleagues', each by creation). */
   readonly mates: ReadonlyArray<SitesMate>;
-  /** Production's and the stages' chips as drawn (`drawnChip`, already `asLastKnown` while HQ is paused), for the environment tag. */
+  /** Production's and the stages' chips as drawn (`drawnChip`), for the environment tag. */
   readonly prodChip: ProductionChip | undefined;
   readonly stageChip: ProductionChip | undefined;
   /** The heading line's input (`HeadingLineInput`): what comes up, lands, deploys. */
@@ -119,18 +126,18 @@ const COPIED_MS = 1_200;
 /** How long the section the tag spoke of stays lit. */
 const FLASH_MS = 1_200;
 
-const firstName = (name: string) => name.trim().split(/\s+/u)[0] ?? name;
-
-/** A Mate as its section is read, with zcp's leases where a conversation of it read them. */
+/** A Mate as its section is read, with zcp's leases and pool pairs where a conversation of it read them. */
 const factsOf = (mate: SitesMate, leases: MatesLeases = {}): SitesMateFacts => ({
   projectId: mate.candidate.project.id,
   name: mate.name,
-  owner: mate.owner === undefined || mate.owner.isViewer ? undefined : firstName(mate.owner.name),
+  owner: mate.owner === undefined || mate.owner.isViewer ? undefined : mate.owner.called,
   routes: mate.candidate.routes,
   hostnames: mate.candidate.services?.hostnames,
   controlPlane: mate.candidate.service?.name,
   pools: mate.candidate.services?.pools,
-  leases: leases[mate.candidate.project.id],
+  leases: leases[mate.candidate.project.id]?.leases,
+  poolPairs: leases[mate.candidate.project.id]?.poolPairs,
+  standIns: leases[mate.candidate.project.id]?.standIns,
 });
 
 /** The section a key names, else — for a stage named differently — the first stage's. */
@@ -177,7 +184,7 @@ export function ProjectSites(
   const popup = useRef<HTMLDivElement>(null);
 
   // What the doors say needs no moment: addresses do not age. At rest no Mate's leases are read,
-  // so a dev pool's workspaces are only possible: they keep the globe from saying none.
+  // so a dev pool's previews are only possible: they keep the globe from saying none.
   const restingMates = mates.map((mate) => factsOf(mate));
   const atRest = projectSitesSections({
     production: production?.(0),
@@ -391,6 +398,7 @@ export function SitesPanel({
   query,
   onQuery,
   focusSection,
+  answering = false,
   onAskToFix,
   onOpenStop,
   onClose,
@@ -405,6 +413,8 @@ export function SitesPanel({
   readonly onQuery: (query: string) => void;
   /** The section the tag spoke of: scrolled into view and lit as the popover opens. */
   readonly focusSection: string | undefined;
+  /** Only where the project answers (`answeringSections`): the project's own list. */
+  readonly answering?: boolean | undefined;
   readonly onAskToFix: ProjectSitesInput["onAskToFix"];
   readonly onOpenStop: ProjectSitesInput["onOpenStop"];
   /** Closes the popover, as a door to elsewhere opens. */
@@ -428,13 +438,13 @@ export function SitesPanel({
   const [bound, setBound] = useState<ReadonlyMap<string, ReadonlyArray<ZeropsPublicRoute>>>(
     () => new Map(),
   );
-  // Each Mate's dev pools list its workspaces, as a conversation of the Mate read zcp's leases.
+  // Each Mate's dev pools list their parts' previews, as a conversation of the Mate read zcp's leases.
   const leases = useMatesLeases(
     mates
       .filter((mate) => readsLeases(factsOf(mate)))
       .map((mate) => ({ projectId: mate.candidate.project.id, threadKey: mate.threadKey })),
   );
-  const sections = projectSitesSections({
+  const every = projectSitesSections({
     production: prod,
     productionUnread: prod === undefined && line?.production !== undefined,
     stages: stg,
@@ -443,6 +453,7 @@ export function SitesPanel({
       (stop.projectId === undefined ? undefined : bound.get(stop.projectId)) ?? stop.routes,
     mates: mates.map((mate) => factsOf(mate, leases)),
   });
+  const sections = answering ? answeringSections(every) : every;
   const filtering = query.trim() !== "";
   const kept = new Map(filterSites(sections, query).map((section) => [section.key, section]));
   const total = sitesLinkCount(sections);
@@ -611,6 +622,7 @@ export function SitesPanel({
                   groupId={groupId}
                   manage={manage}
                   place={section.place}
+                  quiet={section.quiet}
                   mates={mates}
                   onAskToFix={onAskToFix}
                   onOpenStop={onOpenStop}
@@ -630,15 +642,11 @@ export function SitesPanel({
                     projectId={section.projectId}
                     title={section.title}
                   />
-                  <SitesWorkspaces
+                  <SitesServices
                     copied={copied}
                     onCopy={copy}
-                    workspaces={
-                      filtering
-                        ? shown?.kind === "mate"
-                          ? shown.workspaces
-                          : []
-                        : section.workspaces
+                    services={
+                      filtering ? (shown?.kind === "mate" ? shown.services : []) : section.services
                     }
                   />
                   {body}
@@ -695,6 +703,7 @@ function PlaceSection({
   stop,
   title,
   place,
+  quiet,
   manage,
   groupId,
   mates,
@@ -707,6 +716,8 @@ function PlaceSection({
   readonly stop: ChipMenuStop | undefined;
   readonly title: string;
   readonly place: "production" | "stage";
+  /** Nothing deployed there: its head alone, title and state word. */
+  readonly quiet: boolean;
   /** `undefined` outside an account, where no sheet reads a place. */
   readonly manage: ManageDoor | undefined;
   readonly groupId: string;
@@ -723,17 +734,32 @@ function PlaceSection({
   const projectId = stop?.git === undefined ? stop?.projectId : undefined;
   const detailId = stop?.environmentId ?? projectId;
   const opens = detailId === undefined ? undefined : onOpenStop(detailId);
+  // The furthest of what its platform runs now, after its word: ` · shop building 2m`. The row
+  // stays one line, so what it runs gives its room to what is happening to it.
+  const [running] = useRunningNow(projectId);
   const row = (
     <>
       <EnvDot dot={stop?.dot ?? "off"} />
       <span className="min-w-0 truncate">
         <b className="font-medium">{title}</b>
-        {stop?.version === undefined ? null : (
+        {stop?.version === undefined || running !== undefined ? null : (
           <span className="zerops-envpop-version">{stop.version}</span>
         )}
       </span>
       <span className="zerops-envpop-word" data-tone={stop?.tone ?? "muted"}>
-        {stop?.git === undefined ? (stop?.word ?? "Reading…") : null}
+        <span>
+          {stop?.git === undefined ? (stop?.word ?? "Reading…") : null}
+          {running === undefined ? null : (
+            <span data-zerops-surface="sidebar-project-sites-running">
+              {" · "}
+              {runningShort(running)}
+            </span>
+          )}
+        </span>
+        {/* Its clock stands at the end while the line has the room, and gives it up first. */}
+        {running === undefined || running.waiting ? null : (
+          <RunningClock short since={running.since} />
+        )}
       </span>
     </>
   );
@@ -757,6 +783,60 @@ function PlaceSection({
         )}
         {projectId === undefined ? null : <ZeropsDoor name={title} projectId={projectId} />}
       </div>
+      {quiet ? null : (
+        <PlaceBody
+          filtering={filtering}
+          groupId={groupId}
+          manage={manage}
+          mates={mates}
+          onAskToFix={onAskToFix}
+          onRoutes={onRoutes}
+          place={place}
+          projectId={projectId}
+          stop={stop}
+          title={title}
+        >
+          {children}
+        </PlaceBody>
+      )}
+    </>
+  );
+}
+
+/**
+ * What a place with something deployed says under its head: what went wrong and the fix, its
+ * public access, its links — and production's offer of a domain of its own while it has none.
+ */
+function PlaceBody({
+  stop,
+  title,
+  place,
+  projectId,
+  manage,
+  groupId,
+  mates,
+  filtering,
+  onAskToFix,
+  onRoutes,
+  children,
+}: {
+  readonly stop: ChipMenuStop | undefined;
+  readonly title: string;
+  readonly place: "production" | "stage";
+  readonly projectId: string | undefined;
+  readonly manage: ManageDoor | undefined;
+  readonly groupId: string;
+  readonly mates: ReadonlyArray<ChipMate>;
+  readonly filtering: boolean;
+  readonly onAskToFix: ProjectSitesInput["onAskToFix"];
+  readonly onRoutes: (
+    projectId: string,
+    routes: ReadonlyArray<ZeropsPublicRoute> | undefined,
+  ) => void;
+  readonly children: ReactNode;
+}) {
+  return (
+    <>
       {filtering || projectId === undefined ? null : <StopReadAgain projectId={projectId} />}
       {filtering || stop?.note === undefined ? null : (
         <p className="zerops-sites-note" data-zerops-surface="sidebar-project-sites-note">
@@ -989,69 +1069,85 @@ function CopyButton({
 }
 
 /**
- * A Mate's dev pools' workspaces, one row per lease: its state's dot in the head's mark column, its
- * name and alias, its state's word, and — while it has a preview to open — the preview, which opens
- * in a new tab and copies from its row like an address.
+ * A Mate's services, one row each as a place's addresses are: its hostname, its host, ↗ — opening
+ * in a new tab, its other ports' hosts in its tooltip, copying on `c` or ⌘C. A service with nothing to open is its hostname alone, muted,
+ * its tooltip saying why.
  */
-function SitesWorkspaces({
-  workspaces,
+function SitesServices({
+  services,
   copied,
   onCopy,
 }: {
-  readonly workspaces: ReadonlyArray<SitesWorkspace>;
+  readonly services: ReadonlyArray<SitesService>;
   readonly copied: string | undefined;
   readonly onCopy: (link: CopiedLink) => void;
 }) {
-  return workspaces.map((workspace) => {
-    const said = (
-      <>
-        <EnvDot dot={workspace.dot} />
-        <span className="zerops-sites-service">{workspace.name}</span>
-        {workspace.alias === undefined ? null : (
-          <span className="zerops-sites-alias">{workspace.alias}</span>
-        )}
-        <span
-          className="zerops-sites-role"
-          data-tone={workspace.dot === "failed" ? "red" : undefined}
-        >
-          {workspace.word}
-        </span>
-      </>
-    );
-    const { url, host } = workspace;
-    if (url === undefined || host === undefined) {
+  return services.map((row) => {
+    const { url } = row;
+    const name = <span className="zerops-sites-service">{row.service}</span>;
+    if (url === undefined)
       return (
         <div
-          className="zerops-sites-link zerops-sites-workspace"
-          data-zerops-surface="sidebar-project-sites-workspace"
-          key={workspace.key}
+          className="zerops-sites-linkrow"
+          data-zerops-surface="sidebar-project-sites-service"
+          key={row.key}
         >
-          {said}
+          <Tooltip>
+            <TooltipTrigger render={<span className="zerops-sites-link zerops-sites-off" />}>
+              {name}
+            </TooltipTrigger>
+            <TooltipPopup side="top">{row.why}</TooltipPopup>
+          </Tooltip>
         </div>
       );
-    }
-    const copyThis = () => {
-      onCopy({ key: workspace.key, url });
+    const done = copied === row.key;
+    const host = row.host ?? url;
+    const anchor = {
+      className: "zerops-sites-link",
+      "data-sites-nav": "",
+      "data-zerops-surface": "sidebar-project-sites-link",
+      href: url,
+      onKeyDown: (event: KeyboardEvent<HTMLAnchorElement>) => {
+        copyOnKey(event, () => {
+          onCopy({ key: row.key, url });
+        });
+      },
+      rel: "noreferrer",
+      target: "_blank",
     };
-    const done = copied === workspace.key;
+    const content = (
+      <>
+        {name}
+        <span className="zerops-sites-host">{host}</span>
+        <ArrowUpRightIcon aria-hidden="true" className="zerops-sites-arrow" />
+      </>
+    );
     return (
-      <div className="zerops-sites-linkrow" data-copied={done ? "" : undefined} key={workspace.key}>
-        <a
-          className="zerops-sites-link zerops-sites-workspace"
-          data-sites-nav=""
-          data-zerops-surface="sidebar-project-sites-workspace"
-          href={url}
-          onKeyDown={(event) => {
-            copyOnKey(event, copyThis);
+      <div
+        className="zerops-sites-linkrow"
+        data-copied={done ? "" : undefined}
+        data-zerops-surface="sidebar-project-sites-service"
+        key={row.key}
+      >
+        {row.more.length === 0 ? (
+          <a {...anchor}>{content}</a>
+        ) : (
+          <Tooltip>
+            <TooltipTrigger render={<a {...anchor} />}>{content}</TooltipTrigger>
+            <TooltipPopup side="top">
+              {[host, ...row.more].map((each) => (
+                <div key={each}>{each}</div>
+              ))}
+            </TooltipPopup>
+          </Tooltip>
+        )}
+        <CopyButton
+          done={done}
+          host={host}
+          onCopy={() => {
+            onCopy({ key: row.key, url });
           }}
-          rel="noreferrer"
-          target="_blank"
-        >
-          {said}
-          <span className="zerops-sites-host">{host}</span>
-          <ArrowUpRightIcon aria-hidden="true" className="zerops-sites-arrow" />
-        </a>
-        <CopyButton done={done} host={host} onCopy={copyThis} />
+        />
       </div>
     );
   });
@@ -1104,7 +1200,6 @@ function SitesLinks({
               <span className="zerops-envpop-port">:{link.port}</span>
             )}
           </span>
-          {link.role === undefined ? null : <span className="zerops-sites-role">{link.role}</span>}
           <span className="zerops-sites-host">{link.host}</span>
           <ArrowUpRightIcon aria-hidden="true" className="zerops-sites-arrow" />
         </a>
@@ -1140,12 +1235,185 @@ export function HeaderSites({
   readonly trigger: ReactElement;
   readonly children: ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
   const mates = sites.mates
     .filter((mate) => mate.candidate.project.id === mateProjectId)
     .map((mate) => (threadKey === undefined ? mate : { ...mate, threadKey }));
-  const line = sites.line === undefined ? undefined : { ...sites.line, stages: [] };
+  return (
+    <SitesPopover mates={mates} sites={sites} surface="chat-header-sites" trigger={trigger}>
+      {children}
+    </SitesPopover>
+  );
+}
+
+const NO_MATES: ReadonlyArray<SitesMate> = [];
+
+/**
+ * The whole project's Sites, from its own page's header: every address it answers at in one list,
+ * grouped by where it runs — each place that has any, then each Mate with its previews. A place
+ * with no address, and a Mate's service with nothing to open, are left out: the list says where
+ * the project answers, and its places say their state on the page under it. `sites` is the project as the menu drew it
+ * (`useProjectSitesOfGroup`).
+ */
+export function PageSites({
+  sites,
+  trigger,
+  children,
+}: {
+  readonly sites: ProjectSitesInput;
+  readonly trigger: ReactElement;
+  readonly children: ReactNode;
+}) {
+  const { production, stages } = sites;
+  const listed = useMemo((): ProjectSitesInput => {
+    const answering = (model: ProjectSitesInput["production"]): ProjectSitesInput["production"] =>
+      model === undefined
+        ? undefined
+        : (nowMs) => ({
+            stops: model(nowMs).stops.filter((stop) => stop.routes.length > 0),
+          });
+    return {
+      ...sites,
+      // A place not read yet is not said here either: only where the project answers.
+      line: undefined,
+      production: answering(production),
+      stages: answering(stages),
+    };
+  }, [production, sites, stages]);
+  return (
+    <SitesPopover
+      answering
+      mates={sites.mates}
+      sites={listed}
+      surface="project-sites"
+      trigger={trigger}
+    >
+      {children}
+    </SitesPopover>
+  );
+}
+
+/**
+ * One place's Sites, from a line or a page that names the place: the same panel, narrowed to that
+ * place alone — its state, its addresses, and the way to manage them. `sites` is the project as
+ * the menu drew it (`useProjectSitesOfGroup`).
+ */
+export function PlaceSites({
+  sites,
+  place,
+  name,
+  trigger,
+  children,
+}: {
+  readonly sites: ProjectSitesInput;
+  /** Which of the project's places: production, or the stage on this Zerops project. */
+  readonly place: { readonly kind: "production" | "stage"; readonly projectId: string };
+  /** The place as the line names it (`Production`). */
+  readonly name: string;
+  readonly trigger: ReactElement;
+  readonly children: ReactNode;
+}) {
+  const { kind, projectId } = place;
+  const { production, stages } = sites;
+  const narrowed = useMemo(
+    (): ProjectSitesInput => ({
+      ...sites,
+      // The other places are not said here, read or unread.
+      line: undefined,
+      production: kind === "production" ? production : undefined,
+      stages:
+        kind !== "stage" || stages === undefined
+          ? undefined
+          : (nowMs) => {
+              const { stops } = stages(nowMs);
+              const own = stops.filter((stop) => stop.projectId === projectId);
+              // A stage the menu's model names otherwise is still among them: never an empty list
+              // behind a line that shows an address.
+              return { stops: own.length === 0 ? stops : own };
+            },
+    }),
+    [kind, production, projectId, sites, stages],
+  );
+  return (
+    <SitesPopover
+      label={`Sites of ${name}`}
+      mates={NO_MATES}
+      sites={narrowed}
+      surface="place-sites"
+      trigger={trigger}
+    >
+      {children}
+    </SitesPopover>
+  );
+}
+
+/**
+ * One Mate's Sites, from its card on its project's page: the same panel, narrowed to that Mate's
+ * own workspaces and previews. The project's places are not said here: each has its own door on
+ * its line.
+ */
+export function MateSites({
+  sites,
+  mateProjectId,
+  name,
+  trigger,
+  children,
+}: {
+  readonly sites: ProjectSitesInput;
+  readonly mateProjectId: string;
+  /** The Mate as its card names it. */
+  readonly name: string;
+  readonly trigger: ReactElement;
+  readonly children: ReactNode;
+}) {
+  const narrowed = useMemo(
+    (): ProjectSitesInput => ({
+      ...sites,
+      line: undefined,
+      production: undefined,
+      stages: undefined,
+    }),
+    [sites],
+  );
+  const mates = useMemo(
+    () => sites.mates.filter((mate) => mate.candidate.project.id === mateProjectId),
+    [mateProjectId, sites.mates],
+  );
+  return (
+    <SitesPopover
+      label={`Sites of ${name}`}
+      mates={mates}
+      sites={narrowed}
+      surface="mate-sites"
+      trigger={trigger}
+    >
+      {children}
+    </SitesPopover>
+  );
+}
+
+/** The Sites panel in a popover of its own, under the door that opens it. */
+function SitesPopover({
+  sites,
+  mates,
+  surface,
+  label,
+  answering,
+  trigger,
+  children,
+}: {
+  readonly sites: ProjectSitesInput;
+  /** The Mates whose sections it lists. */
+  readonly mates: ReadonlyArray<SitesMate>;
+  /** Only where the project answers: no service with nothing to open. */
+  readonly answering?: boolean | undefined;
+  readonly surface: string;
+  /** Its accessible name; the project's sites where absent. */
+  readonly label?: string;
+  readonly trigger: ReactElement;
+  readonly children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const close = () => {
     setOpen(false);
   };
@@ -1167,14 +1435,15 @@ export function HeaderSites({
           sideOffset={6}
         >
           <PopoverPrimitive.Popup
-            aria-label={`Sites of ${sites.projectName}`}
+            aria-label={label ?? `Sites of ${sites.projectName}`}
             className="zerops-sites"
-            data-zerops-surface="chat-header-sites"
+            data-zerops-surface={surface}
           >
             <SitesPanel
+              answering={answering}
               focusSection={undefined}
               groupId={sites.groupId}
-              line={line}
+              line={sites.line}
               mates={mates}
               onAskToFix={
                 sites.onAskToFix === undefined
@@ -1198,7 +1467,7 @@ export function HeaderSites({
               production={sites.production}
               projectName={sites.projectName}
               query={query}
-              stages={undefined}
+              stages={sites.stages}
             />
           </PopoverPrimitive.Popup>
         </PopoverPrimitive.Positioner>

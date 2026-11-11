@@ -37,7 +37,6 @@ import {
   validateCreationForm,
   type NewMateDoor,
   type RecipeOption,
-  pressSteps,
   pressThrough,
 } from "./ZeropsEnvironmentCreationDialog.logic";
 import { draftPeople, type DraftInput } from "./projects/accessDraft.logic";
@@ -45,6 +44,7 @@ import { draftPeople, type DraftInput } from "./projects/accessDraft.logic";
 /** A tier as the group repo's `main` hands it over, already import-ready. */
 const TIER = {
   kind: "tier" as const,
+  revision: "recipe-revision",
   tier: "stage" as const,
   yaml: "services:\n  - hostname: app\n    startWithoutCode: true\n",
 };
@@ -59,21 +59,7 @@ describe("recipeOptions", () => {
     });
     expect(options.map((option) => option.id)).toEqual(["tier", "none"]);
     expect(options[0]?.label).toBe("Same services as the project");
-  });
-
-  /**
-   * Every service arrives empty whatever the tier said: the platform cannot
-   * clone a private repository, so the plan takes each build out
-   * (`recipeTier.ts`) and the first deploy is what fills them. Measured on the
-   * demo where a stage came up `READY_TO_DEPLOY` and nothing said so.
-   */
-  it("says the services arrive without code", () => {
-    const options = recipeOptions({
-      roleLabel: "stage",
-      tier: TIER,
-      services: ["app", "db"],
-      recipe: "present",
-    });
+    // The platform cannot clone a private repository; the first deploy fills the services.
     expect(options[0]?.detail).toBe("app, db · your code arrives with the first deploy");
   });
 
@@ -624,6 +610,17 @@ describe("newMateDoor — whether the project takes another Mate, and why not", 
       },
     },
     {
+      // Cleo composes it again from main by itself: the person only looks.
+      case: "no recipe, Cleo's change conflicting while Cleo redoes it: the change, to see",
+      input: { recipe: "absent", change: { number: 11, mate: "Cleo", redone: true } },
+      door: {
+        kind: "closed",
+        reason:
+          "Beviro's setup for new Mates is waiting in Cleo's change, which Cleo is redoing from main. New Mates can join once it lands.",
+        action: { kind: "change", label: "See the change", number: 11 },
+      },
+    },
+    {
       case: "no recipe, a change open by a Mate no longer there: the change",
       input: { recipe: "absent", mates: [CLEO, JUNO], change: { number: 12, mate: undefined } },
       door: {
@@ -840,6 +837,19 @@ describe("newMateRecipeChange — the change the recipe waits in", () => {
       found: { number: 11, mate: "Cleo" },
     },
     {
+      case: "Cleo's proposal conflicting with main, which Cleo redoes",
+      flow: { changesKnown: true, pullRequests: [change({ mergeability: "conflicting" })] },
+      found: { number: 11, mate: "Cleo", redone: true },
+    },
+    {
+      case: "a conflicting proposal whose Mate is gone, which nobody redoes",
+      flow: {
+        changesKnown: true,
+        pullRequests: [change({ mergeability: "conflicting", mateGone: true })],
+      },
+      found: { number: 11, mate: "Cleo" },
+    },
+    {
       case: "a proposal by a Mate the project no longer has",
       flow: { changesKnown: true, pullRequests: [change({ mateProjectId: "gone-project" })] },
       found: { number: 11, mate: undefined },
@@ -971,13 +981,12 @@ describe("recipeChangeView — where Review the change goes", () => {
 
 // The Add dialog stays on the press until the Mate needs no browser (live, 2026-10-01: a tab
 // closed 2 s after the dialog left a Mate with no container).
-describe("pressSteps — the press as the Add dialog draws it", () => {
-  // As a Mate's press runs (F6b): its record in its application before its container.
+describe("pressThrough — when the press needs no browser", () => {
+  // As a Mate's press runs (F6b): its record in its application before its one import.
   const plan: ReadonlyArray<EnvironmentCreationStep> = [
     { kind: "create-project", name: "Beviro - Ivo", tagList: [], location: undefined },
     { kind: "register" },
     { kind: "import-container", agents: [] },
-    { kind: "close-off" },
     { kind: "await-ready", withAgent: true },
   ];
   const at = (states: ReadonlyArray<EnvironmentCreationStepProgress["state"]>, error?: string) =>
@@ -986,88 +995,18 @@ describe("pressSteps — the press as the Add dialog draws it", () => {
       state: states[index]!,
       ...(error !== undefined && states[index] === "failed" ? { error } : {}),
     }));
-  const drawn = (progress: ReadonlyArray<EnvironmentCreationStepProgress>) =>
-    pressSteps(progress).map((step) => `${step.label}:${step.state}`);
-
   it.each([
+    { case: "registering", states: ["done", "running", "queued", "queued"], want: false },
+    { case: "importing", states: ["done", "done", "running", "queued"], want: false },
+    { case: "registered and imported", states: ["done", "done", "done", "running"], want: true },
     {
-      case: "creating the project",
-      states: ["running", "queued", "queued", "queued", "queued"],
-      want: [
-        "Project:active",
-        "Registered:waiting",
-        "Its computer:waiting",
-        "Private network ready:waiting",
-      ],
-    },
-    {
-      case: "registering it, before its container",
-      states: ["done", "running", "queued", "queued", "queued"],
-      want: [
-        "Project:done",
-        "Registered:active",
-        "Its computer:waiting",
-        "Private network ready:waiting",
-      ],
-    },
-    {
-      case: "a container that would not come",
-      states: ["done", "done", "failed", "queued", "queued"],
-      want: [
-        "Project:done",
-        "Registered:done",
-        "Its computer:failed",
-        "Private network ready:waiting",
-      ],
-    },
-  ] as const)("draws $case", ({ states, want }) => {
-    expect(drawn(at(states))).toEqual(want);
-  });
-
-  // The dialog stays through the registration — a call or two — and goes before the wait for it,
-  // which the container covers.
-  it("says nothing of what comes after the registration", () => {
-    expect(pressSteps(at(["done", "done", "done", "done", "running"]))).toHaveLength(4);
-  });
-
-  it("leaves Registered out of a press that writes no registration", () => {
-    const progress = at(["done", "done", "done", "done", "running"]).filter(
-      (entry) => entry.step.kind !== "register",
-    );
-    expect(drawn(progress)).toEqual([
-      "Project:done",
-      "Its computer:done",
-      "Private network ready:done",
-    ]);
-  });
-
-  it.each([
-    {
-      case: "registering",
-      states: ["done", "running", "queued", "queued", "queued"],
-      want: false,
-    },
-    {
-      case: "closing off",
-      states: ["done", "done", "done", "running", "queued"],
-      want: false,
-    },
-    {
-      case: "registered and closed off",
-      states: ["done", "done", "done", "done", "running"],
+      case: "its registration refused, imported",
+      states: ["done", "failed", "done", "running"],
       want: true,
     },
-    {
-      case: "its registration refused, closed off",
-      states: ["done", "failed", "done", "done", "running"],
-      want: true,
-    },
-  ] as const)(
-    "is through once closed off and registered, or refused: $case",
-    ({ states, want }) => {
-      expect(pressThrough(at(states))).toBe(want);
-    },
-  );
+  ] as const)("is through once imported and registered, or refused: $case", ({ states, want }) => {
+    expect(pressThrough(at(states))).toBe(want);
+  });
 });
 
 describe("environmentSheetSubmit — what a stage's or a production's one sheet sends", () => {

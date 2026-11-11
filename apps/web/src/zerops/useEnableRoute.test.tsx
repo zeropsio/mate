@@ -6,13 +6,12 @@ import { createElement, useLayoutEffect } from "react";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
+import * as accountOperations from "./accountOperations";
+import * as accountData from "./ZeropsAccountData";
+import * as accountLifetime from "./accountLifetime";
 import { useEnableRoute, type EnableRoute } from "./useEnableRoute";
 
-const mock = vi.hoisted(() => ({ submit: vi.fn() }));
-
-vi.mock("./accountOperations", () => ({ useAccountOperations: () => ({ submit: mock.submit }) }));
-vi.mock("./ZeropsAccountData", () => ({ useAccountData: () => ({ orgId: "org-1" }) }));
-vi.mock("./accountLifetime", () => ({ captureAccountLifetime: () => () => true }));
+const mock = { submit: vi.fn() };
 
 const mounted: ReactTestRenderer[] = [];
 let route: EnableRoute;
@@ -27,12 +26,20 @@ function Probe() {
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   mock.submit.mockReset();
+  vi.spyOn(accountOperations, "useAccountOperations").mockReturnValue({
+    submit: mock.submit,
+  } as unknown as ReturnType<typeof accountOperations.useAccountOperations>);
+  vi.spyOn(accountData, "useAccountData").mockReturnValue({ orgId: "org-1" } as ReturnType<
+    typeof accountData.useAccountData
+  >);
+  vi.spyOn(accountLifetime, "captureAccountLifetime").mockReturnValue(() => true);
   act(() => {
     mounted.push(create(createElement(Probe)));
   });
 });
 afterEach(() => {
   for (const tree of mounted.splice(0)) act(() => tree.unmount());
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 

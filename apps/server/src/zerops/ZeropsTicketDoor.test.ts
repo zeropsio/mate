@@ -4,6 +4,8 @@ import * as Option from "effect/Option";
 import * as TestClock from "effect/testing/TestClock";
 import { make, type TicketFrame } from "./ZeropsTicketDoor.ts";
 
+/** The admission the ticket came under stands. */
+const live = () => true;
 const ticket: TicketFrame = {
   type: "ticket",
   ticket: "hq-ticket",
@@ -16,8 +18,9 @@ describe("ZeropsTicketDoor", () => {
   it.effect("TC-6 a ticket opens one connection once and carries no role", () =>
     Effect.gen(function* () {
       const door = yield* make;
-      yield* door.heard(ticket);
-      assert.deepEqual(Option.getOrUndefined(yield* door.consume({ ticket: "hq-ticket" })), {
+      yield* door.heard(ticket, live);
+      const consumed = yield* door.consume({ ticket: "hq-ticket" });
+      assert.deepEqual(Option.getOrUndefined(Option.map(consumed, (held) => held.identity)), {
         ticket: "hq-ticket",
         userId: "jan",
         sessionId: "hq-session",
@@ -30,7 +33,7 @@ describe("ZeropsTicketDoor", () => {
     Effect.gen(function* () {
       const door = yield* make;
       const anotherMate = yield* make;
-      yield* door.heard(ticket);
+      yield* door.heard(ticket, live);
       for (const frame of [
         null,
         [],
@@ -51,12 +54,12 @@ describe("ZeropsTicketDoor", () => {
     () =>
       Effect.gen(function* () {
         const door = yield* make;
-        yield* door.heard({ ...ticket, expiresIn: 120 });
+        yield* door.heard({ ...ticket, expiresIn: 120 }, live);
         yield* TestClock.adjust("59 seconds");
-        yield* door.heard(ticket);
+        yield* door.heard(ticket, live);
         yield* TestClock.adjust("1 second");
         assert.isTrue(Option.isNone(yield* door.consume({ ticket: "hq-ticket" })));
-        yield* door.heard({ ...ticket, ticket: "short", expiresIn: 2 });
+        yield* door.heard({ ...ticket, ticket: "short", expiresIn: 2 }, live);
         yield* TestClock.adjust("2 seconds");
         assert.isTrue(Option.isNone(yield* door.consume({ ticket: "short" })));
       }),
@@ -64,9 +67,9 @@ describe("ZeropsTicketDoor", () => {
   it.effect("TC-8 sign-out also refuses tickets issued before a connection opened", () =>
     Effect.gen(function* () {
       const door = yield* make;
-      yield* door.heard(ticket);
-      yield* door.closeSession("hq-session");
-      yield* door.heard(ticket);
+      yield* door.heard(ticket, live);
+      yield* door.end({ session: "hq-session" });
+      yield* door.heard(ticket, live);
       assert.isTrue(Option.isNone(yield* door.consume({ ticket: "hq-ticket" })));
     }),
   );

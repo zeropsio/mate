@@ -1,7 +1,7 @@
 /**
  * The places an organization may put a new project (`GET /client/{id}/settings`, its
- * `locationList` alone): sampled while the new project dialog asks where, read again on every
- * new demand.
+ * `locationList` alone): a near-static setting, read once when the new project dialog first asks
+ * where, and again only on the person's again.
  *
  * @module data/families/organizationLocations
  */
@@ -43,7 +43,7 @@ export const organizationLocationsFamily: FamilySpec<"organizationLocations"> = 
             }),
           ),
       }),
-    freshMs: 0,
+    freshMs: null,
   },
 };
 

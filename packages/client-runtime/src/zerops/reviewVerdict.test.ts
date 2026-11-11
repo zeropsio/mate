@@ -1,5 +1,6 @@
 import { HqEnvironmentId } from "@t3tools/contracts";
 import type { HqChange } from "@t3tools/shared/hqChanges";
+import { releaseOutcomeOf } from "./releaseFacts.ts";
 import { gitDeliveryOf } from "./gitDelivery.ts";
 // @effect-diagnostics globalDate:off -- fixture timestamps are offsets from a fixed instant, not wall-clock reads.
 import { describe, expect, it } from "vite-plus/test";
@@ -76,7 +77,7 @@ describe("change and release reviews use HQ's release verdict", () => {
           release: gate,
         }),
       );
-      expect(dialog.verdict.title).toBe(allowed ? "Ready to release" : "Nothing to release");
+      expect(dialog.verdict.state).toBe(allowed ? "release-ready" : "release-blocked");
       expect(footer.primary).toBeUndefined();
       if (!allowed) {
         expect(footer.consequence).toBe(RELEASE_NOTHING_NEW_ON_MAIN);
@@ -107,6 +108,47 @@ describe("changeReview: the verdict comes first (R2)", () => {
       {
         state: "ready",
         tone: "quiet",
+        title: "Draft",
+        why: "Nova hasn't described its latest work · No conflicts with main · 3 commits",
+        fix: undefined,
+      },
+    ],
+    [
+      "a draft again: HQ couldn't check the push in time",
+      { pull: pull({ ready: false, draftReason: "notes_timed_out" }), commits: 3 },
+      {
+        state: "ready",
+        tone: "quiet",
+        title: "Draft",
+        why: "HQ couldn't check the latest push in time, so Nova needs to describe it again · No conflicts with main · 3 commits",
+        fix: {
+          verb: "describe it again",
+          problem: {
+            what: "Change #2 is a draft again: HQ couldn't check its latest push in time",
+            ask: "Describe the change again as it is now.",
+          },
+        },
+      },
+    ],
+    [
+      "a draft again: HQ couldn't read the push",
+      { pull: pull({ ready: false, draftReason: "notes_unread" }), commits: 3 },
+      {
+        title: "Draft",
+        why: "HQ couldn't read the latest push, so Nova needs to describe it again · No conflicts with main · 3 commits",
+        fix: {
+          verb: "describe it again",
+          problem: {
+            what: "Change #2 is a draft again: HQ couldn't read its latest push",
+            ask: "Describe the change again as it is now.",
+          },
+        },
+      },
+    ],
+    [
+      "a draft for a reason this client does not know: no extra words",
+      { pull: pull({ ready: false, draftReason: "later_reason" }), commits: 3 },
+      {
         title: "Draft",
         why: "Nova hasn't described its latest work · No conflicts with main · 3 commits",
         fix: undefined,
@@ -424,20 +466,20 @@ describe("changeReview: a recipe change says what its merge does, and is never r
     [
       "production",
       { production: true },
-      "Production gets any service added to its recipe, created empty; the services it has stay as they are.",
-      "production gets any new service",
+      "Production gets any service added to its recipe with its next release; the services it has stay as they are.",
+      "production gets any new service with its next release",
     ],
     [
       "the stage and production",
       { stages: 1, production: true },
-      "The stage and production get any service added to their recipes, created empty; the services they have stay as they are.",
-      "the stage and production get any new service",
+      "The stage gets any service added to its recipe, created empty, and production with its next release; the services they have stay as they are.",
+      "the stage gets any new service, production with its next release",
     ],
     [
       "the stages and production, and a Mate added later",
       { stages: 2, production: true, later: ["mate"] },
-      "The stages and production get any service added to their recipes, created empty; the services they have stay as they are. A Mate added later is made from the new recipe.",
-      "the stages and production get any new service",
+      "The stages get any service added to their recipe, created empty, and production with its next release; the services they have stay as they are. A Mate added later is made from the new recipe.",
+      "the stages get any new service, production with its next release",
     ],
     [
       // The owner's case, 2026-09-30: a service added to these two, and a release offered for it.
@@ -505,7 +547,7 @@ describe("changeReview: a recipe change says what its merge does, and is never r
   });
 
   const UNREAD =
-    "Each environment gets any service added to its recipe, created empty; the services it has stay as they are.";
+    "A stage gets any service added to its recipe, created empty, and production with its next release; the services they have stay as they are.";
 
   it("says what any recipe change does where its files could not be read", () => {
     const review = changeReview(change({ pull: recipe(), readout: "failed", ...releasable }));
@@ -556,7 +598,7 @@ describe("releaseReview", () => {
       {
         state: "release-ready",
         tone: "ok",
-        title: "Ready to release",
+        title: "Release v0.1.57",
         why: "Stage runs both changes",
       },
     ],
@@ -581,19 +623,19 @@ describe("releaseReview", () => {
       {
         state: "release-blocked",
         tone: "attention",
-        title: "Only releasers can release",
+        title: "Release v0.1.57",
         why: "You need more than Read access to this project's production to release it",
       },
     ],
     [
       "still comparing what goes out: no verdict before it is known",
       { gate: { allowed: false, reason: RELEASE_CHECKING } },
-      { state: "release-blocked", tone: "busy", title: "Checking what goes out" },
+      { state: "release-blocked", tone: "busy", title: "Release v0.1.57" },
     ],
     [
       "nothing new",
       { gate: { allowed: false, reason: RELEASE_NOTHING_NEW_ON_MAIN } },
-      { state: "release-blocked", tone: "done", title: "Nothing to release" },
+      { state: "release-blocked", tone: "done", title: "Release v0.1.57" },
     ],
     [
       "releasing",
@@ -611,7 +653,7 @@ describe("releaseReview", () => {
       {
         state: "released",
         tone: "done",
-        title: "Released v0.1.57",
+        title: "v0.1.57 is live",
         why: "Production runs it · released 3 minutes ago",
       },
     ],
@@ -628,7 +670,7 @@ describe("releaseReview", () => {
       {
         state: "release-failed",
         tone: "failed",
-        title: "v0.1.57 didn't go out",
+        title: "v0.1.57 didn't go live",
         why: "The build of app failed",
       },
     ],
@@ -665,7 +707,7 @@ describe("releaseReview", () => {
     [
       "still comparing what goes out",
       { gate: { allowed: false, reason: RELEASE_CHECKING }, replaces: { kind: "first" } },
-      "It takes a minute or two.",
+      "Takes a minute or two",
       false,
     ],
     [
@@ -1403,6 +1445,23 @@ describe("changeReview: a change closed without merging", () => {
     expect(review.verdict.why).toBe("Nova closed it; its branch is still there");
   });
 
+  // The owner, 2026-11-10: a Mate wrote into a change's title that another had already taken it
+  // to main, which nothing else said. HQ closes one another change's landing carried, and names it.
+  // witness: packages/client-runtime/src/zerops/reviewVerdict.ts | if (pull.landedWith !== undefined) return landedWithReview → if (pull.landedWith === undefined) return landedWithReview
+  it("says a change another change's landing carried was merged as part of it, never closed without merging", () => {
+    const review = changeReview(
+      change({ pull: pull({ state: "closed", merged: false, landedWith: 38 }) }),
+    );
+    expect(review.verdict).toMatchObject({
+      state: "closed",
+      tone: "done",
+      title: "Merged as part of #38",
+      why: "#38 was built on it and merged first",
+    });
+    expect(review.primary).toBeUndefined();
+    expect(review.consequence).toBe("All of it is on main; nothing more merges from here.");
+  });
+
   it.each([
     ["an open one", { state: "open" }, "ready"],
     ["a landed one", { state: "closed", merged: true, mergedAt: minutesAgo(5) }, "merged"],
@@ -1424,7 +1483,7 @@ describe("changeReview: Merge takes only a head whose change was shown", () => {
       "its files for this head still being read: off, with its reason, its keys and its place kept",
       "reading",
       { enabled: false, safe: false, shortcut: true },
-      "Merging waits until its files are read.",
+      "Loading change details…",
     ],
     [
       "its files for this head could not be read",
@@ -1437,6 +1496,14 @@ describe("changeReview: Merge takes only a head whose change was shown", () => {
       "read",
       { enabled: true, safe: true },
       "Adds this change to main. Production isn't touched until you release.",
+    ],
+    // Lukas, 2026-10-28: Merge stayed off beside "Merging waits until its files are read" until a
+    // reload, for a change drawn from the menu's row: HQ had not said its head, so nothing was read.
+    [
+      "no head HQ said for it, and the wait for it over: off, never merged blind",
+      "unread",
+      { enabled: false, safe: false },
+      "Nothing merges from here until HQ sends this change's details.",
     ],
   ])("%s", (_case, readout, primary, consequence) => {
     const review = changeReview(change({ readout }));
@@ -1452,7 +1519,7 @@ describe("changeReview: Merge takes only a head whose change was shown", () => {
       }),
     );
     expect(review.primary).toEqual({ label: "Merge", enabled: false, safe: false });
-    expect(review.consequence).toBe("Merging waits until its files are read.");
+    expect(review.consequence).toBe("Loading change details…");
   });
 
   it("keeps a blocked change's reason while its files are read", () => {
@@ -1480,7 +1547,7 @@ it.each([undefined, true, false])(
   },
 );
 
-// The one question after the first code merge of an application with no production (MODEL §3,
+// The one question after the first code merge, for the tiers an application lacks (MODEL §3,
 // §9.3 – §9.5, §9.11): said once, in the review of the merge this person just finished, never on a
 // reopen, never to somebody with nothing to answer it with.
 describe("changeReview: where should it run (the one question)", () => {
@@ -1490,7 +1557,6 @@ describe("changeReview: where should it run (the one question)", () => {
       pull: pull({ merged: true, mergedAt: minutesAgo(1), firstCodeMerge: true }),
       press: { kind: "done" },
       downstream: { production: false, stage: false },
-      productionHeld: false,
       addable: both,
       ...over,
     });
@@ -1544,7 +1610,6 @@ describe("changeReview: where should it run (the one question)", () => {
       "the merge is a recipe's",
       { pull: pull({ merged: true, kind: "recipe", firstCodeMerge: true }) },
     ],
-    ["a production is held in any state (being made, failed)", { productionHeld: true }],
     ["the review is reopened: nobody pressed Merge here", { press: { kind: "idle" } }],
     ["the merge is still running", { press: { kind: "running" } }],
     ["the person may add neither", { addable: { stage: false, production: false } }],
@@ -1859,5 +1924,71 @@ describe("Git release review evidence", () => {
     expect(model.primary).toBeUndefined();
     expect(model.ifWrong).toBeUndefined();
     expect(model.verdict.fix).toBeUndefined();
+  });
+});
+
+const HQ_PROBLEM = {
+  code: "schema_invalid",
+  what: "minCpu is not accepted",
+  where: { appId: "app", service: "api", tier: "production", file: "production.yaml" },
+  rule: {
+    source: "zerops-schema",
+    schemaPath: "/properties/services",
+    instancePath: "/services/0/minCpu",
+  },
+  next: { actor: "mate", action: "Use verticalAutoscaling and propose a corrected recipe." },
+} as const;
+
+describe("HQ actionable findings in change review", () => {
+  it("Validation that is pending or unavailable is never shown as passing, and live code with a failed endpoint is not labelled a failed deploy.", () => {
+    expect(
+      releaseOutcomeOf({
+        reads: { environmentInputs: [], stalled: undefined },
+        tagged: {
+          tag: "v1",
+          verdict: "approved",
+          detail: "The live endpoint refused a connection",
+          line: "api head",
+          entries: [{ service: "api", commit: "head" }],
+          taggedAt: "2026-09-29T10:00:00Z",
+          standing: "live",
+          word: "Live",
+          rollBack: false,
+          failedEntries: [],
+        },
+        releasing: false,
+        pressing: false,
+        tag: "v1",
+        clockMs: NOW,
+      }),
+    ).toEqual({ kind: "released", at: "2026-09-29T10:00:00Z" });
+    for (const validation of [
+      { head: "head", state: "unavailable", problems: [] },
+      { head: "old-head", state: "valid", problems: [] },
+    ] as const) {
+      const model = changeReview(
+        change({
+          pull: { ...pull({ kind: "recipe", headSha: "head" }), recipeValidation: validation },
+        }),
+      );
+      expect(model.primary?.enabled).toBe(false);
+      expect(model.verdict.title).toBe(
+        validation.state === "unavailable" ? "Validation unavailable" : "Recipe validation pending",
+      );
+    }
+  });
+  it("A refusal shows what failed, where, by which rule and the concrete next step from HQ's finding; repeating the same invalid recipe is never its only action.", () => {
+    const model = changeReview(
+      change({
+        pull: {
+          ...pull({ kind: "recipe", headSha: "head" }),
+          recipeValidation: { head: "head", state: "invalid", problems: [HQ_PROBLEM] },
+        },
+      }),
+    );
+    expect(model.primary?.enabled).toBe(false);
+    expect(model.problems).toEqual([HQ_PROBLEM]);
+    expect(model.verdict.fix?.problem.problems).toEqual([HQ_PROBLEM]);
+    expect(model.verdict.fix?.problem.ask).toContain(HQ_PROBLEM.next.action);
   });
 });

@@ -15,11 +15,16 @@
  * surfaces read. The writes are the host's (`PutLiveHost`).
  */
 import { creationHandoff } from "@t3tools/client-runtime/data";
+import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import {
+  productionProjectOf,
+  releaseFailure,
   RELEASE_NOTHING_NEW_ON_MAIN,
   type EnvironmentCreationOutcome,
+  type ReleaseFailure,
   type ReleaseGate,
+  isPlatformSubdomain,
 } from "@t3tools/client-runtime/zerops";
 
 /** Where a run stands: one step at a time, never two at once. */
@@ -400,13 +405,31 @@ export interface PutLiveFacts {
   readonly releases: ReadonlyArray<{
     readonly tag: string;
     readonly standing: "live" | "deploy-failed" | undefined;
-    readonly verdict?: string | undefined;
-    readonly detail?: string | undefined;
     /** When HQ made it: what a release followed from its way out counts from. */
     readonly taggedAt?: string | undefined;
     /** The release it rolls production back to, where it is a roll back. */
     readonly rollbackOf?: string | undefined;
   }>;
+  /** How the release `tag` did not go through, with HQ's words (`releaseFailure`). */
+  readonly failure: (tag: string) => ReleaseFailure | undefined;
+}
+
+/** What a run reads of the project's flow. */
+export function putLiveFactsOf(flow: ZeropsProjectFlow): PutLiveFacts {
+  return {
+    production: productionProjectOf(flow.environments),
+    gate: flow.release.gate,
+    releases: flow.releases,
+    failure: (tag) => {
+      const release = flow.releases.find((entry) => entry.tag === tag);
+      return release === undefined
+        ? undefined
+        : releaseFailure(release, {
+            environmentInputs: flow.environmentInputs,
+            stalled: flow.release.stalled,
+          });
+    },
+  };
 }
 
 /** What a run waits for next, read off the flow: nothing yet, a release to make, or its end. */
@@ -495,12 +518,26 @@ export function putLiveNext(run: PutLiveRun, facts: PutLiveFacts, now?: number):
   if (run.phase === "releasing" && run.tag !== undefined) {
     const row = facts.releases.find((entry) => entry.tag === run.tag);
     if (row?.standing === "live") return { kind: "live" };
-    if (row?.standing === "deploy-failed")
-      return { kind: "failed", words: `${run.tag} didn't go out: its deploy failed.` };
-    if (row?.verdict === "refused")
-      return { kind: "failed", words: row.detail ?? `HQ refused ${run.tag}.` };
+    const failure = facts.failure(run.tag);
+    if (failure !== undefined) return { kind: "failed", words: putLiveFailureWords(failure) };
   }
   return { kind: "wait" };
+}
+
+/** A release that did not go through, in the row's words: HQ's, where it said any. */
+function putLiveFailureWords(failure: ReleaseFailure): string {
+  const { tag, error } = failure;
+  const why = error?.replace(/\.$/u, "");
+  switch (failure.kind) {
+    case "deploy-failed":
+      return `${tag} didn't go out: ${why ?? "its deploy failed"}.`;
+    case "refused":
+      return error ?? `HQ refused ${tag}.`;
+    case "stalled":
+      return why === undefined
+        ? `Deploy status unknown for ${tag}: check it in Zerops.`
+        : `${tag} didn't go live: ${why}.`;
+  }
 }
 
 /**
@@ -601,11 +638,14 @@ export function putLiveReleased(run: PutLiveRun, nowMs: number): string {
   return `${line} · ${age}`;
 }
 
-/** The address the live card leads with: production's first, without its scheme. */
+/**
+ * The address the live card leads with, without its scheme: production's own domain where it has
+ * one — what its people open — else its first address, the platform's.
+ */
 export function putLiveAddress(
   addresses: ReadonlyArray<{ readonly url: string }>,
 ): { readonly url: string; readonly host: string } | undefined {
-  const first = addresses[0];
+  const first = addresses.find((address) => !isPlatformSubdomain(address.url)) ?? addresses[0];
   if (first === undefined) return undefined;
   return { url: first.url, host: first.url.replace(/^[a-z]+:\/\//iu, "").replace(/\/+$/u, "") };
 }
@@ -696,6 +736,7 @@ export function putLiveResumed(input: {
     };
   if (current !== undefined || kept === undefined) return NONE;
   if (!mine) return { kind: "forget" };
+  const failed = newest === undefined ? undefined : facts.failure(newest.tag);
   return {
     kind: "stopped",
     run: {
@@ -704,9 +745,9 @@ export function putLiveResumed(input: {
       failedAt: "creating",
       failure: {
         words:
-          newest?.standing === "deploy-failed"
-            ? `${newest.tag} didn't go out: its deploy failed.`
-            : `Production is made; ${facts.suggestion} isn't released yet.`,
+          failed === undefined
+            ? `Production is made; ${facts.suggestion} isn't released yet.`
+            : putLiveFailureWords(failed),
         action: "release",
       },
     },

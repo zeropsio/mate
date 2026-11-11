@@ -35,7 +35,7 @@ import {
   foldSubagentActivities,
   type RuntimeSubagent,
 } from "@t3tools/client-runtime/state/subagentRuntime";
-import { act, StrictMode, type ReactNode } from "react";
+import { act, Fragment, StrictMode, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -51,6 +51,10 @@ import { useHelperFocus } from "./helperFocus";
 import { SLOT_HOLD_MS, SLOT_MIN_SHOW_MS } from "./liveSlot.logic";
 import { forgetRunFolds, setRunFold } from "./runCard.logic";
 import { foldWork } from "./foldWork";
+import * as foldWorkModule from "./foldWork";
+import * as operationCard from "../../zerops/activity/useOperationCard";
+import * as mates from "../../zerops/useZeropsMates";
+import * as highlightedTokens from "./HighlightedTokens";
 import {
   TimelineRowActivityCtx,
   TimelineRowCtx,
@@ -63,26 +67,31 @@ import { stepOf } from "./workSteps.logic";
 
 // An operation in the live slot reads the platform through its card's hook;
 // the account store it reads is not drawn here, so it reads nothing.
-vi.mock("../../zerops/activity/useOperationCard", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../zerops/activity/useOperationCard")>()),
-  useOperationCard: () => ({}),
-}));
-
 // Whether the card's Mate is automated: its record is not drawn here, so a test says it.
-const knownMate = vi.hoisted(() => ({ automated: false }));
-vi.mock("../../zerops/useZeropsMates", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../zerops/useZeropsMates")>();
-  return {
-    ...actual,
-    useKnownMate: (environmentId: EnvironmentId) =>
-      knownMate.automated
-        ? ({ automated: true } as ReturnType<typeof actual.useKnownMate>)
-        : actual.useKnownMate(environmentId),
-  };
+const knownMate = { automated: false };
+beforeEach(() => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.spyOn(operationCard, "useOperationCard").mockReturnValue(
+    {} as ReturnType<typeof operationCard.useOperationCard>,
+  );
+  const originalKnownMate = mates.useKnownMate;
+  vi.spyOn(mates, "useKnownMate").mockImplementation((environmentId) =>
+    knownMate.automated
+      ? ({ automated: true } as ReturnType<typeof mates.useKnownMate>)
+      : originalKnownMate(environmentId),
+  );
+  // Measured execution is held until the test supplies its completion receipt.
+  vi.spyOn(foldWorkModule, "foldWork").mockImplementation(() => () => undefined);
+  // These conversation tests read the command text, not asynchronous syntax colors.
+  vi.spyOn(highlightedTokens, "HighlightedTokens").mockImplementation(({ code }) => [
+    <Fragment key="code">{code}</Fragment>,
+  ]);
 });
-
-// Measured execution is held until the test supplies its completion receipt.
-vi.mock("./foldWork", () => ({ foldWork: vi.fn(() => () => undefined) }));
+afterEach(() => {
+  knownMate.automated = false;
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 const at = (second: number) => new Date(Date.UTC(2026, 8, 27, 10, 0, second)).toISOString();
 const turnId = TurnId.make("turn-1");
@@ -555,26 +564,30 @@ describe("RunChat", () => {
   // Live on Milo, 2026-10-10: the clock read 0:00 well into the run, counting the line that had
   // just begun.
   it("counts the run's own time on its clock, never a line's that just began", () => {
-    const started = new Date(Date.now() - 5 * 60_000).toISOString();
-    const markup = draw(
-      record([], {
-        live: true,
-        status: status({ startedAt: started }),
-        now: {
-          kind: "step",
-          step: stepOf(
-            command("w9", "npm run lint", {
-              createdAt: new Date().toISOString(),
-              toolLifecycleStatus: "inProgress",
-              updatedAt: undefined as never,
-            }),
-          ),
-        },
-      }),
-    );
-    expect(markupDom(markup).querySelector("[data-work-line-clock]")?.textContent).toMatch(
-      /^5:0\d$/u,
-    );
+    const now = at(300);
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.parse(now));
+    try {
+      const markup = draw(
+        record([], {
+          live: true,
+          status: status({ startedAt: at(0) }),
+          now: {
+            kind: "step",
+            step: stepOf(
+              command("w9", "npm run lint", {
+                createdAt: now,
+                startedAt: now,
+                toolLifecycleStatus: "inProgress",
+                updatedAt: undefined as never,
+              }),
+            ),
+          },
+        }),
+      );
+      expect(markupDom(markup).querySelector("[data-work-line-clock]")?.textContent).toBe("5:00");
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   // The owner, 2026-10-10: "with long answer there is a bit of disconnect with the still 'running'
@@ -598,10 +611,13 @@ describe("RunChat", () => {
       );
     const live = writing(true);
     const note = live.querySelector('[data-chat-kind="note"]')!;
-    expect(note.querySelector("[data-note-writing]")).not.toBeNull();
+    // Beside the bubble's foot, never in it (the owner, 2026-11-10: in its foot they stood on the
+    // words and on its edge).
+    expect(note.querySelector("[data-note-writing]")).toBeNull();
+    expect(note.nextElementSibling?.matches("[data-note-writing]")).toBe(true);
     expect(note.closest("[data-chat-row]")!.querySelector("[data-work-line-clock]")).toBeNull();
     expect(note.closest("[data-chat-row]")!.querySelector("button")).toBeNull();
-    expect(writing(false).querySelector('[data-chat-kind="note"] [data-note-writing]')).toBeNull();
+    expect(writing(false).querySelector("[data-note-writing]")).toBeNull();
   });
 
   // Run 5 (A +0:45.8): a wake's first call stood 1.7 s as an empty bubble beside a half-clipped
@@ -701,44 +717,57 @@ describe("RunChat", () => {
   // the background ticks in its bar, never again in the chat; a deploy ticks
   // in its bar, never again as the now line's long-step words.
   it("ticks each running thing once: the run's one clock, never a step's own (K3)", () => {
-    const background: RecordItem = {
-      kind: "step",
-      key: "step:w1",
-      at: at(9),
-      step: stepOf(
-        command("w1", "pnpm dev", {
-          callInput: { description: "Serve the app on port 3000" },
-          toolLifecycleStatus: "inProgress",
-          updatedAt: undefined as never,
-        }),
-      ),
-    };
-    const serving = draw(record([background], { live: true, status: status() }));
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.parse(at(300)));
+    try {
+      const background: RecordItem = {
+        kind: "step",
+        key: "step:w1",
+        at: at(9),
+        step: stepOf(
+          command("w1", "pnpm dev", {
+            callInput: { description: "Serve the app on port 3000" },
+            toolLifecycleStatus: "inProgress",
+            updatedAt: undefined as never,
+          }),
+        ),
+      };
+      const serving = draw(record([background], { live: true, status: status() }));
 
-    expect(markupDom(serving).body.textContent).toContain("Running");
-    expect(
-      markupDom(serving).querySelector('[data-chat-kind="step:command"]')?.textContent,
-    ).not.toMatch(/\d+:\d\d/u);
-    const since = new Date(Date.now() - 45_000).toISOString();
-    const running = (kind: "deploy" | "browser") => {
-      const entry = operation("o1", "turn-1", 1, {
-        kind,
-        phase: "running",
-        anchorAt: since,
-        subject: kind === "deploy" ? "appdev" : "https://shop.dev/status",
-        voice: kind === "deploy" ? "Deploying appdev." : "Checking /status",
-      });
-      if (entry.kind !== "operation") throw new Error("an operation");
-      const { settledAt: _settled, ...taking } = entry.operation;
-      return draw(
-        record([], { live: true, now: { kind: "operation", operation: taking }, status: status() }),
-      );
-    };
-    // A step past 30 s still says what runs, with no clock of its own beside the run's.
-    for (const kind of ["deploy", "browser"] as const) {
-      expect(running(kind)).not.toMatch(/· 0:4\d/u);
+      expect(markupDom(serving).body.textContent).toContain("Running");
+      expect(
+        markupDom(serving).querySelector('[data-chat-kind="step:command"]')?.textContent,
+      ).not.toMatch(/\d+:\d\d/u);
+      const since = at(255);
+      const running = (kind: "deploy" | "browser") => {
+        const entry = operation("o1", "turn-1", 1, {
+          kind,
+          phase: "running",
+          anchorAt: since,
+          subject: kind === "deploy" ? "appdev" : "https://shop.dev/status",
+          voice: kind === "deploy" ? "Deploying appdev." : "Checking /status",
+        });
+        if (entry.kind !== "operation") throw new Error("an operation");
+        const { settledAt: _settled, ...taking } = entry.operation;
+        return draw(
+          record([], {
+            live: true,
+            now: { kind: "operation", operation: taking },
+            status: status(),
+          }),
+        );
+      };
+      // A step past 30 s still says what runs, with no clock of its own beside the run's.
+      for (const kind of ["deploy", "browser"] as const) {
+        const markup = running(kind);
+        expect(markup).not.toMatch(/· 0:4\d/u);
+        const document = markupDom(markup);
+        expect(document.body.textContent).not.toContain("0:45");
+        expect(document.querySelector("[data-work-line-clock]")?.textContent).toBe("5:00");
+      }
+      expect(running("browser")).toMatch(/Checking [^<]*in the browser/u);
+    } finally {
+      clock.mockRestore();
     }
-    expect(running("browser")).toMatch(/Checking [^<]*in the browser/u);
   });
 
   it("counts the run's time in ink, never in the busy blue", () => {
@@ -983,7 +1012,8 @@ describe("RunChat", () => {
         },
       ]),
     );
-    expect(html).toContain(">Deploy appdev<");
+    // The service it names stands in the mono face, a real thing's own name.
+    expect(html).toContain('>Deploy <span class="real-name">appdev</span><');
     expect(html).not.toContain("Deploying appdev");
     expect(html).not.toContain(">Running<");
     if (time === null) expect(html).not.toContain("No result");
@@ -2309,38 +2339,6 @@ describe("RunChat, as the person uses it", () => {
         expect(controls[0]!.textContent).toBe(fold === "folded" ? "Show work" : "Hide work");
       },
     );
-  });
-
-  // The folded live card keeps the present under its head: Hide work hides the history (CI,
-  // images.scenario: the call streaming its updates vanished once the person folded the card).
-  it("keeps the call it runs under a folded live card's head, its history folded away", () => {
-    try {
-      const running = stepOf(
-        command("w2", "pnpm build", {
-          toolLifecycleStatus: "inProgress",
-          sourceActivityKind: "tool.started",
-        }),
-      );
-      const renderer = mount(
-        record([step(command("w1", "echo ready"))], {
-          live: true,
-          status: status(),
-          now: { kind: "step", step: running },
-        }),
-      );
-      act(() => button(renderer, "Hide work").props.onClick());
-      const slot = renderer.root.find(
-        (node) => node.type === "div" && node.props.className === "run-slot",
-      );
-      expect(slot.props.hidden).toBe(false);
-      expect(JSON.stringify(renderer.toJSON())).toContain("pnpm build");
-      const history = renderer.root.findAll(
-        (node) => node.type === "div" && String(node.props.className).includes("run-above"),
-      );
-      expect(history.every((node) => node.props.hidden === true)).toBe(true);
-    } finally {
-      forgetRunFolds(SHARED.routeThreadKey);
-    }
   });
 
   describe("the log and its work opener", () => {

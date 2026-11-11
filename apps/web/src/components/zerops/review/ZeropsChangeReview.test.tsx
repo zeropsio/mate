@@ -5,6 +5,7 @@
  */
 import {
   changeReadoutOfRecord,
+  flowChange,
   RELEASE_NOTHING_NEW_ON_MAIN,
   type FlowPullRequest,
 } from "@t3tools/client-runtime/zerops";
@@ -17,7 +18,7 @@ import type {
 } from "@t3tools/shared/hqChanges";
 import { HqError } from "@t3tools/client-runtime/zerops/hq";
 import { Window } from "happy-dom";
-import { act, createElement } from "react";
+import { act, createElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -43,7 +44,10 @@ const account = vi.hoisted(() => ({
   reads: [] as Array<string>,
   readError: null as unknown,
   verbs: [] as Array<readonly unknown[]>,
-  answer: { ok: true } as { readonly ok: true } | { readonly ok: false; readonly reason: string },
+  answer: { ok: true } as
+    | { readonly ok: true }
+    | { readonly ok: false; readonly reason: string }
+    | Promise<{ readonly ok: true } | { readonly ok: false; readonly reason: string }>,
 }));
 
 vi.mock("~/zerops/projectFlows", () => ({
@@ -102,6 +106,15 @@ const hq = vi.hoisted(() => ({
   },
 }));
 vi.mock("~/zerops/accountHq", () => ({ useOfficialHq: () => hq }));
+// The sheet's ⋯ menu, drawn open: its items are buttons the test DOM can press.
+vi.mock("~/components/ui/menu", async (actual) => ({
+  ...(await actual<typeof import("~/components/ui/menu")>()),
+  Menu: ({ children }: { readonly children?: ReactNode }) => children,
+  MenuTrigger: () => null,
+  MenuPopup: ({ children }: { readonly children?: ReactNode }) => children,
+  MenuItem: (props: { readonly children?: ReactNode; readonly onClick?: () => void }) =>
+    createElement("button", { onClick: props.onClick, type: "button" }, props.children),
+}));
 vi.mock("@tanstack/react-router", async (actual) => ({
   ...(await actual<typeof import("@tanstack/react-router")>()),
   useRouter: () => ({ navigate: async () => {} }),
@@ -126,7 +139,7 @@ vi.mock("~/zerops/useChangeDiscussion", () => ({
   }),
 }));
 vi.mock("~/zerops/useZeropsChangeRun", () => ({
-  useZeropsChangeRun: () => ({ words: undefined, reading: false, threadRef: undefined }),
+  useZeropsChangeRun: () => ({ threadRef: undefined }),
 }));
 vi.mock("~/zerops/useProjectedHqPicture", () => ({
   useHqPictureSource: () => undefined,
@@ -149,7 +162,6 @@ vi.mock("~/zerops/useAddEnvironment", () => ({
   useAddEnvironment: () => () => undefined,
   useEnvironmentQuestionFacts: () => ({
     addable: { stage: false, production: false },
-    productionHeld: false,
   }),
 }));
 vi.mock("~/zerops/fixRequest", () => ({
@@ -174,7 +186,6 @@ const offers = vi.hoisted(() => {
       comment: true,
       merge: true,
       close: true,
-      redeploy: true,
       why: {},
       readRefused: false,
     },
@@ -195,6 +206,7 @@ vi.mock("~/zerops/useHqAppDetail", async () => {
         };
       }, [key]);
     },
+    useHqAppFailure: () => undefined,
   };
 });
 vi.mock("~/zerops/useChangeOffers", () => ({ useChangeOffers: () => () => offers.of() }));
@@ -249,7 +261,6 @@ const DEVELOPS: ZeropsChangeOffers = {
   comment: true,
   merge: true,
   close: true,
-  redeploy: true,
   why: {},
   readRefused: false,
 };
@@ -275,7 +286,7 @@ function viewProps(
     readout: {
       kind: "read",
       value: changeReadoutOfRecord(
-        { mergeability: "clean", behind: false } as HqChange,
+        { mergeability: "clean", behind: false, body: "" } as HqChange,
         review({ files }),
       ),
     },
@@ -293,7 +304,6 @@ function viewProps(
     offers: DEVELOPS,
     press: { kind: "idle" },
     closing: { kind: "idle" },
-    run: { words: undefined, reading: false },
     hqAddress: undefined,
     pictures: undefined,
     environments: [{ tier: "stage" }, { tier: "production" }],
@@ -345,6 +355,7 @@ describe("ChangeReviewView: a change review from what HQ recorded", () => {
       {
         mergeability: "clean",
         behind: false,
+        body: "",
       } as HqChange,
       {
         mergeBase: MAIN,
@@ -363,6 +374,88 @@ describe("ChangeReviewView: a change review from what HQ recorded", () => {
       },
     );
 
+  // Lukas, 2026-10-28: change #4's "What it does" opened with its Mate's reply about #1 and #3.
+  it.each([
+    [
+      "the description its Mate wrote",
+      "Adds a tip jar under the total.",
+      "Adds a tip jar under the total.",
+    ],
+    ["nothing where its Mate wrote none", "", undefined],
+  ])("What it does says, from the change's own record, %s", (_case, body, said) => {
+    const markup = render(merged({ merged: false, description: undefined }), [], {
+      readout: {
+        kind: "read",
+        value: changeReadoutOfRecord(
+          { mergeability: "clean", behind: false, body } as HqChange,
+          review(),
+        ),
+      },
+    });
+    if (said === undefined) expect(textOf(markup)).not.toContain("What it does");
+    else expect(textOf(markup)).toContain(`What it does ${said}`);
+  });
+
+  it("While the review waits for HQ's record it says Loading change details…", () => {
+    const document = new Window().document;
+    document.body.innerHTML = render(merged({ merged: false }), [], {
+      readout: { kind: "reading" },
+    });
+    expect(document.body.textContent).toContain("Loading change details…");
+    expect(document.body.textContent).not.toContain("files are read");
+    expect(
+      document.querySelector('[data-zerops-primary-action="Merge"]')?.hasAttribute("disabled"),
+    ).toBe(true);
+  });
+
+  // Lukas, 2026-10-28: a change whose head HQ never said held Merge until a reload, with no way out.
+  it("a change whose head HQ never said offers Try again and never merges blind", () => {
+    const document = new Window().document;
+    document.body.innerHTML = render(merged({ merged: false, headSha: undefined }), [], {
+      readout: { kind: "failed", reason: "HQ hasn't sent them in time." },
+      onRetry: noop,
+    });
+    const retry = [...document.querySelectorAll("button")].find(
+      (button) => button.textContent === "Try again" && button.closest("[hidden]") === null,
+    );
+    expect(retry?.parentElement?.textContent).toContain("HQ hasn't sent them in time.");
+    expect(
+      document.querySelector('[data-zerops-primary-action="Merge"]')?.hasAttribute("disabled"),
+    ).toBe(true);
+    expect(document.body.textContent).toContain(
+      "Nothing merges from here until HQ sends this change's details.",
+    );
+  });
+
+  it("opening Files or reading each diff is never a prerequisite for Merge", () => {
+    const document = new Window().document;
+    document.body.innerHTML = render(merged({ merged: false }), [], {
+      readout: { kind: "read", value: recorded(null) },
+      showFiles: noop,
+    });
+    const merge = document.querySelector('[data-zerops-primary-action="Merge"]');
+    expect(merge).not.toBeNull();
+    expect(merge?.hasAttribute("disabled")).toBe(false);
+    expect(document.body.textContent).toContain("Show files");
+  });
+
+  it("a failed metadata read explains the failure and offers retry", () => {
+    const markup = render(merged({ merged: false }), [], {
+      readout: { kind: "failed", reason: "HQ is not answering right now." },
+      onRetry: noop,
+    });
+    const document = new Window().document;
+    document.body.innerHTML = markup;
+    const retry = [...document.querySelectorAll("button")].find(
+      (button) => button.textContent === "Try again" && button.closest("[hidden]") === null,
+    );
+    expect(
+      retry,
+      "ASSERTION: metadata failure retry is visible without opening Files",
+    ).toBeDefined();
+    expect(retry?.parentElement?.textContent).toContain("HQ is not answering right now.");
+  });
+
   it("Files not recorded yet read not known yet", () => {
     const markup = render(merged(), [], {
       readout: { kind: "read", value: recorded(null) },
@@ -370,6 +463,16 @@ describe("ChangeReviewView: a change review from what HQ recorded", () => {
     });
     expect(textOf(markup)).toContain("The files are not known yet.");
     expect(textOf(markup)).toContain("Show files");
+  });
+
+  // Kara's #2, 2026-10-28: "Files 0 changed · +0 −0" and a bare "Commits" over
+  // a change whose description listed the files it edits — HQ had recorded neither.
+  it("Files and commits HQ has not recorded say so on their rows, never 0 changed", () => {
+    const text = textOf(render(merged(), [], { readout: { kind: "read", value: recorded(null) } }));
+    expect(text).toContain("Files Not known yet");
+    expect(text).toContain("Commits Not known yet");
+    expect(text).not.toContain("0 changed");
+    expect(text).not.toContain("+0");
   });
 
   it("A file HQ recorded no status for draws no letter, never a guessed M", () => {
@@ -427,6 +530,120 @@ describe("ChangeReviewView: a change review from what HQ recorded", () => {
     });
     expect(textOf(markup)).toContain("The commits are not known yet.");
     expect(textOf(markup)).toContain("Show commits");
+  });
+});
+
+describe("ChangeReviewView: a change as HQ's record of it says", () => {
+  const MATE_COMMIT = {
+    sha: "1".repeat(40),
+    subject: "Add the search box",
+    authorName: "Wren",
+    at: "2026-09-30T09:00:00.000Z",
+  };
+  const HQ_MERGE = {
+    sha: "2".repeat(40),
+    subject: "Merge main as #3 landed it",
+    authorName: "Core",
+    at: "2026-09-30T09:40:00.000Z",
+  };
+  /** An open change of Wren's at HQ, `over` it, its commits HQ's merge and Wren's own. */
+  const record = (over: Partial<HqChange> = {}): HqChange => ({
+    appId: "group-orchard",
+    repo: "appdev",
+    number: 7,
+    mateProjectId: "p-wren",
+    title: "Search the orders",
+    body: "",
+    state: "open",
+    head: HQ_MERGE.sha,
+    mergedSha: null,
+    landedHead: null,
+    openedAt: "2026-09-30T08:00:00.000Z",
+    mergedAt: null,
+    closedAt: null,
+    updatedAt: "2026-09-30T09:40:00.000Z",
+    mergeability: "clean",
+    behind: false,
+    ready: true,
+    comments: 0,
+    ...over,
+  });
+  const shown = (change: HqChange, over: Partial<ChangeReviewViewProps> = {}) =>
+    textOf(
+      render(flowChange(change, hq.address), [], {
+        readout: {
+          kind: "read",
+          value: changeReadoutOfRecord(change, review({ commits: [HQ_MERGE, MATE_COMMIT] })),
+        },
+        ...over,
+      }),
+    );
+  const corePush = {
+    at: "2026-09-30T09:40:02.000Z",
+    from: MATE_COMMIT.sha,
+    head: HQ_MERGE.sha,
+    landed: 3,
+    squash: "3".repeat(40),
+  };
+
+  it.each([
+    [
+      "the merged change's title, where the flow holds it",
+      "Show the order list",
+      "HQ brought main in after “Show the order list” merged",
+    ],
+    ["its number, where the flow does not", undefined, "HQ brought main in after #3 merged"],
+  ])(
+    "A change HQ brought main into lists HQ's merge as HQ's push, naming %s",
+    (_name, landedTitle, line) => {
+      const text = shown(record({ corePush }), { landedTitle });
+      expect(text).toContain(line);
+      expect(text).toContain("Add the search box");
+      expect(text).not.toContain("Merge main as #3 landed it");
+      // HQ's rule kept it described: its push asks for no new description.
+      expect(text).toContain("Ready to merge");
+    },
+  );
+
+  it("A change HQ never pushed to lists its commits as they are", () => {
+    const text = shown(record());
+    expect(text).toContain("Merge main as #3 landed it");
+    expect(text).not.toContain("HQ brought main in");
+  });
+
+  it.each([
+    [
+      "HQ's check of the push ran out of time",
+      "notes_timed_out",
+      "HQ couldn't check the latest push in time, so Wren needs to describe it again",
+    ],
+    [
+      "HQ could not read the push",
+      "notes_unread",
+      "HQ couldn't read the latest push, so Wren needs to describe it again",
+    ],
+  ])(
+    "A draft again because %s says why, and offers to ask its Mate to describe it again",
+    (_name, draftReason, why) => {
+      const text = shown(record({ ready: false, draftReason }), {
+        mate: { name: "Wren", tint: undefined, mine: true },
+      });
+      expect(text).toContain("Draft");
+      expect(text).toContain(why);
+      expect(text).toContain("Ask Wren to describe it again");
+    },
+  );
+
+  it.each([
+    ["a draft HQ gave no reason for", {}],
+    ["a draft for a reason this client does not know", { draftReason: "later_reason" }],
+  ])("%s says only that its Mate hasn't described its latest work", (_name, over) => {
+    const text = shown(record({ ready: false, ...over }), {
+      mate: { name: "Wren", tint: undefined, mine: true },
+    });
+    expect(text).toContain("Wren hasn't described its latest work");
+    expect(text).not.toContain("HQ couldn't");
+    expect(text).not.toContain("describe it again");
   });
 });
 
@@ -583,7 +800,6 @@ describe("ChangeReviewView: an open change", () => {
         comment: false,
         merge: false,
         close: false,
-        redeploy: false,
         why: { merge: "HQ unavailable since 10:00." },
         readRefused: false,
       },
@@ -600,7 +816,7 @@ describe("ChangeReviewView: an open change", () => {
       readout: {
         kind: "read",
         value: changeReadoutOfRecord(
-          { mergeability: "empty", behind: false } as HqChange,
+          { mergeability: "empty", behind: false, body: "" } as HqChange,
           review({
             commits: Array.from({ length: 20 }, (_, i) => ({
               sha: String(i),
@@ -616,12 +832,6 @@ describe("ChangeReviewView: an open change", () => {
     expect(footOf(html)).toContain("Nothing to deliver: main already has this.");
     expect(footOf(html)).not.toContain("Adds this change");
     expect(footOf(html)).not.toContain('data-zerops-primary-action="Merge"');
-    expect(footOf(html)).toContain(">Close without merging…</button>");
-  });
-
-  it("that merges cleanly offers Merge, safe to press, and Close without merging beside it", () => {
-    const html = render(open, files);
-    expect(html).toMatch(/data-safe="true" data-zerops-primary-action="Merge"/u);
     expect(footOf(html)).toContain(">Close without merging…</button>");
   });
 
@@ -709,10 +919,10 @@ describe("ChangeReviewView: an open change", () => {
       const html = render(
         { ...open, pullRequest: { ...pullRequest, state: "open", checks: "passing" } },
         files,
-        { stage: "appstage" },
+        { stages: ["appstage"] },
       );
       expect(textOf(footOf(html))).toContain("Merge on GitHub");
-      expect(textOf(footOf(html))).not.toContain("Merge to appstage");
+      expect(textOf(footOf(html))).not.toContain("Merge to");
     });
 
     it("a merged pull request shows as merged on GitHub", () => {
@@ -726,21 +936,40 @@ describe("ChangeReviewView: an open change", () => {
     });
 
     it("a change mirrored to no pull request names none, and merges as ever", () => {
-      const html = render(open, files, { stage: "appstage" });
+      const html = render(open, files, { stages: ["appstage"] });
       expect(prLink(html)).toBeNull();
-      expect(textOf(footOf(html))).toContain("Merge to appstage");
+      expect(textOf(footOf(html))).toContain("Merge");
+      expect(textOf(footOf(html))).not.toContain("Merge to");
+      expect(textOf(footOf(html))).toContain("Lands on main; Appstage deploys it.");
     });
   });
 
   // Guide 0.8: a verb this person cannot finish is not offered.
   it("offers neither where HQ's rule does not, and says what merging takes", () => {
     const html = render(open, files, {
-      offers: { ...DEVELOPS, merge: false, close: false, redeploy: false },
+      offers: { ...DEVELOPS, merge: false, close: false },
     });
     expect(footOf(html)).not.toContain("<button");
     expect(textOf(html)).toContain(
       "You need more than Read access to one of this project's Zerops projects to do this.",
     );
+  });
+
+  // Larkspur, 2026-10-28: "stage deploys it" over a stage that had never deployed a merge.
+  it("promises no deploy where no stage deploys what merges into main", () => {
+    const html = render(open, files, { environments: [{ tier: "stage" }], stages: [] });
+    expect(textOf(footOf(html))).toContain("Adds this change to main.");
+    expect(textOf(footOf(html))).not.toContain("deploys it");
+    expect(textOf(footOf(html))).not.toContain("picks it up");
+  });
+
+  // Larkspur, 2026-10-28: "Try it: shop shopstage-7c1e-5195.prg1.zerops.app".
+  it("names Try it by whose preview it opens and its part, never by its address", () => {
+    const url = "https://shopstage-7c1e-5195.prg1.zerops.app";
+    const html = render(open, files, { previews: [{ service: "shopstage", url }] });
+    expect(textOf(html)).toContain("Try it Wren's preview · shopstage");
+    expect(textOf(html)).not.toContain("shopstage-7c1e-5195");
+    expect(html).toContain(`href="${url}"`);
   });
 
   it("says it is merging while the press runs, the button held", () => {
@@ -783,6 +1012,8 @@ function installTestDom(): void {
     Element: TestNode,
     HTMLElement: TestNode,
     Node: TestNode,
+    setInterval: globalThis.setInterval,
+    clearInterval: globalThis.clearInterval,
     setTimeout: globalThis.setTimeout,
     clearTimeout: globalThis.clearTimeout,
     addEventListener() {},
@@ -909,6 +1140,34 @@ describe("ZeropsChangeReview: a change its project's flow does not hold yet", ()
     kind: "read",
     value: changeReadoutOfRecord(API_CHANGE, review({ files: [changed("src/api.ts")] })),
   };
+
+  it("merge shows progress and the real result", async () => {
+    detail.readout = READ_DETAIL;
+    let finish: (outcome: { readonly ok: true }) => void = () => {
+      throw new Error("The merge response was not held");
+    };
+    account.answer = new Promise<{ readonly ok: true }>((resolve) => {
+      finish = resolve;
+    });
+
+    await reviewed(async (host) => {
+      const enabledMerge = () =>
+        elementsOf(host, "button").some(
+          (button) =>
+            button.textContent.trim().startsWith("Merge") && !button.hasAttribute("disabled"),
+        );
+      expect(enabledMerge()).toBe(true);
+      await pressed(host, "Merge");
+      expect(account.verbs).toEqual([
+        ["merge", "group-orchard", { repository: "apidev", number: 1 }, API_CHANGE.head],
+      ]);
+      expect(host.textContent).toContain("Merging into main");
+      expect(enabledMerge()).toBe(false);
+      await act(async () => finish({ ok: true }));
+      expect(host.textContent).toContain("Merged into main");
+      expect(enabledMerge()).toBe(false);
+    });
+  });
 
   it.each([
     [404, "refused", true, "apidev has no change #1"],
@@ -1232,7 +1491,6 @@ describe("the one question after the first merge", () => {
   const asking: Partial<ChangeReviewViewProps> = {
     environments: [],
     press: { kind: "done" },
-    productionHeld: false,
     addable: { stage: true, production: true },
   };
 
@@ -1254,7 +1512,6 @@ describe("the one question after the first merge", () => {
   it.each([
     ["it was not the first code merge", merged({ firstCodeMerge: false }), asking],
     ["the review is only reopened", FIRST, { ...asking, press: { kind: "idle" } as const }],
-    ["a production is held", FIRST, { ...asking, productionHeld: true }],
     [
       "the person may add nothing",
       FIRST,
@@ -1414,4 +1671,57 @@ describe("ChangeReviewView: its code in the Git browser", () => {
     });
     expect(gitLinks(html)).toEqual([]);
   });
+});
+
+it("an invalid group recipe shows every HQ location and next action without offering Merge as passing", () => {
+  const problem = {
+    code: "invalid_recipe",
+    what: "Unsupported field minCpu",
+    where: { appId: "shop", service: "worker", tier: "production", file: "production.yaml" },
+    rule: {
+      source: "zerops-schema" as const,
+      schemaPath: "#/additionalProperties",
+      instancePath: "/services/0/minCpu",
+    },
+    next: { actor: "Mate", action: "Remove minCpu and use verticalAutoscaling" },
+  };
+  const page = new Window().document;
+  const pull = merged({
+    state: "open",
+    merged: false,
+    kind: "recipe",
+    repository: "group",
+    recipeValidation: { head: "c".repeat(40), state: "invalid", problems: [problem] },
+  });
+  page.body.innerHTML = render(pull, [changed("production.yaml")], {
+    mate: { name: "Wren", tint: undefined, mine: true },
+  });
+  for (const value of [
+    problem.what,
+    "worker",
+    "production.yaml",
+    "#/additionalProperties",
+    "/services/0/minCpu",
+    problem.next.action,
+  ])
+    expect(page.body.textContent).toContain(value);
+  expect(page.querySelector("[data-review-primary]")?.hasAttribute("disabled")).toBe(true);
+  expect(page.body.textContent).toContain("Ask Wren to address it");
+});
+
+it("recipe validation unavailable is shown as unavailable rather than passing or invalid", () => {
+  const page = new Window().document;
+  page.body.innerHTML = render(
+    merged({
+      state: "open",
+      merged: false,
+      kind: "recipe",
+      repository: "group",
+      recipeValidation: { head: "c".repeat(40), state: "unavailable", problems: [] },
+    }),
+    [changed("production.yaml")],
+  );
+  expect(page.body.textContent).toContain("Validation unavailable");
+  expect(page.body.textContent).not.toContain("Recipe validation failed");
+  expect(page.querySelector("[data-review-primary]")?.hasAttribute("disabled")).toBe(true);
 });

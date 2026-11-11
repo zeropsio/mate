@@ -75,9 +75,10 @@ import {
   type ChangeState,
   type FlowPullRequest,
 } from "./projectFlow.ts";
-import type { ZeropsPublicRoute } from "./publicRoutes.ts";
+import { isPlatformSubdomain, type ZeropsPublicRoute } from "./publicRoutes.ts";
 import { shortCommit, type ReleaseGate } from "./release.ts";
 import { REVIEW_LABEL, REVIEW_RELEASE_LABEL } from "./reviewVerdict.ts";
+import type { MatePart } from "./mateParts.ts";
 import { previewLabel, servicePairs } from "./servicePairs.ts";
 import { firstDeploy, stopImport, type FirstDeploy, type PlatformService } from "./stopComing.ts";
 import type { GitDelivery } from "./gitDelivery.ts";
@@ -92,8 +93,10 @@ export interface GroupFlowPreview {
 export interface GroupFlowMate {
   readonly projectId: string;
   readonly name: string;
-  /** Its previews, one per pair with a public stage half ({@link pairPreviewRoutes}). */
+  /** Its previews, one per part with a public preview, by its service's hostname. */
   readonly previews: ReadonlyArray<GroupFlowPreview>;
+  /** Its parts (`mateParts`), each with its preview where it has one; absent where unread. */
+  readonly parts?: ReadonlyArray<MatePart>;
   /** It has stopped and asks something — its face reads `needs`. */
   readonly waiting: boolean;
   /** Its last run stopped on an error: its face reads `needs` too, but it asks nothing. */
@@ -732,12 +735,14 @@ export interface GroupFlowAddress {
 export function placeAddresses(
   routes: ReadonlyArray<Pick<ZeropsPublicRoute, "service" | "url">>,
 ): ReadonlyArray<GroupFlowAddress> {
-  const seen = new Set<string>();
-  const addresses: GroupFlowAddress[] = [];
+  // A service's own domain is its door over the platform's subdomain, which its routes list first:
+  // people reach a production at the domain its owner gave it.
+  const doorOf = new Map<string, GroupFlowAddress>();
   for (const route of routes) {
-    if (seen.has(route.service)) continue;
-    seen.add(route.service);
-    addresses.push({ service: route.service, url: route.url });
+    const held = doorOf.get(route.service);
+    if (held !== undefined && !(isPlatformSubdomain(held.url) && !isPlatformSubdomain(route.url)))
+      continue;
+    doorOf.set(route.service, { service: route.service, url: route.url });
   }
-  return addresses;
+  return [...doorOf.values()];
 }

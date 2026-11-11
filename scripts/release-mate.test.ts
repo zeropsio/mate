@@ -150,6 +150,7 @@ esac
               env: {
                 ...process.env,
                 PATH: `${dir}:${process.env.PATH}`,
+                MATE_GH: "",
                 RELEASE_TEST_ROOT: dir,
               },
             },
@@ -290,7 +291,7 @@ it("Decision: orchestrator chose tag-from-green-SHA over a push hold (analysis: 
     const bin = NodePath.join(root, "bin");
     NodeFS.mkdirSync(bin);
     NodeFS.writeFileSync(
-      NodePath.join(bin, "gh-mate"),
+      NodePath.join(bin, "gh"),
       `#!/bin/sh
 case "$*" in
  *ci.yml/runs*) echo '{"workflow_runs":[{"head_sha":"${source}","head_branch":"main","status":"completed","conclusion":"success"}]}' ;;
@@ -318,7 +319,7 @@ esac
         {
           cwd: root,
           encoding: "utf8",
-          env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+          env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, MATE_GH: "" },
           timeout: 30_000,
         },
       );
@@ -417,7 +418,7 @@ const releaseDriverFixture = (options: {
   const bin = NodePath.join(root, "bin");
   NodeFS.mkdirSync(bin);
   NodeFS.writeFileSync(
-    NodePath.join(bin, "gh-mate"),
+    NodePath.join(bin, "gh"),
     `#!/usr/bin/env node
 const fs = require("node:fs");
 const cp = require("node:child_process");
@@ -479,7 +480,12 @@ globalThis.setTimeout = (callback, delay, ...args) => timer(callback, delay === 
         {
           cwd: root,
           encoding: "utf8",
-          env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, RELEASE_TEST_ROOT: root },
+          env: {
+            ...process.env,
+            PATH: `${bin}:${process.env.PATH}`,
+            MATE_GH: "",
+            RELEASE_TEST_ROOT: root,
+          },
           timeout: 30_000,
         },
       ),

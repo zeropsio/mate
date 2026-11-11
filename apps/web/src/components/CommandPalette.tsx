@@ -31,18 +31,20 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import {
+  type ClientSettings,
   EnvironmentId,
   type ProjectId,
   type SourceControlDiscoveryResult,
   type SourceControlProviderKind,
   type SourceControlRepositoryInfo,
 } from "@t3tools/contracts";
-import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
+import { useNavigate, useParams } from "@tanstack/react-router";
 import * as Option from "effect/Option";
 import {
   ArrowLeftIcon,
   ChartNoAxesColumnIcon,
   CornerLeftUpIcon,
+  Drama as PersonaIcon,
   FileSearchIcon,
   FolderIcon,
   FolderPlusIcon,
@@ -94,14 +96,19 @@ import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments"
 import {
   useAllEnvironmentShellsBootstrapped,
   useProjects,
+  useServerConfigs,
   useThreadShells,
   waitForProject,
 } from "../state/entities";
+import { useRightPanelStore } from "../rightPanelStore";
+import { zeropsMateAt } from "../zerops/mateIdentities";
+import { zeropsMatesAtom } from "../zerops/useZeropsMates";
 import { useThreadSearch } from "../state/queries";
 import {
   shownHqListedMatesAtom,
   shownCanonicalHqListNavigationAtom,
   shownHqMateDirectoryAtom,
+  shownMateVisibilitiesAtom,
   isListedMateEnvironment,
 } from "@t3tools/client-runtime/data";
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
@@ -173,7 +180,6 @@ import { SidebarJumpBox } from "./zerops/SidebarJumpBox";
 import { useSidebarJump } from "../zerops/sidebarJump";
 import { askNewProject } from "../zerops/newProjectAsk";
 import { useHqMatesRead } from "../zerops/useHqMatesRead";
-import { useHqGate } from "../zerops/hqGate";
 import { useZeropsSessionOptional } from "../zerops/ZeropsSessionProvider";
 import { candidateListingAtom } from "../zerops/useZeropsCandidates";
 import { slashKeyOpensJumpBox } from "../zerops/jumpSlash";
@@ -198,6 +204,11 @@ import {
   buildSidebarProjectSnapshots,
 } from "../sidebarProjectGrouping";
 import type { Project } from "../types";
+
+const selectCommandPaletteSortOrders = (settings: ClientSettings) => ({
+  sidebarProjectSortOrder: settings.sidebarProjectSortOrder,
+  sidebarThreadSortOrder: settings.sidebarThreadSortOrder,
+});
 
 const APPEARANCE_OPTIONS = [
   { mode: "system", label: "System", icon: MonitorIcon },
@@ -712,16 +723,14 @@ export function OpenCommandPaletteDialog(props: {
   readonly onLeaveCommands?: () => void;
 }) {
   const navigate = useNavigate();
-  // Behind the organization's gate (ADR 0001) nothing is offered to make.
-  const pathname = useLocation({ select: (location) => location.pathname });
-  const gated = useHqGate(pathname).gate.kind !== "open";
   const roleOffered = useRoleOffers();
   const { clearOpenIntent, openIntent, openOverlayMode, setOpen } = props;
   const [query, setQuery] = useState(props.initialQuery ?? "");
   const deferredQuery = useDeferredValue(query);
   const isActionsOnly = deferredQuery.startsWith(">");
   const [highlightedItemValue, setHighlightedItemValue] = useState<string | null>(null);
-  const clientSettings = useClientSettings();
+  const clientSettings = useClientSettings(selectCommandPaletteSortOrders);
+  const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
   const createProject = useAtomCommand(projectEnvironment.create, {
     reportFailure: false,
   });
@@ -756,6 +765,8 @@ export function OpenCommandPaletteDialog(props: {
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const { activeDraftThread, activeThread, defaultProjectRef, handleNewThread } =
     useHandleNewThread();
+  const zeropsMates = useAtomValue(zeropsMatesAtom);
+  const serverConfigs = useServerConfigs();
   const allProjects = useProjects();
   const projects = useMemo(
     () =>
@@ -858,10 +869,6 @@ export function OpenCommandPaletteDialog(props: {
   const [addProjectCloneFlow, setAddProjectCloneFlow] = useState<AddProjectCloneFlow | null>(null);
   const [isRemoteProjectLookingUp, setIsRemoteProjectLookingUp] = useState(false);
   const [isRemoteProjectCloning, setIsRemoteProjectCloning] = useState(false);
-  const projectGroupingSettings = useMemo(
-    () => selectProjectGroupingSettings(clientSettings),
-    [clientSettings],
-  );
 
   const environmentLabelById = useMemo(
     () =>
@@ -1257,6 +1264,9 @@ export function OpenCommandPaletteDialog(props: {
   );
 
   const hqMates = useAtomValue(shownHqListedMatesAtom);
+  const mateVisibilities = useAtomValue(
+    shownMateVisibilitiesAtom(Object.keys(hqMates.mates).join(",")),
+  );
   const candidateListing = useAtomValue(candidateListingAtom);
   const hqStructure = useAtomValue(shownCanonicalHqListNavigationAtom);
   const mateNames = useMemo(
@@ -1277,16 +1287,24 @@ export function OpenCommandPaletteDialog(props: {
     );
     return {
       mates: new Map(Object.entries(hqMates.mates)),
-      current: hqMates.live,
       connected: (environmentId) => connected.has(environmentId),
       linkable,
+      visibilityByProject: mateVisibilities,
       lastVisitedAt: (environmentId, threadId) =>
         threadLastVisitedAtById[scopedThreadKey(scopeThreadRef(environmentId, threadId))],
       mateName: (projectId) => mateNames.get(projectId),
       mateApp: (projectId) => mateApps.get(projectId),
       renderStatus: (status) => <ThreadRowResolvedStatus status={status} />,
     };
-  }, [environments, hqMates, mateNames, mateApps, linkable, threadLastVisitedAtById]);
+  }, [
+    environments,
+    hqMates,
+    mateNames,
+    mateApps,
+    mateVisibilities,
+    linkable,
+    threadLastVisitedAtById,
+  ]);
   const allThreadItems = useMemo(
     () =>
       buildThreadActionItems({
@@ -1778,7 +1796,7 @@ export function OpenCommandPaletteDialog(props: {
     },
   });
 
-  if (!gated && roleOffered.newProject) {
+  if (roleOffered.newProject) {
     actionItems.push({
       kind: "action",
       value: "action:add-project",
@@ -1942,6 +1960,43 @@ export function OpenCommandPaletteDialog(props: {
         if (plan.rescan === null) return;
         const refreshed = await refreshProviders({ environmentId, input: plan.rescan });
         if (refreshed._tag === "Failure") throw squashAtomCommandFailure(refreshed);
+      },
+    });
+  }
+
+  // A Mate's own persona, from any of its chats; the Chief takes none.
+  const personaMate = activeThread ? zeropsMateAt(zeropsMates, activeThread.environmentId) : null;
+  if (activeThread && personaMate?.kind === "mate" && personaMate.mate.chief !== true) {
+    const threadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
+    const mateName = personaMate.mate.name;
+    // An update is said only once the Mate's server answered without persona support.
+    const config = serverConfigs.get(activeThread.environmentId);
+    const takesPersona = config?.environment.capabilities.matePersona === true;
+    actionItems.push({
+      kind: "action",
+      value: "action:persona",
+      searchTerms: [
+        "persona",
+        "personality",
+        "voice",
+        "style",
+        "instructions",
+        "template",
+        "talks",
+      ],
+      title: `Choose ${mateName}'s persona`,
+      icon: <PersonaIcon className={ITEM_ICON_CLASS} />,
+      ...(takesPersona
+        ? {}
+        : {
+            disabled: true,
+            description:
+              config === undefined
+                ? `Waiting for ${mateName} to answer.`
+                : `Update ${mateName} to give it a persona.`,
+          }),
+      run: async () => {
+        useRightPanelStore.getState().open(threadRef, "persona");
       },
     });
   }
@@ -2498,6 +2553,12 @@ export function OpenCommandPaletteDialog(props: {
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
+    if (event.key === "Enter" && (event.nativeEvent.isComposing || event.keyCode === 229)) {
+      // Confirming an IME candidate must not submit a path or select a row.
+      (event as typeof event & { preventBaseUIHandler?: () => void }).preventBaseUIHandler?.();
+      return;
+    }
+
     const command = resolveShortcutCommand(event, keybindings, {
       platform: navigator.platform,
       context: { modelPickerOpen: false },

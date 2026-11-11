@@ -40,6 +40,7 @@ import { makeToCore } from "../pump/toCore.ts";
 import { readGolden } from "../testing/bridge/goldens.ts";
 import { commandLogAround } from "../testing/bridge/record.ts";
 import { fold, stampEvents } from "./evolve.ts";
+import { STEERED_NOTE } from "./told.ts";
 import { initialState, type ConversationState } from "./state.ts";
 
 const conversation = ConversationId.make("mate");
@@ -727,6 +728,21 @@ const transitions: ReadonlyArray<Row> = [
     effects: ["provider.steer"],
     also: (scene) =>
       expect(scene.events[0]).toMatchObject({ body: { delivery: { state: "steered" } } }),
+  },
+  {
+    // Filip's Mate answered two such questions only in its thinking; a compaction then
+    // summarised them as answered and the person never got a reply.
+    name: "a message sent while the Mate works asks its agent to answer it in words the person reads, and the record keeps what they typed",
+    given: runningWithSteer,
+    when: { _tag: "Steer", runId: r(1), text: "is the stage live?" },
+    events: ["ItemOpened", "EffectRequested"],
+    effects: ["provider.steer"],
+    also: (scene) => {
+      expect(scene.events[0]).toMatchObject({ body: { text: "is the stage live?" } });
+      expect(scene.effects[0]).toMatchObject({
+        payload: { text: `is the stage live?\n\n${STEERED_NOTE}` },
+      });
+    },
   },
   {
     // A picture sent while the Mate works goes into the work, as words do: never a run after it.
@@ -1514,6 +1530,74 @@ describe("decide: a question's answer carries its pictures", () => {
       { requestId: requestId(r(1), 1) },
     ]);
     expect(Object.keys(state.requests)).toEqual([requestId(r(1), 1)]);
+  });
+});
+
+// Filip's Mate, 2026-10-27: a restart cut the turn that waited on its question; the question
+// lapsed, the restart's continuation went on without it, and the person typed the answer later.
+describe("decide: a question its turn waited on outlives the session that asked it", () => {
+  const questions = [
+    { id: "0", question: "Which package manager?", options: [{ label: "pnpm" }] },
+    { id: "1", question: "What should it be named?" },
+  ];
+  const asked = signal({
+    kind: "request-opened",
+    turn: T(1),
+    key: "ask-1",
+    ask: { kind: "question", questions, dismissible: false },
+  });
+  const cuts = [
+    ["a restart", recovered()],
+    ["a crash", signal({ kind: "session-exited", reason: "exit 137" })],
+  ] as const;
+  const again = requestId(r(1), 2);
+  const answer: Command = {
+    _tag: "Answer",
+    requestId: again,
+    answer: { answers: { "0": "pnpm", "1": "api" } },
+    summary: "Answered",
+  };
+  const closes = (log: ReadonlyArray<KnownEngineEvent>) =>
+    log.flatMap((e) => (e._tag === "RequestClosed" ? [`${e.requestId} ${e.state}`] : []));
+
+  it.each(cuts)("cut by %s, it stays open for the person, asked again by message", (_, cut) => {
+    const { state, log } = playAll([...proofRunning, asked, cut]);
+    expect(closes(log)).toEqual([`${requestId(r(1), 1)} lapsed`]);
+    expect(state.requests[again]).toMatchObject({ answerable: true, dismissible: true });
+    expect(log.find((e) => e._tag === "RequestOpened" && e.requestId === again)).toMatchObject({
+      ask: { kind: "question", questions, dismissible: true },
+    });
+  });
+
+  it("a restart does not carry its turn on without the answer", () => {
+    const { state, log } = playAll([...proofRunning, asked, recovered()]);
+    expect(state.runs[r(1)]?.end).toMatchObject({ kind: "cut-by-restart" });
+    expect(state.runs[r(1)]?.end).toHaveProperty("notContinued");
+    expect(log.some((e) => e._tag === "WakeArmed" && e.kind === "restart-continuation")).toBe(
+      false,
+    );
+  });
+
+  it.each(cuts)("cut by %s, its answer reaches the agent as the person's message", (_, cut) => {
+    const scene = play([...proofRunning, asked, cut, answer]);
+    expect(scene.events.find((e) => e._tag === "ItemOpened")).toMatchObject({
+      runId: r(2),
+      body: {
+        kind: "person",
+        text: "Which package manager?\npnpm\n\nWhat should it be named?\napi",
+      },
+    });
+  });
+
+  it("a Stop still ends the question with its turn", () => {
+    const { state, log } = playAll([
+      ...proofRunning,
+      asked,
+      stop(1),
+      ended(1, { kind: "interrupted" }, "stop-confirmed"),
+    ]);
+    expect(closes(log)).toEqual([`${requestId(r(1), 1)} lapsed`]);
+    expect(state.requests).toEqual({});
   });
 });
 
@@ -2675,7 +2759,12 @@ describe("decide: a person's waiting message goes into a turn the agent starts i
     expect(scene.effects).toMatchObject([
       {
         kind: "provider.steer",
-        payload: { runId: r(2), sessionId: "s1", itemId: message(2), text: "carry on" },
+        payload: {
+          runId: r(2),
+          sessionId: "s1",
+          itemId: message(2),
+          text: `carry on\n\n${STEERED_NOTE}`,
+        },
       },
     ]);
     expect(scene.events.find((event) => event._tag === "ItemUpdated")).toMatchObject({
@@ -2708,7 +2797,7 @@ describe("decide: a person's waiting message goes into a turn the agent starts i
     expect(scene.state.runs[r(2)]?.state).toBe("running");
     expect(scene.state.queue).toEqual([r(3)]);
     expect(scene.effects).toMatchObject([
-      { kind: "provider.steer", payload: { itemId: message(2), text: "first" } },
+      { kind: "provider.steer", payload: { itemId: message(2), text: `first\n\n${STEERED_NOTE}` } },
     ]);
   });
 
@@ -2723,7 +2812,10 @@ describe("decide: a person's waiting message goes into a turn the agent starts i
     ]);
     expect(scene.state.runs[r(3)]).toMatchObject({ state: "running", turn: "bg2" });
     expect(scene.effects).toMatchObject([
-      { kind: "provider.steer", payload: { itemId: message(3), text: "second" } },
+      {
+        kind: "provider.steer",
+        payload: { itemId: message(3), text: `second\n\n${STEERED_NOTE}` },
+      },
     ]);
   });
 

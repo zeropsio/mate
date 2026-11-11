@@ -26,8 +26,11 @@ import type { ZeropsCandidate } from "./candidates.ts";
  * the caller passes, never left to insertion order.
  */
 export function compareZeropsHostnames(left: string, right: string): number {
-  return left.localeCompare(right, "en", { sensitivity: "base", numeric: true });
+  return hostnameOrder.compare(left, right);
 }
+
+/** One collator for every comparison: `localeCompare` with options builds one per call. */
+const hostnameOrder = new Intl.Collator("en", { sensitivity: "base", numeric: true });
 
 /**
  * The project-picker's tiers, lowest first. A candidate's tier is the

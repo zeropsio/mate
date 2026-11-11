@@ -35,8 +35,10 @@ import { useMateCommand, useMateHeld } from "./accountEnvironments";
 import {
   useZeropsChangeLandedEvents,
   useZeropsProductionLive,
+  useZeropsReleaseEnded,
 } from "./useZeropsChangeLandedEvents";
 import { useVaultTurnNotes } from "./vaultTurnNotes";
+import { useMcpTurnNotes } from "./mcpTurnNotes";
 
 export function useMateWrite(environmentId: EnvironmentId | null, threadId: ThreadId | null) {
   const shells = useThreadShells();
@@ -52,6 +54,7 @@ export function useMateWrite(environmentId: EnvironmentId | null, threadId: Thre
   );
   const landed = useZeropsChangeLandedEvents(environmentId);
   const production = useZeropsProductionLive(environmentId);
+  const releasesEnded = useZeropsReleaseEnded(environmentId);
   // The vault changes the Mate has not heard, the same note its own composer would carry.
   const vaultTurn = useVaultTurnNotes(
     environmentId,
@@ -60,6 +63,7 @@ export function useMateWrite(environmentId: EnvironmentId | null, threadId: Thre
       : scopedThreadKey(scopeThreadRef(environmentId, threadId)),
     useMemo(() => (detail === undefined ? undefined : agentLastSpokeAt(detail.messages)), [detail]),
   );
+  const mcpTurn = useMcpTurnNotes(environmentId);
   // A parked Mate's cached conversation reads before its link is up: the send waits for it.
   const startTurn = useMateCommand(threadEnvironment.startTurn, { reportFailure: false });
   const respondToUserInput = useMateCommand(threadEnvironment.respondToUserInput, {
@@ -78,7 +82,11 @@ export function useMateWrite(environmentId: EnvironmentId | null, threadId: Thre
     // Fitted to the bound a send takes: a vault change a line, the rest counted and told later.
     const spokeAt = agentLastSpokeAt(detail.messages);
     const context = agentContext(
-      [...agentTurnNotes(landed, spokeAt), ...productionTurnNotes(production, spokeAt)],
+      [
+        ...agentTurnNotes(landed, spokeAt),
+        ...productionTurnNotes(production, spokeAt, releasesEnded),
+        ...mcpTurn.lines,
+      ],
       vaultTurn.changes,
     );
     const notes = agentNotesFor(text, context.lines);
@@ -95,7 +103,10 @@ export function useMateWrite(environmentId: EnvironmentId | null, threadId: Thre
         createdAt: new Date().toISOString(),
       },
     }).then((result) => {
-      if (result._tag === "Success") vaultTurn.told(toldVault);
+      if (result._tag === "Success") {
+        vaultTurn.told(toldVault);
+        mcpTurn.told(notes);
+      }
       return result;
     });
   };

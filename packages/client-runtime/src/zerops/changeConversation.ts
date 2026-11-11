@@ -79,13 +79,14 @@ export function changeConversationCount(remarks: ReadonlyArray<ChangeRemark>): s
 }
 
 /**
- * The sentence a Mate is handed when somebody asks it for something on a
- * change's review.
+ * What a Mate is handed when somebody writes to it on a change's review: their words, as a comment
+ * on its change.
  *
- * It names the change the way the forge does, because the Mate's tools address
- * it by number, and it quotes the person's own words rather than paraphrasing
- * them. Asking takes words: an empty box once handed "the whole change" over,
- * which took a line of explanation under the box to be understood.
+ * It names the change the way the forge does, because the Mate's tools address it by number, and
+ * it quotes the person's own words rather than paraphrasing them. It adds no order: the words may
+ * be a question to answer or work to do, and the Mate judges which — it pushes only what it changed.
+ * Asking takes words: an empty box once handed "the whole change" over, which took a line of
+ * explanation under the box to be understood.
  */
 export function changeAskPrompt(input: {
   readonly repository: string;
@@ -95,7 +96,7 @@ export function changeAskPrompt(input: {
   readonly said: string;
 }): string {
   const change = `#${String(input.number)} "${input.title}" on ${input.repository}`;
-  return `On ${change}:\n\n${input.said.trim()}\n\nDo that, then push.`;
+  return `A comment on your change ${change}:\n\n${input.said.trim()}`;
 }
 
 /**

@@ -577,6 +577,36 @@ describe("container machine (DESIGN §4.5)", () => {
     expect(ours.machine.intent).toBeNull();
   });
 
+  it("a container coming up whose Mate HQ speaks for is read once HQ newly says it is online, never on a timer; one HQ cannot speak for is polled", () => {
+    const up = drive([{ type: "HQ", online: true }], ready());
+    const asked = drive(
+      [
+        { type: "INTENT", intent: { kind: "restart", since: instant(up.nowMs + 1_000) } },
+        { type: "HQ", online: false },
+      ],
+      up,
+    );
+    expect(asked.machine.state.level).toBe("restarting");
+    expect(probeCadence(asked.machine, true)).toEqual({ kind: "on-demand" });
+    expect(probeCadence(drive([{ type: "HQ", online: null }], asked).machine, true)).toEqual({
+      kind: "poll",
+      overdue: false,
+    });
+
+    const back = transitionContainer(
+      asked.machine,
+      { type: "HQ", online: true },
+      { now: instant(asked.nowMs + 1_000) },
+    );
+    expect(back.effects).toEqual([{ kind: "probe" }]);
+    expect(
+      transitionContainer(back.state, { type: "HQ", online: true }, { now: instant(asked.nowMs) })
+        .effects,
+    ).toEqual([]);
+    // HQ's word asks for a read and proves nothing: the restart holds until a reading ends it.
+    expect(back.state.state.level).toBe("restarting");
+  });
+
   it("a container predating Mate is Enable only on a flag read off", () => {
     const predates = transitionContainer(
       drive([active]).machine,
@@ -717,6 +747,24 @@ describe("container machine (DESIGN §4.5)", () => {
     expect(containerVerdict(run.machine)).toEqual({ level: "booting", overdue: false });
   });
 
+  it("our restart is over once a read follows the end of its process, though the platform's status never said it restarts", () => {
+    const up = ready();
+    const asked = drive(
+      [{ type: "INTENT", intent: { kind: "restart", since: instant(up.nowMs + 1_000) } }],
+      up,
+    );
+    const running = drive([{ type: "PROCESS", running: true }], asked);
+    // The old server still answering while the process runs is not the restart being over.
+    const stale = drive([probed(READY, running.nowMs)], running);
+    expect(containerVerdict(stale.machine).level).toBe("restarting");
+    const ended = drive([{ type: "PROCESS", running: false }], stale);
+    // A read sent before the process ended says nothing of it.
+    const late = drive([probed(READY, stale.nowMs)], ended);
+    expect(containerVerdict(late.machine).level).toBe("restarting");
+    const away = drive([probed({ kind: "unreachable" }, late.nowMs)], late);
+    expect(containerVerdict(away.machine)).toEqual({ level: "booting", overdue: false });
+  });
+
   it("a read sent after the verb is never the restart's baseline", () => {
     // Nothing said the initAt before the verb, and the container's clock runs behind the browser's.
     const up = drive([active, probed(READY, START_MS)]);
@@ -803,7 +851,7 @@ describe("when a server's automatic update is under way", () => {
         latest: "0.11.41",
         available: true,
         checkedAt: "2026-10-16T10:00:00Z",
-        automatic: { protocol: 1, rollbackCompatible: true, phase, runningVersion: "0.11.40" },
+        automatic: { protocol: 1, phase, runningVersion: "0.11.40" },
       }),
     ).toBe(from);
   });
@@ -812,4 +860,24 @@ describe("when a server's automatic update is under way", () => {
     expect(automaticUpdateFrom(undefined)).toBeNull();
     expect(automaticUpdateFrom(null)).toBeNull();
   });
+
+  it.each([
+    ["draining", "0.15.200"],
+    ["restarting", "0.15.200"],
+    ["postponed", null],
+  ] as const)(
+    "a Mate restarting its container to update zcp, %s, is under way from %s: its drop is the update",
+    (phase, from) => {
+      expect(
+        automaticUpdateFrom({
+          installed: "0.15.200",
+          latest: "0.15.200",
+          available: false,
+          checkedAt: "2026-10-27T10:00:00Z",
+          zcp: { installed: "9.225.0", latest: "9.226.0", behind: true },
+          restart: { needed: true, phase },
+        }),
+      ).toBe(from);
+    },
+  );
 });

@@ -18,9 +18,9 @@
  *
  * Whether it is coming up at all is its owners' word, never its age: its own import while the
  * platform says something of it is being made (a project CREATING, a service NEW or CREATING), and
- * past that only while HQ is still bringing it up (`HqEnvironment.birth`: the rollout its attach
- * asked for, not ended). One HQ did not bring up, or whose birth ended, says what it lacks on its
- * pill — a stopped database, nothing deployed, no address — never a step of coming up.
+ * past that while HQ is still bringing it up (`HqEnvironment.birth`: the rollout its attach
+ * asked for, not ended). Address progress separately requires a publication in progress in the
+ * public-access projection. A missing address or an HTTP port alone promises no publication.
  *
  * Pure: no network, no clock of its own, no platform globals (rule R1).
  *
@@ -137,7 +137,7 @@ const MAKING: ReadonlySet<string> = new Set(["NEW", "CREATING"]);
  * Whether a stage or a production is coming up, and at which step, from what the platform says
  * of it: accepted and not listed yet, or its project still being made; then its services — a
  * database not running yet, its runtime being made, a build running; then a stage's first deploy
- * (`firstDeploy`); then, once a deploy ran, no public address. A runtime whose first build failed
+ * (`firstDeploy`); then, once a deploy ran, a public-address publication in progress. A runtime whose first build failed
  * did not come up.
  *
  * Production's first build is its first release: until one is pressed its runtime waits, which
@@ -158,8 +158,8 @@ export function stopComing(input: {
   readonly deployed: boolean | undefined;
   /** Its public routes. */
   readonly routes: number;
-  /** It serves a port its public address would open (`addressOffered`); `undefined` while unread. */
-  readonly addressOffered?: boolean | undefined;
+  /** Its public-access projection holds a publication not serving yet; `undefined` while unread. */
+  readonly addressPending?: boolean | undefined;
   /** A stage's first deploy, while it runs nothing (`firstDeploy`); unknown is awaited. */
   readonly firstDeploy: FirstDeploy | undefined;
 }): StopComing | undefined {
@@ -177,17 +177,15 @@ export function stopComing(input: {
   // release, its runtime UPGRADING — is that deploy's to say, never the place coming up again.
   const deployed = input.deployed ?? (input.routes > 0 ? true : undefined);
   if (deployed === true && input.routes > 0) return undefined;
-  // What the platform says it is making is its import's own step, whoever brought it up; past
-  // that, only HQ still bringing it up makes it coming up.
+  // Imports and address publications each have their own evidence of work in progress.
   const turningOn = addressComing({
-    birth: input.birth,
     addresses: input.routes,
-    offered: input.addressOffered,
+    pending: input.addressPending,
   });
   if (!beingBorn(input.birth)) {
     if (others.some(({ status }) => MAKING.has(status))) return coming("database");
     if (runtimes.some(({ status }) => MAKING.has(status))) return coming("app");
-    // HQ's bringing up ends with its first deploy, a beat before the platform turns the address on.
+    // A completed birth can still have a publication in progress.
     const up = input.services.every(({ status }) => running(status));
     return input.tier === "stage" && deployed === true && up && turningOn
       ? coming("address")
@@ -235,22 +233,13 @@ export function stopComing(input: {
   return turningOn ? coming("address") : undefined;
 }
 
-/**
- * Whether a place HQ brought up is still turning its address on — the one rule the card's line and
- * the menu's heading say it by. HQ ends its bringing up as the first deploy ends, and the platform
- * turns the address on in its next read, about 0.8 s later: one serving a port its address would
- * open waits for that address, so it says Running in the paint its address comes in; one serving
- * no such port runs as it is; one whose ports are unread waits on HQ's word.
- */
+/** Address progress requires a publication in the shared public-access projection. */
 export function addressComing(input: {
-  /** HQ bringing it up (`HqEnvironment.birth`); none where HQ did not. */
-  readonly birth: EnvironmentBirth | null | undefined;
-  /** Its public addresses. */
   readonly addresses: number;
-  /** It serves a port its address would open (`addressOffered`); `undefined` while unread. */
-  readonly offered: boolean | undefined;
+  /** An unsynced routing or enabled subdomain awaiting its routing, never an available port. */
+  readonly pending: boolean | undefined;
 }): boolean {
-  return input.birth != null && (input.offered ?? !input.birth.ended) && input.addresses === 0;
+  return input.pending === true && input.addresses === 0;
 }
 
 /**
@@ -321,8 +310,8 @@ export interface ListedStop {
   /** A deploy runs on it (`deployBuilding`). */
   readonly building: boolean;
   readonly routes: number;
-  /** It serves a port its public address would open (`addressOffered`); `undefined` while unread. */
-  readonly addressOffered?: boolean | undefined;
+  /** Its public-access projection holds a publication not serving yet; `undefined` while unread. */
+  readonly addressPending?: boolean | undefined;
 }
 
 /** Where a listed stage or production coming up has got — the one reading every surface makes. */
@@ -339,7 +328,7 @@ export function listedStopComing(
     building: listed.building,
     deployed: stopDeployed(listed.stop),
     routes: listed.routes,
-    addressOffered: listed.addressOffered,
+    addressPending: listed.addressPending,
     firstDeploy: listed.stop.firstDeploy,
   });
 }

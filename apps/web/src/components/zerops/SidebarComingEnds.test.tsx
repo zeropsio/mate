@@ -4,16 +4,23 @@ import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { closeAccountLifetime, openAccountLifetime } from "~/zerops/accountLifetime";
-import { beginCreation, useCreations } from "~/zerops/creations";
+import { beginCreation, dismissCreation, startAddOver, useCreations } from "~/zerops/creations";
 import { useNewMateDialog } from "~/zerops/newMate";
 import type { NewProjectBirth } from "~/zerops/newProjectBirth";
 
 import { comingEndsEntries, SidebarComingEnds } from "./SidebarComingEnds";
 
+/** The menu's ends as this tab takes them; letting go of HQ's birth is `refusedAddBirth`'s. */
+const ENDS = {
+  dismiss: (made: NewProjectBirth) => dismissCreation(made.birthId),
+  startOver: startAddOver,
+};
+
 /** Ida, added to Acme CRM from this tab, before Zerops took its project. */
 const IDA: NewProjectBirth = {
   birthId: "add-1",
   organizationId: "org-acme",
+  creator: "cu-me",
   appId: "g-acme",
   intent: null,
   hq: { projectId: "hq", address: "https://hq.example" },
@@ -48,9 +55,9 @@ function Held() {
 
 /** Ida's Add, held from the press. */
 const pressIda = () => {
-  const { birthId, organizationId, name, botName, face, locationId, agents, adds } = IDA;
+  const { birthId, organizationId, creator, name, botName, face, locationId, agents, adds } = IDA;
   beginCreation({
-    ask: { birthId, organizationId, name, botName, face, locationId, agents, adds },
+    ask: { birthId, organizationId, creator, name, botName, face, locationId, agents, adds },
     hq: IDA.hq,
     now: 0,
     run: () => undefined,
@@ -113,12 +120,12 @@ describe("a coming Mate's ⋯ in the menu", () => {
     { case: "refused for certain", made: REFUSED, labels: ["Start over", "Dismiss"] },
     { case: "one Zerops may have made", made: LOST, labels: ["Dismiss"] },
   ])("offers $labels where $case", ({ made, labels }) => {
-    expect(comingEndsEntries(made).map((entry) => entry.label)).toEqual(labels);
+    expect(comingEndsEntries(made, ENDS).map((entry) => entry.label)).toEqual(labels);
   });
 
   it("Start over takes the row out and opens Add over its project, its name there to change", () => {
     pressIda();
-    act(() => comingEndsEntries(REFUSED)[0]!.onSelect());
+    act(() => comingEndsEntries(REFUSED, ENDS)[0]!.onSelect());
     expect(held).toEqual([]);
     expect(useNewMateDialog.getState().asked).toMatchObject({
       groupId: "g-acme",
@@ -129,7 +136,7 @@ describe("a coming Mate's ⋯ in the menu", () => {
   it("Dismiss takes the row out and asks for nothing", () => {
     pressIda();
     expect(held).toEqual(["add-1"]);
-    act(() => comingEndsEntries(LOST)[0]!.onSelect());
+    act(() => comingEndsEntries(LOST, ENDS)[0]!.onSelect());
     expect(held).toEqual([]);
     expect(useNewMateDialog.getState().asked).toBeNull();
   });

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
@@ -120,12 +121,14 @@ describe("an HQ socket opening", () => {
 
   it.effect("a socket closed before it opened fails its segment as its close classifies", () =>
     Effect.gen(function* () {
+      const created = yield* Deferred.make<void>();
       const socket = socketHeld();
       const opening = yield* Effect.forkChild(
-        Effect.scoped(makeHqWire(socket.api).open(Effect.void)),
+        Effect.scoped(
+          makeHqWire(socket.api).open(Deferred.succeed(created, undefined).pipe(Effect.asVoid)),
+        ),
       );
-      yield* Effect.yieldNow;
-      yield* Effect.promise(() => Promise.resolve());
+      yield* Deferred.await(created);
       socket.on().close(4403);
       const fault = yield* Effect.flip(Fiber.join(opening));
       expect(fault.outcome).toBe("definitive-refusal");
@@ -151,6 +154,38 @@ describe("classifyHqCall", () => {
     { name: "anything else", cause: new Error("boom"), outcome: "transient" },
   ])("$name is $outcome", ({ cause, outcome }) => {
     expect(classifyHqCall(cause).outcome).toBe(outcome);
+  });
+  it("A refused review carries HQ's finding through the existing data path unchanged.", () => {
+    const problem = {
+      code: "invalid_recipe",
+      what: "Invalid service settings",
+      where: { appId: "shop", service: "api", file: "production.yaml" },
+      rule: { source: "zerops-schema", instancePath: "/services/0/minCpu" },
+      next: { actor: "mate", action: "Propose a corrected recipe" },
+    } as const;
+    expect(
+      classifyHqCall(
+        new HqError({
+          kind: "refused",
+          code: "conflict",
+          status: 409,
+          message: "Review refused",
+          problems: [problem],
+        }),
+      ).problems,
+    ).toEqual([problem]);
+    expect(
+      classifyHqCall(
+        new HqError({
+          kind: "unavailable",
+          code: "repo_unavailable",
+          status: 503,
+          message: "Repository unavailable",
+          problems: [problem],
+        }),
+      ).problems,
+    ).toEqual([problem]);
+    expect(classifyHqCall(refused("conflict")).problems).toBeUndefined();
   });
   it("an unreadable version names reload as the next action", () => {
     expect(classifyHqCall(refused("unreadable"))).toMatchObject({

@@ -22,7 +22,7 @@ import {
 } from "./families/index.ts";
 import { sameValue } from "./projections/equal.ts";
 
-import type { FamilyIndex } from "./families/spec.ts";
+import type { FamilyIndex, RowSource } from "./families/spec.ts";
 import {
   factKey,
   type Access,
@@ -101,6 +101,8 @@ export type AccountInput =
       readonly family: Family;
       readonly id: string;
       readonly access: Access;
+      /** A denial its source named this record for, not a refusal of its whole scope. */
+      readonly removed?: true;
     }
   | {
       readonly kind: "membership";
@@ -160,11 +162,10 @@ export interface DeliveryScope {
   readonly generation: number;
 }
 
-/** A record its source removed explicitly, and why: the one way a delivered record leaves. */
+/** A record its source removed explicitly: the one way a delivered record leaves. */
 export interface RemovalInput {
   readonly family: Family;
   readonly id: string;
-  readonly reason: "deleted" | "no-access";
 }
 
 export type RuntimeDirective =
@@ -342,7 +343,7 @@ function reduceRows(
     const spec = familySpec(row.family);
     const merge = spec.merge as ((held: unknown, pushed: unknown) => unknown) | undefined;
     const keepUnsaid = spec.keepUnsaid as
-      | ((held: unknown, row: unknown, own: boolean) => unknown)
+      | ((held: unknown, row: unknown, from: RowSource) => unknown)
       | undefined;
     const held = current?.content.kind === "value" ? current.content : null;
     const merged =
@@ -352,7 +353,15 @@ function reduceRows(
     const value =
       keepUnsaid === undefined
         ? merged
-        : keepUnsaid(held?.value, merged, scopeListing(input.scope).detail?.member === true);
+        : keepUnsaid(
+            held?.value,
+            merged,
+            scopeListing(input.scope).detail?.member === true
+              ? "own"
+              : input.method === "push"
+                ? "push"
+                : "listing",
+          );
     const label = (spec.labelOf as ((value: unknown) => string) | undefined)?.(value);
     const fact: Fact<unknown> = {
       ...(label === undefined ? {} : { label }),
@@ -510,7 +519,22 @@ function commitBaseline(
       [...members].some(([id, member]) => membership.members.get(id) !== member))
   )
     changed.add(`members:${scope}`);
-  return next;
+  // The family's own whole read now says what its reads ahead previewed: what they hold that it
+  // did not take over is forgotten — unknown, never deleted — and they answer for nothing more.
+  return coverage === "complete" ? forget(next, readsAheadOf(next, scope), changed) : next;
+}
+
+/** The scopes read ahead of a navigation scope (`DetailListing.ahead`) that hold anything now. */
+function readsAheadOf(state: AccountState, scope: ScopeKey): ReadonlyArray<ScopeKey> {
+  if (scopeListing(scope).detail !== null) return [];
+  const ahead = (candidate: ScopeKey) =>
+    candidate !== scope &&
+    scopeListing(candidate).detail?.ahead === true &&
+    ownScopeOf(candidate) === scope;
+  const scopes = new Set<ScopeKey>();
+  for (const candidate of state.memberships.keys()) if (ahead(candidate)) scopes.add(candidate);
+  for (const fact of state.facts.values()) if (ahead(fact.scope)) scopes.add(fact.scope);
+  return [...scopes];
 }
 
 function leaveScope(
@@ -572,7 +596,12 @@ function reduceEvidence(
     input.kind === "proven-deletion"
       ? { ...current, content: { kind: "deleted", evidence: input.evidence } }
       : input.access === "denied"
-        ? { ...current, content: { kind: "purged" }, access: "denied" }
+        ? {
+            ...current,
+            content:
+              input.removed === true ? { kind: "purged", removed: true } : { kind: "purged" },
+            access: "denied",
+          }
         : { ...current, access: input.access };
   changed.add(key);
   const unlisted = input.kind === "proven-deletion" || input.access === "denied";
@@ -600,7 +629,7 @@ function indexKey(
 function releaseEnded(state: AccountState, appId: string, tag: string): boolean {
   const fact = state.facts.get(factKey("hqApp", appId)) as Fact<FamilyValues["hqApp"]> | undefined;
   const environments = fact?.content.kind === "value" ? fact.content.value.environments : undefined;
-  if (environments === undefined || "refused" in environments) return false;
+  if (environments === undefined) return false;
   const rollouts = environments
     .filter((environment) => environment.tier === "production")
     .map((environment) => environment.release);
@@ -723,23 +752,11 @@ function reduceDelivery(
       next = withMembership(next, scope, { ...membership, coverage: "partial" });
     }
   for (const removal of input.removals)
-    next =
-      removal.reason === "deleted"
-        ? reduceEvidence(
-            next,
-            {
-              kind: "proven-deletion",
-              family: removal.family,
-              id: removal.id,
-              evidence: `${input.via === "hq-stream" ? "HQ" : "Its source"} removed it as deleted`,
-            },
-            changed,
-          )
-        : reduceEvidence(
-            next,
-            { kind: "access", family: removal.family, id: removal.id, access: "denied" },
-            changed,
-          );
+    next = reduceEvidence(
+      next,
+      { kind: "access", family: removal.family, id: removal.id, access: "denied", removed: true },
+      changed,
+    );
   return next;
 }
 

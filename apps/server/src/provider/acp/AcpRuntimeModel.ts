@@ -2,8 +2,9 @@ import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
-import * as Ref from "effect/Ref";
-import type * as EffectAcpSchema from "effect-acp/schema";
+import * as Stream from "effect/Stream";
+import * as SubscriptionRef from "effect/SubscriptionRef";
+import type * as EffectAcpSchema from "effect-acp/compat";
 import { deriveToolActivityPresentation } from "@t3tools/shared/toolActivity";
 import type { ToolLifecycleItemType } from "@t3tools/contracts";
 
@@ -176,7 +177,24 @@ export function collectSessionConfigOptionValues(
 export function parseSessionModeState(
   sessionResponse: AcpSessionSetupResponse,
 ): AcpSessionModeState | undefined {
-  const modes = sessionResponse.modes;
+  // ACP v2 drops `modes`; an agent that speaks it offers its modes as a select config option.
+  const modeConfig = sessionResponse.configOptions?.find(
+    (option) => option.category === "mode" && option.type === "select",
+  );
+  const modes =
+    sessionResponse.modes ??
+    (modeConfig?.type === "select"
+      ? {
+          currentModeId: modeConfig.currentValue,
+          availableModes: modeConfig.options
+            .flatMap((option) => ("options" in option ? option.options : [option]))
+            .map((option) => ({
+              id: option.value,
+              name: option.name,
+              description: option.description,
+            })),
+        }
+      : undefined);
   if (!modes) return undefined;
   const currentModeId = modes.currentModeId.trim();
   if (!currentModeId) {
@@ -205,6 +223,23 @@ export function parseSessionModeState(
   };
 }
 
+// A cancelled entry is not outstanding work, and plan steps have no cancelled status, so it is
+// dropped rather than shown as pending.
+function planSteps(entries: ReadonlyArray<unknown>): AcpPlanUpdate["plan"] {
+  return entries.flatMap((entry, index) => {
+    if (!isRecord(entry) || typeof entry.content !== "string" || entry.status === "cancelled") {
+      return [];
+    }
+    const step = entry.content.trim();
+    return [
+      {
+        step: step.length > 0 ? step : `Step ${index + 1}`,
+        status: normalizePlanStepStatus(entry.status),
+      },
+    ];
+  });
+}
+
 function normalizePlanStepStatus(raw: unknown): "pending" | "inProgress" | "completed" {
   switch (raw) {
     case "completed":
@@ -230,6 +265,7 @@ function normalizeToolCallStatus(
     case "completed":
       return "completed";
     case "failed":
+    case "cancelled":
       return "failed";
     default:
       return fallback;
@@ -714,27 +750,35 @@ export interface SessionLoadGate {
   readonly initializeResult: EffectAcpSchema.InitializeResponse;
 }
 
+/** A load whose replay has begun: the gate holds its last activity. */
+const isReplaying = (
+  gate: Option.Option<SessionLoadGate>,
+): gate is Option.Some<SessionLoadGate & { readonly lastActivityAtMillis: number }> =>
+  Option.isSome(gate) && gate.value.active && gate.value.lastActivityAtMillis !== undefined;
+
+/**
+ * Settles once the replay has been quiet for the gate's idle gap: waits for its first activity,
+ * then sleeps to the instant its last activity plus the gap, again while activity moved it on.
+ */
 export const waitForSessionLoadReplayIdle = (input: {
-  readonly gateRef: Ref.Ref<Option.Option<SessionLoadGate>>;
-}): Effect.Effect<EffectAcpSchema.LoadSessionResponse, never> =>
-  Effect.gen(function* () {
-    const pollInterval = Duration.millis(25);
+  readonly gateRef: SubscriptionRef.SubscriptionRef<Option.Option<SessionLoadGate>>;
+}): Effect.Effect<EffectAcpSchema.LoadSessionResponse, never> => {
+  const replaying = SubscriptionRef.changes(input.gateRef).pipe(
+    Stream.filter(isReplaying),
+    Stream.runHead,
+  );
+  return Effect.gen(function* () {
     while (true) {
-      const gate = yield* Ref.get(input.gateRef);
-      if (
-        Option.isSome(gate) &&
-        gate.value.active &&
-        gate.value.lastActivityAtMillis !== undefined
-      ) {
-        const idleGapMillis = Duration.toMillis(gate.value.idleGap);
-        const nowMillis = yield* Clock.currentTimeMillis;
-        if (nowMillis - gate.value.lastActivityAtMillis >= idleGapMillis) {
-          return syntheticLoadSessionResponseFromInitialize(gate.value.initializeResult);
-        }
-      }
-      yield* Effect.sleep(pollInterval);
+      const found = yield* replaying;
+      if (Option.isNone(found)) return yield* Effect.never;
+      const { lastActivityAtMillis, idleGap, initializeResult } = found.value.value;
+      const quietFor =
+        lastActivityAtMillis + Duration.toMillis(idleGap) - (yield* Clock.currentTimeMillis);
+      if (quietFor <= 0) return syntheticLoadSessionResponseFromInitialize(initializeResult);
+      yield* Effect.sleep(quietFor);
     }
   });
+};
 
 /**
  * Model state some agents (Grok) advertise in `initialize._meta.modelState`, before any
@@ -828,19 +872,24 @@ export function parseSessionUpdateEvent(params: EffectAcpSchema.SessionNotificat
       break;
     }
     case "plan": {
-      const plan = upd.entries.map((entry, index) => ({
-        step: entry.content.trim().length > 0 ? entry.content.trim() : `Step ${index + 1}`,
-        status: normalizePlanStepStatus(entry.status),
-      }));
-      if (plan.length > 0) {
-        events.push({
-          _tag: "PlanUpdated",
-          payload: {
-            plan,
-          },
-          rawPayload: params,
-        });
-      }
+      // An empty plan replaces the previous one, so it is forwarded too.
+      events.push({
+        _tag: "PlanUpdated",
+        payload: { plan: planSteps(upd.entries) },
+        rawPayload: params,
+      });
+      break;
+    }
+    // ACP v2 names each plan and also sends markdown plans; the one plan a turn shows is
+    // its latest list of steps.
+    case "plan_update": {
+      if (upd.plan.type !== "items" || !("entries" in upd.plan)) break;
+      if (!Array.isArray(upd.plan.entries)) break;
+      events.push({
+        _tag: "PlanUpdated",
+        payload: { plan: planSteps(upd.plan.entries) },
+        rawPayload: params,
+      });
       break;
     }
     case "tool_call": {

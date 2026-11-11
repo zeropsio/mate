@@ -27,7 +27,6 @@ import {
   ZeropsStateEnvelope,
 } from "./zerops.ts";
 
-const decodeLoginError = Schema.decodeUnknownSync(ZeropsAgentLoginError);
 const decodeAgentId = Schema.decodeUnknownSync(ZeropsAgentId);
 const decodeAgentAuthState = Schema.decodeUnknownSync(ZeropsAgentAuthState);
 const decodeAgentAuth = Schema.decodeUnknownSync(ZeropsAgentAuth);
@@ -37,11 +36,22 @@ const decodeLoginState = Schema.decodeUnknownSync(ZeropsAgentLoginState);
 const decodeLoginStartInput = Schema.decodeUnknownSync(ZeropsAgentLoginStartInput);
 const decodeLoginStartResult = Schema.decodeUnknownSync(ZeropsAgentLoginStartResult);
 const decodeLoginCancelInput = Schema.decodeUnknownSync(ZeropsAgentLoginCancelInput);
+const decodeLoginError = Schema.decodeUnknownSync(ZeropsAgentLoginError);
 const decodeLogin = Schema.decodeUnknownSync(ZeropsLogin);
 const decodeSubmitCodeInput = Schema.decodeUnknownSync(ZeropsAgentLoginSubmitCodeInput);
 const decodeSignOutInput = Schema.decodeUnknownSync(ZeropsAgentSignOutInput);
 const decodeLoginAddInput = Schema.decodeUnknownSync(ZeropsLoginAddInput);
 const decodeLoginRemoveInput = Schema.decodeUnknownSync(ZeropsLoginRemoveInput);
+
+it("rejects the retired signer persistence failure from the login error contract", () => {
+  expect(() =>
+    decodeLoginError({
+      _tag: "ZeropsAgentLoginError",
+      reason: "signer-write-failed",
+      detail: "could not record signer",
+    }),
+  ).toThrow();
+});
 
 describe("ZeropsAgentId", () => {
   it("accepts the two agents with a live-verified credential probe", () => {
@@ -462,15 +472,6 @@ describe("ZeropsLoginAddInput / ZeropsLoginRemoveInput", () => {
   });
 });
 
-it("decodes a signer persistence failure from adding a login", () => {
-  const decoded = decodeLoginError({
-    _tag: "ZeropsAgentLoginError",
-    reason: "signer-write-failed",
-    detail: "Sign-in could not be recorded.",
-  });
-  expect(decoded.reason).toBe("signer-write-failed");
-});
-
 const decodeEnvelope = Schema.decodeUnknownSync(ZeropsStateEnvelope);
 const envelope = (extra: Record<string, unknown> = {}) => ({
   phase: "develop-active",
@@ -569,6 +570,20 @@ describe("ZeropsStateEnvelope leases", () => {
     const recorded = { ...held, acquiredAt: "2026-10-23T12:00:01Z", repo };
     expect(decodeEnvelope(envelope({ leases: [recorded] })).leases).toEqual([recorded]);
     expect(decodeEnvelope(envelope({ leases: [held] })).leases?.[0]).not.toHaveProperty("repo");
+  });
+
+  it("a lease says when zcp last read its dev servers, the part it serves and that part's stage, and one zcp says none of reads without them", () => {
+    const named = {
+      ...held,
+      devServersReadAt: "2026-10-27T10:00:00Z",
+      part: "web",
+      stage: "webstage",
+    };
+    expect(decodeEnvelope(envelope({ leases: [named] })).leases).toEqual([named]);
+    const plain = decodeEnvelope(envelope({ leases: [held] })).leases?.[0];
+    for (const key of ["devServersReadAt", "part", "stage"]) {
+      expect(plain).not.toHaveProperty(key);
+    }
   });
 
   it("a lease acquired for no branch reads without one", () => {

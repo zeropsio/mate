@@ -55,6 +55,38 @@ describe("makePictureFitter", () => {
     }),
   );
 
+  it.effect("fits a picture while the server's own thread goes on", () =>
+    Effect.gen(function* () {
+      const fittedPicture: PictureFit = {
+        _tag: "fitted",
+        bytes: new Uint8Array([1, 2, 3]),
+        mimeType: "image/jpeg",
+        width: 2000,
+        height: 1500,
+      };
+      const order: string[] = [];
+      const answer = Promise.withResolvers<PictureFit>();
+      const admitted = yield* Deferred.make<void>();
+      const fit = makePictureFitter(() => {
+        order.push("fit started");
+        Deferred.doneUnsafe(admitted, Effect.void);
+        return answer.promise.then((value) => {
+          order.push("fit answered");
+          return value;
+        });
+      });
+      const fitting = yield* Effect.forkChild(fit(photo()));
+      yield* Deferred.await(admitted);
+      // The worker's answer is held: the server can do its next job meanwhile.
+      yield* Effect.sync(() => order.push("server's next job"));
+      expect(order).toEqual(["fit started", "server's next job"]);
+      expect(fitting.pollUnsafe()).toBeUndefined();
+      answer.resolve(fittedPicture);
+      expect(yield* Fiber.join(fitting)).toEqual(fittedPicture);
+      expect(order).toEqual(["fit started", "server's next job", "fit answered"]);
+    }),
+  );
+
   it.live("fits one picture at a time", () =>
     Effect.gen(function* () {
       const finish = [Promise.withResolvers<PictureFit>(), Promise.withResolvers<PictureFit>()];

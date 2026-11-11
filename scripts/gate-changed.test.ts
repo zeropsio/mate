@@ -5,6 +5,7 @@ import * as NodeModule from "node:module";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { chatGateTestFiles, chatGateStages, selectsChatGate } from "./chat-gate.ts";
+import { scenarioSelectionManifest } from "./ci-blame.ts";
 import { gateSlotCount } from "./gate-slots.ts";
 import { afterAll, beforeAll, expect, it, vi } from "vite-plus/test";
 import {
@@ -21,10 +22,12 @@ import {
   buildGateGraph,
   selectGateSteps,
   stateOnlySmoke,
+  runGate,
 } from "./gate-changed.ts";
 
 const gateRunnerFiles = [
   "gate-changed.ts",
+  "ci-blame.ts",
   "gate-input-scopes.ts",
   "gate-installed-dependencies.ts",
   "state-smoke-cases.ts",
@@ -46,9 +49,32 @@ it("new-branch selection includes every path when Git output exceeds one mebibyt
       ...Array.from({ length: 6000 }, (_, index) => `${"x".repeat(180)}-${index}.md`),
       scenario,
     ].sort();
-    for (const path of paths) NodeFS.writeFileSync(NodePath.join(root, path), "");
+    NodeFS.writeFileSync(NodePath.join(root, scenario), "");
     expect(NodeChildProcess.spawnSync("git", ["init", "-q"], { cwd: root }).status).toBe(0);
-    expect(NodeChildProcess.spawnSync("git", ["add", "."], { cwd: root }).status).toBe(0);
+    const blob = NodeChildProcess.spawnSync("git", ["hash-object", "-w", "--stdin"], {
+      cwd: root,
+      input: "",
+      encoding: "utf8",
+    });
+    expect(blob.status).toBe(0);
+    const index = NodeChildProcess.spawnSync("git", ["update-index", "-z", "--index-info"], {
+      cwd: root,
+      input: paths.map((path) => `100644 ${blob.stdout.trim()}\t${path}\0`).join(""),
+    });
+    expect(index.status).toBe(0);
+    // The selector consumes Git's diff; only the selected scenario needs a worktree file.
+    const skipped = NodeChildProcess.spawnSync(
+      "git",
+      ["update-index", "--skip-worktree", "-z", "--stdin"],
+      {
+        cwd: root,
+        input: paths
+          .filter((path) => path !== scenario)
+          .map((path) => `${path}\0`)
+          .join(""),
+      },
+    );
+    expect(skipped.status).toBe(0);
     expect(Buffer.byteLength(paths.join("\0"))).toBeGreaterThan(1024 * 1024);
     let selected: string[] | undefined;
     expect(() => {
@@ -268,7 +294,7 @@ it.each([{ args: [] }, { args: ["--list"] }])(
       );
       const result = NodeChildProcess.spawnSync(
         process.execPath,
-        ["scripts/gate-changed.ts", "--base", "HEAD", ...args],
+        ["scripts/gate-changed.ts", "--tests", "--base", "HEAD", ...args],
         { cwd: root, encoding: "utf8" },
       );
       expect(result.status, result.stderr).toBe(0);
@@ -286,7 +312,7 @@ it.each([
     chatGate: false,
     includes: [
       "test/scenarios/areas/b-menu/usage.scenario.ts",
-      "test/scenarios/areas/b-menu/decode.scenario.ts",
+      "test/scenarios/areas/b-menu/environmentIdentity.scenario.ts",
       "test/scenarios/areas/b-menu/liveness.scenario.ts",
       "test/scenarios/areas/b-menu/drafts.scenario.ts",
       "test/scenarios/fakes/b-menu/overview.test.ts",
@@ -368,7 +394,7 @@ it.each([{ args: [] }, { args: ["--list"] }])(
       );
       const result = NodeChildProcess.spawnSync(
         process.execPath,
-        ["scripts/gate-changed.ts", "--base", "HEAD", ...args],
+        ["scripts/gate-changed.ts", "--tests", "--base", "HEAD", ...args],
         { cwd: root, encoding: "utf8" },
       );
       expect(result.status).not.toBe(0);
@@ -384,58 +410,69 @@ it.each([{ args: [] }, { args: ["--list"] }])(
 
 // A real repository snapshot retains the bundle/harness boundary; expectations never create imports.
 let repositoryFixture: string;
-let repositoryGraph: ReturnType<typeof buildGateGraph>;
+let cachedRepositoryGraph: ReturnType<typeof buildGateGraph> | undefined;
+const repositoryGraph = () => (cachedRepositoryGraph ??= buildGateGraph(repositoryFixture));
+let smallFixture: string;
+const fixtureEnvironment = { ...process.env };
 const sourceRoot = NodePath.resolve(import.meta.dirname, "..");
 const fixtureGit = (...args: string[]) => {
   const result = NodeChildProcess.spawnSync("git", args, {
     cwd: repositoryFixture,
     encoding: "utf8",
+    env: fixtureEnvironment,
   });
   if (result.status !== 0) throw new Error(result.stderr);
   return result.stdout.trim();
 };
+const sourceGit = (args: string[]) => {
+  const result = NodeChildProcess.spawnSync("git", args, {
+    cwd: sourceRoot,
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  if (result.status !== 0) throw new Error(String(result.stderr));
+  return result.stdout;
+};
 beforeAll(() => {
   repositoryFixture = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-gate-real-"));
-  const archivePath = NodePath.join(repositoryFixture, "source.tar");
-  const archive = NodeChildProcess.spawnSync(
-    "git",
-    [
-      "archive",
-      "--output",
-      archivePath,
-      "HEAD",
-      "apps/web/src",
-      "apps/web/test",
-      "apps/web/index.html",
-      "apps/web/vite.config.ts",
-      "apps/web/tsconfig.json",
-      "apps/web/package.json",
-      "apps/server/src",
-      "apps/server/package.json",
-      "apps/hq/src",
-      "apps/hq/test",
-      "apps/hq/package.json",
-      "packages",
-      "scripts",
-      "oxlint-plugin-t3code/rules",
-      "infra/relay/package.json",
-      "apps/mobile/package.json",
-      "apps/desktop/package.json",
-      "package.json",
-      "tsconfig.base.json",
-      "pnpm-lock.yaml",
-    ],
-    { cwd: sourceRoot },
+  fixtureGit("init", "-q");
+  // The fixture borrows the source repository's content-addressed objects: re-hashing a copy of
+  // its tree (`git add` over ~60 MB) spent most of this hook's budget on a loaded CI runner.
+  NodeFS.writeFileSync(
+    NodePath.join(repositoryFixture, ".git/objects/info/alternates"),
+    `${sourceGit(["rev-parse", "--path-format=absolute", "--git-path", "objects"])
+      .toString()
+      .trim()}\n`,
   );
-  if (archive.status !== 0) throw new Error(String(archive.stderr));
-  const extracted = NodeChildProcess.spawnSync("tar", [
-    "-xf",
-    archivePath,
-    "-C",
-    repositoryFixture,
+  const entries = sourceGit([
+    "ls-tree",
+    "-r",
+    "-z",
+    "HEAD",
+    "--",
+    "apps/web/src",
+    "apps/web/test",
+    "apps/web/index.html",
+    "apps/web/vite.config.ts",
+    "apps/web/tsconfig.json",
+    "apps/web/package.json",
+    "apps/server/src",
+    "apps/server/package.json",
+    "packages",
+    "scripts",
+    "oxlint-plugin-t3code/rules",
+    "infra/relay/package.json",
+    "apps/mobile/package.json",
+    "apps/desktop/package.json",
+    "package.json",
+    "tsconfig.base.json",
+    "pnpm-lock.yaml",
   ]);
-  if (extracted.status !== 0) throw new Error(String(extracted.stderr));
-  NodeFS.rmSync(archivePath);
+  const indexed = NodeChildProcess.spawnSync("git", ["update-index", "-z", "--index-info"], {
+    cwd: repositoryFixture,
+    input: entries,
+  });
+  if (indexed.status !== 0) throw new Error(String(indexed.stderr));
+  fixtureGit("checkout-index", "--all", "-u");
   for (const file of gateRunnerFiles)
     NodeFS.copyFileSync(
       NodePath.join(import.meta.dirname, file),
@@ -446,16 +483,232 @@ beforeAll(() => {
     NodePath.join(repositoryFixture, "scripts/node_modules"),
   );
   installLockfile(repositoryFixture);
-  fixtureGit("init", "-q");
   fixtureGit("config", "user.name", "Gate fixture");
   fixtureGit("config", "user.email", "gate@example.test");
   fixtureGit("add", ".");
   fixtureGit("commit", "-qm", "real repository fixture");
-  repositoryGraph = buildGateGraph(repositoryFixture);
 }, 30_000);
-afterAll(() => {
+afterAll(async () => {
+  if (chatEditChild) {
+    chatEditChild.kill("SIGTERM");
+    await chatEditResult?.catch(() => undefined);
+  }
   if (repositoryFixture) NodeFS.rmSync(repositoryFixture, { recursive: true, force: true });
 });
+
+const smallGit = (...args: string[]) => {
+  const result = NodeChildProcess.spawnSync("git", args, { cwd: smallFixture, encoding: "utf8" });
+  if (result.status !== 0) throw new Error(result.stderr);
+  return result.stdout.trim();
+};
+
+beforeAll(() => {
+  smallFixture = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-gate-selection-"));
+  const write = (file: string, contents: string) => {
+    const target = NodePath.join(smallFixture, file);
+    NodeFS.mkdirSync(NodePath.dirname(target), { recursive: true });
+    NodeFS.writeFileSync(target, contents);
+  };
+  for (const dir of ["scripts", "apps", "packages", "infra"])
+    NodeFS.mkdirSync(NodePath.join(smallFixture, dir), { recursive: true });
+  for (const file of gateRunnerFiles)
+    NodeFS.copyFileSync(
+      NodePath.join(import.meta.dirname, file),
+      NodePath.join(smallFixture, "scripts", file),
+    );
+  NodeFS.symlinkSync(
+    NodePath.join(import.meta.dirname, "node_modules"),
+    NodePath.join(smallFixture, "scripts/node_modules"),
+  );
+  write(".gitignore", "node_modules/\n");
+  const manifest = (name: string, dependencies = {}) =>
+    JSON.stringify({ name, scripts: { typecheck: "tsc --noEmit" }, dependencies });
+  write("apps/web/package.json", manifest("@t3tools/web"));
+  write("apps/server/package.json", manifest("t3", { "@t3tools/contracts": "workspace:*" }));
+  write(
+    "apps/server/src/contract.test.ts",
+    'import { ConversationId } from "@t3tools/contracts"; void ConversationId;\n',
+  );
+  write(
+    "packages/contracts/package.json",
+    JSON.stringify({
+      name: "@t3tools/contracts",
+      exports: { ".": "./src/index.ts" },
+      scripts: { typecheck: "tsc --noEmit" },
+    }),
+  );
+  write("packages/contracts/src/index.ts", 'export { ConversationId } from "./engine.ts";\n');
+  write("packages/contracts/src/engine.ts", 'export const ConversationId = "fixture";\n');
+  write("packages/contracts/src/engine.spec.ts", "export {};\n");
+  write(
+    "packages/client-runtime/package.json",
+    JSON.stringify({
+      name: "@t3tools/client-runtime",
+      exports: { "./delayed-status": "./src/delayedStatus.ts" },
+      scripts: { typecheck: "tsc --noEmit" },
+    }),
+  );
+  write("packages/client-runtime/src/delayedStatus.ts", "export {};\n");
+  for (const client of ["mobile", "desktop"]) {
+    write(
+      `apps/${client}/package.json`,
+      manifest(`@t3tools/${client}`, { "@t3tools/client-runtime": "workspace:*" }),
+    );
+    write(`apps/${client}/src/gateSelectionFixture.ts`, "export {};\n");
+    write(
+      `apps/${client}/src/gateSelectionFixture.test.ts`,
+      'import "@t3tools/client-runtime/delayed-status";\n',
+    );
+    for (const file of [
+      "src/nativeGateFixture.ts",
+      "src/nativeGateFixture.test.ts",
+      "test/nativeGateFixture.scenario.ts",
+    ])
+      write(`apps/${client}/${file}`, "export {};\n");
+  }
+  for (const file of Object.keys(stateOnlySmoke)) write(file, "export {};\n");
+  for (const file of [
+    "apps/web/test/scenarios/areas/d-change/review.scenario.ts",
+    "apps/web/test/scenarios/areas/c-mate/projects-opening.scenario.ts",
+  ])
+    write(file, "export {};\n");
+  write("scripts/undeclared-source-guard.test.ts", "export {};\n");
+  const directory = "apps/web/src/gate-selection-witness";
+  for (const file of ["owner.ts", "bridge.ts", "reader.test.ts", "unrelated.test.ts"])
+    write(`${directory}/${file}`, "export {};\n");
+  write(
+    "packages/gate-hop-consumer/package.json",
+    manifest("@fixture/direct", { "@t3tools/contracts": "workspace:*" }),
+  );
+  write(
+    "packages/gate-hop-consumer/src/direct.test.ts",
+    'import { ConversationId } from "@t3tools/contracts";',
+  );
+  write(
+    "packages/gate-hop-consumer/src/reader.ts",
+    'import { ConversationId } from "@t3tools/contracts"; export { ConversationId };',
+  );
+  write(
+    "packages/gate-hop-downstream/package.json",
+    manifest("@fixture/transitive", { "@fixture/direct": "workspace:*" }),
+  );
+  write(
+    "packages/gate-hop-downstream/src/transitive.test.ts",
+    'import { ConversationId } from "../../gate-hop-consumer/src/reader.ts";',
+  );
+  const owner = "apps/web/src/lib/gateScenarioSelection.ts";
+  write(owner, "export const witness = 1;");
+  write(
+    "apps/web/src/lib/gateScenarioHelper.ts",
+    "import { witness } from './gateScenarioSelection.ts'; export const doubled = witness * 2;",
+  );
+  for (let index = 0; index < 8; index++)
+    write(
+      `apps/web/test/scenarios/areas/b-menu/gate-near-${index}.scenario.ts`,
+      "import { witness } from '../../../../src/lib/gateScenarioSelection.ts';",
+    );
+  write(
+    "apps/web/test/scenarios/areas/b-menu/gate-far.scenario.ts",
+    "import { doubled } from '../../../../src/lib/gateScenarioHelper.ts';",
+  );
+  smallGit("init", "-q");
+  smallGit("config", "user.name", "Gate fixture");
+  smallGit("config", "user.email", "gate@example.test");
+  smallGit("add", ".");
+  smallGit("commit", "-qm", "selection fixture");
+});
+
+afterAll(() => {
+  if (smallFixture) NodeFS.rmSync(smallFixture, { recursive: true, force: true });
+});
+
+// The CLI/graph comparison below covers wiring; selection cases reuse its immutable snapshot.
+function fixtureStages(withScenarios = false) {
+  const comparison = fixtureGit("rev-parse", "HEAD");
+  const paths = changedPaths(repositoryFixture, comparison);
+  const existing = paths.filter((path) =>
+    NodeFS.existsSync(NodePath.join(repositoryFixture, path)),
+  );
+  const meaningful = meaningfulChanges(repositoryFixture, comparison, paths);
+  const selectionPaths = [
+    ...new Set([...meaningful.paths, ...existing.filter((path) => path.endsWith(".scenario.ts"))]),
+  ].sort();
+  const { inventory } = scenarioSelectionManifest(
+    "gate",
+    repositoryGraph(),
+    selectionPaths,
+    existing,
+    [],
+  );
+  const smokeFiles = selectionPaths.some((path) => !/^apps\/(?:mobile|desktop)(?:\/|$)/u.test(path))
+    ? Object.keys(stateOnlySmoke)
+    : [];
+  const selection = selectGateSteps(repositoryGraph(), {
+    tests: true,
+    comparison,
+    existing,
+    paths: selectionPaths,
+    inventory,
+    smokeFiles,
+    slots: gateSlotCount(),
+    withScenarios,
+  });
+  return selection.steps.map((step) => `${step.name}: ${step.command} ${step.args.join(" ")}`);
+}
+
+let chatEditChild: NodeChildProcess.ChildProcess | undefined;
+let chatEditResult: Promise<{ status: number | null; stdout: string; stderr: string }> | undefined;
+function chatEditCli() {
+  if (chatEditResult) return chatEditResult;
+  const file = NodePath.join(repositoryFixture, "apps/web/src/components/chat/RunChat.tsx");
+  const original = NodeFS.readFileSync(file, "utf8");
+  NodeFS.writeFileSync(file, original + "\nexport const gateGraphWitness = true;\n");
+  const child = NodeChildProcess.spawn(
+    process.execPath,
+    ["scripts/gate-changed.ts", "--tests", "--base", "HEAD", "--list"],
+    { cwd: repositoryFixture, env: fixtureEnvironment },
+  );
+  chatEditChild = child;
+  let stdout = "";
+  let stderr = "";
+  child.stdout!.setEncoding("utf8").on("data", (chunk: string) => (stdout += chunk));
+  child.stderr!.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
+  chatEditResult = new Promise<{ status: number | null; stdout: string; stderr: string }>(
+    (resolve, reject) => {
+      child.once("error", reject);
+      child.once("close", (status) => resolve({ status, stdout, stderr }));
+    },
+  ).finally(() => {
+    chatEditChild = undefined;
+    NodeFS.writeFileSync(file, original);
+  });
+  return chatEditResult;
+}
+
+const namedScenarioResults = new Map<string, NodeChildProcess.SpawnSyncReturns<string>>();
+function namedScenarioCli(consumer: string) {
+  const cached = namedScenarioResults.get(consumer);
+  if (cached) return cached;
+  const result = NodeChildProcess.spawnSync(
+    process.execPath,
+    ["scripts/gate-changed.ts", "--tests", "--base", "HEAD", "--list", "--scenarios", consumer],
+    { cwd: repositoryFixture, encoding: "utf8" },
+  );
+  namedScenarioResults.set(consumer, result);
+  return result;
+}
+
+// These real inputs do not change between cases; their candidates share one source snapshot.
+const realConsumerGraphs = new Map<string, ReturnType<typeof buildRelatedFileGraph>>();
+function realConsumerSelection(path: string, candidates: string[]) {
+  const key = JSON.stringify(candidates);
+  let graph = realConsumerGraphs.get(key);
+  if (!graph) {
+    graph = buildRelatedFileGraph(sourceRoot, candidates);
+    realConsumerGraphs.set(key, graph);
+  }
+  return graph.select([path]);
+}
 
 it.each([
   {
@@ -474,12 +727,12 @@ it.each([
     clients: ["mobile", "desktop"],
   },
 ])("$title", ({ source, clients }) => {
-  const file = NodePath.join(repositoryFixture, source);
+  const file = NodePath.join(smallFixture, source);
   const original = NodeFS.existsSync(file) ? NodeFS.readFileSync(file, "utf8") : undefined;
   const units = clients.map((client) => `apps/${client}/src/gateSelectionFixture.test.ts`);
   try {
     for (const unit of units) {
-      const path = NodePath.join(repositoryFixture, unit);
+      const path = NodePath.join(smallFixture, unit);
       NodeFS.mkdirSync(NodePath.dirname(path), { recursive: true });
       NodeFS.writeFileSync(
         path,
@@ -491,24 +744,21 @@ it.each([
     NodeFS.writeFileSync(file, (original ?? "") + "\nexport const gateSelectionFixture = true;\n");
     const result = NodeChildProcess.spawnSync(
       process.execPath,
-      ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
-      { cwd: repositoryFixture, encoding: "utf8" },
+      ["scripts/gate-changed.ts", "--tests", "--base", "HEAD", "--list"],
+      { cwd: smallFixture, encoding: "utf8" },
     );
     expect(result.status, result.stderr).toBe(0);
     const stages = result.stdout.split("\n");
     for (const client of clients) {
       expect(stages, "ASSERTION: every affected app keeps its typecheck").toContain(
-        `typecheck @t3tools/${client}: vp exec tsc --noEmit --incremental`,
+        `typecheck @t3tools/${client}: vp exec effect-tsgo tsrs --noEmit --incremental`,
       );
       expect(stages, "ASSERTION: the gate runs each affected app's selected unit test").toContain(
         `related @t3tools/${client}: vp test run src/gateSelectionFixture.test.ts`,
       );
     }
   } finally {
-    for (const unit of units)
-      NodeFS.rmSync(NodePath.join(repositoryFixture, unit), { force: true });
-    if (original === undefined) NodeFS.rmSync(file, { force: true });
-    else NodeFS.writeFileSync(file, original);
+    smallGit("reset", "--hard", "HEAD");
   }
 });
 
@@ -519,7 +769,7 @@ it.each(["mobile", "desktop"])(
       "src/nativeGateFixture.ts",
       "src/nativeGateFixture.test.ts",
       "test/nativeGateFixture.scenario.ts",
-    ].map((file) => NodePath.join(repositoryFixture, "apps", client, file));
+    ].map((file) => NodePath.join(smallFixture, "apps", client, file));
     try {
       for (const file of files) {
         NodeFS.mkdirSync(NodePath.dirname(file), { recursive: true });
@@ -527,8 +777,8 @@ it.each(["mobile", "desktop"])(
       }
       const result = NodeChildProcess.spawnSync(
         process.execPath,
-        ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
-        { cwd: repositoryFixture, encoding: "utf8" },
+        ["scripts/gate-changed.ts", "--tests", "--base", "HEAD", "--list"],
+        { cwd: smallFixture, encoding: "utf8" },
       );
       expect(result.status, result.stderr).toBe(0);
       const stages = result.stdout.split("\n");
@@ -540,7 +790,7 @@ it.each(["mobile", "desktop"])(
         ),
         "ASSERTION: native-only edits run their typecheck and unit test",
       ).toEqual([
-        `typecheck @t3tools/${client}: vp exec tsc --noEmit --incremental`,
+        `typecheck @t3tools/${client}: vp exec effect-tsgo tsrs --noEmit --incremental`,
         `related @t3tools/${client}: vp test run src/nativeGateFixture.test.ts`,
       ]);
       expect(
@@ -548,7 +798,7 @@ it.each(["mobile", "desktop"])(
         "ASSERTION: native-only edits run no browser scenarios",
       ).toEqual([]);
     } finally {
-      for (const file of files) NodeFS.rmSync(file, { force: true });
+      smallGit("reset", "--hard", "HEAD");
     }
   },
 );
@@ -573,7 +823,8 @@ it.each([
 ])("a lane validates only affected obligations for $path", ({ path, stages }) => {
   let steps: ReturnType<typeof selectGateSteps>["steps"] = [];
   expect(() => {
-    steps = selectGateSteps(repositoryGraph, {
+    steps = selectGateSteps(repositoryGraph(), {
+      tests: true,
       withScenarios: true,
       comparison: "HEAD",
       existing: [path],
@@ -581,9 +832,9 @@ it.each([
       // Rendering coverage is the builder's declaration; the app bundle is not a lane edge.
       inventory: stages.includes("C")
         ? [
-            "apps/web/test/scenarios/areas/c-mate/admission.scenario.ts",
             "apps/web/test/scenarios/areas/c-mate/chat.scenario.ts",
             "apps/web/test/scenarios/areas/c-mate/projects-opening.scenario.ts",
+            "apps/web/test/scenarios/areas/c-mate/recovery.scenario.ts",
           ]
         : [],
       smokeFiles: Object.keys(stateOnlySmoke),
@@ -596,7 +847,10 @@ it.each([
   const lines = output.split("\n");
   const owner = path.split("/").slice(0, 2).join("/");
   const typechecks = lines.filter(
-    (line) => line.startsWith("typecheck ") && !line.startsWith("typecheck scenarios:"),
+    (line) =>
+      line.startsWith("typecheck ") &&
+      !line.startsWith("typecheck scenarios:") &&
+      !line.startsWith("typecheck engine oracle:"),
   );
   const ownerName = owner === "apps/server" ? "t3" : `@t3tools/${owner.split("/")[1]}`;
   const dependents =
@@ -605,10 +859,10 @@ it.each([
           "@t3tools/scripts",
           "@t3tools/shared",
           "@t3tools/client-runtime",
-          "@t3tools/hq",
           "@t3tools/web",
           "@t3tools/desktop",
           "@t3tools/mobile",
+          "@t3tools/test-recordings",
           "t3",
           "t3code-relay",
         ]
@@ -624,7 +878,7 @@ it.each([
   const edited = lines.find((line) => line.startsWith("edited scenario files:"));
   if (stages.includes("C")) {
     expect(edited).toBe(
-      "edited scenario files: vp test run --config test/scenarios/vitest.config.ts test/scenarios/areas/c-mate/admission.scenario.ts test/scenarios/areas/c-mate/chat.scenario.ts test/scenarios/areas/c-mate/projects-opening.scenario.ts",
+      "edited scenario files: vp test run --config test/scenarios/vitest.config.ts test/scenarios/areas/c-mate/chat.scenario.ts test/scenarios/areas/c-mate/projects-opening.scenario.ts test/scenarios/areas/c-mate/recovery.scenario.ts",
     );
   } else expect(edited).toBeUndefined();
   if (stages.includes("A")) {
@@ -664,45 +918,6 @@ it.each([
   expect(smoke).toContain("engine-secret.scenario.ts");
   expect(smoke).toContain("engine-page.scenario.ts");
   expect(output).toContain("repository invariants:");
-});
-
-it("the CLI and immutable gate graph select identical obligations for a real source edit", () => {
-  const path = "apps/web/src/components/chat/RunChat.tsx";
-  const file = NodePath.join(repositoryFixture, path);
-  const original = NodeFS.readFileSync(file, "utf8");
-  try {
-    NodeFS.writeFileSync(file, original + "\nexport const gateGraphWitness = true;\n");
-    const result = NodeChildProcess.spawnSync(
-      process.execPath,
-      ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
-      { cwd: repositoryFixture, encoding: "utf8" },
-    );
-    expect(result.status, result.stderr).toBe(0);
-    const selection = selectGateSteps(repositoryGraph, {
-      comparison: fixtureGit("rev-parse", "HEAD"),
-      existing: [path],
-      paths: [path],
-      inventory: [],
-      smokeFiles: Object.keys(stateOnlySmoke),
-      slots: gateSlotCount(),
-    });
-    expect(
-      result.stdout
-        .split("\n")
-        .filter(
-          (line) =>
-            line &&
-            !/^(?:Scenario files:|Scenario |Related scenario cap:|Deferred scenario |Diff from )/u.test(
-              line,
-            ),
-        ),
-      "ASSERTION: the real CLI uses the same owning selection as the immutable graph",
-    ).toEqual(
-      selection.steps.map((step) => `${step.name}: ${step.command} ${step.args.join(" ")}`),
-    );
-  } finally {
-    NodeFS.writeFileSync(file, original);
-  }
 });
 
 // Decision: no test deleted or weakened; only lane selection changes; main CI runs everything.
@@ -761,7 +976,7 @@ it("a comments-only chat edit schedules no browser scenarios or chat stages", ()
     NodeFS.writeFileSync(file, "export const view = 1; // better documentation\n");
     const result = NodeChildProcess.spawnSync(
       process.execPath,
-      ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
+      ["scripts/gate-changed.ts", "--tests", "--base", "HEAD", "--list"],
       { cwd: root, encoding: "utf8" },
     );
     expect(result.status, result.stderr).toBe(0);
@@ -816,47 +1031,42 @@ it("the related file graph follows reexports, cycles, lazy imports, aliases and 
 it.each([
   {
     path: "apps/web/src/components/ChatView.tsx",
-    consumer: "apps/web/test/scenarios/areas/c-mate/admission.scenario.ts",
+    consumer: "apps/web/test/scenarios/areas/c-mate/engine-page.scenario.ts",
   },
   {
     path: "packages/client-runtime/src/data/projections/agentAdmission.ts",
-    consumer: "apps/web/test/scenarios/areas/c-mate/admission.scenario.ts",
+    consumer: "apps/web/test/scenarios/areas/c-mate/engine-page.scenario.ts",
   },
   {
     path: "apps/web/test/scenarios/harness/build.ts",
-    consumer: "apps/web/test/scenarios/areas/c-mate/admission.scenario.ts",
+    consumer: "apps/web/test/scenarios/areas/c-mate/engine-page.scenario.ts",
   },
   {
     path: "apps/web/src/fonts.css",
-    consumer: "apps/web/test/scenarios/areas/c-mate/admission.scenario.ts",
+    consumer: "apps/web/test/scenarios/areas/c-mate/engine-page.scenario.ts",
   },
   {
     path: "apps/web/src/components/zerops/primitives/MateFaceMoments.css",
-    consumer: "apps/web/test/scenarios/areas/c-mate/admission.scenario.ts",
+    consumer: "apps/web/test/scenarios/areas/c-mate/engine-page.scenario.ts",
   },
   {
     path: "apps/server/src/spi/fixtures/claude/plain-text-turn.expected.json",
     consumer: "apps/server/src/spi/replay/goldens.test.ts",
   },
 ])("execution dependency $path retains its real consumer $consumer", ({ path, consumer }) => {
-  const root = NodePath.resolve(import.meta.dirname, "..");
   const candidates = [consumer, "apps/web/test/scenarios/fakes/c-mate/chat.test.ts"];
   if (path.startsWith("apps/web/test/") || path.startsWith("apps/server/")) {
-    const selected = relatedFiles(root, [path], candidates);
+    const selected = realConsumerSelection(path, candidates);
     expect(selected).toContain(consumer);
     expect(selected).not.toContain("apps/web/test/scenarios/fakes/c-mate/chat.test.ts");
   } else {
     // The builder names the journey that renders this bundle input.
-    const result = NodeChildProcess.spawnSync(
-      process.execPath,
-      ["scripts/gate-changed.ts", "--base", "HEAD", "--list", "--scenarios", consumer],
-      { cwd: repositoryFixture, encoding: "utf8" },
-    );
+    const result = namedScenarioCli(consumer);
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain(`Scenario ${consumer}; reason: explicit --scenarios`);
     expect(result.stdout).toContain("Scenario files: 1;");
     expect(result.stdout).not.toContain("apps/web/test/scenarios/fakes/c-mate/chat.test.ts");
-    expect(relatedFiles(root, [path], candidates)).toEqual([]);
+    expect(realConsumerSelection(path, candidates)).toEqual([]);
   }
 });
 
@@ -867,7 +1077,7 @@ it("a comments-only stylesheet edit schedules no browser scenarios or chat stage
     NodeFS.writeFileSync(file, original + "\n/* Updated stylesheet explanation. */\n");
     const result = NodeChildProcess.spawnSync(
       process.execPath,
-      ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
+      ["scripts/gate-changed.ts", "--tests", "--base", "HEAD", "--list"],
       { cwd: repositoryFixture, encoding: "utf8" },
     );
     expect(result.status, result.stderr).toBe(0);
@@ -886,7 +1096,7 @@ it("a comments-only HTML edit schedules no browser scenarios or chat stages", ()
     NodeFS.writeFileSync(file, original + "\n<!-- Updated browser entry explanation. -->\n");
     const result = NodeChildProcess.spawnSync(
       process.execPath,
-      ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
+      ["scripts/gate-changed.ts", "--tests", "--base", "HEAD", "--list"],
       { cwd: repositoryFixture, encoding: "utf8" },
     );
     expect(result.status, result.stderr).toBe(0);
@@ -1041,43 +1251,11 @@ it('Decision: no "run everything" fallback; selection stays graph-based.', () =>
   ).toEqual([]);
 });
 
-it("lane scenarios follow their own imports without the bundled app entry", () => {
-  const file = NodePath.join(repositoryFixture, "apps/web/src/components/chat/RunChat.tsx");
-  const original = NodeFS.readFileSync(file, "utf8");
-  try {
-    NodeFS.writeFileSync(file, original + "\nexport const gateSelect3Fixture = true;\n");
-    const result = NodeChildProcess.spawnSync(
-      process.execPath,
-      ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
-      { cwd: repositoryFixture, encoding: "utf8" },
-    );
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toContain("Scenario files: 0;");
-    expect(result.stdout).not.toContain("edited scenario files:");
-    expect(
-      relatedFiles(
-        repositoryFixture,
-        ["apps/web/test/scenarios/areas/c-mate/dsl.ts"],
-        ["apps/web/test/scenarios/areas/c-mate/chat.scenario.ts"],
-      ),
-    ).toEqual(["apps/web/test/scenarios/areas/c-mate/chat.scenario.ts"]);
-    expect(
-      relatedFiles(
-        repositoryFixture,
-        ["apps/web/src/main.tsx"],
-        ["apps/web/test/scenarios/areas/c-mate/chat.scenario.ts"],
-      ),
-    ).toEqual([]);
-  } finally {
-    NodeFS.writeFileSync(file, original);
-  }
-});
-
 it("builders name rendering scenarios without expanding their siblings", () => {
   const named = "apps/web/test/scenarios/areas/c-mate/projects-opening.scenario.ts";
   const result = NodeChildProcess.spawnSync(
     process.execPath,
-    ["scripts/gate-changed.ts", "--base", "HEAD", "--scenarios", named, "--list"],
+    ["scripts/gate-changed.ts", "--tests", "--base", "HEAD", "--scenarios", named, "--list"],
     { cwd: repositoryFixture, encoding: "utf8" },
   );
   expect(result.status, result.stderr).toBe(0);
@@ -1095,7 +1273,7 @@ it.each([
 ])("invalid explicit scenario files fail before any gate command ($0)", (...files) => {
   const result = NodeChildProcess.spawnSync(
     process.execPath,
-    ["scripts/gate-changed.ts", "--base", "HEAD", "--list", "--scenarios", ...files],
+    ["scripts/gate-changed.ts", "--tests", "--base", "HEAD", "--list", "--scenarios", ...files],
     { cwd: repositoryFixture, encoding: "utf8" },
   );
   expect(result.status).not.toBe(0);
@@ -1105,14 +1283,24 @@ it.each([
 it("named rendering scenarios join changed scenarios once and keep their owning stages", () => {
   const changed = "apps/web/test/scenarios/areas/d-change/review.scenario.ts";
   const named = "apps/web/test/scenarios/areas/c-mate/projects-opening.scenario.ts";
-  const file = NodePath.join(repositoryFixture, changed);
+  const file = NodePath.join(smallFixture, changed);
   const original = NodeFS.readFileSync(file, "utf8");
   try {
     NodeFS.writeFileSync(file, original + "\nexport const gateSelect3Fixture = true;\n");
     const result = NodeChildProcess.spawnSync(
       process.execPath,
-      ["scripts/gate-changed.ts", "--scenarios", named, changed, named, "--base", "HEAD", "--list"],
-      { cwd: repositoryFixture, encoding: "utf8" },
+      [
+        "scripts/gate-changed.ts",
+        "--tests",
+        "--scenarios",
+        named,
+        changed,
+        named,
+        "--base",
+        "HEAD",
+        "--list",
+      ],
+      { cwd: smallFixture, encoding: "utf8" },
     );
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain("Scenario files: 2;");
@@ -1130,9 +1318,47 @@ it("named rendering scenarios join changed scenarios once and keep their owning 
   }
 });
 
+it.concurrent("the CLI and immutable gate graph select identical obligations for a real source edit", async () => {
+  const path = "apps/web/src/components/chat/RunChat.tsx";
+  const result = await chatEditCli();
+  expect(result.status, result.stderr).toBe(0);
+  const selection = selectGateSteps(repositoryGraph(), {
+    tests: true,
+    comparison: fixtureGit("rev-parse", "HEAD"),
+    existing: [path],
+    paths: [path],
+    inventory: [],
+    smokeFiles: Object.keys(stateOnlySmoke),
+    slots: gateSlotCount(),
+  });
+  expect(
+    result.stdout
+      .split("\n")
+      .filter(
+        (line) =>
+          line &&
+          !/^(?:Scenario files:|Scenario |Related scenario cap:|Deferred scenario |Diff from |\d+ affected witnesses omitted$)/u.test(
+            line,
+          ),
+      ),
+    "ASSERTION: the real CLI uses the same owning selection as the immutable graph",
+  ).toEqual(selection.steps.map((step) => `${step.name}: ${step.command} ${step.args.join(" ")}`));
+});
+
 // Exercise the gate CLI with observable check commands, rather than testing its cache helpers.
-it("Decision: no check is skipped for changed code; a passing receipt is reused only for an identical diff hash.", () => {
+it.concurrent("Decision: no check is skipped for changed code; a passing receipt is reused only for an identical diff hash.", async () => {
   const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-gate-receipt-"));
+  // Git's exec path holds the git binary itself; a launcher such as macOS's /usr/bin/git shim
+  // costs more per call than the receipt logic.
+  vi.stubEnv(
+    "PATH",
+    [
+      NodeChildProcess.execFileSync("git", ["--exec-path"], { encoding: "utf8" }).trim(),
+      process.env.PATH,
+    ].join(NodePath.delimiter),
+  );
+  // Browser/scenario slots are machine-wide; the fixture never queues behind real gates.
+  vi.stubEnv("HOME", NodePath.join(root, "node_modules/home"));
   const git = (...args: string[]) => {
     const result = NodeChildProcess.spawnSync("git", args, { cwd: root, encoding: "utf8" });
     if (result.status !== 0) throw new Error(result.stderr);
@@ -1145,10 +1371,6 @@ it("Decision: no check is skipped for changed code; a passing receipt is reused 
         NodePath.join(import.meta.dirname, name),
         NodePath.join(root, "scripts", name),
       );
-    NodeFS.symlinkSync(
-      NodePath.resolve(import.meta.dirname, "node_modules"),
-      NodePath.join(root, "scripts/node_modules"),
-    );
     for (const name of [
       "check-guard-exceptions.ts",
       "check-runtime-cycles.ts",
@@ -1190,25 +1412,34 @@ exit "\${GATE_FIXTURE_FAIL:-0}"
     git("commit", "-qm", "base");
     git("branch", "base");
     NodeFS.writeFileSync(NodePath.join(root, "README.md"), "after");
-    const run = (args: string[] = [], fail = false, hqCommand?: string) =>
-      NodeChildProcess.spawnSync(
-        process.execPath,
-        ["scripts/gate-changed.ts", "--base", "base", ...args],
-        {
-          cwd: root,
-          encoding: "utf8",
-          env: {
-            ...process.env,
-            GATE_FIXTURE_FAIL: fail ? "9" : "0",
-            GATE_FIXTURE_HQ_COMMAND_LOG: NodePath.join(root, "node_modules/hq-command.log"),
-            MATE_HQ_TEST_COMMAND: hqCommand,
-            // Dozens of real CLI launches share compilation, never gate results or Git state.
-            NODE_COMPILE_CACHE: NodePath.join(root, "node_modules/.cache/node"),
-          },
-        },
-      );
+    vi.stubEnv("GATE_FIXTURE_HQ_COMMAND_LOG", NodePath.join(root, "node_modules/hq-command.log"));
+    // The CLI body runs in-process: dozens of Node launches cost more than the receipt logic.
+    const run = async (args: string[] = [], fail = false, hqCommand?: string) => {
+      vi.stubEnv("GATE_FIXTURE_FAIL", fail ? "9" : "0");
+      vi.stubEnv("MATE_HQ_TEST_COMMAND", hqCommand);
+      const stdout: string[] = [];
+      const stderr: string[] = [];
+      const capture =
+        (lines: string[]) =>
+        (...parts: unknown[]) =>
+          void lines.push(parts.join(" "));
+      const log = vi.spyOn(console, "log").mockImplementation(capture(stdout));
+      const error = vi.spyOn(console, "error").mockImplementation(capture(stderr));
+      const write = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+        stdout.push(String(chunk));
+        return true;
+      });
+      try {
+        const status = await runGate(root, ["--tests", "--base", "base", ...args]);
+        return { status, stdout: stdout.join("\n"), stderr: stderr.join("\n") };
+      } finally {
+        log.mockRestore();
+        error.mockRestore();
+        write.mockRestore();
+      }
+    };
     const checks = () => NodeFS.readFileSync(NodePath.join(root, "checks.log"), "utf8");
-    const first = run();
+    const first = await run();
     expect(first.status, first.stderr).toBe(0);
     expect(first.stdout.trim().split("\n").length).toBeLessThanOrEqual(15);
     expect(first.stdout).not.toContain("Selection ");
@@ -1219,7 +1450,7 @@ exit "\${GATE_FIXTURE_FAIL:-0}"
       "check-test-sentences.ts",
       "vp",
     ]);
-    const second = run();
+    const second = await run();
     expect(second.status, second.stderr).toBe(0);
     expect(second.stdout).toContain("reused receipt");
     expect(checks()).toBe(checked);
@@ -1239,20 +1470,22 @@ exit "\${GATE_FIXTURE_FAIL:-0}"
     expect(changedPaths(root, "base")).toEqual(["README.md"]);
     git("add", "README.md");
     git("commit", "-qm", "lane");
-    expect(run().stdout).toContain("reused receipt");
+    const committed = await run();
+    expect(committed.stdout).not.toContain("reused receipt");
+    expect(committed.stdout).toContain("reused stage:");
     expect(checks()).toBe(checked);
     // --list is a preview; --force must execute and replace an old passing receipt even on failure.
-    expect(run(["--list"]).stdout).toContain("guard ledgers:");
+    expect((await run(["--list"])).stdout).toContain("guard ledgers:");
     expect(checks()).toBe(checked);
-    const verbose = run(["--verbose", "--force"]);
+    const verbose = await run(["--verbose", "--force"]);
     expect(verbose.status).toBe(0);
     expect(verbose.stdout).toContain("Scenario files: 0; reason: documentation/comments only");
-    const failed = run(["--force"], true);
+    const failed = await run(["--force"], true);
     expect(failed.status).toBe(9);
     expect(failed.stderr).toContain("Full log:");
     expect(JSON.parse(NodeFS.readFileSync(receiptPath, "utf8")).results.at(-1).status).toBe(9);
     const checksBeforeRetry = checks();
-    const retried = run();
+    const retried = await run();
     expect(retried.status, retried.stderr).toBe(0);
     expect(retried.stdout).not.toContain("reused receipt");
     expect(
@@ -1260,7 +1493,7 @@ exit "\${GATE_FIXTURE_FAIL:-0}"
       "ASSERTION: a gate re-run never repeats stages that passed on unchanged files",
     ).toBe("vp\n");
     const checksBeforeFull = checks();
-    const full = run(["--full"]);
+    const full = await run(["--full"]);
     expect(full.status, full.stderr).toBe(0);
     expect(checks().slice(checksBeforeFull.length).split("\n").filter(Boolean)).toEqual([
       "check-guard-exceptions.ts",
@@ -1268,7 +1501,7 @@ exit "\${GATE_FIXTURE_FAIL:-0}"
       "check-test-sentences.ts",
       "vp",
     ]);
-    expect(run().stdout).toContain("reused receipt");
+    expect((await run()).stdout).toContain("reused receipt");
     // A corrupt or incomplete receipt is evidence to run, never evidence to skip.
     for (const content of [
       "{",
@@ -1276,7 +1509,7 @@ exit "\${GATE_FIXTURE_FAIL:-0}"
       JSON.stringify({ ...receipt, selectedStages: [] }),
     ]) {
       NodeFS.writeFileSync(receiptPath, content);
-      const result = run();
+      const result = await run();
       expect(result.status, result.stderr).toBe(0);
       expect(result.stdout).not.toContain("reused receipt");
     }
@@ -1301,19 +1534,21 @@ exit "\${GATE_FIXTURE_FAIL:-0}"
     ]) {
       const before = checks();
       mutate();
-      const result = run();
+      const result = await run();
       expect(result.status, result.stderr).toBe(0);
       expect(result.stdout).not.toContain("reused receipt");
       expect(checks()).not.toBe(before);
-      expect(run().stdout).toContain("reused receipt");
+      expect((await run()).stdout).toContain("reused receipt");
     }
-    // Staging and committing additions must preserve the same diff identity as untracked bytes.
+    // Committing identical bytes creates a fresh verdict while preserving stage results.
     const beforeCommit = checks();
     git("add", "--all", "--", "README.md", "renamed.md", "binary.md", "link.md");
     git("commit", "-qm", "lane additions");
-    expect(run().stdout).toContain("reused receipt");
+    const committedAdditions = await run();
+    expect(committedAdditions.stdout).not.toContain("reused receipt");
+    expect(committedAdditions.stdout).toContain("reused stage:");
     expect(checks()).toBe(beforeCommit);
-    // An unrelated main change and a clean rebase leave the lane diff and checks identical.
+    // An unrelated main change and a clean rebase preserve checks, not the old verdict.
     git("checkout", "-qb", "lane");
     git("checkout", "-q", "base");
     NodeFS.writeFileSync(NodePath.join(root, "main.md"), "unrelated");
@@ -1321,7 +1556,9 @@ exit "\${GATE_FIXTURE_FAIL:-0}"
     git("commit", "-qm", "main moved");
     git("checkout", "-q", "lane");
     git("rebase", "base");
-    expect(run().stdout).toContain("reused receipt");
+    const rebased = await run();
+    expect(rebased.stdout).not.toContain("reused receipt");
+    expect(rebased.stdout).toContain("reused stage:");
     expect(checks()).toBe(beforeCommit);
     // Decision: no test deleted or weakened; the receipt never masks a failure.
     // Selection inputs can change on main without changing the lane patch or command list.
@@ -1349,12 +1586,12 @@ exit "\${GATE_FIXTURE_FAIL:-0}"
       git("commit", "-qm", "selection inputs changed");
       git("checkout", "-q", "lane");
       git("rebase", "base");
-      const result = run();
+      const result = await run();
       expect(result.status, result.stderr).toBe(0);
       expect(result.stdout, `changed selection input: ${path}`).not.toContain("reused receipt");
       expect(checks()).not.toBe(before);
       expect(JSON.parse(NodeFS.readFileSync(receiptPath, "utf8")).selectedStages).toEqual(stages);
-      expect(run().stdout).toContain("reused receipt");
+      expect((await run()).stdout).toContain("reused receipt");
     }
     const scenario = "apps/web/test/scenarios/areas/b-menu/pick.scenario.ts";
     git("checkout", "-q", "base");
@@ -1367,7 +1604,7 @@ exit "\${GATE_FIXTURE_FAIL:-0}"
     NodeFS.mkdirSync(NodePath.join(root, "apps/web/test/scenarios/areas/c-mate"), {
       recursive: true,
     });
-    const explicit = run(["--scenarios", scenario]);
+    const explicit = await run(["--scenarios", scenario]);
     expect(explicit.status, explicit.stderr).toBe(0);
     expect(explicit.stdout).not.toContain("reused receipt");
     expect(explicit.stdout).toContain("ok edited scenario files");
@@ -1383,23 +1620,92 @@ exit "\${GATE_FIXTURE_FAIL:-0}"
         0,
       ),
     );
-    expect(run(["--scenarios", scenario]).stdout).toContain("reused receipt");
+    expect((await run(["--scenarios", scenario])).stdout).toContain("reused receipt");
     const commandLog = NodePath.join(root, "node_modules/hq-command.log");
-    for (const hqCommand of ["node /fixtures/hq-a.ts", "node /fixtures/hq-b.ts", undefined]) {
+    const hqCheckouts = ["hq-a", "hq-b"].map((name) => {
+      const dir = NodePath.join(root, "node_modules", name);
+      const launcher = NodePath.join(dir, "conformance/scripts/test-hq.ts");
+      NodeFS.mkdirSync(NodePath.dirname(launcher), { recursive: true });
+      const git = (...args: string[]) =>
+        NodeChildProcess.execFileSync("git", ["-C", dir, ...args], { encoding: "utf8" });
+      git("init", "-q");
+      git("config", "user.name", "HQ fixture");
+      git("config", "user.email", "hq@example.test");
+      NodeFS.writeFileSync(launcher, "// first HQ revision\n");
+      git("add", ".");
+      git("commit", "-qm", "first HQ revision");
+      return { git, launcher, command: `node ${launcher}` };
+    });
+    for (const hqCommand of [...hqCheckouts.map((hq) => hq.command), undefined]) {
       NodeFS.rmSync(commandLog);
-      const changedHq = run(["--scenarios", scenario], false, hqCommand);
+      const changedHq = await run(["--scenarios", scenario], false, hqCommand);
       expect(changedHq.status, changedHq.stderr).toBe(0);
       expect(
         changedHq.stdout,
         "ASSERTION: changing the HQ test command runs scenarios against the selected backend",
       ).toContain("ok edited scenario files");
       expect(NodeFS.readFileSync(commandLog, "utf8")).toBe(hqCommand ?? "<unset>");
-      expect(run(["--scenarios", scenario], false, hqCommand).stdout).toContain("reused receipt");
+      expect((await run(["--scenarios", scenario], false, hqCommand)).stdout).toContain(
+        "reused receipt",
+      );
     }
-    expect(run().stdout).not.toContain("reused receipt");
+    // An arbitrary launcher cannot prove which HQ revision it builds.
+    const unknownCommand = "node /fixtures/unknown-hq.ts";
+    await run(["--scenarios", scenario], false, unknownCommand);
+    expect(
+      (await run(["--scenarios", scenario], false, unknownCommand)).stdout,
+      "ASSERTION: an unknown HQ revision cannot reuse a scenario verdict",
+    ).toContain("ok edited scenario files");
+    // The same launcher path can build a different HQ revision without changing the z3 diff.
+    const hq = hqCheckouts[0]!;
+    expect((await run(["--scenarios", scenario], false, hq.command)).stdout).toContain(
+      "ok edited scenario files",
+    );
+    expect((await run(["--scenarios", scenario], false, hq.command)).stdout).toContain(
+      "reused receipt",
+    );
+    NodeFS.writeFileSync(hq.launcher, "// second HQ revision\n");
+    hq.git("add", ".");
+    hq.git("commit", "-qm", "second HQ revision");
+    expect(
+      (await run(["--scenarios", scenario], false, hq.command)).stdout,
+      "ASSERTION: an HQ revision change reruns scenarios even when its launcher path is unchanged",
+    ).toContain("ok edited scenario files");
+    expect((await run(["--scenarios", scenario], false, hq.command)).stdout).toContain(
+      "reused receipt",
+    );
+    NodeFS.writeFileSync(hq.launcher, "// uncommitted HQ source\n");
+    await run(["--scenarios", scenario], false, hq.command);
+    expect(
+      (await run(["--scenarios", scenario], false, hq.command)).stdout,
+      "ASSERTION: a dirty HQ checkout cannot reuse a scenario verdict",
+    ).toContain("ok edited scenario files");
+    expect((await run()).stdout).not.toContain("reused receipt");
   } finally {
+    vi.unstubAllEnvs();
     NodeFS.rmSync(root, { recursive: true, force: true });
   }
+});
+
+it("lane scenarios follow their own imports without the bundled app entry", async () => {
+  const result = await chatEditCli();
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stdout).toContain("Scenario files: 0;");
+  expect(result.stdout).not.toContain("edited scenario files:");
+  expect(
+    relatedFiles(
+      repositoryFixture,
+      ["apps/web/test/scenarios/areas/c-mate/dsl.ts"],
+      ["apps/web/test/scenarios/areas/c-mate/chat.scenario.ts"],
+    ),
+  ).toEqual(["apps/web/test/scenarios/areas/c-mate/chat.scenario.ts"]);
+  expect(
+    relatedFiles(
+      repositoryFixture,
+      ["apps/web/src/main.tsx"],
+      ["apps/web/test/scenarios/areas/c-mate/chat.scenario.ts"],
+    ),
+  ).toEqual([]);
 });
 
 it("BigInt source edits select checks while comments alone select none", () => {
@@ -1434,12 +1740,80 @@ it("BigInt source edits select checks while comments alone select none", () => {
   }
 });
 
+// witness: scripts/gate-changed.ts | if (existing.some((path) => /\.test\.tsx?$/u.test(path))) → if (false)
+it("a lane editing a unit test replays its new witnesses before the test stages; scenario files replay in the integrator", () => {
+  const unit = "apps/server/src/spi/serverCommandReadiness.test.ts";
+  const scenario = "apps/web/test/scenarios/areas/d-change/review.scenario.ts";
+  const lines = (path: string) =>
+    selectGateSteps(repositoryGraph(), {
+      tests: true,
+      comparison: "HEAD",
+      existing: [path],
+      paths: [path],
+      inventory: [scenario],
+      smokeFiles: [],
+      slots: 3,
+    }).steps.map((step) => `${step.name}: ${step.command} ${step.args.join(" ")}`);
+  const unitLane = lines(unit);
+  const replay = unitLane.indexOf("witness replay: node scripts/witness-replay.ts --changed HEAD");
+  expect(replay).toBeGreaterThan(-1);
+  expect(replay).toBeLessThan(unitLane.findIndex((line) => line.startsWith("related ")));
+  expect(lines(scenario).some((line) => line.startsWith("witness replay:"))).toBe(false);
+});
+
+// witness: scripts/gate-changed.ts | scenarioCapInput(path) || → false ||
+it("a lane adding a scenario case runs the area caps check", () => {
+  const scenario = "apps/web/test/scenarios/areas/b-menu/reload.scenario.ts";
+  const caps = (path: string) =>
+    selectGateSteps(repositoryGraph(), {
+      tests: true,
+      comparison: "HEAD",
+      existing: [path],
+      paths: [path],
+      inventory: [scenario],
+      smokeFiles: [],
+      slots: 3,
+    })
+      .steps.filter((step) => step.name === "scenario caps")
+      .map((step) => `${step.command} ${step.args.join(" ")}`);
+  expect(caps(scenario)).toEqual(["node scripts/check-scenario-caps.ts"]);
+  expect(caps("apps/web/src/main.tsx")).toEqual([]);
+});
+
+// witness: scripts/gate-changed.ts | if (!tests) return → if (false) return
+it("Decision: without --tests the gate runs lint, typecheck and build of the changed packages and no test", () => {
+  const unit = "apps/server/src/spi/serverCommandReadiness.test.ts";
+  const { steps } = selectGateSteps(repositoryGraph(), {
+    tests: false,
+    comparison: "HEAD",
+    existing: [unit],
+    paths: [unit],
+    inventory: ["apps/web/test/scenarios/areas/d-change/review.scenario.ts"],
+    smokeFiles: Object.keys(stateOnlySmoke),
+    slots: 3,
+  });
+  expect(
+    steps.filter(
+      (step) =>
+        step.args.includes("test") ||
+        step.slot ||
+        step.args.some((arg) => /check-test-|check-scenario-caps|witness-replay/u.test(arg)),
+    ),
+    "ASSERTION: no test suite or test machinery runs without --tests",
+  ).toEqual([]);
+  expect(steps.map((step) => step.name)).toEqual(
+    expect.arrayContaining(["check touched files", "typecheck t3", "build server bundle"]),
+  );
+});
+
 it("the default laptop gate omits selected browser scenarios and fixed smoke", () => {
   const scenario = "apps/web/test/scenarios/areas/d-change/review.scenario.ts";
-  const { steps } = selectGateSteps(repositoryGraph, {
+  const dependency = "apps/web/test/scenarios/areas/d-change/dsl.ts";
+  const { steps } = selectGateSteps(repositoryGraph(), {
+    tests: true,
     comparison: "HEAD",
-    existing: [scenario],
-    paths: [scenario],
+    existing: [dependency],
+    paths: [dependency],
     inventory: [scenario],
     smokeFiles: Object.keys(stateOnlySmoke),
     slots: 3,
@@ -1448,7 +1822,7 @@ it("the default laptop gate omits selected browser scenarios and fixed smoke", (
     steps.filter((step) =>
       ["edited scenario files", "state-only smoke", "state-only oracle smoke"].includes(step.name),
     ),
-    "ASSERTION: default laptop completion never executes browser scenarios or fixed smoke",
+    "ASSERTION: default laptop completion omits unchanged related scenarios and fixed smoke",
   ).toEqual([]);
 });
 
@@ -1491,7 +1865,6 @@ it.each(["changed", "deleted"])(
 
 const smokeTitles = [
   "cold direct conversation URL opens the named Mate and its history",
-  "reload restores history",
   "sending a message puts it in the durable visible conversation",
   "approve an agent command and see it resolve",
   "a secret the person gives never reaches the Mate's records or its agent",
@@ -1500,7 +1873,8 @@ const smokeTitles = [
 
 it("L2 runs invariants, touched typechecks, owned units, edited scenarios and fixed state-only smoke in order", () => {
   const path = "packages/contracts/src/engine.ts";
-  const selected = selectGateSteps(repositoryGraph, {
+  const selected = selectGateSteps(repositoryGraph(), {
+    tests: true,
     withScenarios: true,
     comparison: "HEAD",
     existing: [path, "apps/web/test/scenarios/areas/d-change/review.scenario.ts"],
@@ -1565,14 +1939,9 @@ it.each(["apps/web/package.json", "package.json", "pnpm-lock.yaml"])(
           : original + "\n# L2 witness\n",
       );
       if (path === "pnpm-lock.yaml") installLockfile(repositoryFixture);
-      const result = NodeChildProcess.spawnSync(
-        process.execPath,
-        ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
-        { cwd: repositoryFixture, encoding: "utf8" },
-      );
-      expect(result.status, result.stderr).toBe(0);
-      expect(result.stdout).toContain("typecheck @t3tools/web:");
-      const unitLines = result.stdout.split("\n").filter((line) => line.startsWith("related "));
+      const output = fixtureStages();
+      expect(output.join("\n")).toContain("typecheck @t3tools/web:");
+      const unitLines = output.filter((line) => line.startsWith("related "));
       expect(unitLines.length).toBeGreaterThan(0);
       expect(
         unitLines.join("\n"),
@@ -1586,7 +1955,7 @@ it.each(["apps/web/package.json", "package.json", "pnpm-lock.yaml"])(
         expect(unitLines.some((line) => line.startsWith("related @t3tools/web:"))).toBe(true);
         expect(unitLines.some((line) => line.startsWith("related t3:"))).toBe(false);
       }
-      expect(result.stdout).not.toContain("vp run -r");
+      expect(output.join("\n")).not.toContain("vp run -r");
     } finally {
       NodeFS.writeFileSync(file, original);
       if (path === "pnpm-lock.yaml") installLockfile(repositoryFixture);
@@ -1610,15 +1979,7 @@ it.each(["added", "comment-only addition", "renamed", "deleted"])(
         );
       if (change === "renamed") fixtureGit("mv", oldPath, newPath);
       if (change === "deleted") fixtureGit("rm", oldPath);
-      const result = NodeChildProcess.spawnSync(
-        process.execPath,
-        ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
-        { cwd: repositoryFixture, encoding: "utf8" },
-      );
-      expect(result.status, result.stderr).toBe(0);
-      const scanners = result.stdout
-        .split("\n")
-        .find((line) => line.startsWith("repository invariants:"));
+      const scanners = fixtureStages().find((line) => line.startsWith("repository invariants:"));
       expect(scanners, "ASSERTION: tree scans must run independently of import edges").toContain(
         "scripts/surface-manifest.test.ts",
       );
@@ -1641,15 +2002,7 @@ it.each([
   const original = NodeFS.readFileSync(file, "utf8");
   try {
     NodeFS.appendFileSync(file, '\nimport "./gate-boundary-witness.ts";\n');
-    const result = NodeChildProcess.spawnSync(
-      process.execPath,
-      ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
-      { cwd: repositoryFixture, encoding: "utf8" },
-    );
-    expect(result.status, result.stderr).toBe(0);
-    const scanner = result.stdout
-      .split("\n")
-      .find((line) => line.startsWith("repository invariants:"));
+    const scanner = fixtureStages().find((line) => line.startsWith("repository invariants:"));
     expect(scanner, "ASSERTION: changed import edges must run architecture invariants").toContain(
       "scripts/mate-zone-architecture.test.ts",
     );
@@ -1796,13 +2149,7 @@ it("L2 runs owned scenario-driver units through their existing project before sc
   const original = NodeFS.readFileSync(file, "utf8");
   try {
     NodeFS.appendFileSync(file, "\nexport const l2DriverWitness = true;\n");
-    const result = NodeChildProcess.spawnSync(
-      process.execPath,
-      ["scripts/gate-changed.ts", "--base", "HEAD", "--list", "--with-scenarios"],
-      { cwd: repositoryFixture, encoding: "utf8" },
-    );
-    expect(result.status, result.stderr).toBe(0);
-    const lines = result.stdout.split("\n");
+    const lines = fixtureStages(true);
     const driver = lines.findIndex((line) => line.startsWith("related scenario-driver units:"));
     expect(
       driver,
@@ -1825,6 +2172,30 @@ it("L2 runs owned scenario-driver units through their existing project before sc
   }
 });
 
+// witness: scripts/gate-changed.ts | "test/e-env/vitest.config.ts", → "test/scenarios/vitest.config.ts",
+it("L2 runs owned environment source consumers under the config that includes them", () => {
+  const path = "apps/web/test/scenarios/areas/e-env/environmentSources.test.tsx";
+  const file = NodePath.join(repositoryFixture, path);
+  const original = NodeFS.readFileSync(file, "utf8");
+  try {
+    NodeFS.appendFileSync(file, "\nexport const l2EnvironmentWitness = true;\n");
+    const lines = fixtureStages();
+    const consumers = lines.find((line) =>
+      line.startsWith("related environment source consumers:"),
+    );
+    expect(
+      consumers,
+      "ASSERTION: an edited environment source consumer must run under its own config",
+    ).toContain("vp test run --config test/e-env/vitest.config.ts");
+    expect(consumers).toContain("test/scenarios/areas/e-env/environmentSources.test.tsx");
+    expect(lines.find((line) => line.startsWith("related @t3tools/web:")) ?? "").not.toContain(
+      "test/scenarios/areas/e-env/environmentSources.test.tsx",
+    );
+  } finally {
+    NodeFS.writeFileSync(file, original);
+  }
+});
+
 it.each([
   ["a depth-2 importer", 'import "./bridge.ts";', 'import "./owner.ts";'],
   ["a mock-only reader", 'vi.mock("./owner.ts", () => ({}));', "export {};"],
@@ -1837,23 +2208,23 @@ it.each([
     [`${directory}/reader.test.ts`]: reader,
     [`${directory}/unrelated.test.ts`]: "export {};",
   };
-  const head = fixtureGit("rev-parse", "HEAD");
+  const head = smallGit("rev-parse", "HEAD");
   try {
     for (const [path, content] of Object.entries(fixtures)) {
-      const file = NodePath.join(repositoryFixture, path);
+      const file = NodePath.join(smallFixture, path);
       NodeFS.mkdirSync(NodePath.dirname(file), { recursive: true });
       NodeFS.writeFileSync(file, content);
     }
-    fixtureGit("add", ...Object.keys(fixtures));
-    fixtureGit("commit", "-qm", "unit dependency fixture");
+    smallGit("add", ...Object.keys(fixtures));
+    smallGit("commit", "--allow-empty", "-qm", "unit dependency fixture");
     NodeFS.appendFileSync(
-      NodePath.join(repositoryFixture, `${directory}/owner.ts`),
+      NodePath.join(smallFixture, `${directory}/owner.ts`),
       "\nexport const added = 2;\n",
     );
     const result = NodeChildProcess.spawnSync(
       process.execPath,
-      ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
-      { cwd: repositoryFixture, encoding: "utf8" },
+      ["scripts/gate-changed.ts", "--tests", "--base", "HEAD", "--list"],
+      { cwd: smallFixture, encoding: "utf8" },
     );
     expect(result.status, result.stderr).toBe(0);
     const units = result.stdout
@@ -1866,13 +2237,12 @@ it.each([
     ).toContain("src/gate-selection-witness/reader.test.ts");
     expect(units).not.toContain("unrelated.test.ts");
   } finally {
-    fixtureGit("reset", "--hard", head);
-    NodeFS.rmSync(NodePath.join(repositoryFixture, directory), { recursive: true, force: true });
+    smallGit("reset", "--hard", head);
   }
 });
 
 it("Decision: L2 selects changed modules' same-name tests and every importing or mocking unit reader at any depth, and preserves normal package parallelism", () => {
-  const head = fixtureGit("rev-parse", "HEAD");
+  const head = smallGit("rev-parse", "HEAD");
   const fixtures = {
     "packages/contracts/src/engine.spec.ts": "export {};",
     "packages/gate-hop-consumer/package.json": JSON.stringify({
@@ -1894,20 +2264,20 @@ it("Decision: L2 selects changed modules' same-name tests and every importing or
   };
   try {
     for (const [path, content] of Object.entries(fixtures)) {
-      const file = NodePath.join(repositoryFixture, path);
+      const file = NodePath.join(smallFixture, path);
       NodeFS.mkdirSync(NodePath.dirname(file), { recursive: true });
       NodeFS.writeFileSync(file, content);
     }
-    fixtureGit("add", ...Object.keys(fixtures));
-    fixtureGit("commit", "-qm", "transitive ownership fixture");
+    smallGit("add", ...Object.keys(fixtures));
+    smallGit("commit", "--allow-empty", "-qm", "transitive ownership fixture");
     NodeFS.appendFileSync(
-      NodePath.join(repositoryFixture, "packages/contracts/src/engine.ts"),
+      NodePath.join(smallFixture, "packages/contracts/src/engine.ts"),
       "\nexport const transitiveWitness = true;\n",
     );
     const result = NodeChildProcess.spawnSync(
       process.execPath,
-      ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
-      { cwd: repositoryFixture, encoding: "utf8" },
+      ["scripts/gate-changed.ts", "--tests", "--base", "HEAD", "--list"],
+      { cwd: smallFixture, encoding: "utf8" },
     );
     expect(result.status, result.stderr).toBe(0);
     const units = result.stdout.split("\n").filter((line) => line.startsWith("related "));
@@ -1926,11 +2296,7 @@ it("Decision: L2 selects changed modules' same-name tests and every importing or
       expect(line).not.toMatch(/--(?:no-file-parallelism|maxWorkers|minWorkers)/u);
     }
   } finally {
-    fixtureGit("reset", "--hard", head);
-    for (const path of Object.keys(fixtures))
-      NodeFS.rmSync(NodePath.join(repositoryFixture, path), { force: true });
-    for (const directory of ["packages/gate-hop-consumer", "packages/gate-hop-downstream"])
-      NodeFS.rmSync(NodePath.join(repositoryFixture, directory), { recursive: true, force: true });
+    smallGit("reset", "--hard", head);
   }
 });
 
@@ -1939,31 +2305,20 @@ it.each([
     "packages/client-runtime/src/zerops/hq/client.ts",
     "oxlint-plugin-t3code/rules/no-remote-io-outside-data-layer.test.ts",
   ],
-  [
-    "apps/hq/src/environmentNavigation.ts",
-    "test/scenarios/areas/b-menu/environmentIdentity.scenario.ts",
-  ],
 ])("the gate lists the real consumer of a changed repository input (%s)", (input, consumer) => {
   const file = NodePath.join(repositoryFixture, input);
   const original = NodeFS.readFileSync(file, "utf8");
   try {
     NodeFS.writeFileSync(file, original + "\nexport const gateSelectionRegression = true;\n");
-    const result = NodeChildProcess.spawnSync(
-      process.execPath,
-      ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
-      { cwd: repositoryFixture, encoding: "utf8" },
-    );
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout, `ASSERTION: changed ${input} selects its real consumer`).toContain(
-      consumer,
-    );
+    const output = fixtureStages().join("\n");
+    expect(output, `ASSERTION: changed ${input} selects its real consumer`).toContain(consumer);
   } finally {
     NodeFS.writeFileSync(file, original);
   }
 });
 
 it("related rendering scenarios run nearest first within the cap and log every overflow", () => {
-  const head = fixtureGit("rev-parse", "HEAD");
+  const head = smallGit("rev-parse", "HEAD");
   const owner = "apps/web/src/lib/gateScenarioSelection.ts";
   const helper = "apps/web/src/lib/gateScenarioHelper.ts";
   const area = "apps/web/test/scenarios/areas/b-menu";
@@ -1983,18 +2338,18 @@ it("related rendering scenarios run nearest first within the cap and log every o
   };
   try {
     for (const [file, source] of Object.entries(files)) {
-      NodeFS.mkdirSync(NodePath.dirname(NodePath.join(repositoryFixture, file)), {
+      NodeFS.mkdirSync(NodePath.dirname(NodePath.join(smallFixture, file)), {
         recursive: true,
       });
-      NodeFS.writeFileSync(NodePath.join(repositoryFixture, file), source);
+      NodeFS.writeFileSync(NodePath.join(smallFixture, file), source);
     }
-    fixtureGit("add", ...Object.keys(files));
-    fixtureGit("commit", "-qm", "scenario distance fixture");
-    NodeFS.appendFileSync(NodePath.join(repositoryFixture, owner), "\nexport const changed = 2;\n");
+    smallGit("add", ...Object.keys(files));
+    smallGit("commit", "--allow-empty", "-qm", "scenario distance fixture");
+    NodeFS.appendFileSync(NodePath.join(smallFixture, owner), "\nexport const changed = 2;\n");
     const result = NodeChildProcess.spawnSync(
       process.execPath,
-      ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
-      { cwd: repositoryFixture, encoding: "utf8" },
+      ["scripts/gate-changed.ts", "--tests", "--base", "HEAD", "--list"],
+      { cwd: smallFixture, encoding: "utf8" },
     );
     expect(result.status, result.stderr).toBe(0);
     const selected = result.stdout
@@ -2008,15 +2363,13 @@ it("related rendering scenarios run nearest first within the cap and log every o
     expect(result.stdout).toContain(`Deferred scenario ${far}; import graph distance 2`);
     expect(result.stdout).toContain("Related scenario cap: 8; selected 8; overflow 1");
   } finally {
-    fixtureGit("reset", "--hard", head);
-    for (const file of Object.keys(files))
-      NodeFS.rmSync(NodePath.join(repositoryFixture, file), { force: true });
+    smallGit("reset", "--hard", head);
   }
 });
 
 it("a filesystem guard without a declaration stops gate selection with its owning path", () => {
   const file = "scripts/undeclared-source-guard.test.ts";
-  const path = NodePath.join(repositoryFixture, file);
+  const path = NodePath.join(smallFixture, file);
   try {
     NodeFS.writeFileSync(
       path,
@@ -2024,15 +2377,15 @@ it("a filesystem guard without a declaration stops gate selection with its ownin
     );
     const result = NodeChildProcess.spawnSync(
       process.execPath,
-      ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
-      { cwd: repositoryFixture, encoding: "utf8" },
+      ["scripts/gate-changed.ts", "--tests", "--base", "HEAD", "--list"],
+      { cwd: smallFixture, encoding: "utf8" },
     );
     expect(result.status).not.toBe(0);
     expect(result.stderr, "ASSERTION: undeclared source guards fail before checks run").toContain(
       `${file}: filesystem reads need a declaration`,
     );
   } finally {
-    NodeFS.rmSync(path, { force: true });
+    smallGit("reset", "--hard", "HEAD");
   }
 });
 

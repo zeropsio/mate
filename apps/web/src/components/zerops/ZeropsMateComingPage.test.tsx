@@ -7,7 +7,13 @@ import {
   creationPressStoreAtom,
   makeAccountStore,
 } from "@t3tools/client-runtime/data";
-import { liveProjects, projectValue, zeropsVersion } from "@t3tools/client-runtime/data/fixtures";
+import {
+  liveProjects,
+  membershipInputs,
+  projectValue,
+  seedHqNavigation,
+  zeropsVersion,
+} from "@t3tools/client-runtime/data/fixtures";
 import { hqMateScope, projectsScope } from "@t3tools/client-runtime/data";
 import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
@@ -24,7 +30,7 @@ import {
   type MateLink as MachineLink,
 } from "@t3tools/client-runtime/zerops/environments";
 import { EnvironmentId, ThreadId, type ScopedThreadRef } from "@t3tools/contracts";
-import { act, createElement as h, useSyncExternalStore, type ReactNode } from "react";
+import { act, createContext, createElement as h, useContext, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -108,6 +114,13 @@ const MAIN = {
 };
 
 const app = vi.hoisted(() => ({
+  /** The person's organization as their session reads it; none unless a test names one. */
+  organization: null as null | {
+    readonly id: string;
+    readonly membershipId: string;
+    readonly roleCode: string;
+    readonly canCreateProjects: boolean;
+  },
   recovery: {
     standing: { kind: "unknown" },
     status: undefined,
@@ -121,23 +134,30 @@ const app = vi.hoisted(() => ({
   standUpFailed: false,
   standUpRetry: vi.fn(),
   navigate: vi.fn(async (_to: unknown) => undefined),
-  router: { preloadRoute: vi.fn(async (_to: unknown) => undefined) },
+  router: {
+    preloadRoute: vi.fn(async (_to: unknown) => undefined),
+    state: { location: { state: {} as { mateHandOver?: string | undefined } } },
+  },
   connect: vi.fn(async (_target: unknown) => ({ _tag: "Success" as const })),
   onScreen: vi.fn((_projectId: string | null) => undefined),
   openMate: vi.fn(),
   refresh: vi.fn(),
   handingOver: vi.fn(),
+  cancelHandOver: vi.fn(),
+  /** The Mate's hand-over dialog, opened from its page. */
+  handOverOpened: vi.fn(),
   link: { key: undefined, environmentId: undefined, reachability: null } as unknown,
   listing: { state: "unread", waitingFor: null } as unknown,
   threads: [] as Array<unknown>,
   projects: [] as Array<unknown>,
   told: undefined as { readonly subject: string; readonly threadKey?: string } | undefined,
+  /** The main chat HQ names for each Mate, by its project. */
+  toldMain: {} as Record<string, ScopedThreadRef | undefined>,
   creations: [] as Array<unknown>,
   processes: [] as Array<unknown>,
   birthProgress: false,
-  observeRefused: false,
+  readOnly: false,
   chiefProjectRead: false,
-  hqHeld: true,
   ownChief: null as string | null | undefined,
   setUpChief: true,
   createAllowed: true,
@@ -158,20 +178,11 @@ const app = vi.hoisted(() => ({
 vi.mock("~/zerops/ownChief", () => ({ useOwnChief: () => app.ownChief }));
 vi.mock("~/zerops/usePlatformCapabilities", () => ({
   useRoleOffers: () => ({ setUpChief: app.setUpChief }),
-  useProjectCapabilities: () => ({ operate: !app.observeRefused }),
+  useProjectCapabilities: () => ({ operate: !app.readOnly }),
 }));
 vi.mock("~/zerops/useZeropsMates", () => ({ useZeropsMateDirectory: () => app.directory }));
 vi.mock("~/zerops/useHqOffers", () => ({
   useOrgOffers: () => () => ({ kind: app.createAllowed ? "allowed" : "refused" }),
-  useMateOffers: () => () =>
-    app.hqHeld
-      ? {
-          held: true,
-          observe: app.observeRefused
-            ? { kind: "refused", reason: "zerops_read_only" }
-            : { kind: "allowed" },
-        }
-      : { held: false },
 }));
 vi.mock("~/zerops/registration", () => ({ useMateRegistration: () => app.registration }));
 vi.mock("~/zerops/useMateRecovery", () => ({ useMateRecovery: () => app.recovery }));
@@ -181,6 +192,7 @@ vi.mock("~/zerops/useHqMateRefusal", () => ({
 vi.mock("~/zerops/useMenuMateReadings", () => ({
   useToldActivity: () => app.told,
   useLastKnownMateWords: () => undefined,
+  useHqMainChats: () => (projectId: string) => app.toldMain[projectId],
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -212,29 +224,40 @@ vi.mock("~/zerops/accountEnvironments", () => ({
   useMateDetailRead: () => ({ failure: app.detailFailure, again: () => undefined }),
   useConnectMate: () => app.connect,
   useAccountEnvironments: () => environments,
-  // No Mate here is held for its close-off.
-  useCloseOffHolds: () => new Map(),
 }));
 const environments = { setOnScreen: (projectId: string | null) => app.onScreen(projectId) };
 vi.mock("~/zerops/useOpenMate", () => ({ useOpenMate: () => app.openMate }));
 vi.mock("~/zerops/usePressesElsewhere", () => ({ usePressesElsewhere: () => () => "stopped" }));
+const readRevision = createContext(0);
+let readVersion = 0;
+
 vi.mock("~/zerops/useZeropsCandidates", () => ({
   useHeldZeropsDetailCandidates: () =>
     heldCandidates(app.listing as Shown<ReadonlyArray<CandidateRow>>).rows,
-  useZeropsDetailCandidates: () => ({
-    listing: app.listing,
-    wholeForPerson: app.wholeForPerson,
-    refresh: app.refresh,
-  }),
+  useZeropsDetailCandidates: () => {
+    useContext(readRevision);
+    return {
+      listing: app.listing,
+      wholeForPerson: app.wholeForPerson,
+      refresh: app.refresh,
+    };
+  },
 }));
 // The menu's verbs: none offered on these Mates, which are all whole.
 vi.mock("~/zerops/useMateActions", () => ({
-  useMateActions: () => ({ actionsFor: () => [], busyKey: null, trouble: app.actionTrouble }),
+  useMateActions: () => ({
+    actionsFor: () => [],
+    busyKey: null,
+    trouble: app.actionTrouble,
+    handOver: () => app.handOverOpened,
+  }),
 }));
 vi.mock("~/zerops/useZeropsRegistry", () => ({ useZeropsRegistry: () => null }));
 vi.mock("~/zerops/newMate", () => ({
-  useMateHandOver: (select: (state: unknown) => unknown) =>
-    select({ handingOver: app.handingOver }),
+  useMateHandOver: Object.assign(
+    (select: (state: unknown) => unknown) => select({ handingOver: app.handingOver }),
+    { getState: () => ({ cancel: app.cancelHandOver }) },
+  ),
 }));
 // The creations this tab holds, as their operations say them.
 vi.mock("~/zerops/creations", () => ({
@@ -269,8 +292,8 @@ vi.mock("~/zerops/zeropsDataContext", () => ({
   runZeropsCommand: () => Promise.resolve(),
 }));
 vi.mock("~/zerops/ZeropsSessionProvider", () => ({
-  useZeropsSession: () => ({ activeOrganization: null, user: { id: "u-ada" } }),
-  useZeropsSessionOptional: () => ({ activeOrganization: null, user: { id: "u-ada" } }),
+  useZeropsSession: () => ({ activeOrganization: app.organization, user: { id: "u-ada" } }),
+  useZeropsSessionOptional: () => ({ activeOrganization: app.organization, user: { id: "u-ada" } }),
 }));
 // Off unless a test reads how far a birth has got: then the real derivation, at a fixed clock.
 vi.mock("~/zerops/useZeropsBirthProgress", async () => {
@@ -304,6 +327,15 @@ vi.mock("~/zerops/inventoryContext", () => ({
 // The DOM-owned wake/travel is covered by ConversationOpeningStage.test.tsx; this renderer
 // verifies the page keeps requesting the same waiting surface until its route can render.
 vi.mock("../chat/ConversationOpeningStage", () => ({
+  ConversationOpeningWaits: ({
+    as = "span",
+    whole: _whole,
+    ...props
+  }: {
+    as?: "span" | "div";
+    whole?: boolean;
+    children?: ReactNode;
+  }) => h(as, props),
   ConversationOpeningStage: ({
     name,
     children,
@@ -431,9 +463,13 @@ let tree: ReactTestRenderer | undefined;
 
 /** Quinn's own view, rendered as the route draws it. */
 const comingView = (projectId: string) =>
-  app.birthProgress || app.chiefProjectRead
-    ? h(AppAtomRegistryProvider, null, h(ZeropsMateComingPage, { projectId }))
-    : h(ZeropsMateComingPage, { projectId });
+  h(
+    readRevision.Provider,
+    { value: ++readVersion },
+    app.birthProgress || app.chiefProjectRead
+      ? h(AppAtomRegistryProvider, null, h(ZeropsMateComingPage, { projectId }))
+      : h(ZeropsMateComingPage, { projectId }),
+  );
 
 function openView() {
   act(() => {
@@ -466,6 +502,13 @@ function answerHqOwnership() {
       fault: { outcome: "definitive-refusal", code: "forbidden", message: "Not registered" },
     },
   });
+}
+
+/** The person reads the Mate's project only: their org role is Read only, as Zerops answers it. */
+function holdReadOnly() {
+  app.readOnly = true;
+  for (const input of membershipInputs("READ_ONLY", false, 1, "org-1"))
+    appAtomRegistry.get(creationPressStoreAtom)!.dispatch(input);
 }
 
 function publishProject(tagList: string[], ownershipAnswered = true) {
@@ -511,19 +554,22 @@ beforeEach(() => {
   vi.stubGlobal("cancelAnimationFrame", () => undefined);
   app.navigate.mockClear();
   app.router.preloadRoute.mockReset().mockResolvedValue(undefined);
+  app.router.state.location.state = {};
   app.connect.mockClear();
   app.onScreen.mockClear();
   app.openMate.mockClear();
   app.refresh.mockClear();
-  app.handingOver.mockClear();
+  app.handingOver.mockReset();
+  app.cancelHandOver.mockReset();
+  app.handOverOpened.mockReset();
+  app.organization = null;
   app.listing = listingOf([QUINN]);
   app.actionTrouble = null;
   app.setupFailure = undefined;
   app.restartSetup.mockReset().mockResolvedValue(undefined);
   app.standUpFailed = false;
-  app.observeRefused = false;
+  app.readOnly = false;
   app.chiefProjectRead = false;
-  app.hqHeld = true;
   app.ownChief = null;
   app.setUpChief = true;
   app.createAllowed = true;
@@ -533,6 +579,7 @@ beforeEach(() => {
   app.projects = [];
   app.link = { key: undefined, environmentId: undefined, reachability: null };
   app.told = undefined;
+  app.toldMain = {};
   app.creations = [];
   app.registration = { attempt: 0, state: "waiting" };
   app.processes = [];
@@ -565,7 +612,6 @@ describe("a Mate's own view while its link is made", () => {
     app.listing = listingOf([]);
     app.link = { key: KEY, environmentId: undefined, reachability: null };
     app.detailFailure = { message: "not_mate_opener" };
-    app.hqHeld = false;
     openView();
     const button = tree?.root
       .findAllByType("button")
@@ -616,7 +662,7 @@ describe("a Mate's own view while its link is made", () => {
       publishProject(["chief"]);
       app.listing = listingOf([]);
       if (permission === "setup") app.setUpChief = false;
-      if (permission === "project") app.observeRefused = true;
+      if (permission === "project") holdReadOnly();
       if (permission === "HQ") app.createAllowed = false;
       if (permission === "owner")
         app.admissionRefusal = { kind: "refused-role", chiefOwnerName: "Karlos" };
@@ -885,6 +931,47 @@ describe("a Mate's own view while its link is made", () => {
     // An existing Mate's hand-over is not a new Mate's stand-up.
     expect(app.handingOver).not.toHaveBeenCalled();
   });
+
+  // The owner, 2026-10-27: a Mate's own address opened Nova's and Milo's conversations once the
+  // Mate had one. This page keeps a Mate's conversations current only while it is open: one
+  // started elsewhere is HQ's to name.
+  it("hands over to its own main chat as HQ names it where this page lacks it, never another Mate's", async () => {
+    app.link = {
+      key: KEY,
+      environmentId: ENV_QUINN,
+      reachability: { kind: "ready", notice: null },
+    } satisfies MateLink;
+    const NOVA = EnvironmentId.make("env-nova");
+    app.threads = [{ ...MAIN, id: ThreadId.make("thread-nova"), environmentId: NOVA }];
+    app.toldMain = {
+      [PROJECT]: { environmentId: ENV_QUINN, threadId: ThreadId.make("thread-told") },
+      "beviro-nova": { environmentId: NOVA, threadId: ThreadId.make("thread-nova") },
+    };
+    openView();
+    await act(async () => vi.advanceTimersByTime(0));
+
+    expect(app.navigate).toHaveBeenCalledExactlyOnceWith({
+      to: "/$environmentId/$threadId",
+      params: { environmentId: ENV_QUINN, threadId: "thread-told" },
+      replace: true,
+    });
+    expect(app.openMate).not.toHaveBeenCalled();
+  });
+
+  it("never hands over to a chat HQ names outside the environment its own link opens", async () => {
+    app.link = {
+      key: KEY,
+      environmentId: ENV_QUINN,
+      reachability: { kind: "ready", notice: null },
+    } satisfies MateLink;
+    app.toldMain = {
+      [PROJECT]: { environmentId: EnvironmentId.make("env-nova"), threadId: ThreadId.make("t") },
+    };
+    openView();
+    await act(async () => vi.advanceTimersByTime(0));
+
+    expect(app.navigate).not.toHaveBeenCalled();
+  });
 });
 
 // The owner, 2026-09-30: "sometimes the text area still flashed because old one is gone sooner
@@ -893,6 +980,58 @@ describe("a Mate's own view while its link is made", () => {
 // conversation opens, and never a composer or a strip before who writes there is known. A Mate
 // coming up for the first time holds its composer back for its stand-up, and one that cannot be
 // opened has nothing to write to.
+// A Mate whose key Zerops refused never connects again by itself: HQ says so on its record
+// (`keyRefused`); an owner or admin of the organization hands it over, which its page offers instead.
+describe("a Mate's own view where Zerops refused its key", () => {
+  const refusedKey = (roleCode: string) => {
+    app.organization = { id: "org-1", membershipId: "member", roleCode, canCreateProjects: true };
+    seedHqNavigation(appAtomRegistry.get(creationPressStoreAtom)!, "org-1", {
+      structure: {
+        ungrouped: [{ projectId: PROJECT, name: "Quinn", mate: { face: "", keyRefused: true } }],
+        apps: [],
+      } as never,
+      person: {
+        mine: false,
+        ownerUserId: null,
+        waitsOnViewer: false,
+        unseen: null,
+      },
+    });
+  };
+  // HQ's word is the app's registry's, read under its provider as the app mounts every page.
+  const openInApp = () => {
+    act(() => {
+      tree = create(
+        h(AppAtomRegistryProvider, null, h(ZeropsMateComingPage, { projectId: PROJECT })),
+      );
+    });
+  };
+
+  it("says its key was refused and offers Hand over this Mate as its one action, to an owner or admin of the organization", () => {
+    refusedKey("ADMIN");
+    openInApp();
+    expect(said()).toContain("Quinn can't connect: Zerops refused its key.");
+    expect(buttons()).toEqual(["Hand over this Mate"]);
+    act(() => {
+      tree!.root
+        .findAllByType("button")
+        .find((node) => node.children.join("") === "Hand over this Mate")!
+        .props.onClick();
+    });
+    expect(app.handOverOpened).toHaveBeenCalledTimes(1);
+  });
+
+  it("says who can bring it back, offering nothing to a member who does not hand Mates over", () => {
+    refusedKey("BASIC_USER");
+    openInApp();
+    expect(said()).toContain("Quinn can't connect: Zerops refused its key.");
+    expect(said()).toContain(
+      "It connects again once an owner or admin of the organization, or its owner, hands it over.",
+    );
+    expect(buttons()).not.toContain("Hand over this Mate");
+  });
+});
+
 describe("the footer in a Mate's own view", () => {
   const composer = () =>
     tree?.root.findAll((node) => typeof node.type === "string" && node.type === "textarea") ?? [];
@@ -990,6 +1129,7 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
   const QUINN_MADE: NewProjectBirth = {
     birthId: "add-quinn",
     organizationId: "org-beviro",
+    creator: "cu-me",
     projectId: PROJECT,
     appId: "beviro",
     intent: null,
@@ -1311,6 +1451,65 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
     expect(app.navigate).toHaveBeenCalledOnce();
   });
 
+  const openNewMateReadyToHandOver = () => {
+    app.listing = listingOf([coming]);
+    openView();
+    app.listing = listingOf([QUINN]);
+    app.link = {
+      key: KEY,
+      environmentId: ENV_QUINN,
+      reachability: { kind: "ready", notice: null },
+    };
+    app.threads = [MAIN];
+    act(() => tree?.update(comingView(PROJECT)));
+  };
+
+  it("the newly created Mate's route carries its exact handover identity until destination acquisition", async () => {
+    app.handingOver.mockReturnValueOnce("test-handover");
+    app.router.state.location.state = { mateHandOver: "test-handover" };
+    openNewMateReadyToHandOver();
+    await act(async () => undefined);
+    expect(app.handingOver).toHaveBeenCalledExactlyOnceWith({
+      environmentId: ENV_QUINN,
+      threadId: "thread-main",
+    });
+    expect(app.navigate).toHaveBeenCalledExactlyOnceWith({
+      to: "/$environmentId/$threadId",
+      params: { environmentId: ENV_QUINN, threadId: "thread-main" },
+      replace: true,
+      state: { mateHandOver: "test-handover" },
+    });
+    act(() => tree?.unmount());
+    tree = undefined;
+    expect(app.cancelHandOver).not.toHaveBeenCalled();
+  });
+
+  it("leaving a newly created Mate during destination preload cancels its own handover and never navigates", async () => {
+    let ready!: () => void;
+    app.router.preloadRoute.mockReturnValueOnce(
+      new Promise<undefined>((resolve) => {
+        ready = () => resolve(undefined);
+      }),
+    );
+    app.handingOver.mockReturnValueOnce("test-handover");
+    openNewMateReadyToHandOver();
+    expect(app.navigate).not.toHaveBeenCalled();
+    act(() => tree?.unmount());
+    tree = undefined;
+    expect(app.cancelHandOver).toHaveBeenCalledExactlyOnceWith("test-handover");
+    await act(async () => ready());
+    expect(app.navigate).not.toHaveBeenCalled();
+    expect(app.cancelHandOver).toHaveBeenCalledExactlyOnceWith("test-handover");
+  });
+
+  it("a replaced destination cancels only the newly created Mate's original handover", async () => {
+    app.handingOver.mockReturnValueOnce("test-handover");
+    openNewMateReadyToHandOver();
+    await act(async () => undefined);
+    expect(app.navigate).toHaveBeenCalledOnce();
+    expect(app.cancelHandOver).toHaveBeenCalledExactlyOnceWith("test-handover");
+  });
+
   // Run 2 (2026-10-16): an added Mate landed on a bare conversation titled with its raw project
   // name, its sign-in a footer dropdown, while the account did not name it there yet.
   it("keeps a Mate that came up here until its conversation names it, a short wait at most", async () => {
@@ -1360,80 +1559,9 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
 describe("ComingBelow — a Mate half made", () => {
   const HALF_MADE = {
     kind: "failed",
-    line: "Its setup stopped before its workspace. Finish setup completes it.",
-    verb: "finish-setup",
+    line: "The setup stopped.",
+    verb: "try-again",
   } as const;
-  const render = (onFinishSetup: (() => void) | undefined) => {
-    let rendered: ReactTestRenderer | undefined;
-    act(() => {
-      rendered = create(
-        h(ComingBelow, {
-          coming: HALF_MADE,
-          progress: undefined,
-          nowMs: undefined,
-          mate: { name: "Quinn", project: "Acme" },
-          ...(onFinishSetup === undefined ? {} : { onFinishSetup }),
-        }),
-      );
-    });
-    return rendered!;
-  };
-
-  it("offers Finish setup to whoever may finish it, and runs it on a press", () => {
-    let finished = 0;
-    const rendered = render(() => {
-      finished += 1;
-    });
-    const button = rendered.root
-      .findAllByType("button")
-      .find((node) => node.props["data-slot"] !== "collapsible-trigger")!;
-    expect(button.children).toEqual(["Finish setup"]);
-    act(() => button.props.onClick());
-    expect(finished).toBe(1);
-  });
-
-  it("offers nothing to anyone else", () => {
-    expect(
-      render(undefined)
-        .root.findAllByType("button")
-        .filter((node) => node.props["data-slot"] !== "collapsible-trigger"),
-    ).toHaveLength(0);
-  });
-
-  it.each([
-    { permitted: true, finishing: false },
-    { permitted: true, finishing: true },
-    { permitted: false, finishing: false },
-  ])("recovers a Mate waiting for isolation: %o", ({ permitted, finishing }) => {
-    const finish = vi.fn();
-    let rendered: ReactTestRenderer;
-    act(() => {
-      rendered = create(
-        h(ComingBelow, {
-          coming: { kind: "coming", line: "Closing off its project…" },
-          progress: undefined,
-          nowMs: undefined,
-          mate: { name: "Quinn", project: "Acme" },
-          finishing,
-          ...(permitted ? { onFinishSetup: finish } : {}),
-        }),
-      );
-    });
-    const buttons = rendered!.root
-      .findAllByType("button")
-      .filter((node) => node.props["data-slot"] !== "collapsible-trigger");
-    expect(buttons).toHaveLength(permitted ? 1 : 0);
-    if (permitted) {
-      expect(buttons[0]!.children).toEqual(["Finish setup"]);
-      expect(buttons[0]!.props.disabled).toBe(finishing);
-      if (!finishing) {
-        act(() => buttons[0]!.props.onClick());
-        expect(finish).toHaveBeenCalledOnce();
-      }
-    }
-    act(() => rendered!.unmount());
-  });
-
   // F6b (e2e, 2026-10-03): Dan's view said he could not be added while his workspace's clock ran
   // on, "139:30 of about 2 min", its spinner turning — the press this tab held never settled.
   it("says its workspace stopped, its clock not running on, where its press never settled", () => {
@@ -1449,8 +1577,10 @@ describe("ComingBelow — a Mate half made", () => {
     const container = {
       id: "container",
       label: "Dan's container",
-      state: "active",
+      state: "failed",
       startedAt: at(29_000),
+      endedAt: at(40_000),
+      detail: "Its workspace build was refused.",
     } as const;
     let rendered: ReactTestRenderer | undefined;
     act(() => {
@@ -1477,6 +1607,38 @@ describe("ComingBelow — a Mate half made", () => {
   });
 });
 
+it("A setup needing attention does not mark its workspace failed without the workspace receipt", () => {
+  let rendered: ReactTestRenderer | undefined;
+  const container = {
+    id: "container",
+    label: "Dan's container",
+    state: "active",
+    startedAt: "2026-10-28T10:00:00Z",
+  } as const;
+  act(() => {
+    rendered = create(
+      h(ComingBelow, {
+        coming: { kind: "failed", line: "The import was refused.", verb: "try-again" },
+        progress: {
+          steps: [container],
+          active: container,
+          failed: null,
+          doneCount: 0,
+          total: 1,
+          complete: false,
+        },
+        nowMs: Date.parse("2026-10-28T10:00:42Z"),
+        mate: { name: "Dan", project: undefined },
+      }),
+    );
+  });
+  const said = JSON.stringify(rendered!.toJSON());
+  expect(rendered!.root.findByProps({ "data-slot": "progress" }).props["data-progress-state"]).toBe(
+    "running",
+  );
+  expect(said).not.toContain("Dan's workspace didn't finish.");
+});
+
 // Run 6's second review: a registration refused read as an owner's, with no reason and nothing to
 // finish it. It says what is not done and why, with this person's Finish setup, while it comes up.
 describe("ComingBelow — a registration not finished while it comes up", () => {
@@ -1489,7 +1651,7 @@ describe("ComingBelow — a registration not finished while it comes up", () => 
     total: 0,
     complete: false,
     press: [
-      { id: "closed-off", label: "Private network ready", state: "done" },
+      { id: "container", label: "Its computer", state: "done" },
       {
         id: "registered",
         label: "Not registered",
@@ -1498,7 +1660,7 @@ describe("ComingBelow — a registration not finished while it comes up", () => 
       },
     ],
   } as const;
-  const render = (onFinishSetup: (() => void) | undefined) => {
+  const render = () => {
     let rendered: ReactTestRenderer | undefined;
     act(() => {
       rendered = create(
@@ -1507,7 +1669,6 @@ describe("ComingBelow — a registration not finished while it comes up", () => 
           progress,
           nowMs: 0,
           mate: { name: "Ida", project: "Acme" },
-          ...(onFinishSetup === undefined ? {} : { onFinishSetup }),
         }),
       );
     });
@@ -1518,25 +1679,8 @@ describe("ComingBelow — a registration not finished while it comes up", () => 
       .findAll((node) => node.props["data-press-note"] !== undefined)
       .map((node) => node.children.join(""));
 
-  it("says what is not done and why, under the steps, with Finish setup at once", () => {
-    let finished = 0;
-    const rendered = render(() => {
-      finished += 1;
-    });
-    expect(text(rendered)).toEqual(["Not registered."]);
-    expect(openDetails(rendered).findByType("pre").children.join("")).toContain(
-      "Its grant timed out.",
-    );
-    const button = rendered.root
-      .findAllByType("button")
-      .find((node) => node.props["data-slot"] !== "collapsible-trigger")!;
-    expect(button.children).toEqual(["Finish setup"]);
-    act(() => button.props.onClick());
-    expect(finished).toBe(1);
-  });
-
   it("still says why to someone who cannot finish it", () => {
-    const rendered = render(undefined);
+    const rendered = render();
     expect(text(rendered)).toEqual(["Not registered."]);
     expect(openDetails(rendered).findByType("pre").children.join("")).toContain(
       "Its grant timed out.",
@@ -1727,6 +1871,7 @@ describe("ComingBelow — a project refused for want of credit", () => {
 
   // Credit may come from another tab, another device or before a reload: Try again stands
   // beside the way to HQ for as long as the refusal does (the owner, 2026-10-15).
+  // witness: apps/web/src/components/zerops/ZeropsMateComingPage.tsx | Add credit in HQ → Add credit in Zerops
   it("offers adding credit in HQ, in a new tab, with Try again beside it while the refusal stands", () => {
     let tried = 0;
     const rendered = render(() => {
@@ -1814,6 +1959,7 @@ describe("an added Mate's own view, after its hand-over", () => {
   const IDA: NewProjectBirth = {
     birthId: "add-1",
     organizationId: "org-beviro",
+    creator: "cu-me",
     appId: "beviro",
     intent: null,
     hq: { projectId: "hq", address: "https://hq.example" },
@@ -1908,9 +2054,12 @@ it("keeps the failed stand-up's recovery visible before a conversation exists", 
 });
 
 it("shows HQ's read-only refusal and never connects a listed Mate", () => {
-  app.observeRefused = true;
+  holdReadOnly();
   act(() => {
-    tree = create(comingView(PROJECT));
+    // The person's membership is read in the app's registry, under its provider.
+    tree = create(
+      h(AppAtomRegistryProvider, null, h(ZeropsMateComingPage, { projectId: PROJECT })),
+    );
   });
   expect(said()).toContain("You can see the project, but can't operate its Mate.");
   expect(app.connect).not.toHaveBeenCalled();
@@ -1993,30 +2142,6 @@ it.each([
   act(() => tree!.update(comingView(PROJECT)));
   expect(said()).not.toContain(text);
   expect(said()).not.toContain("Original setup diagnostic");
-});
-
-it("keeps a Finish setup refusal out of stage copy without a setup process", () => {
-  app.listing = listingOf([
-    {
-      key: KEY,
-      project: QUINN.project,
-      group: "unavailable",
-      missingContainer: true,
-    },
-  ]);
-  beginPress({
-    projectId: PROJECT,
-    organizationId: "org-beviro",
-    startedAt: 0,
-    placement: null,
-    container: true,
-  });
-  app.actionTrouble = "500: Internal Server Error";
-  openView();
-  const section = tree!.root.findByType("section");
-  expect(section.children).toContain("Zerops couldn't finish setting up the Mate.");
-  expect(section.children).not.toContain(app.actionTrouble);
-  expect(openDetails(tree!).findByType("pre").children.join("")).toBe(app.actionTrouble);
 });
 
 it("keeps a Remove refusal available in Details without a setup process or action slot", () => {

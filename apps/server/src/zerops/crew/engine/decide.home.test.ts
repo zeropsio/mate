@@ -40,10 +40,15 @@ const journeys: ReadonlyArray<Journey> = [
       w.tell({ _tag: "Recovered", bootId: "boot-2" as never }, { kind: "engine" });
       w.settle("crew.sweep", "backend", { swept: false, copy: { _tag: "missing" } });
       const missing = w.state.members.backend!.lane?.state;
+      const recover = w.pending("crew.recover", "appdev")?.payload;
       w.settle("crew.recover", "appdev", { lost: [], losses: [] });
-      return [missing, w.state.members.backend!.lane?.state];
+      return [
+        missing,
+        recover?.kind === "crew.recover" ? recover.handles : undefined,
+        w.state.members.backend!.lane?.state,
+      ];
     },
-    expected: ["missing", "ready"],
+    expected: ["missing", ["backend"], "ready"],
   },
   {
     sentence: "a crew app a redeploy stopped runs again once its copy is back, a lost copy's not",
@@ -110,38 +115,64 @@ const journeys: ReadonlyArray<Journey> = [
     expected: [[undefined, []], ["pip"]],
   },
   {
-    sentence: "an unreadable redeploy is asked less and less, then offered to the person to thaw",
+    sentence:
+      "an unreadable redeploy is read again only when Zerops pushes a process, then offered to the person to thaw",
     journey: (w) => {
+      const reads = () => w.effects.filter((effect) => effect.kind === "crew.deploy.poll").length;
+      const pushed = () => w.tell({ _tag: "ProcessesMoved" }, { kind: "engine" });
       w.apply(home(writer("backend")));
       w.tell({ _tag: "Deploy", host: "appdev", phase: "started" }, { kind: "engine" });
-      // A restart cut the redeploy off: its end is read at boot, then again, backing off.
+      // A restart cut the redeploy off: its end is read at boot, then at each process pushed.
       w.tell({ _tag: "Recovered", bootId: "boot-2" as never }, { kind: "engine" });
+      const unreadableAt = w.now;
       w.settle("crew.deploy.poll", "appdev", { phase: "unreadable" });
-      const waits: Array<number> = [];
-      for (let poll = 0; poll < 3; poll += 1) {
-        const wake = w.armed("deploy-poll")[0]!;
-        waits.push(wake.dueAt - w.now);
-        w.advance(wake.dueAt - w.now);
-        w.fire("deploy-poll", "appdev");
-        w.settle("crew.deploy.poll", "appdev", { phase: "unreadable" });
-      }
-      w.advance(DEFAULT_CREW_TIMING.thawOfferMs);
-      w.fire("deploy-poll", "appdev");
+      w.advance(DEFAULT_CREW_TIMING.thawOfferMs - 1);
+      const unpushed = reads();
+      // Three pushes while none was read yet: one read, and one queued behind it.
+      pushed();
+      pushed();
+      pushed();
+      const onPush = reads();
       w.settle("crew.deploy.poll", "appdev", { phase: "unreadable" });
+      w.settle("crew.deploy.poll", "appdev", { phase: "unreadable" });
+      const offerAfter = w.armed("thaw-offer").map((wake) => wake.dueAt - unreadableAt);
+      w.advance(1);
+      w.fire("thaw-offer", "appdev");
       const offered = w.state.attention.map((row) => row.id);
       w.press({ _tag: "thawHost", host: "appdev" });
       w.settle("crew.recover", "appdev", { lost: [] });
-      return [waits, offered, w.state.hosts.appdev?.frozenSince, w.state.attention];
+      return [
+        unpushed,
+        onPush,
+        offerAfter,
+        offered,
+        w.state.hosts.appdev?.frozenSince,
+        w.state.attention,
+      ];
+    },
+    expected: [0, 2, [DEFAULT_CREW_TIMING.thawOfferMs], ["deploy-unreadable:appdev"], null, []],
+  },
+  {
+    sentence: "a redeploy read again as still running withdraws the offer to thaw it",
+    journey: (w) => {
+      w.apply(home(writer("backend")));
+      w.tell({ _tag: "Deploy", host: "appdev", phase: "started" }, { kind: "engine" });
+      w.tell({ _tag: "Recovered", bootId: "boot-2" as never }, { kind: "engine" });
+      w.settle("crew.deploy.poll", "appdev", { phase: "unreadable" });
+      w.advance(DEFAULT_CREW_TIMING.thawOfferMs);
+      w.fire("thaw-offer", "appdev");
+      const offered = w.state.attention.map((row) => row.id);
+      w.tell({ _tag: "ProcessesMoved" }, { kind: "engine" });
+      w.settle("crew.deploy.poll", "appdev", { phase: "running" });
+      const frozen = w.state.hosts.appdev?.frozenSince != null;
+      return [offered, w.state.attention, w.armed("thaw-offer"), frozen, w.state.lastError];
     },
     expected: [
-      [
-        DEFAULT_CREW_TIMING.deployPollFirstMs,
-        DEFAULT_CREW_TIMING.deployPollFirstMs * 2,
-        DEFAULT_CREW_TIMING.deployPollFirstMs * 4,
-      ],
       ["deploy-unreadable:appdev"],
-      null,
       [],
+      [],
+      true,
+      "appdev is still redeploying; its crew copies stay frozen until the deploy ends.",
     ],
   },
 ];
@@ -151,7 +182,7 @@ describe("the crew home and its services", () => {
     expect(journey(new CrewWorld())).toEqual(expected);
   });
 
-  it.each(["wake", "receipt"] as const)(
+  it.each(["push", "receipt"] as const)(
     "thawing a host stops deploy polls before recovery finishes: %s",
     (arrives) => {
       const w = new CrewWorld();
@@ -160,9 +191,8 @@ describe("the crew home and its services", () => {
       w.tell({ _tag: "Recovered", bootId: "boot-2" as never }, { kind: "engine" });
       w.settle("crew.deploy.poll", "appdev", { phase: "unreadable" });
       w.advance(DEFAULT_CREW_TIMING.thawOfferMs);
-      w.fire("deploy-poll", "appdev");
-      w.settle("crew.deploy.poll", "appdev", { phase: "unreadable" });
-      if (arrives === "receipt") w.fire("deploy-poll", "appdev");
+      w.fire("thaw-offer", "appdev");
+      if (arrives === "receipt") w.tell({ _tag: "ProcessesMoved" }, { kind: "engine" });
 
       w.press({ _tag: "thawHost", host: "appdev" });
       expect(w.pending("crew.recover", "appdev")).toBeDefined();
@@ -170,10 +200,10 @@ describe("the crew home and its services", () => {
       if (arrives === "receipt") {
         w.settle("crew.deploy.poll", "appdev", { phase: "unreadable" });
       } else {
-        w.fire("deploy-poll", "appdev");
+        w.tell({ _tag: "ProcessesMoved" }, { kind: "engine" });
       }
 
-      expect(w.armed("deploy-poll")).toEqual([]);
+      expect(w.armed("thaw-offer")).toEqual([]);
       expect(w.pending("crew.deploy.poll", "appdev")).toBeUndefined();
       w.settle("crew.recover", "appdev", { lost: [] });
       expect(w.state.hosts.appdev?.frozenSince).toBeNull();

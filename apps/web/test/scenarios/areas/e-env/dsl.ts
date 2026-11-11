@@ -1,4 +1,4 @@
-// @effect-diagnostics preferSchemaOverJson:off nodeBuiltinImport:off -- human-readable failure diagnostics.
+// @effect-diagnostics globalJsonInEffect:off nodeBuiltinImport:off -- human-readable failure diagnostics.
 import * as NodeCrypto from "node:crypto";
 import { openScenarioNavigation } from "../../harness/hqCore.ts";
 import * as Effect from "effect/Effect";
@@ -7,7 +7,7 @@ import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import { expect } from "@effect/vitest";
 import { HqNavigationJob } from "@t3tools/shared/hqStream";
-import { ticketFor } from "../../../../../hq/test/harness/runningCore.ts";
+import { ticketFor } from "../../harness/coreSeed.ts";
 import type { Page } from "puppeteer-core";
 import type { environmentFixture } from "./fake.ts";
 import { endBuild } from "../../fakes/e-env/builds.ts";
@@ -326,7 +326,7 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
   const releaseFromReview = Effect.gen(function* () {
     yield* click("Review release");
     yield* text("Version");
-    yield* click("Release v0.1.0 to production");
+    yield* click("Release v0.1.0");
   });
   const reload = Effect.promise(async () => {
     await page.reload();

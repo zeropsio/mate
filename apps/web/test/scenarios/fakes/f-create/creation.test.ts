@@ -1,6 +1,6 @@
 // @effect-diagnostics globalFetch:off -- localhost HTTP driver proof.
 import { describe, expect, it } from "vite-plus/test";
-import { seedCoreWorld } from "../../../../../hq/test/harness/runningCore.ts";
+import { seedCoreWorld } from "../../harness/coreSeed.ts";
 import { ZeropsFake } from "../zerops.ts";
 import { definePerson } from "../zeropsWorld.ts";
 import { serve } from "../../harness/http.ts";

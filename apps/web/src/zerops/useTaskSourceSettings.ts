@@ -3,7 +3,7 @@
  * (`makeTaskSourceSettings`): the organization's Slack app, Discord application and limits per
  * task, and an application's channels, webhooks and schedules. A screen demands what it shows; a
  * webhook's secret lives only while the screen that made it stays open. The organization's GitHub
- * app is read and made the same way (`useGithubApp`).
+ * apps are read and made the same way (`useGithubApp`).
  */
 import {
   appTaskStops,
@@ -18,7 +18,11 @@ import {
   type TaskStopAction,
 } from "@t3tools/client-runtime/data";
 import type { HqApi } from "@t3tools/client-runtime/zerops/hq";
-import type { HqGithubManifestRequest, HqGithubManifestView } from "@t3tools/shared/hqGithub";
+import type {
+  HqGithubApp,
+  HqGithubManifestRequest,
+  HqGithubManifestView,
+} from "@t3tools/shared/hqGithub";
 import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/reactivity";
 import { useEffect, useMemo } from "react";
@@ -166,20 +170,37 @@ export function useAppTaskStops(appId: string | null, taskIds: ReadonlyArray<str
 }
 
 export interface GithubAppControls extends TaskSourceControls<"hqGithub"> {
+  /** Every app HQ holds for the organization, oldest first; `null` while HQ has not answered. */
+  readonly apps: ReadonlyArray<HqGithubApp> | null;
   /**
-   * Asks HQ for the manifest GitHub makes the organization's app from: the answer to post to
-   * GitHub, or `null` where HQ refused or did not answer — its words are `read.action`'s.
+   * Asks HQ for the manifest GitHub makes another of the organization's apps from: the answer to
+   * post to GitHub, or `null` where HQ refused or did not answer — its words are `read.action`'s.
+   * It adds an app and never replaces one.
    */
   readonly manifest: (request: HqGithubManifestRequest) => Promise<HqGithubManifestView | null>;
+  /**
+   * Asks HQ for GitHub's page installing app `githubAppId` further, with a one-time state: its
+   * address to open, or `null` where HQ refused or did not answer — its words are `read.action`'s.
+   */
+  readonly install: (githubAppId: number, returnTo: string) => Promise<string | null>;
+  /** HQ forgets the app and its installations; it stays on GitHub. */
+  readonly forget: (githubAppId: number) => void;
 }
 
-/** The organization's GitHub app, read while `shown`; made and forgotten from here. */
+/** The organization's GitHub apps, read while `shown`; made, installed and forgotten from here. */
 export function useGithubApp(shown = true): GithubAppControls {
   const controls = useOrgTaskSource("hqGithub", shown);
   const { host, orgId } = useHost();
+  const setting = controls.read.setting;
   return {
     ...controls,
+    apps: setting.state === "known" ? setting.held.apps : null,
     manifest: async (request) =>
       host === null || orgId === null ? null : host.githubManifest({ orgId }, request),
+    install: async (githubAppId, returnTo) =>
+      host === null || orgId === null ? null : host.githubInstall({ orgId }, githubAppId, returnTo),
+    forget: (githubAppId) => {
+      controls.write({ kind: "github-forget", githubAppId });
+    },
   };
 }

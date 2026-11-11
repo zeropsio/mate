@@ -1,22 +1,19 @@
 name: Signal
 run-name: Signal · ${{ github.ref_name }}
 
+# Browser scenarios run only when someone dispatches this workflow; no push or schedule starts it.
 on:
-  pull_request:
-  push:
-    branches:
-      - kh-next
-      - "kh-bisect/signal-**"
+  workflow_dispatch:
 
 permissions:
   contents: read
-  # The classifier reads the previous kh-next run's classification.
+  # The classifier reads the previous manual run's classification.
   actions: read
 
 env:
   # Scenarios run against the test HQ of zeropsio/mate-hq (private), read with a deploy key, as
   # CI's State Smoke does. The bundle build reads it too: an external HQ changes the bundle's HQ origin.
-  MATE_HQ_TEST_COMMAND: node ${{ github.workspace }}/mate-hq/scripts/test-hq.ts
+  MATE_HQ_TEST_COMMAND: node ${{ github.workspace }}/mate-hq/conformance/scripts/test-hq.ts
   PNPM_CONFIG_FETCH_RETRIES: "2"
   PNPM_CONFIG_FETCH_TIMEOUT: "60000"
   PNPM_CONFIG_FETCH_RETRY_MINTIMEOUT: "10000"
@@ -24,14 +21,16 @@ env:
 
 concurrency:
   group: signal-${{ github.ref }}
-  # Integration verdicts must finish; diagnostics and PRs keep only their newest run.
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || startsWith(github.ref, 'refs/heads/kh-bisect/') }}
+  cancel-in-progress: false
 
 jobs:
   chat_bundle:
     name: Chat Contract bundle
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      node_version: ${{ steps.node.outputs.version }}
+      hq_ref: ${{ steps.hq_ref.outputs.ref }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -47,6 +46,10 @@ jobs:
           node-version-file: package.json
           cache: false
           run-install: false
+
+      - name: Record the producer's resolved Node version
+        id: node
+        run: echo "version=$(node -p 'process.versions.node')" >> "$GITHUB_OUTPUT"
 
       - name: Resolve store path
         id: paths
@@ -69,6 +72,48 @@ jobs:
           PNPM_CONFIG_TRUST_LOCKFILE: "false"
         run: &hosted_dependencies vp install --frozen-lockfile --filter='!@t3tools/mobile' --filter='!@t3tools/desktop'
 
+      - name: Require the mate-hq deploy key for preflight
+        env:
+          MATE_HQ_DEPLOY_KEY: ${{ secrets.MATE_HQ_DEPLOY_KEY }}
+        run: |
+          if [ -z "$MATE_HQ_DEPLOY_KEY" ]; then
+            echo '::error::Secret MATE_HQ_DEPLOY_KEY is absent; the pinned HQ preflight cannot run.'
+            exit 1
+          fi
+
+      - name: Resolve the mate-hq ref
+        id: hq_ref
+        run: |
+          ref=$(node scripts/hq-ref.ts)
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout mate-hq
+        uses: actions/checkout@v6
+        with:
+          repository: zeropsio/mate-hq
+          ref: ${{ steps.hq_ref.outputs.ref }}
+          ssh-key: ${{ secrets.MATE_HQ_DEPLOY_KEY }}
+          path: mate-hq
+
+      - name: Setup Go for mate-hq
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: mate-hq/go.mod
+          cache: false
+
+      - name: Install mate-hq and its services
+        working-directory: mate-hq/conformance
+        env:
+          PNPM_CONFIG_FROZEN_LOCKFILE: "true"
+          PNPM_CONFIG_TRUST_LOCKFILE: "true"
+        run: |
+          vp install --frozen-lockfile
+          ../scripts/ci-install-object-store.sh
+          ../scripts/ci-install-postgres.sh
+
+      - name: Preflight the pinned mate-hq contract
+        run: vp exec node apps/web/test/scenarios/harness/hqPreflight.ts
+
       - name: Build the shared scenario bundle
         run: vp exec node apps/web/test/scenarios/harness/build.ts
 
@@ -84,8 +129,13 @@ jobs:
   chat_scenarios:
     name: Test Web Scenarios (${{ matrix.name }})
     needs: chat_bundle
+    # The implicit success() also requires the skipped receipt of pull requests and diagnostics.
+    if: ${{ !cancelled() && needs.chat_bundle.result == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    env:
+      MATE_HQ_PREFLIGHT_SHA: ${{ needs.chat_bundle.outputs.hq_ref }}
+    # Derived from the execution budget at the top of ci.yml.
+    timeout-minutes: 14
     strategy:
       fail-fast: false
       matrix:
@@ -130,23 +180,36 @@ jobs:
             !/.repos/
           sparse-checkout-cone-mode: false
 
-      # Every z3 branch tests the maintained multitenant HQ.
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version: ${{ needs.chat_bundle.outputs.node_version }}
+          cache: false
+          run-install: false
+
+      - &resolve_hq_ref
+        name: Resolve the mate-hq ref
+        id: hq_ref
+        run: |
+          ref=$(node scripts/hq-ref.ts)
+          echo "Testing against mate-hq $ref"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
       - &checkout_hq
         name: Checkout mate-hq
         uses: actions/checkout@v6
         with:
           repository: zeropsio/mate-hq
-          ref: main
+          ref: ${{ steps.hq_ref.outputs.ref }}
           ssh-key: ${{ secrets.MATE_HQ_DEPLOY_KEY }}
           path: mate-hq
-          submodules: true
 
-      - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1
+      - &setup_go_hq
+        name: Setup Go for mate-hq
+        uses: actions/setup-go@v5
         with:
-          node-version-file: package.json
+          go-version-file: mate-hq/go.mod
           cache: false
-          run-install: false
 
       - name: Resolve store path
         id: paths
@@ -171,12 +234,13 @@ jobs:
 
       - &install_hq
         name: Install mate-hq and its services
-        working-directory: mate-hq
+        working-directory: mate-hq/conformance
         env: *verified_lockfile
         run: |
           vp install --frozen-lockfile
-          scripts/ci-install-object-store.sh
-          scripts/ci-install-postgres.sh
+          echo "MATE_HQ_REVISION=$(git -C .. rev-parse HEAD)" >> "$GITHUB_ENV"
+          ../scripts/ci-install-object-store.sh
+          ../scripts/ci-install-postgres.sh
 
       - name: Cache the scenarios' Chrome for Testing
         uses: actions/cache/restore@v4
@@ -194,9 +258,10 @@ jobs:
         run: vp run test:browser
 
       - name: Record this shard's test evidence
+        timeout-minutes: 11
         env:
           MATE_SCENARIO_REQUIRE_BUNDLE: "1"
-        run: ${{ matrix.command }}
+        run: timeout --signal=TERM --kill-after=10s 10m ${{ matrix.command }}
 
       - name: Upload shard evidence
         if: always()
@@ -206,15 +271,20 @@ jobs:
           path: |
             signal-reports/${{ matrix.report }}.json
             signal-reports/${{ matrix.report }}.json.progress.jsonl
+            signal-reports/${{ matrix.report }}.json.vitest.json
+            signal-reports/${{ matrix.report }}.json.errors.json
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 30
 
   classify:
     name: Classify original failures
     needs: [chat_bundle, chat_scenarios]
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && needs.chat_bundle.result == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    env:
+      MATE_HQ_PREFLIGHT_SHA: ${{ needs.chat_bundle.outputs.hq_ref }}
+    # Derived from ci.yml: 3 min setup/artifacts + 11 min bounded step.
+    timeout-minutes: 14
     steps:
       - *require_hq_key
 
@@ -226,14 +296,16 @@ jobs:
             !/.repos/
           sparse-checkout-cone-mode: false
 
-      - *checkout_hq
-
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
         with:
-          node-version-file: package.json
+          node-version: ${{ needs.chat_bundle.outputs.node_version }}
           cache: false
           run-install: false
+
+      - *resolve_hq_ref
+      - *checkout_hq
+      - *setup_go_hq
 
       - name: Resolve store path
         id: paths
@@ -278,29 +350,40 @@ jobs:
           path: signal-reports
           merge-multiple: true
 
-      - name: Download the previous kh-next run's classification
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/kh-next' }}
+      - name: Download the previous manual run's classification
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           # A listing that fails compares nothing this run; it never fails Classify on its own.
-          previous=$(gh run list -R "$GITHUB_REPOSITORY" --workflow signal.yml --branch kh-next \
-            --event push --status completed -L 30 --json databaseId,conclusion \
+          previous=$(gh run list -R "$GITHUB_REPOSITORY" --workflow signal.yml --branch main \
+            --event workflow_dispatch --status completed -L 30 --json databaseId,conclusion \
             --jq "[.[] | select(.databaseId < $GITHUB_RUN_ID and (.conclusion == \"success\" or .conclusion == \"failure\"))][0].databaseId // empty" || true)
           if [ -z "$previous" ] || ! gh run download "$previous" -R "$GITHUB_REPOSITORY" -n signal-failures -D signal-previous; then
-            echo "::notice title=Signal::No previous kh-next classification to compare"
+            echo "::notice title=Signal::No previous manual run classification to compare"
           fi
 
       - name: Rerun only failed tests once on this commit and classify
+        timeout-minutes: 11
         env:
           MATE_SCENARIO_REQUIRE_BUNDLE: "1"
           MATE_SIGNAL_PREVIOUS: signal-previous/signal-failures.json
-        run: node scripts/signal.ts classify
+        # GNU timeout owns the foreground command group, including vp and its workers.
+        # TERM is followed by KILL after 10 s even if a child ignores cancellation.
+        run: timeout --signal=TERM --kill-after=10s 10m node scripts/signal.ts classify
 
       - name: Require the workflow infrastructure to succeed
         # After classification, so a shard the job guard killed still has its running case named.
         run: test "${{ needs.chat_bundle.result }}" = success && test "${{ needs.chat_scenarios.result }}" = success
+
+      - name: Upload infrastructure classifications
+        if: ${{ !cancelled() && hashFiles('signal-infrastructure.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: signal-infrastructure
+          path: signal-infrastructure.json
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload failure classifications
         # A standing red fails the classify step after it wrote its classification: the next run

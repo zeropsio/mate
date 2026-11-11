@@ -13,7 +13,9 @@ import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import type { LeaseReleaseResult } from "@t3tools/contracts";
 
 import { ServerConfig } from "../config.ts";
 import * as ProcessRunner from "../processRunner.ts";
@@ -23,6 +25,7 @@ import {
   type MateStatusResult,
   type MateUpdateResult,
 } from "./zeropsMateUpdateParse.ts";
+import { zcpVersionText } from "./zcpVersion.ts";
 
 /** The binary `zcp init` installs on every Zerops container. */
 const ZCP_COMMAND = "zcp";
@@ -32,6 +35,112 @@ const MATE_STATUS_MAX_OUTPUT_BYTES = 64 * 1024;
 /** `mate update` downloads a release and runs npm install — MD-13's staged-then-activated path. */
 const MATE_UPDATE_TIMEOUT = Duration.minutes(5);
 const MATE_UPDATE_MAX_OUTPUT_BYTES = 256 * 1024;
+/**
+ * `lease release` reads each lease's container over ssh for unsaved work (starting a parked one
+ * first) before it releases any: minutes at worst, never an unbounded wait.
+ */
+const LEASE_RELEASE_TIMEOUT = Duration.minutes(3);
+const LEASE_RELEASE_MAX_OUTPUT_BYTES = 256 * 1024;
+/** `lease release`'s exit when a lease of the branch is kept: nothing was released. */
+const LEASE_RELEASE_REFUSED_EXIT = 3;
+/**
+ * The first zcp release with `lease release`. An older zcp starts its MCP server on a verb it does
+ * not know, so it is never asked: its version (`zcp version`) is read first.
+ */
+export const ZCP_LEASE_RELEASE_SINCE = "9.223.0";
+/**
+ * The first zcp release with `self restart`. An older zcp is never asked (its version is read
+ * first): the lead corrects this when zcp tags the release.
+ */
+export const ZCP_SELF_RESTART_SINCE = "9.226.0";
+/** `self restart` answers as soon as the platform accepts; it never waits for the restart. */
+const SELF_RESTART_TIMEOUT = Duration.seconds(60);
+const SELF_RESTART_MAX_OUTPUT_BYTES = 16 * 1024;
+/** Said for a zcp that cannot restart its Mate: too old, or no verb by that name. */
+export const SELF_RESTART_TOO_OLD = "this Zerops Control Plane can't restart its Mate yet";
+
+/** `zcp version` prints one line and reads nothing. */
+const VERSION_TIMEOUT = Duration.seconds(15);
+const VERSION_MAX_OUTPUT_BYTES = 4 * 1024;
+
+/** `zcp vX.Y.Z (…)`'s X.Y.Z; a dev build's `-N-g<sha>` reads as the release it was cut after. */
+const versionOf = (stdout: string): ReadonlyArray<number> | undefined => {
+  const match = /^zcp v?(\d+)\.(\d+)\.(\d+)/u.exec(stdout.trim());
+  return match === null ? undefined : [Number(match[1]), Number(match[2]), Number(match[3])];
+};
+
+/** Whether `version` is at least `since`; an unreadable version is too old. */
+export const zcpAtLeast = (version: string | undefined, since: string): boolean => {
+  const have = version === undefined ? undefined : versionOf(`zcp v${zcpVersionText(version)}`);
+  const want = versionOf(`zcp v${zcpVersionText(since)}`);
+  if (have === undefined || want === undefined) return false;
+  for (let index = 0; index < want.length; index++) {
+    if (have[index]! !== want[index]!) return have[index]! > want[index]!;
+  }
+  return true;
+};
+
+const ReleasedLeases = Schema.Array(
+  Schema.Struct({ lease: Schema.String, outcome: Schema.String }),
+);
+// An error first: zcp's exit 1 may also list the leases it did release before it failed.
+const LeaseReleaseAnswer = Schema.Union([
+  Schema.Struct({ error: Schema.String, released: Schema.optionalKey(ReleasedLeases) }),
+  Schema.Struct({ released: ReleasedLeases }),
+  Schema.Struct({
+    refused: Schema.Array(
+      Schema.Struct({
+        lease: Schema.String,
+        unsaved: Schema.optionalKey(
+          Schema.Struct({
+            files: Schema.Array(Schema.String),
+            commits: Schema.Array(Schema.String),
+          }),
+        ),
+        inUse: Schema.optionalKey(Schema.Struct({ sessions: Schema.Number })),
+      }),
+    ),
+  }),
+]);
+const decodeLeaseReleaseAnswer = Schema.decodeUnknownOption(
+  Schema.fromJsonString(LeaseReleaseAnswer),
+);
+
+const SelfRestartAnswer = Schema.Union([
+  Schema.Struct({ error: Schema.String, refused: Schema.optionalKey(Schema.Boolean) }),
+  Schema.Struct({ processId: Schema.optionalKey(Schema.String) }),
+]);
+const decodeSelfRestartAnswer = Schema.decodeUnknownOption(
+  Schema.fromJsonString(SelfRestartAnswer),
+);
+
+/**
+ * `zcp self restart`'s answer: the platform took the restart of this container's own zcp service
+ * (its process id when zcp names one), refused it in zcp's words (or never heard it: zcp could
+ * not be run), or zcp gave no answer to read.
+ */
+export type SelfRestartResult =
+  | { readonly outcome: "accepted"; readonly process?: string | undefined }
+  | { readonly outcome: "refused"; readonly reason: string }
+  /**
+   * No refusal said (an `error` without `refused`, a timeout, unreadable output): the platform
+   * may have taken it. `reason` is zcp's line when it wrote one.
+   */
+  | { readonly outcome: "uncertain"; readonly reason?: string | undefined };
+
+/** zcp's answer: the last line of its stdout that reads as one, past any notice printed before. */
+const lastAnswer = (stdout: string) => {
+  const lines = stdout.split("\n");
+  for (let index = lines.length - 1; index >= 0; index--) {
+    const answer = decodeLeaseReleaseAnswer(lines[index]!.trim());
+    if (Option.isSome(answer)) return answer;
+  }
+  return Option.none<typeof LeaseReleaseAnswer.Type>();
+};
+
+/** A release not made in words the server chose: what zcp wrote beside its answer is never kept. */
+const releaseFailed = (reason: string): LeaseReleaseResult => ({ outcome: "failed", reason });
+const TOO_OLD = releaseFailed("this zcp can't release yet");
 
 /**
  * `zcp` is not installed — this is not a Zerops environment. Distinct from
@@ -66,6 +175,8 @@ export interface ZeropsCliOptions {
   readonly baseArgs: ReadonlyArray<string>;
   /** Where zcp resolves its project credentials from — `/var/www` in the container. */
   readonly cwd: string;
+  /** How long `lease release` is waited on; {@link LEASE_RELEASE_TIMEOUT} unless a test says. */
+  readonly leaseReleaseTimeout?: Duration.Input;
 }
 
 export class ZeropsCli extends Context.Service<
@@ -95,6 +206,31 @@ export class ZeropsCli extends Context.Service<
     readonly mateUpdate: (options?: {
       readonly automatic?: boolean;
     }) => Effect.Effect<MateUpdateResult, ZeropsCliError>;
+    /**
+     * Runs `zcp version`: the installed zcp's `X.Y.Z` (a dev build's prefix), or none when it
+     * printed nothing this server reads, or did not run.
+     */
+    readonly version: Effect.Effect<string | undefined>;
+    /**
+     * Runs `zcp lease release --branch <branch> [--repo <url>] --json` with stdin closed: every
+     * lease of the branch released, never forced — zcp refuses (exit 3) while a lease of it holds
+     * uncommitted or untracked files or commits on no remote branch, or another live zcp session
+     * holds it, and names them. A zcp older than {@link ZCP_LEASE_RELEASE_SINCE} is never asked.
+     * Always a result: a zcp that fails, is missing, or does not answer in time reads `failed`, in
+     * zcp's own `error` or a fixed phrase.
+     */
+    readonly leaseRelease: (input: {
+      readonly branch: string;
+      readonly repo?: string;
+    }) => Effect.Effect<LeaseReleaseResult>;
+    /**
+     * Runs `zcp self restart --json` with stdin closed: the platform restarts this container's own
+     * zcp service with the project's token. Answers once the platform accepts, never waiting for
+     * the restart, which ends this server. Always a result: only zcp's `error` marked `refused`,
+     * or a zcp that could not be run, reads `refused`; any other error, or no answer, reads
+     * `uncertain`. The caller reads the version first ({@link ZCP_SELF_RESTART_SINCE}).
+     */
+    readonly selfRestart: Effect.Effect<SelfRestartResult>;
   }
 >()("t3/zerops/ZeropsCli") {}
 
@@ -215,9 +351,142 @@ export const make = (options: ZeropsCliOptions) =>
           }),
         );
 
+    const version: Effect.Effect<string | undefined> = processRunner
+      .run({
+        command,
+        args: [...baseArgs, "version"],
+        cwd,
+        stdin: "",
+        timeout: VERSION_TIMEOUT,
+        maxOutputBytes: VERSION_MAX_OUTPUT_BYTES,
+        outputMode: "truncate",
+      })
+      .pipe(
+        Effect.map((result) =>
+          result.code === 0 ? versionOf(result.stdout)?.join(".") : undefined,
+        ),
+        Effect.orElseSucceed(() => undefined),
+      );
+
+    // Read until a zcp that can release is found, then never again: zcp updates in place under a
+    // running server, so an older one is asked again at the next archive.
+    let canRelease = false;
+    const ableToRelease = Effect.suspend(() =>
+      canRelease
+        ? Effect.succeed(true)
+        : Effect.map(version, (installed) => {
+            canRelease = zcpAtLeast(installed, ZCP_LEASE_RELEASE_SINCE);
+            return canRelease;
+          }),
+    );
+
+    const leaseReleaseTimeout = options.leaseReleaseTimeout ?? LEASE_RELEASE_TIMEOUT;
+    const release = (input: {
+      readonly branch: string;
+      readonly repo?: string;
+    }): Effect.Effect<LeaseReleaseResult> =>
+      processRunner
+        .run({
+          command,
+          args: [
+            ...baseArgs,
+            "lease",
+            "release",
+            "--branch",
+            input.branch,
+            ...(input.repo === undefined ? [] : ["--repo", input.repo]),
+            "--json",
+          ],
+          cwd,
+          // Closed: nothing zcp starts on this call ever waits for input.
+          stdin: "",
+          timeout: leaseReleaseTimeout,
+          maxOutputBytes: LEASE_RELEASE_MAX_OUTPUT_BYTES,
+          outputMode: "truncate",
+        })
+        .pipe(
+          Effect.map((result): LeaseReleaseResult => {
+            const answer = lastAnswer(result.stdout);
+            if (Option.isSome(answer)) {
+              const read = answer.value;
+              if ("released" in read && result.code === 0) {
+                return { outcome: "released", leases: read.released };
+              }
+              if ("refused" in read && result.code === LEASE_RELEASE_REFUSED_EXIT) {
+                return { outcome: "refused", leases: read.refused };
+              }
+              if ("error" in read) {
+                return read.released === undefined || read.released.length === 0
+                  ? releaseFailed(read.error)
+                  : { outcome: "failed", reason: read.error, released: read.released };
+              }
+            }
+            return releaseFailed("zcp gave no answer to read");
+          }),
+          Effect.catch((cause) =>
+            Effect.succeed(
+              cause._tag === "ProcessTimeoutError"
+                ? releaseFailed(
+                    `zcp did not answer the release within ${Duration.toMillis(Duration.fromInputUnsafe(leaseReleaseTimeout)) / 1000} s`,
+                  )
+                : cause._tag === "ProcessSpawnError" &&
+                    spawnErrorToCliError(command, cause.cause)._tag === "ZeropsCliNotFound"
+                  ? releaseFailed("zcp is not installed here")
+                  : releaseFailed("zcp could not be run"),
+            ),
+          ),
+        );
+
+    const leaseRelease = (input: {
+      readonly branch: string;
+      readonly repo?: string;
+    }): Effect.Effect<LeaseReleaseResult> =>
+      Effect.flatMap(ableToRelease, (able) => (able ? release(input) : Effect.succeed(TOO_OLD)));
+
+    const selfRestart: Effect.Effect<SelfRestartResult> = processRunner
+      .run({
+        command,
+        args: [...baseArgs, "self", "restart", "--json"],
+        cwd,
+        stdin: "",
+        timeout: SELF_RESTART_TIMEOUT,
+        maxOutputBytes: SELF_RESTART_MAX_OUTPUT_BYTES,
+        outputMode: "truncate",
+      })
+      .pipe(
+        Effect.map((result): SelfRestartResult => {
+          const lines = result.stdout.split("\n");
+          for (let index = lines.length - 1; index >= 0; index--) {
+            const answer = decodeSelfRestartAnswer(lines[index]!.trim());
+            if (Option.isNone(answer)) continue;
+            // zcp says `error` for any failure of its restart call, a timeout included: only
+            // `refused` says the platform will not restart this container.
+            if ("error" in answer.value)
+              return answer.value.refused === true
+                ? { outcome: "refused", reason: answer.value.error }
+                : { outcome: "uncertain", reason: answer.value.error };
+            if (result.code === 0)
+              return answer.value.processId === undefined
+                ? { outcome: "accepted" }
+                : { outcome: "accepted", process: answer.value.processId };
+          }
+          return { outcome: "uncertain" };
+        }),
+        Effect.catch((cause) =>
+          Effect.succeed<SelfRestartResult>(
+            cause._tag === "ProcessSpawnError"
+              ? { outcome: "refused", reason: "Zerops Control Plane could not be run" }
+              : { outcome: "uncertain" },
+          ),
+        ),
+      );
+
     return {
       mateStatus,
       mateUpdate,
+      version,
+      leaseRelease,
+      selfRestart,
     } satisfies ZeropsCli["Service"];
   });
 

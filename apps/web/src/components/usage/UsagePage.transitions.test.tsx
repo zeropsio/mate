@@ -1,6 +1,8 @@
+import { RegistryContext } from "@effect/atom-react";
+import type { AtomRegistry } from "effect/reactivity";
 import { act, cloneElement } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { EnvironmentId, type UsageReport } from "@t3tools/contracts";
 import type { HqAppTask } from "@t3tools/shared/hqIntake";
 import { recordedReport, statistics } from "./usageTestFixtures";
@@ -18,160 +20,39 @@ const state = vi.hoisted(() => ({
   periodsStale: false,
   usageScopes: [] as Array<string | undefined>,
   tasks: [] as ReadonlyArray<HqAppTask>,
-  tasksAskedFor: [] as Array<string>,
+  tasksAskedFor: [] as Array<string | null>,
 }));
-vi.mock("@effect/atom-react", async (original) => ({
-  ...(await original<object>()),
-  useAtomValue: () => state.presentations,
-}));
-vi.mock("../../zerops/useNowMs", () => ({ useNowMs: () => state.now }));
-vi.mock("./usageShortcuts", async (original) => ({
-  ...(await original<object>()),
-  resolveUsageShortcut: () => "usage.period.day",
-}));
-vi.mock("../../env", () => ({ isElectron: false }));
-vi.mock("@tanstack/react-router", () => ({
-  useNavigate: () => vi.fn(),
-  useCanGoBack: () => false,
-}));
-vi.mock("../../state/use-atom-command", () => ({ useAtomCommand: () => vi.fn() }));
-vi.mock("../../state/usage", async (original) => {
-  const actual = await original<typeof import("../../state/usage")>();
-  return {
-    ...actual,
-    useAgentUsage: (...args: Parameters<typeof actual.useAgentUsage>) => {
-      state.usageScopes.push(args[1]?.mate);
-      const report =
-        state.report && args[3] === "legacy-scanner"
-          ? recordedReport({
-              provenance: "legacy-scanner",
-              recordedSince: null,
-              totals: statistics("0", "0"),
-              coverage: [],
-              groups: [],
-            })
-          : (state.report ?? (state.answered ? recordedReport() : null));
-      const read = state.failedNeighbor
-        ? { kind: "unavailable", reason: "HQ usage unavailable. Reconnect or retry HQ access." }
-        : state.pending || state.baseline !== "resolved" || !state.answered
-          ? { kind: "reading" }
-          : { kind: "read", report, stale: false };
-      return {
-        merged: actual.usageReportView(report),
-        overall: actual.usageReportView(report),
-        report,
-        overallReport: report,
-        sections: {
-          models: read,
-          providers: read,
-          periods: state.periodsStale ? { kind: "read", report, stale: true } : read,
-        },
-        detailPending: false,
-        detailUnavailable: false,
-        read,
-        stale: false,
-        refresh: state.retry,
-      };
-    },
-  };
-});
-vi.mock("../../zerops/useTaskSourceSettings", () => ({
-  useOrgTaskSource: () => ({
-    read: { setting: { state: "unread" }, action: { kind: "idle" }, revealed: null },
-    write: vi.fn(),
-    again: vi.fn(),
-  }),
-  useAppTaskSource: (_family: string, appId: string) => {
-    state.tasksAskedFor.push(appId);
-    return {
-      read: {
-        setting: { state: "known", held: state.tasks, stale: false },
-        action: { kind: "idle" },
-        revealed: null,
-      },
-      write: vi.fn(),
-      again: vi.fn(),
-    };
-  },
-}));
-vi.mock("../../zerops/useUsageEnvironmentIdentities", () => ({
-  useUsageEnvironmentIdentities: () => ({
-    baseline: state.baseline,
-    refresh: state.retryRoster,
-    listed: state.baseline === "resolved",
-    owners: "resolved",
-    projects: new Map([["app-a", "Shop"]]),
-    identities:
-      state.baseline === "resolved"
-        ? new Map([
-            [
-              EnvironmentId.make("env-a"),
-              {
-                mateName: "A",
-                projectId: "app-a",
-                projectName: "Shop",
-                ownerState: "unknown",
-                owner: null,
-              },
-            ],
-          ])
-        : new Map(),
-  }),
-}));
-vi.mock("../ui/tooltip", () => ({
-  Tooltip: "div",
-  TooltipPopup: "div",
-  TooltipTrigger: ({
-    render,
-    children,
-  }: {
-    render?: React.ReactElement;
-    children?: React.ReactNode;
-  }) => (render ? cloneElement(render, undefined, children) : <div>{children}</div>),
-}));
-vi.mock("../ui/button", () => ({ Button: "button", InlineButton: "button" }));
-vi.mock("../ui/scroll-area", () => ({ ScrollArea: "div" }));
-vi.mock("../ui/select", () => ({
-  Select: "div",
-  SelectItem: "div",
-  SelectPopup: "div",
-  SelectTrigger: "div",
-  SelectValue: "div",
-}));
-vi.mock("../ui/sidebar", () => ({ SidebarInset: "div" }));
-vi.mock("../ui/toggle-group", () => ({ Toggle: "button", ToggleGroup: "div" }));
-vi.mock("../WorkspaceBreadcrumb", () => ({
-  WorkspaceBreadcrumb: "div",
-  WorkspaceBreadcrumbItem: "div",
-  WorkspaceBreadcrumbSeparator: "span",
-}));
-vi.mock("../WorkspacePageContainer", () => ({ WorkspacePageContainer: "main" }));
-vi.mock("../WorkspacePageHeader", () => ({ WorkspacePageHeader: "header" }));
-vi.mock("./UsageProviderChart", async (original) => {
-  const actual = await original<typeof import("./UsageProviderChart")>();
-  return {
-    ...actual,
-    UsageProviderChart: (props: Parameters<typeof actual.UsageProviderChart>[0]) =>
-      state.report ? <actual.UsageProviderChart {...props} /> : null,
-  };
-});
-vi.mock("./usagePagePreferences", () => ({
-  readUsagePagePreferences: () => ({ metric: "cost", windowDays: 30 }),
-  saveUsagePagePreferences: vi.fn(),
-}));
-vi.mock("~/zerops/useWaitLine", () => ({ useWaitLine: (text: string | null) => text !== null }));
-vi.mock("../zerops/WaitLine", () => ({
-  WaitLine: ({ text }: { text: string }) => <p>{text}</p>,
-}));
+import * as usage from "../../state/usage";
+import * as atomCommand from "../../state/use-atom-command";
+import * as clock from "../../zerops/useNowMs";
+import * as identities from "../../zerops/useUsageEnvironmentIdentities";
+import * as taskSettings from "../../zerops/useTaskSourceSettings";
+import * as navigateBack from "../../hooks/useNavigateBack";
+import * as waitLine from "../../zerops/useWaitLine";
+import * as waitLineView from "../zerops/WaitLine";
+import * as shortcuts from "./usageShortcuts";
+import * as preferences from "./usagePagePreferences";
+import * as chart from "./UsageProviderChart";
+import { stubUsageControls } from "./usagePage.test-fixture";
 
 import { UsagePage } from "./UsagePage";
 import { UsageLimitsSection } from "./UsageLimits";
 
+const registry = {
+  get: () => state.presentations,
+  subscribe: () => () => {},
+} as unknown as AtomRegistry.AtomRegistry;
+const view = (element: React.ReactElement) => (
+  <RegistryContext.Provider value={registry}>{element}</RegistryContext.Provider>
+);
+const trees = new Set<ReactTestRenderer>();
+
 function mount(element: React.ReactElement): ReactTestRenderer {
   let tree: ReactTestRenderer | undefined;
   act(() => {
-    tree = create(element);
+    tree = create(view(element));
   });
+  trees.add(tree!);
   return tree!;
 }
 const text = (tree: ReactTestRenderer) => JSON.stringify(tree.toJSON());
@@ -182,8 +63,109 @@ const presentation = (phase: "connecting" | "connected") => ({
 });
 
 beforeEach(() => {
-  // The page listens for its keyboard shortcuts and Escape on the window.
-  vi.stubGlobal("window", new EventTarget());
+  vi.stubGlobal(
+    "window",
+    Object.assign(new EventTarget(), { setTimeout, clearTimeout, setInterval, clearInterval }),
+  );
+  stubUsageControls();
+  vi.spyOn(navigateBack, "useEscapeToGoBack").mockImplementation(() => {});
+  vi.spyOn(clock, "useNowMs").mockImplementation(() => state.now);
+  vi.spyOn(shortcuts, "resolveUsageShortcut").mockReturnValue("usage.period.day");
+  vi.spyOn(atomCommand, "useAtomCommand").mockReturnValue(vi.fn());
+  vi.spyOn(preferences, "readUsagePagePreferences").mockReturnValue({
+    metric: "cost",
+    windowDays: 30,
+  });
+  vi.spyOn(preferences, "saveUsagePagePreferences").mockImplementation(() => {});
+  vi.spyOn(waitLine, "useWaitLine").mockImplementation((text) => text !== null);
+  vi.spyOn(waitLineView, "WaitLine").mockImplementation((({ text }: { text: string }) => (
+    <p>{text}</p>
+  )) as typeof waitLineView.WaitLine);
+  const ActualChart = chart.UsageProviderChart;
+  vi.spyOn(chart, "UsageProviderChart").mockImplementation(((
+    props: React.ComponentProps<typeof chart.UsageProviderChart>,
+  ) =>
+    state.report ? (
+      <ActualChart {...props} />
+    ) : null) as unknown as typeof chart.UsageProviderChart);
+  vi.spyOn(usage, "useAgentUsage").mockImplementation((...args) => {
+    state.usageScopes.push(args[1]?.mate);
+    const report =
+      state.report && args[3] === "legacy-scanner"
+        ? recordedReport({
+            provenance: "legacy-scanner",
+            recordedSince: null,
+            totals: statistics("0", "0"),
+            coverage: [],
+            groups: [],
+          })
+        : (state.report ?? (state.answered ? recordedReport() : null));
+    const read = state.failedNeighbor
+      ? { kind: "unavailable", reason: "HQ usage unavailable. Reconnect or retry HQ access." }
+      : state.pending || state.baseline !== "resolved" || !state.answered
+        ? { kind: "reading" }
+        : { kind: "read", report, stale: false };
+    return {
+      canSeeOtherPeople: true,
+      scope: args[1],
+      merged: usage.usageReportView(report),
+      overall: usage.usageReportView(report),
+      report,
+      overallReport: report,
+      sections: {
+        models: read,
+        providers: read,
+        periods: state.periodsStale ? { kind: "read", report, stale: true } : read,
+      },
+      detailPending: false,
+      detailUnavailable: false,
+      read,
+      stale: false,
+      refresh: state.retry,
+    } as ReturnType<typeof usage.useAgentUsage>;
+  });
+  vi.spyOn(taskSettings, "useOrgTaskSource").mockReturnValue({
+    read: { setting: { state: "unread" }, action: { kind: "idle" }, revealed: null },
+    write: vi.fn(),
+    again: vi.fn(),
+  } as unknown as ReturnType<typeof taskSettings.useOrgTaskSource>);
+  vi.spyOn(taskSettings, "useAppTaskSource").mockImplementation((_family, appId) => {
+    state.tasksAskedFor.push(appId);
+    return {
+      read: {
+        setting: { state: "known", held: state.tasks, stale: false },
+        action: { kind: "idle" },
+        revealed: null,
+      },
+      write: vi.fn(),
+      again: vi.fn(),
+    } as unknown as ReturnType<typeof taskSettings.useAppTaskSource>;
+  });
+  vi.spyOn(identities, "useUsageEnvironmentIdentities").mockImplementation(
+    () =>
+      ({
+        baseline: state.baseline,
+        refresh: state.retryRoster,
+        listed: state.baseline === "resolved",
+        owners: "resolved",
+        projects: new Map([["app-a", "Shop"]]),
+        identities:
+          state.baseline === "resolved"
+            ? new Map([
+                [
+                  EnvironmentId.make("env-a"),
+                  {
+                    mateName: "A",
+                    projectId: "app-a",
+                    projectName: "Shop",
+                    ownerState: "unknown",
+                    owner: null,
+                  },
+                ],
+              ])
+            : new Map(),
+      }) as unknown as ReturnType<typeof identities.useUsageEnvironmentIdentities>,
+  );
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   state.baseline = "resolving";
   state.answered = false;
@@ -195,6 +177,16 @@ beforeEach(() => {
   state.usageScopes = [];
 });
 
+afterEach(() => {
+  act(() => {
+    for (const tree of trees) tree.unmount();
+  });
+  trees.clear();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
 describe("Usage source transitions", () => {
   it("a cold scoped URL shows no zero, then the answered estimate", () => {
     const page = <UsagePage scope={{ project: "app-a" }} onScopeChange={vi.fn()} />;
@@ -204,7 +196,7 @@ describe("Usage source transitions", () => {
     expect(text(tree)).not.toContain("No activity");
     state.baseline = "resolved";
     state.answered = true;
-    act(() => tree.update(cloneElement(page)));
+    act(() => tree.update(view(cloneElement(page))));
     expect(text(tree)).toContain("$7.83");
     act(() => tree.unmount());
   });
@@ -218,13 +210,13 @@ describe("Usage source transitions", () => {
     expect(text(tree)).toContain("Reading subscription limits");
     expect(text(tree)).not.toContain("No coding agent");
     state.presentations = new Map([[EnvironmentId.make("env-a"), presentation("connected")]]);
-    act(() => tree.update(cloneElement(section)));
+    act(() => tree.update(view(cloneElement(section))));
     expect(text(tree)).toContain("No coding agent");
     state.presentations = new Map([
       [EnvironmentId.make("env-a"), presentation("connected")],
       [EnvironmentId.make("env-b"), presentation("connecting")],
     ]);
-    act(() => tree.update(cloneElement(section)));
+    act(() => tree.update(view(cloneElement(section))));
     expect(text(tree)).not.toContain("No coding agent");
     act(() => tree.unmount());
     vi.useRealTimers();
@@ -313,7 +305,9 @@ it("choosing a project replaces an old name bookmark", () => {
   const onScopeChange = vi.fn();
   const tree = mount(<UsagePage scope={{ legacyProject: "Shop" }} onScopeChange={onScopeChange} />);
   expect(text(tree)).toContain("old project-name URL");
-  const pickers = tree.root.findAllByProps({ "aria-label": "Usage project" });
+  const pickers = tree.root.findAll(
+    (node) => typeof node.type !== "string" && node.props["aria-label"] === "Usage project",
+  );
   expect(pickers).toHaveLength(2);
   for (const trigger of pickers) {
     onScopeChange.mockClear();
@@ -409,10 +403,10 @@ it("Limits receives the current shared clock while Usage stays open", () => {
   );
   expect(text(tree)).toContain("resets in 2h 0m");
   state.now = Date.parse("2026-09-03T13:00:00.000Z");
-  act(() => tree.update(cloneElement(page)));
+  act(() => tree.update(view(cloneElement(page))));
   expect(text(tree)).toContain("resets in 1h 0m");
   state.now = Date.parse("2026-09-03T14:01:00.000Z");
-  act(() => tree.update(cloneElement(page)));
+  act(() => tree.update(view(cloneElement(page))));
   expect(text(tree)).toContain("reset confirmation pending");
   act(() => tree.unmount());
   vi.restoreAllMocks();
@@ -432,7 +426,7 @@ it("Usage recovery invokes its existing report retry and coverage selects the na
   act(() => retry!.props.onClick());
   expect(state.retry).toHaveBeenCalledTimes(1);
   state.failedNeighbor = false;
-  act(() => tree.update(<UsagePage scope={{}} onScopeChange={onScopeChange} />));
+  act(() => tree.update(view(<UsagePage scope={{}} onScopeChange={onScopeChange} />)));
   const mate = tree.root.findByProps({ "aria-label": "Show usage for A" });
   act(() => mate.props.onClick());
   expect(onScopeChange.mock.calls).toEqual([[{ mate: "mate-a" }]]);
@@ -491,10 +485,10 @@ it("Usage distinguishes coverage from failed reads and recovers the named sectio
   expect(text(tree)).not.toContain("could not be read");
   act(() => tree.root.findByProps({ "aria-label": "Show usage for Fern" }).props.onClick());
   expect(onScopeChange).toHaveBeenCalledWith({ mate: "mate-a" });
-  act(() => tree.update(page(EnvironmentId.make("mate-a"))));
+  act(() => tree.update(view(page(EnvironmentId.make("mate-a")))));
   expect(state.usageScopes.at(-1)).toBe("mate-a");
   state.periodsStale = true;
-  act(() => tree.update(page(EnvironmentId.make("mate-a"))));
+  act(() => tree.update(view(page(EnvironmentId.make("mate-a")))));
   expect(text(tree)).toContain("Showing last known daily usage.");
   expect(text(tree)).toContain("$7.83");
   const retry = tree.root
@@ -507,7 +501,7 @@ it("Usage distinguishes coverage from failed reads and recovers the named sectio
   });
   act(() => {
     retry!.props.onClick();
-    tree.update(page(EnvironmentId.make("mate-a")));
+    tree.update(view(page(EnvironmentId.make("mate-a"))));
   });
   expect(state.retry).toHaveBeenCalledTimes(1);
   expect(text(tree)).not.toContain("Showing last known");
@@ -516,7 +510,12 @@ it("Usage distinguishes coverage from failed reads and recovers the named sectio
     .findAllByType("button")
     .find((button) => button.children.includes("Earlier history"));
   expect(history).toBeDefined();
-  act(() => history!.parent!.props.onValueChange(["legacy-scanner"]));
+  let historyGroup = history!.parent;
+  while (historyGroup !== null && typeof historyGroup.props.onValueChange !== "function") {
+    historyGroup = historyGroup.parent;
+  }
+  expect(historyGroup).not.toBeNull();
+  act(() => historyGroup!.props.onValueChange(["legacy-scanner"]));
   expect(text(tree)).toContain("No earlier history is recorded for this period.");
   expect(text(tree)).not.toContain("agents and subagents running in Mate");
   act(() => tree.unmount());

@@ -331,7 +331,7 @@ it.effect("reveals a file in File Explorer through PowerShell on Windows", () =>
       "Bypass",
       "-EncodedCommand",
     ]);
-    const encodedCommand = spawned.args[spawned.args.length - 1] ?? "";
+    const encodedCommand = String(spawned.args[spawned.args.length - 1] ?? "");
     const decodedCommand = Buffer.from(encodedCommand, "base64").toString("utf16le");
     // explorer.exe expects `/select,"<path>"` with only the path quoted;
     // PowerShell 5.1's Start-Process passes the argument string verbatim.
@@ -479,7 +479,7 @@ it.effect.skipIf(windowsHost)(
       // The reveal routes through interop PowerShell so Explorer receives its
       // raw `/select,"<path>"` switch even for spaced paths.
       assert.equal(spawned.command, "powershell.exe");
-      const encodedCommand = spawned.args[spawned.args.length - 1] ?? "";
+      const encodedCommand = String(spawned.args[spawned.args.length - 1] ?? "");
       const decodedCommand = Buffer.from(encodedCommand, "base64").toString("utf16le");
       assert.equal(
         decodedCommand,
@@ -1136,70 +1136,11 @@ it.effect.skipIf(windowsHost)("ignores unusable app bundles and keeps PATH launc
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
-it.effect("memoizes editor discovery and refreshes after the cache window", () => {
-  let statCalls = 0;
-  const fileInfo = { type: "File" } as FileSystem.File.Info;
-  const launcherLayer = ExternalLauncher.layer.pipe(
-    Layer.provide(
-      Layer.mergeAll(
-        FileSystem.layerNoop({
-          stat: () =>
-            Effect.sync(() => {
-              statCalls += 1;
-              return fileInfo;
-            }),
-        }),
-        Path.layer,
-        Layer.succeed(
-          ChildProcessSpawner.ChildProcessSpawner,
-          ChildProcessSpawner.make(() => Effect.sync(() => makeMockDetachedHandle())),
-        ),
-      ),
-    ),
-  );
-
-  return Effect.gen(function* () {
-    const launcher = yield* ExternalLauncher.ExternalLauncher;
-
-    const first = yield* launcher.resolveAvailableEditors();
-    assert.equal(first.includes("vscode"), true);
-    const statCallsAfterFirstScan = statCalls;
-    assert.isAbove(statCallsAfterFirstScan, 0);
-
-    // Past the shared command-resolution cache TTL (30s) but within the
-    // discovery cache window: the memoized set is reused without any scan.
-    yield* TestClock.adjust("31 seconds");
-    const second = yield* launcher.resolveAvailableEditors();
-    assert.deepEqual([...second], [...first]);
-    assert.equal(statCalls, statCallsAfterFirstScan);
-
-    // Past the discovery cache window the next call rescans.
-    yield* TestClock.adjust("30 seconds");
-    yield* launcher.resolveAvailableEditors();
-    assert.isAbove(statCalls, statCallsAfterFirstScan);
-  }).pipe(
-    Effect.provide(
-      Layer.mergeAll(
-        launcherLayer,
-        Layer.succeed(HostProcessPlatform, "win32"),
-        ConfigProvider.layer(
-          ConfigProvider.fromEnv({
-            env: {
-              PATH: "C:\\t3-editor-discovery-cache-test",
-              PATHEXT: ".COM;.EXE;.BAT;.CMD",
-            },
-          }),
-        ),
-        TestClock.layer(),
-      ),
-    ),
-  );
-});
-
-// A client that disconnects mid-scan interrupts the shared discovery effect on
-// the connection fiber. The cache must not retain that interrupt: doing so
-// replayed it to every later connect for the whole TTL, so `server.getConfig`
-// failed and no client could reconnect until the server restarted.
+// A client that disconnects mid-scan interrupts its wait on the connection
+// fiber. The launcher must not keep that interrupt as its answer: doing so once
+// replayed it to every later connect, so `server.getConfig` failed and no
+// client could reconnect until the server restarted. A scan that never comes
+// back is let go at its own timeout, and the next connect scans again.
 it.effect("rescans after an interrupted discovery instead of caching the interrupt", () => {
   const fileInfo = { type: "File" } as FileSystem.File.Info;
   let blockFirstScan = true;
@@ -1236,8 +1177,9 @@ it.effect("rescans after an interrupted discovery instead of caching the interru
     yield* Effect.yieldNow;
     yield* Fiber.interrupt(fiber);
 
-    // The next connect must still get a real answer well inside the TTL.
+    // The next connect must still get a real answer.
     blockFirstScan = false;
+    yield* TestClock.adjust("10 seconds");
     scans = 0;
     const editors = yield* launcher.resolveAvailableEditors();
     assert.equal(editors.includes("vscode"), true);

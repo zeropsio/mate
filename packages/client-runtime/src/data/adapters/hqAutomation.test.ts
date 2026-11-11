@@ -168,7 +168,7 @@ describe("the organization's API keys", () => {
     await r.host.setKey(ORG, "nebius", KEY);
     expect(r.keys().action).toEqual({
       kind: "failed",
-      words: "Update HQ to set up automated Mates.",
+      words: "HQ needs an update to set up automated Mates.",
     });
     r.close();
   });

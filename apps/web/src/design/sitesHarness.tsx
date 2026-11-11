@@ -1,8 +1,8 @@
 /**
  * A project's places on its row — the environment tag and the globe — and the popover they open,
  * in the states a project really reaches: production down with a fix to ask for, a release that
- * failed, a stage coming up, a big project with a dozen addresses (its filter), a project nobody
- * has read yet, and one with no address anywhere.
+ * failed, a dev on three ports, a stage coming up, a big project with a dozen addresses (its
+ * filter), a Mate on dev pools with no workspace running, and one with no address anywhere.
  *
  * Served by the dev server at `/design-sites.html` (`?theme=dark`). Open it at 1786 × 1000; the
  * menu is the owner's 435 px. Each row shows its hover actions, as a pointed-at row does.
@@ -10,6 +10,8 @@
  * Fixtures only, invented names. Nothing here ships — `design-sites.html` is not `index.html`, and
  * no route imports this module.
  */
+import type { RunningLine } from "@t3tools/client-runtime/zerops/activity/runningNow";
+import { RunningNowFixture } from "~/zerops/activity/useRunningNow";
 import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
 import { EnvironmentId } from "@t3tools/contracts";
 import { MATE_SHAPE_OF_TINT, type MateTintId } from "@t3tools/shared/brand";
@@ -62,6 +64,7 @@ function mate(
     readonly owner?: string;
     readonly routes?: ReadonlyArray<ZeropsPublicRoute> | undefined;
     readonly hostnames?: ReadonlyArray<string>;
+    readonly pools?: ReadonlyArray<string>;
   } = {},
 ): SitesMate {
   const id = `${app}-${name.toLowerCase()}`;
@@ -79,7 +82,14 @@ function mate(
       environmentId: EnvironmentId.make(`env-${id}`),
       service: { id: "zcp", name: "zcp", status: "ACTIVE" },
       ...(over.routes === undefined ? {} : { routes: over.routes }),
-      ...(over.hostnames === undefined ? {} : { services: { hostnames: over.hostnames } }),
+      ...(over.hostnames === undefined
+        ? {}
+        : {
+            services: {
+              hostnames: over.hostnames,
+              ...(over.pools === undefined ? {} : { pools: over.pools }),
+            },
+          }),
     },
     tint,
     shape: MATE_SHAPE_OF_TINT[tint],
@@ -89,7 +99,13 @@ function mate(
     owner:
       over.owner === undefined
         ? undefined
-        : { name: over.owner, initials: over.owner.slice(0, 1), avatarUrl: null, isViewer: false },
+        : {
+            name: over.owner,
+            called: over.owner,
+            initials: over.owner.slice(0, 1),
+            avatarUrl: null,
+            isViewer: false,
+          },
   };
 }
 
@@ -114,7 +130,47 @@ const base = (groupId: string, projectName: string): ProjectSitesInput => ({
 const DOWN: ProductionChip = { label: "prod", state: "down", version: "v2.3.0" };
 const HEALTHY_STAGE: ProductionChip = { label: "stage", state: "ok", version: "main" };
 
+/** What the platform runs in the busy production of the release on its way. */
+const BUSY_PRODUCTION = "p-acme-production";
+const RUNNING: ReadonlyArray<RunningLine> = [
+  {
+    id: "process-shop",
+    service: "shop",
+    words: "Building v0.1.61",
+    doing: "is building v0.1.61",
+    trail: undefined,
+    waiting: false,
+    behind: undefined,
+    since: new Date(Date.now() - 126_000).toISOString(),
+    version: "v0.1.61",
+    kind: "build",
+    versionId: undefined,
+    rank: 2,
+  },
+];
+const runningIn = (projectId: string) => (projectId === BUSY_PRODUCTION ? RUNNING : []);
+
 const FIXTURES: ReadonlyArray<Fixture> = [
+  {
+    title: "A release on its way, the platform building",
+    input: {
+      ...base("acme", "Acme Shop"),
+      production: (): ChipMenuModel => ({
+        stops: [
+          stop({
+            name: "production",
+            projectId: BUSY_PRODUCTION,
+            version: "v0.1.60",
+            dot: "spinner",
+            word: "Releasing v0.1.61",
+            routes: [route("shop", "shop.acme.example")],
+          }),
+        ],
+      }),
+      mates: [mate("acme", "Juno", "sky", { routes: [] })],
+      prodChip: { label: "prod", state: "releasing", version: "v0.1.60", next: "v0.1.61" },
+    },
+  },
   {
     title: "Production down, a fix to ask for",
     input: {
@@ -206,6 +262,23 @@ const FIXTURES: ReadonlyArray<Fixture> = [
     },
   },
   {
+    title: "A dev on three ports",
+    input: {
+      ...base("flip", "Flipbook"),
+      mates: [
+        mate("flip", "Filip", "sky", {
+          routes: [
+            route("flipdev", "flipdev-3a9c-5196.prg1.zerops.app", 5196),
+            route("flipdev", "flipdev-3a9c-5193.prg1.zerops.app", 5193),
+            route("flipdev", "flipdev-3a9c-5195.prg1.zerops.app", 5195),
+            route("flipstage", "flipstage-3a9c.prg1.zerops.app"),
+          ],
+          hostnames: ["flipdev", "flipstage", "db"],
+        }),
+      ],
+    },
+  },
+  {
     title: "A stage coming up",
     input: {
       ...base("harbor", "Harbor"),
@@ -280,6 +353,34 @@ const FIXTURES: ReadonlyArray<Fixture> = [
     },
   },
   {
+    title: "Nothing deployed yet, a Mate on dev pools",
+    input: {
+      ...base("noola", "Noola"),
+      production: () => ({
+        stops: [stop({ name: "production", word: "Not released yet", dot: "off", empty: true })],
+      }),
+      stages: () => ({
+        stops: [stop({ name: "stage", word: "Not deployed yet", dot: "off", empty: true })],
+      }),
+      mates: [
+        mate("noola", "Odin", "amber", {
+          routes: [
+            ...["api", "edge", "web"].map((part) =>
+              route(`${part}stage`, `${part}stage-5e2b.prg1.zerops.app`),
+            ),
+            route("mailpit", "mailpit-5e2b-8025.prg1.zerops.app"),
+          ],
+          hostnames: [
+            "noola",
+            "mailpit",
+            ...["api", "edge", "runner", "web"].flatMap((part) => [`${part}pool`, `${part}stage`]),
+          ],
+          pools: ["apipool", "edgepool", "runnerpool", "webpool"],
+        }),
+      ],
+    },
+  },
+  {
     title: "No address anywhere yet",
     input: {
       ...base("fern", "Fernway"),
@@ -328,28 +429,30 @@ function Row({ fixture, face }: { readonly fixture: Fixture; readonly face: Reac
 
 function Harness() {
   return (
-    <div className="flex min-h-screen bg-background text-foreground">
-      <div
-        className="flex shrink-0 flex-col gap-0.5 border-e border-border bg-sidebar p-2.5 text-sidebar-foreground"
-        data-sites-harness="menu"
-        style={{ width: 435 }}
-      >
-        {FIXTURES.map((fixture) => (
-          <Row
-            face={
-              <MateFace
-                shape={fixture.input.mates[0]?.shape}
-                size={24}
-                state="idle"
-                tint={fixture.input.mates[0]?.tint ?? "slate"}
-              />
-            }
-            fixture={fixture}
-            key={fixture.input.groupId}
-          />
-        ))}
+    <RunningNowFixture.Provider value={runningIn}>
+      <div className="flex min-h-screen bg-background text-foreground">
+        <div
+          className="flex shrink-0 flex-col gap-0.5 border-e border-border bg-sidebar p-2.5 text-sidebar-foreground"
+          data-sites-harness="menu"
+          style={{ width: 435 }}
+        >
+          {FIXTURES.map((fixture) => (
+            <Row
+              face={
+                <MateFace
+                  shape={fixture.input.mates[0]?.shape}
+                  size={24}
+                  state="idle"
+                  tint={fixture.input.mates[0]?.tint ?? "slate"}
+                />
+              }
+              fixture={fixture}
+              key={fixture.input.groupId}
+            />
+          ))}
+        </div>
       </div>
-    </div>
+    </RunningNowFixture.Provider>
   );
 }
 

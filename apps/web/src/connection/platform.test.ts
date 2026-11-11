@@ -44,8 +44,8 @@ import { FetchHttpClient } from "effect/http";
 
 import type { AuthGateState } from "../environments/primary/auth";
 import {
+  browserNetworkStatus,
   canReuseCachedPlatformRegistration,
-  connectionWakeupForSignal,
   primaryPlatformRegistrationStream,
   primaryRegistrationToRetainAfterTopologyRead,
   readPrimaryPlatformAuthGate,
@@ -378,7 +378,7 @@ describe("primary topology cache", () => {
   });
 });
 
-/** The connection wakeups a tab's raw events raise, each at the monotonic time it happened. */
+/** The resubscription wakeups raised by raw events at their monotonic times. */
 function wakeupsFor(steps: ReadonlyArray<readonly [atMs: number, event: PageEvent]>) {
   let nowMs = 0;
   let hidden = false;
@@ -394,8 +394,8 @@ function wakeupsFor(steps: ReadonlyArray<readonly [atMs: number, event: PageEven
   });
   const wakeups: Array<string> = [];
   const unlisten = signals.listen((signal) => {
-    const wakeup = connectionWakeupForSignal(signal);
-    if (wakeup !== null) wakeups.push(wakeup);
+    const wakeup = Wakeups.connectionWakeupForSignal(signal);
+    if (wakeup !== null && wakeup !== "application-visible") wakeups.push(wakeup);
   });
   for (const [atMs, event] of steps) {
     nowMs = atMs;
@@ -406,7 +406,26 @@ function wakeupsFor(steps: ReadonlyArray<readonly [atMs: number, event: PageEven
   return wakeups;
 }
 
+describe("browser network status", () => {
+  // witness: apps/web/src/connection/platform.ts | return onLine === true ? "online" : "unknown"; → return onLine === true ? "online" : "offline";
+  it("a browser that calls itself offline still connects its Mates", () => {
+    expect(browserNetworkStatus(true)).toBe("online");
+    expect(browserNetworkStatus(false)).toBe("unknown");
+    expect(browserNetworkStatus(undefined)).toBe("unknown");
+  });
+});
+
 describe("connection wakeups: the account's visible wake (DESIGN §6.4)", () => {
+  it.each([
+    [true, null],
+    [false, "application-visible"],
+  ] as const)(
+    "a tab visibility change reaches failed Mate retries: hidden=%s",
+    (hidden, expected) => {
+      expect(Wakeups.connectionWakeupForSignal({ type: "visibility", hidden })).toBe(expected);
+    },
+  );
+
   it("an iframe focus round trip triggers no resubscribe", () => {
     expect(
       wakeupsFor([
@@ -483,6 +502,8 @@ describe("connection wakeups: the account's visible wake (DESIGN §6.4)", () => 
   });
 
   it("a hidden wake leaves the connection alone", () => {
-    expect(connectionWakeupForSignal({ type: "wake", visible: false, cause: "resume" })).toBeNull();
+    expect(
+      Wakeups.connectionWakeupForSignal({ type: "wake", visible: false, cause: "resume" }),
+    ).toBeNull();
   });
 });

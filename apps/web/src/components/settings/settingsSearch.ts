@@ -10,6 +10,8 @@ export type SettingsPath =
   | "/settings/zerops"
   | "/settings/automation"
   | "/settings/team"
+  | "/settings/billing"
+  | "/settings/personas"
   | "/settings/archived";
 
 export interface SettingsSearchItem {
@@ -32,14 +34,71 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/general": "General",
   "/settings/appearance": "Appearance",
   "/settings/keybindings": "Keybindings",
+  "/settings/archived": "Archive",
+  "/settings/zerops": "Zerops",
+  "/settings/team": "Team",
+  "/settings/billing": "Billing",
+  "/settings/automation": "Automation",
+  "/settings/personas": "Personas",
   "/settings/providers": "Providers",
   "/settings/source-control": "Source Control",
   "/settings/connections": "Environments",
-  "/settings/zerops": "Zerops",
-  "/settings/automation": "Automation",
-  "/settings/team": "Team",
-  "/settings/archived": "Archive",
 };
+
+/**
+ * The sections grouped by whose settings they are: the person's own, their organization's, and
+ * the Mates' agents and code. The nav draws a group's label over its sections, in this order.
+ */
+export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
+  readonly label: string;
+  readonly sections: ReadonlyArray<SettingsPath>;
+}> = [
+  {
+    label: "You",
+    sections: [
+      "/settings/general",
+      "/settings/appearance",
+      "/settings/keybindings",
+      "/settings/archived",
+    ],
+  },
+  {
+    label: "Organization",
+    sections: [
+      "/settings/zerops",
+      "/settings/team",
+      "/settings/billing",
+      "/settings/automation",
+      "/settings/personas",
+    ],
+  },
+  {
+    label: "Mates and code",
+    sections: ["/settings/providers", "/settings/source-control", "/settings/connections"],
+  },
+];
+
+/**
+ * The team, its billing and the persona templates are an organization's: offered only signed in
+ * with one.
+ */
+export const ORGANIZATION_PAGES: ReadonlySet<SettingsPath> = new Set([
+  "/settings/team",
+  "/settings/billing",
+  "/settings/personas",
+]);
+
+/** Billing is its owners' and admins' alone (`mayReadBilling`): nobody else is offered it. */
+export const ADMIN_PAGES: ReadonlySet<SettingsPath> = new Set(["/settings/billing"]);
+
+/** Whether a settings page is offered to this viewer: in an organization, and as its admin. */
+export function settingsPageOffered(
+  to: SettingsPath,
+  viewer: { readonly withOrganization: boolean; readonly readsBilling: boolean },
+): boolean {
+  if (ORGANIZATION_PAGES.has(to) && !viewer.withOrganization) return false;
+  return !ADMIN_PAGES.has(to) || viewer.readsBilling;
+}
 
 /**
  * Every searchable setting, in result order. This catalog is the single
@@ -211,6 +270,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/general",
   },
   {
+    id: "labs-adobe-express",
+    title: "Adobe Express panel (preview)",
+    to: "/settings/general",
+    searchTerms: ["labs preview adobe express design pictures images side panel"],
+  },
+  {
     id: "legacy-plan-mode",
     title: "Plan mode (legacy)",
     to: "/settings/general",
@@ -302,6 +367,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Limits per task",
     to: "/settings/automation",
     searchTerms: ["automated mates minutes cost budget"],
+  },
+  {
+    id: "persona-templates",
+    title: "Persona templates",
+    to: "/settings/personas",
+    searchTerms: ["personas organization"],
   },
   {
     id: "archive",

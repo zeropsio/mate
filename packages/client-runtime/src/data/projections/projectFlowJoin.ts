@@ -16,7 +16,9 @@ import {
   releaseDeploys,
   releaseInFlight,
   releaseInFlightReason,
+  releaseLanding,
   releaseStalled,
+  type ReleaseStall,
   releaseCandidate,
   compareForRelease,
   releaseEntries,
@@ -39,18 +41,24 @@ import {
   type GroupEnvironmentTier,
   type FlowReleaseRow,
 } from "../../zerops/index.ts";
-import { hqRefusalWords, type UnreadEnvironment } from "../../zerops/hq/index.ts";
+import type { UnreadEnvironment } from "../../zerops/hq/index.ts";
 import type { HqChange, RepoListEntry } from "@t3tools/shared/hqChanges";
-import type { CanonicalHqNavigationApp, HqNavigationChange } from "@t3tools/shared/hqStream";
+import type {
+  CanonicalHqNavigationApp,
+  HqNavigationChange,
+  HqNavigationRollout,
+} from "@t3tools/shared/hqStream";
 import { canonicalEnvironmentRow, type CanonicalEnvironmentRow } from "../../zerops/groupRows.ts";
 import type { CanonicalGroupEnvironmentRowInput } from "../../zerops/groupDeploys.ts";
-import type { Release } from "@t3tools/shared/hqRelease";
+import type { Release, HqReleaseTarget } from "@t3tools/shared/hqRelease";
 import type { GitReleaseReviewFacts } from "../../zerops/release.ts";
 
 type ComparedCommits = MovedCommits & { readonly again?: (() => void) | undefined };
 
 /** What *Release* offers on a project, when it is offered at all. */
 export interface ZeropsReleaseOffer {
+  readonly problems?: CanonicalHqNavigationApp["problems"] | undefined;
+  readonly releaseTarget?: HqReleaseTarget | undefined;
   readonly git?: GitReleaseReviewFacts | undefined;
   readonly comparisonFailure?:
     | { readonly reason: string; readonly again?: (() => void) | undefined }
@@ -73,8 +81,8 @@ export interface ZeropsReleaseOffer {
   readonly entries: ReadonlyArray<ReleaseEntry>;
   /** The release tag on its way to production (`releaseInFlight`); Release waits for it. */
   readonly inFlight: string | undefined;
-  /** The newest release, once HQ ended its deploy with some of it not live (`releaseStalled`). */
-  readonly stalled: string | undefined;
+  /** The newest release, once HQ ended its deploy with some of it not live, and HQ's words for why. */
+  readonly stalled: ReleaseStall | undefined;
   /**
    * What pressing it would put live, per repository HQ compared (`movedCommits`): the commits
    * `main` has that its services do not run. With squash merges each is one task delivered.
@@ -163,24 +171,15 @@ const changeRows = new WeakMap<
 
 /**
  * Every application's changes as its group's flow shows them, at HQ's official address: the open
- * ones from HQ's navigation, with what a held detail adds; and, apart, HQ's refusal of them in its
- * words for each application whose changes it refuses this person.
+ * ones from HQ's navigation, with what a held detail adds.
  */
 export function groupChangesOf(
-  open: Readonly<Record<string, ReadonlyArray<HqNavigationChange> | { readonly refused: string }>>,
+  open: Readonly<Record<string, ReadonlyArray<HqNavigationChange>>>,
   detail: ReadonlyMap<string, ReadonlyArray<HqChange>>,
   hqAddress: string,
-): {
-  readonly rows: ReadonlyMap<string, GroupChanges>;
-  readonly refused: ReadonlyMap<string, string>;
-} {
+): ReadonlyMap<string, GroupChanges> {
   const rows = new Map<string, GroupChanges>();
-  const refused = new Map<string, string>();
   for (const [appId, listed] of Object.entries(open)) {
-    if ("refused" in listed) {
-      refused.set(appId, hqRefusalWords({ code: listed.refused, reason: listed.refused }));
-      continue;
-    }
     const held = detail.get(appId);
     let byDetail = changeRows.get(listed);
     if (byDetail === undefined) {
@@ -199,7 +198,7 @@ export function groupChangesOf(
     }
     rows.set(appId, shown);
   }
-  return { rows, refused };
+  return rows;
 }
 
 /** What the flow says while HQ has never told it any change, and does not answer. */
@@ -266,6 +265,8 @@ export function joinProjectFlows(input: {
   readonly acceptedReleases?: ReadonlyMap<string, string>;
   /** Each group's stops, by its id, while HQ has told its environments. */
   readonly stops: ReadonlyMap<string, GroupStops>;
+  /** HQ's notes on each group's recent rollouts, by its id: what a stalled release says. */
+  readonly rolloutNotes?: ReadonlyMap<string, ReadonlyArray<HqNavigationRollout>>;
   /** Each group's releases as HQ records them, newest first, by its id, once HQ answered. */
   readonly releases: ReadonlyMap<string, ReadonlyArray<Release>>;
   /** Each group's repositories with their `main`, read with its releases. */
@@ -283,8 +284,6 @@ export function joinProjectFlows(input: {
   readonly changes: ReadonlyMap<string, GroupChanges> | null;
   /** Why HQ has told nothing of them, while it does not answer. */
   readonly changesFailure: string | undefined;
-  /** HQ's refusal of each group's changes to this person, in its words, by its id. */
-  readonly changesRefused: ReadonlyMap<string, string>;
   /** Why the grant withholds a project, by project id, for each project it withholds alone. */
   readonly withheld: ReadonlyMap<string, string>;
 }): ReadonlyMap<string, ZeropsProjectFlow> {
@@ -292,10 +291,7 @@ export function joinProjectFlows(input: {
   for (const group of input.groups) {
     const navigationOffer = input.navigationOffers?.[group.groupId];
     const acceptedRelease = input.acceptedReleases?.get(group.groupId);
-    const git =
-      navigationOffer != null &&
-      !("refused" in navigationOffer) &&
-      navigationOffer.releaseTarget?.target.kind === "git";
+    const git = navigationOffer?.releaseTarget?.target.kind === "git";
     const stops = git ? undefined : input.stops.get(group.groupId);
     const records = input.releases.get(group.groupId);
     const changes = input.changes?.get(group.groupId);
@@ -327,17 +323,34 @@ export function joinProjectFlows(input: {
         return notice === undefined ? [] : [[projectId, notice] as const];
       }),
     );
-    const { rollouts } = git ? { rollouts: [] } : releaseDeploys(stops?.environments ?? []);
-    const newest = records?.[0] === undefined ? undefined : flowReleaseOf(records[0]);
+    const { rollouts, jobs } = git
+      ? { rollouts: [], jobs: [] }
+      : releaseDeploys(stops?.environments ?? []);
+    const listed = (records ?? []).map(flowReleaseOf);
+    const newest = listed[0];
     const deploy = {
-      inFlight: releaseInFlight({ newest, rollouts }) ?? acceptedRelease,
-      stalled: releaseStalled({ newest, rollouts }),
+      // A release HQ ended landed stays on its way until production's own services run it.
+      inFlight:
+        releaseInFlight({ newest, rollouts }) ??
+        releaseLanding({
+          newest,
+          rollouts,
+          earlier: listed.slice(1),
+          productions: git ? [] : productionsRunning(stops?.environments ?? []),
+        }) ??
+        acceptedRelease,
+      stalled: releaseStalled({
+        newest,
+        rollouts,
+        jobs,
+        notes: input.rolloutNotes?.get(group.groupId),
+      }),
     };
     const repos = input.repos.get(group.groupId);
     const recipe = git ? undefined : input.recipes.get(group.groupId);
     const permission = input.permissions.get(group.groupId);
     const live = input.live.get(group.groupId) ?? NOT_ASKED;
-    const changesFailure = input.changesRefused.get(group.groupId) ?? input.changesFailure;
+    const changesFailure = input.changesFailure;
     const key = JSON.stringify([
       navigationOffer,
       acceptedRelease,
@@ -380,6 +393,24 @@ export function joinProjectFlows(input: {
     flows.set(group.groupId, flow);
   }
   return flows;
+}
+
+/** What each production's services run (`releaseLanding`): a commit, `null` for another name. */
+function productionsRunning(
+  environments: ReadonlyArray<Pick<GroupEnvironmentRowInput, "tier" | "services">>,
+): ReadonlyArray<ReadonlyMap<string, string | null>> {
+  return environments
+    .filter((environment) => environment.tier === "production")
+    .map(
+      (environment) =>
+        new Map(
+          environment.services.flatMap((service) =>
+            !service.appVersionName?.trim()
+              ? []
+              : [[service.hostname, deployedCommit(service.appVersionName) ?? null] as const],
+          ),
+        ),
+    );
 }
 
 /**
@@ -433,14 +464,13 @@ function projectFlow(
     readonly acceptedRelease?: string | undefined;
   },
   /** The newest release on its way to production, or stalled there (`releaseInFlight`, `releaseStalled`). */
-  deploy: { readonly inFlight: string | undefined; readonly stalled: string | undefined },
+  deploy: { readonly inFlight: string | undefined; readonly stalled: ReleaseStall | undefined },
   /** Why the grant withholds each of the group's projects it withholds alone. */
   withheld: ReadonlyMap<string, string>,
 ): ZeropsProjectFlow {
   const { stops, records, changes } = halves;
   const navigation = offered.navigationOffer;
-  const attachment =
-    navigation != null && !("refused" in navigation) ? navigation.releaseTarget : undefined;
+  const attachment = navigation?.releaseTarget;
   const gitTarget = attachment?.target.kind === "git";
   const environmentInputs = gitTarget ? [] : (stops?.environments ?? []);
   // A production the grant withholds shows nothing it runs, so
@@ -501,24 +531,20 @@ function projectFlow(
     contentsKnown: live.moved?.state === "known",
     suggestion: "",
   };
+  // HQ's gate is the release's own standing, the same for everyone; whether this person may
+  // release is their own verdict (`permission`), and a refusal of it wins.
   const ownerGate: ReleaseGate =
-    navigation != null && "refused" in navigation
-      ? {
-          allowed: false,
-          reason: hqRefusalWords({ code: navigation.refused, reason: navigation.refused }),
-          refusedBy: "hq",
-        }
-      : offered.acceptedRelease !== undefined
-        ? { allowed: false, reason: releaseInFlightReason(offered.acceptedRelease) }
-        : navigation === undefined
-          ? { allowed: false, reason: "Release offer is unknown." }
-          : navigation === null
-            ? { allowed: false, reason: "Checking what can be released…" }
+    offered.acceptedRelease !== undefined
+      ? { allowed: false, reason: releaseInFlightReason(offered.acceptedRelease) }
+      : navigation === undefined
+        ? { allowed: false, reason: "Release offer is unknown." }
+        : navigation === null
+          ? { allowed: false, reason: "Checking what can be released…" }
+          : permission?.allowed === false
+            ? permission
             : navigation.gate.allow
               ? { allowed: true }
-              : permission?.allowed === false
-                ? permission
-                : { allowed: false, reason: navigation.gate.reason };
+              : { allowed: false, reason: navigation.gate.reason };
   const gate: ReleaseGate =
     gitTarget && !ownerGate.allowed
       ? ownerGate
@@ -528,10 +554,7 @@ function projectFlow(
             (read === undefined ||
               live.moved?.state === "reading" ||
               (gitTarget &&
-                (delivery === undefined ||
-                  navigation == null ||
-                  "refused" in navigation ||
-                  navigation.head === null)))
+                (delivery === undefined || navigation == null || navigation.head === null)))
           ? { allowed: false, reason: "Checking what can be released…" }
           : offered.review && live.moved?.state === "failed"
             ? {
@@ -560,21 +583,15 @@ function projectFlow(
       productionWithheld === undefined
         ? {
             ...offer,
+            ...(navigation?.problems !== undefined ? { problems: navigation.problems } : {}),
+            releaseTarget: attachment,
             gate,
-            suggestion:
-              navigation != null && !("refused" in navigation)
-                ? navigation.suggestion
-                : offer.suggestion,
-            summary:
-              navigation != null && !("refused" in navigation) ? navigation.summary : undefined,
-            summaryRead:
-              navigation != null && !("refused" in navigation) ? navigation.summaryRead : undefined,
+            suggestion: navigation?.suggestion ?? offer.suggestion,
+            summary: navigation?.summary,
+            summaryRead: navigation?.summaryRead,
             comparisonFailure: live.moved?.state === "failed" ? live.moved : undefined,
             permission,
-            groupHead:
-              gitTarget && navigation != null && !("refused" in navigation)
-                ? (navigation.head ?? undefined)
-                : read?.groupHead,
+            groupHead: gitTarget ? (navigation?.head ?? undefined) : read?.groupHead,
             ...(gitTarget
               ? {
                   git: {
@@ -587,10 +604,7 @@ function projectFlow(
                 }
               : {}),
             ...deploy,
-            inFlight:
-              navigation != null && !("refused" in navigation)
-                ? (navigation.inFlight ?? deploy.inFlight)
-                : deploy.inFlight,
+            inFlight: navigation?.inFlight ?? deploy.inFlight,
             untold: live.untold,
             runs: gitTarget ? undefined : live.runs,
             repositories: gitTarget

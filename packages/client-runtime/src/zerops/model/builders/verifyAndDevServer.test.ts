@@ -167,6 +167,33 @@ describe("buildDevServerFields — a log read finds nothing about running", () =
 });
 
 describe("buildDevServerFields — a service of several named dev servers", () => {
+  it.each([
+    { inputName: "aux", resultName: undefined, selected: "aux" },
+    { inputName: undefined, resultName: "aux", selected: "aux" },
+    { inputName: undefined, resultName: undefined, selected: "appdev" },
+  ])(
+    "keeps the selected server and action apart from its display rows: $selected",
+    ({ inputName, resultName, selected }) => {
+      const fields = buildDevServerFields(
+        call(
+          "zerops_dev_server",
+          {
+            hostname: "appdev",
+            action: "stop",
+            ...(inputName === undefined ? {} : { name: inputName }),
+          },
+          {
+            hostname: "appdev",
+            action: "stop",
+            running: false,
+            ...(resultName === undefined ? {} : { name: resultName }),
+          },
+        ),
+      );
+      expect(fields.devServer).toEqual({ action: "stop", name: selected, running: false });
+    },
+  );
+
   it("shows each server zcp's live result names, with its port and state", () => {
     const fields = buildDevServerFields(
       call("zerops_dev_server", { hostname: "e1pnpm", action: "status", name: "web" }, live),

@@ -26,6 +26,7 @@ import type {
 import {
   MATE_CREW_BOUNDS,
   linkFrameBytes,
+  type LoginDigest,
   MATE_LINK_FRAME_MAX,
   MATE_LINK_TEXT_MAX,
   MATE_LIVE_STEP_BOUNDS,
@@ -44,6 +45,7 @@ import {
   type ThreadDigest,
 } from "@t3tools/shared/mateLink";
 import { maskSecrets } from "@t3tools/shared/messagePreview";
+import { classifyZeropsAgentAuth } from "@t3tools/shared/zeropsAgentAuth";
 import { resolvePrimaryConversation } from "@t3tools/shared/primaryConversation";
 import { resolveThreadStatus } from "@t3tools/shared/threadStatus";
 
@@ -57,6 +59,8 @@ export interface MateOverviewInput {
   readonly auth: ZeropsAgentAuthSnapshot;
   /** Display history from the server, separate from current credential authority. */
   readonly lastSigners?: Readonly<Record<string, string>>;
+  /** When each last signer signed their login in, where the server watched it (`signedAt`). */
+  readonly signedAt?: Readonly<Record<string, string>>;
   /** The crew engine's snapshot; none before its first. */
   readonly crew: CrewSnapshot | undefined;
   /** An engine Mate's own rows of its person's conversations; none on a V1 Mate. */
@@ -353,12 +357,30 @@ const LOGIN_PRESENT: Readonly<Record<ZeropsLoginState, boolean>> = {
 };
 
 /**
- * Whose each login is and what its lock reads, by the key its signer goes by: the agents' own
+ * A login's last recorded sign-in as HQ reads it: who, and when where the server watched it
+ * (`lastSignedInAt`, a new one moves the Mate's owner in HQ); nothing without the store.
+ */
+function lastSignInOf(
+  key: string,
+  lastSigners: Readonly<Record<string, string>> | undefined,
+  signedAt: Readonly<Record<string, string>> | undefined,
+): Pick<LoginDigest, "lastSignedInBy" | "lastSignedInAt"> {
+  if (lastSigners === undefined) return {};
+  const at = signedAt?.[key];
+  return {
+    lastSignedInBy: lastSigners[key] ?? null,
+    ...(at === undefined ? {} : { lastSignedInAt: at }),
+  };
+}
+
+/**
+ * Whose each login is, what its lock reads and whether it can run a turn, by the key its signer goes by: the agents' own
  * rows first, then every other login, {@link MATE_LOGINS_MAX} at most.
  */
 function loginsOf(
   auth: ZeropsAgentAuthSnapshot,
   lastSigners?: Readonly<Record<string, string>>,
+  signedAt?: Readonly<Record<string, string>>,
 ): OverviewLogins {
   const agents = auth.agents.map(
     (agent) =>
@@ -366,11 +388,10 @@ function loginsOf(
         agent.agentId,
         {
           signedInBy: agent.authorizedBy?.subject ?? null,
-          ...(lastSigners === undefined
-            ? {}
-            : { lastSignedInBy: lastSigners[agent.agentId] ?? null }),
+          ...lastSignInOf(agent.agentId, lastSigners, signedAt),
           present: agent.credPresent,
           token: agent.flagToken,
+          state: classifyZeropsAgentAuth(agent).kind,
         },
       ] as const,
   );
@@ -382,9 +403,10 @@ function loginsOf(
           login.id,
           {
             signedInBy: login.signedInBy ?? null,
-            ...(lastSigners === undefined ? {} : { lastSignedInBy: lastSigners[login.id] ?? null }),
+            ...lastSignInOf(login.id, lastSigners, signedAt),
             present: LOGIN_PRESENT[login.state],
             token: login.token,
+            state: login.state,
           },
         ] as const,
     );
@@ -434,7 +456,7 @@ export function mateOverviewOf(
       identity: input.identity,
       main: primary === undefined ? null : mainOf(primary),
       threads: threadsOf(input.threads),
-      logins: loginsOf(input.auth, input.lastSigners),
+      logins: loginsOf(input.auth, input.lastSigners, input.signedAt),
       crew: crewOf(input.crew, input.threads),
       ...(input.conversations === undefined
         ? {}

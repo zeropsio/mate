@@ -7,6 +7,7 @@ import {
 } from "@t3tools/contracts";
 import { ServerProviderUpdateError } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -713,8 +714,18 @@ describe("providerMaintenanceRunner", () => {
     const calls: Array<string> = [];
     return Effect.gen(function* () {
       const { registry } = yield* makeRegistry([baseProvider, baseOpenCodeProvider]);
+      const secondQueued = yield* Deferred.make<void>();
       const updater = yield* makeTestRunner({
         ...registry,
+        setProviderMaintenanceActionState: Effect.fn(
+          "providerMaintenanceRunner.test.observeQueuedState",
+        )(function* (input) {
+          const providers = yield* registry.setProviderMaintenanceActionState(input);
+          if (input.instanceId === OPENCODE_INSTANCE_ID && input.state?.status === "queued") {
+            yield* Deferred.succeed(secondQueued, undefined);
+          }
+          return providers;
+        }),
         getProviderMaintenanceCapabilitiesForInstance: (_instanceId, provider) =>
           Effect.succeed(
             makeProviderMaintenanceCapabilities({
@@ -734,17 +745,8 @@ describe("providerMaintenanceRunner", () => {
       yield* Effect.promise(() => firstStarted);
 
       const second = yield* updater.updateProvider(OPENCODE_DRIVER).pipe(Effect.forkScoped);
-      let providersWhileQueued: ReadonlyArray<ServerProvider> = [];
-      for (let attempt = 0; attempt < 20; attempt += 1) {
-        providersWhileQueued = yield* registry.getProviders;
-        const queuedStatus = providersWhileQueued.find(
-          (provider) => provider.instanceId === OPENCODE_INSTANCE_ID,
-        )?.updateState?.status;
-        if (queuedStatus === "queued") {
-          break;
-        }
-        yield* Effect.yieldNow;
-      }
+      yield* Deferred.await(secondQueued);
+      const providersWhileQueued = yield* registry.getProviders;
       assert.deepStrictEqual(calls, ["install -g @openai/codex@latest"]);
       assert.strictEqual(
         providersWhileQueued.find((provider) => provider.instanceId === OPENCODE_INSTANCE_ID)

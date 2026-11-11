@@ -4,6 +4,7 @@ import { openingLimitWords } from "../../zerops/mateOpeningStage";
 import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
 import {
   createContext,
+  createElement,
   cloneElement,
   use,
   useCallback,
@@ -11,6 +12,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ComponentProps,
   type ReactNode,
   type ReactElement,
 } from "react";
@@ -43,10 +45,49 @@ type StageSlot = OpeningProps & { readonly node: HTMLDivElement };
 type AvatarSlot = { readonly node: HTMLSpanElement; readonly face: ReactElement<MateFaceProps> };
 const Opening = createContext<{
   readonly stage: StageSlot | null;
+  /** The stage says the Mate itself now (`stageSaysMate`): the header holds its place unsaid. */
+  readonly saysMate: boolean;
   readonly setStage: (stage: StageSlot) => void;
   readonly setAvatar: (avatar: AvatarSlot) => void;
   readonly releaseStage: (node: HTMLDivElement) => void;
 } | null>(null);
+
+/**
+ * How what belongs to the conversation stands while a stage opens it: held in its place unseen
+ * while the stage waits, arriving from the moment the conversation is placed.
+ */
+type OpeningWait = "held" | "arrives" | "";
+const OpeningWaitContext = createContext<OpeningWait>("");
+
+/**
+ * Whether a stage that registers after another begins an opening of its own, or carries on the
+ * one under way — one stage, one face and one set of words from a reload's first frame to the
+ * conversation, whichever surface draws it as the route's gate moves between its waits:
+ * another conversation, or another Mate — or a Mate not known yet after a known one, outside the
+ * conversation they share — opens anew; so does a stage after the opening completed, or a cold
+ * stage after a ready one on another surface. The Mate named where nobody was yet — a name and
+ * face arriving — is the same opening.
+ */
+export function opensAnew(
+  previous: Pick<OpeningProps, "threadKey" | "ready" | "mate"> & { readonly node: unknown },
+  next: Pick<OpeningProps, "threadKey" | "ready" | "mate"> & { readonly node: unknown },
+  completed: boolean,
+): boolean {
+  if (
+    previous.threadKey !== undefined &&
+    next.threadKey !== undefined &&
+    previous.threadKey !== next.threadKey
+  )
+    return true;
+  if (previous.mate != null && next.mate != null && previous.mate.projectId !== next.mate.projectId)
+    return true;
+  // A known Mate followed by one not known yet, outside the one conversation they share: its
+  // words and face are not the next one's.
+  const sameConversation =
+    previous.threadKey !== undefined && previous.threadKey === next.threadKey;
+  if (previous.mate != null && next.mate == null && !sameConversation) return true;
+  return previous.node !== next.node && (completed || (previous.ready && !next.ready));
+}
 
 /** The route shell keeps the stage and its actual face through link/stand-up → chat replacement. */
 export function ConversationOpeningProvider({ children }: { readonly children: ReactNode }) {
@@ -81,14 +122,8 @@ export function ConversationOpeningProvider({ children }: { readonly children: R
           current.stage.threadKey === next.threadKey
         )
           return current;
-        const previous = current.lastStage;
         const newOpening =
-          previous !== null &&
-          ((previous.threadKey !== undefined &&
-            next.threadKey !== undefined &&
-            previous.threadKey !== next.threadKey) ||
-            (previous.node !== next.node &&
-              (completed.current || (previous.ready && !next.ready))));
+          current.lastStage !== null && opensAnew(current.lastStage, next, completed.current);
         return { stage: next, lastStage: next, cycle: current.cycle + (newOpening ? 1 : 0) };
       }),
     [],
@@ -98,9 +133,22 @@ export function ConversationOpeningProvider({ children }: { readonly children: R
       setStage((current) => (current.stage?.node === node ? { ...current, stage: null } : current)),
     [],
   );
-  const onPhase = useCallback((phase: OpeningPhase) => {
-    completed.current = phase === "complete";
+  const [phase, setPhase] = useState<OpeningPhase>("waiting");
+  const onPhase = useCallback((next: OpeningPhase) => {
+    completed.current = next === "complete";
+    setPhase(next);
   }, []);
+  const saysMate = stageSaysMate(stage, phase);
+  // Held only while the stage waits: from the moment the conversation is placed — the eyes'
+  // opening and what is left of the hand-off after it — everything of it arrives.
+  const wait: OpeningWait =
+    stage === null
+      ? ""
+      : phase === "waiting"
+        ? "held"
+        : phase === "wake" || phase === "hand-off"
+          ? "arrives"
+          : "";
   const sourceNode = stage?.node;
   useLayoutEffect(() => {
     if (sourceNode === undefined) return;
@@ -108,24 +156,89 @@ export function ConversationOpeningProvider({ children }: { readonly children: R
     return () => host.remove();
   }, [host, sourceNode]);
   const context = useMemo(
-    () => ({ stage, setStage: registerStage, setAvatar, releaseStage }),
-    [stage, registerStage, releaseStage],
+    () => ({ stage, saysMate, setStage: registerStage, setAvatar, releaseStage }),
+    [stage, saysMate, registerStage, releaseStage],
   );
   return (
     <Opening value={context}>
-      {children}
+      <OpeningWaitContext value={wait}>{children}</OpeningWaitContext>
       {stage === null
         ? null
         : createPortal(
-            <OpeningSequence
-              key={`${stage.mate?.projectId ?? ""}/${cycle}`}
-              {...stage}
-              avatar={avatar}
-              onPhase={onPhase}
-            />,
+            <OpeningSequence key={cycle} {...stage} avatar={avatar} onPhase={onPhase} />,
             host,
           )}
     </Opening>
+  );
+}
+
+/**
+ * Whether the opening stage says the Mate itself — its name, or its face — in this phase: while it
+ * waits and wakes. The owner's rule (2026-10-15): what a waiting view says leaves the header,
+ * which holds its place with its controls; from the hand-off on, the header says it again.
+ */
+export function stageSaysMate(
+  stage: Pick<OpeningProps, "name" | "mate" | "children"> | null,
+  phase: OpeningPhase,
+): boolean {
+  if (stage === null || (phase !== "waiting" && phase !== "wake")) return false;
+  // The link's own words (a restart, a Mate down, unavailable) are no opening: no hand-off is on
+  // its way, and the header keeps saying the Mate.
+  if (stage.children !== undefined) return false;
+  return Boolean(stage.name) || stage.mate !== null;
+}
+
+/**
+ * What the header says of the Mate — its name, what it is on — held in its place, unseen and
+ * unsaid, while the opening stage says the Mate (`stageSaysMate`), and arriving with the
+ * conversation from the moment it is placed (`data-opening-arrives`, `index.css`).
+ */
+export function ConversationOpeningYields({ children }: { readonly children: ReactNode }) {
+  const says = use(Opening)?.saysMate === true;
+  const arrives = use(OpeningWaitContext) === "arrives";
+  return (
+    <span
+      aria-hidden={says || undefined}
+      className="contents"
+      data-opening-arrives={arrives ? "" : undefined}
+      data-opening-header={says ? "yields" : "says"}
+    >
+      {children}
+    </span>
+  );
+}
+
+/**
+ * Whether an opening is bringing the conversation in now — the header's name and subject with it.
+ * A part of the header with a fade of its own reads it to end that fade's mark: once the opening
+ * has brought it in, its own animation must have nothing left to fall back to.
+ */
+export function useConversationOpeningArrives(): boolean {
+  return use(OpeningWaitContext) === "arrives";
+}
+
+/**
+ * A part of the conversation's surface that waits for the opening: its children — or, `whole`,
+ * the element itself — are unseen while the stage waits, and arrive with the conversation from
+ * the moment it is placed (`index.css`), wherever the stage stands while the route changes.
+ * The element reads the opening itself, so the view around it never renders for an opening's
+ * steps; and the style sheet asks no `:has()` of the page, which restyled the whole document
+ * for every node added anywhere in it.
+ */
+export function ConversationOpeningWaits({
+  as = "span",
+  whole = false,
+  ...props
+}: (
+  | ({ readonly as: "div" } & ComponentProps<"div">)
+  | ({ readonly as?: "span" } & ComponentProps<"span">)
+) & { readonly whole?: boolean }) {
+  const wait = use(OpeningWaitContext);
+  return createElement(
+    as,
+    whole
+      ? { ...props, "data-opening-waits-whole": wait === "" ? undefined : wait }
+      : { ...props, "data-opening-waits": wait },
   );
 }
 

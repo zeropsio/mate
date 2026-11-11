@@ -17,35 +17,10 @@ import {
 import { readPipeline } from "@t3tools/client-runtime/zerops/activity/pipelineReadout";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { ScopedThreadRef } from "@t3tools/contracts";
+import { cloneElement, type ReactElement, type ReactNode } from "react";
+import { useRightPanelStore } from "../../rightPanelStore";
 
-const panelTestState = vi.hoisted(() => ({
-  onOpen: null as (() => void) | null,
-  open: vi.fn(),
-}));
-
-vi.mock("~/components/ui/tooltip", async (importOriginal) => {
-  const React = await import("react");
-  const original = await importOriginal<typeof import("~/components/ui/tooltip")>();
-  return {
-    ...original,
-    TooltipTrigger: ({
-      children,
-      render,
-    }: {
-      readonly children: React.ReactNode;
-      readonly render: React.ReactElement<{ readonly onClick?: () => void }>;
-    }) => {
-      panelTestState.onOpen = render.props.onClick ?? null;
-      return React.cloneElement(render, undefined, children);
-    },
-  };
-});
-
-vi.mock("../../rightPanelStore", () => ({
-  useRightPanelStore: {
-    getState: () => ({ open: panelTestState.open }),
-  },
-}));
+const tooltip = await import("~/components/ui/tooltip");
 
 import { formatWorkDuration } from "../chat/conversation.logic";
 import { ZeropsOperationCard, type ObservedRegion } from "./ZeropsOperationCard";
@@ -248,10 +223,8 @@ describe("ZeropsOperationCard — a deploy reads its pipeline step by step", () 
   // One mark per state across every step list of the card: a ring, what is
   // inside it saying the state; the running one the busy blue, stepping.
   it.each([
-    {
-      state: "finished",
-      shows: ['data-step-glyph="done"', "lucide-circle-check", "text-status-ok"],
-    },
+    // A finished step's mark is the list's quiet one: its shape says it, no state's colour.
+    { state: "finished", shows: ['data-step-glyph="done"', "lucide-circle-check"] },
     {
       state: "running",
       shows: [
@@ -298,32 +271,6 @@ describe("ZeropsOperationCard — a deploy reads its pipeline step by step", () 
       (entry) => entry.state === state,
     );
     for (const text of shows) expect(row?.inner).toContain(text);
-  });
-
-  it("the running and the failed step read in the ink, a finished one muted, one to come fainter", () => {
-    const failed = readout(
-      {
-        name: SHA,
-        status: "BUILD_FAILED",
-        build: { pipelineStart: at(5), startDate: at(13), pipelineFailed: at(70) },
-      },
-      600,
-    );
-    const sentenceTone = (inner: string) =>
-      inner.includes("text-line leading-5 text-foreground")
-        ? "foreground"
-        : inner.includes("text-muted-foreground/70")
-          ? "faint"
-          : "muted";
-
-    expect(
-      rowsOf(render(running, observedOf(building))).map((row) => sentenceTone(row.inner)),
-    ).toEqual(["muted", "foreground", "faint"]);
-    expect(
-      rowsOf(render(deploy({ status: "failed" }), observedOf(failed))).map((row) =>
-        sentenceTone(row.inner),
-      ),
-    ).toEqual(["muted", "foreground", "muted"]);
   });
 
   it("a running deploy step reads its name alone: no version, no note", () => {
@@ -702,6 +649,52 @@ describe("ZeropsOperationCard — dev server", () => {
     expect(html).not.toContain("apidev-26a7-3000.prg1.zerops.app");
   });
 
+  it("shows the selected dev server stopped while its sibling stays running", () => {
+    const operation = operationFor(
+      zeropsCall({
+        id: "stop",
+        toolName: "zerops_dev_server",
+        startedAt: "2026-10-28T00:50:08Z",
+        status: "completed",
+        input: { action: "stop", hostname: "flipdev", name: "agent-layout-check" },
+        resultText: JSON.stringify({
+          action: "stop",
+          hostname: "flipdev",
+          name: "agent-layout-check",
+          running: false,
+          envelope: {
+            services: [
+              {
+                hostname: "flipdev",
+                devServers: [
+                  {
+                    name: "flipdev",
+                    port: 5195,
+                    status: "running",
+                    readAt: "2026-10-28T00:50:11.134Z",
+                  },
+                  {
+                    name: "agent-layout-check",
+                    port: 5293,
+                    status: "stopped",
+                    readAt: "2026-10-28T00:50:11.134Z",
+                  },
+                ],
+              },
+            ],
+          },
+        }),
+      }),
+    );
+    const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
+    expect(html).toContain("Stopped");
+    expect(html).toContain("agent-layout-check");
+    expect(html).toContain("flipdev :5195");
+    expect(html).toContain("agent-layout-check :5293");
+    expect(html).toContain("Running");
+    expect(html).not.toContain("Not running");
+  });
+
   it("opens a lease with one dev server at the preview address zcp read on it, no topology needed", () => {
     const readAt = "2026-10-23T12:00:00Z";
     const lease = operationFor(
@@ -804,42 +797,35 @@ describe("ZeropsOperationCard — browser", () => {
     expect(html).not.toContain("network requests --status 400-599");
   });
 
-  it.each([
-    { name: "errors on the page", errors: true },
-    { name: "a clean page", errors: false },
-  ])("$name: the figures take the failure tone only when there are errors", ({ errors }) => {
-    const checked = errors
-      ? operation
-      : operationFor(
-          zeropsCall({
-            id: "brw-clean",
-            startedAt: "2026-09-01T00:00:00.000Z",
-            turnId: "t1",
-            toolName: "zerops_browser",
-            input: { url: "https://kanbandev-26a7.prg1.zerops.app" },
-            status: "completed",
-            resultText: JSON.stringify({
-              url: "https://kanbandev-26a7.prg1.zerops.app",
-              steps: [
-                { command: ["set", "viewport", "1440", "900"], success: true },
-                { command: ["errors"], success: true },
-                { command: ["console"], success: true },
-                { command: ["network", "requests", "--status", "400-599"], success: true },
-              ],
-              errorsOutput: [],
-              consoleOutput: [],
-              networkOutput: [],
-            }),
-          }),
-        );
+  it("a clean page: the figures take the failure tone only when there are errors", () => {
+    const checked = operationFor(
+      zeropsCall({
+        id: "brw-clean",
+        startedAt: "2026-09-01T00:00:00.000Z",
+        turnId: "t1",
+        toolName: "zerops_browser",
+        input: { url: "https://kanbandev-26a7.prg1.zerops.app" },
+        status: "completed",
+        resultText: JSON.stringify({
+          url: "https://kanbandev-26a7.prg1.zerops.app",
+          steps: [
+            { command: ["set", "viewport", "1440", "900"], success: true },
+            { command: ["errors"], success: true },
+            { command: ["console"], success: true },
+            { command: ["network", "requests", "--status", "400-599"], success: true },
+          ],
+          errorsOutput: [],
+          consoleOutput: [],
+          networkOutput: [],
+        }),
+      }),
+    );
     const html = renderToStaticMarkup(<ZeropsOperationCard operation={checked} />);
     const metrics = html.match(/<p[^>]*data-zerops-browser-metrics[^>]*>/)?.[0];
     // The failure red the failed step under it is in: the status token, never `destructive`.
 
     expect(metrics).not.toContain("destructive");
-    if (!errors) {
-      expect(html).toContain(">1440×900 · 1 step · 0 errors<");
-    }
+    expect(html).toContain(">1440×900 · 1 step · 0 errors<");
   });
 
   it("says what it checked once: no closing sentence repeats the page and its counts", () => {
@@ -1012,21 +998,33 @@ describe("ZeropsOperationCard — browser", () => {
 
       // Its static tint shows on both cards: `muted` all but vanishes on the dark one.
     });
-
-    it("the live caption follows the call's own phase, so a reload of a running call reads the same", () => {
-      const html = renderToStaticMarkup(<ZeropsOperationCard operation={born} />);
-      expect(html).toContain("data-zerops-browser-live-caption");
-    });
   });
 
   it("clicking an empty frame opens the Browser panel", () => {
-    panelTestState.onOpen = null;
-    panelTestState.open.mockClear();
-    renderToStaticMarkup(<ZeropsOperationCard operation={operation} threadRef={THREAD_REF} />);
-    const onOpen = panelTestState.onOpen as (() => void) | null;
-    expect(onOpen).not.toBeNull();
-    (onOpen as () => void)();
-    expect(panelTestState.open).toHaveBeenCalledWith(THREAD_REF, "browser");
+    let onOpen: (() => void) | null = null;
+    const open = vi.fn();
+    vi.spyOn(tooltip, "TooltipTrigger").mockImplementation((({
+      children,
+      render,
+    }: {
+      readonly children: ReactNode;
+      readonly render: ReactElement<{ readonly onClick?: () => void }>;
+    }) => {
+      onOpen = render.props.onClick ?? null;
+      return cloneElement(render, undefined, children);
+    }) as unknown as typeof tooltip.TooltipTrigger);
+    vi.spyOn(useRightPanelStore, "getState").mockReturnValue({
+      ...useRightPanelStore.getState(),
+      open,
+    });
+    try {
+      renderToStaticMarkup(<ZeropsOperationCard operation={operation} threadRef={THREAD_REF} />);
+      expect(onOpen).not.toBeNull();
+      (onOpen as unknown as () => void)();
+      expect(open).toHaveBeenCalledWith(THREAD_REF, "browser");
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 });
 
@@ -1167,6 +1165,106 @@ describe("ZeropsOperationCard — a verb and a subject, never a sentence with th
 
     expect(header(html)).toContain(`data-zerops-voice-source="${operation.voiceSource}"`);
     expect(header(html)).not.toContain("data-zerops-operation-subject");
+  });
+});
+
+describe("ZeropsOperationCard — a batch deploy names every service it deploys", () => {
+  it("each service is a row of its own: its name, its own steps", () => {
+    const operation = operationFor(
+      zeropsCall({
+        id: "batch-rows",
+        startedAt: "2026-09-01T00:00:00.000Z",
+        turnId: "t1",
+        toolName: "zerops_deploy_batch",
+        input: { targets: ["api", "web"].map((targetService) => ({ targetService })) },
+        status: "inProgress",
+      }),
+    );
+    const step = (id: string, state: "done" | "running" | "queued") => ({
+      id,
+      label: id,
+      state,
+      stateLabel: state,
+    });
+    const observed: ObservedRegion = {
+      steps: [],
+      chips: [],
+      provenance: "",
+      services: [
+        {
+          name: "api",
+          state: "running",
+          stateLabel: "Running",
+          steps: [step("Build container", "done"), step("Build", "running")],
+        },
+        {
+          name: "web",
+          state: "waiting",
+          stateLabel: "Waiting",
+          steps: [step("Build container", "queued"), step("Build", "queued")],
+        },
+      ],
+    };
+    const html = renderToStaticMarkup(
+      <ZeropsOperationCard headless observed={observed} operation={operation} />,
+    );
+    const rows = [...html.matchAll(/data-zerops-batch-service="([^"]+)"/g)].map((m) => m[1]);
+    expect(rows).toEqual(["api", "web"]);
+    const states = (name: string) =>
+      [
+        ...(html
+          .split(`data-zerops-batch-service="${name}"`)[1]
+          ?.split("data-zerops-batch-service=")[0]
+          ?.matchAll(/data-zerops-process-state="([^"]+)"/g) ?? []),
+      ].map((m) => m[1]);
+    expect({ api: states("api"), web: states("web") }).toEqual({
+      api: ["done", "running"],
+      web: ["queued", "queued"],
+    });
+  });
+
+  it("a service without a stage keeps its slot: every row's steps on one grid", () => {
+    const operation = operationFor(
+      zeropsCall({
+        id: "batch-grid",
+        startedAt: "2026-09-01T00:00:00.000Z",
+        turnId: "t1",
+        toolName: "zerops_deploy_batch",
+        input: { targets: ["api", "web"].map((targetService) => ({ targetService })) },
+        status: "inProgress",
+      }),
+    );
+    const done = (id: string) => ({ id, label: id, state: "done" as const, stateLabel: "Done" });
+    const observed: ObservedRegion = {
+      steps: [],
+      chips: [],
+      provenance: "",
+      services: [
+        {
+          name: "api",
+          state: "done",
+          stateLabel: "Deployed",
+          steps: ["a", "b", "c", "d", "e"].map(done),
+        },
+        {
+          name: "web",
+          state: "done",
+          stateLabel: "Deployed",
+          steps: [done("a"), done("b"), null, null, done("e")],
+        },
+      ],
+    };
+    const html = renderToStaticMarkup(
+      <ZeropsOperationCard headless observed={observed} operation={operation} />,
+    );
+    const slots = (name: string) =>
+      (
+        html
+          .split(`data-zerops-batch-service="${name}"`)[1]
+          ?.split("data-zerops-batch-service=")[0]
+          ?.match(/data-zerops-segment="/g) ?? []
+      ).length;
+    expect({ api: slots("api"), web: slots("web") }).toEqual({ api: 5, web: 5 });
   });
 });
 
@@ -1355,16 +1453,6 @@ describe("ZeropsOperationCard — durations against the real fixture (regression
   const verify = weatherdash.find((o) => o.kind === "verify")!;
   const bootstrap = weatherdash.find((o) => o.kind === "bootstrap")!;
 
-  it("the deploy operation's settledAt - anchorAt is ~75.9s and the card shows 1m 15s", () => {
-    const elapsedMs = Date.parse(deploy.settledAt!) - Date.parse(deploy.anchorAt);
-    expect(elapsedMs).toBeGreaterThan(75_000);
-    expect(elapsedMs).toBeLessThan(77_000);
-
-    const html = renderToStaticMarkup(<ZeropsOperationCard operation={deploy} />);
-    expect(html).toContain("1m 15s");
-    expect(html.replace(/<[^>]*>/gu, "")).not.toContain("0 s");
-  });
-
   // 5.881 s and 54.904 s: floored, as the conversation's clocks floor, so a
   // settled card reads what its running clock last read.
   it.each([
@@ -1472,33 +1560,6 @@ describe("ZeropsOperationCard — the duration renders outside the status word",
     const durationSpan = html.match(/<span[^>]*data-zerops-operation-duration[^>]*>([^<]*)</);
     expect(durationSpan).toBeDefined();
     expect(durationSpan![1]).toBe("42s");
-  });
-
-  it("renders the settled duration in the body font, normal case, tabular-nums, separate from the status word", () => {
-    const operation = operationFor(
-      zeropsCall({
-        id: "dur-settled",
-        startedAt: "2026-09-01T00:00:00.000Z",
-        turnId: null,
-        toolName: "zerops_deploy",
-        input: { targetService: "weatherdash" },
-        status: "completed",
-        settledAt: "2026-09-01T00:01:12.000Z",
-        resultText: JSON.stringify({ status: "DEPLOYED", targetService: "weatherdash" }),
-      }),
-    );
-    const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
-
-    const statusDotSpan = html.match(/data-dot=""[\s\S]*?<\/span><\/span>/)?.[0];
-    expect(statusDotSpan).not.toContain("1m 12s");
-
-    const durationSpanTag = html.match(/<span[^>]*data-zerops-operation-duration[^>]*>/)?.[0];
-    expect(durationSpanTag).toBeDefined();
-
-    // The mono face set "1 s" with a full-width gap between number and unit.
-
-    const durationText = html.match(/<span[^>]*data-zerops-operation-duration[^>]*>([^<]*)</)?.[1];
-    expect(durationText).toContain("1m 12s");
   });
 });
 

@@ -256,6 +256,14 @@ export type RunEnd = typeof RunEnd.Type;
 export type RunEndKind = RunEnd["kind"];
 
 /**
+ * A run admission refused because its sender is not the person signed in to its agent: a fact
+ * about that one attempt and its sender, never a failure of the conversation — no reader's row,
+ * status or notice turns on it.
+ */
+export const isRefusedAttempt = (end: RunEnd | null | undefined): boolean =>
+  end?.kind === "failed" && end.admission?.reason === "not-permitted";
+
+/**
  * Who says a turn ended, as the bridge reports it:
  * - `agent`: the driver reported the end, and no Stop was asked;
  * - `stop-confirmed`: a Stop was asked and the agent itself acknowledged it;
@@ -559,7 +567,7 @@ const itemBodyFields = {
     call: Schema.optionalKey(ItemId),
     /** What it said as it ended, in a line: `Background command "…" failed with exit code 3`. */
     report: Schema.optionalKey(Schema.String),
-    /** When the engine heard it end (finished, failed, stopped, lost). Absent: before it ended. */
+    /** When the engine learned it ended (finished, failed, stopped, lost). Absent: before it ended. */
     endedAt: Schema.optionalKey(Millis),
   },
   context: { notes: Schema.Array(Schema.String) },
@@ -667,7 +675,7 @@ export type Item = typeof Item.Type;
 
 export const RequestAsk = forwardCompatibleUnion({
   key: "kind",
-  known: ["approval", "question", "vault", "origin", "plan", "unknown"],
+  known: ["approval", "question", "vault", "origin", "mirror", "plan", "unknown"],
   members: [
     Schema.Struct({
       kind: Schema.Literal("approval"),
@@ -703,6 +711,15 @@ export const RequestAsk = forwardCompatibleUnion({
       repo: Schema.String,
       reason: Schema.NullOr(Schema.String),
     }),
+    /**
+     * A code repository the agent asks the person to connect to GitHub, and why. The person picks
+     * the GitHub repository on its card; the ask is done when HQ shows the repository's remote.
+     */
+    Schema.Struct({
+      kind: Schema.Literal("mirror"),
+      repo: Schema.String,
+      reason: Schema.NullOr(Schema.String),
+    }),
     Schema.Struct({ kind: Schema.Literal("plan"), planItemId: ItemId }),
   ],
   fallback: Schema.Struct({ kind: Schema.Literal("unknown"), type: Schema.String }),
@@ -711,12 +728,13 @@ export const RequestAsk = forwardCompatibleUnion({
 export type RequestAsk = typeof RequestAsk.Type;
 
 /**
- * Asked of the person on a card — a value, or an origin to connect: it outlives the turn that
+ * Asked of the person on a card — a value, an origin to connect, or a repository to connect to
+ * GitHub: it outlives the turn that
  * asked, holds no run, no session and no update, and is answered with how it ended, never with
  * the value or a token. Takes an ask's kind, as a request or a row's `on` names it.
  */
 export const isCardAsk = (kind: string | undefined): boolean =>
-  kind === "vault" || kind === "origin";
+  kind === "vault" || kind === "origin" || kind === "mirror";
 
 /** `expired`: answered, but the driver could no longer take an answer (its callback was gone). */
 const REQUEST_STATES = ["open", "answered", "declined", "dismissed", "lapsed", "expired"] as const;
@@ -808,7 +826,7 @@ export const ConversationRowState = forwardCompatibleUnion({
     Schema.Struct({
       kind: Schema.Literal("waiting"),
       /** What it waits on; one a later engine adds reads as `unknown`, never a refusal. */
-      on: forwardCompatibleLiterals(["approval", "question", "vault", "origin", "plan"]),
+      on: forwardCompatibleLiterals(["approval", "question", "vault", "origin", "mirror", "plan"]),
       words: Schema.NullOr(Schema.String),
     }),
     Schema.Struct({ kind: Schema.Literal("paused"), resetsAt: Schema.NullOr(Millis) }),
@@ -1145,6 +1163,53 @@ export const ConversationUnarchived = event("ConversationUnarchived", { by: Prin
 export const LeaseBound = event("LeaseBound", { lease: ThreadLease });
 /** The conversation's lease ended: released, lost, or no longer held. */
 export const LeaseUnbound = event("LeaseUnbound", { alias: LeaseAlias });
+/**
+ * What zcp answered when an archived conversation's branch was given back (`zcp lease release`,
+ * never forced): every lease of the branch released, each kept warm or removed (none: the branch
+ * held none any more); the branch kept because a lease of it holds unsaved work, which zcp names,
+ * or another live zcp session holds or reused it; no release made, in words; or none asked,
+ * because the conversation was unarchived before its release started.
+ */
+export const LeaseReleaseResult = Schema.Union([
+  Schema.Struct({
+    outcome: Schema.Literal("released"),
+    leases: Schema.Array(Schema.Struct({ lease: Schema.String, outcome: Schema.String })),
+  }),
+  Schema.Struct({
+    outcome: Schema.Literal("refused"),
+    leases: Schema.Array(
+      Schema.Struct({
+        lease: Schema.String,
+        unsaved: Schema.optionalKey(
+          Schema.Struct({
+            files: Schema.Array(Schema.String),
+            commits: Schema.Array(Schema.String),
+          }),
+        ),
+        inUse: Schema.optionalKey(Schema.Struct({ sessions: Schema.Number })),
+      }),
+    ),
+  }),
+  Schema.Struct({
+    outcome: Schema.Literal("failed"),
+    reason: Schema.String,
+    /** The leases zcp did release before it failed on another (exit 1 with `released`). */
+    released: Schema.optionalKey(
+      Schema.Array(Schema.Struct({ lease: Schema.String, outcome: Schema.String })),
+    ),
+  }),
+  Schema.Struct({ outcome: Schema.Literal("withdrawn") }),
+]);
+export type LeaseReleaseResult = typeof LeaseReleaseResult.Type;
+/**
+ * The receipt of the release an archive asked for, of the branch of the lease the conversation was
+ * bound to (`alias`). Only `released` unbinds it; a lease kept stays the conversation's.
+ */
+export const LeaseReleaseSettled = event("LeaseReleaseSettled", {
+  alias: LeaseAlias,
+  branch: TrimmedNonEmptyString,
+  result: LeaseReleaseResult,
+});
 export const EffectRequested = event("EffectRequested", {
   effectId: EffectId,
   kind: Schema.String,
@@ -1277,6 +1342,7 @@ const knownEvents = [
   ConversationUnarchived,
   LeaseBound,
   LeaseUnbound,
+  LeaseReleaseSettled,
   EffectRequested,
   EffectOutcomeRecorded,
   WakeArmed,

@@ -1,19 +1,19 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFS from "node:fs";
-import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import { PAGE_MAX_BYTES, ThreadId } from "@t3tools/contracts";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 
+import { testTempDir } from "../../testing/testTempDir.ts";
 import { PIXEL } from "../testing/bridge/callHeavy.ts";
 import { makeCallPictures, publishedPage } from "./callPictures.ts";
 
 const thread = ThreadId.make("mate/s/1");
 
 const fixture = () => {
-  const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "call-pictures-"));
+  const root = testTempDir("call-pictures-");
   const cwd = NodePath.join(root, "work");
   NodeFS.mkdirSync(NodePath.join(cwd, "shots"), { recursive: true });
   NodeFS.writeFileSync(NodePath.join(cwd, "shots", "home.png"), Buffer.from(PIXEL, "base64"));
@@ -21,9 +21,10 @@ const fixture = () => {
 };
 
 describe("a call's pictures in the Mate's asset store", () => {
+  const pictures = fixture();
+
   it.effect("stores a result's picture once, however often its batch is told", () =>
     Effect.gen(function* () {
-      const pictures = fixture();
       const image = { mimeType: "image/png", data: PIXEL };
       const first = yield* pictures.results(thread, "call-1", [image]);
       const again = yield* pictures.results(thread, "call-1", [image]);
@@ -38,7 +39,7 @@ describe("a call's pictures in the Mate's asset store", () => {
 
   it.effect("names a workspace picture a call looked at by its asset, with its name and size", () =>
     Effect.gen(function* () {
-      const looked = yield* fixture().looked(thread, "call-3", "shots/home.png");
+      const looked = yield* pictures.looked(thread, "call-3", "shots/home.png");
       assert.match(looked?.imagePath ?? "", /^mate-asset:[0-9a-f-]{36}$/);
       assert.strictEqual(looked?.imageName, "home.png");
       assert.deepStrictEqual(looked?.imageDimensions, { width: 1, height: 1 });
@@ -47,8 +48,8 @@ describe("a call's pictures in the Mate's asset store", () => {
 });
 
 describe("a page the Mate publishes, in its asset store", () => {
-  const pagesOf = () => {
-    const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "call-pages-"));
+  const pagesOf = (() => {
+    const root = testTempDir("call-pages-");
     const pages = NodePath.join(root, "work", ".zcp", "state", "pages");
     NodeFS.mkdirSync(pages, { recursive: true });
     const outside = NodePath.join(root, "secret.html");
@@ -72,11 +73,11 @@ describe("a page the Mate publishes, in its asset store", () => {
         Effect.succeed(NodePath.join(root, "work")),
       ),
     };
-  };
+  })();
 
   it.effect("keeps a published page once, by reference, with its size", () =>
     Effect.gen(function* () {
-      const { pages, store } = pagesOf();
+      const { pages, store } = pagesOf;
       const file = NodePath.join(pages, "page-0123456789abcdef.html");
       const first = yield* store.page(thread, "call-4", file);
       const again = yield* store.page(thread, "call-4", file);
@@ -97,7 +98,7 @@ describe("a page the Mate publishes, in its asset store", () => {
     ["another session's page", "theirs"],
   ] as const)("never reads %s", ([_what, name]) =>
     Effect.gen(function* () {
-      const { pages, outside, theirs, store } = pagesOf();
+      const { pages, outside, theirs, store } = pagesOf;
       const file =
         name === "outside"
           ? outside

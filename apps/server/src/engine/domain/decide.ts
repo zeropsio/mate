@@ -18,7 +18,9 @@
  */
 import type { MateRestart } from "@t3tools/contracts";
 import * as Cron from "effect/Cron";
+import * as Option from "effect/Option";
 import * as Result from "effect/Result";
+import * as Schema from "effect/Schema";
 import {
   effectId as deriveEffectId,
   itemId as deriveItemId,
@@ -50,8 +52,12 @@ import {
   type UserInputAttachments,
   isCardAsk,
   ItemId,
+  LeaseAlias,
+  LeaseReleaseResult,
+  TrimmedNonEmptyString,
   WORK_ENDED,
 } from "@t3tools/contracts";
+import { HqRemoteUrl } from "@t3tools/shared/hqChanges";
 import { changedOptionIds } from "@t3tools/shared/modelOptions";
 
 import type { TurnOutcome } from "../bridge/spi3.ts";
@@ -82,10 +88,11 @@ import {
   type ArmedWake,
   type RunRecord,
   type SessionRecord,
+  type MirrorAsk,
   type OriginAsk,
   type VaultAsk,
 } from "./state.ts";
-import { toldWith } from "./told.ts";
+import { steeredWith, toldWith } from "./told.ts";
 
 /** Silence after which the watchdog marks a run unresponsive. */
 export const WATCHDOG_SILENCE_MS = 10 * 60_000;
@@ -155,6 +162,8 @@ export const EFFECT_KINDS = {
   "run.prepare": { lane: "side", class: "replay-safe" },
   "provider.steer": { lane: "turn", class: "process-bound" },
   "history.import": { lane: "side", class: "replay-safe" },
+  // Its own lane, run by the Mate-wide fibers: a parked container waking holds no session's work.
+  "lease.release": { lane: "workspace", class: "replay-safe" },
 } as const satisfies Record<string, { lane: ConversationLane; class: EffectClass }>;
 export type EngineEffectKind = keyof typeof EFFECT_KINDS;
 
@@ -306,8 +315,9 @@ const handle = (b: StepBuilder, command: Command): void => {
         },
       });
     case "Archive":
-      if (!b.state.archived) b.emit({ _tag: "ConversationArchived", by: b.envelope.principal });
-      return;
+      if (b.state.archived) return;
+      b.emit({ _tag: "ConversationArchived", by: b.envelope.principal });
+      return askLeaseRelease(b);
     case "Unarchive":
       if (b.state.archived) b.emit({ _tag: "ConversationUnarchived", by: b.envelope.principal });
       return;
@@ -975,6 +985,7 @@ const endRun = (
     )
       continue;
     b.emit({ _tag: "RequestClosed", runId: run.id, requestId: request.id, state: "lapsed" });
+    askAgainByMessage(b, run, request, end);
   }
   const carried = answerCarried(b, run);
   // A message a restart cut mid-flight goes again, marked, by the run continuing it (rule: a cut
@@ -1250,6 +1261,7 @@ const answer = (b: StepBuilder, command: Extract<Command, { _tag: "Answer" }>): 
   if (!request.answerable) throw new Rejected("not-answerable");
   if (request.kind === "vault") return answerVault(b, request, command);
   if (request.kind === "origin") return answerOrigin(b, request, command);
+  if (request.kind === "mirror") return answerMirror(b, request, command);
   if (request.dismissible === true) return answerByMessage(b, request, command);
   // A helper's ask may outlive the run the state keeps: the session it asked in takes the answer.
   const run = b.state.runs[request.runId];
@@ -1343,6 +1355,15 @@ export type VaultOutcome = "saved" | "declined";
  * organization's GitHub app; `declined`, in Mate — GitHub is not connected, only followed.
  */
 export type OriginOutcome = "connected" | "declined";
+/**
+ * How a repository asked to be connected to GitHub ended: `connected`, at the GitHub address HQ
+ * shows as its remote — the person's client set it itself; `declined`, not now.
+ */
+export type MirrorOutcome =
+  | { readonly kind: "connected"; readonly url: string }
+  | {
+      readonly kind: "declined";
+    };
 
 /** An answer that says only how it ended (`{ outcome }`), as one of `outcomes`; anything more is none. */
 const cardOutcome = <Outcome extends string>(
@@ -1356,6 +1377,63 @@ const cardOutcome = <Outcome extends string>(
     ? (outcome as Outcome)
     : null;
 };
+
+/** One repository's address however written: `https://github.com/A/b.git/` is `github.com/a/b`. */
+const originAddressKey = (url: string): string =>
+  url
+    .replace(/^https:\/\//iu, "")
+    .replace(/\/+$/u, "")
+    .replace(/\.git$/iu, "")
+    .toLowerCase();
+
+const sameOriginAddress = (a: string, b: string): boolean =>
+  originAddressKey(a) === originAddressKey(b);
+
+/**
+ * Closes the open origin asks `settled` picks, none of them answered by the person: their card
+ * draws nothing and the conversation waits on them no more.
+ */
+const settleOrigins = (
+  b: StepBuilder,
+  settled: (asked: NonNullable<OpenRequest["origin"]>) => boolean,
+): void => {
+  for (const request of Object.values(b.state.requests)) {
+    if (request.origin === undefined || !settled(request.origin)) continue;
+    b.emit({
+      _tag: "RequestClosed",
+      runId: request.runId,
+      requestId: request.id,
+      state: "dismissed",
+    });
+  }
+};
+
+/**
+ * Closes the open asks to connect `repo` to GitHub, none of them answered by the person: their
+ * card draws nothing and the conversation waits on them no more.
+ */
+const settleMirrors = (b: StepBuilder, repo: string): void => {
+  for (const request of Object.values(b.state.requests)) {
+    if (request.mirror?.repo !== repo) continue;
+    b.emit({
+      _tag: "RequestClosed",
+      runId: request.runId,
+      requestId: request.id,
+      state: "dismissed",
+    });
+  }
+};
+
+/** Whether a card still asks the person for `ask`'s value in `ask`'s vault. */
+const vaultAskOpen = (state: ConversationState, ask: Pick<VaultAsk, "key" | "scope">): boolean =>
+  Object.values(state.requests).some(
+    ({ vault }) =>
+      vault !== undefined &&
+      vault.key === ask.key &&
+      vault.scope.kind === ask.scope.kind &&
+      (vault.scope.kind === "shared" ||
+        (ask.scope.kind === "service" && vault.scope.hostname === ask.scope.hostname)),
+  );
 
 /** Where an asked value goes, as people and the agent read it: `Shared/KEY`, `api/KEY`. */
 const vaultPlace = (ask: Pick<VaultAsk, "key" | "scope">): string =>
@@ -1378,6 +1456,36 @@ export const originAnswerWords = (
   outcome: OriginOutcome,
 ): string =>
   `Origin request for ${ask.url}: ${outcome === "connected" ? `kept on GitHub, connected as ${ask.repo}` : "kept in Mate and only followed, not connected"}.`;
+
+/** The agent's line on a repository it asked to connect to GitHub: where it went, or that it did not. */
+export const mirrorAnswerWords = (ask: Pick<MirrorAsk, "repo">, outcome: MirrorOutcome): string =>
+  outcome.kind === "connected"
+    ? `The person connected ${ask.repo} to GitHub at ${outcome.url}.`
+    : `The person declined connecting ${ask.repo} to GitHub.`;
+
+/** The longest remote address the agent's line carries (as `EngineAnswer`'s). */
+const REMOTE_URL_MAX = 512;
+const isRemoteUrl = Schema.is(HqRemoteUrl);
+
+/**
+ * A remote address as HQ keeps one — https, a host, no whitespace, credentials, query or fragment
+ * — normalized; `null` for any other, or one too long.
+ */
+const remoteAddress = (url: unknown): string | null =>
+  typeof url === "string" && url.length <= REMOTE_URL_MAX && isRemoteUrl(url)
+    ? new URL(url).href
+    : null;
+
+/** A mirror ask's answer (`{ outcome: "connected", url }` or `{ outcome: "declined" }`); anything more is none. */
+const mirrorOutcome = (answer: unknown): MirrorOutcome | null => {
+  if (cardOutcome(answer, ["declined"]) === "declined") return { kind: "declined" };
+  if (typeof answer !== "object" || answer === null || Array.isArray(answer)) return null;
+  const { outcome, url, ...rest } = answer as Record<string, unknown>;
+  const address = remoteAddress(url);
+  return outcome === "connected" && address !== null && Object.keys(rest).length === 0
+    ? { kind: "connected", url: address }
+    : null;
+};
 
 /**
  * An ask on a card is answered there: the person's client does the work as them (writes the
@@ -1467,10 +1575,32 @@ const answerOrigin = (
   });
 };
 
+const answerMirror = (
+  b: StepBuilder,
+  request: OpenRequest,
+  command: Extract<Command, { _tag: "Answer" }>,
+): void => {
+  const outcome = mirrorOutcome(command.answer);
+  if (outcome === null || request.mirror === undefined) {
+    throw new Rejected(
+      "not-answerable",
+      "A repository asked to be connected to GitHub is answered connected at its address or declined, never with a token.",
+    );
+  }
+  answerOnCard(b, request, {
+    declined: outcome.kind === "declined",
+    summary: outcome.kind === "connected" ? `Connected to ${outcome.url}` : "Declined",
+    wake: MIRROR_ANSWER_WAKE,
+    text: mirrorAnswerWords(request.mirror, outcome),
+  });
+};
+
 /** The wake that tells the agent how a value it asked for ended. */
 export const VAULT_ANSWER_WAKE = "vault-answer";
 /** The wake that tells the agent how an origin it asked for ended. */
 export const ORIGIN_ANSWER_WAKE = "origin-answer";
+/** The wake that tells the agent how a repository it asked to connect to GitHub ended. */
+export const MIRROR_ANSWER_WAKE = "mirror-answer";
 
 /** The answer a run's message carries: its own, or the one of the run it continues after a restart. */
 const answerCarried = (b: StepBuilder, run: RunRecord): OpenRequest | undefined => {
@@ -1527,6 +1657,42 @@ const questionAnswer = (
   };
 };
 
+/** The ends that take the session a question waits in, not the person's or the agent's choice. */
+const SESSION_ENDS: ReadonlySet<RunEnd["kind"]> = new Set(["cut-by-restart", "crashed"]);
+
+/**
+ * A question whose turn waited on it, cut with its session (a restart, a crash): the session
+ * that would take the answer is gone, so the question is asked again by message, for every
+ * driver alike. It stays on the person's screen, and their answer reaches the agent as their
+ * message (`answerByMessage`) — never lost with the turn, never typed again from memory.
+ */
+const askAgainByMessage = (
+  b: StepBuilder,
+  run: RunRecord,
+  request: OpenRequest,
+  end: RunEnd,
+): void => {
+  if (!SESSION_ENDS.has(end.kind) || request.kind !== "question" || request.asked === undefined)
+    return;
+  b.emit({
+    _tag: "RequestOpened",
+    runId: run.id,
+    requestId: deriveRequestId(run.id, b.run(run.id).nextRequestOrdinal),
+    key: `${request.key}/by-message`,
+    ask: { kind: "question", questions: [...request.asked], dismissible: true },
+    answerable: true,
+    principal: request.principal,
+  });
+};
+
+/** Whether the run waits on a question a session's end asks again by message. */
+const waitsOnQuestion = (state: ConversationState, run: RunRecord): boolean =>
+  run.state === "waiting" &&
+  Object.values(state.requests).some(
+    (request) =>
+      request.runId === run.id && request.kind === "question" && request.asked !== undefined,
+  );
+
 const resumeIfAnswered = (b: StepBuilder, id: RunId): void => {
   // A question asked by message outlives its run, which the state may no longer hold.
   const run = b.state.runs[id];
@@ -1552,7 +1718,9 @@ const steer = (b: StepBuilder, command: Extract<Command, { _tag: "Steer" }>): vo
   ) {
     throw new Rejected("steer-unsupported");
   }
-  steerInto(b, run, session.id, command.text, attachments, toldWith(command.text, command.context));
+  // The agent hears the note after the words: it answers where the person reads (`steeredWith`).
+  const told = steeredWith(toldWith(command.text, command.context));
+  steerInto(b, run, session.id, command.text, attachments, told);
 };
 
 /**
@@ -1843,6 +2011,79 @@ const watchdogFired = (b: StepBuilder, id: RunId | null): void => {
 
 // ── effects ─────────────────────────────────────────────────────────────────────────────────
 
+// ── the workspace on archive ────────────────────────────────────────────────────────────────
+
+/**
+ * Archiving is the person's word that the conversation's work is done: the branch of the lease it
+ * is bound to goes back to its pool. zcp releases it only with nothing unsaved there (it never
+ * forces), so a refusal keeps the binding and nothing is lost. A lease of no branch is kept: zcp
+ * releases a branch, never one container.
+ */
+const askLeaseRelease = (b: StepBuilder): void => {
+  const lease = b.state.lease;
+  if (lease === null || lease.branch === null) return;
+  // One release at a time: archived again before it started, the one asked still runs.
+  if (Object.values(b.state.effects).some((effect) => effect.kind === "lease.release")) return;
+  b.effect(
+    "lease.release",
+    `${b.state.conversationId}/lease/${lease.alias}`,
+    b.state.headSeq,
+    null,
+    {
+      alias: lease.alias,
+      branch: lease.branch,
+      ...(lease.repo === undefined ? {} : { repo: lease.repo }),
+    } satisfies LeaseReleasePayload,
+  );
+};
+
+/** What a `lease.release` effect asks: the bound lease, and the branch (and repository) zcp releases. */
+export interface LeaseReleasePayload {
+  readonly alias: string;
+  readonly branch: string;
+  readonly repo?: string;
+}
+
+const decodeLeaseReleaseValue = Schema.decodeUnknownOption(
+  Schema.Struct({ alias: LeaseAlias, branch: TrimmedNonEmptyString, result: LeaseReleaseResult }),
+);
+
+/**
+ * The release's receipt; a release that went unbinds the conversation from the lease it named. An
+ * outcome the handler never gave (the worker gave up on it) is a release not made, of the lease the
+ * conversation is bound to; with none bound, the outcome alone records it.
+ */
+const leaseReleaseSettled = (b: StepBuilder, outcome: EffectOutcome): void => {
+  const value = outcome.kind === "ok" ? decodeLeaseReleaseValue(outcome.value) : Option.none();
+  if (Option.isSome(value)) {
+    const { alias, branch, result } = value.value;
+    b.emit({ _tag: "LeaseReleaseSettled", alias, branch, result });
+    // A release made only in part unbinds the conversation only when its own lease went.
+    const went =
+      result.outcome === "released" ||
+      (result.outcome === "failed" &&
+        result.released?.some((lease) => lease.lease === alias) === true);
+    if (went && b.state.lease?.alias === alias) {
+      b.emit({ _tag: "LeaseUnbound", alias });
+    }
+    return;
+  }
+  const lease = b.state.lease;
+  if (lease === null || lease.branch === null) return;
+  const reason =
+    outcome.kind === "failed" || outcome.kind === "cut"
+      ? outcome.reason
+      : outcome.kind === "timed-out"
+        ? `zcp did not answer the release within ${Math.round(outcome.after / 1000)} s`
+        : "the release's answer could not be read";
+  b.emit({
+    _tag: "LeaseReleaseSettled",
+    alias: lease.alias,
+    branch: lease.branch,
+    result: { outcome: "failed", reason },
+  });
+};
+
 const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): void => {
   const effect = b.state.effects[id];
   if (effect === undefined) throw new Rejected("unknown-effect");
@@ -1850,6 +2091,7 @@ const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): vo
   const closing = b.state.closing?.effectId === id ? b.state.closing : null;
   b.emit({ _tag: "EffectOutcomeRecorded", effectId: id, kind: effect.kind, outcome });
   if (effect.kind === "history.import") return historySettled(b, id, outcome);
+  if (effect.kind === "lease.release") return leaseReleaseSettled(b, outcome);
   const failure =
     outcome.kind === "ok"
       ? null
@@ -2273,10 +2515,22 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
     case "request-opened": {
       // A request is asked once: one delivered again, open or answered, is the same request.
       if (b.state.askedKeys[signal.key] !== undefined) return;
+      // A value asked again for the same vault while its card is open is the one question: the
+      // person may already be typing it there (a Mate asked twice for one secret, 2026-10-28).
+      if (signal.ask.kind === "vault" && vaultAskOpen(b.state, signal.ask)) return;
       const owner = routed(b, signal.turn);
       if (owner === undefined) return;
       const run = isLive(owner) ? awaken(b, owner) : owner;
       const id = deriveRequestId(run.id, run.nextRequestOrdinal);
+      // An origin asked again for the same repository is the one question: the earlier ask
+      // needs the person no more.
+      if (signal.ask.kind === "origin") {
+        const { url, repo } = signal.ask;
+        settleOrigins(b, (asked) => asked.repo === repo && sameOriginAddress(asked.url, url));
+      }
+      // A repository asked again to be connected to GitHub is the one question: the new ask
+      // replaces the earlier one.
+      if (signal.ask.kind === "mirror") settleMirrors(b, signal.ask.repo);
       const live = isLive(run);
       // Asked by message: the agent does not wait on it, and a message answers it after its turn.
       // An ask on a card is not waited on either: the person answers it there after the turn.
@@ -2350,6 +2604,23 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
           summary: `Saved to ${vaultPlace(vault)}`,
         });
       }
+      return;
+    }
+    case "origin-settled": {
+      // zcp found the asked address already an origin in HQ for the repository that call asked
+      // about, or the agent withdrew the ask of one repository, or of every repository asked
+      // about the address. The agent knows already: no word reaches it.
+      const { url, repo } = signal;
+      settleOrigins(
+        b,
+        (asked) => sameOriginAddress(asked.url, url) && (repo === undefined || asked.repo === repo),
+      );
+      return;
+    }
+    case "mirror-settled": {
+      // zcp found the repository already on GitHub in HQ, or the agent withdrew its ask. The
+      // agent knows already: no word reaches it.
+      settleMirrors(b, signal.repo);
       return;
     }
     case "turn-ended": {
@@ -2743,7 +3014,7 @@ const joinOwnTurn = (
     runId: run.id,
     sessionId: session.id,
     itemId: item,
-    text: withLostWorkNote(b, run),
+    text: steeredWith(withLostWorkNote(b, run)),
     ...(attachments.length === 0 ? {} : { attachments: [...attachments] }),
     instanceId: b.state.agent?.instanceId ?? null,
     principal: run.principal,
@@ -2785,6 +3056,8 @@ export const continuationRefusal = (state: ConversationState, run: RunRecord): s
   if (run.stopAsked !== null) return "a Stop was asked";
   if (run.maintenance) return "a maintenance turn";
   if (state.lastPersonSeq > run.sinceSeq) return "a newer person message";
+  // The person's answer goes on with it, as their message: a continuation would go on without it.
+  if (waitsOnQuestion(state, run)) return "its question waits for your answer";
   return null;
 };
 

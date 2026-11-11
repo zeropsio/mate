@@ -6,22 +6,23 @@
  * that stopped says why over *Try again*, and once it is set up the page is the Chief's own view
  * while its container comes up (`ZeropsMateComingPage`), which hands over to its conversation.
  */
-import { useAccountHq, useCarriedCoreBuild } from "~/zerops/accountHq";
 import { startChiefSetup, tryChiefSetupAgain, useChiefSetup } from "~/zerops/chiefSetup";
 import { CHIEF_NAME } from "~/zerops/chief";
 import { useOwnChief } from "~/zerops/ownChief";
+import { useOwnChiefBirth } from "~/zerops/sharedBirths";
 import { useOrgOffers } from "~/zerops/useHqOffers";
-import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
-import { hqUpdateOffered } from "@t3tools/client-runtime/zerops/hq";
-import { useAtomValue } from "@effect/atom-react";
-import { hqStandingAtom } from "~/state/zerops";
 
 import { Button } from "../../ui/button";
 import { ArrivalSwap } from "../ArrivalSwap";
 import { Progress } from "../../ui/progress";
 import { MateFaceAsMark } from "../primitives";
-import { MateComingFrame, MateComingHeader, ZeropsMateComingPage } from "../ZeropsMateComingPage";
+import {
+  MateComingFrame,
+  MateComingHeader,
+  SharedBirthStage,
+  ZeropsMateComingPage,
+} from "../ZeropsMateComingPage";
 import { MateEmptyStateView, type MateEmptyComing } from "../ZeropsMateEmptyState";
 import { CHIEF_SETUP_DOING, CHIEF_SETUP_ESTIMATE_MS, chiefSetupSteps } from "./chiefSetup.logic";
 import { chiefPageView, type ChiefPageView } from "./chiefTop.logic";
@@ -38,29 +39,11 @@ const CHIEF_DRAWN = {
 
 export function ChiefPage() {
   const own = useOwnChief();
+  const birth = useOwnChiefBirth();
   const { setup, startedAtMs } = useChiefSetup();
-  const { activeOrganization } = useZeropsSession();
-  const orgId = activeOrganization?.id;
-  const accountHq = useAccountHq(orgId);
   const create = useOrgOffers()("create_app");
-  // An HQ on an older Core than this app's records no Chief: its update comes first.
-  const standing = useAtomValue(hqStandingAtom);
-  const carried = useCarriedCoreBuild();
-  const answering =
-    standing.kind === "healthy" || standing.kind === "unchecked" ? standing.build : undefined;
-  const view = chiefPageView({
-    own,
-    setup,
-    hq:
-      accountHq.hq.kind === "official"
-        ? answering !== undefined && carried !== undefined && hqUpdateOffered(answering, carried)
-          ? "behind"
-          : "official"
-        : accountHq.status === "ready"
-          ? "none"
-          : "reading",
-    mayCreate: create.kind !== "refused",
-  });
+  const view = chiefPageView({ own, setup, mayCreate: create.kind !== "refused" });
+  if (birth !== undefined) return <SharedBirthStage birth={birth} />;
   if (view.kind === "coming")
     return <ZeropsMateComingPage key={view.projectId} projectId={view.projectId} />;
   return (

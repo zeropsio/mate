@@ -4,7 +4,7 @@ import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { assignCandidateMateTints, mateShapeOf } from "../../zerops/mateTints.ts";
 import { projectNameInApp, readZeropsMembership } from "../../zerops/groups.ts";
 import type { ZeropsCandidate } from "../../zerops/candidates.ts";
-import { zeropsProjectUrl } from "../../zerops/serviceMap.ts";
+import { zeropsProjectUrl } from "../../zerops/gui.ts";
 import { placementsScope } from "../families/hqNavigation.ts";
 import { hqAppsScope } from "../families/hqNavigation.ts";
 import type { Projection } from "../store.ts";
@@ -20,6 +20,8 @@ export interface HqMateIdentity {
   readonly tint: MateTintId;
   readonly shape: MateShapeId;
   readonly project: string | undefined;
+  /** The application HQ places it in, whose page is its project's; absent for a Mate in none. */
+  readonly groupId?: string | undefined;
   readonly projectUrl: string;
   readonly standUp?: { readonly by: string } | undefined;
   readonly madeBy?: string | undefined;
@@ -94,6 +96,7 @@ export const hqMateIdentities: Projection<string, Readonly<Record<string, HqMate
             tint,
             shape: mateShapeOf(project, tint),
             project: membership.label,
+            ...(membership.groupId === undefined ? {} : { groupId: membership.groupId }),
             projectUrl: zeropsProjectUrl(project.id),
             ...(membership.standUp === undefined ? {} : { standUp: membership.standUp }),
             ...(membership.madeBy === undefined ? {} : { madeBy: membership.madeBy }),

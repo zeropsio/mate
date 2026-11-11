@@ -4,13 +4,14 @@
  * Chief — is sent in, and how far an approved domain is from answering. Nothing here acts; the card's container carries out an approval as the
  * person.
  */
-import type {
-  DomainFace,
-  PlaceAddresses,
-  ProjectGrantsRead,
-  VaultScopeRef,
-  VaultView,
-  VaultWrite,
+import {
+  isMateOwned,
+  type DomainFace,
+  type PlaceAddresses,
+  type ProjectGrantsRead,
+  type VaultScopeRef,
+  type VaultView,
+  type VaultWrite,
 } from "@t3tools/client-runtime/data";
 import type {
   HqProposalDecision,
@@ -23,21 +24,34 @@ import type {
   ZeropsProposal,
 } from "@t3tools/client-runtime/zerops/model";
 
+import { REVIEW_RELEASE_LABEL } from "@t3tools/client-runtime/zerops";
 import { isTokenMember } from "@t3tools/client-runtime/zerops/mateAccess";
 import type { ProjectAccessChange } from "@t3tools/client-runtime/zerops/projectAccess";
 import { asOrgRole, roleAtLeast } from "@t3tools/shared/zeropsRoles";
 
 import type { ComposerSendOutcome } from "~/hooks/useComposerSendRequests";
 
+import {
+  type AskState,
+  type AskWhere,
+  answeredWords,
+  namesWords,
+  notNowWords,
+} from "../../ask/ask.logic";
 import { recordsOf } from "../addresses/addresses.logic";
 import { accessChanges } from "../projects/projectPeople.logic";
+import { releaseOfferTitle, serviceCreateTitle } from "./productionAsk.logic";
 
-/** What the person decided of one proposal, and how what they approved ended. */
-export type ProposalDecision =
+/**
+ * What the person decided of one proposal, and how what they approved ended; `by` is who decided
+ * (their Zerops user id), where it is known.
+ */
+export type ProposalDecision = (
   | { readonly state: "running"; readonly at: string }
   | { readonly state: "done"; readonly at: string }
   | { readonly state: "failed"; readonly at: string; readonly message: string }
-  | { readonly state: "declined"; readonly at: string };
+  | { readonly state: "declined"; readonly at: string }
+) & { readonly by?: string };
 
 /** Each proposal's decision, by its id. */
 export type ProposalDecisions = Readonly<Record<string, ProposalDecision>>;
@@ -91,14 +105,15 @@ const FAILED_WORDS = "Zerops did not do it.";
 
 /** A decision as HQ holds it, in the card's terms: an approval with no end yet is running. */
 export function decisionFromHq(record: HqProposalDecision): ProposalDecision {
-  if (record.decision === "declined") return { state: "declined", at: record.at };
+  const { at, by } = record;
+  if (record.decision === "declined") return { state: "declined", at, by };
   switch (record.outcome) {
     case null:
-      return { state: "running", at: record.at };
+      return { state: "running", at, by };
     case "done":
-      return { state: "done", at: record.at };
+      return { state: "done", at, by };
     case "failed":
-      return { state: "failed", at: record.at, message: record.words ?? FAILED_WORDS };
+      return { state: "failed", at, by, message: record.words ?? FAILED_WORDS };
   }
 }
 
@@ -147,15 +162,21 @@ export function proposalMessage(
 
 /**
  * The vault write an approved value is, read off the vault as it stands: a key held there is
- * updated in place, any other added. Refused where the vault is not read yet, or where the value
- * has nowhere to go.
+ * updated in place, any other added. Refused where the vault is not read yet, where the value
+ * has nowhere to go, or where a plain value would overwrite a secret.
  */
 export function envProposalWrite(
   view: VaultView,
   proposal: Extract<ZeropsProposal, { kind: "env.set" }>,
 ): { readonly scope: VaultScopeRef; readonly write: VaultWrite } | { readonly refused: string } {
-  if (view.status === "unread") return { refused: "Reading the vault…" };
   const { params } = proposal;
+  // The vault never lists such a name: the value would be written where nobody sees or removes it.
+  if (isMateOwned(params.key)) {
+    return {
+      refused: `${params.key} is a name Mate keeps for itself: the Vault wouldn't list it.`,
+    };
+  }
+  if (view.status === "unread") return { refused: "Reading the vault…" };
   const id = params.scope === "project" ? "shared" : proposal.serviceId;
   const scope = view.scopes.find((each) => each.id === id);
   if (scope === undefined) {
@@ -172,6 +193,10 @@ export function envProposalWrite(
     };
   }
   const held = scope.values.find((each) => each.key === params.key);
+  // A plain write would store the secret unmasked: a secret stays the person's, in the Vault.
+  if (held?.sensitive === true && !params.secret) {
+    return { refused: `${params.key} is a secret: change it in the Vault.` };
+  }
   return {
     scope: scope.ref,
     write:
@@ -185,6 +210,33 @@ export function envProposalWrite(
             sensitive: params.secret,
           },
   };
+}
+
+/** The kinds whose approval runs on the card's own project with the approving person's token. */
+const RUNS_ON_TARGET: ReadonlySet<ZeropsProposal["kind"]> = new Set([
+  "service.restart",
+  "service.start",
+  "service.stop",
+  "env.set",
+  "domain.add",
+]);
+
+/**
+ * Why the viewer may not decide a card: HQ keeps a decision only from someone who works in the
+ * conversation's Mate, and an approval runs on its project as the person who approves — each Basic
+ * user or above there (`projectOperator`). Nothing while Zerops is not read yet: Zerops still
+ * refuses what they may not do.
+ */
+export function approveAuthority(
+  proposal: ZeropsProposal,
+  operatesHome: boolean | undefined,
+  operatesTarget: boolean | undefined,
+): string | undefined {
+  if (operatesHome === false) return "Only someone who can work in this Mate can decide this.";
+  if (RUNS_ON_TARGET.has(proposal.kind) && operatesTarget === false) {
+    return `Only someone who can change ${proposal.projectName ?? "this project"} can approve this.`;
+  }
+  return undefined;
 }
 
 const SERVICE_VERBS = {
@@ -238,12 +290,14 @@ export function handOverWords(recipient: string, outcome: ComposerSendOutcome): 
   }
 }
 
-/** What a card says of a decided proposal; a failed one says the platform's own words instead. */
+/**
+ * What a card says of an approved proposal; a failed one says the platform's own words instead,
+ * and Not now says who and when (`proposalAskState`).
+ */
 export function proposalOutcomeWords(
   proposal: ZeropsProposal,
-  stage: Exclude<ProposalStage, "open" | "failed">,
+  stage: Exclude<ProposalStage, "open" | "failed" | "declined">,
 ): string {
-  if (stage === "declined") return "Declined. Nothing ran.";
   if (stage === "unseen")
     return "Approved before the page reloaded. How it ended was not seen here.";
   const running = stage === "running";
@@ -273,6 +327,22 @@ export function proposalOutcomeWords(
       const place = proposal.projectName ?? "the project";
       return running ? `Changing access to ${place}…` : `Access to ${place} changed.`;
     }
+    case "mcp.add": {
+      const { title } = proposal.params.server;
+      return running ? `Adding ${title}…` : `${title} is added.`;
+    }
+    case "env.reveal":
+      return running ? "Revealing…" : `${proposal.params.key} was revealed.`;
+    case "service.create": {
+      const names = namesWords(proposal.params.services);
+      return running
+        ? `Creating ${names} in production…`
+        : `${names} ${proposal.params.services.length === 1 ? "runs" : "run"} in production.`;
+    }
+    case "release.offer":
+      return running
+        ? `Releasing ${proposal.params.suggestion} to production…`
+        : `${proposal.params.suggestion} was released.`;
   }
 }
 
@@ -287,8 +357,13 @@ function domainNames(domains: ReadonlyArray<string>): string {
   return `${ordered.slice(0, -1).join(", ")} and ${ordered.at(-1)}`;
 }
 
-/** The card's title: a domain's names the project it puts on them; any other its summary. */
+/**
+ * The card's title: a domain's names the project it puts on them, a production ask what its press
+ * does there; any other its summary.
+ */
 export function proposalTitle(proposal: ZeropsProposal): string {
+  if (proposal.kind === "service.create") return serviceCreateTitle(proposal.params.services);
+  if (proposal.kind === "release.offer") return releaseOfferTitle(proposal.params.suggestion);
   if (proposal.kind !== "domain.add") return proposal.summary;
   return `Put ${proposal.projectName ?? "the project"} on ${domainNames(proposal.params.domains)}`;
 }
@@ -399,9 +474,10 @@ export function proposalWhere(proposal: ZeropsProposal): string | null {
     case "service.stop":
       return within(proposal.serviceName ?? "A service");
     case "env.set":
+    case "env.reveal":
       return proposal.params.scope === "project"
-        ? `Every app${project === undefined ? "" : ` in ${project}`}`
-        : within(`${proposal.serviceName ?? "The service"}'s own`);
+        ? `Shared vault${project === undefined ? "" : ` in ${project}`}`
+        : within(`${proposal.serviceName ?? "A service"} vault`);
     case "domain.add":
       return `→ ${proposal.serviceName ?? "its service"} · port ${proposal.params.port}`;
     case "access.set":
@@ -409,6 +485,11 @@ export function proposalWhere(proposal: ZeropsProposal): string | null {
       return proposal.params.projects.length > 1
         ? `All of ${project ?? "the application"}: its environments and Mates`
         : (proposal.params.projects[0]?.name ?? project ?? null);
+    case "mcp.add":
+      return "This Mate's agents";
+    case "service.create":
+    case "release.offer":
+      return "Production";
     case "mate.message":
     case "chief.message":
       return null;
@@ -540,8 +621,6 @@ export function accessProposalPlan(input: {
   readonly owners: Readonly<Record<string, string | null | undefined>>;
   /** The organization's projects, id → name; `undefined` while they are read. */
   readonly projects: ReadonlyMap<string, string> | undefined;
-  /** The Headquarters projects (`hqProjectsOf`): never given to anyone. */
-  readonly hq: ReadonlySet<string>;
   /** Each project's own grants as far as read: what each person reaches there today. */
   readonly grants: Readonly<Record<string, ProjectGrantsRead | undefined>>;
 }): AccessProposalPlan {
@@ -551,10 +630,6 @@ export function accessProposalPlan(input: {
     return { kind: "held", words: "Reading your organization's projects…" };
   const dropped: Array<string> = [];
   const projectIds = input.proposal.params.projects.flatMap(({ id, name }) => {
-    if (input.hq.has(id)) {
-      dropped.push(`${inventory.get(id) ?? name}: the Headquarters project is never given`);
-      return [];
-    }
     if (!inventory.has(id)) {
       dropped.push(`${name}: not a project in your organization`);
       return [];
@@ -611,4 +686,124 @@ export function accessProposalPlan(input: {
     }
   }
   return { kind: "ready", changes, dropped, lines };
+}
+
+// ---------------------------------------------------------------------------
+// The proposal on the ask card
+// ---------------------------------------------------------------------------
+
+/** Stage or Production, where the proposal's project is one of its application's environments. */
+type Tier = "stage" | "production" | null;
+
+/** The press that creates what production lacks, here and in the release review. */
+export const CREATE_IN_PRODUCTION = "Create in production";
+
+/** The main press, named for what it does: "Restart medusa", "Set on production", "Send to Rossy". */
+export function proposalPress(proposal: ZeropsProposal, tier: Tier): string {
+  switch (proposal.kind) {
+    case "service.restart":
+      return `Restart ${proposal.serviceName ?? "it"}`;
+    case "service.start":
+      return `Start ${proposal.serviceName ?? "it"}`;
+    case "service.stop":
+      return `Stop ${proposal.serviceName ?? "it"}`;
+    case "env.set":
+      return tier === null ? `Set ${proposal.params.key}` : `Set on ${tier}`;
+    case "domain.add":
+      return proposal.params.domains.length > 1 ? "Add the domains" : "Add the domain";
+    case "access.set":
+      return "Change access";
+    case "mate.message":
+      return `Send to ${proposal.params.to.mateName}`;
+    case "chief.message":
+      return "Ask your Chief";
+    case "mcp.add":
+      return `Add ${proposal.params.server.title ?? proposal.params.server.name}`;
+    case "env.reveal":
+      return tier === "production" ? "Reveal production value" : "Reveal";
+    case "service.create":
+      return CREATE_IN_PRODUCTION;
+    case "release.offer":
+      return REVIEW_RELEASE_LABEL;
+  }
+}
+
+/** Where a proposal acts inside its project: the service, or every app's or a service's values. */
+function placeIn(proposal: ZeropsProposal): string | null {
+  switch (proposal.kind) {
+    case "service.restart":
+    case "service.start":
+    case "service.stop":
+    case "domain.add":
+    case "env.reveal":
+      return proposal.serviceName ?? null;
+    case "env.set":
+      return proposal.params.scope === "project" ? "every app" : (proposal.serviceName ?? null);
+    case "access.set":
+      return proposalWhere(proposal);
+    case "mate.message":
+    case "chief.message":
+    case "mcp.add":
+    case "service.create":
+    case "release.offer":
+      return null;
+  }
+}
+
+/**
+ * The chip: Stage or Production where the proposal's project is one (HQ's structure says), this
+ * Mate where it is the conversation's own project (`home`), else the project — the title names
+ * which —, each with the service or values it acts on; a message, the Mate it goes to.
+ */
+export function proposalAskWhere(
+  proposal: ZeropsProposal,
+  tier: Tier,
+  home: string | null,
+): AskWhere | null {
+  // A message acts in the Mate it goes to: the chip names it.
+  if (proposal.kind === "mate.message")
+    return { scope: "otherMate", detail: proposal.params.to.mateName };
+  if (proposal.kind === "chief.message") return { scope: "otherMate", detail: "Your Chief" };
+  // Creating what production lacks and releasing to it act in production, whoever asks.
+  if (proposal.kind === "service.create" || proposal.kind === "release.offer")
+    return { scope: "production", detail: null };
+  const place = placeIn(proposal);
+  if (tier !== null) return { scope: tier, detail: place };
+  if (proposal.projectId === home) return { scope: "mate", detail: place };
+  return { scope: "project", detail: place };
+}
+
+/**
+ * The card's state, from HQ's decision record: undecided, someone else's to decide, approved and
+ * running, done with who and when, failed in the platform's words, Not now with who and when, or
+ * approved before a reload with its end unseen.
+ */
+export function proposalAskState(input: {
+  readonly proposal: ZeropsProposal;
+  readonly stage: ProposalStage;
+  readonly failure: string | undefined;
+  readonly readOnlyReason: string | undefined;
+  /** Who decided it, by name, and when, as the conversation's clock says it. */
+  readonly by: string | null;
+  readonly at: string | null;
+}): AskState {
+  const { proposal, stage, by, at } = input;
+  switch (stage) {
+    case "open":
+      return input.readOnlyReason === undefined
+        ? { kind: "waiting" }
+        : { kind: "othersToAnswer", words: input.readOnlyReason };
+    case "running":
+      return { kind: "working", words: proposalOutcomeWords(proposal, "running"), pressed: "main" };
+    case "done": {
+      const words = proposalOutcomeWords(proposal, "done").replace(/\.$/u, "");
+      return { kind: "done", words: answeredWords(words, by, at), told: null };
+    }
+    case "failed":
+      return { kind: "failed", words: input.failure ?? FAILED_WORDS };
+    case "declined":
+      return { kind: "notNow", words: notNowWords(by, at) };
+    case "unseen":
+      return { kind: "replaced", words: proposalOutcomeWords(proposal, "unseen") };
+  }
 }

@@ -5,6 +5,7 @@ export {
   makeConnectionAdmission,
   passThroughAdmission,
 } from "./admission.ts";
+export { connectedArrivals } from "./arrivals.ts";
 export * from "./catalog.ts";
 export * as Connectivity from "./connectivity.ts";
 export * as CredentialRenewal from "./credentialRenewal.ts";

@@ -424,11 +424,14 @@ function serviceRow(
     };
   }
   const ok = service.tone === "ok";
+  // Not running where nothing is meant to run — stopped, holding nothing — says so, never amber.
+  const atRest =
+    service.tone === "attention" && status !== null && NOT_RUNNING_STATUSES.has(status);
   return {
     ...base,
     group: ok ? "running" : "waiting",
     mark: "dot",
-    tone: service.tone,
+    tone: atRest ? "muted" : service.tone,
     words: service.word,
     sub: null,
     ...checkedOf(ok ? checkedLine(pages) : null),
@@ -662,7 +665,7 @@ export function resultRows(outcome: OutcomeModel, facts: ResultFacts = NO_FACTS)
   }
   for (const [host, list] of loose) rows.push(pagesRow(host, list));
 
-  // What became of each value it asked the person for; one still asked stands in the drawer.
+  // What a value it asked the person for still needs: its own card says how the ask ended.
   if (facts.asks !== undefined) {
     for (const ask of outcome.asks ?? []) {
       const record = engineVaultAskFor(facts.asks.activities, ask);
@@ -672,13 +675,13 @@ export function resultRows(outcome: OutcomeModel, facts: ResultFacts = NO_FACTS)
         key: `ask:${ask.key}:${ask.askedAt}`,
         group: "running",
         mark: "dot",
-        tone: record?.state === "saved" ? "ok" : "muted",
+        tone: "attention",
         title: result.title,
-        words: result.words,
+        words: vaultAskRestartWords(result.restart),
         version: null,
-        sub: result.restart.length === 0 ? null : textSub(vaultAskRestartWords(result.restart)),
+        sub: null,
         url: null,
-        action: result.restart.length === 0 ? null : { kind: "restart", services: result.restart },
+        action: { kind: "restart", services: result.restart },
       });
     }
   }
@@ -884,16 +887,54 @@ export function runEffortWords(
   outcome: OutcomeModel | null | undefined,
   facts: ResultFacts = NO_FACTS,
 ): string | null {
-  if (outcome === null || outcome === undefined) return null;
+  const parts = effortParts(outcome, facts);
+  return parts.length === 0 ? null : parts.map((part) => part.words).join(" · ");
+}
+
+/** The effort in its parts, in the order it is said; `changed` what changed something for the person. */
+function effortParts(
+  outcome: OutcomeModel | null | undefined,
+  facts: ResultFacts,
+): ReadonlyArray<{ readonly words: string; readonly changed: boolean }> {
+  if (outcome === null || outcome === undefined) return [];
   const merged = mergedNumbers(outcome, facts);
   const changed = outcome.change !== null || outcome.landed.length > 0;
-  const parts = [
-    ...(merged.length > 0 ? [`merged as ${numbersWords(merged)}`] : []),
+  return [
+    ...(merged.length > 0 ? [{ words: `merged as ${numbersWords(merged)}`, changed: true }] : []),
     ...outcome.activity.flatMap((activity) =>
       activity.count <= 0 || (activity.kind === "edit" && changed)
         ? []
-        : [EFFORT_WORDS[activity.kind](activity.count)],
+        : [
+            {
+              words: EFFORT_WORDS[activity.kind](activity.count),
+              changed: activity.kind === "edit",
+            },
+          ],
     ),
   ];
-  return parts.length === 0 ? null : parts.join(" · ");
+}
+
+/** How many facts a finished run's closed line holds beside its time. */
+export const WORKED_LINE_FACTS = 2;
+
+/**
+ * A finished run's effort as its line shows it (the board, 2026-11-10: five
+ * counts in one line, "none of them what changed for you"): at most two facts
+ * stand on the closed line — what changed for the person first, a change
+ * merged or files edited, then the counts in the order they are said — and
+ * the rest are the opened work's, said in its head.
+ */
+export function runEffortFacts(
+  outcome: OutcomeModel | null | undefined,
+  facts: ResultFacts = NO_FACTS,
+): { readonly facts: ReadonlyArray<string>; readonly rest: ReadonlyArray<string> } {
+  const parts = effortParts(outcome, facts);
+  const first = [
+    ...parts.filter((part) => part.changed),
+    ...parts.filter((part) => !part.changed),
+  ].slice(0, WORKED_LINE_FACTS);
+  return {
+    facts: first.map((part) => part.words),
+    rest: parts.filter((part) => !first.includes(part)).map((part) => part.words),
+  };
 }

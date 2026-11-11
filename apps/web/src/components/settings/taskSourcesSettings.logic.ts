@@ -14,8 +14,8 @@ import type {
 
 /**
  * What a section shows of its setting: `reading` in its final shape, `hidden` where this HQ
- * predates it (the one "Update HQ" line says so), `withheld` from a viewer HQ refuses, `failed`
- * with HQ's words and *Read again*, or what is `known`.
+ * predates it (the one "HQ needs an update" line says so), `withheld` from a viewer HQ refuses, `failed`
+ * with HQ's words and *Try again*, or what is `known`.
  */
 export type SectionState = "reading" | "hidden" | "withheld" | "failed" | "known";
 
@@ -135,10 +135,18 @@ export function workingWords(verb: TaskSourceWrite["kind"]): string {
       return "Connecting…";
     case "slack-disconnect":
     case "discord-disconnect":
-    case "github-disconnect":
       return "Disconnecting…";
+    case "github-forget":
+      return "Removing…";
     case "github-manifest":
+    case "github-install":
       return "Opening GitHub…";
+    case "github-accept":
+      return "Accepting…";
+    case "github-suspend":
+      return "Suspending…";
+    case "github-resume":
+      return "Resuming…";
     case "webhook-make":
     case "schedule-make":
       return "Making…";
@@ -149,7 +157,6 @@ export function workingWords(verb: TaskSourceWrite["kind"]): string {
     case "task-stop":
       return "Stopping…";
     case "channel":
-    case "discord-allow":
     case "task-limits":
       return "Saving…";
   }
@@ -196,7 +203,7 @@ export function taskSourceProblem(action: AutomationAction<string>): string | nu
   return action.kind === "failed" || action.kind === "unresolved" ? action.words : null;
 }
 
-/** HQ's caps on the limits (`apps/hq/src/taskLimits.ts`): said here before anything is sent. */
+/** HQ's caps on the limits (`mate-hq apps/hq/src/taskLimits.ts`): said here before anything is sent. */
 const MINUTES_MAX = 1440;
 const COST_MAX = 10_000;
 const MINUTES_WORDS = "Minutes are a whole number from 1 to 1,440.";
@@ -216,19 +223,6 @@ export function readLimits(
   const amount = Number(typedCost);
   if (!Number.isFinite(amount) || amount <= 0 || amount > COST_MAX) return { error: COST_WORDS };
   return { limits: { minutes: whole, costUsd: amount } };
-}
-
-/** The Discord allowlist after one ID added or removed, as HQ takes it: whole, each once. */
-export function allowlistAfter(
-  held: ReadonlyArray<string>,
-  change: { readonly add: string } | { readonly remove: string },
-): { readonly userIds: ReadonlyArray<string> } | { readonly error: string } {
-  if ("remove" in change) return { userIds: held.filter((id) => id !== change.remove) };
-  const id = change.add.trim();
-  // As HQ takes it (`apps/hq/src/discord.ts`): a snowflake of up to 20 digits.
-  if (!/^\d{1,20}$/u.test(id))
-    return { error: "A Discord user ID is a number of up to 20 digits." };
-  return { userIds: held.includes(id) ? held : [...held, id] };
 }
 
 /** Slack's page that makes an app, from a manifest when one is given. */
@@ -271,7 +265,7 @@ export function slackManifestApp(text: string): {
   };
 }
 
-/** A key a connection's form takes, checked as HQ checks it (`apps/hq/src/slack.ts`, `discord.ts`). */
+/** A key a connection's form takes, checked as HQ checks it (`mate-hq apps/hq/src/slack.ts`, `discord.ts`). */
 export type ConnectKey =
   | "slack-bot-token"
   | "slack-signing-secret"

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { ProjectGrantEntry } from "./appAccess.ts";
 import {
   creationUserRoles,
+  ownerAtAdd,
   planMemberProjectGrants,
   withProjectGrant,
   type ProjectGrant,
@@ -73,6 +74,20 @@ describe("one person's access to some projects, merged into their whole list", (
       next: {},
     },
     {
+      sentence: "An organization owner is given the owner marker as a grant: no role gives it",
+      orgRole: "OWNER",
+      current: { elsewhere: "READ_ONLY" },
+      changes: [{ projectId: "mate", roleCode: "OWNER" as const }],
+      next: { elsewhere: "READ_ONLY", mate: "OWNER" },
+    },
+    {
+      sentence: "An admin's own grant on a project gives way to the owner marker there",
+      orgRole: "ADMIN",
+      current: { mate: "ADMIN" },
+      changes: [{ projectId: "mate", roleCode: "OWNER" as const }],
+      next: { mate: "OWNER" },
+    },
+    {
       sentence: "One write carries every project of an app at once",
       orgRole: "NO_ACCESS",
       current: { prod: "READ_ONLY" },
@@ -97,6 +112,62 @@ describe("one person's access to some projects, merged into their whole list", (
         changes: [{ projectId: "prod", roleCode: "ADMIN" }],
       }).changed,
     ).toBe(false);
+  });
+});
+
+describe("ownerAtAdd — who a Mate added to a project that exists is marked the owner of it by", () => {
+  const ADA_OWNS = { clientUserId: "cu-ada", roleCode: "OWNER" } as const;
+  // Decision: What must NOT happen: no second role function; no write for READ_ONLY/BASIC_USER
+  // adders (ZEROPS-063); no new stream field.
+  // Decision: An admin writes no OWNER grant: Zerops refuses it ("Cannot manage role 'OWNER' - your
+  // role 'ADMIN' has insufficient privileges.", a live Add, 2026-11-10), so their Mate stays no one's.
+  // witness: packages/client-runtime/src/zerops/projectAccess.ts | roleAtLeast(roleCode, "OWNER") → roleAtLeast(roleCode, "ADMIN")
+  it.each<{
+    readonly case: string;
+    readonly roleCode: string | undefined;
+    readonly userRoles: ReadonlyArray<ProjectGrant> | undefined;
+    readonly owner: string | null;
+  }>([
+    {
+      case: "nobody, for an admin on a project naming nobody",
+      roleCode: "ADMIN",
+      userRoles: [],
+      owner: null,
+    },
+    {
+      case: "an organization owner, on a project whose row carries no list",
+      roleCode: "OWNER",
+      userRoles: undefined,
+      owner: "cu-me",
+    },
+    {
+      case: "an organization owner, on a project naming them below its owner",
+      roleCode: "OWNER",
+      userRoles: [{ clientUserId: "cu-me", roleCode: "READ_ONLY" }],
+      owner: "cu-me",
+    },
+    {
+      case: "nobody, on a project someone owns already",
+      roleCode: "OWNER",
+      userRoles: [ADA_OWNS],
+      owner: null,
+    },
+    { case: "nobody, for a developer", roleCode: "BASIC_USER", userRoles: [], owner: null },
+    { case: "nobody, for a read-only member", roleCode: "READ_ONLY", userRoles: [], owner: null },
+    {
+      case: "nobody, for a member with no role",
+      roleCode: "NO_ACCESS",
+      userRoles: [],
+      owner: null,
+    },
+    {
+      case: "nobody, while the adder's role is not read",
+      roleCode: undefined,
+      userRoles: [],
+      owner: null,
+    },
+  ])("marks $case", ({ roleCode, userRoles, owner }) => {
+    expect(ownerAtAdd({ userRoles, adder: { membershipId: "cu-me", roleCode } })).toBe(owner);
   });
 });
 

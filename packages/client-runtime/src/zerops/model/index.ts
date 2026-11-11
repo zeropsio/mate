@@ -17,6 +17,8 @@ export {
   type ZeropsCallClass,
 } from "./classify.ts";
 export {
+  CLOSED_CARD_RESULT_TOOLS,
+  closedCardReadsResultOf,
   isReadOperationKind,
   reduceZeropsOperations,
   type ZeropsOperationsReduction,
@@ -55,7 +57,15 @@ export {
   type ZeropsAccessProposalParams,
   type ZeropsChiefMessageParams,
   type ZeropsEnvProposalParams,
+  type ZeropsMcpAuthKind,
+  type ZeropsMcpCredentialField,
+  type ZeropsMcpProposalParams,
+  type ZeropsMcpScope,
+  type ZeropsMcpServerDefinition,
+  type ZeropsMcpTransport,
   type ZeropsMessageProposalParams,
   type ZeropsProposal,
   type ZeropsProposalKind,
+  type ZeropsReleaseOfferParams,
+  type ZeropsServiceCreateParams,
 } from "./proposal.ts";

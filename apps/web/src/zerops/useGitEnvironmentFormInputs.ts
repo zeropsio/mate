@@ -12,7 +12,8 @@ import { useAccountOperationsOptional } from "./accountOperations";
 import { hqProjectIdOf } from "./hqWrites";
 import { gitEnvironmentSetup } from "./setUpEnvironment";
 import { useHqAppDetail } from "./useHqAppDetail";
-import { useHqOffers } from "./useHqOffers";
+import { hqOfferWords } from "@t3tools/client-runtime/zerops/hq";
+import { HQ_REMOTE_WRITE_VERB, hqOffer } from "@t3tools/shared/hqOffers";
 
 export type GitEnvironmentFormInputs = Pick<
   GitEnvironmentFormProps,
@@ -29,33 +30,32 @@ export function useGitEnvironmentFormInputs(
 ): GitEnvironmentFormInputs | undefined {
   const navigation = useAtomValue(shownCanonicalHqListNavigationAtom);
   const detail = useHqAppDetail(appId);
-  const hqOffers = useHqOffers();
   const operations = useAccountOperationsOptional();
   const hqProjectId = orgId == null ? null : hqProjectIdOf(orgId);
   if (orgId == null || appId === null || hqProjectId === null || operations === null)
     return undefined;
   const app = navigation.structure?.apps.find((entry) => entry.id === appId);
-  const add = hqOffers.state(app?.can, "add_git_environment");
-  const offered = (verb: string) => hqOffers.state(app?.can, verb).kind === "allowed";
+  const add = hqOffer(app?.can, "add_git_environment");
+  const offered = (verb: string) => hqOffer(app?.can, verb).kind === "allowed";
   return {
-    takenNames:
-      navigation.live && Array.isArray(app?.environments)
-        ? app.environments.map((environment) => environment.name)
-        : undefined,
-    repos: detail.live ? detail.repos : undefined,
+    takenNames: Array.isArray(app?.environments)
+      ? app.environments.map((environment) => environment.name)
+      : undefined,
+    repos: detail.repos,
     offered: {
       add: add.kind === "allowed",
-      connect: offered("connect_remote"),
-      replace: offered("replace_remote_token"),
+      // HQ admits connecting a remote and replacing its token on one offer.
+      connect: offered(HQ_REMOTE_WRITE_VERB),
+      replace: offered(HQ_REMOTE_WRITE_VERB),
     },
-    unavailableReason: hqOffers.words(add),
+    unavailableReason: hqOfferWords(add),
     setup: gitEnvironmentSetup({ orgId, appId, hqProjectId, operations }),
   };
 }
 
 /**
  * The application a Zerops project is in, as HQ's structure holds it: its id, name and
- * environments — `undefined` while HQ's structure is not live or refuses them.
+ * environments, as last read — `undefined` while HQ's structure refuses them.
  */
 export function useApplicationOfProject(projectId: string | undefined):
   | {
@@ -74,7 +74,6 @@ export function useApplicationOfProject(projectId: string | undefined):
     : {
         id: app.id,
         name: app.name,
-        environments:
-          navigation.live && Array.isArray(app.environments) ? app.environments : undefined,
+        environments: Array.isArray(app.environments) ? app.environments : undefined,
       };
 }

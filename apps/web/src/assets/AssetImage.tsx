@@ -76,6 +76,7 @@ function DecodedImage({
           alt=""
           aria-hidden
           decoding="async"
+          draggable={false}
           className="asset-image-underlay"
           style={{ opacity: ready && props.src !== underlay ? 0 : 1 }}
         />

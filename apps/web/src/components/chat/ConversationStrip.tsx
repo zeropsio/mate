@@ -1,4 +1,8 @@
-import { ConversationOpeningAvatar } from "./ConversationOpeningStage";
+import {
+  ConversationOpeningAvatar,
+  ConversationOpeningYields,
+  useConversationOpeningArrives,
+} from "./ConversationOpeningStage";
 import { useAtomValue } from "@effect/atom-react";
 import { environmentActivitiesAtom } from "../../zerops/mateActivityAtoms";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -14,6 +18,7 @@ import {
   useContext,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
@@ -164,22 +169,37 @@ function MateChatsMenu({
 
 /**
  * Whether the text in the element it is given ends in an ellipsis: measured
- * before paint after every draw — its words may change while its box keeps
- * its size — and whenever its box changes size.
+ * after every draw — its words may change while its box keeps its size — and
+ * whenever its box changes size. Both are heard from one ResizeObserver, which
+ * the browser calls once it has laid the page out: read in the draw's layout
+ * effect, the two widths forced the style and layout of the whole page on
+ * every draw of the header, ten times in one load. Observing the element anew
+ * asks for one call after this draw's layout. What is measured is only whether
+ * the hover repeats the words, so it may follow the draw by a frame.
  */
 function useCut(): readonly [(node: HTMLElement | null) => void, boolean] {
   const [node, setNode] = useState<HTMLElement | null>(null);
   const [cut, setCut] = useState(false);
+  const observer = useRef<ResizeObserver | null>(null);
   useLayoutEffect(() => {
-    const measure = () => setCut(node !== null && node.scrollWidth > node.clientWidth);
-    measure();
-  });
+    if (node === null || typeof ResizeObserver === "undefined") return;
+    const watching = new ResizeObserver(() => setCut(node.scrollWidth > node.clientWidth));
+    observer.current = watching;
+    return () => {
+      watching.disconnect();
+      observer.current = null;
+    };
+  }, [node]);
   useLayoutEffect(() => {
     if (node === null) return;
-    const observer = new ResizeObserver(() => setCut(node.scrollWidth > node.clientWidth));
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [node]);
+    if (observer.current === null) {
+      // Nothing to hear the layout from: measured here, as it was.
+      setCut(node.scrollWidth > node.clientWidth);
+      return;
+    }
+    observer.current.unobserve(node);
+    observer.current.observe(node);
+  });
   return [setNode, node !== null && cut];
 }
 
@@ -188,11 +208,21 @@ function useCut(): readonly [(node: HTMLElement | null) => void, boolean] {
  * line was first painted without — the first words sent — arrives; one
  * there from the start is simply there.
  */
-function useArrival(present: boolean): boolean {
+function useArrival(present: boolean, broughtIn = false): boolean {
   const [seen, setSeen] = useState({ present, arrived: false });
-  if (seen.present === present) return seen.arrived;
-  setSeen({ present, arrived: present });
-  return present;
+  if (seen.present !== present) {
+    setSeen({ present, arrived: present });
+    return present;
+  }
+  // Brought in by something else — the opening's hand-off fades the header in — its own arrival
+  // is over for good: the mark gone, the fade it names has nothing to come back as when that
+  // other motion ends. Left standing, the subject fell back to its own fade as the opening
+  // ended, went unseen and faded in a second time.
+  if (broughtIn && seen.arrived) {
+    setSeen({ present, arrived: false });
+    return false;
+  }
+  return seen.arrived;
 }
 
 /**
@@ -212,6 +242,7 @@ function MatePill({
   onOpen,
   onCloseChat,
   onRename,
+  persona,
   trailing,
 }: {
   readonly mate: LineMate;
@@ -221,6 +252,8 @@ function MatePill({
   readonly onOpen: (threadId: ThreadId) => void;
   readonly onCloseChat: (chat: NonNullable<LineChats["close"]>) => void;
   readonly onRename: (() => void) | null;
+  /** The Mate's persona, quiet after its name (`MatePersonaPress`). */
+  readonly persona?: ReactNode;
   /** What stands right after its name, before what the chat is about (`ChatHeader`). */
   readonly trailing?: ReactNode;
 }) {
@@ -228,7 +261,8 @@ function MatePill({
   const opens = crew && !mate.open && mate.threadId !== null;
   const [subjectRef, cut] = useCut();
   const { subject, hover } = mateWords(mate, { crew, cut });
-  const arrived = useArrival(subject !== null);
+  const arrived = useArrival(subject !== null, useConversationOpeningArrives());
+  const personaArrived = useArrival(persona != null);
   // The header's face is carried to the opening stage, outside the header: it takes its mark along.
   const asMark = useContext(MateFaceAsMark);
   // Its row's face, playing what the row's plays: each Mate's line is drawn anew (its `key`), so
@@ -310,7 +344,8 @@ function MatePill({
       type="button"
     >
       <ConversationOpeningAvatar>{face}</ConversationOpeningAvatar>
-      {name}
+      {/* The opening stage says the Mate while it waits: its name here holds its place unsaid. */}
+      <ConversationOpeningYields>{name}</ConversationOpeningYields>
     </button>
   );
   // The name's hover is the subject only where no subject stands on the line.
@@ -319,8 +354,9 @@ function MatePill({
     <div
       className={cn(
         "conversation-mate flex h-8 min-w-0 items-center",
-        // Only a subject gives way to the line's end; the name never does.
-        subject === null ? "shrink-0" : "flex-1",
+        // Only a subject gives way to the line's end, and before it the persona's label; the name
+        // never does.
+        subject !== null ? "flex-1" : persona != null ? "min-w-0 shrink" : "shrink-0",
       )}
       data-conversation-mate
       data-on={band ? "" : undefined}
@@ -338,8 +374,23 @@ function MatePill({
       {chats === null ? null : (
         <MateChatsMenu chats={chats} mateName={mate.name} onClose={onCloseChat} onOpen={onOpen} />
       )}
-      {trailing}
-      {subjectLine}
+      {/* What waits on the person (its Review, a task's state) arrives with the conversation, as the
+          name does: it never stands in the header ahead of what it is about. */}
+      {trailing === undefined || trailing === null ? null : (
+        <ConversationOpeningYields>{trailing}</ConversationOpeningYields>
+      )}
+      {/* After what waits on the person, so arriving late it moves nothing already placed. */}
+      {persona == null ? null : (
+        <span
+          className="conversation-persona flex min-w-0 shrink overflow-hidden"
+          data-arrived={personaArrived ? "" : undefined}
+        >
+          {persona}
+        </span>
+      )}
+      {subjectLine === null ? null : (
+        <ConversationOpeningYields>{subjectLine}</ConversationOpeningYields>
+      )}
     </div>
   );
 }
@@ -617,6 +668,8 @@ export interface ConversationStripViewProps {
   readonly crew: ReadonlyArray<LineCrewmate> | null;
   /** The rename field, over the line from the Mate's name while its chat is renamed. */
   readonly renameField: ReactNode;
+  /** The Mate's persona (`ConversationStripProps.persona`). */
+  readonly persona?: ReactNode;
   /** What stands right after the line (`ConversationStripProps.trailing`). */
   readonly trailing?: ReactNode;
   /** The open crewmate's menu: its popup, or `null` while its crew is not read. */
@@ -639,6 +692,7 @@ export function ConversationStripView({
   mate,
   chats,
   crew,
+  persona,
   trailing,
   renameField,
   renderCrewmateMenu,
@@ -687,6 +741,7 @@ export function ConversationStripView({
         onCloseChat={onCloseChat}
         onOpen={onOpen}
         onRename={onRename}
+        persona={persona}
         trailing={trailing}
       />
       {crew === null ? null : (
@@ -731,6 +786,8 @@ export interface ConversationStripProps {
   /** What the chat on screen is about, when it is the Mate's own: its hover. */
   readonly subject: string | null;
   readonly renameField: ReactNode;
+  /** The Mate's persona, after its name; nothing in a crewmate's chat, which takes none. */
+  readonly persona?: ReactNode;
   /** What stands right after the line: what waits on the person in its project (`ChatHeader`). */
   readonly trailing?: ReactNode;
   /** Renames the Mate's chat on screen; `null` where it cannot be renamed. */
@@ -753,6 +810,7 @@ export function ConversationStrip({
   crewChat,
   subject,
   renameField,
+  persona,
   trailing,
   onRename,
   onEditJob,
@@ -851,6 +909,7 @@ export function ConversationStrip({
       onCloseChat={(chat) => void close(chat)}
       onOpen={open}
       onRename={onRename}
+      persona={persona}
       renameField={renameField}
       trailing={trailing}
     />

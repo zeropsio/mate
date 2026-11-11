@@ -22,7 +22,11 @@ export type HttpHandler = (
   request: WireRequest,
 ) => Promise<WireResponse | undefined> | WireResponse | undefined;
 
-export async function serve(handler: HttpHandler, upgrade?: (socket: WebSocket, url: URL) => void) {
+export async function serve(
+  handler: HttpHandler,
+  upgrade?: (socket: WebSocket, url: URL) => void,
+  host: "127.0.0.1" | "::1" = "127.0.0.1",
+) {
   const sockets = new Set<NodeNet.Socket>();
   const ws = new WebSocketServer({ noServer: true });
   const server = NodeHttp.createServer(async (req, res) => {
@@ -75,9 +79,9 @@ export async function serve(handler: HttpHandler, upgrade?: (socket: WebSocket, 
       upgrade(client, new URL(req.url ?? "/", "http://localhost")),
     );
   });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await new Promise<void>((resolve) => server.listen(0, host, resolve));
   return {
-    origin: `http://127.0.0.1:${(server.address() as NodeNet.AddressInfo).port}`,
+    origin: `http://${host === "::1" ? "[::1]" : host}:${(server.address() as NodeNet.AddressInfo).port}`,
     close: async () => {
       for (const client of ws.clients) client.terminate();
       for (const socket of sockets) socket.destroy();

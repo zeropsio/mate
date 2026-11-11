@@ -1,3 +1,5 @@
+import type { ComposerPathSearchTarget } from "@t3tools/client-runtime/state/threads";
+import type { EnvironmentId } from "@t3tools/contracts";
 import type { ClientSettings } from "@t3tools/contracts/settings";
 import { splitPromptIntoComposerSegments } from "./composer-editor-mentions";
 import { INLINE_PICTURE_PLACEHOLDER } from "./lib/composerPictures";
@@ -13,6 +15,21 @@ export interface ComposerTrigger {
   query: string;
   rangeStart: number;
   rangeEnd: number;
+}
+
+/** A file `@` (or a crewmate `@`, which also offers files) still names the query that was searched. */
+export function isPathSuggestionCurrent(
+  searchTarget: ComposerPathSearchTarget,
+  trigger: ComposerTrigger | null,
+  environmentId: EnvironmentId | null,
+  cwd: string | null,
+) {
+  return (
+    (trigger?.kind === "path" || trigger?.kind === "crewmate") &&
+    searchTarget.environmentId === environmentId &&
+    searchTarget.cwd === cwd &&
+    searchTarget.query === trigger.query.trim()
+  );
 }
 
 export function composerSubmissionIntentForEnter(input: {

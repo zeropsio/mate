@@ -3,6 +3,7 @@ import * as NodeFS from "node:fs";
 
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Stream from "effect/Stream";
 import * as Layer from "effect/Layer";
 import {
   ConversationId,
@@ -166,7 +167,10 @@ interface Told {
 
 const ports = <A = never, E = never>(told: Told, delivery?: Layer.Layer<A | CrewDelivery, E>) =>
   Layer.mergeAll(
-    Layer.succeed(CrewPlatformProcesses, { read: Effect.sync(() => told.platform) }),
+    Layer.succeed(CrewPlatformProcesses, {
+      read: Effect.sync(() => told.platform),
+      moved: Effect.succeed(Stream.never),
+    }),
     delivery ??
       Layer.succeed(CrewDelivery, {
         deliver: (envelope) =>
@@ -686,14 +690,15 @@ const rows: ReadonlyArray<Row> = [
         const running = yield* value("crew.app.run", {
           handle: "backend",
           host: TEST_HOST,
-          command: 'echo "$CREW_PORT" > ../backend.port; exec sleep 30',
+          command:
+            'mkfifo ../backend.hold; echo "$CREW_PORT" > ../backend.port; read -r _ < ../backend.hold',
           crewPort: 3001,
           env: {},
         });
         yield* waitUntil(() => exists(root, ".crew/backend.port"));
         const stopped = yield* value("crew.app.stop", { handle: "backend", host: TEST_HOST });
         return { running, port: read(root, ".crew/backend.port").trim(), stopped };
-      }),
+      }).pipe(Effect.ensuring(Effect.sync(() => stopSupervised(root)))),
     ),
     expected: () => ({
       running: { state: "running" },

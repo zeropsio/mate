@@ -1,22 +1,16 @@
 import { EnvironmentId } from "@t3tools/contracts";
+import { RegistryContext } from "@effect/atom-react";
+import type { AtomRegistry } from "effect/reactivity";
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
 
-const testState = vi.hoisted(() => ({
+const testState = {
   presentations: new Map<unknown, unknown>(),
-}));
-
-vi.mock("@effect/atom-react", async (importOriginal) => ({
-  ...(await importOriginal<object>()),
-  useAtomValue: () => testState.presentations,
-}));
-// The lines stand at once: their beat is the wait line's own to test.
-vi.mock("~/zerops/useWaitLine", () => ({
-  useWaitLine: (text: string | null) => text !== null,
-}));
-vi.mock("../zerops/WaitLine", () => ({
-  WaitLine: ({ text }: { text: string }) => <p data-wait-line="">{text}</p>,
-}));
+};
+const registry = {
+  get: () => testState.presentations,
+  subscribe: () => () => {},
+} as unknown as AtomRegistry.AtomRegistry;
 
 import { READING_LIMITS_LINE, UsageLimitsSection } from "./UsageLimits";
 
@@ -38,7 +32,9 @@ const render = (
     environments.map(([id, entry]) => [EnvironmentId.make(id), entry]),
   );
   return renderToStaticMarkup(
-    <UsageLimitsSection identities={new Map()} listed={listed} now={0} />,
+    <RegistryContext.Provider value={registry}>
+      <UsageLimitsSection identities={new Map()} listed={listed} now={0} />
+    </RegistryContext.Provider>,
   );
 };
 
@@ -74,7 +70,9 @@ describe("UsageLimitsSection: never none before every environment answered", () 
 it("missing Mate identity cannot establish that no account reports limits", () => {
   testState.presentations = new Map();
   const html = renderToStaticMarkup(
-    <UsageLimitsSection identities={new Map()} listed now={0} unavailableNames={["A"]} />,
+    <RegistryContext.Provider value={registry}>
+      <UsageLimitsSection identities={new Map()} listed now={0} unavailableNames={["A"]} />
+    </RegistryContext.Provider>,
   );
   expect(html).not.toContain(NONE);
   expect(html).toContain("Subscription limits could not be read");

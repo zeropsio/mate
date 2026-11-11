@@ -8,7 +8,6 @@ import {
   resolveCurrentWorkspaceLabel,
   resolveDraftEnvModeAfterBranchChange,
   resolveEffectiveEnvMode,
-  resolveEnvModeLabel,
   resolveBranchTriggerLabel,
   resolveBranchToolbarPrBranch,
   resolveBranchToolbarValue,
@@ -503,13 +502,6 @@ describe("resolveEffectiveEnvMode", () => {
         draftThreadEnvMode: undefined,
       }),
     ).toBe("local");
-  });
-});
-
-describe("resolveEnvModeLabel", () => {
-  it("uses explicit workspace labels", () => {
-    expect(resolveEnvModeLabel("local")).toBe("Current checkout");
-    expect(resolveEnvModeLabel("worktree")).toBe("New worktree");
   });
 });
 

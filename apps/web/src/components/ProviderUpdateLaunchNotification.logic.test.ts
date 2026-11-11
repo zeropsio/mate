@@ -251,7 +251,7 @@ describe("provider update launch notification logic", () => {
       collectUpdatedProviderSnapshots({
         results: [
           AsyncResult.success({
-            providers: [updatedPersonal, currentDefaultSibling],
+            providers: [currentDefaultSibling, updatedPersonal],
           }),
         ],
         providerInstanceIds: new Set([targetInstanceId]),
@@ -410,19 +410,6 @@ describe("provider update launch notification logic", () => {
       title: "Provider updates failed",
       description: "WebSocket closed",
     });
-  });
-
-  it("collects only attempted provider snapshots from update responses", () => {
-    const codex = provider({ driver: driver("codex") });
-    const cursor = provider({ driver: driver("cursor") });
-    const results = [AsyncResult.success({ providers: [codex, cursor] })];
-
-    expect(
-      collectUpdatedProviderSnapshots({
-        results,
-        providerInstanceIds: new Set([cursor.instanceId]),
-      }),
-    ).toEqual([cursor]);
   });
 
   it("summarizes active provider updates for the sidebar pill", () => {

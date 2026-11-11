@@ -22,6 +22,7 @@ import {
 import { DRIVER_CAPABILITIES } from "../../engine/bridge/capabilities.ts";
 import { createModelSelection } from "@t3tools/shared/model";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { it, vi } from "@effect/vitest";
 
 import * as Context from "effect/Context";
@@ -244,7 +245,7 @@ const validationLayer = it.layer(
     Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
     Layer.provideMerge(ServerSettingsService.layerTest()),
     Layer.provideMerge(providerSessionDirectoryTestLayer),
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
   ),
 );
 
@@ -286,7 +287,10 @@ validationLayer("CodexAdapterLive validation", (it) => {
         runtimeMode: "full-access",
       });
 
-      NodeAssert.deepStrictEqual(validationRuntimeFactory.factory.mock.calls[0]?.[0], {
+      // The persona reader is the Mate's settings, read per turn; its shape is not an option.
+      const { persona, ...runtimeOptions } = validationRuntimeFactory.factory.mock.calls[0]![0];
+      NodeAssert.ok(Effect.isEffect(persona));
+      NodeAssert.deepStrictEqual(runtimeOptions, {
         binaryPath: "codex",
         cwd: process.cwd(),
         launchArgs: "",
@@ -314,7 +318,7 @@ const sessionErrorLayer = it.layer(
     Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
     Layer.provideMerge(ServerSettingsService.layerTest()),
     Layer.provideMerge(providerSessionDirectoryTestLayer),
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
   ),
 );
 
@@ -591,7 +595,7 @@ sessionErrorLayer("CodexAdapterLive session errors", (it) => {
       Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
       Layer.provideMerge(ServerSettingsService.layerTest()),
       Layer.provideMerge(providerSessionDirectoryTestLayer),
-      Layer.provideMerge(NodeServices.layer),
+      Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
     );
 
     return Effect.gen(function* () {
@@ -622,7 +626,7 @@ sessionErrorLayer("CodexAdapterLive session errors", (it) => {
       Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
       Layer.provideMerge(ServerSettingsService.layerTest()),
       Layer.provideMerge(providerSessionDirectoryTestLayer),
-      Layer.provideMerge(NodeServices.layer),
+      Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
     );
 
     const threadId = asThreadId("sess-mcp-servers");
@@ -659,7 +663,7 @@ sessionErrorLayer("CodexAdapterLive session errors", (it) => {
       Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
       Layer.provideMerge(ServerSettingsService.layerTest()),
       Layer.provideMerge(providerSessionDirectoryTestLayer),
-      Layer.provideMerge(NodeServices.layer),
+      Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
     );
 
     return Effect.gen(function* () {
@@ -692,7 +696,7 @@ sessionErrorLayer("CodexAdapterLive session errors", (it) => {
       Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
       Layer.provideMerge(ServerSettingsService.layerTest()),
       Layer.provideMerge(providerSessionDirectoryTestLayer),
-      Layer.provideMerge(NodeServices.layer),
+      Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
     );
 
     return Effect.gen(function* () {
@@ -746,7 +750,7 @@ const lifecycleLayer = it.layer(
     Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
     Layer.provideMerge(ServerSettingsService.layerTest()),
     Layer.provideMerge(providerSessionDirectoryTestLayer),
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
   ),
 );
 
@@ -2205,7 +2209,7 @@ const scopedLifecycleLayer = it.layer(
     Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
     Layer.provideMerge(ServerSettingsService.layerTest()),
     Layer.provideMerge(providerSessionDirectoryTestLayer),
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
   ),
 );
 
@@ -2249,7 +2253,7 @@ const scopedFailureLayer = it.layer(
     Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
     Layer.provideMerge(ServerSettingsService.layerTest()),
     Layer.provideMerge(providerSessionDirectoryTestLayer),
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
   ),
 );
 
@@ -2301,7 +2305,7 @@ it.effect("flushes managed native logs when the adapter layer shuts down", () =>
         Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
         Layer.provideMerge(ServerSettingsService.layerTest()),
         Layer.provideMerge(providerSessionDirectoryTestLayer),
-        Layer.provideMerge(NodeServices.layer),
+        Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
       );
       const context = yield* Layer.buildWithScope(layer, scope);
       const adapter = yield* Effect.service(CodexAdapter).pipe(Effect.provide(context));
@@ -2357,7 +2361,7 @@ const usageLimitLayer = it.layer(
     Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
     Layer.provideMerge(ServerSettingsService.layerTest()),
     Layer.provideMerge(providerSessionDirectoryTestLayer),
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
   ),
 );
 
@@ -2675,6 +2679,47 @@ usageLimitLayer("CodexAdapterLive usage limits", (it) => {
     }),
   );
 
+  // Kaďák's run, 2026-10-28: Codex's own words told the person to pick another model, and they
+  // answered "What?".
+  it.effect("Codex at capacity says what happened and to try again in a minute", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startUsageLimitRuntime();
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.take(2),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      const busy = "Selected model is at capacity. Please try a different model.";
+      yield* runtime.emit(
+        codexErrorNotification({
+          id: "evt-capacity",
+          message: busy,
+          codexErrorInfo: "serverOverloaded",
+        }),
+      );
+      const failed = codexUsageLimitTurnFailed("evt-capacity-turn");
+      yield* runtime.emit({
+        ...failed,
+        payload: {
+          threadId: "thread-1",
+          turn: {
+            id: "turn-limit",
+            items: [],
+            status: "failed",
+            error: { message: busy, codexErrorInfo: "serverOverloaded" },
+          },
+        },
+      });
+      const events = Array.from(yield* Fiber.join(eventsFiber));
+      const words =
+        "Codex is at capacity right now. Try again in a minute: send a message to pick up where it left off.";
+      const runtimeError = events.find((event) => event.type === "runtime.error");
+      NodeAssert.equal(runtimeError?.payload.message, words);
+      const completed = events.find((event) => event.type === "turn.completed");
+      NodeAssert.equal(completed?.payload.errorMessage, words);
+    }),
+  );
+
   it.effect("still relays other provider errors as they arrive", () =>
     Effect.gen(function* () {
       const { adapter, runtime } = yield* startUsageLimitRuntime();
@@ -2731,7 +2776,7 @@ it.layer(
     Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
     Layer.provideMerge(ServerSettingsService.layerTest()),
     Layer.provideMerge(providerSessionDirectoryTestLayer),
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
   ),
 )("Codex context window", (it) => {
   it.effect.each([

@@ -18,6 +18,7 @@ import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import { makeScriptedProvider, type ScriptedStep } from "./scriptedProviderDriver.ts";
 import { startScenarioMate } from "./scenarioMate.ts";
+import { steeredWith } from "../src/engine/domain/told.ts";
 
 const protocol = MATE_ENGINE_PROTOCOLS[0]!;
 const conversationId = ConversationId.make("vocabulary");
@@ -477,7 +478,7 @@ describe("scripted turn control through the real client wire", () => {
       ).toBe("Accepted");
       const steered = yield* world.provider.received;
       expect(steered.turnId).toBe(native.turnId);
-      expect(steered.input.input).toBe("Use the revised plan");
+      expect(steered.input.input).toBe(steeredWith("Use the revised plan"));
       expect(
         (yield* world.wire.stop(
           { protocol, conversationId, commandId: CommandId.make("stop"), runId },

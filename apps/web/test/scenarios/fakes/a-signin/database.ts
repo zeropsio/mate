@@ -23,7 +23,9 @@ export function sessionDatabase(databaseUrl: string, fixtureSession: string) {
   // A backend reports a failed read to the statistics views only seconds later when it idles, so
   // the read's receipt is a sequence step, which the read's rollback does not undo.
   const reads = "SELECT is_called FROM public.scenario_session_reads";
+  const fixtureHash = NodeCrypto.createHash("sha256").update(fixtureSession).digest("hex");
   return {
+    // The session renewal emits the real HQ notification after the failing view is installed.
     unavailable: () =>
       query(`ALTER TABLE public.hq_session RENAME TO scenario_unavailable_session;
         CREATE SEQUENCE public.scenario_session_reads;
@@ -35,7 +37,9 @@ export function sessionDatabase(databaseUrl: string, fixtureSession: string) {
           END $$;
         CREATE VIEW public.hq_session AS SELECT * FROM public.scenario_unavailable_session
           WHERE public.scenario_session_unavailable();
-        GRANT SELECT ON public.hq_session TO PUBLIC`),
+        GRANT SELECT ON public.hq_session TO PUBLIC;
+        UPDATE public.scenario_unavailable_session SET expires_at = expires_at + interval '1 second'
+          WHERE token_hash <> '${fixtureHash}'`),
     sawSessionRead: async () => {
       let waiting = true;
       try {
@@ -54,9 +58,5 @@ export function sessionDatabase(databaseUrl: string, fixtureSession: string) {
         DROP FUNCTION public.scenario_session_unavailable();
         DROP SEQUENCE public.scenario_session_reads;
         ALTER TABLE public.scenario_unavailable_session RENAME TO hq_session`),
-    expires: () =>
-      query(
-        `UPDATE public.hq_session SET expires_at = now() - interval '1 second' WHERE token_hash <> '${NodeCrypto.createHash("sha256").update(fixtureSession).digest("hex")}'`,
-      ),
   };
 }

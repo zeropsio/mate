@@ -1,3 +1,5 @@
+import type { HqProblem } from "@t3tools/shared/hqProblems";
+import type { ReleaseServicePlan } from "@t3tools/shared/hqRelease";
 /**
  * The verbs that move an application's flow — release, roll back, merge, close, hand a change over,
  * run a deploy again, add a service — each the account's operation, which the organization's official HQ executes as
@@ -40,7 +42,7 @@ export type FlowVerbOutcome =
       /** The rollout its deploys are of: what an answer that handed planning over follows. */
       readonly rollout?: AppDeployRollout | undefined;
     }
-  | { readonly ok: false; readonly reason: string };
+  | { readonly ok: false; readonly reason: string; readonly problems?: ReadonlyArray<HqProblem> };
 
 export interface FlowVerbs {
   /** The verbs on their way, by `flowVerbKey`: a row shows its own and takes no second press. */
@@ -51,7 +53,11 @@ export interface FlowVerbs {
    * A release of what the flow's offer shows: its `entries`, named its chosen tag (the next patch
    * by default), tagging the `groupHead` it was read with.
    */
-  readonly release: (flow: ZeropsProjectFlow, tag?: string) => Promise<FlowVerbOutcome>;
+  readonly release: (
+    flow: ZeropsProjectFlow,
+    tag?: string,
+    plan?: ReleaseServicePlan,
+  ) => Promise<FlowVerbOutcome>;
   /** A new release listing an earlier release's entries (guide 5.6). */
   readonly rollBack: (flow: ZeropsProjectFlow, tag: string) => Promise<FlowVerbOutcome>;
   /**
@@ -182,7 +188,13 @@ export function useFlowVerbs(): FlowVerbs {
       else void operations.untilEnd(requestId, orgId).then(done);
       if (reason !== null) {
         if (says) publish(board, { trouble: reason });
-        return refused(reason);
+        return {
+          ok: false,
+          reason,
+          ...(progress.stage === "refused" && progress.problems !== undefined
+            ? { problems: progress.problems }
+            : {}),
+        };
       }
       if (says) publish(board, { trouble: null });
       const answer = registry.get(data.project(flowAnswer, requestId));
@@ -201,8 +213,12 @@ export function useFlowVerbs(): FlowVerbs {
   );
 
   const release = useCallback(
-    (flow: ZeropsProjectFlow, tag?: string): Promise<FlowVerbOutcome> => {
-      const request = releaseRequestOf(flow.release, tag);
+    (
+      flow: ZeropsProjectFlow,
+      tag?: string,
+      plan?: ReleaseServicePlan,
+    ): Promise<FlowVerbOutcome> => {
+      const request = releaseRequestOf(flow.release, tag, plan);
       if ("refused" in request)
         return Promise.resolve(request.says ? refuse(request.refused) : refused(request.refused));
       return run(

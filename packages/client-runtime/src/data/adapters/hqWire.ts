@@ -16,6 +16,7 @@ import * as Stream from "effect/Stream";
 
 import { HqError, type HqApi } from "../../zerops/hq/client.ts";
 import type { StreamFault } from "../streamMachine.ts";
+import { accessEnded, SESSION_REFUSED_WORDS } from "./accessEnded.ts";
 import { classifyHqClose, type HqWire } from "./hq.ts";
 
 const encodeRequest = Schema.encodeSync(Schema.fromJsonString(HqStreamRequest));
@@ -29,22 +30,52 @@ export function classifyHqCall(cause: unknown): StreamFault {
         ? cause.message
         : "HQ could not be reached.";
   if (!(cause instanceof HqError) || cause.kind !== "refused")
-    return { outcome: "transient", message };
+    return {
+      outcome: "transient",
+      message,
+      ...(cause instanceof HqError && cause.problems !== undefined
+        ? { problems: cause.problems }
+        : {}),
+    };
   return {
     outcome: "definitive-refusal",
-    message:
-      cause.code === "session_required"
-        ? "HQ refused the renewed session. Try again, or sign in to Zerops again."
-        : message,
+    message: accessEnded(cause) === "session-ended" ? SESSION_REFUSED_WORDS : message,
     code: cause.code,
+    ...(cause.problems === undefined ? {} : { problems: cause.problems }),
   };
 }
 
 export function makeHqWire(
   api: Pick<HqApi, "openScopeSocket"> &
-    Partial<Pick<HqApi, "changeAttachment" | "changeMetadata" | "changeCommits">>,
+    Partial<
+      Pick<
+        HqApi,
+        | "changeAttachment"
+        | "changeMetadata"
+        | "changeCommits"
+        | "changeVerdict"
+        | "reviewRelease"
+        | "withAccess"
+      >
+    >,
 ): HqWire {
+  const { withAccess } = api;
   return {
+    ...(withAccess === undefined
+      ? {}
+      : {
+          withAccess: <T extends object>(frame: T) =>
+            Effect.tryPromise({ try: () => withAccess(frame), catch: classifyHqCall }),
+        }),
+    ...(api.reviewRelease === undefined
+      ? {}
+      : {
+          releaseReview: (input: import("../families/hqReleaseReview.ts").ReleaseReviewRequest) =>
+            Effect.tryPromise({
+              try: (signal) => api.reviewRelease!(input.appId, input.request, signal),
+              catch: classifyHqCall,
+            }),
+        }),
     ...(api.changeAttachment === undefined
       ? {}
       : {
@@ -74,6 +105,20 @@ export function makeHqWire(
           commits: (request: import("../families/hqChangeRead.ts").ChangeReadRequest) =>
             Effect.tryPromise({
               try: (signal) => api.changeCommits!(request.link, signal, request.snapshot),
+              catch: (cause) => ({
+                ...classifyHqCall(cause),
+                ...(cause instanceof HqError && cause.code === "change_not_found"
+                  ? { code: "not_found" }
+                  : {}),
+              }),
+            }),
+        }),
+    ...(api.changeVerdict === undefined
+      ? {}
+      : {
+          verdict: (request: import("../families/hqChangeRead.ts").ChangeReadRequest) =>
+            Effect.tryPromise({
+              try: (signal) => api.changeVerdict!(request.link, signal, request.snapshot),
               catch: (cause) => ({
                 ...classifyHqCall(cause),
                 ...(cause instanceof HqError && cause.code === "change_not_found"

@@ -9,7 +9,7 @@ import {
 import * as Clock from "effect/Clock";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -26,6 +26,7 @@ import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFSP from "node:fs/promises";
+import * as EffectAcpErrors from "effect-acp/errors";
 import type * as NodeStream from "node:stream";
 import * as Yauzl from "yauzl";
 
@@ -72,6 +73,7 @@ export class AntigravityInstallationError extends Schema.TaggedError<Antigravity
   }
 }
 const isInstallationError = Schema.is(AntigravityInstallationError);
+const isAcpProcessExitedError = Schema.is(EffectAcpErrors.AcpProcessExitedError);
 
 export interface AntigravityExecutable {
   readonly executablePath: string;
@@ -267,7 +269,7 @@ export const makeAntigravityInstallation = Effect.fn("AntigravityInstallation.ma
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
   const http = yield* HttpClient.HttpClient;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const serviceScope = yield* Effect.scope;
@@ -491,7 +493,7 @@ export const makeAntigravityInstallation = Effect.fn("AntigravityInstallation.ma
         if (
           initialized.agentInfo?.name !== "antigravity-acp" ||
           initialized.agentInfo.version !== expectedVersion ||
-          initialized.protocolVersion !== 1 ||
+          (initialized.protocolVersion !== 1 && initialized.protocolVersion !== 2) ||
           initialized.agentCapabilities?.loadSession !== true ||
           !initialized.agentCapabilities.sessionCapabilities?.resume ||
           !initialized.agentCapabilities.auth?.logout ||
@@ -506,13 +508,17 @@ export const makeAntigravityInstallation = Effect.fn("AntigravityInstallation.ma
       Effect.provideService(FileSystem.FileSystem, fs),
       Effect.provideService(Path.Path, path),
       Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-      Effect.provideService(Crypto.Crypto, crypto),
-      Effect.mapError(
-        wrapFailure(
-          "verify",
-          "The downloaded Antigravity runtime could not start in this environment.",
-        ),
-      ),
+      Effect.provideService(SecureRandom.SecureRandom, crypto),
+      Effect.mapError((cause) => {
+        if (isInstallationError(cause)) return cause;
+        // Antigravity's language server exits at startup when the kernel has no IPv6 sockets.
+        const detail =
+          isAcpProcessExitedError(cause) &&
+          /\b(?:AF_INET6|enforce_kernel_ipv6_support)\b/.test(cause.stderr ?? "")
+            ? "Antigravity requires IPv6 socket support. Enable IPv6 in this environment. On WSL, remove ipv6.disable=1 from .wslconfig and run wsl --shutdown."
+            : "The downloaded Antigravity runtime could not start in this environment.";
+        return installationError("verify", detail, cause);
+      }),
     );
 
   const install = Effect.fn("AntigravityInstallation.install")(
@@ -792,7 +798,7 @@ export const makeAntigravityInstallation = Effect.fn("AntigravityInstallation.ma
             `Google does not publish an Antigravity runtime for ${platform}-${arch}. Use a supported remote environment or a custom executable.`,
           );
         }
-        const operationId = yield* crypto.randomUUIDv4;
+        const operationId = yield* crypto.uuidV4();
         const next: ProviderInstallState = {
           driver: DRIVER,
           operationId,

@@ -1,7 +1,6 @@
 import * as Effect from "effect/Effect";
 import { expect } from "@effect/vitest";
-import type { ElementHandle } from "puppeteer-core";
-import { openAccountMenu } from "../../harness/browser.ts";
+import { openAccountMenu, xpathLiteral } from "../../harness/browser.ts";
 import type { createScenario } from "../../harness/scenario.ts";
 export { changeFixture, anotherOrganization } from "../../fakes/d-change/changes.ts";
 
@@ -56,21 +55,20 @@ export function review(s: Pick<Scenario, "page" | "web">) {
    * frame shows unfolded (a change's page) is already open.
    */
   const unfold = async (title: string) => {
-    const heading = await s.page.waitForFunction(
-      (title) =>
-        [...document.querySelectorAll<HTMLElement>(".rv-sec-h")].find(
-          (node) =>
-            node.getBoundingClientRect().height > 0 &&
-            node.closest("[inert]") === null &&
-            node.innerText.trim().startsWith(title),
-        ) ?? null,
-      { polling: "raf" },
-      title,
+    const heading = s.page.locator(
+      `::-p-xpath(//*[contains(concat(" ", normalize-space(@class), " "), " rv-sec-h ")][not(ancestor-or-self::*[@inert])][starts-with(normalize-space(.), ${xpathLiteral(title)})])`,
     );
-    const fold = await (heading.asElement() as ElementHandle<HTMLElement>).$(
-      '.rv-fold-row[aria-expanded="false"]',
-    );
-    await fold?.click();
+    await heading.wait();
+    // Expanded headings already show their contents; folded ones need one actionable press.
+    if (
+      await heading
+        .map((node) => node.querySelector('.rv-fold-row[aria-expanded="false"]') !== null)
+        .wait()
+    ) {
+      await heading
+        .map((node) => node.querySelector<HTMLElement>('.rv-fold-row[aria-expanded="false"]')!)
+        .click();
+    }
   };
   return {
     text,
@@ -195,21 +193,26 @@ export function review(s: Pick<Scenario, "page" | "web">) {
     merge: Effect.promise(async () => {
       await s.page.locator('[data-zerops-primary-action="Merge"]').click();
     }),
+    // Beside Merge the ask stands behind ⋯ in the sheet's top line.
     askClose: Effect.promise(async () => {
-      await s.page.locator('::-p-aria(Close without merging…[role="button"])').click();
+      await s.page.locator('::-p-aria(More[role="button"])').click();
+      await s.page.locator('::-p-aria(Close without merging…[role="menuitem"])').click();
     }),
     confirmClose: Effect.promise(async () => {
       await s.page.locator('::-p-aria(Close without merging[role="button"])').click();
     }),
     cannotClose: Effect.promise(async () => {
       expect(
-        await s.page.evaluate(() =>
-          [...document.querySelectorAll<HTMLButtonElement>("button")].some(
-            (button) =>
-              button.innerText.trim().startsWith("Close without merging") &&
-              !button.disabled &&
-              button.getBoundingClientRect().height > 0,
-          ),
+        await s.page.evaluate(
+          () =>
+            // Neither in the foot nor behind ⋯, which a change's sheet shows only for it.
+            document.querySelector('.rv button[aria-label="More"]') !== null ||
+            [...document.querySelectorAll<HTMLButtonElement>("button")].some(
+              (button) =>
+                button.innerText.trim().startsWith("Close without merging") &&
+                !button.disabled &&
+                button.getBoundingClientRect().height > 0,
+            ),
         ),
       ).toBe(false);
     }),

@@ -17,6 +17,7 @@ import {
 } from "../stopComing.ts";
 import type { GroupEnvironmentTier } from "../groupEnvironments.ts";
 import type { GitDelivery } from "../gitDelivery.ts";
+import type { ReleaseCreationFailure, ReleaseDeployFailure } from "../groupDeploys.ts";
 import {
   deployedVersion,
   environmentRow,
@@ -25,12 +26,12 @@ import {
   type GroupRowTone,
 } from "../groupRows.ts";
 import { type HqJob, jobFailed, jobInFlight } from "../hq/environments.ts";
-import { deployFollowText } from "../hq/deployAnswer.ts";
+import { deployFollowText, sourceArchiveLabel } from "../hq/deployAnswer.ts";
 import { deployLogTarget, type DeployLogTarget } from "../hq/deployLog.ts";
 import type { Shown } from "../knowledge/known.ts";
 import type { TierStop } from "@t3tools/shared/hqRelease";
 import { cannotTellWhatRuns, changesNotLive, serviceNames } from "../projectAttention.ts";
-import { serviceDashboardUrl } from "../serviceMap.ts";
+import { serviceDashboardUrl } from "../gui.ts";
 import type { ZeropsPublicRoute, ZeropsRouteOffer } from "../publicRoutes.ts";
 import { sameCommit } from "../versionName.ts";
 import {
@@ -58,7 +59,32 @@ export interface StopVerdict {
   readonly verb:
     | { readonly kind: "release"; readonly tag: string }
     | { readonly kind: "run-again" }
+    /** The stop's deploy key renewed, by a person who may (`keyGap.mayRenew`). */
+    | { readonly kind: "renew-key" }
     | null;
+  /**
+   * The way out is the next release's review, which the page offers in its own card: the panel
+   * carries no verb of its own (a release whose services were not created, `releaseNotCreated`).
+   */
+  readonly reviewNext?: true;
+  /** HQ's own words for the cause the sentence names, where it recorded some. */
+  readonly why?: string | undefined;
+}
+
+/**
+ * A production's newest release that put nothing live because a service it declares was not
+ * created there first: HQ creates what a release adds before it deploys, and refuses every deploy
+ * of a release whose creation did not go through. Asking a deploy of it again would run the new
+ * code without that service, so the way out is a new release.
+ */
+export interface ReleaseNotCreated {
+  readonly tag: string;
+  /** The declared services production still lacks, by hostname (`notInZerops`). */
+  readonly missing: ReadonlyArray<string>;
+  /** HQ's words for how the creation ended, where it still lists its record of it. */
+  readonly reason: string | undefined;
+  /** Whether any service of the release was deployed all the same. */
+  readonly deployed: boolean;
 }
 
 /** A deploy of the stop that failed: what it deployed, where, and what runs on instead. */
@@ -159,9 +185,18 @@ export function stopVerdict(input: {
    * longer working — and the Zerops project whose Full access mints one; `undefined` while it
    * works.
    */
-  readonly keyGap: { readonly kind: "missing" | "invalid"; readonly project: string } | undefined;
+  readonly keyGap:
+    | {
+        readonly kind: "missing" | "invalid";
+        readonly project: string;
+        /** Whether the viewer may renew it from the page; anyone else is told who does. */
+        readonly mayRenew?: boolean | undefined;
+      }
+    | undefined;
   /** A stage that runs nothing: where its first deploy stands (`GroupFlowStop.firstDeploy`). */
   readonly firstDeploy?: FirstDeploy | undefined;
+  /** The release that put nothing live for want of a service (`releaseNotCreated`). */
+  readonly notCreated?: ReleaseNotCreated | undefined;
 }): StopVerdict {
   const { tier, view } = input;
   if (input.git !== undefined)
@@ -184,11 +219,44 @@ export function stopVerdict(input: {
   // nothing is asked again.
   if (input.keyGap !== undefined) {
     const { kind, project } = input.keyGap;
+    const text =
+      kind === "missing" ? "It has no deploy key yet." : "Its deploy key no longer works.";
+    // Who may renews it from the sentence itself; anyone else is told who does, and offered nothing.
+    return input.keyGap.mayRenew === true
+      ? {
+          tone: "failed",
+          text,
+          detail: `Renewing makes ${kind === "missing" ? "one" : "a new one"} for this project only.`,
+          verb: { kind: "renew-key" },
+        }
+      : {
+          tone: "failed",
+          text,
+          detail: `Someone with Full access to the ${project} project in Zerops mints ${kind === "missing" ? "one" : "a new one"}.`,
+          verb: null,
+        };
+  }
+  // One failure, said once, cause first: the release, what it lacked, and what still serves. HQ's
+  // refusal of each deploy that followed says nothing more, so no part is named.
+  if (input.notCreated !== undefined) {
+    const { tag, reason, deployed } = input.notCreated;
+    const runs = view.version?.label;
+    // What is still true, after the cause: what serves, and that nothing of the release does.
+    const still =
+      runs === undefined || runs === tag
+        ? deployed
+          ? undefined
+          : "Nothing was deployed."
+        : deployed
+          ? `${runs} still runs.`
+          : `${runs} still runs, and nothing was deployed.`;
     return {
       tone: "failed",
-      text: kind === "missing" ? "It has no deploy key yet." : "Its deploy key no longer works.",
-      detail: `Someone with Full access to the ${project} project in Zerops mints ${kind === "missing" ? "one" : "a new one"} here.`,
+      text: `${releaseNotCreatedWords(input.notCreated)}.`,
+      detail: still,
       verb: null,
+      reviewNext: true,
+      ...(reason === undefined ? {} : { why: reason }),
     };
   }
   const [first, ...more] = input.failed;
@@ -325,27 +393,6 @@ export function stopMetaLine(input: {
   return input.services > 0 ? `${from} · ${plural(input.services, "service", "services")}` : from;
 }
 
-const CARD_GROUPS = {
-  waiting: "Waiting for release",
-  services: "Services",
-  releases: "Releases",
-  deploys: "Deploys",
-} as const;
-
-/**
- * A group of the stop's card, under its label: `Services · 2`; the label alone while uncounted, and
- * `+` where the count is only how many at least.
- */
-export function stopCardTitle(
-  group: keyof typeof CARD_GROUPS,
-  count: number | undefined,
-  atLeast?: boolean,
-): string {
-  return count === undefined
-    ? CARD_GROUPS[group]
-    : `${CARD_GROUPS[group]} · ${String(count)}${atLeast === true ? "+" : ""}`;
-}
-
 /** Said, muted, beside a stage's Deploys: what they are read from. */
 export const DEPLOYS_ASIDE = "on main";
 
@@ -396,6 +443,7 @@ export interface StopServiceRow {
     | undefined;
   /** Its newest job, while it says what its row does not (`jobOf`). */
   readonly job: StopServiceJob | undefined;
+  readonly sourceArchive?: string | undefined;
   /** Its newest deploy's durable platform handles, including once it went live. */
   readonly deployLog?: DeployLogTarget | undefined;
   /** What it runs, where that is not what HQ last made it run (`driftOf`). */
@@ -663,6 +711,12 @@ export function serviceRows(input: {
   readonly age: (iso: string) => string;
   /** A stage that runs nothing: where its first deploy stands, said where a service runs none. */
   readonly firstDeploy?: FirstDeploy | undefined;
+  /**
+   * The release that put nothing live for want of a service (`releaseNotCreated`): HQ's refusal of
+   * its deploys is the release's to say, once, so a service it never reached keeps the state of
+   * its own last deploy and says no job.
+   */
+  readonly notCreated?: string | undefined;
 }): ReadonlyArray<StopServiceRow> {
   const deploymentOf = platformDeployments(input.platform);
   const code = input.services
@@ -670,7 +724,8 @@ export function serviceRows(input: {
       repository === undefined ? [] : [{ ...state, repository }],
     )
     .sort((left, right) => left.hostname.localeCompare(right.hostname, "en"));
-  return code.map((state) => {
+  return code.map((recorded) => {
+    const state = beforeRefusedRelease(recorded, input.notCreated);
     const { hostname } = state;
     const deployment = deploymentOf(hostname);
     // What HQ's record names: the version a build deploys, while one runs.
@@ -690,7 +745,7 @@ export function serviceRows(input: {
     return {
       hostname,
       ...(state.serviceId === undefined ? {} : { serviceId: state.serviceId }),
-      repository: state.repository,
+      repository: recorded.repository,
       // As the name spells it: it keys the deploy-run read, which must not move as main's head
       // arrives, and the run is matched with `sameCommit`.
       sha: version.sha,
@@ -711,12 +766,132 @@ export function serviceRows(input: {
       runs: runsOf(deployment, settled, read, input.age),
       routes: input.routes.filter((route) => route.service === hostname),
       offers: input.offers.filter((offer) => offer.service === hostname),
-      failed: failedOf(state.deploy?.latest),
+      // The release's refusal stays the service's failed deploy: what `stopFailedDeploys` names.
+      failed: failedOf(recorded.deploy?.latest),
       job: jobOf(state.deploy?.latest, input.age),
+      ...(state.deploy?.latest.kind === "deploy"
+        ? { sourceArchive: sourceArchiveLabel(state.deploy.latest.sourceArchiveBytes) }
+        : {}),
       ...(state.deploy === undefined ? {} : { deployLog: deployLogTarget(state.deploy.latest) }),
-      drift: driftOf(state),
+      drift: driftOf(recorded),
     };
   });
+}
+
+/** A release's job HQ refused at its one try: it deployed nothing, of `tag`. */
+const refusedBy = (job: HqJob | undefined, tag: string): boolean =>
+  job !== undefined && job.state === "refused" && job.cause === "release" && job.ref === tag;
+
+/**
+ * A service as it stood before the release `tag` was refused, where its newest job is that
+ * refusal: its last deploy that went live, or none HQ records.
+ */
+function beforeRefusedRelease(
+  state: EnvironmentServiceState,
+  tag: string | undefined,
+): EnvironmentServiceState {
+  if (tag === undefined || !refusedBy(state.deploy?.latest, tag)) return state;
+  const { deploy, ...rest } = state;
+  return deploy === undefined || deploy.live === null
+    ? rest
+    : { ...rest, deploy: { latest: deploy.live, live: deploy.live } };
+}
+
+/** A production's newest release whose deploy failed, newer than the one it runs. */
+function failedRelease(releases: ReadonlyArray<FlowReleaseRow>): FlowReleaseRow | undefined {
+  const live = releases.findIndex((release) => release.standing === "live");
+  const newer = live === -1 ? releases : releases.slice(0, live);
+  return newer.find((release) => release.failedEntries.length > 0);
+}
+
+/**
+ * Whether a production's failed release is one that created nothing it needed
+ * (`ReleaseNotCreated`): HQ still lists the creation that ended without going live, or it refused
+ * every deploy of the release at its one try while production lacks a service its tier declares.
+ * A build that failed is a plain deploy failure, asked again as it always was.
+ */
+export function releaseNotCreated(input: {
+  readonly tier: GroupEnvironmentTier;
+  /** The group's releases, newest first. */
+  readonly releases: ReadonlyArray<FlowReleaseRow>;
+  readonly services: ReadonlyArray<EnvironmentServiceState>;
+  readonly creationFailures: ReadonlyArray<ReleaseCreationFailure> | undefined;
+  /** The services the tier declares and production lacks (`notInZerops`). */
+  readonly missing: ReadonlyArray<string>;
+}): ReleaseNotCreated | undefined {
+  if (input.tier !== "production") return undefined;
+  const failed = failedRelease(input.releases);
+  if (failed === undefined) return undefined;
+  const { tag } = failed;
+  const creation = input.creationFailures?.find((entry) => entry.tag === tag);
+  const refused = failed.failedEntries.every(({ service }) =>
+    refusedBy(input.services.find((entry) => entry.hostname === service)?.deploy?.latest, tag),
+  );
+  if (creation === undefined && !(refused && input.missing.length > 0)) return undefined;
+  const deployed = input.services.some(({ deploy }) =>
+    [deploy?.latest, deploy?.live].some(
+      (job) => job?.state === "live" && job.cause === "release" && job.ref === tag,
+    ),
+  );
+  // HQ names what the release was to create; an older HQ names nothing, and the page then says
+  // what the setup files declare and Zerops lacks.
+  const named = creation?.services ?? [];
+  return {
+    tag,
+    missing: named.length > 0 ? named : input.missing,
+    reason: creation?.reason,
+    deployed,
+  };
+}
+
+/**
+ * A release that put nothing live for want of a service, cause first and without its full stop:
+ * "v0.1.5 didn't go live: db could not be created in production". The place's page says it as its
+ * one sentence (`stopVerdict`), the project's line as the caption of the segment before production.
+ */
+export function releaseNotCreatedWords(
+  notCreated: Pick<ReleaseNotCreated, "tag" | "missing">,
+): string {
+  const { tag, missing } = notCreated;
+  const lacked =
+    missing.length === 0
+      ? "a service it needs could not be created in production"
+      : `${serviceNames(missing)} could not be created in production`;
+  return `${tag} didn't go live: ${lacked}`;
+}
+
+/** What a release's row says where HQ refused it before anything of it deployed. */
+export const RELEASE_DIDNT_GO_LIVE = "Didn't go live";
+
+/**
+ * The releases whose deploy never ran: every part of each that failed is HQ's refusal at its one
+ * try (`ReleaseDeployFailure.refused`, or the service's newest job), never a build that failed.
+ * Their rows say {@link RELEASE_DIDNT_GO_LIVE}; one a build failed in keeps Deploy failed, and so
+ * does one HQ no longer lists the jobs of, which cannot be told apart.
+ */
+export function releasesNotDeployed(input: {
+  /** The group's releases, newest first. */
+  readonly releases: ReadonlyArray<FlowReleaseRow>;
+  readonly failures: ReadonlyArray<ReleaseDeployFailure> | undefined;
+  readonly services: ReadonlyArray<EnvironmentServiceState>;
+}): ReadonlySet<string> {
+  const tags = new Set<string>();
+  for (const release of input.releases) {
+    if (release.standing !== "deploy-failed") continue;
+    const refused = release.failedEntries.every(
+      ({ service }) =>
+        input.failures?.some(
+          (failure) =>
+            failure.tag === release.tag && failure.service === service && failure.refused === true,
+        ) === true ||
+        refusedBy(
+          input.services.find((entry) => entry.hostname === service)?.deploy?.latest,
+          release.tag,
+        ),
+    );
+    if (refused) tags.add(release.tag);
+  }
+  return tags;
 }
 
 /**
@@ -744,9 +919,7 @@ export function stopFailedDeploys(input: {
     return failed !== undefined && sameCommit(commit, failed.sha) ? failed : undefined;
   };
   if (input.tier === "production") {
-    const live = input.releases.findIndex((release) => release.standing === "live");
-    const newer = live === -1 ? input.releases : input.releases.slice(0, live);
-    const failed = newer.find((release) => release.failedEntries.length > 0);
+    const failed = failedRelease(input.releases);
     if (failed !== undefined)
       return [...failed.failedEntries]
         .sort((left, right) => left.service.localeCompare(right.service, "en"))

@@ -1,5 +1,5 @@
 import { markupDom } from "../test/markupDom";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import indexHtml from "../index.html?raw";
 import {
   buildDocumentTitle,
@@ -9,8 +9,10 @@ import {
 
 const originalWindow = globalThis.window;
 
+beforeEach(() => vi.resetModules());
 afterEach(() => {
   vi.resetModules();
+  vi.unstubAllEnvs();
 
   if (originalWindow === undefined) {
     Reflect.deleteProperty(globalThis, "window");

@@ -5,6 +5,7 @@
  * surface holds its place without a name.
  */
 import type { HqMateIdentity } from "@t3tools/client-runtime/data";
+import type { EnvironmentId } from "@t3tools/contracts";
 import { sameValue } from "../lib/sameValue";
 import { accountLocalStorage } from "./accountLifetime";
 
@@ -65,15 +66,17 @@ export function writeMateMemory(
 
 /**
  * The memory once HQ named `identities`: each named Mate as HQ names it now; once HQ's list is
- * read, a project it no longer lists is forgotten. The same memory when nothing changed.
+ * read, a project it no longer lists (`listed`) is forgotten. The same memory when nothing
+ * changed.
  */
 export function rememberMates(
   memory: MateMemory,
   identities: ReadonlyArray<HqMateIdentity>,
   listRead: boolean,
+  listed: ReadonlyMap<string, EnvironmentId | undefined>,
 ): MateMemory {
   const next: Record<string, HqMateIdentity> = {};
-  for (const identity of seededIdentities(identities, memory, listRead)) {
+  for (const identity of seededIdentities(identities, memory, listRead, listed)) {
     if (identity.environmentId !== undefined) next[identity.environmentId] = identity;
   }
   return sameValue(next, memory) ? memory : next;
@@ -82,12 +85,15 @@ export function rememberMates(
 /**
  * Navigation owns names, faces and project membership; the separately observed overview owns
  * the environment. A still-listed project keeps its remembered environment until that join
- * arrives. Before navigation is complete, retain projects it has not named yet as well.
+ * arrives, and its remembered identity while HQ cannot name it (`listed`: the Mates HQ lists,
+ * named or not, by project, with the environment its overview names — which wins over the
+ * remembered one). Before navigation is complete, retain projects it has not named yet as well.
  */
 export function seededIdentities(
   identities: ReadonlyArray<HqMateIdentity>,
   memory: MateMemory,
   listRead: boolean,
+  listed: ReadonlyMap<string, EnvironmentId | undefined>,
 ): ReadonlyArray<HqMateIdentity> {
   const remembered = new Map(
     Object.entries(memory).map(([environmentId, identity]) => [
@@ -102,9 +108,15 @@ export function seededIdentities(
         ? { ...identity, environmentId: remembered.get(identity.projectId)?.environmentId }
         : identity,
     ),
-    ...(listRead
-      ? []
-      : [...remembered.values()].filter((identity) => !named.has(identity.projectId))),
+    ...[...remembered.values()]
+      .filter(
+        (identity) =>
+          !named.has(identity.projectId) && (!listRead || listed.has(identity.projectId)),
+      )
+      .map((identity) => {
+        const relayed = listed.get(identity.projectId);
+        return relayed === undefined ? identity : { ...identity, environmentId: relayed };
+      }),
   ];
 }
 

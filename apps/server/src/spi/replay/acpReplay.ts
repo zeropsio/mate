@@ -30,6 +30,7 @@ import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import {
   AntigravitySettings,
   CursorSettings,
@@ -39,7 +40,7 @@ import {
   type SpiEvent,
   ThreadId,
 } from "@t3tools/contracts";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
@@ -49,6 +50,7 @@ import * as Stream from "effect/Stream";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 import { ServerConfig } from "../../config.ts";
+import { ServerSettingsService } from "../../serverSettings.ts";
 import {
   makeAntigravityAdapter,
   type AntigravityAdapterOptions,
@@ -81,7 +83,10 @@ async function makeMockAgentWrapper(env: Readonly<Record<string, string>> = {}):
 
 const testLayer = ServerConfig.layerTest(process.cwd(), {
   prefix: "spi-acp-replay-test-",
-}).pipe(Layer.provideMerge(NodeServices.layer));
+}).pipe(
+  Layer.provideMerge(ServerSettingsService.layerTest()),
+  Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+);
 
 /** Runs `adapter` through the fixed "hello" baseline and returns the turn and all its completed assistant items. */
 function runBaseline<EStart, ESend, EStop>(
@@ -202,7 +207,7 @@ export async function recordAntigravityBaseline(): Promise<ReadonlyArray<SpiEven
 
   const program = Effect.gen(function* () {
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-    const crypto = yield* Crypto.Crypto;
+    const crypto = yield* SecureRandom.SecureRandom;
     // Skips production's install/profile/Google-auth machinery (AntigravityDriver.ts)
     // entirely — irrelevant to a scripted mock peer — and spawns the mock
     // directly through the same makeAntigravityAcpRuntime seam, with
@@ -218,7 +223,7 @@ export async function recordAntigravityBaseline(): Promise<ReadonlyArray<SpiEven
           cwd: input.cwd,
           env: { ...process.env, T3_ACP_ANTIGRAVITY: "1" },
         },
-      }).pipe(Effect.provideService(Crypto.Crypto, crypto));
+      }).pipe(Effect.provideService(SecureRandom.SecureRandom, crypto));
     const adapter = yield* makeAntigravityAdapter(antigravitySettings, {
       instanceId: ProviderInstanceId.make("antigravity"),
       makeRuntime,

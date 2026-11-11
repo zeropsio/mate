@@ -1,8 +1,12 @@
 import type { EnvironmentId, UsageReport, UsageReportQuery } from "@t3tools/contracts";
 import { HQ_SLOW, type AgentUsageRead } from "@t3tools/client-runtime/data";
 import type { HqTaskLimitsView } from "@t3tools/shared/hqIntake";
+import { RegistryContext } from "@effect/atom-react";
+import type { AtomRegistry } from "effect/reactivity";
+import { act, createElement, Fragment, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { create, type ReactTestRendererJSON } from "react-test-renderer";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type {
   UsageEnvironmentIdentity,
   UsageEnvironmentOwner,
@@ -28,176 +32,70 @@ const testState = vi.hoisted(() => ({
   sectionReads: {} as Partial<Record<string, AgentUsageRead>>,
   limits: null as HqTaskLimitsView | null,
 }));
-vi.mock("@effect/atom-react", () => ({ useAtomValue: () => new Map() }));
-vi.mock("../../state/use-atom-command", () => ({ useAtomCommand: () => vi.fn() }));
-vi.mock("react", async (original) => {
-  const actual = await original<typeof import("react")>();
-  return {
-    ...actual,
-    useState: (initial: unknown) => [
-      initial === readUsagePagePreferences
-        ? { metric: testState.metric, windowDays: testState.hourly ? 1 : 7 }
-        : typeof initial === "function"
-          ? {
-              days: testState.hourly ? 1 : 7,
-              window: {
-                sinceDay: "2026-10-06",
-                untilDay: "2026-10-07",
-                timeZone: "UTC",
-                resolution: testState.hourly ? "hour" : "day",
-                sinceTime: "2026-10-06T12:37:00.000Z",
-                untilTime: "2026-10-07T12:37:00.000Z",
-              },
-            }
-          : initial === "live-responses"
-            ? testState.provenance
-            : initial === "auto"
-              ? testState.breakdown
-              : initial,
-      vi.fn(),
-    ],
-  };
-});
-vi.mock("../../env", () => ({ isElectron: false }));
-vi.mock("@tanstack/react-router", () => ({
-  Link: "a",
-  useNavigate: () => vi.fn(),
-  useCanGoBack: () => false,
-}));
-vi.mock("../../state/usage", async (original) => {
-  const actual = await original<typeof import("../../state/usage")>();
-  return {
-    ...actual,
-    useAgentUsage: (...args: Parameters<typeof actual.useAgentUsage>) =>
-      testState.accountObservation
-        ? actual.useAgentUsage(...args)
-        : {
-            merged: actual.usageReportView(
-              testState.report,
-              testState.models,
-              testState.providers,
-              testState.periods,
-              testState.hourly,
-            ),
-            overall: actual.usageReportView(testState.report),
-            report: testState.report,
-            overallReport: testState.report,
-            sections: {
-              models: testState.sectionReads.model ?? {
-                kind: "read",
-                report: testState.models,
-                stale: false,
-              },
-              providers: testState.sectionReads.provider ?? {
-                kind: "read",
-                report: testState.providers,
-                stale: false,
-              },
-              periods: testState.sectionReads.hour ?? {
-                kind: "read",
-                report: testState.periods,
-                stale: false,
-              },
-            },
-            detailPending: false,
-            detailUnavailable: false,
-            read: testState.read ?? {
-              kind: "read",
-              report: testState.report,
-              stale: testState.stale,
-            },
-            stale: testState.stale,
-            refresh: vi.fn(),
-          },
-  };
-});
-vi.mock("../../zerops/ZeropsAccountData", () => ({
-  useAccountDataOptional: () => ({ orgId: "org", retryDetail: vi.fn() }),
-  useDetailDemand: vi.fn(),
-  useProjection: (_projection: unknown, key: { owner: string } | null) => {
-    if (key === null) return { kind: "reading" };
-    const query = JSON.parse(key.owner) as UsageReportQuery;
-    const report = query.ownerUserId === null ? testState.overallReport : testState.report;
-    const section = testState.sectionReads[query.groupBy];
-    if (section !== undefined) return section;
-    return {
-      kind: "read",
-      stale: false,
-      report: { ...report, query, groups: query.groupBy === "mate" ? report?.groups : [] },
-    };
-  },
-}));
-vi.mock("../../zerops/useTaskSourceSettings", () => ({
-  useOrgTaskSource: () => ({
-    read: {
-      setting:
-        testState.limits === null
-          ? { state: "unread" }
-          : { state: "known", held: testState.limits, stale: false },
-      action: { kind: "idle" },
-      revealed: null,
-    },
-    write: vi.fn(),
-    again: vi.fn(),
-  }),
-  useAppTaskSource: () => ({
-    read: { setting: { state: "unread" }, action: { kind: "idle" }, revealed: null },
-    write: vi.fn(),
-    again: vi.fn(),
-  }),
-}));
-vi.mock("../../zerops/useUsageEnvironmentIdentities", () => ({
-  useUsageEnvironmentIdentities: () => ({
-    identities: testState.identities,
-    people: testState.people,
-    owners: testState.owners,
-    listed: true,
-    baseline: "resolved",
-    projects: new Map(
-      [...testState.identities.values()].flatMap((identity) =>
-        identity.projectId === null
-          ? []
-          : [[identity.projectId, identity.projectName ?? identity.projectId]],
-      ),
-    ),
-  }),
-}));
-vi.mock("../ui/button", () => ({ Button: "button", InlineButton: "button" }));
-vi.mock("../ui/scroll-area", () => ({ ScrollArea: "div" }));
-vi.mock("../ui/select", () => ({
-  Select: "div",
-  SelectItem: "div",
-  SelectPopup: "div",
-  SelectTrigger: "div",
-  SelectValue: "div",
-}));
-vi.mock("../ui/sidebar", () => ({ SidebarInset: "div" }));
-vi.mock("../ui/toggle-group", () => ({ Toggle: "button", ToggleGroup: "div" }));
-vi.mock("../WorkspaceBreadcrumb", () => ({
-  WorkspaceBreadcrumb: "div",
-  WorkspaceBreadcrumbItem: "div",
-  WorkspaceBreadcrumbSeparator: "span",
-}));
-vi.mock("../WorkspacePageContainer", () => ({ WorkspacePageContainer: "main" }));
-vi.mock("../WorkspacePageHeader", () => ({ WorkspacePageHeader: "header" }));
-vi.mock("./UsageProviderChart", () => ({ UsageProviderChart: "div" }));
-vi.mock("./usageProviders", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./usageProviders")>();
-  return {
-    ...actual,
-    PROVIDER_PRESENTATION: {
-      codex: { color: "white", label: "Codex", mark: "span" },
-      claude: { color: "orange", label: "Claude Code", mark: "span" },
-    },
-  };
-});
+import * as usage from "../../state/usage";
+import * as atomCommand from "../../state/use-atom-command";
+import * as accountData from "../../zerops/accountData";
+import * as sessionContext from "../../zerops/sessionContext";
+import * as capabilities from "../../zerops/usePlatformCapabilities";
+import * as identities from "../../zerops/useUsageEnvironmentIdentities";
+import * as taskSettings from "../../zerops/useTaskSourceSettings";
+import * as navigateBack from "../../hooks/useNavigateBack";
+import * as clock from "../../zerops/useNowMs";
+import * as usageFormat from "@t3tools/shared/usageFormat";
+import * as preferences from "./usagePagePreferences";
+import * as chart from "./UsageProviderChart";
+import { stubUsageControls } from "./usagePage.test-fixture";
 
 import { UsagePage } from "./UsagePage";
 import type { UsageScope } from "./usageDimensions";
 import { usageReportView } from "../../state/usage";
-import { readUsagePagePreferences } from "./usagePagePreferences";
+const { createMemoryHistory, createRootRoute, createRouter, RouterContextProvider } =
+  await vi.importActual<typeof import("@tanstack/react-router")>("@tanstack/react-router");
+const router = createRouter({ routeTree: createRootRoute(), history: createMemoryHistory() });
+const emptyAtoms = new Map();
+const registry = {
+  get: () => emptyAtoms,
+  subscribe: () => () => {},
+} as unknown as AtomRegistry.AtomRegistry;
+
+function htmlNode(node: ReactTestRendererJSON | string | null): ReactNode {
+  if (node === null || typeof node === "string") return node;
+  return createElement(node.type, node.props, ...(node.children ?? []).map(htmlNode));
+}
+
 function renderPage(scope: UsageScope = {}) {
-  return renderToStaticMarkup(<UsagePage scope={scope} onScopeChange={vi.fn()} />);
+  let tree: ReturnType<typeof create> | undefined;
+  try {
+    act(() => {
+      tree = create(
+        <RouterContextProvider router={router}>
+          <RegistryContext.Provider value={registry}>
+            <UsagePage scope={scope} onScopeChange={vi.fn()} />
+          </RegistryContext.Provider>
+        </RouterContextProvider>,
+      );
+    });
+    if (testState.provenance === "legacy-scanner") {
+      const history = tree!.root.findAll(
+        (node) => typeof node.type === "string" && node.props["aria-label"] === "Usage history",
+      )[0];
+      if (history) act(() => history.props.onValueChange(["legacy-scanner"]));
+    }
+    if (testState.breakdown !== "auto") {
+      const breakdown = tree!.root.findAll(
+        (node) =>
+          typeof node.type === "string" &&
+          node.props["aria-label"] === "Usage breakdown" &&
+          typeof node.props.onValueChange === "function",
+      )[0];
+      if (breakdown) act(() => breakdown.props.onValueChange([testState.breakdown]));
+    }
+    const result = tree!.toJSON();
+    const nodes = Array.isArray(result) ? result : [result];
+    return renderToStaticMarkup(createElement(Fragment, null, ...nodes.map(htmlNode)));
+  } finally {
+    act(() => tree?.unmount());
+  }
 }
 const bodyOf = (markup: string) => markup.match(/<tbody>(.*?)<\/tbody>/)?.[1] ?? "";
 
@@ -288,6 +186,144 @@ it("A sole contributing Mate keeps its owner, project and name in the Usage summ
   expect(renderPage()).toContain("Fern · Shop · Ada");
 });
 beforeEach(() => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal(
+    "window",
+    Object.assign(new EventTarget(), { setTimeout, clearTimeout, setInterval, clearInterval }),
+  );
+  stubUsageControls();
+  vi.spyOn(navigateBack, "useEscapeToGoBack").mockImplementation(() => {});
+  vi.spyOn(clock, "useNowMs").mockReturnValue(0);
+  vi.spyOn(atomCommand, "useAtomCommand").mockReturnValue(vi.fn());
+  vi.spyOn(preferences, "readUsagePagePreferences").mockImplementation(() => ({
+    metric: testState.metric,
+    windowDays: testState.hourly ? 1 : 7,
+  }));
+  vi.spyOn(preferences, "saveUsagePagePreferences").mockImplementation(() => {});
+  vi.spyOn(usageFormat, "makeWindow").mockImplementation(
+    (_days, _now, resolution) =>
+      ({
+        sinceDay: "2026-10-06",
+        untilDay: "2026-10-07",
+        timeZone: "UTC",
+        resolution: resolution ?? "day",
+        sinceTime: "2026-10-06T12:37:00.000Z",
+        untilTime: "2026-10-07T12:37:00.000Z",
+      }) as ReturnType<typeof usageFormat.makeWindow>,
+  );
+  vi.spyOn(capabilities, "usePlatformCapabilities").mockReturnValue({
+    manageOrganization: true,
+  } as ReturnType<typeof capabilities.usePlatformCapabilities>);
+  vi.spyOn(sessionContext, "useZeropsSessionOptional").mockReturnValue({
+    user: { id: "viewer" },
+  } as unknown as ReturnType<typeof sessionContext.useZeropsSessionOptional>);
+  vi.spyOn(accountData, "useAccountDataOptional").mockReturnValue({
+    orgId: "org",
+    retryDetail: vi.fn(),
+  } as unknown as ReturnType<typeof accountData.useAccountDataOptional>);
+  vi.spyOn(accountData, "useDetailDemand").mockImplementation(() => {});
+  vi.spyOn(accountData, "useProjection").mockImplementation(((
+    _projection: unknown,
+    key: { owner: string } | null,
+  ) => {
+    if (key === null) return { kind: "reading" };
+    const query = JSON.parse(key.owner) as UsageReportQuery;
+    const report = query.ownerUserId === null ? testState.overallReport : testState.report;
+    const section = testState.sectionReads[query.groupBy];
+    return (
+      section ?? {
+        kind: "read",
+        stale: false,
+        report: { ...report, query, groups: query.groupBy === "mate" ? report?.groups : [] },
+      }
+    );
+  }) as typeof accountData.useProjection);
+  const actualUsage = usage.useAgentUsage;
+  vi.spyOn(usage, "useAgentUsage").mockImplementation((...args) =>
+    testState.accountObservation
+      ? actualUsage(...args)
+      : ({
+          canSeeOtherPeople: true,
+          scope: args[1],
+          merged: usage.usageReportView(
+            testState.report,
+            testState.models,
+            testState.providers,
+            testState.periods,
+            testState.hourly,
+          ),
+          overall: usage.usageReportView(testState.report),
+          report: testState.report,
+          overallReport: testState.report,
+          sections: {
+            models: testState.sectionReads.model ?? {
+              kind: "read",
+              report: testState.models,
+              stale: false,
+            },
+            providers: testState.sectionReads.provider ?? {
+              kind: "read",
+              report: testState.providers,
+              stale: false,
+            },
+            periods: testState.sectionReads.hour ?? {
+              kind: "read",
+              report: testState.periods,
+              stale: false,
+            },
+          },
+          detailPending: false,
+          detailUnavailable: false,
+          read: testState.read ?? {
+            kind: "read",
+            report: testState.report,
+            stale: testState.stale,
+          },
+          stale: testState.stale,
+          refresh: vi.fn(),
+        } as ReturnType<typeof usage.useAgentUsage>),
+  );
+  vi.spyOn(taskSettings, "useOrgTaskSource").mockImplementation(
+    () =>
+      ({
+        read: {
+          setting:
+            testState.limits === null
+              ? { state: "unread" }
+              : { state: "known", held: testState.limits, stale: false },
+          action: { kind: "idle" },
+          revealed: null,
+        },
+        write: vi.fn(),
+        again: vi.fn(),
+      }) as unknown as ReturnType<typeof taskSettings.useOrgTaskSource>,
+  );
+  vi.spyOn(taskSettings, "useAppTaskSource").mockImplementation(
+    () =>
+      ({
+        read: { setting: { state: "unread" }, action: { kind: "idle" }, revealed: null },
+        write: vi.fn(),
+        again: vi.fn(),
+      }) as unknown as ReturnType<typeof taskSettings.useAppTaskSource>,
+  );
+  vi.spyOn(identities, "useUsageEnvironmentIdentities").mockImplementation(
+    () =>
+      ({
+        identities: testState.identities,
+        people: testState.people,
+        owners: testState.owners,
+        listed: true,
+        baseline: "resolved",
+        projects: new Map(
+          [...testState.identities.values()].flatMap((identity) =>
+            identity.projectId === null
+              ? []
+              : [[identity.projectId, identity.projectName ?? identity.projectId]],
+          ),
+        ),
+      }) as unknown as ReturnType<typeof identities.useUsageEnvironmentIdentities>,
+  );
+  vi.spyOn(chart, "UsageProviderChart").mockImplementation(() => <div />);
   testState.limits = null;
   testState.provenance = "live-responses";
   testState.sectionReads = {};
@@ -355,6 +391,11 @@ beforeEach(() => {
     ],
   });
 });
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
 describe("recorded HQ usage presentation", () => {
   it.each([
     { name: "selecting Alice's 100 tokens", filteredMate: "mate-a" },

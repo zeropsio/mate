@@ -17,7 +17,6 @@ const batch = createOxlintRuleBatch(RULE);
 const webFile = batch.createHarness({
   filename: "apps/web/src/zerops/useFixtureMenu.ts",
 });
-const hqFile = batch.createHarness({ filename: "apps/hq/src/fixtureStream.ts" });
 
 const KEEP = `export const keep = rememberMenuCandidates;`;
 const KEEP_ENTRY: ExceptionEntry = {
@@ -130,7 +129,7 @@ describe("t3code/no-retired-mechanism", () => {
     "reports a pattern written with its own spacing",
     `export const useCompares = (compareAsks) => useZeropsCompares( compareAsks );`,
   );
-  hqFile.invalid(
+  webFile.invalid(
     "reports a retired HQ mechanism",
     `export const segment = STRUCTURE_SEGMENT_LIFETIME;`,
   );

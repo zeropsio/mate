@@ -5,7 +5,7 @@
  */
 import type { VaultScope, VaultValue, VaultView } from "@t3tools/client-runtime/data";
 
-import { joinNames, scopeName } from "./vault.logic";
+import { joinNames, vaultName, vaultReaders } from "./vault.logic";
 
 const ACRONYMS = new Set([
   "AI",
@@ -383,10 +383,10 @@ export function vaultGroups(
 /** One part of the vault's one list: what every app gets, or one app's own values. */
 export interface VaultSection {
   readonly scope: VaultScope;
-  /** "Every app", or the app's hostname. */
+  /** The part's name: "Shared vault", "bot vault". */
   readonly title: string;
-  /** What the app is, in words ("Node.js app"); none for every app. */
-  readonly words: string | null;
+  /** What the app is and who reads the part: "accessible to every app", "Node.js app · only bot can read". */
+  readonly words: string;
   /** Its values, related ones together, each named whole ("Stripe secret key"). */
   readonly entries: ReadonlyArray<VaultEntry>;
 }
@@ -414,8 +414,10 @@ export function vaultSections(
         .filter((entry) => entryMatches(entry, query));
       return {
         scope,
-        title: scopeName(scope),
-        words: scope.kind === "shared" ? null : serviceWords(scope).words,
+        title: vaultName(scope),
+        words: [scope.kind === "shared" ? null : serviceWords(scope).words, vaultReaders(scope)]
+          .filter((part) => part !== null)
+          .join(" · "),
         entries,
       };
     })
@@ -573,6 +575,19 @@ const MANAGED_WORDS: Readonly<
   typesense: { kind: "search", words: "Search · Typesense" },
   valkey: { kind: "cache", words: "Cache · Valkey" },
 };
+
+/**
+ * A declared service type as a person reads it, with its version: `postgresql@18` → "Database ·
+ * PostgreSQL 18", `nodejs@22` → "Node.js app 22"; a type nobody named here stays as written.
+ */
+export function serviceTypeWords(serviceType: string): string {
+  const type = typeWord(serviceType) ?? serviceType;
+  const words = MANAGED_WORDS[type]?.words ?? RUNTIME_WORDS[type] ?? type;
+  const version = serviceType.split("@")[1]?.trim();
+  return version === undefined || version === "" || version === "latest"
+    ? words
+    : `${words} ${version}`;
+}
 
 /** A service as a person reads it: what it is ("Node.js app", "Database · PostgreSQL"). */
 export function serviceWords(scope: VaultScope): {

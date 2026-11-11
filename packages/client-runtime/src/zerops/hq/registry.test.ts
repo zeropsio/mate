@@ -46,7 +46,6 @@ const placements = [
 ];
 it.each([
   { state: "absent", environments: undefined, expected: placements },
-  { state: "refused", environments: { refused: "changes_not_seen" }, expected: placements },
   { state: "empty", environments: [], expected: placements },
   {
     state: "partial",

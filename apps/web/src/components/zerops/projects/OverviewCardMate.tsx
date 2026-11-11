@@ -11,17 +11,23 @@ import {
   matePoseOf,
   readZeropsMembership,
   type FlowPullRequest,
-  type GroupFlowPreview,
 } from "@t3tools/client-runtime/zerops";
+import type { MatePart } from "@t3tools/client-runtime/zerops/mateParts";
 import { mateOwnerRecords } from "@t3tools/client-runtime/zerops/mateAccess";
 import {
   candidateContainerRuns,
   type ZeropsCandidate,
 } from "@t3tools/client-runtime/zerops/candidates";
-import type { MateComing } from "@t3tools/client-runtime/data";
+import {
+  mateAdmissionSummary,
+  type AgentAdmissionAttention,
+  type MateComing,
+} from "@t3tools/client-runtime/data";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { CircleAlertIcon, GitPullRequestIcon } from "lucide-react";
 import type { ReactNode } from "react";
+import { Atom } from "effect/reactivity";
+import { useAccountOrgId, useProjection } from "~/zerops/ZeropsAccountData";
 
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { useClientSettings } from "~/hooks/useSettings";
@@ -64,8 +70,12 @@ import {
   ownerBadge,
 } from "../SidebarMateRow.logic";
 import { CardMateSlot, CardMateWrite } from "./overviewSlots";
-import { CardMate, CardMateTime } from "./ProjectCards";
+import { PlaceDoors } from "../place/PlaceDoors";
+import { MateCard } from "../system/MateCard";
+import { MateRow, MateRowTime } from "../system/MateRow";
 import { cardMateReading, cardSecondWords, type CardMateReading } from "./projectCard.logic";
+
+const NO_ADMISSION = Atom.make<AgentAdmissionAttention | null>(null);
 
 export function OverviewCardMate({
   candidate,
@@ -76,12 +86,15 @@ export function OverviewCardMate({
   flow,
   change,
   coming,
-  previews,
+  parts,
   conversationsRead,
   outsideHq,
   containerLine,
   containerActions,
   onOpen,
+  quiet = false,
+  card = false,
+  onVault,
 }: {
   readonly candidate: ZeropsCandidate;
   readonly name: string;
@@ -94,8 +107,8 @@ export function OverviewCardMate({
   readonly change: FlowPullRequest | undefined;
   /** Still coming up, or never came, as its menu row reads it (`useMateComingOf`). */
   readonly coming?: MateComing | undefined;
-  /** Its previews, one per service, where its pairs have them: doors on its row. */
-  readonly previews?: ReadonlyArray<GroupFlowPreview> | undefined;
+  /** Its parts (`mateParts`): chips on its row. */
+  readonly parts?: ReadonlyArray<MatePart> | undefined;
   readonly conversationsRead: boolean;
   readonly outsideHq: boolean;
   /** What its container says first, where it says something: coming up, a failed connect. */
@@ -103,6 +116,19 @@ export function OverviewCardMate({
   /** A verb its container needs (Start, Remove). */
   readonly containerActions: ReactNode;
   readonly onOpen: (() => void) | undefined;
+  /**
+   * Its card's Waiting on you says what it waits on the viewer for: the row is never lifted and
+   * carries no verb of its own, only its words and its time.
+   */
+  readonly quiet?: boolean;
+  /**
+   * On its project's own page: the same reading as a card in the Mates grid (`MateCard`) — its
+   * face at 64 px, and its change's *Review* at the card's foot where the row has it at the
+   * change's end.
+   */
+  readonly card?: boolean;
+  /** Opens the page's vault drawer on this Mate's own values: its card's Vault door. */
+  readonly onVault?: (() => void) | undefined;
 }) {
   const projectId = candidate.project.id;
   // What its row in the menu reads (`useProjectMateActivity`): HQ's word, or its socket's.
@@ -164,13 +190,24 @@ export function OverviewCardMate({
   const tags = readZeropsMembership(candidate.project);
   const signers = people?.everSignedIn;
   const records = mateOwnerRecords(candidate.project, people?.owned);
+  // Whether it can run, as its row and its composer say it (`mateAdmissionSummary`).
+  const orgId = useAccountOrgId();
+  const admission = useProjection(
+    mateAdmissionSummary,
+    orgId === null
+      ? null
+      : { orgId, projectId: candidate.project.id, viewerSubject: viewer, mateName: name },
+    NO_ADMISSION,
+  );
   const seated = mateOwnerView({
     owner,
     records,
+    admission,
     asked: view.ask !== undefined,
     hqSigners:
       signers === undefined ? undefined : Object.keys(signers).length > 0 ? "some" : "none",
     overview: overviewInHq,
+    ownerUserId: people?.owner?.userId,
     standUpBy: tags.standUp?.by,
     madeBy: tags.madeBy,
     viewer,
@@ -209,7 +246,6 @@ export function OverviewCardMate({
         ? sentAsk.text
         : undefined,
     deleting,
-    finishing: false,
     read: conversationsRead,
     asker: mateAsker(owner),
   });
@@ -220,7 +256,6 @@ export function OverviewCardMate({
     view,
     askLine,
     deleting,
-    finishing: false,
     outsideHq,
     mine: people?.waitsOnViewer,
     // A colleague's Mate waiting on its person says whom it waits on, never their question.
@@ -230,7 +265,7 @@ export function OverviewCardMate({
       !owner.isViewer &&
       activity !== undefined &&
       (activity.kind === "approval" || activity.kind === "input" || activity.kind === "planReady")
-        ? owner.name.split(" ")[0]
+        ? owner.called
         : undefined,
     asks:
       activity !== undefined &&
@@ -251,9 +286,9 @@ export function OverviewCardMate({
   // Its time: a free automated Mate's, when its last task ended (`mateRowTime`).
   const time = mateRowTime({ slot: view.slot, at: activity?.at, automated });
   // A Mate still coming up, or that never came, says only that: nothing of it is lifted.
-  const reading: CardMateReading =
+  const said =
     view.coming !== undefined
-      ? { text: undefined, tone: "muted", lift: undefined }
+      ? ({ text: undefined, tone: "muted", lift: undefined } satisfies CardMateReading)
       : cardMateReading({
           view,
           status: activity?.kind,
@@ -268,6 +303,7 @@ export function OverviewCardMate({
             pausedUntil: (at) => formatShortTimestamp(at, timestampFormat),
           }),
         });
+  const reading: CardMateReading = quiet ? { ...said, lift: undefined } : said;
   const askMate = useAskMate();
   const askToFix = useAskMateToFix();
   const openReview = useOpenReview();
@@ -286,7 +322,7 @@ export function OverviewCardMate({
   // empty. While its line says something else, a step on its way, the Review keeps the time's
   // place: a change never goes without its button.
   const review =
-    change === undefined || groupId === undefined || deleting || outsideHq
+    quiet || change === undefined || groupId === undefined || deleting || outsideHq
       ? undefined
       : { mine: people?.waitsOnViewer !== false };
   const marked =
@@ -304,75 +340,125 @@ export function OverviewCardMate({
         Review
       </button>
     );
+  const write =
+    reading.lift === undefined ? null : (
+      <CardMateWrite
+        environmentId={candidate.group === "connected" ? candidate.environmentId : undefined}
+        lift={reading.lift}
+        name={name}
+        onAsk={(text) => {
+          askMate(projectId, text);
+        }}
+        onFix={() => {
+          askToFix(projectId, {
+            what: `${name}'s last run stopped on an error`,
+            error: activity?.errorLine,
+            ask: "Find out why, fix it, and carry on.",
+          });
+        }}
+        onOpen={() => onOpen?.()}
+        onReview={openChange}
+        threadId={activity?.threadId}
+      />
+    );
+  const faceDrawn = (
+    <>
+      <MateFace
+        cues={face.cues}
+        greets
+        known={face.known}
+        restarting={face.restarting}
+        shape={shape}
+        size={card ? 64 : 32}
+        state={view.face}
+        tint={tint}
+      />
+      {badge === null ? null : (
+        <MateOwnerMark className={card ? "mc-owner" : "ov-mate-owner"} seat={badge} />
+      )}
+    </>
+  );
+  const line =
+    // Coming up, in its menu row's words first: one state, one word on every surface.
+    view.coming !== undefined ? (
+      <CardComingLine coming={view.coming} />
+    ) : (
+      (containerLine ??
+      (marked && card ? (
+        // A card's line wraps: the change's mark before its title.
+        <span className="mc-change" data-zerops-surface="card-mate-change">
+          <GitPullRequestIcon aria-hidden="true" className="menu-change-mark" />
+          {reading.text}
+        </span>
+      ) : marked ? (
+        <span className="ov-mate-change" data-zerops-surface="card-mate-change">
+          <GitPullRequestIcon aria-hidden="true" className="menu-change-mark" />
+          <span className="ov-mate-change-title">{reading.text}</span>
+          {reviewButton}
+        </span>
+      ) : undefined))
+    );
+  const mark = candidate.project.hq?.mate?.automated === true ? <MateAutomatedMark /> : undefined;
+  const stamp = (
+    <MateRowTime dot={view.dot}>
+      <CardMateSlot at={time.at} slot={time.slot} />
+    </MateRowTime>
+  );
+  if (card) {
+    // On its project's page (`MateCard`): its previews are behind its Sites door, its vault is
+    // beside it, and a change of its that waits is a line of state — the page's Changes list has
+    // the change and its Review, once on the page. What only it can answer (a plan, a question,
+    // a Start) keeps its buttons.
+    const answers = reading.lift?.kind === "review" ? null : write;
+    const standing = view.coming === undefined && !deleting && !outsideHq;
+    return (
+      <MateCard
+        actions={answers ?? containerActions}
+        changes={
+          review === undefined || marked
+            ? undefined
+            : { count: Math.max(1, inReview), mine: review.mine }
+        }
+        doors={
+          standing ? (
+            <PlaceDoors
+              look="card"
+              name={name}
+              sites={
+                groupId === undefined || parts === undefined || parts.length === 0
+                  ? undefined
+                  : { groupId, mateProjectId: projectId }
+              }
+              vault={onVault === undefined ? undefined : { onOpen: onVault }}
+            />
+          ) : undefined
+        }
+        face={faceDrawn}
+        line={line}
+        mark={mark}
+        name={name}
+        onOpen={onOpen}
+        reading={answers === null ? { ...reading, lift: undefined } : reading}
+        time={stamp}
+      />
+    );
+  }
   return (
-    <CardMate
-      actions={
-        reading.lift === undefined ? (
-          containerActions
-        ) : (
-          <CardMateWrite
-            environmentId={candidate.group === "connected" ? candidate.environmentId : undefined}
-            lift={reading.lift}
-            name={name}
-            onAsk={(text) => {
-              askMate(projectId, text);
-            }}
-            onFix={() => {
-              askToFix(projectId, {
-                what: `${name}'s last run stopped on an error`,
-                error: activity?.errorLine,
-                ask: "Find out why, fix it, and carry on.",
-              });
-            }}
-            onOpen={() => onOpen?.()}
-            onReview={openChange}
-            threadId={activity?.threadId}
-          />
-        )
-      }
-      face={
-        <>
-          <MateFace
-            cues={face.cues}
-            greets
-            known={face.known}
-            restarting={face.restarting}
-            shape={shape}
-            size={32}
-            state={view.face}
-            tint={tint}
-          />
-          {badge === null ? null : <MateOwnerMark className="ov-mate-owner" seat={badge} />}
-        </>
-      }
-      line={
-        // Coming up, in its menu row's words first: one state, one word on every surface.
-        view.coming !== undefined ? (
-          <CardComingLine coming={view.coming} />
-        ) : (
-          (containerLine ??
-          (marked ? (
-            <span className="ov-mate-change" data-zerops-surface="card-mate-change">
-              <GitPullRequestIcon aria-hidden="true" className="menu-change-mark" />
-              <span className="ov-mate-change-title">{reading.text}</span>
-              {reviewButton}
-            </span>
-          ) : undefined))
-        )
-      }
-      previews={previews}
-      mark={candidate.project.hq?.mate?.automated === true ? <MateAutomatedMark /> : undefined}
+    <MateRow
+      actions={write ?? containerActions}
+      face={faceDrawn}
+      line={line}
+      mark={mark}
       name={name}
       onOpen={onOpen}
+      parts={parts}
       reading={reading}
       time={
-        reading.lift?.kind === "review" ? null : reviewButton !== null && !marked ? (
-          reviewButton
-        ) : (
-          <CardMateTime dot={view.dot}>
-            <CardMateSlot at={time.at} slot={time.slot} />
-          </CardMateTime>
-        )
+        reading.lift?.kind === "review"
+          ? null
+          : reviewButton !== null && !marked
+            ? reviewButton
+            : stamp
       }
     />
   );

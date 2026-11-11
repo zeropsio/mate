@@ -1,7 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off -- wire-level fidelity tests use real loopback sockets.
 import { describe, it, expect } from "vite-plus/test";
 import { WebSocket } from "ws";
-import { emptyWorld } from "../../../../hq/test/harness/zeropsFake.ts";
+import { emptyWorld } from "../harness/fakeWorld.ts";
 import { serve, deadline } from "../harness/http.ts";
 import { ZeropsFake } from "./zerops.ts";
 

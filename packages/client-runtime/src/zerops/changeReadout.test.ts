@@ -1,8 +1,13 @@
-import type { ChangeReview, HqChange } from "@t3tools/shared/hqChanges";
+import type { ChangeReview, HqChange, Mergeability } from "@t3tools/shared/hqChanges";
 import type { GitCompare } from "@t3tools/shared/hqGitBrowse/compare";
 import { describe, expect, it } from "vite-plus/test";
 
-import { changeReadoutOfCompare, changeReadoutOfRecord } from "./changeReadout.ts";
+import {
+  changeCommitRows,
+  changeReadoutJudged,
+  changeReadoutOfCompare,
+  changeReadoutOfRecord,
+} from "./changeReadout.ts";
 
 const MAIN = "a".repeat(40);
 const BASE = "b".repeat(40);
@@ -68,6 +73,13 @@ describe("changeReadoutOfRecord: a change's review as HQ recorded it", () => {
       conflict: ["src/a.ts"],
       behind: true,
     });
+  });
+
+  it.each([
+    ["the description its Mate wrote", "Adds a **/status** page.", "Adds a **/status** page."],
+    ["none where its Mate wrote none", "  \n", undefined],
+  ])("A change's review says what it does from its own record: %s", (_case, body, description) => {
+    expect(changeReadoutOfRecord({ ...change, body }, review()).description).toBe(description);
   });
 
   it("A file's status letter is the one HQ recorded, and none where it recorded none", () => {
@@ -181,5 +193,87 @@ describe("changeReadoutOfCompare: files HQ never recorded, read on the person's 
       // Its commits stay what HQ recorded: the Commits section reads them on its own press.
       commitsKnown: false,
     });
+  });
+});
+
+describe("changeReadoutJudged: HQ's judgement now, where its record has none yet", () => {
+  const recorded: ChangeReview = {
+    mergeBase: BASE,
+    files: [],
+    filesTruncated: false,
+    conflictPaths: [],
+    commits: [],
+    commitsTruncated: false,
+  };
+  const CLEAN: Mergeability = { kind: "clean" };
+  it.each([
+    ["a recorded verdict stands", "conflict", CLEAN, "conflicting", []],
+    ["unrecorded, a clean judgement merges", "unknown", CLEAN, "mergeable", []],
+    [
+      "unrecorded, a conflict names its files",
+      "unknown",
+      { kind: "conflict", paths: ["src/a.ts"] },
+      "conflicting",
+      ["src/a.ts"],
+    ],
+    ["unrecorded, nothing pushed is empty", "unknown", { kind: "no_change" }, "empty", []],
+    ["unrecorded and not judged yet, it is still checked", "unknown", undefined, "checking", []],
+  ] as const)(
+    "A change's review says whether it merges from HQ's record, else from HQ's judgement of the shown head and main: %s",
+    (_case, stored, judged: Mergeability | undefined, mergeability, conflict) => {
+      const read = changeReadoutJudged(
+        changeReadoutOfRecord({ ...change, mergeability: stored }, recorded),
+        judged,
+      );
+      expect(read).toMatchObject({ mergeability, conflict });
+    },
+  );
+});
+
+describe("changeCommitRows: HQ's merge of main reads as HQ's push", () => {
+  const MATE_COMMIT = {
+    sha: "1".repeat(40),
+    subject: "Add the search box",
+    at: "2026-10-02T09:10:00.000Z",
+  };
+  const HQ_MERGE = {
+    sha: "2".repeat(40),
+    subject: "Merge main as #3 landed it",
+    at: "2026-10-02T09:29:58.000Z",
+  };
+  const corePush = {
+    at: "2026-10-02T09:30:00.000Z",
+    from: MATE_COMMIT.sha,
+    head: HQ_MERGE.sha,
+    landed: 3,
+    squash: "3".repeat(40),
+  };
+
+  it.each([
+    [
+      "the merged change known by its title",
+      { corePush, landedTitle: "Add a /status page" },
+      "HQ brought main in after “Add a /status page” merged",
+    ],
+    [
+      "the merged change not read",
+      { corePush, landedTitle: undefined },
+      "HQ brought main in after #3 merged",
+    ],
+  ])(
+    "A change HQ brought main into lists HQ's merge as HQ's push after %s, at its time",
+    (_name, input, words) => {
+      expect(changeCommitRows({ commits: [HQ_MERGE, MATE_COMMIT], ...input })).toEqual([
+        { sha: HQ_MERGE.sha, subject: words, at: corePush.at },
+        MATE_COMMIT,
+      ]);
+    },
+  );
+
+  it("A change HQ never pushed to lists its commits as they are", () => {
+    const commits = [HQ_MERGE, MATE_COMMIT];
+    expect(changeCommitRows({ commits, corePush: undefined, landedTitle: undefined })).toEqual(
+      commits,
+    );
   });
 });

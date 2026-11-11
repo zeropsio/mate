@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
+import { DEFAULT_ZEROPS_GUI_URL } from "./gui.ts";
 import {
-  DEFAULT_ZEROPS_GUI_URL,
   ZEROPS_HANDOVER_APP_MODE,
   ZEROPS_HANDOVER_CALLBACK_PATH,
   buildZeropsAuthorizeUrl,

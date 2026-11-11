@@ -10,7 +10,7 @@ import { parseAttachmentUrl } from "@t3tools/shared/hqChanges";
 import { Atom } from "effect/reactivity";
 import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 
-import { useAccountHq } from "./accountHq";
+import { configuredHq } from "./accountHq";
 import { useAccountDataOptional } from "./ZeropsAccountData";
 
 export type ChangePictureState =
@@ -34,11 +34,10 @@ const INVALID = Atom.make({
 export function useHqPictureSource(): ChangePictureSource | undefined {
   const account = useAccountDataOptional();
   const orgId = account?.orgId ?? null;
-  const { hq } = useAccountHq(orgId ?? undefined);
-  const address = hq.kind === "official" ? hq.address : null;
+  const { address } = configuredHq();
   return useMemo(
     () =>
-      account === null || orgId === null || address === null
+      account === null || orgId === null
         ? undefined
         : {
             data: account.data,

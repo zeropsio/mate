@@ -9,7 +9,13 @@
  * Each part paints in its final shape while it is read (`IntakeRoom`): nothing it reads moves what
  * the person is about to press.
  */
-import type { AppSetting, OrgSetting, SettingValue } from "@t3tools/client-runtime/data";
+import { couldntRead } from "@t3tools/client-runtime/zerops/hq";
+import {
+  TASK_SOURCES_UNSUPPORTED,
+  type AppSetting,
+  type OrgSetting,
+  type SettingValue,
+} from "@t3tools/client-runtime/data";
 import type { HqDiscordView, HqSlackView, HqTaskLimitsView } from "@t3tools/shared/hqIntake";
 import {
   automatedModelOf,
@@ -20,6 +26,7 @@ import { CpuIcon, TimerIcon, WalletIcon } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
+import { WaitLine } from "../zerops/WaitLine";
 import { useOrgTaskSource, type TaskSourceControls } from "~/zerops/useTaskSourceSettings";
 
 import { Badge } from "../ui/badge";
@@ -27,7 +34,16 @@ import { Button, InlineButton } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Radio, RadioGroup } from "../ui/radio-group";
-import { HeldRoom, IntakeRoom, pressWords, TextField, WITHHELD, working } from "./automationParts";
+import {
+  HeldRoom,
+  IntakeRoom,
+  pressWords,
+  settingDay,
+  TextField,
+  WITHHELD,
+  working,
+} from "./automationParts";
+import { connectedByLine, type NameOf, NOBODY_NAMED } from "./automationSettings.logic";
 import {
   AppChannelView,
   AppSchedulesView,
@@ -57,7 +73,6 @@ import {
 import { SettingsRow } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import {
-  allowlistAfter,
   budgetLine,
   connectKeyProblem,
   connectKeysReady,
@@ -90,7 +105,7 @@ interface App {
  * the limits on each task. Which channel, webhooks and schedules feed a project's automated Mates
  * is set on that project's page.
  */
-export function TaskSourcesSettings() {
+export function TaskSourcesSettings({ nameOf }: { readonly nameOf: NameOf }) {
   const slack = useOrgTaskSource("hqSlack");
   const discord = useOrgTaskSource("hqDiscord");
   if (taskSourcesUnsupported([slack.read.setting, discord.read.setting]))
@@ -101,8 +116,8 @@ export function TaskSourcesSettings() {
     );
   return (
     <>
-      <SlackSettingsView controls={slack} />
-      <DiscordSettingsView controls={discord} />
+      <SlackSettingsView controls={slack} nameOf={nameOf} />
+      <DiscordSettingsView controls={discord} nameOf={nameOf} />
     </>
   );
 }
@@ -127,31 +142,41 @@ export function TaskSourcesUnsupported() {
       className="text-sm text-muted-foreground"
       data-zerops-surface="settings-task-sources-unsupported"
     >
-      Update HQ to take tasks from Slack, Discord, webhooks and schedules.
+      {TASK_SOURCES_UNSUPPORTED}
     </p>
   );
 }
 
 // ── the parts every section shares ──────────────────────────────────────────────────────────
 
-const TASK_SOURCES_UPDATE = "Update HQ to take tasks from Slack, Discord, webhooks and schedules.";
+/** Who connected it and when, as HQ holds it; nothing from an older HQ. */
+function ConnectedBy({ line }: { readonly line: string | null }) {
+  return line === null ? null : <p className="text-xs text-muted-foreground">{line}</p>;
+}
 
 /**
  * What a section's status line says of its setting: its own line once known, else that it is
  * read, refused or failed — there from the first frame, so the line never appears under it.
  */
-function statusOf<T>(setting: SettingValue<T>, line: (value: T) => string): string {
+function statusOf<T>(
+  setting: SettingValue<T>,
+  line: (value: T) => string | null,
+  what: string,
+): ReactNode {
   switch (setting.state) {
     case "known":
       return line(setting.held);
     case "failed":
-      return setting.words;
+      return couldntRead(what, setting.words);
     case "withheld":
       return WITHHELD;
     default:
-      return "Reading…";
+      return READING;
   }
 }
+
+/** A setting still read, in a row's status line: bounded by HQ's own deadline on each read. */
+const READING = <WaitLine inline text="Reading…" />;
 
 /**
  * A connection's row opened by its press, folded again once it disconnects — and once it connects,
@@ -192,6 +217,7 @@ function sourceLine<T>(
   setting: SettingValue<T>,
   purpose: string,
   connected: (held: T) => string,
+  what: string,
 ): ReactNode {
   const problem = taskSourceProblem(read.action);
   if (problem !== null)
@@ -204,15 +230,15 @@ function sourceLine<T>(
     const said = connected(setting.held);
     return said === "Not connected" ? purpose : said;
   }
-  if (setting.state === "failed") return setting.words;
+  if (setting.state === "failed") return couldntRead(what, setting.words);
   if (setting.state === "withheld") return WITHHELD;
-  if (setting.state === "unsupported") return TASK_SOURCES_UPDATE;
+  if (setting.state === "unsupported") return TASK_SOURCES_UNSUPPORTED;
   return purpose;
 }
 
 /**
  * A connection's one press: *Connect* while it is not — a quiet one, as these sources are optional,
- * its steps carrying their own Cancel — *Manage* once it is, *Read again* where HQ failed; and
+ * its steps carrying their own Cancel — *Manage* once it is, *Try again* where HQ failed; and
  * while it is read, *Connect*'s room, held unseen so nothing moves as it lands.
  */
 function SourceAction({
@@ -234,7 +260,7 @@ function SourceAction({
   if (setting.state === "failed")
     return (
       <Button onClick={again} size="sm" variant="secondary">
-        Read again
+        Try again
       </Button>
     );
   if (connected === null)
@@ -273,7 +299,7 @@ function AppRows({
     <ul className="grid gap-3">
       {apps === null ? (
         <li className="grid gap-2">
-          <p className="text-sm font-medium text-muted-foreground">Reading…</p>
+          <WaitLine text="Reading…" />
           <IntakeRoom>{null}</IntakeRoom>
         </li>
       ) : (
@@ -294,9 +320,12 @@ export function SlackSettingsView({
   controls,
   manifest,
   channels,
+  nameOf = NOBODY_NAMED,
   defaultOpen = false,
 }: {
   readonly controls: Controls<"hqSlack">;
+  /** A member's name by Zerops user id, as the organization's member list names them. */
+  readonly nameOf?: NameOf;
   /** The manifest's read, where the harness hands it; else read while the steps show. */
   readonly manifest?: Controls<"hqSlackManifest">;
   /** The bot's channels' read, where the harness hands it; else read while it is managed. */
@@ -335,6 +364,7 @@ export function SlackSettingsView({
             setting,
             "Mention Mate in a project's channel: the thread becomes the task, and Mate answers there.",
             slackLine,
+            "the Slack app",
           )
         )
       }
@@ -363,6 +393,7 @@ export function SlackSettingsView({
           }
           warning="Disconnecting stops every project taking tasks from Slack until it connects again."
         >
+          <ConnectedBy line={connectedByLine(view, nameOf, settingDay)} />
           <AddressField
             hint="Where Slack sends what happens in the workspace: Event Subscriptions › Request URL."
             label="Request URL"
@@ -398,17 +429,18 @@ function SlackChannelsField({ channels }: { readonly channels: Controls<"hqSlack
         {setting.state === "known"
           ? slackChannelsLine(setting.held)
           : setting.state === "failed"
-            ? setting.words
-            : "Reading…"}
+            ? couldntRead("the bot's channels", setting.words)
+            : READING}
         {setting.state === "known" || setting.state === "failed" ? (
           <>
             {" "}
+            {/* Known: the bot may have joined a channel in Slack since; failed: the read again. */}
             <InlineButton
               onClick={() => {
                 channels.again();
               }}
             >
-              Look again
+              {setting.state === "known" ? "Check again" : "Try again"}
             </InlineButton>
           </>
         ) : null}
@@ -626,9 +658,12 @@ const DISCORD_ENDPOINT = "Interactions Endpoint URL";
 
 export function DiscordSettingsView({
   controls,
+  nameOf = NOBODY_NAMED,
   defaultOpen = false,
 }: {
   readonly controls: Controls<"hqDiscord">;
+  /** A member's name by Zerops user id, as the organization's member list names them. */
+  readonly nameOf?: NameOf;
   /** Its press's part opened from the start: the harness's and a test's. */
   readonly defaultOpen?: boolean;
 }) {
@@ -652,13 +687,12 @@ export function DiscordSettingsView({
       line={sourceLine(
         read,
         setting,
-        "Allowed people type /mate task in a project's channel, and /mate reply in its thread.",
+        "People who linked their Discord type /mate task in a project's channel, and /mate reply in its thread.",
         (held) =>
-          !held.connected
-            ? "Not connected"
-            : held.allowed.length === 0
-              ? "Connected · nobody may start a task yet"
-              : `Connected · ${held.allowed.length} ${held.allowed.length === 1 ? "person may" : "people may"} start tasks`,
+          held.connected
+            ? "People who linked their Discord start tasks with /mate task"
+            : "Not connected",
+        "the Discord application",
       )}
       mark={<DiscordMark />}
       name="Discord"
@@ -681,7 +715,8 @@ export function DiscordSettingsView({
           }
           warning="Disconnecting stops every project taking tasks from Discord."
         >
-          <DiscordConnected controls={controls} view={view} />
+          <ConnectedBy line={connectedByLine(view, nameOf, settingDay)} />
+          <DiscordConnected view={view} />
         </ManagePanel>
       ) : (
         <DiscordSteps
@@ -790,27 +825,7 @@ function DiscordSteps({
   );
 }
 
-function DiscordConnected({
-  controls,
-  view,
-}: {
-  readonly controls: Controls<"hqDiscord">;
-  readonly view: HqDiscordView;
-}) {
-  const [adding, setAdding] = useState("");
-  const hintId = useId();
-  const [refusal, setRefusal] = useState<string | null>(null);
-  const busy = working(controls.read.action);
-  const change = (next: Parameters<typeof allowlistAfter>[1]) => {
-    const after = allowlistAfter(view.allowed, next);
-    if ("error" in after) {
-      setRefusal(after.error);
-      return false;
-    }
-    setRefusal(null);
-    controls.write({ kind: "discord-allow", userIds: after.userIds });
-    return true;
-  };
+function DiscordConnected({ view }: { readonly view: HqDiscordView }) {
   return (
     <>
       <AddressField
@@ -826,57 +841,13 @@ function DiscordConnected({
           </div>
         </div>
       )}
-      <div className="grid gap-1.5" data-zerops-surface="settings-discord-allowed">
+      <div className="grid gap-1.5" data-zerops-surface="settings-discord-askers">
         <p className="text-sm font-medium text-foreground">Who may start and steer tasks</p>
-        {view.allowed.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
-            Nobody may start a task yet: add the Discord user IDs of who may.
-          </p>
-        ) : null}
-        {view.allowed.length === 0 ? null : (
-          <ul className="grid divide-y divide-border rounded-md border border-border bg-background">
-            {view.allowed.map((id) => (
-              <li className="flex items-center justify-between gap-2 py-1 ps-2.5 pe-1" key={id}>
-                <code className="min-w-0 truncate font-mono text-xs text-foreground">{id}</code>
-                <Button
-                  disabled={busy}
-                  onClick={() => {
-                    change({ remove: id });
-                  }}
-                  size="sm"
-                  variant="ghost"
-                >
-                  Remove
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
-        <form
-          className="flex items-end gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (change({ add: adding })) setAdding("");
-          }}
-        >
-          <TextField
-            describedBy={hintId}
-            label="Discord user ID"
-            onChange={setAdding}
-            value={adding}
-          />
-          <Button disabled={busy || adding.trim().length === 0} size="sm" type="submit">
-            {pressWords(controls.read.action, ["discord-allow"], "Add")}
-          </Button>
-        </form>
-        <p className="text-xs text-muted-foreground" id={hintId}>
-          With Developer Mode on (User Settings › Advanced), right-click a person › Copy User ID.
+        {/* HQ's gate: only a Discord user who linked their account to their Zerops person asks. */}
+        <p className="text-xs text-muted-foreground">
+          Anyone in this organization who linked their Discord. Someone who has not gets a private
+          link the first time they type /mate task; /mate link sends one at any time.
         </p>
-        {refusal === null ? null : (
-          <p className="text-xs text-destructive-foreground" role="alert">
-            {refusal}
-          </p>
-        )}
       </div>
     </>
   );
@@ -985,13 +956,14 @@ export function TaskLimitsView({ controls }: { readonly controls: Controls<"hqTa
         held === null ? (
           setting.state === "failed" ? (
             <Button onClick={again} size="sm" variant="secondary">
-              Read again
+              Try again
             </Button>
           ) : (
             <HeldRoom template={<LimitsFields cost="" minutes="" />}>{null}</HeldRoom>
           )
         ) : (
           <form
+            className="max-sm:w-full"
             onSubmit={(event) => {
               event.preventDefault();
               const typed = readLimits(shownMinutes, shownCost);
@@ -1025,7 +997,7 @@ export function TaskLimitsView({ controls }: { readonly controls: Controls<"hqTa
         )
       }
       id={searchableSetting("automation-limits").id}
-      line={statusOf(setting, limitsLine)}
+      line={statusOf(setting, limitsLine, "the limits per task")}
       mark={<TimerIcon className="size-5" />}
       name="Limits per task"
       surface="settings-task-limits"
@@ -1063,53 +1035,59 @@ export function MonthlyBudgetView({ controls }: { readonly controls: Controls<"h
   return (
     <IntegrationSetting
       control={
-        <form
-          className="flex items-center gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (held === null) return;
-            const budget = readBudget(shown);
-            if ("error" in budget) {
-              setRefusal(budget.error);
-              return;
-            }
-            setRefusal(null);
-            save.send();
-            write({
-              kind: "task-limits",
-              limits: {
-                minutes: held.minutes,
-                costUsd: held.costUsd,
-                monthlyBudgetUsd: budget.budgetUsd,
-              },
-            });
-          }}
-        >
-          <Label htmlFor={fieldId}>USD a month</Label>
-          <div className="w-24">
-            <Input
-              disabled={held === null}
-              id={fieldId}
-              inputMode="decimal"
-              onChange={(event) => {
-                setTyped(event.target.value);
-              }}
-              placeholder="No budget"
-              size="sm"
-              value={shown}
-            />
-          </div>
-          <Button
-            disabled={held === null || sent || working(read.action) || typed === null}
-            size="sm"
-            type="submit"
-            variant="secondary"
-          >
-            <SaveWords sent={sent} />
+        setting.state === "failed" ? (
+          <Button onClick={controls.again} size="sm" variant="secondary">
+            Try again
           </Button>
-        </form>
+        ) : (
+          <form
+            className="flex items-center gap-2 max-sm:w-full"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (held === null) return;
+              const budget = readBudget(shown);
+              if ("error" in budget) {
+                setRefusal(budget.error);
+                return;
+              }
+              setRefusal(null);
+              save.send();
+              write({
+                kind: "task-limits",
+                limits: {
+                  minutes: held.minutes,
+                  costUsd: held.costUsd,
+                  monthlyBudgetUsd: budget.budgetUsd,
+                },
+              });
+            }}
+          >
+            <Label htmlFor={fieldId}>USD a month</Label>
+            <div className="w-24 max-sm:w-auto max-sm:min-w-16 max-sm:flex-1">
+              <Input
+                disabled={held === null}
+                id={fieldId}
+                inputMode="decimal"
+                onChange={(event) => {
+                  setTyped(event.target.value);
+                }}
+                placeholder="No budget"
+                size="sm"
+                value={shown}
+              />
+            </div>
+            <Button
+              disabled={held === null || sent || working(read.action) || typed === null}
+              size="sm"
+              type="submit"
+              variant="secondary"
+            >
+              <SaveWords sent={sent} />
+            </Button>
+          </form>
+        )
       }
-      line={held === null ? "Reading…" : budgetLine(held)}
+      line={statusOf(setting, budgetLine, "the monthly budget")}
       mark={<WalletIcon className="size-5" />}
       name="Monthly budget"
       surface="settings-monthly-budget"
@@ -1168,7 +1146,7 @@ export function AutomatedModelView({
     ) : save.sent ? (
       "Saving…"
     ) : currentOffer === undefined ? (
-      statusOf(setting, () => "")
+      statusOf(setting, () => "", "the model automated Mates run")
     ) : (
       `${currentOffer.name} · ${modelPriceWords(currentOffer)}`
     );
@@ -1298,32 +1276,37 @@ function LimitsFields({
   readonly children?: ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-2">
-      <Label htmlFor={minutesId}>Minutes</Label>
-      <div className="w-16">
-        <Input
-          id={minutesId}
-          inputMode="numeric"
-          onChange={(event) => {
-            onMinutes?.(event.target.value);
-          }}
-          size="sm"
-          value={minutes}
-        />
-      </div>
-      <Label htmlFor={costId}>Cost, USD</Label>
-      <div className="w-24">
-        <Input
-          id={costId}
-          inputMode="decimal"
-          onChange={(event) => {
-            onCost?.(event.target.value);
-          }}
-          placeholder="No limit"
-          size="sm"
-          value={cost}
-        />
-      </div>
+    // On a phone the two fields share the row's width, each beside its own label; Save wraps under.
+    <div className="flex items-center gap-2 max-sm:w-full max-sm:flex-wrap">
+      <span className="flex items-center gap-2 whitespace-nowrap max-sm:flex-1">
+        <Label htmlFor={minutesId}>Minutes</Label>
+        <div className="w-16 max-sm:w-auto max-sm:min-w-12 max-sm:flex-1">
+          <Input
+            id={minutesId}
+            inputMode="numeric"
+            onChange={(event) => {
+              onMinutes?.(event.target.value);
+            }}
+            size="sm"
+            value={minutes}
+          />
+        </div>
+      </span>
+      <span className="flex items-center gap-2 whitespace-nowrap max-sm:flex-1">
+        <Label htmlFor={costId}>Cost, USD</Label>
+        <div className="w-24 max-sm:w-auto max-sm:min-w-16 max-sm:flex-1">
+          <Input
+            id={costId}
+            inputMode="decimal"
+            onChange={(event) => {
+              onCost?.(event.target.value);
+            }}
+            placeholder="No limit"
+            size="sm"
+            value={cost}
+          />
+        </div>
+      </span>
       {children ?? (
         <Button size="sm" variant="secondary">
           Save

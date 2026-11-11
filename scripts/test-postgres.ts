@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off globalDate:off -- host-only test process supervisor protocol.
+// @effect-diagnostics nodeBuiltinImport:off globalJsonInEffect:off globalDate:off -- host-only test process supervisor protocol.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeNet from "node:net";
@@ -8,6 +8,7 @@ import * as NodeReadline from "node:readline";
 import * as NodeURL from "node:url";
 import { testRamdiskRoot } from "./lib/test-scratch-root.ts";
 import { acquireProcessLock } from "./test-process-lock.ts";
+import { acquirePostgresAdmission, sharedDaemonEnvironment } from "./test-postgres-admission.ts";
 
 /**
  * Shared by worktrees by default; MATE_TEST_PG_HOME isolates protocol testing from their leases.
@@ -191,9 +192,13 @@ export function startCluster(
     readonly start: () => void;
     readonly report: (line: string) => void;
     readonly alive?: (pid: number) => boolean;
+    /** Only the exclusive supervisor guard may discard a cluster with no surviving leases. */
+    readonly discardRetained?: boolean;
   },
 ): void {
-  if (prepareClusterDirectory(data, io.report) === "initialise") {
+  const prepared = prepareClusterDirectory(data, io.report);
+  if (io.discardRetained) NodeFS.rmSync(data, { recursive: true, force: true });
+  if (prepared === "initialise" || io.discardRetained) {
     io.initialise();
     io.start();
     return;
@@ -215,39 +220,44 @@ export function startCluster(
   io.start();
 }
 
-/** initdb's own databases and roles (PostgreSQL's FirstNormalObjectId): everything above is a run's. */
-const FIRST_RUN_OID = 16384;
-
 /**
- * No lease survives the supervisor that granted it, so when one starts every database and role a
- * run made belongs to a dead run, whatever it is named: a killed lease's databases, one a run made
- * beside its lease, and roles named apart from any database. Drop them all; keep initdb's own.
+ * The file in a per-checkout test PostgreSQL home naming the checkout it serves. mate-hq's
+ * `conformance/scripts/test-ramdisk.ts` (`recordCheckout`) writes it; z3's own home is shared by
+ * every z3 checkout and carries none.
  */
-export function reclaimDeadRuns(sql: (query: string) => string): void {
-  const made = (catalog: "pg_database" | "pg_roles", column: "datname" | "rolname") =>
-    sql(`SELECT oid, quote_ident(${column}) FROM ${catalog}`)
-      .split("\n")
-      .filter(Boolean)
-      .map((row) => row.split("|") as [string, string])
-      .filter(([oid]) => Number(oid) >= FIRST_RUN_OID)
-      .map(([, name]) => name);
-  for (const name of made("pg_database", "datname")) sql(`DROP DATABASE ${name} WITH (FORCE)`);
-  // A role still owning objects in `postgres` would refuse DROP ROLE alone.
-  for (const name of made("pg_roles", "rolname")) sql(`DROP OWNED BY ${name}; DROP ROLE ${name}`);
+const CHECKOUT_RECORD = "checkout";
+
+/** The checkout a test PostgreSQL home records, or undefined when it records none. */
+function checkoutRecord(home: string): string | undefined {
+  try {
+    return NodeFS.readFileSync(NodePath.join(home, CHECKOUT_RECORD), "utf8");
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return undefined;
+    throw error;
+  }
 }
 
-/** A test cluster home unused this long is abandoned, whether or not its checkout still exists. */
-export const STALE_CLUSTER_MS = 24 * 60 * 60 * 1000;
+/**
+ * Whether a test PostgreSQL home with this checkout record (undefined: none) is orphaned: the
+ * checkout it names no longer exists. A home without a record is never judged.
+ */
+export function clusterOrphaned(
+  record: string | undefined,
+  exists: (path: string) => boolean,
+): boolean {
+  return record !== undefined && record !== "" && !exists(record);
+}
 
 /**
- * Removes the test PostgreSQL homes beside `home` (named `mate-test-pg…` and owned by this user)
- * that no run has started, stopped or written for STALE_CLUSTER_MS and that hold no live
- * postmaster, so a killed or abandoned checkout's cluster is reclaimed by a later run.
+ * Removes the test PostgreSQL homes beside `home` (named `mate-test-pg…`, owned by this user)
+ * whose recorded checkout no longer exists and that hold no live postmaster, so a removed
+ * worktree's cluster leaves at the next run. A home whose checkout exists is never touched.
  */
-export function pruneStaleClusters(input: {
+export function pruneOrphanedClusters(input: {
   readonly home: string;
-  readonly now: number;
   readonly alive?: (pid: number) => boolean;
+  readonly exists?: (path: string) => boolean;
   readonly report: (line: string) => void;
 }): void {
   const parent = NodePath.dirname(input.home);
@@ -257,18 +267,12 @@ export function pruneStaleClusters(input: {
     if (!name.startsWith("mate-test-pg") || other === NodePath.resolve(input.home)) continue;
     const stat = NodeFS.statSync(other, { throwIfNoEntry: false });
     if (!stat?.isDirectory() || (uid !== undefined && stat.uid !== uid)) continue;
-    const lastUse = Math.max(
-      stat.mtimeMs,
-      ...NodeFS.readdirSync(other).map(
-        (entry) =>
-          NodeFS.statSync(NodePath.join(other, entry), { throwIfNoEntry: false })?.mtimeMs ?? 0,
-      ),
-    );
-    if (input.now - lastUse < STALE_CLUSTER_MS) continue;
+    const record = checkoutRecord(other);
+    if (!clusterOrphaned(record, input.exists ?? NodeFS.existsSync)) continue;
     if (postmasterLive(NodePath.join(other, "data"), input.alive ?? processAlive)) continue;
-    NodeFS.rmSync(other, { recursive: true, force: true });
+    NodeFS.rmSync(other, { recursive: true, force: true, maxRetries: 3 });
     input.report(
-      `Removed test PostgreSQL home ${other}: unused for over 24 h and no postmaster runs on it.`,
+      `Removed test PostgreSQL home ${other}: its checkout ${record} no longer exists and no postmaster runs on it.`,
     );
   }
 }
@@ -295,15 +299,17 @@ function connect(): Promise<NodeNet.Socket | undefined> {
   });
 }
 
+const stderrLine = (line: string) => process.stderr.write(`${line}\n`);
+
 const mebibytes = (bytes: number) => `${(bytes / 1024 ** 2).toFixed(1)} MiB`;
 
 /**
  * A full disk fails PostgreSQL, mkdtemp and vite's cache deep inside a run, and an ENOSPC crash
- * costs the cluster; refuse before a supervisor starts and say what fills the disk.
+ * costs the cluster; refuse and say what fills the disk.
  */
 function refuseFullDisk(home: string) {
   const floor = Number(process.env["MATE_TEST_PG_MIN_FREE_BYTES"] ?? 1024 ** 3);
-  const disk = NodeFS.statfsSync(home);
+  const disk = NodeFS.statfsSync(NodeFS.existsSync(home) ? home : NodePath.dirname(home));
   const free = disk.bavail * disk.bsize;
   if (free >= floor) return;
   const parent = NodePath.dirname(home);
@@ -317,12 +323,16 @@ function refuseFullDisk(home: string) {
     .filter(Boolean)
     .map((line) => {
       const [kibibytes, ...path] = line.split("\t");
-      return { name: NodePath.basename(path.join("\t")), bytes: Number(kibibytes) * 1024 };
+      return { path: path.join("\t"), bytes: Number(kibibytes) * 1024 };
     })
     .sort((a, b) => b.bytes - a.bytes)
     .slice(0, 5)
-    .map((entry) => `${entry.name} (${mebibytes(entry.bytes)})`);
-  const volume = NodeChildProcess.spawnSync("df", ["-P", home], { encoding: "utf8" })
+    .map((entry) => {
+      const checkout = checkoutRecord(entry.path);
+      const owner = checkout === undefined ? "" : ` for ${checkout}`;
+      return `${NodePath.basename(entry.path)}${owner} (${mebibytes(entry.bytes)})`;
+    });
+  const volume = NodeChildProcess.spawnSync("df", ["-P", parent], { encoding: "utf8" })
     .stdout.trim()
     .split("\n")
     .at(-1)!
@@ -331,6 +341,17 @@ function refuseFullDisk(home: string) {
   throw new Error(
     `The disk ${volume} holding the PostgreSQL test cluster is full: ${mebibytes(free)} free, below the ${mebibytes(floor)} a run needs. Largest under ${parent}: ${largest.join(", ")}.`,
   );
+}
+
+/**
+ * Reclaims orphaned clusters beside `home`, then refuses a disk without room. Runs before a
+ * supervisor starts and at a run's start (its global setup) even when another run's supervisor
+ * serves, so a full disk stops the run before any case; orphans leave first, so a removed
+ * worktree's cluster never refuses a run.
+ */
+export function ensureRoom(home: string): void {
+  pruneOrphanedClusters({ home, report: stderrLine });
+  refuseFullDisk(home);
 }
 
 interface SupervisorReply {
@@ -357,7 +378,7 @@ export async function acquireTestPostgres(): Promise<TestPostgresLease> {
     const existing = await connect();
     if (existing) socket = existing;
     else {
-      refuseFullDisk(postgresHome);
+      ensureRoom(postgresHome);
       NodeFS.rmSync(socketPath, { force: true });
       const diagnosticsPath = NodePath.join(postgresHome, "supervisor.log");
       const diagnostics = NodeFS.openSync(diagnosticsPath, "w", 0o600);
@@ -365,7 +386,11 @@ export async function acquireTestPostgres(): Promise<TestPostgresLease> {
         daemon = NodeChildProcess.spawn(
           process.execPath,
           [NodeURL.fileURLToPath(new URL("./test-postgres-supervisor.ts", import.meta.url))],
-          { detached: true, stdio: ["ignore", "ignore", diagnostics, "ipc"] },
+          {
+            detached: true,
+            env: sharedDaemonEnvironment(),
+            stdio: ["ignore", "ignore", diagnostics, "ipc"],
+          },
         );
       } finally {
         NodeFS.closeSync(diagnostics);
@@ -397,11 +422,18 @@ export async function acquireTestPostgres(): Promise<TestPostgresLease> {
     const pending: { resolve: (reply: SupervisorReply) => void; reject: (error: Error) => void }[] =
       [];
     let failed: Error | undefined;
+    const admissionAbort = new AbortController();
+    let admission: ReturnType<typeof acquirePostgresAdmission> | undefined;
+    let admitted = false;
     const fail = (error: Error) => {
       failed = error;
+      admissionAbort.abort(error);
+      // Keep admission until close/process exit: caught errors do not prove the worker's SQL
+      // pools or application work have stopped, including after the admission broker dies.
       for (const reply of pending.splice(0)) reply.reject(error);
     };
     socket.on("error", fail);
+    replies.on("error", fail);
     socket.on("close", () => fail(new Error("PostgreSQL supervisor connection closed")));
     replies.on("line", (line) => {
       const reply = pending.shift();
@@ -448,11 +480,21 @@ export async function acquireTestPostgres(): Promise<TestPostgresLease> {
         throw error;
       },
     );
-    const database = (command: string) =>
-      request(command).then((reply) => {
-        if (typeof reply.url !== "string") throw new Error("Invalid PostgreSQL database reply");
-        return reply.url;
-      });
+    const database = async (command: string) => {
+      // Setup leases only keep the cluster alive. Charge the host budget when work first starts,
+      // independently of cluster homes, and retain that admission through the lease's final drain.
+      await (admission ??= acquirePostgresAdmission({
+        signal: admissionAbort.signal,
+        onLost: (error) => socket.destroy(error),
+      }).then((holder) => {
+        admitted = true;
+        return holder;
+      }));
+      if (closing) throw new Error("PostgreSQL owner is released");
+      const reply = await request(command);
+      if (typeof reply.url !== "string") throw new Error("Invalid PostgreSQL database reply");
+      return reply.url;
+    };
     if (daemon?.connected) daemon.disconnect();
     daemon?.unref();
     return {
@@ -468,10 +510,19 @@ export async function acquireTestPostgres(): Promise<TestPostgresLease> {
           ? Promise.reject(new Error("PostgreSQL owner is released"))
           : request(`freeze ${url}`).then(() => undefined),
       close: () =>
-        (closing ??= request("release").then(() => {
-          replies.close();
-          socket.end();
-        })),
+        (closing ??= (async () => {
+          if (!admitted) admissionAbort.abort(new Error("PostgreSQL owner is released"));
+          try {
+            await request("release");
+            replies.close();
+            socket.end();
+          } finally {
+            await admission?.then(
+              (holder) => holder.release(),
+              () => undefined,
+            );
+          }
+        })()),
     };
   } catch (error) {
     opened?.destroy();

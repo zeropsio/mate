@@ -13,7 +13,13 @@
 import { ProjectId } from "@t3tools/contracts";
 import type { ChangeLink, HqChange } from "@t3tools/shared/hqChanges";
 import type { HqDeliveryAnswer, HqDeployAnswer } from "@t3tools/shared/hqDeploys";
-import type { HqGitReleasePreflight, HqReleaseTarget, Release } from "@t3tools/shared/hqRelease";
+import type {
+  HqGitReleasePreflight,
+  HqReleaseTarget,
+  Release,
+  ReleaseServicePlan,
+} from "@t3tools/shared/hqRelease";
+import { releasePlanCreates } from "@t3tools/shared/hqRelease";
 
 import { canonicalEnvironmentsOf, jobsByService } from "../../zerops/hq/environments.ts";
 import { hqRefusalWords } from "../../zerops/hq/refusals.ts";
@@ -35,6 +41,9 @@ declare module "../model.ts" {
       readonly groupHead: string;
       /** What the offer listed, each production service at its commit. */
       readonly entries: ReadonlyArray<{ readonly service: string; readonly sha: string }>;
+      /** Exact server-stored production plan shown before approval. */
+      readonly planHash?: string;
+      readonly releaseTarget?: HqReleaseTarget;
       /** A branch production: the attachment the review showed and HQ's ready preflight of it. */
       readonly git?: {
         readonly releaseTarget: HqReleaseTarget;
@@ -131,12 +140,7 @@ const changeOf = (read: ProjectionReads, link: ChangeLink): HqChange | undefined
 /** The jobs HQ's navigation lists for one of the application's environments. */
 const jobsOf = (read: ProjectionReads, appId: string, projectId: ProjectId) => {
   const app = read.fact("hqApp", appId);
-  if (
-    app.kind !== "known" ||
-    app.value.environments === undefined ||
-    "refused" in app.value.environments
-  )
-    return undefined;
+  if (app.kind !== "known" || app.value.environments === undefined) return undefined;
   return canonicalEnvironmentsOf(app.value.environments)?.find(
     (entry) => entry.target.kind === "zerops" && entry.target.projectId === projectId,
   );
@@ -147,14 +151,18 @@ const NO_GROUP_MAIN = hqRefusalWords({ code: "conflict", reason: "no_group_main"
 
 /**
  * What a release of the offer asks HQ — its entries, named `tag` (the offer's suggestion by
- * default), tagging the `groupHead` read with the offer, and for a branch production the
- * attachment and HQ's ready preflight HQ accepts it by — or why nothing is sent: what the offer's
- * gate says, that the preflight has not vouched for it yet, or that the recipe has nothing on
- * `main`, which the verbs say where they are.
+ * default), tagging the `groupHead` read with the offer, the reviewed `plan`'s hash and production
+ * when that plan creates services, and for a branch production the attachment and HQ's ready
+ * preflight HQ accepts it by — or why nothing is sent: what the offer's gate says, that the
+ * preflight has not vouched for it yet, or that the recipe has nothing on `main`, which the verbs
+ * say where they are. Without a reviewed plan HQ itself refuses a release that would create one
+ * (`release_creation_review_required`).
  */
 export function releaseRequestOf(
-  offer: Pick<ZeropsReleaseOffer, "git" | "gate" | "groupHead" | "suggestion" | "entries">,
+  offer: Pick<ZeropsReleaseOffer, "git" | "gate" | "groupHead" | "suggestion" | "entries"> &
+    Partial<Pick<ZeropsReleaseOffer, "releaseTarget">>,
   tag?: string,
+  plan?: ReleaseServicePlan,
 ):
   | Omit<IntentOf<"release">, "orgId" | "appId">
   | { readonly refused: string; readonly says: boolean } {
@@ -164,6 +172,7 @@ export function releaseRequestOf(
       says: false,
     };
   if (!offer.gate.allowed) return { refused: offer.gate.reason, says: false };
+  const creates = offer.git === undefined && plan !== undefined && releasePlanCreates(plan);
   if (offer.groupHead === undefined) return { refused: NO_GROUP_MAIN, says: true };
   if (offer.git !== undefined && offer.git.preflight === undefined)
     return { refused: offer.git.check ?? GIT_PREFLIGHT_PENDING, says: false };
@@ -172,6 +181,12 @@ export function releaseRequestOf(
     tag: tag ?? offer.suggestion,
     groupHead: offer.groupHead,
     entries: offer.entries.map(({ service, commit }) => ({ service, sha: commit })),
+    ...(creates && plan !== undefined
+      ? {
+          planHash: plan.hash,
+          ...(offer.releaseTarget === undefined ? {} : { releaseTarget: offer.releaseTarget }),
+        }
+      : {}),
     ...(offer.git?.preflight === undefined
       ? {}
       : { git: { releaseTarget: offer.git.attachment, preflight: offer.git.preflight } }),

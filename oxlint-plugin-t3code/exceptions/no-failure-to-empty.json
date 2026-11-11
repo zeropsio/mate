@@ -36,15 +36,6 @@
     "class": "review"
   },
   {
-    "path": "apps/web/src/components/DiffPanel.tsx",
-    "kind": "LogicalExpression",
-    "fingerprint": "serverConfig?.availableEditors ?? []",
-    "owner": "maintainers",
-    "reason": "Unread editor configuration resembles no available editors; preserve read state before deciding availability.",
-    "expires": "never",
-    "class": "review"
-  },
-  {
     "path": "apps/web/src/components/GitActionsControl.tsx",
     "kind": "LogicalExpression",
     "fingerprint": "serverConfig?.availableEditors ?? []",
@@ -198,15 +189,6 @@
     "class": "justified"
   },
   {
-    "path": "apps/web/src/state/terminalSessions.ts",
-    "kind": "LogicalExpression",
-    "fingerprint": "attach.data ?? EMPTY_TERMINAL_BUFFER_STATE",
-    "owner": "maintainers",
-    "reason": "Terminal replay retains connection and attach status separately; the buffer default supplies no invented terminal receipt.",
-    "expires": "never",
-    "class": "justified"
-  },
-  {
     "path": "apps/web/src/terminal/ghostty/keyCodes.ts",
     "kind": "CallExpression",
     "fingerprint": "keyboard?.getLayoutMap().catch(() => undefined)",
@@ -239,15 +221,6 @@
     "fingerprint": "fact.kind === \"known\" ? fact.value.comments : []",
     "owner": "maintainers",
     "reason": "Positive-only operation predicates retain unresolved receipts separately; the default does not itself settle an operation.",
-    "expires": "never",
-    "class": "justified"
-  },
-  {
-    "path": "packages/client-runtime/src/data/operations/executors/hqPressLease.ts",
-    "kind": "CallExpression",
-    "fingerprint": "hold().catch(() => undefined)",
-    "owner": "maintainers",
-    "reason": "Renewal holds a serialized command with no result payload; the accepted press and operation outcome remain separately owned.",
     "expires": "never",
     "class": "justified"
   },
@@ -324,29 +297,11 @@
     "class": "justified"
   },
   {
-    "path": "packages/client-runtime/src/data/projections/environmentSetup.ts",
-    "kind": "ConditionalExpression",
-    "fingerprint": "project.kind === \"known\" ? project.value.can : undefined",
-    "owner": "maintainers",
-    "reason": "Setup permissions and project assembly conservatively include only known authorized records; setup state remains separate.",
-    "expires": "never",
-    "class": "justified"
-  },
-  {
     "path": "packages/client-runtime/src/data/projections/gitCredentials.ts",
     "kind": "ConditionalExpression",
     "fingerprint": "request.kind === \"known\" ? read.operation(request.value.requestId) : undefined",
     "owner": "maintainers",
     "reason": "Positive-only operation predicates retain unresolved receipts separately; the default does not itself settle an operation.",
-    "expires": "never",
-    "class": "justified"
-  },
-  {
-    "path": "packages/client-runtime/src/data/projections/hqBirth.ts",
-    "kind": "ConditionalExpression",
-    "fingerprint": "project.kind === \"known\" ? project.value.publicZone : undefined",
-    "owner": "maintainers",
-    "reason": "Optional public-zone lookup accompanies separate project setup state.",
     "expires": "never",
     "class": "justified"
   },
@@ -376,15 +331,6 @@
     "reason": "Projection fallback discards public-read distinctions; review downstream access, coverage and unavailable presentation.",
     "expires": "never",
     "class": "review"
-  },
-  {
-    "path": "packages/client-runtime/src/data/projections/hqProjectPeople.ts",
-    "kind": "ConditionalExpression",
-    "fingerprint": "person.kind === \"known\" ? { userId, name: person.value.name ?? \"Unknown\", avatarUrl: person.value.avatarUrl } : null",
-    "owner": "maintainers",
-    "reason": "Authorized person collection includes known identities only; membership and access evidence remain separate.",
-    "expires": "never",
-    "class": "justified"
   },
   {
     "path": "packages/client-runtime/src/data/projections/mateEngine.ts",

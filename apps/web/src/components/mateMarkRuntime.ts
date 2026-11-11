@@ -28,6 +28,7 @@ import {
 } from "@t3tools/shared/brand";
 
 import { afterLayout } from "../lib/afterLayout";
+import { watchIntersections, type RestingIntersections } from "../lib/restingIntersections";
 
 export interface LiveMarkParts {
   svg?: SVGSVGElement | null;
@@ -75,7 +76,12 @@ const lerpTo = (v: number, target: number, rate: number, dt: number) => {
   const next = v + (target - v) * (1 - Math.exp(-rate * dt));
   return Math.abs(next - target) < LANDED ? target : next;
 };
-const round = (v: number) => Math.round(v * 1000) / 1000;
+/**
+ * What a frame writes, to a hundredth of a logo unit: at a hero's size that is a twenty-fifth of
+ * a pixel. Written to a thousandth, the long tail of every ease wrote a new value each frame that
+ * nobody could tell from the last, and the page was laid out and painted again for it.
+ */
+const round = (v: number) => Math.round(v * 100) / 100;
 
 interface MarkRuntime {
   readonly root: SVGSVGElement;
@@ -86,6 +92,16 @@ interface MarkRuntime {
   readonly written: Map<object, Map<string, string>>;
   hovered: boolean;
   visible: boolean;
+  /**
+   * In view, and drawn where nobody can see it: set aside (`inert`) and faded out or hidden — the
+   * closed menu's mark under the open menu, the open menu's while it is closed. Read with its box
+   * (`host.shown`). It holds its state's pose, taken once, and runs no motion.
+   */
+  unseen: boolean;
+  /** Since when it has been unseen, or since the last input that may have shown it. */
+  unseenSince: number;
+  /** It has taken a pose since it joined the loop. */
+  posed: boolean;
   /** Back in view after a while out of it: the next frame takes the pose at once. */
   returning: boolean;
   rect: DOMRect | null;
@@ -135,6 +151,11 @@ export interface MarkLoopHost {
    * no layout of its own. Absent, the loop reads its marks' boxes in the frame itself.
    */
   readonly afterLayout?: (callback: () => void) => void;
+  /**
+   * Whether a mark in view can be seen: false only for one set aside and faded out or hidden. A
+   * mark under a page that is merely fading in is seen. Absent, every mark in view counts as seen.
+   */
+  readonly shown?: (root: SVGSVGElement) => boolean;
 }
 
 /** The one loop every mark on a page shares, and what moves it. */
@@ -165,6 +186,13 @@ export interface MarkLoop {
  * layout (a panel opening, the menu folding) lands a frame or more after the input itself.
  */
 const SETTLE_AFTER_INPUT_MS = 300;
+/**
+ * When a mark drawn where nobody can see it is read again while the person is about: what shows
+ * it may be no input at all (a panel shown when its data arrives). Soon after it went unseen or
+ * after the last input — a menu still sliding when the input's own measuring ends — then once a
+ * second.
+ */
+const unseenRereadMs = (age: number) => (age < 600 ? 120 : age < 2400 ? 300 : 1000);
 
 export function createMarkLoop(host: MarkLoopHost): MarkLoop {
   const marks = new Set<MarkRuntime>();
@@ -197,19 +225,34 @@ export function createMarkLoop(host: MarkLoopHost): MarkLoop {
 
   /** The marks whose boxes are read once the page is laid out (`host.afterLayout`). */
   const wanted = new Set<MarkRuntime>();
+  /** Reads a mark's box and whether it can be seen; says whether either changed. */
+  const read = (mark: MarkRuntime): boolean => {
+    const was = mark.rect;
+    const rect = mark.root.getBoundingClientRect();
+    mark.rect = rect;
+    const unseen = host.shown?.(mark.root) === false;
+    const appeared = mark.unseen && !unseen;
+    if (unseen && !mark.unseen) mark.unseenSince = host.now();
+    mark.unseen = unseen;
+    // Seen again, it takes its pose at once, as one scrolled back into view does. Unseen, it
+    // stops bobbing: the stylesheet would keep repainting it for nobody.
+    if (appeared) mark.returning = true;
+    if (unseen && mark.written.get(mark.root)?.get("data-mate-mark-bob") === "on") {
+      put(mark, mark.root, "data-mate-mark-bob", "off");
+    }
+    return (
+      appeared ||
+      was === null ||
+      was.left !== rect.left ||
+      was.top !== rect.top ||
+      was.width !== rect.width ||
+      was.height !== rect.height
+    );
+  };
   const readWanted = () => {
     let moved = false;
     for (const mark of wanted) {
-      if (!marks.has(mark)) continue;
-      const was = mark.rect;
-      const rect = mark.root.getBoundingClientRect();
-      mark.rect = rect;
-      moved ||=
-        was === null ||
-        was.left !== rect.left ||
-        was.top !== rect.top ||
-        was.width !== rect.width ||
-        was.height !== rect.height;
+      if (marks.has(mark) && read(mark)) moved = true;
     }
     wanted.clear();
     // The pose follows the box it now has, from the next frame.
@@ -223,7 +266,7 @@ export function createMarkLoop(host: MarkLoopHost): MarkLoop {
   const measure = (mark: MarkRuntime, now: number) => {
     mark.rectAt = now;
     if (host.afterLayout === undefined) {
-      mark.rect = mark.root.getBoundingClientRect();
+      read(mark);
       return;
     }
     if (wanted.size === 0) host.afterLayout(readWanted);
@@ -232,6 +275,9 @@ export function createMarkLoop(host: MarkLoopHost): MarkLoop {
 
   const settleAfterInput = () => {
     measureUntil = host.now() + SETTLE_AFTER_INPUT_MS;
+    // What the input does may show an unseen mark after the measuring ends: it is looked at soon
+    // again from there.
+    for (const mark of marks) if (mark.unseen) mark.unseenSince = measureUntil;
   };
 
   const pointerMove = (x: number, y: number) => {
@@ -248,14 +294,37 @@ export function createMarkLoop(host: MarkLoopHost): MarkLoop {
     lastFrameAt = now;
     const reduced = host.reducedMotion();
     pointer.asleep = !reduced && now - pointer.activeAt > SLEEP_AFTER_MS;
-    // Just after an input that may have moved the marks, measure them every frame.
-    let moving = now < measureUntil;
+    // Just after an input that may have moved the marks, measure them every frame — and only
+    // then: a mark's own motion moves no box.
+    const settling = now < measureUntil;
+    let moving = settling;
     let due = Number.POSITIVE_INFINITY;
     let shown = false;
+    /** When the next unseen mark is looked at again. */
+    let unseenDue = Number.POSITIVE_INFINITY;
     for (const mark of marks) {
       if (!mark.visible) continue;
-      if (moving || mark.rectAt < 0 || now - mark.rectAt > 400) measure(mark, now);
+      // A seen mark is read again every 400 ms of frames; an unseen one when something may have
+      // shown it (an input, a scroll, a resize), and now and then besides.
+      const reread = mark.unseen ? unseenRereadMs(Math.max(0, now - mark.unseenSince)) : 400;
+      const stale = mark.unseen ? now - mark.rectAt >= reread : now - mark.rectAt > reread;
+      if (settling || mark.rectAt < 0 || stale) measure(mark, now);
+      if (mark.unseen) {
+        // Its state's pose, once and at once: shown with nothing to say so (reduced motion
+        // schedules no look, a person away none either), it is never a mark with no face.
+        if (!mark.posed && mark.rect !== null && mark.rect.width > 0) {
+          mark.returning = true;
+          tick(mark, pointer, host, now, dt, reduced);
+          if (mark.written.get(mark.root)?.get("data-mate-mark-bob") === "on") {
+            put(mark, mark.root, "data-mate-mark-bob", "off");
+          }
+          mark.posed = true;
+        }
+        unseenDue = Math.min(unseenDue, mark.rectAt + reread);
+        continue;
+      }
       const step = tick(mark, pointer, host, now, dt, reduced);
+      mark.posed ||= mark.rect !== null && mark.rect.width > 0;
       moving ||= step.moving;
       due = Math.min(due, step.due);
       shown = true;
@@ -269,6 +338,8 @@ export function createMarkLoop(host: MarkLoopHost): MarkLoop {
     if (shown && !reduced && !pointer.asleep) {
       due = Math.min(due, pointer.activeAt + SLEEP_AFTER_MS + 1);
     }
+    // While the person is about, an unseen mark is looked at again: it may have been shown.
+    if (!reduced && !pointer.asleep) due = Math.min(due, unseenDue);
     if (due === Number.POSITIVE_INFINITY) return;
     timer = host.setTimer(
       () => {
@@ -291,6 +362,9 @@ export function createMarkLoop(host: MarkLoopHost): MarkLoop {
         written: new Map(),
         hovered: false,
         visible: true,
+        unseen: false,
+        unseenSince: 0,
+        posed: false,
         returning: false,
         rect: null,
         rectAt: -1,
@@ -316,6 +390,8 @@ export function createMarkLoop(host: MarkLoopHost): MarkLoop {
 
       const enter = () => {
         mark.hovered = true;
+        // Under the pointer it can be seen, whatever its last reading said.
+        mark.rectAt = -1;
         wake();
       };
       const leave = () => {
@@ -663,10 +739,14 @@ const browserHost: MarkLoopHost = {
   random: Math.random,
   viewport: () => ({ width: window.innerWidth, height: window.innerHeight }),
   afterLayout,
+  shown: (root) =>
+    typeof root.checkVisibility !== "function" ||
+    root.closest("[inert]") === null ||
+    root.checkVisibility({ opacityProperty: true, visibilityProperty: true }),
 };
 
 let pageLoop: MarkLoop | undefined;
-let observer: IntersectionObserver | undefined;
+let observer: RestingIntersections | undefined;
 
 function onPointerMove(event: PointerEvent) {
   pageLoop?.pointerMove(event.clientX, event.clientY);
@@ -737,15 +817,13 @@ export function registerLiveMark(
   const loop = (pageLoop ??= createMarkLoop(browserHost));
   if (loop.size() === 0) startListening();
   const unregister = loop.register(root, parts, forced, options);
-  if (typeof IntersectionObserver === "function") {
-    observer ??= new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) pageLoop?.setVisible(entry.target, entry.isIntersecting);
-      },
-      { rootMargin: "120px" },
-    );
-    observer.observe(root);
-  }
+  observer ??= watchIntersections(
+    (entries) => {
+      for (const entry of entries) pageLoop?.setVisible(entry.target, entry.isIntersecting);
+    },
+    { rootMargin: "120px" },
+  );
+  observer?.observe(root);
   return () => {
     observer?.unobserve(root);
     unregister();

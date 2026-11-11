@@ -1,7 +1,10 @@
 import { useImageIntent } from "~/assets/MateImages";
 import { AssetImage } from "~/assets/AssetImage";
 import { ServiceBrowserLink, useLinkDestination } from "./ServiceBrowserLink";
+import { renderBareChangeNumbers } from "./zerops/BareChangeNumber";
 import { ZeropsChangeLinkChip } from "./zerops/ZeropsChangeLinkChip";
+import { PictureAskFence } from "./ask/PictureAsk";
+import { ExpressDesignLinkChip } from "./express/ExpressDesignLinkChip";
 import { useAtomValue } from "@effect/atom-react";
 import {
   CheckIcon,
@@ -51,9 +54,9 @@ import type {
   ExtraProps as ReactMarkdownExtraProps,
   Options as ReactMarkdownOptions,
 } from "react-markdown";
-import ReactMarkdown from "react-markdown";
 import { toHtml } from "hast-util-to-html";
 import { createIncrementalMarkdownPlugin } from "../markdown-incremental";
+import type { PluggableList } from "unified";
 import { defaultUrlTransform } from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
@@ -62,6 +65,7 @@ import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { bareUrlLabel } from "../markdown-bare-urls";
 import { remarkGithubAlerts } from "../markdown-github-alerts";
+import { createMarkdownRenderer } from "./chat/markdownRenderer";
 import { renderSkillInlineMarkdownChildren } from "./chat/SkillInlineText";
 import { CHAT_FILE_TAG_CHIP_CLASS_NAME, FileTagChipContent } from "./chat/FileTagChip";
 import { PierreEntryIcon } from "./chat/PierreEntryIcon";
@@ -223,6 +227,11 @@ function findTaskListMarkerOffset(markdown: string, listItemStart: number): numb
   return listItemStart + firstLine.indexOf(match[1]);
 }
 
+// Native word selection stops at hyphens and dots, so a double-click takes the whole span.
+function selectInlineCode(event: ReactMouseEvent<HTMLElement>) {
+  window.getSelection()?.selectAllChildren(event.currentTarget);
+}
+
 /**
  * The default `1.25rem` marker gutter (`.chat-markdown ol`) fits markers up to
  * two characters wide. Once a marker reaches three characters (item 100+),
@@ -233,13 +242,19 @@ function findTaskListMarkerOffset(markdown: string, listItemStart: number): numb
  * sign, the period, and the trailing space.
  */
 function orderedListGutterStyle(
-  itemCount: number,
+  itemValues: ReadonlyArray<unknown>,
   start: unknown,
 ): { "--list-gutter": string } | undefined {
   const parsedStart = Number.parseInt(String(start ?? 1), 10);
-  const firstNumber = Number.isNaN(parsedStart) ? 1 : parsedStart;
-  const lastNumber = firstNumber + Math.max(itemCount - 1, 0);
-  const markerWidth = Math.max(String(firstNumber).length, String(lastNumber).length);
+  // An item's own `value` restarts the count from the number written on it.
+  let number = Number.isNaN(parsedStart) ? 1 : parsedStart;
+  let markerWidth = String(number).length;
+  for (const value of itemValues) {
+    const written = Number.parseInt(String(value ?? ""), 10);
+    if (!Number.isNaN(written)) number = written;
+    markerWidth = Math.max(markerWidth, String(number).length);
+    number += 1;
+  }
   if (markerWidth <= 2) return undefined;
   return { "--list-gutter": `${markerWidth + 2}ch` };
 }
@@ -1223,10 +1238,16 @@ const MarkdownLinkFavicon = memo(function MarkdownLinkFavicon({
       ) : faviconUrl === null || failedHost === host || failedFaviconHosts.has(host) ? (
         <GlobeIcon className={cn(MARKDOWN_LINK_FAVICON_CLASS_NAME, "text-muted-foreground")} />
       ) : (
+        // Loaded at once, never left to the browser's lazy loading: a picture waiting on
+        // `loading="lazy"` is an observer of the browser's own, and for as long as one waits
+        // anywhere on the page every animation costs the main thread a frame per tick
+        // (`restingIntersections.ts`); one link scrolled out of a conversation was enough. At
+        // once also means a conversation kept warm has them before it opens, and a row drawn
+        // again paints its mark in the same frame.
         <img
           src={faviconUrl}
           alt=""
-          loading="lazy"
+          loading="eager"
           decoding="async"
           draggable={false}
           className={cn(MARKDOWN_LINK_FAVICON_CLASS_NAME, "rounded-sm")}
@@ -2068,9 +2089,6 @@ function useChatMarkdownState({
     ];
     return buildFileLinkParentSuffixByPath(filePaths);
   }, [inlineCodeFileLinkMetaByText, markdownFileLinkMetaByHref]);
-  const markdownUrlTransform = useCallback((href: string) => {
-    return rewriteMarkdownFileUriHref(href) ?? defaultUrlTransform(href);
-  }, []);
   // Re-emit highlighted content as markdown so copying out of the rendered
   // view keeps links, emphasis, lists, and code fences intact.
   const handleCopy = useCallback((event: ReactClipboardEvent<HTMLDivElement>) => {
@@ -2275,8 +2293,11 @@ function useChatMarkdownState({
       updateThreadPullRequestLink,
     ],
   );
-  return { componentState, handleCopy, markdownUrlTransform };
+  return { componentState, handleCopy };
 }
+
+/** Who wrote the markdown: a person's message draws a Mate's fences as the code they are. */
+const ChatMarkdownVariantContext = React.createContext<ChatMarkdownVariant>("log");
 
 const ChatMarkdownRendererContext = React.createContext<
   ReturnType<typeof useChatMarkdownState>["componentState"]
@@ -2310,8 +2331,12 @@ const CHAT_MARKDOWN_COMPONENTS = {
   h5: markdownHeadingRenderer(5),
   h6: markdownHeadingRenderer(6),
   p: function MarkdownParagraph({ node: _node, children, ...props }) {
-    const { skills } = use(ChatMarkdownRendererContext);
-    return <p {...props}>{renderSkillInlineMarkdownChildren(children, skills)}</p>;
+    const { skills, threadRef } = use(ChatMarkdownRendererContext);
+    return (
+      <p {...props}>
+        {renderSkillInlineMarkdownChildren(renderBareChangeNumbers(children, threadRef), skills)}
+      </p>
+    );
   },
   blockquote: function MarkdownBlockquote({ node: _node, children, ...props }) {
     const kind = String((props as Record<string, unknown>)["data-alert"] ?? "");
@@ -2338,22 +2363,23 @@ const CHAT_MARKDOWN_COMPONENTS = {
     );
   },
   ol: function MarkdownOrderedList({ node, start, style, ...props }) {
-    const itemCount =
-      node?.children?.filter((child) => child.type === "element" && child.tagName === "li")
-        .length ?? 0;
-    const gutterStyle = orderedListGutterStyle(itemCount, start);
+    const itemValues =
+      node?.children?.flatMap((child) =>
+        child.type === "element" && child.tagName === "li" ? [child.properties.value] : [],
+      ) ?? [];
+    const gutterStyle = orderedListGutterStyle(itemValues, start);
     return (
       <ol {...props} start={start} style={gutterStyle ? { ...style, ...gutterStyle } : style} />
     );
   },
   li: function MarkdownListItem({ node, children, ...props }) {
-    const { text, skills } = use(ChatMarkdownRendererContext);
+    const { text, skills, threadRef } = use(ChatMarkdownRendererContext);
     const listItemStart = node?.position?.start.offset;
     const markerOffset =
       typeof listItemStart === "number" ? findTaskListMarkerOffset(text, listItemStart) : null;
     return (
       <li {...props} data-task-marker-offset={markerOffset ?? undefined}>
-        {renderSkillInlineMarkdownChildren(children, skills)}
+        {renderSkillInlineMarkdownChildren(renderBareChangeNumbers(children, threadRef), skills)}
       </li>
     );
   },
@@ -2481,19 +2507,21 @@ const CHAT_MARKDOWN_COMPONENTS = {
           )}
         </ServiceBrowserLink>
       );
-      // The chip wraps whichever link this would have been: it renders that
-      // link back unchanged for every address it cannot claim as a change.
+      // The chips wrap whichever link this would have been: each renders that
+      // link back unchanged for every address it cannot claim.
       return (
-        <ZeropsChangeLinkChip href={href} words={bareUrl === null ? children : undefined}>
-          {!faviconHost || !href ? (
-            link
-          ) : (
-            <Tooltip>
-              <TooltipTrigger render={link} />
-              <TooltipPopup side="top">{href}</TooltipPopup>
-            </Tooltip>
-          )}
-        </ZeropsChangeLinkChip>
+        <ExpressDesignLinkChip href={href} words={bareUrl === null ? children : undefined}>
+          <ZeropsChangeLinkChip href={href} words={bareUrl === null ? children : undefined}>
+            {!faviconHost || !href ? (
+              link
+            ) : (
+              <Tooltip>
+                <TooltipTrigger render={link} />
+                <TooltipPopup side="top">{href}</TooltipPopup>
+              </Tooltip>
+            )}
+          </ZeropsChangeLinkChip>
+        </ExpressDesignLinkChip>
       );
     }
 
@@ -2526,6 +2554,11 @@ const CHAT_MARKDOWN_COMPONENTS = {
       if (fileLinkMeta) {
         return fileLinkChip(fileLinkMeta, `\`${codeText}\``);
       }
+      return (
+        <code {...props} className={className} onDoubleClick={selectInlineCode}>
+          {children}
+        </code>
+      );
     }
     return (
       <code {...props} className={className}>
@@ -2565,9 +2598,10 @@ const CHAT_MARKDOWN_COMPONENTS = {
     return <MarkdownDetails open={detailsOpen}>{children}</MarkdownDetails>;
   },
   pre: function MarkdownPre({ node, children, ...props }) {
-    const { diffThemeName, isStreaming, onRunShellCommand, resolvedTheme, text } = use(
+    const { diffThemeName, isStreaming, onRunShellCommand, resolvedTheme, text, threadRef } = use(
       ChatMarkdownRendererContext,
     );
+    const variant = use(ChatMarkdownVariantContext);
     const codeBlock = extractCodeBlock(children);
     if (!codeBlock) {
       return <pre {...props}>{children}</pre>;
@@ -2595,6 +2629,22 @@ const CHAT_MARKDOWN_COMPONENTS = {
         </Suspense>
       </RenderErrorBoundary>
     );
+    // A picture the Mate set up for the person to make, edit or design (`PictureAsk`).
+    if (language === "picture-ask" && variant !== "person") {
+      return (
+        <PictureAskFence code={codeBlock.code} isStreaming={isStreaming} threadRef={threadRef}>
+          <MarkdownCodeBlock
+            code={codeBlock.code}
+            language={language}
+            fenceTitle={fenceTitle}
+            theme={resolvedTheme}
+            isStreaming={isStreaming}
+          >
+            {highlightedCode}
+          </MarkdownCodeBlock>
+        </PictureAskFence>
+      );
+    }
     if (language === "mermaid") {
       return (
         <MarkdownMermaidCodeBlock
@@ -2626,6 +2676,41 @@ const CHAT_MARKDOWN_COMPONENTS = {
   },
 } satisfies Components;
 
+function markdownUrlTransform(href: string) {
+  return rewriteMarkdownFileUriHref(href) ?? defaultUrlTransform(href);
+}
+
+const NO_REHYPE_PLUGINS: PluggableList = [];
+
+// Shared lists, so every message with the same options shares a processor and its parse cache.
+const CHAT_MARKDOWN_REMARK_PLUGIN_SETS = {
+  plain: CHAT_MARKDOWN_REMARK_PLUGINS,
+  breaks: CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS,
+  person: [...CHAT_MARKDOWN_REMARK_PLUGINS, remarkPersonAsterisks],
+  personBreaks: [...CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS, remarkPersonAsterisks],
+} satisfies Record<string, PluggableList>;
+
+const markdownRenderers = new WeakMap<
+  PluggableList,
+  WeakMap<PluggableList, ReturnType<typeof createMarkdownRenderer>>
+>();
+
+function sharedMarkdownRenderer(remarkPlugins: PluggableList, rehypePlugins: PluggableList) {
+  let byRehype = markdownRenderers.get(remarkPlugins);
+  if (!byRehype) markdownRenderers.set(remarkPlugins, (byRehype = new WeakMap()));
+  let renderer = byRehype.get(rehypePlugins);
+  if (!renderer) {
+    renderer = createMarkdownRenderer({
+      remarkPlugins,
+      rehypePlugins,
+      components: CHAT_MARKDOWN_COMPONENTS,
+      urlTransform: markdownUrlTransform,
+    });
+    byRehype.set(rehypePlugins, renderer);
+  }
+  return renderer;
+}
+
 function ChatMarkdown({
   text,
   className,
@@ -2635,23 +2720,45 @@ function ChatMarkdown({
   onOpenImage,
   ...props
 }: ChatMarkdownProps) {
-  const { componentState, handleCopy, markdownUrlTransform } = useChatMarkdownState({
+  const { componentState, handleCopy } = useChatMarkdownState({
     text,
     ...props,
   });
   const incrementalParsing = props.isStreaming === true && /(?:^|\n) {0,3}(?:`{3}|~{3})/.test(text);
-  const remarkPlugins = useMemo(
-    () => [
-      ...(lineBreaks ? CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS : CHAT_MARKDOWN_REMARK_PLUGINS),
-      ...(variant === "person" ? [remarkPersonAsterisks] : []),
-      ...(incrementalParsing ? [createIncrementalMarkdownPlugin()] : []),
-    ],
-    [incrementalParsing, lineBreaks, variant],
+  const sharedRemarkPlugins =
+    CHAT_MARKDOWN_REMARK_PLUGIN_SETS[
+      variant === "person"
+        ? lineBreaks
+          ? "personBreaks"
+          : "person"
+        : lineBreaks
+          ? "breaks"
+          : "plain"
+    ];
+  const rehypePlugins = parseRawHtml ? CHAT_MARKDOWN_REHYPE_PLUGINS : NO_REHYPE_PLUGINS;
+  // The incremental parser keeps its cache across renders of this message, so it lives as long as
+  // the stream does, and its output is never shared.
+  const incrementalRemarkPlugins = useMemo(
+    () => (incrementalParsing ? [...sharedRemarkPlugins, createIncrementalMarkdownPlugin()] : null),
+    [incrementalParsing, sharedRemarkPlugins],
+  );
+  // A remount of a finished text (a thread switch, a row scrolled back into view) reuses its element
+  // instead of parsing again; a text still streaming would only fill the cache with its prefixes.
+  const rendered = useMemo(
+    () =>
+      incrementalRemarkPlugins
+        ? createMarkdownRenderer({
+            remarkPlugins: incrementalRemarkPlugins,
+            rehypePlugins,
+            components: CHAT_MARKDOWN_COMPONENTS,
+            urlTransform: markdownUrlTransform,
+          })(text, false)
+        : sharedMarkdownRenderer(sharedRemarkPlugins, rehypePlugins)(text, !props.isStreaming),
+    [incrementalRemarkPlugins, props.isStreaming, rehypePlugins, sharedRemarkPlugins, text],
   );
 
-  // react-markdown converts unparsed HTML nodes to text when skipHtml is false.
-  // Keep that behavior explicit because literal mode depends on escaping the
-  // complete source token instead of dropping it from the rendered message.
+  // Unparsed HTML nodes render as text, as react-markdown's skipHtml={false} does: literal mode
+  // depends on escaping the complete source token instead of dropping it from the message.
   return (
     <div
       className={cn(
@@ -2668,17 +2775,11 @@ function ChatMarkdown({
       onCopy={handleCopy}
     >
       <ChatMarkdownRendererContext value={componentState}>
-        <MarkdownImageOpenerContext value={onOpenImage ?? null}>
-          <ReactMarkdown
-            remarkPlugins={remarkPlugins}
-            rehypePlugins={parseRawHtml ? CHAT_MARKDOWN_REHYPE_PLUGINS : undefined}
-            skipHtml={false}
-            components={CHAT_MARKDOWN_COMPONENTS}
-            urlTransform={markdownUrlTransform}
-          >
-            {text}
-          </ReactMarkdown>
-        </MarkdownImageOpenerContext>
+        <ChatMarkdownVariantContext value={variant}>
+          <MarkdownImageOpenerContext value={onOpenImage ?? null}>
+            {rendered}
+          </MarkdownImageOpenerContext>
+        </ChatMarkdownVariantContext>
       </ChatMarkdownRendererContext>
     </div>
   );

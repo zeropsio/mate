@@ -3,6 +3,7 @@ export {
   ZeropsApiClient,
   ZeropsApiError,
   zeropsClientsFromUser,
+  zeropsInvitationsFromUser,
   type ListProjectsOptions,
   type ZeropsApiClientOptions,
   type ZeropsApiErrorKind,
@@ -10,6 +11,7 @@ export {
   type ZeropsLoginResponse,
   type ZeropsLocation,
   type ZeropsOrganization,
+  type ZeropsOrganizationInvitation,
   type ZeropsOrganizationMember,
   type ZeropsProject,
   type ZeropsRegistrationResponse,
@@ -30,7 +32,7 @@ export {
   mateContainerOf,
   severalMatesLine,
   type MateContainer,
-  zeropsRegionFromPublicZone,
+  zeropsSubdomainDomainFromPublicZone,
 } from "./containerAddress.ts";
 
 export {
@@ -71,12 +73,10 @@ export {
   VSCODE_PASSWORD_LENGTH,
   ZEROPS_AGENT_TYPE_CANONICAL_ORDER,
   buildCreateProjectBody,
-  buildDevelopmentContainerImportBody,
   buildZcpServiceImportYaml,
   generateVscodePassword,
   nextZcpServiceName,
   type CreateProjectBody,
-  type DevelopmentContainerImportBody,
   type RandomBytes,
   type ZeropsAgentType,
 } from "./newProject.ts";
@@ -89,6 +89,7 @@ export {
   type CanonicalGroup,
   type CanonicalGroupEnvironment,
   type CanonicalGroupTree,
+  type CanonicalGroupsOptions,
   deriveZeropsGroups,
   formatMateFace,
   generateZeropsGroupId,
@@ -123,15 +124,15 @@ export {
   recipeServicesWithout,
   recipeServicesYaml,
   recipeTierRepositories,
+  mateBirthImportYaml,
+  mateTier,
   recipeTierServices,
-  splitRecipeTier,
   type RecipeRuntime,
   type RecipeRuntimeRole,
-  type RecipeRuntimes,
   type RecipeServiceRole,
   type RecipeTier,
   type RecipeTierService,
-  type RecipeTierSplit,
+  type MateTier,
 } from "./recipeTier.ts";
 export { recipeReach, type RecipeReach } from "./recipeReach.ts";
 export { agentsFromOAuthFlags, unionAgents } from "./agentSelection.ts";
@@ -144,6 +145,7 @@ export {
 export {
   derivePublicRouteOffers,
   derivePublicRoutes,
+  isPlatformSubdomain,
   type ZeropsPublicRoute,
   type ZeropsRouteOffer,
 } from "./publicRoutes.ts";
@@ -151,6 +153,7 @@ export {
   summarizeEnvironmentServices,
   type ZeropsEnvironmentServices,
 } from "./environmentSummary.ts";
+export type { BirthIntent } from "./birthIntent.ts";
 export {
   assignCandidateMateTints,
   assignMateTints,
@@ -226,17 +229,6 @@ export {
   type ZeropsRegistryProject,
 } from "./hq/registry.ts";
 export {
-  planProjectIsolation,
-  projectIsolationStepLabel,
-  PROJECT_ENV_ISOLATION_KEY,
-  PROJECT_ENV_ISOLATION_SERVICE,
-  ZCP_API_KEY_ENV_KEY,
-  type ProjectEnvEntry,
-  type ProjectIsolationInput,
-  type ProjectIsolationService,
-  type ProjectIsolationStep,
-} from "./projectIsolation.ts";
-export {
   findHeldMateKey,
   mateAdminKeys,
   newestMateKey,
@@ -262,7 +254,9 @@ export {
   gitActionAllowed,
   gitBlock,
   gitCheckoutLine,
+  GIT_UNREADABLE_LINE,
   gitTrouble,
+  gitTroubleDetail,
   gitVerdict,
   mateChangeIn,
   NO_REPOSITORY_LINE,
@@ -287,25 +281,6 @@ export { linkedChanges, linksChange } from "./changeLinks.ts";
 export { branchLabel, mateProjectOfBranch, mateProjectOfLogin } from "./mateIdentity.ts";
 export { mateNextStep, type MateNextStep } from "./mateNextStep.ts";
 export {
-  boundLeaseRead,
-  lifecycleLeases,
-  mateWorkspaceList,
-  sendZeropsReleaseRequest,
-  workspaceChip,
-  workspaceChipOf,
-  workspaceName,
-  ZEROPS_RELEASE_QUESTION,
-  ZEROPS_RELEASE_REQUEST,
-  zeropsLeaseIdle,
-  zeropsReleaseAsk,
-  zeropsReleaseTurn,
-  ZEROPS_LEASE_IDLE_AFTER_MS,
-  type MateWorkspace,
-  type WorkspaceChip,
-  type ZeropsReleaseAsk,
-  type ZeropsReleaseConversation,
-} from "./workspaceChip.ts";
-export {
   MATE_ARRIVAL_WINDOW_MS,
   mateArriving,
   mateArrivingUntil,
@@ -323,6 +298,7 @@ export {
   releaseEntries,
   releaseInFlight,
   releaseInFlightReason,
+  releaseLanding,
   RELEASE_CHECKING,
   releaseCandidate,
   releaseWord,
@@ -336,6 +312,7 @@ export {
   type ReleaseVerdict,
   releaseRow,
   releaseStalled,
+  type ReleaseStall,
   rolledBackTo,
   shortCommit,
   type FlowRelease,
@@ -365,6 +342,8 @@ export {
   type GroupEnvironmentService,
   type GroupStopProject,
   type GroupStops,
+  type ReleaseCreation,
+  type ReleaseCreationFailure,
   type ReleaseDeployFailure,
   type ReleaseDeploys,
 } from "./groupDeploys.ts";
@@ -471,7 +450,6 @@ export {
 } from "./stageMarks.ts";
 export {
   cannotTellWhatRuns,
-  servicesDeploying,
   changesCountWords,
   changesNotLive,
   PROJECT_ALL_CLEAR,
@@ -490,6 +468,10 @@ export {
 } from "./changeConversation.ts";
 export {
   REVIEW_LABEL,
+  RELEASE_ESTIMATE_MS,
+  RELEASE_READING,
+  RELEASE_READING_LATE,
+  RELEASE_READING_WORKING,
   RELEASE_TAKES,
   REVIEW_RELEASE_LABEL,
   changeReview,
@@ -523,18 +505,31 @@ export {
 export {
   holdReleaseFacts,
   releaseFacts,
+  releaseFailure,
+  releaseFailureOf,
   releaseFollows,
   releaseOutcomeOf,
   releaseStageMarks,
   releaseStep,
-  releaseWhereWords,
+  releaseSteps,
   rollbackOnItsWay,
   type ReleaseFacts,
+  type ReleaseFailure,
+  type ReleaseFailureReads,
 } from "./releaseFacts.ts";
+export {
+  creationFailedWords,
+  releaseCreationsFailed,
+  releaseEndedEvents,
+  type ReleaseCreationFailed,
+} from "./releaseEnded.ts";
 export { formatRunClock } from "./runClock.ts";
 export {
+  changeCommitRows,
+  changeReadoutJudged,
   changeReadoutOfCompare,
   changeReadoutOfRecord,
+  corePushWords,
   type ChangeReadout,
   type ChangeReadoutCommit,
   type ChangeReadoutFile,
@@ -559,17 +554,21 @@ export {
   flowVerbKey,
   flowVerbLabel,
   isRecipeProposal,
+  recipeProposalRedone,
   pullRequestLineWith,
   pullRequestsByMate,
   agentLastSpokeAt,
   agentNotesFor,
   agentTurnNotes,
   productionTurnNotes,
+  releaseEndedWords,
   productionRelease,
   changeLandedEvents,
   type ChangeLandedEvent,
   type ProductionLive,
+  type ReleaseEndedEvent,
   changeAsksForReview,
+  changeInMateReview,
   changeShowsReview,
   type MateRunFacts,
   changeState,
@@ -604,10 +603,6 @@ export {
   type GitOverviewRepository,
 } from "./gitOverview.ts";
 export {
-  onlyTheseCanAddAProject,
-  FINISH_MATE_SETUP_VERB,
-  finishMateSetupScope,
-  finishMateSetupVerb,
   resolveAddProjectVerb,
   resolveMateRegistration,
   type GroupVerb,
@@ -630,9 +625,12 @@ export {
   environmentTierForRole,
   type GroupEnvironment,
   type GroupEnvironmentTier,
-  missingEnvironmentRows,
-  MISSING_ENVIRONMENT_LINE,
-  type MissingEnvironmentRow,
+  applicationEnvironments,
+  listedEnvironmentsOf,
+  putLiveHasChange,
+  type ApplicationEnvironmentFacts,
+  type ApplicationEnvironments,
+  type EnvironmentOffers,
 } from "./groupEnvironments.ts";
 export {
   deployedCommit,

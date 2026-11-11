@@ -112,7 +112,6 @@ const read = (input: Partial<MatesActivityInput>) =>
     projectIds: ["p-vera"],
     attention: {},
     overviews: new Map([["p-vera", VERA]]),
-    hqCurrent: true,
     threads: [],
     sockets: new Map(),
     standing: new Set(),
@@ -266,9 +265,57 @@ describe("matesActivityOf — a Mate that publishes its attention", () => {
       attention: attention(said({ working: 1 })),
       threads: [shell],
       overviews: new Map([["p-vera", VERA]]),
+      // Its socket stands: the shell this page holds is current.
+      sockets: new Map([["p-vera", VERA_ENV]]),
+      standing: new Set([VERA_ENV]),
     });
     expect(activity).toMatchObject({ threadId: "t1", kind: "working", subject: "Fix the build" });
     expect(activity?.remembered).toBeUndefined();
+  });
+
+  // The owner, 2026-10-27: a row read "Thinking" for the 16 minutes and 49 steps its Mate worked.
+  // This page follows a Mate's conversations only while it is open: the shell it held from then
+  // stops where the run was when the person left.
+  it("reads HQ's live word of the chat over a shell this page no longer follows: its steps go on", () => {
+    const left = { ...WORKING, liveStep: { kind: "thinking" as const, since: ASKED } };
+    const onIt = Schema.decodeUnknownSync(MateLiveView)({
+      ...Schema.encodeSync(MateLiveView)(VERA),
+      main: {
+        ...Schema.encodeSync(MateLiveView)(VERA).main,
+        session: { status: "running", lastError: null },
+        latestTurn: {
+          turnId: "turn-1",
+          state: "running",
+          requestedAt: ASKED,
+          startedAt: ASKED,
+          completedAt: null,
+        },
+        liveStep: {
+          kind: "calls",
+          since: ASKED,
+          calls: [
+            {
+              id: "call-build",
+              activityKind: "tool.updated",
+              itemType: "command_execution",
+              title: "Command run",
+              detail: "Bash: pnpm build",
+              toolName: "Bash",
+              command: "pnpm build",
+              input: { description: "Build the app" },
+              startedAt: ASKED,
+            },
+          ],
+        },
+      },
+    });
+    const activity = read({
+      attention: attention(said({ working: 1 })),
+      threads: [left],
+      overviews: new Map([["p-vera", onIt]]),
+      standing: new Set(),
+    });
+    expect(activity).toMatchObject({ kind: "working", liveStep: { words: "Build the app" } });
   });
 
   it.each([
@@ -324,7 +371,6 @@ describe("matesActivityOf — a Mate that publishes its attention", () => {
       read({
         attention: attention(said({ working: 1 })),
         overviews: new Map([["p-vera", stored]]),
-        hqCurrent: false,
         standing: new Set(),
       }),
     ).toMatchObject({ kind: "working" });
@@ -500,6 +546,34 @@ describe("matesActivityOf — an engine Mate whose rows HQ relays", () => {
     expect(words).toMatch(/…$/u);
   });
 
+  it('"Last known <time>" on an unreachable Mate shows when HQ last observed that activity (the engine row\'s update time), never when the activity started; a running duration keeps the run-start clock.', () => {
+    const started = new Date(2026, 9, 28, 22, 35, 43).getTime();
+    const observed = new Date(2026, 9, 28, 23, 4, 10).getTime();
+    const overviews = onEngine(
+      engineRow("t1", {
+        state: { kind: "working", since: started, waitsOnHelpers: false },
+        activeRunId: "t1/r/25",
+        latestRun: { id: "t1/r/25", end: null, endedAt: null },
+        at: observed,
+      }),
+    );
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 9, 28, 23, 6));
+    try {
+      const live = read({ attention: attention(said({ working: 1 })), overviews });
+      expect(mateRowView(live, "working").slot).toEqual({
+        kind: "clock",
+        since: new Date(started).toISOString(),
+      });
+      const held = read({ attention: attention(said({ working: 1 }), false), overviews });
+      expect(lastKnownMateWords(held, "Pepa", "24-hour")).toBe(
+        "Last known 23:04: Pepa was working on: Ship the release",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("a working Mate's menu clock counts from this run's start and only moves forward", () => {
     // Recorded 2026-10-09: the clock opened at the previous run's end (14:23), then jumped six
     // times as the queue's, the provider's and the relay's dates arrived.
@@ -551,7 +625,6 @@ describe("matesActivityOf — an engine Mate whose rows HQ relays", () => {
             }),
           ),
           overviews: onEngine(engineRow("t1", { state, at: Date.parse(DONE) })),
-          hqCurrent: true,
           threads: [],
           sockets: new Map(),
           standing: new Set(),
@@ -623,6 +696,8 @@ describe("matesActivityOf — an engine Mate whose rows HQ relays", () => {
       attention: attention(said({ working: 1 })),
       threads: [{ ...WORKING, title: "Fix the build" }],
       overviews: onEngine(engineRow("t1", {})),
+      // Its socket stands: the shell this page holds is current.
+      standing: new Set([VERA_ENV]),
     });
     expect(activity).toMatchObject({ subject: "Fix the build" });
   });
@@ -646,10 +721,9 @@ describe("matesActivityOf — a Mate from before the attention value", () => {
     expect(visited("2026-10-03T09:10:00.000Z")).toMatchObject({ kind: "idle", unread: false });
   });
 
-  const socket = (standing: boolean, hq: MatesActivityInput["overviews"], hqCurrent = true) =>
+  const socket = (standing: boolean, hq: MatesActivityInput["overviews"]) =>
     read({
       overviews: hq,
-      hqCurrent,
       threads: [WORKING],
       sockets: new Map([["p-vera", VERA_ENV]]),
       standing: new Set(standing ? [VERA_ENV] : []),
@@ -685,10 +759,10 @@ describe("matesActivityOf — what a Mate's row keeps between reads", () => {
       ["p-vera", VERA],
       ["p-ida", IDA],
     ]),
-    hqCurrent: true,
     threads,
     sockets: new Map(),
-    standing: new Set(),
+    // Vera's socket stands: the shell this page holds of her chat is current.
+    standing: new Set([VERA_ENV]),
     lastVisitedAtById: {},
   });
   const first = matesActivityOf(twoMates([WORKING]));
@@ -749,56 +823,59 @@ describe("HQ evidence becomes current or last-known Mate words", () => {
     "keeps %s's limit and source time during an outage without a current marker",
     (provider) => {
       vi.useFakeTimers({ toFake: ["Date"] });
-      vi.setSystemTime(new Date(ASKED));
-      const main = VERA.main!;
-      const overview = {
-        ...VERA,
-        main: {
-          ...main,
-          updatedAt: ASKED,
-          session: { status: "error" as const, lastError: `${provider} usage limit reached.` },
-          latestTurn: { ...main.latestTurn!, state: "error" as const },
-          usagePause: { resetsAt: DONE },
-        },
-      };
-      const held = read({
-        attention: attention(
-          said({
-            questions: [
-              { threadId: ThreadId.make("t1"), turnId: TurnId.make("turn-1"), kind: "failed" },
-            ],
-          }),
-          false,
-        ),
-        overviews: new Map([["p-vera", overview]]),
-      });
-      expect(held?.lastKnown?.at).toBe(ASKED);
-      expect(lastKnownMateWords(held, "Skákala")).toContain(`Skákala hit the ${provider} limit`);
-      expect(lastKnownMateWords(held, "Skákala")).toContain("Last known");
-      expect(lastKnownMateWords(held, "Skákala")).toContain("; reset ");
-      expect(mateStatus(held)).toBeNull();
-      expect(mateRowView(held, "sleep", "Skákala").reply).toMatchObject({
-        kind: "words",
-        text: expect.stringContaining("Last known"),
-      });
-      const live = read({
-        attention: attention(
-          said({
-            questions: [
-              { threadId: ThreadId.make("t1"), turnId: TurnId.make("turn-1"), kind: "failed" },
-            ],
-          }),
-        ),
-        overviews: new Map([["p-vera", overview]]),
-      });
-      expect(mateStatus(live)).toMatchObject({
-        kind: "limit",
-        severity: "attention",
-        provider,
-        until: DONE,
-      });
-      expect(lastKnownMateWords(live, "Skákala")).toBeUndefined();
-      vi.useRealTimers();
+      try {
+        vi.setSystemTime(new Date(ASKED));
+        const main = VERA.main!;
+        const overview = {
+          ...VERA,
+          main: {
+            ...main,
+            updatedAt: ASKED,
+            session: { status: "error" as const, lastError: `${provider} usage limit reached.` },
+            latestTurn: { ...main.latestTurn!, state: "error" as const },
+            usagePause: { resetsAt: DONE },
+          },
+        };
+        const held = read({
+          attention: attention(
+            said({
+              questions: [
+                { threadId: ThreadId.make("t1"), turnId: TurnId.make("turn-1"), kind: "failed" },
+              ],
+            }),
+            false,
+          ),
+          overviews: new Map([["p-vera", overview]]),
+        });
+        expect(held?.lastKnown?.at).toBe(ASKED);
+        expect(lastKnownMateWords(held, "Skákala")).toContain(`Skákala hit the ${provider} limit`);
+        expect(lastKnownMateWords(held, "Skákala")).toContain("Last known");
+        expect(lastKnownMateWords(held, "Skákala")).toContain("; reset ");
+        expect(mateStatus(held)).toBeNull();
+        expect(mateRowView(held, "sleep", "Skákala").reply).toMatchObject({
+          kind: "words",
+          text: expect.stringContaining("Last known"),
+        });
+        const live = read({
+          attention: attention(
+            said({
+              questions: [
+                { threadId: ThreadId.make("t1"), turnId: TurnId.make("turn-1"), kind: "failed" },
+              ],
+            }),
+          ),
+          overviews: new Map([["p-vera", overview]]),
+        });
+        expect(mateStatus(live)).toMatchObject({
+          kind: "limit",
+          severity: "attention",
+          provider,
+          until: DONE,
+        });
+        expect(lastKnownMateWords(live, "Skákala")).toBeUndefined();
+      } finally {
+        vi.useRealTimers();
+      }
     },
   );
   it("keeps a reset-free streaming Claude refusal visible while the provider's turn stays active", () => {
@@ -890,10 +967,10 @@ it("direct and HQ attention keep the same restart item even when conversation wo
       projectIds: ["vera"],
       attention: { vera: { attention: value, live: true, unseen: 0 } },
       overviews: new Map([["vera", VERA]]),
-      hqCurrent: true,
       threads,
       sockets: new Map(),
-      standing: new Set(),
+      // Its socket stands: a shell this page holds is current.
+      standing: new Set([VERA_ENV]),
       lastVisitedAtById: {},
     };
     const read = matesActivityOf(input).get("vera");
@@ -1010,7 +1087,6 @@ describe("matesActivityOf — the conversation the person is looking at", () => 
           projectIds: ["p-vera"],
           attention: step,
           overviews: new Map([["p-vera", VERA]]),
-          hqCurrent: true,
           threads: [],
           sockets: new Map(),
           standing: new Set(),

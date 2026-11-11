@@ -1,6 +1,6 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { resizeMenu } from "../../harness/browser.ts";
 import { automatedMatesWire } from "../../fakes/b-menu/automatedMates.ts";
 import { menuScenario } from "./dsl.ts";
@@ -14,7 +14,7 @@ const ROWS = `[...document.querySelectorAll('[data-zerops-mate-row], [data-zerop
   })`;
 
 describe("B: automated Mates in the menu", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     // The owner's cardinal sin: a task starting or ending must move nothing in the menu.
     it.effect(
       "an automated Mate's row names its task as it starts and how it ended once it ends, and nothing in the menu moves",

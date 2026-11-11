@@ -5,7 +5,7 @@ import * as NodeChildProcess from "node:child_process";
 const holder = NodeChildProcess.spawn(
   "flock",
   [
-    "-x",
+    process.argv[3] === "shared" ? "-s" : "-x",
     process.argv[2]!,
     process.execPath,
     "-e",

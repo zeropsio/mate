@@ -103,6 +103,18 @@ describe("threadRoutes", () => {
     ["a synchronizing shell without the thread waits", "synchronizing", {}, "loading"],
     ["a live shell without the thread: no longer available", "live", {}, "missing"],
     [
+      "a live shell lacking the thread before its engine conversations' list answered waits",
+      "live",
+      { listed: false },
+      "loading",
+    ],
+    [
+      "a detail the server deleted is no longer available whatever the list says",
+      "live",
+      { listed: false, deleted: true },
+      "missing",
+    ],
+    [
       "a live shell with only the thread's shell waits for its detail",
       "live",
       { shell: true },
@@ -132,6 +144,7 @@ describe("threadRoutes", () => {
       readonly detail?: boolean;
       readonly deleted?: boolean;
       readonly draft?: boolean;
+      readonly listed?: boolean;
     };
     expect(
       resolveThreadRouteRenderState({
@@ -140,6 +153,7 @@ describe("threadRoutes", () => {
         serverThreadDetailExists: has.detail === true,
         serverThreadDetailDeleted: has.deleted === true,
         draftThreadExists: has.draft === true,
+        threadsListed: has.listed !== false,
       }),
     ).toBe(expected);
   });
@@ -152,6 +166,8 @@ describe("resolveThreadRouteStage", () => {
     conversationShown: false,
     nobodyLivesHere: false,
     readGivenUp: false,
+    findGivenUp: false,
+    shellLive: false,
     directoryAnswered: true,
     promotedDraft: false,
   };

@@ -3,6 +3,7 @@ import { ProviderRuntimeEvent, type SpiEvent } from "@t3tools/contracts";
 import { MateLinkDown, type MateLinkUp } from "@t3tools/shared/mateLink";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Fiber from "effect/Fiber";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
@@ -13,7 +14,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import { ServerConfig } from "../config.ts";
 import * as Sqlite from "../persistence/NodeSqliteClient.ts";
 import { ProviderRuntimeEventBusTest } from "../spi/ProviderRuntimeEventBus.ts";
-import { ZeropsOrgRead } from "../zerops/ZeropsOrgRead.ts";
+import { ZeropsMateAccessList } from "../zerops/ZeropsMateAccessList.ts";
 import { resolveZeropsEnvironment } from "../zerops/ZeropsEnvironment.ts";
 import { makeUsageLink } from "./UsageLink.ts";
 import { makeUsageOutbox } from "./UsageOutbox.ts";
@@ -53,7 +54,6 @@ const state = Schema.decodeUnknownSync(MateLinkDown)({
     name: "Mate",
     face: "face",
     standupRequestedBy: null,
-    closedOff: false,
     appId: null,
     appName: null,
     changes: [],
@@ -67,9 +67,9 @@ const config = ServerConfig.of({
     apiToken: undefined,
   }),
 } as ServerConfig["Service"]);
-const org = ZeropsOrgRead.of({
-  project: () => Effect.succeed({ kind: "answered", status: 200, body: { clientId: "org" } }),
-});
+const org = ZeropsMateAccessList.of({
+  ownProject: Effect.succeed(Option.some({ clientId: "org", overrides: {} })),
+} as unknown as ZeropsMateAccessList["Service"]);
 
 describe("Mate usage on the existing HQ link", () => {
   it.effect.each(
@@ -158,7 +158,7 @@ describe("Mate usage on the existing HQ link", () => {
     }).pipe(
       Effect.provide(Sqlite.layer({ filename: ":memory:" })),
       Effect.provideService(ServerConfig, config),
-      Effect.provideService(ZeropsOrgRead, org),
+      Effect.provideService(ZeropsMateAccessList, org),
     ),
   );
   it.effect("a rejected conflicting fact does not stop the later 130-token turn", () =>
@@ -207,7 +207,7 @@ describe("Mate usage on the existing HQ link", () => {
     }).pipe(
       Effect.provide(Sqlite.layer({ filename: ":memory:" })),
       Effect.provideService(ServerConfig, config),
-      Effect.provideService(ZeropsOrgRead, org),
+      Effect.provideService(ZeropsMateAccessList, org),
     ),
   );
   it.effect("an ACK delete failure retains both turns and recovers on the same lane", () =>
@@ -283,7 +283,7 @@ describe("Mate usage on the existing HQ link", () => {
     }).pipe(
       Effect.provide(Sqlite.layer({ filename: ":memory:" })),
       Effect.provideService(ServerConfig, config),
-      Effect.provideService(ZeropsOrgRead, org),
+      Effect.provideService(ZeropsMateAccessList, org),
     ),
   );
   it.effect(
@@ -327,7 +327,7 @@ describe("Mate usage on the existing HQ link", () => {
       }).pipe(
         Effect.provide(Sqlite.layer({ filename: ":memory:" })),
         Effect.provideService(ServerConfig, config),
-        Effect.provideService(ZeropsOrgRead, org),
+        Effect.provideService(ZeropsMateAccessList, org),
       ),
   );
 });

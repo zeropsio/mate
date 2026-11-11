@@ -2,7 +2,6 @@ import { definePlugin } from "@oxlint/plugins";
 
 import namespaceNodeImports from "./rules/namespace-node-imports.ts";
 import noArbitraryValues from "./rules/no-arbitrary-values.ts";
-import noDirectPermissionRule from "./rules/no-direct-permission-rule.ts";
 import noEnvironmentAsProject from "./rules/no-environment-as-project.ts";
 import noFailureToEmpty from "./rules/no-failure-to-empty.ts";
 import noGlobalProcessRuntime from "./rules/no-global-process-runtime.ts";
@@ -16,6 +15,7 @@ import noManualEffectRuntimeInTests from "./rules/no-manual-effect-runtime-in-te
 import noNativeTitleTooltip from "./rules/no-native-title-tooltip.ts";
 import noTestInLoop from "./rules/no-test-in-loop.ts";
 import noPlatformGlobals from "./rules/no-platform-globals.ts";
+import noHqSessionCode from "./rules/no-hq-session-code.ts";
 import noRemoteDataInBrowserStorage from "./rules/no-remote-data-in-browser-storage.ts";
 import noRemoteIoOutsideDataLayer from "./rules/no-remote-io-outside-data-layer.ts";
 import noRetiredMechanism from "./rules/no-retired-mechanism.ts";
@@ -35,7 +35,6 @@ export default definePlugin({
   rules: {
     "namespace-node-imports": namespaceNodeImports,
     "no-arbitrary-values": noArbitraryValues,
-    "no-direct-permission-rule": noDirectPermissionRule,
     "no-environment-as-project": noEnvironmentAsProject,
     "no-failure-to-empty": noFailureToEmpty,
     "no-global-process-runtime": noGlobalProcessRuntime,
@@ -49,6 +48,7 @@ export default definePlugin({
     "no-native-title-tooltip": noNativeTitleTooltip,
     "no-test-in-loop": noTestInLoop,
     "no-platform-globals": noPlatformGlobals,
+    "no-hq-session-code": noHqSessionCode,
     "no-remote-data-in-browser-storage": noRemoteDataInBrowserStorage,
     "no-remote-io-outside-data-layer": noRemoteIoOutsideDataLayer,
     "no-restyle": noRestyle,

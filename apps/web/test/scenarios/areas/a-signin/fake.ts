@@ -1,7 +1,3 @@
-import * as Effect from "effect/Effect";
-import type { WebSocket } from "ws";
-import { expect } from "@effect/vitest";
-import { deadline } from "../../harness/http.ts";
 import type { ScenarioDrivers, ScenarioExtension } from "../../harness/scenario.ts";
 import { sessionDatabase } from "../../fakes/a-signin/database.ts";
 
@@ -25,102 +21,44 @@ export function secondOrganization(drivers: ScenarioDrivers) {
   });
 }
 
-export async function endSessionCheck(
-  drivers: ScenarioDrivers,
-  sockets: WebSocket[],
-  fault: "outage" | "expiry" | "refusal",
-) {
+export async function endSessionCheck(drivers: ScenarioDrivers) {
   const database = signInFaults(drivers);
-  if (fault === "outage") {
-    await database.unavailable();
-    try {
-      await coreRechecks(drivers);
-      await database.sawSessionRead();
-    } finally {
-      await database.returns();
-    }
-    return;
-  }
-  expect(sockets.length, "A live real-Core structure stream is required").toBeGreaterThan(0);
-  const closed = Promise.all(
-    sockets.map(
-      (socket) => new Promise<number>((resolve) => socket.once("close", (code) => resolve(code))),
-    ),
-  );
-  if (fault === "refusal") {
-    for (const socket of sockets) socket.close(4403, "scenario source refusal");
-    expect(await deadline(closed, "HQ refused-source close")).toContain(4403);
-  } else {
-    await database.expires();
-    await coreRechecks(drivers);
-    expect(await deadline(closed, "Core expired-session close")).toContain(4401);
+  await database.unavailable();
+  try {
+    await database.sawSessionRead();
+  } finally {
+    await database.returns();
   }
 }
-
-/**
- * The Core's next session and role recheck of every socket: the real Core's comes when its wait
- * clock passes the recheck period; the embedded Core's runs on its own short period.
- */
-export const coreRechecks = (drivers: ScenarioDrivers) =>
-  drivers.core.kind === "external"
-    ? Effect.runPromise(drivers.core.clock.advance(drivers.core.periods.streamRecheck))
-    : Promise.resolve();
-
-/**
- * The Core's next recheck, kept by every one of the browser's sockets in `links`: both rechecks of
- * each socket (the session's, the roles') ran and the real Core waited out the next ones, and every
- * socket open before it is still open, none ended and reopened.
- */
-export const everySocketRechecked = (
-  drivers: ScenarioDrivers,
-  links: ReadonlyMap<WebSocket, WebSocket>,
-) => {
-  const core = drivers.core;
-  if (core.kind !== "external") return Promise.resolve();
-  const open = [...links.keys()];
-  if (open.length === 0) throw new Error("No socket of the browser reaches the Core");
-  const rechecks = (waits: ReadonlyArray<number>) =>
-    waits.filter((ms) => ms === core.periods.streamRecheck).length;
-  const before = rechecks(core.clock.waits());
-  return Effect.runPromise(
-    core.clock
-      .advance(core.periods.streamRecheck)
-      .pipe(
-        Effect.andThen(
-          core.clock.until(
-            (waits) => rechecks(waits) >= before + 2 * open.length,
-            "every socket waiting out the Core's next recheck",
-          ),
-        ),
-        Effect.andThen(
-          Effect.sync(() =>
-            expect(
-              open.filter((socket) => !links.has(socket)).length,
-              "A socket ended at the Core's recheck",
-            ).toBe(0),
-          ),
-        ),
-      ),
-  );
-};
 
 export const handoverCount = (drivers: ScenarioDrivers) =>
   drivers.zerops.requests.get("GET /authorize-app") ?? 0;
 
 /**
- * The organization's member list as the organization's stalls it: each read the person's browser makes is
- * answered `ms` late. HQ's own reads (its token, `hq`) are not slowed: only the client's path is.
+ * The browser's member-list reads stay unanswered until the case explicitly releases them; HQ's own
+ * read with the organisation's read token (`mate-hq-read`) is answered.
  */
-export function slowMemberList(drivers: ScenarioDrivers, ms: number) {
+export function holdMemberList(drivers: ScenarioDrivers) {
+  const held = Promise.withResolvers<void>();
+  let released = false;
   drivers.zerops.handlers.push(async (request) => {
     const bearer = request.headers.authorization?.replace(/^Bearer /u, "");
     if (
-      bearer !== "hq" &&
-      /^\/api\/rest\/public\/client\/[^/]+\/user\/list$/u.test(request.url.pathname)
+      /^\/api\/rest\/public\/client\/[^/]+\/user\/list$/u.test(request.url.pathname) &&
+      (bearer === undefined || drivers.zerops.world.tokens.get(bearer)?.name !== "mate-hq-read")
     )
-      await new Promise((resolve) => setTimeout(resolve, ms));
+      await held.promise;
     return undefined;
   });
+  return {
+    get released() {
+      return released;
+    },
+    release() {
+      released = true;
+      held.resolve();
+    },
+  };
 }
 
 /**

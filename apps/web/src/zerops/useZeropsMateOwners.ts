@@ -1,17 +1,14 @@
 /**
- * Whose each Mate is, and who a surface names, as HQ names them.
+ * Whose each Mate is, and who a surface names.
  *
- * A Mate's owner is HQ's (`hqProjectPeople`): HQ decides who owns it and sends their name and
- * picture, so a load reads no member list for "Jan's Mate — you have Read access" (D5). Whoever else a
- * surface names — a login's signer, a remark's author — HQ's people name too. Somebody HQ names no
- * record of goes without a name, and a face without a badge.
- *
- * The member list itself is read only where a surface needs the organization's people beyond what
- * HQ names (`useZeropsOrganizationMembersRead`): verifying the organization's official HQ.
+ * A Mate's owner is HQ's (`hqProjectPeople`): HQ decides who owns it and names them by Zerops user
+ * id; the organization's member list, read with the viewer's own token, names and pictures them.
+ * Whoever else a surface names — a login's signer, a remark's author — the member list names too.
+ * Somebody it does not hold goes without a name, and a face without a badge.
  */
 
 import { useAtomValue } from "@effect/atom-react";
-import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
+import { zeropsUserIdOf } from "@t3tools/contracts";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
   shownHqProjectPeopleAtom,
@@ -19,87 +16,37 @@ import {
   type HqMateOwner,
   type HqProjectPeople,
 } from "@t3tools/client-runtime/data";
-import { organizationMembers, initialStream, type MembersRead } from "@t3tools/client-runtime/data";
 import { Atom } from "effect/reactivity";
 import { shareEqual } from "@t3tools/shared/structuralSharing";
-import { useCallback, useEffect } from "react";
+import { useCallback } from "react";
 
-import { zeropsInitials } from "~/components/zerops/landing/ZeropsAccountControl.logic";
+import {
+  zeropsAccountDisplay,
+  zeropsInitials,
+} from "~/components/zerops/landing/ZeropsAccountControl.logic";
 
 import { hqNavigationAtom, hqPeopleAtom } from "../state/zerops";
-import { useAccountDataOptional, useProjection } from "./accountData";
+
+type ZeropsAccountSource = Parameters<typeof zeropsAccountDisplay>[0] & object;
+import { useZeropsSessionOptional } from "./sessionContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 /** A Mate's owner, as a face in the corner of the Mate's own draws them. */
 export interface ZeropsMateOwner {
   readonly name: string;
+  /** What every surface calls them (`HqMateOwner.called`). */
+  readonly called: string;
   readonly initials: string;
   readonly avatarUrl: string | null;
   /** The owner is the person looking: "You asked", and *Mine* keeps this Mate. */
   readonly isViewer: boolean;
 }
 
-const NO_MEMBERS: ReadonlyArray<ZeropsOrganizationMember> = [];
-
 /**
- * Where the member read stands: `idle` until a surface would use it, `failed`
- * when it came back with nothing to tell (the list stays empty).
- */
-export type ZeropsOrganizationMembersStatus = "idle" | "loading" | "ready" | "failed";
-
-const UNREAD_MEMBERS = Atom.make<MembersRead>({
-  fact: { kind: "unknown" },
-  coverage: "unknown",
-  stream: initialStream({ parent: null, mode: "sampled" }),
-  link: null,
-  members: NO_MEMBERS,
-  status: "loading",
-  settled: false,
-  refused: false,
-});
-
-export function useZeropsOrganizationMembersRead(input: {
-  readonly clientId: string | undefined;
-  /** Nothing is read until a surface would use it. */
-  readonly enabled: boolean;
-}): Omit<MembersRead, "status"> & {
-  readonly status: ZeropsOrganizationMembersStatus;
-  /**
-   * The read ended with no answer and nothing reads it again on its own: refused, until a
-   * person's again.
-   */
-  readonly refusedForGood: boolean;
-} {
-  // A surface outside the account's data (a render test in isolation) reads nobody, and its rows
-  // say the same thing without names.
-  const account = useAccountDataOptional();
-  const demandDetail = account?.demandDetail;
-  const orgId = account?.orgId ?? null;
-  const { clientId, enabled } = input;
-  const owner = enabled && clientId !== undefined ? clientId : null;
-  // One read per organization, shared by every surface that asks: held while any of them is drawn,
-  // and read again while held, on the data layer's cadence.
-  useEffect(() => {
-    if (demandDetail === undefined || orgId === null || owner === null) return;
-    return demandDetail({ family: "organizationMembers", ownerId: owner });
-  }, [demandDetail, orgId, owner]);
-  const read = useProjection(
-    organizationMembers,
-    orgId === null || owner === null ? null : { orgId, clientId: owner },
-    UNREAD_MEMBERS,
-  );
-  const status: ZeropsOrganizationMembersStatus = owner === null ? "idle" : read.status;
-  return {
-    ...read,
-    status,
-    refusedForGood: read.refused,
-  };
-}
-
-/**
- * Somebody of the organization `clientId` by their Zerops user id, by name — a login's signer, a
- * remark's author — as HQ's people name them for the organization in view; its last word stands
- * while HQ does not answer. Nobody of another organization.
+ * Somebody of the organization `clientId` by their Zerops user id, by what every surface calls them
+ * (`ZeropsPerson.called`) — a login's signer, a remark's author — as the member list of the
+ * organization in view names them; its last answer stands while Zerops does not answer. Nobody of
+ * another organization.
  */
 export function useHqPersonNames(
   clientId: string | undefined,
@@ -108,14 +55,47 @@ export function useHqPersonNames(
   const people = useAtomValue(hqPeopleAtom);
   const shown = clientId !== undefined && navigation.orgId === clientId;
   return useCallback(
-    (userId: string) => (shown ? people?.[userId]?.name : undefined),
+    (userId: string) => (shown ? people?.[userId]?.called : undefined),
     [people, shown],
   );
 }
 
 /**
- * A Mate's owner as HQ names them (`HqMateOwner`), as a face in the corner of the Mate's own draws
- * them: their name and its initials, and the platform's picture of them HQ sends.
+ * Who a record names by their Zerops user id, or by the subject the engine records a person's
+ * answer under: as the member list calls them, and the person looking by their own account where
+ * the list does not hold them.
+ */
+export function personNameOf(
+  subject: string,
+  viewer: (ZeropsAccountSource & { readonly id?: string }) | null | undefined,
+  people: (userId: string) => string | undefined,
+): string | undefined {
+  const userId = zeropsUserIdOf(subject);
+  return people(userId) ?? (viewer?.id === userId ? zeropsAccountDisplay(viewer).name : undefined);
+}
+
+/**
+ * What every surface calls the person looking (`ZeropsPerson.called`), as the member list of the
+ * organization in view holds them; `undefined` while it does not.
+ */
+export function useViewerCalled(): string | undefined {
+  const viewerId = useZeropsSessionOptional()?.user?.id;
+  const people = useAtomValue(hqPeopleAtom);
+  return viewerId === undefined ? undefined : people?.[viewerId]?.called;
+}
+
+/** `personNameOf` for the organization `clientId`, as a surface names who answered its ask. */
+export function usePersonNames(
+  clientId: string | undefined,
+): (userId: string) => string | undefined {
+  const people = useHqPersonNames(clientId);
+  const viewer = useZeropsSessionOptional()?.user;
+  return useCallback((subject: string) => personNameOf(subject, viewer, people), [people, viewer]);
+}
+
+/**
+ * A Mate's owner (`HqMateOwner`), as a face in the corner of the Mate's own draws them: their name
+ * and its initials, and the platform's picture of them.
  */
 export function zeropsMateOwnerOf(
   owner: HqMateOwner | null | undefined,
@@ -124,6 +104,7 @@ export function zeropsMateOwnerOf(
   if (owner === null || owner === undefined) return undefined;
   return {
     name: owner.name,
+    called: owner.called,
     initials: zeropsInitials(owner.name),
     avatarUrl: owner.avatarUrl ?? null,
     isViewer: viewerUserId !== undefined && viewerUserId !== null && owner.userId === viewerUserId,

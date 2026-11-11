@@ -265,7 +265,7 @@ describe("HQ source client", () => {
     const calls: string[] = [];
     const api = makeHqApi({
       address: "https://hq.example",
-      accessToken: async () => "access",
+      accessToken: async () => ({ token: "access" }),
       orgId: "org-1",
       openSocket: () => {
         throw new Error("unused");
@@ -292,7 +292,7 @@ describe("HQ source client", () => {
     let kept: string | null = "expired";
     const api = makeHqApi({
       address: "https://hq.example",
-      accessToken: async () => "access",
+      accessToken: async () => ({ token: "access" }),
       orgId: "org-1",
       openSocket: () => {
         throw new Error("unused");
@@ -320,8 +320,11 @@ describe("HQ source client", () => {
               status: 200,
             },
           );
-        if (new Headers(init?.headers).get("authorization") === "Bearer expired")
+        const headers = new Headers(init?.headers);
+        expect(headers.get("authorization")).toBe("Bearer access");
+        if (headers.get("x-hq-session") === "expired")
           return new Response(JSON.stringify({ code: "session_required" }), { status: 401 });
+        expect(headers.get("x-hq-session")).toBe("fresh");
         return new Response(JSON.stringify({ entries: [], truncated: false }), { status: 200 });
       },
     });
@@ -343,7 +346,7 @@ describe("HQ source client", () => {
     async (sent, held) => {
       const api = makeHqApi({
         address: "https://hq.example",
-        accessToken: async () => "access",
+        accessToken: async () => ({ token: "access" }),
         orgId: "org-1",
         openSocket: () => {
           throw new Error("unused");

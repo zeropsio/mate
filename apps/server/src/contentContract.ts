@@ -24,6 +24,6 @@ export const CONTENT_CONTRACT = [
   "4. Say what changed. Never restate your previous recap or a standing instruction.",
   "5. Name things the way the person sees them (the shop, the stage preview, production): no internal names, environment variables, hashes or query strings unless asked.",
   "6. Structure only for length: headings once there are more than three sections, lists at most two levels deep, tables for comparisons.",
-  "7. A message the person sends while you work goes into your task list, and gets one progress line that answers it, quoting it briefly.",
+  "7. A message the person sends while you work goes into your task list, and gets one progress line that answers it, quoting it briefly: an answer in your thinking never reaches them.",
   "</writing>",
 ].join("\n");

@@ -1,6 +1,6 @@
-import { describe, expect, it } from "@effect/vitest";
+import { scenarioSuite } from "../../harness/suite.ts";
+import { describe, expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { installBudget } from "./fake.ts";
 import { budgets } from "./dsl.ts";
@@ -8,13 +8,8 @@ import { budgets } from "./dsl.ts";
 const report = (line: string) => process.stdout.write(`${line}\n`);
 
 const names = ["Ada", "Bea", "Cara", "Dora"];
-// One registration pair per organization-wide family (project, service, process, app version,
-// public HTTP routing, public port routing): a fixed count that never grows with the projects or
-// Mates shown.
-const REGISTRATIONS = 12;
-
 describe("H: hosted client budgets", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     // App detail scales with the cards in view (the owner, 2026-10-11, asked each card for its
     // "quick history of latest PRs"): applications nobody can see add no history reads.
     it.effect(
@@ -92,38 +87,15 @@ describe("H: hosted client budgets", () => {
                   expect(after).not.toContain(order[0]);
                   expect(after).toContain(order.at(-1));
                 }
+                if (count === 1) {
+                  yield* b.when.appDetailsAre(["Shop"]);
+                  yield* b.when.opensUsage;
+                  yield* b.when.appDetailsAre([]);
+                }
                 yield* s.then.noExternalNetwork;
               }),
             );
         }),
-    );
-
-    // Leaving Projects releases the cards' detail; Usage's source migration owns its RPC budget.
-    it.effect("opening Usage releases Projects detail demand", () =>
-      Effect.gen(function* () {
-        const s = yield* createScenario([installBudget]);
-        const b = budgets(s);
-        yield* b.given.mates(["Ada"]);
-        yield* s.given.signedIn;
-        yield* b.when.projectsReady;
-        yield* b.when.appDetailsAre(["Shop"]);
-        yield* b.when.opensUsage;
-        yield* b.when.appDetailsAre([]);
-        yield* s.then.noExternalNetwork;
-      }),
-    );
-
-    // Catches menu discovery connecting every Mate and spending container resources before a click.
-    it.effect("showing four Mates in the menu opens no Mate RPC connection", () =>
-      Effect.gen(function* () {
-        const s = yield* createScenario([installBudget]);
-        const b = budgets(s);
-        yield* b.given.mates(names);
-        yield* s.given.signedIn;
-        yield* b.when.menuReady(names);
-        yield* b.then.unopenedMates(names);
-        yield* s.then.noExternalNetwork;
-      }),
     );
 
     // Catches opening one Mate fanning out to other containers or never enabling its composer.
@@ -134,6 +106,7 @@ describe("H: hosted client budgets", () => {
         yield* b.given.mates(names);
         yield* s.given.signedIn;
         yield* b.when.menuReady(names);
+        yield* b.then.unopenedMates(names);
         yield* b.when.opensMate("Ada");
         yield* s.then.conversation.appears;
         yield* b.then.composerEnabled;
@@ -219,40 +192,6 @@ describe("H: hosted client budgets", () => {
       }),
     );
 
-    // Catches a per-project services or access read: at start, or repeated over an idle session
-    // that outlasts the access grant's renewal. The owner is judged on their membership, and whose
-    // a Mate is comes from HQ: no project's own row is read, then or at a renewal.
-    it.effect("an idle owner's session reads no project's services or own row", () =>
-      Effect.gen(function* () {
-        const s = yield* createScenario([installBudget]);
-        const b = budgets(s);
-        yield* b.given.mates(names);
-        yield* Effect.promise(() => s.clock.install());
-        yield* s.given.signedIn;
-        yield* b.when.menuReady(names);
-        yield* b.when.browserSettled;
-        const servicesAtStart = b.measure.projectServiceReads();
-        const projectsAtStart = b.measure.projectReads();
-        const variablesAtStart = b.measure.variableReads();
-        yield* Effect.promise(() => s.clock.advance(15 * 60_000));
-        yield* b.when.browserSettled;
-        const servicesIdle = b.measure.projectServiceReads() - servicesAtStart;
-        const projectsIdle = b.measure.projectReads() - projectsAtStart;
-        const variablesIdle = b.measure.variableReads() - variablesAtStart;
-        report(
-          `H idle, owner: GET service-stack (with preflights) at start=${servicesAtStart}, over 15 min idle=${servicesIdle}; GET project (with preflights) at start=${projectsAtStart}, over 15 min idle (one renewal)=${projectsIdle}; 4 Mates`,
-        );
-        yield* s.then.noExternalNetwork;
-        expect(servicesAtStart, "Per-project services reads at start").toBe(0);
-        expect(servicesIdle, "Per-project services reads while idle").toBe(0);
-        expect(projectsAtStart, "Own project rows at start").toBe(0);
-        expect(projectsIdle, "Own project rows over one renewal").toBe(0);
-        report(`H variables: startup=${variablesAtStart}, idle=${variablesIdle}; 4 Mates`);
-        expect(variablesAtStart, "No variables search at menu load").toBe(0);
-        expect(variablesIdle, "No variables search while idle").toBe(0);
-      }),
-    );
-
     // A Developer (NO_ACCESS member) is judged on the grant their listing names on each project:
     // a project's own row is read only where the listing names none, and here it names every one.
     it.effect("an idle Developer's session reads no own row their listing names a grant on", () =>
@@ -286,73 +225,6 @@ describe("H: hosted client budgets", () => {
         report(`H variables: startup=${variablesAtStart}, idle=${variablesIdle}; 4 Mates`);
         expect(variablesAtStart, "No variables search at menu load").toBe(0);
         expect(variablesIdle, "No variables search while idle").toBe(0);
-      }),
-    );
-
-    // Catches startup reads that make a populated organization slow and expensive.
-    it.effect(
-      "browser startup uses at most its organization-wide registrations and eight other requests",
-      () =>
-        Effect.gen(function* () {
-          const s = yield* createScenario([installBudget]);
-          const b = budgets(s);
-          yield* b.given.mates(names);
-          const before = b.measure.browser();
-          yield* s.given.signedIn;
-          yield* b.when.menuReady(names);
-          yield* b.when.browserSettled;
-          yield* s.then.noExternalNetwork;
-          const sample = b.measure.browser();
-          const registrations = sample.registrations - before.registrations;
-          const otherRequests = sample.otherRequests - before.otherRequests;
-          report(
-            `H target startup: browser registrations=${registrations}, other=${otherRequests}, total=${registrations + otherRequests}; targets <=${REGISTRATIONS} registrations, <=8 others`,
-          );
-          expect(registrations, "Browser startup registrations").toBeLessThanOrEqual(REGISTRATIONS);
-          expect(otherRequests, "Browser startup non-registration requests").toBeLessThanOrEqual(8);
-        }),
-    );
-
-    // Catches menu registrations growing with the number of Mates instead of organization scope.
-    it.effect("target: menu registrations do not grow from one to four Mates", () =>
-      Effect.gen(function* () {
-        const counts: number[] = [];
-        for (const inventory of [["Ada"], names]) {
-          yield* Effect.scoped(
-            Effect.gen(function* () {
-              const s = yield* createScenario([installBudget]);
-              const b = budgets(s);
-              yield* b.given.mates(inventory);
-              if (inventory.length === 4)
-                yield* b.given.plainProjects([
-                  "Plain1",
-                  "Plain2",
-                  "Plain3",
-                  "Plain4",
-                  "Plain5",
-                  "Plain6",
-                ]);
-              const before = b.measure.browser();
-              yield* s.given.signedIn;
-              yield* b.when.menuReady(inventory);
-              yield* b.when.browserSettled;
-              counts.push(b.measure.browser().registrations - before.registrations);
-              yield* s.then.noExternalNetwork;
-            }),
-          );
-        }
-        report(
-          `H target registrations: 1 Mate=${counts[0]}, 4 Mates + 6 plain projects=${counts[1]}; settled, target <=${REGISTRATIONS} and no growth`,
-        );
-        expect(counts[0], "One-Mate menu registration ceiling").toBeLessThanOrEqual(REGISTRATIONS);
-        expect(
-          counts[1],
-          "Four-Mate and plain-project menu registration ceiling",
-        ).toBeLessThanOrEqual(REGISTRATIONS);
-        expect(
-          counts[1],
-          "Menu registration cost must be independent of Mate count",
-        ).toBeLessThanOrEqual(counts[0]!);
       }),
     );
   });

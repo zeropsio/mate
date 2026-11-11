@@ -20,6 +20,7 @@
 import { StrictMode, useEffect, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
+import type { FlowPullRequest } from "@t3tools/client-runtime/zerops";
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
 import { deriveCrewView } from "@t3tools/client-runtime/zerops/projections/crew";
 import {
@@ -34,9 +35,12 @@ import {
 } from "@t3tools/contracts";
 import type { MateTintId } from "@t3tools/shared/brand";
 import { resolveThreadStatus } from "@t3tools/shared/threadStatus";
-import { EllipsisIcon } from "lucide-react";
+import { ChevronDownIcon, EllipsisIcon, GlobeIcon } from "lucide-react";
 
+import { HeaderLinksView } from "~/components/chat/ChatHeaderLinks";
 import { ConversationStripView } from "~/components/chat/ConversationStrip";
+import { MatePersonaPress } from "~/components/chat/MatePersonaPress";
+import { changeReviewItem, HeaderReviewDoor } from "~/components/zerops/SidebarProjectReview";
 import {
   lineChats,
   lineCrew,
@@ -47,7 +51,10 @@ import {
 import { Button } from "~/components/ui/button";
 import { threadAgentActivity } from "~/zerops/agentActivity";
 import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
-import { ZeropsMark } from "~/components/ZeropsMark";
+import { MateLinkMarker } from "~/components/zerops/MateLinkMarker";
+import { MateStatusMarker } from "~/components/zerops/MateStatusMarker";
+import { ZeropsProjectLink } from "~/components/zerops/ZeropsProjectLink";
+import type { MateStatusAsk } from "~/zerops/mateStatus.logic";
 import { CrewmateMenuPopup } from "~/components/zerops/crew/CrewmateMenu";
 import { crewmateMenuModel } from "~/components/zerops/crew/CrewmateMenu.logic";
 import { crewTryOf, crewTryPress, crewTryStops } from "~/zerops/crew/crewTry";
@@ -67,6 +74,31 @@ const at = (minute: number) => new Date(Date.UTC(2026, 8, 29, 9, minute)).toISOS
 
 const FEN = { name: "Fen", tint: "amber" as MateTintId, connected: true };
 const FEN_TASK = "Build the game server and its rules engine from the spec, tests first.";
+
+/** Two of Fen's changes waiting on the person: the header's Review door. */
+const REVIEW_DOOR = {
+  review: {
+    groupId: "game",
+    projectName: "Game",
+    items: [12, 13].map((number) =>
+      changeReviewItem({
+        pull: {
+          repository: "server",
+          number,
+          title: `Change ${String(number)}`,
+          kind: "code",
+          mateProjectId: "mate-fen",
+        } as unknown as FlowPullRequest,
+        among: [],
+        groupId: "game",
+        by: undefined,
+        mine: true,
+      }),
+    ),
+    release: undefined,
+  },
+  held: false,
+};
 
 type Activity = "idle" | "working" | "needs" | "done";
 
@@ -282,6 +314,22 @@ interface HeadState {
   readonly subject?: string | null;
   /** The subject arrives a moment after the line is painted, as the first words sent. */
   readonly lateSubject?: true;
+  /** The Mate's persona, after its name. */
+  readonly persona?: string;
+  /** The persona arrives a moment after the line is painted, as late settings do. */
+  readonly latePersona?: true;
+  /** Changes wait on the person: the Review door stands after the name. */
+  readonly review?: true;
+  /**
+   * The header's links by what is known of the Mate's project: both rooms `held` while it is not
+   * known; `project` at once with Sites' room held until the menu draws it; `none` for a Mate in
+   * no project. Absent: Project and Sites, settled.
+   */
+  readonly links?: "held" | "project" | "none";
+  /** The Mate waits on a key: its status after the line, a press for its person, words otherwise. */
+  readonly needsKey?: { readonly ask: MateStatusAsk; readonly mine: boolean };
+  /** The Mate's link is being made again: past a blip (`held`), or slow, with Try now. */
+  readonly link?: "held" | "slow";
 }
 
 const LONG_SUBJECT =
@@ -372,6 +420,46 @@ const STATES: ReadonlyArray<HeadState> = [
     lateSubject: true,
   },
   {
+    id: "lone-persona",
+    title:
+      "A Mate with a persona: its name, quiet, after the Mate's; a press opens the Persona page",
+    chats: [{ title: FEN_TASK, activity: "idle" }],
+    crew: [],
+    on: 0,
+    persona: "Careful engineer",
+  },
+  {
+    id: "lone-persona-long",
+    title: "A long persona name beside a subject longer than the line: the subject gives way first",
+    chats: [{ title: LONG_SUBJECT, activity: "working" }],
+    crew: [],
+    on: 0,
+    persona: "Acme house style for client work",
+  },
+  {
+    id: "persona-late-review",
+    title:
+      "A persona arriving late beside a Review door at 570 px: the door stays put, the subject gives way",
+    width: 570,
+    chats: [{ title: FEN_TASK, activity: "idle" }],
+    crew: [],
+    on: 0,
+    persona: "Careful engineer",
+    latePersona: true,
+    review: true,
+  },
+  {
+    id: "persona-narrow",
+    title: "No subject at 300 px, a Review door and a long persona: the persona's label gives way",
+    width: 300,
+    chats: [{ title: "New chat", activity: "idle" }],
+    crew: [],
+    on: 0,
+    subject: null,
+    persona: "Acme house style for client work",
+    review: true,
+  },
+  {
     id: "reload",
     title: "A reload: the crew this browser remembers, at rest, then the feed's",
     chats: [{ title: FEN_TASK, activity: "idle" }],
@@ -404,14 +492,82 @@ const STATES: ReadonlyArray<HeadState> = [
     crew: [...CREW, ...EXTRA_CREW],
     on: "load-tests",
   },
+  {
+    id: "links-held",
+    title: "The links before the Mate's project is known — both rooms held, nothing in them",
+    chats: [{ title: FEN_TASK, activity: "idle" }],
+    crew: [],
+    on: 0,
+    links: "held",
+  },
+  {
+    id: "links-project",
+    title: "A Mate in a project, the menu not drawn yet — Project at once, Sites' room held",
+    chats: [{ title: FEN_TASK, activity: "idle" }],
+    crew: [],
+    on: 0,
+    links: "project",
+  },
+  {
+    id: "links-none",
+    title: "A Mate in no project — Open in Zerops, and only here",
+    chats: [{ title: FEN_TASK, activity: "idle" }],
+    crew: [],
+    on: 0,
+    links: "none",
+  },
+  {
+    id: "needs-key",
+    title: "Fen waits on a key from you — its status is a press that goes to the ask",
+    chats: [{ title: FEN_TASK, activity: "needs" }],
+    crew: [],
+    on: 0,
+    needsKey: { ask: { asked: "Stripe secret key" }, mine: true },
+  },
+  {
+    id: "needs-key-reads",
+    title: "The same to someone reading along — words, and who is asked on hover",
+    chats: [{ title: FEN_TASK, activity: "needs" }],
+    crew: [],
+    on: 0,
+    needsKey: { ask: { askedOf: "Dana" }, mine: false },
+  },
+  {
+    id: "link-held",
+    title: "Fen's link dropped — past a blip its header says so, in the status's seat",
+    chats: [{ title: FEN_TASK, activity: "idle" }],
+    crew: [],
+    on: 0,
+    link: "held",
+  },
+  {
+    id: "link-slow",
+    title: "The same once the link is slow — Try now joins it; nothing stands over the composer",
+    chats: [{ title: FEN_TASK, activity: "idle" }],
+    crew: [],
+    on: 0,
+    link: "slow",
+  },
 ];
 
+/** Sites as the header draws it; its panel is the menu's, which reads the app's stores. */
+const SITES = (
+  <Button aria-label="Open the Mate's sites" data-chat-header-ghost size="sm" variant="ghost">
+    <GlobeIcon className="size-3.5 shrink-0" />
+    <span className="hidden text-line @3xl/header-actions:inline">Sites</span>
+    <ChevronDownIcon className="size-3 shrink-0 opacity-70" />
+  </Button>
+);
+
 /** The header's actions on the right, as `ChatHeader` draws them for a Mate. */
-function HeaderActions() {
+function HeaderActions({ links }: { readonly links: HeadState["links"] }) {
   return (
     <>
       <span className="flex size-4 shrink-0 items-center justify-center" />
-      <div className="flex shrink-0 items-center justify-end gap-1 pr-18.25 sm:pr-14.25">
+      <div
+        className="flex shrink-0 items-center justify-end gap-1 pr-9.25 sm:pr-14.25"
+        data-chat-header-actions
+      >
         <Button
           aria-label="More header actions"
           data-chat-header-ghost
@@ -420,10 +576,20 @@ function HeaderActions() {
         >
           <EllipsisIcon className="size-4" />
         </Button>
-        <Button data-chat-header-ghost size="sm" variant="ghost">
-          <ZeropsMark className="size-3.5 shrink-0" />
-          <span className="hidden text-line @3xl/header-actions:inline">Open in Zerops</span>
-        </Button>
+        <HeaderLinksView
+          onOpenProject={() => {}}
+          page={
+            links === "none"
+              ? { kind: "none" }
+              : links === "held"
+                ? { kind: "unknown" }
+                : { kind: "page", groupId: "acme-docs", projectName: "Acme Docs" }
+          }
+          sites={links === undefined ? SITES : null}
+        />
+        {links === "none" ? (
+          <ZeropsProjectLink projectUrl="https://app.zerops.io/project/fen" />
+        ) : null}
       </div>
     </>
   );
@@ -444,6 +610,13 @@ function Frame({
     const timer = setTimeout(() => setLive(true), 1500);
     return () => clearTimeout(timer);
   }, [live]);
+  // A persona arriving late: none on the first paint, the Mate's settings a moment later.
+  const [personaRead, setPersonaRead] = useState(state.latePersona !== true);
+  useEffect(() => {
+    if (personaRead) return;
+    const timer = setTimeout(() => setPersonaRead(true), 1500);
+    return () => clearTimeout(timer);
+  }, [personaRead]);
   // A subject arriving late: none on the first paint, the first words a moment later.
   const [spoken, setSpoken] = useState(state.lateSubject !== true);
   useEffect(() => {
@@ -577,9 +750,30 @@ function Frame({
                 onSwitch?.(pressed === undefined ? 0 : pressed.handle);
               }}
               onRename={() => {}}
+              persona={
+                state.persona === undefined || !personaRead ? undefined : (
+                  <MatePersonaPress mateName={FEN.name} onOpen={() => {}} persona={state.persona} />
+                )
+              }
               renameField={null}
+              trailing={state.review === true ? <HeaderReviewDoor {...REVIEW_DOOR} /> : undefined}
             />
-            <HeaderActions />
+            {state.link === undefined ? null : (
+              <MateLinkMarker
+                onTryNow={state.link === "slow" ? () => {} : undefined}
+                words={`Reconnecting to ${FEN.name}…`}
+              />
+            )}
+            {state.needsKey === undefined ? null : (
+              <MateStatusMarker
+                ask={state.needsKey.ask}
+                mateName={FEN.name}
+                onOpen={state.needsKey.mine ? () => {} : undefined}
+                status={{ kind: "answer", severity: "attention", key: true }}
+                timestampFormat="locale"
+              />
+            )}
+            <HeaderActions links={state.links} />
           </div>
         </WorkspacePageHeader>
         <Conversation />

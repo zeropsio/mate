@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
 import * as Schema from "effect/Schema";
 
-import { ConversationId, RunTurnState, itemId, runId } from "./engine.ts";
+import {
+  ConversationAgent,
+  ConversationId,
+  Millis,
+  RunTurnState,
+  itemId,
+  runId,
+} from "./engine.ts";
 import {
   ConversationHeader,
   EngineAnswer,
@@ -10,6 +17,7 @@ import {
   EngineCallResult,
   EngineConversationFrame,
   EngineDismissInput,
+  EngineReadRunInput,
   EngineRowsFrame,
   EngineSendInput,
   EngineSetRuntimeModeInput,
@@ -150,6 +158,32 @@ describe("an older client reads a newer engine's wire", () => {
   });
 });
 
+const { tools: _named, ...readRunBeforeTools } = EngineReadRunInput.fields;
+/** A run's read as a server before `tools` decodes it. */
+const decodeReadRunBeforeTools = Schema.decodeUnknownSync(Schema.Struct(readRunBeforeTools));
+
+describe("an older server reads a newer client's request", () => {
+  // The hosted client names the tools its closed cards draw from; a Mate's server released before
+  // `tools` decodes the request as the RPC does, by the struct it knows, and reads every result.
+  it("reads a closed card's outcome request naming its tools as the whole outcome", () => {
+    const request = {
+      protocol: 1,
+      conversationId: "mate",
+      runId: run,
+      afterSeq: 0,
+      only: "outcome",
+      tools: ["zerops_deploy", "zerops_org_*"],
+    };
+    expect(decodeReadRunBeforeTools(request)).toEqual({
+      protocol: 1,
+      conversationId: "mate",
+      runId: run,
+      afterSeq: 0,
+      only: "outcome",
+    });
+  });
+});
+
 describe("the wire's frames round-trip", () => {
   it("encodes and decodes live text keyed by its item", () => {
     const frame = {
@@ -284,7 +318,23 @@ describe("a conversation's settings on the wire", () => {
   });
 
   it("an older client reads a header that names the runtime and interaction modes", () => {
-    const header = {
+    // The header before runtime and interaction modes were added.
+    const olderHeader = Schema.Struct({
+      conversationId: ConversationId,
+      agent: Schema.NullOr(ConversationAgent),
+      archived: Schema.Boolean,
+      model: Schema.NullOr(Schema.String),
+      session: Schema.NullOr(
+        Schema.Struct({
+          driver: Schema.String,
+          model: Schema.NullOr(Schema.String),
+          steer: Schema.Boolean,
+        }),
+      ),
+      pausedUntil: Schema.NullOr(Schema.Union([Millis, Schema.Literal("unknown")])),
+      queued: Schema.Int,
+    });
+    const oldFields = {
       conversationId: "mate",
       agent: null,
       archived: false,
@@ -292,9 +342,14 @@ describe("a conversation's settings on the wire", () => {
       session: null,
       pausedUntil: null,
       queued: 0,
+    };
+    const header = {
+      ...oldFields,
       runtimeMode: "approval-required",
       interactionMode: "plan",
     };
     roundTrips(ConversationHeader, header);
+    const encoded = Schema.encodeUnknownSync(ConversationHeader)(decodeHeader(header));
+    expect(Schema.decodeUnknownSync(olderHeader)(encoded)).toEqual(oldFields);
   });
 });

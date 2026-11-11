@@ -1,3 +1,4 @@
+import type { HqProblem } from "@t3tools/shared/hqProblems";
 // Include every registered kind's declarations even for consumers that reach only a model leaf.
 import type * as _RegisteredOperationKinds from "./operations/kinds.ts";
 /**
@@ -80,8 +81,11 @@ export type Family = keyof FamilyValues & string;
 export type FactContent<T> =
   | { readonly kind: "value"; readonly value: T }
   | { readonly kind: "deleted"; readonly evidence: string }
-  /** Authoritatively denied: the payload is gone, the entity is not claimed deleted. */
-  | { readonly kind: "purged" };
+  /**
+   * Authoritatively denied: the payload is gone, the entity is not claimed deleted. `removed` is
+   * its source naming this record, never a refusal of its whole scope.
+   */
+  | { readonly kind: "purged"; readonly removed?: true };
 
 export interface Fact<T> {
   /** Family-declared display identity; retained after payload deletion or denial. Never grants access. */
@@ -172,9 +176,14 @@ export interface OperationReceipt {
       }
     | {
         readonly kind: "refused";
+        readonly problems?: ReadonlyArray<HqProblem>;
         readonly reason: string;
         /** The owner's own code for the refusal (`projectEnvDuplicateKey`), where it named one. */
         readonly code?: string;
+        /** The target write itself received a synchronous refusal from its owner. */
+        readonly synchronousRefusal?: true;
+        /** The target write was never sent, even if its preparation made other writes. */
+        readonly writeNotSent?: true;
       };
   readonly outcome:
     | { readonly kind: "pending" }
@@ -272,9 +281,13 @@ export type PublicRead<T> =
   | { readonly kind: "deleted"; readonly evidence: string; readonly label?: string }
   | {
       readonly kind: "withheld";
-      readonly reason: "unverified" | "denied";
+      readonly reason: "unverified" | "denied" | "removed";
       readonly label?: string;
     };
+
+/** HQ removed this record for this person: a deletion and a lost grant read the same. */
+export const removedForViewer = (fact: PublicRead<unknown>): boolean =>
+  fact.kind === "withheld" && fact.reason === "removed";
 
 /** The keys a reduction publishes: one per fact, membership, index and stream. */
 export type ReadKey =

@@ -53,12 +53,20 @@ export const engineLayer = (
   storeOptions: EngineStoreOptions = {},
   /** Owner kinds besides the conversation (a crew). */
   domains: ReadonlyArray<AnyDomain> = [],
+) => engineLayerWith(filename, Layer.succeed(EffectHandlers, handlers), storeOptions, domains);
+
+/**
+ * The same engine with handlers built inside it, as the server builds them: a handler that reads or
+ * tells the engine's own conversations.
+ */
+export const engineLayerWith = <E>(
+  filename: string,
+  handlers: Layer.Layer<EffectHandlers, E, Conversations | SqlClient.SqlClient>,
+  storeOptions: EngineStoreOptions = {},
+  domains: ReadonlyArray<AnyDomain> = [],
 ) =>
-  Layer.mergeAll(
-    ConversationsModule.layer(),
-    EffectOutboxModule.layer,
-    Layer.succeed(EffectHandlers, handlers),
-  ).pipe(
+  handlers.pipe(
+    Layer.provideMerge(Layer.mergeAll(ConversationsModule.layer(), EffectOutboxModule.layer)),
     Layer.provideMerge(
       Layer.mergeAll(
         Layer.effect(EngineStore, makeEngineStore(storeOptions)),
@@ -67,9 +75,13 @@ export const engineLayer = (
       ),
     ),
     Layer.provideMerge(
-      Layer.effectDiscard(runEngineMigrations()).pipe(
-        Layer.provideMerge(NodeSqliteClient.layer({ filename })),
-      ),
+      Layer.effectDiscard(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`PRAGMA journal_mode = WAL`;
+          yield* runEngineMigrations();
+        }),
+      ).pipe(Layer.provideMerge(NodeSqliteClient.layer({ filename }))),
     ),
   );
 
@@ -100,6 +112,8 @@ export class World {
   readonly landed = new Set<string>();
   /** Kinds whose handler acts, then hangs: the process dies mid-effect. */
   readonly hangAfterAct = new Set<string>();
+  /** Receipt that a held handler has completed its external action. */
+  afterAct: Effect.Effect<void> = Effect.void;
   private sessionCount = 0;
 
   act(row: EffectRow) {
@@ -110,11 +124,14 @@ export class World {
   crash() {
     for (const session of this.sessions.values()) session.alive = false;
     this.hangAfterAct.clear();
+    this.afterAct = Effect.void;
   }
 
   handlers(): ReadonlyMap<string, EffectHandler> {
     const hang = (row: EffectRow, value: HandlerResult): Effect.Effect<HandlerResult> =>
-      this.hangAfterAct.has(row.kind) ? Effect.never : Effect.succeed(value);
+      this.hangAfterAct.has(row.kind)
+        ? Effect.andThen(this.afterAct, Effect.never)
+        : Effect.succeed(value);
     const ok = (value?: unknown): HandlerResult => ({
       _tag: "Done",
       outcome: value === undefined ? { kind: "ok" } : { kind: "ok", value },
@@ -162,15 +179,18 @@ export class World {
             return hang(row, ok({ providerTurnId: `turn-${row.effectId}` }));
           }),
       },
-      { kind: "provider.interrupt", run: (row) => Effect.sync(() => (this.act(row), ok())) },
+      {
+        kind: "provider.interrupt",
+        run: (row) => Effect.suspend(() => (this.act(row), hang(row, ok()))),
+      },
       {
         kind: "session.close",
         run: (row) =>
-          Effect.sync(() => {
+          Effect.suspend(() => {
             this.act(row);
             const session = this.sessions.get((row.payload as { sessionId: string }).sessionId);
             if (session !== undefined) session.alive = false;
-            return ok();
+            return hang(row, ok());
           }),
       },
       // Replay-safe work beside the agent: an admission lands as evidence.
@@ -189,7 +209,10 @@ export class World {
             return hang(row, ok());
           }),
       },
-      { kind: "provider.respond", run: (row) => Effect.sync(() => (this.act(row), ok())) },
+      {
+        kind: "provider.respond",
+        run: (row) => Effect.suspend(() => (this.act(row), hang(row, ok()))),
+      },
       { kind: "provider.steer", run: (row) => Effect.sync(() => (this.act(row), ok())) },
       {
         kind: "test.replay",

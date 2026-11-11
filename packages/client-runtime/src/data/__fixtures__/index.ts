@@ -1,4 +1,5 @@
 /** Test fixtures over the account's data layer, for the apps' own tests. */
+export { engineHeldTurns } from "../projections/mateEngine.ts";
 export {
   hqConfirms,
   hqDrops,
@@ -11,7 +12,6 @@ export {
   type SeededProjectPeople,
   type SeededProjectPerson,
 } from "./hqProjectPeople.ts";
-export { seedHqVerdict } from "./hqVerdict.ts";
 export {
   engineCardPagingOfRecords,
   engineShellOfRecords,
@@ -40,3 +40,4 @@ export {
   pastGrace,
 } from "./account.ts";
 export { membershipInputs } from "./membership.ts";
+export { hqFixtureWire } from "./hqWire.ts";

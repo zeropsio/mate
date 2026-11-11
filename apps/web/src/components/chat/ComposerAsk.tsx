@@ -1,12 +1,8 @@
 /**
- * What the Mate waits on the person for, at the composer's top, in one look for every ask: its
- * face in its needs pose, what it asks in one sentence, its detail under it, and its one blue
- * button — one at a time, as the change waiting for review has stood there (the owner's pick on
- * the "Composer Strips" board, S6, 2026-10-12: "I have a feeling they all look different,
- * especially when stacked they look extremely stupid").
+ * Who waits on the person at the composer's top: the asking Mate's face in its needs pose, or a
+ * plain agent's mark, and its name. The ask itself is the kit's compact density (`AskDock`).
  */
 import type { EnvironmentId } from "@t3tools/contracts";
-import type { ReactNode } from "react";
 
 import { useKnownMate } from "~/zerops/useZeropsMates";
 
@@ -35,60 +31,4 @@ export function ComposerAskFace({ environmentId }: { readonly environmentId: Env
 /** Who asks, by name: the Mate living here, else the agent. */
 export function useComposerAskName(environmentId: EnvironmentId): string {
   return useKnownMate(environmentId)?.name ?? "The agent";
-}
-
-export function ComposerAsk({
-  label,
-  kind,
-  face,
-  title,
-  detail,
-  actions,
-  children,
-}: {
-  /** What a screen reader calls it. */
-  readonly label: string;
-  /** Which ask it is, for what reads the composer's top (`data-composer-top`). */
-  readonly kind: string;
-  readonly face: ReactNode;
-  /** What it asks, in one sentence. */
-  readonly title: ReactNode;
-  readonly detail?: ReactNode;
-  /** Its one blue button, and any quiet ones before it. */
-  readonly actions?: ReactNode;
-  /** What it asks with: the options, a value's field. */
-  readonly children?: ReactNode;
-}) {
-  return (
-    <section
-      aria-label={label}
-      className="@container border-foreground/8 border-b"
-      // What it asks stands over the conversation's end: it never moves it (`ChatView`).
-      data-chat-composer-asks="true"
-      data-composer-top={kind}
-      role="group"
-    >
-      {/* What is asked comes before its buttons, for a reader and for the Tab key; the grid sets
-          the buttons beside the sentence, and under everything once the composer is too narrow
-          to hold both. */}
-      <div className="grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 pt-3 pe-2 pb-3 ps-4 @max-xl:grid-cols-[28px_minmax(0,1fr)]">
-        <div className="col-start-1 row-start-1 grid place-items-center">{face}</div>
-        <div className="col-start-2 row-start-1 min-w-0">
-          <p className="truncate font-medium text-foreground text-line leading-4.5">{title}</p>
-          {detail === undefined ? null : (
-            <div className="min-w-0 text-muted-foreground text-line leading-4.5">{detail}</div>
-          )}
-        </div>
-        {/* A folded panel leaves it empty, and an empty row would still take the grid's gap. */}
-        {children === undefined ? null : (
-          <div className="col-start-2 -col-end-1 row-start-2 min-w-0 empty:hidden">{children}</div>
-        )}
-        {actions === undefined ? null : (
-          <div className="col-start-3 row-start-1 flex min-w-0 flex-wrap items-center justify-end gap-1 @max-xl:col-start-2 @max-xl:-col-end-1 @max-xl:row-start-auto">
-            {actions}
-          </div>
-        )}
-      </div>
-    </section>
-  );
 }

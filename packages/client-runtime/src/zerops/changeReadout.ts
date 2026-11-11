@@ -7,10 +7,14 @@
  *
  * @module changeReadout
  */
-import type { ChangeReview, HqChange } from "@t3tools/shared/hqChanges";
+import type { ChangeReview, HqChange, HqCorePush, Mergeability } from "@t3tools/shared/hqChanges";
 import type { GitCompare } from "@t3tools/shared/hqGitBrowse/compare";
 
-import { mergeabilityKindOf, type MergeabilityKind } from "./changeMergeability.ts";
+import {
+  judgedMergeabilityOf,
+  mergeabilityKindOf,
+  type MergeabilityKind,
+} from "./changeMergeability.ts";
 
 /** A file it changes, as its row draws it. */
 export interface ChangeReadoutFile {
@@ -26,6 +30,34 @@ export interface ChangeReadoutCommit {
   readonly sha: string;
   readonly subject: string;
   readonly at: string;
+}
+
+/**
+ * HQ's merge of `main` into a change stacked on one that merged, in words: HQ's push, never its
+ * Mate's. The merged change by its title where it was read, else by its number.
+ */
+export function corePushWords(push: HqCorePush, landedTitle: string | undefined): string {
+  const landed = landedTitle === undefined ? `#${String(push.landed)}` : `“${landedTitle}”`;
+  return `HQ brought main in after ${landed} merged`;
+}
+
+/**
+ * A change's commits as its review lists them: the merge commit HQ pushed on its branch
+ * (`corePush.head`, authored by HQ's Core) reads as HQ's push, at the time HQ pushed it.
+ */
+export function changeCommitRows(input: {
+  readonly commits: ReadonlyArray<ChangeReadoutCommit>;
+  readonly corePush: HqCorePush | undefined;
+  /** The title of the change whose merge HQ brought in, where it was read. */
+  readonly landedTitle: string | undefined;
+}): ReadonlyArray<ChangeReadoutCommit> {
+  const push = input.corePush;
+  if (push === undefined) return input.commits;
+  return input.commits.map((commit) =>
+    commit.sha === push.head
+      ? { sha: commit.sha, subject: corePushWords(push, input.landedTitle), at: push.at }
+      : commit,
+  );
 }
 
 export interface ChangeReadout {
@@ -50,6 +82,8 @@ export interface ChangeReadout {
   readonly conflict: ReadonlyArray<string>;
   /** Whether `main`'s head as read is past the change's merge base with it: `main` moved on. */
   readonly behind: boolean;
+  /** What it does, as its Mate described it (`describe-change`); none where it wrote none. */
+  readonly description: string | undefined;
 }
 
 /** Git's empty tree in a repository of SHA-1 and of SHA-256 object ids. */
@@ -89,6 +123,24 @@ export function changeReadoutOfRecord(change: HqChange, review: ChangeReview): C
     mergeability: mergeabilityKindOf(change.mergeability),
     conflict: review.conflictPaths,
     behind: change.behind,
+    description: change.body.trim().length === 0 ? undefined : change.body,
+  };
+}
+
+/**
+ * Whether a change merges, from HQ's record while it has a verdict, else from HQ's judgement of the
+ * shown head and `main` where that was read: a record HQ never judged again would say it is checked
+ * for good. A conflict judged so names its files from the judgement.
+ */
+export function changeReadoutJudged(
+  readout: ChangeReadout,
+  judged: Mergeability | undefined,
+): ChangeReadout {
+  if (readout.mergeability !== "checking" || judged === undefined) return readout;
+  return {
+    ...readout,
+    mergeability: judgedMergeabilityOf(judged),
+    conflict: judged.kind === "conflict" ? judged.paths : readout.conflict,
   };
 }
 

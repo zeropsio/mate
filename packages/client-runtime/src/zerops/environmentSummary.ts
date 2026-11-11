@@ -36,6 +36,11 @@ export interface ZeropsEnvironmentServices {
     readonly hostname: string;
     readonly status: string;
     readonly runtime: boolean;
+    /**
+     * A runtime the platform says holds no deploy (`activeAppVersion: null`): its container may
+     * run, and nothing deployed runs in it. Absent where it holds one or that is not read.
+     */
+    readonly nothingDeployed?: true;
   }>;
   /**
    * The dev pools among them by hostname (`isPoolServiceType`), in name order. A pool declares a
@@ -45,9 +50,8 @@ export interface ZeropsEnvironmentServices {
   readonly pools: ReadonlyArray<string>;
 }
 
-function byName(left: string, right: string): number {
-  return left.localeCompare(right, "en", { sensitivity: "base" });
-}
+/** One collator for every comparison: `localeCompare` with options builds one per call. */
+const byName = new Intl.Collator("en", { sensitivity: "base" }).compare;
 
 function newer(left: string | undefined, right: string | undefined): string | undefined {
   if (left === undefined) return right;
@@ -70,11 +74,15 @@ export function summarizeEnvironmentServices(
     hostnames: ordered.map((service) => service.name),
     deployedAt,
     deployable: ordered.map((service) => ({ serviceId: service.id, hostname: service.name })),
-    statuses: ordered.map((service) => ({
-      hostname: service.name,
-      status: service.status,
-      runtime: isRuntimeService(service),
-    })),
+    statuses: ordered.map((service) => {
+      const runtime = isRuntimeService(service);
+      return {
+        hostname: service.name,
+        status: service.status,
+        runtime,
+        ...(runtime && service.activeAppVersion === null ? { nothingDeployed: true as const } : {}),
+      };
+    }),
     pools: ordered
       .filter((service) =>
         isPoolServiceType(service.serviceStackTypeInfo?.serviceStackTypeVersionName ?? ""),

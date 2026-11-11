@@ -23,8 +23,6 @@ import { hqListedMateIdentities } from "./hqMateDirectory.ts";
 
 const ORG = "orchard";
 const person = {
-  role: "OWNER",
-  mayWrite: true,
   mine: true,
   ownerUserId: "person",
   waitsOnViewer: false,
@@ -189,7 +187,7 @@ it("An explicitly deleted Chief leaves the header without entering the Mate list
     scopes: [{ scope, generation: fixture.store.state().streams.get(scope)?.generation ?? 0 }],
     reset: false,
     rows: [],
-    removals: [{ family: "placement", id: "chief", reason: "deleted" }],
+    removals: [{ family: "placement", id: "chief" }],
   });
   expect(fixture.registry.get(shownHqMateDirectoryAtom).myChief).toEqual({ kind: "absent" });
   expect(Object.keys(fixture.registry.get(shownHqListedMateIdentitiesAtom))).toEqual(["ordinary"]);

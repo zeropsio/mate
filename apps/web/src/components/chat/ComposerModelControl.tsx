@@ -108,7 +108,7 @@ function Choice(props: {
   return (
     <button
       aria-checked={props.checked}
-      className="flex min-h-7 w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-start text-foreground text-line outline-none hover:bg-foreground/6 focus-visible:bg-foreground/6 disabled:cursor-default disabled:opacity-64 aria-checked:font-medium"
+      className="flex min-h-7 w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1 pointer-coarse:min-h-10 text-start text-foreground text-line outline-none hover:bg-foreground/6 focus-visible:bg-foreground/6 disabled:cursor-default disabled:opacity-64 aria-checked:font-medium"
       disabled={props.disabled}
       onClick={props.onSelect}
       onKeyDown={moveWithinGroup}

@@ -54,10 +54,12 @@ import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 import { ServerConfig } from "../config.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
+import { readCodexAccountAuth } from "../spi/codexAccount.ts";
 import { ProviderInstances } from "../spi/providerInstances.ts";
 import { subscribeBeforeSnapshot } from "../utils/subscribeBeforeSnapshot.ts";
 import {
@@ -67,7 +69,7 @@ import {
 } from "./ZeropsAgentAuthVerify.ts";
 import { watchWithFallback, type WatcherHandle } from "./ZeropsAgentAuthWatcher.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
-import { zeropsUserIdOf } from "./zeropsSubject.ts";
+import { zeropsUserIdOf } from "@t3tools/contracts";
 import { ZeropsProjectSigners, type ProjectSigners } from "./ZeropsProjectSigners.ts";
 import { extraLoginAgent, LOGIN_DRIVER_KIND, makeExtraLoginId } from "./zeropsLoginIds.ts";
 import { ZeropsSignIns, type SignInStore } from "./zeropsSignIns.ts";
@@ -371,12 +373,14 @@ export interface ZeropsLoginsOptions {
   readonly instanceChanges: Stream.Stream<Instances>;
   /** Replaces the whole map, as a settings patch of `providerInstances` does. */
   readonly writeInstances: (next: Instances) => Effect.Effect<unknown, ServerSettingsError>;
-  /** The login's own CLI status, run with its home ({@link mateLoginEnvironment}). */
+  /** The login's own agent asked whether it accepts the login in its home ({@link mateLoginEnvironment}). */
   readonly verify: (login: MateLogin) => Effect.Effect<AgentAuthVerification>;
   /** Told when a login's verified status changes, so the model picker's snapshot catches up. */
   readonly reconcile?: (id: string, verified: ServerProviderAuthStatus) => Effect.Effect<void>;
   /** Who this server saw sign each login in (`ZeropsProjectSigners.signers`); absent, none names one. */
   readonly readSigners?: Effect.Effect<ProjectSigners>;
+  /** Every later move of `readSigners` (`ZeropsProjectSigners.changes`), HQ's `signers` frame included. */
+  readonly signerChanges?: Stream.Stream<void>;
   /** Where an API key login's signer is kept (`zeropsSignIns`); absent, nobody signs one in. */
   readonly signIns?: SignInStore;
   readonly watch: (target: string, fallbackDir: string, onChange: () => void) => WatcherHandle;
@@ -442,6 +446,7 @@ export const make = (options: ZeropsLoginsOptions) =>
       verify,
       reconcile,
       readSigners,
+      signerChanges,
       signIns,
       watch,
       checkDebounce = CHECK_DEBOUNCE,
@@ -609,6 +614,18 @@ export const make = (options: ZeropsLoginsOptions) =>
       }),
     );
 
+    // A row's signer moves without a settings change: HQ's `signers` frame refills the store
+    // after a restart, once the rows are already out. Subscribed before the first publish.
+    if (signerChanges !== undefined) {
+      yield* signerChanges.pipe(
+        Stream.runForEach(() => publish),
+        Effect.catchCause((cause) =>
+          Effect.logWarning("zerops logins: signer changes stopped", { cause }),
+        ),
+        Effect.forkScoped({ startImmediately: true }),
+      );
+    }
+
     // Unreadable settings list nothing until their next change; a write
     // never starts from them (see `write`).
     yield* sync(
@@ -695,17 +712,7 @@ export const make = (options: ZeropsLoginsOptions) =>
           Effect.tap(({ id }) =>
             input.kind !== "apiKey" || signIns === undefined
               ? Effect.void
-              : Clock.currentTimeMillis.pipe(
-                  Effect.flatMap((at) => signIns.save(id, { by: zeropsUserIdOf(subject), at })),
-                  Effect.andThen(publish),
-                  Effect.mapError(
-                    (error) =>
-                      new ZeropsAgentLoginError({
-                        reason: "signer-write-failed",
-                        detail: error.detail,
-                      }),
-                  ),
-                ),
+              : signIns.save(id, { by: zeropsUserIdOf(subject) }).pipe(Effect.andThen(publish)),
           ),
         );
       });
@@ -754,6 +761,7 @@ export const layer = Layer.effect(
     const config = yield* ServerConfig;
     const settings = yield* ServerSettingsService;
     const processRunner = yield* ProcessRunner.ProcessRunner;
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const projectSigners = yield* ZeropsProjectSigners;
     const signIns = yield* ZeropsSignIns;
     const providerInstances = yield* ProviderInstances;
@@ -766,12 +774,15 @@ export const layer = Layer.effect(
       ),
       writeInstances: (next) => settings.updateSettings({ providerInstances: next }),
       verify: (login) =>
-        verifyAgentAuth(
-          login.agent,
-          spawnAgentAuthProbe(processRunner, config.cwd, mateLoginEnvironment(login)),
-        ),
+        verifyAgentAuth(login.agent, {
+          spawn: spawnAgentAuthProbe(processRunner, config.cwd, mateLoginEnvironment(login)),
+          codexAccount: readCodexAccountAuth({ cwd: config.cwd, homePath: login.home }).pipe(
+            Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+          ),
+        }),
       reconcile: providerInstances.reconcileInstanceAuth,
       readSigners: projectSigners.signers,
+      signerChanges: projectSigners.changes,
       signIns,
       watch: watchWithFallback,
     });

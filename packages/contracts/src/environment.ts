@@ -101,6 +101,14 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
       send the call and offer the Data surface as unsupported under version
       skew. */
   dataConsole: Schema.optionalKey(Schema.Boolean),
+  /** Server keeps a persona in its settings and gives it to its coding agents.
+      Absent on older servers, which drop the setting, so clients offer an
+      update instead of a persona that would never apply. */
+  matePersona: Schema.optionalKey(Schema.Boolean),
+  /** Server signs in to, signs out of and edits MCP servers (`mcp.servers.signIn`,
+      `finishSignIn`, `signOut`, `update`) and takes a server's `auth`. Absent on older
+      servers, where the Tools tab says what needs an update instead of offering them. */
+  mcpSignIn: Schema.optionalKey(Schema.Boolean),
   /** Server understands `zerops.agentLogin.submitCode`, so the sign-in dialog
       takes Claude's code in a field. Absent on older servers, where the code
       is pasted into the login terminal instead. */
@@ -170,16 +178,24 @@ export type ExecutionEnvironmentZerops = typeof ExecutionEnvironmentZerops.Type;
  * whole product. Absent, never fabricated, when `zcp` cannot be run (MU-3)
  * — a standalone server or one outside a Zerops project.
  */
+/** The container's zcp as zcp reads itself (`zcp mate status --json`'s `zcp`). */
+export const ExecutionEnvironmentZcp = Schema.Struct({
+  installed: TrimmedNonEmptyString,
+  /** Empty when zcp has no release evidence. */
+  latest: Schema.String,
+  behind: Schema.Boolean,
+});
+
 export const ExecutionEnvironmentUpdate = Schema.Struct({
   installed: TrimmedNonEmptyString,
   /** Empty when zcp has no manifest evidence; availability is unknown. */
   latest: Schema.String,
   available: Schema.Boolean,
+  /** When zcp's answer last said something new; a re-read with the same answer keeps it. */
   checkedAt: TrimmedNonEmptyString,
   automatic: Schema.optionalKey(
     Schema.Struct({
       protocol: Schema.Literal(1),
-      rollbackCompatible: Schema.Boolean,
       phase: Schema.Literals([
         "idle",
         "staging",
@@ -192,6 +208,27 @@ export const ExecutionEnvironmentUpdate = Schema.Struct({
       ]),
       runningVersion: TrimmedNonEmptyString,
       failedVersion: Schema.optionalKey(TrimmedNonEmptyString),
+    }),
+  ),
+  /** The container's zcp, as zcp reads itself; absent when zcp does not say (an older zcp). */
+  zcp: Schema.optionalKey(ExecutionEnvironmentZcp),
+  /**
+   * Only a container restart gets this Mate current (zcp behind, or a mate without updater
+   * protocol 1): its Update restarts the container once the Mate is idle. `phase` is that
+   * restart's progress, recorded by the server; absent while none was asked for.
+   */
+  restart: Schema.optionalKey(
+    Schema.Struct({
+      needed: Schema.Boolean,
+      /** zcp's one line saying why. */
+      why: Schema.optionalKey(Schema.String),
+      phase: Schema.optionalKey(Schema.Literals(["draining", "restarting", "postponed"])),
+      /** Why a postponed restart did not happen, in zcp's words or the server's. */
+      reason: Schema.optionalKey(Schema.String),
+      /** Which restart the phase is about: a press settles on its own attempt, never an older one. */
+      attempt: Schema.optionalKey(Schema.String),
+      /** When that restart was asked for, by the server's clock (ISO 8601). */
+      startedAt: Schema.optionalKey(Schema.String),
     }),
   ),
 });

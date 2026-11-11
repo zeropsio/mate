@@ -5,6 +5,7 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import { afterAll, beforeAll } from "vite-plus/test";
 import {
   decodeWorkspaceProbe,
   makeZeropsWorkspaceObserver,
@@ -12,6 +13,14 @@ import {
   workspaceRootId,
 } from "./ZeropsWorkspaceObserver.ts";
 import { identityGuard } from "./ZeropsWorkspaceAccess.ts";
+
+let root: string;
+beforeAll(() => {
+  root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-workspace-"));
+});
+afterAll(() => {
+  NodeFS.rmSync(root, { recursive: true, force: true });
+});
 
 const repository = { host: "app", mountPath: "/var/www/app", remotePath: "/var/www" };
 const output = (...fields: string[]) => fields.join("\0") + "\0";
@@ -85,29 +94,23 @@ describe("workspace identity observation", () => {
     }),
   );
   it("checks identity before the subsequent command can write", () => {
-    const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-identity-"));
-    try {
-      const marker = NodePath.join(root, "marker");
-      assert.throws(() =>
-        NodeChildProcess.execFileSync(
-          "sh",
-          ["-c", identityGuard({ projectId: "p", serviceId: "expected" }) + `touch '${marker}'`],
-          {
-            env: { ...process.env, projectId: "p", serviceId: "replacement" },
-            stdio: "pipe",
-          },
-        ),
-      );
-      assert.throws(() => NodeFS.readFileSync(marker));
-    } finally {
-      NodeFS.rmSync(root, { recursive: true, force: true });
-    }
+    const marker = NodePath.join(root, "marker");
+    assert.throws(() =>
+      NodeChildProcess.execFileSync(
+        "sh",
+        ["-c", identityGuard({ projectId: "p", serviceId: "expected" }) + `touch '${marker}'`],
+        {
+          env: { ...process.env, projectId: "p", serviceId: "replacement" },
+          stdio: "pipe",
+        },
+      ),
+    );
+    assert.throws(() => NodeFS.readFileSync(marker));
   });
 });
 
 describe("read-only portable shell probe on real repositories", () => {
   it("observes absent, dirty unborn and detached shallow states without normalizing Git", () => {
-    const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-observe-"));
     const env = { ...process.env, projectId: "p", serviceId: "s" };
     const probe = () =>
       decodeWorkspaceProbe(
@@ -118,52 +121,42 @@ describe("read-only portable shell probe on real repositories", () => {
       );
     const git = (...args: string[]) =>
       NodeChildProcess.execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
-    try {
-      NodeFS.writeFileSync(NodePath.join(root, "existing.txt"), "existing artifact or source\n");
-      assert.strictEqual(probe()[2], "absent");
-      assert.throws(() => NodeFS.readFileSync(NodePath.join(root, ".git", "HEAD")));
-      git("init", "-q", "-b", "main");
-      git("add", "existing.txt");
-      const beforeIndex = NodeFS.readFileSync(NodePath.join(root, ".git", "index"));
-      const beforeConfig = NodeFS.readFileSync(NodePath.join(root, ".git", "config"));
-      const unborn = probe();
-      assert.strictEqual(unborn[2], "unborn");
-      assert.strictEqual(unborn[5], "main");
-      assert.deepStrictEqual(
-        NodeFS.readFileSync(NodePath.join(root, ".git", "index")),
-        beforeIndex,
-      );
-      assert.deepStrictEqual(
-        NodeFS.readFileSync(NodePath.join(root, ".git", "config")),
-        beforeConfig,
-      );
-      git(
-        "-c",
-        "user.name=Test",
-        "-c",
-        "user.email=test@example.invalid",
-        "commit",
-        "-qm",
-        "initial",
-      );
-      const head = git("rev-parse", "HEAD");
-      git("checkout", "--detach", "-q");
-      NodeFS.writeFileSync(NodePath.join(root, ".git", "shallow"), head + "\n");
-      NodeFS.writeFileSync(NodePath.join(root, "existing.txt"), "dirty\n");
-      const ready = probe();
-      assert.strictEqual(ready[2], "ready");
-      assert.strictEqual(ready[3], "true");
-      assert.strictEqual(ready[4], head);
-      assert.strictEqual(ready[5], "");
-      assert.strictEqual(
-        NodeFS.readFileSync(NodePath.join(root, "existing.txt"), "utf8"),
-        "dirty\n",
-      );
-      assert.strictEqual(git("rev-parse", "HEAD"), head);
-      git("config", "remote.origin.promisor", "true");
-      assert.strictEqual(probe()[2], "unsupported");
-    } finally {
-      NodeFS.rmSync(root, { recursive: true, force: true });
-    }
+    NodeFS.writeFileSync(NodePath.join(root, "existing.txt"), "existing artifact or source\n");
+    assert.strictEqual(probe()[2], "absent");
+    assert.throws(() => NodeFS.readFileSync(NodePath.join(root, ".git", "HEAD")));
+    git("init", "-q", "-b", "main");
+    git("add", "existing.txt");
+    const beforeIndex = NodeFS.readFileSync(NodePath.join(root, ".git", "index"));
+    const beforeConfig = NodeFS.readFileSync(NodePath.join(root, ".git", "config"));
+    const unborn = probe();
+    assert.strictEqual(unborn[2], "unborn");
+    assert.strictEqual(unborn[5], "main");
+    assert.deepStrictEqual(NodeFS.readFileSync(NodePath.join(root, ".git", "index")), beforeIndex);
+    assert.deepStrictEqual(
+      NodeFS.readFileSync(NodePath.join(root, ".git", "config")),
+      beforeConfig,
+    );
+    git(
+      "-c",
+      "user.name=Test",
+      "-c",
+      "user.email=test@example.invalid",
+      "commit",
+      "-qm",
+      "initial",
+    );
+    const head = git("rev-parse", "HEAD");
+    git("checkout", "--detach", "-q");
+    NodeFS.writeFileSync(NodePath.join(root, ".git", "shallow"), head + "\n");
+    NodeFS.writeFileSync(NodePath.join(root, "existing.txt"), "dirty\n");
+    const ready = probe();
+    assert.strictEqual(ready[2], "ready");
+    assert.strictEqual(ready[3], "true");
+    assert.strictEqual(ready[4], head);
+    assert.strictEqual(ready[5], "");
+    assert.strictEqual(NodeFS.readFileSync(NodePath.join(root, "existing.txt"), "utf8"), "dirty\n");
+    assert.strictEqual(git("rev-parse", "HEAD"), head);
+    git("config", "remote.origin.promisor", "true");
+    assert.strictEqual(probe()[2], "unsupported");
   });
 });

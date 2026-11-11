@@ -4,12 +4,13 @@ import type {
   GroupEnvironmentRowInput,
   GroupFlowProduction,
   GroupFlowStop,
+  ReleaseFailure,
 } from "@t3tools/client-runtime/zerops";
+import { releaseFailureOf } from "@t3tools/client-runtime/zerops";
 import type { HqJob } from "@t3tools/client-runtime/zerops/hq";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  asLastKnown,
   buildingOf,
   chipFace,
   chipDot,
@@ -20,15 +21,14 @@ import {
   productionChip,
   productionMenu,
   projectChips,
-  releaseFailureOf,
   stageChip,
   stageStopChip,
   stageMenu,
+  placeStateWord,
   stopServing,
   type ChipView,
   type ReleasesAnswer,
   type ProductionChip,
-  type ReleaseFailure,
   type StopServing,
 } from "./SidebarProductionChip.logic";
 
@@ -882,6 +882,7 @@ describe("releaseFailureOf — the release that did not go through, newer than w
   it("names the newest release whose production deploy failed, with HQ's words and time", () => {
     expect(
       releaseFailureOf({
+        stalled: undefined,
         releases: [
           release({
             tag: "v0.1.57",
@@ -905,6 +906,7 @@ describe("releaseFailureOf — the release that did not go through, newer than w
   it("reads HQ's words for a release that lists the commit short", () => {
     expect(
       releaseFailureOf({
+        stalled: undefined,
         releases: [
           release({
             tag: "v0.1.57",
@@ -944,6 +946,7 @@ describe("releaseFailureOf — the release that did not go through, newer than w
     );
     expect(
       releaseFailureOf({
+        stalled: undefined,
         releases: [
           release({
             tag: "v0.1.57",
@@ -963,6 +966,7 @@ describe("releaseFailureOf — the release that did not go through, newer than w
   it("names a release the old broker refused, from its kept record, with its reason", () => {
     expect(
       releaseFailureOf({
+        stalled: undefined,
         releases: [
           release({
             tag: "v0.1.57",
@@ -999,12 +1003,15 @@ describe("releaseFailureOf — the release that did not go through, newer than w
     },
     { name: "no release at all", releases: [] },
   ])("says nothing when $name", ({ releases }) => {
-    expect(releaseFailureOf({ releases, environmentInputs: environments })).toBeUndefined();
+    expect(
+      releaseFailureOf({ releases, environmentInputs: environments, stalled: undefined }),
+    ).toBeUndefined();
   });
 
   it("keeps the failure when HQ records no failed deploy of its commit", () => {
     expect(
       releaseFailureOf({
+        stalled: undefined,
         releases: [
           release({
             tag: "v0.1.57",
@@ -1044,7 +1051,7 @@ describe("productionMenu — what production's menu says, per state", () => {
     {
       name: "healthy",
       chip: { label: "prod", state: "ok", version: "v0.1.0" },
-      row: { version: "v0.1.0", dot: "ok", word: "Healthy", tone: "muted" },
+      row: { version: "v0.1.0", dot: "ok", word: "Running", tone: "muted" },
       fixes: false,
     },
     {
@@ -1253,6 +1260,22 @@ describe("stageMenu — each stage, as production's menu says production", () =>
     }
   });
 
+  // Its serving answer unread, or a stage project the viewer cannot read: only the deploy is known.
+  it.each([
+    {
+      case: "deployed a while ago",
+      deployedAt: "2026-09-29T10:13:00Z",
+      word: "Deployed 40 min ago",
+    },
+    { case: "deployed at a time unread", deployedAt: undefined, word: "Deployed" },
+  ])(
+    "says a stage nothing confirms runs as deployed, never running: $case",
+    ({ deployedAt, word }) => {
+      const [row] = menu({ stages: [entry("stage", { chip: undefined, deployedAt })] }).stops;
+      expect(row?.word).toBe(word);
+    },
+  );
+
   it("says one stage's state in words, its version, when it was deployed, and its links", () => {
     expect(menu({}).stops).toEqual([
       {
@@ -1260,7 +1283,7 @@ describe("stageMenu — each stage, as production's menu says production", () =>
         name: "stage",
         version: "3f9c1b2",
         dot: "ok",
-        word: "Deployed 40 min ago",
+        word: "Running · deployed 40 min ago",
         tone: "muted",
         note: undefined,
         fix: undefined,
@@ -1350,7 +1373,7 @@ describe("stageMenu — each stage, as production's menu says production", () =>
       ],
     });
     expect(model.stops.map((each) => [each.name, each.word])).toEqual([
-      ["stage", "Deployed 40 min ago"],
+      ["stage", "Running · deployed 40 min ago"],
       ["qa", "Deploy failed"],
     ]);
     expect(model.stops[1]?.fix?.what).toBe("The qa stage's last deploy failed");
@@ -1373,41 +1396,6 @@ describe("stageMenu — each stage, as production's menu says production", () =>
         routes: [],
       },
     ]);
-  });
-});
-
-describe("a last-known chip's menu — what HQ last said, never said as current", () => {
-  const NOW = Date.parse("2026-09-29T10:53:00Z");
-  it("says production's row as last known", () => {
-    const chip = asLastKnown({ label: "prod", state: "ok", version: "v0.1.0" });
-    const menu = productionMenu({
-      chip,
-      projectId: "shop-prod",
-      failure: undefined,
-      down: [],
-      routes: [],
-      nowMs: NOW,
-    });
-    expect(menu.stops[0]).toMatchObject({ word: "Last known: Healthy", dot: "off" });
-  });
-
-  it("says each stage's row as last known", () => {
-    const menu = stageMenu({
-      stages: [
-        {
-          projectId: "shop-stage",
-          name: "stage",
-          stop: stage({ projectId: "shop-stage", name: "stage" }),
-          chip: asLastKnown({ label: "stage", state: "ok", version: "main" }),
-          deployedAt: "2026-09-29T10:13:00Z",
-          down: [],
-          routes: [],
-        },
-      ],
-      creating: [],
-      nowMs: NOW,
-    });
-    expect(menu.stops[0]?.word).toBe("Last known: Deployed 40 min ago");
   });
 });
 
@@ -1614,5 +1602,36 @@ it("shows a failed runtime attempt even while serving metadata is unread", () =>
   expect(stageStopChip({ stop: failed, serving, releases: { kind: "waiting" } })).toEqual({
     kind: "chip",
     chip: { label: "stage", state: "unverified", readLine },
+  });
+});
+
+describe("placeStateWord — one word for each state of a place, on every surface", () => {
+  it.each([
+    { label: "prod", state: "ok", word: "Running" },
+    { label: "stage", state: "ok", word: "Running" },
+    { label: "prod", state: "waiting", word: "Running" },
+    { label: "prod", state: "releasing", word: "Deploying…" },
+    { label: "prod", state: "failed", word: "Release failed" },
+    { label: "stage", state: "failed", word: "Deploy failed" },
+    { label: "stage", state: "down", word: "Down" },
+    { label: "prod", state: "stopped", word: "Stopped" },
+    { label: "stage", state: "creating", word: "Setting up…" },
+    { label: "prod", state: "empty", word: "Not released yet" },
+    { label: "stage", state: "empty", word: "Not deployed yet" },
+    { label: "prod", state: "unverified", word: "Checking what runs…" },
+  ] as const)("says $label $state as $word", ({ label, state, word }) => {
+    expect(placeStateWord(label, state)).toBe(word);
+  });
+
+  it("says a running production by the same word in its menu as on its card", () => {
+    const [row] = productionMenu({
+      chip: { label: "prod", state: "ok", version: "v0.1.4" },
+      projectId: "shop-prod",
+      failure: undefined,
+      down: [],
+      routes: [],
+      nowMs: 0,
+    }).stops;
+    expect(row?.word).toBe(placeStateWord("prod", "ok"));
   });
 });

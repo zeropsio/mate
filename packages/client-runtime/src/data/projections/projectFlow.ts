@@ -1,6 +1,7 @@
 /** One application's flow from keyed owner facts; reading it holds no app detail. */
 import { ProjectId } from "@t3tools/contracts";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
+import { changePermission } from "@t3tools/shared/zeropsPermissions";
 import {
   canonicalGroupStopsOf,
   codeRepositoriesOf,
@@ -33,6 +34,7 @@ import {
   type ReleaseLive,
 } from "./projectFlowJoin.ts";
 import { sameValue } from "./equal.ts";
+import { decided, livePermissionFacts } from "./permissionFacts.ts";
 import { scopeFreshness, scopeSlow } from "./freshness.ts";
 import type { HqAppContents } from "../../zerops/hq/index.ts";
 
@@ -52,18 +54,21 @@ export const projectApplications: Projection<
     const freshness = scopeFreshness(read, scope);
     return {
       ids: read.members(scope).ids.filter((id) => read.fact("hqApp", id).kind === "known"),
-      read: freshness.complete && freshness.live,
-      // A slow HQ on a connection that holds is working, not unanswered.
+      read: freshness.complete,
+      // HQ's refusal, or no first answer from it (a slow HQ on a connection that holds is working,
+      // not unanswered). HQ away after it answered is no failure: what it said stands (`hqLink`).
       unavailable:
-        !freshness.live &&
-        !scopeSlow(read, scope) &&
-        (freshness.complete || freshness.reconnecting || freshness.unavailableReason !== undefined),
+        freshness.unavailableReason !== undefined ||
+        (!freshness.complete && freshness.reconnecting && !scopeSlow(read, scope)),
     };
   },
   equals: sameValue,
 };
 
-/** A row's current contents and explicit changes refusal come from its own app record. */
+/**
+ * A row's current contents, from its own app record, and whether the person may not read its
+ * changes, by their own live roles (`read_change`).
+ */
 export const projectSummary: Projection<
   { readonly orgId: string; readonly appId: string },
   {
@@ -77,15 +82,13 @@ export const projectSummary: Projection<
     const app = read.fact("hqApp", appId);
     const listed = read.members(hqAppsScope(orgId)).ids.includes(appId);
     return {
-      contents:
-        listed && app.kind === "known" && scopeFreshness(read, hqAppsScope(orgId)).live
-          ? app.value.contents
-          : undefined,
+      contents: listed && app.kind === "known" ? app.value.contents : undefined,
       changesRefused:
         listed &&
         app.kind === "known" &&
-        app.value.changes !== undefined &&
-        "refused" in app.value.changes,
+        decided(livePermissionFacts(read, orgId), app.value.projectIds ?? [], (live) =>
+          changePermission(live, "read_change", app.value.projectIds ?? []),
+        )?.allow === false,
     };
   },
   equals: sameValue,
@@ -155,7 +158,7 @@ export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFl
         tier?.state === "present" ? [tier.importYaml] : [],
       ),
     );
-    const environments = canonicalAppEnvironments.derive(read, key).environments;
+    const { environments, unread, rollouts } = canonicalAppEnvironments.derive(read, key);
     const projectIds = [
       ...new Set(
         (environments ?? []).flatMap((environment) =>
@@ -208,7 +211,7 @@ export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFl
       environments === undefined
         ? undefined
         : canonicalGroupStopsOf({
-            unread: canonicalAppEnvironments.derive(read, key).unread,
+            unread,
             environments,
             projects,
             versions,
@@ -218,7 +221,6 @@ export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFl
               releases: detail.releases,
               repos: detail.repos,
               preflight: detail.preflight,
-              live: scopeFreshness(read, hqAppsScope(orgId)).live,
             },
           });
     const changes =
@@ -230,11 +232,8 @@ export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFl
             hqAddress,
           );
     const link = read.stream(linkKeys.hq(orgId));
-    const unavailable =
-      link.phase === "refused" ||
-      link.phase === "recovering" ||
-      link.phase === "reauthenticating" ||
-      link.phase === "unsupported";
+    // HQ's own answer only: HQ away keeps what it said, and a write meanwhile is answered at once.
+    const unavailable = link.phase === "refused" || link.phase === "unsupported";
     let acceptedRelease: string | undefined;
     for (const requestId of read.index("accepted-release", appId)) {
       const accepted = acceptedReleaseOf(read.operation(requestId));
@@ -245,6 +244,7 @@ export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFl
       navigationOffers: { [appId]: app.releaseOffer },
       acceptedReleases: new Map(acceptedRelease === undefined ? [] : [[appId, acceptedRelease]]),
       stops: new Map(stops === undefined ? [] : [[appId, zeropsStops(stops)]]),
+      rolloutNotes: new Map(rollouts === undefined ? [] : [[appId, rollouts]]),
       releases: new Map(detail.releases === undefined ? [] : [[appId, detail.releases]]),
       repos: new Map(detail.repos === undefined ? [] : [[appId, detail.repos]]),
       recipes: new Map(recipe === undefined ? [] : [[appId, recipe]]),
@@ -253,9 +253,8 @@ export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFl
         key.review?.permission === undefined ? [] : [[appId, key.review.permission]],
       ),
       live: new Map(key.review === undefined ? [] : [[appId, key.review.live]]),
-      changes: changes?.rows ?? null,
+      changes: changes ?? null,
       changesFailure: unavailable ? HQ_CHANGES_UNANSWERED : undefined,
-      changesRefused: changes?.refused ?? new Map(),
       withheld,
     }).get(appId);
     if (flow === undefined) return undefined;

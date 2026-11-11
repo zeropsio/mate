@@ -37,9 +37,11 @@ import type { ZeropsEnvironmentRole } from "./groups.ts";
 import {
   type HqEnvironment,
   type CanonicalHqEnvironment,
+  type HqJob,
   canonicalEnvironmentsOf,
   type UnreadEnvironment,
   jobFailed,
+  jobInFlight,
   jobsByService,
 } from "./hq/environments.ts";
 import { recipeTierRepositories, recipeTierServices } from "./recipeTier.ts";
@@ -51,6 +53,46 @@ export interface GroupEnvironmentService {
   readonly serviceId: string;
   /** Its hostname in the environment — `app` for a pair's promoted runtime. */
   readonly hostname: string;
+}
+
+/**
+ * HQ's words for a creation that failed, where they say something: a reason that only points at
+ * what HQ did not keep ("the import of db failed: See metadata") tells a person nothing, and the
+ * page's own sentence already names the service.
+ */
+function creationReason(reason: string | null | undefined): string | undefined {
+  const said = reason?.trim();
+  if (said === undefined || said.length === 0) return undefined;
+  return /see metadata\.?$/iu.test(said) ? undefined : said;
+}
+
+/**
+ * A release that had to create a service in a production before deploying to it, and did not: the
+ * release's `delta` job there ended without going live. HQ then refuses every deploy of that
+ * release (`mate-hq apps/hq/src/deploys.ts` `moveOn`), so nothing of it runs.
+ */
+export interface ReleaseCreationFailure {
+  readonly tag: string;
+  /** HQ's words for how the creation ended, where it recorded some. */
+  readonly reason: string | undefined;
+  /** The services it was to create, as HQ names them; empty where HQ names none. */
+  readonly services: ReadonlyArray<string>;
+}
+
+/**
+ * A release's creation of the services its production lacks, as HQ's `delta` job of it stands:
+ * what the release's review follows from the press, before any of its deploys starts.
+ */
+export interface ReleaseCreation {
+  readonly tag: string;
+  readonly state: "creating" | "created" | "failed";
+  /** HQ's words for a creation that failed, where they say something (`creationReason`). */
+  readonly reason: string | undefined;
+  /** The services it creates, as HQ names them; `undefined` from an HQ that names none. */
+  readonly services: ReadonlyArray<string> | undefined;
+  /** When HQ began it, and when it ended; ISO 8601. */
+  readonly at: string;
+  readonly endedAt: string | null;
 }
 
 /** What one environment's row is built from, before the row itself. */
@@ -77,6 +119,10 @@ export interface GroupEnvironmentRowInput {
   readonly release?: ReleaseRollout | null | undefined;
   /** Failed release jobs HQ still lists, including those a newer service job replaced. */
   readonly releaseFailures?: ReadonlyArray<ReleaseDeployFailure>;
+  /** The releases whose services HQ could not create here first (`ReleaseCreationFailure`). */
+  readonly creationFailures?: ReadonlyArray<ReleaseCreationFailure>;
+  /** Each release's creation of services here, newest first, in whatever state HQ lists it. */
+  readonly releaseCreations?: ReadonlyArray<ReleaseCreation>;
   /** HQ bringing it up (`HqEnvironment.birth`). */
   readonly birth?: EnvironmentBirth | null | undefined;
   /** The services HQ stopped because its tier no longer declares them (`HqEnvironment.tierStops`). */
@@ -257,9 +303,60 @@ export function canonicalEnvironmentRowInputsOf(input: {
               job.service !== null &&
               job.sha !== null &&
               jobFailed(job)
-                ? [{ tag: job.ref, service: job.service, sha: job.sha }]
+                ? [
+                    {
+                      tag: job.ref,
+                      service: job.service,
+                      sha: job.sha,
+                      ...(job.state === "refused" ? { refused: true as const } : {}),
+                    },
+                  ]
                 : [],
             );
+      const creationFailures =
+        environment.tier !== "production"
+          ? []
+          : environment.jobs.flatMap((job) =>
+              job.kind === "delta" &&
+              job.cause === "release" &&
+              job.ref !== null &&
+              (jobFailed(job) || job.state === "unresolved")
+                ? [
+                    {
+                      tag: job.ref,
+                      reason: creationReason(job.reason),
+                      services: job.services ?? [],
+                    },
+                  ]
+                : [],
+            );
+      const releaseCreations =
+        environment.tier !== "production"
+          ? []
+          : environment.jobs.flatMap((job): ReadonlyArray<ReleaseCreation> => {
+              if (job.kind !== "delta" || job.cause !== "release" || job.ref === null) return [];
+              // One HQ skipped or replaced created nothing and failed at nothing: it says nothing.
+              const state =
+                job.state === "live"
+                  ? "created"
+                  : jobInFlight(job)
+                    ? "creating"
+                    : jobFailed(job) || job.state === "unresolved"
+                      ? "failed"
+                      : undefined;
+              return state === undefined
+                ? []
+                : [
+                    {
+                      tag: job.ref,
+                      state,
+                      reason: creationReason(job.reason),
+                      services: job.services,
+                      at: job.at,
+                      endedAt: job.endedAt,
+                    },
+                  ];
+            });
       return {
         id: environment.id,
         target: environment.target,
@@ -279,6 +376,8 @@ export function canonicalEnvironmentRowInputsOf(input: {
         ...(recipeServices === undefined ? {} : { recipeServices }),
         ...(environment.release === undefined ? {} : { release: environment.release }),
         ...(releaseFailures.length === 0 ? {} : { releaseFailures }),
+        ...(creationFailures.length === 0 ? {} : { creationFailures }),
+        ...(releaseCreations.length === 0 ? {} : { releaseCreations }),
         ...(environment.tierStops === undefined ? {} : { tierStops: environment.tierStops }),
         birth: environment.birth,
       };
@@ -364,6 +463,8 @@ export interface ReleaseDeployFailure {
   readonly tag: string;
   readonly service: string;
   readonly sha: string;
+  /** HQ refused it at its one try: nothing was built, where a build's own failure ran one. */
+  readonly refused?: true;
 }
 
 /** What production runs and where its deploys failed, as a release reads them. */
@@ -377,6 +478,8 @@ export interface ReleaseDeploys {
   readonly failed: ReadonlyArray<ReleaseDeployFailure>;
   /** Each production's newest release rollout, as HQ told it (`releaseInFlight`). */
   readonly rollouts: ReadonlyArray<ReleaseRollout | null | undefined>;
+  /** Each production service's newest job, as HQ lists it (`releaseStalled`). */
+  readonly jobs: ReadonlyArray<HqJob>;
 }
 
 /**
@@ -394,6 +497,7 @@ export function releaseDeploys(
   const production = new Map<string, string>();
   const failed: Array<ReleaseDeployFailure> = [];
   const rollouts: Array<ReleaseRollout | null | undefined> = [];
+  const jobs: Array<HqJob> = [];
   for (const environment of environments) {
     if (environment.tier !== "production") continue;
     rollouts.push(environment.release);
@@ -404,6 +508,7 @@ export function releaseDeploys(
     failed.push(...(environment.releaseFailures ?? []));
     for (const service of environment.services) {
       const latest = service.deploy?.latest;
+      if (latest !== undefined) jobs.push(latest);
       if (latest !== undefined && latest.sha !== null && jobFailed(latest)) {
         const tag =
           latest.cause === "release"
@@ -417,14 +522,19 @@ export function releaseDeploys(
             (job) => job.tag === tag && job.service === service.hostname && job.sha === latest.sha,
           )
         )
-          failed.push({ tag, service: service.hostname, sha: latest.sha });
+          failed.push({
+            tag,
+            service: service.hostname,
+            sha: latest.sha,
+            ...(latest.state === "refused" ? { refused: true as const } : {}),
+          });
       }
       const sha = deployedCommit(service.appVersionName);
       if (sha === undefined || production.has(service.hostname)) continue;
       production.set(service.hostname, sha);
     }
   }
-  return { production, failed, rollouts };
+  return { production, failed, rollouts, jobs };
 }
 
 /**

@@ -1,6 +1,6 @@
 // @effect-diagnostics globalFetch:off -- This browser transport supplies the HQ client's native fetch port.
 /** Browser transport for the account's shared HQ adapter and its operation executor. */
-import { makeHqApi, readHqHealth, type OpenHqSocket } from "../../zerops/hq/index.ts";
+import { makeHqApi, type OpenHqSocket } from "../../zerops/hq/index.ts";
 const openHqSocket: OpenHqSocket = (url, on) => {
   const socket = new WebSocket(url);
   socket.addEventListener("open", () => on.open());
@@ -26,5 +26,3 @@ export const makeBrowserHqApi = (
     fetch: (input, init) => fetch(input, init),
     openSocket: openHqSocket,
   });
-export const readAccountHqHealth = (address: string) =>
-  readHqHealth((input, init) => fetch(input, init), address);

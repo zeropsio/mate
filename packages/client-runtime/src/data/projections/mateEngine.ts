@@ -15,6 +15,7 @@ import {
   MATE_TASKS_CONVERSATION_ID,
   MessageId,
   PROVIDER_DISPLAY_NAMES,
+  isRefusedAttempt,
   queuedBehind,
   STEP_ITEM_KINDS,
   TurnId,
@@ -712,6 +713,45 @@ function originAskActivity(
   );
 }
 
+/** The activity a repository asked to be connected to GitHub is: one card in its run. */
+export const MIRROR_ASK_ACTIVITY_KIND = "mirror.requested";
+
+/**
+ * What the card for a repository asked to be connected to GitHub reads: the HQ repository, the
+ * agent's why, and how the ask stands — open, connected (the GitHub address is HQ's remote, read
+ * there), declined, who and when, or closed some other way. Never a token.
+ */
+export interface MirrorAskActivityPayload {
+  readonly requestId: string;
+  readonly repo: string;
+  readonly reason: string | null;
+  readonly state: "open" | "connected" | "declined" | "closed";
+  readonly answer: { readonly by: Principal; readonly at: number } | null;
+}
+
+function mirrorAskActivity(
+  request: Request,
+  ask: Extract<RequestAsk, { readonly kind: "mirror" }>,
+  card: string | null,
+): OrchestrationThreadActivity {
+  const payload: MirrorAskActivityPayload = {
+    requestId: request.id,
+    repo: ask.repo,
+    reason: ask.reason,
+    state: ORIGIN_ASK_STATES[request.state] ?? "closed",
+    answer: request.answer === undefined ? null : { by: request.answer.by, at: request.answer.at },
+  };
+  return activity(
+    `${request.id}#mirror`,
+    MIRROR_ASK_ACTIVITY_KIND,
+    "Connect to GitHub requested",
+    { ...payload },
+    card,
+    request.at,
+    request.seq,
+  );
+}
+
 /** A request as the asks the panels answer, and its resolution once it is no longer open. */
 function requestActivities(
   request: Request,
@@ -721,6 +761,7 @@ function requestActivities(
   const card = cardOf(request.runId);
   if (ask.kind === "vault") return [vaultAskActivity(request, ask, card)];
   if (ask.kind === "origin") return [originAskActivity(request, ask, card)];
+  if (ask.kind === "mirror") return [mirrorAskActivity(request, ask, card)];
   const asked =
     ask.kind === "approval"
       ? activity(
@@ -1020,7 +1061,8 @@ export function engineThreadOf(
     lastError:
       header.runStatus === undefined || header.runStatus === "unknown"
         ? RUN_STATE_UNAVAILABLE
-        : latest?.end?.kind === "failed" || latest?.end?.kind === "crashed"
+        : (latest?.end?.kind === "failed" && !isRefusedAttempt(latest.end)) ||
+            latest?.end?.kind === "crashed"
           ? (latest.end.reason as OrchestrationSession["lastError"])
           : null,
     updatedAt,
@@ -1610,11 +1652,10 @@ export const engineRows: Projection<string, ReadonlyArray<ConversationRow>> = {
       const row = read.fact("mateEngineRow", id);
       if (row.kind !== "known") continue;
       // A held conversation's header is its newest word on the model it runs.
-      const held = read.fact(
-        "mateEngineConversation",
-        engineConversationId({ environmentId, conversationId: row.value.conversationId }),
-      );
-      const model = held.kind === "known" ? held.value.header.model : null;
+      const at = { environmentId, conversationId: row.value.conversationId };
+      const held = read.fact("mateEngineConversation", engineConversationId(at));
+      const heldModel = held.kind === "known" ? held.value.header.model : null;
+      const model = observed(read, at) ? heldModel : null;
       rows.push(
         row.value.agent === null || model === null || model === row.value.agent.model
           ? row.value
@@ -1624,6 +1665,14 @@ export const engineRows: Projection<string, ReadonlyArray<ConversationRow>> = {
     return rows;
   },
 };
+
+/**
+ * Whether a conversation's records are observed now: a view holds it. One kept after its last
+ * release (for a quick return) froze there, while its row is still observed and may be newer: a
+ * frozen header never speaks over the row.
+ */
+const observed = (read: ProjectionReads, conversationKey: EngineConversationKey): boolean =>
+  read.stream(engineConversationScopes(conversationKey).conversation).demanded;
 
 /** The turn of each conversation of a Mate the account holds, by conversation id. */
 export const engineHeldTurns: Projection<string, Readonly<Record<string, HeldTurn>>> = {
@@ -1635,10 +1684,9 @@ export const engineHeldTurns: Projection<string, Readonly<Record<string, HeldTur
     for (const id of read.index("engineRowsOf", engineRowsKey(environmentId))) {
       const row = read.fact("mateEngineRow", id);
       if (row.kind !== "known") continue;
-      const conversationKey = engineConversationId({
-        environmentId,
-        conversationId: row.value.conversationId,
-      });
+      const at = { environmentId, conversationId: row.value.conversationId };
+      if (!observed(read, at)) continue;
+      const conversationKey = engineConversationId(at);
       const conversation = read.fact("mateEngineConversation", conversationKey);
       if (conversation.kind !== "known") continue;
       turns[row.value.conversationId] = {

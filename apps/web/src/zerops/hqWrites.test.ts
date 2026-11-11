@@ -8,7 +8,7 @@ describe("the HQ that accepts an account's lifecycle writes", () => {
       makeHqApi({
         address,
         fetch: globalThis.fetch,
-        accessToken: async () => "access",
+        accessToken: async () => ({ token: "access" }),
         orgId: "org-1",
         openSocket: () => {
           throw new Error("Not opened by this test");

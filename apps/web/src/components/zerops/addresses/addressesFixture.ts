@@ -90,4 +90,5 @@ export const ADDRESSES_FIXTURE: PlaceAddresses = {
   waitingDomains: [],
   waitingPorts: [],
   readsProject: false,
+  nothingDeployed: false,
 };

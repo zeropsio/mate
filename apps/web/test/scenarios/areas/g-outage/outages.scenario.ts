@@ -1,6 +1,7 @@
+import { scenarioSuite } from "../../harness/suite.ts";
+import { recordStep } from "../../harness/lastStep.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import {
   givenOutage,
   reportsWork,
@@ -9,6 +10,7 @@ import {
   caughtUp,
   cappedHqOutage,
   stallsHq,
+  hqToldWhileStalled,
   frozenMenuStillSays,
   checkpoint,
   showsWokenTab,
@@ -22,7 +24,7 @@ import {
 } from "./dsl.ts";
 
 describe("G: outages, sleep and several tabs", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     // A replaced Core must resubscribe the open tab, including after backoff reaches its cap.
     it.effect("HQ restart and a new build recover the open tab without reloading", () =>
       Effect.gen(function* () {
@@ -80,13 +82,14 @@ describe("G: outages, sleep and several tabs", () => {
         yield* caughtUp(s, "Shop");
         const stalled = yield* stallsHq(s);
         yield* s.when.hq.colleague.renamesProject("Shop", "Shop while stalled");
-        yield* Effect.promise(() => stalled.waitForDownstream("Shop while stalled"));
+        yield* hqToldWhileStalled(stalled);
         yield* Effect.promise(() => s.clock.advance(30_000));
         yield* menuRowGone(s.page, "Shop while stalled");
         yield* menuSays(s.page, "Shop");
         yield* Effect.promise(() => s.clock.sleep());
+        // HQ told the stalled link its navigation changed and awaits the tab's retry before it
+        // tells again: the rename's own answer is this change's receipt.
         yield* s.when.hq.colleague.renamesProject("Shop", "Shop after wake");
-        yield* Effect.promise(() => stalled.waitForDownstream("Shop after wake"));
         yield* frozenMenuStillSays(s, "Shop", "Shop after wake");
         yield* Effect.promise(() => s.clock.wake(3_600_000));
         yield* showsWokenTab(s);
@@ -119,18 +122,10 @@ describe("G: outages, sleep and several tabs", () => {
         yield* caughtUp(tab, "Shop in both tabs");
         yield* tab.then.noReload;
         yield* checkpoint(s);
-      }),
-    );
-
-    // Catches closing one tab tearing down the remaining tab's account or live subscriptions.
-    it.effect("closing the second tab leaves the first receiving changes", () =>
-      Effect.gen(function* () {
-        const s = yield* givenOutage();
-        yield* s.given.signedIn;
-        const tab = yield* s.given.browserActor({ context: s.page.browserContext() });
-        yield* tab.given.signedIn;
-        yield* caughtUp(s, "Shop");
-        yield* caughtUp(tab, "Shop");
+        // Catches closing one tab tearing down the remaining tab's account or live subscriptions.
+        yield* Effect.sync(() =>
+          recordStep("closing the second tab leaves the first receiving changes"),
+        );
         yield* Effect.promise(() => tab.page.close());
         yield* s.when.hq.colleague.renamesProject("Shop", "Shop surviving tab");
         yield* caughtUp(s, "Shop surviving tab");

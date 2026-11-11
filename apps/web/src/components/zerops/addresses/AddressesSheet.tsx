@@ -12,11 +12,17 @@ import type { PlaceAddresses, WaitingChange } from "@t3tools/client-runtime/data
 import { ChevronDownIcon, CreditCardIcon, XIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
+import { useMediaQuery } from "~/hooks/useMediaQuery";
 import { Button } from "../../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
 import { Spinner } from "../../ui/spinner";
 import { ZeropsMark } from "../../ZeropsMark";
-import { priceWords, type AddressWrite, type PlaceChoice } from "./addresses.logic";
+import {
+  placeRunsNothing,
+  priceWords,
+  type AddressWrite,
+  type PlaceChoice,
+} from "./addresses.logic";
 import { AddressesDirect, type DirectMode } from "./AddressesDirect";
 import {
   Confirm,
@@ -24,6 +30,7 @@ import {
   Face,
   RowKind,
   RowMeta,
+  RowUnder,
   SheetRow,
   SheetSection,
   Trouble,
@@ -96,6 +103,10 @@ export function AddressesSheetBody(props: AddressesSheetBodyProps) {
   };
   const web = isWeb(mode) ? mode : LIST;
   const direct = isDirect(mode) ? mode : LIST;
+  // Production or a stage that runs nothing deployed and holds no address yet has none to manage:
+  // no own IPv4 to buy, no port to open (`placeRunsNothing`).
+  const kind = props.places.find((place) => place.projectId === props.projectId)?.kind;
+  const runsNothing = placeRunsNothing(props.place, kind);
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-addresses-sheet={props.projectId}>
       <SheetHeader {...props} />
@@ -103,6 +114,10 @@ export function AddressesSheetBody(props: AddressesSheetBodyProps) {
         {props.place.state === "failed" ? (
           <p className="py-6 text-muted-foreground text-sm">
             You can't see {props.placeName}'s addresses.
+          </p>
+        ) : runsNothing ? (
+          <p className="py-6 text-muted-foreground text-sm">
+            Nothing runs in {props.placeName} yet.
           </p>
         ) : props.place.state === "reading" && props.place.domains.length === 0 ? (
           <p className="flex items-center gap-2 py-6 text-muted-foreground text-sm">
@@ -169,7 +184,10 @@ function SheetHeader({
   const current = places.find((place) => place.projectId === projectId)?.label ?? placeName;
   return (
     <div className="flex shrink-0 items-center gap-2.5 py-4 ps-6 pe-4">
-      <h2 className="truncate font-semibold text-lg">{projectName}'s addresses</h2>
+      {/* A phone reads the title whole, on two lines where one cuts it. */}
+      <h2 className="truncate font-semibold text-lg max-sm:line-clamp-2 max-sm:whitespace-normal">
+        {projectName}'s addresses
+      </h2>
       {places.length > 1 ? (
         <Menu>
           <MenuTrigger
@@ -232,6 +250,15 @@ function IpSection({
     ips.ownV4 === undefined &&
     (ctx.busy.has("request-ipv4") || (ipv4.state !== "reading" && ipv4.enabled === true));
   const maybe = ips.ownV4 === undefined && !assigning && unsure;
+  // A phone's row has no room for an address and what is said of it side by side — the address
+  // was cut to "93.185…" — so there it is said under the address, which reads whole.
+  const phone = useMediaQuery("max-sm");
+  const own = `Yours${perPeriod}${paidUntil(ipv4.state === "known" ? ipv4.validTill : undefined)}`;
+  const getOne = assigning
+    ? `On its way${perPeriod}`
+    : maybe
+      ? "It may be on its way: Zerops's answer was lost."
+      : "For direct IPv4 access";
   return (
     <SheetSection
       after={
@@ -252,16 +279,18 @@ function IpSection({
           data="ipv6"
           end={
             <>
-              <RowMeta>Free</RowMeta>
+              {phone ? null : <RowMeta>Free</RowMeta>}
               <CopyButton value={ips.v6} />
             </>
           }
           name={
             <>
               <RowKind>IPv6</RowKind>
-              <span className="truncate font-mono">{ips.v6}</span>
+              {/* Its 26 characters read whole on a phone only a size down. */}
+              <span className="truncate font-mono max-sm:text-xs">{ips.v6}</span>
             </>
           }
+          sub={phone ? <RowUnder>Free</RowUnder> : undefined}
         />
       )}
       {ips.ownV4 === undefined ? null : (
@@ -269,7 +298,7 @@ function IpSection({
           data="own-ipv4"
           end={
             <>
-              <RowMeta>{`Yours${perPeriod}${paidUntil(ipv4.state === "known" ? ipv4.validTill : undefined)}`}</RowMeta>
+              {phone ? null : <RowMeta>{own}</RowMeta>}
               <CopyButton value={ips.ownV4} />
             </>
           }
@@ -279,6 +308,7 @@ function IpSection({
               <span className="truncate font-mono">{ips.ownV4}</span>
             </>
           }
+          sub={phone ? <RowUnder>{own}</RowUnder> : undefined}
         />
       )}
       {ips.sharedV4 === undefined ? null : (
@@ -286,7 +316,7 @@ function IpSection({
           data="shared-ipv4"
           end={
             <>
-              <RowMeta>Shared across Zerops · web only</RowMeta>
+              {phone ? null : <RowMeta>Shared across Zerops · web only</RowMeta>}
               <CopyButton value={ips.sharedV4} />
             </>
           }
@@ -296,6 +326,7 @@ function IpSection({
               <span className="truncate font-mono">{ips.sharedV4}</span>
             </>
           }
+          sub={phone ? <RowUnder>Shared across Zerops · web only</RowUnder> : undefined}
         />
       )}
       {ips.ownV4 !== undefined ? null : (
@@ -326,15 +357,10 @@ function IpSection({
             <>
               <RowKind>IPv4</RowKind>
               <span className="truncate">Your own</span>
-              {assigning ? (
-                <RowMeta>{`On its way${perPeriod}`}</RowMeta>
-              ) : maybe ? (
-                <RowMeta>It may be on its way: Zerops's answer was lost.</RowMeta>
-              ) : (
-                <RowMeta>For direct IPv4 access</RowMeta>
-              )}
+              {phone ? null : <RowMeta>{getOne}</RowMeta>}
             </>
           }
+          sub={phone ? <RowUnder>{getOne}</RowUnder> : undefined}
         />
       )}
       <Trouble text={ctx.trouble.get("request-ipv4")} />

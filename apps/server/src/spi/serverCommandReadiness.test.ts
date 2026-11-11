@@ -5,6 +5,7 @@ import * as Fiber from "effect/Fiber";
 import { ServerCommandReadiness } from "./serverCommandReadiness.ts";
 
 describe("ServerCommandReadiness", () => {
+  // witness: apps/server/src/spi/serverCommandReadiness.ts | await: Deferred.await(ready), → await: Effect.void,
   it.effect("holds a waiter until startup completes it, then releases every waiter", () =>
     Effect.gen(function* () {
       const readiness = yield* ServerCommandReadiness;

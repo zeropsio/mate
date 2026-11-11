@@ -1,3 +1,4 @@
+import { ORG_PERSONA_TEMPLATES_MAX } from "@t3tools/shared/personaTemplates";
 import * as Schema from "effect/Schema";
 import {
   HqRemoteRefusalReason,
@@ -8,7 +9,7 @@ import {
 } from "@t3tools/shared/hqGitTargets";
 /**
  * HQ's refusals in the person's words. HQ answers a refusal with a code and, for its structure, a
- * reason (`apps/hq/src/api.ts`): a permission's (`@t3tools/shared/zeropsPermissions`'s `REASONS`,
+ * reason (`mate-hq apps/hq/src/api.ts`): a permission's (`@t3tools/shared/zeropsPermissions`'s `REASONS`,
  * every one of which has words here, or the type fails) or one of the structure's own. The words are
  * the client's; a reason this build has none for is named by itself.
  *
@@ -86,7 +87,7 @@ const MERGE_WORDS: { readonly [R in (typeof MERGE_REFUSALS)[number]]: string } =
     "Its pull request on GitHub now merges into another branch, not the repository's default one, so Mate won't merge it. See the pull request on GitHub.",
 };
 
-/** HQ's code for a call Zerops refused HQ outright (`apps/hq/src/api.ts`): never retried. */
+/** HQ's code for a call Zerops refused HQ outright (`mate-hq apps/hq/src/api.ts`): never retried. */
 const ZEROPS_REFUSED = "zerops_refused";
 
 type ZeropsRefusal = "unauthorized" | "forbidden" | "not_found" | "invalid";
@@ -126,8 +127,8 @@ const RELEASE_WORDS: { readonly [R in ReleaseRefusal]: string } = {
 };
 
 /**
- * HQ's own refusals — its structure's (`StructureRefused` in `apps/hq/src/structure.ts`) and its
- * changes' (`ChangeRefused` in `apps/hq/src/changes.ts`) — in words.
+ * HQ's own refusals — its structure's (`StructureRefused` in `mate-hq apps/hq/src/structure.ts`) and its
+ * changes' (`ChangeRefused` in `mate-hq apps/hq/src/changes.ts`) — in words.
  */
 const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
   name_length: "A name has 1 to 100 characters.",
@@ -152,8 +153,29 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
     "This Move needs a credential and job migration that HQ cannot complete yet.",
   key_still_exists: "The original Mate key still exists. Finish its key cleanup first.",
   held_changed: "Somebody changed this project in HQ meanwhile. Try again.",
+  // A Mate's hand-over (`POST /api/mates/:projectId/hand-over`).
+  not_owner_or_admin:
+    "Only an owner or admin of the organization, or this Mate's owner, can hand it over.",
+  owner_not_member: "That person is not an active member of this organization.",
+  mate_service_unknown: "HQ could not find this Mate's service to give it a new key.",
+  key_unverified: "HQ has not verified this Mate's key yet. Try again in a few minutes.",
+  // An organization's persona templates (`@t3tools/shared/personaTemplates`).
+  revision_conflict: "Someone else changed this template meanwhile.",
+  too_many_templates: `An organization keeps at most ${ORG_PERSONA_TEMPLATES_MAX} templates. Delete one first.`,
   // A Mate's changes (`@t3tools/shared/hqChanges`), as a person meets them.
   repo_not_found: "HQ has no such repository.",
+  // A repository HQ will not delete (`DELETE /api/apps/:appId/repos/:repo`).
+  group_repository: "This is the project's main repository, so it can't be deleted.",
+  "in_use:git_environment":
+    "A Git environment delivers this repository. Remove that environment first.",
+  "in_use:remote": "This repository mirrors to GitHub or GitLab. Disconnect the mirror first.",
+  "in_use:open_change": "This repository has an open change. Merge or close it first.",
+  "in_use:deploy": "A deploy of this repository is running. Try again when it finishes.",
+  // A repository's Git storage limit (`PUT /api/apps/:appId/repos/:repo/storage`).
+  cap_range: "A repository's storage limit is a whole number of GiB from 1 to 100.",
+  cap_below_usage: "This repository already holds more than that. Choose a larger limit.",
+  repo_not_moved:
+    "This repository's Git isn't in storage of its own yet, so its limit can't be changed.",
   change_not_found: "HQ has no such change.",
   attachment_not_found: "HQ has no such picture.",
   commit_not_found: "HQ has no such commit.",
@@ -163,7 +185,7 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
   mate_has_change: "That Mate has an open change of its own in this repository.",
   // An application's recipe (`@t3tools/shared/hqRecipe`).
   recipe_too_large: "This project's recipe is too large to read here.",
-  // An application's environments and their deploy keys (`apps/hq/src/environments.ts`).
+  // An application's environments and their deploy keys (`mate-hq apps/hq/src/environments.ts`).
   environment_with_kind: "Only a stage or a production is an environment.",
   environment_name_missing: "An environment needs a name.",
   environment_name_long: "An environment's name has at most 63 characters.",
@@ -174,15 +196,15 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
   environment_not_found: "HQ has no such environment.",
   deploy_token_refused: "Zerops did not accept this deploy key.",
   deploy_token_scope: "This deploy key reaches more than its own project.",
-  // HQ keeps a deploy key only sealed under its own key (`apps/hq/src/deployKeys.ts`).
+  // HQ keeps a deploy key only sealed under its own key (`mate-hq apps/hq/src/deployKeys.ts`).
   no_key_secret:
     "HQ has no key to keep deploy keys with yet. Whoever runs this HQ sets its HQ_KEY_SECRET.",
-  // A deploy asked again ("Run again", `apps/hq/src/deploys.ts`).
+  // A deploy asked again ("Run again", `mate-hq apps/hq/src/deploys.ts`).
   deploy_not_found: "HQ has no such deploy.",
   deploy_superseded: "A newer deploy took this one's place.",
   deploy_running: "HQ is deploying it now.",
   service_not_declared: "The recipe declares no such service here.",
-  // A release rolled back to (`apps/hq/src/releases.ts`).
+  // A release rolled back to (`mate-hq apps/hq/src/releases.ts`).
   release_not_found: "HQ has no such release.",
 };
 
@@ -190,7 +212,7 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
  * Why HQ refused a setting of automated Mates' sources — an intake, the organization's Slack app or
  * Discord application, its GitHub app, an application's channel, webhooks and schedules, the limits
  * on each task (`AutomationRefused` in
- * `apps/hq/src/{intake,githubApp,slack,discord,webhooks,schedules,taskLimits}.ts`) —
+ * `mate-hq apps/hq/src/{intake,githubApp,slack,discord,webhooks,schedules,taskLimits}.ts`) —
  * in words: what is wrong, and what the person does.
  */
 const AUTOMATION_WORDS = {
@@ -202,8 +224,10 @@ const AUTOMATION_WORDS = {
     "HQ does not know its own public address yet. Give HQ's service a public address, then try again.",
   repository_changed:
     "The repository on GitHub is no longer the one connected. Connect it again under Repositories.",
-  // The organization's GitHub app (`apps/hq/src/githubApp.ts`).
+  // The organization's GitHub app (`mate-hq apps/hq/src/githubApp.ts`).
   github_unavailable: "HQ could not set the GitHub app up just now. Try again.",
+  needs_owner_seal:
+    "Nobody is recorded to have set this GitHub app up, so Mate uses it for nothing. An Owner or Admin makes it again.",
   // Slack.
   slack_unavailable: "HQ could not set Slack up just now. Try again.",
   bot_token: "That is not a bot token. Copy it again from the app's settings.",
@@ -251,13 +275,12 @@ const isAutomationRefusal = (reason: string): reason is keyof typeof AUTOMATION_
   Object.hasOwn(AUTOMATION_WORDS, reason);
 
 /**
- * Why HQ did not enroll a Mate (`MateRefused` in `apps/hq/src/mateCredentials.ts`; zcp's
+ * Why HQ did not enroll a Mate (`MateRefused` in `mate-hq apps/hq/src/mateCredentials.ts`; zcp's
  * `~/.zcp/hq/outcome.json`), in words: what stands, and what the person can do — or that zcp tries
  * again on its own, which it does for every refusal but `not_this_projects_mate`.
  */
 const ENROLLMENT_WORDS: Readonly<Record<string, string>> = {
-  // Its record comes with its press: one that stopped before it wrote it, Finish setup writes it.
-  not_a_mate: "HQ has no record of this Mate yet. Finish its setup from its menu.",
+  not_a_mate: "HQ has no record of this Mate yet.",
   project_not_in_org: "Its Zerops project is not in this HQ's organization.",
   project_gone: "Its Zerops project is gone.",
   // HQ reads zcp's proof off the project a moment later than zcp writes it.
@@ -283,6 +306,14 @@ export const NO_HQ_WORDS = "This organization has no HQ yet. Ask an admin to set
  * (`503 zerops_unanswered`): nothing was done, and pressing again may go through.
  */
 export const ZEROPS_UNANSWERED = "Zerops is not answering, so HQ did nothing. Try again.";
+
+/**
+ * What a call says where HQ holds no credential that reads what it needs of the project
+ * (`503 zerops_unavailable`, reason `no_credential`): no presented key, environment deploy token
+ * or Mate key covers it, so HQ decided nothing. Trying again changes nothing until one does.
+ */
+export const ZEROPS_NO_CREDENTIAL =
+  "HQ has no access key for this project in Zerops, so it did nothing. Open the project's Mate, or renew its deploy token, then try again.";
 
 /** What anything asked of the organization's HQ says where its official HQ is not open here. */
 export const HQ_NOT_OPEN = "This organization's HQ is not open here.";
@@ -324,35 +355,77 @@ const isRemoteRefusal = Schema.is(HqRemoteRefusalReason);
 const isGitEnvironmentRefusal = Schema.is(HqGitEnvironmentRefusalReason);
 const isGitRequestRefusal = Schema.is(HqGitRequestRefusalReason);
 
-/**
- * HQ serves an organization once an Owner or Admin started it by signing in (`409
- * org_not_started`); until then, its other people wait for one.
- */
-const HQ_ORG_NOT_STARTED =
-  "An Owner or Admin of this organization must sign in to Mate first. Then try again.";
-
-/**
- * HQ checks the key an Owner's or Admin's sign-in starts it with — the organization's, read-only —
- * and the person's role, and refuses either (`403 forbidden` `org_key_rejected`).
- */
-const HQ_ORG_KEY_REJECTED =
-  "HQ did not accept the organization's key. Sign in again as an Owner or Admin.";
-
 /** What HQ's refusal says to the person: its reason in words, else named by its reason or code. */
+/** HQ's code for a hand-over that stopped part way: something was written, asking again finishes it. */
+export const HQ_HANDOVER_UNFINISHED = "handover_unfinished";
+
+/** Where a hand-over stopped (`409 handover_unfinished`'s `phase`), as what it was doing. */
+const HANDOVER_PHASE_WORDS: Readonly<Record<string, string>> = {
+  override: "moving its owner",
+  mint: "making its new key",
+  secret: "writing its new key to its container",
+  install: "installing its new key",
+  revoke: "revoking the key it replaced",
+};
+
+/** A hand-over HQ stopped part way: where, Zerops' own code for why, and who finishes it. */
+function handoverUnfinishedWords(phase: string | undefined, reason: string | undefined): string {
+  const doing = phase === undefined ? undefined : HANDOVER_PHASE_WORDS[phase];
+  const where =
+    doing === undefined
+      ? `The hand-over stopped part way${phase === undefined ? "" : ` (${phase})`}`
+      : `The hand-over stopped while ${doing}`;
+  // An admin may not revoke an owner's key: Zerops' `ownerRoleRequired`, finished by an owner.
+  const finish =
+    reason === "ownerRoleRequired"
+      ? "An owner of the organization must hand it over again to finish."
+      : "Hand it over again to finish.";
+  return `${where}${reason === undefined ? "" : ` (${reason})`}. ${finish}`;
+}
+
+/**
+ * The one sentence for an HQ older than this Mate, which has no route for what is asked: `toDo`
+ * is the thing, as a verb phrase ("connect GitHub").
+ */
+export const hqNeedsUpdate = (toDo: string): string => `HQ needs an update to ${toDo}.`;
+
+/**
+ * The one sentence for an answer HQ gave in a shape this Mate does not decode: a version mismatch
+ * about `what` ("the Slack app"), and either side may be the older one.
+ */
+const DISAGREES_LEAD = "HQ and this Mate disagree on ";
+
+export const hqDisagreesOn = (what: string): string =>
+  `${DISAGREES_LEAD}${what}: one of them needs an update.`;
+
+/**
+ * The one failure line of a read, from HQ or the platform: what could not be read, then the
+ * reason the source gave, when it gave one. The surface puts its *Try again* beside it.
+ */
+export const couldntRead = (what: string, reason?: string | null): string => {
+  const why = reason?.trim() ?? "";
+  if (why === "") return `Couldn't read ${what}.`;
+  // A disagreement already says what could not be read, and why: said once, not after itself.
+  if (why.startsWith(DISAGREES_LEAD)) return why;
+  return `Couldn't read ${what}. ${why}`;
+};
+
 export function hqRefusalWords(refusal: {
   readonly code: string;
   readonly reason: string | undefined;
+  /** A hand-over's phase, where HQ named one. */
+  readonly phase?: string | undefined;
   readonly remote?: HqRemoteRefusal;
   readonly gitSetup?: boolean;
 }): string {
   const { reason } = refusal;
+  if (refusal.code === HQ_HANDOVER_UNFINISHED)
+    return handoverUnfinishedWords(refusal.phase, reason);
   if (refusal.code === "remote_refused") {
     return isRemoteRefusal(reason)
       ? remoteRefusalWords(refusal.remote ?? { reason })
       : "Mate could not change this repository connection. Review its settings and try again.";
   }
-  if (refusal.code === "org_not_started") return HQ_ORG_NOT_STARTED;
-  if (reason === "org_key_rejected") return HQ_ORG_KEY_REJECTED;
   if (isGitRequestRefusal(reason)) return GIT_REQUEST_WORDS[reason];
   if (
     refusal.gitSetup &&
@@ -376,34 +449,45 @@ export function hqRefusalWords(refusal: {
   return `HQ refused this (${reason ?? refusal.code}).`;
 }
 
-/** How a verb's state is worded: a wall time, and when Zerops answered HQ's view of the roles. */
-interface OfferWording {
-  readonly at: (ms: number) => string;
-  readonly rolesAnsweredAt: string | null;
-}
-
 /**
- * What a control says beside a verb HQ does not offer (`hqOffer`): HQ's refusal, as of when Zerops
- * answered the roles it was decided over; that HQ has not said; since when HQ does not answer.
- * Nothing for an offered one. `at` words a wall time; nothing here compares one with now.
+ * What a control says beside a verb not offered (`hqOffer`): the refusal the person's Zerops roles
+ * decide, or that it is not decided yet. Nothing for an offered one.
  */
-export function hqOfferWords(
-  state: Exclude<HqOfferState, { readonly kind: "allowed" }>,
-  input: OfferWording,
-): string;
-export function hqOfferWords(state: HqOfferState, input: OfferWording): string | undefined;
-export function hqOfferWords(state: HqOfferState, input: OfferWording): string | undefined {
+export function hqOfferWords(state: Exclude<HqOfferState, { readonly kind: "allowed" }>): string;
+export function hqOfferWords(state: HqOfferState): string | undefined;
+export function hqOfferWords(state: HqOfferState): string | undefined {
   switch (state.kind) {
     case "allowed":
       return undefined;
-    case "refused": {
-      const words = hqRefusalWords({ code: "forbidden", reason: state.reason });
-      const answered = input.rolesAnsweredAt === null ? NaN : Date.parse(input.rolesAnsweredAt);
-      return Number.isNaN(answered) ? words : `${words} Zerops roles as of ${input.at(answered)}.`;
-    }
+    case "refused":
+      return hqRefusalWords({ code: "forbidden", reason: state.reason });
     case "unknown":
       return "HQ has not said yet.";
-    case "unavailable":
-      return `HQ unavailable since ${input.at(state.since)}.`;
   }
+}
+
+/** Why HQ will not use the deploy key it keeps for an environment. */
+export type DeployKeyTrouble = "missing" | "dead" | "widened";
+
+/** How each of HQ's sentences about an environment's deploy key ends. */
+const DEPLOY_KEY_RENEWED_BY = "a person with admin access to its project renews it in Zerops Mate";
+/** What stands between the environment's name and that ending, per kind. */
+const DEPLOY_KEY_SAID: ReadonlyArray<readonly [DeployKeyTrouble, string]> = [
+  ["missing", " has no deploy token; "],
+  ["dead", "'s deploy token no longer answers; "],
+  ["widened", "'s deploy token reaches more than its project; "],
+];
+
+/**
+ * Whether HQ's words for a job that ended deploying nothing are about the environment's deploy key
+ * (`mate-hq internal/deploys/tokens.go`): it keeps none, the one it keeps no longer answers, or it
+ * reaches more than the environment's project. Nothing was asked of Zerops then, and asking again
+ * changes nothing until a person with admin access to the project renews the key. Told by the
+ * sentences' fixed parts, wherever in the reason they stand; `undefined` for any other reason.
+ */
+export function deployKeyTrouble(reason: string | null | undefined): DeployKeyTrouble | undefined {
+  if (reason === null || reason === undefined) return undefined;
+  return DEPLOY_KEY_SAID.find(([, said]) =>
+    reason.includes(`${said}${DEPLOY_KEY_RENEWED_BY}`),
+  )?.[0];
 }

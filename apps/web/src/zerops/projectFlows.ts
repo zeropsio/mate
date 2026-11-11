@@ -14,6 +14,8 @@ import {
   projectApplications,
 } from "@t3tools/client-runtime/data";
 import type { CanonicalHqEnvironment } from "@t3tools/client-runtime/zerops/hq";
+import { hqOfferWords } from "@t3tools/client-runtime/zerops/hq";
+import { HQ_REMOTE_WRITE_VERB, hqOffer } from "@t3tools/shared/hqOffers";
 import {
   flowReleaseOf,
   gitProductionRuns,
@@ -40,7 +42,7 @@ import { useContext, useEffect, useMemo } from "react";
 import { hqNavigationAtom } from "../state/zerops";
 import { useDetailProjects } from "./accountEnvironments";
 import { useStatedVersions, useStopDeployments } from "./accountForge";
-import { useAccountHq } from "./accountHq";
+import { configuredHq } from "./accountHq";
 import {
   findInventoryProjectRef,
   HeldInventoryContext,
@@ -59,11 +61,11 @@ import {
   type ReleaseLive,
   type ReleasePlan,
 } from "@t3tools/client-runtime/data";
-import { releaseGateOf, useOfferReading } from "./appOffers";
+import { releaseGateOf } from "./appOffers";
 import { useHqAppDetailHold, useHqAppRecipes, useHqAppReleases } from "./useHqAppDetail";
 import { useReleaseComparisons } from "./useReleaseComparisons";
 import { useProjection, useProjectsServices } from "./ZeropsAccountData";
-import { useZeropsSession, useZeropsSessionOptional } from "./ZeropsSessionProvider";
+import { useZeropsSession } from "./ZeropsSessionProvider";
 
 export type {
   CanonicalProjectFlow as ZeropsProjectFlow,
@@ -105,11 +107,9 @@ const NO_APPS: ReadonlyArray<string> = [];
 /** The applications a surface draws: those named, or every one HQ's navigation lists. */
 export type FlowApps = ReadonlyArray<string> | "every";
 
-/** The organization's official HQ's address, once its anchor is resolved. */
-export function useHqAddress(): string | undefined {
-  const session = useZeropsSessionOptional();
-  const { hq } = useAccountHq(session?.activeOrganization?.id);
-  return hq.kind === "official" ? hq.address : undefined;
+/** The address of the HQ this build names. */
+export function useHqAddress(): string {
+  return configuredHq().address;
 }
 
 /** Every Mate's name by its project, for a surface that meets a bot login (`mate-{projectId}`). */
@@ -170,7 +170,6 @@ export interface AppsChanges {
 }
 
 const NO_CHANGES: ReadonlyMap<string, GroupChanges> = new Map();
-const NO_REFUSALS: ReadonlyMap<string, string> = new Map();
 
 /** The named applications' open changes as HQ's navigation lists them, by id. */
 function useOpenChanges(appIds: ReadonlyArray<string>) {
@@ -186,16 +185,13 @@ function useOpenChanges(appIds: ReadonlyArray<string>) {
 
 /**
  * The named applications' changes as rows, at HQ's official address: the open ones from HQ's
- * navigation with what a held detail adds, and HQ's refusal of them to this person, apart.
+ * navigation with what a held detail adds.
  */
 function useChangeRows(appIds: ReadonlyArray<string>, hqAddress: string | undefined) {
   const open = useOpenChanges(appIds);
   const { changes: detail } = useHqAppReleases(appIds);
   return useMemo(
-    () =>
-      hqAddress === undefined
-        ? { rows: NO_CHANGES, refused: NO_REFUSALS }
-        : groupChangesOf(open, detail, hqAddress),
+    () => (hqAddress === undefined ? NO_CHANGES : groupChangesOf(open, detail, hqAddress)),
     [detail, hqAddress, open],
   );
 }
@@ -207,7 +203,7 @@ function useChangeRows(appIds: ReadonlyArray<string>, hqAddress: string | undefi
  */
 export function useAppsChanges(appIds: ReadonlyArray<string>): AppsChanges {
   const hqAddress = useHqAddress();
-  const { rows } = useChangeRows(appIds, hqAddress);
+  const rows = useChangeRows(appIds, hqAddress);
   return useMemo(() => ({ hqAddress, changes: rows }), [hqAddress, rows]);
 }
 
@@ -280,23 +276,15 @@ const NO_FLOW_NAVIGATION = Atom.make({ ids: NO_APPS, read: false, unavailable: f
 
 /** Navigation status is shared with routes that must resolve a target before any project read. */
 export function useFlowNavigation(orgId: string | null) {
-  const accountHq = useAccountHq(orgId ?? undefined);
   const navigation = useProjection(projectApplications, orgId, NO_FLOW_NAVIGATION);
-  const hqAddress = accountHq.hq.kind === "official" ? accountHq.hq.address : undefined;
   return useMemo(
     () => ({
-      hqAddress,
-      readFailure: navigation.unavailable
-        ? HQ_CHANGES_UNANSWERED
-        : accountHq.status === "failed"
-          ? "The organization's HQ could not be read."
-          : accountHq.status === "ready" && accountHq.hq.kind !== "official"
-            ? "This organization has no HQ."
-            : undefined,
+      hqAddress: configuredHq().address,
+      readFailure: navigation.unavailable ? HQ_CHANGES_UNANSWERED : undefined,
       groupsRead: navigation.read,
       knownGroups: new Set(navigation.ids),
     }),
-    [navigation, hqAddress, accountHq.status, accountHq.hq.kind],
+    [navigation],
   );
 }
 
@@ -485,16 +473,15 @@ export function useProjectFlows(
   // A Mate's changes, linked at the organization's official address: the flows stand on them
   // wherever HQ answers.
   // HQ's rule for this person releasing each group, in its words.
-  const offers = useOfferReading();
   const permissions = useMemo(
     () =>
       new Map(
         appIds.map((groupId) => [
           groupId,
-          releaseGateOf(offers, told?.find(({ id }) => id === groupId)?.can),
+          releaseGateOf(told?.find(({ id }) => id === groupId)?.can),
         ]),
       ),
-    [appIds, told, offers],
+    [appIds, told],
   );
   const gitLive = useMemo(() => {
     const values = new Map<
@@ -506,7 +493,7 @@ export function useProjectFlows(
       const attachment = canonical.flows.get(appId)?.release.git?.attachment;
       if (attachment?.target.kind !== "git") continue;
       const flow = canonical.flows.get(appId);
-      const replacement = offers.state(app?.can, "replace_remote_token");
+      const replacement = hqOffer(app?.can, HQ_REMOTE_WRITE_VERB);
       values.set(appId, {
         attachment: { ...attachment, target: attachment.target },
         delivery: flow?.release.git?.delivery,
@@ -516,12 +503,12 @@ export function useProjectFlows(
             ? { allowed: true }
             : {
                 allowed: false,
-                reason: offers.words(replacement) ?? "HQ has not offered token replacement.",
+                reason: hqOfferWords(replacement) ?? "HQ has not offered token replacement.",
               },
       });
     }
     return values;
-  }, [appIds, told, offers, canonical.flows]);
+  }, [appIds, told, canonical.flows]);
 
   // What a release of each group would put live: what HQ compares from what production runs to each
   // runtime's `main` (`releaseReads`) — asked only for a surface that shows it, and only once the

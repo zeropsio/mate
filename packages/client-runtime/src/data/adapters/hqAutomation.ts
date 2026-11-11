@@ -25,10 +25,11 @@ import {
 } from "../operations/executors/hqAutomation.ts";
 import type { AccountStore } from "../store.ts";
 import { commitOwn, makeSettingsReads, type SettingRead } from "./hqSettingsReads.ts";
+import { hqNeedsUpdate } from "../../zerops/hq/refusals.ts";
 
 type AutomationApi = AutomationWrites & Pick<HqApi, "aiKeys">;
 
-const UPDATE_HQ = "Update HQ to set up automated Mates.";
+const UPDATE_HQ = hqNeedsUpdate("set up automated Mates");
 
 export function makeAutomationSettings(options: {
   readonly store: AccountStore;

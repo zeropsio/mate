@@ -7,7 +7,9 @@ import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
+import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import * as Redacted from "effect/Redacted";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
@@ -530,12 +532,37 @@ describe("Antigravity stderr compatibility", () => {
   );
 });
 
-it.layer(NodeServices.layer)("Antigravity profile preparation", (it) => {
+let fixtureRoot: string;
+const fixtureLayer = Layer.effectDiscard(
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    fixtureRoot = yield* fs.makeTempDirectoryScoped({ prefix: "t3-antigravity-profile-" });
+  }),
+).pipe(Layer.provideMerge(NodeServices.layer));
+
+const useFixtureRoot = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  return yield* Effect.acquireRelease(Effect.succeed(fixtureRoot), (root) =>
+    fs.readDirectory(root).pipe(
+      Effect.flatMap((entries) =>
+        Effect.forEach(
+          entries,
+          (entry) => fs.remove(path.join(root, entry), { recursive: true, force: true }),
+          { discard: true },
+        ),
+      ),
+      Effect.orDie,
+    ),
+  );
+});
+
+it.layer(fixtureLayer)("Antigravity profile preparation", (it) => {
   it.effect("preflights the no-browser helper and creates private directories only", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const temporaryDirectory = yield* fs.makeTempDirectoryScoped();
+      const temporaryDirectory = yield* useFixtureRoot;
       const profile = yield* prepareAntigravityProfile({
         profileDirectory: path.join(temporaryDirectory, "profile"),
       });
@@ -560,7 +587,7 @@ it.layer(NodeServices.layer)("Antigravity profile preparation", (it) => {
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
-        const temporaryDirectory = yield* fs.makeTempDirectoryScoped();
+        const temporaryDirectory = yield* useFixtureRoot;
         const userHome = path.join(temporaryDirectory, "home");
         const profileDirectory = path.join(temporaryDirectory, "profile");
         const configSkills = path.join(userHome, ".gemini", "config", "skills");
@@ -596,7 +623,7 @@ it.layer(NodeServices.layer)("Antigravity profile preparation", (it) => {
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
-        const temporaryDirectory = yield* fs.makeTempDirectoryScoped();
+        const temporaryDirectory = yield* useFixtureRoot;
         const userHome = path.join(temporaryDirectory, "home");
         const profileDirectory = path.join(temporaryDirectory, "profile");
         const userConfig = path.join(userHome, ".gemini", "config", "mcp_config.json");
@@ -631,7 +658,7 @@ it.layer(NodeServices.layer)("Antigravity profile preparation", (it) => {
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
-        const temporaryDirectory = yield* fs.makeTempDirectoryScoped();
+        const temporaryDirectory = yield* useFixtureRoot;
         const userHome = path.join(temporaryDirectory, "home");
         const profileDirectory = path.join(temporaryDirectory, "profile");
         yield* prepareAntigravityProfile({ profileDirectory, userHome });
@@ -647,7 +674,7 @@ it.layer(NodeServices.layer)("Antigravity profile preparation", (it) => {
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const temporaryDirectory = yield* fs.makeTempDirectoryScoped();
+      const temporaryDirectory = yield* useFixtureRoot;
       const profile = yield* prepareAntigravityProfile({
         profileDirectory: temporaryDirectory,
         auth: {
@@ -674,9 +701,8 @@ it.layer(NodeServices.layer)("Antigravity profile preparation", (it) => {
 
   it.effect("keeps the browser helper successful when cancellation closes stderr", () =>
     Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-      const temporaryDirectory = yield* fs.makeTempDirectoryScoped();
+      const temporaryDirectory = yield* useFixtureRoot;
       let helperCommand: ChildProcess.StandardCommand | undefined;
       yield* prepareAntigravityProfile({ profileDirectory: temporaryDirectory }).pipe(
         Effect.provideService(
@@ -690,23 +716,39 @@ it.layer(NodeServices.layer)("Antigravity profile preparation", (it) => {
       expect(helperCommand).toBeDefined();
       if (!helperCommand) return;
       const command = helperCommand;
+      expect(command.args[0]).toBe("-e");
+      const gatedArgs = command.args
+        .map(String)
+        .map((argument, index) =>
+          index === 1 ? `process.stdin.once("data", () => { ${argument} });` : argument,
+        );
       const child = yield* Effect.acquireRelease(
         Effect.sync(() =>
-          NodeChildProcess.spawn(command.command, command.args, {
-            env: { ...command.options.env },
-            stdio: ["ignore", "ignore", "pipe"],
+          NodeChildProcess.spawn(command.command, gatedArgs, {
+            env: Object.fromEntries(
+              Object.entries(command.options.env ?? {}).map(([name, value]) => [
+                name,
+                Redacted.isRedacted(value) ? Redacted.value(value) : value,
+              ]),
+            ),
+            stdio: ["pipe", "ignore", "pipe"],
           }),
         ),
         (process) => Effect.sync(() => void process.kill()),
       );
-      child.stderr?.destroy();
-      const exitCode = yield* Effect.promise(
-        () =>
-          new Promise<number | null>((resolve, reject) => {
-            child.once("error", reject);
-            child.once("exit", resolve);
-          }),
-      );
+      const childExit = new Promise<number | null>((resolve, reject) => {
+        child.once("error", reject);
+        child.once("exit", resolve);
+      });
+      const stderrClosed = new Promise<void>((resolve, reject) => {
+        if (!child.stderr) return reject(new Error("Expected a stderr pipe"));
+        child.stderr.once("close", resolve);
+        child.stderr.destroy();
+      });
+      yield* Effect.promise(() => stderrClosed);
+      expect(child.stdin).not.toBeNull();
+      child.stdin?.end("write");
+      const exitCode = yield* Effect.promise(() => childExit);
       expect(exitCode).toBe(0);
     }),
   );
@@ -715,7 +757,7 @@ it.layer(NodeServices.layer)("Antigravity profile preparation", (it) => {
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const temporaryDirectory = yield* fs.makeTempDirectoryScoped();
+      const temporaryDirectory = yield* useFixtureRoot;
       const profileDirectory = path.join(temporaryDirectory, "unused-profile");
       const result = yield* prepareAntigravityProfile({
         profileDirectory,
@@ -731,7 +773,7 @@ it.layer(NodeServices.layer)("Antigravity profile preparation", (it) => {
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const temporaryDirectory = yield* fs.makeTempDirectoryScoped();
+      const temporaryDirectory = yield* useFixtureRoot;
       for (const platform of ["linux", "win32"] as const) {
         const profileDirectory = path.join(temporaryDirectory, platform);
         const result = yield* prepareAntigravityProfile({

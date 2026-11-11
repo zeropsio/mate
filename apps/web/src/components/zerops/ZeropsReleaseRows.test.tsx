@@ -11,18 +11,18 @@ import type { CompareCommit } from "@t3tools/shared/hqChanges";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { elementsOf, press, readableText, TestNode } from "~/zerops/__fixtures__/testDom";
 
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
 
 /** The rows' one clock, fixed: an age is the producer's to test, not the minute this ran in. */
-const NOW = vi.hoisted(() => Date.parse("2026-09-19T12:00:00Z"));
-vi.mock("~/zerops/useNowMs", async (importOriginal) => ({
-  ...(await importOriginal<object>()),
-  useNowMs: () => NOW,
-}));
+const NOW = Date.parse("2026-09-19T12:00:00Z");
+beforeEach(async () => {
+  vi.spyOn(await import("~/zerops/useNowMs"), "useNowMs").mockReturnValue(NOW);
+});
+afterEach(() => vi.restoreAllMocks());
 
 /** The test DOM, able to hold a chevron's SVG. */
 class SvgDocument extends TestNode {
@@ -90,14 +90,14 @@ const rows = (releases: ReadonlyArray<FlowReleaseRow>, pending: ReadonlySet<stri
 describe("ZeropsReleaseRows", () => {
   it.each([
     ["the release production runs reads Live and offers no way back", LIVE, "Live", false],
-    ["an earlier approved release offers the way back to it", EARLIER, "Approved", true],
+    ["an earlier approved release offers the way back to it", EARLIER, EARLIER.tag, true],
     ["a release whose deploy failed says so", DEPLOY_FAILED, "Deploy failed", false],
     ["a refused release says why", REFUSED, "Refused", false],
   ] as const)("%s", (_case, release, word, rollBack) => {
     const html = rows([release]);
     expect(html).toContain(`>${release.tag}<`);
     expect(html).toContain(word);
-    expect(html.includes("Roll back to this")).toBe(rollBack);
+    expect(html.includes("Roll back to v")).toBe(rollBack);
   });
 
   it("writes a refused release's reason where its commits would be", () => {
@@ -111,7 +111,7 @@ describe("ZeropsReleaseRows", () => {
     );
     expect(html).toContain("Rolling back…");
     expect(html).toMatch(/<button[^>]*disabled[^>]*>(?:(?!<\/button>)[\s\S])*Rolling back…/u);
-    expect(html).toContain("Roll back to this");
+    expect(html).toContain("Roll back to v");
   });
 
   it("is one row per release, and nothing for none", () => {
@@ -126,8 +126,8 @@ describe("ZeropsReleaseRows without the commits read", () => {
     expect(html).not.toContain("aria-expanded");
     expect(html).not.toContain("release-carried");
     expect(html).toContain('data-zerops-surface="environment-name">v1.1.0</span>');
-    expect(html).toContain('data-zerops-surface="environment-summary">app v1.1.0-sha</span>');
-    expect(html).toMatch(/Roll back to this<\/button><\/span><\/li>/u);
+    expect(html).toContain('data-zerops-surface="release-description">app v1.1.0-sha</span>');
+    expect(html).toMatch(/Roll back to v[\d.]+<\/button>/u);
   });
 });
 
@@ -305,27 +305,30 @@ describe("ZeropsReleaseRows saying what a release carried", () => {
       vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
       const container = document.createElement("div");
       const root = createRoot(container as unknown as Element);
-      await act(async () => {
-        root.render(carriedRows([shown], carried));
-      });
-      const chevron = elementsOf(container, "button").find(
-        (button) => button.getAttribute("aria-label") === `Show what ${shown.tag} carried`,
-      );
-      expect(chevron).toBeDefined();
-      await act(async () => {
-        press(chevron!);
-      });
-      // What the row opened onto, apart from the row's own lines that already name the head.
-      const expansion = elementsOf(container, "div").find(
-        (node) => node.getAttribute("data-zerops-surface") === "release-carried",
-      );
-      const text = expansion === undefined ? "" : readableText(expansion);
-      const expanded = chevron!.getAttribute("aria-expanded");
-      const label = chevron!.getAttribute("aria-label");
-      await act(async () => {
-        root.unmount();
-      });
-      return { text, expanded, label };
+      try {
+        await act(async () => {
+          root.render(carriedRows([shown], carried));
+        });
+        const chevron = elementsOf(container, "button").find(
+          (button) => button.getAttribute("aria-label") === `Show what ${shown.tag} carried`,
+        );
+        expect(chevron).toBeDefined();
+        await act(async () => {
+          press(chevron!);
+        });
+        // What the row opened onto, apart from the row's own lines that already name the head.
+        const expansion = elementsOf(container, "div").find(
+          (node) => node.getAttribute("data-zerops-surface") === "release-carried",
+        );
+        const text = expansion === undefined ? "" : readableText(expansion);
+        const expanded = chevron!.getAttribute("aria-expanded");
+        const label = chevron!.getAttribute("aria-label");
+        return { text, expanded, label };
+      } finally {
+        await act(async () => {
+          root.unmount();
+        });
+      }
     };
 
     it.each([
@@ -378,7 +381,7 @@ it("Production release summaries use recorded change titles and counts before ex
     />,
   );
   expect(html).toContain("Fix checkout");
-  expect(html).toContain("1 change · 6 commits · 5 commits outside Mate");
+  expect(html).toContain(">1 change<");
   expect(html).not.toContain('data-zerops-surface="release-carried"');
   expect(onExpandedChange).not.toHaveBeenCalled();
 });

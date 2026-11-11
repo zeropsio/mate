@@ -119,7 +119,7 @@ export interface CrewHold {
  * - `send`: a turn on its way into a crewmate's conversation, before its agent gets it.
  */
 export type CrewHoldStep =
-  | { readonly step: "save" | "check" | "land" | "recover" | "sweep" | "send" }
+  | { readonly step: "save" | "keep" | "check" | "land" | "recover" | "sweep" | "send" }
   | { readonly step: "verdict"; readonly nth: number };
 
 /** A task as the crew holds it, not as a frame showed it. */
@@ -244,7 +244,10 @@ export interface CrewWorld {
     phase: "started" | "finished",
     options?: { readonly opens?: "item.started" | "item.updated" },
   ) => Effect.Effect<void>;
-  /** The project's processes as the platform lists them; `unreadable` fails the read. */
+  /**
+   * The project's processes as the platform lists them, pushed over the Mate's socket;
+   * `unreadable` fails the read.
+   */
   readonly deployState: (processes: ReadonlyArray<unknown> | "unreadable") => Effect.Effect<void>;
   /** A usage window of the Mate's agent stands at `usedPercent`. */
   readonly usage: (usedPercent: number) => Effect.Effect<void>;

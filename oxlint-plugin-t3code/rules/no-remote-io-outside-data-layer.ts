@@ -7,7 +7,7 @@ import {
   normalizeFingerprint,
   shouldReportLedgered,
 } from "../exceptions.ts";
-import { compactSyntax, enclosingFunction, syntaxNodes } from "./boundaries.ts";
+import { compactSyntax, syntaxNodes } from "./boundaries.ts";
 import { getPropertyName, resolveVariable, unwrapExpression } from "../utils.ts";
 
 /**
@@ -52,8 +52,8 @@ const FILE_TRANSFER_PATHS: ReadonlySet<string> = new Set([
   "apps/web/src/threadNotifications.ts",
   // A chat attachment uploaded with progress.
   "apps/web/src/lib/attachmentUploadQueue.ts",
-  // The HQ core bundle shipped with the app.
-  "apps/web/src/components/zerops/ZeropsHqUpdate.tsx",
+  // The hosted client's service worker: its own page and bundle files, kept for the next load.
+  "apps/web/src/appShell/sw.ts",
 ]);
 const TEST_FILE_PATTERN =
   /(?:^|\/)(?:__tests__\/|__fixtures__\/|testing\/|[^/]+\.(?:test|spec|bench)\.[cm]?[jt]sx?$)/u;
@@ -135,12 +135,10 @@ export const ZEROPS_CLIENT_VERBS = [
   "addProjectVariable",
   "addServiceVariable",
   "adoptSession",
-  "buildAndDeployAppVersion",
+  "cancelBuild",
   "checkPublicHttpRoutingDns",
   "connectOrganizationUser",
-  "createAppVersion",
   "createProject",
-  "createProjectEnv",
   "createPublicHttpRouting",
   "createPublicPortRouting",
   "deleteIntegrationToken",
@@ -157,29 +155,22 @@ export const ZEROPS_CLIENT_VERBS = [
   "fetchProjectLogAccess",
   "fetchUser",
   "hardenMate",
-  "hasServiceVariable",
   "importDevelopmentContainer",
   "importProject",
   "importServicesIntoProject",
   "inviteOrganizationUser",
-  "isolateProjectEnvironment",
   "listAccessibleClientProjects",
   "listClientProjects",
   "listIntegrationTokenDelegations",
   "listIntegrationTokens",
   "listOrganizationMembers",
-  "listProjectProcesses",
   "listProjectServices",
-  "listPublicHttpRoutings",
-  "listServiceVariableNames",
   "login",
   "logout",
   "mintIntegrationToken",
   "readAccessibleClientProjects",
   "readIntegrationToken",
   "readMemberProjectRoles",
-  "readProjectBirthEnv",
-  "readProjectEnv",
   "regenerateIntegrationToken",
   "register",
   "removeOrganizationMember",
@@ -193,7 +184,6 @@ export const ZEROPS_CLIENT_VERBS = [
   "revealServiceVariable",
   "revokeSession",
   "setIntegrationTokenProjects",
-  "setProjectMemberRole",
   "startProject",
   "startService",
   "stopService",
@@ -204,24 +194,25 @@ export const ZEROPS_CLIENT_VERBS = [
   "updatePublicHttpRouting",
   "updatePublicPortRouting",
   "updateServiceVariable",
-  "uploadAppVersionArchive",
   "validateOrganizationUser",
   "verifyTotp",
   "writeMateFlag",
   "writeMemberProjectRoles",
   "writeNewProjectAccess",
   "writeProject",
-  "writeServiceSecret",
 ] as const;
 
 /** The HQ client's remote verbs (`HqApi`, `client-runtime/src/zerops/hq/client.ts`). */
 export const HQ_CLIENT_VERBS = [
   "autoUpdatePolicy",
   "setAutoUpdatePolicy",
+  "savePersonaTemplate",
+  "deletePersonaTemplate",
   "structure",
   "mateTicket",
   "openScopeSocket",
   "lifecycleWrite",
+  "completeProjectDeletion",
   "lifecycleReceipt",
   "gitTargetWrite",
   "gitTargetReceipt",
@@ -230,9 +221,12 @@ export const HQ_CLIENT_VERBS = [
   "answerKeptGit",
   "deleteApp",
   "createMate",
-  "recordClosedOff",
   "createApp",
   "recordBirth",
+  "registerBirthChief",
+  "claimBirthAttempt",
+  "endBirthAttempt",
+  "deleteBirth",
   "holdPress",
   "endPress",
   "bindBirth",
@@ -270,27 +264,39 @@ export const HQ_CLIENT_VERBS = [
   "github",
   "githubManifest",
   "githubDisconnect",
+  "githubInstall",
+  "githubAcceptInstallation",
+  "githubSuspendInstallation",
+  "githubResumeInstallation",
   "repoRemoteViaApp",
   "followRepoUpstream",
   "unfollowRepoUpstream",
+  "deleteRepo",
   "gitBrowse",
   "gitBrowseBytes",
   "gitCredentials",
   "issueGitCredential",
   "revokeGitCredential",
+  "observeCredential",
+  "establishZcpAuthorization",
   "commentOnChange",
   "mergeChange",
   "closeChange",
   "handChange",
+  "handOver",
   "changeAttachment",
   "changeCommits",
   "changeMetadata",
+  "changeVerdict",
   "mateRecipe",
   "release",
+  "reviewRelease",
   "rollback",
   "setChief",
   "proposalDecisions",
   "decideProposal",
+  "withAccess",
+  "recordReveal",
 ] as const;
 
 const CLIENT_VERBS: ReadonlySet<string> = new Set([...ZEROPS_CLIENT_VERBS, ...HQ_CLIENT_VERBS]);
@@ -446,41 +452,6 @@ export default defineRule({
       });
     };
 
-    const isBundledCoreFetch = (node: ESTree.CallExpression): boolean => {
-      if (path !== "apps/web/src/zerops/bundledCore.ts") return false;
-      const argument = node.arguments[0];
-      const fn = enclosingFunction(node);
-      if (
-        fn?.type === "FunctionDeclaration" &&
-        ["readCarriedCoreBuild", "readBundledCore"].includes(fn.id?.name ?? "")
-      ) {
-        // Only the injected artifact transport and the three declared bundle files.
-        return (
-          node.callee.type === "Identifier" &&
-          node.callee.name === "fetch" &&
-          fn.params.some((param) => param.type === "Identifier" && param.name === "fetch") &&
-          argument?.type === "TemplateLiteral" &&
-          argument.expressions.length === 1 &&
-          argument.expressions[0]?.type === "Identifier" &&
-          argument.expressions[0].name === "base" &&
-          ["/build.json", "/core.tgz.bin", "/zerops.yml"].includes(
-            argument.quasis[1]?.value.cooked ?? "",
-          )
-        );
-      }
-      // Pass the global fetch only as this build's artifact loader, never as a general client.
-      const wrapper = fn?.parent;
-      const call = wrapper?.type === "CallExpression" ? wrapper : undefined;
-      return (
-        call !== undefined &&
-        ["readCarriedCoreBuild", "readBundledCore"].includes(calleeName(call.callee) ?? "") &&
-        call.arguments[0] === fn &&
-        call.arguments[1] !== undefined &&
-        compactSyntax(context, call.arguments[1]) === "`${appBasePath()}/hq-core`" &&
-        compactSyntax(context, node) === "fetch(input,init)"
-      );
-    };
-
     const isThemeArtifactFetch = (node: ESTree.CallExpression): boolean => {
       if (path !== "apps/web/src/openVsxThemes.ts") return false;
       let fn: ESTree.Node | null = node.parent;
@@ -566,7 +537,7 @@ export default defineRule({
       CallExpression(node) {
         const head = headOf(context.sourceCode.getText(node.callee));
         if (globalName(node.callee) === "fetch") {
-          if (!isBundledCoreFetch(node) && !isThemeArtifactFetch(node)) report(node, head);
+          if (!isThemeArtifactFetch(node)) report(node, head);
           return;
         }
         if (isBeacon(node.callee)) return report(node, head);

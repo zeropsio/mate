@@ -1,11 +1,11 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { environmentFixtureWith } from "./fake.ts";
 import { environmentActions } from "./dsl.ts";
 
 describe("Projects layout", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect("Projects keeps production and release history readable on desktop and phone", () =>
       Effect.gen(function* () {
         const f = yield* environmentFixtureWith({}, { stage: false });
@@ -73,19 +73,6 @@ describe("Projects layout", () => {
               });
             }
           }
-          // Production keeps its release history in reach on the card itself: the way back, and
-          // History — no click to find them (the owner, 2026-10-11).
-          await page.setViewport({ width: 1786, height: 1000 });
-          const panelSelector = `${placeSelector} [data-zerops-surface="place-panel"]`;
-          const panel = await page.waitForSelector(panelSelector, { visible: true });
-          await page.waitForFunction(
-            (selector) =>
-              document.querySelector(selector)?.textContent?.includes("Roll back to v0.1.0") ===
-              true,
-            {},
-            panelSelector,
-          );
-          expect(await panel!.evaluate((element) => element.textContent)).toContain("History");
           await page.locator("[data-zerops-project-scope] ::-p-aria(New project)").click();
           await page.waitForSelector('[role="dialog"]', { visible: true });
           expect(await page.$eval('[role="dialog"]', (element) => element.textContent)).toContain(

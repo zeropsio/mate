@@ -17,6 +17,8 @@ const INPUT = {
 
 describe("buildZeropsRegistrationBody", () => {
   it("sends what the platform requires, and claims a pool project by default", () => {
+    // Measured 2026-08-28: a complete body with no `token` is refused with
+    // `cloudflareCaptchaVerificationFailed`, so there is no captcha-less path.
     expect(buildZeropsRegistrationBody(INPUT)).toEqual({
       email: "someone@example.com",
       password: " keeps spaces ",
@@ -26,12 +28,6 @@ describe("buildZeropsRegistrationBody", () => {
       claimZcpPool: true,
       token: "cf-token",
     });
-  });
-
-  it("always carries the captcha token — the platform enforces it", () => {
-    // Measured 2026-08-28: a complete body with no `token` is refused with
-    // `cloudflareCaptchaVerificationFailed`, so there is no captcha-less path.
-    expect(buildZeropsRegistrationBody(INPUT).token).toBe("cf-token");
   });
 
   it("can register without claiming, for a signup that is not pool-aware", () => {

@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off -- git fixtures use temporary directories only; refusal bodies in failure messages.
+// @effect-diagnostics nodeBuiltinImport:off globalJsonInEffect:off -- git fixtures use temporary directories only; refusal bodies in failure messages.
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as Effect from "effect/Effect";
@@ -9,67 +9,59 @@ import {
   RECIPE_TIER_PATHS,
   type RecipeTier,
 } from "@t3tools/shared/hqRecipe";
-import { gitClient } from "../../../../hq/test/harness/gitClient.ts";
-import { mateInApp, remoteOf } from "../../../../hq/test/harness/mates.ts";
-import { stateBecomes } from "../../../../hq/test/harness/recipe.ts";
-import { sessionFor } from "../../../../hq/test/harness/runningCore.ts";
+import { gitClient } from "./gitClient.ts";
+import { changeBecomes, stateBecomes } from "./recipe.ts";
 import type { ScenarioCore } from "./hqCore.ts";
 
 type Git = Effect.Success<typeof gitClient>;
 
 /**
- * A person's HQ session, through the door the scenario's Core serves: the real Core takes the
- * person's Zerops access token (`definePerson` keeps it as `personal-<name>`), the embedded one
- * a hand-over token the fixture minted (`door-<name>`).
+ * A person's HQ session, through the door the scenario's Core serves: it takes the person's Zerops
+ * access token (`definePerson` keeps it as `personal-<name>`).
  */
-export const personDoor = (core: ScenarioCore, person: string, orgKey?: string) =>
-  core.kind === "external"
-    ? core
-        .call("POST", "/api/door", {
-          body: {
-            accessToken: person === "owner" ? "personal" : `personal-${person}`,
-            orgId: "ORG",
-            ...(orgKey === undefined ? {} : { orgKey }),
-          },
-        })
-        .pipe(
-          Effect.map((response) => {
-            expect(response.status, JSON.stringify(response.body)).toBe(200);
-            return (response.body as { session: string }).session;
-          }),
-        )
-    : sessionFor(core.call, `door-${person}`);
+export const personDoor = (core: ScenarioCore, person: string) =>
+  core
+    .call("POST", "/api/door", {
+      body: {
+        accessToken: person === "owner" ? "personal" : `personal-${person}`,
+        orgId: "ORG",
+      },
+    })
+    .pipe(
+      Effect.map((response) => {
+        expect(response.status, JSON.stringify(response.body)).toBe(200);
+        return (response.body as { session: string }).session;
+      }),
+    );
 
 /**
- * How a Mate reaches HQ over HTTP and Git, from what `given.project` returned for it: the real
- * Core takes the project key (`Project <key>`, also as Git's `http.extraHeader`) and serves Git
- * under the organisation; the embedded Core takes its enrolled credential.
+ * How a Mate reaches HQ over HTTP and Git, from what `given.project` returned for it: the Core
+ * takes the project key (`Project <key>`, also as Git's `http.extraHeader`) and serves Git under
+ * the organisation.
  */
 export function mateAccess(core: ScenarioCore, owner: string, credential: string) {
-  const external = core.kind === "external";
-  const headers = { authorization: external ? `Project ${credential}` : `Mate ${credential}` };
+  const headers = { authorization: `Project ${credential}` };
   /** The repository's address as HQ hands it out (`url`), which a recipe's `buildFromGit` names. */
-  const url = (appId: string, repo: string) =>
-    `${core.origin}/git/${external ? "ORG/" : ""}${appId}/${repo}.git`;
-  const remote = (appId: string, repo: string) =>
-    external ? url(appId, repo) : remoteOf(core.origin, credential, appId, repo);
+  const url = (appId: string, repo: string) => `${core.origin}/git/ORG/${appId}/${repo}.git`;
   return {
     headers,
     url,
-    /** The application's repository `name`, made if new; the real Core makes it for a person. */
+    /** The application's repository `name`, made if new. */
     repo: Effect.fn("scenarios.mateAccess.repo")(function* (appId: string, name: string) {
-      const made = external
-        ? yield* core.call("POST", `/api/apps/${appId}/repos`, { session: owner, body: { name } })
-        : yield* core.call("POST", "/api/mate/repos", { headers, body: { name } });
+      const made = yield* core.call("POST", `/api/apps/${appId}/repos`, {
+        session: owner,
+        body: { name },
+      });
       expect([200, 201], JSON.stringify(made.body)).toContain(made.status);
     }),
     /** `git clone` of the repository into `dir` (under the client's directory), as the Mate. */
     clone: (git: Git, appId: string, repo: string, dir: string, options: string[] = []) =>
       git.checked([
         "clone",
-        ...(external ? ["-c", `http.extraHeader=Authorization: ${headers.authorization}`] : []),
+        "-c",
+        `http.extraHeader=Authorization: ${headers.authorization}`,
         ...options,
-        remote(appId, repo),
+        url(appId, repo),
         dir,
       ]),
   };
@@ -77,7 +69,7 @@ export function mateAccess(core: ScenarioCore, owner: string, credential: string
 
 /**
  * The owner places `projectId` as a Mate in the application `appName`, made once per name in
- * `appIds`; the embedded Core also enrolls it. The real Core links a Mate by its project key.
+ * `appIds`. The Core links a Mate by its project key.
  */
 export const placeMate = Effect.fn("scenarios.placeMate")(function* (
   core: ScenarioCore,
@@ -86,8 +78,6 @@ export const placeMate = Effect.fn("scenarios.placeMate")(function* (
   appName: string,
   appIds: Map<string, string>,
 ) {
-  if (core.kind !== "external")
-    return (yield* mateInApp(core.call, core.fake, owner, projectId, appName, appIds)).appId;
   let appId = appIds.get(appName);
   if (appId === undefined) {
     const app = yield* core.call("POST", "/api/apps", { session: owner, body: { name: appName } });
@@ -113,6 +103,8 @@ export const publishRecipe = Effect.fn("scenarios.publishRecipe")(function* (
   credential: string,
   appId: string,
   tier: RecipeTier,
+  /** The tier's import: its services, by default one with no code to deploy. */
+  services = "services:\n  - hostname: api\n    type: ubuntu/nodejs@22\n",
 ) {
   const access = mateAccess(core, owner, credential);
   yield* access.repo(appId, RECIPE_REPO);
@@ -128,10 +120,51 @@ export const publishRecipe = Effect.fn("scenarios.publishRecipe")(function* (
   const path = NodePath.join(work, RECIPE_TIER_PATHS[tier]);
   yield* Effect.sync(() => {
     NodeFS.mkdirSync(NodePath.dirname(path), { recursive: true });
-    NodeFS.writeFileSync(path, "services:\n  - hostname: api\n    type: nodejs@22\n");
+    NodeFS.writeFileSync(path, services);
   });
   yield* git.checked(["add", "-A"], work);
   yield* git.checked(["commit", "-q", "-m", `Add the ${tier} recipe`], work);
   yield* git.checked(["push", "-q", "origin", `HEAD:refs/heads/mate/Ada/${String(number)}`], work);
   yield* stateBecomes(core.call, owner, appId, number, "merged");
+});
+
+/**
+ * The Mate lands `files` as the first history of its application's repository `repo`, as zcp does
+ * over HQ's HTTP and Git: a change, its push, and the owner's merge onto `main`.
+ */
+export const landCode = Effect.fn("scenarios.landCode")(function* (
+  core: ScenarioCore,
+  owner: string,
+  credential: string,
+  appId: string,
+  repo: string,
+  files: Readonly<Record<string, string>>,
+) {
+  const access = mateAccess(core, owner, credential);
+  yield* access.repo(appId, repo);
+  const opened = yield* core.call("POST", "/api/mate/changes", {
+    headers: access.headers,
+    body: { repo, title: `Start ${repo}` },
+  });
+  expect(opened.status, JSON.stringify(opened.body)).toBe(200);
+  const number = (opened.body as { readonly change: { readonly number: number } }).change.number;
+  const git = yield* gitClient;
+  yield* access.clone(git, appId, repo, repo);
+  const work = NodePath.join(git.dir, repo);
+  // HQ makes a repository empty: its first change starts the history `main` takes.
+  yield* git.checked(["checkout", "-q", "--orphan", "change"], work);
+  yield* Effect.sync(() => {
+    for (const [path, content] of Object.entries(files))
+      NodeFS.writeFileSync(NodePath.join(work, path), content);
+  });
+  yield* git.checked(["add", "-A"], work);
+  yield* git.checked(["commit", "-q", "-m", `Start ${repo}`], work);
+  const head = yield* git.checked(["rev-parse", "HEAD"], work);
+  yield* git.checked(["push", "-q", "origin", `HEAD:refs/heads/mate/Ada/${String(number)}`], work);
+  yield* changeBecomes(core.call, owner, appId, repo, number, (change) => change["head"] === head);
+  const merged = yield* core.call("POST", `/api/apps/${appId}/changes/${repo}/${number}/merge`, {
+    session: owner,
+    body: { expectedHead: head },
+  });
+  expect(merged.status, JSON.stringify(merged.body)).toBe(200);
 });

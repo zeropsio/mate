@@ -254,8 +254,8 @@ export function GitEnvironmentForm({
                   <li>
                     Repository access: Only select repositories → {repository.guide.repository}
                   </li>
-                  <li>Contents: Read and write</li>
-                  <li>Workflows: Read and write</li>
+                  <li>{repository.guide.permission}</li>
+                  <li>Workflows: Read and write (optional)</li>
                   <li>Expiration: 366 days</li>
                 </ul>
                 <p className="text-xs text-muted-foreground">

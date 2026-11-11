@@ -8,27 +8,22 @@ import {
   mateImageSource,
   type MateImageKey,
 } from "@t3tools/client-runtime/data";
-import { AtomRegistry } from "effect/reactivity";
+import { AsyncResult, AtomRegistry } from "effect/reactivity";
+import * as Effect from "effect/Effect";
 import { act, useRef } from "react";
 import { create } from "react-test-renderer";
-import { afterEach, expect, it, vi } from "vite-plus/test";
-const wire = vi.hoisted(() => ({ blob: new Blob(["picture"], { type: "image/png" }) }));
-vi.mock("~/connection/runtime", async () => {
-  const { AsyncResult, Atom } = await import("effect/reactivity");
-  const Effect = await import("effect/Effect");
-  return {
-    connectionAtomRuntime: {
-      atom: () =>
-        Atom.make(AsyncResult.success({ read: () => Effect.never, repair: () => Effect.void })),
-    },
-  };
-});
-vi.mock("../hooks/useNearViewport", () => ({
-  useNearViewport: () => ({ ref: useRef(null), near: true }),
-}));
+import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
+const wire = { blob: new Blob(["picture"], { type: "image/png" }) };
 import { AssetImage } from "./AssetImage";
 import { imagePresentationsOf } from "./imagePresentation";
 import { MateImages } from "./MateImagesProvider";
+beforeEach(async () => {
+  const viewport = await import("../hooks/useNearViewport");
+  vi.spyOn(viewport, "useNearViewport").mockImplementation((() => ({
+    ref: useRef(null),
+    near: true,
+  })) as typeof viewport.useNearViewport);
+});
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -83,6 +78,19 @@ it("a remounted decoded image paints its retained pixels immediately and release
     },
   );
   const frames: { src: unknown; opacity: number }[] = [];
+  // The provider reads its wire first. Supply the inert wire through this registry so the
+  // provider stays real even when another test imported it before this one.
+  const get = registry.get.bind(registry);
+  const subscribe = registry.subscribe.bind(registry);
+  const readyWire = AsyncResult.success({ read: () => Effect.never, repair: () => Effect.void });
+  let wireAtom: unknown;
+  vi.spyOn(registry, "get").mockImplementation(((atom: Parameters<typeof registry.get>[0]) => {
+    wireAtom ??= atom;
+    return atom === wireAtom ? readyWire : get(atom);
+  }) as typeof registry.get);
+  vi.spyOn(registry, "subscribe").mockImplementation(((
+    ...args: Parameters<typeof registry.subscribe>
+  ) => (args[0] === wireAtom ? () => {} : subscribe(...args))) as typeof registry.subscribe);
   const tree = (show: boolean) => (
     <RegistryContext.Provider value={registry}>
       <MateImages store={store}>

@@ -1148,6 +1148,24 @@ function Harness() {
         <StandupStates />
         <CardStates />
         <State
+          label="Just sent, its run not started yet"
+          note="Its head alone, eight seconds after the send: the clock counts from the send, and what the slot says wears the thought's mark on the items' text edge."
+        >
+          <Card>
+            <RunChat
+              row={record({
+                turnKey: "sent-run",
+                items: [],
+                status: status({
+                  startedAt: ago(8),
+                  worked: false,
+                  ran: { ms: 0, since: null, personMs: 0 },
+                }),
+              })}
+            />
+          </Card>
+        </State>
+        <State
           label="Doing, with work alongside"
           note="Every kind of line the chat holds; the call it makes on the now line; the bars under it."
         >

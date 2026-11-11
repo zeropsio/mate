@@ -1,6 +1,6 @@
 /**
  * The writes a creation makes at HQ: its application, a Mate's birth and its bind, a project's
- * attach, a Mate's record and its close-off, an environment's deploy key. HQ answers each at once;
+ * attach, a Mate's record, an environment's deploy key. HQ answers each at once;
  * where an answer is lost, HQ's navigation showing its effect — absent at the send — adopts it.
  * HQ keeps no request ids here: nothing is asked by one, and nothing is sent again blindly.
  */
@@ -10,12 +10,15 @@ import { AtomRegistry } from "effect/reactivity";
 
 import { liveZerops, ORG } from "../__fixtures__/account.ts";
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
-import { operationResult, type OperationIntent } from "../model.ts";
+import { linkKeys, operationResult, type OperationIntent } from "../model.ts";
 import { operationProgress } from "../projections/operation.ts";
 import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
-import { HqError, type HqStructure } from "../../zerops/hq/client.ts";
+import { HqError, makeHqApi, type HqStructure } from "../../zerops/hq/client.ts";
 import { makeOperations } from "./coordinator.ts";
 import { makeHqExecutor, type HqWrites } from "./executors/hq.ts";
+import { personaTemplatesScope } from "../families/hqPersonaTemplates.ts";
+import { personaTemplateWrite } from "../projections/hqPersonaTemplates.ts";
+import { deletePersonaTemplate, savePersonaTemplate } from "./hqPersonaTemplates.ts";
 
 type App = HqStructure["apps"][number];
 const app = (patch: Partial<App> = {}): App =>
@@ -43,14 +46,19 @@ function operationsOf(store: AccountStore, api: Partial<HqWrites>, zerops = fake
         updateMate: asked("updateMate"),
         renameApp: asked("renameApp"),
         deleteApp: asked("deleteApp"),
+        completeProjectDeletion: asked("completeProjectDeletion"),
         answerKeptGit: asked("answerKeptGit"),
         createApp: asked("createApp"),
         recordBirth: asked("recordBirth"),
         bindBirth: asked("bindBirth"),
+        registerBirthChief: asked("registerBirthChief"),
+        deleteBirth: asked("deleteBirth"),
+        claimBirthAttempt: asked("claimBirthAttempt"),
+        endBirthAttempt: asked("endBirthAttempt"),
         attachProject: asked("attachProject"),
         createMate: asked("createMate"),
-        recordClosedOff: asked("recordClosedOff"),
         keepDeployToken: asked("keepDeployToken"),
+        handOver: asked("handOver"),
         commentOnChange: asked("commentOnChange"),
         release: asked("release"),
         rollback: asked("rollback"),
@@ -91,6 +99,113 @@ const progress = (store: AccountStore) =>
 const record = (store: AccountStore) => store.state().operations.get("r1");
 
 describe("a creation's writes at HQ", () => {
+  it.effect("sends application provenance only for the birth that created it", () =>
+    Effect.gen(function* () {
+      const sent: unknown[] = [];
+      const api = makeHqApi({
+        address: "https://hq.test",
+        orgId: ORG,
+        accessToken: async () => ({ token: "test-access" }),
+        openSocket: () => {
+          throw new Error("no socket in this test");
+        },
+        fetch: async (url, init) => {
+          const path = new URL(url).pathname;
+          if (path === "/api/door")
+            return new Response(
+              JSON.stringify({
+                session: "test-session",
+                expiresAt: "2099-01-01T00:00:00.000Z",
+                userId: "u1",
+              }),
+            );
+          if (path !== "/api/births") throw new Error(`Unexpected HQ path: ${path}`);
+          const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          delete body.accessToken;
+          sent.push(body);
+          return new Response(JSON.stringify({ id: "birth-1", face: "tint:shape" }));
+        },
+      });
+      const birth = {
+        kind: "record-birth",
+        orgId: ORG,
+        appId: "app-1",
+        id: "birth-1",
+        face: "tint:shape",
+      } as const;
+      for (const intent of [{ ...birth, createdApp: true as const }, birth]) {
+        const { operations } = operationsOf(account(), { recordBirth: api.recordBirth });
+        yield* operations.submit(intent);
+      }
+      expect(sent).toEqual([
+        { appId: "app-1", id: "birth-1", face: "tint:shape", createdApp: true },
+        { appId: "app-1", id: "birth-1", face: "tint:shape" },
+      ]);
+    }),
+  );
+
+  it.effect("sends a Chief birth's top-level flag through the HQ write", () =>
+    Effect.gen(function* () {
+      const store = account();
+      const sent: unknown[] = [];
+      const { operations } = operationsOf(store, {
+        recordBirth: async (birth) => {
+          sent.push(birth);
+          return { id: "birth-1", face: birth.face };
+        },
+      });
+      yield* operations.submit({
+        kind: "record-birth",
+        orgId: ORG,
+        appId: "app-1",
+        id: "birth-1",
+        face: "tint:shape",
+        chief: true,
+      });
+      expect(sent).toEqual([{ appId: "app-1", id: "birth-1", face: "tint:shape", chief: true }]);
+    }),
+  );
+
+  it.effect("a lost unbound birth deletion is confirmed only by a live complete birth list", () =>
+    Effect.gen(function* () {
+      const intent = { kind: "delete-birth", orgId: ORG, appId: "app-1", birthId: "b1" } as const;
+      const store = account([app({ births: [{ id: "b1", face: "" }] })]);
+      const { operations } = operationsOf(store, {
+        deleteBirth: async () => {
+          hqSays(store, [app({ births: [] })]);
+          throw lost;
+        },
+      });
+      yield* operations.submit(intent);
+      expect(progress(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
+
+      const unread = account([]);
+      const unseen = operationsOf(unread, {
+        deleteBirth: async () => {
+          hqSays(unread, [app({ births: [] })]);
+          throw lost;
+        },
+      });
+      yield* unseen.operations.submit(intent);
+      expect(progress(unread)).toEqual({ stage: "uncertain", next: "ask-owner-again" });
+
+      const bound = account([app({ births: [{ id: "b1", face: "", projectId: "p1" }] })]);
+      const refusal = operationsOf(bound, {
+        deleteBirth: async () => {
+          throw new HqError({
+            kind: "refused",
+            code: "conflict",
+            reason: "birth_bound",
+            status: 409,
+            message: "The birth is already bound.",
+          });
+        },
+      });
+      yield* refusal.operations.submit(intent);
+      expect(progress(bound)).toMatchObject({ stage: "refused", code: "birth_bound" });
+    }),
+  );
+
   it.effect.each(["app", "birth"] as const)(
     "a lost $0 answer cannot adopt a preexisting record from an unread baseline",
     (kind) =>
@@ -115,7 +230,7 @@ describe("a creation's writes at HQ", () => {
         yield* operations.submit(
           kind === "app"
             ? { kind: "create-app", orgId: ORG, name: "Garden" }
-            : { kind: "record-birth", orgId: ORG, appId: "app-1", face: "face" },
+            : { kind: "record-birth", orgId: ORG, appId: "app-1", id: "birth-1", face: "face" },
         );
         expect(progress(store)).toEqual({ stage: "uncertain", next: "ask-owner-again" });
         expect(sends).toBe(1);
@@ -137,7 +252,7 @@ describe("a creation's writes at HQ", () => {
           { appId: "app-9" },
         ],
         [
-          { kind: "record-birth", orgId: ORG, appId: "app-1", face: "tint:shape" },
+          { kind: "record-birth", orgId: ORG, appId: "app-1", id: "birth-1", face: "tint:shape" },
           {
             recordBirth: async (birth) => {
               said.push(`birth ${birth.appId} ${birth.face}`);
@@ -184,15 +299,6 @@ describe("a creation's writes at HQ", () => {
           },
           undefined,
         ],
-        [
-          { kind: "mark-closed-off", orgId: ORG, projectId: "p1" },
-          {
-            recordClosedOff: async (projectId) => {
-              said.push(`closed-off ${projectId}`);
-            },
-          },
-          undefined,
-        ],
       ];
       for (const [intent, api, result] of cases) {
         const store = account();
@@ -209,7 +315,6 @@ describe("a creation's writes at HQ", () => {
         "bind b1 p1",
         "attach app-1 p1 stage",
         "mate p1",
-        "closed-off p1",
       ]);
     }),
   );
@@ -228,7 +333,7 @@ describe("a creation's writes at HQ", () => {
             { appId: "app-9" },
           ],
           [
-            { kind: "record-birth", orgId: ORG, appId: "app-1", face: "tint:shape" },
+            { kind: "record-birth", orgId: ORG, appId: "app-1", id: "birth-1", face: "tint:shape" },
             { recordBirth: () => Promise.reject(lost) },
             [app({ births: [{ id: "birth-1", face: "tint:shape" }] })],
             { birthId: "birth-1" },
@@ -291,6 +396,74 @@ describe("a creation's writes at HQ", () => {
     }),
   );
 
+  it.effect(
+    "a lost birth answer adopts its own identity when another birth has the same face",
+    () =>
+      Effect.gen(function* () {
+        const store = account();
+        const sent: unknown[] = [];
+        const { operations } = operationsOf(store, {
+          recordBirth: async (birth) => {
+            sent.push(birth);
+            hqSays(store, [
+              app({
+                births: [
+                  { id: "birth-other", face: "tint:shape" },
+                  { id: "birth-1", face: "tint:shape" },
+                ],
+              }),
+            ]);
+            throw lost;
+          },
+        });
+        yield* operations.submit({
+          kind: "record-birth",
+          orgId: ORG,
+          appId: "app-1",
+          id: "birth-1",
+          face: "tint:shape",
+        });
+        expect(sent).toEqual([{ appId: "app-1", id: "birth-1", face: "tint:shape" }]);
+        expect(progress(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
+        expect(operationResult(record(store), "record-birth")).toEqual({ birthId: "birth-1" });
+      }),
+  );
+
+  it.effect.each(["conflict", "forbidden"] as const)(
+    "HQ's %s finding reaches the operation's real consumer with what, where, rule and next step.",
+    (code) =>
+      Effect.gen(function* () {
+        const problem = {
+          code: "invalid_recipe",
+          what: "Invalid service settings",
+          where: { appId: "app-1", service: "api", tier: "production", file: "production.yaml" },
+          rule: { source: "zerops-schema", schemaPath: "/services/properties/minCpu" },
+          next: { actor: "mate", action: "Propose a corrected group change" },
+        } as const;
+        const store = account();
+        yield* operationsOf(store, {
+          createApp: async () => {
+            throw new HqError({
+              kind: "refused",
+              code,
+              message: "HQ refused the settings.",
+              problems: [problem],
+            });
+          },
+        }).operations.submit({ kind: "create-app", orgId: ORG, name: "Garden" });
+        expect(progress(store)).toEqual({
+          stage: "refused",
+          reason: "HQ refused the settings.",
+          problems: [problem],
+        });
+        expect(record(store)?.receipt?.acceptance).toEqual({
+          kind: "refused",
+          reason: "HQ refused the settings.",
+          problems: [problem],
+        });
+      }),
+  );
+
   it.effect("a refusal keeps HQ's words; an HQ out of reach did not take it", () =>
     Effect.gen(function* () {
       for (const [error, stage] of [
@@ -316,39 +489,24 @@ describe("a creation's writes at HQ", () => {
 });
 
 describe("a write HQ answers as already done", () => {
-  it.effect(
-    "a Mate's record HQ holds already stands, and a Mate it holds none of has no close-off to mark",
-    () =>
-      Effect.gen(function* () {
-        for (const [intent, api] of [
-          [
-            { kind: "create-mate-record", orgId: ORG, mate: { projectId: "p1", face: "" } },
-            {
-              createMate: () =>
-                Promise.reject(
-                  new HqError({ kind: "refused", code: "conflict", message: "It has a record." }),
-                ),
-            },
-          ],
-          [
-            { kind: "mark-closed-off", orgId: ORG, projectId: "p1" },
-            {
-              recordClosedOff: () =>
-                Promise.reject(
-                  new HqError({
-                    kind: "refused",
-                    code: "mate_not_found",
-                    message: "No such Mate.",
-                  }),
-                ),
-            },
-          ],
-        ] as const) {
-          const store = account();
-          yield* operationsOf(store, api).operations.submit(intent);
-          expect(progress(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
-        }
-      }),
+  it.effect("a Mate's record HQ holds already stands", () =>
+    Effect.gen(function* () {
+      for (const [intent, api] of [
+        [
+          { kind: "create-mate-record", orgId: ORG, mate: { projectId: "p1", face: "" } },
+          {
+            createMate: () =>
+              Promise.reject(
+                new HqError({ kind: "refused", code: "conflict", message: "It has a record." }),
+              ),
+          },
+        ],
+      ] as const) {
+        const store = account();
+        yield* operationsOf(store, api).operations.submit(intent);
+        expect(progress(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
+      }
+    }),
   );
 });
 
@@ -479,6 +637,87 @@ describe("changing a Mate's face", () => {
   );
 });
 
+describe("handing a Mate over", () => {
+  const owned = (store: AccountStore, ownerUserId: string | null) =>
+    seedHqNavigation(store, ORG, {
+      structure: { apps: [], ungrouped: [{ projectId: "p1", name: "p1", mate: { face: "" } }] },
+      person: {
+        mine: false,
+        ownerUserId,
+        waitsOnViewer: false,
+        unseen: null,
+      },
+    });
+  const intent = {
+    kind: "hand-over-mate",
+    orgId: ORG,
+    projectId: "p1",
+    ownerUserId: "u-bob",
+  } as const;
+  it.effect("is HQ's one call for the person picked, done at HQ's answer", () =>
+    Effect.gen(function* () {
+      const store = account();
+      owned(store, "u-ann");
+      const sent: Array<[string, string]> = [];
+      const { operations } = operationsOf(store, {
+        handOver: async (projectId, ownerUserId) => {
+          sent.push([projectId, ownerUserId]);
+        },
+      });
+      yield* operations.submit(intent);
+      expect(sent).toEqual([["p1", "u-bob"]]);
+      expect(progress(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
+    }),
+  );
+  it.effect("names the phase HQ stopped at, and is asked again only deliberately", () =>
+    Effect.gen(function* () {
+      const store = account();
+      owned(store, "u-ann");
+      let sends = 0;
+      const { operations } = operationsOf(store, {
+        handOver: async () => {
+          sends++;
+          throw new HqError({
+            kind: "refused",
+            code: "handover_unfinished",
+            reason: "projectNotFound",
+            message: "The hand-over stopped while making its new key (projectNotFound).",
+          });
+        },
+      });
+      yield* operations.submit(intent);
+      expect(progress(store)).toMatchObject({
+        stage: "refused",
+        reason: "The hand-over stopped while making its new key (projectNotFound).",
+        code: "handover_unfinished",
+      });
+      yield* operations.retry("r1");
+      expect(sends).toBe(1);
+    }),
+  );
+  it.effect(
+    "keeps a lost answer uncertain until HQ names the person picked its owner, never asking again",
+    () =>
+      Effect.gen(function* () {
+        const store = account();
+        owned(store, "u-ann");
+        let sends = 0;
+        const { operations } = operationsOf(store, {
+          handOver: async () => {
+            sends++;
+            throw lost;
+          },
+        });
+        yield* operations.submit(intent);
+        expect(progress(store).stage).toBe("uncertain");
+        owned(store, "u-bob");
+        yield* operations.retry("r1");
+        expect(progress(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
+        expect(sends).toBe(1);
+      }),
+  );
+});
+
 describe("organization automatic-update writes", () => {
   it.effect("returns the committed policy in the receipt", () =>
     Effect.gen(function* () {
@@ -559,6 +798,263 @@ describe("organization automatic-update writes", () => {
     }),
   );
 });
+
+describe("organization persona template writes", () => {
+  const SAVE = {
+    kind: "save-persona-template",
+    orgId: ORG,
+    templateId: "t-1",
+    revision: 2,
+    name: "Reviewer",
+    description: "Reads every change twice.",
+    instructions: "Review before you merge.",
+  } as const;
+  const DELETE = {
+    kind: "delete-persona-template",
+    orgId: ORG,
+    templateId: "t-1",
+    revision: 2,
+  } as const;
+  const template = (revision: number, instructions: string = SAVE.instructions) => ({
+    id: "t-1",
+    name: SAVE.name,
+    description: SAVE.description,
+    instructions,
+    revision,
+  });
+  const write = (store: AccountStore) =>
+    personaTemplateWrite.derive(readsOfState(store.state()), "r1");
+
+  it.each([
+    {
+      title: "a save shows once the record holds its text past the revision it saw",
+      templates: [template(3)],
+      intent: SAVE,
+      shown: true,
+    },
+    {
+      title: "a save does not show while the record holds the revision it saw",
+      templates: [template(2)],
+      intent: SAVE,
+      shown: false,
+    },
+    {
+      title: "a save does not show in another writer's text",
+      templates: [template(3, "Ship fast.")],
+      intent: SAVE,
+      shown: false,
+    },
+    {
+      title: "a delete shows once the complete record holds no such template",
+      templates: [],
+      intent: DELETE,
+      shown: true,
+    },
+    {
+      title: "a delete does not show while the record still holds the template",
+      templates: [template(2)],
+      intent: DELETE,
+      shown: false,
+    },
+    {
+      title: "a delete does not show before any record is known",
+      templates: undefined,
+      intent: DELETE,
+      shown: false,
+    },
+    {
+      title:
+        "a delete does not show while the record holds a template of that id this version cannot read",
+      templates: [],
+      unreadable: ["t-1"],
+      intent: DELETE,
+      shown: false,
+    },
+  ])("$title", ({ templates, unreadable, intent, shown }) => {
+    const store = account();
+    if (templates !== undefined) observeTemplates(store, templates, unreadable);
+    const kind =
+      intent.kind === "save-persona-template" ? savePersonaTemplate : deletePersonaTemplate;
+    const answered = {
+      requestId: "r1",
+      operationId: "t-1",
+      executor: "hq" as const,
+      affected: [],
+      handles: ["t-1"],
+      acceptance: { kind: "accepted" as const },
+      outcome: { kind: "succeeded" as const, evidence: "HQ answered the write." },
+    };
+    expect(kind.reflected(readsOfState(store.state()), intent as never, answered)).toBe(shown);
+  });
+
+  it.effect(
+    "a save over a revision HQ no longer holds offers HQ's version and is never sent again",
+    () =>
+      Effect.gen(function* () {
+        const store = account();
+        observeTemplates(store, [template(2)]);
+        let sends = 0;
+        const { operations } = operationsOf(store, {
+          savePersonaTemplate: async () => {
+            sends++;
+            observeTemplates(store, [template(3, "Ship fast.")]);
+            throw new HqError({
+              kind: "refused",
+              code: "conflict",
+              reason: "revision_conflict",
+              status: 409,
+              message: "Someone else changed this template meanwhile.",
+            });
+          },
+        });
+        yield* operations.submit(SAVE);
+        yield* operations.retry("r1");
+        expect(write(store)).toEqual({ stage: "conflict", current: template(3, "Ship fast.") });
+        expect(sends).toBe(1);
+      }),
+  );
+
+  it.effect.each([
+    {
+      title: "a delete over a template someone changed meanwhile offers their version",
+      record: [template(3, "Ship fast.")],
+      intent: DELETE,
+      current: template(3, "Ship fast."),
+    },
+    {
+      title: "a save over a template someone deleted meanwhile says it is gone",
+      record: [],
+      intent: SAVE,
+      current: null,
+    },
+  ])("$title", ({ record, intent, current }) =>
+    Effect.gen(function* () {
+      const store = account();
+      observeTemplates(store, record);
+      const refuse = async () => {
+        throw new HqError({
+          kind: "refused",
+          code: "conflict",
+          reason: "revision_conflict",
+          status: 409,
+          message: "Someone else changed this template meanwhile.",
+        });
+      };
+      const { operations } = operationsOf(store, {
+        deletePersonaTemplate: refuse,
+        savePersonaTemplate: refuse,
+      });
+      yield* operations.submit(intent);
+      expect(write(store)).toEqual({ stage: "conflict", current });
+    }),
+  );
+
+  it.effect.each([
+    {
+      title: "an answered edit stays pending until the list shows it",
+      before: [template(2)],
+      intent: SAVE,
+      after: [template(3)],
+    },
+    {
+      title: "an answered new template stays pending until the list shows it",
+      before: [],
+      intent: { ...SAVE, revision: 0 },
+      after: [template(1)],
+    },
+  ])("$title", ({ before, intent, after }) =>
+    Effect.gen(function* () {
+      const store = account();
+      for (const key of [linkKeys.hq(ORG), personaTemplatesScope(ORG)])
+        for (const event of [
+          { kind: "demand", demanded: true },
+          { kind: "attempt" },
+          { kind: "handshake" },
+          { kind: "baseline-committed" },
+        ] as const)
+          store.dispatch({ kind: "stream", key, now: 0, event });
+      observeTemplates(store, before);
+      const { operations } = operationsOf(store, { savePersonaTemplate: async () => after[0]! });
+      yield* operations.submit(intent);
+      expect(write(store)).toEqual({ stage: "pending" });
+      observeTemplates(store, after);
+      expect(write(store)).toEqual({ stage: "done" });
+    }),
+  );
+
+  it.effect(
+    "a new template whose answer was lost is adopted once the record shows it under its id",
+    () =>
+      Effect.gen(function* () {
+        const store = account();
+        observeTemplates(store, []);
+        let sends = 0;
+        const { operations } = operationsOf(store, {
+          savePersonaTemplate: async () => {
+            sends++;
+            throw lost;
+          },
+        });
+        yield* operations.submit({ ...SAVE, revision: 0 });
+        expect(write(store).stage).toBe("unconfirmed");
+        observeTemplates(store, [template(1)]);
+        yield* operations.retry("r1");
+        expect(write(store)).toEqual({ stage: "done" });
+        expect(sends).toBe(1);
+      }),
+  );
+
+  it.effect("an edit whose answer was lost stays unconfirmed and is never sent again", () =>
+    Effect.gen(function* () {
+      const store = account();
+      observeTemplates(store, [template(2)]);
+      let sends = 0;
+      const { operations } = operationsOf(store, {
+        savePersonaTemplate: async () => {
+          sends++;
+          throw lost;
+        },
+      });
+      yield* operations.submit(SAVE);
+      observeTemplates(store, [template(3)]);
+      yield* operations.retry("r1");
+      expect(write(store).stage).toBe("unconfirmed");
+      expect(sends).toBe(1);
+    }),
+  );
+});
+
+function observeTemplates(
+  store: AccountStore,
+  templates: ReadonlyArray<{
+    id: string;
+    name: string;
+    description: string;
+    instructions: string;
+    revision: number;
+  }>,
+  unreadable: ReadonlyArray<string | null> = [],
+) {
+  const scope = personaTemplatesScope(ORG);
+  const revision =
+    Math.max(0, ...templates.map((template) => template.revision)) + templates.length;
+  store.dispatch({
+    kind: "rows",
+    scope,
+    generation: readsOfState(store.state()).stream(scope).generation,
+    method: "read",
+    via: "hq-stream",
+    rows: [
+      {
+        family: "hqPersonaTemplates",
+        id: ORG,
+        value: { templates, unreadable },
+        revision: { kind: "hq", incarnation: "core", revision: ++templateRevisions + revision },
+      },
+    ],
+  });
+}
+let templateRevisions = 0;
 
 function observePolicy(
   store: ReturnType<typeof makeAccountStore>,

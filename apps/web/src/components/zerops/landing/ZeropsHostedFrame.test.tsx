@@ -2,20 +2,17 @@ import type * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 
-vi.mock("@tanstack/react-router", async () => {
-  const { createElement } = await import("react");
-  return {
-    Link: ({ to, ...props }: React.ComponentProps<"a"> & { to: string }) =>
-      createElement("a", { href: to, ...props }),
-  };
-});
-
+const { createMemoryHistory, createRootRoute, createRouter, RouterContextProvider } =
+  await vi.importActual<typeof import("@tanstack/react-router")>("@tanstack/react-router");
+const router = createRouter({ routeTree: createRootRoute(), history: createMemoryHistory() });
+const render = (element: React.ReactElement) =>
+  renderToStaticMarkup(<RouterContextProvider router={router}>{element}</RouterContextProvider>);
 const { ZeropsHostedFrame } = await import("./ZeropsHostedFrame");
 const { SidebarProvider } = await import("../../ui/sidebar");
 
 describe("ZeropsHostedFrame", () => {
   it("carries the lockup home link when it stands alone", () => {
-    const html = renderToStaticMarkup(
+    const html = render(
       <ZeropsHostedFrame actions={<button type="button">Sign out</button>}>
         <p>content</p>
       </ZeropsHostedFrame>,
@@ -30,7 +27,7 @@ describe("ZeropsHostedFrame", () => {
   });
 
   it("keeps the breadcrumb after the lockup when standing alone", () => {
-    const html = renderToStaticMarkup(
+    const html = render(
       <ZeropsHostedFrame breadcrumb={<nav>Environments / New</nav>}>
         <p>content</p>
       </ZeropsHostedFrame>,
@@ -39,7 +36,7 @@ describe("ZeropsHostedFrame", () => {
   });
 
   it("leaves the brand to the sidebar inside the app shell and shows the breadcrumb", () => {
-    const html = renderToStaticMarkup(
+    const html = render(
       <SidebarProvider>
         <ZeropsHostedFrame breadcrumb={<nav>Environments / New</nav>}>
           <p>content</p>
@@ -52,7 +49,7 @@ describe("ZeropsHostedFrame", () => {
   });
 
   it("draws no bar when told not to, and still carries the byline at the foot", () => {
-    const html = renderToStaticMarkup(
+    const html = render(
       <ZeropsHostedFrame
         bar={false}
         centered
@@ -69,7 +66,7 @@ describe("ZeropsHostedFrame", () => {
   });
 
   it("centres a single card when asked, and frames a page otherwise", () => {
-    const page = renderToStaticMarkup(
+    const page = render(
       <ZeropsHostedFrame>
         <p>page</p>
       </ZeropsHostedFrame>,

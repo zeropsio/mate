@@ -34,12 +34,12 @@ import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { mateArrival, mateComingDeadlines, type MateComing } from "@t3tools/client-runtime/data";
 import { useWakeAt } from "./useNowMs";
 import { useCreations } from "./creations";
-import { madeOf } from "./newProjectBirth";
+import { madeOf, type NewProjectBirth } from "./newProjectBirth";
 import { useProjectCreations } from "./useProjectCreations";
-import { useCloseOffHolds } from "./accountEnvironments";
 import { useZeropsFirstBuilds } from "./useZeropsFirstBuilds";
 import { usePressesElsewhere } from "./usePressesElsewhere";
-import { closeOffOpenOf, pressComingInput, useMatePresses } from "./matePress";
+import { pressComingInput, useMatePresses } from "./matePress";
+import { sharedBirthPresentation, useSharedBirthState } from "./sharedBirths";
 
 /**
  * What a Mate's row says (`useMatesActivity`), for a candidate the menu lists: by its project, else
@@ -68,7 +68,7 @@ export function useHqMainChats(): (projectId: string) => ScopedThreadRef | undef
 }
 
 /**
- * Whether HQ relays now that a Mate's link to it is open: one answer per Mate, so a row redraws
+ * Whether HQ last relayed that a Mate's link to it is open (HQ away says nothing of it): one answer per Mate, so a row redraws
  * when its own link opens or closes, not on every word HQ relays of any Mate.
  */
 export function useMateLinkedInHq(projectId: string): boolean {
@@ -77,8 +77,7 @@ export function useMateLinkedInHq(projectId: string): boolean {
 
 const mateLinkedInHqAtom = Atom.family((projectId: string) =>
   Atom.make((get) => {
-    const read = get(hqMatePresenceAtom(projectId));
-    return read.live && read.presence?.online === true;
+    return get(hqMatePresenceAtom(projectId))?.online === true;
   }),
 );
 
@@ -93,8 +92,7 @@ export function useMateOverviewInHq(projectId: string): MatePresence["overview"]
 
 const mateOverviewInHqAtom = Atom.family((projectId: string) =>
   Atom.make((get) => {
-    const read = get(hqMatePresenceAtom(projectId));
-    return read.live ? read.presence?.overview : undefined;
+    return get(hqMatePresenceAtom(projectId))?.overview;
   }),
 );
 
@@ -116,8 +114,8 @@ const matesLinkedInHqAtom = Atom.make((get) => {
     { readonly presence: import("@t3tools/shared/hqMates").MatePresence }
   >();
   for (const id of get(shownAttentionProjectsAtom)) {
-    const fact = get(hqMatePresenceAtom(id));
-    if (fact.live && fact.presence !== null) mates.set(id, { presence: fact.presence });
+    const presence = get(hqMatePresenceAtom(id));
+    if (presence !== null) mates.set(id, { presence });
   }
   return mates;
 }).pipe(
@@ -148,6 +146,7 @@ export function useToldActivity(projectId: string): ZeropsAgentActivity | undefi
       environmentId: read.attention.source.environmentId,
       overview: told,
       shells: [],
+      followed: false,
       lastVisitedAtById: {},
     });
   }, [told, read]);
@@ -201,35 +200,34 @@ const hqMatesWithMainAtom = Atom.make((get) => {
 export function useMateComingOf(
   candidates: ReadonlyArray<ZeropsCandidate>,
 ): (candidate: ZeropsCandidate) => MateComing | undefined {
+  const { open: births, readyProjectIds } = useSharedBirthState();
   const presses = useMatePresses();
   const creations = useCreations();
   const { mateLink } = useEnvironmentLinks();
-  const closeOffHolds = useCloseOffHolds();
   const verdicts = useProjectCreations(candidates);
   const firstBuilds = useZeropsFirstBuilds(candidates);
   const processFacts = useProjectsActivityRead(candidates.map((candidate) => candidate.project.id));
   const pressOf = usePressesElsewhere(candidates);
-  const wokeAt = useComingClock(candidates);
+  const wokeAt = useComingClock(candidates, creations);
   return useCallback(
     (candidate: ZeropsCandidate) => {
+      const birth = births.find((entry) => entry.projectId === candidate.project.id);
+      if (birth !== undefined) {
+        const shown = sharedBirthPresentation(birth);
+        return { kind: "coming", line: shown.line, birth: { attention: shown.attention } };
+      }
+      if (readyProjectIds.includes(candidate.project.id)) return undefined;
       const { press, setUpFailed } = pressComingInput(presses, candidate.project.id);
+      const made = madeOf(creations, candidate.project.id);
       return mateArrival({
         press,
-        // A row says only the hold it offers Finish setup for; the others, its own view.
-        closeOffHold: closeOffOpenOf(
-          closeOffHolds,
-          candidate.project.id,
-          presses.find((entry) => entry.projectId === candidate.project.id),
-        )
-          ? "open"
-          : undefined,
         candidate: applyProjectCreationVerdict(candidate, verdicts.get(candidate.project.id)),
-        setUpFailed,
+        setUpFailed: setUpFailed ?? made?.failed?.reason,
         // A new getter at each deadline (`useComingClock`): the menu is memoised, and nothing
         // else may change then.
         nowMs: Math.max(Date.now(), wokeAt),
-        created: madeOf(creations, candidate.project.id) !== undefined,
-        madeAt: madeOf(creations, candidate.project.id)?.startedAt,
+        created: made !== undefined,
+        madeAt: made?.startedAt,
         processes: processFacts[candidate.project.id]?.processes,
         link: mateLink(candidate),
         firstBuild: firstBuilds.get(candidate.key),
@@ -237,25 +235,41 @@ export function useMateComingOf(
       }).coming;
     },
     [
+      births,
+      readyProjectIds,
       presses,
       creations,
       firstBuilds,
       mateLink,
       pressOf,
       verdicts,
-      closeOffHolds,
       wokeAt,
       processFacts,
     ],
   );
 }
 
+const NO_CREATIONS: ReadonlyArray<NewProjectBirth> = [];
+
 /**
  * The moment a listed Mate's coming-up line may last have changed by time alone
- * (`mateComingDeadlines`): its arrival's window closing, its first build's grace running out.
+ * (`mateComingDeadlines`): its arrival's window closing, its first build's grace running out,
+ * and the catch-up of one this tab made ending. The line's getter is a new function at each, and
+ * the menu's list reads it anew only then: a deadline left out here is a line that stays.
  */
-export function useComingClock(candidates: ReadonlyArray<ZeropsCandidate>): number {
-  return useWakeAt(useMemo(() => candidates.flatMap(mateComingDeadlines), [candidates]));
+export function useComingClock(
+  candidates: ReadonlyArray<ZeropsCandidate>,
+  creations: ReadonlyArray<NewProjectBirth> = NO_CREATIONS,
+): number {
+  return useWakeAt(
+    useMemo(
+      () =>
+        candidates.flatMap((candidate) =>
+          mateComingDeadlines(candidate, madeOf(creations, candidate.project.id)?.startedAt),
+        ),
+      [candidates, creations],
+    ),
+  );
 }
 
 /** The socket-loss timestamp is read through the target's keyed account state. */
@@ -272,11 +286,11 @@ export function useMateOfflineSince(
   projectId: string | null | undefined,
   key?: string,
 ): string | undefined {
-  const read = useAtomValue(hqMatePresenceAtom(projectId ?? ""));
+  const presence = useAtomValue(hqMatePresenceAtom(projectId ?? ""));
   const lostAt = useAtomValue(mateSocketLostAtAtom(key ?? projectId ?? ""));
   return lostAt === undefined
-    ? read.live && read.presence?.online === false
-      ? read.presence.since
+    ? presence?.online === false
+      ? presence.since
       : undefined
     : new Date(lostAt).toISOString();
 }

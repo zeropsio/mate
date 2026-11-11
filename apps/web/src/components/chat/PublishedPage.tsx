@@ -6,6 +6,7 @@ import { useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState }
 
 import { useMateImage } from "~/assets/MateImages";
 import { useTheme } from "~/hooks/useTheme";
+import { watchIntersections } from "~/lib/restingIntersections";
 import { Button } from "../ui/button";
 import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "../ui/dialog";
 import { keepFrameOnMove } from "./keepFrameOnMove";
@@ -93,11 +94,13 @@ function useNearView(ref: React.RefObject<HTMLElement | null>): boolean {
   const [near, setNear] = useState(() => typeof IntersectionObserver === "undefined");
   useEffect(() => {
     const element = ref.current;
-    if (element === null || typeof IntersectionObserver === "undefined") return;
-    const observer = new IntersectionObserver(
-      (entries) => setNear(entries.some((entry) => entry.isIntersecting)),
+    if (element === null) return;
+    const observer = watchIntersections(
+      // A busy page gets several reports in one call, oldest first: the last says where it is now.
+      (entries) => setNear(entries.at(-1)?.isIntersecting === true),
       { root: scrollParentOf(element), rootMargin: "100% 0px" },
     );
+    if (observer === undefined) return;
     observer.observe(element);
     return () => observer.disconnect();
   }, [ref]);

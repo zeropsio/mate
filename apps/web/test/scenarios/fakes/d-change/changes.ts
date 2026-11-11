@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off -- git fixtures use temporary directories only; refusal bodies in failure messages.
+// @effect-diagnostics nodeBuiltinImport:off globalJsonInEffect:off -- git fixtures use temporary directories only; refusal bodies in failure messages.
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as Effect from "effect/Effect";
@@ -6,8 +6,8 @@ import { expect } from "@effect/vitest";
 import { ChangeReceipt, HqChange } from "@t3tools/shared/hqChanges";
 import type { RecipeTier } from "@t3tools/shared/hqRecipe";
 import * as Schema from "effect/Schema";
-import { gitClient } from "../../../../../hq/test/harness/gitClient.ts";
-import { ticketFor } from "../../../../../hq/test/harness/runningCore.ts";
+import { gitClient } from "../../harness/gitClient.ts";
+import { ticketFor } from "../../harness/coreSeed.ts";
 import { openScenarioNavigation } from "../../harness/hqCore.ts";
 import type { createScenario } from "../../harness/scenario.ts";
 import { mateAccess, publishRecipe } from "../../harness/mateAccess.ts";

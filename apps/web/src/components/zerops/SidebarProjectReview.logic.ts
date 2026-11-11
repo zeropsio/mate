@@ -20,11 +20,11 @@ export interface ProjectReviewItem {
         readonly name: string;
         readonly tint: MateTintId;
         readonly shape: MateShapeId;
-        /** A colleague's Mate: its owner's first name ("Vira · Theo's"). */
-        readonly ownerFirstName?: string | undefined;
+        /** A colleague's Mate: what its owner is called (`ZeropsPerson.called`, "Vira · Theo's"). */
+        readonly ownerName?: string | undefined;
         /**
          * A colleague's Mate: its owner's mark as the menu's row draws it (`ownerMark`), picture
-         * and hue. Absent, the mark is drawn from `ownerFirstName`.
+         * and hue. Absent, the mark is drawn from `ownerName`.
          */
         readonly owner?: OwnerMark | undefined;
         readonly crewOf?: string | undefined;
@@ -107,7 +107,7 @@ export function reviewItemByline(item: ProjectReviewItem): string {
   const { by } = item;
   if (by !== undefined) {
     parts.push(by.crewOf === undefined ? by.name : `${by.name}, in ${by.crewOf}'s crew`);
-    if (by.ownerFirstName !== undefined) parts.push(`${by.ownerFirstName}'s`);
+    if (by.ownerName !== undefined) parts.push(`${by.ownerName}'s`);
   }
   if (item.label.length > 0) parts.push(item.label);
   if (!item.mine) parts.push("in review");
@@ -203,12 +203,32 @@ export function reviewPopoverTitle(
   return `${String(count)} ${count === 1 ? "change" : "changes"} in ${projectName}`;
 }
 
-/** The Release tag's tooltip: what waits for production. */
-export function releaseTagTip(release: {
+/** What waits for production, as the menu's Release tag and mark tell it. */
+export interface ReleaseWaiting {
+  /** Commits on main production does not run. */
   readonly waiting: number;
   readonly atLeast: boolean;
-}): string {
-  const { waiting, atLeast } = release;
+  /** The changes among those commits, when HQ counted them. */
+  readonly changeCount?: number | undefined;
+}
+
+/**
+ * The count the Release tag and mark show: the changes HQ counted, else the commits. A history
+ * that was never released counts its changes, never every commit it brought along.
+ */
+export function releaseCount(release: ReleaseWaiting): {
+  readonly count: number;
+  readonly atLeast: boolean;
+} {
+  const { changeCount } = release;
+  return changeCount === undefined || changeCount <= 0
+    ? { count: release.waiting, atLeast: release.atLeast }
+    : { count: changeCount, atLeast: false };
+}
+
+/** The Release tag's tooltip: what waits for production. */
+export function releaseTagTip(release: ReleaseWaiting): string {
+  const { count: waiting, atLeast } = releaseCount(release);
   if (waiting <= 0) return "Ready for production";
   const what = waiting === 1 ? "1 change waits" : `${String(waiting)} changes wait`;
   return `${atLeast ? "At least " : ""}${what} for production`;

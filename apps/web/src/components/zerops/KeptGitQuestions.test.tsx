@@ -131,7 +131,17 @@ it("reports a lost kept-Git answer without inviting a repeat", async () => {
   await arrive();
   state.submit.mockResolvedValue({ progress: { stage: "uncertain", next: "ask-owner-again" } });
   await act(async () => button("Keep Git").click());
-  expect(element.querySelector('[role="status"]')?.textContent).toBe(
+  expect(element.querySelector('[role="status"]')?.textContent).toContain(
     "HQ has not confirmed your answer.",
+  );
+});
+
+it("an unconfirmed kept-Git answer tells the person what to do next", async () => {
+  await render();
+  await arrive();
+  state.submit.mockResolvedValue({ progress: { stage: "uncertain", next: "ask-owner-again" } });
+  await act(async () => button("Keep Git").click());
+  expect(element.querySelector('[role="status"]')?.textContent).toBe(
+    "HQ has not confirmed your answer. Do not answer again: the question closes when HQ records it. Reload to read HQ's record.",
   );
 });

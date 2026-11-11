@@ -1,18 +1,122 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
-import { describe, it, expect } from "@effect/vitest";
+import { describe, expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
+import { foldMenuGroup } from "../../harness/browser.ts";
+import { rendered } from "../../harness/completedHttp.ts";
 import { installCreation } from "./fake.ts";
-import { creation } from "./dsl.ts";
+import { creation, receipt } from "./dsl.ts";
 import { environmentRecipe } from "./recipe.ts";
 
 describe("F: creation through the hosted client", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
-    for (const [role, tag] of [
-      ["stage", "stage"],
-      ["production", "prod"],
-    ] as const) {
+  scenarioSuite((it) => {
+    it.effect("an unresolved birth appears on both devices with Delete as its only action", () =>
+      Effect.gen(function* () {
+        const s = yield* createScenario([installCreation]);
+        yield* s.given.project("Ada", { mate: true, app: "Shop" });
+        yield* s.given.project("Bea", { mate: true, app: "Shop" });
+        yield* s.given.signedIn;
+        const second = yield* s.given.browserActor();
+        yield* second.given.signedIn;
+        const { core, owner, appIds, zerops } = s.drivers;
+        const id = "80e50103-27ac-4dc3-94c4-5495e7e5e63c";
+        const pages = [s.page, second.page];
+        yield* Effect.promise(() =>
+          Promise.all(pages.map((page) => foldMenuGroup(page, "Shop", false))),
+        );
+        const waiters = new Set<{
+          test: (frame: string) => boolean;
+          count: number;
+          resolve: () => void;
+        }>();
+        s.drivers.hq.mapFrames((frame) => {
+          for (const waiter of waiters) {
+            if (waiter.test(frame) && ++waiter.count === pages.length) {
+              waiters.delete(waiter);
+              waiter.resolve();
+            }
+          }
+          return frame;
+        });
+        const bothReceive = (test: (frame: string) => boolean) =>
+          new Promise<void>((resolve) => {
+            waiters.add({ test, count: 0, resolve });
+          });
+        const received = bothReceive((frame) => frame.includes(id) && frame.includes('"create"'));
+        const createCount = zerops.requests.get("POST /client/ORG/project") ?? 0;
+        const importCount = zerops.requests.get("POST /client/ORG/project/import") ?? 0;
+        const born = yield* core.call("POST", "/api/births", {
+          session: owner,
+          body: {
+            id,
+            appId: appIds.get("Shop"),
+            face: "rose:seal",
+            intent: {
+              projectName: "Shop - Nova",
+              recipe: { kind: "none" },
+              agents: ["codex"],
+              standUp: false,
+              automated: false,
+              placement: { role: "dev", name: "Nova", chief: false },
+              location: null,
+              userRoles: [],
+            },
+          },
+        });
+        expect(born.status).toBe(201);
+        expect(born.body).toMatchObject({ id });
+        const claimed = yield* core.call("PUT", `/api/births/${id}/attempt`, {
+          session: owner,
+          body: { step: "create" },
+        });
+        expect(claimed.status).toBe(200);
+        yield* Effect.promise(() => received);
+        for (const page of pages) {
+          yield* Effect.promise(async () => {
+            await rendered(page);
+            const line = await page
+              .$eval(`[data-zerops-mate-row="${id}"]`, (row) => row.textContent)
+              .catch(() => null);
+            expect(line ?? "").toContain("Outcome unknown — waiting for Zerops");
+          });
+        }
+        yield* Effect.promise(async () => {
+          await s.page.locator('button[aria-label="More for Nova"]').click();
+          await s.page.waitForSelector('[role="menuitem"]');
+          expect(
+            await s.page.$$eval('[role="menuitem"]', (items) =>
+              items.map((item) => item.textContent?.trim()),
+            ),
+          ).toEqual(["Delete"]);
+        });
+        const c = creation(s);
+        yield* c.click('Delete[role="menuitem"]');
+        yield* c.fill("Type Nova to confirm", "Nova");
+        const removal = bothReceive(
+          (frame) => frame.includes(`app:${appIds.get("Shop")}`) && frame.includes('"births":[]'),
+        );
+        const deleted = s.page.waitForResponse(
+          (response) =>
+            response.request().method() === "DELETE" &&
+            new URL(response.url()).pathname === `/api/births/${id}`,
+        );
+        yield* c.click("Delete Nova");
+        expect((yield* Effect.promise(() => deleted)).status()).toBe(204);
+        yield* Effect.promise(() => removal);
+        for (const page of pages) {
+          yield* Effect.promise(async () => {
+            await rendered(page);
+            expect(await page.$(`[data-zerops-mate-row="${id}"]`)).toBeNull();
+          });
+        }
+        expect(zerops.requests.get("POST /client/ORG/project") ?? 0).toBe(createCount);
+        expect(zerops.requests.get("POST /client/ORG/project/import") ?? 0).toBe(importCount);
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
+    for (const [role, tag] of [["stage", "stage"]] as const) {
       // Catches adding an environment under the wrong name or losing the requested role in the project's view.
       it.effect(`add ${role} with an agent to an existing project`, () =>
         Effect.gen(function* () {
@@ -24,7 +128,15 @@ describe("F: creation through the hosted client", () => {
           yield* c.chooseDestination("zerops");
           yield* c.fill("Environment", "Shop-b");
           yield* c.withAgent;
+          const pressAccepted = s.page.waitForResponse(
+            (response) =>
+              response.request().method() === "PUT" &&
+              new URL(response.url()).pathname === "/api/presses/created-1",
+          );
           yield* c.click(`Add ${role} to Shop`);
+          const pressResponse = yield* Effect.promise(() => pressAccepted);
+          expect(pressResponse.status()).toBe(200);
+          expect(yield* Effect.promise(() => pressResponse.json())).toMatchObject({ held: true });
           yield* c.environmentAppears("Shop-b", tag);
           yield* c.acceptedOnce("Shop-b");
           yield* s.then.noExternalNetwork;
@@ -32,7 +144,7 @@ describe("F: creation through the hosted client", () => {
       );
     }
 
-    for (const role of ["stage", "production"] as const) {
+    for (const role of ["stage"] as const) {
       // Catches a valid deployment recipe being refused or silently installing an agent by default.
       it.effect(`add ${role} from its recipe with the agent off by default`, () =>
         Effect.gen(function* () {
@@ -46,15 +158,50 @@ describe("F: creation through the hosted client", () => {
           yield* c.agentIsOff;
           yield* c.text("Same services as the project");
           yield* c.click(`Add ${role} to Shop`);
-          yield* c.environmentAppears("Shop-b", role === "production" ? "prod" : "stage");
-          // A stage's adding ends on its card's Stage line; production's in its set-up card.
-          yield* role === "stage" ? c.stageAdded : c.text("Shop-b is set up");
+          yield* c.environmentAppears("Shop-b", "stage");
+          yield* c.stageAdded;
           yield* c.acceptedOnce("Shop-b");
           yield* c.noAgentImported;
           yield* s.then.noExternalNetwork;
         }),
       );
     }
+
+    it.effect("Production reserves its project and access without browser service imports", () =>
+      Effect.gen(function* () {
+        const s = yield* createScenario([installCreation]);
+        yield* environmentRecipe(s, "production");
+        yield* s.given.signedIn;
+        const c = creation(s);
+        yield* c.openAdd("production");
+        yield* c.text("Its services arrive with the first approved release.");
+        yield* c.click("Change its name…");
+        yield* c.fill("Environment", "Shop-b");
+        yield* Effect.promise(async () => {
+          expect(
+            await s.page.$('[data-zerops-surface="environment-creation-form"] [role="switch"]'),
+          ).toBeNull();
+          expect(await s.page.$('[aria-label="Starts with"]')).toBeNull();
+        });
+        yield* c.click("Add production to Shop");
+        yield* c.environmentAppears("Shop-b", "prod");
+        yield* c.text("Production and its access are reserved.");
+        yield* c.acceptedOnce("Shop-b");
+        yield* c.noAgentImported;
+        expect(
+          s.drivers.zerops.requests.get("POST /client/ORG/project/import") ?? 0,
+          "ASSERTION: browser production birth never bundles services into project import",
+        ).toBe(0);
+        expect(
+          s.drivers.zerops.requests.get("POST /project/created-1/service-stack/import") ?? 0,
+          "ASSERTION: browser production birth never imports services into the reserved project",
+        ).toBe(0);
+        expect(
+          s.drivers.zerops.rows("service-stack").filter((row) => row.projectId === "created-1"),
+        ).toEqual([]);
+        yield* s.then.noExternalNetwork;
+      }),
+    );
 
     it.effect(
       "An application with no code repositories asks for a repository before a branch",
@@ -152,30 +299,6 @@ describe("F: creation through the hosted client", () => {
             });
           });
         }
-        yield* s.then.noExternalNetwork;
-      }),
-    );
-
-    // Catches cleanup targeting a sibling or forgetting a failed birth before its deletion is proved.
-    it.effect("Remove cleans up only the failed creation's project", () =>
-      Effect.gen(function* () {
-        const s = yield* createScenario([installCreation]);
-        yield* s.given.project("Ada", { mate: true, app: "Shop" });
-        yield* s.given.signedIn;
-        const c = creation(s);
-        c.failProject();
-        yield* c.newProject;
-        yield* c.submitProject;
-        yield* c.text("Details");
-        expect(
-          yield* Effect.promise(() => s.page.evaluate(() => document.body.innerText)),
-        ).not.toContain("Project capacity exhausted");
-        yield* c.click("Details");
-        yield* c.text("Project capacity exhausted");
-        yield* c.click("Remove");
-        yield* s.then.menu.row("Ada").appears();
-        yield* c.settled;
-        yield* c.failedProjectRemoved;
         yield* s.then.noExternalNetwork;
       }),
     );

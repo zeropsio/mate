@@ -202,22 +202,35 @@ const readsOfEntry = (world: RefWorld, service: RefService, key: string, templat
 
 /**
  * Who reads each vault value at run, by value id (`valueIdOf`): every runtime service one of
- * whose entries reaches it, with those entries' keys. Readers by hostname, keys sorted.
+ * whose entries reaches it, with those entries' keys, and every runtime service that has it in its
+ * environment by its own name — Zerops puts a service's own values and every Shared value there,
+ * no entry needed — unless something higher shadows that name (what Zerops made, an entry, its own
+ * value over Shared). Readers by hostname, keys sorted.
  */
 export function readersOf(
   world: RefWorld,
 ): ReadonlyMap<string, ReadonlyArray<Omit<VaultReader, "state">>> {
   const readers = new Map<string, Map<string, { service: RefService; via: Set<string> }>>();
+  const read = (id: string, service: RefService, key: string) => {
+    const byService = readers.get(id) ?? new Map();
+    readers.set(id, byService);
+    const reader = byService.get(service.serviceId) ?? { service, via: new Set<string>() };
+    byService.set(service.serviceId, reader);
+    reader.via.add(key);
+  };
   for (const service of world.services) {
     if (service.kind !== "runtime") continue;
     for (const [key, template] of service.entries)
-      for (const id of readsOfEntry(world, service, key, template).keys()) {
-        const byService = readers.get(id) ?? new Map();
-        readers.set(id, byService);
-        const reader = byService.get(service.serviceId) ?? { service, via: new Set<string>() };
-        byService.set(service.serviceId, reader);
-        reader.via.add(key);
-      }
+      for (const id of readsOfEntry(world, service, key, template).keys()) read(id, service, key);
+    // Its environment by name: its own values, then Shared's, each under nothing higher.
+    for (const key of new Set([...service.own.keys(), ...world.shared.keys()])) {
+      if (service.system.has(key) || service.entries.has(key)) continue;
+      const own = service.own.has(key);
+      const value = own ? service.own.get(key) : world.shared.get(key);
+      read(valueIdOf(own ? scopeOf(service) : { kind: "shared" }, key), service, key);
+      if (value !== null && value !== undefined)
+        for (const id of readsOfEntry(world, service, key, value).keys()) read(id, service, key);
+    }
   }
   return new Map(
     [...readers].map(([id, byService]) => [

@@ -209,7 +209,7 @@ describe("arrivalSteps — Git access that failed", () => {
         signin: "waiting",
         standup: "none",
       },
-      why: "HQ has no record of this Mate yet. Finish its setup from its menu.",
+      why: "HQ has no record of this Mate yet.",
     },
     {
       case: "failed, why not said",
@@ -616,16 +616,9 @@ describe("the stage's words", () => {
     );
   });
 
-  it.each([
-    [undefined, "Usually two to four minutes.", false],
-    [20_000, "Usually two to four minutes.", false],
-    [75_000, "Usually two to four minutes.", false],
-    [140_000, "Usually two to four minutes.", false],
-    // Late on the container's verdict, never the clock's.
-    [600_000, "Taking longer than usual.", true],
-  ] as const)("coming up %s ms in: %s", (_elapsedMs, words, late) => {
+  it("coming up undefined ms in: Usually two to four minutes.", () => {
     // The clock says nothing to it: only the verdict that it is late does.
-    expect(comingSentence(late)).toBe(words);
+    expect(comingSentence(false)).toBe("Usually two to four minutes.");
   });
 
   it("never calls a Mate coming up late by the clock alone, only on the verdict that it is", () => {
@@ -772,7 +765,7 @@ describe("pressNote — what the steps this tab runs leave to read whole under t
     {
       case: "a registration not finished: what is not, and why",
       press: [
-        step("done", "Private network ready"),
+        step("done", "Its computer"),
         step("unfinished", "Not registered", "Its grant timed out."),
       ],
       want: { kind: "unfinished", text: "Not registered: Its grant timed out." },
@@ -808,39 +801,30 @@ describe("arrivalRow — a Mate's arrival as one progress row", () => {
     {
       case: "A Mate's arrival says the step it is on, one at a time",
       steps: [step("copy", "done"), step("workspace", "active"), step("you", "waiting")],
-      stopped: false,
       want: { at: 1, state: "running", clock: true },
     },
     {
       case: "A Mate's arrival that waits on the person says their step, with no clock running",
       steps: [step("copy", "done"), step("workspace", "done"), step("you", "you")],
-      stopped: false,
       want: { at: 2, state: "running", clock: false },
     },
     {
       case: "A Mate's arrival whose every step is done ends as done",
       steps: [step("copy", "done"), step("you", "done")],
-      stopped: false,
       want: { at: 1, state: "done", clock: true },
     },
     {
       case: "A Mate's arrival stops at the step that failed",
       steps: [step("copy", "done"), step("workspace", "failed"), step("you", "waiting")],
-      stopped: false,
       want: { at: 1, state: "failed", clock: true },
     },
     {
-      case: "A creation that stopped stops its row where it stood, a step under way included",
+      case: "A creation needing attention leaves an unfinished step awaiting its own receipt",
       steps: [step("copy", "done"), step("workspace", "active")],
-      stopped: true,
-      want: { at: 1, state: "failed", clock: true },
+      want: { at: 1, state: "running", clock: true },
     },
-  ] as const)("$case", ({ steps, stopped, want }) => {
-    const row = arrivalRow(
-      steps,
-      [fact("2026-10-15T10:00:30Z"), fact("2026-10-15T10:00:00Z")],
-      stopped,
-    );
+  ] as const)("$case", ({ steps, want }) => {
+    const row = arrivalRow(steps, [fact("2026-10-15T10:00:30Z"), fact("2026-10-15T10:00:00Z")]);
     expect(row.steps).toEqual(steps.map((one) => one.label));
     expect({ at: row.at, state: row.state, clock: row.startedAtMs !== null }).toEqual(want);
   });
@@ -849,7 +833,6 @@ describe("arrivalRow — a Mate's arrival as one progress row", () => {
     const row = arrivalRow(
       [step("workspace", "active")],
       [fact("2026-10-15T10:00:30Z"), fact("2026-10-15T10:00:00Z")],
-      false,
     );
     expect(row.startedAtMs).toBe(Date.parse("2026-10-15T10:00:00Z"));
   });
@@ -858,7 +841,6 @@ describe("arrivalRow — a Mate's arrival as one progress row", () => {
     const row = arrivalRow(
       [step("workspace", "active")],
       [fact("2026-10-15T10:00:30Z"), fact("2026-10-15T10:00:00Z")],
-      false,
       "2026-10-15T09:58:00Z",
     );
     expect(row.startedAtMs).toBe(Date.parse("2026-10-15T09:58:00Z"));

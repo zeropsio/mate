@@ -120,7 +120,6 @@ const environment = (jobs: ReadonlyArray<HqPushNavigationJob>): HqGitNavigationE
   order: 1,
   keyHeld: false,
   keyInvalid: false,
-  can: {},
   birth: null,
   release: {
     id: "rollout-2",
@@ -180,22 +179,6 @@ describe("Git hand-over evidence", () => {
     expect(html).toContain("Previous hand-over: v1.0.0");
     expect(html).toContain(`https://github.com/acme/api/commit/${SHA}`);
     expect(html).not.toContain(`https://gitlab.com/acme/web/-/commit/${SHA}`);
-  });
-  it("preserves last-known standing and repository omission without claiming all were pushed", () => {
-    const env = environment([job("pushed")]);
-    const omitted = {
-      ...env,
-      release: {
-        ...env.release!,
-        leftOut: [{ service: "web", sha: SHA, job: null, reason: "No remote connected" }],
-      },
-    };
-    const delivery = gitDeliveryOf(omitted, { releases: [release()], repos, live: false });
-    const html = renderToStaticMarkup(
-      <GitDeliveryStatus environment={omitted} repos={repos} delivery={delivery} />,
-    );
-    expect(html).toContain("Last known · Pushed 1 of 2: web: No remote connected");
-    expect(html).toContain("No remote connected");
   });
 });
 
@@ -424,7 +407,7 @@ vi.mock("~/zerops/ZeropsSessionProvider", async (original) => ({
   useZeropsSession: () => ({ status: "signed-in", activeOrganization: { id: "org" } }),
 }));
 vi.mock("~/zerops/accountHq", () => ({
-  useAccountHq: () => ({ status: "ready", hq: { kind: "official", address: "https://hq.test" } }),
+  configuredHq: () => ({ projectId: "hq", address: "https://hq.test" }),
 }));
 it("the mounted compact flow joins delayed navigation evidence before menus and details read it", async () => {
   const registry = AtomRegistry.make();

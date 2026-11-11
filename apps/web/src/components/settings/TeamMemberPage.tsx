@@ -11,7 +11,7 @@
  */
 import { Link, useNavigate } from "@tanstack/react-router";
 import type { OrgMembership } from "@t3tools/client-runtime/zerops/teamRoles";
-import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
+import { mayChangeAccess } from "@t3tools/client-runtime/zerops/projectAccess";
 import { Trash2Icon } from "lucide-react";
 import { useMemo, useState } from "react";
 
@@ -77,6 +77,7 @@ export function TeamMemberView({
   viewerRole,
   grants,
   grantsUnread,
+  onGrantsAgain,
   projects,
   organizationName,
   actions,
@@ -88,6 +89,8 @@ export function TeamMemberView({
   readonly grants: AccessDraft | null;
   /** Why their grants could not be read, when the read failed or was refused with none held. */
   readonly grantsUnread?: string;
+  /** The person's *Try again* where that read failed; absent where Zerops refused it. */
+  readonly onGrantsAgain?: () => void;
   readonly projects: ReadonlyArray<AccessProject>;
   readonly organizationName: string;
   /** Absent: nothing is changed from here. */
@@ -96,11 +99,8 @@ export function TeamMemberView({
 }) {
   const roleEditable = actions !== undefined && person.change !== null;
   const memberRole = person.membership.roleCode;
-  // An owner changes anyone's access, an admin anyone below admin and their own.
   const accessEditable =
-    actions !== undefined &&
-    roleAtLeast(viewerRole, "ADMIN") &&
-    (roleAtLeast(viewerRole, "OWNER") || person.you || !roleAtLeast(memberRole, "ADMIN"));
+    actions !== undefined && mayChangeAccess({ viewerRole, memberRole, self: person.you });
 
   const [membership, setMembership] = useState(person.membership);
   const role = usePress();
@@ -188,7 +188,16 @@ export function TeamMemberView({
           grantsUnread === undefined ? (
             <Loading count={2} label="Their projects" shape="rows" />
           ) : (
-            <Failure cause={grantsUnread} />
+            <Failure
+              action={
+                onGrantsAgain === undefined ? undefined : (
+                  <Button onClick={onGrantsAgain} size="sm" variant="secondary">
+                    Try again
+                  </Button>
+                )
+              }
+              cause={grantsUnread}
+            />
           )
         ) : (
           <MemberProjectAccess
@@ -360,6 +369,9 @@ export function TeamMemberPage({ clientUserId }: { readonly clientUserId: string
           {...(actions === undefined ? {} : { actions })}
           grants={grants}
           {...(grantsUnread === undefined ? {} : { grantsUnread })}
+          {...(grantsUnread === undefined || read?.refused === true
+            ? {}
+            : { onGrantsAgain: () => team.retryGrants(clientUserId) })}
           onRemoved={() => void navigate({ to: "/settings/team" })}
           organizationName={team.organizationName}
           person={person}

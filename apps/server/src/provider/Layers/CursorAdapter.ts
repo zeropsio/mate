@@ -22,7 +22,7 @@ import {
   TurnId,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -38,10 +38,12 @@ import * as Stream from "effect/Stream";
 import * as SynchronizedRef from "effect/SynchronizedRef";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as EffectAcpErrors from "effect-acp/errors";
-import type * as EffectAcpSchema from "effect-acp/schema";
+import type * as EffectAcpSchema from "effect-acp/compat";
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
+import { makePersonaReader } from "../../personaInstructions.ts";
+import { ServerSettingsService } from "../../serverSettings.ts";
 import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
 import {
   ProviderAdapterProcessError,
@@ -344,8 +346,9 @@ export function makeCursorAdapter(
     const path = yield* Path.Path;
     const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const serverConfig = yield* Effect.service(ServerConfig);
+    const readPersona = yield* makePersonaReader(yield* ServerSettingsService);
     const threadPolicies = yield* readAcpThreadPolicies;
-    const crypto = yield* Crypto.Crypto;
+    const crypto = yield* SecureRandom.SecureRandom;
     const nativeEventLogger =
       options?.nativeEventLogger ??
       (options?.nativeEventLogPath !== undefined
@@ -362,7 +365,7 @@ export function makeCursorAdapter(
     const runtimeEventPubSub = yield* PubSub.unbounded<ProviderRuntimeEvent>();
 
     const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
-    const randomUUIDv4 = crypto.randomUUIDv4.pipe(
+    const randomUUIDv4 = crypto.uuidV4().pipe(
       Effect.mapError(
         (cause) =>
           new ProviderAdapterRequestError({
@@ -581,7 +584,7 @@ export function makeCursorAdapter(
             clientInfo: { name: "t3-code", version: "0.0.0" },
             ...acpNativeLoggers,
           }).pipe(
-            Effect.provideService(Crypto.Crypto, crypto),
+            Effect.provideService(SecureRandom.SecureRandom, crypto),
             Effect.provideService(Scope.Scope, sessionScope),
             Effect.mapError(
               (cause) =>
@@ -995,6 +998,7 @@ export function makeCursorAdapter(
             CURSOR_EFFORT_OPTION,
           );
           const turnModelSelection = turnProfile.modelSelection;
+          const persona = turnProfile.profiled ? undefined : yield* readPersona;
           const model = turnModelSelection?.model ?? ctx.session.model;
           const resolvedModel = resolveCursorAcpBaseModelId(model);
           yield* applyRequestedSessionConfiguration({
@@ -1114,7 +1118,12 @@ export function makeCursorAdapter(
                     ...promptParts,
                     {
                       type: "text",
-                      text: buildRuntimeInstructions({ harness: "Cursor", model: resolvedModel }),
+                      text: [
+                        buildRuntimeInstructions({ harness: "Cursor", model: resolvedModel }),
+                        persona,
+                      ]
+                        .filter(Boolean)
+                        .join("\n"),
                     },
                     ...(turnProfile.instructions
                       ? [{ type: "text" as const, text: turnProfile.instructions }]

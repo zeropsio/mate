@@ -130,6 +130,8 @@ export class MateEngineFake {
   windowGroups: number = ENGINE_WIRE_BUDGETS.windowGroups;
   /** Items a run's page carries. */
   runPageItems: number = ENGINE_WIRE_BUDGETS.runPageItems;
+  /** A live run's newest items a window carries; its card reads the rest back a page at a time. */
+  liveTailItems: number = ENGINE_WIRE_BUDGETS.liveTailItems;
   /** Text streaming now, by item and stream: a subscriber that opens hears it whole. */
   private readonly streamed = new Map<string, string>();
   private readonly details = new Map<string, string>();
@@ -669,6 +671,7 @@ export class MateEngineFake {
     const ordinal = [...this.items.values()].filter((item) => item.runId === run).length + 1;
     const id = `${run}/i/${ordinal}`;
     const seq = this.next();
+    const at = this.stamp(seq);
     this.items.set(
       id,
       decodeItem({
@@ -677,7 +680,13 @@ export class MateEngineFake {
         runId: run,
         seq,
         rev: seq,
-        at: this.stamp(seq),
+        at,
+        // A call recorded already over ended as it was recorded, on the clock that stamped its
+        // start: an end read from another clock first can fall a millisecond before it, and a
+        // call that ends before it starts keys its row at its end rather than its start.
+        ...(body.kind === "call" && body.state !== "running" && !("endedAt" in body)
+          ? { endedAt: at }
+          : {}),
         ...body,
       }),
     );
@@ -787,6 +796,16 @@ export class MateEngineFake {
     const ids = new Set(runs.map((run) => run.id as string));
     const answers = new Set(runs.flatMap((run) => run.summary.answerItemId ?? []));
     const live = new Set(runs.filter((run) => run.state !== "ended").map((run) => run.id));
+    // A live run's newest items, as the server's tail query holds them.
+    const tails = new Set(
+      [...live].flatMap((runId) =>
+        [...this.items.values()]
+          .filter((item) => item.runId === runId)
+          .sort((left, right) => right.seq - left.seq)
+          .slice(0, this.liveTailItems)
+          .map((item) => item.id as string),
+      ),
+    );
     const oldestOrdinal = runs[0]?.ordinal ?? null;
     const earlier = oldestOrdinal !== null && oldestOrdinal > 1;
     const from = runs[0]?.seq ?? 0;
@@ -798,10 +817,13 @@ export class MateEngineFake {
           item.runId === null
             ? !earlier || item.seq >= from
             : ids.has(item.runId) &&
+              // Pinned however old, as the server's: a person's words, a request, a published
+              // page, the answer; and a live run's newest items.
               (item.kind === "person" ||
                 item.kind === "request" ||
+                (item.kind === "call" && item.result?.page !== undefined) ||
                 answers.has(item.id) ||
-                live.has(item.runId)),
+                tails.has(item.id)),
         )
         .map((item) => this.sent(item)),
       requests: [...this.requests.values()].filter(

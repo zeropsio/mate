@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { ZeropsStopDetailPage } from "../components/zerops/ZeropsGroupDetail";
+import { ZeropsStopDetailPage } from "../components/zerops/PlacePage";
 
 export const Route = createFileRoute("/_chat/group/$groupId/$projectId")({
   component: () => {

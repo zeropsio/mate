@@ -28,18 +28,15 @@ import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import {
   cannotTellWhatRuns,
   changesCountWords,
-  sameCommit,
   serviceNames,
-  type FlowReleaseRow,
-  type GroupEnvironmentRowInput,
   type GroupFlowProduction,
+  type ReleaseFailure,
   type GroupFlowStop,
   type ZeropsPublicRoute,
   firstDeployLine,
 } from "@t3tools/client-runtime/zerops";
 
 import { deployBuilding, type Deployment } from "@t3tools/client-runtime/zerops/flow";
-import { type HqJob, jobFailed } from "@t3tools/client-runtime/zerops/hq";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 
 import type { FixProblem } from "~/zerops/fixRequest";
@@ -101,88 +98,6 @@ export function stopServing(input: {
     : { kind: "serving" };
 }
 
-/** A release that did not go through, newer than what production serves. */
-export interface ReleaseFailure {
-  readonly tag: string;
-  /**
-   * Its production deploy failed, or it is a release the old broker refused after its tag — a
-   * record kept from before HQ, which refuses a release before any tag or record.
-   */
-  readonly kind: "deploy-failed" | "refused";
-  /** When: the failed deploy's, as HQ records it, or the refused tag's; `undefined` where unread. */
-  readonly at: string | undefined;
-  /** The words for it: the failed deploy's message, as HQ records it, or the broker's recorded refusal reason. */
-  readonly error: string | undefined;
-  /** The services whose deploys failed, by the order the release lists them. */
-  readonly services: ReadonlyArray<string>;
-}
-
-/**
- * The newest release that failed or was refused, among the ones newer than
- * the release production runs (`stopFailedDeploy`'s rule): an older failure
- * is history. HQ's record of the failed deploy carries its words and its time.
- */
-export function releaseFailureOf(input: {
-  /** Newest first. */
-  readonly releases: ReadonlyArray<FlowReleaseRow>;
-  readonly environmentInputs: ReadonlyArray<Pick<GroupEnvironmentRowInput, "tier" | "services">>;
-}): ReleaseFailure | undefined {
-  const live = input.releases.findIndex((release) => release.standing === "live");
-  const newer = live === -1 ? input.releases : input.releases.slice(0, live);
-  const release = newer.find(
-    (entry) => entry.standing === "deploy-failed" || entry.verdict === "refused",
-  );
-  if (release === undefined) return undefined;
-  if (release.verdict === "refused") {
-    return {
-      tag: release.tag,
-      kind: "refused",
-      at: release.taggedAt,
-      error: wordsOf(release.detail),
-      services: [],
-    };
-  }
-  const entries = release.failedEntries;
-  // One failed deploy's words and time are the release's; several each keep their own, said where
-  // each service is.
-  const [entry] = entries;
-  const failed =
-    entry === undefined || entries.length > 1
-      ? undefined
-      : failedDeploy(input.environmentInputs, entry);
-  return {
-    tag: release.tag,
-    kind: "deploy-failed",
-    at: failed === undefined ? undefined : (failed.endedAt ?? failed.at),
-    error: wordsOf(failed?.reason ?? undefined),
-    services: entries.map((failedEntry) => failedEntry.service),
-  };
-}
-
-const wordsOf = (text: string | undefined): string | undefined => {
-  const trimmed = text?.trim();
-  return trimmed === undefined || trimmed.length === 0 ? undefined : trimmed;
-};
-
-/**
- * HQ's job of one service's production deploy of one commit that ended deploying nothing — the
- * build's own failure, or HQ's refusal — while it is the newest.
- */
-function failedDeploy(
-  environments: ReadonlyArray<Pick<GroupEnvironmentRowInput, "tier" | "services">>,
-  entry: { readonly service: string; readonly commit: string },
-): HqJob | undefined {
-  const production = environments.find((environment) => environment.tier === "production");
-  const latest = production?.services.find((service) => service.hostname === entry.service)?.deploy
-    ?.latest;
-  return latest !== undefined &&
-    latest.sha !== null &&
-    jobFailed(latest) &&
-    sameCommit(entry.commit, latest.sha)
-    ? latest
-    : undefined;
-}
-
 export type ChipLabel = "prod" | "stage";
 
 export type ChipState =
@@ -220,13 +135,6 @@ export interface ProductionChip {
   readonly untold?: ReadonlyArray<string>;
   /** The stage chip over several stages: each by its name, in the state it is in. */
   readonly stages?: ReadonlyArray<{ readonly name: string; readonly state: ChipState }>;
-  /** What HQ last said of it, while HQ is not reachable: never said as current (`asLastKnown`). */
-  readonly lastKnown?: true;
-}
-
-/** A chip as what HQ last said, while HQ's link is paused. */
-export function asLastKnown(chip: ProductionChip): ProductionChip {
-  return { ...chip, lastKnown: true };
 }
 
 export type ChipView =
@@ -704,7 +612,7 @@ export function chipFace(chip: ProductionChip): ChipFace {
     };
   const tone = chip.label === "prod" && chip.state === "failed" ? "neutral" : TONE[chip.state];
   const words = chipWords(chip);
-  return { tone, label: chip.label, words: chip.lastKnown ? `Last known: ${words}` : words };
+  return { tone, label: chip.label, words };
 }
 
 /** "40 min ago", "3 h ago": how long ago, as the chip's menu says a deploy's age. */
@@ -754,6 +662,8 @@ export interface ChipMenuStop {
   /** What "Ask <your Mate> to fix it" writes, while it is broken. */
   readonly fix: FixProblem | undefined;
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
+  /** Nothing is deployed there yet: its word says so, and it is one quiet row. */
+  readonly empty?: true;
 }
 
 export interface ChipMenuModel {
@@ -781,12 +691,8 @@ export function chipDot(chip: ProductionChip): ChipDot {
       : chip.git.blocked || chip.git.standing === "partly" || chip.git.standing === "refused"
         ? "attention"
         : "off";
-  // Serving what cannot be told, or what HQ last said, is not known to be healthy.
-  if (
-    (chip.untold !== undefined || chip.lastKnown === true) &&
-    (chip.state === "ok" || chip.state === "waiting")
-  )
-    return "off";
+  // Serving what cannot be told is not known to be healthy.
+  if (chip.untold !== undefined && (chip.state === "ok" || chip.state === "waiting")) return "off";
   return MAIN_DOT[chip.state];
 }
 
@@ -802,21 +708,23 @@ const MENU_TONE: Record<ChipState, ChipMenuStop["tone"]> = {
   down: "red",
 };
 
-/** A menu row's word as its chip stands: what HQ last said is said as last known. */
-const asItStands = (chip: ProductionChip, word: string): string =>
-  chip.lastKnown === true ? `Last known: ${word}` : word;
-
-function mainWord(chip: ProductionChip): string {
-  switch (chip.state) {
-    case "unverified":
-      return chip.readLine ?? "Runtime not verified";
+/**
+ * A place's state in one word — production's or a stage's — said the same on every surface that
+ * states it: the overview's card, the project's page and its column, Sites. The live audit
+ * (2026-10-28) read one running production as Running, Healthy and Deployed, and one empty one as
+ * Not added, Not released yet and Nothing deployed yet. Short, so no column truncates it.
+ */
+export function placeStateWord(label: ChipLabel, state: ChipState): string {
+  switch (state) {
     case "ok":
     case "waiting":
-      return chip.untold === undefined ? "Healthy" : cannotTellWhatRuns(chip.untold);
+      return PLACE_RUNNING_WORD;
+    case "unverified":
+      return "Checking what runs…";
     case "releasing":
-      return onItsWayWords(chip) ?? "Deploying…";
+      return "Deploying…";
     case "failed":
-      return chip.label === "prod" ? "Release failed" : "Deploy failed";
+      return label === "prod" ? "Release failed" : "Deploy failed";
     case "down":
       return "Down";
     case "stopped":
@@ -824,7 +732,33 @@ function mainWord(chip: ProductionChip): string {
     case "creating":
       return "Setting up…";
     case "empty":
-      return chip.label === "prod" ? "Not released yet" : "Not deployed yet";
+      return label === "prod" ? "Not released yet" : "Not deployed yet";
+  }
+}
+
+/**
+ * A shared environment's title, wherever a person reads it: its HQ name, first letter capitalised —
+ * "Production", "Stage", "Client demo". The live audit (2026-10-28) read "Production" beside "stage".
+ */
+export const placeTitle = (name: string): string =>
+  name.charAt(0).toLocaleUpperCase("en") + name.slice(1);
+
+/** A place that runs what was deployed there, nothing wrong: the one word for it. */
+export const PLACE_RUNNING_WORD = "Running";
+
+function mainWord(chip: ProductionChip): string {
+  switch (chip.state) {
+    case "unverified":
+      return chip.readLine ?? placeStateWord(chip.label, chip.state);
+    case "ok":
+    case "waiting":
+      return chip.untold === undefined
+        ? placeStateWord(chip.label, chip.state)
+        : cannotTellWhatRuns(chip.untold);
+    case "releasing":
+      return onItsWayWords(chip) ?? placeStateWord(chip.label, chip.state);
+    default:
+      return placeStateWord(chip.label, chip.state);
   }
 }
 
@@ -840,30 +774,50 @@ export const STOP_DOT: Record<GroupFlowStop["state"], ChipDot> = {
 /** A stage being set up, in the stages' menu: created and not listed yet, or its import running. */
 const STAGE_SETTING_UP_WORD = "Setting up…";
 
-function stopWord(stop: GroupFlowStop, deployedAt: string | undefined, nowMs: number): string {
+/**
+ * A listed stop's word. `confirmed`: its chip read what runs there; until then — its serving answer
+ * unread, or a stage project the viewer cannot read — only the deploy is known, never that it runs.
+ */
+function stopWord(
+  stop: GroupFlowStop,
+  deployedAt: string | undefined,
+  nowMs: number,
+  confirmed: boolean,
+): string {
   switch (stop.state) {
     case "deployed": {
       const ago = deployedAt === undefined ? undefined : deployedAgo(deployedAt, nowMs);
-      return ago === undefined ? "Deployed" : `Deployed ${ago}`;
+      if (!confirmed) return ago === undefined ? "Deployed" : `Deployed ${ago}`;
+      return ago === undefined ? PLACE_RUNNING_WORD : `${PLACE_RUNNING_WORD} · deployed ${ago}`;
     }
     case "deploying":
-      return "Deploying…";
+      return placeStateWord("stage", "releasing");
     case "failed":
-      return "Deploy failed";
+      return placeStateWord("stage", "failed");
     case "empty":
       // A first deploy asked for says where it stands, as the stage's cell does.
-      return firstDeployLine(stop.firstDeploy) ?? "Not deployed yet";
+      return firstDeployLine(stop.firstDeploy) ?? placeStateWord("stage", "empty");
     case "checking":
       return stop.readLine ?? "Checking what runs here…";
   }
 }
 
-/** "Release v0.1.57 failed 12 min ago: <HQ's words>." */
+/**
+ * "Release v0.1.57 failed 12 min ago: <HQ's words>.", "Release v0.1.57 didn't go live: <HQ's
+ * words>." — or, for a stall HQ could not tell the end of, that its status is unknown.
+ */
 function failureSentence(failure: ReleaseFailure, nowMs: number): string {
   const ago = failure.at === undefined ? undefined : deployedAgo(failure.at, nowMs);
-  const verb = failure.kind === "refused" ? "was refused" : "failed";
   const when = ago === undefined ? "" : ` ${ago}`;
+  if (failure.kind === "stalled" && failure.error === undefined)
+    return `Deploy status unknown for ${failure.tag}${when}: check it in Zerops.`;
   const why = failure.error === undefined ? "" : `: ${failure.error.replace(/\.$/u, "")}`;
+  const verb =
+    failure.kind === "refused"
+      ? "was refused"
+      : failure.kind === "stalled"
+        ? "didn't go live"
+        : "failed";
   return `Release ${failure.tag} ${verb}${when}${why}.`;
 }
 
@@ -941,11 +895,12 @@ export function productionMenu(input: {
         name: "production",
         version: chip.version,
         dot: chipDot(chip),
-        word: asItStands(chip, mainWord(chip)),
+        word: mainWord(chip),
         tone: MENU_TONE[chip.state],
         note: troubleNote({ ...input, serving: chip.version }),
         fix: fixProblemOf(input),
         routes: input.routes,
+        ...(chip.state === "empty" ? { empty: true as const } : {}),
       },
     ],
   };
@@ -1011,25 +966,25 @@ export function stageMenu(input: {
       return {
         ...base,
         dot: STOP_DOT[stop.state],
-        word: stopWord(stop, stage.deployedAt, input.nowMs),
+        word: stopWord(stop, stage.deployedAt, input.nowMs, false),
         tone: "muted",
         note: undefined,
         fix: undefined,
+        ...(stop.state === "empty" ? { empty: true as const } : {}),
       };
     }
     const problem = { chip, failure: undefined, down: stage.down, serving };
     return {
       ...base,
       dot: chipDot(chip),
-      word: asItStands(
-        chip,
+      word:
         chip.state === "ok" || (chip.state === "empty" && stop.state === "empty")
-          ? stopWord(stop, stage.deployedAt, input.nowMs)
+          ? stopWord(stop, stage.deployedAt, input.nowMs, true)
           : mainWord(chip),
-      ),
       tone: MENU_TONE[chip.state],
       note: troubleNote({ ...problem, nowMs: input.nowMs }),
       fix: fixProblemOf({ ...problem, name: stage.name }),
+      ...(chip.state === "empty" ? { empty: true as const } : {}),
     };
   });
   const coming = input.creating.map((stage): ChipMenuStop => ({
@@ -1046,9 +1001,11 @@ export function stageMenu(input: {
   return { stops: [...listed, ...coming] };
 }
 
-/** How a release did not go through: "failed deploying app", "was refused". */
+/** How a release did not go through: "failed deploying app", "was refused", "didn't go live". */
 function failedHow(failure: ReleaseFailure): string {
   if (failure.kind === "refused") return "was refused";
+  if (failure.kind === "stalled")
+    return failure.error === undefined ? "has an unknown deploy status" : "didn't go live";
   return failure.services.length === 0
     ? "failed"
     : `failed deploying ${serviceNames(failure.services)}`;

@@ -17,8 +17,8 @@
  * - **Up**, beside the overview, the Mate's attention (`attention`, `MateAttention` in
  *   `@t3tools/contracts`): one value with its own revision, whole on every link and again at each
  *   new revision. An older HQ passes it by as a type it does not know.
- * - **Down**, the Mate's own state in HQ: its record, its birth (who asked for its stand-up,
- *   whether its project is closed off), and its changes with their outcome (`hqChanges.ts`); and
+ * - **Down**, the Mate's own state in HQ: its record, who asked for its stand-up,
+ *   and its changes with their outcome (`hqChanges.ts`); and
  *   its access (`access`): who its project opens for and whom it lists, by the door's own rule over
  *   the org's view HQ reads (`mateAccess.ts`), whole after every view, with how old that view is.
  *
@@ -34,11 +34,15 @@ import {
   MateInterruption,
   CrewHandle,
   CrewTask,
+  ExecErrorReason,
+  ExecRunInput,
+  ExecRunResult,
   ExecutionEnvironmentDescriptor,
   ExecutionEnvironmentUpdate,
   IsoDateTime,
   MateAttention,
   MateHealth,
+  MatePersona,
   MateTask,
   MateTaskMessage,
   MateTaskReport,
@@ -48,6 +52,7 @@ import {
   ThreadId,
   ThreadMessagePreviewRole,
   TrimmedNonEmptyString,
+  ZeropsLoginState,
 } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -62,6 +67,12 @@ export const MATE_LINK_TEXT_MAX = 280;
 /** A frame's bound in UTF-8 bytes (`linkFrameBytes`), which the sender checks before it sends. */
 export const MATE_LINK_FRAME_MAX = 64 * 1024;
 export const MATE_OVERVIEW_EVERY_MS = 500;
+/**
+ * How long a Mate whose key HQ refused (close `4401`, `4403`) waits before it asks HQ again, while
+ * its env store stays put: HQ's refusal is its answer to that key, and what could change it there
+ * (HQ holding the project again, the token edited in Zerops) the container cannot see.
+ */
+export const MATE_REFUSAL_REASK_MS = 15 * 60_000;
 export const MATE_TITLE_MAX = 120;
 /** The chats an overview lists: every one that is not idle, then the newest. */
 export const MATE_OVERVIEW_THREADS_MAX = 40;
@@ -88,10 +99,6 @@ export const MateState = Schema.Struct({
   face: Schema.String,
   /** The person who asked for the Mate's stand-up, or none yet. */
   standupRequestedBy: Schema.NullOr(Schema.String),
-  /** Whether the Mate's project is closed off: its runtimes may be imported. */
-  closedOff: Schema.Boolean,
-  /** Who signed in each login (`claude-code`, `codex`), keyed by login id: the port's, then the Mate's own link's. */
-  signers: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   /**
    * The Zerops user HQ records as the Mate's owner (`mateOwner`), or none named: everyone else
    * reads along. Absent from an HQ older than it, and where HQ could not read its org yet.
@@ -147,6 +154,14 @@ export const OverviewIdentity = Schema.Struct({
   update: Schema.NullOr(ExecutionEnvironmentUpdate),
   /** The engine its conversation runs on, by the protocol its rows speak; absent on a V1 Mate. */
   engine: Schema.optionalKey(Schema.Struct({ protocol: Schema.Int })),
+  /**
+   * Whether its service holds the press's setup marker (`MATE_SETUP`), as the Mate reads it
+   * locally: HQ keeps it on the Mate's record and asks Zerops nothing for it. Absent where the Mate
+   * does not know (off Zerops, an older Mate).
+   */
+  setupMarker: Schema.optionalKey(Schema.Boolean),
+  /** That it runs HQ's `command` frame, by the protocol of that frame; absent: HQ sends none. */
+  command: Schema.optionalKey(Schema.Struct({ protocol: Schema.Int })),
 });
 export type OverviewIdentity = typeof OverviewIdentity.Type;
 
@@ -254,12 +269,22 @@ export type OverviewThreads = typeof OverviewThreads.Type;
 export const LoginDigest = Schema.Struct({
   /** A Zerops user id, or nobody yet. */
   signedInBy: Schema.NullOr(Schema.String),
-  /** Last recorded signer for the owner badge; never authority to spend a login. */
+  /** Last recorded signer, kept through sign-out; never authority to spend a login. */
   lastSignedInBy: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  /**
+   * When `lastSignedInBy` signed it in, by the Mate's clock, where the Mate watched it; none for a
+   * signer it only heard from HQ. A new time is a sign-in, which moves the Mate's owner in HQ.
+   */
+  lastSignedInAt: Schema.optionalKey(Schema.NullOr(IsoDateTime)),
   /** Its credential is there. */
   present: Schema.Boolean,
   /** An API key, not a person's sign-in. */
   token: Schema.Boolean,
+  /**
+   * Whether it can run a turn, as the Mate's own check classifies it (`classifyZeropsAgentAuth`):
+   * a credential can be there and no longer work. Absent from a Mate older than it.
+   */
+  state: Schema.optionalKey(ZeropsLoginState),
 });
 export type LoginDigest = typeof LoginDigest.Type;
 
@@ -374,6 +399,8 @@ const AutoUpdatePolicyDown = Schema.Struct({
 
 /** What a `state` frame carries beside the Mate: the org's update policy and the usage lane. */
 const StateExtras = {
+  /** HQ's ping period on this link; absent on older HQs, which have no receive-silence guard. */
+  pingIntervalMs: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThan(0))),
   autoUpdate: Schema.optionalKey(HqAutoUpdatePolicy),
   usage: Schema.optionalKey(
     Schema.Struct({
@@ -460,8 +487,11 @@ export type MateLinkDown = typeof MateLinkDown.Type;
 /*
  * The keys model's link (mate-hq `spec/protocol.md`, "Mate link"): the Mate dials
  * HQ with nothing in the URL and proves itself with its project key in the first frame; HQ sends
- * its state, then the organisation's access with a version and the time of the view it was
- * computed from. Today's frames of tasks, usage and the update policy ride on it unchanged.
+ * its state. The Mate admits tickets through its own Zerops access list, further restricted by
+ * HQ's known Chief opener (`ticket_refused` otherwise); it tells HQ nothing of that list but
+ * whose raw membership or role may have changed (`person-changed`), and HQ sends none, and an
+ * older HQ's `access` frame is no frame of this union. Today's frames of tasks, usage and
+ * the update policy ride on it unchanged.
  * Today's `MateLinkUp`, `MateLinkDown` and `MateState` above stay for the HQ and clients that
  * still read them.
  */
@@ -472,31 +502,74 @@ export const MateSelf = Schema.Struct({
   name: Schema.String,
   face: Schema.String,
   standupRequestedBy: Schema.NullOr(Schema.String),
-  closedOff: Schema.Boolean,
-  signers: Schema.Record(Schema.String, Schema.String),
+  /**
+   * The persona chosen when it was made, kept with its stand-up ask: its server takes it at its
+   * stand-up when it holds none. Absent from an older HQ and where none was chosen.
+   */
+  standupPersona: Schema.optionalKey(MatePersona),
   automated: Schema.optionalKey(Schema.Boolean),
   ...MateChanges.fields,
   chief: Schema.NullOr(Schema.Struct({ projectId: Schema.String })),
 });
 export type MateSelf = typeof MateSelf.Type;
 
-/** The Mate as a `state` frame brings it: its self read, with its owner where HQ knows one. */
+/** The Mate as a `state` frame brings it: its self read, known owner and Chief opener verdict. */
 export const LinkedMate = Schema.Struct({
   ...MateSelf.fields,
   ownerUserId: Schema.optionalKey(Schema.String),
+  chiefOpenerUserId: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 export type LinkedMate = typeof LinkedMate.Type;
 
-/** A member's reach into the Mate's project; `none` removes the member in a delta. */
-export const LinkAccessMember = Schema.Struct({
-  userId: Schema.String,
-  role: Schema.Literals(["NO_ACCESS", "READ_ONLY", "BASIC_USER", "ADMIN", "OWNER"]),
-  visibility: Schema.Literals(["open", "listed", "none"]),
-});
-export type LinkAccessMember = typeof LinkAccessMember.Type;
-
-const AccessVersion = Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0));
 const Ticket = Schema.String.check(Schema.isMinLength(1));
+/**
+ * The UUID of the admission of the project key a link runs under (`state.admission`), not a secret:
+ * one that differs from the one the Mate last heard is a new admission, even of the same key.
+ */
+const Admission = Schema.String.check(Schema.isMinLength(1));
+const CredentialFingerprint = Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/u));
+
+/** The protocol of the operator's `command` frame and its `command-result` this build speaks. */
+export const LINK_COMMAND_PROTOCOL = 1;
+
+/**
+ * One command HQ's operator has the Mate run in its container, by `exec.run`'s meaning and limits:
+ * an executable and its argument list, never a shell string. Run at most once per `id` in a server
+ * process, whatever the update phase and whether or not the Mate is automated.
+ */
+export const LinkCommandDown = Schema.Struct({
+  type: Schema.Literal("command"),
+  id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+  command: ExecRunInput.fields.command,
+  args: Schema.Array(Schema.String),
+  cwd: ExecRunInput.fields.cwd,
+  timeoutMs: ExecRunInput.fields.timeoutMs,
+});
+export type LinkCommandDown = typeof LinkCommandDown.Type;
+
+/** Why a `command` did not run: `exec.run`'s reasons, or an `id` this server process already ran. */
+export const LinkCommandNotRun = Schema.Union([ExecErrorReason, Schema.Literal("duplicate")]);
+export type LinkCommandNotRun = typeof LinkCommandNotRun.Type;
+
+/**
+ * How a `command` went, up the link the Mate holds when it ends (none: dropped). Each stream keeps
+ * its end, both cut until the frame fits {@link MATE_LINK_FRAME_MAX}; its `…Truncated` says so.
+ */
+export const LinkCommandResultUp = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal("command-result"),
+    id: Schema.String,
+    ran: Schema.Literal(true),
+    ...ExecRunResult.fields,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("command-result"),
+    id: Schema.String,
+    ran: Schema.Literal(false),
+    reason: LinkCommandNotRun,
+  }),
+]);
+export type LinkCommandResultUp = typeof LinkCommandResultUp.Type;
 
 export const KeyLinkUp = Schema.Union([
   Schema.Struct({
@@ -506,42 +579,57 @@ export const KeyLinkUp = Schema.Union([
     /** The Mate's public origin, `https://host`: HQ hands it to a client that asks for a ticket. */
     origin: Schema.String.check(Schema.isMinLength(1)),
     /** What the Git credential the Mate holds is, never its secret: HQ keeps a live one this names. */
-    gitFingerprint: Schema.optionalKey(Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/u))),
+    gitFingerprint: Schema.optionalKey(CredentialFingerprint),
+    /** What the Observe credential the Mate holds is, never its secret: HQ mints none while it names a live one. */
+    observeFingerprint: Schema.optionalKey(CredentialFingerprint),
+    /**
+     * Every HQ session the Mate still holds, each once: one with a live connection or an unused,
+     * unexpired ticket. HQ closes each of them it no longer holds live.
+     */
+    heldSessionIds: Schema.Array(Schema.String),
   }),
   ...MateLinkUp.members,
   Schema.Struct({ type: Schema.Literal("ticket-ack"), ticket: Ticket }),
+  Schema.Struct({
+    type: Schema.Literal("observe-credential-ack"),
+    id: Schema.String,
+    ok: Schema.Boolean,
+  }),
+  ...LinkCommandResultUp.members,
   Schema.Struct({ type: Schema.Literal("key-refused") }),
+  /**
+   * A ticket the Mate's own list does not admit, sent instead of `ticket-ack`: definitive.
+   * `list_unconfirmed`: Zerops has not confirmed the list within its hold, so the Mate cannot say.
+   */
+  Schema.Struct({
+    type: Schema.Literal("ticket_refused"),
+    ticket: Ticket,
+    reason: Schema.Literals(["not_in_list", "read_only", "list_unconfirmed"]),
+  }),
+  /**
+   * A hint that the org membership or own-project role of the person `userId` may have changed,
+   * as the Mate's own list saw its raw rows move; never a role or a verdict, which HQ reads from
+   * Zerops itself. Sent once HQ admitted the link, and lost if the link is down: never told again.
+   */
+  Schema.Struct({
+    type: Schema.Literal("person-changed"),
+    userId: Schema.String.check(Schema.isMinLength(1)),
+  }),
 ]);
 export type KeyLinkUp = typeof KeyLinkUp.Type;
-
-/**
- * The organisation's key was refused: the Mate admits nobody until a full frame without it.
- * First in its union, so a frame marked `refused` never decodes as a snapshot.
- */
-export const RefusedAccessFrame = Schema.Struct({
-  type: Schema.Literal("access"),
-  version: AccessVersion,
-  full: Schema.Literal(true),
-  refused: Schema.Literal(true),
-  members: Schema.Tuple([]),
-});
-
-/** Who the project opens for and lists: a full snapshot, or a delta of the entries that changed. */
-export const AccessFrame = Schema.Struct({
-  type: Schema.Literal("access"),
-  version: AccessVersion,
-  viewAt: Schema.String,
-  full: Schema.Boolean,
-  members: Schema.Array(LinkAccessMember),
-});
+/** Why the Mate refused a ticket (`ticket_refused`). */
+export type TicketRefusal = Extract<KeyLinkUp, { readonly type: "ticket_refused" }>["reason"];
 
 export const KeyLinkDown = Schema.Union([
   AutoUpdatePolicyDown,
   ...UsageLinkDown.members,
   Schema.Struct({ type: Schema.Literal("ping") }),
-  Schema.Struct({ type: Schema.Literal("state"), mate: LinkedMate, ...StateExtras }),
-  RefusedAccessFrame,
-  AccessFrame,
+  Schema.Struct({
+    type: Schema.Literal("state"),
+    mate: LinkedMate,
+    admission: Admission,
+    ...StateExtras,
+  }),
   Schema.Struct({
     type: Schema.Literal("ticket"),
     ticket: Ticket,
@@ -554,14 +642,26 @@ export const KeyLinkDown = Schema.Union([
     type: Schema.Literal("git-credential"),
     credential: Schema.NullOr(Schema.String),
   }),
+  Schema.Struct({
+    type: Schema.Literal("observe-credential"),
+    id: Schema.String,
+    credential: Schema.NullOr(Schema.String),
+  }),
+  /**
+   * Who HQ holds as each login's last signer (login → Zerops user id), sent after `hello` and
+   * again when an HQ write moves it; no credential.
+   */
+  Schema.Struct({
+    type: Schema.Literal("signers"),
+    signers: Schema.Record(Schema.String, Schema.String),
+  }),
   TaskDown,
   TaskMessageDown,
   TaskStopDown,
   ProviderKeysDown,
+  LinkCommandDown,
 ]);
 export type KeyLinkDown = typeof KeyLinkDown.Type;
-/** An access frame as the Mate keeps it: a snapshot, a delta, or the refused one. */
-export type KeyLinkAccess = Extract<KeyLinkDown, { readonly type: "access" }>;
 
 /** A key HQ does not admit: the close reason of `4403`, and the code of the same refusal on a call. */
 export const KeyNotAdmitted = Schema.Literals([
@@ -572,11 +672,18 @@ export const KeyNotAdmitted = Schema.Literals([
 ]);
 export type KeyNotAdmitted = typeof KeyNotAdmitted.Type;
 
-/** How HQ closes a link: `4409` superseded, `4408` silence, `1001` going away, `1007` malformed, `1009` too big, `1011` unreadable. */
+/**
+ * HQ's reason on `1011` when admission could not resolve the hello's key: Zerops gave no verdict on
+ * it, or HQ could not read its own entry for it — the reason does not tell the two apart.
+ */
+export const KEY_UNRESOLVED = "the key could not be resolved";
+
+/** How HQ closes a link: `4409` superseded, `4408` silence, `1001` going away, `1012` service restart, `1007` malformed, `1009` too big, `1011` unreadable ({@link KEY_UNRESOLVED} at admission). */
 export const MateLinkClosed = Schema.Union([
   Schema.Struct({ code: Schema.Literal(4401), reason: Schema.Literal("key_refused") }),
   Schema.Struct({ code: Schema.Literal(4403), reason: KeyNotAdmitted }),
-  Schema.Struct({ code: Schema.Literals([1001, 1007, 1009, 1011, 4408, 4409]) }),
+  Schema.Struct({ code: Schema.Literal(1011), reason: Schema.Literal(KEY_UNRESOLVED) }),
+  Schema.Struct({ code: Schema.Literals([1001, 1007, 1009, 1011, 1012, 4408, 4409]) }),
 ]);
 export type MateLinkClosed = typeof MateLinkClosed.Type;
 

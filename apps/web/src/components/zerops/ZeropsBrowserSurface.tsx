@@ -48,7 +48,7 @@ export function BrowserSites({
                 key={address.url}
               >
                 <button
-                  className="col-span-2 grid cursor-pointer grid-cols-subgrid items-baseline py-1.5 ps-2 text-left"
+                  className="col-span-2 grid cursor-pointer grid-cols-subgrid items-baseline py-1.5 ps-2 text-left pointer-coarse:py-3"
                   onAuxClick={(event) => openMateAddress(threadRef, address, event)}
                   onClick={(event) => openMateAddress(threadRef, address, event)}
                   type="button"

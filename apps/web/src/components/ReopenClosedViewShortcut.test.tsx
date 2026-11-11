@@ -76,11 +76,13 @@ async function pressReopen() {
 describe("Mod+Shift+T", () => {
   it("puts back the tab last closed in the conversation on screen", async () => {
     const store = useRightPanelStore.getState();
-    store.open(refA, "diff");
+    store.open(refA, "mcp");
     store.open(refA, "git");
+    store.closeSurface(refA, "mcp");
     store.closeSurface(refA, "git");
     expect((await pressReopen()).defaultPrevented).toBe(true);
     expect(panel(refA).activeSurfaceId).toBe("git");
+    expect(panel(refA).surfaces.map((surface) => surface.id)).not.toContain("mcp");
     expect(navigate).not.toHaveBeenCalled();
   });
 

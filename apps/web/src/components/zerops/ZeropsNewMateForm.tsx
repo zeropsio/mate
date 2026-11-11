@@ -20,6 +20,7 @@
  * so the Mate wears it everywhere from its first moment.
  */
 import type { EnvironmentRecipeChoice, ZeropsMateFace } from "@t3tools/client-runtime/zerops";
+import type { MatePersona } from "@t3tools/contracts";
 import type { ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
@@ -47,6 +48,7 @@ import {
   type NewMateDoorClosed,
   type NewMateRecipe,
 } from "./ZeropsEnvironmentCreationDialog.logic";
+import { NewMatePersona } from "../persona/NewMatePersona";
 import { MateFacePicker } from "./MateFacePicker";
 import { MateNameInput } from "./MateNameInput";
 import type { ProjectAccessSlot } from "./projects/ProjectAccessChips";
@@ -60,6 +62,8 @@ export interface NewMateChoice {
   readonly face: ZeropsMateFace;
   /** Who reaches its project beyond their organization role, as chosen in the form. */
   readonly userRoles?: ReadonlyArray<ProjectGrant>;
+  /** How it works with its person, from the start: its stand-up already runs with it. */
+  readonly persona?: MatePersona;
 }
 
 export interface ZeropsNewMateFormProps {
@@ -118,6 +122,7 @@ export function ZeropsNewMateForm({
 }: ZeropsNewMateFormProps) {
   const id = useId();
   const [userRoles, setUserRoles] = useState<ReadonlyArray<ProjectGrant>>([]);
+  const [persona, setPersona] = useState<MatePersona | null>(null);
   const [botName, setBotName] = useState(defaultBotName);
   // The last name typed: a blank field keeps the face it had rather than flashing another.
   const [heldName, setHeldName] = useState(defaultBotName);
@@ -175,6 +180,7 @@ export function ZeropsNewMateForm({
       recipe: choice,
       face,
       ...(userRoles.length === 0 ? {} : { userRoles }),
+      ...(persona === null ? {} : { persona }),
     });
   };
   const press = () => {
@@ -280,6 +286,7 @@ export function ZeropsNewMateForm({
                   />
                 </div>
               </MateFacePicker>
+              <NewMatePersona mate={bot} onChange={setPersona} persona={persona} />
               {/* What happens once it is added, both ways the project may read: learning it has
                   nothing to deploy changes the words and moves nothing. */}
               <WhatHappensNext
@@ -316,7 +323,8 @@ export function ZeropsNewMateForm({
         <p
           aria-live="polite"
           className={cn(
-            "me-auto min-h-4 self-center text-line leading-4",
+            // On a phone the footer stacks from its foot: the line stands over the button it is about.
+            "me-auto min-h-4 self-center text-line leading-4 max-sm:order-1 max-sm:me-0",
             error === undefined ? "text-muted-foreground" : "text-status-failed-text",
           )}
           id={`${id}-line`}

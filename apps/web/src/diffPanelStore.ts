@@ -18,8 +18,9 @@ const storage = {
 };
 
 /**
- * What a thread's Diff shows: a repository's changes not committed (`unstaged`), or its commits
- * not on main (`branch`). Without a repository, the first of the conversation's repositories.
+ * What a thread's Code page shows under "What changed": a repository's changes not committed
+ * (`unstaged`), or everything not on main (`branch`: its commits main lacks, and what is not
+ * committed beside them). Without a repository, the first of the conversation's repositories.
  */
 export type DiffPanelSelection =
   | { kind: "branch"; baseRef: string | null; repository?: string }
@@ -27,7 +28,7 @@ export type DiffPanelSelection =
 
 export type DiffRenderMode = "stacked" | "split";
 
-const DEFAULT_SELECTION: DiffPanelSelection = { kind: "unstaged" };
+const DEFAULT_SELECTION: DiffPanelSelection = { kind: "branch", baseRef: null };
 
 /** A repository's comparison bases are its own: by thread, then by repository (`""`: none named). */
 type BranchBaseRefs = Record<string, Record<string, string | null>>;
@@ -39,8 +40,16 @@ interface DiffPanelStoreState {
   setDiffRenderMode: (mode: DiffRenderMode) => void;
   selectGitScope: (ref: ScopedThreadRef, scope: "branch" | "unstaged", repository?: string) => void;
   selectBranchBaseRef: (ref: ScopedThreadRef, baseRef: string | null) => void;
-  /** Forgets what the thread showed: its Diff opens on what is not on main yet. */
+  /** Forgets what the thread showed: its Code page opens on what is not on main yet. */
   clearSelection: (ref: ScopedThreadRef) => void;
+  /**
+   * Threads whose Code page was asked to open at "What changed" rather than its top (the D key,
+   * the diff shortcut): a one-shot ask the page takes when it draws. Never persisted.
+   */
+  changesAsked: Readonly<Record<string, true>>;
+  askChanges: (ref: ScopedThreadRef) => void;
+  /** The page took the ask: the next opening starts at the top again. */
+  takeChangesAsk: (ref: ScopedThreadRef) => void;
   removeThread: (ref: ScopedThreadRef) => void;
 }
 
@@ -65,6 +74,16 @@ export const useDiffPanelStore = create<DiffPanelStoreState>()(
       branchBaseRefByThreadKey: {},
       diffRenderMode: "stacked",
       setDiffRenderMode: (diffRenderMode) => set({ diffRenderMode }),
+      changesAsked: {},
+      askChanges: (ref) =>
+        set((state) => ({ changesAsked: { ...state.changesAsked, [scopedThreadKey(ref)]: true } })),
+      takeChangesAsk: (ref) =>
+        set((state) => {
+          const threadKey = scopedThreadKey(ref);
+          if (!(threadKey in state.changesAsked)) return state;
+          const { [threadKey]: _taken, ...changesAsked } = state.changesAsked;
+          return { changesAsked };
+        }),
       selectGitScope: (ref, scope, repository) =>
         set((state) => {
           const threadKey = scopedThreadKey(ref);

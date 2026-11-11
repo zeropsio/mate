@@ -107,23 +107,25 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
       | SqlClient.SqlClient
     >();
 
-    const start: MateEngineService["start"] = () =>
+    const boot: MateEngineService["boot"] = (bootOptions = {}) =>
       Effect.gen(function* () {
         const bootId = BootId.make(
           `boot-${yield* Clock.currentTimeMillis}-${yield* Random.nextIntBetween(0, 1_000_000)}`,
         );
-        const report = yield* bootEngine(
-          bootId,
-          options.worker === undefined ? {} : { worker: options.worker },
-        );
-        if (Option.isSome(usageFeed)) {
-          yield* Effect.forkScoped(watchProviderUsage(usageFeed.value));
-        }
-        yield* Effect.logInfo("Mate engine: on", report);
-      }).pipe(
-        Effect.provide(context),
-        Effect.catchCause((cause) => Effect.logError("Mate engine: the boot failed", cause)),
-      );
+        const booted = yield* bootEngine(bootId, {
+          ...(options.worker === undefined ? {} : { worker: options.worker }),
+          ...(bootOptions.strict === undefined ? {} : { strict: bootOptions.strict }),
+        });
+        yield* Effect.logInfo("Mate engine: booted", booted.report);
+        const open = Effect.gen(function* () {
+          yield* booted.open;
+          if (Option.isSome(usageFeed)) {
+            yield* Effect.forkScoped(watchProviderUsage(usageFeed.value));
+          }
+          yield* Effect.logInfo("Mate engine: on", { bootId });
+        }).pipe(Effect.provide(context));
+        return open;
+      }).pipe(Effect.provide(context));
 
     const stopSessionsOn: MateEngineService["stopSessionsOn"] = (instanceIds) =>
       Effect.gen(function* () {
@@ -401,7 +403,7 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
       ...(updateDrain === undefined ? {} : { updateDrain }),
       wire,
       holdSends: Effect.as(sends.close, Effect.asVoid(sends.open)),
-      start,
+      boot,
       conversations: readConversationViews.pipe(
         Effect.provideService(Conversations, conversations),
         Effect.provideService(SqlClient.SqlClient, sql),

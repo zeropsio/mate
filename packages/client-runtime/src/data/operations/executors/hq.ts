@@ -1,7 +1,8 @@
 import type { HqLifecycleRecord } from "@t3tools/shared/hqLifecycle";
 import type { HqDeliveryAnswer } from "@t3tools/shared/hqDeploys";
 import { hqOffer } from "@t3tools/shared/hqOffers";
-import { canonicalHqNavigation } from "../../projections/hqNavigation.ts";
+import { canonicalHqNavigation, hqEnvironmentOffers } from "../../projections/hqNavigation.ts";
+import { hqAwayAnswer, hqLinkOf } from "../../projections/hqLink.ts";
 import { readsOfState, type AccountStore } from "../../store.ts";
 import { sameValue } from "../../projections/equal.ts";
 import {
@@ -32,13 +33,15 @@ import * as Effect from "effect/Effect";
 import type { ZeropsApiClient } from "../../../zerops/api.ts";
 import { deployTokenMint } from "../../../zerops/deployToken.ts";
 import { HqError, type HqApi } from "../../../zerops/hq/client.ts";
-import { HQ_NOT_OPEN } from "../../../zerops/hq/refusals.ts";
+import { HQ_NOT_OPEN, hqNeedsUpdate } from "../../../zerops/hq/refusals.ts";
 import { discussionId } from "../../families/hqDiscussion.ts";
+import { observeCredentialId, observeRequestScope } from "../../families/hqObserveCredential.ts";
+import { commitOwn } from "../../adapters/hqSettingsReads.ts";
 import type { OperationIntent, OperationReceipt, OperationResult } from "../../model.ts";
 import type { StreamFault } from "../../streamMachine.ts";
-import type { OperationExecutor, UncertainAcceptance } from "../coordinator.ts";
-import { PROPOSAL_DECIDED_ELSEWHERE, type HqChiefIntent } from "../hqChief.ts";
-import type { HqWriteIntent } from "../hqWrites.ts";
+import type { OperationExecutor, SubmissionFault, UncertainAcceptance } from "../coordinator.ts";
+import { REVEAL_UNRECORDABLE, PROPOSAL_DECIDED_ELSEWHERE, type HqChiefIntent } from "../hqChief.ts";
+import { keptDeployToken, type HqWriteIntent } from "../hqWrites.ts";
 
 import {
   changeHandle,
@@ -46,6 +49,9 @@ import {
   FLOW_WRITE_KINDS,
   type FlowWriteIntent,
 } from "../flowWrites.ts";
+
+/** The project kinds HQ deploys with an environment's deploy token. */
+const ENVIRONMENT_KINDS: ReadonlySet<string> = new Set(["stage", "production"]);
 
 /** Only this reviewed removal may authorize deletion of its particular target. */
 function matchingProductionRemoval(intent: OperationIntent, record: HqLifecycleRecord): boolean {
@@ -78,21 +84,45 @@ export type HqWrites = Pick<
   | "renameApp"
   | "deleteApp"
   | "answerKeptGit"
+  | "completeProjectDeletion"
   | "createApp"
   | "recordBirth"
   | "bindBirth"
+  | "registerBirthChief"
+  | "deleteBirth"
+  | "claimBirthAttempt"
+  | "endBirthAttempt"
   | "attachProject"
   | "createMate"
-  | "recordClosedOff"
+  | "establishZcpAuthorization"
   | "keepDeployToken"
+  | "handOver"
   | "setChief"
   | "decideProposal"
 > &
-  Partial<Pick<HqApi, "repoRemoteViaApp" | "followRepoUpstream" | "unfollowRepoUpstream">> &
+  Partial<Pick<HqApi, "recordReveal">> &
+  Partial<
+    Pick<
+      HqApi,
+      | "repoRemoteViaApp"
+      | "followRepoUpstream"
+      | "unfollowRepoUpstream"
+      | "deleteRepo"
+      | "setRepoCap"
+    >
+  > &
   FlowWrites &
   Partial<HqGitWrites> &
   Partial<
-    Pick<HqApi, "lifecycleWrite" | "lifecycleReceipt" | "updateMate" | "setAutoUpdatePolicy">
+    Pick<
+      HqApi,
+      | "lifecycleWrite"
+      | "lifecycleReceipt"
+      | "updateMate"
+      | "setAutoUpdatePolicy"
+      | "savePersonaTemplate"
+      | "deletePersonaTemplate"
+    >
   >;
 
 /** Optional adapter ports; an older HQ/client never implies support for a Git verb. */
@@ -150,6 +180,10 @@ function flowWrite(
             tag: intent.tag,
             groupHead: intent.groupHead,
             entries: intent.entries,
+            ...(intent.planHash === undefined ? {} : { planHash: intent.planHash }),
+            ...(intent.releaseTarget === undefined
+              ? {}
+              : { target: "zerops", releaseTarget: intent.releaseTarget }),
             ...(intent.git === undefined ? {} : { target: "git", ...intent.git }),
           }),
         ),
@@ -221,25 +255,27 @@ function faultOf(cause: unknown, keepCode = false): StreamFault | UncertainAccep
     return {
       outcome: "definitive-refusal",
       message,
+      ...(cause.problems === undefined ? {} : { problems: cause.problems }),
       ...(keepCode ? { code: cause.reason ?? cause.code } : {}),
     };
   return { outcome: "transient", message };
 }
 
+/** An HQ from before reveals were recorded: a retry never records one. */
+const HQ_RECORDS_NO_REVEALS = hqNeedsUpdate("record reveals");
+/** An HQ that will not record a reveal by this person: someone HQ lets record it reveals it. */
+const HQ_REFUSES_REVEAL = "HQ won't record a reveal by you here, so it stays hidden.";
+
 const write = <A>(call: () => Promise<A>) =>
   Effect.tryPromise({
     try: call,
     catch: (cause) =>
-      cause instanceof HqError && cause.code === "conflict"
+      cause instanceof HqError && cause.code === "conflict" && !cause.problems?.length
         ? { outcome: "uncertain-acceptance" as const, message: cause.message }
         : faultOf(cause),
   });
 
-/**
- * A write HQ refuses with `code` as done already: a Mate's record it holds (`conflict`), a close-off
- * of a Mate it holds no record of, which has nothing to mark (`mate_not_found`) — Finish setup,
- * which writes the record first, marks it at its own close-off.
- */
+/** A write HQ refuses with `code` as done already: a Mate's record it holds (`conflict`). */
 const doneWhenRefused = (code: string, call: () => Promise<void>) =>
   write(() =>
     call().catch((cause: unknown) => {
@@ -279,13 +315,20 @@ function containsCandidate(value: unknown, token: string): boolean {
 export function makeHqExecutor(ports: {
   /** The organization's official HQ, once known; `null` while none is. */
   readonly apiOf: (orgId: string) => HqWrites | null;
-  /** The person's Zerops client, which mints an environment's deploy key. */
+  /**
+   * The person's Zerops client, which mints an environment's deploy key and deletes the one HQ no
+   * longer keeps.
+   */
   readonly zerops: Pick<ZeropsApiClient, "mintIntegrationToken" | "deleteIntegrationToken">;
+  /** Says once that a deploy token HQ no longer keeps is still alive on Zerops, and why. */
+  readonly tokenLeft?: (message: string) => void;
   /** Captured account lifetime; lifecycle writes require it. */
   readonly active?: () => boolean;
   /** Required for Git: offers and candidate cleanup share the account store lifetime. */
   readonly gitStore?: AccountStore;
   readonly hqProjectIdOf?: (orgId: string) => string | null;
+  /** The account store: an acknowledged observe authorization fences status reads begun before. */
+  readonly store?: AccountStore;
 }): HqExecutor {
   const candidates = new Map<string, { readonly intent: HqGitCandidateIntent; token: string }>();
   let gitClosed = false;
@@ -331,18 +374,11 @@ export function makeHqExecutor(ports: {
       const app = read.fact("hqApp", intent.appId);
       if (app.kind !== "known")
         return yield* Effect.fail(gitFault("HQ has not offered this Git operation."));
-      let can = app.value.can;
-      if ("environmentId" in intent) {
-        const environments = app.value.environments;
-        can =
-          environments === undefined || "refused" in environments
-            ? undefined
-            : environments.find((environment) => environment.id === intent.environmentId)?.can;
-      }
-      const offer = hqOffer(can, HQ_GIT_OPERATION_VERBS[intent.kind], {
-        current: nav.live,
-        unavailableSince: nav.downSince ?? null,
-      });
+      const can =
+        "environmentId" in intent
+          ? hqEnvironmentOffers.derive(read, intent)
+          : nav.structure?.apps.find((candidate) => candidate.id === intent.appId)?.can;
+      const offer = hqOffer(can, HQ_GIT_OPERATION_VERBS[intent.kind]);
       if (offer.kind !== "allowed")
         return yield* Effect.fail(
           gitFault(
@@ -351,9 +387,7 @@ export function makeHqExecutor(ports: {
         );
       const api = ports.apiOf(intent.orgId);
       if (api?.gitTargetWrite === undefined)
-        return yield* Effect.fail(
-          gitFault("Update HQ and the client to use Git target operations."),
-        );
+        return yield* Effect.fail(gitFault(hqNeedsUpdate("use Git target operations")));
       const releaseClose = ports.gitStore!.onClose(() => {
         token = undefined;
       });
@@ -395,12 +429,47 @@ export function makeHqExecutor(ports: {
       );
     });
 
-  /** The environment's own token minted, then kept by HQ; a refused one taken back. */
+  /** The deploy token HQ's navigation says it keeps for the environment on `projectId`. */
+  const keptToken = (appId: string | null, projectId: string) =>
+    appId === null || ports.store === undefined
+      ? undefined
+      : keptDeployToken(readsOfState(ports.store.state()), appId, projectId);
+  /**
+   * A token HQ no longer keeps, deleted on Zerops once: a failure, or an id HQ never recorded, is
+   * said, never retried and never the failure of the HQ write that let it go.
+   */
+  const retireToken = (orgId: string, token: { readonly id: string | undefined } | undefined) => {
+    if (token === undefined) return Effect.void;
+    const tokenId = token.id;
+    if (tokenId === undefined)
+      return Effect.sync(() =>
+        ports.tokenLeft?.(
+          "HQ did not record which deploy token it used, so Mate could not delete it. Delete it among the organization's access tokens in Zerops.",
+        ),
+      );
+    return Effect.promise(() =>
+      ports.zerops.deleteIntegrationToken({ clientId: orgId, tokenId }).then(
+        () => undefined,
+        (cause: unknown) =>
+          ports.tokenLeft?.(
+            `Zerops did not delete the deploy token HQ no longer uses (${
+              cause instanceof Error ? cause.message : String(cause)
+            }). Delete it among the organization's access tokens in Zerops.`,
+          ),
+      ),
+    );
+  };
+
+  /**
+   * The environment's own token minted, then kept by HQ; a refused one taken back, and the one HQ
+   * kept before deleted.
+   */
   const keepKey = (
     api: HqWrites,
     intent: Extract<HqWriteIntent, { readonly kind: "keep-deploy-key" }>,
   ) =>
     Effect.gen(function* () {
+      const previous = keptToken(intent.appId, intent.projectId);
       const minted = yield* write(() =>
         ports.zerops.mintIntegrationToken({
           clientId: intent.orgId,
@@ -410,7 +479,7 @@ export function makeHqExecutor(ports: {
           }),
         }),
       );
-      return yield* write(() =>
+      yield* write(() =>
         api
           .keepDeployToken(intent.appId, intent.environmentName, minted.token)
           .catch(async (cause: unknown) => {
@@ -422,6 +491,7 @@ export function makeHqExecutor(ports: {
             throw cause;
           }),
       );
+      if (previous?.id !== minted.id) yield* retireToken(intent.orgId, previous);
     });
 
   /** A Chief's registration and a proposal's decision: HQ's answer is their end. */
@@ -431,6 +501,11 @@ export function makeHqExecutor(ports: {
         return Effect.map(
           Effect.tryPromise({ try: () => api.setChief(intent.projectId), catch: faultOf }),
           ({ chief }) => answered(requestId, intent.projectId, { chief }),
+        );
+      case "register-birth-chief":
+        return Effect.map(
+          Effect.tryPromise({ try: () => api.registerBirthChief(intent.birthId), catch: faultOf }),
+          ({ projectId }) => answered(requestId, projectId, { projectId }),
         );
       case "decide-proposal":
         return Effect.map(
@@ -448,6 +523,29 @@ export function makeHqExecutor(ports: {
           }),
           (decision) => answered(requestId, intent.proposalId, { decision }),
         );
+      case "record-reveal": {
+        const record = api.recordReveal;
+        // Nothing recorded, so nothing is shown, where no retry records it: an HQ without reveals
+        // (no call, or no address for it) until HQ is updated, or one refusing the person.
+        const unrecordable = (message: string): StreamFault => ({
+          outcome: "definitive-refusal",
+          message,
+          code: REVEAL_UNRECORDABLE,
+        });
+        if (record === undefined) return Effect.fail(unrecordable(HQ_RECORDS_NO_REVEALS));
+        return Effect.map(
+          Effect.tryPromise({
+            try: () => record(intent.reveal),
+            catch: (cause) =>
+              cause instanceof HqError && cause.status === 404
+                ? unrecordable(HQ_RECORDS_NO_REVEALS)
+                : cause instanceof HqError && cause.status === 403
+                  ? unrecordable(HQ_REFUSES_REVEAL)
+                  : faultOf(cause),
+          }),
+          () => answered(requestId, intent.reveal.projectId, {}),
+        );
+      }
     }
   };
 
@@ -460,7 +558,7 @@ export function makeHqExecutor(ports: {
               throw new HqError({
                 kind: "refused",
                 code: "unsupported",
-                message: "Update HQ to change automatic updates.",
+                message: hqNeedsUpdate("change automatic updates"),
               });
             const policy = await api.setAutoUpdatePolicy(intent.enabled);
             if (policy.orgId !== intent.orgId || policy.enabled !== intent.enabled)
@@ -496,9 +594,16 @@ export function makeHqExecutor(ports: {
           write(() =>
             api.recordBirth({
               appId: intent.appId,
+              id: intent.id,
               face: intent.face,
+              ...(intent.createdApp === true ? { createdApp: true as const } : {}),
+              ...(intent.intent === undefined ? {} : { intent: intent.intent }),
+              ...(intent.chief === true ? { chief: true as const } : {}),
               ...(intent.standUp === undefined ? {} : { standUp: intent.standUp }),
               ...(intent.automated === true ? { automated: true as const } : {}),
+              ...(intent.standupPersona === undefined
+                ? {}
+                : { standupPersona: intent.standupPersona }),
             }),
           ),
           ({ id }) => answered(requestId, id, { birthId: id }),
@@ -506,6 +611,32 @@ export function makeHqExecutor(ports: {
       case "bind-birth":
         return Effect.as(
           write(() => api.bindBirth(intent.birthId, intent.projectId)),
+          answered(requestId, intent.birthId),
+        );
+      case "delete-birth":
+        return Effect.as(
+          Effect.tryPromise({
+            try: () => api.deleteBirth(intent.birthId),
+            catch: (cause) => faultOf(cause, true),
+          }),
+          answered(requestId, intent.birthId),
+        );
+      case "claim-birth-attempt":
+        return Effect.map(
+          write(() => api.claimBirthAttempt(intent.birthId, intent.step)),
+          (claim) => answered(requestId, intent.birthId, { claim }),
+        );
+      case "end-birth-attempt":
+        return Effect.as(
+          write(() =>
+            api.endBirthAttempt(
+              intent.birthId,
+              intent.step,
+              intent.outcome,
+              intent.at,
+              intent.reason,
+            ),
+          ),
           answered(requestId, intent.birthId),
         );
       case "attach-project":
@@ -518,13 +649,24 @@ export function makeHqExecutor(ports: {
           doneWhenRefused("conflict", () => api.createMate(intent.mate)),
           answered(requestId, intent.mate.projectId),
         );
-      case "mark-closed-off":
-        return Effect.as(
-          doneWhenRefused("mate_not_found", () => api.recordClosedOff(intent.projectId)),
-          answered(requestId, intent.projectId),
-        );
       case "keep-deploy-key":
         return Effect.as(keepKey(api, intent), answered(requestId, intent.projectId));
+      case "hand-over-mate":
+        // Each of its `409`s is HQ's refusal (`owner_not_member`, `handover_unfinished` at a
+        // phase), never a write that may have landed elsewhere: its words are the person's, its
+        // code HQ's own, so a stop part way says that something was written.
+        return Effect.as(
+          Effect.tryPromise({
+            try: () => api.handOver(intent.projectId, intent.ownerUserId),
+            catch: (cause) => {
+              const fault = faultOf(cause);
+              return cause instanceof HqError && fault.outcome === "definitive-refusal"
+                ? { ...fault, code: cause.code }
+                : fault;
+            },
+          }),
+          answered(requestId, intent.projectId),
+        );
     }
   };
 
@@ -630,6 +772,17 @@ export function makeHqExecutor(ports: {
         (ports.active !== undefined && ports.hqProjectIdOf?.(intent.orgId) === intent.hqProjectId)),
     submit: (requestId, intent: OperationIntent) =>
       Effect.gen(function* () {
+        // HQ away: answered at once, nothing sent, the person tries again (`hqLink`).
+        const away =
+          "orgId" in intent && ports.store !== undefined && ports.apiOf(intent.orgId) !== null
+            ? hqAwayAnswer(hqLinkOf(readsOfState(ports.store.state()), intent.orgId))
+            : null;
+        if (away !== null)
+          return yield* Effect.fail<SubmissionFault>({
+            outcome: "definitive-refusal",
+            message: away,
+            writeNotSent: true,
+          });
         if (isHqGitTargetIntent(intent)) return yield* gitWrite(requestId, intent);
         if (ports.active?.() === false)
           return yield* Effect.fail<StreamFault>({
@@ -660,8 +813,17 @@ export function makeHqExecutor(ports: {
           if (api.lifecycleWrite === undefined)
             return yield* Effect.fail<StreamFault>({
               outcome: "definitive-refusal",
-              message: "Update HQ to use lifecycle receipts.",
+              message: hqNeedsUpdate("use lifecycle receipts"),
             });
+          // Read before the write: once HQ confirms, its navigation no longer names the token.
+          const leaving =
+            intent.kind === "remove-production"
+              ? keptToken(intent.appId, intent.projectId)
+              : intent.kind === "move-project" &&
+                  ENVIRONMENT_KINDS.has(intent.from.kind) &&
+                  !ENVIRONMENT_KINDS.has(intent.to.kind)
+                ? keptToken(intent.from.appId, intent.projectId)
+                : undefined;
           const record = yield* Effect.tryPromise({
             try: () => api.lifecycleWrite!(requestId, intent),
             catch: (cause) => faultOf(cause, true),
@@ -671,7 +833,25 @@ export function makeHqExecutor(ports: {
               outcome: "definitive-refusal",
               message: "HQ did not confirm the reviewed production target and its fate.",
             });
+          yield* retireToken(intent.orgId, leaving);
           return lifecycleReceipt(record);
+        }
+        if (intent.kind === "complete-project-deletion") {
+          const api = ports.apiOf(intent.orgId);
+          if (api === null || ports.hqProjectIdOf?.(intent.orgId) !== intent.hqProjectId)
+            return yield* Effect.fail<StreamFault>({
+              outcome: "definitive-refusal",
+              message: HQ_NOT_OPEN,
+            });
+          // HQ's 409 `project_present` or 401 `token_required` ends it, refused: never sent again.
+          yield* Effect.tryPromise({
+            try: () => api.completeProjectDeletion(intent.projectId),
+            catch: (cause) => faultOf(cause, true),
+          });
+          return {
+            ...answered(requestId, intent.projectId),
+            affected: [{ family: "placement", id: intent.projectId }],
+          };
         }
         if (FLOW_KINDS.has(intent.kind)) {
           const flow = intent as FlowWriteIntent;
@@ -700,6 +880,39 @@ export function makeHqExecutor(ports: {
             ...answered(requestId, intent.appId),
             affected: [{ family: "hqKeptGit", id: intent.appId }],
             outcome: { kind: "succeeded", evidence: "HQ answered the kept Git question." },
+          };
+        }
+        if (intent.kind === "save-persona-template" || intent.kind === "delete-persona-template") {
+          const api = ports.apiOf(intent.orgId);
+          if (api === null)
+            return yield* Effect.fail<StreamFault>({
+              outcome: "definitive-refusal",
+              message: HQ_NOT_OPEN,
+            });
+          const call: (() => Promise<unknown>) | undefined =
+            intent.kind === "save-persona-template"
+              ? api.savePersonaTemplate === undefined
+                ? undefined
+                : () =>
+                    api.savePersonaTemplate!(intent.templateId, {
+                      name: intent.name,
+                      description: intent.description,
+                      instructions: intent.instructions,
+                      revision: intent.revision,
+                    })
+              : api.deletePersonaTemplate === undefined
+                ? undefined
+                : () => api.deletePersonaTemplate!(intent.templateId, intent.revision);
+          if (call === undefined)
+            return yield* Effect.fail<StreamFault>({
+              outcome: "definitive-refusal",
+              message: hqNeedsUpdate("manage persona templates"),
+            });
+          // A conflict is HQ's answer that it holds another revision: refused, its code kept.
+          yield* Effect.tryPromise({ try: call, catch: (cause) => faultOf(cause, true) });
+          return {
+            ...answered(requestId, intent.templateId),
+            affected: [{ family: "hqPersonaTemplates", id: intent.orgId }],
           };
         }
         if (intent.kind === "rename-app" || intent.kind === "delete-app") {
@@ -732,11 +945,14 @@ export function makeHqExecutor(ports: {
           if (api.repoRemoteViaApp === undefined)
             return yield* Effect.fail<StreamFault>({
               outcome: "definitive-refusal",
-              message: "Update HQ to mirror through the organization's GitHub app.",
+              message: hqNeedsUpdate("connect through the organization's GitHub apps"),
             });
           yield* Effect.tryPromise({
             try: () =>
-              api.repoRemoteViaApp!(intent.appId, intent.repo, { repository: intent.repository }),
+              api.repoRemoteViaApp!(intent.appId, intent.repo, {
+                repository: intent.repository,
+                ...(intent.githubAppId === undefined ? {} : { githubAppId: intent.githubAppId }),
+              }),
             catch: faultOf,
           });
           return {
@@ -755,7 +971,7 @@ export function makeHqExecutor(ports: {
           if (api.followRepoUpstream === undefined)
             return yield* Effect.fail<StreamFault>({
               outcome: "definitive-refusal",
-              message: "Update HQ to follow a GitHub repository whose code it keeps.",
+              message: hqNeedsUpdate("follow a GitHub repository whose code it keeps"),
             });
           yield* Effect.tryPromise({
             try: () => api.followRepoUpstream!(intent.appId, intent.repo, { url: intent.url }),
@@ -777,7 +993,7 @@ export function makeHqExecutor(ports: {
           if (api.unfollowRepoUpstream === undefined)
             return yield* Effect.fail<StreamFault>({
               outcome: "definitive-refusal",
-              message: "Update HQ to stop following a GitHub repository.",
+              message: hqNeedsUpdate("stop following a GitHub repository"),
             });
           yield* Effect.tryPromise({
             try: () => api.unfollowRepoUpstream!(intent.appId, intent.repo),
@@ -789,6 +1005,47 @@ export function makeHqExecutor(ports: {
             outcome: { kind: "pending" },
           };
         }
+        if (intent.kind === "delete-repository") {
+          const api = ports.apiOf(intent.orgId);
+          if (api === null)
+            return yield* Effect.fail<StreamFault>({
+              outcome: "definitive-refusal",
+              message: HQ_NOT_OPEN,
+            });
+          if (api.deleteRepo === undefined)
+            return yield* Effect.fail<StreamFault>({
+              outcome: "definitive-refusal",
+              message: hqNeedsUpdate("delete a repository"),
+            });
+          yield* Effect.tryPromise({
+            try: () => api.deleteRepo!(intent.appId, intent.repo),
+            catch: faultOf,
+          });
+          return {
+            ...answered(requestId, intent.appId),
+            affected: [{ family: "hqAppDetail", id: `${intent.appId}/repos` }],
+            outcome: { kind: "pending" },
+          };
+        }
+        if (intent.kind === "set-repo-cap") {
+          const api = ports.apiOf(intent.orgId);
+          if (api === null)
+            return yield* Effect.fail<StreamFault>({
+              outcome: "definitive-refusal",
+              message: HQ_NOT_OPEN,
+            });
+          if (api.setRepoCap === undefined)
+            return yield* Effect.fail<StreamFault>({
+              outcome: "definitive-refusal",
+              message: hqNeedsUpdate("change a repository's storage limit"),
+            });
+          // HQ's `409 conflict` here is a refusal it names (`cap_below_usage`, `repo_not_moved`).
+          const storage = yield* Effect.tryPromise({
+            try: () => api.setRepoCap!(intent.appId, intent.repo, intent.capGiB),
+            catch: faultOf,
+          });
+          return answered(requestId, intent.appId, { storage });
+        }
         if (!("orgId" in intent))
           return yield* Effect.die(new Error(`HQ executes no ${intent.kind}.`));
         const api = ports.apiOf(intent.orgId);
@@ -798,8 +1055,36 @@ export function makeHqExecutor(ports: {
             outcome: "definitive-refusal",
             message: HQ_NOT_OPEN,
           });
-        if (intent.kind === "set-chief" || intent.kind === "decide-proposal")
+        if (
+          intent.kind === "set-chief" ||
+          intent.kind === "register-birth-chief" ||
+          intent.kind === "decide-proposal" ||
+          intent.kind === "record-reveal"
+        )
           return yield* chiefWrite(requestId, api, intent);
+        if (intent.kind === "authorize-observe") {
+          const establish = api.establishZcpAuthorization;
+          if (establish === undefined)
+            return yield* Effect.fail<StreamFault>({
+              outcome: "definitive-refusal",
+              message: hqNeedsUpdate("manage observe authorization"),
+            });
+          const answer = yield* Effect.tryPromise({
+            try: () => establish(intent.projectId, {}),
+            catch: faultOf,
+          });
+          const key = { orgId: intent.orgId, projectId: intent.projectId };
+          // HQ's answer is the status now, over any read begun before it.
+          if (ports.store !== undefined && ports.active?.() !== false)
+            commitOwn(
+              ports.store,
+              "hqObserveCredentialRequest",
+              observeRequestScope(key),
+              observeCredentialId(key),
+              { requestId, answer },
+            );
+          return answered(requestId, intent.projectId);
+        }
         if (intent.kind === "change-comment") {
           const said = yield* Effect.tryPromise({
             try: () => api.commentOnChange(intent.link, intent.body),

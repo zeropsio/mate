@@ -8,7 +8,7 @@ import { Atom } from "effect/reactivity";
 import { useMemo } from "react";
 
 import { useAccountOperations } from "./accountOperations";
-import { useAccountHq } from "./accountHq";
+import { configuredHq } from "./accountHq";
 import { useFinishGroupEnvironment } from "./useFinishGroupEnvironment";
 import { useAccountOrgId, useProjection } from "./ZeropsAccountData";
 import { useZeropsSession } from "./ZeropsSessionProvider";
@@ -24,11 +24,10 @@ export function useEnvironmentSetup(projectIds: ReadonlyArray<string>) {
   );
   const { activeOrganization } = useZeropsSession();
   const operations = useAccountOperations();
-  const { hq } = useAccountHq(activeOrganization?.id);
   const finishing = useFinishGroupEnvironment({
     operations,
     clientId: activeOrganization?.id,
-    hq: hq.kind === "official" ? hq : undefined,
+    hq: configuredHq(),
   });
   return { halfMade, finishing };
 }

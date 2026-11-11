@@ -52,7 +52,7 @@ const activity = (patch: Partial<ZeropsAgentActivity>): ZeropsAgentActivity => (
         usageLimitResetAt: patch.pausedUntil,
       },
     },
-    Date.now(),
+    Date.parse("2026-10-08T11:00:00.000Z"),
   ),
 });
 describe("Mate status across menu and conversation", () => {
@@ -74,7 +74,9 @@ describe("Mate status across menu and conversation", () => {
     expect(status === null ? null : mateStatusWords(status, "Milo").label).toBe(label);
   });
   it("an expired provider reset is no longer a current menu limit", () => {
-    expect(mateStatus(activity({ pausedUntil: "2020-01-01T16:00:00Z" }))).toBeNull();
+    expect(
+      mateStatus(activity({ usageLimited: true, pausedUntil: "2020-01-01T16:00:00Z" })),
+    ).toBeNull();
   });
   it("unknown and working states do not invent a stop", () => {
     expect(mateStatus(undefined)).toBeNull();

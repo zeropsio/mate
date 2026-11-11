@@ -64,7 +64,7 @@ const html = async (
   expect(detail.asked).toEqual([null]);
   const history = container.querySelector("button");
   if (history !== null) {
-    expect(history.textContent).toBe("History");
+    expect(history.textContent).toBe("Commits");
     detail.asked = [];
     await act(async () => history.click());
   }
@@ -81,14 +81,6 @@ afterEach(() => {
 });
 
 describe("ZeropsGitBlockCommits", () => {
-  it("Showing a change's commit list does not load file patches.", async () => {
-    detail.readout = read([
-      { sha: "a".repeat(40), subject: "Answer /status", at: "2026-10-02T11:00:00Z" },
-    ]);
-    expect(await html({ number: 12, head: "c".repeat(40) })).toContain("Answer /status");
-    expect(detail.fullReads).toBe(0);
-  });
-
   it("draws the commits of the Mate's change, as HQ's detail reads them", async () => {
     detail.readout = read([
       { sha: "a".repeat(40), subject: "Answer /status", at: "2026-10-02T11:00:00Z" },
@@ -97,6 +89,7 @@ describe("ZeropsGitBlockCommits", () => {
     expect(markup).toContain("Commits · 1");
     expect(markup).toContain("aaaaaaa");
     expect(markup).toContain("Answer /status");
+    expect(detail.fullReads).toBe(0);
     expect(detail.asked).toEqual([
       { link: { appId: "g1", repo: "api", number: 12 }, head: "c".repeat(40), main: "m1" },
     ]);

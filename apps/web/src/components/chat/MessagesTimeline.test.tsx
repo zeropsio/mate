@@ -1520,6 +1520,8 @@ describe("MessagesTimeline — the conversation", () => {
           });
         const frames = new Map<number, FrameRequestCallback>();
         let nextFrame = 0;
+        let now = 1000;
+        vi.spyOn(performance, "now").mockImplementation(() => now);
         vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
           frames.set(++nextFrame, callback);
           return nextFrame;
@@ -1620,9 +1622,7 @@ describe("MessagesTimeline — the conversation", () => {
               renderer = create(timeline("working"), { createNodeMock });
             });
           // Age the existing presentation window without waiting for wall time.
-          let now = performance.now();
           if (mode === "late") {
-            vi.spyOn(performance, "now").mockImplementation(() => now);
             await act(() => renderer!.update(timeline("empty")));
             now += 1600;
           }

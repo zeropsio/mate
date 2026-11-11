@@ -1,14 +1,14 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { MateLinkUp } from "@t3tools/shared/mateLink";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { menuScenario } from "./dsl.ts";
 import { dropZerops } from "../g-outage/fake.ts";
 import { lastingZeropsOutage } from "../g-outage/dsl.ts";
 
 describe("B: text-only drafts", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect(
       "a resized menu preserves its Mate rows and footer room through account failure and recovery",
       () =>

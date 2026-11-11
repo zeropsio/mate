@@ -199,7 +199,6 @@ const DISCORD_OFF = {
   connected: false,
   interactionsUrl: "https://hq-acme.zerops.app/api/intake/discord/acme",
   inviteUrl: null,
-  allowed: [],
 };
 const HOOK = {
   id: "w1",
@@ -461,7 +460,6 @@ function Harness() {
                   ...DISCORD_OFF,
                   connected: true,
                   inviteUrl: "https://discord.com/oauth2/authorize?client_id=1",
-                  allowed: ["123456789012345678"],
                 }),
               )}
             />

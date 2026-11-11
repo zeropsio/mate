@@ -18,6 +18,14 @@ import {
 import type { OrchestrationThreadActivity } from "@t3tools/contracts";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 
+import {
+  type AskState,
+  type AskWhere,
+  NOT_NOW,
+  namesWords,
+  notNowWords,
+} from "../../ask/ask.logic";
+
 export interface VaultAsk {
   readonly key: string;
   /** What it is, in people's words ("Stripe secret key"); `null` from an older zcp. */
@@ -72,7 +80,7 @@ export type VaultAskState =
       readonly held: VaultValue | null;
     }
   /** The key is in that vault, written since it was asked. */
-  | { readonly kind: "filled" };
+  | { readonly kind: "filled"; readonly held: VaultValue };
 
 /** Where the asked value stands, read off the vault. */
 export function vaultAskState(view: VaultView, ask: VaultAsk): VaultAskState {
@@ -82,8 +90,8 @@ export function vaultAskState(view: VaultView, ask: VaultAsk): VaultAskState {
   if (scope === undefined) return view.complete ? { kind: "unplaced" } : { kind: "reading" };
   const held = scope.values.find((value) => value.key === ask.key) ?? null;
   const written = held === null ? null : (held.changedAt ?? held.createdAt);
-  if (written !== null && Date.parse(written) >= Date.parse(ask.askedAt)) {
-    return { kind: "filled" };
+  if (held !== null && written !== null && Date.parse(written) >= Date.parse(ask.askedAt)) {
+    return { kind: "filled", held };
   }
   return { kind: "open", ref: scope.ref, scope, held };
 }
@@ -106,19 +114,6 @@ export function vaultAskWrite(
 }
 
 /**
- * Who can read the value once it is in, and what never goes in, in our words beside the agent's:
- * a Shared value reaches every app of the project (the platform injects it), the Mate's own
- * included; an app's own reaches that app, which the Mate works in.
- */
-export function vaultAskReach(ask: Pick<VaultAsk, "key" | "scope">, mateName: string): string {
-  const reach =
-    ask.scope.kind === "shared"
-      ? `Every app in this project can read it, ${mateName} included.`
-      : `${ask.scope.hostname} reads it, and ${mateName} can reach it.`;
-  return `${reach} Never paste your own password or Zerops token.`;
-}
-
-/**
  * A name a Zerops credential goes by: a Zerops token or password (`ZEROPS_TOKEN`,
  * `ZEROPS_TOKEN_PROD`), or zcp's own sign-in to Zerops (`ZCP_API_KEY`). Only these are said to look
  * like a Zerops sign-in; a name the Mate keeps for itself is told apart (`reserved`).
@@ -129,37 +124,6 @@ const ZEROPS_SIGN_IN =
 /** Whether a key is named like a Zerops credential: the card warns before it is given. */
 export function vaultAskLooksLikeZeropsSignIn(key: string): boolean {
   return ZEROPS_SIGN_IN.test(key.toUpperCase());
-}
-
-/** What the person said to the card here: put it in, or not now. Memory only. */
-export type VaultAskSaid = "put" | "not-now";
-
-export type VaultAskFace =
-  | "reserved"
-  | "reading"
-  | "unplaced"
-  | "open"
-  | "put"
-  | "filled"
-  | "not-now";
-
-/**
- * What the card draws: the person's own put says the Mate hears it next; given since (a reload, the
- * panel, the dashboard) it is simply in the vault; "Not now" folds what is still open.
- */
-export function vaultAskFace(
-  state: VaultAskState["kind"],
-  said: VaultAskSaid | null,
-): VaultAskFace {
-  if (said === "put") return "put";
-  if (state === "filled") return "filled";
-  if (said === "not-now") return "not-now";
-  return state;
-}
-
-/** Where it goes, as the card's second line says it: "Shared", "appdev". Secret is the person's. */
-export function vaultAskWhere(ask: VaultAsk): string {
-  return ask.scope.kind === "shared" ? "Shared" : ask.scope.hostname;
 }
 
 /** The scope an ask names, in a vault read. */
@@ -178,8 +142,8 @@ const sameScope = (left: VaultAsk["scope"], right: VaultAskActivityPayload["scop
 
 /**
  * The engine's record of the ask a call made: the first ask of that key and vault recorded since
- * the call began. None on a conversation the engine does not keep: the card then works as before
- * the engine, the Mate hearing of the value with the person's next message.
+ * the call began. Every ask is the engine's (zcp only answers the call), so a call with none has
+ * no card: the record is where what the person said lives.
  */
 export function engineVaultAskFor(
   activities: ReadonlyArray<OrchestrationThreadActivity> | undefined,
@@ -197,56 +161,13 @@ export function engineVaultAskFor(
   return found?.payload ?? null;
 }
 
-const listed = (names: ReadonlyArray<string>): string =>
-  names.length <= 1
-    ? (names[0] ?? "")
-    : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-
 // ---------------------------------------------------------------------------
-// The ask in the composer's drawer, and its answer in the run that asked
+// The ask's card, and its answer in the run that asked
 // ---------------------------------------------------------------------------
 
 /** What the value is, as people name it: the agent's label, else its key. */
 export function vaultAskLabel(ask: Pick<VaultAsk, "key" | "label">): string {
   return ask.label ?? ask.key;
-}
-
-/** The agent's why as a phrase that follows the label: no capital, no full stop. */
-const whyPhrase = (why: string): string => {
-  const trimmed = why.trim().replace(/[.\s]+$/u, "");
-  const first = trimmed.split(/\s/u)[0] ?? "";
-  // "For the API." → "for the API", but an acronym or a name keeps its case.
-  return first.length > 1 && first === first[0] + first.slice(1).toLowerCase()
-    ? trimmed[0]!.toLowerCase() + trimmed.slice(1)
-    : trimmed;
-};
-
-/** The drawer's one line: who needs what, and why, in the agent's words. */
-export function vaultAskLine(ask: VaultAsk, mateName: string): string {
-  const line = `${mateName} needs your ${vaultAskLabel(ask)}`;
-  return ask.reason === null || ask.reason.trim() === ""
-    ? line
-    : `${line}, ${whyPhrase(ask.reason)}`;
-}
-
-/** The drawer's one plain sentence of what happens, in the state the vault says. */
-export function vaultAskNote(
-  ask: VaultAsk,
-  state: VaultAskState["kind"],
-  mateName: string,
-): string {
-  switch (state) {
-    case "filled":
-      return "You added it in the Vault.";
-    case "reserved":
-      return `${ask.key} is a name ${mateName} keeps for itself, so the vault won't list it.`;
-    case "unplaced":
-      return `${ask.scope.kind === "service" ? ask.scope.hostname : "This vault"} isn't in this project any more.`;
-    default:
-      return ask.scope.kind === "shared"
-        ? "Goes to this project's vault for every app, never into this chat."
-        : `Goes to ${ask.scope.hostname}'s vault, never into this chat.`;
-  }
 }
 
 /** The one warning that matters: a Zerops sign-in is never the Mate's to have. */
@@ -262,44 +183,33 @@ export interface VaultAskRestart {
   readonly hostname: string;
 }
 
-/** The answered ask in the run that asked: what it is, how it ended, what still needs doing. */
+/** What an answered ask still needs, in the run that asked: the apps to restart for its value. */
 export interface VaultAskResultRow {
   readonly title: string;
-  readonly words: string;
   readonly restart: ReadonlyArray<VaultAskRestart>;
 }
 
 /**
- * The result row of an answered ask, off the engine's record and the vault: saved, it is added
- * for every app or for one, hidden when the vault keeps it so, and an app that runs the value it
- * started with is offered a restart; not given, "Not now". Nothing while it is still asked.
+ * The run's row for an answered ask, off the engine's record and the vault: only what the ask's
+ * own card does not say (a state is said once) — an app that runs the value it started with, to
+ * restart. Nothing for a value no app needs restarting for, for Not now, or while still asked.
  */
 export function vaultAskResult(
   ask: VaultAsk,
   engine: VaultAskActivityPayload["state"],
   view: VaultView,
 ): VaultAskResultRow | null {
-  const title = vaultAskLabel(ask);
-  if (engine === "declined") return { title, words: "Not now", restart: [] };
-  if (engine !== "saved") return null;
-  const held =
-    view.status === "unread"
-      ? undefined
-      : askScope(view, ask)?.values.find((value) => value.key === ask.key);
-  const place = ask.scope.kind === "shared" ? "every app" : ask.scope.hostname;
+  if (engine !== "saved" || view.status === "unread") return null;
+  const held = askScope(view, ask)?.values.find((value) => value.key === ask.key);
   const restart = (held?.readers ?? [])
     .filter((reader) => reader.state === "restart")
     .map(({ serviceId, hostname }) => ({ serviceId, hostname }));
-  return {
-    title,
-    words: `added for ${place}${held?.sensitive === true ? " · hidden" : ""}`,
-    restart,
-  };
+  return restart.length === 0 ? null : { title: vaultAskLabel(ask), restart };
 }
 
 /** The restart a result row offers, in words. */
 export function vaultAskRestartWords(restart: ReadonlyArray<VaultAskRestart>): string {
-  return `restart ${listed(restart.map((service) => service.hostname))} to use it`;
+  return `restart ${namesWords(restart.map((service) => service.hostname))} to use it`;
 }
 
 /** The ask the composer's drawer holds: the oldest the engine keeps open, read as its words need. */
@@ -330,5 +240,154 @@ export function openVaultAsk(
       reason: payload.reason,
       askedAt: oldest.createdAt,
     },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// The card, in both its homes: the conversation, and above the composer
+// ---------------------------------------------------------------------------
+
+/** A press on the card that is still under way in this tab. */
+export type VaultAskPress = "save" | "useGiven" | "notNow";
+
+/**
+ * What the card reads. What the person said lives in the engine's record (`record`: saved or
+ * declined, who and when) and whether the key is there in the vault (`vault`), so a reload or
+ * another device draws the same card. This tab adds only operations: a press still under way and
+ * how the last one was refused — never an answer.
+ */
+export interface VaultAskSource {
+  readonly ask: VaultAsk;
+  readonly mateName: string;
+  readonly record: Pick<VaultAskActivityPayload, "state" | "answer">;
+  readonly vault: VaultAskState;
+  readonly pending: VaultAskPress | null;
+  readonly refusal: string | null;
+  /** A person's name by their Zerops user id. */
+  readonly nameOf: (subject: string) => string | undefined;
+  /** A time as the conversation's clock says it. */
+  readonly clock: (atMs: number) => string;
+}
+
+export interface VaultAskView {
+  readonly state: AskState;
+  readonly where: AskWhere;
+  readonly title: string;
+  readonly why: string | null;
+  /**
+   * The field to type the value into (`ready` once the vault says where it goes), the value given
+   * in the Vault since it was asked, or nothing.
+   */
+  readonly body:
+    | { readonly kind: "field"; readonly ready: boolean }
+    | { readonly kind: "given"; readonly words: string }
+    | { readonly kind: "none" };
+  /** The main press, which a failure's Try again repeats; `null` offers Not now alone. */
+  readonly main: { readonly label: string; readonly does: "save" | "useGiven" } | null;
+  readonly warning: string | null;
+}
+
+const SAVE = { label: "Save to vault", does: "save" } as const;
+const USE_GIVEN = { label: "Use that one", does: "useGiven" } as const;
+
+/**
+ * The card an ask draws, from its sources: the engine's record first (saved, declined, closed),
+ * then this tab's press under way and its refusal, then the vault — given since it was asked, a
+ * name it would hide, a service it no longer has, or open to take the value.
+ */
+export function vaultAskView(source: VaultAskSource): VaultAskView {
+  const { ask, mateName, record, vault } = source;
+  const shared = ask.scope.kind === "shared";
+  const host = ask.scope.kind === "service" ? ask.scope.hostname : null;
+  const vaultName = `${host ?? mateName}'s vault`;
+  const frame = {
+    where: { scope: "mate", detail: host ?? "every app" },
+    title: `Add ${ask.key} to ${vaultName}`,
+    why: ask.reason,
+    warning: vaultAskWarning(ask, mateName),
+  } as const;
+  const none = { kind: "none" } as const;
+  const by =
+    record.answer?.by.kind === "person" ? (source.nameOf(record.answer.by.subject) ?? null) : null;
+  const held = vault.kind === "open" || vault.kind === "filled" ? vault.held : null;
+  const hidden = held?.sensitive === true ? " · hidden" : "";
+
+  if (record.state === "saved") {
+    const fact = [`In ${vaultName}${hidden}`, by === null ? null : `set by ${by}`];
+    return {
+      ...frame,
+      state: {
+        kind: "done",
+        words: fact.filter((part) => part !== null).join(" · "),
+        told: `${mateName} hears: ${ask.key} is saved for ${shared ? "every app" : host}`,
+      },
+      body: none,
+      main: null,
+    };
+  }
+  if (record.state === "declined") {
+    const at = record.answer === null ? null : source.clock(record.answer.at);
+    return {
+      ...frame,
+      state: { kind: "notNow", words: notNowWords(by, at) },
+      body: none,
+      main: null,
+    };
+  }
+  if (record.state === "closed") {
+    const words = `${mateName} isn't waiting on this any more.`;
+    return { ...frame, state: { kind: "replaced", words }, body: none, main: null };
+  }
+
+  const settledInVault = vault.kind === "reserved" || vault.kind === "unplaced";
+  const body: VaultAskView["body"] =
+    vault.kind === "filled"
+      ? { kind: "given", words: `Added in the Vault since ${mateName} asked${hidden}` }
+      : settledInVault
+        ? none
+        : { kind: "field", ready: vault.kind === "open" };
+  const main = vault.kind === "filled" ? USE_GIVEN : settledInVault ? null : SAVE;
+  const open = { ...frame, body, main };
+
+  if (source.pending !== null) {
+    const working: AskState =
+      source.pending === "notNow"
+        ? { kind: "working", words: NOT_NOW, pressed: "notNow" }
+        : {
+            kind: "working",
+            words: source.pending === "save" ? "Saving to vault…" : `Telling ${mateName}…`,
+            pressed: "main",
+          };
+    return { ...open, state: working };
+  }
+  if (source.refusal !== null) return { ...open, state: { kind: "failed", words: source.refusal } };
+  if (vault.kind === "reserved") {
+    const words = `${ask.key} is a name ${mateName} keeps for itself, so the vault won't list it.`;
+    return { ...open, state: { kind: "failed", words } };
+  }
+  if (vault.kind === "unplaced") {
+    const words = `${host ?? "This vault"} isn't in this project any more.`;
+    return { ...open, state: { kind: "failed", words } };
+  }
+  return { ...open, state: { kind: "waiting" } };
+}
+
+/**
+ * Which conversation row holds the card of an ask the engine recorded at `askedAt`: the latest
+ * call that asked for that key and vault before then (`useAskReveal` takes the last row it holds).
+ */
+export function vaultAskRowHolds(
+  ask: Pick<VaultAsk, "key" | "scope" | "askedAt">,
+): (row: { readonly kind: string; readonly operation?: unknown }) => boolean {
+  const until = Date.parse(ask.askedAt);
+  return (row) => {
+    if (row.kind !== "vault-request" && row.kind !== "operation") return false;
+    const asked = vaultAskOf(row.operation as ZeropsOperation);
+    return (
+      asked !== null &&
+      asked.key === ask.key &&
+      sameScope(asked.scope, ask.scope) &&
+      Date.parse(asked.askedAt) <= until
+    );
   };
 }

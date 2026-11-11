@@ -8,21 +8,16 @@
  * platform flag write on that probe would upsert the platform OAuth flag for
  * a session that is not actually usable.
  *
- * This module runs each agent CLI's own status command instead — the same
- * argv-list spawn shape {@link ZeropsCli} uses for `zcp` (a command plus a
- * fixed argument list, no shell to interpret metacharacters) — and reduces
- * its output to the {@link ServerProviderAuthStatus} vocabulary:
+ * This module asks each agent itself instead, and reduces the answer to the
+ * {@link ServerProviderAuthStatus} vocabulary:
  *
- * - `claude auth status` prints one line of JSON, `{"loggedIn": boolean,
+ * - Claude: `claude auth status`, spawned as an argv list ({@link ZeropsCli}'s
+ *   shape for `zcp`, no shell), prints one line of JSON, `{"loggedIn": boolean,
  *   "authMethod": string}` (live-verified, CLI 2.1.251). `loggedIn` is the
  *   only field this module reads.
- * - `codex login status` prints plain text — `Not logged in` when signed
- *   out, `Logged in using ChatGPT` (or another method) when signed in.
- *   Live-verified only for the two lines above; the exact vocabulary of
- *   every success/failure line Codex can print, and whether its exit code
- *   ever disambiguates a case the text alone cannot, is unconfirmed pending
- *   a live-rig check (S7-3) — this module treats unrecognized text as
- *   `unknown` rather than guessing.
+ * - Codex: its app-server's account (`spi/codexAccount.ts`) — not
+ *   `codex login status`, which reads only the login file and says
+ *   "Logged in" over a login Codex itself no longer accepts.
  *
  * `unknown` is the result for every failure mode that is not a confirmed
  * "signed in" / "signed out" answer: the binary is missing, the process
@@ -35,19 +30,15 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 
 import * as ProcessRunner from "../processRunner.ts";
+import type { CodexAccountAnswer } from "../spi/codexAccount.ts";
 
-/** Generous for a local CLI status check — both commands answer from a cached login file, no network round trip. */
+/** Generous for a local CLI status check — it answers from a cached login file, no network round trip. */
 const AGENT_AUTH_PROBE_TIMEOUT = Duration.seconds(10);
 /** The output is one short line; the cap only guards a pathological answer. */
 const AGENT_AUTH_PROBE_MAX_OUTPUT_BYTES = 16 * 1024;
 
-/** One command+args invocation per agent — an argv list, never a shell string. */
-const AGENT_AUTH_PROBE_COMMAND: Readonly<
-  Record<ZeropsAgentId, { readonly command: string; readonly args: ReadonlyArray<string> }>
-> = {
-  "claude-code": { command: "claude", args: ["auth", "status"] },
-  codex: { command: "codex", args: ["login", "status"] },
-};
+/** `claude auth status` — an argv list, never a shell string. */
+const CLAUDE_AUTH_PROBE = { command: "claude", args: ["auth", "status"] } as const;
 
 /**
  * `claude auth status`'s one-line JSON. Unparsable text, a non-object
@@ -73,28 +64,6 @@ export const parseClaudeAuthStatus = (stdout: string): ServerProviderAuthStatus 
     return "unknown";
   }
   return loggedIn ? "authenticated" : "unauthenticated";
-};
-
-/** Checked before {@link CODEX_LOGGED_IN_PATTERN}: "Not logged in" itself contains "logged in", so order matters. */
-const CODEX_NOT_LOGGED_IN_PATTERN = /not\s+logged\s+in/i;
-/** Matches "Logged in using ChatGPT", "Logged in using API key", etc. — the method name is not this module's concern. */
-const CODEX_LOGGED_IN_PATTERN = /logged\s+in\s+using/i;
-
-/**
- * `codex login status`'s plain-text answer. Checked against stdout and
- * stderr together — which stream Codex actually writes to is one of the
- * live-rig unknowns noted in the module header. Text that matches neither
- * known phrase reads as `unknown`.
- */
-export const parseCodexLoginStatus = (stdout: string, stderr: string): ServerProviderAuthStatus => {
-  const text = `${stdout}\n${stderr}`;
-  if (CODEX_NOT_LOGGED_IN_PATTERN.test(text)) {
-    return "unauthenticated";
-  }
-  if (CODEX_LOGGED_IN_PATTERN.test(text)) {
-    return "authenticated";
-  }
-  return "unknown";
 };
 
 export interface AgentAuthProbeOutcome {
@@ -158,39 +127,48 @@ export const spawnAgentAuthProbe =
         })),
       );
 
-/**
- * Runs `agentId`'s own status command through `spawn` and maps its output to
- * {@link ServerProviderAuthStatus}. `spawn` is injected so this stays
- * testable against canned outcomes — see `ZeropsAgentAuthVerify.test.ts` —
- * without a real process for every case; {@link spawnAgentAuthProbe} is the
- * only production implementation.
- */
-export const verifyAgentAuth = (
-  agentId: ZeropsAgentId,
+/** How each agent is asked: injected so this stays testable against canned answers. */
+export interface AgentAuthChecks {
+  /** Runs `claude auth status`; {@link spawnAgentAuthProbe} in production. */
+  readonly spawn: AgentAuthProbeSpawn;
+  /** Codex's own account answer; `spi/codexAccount.ts`'s `readCodexAccountAuth` in production. */
+  readonly codexAccount: Effect.Effect<CodexAccountAnswer>;
+}
+
+const claudeAuthAnswer = (
   spawn: AgentAuthProbeSpawn,
-): Effect.Effect<AgentAuthVerification> =>
-  Effect.gen(function* () {
-    const { command, args } = AGENT_AUTH_PROBE_COMMAND[agentId];
-    const outcome = yield* spawn(command, args);
-    const status =
-      outcome.timedOut || outcome.reason
-        ? "unknown"
-        : agentId === "claude-code"
-          ? parseClaudeAuthStatus(outcome.stdout)
-          : parseCodexLoginStatus(outcome.stdout, outcome.stderr);
-    return {
-      status,
-      checkedAt: yield* Clock.currentTimeMillis,
-      ...(status === "unknown"
-        ? {
+): Effect.Effect<Omit<AgentAuthVerification, "checkedAt">> =>
+  spawn(CLAUDE_AUTH_PROBE.command, CLAUDE_AUTH_PROBE.args).pipe(
+    Effect.map((outcome) => {
+      const status =
+        outcome.timedOut || outcome.reason ? "unknown" : parseClaudeAuthStatus(outcome.stdout);
+      return status !== "unknown"
+        ? { status }
+        : {
+            status,
             reason: outcome.timedOut
               ? "The login check timed out."
               : (outcome.reason ??
                 (outcome.code === null
                   ? "The login check did not finish."
                   : "The login check returned an unrecognized answer.")),
-          }
-        : {}),
+          };
+    }),
+  );
+
+/** Asks `agentId` whether it accepts its login ({@link AgentAuthChecks}). */
+export const verifyAgentAuth = (
+  agentId: ZeropsAgentId,
+  checks: AgentAuthChecks,
+): Effect.Effect<AgentAuthVerification> =>
+  Effect.gen(function* () {
+    const answer = yield* agentId === "claude-code"
+      ? claudeAuthAnswer(checks.spawn)
+      : checks.codexAccount;
+    return {
+      status: answer.status,
+      checkedAt: yield* Clock.currentTimeMillis,
+      ...(answer.reason === undefined ? {} : { reason: answer.reason }),
     };
   });
 

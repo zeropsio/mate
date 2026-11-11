@@ -1,27 +1,20 @@
 import type * as React from "react";
 import { act } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { ZeropsProjectsFlow } from "./ZeropsProjectsFlow";
 import { describe, expect, it, vi } from "vite-plus/test";
-
-vi.mock("@tanstack/react-router", async () => {
-  const { createElement } = await import("react");
-  return {
-    Link: ({
-      to,
-      params = {},
-      ...props
-    }: React.ComponentProps<"a"> & { to: string; params?: Record<string, string> }) =>
-      createElement("a", {
-        href: to.replace(/\$(\w+)/gu, (_, key: string) => params[key] ?? ""),
-        ...props,
-      }),
-  };
-});
 
 import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
 import { item, MERGING, renderFlow, mount, FLOW_PROPS } from "./flowTestFixtures";
 
-const render = renderFlow;
+const { createMemoryHistory, createRootRoute, createRouter, RouterContextProvider } =
+  await vi.importActual<typeof import("@tanstack/react-router")>("@tanstack/react-router");
+const router = createRouter({ routeTree: createRootRoute(), history: createMemoryHistory() });
+const withRouter = (element: React.ReactElement) => (
+  <RouterContextProvider router={router}>{element}</RouterContextProvider>
+);
+const render = (props: Parameters<typeof renderFlow>[0] = {}) =>
+  renderToStaticMarkup(withRouter(<ZeropsProjectsFlow {...FLOW_PROPS} {...props} />));
 
 describe("the containers no project holds", () => {
   const rows = (kinds: ReadonlyArray<ZeropsRowAction["kind"]>) =>
@@ -39,16 +32,6 @@ describe("the containers no project holds", () => {
     expect(line).toContain("Try again (2)");
     // Folded: the rows themselves wait behind the line.
     expect(line).not.toContain("data-test-mate=");
-  });
-
-  it("keeps their summary for a container with room for it, never a cut 'Not in a…'", () => {
-    const html = render({ ungrouped: rows(["open", "start"]) });
-    const summary = html.slice(
-      html.lastIndexOf("<span", html.indexOf("Not in a project")),
-      html.indexOf("Not in a project"),
-    );
-    expect(summary).toContain("hidden");
-    expect(summary).toContain("@2xl/flow:block");
   });
 
   it("offers no re-probe when every container answers", () => {
@@ -151,9 +134,11 @@ it("cold HQ placement stays unknown on Projects until owner evidence arrives", (
     placementReading: true,
     placementNotice: "Loading your projects…",
   };
-  const tree = mount(<ZeropsProjectsFlow {...unknown} />);
-  const words = () => JSON.stringify(tree.toJSON());
+  let tree: ReturnType<typeof mount> | undefined;
   try {
+    tree = mount(withRouter(<ZeropsProjectsFlow {...unknown} />));
+    const current = tree;
+    const words = () => JSON.stringify(current.toJSON());
     expect(words()).not.toContain("Not in a project");
     expect(words()).not.toContain("Other containers");
     act(() => vi.advanceTimersByTime(1_000));
@@ -162,11 +147,13 @@ it("cold HQ placement stays unknown on Projects until owner evidence arrives", (
     expect(words()).not.toContain("Not in a project");
     expect(words()).not.toContain("Other containers");
     // A later owner delivery replaces the unknown state with the actual placement.
-    act(() => tree.update(<ZeropsProjectsFlow {...FLOW_PROPS} groups={[MERGING]} />));
+    act(() =>
+      current.update(withRouter(<ZeropsProjectsFlow {...FLOW_PROPS} groups={[MERGING]} />)),
+    );
     expect(words()).toContain("sm-fixture");
     expect(words()).not.toContain("Loading your projects…");
   } finally {
-    act(() => tree.unmount());
+    act(() => tree?.unmount());
     vi.useRealTimers();
     vi.unstubAllGlobals();
   }

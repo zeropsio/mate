@@ -30,7 +30,7 @@ import type { MateMarkState } from "@t3tools/shared/brand";
 import { shareEqual } from "@t3tools/shared/structuralSharing";
 
 import { mateFaceOf, restingWhenFree, type ZeropsAgentActivity } from "~/zerops/agentActivity";
-import type { MateComing } from "@t3tools/client-runtime/data";
+import type { AgentAdmissionAttention, MateComing } from "@t3tools/client-runtime/data";
 import { MATE_STAND_UP_MESSAGE } from "~/zerops/mateStandUp";
 import { backgroundWorkWords, nowLineWords } from "../chat/runCard.logic";
 import { STOPPING_WORDS } from "~/zerops/conversationStop.logic";
@@ -103,13 +103,13 @@ export function ownerMark(owner: {
 /**
  * Whose Mate it is, as the seat before its name draws it:
  * - `person` — its owner, named by the member list: their picture or initial;
- * - `unnamed` — its records name somebody the member list has not named: not
- *   read yet, the read failed, or they are not in it. A neutral disc keeps
- *   the place, so nothing moves when they are read, and nothing is worth an
- *   error;
- * - `nobody` — its records name nobody: no `OWNER` entry, and nobody has
- *   signed its agent in. An empty seat, the "no assignee" convention, with
- *   the state in words: it is nobody's until somebody signs it in.
+ * - `unnamed` — HQ has not said whose it is yet, or names somebody the member
+ *   list has not named: not read yet, the read failed, or they are not in it.
+ *   A neutral disc keeps the place, so nothing moves when they are read, and
+ *   nothing is worth an error;
+ * - `nobody` — HQ names no owner of it (`ownerUserId`). An empty seat, the
+ *   "no assignee" convention, with the state in words: it is nobody's until
+ *   somebody signs its agent in, which makes them its owner in HQ.
  */
 export type OwnerSeat =
   | { readonly kind: "person"; readonly mark: OwnerMark }
@@ -130,17 +130,29 @@ const WAITING_FOR_SIGN_IN = "Waiting for sign-in";
 const NOBODY_OWNS = "No owner yet. Whoever signs in its coding agent owns it.";
 
 /**
+ * Whom a Mate's agent sign-in waits on: its owner acts in it alone, so its owner HQ names; its
+ * maker or stand-up asker stands in only while HQ has not named one.
+ */
+export function signInAwaitedBy(input: {
+  readonly ownerUserId?: string | undefined;
+  readonly madeBy?: string | undefined;
+  readonly standUpBy?: string | undefined;
+}): string | undefined {
+  return input.ownerUserId ?? input.madeBy ?? input.standUpBy;
+}
+
+/**
  * Whose seat a Mate's row draws, and whether it says that nobody has signed
  * its agent in (the owner, 2026-09-29: "mate without auth / owner should have
  * the state specially handled"):
  *
- * | its records                   | the member list | seat           | never asked                       |
+ * | HQ                            | the member list | seat           | never asked                       |
  * | ----------------------------- | --------------- | -------------- | --------------------------------- |
- * | name nobody                   | —               | the empty seat | the line                          |
- * | an `OWNER`, nobody signed in  | named           | their picture  | the line                          |
- * | an `OWNER`, nobody signed in  | not named yet   | a neutral disc | the line                          |
- * | somebody signed in            | named           | their picture  | nothing: a row as tall as it says |
- * | somebody signed in            | not named       | a neutral disc | nothing                           |
+ * | names no owner                | —               | the empty seat | the line                          |
+ * | an owner, nobody signed in    | named           | their picture  | the line                          |
+ * | an owner, nobody signed in    | not named yet   | a neutral disc | the line                          |
+ * | an owner, somebody signed in  | named           | their picture  | nothing: a row as tall as it says |
+ * | an owner, somebody signed in  | not named       | a neutral disc | nothing                           |
  *
  * The line takes the row's second line only where nothing was asked: a Mate
  * somebody has talked to says what was asked, and the seat alone says it is
@@ -149,15 +161,15 @@ const NOBODY_OWNS = "No owner yet. Whoever signs in its coding agent owns it.";
  * 2026-09-29, of a *Sign in* on the row: it did nothing there, and stood on
  * the row's edge).
  *
- * To the person who made it — named by HQ's record, whether New project or Add a Mate made it, or
- * by its stand-up's record on a Mate recorded before HQ kept its maker — the line says it waits
+ * To its owner as HQ records it — its maker until a hand-over names another; its maker, or its
+ * stand-up's asker, only while HQ names none — the line says it waits
  * on them: "Waiting for your sign-in", in ink, with the amber dot of what needs them (board D1,
  * 2026-09-30). One state, one phrase whichever flow made it (run 4, 2026-10-02). A Mate whose
  * sign-in somebody is waited for never reads like a failure (the owner, 2026-10-01): anybody else
  * reads that it waits for a sign-in, quietly, and a viewer not known yet reads nothing. A Mate
  * that names nobody reads the fact. A Mate that runs on an agent that needs no sign-in (Cursor,
- * OpenCode…: HQ's overview) waits on nobody's sign-in and says none of it; its maker holds its
- * seat, as its records name them.
+ * OpenCode…: HQ's overview) waits on nobody's sign-in and says none of it; its owner HQ names
+ * holds its seat.
  */
 export function mateOwnerView(input: {
   readonly owner:
@@ -185,6 +197,8 @@ export function mateOwnerView(input: {
    * `stored`); otherwise the row says nothing of a sign-in.
    */
   readonly overview: MatePresence["overview"] | undefined;
+  /** Whom HQ names its owner (`ownerUserId`): the person its sign-in waits on. */
+  readonly ownerUserId?: string | undefined;
   /** Who added it, as HQ's stand-up record names them (`readZeropsMembership(…).standUp`). */
   readonly standUpBy?: string | undefined;
   /** Who made it, as HQ's record names them (`readZeropsMembership(…).madeBy`). */
@@ -197,6 +211,12 @@ export function mateOwnerView(input: {
    * the page cannot offer yet.
    */
   readonly linked?: boolean | undefined;
+  /**
+   * What its admission says (`mateAdmissionSummary`), the verdict its composer says too. A login
+   * that no longer works is said even under an ask: its owner reads the composer's words, anybody
+   * else that it waits for a sign-in.
+   */
+  readonly admission?: Pick<AgentAdmissionAttention, "cause" | "text"> | null | undefined;
 }): MateOwnerView {
   const { owner, records } = input;
   const seat: OwnerSeat =
@@ -205,6 +225,17 @@ export function mateOwnerView(input: {
       : records.named === false
         ? { kind: "nobody", label: NOBODY_OWNS }
         : { kind: "unnamed" };
+  const viewer = input.viewer !== undefined && input.viewer.length > 0 ? input.viewer : undefined;
+  const awaited = signInAwaitedBy(input);
+  if (input.admission?.cause === "expired-login" && records.runsWithoutSignIn !== true) {
+    if (viewer === undefined) return { seat, signInLine: undefined, waitsOnViewer: false };
+    const yours = awaited === viewer;
+    return {
+      seat,
+      signInLine: yours ? input.admission.text : WAITING_FOR_SIGN_IN,
+      waitsOnViewer: yours && input.linked === true,
+    };
+  }
   if (
     records.signedIn ||
     input.hqSigners !== "none" ||
@@ -214,8 +245,6 @@ export function mateOwnerView(input: {
   ) {
     return { seat, signInLine: undefined, waitsOnViewer: false };
   }
-  const viewer = input.viewer !== undefined && input.viewer.length > 0 ? input.viewer : undefined;
-  const awaited = input.madeBy ?? input.standUpBy;
   if (awaited === undefined) {
     return { seat, signInLine: NOBODY_SIGNED_IN, waitsOnViewer: false };
   }
@@ -248,17 +277,15 @@ export function ownerBadge(seat: OwnerSeat, isViewer: boolean): BadgeSeat | null
  * Whether a Mate's row reads as not the viewer's — its face paler under its
  * owner's badge (the owner, 2026-09-30: "the not yours should have the avatar
  * bigger and maybe some other small visual diff also"): a colleague's, and
- * nobody's until somebody signs it in. Known from the first paint: the owner
- * HQ's people name, or before they have named them, the signer HQ's overview
- * names against the viewer's own id; a Mate that may be the viewer's reads as
- * theirs.
+ * one HQ names no owner of. Before the member list names HQ's owner, HQ's own
+ * word that the viewer is not it (`mine`) says so; a Mate that may be the
+ * viewer's reads as theirs.
  */
 export function mateNotYours(input: {
   readonly seat: OwnerSeat;
   readonly isViewer: boolean;
-  /** The user id its signer is, as HQ's overview names them (`mateOwnerRecords`). */
-  readonly signer: string | undefined;
-  readonly viewer: string | undefined;
+  /** HQ names the viewer its owner (`mine`); `undefined` where HQ does not say. */
+  readonly mine: boolean | undefined;
 }): boolean {
   switch (input.seat.kind) {
     case "nobody":
@@ -266,9 +293,7 @@ export function mateNotYours(input: {
     case "person":
       return !input.isViewer;
     case "unnamed":
-      return (
-        input.signer !== undefined && input.viewer !== undefined && input.signer !== input.viewer
-      );
+      return input.mine === false;
   }
 }
 
@@ -578,15 +603,6 @@ export function mateDeletingView(view: MateRowView): MateRowView {
   };
 }
 
-/**
- * A Mate whose setup is being finished (`finishSetupRowLine`): its row says so in place of its
- * last line — its words, else what was asked, else the sign-in line — so it keeps its height. The
- * Mate is going nowhere: its face, its time and its name stay as they were.
- */
-export function mateFinishingView(view: MateRowView): MateRowView {
-  return { ...view, ask: view.reply === undefined ? undefined : view.ask, reply: undefined };
-}
-
 /** A Mate's row's one line while its update restarts it (`mateRowReading`). */
 export const MATE_UPDATING_LINE = "Updating to the new version";
 
@@ -734,8 +750,6 @@ export function mateRowAskLine(input: {
   /** What this browser just sent it, its conversation not caught up yet (`mateRowSentAsk`). */
   readonly sent: string | undefined;
   readonly deleting: boolean;
-  /** *Finish setup* runs on it (`finishSetupRowLine`): its last line says so, as deleting's does. */
-  readonly finishing: boolean;
   /** Its conversations are read: none there is a fact, not a socket still opening. */
   readonly read: boolean;
   /** Who asks it, as the row names them (`mateAsker`). */
@@ -743,7 +757,7 @@ export function mateRowAskLine(input: {
 }): MateRowAskLine {
   const { view } = input;
   if (view.coming !== undefined) return undefined;
-  if (input.deleting || input.finishing) {
+  if (input.deleting) {
     return view.ask === undefined ? undefined : { kind: "ask", text: view.ask, by: input.asker };
   }
   if (input.signIn !== undefined) return { kind: "sign-in", ...input.signIn };
@@ -763,16 +777,16 @@ const YOU = "You";
 /**
  * Who a row says asked its Mate (the owner, 2026-10-11, of a row reading "continue" over its
  * answer: the person's words with nobody's name on them read like a label). Only its owner talks
- * to a Mate (D5), so it is them: *You* on the viewer's own, a colleague's first name on theirs —
+ * to a Mate (D5), so it is them: *You* on the viewer's own, what a colleague is called on theirs —
  * the messenger's "You:" before a message of yours — and nobody while HQ has not named its owner.
  */
 export function mateAsker(
-  owner: { readonly name: string; readonly isViewer: boolean } | undefined,
+  owner: { readonly called: string; readonly isViewer: boolean } | undefined,
 ): string | undefined {
   if (owner === undefined) return undefined;
   if (owner.isViewer) return YOU;
-  const first = owner.name.trim().split(/\s+/u)[0];
-  return first === undefined || first.length === 0 ? undefined : first;
+  const called = owner.called.trim();
+  return called.length === 0 ? undefined : called;
 }
 
 /** What `mateRowDraft` reads of the composer's store (`composerDraftStore.ts`). */
@@ -869,6 +883,13 @@ export function mateBornLine(coming: MateComing): MateBornLine {
       ? { words: coming.line, since: undefined, tone: "attention" }
       : BORN_STOPPED;
   }
+  if (coming.birth !== undefined) {
+    return {
+      words: coming.line,
+      since: undefined,
+      tone: coming.birth.attention ? "attention" : "muted",
+    };
+  }
   return { words: BORN_WORDS, since: coming.since, tone: "muted" };
 }
 
@@ -901,15 +922,33 @@ export function pendingBornLine(
 }
 
 /**
- * Whether a row offers its ⋯ menu: not while its Mate is going, nor while it is still being made —
- * nothing on it is about a Mate on its way — but once its setup stopped, for what finishes or
- * removes it (*Finish setup*, *Delete*).
+ * A row's ⋯ menu: none while its Mate is going; while it is still being made, its Delete alone —
+ * nothing else on it is about a Mate on its way, and one that never comes up is removed as any
+ * Mate is; once it is up or its setup stopped, all of it. None where
+ * nothing is left on it.
  */
-export function mateRowOffersMenu(input: {
+export function mateRowMenu<
+  A extends {
+    readonly muted: boolean;
+    readonly birthOnly?: boolean;
+    readonly entries: ReadonlyArray<{ readonly id: string }>;
+  },
+>(input: {
   readonly deleting: boolean;
   readonly coming: MateComing | undefined;
-}): boolean {
-  return !input.deleting && (input.coming === undefined || input.coming.kind === "failed");
+  readonly actions: A | undefined;
+}):
+  | A
+  | { readonly muted: boolean; readonly entries: ReadonlyArray<A["entries"][number]> }
+  | undefined {
+  const { actions } = input;
+  if (input.deleting || actions === undefined) return undefined;
+  if (actions.birthOnly === true) return actions.entries.length === 0 ? undefined : actions;
+  if (input.coming?.kind !== "coming") return actions;
+  const entries = actions.entries.filter(
+    (entry) => entry.id === "delete" && !("separator" in entry),
+  );
+  return entries.length === 0 ? undefined : { muted: actions.muted, entries };
 }
 
 /**
@@ -919,12 +958,13 @@ export function mateRowOffersMenu(input: {
  * One that did not come sleeps, with the red dot of something broken (S3).
  */
 export function mateComingRowView(view: MateRowView, coming: MateComing): MateRowView {
+  const life = mateLifeOf(coming);
   return {
     ...view,
-    state: coming.kind === "failed" ? "needs" : "idle",
-    face: matePose(view.face, { life: mateLifeOf(coming) }),
+    state: life === "failed" ? "needs" : "idle",
+    face: matePose(view.face, { life }),
     slot: { kind: "none" },
-    dot: coming.kind === "failed" ? "attention" : undefined,
+    dot: life === "failed" ? "attention" : undefined,
     strongName: false,
     ask: undefined,
     reply: undefined,
@@ -935,7 +975,7 @@ export function mateComingRowView(view: MateRowView, coming: MateComing): MateRo
 /** Where a listed Mate is in its life, from its coming up (`mateComing`). */
 export function mateLifeOf(coming: MateComing | undefined): MateLife {
   if (coming === undefined) return "up";
-  return coming.kind === "failed" ? "failed" : "coming";
+  return coming.kind === "failed" || coming.birth?.attention === true ? "failed" : "coming";
 }
 
 /** Which of the table's states a row is in: what waits on the person first. */
@@ -965,7 +1005,7 @@ function mateRowState(activity: ZeropsAgentActivity, face: MateMarkState): MateR
  *
  * | the row                                  | its line                                   |
  * | ---------------------------------------- | ------------------------------------------ |
- * | coming up, deleting, finishing, outside  | that, in its own words                     |
+ * | coming up, deleting, outside  | that, in its own words                     |
  * | working                                  | its step, or what it is on and the dots    |
  * | what HQ last said of it, unreachable     | that                                       |
  * | a colleague's, waiting on its person     | "Waits on Alex"                           |
@@ -982,7 +1022,6 @@ function mateRowState(activity: ZeropsAgentActivity, face: MateMarkState): MateR
 export type MateRowSecond =
   | { readonly kind: "coming" }
   | { readonly kind: "deleting" }
-  | { readonly kind: "finishing" }
   | { readonly kind: "outside" }
   | { readonly kind: "sign-in" }
   /**
@@ -1309,7 +1348,6 @@ export function mateRowSecond(input: {
   readonly view: Pick<MateRowView, "state" | "reply" | "slot" | "coming">;
   readonly askLine: MateRowAskLine;
   readonly deleting: boolean;
-  readonly finishing: boolean;
   readonly outsideHq: boolean;
   /** The viewer's own Mate; `false` for a colleague's; `undefined` where nobody can say yet. */
   readonly mine: boolean | undefined;
@@ -1338,7 +1376,6 @@ export function mateRowSecond(input: {
     mateAutomatedLine(line, state, { saysWorking: true });
   if (view.coming !== undefined) return { kind: "coming" };
   if (input.deleting) return { kind: "deleting" };
-  if (input.finishing) return { kind: "finishing" };
   if (input.outsideHq) return { kind: "outside" };
   const reply = view.reply;
   const asked = automated === undefined && askLine !== undefined && askLine.kind !== "sign-in";

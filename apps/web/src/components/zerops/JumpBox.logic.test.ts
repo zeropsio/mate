@@ -202,7 +202,7 @@ describe("jumpGroups — what a query finds, grouped", () => {
       groups: [
         { group: "Mates", items: ["mate:shop-nova", "mate:shop-kai"] },
         { group: "Projects", items: ["project:shop"] },
-        { group: "Stops", items: ["stop:shop-stage", "stop:shop-prod"] },
+        { group: "Places", items: ["stop:shop-stage", "stop:shop-prod"] },
       ],
     },
     {
@@ -218,12 +218,12 @@ describe("jumpGroups — what a query finds, grouped", () => {
     {
       case: "a stop by its project and its name",
       value: "shop prod",
-      groups: [{ group: "Stops", items: ["stop:shop-prod"] }],
+      groups: [{ group: "Places", items: ["stop:shop-prod"] }],
     },
     {
       case: "a stop by what it runs",
       value: "v2.11",
-      groups: [{ group: "Stops", items: ["stop:shop-prod"] }],
+      groups: [{ group: "Places", items: ["stop:shop-prod"] }],
     },
     {
       case: "a Mate by the task it is on",
@@ -560,7 +560,7 @@ const conversation = (kind: JumpConversation["kind"] = "idle"): JumpConversation
 describe("jumpWritePlan — who reads it, when, and what Enter does", () => {
   const base = {
     name: "Nova",
-    owner: { name: "Ada Lovelace", isViewer: true },
+    owner: { called: "Ada", isViewer: true },
     conversation: conversation(),
     pausedUntilLabel: undefined,
     started: true,
@@ -679,13 +679,13 @@ describe("jumpWritePlan — who reads it, when, and what Enter does", () => {
     },
     {
       case: "a colleague's Mate the viewer may write to, which says nothing of the colleague",
-      input: { owner: { name: "Petra Malá", isViewer: false } },
+      input: { owner: { called: "Petra", isViewer: false } },
       hint: "Nova reads it now",
       action: "send",
     },
     {
       case: "a Mate found to be somebody else's after it was picked",
-      input: { owner: { name: "Petra Malá", isViewer: false }, readOnly: true },
+      input: { owner: { called: "Petra", isViewer: false }, readOnly: true },
       hint: "Nova is Petra's Mate — only Petra writes to it",
       action: "none",
     },

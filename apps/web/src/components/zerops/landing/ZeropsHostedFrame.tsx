@@ -15,10 +15,11 @@
  */
 
 import { Link } from "@tanstack/react-router";
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { APP_BASE_NAME } from "../../../branding";
 import { isElectron } from "../../../env";
+import { useIsMobile } from "~/hooks/useMediaQuery";
 import { cn } from "~/lib/utils";
 import { MateLockup } from "../../MateLockup";
 import { ScrollArea } from "../../ui/scroll-area";
@@ -29,6 +30,7 @@ import {
   type WorkspacePageWidth,
 } from "../../WorkspacePageContainer";
 import { WorkspacePageHeader } from "../../WorkspacePageHeader";
+import { PhoneBarContext } from "../system/PhoneBar";
 
 export function ZeropsHostedFrame({
   breadcrumb,
@@ -37,7 +39,6 @@ export function ZeropsHostedFrame({
   centered = false,
   footer,
   width = "wide",
-  side,
   children,
 }: {
   /** Shown in the bar inside the app shell, where the sidebar holds the brand. */
@@ -56,15 +57,14 @@ export function ZeropsHostedFrame({
   /** One quiet line at the foot of a centred page — the byline. */
   readonly footer?: ReactNode;
   readonly width?: WorkspacePageWidth;
-  /**
-   * A column beside the page, below the bar (an environment's vault), full height — where the
-   * frame is wide enough for the page beside it ({@link SIDE_BESIDE_MIN_PX}); under the page,
-   * full width, where it is not. Drawn for the place it is given.
-   */
-  readonly side?: ((placement: SidePlacement) => ReactNode) | undefined;
   readonly children: ReactNode;
 }) {
   const standalone = useOptionalSidebar() === null;
+  // On a phone the menu's button stands fixed in the corner: every page in the shell keeps one
+  // bar's line beside it, and the page scrolls beneath that, never under the button.
+  const phone = useIsMobile() && !standalone && !centered;
+  // A page without a bar of its own says its first line there (`InPhoneBar`).
+  const [phoneBar, setPhoneBar] = useState<HTMLElement | null>(null);
 
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground isolate">
@@ -80,7 +80,9 @@ export function ZeropsHostedFrame({
           >
             <div
               className={cn(
-                "mx-auto flex h-full w-full min-w-0 items-center gap-3 px-5 sm:px-6",
+                "mx-auto flex h-full w-full min-w-0 items-center gap-3",
+                // Beside the menu's button the header already steps in; the page's gutter ends it.
+                phone ? "pr-4" : "px-5 sm:px-6",
                 workspacePageWidthClass(width),
               )}
             >
@@ -99,6 +101,10 @@ export function ZeropsHostedFrame({
               )}
             </div>
           </WorkspacePageHeader>
+        ) : phone ? (
+          <WorkspacePageHeader className="pr-4" data-zerops-frame="phone" electron={isElectron}>
+            <div className="flex h-full min-w-0 flex-1 items-center gap-3" ref={setPhoneBar} />
+          </WorkspacePageHeader>
         ) : isElectron ? (
           <div
             aria-hidden="true"
@@ -115,64 +121,17 @@ export function ZeropsHostedFrame({
               <footer className="flex shrink-0 justify-center px-6 pb-6">{footer}</footer>
             )}
           </div>
-        ) : side === undefined ? (
-          <ScrollArea className="min-h-0 flex-1">
-            <WorkspacePageContainer width={width}>{children}</WorkspacePageContainer>
-          </ScrollArea>
         ) : (
-          <FrameWithSide side={side} width={width}>
-            {children}
-          </FrameWithSide>
+          <PhoneBarContext value={phone && !bar ? phoneBar : undefined}>
+            <ScrollArea className="min-h-0 flex-1">
+              {/* A phone's gutter is 16 px, and under the bar the page starts at once. */}
+              <WorkspacePageContainer className={cn("px-4", phone && "pt-2")} width={width}>
+                {children}
+              </WorkspacePageContainer>
+            </ScrollArea>
+          </PhoneBarContext>
         )}
       </div>
     </SidebarInset>
-  );
-}
-
-/** Where a frame's side column stands: beside the page, or under it. */
-export type SidePlacement = "beside" | "under";
-
-/**
- * The frame's width from which a side column stands beside the page: below it the page would be
- * squeezed until a table of services stacks into towers, so the column goes under the page.
- */
-export const SIDE_BESIDE_MIN_PX = 1100;
-
-/** The page and its side column, beside or under it by the frame's own width. */
-function FrameWithSide({
-  side,
-  width,
-  children,
-}: {
-  readonly side: (placement: SidePlacement) => ReactNode;
-  readonly width: WorkspacePageWidth;
-  readonly children: ReactNode;
-}) {
-  const host = useRef<HTMLDivElement | null>(null);
-  const [placement, setPlacement] = useState<SidePlacement>("beside");
-  // Measured before paint, so the page never draws in one arrangement and moves to the other.
-  useLayoutEffect(() => {
-    const element = host.current;
-    if (element === null) return;
-    const place = (widthPx: number) =>
-      setPlacement(widthPx >= SIDE_BESIDE_MIN_PX ? "beside" : "under");
-    place(element.getBoundingClientRect().width);
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(([entry]) => {
-      if (entry !== undefined) place(entry.contentRect.width);
-    });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
-  return (
-    <div className="flex min-h-0 flex-1" data-zerops-side={placement} ref={host}>
-      <ScrollArea className="min-h-0 min-w-0 flex-1">
-        <WorkspacePageContainer width={width}>
-          {children}
-          {placement === "under" ? side("under") : null}
-        </WorkspacePageContainer>
-      </ScrollArea>
-      {placement === "beside" ? side("beside") : null}
-    </div>
   );
 }

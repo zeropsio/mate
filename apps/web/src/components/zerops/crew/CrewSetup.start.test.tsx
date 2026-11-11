@@ -9,8 +9,9 @@ import { parseBrief, renderCrewHome } from "@t3tools/shared/crewHome";
 import { crewFromProposal } from "@t3tools/shared/crewTemplates";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { accountLocalStorage } from "~/zerops/accountLifetime";
 import {
   CREW_FAILURE_SHOWN_MS,
   crewFailureCauseOf,
@@ -23,29 +24,27 @@ import { hasCrewSetupDraft } from "~/zerops/crew/crewSetupDraft";
 import { CrewSetup } from "./CrewSetup";
 
 // The signed-in account's storage, in memory: what a closed page leaves behind.
-const stored = vi.hoisted(() => new Map<string, string>());
-vi.mock("~/zerops/accountLifetime", async (original) => ({
-  ...(await original<typeof import("~/zerops/accountLifetime")>()),
-  accountLocalStorage: {
-    getItem: (key: string) => stored.get(key) ?? null,
-    setItem: (key: string, value: string) => {
-      stored.set(key, value);
-      return true;
-    },
-    removeItem: (key: string) => {
-      stored.delete(key);
-    },
-  },
-}));
+const stored = new Map<string, string>();
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 let root: Root | undefined;
+beforeEach(() => {
+  vi.spyOn(accountLocalStorage, "getItem").mockImplementation((key) => stored.get(key) ?? null);
+  vi.spyOn(accountLocalStorage, "setItem").mockImplementation((key, value) => {
+    stored.set(key, value);
+    return true;
+  });
+  vi.spyOn(accountLocalStorage, "removeItem").mockImplementation((key) => {
+    stored.delete(key);
+  });
+});
 afterEach(() => {
-  stored.clear();
   act(() => root?.unmount());
   root = undefined;
   document.body.innerHTML = "";
+  stored.clear();
+  vi.restoreAllMocks();
 });
 
 const crew = {

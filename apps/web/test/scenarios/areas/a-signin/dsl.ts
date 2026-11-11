@@ -1,17 +1,12 @@
 import * as Effect from "effect/Effect";
 import { expect } from "@effect/vitest";
-import type { Page } from "puppeteer-core";
+import type { HTTPResponse, Page } from "puppeteer-core";
 import type { createScenario } from "../../harness/scenario.ts";
 import { openAccountMenu, showsText, visibleText } from "../../harness/browser.ts";
 import { rendered } from "../../harness/completedHttp.ts";
 import { deadline } from "../../harness/http.ts";
 import { answerInZerops, openZeropsWindow } from "../../harness/deviceLogin.ts";
-import {
-  secondOrganization,
-  endSessionCheck,
-  everySocketRechecked,
-  handoverCount,
-} from "./fake.ts";
+import { secondOrganization, endSessionCheck, handoverCount } from "./fake.ts";
 
 type Scenario = Effect.Success<ReturnType<typeof createScenario>>;
 
@@ -33,7 +28,7 @@ export const signInOrganization = Effect.fn("signin.chooseOrganization")(functio
       { polling: "raf" },
     );
     const authorization = await page.$("::-p-aria(Continue with your Zerops account)");
-    if (authorization) await authorization.click();
+    if (authorization) await page.locator("::-p-aria(Continue with your Zerops account)").click();
     await page.waitForFunction(
       () =>
         [...document.querySelectorAll("button")].some((button) =>
@@ -69,23 +64,7 @@ export function account(page: Page) {
       expect(await page.$('[data-zerops-surface="sidebar-environments"]')).toBeNull();
       expect(await page.$('[role="textbox"]')).toBeNull();
     }),
-    needsAdministrator: (core: Scenario["drivers"]["core"]["kind"]) =>
-      Effect.promise(async () => {
-        const notices = {
-          "in-process": "An admin sets up HQ for this organization.",
-          external:
-            "An Owner or Admin of this organization must sign in to Mate first. Then try again.",
-        };
-        await page.waitForFunction(
-          (notices) => notices.some((notice) => document.body.innerText.includes(notice)),
-          { polling: "raf" },
-          Object.values(notices),
-        );
-        expect(
-          await page.evaluate(() => document.body.innerText),
-          "ASSERTION: the selected organization shows its HQ's administrator requirement",
-        ).toContain(notices[core]);
-      }),
+    showsNoProjects: Effect.promise(() => visibleText(page, "first-run", "No projects yet")),
     reload: Effect.promise(async () => {
       await page.reload();
     }),
@@ -116,30 +95,16 @@ export function account(page: Page) {
   };
 }
 
-/** An existing HQ organization and a read-only membership where HQ has not been set up. */
+/** An organization with a read-only membership and no projects. */
 export const organizations = Effect.fn("signin.organizations")(function* (s: Scenario) {
   secondOrganization(s.drivers);
   s.given.person("owner", { orgId: "OTHER", role: "READ_ONLY" });
   yield* s.given.project("Ada", { mate: true, app: "Shop" });
 });
 
-export const sessionEnds = Effect.fn("signin.sessionEnds")(function* (
-  s: Scenario,
-  fault: "outage" | "expiry" | "refusal",
-) {
+export const sessionEnds = Effect.fn("signin.sessionEnds")(function* (s: Scenario) {
   yield* Effect.promise(() => s.hq.ready());
-  yield* Effect.promise(() => endSessionCheck(s.drivers, [...s.hq.links.values()], fault));
-});
-
-/** HQ looks at every socket's session again, and every one stays open. */
-export const hqKeepsEverySession = Effect.fn("signin.hqKeepsEverySession")(function* (s: Scenario) {
-  yield* Effect.promise(() => everySocketRechecked(s.drivers, s.hq.links));
-});
-
-export const retryHq = Effect.fn("signin.retryHq")(function* (s: Scenario) {
-  yield* Effect.promise(() =>
-    s.page.locator('button[data-zerops-surface="sidebar-hq-outage"]').click(),
-  );
+  yield* Effect.promise(() => endSessionCheck(s.drivers));
 });
 
 export function unchangedHandovers(s: Scenario) {
@@ -171,35 +136,22 @@ export const allowHqRetries = Effect.fn("signin.allowHqRetries")(function* (
   });
 });
 
-/** How long after `from()` the page first has an answer from HQ's API (its door or a ticket). */
+/** The next HQ API answer to the page, observed independently of any member-list answer. */
 export function firstHqAnswer(page: Page) {
-  let start: number | undefined;
-  let answered: (ms: number) => void = () => undefined;
-  let answer = new Promise<number>(() => undefined);
-  page.on("response", (response) => {
+  const answer = Promise.withResolvers<void>();
+  const received = (response: HTTPResponse) => {
     const path = new URL(response.url()).pathname;
-    if (
-      start !== undefined &&
-      (path.endsWith("/api/door") || path.endsWith("/api/stream-ticket"))
-    ) {
-      answered(performance.now() - start);
-      start = undefined;
+    if (path.endsWith("/api/door") || path.endsWith("/api/stream-ticket")) {
+      page.off("response", received);
+      answer.resolve();
     }
-  });
-  return {
-    from: () => {
-      start = performance.now();
-      answer = new Promise<number>((resolve) => {
-        answered = resolve;
-      });
-    },
-    ms: Effect.promise(() => deadline(answer, "HQ's first answer to the page")),
   };
+  page.on("response", received);
+  return Effect.promise(() => deadline(answer.promise, "HQ's first answer to the page"));
 }
 
 /** Device login from the landing: the Zerops window, what the person does there, what Mate says. */
 export function zeropsWindow(s: Scenario, page: Page = s.page) {
-  const deviceLogin = s.drivers.zerops.deviceLogin;
   return {
     /** Clicks `button` on Mate's side; the window it opens, routed and on the consent page. */
     opens: (button: string) =>
@@ -208,7 +160,7 @@ export function zeropsWindow(s: Scenario, page: Page = s.page) {
       Effect.promise(() => answerInZerops(window, decision)),
     /** The consent page the last window was pointed at: the API's link and this client's asks. */
     lastConsentPage: Effect.sync(() => {
-      const shown = deviceLogin.consentPages.at(-1);
+      const shown = s.drivers.zeropsHq?.consentPages.at(-1);
       if (!shown) throw new Error("No consent page was shown");
       return shown;
     }),
@@ -230,18 +182,6 @@ export function zeropsWindow(s: Scenario, page: Page = s.page) {
     ),
   };
 }
-
-/** Every address this tab's history holds, oldest first: what Back and Forward would open again. */
-export const historyAddresses = (page: Page) =>
-  Effect.promise(async () => {
-    const session = await page.createCDPSession();
-    try {
-      const { entries } = await session.send("Page.getNavigationHistory");
-      return entries.map((entry) => entry.url);
-    } finally {
-      await session.detach();
-    }
-  });
 
 /** A Mate's vault, from its conversation's right panel. */
 export function vault(page: Page) {

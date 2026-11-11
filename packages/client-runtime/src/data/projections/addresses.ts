@@ -13,6 +13,7 @@
  */
 import type { ZeropsProject } from "../../zerops/api.ts";
 import { isZcpService } from "../../zerops/candidates.ts";
+import { isRuntimeService } from "../../zerops/topology.ts";
 import { derivePublicRoutes } from "../../zerops/publicRoutes.ts";
 import { projectsScope } from "../families/project.ts";
 import { portRoutingsScope, type PublicPortRoutingValue } from "../families/publicPortRouting.ts";
@@ -161,6 +162,11 @@ export interface PlaceAddresses {
   readonly waitingPorts: ReadonlyArray<WaitingChange>;
   /** The organization's routings are refused to the viewer: demand the project's own listing. */
   readonly readsProject: boolean;
+  /**
+   * The platform says nothing deployed runs here: it has runtimes, and every one holds no deploy
+   * (`activeAppVersion: null`). False where one runs a deploy, or that is not read.
+   */
+  readonly nothingDeployed: boolean;
 }
 
 /** A place read in full that holds no domain of its own: a domain is worth offering. */
@@ -462,6 +468,7 @@ const NOTHING = {
   portTargets: [],
   waitingDomains: [],
   waitingPorts: [],
+  nothingDeployed: false,
 } satisfies Omit<PlaceAddresses, "state" | "readsProject">;
 
 export const addresses: Projection<ProjectKey, PlaceAddresses> = {
@@ -486,6 +493,7 @@ export const addresses: Projection<ProjectKey, PlaceAddresses> = {
     const ips = placeIps(row);
     const names = new Map(services.services.map((service) => [service.id, service.name]));
     const live = services.services.filter(reachable);
+    const runtimes = live.filter(isRuntimeService);
     return {
       state: routings.complete ? "ready" : "reading",
       domains: domainsOf(routings.rows, names, ips),
@@ -500,6 +508,8 @@ export const addresses: Projection<ProjectKey, PlaceAddresses> = {
       ),
       waitingDomains: waitingDomainsOf(routings.rows, names),
       readsProject,
+      nothingDeployed:
+        runtimes.length > 0 && runtimes.every((service) => service.activeAppVersion === null),
     };
   },
   equals: sameValue,

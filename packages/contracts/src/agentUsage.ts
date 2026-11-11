@@ -232,12 +232,17 @@ export const UsageReport = Schema.Struct({
   ).check(Schema.isMaxLength(200)),
   coverageMore: Schema.Boolean,
   recordedSince: Schema.optionalKey(Schema.NullOr(Instant)),
+  /**
+   * The providers' own charges; HQ sends them, `{}` included, only to a reader Zerops lets view the
+   * organisation's finances. Absent: the report's costs are hidden from this reader, and every
+   * `costUsdNanos` in it is null.
+   */
   nativeCosts: Schema.optionalKey(Schema.Record(Schema.String, UsageQuantity)),
   totals: UsageStatistics,
   pricing: Schema.Struct({
     basis: Schema.Literal("automatic-api-equivalent-estimate"),
     revision: UsageIdentity,
-    /** Integer USD nanos; null means no usable rates, never a fully priced zero. */
+    /** Integer USD nanos; null means no usable rates or hidden costs, never a fully priced zero. */
     costUsdNanos: Schema.NullOr(UsageQuantity),
     pricedModelEntries: UsageQuantity,
     unpricedModelEntries: UsageQuantity,

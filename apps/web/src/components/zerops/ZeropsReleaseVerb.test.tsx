@@ -17,25 +17,41 @@ vi.mock("~/zerops/ZeropsSessionProvider", async (original) => ({
   useZeropsSessionOptional: () => ({ status: "signed-in", activeOrganization: { id: "org" } }),
 }));
 vi.mock("~/zerops/accountHq", () => ({
-  useAccountHq: () => ({ hq: { kind: "official", address: "https://hq.test" } }),
+  configuredHq: () => ({ projectId: "hq", address: "https://hq.test" }),
 }));
 vi.mock("~/zerops/flowVerbs", () => ({
   useFlowVerbs: () => ({ pending: new Set() }),
 }));
 
-it.each([false, true])(
+it.each([
+  { arrivesAfterPaint: false, missing: false },
+  { arrivesAfterPaint: true, missing: false },
+  { arrivesAfterPaint: false, missing: true },
+  { arrivesAfterPaint: true, missing: true },
+])(
   "Opening an overview shows the release offer without reading a repository.",
-  async (arrivesAfterPaint) => {
+  async ({ arrivesAfterPaint, missing }) => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     const registry = AtomRegistry.make();
     const structure = {
-      apps: [{ id: "app", name: "Shop", projects: [], environments: [] }],
+      apps: [
+        {
+          id: "app",
+          name: "Shop",
+          projects: [],
+          environments: [],
+          ...(missing ? { can: { release: { allow: true } } } : {}),
+        },
+      ],
       ungrouped: [],
     };
     const offer = {
       head: "a".repeat(40),
       suggestion: "v1.2.3",
-      gate: { allow: true },
+      gate: missing
+        ? ({ allow: false, reason: "Production has no service agentrunner." } as const)
+        : ({ allow: true } as const),
+      ...(missing ? { missingServices: ["agentrunner"] } : {}),
       inFlight: null,
       summary: { total: 2, more: 0, subjects: ["Quicker checkout", "Fix VAT"], atLeast: false },
     } as const;
@@ -64,7 +80,6 @@ it.each([false, true])(
       retry: vi.fn(),
       showHq: vi.fn(),
       moveOffers: vi.fn(),
-      handoverCandidates: vi.fn(),
       readDetail: vi.fn(),
       revalidate: vi.fn(),
       retryDetail: vi.fn(),
@@ -105,7 +120,11 @@ it.each([false, true])(
         seed({
           structure,
           releaseOffers: {
-            app: { ...offer, gate: { allow: false, reason: "Nothing waits for release." } },
+            app: {
+              ...offer,
+              ...(missing ? { missingServices: [] } : {}),
+              gate: { allow: false, reason: "Nothing waits for release." },
+            },
           },
         }),
       );

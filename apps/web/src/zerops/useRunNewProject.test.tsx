@@ -49,6 +49,7 @@ const UNSENT: CreationRead = {
 const ASK: CreationAsk = {
   ask: {
     organizationId: "org-acme",
+    creator: "cu-me",
     birthId: "creation-1",
     name: "Garden",
     botName: "Nova",
@@ -64,6 +65,39 @@ const ASK: CreationAsk = {
 afterEach(() => vi.clearAllMocks());
 
 describe("New project setup after platform creation", () => {
+  it("does not send the first project when its birth attempt was taken elsewhere", async () => {
+    setup.run.mockImplementation(async (intent: OperationIntent) => {
+      if (intent.kind === "create-app") return { appId: "app-garden" };
+      if (intent.kind === "record-birth") return { birthId: "birth-nova" };
+      if (intent.kind === "claim-birth-attempt") throw new Error("attempt_taken");
+      if (intent.kind === "create-project") return { projectId: "unexpected-project" };
+      throw new Error(`Unexpected creation write: ${intent.kind}`);
+    });
+    let run: ReturnType<typeof useRunNewProject>;
+    function Probe() {
+      const start = useRunNewProject();
+      useEffect(() => {
+        run = start;
+      }, [start]);
+      return null;
+    }
+    let tree: ReturnType<typeof create>;
+    await act(async () => {
+      tree = create(<Probe />);
+    });
+    run!(ASK);
+    await completed!;
+    expect(setup.run).toHaveBeenCalledWith(
+      { kind: "claim-birth-attempt", orgId: "org-acme", birthId: "birth-nova", step: "create" },
+      expect.anything(),
+    );
+    expect(setup.run).not.toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "create-project" }),
+      expect.anything(),
+    );
+    act(() => tree!.unmount());
+  });
+
   it.each(["finished", "failed", "binding-refused"] as const)(
     "starts setup only after project.create ends: %s",
     async (outcome) => {
@@ -74,6 +108,8 @@ describe("New project setup after platform creation", () => {
         async (intent: OperationIntent, options: Parameters<RunToEnd>[1]) => {
           if (intent.kind === "create-app") return { appId: "app-garden" };
           if (intent.kind === "record-birth") return { birthId: "birth-nova" };
+          if (intent.kind === "claim-birth-attempt")
+            return { claim: { by: "person-1", at: "2026-11-05T17:00:00Z" } };
           if (intent.kind === "bind-birth") return bound.promise;
           if (intent.kind === "create-project") {
             options.accepted?.({ projectId: "original-project" });
@@ -97,6 +133,27 @@ describe("New project setup after platform creation", () => {
       });
       run!(ASK);
       await asked.promise;
+      expect(setup.run).toHaveBeenCalledWith(
+        {
+          kind: "record-birth",
+          orgId: "org-acme",
+          appId: "app-garden",
+          id: "creation-1",
+          face: "rose:seal",
+          createdApp: true,
+          intent: {
+            projectName: "Garden - Nova",
+            recipe: { kind: "none" },
+            agents: [],
+            standUp: false,
+            automated: false,
+            placement: { role: "dev", name: "Nova", chief: false },
+            location: null,
+            userRoles: [{ clientUserId: "cu-me", roleCode: "OWNER" }],
+          },
+        },
+        expect.anything(),
+      );
       expect(setup.run).toHaveBeenCalledWith(
         {
           kind: "bind-birth",

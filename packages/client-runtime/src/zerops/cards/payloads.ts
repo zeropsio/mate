@@ -137,6 +137,7 @@ export type ZeropsCardPayload =
     }
   | {
       readonly kind: "devServer";
+      readonly name?: string;
       readonly action: string;
       readonly hostname: string;
       readonly running: boolean;
@@ -157,6 +158,8 @@ export type ZeropsCardPayload =
        * no topology view, so its one server's card opens this, as a service's opens the view's.
        */
       readonly leaseUrl?: string;
+      /** What zcp holds the service in place for, where it holds it as a stand-in. */
+      readonly standIn?: { readonly for: string };
     }
   | {
       readonly kind: "browser";
@@ -519,6 +522,7 @@ function decodeDevServer(document: Record<string, unknown>): ZeropsCardPayload |
   }
   return {
     kind: "devServer",
+    ...optional("name", readString(document.name)),
     action,
     hostname,
     running,
@@ -529,7 +533,14 @@ function decodeDevServer(document: Record<string, unknown>): ZeropsCardPayload |
     ...optional("reason", readString(document.reason)),
     ...optional("logTail", readString(document.logTail)),
     ...devServersOf(document.envelope, hostname),
+    ...standInIn(document.standIn),
   };
+}
+
+/** A stand-in's `for`, where the result names one: `{ for: "pool-migrate" }`. */
+function standInIn(value: unknown): { readonly standIn?: { readonly for: string } } {
+  const held = readString(readRecord(value)?.for);
+  return held === undefined ? {} : { standIn: { for: held } };
 }
 
 const decodeDevServerEntry = Schema.decodeUnknownOption(ZeropsDevServer);

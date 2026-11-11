@@ -182,12 +182,13 @@ table keeps the decisions.
     client on upstream's EAS project), app version bumps, `6cc7f7006`/`c0912debc`,
     `da6a85b13`/`7c2702d68` (no panel-animation setting), `b3de243d5` (Windows setup action),
     `b9199617d` (Tailwind 4.3.0 emits one block per class — take it with `1f7a3c11c` in any 4.3.3+
-    bump), `82cd1d1aa` (model favourites the fork never took). **Deferred with a reason:**
+    bump), `82cd1d1aa` (model favourites the fork never took), `11e91f126`/`9c524d577` (store
+    screenshot capture, deleted in the fork). **Deferred with a reason:**
     `9a609a4e4` (the undo notice moves into the sidebar, the fork's redesigned surface — the toast
     stays), `dca84efb5`/`9030a60ea`/`266d70cc4` (Tiptap composer), `0f1b572b9` (mobile theme on the
     Material redesign), the Material-redesign dependents (`dec073228`, `7230f6b1b`, `4fb9dfc8b`'s
     ScreenHeader with `989bde889`/`54bbed660`/`7ee60f4bc`/`aba1c6352`/`88b9226d2`, `21be723ad`),
-    `11e91f126`/`9c524d577` (showcase captures need Android push), `1c1270663` (project icons).
+    `1c1270663` (project icons).
     **Partial:** `568c9bc4d` (Effect language-service suggestions: 94 files take the rewrite, 48
     hunks on fork-diverged code keep the fork's version; `schemaNumber` off as upstream). **Open for
     the owner:** the in-app CLI updaters still exist although the image owns the CLIs;
@@ -284,3 +285,116 @@ table keeps the decisions.
     sends one in a Mate); `28ce9d1c1`'s split of `settings:write`/`providers:manage` out of
     `orchestration:operate`; undici 6.28.1 unaudited (`pnpm audit`); upstream's mermaid SVG
     hardening if `5e35272fd` is ever ported
+- `e2a781477afd2aea1741f720afa9067294e7a1b7` (`upstream/main`, 2026-11-11)
+  - _Date:_ 2026-11-11
+  - _Decisions:_ 5,145 upstream commits since row 6 (upstream v0.1.0–v0.1.9: V2 stable, providers
+    moved into `packages/provider-*`, source-control and secret-provider packages). Triage by zone
+    scouts kept only fixes on code the fork still runs; four lanes landed **72 `port:` +
+    1 `import:` + 12 fork fixes**.
+    - **Security and dependencies.**
+      - The undici 8 catalog pin is now 8.12.4 with an override. The old version had four high
+        advisories, including TLS validation.
+      - dompurify is now 3.4.17 and stream-json 3.7.0, and audit-flagged transitive packages were
+        re-resolved within their ranges. `pnpm audit --prod` went from 36 high and 4 critical to
+        5 high and 0 critical; all five left are desktop/mobile major bumps.
+      - Socket tickets and signed asset/upload tokens are redacted from span URL attributes and
+        span events. Spans are kept; upstream's `UrlParams.CurrentRedactedNames` is not in
+        Effect 4.0.1.
+      - Antigravity's ACP file read/write canonicalizes the deepest existing ancestor and refuses
+        dangling links.
+      - ACP stderr redacts `sk-` keys that contain `_`.
+    - **Server.**
+      - SQLite: `synchronous = NORMAL` and `temp_store = MEMORY`.
+      - `forceKillAfter` on helpers.
+      - A per-repository lock serializes git's shared-config writes. It covers only the config
+        writes, never a checkout, clone or push.
+      - Settings refuse to write over an undecodable `settings.json`.
+      - Config and keybinding subscriptions no longer miss changes made during the snapshot.
+      - Git status runs in parallel.
+      - The review diff stops indexing untracked files at 5,000.
+      - A 503 before the HTTP handler attaches.
+      - Workspace short reads.
+      - Keybindings keep entries the build cannot decode.
+      - `packages/shared`: cliArgs, Net, truncate, semver, symlink hops, JSONC, login-shell probe
+        timeouts.
+    - **Terminal.**
+      - Server: an idle terminal stops polling `ps`, terminal streams get an 8 MiB byte budget
+        with a fresh-snapshot resync, history writes batch at 250 ms, and history keeps output
+        after cut escape sequences and C1.
+      - Client: output no longer re-renders the drawer; paste fires once; mode-2026 synchronized
+        updates; the theme's ANSI palette; powerline glyphs; selection survives redraws; refit
+        after a reconnect; Option-layer, touch-scroll and Android Backspace input.
+    - **Providers.**
+      - `effect-codex-app-server` is re-imported at this SHA. `imported.lock` can keep one
+        transform record per package.
+      - Codex: shadow-home locks, per-instance `CODEX_HOME`, 20 s probes.
+      - Claude: plugin and `--add-dir` skills, skill dispatch, the child environment scrub, a
+        logged-out CLI reported as unauthenticated, `managed-mcp.json`.
+      - Grok probes run without the autoupdater.
+      - The Antigravity IPv6 message.
+      - Manifest: Haiku 5.5 and Ultracode; the bare aliases moved to 5.5. Floors are unchanged.
+    - **Web.**
+      - The timeline row key is bucketed by length, ending the nested-update loop.
+      - Settings readers select their own fields.
+      - Corrupt stored settings no longer block writes.
+      - Stale `@` suggestions are refused.
+      - Popover exit and dialog content retention.
+      - IME guards.
+      - A bounded cache of rendered markdown.
+      - The tool-row keyboard guard.
+      - Question auto-advance is cancelled on navigation.
+      - The run shimmer is stepped (`steps(30)`).
+  - _Declined:_
+    - **Upstream migrations.**
+    - **The V2 orchestrator and its features** (queue, `delegate_task`, forks, side chats, thread
+      links, the agent MCP).
+    - **Source-control forges and 1Password secret providers.** HQ owns git hosting.
+    - **Mobile/desktop features.**
+    - **Upstream's drain on a terminal history flush.** The fork settles only the work queued
+      before a clear or close (`settleKey`). At the new 250 ms debounce, a drain lets a busy shell
+      hold Clear and the thread lock forever.
+    - **Resource-monitor sidecar polling.** The release does not build the sidecar.
+  - _7b (2026-11-11):_ the owner allowed breaking changes while Mate is not in production, so the
+    two things row 7 held back landed the same day, with the review leftovers.
+    - **`effect-acp` re-imported at this SHA** (ACP schema v2 with its v1/v2 compat client).
+      - Both wire packages are now upstream's trees byte for byte, and `imported.lock` carries no
+        transform.
+      - Cursor, Grok and Antigravity run on the compat client. It offers version 2 and takes the
+        v1 path unless the answer has v2's shape. Antigravity answers 2 in the v1 shape, so the
+        install check accepts 1 or 2.
+      - A v2 session reads its model and modes from config options; Grok sets its model through
+        the config-option request there.
+      - A prompt answer without a stop reason fails the turn, as does an idle agent's error.
+      - Cancelled tool calls end as failed; cancelled plan steps are dropped.
+      - The mock agent stays a v1 agent, because the CLIs it stands in for speak v1. Its
+        Antigravity profile answers 2 as the real one does.
+    - **Toolchain at upstream's versions.** Effect and every `@effect/*` at 4.1.2, typecheck
+      through `effect-tsgo tsrs` (`@effect/tsgo` 0.67.1), Vite+ 1.4 with vitest 5.0.5.
+      - `effect/Crypto` became `SecureRandom` and `Digest`, with a crypto layer beside every
+        platform layer.
+      - The effect patch shrank to the socket pinger: `pingTimeoutPaused` restarts the silence
+        window after a hidden page or a late tick, and an open counts as the first sign of
+        life, so a silent Mate always gets three pings (17.5 s between the third and fourth).
+      - The Effect 4.0.1 codemod is deleted.
+    - **Hygiene.**
+      - The desktop bootstrap envelope is deleted whole (the grant, `--bootstrap-fd`,
+        `T3CODE_BOOTSTRAP_FD`, its contract).
+      - The server's HTTP log lines redact signed URL tokens, and a client hang-up logs as 499.
+      - A bare Claude alias resolves to the newest model the installed CLI can run. A failed
+        probe keeps the last known version.
+      - Electron 44.10.1.
+  - _Open for the owner:_
+    - The Claude `>=2.1.301`, Codex `>=0.159.0` and OpenCode `>=2.0.18` floors. The CLIs come
+      from the platform's `zcp@1` image, whose versions no repository states: a floor moves only
+      on a measured image version.
+    - An OpenCode 2 adapter.
+    - Kiro as an ACP provider.
+    - A scheduled message from a person or HQ, through the engine's existing wakes.
+    - The React Compiler migration.
+    - The `.repos/effect-smol` reference stays at 4.0.1. The 4.1.2 tree carries six of Effect's
+      own test fixtures that GitGuardian reads as secrets.
+    - The screen-reader activity announcer.
+  - _Open security candidates:_
+    - Antigravity's check-then-write race, which is inherent while the agent has a shell anyway.
+    - The desktop telemetry descriptors (`desktopTelemetryFd`, `DesktopTelemetryReceiver`) are
+      never set in a Mate and can go with their host-power and resource-telemetry readers.

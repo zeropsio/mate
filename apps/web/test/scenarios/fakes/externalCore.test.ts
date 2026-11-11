@@ -2,14 +2,18 @@
 import { expect, it } from "@effect/vitest";
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFSP from "node:fs/promises";
+import * as NodeHttp from "node:http";
 import * as NodeNet from "node:net";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
-import { emptyWorld } from "../../../../hq/test/harness/zeropsFake.ts";
+import { vi } from "vite-plus/test";
+import { emptyWorld } from "../harness/fakeWorld.ts";
 import { startExternalCore } from "../harness/externalCore.ts";
+import { startScenarioCore } from "../harness/hqCore.ts";
+import preflight from "../harness/hqPreflight.ts";
 import { serve } from "../harness/http.ts";
 
 /** The kernel's view of a PID: a process that only awaits reaping (state Z) is dead. */
@@ -21,6 +25,107 @@ const alive = (pid: number) => {
 };
 
 const quote = (value: string) => `'${value.replaceAll("'", "'\"'\"'")}'`;
+
+it("A scenario shard reuses only the preflight for its pinned HQ revision", async () => {
+  const ref = (
+    await NodeFSP.readFile(new URL("../../../../../.mate-hq-ref", import.meta.url), "utf8")
+  ).trim();
+  try {
+    vi.stubEnv("GITHUB_ACTIONS", "true");
+    vi.stubEnv("MATE_HQ_TEST_COMMAND", "");
+    vi.stubEnv("MATE_HQ_PREFLIGHT_SHA", ref);
+    await expect(preflight()).resolves.toBeUndefined();
+    vi.stubEnv("MATE_HQ_PREFLIGHT_SHA", "1111111111111111111111111111111111111111");
+    await expect(preflight()).rejects.toThrow("Scenarios run against mate-hq's test HQ");
+    vi.stubEnv("MATE_HQ_PREFLIGHT_SHA", ref);
+    vi.stubEnv("GITHUB_ACTIONS", "false");
+    await expect(preflight()).rejects.toThrow("Scenarios run against mate-hq's test HQ");
+  } finally {
+    vi.unstubAllEnvs();
+  }
+});
+
+it.effect(
+  "Decision: the preflight before fan-out checks the built HQ is that SHA and answers the harness's contract; a mismatch fails once, first.",
+  () =>
+    Effect.gen(function* () {
+      const expected = (yield* Effect.promise(() =>
+        NodeFSP.readFile(new URL("../../../../../.mate-hq-ref", import.meta.url), "utf8"),
+      )).trim();
+      const actual = "1111111111111111111111111111111111111111";
+      const script = `
+      const http = require("node:http");
+      const server = http.createServer((req, res) => {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ commit: ${JSON.stringify(actual)} }));
+      });
+      server.listen(0, "127.0.0.1", () => {
+        const origin = "http://127.0.0.1:" + server.address().port;
+        process.stdout.write(JSON.stringify({
+          origin,
+          database: "postgres://127.0.0.1/stub",
+          instances: [{ origin }, { origin }],
+          clock: process.env.HQ_TEST_WAIT_CLOCK_FILE,
+        }) + "\\n");
+      });
+      process.stdin.resume();
+      process.stdin.once("end", () => server.close());
+    `;
+      yield* Effect.acquireRelease(
+        Effect.sync(() =>
+          vi.stubEnv("MATE_HQ_TEST_COMMAND", `${quote(process.execPath)} -e ${quote(script)} --`),
+        ),
+        () => Effect.sync(() => vi.unstubAllEnvs()),
+      );
+      const result = yield* Effect.exit(
+        startScenarioCore({ baseUrl: "http://127.0.0.1:1", world: emptyWorld() }).pipe(
+          Effect.scoped,
+        ),
+      );
+      expect(Exit.isFailure(result)).toBe(true);
+      if (Exit.isFailure(result)) {
+        const error = Cause.pretty(result.cause);
+        expect(error).toContain(expected);
+        expect(error).toContain(actual);
+      }
+    }).pipe(Effect.scoped),
+);
+
+it.effect.each(["EPERM", "ESRCH"])(
+  "external Core shutdown accepts %s for its captured process group",
+  (code) =>
+    Effect.gen(function* () {
+      const script = `
+        process.stdout.write(JSON.stringify({
+          origin: "http://127.0.0.1:1",
+          database: String(process.pid),
+          instances: [{ origin: "http://127.0.0.1:1" }],
+          clock: process.env.HQ_TEST_WAIT_CLOCK_FILE,
+        }) + "\\n");
+        process.stdin.resume();
+        process.stdin.once("end", () => process.exit(0));
+      `;
+      const core = yield* startExternalCore(`${quote(process.execPath)} -e ${quote(script)}`, {
+        baseUrl: "http://127.0.0.1:1",
+        world: emptyWorld(),
+      });
+      const pid = Number(core.url);
+      const kill = process.kill.bind(process);
+      const spy = yield* Effect.acquireRelease(
+        Effect.sync(() =>
+          vi.spyOn(process, "kill").mockImplementation((target, signal) => {
+            if (target === -pid && signal === "SIGKILL") {
+              throw Object.assign(new Error(`kill ${code}`), { code });
+            }
+            return kill(target, signal);
+          }),
+        ),
+        (spy) => Effect.sync(() => spy.mockRestore()),
+      );
+      yield* core.stop;
+      expect(spy).toHaveBeenCalledWith(-pid, "SIGKILL");
+    }).pipe(Effect.scoped),
+);
 
 it.effect.each([0, 23])(
   "external Core uses the caller's Zerops API and awaits shutdown with exit code %s",
@@ -43,10 +148,13 @@ it.effect.each([0, 23])(
         res.end(JSON.stringify({ api: process.env.HQ_ZEROPS_API }));
       });
       server.listen(0, "127.0.0.1", () => {
-        // The readiness line of scripts/test-hq.ts: its database and the wait clock it honours.
+        // The readiness line of scripts/test-hq.ts: its database, its one instance and the wait
+        // clock it honours.
+        const origin = "http://127.0.0.1:" + server.address().port;
         process.stdout.write(JSON.stringify({
-          origin: "http://127.0.0.1:" + server.address().port,
+          origin,
           database: "postgres://127.0.0.1/stub",
+          instances: [{ origin }],
           clock: process.env.HQ_TEST_WAIT_CLOCK_FILE,
         }) + "\\n");
       });
@@ -75,6 +183,68 @@ it.effect.each([0, 23])(
       }
       expect(stopped, "the command's shutdown receipt arrives before the scope closes").toBe(true);
     }).pipe(Effect.scoped),
+);
+
+it.effect("external Core calls survive the server ending an idle connection without retrying", () =>
+  Effect.gen(function* () {
+    let connections = 0;
+    let requests = 0;
+    let idle: NodeNet.Socket | undefined;
+    const connectionIds = new WeakMap<NodeNet.Socket, number>();
+    const server = NodeHttp.createServer((req, res) => {
+      idle = req.socket;
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          connection: connectionIds.get(req.socket),
+          request: ++requests,
+          ...(req.url === "/first" ? {} : { method: req.method, path: req.url }),
+        }),
+      );
+    });
+    server.on("connection", (socket) => connectionIds.set(socket, ++connections));
+    yield* Effect.acquireRelease(
+      Effect.promise(() => new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))),
+      () => Effect.promise(() => new Promise<void>((resolve) => server.close(() => resolve()))),
+    );
+    const origin = `http://127.0.0.1:${(server.address() as NodeNet.AddressInfo).port}`;
+    const script = `
+      process.stdout.write(JSON.stringify({
+          origin: ${JSON.stringify(origin)},
+          database: "postgres://127.0.0.1/stub",
+          instances: [{ origin: ${JSON.stringify(origin)} }],
+          clock: process.env.HQ_TEST_WAIT_CLOCK_FILE,
+        }) + "\\n");
+      process.stdin.resume();
+      process.stdin.once("end", () => process.exit(0));
+    `;
+    const core = yield* startExternalCore(`${quote(process.execPath)} -e ${quote(script)}`, {
+      baseUrl: "http://127.0.0.1:1",
+      world: emptyWorld(),
+    });
+    const first = yield* core.call("GET", "/first");
+    expect(first.status).toBe(200);
+    expect(first.body).toEqual({ connection: 1, request: 1 });
+    // Half-close the idle server socket before the client has received its FIN, then call again
+    // in the same turn. The fresh connection must carry the next request, without replaying it.
+    idle!.end();
+    const next = yield* Effect.exit(
+      core.call("PATCH", "/api/apps/project", { body: { name: "HQ returned" } }),
+    );
+    expect(
+      Exit.isSuccess(next),
+      `ASSERTION: The next Core call must use a fresh connection after the server's half-close${Exit.isFailure(next) ? `: ${Cause.pretty(next.cause)} (${(Cause.squash(next.cause) as NodeJS.ErrnoException).code})` : ""}`,
+    ).toBe(true);
+    if (Exit.isSuccess(next)) {
+      expect(next.value.status).toBe(200);
+      expect(next.value.body).toEqual({
+        connection: 2,
+        request: 2,
+        method: "PATCH",
+        path: "/api/apps/project",
+      });
+    }
+  }).pipe(Effect.scoped),
 );
 
 it.effect("a scenario's external Core leaves no process behind when it is stopped", () =>
@@ -111,9 +281,11 @@ it.effect("a scenario's external Core leaves no process behind when it is stoppe
         .unref();
       const server = http.createServer();
       server.listen(0, "127.0.0.1", () => {
+        const origin = "http://127.0.0.1:" + server.address().port;
         process.stdout.write(JSON.stringify({
-          origin: "http://127.0.0.1:" + server.address().port,
+          origin,
           database: "postgres://127.0.0.1/stub",
+          instances: [{ origin }],
           clock: process.env.HQ_TEST_WAIT_CLOCK_FILE,
         }) + "\\n");
       });

@@ -13,6 +13,7 @@ import {
   ConversationId,
   DEFAULT_MODEL,
   isCardAsk,
+  isRefusedAttempt,
   MATE_ENGINE_PROTOCOLS,
   DEFAULT_PROVIDER_INTERACTION_MODE,
   ProjectId,
@@ -94,6 +95,8 @@ const turnOf = (run: ViewRun): OrchestrationLatestTurn => {
     case "completed":
       return { ...turn, state: "completed", completedAt };
     case "failed":
+      // A refused attempt never ran: no turn of the conversation broke.
+      return { ...turn, state: isRefusedAttempt(run.end) ? "interrupted" : "error", completedAt };
     case "crashed":
       return { ...turn, state: "error", completedAt };
     default:

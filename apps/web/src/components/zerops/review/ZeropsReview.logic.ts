@@ -10,20 +10,21 @@
  */
 import {
   deployedVersion,
-  type GroupFlowAddress,
+  type GroupFlowPreview,
   linksChange,
   type Moved,
   type ProductionRun,
-  RELEASE_TAKES,
-  type ReleaseReviewModel,
   type ReviewPrimary,
   type ReviewState,
   type ReviewVerdict,
   type ReleaseReplaces,
+  type ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
+import { crewPossessive } from "@t3tools/client-runtime/zerops/crew/phrases";
+import { mateParts } from "@t3tools/client-runtime/zerops/mateParts";
 import { parseAttachmentUrl, type ChangeLink, type ChangeReceipt } from "@t3tools/shared/hqChanges";
-import { quoteWords } from "@t3tools/shared/messagePreview";
-import { siteOf, soleSite } from "../projects/projectCard.logic";
+import { NO_ACCESS } from "~/zerops/hqRead.logic";
+import { environmentTitle } from "../place/place.logic";
 
 export type ReviewKind = "change" | "release" | "rollback" | "crew-task";
 
@@ -106,23 +107,22 @@ export function keyStaysInReview(key: string): boolean {
 }
 
 /**
- * What a change's review says it does, first: the description its author wrote; where it wrote
- * none, what the run that made it said of it; while that run's conversation is read, the room its
- * words will take; and where neither said anything, nothing at all — no heading over no words.
+ * What a change's review says it does, first: the description its Mate wrote of it; while the
+ * change's record is read, the room its words will take; and where it wrote none, nothing at all —
+ * no heading over no words. A run's reply is never borrowed: it may be about other changes.
  */
 export type ReviewDescription =
   | { readonly kind: "body"; readonly text: string }
-  | { readonly kind: "run"; readonly words: string }
   | { readonly kind: "reading" }
   | { readonly kind: "none" };
 
 export function reviewDescription(input: {
   readonly description: string | undefined;
-  readonly run: { readonly words: string | undefined; readonly reading: boolean };
+  /** The change's record, which may hold its description, is still read. */
+  readonly reading: boolean;
 }): ReviewDescription {
   if (input.description !== undefined) return { kind: "body", text: input.description };
-  if (input.run.words !== undefined) return { kind: "run", words: input.run.words };
-  return input.run.reading ? { kind: "reading" } : { kind: "none" };
+  return input.reading ? { kind: "reading" } : { kind: "none" };
 }
 
 /**
@@ -281,48 +281,6 @@ export function changeRunMessage<M extends { readonly role: string; readonly tex
   );
 }
 
-/** How much of what the Mate said stands in the review: four lines of it, about. */
-const RUN_WORDS_MAX = 400;
-
-/**
- * A message's markdown read as plain sentences: no code blocks, marks, links, bullets or quote
- * markers. A GitHub callout keeps its word, run into its first line as the chat draws it
- * (`quoteWords`).
- */
-function plainText(text: string): string {
-  return quoteWords(text)
-    .replace(/```[\s\S]*?```/gu, " ")
-    .replace(/!\[[^\]]*\]\([^)]*\)/gu, " ")
-    .replace(/\[([^\]]*)\]\([^)]*\)/gu, "$1")
-    .replace(/^\s{0,3}#{1,6}\s+/gmu, "")
-    .replace(/^\s*(?:[-*+]|\d+[.)])\s+/gmu, "")
-    .replace(/(\*\*|__|`)/gu, "")
-    .replace(/\s+/gu, " ")
-    .trim();
-}
-
-/**
- * What a change does, in the words of the run that made it: the sentences of the Mate's
- * message that links it, every sentence with an address left out — the link's own among them —
- * up to about four lines. The rest is the run's, one click away.
- */
-export function runWords(text: string): string | undefined {
-  const sentences = plainText(text)
-    .split(/(?<=[.!?])\s+/u)
-    .map((sentence) => sentence.trim())
-    .filter((sentence) => sentence.length > 0 && !/https?:\/\//u.test(sentence));
-  const kept: Array<string> = [];
-  let length = 0;
-  for (const sentence of sentences) {
-    const next = length + (kept.length === 0 ? 0 : 1) + sentence.length;
-    if (next > RUN_WORDS_MAX && kept.length > 0) break;
-    kept.push(sentence);
-    length = next;
-  }
-  const words = kept.join(" ");
-  return words.length === 0 ? undefined : words.slice(0, RUN_WORDS_MAX);
-}
-
 /** How many lines of one file's diff stand before "Show all N lines" opens the rest. */
 export const REVIEW_DIFF_LINES_SHOWN = 400;
 /** A file's diff longer than this is never drawn whole here. */
@@ -433,6 +391,9 @@ function short(value: number): string {
 }
 
 /** `3 files`, `+42`, `−3` — or nothing while the size is unknown. */
+/** A folded row's count where HQ has not recorded what it counts: never a 0 that reads as none. */
+export const NOT_RECORDED_ASIDE = "Not known yet";
+
 export function sizeWords(size: {
   readonly files: number | undefined;
   readonly additions: number | undefined;
@@ -577,8 +538,7 @@ export function changeReadVerdict(input: {
     return verdict("attention", "This change could not be read", read.reason);
   if (input.failure !== undefined)
     return verdict("attention", "This change could not be read", input.failure);
-  if (input.projectKnown === false)
-    return verdict("attention", "This change's project isn't known here");
+  if (input.projectKnown === false) return verdict("attention", NO_ACCESS.title, NO_ACCESS.why);
   return verdict("quiet", "Waiting for the organization's HQ");
 }
 
@@ -629,26 +589,103 @@ export function whySaid(verdict: ReviewVerdict, draft: boolean): boolean {
   return verdict.state !== "ready" || draft;
 }
 
+/** "a", "a and b", "a, b and c". */
+const listed = (names: ReadonlyArray<string>): string =>
+  names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+
+/** An environment's name as a sentence names it: "Stage", a shared place, capitalised. */
+const placeName = (name: string): string => `${name.charAt(0).toUpperCase()}${name.slice(1)}`;
+
 /**
- * What merging does, said under the buttons: where it lands and what production keeps — after the
- * receipt's warning, while the change waits on its press.
+ * What merging does, said under the buttons: a merge lands on `main`, each stage that deploys
+ * merges from it deploys it (`stageDeploysMerges`) — no other is promised one — and production
+ * keeps its release — after the receipt's warning, while the change waits on its press. Where no
+ * stage deploys it, and for a setup change, which deploys nothing, the review's own words say what
+ * merging does: they also say where merging is not offered, or its files were never shown.
  */
 export function mergeFoot(input: {
   readonly state: ReviewState;
   readonly consequence: string;
-  /** The stage that follows `main`; `undefined` where there is none. */
-  readonly stage: string | undefined;
+  /** The stages that deploy what merges into `main`, by name; none, one or several. */
+  readonly stages: ReadonlyArray<string>;
   /** The release production runs. */
   readonly live: string | undefined;
   /** {@link changeReceipt}'s warning: parts not tried at the change. */
   readonly warning?: string | undefined;
+  /** A recipe change: what its merge does is the review's to say. */
+  readonly recipe?: boolean | undefined;
 }): string {
-  if (!CHECKS_SAID.has(input.state)) return input.consequence;
+  if (!CHECKS_SAID.has(input.state) || input.recipe === true) return input.consequence;
   const keeps =
     input.live === undefined ? "" : ` Production keeps ${input.live} until you release.`;
+  // Each by its title, as its row reads it: "demo-app-stage" is Stage.
+  const stages = input.stages.map((name) => environmentTitle("stage", name));
   const foot =
-    input.stage === undefined ? input.consequence : `Merging puts it on ${input.stage}.${keeps}`;
+    stages.length === 0
+      ? input.consequence
+      : `Lands on main; ${listed(stages)} ${stages.length === 1 ? "deploys" : "deploy"} it.${keeps}`;
   return input.warning === undefined ? foot : `${input.warning} ${foot}`;
+}
+
+/**
+ * Whether a stage deploys what merges into `main`, so the merge foot may say so: it follows
+ * `main`, and it has deployed from it — it runs a commit, or HQ took a deploy of it live. A stage
+ * that follows `main` and never deployed (Larkspur's, 2026-10-28: its stage tier waited in a
+ * setup change) is promised nothing.
+ */
+export function stageDeploysMerges(row: {
+  readonly tier: string;
+  readonly source: string;
+  readonly commit: string | undefined;
+  readonly deploys: ReadonlyArray<{ readonly kind: string; readonly state: string }>;
+}): boolean {
+  if (row.tier !== "stage" || row.source !== "main") return false;
+  return (
+    row.commit !== undefined ||
+    row.deploys.some((job) => job.kind === "deploy" && job.state === "live")
+  );
+}
+
+/**
+ * What a "Try it" pill says: whose preview it opens, then which part, by its service's real
+ * hostname — "Wren's preview · shopstage".
+ */
+export function tryItWords(
+  mateName: string,
+  part: string,
+): { readonly preview: string; readonly part: string } {
+  return { preview: `${placeName(crewPossessive(mateName))} preview`, part };
+}
+
+/**
+ * "Try it"'s previews: a Mate's parts (`mateParts`, the reader every surface shows them from), each
+ * part with a public preview by its real hostname. A change of one repository offers that pair's
+ * parts; where no part's dev is that repository — a pool-era Mate, whose parts' devs are pools — it
+ * offers every part, as a recipe change does.
+ */
+export function tryItPreviews(input: {
+  readonly routes: ReadonlyArray<ZeropsPublicRoute>;
+  readonly hostnames: ReadonlyArray<string>;
+  readonly pools: ReadonlyArray<string> | undefined;
+  readonly controlPlane: string | undefined;
+  /** The Mate tier on `main`. */
+  readonly tier: string | undefined;
+  /** The change's repository; `undefined` for every part's. */
+  readonly repository: string | undefined;
+}): ReadonlyArray<GroupFlowPreview> {
+  const { parts } = mateParts({
+    services: input.hostnames.map((hostname) => ({ hostname })),
+    routes: input.routes,
+    pools: input.pools,
+    controlPlane: input.controlPlane,
+    tier: input.tier,
+  });
+  const own = parts.filter((part) => part.devService === input.repository);
+  return (own.length === 0 ? parts : own).flatMap((part) =>
+    part.preview?.url === undefined
+      ? []
+      : [{ service: part.preview.service, url: part.preview.url }],
+  );
 }
 
 /** One part's preview in a change's review, as its receipt left it. */
@@ -705,138 +742,6 @@ export function changeReceipt(input: {
   };
 }
 
-/** What releasing does, said under its button: how long, and the way back. */
-export function releaseFoot(input: {
-  readonly state: ReviewState;
-  readonly consequence: string;
-  readonly live: string | undefined;
-}): string {
-  if (input.state !== "release-ready") return input.consequence;
-  const back =
-    input.live === undefined ? "" : ` You can roll back to ${input.live} from production's panel.`;
-  return `${RELEASE_TAKES}${back}`;
-}
-
-/** A release's head: its title, the line under it, the quiet line under that, and its foot. */
-export interface ReleaseHeading {
-  readonly title: string;
-  /** Before the press, what goes out (`releaseLine`); once pressed, the state says it all. */
-  readonly meta: string | undefined;
-  /** Where it stands, said once on the line: a running release's step and clock. */
-  readonly state: string | undefined;
-  /** Quiet, under the line: why it cannot go, the way back once live, what stopped it. */
-  readonly note: string | undefined;
-  /** Under the buttons: what pressing does; nothing once it is pressed. */
-  readonly foot: string;
-}
-
-/**
- * What a release's head says. Offered, it is the release to make, what goes out and what
- * pressing does; pressed, its title is where it stands — releasing, live, or stopped — and the
- * line says its step and clock once, never the offer's facts again beside it.
- */
-export function releaseHeading(input: {
-  readonly tag: string;
-  readonly model: ReleaseReviewModel;
-  /** What goes out (`releaseLine`). */
-  readonly line: string;
-  /** What production ran as it was offered. */
-  readonly live: string | undefined;
-}): ReleaseHeading {
-  const { tag, model } = input;
-  const { verdict } = model;
-  switch (verdict.state) {
-    case "releasing":
-      return {
-        title: `Releasing ${tag} to production`,
-        meta: undefined,
-        state: verdict.why,
-        note: model.consequence,
-        foot: "",
-      };
-    case "released":
-      return {
-        title: `${tag} is live`,
-        meta: undefined,
-        state: verdict.why,
-        note: model.ifWrong,
-        foot: "",
-      };
-    // Failed, "Production now" says what it still runs: its cause alone, its fix beside it.
-    case "release-failed":
-      return {
-        title: verdict.title,
-        meta: undefined,
-        state: undefined,
-        note: `${verdict.why.replace(/\.$/u, "")}.`,
-        foot: "",
-      };
-    case "release-stalled":
-    case "release-superseded":
-      return {
-        title: verdict.title,
-        meta: undefined,
-        state: undefined,
-        note: `${verdict.why.replace(/\.$/u, "")}. ${model.consequence}`,
-        foot: "",
-      };
-  }
-  const ready = verdict.state === "release-ready";
-  return {
-    title: `Release ${tag} to production`,
-    meta: ready ? input.line : input.line.replace(/\.$/u, ""),
-    state: ready ? undefined : verdict.title,
-    note: whySaid(verdict, false) ? verdict.why : undefined,
-    foot: releaseFoot({ state: verdict.state, consequence: model.consequence, live: input.live }),
-  };
-}
-
-function changesWords(n: number): string {
-  return `${String(n)} ${n === 1 ? "change" : "changes"}`;
-}
-
-/**
- * Under a release's title: how many changes, and whether the stage runs them — never that they
- * were tested there: running on a stage is no test anybody ran (the onboarding run's owner read
- * "tested on stage" of a stage nobody had opened).
- */
-export function releaseLine(input: {
-  /** How many go out; `undefined` while that is still compared, which is then not said. */
-  readonly changes: number | undefined;
-  /** The stage that follows `main`, by name. */
-  readonly stage: string | undefined;
-  /** When the stage last took what it runs (`sinceWords`). */
-  readonly since: string | undefined;
-  readonly onStage: { readonly total: number; readonly running: number } | undefined;
-  readonly live: string | undefined;
-}): string {
-  if (input.changes === undefined)
-    return input.live === undefined ? "The first release." : `Since ${input.live}.`;
-  const changes = changesWords(input.changes);
-  const onStage = input.onStage;
-  if (input.stage !== undefined && onStage !== undefined && onStage.total > 0) {
-    if (onStage.running >= onStage.total) {
-      return `${changes}, on ${input.stage}${input.since === undefined ? "" : ` since ${input.since}`}.`;
-    }
-    return `${changes}, ${String(onStage.running)} of them on ${input.stage} so far.`;
-  }
-  return input.live === undefined
-    ? `${changes}, the first release.`
-    : `${changes} since ${input.live}.`;
-}
-
-/** "Production now": what it runs, since when, and where. */
-export function productionNowLine(input: {
-  readonly live: string | undefined;
-  readonly since: string | undefined;
-  readonly host: string | undefined;
-}): string {
-  if (input.live === undefined) return "Nothing released yet.";
-  const since = input.since === undefined ? "" : ` since ${input.since}`;
-  const at = input.host === undefined ? "" : ` at ${input.host}`;
-  return `Runs ${input.live}${since}${at}.`;
-}
-
 /**
  * The code production runs, per service, where it runs one whole commit of a repository it builds
  * from: what a person can read before a release replaces it. A service running nothing, or what no
@@ -861,42 +766,8 @@ export function productionCode(input: {
 }
 
 /**
- * "Production now" for a release review: the line, and one row per part — what it runs and the
- * address it answers at — where production runs more than one (MODEL §9/5). One part keeps the
- * line, with its address when it is the only one.
- */
-export function productionNow(input: {
-  readonly live: string | undefined;
-  readonly since: string | undefined;
-  /** Production's parts by hostname, each with the version it runs as a person names it. */
-  readonly parts: ReadonlyArray<{
-    readonly hostname: string;
-    readonly version: string | undefined;
-  }>;
-  /** Each service's address (`placeAddresses`). */
-  readonly addresses: ReadonlyArray<GroupFlowAddress>;
-}): { readonly line: string; readonly rows: ReadonlyArray<string> } {
-  if (input.parts.length <= 1)
-    return { line: productionNowLine({ ...input, host: soleSite(input.addresses) }), rows: [] };
-  return {
-    line: productionNowLine({ ...input, host: undefined }),
-    rows: [...input.parts]
-      .sort((left, right) => left.hostname.localeCompare(right.hostname))
-      .map((part) => {
-        const host = siteOf(input.addresses.find((entry) => entry.service === part.hostname)?.url);
-        return [
-          part.hostname,
-          part.version ?? "runs nothing",
-          ...(host === undefined ? [] : [host]),
-        ].join(" · ");
-      }),
-  };
-}
-
-/**
- * What "Production now" says production ran as the release was offered: since when the release it
- * replaces runs — that release's own time, never a newer one's — and the parts a release puts
- * something on. A database runs no release, so it is no part here. While the release goes out, a
+ * What production ran as the release was offered: since when the release it replaces runs — that
+ * release's own time, never a newer one's — and the parts a release puts something on. A database runs no release, so it is no part here. While the release goes out, a
  * part it redeploys names the build on its way, not what it serves: it still serves the release it
  * replaces.
  */

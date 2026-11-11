@@ -15,8 +15,10 @@ import type {
   Options as ClaudeQueryOptions,
   PermissionMode,
   SDKMessage,
+  SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { ClaudeSettings, type ProviderRuntimeEvent } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -103,6 +105,8 @@ export class RecordingClaudeQuery implements AsyncIterable<SDKMessage> {
 export interface RecordedClaudeSession {
   readonly options: ClaudeQueryOptions;
   readonly query: RecordingClaudeQuery;
+  /** The messages the adapter sends, in order, as Claude would pull them. */
+  readonly prompt: AsyncIterable<SDKUserMessage>;
 }
 
 /**
@@ -120,7 +124,7 @@ export const makeClaudeAdapterHarness = Effect.fn("makeClaudeAdapterHarness")(fu
     modelCatalog: Effect.succeed(SYNTHETIC_CLAUDE_MODEL_CATALOG),
     createQuery: (input) => {
       const query = new RecordingClaudeQuery();
-      sessions.push({ options: input.options, query });
+      sessions.push({ options: input.options, query, prompt: input.prompt });
       return query;
     },
   });
@@ -143,7 +147,7 @@ export const makeClaudeAdapterHarness = Effect.fn("makeClaudeAdapterHarness")(fu
 export const claudeAdapterHarnessLayer = Layer.mergeAll(
   ServerConfig.layerTest("/tmp/claude-adapter-harness", "/tmp"),
   ServerSettingsService.layerTest(),
-).pipe(Layer.provideMerge(NodeServices.layer));
+).pipe(Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)));
 
 /**
  * A JSON-comparable copy of recorded options: `JSON.stringify` would drop a

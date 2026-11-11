@@ -28,7 +28,7 @@
  */
 
 import { pullRequestBlocked } from "./gitTab.ts";
-import type { FlowPullRequest } from "./projectFlow.ts";
+import { recipeProposalRedone, type FlowPullRequest } from "./projectFlow.ts";
 import { REVIEW_LABEL } from "./reviewVerdict.ts";
 
 export type ProjectAttentionKind =
@@ -125,6 +125,8 @@ export function projectAttention(
       });
       continue;
     }
+    // Its Mate composes it again from main by itself: nobody is asked.
+    if (recipeProposalRedone(pull)) continue;
     const blocked = pullRequestBlocked(pull);
     // Checks merely running are not waiting on anybody: waiting is correct.
     if (blocked === null || blocked.ask === undefined) continue;
@@ -175,11 +177,6 @@ export function changesCountWords(count: number, atLeast: boolean, changeCount?:
  */
 export function cannotTellWhatRuns(services: ReadonlyArray<string>): string {
   return `Can't tell what ${serviceNames(services)} ${services.length === 1 ? "runs" : "run"}`;
-}
-
-/** Services a release redeploys while it releases: what they ran is going, and they deploy. */
-export function servicesDeploying(services: ReadonlyArray<string>): string {
-  return `${serviceNames(services)} ${services.length === 1 ? "is" : "are"} deploying`;
 }
 
 /** `app`, `app and api`, `app, api and web`. */

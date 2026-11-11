@@ -1,13 +1,27 @@
-import type * as React from "react";
+import * as React from "react";
 import { act } from "react";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { renderToStaticMarkup } from "react-dom/server";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-const detailHolds = vi.hoisted(() => new Map<string, number>());
-vi.mock("~/zerops/ZeropsAccountData", () => ({
-  // Outside an account: a card has no detail to wait for, and paints at once.
-  useAccountOrgId: () => null,
-  useProjection: () => ({}),
-  useAccountDataOptional: () => ({
+import * as accountData from "~/zerops/ZeropsAccountData";
+import * as clock from "~/zerops/useNowMs";
+import * as stopReadAgain from "../StopReadAgain";
+
+const tooltip = await import("~/components/ui/tooltip");
+const popover = await import("~/components/ui/popover");
+const detailHolds = new Map<string, number>();
+const mounted: ReactTestRenderer[] = [];
+const Open = React.createContext<{ open: boolean; set: (open: boolean) => void }>({
+  open: false,
+  set: () => {},
+});
+
+beforeEach(() => {
+  vi.spyOn(accountData, "useAccountOrgId").mockReturnValue(null);
+  vi.spyOn(accountData, "useProjection").mockImplementation(
+    (() => ({})) as typeof accountData.useProjection,
+  );
+  vi.spyOn(accountData, "useAccountDataOptional").mockReturnValue({
     demandDetail: ({ ownerId }: { readonly ownerId: string }) => {
       detailHolds.set(ownerId, (detailHolds.get(ownerId) ?? 0) + 1);
       return () => {
@@ -16,103 +30,76 @@ vi.mock("~/zerops/ZeropsAccountData", () => ({
         else detailHolds.set(ownerId, remaining);
       };
     },
-  }),
-}));
-
-vi.mock("@tanstack/react-router", async () => {
-  const { createElement } = await import("react");
-  return {
-    Link: ({
-      to,
-      params = {},
-      ...props
-    }: React.ComponentProps<"a"> & { to: string; params?: Record<string, string> }) =>
-      createElement("a", {
-        href: to.replace(/\$(\w+)/gu, (_, key: string) => params[key] ?? ""),
-        ...props,
-      }),
-  };
+  } as unknown as ReturnType<typeof accountData.useAccountDataOptional>);
+  vi.spyOn(clock, "useNowMs").mockReturnValue(0);
+  vi.spyOn(clock, "useSecondsNowMs").mockReturnValue(0);
+  // Node renders draw a tooltip's trigger but not its hover popup.
+  vi.spyOn(tooltip, "Tooltip").mockImplementation((({
+    children,
+  }: {
+    readonly children: React.ReactNode;
+  }) => <>{children}</>) as typeof tooltip.Tooltip);
+  vi.spyOn(tooltip, "TooltipTrigger").mockImplementation((({
+    children,
+    render,
+  }: {
+    readonly children: React.ReactNode;
+    readonly render: React.ReactElement;
+  }) => React.cloneElement(render, undefined, children)) as typeof tooltip.TooltipTrigger);
+  vi.spyOn(tooltip, "TooltipPopup").mockImplementation(() => <></>);
+  vi.spyOn(stopReadAgain, "StopReadAgain").mockImplementation(({ projectId }) => (
+    <i data-test-again={projectId} />
+  ));
+  // The controlled popover is drawn in place so its open and close remain observable.
+  vi.spyOn(popover, "Popover").mockImplementation((({
+    children,
+    open,
+    onOpenChange,
+  }: {
+    readonly children: React.ReactNode;
+    readonly open: boolean;
+    readonly onOpenChange: (open: boolean) => void;
+  }) => (
+    <Open.Provider value={{ open, set: onOpenChange }}>{children}</Open.Provider>
+  )) as typeof popover.Popover);
+  vi.spyOn(popover, "PopoverTrigger").mockImplementation((({
+    children,
+    render,
+  }: {
+    readonly children: React.ReactNode;
+    readonly render: React.ReactElement;
+  }) => {
+    const { open, set } = React.useContext(Open);
+    return React.cloneElement(render, { onClick: () => set(!open) } as never, children);
+  }) as typeof popover.PopoverTrigger);
+  vi.spyOn(popover, "PopoverPopup").mockImplementation((({
+    children,
+  }: {
+    readonly children: React.ReactNode;
+  }) => (React.useContext(Open).open ? <>{children}</> : null)) as typeof popover.PopoverPopup);
 });
-
-// Base UI's tooltip reads `window` as it mounts, which a node render has none of: the trigger
-// draws what it renders, and the hover it opens is not drawn.
-vi.mock("~/components/ui/tooltip", async () => {
-  const { cloneElement, Fragment, createElement } = await import("react");
-  return {
-    Tooltip: ({ children }: { readonly children: React.ReactNode }) =>
-      createElement(Fragment, null, children),
-    TooltipTrigger: ({
-      children,
-      render,
-    }: {
-      readonly children: React.ReactNode;
-      readonly render: React.ReactElement;
-    }) => cloneElement(render, undefined, children),
-    TooltipPopup: () => null,
-  };
-});
-
-// A stop's one manual attempt reads the page's contexts; here it is the marker of a stop the row
-// holds — the demand that reads what the stop runs.
-vi.mock("../StopReadAgain", async () => {
-  const { createElement } = await import("react");
-  return {
-    StopReadAgain: ({ projectId }: { readonly projectId: string }) =>
-      createElement("i", { "data-test-again": projectId }),
-  };
-});
-
-// The shared minute clock runs a window timer: a card reads a fixed now here.
-vi.mock("~/zerops/useNowMs", () => ({ useNowMs: () => 0, useSecondsNowMs: () => 0 }));
-
-// Base UI's popover portals out of a node render: here it draws its trigger, and its popup while
-// open, in place.
-vi.mock("~/components/ui/popover", async () => {
-  const { cloneElement, createContext, createElement, Fragment, useContext } =
-    await import("react");
-  const Open = createContext<{ open: boolean; set: (open: boolean) => void }>({
-    open: false,
-    set: () => {},
+afterEach(() => {
+  act(() => {
+    for (const tree of mounted.splice(0)) tree.unmount();
   });
-  return {
-    Popover: ({
-      children,
-      open,
-      onOpenChange,
-    }: {
-      readonly children: React.ReactNode;
-      readonly open: boolean;
-      readonly onOpenChange: (open: boolean) => void;
-    }) => createElement(Open.Provider, { value: { open, set: onOpenChange } }, children),
-    PopoverTrigger: ({
-      children,
-      render,
-    }: {
-      readonly children: React.ReactNode;
-      readonly render: React.ReactElement;
-    }) => {
-      const { open, set } = useContext(Open);
-      return cloneElement(render, { onClick: () => set(!open) } as never, children);
-    },
-    PopoverPopup: ({ children }: { readonly children: React.ReactNode }) =>
-      useContext(Open).open ? createElement(Fragment, null, children) : null,
-  };
+  detailHolds.clear();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 import {
   born,
-  brokenProduction,
   entry,
   FLOW_PROPS,
   FRESH,
   item,
   MERGING,
-  mount,
+  mount as mountFlow,
   placed,
   PROD,
   PRODUCTION_STOP,
   pull,
-  renderFlow as render,
+  renderFlow,
   section,
   STAGE,
   STAGE_STOP,
@@ -126,6 +113,20 @@ import { PUT_LIVE_AFTER_CREATION } from "~/zerops/putLive.logic";
 
 import { CardMateLiftActions } from "./ProjectCards";
 import { ZeropsProjectsFlow } from "./ZeropsProjectsFlow";
+
+const { createMemoryHistory, createRootRoute, createRouter, RouterContextProvider } =
+  await vi.importActual<typeof import("@tanstack/react-router")>("@tanstack/react-router");
+const router = createRouter({ routeTree: createRootRoute(), history: createMemoryHistory() });
+const withRouter = (element: React.ReactElement) => (
+  <RouterContextProvider router={router}>{element}</RouterContextProvider>
+);
+const mount = (element: React.ReactElement) => {
+  const tree = mountFlow(withRouter(element));
+  mounted.push(tree);
+  return tree;
+};
+const render = (props: Parameters<typeof renderFlow>[0] = {}) =>
+  renderToStaticMarkup(withRouter(<ZeropsProjectsFlow<Item> {...FLOW_PROPS} {...props} />));
 
 /** A quiet group of its own id: one Mate who was spoken to, nothing waiting. */
 function quiet(groupId: string) {
@@ -244,7 +245,7 @@ describe("a row's Mates", () => {
     const at = row.indexOf('data-zerops-surface="mate-coming"');
     const coming = row.slice(row.lastIndexOf("<div", at));
     expect(coming).toContain('data-mate-face-state="waking"');
-    expect(coming).toContain(">Vera<");
+    expect(coming).toContain(">Vale<");
     expect(coming).not.toContain('aria-label="Open ');
   });
 
@@ -289,37 +290,6 @@ describe("a row's Mates", () => {
 });
 
 describe("a card's production", () => {
-  // The owner (2026-10-12): "why instead of 'no production' empty state not have a button to
-  // setup prod".
-  it("offers its setup where it has none and HQ offers it, and says it is not released where not", () => {
-    const pressed: string[] = [];
-    const none = entry([WREN]);
-    const offered = mount(
-      <ZeropsProjectsFlow<Item>
-        {...FLOW_PROPS}
-        groups={[none]}
-        setUpProduction={({ group }) =>
-          () => {
-            pressed.push(group.groupId);
-          }}
-      />,
-    );
-    const button = offered.root.findAll(
-      (node) => node.type === "button" && node.children.includes("Put it live"),
-    );
-    expect(button).toHaveLength(1);
-    act(() => {
-      button[0]!.props.onClick();
-    });
-    expect(pressed).toEqual(["aaa"]);
-    const withheld = section(
-      render({ groups: [none], setUpProduction: () => undefined }),
-      'data-zerops-group="aaa"',
-    );
-    expect(withheld).not.toContain("Put it live");
-    expect(withheld).toContain("Not released yet");
-  });
-
   // The onboarding run: while a stage was being set up the button gave way to "Not released yet",
   // as if adding the stage had made a production too, and came back a minute later.
   it("keeps production's setup in its place while another environment is set up, not to be pressed", () => {
@@ -359,15 +329,6 @@ describe("production's setup while another environment is set up", () => {
   });
 });
 
-describe("a card's release", () => {
-  it("still offers the release beside a broken production, not just the build (D28)", () => {
-    const html = section(render({ groups: [brokenProduction()] }), 'data-zerops-group="aaa"');
-    expect(html).toContain("Release failed");
-    expect(html).toContain('data-test-release-verb="true"');
-    expect(html).toContain("Production&#x27;s last release failed");
-  });
-});
-
 // The onboarding run: pressing Release took the release away and the card jumped 125 px.
 describe("a card's release on its way", () => {
   const runs = {
@@ -397,11 +358,6 @@ describe("a card's release on its way", () => {
     waitingAtLeast: false,
     untold: [],
   };
-  const ready = entry([WREN, PROD], {
-    merged: [pull({ number: 4, merged: true })],
-    stops: [runs],
-    release,
-  });
   const goingOut = entry([WREN, PROD], {
     merged: [pull({ number: 4, merged: true })],
     stops: [runs],
@@ -419,46 +375,10 @@ describe("a card's release on its way", () => {
     expect(html).not.toContain("Putting v0.1.0 live");
     expect(html).not.toContain('data-test-release-verb="true"');
   });
-  // The onboarding run: "Release" asked of the person while Put it live was making production.
-  it("offers no release where the page's door is withheld, as while Put it live makes production", () => {
-    expect(section(render({ groups: [ready] }), 'data-zerops-group="aaa"')).toContain(
-      "1 change ready to release",
-    );
-    const html = section(
-      render({ groups: [ready], renderReleaseVerb: () => null }),
-      'data-zerops-group="aaa"',
-    );
-    expect(html).not.toContain("ready to release");
-  });
 });
 
 // The onboarding run: the owner searched 21 s for Add stage, which lived in the card's ··· menu.
 describe("a card's stage", () => {
-  it("offers adding a stage where the project has none, where the stage would stand", () => {
-    const pressed: string[] = [];
-    const offered = mount(
-      <ZeropsProjectsFlow<Item>
-        {...FLOW_PROPS}
-        groups={[entry([WREN])]}
-        setUpStage={({ group }) =>
-          () => {
-            pressed.push(group.groupId);
-          }}
-      />,
-    );
-    const button = offered.root.findAll(
-      (node) => node.type === "button" && node.children.includes("Add stage"),
-    );
-    expect(button).toHaveLength(1);
-    act(() => {
-      button[0]!.props.onClick();
-    });
-    expect(pressed).toEqual(["aaa"]);
-    expect(section(render({ groups: [entry([WREN])] }), 'data-zerops-group="aaa"')).not.toContain(
-      "Add stage",
-    );
-  });
-
   // The run's Add stage: its progress stood in a 1434 px card of its own at the page's foot, below
   // the fold, saying "Starting its services" while the Stage line above said "Deploying…".
   it.each([
@@ -471,7 +391,6 @@ describe("a card's stage", () => {
     const html = section(
       render({
         groups,
-        setUpStage: () => "busy",
         stageSettingUp: () => ({ step: "Starting the stage's services", startedAtMs: 0 }),
       }),
       'data-zerops-place="stage"',
@@ -479,44 +398,6 @@ describe("a card's stage", () => {
     expect(html).toContain("Starting the stage&#x27;s services");
     expect(html).not.toContain("Add stage");
     expect(html).not.toContain("Not deployed yet");
-  });
-});
-
-// The onboarding run: an Admin who joined looked 11 s for a way to add their own Mate.
-describe("a card's Mates", () => {
-  it("closes with Add a Mate where the person may add one, and says why where it stands off", () => {
-    const added: string[] = [];
-    const open = mount(
-      <ZeropsProjectsFlow<Item>
-        {...FLOW_PROPS}
-        groups={[entry([WREN])]}
-        addMate={({ group }) => ({
-          onAdd: () => {
-            added.push(group.groupId);
-          },
-          why: null,
-        })}
-      />,
-    );
-    const button = open.root.findAll(
-      (node) => node.type === "button" && node.props["data-zerops-surface"] === "add-mate",
-    );
-    expect(button).toHaveLength(1);
-    act(() => {
-      button[0]!.props.onClick();
-    });
-    expect(added).toEqual(["aaa"]);
-    const held = section(
-      render({
-        groups: [entry([WREN])],
-        addMate: () => ({ onAdd: () => {}, why: "The project's setup files are not ready." }),
-      }),
-      'data-zerops-group="aaa"',
-    );
-    expect(held).toContain("The project&#x27;s setup files are not ready.");
-    expect(section(render({ groups: [entry([WREN])] }), 'data-zerops-group="aaa"')).not.toContain(
-      "Add a Mate",
-    );
   });
 });
 
@@ -550,12 +431,6 @@ describe("production's version", () => {
     const reading = { ...running, awaiting: true, changesAwaiting: true };
     const row = section(render({ groups: [reading] }), 'data-zerops-group="aaa"');
     expect(row).toContain(">v0.1.9<");
-  });
-
-  it("is nowhere without production", () => {
-    const row = section(render({ groups: [MERGING] }), 'data-zerops-group="aaa"');
-    expect(row).toContain("Not released yet");
-    expect(row).not.toContain(">Running<");
   });
 });
 
@@ -615,11 +490,12 @@ describe("a row the page names (?group=)", () => {
     expect(scrolled).toEqual(["project-fff"]);
     act(() =>
       tree.update(
-        <ZeropsProjectsFlow<Item> {...FLOW_PROPS} focusGroup="fff" groups={[ARRIVING, FOCUS]} />,
+        withRouter(
+          <ZeropsProjectsFlow<Item> {...FLOW_PROPS} focusGroup="fff" groups={[ARRIVING, FOCUS]} />,
+        ),
       ),
     );
     expect(scrolled).toEqual(["project-fff", "project-fff"]);
-    vi.unstubAllGlobals();
   });
 
   it("lets the person's own scroll win", () => {
@@ -630,11 +506,12 @@ describe("a row the page names (?group=)", () => {
     interact("wheel");
     act(() =>
       tree.update(
-        <ZeropsProjectsFlow<Item> {...FLOW_PROPS} focusGroup="fff" groups={[ARRIVING, FOCUS]} />,
+        withRouter(
+          <ZeropsProjectsFlow<Item> {...FLOW_PROPS} focusGroup="fff" groups={[ARRIVING, FOCUS]} />,
+        ),
       ),
     );
     expect(scrolled).toEqual(["project-fff"]);
-    vi.unstubAllGlobals();
   });
 });
 
@@ -667,7 +544,7 @@ describe("Projects detail demand", () => {
       let tree: ReactTestRenderer | undefined;
       act(() => {
         // The row measures its scroll; a card is only observed.
-        tree = create(<ZeropsProjectsFlow<Item> {...FLOW_PROPS} groups={groups} />, {
+        tree = create(withRouter(<ZeropsProjectsFlow<Item> {...FLOW_PROPS} groups={groups} />), {
           createNodeMock: () => ({
             addEventListener: () => {},
             removeEventListener: () => {},

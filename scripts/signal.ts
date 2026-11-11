@@ -1,12 +1,14 @@
 #!/usr/bin/env node
-// @effect-diagnostics nodeBuiltinImport:off globalConsole:off preferSchemaOverJson:off -- Signal's same-commit runner and classifier.
+// @effect-diagnostics nodeBuiltinImport:off globalConsole:off globalJsonInEffect:off -- Signal's same-commit runner and classifier.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
+import * as NodeReadline from "node:readline";
 import type { JsonTestResults } from "vite-plus/test/node";
 import { chatGateStages, chatGateTestFiles } from "./chat-gate.ts";
+import { scenarioDurations } from "./lib/scenario-durations.ts";
 import { spreadShard } from "./lib/spread-shard.ts";
-import type { SignalProgress } from "./signal-reporter.ts";
+import { maskSignalSecrets, signalEvidence, type SignalProgress } from "./signal-reporter.ts";
 
 export interface SignalReport {
   /** `path` is the test's describe titles then its own: what Vitest's name filter reads. */
@@ -14,9 +16,15 @@ export interface SignalReport {
   errors: string[];
 }
 
+function infrastructureReason(report: SignalReport): string | undefined {
+  return !report.tests.length || report.errors.length
+    ? report.errors.join("; ") || "no tests ran"
+    : undefined;
+}
+
 export function validateReport(report: SignalReport): void {
-  if (!report.tests.length || report.errors.length)
-    throw new Error(`Signal infrastructure failed: ${report.errors.join("; ") || "no tests ran"}`);
+  const reason = infrastructureReason(report);
+  if (reason !== undefined) throw new Error(`Signal infrastructure failed: ${reason}`);
 }
 
 const failedTests = (reports: ReadonlyArray<SignalReport>) => {
@@ -38,7 +46,7 @@ export function failedSelection(reports: ReadonlyArray<SignalReport>): {
   files: string[];
   testNamePattern: string;
 } {
-  const failed = failedTests(reports);
+  const failed = failedTests(reports).filter((test) => test.reason === undefined);
   const names = new Set(failed.map((test) => test.path.map(escapeRegExp).join(" > ")));
   return {
     files: [...new Set(failed.map((test) => test.file))].sort(),
@@ -49,7 +57,7 @@ export function failedSelection(reports: ReadonlyArray<SignalReport>): {
 export interface SignalFailure {
   file: string;
   title: string;
-  class: "fail-pass" | "fail-fail";
+  class: "fail-pass" | "fail-fail" | "timed-out";
   run: number;
   /** Set when the case hung (hit the case ceiling, or ran when its shard was killed). */
   reason?: string;
@@ -60,8 +68,11 @@ export function classifyFailures(
   rerun: SignalReport,
   run: number,
 ): SignalFailure[] {
-  return failedTests(initial).map(({ file, title, reason }) => {
-    const test = rerun.tests.find((test) => test.file === file && test.title === title);
+  return failedTests(initial).map(({ file, title, path, reason }) => {
+    if (reason !== undefined) return { file, title, class: "timed-out", run, reason };
+    const test = rerun.tests.find(
+      (test) => test.file === file && test.path.join(" > ") === path.join(" > "),
+    );
     if (!test || !["passed", "failed"].includes(test.status))
       throw new Error(`Signal rerun did not execute ${file}: ${title}`);
     return {
@@ -69,7 +80,6 @@ export function classifyFailures(
       title,
       class: test.status === "passed" ? "fail-pass" : "fail-fail",
       run,
-      ...(reason === undefined ? {} : { reason }),
     };
   });
 }
@@ -86,47 +96,15 @@ export function standingReds(
 
 const root = NodePath.resolve(import.meta.dirname, "..");
 
-// Each C scenario file's slowest summed test time in Signal runs 40112366539 and 40114861112
-// (2026-10-24), so the C shards split the time rather than the file count. The four
-// owner-reported layout files are their describe groups' times from the file they were split from.
-const cScenarioDurations = {
-  "apps/web/test/scenarios/areas/c-mate/owner-reported-layout-regressions-conversation.scenario.ts": 157796,
-  "apps/web/test/scenarios/areas/c-mate/owner-reported-layout-regressions-composer.scenario.ts": 134579,
-  "apps/web/test/scenarios/areas/c-mate/chat.scenario.ts": 127867,
-  "apps/web/test/scenarios/areas/c-mate/owner-reported-layout-regressions-live-card.scenario.ts": 101771,
-  "apps/web/test/scenarios/areas/c-mate/engine-page.scenario.ts": 70523,
-  "apps/web/test/scenarios/areas/c-mate/owner-reported-layout-regressions-menu.scenario.ts": 69967,
-  "apps/web/test/scenarios/areas/c-mate/engine-card.scenario.ts": 55981,
-  "apps/web/test/scenarios/areas/c-mate/images.scenario.ts": 38479,
-  "apps/web/test/scenarios/areas/c-mate/fold-work.scenario.ts": 38276,
-  "apps/web/test/scenarios/areas/c-mate/ownership-loading.scenario.ts": 30697,
-  "apps/web/test/scenarios/areas/c-mate/composer-overlap.scenario.ts": 29798,
-  "apps/web/test/scenarios/areas/c-mate/health.scenario.ts": 24745,
-  "apps/web/test/scenarios/areas/c-mate/overview-reload.scenario.ts": 16815,
-  "apps/web/test/scenarios/areas/c-mate/admission.scenario.ts": 13920,
-  "apps/web/test/scenarios/areas/c-mate/replay.scenario.ts": 13261,
-  "apps/web/test/scenarios/areas/c-mate/recovery.scenario.ts": 13198,
-  "apps/web/test/scenarios/areas/c-mate/identity.scenario.ts": 11643,
-  "apps/web/test/scenarios/areas/c-mate/overview-filter.scenario.ts": 10969,
-  "apps/web/test/scenarios/areas/c-mate/projects-opening.scenario.ts": 10162,
-  "apps/web/test/scenarios/areas/c-mate/composer.scenario.ts": 8329,
-  "apps/web/test/scenarios/areas/c-mate/first-send.scenario.ts": 7565,
-  "apps/web/test/scenarios/areas/c-mate/providerLimits.scenario.ts": 6777,
-  "apps/web/test/scenarios/areas/c-mate/image-layout.scenario.ts": 6139,
-  "apps/web/test/scenarios/areas/c-mate/engine-secret.scenario.ts": 4566,
-  "apps/web/test/scenarios/areas/c-mate/context-window.scenario.ts": 4519,
-  "apps/web/test/scenarios/areas/c-mate/opening.scenario.ts": 3402,
-};
-
 const relativeFile = (file: string) => NodePath.relative(root, file).split(NodePath.sep).join("/");
 
 function readProgress(output: string): SignalProgress[] {
   const path = `${output}.progress.jsonl`;
   if (!NodeFS.existsSync(path)) return [];
-  return NodeFS.readFileSync(path, "utf8")
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => JSON.parse(line) as SignalProgress);
+  const lines = NodeFS.readFileSync(path, "utf8").split("\n");
+  // A killed writer may leave an incomplete final record; completed lines are still evidence.
+  lines.pop();
+  return lines.filter(Boolean).map((line) => JSON.parse(line) as SignalProgress);
 }
 
 /**
@@ -136,11 +114,14 @@ function readProgress(output: string): SignalProgress[] {
 export function reportFromProgress(lines: ReadonlyArray<SignalProgress>): SignalReport {
   const cases = new Map<string, SignalReport["tests"][number]>();
   for (const line of lines) {
+    if (line.event === "phase") continue;
     const file = relativeFile(line.file);
     const base = { file, title: line.title, path: [line.title] };
+    const key = JSON.stringify([file, line.title]);
+    if (line.event === "casePhase" && cases.has(key)) continue;
     cases.set(
-      JSON.stringify([file, line.title]),
-      line.event === "start"
+      key,
+      line.event === "start" || line.event === "casePhase"
         ? {
             ...base,
             status: "failed",
@@ -154,6 +135,34 @@ export function reportFromProgress(lines: ReadonlyArray<SignalProgress>): Signal
     );
   }
   return { tests: [...cases.values()], errors: [] };
+}
+
+/** The scenario files outside stage C, as repository paths: what the non-C shards run. */
+function nonChatScenarioFiles(): string[] {
+  const areas = "apps/web/test/scenarios/areas";
+  return NodeFS.readdirSync(NodePath.join(root, areas), { recursive: true })
+    .map((path) => `${areas}/${String(path).split(NodePath.sep).join("/")}`)
+    .filter((file) => file.endsWith(".scenario.ts") && !file.startsWith(`${areas}/c-mate/`));
+}
+
+/**
+ * Shard `index` of `count` of a Signal group, by each file's measured time, so its shards finish
+ * together inside their step budget: a file count or a path hash put one shard past it.
+ */
+export function signalShardFiles(
+  group: "c" | "non-c",
+  index: number,
+  count: number,
+  durations: Readonly<Record<string, number>> = scenarioDurations,
+): string[] {
+  const files =
+    group === "c"
+      ? chatGateTestFiles(
+          root,
+          chatGateStages.filter((stage) => stage.id === "C"),
+        )
+      : nonChatScenarioFiles();
+  return spreadShard(files, index, count, durations);
 }
 
 const shardReports = ["c-1", "c-2", "c-3", "c-4", "non-c-1", "non-c-2", "non-c-3"];
@@ -173,11 +182,13 @@ export function readSignalReport(output: string): SignalReport {
     tests: evidence.testResults.flatMap((file) =>
       file.assertionResults.map((test) => {
         const found = relativeFile(file.name);
-        const reason = reasons.get(JSON.stringify([found, test.fullName]));
+        const path = [...test.ancestorTitles, test.title];
+        // Reporter.fullName uses " > "; JSON.fullName uses spaces. Join the structural path.
+        const reason = reasons.get(JSON.stringify([found, path.join(" > ")]));
         return {
           file: found,
           title: test.fullName,
-          path: [...test.ancestorTitles, test.title],
+          path,
           status: test.status,
           ...(reason === undefined ? {} : { reason }),
         };
@@ -187,19 +198,19 @@ export function readSignalReport(output: string): SignalReport {
   };
 }
 
-function runScenarios(args: string[], output: string): SignalReport {
+async function runScenarios(args: string[], output: string): Promise<SignalReport | undefined> {
   NodeFS.mkdirSync(NodePath.dirname(output), { recursive: true });
   NodeFS.rmSync(output, { force: true });
   NodeFS.rmSync(`${output}.vitest.json`, { force: true });
   NodeFS.rmSync(`${output}.errors.json`, { force: true });
   NodeFS.rmSync(`${output}.progress.jsonl`, { force: true });
-  const result = NodeChildProcess.spawnSync(
+  const child = NodeChildProcess.spawn(
     "vp",
     [
       "test",
       "run",
       "--config",
-      "test/scenarios/vitest.config.ts",
+      "../../scripts/scenario-ci.config.ts",
       "--project",
       "scenarios",
       ...args,
@@ -211,88 +222,185 @@ function runScenarios(args: string[], output: string): SignalReport {
     ],
     {
       cwd: NodePath.join(root, "apps/web"),
-      stdio: "inherit",
+      stdio: ["inherit", "pipe", "pipe"],
       env: { ...process.env, MATE_SIGNAL_REPORT: output, VITEST_MAX_WORKERS: undefined },
     },
   );
-  if (result.error || result.signal || !NodeFS.existsSync(`${output}.vitest.json`))
-    throw new Error(
-      `Signal runner failed: ${result.error?.message ?? result.signal ?? "missing report"}`,
-    );
-  const report = readSignalReport(output);
-  validateReport(report);
-  if (result.status !== 0 && !report.tests.some((test) => test.status === "failed"))
-    throw new Error(`Signal runner exited ${result.status} without a failed test`);
+  // A complete line keeps secrets split across stream chunks together without delaying case output.
+  for (const [input, output] of [
+    [child.stdout, process.stdout],
+    [child.stderr, process.stderr],
+  ] as const)
+    NodeReadline.createInterface({ input }).on("line", (line) => {
+      const masked = maskSignalSecrets(line);
+      // Keep our annotations; failure text must not create other workflow commands.
+      const annotation =
+        /^::error (?:file=[^,]*,)?title=Signal (?:original case failure|incomplete)::/u;
+      output.write(`${annotation.test(masked) ? masked : masked.replaceAll("::", "%3A%3A")}\n`);
+    });
+  let interrupted: NodeJS.Signals | undefined;
+  const interrupt = (signal: NodeJS.Signals) => {
+    interrupted ??= signal;
+    child.kill(signal);
+  };
+  const onTerm = () => interrupt("SIGTERM");
+  const onInt = () => interrupt("SIGINT");
+  process.once("SIGTERM", onTerm);
+  process.once("SIGINT", onInt);
+  let failure: Error | undefined;
+  const result = await new Promise<{ status: number | null; signal: NodeJS.Signals | null }>(
+    (resolve) => {
+      child.once("error", (error) => (failure = error));
+      child.once("close", (status, signal) => resolve({ status, signal }));
+    },
+  );
+  process.removeListener("SIGTERM", onTerm);
+  process.removeListener("SIGINT", onInt);
+
+  if (
+    failure ||
+    interrupted ||
+    result.signal ||
+    !NodeFS.existsSync(`${output}.vitest.json`) ||
+    !NodeFS.existsSync(`${output}.errors.json`)
+  ) {
+    const reason = failure?.message ?? interrupted ?? result.signal ?? "missing report";
+    let running: SignalReport["tests"] = [];
+    try {
+      running = reportFromProgress(readProgress(output)).tests.filter(
+        (test) => test.reason === "hung: the shard ended while this case was running",
+      );
+    } catch {
+      // A truncated progress receipt cannot certify which case was running.
+    }
+    if (running.length)
+      for (const test of running)
+        signalEvidence("Signal incomplete", `${test.title}: shard ended (${reason})`, test.file);
+    else signalEvidence("Signal incomplete", `shard ended (${reason})`);
+    return undefined;
+  }
+  let report: SignalReport;
+  try {
+    report = readSignalReport(output);
+  } catch (error) {
+    signalEvidence("Signal incomplete", `cannot read report: ${String(error)}`);
+    return undefined;
+  }
+  const reason = infrastructureReason(report);
+  if (reason !== undefined) {
+    // The reporter has already emitted each error; only an empty run needs a new explanation.
+    if (!report.errors.length) signalEvidence("Signal incomplete", reason);
+    return undefined;
+  }
+  if (result.status !== 0 && !report.tests.some((test) => test.status === "failed")) {
+    signalEvidence("Signal incomplete", `runner exited ${result.status} without a failed test`);
+    return undefined;
+  }
   NodeFS.writeFileSync(output, JSON.stringify(report));
   return report;
 }
 
-if (import.meta.main) {
+async function main(): Promise<void> {
   const [mode, group, shard] = process.argv.slice(2);
   const directory = NodePath.resolve(process.env.MATE_SIGNAL_DIRECTORY ?? "signal-reports");
   if (mode === "shard" && ["c", "non-c"].includes(group ?? "") && /^\d+\/\d+$/u.test(shard ?? "")) {
     const [index, count] = shard!.split("/").map(Number) as [number, number];
     if (index < 1 || index > count) throw new Error("Invalid Signal shard");
-    const args =
-      group === "c"
-        ? spreadShard(
-            chatGateTestFiles(
-              root,
-              chatGateStages.filter((stage) => stage.id === "C"),
-            ),
-            index,
-            count,
-            cScenarioDurations,
-          ).map((file) => NodePath.join(root, file))
-        : [
-            "test/scenarios/areas",
-            "--exclude",
-            "test/scenarios/areas/c-mate/**",
-            "--shard",
-            shard!,
-          ];
-    runScenarios(args, NodePath.join(directory, `${group}-${index}.json`));
+    const files = signalShardFiles(group as "c" | "non-c", index, count);
+    if (
+      !(await runScenarios(
+        files.map((file) => NodePath.join(root, file)),
+        NodePath.join(directory, `${group}-${index}.json`),
+      ))
+    )
+      process.exitCode = 1;
   } else if (mode === "classify") {
     const killed: string[] = [];
-    const initial = shardReports.map((name) => {
+    const infrastructure: { shard: string; reason: string }[] = [];
+    const initial = shardReports.flatMap((name) => {
       const report = NodePath.join(directory, `${name}.json`);
-      if (NodeFS.existsSync(report))
-        return JSON.parse(NodeFS.readFileSync(report, "utf8")) as SignalReport;
-      const lines = readProgress(report);
-      if (!lines.length) throw new Error(`Signal has no report or progress for shard ${name}`);
-      killed.push(name);
-      return reportFromProgress(lines);
+      let evidence: SignalReport;
+      if (NodeFS.existsSync(report)) {
+        evidence = JSON.parse(NodeFS.readFileSync(report, "utf8")) as SignalReport;
+      } else if (
+        NodeFS.existsSync(`${report}.vitest.json`) &&
+        NodeFS.existsSync(`${report}.errors.json`)
+      ) {
+        evidence = readSignalReport(report);
+      } else {
+        const lines = readProgress(report);
+        if (!lines.length) {
+          infrastructure.push({ shard: name, reason: "no report or progress" });
+          return [];
+        }
+        evidence = reportFromProgress(lines);
+      }
+      const reason = infrastructureReason(evidence);
+      if (reason !== undefined) {
+        infrastructure.push({ shard: name, reason });
+        // A budget stop leaves uncertified cases, but its completed timeouts still need names.
+        if (!evidence.tests.some((test) => ["passed", "failed"].includes(test.status))) return [];
+        evidence = { ...evidence, errors: [] };
+      }
+      if (!NodeFS.existsSync(report)) killed.push(name);
+      return [evidence];
     });
+    NodeFS.writeFileSync(
+      "signal-infrastructure.json",
+      JSON.stringify(infrastructure, null, 2) + "\n",
+    );
+    for (const { shard, reason } of infrastructure)
+      signalEvidence("Signal infrastructure", `${shard}: ${reason}`);
     const { files, testNamePattern } = failedSelection(initial);
+    const run = Number(process.env.GITHUB_RUN_ID);
+    if (!Number.isSafeInteger(run) || run <= 0)
+      throw new Error("Signal requires its workflow run id");
+    const timeouts = initial
+      .map((report) => ({
+        ...report,
+        tests: report.tests.filter((test) => test.reason !== undefined),
+      }))
+      .filter((report) => report.tests.length);
+    // Preserve already-known verdicts even if the assertion rerun exhausts its hard budget.
+    NodeFS.writeFileSync(
+      "signal-failures.json",
+      JSON.stringify(classifyFailures(timeouts, { tests: [], errors: [] }, run), null, 2) + "\n",
+    );
+    for (const report of timeouts)
+      for (const failure of report.tests)
+        signalEvidence(
+          "Signal timed out, not rerun",
+          `${failure.title}: ${failure.reason}`,
+          failure.file,
+        );
     const rerun = files.length
-      ? runScenarios(
+      ? await runScenarios(
           [...files.map((file) => NodePath.join(root, file)), "--testNamePattern", testNamePattern],
           NodePath.join(directory, "rerun.json"),
         )
       : { tests: [], errors: [] };
-    const run = Number(process.env.GITHUB_RUN_ID);
-    if (!Number.isSafeInteger(run) || run <= 0)
-      throw new Error("Signal requires its workflow run id");
+    if (!rerun) {
+      process.exitCode = 1;
+      return;
+    }
     const failures = classifyFailures(initial, rerun, run);
-    for (const failure of failures.filter((failure) => failure.reason !== undefined))
-      console.log(
-        `::error file=${failure.file},title=Signal case hung::${failure.title}: ${failure.reason}`,
-      );
     NodeFS.writeFileSync("signal-failures.json", JSON.stringify(failures, null, 2) + "\n");
     console.log(`Signal classified ${failures.length} original test failures`);
-    // The previous kh-next run's classification, when the workflow fetched one.
+    // The previous nightly run's classification, when the workflow fetched one.
     const previous = process.env.MATE_SIGNAL_PREVIOUS;
     if (previous !== undefined && NodeFS.existsSync(previous)) {
       const reds = standingReds(
         JSON.parse(NodeFS.readFileSync(previous, "utf8")) as SignalFailure[],
         failures,
       );
-      for (const red of reds)
-        console.log(`::error file=${red.file},title=Standing red::${red.title}`);
+      for (const red of reds) signalEvidence("Standing red", red.title, red.file);
       if (reds.length)
-        throw new Error(`Signal: ${reds.length} tests fail-fail on two consecutive kh-next runs`);
-    } else console.log("Signal has no previous kh-next classification to compare");
+        throw new Error(`Signal: ${reds.length} tests fail-fail on two consecutive nightly runs`);
+    } else console.log("Signal has no previous nightly classification to compare");
+    if (infrastructure.length) process.exitCode = 1;
     if (killed.length)
       throw new Error(`Signal: shards ${killed.join(", ")} ended without writing their report`);
   } else throw new Error("Usage: node scripts/signal.ts shard c|non-c <index/count> | classify");
 }
+
+if (import.meta.main) await main();

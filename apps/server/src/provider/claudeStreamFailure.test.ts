@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import { crashLines, describeClaudeStreamFailure, makeStderrTail } from "./claudeStreamFailure.ts";
 
@@ -288,16 +288,33 @@ describe("crashLines never lets a secret through", () => {
   });
 
   it.each([
-    ["KEY_".repeat(2048)],
-    ["AUTH".repeat(2048)],
-    ["ABCDEF0123456789".repeat(512)],
-    [`"${"a".repeat(8190)}`],
-    [`Error: ${"KEY_=".repeat(1600)}`],
-    [`TypeError: ${":a".repeat(4000)}`],
-  ])("reads a pathological line in linear time (%#)", (line) => {
-    const started = performance.now();
-    crashLines(`${line}\n`);
-    expect(performance.now() - started).toBeLessThan(50);
+    ["KEY_".repeat(2048), []],
+    ["AUTH".repeat(2048), []],
+    ["ABCDEF0123456789".repeat(512), []],
+    [`"${"a".repeat(8190)}`, []],
+    [`Error: ${"KEY_=".repeat(1600)}`, ["Error: KEY_"]],
+    [`TypeError: ${":a".repeat(4000)}`, [`TypeError: ${":a".repeat(194)}:`]],
+  ])("reads a pathological line in linear time (%#)", (line, expected) => {
+    const subjects: number[] = [];
+    const exec = RegExp.prototype.exec;
+    const scan = vi.spyOn(RegExp.prototype, "exec").mockImplementation(function (
+      this: RegExp,
+      input: string,
+    ) {
+      subjects.push(input.length);
+      return exec.call(this, input);
+    });
+    let actual: string[];
+    try {
+      actual = crashLines(`${line}\n`);
+    } finally {
+      scan.mockRestore();
+    }
+    expect(actual).toEqual(expected);
+    // One stderr line has bounded regex subjects regardless of its original length.
+    expect(subjects.length).toBeGreaterThan(0);
+    expect(subjects.length).toBeLessThanOrEqual(20);
+    expect(Math.max(...subjects)).toBeLessThanOrEqual(400);
   });
 });
 

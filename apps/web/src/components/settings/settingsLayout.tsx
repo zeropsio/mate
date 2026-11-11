@@ -6,9 +6,7 @@ import {
   type ReactNode,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
-  useState,
 } from "react";
 
 import { cn } from "../../lib/utils";
@@ -103,16 +101,6 @@ export function PolicyTooltip({ children }: { readonly children: string }) {
   );
 }
 
-/** Re-render every `intervalMs`; return a stable timestamp snapshot for render-time relative labels. */
-export function useRelativeTimeTick(intervalMs = 1_000) {
-  const [nowMs, setNowMs] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNowMs(Date.now()), intervalMs);
-    return () => clearInterval(id);
-  }, [intervalMs]);
-  return nowMs;
-}
-
 export function SettingsSection({
   title,
   icon,
@@ -181,6 +169,7 @@ export function SettingsRow({
       ref={targetRef}
       tabIndex={rowProps.id ? -1 : rowProps.tabIndex}
       className={cn("rounded-xl", children ? "pb-1" : undefined, className)}
+      data-settings-row=""
     >
       <Row
         control={
@@ -272,7 +261,8 @@ export function SettingsPageContainer({
         className="topbar-scroll-fade scrollbar-gutter-both flex-1 overflow-y-auto [--topbar-scroll-fade-height:1.5rem] sm:[--topbar-scroll-fade-height:1.5rem]"
         data-settings-page-scroll
       >
-        <WorkspacePageContainer width={width} className={cn("gap-12", className)}>
+        {/* On a phone the page's gutter is its rows' own inset: their words start 16 px in. */}
+        <WorkspacePageContainer width={width} className={cn("gap-12 max-sm:px-1", className)}>
           {children}
         </WorkspacePageContainer>
       </div>

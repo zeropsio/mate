@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import type { ItemBody } from "@t3tools/contracts";
 
-import { originAskOfCall } from "./originAsk.ts";
+import { originAskOfCall, originSettledOfCall } from "./originAsk.ts";
 
 const URL = "https://github.com/zeropsio/mate";
 
@@ -51,5 +51,43 @@ describe("a zcp call that asks the person to connect an origin", () => {
     ["another tool's answer", call(requested({ url: URL, repo: "appdev" }), "zerops_env"), null],
   ])("%s", (_name, body, ask) => {
     expect(originAskOfCall(body)).toEqual(ask);
+  });
+});
+
+describe("a zcp call that says an origin ask needs the person no more", () => {
+  it.each([
+    [
+      "already connected: the asked repository's ask, whichever repository holds the address",
+      call({ connected: { origin: { url: URL, repo: "appdev" }, repo: "app" } }),
+      { url: URL, how: "connected", repo: "appdev" },
+    ],
+    [
+      "already connected, naming no asked repository",
+      call({ connected: { origin: { url: URL }, repo: "app" } }),
+      null,
+    ],
+    [
+      "withdrawn for one repository",
+      call({ withdrawn: { origin: { url: URL, repo: "appdev" } } }),
+      { url: URL, how: "withdrawn", repo: "appdev" },
+    ],
+    [
+      "withdrawn for every repository asked about the address",
+      call({ withdrawn: { origin: { url: URL } } }),
+      { url: URL, how: "withdrawn" },
+    ],
+    ["still asked", call(requested({ url: URL, repo: "appdev" })), null],
+    [
+      "an address that is not https",
+      call({ withdrawn: { origin: { url: "git@github.com:a/b.git" } } }),
+      null,
+    ],
+    [
+      "another tool's answer",
+      call({ connected: { origin: { url: URL, repo: "appdev" } } }, "zerops_env"),
+      null,
+    ],
+  ])("%s", (_name, body, settled) => {
+    expect(originSettledOfCall(body)).toEqual(settled);
   });
 });

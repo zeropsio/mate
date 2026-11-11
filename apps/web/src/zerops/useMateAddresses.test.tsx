@@ -33,7 +33,7 @@ vi.mock("./useZeropsFeeds", () => ({
   useZeropsLifecycle: () => mate.lifecycle,
   useEnvironmentProjectRef: () => null,
 }));
-vi.mock("../state/entities", () => ({ useThreadShell: () => null }));
+vi.mock("./useLeaseChats", () => ({ useLeaseChats: () => [] }));
 vi.mock("./inventoryContext", () => ({ InventoryContext: createContext(null) }));
 vi.mock("./ZeropsAccountData", () => ({ useProjectsServiceValues: () => ({}) }));
 
@@ -85,8 +85,40 @@ it("a part migrated to a dev pool: its stage is the Mate's preview once the conv
   expect(roles()).toEqual([{ service: "appstage", role: "preview", url: STAGE_URL }]);
 });
 
-it("a conversation that carries no envelope yet leaves a migrated part's stage on its own, by its name", () => {
+it("a conversation that carries no envelope yet pairs a migrated part's stage with the pool of its stem", () => {
   mate.lifecycle = { state: "unread", waitingFor: null };
   render();
-  expect(roles()).toEqual([{ service: "appstage", role: undefined, url: STAGE_URL }]);
+  expect(roles()).toEqual([{ service: "appstage", role: "preview", url: STAGE_URL }]);
+});
+
+// The menu draws no Sites for a Mate in no project: its conversation's header lists these.
+it("an ungrouped Mate's conversation still shows its previews, each by its real hostname", () => {
+  const url = "https://embedderpool-c2e4-8101.prg1.zerops.app";
+  mate.lifecycle = {
+    state: "known",
+    value: {
+      threadId: "thread-1",
+      recentTools: [],
+      envelope: {
+        services: [],
+        leases: [
+          {
+            alias: "embedderpool-3",
+            pool: "embedderpool",
+            branch: "main",
+            state: "held",
+            devServers: [
+              { name: "web", port: 8101, url, status: "running", readAt: "2026-10-25T09:00:00Z" },
+            ],
+          },
+        ],
+      },
+    },
+  };
+  render();
+  expect(
+    read.addresses
+      .filter((address) => address.url === url)
+      .map(({ name, host }) => ({ name, host })),
+  ).toEqual([{ name: "embedderpool-3", host: "embedderpool-c2e4-8101.prg1.zerops.app" }]);
 });

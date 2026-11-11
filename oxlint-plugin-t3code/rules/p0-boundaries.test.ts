@@ -40,28 +40,6 @@ describe("sanctioned source boundaries retain their counterexamples", () => {
     `export const read = () => fetch("/projects");`,
   );
 
-  const artifacts = io("apps/web/src/zerops/bundledCore.ts");
-  for (const file of ["build.json", "core.tgz.bin", "zerops.yml"]) {
-    artifacts.valid(
-      `the bundled ${file} transfer is allowed`,
-      `export async function readBundledCore(fetch: typeof globalThis.fetch, base: string) { return fetch(\`\${base}/${file}\`, { cache: "no-store" }); }`,
-    );
-    artifacts.invalid(
-      `a dynamic source cannot replace the bundled ${file}`,
-      `export async function readBundledCore(fetch: typeof globalThis.fetch, base: string) { return fetch(\`\${base}/projects\`); }`,
-    );
-  }
-  for (const loader of ["readCarriedCoreBuild", "readBundledCore"]) {
-    artifacts.valid(
-      `${loader} may receive the artifact transport`,
-      `export const load = () => ${loader}((input, init) => fetch(input, init), \`\${appBasePath()}/hq-core\`);`,
-    );
-    artifacts.invalid(
-      `${loader} cannot receive a dynamic source transport`,
-      `export const load = () => ${loader}((input, init) => fetch(input, init), accountOrigin);`,
-    );
-  }
-
   const creation = io("packages/client-runtime/src/zerops/runEnvironmentCreation.ts");
   creation.valid(
     "creation invokes its operation port, not raw sign-up",
@@ -130,47 +108,6 @@ describe("sanctioned source boundaries retain their counterexamples", () => {
       );
     }
   }
-
-  const gate = retired("apps/web/src/components/zerops/ZeropsHqGate.tsx");
-  gate.valid(
-    "HQ setup dispatches hq-birth",
-    `const bear = () => operations.submit({ kind: "hq-birth" }); bear(false);`,
-  );
-  gate.invalid(
-    "a spelling cannot disguise the retired permission read",
-    `const bear = () => client.listOrganizationMembers(org); bear(false);`,
-  );
-
-  const hq = retired("apps/web/src/zerops/accountHq.ts");
-  const discovery = `const { members } = useZeropsOrganizationMembersRead({}); const named = findOfficialHq(members); const admins = ownersAndAdmins(members);`;
-  for (const occurrence of [1, 2, 3]) {
-    hq.valid(
-      `anchor discovery occurrence ${occurrence} preserves platform verification`,
-      discovery,
-    );
-    hq.invalid(
-      `anchor discovery occurrence ${occurrence} cannot derive Mine`,
-      discovery + `export const person = { mine: admins.includes(viewer) };`,
-    );
-  }
-  const members = retired("apps/web/src/zerops/useZeropsMateOwners.ts");
-  members.valid(
-    "members facade uses the shared family and projection",
-    `export function useZeropsOrganizationMembersRead() { demandDetail({ family: "organizationMembers" }); return useProjection(organizationMembers, key); }`,
-  );
-  members.invalid(
-    "members facade cannot subscribe to a second member cache",
-    `export function useZeropsOrganizationMembersRead() { return client.listOrganizationMembers(org); }`,
-  );
-  const anchor = retired("packages/client-runtime/src/zerops/hq/anchor.ts");
-  anchor.valid(
-    "bootstrap contact list is a pure active human filter",
-    `export function ownersAndAdmins(members) { return members.filter(member => member.status === "ACTIVE" && !isTokenMember(member)); }`,
-  );
-  anchor.invalid(
-    "bootstrap helper cannot become a person verdict cache",
-    `export function ownersAndAdmins(members) { return Atom.make(members.filter(member => !isTokenMember(member))); }`,
-  );
 
   const lease = retired("apps/web/src/zerops/matePress.ts");
   lease.invalid(

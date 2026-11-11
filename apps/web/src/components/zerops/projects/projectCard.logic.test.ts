@@ -3,11 +3,11 @@ import {
   canonicalEnvironmentRowInputsOf,
   groupFlow,
   placeAddresses,
-  PRODUCTION_DEPLOYING,
+  putLiveHasChange,
   type GroupFlowProduction,
   type GroupFlowStop,
+  type RecipeReach,
 } from "@t3tools/client-runtime/zerops";
-import type { AddressDomain, DomainFace, PlaceAddresses } from "@t3tools/client-runtime/data";
 import { HqEnvironmentId } from "@t3tools/contracts";
 import type { HqGitNavigationEnvironment } from "@t3tools/shared/hqStream";
 import { describe, expect, it } from "vite-plus/test";
@@ -18,30 +18,22 @@ import { entry, pull, WREN } from "./flowTestFixtures";
 import { groupFlowInputOf } from "./projectsView.logic";
 import {
   broughtBy,
-  cardChangeRows,
   cardChanges,
   cardMateReading,
   cardSecondWords,
-  cardPeople,
   cardReady,
   foldMates,
-  foldWords,
   mateChangeForReview,
   mateChangesForReview,
-  panelAddresses,
-  historyHeld,
   historyOffered,
   productionBuilding,
   releaseProductionRuns,
   placeLines,
-  putLiveHasChange,
-  readyLine,
-  readyTitle,
   rollBackTarget,
   siteOf,
+  setupChangeWords,
   sinceWords,
   soleSite,
-  releaseLineOpens,
 } from "./projectCard.logic";
 
 const NOW = Date.parse("2026-10-10T12:00:00Z");
@@ -100,7 +92,6 @@ describe("production's line at a card's foot", () => {
       order: 1,
       keyHeld: false,
       keyInvalid: false,
-      can: {},
       birth: null,
       release: {
         id: "rollout",
@@ -219,7 +210,6 @@ describe("production's line at a card's foot", () => {
         order,
         keyHeld: false,
         keyInvalid: false,
-        can: {},
         birth: null,
         release: {
           id: `rollout-${id}`,
@@ -341,7 +331,7 @@ describe("production's line at a card's foot", () => {
       chip: undefined,
       lines: [
         { dot: "running", words: "Running · v2.3.1", name: "stage" },
-        { dot: "none", words: "Not released yet", name: "prod" },
+        { dot: "none", words: "Not added", name: "prod" },
       ],
     },
     {
@@ -353,7 +343,7 @@ describe("production's line at a card's foot", () => {
       chip: undefined,
       lines: [
         { dot: "failed", words: "Deploy failed", name: "stage" },
-        { dot: "none", words: "Not released yet", name: "prod" },
+        { dot: "none", words: "Not added", name: "prod" },
       ],
     },
   ] as const)("says $case", ({ flow, chip: read, lines }) => {
@@ -441,62 +431,81 @@ describe("a card's places", () => {
     ]);
   });
 
-  // The onboarding run: "Running · main" stood two seconds with nowhere to go before the stage's
-  // address came. HQ brings a stage up until its address is on (`EnvironmentBirth`) — and marks it
-  // up as its first deploy ends, the address coming ~0.8 s later in the platform's next read: a
-  // stage that serves a port its address opens still turns it on. One serving none runs as is.
+  // A pending publication retains address progress; published stages keep their running label.
   it.each([
     {
       case: "while HQ still brings it up",
       birth: { ended: false },
-      offered: undefined,
+      pending: true,
+      published: false,
       words: "Turning its address on…",
     },
     {
       case: "once HQ has brought it up",
       birth: { ended: true },
-      offered: undefined,
+      pending: false,
+      published: true,
       words: "Running",
     },
     {
       case: "once HQ has brought it up, while the address its app serves is still being turned on",
       birth: { ended: true },
-      offered: true,
+      pending: true,
+      published: false,
       words: "Turning its address on…",
+    },
+    // Without public-access evidence, a finished birth and an open port promise no publication.
+    {
+      case: "once HQ has brought it up, its address still off: running, never turning it on for ever",
+      birth: { ended: true },
+      pending: undefined,
+      published: false,
+      words: "Running",
     },
     {
       case: "once HQ has brought it up, serving nothing an address would open",
       birth: { ended: true },
-      offered: false,
+      pending: false,
+      published: true,
       words: "Running",
     },
     {
       case: "while HQ still brings it up, serving nothing an address would open",
       birth: { ended: false },
-      offered: false,
+      pending: false,
+      published: true,
       words: "Running",
     },
-    { case: "where HQ did not bring it up", birth: undefined, offered: true, words: "Running" },
-  ])("says a stage runs only with its address, $case", ({ birth, offered, words: said }) => {
-    const lines = placeLines({
-      ...(offered === undefined ? {} : { addressOffered: new Map([["stage", offered]]) }),
-      flow: {
-        production: { kind: "absent" },
-        stages: [
-          stop({
-            projectId: "stage",
-            name: "stage",
-            source: "main",
-            addresses: [],
-            ...(birth === undefined ? {} : { birth }),
-          }),
-        ],
-      },
-      stageChips: new Map([["stage", chip({ label: "stage", version: "main" })]]),
-      nowMs: NOW,
-    });
-    expect(lines[0]?.words.join(" · ")).toBe(said);
-  });
+    {
+      case: "where HQ did not bring it up",
+      birth: undefined,
+      pending: false,
+      published: true,
+      words: "Running",
+    },
+  ])(
+    "says a stage runs only with its address, $case",
+    ({ birth, pending, published, words: said }) => {
+      const lines = placeLines({
+        addressPending: pending === undefined ? new Map() : new Map([["stage", pending]]),
+        flow: {
+          production: { kind: "absent" },
+          stages: [
+            stop({
+              projectId: "stage",
+              name: "stage",
+              source: "main",
+              addresses: published ? [{ service: "app", url: "https://stage.example.com/" }] : [],
+              ...(birth === undefined ? {} : { birth }),
+            }),
+          ],
+        },
+        stageChips: new Map([["stage", chip({ label: "stage", version: "main" })]]),
+        nowMs: NOW,
+      });
+      expect(lines[0]?.words.join(" · ")).toBe(said);
+    },
+  );
 });
 
 describe("since when production runs what it runs", () => {
@@ -516,102 +525,6 @@ describe("since when production runs what it runs", () => {
 
 describe("a release ready to go", () => {
   const stage = stop({ projectId: "stage", name: "stage", source: "main" });
-
-  // D28: releasing the fix is how a broken production is mended, so the release stays offered.
-  it("is offered beside a production whose last release failed, and says so plainly", () => {
-    const ready = cardReady({
-      production: {
-        kind: "deploy-failed",
-        stop: stop({ version: { ...stop().version!, label: "v1.8.2" } }),
-        line: "",
-        candidate: { tag: "v1.9.1", waiting: 2 },
-      },
-      stages: [stage],
-      main: { head: undefined, hasCode: true, notLive: 2, notLiveAtLeast: false },
-    });
-    expect(ready === undefined ? undefined : [readyTitle(ready), readyLine(ready, true)]).toEqual([
-      "2 changes ready to release",
-      "On stage. Production's last release failed; it still runs v1.8.2.",
-    ]);
-  });
-  it("says how many changes, where they were tested and what production runs", () => {
-    const ready = cardReady({
-      production: {
-        kind: "ready-to-release",
-        stop: stop(),
-        line: "",
-        candidate: { tag: "v2.4.0", waiting: 3 },
-      },
-      stages: [stage],
-      main: { head: undefined, hasCode: true, notLive: 3, notLiveAtLeast: false },
-    });
-    expect(ready === undefined ? undefined : [readyTitle(ready), readyLine(ready, true)]).toEqual([
-      "3 changes ready to release",
-      "On stage. Production runs v2.3.1.",
-    ]);
-  });
-
-  // The onboarding run: "On stage, tested" while nobody had tried the stage, and before it ran them.
-  it.each([
-    { case: "the stage runs them all", onStage: true, line: "On stage. Production runs v2.3.1." },
-    {
-      case: "the stage does not run them all yet",
-      onStage: false,
-      line: "Not on stage yet. Production runs v2.3.1.",
-    },
-    {
-      case: "what the stage runs is unread",
-      onStage: undefined,
-      line: "Merged. Production runs v2.3.1.",
-    },
-  ])("says only what the stage runs, never that anyone tested it: $case", ({ onStage, line }) => {
-    const ready = cardReady({
-      production: {
-        kind: "ready-to-release",
-        stop: stop(),
-        line: "",
-        candidate: { tag: "v2.4.0", waiting: 3 },
-      },
-      stages: [stage],
-      main: { head: undefined, hasCode: true, notLive: 3, notLiveAtLeast: false },
-    });
-    expect(ready === undefined ? undefined : readyLine(ready, onStage)).toBe(line);
-  });
-
-  // The onboarding run: "Merged. Nothing is released yet." under "2 changes ready to release",
-  // beside production's "Not released yet" — the title says they are merged, production the rest.
-  it("says nothing more where no stage runs them and production runs no release yet", () => {
-    const ready = cardReady({
-      production: {
-        kind: "ready-to-release",
-        stop: stop({ state: "empty", version: undefined }),
-        line: "",
-        candidate: { tag: "v0.1.0", waiting: 1 },
-      },
-      stages: [],
-      main: { head: undefined, hasCode: true, notLive: 1, notLiveAtLeast: false },
-    });
-    expect(ready === undefined ? null : readyLine(ready, undefined)).toBeUndefined();
-  });
-
-  it("names the stage main feeds, the one whose deploys say whether it runs them, never another", () => {
-    const ready = cardReady({
-      production: {
-        kind: "ready-to-release",
-        stop: stop(),
-        line: "",
-        candidate: { tag: "v2.4.0", waiting: 3 },
-      },
-      stages: [
-        stop({ projectId: "qa", name: "qa", source: "release" }),
-        stop({ projectId: "stage", name: "stage", source: "main", state: "deploying" }),
-      ],
-      main: { head: undefined, hasCode: true, notLive: 3, notLiveAtLeast: false },
-    });
-    expect(ready === undefined ? undefined : readyLine(ready, false)).toBe(
-      "Not on stage yet. Production runs v2.3.1.",
-    );
-  });
 
   it.each([
     {
@@ -673,85 +586,24 @@ describe("a release on its way", () => {
   });
 });
 
-// With the "Putting v2.4.0 live" block gone, nothing on the card opened a release on its way:
-// production's line that says it now opens it, as the block's door did.
-describe("production's line while a release is on its way", () => {
-  const main = { head: undefined, hasCode: true, notLive: 1, notLiveAtLeast: false };
-  const releasing = { kind: "releasing", stop: stop(), line: "", tag: "v2.4.1" } as const;
-  const deploying = {
-    kind: "deploying",
-    stop: stop({ state: "deploying" }),
-    line: PRODUCTION_DEPLOYING,
-  } as const;
-  it.each([
-    { case: "opens the release's review", production: releasing, opens: { kind: "release" } },
-    {
-      case: "opens a roll back's review by the release it goes back to",
-      production: releasing,
-      rollsBackTo: "v2.3.0",
-      opens: { kind: "rollback", tag: "v2.3.0" },
-    },
-    {
-      case: "opens what is on its way while the platform builds production, before HQ names it",
-      production: deploying,
-      chip: chip({ state: "releasing", next: "v2.4.1" }),
-      opens: { kind: "release" },
-    },
-    {
-      case: "opens what is on its way while the platform builds production it cannot name yet",
-      production: deploying,
-      opens: { kind: "release" },
-    },
-    { case: "opens nothing while none is on its way", production: LIVE, opens: undefined },
-    {
-      case: "opens nothing while production is down: its trouble is said, and its fix",
-      production: releasing,
-      chip: chip({ state: "down", next: "v2.4.1" }),
-      opens: undefined,
-    },
-  ] as const)("$case", ({ production, opens, ...rest }) => {
-    const rollsBackTo = "rollsBackTo" in rest ? rest.rollsBackTo : undefined;
-    const flow = { production, stages: [], main };
-    const [line] = placeLines({
-      flow,
-      rollsBackTo,
-      ...("chip" in rest ? { chip: rest.chip } : {}),
-      nowMs: 0,
-    });
-    if (line === undefined) throw new Error("production has a line");
-    expect(releaseLineOpens(line, production, rollsBackTo)).toEqual(opens);
-  });
-});
-
 // The onboarding run: production offered "Put it live" while the Mate was still creating its
 // services and nothing was there to put live.
 describe("Put it live on a card", () => {
-  const main = (hasCode: boolean | undefined) => ({
-    head: undefined,
-    hasCode,
-    notLive: 0,
-    notLiveAtLeast: false,
-  });
-  const open = (kind: "code" | "recipe") => ({
-    pull: pull({ kind, number: 3, title: "Add the tea list" }),
-    blocked: null,
-    state: undefined,
-    review: true,
-  });
+  const open = (kind: "code" | "recipe") => pull({ kind, number: 3, title: "Add the tea list" });
   it.each([
-    { case: "nothing merged and no change open", hasCode: undefined, open: [], offered: false },
+    { case: "nothing merged and no change open", merged: [], open: [], offered: false },
     {
       case: "only the Mate's setup files open",
-      hasCode: undefined,
+      merged: [],
       open: [open("recipe")],
       offered: false,
     },
-    { case: "a change of the app open", hasCode: undefined, open: [open("code")], offered: true },
-    { case: "the app's code merged", hasCode: true, open: [], offered: true },
+    { case: "a change of the app open", merged: [], open: [open("code")], offered: true },
+    { case: "the app's code merged", merged: [open("code")], open: [], offered: true },
   ])(
     "is offered only once there is a change to put live: $case",
-    ({ hasCode, open: pulls, offered }) => {
-      expect(putLiveHasChange({ main: main(hasCode), pullRequests: pulls })).toBe(offered);
+    ({ merged, open: pulls, offered }) => {
+      expect(putLiveHasChange({ merged, pullRequests: pulls })).toBe(offered);
     },
   );
 });
@@ -1004,6 +856,22 @@ describe("a Mate on a card", () => {
     expect(mateChangeForReview(flow, "wren-dev")?.number).toBe(1);
   });
 
+  // The project's card asks for a recipe change once, as a setup change (`cardChanges`).
+  it("leaves a Mate's recipe change out of its overview row, which reviews its code", () => {
+    const recipe = pull({ number: 7, kind: "recipe", title: "Mate: the group's import files" });
+    const flow = {
+      pullRequests: [
+        { pull: recipe, blocked: null, state: undefined, review: true },
+        { pull: pull({ number: 2 }), blocked: null, state: undefined, review: true },
+      ],
+    };
+    expect(mateChangesForReview(flow, "wren-dev").map((each) => each.number)).toEqual([2]);
+    expect(mateChangeForReview(flow, "wren-dev")?.number).toBe(2);
+    expect(mateChangeForReview({ pullRequests: [flow.pullRequests[0]!] }, "wren-dev")).toBe(
+      undefined,
+    );
+  });
+
   // D7, one rule with the menu (`changeShowsReview`): while Wren works, its changes show no Review.
   it.each([
     { case: "at work", review: false, expected: undefined },
@@ -1023,7 +891,6 @@ describe("a card's Mates", () => {
     const { shown, folded } = foldMates(mates, (mate) => mate === mate.toUpperCase());
     expect(shown).toEqual(["a", "B", "c", "E"]);
     expect(folded).toEqual(["d", "f"]);
-    expect(foldWords(folded.length)).toBe("2 more Mates");
   });
 
   it("all stand when there are four or fewer", () => {
@@ -1079,13 +946,6 @@ describe("a card's header", () => {
     expect(placeAddresses(routes)).toEqual(addresses);
     expect(soleSite(placeAddresses(routes))).toBe(site);
   });
-
-  it("draws the people on it only when more than one, each once", () => {
-    const ada = { userId: "ada" };
-    const kai = { userId: "kai" };
-    expect(cardPeople([ada, null, ada])).toEqual([]);
-    expect(cardPeople([ada, kai, ada, undefined])).toEqual([ada, kai]);
-  });
 });
 
 describe("a stage's line on a card", () => {
@@ -1133,36 +993,6 @@ describe("production's actions", () => {
 });
 
 describe("production's room while a release is on its way", () => {
-  // CI's held card: the platform's build said Deploying with no History room at 248 px, then HQ's
-  // accepted release said Releasing with it at 292 px; one release on its way keeps one height.
-  it.each([
-    {
-      case: "the platform's build, before HQ names it",
-      kind: "deploying",
-      dot: "releasing",
-      runsNamed: false,
-      held: true,
-    },
-    {
-      case: "HQ's accepted release",
-      kind: "releasing",
-      dot: "releasing",
-      runsNamed: false,
-      held: true,
-    },
-    { case: "a version it runs", kind: "live", dot: "running", runsNamed: true, held: true },
-    {
-      case: "running nothing it can name",
-      kind: "live",
-      dot: "running",
-      runsNamed: false,
-      held: false,
-    },
-    { case: "nothing released yet", kind: "empty", dot: "none", runsNamed: false, held: false },
-  ] as const)("holds History's room whatever names the release first: $case", (input) => {
-    expect(historyHeld(input)).toBe(input.held);
-  });
-
   const BUILD = { from: "v1.0.0", to: "v1.1.0" };
   it.each([
     { case: "the flow says production deploys", kind: "deploying", building: BUILD, read: BUILD },
@@ -1237,6 +1067,7 @@ describe("production's panel", () => {
     release("v2.2.0", "2026-09-20T10:00:00Z"),
   ];
 
+  // witness: apps/web/src/components/zerops/projects/projectCard.logic.ts | pull.mergedAt > before.taggedAt → true
   it("says what the version production runs brought: what was merged since the release before", () => {
     const merged = [
       pull({ number: 1, mergedAt: "2026-09-30T10:00:00Z" }),
@@ -1247,6 +1078,7 @@ describe("production's panel", () => {
     expect(broughtBy(merged, [])).toEqual([]);
   });
 
+  // witness: apps/web/src/components/zerops/projects/projectCard.logic.ts | pull.kind === "code" && → true &&
   it("leaves the group's own setup out of what a release brought: only the app's changes", () => {
     const merged = [
       pull({ number: 1, mergedAt: "2026-10-03T10:00:00Z" }),
@@ -1311,7 +1143,7 @@ describe("a card's latest changes", () => {
       open: [],
       merged: [merged(6, "2026-10-09T09:00:00Z")],
       stage: undefined,
-      rows: [["Change 6", false, "Not released yet"]],
+      rows: [["Change 6", false, "Merged · waits for production"]],
     },
     // The onboarding run: production, the release and the change each said "Not released yet".
     {
@@ -1336,8 +1168,8 @@ describe("a card's latest changes", () => {
       merged: [merged(5, "2026-10-07T09:00:00Z"), merged(4, "2026-09-30T09:00:00Z")],
       stage: stageOn(5),
       rows: [
-        ["Change 5", false, "In v1.0.4"],
-        ["Change 4", false, "In v1.0.3"],
+        ["Change 5", false, "Live in v1.0.4"],
+        ["Change 4", false, "Live in v1.0.3"],
       ],
     },
     {
@@ -1357,8 +1189,8 @@ describe("a card's latest changes", () => {
         ["Newer open", true, "Ready to merge"],
         ["Older open", true, "Ready to merge"],
         ["Change 6", false, "On stage"],
-        ["Change 5", false, "In v1.0.4"],
-        ["Change 4", false, "In v1.0.3"],
+        ["Change 5", false, "Live in v1.0.4"],
+        ["Change 4", false, "Live in v1.0.3"],
       ],
     },
     // The onboarding run: both changes read "On stage" for two minutes while the stage was not
@@ -1368,7 +1200,7 @@ describe("a card's latest changes", () => {
       open: [],
       merged: [merged(6, "2026-10-09T09:00:00Z")],
       stage: stageOn(undefined),
-      rows: [["Change 6", false, "Not released yet"]],
+      rows: [["Change 6", false, "Merged · waits for production"]],
     },
     {
       case: "merged while the stage still runs an older change: not on stage",
@@ -1376,7 +1208,7 @@ describe("a card's latest changes", () => {
       merged: [merged(7, "2026-10-09T10:00:00Z"), merged(6, "2026-10-09T09:00:00Z")],
       stage: stageOn(6),
       rows: [
-        ["Change 7", false, "Not released yet"],
+        ["Change 7", false, "Merged · waits for production"],
         ["Change 6", false, "On stage"],
       ],
     },
@@ -1432,6 +1264,46 @@ describe("a card's latest changes", () => {
       stage: stageOn(6),
       rows: [["Raise the stage's memory", false, "Setup files, not part of a release"]],
     },
+    // Larkspur, 2026-10-28: Core held a Mate's setup files for a person, as their merge
+    // would change the stage and production built from them. Its Mate's Review leaves it out; its
+    // row says what it changes once its review's files are read (`setupChangeWords`).
+    {
+      case: "a setup change waiting for a person: the project's setup, until its files are read",
+      open: [
+        pull({
+          repository: "group",
+          kind: "recipe",
+          number: 2,
+          title: "Mate: the group's import files",
+        }),
+      ],
+      merged: [],
+      stage: stageOn(6),
+      rows: [["Mate: the group's import files", true, "Changes the project's setup"]],
+    },
+    {
+      case: "a setup change waiting where no environment stands: the project's setup",
+      open: [pull({ repository: "group", kind: "recipe", number: 2, title: "Add storage" })],
+      merged: [],
+      stage: undefined,
+      production: false,
+      rows: [["Add storage", true, "Changes the project's setup"]],
+    },
+    {
+      case: "a setup change that does not merge: what stops it",
+      open: [
+        pull({
+          repository: "group",
+          kind: "recipe",
+          number: 2,
+          title: "Add storage",
+          mergeability: "conflicting",
+        }),
+      ],
+      merged: [],
+      stage: stageOn(6),
+      rows: [["Add storage", true, "Conflicts with main"]],
+    },
   ])("says $case", ({ open, merged: landed, stage, production = true, noReleases, rows }) => {
     expect(
       cardChanges({
@@ -1446,307 +1318,48 @@ describe("a card's latest changes", () => {
   });
 });
 
-describe("cardChangeRows", () => {
-  // The owner (2026-10-12): the changes "should show where tags were marked, where the prod is".
-  const merged = (number: number, mergedAt: string) =>
-    ({
-      pull: pull({ number, merged: true, mergedAt }),
-      open: false,
-      words: "Merged",
-      tone: "off",
-      at: mergedAt,
-    }) as const;
-  const open = {
-    pull: pull({ number: 9 }),
-    open: true,
-    words: "Ready to merge",
-    tone: "off",
-    at: undefined,
-  } as const;
-  const shown = (rows: ReturnType<typeof cardChangeRows>) =>
-    rows.map((row) =>
-      row.kind === "change"
-        ? `#${String(row.change.pull.number)}`
-        : `${row.tag}${row.live ? " (production)" : ""}`,
-    );
+// What its review reads of its files (`recipeReach`), never which environments the project has.
+describe("setupChangeWords", () => {
+  const reach = (over: Partial<RecipeReach> = {}): RecipeReach => ({
+    stages: 0,
+    production: false,
+    later: [],
+    unused: [],
+    ...over,
+  });
   it.each([
+    { case: "its files unread", reach: undefined, words: "Changes the project's setup" },
     {
-      case: "each release over the merged changes it took, open ones first",
-      changes: [open, merged(4, "2026-10-04"), merged(3, "2026-10-03"), merged(2, "2026-10-02")],
-      releases: [
-        { tag: "v3", taggedAt: "2026-10-03T12", live: true },
-        { tag: "v2", taggedAt: "2026-10-02T12", live: false },
-      ],
-      rows: ["#9", "#4", "v3 (production)", "#3", "v2", "#2"],
+      case: "the stage's recipe and production's",
+      reach: reach({ stages: 1, production: true }),
+      words: "Changes how Stage and Production are built",
     },
     {
-      case: "production's release older than every change shown closes the list",
-      changes: [merged(4, "2026-10-04"), merged(3, "2026-10-03")],
-      releases: [
-        { tag: "v2", taggedAt: "2026-10-02", live: true },
-        { tag: "v1", taggedAt: "2026-10-01", live: false },
-      ],
-      rows: ["#4", "#3", "v2 (production)"],
+      case: "the stage's recipe, where two stages are made from it",
+      reach: reach({ stages: 2 }),
+      words: "Changes how the stages are built",
     },
     {
-      case: "a release with no change shown after it stands over the newest",
-      changes: [merged(4, "2026-10-04")],
-      releases: [{ tag: "v5", taggedAt: "2026-10-05", live: true }],
-      rows: ["v5 (production)", "#4"],
+      case: "only production's recipe, where a stage stands too",
+      reach: reach({ production: true }),
+      words: "Changes how Production is built",
     },
     {
-      case: "a release that took no change shown is left out, production's stays",
-      changes: [merged(4, "2026-10-04"), merged(2, "2026-10-02")],
-      releases: [
-        { tag: "v4", taggedAt: "2026-10-03T18", live: false },
-        { tag: "v3", taggedAt: "2026-10-03T12", live: true },
-        { tag: "v2b", taggedAt: "2026-10-03T06", live: false },
-        { tag: "v2", taggedAt: "2026-10-02T12", live: false },
-      ],
-      rows: ["#4", "v3 (production)", "v2", "#2"],
+      case: "only recipes nothing in the project is made from",
+      reach: reach({ unused: ["Remote (CDE)", "Local"] }),
+      words: "Changes the project's setup",
     },
     {
-      case: "no release, the changes alone",
-      changes: [open, merged(4, "2026-10-04")],
-      releases: [],
-      rows: ["#9", "#4"],
+      case: "only the recipe new Mates are made from",
+      reach: reach({ later: ["mate"] }),
+      words: "Changes the project's setup",
     },
-    {
-      case: "no change shown, production's release alone",
-      changes: [],
-      releases: [{ tag: "v1", taggedAt: "2026-10-01", live: true }],
-      rows: ["v1 (production)"],
-    },
-  ])("places releases among a card's changes: $case", ({ changes, releases, rows }) => {
-    expect(shown(cardChangeRows(changes, releases))).toEqual(rows);
-  });
-});
-
-describe("a place's addresses on its panel", () => {
-  const domain = (
-    domainName: string,
-    service: string,
-    face: DomainFace = "live",
-  ): AddressDomain => ({
-    routingId: `r-${domainName}`,
-    domainName,
-    routingDomains: [domainName],
-    targets: [{ serviceId: service, serviceName: service, port: 3000, path: "/" }],
-    sslEnabled: true,
-    face,
-    url: `https://${domainName}`,
-    resolvedIps: [],
-    nameServers: [],
-  });
-  const subdomain = (service: string, on = true) => ({
-    serviceId: service,
-    serviceName: service,
-    on,
-    hosts: on
-      ? [
-          {
-            port: 3000,
-            url: `https://${service}-1a2b-3000.prg1.zerops.app`,
-            host: `${service}-1a2b-3000.prg1.zerops.app`,
-          },
-        ]
-      : [],
-    port: 3000,
-  });
-  const place = (
-    domains: ReadonlyArray<AddressDomain>,
-    zerops: PlaceAddresses["zerops"],
-    state: PlaceAddresses["state"] = "ready",
-  ): PlaceAddresses => ({
-    state,
-    domains,
-    zerops,
-    ips: { zoneHasSharedV4: false },
-    portsState: "ready",
-    ports: [],
-    webTargets: [],
-    portTargets: [],
-    waitingDomains: [],
-    waitingPorts: [],
-    readsProject: false,
-  });
-  const listed = [{ service: "app", url: "https://app-1a2b-3000.prg1.zerops.app" }];
-
-  it.each([
-    {
-      case: "its own domain, live, over its zerops.app address",
-      place: place([domain("shop.acme.com", "app")], [subdomain("app")]),
-      head: "shop.acme.com",
-      doors: [],
-    },
-    {
-      case: "no domain of its own: its zerops.app address",
-      place: place([], [subdomain("app")]),
-      head: "app-1a2b-3000.prg1.zerops.app",
-      doors: [],
-    },
-    {
-      case: "its own domain not live yet: its zerops.app address meanwhile",
-      place: place([domain("shop.acme.com", "app", "dns")], [subdomain("app")]),
-      head: "app-1a2b-3000.prg1.zerops.app",
-      doors: [],
-    },
-    {
-      case: "several services: a door each, at its own domain where it has one, and that domain heads it",
-      place: place([domain("shop.acme.com", "shop")], [subdomain("shop"), subdomain("api")]),
-      head: "shop.acme.com",
-      doors: [
-        { service: "api", url: "https://api-1a2b-3000.prg1.zerops.app" },
-        { service: "shop", url: "https://shop.acme.com" },
-      ],
-    },
-    {
-      case: "several services and no domain of its own: a door each, no one address",
-      place: place([], [subdomain("shop"), subdomain("api")]),
-      head: undefined,
-      doors: [
-        { service: "api", url: "https://api-1a2b-3000.prg1.zerops.app" },
-        { service: "shop", url: "https://shop-1a2b-3000.prg1.zerops.app" },
-      ],
-    },
-    {
-      case: "a service with its zerops.app address off and no domain: no door",
-      place: place([], [subdomain("app"), subdomain("db", false)]),
-      head: "app-1a2b-3000.prg1.zerops.app",
-      doors: [],
-    },
-    {
-      case: "still being read: as its listing says it",
-      place: place([], [], "reading"),
-      head: "app-1a2b-3000.prg1.zerops.app",
-      doors: [],
-    },
-    {
-      case: "outside an account: as its listing says it",
-      place: undefined,
-      head: "app-1a2b-3000.prg1.zerops.app",
-      doors: [],
-    },
-  ])("a place is headed by the address it answers at: $case", ({ place, head, doors }) => {
-    const said = panelAddresses({ kind: "production", listed, place, runs: true });
-    expect(said.head?.host).toBe(head);
-    expect(said.doors).toEqual(doors);
-  });
-
-  it.each([
-    { face: "going-live", word: "Going live", tone: "muted" },
-    { face: "changing", word: "Changing", tone: "muted" },
-    { face: "removing", word: "Removing", tone: "muted" },
-    { face: "dns", word: "Waiting for your DNS", tone: "attention" },
-    { face: "elsewhere", word: "Points elsewhere", tone: "attention" },
-    { face: "certificate", word: "Getting a certificate", tone: "muted" },
-    { face: "certificate-failed", word: "Couldn't get a certificate", tone: "attention" },
-  ] as const)(
-    "a domain of its own not answering yet says how far it is, as the addresses sheet says it: $face",
-    ({ face, word, tone }) => {
-      const said = panelAddresses({
-        kind: "stage",
-        listed,
-        runs: true,
-        place: place(
-          [domain("shop.acme.com", "app", face), domain("acme.com", "app")],
-          [subdomain("app")],
-        ),
-      });
-      expect(said.pending).toEqual([{ name: "shop.acme.com", word, tone }]);
-    },
-  );
-
-  it("a place with only its default address and nothing pending says nothing more", () => {
-    const said = panelAddresses({
-      kind: "stage",
-      listed,
-      place: place([], [subdomain("app")]),
-      runs: true,
-    });
-    expect(said.pending).toEqual([]);
-    expect(said.offerDomain).toBe(false);
-  });
-
-  it.each([
-    {
-      case: "production read with no domain of its own",
-      kind: "production",
-      place: place([], [subdomain("app")]),
-      offered: true,
-    },
-    {
-      case: "production with a domain of its own",
-      kind: "production",
-      place: place([domain("shop.acme.com", "app")], []),
-      offered: false,
-    },
-    {
-      case: "production with a domain of its own not live yet",
-      kind: "production",
-      place: place([domain("shop.acme.com", "app", "dns")], []),
-      offered: false,
-    },
-    {
-      case: "production still being read",
-      kind: "production",
-      place: place([], [], "reading"),
-      offered: false,
-    },
-    { case: "production outside an account", kind: "production", place: undefined, offered: false },
-    {
-      case: "a stage with no domain of its own",
-      kind: "stage",
-      place: place([], [subdomain("app")]),
-      offered: false,
-    },
-  ] as const)(
-    "offers a domain of its own as the globe's popover does: $case",
-    ({ kind, place, offered }) => {
-      expect(panelAddresses({ kind, listed, place, runs: true }).offerDomain).toBe(offered);
-    },
-  );
-
-  // The run: production offered "Put it on your domain" while it said "Not released yet", and
-  // its door read "Manage addresses" a beat before it became "Put it on your domain".
-  it.each([
-    { case: "it does", place: place([], [subdomain("app")]), runs: true, door: true },
-    {
-      case: "nothing runs there yet",
-      place: place([], [subdomain("app")]),
-      runs: false,
-      door: false,
-    },
-    {
-      case: "it has no address",
-      place: place([], [subdomain("app", false)]),
-      runs: true,
-      door: false,
-    },
-    {
-      case: "its addresses are still read",
-      place: place([], [], "reading"),
-      runs: true,
-      door: false,
-    },
-    { case: "outside an account", place: undefined, runs: true, door: false },
   ])(
-    "opens a door into the addresses sheet only once the place runs something at an address: $case",
-    ({ place, runs, door }) => {
-      const said = panelAddresses({ kind: "production", listed, place, runs });
-      expect(said.door).toBe(door);
-      if (!door) expect(said.offerDomain).toBe(false);
+    "says what a waiting setup change does by the recipes it changes: $case",
+    ({ reach, words }) => {
+      expect(setupChangeWords(reach)).toBe(words);
     },
   );
-
-  it("a production reached only on its own domains shows them on its block", () => {
-    const own = place(
-      [domain("example.xyz", "app"), domain("www.example.xyz", "app")],
-      [subdomain("app", false)],
-    );
-    const said = panelAddresses({ kind: "production", listed: [], place: own, runs: true });
-    expect(said.head).toEqual({ host: "example.xyz", url: "https://example.xyz" });
-  });
 });
 
 describe("a card's unread places", () => {
@@ -1761,7 +1374,7 @@ describe("a card's unread places", () => {
       flow: { production: { kind: "absent" }, unreadStages: ["stage"] },
       lines: [
         { name: "stage", words: "Could not be read by this version" },
-        { name: "prod", words: "Not released yet" },
+        { name: "prod", words: "Not added" },
       ],
     },
   ] as const)(
@@ -1777,18 +1390,107 @@ describe("a card's unread places", () => {
   );
 });
 
-it("Release overview counts distinguish recorded changes from the commits they carry.", () => {
-  const ready = cardReady({
-    production: {
-      kind: "ready-to-release",
-      stop: stop(),
-      line: "",
-      candidate: { tag: "v1.0.0", waiting: 6 },
+// The live audit (2026-10-28): Larkspur's production and stage existed with their services and
+// ran nothing, and their panels stood like live ones — green service dots, *Manage addresses*.
+describe("a place with nothing deployed", () => {
+  const empty = stop({ state: "empty", version: undefined, addresses: [] });
+  it.each([
+    {
+      case: "an empty production, as its chip says it",
+      input: {
+        flow: { production: LIVE, stages: [] },
+        chip: { label: "prod", state: "empty" },
+      },
+      name: "prod",
+      nothing: true,
     },
-    stages: [],
-    main: { head: undefined, hasCode: true, notLive: 6, notLiveAtLeast: false, changeCount: 1 },
-  });
-  expect(ready === undefined ? undefined : readyTitle(ready)).toBe(
-    "1 change · 6 commits ready to release",
+    {
+      case: "an empty production, as the flow says it",
+      input: { flow: { production: { kind: "empty", stop: empty, line: "" }, stages: [] } },
+      name: "prod",
+      nothing: true,
+    },
+    {
+      case: "an empty stage, as the flow says it",
+      input: {
+        flow: { production: LIVE, stages: [{ ...empty, projectId: "stage", name: "stage" }] },
+      },
+      name: "stage",
+      nothing: true,
+    },
+    {
+      case: "an empty stage, as its chip says it",
+      input: {
+        flow: { production: LIVE, stages: [{ ...empty, projectId: "stage", name: "stage" }] },
+        stageChips: new Map([["stage", { label: "stage", state: "empty" } as const]]),
+      },
+      name: "stage",
+      nothing: true,
+    },
+    {
+      case: "a production that does not exist",
+      input: { flow: { production: { kind: "absent" }, stages: [] } },
+      name: "prod",
+      nothing: true,
+    },
+    {
+      case: "a running production",
+      input: { flow: { production: LIVE, stages: [] } },
+      name: "prod",
+      nothing: false,
+    },
+    {
+      case: "a production whose first release is on its way",
+      input: {
+        flow: { production: LIVE, stages: [] },
+        chip: { label: "prod", state: "releasing", next: "v0.1.0" },
+      },
+      name: "prod",
+      nothing: false,
+    },
+  ] as const)(
+    "A place says it runs nothing only where nothing was deployed there: $case",
+    ({ input, name, nothing }) => {
+      const line = placeLines({ ...input, nowMs: NOW }).find((each) => each.name === name);
+      expect(line?.nothingDeployed === true).toBe(nothing);
+    },
   );
 });
+
+it.each([
+  {
+    publication: "pending",
+    addressPending: true,
+    addresses: [],
+    dot: "unknown",
+    words: ["Turning its address on…"],
+  },
+  {
+    publication: "none",
+    addressPending: false,
+    addresses: [],
+    dot: "running",
+    words: ["No public address yet"],
+  },
+  {
+    publication: "present",
+    addressPending: false,
+    addresses: [{ service: "app", url: "https://stage.example.com/" }],
+    dot: "running",
+    words: ["Running", "v2.3.1"],
+  },
+] as const)(
+  "a finished stage's card reflects its address publication: $publication",
+  ({ addressPending, addresses, dot, words }) => {
+    const [line] = placeLines({
+      flow: {
+        production: { kind: "absent" },
+        stages: [stop({ name: "stage", projectId: "stage", birth: { ended: true }, addresses })],
+      },
+      addressPending: new Map([["stage", addressPending]]),
+      nowMs: NOW,
+    });
+    expect(line?.words).toEqual(words);
+    expect(line?.dot).toBe(dot);
+  },
+);

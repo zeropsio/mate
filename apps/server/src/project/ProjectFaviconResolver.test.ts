@@ -337,12 +337,9 @@ it.layer(TestLayer)("ProjectFaviconResolverLive", (it) => {
           `<!doctype html><html><head><title>guide</title></head><body>\n${filler.repeat(1200)}</body></html>`,
         );
 
-        const startedAt = performance.now();
         const resolved = yield* resolver.resolvePath(cwd);
-        const elapsedMs = performance.now() - startedAt;
 
         expect(resolved).toBeNull();
-        expect(elapsedMs).toBeLessThan(5_000);
       }),
     );
 

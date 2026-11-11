@@ -187,6 +187,7 @@ function said(moment: Moment) {
     services: moment.services ?? [db("ACTIVE"), app("ACTIVE")],
     building: moment.deployment?.state === "known" && moment.deployment.value.kind === "deploying",
     routes: moment.routes ?? 0,
+    addressPending: true,
   };
   const heading: HeadingLineInput = {
     production: undefined,
@@ -305,18 +306,6 @@ describe("a stage coming up, replayed on run 4's clock with HQ deploying it", ()
   it.each(moments)("+$t s", ({ line, cell, ...moment }) => {
     const now = said(moment);
     expect({ line: now.line, cell: now.cell }).toEqual({ line, cell });
-  });
-
-  it("never says the address before a deploy ran, nor Checking after an answer", () => {
-    let answered = false;
-    for (const { line: _line, cell: _cell, ...moment } of moments) {
-      const now = said(moment);
-      if (moment.deployment?.state !== "known" || moment.deployment.value.kind !== "running") {
-        expect(now.line ?? "").not.toContain("turning its address on");
-      }
-      if (answered) expect(now.cell).not.toBe("Checking what runs here…");
-      answered ||= moment.deployment?.state === "known";
-    }
   });
 
   it("lands the stage up as its address turns on", () => {

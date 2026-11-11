@@ -46,6 +46,7 @@ import {
 import { createRoot } from "react-dom/client";
 
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
 import {
   placedMenuRows,
   placedNames,
@@ -97,7 +98,7 @@ import {
 import { SidebarJumpButton } from "~/components/zerops/SidebarJumpButton";
 import { zeropsAccountDisplay } from "~/components/zerops/landing/ZeropsAccountControl.logic";
 import { SidebarZeropsAccount } from "~/components/zerops/SidebarZeropsAccount";
-import { useSidebarWaiting } from "~/zerops/useSidebarWaiting";
+import { useWaitingNext, useWaitsOf } from "~/zerops/useSidebarWaiting";
 import type { MateDecision } from "~/components/zerops/mateDecision.logic";
 import type { SidebarCrewRead } from "~/components/zerops/crew/SidebarCrewMinis.logic";
 import {
@@ -120,7 +121,9 @@ import { useSidebarJump } from "~/zerops/sidebarJump";
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { PROJECT_ORDER_STORAGE_KEY, ProjectOrderSchema } from "~/zerops/projectOrderPreference";
 import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
+import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
 import { ZeropsSessionContext } from "~/zerops/sessionContext";
+import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsDataContext";
 import type { ZeropsSessionValue } from "~/zerops/ZeropsSessionProvider";
 import type { AppRouter } from "~/router";
 
@@ -979,16 +982,46 @@ const PORTRAIT = `data:image/svg+xml,${encodeURIComponent(
  * differ by *Crew*.
  */
 const OWNERS = new Map<string, ZeropsMateOwner>([
-  ["links-enzo", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT, isViewer: true }],
-  ["links-theo", { name: "Jan Beneš", initials: "JB", avatarUrl: null, isViewer: false }],
-  ["todo-fen", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT, isViewer: true }],
-  ["shop-otto", { name: "Jan Beneš", initials: "JB", avatarUrl: null, isViewer: false }],
-  ["shop-mira", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT, isViewer: false }],
-  ["notes-iris", { name: "Eva Dvořák", initials: "ED", avatarUrl: null, isViewer: false }],
-  ["notes-kai", { name: "Jan Beneš", initials: "JB", avatarUrl: null, isViewer: false }],
-  ["notes-lena", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT, isViewer: true }],
-  ["todo-vera", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT, isViewer: true }],
-  ["todo-nils", { name: "Jan Beneš", initials: "JB", avatarUrl: null, isViewer: false }],
+  [
+    "links-enzo",
+    { name: "Petra Malá", called: "Petra", initials: "PM", avatarUrl: PORTRAIT, isViewer: true },
+  ],
+  [
+    "links-theo",
+    { name: "Jan Beneš", called: "Jan", initials: "JB", avatarUrl: null, isViewer: false },
+  ],
+  [
+    "todo-fen",
+    { name: "Petra Malá", called: "Petra", initials: "PM", avatarUrl: PORTRAIT, isViewer: true },
+  ],
+  [
+    "shop-otto",
+    { name: "Jan Beneš", called: "Jan", initials: "JB", avatarUrl: null, isViewer: false },
+  ],
+  [
+    "shop-mira",
+    { name: "Petra Malá", called: "Petra", initials: "PM", avatarUrl: PORTRAIT, isViewer: false },
+  ],
+  [
+    "notes-iris",
+    { name: "Eva Dvořák", called: "Eva", initials: "ED", avatarUrl: null, isViewer: false },
+  ],
+  [
+    "notes-kai",
+    { name: "Jan Beneš", called: "Jan", initials: "JB", avatarUrl: null, isViewer: false },
+  ],
+  [
+    "notes-lena",
+    { name: "Petra Malá", called: "Petra", initials: "PM", avatarUrl: PORTRAIT, isViewer: true },
+  ],
+  [
+    "todo-vera",
+    { name: "Petra Malá", called: "Petra", initials: "PM", avatarUrl: PORTRAIT, isViewer: true },
+  ],
+  [
+    "todo-nils",
+    { name: "Jan Beneš", called: "Jan", initials: "JB", avatarUrl: null, isViewer: false },
+  ],
 ]);
 
 /**
@@ -1005,8 +1038,9 @@ const COMING_PHASE: ComingPhase =
  * `&viewer=colleague` anybody else, who reads that nobody has signed it in yet.
  */
 const COMING_VIEWER: ZeropsSessionValue | null = !COMING_SET
-  ? ({ user: { id: "u-harness" } } as unknown as ZeropsSessionValue)
+  ? ({ user: { id: "u-harness" }, activeOrganization: null } as unknown as ZeropsSessionValue)
   : ({
+      activeOrganization: null,
       user: {
         id:
           new URLSearchParams(location.search).get("viewer") === "colleague"
@@ -1025,8 +1059,20 @@ const FIXTURES = COMING_SET
       activity: new Map<string, ZeropsAgentActivity>(),
       flows: new Map<string, SidebarProjectFlow>(),
       owners: new Map<string, ZeropsMateOwner>([
-        ["acme-fen", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT, isViewer: true }],
-        ["acme-ada", { name: "Jan Beneš", initials: "JB", avatarUrl: null, isViewer: false }],
+        [
+          "acme-fen",
+          {
+            name: "Petra Malá",
+            called: "Petra",
+            initials: "PM",
+            avatarUrl: PORTRAIT,
+            isViewer: true,
+          },
+        ],
+        [
+          "acme-ada",
+          { name: "Jan Beneš", called: "Jan", initials: "JB", avatarUrl: null, isViewer: false },
+        ],
       ]),
       active: "acme-quinn",
       collapsed: [] as ReadonlyArray<string>,
@@ -1289,14 +1335,12 @@ function SidebarFrame({
     [open, scope],
   );
   const overviewOpen = open === "";
-  const waiting = useSidebarWaiting({
+  const waiting = useWaitsOf({
     candidates: FIXTURES.candidates,
     activityOf: activityOfCandidate,
-    shown,
-    activeProjectId: open,
-    enabled: true,
     releases: HARNESS_RELEASES,
   });
+  useWaitingNext({ mates: waiting.mates, activeProjectId: open, enabled: true });
   return (
     <aside
       className="flex h-screen shrink-0 flex-col border-e border-border bg-sidebar text-sidebar-foreground"
@@ -1583,6 +1627,9 @@ function HarnessJumpBox({
     openChange: (change: { readonly key: string }) => {
       jumpActions.push(`page ${change.key}`);
     },
+    openPage: (page: { readonly key: string }) => {
+      jumpActions.push(`page ${page.key}`);
+    },
     newProject: () => {
       jumpActions.push("new project");
     },
@@ -1654,14 +1701,12 @@ function RailFrame({
       shownInScope(scope, FIXTURES.owners.get(item.project.id)?.isViewer, item.project.id === open),
     [open, scope],
   );
-  const waiting = useSidebarWaiting({
+  const waiting = useWaitsOf({
     candidates: FIXTURES.candidates,
     activityOf: activityOfCandidate,
-    shown,
-    activeProjectId: open,
-    enabled: true,
     releases: HARNESS_RELEASES,
   });
+  useWaitingNext({ mates: waiting.mates, activeProjectId: open, enabled: true });
   const items = WAIT_ALL ?? waiting.items;
   const rail = useRailTiles({
     candidates: FIXTURES.candidates,
@@ -1809,7 +1854,7 @@ function ConversationPane({ open }: { readonly open: string }) {
             renderCrewmateMenu={() => null}
           />
           <span className="flex size-4 shrink-0 items-center justify-center" />
-          <div className="flex shrink-0 items-center justify-end gap-1 pr-18.25 sm:pr-14.25">
+          <div className="flex shrink-0 items-center justify-end gap-1 pr-9.25 sm:pr-14.25">
             <Button
               aria-label="More header actions"
               data-chat-header-ghost
@@ -1980,6 +2025,28 @@ useComposerDraftStore
 // The menu is always on screen here: a find is shown in it, as on a desktop.
 useSidebarJump.getState().setShowable(true);
 
+// The menu asks the account's projects which environments an application has: none here, the
+// fixtures' own structure says them.
+const NO_INVENTORY: Inventory = {
+  projects: [],
+  isLoading: false,
+  error: null,
+  projectRefs: new Map(),
+  authority: new Map(),
+  lost: new Set(),
+  deleted: [],
+};
+const NO_DATA: ZeropsDataContextValue = {
+  scope: {} as AccountScope,
+  signals: { hidden: () => false, online: () => true, listen: () => () => undefined },
+  organizationRef: () => {
+    throw new Error("not in the harness");
+  },
+  projectRef: () => {
+    throw new Error("not in the harness");
+  },
+};
+
 // The logo row's mark is a link home, so the harness stands in a router of
 // its own — one page, in memory — and in the sidebar's provider, as the app's
 // menu does.
@@ -1999,7 +2066,11 @@ const router = createRouter({
             } as CSSProperties
           }
         >
-          <Harness />
+          <ZeropsDataContext value={NO_DATA}>
+            <InventoryContext value={NO_INVENTORY}>
+              <Harness />
+            </InventoryContext>
+          </ZeropsDataContext>
         </SidebarProvider>
       </ZeropsSessionContext.Provider>
     ),

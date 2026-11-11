@@ -1,6 +1,7 @@
 /**
- * *Project access…*, from a Mate's ···: who reaches the Mate's Zerops project, as people chips —
- * a Mate is a project like any other, and Zerops keeps its access the same way.
+ * *Project access…*, from a Mate's ···: who reaches the Mate's Zerops project. A Mate of an app
+ * shows it read only, linked to its column on the app's page, where it is changed with the app's
+ * other places; a Mate on its own is changed here, as people chips.
  */
 import {
   Dialog,
@@ -10,7 +11,7 @@ import {
   DialogPopup,
   DialogTitle,
 } from "../ui/dialog";
-import { ProjectAccess } from "./projects/ProjectPeople";
+import { PlaceAccess, ProjectAccess, useProjectGroup } from "./projects/ProjectPeople";
 
 export function ZeropsProjectAccessDialog({
   projectId,
@@ -22,6 +23,7 @@ export function ZeropsProjectAccessDialog({
   readonly name: string;
   readonly onClose: () => void;
 }) {
+  const group = useProjectGroup(projectId);
   return (
     <Dialog
       onOpenChange={(open) => {
@@ -35,7 +37,18 @@ export function ZeropsProjectAccessDialog({
           <DialogDescription>Who reaches {name}’s project in Zerops, and how.</DialogDescription>
         </DialogHeader>
         <DialogPanel>
-          <ProjectAccess heading={false} kind="mate" name={name} projectId={projectId} />
+          {group === undefined ? (
+            <ProjectAccess heading={false} kind="mate" name={name} projectId={projectId} />
+          ) : (
+            <PlaceAccess
+              groupId={group.groupId}
+              groupName={group.name}
+              kind="mate"
+              name={name}
+              onLeave={onClose}
+              projectId={projectId}
+            />
+          )}
         </DialogPanel>
       </DialogPopup>
     </Dialog>

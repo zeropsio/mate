@@ -1,5 +1,11 @@
+import {
+  hqObserveCredentialFamily,
+  hqObserveCredentialRequestFamily,
+} from "./hqObserveCredential.ts";
+import { hqReleaseReviewFamily } from "./hqReleaseReview.ts";
 import { agentUsageFamily } from "./agentUsage.ts";
 import { hqAutoUpdatePolicyFamily } from "./hqAutoUpdatePolicy.ts";
+import { hqPersonaTemplatesFamily } from "./hqPersonaTemplates.ts";
 import { mateShellFamily } from "./mateConversation.ts";
 import { mateGitRemoteFamily } from "./mateGitRemote.ts";
 import { mateRepositoryDiscoveryFamily } from "./mateRepositoryDiscovery.ts";
@@ -60,11 +66,11 @@ import { mateBrowserFrameFamily } from "./mateBrowserFrame.ts";
 import { mateMacViewFamily } from "./mateMacView.ts";
 import { hqChangeMetadataFamily } from "./hqChangeMetadata.ts";
 import { hqChangeCommitsFamily } from "./hqChangeCommits.ts";
+import { hqChangeVerdictFamily } from "./hqChangeVerdict.ts";
 import type { Family, MemberState, ScopeKey } from "../model.ts";
 import {
   hqAppFamily,
   hqOrganizationFamily,
-  hqPersonFamily,
   hqPressFamily,
   hqStatusFamily,
   placementFamily,
@@ -78,13 +84,17 @@ import { hqMateFamily } from "./hqMate.ts";
 import { mateHealthFamily } from "./mateHealth.ts";
 import { mateAttentionFamily } from "./mateAttention.ts";
 import { organizationBalanceFamily } from "./organizationBalance.ts";
+import { organizationCostFamily } from "./organizationCost.ts";
+import { projectStatusFamily } from "./projectStatus.ts";
+import { pipelineFamily } from "./pipeline.ts";
+import { pipelineConfigFamily } from "./pipelineConfig.ts";
 import { projectSpendFamily } from "./projectSpend.ts";
 import { organizationCreditFamily } from "./organizationCredit.ts";
 import { organizationLocationsFamily } from "./organizationLocations.ts";
 import { organizationUserFamily } from "./organizationUser.ts";
+import { clientUserFamily } from "./clientUser.ts";
 import { organizationMembersFamily } from "./organizationMembers.ts";
 import { memberProjectRolesFamily } from "./memberProjectRoles.ts";
-import { hqVerdictFamily } from "./hqVerdict.ts";
 import { mateLinkFamily } from "./mateLink.ts";
 import { processFamily } from "./process.ts";
 import { projectFamily } from "./project.ts";
@@ -138,6 +148,8 @@ export const FAMILIES = defineFamilies([
 
   mateArchiveFamily,
   mateVcsFamily,
+  hqObserveCredentialFamily,
+  hqObserveCredentialRequestFamily,
   hqGitCredentialsFamily,
   hqGitCredentialRequestFamily,
   hqAiKeysFamily,
@@ -170,6 +182,7 @@ export const FAMILIES = defineFamilies([
 
   hqGitBrowseFamily,
   hqAutoUpdatePolicyFamily,
+  hqPersonaTemplatesFamily,
   mateSetupFamily,
   ...Object.values(MATE_FEED_FAMILIES),
   mateActionRequestFamily,
@@ -181,7 +194,6 @@ export const FAMILIES = defineFamilies([
   hqStatusFamily,
   hqAppFamily,
   placementFamily,
-  hqPersonFamily,
   hqPressFamily,
   hqKeptGitFamily,
   hqMateFamily,
@@ -194,9 +206,14 @@ export const FAMILIES = defineFamilies([
   organizationMembersFamily,
   memberProjectRolesFamily,
   organizationUserFamily,
+  clientUserFamily,
   organizationLocationsFamily,
   organizationCreditFamily,
   organizationBalanceFamily,
+  organizationCostFamily,
+  projectStatusFamily,
+  pipelineFamily,
+  pipelineConfigFamily,
   projectSpendFamily,
   locationLatencyFamily,
   serviceAgentsFamily,
@@ -204,7 +221,6 @@ export const FAMILIES = defineFamilies([
   publicPortRoutingFamily,
   projectAddonsFamily,
   hqAppDetailFamily,
-  hqVerdictFamily,
   mateVariablesFamily,
   mateLinkFamily,
   mateImageFamily,
@@ -212,6 +228,8 @@ export const FAMILIES = defineFamilies([
   hqPictureFamily,
   hqChangeCommitsFamily,
   hqChangeMetadataFamily,
+  hqChangeVerdictFamily,
+  hqReleaseReviewFamily,
   projectVariablesFamily,
   serviceVariableFamily,
   databaseFamily,

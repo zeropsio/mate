@@ -34,13 +34,7 @@ describe("menuRows", () => {
       expected: ["ada", "bea"],
     },
     {
-      name: "a project HQ places is drawn once, as HQ places it",
-      placed: [row("ada", { appId: "shop" })],
-      candidates: [row("ada")],
-      expected: ["ada"],
-    },
-    {
-      name: "a project proven deleted is drawn no more, placed or not",
+      name: "a project proven deleted that nothing places is drawn no more",
       placed: [],
       candidates: [row("ada"), row("bea")],
       gone: ["bea"],

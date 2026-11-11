@@ -117,7 +117,6 @@ describe("what an invitation may give", () => {
         groups: [{ name: "Chief · Petra", projects: [{ projectId: "chief", kind: "mate" }] }],
         roster: [{ id: "chief", name: "Chief" }],
         chiefs: new Set(["chief"]),
-        hq: new Set(),
       }),
     ).toEqual([]);
   });
@@ -142,43 +141,8 @@ describe("what an invitation may give", () => {
           { id: "chief", name: "Chief" },
         ],
         chiefs: new Set(["chief"]),
-        hq: new Set(),
       }).map(({ label }) => label),
     ).toEqual(["legacy-api", "Snap · Fen", "Snap · production", "Snap · stage"]);
-  });
-});
-
-describe("HQ's own project", () => {
-  const SHOP = {
-    groupId: "g-shop",
-    name: "Shop Front",
-    projects: [{ projectId: "shop-prod", kind: "production" }],
-  };
-  const HQ_ROW = { id: "hq", name: "Headquarters" };
-  it.each([
-    { sentence: "the organization's only project", groups: [], roster: [HQ_ROW], offered: [] },
-    {
-      sentence: "a project beside an application",
-      groups: [SHOP],
-      roster: [HQ_ROW, { id: "shop-prod", name: "Shop Front - production" }],
-      offered: ["g-shop"],
-    },
-  ])("an invite never offers HQ's own project: $sentence", ({ groups, roster, offered }) => {
-    const projects = inviteProjects({ groups, roster, chiefs: new Set(), hq: new Set(["hq"]) });
-    expect(projects.map(({ key }) => key)).toEqual(offered);
-    expect(invitePreselect({ projects, from: undefined })).not.toContain("hq");
-    expect(invitePreselect({ projects, from: "hq" })).toEqual([]);
-  });
-
-  it("a person's Project access never offers HQ's own project", () => {
-    expect(
-      accessProjects({
-        groups: [SHOP],
-        roster: [HQ_ROW, { id: "legacy", name: "legacy-api" }],
-        chiefs: new Set(),
-        hq: new Set(["hq"]),
-      }).map(({ projectId }) => projectId),
-    ).toEqual(["legacy", "shop-prod"]);
   });
 });
 
@@ -367,7 +331,6 @@ describe("an invitation on one page", () => {
           { id: "chief", name: "Chief" },
         ],
         chiefs: new Set(["chief"]),
-        hq: new Set(),
       }),
     ).toEqual([
       { key: "old", name: "legacy-api", projectIds: ["old"] },
@@ -379,7 +342,6 @@ describe("an invitation on one page", () => {
     groups: [SNAP, BEVIRO],
     roster: [],
     chiefs: new Set(),
-    hq: new Set(),
   });
   it.each([
     {

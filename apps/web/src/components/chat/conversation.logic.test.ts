@@ -23,7 +23,9 @@ import {
   latestFinishedWordsAt,
   messageReceipt,
   namedToolCall,
+  incidentsAtRest,
   incidentsStanding,
+  incidentToneNow,
   operationLineWords,
   operationUnreturnedWords,
   standingIncidents,
@@ -1925,6 +1927,80 @@ describe("browser checks", () => {
   );
 });
 
+describe("named dev-server stops", () => {
+  it.each([
+    {
+      sentence:
+        "stopping one of a host's dev servers shows that server stopped and the host's other server running",
+      name: "agent-layout-check",
+      servers: [
+        { name: "flipdev", port: 5195, status: "running", readAt: at(2) },
+        { name: "agent-layout-check", port: 5293, status: "stopped", readAt: at(2) },
+      ],
+      live: [{ hostname: "flipdev", word: "Dev server running", tone: "ok" }],
+      words: "Dev server agent-layout-check stopped on flipdev",
+    },
+    {
+      sentence: "an intentional stop of the only dev server reads as stopped, not as a failure",
+      name: "flipdev",
+      servers: [{ name: "flipdev", port: 5195, status: "stopped", readAt: at(2) }],
+      live: [],
+      words: "Dev server stopped on flipdev",
+    },
+  ])("$sentence", ({ name, servers, live, words }) => {
+    const [stopped] = reduceZeropsOperations(
+      [
+        {
+          id: "stop",
+          turnId: "t1",
+          toolName: "zerops_dev_server",
+          input: { hostname: "flipdev", action: "stop", name },
+          status: "completed",
+          truncated: false,
+          startedAt: at(1),
+          settledAt: at(2),
+          anchorActivityId: "stop",
+          rowIds: new Set(["stop"]),
+          agentInternal: false,
+          resultText: JSON.stringify({
+            action: "stop",
+            hostname: "flipdev",
+            name,
+            running: false,
+            envelope: { services: [{ hostname: "flipdev", devServers: servers }] },
+          }),
+        },
+      ],
+      { projectId: undefined, builds: () => "finished" },
+    ).operations;
+    const only = structure(
+      [user("m0", 0), operation("stop", "t1", 1, stopped!), assistant("a1", "t1", 3)],
+      { latest: { id: "t1", state: "completed", completed: true } },
+    ).turns[0]!;
+    const outcome = deriveOutcome({ turn: only, landed: [] })!;
+    expect(
+      outcome?.live.map(({ hostname, word, tone }) => ({ hostname, word, tone })) ?? [],
+    ).toEqual(live);
+    expect(operationLineWords(stopped!)).toBe(words);
+    expect(stopped!.closing).toBe(
+      `${name === "flipdev" ? "flipdev" : `${name} on flipdev`} stopped.`,
+    );
+    if (servers.length > 1) {
+      expect(stopped!.steps.map(({ label, stateLabel }) => [label, stateLabel])).toEqual([
+        ["flipdev :5195", "Running"],
+        ["agent-layout-check :5293", "Stopped"],
+      ]);
+    }
+    expect(standingIncidents(only.stretches[0]!)).toEqual([]);
+    expect(stretchIncidents(only.stretches[0]!)).toEqual([]);
+    expect(
+      (outcome === null ? [] : resultRows(outcome))
+        .filter((row) => row.key.startsWith("service:"))
+        .map(({ title, words, tone }) => ({ title, words, tone })),
+    ).toEqual(live.map(({ hostname, word, tone }) => ({ title: hostname, words: word, tone })));
+  });
+});
+
 describe("stretchIncidents", () => {
   it("tells a service that stopped answering and came back as one line", () => {
     const entries = [
@@ -1932,12 +2008,14 @@ describe("stretchIncidents", () => {
       operation("s0", "t1", 1, {
         kind: "devServer",
         subject: "nextstoredev",
+        devServer: { action: "start", name: "nextstoredev", running: true },
         statusWord: "Running",
         steps: [{ id: "dev-server", label: "Start", state: "done", stateLabel: "Done" }],
       }),
       operation("s1", "t1", 2, {
         kind: "devServer",
         subject: "nextstoredev",
+        devServer: { action: "status", name: "nextstoredev", running: false },
         statusWord: "Not running",
         steps: [
           {
@@ -1952,6 +2030,7 @@ describe("stretchIncidents", () => {
       operation("s2", "t1", 3, {
         kind: "devServer",
         subject: "nextstoredev",
+        devServer: { action: "restart", name: "nextstoredev", running: true },
         statusWord: "Running",
         steps: [{ id: "dev-server", label: "Restart", state: "done", stateLabel: "Done" }],
       }),
@@ -1977,6 +2056,7 @@ describe("stretchIncidents", () => {
       operation("s0", "t1", 1, {
         kind: "devServer",
         subject: "nextstoredev",
+        devServer: { action: "start", name: "nextstoredev", running: true },
         statusWord: "Running",
         steps: [{ id: "dev-server", label: "Start", state: "done", stateLabel: "Done" }],
       }),
@@ -1991,6 +2071,11 @@ describe("standingIncidents — what the dock under the now line says of a servi
     operation(id, "t1", minute, {
       kind: "devServer",
       subject: "appdev",
+      devServer: {
+        action: label === "Health check" ? "status" : label.toLowerCase(),
+        name: "appdev",
+        running,
+      },
       statusWord: running ? "Running" : "Not running",
       steps: [
         {
@@ -2153,6 +2238,165 @@ describe("standingIncidents — what the dock under the now line says of a servi
     expect(incidentsStanding(incidents, new Set(["appdev"]))).toEqual([]);
     expect(incidentsStanding(incidents, new Set(["appstage"]))).toEqual(incidents);
   });
+
+  // A dev server found not running is a fault only where something is meant
+  // to run: a service holding nothing — a stand-in during a move, one never
+  // deployed — or one stopped reads at rest and says why.
+  it.each([
+    {
+      name: "nothing deployed yet: at rest, saying so",
+      ops: [dev("s1", 1, "Status", false)],
+      status: "READY_TO_DEPLOY",
+      shows: [["appdev", "nothing deployed yet", "rest"]],
+    },
+    {
+      name: "stopped: at rest, saying so",
+      ops: [dev("s1", 1, "Status", false)],
+      status: "STOPPED",
+      shows: [["appdev", "stopped", "rest"]],
+    },
+    {
+      name: "running its version: still a fault",
+      ops: [dev("s1", 1, "Status", false)],
+      status: "ACTIVE",
+      shows: [["appdev", "not running", "attention"]],
+    },
+    {
+      name: "a start that failed on a service holding nothing: still a failure",
+      ops: [dev("s1", 1, "Start", false, { phase: "failed" })],
+      status: "READY_TO_DEPLOY",
+      shows: [["appdev", "start failed", "failed"]],
+    },
+    {
+      name: "before the platform's state is read: held, never amber first",
+      ops: [dev("s1", 1, "Status", false)],
+      status: "unread",
+      shows: [],
+    },
+    {
+      name: "gone from the project: nothing left to say",
+      ops: [dev("s1", 1, "Status", false)],
+      status: "gone",
+      shows: [],
+    },
+    {
+      name: "deleted by the Mate since: nothing left to say",
+      ops: [
+        dev("s1", 1, "Status", false),
+        operation("x1", "t1", 2, { kind: "delete", subject: "appdev" }),
+      ],
+      status: "ACTIVE",
+      shows: [],
+    },
+  ])("a service nothing is meant to run on — $name", ({ ops, status, shows }) => {
+    const [only] = structure([user("m0", 0), ...ops, moveOn], { live: "t1" }).turns;
+    const services =
+      status === "unread" ? undefined : status === "gone" ? [] : [{ hostname: "appdev", status }];
+    expect(
+      incidentsAtRest(standingIncidents(only!.stretches[0]!), services).map((incident) => [
+        incident.hostname,
+        incident.phases.join(" · "),
+        incident.tone,
+      ]),
+    ).toEqual(shows);
+  });
+
+  // zcp marks the dev it holds while a repository moves onto dev pools: nothing
+  // is meant to run there, whatever the platform says of it.
+  it.each([
+    {
+      name: "marked on its snapshot, running its version",
+      ops: [dev("s1", 1, "Status", false)],
+      services: [{ hostname: "appdev", status: "ACTIVE", standIn: { for: "pool-migrate" } }],
+      shows: [["appdev", "moving onto dev pools", "rest"]],
+    },
+    {
+      name: "marked by the status call itself",
+      ops: [dev("s1", 1, "Status", false, { standIn: { for: "pool-migrate" } })],
+      services: [{ hostname: "appdev", status: "ACTIVE" }],
+      shows: [["appdev", "moving onto dev pools", "rest"]],
+    },
+    {
+      name: "a start that failed on it",
+      ops: [dev("s1", 1, "Start", false, { phase: "failed" })],
+      services: [{ hostname: "appdev", status: "ACTIVE", standIn: { for: "pool-migrate" } }],
+      shows: [["appdev", "moving onto dev pools", "rest"]],
+    },
+    {
+      name: "held for a reason this build has no words for",
+      ops: [dev("s1", 1, "Status", false)],
+      services: [{ hostname: "appdev", status: "ACTIVE", standIn: { for: "repo-split" } }],
+      shows: [["appdev", "held for repo-split", "rest"]],
+    },
+  ])(
+    "a dev service zcp holds as a stand-in reads at rest, saying it's moving onto dev pools — $name",
+    ({ ops, services, shows }) => {
+      const [only] = structure([user("m0", 0), ...ops, moveOn], { live: "t1" }).turns;
+      expect(
+        incidentsAtRest(standingIncidents(only!.stretches[0]!), services).map((incident) => [
+          incident.hostname,
+          incident.phases.join(" · "),
+          incident.tone,
+        ]),
+      ).toEqual(shows);
+    },
+  );
+
+  it.each([
+    { name: "marked on its snapshot", standIn: undefined, envelope: { for: "pool-migrate" } },
+    { name: "marked by the call", standIn: { for: "pool-migrate" }, envelope: undefined },
+  ])(
+    "the run's record of a stand-in dev never reads amber or red — $name",
+    ({ standIn, envelope }) => {
+      const [only] = structure(
+        [
+          user("m0", 0),
+          dev("s1", 1, "Start", false, {
+            phase: "failed",
+            ...(standIn === undefined ? {} : { standIn }),
+          }),
+        ],
+        { live: "t1" },
+      ).turns;
+      const [found] = stretchIncidents(only!.stretches[0]!);
+      const services = [
+        {
+          hostname: "appdev",
+          status: "ACTIVE",
+          ...(envelope === undefined ? {} : { standIn: envelope }),
+        },
+      ];
+      expect(incidentToneNow(found!, services).tone).toBe("rest");
+    },
+  );
+
+  // The run's record keeps what it found in its own words; only its colour
+  // says whether it still needs anyone.
+  it.each([
+    {
+      name: "nothing deployed yet",
+      services: [{ hostname: "appdev", status: "READY_TO_DEPLOY" }],
+      tone: "rest",
+    },
+    { name: "stopped", services: [{ hostname: "appdev", status: "STOPPED" }], tone: "rest" },
+    { name: "gone from the project", services: [], tone: "rest" },
+    { name: "its state not read yet", services: undefined, tone: "rest" },
+    {
+      name: "running its version",
+      services: [{ hostname: "appdev", status: "ACTIVE" }],
+      tone: "attention",
+    },
+  ])(
+    "the run's record of a dev server found not running — $name: $tone, in its words",
+    ({ services, tone }) => {
+      const [only] = structure([user("m0", 0), dev("s1", 1, "Status", false)], {
+        live: "t1",
+      }).turns;
+      const [found] = stretchIncidents(only!.stretches[0]!);
+      const now = incidentToneNow(found!, services);
+      expect([now.phases.join(" · "), now.tone]).toEqual(["not running", tone]);
+    },
+  );
 });
 
 describe("deriveOutcome", () => {
@@ -2556,6 +2800,7 @@ describe("deriveOutcome", () => {
     const ops = actions.map((action, index) =>
       operation(`s${index}`, "t1", index + 1, {
         kind: "devServer",
+        devServer: { action, name: "appdev", running: action !== "stop" },
         statusWord: action === "stop" ? "Not running" : "Running",
         steps: [{ id: action, label: action, state: "done", stateLabel: "Done" }],
       }),
@@ -2646,6 +2891,11 @@ describe("deriveOutcome", () => {
   const devServer = (id: string, turnId: string, minute: number, action: string) =>
     operation(id, turnId, minute, {
       kind: "devServer",
+      devServer: {
+        action: action === "health check" ? "status" : action,
+        name: "appdev",
+        running: action !== "stop",
+      },
       statusWord: action === "stop" ? "Not running" : "Running",
       steps: [{ id: action, label: action, state: "done", stateLabel: "Done" }],
     });

@@ -7,10 +7,16 @@ import { ghosttyKeyForCode } from "./keyCodes";
 
 type WasmFunction = (...args: number[]) => number;
 
+const decodedWasm = new Map<string, Uint8Array>();
+
 function decodeWasmDataUrl(dataUrl: string): Uint8Array {
+  const cached = decodedWasm.get(dataUrl);
+  if (cached) return cached;
   const encoded = dataUrl.split(",", 2)[1];
   if (!encoded) throw new Error("The vendored Ghostty WASM data URL is invalid");
-  return Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
+  const bytes = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
+  decodedWasm.set(dataUrl, bytes);
+  return bytes;
 }
 
 describe("vendored libghostty-vt WebAssembly", () => {

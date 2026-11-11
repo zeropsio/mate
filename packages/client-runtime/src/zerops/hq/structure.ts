@@ -1,16 +1,14 @@
 /**
- * HQ's structure as `GET /api/structure` answers it: its applications as the reader sees them in
- * Zerops, the Mates it holds in no application, and what the reader may do with each — read through
- * their shapes; what this build cannot read is none, and never takes the structure beside it down.
+ * HQ's structure as `GET /api/structure` answers it: the organization's applications and the Mates
+ * it holds in no application — read through their shapes; what this build cannot read is none, and
+ * never takes the structure beside it down. What the person may do with each is the client's own
+ * verdict over their live Zerops roles, never read from here.
  *
  * Pure.
  *
  * @module hq/structure
  */
-import { HqOffers } from "@t3tools/shared/hqOffers";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
-import * as Option from "effect/Option";
-import * as Schema from "effect/Schema";
 
 import type { HqAppContents, HqBirth, HqStructure, CanonicalHqStructure } from "./client.ts";
 import { canonicalEnvironmentsOf, zeropsEnvironments } from "./environments.ts";
@@ -20,34 +18,6 @@ type HqUngrouped = HqStructure["ungrouped"];
 
 /** Each Mate HQ relays to the reader, by its project: its presence, and its overview's sections. */
 export type HqMates = ReadonlyMap<string, MateLiveView>;
-
-const readOffers = Schema.decodeUnknownOption(HqOffers);
-
-/** A `can` record as HQ sent it; none where it sent none this build can read. */
-const offersOf = (value: unknown): HqOffers | undefined => Option.getOrUndefined(readOffers(value));
-
-/** A Mate's entry, its offers and moves read through their shapes: one unreadable is unknown. */
-function mateOffersOf<E extends { readonly can?: unknown }>(
-  entry: E,
-): Omit<E, "can"> & { readonly can?: HqOffers } {
-  const { can: offered, ...rest } = entry;
-  const can = offersOf(offered);
-  return {
-    ...rest,
-    ...(can === undefined ? {} : { can }),
-  };
-}
-
-/** Each project HQ holds nowhere with its offers, each read on its own. */
-function unheldOf(value: unknown): Readonly<Record<string, HqOffers>> | undefined {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
-  return Object.fromEntries(
-    Object.entries(value).flatMap(([projectId, offered]) => {
-      const can = offersOf(offered);
-      return can === undefined ? [] : [[projectId, can] as const];
-    }),
-  );
-}
 
 /**
  * The account's tools HQ lists (the old Gitea project), each read through its shape: one this build
@@ -60,13 +30,6 @@ function toolsOf(value: unknown): HqStructure["tools"] {
     const { projectId, kind } = entry as { readonly projectId?: unknown; readonly kind?: unknown };
     return typeof projectId === "string" && kind === "gitea" ? [{ projectId, kind }] : [];
   });
-}
-
-/** Environments HQ refused the reader, with its reason; none where HQ sent them. */
-function refusedOf(value: unknown): { readonly refused: string } | undefined {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
-  const { refused } = value as { readonly refused?: unknown };
-  return typeof refused === "string" ? { refused } : undefined;
 }
 
 const isApp = (value: unknown): value is HqApp =>
@@ -113,7 +76,7 @@ const isContents = (value: unknown): value is HqAppContents => {
  */
 function appOf(value: HqApp): HqApp {
   const {
-    can: offered,
+    can: _hint,
     environments: sent,
     births: told,
     contents: held,
@@ -124,18 +87,18 @@ function appOf(value: HqApp): HqApp {
     readonly births?: unknown;
     readonly contents?: unknown;
   };
-  const environments =
-    sent === undefined ? undefined : (refusedOf(sent) ?? canonicalEnvironmentsOf(sent));
-  const can = offersOf(offered);
+  const environments = sent === undefined ? undefined : canonicalEnvironmentsOf(sent);
   return {
     ...app,
-    projects: app.projects.map(mateOffersOf),
-    ...(can === undefined ? {} : { can }),
+    projects: app.projects.map(unhinted),
     ...(environments === undefined ? {} : { environments }),
     ...(Array.isArray(told) ? { births: told.filter(isBirth) } : {}),
     ...(isContents(held) ? { contents: held } : {}),
   };
 }
+
+/** An entry without a verdict an older HQ streamed beside it: the client decides its own. */
+const unhinted = <E extends { readonly can?: unknown }>({ can: _hint, ...entry }: E) => entry;
 
 /**
  * The structure as HQ answers it (`GET /api/structure`, a snapshot): each part read through its
@@ -146,29 +109,18 @@ export function canonicalHqStructureOf(value: unknown): CanonicalHqStructure | u
   const {
     apps,
     ungrouped = [],
-    can: offered,
-    unheld: told,
     tools: listed,
-    rolesAnsweredAt,
   } = value as {
     readonly apps?: unknown;
     readonly ungrouped?: unknown;
-    readonly can?: unknown;
-    readonly unheld?: unknown;
     readonly tools?: unknown;
-    readonly rolesAnsweredAt?: unknown;
   };
   // An HQ from before the Mates in no application names none of them.
   if (!(Array.isArray(apps) && apps.every(isApp) && isUngrouped(ungrouped))) return undefined;
-  const can = offersOf(offered);
-  const unheld = unheldOf(told);
   const tools = toolsOf(listed);
   return {
     ...(tools === undefined ? {} : { tools }),
-    ...(can === undefined ? {} : { can }),
-    ...(unheld === undefined ? {} : { unheld }),
-    ...(typeof rolesAnsweredAt === "string" ? { rolesAnsweredAt } : {}),
-    ungrouped: ungrouped.map(mateOffersOf),
+    ungrouped: ungrouped.map(unhinted),
     apps: apps.map(appOf),
   };
 }
@@ -178,12 +130,7 @@ export function zeropsStructure(structure: CanonicalHqStructure): HqStructure {
     ...structure,
     apps: structure.apps.map(({ environments, ...app }) => ({
       ...app,
-      ...(environments === undefined
-        ? {}
-        : {
-            environments:
-              "refused" in environments ? environments : zeropsEnvironments(environments),
-          }),
+      ...(environments === undefined ? {} : { environments: zeropsEnvironments(environments) }),
     })),
   };
 }

@@ -9,6 +9,20 @@ import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vite-plus/test";
 import { appAtomRegistry } from "../../rpc/atomRegistry";
 import { ZeropsGitTab } from "./ZeropsGitTab";
+
+// The page's "What changed" reads git through hooks of its own: here it is its top and commits.
+vi.mock("../CodeChanges", () => ({
+  CodeChanges: (props: {
+    readonly top?: import("react").ReactNode;
+    readonly commitsFor?: (repository: string) => import("react").ReactNode;
+    readonly className?: string;
+  }) => (
+    <div className={props.className}>
+      {props.top}
+      {props.commitsFor?.("")}
+    </div>
+  ),
+}));
 const effects = vi.hoisted(() => ({ pull: vi.fn(), refresh: vi.fn() }));
 vi.mock("../../state/use-atom-command", () => ({ useAtomCommand: () => effects.pull }));
 vi.mock("../../zerops/useProjectTopology", () => ({
@@ -56,6 +70,7 @@ it("Update from main targets the selected repository and displays failure", asyn
         <RegistryContext.Provider value={appAtomRegistry}>
           <ZeropsGitTab
             threadRef={scopeThreadRef(environmentId, ThreadId.make("thread-update"))}
+            composerDraftTarget={scopeThreadRef(environmentId, ThreadId.make("thread-update"))}
             appId="app"
             declarations={[]}
             changes={{ pullRequests: [], merged: [] }}

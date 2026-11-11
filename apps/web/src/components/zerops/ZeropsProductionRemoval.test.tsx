@@ -4,6 +4,8 @@ import { createRoot } from "react-dom/client";
 import { RegistryContext } from "@effect/atom-react";
 import { AtomRegistry } from "effect/reactivity";
 import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
+import type { AccountStore } from "@t3tools/client-runtime/data";
+import { membershipInputs } from "@t3tools/client-runtime/data/fixtures";
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { AccountDataContext, type AccountData } from "~/zerops/accountData";
@@ -28,7 +30,7 @@ vi.mock("~/zerops/useGitTargetOperations", () => ({
 vi.mock("~/zerops/useHqAppDetail", () => ({
   useHqAppDetail: () => ({ live: true, releases: [], repos: [] }),
 }));
-const environment = (deleteProject: boolean, allowed = true) => ({
+const environment = (deleteProject: boolean) => ({
   id: HqEnvironmentId.make("production-record"),
   name: "Production",
   tier: "production" as const,
@@ -41,12 +43,11 @@ const environment = (deleteProject: boolean, allowed = true) => ({
   birth: null,
   release: null,
   deleteProjectOnRemoval: deleteProject,
-  can: {
-    remove_production: allowed
-      ? { allow: true as const }
-      : { allow: false as const, reason: "not_structure_writer" },
-  },
 });
+/** The person's role in the organization, as Zerops answers it: removing production is an admin's. */
+const member = (store: AccountStore, roleCode: string) => {
+  for (const input of membershipInputs(roleCode)) store.dispatch(input);
+};
 const structure = (environments: ReturnType<typeof environment>[]) => ({
   apps: [
     {
@@ -79,6 +80,7 @@ it.each([
     { id: "production-project", name: "Shop - Live", status: "ACTIVE" },
   ]);
   const { seed } = mountHqNavigation(registry, "org", { structure: structure([]) }, store);
+  member(store, "ADMIN");
   const account: Pick<AccountData, "data" | "orgId" | "demandDetail"> = {
     data: store.data,
     orgId: "org",
@@ -155,9 +157,11 @@ it.each([
 
 it("A person without production creation access cannot remove Zerops production", async () => {
   const registry = AtomRegistry.make();
-  const { store } = mountHqNavigation(registry, "org", {
-    structure: structure([environment(false, false)]),
-  });
+  const store = mountRoster(registry, "org", [
+    { id: "production-project", name: "Shop - Live", status: "ACTIVE" },
+  ]);
+  mountHqNavigation(registry, "org", { structure: structure([environment(false)]) }, store);
+  member(store, "BASIC_USER");
   const account: Pick<AccountData, "data" | "orgId" | "demandDetail"> = {
     data: store.data,
     orgId: "org",
@@ -195,6 +199,7 @@ it("A failed target deletion stays visible after HQ removed the production recor
     { structure: structure([environment(true)]) },
     store,
   );
+  member(store, "ADMIN");
   const account: Pick<AccountData, "data" | "orgId" | "demandDetail"> = {
     data: store.data,
     orgId: "org",

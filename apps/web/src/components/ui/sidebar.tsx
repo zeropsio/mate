@@ -18,13 +18,19 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { useResizeDrag } from "~/hooks/useResizeDrag";
 import { useIsMobile } from "~/hooks/useMediaQuery";
 import { getLocalStorageItem, setLocalStorageItem } from "~/hooks/useLocalStorage";
-import { resolveSidebarState, type ResponsiveSidebarState } from "./sidebarState";
+import { writeBrowserStorage } from "~/lib/storage";
+import {
+  resolveSidebarState,
+  type ResponsiveSidebarState,
+  SIDEBAR_STATE_STORAGE_KEY,
+} from "./sidebarState";
 import * as Schema from "effect/Schema";
 
-const SIDEBAR_COOKIE_NAME = "sidebar_state";
-const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 const SIDEBAR_WIDTH = "16rem";
-const SIDEBAR_WIDTH_MOBILE = "calc(100vw - var(--spacing(3)))";
+// An inline style, so plain CSS only: Tailwind's `--spacing()` is not valid
+// here and the browser drops the whole declaration. The strip left beside the
+// sheet is the scrim a finger taps to close it.
+const SIDEBAR_WIDTH_MOBILE = "min(calc(100vw - 3rem), 26rem)";
 const SIDEBAR_WIDTH_ICON = "3rem";
 const SIDEBAR_RESIZE_DEFAULT_MIN_WIDTH = 16 * 16;
 
@@ -100,16 +106,17 @@ function useSidebarVisibility() {
 }
 
 /**
- * Whether the menu was left open, as the cookie its toggle writes says (`setOpen`): open where it
- * says nothing. The first frame reads it too (index.html), so a menu left closed comes back as the
+ * Whether the menu was left open, as its toggle stored it (`setOpen`): open where nothing says
+ * otherwise. The first frame reads it too (index.html), so a menu left closed comes back as the
  * rail, not open.
  */
 export function readSidebarOpen(): boolean {
-  if (typeof document === "undefined") return true;
-  const entry = document.cookie
-    .split("; ")
-    .find((cookie) => cookie.startsWith(`${SIDEBAR_COOKIE_NAME}=`));
-  return entry?.slice(SIDEBAR_COOKIE_NAME.length + 1) !== "false";
+  if (typeof window === "undefined") return true;
+  try {
+    return window.localStorage.getItem(SIDEBAR_STATE_STORAGE_KEY) !== "false";
+  } catch {
+    return true;
+  }
 }
 
 function SidebarProvider({
@@ -133,7 +140,7 @@ function SidebarProvider({
   const [_open, _setOpen] = React.useState(defaultOpen);
   const open = openProp ?? _open;
   const setOpen = React.useCallback(
-    async (value: boolean | ((value: boolean) => boolean)) => {
+    (value: boolean | ((value: boolean) => boolean)) => {
       const openState = typeof value === "function" ? value(open) : value;
       if (setOpenProp) {
         setOpenProp(openState);
@@ -141,13 +148,11 @@ function SidebarProvider({
         _setOpen(openState);
       }
 
-      // This sets the cookie to keep the sidebar state.
-      await cookieStore.set({
-        expires: Date.now() + SIDEBAR_COOKIE_MAX_AGE * 1000,
-        name: SIDEBAR_COOKIE_NAME,
-        path: "/",
-        value: String(openState),
-      });
+      try {
+        writeBrowserStorage(window.localStorage, SIDEBAR_STATE_STORAGE_KEY, String(openState));
+      } catch {
+        // Storage refused: the menu stays as set until the page goes.
+      }
     },
     [setOpenProp, open],
   );
@@ -201,6 +206,90 @@ function SidebarProvider({
   );
 }
 
+/**
+ * A phone's sheet follows the finger that pushes it back to its edge, and closes when it is let go
+ * past a third of its width or flicked. An up-and-down drag is the list's scroll, never this.
+ */
+function useSheetSwipeClose(side: "left" | "right", onClose: () => void) {
+  const drag = React.useRef<{
+    id: number;
+    x: number;
+    y: number;
+    at: number;
+    taken: boolean;
+  } | null>(null);
+  return React.useMemo(() => {
+    const toEdge = side === "left" ? -1 : 1;
+    const touchOf = (touches: React.TouchList, id: number) =>
+      Array.from(touches).find((touch) => touch.identifier === id);
+    // Back on the sheet's own transition and place.
+    const settle = (sheet: HTMLElement) => {
+      sheet.style.transition = "";
+      sheet.style.translate = "";
+    };
+    const finish = (event: React.TouchEvent<HTMLElement>, cancelled: boolean) => {
+      const current = drag.current;
+      drag.current = null;
+      if (current === null || !current.taken) return;
+      const sheet = event.currentTarget;
+      const touch = touchOf(event.changedTouches, current.id);
+      const pushed = touch === undefined ? 0 : (touch.clientX - current.x) * toEdge;
+      const speed = pushed / Math.max(1, event.timeStamp - current.at);
+      if (!cancelled && (pushed > sheet.offsetWidth / 3 || (pushed > 24 && speed > 0.5))) {
+        // On the sheet's own transition from where the finger left it, out past its edge.
+        sheet.style.transition = "";
+        sheet.style.translate = `${toEdge * 100}% 0`;
+        onClose();
+        return;
+      }
+      settle(sheet);
+    };
+    return {
+      onTouchStart: (event: React.TouchEvent<HTMLElement>) => {
+        const sheet = event.currentTarget;
+        // A second finger ends a push in hand where it began; so does a push whose end never
+        // arrived (its row was redrawn under the finger).
+        if (drag.current?.taken === true || event.touches.length !== 1) settle(sheet);
+        // React hands a portal's touches to the tree that rendered it: a slide inside a row's
+        // menu, the waiting list or a popover is theirs, never the sheet's.
+        const own = event.target instanceof Node && sheet.contains(event.target);
+        const touch = own && event.touches.length === 1 ? event.touches[0] : undefined;
+        drag.current =
+          touch === undefined
+            ? null
+            : {
+                id: touch.identifier,
+                x: touch.clientX,
+                y: touch.clientY,
+                at: event.timeStamp,
+                taken: false,
+              };
+      },
+      onTouchMove: (event: React.TouchEvent<HTMLElement>) => {
+        const current = drag.current;
+        if (current === null) return;
+        const touch = touchOf(event.touches, current.id);
+        if (touch === undefined) return;
+        const pushed = (touch.clientX - current.x) * toEdge;
+        const across = Math.abs(touch.clientY - current.y);
+        if (!current.taken) {
+          if (across > 10 && across > pushed) {
+            drag.current = null;
+            return;
+          }
+          if (pushed < 10 || pushed < across * 1.5) return;
+          current.taken = true;
+        }
+        const sheet = event.currentTarget;
+        sheet.style.transition = "none";
+        sheet.style.translate = `${toEdge * Math.max(0, pushed)}px 0`;
+      },
+      onTouchEnd: (event: React.TouchEvent<HTMLElement>) => finish(event, false),
+      onTouchCancel: (event: React.TouchEvent<HTMLElement>) => finish(event, true),
+    };
+  }, [onClose, side]);
+}
+
 function Sidebar({
   side = "left",
   variant = "sidebar",
@@ -240,6 +329,8 @@ function Sidebar({
     () => ({ side, resizable: resolvedResizable }),
     [resolvedResizable, side],
   );
+  const closeMobile = React.useCallback(() => setOpenMobile(false), [setOpenMobile]);
+  const swipeClose = useSheetSwipeClose(side, closeMobile);
 
   if (collapsible === "none") {
     return (
@@ -267,7 +358,9 @@ function Sidebar({
               // The sheet is portalled out of the wrapper, so it restates the
               // phone's control size: its toggle stands where the closed
               // one did, the same size.
-              "w-(--sidebar-width) max-w-none bg-sidebar surface-grain p-0 text-sidebar-foreground max-sm:[--workspace-titlebar-control-size:--spacing(8)]",
+              // Up-and-down pans stay the browser's (the list scrolls); a sideways push is the
+              // sheet's own (`useSheetSwipeClose`).
+              "w-(--sidebar-width) max-w-none touch-pan-y bg-sidebar surface-grain p-0 text-sidebar-foreground max-sm:[--workspace-titlebar-control-size:--spacing(8)]",
               className,
             )}
             data-mobile="true"
@@ -280,6 +373,7 @@ function Sidebar({
                 "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
               } as React.CSSProperties
             }
+            {...swipeClose}
           >
             <SheetHeader className="sr-only">
               <SheetTitle>Sidebar</SheetTitle>
@@ -574,7 +668,7 @@ function SidebarInput({ className, ...props }: Omit<InputProps, "unstyled" | "va
   return (
     <Input
       className={cn(
-        "[&_[data-slot=input]]:h-auto [&_[data-slot=input]]:p-0 [&_[data-slot=input]]:font-medium [&_[data-slot=input]]:text-sidebar-foreground [&_[data-slot=input]]:text-sm [&_[data-slot=input]]:leading-normal [&_[data-slot=input]]:placeholder:text-sidebar-muted-foreground",
+        "[&_[data-slot=input]]:h-auto [&_[data-slot=input]]:p-0 [&_[data-slot=input]]:font-medium [&_[data-slot=input]]:text-sidebar-foreground [&_[data-slot=input]]:text-sm max-sm:[&_[data-slot=input]]:text-base [&_[data-slot=input]]:leading-normal [&_[data-slot=input]]:placeholder:text-sidebar-muted-foreground",
         className,
       )}
       unstyled

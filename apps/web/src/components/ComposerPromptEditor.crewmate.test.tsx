@@ -3,8 +3,7 @@
  * face in its tint and `@handle` — while its text stays `@handle`, and only
  * the crewmates the composer offers are drawn so.
  */
-import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
-import { $getRoot, $isElementNode, type DecoratorNode, type LexicalEditor } from "lexical";
+import { $getRoot, $isElementNode, type DecoratorNode } from "lexical";
 import type { ReactElement } from "react";
 import { act, createRef } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -12,6 +11,7 @@ import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { collapseExpandedComposerCursor } from "../composer-logic";
+import { getLexicalEditor, resetLexicalEditor } from "./ComposerPromptEditor.test-fixture";
 import {
   ComposerPromptEditor,
   type ComposerCrewmateChip,
@@ -27,13 +27,8 @@ vi.mock("./chat/ComposerPendingTerminalContexts", () => ({
 }));
 vi.mock("./chat/AssistantCitationChip", () => ({ AssistantCitationChip: () => null }));
 
-let lexicalEditor: LexicalEditor;
-// The real composer, its nodes and its snapshot; only the DOM view is left out.
-vi.mock("@lexical/react/LexicalPlainTextPlugin", () => ({
-  PlainTextPlugin: function HeadlessEditor() {
-    [lexicalEditor] = useLexicalComposerContext();
-    return null;
-  },
+vi.mock("@lexical/react/LexicalPlainTextPlugin", async () => ({
+  PlainTextPlugin: (await import("./ComposerPromptEditor.test-fixture")).HeadlessEditor,
 }));
 
 let renderer: ReactTestRenderer | undefined;
@@ -61,11 +56,13 @@ async function renderPrompt(value: string, crewmates?: ReadonlyArray<ComposerCre
 }
 
 function nodeTypes(): ReadonlyArray<string> {
-  return lexicalEditor.getEditorState().read(() => {
-    const paragraph = $getRoot().getFirstChildOrThrow();
-    if (!$isElementNode(paragraph)) throw new Error("Expected a composer paragraph");
-    return paragraph.getChildren().map((node) => node.getType());
-  });
+  return getLexicalEditor()
+    .getEditorState()
+    .read(() => {
+      const paragraph = $getRoot().getFirstChildOrThrow();
+      if (!$isElementNode(paragraph)) throw new Error("Expected a composer paragraph");
+      return paragraph.getChildren().map((node) => node.getType());
+    });
 }
 
 beforeEach(() => {
@@ -79,16 +76,11 @@ beforeEach(() => {
 afterEach(async () => {
   await act(() => renderer?.unmount());
   renderer = undefined;
+  resetLexicalEditor();
   vi.unstubAllGlobals();
 });
 
 describe("a crewmate in the composer", () => {
-  it("is drawn as the crewmate the composer offers, its text still @handle", async () => {
-    await renderPrompt("Ask @backend first", [BACKEND]);
-    expect(nodeTypes()).toEqual(["text", "composer-crewmate", "text"]);
-    expect(editorRef.current?.readSnapshot().value).toBe("Ask @backend first");
-  });
-
   it("is a file's mention where the composer offers no crewmates", async () => {
     await renderPrompt("Ask @backend first");
     expect(nodeTypes()).toEqual(["text", "composer-mention", "text"]);
@@ -96,12 +88,16 @@ describe("a crewmate in the composer", () => {
 
   it("draws its chip with its face in its tint and its @handle", async () => {
     await renderPrompt("Ask @backend first", [BACKEND]);
-    const chip = lexicalEditor.getEditorState().read(() => {
-      const paragraph = $getRoot().getFirstChildOrThrow();
-      if (!$isElementNode(paragraph)) throw new Error("Expected a composer paragraph");
-      const node = paragraph.getChildAtIndex(1) as DecoratorNode<ReactElement>;
-      return node.decorate(lexicalEditor, lexicalEditor._config);
-    });
+    expect(nodeTypes()).toEqual(["text", "composer-crewmate", "text"]);
+    expect(editorRef.current?.readSnapshot().value).toBe("Ask @backend first");
+    const chip = getLexicalEditor()
+      .getEditorState()
+      .read(() => {
+        const paragraph = $getRoot().getFirstChildOrThrow();
+        if (!$isElementNode(paragraph)) throw new Error("Expected a composer paragraph");
+        const node = paragraph.getChildAtIndex(1) as DecoratorNode<ReactElement>;
+        return node.decorate(getLexicalEditor(), getLexicalEditor()._config);
+      });
     const html = renderToStaticMarkup(chip);
     expect(html).toContain('data-composer-crewmate-chip="backend"');
     expect(html).toContain('data-mate-face-tint="sky"');

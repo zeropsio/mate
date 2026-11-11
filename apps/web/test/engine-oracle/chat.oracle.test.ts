@@ -220,7 +220,7 @@ describe("chat commands through the engine and the chat projection", () => {
         );
         assert.include(
           markup,
-          "wants to run this command",
+          "Run this command",
           "ASSERTION: the approval consumer shows what the agent asks",
         );
         assert.include(

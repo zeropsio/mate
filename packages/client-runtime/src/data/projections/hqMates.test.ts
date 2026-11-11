@@ -6,12 +6,14 @@ import { describe, expect, it } from "vite-plus/test";
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
 import { hqMateScope } from "../families/hqMate.ts";
 import { placementsScope } from "../families/hqNavigation.ts";
+import { linkKeys } from "../model.ts";
 import { makeAccountStore, readsOfState, type Projection } from "../store.ts";
 import { mateArrival, mateNoticeDecision } from "./mateArrival.ts";
 import {
   hqMates,
   hqMateAnswered,
   hqMatesAnswered,
+  hqIndexWord,
   hqMateOverview,
   hqMatePresence,
   hqMateLogins,
@@ -66,7 +68,7 @@ describe("keyed HQ Mate readers", () => {
   it("a targeted Chief refusal names its owner without listing their Chief", () => {
     const registry = AtomRegistry.make();
     const store = makeAccountStore(registry);
-    seedHqNavigation(store, "org", { mates: {} });
+    seedHqNavigation(store, "org", { mates: {}, people: { "u-karlos": { name: "Karlos" } } });
     const refusal = store.data.project(hqMateRefusal, key("hidden-chief"));
     const seen: unknown[] = [];
     const stop = registry.subscribe(refusal, () => seen.push(registry.get(refusal)), {
@@ -119,6 +121,35 @@ describe("keyed HQ Mate readers", () => {
     expect(registry.get(store.data.project(hqMateOverview, key("hidden-chief")))).toBeNull();
     expect([...store.state().memberships.get(placementsScope("org"))!.members.keys()]).toEqual([]);
     stop();
+    registry.dispose();
+  });
+
+  // witness: packages/client-runtime/src/data/projections/hqMates.ts | const byId = people.get(reason)?.name; → const byId = undefined;
+  it("a Chief refusal giving its owner's Zerops user id names them from the organization's member list, and somebody it does not hold as another person", () => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    seedHqNavigation(store, "org", { mates: {}, people: { "u-karlos": { name: "Karlos" } } });
+    const refuse = (projectId: string, reason: string) =>
+      store.dispatch({
+        kind: "stream",
+        key: hqMateScope("org", projectId),
+        now: 100,
+        event: {
+          kind: "fault",
+          jitter: 0,
+          fault: { outcome: "definitive-refusal", code: "chief_owner_required", message: reason },
+        },
+      });
+    refuse("karlos-chief", "u-karlos");
+    refuse("stranger-chief", "u-stranger");
+    expect(registry.get(store.data.project(hqMateRefusal, key("karlos-chief")))).toEqual({
+      kind: "refused-role",
+      chiefOwnerName: "Karlos",
+    });
+    expect(registry.get(store.data.project(hqMateRefusal, key("stranger-chief")))).toEqual({
+      kind: "refused-role",
+      chiefOwnerName: "another person",
+    });
     registry.dispose();
   });
 
@@ -277,7 +308,7 @@ describe("keyed HQ Mate readers", () => {
     expect(registry.get(overview)).toEqual({
       presence: { ...presence, online: false, overview: "stored" },
     });
-    expect(registry.get(linked).live).toBe(false);
+    expect(registry.get(linked)?.online).toBe(false);
     expect(registry.get(store.data.project(hqMateReady, key("a")))).toBeUndefined();
     expect(registry.get(store.data.project(hqMateLogins, key("a")))).toBeUndefined();
     const scope = placementsScope("org");
@@ -287,7 +318,7 @@ describe("keyed HQ Mate readers", () => {
       scopes: [{ scope, generation: 1 }],
       reset: false,
       rows: [],
-      removals: [{ family: "placement", id: "a", reason: "no-access" }],
+      removals: [{ family: "placement", id: "a" }],
     });
     expect(registry.get(overview)).toBeNull();
     expect(registry.get(store.data.project(hqMates, "org")).mates).toEqual({});
@@ -336,4 +367,150 @@ describe("hqMatesAnswered", () => {
     }
     expect(hqMatesAnswered.derive(readsOfState(store.state()), "org")).toBe(answered);
   });
+});
+
+describe("hqIndexWord", () => {
+  type Store = ReturnType<typeof makeAccountStore>;
+  const placedAB = {
+    apps: [],
+    ungrouped: ["a", "b"].map((projectId) => ({ projectId, name: projectId, mate: { face: "" } })),
+  };
+  const streamEvent = (store: Store, key: string, event: object) =>
+    store.dispatch({ kind: "stream", key, now: 0, event } as never);
+  /** HQ's connection asked for and, when `connected`, open. */
+  const link = (store: Store, connected: boolean) => {
+    streamEvent(store, linkKeys.hq("org"), { kind: "demand", demanded: true });
+    streamEvent(store, linkKeys.hq("org"), { kind: "attempt" });
+    if (connected) streamEvent(store, linkKeys.hq("org"), { kind: "handshake" });
+  };
+  /** A scope asked on HQ's connection, still unanswered past a first answer's patience. */
+  const waitedOn = (store: Store, scope: string) => {
+    streamEvent(store, scope, { kind: "demand", demanded: true });
+    streamEvent(store, scope, { kind: "attempt" });
+    streamEvent(store, scope, { kind: "grace-over", since: 0 });
+  };
+  const refuse = (store: Store, scope: string) =>
+    streamEvent(store, scope, {
+      kind: "fault",
+      fault: { outcome: "definitive-refusal", message: "no" },
+      jitter: 0,
+    });
+  const named = (environmentId: string) => ({
+    ...mate,
+    identity: { ...mate.identity, environmentId: EnvironmentId.make(environmentId) },
+  });
+  it.each([
+    { title: "HQ not asked at all", arrange: () => undefined, word: "due" },
+    {
+      title: "HQ's connection still connecting, its placements past a first answer's patience",
+      arrange: (store: Store) => {
+        link(store, false);
+        waitedOn(store, placementsScope("org"));
+      },
+      word: "due",
+    },
+    {
+      title: "HQ's connection open, its placements past a first answer's patience",
+      arrange: (store: Store) => {
+        link(store, true);
+        waitedOn(store, placementsScope("org"));
+      },
+      word: "slow",
+    },
+    {
+      title: "its placements read, a Mate it places not answered yet",
+      arrange: (store: Store) =>
+        seedHqNavigation(store, "org", {
+          structure: placedAB,
+          mates: { a: mate },
+          attentionUnanswered: ["b"],
+        }),
+      word: "due",
+    },
+    {
+      title: "its placements read, a placed Mate's scope past a first answer's patience",
+      arrange: (store: Store) => {
+        seedHqNavigation(store, "org", {
+          structure: placedAB,
+          mates: { a: mate },
+          attentionUnanswered: ["b"],
+        });
+        waitedOn(store, hqMateScope("org", "b"));
+      },
+      word: "slow",
+    },
+    {
+      title: "its placements read, a placed Mate's overview naming no environment",
+      arrange: (store: Store) =>
+        seedHqNavigation(store, "org", {
+          structure: placedAB,
+          mates: { a: mate, b: { ...mate, identity: null } as never },
+        }),
+      word: "due",
+    },
+    {
+      title: "its placements read, a placed Mate answered with no overview",
+      arrange: (store: Store) =>
+        seedHqNavigation(store, "org", { structure: placedAB, mates: { a: mate } }),
+      word: "due",
+    },
+    {
+      title: "its placements read, a placed Mate's scope refused",
+      arrange: (store: Store) => {
+        seedHqNavigation(store, "org", {
+          structure: placedAB,
+          mates: { a: mate },
+          attentionUnanswered: ["b"],
+        });
+        refuse(store, hqMateScope("org", "b"));
+      },
+      word: "answered",
+    },
+    ...[
+      { title: "a placed Mate HQ still holds the birth of, so it never connected", birth: {} },
+      {
+        title: "a placed Chief whose birth HQ holds until it is registered, past its link",
+        birth: { chief: true },
+      },
+      { title: "a placed Mate adopted, which may have connected before", birth: { adopted: true } },
+    ].map(({ title, birth }) => ({
+      title,
+      arrange: (store: Store) =>
+        seedHqNavigation(store, "org", {
+          structure: {
+            apps: [
+              {
+                id: "app",
+                name: "Shop",
+                projects: [
+                  { projectId: "a", name: "a", kind: "mate", mate: { face: "" } },
+                  { projectId: "b", name: "b", kind: "mate", mate: { face: "", birthId: "birth" } },
+                ],
+                births: [{ id: "birth", face: "", projectId: "b", ...birth }],
+              },
+            ],
+            ungrouped: [],
+          },
+          mates: { a: mate },
+          attentionUnanswered: ["b"],
+        }),
+      word: Object.keys(birth).length === 0 ? "answered" : "due",
+    })),
+    {
+      title: "its placements read and every placed Mate naming its environment",
+      arrange: (store: Store) =>
+        seedHqNavigation(store, "org", {
+          structure: placedAB,
+          mates: { a: mate, b: named("env-b") },
+        }),
+      word: "answered",
+    },
+  ])(
+    "an environment HQ's index does not name is absent from it only once every Mate HQ places named its environment, was refused or never connected: $title",
+    ({ arrange, word }) => {
+      const store = makeAccountStore(AtomRegistry.make());
+      arrange(store);
+      expect(hqIndexWord.derive(readsOfState(store.state()), "org")).toBe(word);
+    },
+  );
 });

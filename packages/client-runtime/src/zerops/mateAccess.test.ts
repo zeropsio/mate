@@ -6,7 +6,6 @@ import {
   mateOwnerRecords,
   resolveMateVerbs,
   resolveMateVisibility,
-  withMateProjectRole,
 } from "./mateAccess.ts";
 import type { HqPlacement } from "./hq/placement.ts";
 
@@ -142,19 +141,13 @@ describe("mateOwnerRecords — what a Mate's own records say of its person", () 
       name: "HQ names an owner, and its agent's signer",
       owned: true,
       signers: { "claude-code": "u-jan" },
-      records: { named: true, signedIn: true, signer: "u-jan" },
+      records: { named: true, signedIn: true },
     },
     {
       name: "HQ names an owner, nobody signed in (a creator below ADMIN, a hand-over)",
       owned: true,
       signers: {},
       records: { named: true, signedIn: false },
-    },
-    {
-      name: "HQ names no owner, the signer names the person (an org owner's Mate)",
-      owned: false,
-      signers: { codex: "u-eva" },
-      records: { named: true, signedIn: true, signer: "u-eva" },
     },
     {
       name: "HQ names no owner and nobody signed in: nobody's",
@@ -183,11 +176,7 @@ describe("mateOwnerRecords — what a Mate's own records say of its person", () 
   ])("$name", ({ owned, signers, records }) => {
     expect(
       mateOwnerRecords(signers === undefined ? {} : { hq: placedWith(signers) }, owned),
-    ).toEqual({
-      ...records,
-      person: "signer" in records ? records.signer : undefined,
-      runsWithoutSignIn: false,
-    });
+    ).toEqual({ ...records, runsWithoutSignIn: false });
   });
 });
 
@@ -196,25 +185,22 @@ describe("the verbs a Mate offers (guide 0.8)", () => {
     resolveMateVerbs({ project: project(override), viewer: viewer(orgRole) });
 
   // A verb a person cannot finish is not offered. Deleting the project, and renaming it — a Mate's
-  // name is its project's (D3) — need effective OWNER or ADMIN there; handing a Mate over writes a
-  // per-project role, which is an org owner's or admin's verb only.
+  // name is its project's (D3) — need effective OWNER or ADMIN there.
   it.each(
     Array.from(
       [
-        ["OWNER", undefined, { delete: true, rename: true, assign: true }],
-        ["ADMIN", undefined, { delete: true, rename: true, assign: true }],
+        ["OWNER", undefined, { delete: true, rename: true }],
+        ["ADMIN", undefined, { delete: true, rename: true }],
         // A plain member with a Mate of their own: theirs to delete (measured
-        // 2026-09-15) and to rename, never theirs to give away.
-        ["READ_ONLY", "OWNER", { delete: true, rename: true, assign: false }],
-        ["NO_ACCESS", "OWNER", { delete: true, rename: true, assign: false }],
+        // 2026-09-15) and to rename.
+        ["READ_ONLY", "OWNER", { delete: true, rename: true }],
+        ["NO_ACCESS", "OWNER", { delete: true, rename: true }],
         // A member of the org with no standing on this project: they see it.
-        ["BASIC_USER", undefined, { delete: false, rename: false, assign: false }],
-        ["READ_ONLY", undefined, { delete: false, rename: false, assign: false }],
-        ["NO_ACCESS", undefined, { delete: false, rename: false, assign: false }],
-        // An override lowers an org owner here, but their org role still lets them
-        // hand the Mate to somebody — that is what makes a leaver's Mate
-        // recoverable at all.
-        ["OWNER", "READ_ONLY", { delete: false, rename: false, assign: true }],
+        ["BASIC_USER", undefined, { delete: false, rename: false }],
+        ["READ_ONLY", undefined, { delete: false, rename: false }],
+        ["NO_ACCESS", undefined, { delete: false, rename: false }],
+        // An override lowers an org owner here.
+        ["OWNER", "READ_ONLY", { delete: false, rename: false }],
       ] as const,
       ([orgRole, override, expected]) => ({
         title: `${String(orgRole)} with project override ${String(override)}`,
@@ -233,7 +219,7 @@ describe("the verbs a Mate offers (guide 0.8)", () => {
         project: { id: PROJECT, clientId: "another-org" },
         viewer: viewer("OWNER"),
       }),
-    ).toEqual({ delete: false, rename: false, assign: false });
+    ).toEqual({ delete: false, rename: false });
   });
 });
 
@@ -245,73 +231,26 @@ describe("a member's own project grant decides their Mate as a named override do
       title: "a basic user who owns the project deletes and renames its Mate",
       orgRole: "BASIC_USER",
       grant: "OWNER",
-      visibility: "open",
-      verbs: { delete: true, rename: true, assign: false },
+      verbs: { delete: true, rename: true },
     },
     {
-      title: "an admin held read-only on the project sees its Mate listed, never opened",
+      title: "an admin held read-only on the project neither deletes nor renames its Mate",
       orgRole: "ADMIN",
       grant: "READ_ONLY",
-      visibility: "listed",
-      verbs: { delete: false, rename: false, assign: true },
+      verbs: { delete: false, rename: false },
     },
-  ] as const)("$title", ({ orgRole, grant, visibility, verbs }) => {
+  ] as const)("$title", ({ orgRole, grant, verbs }) => {
     const input = { project: own(grant), viewer: viewer(orgRole, { membershipId: "" }) };
-    expect(resolveMateVisibility(input)).toBe(visibility);
     expect(resolveMateVerbs(input)).toEqual(verbs);
   });
-});
 
-// The E2E run (F8): the list held 200 rows, nearly all integration tokens, and a token was its
-// default. A Mate is handed to a person, a member who has joined.
-describe("withMateProjectRole — handing a Mate over", () => {
-  it("sets this project's role and leaves the person's other projects alone", () => {
+  it("an admin held read-only on the project sees its Mate listed, never opened", () => {
     expect(
-      withMateProjectRole(
-        [
-          { projectId: "p-other", roleCode: "READ_ONLY" },
-          { projectId: "p-fen", roleCode: "BASIC_USER" },
-        ],
-        "p-fen",
-        "OWNER",
-      ),
-    ).toEqual([
-      { projectId: "p-other", roleCode: "READ_ONLY" },
-      { projectId: "p-fen", roleCode: "OWNER" },
-    ]);
-  });
-
-  it("adds an override for a person who had none", () => {
-    expect(withMateProjectRole(undefined, "p-fen", "OWNER")).toEqual([
-      { projectId: "p-fen", roleCode: "OWNER" },
-    ]);
-  });
-
-  // The same call, lowered, takes a Mate away — overrides are measured in
-  // both directions.
-  it("takes a Mate away when it lowers somebody", () => {
-    expect(
-      withMateProjectRole([{ projectId: "p-fen", roleCode: "OWNER" }], "p-fen", "READ_ONLY"),
-    ).toEqual([{ projectId: "p-fen", roleCode: "READ_ONLY" }]);
-  });
-});
-
-describe("a ready agent's person from HQ", () => {
-  it.each([
-    ["ready: its maker", true, {}, "u-maker"],
-    ["not ready, nobody signed in: its maker, whatever their role", false, {}, "u-maker"],
-    ["signed in by somebody else: still its maker", true, { codex: "u-signer" }, "u-maker"],
-  ] as const)("%s", (_case, ready, signers, person) => {
-    const placement = placedWith(signers);
-    const project = {
-      id: PROJECT,
-      hq: {
-        ...placement,
-        mate: { ...placement.mate!, madeBy: "u-maker", runsWithoutSignIn: ready },
-      },
-    };
-    expect(mateOwnerRecords(project, undefined).person).toBe(person);
-    expect(mateOwnerRecords(project, undefined).runsWithoutSignIn).toBe(ready);
+      resolveMateVisibility({
+        project: own("READ_ONLY"),
+        viewer: viewer("ADMIN", { membershipId: "" }),
+      }),
+    ).toBe("listed");
   });
 });
 
@@ -327,60 +266,7 @@ describe("an automated Mate's records", () => {
         id: PROJECT,
         hq: { ...placement, mate: { ...placement.mate!, madeBy: "u-maker", automated } },
       };
-      expect(mateOwnerRecords(project, undefined)).toMatchObject({
-        person: "u-maker",
-        runsWithoutSignIn,
-      });
+      expect(mateOwnerRecords(project, undefined)).toMatchObject({ runsWithoutSignIn });
     },
   );
-});
-
-it.each([false, true])(
-  "a Mate somebody else signed in, then out, stays its maker's (runsWithoutSignIn: %s)",
-  (runsWithoutSignIn) => {
-    const hq: HqPlacement = {
-      ...placedWith({}),
-      mate: {
-        face: "",
-        madeBy: "u-maker",
-        runsWithoutSignIn,
-        logins: {
-          "claude-code": {
-            signedInBy: null,
-            lastSignedInBy: "u-eva",
-            present: false,
-            token: false,
-          },
-        },
-      },
-    };
-    const project = { id: PROJECT, clientId: ORG, userRoles: [], hq };
-    expect(mateOwnerRecords(project, false)).toEqual({
-      named: true,
-      signedIn: false,
-      signer: "u-eva",
-      person: "u-maker",
-      runsWithoutSignIn,
-    });
-  },
-);
-
-it("logout keeps Claude's badge priority when Codex remains signed in by someone else", () => {
-  const hq: HqPlacement = {
-    ...placedWith({}),
-    mate: {
-      face: "",
-      logins: {
-        "claude-code": { signedInBy: null, lastSignedInBy: "u-eva", present: false, token: false },
-        codex: { signedInBy: "u-jan", lastSignedInBy: "u-jan", present: true, token: false },
-      },
-    },
-  };
-  expect(mateOwnerRecords({ hq }, false)).toEqual({
-    named: true,
-    signedIn: true,
-    signer: "u-eva",
-    person: "u-eva",
-    runsWithoutSignIn: false,
-  });
 });

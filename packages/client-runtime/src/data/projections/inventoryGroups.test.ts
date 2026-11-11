@@ -223,7 +223,7 @@ function placedFixture() {
   };
 }
 
-it.each(["refused", "unknown", "absent", "undecodable", "empty", "partial"] as const)(
+it.each(["unknown", "absent", "undecodable", "empty", "partial"] as const)(
   "Known stage and production placements remain visible when environments are %s.",
   (state) => {
     const f = placedFixture();
@@ -235,12 +235,7 @@ it.each(["refused", "unknown", "absent", "undecodable", "empty", "partial"] as c
             id: "shop",
             name: "Shop",
             projects: placed,
-            environments:
-              state === "partial"
-                ? [stage]
-                : state === "empty"
-                  ? []
-                  : { refused: "changes_not_seen" },
+            environments: state === "partial" ? [stage] : [],
           },
         ],
       },
@@ -298,7 +293,7 @@ it.each(["stage", "production"] as const)(
         apps: [{ id: "shop", name: "Shop", projects: [placed[0]!], environments: [stage] }],
       },
       presses: {
-        "project-prod": { kind, appId: "shop", heldForMs: 30000, until: "2026-10-13T00:00:30Z" },
+        "project-prod": { kind, appId: "shop", held: true },
       },
     });
     const tree = f.read();
@@ -343,34 +338,6 @@ it.each(["not loaded", "partial", "denied", "filtered"] as const)(
   },
 );
 
-it("HQ navigation fixtures send an environment array to readers and a refusal to viewers.", () => {
-  const f = fixture();
-  seedHqNavigation(f.store, "org", {
-    structure: {
-      ungrouped: [],
-      apps: [
-        { id: "reader", name: "Reader", projects: [] },
-        {
-          id: "viewer",
-          name: "Viewer",
-          projects: [],
-          environments: { refused: "changes_not_seen" },
-        },
-      ],
-    },
-  });
-  const read = readsOfState(f.store.state());
-  expect(read.fact("hqApp", "reader")).toMatchObject({
-    kind: "known",
-    value: { environments: [] },
-  });
-  expect(read.fact("hqApp", "viewer")).toMatchObject({
-    kind: "known",
-    value: { environments: { refused: "changes_not_seen" } },
-  });
-  f.registry.dispose();
-});
-
 it("An HQ non-empty application with no visible placements is never offered as an empty group.", () => {
   const f = fixture();
   seedHqNavigation(f.store, "org", {
@@ -382,7 +349,7 @@ it("An HQ non-empty application with no visible placements is never offered as a
           name: "Hidden",
           projects: [],
           contents: { empty: false, deletingProjectIds: [] },
-          environments: { refused: "changes_not_seen" },
+          environments: [],
         },
         {
           id: "empty",

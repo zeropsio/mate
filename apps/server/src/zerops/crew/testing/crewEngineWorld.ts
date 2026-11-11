@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off unsafeEffectTypeAssertion:off - a test harness: a database file, rows read back plainly, one context per life.
+// @effect-diagnostics nodeBuiltinImport:off globalJsonInEffect:off unsafeEffectTypeAssertion:off - a test harness: a database file, rows read back plainly, one context per life.
 /**
  * The engine world for the crew's journeys (`crewWorld.ts`): the crew as an owner of the Mate
  * engine, over the engine's live layer on a SQLite file, a scripted provider for the crewmates'
@@ -16,8 +16,10 @@
  *
  * @module crewEngineWorld
  */
+import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import { beforeAll } from "vite-plus/test";
 
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -46,6 +48,8 @@ import {
 
 import * as NodeSqliteClient from "../../../persistence/NodeSqliteClient.ts";
 import { runMigrations } from "../../../persistence/Migrations.ts";
+import { restoreFixture, testFixturePool } from "../../../testing/testFixture.ts";
+import { testTempDir } from "../../../testing/testTempDir.ts";
 import * as ServerConfig from "../../../config.ts";
 import { Conversations } from "../../../engine/Conversations.ts";
 import { liveEngineLayer } from "../../../engine/live.ts";
@@ -82,6 +86,7 @@ import { evolveCrew } from "../engine/evolve.ts";
 import { delivering, initialCrewState, membersInOrder, type CrewState } from "../engine/state.ts";
 import { stintReasonWords } from "../crewCards.ts";
 import type { RotationReason } from "../rotationDecision.ts";
+import { initServiceRepository, remoteEnvWithSupervisor } from "./crewGitFixture.ts";
 import {
   KAREL,
   ZEROPS,
@@ -110,6 +115,8 @@ const holdMatcher = (hold: CrewHoldStep): ((script: string) => boolean) => {
   switch (hold.step) {
     case "save":
       return (script) => script.includes("): turn ");
+    case "keep":
+      return (script) => script.includes(": keep attempt ");
     case "check":
       return (script) => script.includes("test -f ok.txt");
     case "land":
@@ -137,6 +144,21 @@ const QUICK_EFFECTS: ReadonlySet<string> = new Set([
   "crew.claim.read",
 ]);
 const ENGINE_FILE = "engine.sqlite";
+const serviceTemplate = testTempDir("t3-crew-service-template-");
+const workspaceTemplate = testTempDir("t3-crew-mate-template-");
+const fixtureDir = testFixturePool("t3-crew-engine-fixtures-");
+const supervisorEnv = remoteEnvWithSupervisor();
+
+beforeAll(() => {
+  initServiceRepository(serviceTemplate);
+  return Effect.runPromise(
+    runMigrations().pipe(
+      Effect.provide(
+        NodeSqliteClient.layer({ filename: NodePath.join(workspaceTemplate, ENGINE_FILE) }),
+      ),
+    ),
+  );
+});
 
 interface DeliveryRow {
   readonly payload_json: string;
@@ -176,7 +198,7 @@ const holdableProvider = (provider: ScriptedProvider, sendHold: Ref.Ref<SendHold
 /** One phase's port over its engine: `context` is that lifetime's, `fx` the world's. */
 const enginePort = (input: {
   readonly fx: CrewFixtureWorld;
-  readonly fixture: Effect.Success<typeof makeFixtureWorld>;
+  readonly fixture: Effect.Success<ReturnType<typeof makeFixtureWorld>>;
   readonly context: Context.Context<never>;
   readonly provider: ScriptedProvider;
   readonly started: Effect.Effect<void>;
@@ -242,23 +264,40 @@ const enginePort = (input: {
       return provider.sessions.get(thread)?.open != null;
     });
 
+  const waitForTurn = (chat: CrewChat) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const events = yield* provider.subscribeEvents;
+        yield* Stream.concat(Stream.succeed(undefined), Stream.fromSubscription(events)).pipe(
+          Stream.mapEffect(() => turnRunning(chat)),
+          Stream.filter(Boolean),
+          Stream.runHead,
+        );
+      }),
+    );
+
   /** The first current frame that satisfies `check`. */
   const snapshotWhere = (check: (snapshot: CrewSnapshot) => boolean) =>
     Effect.flatMap(crew, (service) =>
-      Effect.gen(function* () {
-        const head = (yield* crewState).headSeq;
-        yield* eventually(
-          Effect.map(
-            Stream.runHead(service.snapshot),
-            (frame) => Option.isSome(frame) && (frame.value.revision?.seq ?? head) >= head,
-          ),
-        );
-        return yield* service.snapshot.pipe(
-          Stream.filter(check),
-          Stream.runHead,
-          Effect.map(Option.getOrThrow),
-        );
-      }),
+      Effect.scoped(
+        Effect.gen(function* () {
+          if (service.subscribeUpdateChanges === undefined)
+            return yield* Effect.die("Crew fixture has no update receipt subscription");
+          const updates = yield* service.subscribeUpdateChanges;
+          const head = (yield* crewState).headSeq;
+          return yield* Stream.concat(Stream.succeed(undefined), updates.changes).pipe(
+            Stream.mapEffect(() => Stream.runHead(service.snapshot)),
+            Stream.filter(
+              (frame) =>
+                Option.isSome(frame) &&
+                (frame.value.revision?.seq ?? head) >= head &&
+                check(frame.value),
+            ),
+            Stream.runHead,
+            Effect.map((frame) => Option.getOrThrow(Option.getOrThrow(frame))),
+          );
+        }),
+      ),
     );
 
   /** The crew's first state `holds` for, read again on each of its durable receipts. */
@@ -275,6 +314,20 @@ const enginePort = (input: {
       ).pipe(
         Stream.mapEffect(() => crewState),
         Stream.filter(holds),
+        Stream.runHead,
+        Effect.orDie,
+      );
+    });
+
+  /** Recheck a conversation condition after each durable event, including events already committed. */
+  const conversationWhere = (chat: CrewChat, holds: Effect.Effect<boolean>) =>
+    Effect.gen(function* () {
+      const conversations = yield* run(Conversations);
+      const id = ConversationId.make(chat);
+      const head = (yield* conversations.state(id).pipe(Effect.orDie)).headSeq;
+      yield* Stream.concat(Stream.succeed(undefined), conversations.subscribe(id, head)).pipe(
+        Stream.mapEffect(() => holds),
+        Stream.filter(Boolean),
         Stream.runHead,
         Effect.orDie,
       );
@@ -648,11 +701,12 @@ const enginePort = (input: {
         if (yield* idle) {
           yield* provider.agent.selfTurn(thread);
         }
-        yield* eventually(turnRunning(chat));
+        yield* waitForTurn(chat);
         // The engine holds the turn as a run of the conversation, bound to it, and a message
         // steered into it has reached the agent: the turn's end is then that run's, not one the
         // message opened after it.
-        yield* eventually(
+        yield* conversationWhere(
+          chat,
           Effect.map(
             run(
               Effect.flatMap(Conversations, (conversations) =>
@@ -696,7 +750,10 @@ const enginePort = (input: {
           return active?.stopAsked != null;
         });
         if (end.state === "interrupted" && (yield* stopAsked)) {
-          yield* eventually(Effect.map(stoppedRun, (found) => found !== undefined));
+          yield* conversationWhere(
+            chat,
+            Effect.map(stoppedRun, (found) => found !== undefined),
+          );
         }
         const stopped = end.state === "interrupted" ? yield* stoppedRun : undefined;
         let ending: string | null;
@@ -704,7 +761,7 @@ const enginePort = (input: {
           stopsTaken.add(stopped.run_id);
           ending = stopped.run_id;
         } else {
-          yield* eventually(turnRunning(chat));
+          yield* waitForTurn(chat);
           ending = (yield* conversation).activeRunId;
           const thread = yield* threadOf(chat);
           const payload = {
@@ -718,7 +775,10 @@ const enginePort = (input: {
         const member = yield* handleOf(chat);
         // The engine recorded that run's end (another may follow at once: a nudge, a carry-on),
         // and the crew read its record past it.
-        yield* eventually(Effect.map(conversation, (state) => state.activeRunId !== ending));
+        yield* conversationWhere(
+          chat,
+          Effect.map(conversation, (state) => state.activeRunId !== ending),
+        );
         const ended = yield* Effect.flatMap(sql, (client) =>
           client<{ readonly seq: number | null }>`
             SELECT MAX(seq) AS seq FROM engine_event
@@ -729,23 +789,17 @@ const enginePort = (input: {
             Effect.orDie,
           ),
         );
-        yield* eventually(
-          Effect.map(
-            crewState,
-            (state) =>
-              (state.cursors[chat] ?? 0) >= ended &&
-              state.members[member?.handle ?? ""]?.active?.runId !== ending,
-          ),
+        yield* crewWhere(
+          (state) =>
+            (state.cursors[chat] ?? 0) >= ended &&
+            state.members[member?.handle ?? ""]?.active?.runId !== ending,
         );
         // As V1's turn end returned once the turn's work was saved in its copy.
-        yield* eventually(
-          Effect.map(
-            crewState,
-            (state) =>
-              !Object.values(state.effects).some(
-                (effect) => effect.kind === "crew.checkpoint" && effect.handle === member?.handle,
-              ),
-          ),
+        yield* crewWhere(
+          (state) =>
+            !Object.values(state.effects).some(
+              (effect) => effect.kind === "crew.checkpoint" && effect.handle === member?.handle,
+            ),
         );
         yield* settled;
       }),
@@ -789,7 +843,11 @@ const enginePort = (input: {
         : mateTurn(true).pipe(
             Effect.andThen(deployCall("inProgress", options.opens ?? "item.started")),
           ),
-    deployState: (processes) => Ref.set(fx.processes, processes),
+    // The platform's list moves, and its socket pushes the process that moved it.
+    deployState: (processes) =>
+      Ref.set(fx.processes, processes).pipe(
+        Effect.andThen(PubSub.publish(fx.processPushes, undefined)),
+      ),
     // The plan's usage as the registry's snapshot of the login holds it, the bars the person sees.
     usage: (usedPercent) => {
       const providers = [
@@ -970,7 +1028,7 @@ const countingInstaller = (installs: Ref.Ref<number>): EngineCrewPolicyInstaller
 
 /** One server lifetime's layers over the world's file. */
 const lifeLayer = (
-  fixture: Effect.Success<typeof makeFixtureWorld>,
+  fixture: Effect.Success<ReturnType<typeof makeFixtureWorld>>,
   provider: ScriptedProvider,
   installer: EngineCrewPolicyInstaller,
   clock: Clock.Clock,
@@ -979,15 +1037,11 @@ const lifeLayer = (
   const base = Layer.mergeAll(
     // The world's clock: real time, which a journey moves on to let a wait come due.
     Layer.succeed(Clock.Clock, clock),
-    // A redeploy's reads come within moments, not minutes, as V1's world has them.
-    Layer.succeed(CrewTimingConfig, {
-      deployPollFirstMs: 50,
-      deployPollMaxMs: 200,
-      thawOfferMs: 600,
-    }),
+    // An unreadable redeploy is offered for a thaw within moments, not half an hour.
+    Layer.succeed(CrewTimingConfig, { thawOfferMs: 600 }),
     platformFakes(world, signIns),
     admissionFake(world),
-    countingSsh(world.sshCalls, holds),
+    countingSsh(world.sshCalls, holds, supervisorEnv),
     ServerConfig.layer({
       cwd: world.workspace,
       attachmentsDir: NodePath.join(world.workspace, "attachments"),
@@ -1004,7 +1058,7 @@ const lifeLayer = (
     Layer.provide(crewServicesLayer),
     Layer.provide(crewEngineLinkLayer),
   );
-  const engine = liveEngineLayer({ worker: { pollMillis: 100 } }).pipe(
+  const engine = liveEngineLayer().pipe(
     Layer.provideMerge(
       Layer.mergeAll(
         scriptedProviderLayer(provider),
@@ -1035,7 +1089,16 @@ export const engineWorld: CrewWorldRunner = <E>(
   options: CrewJourneyOptions,
 ) =>
   Effect.gen(function* () {
-    const fixture = yield* makeFixtureWorld;
+    const fixture = yield* Effect.sync(() => {
+      const dir = fixtureDir("journey-");
+      const root = NodePath.join(dir, "service");
+      const workspace = NodePath.join(dir, "workspace");
+      NodeFS.mkdirSync(root, { recursive: true });
+      NodeFS.mkdirSync(workspace, { recursive: true });
+      restoreFixture(serviceTemplate, root);
+      restoreFixture(workspaceTemplate, workspace);
+      return { root, workspace };
+    }).pipe(Effect.flatMap(({ root, workspace }) => makeFixtureWorld(root, workspace)));
     const installer: EngineCrewPolicyInstaller =
       options.toolProfiles === true
         ? (installCrewThreadPolicy.pipe(
@@ -1072,8 +1135,8 @@ export const engineWorld: CrewWorldRunner = <E>(
       const start = Effect.gen(function* () {
         if (yield* Ref.getAndSet(startedFlag, true)) return;
         const engine = Context.get(context as Context.Context<MateEngine>, MateEngine);
-        yield* Scope.provide(engine.start(), life);
-      });
+        yield* Scope.provide(Effect.flatten(engine.boot()), life);
+      }).pipe(Effect.orDie);
       // The Mate's own conversation runs on the Mate's agent, as its stand-up leaves it.
       yield* Effect.provide(
         Effect.flatMap(Conversations, (conversations) =>

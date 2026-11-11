@@ -17,6 +17,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { HqMates, HqStructure } from "@t3tools/client-runtime/zerops/hq";
+import type { RoleMateVisibility } from "@t3tools/client-runtime/zerops/mateAccess";
 import type { ThreadDigest } from "@t3tools/shared/mateLink";
 import { toneIdForKind, viewerThreadKind, type ThreadStatus } from "@t3tools/shared/threadStatus";
 import type { SidebarThreadSortOrder } from "@t3tools/contracts/settings";
@@ -228,12 +229,12 @@ export type BuildThreadActionItemsThread = Pick<
 export interface CommandPaletteHqThreads {
   /** HQ's Mates, by project; null while nothing is known. */
   readonly mates: HqMates | null;
-  /** `mates` is HQ's answer now; a status kept from before is not drawn as if it were. */
-  readonly current: boolean;
   /** This browser holds a socket to the environment: its chats come from its own threads. */
   readonly connected: (environmentId: EnvironmentId) => boolean;
   /** A link into the environment would open: the route gate's verdict. */
   readonly linkable: (environmentId: EnvironmentId) => boolean;
+  /** The person's current access to each Mate; absent while not yet verified. */
+  readonly visibilityByProject: Readonly<Record<string, RoleMateVisibility>>;
   /** This device's last visit to a chat, which finishes its digest's kind. */
   readonly lastVisitedAt: (
     environmentId: EnvironmentId,
@@ -334,7 +335,7 @@ function hqChats(hq: CommandPaletteHqThreads | undefined): {
     if (hq === undefined || environmentId === undefined || mate.threads === undefined) continue;
     if (hq.connected(environmentId)) continue;
     listed.add(environmentId);
-    if (!hq.linkable(environmentId)) continue;
+    if (hq.visibilityByProject[projectId] !== "open" || !hq.linkable(environmentId)) continue;
     const mateName = hq.mateName(projectId);
     const mateApp = hq.mateApp?.(projectId);
     for (const digest of mate.threads.list) {
@@ -344,7 +345,7 @@ function hqChats(hq: CommandPaletteHqThreads | undefined): {
         digest,
         mateName,
         mateApp,
-        status: hq.current ? hq.renderStatus({ kind, toneId: toneIdForKind(kind) }) : null,
+        status: hq.renderStatus({ kind, toneId: toneIdForKind(kind) }),
       });
     }
   }

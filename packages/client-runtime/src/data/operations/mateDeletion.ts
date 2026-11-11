@@ -1,6 +1,6 @@
 /** Deletion preparation, HQ completion and exact-key retirement have separate receipts. */
 import type { ProjectionReads } from "../store.ts";
-import { operationResult } from "../model.ts";
+import { operationResult, removedForViewer } from "../model.ts";
 import type { IntentOf, OperationKind } from "./kind.ts";
 
 interface DeletionTarget {
@@ -32,6 +32,8 @@ declare module "../model.ts" {
       readonly preparedRequestId: string;
       readonly completionRequestId: string;
     };
+    /** A deletion this person did not prepare, of a project their own read proved gone. */
+    readonly "complete-project-deletion": DeletionTarget;
     readonly "complete-key-retirement": DeletionTarget & {
       readonly preparedRequestId: string;
       readonly completionRequestId: string;
@@ -59,7 +61,13 @@ export const prepareMateDeletion: OperationKind<"prepare-mate-deletion"> = {
 export const completeMateDeletion: OperationKind<"complete-mate-deletion"> = {
   kind: "complete-mate-deletion",
   executor: "hq",
-  reflected: (read, intent) => read.fact("placement", intent.projectId).kind === "deleted",
+  reflected: (read, intent) => removedForViewer(read.fact("placement", intent.projectId)),
+};
+
+export const completeProjectDeletion: OperationKind<"complete-project-deletion"> = {
+  kind: "complete-project-deletion",
+  executor: "hq",
+  reflected: (read, intent) => removedForViewer(read.fact("placement", intent.projectId)),
 };
 
 export const completeKeyRetirement: OperationKind<"complete-key-retirement"> = {
@@ -107,6 +115,7 @@ export const MATE_DELETION_KINDS = [
   removeProduction,
   prepareMateDeletion,
   completeMateDeletion,
+  completeProjectDeletion,
   retireMateKey,
   completeKeyRetirement,
 ] as const;

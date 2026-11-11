@@ -1,37 +1,45 @@
 import type { ZeropsAgentAuth, ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { EnvironmentId } from "@t3tools/contracts";
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 import { useMateReadOnly } from "./useMateReadOnly";
+import * as owners from "./useZeropsMateOwners";
+import * as feeds from "./useZeropsFeeds";
+import * as session from "./ZeropsSessionProvider";
 
-const facts = vi.hoisted(() => ({
+const facts = {
   read: undefined as Known<ZeropsAgentAuthSnapshot> | undefined,
   viewerSubject: undefined as string | undefined,
   owner: undefined as { readonly userId: string; readonly name: string } | undefined,
-}));
-vi.mock("./useZeropsMateOwners", async (actual) => ({
-  ...(await actual<typeof import("./useZeropsMateOwners")>()),
-  useHqProjectPerson: () => (facts.owner === undefined ? undefined : { owner: facts.owner }),
-}));
-vi.mock("./useZeropsFeeds", () => ({
-  useZeropsAgentAuth: () => facts.read,
-  useEnvironmentProjectRef: () => null,
-}));
-vi.mock("./ZeropsSessionProvider", () => ({
-  useZeropsSessionOptional: () => ({ user: { id: facts.viewerSubject } }),
-}));
+};
+beforeEach(() => {
+  vi.spyOn(owners, "useHqProjectPerson").mockImplementation(
+    () =>
+      (facts.owner === undefined ? undefined : { owner: facts.owner }) as ReturnType<
+        typeof owners.useHqProjectPerson
+      >,
+  );
+  vi.spyOn(feeds, "useEnvironmentProjectRef").mockReturnValue(null);
+  vi.spyOn(feeds, "useZeropsAgentAuth").mockImplementation(() => facts.read);
+  vi.spyOn(session, "useZeropsSessionOptional").mockImplementation(
+    () =>
+      ({ user: { id: facts.viewerSubject } }) as ReturnType<
+        typeof session.useZeropsSessionOptional
+      >,
+  );
+});
+afterEach(() => vi.restoreAllMocks());
 
-function Reader({ instanceId }: { instanceId: string | undefined }) {
-  return String(useMateReadOnly(EnvironmentId.make("rig"), instanceId));
+function Reader() {
+  return String(useMateReadOnly(EnvironmentId.make("rig")));
 }
 
 // Decision: admission does not invent signer ownership. Drop unrecorded-login and any blocking derived from who signed in.
 const mateReadOnly = (input: {
   snapshot: ZeropsAgentAuthSnapshot | null;
-  instanceId: string | undefined;
   viewerSubject: string | undefined;
   owner?: { readonly userId: string; readonly name: string } | undefined;
 }) => {
@@ -47,7 +55,7 @@ const mateReadOnly = (input: {
           freshness: { kind: "live" },
         };
   facts.viewerSubject = input.viewerSubject;
-  return renderToStaticMarkup(createElement(Reader, { instanceId: input.instanceId })) === "true";
+  return renderToStaticMarkup(createElement(Reader)) === "true";
 };
 
 const claude = (overrides: Partial<ZeropsAgentAuth> = {}): ZeropsAgentAuth => ({
@@ -68,7 +76,6 @@ const snapshot = (...agents: ReadonlyArray<ZeropsAgentAuth>): ZeropsAgentAuthSna
 describe("mateReadOnly — whether the viewer only reads a Mate's conversation (D6)", () => {
   const base = {
     snapshot: snapshot(claude({ authorizedBy: { subject: "petra" } })),
-    instanceId: "claudeAgent",
     viewerSubject: "ada",
   } as const;
 
@@ -93,11 +100,6 @@ describe("mateReadOnly — whether the viewer only reads a Mate's conversation (
     },
     { case: "an agent whose sign-in is not read yet", input: { snapshot: null }, readOnly: false },
     {
-      case: "a conversation on an agent this product signs nobody in to",
-      input: { instanceId: "opencode" },
-      readOnly: false,
-    },
-    {
       case: "a viewer nobody can name",
       input: { viewerSubject: undefined },
       readOnly: false,
@@ -111,7 +113,6 @@ describe("mateReadOnly — whether the viewer only reads a Mate's conversation (
 describe("a colleague's Mate is read along from the quick-send as in its chat", () => {
   const base = {
     snapshot: snapshot(claude({ authorizedBy: { subject: "ada" } })),
-    instanceId: "claudeAgent",
     viewerSubject: "ada",
   } as const;
   it.each([

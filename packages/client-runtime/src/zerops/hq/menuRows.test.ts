@@ -52,10 +52,17 @@ describe("HQ menu rows", () => {
     expect(rows[0]?.project.name).toBe("Fresh name");
     expect(rows[0]?.service?.id).toBe("service");
   });
-  it("keeps omitted placements until Zerops gives definite gone evidence", () => {
-    expect(
-      placedMenuRows({ ...input, gone: new Set(["mate"]) }).map((row) => row.project.id),
-    ).toEqual(["stage", "loose"]);
+  it("draws a placement Zerops proved gone as gone, HQ still holding it, never as it was", () => {
+    const rows = placedMenuRows({
+      ...input,
+      candidates: [candidate],
+      projects: [candidate.project],
+      gone: new Set(["mate"]),
+    });
+    expect(rows.map((row) => row.project.id)).toEqual(["mate", "stage", "loose"]);
+    expect(rows[0]).toMatchObject({ group: "unavailable", presence: "known", projectGone: true });
+    expect(rows[0]?.service).toBeUndefined();
+    expect(rows[0]?.project.hq?.appId).toBe("app");
   });
   it("takes platform names and state without requiring services or project admission", () => {
     const rows = placedMenuRows({

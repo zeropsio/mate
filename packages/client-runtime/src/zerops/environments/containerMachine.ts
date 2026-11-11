@@ -19,6 +19,9 @@
  *   RESTARTING. A ready container no socket holds stays ready through `READY_SILENCE_MS` of
  *   unanswered probes, long enough for the platform to say why; silent past it, it is a boot
  *   that only failed probes suggest — `guessed`, read at the backing-off intervals, and capped.
+ * - A container coming up whose Mate HQ speaks for (`hq`) is read off HQ's presence, never on a
+ *   timer: HQ newly saying its Mate is online reads it once (`probe`). One HQ cannot speak for is
+ *   polled. HQ's word only asks for a read: the reading alone says the container is up.
  */
 import type { ExecutionEnvironmentUpdate } from "@t3tools/contracts";
 import type { Instant } from "./exchange.ts";
@@ -108,17 +111,16 @@ export interface ContainerMachine {
   readonly processEndedAt: Instant | null;
   /** The newest probe reading and when its probe was sent; null before one. */
   readonly reading: { readonly reading: ProbeReading; readonly sentAt: Instant } | null;
-  /**
-   * When something began proving the container up: its socket, or HQ holding its Mate online
-   * (`containerStore`). Null while nothing does.
-   */
+  /** When its socket began proving the container up; null while none does. */
   readonly connectedSince: Instant | null;
+  /** HQ's presence for its Mate while HQ's relay of it is current: online or not; null otherwise. */
+  readonly hq: boolean | null;
   /**
    * When the container was last known up outside a socket: the latest probe it answered ready
    * left, or its socket dropped. Null before either.
    */
   readonly upAt: Instant | null;
-  /** Read only for a container that predates Mate; null before the read. */
+  /** Read once no Mate answers its probe (`noMateAnswers`); null before the read. */
   readonly mateFlag: MateFlag | null;
   /** Our verb's expectation while its level holds; null once a read fact settled it. */
   readonly intent: ContainerIntent | null;
@@ -138,6 +140,8 @@ export type ContainerEvent =
   | { readonly type: "PROCESS"; readonly running: boolean }
   | { readonly type: "PROBED"; readonly reading: ProbeReading; readonly sentAt: Instant }
   | { readonly type: "LINK"; readonly connected: boolean }
+  /** HQ's presence for its Mate, as its relay holds it now; null while HQ cannot say. */
+  | { readonly type: "HQ"; readonly online: boolean | null }
   | { readonly type: "MATE_FLAG"; readonly flag: MateFlag }
   | { readonly type: "INTENT"; readonly intent: ContainerIntent }
   /** Its connected server's word on an automatic update: under way from `from`, or none (null). */
@@ -157,8 +161,12 @@ export const automaticUpdateFrom = (
   update: ExecutionEnvironmentUpdate | null | undefined,
 ): string | null => {
   const automatic = update?.automatic;
-  return automatic !== undefined && UPDATE_BEFORE_RESTART.has(automatic.phase)
-    ? automatic.runningVersion
+  if (automatic !== undefined && UPDATE_BEFORE_RESTART.has(automatic.phase))
+    return automatic.runningVersion;
+  // The Mate's own container restart (zcp behind): the server ends with the container.
+  const restart = update?.restart?.phase;
+  return update != null && (restart === "draining" || restart === "restarting")
+    ? update.installed
     : null;
 };
 
@@ -170,9 +178,12 @@ export type ContainerEffect =
       readonly event: { readonly type: "TICK" };
     }
   | { readonly kind: "cancel"; readonly key: typeof CONTAINER_TIMER_KEY }
-  /** Read `ZCP_MATE_ENABLED`: a container predating Mate is Enable only when the flag is off. */
+  /** Read `ZCP_MATE_ENABLED`: a container no Mate answers on is Enable only when the flag is off. */
   | { readonly kind: "read-mate-flag" }
-  /** Read the container now: its cap ran out, and only a reading since says whether it is late. */
+  /**
+   * Read the container now, `/healthz` beside it: its cap ran out and only a reading since says
+   * whether it is late, or HQ newly says its Mate is online while it comes up.
+   */
   | { readonly kind: "probe" };
 
 export interface ContainerContext {
@@ -209,6 +220,7 @@ export const initialContainer = (): ContainerMachine => ({
   processEndedAt: null,
   reading: null,
   connectedSince: null,
+  hq: null,
   upAt: null,
   mateFlag: null,
   intent: null,
@@ -247,12 +259,14 @@ export const containerVerdict = (machine: ContainerMachine): ContainerVerdict =>
 /**
  * How often the probe store reads this container (§4.5 probes): every 2 s while it comes up,
  * backing off past its cap or while a ready one leaves them unanswered, never while a socket
- * proves it up, and otherwise only when a push, a failure or a wake asks. A boot nothing vouches
- * for — only failed probes say it, as of a dead Mate or a zcp serving none — is polled only while
- * someone waits on it (`watched`: the route's, the screen's, a lease's), on the backing-off ladder.
+ * proves it up, and otherwise only when a push, a failure or a wake asks. One coming up whose Mate
+ * HQ speaks for is read on HQ's word instead (`hqReadsWayUp`). A boot nothing vouches for — only
+ * failed probes say it, as of a dead Mate or a zcp serving none — is polled only while someone
+ * waits on it (`watched`: the route's, the screen's, a lease's), on the backing-off ladder.
  */
 export const probeCadence = (machine: ContainerMachine, watched = false): ProbeCadence => {
   if (platformSaysDown(machine)) return { kind: "none" };
+  if (hqReadsWayUp(machine)) return ON_DEMAND;
   switch (machine.state.level) {
     case "booting":
       if (machine.state.guessed) return watched ? { kind: "poll", overdue: true } : ON_DEMAND;
@@ -276,6 +290,19 @@ export const probeCadence = (machine: ContainerMachine, watched = false): ProbeC
 };
 
 const ON_DEMAND: ProbeCadence = { kind: "on-demand" };
+
+/** The platform or our verb says the container is on its way up. */
+export const comingUp = (machine: ContainerMachine): boolean =>
+  (machine.state.level === "booting" && !machine.state.guessed) ||
+  machine.state.level === "restarting" ||
+  machine.state.level === "updating";
+
+/**
+ * HQ speaks for the Mate of a container coming up: its presence, not a poll, says when to read it
+ * — once as HQ newly says it is online, and at the person's Try now.
+ */
+export const hqReadsWayUp = (machine: ContainerMachine): boolean =>
+  machine.hq !== null && comingUp(machine);
 
 /**
  * The platform's own status says the Mate's server is not up: its project or its zcp service is
@@ -406,17 +433,23 @@ const fromReading = (machine: ContainerMachine, reading: ProbeReading | null): C
   if (machine.connectedSince !== null) return { level: "ready" };
   const current = machine.state;
   if (reading === null || machine.reading === null) return current;
+  if (noMateAnswers(reading)) {
+    // A container that was up is given `READY_SILENCE_MS` for the platform's status to say why;
+    // the link meanwhile says it reconnects (§4.4 row 10).
+    if (reading.kind !== "predates-mate" && current.level === "ready" && !silent(machine)) {
+      return current;
+    }
+    // The flag reads off: no Mate is here yet, whatever its address answered or did not.
+    if (machine.mateFlag === false) return { level: "needs-enable" };
+  }
   switch (reading.kind) {
     case "ready":
       return { level: "ready" };
     case "initializing":
       return booting(machine, false);
     case "unreachable":
-      // A container that was up is given `READY_SILENCE_MS` for the platform's status to say
-      // why; the link meanwhile says it reconnects (§4.4 row 10).
-      return current.level === "ready" && !silent(machine) ? current : booting(machine, true);
+      return booting(machine, true);
     case "not-answering": {
-      if (current.level === "ready" && !silent(machine)) return current;
       // zcp's init is complete and its Mate does not answer: whatever vouched for a boot (its
       // init running) is over, and only the Mate's silence is left — a guess, which its link's
       // words speak for, never a start. A process the platform runs still says it starts.
@@ -429,10 +462,20 @@ const fromReading = (machine: ContainerMachine, reading: ProbeReading | null): C
       // A restart of ours already came back to this: the zcp release there does not carry Mate.
       if (machine.restartTried) return { level: "not-yet-available" };
       // Unread or unreadable, the flag keeps the container booting: never Enable on a guess.
-      if (machine.mateFlag === false) return { level: "needs-enable" };
       return machine.mateFlag === true ? { level: "needs-update" } : booting(machine, true);
   }
 };
+
+/**
+ * No Mate answered the probe: its container is away, or serves none. A browser cannot tell the
+ * two apart by the answer — a container serving no Mate answers `/mate/` with code-server's
+ * redirect, sent without CORS headers, which reads as no answer at all — so `ZCP_MATE_ENABLED`,
+ * read once, is what says no Mate is here yet.
+ */
+const noMateAnswers = (reading: ProbeReading): boolean =>
+  reading.kind === "unreachable" ||
+  reading.kind === "not-answering" ||
+  reading.kind === "predates-mate";
 
 /** The held probe went unanswered `READY_SILENCE_MS` or more after the container was last up. */
 const silent = (machine: ContainerMachine): boolean =>
@@ -459,9 +502,10 @@ const restartOver = (
   if (connectedAfter(machine, state.since)) return "connected";
   const reading = readingSince(machine, state.since);
   if (reading === null) return null;
-  if (state.platformEnded !== null && notBefore(machine.reading!.sentAt, state.platformEnded)) {
-    return reading;
-  }
+  // The platform's word that it is over: its status leaving RESTARTING, or its restart's process
+  // ending, which a tab that never saw that status still reads.
+  const ended = state.platformEnded ?? processEndedSince(machine, state.since);
+  if (ended !== null && notBefore(machine.reading!.sentAt, ended)) return reading;
   const initAt = readInitAt(reading);
   if (initAt === null) return null;
   const baseline = state.baseline;
@@ -470,6 +514,14 @@ const restartOver = (
     (baseline.kind === "held" ? initAt !== baseline.initAt : Date.parse(initAt) > state.since.wall);
   return reinitialized ? reading : null;
 };
+
+/** When a process the platform ran against the container ended since `since`; null otherwise. */
+const processEndedSince = (machine: ContainerMachine, since: Instant): Instant | null =>
+  !machine.processRunning &&
+  machine.processEndedAt !== null &&
+  notBefore(machine.processEndedAt, since)
+    ? machine.processEndedAt
+    : null;
 
 const readInitAt = (reading: ProbeReading): string | null =>
   reading.kind === "ready" || reading.kind === "initializing" || reading.kind === "not-answering"
@@ -694,6 +746,8 @@ const apply = (
       );
       return updating.intent === null ? { ...linked, updateUnderway: null } : updating;
     }
+    case "HQ":
+      return event.online === machine.hq ? machine : { ...machine, hq: event.online };
     case "UPDATE_UNDERWAY":
       return event.from === machine.updateUnderway
         ? machine
@@ -739,6 +793,18 @@ export function transitionContainer(
       effects.push({ kind: "probe" });
     }
   }
+  // HQ newly saying its Mate is online reads a container on its way up once: the reading, never
+  // HQ's word, says it is back.
+  if (
+    event.type === "HQ" &&
+    event.online === true &&
+    machine.hq !== true &&
+    hqReadsWayUp(next) &&
+    !platformSaysDown(next) &&
+    !effects.some((effect) => effect.kind === "probe")
+  ) {
+    effects.push({ kind: "probe" });
+  }
   if (!sameJson(next.timer, machine.timer)) {
     effects.push(
       next.timer === null
@@ -746,9 +812,9 @@ export function transitionContainer(
         : { kind: "schedule", key: CONTAINER_TIMER_KEY, at: next.timer, event: { type: "TICK" } },
     );
   }
-  const predates = next.reading?.reading.kind === "predates-mate";
-  const predatedBefore = machine.reading?.reading.kind === "predates-mate";
-  if (predates && next.mateFlag === null && !(predatedBefore && machine.mateFlag === null)) {
+  const unanswered = next.reading !== null && noMateAnswers(next.reading.reading);
+  const unansweredBefore = machine.reading !== null && noMateAnswers(machine.reading.reading);
+  if (unanswered && next.mateFlag === null && !(unansweredBefore && machine.mateFlag === null)) {
     effects.push({ kind: "read-mate-flag" });
   }
   return { state: next === machine ? machine : next, effects };

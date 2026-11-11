@@ -49,7 +49,6 @@ function operationsOf(store: AccountStore, platform: Partial<CreationWritesPlatf
     importServicesIntoProject: notCalled,
     importDevelopmentContainer: notCalled,
     hardenMate: notCalled,
-    readProjectEnv: notCalled,
     ...platform,
   });
   return makeOperations({ store, executors: { zerops: { submit } }, makeId: () => "r1" });
@@ -100,7 +99,7 @@ describe("a creation's writes at Zerops", () => {
             projectId: "p9",
             projectName: "shop-mate",
             agents: ["claude-code"],
-            setupRuntimesYaml: "runtimes",
+            tierYaml: "tier",
           },
           {
             importDevelopmentContainer: async (input) => {
@@ -137,46 +136,11 @@ describe("a creation's writes at Zerops", () => {
             projectId: "p9",
             projectName: "shop-mate",
             agents: ["claude-code"],
-            setupRuntimesYaml: "runtimes",
+            tierYaml: "tier",
           },
         ],
         ["harden", ORG, "p9", "tok-1"],
       ]);
-    }),
-  );
-
-  it.effect("a hardening asked to confirm reads the project closed off, writing only if not", () =>
-    Effect.gen(function* () {
-      for (const [reads, written, outcome] of [
-        [["service"], false, { stage: "done", outcome: "succeeded" }],
-        [["none", "service"], true, { stage: "done", outcome: "succeeded" }],
-        [
-          ["none", "none"],
-          true,
-          { stage: "refused", reason: "The project does not read as closed off yet." },
-        ],
-        [
-          [undefined],
-          false,
-          { stage: "refused", reason: "The project's isolation could not be read." },
-        ],
-      ] as const) {
-        const store = account();
-        const queue = [...reads];
-        let hardened = false;
-        yield* operationsOf(store, {
-          readProjectEnv: async () => {
-            const value = queue.shift();
-            return value === undefined ? [] : [{ key: "envIsolation", content: value }];
-          },
-          hardenMate: async () => {
-            hardened = true;
-            return { keyNotLowered: null };
-          },
-        }).submit({ kind: "harden-project", orgId: ORG, projectId: "p9", confirm: true });
-        expect(hardened).toBe(written);
-        expect(progress(store)).toMatchObject(outcome);
-      }
     }),
   );
 

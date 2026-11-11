@@ -22,6 +22,8 @@
 
 import { tokenExpiryLabel, type HqRepoRemote } from "@t3tools/shared/hqChanges";
 import type { ChangePipeline } from "@t3tools/shared/hqChanges";
+import type { HqProblem, HqRecipeValidation } from "@t3tools/shared/hqProblems";
+import { problemPresentation, problemsFix } from "./hq/problems.ts";
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 
 import type { AppDeployRollout } from "./hq/deployHandover.logic.ts";
@@ -106,6 +108,7 @@ export type ReviewState =
  * the shape `fixRequest.ts` writes into the Mate's composer (S6).
  */
 export interface ReviewFixProblem {
+  readonly problems?: ReadonlyArray<HqProblem> | undefined;
   readonly what: string;
   readonly at?: string | undefined;
   readonly error?: string | undefined;
@@ -173,6 +176,7 @@ export interface ReviewQuestion {
 }
 
 export interface ReviewModel {
+  readonly problems?: ReadonlyArray<HqProblem> | undefined;
   readonly pipeline?:
     | {
         readonly checks: ChangePipeline["checks"];
@@ -182,6 +186,11 @@ export interface ReviewModel {
   readonly verdict: ReviewVerdict;
   /** What pressing does, said beside the button — or, once it is over, where things stand. */
   readonly consequence: string;
+  /**
+   * While the change is still read: the note that will stand once it is. The foot keeps its room
+   * under the words that say it is loading, so the buttons over it never move when it arrives.
+   */
+  readonly consequenceRoom?: string | undefined;
   /** `undefined` where there is nothing left to press. */
   readonly primary: ReviewPrimary | undefined;
   readonly secondary?: ReviewSecondary | undefined;
@@ -193,7 +202,11 @@ export interface ReviewModel {
 export type ReviewPress =
   | { readonly kind: "idle" }
   | { readonly kind: "running" }
-  | { readonly kind: "refused"; readonly reason: string }
+  | {
+      readonly kind: "refused";
+      readonly reason: string;
+      readonly problems?: ReadonlyArray<HqProblem> | undefined;
+    }
   /**
    * Done: where HQ answered the deploys it asked for stand, where it answered (`hqDeploys`), and
    * the rollout they are of, which an answer that handed planning over is followed by.
@@ -251,6 +264,8 @@ export interface ChangeReviewInput {
   readonly pull: {
     readonly number: number;
     readonly headSha?: string | undefined;
+    readonly recipeValidation?: HqRecipeValidation | undefined;
+    readonly problems?: ReadonlyArray<HqProblem> | undefined;
     /** Open with nothing pushed yet (`FlowPullRequest.unpushed`). */
     readonly unpushed?: true | undefined;
     readonly pipeline?: ChangePipeline | undefined;
@@ -265,6 +280,8 @@ export interface ChangeReviewInput {
     readonly behind: boolean;
     /** Whether it asks for review: its Mate described it at its head. Absent reads as ready. */
     readonly ready?: boolean | undefined;
+    /** On a draft described before a push: why it is a draft again (`HqChange.draftReason`). */
+    readonly draftReason?: string | undefined;
     /** HQ's word, once it merged, that it was the application's first merged code change. */
     readonly firstCodeMerge?: boolean | undefined;
     /** HQ's word, once it merged, that GitHub merged it of a head no person merged in Mate. */
@@ -273,15 +290,18 @@ export interface ChangeReviewInput {
     readonly mateGone?: true | undefined;
     /** HQ's word, once it closed without merging, that its own Mate closed it. */
     readonly closedByMate?: true | undefined;
+    /** HQ's word that it closed it because this change's landing carried all of it (`landedWith`). */
+    readonly landedWith?: number | undefined;
   };
   /** The name of the Mate that wrote it: only Mates open changes (SPEC §5.4). */
   readonly mateName: string;
   /**
    * How far its files were read for the head it is at. Merge takes only a head whose change was
    * shown: it waits while they are read, and one that could not be read is merged only by a
-   * deliberate press.
+   * deliberate press. `unread`: HQ never said which head it is at, and the wait for it is over —
+   * Merge would name no head, so it stays off.
    */
-  readonly readout: "reading" | "read" | "failed";
+  readonly readout: "reading" | "read" | "failed" | "unread";
   /** How many commits it squashes, where they were read. */
   readonly commits?: number | undefined;
   /**
@@ -297,13 +317,9 @@ export interface ChangeReviewInput {
   /** Where `main` goes next: a production a release puts it in front of, a stage that follows it. */
   readonly downstream: { readonly production: boolean; readonly stage: boolean };
   /**
-   * Whether the application holds a production in any state — declared, being made, failed — which
-   * is as good as present: the question after the first merge is never asked of it.
-   */
-  readonly productionHeld?: boolean | undefined;
-  /**
    * The environments this person may add now: those the recipe on `main` holds, the application
-   * lacks, and HQ offers the person (`add_stage` / `add_production`). Absent, none: nothing is offered on a guess.
+   * lacks in any state (a production being made or failed is held), and HQ offers the person
+   * (`add_stage` / `add_production`). Absent, none: nothing is offered on a guess.
    */
   readonly addable?: { readonly stage: boolean; readonly production: boolean } | undefined;
   /**
@@ -382,6 +398,25 @@ function closedReview(base: string, why: string): ReviewModel {
   };
 }
 
+/**
+ * A change another change's landing carried: that one was built on it and merged first, so its
+ * squash put all of this one on `main`, and HQ closed it. It says it was merged, and as part of
+ * which change, never `Closed without merging`: nothing of it was given up.
+ */
+function landedWithReview(base: string, carrier: number): ReviewModel {
+  return {
+    verdict: {
+      state: "closed",
+      tone: "done",
+      title: `Merged as part of #${String(carrier)}`,
+      why: `#${String(carrier)} was built on it and merged first`,
+      fix: undefined,
+    },
+    consequence: `All of it is on ${base}; nothing more merges from here.`,
+    primary: undefined,
+  };
+}
+
 /** Closing without merging, asked or pressed: the review is its one confirmation, never ⌘↵'s. */
 function closeReview(
   input: ChangeReviewInput,
@@ -452,22 +487,47 @@ function mergeSentence(pull: ChangeReviewInput["pull"], behind: boolean, unshown
 
 /** What any recipe change does, which is all that can be said of one before its files are read. */
 const RECIPE_UNREAD =
-  "Each environment gets any service added to its recipe, created empty; the services it has stay as they are.";
+  "A stage gets any service added to its recipe, created empty, and production with its next release; the services they have stay as they are.";
 
-/** Who a recipe change's merge adds services to: the stages and the production made from it. */
-function recipeGainers(
-  reach: RecipeReach,
-): { readonly who: string; readonly one: boolean; readonly recipes: string } | undefined {
-  const stages = reach.stages === 0 ? undefined : reach.stages === 1 ? "the stage" : "the stages";
+/**
+ * The room a recipe change's note keeps while its files are read: who gains is not known yet, and
+ * the sentence that names them usually adds what is made later, one line more.
+ */
+const RECIPE_ROOM = `${RECIPE_UNREAD} A Mate or a stage added later is made from the new recipe.`;
+
+/**
+ * Who a recipe change's merge adds services to. A stage made from it gets them at the merge; the
+ * production made from it gets them only with a release a person approves (HQ imports nothing into
+ * a production for a merge), so it is said apart.
+ */
+function recipeGainers(reach: RecipeReach):
+  | {
+      /** The stages that get them at the merge; `undefined` where none is made from it. */
+      readonly stages: { readonly who: string; readonly one: boolean } | undefined;
+      readonly production: boolean;
+    }
+  | undefined {
+  const stages =
+    reach.stages === 0
+      ? undefined
+      : reach.stages === 1
+        ? { who: "the stage", one: true }
+        : { who: "the stages", one: false };
+  return stages === undefined && !reach.production
+    ? undefined
+    : { stages, production: reach.production };
+}
+
+/** What the gainers get, as the foot's sentence. */
+function gainersSentence(gainers: NonNullable<ReturnType<typeof recipeGainers>>): string {
+  const { stages } = gainers;
   if (stages === undefined) {
-    return reach.production ? { who: "production", one: true, recipes: "its recipe" } : undefined;
+    return "Production gets any service added to its recipe with its next release; the services it has stay as they are.";
   }
-  if (reach.production) {
-    return { who: `${stages} and production`, one: false, recipes: "their recipes" };
-  }
-  return reach.stages === 1
-    ? { who: stages, one: true, recipes: "its recipe" }
-    : { who: stages, one: false, recipes: "their recipe" };
+  const gets = `${capitalized(stages.who)} ${stages.one ? "gets" : "get"} any service added to ${stages.one ? "its" : "their"} recipe, created empty`;
+  return gainers.production
+    ? `${gets}, and production with its next release; the services they have stay as they are.`
+    : `${gets}; the services ${stages.one ? "it has" : "they have"} stay as they are.`;
 }
 
 /** What is made later from a recipe it changes, as a sentence names it. */
@@ -497,9 +557,7 @@ function recipeSentence(reach: RecipeReach | undefined): string {
       ? `Nothing in this project is made from the ${either(reach.unused)} recipe, so no environment changes.`
       : "No environment changes.";
   return sentences(
-    gainers === undefined
-      ? undefined
-      : `${capitalized(gainers.who)} ${gainers.one ? "gets" : "get"} any service added to ${gainers.recipes}, created empty; the services ${gainers.one ? "it has" : "they have"} stay as they are.`,
+    gainers === undefined ? undefined : gainersSentence(gainers),
     gainers === undefined ? unchanged : undefined,
     later.length === 0
       ? undefined
@@ -512,7 +570,10 @@ function recipeNext(reach: RecipeReach | undefined, base: string): string {
   if (reach === undefined) return `it's on ${base}`;
   const gainers = recipeGainers(reach);
   if (gainers === undefined) return "no environment changes";
-  return `${gainers.who} ${gainers.one ? "gets" : "get"} any new service`;
+  const { stages } = gainers;
+  if (stages === undefined) return "production gets any new service with its next release";
+  const gets = `${stages.who} ${stages.one ? "gets" : "get"} any new service`;
+  return gainers.production ? `${gets}, production with its next release` : gets;
 }
 
 /** What happens once `main` has it, as far as anything downstream goes. */
@@ -570,6 +631,36 @@ export function changeMergeVerdict(
   const { pull } = input;
   const base = pull.baseBranch;
   const who = input.mateName;
+
+  const validation = pull.kind === "recipe" ? pull.recipeValidation : undefined;
+  if (
+    validation !== undefined &&
+    (validation.head !== pull.headSha || validation.state !== "valid")
+  ) {
+    const current = validation.head === pull.headSha;
+    const invalid = current && validation.state === "invalid";
+    const unavailable = current && validation.state === "unavailable";
+    const problems = current ? validation.problems : [];
+    return {
+      enabled: false,
+      verdict: {
+        state: invalid ? "checks-failed" : unavailable ? "checks-unknown" : "checking",
+        tone: invalid ? "failed" : unavailable ? "quiet" : "busy",
+        title: invalid
+          ? "Recipe validation failed"
+          : unavailable
+            ? "Validation unavailable"
+            : "Recipe validation pending",
+        why:
+          problems.length > 0
+            ? problems.map((problem) => problemPresentation(problem).what).join(" · ")
+            : unavailable
+              ? "HQ could not validate this recipe against the published schema."
+              : "HQ has not validated this recipe head yet.",
+        fix: problemsFix(problems),
+      },
+    };
+  }
 
   if (pull.mergeability === "conflicting") {
     const files = input.conflict?.files ?? [];
@@ -699,8 +790,10 @@ export function changeMergeVerdict(
   }
 
   // Quiet, not green: no signal about a change is not a good signal. A draft merges as well,
-  // but says its words are not of its latest work: its Mate has not described that yet.
+  // but says its words are not of its latest work: its Mate has not described that yet — or, one
+  // described before, why HQ made it a draft again though its own diff may be as it was.
   const draft = pull.ready === false;
+  const again = draft ? draftAgain(pull.draftReason) : undefined;
   return {
     enabled: true,
     verdict: {
@@ -708,25 +801,56 @@ export function changeMergeVerdict(
       tone: "quiet",
       title: draft ? "Draft" : "Ready to merge",
       why: [
-        draft ? `${who} hasn't described its latest work` : undefined,
+        again !== undefined
+          ? `HQ couldn't ${again.couldNot} the latest push${again.inTime ? " in time" : ""}, so ${who} needs to describe it again`
+          : draft
+            ? `${who} hasn't described its latest work`
+            : undefined,
         `No conflicts with ${base}`,
         commits,
       ]
         .filter((part) => part !== undefined)
         .join(" · "),
-      fix: undefined,
+      fix:
+        again === undefined
+          ? undefined
+          : {
+              verb: "describe it again",
+              problem: {
+                what: `Change #${String(pull.number)} is a draft again: HQ couldn't ${again.couldNot} its latest push${again.inTime ? " in time" : ""}`,
+                ask: "Describe the change again as it is now.",
+              },
+            },
     },
   };
 }
 
 /**
+ * Why HQ made a described change a draft again, for the reasons this client knows: its check of
+ * the push ran out of time, or it could not read the push. A later HQ's reason says nothing more
+ * than a draft does.
+ */
+function draftAgain(
+  reason: string | undefined,
+): { readonly couldNot: string; readonly inTime: boolean } | undefined {
+  switch (reason) {
+    case "notes_timed_out":
+      return { couldNot: "check", inTime: true };
+    case "notes_unread":
+      return { couldNot: "read", inTime: false };
+    default:
+      return undefined;
+  }
+}
+
+/**
  * The question after a first code merge: only in the review of the merge this person just finished
  * (`press` done — never a reopened one), only for the application's first merged code change as HQ
- * says it, only where no production is held in any state, and only with a button to answer it.
+ * says it, and only with a button to answer it: one for each tier the application lacks and the
+ * person may add, so a production already there or being made leaves a missing stage offered.
  */
 function whereShouldItRun(input: ChangeReviewInput): ReviewQuestion | undefined {
   if (input.press?.kind !== "done" || input.pull.firstCodeMerge !== true) return undefined;
-  if (input.downstream.production || input.productionHeld === true) return undefined;
   const options = (
     [
       [
@@ -764,6 +888,7 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
 
   // Owner-proven terminal facts win over an outdated local press.
   if (!pull.merged && pull.state === "closed") {
+    if (pull.landedWith !== undefined) return landedWithReview(base, pull.landedWith);
     const who =
       close.kind === "done" ? "You" : pull.closedByMate === true ? input.mateName : "Somebody";
     return closedReview(base, `${who} closed it; its branch is still there`);
@@ -846,9 +971,13 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
       secondary,
     };
   }
-  // A head whose files are still being read was not shown: it waits for them, as it waits for the
-  // facts HQ's rule is asked over.
-  const enabled = verdictOf.enabled && input.readout !== "reading" && input.offered?.merge === true;
+  // Merge takes the head the review shows: none while its details are read, and never one HQ has not
+  // said. A read that failed leaves it to a deliberate press.
+  const enabled =
+    verdictOf.enabled &&
+    input.readout !== "reading" &&
+    input.readout !== "unread" &&
+    input.offered?.merge === true;
   const squash = sentences(
     mergeSentence(pull, verdict.state === "behind-clean", input.readout === "failed"),
     afterMain(input),
@@ -862,11 +991,13 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
     "checks-unknown": "Merging waits for evidence of the repository's required checks.",
   };
   // What holds it back, said beside it: the change's own trouble, or — for a change nothing is
-  // wrong with — its files still being read, which Merge waits for.
+  // wrong with — its details still loading, or never sent, which Merge waits for.
   const held = verdictOf.enabled
     ? input.readout === "reading"
-      ? "Merging waits until its files are read."
-      : squash
+      ? "Loading change details…"
+      : input.readout === "unread"
+        ? "Nothing merges from here until HQ sends this change's details."
+        : squash
     : (waits[verdict.state] ?? squash);
 
   if (press.kind === "running") {
@@ -889,7 +1020,7 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
         tone: "attention",
         title: "Not merged",
         why: press.reason,
-        fix: verdict.fix,
+        fix: problemsFix(press.problems ?? []) ?? verdict.fix,
       },
       consequence: enabled ? squash : held,
       // A second try is the person's deliberate press, never ⌘↵'s.
@@ -909,6 +1040,14 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
   return {
     verdict,
     consequence: held,
+    ...(verdictOf.enabled && input.readout === "reading"
+      ? {
+          consequenceRoom:
+            pull.kind === "recipe" && input.recipe === undefined
+              ? sentences(mergeSentence(pull, false, false), RECIPE_ROOM)
+              : squash,
+        }
+      : {}),
     primary: {
       label: "Merge",
       enabled,
@@ -963,6 +1102,14 @@ function orphanOf(input: ChangeReviewInput): ReviewOrphan | undefined {
 export function changeReview(input: ChangeReviewInput): ChangeReviewModel {
   return {
     ...changeReviewModel(input),
+    problems:
+      input.press?.kind === "refused" && input.press.problems !== undefined
+        ? input.press.problems
+        : input.pull.recipeValidation?.head === input.pull.headSha
+          ? (input.pull.recipeValidation?.problems ?? input.pull.problems)
+          : input.pull.recipeValidation === undefined
+            ? input.pull.problems
+            : undefined,
     pipeline: changePipelineOf(input.pull),
     orphan: orphanOf(input),
   };
@@ -981,8 +1128,15 @@ export type ReleaseOutcome =
       readonly clock?: string | undefined;
     }
   | { readonly kind: "released"; readonly at: string | undefined }
-  /** HQ ended its follow without confirming the deploy's outcome. */
-  | { readonly kind: "stalled"; readonly at: string | undefined }
+  /**
+   * HQ ended its follow with some of it not live and no build failing: `error` is HQ's words for
+   * why; none where HQ could not tell how the deploy ended.
+   */
+  | {
+      readonly kind: "stalled";
+      readonly at: string | undefined;
+      readonly error?: string | undefined;
+    }
   /**
    * A newer release HQ did not refuse sits above it: the release it followed is over, and `live`
    * is what production runs in full now.
@@ -990,7 +1144,10 @@ export type ReleaseOutcome =
   | { readonly kind: "superseded"; readonly by: string; readonly live: string | undefined }
   | {
       readonly kind: "failed";
+      readonly problems?: ReadonlyArray<HqProblem> | undefined;
       readonly detail?: string | undefined;
+      /** HQ's words for the failed deploy: the platform's message (`releaseFailure`). */
+      readonly error?: string | undefined;
       /** The services whose deploys failed, by the order the release lists them. */
       readonly services?: ReadonlyArray<string> | undefined;
       readonly at?: string | undefined;
@@ -1050,7 +1207,16 @@ export interface ReleaseReviewModel extends ReviewModel {
 const RELEASE_FOLLOWS = "You can close this. Production's line on the project's card follows it.";
 /** What a release's foot says before the press: how long it takes, as measured — the run's
  *  first release went live in 98 s. */
-export const RELEASE_TAKES = "It takes a minute or two.";
+export const RELEASE_TAKES = "Takes a minute or two";
+/**
+ * What "What happens in production" says, at its label, while HQ has not said what the release
+ * carries or what production lacks.
+ */
+export const RELEASE_READING = "Reading what production needs…";
+/** The same wait once it has lasted: what HQ's review of the release reads. */
+export const RELEASE_READING_WORKING = "Reading each repository and production's services…";
+/** Past the read's own deadline, while it is asked again: beside the way to ask now. */
+export const RELEASE_READING_LATE = "This is taking longer than usual.";
 /** Past this, a release on its way says it takes longer than usual (`releaseOutcomeOf`). */
 export const RELEASE_ESTIMATE_MS = 2 * 60_000;
 
@@ -1093,6 +1259,7 @@ export function releaseReview(input: ReleaseReviewInput): ReleaseReviewModel {
         ? `roll back to ${replaces.tag} from production's menu`
         : "roll back from production's menu";
   const facts = {
+    problems: input.outcome.kind === "failed" ? input.outcome.problems : undefined,
     meta: [
       replaces.kind === "first"
         ? "the first release"
@@ -1240,7 +1407,7 @@ function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): 
         verdict: {
           state: "released",
           tone: "done",
-          title: `Released ${tag}`,
+          title: `${tag} is live`,
           // The age is the tag's: the landing's own moment is not read.
           why: age === undefined ? "Production runs it" : `Production runs it · released ${age}`,
           fix: undefined,
@@ -1261,18 +1428,25 @@ function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): 
             ? ` in ${services[0]}'s deploy`
             : ` in the deploys of ${listed(services)}`
       }`;
+      const error = outcome.error ?? outcome.detail;
+      // "The deploy of api failed 2 minutes ago: <the platform's words>" — HQ's, where it said any.
+      const age =
+        outcome.error === undefined || outcome.at === undefined
+          ? undefined
+          : reviewAge(outcome.at, input.now)?.toLowerCase();
+      const said = `${outcome.detail ?? "Its deploy failed"}${age === undefined ? "" : ` ${age}`}`;
       return {
         verdict: {
           state: "release-failed",
           tone: "failed",
-          title: `${tag} didn't go out`,
-          why: outcome.detail ?? "Its deploy failed",
-          fix: {
+          title: `${tag} didn't go live`,
+          why: outcome.error === undefined ? said : `${said}: ${outcome.error.replace(/\.$/u, "")}`,
+          fix: problemsFix(outcome.problems ?? []) ?? {
             verb: "fix it",
             problem: {
               what,
               ...(outcome.at === undefined ? {} : { at: outcome.at }),
-              ...(outcome.detail === undefined ? {} : { error: outcome.detail }),
+              ...(error === undefined ? {} : { error }),
               ask: "Find out why, fix it, and release again.",
             },
           },
@@ -1290,6 +1464,8 @@ function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): 
         tag,
         what: "release",
         at: outcome.at,
+        error: outcome.error,
+        keeps,
       });
     case "superseded":
       return supersededModel({ state: "release-superseded", tag, outcome });
@@ -1303,34 +1479,31 @@ function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): 
     enabled: input.gate.allowed,
     safe: false,
   };
-  // Still comparing what goes out: nothing is said of it, nor refused, until it is known (the
-  // onboarding run opened on "Can't release now" and "0 changes" for 0.4 s), and the foot says
-  // what a ready one says.
+  // The title is the release, whatever holds it: what is not read yet is no refusal (the
+  // onboarding run opened on "Can't release now" and "0 changes" for 0.4 s), and a refusal is the
+  // foot's to say, beside the button it holds.
+  const title = `Release ${tag}`;
   if (!input.gate.allowed && input.gate.reason === RELEASE_CHECKING)
     return {
       verdict: {
         state: "release-blocked",
         tone: "busy",
-        title: "Checking what goes out",
-        why: "Waiting on HQ",
+        title,
+        why: RELEASE_READING,
         fix: undefined,
       },
       consequence: RELEASE_TAKES,
       primary,
     };
   if (!input.gate.allowed) {
-    const reason = input.gate.reason;
     const nothing = releaseNothingReason(input.gate) !== undefined;
     return {
       verdict: {
         state: "release-blocked",
         tone: nothing ? "done" : "attention",
-        title: nothing
-          ? "Nothing to release"
-          : input.permission?.allowed === false
-            ? "Only releasers can release"
-            : "Can't release now",
-        why: reason.replace(/\.$/u, ""),
+        title,
+        // HQ's own words: what holds it, or its rule for who may release.
+        why: input.gate.reason.replace(/\.$/u, ""),
         fix: undefined,
       },
       consequence: keeps,
@@ -1341,7 +1514,7 @@ function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): 
     verdict: {
       state: "release-ready",
       tone: "ok",
-      title: "Ready to release",
+      title,
       why: stageWhy(input),
       fix: undefined,
     },
@@ -1351,16 +1524,43 @@ function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): 
 }
 
 /**
- * HQ stopped following a tag without proving a landing or a failure. The platform may still be
- * deploying it, or already running it; ask the person's Mate to check the original deploy.
+ * HQ ended a tag's deploy with some of it not live and no build failing. With HQ's words for why
+ * — its rollout's note, a service it left out or skipped — the review says them; without, HQ could
+ * not tell how the deploy ended: the platform may still be deploying it, or already running it,
+ * and the person's Mate is asked to check the original deploy.
  */
 function stalledModel(input: {
   readonly state: "release-stalled" | "rollback-stalled";
-  /** The tag whose deploy outcome is unconfirmed. */
+  /** The tag whose deploy did not go live. */
   readonly tag: string;
   readonly what: "release" | "roll back";
   readonly at: string | undefined;
+  /** HQ's words for why (`releaseFailure`); `undefined`: unknown. */
+  readonly error: string | undefined;
+  /** What production still runs, in a sentence, where the review knows it. */
+  readonly keeps: string | undefined;
 }): ReviewModel {
+  const at = input.at === undefined ? {} : { at: input.at };
+  if (input.error !== undefined)
+    return {
+      verdict: {
+        state: input.state,
+        tone: "attention",
+        title: `${input.tag} didn't go live`,
+        why: input.error.replace(/\.$/u, ""),
+        fix: {
+          verb: "fix it",
+          problem: {
+            what: `HQ didn't put all of ${input.what} ${input.tag} live`,
+            ...at,
+            error: input.error,
+            ask: "Find out why, fix it, and release again.",
+          },
+        },
+      },
+      consequence: input.keeps ?? "Production keeps running what it runs.",
+      primary: undefined,
+    };
   return {
     verdict: {
       state: input.state,
@@ -1371,7 +1571,7 @@ function stalledModel(input: {
         verb: "check it",
         problem: {
           what: `The deploy status of ${input.what} ${input.tag} is unknown`,
-          ...(input.at === undefined ? {} : { at: input.at }),
+          ...at,
           ask: "Check how the deploy ended in Zerops, and resolve anything that needs attention.",
         },
       },
@@ -1526,6 +1726,8 @@ function rollbackVerdictOf(input: RollbackReviewInput): ReviewModel {
         tag: nextTag,
         what: "roll back",
         at: outcome.at,
+        error: outcome.error,
+        keeps: undefined,
       });
     case "failed":
       return {

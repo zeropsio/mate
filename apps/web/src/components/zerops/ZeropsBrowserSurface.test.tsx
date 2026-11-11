@@ -44,9 +44,9 @@ describe("BrowserSites", () => {
     );
     expect(shown(html)).toEqual([
       "# Development",
-      "nextstore nextstoredev-a1b2-8000.prg1.zerops.app",
+      "nextstoredev nextstoredev-a1b2-8000.prg1.zerops.app",
       "# Preview",
-      "nextstore nextstorestage-a1b2-8000.prg1.zerops.app",
+      "nextstorestage nextstorestage-a1b2-8000.prg1.zerops.app",
       "# Production",
       "nextstore nextstore-c3d4-8000.prg1.zerops.app",
       "# Tools",

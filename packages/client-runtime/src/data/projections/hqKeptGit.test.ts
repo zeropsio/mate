@@ -45,20 +45,17 @@ it("shows the exact question that arrives after the first navigation paint", () 
     },
   ]);
 });
-it.each(["deleted", "no-access"] as const)(
-  "withdraws a kept-Git question when HQ says %s",
-  (reason) => {
-    const state = reduceAccount(known, {
-      kind: "delivery",
-      via: "hq-stream",
-      scopes: [{ scope, generation: 0 }],
-      reset: false,
-      rows: [],
-      removals: [{ family: "hqKeptGit", id: "shop", reason }],
-    }).state;
-    expect(hqKeptGitQuestions.derive(readsOfState(state), "org")).toEqual([]);
-  },
-);
+it.each(["no-access"] as const)("withdraws a kept-Git question when HQ says %s", () => {
+  const state = reduceAccount(known, {
+    kind: "delivery",
+    via: "hq-stream",
+    scopes: [{ scope, generation: 0 }],
+    reset: false,
+    rows: [],
+    removals: [{ family: "hqKeptGit", id: "shop" }],
+  }).state;
+  expect(hqKeptGitQuestions.derive(readsOfState(state), "org")).toEqual([]);
+});
 it("keeps an unanswered Git question through a lost connection without inventing deletion", () => {
   const state = reduceAccount(known, {
     kind: "stream",
@@ -115,7 +112,7 @@ it.effect(
         scopes: [{ scope, generation: 0 }],
         reset: false,
         rows: [],
-        removals: [{ family: "hqKeptGit", id: "shop", reason: "no-access" }],
+        removals: [{ family: "hqKeptGit", id: "shop" }],
       });
       expect(hqKeptGitQuestions.derive(readsOfState(store.state()), "org")).toEqual([]);
     }),
@@ -153,6 +150,7 @@ it.effect(
       yield* operations.submit(intent, remounted.requestId);
       expect(sends).toBe(1);
       expect(question()).toMatchObject({ requestId, pending: true });
+      expect(question().message).toContain("the question closes when HQ records it");
     }),
 );
 

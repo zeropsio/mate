@@ -1,10 +1,22 @@
-// @effect-diagnostics preferSchemaOverJson:off -- human-readable failure diagnostics.
+// @effect-diagnostics globalJsonInEffect:off -- human-readable failure diagnostics.
 import type { KeyInput } from "puppeteer-core";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import { HqNavigationProject } from "@t3tools/shared/hqStream";
+import { ProviderDriverKind } from "@t3tools/contracts";
 import { expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
+import { CLAUDE_SCENARIO_CODE } from "../../../../../server/integration/scriptedClaudeSignIn.ts";
+import { ticketFor } from "../../harness/coreSeed.ts";
+import { openScenarioNavigation, throughEachHqInstance } from "../../harness/hqCore.ts";
 import type { createScenario } from "../../harness/scenario.ts";
-import { menuMateRow, visibleInMenu, sendConversationMessage } from "../../harness/browser.ts";
+import {
+  menuMateRow,
+  visibleInMenu,
+  sendConversationMessage,
+  waitForConversation,
+} from "../../harness/browser.ts";
 import { chatFor, revokeProjectAccess } from "./fake.ts";
 
 type Scenario = Effect.Success<ReturnType<typeof createScenario>>;
@@ -77,7 +89,7 @@ export function mateChat(
         );
       yield* Effect.promise(async () => {
         try {
-          await page.waitForSelector(composer, { visible: true });
+          await waitForConversation(page);
         } catch (cause) {
           throw new Error(
             `Composer missing for ${name}: ${await page.evaluate(() =>
@@ -623,4 +635,124 @@ export const projectAccessRevoked = Effect.fn("chat.projectAccessRevoked")(funct
   yield* Effect.promise(() => s.clock.advance(15_000));
   yield* Effect.promise(read.heartbeat);
   yield* Effect.sync(read.release);
+});
+
+const decodeNavigationProject = Schema.decodeUnknownOption(HqNavigationProject);
+
+/**
+ * Ada, a real Mate whose Zerops project names no owner, with Claude signed in by the owner: HQ
+ * knows the owner only as its agent's signer. `dev` may read Ada. Ends once HQ's navigation names
+ * the signer, with the owner's page on Ada's conversation.
+ */
+export const ownerSignsInAdasAgent = Effect.fn("ownerSignsInAdasAgent")(function* (s: Scenario) {
+  s.given.person("dev", { role: "Developer", grants: { Ada: "BASIC_USER" } });
+  yield* s.given.project("Ada", {
+    mate: true,
+    provider: { driverKind: ProviderDriverKind.make("claudeAgent") },
+    claudeSignIn: true,
+  });
+  yield* s.given.signedIn;
+  yield* mateChat(s).when.openReadOnly();
+  yield* Effect.promise(async () => {
+    await s.page.locator('button[data-agent-id="claude-code"]').click();
+    await s.page.waitForSelector(
+      '[data-sign-in-open="claude-code"][href^="https://claude.scenario.invalid/oauth/authorize"]',
+      { visible: true },
+    );
+    await s.page.waitForSelector("[data-sign-in-code]", { visible: true });
+    await s.page.type("[data-sign-in-code]", CLAUDE_SCENARIO_CODE);
+    await s.page.keyboard.press("Enter");
+    await s.page.waitForSelector('[data-slot="composer-shell"] [role="textbox"]:not([inert] *)', {
+      visible: true,
+    });
+  });
+  // HQ has recorded the signer once any instance's navigation names it.
+  const { core } = s.drivers;
+  const tickets = yield* Effect.forEach(core.instances, () => ticketFor(core.call, s.owner));
+  yield* Effect.raceAll(
+    core.instances.map((origin, index) =>
+      openScenarioNavigation(
+        origin,
+        tickets[index]!,
+        (message) =>
+          (message.type === "scope-reset" || message.type === "scope-values") &&
+          message.values.some(
+            (entry) =>
+              entry.key === "project:Ada" &&
+              Option.getOrUndefined(decodeNavigationProject(entry.value))?.signedInNow[
+                "claude-code"
+              ] === "owner",
+          ),
+      ).pipe(Effect.scoped),
+    ),
+  );
+});
+
+/**
+ * What a person sees of Ada through each HQ instance alone, in index order: a fresh browser signs
+ * in as them and opens Ada from the menu. Its page settles on its gate — the colleague's notice, an
+ * agent's sign-in, or a composer to write in — and the menu row's seat is read in that same frame.
+ */
+export const eachInstanceShowsAda = Effect.fn("eachInstanceShowsAda")(function* (
+  s: Scenario,
+  person: string,
+) {
+  const looks: Array<{ readonly gate: string; readonly seat: string }> = [];
+  yield* throughEachHqInstance(s, () =>
+    Effect.gen(function* () {
+      const actor = yield* s.given.browserActor({ person });
+      yield* actor.given.signedIn;
+      const row = yield* Effect.promise(() => menuMateRow(actor.page, "Ada"));
+      yield* Effect.promise(() => row.click());
+      const look = yield* Effect.promise(async () => {
+        const settled = await actor.page.waitForFunction(
+          (row) => {
+            const seen = (element: Element | null) =>
+              element !== null && element.getBoundingClientRect().height > 0;
+            const notice = [...document.querySelectorAll("main *")].find(
+              (element) =>
+                element.children.length === 0 &&
+                /you can read along\.|only they can run this agent\./u.test(
+                  element.textContent ?? "",
+                ) &&
+                seen(element),
+            );
+            const signIn = [...document.querySelectorAll("button[data-agent-id]")].find(seen);
+            const writable = [
+              ...document.querySelectorAll('[data-slot="composer-shell"] [role="textbox"]'),
+            ].find(
+              (element) =>
+                seen(element) &&
+                element.closest("[inert]") === null &&
+                element.getAttribute("contenteditable") === "true",
+            );
+            const gate =
+              notice?.textContent ??
+              (signIn === undefined
+                ? writable === undefined
+                  ? undefined
+                  : "a composer to write in"
+                : `sign in ${signIn.getAttribute("data-agent-id")}`);
+            if (gate === undefined) return undefined;
+            const seat = row.querySelector('[data-zerops-surface="sidebar-mate-owner"]');
+            return {
+              gate,
+              seat:
+                seat === null
+                  ? "no seat"
+                  : `${seat.getAttribute("data-zerops-avatar")}: ${seat.textContent}`,
+            };
+          },
+          { polling: "raf" },
+          await row.waitHandle(),
+        );
+        // The wait resolves only on a settled look.
+        const look = await settled.jsonValue();
+        if (look === undefined) throw new Error("Ada's page settled on no gate");
+        return look;
+      });
+      looks.push(look);
+    }),
+  );
+  return looks;
 });

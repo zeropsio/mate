@@ -1,6 +1,14 @@
-import { assert, describe, it } from "@effect/vitest";
+// @effect-diagnostics nodeBuiltinImport:off - the fixture resets files between cases.
+import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
+
+import { afterEach, assert, describe, it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as Ref from "effect/Ref";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
+import * as TestClock from "effect/testing/TestClock";
 
 import * as CrewShell from "./CrewShell.ts";
 import {
@@ -8,24 +16,23 @@ import {
   exists,
   git,
   makeServiceRepository,
-  read,
   serviceRepository,
   TEST_HOST,
   TEST_IDENTITY,
-  waitUntil,
-  write,
 } from "./testing/crewGitFixture.ts";
+
+const root = makeServiceRepository();
+const initialCommit = git(root, ["rev-parse", "HEAD"]);
+
+afterEach(() => {
+  git(root, ["reset", "--hard", "-q", initialCommit]);
+  NodeFS.rmSync(NodePath.join(root, "ran"), { force: true });
+});
 
 const withService = <A, E>(
   body: (root: string) => Effect.Effect<A, E, CrewShell.CrewShell>,
   options: Parameters<typeof crewShellLayer>[1] = {},
-) =>
-  Effect.gen(function* () {
-    const root = makeServiceRepository();
-    return yield* body(root).pipe(
-      Effect.provide(crewShellLayer([serviceRepository(root)], options)),
-    );
-  });
+) => body(root).pipe(Effect.provide(crewShellLayer([serviceRepository(root)], options)));
 
 describe("CrewShell", () => {
   it.effect("runs a script on the host with its cwd at the repository's remote path", () =>
@@ -122,38 +129,50 @@ describe("CrewShell", () => {
   );
 
   it.effect("runs at most three crew sessions on one host at a time", () =>
-    withService((root) =>
-      Effect.gen(function* () {
-        const shell = yield* CrewShell.CrewShell;
-        const session = CrewShell.script(
-          "echo + >> sessions.log; while [ ! -f sessions.release ]; do sleep 0.01; done; echo - >> sessions.log",
-        );
-        const sessions = yield* Effect.all(
-          Array.from({ length: 5 }, () => shell.run(TEST_HOST, session, { timeout: "11 minutes" })),
-          { concurrency: "unbounded" },
-        ).pipe(Effect.forkChild);
-        yield* waitUntil(
-          () =>
-            exists(root, "sessions.log") &&
-            read(root, "sessions.log").trim().split("\n").length >=
-              CrewShell.MAX_CREW_SESSIONS_PER_HOST,
-        );
-        write(root, "sessions.release", "release");
-        yield* Fiber.join(sessions);
-        let running = 0;
-        let peak = 0;
-        for (const mark of read(root, "sessions.log").trim().split("\n")) {
-          running += mark === "+" ? 1 : -1;
-          peak = Math.max(peak, running);
-        }
-        assert.strictEqual(peak, CrewShell.MAX_CREW_SESSIONS_PER_HOST);
-      }),
-    ),
+    Effect.gen(function* () {
+      const running = yield* Ref.make(0);
+      const peak = yield* Ref.make(0);
+      const threeEntered = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const shell = CrewShell.makeCrewShell({
+        known: Effect.succeed([serviceRepository(root)]),
+        runner: {
+          run: () =>
+            Effect.gen(function* () {
+              const current = yield* Ref.updateAndGet(running, (count) => count + 1);
+              yield* Ref.update(peak, (count) => Math.max(count, current));
+              if (current === 3) yield* Deferred.succeed(threeEntered, undefined);
+              yield* Deferred.await(release);
+              yield* Ref.update(running, (count) => count - 1);
+              return {
+                code: ChildProcessSpawner.ExitCode(0),
+                stdout: "",
+                stderr: "",
+                timedOut: false,
+                stdoutTruncated: false,
+                stderrTruncated: false,
+                stdoutInvalidUtf8: false,
+                stderrInvalidUtf8: false,
+              };
+            }),
+        },
+      });
+      const sessions = yield* Effect.forEach(Array.from({ length: 5 }), () =>
+        shell
+          .run(TEST_HOST, CrewShell.script("true"), { timeout: "11 minutes" })
+          .pipe(Effect.forkChild({ startImmediately: true })),
+      );
+      yield* Deferred.await(threeEntered);
+      yield* TestClock.adjust(0);
+      assert.strictEqual(yield* Ref.get(peak), 3);
+      yield* Deferred.succeed(release, undefined);
+      yield* Effect.forEach(sessions, Fiber.join);
+      assert.strictEqual(yield* Ref.get(peak), 3);
+    }),
   );
 
   it.effect("tells a missing repository directory from a script's own exit code", () =>
     Effect.gen(function* () {
-      const root = makeServiceRepository();
       const missing = { ...serviceRepository(root), remotePath: `${root}/gone` };
       const outcomes = yield* Effect.gen(function* () {
         const shell = yield* CrewShell.CrewShell;

@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off unsafeEffectTypeAssertion:off - a test harness: a database file, rows read back plainly, one context per life.
+// @effect-diagnostics nodeBuiltinImport:off globalJsonInEffect:off unsafeEffectTypeAssertion:off - a test harness: a database file, rows read back plainly, one context per life.
 /**
  * The running engine for end-to-end tests: the live layer (store, actors, outbox, handlers, live
  * plane, pump) on a SQLite file, over a scripted ProviderService. A life is one process: `boot` builds the layers and starts the
@@ -57,7 +57,7 @@ import {
 import { providerThreadOf, TurnPump } from "../../pump/TurnPump.ts";
 import { turnPrincipalOf } from "../../../zerops/engineAdapters.ts";
 import { principalUserId } from "../../../zerops/ZeropsTurnAdmission.ts";
-import { ZEROPS_SUBJECT_PREFIX } from "../../../zerops/zeropsSubject.ts";
+import { ZEROPS_SUBJECT_PREFIX } from "@t3tools/contracts";
 import {
   makeScriptedProvider,
   scriptedProviderLayer,
@@ -192,7 +192,7 @@ export const makeEngineWorld = (options: WorldOptions) =>
         )
       : Layer.empty;
     const lifeLayer = (scripted: ScriptedProvider) =>
-      liveEngineLayer({ worker: { pollMillis: 1_000 } }).pipe(
+      liveEngineLayer().pipe(
         Layer.provideMerge(
           Layer.mergeAll(
             scriptedProviderLayer(scripted),
@@ -220,7 +220,7 @@ export const makeEngineWorld = (options: WorldOptions) =>
       yield* within(
         Effect.gen(function* () {
           const engine = yield* MateEngine;
-          yield* Scope.provide(engine.start(), life!);
+          yield* Scope.provide(Effect.flatten(engine.boot()), life!);
         }),
       );
       yield* settle;

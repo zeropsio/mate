@@ -23,10 +23,12 @@ import { Route as SettingsZeropsRouteImport } from './routes/settings.zerops'
 import { Route as SettingsTeamRouteImport } from './routes/settings.team'
 import { Route as SettingsSourceControlRouteImport } from './routes/settings.source-control'
 import { Route as SettingsProvidersRouteImport } from './routes/settings.providers'
+import { Route as SettingsPersonasRouteImport } from './routes/settings.personas'
 import { Route as SettingsKeybindingsRouteImport } from './routes/settings.keybindings'
 import { Route as SettingsGeneralRouteImport } from './routes/settings.general'
 import { Route as SettingsDiagnosticsRouteImport } from './routes/settings.diagnostics'
 import { Route as SettingsConnectionsRouteImport } from './routes/settings.connections'
+import { Route as SettingsBillingRouteImport } from './routes/settings.billing'
 import { Route as SettingsAutomationRouteImport } from './routes/settings.automation'
 import { Route as SettingsArchivedRouteImport } from './routes/settings.archived'
 import { Route as SettingsAppearanceRouteImport } from './routes/settings.appearance'
@@ -37,6 +39,7 @@ import { Route as SettingsTeamClientUserIdRouteImport } from './routes/settings.
 import { Route as ChatMateProjectIdRouteImport } from './routes/_chat.mate.$projectId'
 import { Route as ChatDraftDraftIdRouteImport } from './routes/_chat.draft.$draftId'
 import { Route as ChatEnvironmentIdThreadIdRouteImport } from './routes/_chat.$environmentId.$threadId'
+import { Route as ServiceStackServiceIdDeployAppVersionIdRouteImport } from './routes/service-stack.$serviceId.deploy.$appVersionId'
 import { Route as ChatMateNewBirthIdRouteImport } from './routes/_chat.mate.new.$birthId'
 import { Route as ChatGroupGroupIdFlowRouteImport } from './routes/_chat.group.$groupId.flow'
 import { Route as ChatGroupGroupIdProjectIdRouteImport } from './routes/_chat.group.$groupId.$projectId'
@@ -111,6 +114,11 @@ const SettingsProvidersRoute = SettingsProvidersRouteImport.update({
   path: '/providers',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsPersonasRoute = SettingsPersonasRouteImport.update({
+  id: '/personas',
+  path: '/personas',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsKeybindingsRoute = SettingsKeybindingsRouteImport.update({
   id: '/keybindings',
   path: '/keybindings',
@@ -129,6 +137,11 @@ const SettingsDiagnosticsRoute = SettingsDiagnosticsRouteImport.update({
 const SettingsConnectionsRoute = SettingsConnectionsRouteImport.update({
   id: '/connections',
   path: '/connections',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsBillingRoute = SettingsBillingRouteImport.update({
+  id: '/billing',
+  path: '/billing',
   getParentRoute: () => SettingsRoute,
 } as any)
 const SettingsAutomationRoute = SettingsAutomationRouteImport.update({
@@ -183,6 +196,12 @@ const ChatEnvironmentIdThreadIdRoute =
     path: '/$environmentId/$threadId',
     getParentRoute: () => ChatRoute,
   } as any)
+const ServiceStackServiceIdDeployAppVersionIdRoute =
+  ServiceStackServiceIdDeployAppVersionIdRouteImport.update({
+    id: '/service-stack/$serviceId/deploy/$appVersionId',
+    path: '/service-stack/$serviceId/deploy/$appVersionId',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ChatMateNewBirthIdRoute = ChatMateNewBirthIdRouteImport.update({
   id: '/mate/new/$birthId',
   path: '/mate/new/$birthId',
@@ -219,10 +238,12 @@ export interface FileRoutesByFullPath {
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/automation': typeof SettingsAutomationRoute
+  '/settings/billing': typeof SettingsBillingRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/keybindings': typeof SettingsKeybindingsRoute
+  '/settings/personas': typeof SettingsPersonasRoute
   '/settings/providers': typeof SettingsProvidersRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/settings/team': typeof SettingsTeamRoute
@@ -237,6 +258,7 @@ export interface FileRoutesByFullPath {
   '/group/$groupId/$projectId': typeof ChatGroupGroupIdProjectIdRoute
   '/group/$groupId/flow': typeof ChatGroupGroupIdFlowRoute
   '/mate/new/$birthId': typeof ChatMateNewBirthIdRoute
+  '/service-stack/$serviceId/deploy/$appVersionId': typeof ServiceStackServiceIdDeployAppVersionIdRoute
   '/change/$groupId/$repository/$number': typeof ChatChangeGroupIdRepositoryNumberRoute
 }
 export interface FileRoutesByTo {
@@ -251,10 +273,12 @@ export interface FileRoutesByTo {
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/automation': typeof SettingsAutomationRoute
+  '/settings/billing': typeof SettingsBillingRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/keybindings': typeof SettingsKeybindingsRoute
+  '/settings/personas': typeof SettingsPersonasRoute
   '/settings/providers': typeof SettingsProvidersRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/settings/team': typeof SettingsTeamRoute
@@ -270,6 +294,7 @@ export interface FileRoutesByTo {
   '/group/$groupId/$projectId': typeof ChatGroupGroupIdProjectIdRoute
   '/group/$groupId/flow': typeof ChatGroupGroupIdFlowRoute
   '/mate/new/$birthId': typeof ChatMateNewBirthIdRoute
+  '/service-stack/$serviceId/deploy/$appVersionId': typeof ServiceStackServiceIdDeployAppVersionIdRoute
   '/change/$groupId/$repository/$number': typeof ChatChangeGroupIdRepositoryNumberRoute
 }
 export interface FileRoutesById {
@@ -286,10 +311,12 @@ export interface FileRoutesById {
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/automation': typeof SettingsAutomationRoute
+  '/settings/billing': typeof SettingsBillingRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/keybindings': typeof SettingsKeybindingsRoute
+  '/settings/personas': typeof SettingsPersonasRoute
   '/settings/providers': typeof SettingsProvidersRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/settings/team': typeof SettingsTeamRoute
@@ -305,6 +332,7 @@ export interface FileRoutesById {
   '/_chat/group/$groupId/$projectId': typeof ChatGroupGroupIdProjectIdRoute
   '/_chat/group/$groupId/flow': typeof ChatGroupGroupIdFlowRoute
   '/_chat/mate/new/$birthId': typeof ChatMateNewBirthIdRoute
+  '/service-stack/$serviceId/deploy/$appVersionId': typeof ServiceStackServiceIdDeployAppVersionIdRoute
   '/_chat/change/$groupId/$repository/$number': typeof ChatChangeGroupIdRepositoryNumberRoute
 }
 export interface FileRouteTypes {
@@ -322,10 +350,12 @@ export interface FileRouteTypes {
     | '/settings/appearance'
     | '/settings/archived'
     | '/settings/automation'
+    | '/settings/billing'
     | '/settings/connections'
     | '/settings/diagnostics'
     | '/settings/general'
     | '/settings/keybindings'
+    | '/settings/personas'
     | '/settings/providers'
     | '/settings/source-control'
     | '/settings/team'
@@ -340,6 +370,7 @@ export interface FileRouteTypes {
     | '/group/$groupId/$projectId'
     | '/group/$groupId/flow'
     | '/mate/new/$birthId'
+    | '/service-stack/$serviceId/deploy/$appVersionId'
     | '/change/$groupId/$repository/$number'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -354,10 +385,12 @@ export interface FileRouteTypes {
     | '/settings/appearance'
     | '/settings/archived'
     | '/settings/automation'
+    | '/settings/billing'
     | '/settings/connections'
     | '/settings/diagnostics'
     | '/settings/general'
     | '/settings/keybindings'
+    | '/settings/personas'
     | '/settings/providers'
     | '/settings/source-control'
     | '/settings/team'
@@ -373,6 +406,7 @@ export interface FileRouteTypes {
     | '/group/$groupId/$projectId'
     | '/group/$groupId/flow'
     | '/mate/new/$birthId'
+    | '/service-stack/$serviceId/deploy/$appVersionId'
     | '/change/$groupId/$repository/$number'
   id:
     | '__root__'
@@ -388,10 +422,12 @@ export interface FileRouteTypes {
     | '/settings/appearance'
     | '/settings/archived'
     | '/settings/automation'
+    | '/settings/billing'
     | '/settings/connections'
     | '/settings/diagnostics'
     | '/settings/general'
     | '/settings/keybindings'
+    | '/settings/personas'
     | '/settings/providers'
     | '/settings/source-control'
     | '/settings/team'
@@ -407,6 +443,7 @@ export interface FileRouteTypes {
     | '/_chat/group/$groupId/$projectId'
     | '/_chat/group/$groupId/flow'
     | '/_chat/mate/new/$birthId'
+    | '/service-stack/$serviceId/deploy/$appVersionId'
     | '/_chat/change/$groupId/$repository/$number'
   fileRoutesById: FileRoutesById
 }
@@ -421,6 +458,7 @@ export interface RootRouteChildren {
   ProjectsProjectKeyRoute: typeof ProjectsProjectKeyRoute
   ZeropsAuthorizedRoute: typeof ZeropsAuthorizedRoute
   ZeropsNewRoute: typeof ZeropsNewRoute
+  ServiceStackServiceIdDeployAppVersionIdRoute: typeof ServiceStackServiceIdDeployAppVersionIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -523,6 +561,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsProvidersRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/personas': {
+      id: '/settings/personas'
+      path: '/personas'
+      fullPath: '/settings/personas'
+      preLoaderRoute: typeof SettingsPersonasRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/keybindings': {
       id: '/settings/keybindings'
       path: '/keybindings'
@@ -549,6 +594,13 @@ declare module '@tanstack/react-router' {
       path: '/connections'
       fullPath: '/settings/connections'
       preLoaderRoute: typeof SettingsConnectionsRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/billing': {
+      id: '/settings/billing'
+      path: '/billing'
+      fullPath: '/settings/billing'
+      preLoaderRoute: typeof SettingsBillingRouteImport
       parentRoute: typeof SettingsRoute
     }
     '/settings/automation': {
@@ -621,6 +673,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatEnvironmentIdThreadIdRouteImport
       parentRoute: typeof ChatRoute
     }
+    '/service-stack/$serviceId/deploy/$appVersionId': {
+      id: '/service-stack/$serviceId/deploy/$appVersionId'
+      path: '/service-stack/$serviceId/deploy/$appVersionId'
+      fullPath: '/service-stack/$serviceId/deploy/$appVersionId'
+      preLoaderRoute: typeof ServiceStackServiceIdDeployAppVersionIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_chat/mate/new/$birthId': {
       id: '/_chat/mate/new/$birthId'
       path: '/mate/new/$birthId'
@@ -683,10 +742,12 @@ interface SettingsRouteChildren {
   SettingsAppearanceRoute: typeof SettingsAppearanceRoute
   SettingsArchivedRoute: typeof SettingsArchivedRoute
   SettingsAutomationRoute: typeof SettingsAutomationRoute
+  SettingsBillingRoute: typeof SettingsBillingRoute
   SettingsConnectionsRoute: typeof SettingsConnectionsRoute
   SettingsDiagnosticsRoute: typeof SettingsDiagnosticsRoute
   SettingsGeneralRoute: typeof SettingsGeneralRoute
   SettingsKeybindingsRoute: typeof SettingsKeybindingsRoute
+  SettingsPersonasRoute: typeof SettingsPersonasRoute
   SettingsProvidersRoute: typeof SettingsProvidersRoute
   SettingsSourceControlRoute: typeof SettingsSourceControlRoute
   SettingsTeamRoute: typeof SettingsTeamRoute
@@ -699,10 +760,12 @@ const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsAppearanceRoute: SettingsAppearanceRoute,
   SettingsArchivedRoute: SettingsArchivedRoute,
   SettingsAutomationRoute: SettingsAutomationRoute,
+  SettingsBillingRoute: SettingsBillingRoute,
   SettingsConnectionsRoute: SettingsConnectionsRoute,
   SettingsDiagnosticsRoute: SettingsDiagnosticsRoute,
   SettingsGeneralRoute: SettingsGeneralRoute,
   SettingsKeybindingsRoute: SettingsKeybindingsRoute,
+  SettingsPersonasRoute: SettingsPersonasRoute,
   SettingsProvidersRoute: SettingsProvidersRoute,
   SettingsSourceControlRoute: SettingsSourceControlRoute,
   SettingsTeamRoute: SettingsTeamRoute,
@@ -726,6 +789,8 @@ const rootRouteChildren: RootRouteChildren = {
   ProjectsProjectKeyRoute: ProjectsProjectKeyRoute,
   ZeropsAuthorizedRoute: ZeropsAuthorizedRoute,
   ZeropsNewRoute: ZeropsNewRoute,
+  ServiceStackServiceIdDeployAppVersionIdRoute:
+    ServiceStackServiceIdDeployAppVersionIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

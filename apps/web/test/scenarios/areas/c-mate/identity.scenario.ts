@@ -1,14 +1,14 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { HqStreamMessage } from "@t3tools/shared/hqStream";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { transportGate } from "../../harness/transportGate.ts";
 import { waitForStillFrames } from "../../harness/stillFrames.ts";
 
 describe("a remembered conversation's Mate identity", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect(
       "a remembered Mate keeps its name and face while navigation precedes its overview",
       () =>

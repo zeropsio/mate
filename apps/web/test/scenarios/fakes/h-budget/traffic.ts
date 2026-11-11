@@ -80,14 +80,15 @@ export async function observeTraffic(origin: string) {
         const bytes = bytesOf(data);
         if (!binary) {
           const decoded = decodeRequest(JSON.parse(bytes.toString()));
+          // A frame racing its link's close finds no set: the closed link holds no scope any more.
           if (Option.isSome(decoded)) {
             const message = decoded.value;
             if (message.type === "subscribe")
               for (const { scope } of message.scopes)
-                if (scope.kind === "app-detail") appDetails.get(client)!.add(scope.appId);
+                if (scope.kind === "app-detail") appDetails.get(client)?.add(scope.appId);
             if (message.type === "unsubscribe")
               for (const scope of message.scopes)
-                if (scope.kind === "app-detail") appDetails.get(client)!.delete(scope.appId);
+                if (scope.kind === "app-detail") appDetails.get(client)?.delete(scope.appId);
             events.emit("scope");
           }
         }

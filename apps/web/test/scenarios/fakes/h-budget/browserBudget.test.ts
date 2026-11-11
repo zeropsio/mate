@@ -1,5 +1,5 @@
 import { expect, it } from "vite-plus/test";
-import { emptyWorld } from "../../../../../hq/test/harness/zeropsFake.ts";
+import { emptyWorld } from "../../harness/fakeWorld.ts";
 import { ZeropsFake } from "../zerops.ts";
 import { observeBrowserBudget } from "./browserBudget.ts";
 import { serve } from "../../harness/http.ts";
@@ -20,9 +20,10 @@ it("settles and counts browser registrations and other requests while excluding 
     createdByUser: "owner",
   };
   world.tokens.set("personal", personal);
-  world.tokens.set("hq", { ...personal, id: "hq" });
+  world.tokens.set("personal-dev", { ...personal, id: "personal-dev", createdByUser: "dev" });
   const fake = new ZeropsFake(world);
   fake.people.set("personal", "owner");
+  fake.people.set("personal-dev", "dev");
   const core = await serve(fake.handle, fake.socket);
   const browser = await observeBrowserBudget(fake);
   const call = (origin: string, path: string, method: string, token?: string, body?: unknown) =>
@@ -41,13 +42,15 @@ it("settles and counts browser registrations and other requests while excluding 
       receiverId: "browser",
       search: [],
     });
-    await call(browser.origin, "/user/info", "GET", "personal");
+    await call(browser.origin, "/user/info", "GET", "personal-dev");
     await call(browser.origin, "/web-socket/login", "POST", undefined, { token: "personal" });
     await call(browser.origin, "/project/search", "OPTIONS");
-    await call(core.origin, "/project/HQ1", "GET", "hq");
+    await call(core.origin, "/project/HQ1", "GET", "personal");
     await browser.settled();
     expect(browser.sample()).toEqual({ requests: 3, registrations: 1, otherRequests: 2 });
-    expect(fake.requestsByCredential.get("hq")?.get("GET /project/HQ1")).toBe(1);
+    expect(fake.requestsByCredential.get("personal")?.get("GET /project/HQ1")).toBe(1);
+    expect(browser.matching(/^GET \/project\/HQ1$/u)).toBe(0);
+    expect(browser.matching(/^GET \/user\/info$/u)).toBe(1);
   } finally {
     await browser.close();
     await core.close();

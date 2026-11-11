@@ -69,6 +69,8 @@ function platformOf(
   } = {},
 ) {
   const calls: string[] = [];
+  let signalStop = () => {};
+  const stopSent = new Promise<void>((resolve) => (signalStop = resolve));
   const platform: MateRestartPlatform = {
     restartService: async (serviceId) => {
       calls.push(`restart ${serviceId}`);
@@ -76,14 +78,16 @@ function platformOf(
     },
     stopService: async (serviceId) => {
       calls.push(`stop ${serviceId}`);
-      return options.stop === undefined ? { processId: "proc-stop" } : options.stop();
+      const result = options.stop === undefined ? { processId: "proc-stop" } : options.stop();
+      signalStop();
+      return result;
     },
     startService: async (serviceId) => {
       calls.push(`start ${serviceId}`);
       return options.start === undefined ? { processId: "proc-start" } : options.start();
     },
   };
-  return { platform, calls };
+  return { platform, calls, stopSent };
 }
 
 function operationsOf(
@@ -163,11 +167,11 @@ describe("mate-restart", () => {
     () =>
       Effect.gen(function* () {
         const { store, registry } = account();
-        const { platform, calls } = platformOf();
+        const { platform, calls, stopSent } = platformOf();
         const fiber = yield* Effect.forkChild(
           operationsOf(store, registry, platform).submit(REVIVE),
         );
-        yield* Effect.yieldNow;
+        yield* Effect.promise(() => stopSent);
         expect(calls).toEqual(["stop s1"]);
 
         processRow(store, "proc-stop", "RUNNING", 1, "stack.stop");
@@ -316,11 +320,11 @@ describe("mate-restart", () => {
     ([, start, reason]) =>
       Effect.gen(function* () {
         const { store, registry } = account();
-        const { platform, calls } = platformOf({ start });
+        const { platform, calls, stopSent } = platformOf({ start });
         const fiber = yield* Effect.forkChild(
           operationsOf(store, registry, platform).submit(REVIVE),
         );
-        yield* Effect.yieldNow;
+        yield* Effect.promise(() => stopSent);
         processRow(store, "proc-stop", "FINISHED", 1, "stack.stop");
         yield* Fiber.join(fiber);
         expect(calls).toEqual(["stop s1", "start s1"]);
@@ -338,7 +342,7 @@ describe("mate-restart", () => {
     Effect.gen(function* () {
       const { store, registry } = account();
       const holds: string[] = [];
-      const { platform } = platformOf({
+      const { platform, stopSent } = platformOf({
         stop: async () => {
           holds.push("stop sent");
           return { processId: "proc-stop" };
@@ -347,7 +351,7 @@ describe("mate-restart", () => {
       const fiber = yield* Effect.forkChild(
         operationsOf(store, registry, platform, holds).submit(REVIVE),
       );
-      yield* Effect.yieldNow;
+      yield* Effect.promise(() => stopSent);
       expect(holds).toEqual(["hold p1", "stop sent"]);
       processRow(store, "proc-stop", "FINISHED", 2, "stack.stop");
       yield* Fiber.join(fiber);
@@ -366,11 +370,11 @@ describe("mate-restart", () => {
     ([, event]) =>
       Effect.gen(function* () {
         const { store, registry } = account();
-        const { platform, calls } = platformOf();
+        const { platform, calls, stopSent } = platformOf();
         const fiber = yield* Effect.forkChild(
           operationsOf(store, registry, platform).submit(REVIVE),
         );
-        yield* Effect.yieldNow;
+        yield* Effect.promise(() => stopSent);
         processRow(store, "proc-stop", "RUNNING", 1, "stack.stop");
         store.dispatch({ kind: "stream", key: linkKeys.zerops(ORG), event, now: 0 });
         yield* Fiber.join(fiber);

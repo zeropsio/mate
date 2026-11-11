@@ -40,6 +40,19 @@ import {
 } from "../state/serverConfigProjection.ts";
 
 const SOCKET_OPEN_TIMEOUT = "15 seconds";
+// Pings go out every 5 seconds and the silence is judged on those ticks. Between the third and
+// the fourth tick, so timer drift never makes it two: three unanswered pings drop the socket.
+const PING_TIMEOUT = "17500 millis";
+// A ping tick this long after the last one means this client's timers stood still (a hidden tab's
+// run once a minute, a suspended machine's not at all), not that the Mate was silent meanwhile.
+const LATE_PING_TICK_MILLIS = 10_000;
+// A frame of ours this large or larger left the socket since the last ping tick: the link carries
+// our own send (a picture as data to a Mate before uploads, a file written whole), with the pings
+// and their pongs queued behind it. That is the link's life, not the Mate's silence. A dead link
+// lets nothing leave, so its silence is judged as before.
+const SENT_BYTES_A_TICK = 64 * 1024;
+/** A Mate closed a ticket's socket: it took the ticket's access back, or refused it (`ws.ts`). */
+const MATE_ACCESS_ENDED_CLOSE = 4401;
 
 export interface RpcSession {
   readonly client: WsRpcProtocolClient;
@@ -54,10 +67,12 @@ export interface RpcSession {
   readonly closed: Effect.Effect<never, ConnectionAttemptError>;
 }
 
-export interface RpcSessionOptions {
-  readonly usageLimitSources?: boolean;
-  /** This client answers /usage-limits itself, so the server may advertise it. */
-  readonly usageLimitsCommand?: boolean;
+/**
+ * The connection's one config subscription asks with every capability flag given here, so a feed
+ * asking with the same flags (`MATE_SERVER_CONFIG_SUBSCRIPTION`) shares it instead of opening a
+ * second.
+ */
+export interface RpcSessionOptions extends ServerConfigSubscriptionInput {
   /**
    * True while this client's own throttling may hold pongs back (a hidden browser tab runs its
    * timers once a minute), so missed pongs then never close the socket. The person's return is
@@ -145,10 +160,7 @@ export const make = Effect.fn("RpcSessionFactory.make")(function* (
   options: RpcSessionOptions = {},
 ) {
   const webSocketConstructor = yield* Socket.WebSocketConstructor;
-  const serverConfigInput: ServerConfigSubscriptionInput = {
-    ...(options.usageLimitSources === true ? { usageLimitSources: true } : {}),
-    ...(options.usageLimitsCommand === true ? { usageLimitsCommand: true } : {}),
-  };
+  const { pingTimeoutPaused: _pingTimeoutPaused, ...serverConfigInput } = options;
 
   const connect = Effect.fnUntraced(function* (connection: PreparedConnection) {
     yield* Effect.annotateCurrentSpan({
@@ -160,21 +172,23 @@ export const make = Effect.fn("RpcSessionFactory.make")(function* (
     // Set when the socket closes because pongs stopped, so the failure says so
     // instead of looking like the server closed the connection.
     const pingTimedOut = yield* Ref.make(false);
+    // Set by the socket's own close, which runs before the protocol's disconnect hook.
+    let mateAccessEnded = false;
     const hooks = RpcClient.ConnectionHooks.of({
       onConnect: Deferred.succeed(connected, undefined).pipe(Effect.asVoid),
-      onPingTimeout: Ref.set(pingTimedOut, true),
-      pingTimeoutPaused: options.pingTimeoutPaused,
       onDisconnect: Effect.all([Deferred.isDone(connected), Ref.get(pingTimedOut)]).pipe(
         Effect.flatMap(([wasConnected, timedOut]) =>
           Deferred.fail(
             disconnected,
             new ConnectionTransientErrorClass({
-              reason: "transport",
-              detail: !wasConnected
-                ? `${connection.label} could not establish a WebSocket connection.`
-                : timedOut
-                  ? `${connection.label} stopped responding.`
-                  : `${connection.label} disconnected.`,
+              reason: mateAccessEnded ? "mate-access-ended" : "transport",
+              detail: mateAccessEnded
+                ? `${connection.label} ended this connection's access.`
+                : !wasConnected
+                  ? `${connection.label} could not establish a WebSocket connection.`
+                  : timedOut
+                    ? `${connection.label} stopped responding.`
+                    : `${connection.label} disconnected.`,
             }),
           ),
         ),
@@ -182,23 +196,58 @@ export const make = Effect.fn("RpcSessionFactory.make")(function* (
       ),
     });
     const firstFrame = connection.firstFrame;
-    const constructor: typeof webSocketConstructor =
-      firstFrame === undefined
-        ? webSocketConstructor
-        : (url, protocols) => {
-            const socket = webSocketConstructor(url, protocols);
-            // Registered before the protocol's own listeners: the ticket is the connection's first frame.
-            socket.addEventListener("open", () => socket.send(firstFrame), { once: true });
-            return socket;
-          };
+    /** The connection's socket, and what it still had to send at the last ping tick. */
+    let sending: {
+      readonly socket: ReturnType<typeof webSocketConstructor>;
+      waiting: number;
+    } | null = null;
+    const constructor: typeof webSocketConstructor = (url, protocols) => {
+      const socket = webSocketConstructor(url, protocols);
+      sending = { socket, waiting: 0 };
+      if (firstFrame === undefined) return socket;
+      // Registered before the protocol's own listeners: the ticket is the connection's first frame.
+      socket.addEventListener("open", () => socket.send(firstFrame), { once: true });
+      socket.addEventListener(
+        "close",
+        (event) => {
+          mateAccessEnded = event.code === MATE_ACCESS_ENDED_CLOSE;
+        },
+        { once: true },
+      );
+      return socket;
+    };
+    /** Whether a large frame of ours left the socket since the last ping tick. */
+    const sentSinceLastTick = () => {
+      if (sending === null) return false;
+      // A socket that does not say what waits (a test's, a runtime's own) never counts as sending.
+      const waiting =
+        "bufferedAmount" in sending.socket && typeof sending.socket.bufferedAmount === "number"
+          ? sending.socket.bufferedAmount
+          : 0;
+      const left = sending.waiting - waiting;
+      sending.waiting = waiting;
+      return left >= SENT_BYTES_A_TICK;
+    };
     const socketLayer = Socket.layerWebSocket(connection.socketUrl, {
       openTimeout: SOCKET_OPEN_TIMEOUT,
     }).pipe(Layer.provide(Layer.succeed(Socket.WebSocketConstructor, constructor)));
     const protocolLayer = Layer.effect(
       RpcClient.Protocol,
       RpcClient.makeProtocolSocket({
+        pingTimeout: PING_TIMEOUT,
         retryTransientErrors: false,
         retryPolicy: Schedule.recurs(0),
+        onPingTimeout: Ref.set(pingTimedOut, true),
+        // Either way the Mate gets three pings again before its silence drops the socket.
+        pingTimeoutPaused: (sinceLastTickMillis) => {
+          // Read on every tick: the next one compares with what waits now.
+          const sent = sentSinceLastTick();
+          return (
+            sent ||
+            sinceLastTickMillis > LATE_PING_TICK_MILLIS ||
+            options.pingTimeoutPaused?.() === true
+          );
+        },
       }),
     ).pipe(
       Layer.provide(

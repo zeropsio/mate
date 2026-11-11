@@ -20,16 +20,25 @@ import {
   linkedChanges,
   productionRelease,
   readZeropsMembership,
+  releaseCreationsFailed,
+  releaseEndedEvents,
+  releaseFailure,
   type ChangeLandedEvent,
   type FlowPullRequest,
   type ProductionLive,
+  type ReleaseEndedEvent,
 } from "@t3tools/client-runtime/zerops";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { findCandidate, type CandidateRow } from "@t3tools/client-runtime/zerops/projections";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import { useProductionAddresses } from "../components/zerops/review/reviewReads";
-import { useAppsChanges, useCompactProjectFlows, useHqAddress } from "./projectFlows";
+import {
+  useAppsChanges,
+  useAppsEnvironments,
+  useCompactProjectFlows,
+  useHqAddress,
+} from "./projectFlows";
 import { useHqAppDetailHold } from "./useHqAppDetail";
 import { useHeldZeropsDetailCandidates } from "./useZeropsCandidates";
 
@@ -80,11 +89,35 @@ export function useZeropsMateAppDetailHold(environmentId: string | null | undefi
 
 const NO_APPS: ReadonlyArray<string> = [];
 
+/**
+ * The Mate that lives in `environmentId`, as the listing has it. A listing row names its
+ * environment only while its link is up, so the project found last stands in while the same
+ * environment is asked for and its link is down: what a conversation shows of its application (a
+ * landed change, how a release ended) stays in its timeline through a reconnect instead of
+ * leaving it and coming back, moving everything under it twice.
+ */
+function useMateOfEnvironment(environmentId: string | null | undefined) {
+  const rows = useHeldZeropsDetailCandidates();
+  const linked = rows.find((row) => String(row.environmentId) === environmentId);
+  const [last, setLast] = useState<
+    { readonly environmentId: string; readonly projectId: string } | undefined
+  >(undefined);
+  if (
+    linked !== undefined &&
+    typeof environmentId === "string" &&
+    (last?.environmentId !== environmentId || last.projectId !== linked.project.id)
+  )
+    setLast({ environmentId, projectId: linked.project.id });
+  if (linked !== undefined) return linked;
+  return last !== undefined && last.environmentId === environmentId
+    ? rows.find((row) => row.project.id === last.projectId)
+    : undefined;
+}
+
 export function useZeropsChangeLandedEvents(
   environmentId: string | null | undefined,
 ): ReadonlyArray<ChangeLandedEvent> {
-  const rows = useHeldZeropsDetailCandidates();
-  const mate = rows.find((row) => String(row.environmentId) === environmentId);
+  const mate = useMateOfEnvironment(environmentId);
   // Only the Mate's own application's changes are read, while its conversation is drawn.
   const groupId = mate === undefined ? undefined : readZeropsMembership(mate.project).groupId;
   const appIds = useMemo(() => (groupId === undefined ? NO_APPS : [groupId]), [groupId]);
@@ -107,8 +140,7 @@ export function useZeropsChangeLandedEvents(
 export function useZeropsProductionLive(
   environmentId: string | null | undefined,
 ): ProductionLive | undefined {
-  const rows = useHeldZeropsDetailCandidates();
-  const mate = rows.find((row) => String(row.environmentId) === environmentId);
+  const mate = useMateOfEnvironment(environmentId);
   const groupId = mate === undefined ? undefined : readZeropsMembership(mate.project).groupId;
   const appIds = useMemo(() => (groupId === undefined ? NO_APPS : [groupId]), [groupId]);
   const live = productionRelease(useCompactProjectFlows(appIds).flows.get(groupId ?? ""));
@@ -172,5 +204,148 @@ export function useZeropsConversationLandings(
   return useMemo(
     () => conversationLandings(events, messages, hqAddress),
     [events, messages, hqAddress],
+  );
+}
+
+const NO_ENDS: ReadonlyArray<ReleaseEndedEvent> = [];
+
+/** The application `projectId` is in, as the listing tags it; none until it names one. */
+export function useAppOfProject(projectId: string | undefined): string | undefined {
+  const rows = useHeldZeropsDetailCandidates();
+  const row =
+    projectId === undefined ? undefined : rows.find((each) => each.project.id === projectId);
+  return row === undefined ? undefined : (readZeropsMembership(row.project).groupId ?? undefined);
+}
+
+/**
+ * How the application's production releases ended, oldest first (`releaseEndedEvents`): read from
+ * its flow's releases and production's jobs as HQ lists them, so a reload says the same. The same
+ * events while nothing of them changed, so a timeline keyed on them keeps its rows.
+ */
+export function useAppReleaseEnded(groupId: string | undefined): ReadonlyArray<ReleaseEndedEvent> {
+  const appIds = useMemo(() => (groupId === undefined ? NO_APPS : [groupId]), [groupId]);
+  const flow = useCompactProjectFlows(appIds).flows.get(groupId ?? "");
+  const production = useAppsEnvironments(appIds)[groupId ?? ""]?.environments?.find(
+    (environment) => environment.tier === "production",
+  );
+  const events = useMemo(() => {
+    if (flow === undefined || !flow.releasesKnown) return NO_ENDS;
+    const reads = { environmentInputs: flow.environmentInputs, stalled: flow.release.stalled };
+    return releaseEndedEvents({
+      releases: flow.releases,
+      failureOf: (release) => releaseFailure(release, reads),
+      creations: releaseCreationsFailed(production?.jobs ?? []),
+      rollout: production?.release,
+    });
+  }, [flow, production]);
+  // The flow is read again with every fact that moves under it: the events it comes to are kept
+  // while they say the same.
+  const [held, setHeld] = useState(events);
+  if (held !== events && JSON.stringify(held) !== JSON.stringify(events)) setHeld(events);
+  return held;
+}
+
+/** How the releases of the application of the Mate that lives in `environmentId` ended. */
+export function useZeropsReleaseEnded(
+  environmentId: string | null | undefined,
+): ReadonlyArray<ReleaseEndedEvent> {
+  const mate = useMateOfEnvironment(environmentId);
+  const groupId = mate === undefined ? undefined : readZeropsMembership(mate.project).groupId;
+  return useAppReleaseEnded(groupId ?? undefined);
+}
+
+/**
+ * The releases a conversation places: those that carried a change its Mate made or its loaded
+ * messages link to (as each release recorded what it put live), and those made after one of its
+ * production asks —
+ * each one from the ask up to the first that did not fail — that ended after its first loaded
+ * message. A Mate's other conversations stay free of releases that were never theirs.
+ */
+export function conversationReleases(input: {
+  readonly events: ReadonlyArray<ReleaseEndedEvent>;
+  /** The application's releases, newest first, with the changes each recorded. */
+  readonly releases: ReadonlyArray<{
+    readonly tag: string;
+    readonly taggedAt: string;
+    readonly history?:
+      | { readonly changes: ReadonlyArray<{ readonly repo: string; readonly number: number }> }
+      | undefined;
+  }>;
+  readonly messages: ReadonlyArray<SaidMessage>;
+  readonly hqAddress: string | undefined;
+  /** When each production ask of the conversation was raised. */
+  readonly asks: ReadonlyArray<string>;
+  /** The changes the conversation's own Mate made, as `repo#number`: a release of its work is its. */
+  readonly mine?: ReadonlySet<string> | undefined;
+}): ReadonlyArray<ReleaseEndedEvent> {
+  const { events, releases, messages, hqAddress } = input;
+  const first = messages[0];
+  if (events.length === 0 || first === undefined) return NO_ENDS;
+  const mentioned = new Set(
+    hqAddress === undefined
+      ? []
+      : messages.flatMap((message) => mentionedChanges(message, hqAddress)),
+  );
+  const ours = new Set(
+    releases.flatMap((release) =>
+      release.history?.changes.some((change) => {
+        const key = `${change.repo}#${String(change.number)}`;
+        return mentioned.has(key) || input.mine?.has(key) === true;
+      }) === true
+        ? [release.tag]
+        : [],
+    ),
+  );
+  const failed = new Set(
+    events.flatMap((event) => (event.outcome === "failed" ? [event.tag] : [])),
+  );
+  const oldestFirst = releases.toReversed();
+  for (const askedAt of input.asks) {
+    for (const release of oldestFirst) {
+      if (!(Date.parse(release.taggedAt) > Date.parse(askedAt))) continue;
+      ours.add(release.tag);
+      if (!failed.has(release.tag)) break;
+    }
+  }
+  const placed = events.filter((event) => ours.has(event.tag) && event.endedAt >= first.createdAt);
+  return placed.length === 0 ? NO_ENDS : placed;
+}
+
+export function useZeropsConversationReleases(
+  environmentId: string | null | undefined,
+  events: ReadonlyArray<ReleaseEndedEvent>,
+  messages: ReadonlyArray<SaidMessage>,
+  asks: ReadonlyArray<string>,
+): ReadonlyArray<ReleaseEndedEvent> {
+  const hqAddress = useHqAddress();
+  const mate = useMateOfEnvironment(environmentId);
+  const groupId = mate === undefined ? undefined : readZeropsMembership(mate.project).groupId;
+  const appIds = useMemo(
+    () => (groupId === undefined || groupId === null ? NO_APPS : [groupId]),
+    [groupId],
+  );
+  const flow = useCompactProjectFlows(appIds).flows.get(groupId ?? "");
+  const releases = flow?.releases;
+  // What the Mate itself made: a release that carried it is told in its conversation, whether or
+  // not a message of it links the change.
+  const mateProjectId = mate?.project.id;
+  const merged = flow?.merged;
+  const mine = useMemo(() => {
+    const made = new Set<string>();
+    // Until the flow is read nothing is known to be the Mate's, and no release is placed for it.
+    if (merged === undefined) return made;
+    for (const change of merged) {
+      if (change.mateProjectId === mateProjectId) {
+        made.add(`${change.repository}#${String(change.number)}`);
+      }
+    }
+    return made;
+  }, [mateProjectId, merged]);
+  return useMemo(
+    () =>
+      releases === undefined
+        ? NO_ENDS
+        : conversationReleases({ events, releases, messages, hqAddress, asks, mine }),
+    [asks, events, hqAddress, messages, mine, releases],
   );
 }

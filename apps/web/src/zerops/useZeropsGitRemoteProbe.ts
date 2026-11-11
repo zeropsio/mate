@@ -10,6 +10,11 @@ export const checkoutPathFor = (hostname: string): string => `${ZEROPS_WORKSPACE
 export interface ZeropsGitRemoteAnswer {
   readonly reachable: boolean;
   readonly detail: string | undefined;
+  /**
+   * Asked again, and not answered yet. The last answer stands until the next one lands: a remote
+   * that did not answer keeps saying so while it is checked again, never blinks calm in between.
+   */
+  readonly checking: boolean;
 }
 const probe = workspaceQuery("gitRemote");
 export function useGitRemoteReads(input: {
@@ -36,11 +41,11 @@ export function useGitRemoteReads(input: {
         const answers = new Map<string, ZeropsGitRemoteAnswer>();
         for (const { repository, atom } of atoms) {
           const result = get(atom);
-          const value = AsyncResult.isSuccess(result) && !result.waiting ? result.value : undefined;
-          if (value !== undefined)
+          if (AsyncResult.isSuccess(result))
             answers.set(repository, {
-              reachable: value.reachable,
-              detail: value.detail ?? undefined,
+              reachable: result.value.reachable,
+              detail: result.value.detail ?? undefined,
+              checking: result.waiting,
             });
         }
         return answers;

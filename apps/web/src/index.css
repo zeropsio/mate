@@ -1,5 +1,7 @@
 @import "./fonts.css";
 @import "./components/zerops/primitives/MateFaceMoments.css";
+@import "./components/zerops/project/projectPage.css";
+@import "./components/zerops/system/projectLine.css";
 @import "tailwindcss";
 
 @custom-variant dark (&:is(.dark, .dark *));
@@ -13,6 +15,71 @@
     &:hover {
       @slot;
     }
+  }
+}
+
+/* The overview, a project's page and a place's page are one place at three depths: going among
+   them (`pageTransitions.ts`, the router's `pages` transition) cross-fades the page's content and
+   nothing else. The window itself is left out of the transition, so the left menu and the frame
+   are drawn live throughout and not a pixel of them changes; the page's ground stays under the
+   fade, so nothing shows through it. The trail above a page's title is one element across the
+   pages while it is in view (`pages-trail`): the steps two pages share hold still while the last
+   one changes. Left scrolled away, it belongs to its page and comes with it. */
+@media (prefers-reduced-motion: no-preference) {
+  html:active-view-transition-type(pages) {
+    view-transition-name: none;
+  }
+
+  html:active-view-transition-type(pages) [data-slot="sidebar-inset"] {
+    view-transition-name: zerops-page;
+  }
+
+  html:active-view-transition-type(pages-trail) .page-crumbs {
+    view-transition-name: zerops-page-crumbs;
+  }
+
+  /* The menu stays pressable while the page fades. */
+  html:active-view-transition-type(pages)::view-transition {
+    pointer-events: none;
+  }
+
+  html:active-view-transition-type(pages)::view-transition-group(zerops-page) {
+    background: var(--background);
+    animation-duration: 200ms;
+  }
+
+  html:active-view-transition-type(pages)::view-transition-old(zerops-page) {
+    animation: zerops-page-out 150ms ease-out both;
+  }
+
+  html:active-view-transition-type(pages)::view-transition-new(zerops-page) {
+    animation: zerops-page-in 200ms ease-out both;
+  }
+
+  /* The trail's two drawings fade over the same 200 ms, so what both hold never dims; each keeps
+     its own size at the row's start, so a longer trail is never a stretched one. */
+  html:active-view-transition-type(pages)::view-transition-group(zerops-page-crumbs) {
+    animation-duration: 200ms;
+    animation-timing-function: ease-out;
+  }
+
+  html:active-view-transition-type(pages)::view-transition-old(zerops-page-crumbs),
+  html:active-view-transition-type(pages)::view-transition-new(zerops-page-crumbs) {
+    height: 100%;
+    object-fit: none;
+    object-position: left top;
+  }
+}
+
+@keyframes zerops-page-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes zerops-page-in {
+  from {
+    opacity: 0;
   }
 }
 
@@ -126,6 +193,9 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
      the menu is a sheet over the page, and the bar keeps 52. A desktop
      window's bar is its title bar's (`.electron`, `.wco`). */
   --workspace-topbar-height: 52px;
+  /* What is typed on a phone: iOS zooms the page onto any field under 16 px. Not a step of the
+     type scale, a platform's floor; every phone rule for a field reads it. */
+  --field-phone-size: 16px;
   --workspace-controls-top: 0px;
   --workspace-controls-left: calc(env(safe-area-inset-left) + 0.75rem);
   --workspace-controls-right: calc(env(safe-area-inset-right) + 0.75rem);
@@ -719,6 +789,15 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     var(--app-scrollbar-width) 100%;
 }
 
+/* A skeleton's sweep runs only while it is in view (`ui/skeleton.tsx` marks it `data-seen`): a
+   stand-in out of sight keeps its box and moves nothing. Until then it has no band at all — with
+   the sweep merely stopped, the band stood across its middle for the first frame — and the sweep
+   starts with the band, from its edge. Outside the layers, so it outranks the utility that draws
+   the band. */
+[data-slot="skeleton"]:not([data-seen])::after {
+  content: none;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -788,6 +867,24 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     [data-zerops-flash] :focus-visible {
       box-shadow: none !important;
     }
+  }
+
+  /* An ask above the composer is cut by the composer's own edge, so a ring around it would not
+     show: it lights its ground once instead (`showWaitingAsk`). */
+  @keyframes zerops-ask-dock-flash {
+    0%,
+    100% {
+      background-color: transparent;
+    }
+    18%,
+    55% {
+      background-color: color-mix(in oklab, var(--color-ring) 14%, transparent);
+    }
+  }
+
+  [data-chat-composer-asks][data-zerops-flash] {
+    border-radius: 0;
+    animation-name: zerops-ask-dock-flash;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -1574,7 +1671,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     --zerops-status-failed-text: #f47067;
     --zerops-rail: #3f4650;
     --zerops-status-off: #5e6e69;
-    --zerops-status-off-surface: #151b1a;
+    --zerops-status-off-surface: #1c2221;
     --zerops-micro-label-font-size: 10px;
     --zerops-micro-label-font-weight: 600;
     --zerops-micro-label-tracking: 0.06em;
@@ -2222,6 +2319,21 @@ code {
   margin: 0.65rem 0;
 }
 
+/* A card drawn in an answer (a Mate's picture ask) keeps its own rhythm: its gaps, not the
+   answer's paragraph margins. */
+.chat-markdown :where(.chat-markdown-island) :where(p, ul, ol, blockquote, pre, figure, dl, dd) {
+  margin: 0;
+}
+
+.chat-markdown .chat-markdown-island :is(ul, ol) {
+  padding-left: 0;
+  list-style: none;
+}
+
+.chat-markdown .chat-markdown-island li + li {
+  margin-top: 0;
+}
+
 /* The heading scale, set against an answer's 15 px body: h1 and h2 19/26 with
    28 px above and 8 below, h3 16.5/24 with 20 and 6, h4 to h6 the body's own
    size and line in the muted ink with 16 and 4. A heading is never smaller
@@ -2361,14 +2473,15 @@ code {
 /* A link in an answer is part of its sentence: the sentence's ink, told apart
    by a quiet rule under its words that inks in under a pointer or a focus. It
    was the saturated info blue, which read as a button in the middle of a line
-   (the owner, 2026-09-30). A file or a change is a chip, not a sentence's
-   word, and keeps its own box. */
+   (the owner, 2026-09-30). A file, a change or an Express design is a chip,
+   not a sentence's word, and keeps its own box. */
 .chat-markdown a {
   color: inherit;
   text-decoration: none;
 }
 
-.chat-markdown a:not(.chat-markdown-file-link, [data-zerops-change-chip]) {
+.chat-markdown
+  a:not(.chat-markdown-file-link, [data-zerops-change-chip], [data-express-design-chip]) {
   text-decoration-line: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 0.22em;
@@ -2376,8 +2489,14 @@ code {
   transition: text-decoration-color 160ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 
-.chat-markdown a:not(.chat-markdown-file-link, [data-zerops-change-chip]):hover,
-.chat-markdown a:not(.chat-markdown-file-link, [data-zerops-change-chip]):focus-visible {
+.chat-markdown
+  a:not(.chat-markdown-file-link, [data-zerops-change-chip], [data-express-design-chip]):hover,
+.chat-markdown
+  a:not(
+    .chat-markdown-file-link,
+    [data-zerops-change-chip],
+    [data-express-design-chip]
+  ):focus-visible {
   text-decoration-color: currentcolor;
 }
 
@@ -2836,6 +2955,15 @@ code {
   transition-duration: 0ms;
 }
 
+/* Placement runs again when the draft's conversation mounts; its already visible rows stay shown. */
+[data-timeline-from-draft][data-timeline-placing],
+[data-timeline-from-draft][data-timeline-placing]
+  .timeline-legend-list
+  .legend-list-content-container
+  > div[style*="opacity"] {
+  opacity: 1 !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .timeline-legend-list .legend-list-content-container > div[style*="opacity"] {
     transition: none;
@@ -2910,6 +3038,9 @@ code {
     -webkit-mask-image: var(--run-shimmer-band);
     mask-image: var(--run-shimmer-band);
     animation: run-shimmer 2s linear infinite;
+    /* Stepped, not linear: the masked, blended band redraws at each step rather than on every
+       frame of a high-refresh display. The copy steps with it, so it still stands still. */
+    animation-timing-function: steps(30);
   }
 
   [data-sweep-copy] {
@@ -2924,6 +3055,7 @@ code {
     /* Its own ellipsis in no ink: the line's stands steady under the light. */
     -webkit-text-fill-color: transparent;
     animation: run-shimmer-hold 2s linear infinite;
+    animation-timing-function: steps(30);
   }
 
   [data-sweep-ink] {
@@ -4687,21 +4819,36 @@ code {
 
   /* The one selected band (`SidebarSelectedBand`): behind every row of the
      list, which is its own stacking context, over the open Mate's unit — its
-     row and its crew's line — with the row's corners. It is placed by
-     transform; only a slide to a newly opened Mate moves it. */
+     row and its crew's line. Its own box is where it stands, and paints nothing. */
   .menu-band {
     position: absolute;
     top: 0;
     left: 0;
     z-index: -1;
-    border-radius: 12px;
-    /* The fill alone (the owner, 2026-10-12: "just do the white, not the border"). */
-    background: var(--sidebar-row-active);
     opacity: 0;
     pointer-events: none;
-    /* Its own layer from the start: a slide runs on the compositor while the page it opens is
-       drawn, never waiting on that draw to begin. */
+  }
+
+  /* What it shows: four nested layers of one size, each clipping to the row's corners, the
+     innermost filled; what all four leave is the band (`bandLayers`). A slide to a newly opened
+     Mate shifts them and nothing else, so its edges travel together with true corners. Layers of
+     their own from the start: a slide runs on the compositor while the page it opens is drawn,
+     never waiting on that draw to begin. */
+  .menu-band-layer {
+    position: absolute;
+    inset: 0;
+    overflow: clip;
+    border-radius: 12px;
     will-change: transform;
+  }
+
+  .menu-band > .menu-band-layer {
+    inset: 0 auto auto 0;
+  }
+
+  /* The fill alone (the owner, 2026-10-12: "just do the white, not the border"). */
+  .menu-band-layer:empty {
+    background: var(--sidebar-row-active);
   }
 
   .menu-band[data-on] {
@@ -4875,15 +5022,6 @@ code {
   }
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .menu-band[data-sliding] {
-    transition:
-      transform 240ms var(--ease-out-strong),
-      height 240ms var(--ease-out-strong),
-      width 240ms var(--ease-out-strong);
-  }
-}
-
 :root {
   --person-l: 0.74;
   --person-c: 0.07;
@@ -5019,10 +5157,12 @@ code {
   justify-self: center;
 }
 
+/* A version is a real thing's name: the mono face, on the x-height of the title beside it. */
 .zerops-envpop-version {
   margin-inline-start: 6px;
   color: var(--muted-foreground);
-  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+  font-size: 0.966em;
 }
 
 .zerops-envpop-word {
@@ -5290,6 +5430,37 @@ code {
   opacity: 0.45;
 }
 
+/* Under a finger nothing hovers, so a row's verbs stand at rest: only its ···, at the end of the
+   line under the name, where the time above it keeps its place. The project's page and its
+   addresses are in that menu ("Open project", "Addresses"), so their own doors step aside, and
+   the line stops short of the ···. */
+@media (pointer: coarse) {
+  .menu-row-verbs > :is([data-zerops-surface="sidebar-project-page"], .zerops-sites-globe) {
+    display: none;
+  }
+
+  .menu-row-box:has(> .menu-row-verbs) .menu-line2:not(.menu-line2 .menu-line2) {
+    padding-inline-end: 32px;
+  }
+
+  /* While it works its ■ stands before the ···: the line stops short of both. */
+  .menu-row-box:has(> .menu-row-verbs > [data-zerops-surface="sidebar-mate-stop"])
+    .menu-line2:not(.menu-line2 .menu-line2) {
+    padding-inline-end: 60px;
+  }
+
+  /* Beside a places' tag the verbs come in before the tag on the name's line; on the line under
+     it there is no tag to clear, and they keep the row's end. */
+  [data-tags] > .menu-row-verbs {
+    inset-inline-end: 8px;
+  }
+  /* A row of one line has no line under its name: there the ··· stands where its time would, as
+     it did before a finger's rows kept their time. */
+  .menu-row-box:not(:has(.menu-line2)):has(> .menu-row-verbs) [data-menu-time-box] {
+    opacity: 0;
+  }
+}
+
 /* The environment tag: the row's tags' metrics (22 px, 12/16 · 500, radius 7), its dot before
    its word. Red and amber on their status grounds; moving on the quiet card ground the Review
    tag wears; landed on the ok ground. */
@@ -5514,6 +5685,33 @@ code {
   justify-self: center;
 }
 
+/* With what runs there after its word, a place's row stays one line: the word takes what the name
+   leaves and is cut there. */
+.zerops-sites-place:has([data-zerops-surface="sidebar-project-sites-running"]) {
+  grid-template-columns: 16px auto minmax(0, 1fr);
+}
+
+.zerops-sites-place > .zerops-envpop-word {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  column-gap: 4px;
+  min-width: 0;
+  height: 1lh;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* What does not fit beside the words goes to a line that is not shown: the clock of what runs
+   there is said only where the row has the room, and the words are cut only where they alone
+   are longer than the row. */
+.zerops-sites-place > .zerops-envpop-word > span:first-child {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .zerops-sites-face {
   position: relative;
   display: inline-flex;
@@ -5622,7 +5820,7 @@ code {
     color 150ms var(--ease-out-strong);
 }
 
-.zerops-sites-linkrow:hover > .zerops-sites-link,
+.zerops-sites-linkrow:hover > a.zerops-sites-link,
 .zerops-sites-link:focus-visible {
   background-color: var(--accent);
   color: var(--foreground);
@@ -5660,47 +5858,28 @@ code {
   color: var(--primary);
 }
 
+/* A service is named by its hostname, a real thing's own name: in the mono face (`.real-name`'s
+   rule), never the label face its section's title wears. */
 .zerops-sites-service {
   flex: none;
   max-width: 45%;
   overflow: hidden;
   color: var(--foreground);
+  font-family: var(--font-mono);
+  font-size: 0.966em;
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.zerops-sites-role {
-  flex: none;
-  height: 16px;
-  padding: 0 5px;
-  border-radius: 5px;
-  background-color: color-mix(in oklab, var(--card-foreground) 7%, transparent);
+/* A Mate's service with nothing to open: its hostname, muted, with no host and no ↗ — its tooltip
+   saying why. */
+.zerops-sites-off {
+  cursor: default;
+}
+
+.zerops-sites-off > .zerops-sites-service {
   color: var(--muted-foreground);
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 16px;
-}
-
-/* A workspace of a Mate's dev pool: its state's dot in the place mark's column (centred on it,
-   18px in, as the doors' icons are), its alias beside its name, a crash's word in red. */
-.zerops-sites-workspace {
-  position: relative;
-}
-
-.zerops-sites-workspace > .zerops-envdot {
-  position: absolute;
-  inset-inline-start: 18px;
-  translate: -50% 0;
-}
-
-.zerops-sites-alias {
-  flex: none;
-  color: var(--muted-foreground);
-}
-
-.zerops-sites-role[data-tone="red"] {
-  color: var(--zerops-status-failed-text);
 }
 
 .zerops-sites-host {
@@ -5896,6 +6075,12 @@ code {
     height: auto !important;
   }
 
+  /* The menu's top bar keeps no gutter of its own (`SidebarChromeHeader`); `!important` over the
+     header's padding utilities. */
+  [data-menu-head] {
+    padding-inline: 0 !important;
+  }
+
   /* The Chief (`SidebarChiefRow`): a Mate row's measure in the bar — its mark on the faces' column,
      its name on the row's middle, its band from the list's inset to the divider's. */
   .menu-chief-row {
@@ -6047,6 +6232,14 @@ code {
     flex: none;
   }
 
+  /* In a phone's sheet, where the room before the noun would hold two letters of the name, none of
+     it stands. A desktop's narrow menu keeps what fits, as it did. */
+  @container sidebar-header (max-width: 350px) {
+    [data-mobile="true"] .menu-chief-name-head {
+      display: none;
+    }
+  }
+
   /* One line, never two: what does not fit ends in an ellipsis. */
   .menu-chief-line {
     display: flex;
@@ -6185,6 +6378,13 @@ code {
     gap: 6px;
     font-size: 13px;
     color: var(--muted-foreground);
+  }
+
+  /* A key's hint means nothing under a finger. */
+  @media (pointer: coarse) {
+    .menu-wait-key {
+      display: none;
+    }
   }
 
   .menu-wait-items {
@@ -6333,6 +6533,7 @@ code {
   }
 
   .menu-foot-name {
+    min-width: 0;
     overflow: hidden;
     font-size: 15px;
     line-height: 20px;
@@ -6349,6 +6550,19 @@ code {
     color: var(--sidebar-muted-foreground);
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* The name gives way first; the balance pill after it stays whole. */
+  .menu-foot-name-line {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .menu-foot-credit {
+    display: flex;
+    flex: none;
   }
 
   .menu-foot-button {
@@ -6881,10 +7095,17 @@ code {
   grid-auto-columns: min(380px, 100%);
   grid-auto-flow: column;
   column-gap: 16px;
-  /* Each card as tall as what it holds (the owner, 2026-10-12: "why the gap at bottom"). */
+  /* Each card as tall as what it holds (the owner, 2026-10-12: "why the gap at bottom"), up to the
+     row, which fits the window under the page's head (\`--ov-row-height\`, set by \`CardRow\`): the
+     page never scrolls down to read a card; a card taller than the row scrolls inside (the owner,
+     2026-11-09: "what needs to happen here is an inner scroll in the card"). */
+  height: var(--ov-row-height, auto);
   align-items: start;
   justify-content: start;
-  padding: 0 20px 6px;
+  /* One pixel over the cards, taken back by the margin: a card's outline is drawn outside its box,
+     and a row that scrolls sideways cuts whatever stands past its own top edge. */
+  margin-top: -1px;
+  padding: 1px 20px 6px;
   overflow-x: auto;
   overflow-y: hidden;
   overscroll-behavior-x: contain;
@@ -6908,6 +7129,24 @@ code {
   .ov-row {
     padding-inline: 24px;
     scroll-padding-inline: 24px;
+  }
+}
+
+/* A phone shows one card a screen with the next one's edge in sight, and the row is swiped a card
+   at a time: no fade over the card in hand. */
+@media (max-width: 39.999rem) {
+  .ov-rail {
+    --ov-fade-left: 0px;
+    --ov-fade-right: 0px;
+    margin-inline: -16px;
+  }
+
+  .ov-row {
+    grid-auto-columns: min(380px, calc(100% - 28px));
+    column-gap: 12px;
+    padding-inline: 16px;
+    scroll-padding-inline: 16px;
+    scroll-snap-type: x mandatory;
   }
 }
 
@@ -6952,6 +7191,33 @@ code {
 
 .ov-nav:active {
   scale: 0.94;
+}
+
+/* A finger swipes the row: the buttons would only stand on a card's own corner. */
+@media (pointer: coarse) {
+  .ov-nav {
+    display: none;
+  }
+}
+
+.ov-row > .ov-card {
+  max-height: 100%;
+  min-height: 0;
+}
+
+/* What a card holds under its name and places: waits, Mates, its foot. It scrolls inside the card
+   when the card meets the row's height; the name and places stay put. */
+.ov-card-body {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-width: thin;
+}
+
+.ov-card-body[data-more] {
+  mask-image: linear-gradient(to bottom, var(--color-black) calc(100% - 28px), transparent);
 }
 
 /* A card: the project, its places, its Mates, its changes — one light surface on the page (the
@@ -7037,30 +7303,12 @@ code {
   outline-offset: 2px;
 }
 
-.ov-card-people {
-  display: flex;
-  flex: none;
-  margin-left: auto;
-}
-
-.ov-card-people > * + * {
-  margin-left: -5px;
-}
-
-.ov-card-people > * {
-  box-shadow: 0 0 0 2px var(--ov-ground);
-}
-
 /* The project's menu stays in sight: its verbs are the overview's, not a hover's secret. */
 .ov-card-menu {
   display: flex;
   flex: none;
   margin: 0 -4px 0 auto;
   color: var(--muted-foreground);
-}
-
-.ov-card-people + .ov-card-menu {
-  margin-left: 0;
 }
 
 .ov-card-site {
@@ -7085,12 +7333,122 @@ a.ov-card-site:hover {
   text-decoration-color: color-mix(in oklab, currentColor 40%, transparent);
 }
 
-.ov-card-note {
+/* Why Put it live stands off, under the line that carries it, in from its dot. */
+.ov-place-note {
+  margin: 0;
+  padding-inline-start: 16px;
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  line-height: var(--text-caption--line-height);
+}
+
+/* A card's places, a line each, under its name: they hug the name, the waits stand apart. */
+.ov-places {
+  display: grid;
+  gap: 2px;
   margin-top: 8px;
   padding: 0 6px;
+}
+
+/* A finger's lines: each place 36 px from the next, so one place's vault is never the other's,
+   and its name and its address a 36 px touch. */
+@media (pointer: coarse) {
+  .ov-places {
+    gap: 16px;
+  }
+
+  .ov-places [data-zerops-place-name],
+  .ov-places [data-zerops-place-address] {
+    position: relative;
+  }
+
+  .ov-places [data-zerops-place-name]::after,
+  .ov-places [data-zerops-place-address]::after {
+    position: absolute;
+    inset: -8px -4px;
+    content: "";
+  }
+}
+
+/* What waits on you, lifted: one tinted box under the places, each wait a row on the card's own
+   ground inside it — a sentence and its one verb. */
+.ov-waits {
+  container: ov-waits / inline-size;
+  display: grid;
+  gap: 6px;
+  margin-top: 16px;
+  padding: 0 6px 6px;
+  border-radius: 16px;
+  background: var(--ov-wait-ground);
+}
+
+.ov-card {
+  --ov-wait-ground: color-mix(in oklab, var(--zerops-status-attention-text) 9%, var(--ov-ground));
+}
+
+.ov-wait {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  column-gap: 8px;
+  align-items: center;
+  padding: 8px;
+  border-radius: 12px;
+  background: var(--ov-ground);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--contrast-foreground) 6%, transparent);
+}
+
+.ov-wait-face {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--primary);
+}
+
+.ov-wait-text {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 19px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.ov-wait-verb {
+  display: flex;
+}
+
+/* A narrow card puts the verb under the sentence, never squeezing the sentence to a word. */
+@container ov-waits (max-width: 17rem) {
+  .ov-wait {
+    grid-template-columns: 24px minmax(0, 1fr);
+    align-items: start;
+    row-gap: 6px;
+  }
+
+  .ov-wait-verb {
+    grid-column: 2;
+  }
+}
+
+/* "+ N more": the rest of a list, on the project's page. */
+.ov-more {
+  justify-self: start;
+  padding: 2px 6px;
+  border-radius: var(--radius-control);
   color: var(--muted-foreground);
   font-size: 13px;
-  line-height: 18px;
+  line-height: 20px;
+}
+
+.ov-more:hover {
+  color: var(--foreground);
+}
+
+.ov-more:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
 }
 
 /* A Mate: its face, its name and time, its line; what waits on you lifted onto a white card. */
@@ -7151,13 +7509,16 @@ a.ov-card-site:hover {
 
 .ov-mate-l1 {
   display: flex;
-  height: 22px;
+  min-height: 22px;
   min-width: 0;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
 }
 
+/* The name keeps its own width, up to most of the line: parts wrap beside it, never over it. */
 .ov-mate-name {
+  flex: none;
+  max-width: 65%;
   min-width: 0;
   overflow: hidden;
   font-size: 15px;
@@ -7189,6 +7550,18 @@ a.ov-card-site:hover {
 .ov-mate-open:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
+}
+
+/* A row's end, past its words: a Mate still coming's ⋯. A column of its own only on the rows
+   that have one. */
+.ov-mate-end {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  grid-row: 1;
+  grid-column: 3;
+  align-items: center;
+  align-self: center;
 }
 
 /* A change's *Review* in its Mate's time place, as its menu row has it: quiet where a colleague's
@@ -7287,12 +7660,23 @@ a.ov-card-site:hover {
   white-space: nowrap;
 }
 
+/* A line that holds a change holds its Review pill, whose outline is drawn outside its own box:
+   the line must not be what cuts it (top, bottom and, at the line's end, right). The change's title
+   cuts itself. */
+.ov-mate-l2:has(> .ov-mate-change) {
+  overflow: visible;
+}
+
 .ov-mate-l2[data-tone="ink"] {
   color: var(--foreground);
 }
 
 .ov-mate-l2[data-tone="failed"] {
   color: var(--zerops-status-failed-text);
+}
+
+.ov-mate-l2[data-tone="attention"] {
+  color: var(--zerops-status-attention-text);
 }
 
 .ov-mate-l2[data-wrap] {
@@ -7370,11 +7754,6 @@ a.ov-card-site:hover {
   line-height: 18px;
 }
 
-.ov-fold:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
-
 .ov-reply-in {
   min-width: 0;
   height: 32px;
@@ -7394,35 +7773,11 @@ a.ov-card-site:hover {
     inset 0 0 0 1px color-mix(in oklab, var(--ring) 55%, var(--border)),
     0 0 0 3px color-mix(in oklab, var(--ring) 14%, transparent);
 }
-
-.ov-fold {
-  display: grid;
-  grid-template-columns: 32px auto;
-  column-gap: 12px;
-  align-items: center;
-  height: 36px;
-  padding: 0 6px;
-  border-radius: 14px;
-  color: var(--muted-foreground);
-  font-size: 14px;
-  text-align: left;
-  transition:
-    background-color 150ms var(--ease-out-strong),
-    color 150ms var(--ease-out-strong);
-}
-
-.ov-fold:hover {
-  background: var(--ov-hover);
-  color: var(--foreground);
-}
-
-.ov-fold-faces {
-  display: flex;
-  justify-content: center;
-}
-
-.ov-fold-faces > * + * {
-  margin-left: -6px;
+/* A phone zooms the page into a field under 16 px. */
+@media (max-width: 39.999rem) {
+  .ov-reply-in {
+    font-size: var(--field-phone-size);
+  }
 }
 
 /* Who reaches a project, as people chips: pills that wrap, a face, a short name over the level they
@@ -7487,7 +7842,7 @@ a.ov-card-site:hover {
   white-space: nowrap;
 }
 
-/* A chip's hover card: who they are, then each project's level where they differ. */
+/* A chip's hover card: who they are, then what they may do here. */
 .ov-chip-card {
   display: grid;
   gap: 2px;
@@ -7508,22 +7863,276 @@ a.ov-card-site:hover {
   line-height: 16px;
 }
 
-.ov-chip-card-across {
+/* An app's access as one table: people down, its places across. It scrolls sideways inside its card,
+   never the page, the people column standing still on the card's own ground. */
+.ov-acc-scroll {
+  /* Holds its own screen-reader words, which would otherwise widen the page from off its edge. */
+  position: relative;
+  max-width: 100%;
+  margin: 2px -6px 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.ov-acc {
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.ov-acc th,
+.ov-acc td {
+  padding: 0 6px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.ov-acc thead th {
+  height: 32px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+  vertical-align: bottom;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--ov-rule);
+}
+
+.ov-acc tbody tr + tr > * {
+  border-top: 1px solid var(--ov-rule);
+}
+
+.ov-acc tbody td,
+.ov-acc tbody th {
+  height: 44px;
+}
+
+/* The places share the width the people leave; each column at least its level's menu. */
+.ov-acc thead th:not(.ov-acc-who) {
+  min-width: 112px;
+}
+
+.ov-acc-who {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  width: 1%;
+  min-width: 220px;
+  background: var(--ov-ground);
+  font-weight: 400;
+}
+
+.ov-acc [data-focus] {
+  background: color-mix(in oklab, var(--primary) 7%, transparent);
+}
+
+.ov-acc thead th[data-focus] {
+  color: var(--foreground);
+}
+
+.ov-acc-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ov-acc-person {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ov-acc-face {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  column-gap: 10px;
+  align-items: center;
+  min-width: 0;
+  cursor: default;
+}
+
+a.ov-acc-face {
+  cursor: pointer;
+}
+
+a.ov-acc-face:hover [data-part="name"] {
+  text-decoration: underline;
+}
+
+.ov-acc-name {
+  display: grid;
+  min-width: 0;
+}
+
+.ov-acc-name > [data-part="name"] {
+  overflow: hidden;
+  color: var(--foreground);
+  font-weight: 500;
+  text-overflow: ellipsis;
+}
+
+.ov-acc-note {
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+}
+
+/* An invitation is dimmed; its menu stays at full ink. */
+.ov-acc tr[data-pending] .ov-acc-face,
+.ov-acc-stack-row[data-pending] .ov-acc-open > :not(.ov-acc-caret) {
+  opacity: 0.55;
+}
+
+.ov-acc-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 28px;
+  margin-inline-start: -6px;
+  padding: 0 4px 0 6px;
+  border-radius: 8px;
+  cursor: default;
+}
+
+.ov-acc-cell[data-editable] {
+  cursor: pointer;
+  transition: background-color 150ms var(--ease-out-strong);
+}
+
+.ov-acc-cell[data-editable]:hover,
+.ov-acc-cell[data-editable][data-popup-open] {
+  background: var(--ov-hover);
+}
+
+.ov-acc-cell[data-editable]:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.ov-acc-caret {
+  width: 14px;
+  height: 14px;
+  color: var(--muted-foreground);
+  opacity: 0;
+  transition: opacity 150ms var(--ease-out-strong);
+}
+
+.ov-acc-cell:hover .ov-acc-caret,
+.ov-acc-cell:focus-visible .ov-acc-caret,
+.ov-acc-cell[data-popup-open] .ov-acc-caret,
+.ov-acc-open .ov-acc-caret {
+  opacity: 1;
+}
+
+/* A level from the organization's role alone: muted words, no badge; a set one is the badge. */
+.ov-acc-level {
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.ov-acc-level[data-muted] {
+  color: var(--muted-foreground);
+  font-weight: 400;
+}
+
+/* A phone's table: each person a row that opens to their places. */
+.ov-acc-stack {
+  display: grid;
+  margin: 2px -6px 0;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.ov-acc-stack-row + .ov-acc-stack-row {
+  border-top: 1px solid var(--ov-rule);
+}
+
+.ov-acc-stack-row > .ov-acc-person {
+  min-height: 52px;
+  padding: 0 6px;
+}
+
+.ov-acc-open {
+  display: grid;
+  flex: 1;
+  grid-template-columns: 24px minmax(0, 1fr) 14px;
+  column-gap: 10px;
+  align-items: center;
+  min-width: 0;
+  padding: 6px 0;
+  text-align: left;
+}
+
+.ov-acc-stack-row[data-open] .ov-acc-caret {
+  transform: rotate(180deg);
+}
+
+.ov-acc-places {
   display: grid;
   gap: 2px;
-  margin-top: 4px;
+  padding: 0 6px 10px 40px;
+}
+
+.ov-acc-places > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 32px;
+  font-size: 13px;
+}
+
+.ov-acc-places dt {
+  overflow: hidden;
+  color: var(--muted-foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* What plain and highlighted levels mean, said once under the table. */
+.ov-acc-legend {
+  color: var(--muted-foreground);
   font-size: 12px;
   line-height: 16px;
 }
 
-.ov-chip-card-across > li {
+/* One place's people, read only: faces with their level there, then the way to change it. */
+.ov-reach {
   display: flex;
-  justify-content: space-between;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 8px 16px;
 }
 
-.ov-chip-card-across > li > :last-child {
-  color: var(--muted-foreground);
+.ov-reach > li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.ov-reach > li[data-pending] > :not(.ov-acc-level) {
+  opacity: 0.55;
+}
+
+.ov-acc-link {
+  justify-self: start;
+  color: var(--primary);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.ov-acc-link:hover {
+  text-decoration: underline;
 }
 
 /* *Add access*: a search, the organization's people with Read and Full to tick, *Add people*. */
@@ -7586,14 +8195,33 @@ a.ov-chip-who:focus-visible {
    popover sits outside the page, so it carries the same surfaces. */
 .tm-team,
 .tm-page,
+.tm-cards,
 .ov-pick {
   --ov-lift: color-mix(in oklab, var(--foreground) 3.5%, var(--background));
   --ov-hover: color-mix(in oklab, var(--foreground) 4%, transparent);
   --ov-rule: color-mix(in oklab, var(--foreground) 8%, transparent);
 }
 
+/* In the light theme a lifted surface carries its own accent, a step under its ground: the app's
+   accent is a hair lighter than the lift there, so a quiet button's hover on it showed nothing
+   (the owner, 2026-11-11, of a Mate card's Sites and Vault: "why does the buttons have no
+   hover?"). In the dark theme the app's accent already stands above the lift. */
+:root:not(.dark)
+  :is(
+    .ov-mate[data-lift],
+    .ov-chip,
+    .tm-card,
+    .tm-role-card,
+    .tm-advanced,
+    .tm-invite-card,
+    .tm-invite-projects
+  ) {
+  --accent: color-mix(in oklab, var(--foreground) 6%, var(--ov-lift));
+}
+
 .dark .tm-team,
 .dark .tm-page,
+.dark .tm-cards,
 .dark .ov-pick {
   --ov-lift: color-mix(in oklab, var(--foreground) 6%, var(--background));
   --ov-hover: color-mix(in oklab, var(--foreground) 5%, transparent);
@@ -7615,7 +8243,9 @@ a.ov-chip-who:focus-visible {
   gap: 14px;
 }
 
+/* A face card (`FaceCard`): a person on the team, a Mate on its project's page. */
 .tm-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -7640,10 +8270,28 @@ a.ov-chip-who:focus-visible {
   outline: none;
 }
 
+/* A body that opens something is the whole card's press: it reaches under the foot, whose own
+   presses stand over it. */
+:is(a, button).tm-card-body {
+  cursor: pointer;
+}
+
+:is(a, button).tm-card-body::after {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  content: "";
+}
+
 /* The resting card already carries a lift, so the pointer adds to it rather than replacing it. */
-.tm-card:has(> a.tm-card-body:hover) {
+.tm-card:has(> :is(a, button).tm-card-body:hover) {
   background: color-mix(in oklab, var(--foreground) 9%, var(--background));
   box-shadow: inset 0 0 0 1px var(--ov-rule);
+}
+
+/* A card its row made taller centres what it says, where its lines keep one height (a Mate's). */
+.tm-card[data-rest="middle"] > .tm-card-body {
+  align-content: center;
 }
 
 .tm-card:has(> .tm-card-body:focus-visible) {
@@ -7662,6 +8310,46 @@ a.ov-chip-who:focus-visible {
   line-height: 18px;
 }
 
+.tm-card-foot > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* A foot that keeps its seat while it holds nothing, so a verb arriving moves nothing: the
+   tallest control's height (a ⋯, 32 px) over the foot's own padding. */
+.tm-card-foot[data-held] {
+  align-content: center;
+  min-height: 50px;
+}
+
+/* A foot under a hairline: a row of the card's own doors, one height whatever stands in it (a
+   32 px control over its own padding), so every card of a row ends alike. */
+.tm-card-foot[data-ruled] {
+  min-height: 45px;
+  margin-top: 0;
+  padding: 6px 12px;
+  border-top: 1px solid var(--ov-rule);
+}
+
+.tm-card:has(> .tm-card-foot[data-ruled]) > .tm-card-body {
+  padding-bottom: 16px;
+}
+
+/* A few quiet characters in the body's top corner: when it last moved, the menu's dot before it. */
+.tm-card-stamp {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .tm-card-trouble {
   color: var(--destructive);
   text-wrap: pretty;
@@ -7672,6 +8360,8 @@ a.ov-chip-who:focus-visible {
 }
 
 .tm-card-face {
+  position: relative;
+  display: flex;
   margin-bottom: 12px;
 }
 
@@ -7723,6 +8413,145 @@ a.ov-chip-who:focus-visible {
   line-height: 18px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* A line two lines tall whatever it holds, cut after them: a card's height never follows its
+   words. */
+.tm-card-mail[data-lines="2"] {
+  display: -webkit-box;
+  height: 36px;
+  white-space: normal;
+  text-wrap: pretty;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.tm-card-mail[data-tone="ink"] {
+  color: var(--foreground);
+}
+
+.tm-card-mail[data-tone="failed"] {
+  color: var(--zerops-status-failed-text);
+}
+
+.tm-card-mail[data-tone="attention"] {
+  color: var(--zerops-status-attention-text);
+}
+
+/* ---- A Mate's card on its project's page (`MateCard`): what only it needs of the face card. ---- */
+
+/* Its name with its mark after it: the name gives way, the mark never. */
+.mc-name {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 6px;
+  vertical-align: top;
+}
+
+.mc-name > :first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Two facts, a line each, in the room its one reading takes over two lines: a card is as tall
+   whichever it says. */
+.mc-two {
+  display: grid;
+  height: 36px;
+  min-width: 0;
+  max-width: 100%;
+  justify-items: center;
+}
+
+/* Its owner's mark on the corner of its 64 px face, where it is a colleague's. */
+.mc-owner {
+  top: auto;
+  right: -3px;
+  bottom: -3px;
+  left: auto;
+  width: 22px;
+  height: 22px;
+  font-size: var(--text-caption);
+  box-shadow: 0 0 0 2px var(--ov-lift);
+}
+
+/* A change's mark before its title, on the line's own height. */
+.mc-change > .menu-change-mark {
+  display: inline-block;
+  margin-right: 4px;
+  vertical-align: -2px;
+}
+
+/* Its doors, then a verb only it has, centred on one line of its foot while they fit. */
+.mc-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 6px;
+}
+
+/* The grid's last cell, the door that adds a Mate: a dashed slot, as the page's empty setups are. */
+.mc-add {
+  width: 100%;
+  background: none;
+  outline: 1px dashed color-mix(in oklab, var(--foreground) 16%, transparent);
+  outline-offset: -1px;
+  cursor: pointer;
+}
+
+.mc-add:hover:not(:disabled) {
+  background: var(--ov-hover);
+}
+
+.mc-add:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.mc-add:disabled {
+  cursor: default;
+}
+
+.mc-add > .tm-card-body {
+  align-content: center;
+}
+
+/* Its mark, its words and its line are one group in the card's middle: the mark close over the
+   words it belongs to, never where a face would stand. */
+.mc-add-mark {
+  display: flex;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+  border-radius: 999px;
+  background: var(--ov-hover);
+  color: var(--muted-foreground);
+}
+
+.mc-add-mark > svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Its one line wraps where the card is narrow, and takes only the room it needs. */
+.mc-add-line {
+  white-space: normal;
+  text-wrap: balance;
+}
+
+.mc-add:disabled .mc-add-mark,
+.mc-add:disabled .tm-card-name {
+  opacity: 0.55;
+}
+
+/* No Mate yet: the door alone is the section, as wide as the column. */
+.tm-cards > li[data-alone] {
+  grid-column: 1 / -1;
 }
 
 /* An address cut in its middle: the name before the @ gives way, the domain always shows. */
@@ -7782,6 +8611,87 @@ a.ov-chip-who:focus-visible {
   text-align: center;
 }
 
+/* On a phone the team is rows, not cards: a 40 px face, the name with the role beside it, the
+   address under them, and the whole row one press. The search takes its own line under the
+   heading, sharing it with Invite. */
+@media (max-width: 39.999rem) {
+  [data-slot="section-header"]:has(.tm-team-search) {
+    flex-wrap: wrap;
+    row-gap: 12px;
+  }
+
+  [data-slot="section-header"] > span:has(> .tm-team-search) {
+    flex-basis: 100%;
+    gap: 8px;
+  }
+
+  .tm-team-search {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+  }
+
+  .tm-team .tm-cards {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    margin-inline: -12px;
+  }
+
+  .tm-team .tm-card {
+    border-radius: 12px;
+    background: transparent;
+    text-align: left;
+  }
+
+  .tm-team .tm-card-body {
+    grid-template-columns: 40px minmax(0, auto) minmax(0, 1fr);
+    column-gap: 12px;
+    row-gap: 0;
+    justify-items: start;
+    align-content: center;
+    align-items: center;
+    min-height: 56px;
+    padding: 8px 12px;
+  }
+
+  .tm-team .tm-card-face {
+    grid-row: 1 / span 2;
+    align-self: start;
+    margin-bottom: 0;
+  }
+
+  .tm-team .tm-card-face > .person-avatar {
+    width: 40px;
+    height: 40px;
+    font-size: var(--text-emphasis);
+  }
+
+  .tm-team .tm-card-name {
+    grid-column: 2;
+  }
+
+  .tm-team .tm-card-badges {
+    grid-column: 3;
+    flex-wrap: nowrap;
+    margin: 0 0 0 -4px;
+  }
+
+  .tm-team .tm-badge {
+    font-size: var(--text-caption);
+    letter-spacing: 0.04em;
+  }
+
+  .tm-team .tm-card-mail {
+    grid-column: 2 / -1;
+  }
+
+  .tm-team .tm-card-foot {
+    justify-items: start;
+    margin-top: -4px;
+    padding: 0 12px 10px 64px;
+  }
+}
+
 /* A person's page and the invitation start where the team's own column does, so going in and
    back never moves the content sideways. */
 .tm-page {
@@ -7828,6 +8738,15 @@ a.ov-chip-who:focus-visible {
 /* Beside an action, a block's line keeps clear of it. */
 .tm-block-head .tm-block-desc {
   max-width: 52ch;
+}
+
+/* On a phone the action stands under what it is about, at the column's start. */
+@media (max-width: 39.999rem) {
+  .tm-block-head {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 12px;
+    justify-items: start;
+  }
 }
 
 .tm-access {
@@ -7879,6 +8798,20 @@ a.ov-chip-who:focus-visible {
   transition:
     background-color 150ms var(--ease-out-strong),
     border-color 150ms var(--ease-out-strong);
+}
+
+/* On a phone the choices stack: each one's line reads whole instead of five words deep. */
+@media (max-width: 39.999rem) {
+  .tm-role-cards {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .tm-role-card {
+    gap: 2px;
+    min-height: 0;
+    padding: 12px 16px;
+  }
 }
 
 .tm-role-card:not(:disabled):hover {
@@ -8012,6 +8945,26 @@ label.tm-advanced-row:not([data-disabled]) {
   width: 176px;
 }
 
+/* On a phone a row's select goes under its words, as wide as the row; a switch stays beside. */
+@media (max-width: 39.999rem) {
+  .tm-advanced {
+    padding: 0 16px;
+  }
+
+  .tm-advanced-row {
+    column-gap: 16px;
+  }
+
+  .tm-advanced-row:has(> .tm-advanced-control) {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 8px;
+  }
+
+  .tm-advanced-control {
+    width: auto;
+  }
+}
+
 .tm-project-face {
   display: inline-flex;
   align-items: center;
@@ -8064,6 +9017,18 @@ label.tm-advanced-row:not([data-disabled]) {
   cursor: pointer;
 }
 
+/* On a phone a level is a finger's target: the row's whole height, not its 18 px word. */
+@media (max-width: 39.999rem) {
+  .tm-pick-row {
+    min-height: 44px;
+    padding-block: 0;
+  }
+
+  .tm-pick-level {
+    min-height: 44px;
+  }
+}
+
 .tm-rule {
   height: 1px;
   background: var(--ov-rule);
@@ -8110,6 +9075,12 @@ label.tm-advanced-row:not([data-disabled]) {
   border-radius: 8px;
   cursor: pointer;
   transition: background-color 150ms var(--ease-out-strong);
+}
+
+@media (max-width: 39.999rem) {
+  .tm-invite-project {
+    min-height: 44px;
+  }
 }
 
 .tm-invite-project:hover {
@@ -8174,78 +9145,9 @@ label.tm-advanced-row:not([data-disabled]) {
   border-radius: 999px;
 }
 
-/* A project's own page: its card — the overview's, at the page's width — and the page's column
-   beside it, each part on the card's own ground. Side by side once both have room, stacked under
-   that. */
-.ov-page {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  align-items: start;
-  gap: 16px;
-}
-
-@container flow (min-width: 980px) {
-  .ov-page {
-    grid-template-columns: minmax(0, 560px) minmax(0, 1fr);
-  }
-}
-
-.ov-card[data-page] {
-  padding: 20px 14px 12px;
-  scroll-snap-align: none;
-}
-
-.ov-card[data-page] .ov-card-h1 {
-  height: 32px;
-}
-
-.ov-card[data-page] .ov-card-name {
-  font-size: 24px;
-  line-height: 32px;
-  letter-spacing: -0.02em;
-}
-
-.ov-page-aside {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 16px;
-}
-
 /* One part of the page's column: the card's ground, its name, then what it holds. */
-.ov-side {
-  --ov-ground: var(--card);
-  --ov-lift: color-mix(in oklab, var(--foreground) 3.5%, var(--card));
-  --ov-hover: color-mix(in oklab, var(--foreground) 3%, transparent);
-  --ov-rule: color-mix(in oklab, var(--foreground) 7%, transparent);
-  display: grid;
-  min-width: 0;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 4px;
-  padding: 16px 12px 10px;
-  border-radius: 20px;
-  background: var(--ov-ground);
-  box-shadow:
-    0 0 0 1px color-mix(in oklab, var(--foreground) 6.5%, transparent),
-    0 1px 2px color-mix(in srgb, var(--contrast-foreground) 4%, transparent),
-    0 8px 24px -12px color-mix(in srgb, var(--contrast-foreground) 8%, transparent);
-}
-
-.dark .ov-side {
-  --ov-ground: color-mix(in oklab, var(--foreground) 4%, var(--background));
-  --ov-lift: color-mix(in oklab, var(--foreground) 8%, var(--background));
-  --ov-rule: color-mix(in oklab, var(--foreground) 9%, transparent);
-}
 
 /* Its name on its rows' own inset: a row's hover runs to the section's padding, its words 8 px in. */
-.ov-side-name {
-  margin-bottom: -2px;
-  padding-inline: 8px;
-  color: var(--muted-foreground);
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 20px;
-}
 
 /* A release or Put it live run on production: its line, then its address or its cause. */
 .ov-run {
@@ -8311,21 +9213,6 @@ label.tm-advanced-row:not([data-disabled]) {
   text-decoration-color: currentColor;
 }
 
-/* A release ready to go, lifted; then production's line, at every card's foot. */
-
-.ov-ready-title {
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 20px;
-}
-
-.ov-ready-line {
-  margin-top: 2px;
-  color: var(--muted-foreground);
-  font-size: 14px;
-  line-height: 20px;
-}
-
 /* A place: its name, its dot, its words — a click opens its panel — and its door at the end. */
 .ov-place-words {
   min-width: 0;
@@ -8350,11 +9237,6 @@ label.tm-advanced-row:not([data-disabled]) {
 
 .ov-place-words[data-dot="releasing"] {
   color: var(--zerops-status-busy-text);
-}
-
-.ov-sep {
-  margin: 0 6px;
-  color: var(--muted-foreground);
 }
 
 /* A place's door: its address, opened beside the page; in sight, never only on hover. */
@@ -8412,195 +9294,12 @@ label.tm-advanced-row:not([data-disabled]) {
   font-size: 12px;
 }
 
-/* A place on its card — production, a stage — said in full: its name and its door, what runs,
-   each service, what went wrong, what the running release brought, and what to do. */
-.ov-panel {
-  display: grid;
-  gap: 4px;
-  font-size: 14px;
-  line-height: 20px;
-}
-
-.ov-panel-head {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 8px;
-}
-
-.ov-panel-name,
 .ov-sec-name {
   flex: none;
   color: var(--muted-foreground);
   font-size: 13px;
   font-weight: 600;
   line-height: 20px;
-}
-
-.ov-panel-host {
-  display: inline-flex;
-  min-width: 0;
-  align-items: center;
-  gap: 4px;
-  margin-left: auto;
-  padding: 0 6px;
-  border-radius: 6px;
-  color: var(--muted-foreground);
-  font-size: 13px;
-  transition:
-    background-color 150ms var(--ease-out-strong),
-    color 150ms var(--ease-out-strong);
-}
-
-/* Several services serving: a door each, by its service (`placeAddresses`). */
-.ov-panel-doors {
-  display: flex;
-  min-width: 0;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  margin-left: auto;
-}
-
-.ov-panel-doors .ov-panel-host {
-  margin-left: 0;
-}
-
-.ov-panel-host:hover {
-  background: color-mix(in oklab, var(--foreground) 6%, transparent);
-  color: var(--foreground);
-}
-
-.ov-panel-host:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 1px;
-}
-
-.ov-panel-state {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 8px;
-  font-size: 15px;
-  font-weight: 500;
-  line-height: 22px;
-  font-variant-numeric: tabular-nums;
-}
-
-/* A line that opens what it says (production's "Releasing v0.1.0"): its words and its place. */
-button.ov-panel-state {
-  max-width: 100%;
-  text-align: left;
-}
-
-button.ov-panel-state:hover .ov-place-words {
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
-button.ov-panel-state:focus-visible {
-  border-radius: 4px;
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
-
-.ov-panel-services {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px 12px;
-  color: var(--muted-foreground);
-  font-size: 13px;
-  line-height: 18px;
-}
-
-.ov-service {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.ov-service-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: var(--zerops-status-ok);
-}
-
-.ov-service[data-state="stopped"] .ov-service-dot {
-  background: transparent;
-  box-shadow: inset 0 0 0 1.25px var(--muted-foreground);
-}
-
-.ov-service[data-state="down"] {
-  color: var(--zerops-status-failed-text);
-}
-
-.ov-service[data-state="down"] .ov-service-dot {
-  background: var(--zerops-status-failed);
-}
-
-.ov-panel-note {
-  font-size: 13px;
-  line-height: 18px;
-}
-
-.ov-panel-note[data-tone="muted"] {
-  color: var(--muted-foreground);
-}
-
-.ov-panel-note[data-tone="attention"] {
-  color: var(--zerops-status-attention-text);
-}
-
-.ov-panel-note[data-tone="failed"] {
-  color: var(--zerops-status-failed-text);
-}
-
-.ov-panel-sec {
-  display: grid;
-  gap: 2px;
-  margin-top: 4px;
-}
-
-.ov-panel-k {
-  color: var(--muted-foreground);
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.ov-panel-li {
-  display: flex;
-  min-width: 0;
-  align-items: baseline;
-  gap: 8px;
-  font-size: 13px;
-  line-height: 20px;
-}
-
-.ov-panel-lt {
-  min-width: 0;
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ov-panel-w {
-  flex: none;
-  color: var(--muted-foreground);
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.ov-panel-acts {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin-top: 8px;
-}
-
-.ov-panel-acts:empty {
-  display: none;
 }
 
 /* A card's sections: on the card itself, a hairline over each. */
@@ -8612,57 +9311,123 @@ button.ov-panel-state:focus-visible {
   border-top: 1px solid var(--ov-rule);
 }
 
-/* The Mates stand on the card's own ground: what waits on you is the tint there. */
+/* A card's Mates stand apart by air alone, on the card's own ground: no rule above them. */
 .ov-sec.ov-mates {
   gap: 2px;
-  padding: 12px 0 0;
+  padding: 0;
+  border-top: 0;
 }
 
-/* Its name hugs the first row: the row's own padding is its hover's, not air under the name. */
-.ov-sec.ov-mates .ov-sec-name {
-  margin-bottom: -4px;
+/* The section label hugs the first row: the row's own padding is its hover's, not air. */
+.ov-mates > [data-zerops-section-label],
+.ov-waits > [data-zerops-section-label] {
+  margin-bottom: -2px;
   padding: 0 6px;
 }
 
-/* A lifted first row is a box of its own: it keeps its own air under the name. */
-.ov-sec.ov-mates .ov-sec-name + .ov-mate[data-lift] {
-  margin-top: 6px;
-}
-
-/* A project's latest changes: open ones with what stops them, merged ones with where they went. */
+/* A project's latest changes: open ones with what stops them, merged ones with where they went.
+   One grid for the list: a row's face and words, then its trailing facts in columns of their own —
+   its pull request, when it last moved, its verb — each as wide as the widest in the list, so the
+   ages and the pull requests run down it whichever rows have them. */
 .ov-changes {
   display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
   margin: -6px -8px 0;
   padding: 0;
   list-style: none;
 }
 
-/* A change's row: the row that opens it, then its pull request on GitHub where it has one. */
+.ov-changes > li {
+  grid-column: 1 / -1;
+}
+
+/* A change's row: the row that opens it across every column, and over it, in its own column, its
+   pull request on GitHub where it has one. Its padding and its gap are the row's to set
+   (`--ov-change-pad-y`, `--ov-change-pad-x`, `--ov-change-gap`). */
 .ov-change-row {
-  display: flex;
+  --ov-change-pad-y: 6px;
+  --ov-change-pad-x: 8px;
+  --ov-change-gap: 10px;
+  display: grid;
   min-width: 0;
+  grid-template-columns: subgrid;
   align-items: center;
 }
 
 .ov-change {
   display: grid;
-  width: 100%;
-  grid-template-columns: 20px minmax(0, 1fr) auto;
-  column-gap: 10px;
+  grid-row: 1;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
   align-items: start;
-  padding: 6px 8px;
+  padding: var(--ov-change-pad-y) var(--ov-change-pad-x);
   border-radius: 10px;
   text-align: left;
   transition: background-color 150ms var(--ease-out-strong);
 }
 
-.ov-change:hover {
+.ov-change > * {
+  grid-row: 1;
+}
+
+button.ov-change {
+  cursor: pointer;
+}
+
+.ov-change:hover,
+.ov-change:focus-visible {
   background: color-mix(in oklab, var(--foreground) 5%, transparent);
 }
 
 .ov-change:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: -2px;
+}
+
+/* The row of the change whose bead on the line is pointed at (`data-zerops-change`). */
+.ov-change-row[data-marked] > .ov-change {
+  background: color-mix(in oklab, var(--foreground) 5%, transparent);
+}
+
+/* Work that is no change yet has nothing to open: the row stays still under the pointer. */
+.ov-change[data-plain]:hover {
+  background: none;
+}
+
+/* Where a row leads, at its end, on a page's list: shown while the row is pointed at or focused,
+   and always where nothing hovers. */
+.ov-go {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--muted-foreground);
+  opacity: 0;
+  transition: opacity var(--duration-quick) var(--ease-out-strong);
+}
+
+.ov-change:hover .ov-go,
+.ov-change:focus-visible .ov-go {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .ov-go {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ov-go {
+    transition: none;
+  }
+}
+
+/* A row's own verb, beside its press: Update from main, Read again. */
+.ov-change-verb {
+  display: flex;
+  grid-row: 1;
+  grid-column: 5;
+  margin-inline: 8px var(--ov-change-pad-x);
 }
 
 .ov-change-icon {
@@ -8672,14 +9437,38 @@ button.ov-panel-state:focus-visible {
   color: var(--muted-foreground);
 }
 
-/* The row's end: when it last moved, and Review on a change still open. */
-.ov-change-end {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+/* A change with no face of its own: its git mark in the face's column. */
+.ov-change > .ov-change-icon {
+  grid-column: 1;
+  margin-inline-end: calc(2px + var(--ov-change-gap));
 }
 
-.ov-change[data-open] .ov-change-end {
+/* When it last moved: the last column of facts, its figures ending on one edge. */
+.ov-change-when {
+  display: flex;
+  grid-column: 4;
+  justify-content: flex-end;
+  margin-inline-start: var(--ov-change-gap);
+}
+
+.ov-change-when:empty {
+  display: none;
+}
+
+/* Review on a change still open, at the row's end; on a page's list, where a merged one leads. */
+.ov-change-act {
+  display: flex;
+  grid-column: 5;
+  justify-content: flex-end;
+  margin-inline-start: 8px;
+}
+
+.ov-change:not([data-open]) > .ov-change-act {
+  align-self: center;
+}
+
+.ov-change[data-open] .ov-change-when,
+.ov-change[data-open] .ov-change-act {
   align-self: center;
 }
 
@@ -8693,6 +9482,7 @@ button.ov-panel-state:focus-visible {
 
 .ov-change-text {
   display: grid;
+  grid-column: 2;
   min-width: 0;
 }
 
@@ -8722,18 +9512,175 @@ button.ov-panel-state:focus-visible {
   white-space: nowrap;
 }
 
-.ov-change-pr {
-  display: inline-flex;
+/* A page's list (`ChangeList page`): a row is as wide as the page's column, so when it last moved
+   stands after its title and the eye does not cross the card for it. In a narrow column it keeps
+   to the title line's end. */
+.ov-changes[data-page] {
+  container: changes / inline-size;
+}
+
+.ov-change-head {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.ov-change-head > .ov-change-title {
+  min-width: 0;
+}
+
+.ov-change-age {
+  display: flex;
   flex: none;
+  margin-inline-start: auto;
+}
+
+.ov-change-age:empty {
+  display: none;
+}
+
+.ov-change-age > .ov-change-time {
+  padding-top: 0;
+}
+
+@container changes (min-width: 720px) {
+  .ov-change-age {
+    margin-inline-start: 0;
+  }
+
+  .ov-change-age::before {
+    margin-inline-end: 6px;
+    color: color-mix(in oklab, var(--muted-foreground) 60%, transparent);
+    font-size: var(--text-caption);
+    line-height: 18px;
+    content: "·";
+  }
+}
+
+/* A ledger of changes (`ChangeList ledger`): a project's Changes, under the line that pictures
+   them (the owner, 2026-11-11, of two-line rows that each said their Mate and "Ready to merge" under a
+   face and ended in Review: "no thought, no design, no craft, no UX"). One line a change: its
+   bead as the line draws it, its title, then columns that run down the list — what stops it,
+   where anything does; its pull request; whose and when; *Review* where a review is due, else
+   the mark of where the row leads, always shown. Narrow, what stops it stands under its title. */
+.ov-changes[data-ledger] {
+  --ln-ground: transparent;
+  --ln-track: color-mix(in oklab, var(--foreground) 30%, transparent);
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto auto;
+}
+
+.ov-changes[data-ledger] .ov-change {
   align-items: center;
+}
+
+/* A row's bead: the line's own, standing still. */
+.ov-change-bead {
+  grid-column: 1;
+  margin-inline-end: 12px;
+  cursor: default;
+  pointer-events: none;
+}
+
+.ov-change > .ov-change-state {
+  grid-column: 3;
+  margin-inline-start: 16px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.ov-change-state[data-tone="attention"] {
+  color: var(--zerops-status-attention-text);
+}
+
+.ov-change-state[data-tone="failed"] {
+  color: var(--zerops-status-failed-text);
+}
+
+.ov-changes[data-ledger] .ov-change-pr {
+  grid-column: 4;
+  align-self: center;
+  margin-block-start: 0;
+  margin-inline-start: 16px;
+}
+
+.ov-changes[data-ledger] .ov-change-when {
+  grid-column: 5;
+  margin-inline-start: 16px;
+}
+
+.ov-changes[data-ledger] .ov-change-time {
+  padding-top: 0;
+}
+
+/* The verb's seat is held in every row, so a chevron ends where a Review does and a row with
+   either is as tall. */
+.ov-changes[data-ledger] .ov-change-act {
+  grid-column: 6;
+  min-width: 58px;
+  min-height: 22px;
+  align-items: center;
+  margin-inline-start: 12px;
+}
+
+.ov-changes[data-ledger] .ov-change-verb {
+  grid-column: 6;
+}
+
+.ov-changes[data-ledger] .ov-change:not(:hover, :focus-visible) .ov-go {
+  opacity: 0.55;
+}
+
+@container changes (max-width: 639px) {
+  .ov-changes[data-ledger] .ov-change > .ov-change-state {
+    grid-row: 2;
+    grid-column: 2;
+    justify-self: start;
+    margin-inline-start: 0;
+  }
+
+  .ov-changes[data-ledger] .ov-change > .ov-change-when,
+  .ov-changes[data-ledger] .ov-change > .ov-change-act {
+    grid-row: 1 / span 2;
+  }
+}
+
+/* Its pull request on GitHub, in the column before when it last moved, on the title's line. */
+.ov-change-pr {
+  z-index: 1;
+  display: inline-flex;
+  grid-row: 1;
+  grid-column: 3;
+  align-items: center;
+  align-self: start;
+  justify-self: end;
   gap: 2px;
-  margin-inline: 2px 8px;
+  margin-block-start: calc(var(--ov-change-pad-y) + 2px);
+  margin-inline-start: var(--ov-change-gap);
   border-radius: var(--radius-control);
   color: var(--muted-foreground);
   font-size: 12px;
   line-height: 18px;
   font-variant-numeric: tabular-nums;
   transition: color 150ms var(--ease-out-strong);
+}
+
+/* A phone's row is its title, read whole on two lines, and when it last moved. Where the row
+   opens the change, its pull request is one press away there: an 18 px link beside the row's own
+   press is no finger's. A row that opens nothing keeps the link, its only way to it. */
+@media (max-width: 39.999rem) {
+  .ov-change-title {
+    display: -webkit-box;
+    white-space: normal;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .ov-change-row:not(:has(> .ov-change[data-plain])) .ov-change-pr {
+    display: none;
+  }
 }
 
 .ov-change-pr:hover {
@@ -8743,6 +9690,11 @@ button.ov-panel-state:focus-visible {
 .ov-change-pr:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
+}
+
+.ov-change-row:has(> .ov-change[data-open]) > .ov-change-pr {
+  align-self: center;
+  margin-block-start: 0;
 }
 
 .ov-change-line[data-tone="attention"] {
@@ -8776,6 +9728,23 @@ button.ov-panel-state:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 
+/* A finger takes a filter: its pill keeps its size, its touch reaches 44 px. */
+@media (pointer: coarse) {
+  .ov-filters > * {
+    position: relative;
+  }
+
+  .ov-filters > *::after {
+    position: absolute;
+    inset: -8px 0;
+    content: "";
+  }
+
+  .ov-filter-count {
+    font-size: 12px;
+  }
+}
+
 [data-show="waiting"] > .ov-filter-count {
   background: var(--zerops-status-attention-surface);
   color: var(--zerops-status-attention-text);
@@ -8785,9 +9754,19 @@ button.ov-panel-state:focus-visible {
 /* A change's Mate: its face where the git mark stood, the face a bit smaller than a Mate row's. */
 .ov-change-face {
   display: flex;
+  grid-column: 1;
   width: 20px;
   height: 20px;
   margin-top: 0;
+  margin-inline-end: var(--ov-change-gap);
+}
+
+/* A face's seat is held down a list where some row fills it. A place's next release that lists
+   commits of no change fills none: the seat goes, and the subjects stand on the card's own edge. */
+[data-zerops-next-block]
+  .ov-changes:not(:has(.ov-change-face > *, .ov-change-icon))
+  .ov-change-face {
+  display: none;
 }
 
 /* A release in the changes: where it was cut, its tag, and production's mark on the one it runs. */
@@ -8840,111 +9819,6 @@ button.ov-panel-state:focus-visible {
   content: "";
 }
 
-/* A project page's History: a row per release — its version, its state, how many changes, when —
-   opening to the changes it put live, each the card's change row, set in under its version. */
-.ov-history {
-  display: grid;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-div.ov-change:hover {
-  background: none;
-}
-
-.ov-history-chevron {
-  display: flex;
-  width: 20px;
-  height: 20px;
-  align-items: center;
-  justify-content: center;
-  color: var(--muted-foreground);
-}
-
-.ov-history-chevron > svg {
-  width: 14px;
-  height: 14px;
-  transition: rotate 150ms var(--ease-out-strong);
-}
-
-.ov-history-chevron > svg[data-open] {
-  rotate: 90deg;
-}
-
-.ov-history-name {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 8px;
-}
-
-.ov-history-tag {
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 20px;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Live in production's green, as the card's places say it; Rolled back quiet; a failed deploy red. */
-.ov-history-state {
-  display: inline-flex;
-  height: 18px;
-  align-items: center;
-  gap: 5px;
-  padding: 0 7px;
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--foreground) 6%, transparent);
-  color: var(--muted-foreground);
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.ov-history-state::before {
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: currentColor;
-  content: "";
-}
-
-.ov-history-state[data-state="live"] {
-  background: color-mix(in oklab, var(--zerops-status-ok) 14%, transparent);
-  color: var(--foreground);
-}
-
-.ov-history-state[data-state="live"]::before {
-  background: var(--zerops-status-ok);
-}
-
-.ov-history-state[data-state="deploy-failed"] {
-  background: var(--zerops-status-failed-surface);
-  color: var(--zerops-status-failed-text);
-}
-
-/* An open release's changes hug its row; the next release stands clear of them. */
-.ov-history-changes {
-  margin: 0 0 10px;
-  padding-left: 30px;
-}
-
-.ov-history-subjects {
-  display: grid;
-  gap: 2px;
-  margin: 0;
-  padding: 0 8px 6px 38px;
-  list-style: none;
-}
-
-.ov-history-note {
-  padding: 2px 8px 6px;
-}
-
-.ov-history-more {
-  display: flex;
-  padding-top: 2px;
-}
-
 /* Where nothing is said yet: one quiet line where the list would be. */
 .ov-sec-empty {
   color: var(--muted-foreground);
@@ -8961,8 +9835,18 @@ div.ov-change:hover {
   color: var(--zerops-status-failed-text);
 }
 
-/* A Mate's preview on its name's line, one per service and named by it — `web ↗`, `api ↗` — 12/16
-   muted like the time (the owner, 2026-10-11: "preview of what? there are multiple services"). */
+/* A Mate's parts on its name's line, between its name and its time: they wrap onto further lines
+   inside the card, so neither the name nor the time gives way. */
+.ov-mate-parts {
+  display: flex;
+  flex: 1 1 0;
+  flex-wrap: wrap;
+  min-width: 0;
+  column-gap: 2px;
+}
+
+/* A part's chip, named by the part — `API ↗`, `Web ↗` — 12/16 muted like the time (the owner,
+   2026-10-11: "preview of what? there are multiple services"). */
 .ov-mate-preview {
   position: relative;
   z-index: 1;
@@ -8981,7 +9865,12 @@ div.ov-change:hover {
     color 150ms var(--ease-out-strong);
 }
 
-.ov-mate-preview:hover {
+.ov-mate-preview[data-off] {
+  color: color-mix(in oklab, var(--muted-foreground) 60%, transparent);
+  cursor: default;
+}
+
+.ov-mate-preview:not([data-off]):hover {
   background: color-mix(in oklab, var(--foreground) 7%, transparent);
   color: var(--foreground);
 }
@@ -9053,17 +9942,19 @@ div.ov-change:hover {
 
 @media (prefers-reduced-motion: reduce) {
   .ov-mate,
-  .ov-nav,
-  .ov-rail,
-  .ov-fold,
   .ov-change {
     transition: opacity 150ms linear;
   }
-
-  .ov-nav:active {
-    scale: none;
-  }
 }
+/* A real thing's own name wherever it is printed in a line of words — a service's hostname, a
+   repository's slug, a version: the mono face, its x-height matched to the label face beside it
+   (Roboto's x-height is 0.966 of the mono face's at one size), so it never looks the larger. In
+   the ink of what it names: the class sets no colour. */
+.real-name {
+  font-family: var(--font-mono);
+  font-size: 0.966em;
+}
+
 /* ==== end of the overview's cards ==== */
 
 /* ==== Pass 41 · the review sheet ==== */
@@ -9078,6 +9969,39 @@ div.ov-change:hover {
   font-size: 14px;
   line-height: 20px;
   background: color-mix(in oklab, var(--foreground) 4%, transparent);
+}
+/* A description read for that does not exist: its lines fold shut and take the gap under them
+   along, so the sections below glide up. The fold's height is its two lines and their label. */
+.rv-what-leaves {
+  overflow: hidden;
+  animation: rv-what-leaves 200ms var(--ease-out-strong) forwards;
+}
+/* A grid's gap cannot close with its row: the section after it takes the gap back instead. */
+.rv-what-leaves + * {
+  animation: rv-what-gap 200ms var(--ease-out-strong) forwards;
+}
+@keyframes rv-what-leaves {
+  from {
+    height: 90px;
+    opacity: 1;
+  }
+  to {
+    height: 0;
+    opacity: 0;
+  }
+}
+@keyframes rv-what-gap {
+  to {
+    margin-top: -24px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rv-what-leaves {
+    animation-duration: 1ms;
+  }
+  .rv-what-leaves + * {
+    animation-duration: 1ms;
+  }
 }
 /* Try it: the Mate's preview, a soft pill that opens a tab. */
 .rv-try {
@@ -9102,14 +10026,14 @@ div.ov-change:hover {
   flex: none;
   color: var(--muted-foreground);
 }
-.rv-try-host {
+.rv-try-part {
   min-width: 0;
   overflow: hidden;
   color: var(--muted-foreground);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* One pill per service, named by it before its address. */
+/* One pill per part: whose preview, then the part. */
 .rv-tries {
   display: flex;
   flex-wrap: wrap;
@@ -9130,6 +10054,17 @@ div.ov-change:hover {
   color: var(--muted-foreground);
   text-align: left;
   cursor: pointer;
+}
+/* A finger's 44 px on a row 28 px tall. */
+@media (pointer: coarse) {
+  .rv-fold-row {
+    position: relative;
+  }
+  .rv-fold-row::after {
+    position: absolute;
+    inset: -8px 0;
+    content: "";
+  }
 }
 .rv-fold-aside {
   font-size: 13px;
@@ -9166,6 +10101,18 @@ div.ov-change:hover {
   line-height: 18px;
   color: var(--muted-foreground);
 }
+/* Above the plan while the release runs: what else production is doing, where that explains a
+   wait. One calm sentence; its clock ticks. */
+.rv-busy {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--muted-foreground);
+}
+.rv-busy > b {
+  font-weight: 500;
+  color: var(--foreground);
+}
 .rv-version {
   display: grid;
   gap: 6px;
@@ -9199,7 +10146,10 @@ div.ov-change:hover {
 :root {
   --run-tray: oklch(0.968 0.004 255.5);
   --run-tray-ring: color-mix(in oklab, var(--foreground) 7%, transparent);
-  /* Every item's one height (run 11): four of the card's 13 px lines. */
+  /* The working row's panel (the board, 2026-11-10: "one quiet log, one loud
+     now"): the one surface inside the card, a step off the tray. */
+  --run-now: color-mix(in oklab, var(--foreground) 5%, var(--run-tray));
+  /* An item's box where nothing says its lines: four of the card's 13 px lines. */
   --run-item-cap: 5rem;
   /* What the person opens under a call (what a command printed): twelve. */
   --run-detail-cap: 15rem;
@@ -9333,6 +10283,25 @@ div.ov-change:hover {
 .run-now[data-run-titled] .run-now-leaving {
   top: 20px;
 }
+/* Its log hidden while it works, the head is two lines: the run, and under it
+   what happens now — the face, the chevron and the run's line keep the first. */
+.run-now[data-run-sub] {
+  align-items: start;
+}
+.run-now[data-run-sub] > .run-now-end {
+  height: 20px;
+}
+.run-now-sub {
+  display: block;
+  min-width: 0;
+  margin-top: 2px;
+  overflow: hidden;
+  font-size: var(--text-line);
+  line-height: 18px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--color-muted-foreground);
+}
 .run-now-title {
   display: block;
   min-width: 0;
@@ -9428,8 +10397,35 @@ div.ov-change:hover {
 .run-now[data-run-now="worked"] .run-now-head {
   white-space: normal;
 }
-.run-now-effort {
+/* A fact of what the run came to, beside its time: a quiet chip, two at most. */
+.run-now-fact {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 0 8px;
+  border-radius: var(--radius-control);
+  background: var(--run-now);
+  font-size: var(--text-line);
+  line-height: 22px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
   color: var(--color-muted-foreground);
+}
+.run-now-fact:first-of-type {
+  margin-left: 12px;
+}
+/* On a phone the facts rarely fit beside the time, and wrapped one by one each stood on a line of
+   its own, hung 8 px in by its margin. There the line wraps as a row of things 8 px apart: the
+   facts take the second line together, on the words' own edge. */
+@media (max-width: 39.999rem) {
+  .run-now[data-run-now="worked"] .run-now-words {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+  }
+  .run-now[data-run-now="worked"] .run-now-fact {
+    margin-left: 0;
+  }
 }
 .run-now-clock {
   font-size: 13px;
@@ -9438,25 +10434,30 @@ div.ov-change:hover {
   color: var(--color-foreground);
 }
 /* p35/livecard */
-/* The live slot (pass 35): what the Mate is doing this moment, each thing as the row it becomes —
-   the same bubble, inks and caps. Under the card's head (the owner, 2026-10-11) it holds what the
-   Mate does now and nothing else: no controls, no clock, no face of its own — the head has them.
-   Under the history it stands 16 px under a hairline 16 px under the history. */
+/* The working row (pass 35; the board, 2026-11-10): what the Mate is doing this moment, the only
+   card inside the card — a panel on the card's own sides, 16 px in, holding the item with its
+   body: its face at work, its words, what it runs. Under the card's head (the owner, 2026-10-11)
+   it holds what the Mate does now and nothing else: no controls and no clock — the head has
+   them. Under the log a hairline sets it off: 16 px under the log's last row, 14 px over it. */
 .run-slot {
   position: relative;
-  margin-top: 12px;
-  padding-bottom: 4px;
+  margin-top: 10px;
+  padding: 16px;
+  border-radius: var(--radius-card);
+  background: var(--run-now);
+}
+.run-above:not([hidden]):has(+ .run-slot:not([hidden])) {
+  padding-bottom: 16px;
+  border-bottom: 1px solid color-mix(in oklab, var(--color-foreground) 8%, transparent);
 }
 .run-above:not([hidden]) + .run-slot {
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid color-mix(in oklab, var(--color-foreground) 8%, transparent);
+  margin-top: 14px;
 }
 .run-slot-list {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
 }
 /* The card's head: one line at the card's top in every state, the whole of it the work's toggle
    (an overlay button its words stand over), its chevron turning over as the work opens. While the
@@ -9481,8 +10482,18 @@ div.ov-change:hover {
 .run-now[data-run-head] > :not(.run-now-fold) {
   pointer-events: none;
 }
-.run-now[data-run-head] .run-now-end > :not(.run-head-chevron) {
+.run-now[data-run-head] .run-now-end > :not(.run-head-chevron, .run-head-toggle-words) {
   pointer-events: auto;
+}
+/* Over, the head says what its press does beside its chevron: "Show work". */
+.run-head-toggle-words {
+  font-size: var(--text-line);
+  line-height: 20px;
+  white-space: nowrap;
+  color: var(--color-muted-foreground);
+}
+.run-now-end:has(> .run-head-toggle-words) {
+  gap: 8px;
 }
 .run-now-meta {
   font-size: 13px;
@@ -9516,32 +10527,129 @@ div.ov-change:hover {
   align-items: center;
   gap: 12px;
 }
+/* The log's first row stands 14 px under the head's line (its 4 px and these). */
 .run-above {
-  margin-top: 12px;
+  margin-top: 10px;
 }
-/* A thought keeps room on its right, live and in the history alike, so its
-   plop never rewraps it — "Show full thought" stands there. */
-[data-run-chat] [data-chat-bubble="thought"] {
-  padding-right: 52px;
-}
-/* Words still being written: three quiet dots in the bubble's foot padding,
-   under the last line, so the bubble keeps the height it lands with. */
+/* Words still being written: three quiet dots beside the bubble's foot, on its
+   last line (the owner, 2026-11-10: in the bubble's foot padding they stood on
+   the words and on its edge). A seat the row holds, so the bubble is as wide
+   and as tall when the words end: 8 px after the bubble, its middle on the
+   last line's x-height (19.5 px over the bubble's foot: its 8 px, the box's
+   1 px end and the line's own leading under a 14 px word). */
 .run-note-writing {
-  position: absolute;
-  right: 14px;
-  bottom: 2px;
-  scale: 0.7;
-  transform-origin: right bottom;
+  display: flex;
+  flex: none;
+  align-items: center;
+  align-self: flex-end;
+  width: 19px;
+  height: 21px;
+  margin: 0 0 9px 8px;
 }
-/* Nothing standing in it: its words on the first line, as a call's. */
+.run-note-writing > * {
+  flex: none;
+  scale: 0.7;
+  transform-origin: left center;
+}
+/* Under an opened line of the log, a column of times ends where the line's
+   own time does: the chevron's seat, its 14 px and the 6 px before it, is
+   held at the end of every time under it (the owner, 2026-11-10, of a
+   deploy's steps: "not too well designed" — their times ended under the
+   chevron, 20 px past the line's own). */
+.run-line-detail {
+  --run-line-seat: 20px;
+}
+/* A time in a list that may stand under such a line: it holds that seat where there is one. */
+.line-time {
+  padding-inline-end: var(--run-line-seat, 0px);
+}
+/* Nothing standing in it: a row as an item's — its mark in the Mate's column,
+   its words on the items' text edge, so what comes next takes its place where
+   it stands. */
 .run-slot-filler {
   display: flex;
-  min-height: 34px;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
-  padding-block: 7px;
-  font-size: 14px;
+}
+.run-slot-filler > .run-now-words {
+  padding: 0;
+}
+/* A burst (the owner, 2026-11-10: "sometimes it pumps out 10 rows in two
+   seconds"): the working row is one line of one height — 44 px with its 12 —
+   whatever passes through it: what it is, which of how many, and a spinner
+   that ends as a check. Nothing changes height while it lasts. */
+.run-slot[data-slot-compact] {
+  padding-block: 12px;
+}
+.run-slot-compact {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: var(--text-prose);
   line-height: 20px;
+}
+.run-slot-compact-words {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  font-weight: 500;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.run-slot-compact-count {
+  flex: none;
+  font-size: var(--text-line);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-muted-foreground);
+}
+.run-slot-compact-mark {
+  display: flex;
+  width: 14px;
+  height: 20px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+}
+/* Quick calls folded into one row: its count in ink between its words; while
+   its burst goes on, in a chip that turns — of one width, so the words beside
+   it never shift as it ticks. */
+.run-quick-count {
+  font-variant-numeric: tabular-nums;
+}
+.run-quick-count[data-ticking] {
+  display: inline-flex;
+  height: 20px;
+  align-items: center;
+  gap: 4px;
+  margin-inline: 2px;
+  padding: 0 6px;
+  border-radius: var(--radius-control);
+  background: var(--run-now);
+  vertical-align: top;
+  font-weight: 500;
+}
+.run-quick-count[data-ticking] > .run-quick-number {
+  min-width: 2ch;
+  text-align: center;
+}
+/* Opened in place: each of its calls a line of a tight list, under a rule in
+   the Mate's column. */
+.run-quick-list {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  padding-top: 10px;
+}
+.run-quick-list::before {
+  content: "";
+  position: absolute;
+  top: 6px;
+  bottom: 0;
+  left: -23px;
+  width: 1px;
+  background: color-mix(in oklab, var(--color-foreground) 10%, transparent);
 }
 /* What the slot says between things, muted: "Thinking", "Writing", a wait. */
 .run-slot-word {
@@ -9580,6 +10688,26 @@ div.ov-change:hover {
 .run-capped[data-capped="words"] {
   max-height: var(--run-words-cap);
 }
+/* By its own lines (the board, 2026-11-10): in the working row a command's
+   code six of them, a thought five; in the log a thought two and a command's
+   code one — the thing happening now is read, what happened is skimmed. */
+.run-capped[data-capped-lines="code"] {
+  max-height: 6lh;
+}
+.run-capped[data-capped-lines="code"][data-capped-at="log"] {
+  max-height: 1lh;
+}
+.run-capped[data-capped-lines="thought"] {
+  max-height: 5lh;
+}
+.run-capped[data-capped-lines="thought"][data-capped-at="log"] {
+  max-height: 2lh;
+}
+/* Its last line is whole to its end — a thought's with "more" over it, a
+   command's with its chevron beside its title: never faded from under. */
+.run-capped[data-capped-lines][data-capped-at="log"][data-more-below] {
+  mask-image: none;
+}
 .run-capped[data-more-above] {
   mask-image: linear-gradient(to bottom, transparent, currentColor 14px);
 }
@@ -9604,26 +10732,25 @@ div.ov-change:hover {
 .run-capped[data-capped-at="log"][data-whole] {
   max-height: none;
 }
-/* A bubble cut at its head says how to reach the rest at its foot, over its
-   faded last words, under the pointer or the focus only: at rest the fade
-   says there is more (Bodhi: "Show full thought" 13 times in one card). */
+/* A line cut at its head says how to reach the rest at the end of its last
+   line, over its faded last words: one quiet word, "more", brighter under
+   the pointer or the focus (Bodhi: "Show full thought" 13 times in one card). */
 .run-item-more {
   position: absolute;
   right: 0;
   bottom: 0;
-  padding-left: 30px;
-  background: linear-gradient(to right, transparent, var(--run-item-ground) 26px);
+  padding-left: 52px;
+  background: linear-gradient(to right, transparent, var(--run-item-ground) 44px);
   font-style: normal;
-  color: var(--color-foreground);
-  opacity: 0;
-  transition: opacity 150ms cubic-bezier(0.23, 1, 0.32, 1);
+  color: color-mix(in oklab, var(--color-foreground) 80%, transparent);
+  transition: color var(--duration-quick) cubic-bezier(0.23, 1, 0.32, 1);
 }
 .run-item-open:hover > .run-item-more,
 .run-item-open:focus-visible > .run-item-more {
-  opacity: 1;
+  color: var(--color-foreground);
 }
 [data-chat-bubble="thought"] {
-  --run-item-ground: color-mix(in oklab, var(--color-foreground) 3%, var(--run-tray));
+  --run-item-ground: var(--run-tray);
 }
 [data-chat-bubble="speech"] {
   --run-item-ground: color-mix(in oklab, var(--run-speaker-tint) 17%, var(--run-tray));
@@ -9632,6 +10759,15 @@ div.ov-change:hover {
 /* The record while the run goes on: once it holds its height, the history
    and the slot share it, so the card's outer box stands still — a slot that
    grows takes its room from the history, never from the page. */
+/* The room the working row takes is the card's own to read (its cap, below):
+   said to nothing under it. Inherited, each change of it — every frame of the
+   working row's travel — restyled every row of the log: at 300 rows, 0.4 s of
+   style a second (2026-11-10). */
+@property --run-slot-room {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
 [data-run-chat][data-run-live] {
   display: flex;
   /* On a short page the slot alone can pass the cap: the card holds it whole. */
@@ -9647,6 +10783,13 @@ div.ov-change:hover {
 [data-run-chat][data-run-live] > .run-above > .run-scroll {
   min-height: 0;
   flex: 0 1 auto;
+}
+/* The card holding an older height while its bottom edge travels to a taller
+   one (`runRoom`): what it holds stands as laid out and is uncovered at that
+   edge, never squeezed into the older height — the history arriving with its
+   first line kept that line where it stood in the slot. */
+[data-run-chat][data-run-live][data-room-easing] > .run-above {
+  flex-shrink: 0;
 }
 [data-run-chat][data-run-live] > .run-slot {
   flex: none;
@@ -9868,7 +11011,10 @@ button.run-bar:focus-visible {
 /* Its bar stands apart from the lines and from the card's edge: the app's
    6 px thumb in a 16 px gutter, 6 px from the lines, 4 px from the edge, and
    short of the top and bottom (the owner, 2026-10-05: "custom scrollbar too
-   close to the edge"). */
+   close to the edge"). The thumb is what is left of its box inside two
+   transparent borders of different widths, so one radius for the box gave its
+   two sides different curves and the thumb read as cut on one side (the owner,
+   2026-11-10): each side's radius is its border plus the thumb's own 3 px. */
 .run-scroll::-webkit-scrollbar {
   width: 16px;
 }
@@ -9878,7 +11024,7 @@ button.run-bar:focus-visible {
 .run-scroll::-webkit-scrollbar-thumb {
   border: solid transparent;
   border-width: 0 6px 0 4px;
-  border-radius: 10px;
+  border-radius: 7px 9px 9px 7px / 3px;
   background-clip: padding-box;
 }
 /* Its bar is the app's (`::-webkit-scrollbar`): a standard `scrollbar-width`
@@ -9964,12 +11110,9 @@ button.run-bar:focus-visible {
 
 /* A run the person comes back to (D3): its worked line alone, "Show work" on
    its right edge — the chevron turning over as the work opens (K12) — and the
-   scroll under a hairline as far under the line as the live card's is over
-   it. */
+   log 14 px under its head, as the live card's is: no line between them. */
 .run-later-feed:not(:empty) {
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid color-mix(in oklab, var(--color-foreground) 8%, transparent);
+  margin-top: 10px;
 }
 /* Its 24 px of ground stand in the line's 20, so the words keep their
    centre. */
@@ -10025,6 +11168,18 @@ button.run-bar:focus-visible {
   border: 1px solid transparent;
   border-bottom: 0;
   padding: 15px 15px 0;
+}
+
+/* On a phone the card keeps the composer's lines as it does on a desk: its frame on the composer's
+   frame, its words on the composer's words, which stand 12 px inside the frame there, not 16
+   (`rowInset`, MessagesTimeline). */
+@media (max-width: 39.999rem) {
+  .run-tray-top,
+  .run-tray-middle,
+  .run-tray-whole,
+  .run-tray-ghost {
+    padding-inline: 11px;
+  }
 }
 
 /* ==== end of the run's card ==== */
@@ -10141,6 +11296,18 @@ button.run-bar:focus-visible {
   background: var(--color-accent);
   color: var(--color-foreground);
 }
+/* Under a finger the arrow takes 40 px around its 24: the rows stand 28 to 40 px apart, so two
+   arrows' presses never reach each other's glyph. */
+@media (pointer: coarse) {
+  .run-result-open {
+    position: relative;
+  }
+  .run-result-open::after {
+    content: "";
+    position: absolute;
+    inset: -8px;
+  }
+}
 .run-result-open:focus-visible,
 .run-result-tile:focus-visible {
   outline: 2px solid color-mix(in oklab, var(--color-ring) 70%, transparent);
@@ -10229,12 +11396,15 @@ button.run-bar:focus-visible {
   vertical-align: top;
   border-radius: 10px;
 }
+/* Laid over the picture it stands in for, it never takes the pointer: a press reaches the
+   picture (and a zoomed viewer's pan) even after the underlay has faded out. */
 .asset-image-underlay {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: contain;
+  pointer-events: none;
 }
 .asset-image-frame > img {
   transition: opacity 140ms ease-out;
@@ -10376,6 +11546,38 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
   .conversation-mate[data-opens]:hover,
   .conversation-crewface:hover {
     background-color: var(--sidebar-row-hover);
+  }
+}
+
+/* What the chat is about gives way to the line's end, down to nothing: on a phone it either
+   reads (some eight letters of it) or is not drawn, never a letter and an ellipsis. Its room
+   stays its own, so nothing on the line moves as it goes. */
+@media (max-width: 39.999rem) {
+  .conversation-subject {
+    container: conversation-subject / inline-size;
+  }
+
+  @container conversation-subject (max-width: 5.5rem) {
+    .conversation-subject > * {
+      visibility: hidden;
+    }
+  }
+}
+
+/* A phone's line holds the Mate, what waits on the person, the menu and the panel's toggle. Sites
+   stands on it only while the Mate's name is alone there: a Review, a task's state or a crew
+   takes its room, and the menu's row and the panel's Browser still lead to every address. */
+@media (max-width: 39.999rem) {
+  [data-chat-header]:has(
+      [data-conversation-strip]
+        :is(
+          .chat-header-review,
+          [data-zerops-surface="mate-task-session"],
+          [data-conversation-crew]
+        )
+    )
+    [data-header-sites] {
+    display: none;
   }
 }
 
@@ -10565,6 +11767,24 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   }
 }
 
+/* Under a finger the round Send and Stop take a 44 px press around their 32 to 36, as the kit's
+   buttons do. */
+@media (pointer: coarse) {
+  [data-chat-composer-form] [data-composer-primary] {
+    position: relative;
+  }
+
+  [data-chat-composer-form] [data-composer-primary]::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 2.75rem;
+    height: 2.75rem;
+    translate: -50% -50%;
+  }
+}
+
 /* C4: the one control's menu — the models, and beside them the model's
    effort, its other choices and the access. Both columns share one height,
    capped by the room above the composer; the choices scroll on their own
@@ -10601,6 +11821,11 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   .composer-model-menu > [data-model-picker-content] {
     flex: none;
     height: 21.625rem;
+  }
+
+  /* 16 px in the search, so a phone does not zoom the page on its focus. */
+  .composer-model-menu [data-model-picker-content] input {
+    font-size: var(--field-phone-size);
   }
 }
 
@@ -11514,9 +12739,10 @@ a.message-file:focus-visible {
 
 /* Review: the one door to merging, landing, releasing and rolling back (R1–R8, D12). One
    surface in two frames: a sheet over the page, and a change's own page. The sheet stands 12 in
-   from the window's top, right and bottom, 460 wide: its title, one line of where it stands, then
-   what it does, how to try it and what it changes, and at its foot the buttons with one line of
-   what happens next. Its type is the scale's, 22 · 14 · 13 · 12; its colour means one thing each. */
+   from the window's top and right, 540 wide: its title, one line of where it stands, then what it
+   says, and at its foot the buttons with one line of what happens next. A change's stands the
+   window's height; a release's is as tall as what it says. Its type is the scale's, 20 · 13 · 12;
+   its colour means one thing each. */
 .rv-backdrop {
   position: fixed;
   inset: 0;
@@ -11569,15 +12795,43 @@ a.message-file:focus-visible {
   top: 12px;
   right: 12px;
   bottom: 12px;
-  width: min(520px, calc(100% - 24px));
+  width: min(540px, calc(100% - 24px));
   max-height: none;
 }
-/* A release is a few lines and its buttons: its sheet hangs from the top as tall as what it says,
-   up to the window's height, and eases to a change's height when one is stepped into
-   (`ZeropsReleaseSteps`). From the press it keeps the height it stood at (`holdSheetHeight`). */
+/* A release is a few lines and its buttons (the owner, 2026-10-20: it "stood the window's full
+   height, its buttons 1 400 px under its last line"): its sheet hangs from the top as tall as what
+   it says, its buttons right under its last line, and takes the window's height — scrolling
+   inside, its foot in view — only when what it says is taller. It eases to a change's height when
+   one is stepped into (`ZeropsReleaseSteps`), and from the press its buttons never rise
+   (`useHeldButtons`). */
 .rv-viewport > .rv:has(.rv-steps) {
   bottom: auto;
   max-height: calc(100dvh - 24px);
+}
+/* A phone gives the sheet its width: 8 px from each edge, clear of the status bar and the home
+   bar, its words 16 px in as a page's are. */
+@media (max-width: 39.999rem) {
+  .rv-viewport > .rv {
+    top: max(8px, env(safe-area-inset-top));
+    right: 8px;
+    bottom: max(8px, env(safe-area-inset-bottom));
+    width: calc(100% - 16px);
+  }
+
+  .rv-viewport > .rv:has(.rv-steps) {
+    bottom: auto;
+    max-height: calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  }
+
+  .rv-viewport > .rv > .rv-chrome {
+    padding-inline: 16px 10px;
+  }
+
+  .rv-viewport > .rv > .rv-head,
+  .rv-viewport > .rv > .rv-body,
+  .rv-viewport > .rv > .rv-foot {
+    padding-inline: 16px;
+  }
 }
 /* Held while what it shows is read (`useReviewHold`): it slides in once, whole. */
 .rv[data-starting-style],
@@ -11611,13 +12865,14 @@ a.message-file:focus-visible {
   flex: none;
   align-items: center;
   gap: 2px;
-  padding: 16px 16px 0 22px;
+  padding: 18px 16px 0 24px;
 }
 .rv-head {
   display: grid;
   flex: none;
   gap: 4px;
-  padding: 14px 22px 22px;
+  padding: 6px 24px 16px;
+  border-bottom: 1px solid var(--border);
 }
 .rv-kind {
   display: flex;
@@ -11658,6 +12913,17 @@ a.message-file:focus-visible {
 .rv-x:last-child {
   margin-right: -6px;
 }
+/* A finger's 44 px, upward and downward: its neighbour keeps its own. */
+@media (pointer: coarse) {
+  .rv-x {
+    position: relative;
+  }
+  .rv-x::after {
+    position: absolute;
+    inset: -7px 0;
+    content: "";
+  }
+}
 .rv-x:hover {
   background: color-mix(in oklab, var(--foreground) 7%, transparent);
   color: var(--foreground);
@@ -11676,9 +12942,9 @@ a.message-file:focus-visible {
   display: -webkit-box;
   margin: 0;
   overflow: hidden;
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 600;
-  line-height: 24px;
+  line-height: 28px;
   letter-spacing: -0.01em;
   text-wrap: balance;
   overflow-wrap: anywhere;
@@ -11692,6 +12958,22 @@ a.message-file:focus-visible {
   letter-spacing: normal;
   -webkit-line-clamp: unset;
 }
+/* A name set apart in the review's words: a version, a service. */
+.rv-code {
+  font-family: var(--font-mono);
+}
+/* The one line under a release's title: what is known of it as it stands. It never wraps, so the
+   head keeps its height from reading to done. */
+.rv-sub {
+  margin: 0;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 18px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
 /* Where it stands, in plain words: grey while all is well, amber or red for trouble, blue while
    it moves. */
 .rv-line {
@@ -11704,6 +12986,33 @@ a.message-file:focus-visible {
   line-height: 20px;
   color: var(--muted-foreground);
   font-variant-numeric: tabular-nums;
+}
+/* A phone's line wraps: a dot goes down with the words after it, never left hanging at a line's
+   end, and one that would start a line is cut with the line's own edge. */
+@media (max-width: 39.999rem) {
+  .rv-line {
+    column-gap: 0;
+    margin-left: -14px;
+    clip-path: inset(0 0 0 14px);
+  }
+
+  .rv-line > .rv-dot {
+    display: none;
+  }
+
+  .rv-line > :not(.rv-dot) {
+    position: relative;
+    padding-left: 14px;
+  }
+
+  .rv-line > .rv-dot + ::before {
+    position: absolute;
+    left: 0;
+    width: 14px;
+    color: var(--muted-foreground);
+    text-align: center;
+    content: "·";
+  }
 }
 .rv-vt {
   display: inline-flex;
@@ -11771,6 +13080,7 @@ a.message-file:focus-visible {
 }
 .rv-page .rv-head {
   padding: 0 0 16px;
+  border: 0;
 }
 .rv-page .rv-body {
   padding: 20px 0 0;
@@ -11778,7 +13088,8 @@ a.message-file:focus-visible {
 }
 .rv-page .rv-foot {
   position: sticky;
-  bottom: 16px;
+  /* Clear of a phone's home bar. */
+  bottom: max(16px, env(safe-area-inset-bottom));
   z-index: 1;
   margin: 28px -8px 0;
   padding: 12px 16px 14px;
@@ -11813,9 +13124,9 @@ a.message-file:focus-visible {
   /* One column no wider than the review: a long line inside it wraps, never widens it. */
   grid-template-columns: minmax(0, 1fr);
   align-content: start;
-  gap: 22px;
+  gap: 24px;
   min-height: 0;
-  padding: 0 22px 20px;
+  padding: 18px 24px 20px;
   overflow: hidden auto;
   overscroll-behavior: contain;
 }
@@ -11825,17 +13136,67 @@ a.message-file:focus-visible {
 .rv-body:empty {
   display: none;
 }
+/* A section with nothing under its label says nothing: it is not drawn. */
+.rv-body section:has(> .rv-sec-h:only-child) {
+  display: none;
+}
 .rv-sec-h {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-  margin: 0 0 6px;
+  /* A label hugs what it names: 10 under it, sections 24 apart. */
+  margin: 0 0 10px;
   font-size: 12px;
   font-weight: 500;
   line-height: 16px;
   color: var(--muted-foreground);
   font-variant-numeric: tabular-nums;
+}
+.rv-sec-h > span {
+  font-weight: 400;
+}
+/* A section's own state at its label's end: its mark, its words and the press beside them. Every
+   sentence its wait will say holds the room from the start, so the one it says next never moves
+   the label; a cause too long for the label's line takes the next one, from the label's edge. */
+.rv-sec-h:has(.rv-sec-state) {
+  flex-wrap: wrap;
+  align-items: center;
+  row-gap: 2px;
+}
+/* On a line of its own, in a narrow sheet, it keeps the end edge it has beside the label. */
+.rv-sec-h:has(.rv-sec-state) > span {
+  margin-inline-start: auto;
+}
+.rv-sec-state {
+  display: grid;
+  justify-items: end;
+}
+.rv-sec-state > span {
+  display: inline-flex;
+  grid-area: 1 / 1;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.rv-sec-state > [data-room] {
+  visibility: hidden;
+  /* Its mark's room. */
+  padding-inline-start: 18px;
+}
+.rv-sec-state[data-tone="attention"] {
+  justify-items: start;
+  color: var(--zerops-status-attention-text);
+}
+/* A cause reads as a sentence, its press following its last word wherever that falls, as far
+   from it as the wait's own press stands from its words. */
+.rv-sec-state[data-tone="attention"] > span {
+  display: block;
+  white-space: normal;
+  text-wrap: pretty;
+}
+.rv-sec-state[data-tone="attention"] [data-release-plan-again] {
+  margin-inline-start: 3px;
 }
 .rv-words {
   margin: 0;
@@ -12190,6 +13551,83 @@ a.message-file:focus-visible {
 
 /* What could not be read, where it would have stood, with Try again: amber, it didn't go
    through; a failure never blanks its section. */
+/* What HQ found: each finding a soft box — the statement beside its mark, who acts next under it,
+   and its identifiers folded under Details. */
+.rv-findings {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rv-finding {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 4px 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--zerops-status-attention) 9%, transparent);
+}
+.rv-finding > svg {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  color: var(--zerops-status-attention);
+}
+.rv-finding > :not(svg) {
+  grid-column: 2;
+}
+.rv-finding-what {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  text-wrap: pretty;
+}
+.rv-finding-next {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--muted-foreground);
+  text-wrap: pretty;
+}
+.rv-finding-next > span {
+  color: var(--foreground);
+}
+.rv-finding-more {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted-foreground);
+}
+.rv-finding-more > summary {
+  width: fit-content;
+  cursor: pointer;
+  border-radius: 4px;
+  outline-offset: 2px;
+}
+.rv-finding-more > summary:hover {
+  color: var(--foreground);
+}
+.rv-finding-more > dl {
+  display: grid;
+  gap: 4px;
+  margin: 6px 0 0;
+}
+.rv-finding-more > dl > div {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 8px;
+}
+.rv-finding-more dt {
+  color: var(--muted-foreground);
+}
+.rv-finding-more dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+  color: color-mix(in oklab, var(--foreground) 80%, transparent);
+}
 .rv-failed {
   display: flex;
   min-height: 36px;
@@ -12323,6 +13761,12 @@ a.message-file:focus-visible {
 .rv-say-box::placeholder {
   color: var(--muted-foreground);
 }
+/* A phone zooms the page into a field under 16 px. */
+@media (max-width: 39.999rem) {
+  .rv-say-box {
+    font-size: var(--field-phone-size);
+  }
+}
 .rv-say-comment,
 .rv-say-ask {
   display: inline-flex;
@@ -12420,23 +13864,33 @@ a.message-file:focus-visible {
 }
 .rv-relrow {
   display: grid;
-  min-height: 34px;
-  grid-template-columns: 22px minmax(0, 1fr) auto;
-  column-gap: 10px;
-  align-items: center;
-  padding: 0 8px;
-  border-radius: 10px;
+  min-height: 44px;
+  grid-template-columns: 18px minmax(0, 1fr);
+  grid-template-areas:
+    "face title"
+    "face sub";
+  column-gap: 12px;
+  align-content: center;
+  padding: 4px 8px;
+  border-radius: 8px;
+}
+.rv-relrow > :first-child {
+  grid-area: face;
+  align-self: start;
+  margin-top: 1px;
 }
 .rv-relrow-t {
   display: block;
+  grid-area: title;
   overflow: hidden;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 20px;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 .rv-relrow-sub {
   display: block;
+  grid-area: sub;
   overflow: hidden;
   font-size: 12px;
   line-height: 16px;
@@ -12446,6 +13900,7 @@ a.message-file:focus-visible {
 }
 .rv-on {
   display: flex;
+  grid-area: sub;
   align-items: center;
   gap: 4px;
   font-size: 12px;
@@ -12461,7 +13916,10 @@ a.message-file:focus-visible {
 /* A change row opens its review in place: the whole row presses, the menu's way — a wash under
    the pointer, a deeper one pressed, its Mate's face looking up — with a › at its end. */
 .rv-rel[data-opens] .rv-relrow {
-  grid-template-columns: 22px minmax(0, 1fr) auto 14px;
+  grid-template-columns: 18px minmax(0, 1fr) 14px;
+  grid-template-areas:
+    "face title go"
+    "face sub go";
 }
 :is(button, a).rv-relrow {
   width: 100%;
@@ -12482,6 +13940,8 @@ a.message-file:focus-visible {
   box-shadow: inset 0 0 0 2px var(--ring);
 }
 .rv-relrow-go {
+  grid-area: go;
+  align-self: center;
   width: 14px;
   height: 14px;
   color: var(--muted-foreground);
@@ -12495,6 +13955,21 @@ a.message-file:focus-visible {
   color: var(--foreground);
   opacity: 1;
   translate: 2px 0;
+}
+/* Where nothing hovers a row that opens says so at rest. */
+@media (hover: none) {
+  .rv-relrow-go {
+    opacity: 1;
+  }
+}
+/* A phone reads a change's title whole, on two lines where one cuts it. */
+@media (max-width: 39.999rem) {
+  .rv-relrow-t {
+    display: -webkit-box;
+    white-space: normal;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
 }
 @media (prefers-reduced-motion: no-preference) {
   :is(button, a).rv-relrow:hover [data-mate-face-look] {
@@ -12630,17 +14105,19 @@ a.message-file:focus-visible {
   grid-column: 1 / -1;
 }
 
-/* The foot, pinned to the sheet's bottom: the quiet words at its start, the ask and the one button
-   together at its end, the one button last and ink-filled, then one line of what happens next. A
+/* The foot: the quiet words at its start, the ask and the one button together at its end, the one
+   button last, then one line of what happens next — or why the button is held, in its tone. A
    sheet too narrow for one row keeps the pair on the first line and drops the quiet words under it:
-   the one button never stands alone. */
+   the one button never stands alone, and nothing stands above it (the owner, 2026-10-20: "these
+   buttons are bit unfortunately positioned"). */
 .rv-foot {
   display: flex;
   flex: none;
   flex-direction: column;
   gap: 10px;
   margin-top: auto;
-  padding: 16px 22px 20px;
+  padding: 16px 24px 20px;
+  border-top: 1px solid var(--border);
   background: var(--card);
 }
 .rv-btns {
@@ -12667,11 +14144,242 @@ a.message-file:focus-visible {
   display: none;
 }
 .rv-conseq {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 8px;
   margin: 0;
   font-size: 13px;
   line-height: 18px;
   color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
   text-wrap: pretty;
+}
+/* A note still to come keeps the room of the one that will stand, under the words that say it is
+   loading: the buttons over it never move when it arrives. */
+.rv-conseq[data-room] {
+  display: grid;
+}
+.rv-conseq[data-room] > * {
+  grid-area: 1 / 1;
+}
+.rv-conseq-room {
+  visibility: hidden;
+}
+.rv-conseq[data-tone="attention"] {
+  color: var(--zerops-status-attention-text);
+}
+.rv-conseq[data-tone="failed"] {
+  color: var(--zerops-status-failed-text);
+}
+
+/* What happens in production: one card, the steps in HQ's order — a mark, a title and one line
+   each, joined down their marks. Before the press they are the plan; after it they tick in place. */
+.rv-plan {
+  display: grid;
+  margin: 0;
+  padding: 6px 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  list-style: none;
+  background: color-mix(in oklab, var(--foreground) 2%, transparent);
+}
+.rv-pstep {
+  position: relative;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  grid-template-areas:
+    "mark title aside"
+    "mark line line"
+    ". more more";
+  column-gap: 15px;
+  align-content: start;
+  align-items: start;
+  min-height: 64px;
+  padding: 13px 16px 15px 17px;
+}
+/* A step's clock stands at its middle, beside both its lines. */
+.rv-pstep:has(> [data-clock]) {
+  grid-template-areas:
+    "mark title aside"
+    "mark line aside"
+    ". more more";
+}
+/* The hairline between two steps starts at their words. */
+.rv-pstep + .rv-pstep::before {
+  position: absolute;
+  top: 0;
+  right: 16px;
+  left: 54px;
+  height: 1px;
+  background: var(--border);
+  content: "";
+}
+/* The line down the marks, from under one to over the next, however tall the step stands. */
+.rv-pstep:not(:last-child)::after {
+  position: absolute;
+  top: 46px;
+  bottom: -18px;
+  left: 27px;
+  width: 2px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--foreground) 12%, transparent);
+  content: "";
+}
+.rv-pmark {
+  display: flex;
+  grid-area: mark;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  margin-top: 8px;
+  border: 1.5px solid color-mix(in oklab, var(--foreground) 22%, transparent);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+  transition:
+    background-color 200ms var(--ease-out-strong),
+    border-color 200ms var(--ease-out-strong),
+    color 200ms var(--ease-out-strong);
+}
+.rv-pmark svg {
+  width: 12px;
+  height: 12px;
+}
+.rv-pmark[data-mark="busy"] {
+  border-color: transparent;
+  color: var(--zerops-status-busy-text);
+}
+.rv-pmark[data-mark="busy"] svg {
+  width: 18px;
+  height: 18px;
+}
+.rv-pmark[data-mark="done"] {
+  border-color: color-mix(in oklab, var(--zerops-status-ok) 45%, transparent);
+  background: color-mix(in oklab, var(--zerops-status-ok) 13%, transparent);
+  color: var(--zerops-status-ok-text);
+}
+.rv-pmark[data-mark="failed"] {
+  border-color: color-mix(in oklab, var(--zerops-status-failed) 45%, transparent);
+  background: color-mix(in oklab, var(--zerops-status-failed) 13%, transparent);
+  color: var(--zerops-status-failed-text);
+}
+.rv-pmark[data-mark="attention"] {
+  border-color: color-mix(in oklab, var(--zerops-status-attention) 45%, transparent);
+  background: color-mix(in oklab, var(--zerops-status-attention) 13%, transparent);
+  color: var(--zerops-status-attention-text);
+}
+.rv-pmark[data-mark="skeleton"] {
+  border-color: transparent;
+  background: color-mix(in oklab, var(--foreground) 7%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .rv-pmark {
+    transition: none;
+  }
+}
+.rv-pstep-t {
+  grid-area: title;
+  margin: 0;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rv-pstep-l {
+  display: flex;
+  grid-area: line;
+  flex-wrap: wrap;
+  column-gap: 6px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+}
+.rv-pstep-l[data-tone="busy"] > span:first-child {
+  color: var(--zerops-status-busy-text);
+}
+.rv-pstep-l[data-tone="failed"] > span:first-child {
+  color: var(--zerops-status-failed-text);
+}
+.rv-pstep-l[data-tone="attention"] > span:first-child {
+  color: var(--zerops-status-attention-text);
+}
+/* At the step's end: how long it has run or took, or its own quiet press. */
+.rv-pstep-aside {
+  grid-area: aside;
+  align-self: center;
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+.rv-pstep-ways {
+  grid-area: more;
+  margin-top: 4px;
+}
+/* What a step opens under its line: its import, its deploy's log. */
+.rv-pstep-more {
+  display: grid;
+  grid-area: more;
+  gap: 8px;
+  min-width: 0;
+  margin-top: 10px;
+}
+.rv-pstep-more > p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted-foreground);
+}
+.rv-pstep-yaml {
+  max-height: 240px;
+  margin: 0;
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: pre;
+}
+/* Words still being read, in the place and size they will stand. */
+.rv-pskel {
+  display: block;
+  height: 10px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--foreground) 7%, transparent);
+}
+/* A change's row before it is listed: its face, its title and its line, in their sizes. */
+.rv-relrow[data-skeleton] .rv-pskel:first-child {
+  width: 18px;
+  height: 18px;
+}
+.rv-relrow[data-skeleton] .rv-relrow-t {
+  margin: 5px 0;
+}
+.rv-relrow[data-skeleton] .rv-relrow-sub,
+.rv-pskel[data-line] {
+  height: 8px;
+  margin: 4px 0;
+}
+/* The version it tags, in words, until the person asks to change it. */
+.rv-version-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--muted-foreground);
 }
 /* The sheet's steps — a release and a change it carries — fill its height. */
 /* Its steps sit in the review's keyed `contents` wrapper: a descendant, never a child. */
@@ -12724,17 +14432,22 @@ a.message-file:focus-visible {
   }
 }
 
-/* Opening is one story; named beats keep the complete sequence within 600 ms. The stage hands
-   over in place: its words and its face fade where they stand while the conversation fades in —
-   no face flying to the header (the owner, 2026-10-12: "the way this transitions to the mate avatar
-   at the chat top bar is absolute shit effect, need to be removed"), and nothing that moves, so
+/* Opening is one story, and its end holds nothing back: the moment the conversation is placed,
+   the stage's words and face fade where they stand — its eyes opening as they go — while the
+   conversation fades in under them, whole 200 ms later. The stage hands over in place — no face
+   flying to the header (the owner, 2026-10-12: "the way this transitions to the mate avatar at
+   the chat top bar is absolute shit effect, need to be removed"), and nothing that moves, so
    nothing overflows the column for a frame and narrows it by a scrollbar. */
 :root {
-  --duration-conversation-wake: 180ms; /* A short blink-open, fully on the stage. */
-  --duration-conversation-exit: 140ms; /* The stage's words and face fade where they stand. */
-  --duration-conversation-rise: 160ms; /* The conversation fades in under them. */
+  --duration-conversation-wake: 150ms; /* The eyes blink open as the stage goes. */
+  --duration-conversation-exit: 150ms; /* The stage's words and face fade where they stand. */
+  --duration-conversation-rise: 150ms; /* The conversation fades in under them. */
+  /* The conversation starts in a third of the way through the stage's exit. */
+  --delay-conversation-rise: calc(var(--duration-conversation-exit) / 3);
+  /* What is left of the conversation's rise once the eyes have opened. */
   --duration-conversation-handoff: calc(
-    var(--duration-conversation-exit) + var(--duration-conversation-rise) / 2
+    var(--delay-conversation-rise) + var(--duration-conversation-rise) -
+      var(--duration-conversation-wake)
   );
 }
 
@@ -12760,43 +14473,54 @@ a.message-file:focus-visible {
 
 [data-conversation-opening="hand-off"] {
   animation: conversation-handoff var(--duration-conversation-handoff) linear;
+}
 
-  & > * {
-    animation: conversation-stage-exit var(--duration-conversation-exit) var(--ease-out-strong) both;
-  }
+/* From the moment the conversation is placed, through the eyes' opening and what is left after
+   it: one exit, not started again as the stage goes from one to the other. */
+:is([data-conversation-opening="wake"], [data-conversation-opening="hand-off"]) > * {
+  animation: conversation-stage-exit var(--duration-conversation-exit) var(--ease-out-strong) both;
 }
 
 /* The real footer stays laid out and measured throughout. Hidden content accepts the input
-   that ends the sequence; it is never replaced by a guessed footer or a second conversation. */
-:is([data-chat-workspace-drop-target], [data-zerops-surface="mate-coming-page"]):has(
-    [data-conversation-opening="waiting"],
-    [data-conversation-opening="wake"]
-  )
-  :is([data-conversation-footer], [data-conversation-content]) {
+   that ends the sequence; it is never replaced by a guessed footer or a second conversation.
+
+   Each of these rules tests three attributes on purpose: the `:has()` rules they replace weighed
+   (0,3,0), and the rules of this sheet they must win over — a subject or a persona arriving
+   (`.conversation-subject[data-arrived]`) — were written against that weight. */
+[data-opening-waits-whole="held"]:not([data-opening-waits-whole="arrives"]):not(
+    [data-opening-waits-whole=""]
+  ) {
   opacity: 0;
   transition: none;
 }
 
-:is([data-chat-workspace-drop-target], [data-zerops-surface="mate-coming-page"]):has(
-    [data-conversation-opening="hand-off"]
-  )
-  :is([data-conversation-footer], [data-conversation-content]) {
+[data-opening-waits-whole="arrives"]:not([data-opening-waits-whole="held"]):not(
+    [data-opening-waits-whole=""]
+  ) {
   animation: conversation-arrive var(--duration-conversation-rise) var(--ease-out-strong)
-    calc(var(--duration-conversation-exit) / 2) backwards;
+    var(--delay-conversation-rise) backwards;
 }
 
 /* The header's way out to Zerops waits for the conversation it is the way out of, and arrives
-   with it — wherever the opening stands while the route changes. */
-:root:has([data-conversation-opening="waiting"], [data-conversation-opening="wake"])
-  [data-opening-waits]
-  > * {
+   with it — wherever the opening stands while the route changes. Each part carries the
+   opening's state itself (`ConversationOpeningWaits`): a `:has()` on an ancestor restyles
+   everything under it for every node added there. */
+[data-opening-waits="held"]:not([data-opening-waits="arrives"]):not([data-opening-waits=""]) > * {
   opacity: 0;
   pointer-events: none;
 }
 
-:root:has([data-conversation-opening="hand-off"]) [data-opening-waits] > * {
+/* The header's name and subject, while the stage says the Mate: their place held, unseen —
+   until the conversation arrives, and they with it. */
+[data-opening-header="yields"]:not([data-opening-arrives]) > * {
+  opacity: 0;
+  pointer-events: none;
+}
+
+[data-opening-header][data-opening-arrives]:not([data-opening-header=""]) > *,
+[data-opening-waits="arrives"]:not([data-opening-waits="held"]):not([data-opening-waits=""]) > * {
   animation: conversation-arrive var(--duration-conversation-rise) var(--ease-out-strong)
-    calc(var(--duration-conversation-exit) / 2) backwards;
+    var(--delay-conversation-rise) backwards;
 }
 
 [data-conversation-opening="complete"] {
@@ -12847,6 +14571,45 @@ a.message-file:focus-visible {
 }
 
 /* ==== end of motion across switches ==== */
+
+/* ==== Settings on a phone ==== */
+
+/* A setting's row: its name and what it does; a switch or a button stays on the name's line; a
+   select, a field or a slider takes the row's width under the description. */
+@media (max-width: 39.999rem) {
+  [data-settings-row] > [data-slot="row"] > [data-slot="row-control"] {
+    align-self: flex-start;
+  }
+
+  [data-settings-row]
+    > [data-slot="row"]
+    > [data-slot="row-control"]:has(
+      [data-slot="select-trigger"],
+      [data-slot="input-control"],
+      [data-slot="number-field"],
+      input[type="range"]
+    ) {
+    flex-basis: 100%;
+  }
+
+  /* Under one another, the selects are one height whatever size their desktop row picked. */
+  [data-settings-row] [data-slot="row-control"] [data-slot="select-trigger"] {
+    min-height: calc(var(--spacing) * 9);
+  }
+
+  /* A section's heading reads whole: tools too wide to share its line go under it, at its end. */
+  :where([data-settings-page-scroll]) [data-slot="section-header"] {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  /* The desktop's 10 and 11 px notes (a count, a table's head, a sample's label) are 12 px here. */
+  [data-settings-page-scroll] :is(.text-2xs, .text-3xs, .text-\[10px\], .text-\[11px\]) {
+    font-size: var(--text-caption);
+  }
+}
+
+/* ==== end of settings on a phone ==== */
 
 /* ==== Pass 23 · the arrival ==== */
 
@@ -13503,6 +15266,13 @@ a.message-file:focus-visible {
   color: var(--placeholder);
 }
 
+/* Below 640 px a typed field is 16 px: a smaller one makes iOS zoom the page onto it. */
+@media (max-width: 39.999rem) {
+  .arrival-input {
+    font-size: var(--field-phone-size);
+  }
+}
+
 .arrival-input:focus {
   box-shadow:
     inset 0 0 0 1px var(--ring),
@@ -13655,7 +15425,8 @@ a.message-file:focus-visible {
 
 /* A crewless Mate's subject arriving after its line stands — the first
    words sent — fades in where it stays: the name before it never moves. */
-.conversation-subject[data-arrived] {
+.conversation-subject[data-arrived],
+.conversation-persona[data-arrived] {
   animation: conversation-subject-in 180ms var(--ease-out-strong) backwards;
 }
 

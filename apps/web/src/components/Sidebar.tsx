@@ -4,7 +4,6 @@ import {
   isListedMateEnvironment,
   shownCanonicalHqListNavigationAtom,
 } from "@t3tools/client-runtime/data";
-import { autoAnimate } from "@formkit/auto-animate";
 import { useAtomValue } from "@effect/atom-react";
 import { shownHqPersonFactsAtom, mateLimitAtom } from "@t3tools/client-runtime/data";
 import {
@@ -41,7 +40,6 @@ import {
 } from "lucide-react";
 import {
   memo,
-  startTransition,
   useCallback,
   useEffect,
   useMemo,
@@ -92,6 +90,9 @@ import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
 import { startNewThreadFromContext } from "../lib/chatThreadActions";
 import { useClientSettings } from "../hooks/useSettings";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
+import { shareEqual } from "@t3tools/shared/structuralSharing";
+import { useStableHandlers } from "../hooks/useStableHandlers";
+import { useStandingGetter } from "../hooks/useStandingGetter";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
 import {
   useAllEnvironmentProjectSnapshotsReady,
@@ -99,7 +100,6 @@ import {
   useThreadShells,
 } from "../state/entities";
 import { environmentServerConfigsAtom, primaryServerKeybindingsAtom } from "../state/server";
-import { hqDownSinceAtom } from "../state/zerops";
 import { vcsEnvironment } from "../state/vcs";
 import { threadEnvironment } from "../state/threads";
 import { useEnvironmentQuery } from "../state/query";
@@ -183,12 +183,13 @@ import { newMateView, useAddAutomatedMates, useAddMate } from "../zerops/newMate
 import { useAutomatedKey } from "../zerops/useAutomationSettings";
 import { useAddMateOffer } from "../zerops/useHqOffers";
 import { useOpenPutLive, usePutLive } from "../zerops/putLive";
-import { putLiveHoldsRelease } from "../zerops/putLive.logic";
+import { releaseOffered } from "./zerops/SidebarWaiting.logic";
 import { useSetUpEnvironment } from "../zerops/setUpEnvironment";
 import { useAskNewProject } from "../zerops/newProjectAsk";
 import { useRoleOffers, useTeamOffers } from "../zerops/usePlatformCapabilities";
 import { useCreations } from "../zerops/creations";
 import { newProjectView, placedNewProjects } from "../zerops/newProjectBirth";
+import { placedSharedBirths, useSharedBirths } from "../zerops/sharedBirths";
 import {
   useMateComingOf,
   useMateConversationsRead,
@@ -201,7 +202,7 @@ import { useZeropsMateOwners } from "../zerops/useZeropsMateOwners";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
 import { AccountVoiceLine } from "./zerops/AccountVoiceLine";
 import { useListingPatience } from "../zerops/useListingPatience";
-import { hqOutage, useHqServiceUrl } from "../zerops/hqNavigation";
+import { useHqOutage } from "../zerops/hqNavigation";
 import { useAccountDataOptional } from "../zerops/ZeropsAccountData";
 import { useNowMs } from "../zerops/useNowMs";
 import { SidebarProjectTree } from "./sidebar/SidebarProjectTree";
@@ -211,13 +212,13 @@ import {
   type SidebarProjectFlow,
   type SidebarZeropsTreeProps,
 } from "./zerops/SidebarZeropsTree";
-import { releaseFailureOf, rollbacksOf } from "./zerops/SidebarProductionChip.logic";
+import { rollbacksOf } from "./zerops/SidebarProductionChip.logic";
 import { useMatesActivity } from "../zerops/useZeropsAgentActivity";
 import { useSidebarMateMenus } from "../zerops/useSidebarMateMenus";
 import { useHqMatesRead } from "../zerops/useHqMatesRead";
 import { menuPressHeld, type MenuPress } from "./zerops/menuPress.logic";
 import { menuDrawsLoadingRows } from "./zerops/SidebarProjects.logic";
-import { useSidebarWaiting } from "../zerops/useSidebarWaiting";
+import { useViewerWaits, useWaitingNext } from "../zerops/useSidebarWaiting";
 import { shownInScope, useMateScope } from "../zerops/mateScope";
 import { SidebarScopeButton } from "./zerops/SidebarScopeButton";
 import { SidebarJumpButton } from "./zerops/SidebarJumpButton";
@@ -228,7 +229,6 @@ import { overviewHeadline } from "./zerops/SidebarOverview.logic";
 import { useChiefSetupLine } from "~/zerops/chiefSetup";
 import { useOwnChief } from "~/zerops/ownChief";
 import { chiefTopShown } from "./zerops/chief/chiefTop.logic";
-import { useAccountHq } from "~/zerops/accountHq";
 import { SidebarChiefPlace } from "./zerops/chief/SidebarChiefRow";
 import { SidebarChiefTop } from "./zerops/chief/SidebarChiefTop";
 import { SidebarRail, useRailTiles } from "./zerops/SidebarRail";
@@ -237,7 +237,7 @@ import { SidebarZeropsAccountRow } from "./zerops/SidebarZeropsAccount";
 
 import { useProjectFlows } from "../zerops/projectFlows";
 import { placedPressesIn, useForgetConnectedPresses, useMatePresses } from "../zerops/matePress";
-import type { CanonicalEnvironmentRow } from "@t3tools/client-runtime/zerops";
+import { releaseFailureOf, type CanonicalEnvironmentRow } from "@t3tools/client-runtime/zerops";
 import {
   candidatesNotice,
   findCandidate,
@@ -1235,6 +1235,12 @@ const MENU_WAITS_PATIENCE_MS = 800;
 /** How long a press stands for the Mate it opens before its route must have arrived. */
 const MENU_PRESS_BOUND_MS = 6_000;
 
+/** A listed Mate by its list key: a project can hold several containers, each a row of its own. */
+const listedMateKey = (candidate: { readonly key: string }): string => candidate.key;
+
+/** Two readings of plain data say the same (`shareEqual`). */
+const sameAsRead = <T,>(previous: T, next: T): boolean => shareEqual(previous, next) === previous;
+
 /** Runs `run` once the browser has painted the frame now being drawn; at once where none paints. */
 function afterNextPaint(run: () => void): void {
   if (typeof requestAnimationFrame !== "function") {
@@ -1290,14 +1296,25 @@ export default function Sidebar() {
   // A press ends once its Mate connects: nothing of it is left to say.
   useForgetConnectedPresses(zeropsCandidates);
   const zeropsMade = useCreations();
+  const sharedBirths = useSharedBirths();
   const zeropsPlacedBirths = useMemo(
     () =>
-      placedPressesIn(
-        zeropsPresses,
-        zeropsSession.activeOrganization?.id,
-        placedNewProjects(zeropsMade, zeropsSession.activeOrganization?.id),
+      placedSharedBirths(
+        sharedBirths,
+        placedPressesIn(
+          zeropsPresses,
+          zeropsSession.activeOrganization?.id,
+          placedNewProjects(zeropsMade, zeropsSession.activeOrganization?.id),
+        ),
+        zeropsSession.user?.id,
       ),
-    [zeropsPresses, zeropsMade, zeropsSession.activeOrganization?.id],
+    [
+      sharedBirths,
+      zeropsPresses,
+      zeropsMade,
+      zeropsSession.activeOrganization?.id,
+      zeropsSession.user?.id,
+    ],
   );
   // Whose each Mate is, for the badge on the corner of its face.
   const zeropsMateOwner = useZeropsMateOwners();
@@ -1328,11 +1345,6 @@ export default function Sidebar() {
   // Production being made by Put it live is released by it: no row or header asks for a release
   // meanwhile (the onboarding run's "Release 2" beside "Making production").
   const putLiveRuns = usePutLive((state) => state.runs);
-  const releaseOfferedIn = useCallback(
-    (groupId: string, allowed: boolean) =>
-      allowed && !putLiveHoldsRelease(putLiveRuns.get(groupId)),
-    [putLiveRuns],
-  );
   const zeropsSidebarFlow = useCallback(
     (groupId: string): SidebarProjectFlow | undefined => {
       const flow = zeropsProjectFlows.get(groupId);
@@ -1345,7 +1357,12 @@ export default function Sidebar() {
         // never sees a group's own merged code, so it read `main` as empty.
         merged: flow.merged,
         environments: new Map(flow.environments.map((entry) => [entry.id, entry])),
-        releaseOffered: releaseOfferedIn(groupId, flow.release.gate.allowed),
+        // The one gate every surface asks (`releaseOffered`): what waits on the viewer reads it too.
+        releaseOffered: releaseOffered({
+          allowed: flow.release.gate.allowed,
+          recheck: flow.release.git?.delivery?.recheck,
+          putLive: putLiveRuns.get(groupId),
+        }),
         // What a release would put in front of people: the count the
         // chips' menus say waits for production.
         releaseContents: flow.release.contents,
@@ -1358,6 +1375,7 @@ export default function Sidebar() {
         releaseFailure: releaseFailureOf({
           releases: flow.releases,
           environmentInputs: flow.environmentInputs,
+          stalled: flow.release.stalled,
         }),
         // HQ's roll backs: production's chip says one on its way by what it goes back to.
         releaseRollbacks: rollbacksOf(flow.releases),
@@ -1370,7 +1388,7 @@ export default function Sidebar() {
         releaseInFlight: flow.release.inFlight,
       };
     },
-    [releaseOfferedIn, zeropsProjectFlows],
+    [putLiveRuns, zeropsProjectFlows],
   );
   const router = useRouter();
   const { isMobile, setOpen, setOpenMobile } = useSidebar();
@@ -1425,15 +1443,12 @@ export default function Sidebar() {
   const confirmThreadArchive = useClientSettings((s) => s.confirmThreadArchive);
   const sidebarProjectSortOrder = useClientSettings((s) => s.sidebarProjectSortOrder);
   const timestampFormat = useClientSettings((s) => s.timestampFormat);
-  // HQ not answering: the menu draws the structure it last read, says since when and how old that
-  // is (SPEC §6.2.3); the Mates' conversations go on without HQ.
-  const zeropsHqOutage = hqOutage(
+  // HQ away: the menu draws the structure it last read and, past HQ's budget, says since when
+  // (SPEC §6.2.3); the Mates' conversations go on without HQ.
+  const zeropsHqOutage = useHqOutage(
     useAtomValue(shownCanonicalHqListNavigationAtom),
-    useAtomValue(hqDownSinceAtom),
     timestampFormat,
-    zeropsNowMs,
   );
-  const hqServiceUrl = useHqServiceUrl();
   const zeropsRetry = useAccountDataOptional()?.retry;
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
   const { archiveThread } = useThreadActions();
@@ -1778,13 +1793,16 @@ export default function Sidebar() {
     (projectId: string) => {
       if (isMobile) setOpenMobile(false);
       const made = zeropsMade.find((creation) => creation.birthId === projectId);
-      if (made !== undefined && made.projectId === null) {
+      if (
+        (made !== undefined && made.projectId === null) ||
+        sharedBirths.some((birth) => birth.id === projectId && birth.projectId === null)
+      ) {
         void router.navigate(newProjectView(projectId));
         return;
       }
       void router.navigate(newMateView(projectId));
     },
-    [isMobile, router, setOpenMobile, zeropsMade],
+    [isMobile, router, setOpenMobile, sharedBirths, zeropsMade],
   );
 
   const navigateToZeropsProjects = useCallback(() => {
@@ -1845,25 +1863,6 @@ export default function Sidebar() {
         : "",
     [zeropsCandidates, zeropsMenuComplete, zeropsMenuProjects, zeropsProjectFlows],
   );
-  // Every project whose next release is offered waits on the viewer too.
-  const zeropsWaitingReleases = useMemo(
-    () =>
-      zeropsMenuProjects.flatMap((project) => {
-        const release = zeropsProjectFlows.get(project.id)?.release;
-        return release !== undefined && releaseOfferedIn(project.id, release.gate.allowed)
-          ? [
-              {
-                groupId: project.id,
-                name: project.name,
-                ahead: release.summary?.total,
-                changeCount: release.summary?.changeCount,
-              },
-            ]
-          : [];
-      }),
-    [releaseOfferedIn, zeropsMenuProjects, zeropsProjectFlows],
-  );
-
   // What each Mate is doing, off its attention — the one derivation the
   // projects screen reads too (`mateActivity.ts`), so a Mate says the same
   // thing in both places.
@@ -1938,6 +1937,10 @@ export default function Sidebar() {
   }, [zeropsPress, zeropsPressHeld]);
   const litZeropsProjectId =
     zeropsPressHeld && zeropsPress !== null ? zeropsPress.projectId : activeZeropsProjectId;
+  const litZeropsConversation =
+    zeropsPressHeld && zeropsPress?.conversation !== undefined
+      ? zeropsPress.conversation
+      : activeZeropsConversation;
   // Whose Mates the menu lists (the account menu's Mine / Everyone): the
   // tree and the waiting faces read the same answer.
   const [zeropsMateScope, setZeropsMateScope] = useMateScope();
@@ -1948,9 +1951,9 @@ export default function Sidebar() {
       shownInScope(
         zeropsMateScope,
         zeropsPersonFacts[candidate.project.id]?.mine,
-        candidate.project.id === activeZeropsProjectId,
+        candidate.project.id === litZeropsProjectId,
       ),
-    [activeZeropsProjectId, zeropsPersonFacts, zeropsMateScope],
+    [litZeropsProjectId, zeropsPersonFacts, zeropsMateScope],
   );
   // The tree's verbs, the same functions from render to render: the tree and its rows are
   // memoised, and a streaming Mate re-renders this whole menu on every shell event.
@@ -1982,18 +1985,31 @@ export default function Sidebar() {
     [askMateToFix, isMobile, setOpenMobile],
   );
   // The menu's top row is the person's Chief: its conversation once it is listed, else the Chief
-  // page, where it is set up. An organization without an HQ holds no Chief: its top is the mark.
+  // page, where it is set up.
   const mateDirectory = useAtomValue(shownHqMateDirectoryAtom);
   const zeropsChiefPageOpen = useLocation({ select: (location) => location.pathname === "/chief" });
-  const zeropsAccountHq = useAccountHq(zeropsSession.activeOrganization?.id ?? undefined);
-  const zeropsHoldsChief = !(
-    zeropsAccountHq.status === "ready" && zeropsAccountHq.hq.kind === "none"
-  );
   const openChiefPage = useCallback(() => {
     if (isMobile) setOpenMobile(false);
     void router.navigate({ to: "/chief" });
   }, [isMobile, router, setOpenMobile]);
   const zeropsListed = zeropsCandidates;
+  // Who is coming, and each row's menu, as the list is handed them: the same getters while they
+  // answer the same for every Mate listed. Both are built off shared state — every Mate's link,
+  // every write under way — and were rebuilt, and the whole list drawn again, three times as one
+  // conversation opened.
+  const zeropsListedComing = useStandingGetter(
+    zeropsComing,
+    zeropsListed,
+    listedMateKey,
+    sameAsRead,
+  );
+  const getZeropsMateActions = zeropsMateMenus.getMateActions;
+  const zeropsActionsOf = useCallback(
+    (candidate: (typeof zeropsCandidates)[number]) =>
+      getZeropsMateActions(candidate, zeropsRowActivity(candidate)),
+    [getZeropsMateActions, zeropsRowActivity],
+  );
+  const zeropsListedActions = useStandingGetter(zeropsActionsOf, zeropsListed, listedMateKey);
   const chiefSetupLine = useChiefSetupLine();
   const ownChief = useOwnChief();
   const onZeropsSelect = useCallback(
@@ -2001,12 +2017,14 @@ export default function Sidebar() {
       if (isMobile) {
         setOpenMobile(false);
       }
-      startTransition(() => {
-        setZeropsPress({
-          projectId: candidate.project.id,
-          from: activeZeropsProjectId,
-          fromOverview: zeropsOverviewOpen,
-        });
+      // Drawn in the press's own frame: the two rows whose state changes, with the band's slide.
+      // The route's change, a frame later, then finds the menu as it already stands and draws
+      // none of it again.
+      setZeropsPress({
+        projectId: candidate.project.id,
+        conversation: candidate.environmentId ?? undefined,
+        from: activeZeropsProjectId,
+        fromOverview: zeropsOverviewOpen,
       });
       // The route changes once the band's slide — set by the press itself (`slideSelectedBandTo`)
       // — has painted: the change redraws every page reading the route at once, 40–80 ms in which
@@ -2026,11 +2044,18 @@ export default function Sidebar() {
     },
     [isMobile, openMate, setOpenMobile],
   );
-  // What waits on the viewer, for the Waiting on you row and ⌥↓: each Mate read as its row reads it.
-  const zeropsWaiting = useSidebarWaiting({
-    candidates: zeropsCandidates,
-    activityOf: zeropsRowActivity,
-    shown: zeropsShown,
+  // What every row of the list is handed to call: the same functions for the menu's life, so
+  // opening another Mate redraws the two rows whose state changed, not each row for a new handler.
+  const zeropsRowVerbs = useStableHandlers({
+    select: onZeropsSelect,
+    openCrew: onZeropsOpenCrew,
+    askToFix: onZeropsAskToFix,
+  });
+  // What waits on the viewer (`useViewerWaits`), the overview's tab and cards read the same: the
+  // Waiting on you row, the header's count and the rail; ⌥↓ goes to the next.
+  const zeropsWaiting = useViewerWaits();
+  useWaitingNext({
+    mates: zeropsWaiting.mates,
     activeProjectId: activeZeropsProjectId,
     beforeReveal: isMobile
       ? () => {
@@ -2038,7 +2063,6 @@ export default function Sidebar() {
         }
       : undefined,
     enabled: zeropsSignedIn,
-    releases: zeropsWaitingReleases,
   });
   // The menu's list and what waits on the viewer come in one frame as the menu first paints: the
   // list holds its loading rows until rows of its own are there and HQ's navigation, which says
@@ -2694,11 +2718,6 @@ export default function Sidebar() {
     updateThreadJumpHintsVisibility(shouldShowJumpHintsNow);
   }, [shouldShowJumpHintsNow, updateThreadJumpHintsVisibility]);
 
-  const attachListAutoAnimateRef = useCallback((node: HTMLUListElement | null) => {
-    if (!node) return;
-    autoAnimate(node, { duration: 150, easing: "ease-out" });
-  }, []);
-
   // New thread defaults to the project you're in (active thread's project,
   // falling back to the top project) — same resolution the command palette
   // uses. The command palette already offers a "New thread in..." submenu
@@ -2741,7 +2760,6 @@ export default function Sidebar() {
   // holds the mark, with what waits on the person beside it (`SidebarChiefPlace`).
   const zeropsChiefShown =
     zeropsSignedIn &&
-    zeropsHoldsChief &&
     chiefTopShown({
       own: zeropsChief === undefined ? ownChief : zeropsChief.project.id,
       setup: chiefSetupLine,
@@ -2823,11 +2841,11 @@ export default function Sidebar() {
     />
   );
   return (
-    <SidebarStage rail={zeropsRail}>
+    <SidebarStage rail={zeropsRail} railHolds={zeropsRailTiles.tiles.length}>
       <SidebarChromeHeader
         brand={
           zeropsChiefTop(false) ??
-          (zeropsSignedIn && zeropsHoldsChief ? (
+          (zeropsSignedIn ? (
             // The Chief's place while there is none: the mark, and what waits on the person.
             <SidebarChiefPlace
               waiting={
@@ -2842,8 +2860,7 @@ export default function Sidebar() {
         status={
           zeropsHqOutage === null ? undefined : (
             <SidebarHqStatus
-              compact={zeropsSignedIn && zeropsHoldsChief}
-              serviceUrl={hqServiceUrl}
+              compact={zeropsSignedIn}
               kind={zeropsHqOutage.kind}
               line={zeropsHqOutage.line}
               onAgain={zeropsHqOutage.again ? zeropsRetry : undefined}
@@ -3094,7 +3111,7 @@ export default function Sidebar() {
               onShowEveryone={zeropsMateScope === "mine" ? showEveryoneMates : undefined}
               activeProjectId={litZeropsProjectId}
               activeProjectResolving={activeZeropsProjectResolving && !zeropsPressHeld}
-              activeConversation={activeZeropsConversation}
+              activeConversation={litZeropsConversation}
               births={zeropsPlacedBirths}
               candidates={zeropsListed}
               complete={zeropsMenuComplete}
@@ -3105,21 +3122,22 @@ export default function Sidebar() {
               onAddAutomatedMates={automatedOffered ? onZeropsNewAutomatedMates : undefined}
               onInvite={teamOffered.invite ? inviteToProject : undefined}
               onSetUp={onZeropsSetUp}
-              getComing={zeropsComing}
+              getComing={zeropsListedComing}
               onOpenComing={openComingMate}
               onBrowseProjects={navigateToZeropsProjects}
-              onAskToFix={onZeropsAskToFix}
+              onAskToFix={zeropsRowVerbs.askToFix}
               getFlow={zeropsSidebarFlowWithPages}
               getOwner={zeropsMateOwner}
-              getMateActions={zeropsMateMenus.getMateActions}
+              getMateActions={zeropsListedActions}
+              getBirth={zeropsMateMenus.getBirth}
               shown={zeropsShown}
               timestampFormat={timestampFormat}
               onOpenGroup={openGroup}
               getActivity={zeropsRowActivity}
               keyedReadings
               getConversationsRead={zeropsConversationsRead}
-              onSelect={onZeropsSelect}
-              onOpenCrew={onZeropsOpenCrew}
+              onSelect={zeropsRowVerbs.select}
+              onOpenCrew={zeropsRowVerbs.openCrew}
             />
           ) : null}
           {/* The dialogs a Mate's own menu opens: rename, hand over, move. */}
@@ -3209,7 +3227,7 @@ export default function Sidebar() {
               closeDelay={0}
               timeout={400}
             >
-              <ul ref={attachListAutoAnimateRef} role="list" className="flex flex-col gap-px">
+              <ul role="list" className="flex flex-col gap-px">
                 {(() => {
                   const renderThreadRow = (thread: EnvironmentThreadShell, section: "active") => {
                     const threadKey = scopedThreadKey(

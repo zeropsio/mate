@@ -1,7 +1,10 @@
 /**
  * A proposal: what a Zerops tool asks the person to approve. The Chief's organization tools
  * (`zerops_org_*`) propose changes to the organization; a project's Mate proposes asking the
- * person's Chief (`zerops_propose_ask_chief`). Those tools never act. Each returns one document
+ * person's Chief (`zerops_propose_ask_chief`), connecting an MCP server for its agents
+ * (`zerops_propose_mcp`), creating the services its application's production lacks
+ * (`zerops_propose_create_service`), or releasing what waits for production
+ * (`zerops_propose_release`). Those tools never act. Each returns one document
  * with a top-level `proposal`; the person approves or declines it on its card, and the client
  * carries out an approved one as the person. The contract is zcp's (`../zcp/docs/spec-mate.md`,
  * org mode).
@@ -26,7 +29,11 @@ export type ZeropsProposalKind =
   | "mate.message"
   | "chief.message"
   | "domain.add"
-  | "access.set";
+  | "access.set"
+  | "mcp.add"
+  | "env.reveal"
+  | "service.create"
+  | "release.offer";
 
 interface ProposalHead {
   readonly id: string;
@@ -81,6 +88,79 @@ export interface ZeropsAccessProposalParams {
   readonly people: ReadonlyArray<{ readonly person: string; readonly level: ZeropsAccessLevel }>;
 }
 
+/** Who an MCP server is proposed for: only `mate` is set up so far. */
+export type ZeropsMcpScope = "mate" | "project" | "org";
+
+export type ZeropsMcpTransport =
+  | { readonly type: "http" | "sse"; readonly url: string }
+  | { readonly type: "stdio"; readonly command: string; readonly args: ReadonlyArray<string> };
+
+/**
+ * How a server signs in: `header`, a key the person types, sent in a header; `oauth`, the
+ * person signs in on the provider's page; `oauth-app`, OAuth with an app the person registered.
+ */
+export type ZeropsMcpAuthKind = "none" | "header" | "oauth" | "oauth-app";
+
+/** What a server is, whoever signs in to it. */
+export interface ZeropsMcpServerDefinition {
+  /** Its key in every agent's config. */
+  readonly name: string;
+  /** Its name for the person. */
+  readonly title: string;
+  readonly transport: ZeropsMcpTransport;
+  readonly auth: { readonly kind: ZeropsMcpAuthKind; readonly scopes?: ReadonlyArray<string> };
+  readonly docsUrl?: string;
+}
+
+/**
+ * One value the person types on the card, never the agent: a command's environment variable named
+ * `key`, or a remote server's header (`headerName`, else `key`) holding `prefix` and the value.
+ */
+export interface ZeropsMcpCredentialField {
+  readonly key: string;
+  readonly label: string;
+  readonly placement: "env" | "header";
+  readonly headerName?: string;
+  readonly prefix?: string;
+}
+
+/**
+ * The definition apart from its credential fields: they may later live at different scopes (a
+ * server the organization defines, each Mate signing in itself).
+ */
+export interface ZeropsMcpProposalParams {
+  readonly scope: ZeropsMcpScope;
+  readonly server: ZeropsMcpServerDefinition;
+  readonly credentials: ReadonlyArray<ZeropsMcpCredentialField>;
+}
+
+/**
+ * A hidden value the agent cannot read, shown to the person on the card: its name and whether it is
+ * the project's or a service's own. Never the value: a document carrying one is no proposal.
+ */
+export interface ZeropsRevealProposalParams {
+  readonly scope: "project" | "service";
+  readonly key: string;
+}
+
+/**
+ * The services the application's production tier declares and production lacks, by hostname, and
+ * the recipe's `main` the Mate read them at. Hostnames only: what creates them is HQ's plan.
+ */
+export interface ZeropsServiceCreateParams {
+  readonly services: ReadonlyArray<string>;
+  readonly recipeHead: string;
+}
+
+/**
+ * What waits for production, as HQ offered it when the Mate asked: the recipe's `main` the offer
+ * was read at, which pins the ask, and the release name HQ suggested.
+ */
+export interface ZeropsReleaseOfferParams {
+  readonly head: string;
+  readonly suggestion: string;
+}
+
 export type ZeropsProposal =
   | (ProposalHead & {
       readonly kind: "service.restart" | "service.start" | "service.stop";
@@ -111,6 +191,25 @@ export type ZeropsProposal =
   | (ProposalHead & {
       readonly kind: "access.set";
       readonly params: ZeropsAccessProposalParams;
+    })
+  | (ProposalHead & {
+      readonly kind: "mcp.add";
+      /** The proposing Mate's own project, whose agents get it. */
+      readonly projectId: string;
+      readonly params: ZeropsMcpProposalParams;
+    })
+  | (ProposalHead & {
+      readonly kind: "env.reveal";
+      readonly projectId: string;
+      readonly params: ZeropsRevealProposalParams;
+    })
+  | (ProposalHead & {
+      readonly kind: "service.create";
+      readonly params: ZeropsServiceCreateParams;
+    })
+  | (ProposalHead & {
+      readonly kind: "release.offer";
+      readonly params: ZeropsReleaseOfferParams;
     });
 
 const Words = Schema.NonEmptyString;
@@ -189,6 +288,73 @@ const AccessProposal = Schema.Struct({
   }),
 });
 
+const McpProposal = Schema.Struct({
+  ...Head,
+  kind: Schema.Literal("mcp.add"),
+  projectId: Words,
+  params: Schema.Struct({
+    scope: Schema.optionalKey(Schema.Literals(["mate", "project", "org"])),
+    server: Schema.Struct({
+      name: Words,
+      title: Schema.optionalKey(Schema.String),
+      transport: Schema.Union([
+        Schema.Struct({ type: Schema.Literals(["http", "sse"]), url: Words }),
+        Schema.Struct({
+          type: Schema.Literal("stdio"),
+          command: Words,
+          args: Schema.optionalKey(Schema.Array(Schema.String)),
+        }),
+      ]),
+      auth: Schema.Struct({
+        kind: Schema.Literals(["none", "header", "oauth", "oauth-app"]),
+        scopes: Schema.optionalKey(Schema.Array(Schema.String)),
+      }),
+      docsUrl: Schema.optionalKey(Schema.String),
+    }),
+    credentials: Schema.optionalKey(
+      Schema.Array(
+        Schema.Struct({
+          key: Words,
+          label: Words,
+          placement: Schema.Literals(["env", "header"]),
+          headerName: Schema.optionalKey(Schema.String),
+          prefix: Schema.optionalKey(Schema.String),
+        }),
+      ),
+    ),
+  }),
+});
+
+const RevealParams = Schema.Struct({
+  scope: Schema.Literals(["project", "service"]),
+  key: Words,
+});
+
+const RevealProposal = Schema.Struct({
+  ...Head,
+  kind: Schema.Literal("env.reveal"),
+  projectId: Words,
+  params: RevealParams,
+});
+
+const ServiceCreateProposal = Schema.Struct({
+  ...Head,
+  kind: Schema.Literal("service.create"),
+  params: Schema.Struct({
+    services: Schema.NonEmptyArray(Words),
+    recipeHead: Words,
+  }),
+});
+
+const ReleaseOfferProposal = Schema.Struct({
+  ...Head,
+  kind: Schema.Literal("release.offer"),
+  params: Schema.Struct({ head: Words, suggestion: Words }),
+});
+
+/** A reveal's params hold its name and scope and nothing else: never a value. */
+const decodeRevealParams = Schema.decodeUnknownOption(RevealParams, { onExcessProperty: "error" });
+
 const ProposalDocument = Schema.Struct({
   proposal: Schema.Union([
     ServiceProposal,
@@ -197,6 +363,10 @@ const ProposalDocument = Schema.Struct({
     ChiefMessageProposal,
     DomainProposal,
     AccessProposal,
+    McpProposal,
+    RevealProposal,
+    ServiceCreateProposal,
+    ReleaseOfferProposal,
   ]),
 });
 
@@ -206,8 +376,64 @@ const decodeDocument = Schema.decodeUnknownOption(ProposalDocument);
 
 const blank = (text: string | undefined): boolean => text !== undefined && text.trim() === "";
 
-/** The fields its kind carries, or undefined where what it says is blank or names nowhere. */
-function shaped(proposal: DecodedProposal): ZeropsProposal | undefined {
+/** A key every agent's config takes (`McpServerName`). */
+const MCP_NAME = /^[a-z0-9_-]{1,64}$/i;
+
+type DecodedMcp = Extract<DecodedProposal, { kind: "mcp.add" }>["params"];
+
+/**
+ * An MCP server's params, or undefined where they name no server an agent can be given: a name no
+ * config takes, a blank field, a field twice, or a field placed where its transport has none (an
+ * environment variable is a command's, a header a remote server's).
+ */
+function mcpParams(params: DecodedMcp): ZeropsMcpProposalParams | undefined {
+  const { server } = params;
+  const name = server.name.trim();
+  if (!MCP_NAME.test(name)) return undefined;
+  const remote = server.transport.type !== "stdio";
+  const credentials = params.credentials ?? [];
+  const keys = new Set<string>();
+  for (const field of credentials) {
+    if (blank(field.key) || blank(field.label) || keys.has(field.key)) return undefined;
+    if ((field.placement === "header") !== remote) return undefined;
+    keys.add(field.key);
+  }
+  const transport: ZeropsMcpTransport =
+    server.transport.type === "stdio"
+      ? {
+          type: "stdio",
+          command: server.transport.command,
+          args: [...(server.transport.args ?? [])],
+        }
+      : { type: server.transport.type, url: server.transport.url };
+  const scopes = (server.auth.scopes ?? []).map((scope) => scope.trim()).filter(Boolean);
+  const title = server.title?.trim();
+  return {
+    scope: params.scope ?? "mate",
+    server: {
+      name,
+      title: title === undefined || title === "" ? name : title,
+      transport,
+      auth: { kind: server.auth.kind, ...(scopes.length === 0 ? {} : { scopes }) },
+      ...(server.docsUrl === undefined || blank(server.docsUrl) ? {} : { docsUrl: server.docsUrl }),
+    },
+    credentials: credentials.map((field) => ({
+      key: field.key,
+      label: field.label,
+      placement: field.placement,
+      ...(field.headerName === undefined || blank(field.headerName)
+        ? {}
+        : { headerName: field.headerName.trim() }),
+      ...(field.prefix === undefined || field.prefix === "" ? {} : { prefix: field.prefix }),
+    })),
+  };
+}
+
+/**
+ * The fields its kind carries, or undefined where what it says is blank or names nowhere. `params`
+ * is the document's own, as it was sent.
+ */
+function shaped(proposal: DecodedProposal, params: unknown): ZeropsProposal | undefined {
   if (blank(proposal.id) || blank(proposal.summary)) return undefined;
   const head: ProposalHead = {
     id: proposal.id,
@@ -272,6 +498,17 @@ function shaped(proposal: DecodedProposal): ZeropsProposal | undefined {
         params: { domains: [...domains], port },
       };
     }
+    case "env.reveal": {
+      const { scope, key } = proposal.params;
+      // A service's value names its service, by id or by hostname in the Mate's own vault.
+      if (
+        blank(key) ||
+        Option.isNone(decodeRevealParams(params)) ||
+        (scope === "service" && proposal.serviceId === undefined && !proposal.serviceName?.trim())
+      )
+        return undefined;
+      return { ...head, kind: "env.reveal", projectId: proposal.projectId, params: { scope, key } };
+    }
     case "access.set": {
       const { projects, people } = proposal.params;
       if (people.some(({ person }) => blank(person)) || projects.some(({ id }) => blank(id)))
@@ -283,6 +520,31 @@ function shaped(proposal: DecodedProposal): ZeropsProposal | undefined {
           projects: projects.map(({ id, name }) => ({ id, name })),
           people: people.map(({ person, level }) => ({ person, level })),
         },
+      };
+    }
+    case "mcp.add": {
+      const mcp = mcpParams(proposal.params);
+      if (mcp === undefined) return undefined;
+      return { ...head, kind: "mcp.add", projectId: proposal.projectId, params: mcp };
+    }
+    case "service.create": {
+      // Each service once, by its hostname: a blank one names nothing to create.
+      const services = [...new Set(proposal.params.services.map((service) => service.trim()))];
+      if (services.some((service) => service === "") || blank(proposal.params.recipeHead))
+        return undefined;
+      return {
+        ...head,
+        kind: "service.create",
+        params: { services, recipeHead: proposal.params.recipeHead },
+      };
+    }
+    case "release.offer": {
+      const { head: offerHead, suggestion } = proposal.params;
+      if (blank(offerHead) || blank(suggestion)) return undefined;
+      return {
+        ...head,
+        kind: "release.offer",
+        params: { head: offerHead, suggestion: suggestion.trim() },
       };
     }
   }
@@ -305,6 +567,10 @@ export function readZeropsProposal(
   }
   return Option.match(decodeDocument(parsed), {
     onNone: () => undefined,
-    onSome: (document) => shaped(document.proposal),
+    onSome: (document) =>
+      shaped(
+        document.proposal,
+        (parsed as { readonly proposal: { readonly params?: unknown } }).proposal.params,
+      ),
   });
 }

@@ -3,10 +3,12 @@ import * as Socket from "effect/socket/Socket";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import { ZeropsConnections } from "./zerops/ZeropsConnections.ts";
 import { isAllowedWebSocketOrigin } from "./auth/origin.ts";
-import { ZEROPS_SUBJECT_PREFIX } from "./zerops/zeropsSubject.ts";
+import { ZEROPS_SUBJECT_PREFIX } from "@t3tools/contracts";
 import { RpcUpdateAdmission } from "./RpcUpdateAdmission.ts";
 import { ZeropsSetup } from "./zerops/ZeropsSetup.ts";
-import { readsAlongOnly, ZeropsHqLink } from "./zerops/ZeropsHqLink.ts";
+import { actingIn, hqKeyOf, ZeropsHqLink } from "./zerops/ZeropsHqLink.ts";
+import { ZeropsMateOwner } from "./zerops/ZeropsMateOwner.ts";
+import { administersProject, ZeropsMateAccessList } from "./zerops/ZeropsMateAccessList.ts";
 import { ThreadFileWrites } from "./zerops/ThreadFileWrites.ts";
 import {
   sameUsageLimitCommandCoverage,
@@ -19,6 +21,7 @@ import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
+import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import {
   DEFAULT_AUTOMATIC_GIT_FETCH_INTERVAL,
@@ -63,10 +66,9 @@ import {
   RpcClientId,
   EnvironmentAuthorizationError,
   ThreadId,
+  type ServerConfigProvidersChangedPayload,
+  type ServerConfigStreamEvent,
   type ServerProvider,
-  type TerminalAttachStreamEvent,
-  type TerminalError,
-  type TerminalEvent,
   type TerminalMetadataStreamEvent,
   WS_METHODS,
   WsRpcGroup,
@@ -94,7 +96,7 @@ import { makeProviderInstallation } from "./provider/providerInstallation.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
-import { withTerminalOutputWindow } from "./terminal/OutputProtocol.ts";
+import { terminalOutputStream, withTerminalOutputWindow } from "./terminal/OutputProtocol.ts";
 import { resolveAssetContext } from "./engineSessionDirectory.ts";
 import { resolveImageAsset } from "./assets/ImageAsset.ts";
 import { issueAssetUrl } from "./assets/AssetAccess.ts";
@@ -180,6 +182,22 @@ export const resolveAvailableEditorsForConfig = <A, E, R>(
 export const resolveFileManagerRevealKindForConfig = <E, R>(
   discovery: Effect.Effect<FileManagerRevealKind | undefined, E, R>,
 ) => resolveDiscoveryForConfig(discovery, () => undefined);
+
+/** The entries of `next` that differ from `sent`, or null when the list is unchanged. */
+export function providersChangedSince(
+  sent: ReadonlyArray<ServerProvider>,
+  next: ReadonlyArray<ServerProvider>,
+): ServerConfigProvidersChangedPayload | null {
+  const sentById = new Map(sent.map((provider) => [provider.instanceId, JSON.stringify(provider)]));
+  const providers = next.filter(
+    (provider) => sentById.get(provider.instanceId) !== JSON.stringify(provider),
+  );
+  const instanceIds = next.map((provider) => provider.instanceId);
+  const sameInstances =
+    instanceIds.length === sent.length &&
+    instanceIds.every((instanceId, index) => sent[index]?.instanceId === instanceId);
+  return providers.length === 0 && sameInstances ? null : { providers, instanceIds };
+}
 
 function unexpectedCompatibilityError(error: never): never {
   throw new Error(`Unhandled compatibility error: ${String(error)}`);
@@ -373,7 +391,11 @@ function readClientConnectionOrigin(
   };
 }
 
-const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
+const makeWsRpcLayer = (
+  currentSession: EnvironmentAuth.AuthenticatedSession,
+  /** The connection's own scope: it closes when the socket ends. */
+  connectionScope: Scope.Scope,
+) =>
   WsRpcGroup.toLayer(
     Effect.gen(function* () {
       const currentSessionId = currentSession.sessionId;
@@ -442,7 +464,7 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
       const repositoryIdentityResolver =
         yield* RepositoryIdentityResolver.RepositoryIdentityResolver;
       const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
-      const { serverVersion } = yield* serverEnvironment.getDescriptor;
+      const { serverVersion, bootId } = yield* serverEnvironment.getDescriptor;
       const backgroundPolicy = yield* BackgroundPolicy.BackgroundPolicy;
       const rpcClientIds = yield* Ref.make(new Set<RpcClientId>());
       yield* Effect.addFinalizer(() =>
@@ -505,6 +527,10 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
       );
       const zeropsCli = yield* ZeropsCli;
       const zeropsMateUpdate = yield* ZeropsMateUpdate;
+      // HQ's word on the Mate's key, as every connected person is told it; none outside Zerops.
+      const hqKeyLink = Option.getOrUndefined(yield* Effect.serviceOption(ZeropsHqLink));
+      const currentHqKey =
+        hqKeyLink === undefined ? Effect.succeed(null) : Effect.map(hqKeyLink.standing, hqKeyOf);
       const zeropsDataConsole = yield* ZeropsDataConsoleModule.ZeropsDataConsole;
       const zeropsGitRemoteProbe = yield* ZeropsGitRemoteProbeModule.ZeropsGitRemoteProbe;
       // What a thread's agent wrote, read back; absent where no store backs it.
@@ -806,6 +832,7 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
           );
           const environment = yield* serverEnvironment.getDescriptor;
           const auth = yield* serverAuth.getDescriptor();
+          const hqKey = yield* currentHqKey;
           const availableEditors: ReadonlyArray<EditorId> = yield* resolveAvailableEditorsForConfig(
             externalLauncher.resolveAvailableEditors(),
           );
@@ -844,6 +871,7 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
               otlpLogsEnabled: config.otlpLogsUrl !== undefined,
             },
             settings,
+            ...(hqKey === null ? {} : { hqKey }),
             shellResumeCompletionMarker: true,
             ...(fileManagerRevealKind === undefined
               ? {}
@@ -1088,6 +1116,7 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
               // interrupt a fork before the hub answered.
               if (input.instanceId === undefined) {
                 yield* usageLimitSources.refresh;
+                yield* externalLauncher.rediscoverEditors();
               }
               let providers = yield* input.cwd !== undefined && input.instanceId !== undefined
                 ? providerRegistry.refreshWorkspaceSnapshot({
@@ -1125,7 +1154,15 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
                   providers = yield* providerRegistry.refreshInstance(instance.instanceId);
                 }
               }
-              return { providers: yield* withZeropsAgentAuth(providers) };
+              // A targeted refresh answers with the one provider it looked at;
+              // the config stream carries the change to every client.
+              return {
+                providers: yield* withZeropsAgentAuth(
+                  input.instanceId === undefined
+                    ? providers
+                    : providers.filter((provider) => provider.instanceId === input.instanceId),
+                ),
+              };
             }),
           ),
         // The MCP tab's methods (`zerops/mcp/McpServers.ts`).
@@ -1150,6 +1187,26 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
           admit(
             WS_METHODS.mcpServersReconnect,
             withMcpServers(WS_METHODS.mcpServersReconnect, (mcp) => mcp.reconnect(input)),
+          ),
+        [WS_METHODS.mcpServersSignIn]: (input) =>
+          admit(
+            WS_METHODS.mcpServersSignIn,
+            withMcpServers(WS_METHODS.mcpServersSignIn, (mcp) => mcp.signIn(input)),
+          ),
+        [WS_METHODS.mcpServersUpdate]: (input) =>
+          admit(
+            WS_METHODS.mcpServersUpdate,
+            withMcpServers(WS_METHODS.mcpServersUpdate, (mcp) => mcp.update(input)),
+          ),
+        [WS_METHODS.mcpServersSignOut]: (input) =>
+          admit(
+            WS_METHODS.mcpServersSignOut,
+            withMcpServers(WS_METHODS.mcpServersSignOut, (mcp) => mcp.signOut(input)),
+          ),
+        [WS_METHODS.mcpServersFinishSignIn]: (input) =>
+          admit(
+            WS_METHODS.mcpServersFinishSignIn,
+            withMcpServers(WS_METHODS.mcpServersFinishSignIn, (mcp) => mcp.finishSignIn(input)),
           ),
         [WS_METHODS.providerUploadFeedback]: (input) =>
           admit(
@@ -1254,21 +1311,9 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
             }),
           ),
         [WS_METHODS.serverUpsertKeybinding]: (rule) =>
-          admit(
-            WS_METHODS.serverUpsertKeybinding,
-            Effect.gen(function* () {
-              const keybindingsConfig = yield* keybindings.upsertKeybindingRule(rule);
-              return { keybindings: keybindingsConfig, issues: [] };
-            }),
-          ),
+          admit(WS_METHODS.serverUpsertKeybinding, keybindings.upsertKeybindingRule(rule)),
         [WS_METHODS.serverRemoveKeybinding]: (rule) =>
-          admit(
-            WS_METHODS.serverRemoveKeybinding,
-            Effect.gen(function* () {
-              const keybindingsConfig = yield* keybindings.removeKeybindingRule(rule);
-              return { keybindings: keybindingsConfig, issues: [] };
-            }),
-          ),
+          admit(WS_METHODS.serverRemoveKeybinding, keybindings.removeKeybindingRule(rule)),
         [WS_METHODS.serverGetSettings]: (_input) =>
           serverSettings.getSettings.pipe(Effect.map(ServerSettings.redactServerSettingsForClient)),
         [WS_METHODS.serverUpdateSettings]: ({ patch }) =>
@@ -1305,10 +1350,12 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
           zeropsMateUpdate,
           isZeropsEnvironment: isZeropsEnvironment(config),
           serverVersion,
+          bootId,
           zeropsDataConsole,
           zeropsGitRemoteProbe,
           zeropsCrewProposals,
           subject: currentSession.subject,
+          connection: { id: currentSessionId, scope: connectionScope },
           admit,
         }),
         ...registerCrewRpc({
@@ -1722,13 +1769,15 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
             terminalManager.open({ ...input, openedBy: currentSessionId }),
           ),
         [WS_METHODS.terminalAttach]: (input) =>
-          Stream.callback<TerminalAttachStreamEvent, TerminalError>((queue) =>
-            Effect.acquireRelease(
-              terminalManager.attachStream({ ...input, openedBy: currentSessionId }, (event) =>
-                Queue.offer(queue, event),
+          terminalOutputStream(
+            (listener, registerCleanup) =>
+              terminalManager.attachStream(
+                { ...input, openedBy: currentSessionId },
+                listener,
+                registerCleanup,
               ),
-              (unsubscribe) => Effect.sync(unsubscribe),
-            ),
+            (listener, registerCleanup) =>
+              terminalManager.resyncStream(input, listener, registerCleanup),
           ),
         [WS_METHODS.terminalWrite]: (input) =>
           admit(WS_METHODS.terminalWrite, terminalManager.write(input)),
@@ -1744,12 +1793,7 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
         [WS_METHODS.terminalClose]: (input) =>
           admit(WS_METHODS.terminalClose, terminalManager.close(input)),
         [WS_METHODS.subscribeTerminalEvents]: (_input) =>
-          Stream.callback<TerminalEvent>((queue) =>
-            Effect.acquireRelease(
-              terminalManager.subscribe((event) => Queue.offer(queue, event)),
-              (unsubscribe) => Effect.sync(unsubscribe),
-            ),
-          ),
+          terminalOutputStream(terminalManager.subscribe),
         [WS_METHODS.subscribeTerminalMetadata]: (_input) =>
           Stream.callback<TerminalMetadataStreamEvent>((queue) =>
             Effect.acquireRelease(
@@ -1761,8 +1805,11 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
           Stream.unwrap(
             Effect.gen(function* () {
               const usageLimitsCommand = input.usageLimitsCommand === true;
+              // Subscribe before the snapshot so changes made while it loads are buffered.
+              const keybindingsChanges = yield* keybindings.subscribeChanges;
+              const settingsChanges = yield* serverSettings.subscribeChanges;
               const config = yield* loadServerConfig({ usageLimitsCommand });
-              const keybindingsUpdates = keybindings.streamChanges.pipe(
+              const keybindingsUpdates = keybindingsChanges.pipe(
                 Stream.map((event) => ({
                   version: 1 as const,
                   type: "keybindingsUpdated" as const,
@@ -1805,13 +1852,40 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
                   (previous, next) => JSON.stringify(previous) === JSON.stringify(next),
                 ),
                 Stream.drop(1),
-                Stream.map((providers) => ({
-                  version: 1 as const,
-                  type: "providerStatuses" as const,
-                  payload: { providers },
-                })),
                 Stream.debounce(Duration.millis(PROVIDER_STATUS_DEBOUNCE_MS)),
               );
+              // A provider entry carries its whole model and command catalog, and a
+              // refresh restamps only the one it looked at: a capable client is sent
+              // just the entries that differ from what it was last sent.
+              const providerUpdates: Stream.Stream<ServerConfigStreamEvent> =
+                input.providerChanges === true
+                  ? providerStatuses.pipe(
+                      Stream.mapAccum(
+                        (): ReadonlyArray<ServerProvider> => config.providers,
+                        (sent, providers) => {
+                          const payload = providersChangedSince(sent, providers);
+                          return [
+                            providers,
+                            payload === null
+                              ? []
+                              : [
+                                  {
+                                    version: 1 as const,
+                                    type: "providersChanged" as const,
+                                    payload,
+                                  },
+                                ],
+                          ] as const;
+                        },
+                      ),
+                    )
+                  : providerStatuses.pipe(
+                      Stream.map((providers) => ({
+                        version: 1 as const,
+                        type: "providerStatuses" as const,
+                        payload: { providers },
+                      })),
+                    );
               // The only source of reported quota: the stream emits the
               // current set before any change, so the snapshot carrying it too
               // would just send every client the same array twice per connect.
@@ -1829,7 +1903,7 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
                       })),
                     )
                   : Stream.empty;
-              const settingsUpdates = serverSettings.streamChanges.pipe(
+              const settingsUpdates = settingsChanges.pipe(
                 Stream.map((settings) => ServerSettings.redactServerSettingsForClient(settings)),
                 Stream.map((settings) => ({
                   version: 1 as const,
@@ -1848,12 +1922,29 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
                       })),
                     )
                   : Stream.empty;
+              // Seeded with the snapshot's word so only a change goes out.
+              const hqKeyUpdates =
+                input.hqKey === true && hqKeyLink !== undefined
+                  ? hqKeyLink.changes.pipe(
+                      Stream.mapEffect(() => currentHqKey),
+                      (words) => Stream.concat(Stream.make(config.hqKey ?? null), words),
+                      Stream.changesWith(
+                        (previous, next) => JSON.stringify(previous) === JSON.stringify(next),
+                      ),
+                      Stream.drop(1),
+                      Stream.map((hqKey) => ({
+                        version: 1 as const,
+                        type: "hqKey" as const,
+                        payload: { hqKey },
+                      })),
+                    )
+                  : Stream.empty;
               const liveUpdates = Stream.merge(
-                mateUpdates,
+                Stream.merge(mateUpdates, hqKeyUpdates),
                 Stream.merge(
                   keybindingsUpdates,
                   Stream.merge(
-                    providerStatuses,
+                    providerUpdates,
                     Stream.merge(settingsUpdates, usageLimitSourceUpdates),
                   ),
                 ),
@@ -1944,6 +2035,8 @@ export const websocketRpcRouteLayer = HttpRouter.add(
   "/ws",
   Effect.gen(function* () {
     const request = yield* HttpServerRequest.HttpServerRequest;
+    // The request's scope lives as long as the socket: the connection's own.
+    const connectionScope = yield* Effect.scope;
     const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
     const config = yield* ServerConfig.ServerConfig;
     if (!isAllowedWebSocketOrigin(config, request.headers.origin)) {
@@ -2038,12 +2131,24 @@ export const websocketRpcRouteLayer = HttpRouter.add(
             .current(handle)
             .pipe(Effect.map((current) => (Option.isSome(current) ? AuthZeropsClientScopes : [])))
         : Effect.succeed(session.scopes);
-    // Asked on every acting call: HQ may name another owner while the socket stays open.
+    // Asked on every acting call: HQ may name another owner, or refuse the key, while the socket
+    // stays open.
     const hqLink = Option.getOrUndefined(yield* Effect.serviceOption(ZeropsHqLink));
-    const readsAlong =
+    const mateOwner = Option.getOrUndefined(yield* Effect.serviceOption(ZeropsMateOwner));
+    const acting =
       hqLink === undefined
+        ? Effect.succeed("acts" as const)
+        : Effect.zipWith(
+            mateOwner?.owner ?? Effect.succeed(undefined),
+            hqLink.standing,
+            (owner, standing) => actingIn(owner, standing, session.subject),
+          );
+    // An admin of the Mate's project keeps someone else's Mate current: asked per call too.
+    const accessList = Option.getOrUndefined(yield* Effect.serviceOption(ZeropsMateAccessList));
+    const administers =
+      accessList === undefined
         ? Effect.succeed(false)
-        : Effect.map(hqLink.standing, (standing) => readsAlongOnly(standing, session.subject));
+        : Effect.map(accessList.current, (list) => administersProject(list, session.subject));
     const rpcWebSocketHttpEffect = yield* Effect.gen(function* () {
       const { protocol, httpEffect } = yield* RpcServer.makeProtocolWithHttpEffectWebsocket;
       // Terminal output streams run ahead of the client's acks inside a small
@@ -2052,7 +2157,7 @@ export const websocketRpcRouteLayer = HttpRouter.add(
         Effect.provideService(RpcServer.Protocol, withTerminalOutputWindow(protocol)),
         Effect.provide(
           Layer.merge(
-            rpcScopeAuthorizationLayer(currentScopes, readsAlong),
+            rpcScopeAuthorizationLayer(currentScopes, acting, administers),
             rpcInstrumentationLayer,
           ),
         ),
@@ -2062,7 +2167,7 @@ export const websocketRpcRouteLayer = HttpRouter.add(
       return httpEffect;
     }).pipe(
       Effect.provide(
-        makeWsRpcLayer(session).pipe(
+        makeWsRpcLayer(session, connectionScope).pipe(
           Layer.provideMerge(RpcSerialization.layerJson),
           // Request fibers run in the handlers' context, so this reporter sees
           // their defects, not the rest of the server's.

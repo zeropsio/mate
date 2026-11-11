@@ -1,7 +1,7 @@
 import * as Arr from "effect/Array";
 import * as Cache from "effect/Cache";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as ByteSize from "effect/ByteSize";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
@@ -649,7 +649,7 @@ export const make = Effect.gen(function* () {
   const textGeneration = yield* TextGeneration.TextGeneration;
   const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
   const projectSetupScriptRunner = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
 
@@ -749,7 +749,7 @@ export const make = Effect.gen(function* () {
       }
     });
   const randomUUIDv4 = (cwd: string) =>
-    crypto.randomUUIDv4.pipe(
+    crypto.uuidV4().pipe(
       Effect.mapError(
         (cause) =>
           new GitManagerError({
@@ -1043,7 +1043,15 @@ export const make = Effect.gen(function* () {
         defaultBranch: defaultBranch.length > 0 ? defaultBranch : null,
       };
       return Effect.gen(function* () {
-        const headContext = yield* resolveBranchHeadContext(cwd, details);
+        const remotes = yield* readBranchRemoteUrls(cwd, details.branch);
+        const remoteUrl = remotes.remoteUrl ?? remotes.originUrl;
+        if (
+          remoteUrl &&
+          detectSourceControlProviderFromGitRemoteUrl(remoteUrl)?.kind === "unknown"
+        ) {
+          return { latest: null, headContext: null };
+        }
+        const headContext = yield* resolveBranchHeadContext(cwd, details, remotes);
         const upstreamHeadIsDefault =
           headContext.headBranch === details.defaultBranch ||
           (details.defaultBranch === null &&
@@ -1162,15 +1170,19 @@ export const make = Effect.gen(function* () {
         return { pr: toStatusPr(latest), headContext };
       }),
       Effect.tap(({ pr, headContext }) =>
-        Effect.sync(() =>
+        Effect.sync(() => {
+          if (headContext === null) {
+            lastKnownPrByBranchKey.delete(branchKey);
+            return;
+          }
           rememberLastKnownPr(branchKey, {
             pr,
             upstreamRef: details.upstreamRef,
             headBranch: headContext.headBranch,
             remoteName: headContext.remoteName,
             headRemoteUrlKey: headContext.headRemoteUrlKey,
-          }),
-        ),
+          });
+        }),
       ),
       Effect.map(({ pr }) => pr),
       Effect.catch((error) =>
@@ -1270,9 +1282,9 @@ export const make = Effect.gen(function* () {
 
   const resolveRemoteRepositoryContext = Effect.fn("resolveRemoteRepositoryContext")(function* (
     cwd: string,
-    remoteName: string | null,
+    remoteUrl: string | null,
   ) {
-    if (!remoteName) {
+    if (!remoteUrl) {
       return {
         remoteUrlKey: null,
         repositoryNameWithOwner: null,
@@ -1280,13 +1292,8 @@ export const make = Effect.gen(function* () {
       };
     }
 
-    const remoteUrl = yield* readConfigValueNullable(cwd, `remote.${remoteName}.url`);
     let repositoryNameWithOwner = parseRepositoryNameWithOwnerFromRemoteUrl(remoteUrl);
-    if (
-      remoteUrl !== null &&
-      /^https?:\/\//iu.test(remoteUrl) &&
-      (repositoryNameWithOwner?.split("/").length ?? 0) > 2
-    ) {
+    if (/^https?:\/\//iu.test(remoteUrl) && (repositoryNameWithOwner?.split("/").length ?? 0) > 2) {
       const detected = detectSourceControlProviderFromGitRemoteUrl(remoteUrl);
       const kind =
         detected?.kind === "unknown"
@@ -1298,31 +1305,35 @@ export const make = Effect.gen(function* () {
       repositoryNameWithOwner = parseRepositoryNameWithOwnerFromRemoteUrl(remoteUrl, kind);
     }
     return {
-      remoteUrlKey: remoteUrl ? normalizeGitRemoteUrl(remoteUrl) : null,
+      remoteUrlKey: normalizeGitRemoteUrl(remoteUrl),
       repositoryNameWithOwner,
       ownerLogin: parseRepositoryOwnerLogin(repositoryNameWithOwner),
     };
   });
 
-  // Returns [head remote, origin]. Most branches track origin, so read it once.
-  const resolveHeadAndOriginContexts = (cwd: string, remoteName: string | null) =>
-    remoteName === "origin"
-      ? resolveRemoteRepositoryContext(cwd, "origin").pipe(
-          Effect.map((origin) => [origin, origin] as const),
-        )
-      : Effect.all(
-          [
-            resolveRemoteRepositoryContext(cwd, remoteName),
-            resolveRemoteRepositoryContext(cwd, "origin"),
-          ],
-          { concurrency: "unbounded" },
-        );
+  // Read the URLs once, before PR lookup decides whether this remote has a provider.
+  const readBranchRemoteUrls = Effect.fn("readBranchRemoteUrls")(function* (
+    cwd: string,
+    branch: string,
+  ) {
+    const remoteName = yield* readConfigValueNullable(cwd, `branch.${branch}.remote`);
+    const originUrl = yield* readConfigValueNullable(cwd, "remote.origin.url");
+    const remoteUrl =
+      remoteName === "origin"
+        ? originUrl
+        : remoteName
+          ? yield* readConfigValueNullable(cwd, `remote.${remoteName}.url`)
+          : null;
+    return { remoteName, remoteUrl, originUrl };
+  });
 
   const resolveBranchHeadContext = Effect.fn("resolveBranchHeadContext")(function* (
     cwd: string,
     details: { branch: string; upstreamRef: string | null },
+    remoteUrls?: { remoteName: string | null; remoteUrl: string | null; originUrl: string | null },
   ) {
-    const remoteName = yield* readConfigValueNullable(cwd, `branch.${details.branch}.remote`);
+    const { remoteName, remoteUrl, originUrl } =
+      remoteUrls ?? (yield* readBranchRemoteUrls(cwd, details.branch));
     const headBranchFromUpstream = details.upstreamRef
       ? extractBranchNameFromRemoteRef(details.upstreamRef, { remoteName })
       : "";
@@ -1330,10 +1341,18 @@ export const make = Effect.gen(function* () {
     const shouldProbeLocalBranchSelector =
       headBranchFromUpstream.length === 0 || headBranch === details.branch;
 
-    const [remoteRepository, originRepository] = yield* resolveHeadAndOriginContexts(
-      cwd,
-      remoteName,
-    );
+    const [remoteRepository, originRepository] =
+      remoteName === "origin"
+        ? yield* resolveRemoteRepositoryContext(cwd, originUrl).pipe(
+            Effect.map((origin) => [origin, origin] as const),
+          )
+        : yield* Effect.all(
+            [
+              resolveRemoteRepositoryContext(cwd, remoteUrl),
+              resolveRemoteRepositoryContext(cwd, originUrl),
+            ],
+            { concurrency: "unbounded" },
+          );
 
     const isCrossRepository =
       remoteRepository.repositoryNameWithOwner !== null &&

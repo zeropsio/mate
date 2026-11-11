@@ -100,6 +100,7 @@ function framed(scene: Scene): MessagesTimelineRow[] {
       : {
           originAsks: scene.originAsks.map((ask) => ({
             requestId: ask.requestId,
+            requestIds: [ask.requestId],
             turnId: turn(ask.turn),
             createdAt: at(2),
           })),
@@ -4031,6 +4032,7 @@ describe("rowGap: a turn is one group, 24 px inside and 64 px between turns", ()
     ["a seam after the answer", mate, seam, "turn-after-words"],
     ["a seam after a card", outcome, seam, "turn"],
     ["a crew's seam after the answer", mate, crewSeam, "turn-after-words"],
+    ["a seam right under a seam", seam, crewSeam, "turn-seam"],
     ["the person's words under a seam", seam, person, "part"],
     ["the answer under a seam", seam, mate, "part-words"],
     // Close, by kind.

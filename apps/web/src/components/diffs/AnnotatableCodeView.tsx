@@ -90,6 +90,10 @@ interface AnnotatableCodeViewProps {
     fileKey: string,
     collapsed: boolean,
   ) => ReactNode;
+  /** What a file's header says beside its counts. */
+  renderHeaderMetadata?: (fileKey: string) => ReactNode;
+  /** What stands above the files and scrolls with them. */
+  renderCodeViewHeader?: () => ReactNode;
 }
 
 interface DiffSelectionContext {
@@ -106,6 +110,8 @@ export function AnnotatableCodeView({
   viewerRef,
   className,
   renderHeaderPrefix,
+  renderHeaderMetadata,
+  renderCodeViewHeader,
 }: AnnotatableCodeViewProps) {
   const addReviewComment = useComposerDraftStore((store) => store.addReviewComment);
   const removeReviewComment = useComposerDraftStore((store) => store.removeReviewComment);
@@ -256,6 +262,10 @@ export function AnnotatableCodeView({
           ? renderHeaderPrefix(item.fileDiff, item.id, item.collapsed === true)
           : null
       }
+      {...(renderHeaderMetadata
+        ? { renderHeaderMetadata: (item) => renderHeaderMetadata(item.id) }
+        : {})}
+      {...(renderCodeViewHeader ? { renderCodeViewHeader } : {})}
       renderAnnotation={(annotation) => {
         const hasDraft = annotation.metadata.entries.some((entry) => entry.kind === "draft");
         return (

@@ -1,14 +1,47 @@
-// @effect-diagnostics preferSchemaOverJson:off -- fake HTTP request diagnostics.
+// @effect-diagnostics globalJsonInEffect:off -- fake HTTP request diagnostics.
 import * as Effect from "effect/Effect";
 import { expect } from "@effect/vitest";
 import type { createScenario } from "../../harness/scenario.ts";
 import { creationNetwork } from "../../fakes/f-create/browserDrain.ts";
 import { creationOf } from "./fake.ts";
-import type { Dialog, ElementHandle } from "puppeteer-core";
+import type { Dialog } from "puppeteer-core";
 import { visibleText } from "../../harness/browser.ts";
 import { rendered } from "../../harness/completedHttp.ts";
+import { deadline } from "../../harness/http.ts";
+import { TestRunner } from "vite-plus/test";
 
 type Scenario = Effect.Success<ReturnType<typeof createScenario>>;
+
+/** The test's hang guard reports the receipt it was waiting for. */
+export async function receipt<A>(
+  pending: Promise<A>,
+  name: string,
+  signal = TestRunner.getCurrentTest()?.context.signal,
+  evidence?: () => string,
+): Promise<A> {
+  const details = () =>
+    `Pending receipt: ${name}${evidence === undefined ? "" : `\nLast evidence: ${evidence()}`}`;
+  const stopped = () => {
+    const reason: unknown = signal?.reason;
+    // Vitest aborts with the same timeout error it reports as the test failure.
+    if (reason instanceof Error && /^Test timed out in \d+ms/u.test(reason.message)) {
+      const previous = reason.message;
+      const stack = reason.stack;
+      reason.message = `${previous}\n${details()}`;
+      if (stack) reason.stack = stack.replace(previous, reason.message);
+    }
+  };
+  if (signal?.aborted) stopped();
+  else signal?.addEventListener("abort", stopped, { once: true });
+  try {
+    return await deadline(pending, name, signal);
+  } catch (cause) {
+    if (signal?.aborted && evidence !== undefined) throw new Error(details(), { cause });
+    throw cause;
+  } finally {
+    signal?.removeEventListener("abort", stopped);
+  }
+}
 
 export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">) {
   const { page, drivers } = s;
@@ -18,10 +51,13 @@ export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">
   const text = (value: string) =>
     Effect.promise(async () => {
       try {
-        await page.waitForFunction(
-          (value) => document.body.innerText.includes(value),
-          { polling: "raf" },
-          value,
+        await receipt(
+          page.waitForFunction(
+            (value) => document.body.innerText.includes(value),
+            { polling: "raf" },
+            value,
+          ),
+          `visible text ${value}`,
         );
       } catch (cause) {
         throw new Error(
@@ -33,7 +69,7 @@ export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">
   const click = (name: string) =>
     Effect.promise(async () => {
       try {
-        await page.locator(`::-p-aria(${name})`).click();
+        await receipt(page.locator(`::-p-aria(${name})`).click(), `control ${name}`);
       } catch (cause) {
         throw new Error(
           `Cannot press ${name}\n${await page.evaluate(() => document.body.innerText)}`,
@@ -43,7 +79,7 @@ export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">
     });
   const fill = (name: string, value: string) =>
     Effect.promise(async () => {
-      await page.locator(`::-p-aria(${name})`).click({ clickCount: 3 });
+      await receipt(page.locator(`::-p-aria(${name})`).click({ clickCount: 3 }), `field ${name}`);
       await page.keyboard.press("Backspace");
       await page.keyboard.type(value);
       await rendered(page);
@@ -72,15 +108,6 @@ export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">
         drivers.zerops.rows("service-stack").some((row) => row.projectId === "created-1"),
       ).toBe(false);
     }),
-    stopAfterContainer: () => {
-      control.blockIsolation = true;
-    },
-    allowSetup: () => {
-      control.blockIsolation = false;
-    },
-    failProject: () => {
-      control.creationStatus = "FAILED";
-    },
     reload: Effect.promise(async () => {
       const confirmations: string[] = [];
       // Leaving during setup asks first; this driver represents choosing to leave.
@@ -97,26 +124,12 @@ export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">
       }
     }),
     finishSetup: click("Finish setup"),
-    originalSetupOnly: Effect.sync(() => {
-      expect(control.accepted).toEqual([{ id: "created-1", name: "Garden - Nova" }]);
-      expect(
-        drivers.zerops.requests.get(
-          "PUT /project/created-1/first-class-recipe/development-container",
-        ),
-      ).toBe(1);
-      expect(control.mateKeys).toEqual(["zcp-Garden - Nova"]);
-    }),
-    failedProjectRemoved: Effect.sync(() => {
-      expect(control.deleted).toEqual(["created-1"]);
-      expect(drivers.zerops.rows("project").some((row) => row.id === "Ada")).toBe(true);
-      expect(drivers.zerops.rows("project").some((row) => row.id === "created-1")).toBe(false);
-    }),
     noAgentImported: Effect.sync(() => {
       expect(
-        drivers.zerops.requests.get(
-          "PUT /project/created-1/first-class-recipe/development-container",
-        ) ?? 0,
-      ).toBe(0);
+        drivers.zerops.world.imports.filter(
+          (entry) => entry.projectId === "created-1" && /type: zcp@/u.test(entry.yaml),
+        ),
+      ).toEqual([]);
     }),
     loseCreationReply: () => {
       control.outcome = "lost";
@@ -155,16 +168,18 @@ export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">
         // never the menu heading's of the same name. Shop holds only its setup files, so its
         // card's Production offers no Put it live (it waits for a change); the ··· still does.
         yield* Effect.promise(async () => {
-          const more = await page.waitForFunction(
-            () =>
-              [...document.querySelectorAll<HTMLElement>('[aria-label="More for Shop"]')].find(
-                (button) =>
-                  button.closest('[data-sidebar="sidebar"]') === null &&
-                  button.getBoundingClientRect().width > 0,
-              ),
-            { polling: "raf" },
+          await receipt(
+            page
+              .locator(() =>
+                [...document.querySelectorAll<HTMLElement>('[aria-label="More for Shop"]')].find(
+                  (button) =>
+                    button.closest('[data-sidebar="sidebar"]') === null &&
+                    button.getBoundingClientRect().width > 0,
+                )!,
+              )
+              .click(),
+            "Shop's project actions",
           );
-          await (more.asElement() as ElementHandle<Element>).click();
         });
         // Production is put live from its sheet; its own form — a name, an agent, a Git branch —
         // is the sheet's quiet way out.
@@ -185,7 +200,10 @@ export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">
           : "Use a branch in your Git repository instead…",
       ),
     withAgent: Effect.promise(() =>
-      page.locator('[data-zerops-surface="environment-creation-form"] [role="switch"]').click(),
+      receipt(
+        page.locator('[data-zerops-surface="environment-creation-form"] [role="switch"]').click(),
+        "stage's Mate switch",
+      ),
     ),
     agentIsOff: Effect.promise(async () => {
       const selector = '[data-zerops-surface="environment-creation-form"] [role="switch"]';

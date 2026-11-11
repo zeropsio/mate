@@ -1,9 +1,9 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import type { Page } from "puppeteer-core";
 import { waitForStillFrames } from "../../harness/stillFrames.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Clock from "effect/Clock";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { mateChat } from "./dsl.ts";
 import { installArea } from "./fake.ts";
@@ -20,7 +20,7 @@ describe("owner-reported layout regressions", () => {
 
     describe("Decision: restore correct proportions; no test weakened.", () => {
       describe("C: image viewer proportions", () => {
-        it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        scenarioSuite((it) => {
           for (const shape of shapes) {
             it.effect(
               `the ${shape.name} picture keeps its natural proportions before and after zoom and resizing`,
@@ -135,7 +135,7 @@ describe("owner-reported layout regressions", () => {
     });
 
     describe("C: image viewer backdrop", () => {
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         it.effect("an opened picture covers the conversation with its dark backdrop", () =>
           Effect.gen(function* () {
             const s = yield* pictureConversation({ name: "square", width: 640, height: 640 });
@@ -201,7 +201,7 @@ describe("owner-reported layout regressions", () => {
     });
 
     describe("Decision: Aleš's direction; keep existing fold behaviour and titles otherwise.", () => {
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         it.effect(
           "work appears inline with the first log row and a folded run has no empty region or divider",
           () =>
@@ -452,7 +452,7 @@ describe("owner-reported layout regressions", () => {
         return { s, chat, engine, frames };
       });
 
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         it.effect(
           "at the usage limit the card stays where it stands, and the conversation stays at its end, fully visible above the composer",
           () =>
@@ -794,7 +794,7 @@ describe("owner-reported layout regressions", () => {
           return { s, engine, run };
         });
 
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         it.effect("a live card spends no line on controls", () =>
           Effect.gen(function* () {
             const { s, engine, run } = yield* miloAtWork();

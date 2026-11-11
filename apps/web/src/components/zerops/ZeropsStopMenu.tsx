@@ -4,7 +4,7 @@ import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { StopPublicAccessStatus } from "./StopPublicAccess";
 import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
 import type { StopView } from "@t3tools/client-runtime/zerops/flow";
-import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
+import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/gui";
 import { MoreHorizontalIcon } from "lucide-react";
 
 import {
@@ -115,7 +115,7 @@ export function ZeropsStopMenu({
                 .open({ orgId, projectId, ...(groupId === undefined ? {} : { groupId }) });
             }}
           >
-            Addresses
+            Manage addresses
           </MenuItem>
         )}
         <MenuItem

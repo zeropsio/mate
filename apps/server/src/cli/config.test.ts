@@ -1,5 +1,4 @@
 // @effect-diagnostics nodeBuiltinImport:off
-import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 
 import { assert, expect, it } from "@effect/vitest";
@@ -11,10 +10,6 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
-import {
-  DesktopBackendBootstrap,
-  type DesktopBackendBootstrap as DesktopBackendBootstrapValue,
-} from "@t3tools/contracts";
 import * as NetService from "@t3tools/shared/Net";
 import { DEFAULT_SIGNAL_EXPORT } from "@t3tools/shared/observability";
 import * as OtelEnvironment from "@t3tools/shared/otelEnvironment";
@@ -26,20 +21,7 @@ import { type CliServerFlags, resolveServerConfig } from "./config.ts";
 const deriveExplicitServerPaths = (baseDir: string, devUrl: URL | undefined) =>
   deriveServerPaths(baseDir, devUrl, { baseDirIsExplicit: true });
 
-const encodeDesktopBootstrap = Schema.encodeEffect(Schema.fromJsonString(DesktopBackendBootstrap));
 const encodeRuntimeState = Schema.encodeEffect(Schema.fromJsonString(PersistedServerRuntimeState));
-
-const makeDesktopBootstrap = (
-  overrides: Partial<DesktopBackendBootstrapValue> = {},
-): DesktopBackendBootstrapValue => ({
-  mode: "desktop",
-  noBrowser: true,
-  port: 4888,
-  t3Home: "/tmp/t3-bootstrap-home",
-  host: "127.0.0.1",
-  desktopBootstrapToken: "desktop-bootstrap-token",
-  ...overrides,
-});
 
 it.layer(NodeServices.layer)("cli config resolution", (it) => {
   const defaultObservabilityConfig = {
@@ -69,7 +51,6 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
     devUrl: Option.none(),
     zeropsFixtures: Option.none(),
     noBrowser: Option.none(),
-    bootstrapFd: Option.none(),
     autoBootstrapProjectFromCwd: Option.none(),
     logWebSocketEvents: Option.none(),
   } as const;
@@ -302,26 +283,6 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
       }).pipe(Effect.scoped),
   );
 
-  const openBootstrapFd = Effect.fn(function* (payload: DesktopBackendBootstrapValue) {
-    const fs = yield* FileSystem.FileSystem;
-    const filePath = yield* fs.makeTempFileScoped({ prefix: "t3-bootstrap-", suffix: ".ndjson" });
-    const encoded = yield* encodeDesktopBootstrap(payload);
-    yield* fs.writeFileString(filePath, `${encoded}\n`);
-    return yield* Effect.acquireRelease(
-      Effect.sync(() => NodeFS.openSync(filePath, "r")),
-      // Without a /proc or /dev/fd path to reopen, the reader consumes the fd
-      // itself (autoClose), so on Windows it is already closed here.
-      (fd) =>
-        Effect.sync(() => {
-          try {
-            NodeFS.closeSync(fd);
-          } catch (error) {
-            if ((error as NodeJS.ErrnoException).code !== "EBADF") throw error;
-          }
-        }),
-    );
-  });
-
   it.effect("falls back to effect/config values when flags are omitted", () =>
     Effect.gen(function* () {
       const { join } = yield* Path.Path;
@@ -341,7 +302,6 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           devUrl: Option.none(),
           zeropsFixtures: Option.none(),
           noBrowser: Option.none(),
-          bootstrapFd: Option.none(),
           autoBootstrapProjectFromCwd: Option.none(),
           logWebSocketEvents: Option.none(),
         },
@@ -387,7 +347,6 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         devAllowedOrigins: ["https://host.example.ts.net", "https://phone.example.ts.net"],
         noBrowser: true,
         startupPresentation: "browser",
-        desktopBootstrapToken: undefined,
         autoBootstrapProjectFromCwd: false,
         logWebSocketEvents: true,
         zeropsCrew: true,
@@ -415,7 +374,6 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           devUrl: Option.some(new URL("http://127.0.0.1:4173")),
           zeropsFixtures: Option.none(),
           noBrowser: Option.some(true),
-          bootstrapFd: Option.none(),
           autoBootstrapProjectFromCwd: Option.some(true),
           logWebSocketEvents: Option.some(true),
         },
@@ -458,7 +416,6 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         devUrl: new URL("http://127.0.0.1:4173"),
         noBrowser: true,
         startupPresentation: "browser",
-        desktopBootstrapToken: undefined,
         autoBootstrapProjectFromCwd: true,
         logWebSocketEvents: true,
         zeropsCrew: true,
@@ -467,15 +424,11 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
     }),
   );
 
-  it.effect("preserves explicit false CLI boolean flags over env and bootstrap values", () =>
+  // witness: apps/server/src/cli/config.ts | normalizedFlags.noBrowser, → Option.fromUndefinedOr(env.noBrowser),
+  it.effect("preserves explicit false CLI boolean flags over env values", () =>
     Effect.gen(function* () {
       const { join } = yield* Path.Path;
       const baseDir = join(NodeOS.tmpdir(), "t3-cli-config-false-flags");
-      const fd = yield* openBootstrapFd(
-        makeDesktopBootstrap({
-          noBrowser: true,
-        }),
-      );
       const derivedPaths = yield* deriveExplicitServerPaths(
         baseDir,
         new URL("http://127.0.0.1:4173"),
@@ -492,7 +445,6 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           devUrl: Option.some(new URL("http://127.0.0.1:4173")),
           zeropsFixtures: Option.none(),
           noBrowser: Option.some(false),
-          bootstrapFd: Option.none(),
           autoBootstrapProjectFromCwd: Option.some(false),
           logWebSocketEvents: Option.some(false),
         },
@@ -503,7 +455,6 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
             ConfigProvider.layer(
               ConfigProvider.fromEnv({
                 env: {
-                  T3CODE_BOOTSTRAP_FD: String(fd),
                   T3CODE_NO_BROWSER: "true",
                   T3CODE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD: "true",
                   T3CODE_LOG_WS_EVENTS: "true",
@@ -530,96 +481,10 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         devUrl: new URL("http://127.0.0.1:4173"),
         noBrowser: false,
         startupPresentation: "browser",
-        desktopBootstrapToken: "desktop-bootstrap-token",
         autoBootstrapProjectFromCwd: false,
         logWebSocketEvents: false,
         zeropsCrew: true,
       });
-    }),
-  );
-
-  it.effect("uses bootstrap envelope values as fallbacks when flags and env are absent", () =>
-    Effect.gen(function* () {
-      const { join, resolve } = yield* Path.Path;
-      // The resolver absolutises the configured home, so the expectation must
-      // carry the host's drive on Windows.
-      const baseDir = resolve("/tmp/t3-bootstrap-home");
-      const fd = yield* openBootstrapFd(
-        makeDesktopBootstrap({
-          port: 4888,
-          host: "127.0.0.2",
-          t3Home: "/tmp/t3-bootstrap-home",
-          noBrowser: true,
-          desktopBootstrapToken: "desktop-token",
-          desktopTelemetryFd: 4,
-          desktopTelemetryControlFd: 5,
-          otlpTracesUrl: "http://localhost:4318/v1/traces",
-          otlpMetricsUrl: "http://localhost:4318/v1/metrics",
-          otlpLogsUrl: "http://localhost:4318/v1/logs",
-        }),
-      );
-      const derivedPaths = yield* deriveServerPaths(baseDir, undefined);
-
-      const resolved = yield* resolveServerConfig(
-        {
-          mode: Option.none(),
-          port: Option.none(),
-          host: Option.none(),
-          basePath: Option.none(),
-          baseDir: Option.none(),
-          cwd: Option.none(),
-          devUrl: Option.none(),
-          zeropsFixtures: Option.none(),
-          noBrowser: Option.none(),
-          bootstrapFd: Option.none(),
-          autoBootstrapProjectFromCwd: Option.none(),
-          logWebSocketEvents: Option.none(),
-        },
-        Option.none(),
-      ).pipe(
-        Effect.provide(
-          Layer.mergeAll(
-            ConfigProvider.layer(
-              ConfigProvider.fromEnv({
-                env: {
-                  T3CODE_BOOTSTRAP_FD: String(fd),
-                },
-              }),
-            ),
-            NetService.layer,
-          ),
-        ),
-      );
-
-      expect(resolved).toEqual({
-        logLevel: "Info",
-        ...defaultObservabilityConfig,
-        otlpTracesUrl: "http://localhost:4318/v1/traces",
-        otlpMetricsUrl: "http://localhost:4318/v1/metrics",
-        otlpLogsUrl: "http://localhost:4318/v1/logs",
-        mode: "desktop",
-        port: 4888,
-        cwd: process.cwd(),
-        baseDir,
-        homeDir: NodeOS.homedir(),
-        ...derivedPaths,
-        host: "127.0.0.2",
-        basePath: "",
-        staticDir: resolved.staticDir,
-        devUrl: undefined,
-        noBrowser: true,
-        startupPresentation: "browser",
-        desktopBootstrapToken: "desktop-token",
-        desktopTelemetryFd: 4,
-        desktopTelemetryControlFd: 5,
-        resourceMonitorPath: undefined,
-        autoBootstrapProjectFromCwd: false,
-        logWebSocketEvents: false,
-        zeropsCrew: true,
-      });
-      assert.equal(join(baseDir, "userdata"), resolved.stateDir);
-      assert.equal(resolved.desktopTelemetryFd, 4);
-      assert.equal(resolved.desktopTelemetryControlFd, 5);
     }),
   );
 
@@ -641,7 +506,6 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           devUrl: Option.some(new URL("http://127.0.0.1:5173")),
           zeropsFixtures: Option.none(),
           noBrowser: Option.none(),
-          bootstrapFd: Option.none(),
           autoBootstrapProjectFromCwd: Option.none(),
           logWebSocketEvents: Option.none(),
         },
@@ -668,83 +532,6 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         expect(yield* fs.exists(directory)).toBe(true);
       }
       expect(resolved.cwd).toBe(path.resolve(customCwd));
-    }),
-  );
-
-  it.effect("applies flag then env precedence over bootstrap envelope values", () =>
-    Effect.gen(function* () {
-      const { join } = yield* Path.Path;
-      const baseDir = join(NodeOS.tmpdir(), "t3-cli-config-env-wins");
-      const fd = yield* openBootstrapFd(
-        makeDesktopBootstrap({
-          port: 4888,
-          host: "127.0.0.2",
-          t3Home: "/tmp/t3-bootstrap-home",
-          noBrowser: false,
-          desktopBootstrapToken: "desktop-token",
-        }),
-      );
-      const derivedPaths = yield* deriveExplicitServerPaths(
-        baseDir,
-        new URL("http://127.0.0.1:4173"),
-      );
-
-      const resolved = yield* resolveServerConfig(
-        {
-          mode: Option.none(),
-          port: Option.some(8788),
-          host: Option.some("127.0.0.1"),
-          basePath: Option.none(),
-          baseDir: Option.none(),
-          cwd: Option.none(),
-          devUrl: Option.some(new URL("http://127.0.0.1:4173")),
-          zeropsFixtures: Option.none(),
-          noBrowser: Option.none(),
-          bootstrapFd: Option.none(),
-          autoBootstrapProjectFromCwd: Option.none(),
-          logWebSocketEvents: Option.none(),
-        },
-        Option.some("Debug"),
-      ).pipe(
-        Effect.provide(
-          Layer.mergeAll(
-            ConfigProvider.layer(
-              ConfigProvider.fromEnv({
-                env: {
-                  T3CODE_MODE: "web",
-                  T3CODE_BOOTSTRAP_FD: String(fd),
-                  T3CODE_HOME: baseDir,
-                  T3CODE_NO_BROWSER: "true",
-                  T3CODE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD: "true",
-                  T3CODE_LOG_WS_EVENTS: "true",
-                },
-              }),
-            ),
-            NetService.layer,
-          ),
-        ),
-      );
-
-      expect(resolved).toEqual({
-        logLevel: "Debug",
-        ...defaultObservabilityConfig,
-        mode: "web",
-        port: 8788,
-        cwd: process.cwd(),
-        baseDir,
-        homeDir: NodeOS.homedir(),
-        ...derivedPaths,
-        host: "127.0.0.1",
-        basePath: "",
-        staticDir: undefined,
-        devUrl: new URL("http://127.0.0.1:4173"),
-        noBrowser: true,
-        startupPresentation: "browser",
-        desktopBootstrapToken: "desktop-token",
-        autoBootstrapProjectFromCwd: true,
-        logWebSocketEvents: true,
-        zeropsCrew: true,
-      });
     }),
   );
 
@@ -777,7 +564,6 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           devUrl: Option.none(),
           zeropsFixtures: Option.none(),
           noBrowser: Option.none(),
-          bootstrapFd: Option.none(),
           autoBootstrapProjectFromCwd: Option.none(),
           logWebSocketEvents: Option.none(),
         },
@@ -812,7 +598,6 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         devUrl: undefined,
         noBrowser: true,
         startupPresentation: "browser",
-        desktopBootstrapToken: undefined,
         autoBootstrapProjectFromCwd: false,
         logWebSocketEvents: false,
         zeropsCrew: true,
@@ -1007,7 +792,6 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           devUrl: Option.none(),
           zeropsFixtures: Option.none(),
           noBrowser: Option.none(),
-          bootstrapFd: Option.none(),
           autoBootstrapProjectFromCwd: Option.none(),
           logWebSocketEvents: Option.none(),
         },
@@ -1046,7 +830,6 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         devUrl: undefined,
         noBrowser: true,
         startupPresentation: "headless",
-        desktopBootstrapToken: undefined,
         autoBootstrapProjectFromCwd: false,
         logWebSocketEvents: false,
         zeropsCrew: true,
@@ -1070,7 +853,6 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           devUrl: Option.none(),
           zeropsFixtures: Option.none(),
           noBrowser: Option.none(),
-          bootstrapFd: Option.none(),
           autoBootstrapProjectFromCwd: Option.none(),
           logWebSocketEvents: Option.none(),
         },
@@ -1113,7 +895,6 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           devUrl: Option.none(),
           zeropsFixtures: Option.none(),
           noBrowser: Option.none(),
-          bootstrapFd: Option.none(),
           autoBootstrapProjectFromCwd: Option.none(),
           logWebSocketEvents: Option.none(),
         },
@@ -1158,7 +939,6 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           devUrl: Option.none(),
           zeropsFixtures: Option.none(),
           noBrowser: Option.none(),
-          bootstrapFd: Option.none(),
           autoBootstrapProjectFromCwd: Option.none(),
           logWebSocketEvents: Option.none(),
         },
@@ -1198,7 +978,6 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           devUrl: Option.none(),
           zeropsFixtures: Option.none(),
           noBrowser: Option.none(),
-          bootstrapFd: Option.none(),
           autoBootstrapProjectFromCwd: Option.none(),
           logWebSocketEvents: Option.none(),
         },

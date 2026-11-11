@@ -4,22 +4,31 @@ import * as Effect from "effect/Effect";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 
 import {
+  makeInteractionTracker,
   observeBackgroundActivitySubscription,
   reportToConnected,
   retainedBackgroundScopes,
-  wasRecentlyInteracted,
 } from "./backgroundActivityReporter.ts";
 
-describe("wasRecentlyInteracted", () => {
-  it("expires interaction independently of window focus", () => {
-    expect(wasRecentlyInteracted(10_000, 55_000)).toBe(true);
-    expect(wasRecentlyInteracted(10_000, 55_001)).toBe(false);
-  });
+describe("makeInteractionTracker", () => {
+  it("reports an interaction once the last one reported is 15 s old, and nothing while idle", () => {
+    const interaction = makeInteractionTracker(0);
+    // The socket's arrival report: the person was here when the app started.
+    expect(interaction.reportIdleMs(0)).toBe(0);
 
-  it("rejects future timestamps", () => {
-    expect(wasRecentlyInteracted(10_001, 10_000)).toBe(false);
-  });
+    expect(interaction.interact(1_000)).toBe(false);
+    expect(interaction.interact(14_999)).toBe(false);
+    expect(interaction.interact(15_000)).toBe(true);
+    expect(interaction.reportIdleMs(15_250)).toBe(250);
 
+    // A blur 35 s after the last interaction carries the idle time; it renews nothing.
+    expect(interaction.interact(20_000)).toBe(false);
+    expect(interaction.reportIdleMs(55_000)).toBe(35_000);
+    expect(interaction.interact(55_100)).toBe(true);
+  });
+});
+
+describe("background activity scopes", () => {
   it.effect("retains an observed subscription until its returned finalizer runs", () =>
     Effect.gen(function* () {
       const environmentId = EnvironmentId.make("environment-observation-test");

@@ -13,11 +13,24 @@
  * a Chief (`chiefOffered`). On the rail the photo alone opens it.
  */
 
+import { useAtomValue } from "@effect/atom-react";
+import {
+  organizationBillingAtom,
+  type BillingTone,
+  type OrganizationBilling,
+} from "@t3tools/client-runtime/data";
+import { Atom } from "effect/reactivity";
+import { formatUsd } from "@t3tools/shared/usageFormat";
 import { useLocation, useNavigate, useRouter } from "@tanstack/react-router";
-import { ArrowUpCircleIcon, EllipsisIcon, LogOutIcon } from "lucide-react";
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { ArrowUpRightIcon, Building2Icon, EllipsisIcon, LogOutIcon } from "lucide-react";
+import { zeropsHqOrigin } from "~/zerops/signInMode";
+import { createContext, useContext, useId, useMemo, useState, type ReactNode } from "react";
 
-import type { ZeropsOrganization } from "@t3tools/client-runtime/zerops";
+import {
+  zeropsInvitationsFromUser,
+  type ZeropsOrganization,
+  type ZeropsOrganizationInvitation,
+} from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
 import {
@@ -27,13 +40,15 @@ import {
 } from "~/zerops/projectOrderPreference";
 import { MATE_SCOPE_CHOICES, useMateScope } from "~/zerops/mateScope";
 import { useChiefOffer } from "~/zerops/chiefSetup";
-import { useHqUpdateWaiting } from "~/zerops/hqUpdateWaiting";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
+import { useViewerCalled } from "~/zerops/useZeropsMateOwners";
+import { Badge, type BadgeTone } from "../ui/badge";
 import { useSidebar } from "../ui/sidebar";
 import {
   Menu,
   MenuGroupLabel,
   MenuItem,
+  MenuItemText,
   MenuPopup,
   MenuRadioGroup,
   MenuRadioItem,
@@ -56,6 +71,7 @@ import {
   sidebarAccountRoleParts,
   type SidebarAccountDestination,
 } from "./SidebarZeropsAccount.logic";
+import { mayReadBilling } from "@t3tools/client-runtime/zerops/billingAccess";
 
 type AccountMenuControl = "rail" | "menu";
 const AccountMenuContext = createContext<{
@@ -72,6 +88,8 @@ export function SidebarAccountMenuProvider({ children }: { readonly children: Re
 export interface SidebarZeropsAccountProps {
   readonly account: ZeropsAccountDisplay;
   readonly organizations: ReadonlyArray<ZeropsOrganization>;
+  /** Organizations that invited the account and wait for it to accept, listed but never chosen. */
+  readonly invitations?: ReadonlyArray<ZeropsOrganizationInvitation>;
   readonly activeOrganization: ZeropsOrganization | null;
   /** The page open now, so the menu lights the row that names it. */
   readonly destination: SidebarAccountDestination["id"] | null;
@@ -89,13 +107,12 @@ export interface SidebarZeropsAccountProps {
    * what a press opens.
    */
   readonly chief?: { readonly icon: ReactNode; readonly onSetUp: () => void } | undefined;
-  /** While HQ's update waits for an owner or an admin (`useHqUpdateWaiting`): what a press opens. */
-  readonly hqUpdate?: { readonly onOpen: () => void } | undefined;
 }
 
 export function SidebarZeropsAccount({
   account,
   organizations,
+  invitations = [],
   activeOrganization,
   destination,
   destinationIcon,
@@ -106,7 +123,6 @@ export function SidebarZeropsAccount({
   signOutError = null,
   collapsed = false,
   chief,
-  hqUpdate,
 }: SidebarZeropsAccountProps) {
   const accountMenu = useContext(AccountMenuContext);
   const control = collapsed ? "rail" : "menu";
@@ -118,6 +134,11 @@ export function SidebarZeropsAccount({
           onOpenChange: (open: boolean) => accountMenu.setOpen(open ? control : null),
         };
   const lines = sidebarAccountLines({ name: account.name, organization: activeOrganization });
+  const credit = useAccountCredit(
+    activeOrganization !== null && mayReadBilling(activeOrganization.roleCode)
+      ? activeOrganization.id
+      : null,
+  );
   const role = sidebarAccountRoleParts(activeOrganization);
   const menu = (
     <MenuPopup align={collapsed ? "start" : "end"} className="w-72" side="top">
@@ -126,6 +147,7 @@ export function SidebarZeropsAccount({
         activeOrganization={activeOrganization}
         destination={destination}
         destinationIcon={destinationIcon}
+        invitations={invitations}
         onGo={onGo}
         onSelectOrganization={onSelectOrganization}
         onSignOut={onSignOut}
@@ -133,7 +155,6 @@ export function SidebarZeropsAccount({
         signingOut={signingOut}
         signOutError={signOutError}
         chief={chief}
-        hqUpdate={hqUpdate}
       />
     </MenuPopup>
   );
@@ -152,7 +173,11 @@ export function SidebarZeropsAccount({
             />
           }
         >
-          <PersonAvatar name={account.name} picture={account.avatarUrl} size={32} />
+          <PersonAvatar
+            name={account.fullName ?? account.name}
+            picture={account.avatarUrl}
+            size={32}
+          />
         </MenuTrigger>
         {menu}
       </Menu>
@@ -166,16 +191,29 @@ export function SidebarZeropsAccount({
       <MenuTrigger
         render={
           <button
-            aria-label={`Account: ${account.name}`}
+            // The button's name replaces its content for a screen reader: the balance and how it
+            // stands are said here, as the colour says them on the line.
+            aria-label={
+              credit === null
+                ? `Account: ${account.name}`
+                : `Account: ${account.name}, credit ${credit.amount}${credit.words === null ? "" : `, ${credit.words}`}`
+            }
             className="menu-foot-who"
             data-zerops-surface="sidebar-account"
             type="button"
           />
         }
       >
-        <PersonAvatar name={account.name} picture={account.avatarUrl} size={32} />
+        <PersonAvatar
+          name={account.fullName ?? account.name}
+          picture={account.avatarUrl}
+          size={32}
+        />
         <span className="menu-foot-lines">
-          <span className="menu-foot-name">{lines.name}</span>
+          <span className="menu-foot-name-line">
+            <span className="menu-foot-name">{lines.name}</span>
+            {credit === null ? null : <AccountCredit credit={credit} />}
+          </span>
           {/* An organization still being resolved is absent, never a placeholder: the foot must
               paint nothing it takes back. */}
           {role === null ? null : (
@@ -196,6 +234,32 @@ export function SidebarZeropsAccount({
 }
 
 /**
+ * An organization that invited the account: listed beside the ones it can switch to, so the
+ * invitation is seen, but never chosen. Only the invitation email can accept it
+ * (`zeropsInvitationsFromUser`), so the row says where to go instead.
+ */
+function InvitationRow({ invitation }: { readonly invitation: ZeropsOrganizationInvitation }) {
+  const descriptionId = useId();
+  return (
+    <MenuRadioItem
+      aria-describedby={descriptionId}
+      data-zerops-account-invitation={invitation.id}
+      disabled
+      value={`invitation:${invitation.id}`}
+      variant="check"
+    >
+      <MenuItemText
+        description={INVITATION_HINT}
+        descriptionId={descriptionId}
+        label={invitation.name}
+      />
+    </MenuRadioItem>
+  );
+}
+
+const INVITATION_HINT = "Invited — accept from the Zerops email";
+
+/**
  * The menu's body: who, then how the list above reads, then which
  * organization, then where to go, then the way out. Split from the trigger so
  * it can be rendered — and read — without a popup being open.
@@ -203,6 +267,7 @@ export function SidebarZeropsAccount({
 export function SidebarZeropsAccountMenu({
   account,
   organizations,
+  invitations = [],
   activeOrganization,
   destination,
   destinationIcon,
@@ -212,7 +277,6 @@ export function SidebarZeropsAccountMenu({
   signingOut = false,
   signOutError = null,
   chief,
-  hqUpdate,
 }: Omit<SidebarZeropsAccountProps, "collapsed">) {
   const choices = sidebarAccountOrganizationChoices(organizations);
   const projectOrder = useProjectOrder();
@@ -220,7 +284,11 @@ export function SidebarZeropsAccountMenu({
   return (
     <>
       <div className="flex items-center gap-3 px-2 py-2" data-zerops-account-identity="true">
-        <PersonAvatar name={account.name} picture={account.avatarUrl} size={32} />
+        <PersonAvatar
+          name={account.fullName ?? account.name}
+          picture={account.avatarUrl}
+          size={32}
+        />
         <div className="min-w-0">
           <p className="truncate text-sm font-medium text-foreground">
             {account.fullName ?? account.name}
@@ -288,7 +356,7 @@ export function SidebarZeropsAccountMenu({
         ))}
       </MenuSwitch>
 
-      {choices.length === 0 ? null : (
+      {choices.length === 0 && invitations.length === 0 ? null : (
         <>
           <MenuSeparator />
           <MenuRadioGroup
@@ -310,6 +378,9 @@ export function SidebarZeropsAccountMenu({
                 {organization.name}
               </MenuRadioItem>
             ))}
+            {invitations.map((invitation) => (
+              <InvitationRow invitation={invitation} key={invitation.id} />
+            ))}
           </MenuRadioGroup>
         </>
       )}
@@ -324,15 +395,10 @@ export function SidebarZeropsAccountMenu({
           <span className="text-xs text-muted-foreground">One Mate for every project</span>
         </MenuItem>
       )}
-      {/* HQ's update, while one waits: otherwise only Settings → Zerops says it. */}
-      {hqUpdate === undefined ? null : (
-        <MenuItem data-zerops-account-hq-update="" onClick={hqUpdate.onOpen}>
-          <ArrowUpCircleIcon />
-          <span className="min-w-0 flex-1 truncate">HQ update ready</span>
-          <span className="text-xs text-muted-foreground">Update</span>
-        </MenuItem>
-      )}
-      {SIDEBAR_ACCOUNT_DESTINATIONS.map((entry) => (
+      {SIDEBAR_ACCOUNT_DESTINATIONS.filter(
+        // Billing is its owners' and admins' alone: nobody else is offered the page.
+        (entry) => entry.id !== "billing" || mayReadBilling(activeOrganization?.roleCode),
+      ).map((entry) => (
         <MenuItem
           data-zerops-account-destination={entry.id}
           key={entry.id}
@@ -347,6 +413,15 @@ export function SidebarZeropsAccountMenu({
           ) : null}
         </MenuItem>
       ))}
+      {/* HQ is a place of its own (hq.zerops.io: billing, top-ups, tokens), so it opens beside Mate. */}
+      <MenuItem
+        data-zerops-account-hq=""
+        render={<a href={zeropsHqOrigin()} rel="noreferrer" target="_blank" />}
+      >
+        <Building2Icon />
+        <span className="min-w-0 flex-1 truncate">HQ</span>
+        <ArrowUpRightIcon className="size-3.5 text-muted-foreground" />
+      </MenuItem>
 
       <MenuSeparator />
       {/* Sign-out keeps the menu open so the busy and failed states show
@@ -385,6 +460,7 @@ export function SidebarZeropsAccountRow({
   // white-screens because no session is mounted is worse than one with no
   // account row. Signed out, there is no account to name either way.
   const session = useZeropsSessionOptional();
+  const called = useViewerCalled();
   const navigate = useNavigate();
   const router = useRouter();
   const { isMobile, setOpenMobile } = useSidebar();
@@ -394,7 +470,11 @@ export function SidebarZeropsAccountRow({
   const [signingOut, setSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
   const chiefOffer = useChiefOffer();
-  const hqUpdateWaiting = useHqUpdateWaiting();
+  const signedInUser = session?.status === "signed-in" ? session.user : null;
+  const invitations = useMemo(
+    () => (signedInUser ? zeropsInvitationsFromUser(signedInUser) : []),
+    [signedInUser],
+  );
 
   if (session === null || session.status !== "signed-in") return null;
   const { user, organizations, activeOrganization, selectOrganization, signOut } = session;
@@ -405,11 +485,12 @@ export function SidebarZeropsAccountRow({
 
   return (
     <SidebarZeropsAccount
-      account={zeropsAccountDisplay(user)}
+      account={zeropsAccountDisplay(user, called)}
       activeOrganization={activeOrganization}
       collapsed={!isMobile && collapsed}
       destination={destination}
       destinationIcon={destinationIcon}
+      invitations={invitations}
       onGo={(entry) => {
         closeMobile();
         void navigate({ to: entry.to });
@@ -450,16 +531,67 @@ export function SidebarZeropsAccountRow({
             }
           : undefined
       }
-      hqUpdate={
-        hqUpdateWaiting
-          ? {
-              onOpen: () => {
-                closeMobile();
-                void navigate({ to: "/settings/zerops" });
-              },
-            }
-          : undefined
-      }
     />
   );
+}
+
+/**
+ * The organization's balance at the end of the role line, where Zerops shows this account its
+ * finances: quiet while all is well, amber while it runs low, red once it is out or Zerops is
+ * about to stop a project for it — its words for a reader who does not see the colour. Shown
+ * once known, never a placeholder: the foot paints nothing it takes back.
+ */
+interface AccountCreditFigure {
+  readonly amount: string;
+  readonly tone: BillingTone;
+  /** How it stands, for a reader who does not see the colour; `null` while all is well. */
+  readonly words: string | null;
+}
+
+const NO_BILLING = Atom.make<OrganizationBilling | null>(null);
+
+/** The organization's balance where Zerops shows this account its finances; else `null`. */
+function useAccountCredit(orgId: string | null): AccountCreditFigure | null {
+  const billing = useAtomValue(orgId === null ? NO_BILLING : organizationBillingAtom(orgId));
+  if (billing === null || billing.kind !== "known" || billing.total === null) return null;
+  const words =
+    billing.tone === "out"
+      ? billing.total < 0
+        ? "credit below zero"
+        : "a project stops soon for lack of credit"
+      : billing.tone === "low"
+        ? "credit running low"
+        : null;
+  return { amount: compactUsd(billing.total), tone: billing.tone, words };
+}
+
+const CREDIT_TONE: Readonly<Record<BillingTone, BadgeTone>> = {
+  quiet: "neutral",
+  low: "warning",
+  out: "danger",
+};
+
+/** The balance as a pill after the name: its tone is how it stands; the button's name says it. */
+function AccountCredit({ credit }: { readonly credit: AccountCreditFigure }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="menu-foot-credit"
+      data-tone={credit.tone}
+      data-zerops-surface="sidebar-account-credit"
+    >
+      <Badge tone={CREDIT_TONE[credit.tone]}>{credit.amount}</Badge>
+    </span>
+  );
+}
+
+const WHOLE_USD = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  maximumFractionDigits: 0,
+});
+
+/** An amount at a glance: whole dollars from $100, cents below. */
+function compactUsd(value: number): string {
+  return Math.abs(value) >= 100 ? WHOLE_USD.format(value) : formatUsd(value);
 }

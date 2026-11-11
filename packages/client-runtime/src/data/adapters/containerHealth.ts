@@ -38,9 +38,8 @@ import { browserTransportFetch } from "./mateTransport.ts";
  * One limit worth knowing, measured from a browser 2026-08-28: a container
  * not serving Zerops Mate sends no CORS headers on ANY route, so every read
  * of it throws and it is indistinguishable here from a container that is
- * simply away — both come back `unreachable`. The picker resolves that where
- * it has more to go on: the platform has already said the service is ACTIVE,
- * and a restart is the action that helps in either case.
+ * simply away — both come back `unreachable`. The container machine tells
+ * them apart by `ZCP_MATE_ENABLED`, read off Zerops once no Mate answers.
  */
 
 import { EnvironmentId, type ExecutionEnvironmentUpdate } from "@t3tools/contracts";

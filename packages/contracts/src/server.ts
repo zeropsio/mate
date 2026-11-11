@@ -492,6 +492,18 @@ export const ServerSignalProcessResult = Schema.Struct({
 });
 export type ServerSignalProcessResult = typeof ServerSignalProcessResult.Type;
 
+/**
+ * HQ's word on this Mate's key at the latest link HQ closed on it, standing until HQ next sends the
+ * Mate its state: `refused` with HQ's close reason (`key_refused`, or the code HQ does not admit the
+ * key by), or `unresolved` when HQ's admission got no verdict on the key — Zerops did not answer, or
+ * HQ could not read its own entry. Absent while neither stands, outside Zerops and on older servers.
+ */
+export const MateHqKey = Schema.Union([
+  Schema.Struct({ state: Schema.Literal("refused"), reason: TrimmedNonEmptyString }),
+  Schema.Struct({ state: Schema.Literal("unresolved") }),
+]);
+export type MateHqKey = typeof MateHqKey.Type;
+
 export const ServerConfig = Schema.Struct({
   environment: ExecutionEnvironmentDescriptor,
   auth: ServerAuthDescriptor,
@@ -524,6 +536,8 @@ export const ServerConfig = Schema.Struct({
    * stays absent for subscribers that did not opt in.
    */
   usageLimitSources: Schema.optional(UsageLimitSourceSnapshots),
+  /** See {@link MateHqKey}; later changes arrive as `hqKey` events. */
+  hqKey: Schema.optionalKey(MateHqKey),
 });
 export type ServerConfig = typeof ServerConfig.Type;
 
@@ -572,6 +586,14 @@ export const ServerConfigProviderStatusesPayload = Schema.Struct({
 });
 export type ServerConfigProviderStatusesPayload = typeof ServerConfigProviderStatusesPayload.Type;
 
+export const ServerConfigProvidersChangedPayload = Schema.Struct({
+  /** Whole entries of only the providers that changed since the snapshot or the last event. */
+  providers: ServerProviders,
+  /** Every provider the list now holds, in order; one absent here is gone. */
+  instanceIds: Schema.Array(ProviderInstanceId),
+});
+export type ServerConfigProvidersChangedPayload = typeof ServerConfigProvidersChangedPayload.Type;
+
 export const ServerConfigSettingsUpdatedPayload = Schema.Struct({
   settings: ServerSettings,
 });
@@ -599,6 +621,14 @@ export const ServerConfigStreamProviderStatusesEvent = Schema.Struct({
 });
 export type ServerConfigStreamProviderStatusesEvent =
   typeof ServerConfigStreamProviderStatusesEvent.Type;
+
+export const ServerConfigStreamProvidersChangedEvent = Schema.Struct({
+  version: Schema.Literal(1),
+  type: Schema.Literal("providersChanged"),
+  payload: ServerConfigProvidersChangedPayload,
+});
+export type ServerConfigStreamProvidersChangedEvent =
+  typeof ServerConfigStreamProvidersChangedEvent.Type;
 
 export const ServerConfigStreamSettingsUpdatedEvent = Schema.Struct({
   version: Schema.Literal(1),
@@ -629,11 +659,19 @@ export const ServerConfigStreamMateUpdateEvent = Schema.Struct({
   payload: Schema.Struct({ update: Schema.NullOr(ExecutionEnvironmentUpdate) }),
 });
 
+export const ServerConfigStreamHqKeyEvent = Schema.Struct({
+  version: Schema.Literal(1),
+  type: Schema.Literal("hqKey"),
+  payload: Schema.Struct({ hqKey: Schema.NullOr(MateHqKey) }),
+});
+
 export const ServerConfigStreamEvent = Schema.Union([
+  ServerConfigStreamHqKeyEvent,
   ServerConfigStreamMateUpdateEvent,
   ServerConfigStreamSnapshotEvent,
   ServerConfigStreamKeybindingsUpdatedEvent,
   ServerConfigStreamProviderStatusesEvent,
+  ServerConfigStreamProvidersChangedEvent,
   ServerConfigStreamSettingsUpdatedEvent,
   ServerConfigStreamUsageLimitSourcesUpdatedEvent,
 ]);

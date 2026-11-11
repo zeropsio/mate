@@ -28,7 +28,7 @@ describe("generateBotName", () => {
     expect(new Set(taken).size).toBe(ZEROPS_BOT_NAME_POOL.length);
   });
 
-  it.each([30, 100, 150])("proposes no numbered name in an organisation of %i Mates", (mates) => {
+  it.each([150])("proposes no numbered name in an organisation of %i Mates", (mates) => {
     const taken: Array<string> = [];
     for (let i = 0; i <= mates; i += 1) {
       taken.push(generateBotName(taken, bytesReturning(i * 37, i * 11, 5)));

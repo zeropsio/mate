@@ -25,6 +25,17 @@ vi.mock("../ui/tooltip", async () => {
   };
 });
 
+// The project as the platform states it: the incident's service runs its version.
+vi.mock("../../zerops/useZeropsFeeds", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../zerops/useZeropsFeeds")>()),
+  useZeropsTopology: () => ({
+    project: { id: "proj-1", name: "orchard" },
+    services: [{ hostname: "apidev", serviceId: "svc-api", status: "ACTIVE", routes: [] }],
+    warnings: [],
+    usageRead: true,
+  }),
+}));
+
 const closings = vi.hoisted(() => [] as Array<Parameters<typeof stepHeight>[0]>);
 vi.mock("./stepHeight", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./stepHeight")>()),

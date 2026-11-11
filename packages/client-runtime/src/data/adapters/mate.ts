@@ -36,7 +36,9 @@ import {
 import type { Instant } from "../../zerops/environments/exchange.ts";
 import type { IdentityExchangeReason } from "../../zerops/diagnostics.ts";
 import {
+  comingUp,
   containerVerdict,
+  hqReadsWayUp,
   initialContainer,
   platformSaysDown,
   probeCadence,
@@ -156,8 +158,6 @@ export interface MateAdapter {
   readonly setTargets: (targets: ReadonlyArray<MateTarget>) => void;
   /** A project being deleted takes no demand; its leases stand for when it fails. */
   readonly setDeleting: (projectId: string, deleting: boolean) => void;
-  /** The projects whose Mate is held for its close-off: none takes demand. Replaces the set. */
-  readonly setCloseOffHeld: (projectIds: Iterable<string>) => void;
   /** Replaces the whole set of targets one emitter wants. */
   readonly setDemand: (reason: DemandReason, keys: Iterable<TargetKey>) => void;
   /** The target is wanted until the answer is called; calling it again does nothing. */
@@ -181,6 +181,8 @@ export interface MateAdapter {
   readonly updateUnderway: (environmentId: EnvironmentId, from: string | null) => void;
   /** Whether a platform process runs against the target (the activity feed). */
   readonly process: (key: TargetKey, running: boolean) => void;
+  /** HQ's presence for the target's Mate while HQ's relay is current: online or not; else null. */
+  readonly presence: (key: TargetKey, online: boolean | null) => void;
   /**
    * Our verb was accepted for this target: its container shows it until a read fact settles it.
    * False when no container took it — no such target, or the platform's facts overrule it.
@@ -188,10 +190,13 @@ export interface MateAdapter {
   readonly intend: (key: TargetKey, intent: IntentRequest) => boolean;
   /** The target's `/healthz` `initAt`, read now; null when it cannot say in time. */
   readonly initAt: (key: TargetKey) => Promise<string | null>;
-  /** The target's container is read again, if something waits on it. */
+  /**
+   * The target's container is read again, if something waits on it: a person's re-read or verb,
+   * so even while HQ's presence reads its way up.
+   */
   readonly request: (key: TargetKey, ask?: ProbeAsk) => void;
-  /** HQ placed the project's Mate for the person again: a refusal of it is asked again. */
-  readonly accessChanged: (projectId: string) => void;
+  /** The person's role on the project changed (`followAccessChanges`): a refusal of it is asked again. */
+  readonly roleChanged: (projectId: string) => void;
   /** The reading of a probe of this origin started from now on. */
   readonly next: (origin: string) => Promise<ProbeReading>;
   readonly machines: (key: TargetKey) => MateMachines | undefined;
@@ -336,12 +341,6 @@ const inFlightAttempt = (machine: EnvironmentMachine): number | null => {
 const polls = (cadence: ProbeCadence): cadence is Extract<ProbeCadence, { kind: "poll" }> =>
   cadence.kind === "poll";
 
-/** The platform or our verb says the container is on its way up: it is polled until it is. */
-const comingUp = (machine: ContainerMachine): boolean =>
-  (machine.state.level === "booting" && !machine.state.guessed) ||
-  machine.state.level === "restarting" ||
-  machine.state.level === "updating";
-
 /** The platform's status as last read: a service the listing could not say keeps its last. */
 interface KnownStatus {
   readonly project: string;
@@ -413,7 +412,6 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
     ["user", new Map()],
   ]);
   const deleting = new Set<string>();
-  let closeOffHeld: ReadonlySet<string> = new Set();
   const connects = new Map<TargetKey, Array<(outcome: ConnectOutcome) => void>>();
   const listeners = new Set<() => void>();
   /** Intents restored from storage whose targets are not listed yet. */
@@ -439,8 +437,7 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
   let scheduled = false;
 
   const context = () => ({ now: clock.now(), random: clock.random });
-  const suppressed = (projectId: string): boolean =>
-    deleting.has(projectId) || closeOffHeld.has(projectId);
+  const suppressed = (projectId: string): boolean => deleting.has(projectId);
 
   const entryFor = (key: TargetKey, record: EnvironmentId | null): Entry => {
     const existing = entries.get(key);
@@ -702,6 +699,7 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
 
   const guardsFor = (key: TargetKey, budget: boolean): EnvironmentGuards => {
     const wanted = wantedBy(key);
+    const container = entries.get(key)?.container;
     return {
       want: wanted.length > 0,
       routeTarget: wanted.includes("route"),
@@ -709,6 +707,7 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
       verified: account.verified,
       zeropsState: account.zeropsState,
       budget,
+      ...(container !== undefined && platformSaysDown(container) ? { serverDown: true } : {}),
     };
   };
 
@@ -761,7 +760,7 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
         entry.containerTimer = null;
         return;
       case "probe":
-        requestFor(entry, { fresh: true });
+        requestFor(entry, { fresh: true }, { health: true, overHq: true });
         return;
       case "read-mate-flag":
         if (entry.readingFlag) return;
@@ -793,16 +792,23 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
     );
     entry.container = next.state;
     for (const effect of next.effects) runContainer(entry, effect);
-    if (!entry.socket) requestFor(entry, { fresh: true });
+    if (!entry.socket) requestFor(entry, { fresh: true }, { overHq: true });
   };
 
   /**
    * Reads the container once this batch ends — only one something waits on, with an address, no
-   * socket proving it up, and no platform status saying it is down.
+   * socket proving it up, and no platform status saying it is down. One whose way up HQ's presence
+   * reads (`hqReadsWayUp`) is read only `overHq`: on HQ's word that its Mate is back, or a person's
+   * ask.
    */
-  const requestFor = (entry: Entry, ask: ProbeAsk, options: { readonly health?: boolean } = {}) => {
+  const requestFor = (
+    entry: Entry,
+    ask: ProbeAsk,
+    options: { readonly health?: boolean; readonly overHq?: boolean } = {},
+  ) => {
     if (entry.origin === null || entry.container.connectedSince !== null) return;
     if (platformSaysDown(entry.container) || !watched(entry)) return;
+    if (hqReadsWayUp(entry.container) && options.overHq !== true) return;
     const origin = originFor(entry.origin);
     origin.requested = true;
     origin.requestedFresh ||= ask.fresh;
@@ -1189,15 +1195,22 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
   function flush(): void {
     scheduled = false;
     if (disposed) return;
-    do {
-      while (queue.length > 0) queue.shift()!();
-      join();
-      allocate();
-      join();
-    } while (queue.length > 0);
-    scheduleProbes();
-    persistIntents();
-    write();
+    // One publication of the turn: every project's written rows together. What the links are
+    // told after it (`followLinks`) reads what was published, so it stays outside.
+    const settle = store.gather();
+    try {
+      do {
+        while (queue.length > 0) queue.shift()!();
+        join();
+        allocate();
+        join();
+      } while (queue.length > 0);
+      scheduleProbes();
+      persistIntents();
+      write();
+    } finally {
+      settle();
+    }
     followLinks();
     if (publish()) for (const listener of listeners) listener();
   }
@@ -1306,21 +1319,6 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
               guards: guardsFor(entry.key, entry.environment.guards.budget),
             });
       }),
-    setCloseOffHeld: (projectIds) => {
-      const next = new Set(projectIds);
-      enqueue(() => {
-        const moved = new Set(
-          [...next, ...closeOffHeld].filter((id) => next.has(id) !== closeOffHeld.has(id)),
-        );
-        closeOffHeld = next;
-        for (const entry of entries.values())
-          if (moved.has(projectOf(entry.key)))
-            step(entry, {
-              type: "GUARDS",
-              guards: guardsFor(entry.key, entry.environment.guards.budget),
-            });
-      });
-    },
     setDemand: (reason, keys) => {
       const next = new Set(keys);
       enqueue(() => {
@@ -1357,7 +1355,7 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
           connects.set(key, [...(connects.get(key) ?? []), resolve]);
           // The person's Try now reads the container too: a level past its cap, or a server that
           // stopped answering, is read again at once.
-          requestFor(entry, { fresh: true });
+          requestFor(entry, { fresh: true }, { overHq: true });
           if (!suppressed(projectOf(key))) step(entry, { type: "USER_RETRY" });
         });
       }),
@@ -1390,7 +1388,7 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
         }
       }),
     online: () => enqueue(everyTarget({ type: "ONLINE" })),
-    accessChanged: (projectId) =>
+    roleChanged: (projectId) =>
       enqueue(() => {
         if (suppressed(projectId)) return;
         for (const entry of entries.values())
@@ -1410,7 +1408,17 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
     process: (key, running) =>
       enqueue(() => {
         const entry = entries.get(key);
-        if (entry !== undefined) transition(entry, { type: "PROCESS", running });
+        if (entry === undefined) return;
+        const ended = entry.container.processRunning && !running;
+        transition(entry, { type: "PROCESS", running });
+        // A process that ended says the container is on its way back: read it even before HQ
+        // reports it online, not at the poll's next rung.
+        if (ended) requestFor(entry, { fresh: true }, { overHq: true });
+      }),
+    presence: (key, online) =>
+      enqueue(() => {
+        const entry = entries.get(key);
+        if (entry !== undefined) transition(entry, { type: "HQ", online });
       }),
     intend: (key, intent) => {
       const entry = entries.get(key);
@@ -1446,7 +1454,7 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
     request: (key, ask = { fresh: true }) =>
       enqueue(() => {
         const entry = entries.get(key);
-        if (entry !== undefined) requestFor(entry, ask);
+        if (entry !== undefined) requestFor(entry, ask, { overHq: true });
       }),
     next: (at) =>
       new Promise((resolve) => {

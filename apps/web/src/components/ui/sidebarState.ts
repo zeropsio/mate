@@ -1,5 +1,12 @@
 export type ResponsiveSidebarState = "expanded" | "collapsed";
 
+/**
+ * Where the menu's toggle keeps whether it was left open (`"false"` closed), read again on reload
+ * and by the first frame (index.html). Local storage, not a cookie: inside a cross-site frame a
+ * cookie never sticks, and the frame's storage still keeps it.
+ */
+export const SIDEBAR_STATE_STORAGE_KEY = "mate:sidebar-state";
+
 export function resolveSidebarState(input: {
   isMobile: boolean;
   open: boolean;

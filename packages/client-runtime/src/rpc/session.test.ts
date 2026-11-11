@@ -13,6 +13,7 @@ import {
 import { describe, expect, it } from "@effect/vitest";
 import { vi } from "vite-plus/test";
 import * as Cause from "effect/Cause";
+import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -36,6 +37,7 @@ import {
 import * as ConnectionDriver from "../connection/driver.ts";
 import * as ConnectionResolver from "../connection/resolver.ts";
 import * as EnvironmentSupervisor from "../connection/supervisor.ts";
+import { connectionBannerCopy, presentConnectionState } from "../connection/presentation.ts";
 import * as EnvironmentRegistry from "../connection/registry.ts";
 import * as Persistence from "../platform/persistence.ts";
 import { makeMateImageWire } from "../data/adapters/mateImages.ts";
@@ -288,6 +290,118 @@ const completeInitialConfig = Effect.fn("TestRpcSessionFactory.completeInitialCo
 });
 
 describe("RpcSessionFactory", () => {
+  it.effect.each([
+    {
+      title:
+        "An advancing Mate connection can finish after the former total setup deadline without requesting another ticket.",
+      previousFailure: false,
+      configurationArrives: true,
+    },
+    {
+      title: "Connection progress does not clear the previous failure before the socket is ready.",
+      previousFailure: true,
+      configurationArrives: true,
+    },
+    {
+      title:
+        "A Mate that stops advancing before initial configuration releases its socket when setup patience expires.",
+      previousFailure: false,
+      configurationArrives: false,
+    },
+  ])("$title", ({ previousFailure, configurationArrives }) =>
+    Effect.gen(function* () {
+      const { factory, sockets } = yield* makeFactory();
+      const target = new ZeropsMateConnectionTarget({
+        environmentId: TARGET.environmentId,
+        label: "Ada",
+        orgId: "org-1",
+        projectId: "project-ada",
+        httpBaseUrl: "https://environment.example.test/mate",
+      });
+      const failure = new ConnectionTransientError({
+        reason: "transport",
+        detail: "Previous connection lost.",
+      });
+      let preparations = 0;
+      const tickets: string[] = [];
+      const driver = ConnectionDriver.layer.pipe(
+        Layer.provide(
+          Layer.succeed(ConnectionResolver.ConnectionResolver, {
+            prepare: () =>
+              Effect.suspend(() => {
+                preparations++;
+                if (previousFailure && preparations === 1) return Effect.fail(failure);
+                const ticket = `ticket-${tickets.length + 1}`;
+                tickets.push(ticket);
+                return Effect.succeed({
+                  ...PREPARED,
+                  target,
+                  firstFrame: JSON.stringify({ ticket }),
+                });
+              }),
+          }),
+        ),
+        Layer.provide(Layer.succeed(RpcSession.RpcSessionFactory, factory)),
+      );
+      const admission = makeConnectionAdmission({ setTimer: () => () => undefined });
+      admission.prefer(target.environmentId);
+      const supervisor = yield* EnvironmentSupervisor.make(
+        { target, profile: Option.none() },
+        { initiallyDesired: true },
+      ).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            driver,
+            Connectivity.layer({ status: Effect.succeed("online"), changes: Stream.never }),
+            ConnectionWakeups.layer({ changes: Stream.never }),
+          ),
+        ),
+        Effect.provideService(ConnectionAdmissionRef, admission),
+      );
+      const atState = (predicate: (state: SupervisorConnectionState) => boolean) =>
+        SubscriptionRef.changes(supervisor.state).pipe(Stream.filter(predicate), Stream.runHead);
+      if (previousFailure) {
+        yield* atState((state) => state.phase === "backoff");
+        yield* TestClock.adjust("2 seconds");
+      }
+      const socket = yield* awaitSocket(sockets);
+      const expectedFailure = previousFailure ? failure : null;
+      expect((yield* SubscriptionRef.get(supervisor.state)).lastFailure).toEqual(expectedFailure);
+      yield* TestClock.adjust("10 seconds");
+      socket.open();
+      yield* atState((state) => state.stage === "synchronizing");
+      yield* TestClock.adjust("6 seconds");
+      const progressing = yield* SubscriptionRef.get(supervisor.state);
+      expect(progressing.phase).toBe("connecting");
+      expect(progressing.stage).toBe("synchronizing");
+      expect(progressing.lastFailure).toEqual(expectedFailure);
+      expect(presentConnectionState(progressing).error).toBe(
+        previousFailure ? failure.message : null,
+      );
+      expect(socket.readyState).toBe(TestWebSocket.OPEN);
+      expect(tickets).toEqual(["ticket-1"]);
+      yield* TestClock.adjust("4 seconds");
+      if (!configurationArrives) {
+        yield* TestClock.adjust("5 seconds");
+        yield* atState((state) => state.phase === "backoff");
+        expect(socket.readyState).toBe(TestWebSocket.CLOSED);
+        expect(tickets).toEqual(["ticket-1"]);
+        expect(Option.isNone(yield* SubscriptionRef.get(supervisor.session))).toBe(true);
+        return;
+      }
+      yield* completeInitialConfig(socket);
+      yield* atState((state) => state.phase === "connected");
+      const connected = yield* SubscriptionRef.get(supervisor.state);
+      expect(connected.lastFailure).toBeNull();
+      expect(connectionBannerCopy(presentConnectionState(connected), "Ada")).toBeNull();
+      const session = Option.getOrThrow(yield* SubscriptionRef.get(supervisor.session));
+      expect(yield* session.initialConfig).toEqual(SERVER_CONFIG);
+      expect(tickets).toEqual(["ticket-1"]);
+      expect(sockets).toHaveLength(1);
+      expect(socket.sent[0]).toBe(JSON.stringify({ ticket: "ticket-1" }));
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
   it.effect(
     "A Mate ticket is available to HTTP readers only after RPC readiness and is discarded on disconnect",
     () =>
@@ -912,6 +1026,48 @@ describe("RpcSessionFactory", () => {
         detail: "Test environment stopped responding.",
       });
     }).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
+  );
+
+  // witness: packages/client-runtime/src/rpc/session.ts | sinceLastTickMillis > LATE_PING_TICK_MILLIS → false
+  it.effect(
+    "a client whose timers stood still gives the Mate three pings again once they run",
+    () =>
+      Effect.gen(function* () {
+        const timers = yield* Clock.Clock;
+        // A suspended machine: its timers stand still while the time of day moves on.
+        const asleep = { millis: 0 };
+        const wallClock: Clock.Clock = {
+          ...timers,
+          currentTimeMillisUnsafe: () => timers.currentTimeMillisUnsafe() + asleep.millis,
+        };
+        const { factory, sockets } = yield* makeFactory();
+        const session = yield* factory
+          .connect(PREPARED)
+          .pipe(Effect.provideService(Clock.Clock, wallClock));
+        const readyFiber = yield* Effect.forkChild(session.ready);
+        const closedFiber = yield* Effect.forkChild(Effect.flip(session.closed));
+        const socket = yield* awaitSocket(sockets);
+        socket.open();
+        yield* completeInitialConfig(socket);
+        yield* Fiber.join(readyFiber);
+        const pings = () => socket.sent.map((message) => decodeJson(message)).filter(isPing).length;
+
+        // One ping is out and unanswered when the machine sleeps for a minute.
+        yield* TestClock.adjust("5 seconds");
+        expect(pings()).toBe(1);
+        asleep.millis = 60_000;
+
+        // Awake: the first tick finds a minute of silence that was the machine's own.
+        yield* TestClock.adjust("5 seconds");
+        expect(closedFiber.pollUnsafe()).toBeUndefined();
+        yield* TestClock.adjust("15 seconds");
+        expect(closedFiber.pollUnsafe()).toBeUndefined();
+        expect(pings()).toBe(5);
+
+        yield* TestClock.adjust("5 seconds");
+        const error = yield* Fiber.join(closedFiber);
+        expect(error).toMatchObject({ detail: "Test environment stopped responding." });
+      }).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
   );
 
   describe("a page whose own throttling may hold pongs back", () => {

@@ -16,7 +16,7 @@ export const KIT_OMISSIONS: readonly KitOmission[] = [
   {
     name: "useSidebar, useOptionalSidebar, readSidebarOpen",
     source: "apps/web/src/components/ui/sidebar.tsx",
-    reason: "Hooks and a cookie read: behaviour, no look.",
+    reason: "Hooks and a stored-state read: behaviour, no look.",
   },
   {
     name: "useComboboxFilter, NumberFieldPrimitive, FieldControl, FieldValidity",
@@ -110,9 +110,9 @@ export const KIT_OMISSIONS: readonly KitOmission[] = [
   {
     name: "Empty: centred title and line, inline",
     source:
-      "apps/web/src/components/DiffPanel.tsx:937, AgentsPanel.tsx:756, settings/ThemeSearchSection.tsx:368, ThreadTerminalDrawer.tsx:1521, Sidebar.tsx:3317",
+      "apps/web/src/components/AgentsPanel.tsx:756, settings/ThemeSearchSection.tsx:368, ThreadTerminalDrawer.tsx:1521, Sidebar.tsx:3317",
     reason:
-      "Five inline blocks inside components that read app state; none is a component to render.",
+      "Four inline blocks inside components that read app state; none is a component to render.",
   },
   {
     name: "Empty: RightPanelEmptyState",
@@ -130,7 +130,7 @@ export const KIT_OMISSIONS: readonly KitOmission[] = [
   {
     name: "Failure: RootRouteErrorView, DraftStartError, DiffFailure, FailedTake",
     source:
-      "apps/web/src/routes/__root.tsx:497, routes/_chat.index.tsx:293, components/chat/ReviewCommentDiff.tsx:11, components/chat/BrowserStrip.tsx:645",
+      "apps/web/src/routes/__root.tsx:497, routes/_chat.index.tsx:136, components/chat/ReviewCommentDiff.tsx:11, components/chat/BrowserStrip.tsx:645",
     reason:
       "The router's error for a route, a draft's start, a live diff's context and a browser operation's take: each needs the thing that failed.",
   },

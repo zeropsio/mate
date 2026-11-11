@@ -73,6 +73,8 @@ export const ZeropsStageRef = Schema.Struct({
   hostname: Schema.String,
   /** Absent while zcp has not resolved the stage's setup. */
   setup: Schema.optional(Schema.String),
+  /** The application part the stage serves ("box"), as its leases name it; absent from older zcp. */
+  part: Schema.optional(Schema.String),
 });
 export type ZeropsStageRef = typeof ZeropsStageRef.Type;
 
@@ -115,6 +117,14 @@ export const ZeropsDevServer = Schema.Struct({
 });
 export type ZeropsDevServer = typeof ZeropsDevServer.Type;
 
+/**
+ * A dev service zcp holds in place while work moves around it — `for` names
+ * the work (`pool-migrate`: a repository moving onto dev pools). Nothing is
+ * meant to run on it while it is held.
+ */
+export const ZeropsStandIn = Schema.Struct({ for: Schema.String });
+export type ZeropsStandIn = typeof ZeropsStandIn.Type;
+
 /** One service's point-in-time lifecycle state — `workflow.ServiceSnapshot`. */
 export const ZeropsServiceSnapshot = Schema.Struct({
   hostname: Schema.String,
@@ -144,6 +154,8 @@ export const ZeropsServiceSnapshot = Schema.Struct({
    * running; a server this build cannot read is dropped, not the snapshot.
    */
   devServers: Schema.optional(ForwardCompatibleArray(ZeropsDevServer)),
+  /** Present while zcp holds this dev service as a stand-in; absent otherwise. */
+  standIn: Schema.optional(ZeropsStandIn),
 });
 export type ZeropsServiceSnapshot = typeof ZeropsServiceSnapshot.Type;
 
@@ -332,6 +344,15 @@ export const ZeropsLease = Schema.Struct({
    * this call, never none running; a server this build cannot read is dropped, not the lease.
    */
   devServers: Schema.optional(ForwardCompatibleArray(ZeropsDevServer)),
+  /**
+   * When zcp last read the lease's dev servers (RFC 3339): from zcp's release that sends their last
+   * read on every call, where a newer read is told from an older one. Absent from an older zcp.
+   */
+  devServersReadAt: Schema.optional(Schema.String),
+  /** The application part the lease serves ("web"); absent where zcp names none. */
+  part: Schema.optional(Schema.String),
+  /** The hostname of that part's stage, which runs what is merged; absent where zcp names none. */
+  stage: Schema.optional(Schema.String),
   /**
    * What zcp read of the lease's checkout and preview, and what a release would lose there — only
    * on a `zerops_lease` call that read them (`action=status`). Absent means not read in this call,
@@ -820,8 +841,6 @@ export const ZeropsAgentLoginErrorReason = Schema.Literals([
   "unavailable",
   /** No login of this agent is waiting for a code right now. */
   "not-awaiting-code",
-  /** The server could not persist who signed this login in. */
-  "signer-write-failed",
   /**
    * `zerops.agentLogin.signOut` refused a token-authorized agent: a project
    * API key belongs to the project, not to a person, so there is nobody's
@@ -1026,6 +1045,16 @@ export const ZeropsMateUpdateResult = Schema.Struct({
   restarted: Schema.Boolean,
   started: Schema.optional(Schema.Boolean),
   error: Schema.optional(Schema.String),
+  /** The container restart this press started or joined: its line's `update.restart.attempt`. */
+  restartAttempt: Schema.optional(Schema.String),
+  /** What that restart installs: zcp's version, and the mate's when it moves too. */
+  restartTarget: Schema.optional(
+    Schema.Struct({ zcp: Schema.optional(Schema.String), mate: Schema.optional(Schema.String) }),
+  ),
+  /** When that restart started, by the server's clock: its line's `update.restart.startedAt`. */
+  restartStartedAt: Schema.optional(Schema.String),
+  /** The boot of the server that answered: a reboot is judged against it. */
+  bootId: Schema.optional(Schema.String),
   serverVersion: Schema.String,
 });
 export type ZeropsMateUpdateResult = typeof ZeropsMateUpdateResult.Type;

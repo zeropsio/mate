@@ -11,9 +11,10 @@ import { Failure } from "~/components/ui/failure";
 import { Loading, type LoadingShape } from "~/components/ui/loading";
 import { Progress, type ProgressView } from "~/components/ui/progress";
 import { StatusPage } from "~/components/ui/status-page";
+import { useSecondsNowMs } from "~/zerops/useNowMs";
 
 import { Specimen, SpecimenBlock, SpecimenGrid } from "../Specimen";
-import { StateFrame, useKitNowMs } from "./Census";
+import { StateFrame } from "./Census";
 
 const MIN = 60_000;
 const STEPS = [
@@ -110,7 +111,7 @@ export function ChosenEmpty() {
 
 /** A specimen that runs: its steps go by every few seconds, then it ends and starts again. */
 function LiveProgress({ ending }: { readonly ending: "done" | "failed" }) {
-  const nowMs = useKitNowMs();
+  const nowMs = useSecondsNowMs(true);
   const [mountedAt] = useState(nowMs);
   // Each run: its steps three seconds apart, then its end held for four.
   const period = STEPS.length * 3000 + 4000;
@@ -154,7 +155,7 @@ function FixedProgress({
   readonly estimateMs: number | null;
   readonly view?: ProgressView;
 }) {
-  const nowMs = useKitNowMs();
+  const nowMs = useSecondsNowMs(view === undefined);
   const [mountedAt] = useState(nowMs);
   const startedAtMs = mountedAt - seconds * 1000;
   return (
@@ -256,7 +257,7 @@ export function ChosenFailure() {
           <Failure
             action={
               <Button size="sm" variant="secondary">
-                Read again
+                Try again
               </Button>
             }
             cause="Couldn't read the project's people."

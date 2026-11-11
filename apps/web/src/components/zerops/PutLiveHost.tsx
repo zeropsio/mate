@@ -4,7 +4,7 @@
  * A run makes production with what the project already says — its name after the project, its recipe, no agent — and releases to it once HQ holds it;
  * its project's production draws where it got (`ProductionRun`).
  */
-import { buildZeropsGroupTree, productionProjectOf } from "@t3tools/client-runtime/zerops";
+import { buildZeropsGroupTree } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useAtomValue } from "@effect/atom-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -12,15 +12,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { hqNavigationAtom } from "~/state/zerops";
 import { useFlowVerbs } from "~/zerops/flowVerbs";
 import { placedPressesIn, useMatePresses } from "~/zerops/matePress";
-import {
-  useCompactProjectFlows,
-  useProjectFlows,
-  type ZeropsProjectFlow,
-} from "~/zerops/projectFlows";
+import { useCompactProjectFlows, useProjectFlows } from "~/zerops/projectFlows";
 import { putLiveRunsIn, usePutLive, usePutLiveRun, type PutLiveAsk } from "~/zerops/putLive";
 import {
   putLiveCreation,
   putLiveDeadline,
+  putLiveFactsOf,
   putLiveLandedAt,
   putLiveNext,
   putLiveSettle,
@@ -190,14 +187,6 @@ function PutLiveSheetContainer({
 }
 
 /** What a run reads of its project's flow. */
-function factsOf(flow: ZeropsProjectFlow) {
-  return {
-    production: productionProjectOf(flow.environments),
-    gate: flow.release.gate,
-    releases: flow.releases,
-  };
-}
-
 /**
  * One run, driven step by step: each step's write is sent once per time the run reaches it, and
  * what it came to moves the run on. Mounted while the run is under way; a failure unmounts it, and
@@ -297,7 +286,7 @@ function PutLiveDriver({ run }: { readonly run: PutLiveRun }) {
     }
 
     if (flow === undefined) return;
-    const next = putLiveNext(run, factsOf(flow), Math.max(woken, Date.now()));
+    const next = putLiveNext(run, putLiveFactsOf(flow), Math.max(woken, Date.now()));
     if (next.kind === "wait") return;
     sent.current = key;
     if (next.kind === "failed") {
@@ -309,7 +298,7 @@ function PutLiveDriver({ run }: { readonly run: PutLiveRun }) {
       return;
     }
     if (next.kind === "live") {
-      step(groupId, { kind: "live", at: putLiveLandedAt(run, factsOf(flow), Date.now()) });
+      step(groupId, { kind: "live", at: putLiveLandedAt(run, putLiveFactsOf(flow), Date.now()) });
       return;
     }
     send(

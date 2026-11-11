@@ -9,24 +9,19 @@ import type { CompareQuery, CompareResponse } from "@t3tools/shared/hqChanges";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 
-import {
-  hqNavigationLink,
-  type HqHandoverCandidates,
-  type HqMoveOffers,
-  type HqWire,
-} from "./adapters/hq.ts";
+import { hqNavigationLink, type HqMoveOffers, type HqWire } from "./adapters/hq.ts";
 import { mateHealthLink, type MateHealthWire } from "./adapters/mateHealth.ts";
 import { mateAttentionLink, type MateAttentionWire } from "./adapters/mateAttention.ts";
 import { zeropsNavigationLink, type ZeropsWire } from "./adapters/zerops.ts";
 import { detailScopeOf, type DetailDemand } from "./demand.ts";
-import { hqVerdictScope, type HqVerdict } from "./families/hqVerdict.ts";
+import { hqPressesScope } from "./families/hqNavigation.ts";
 import { familySpec } from "./families/index.ts";
 import type { RegisteredOperationKind } from "./operations/kind.ts";
 import { holdStandingDemands } from "./operations/standing.ts";
 import { holdPlacedProjectRows } from "./placedRows.ts";
 import { linkKeys } from "./model.ts";
 import { streamOf } from "./reducer.ts";
-import type { AccountStore } from "./store.ts";
+import { readsOfState, type AccountStore, type ProjectionReads } from "./store.ts";
 import type { StreamFault } from "./streamMachine.ts";
 import { superviseLink, type LinkSignal } from "./supervisor.ts";
 
@@ -91,12 +86,12 @@ export interface RunningHq extends Omit<RunningLink, "revalidate" | "renew" | "r
   readonly rewire: (wire: HqWire) => void;
   /** Asks HQ where a Mate may move, as the move opens. */
   readonly moveOffers: (projectId: string) => Promise<HqMoveOffers>;
-  /** Asks HQ whom a Mate may be handed over to, as the hand-over opens. */
-  readonly handoverCandidates: (projectId: string) => Promise<HqHandoverCandidates>;
   /** Asks HQ what lies between two commits; rejects with HQ's words for why it did not answer. */
   readonly compare: (ask: CompareAsk) => Promise<CompareResponse>;
   /** Tells HQ the reader saw these results of a Mate. */
   readonly seen: (projectId: string, resultIds: ReadonlyArray<string>) => void;
+  /** The person's access moved on these projects, or their membership alone: HQ reads again. */
+  readonly accessChanged: (projects: ReadonlyArray<string>) => void;
 }
 
 /** A comparison asked of an application's repository, by its name: git's `base..head`. */
@@ -121,13 +116,13 @@ export function startHqNavigation(options: {
     demandDetail: link.demandDetail,
     retryDetail: link.retryDetail,
     moveOffers: (projectId) => Effect.runPromise(link.moveOffers(projectId)),
-    handoverCandidates: (projectId) => Effect.runPromise(link.handoverCandidates(projectId)),
     compare: (ask) =>
       // HQ's words for why it did not answer, as what the promise rejects with.
       Effect.runPromise(
         Effect.catch(link.compare(ask), (fault) => Effect.die(new Error(fault.message))),
       ),
     seen: (projectId, resultIds) => void Effect.runFork(link.seen(projectId, resultIds)),
+    accessChanged: link.accessChanged,
     rewire: link.rewire,
     stop: () => {
       link.stop();
@@ -176,28 +171,60 @@ export function startMateHealth(options: {
   };
 }
 
-/** An organization's HQ as the app names it: its official HQ, or the verdict there is none yet.
+/**
+ * What a running press heard of its hold from its organization's HQ (`keepPress`): nothing yet,
+ * held, held and then its stream gone, or — that stream back — HQ holds it no more: it lapsed.
+ */
+export type PressWatch = "waiting" | "held" | "dropped" | "lapsed";
+
+/**
+ * The next of {@link PressWatch} as HQ's presses scope reads now. A hold lives with its holder's
+ * HQ stream: only a stream that went away and came back without it says it lapsed — HQ ending a
+ * stage's hold at its registration, on a stream that stayed, is no lapse.
+ */
+export function pressWatch(
+  watch: PressWatch,
+  read: ProjectionReads,
+  orgId: string,
+  projectId: string,
+): PressWatch {
+  if (watch === "lapsed") return watch;
+  const scope = hqPressesScope(orgId);
+  if (read.stream(scope).phase !== "live") return watch === "waiting" ? watch : "dropped";
+  const press = read.members(scope).ids.includes(projectId)
+    ? read.fact("hqPress", projectId)
+    : null;
+  if (press?.kind === "known" && press.value.held) return "held";
+  return watch === "dropped" ? "lapsed" : watch;
+}
+
+/** An organization's HQ as the app names it.
  * ownerId identifies the accepting project and address; a new owner replaces its observation.
  */
-export type ShownHq =
-  | { readonly orgId: string; readonly wire: HqWire; readonly ownerId?: string }
-  | { readonly orgId: string; readonly verdict: Exclude<HqVerdict, "official"> };
+export interface ShownHq {
+  readonly orgId: string;
+  readonly wire: HqWire;
+  readonly ownerId?: string;
+}
 
 /** The account's observation, as an app holds it: the organization shown, and the details held. */
 export interface AccountObservation {
   /** The organization the app shows now; `null` stops observing. */
   readonly show: (orgId: string | null) => void;
   /**
-   * The organization's HQ: its official HQ once known, observed while its organization is the one
-   * shown — named before, from then on; else the account's verdict on it — none, the member list
-   * deciding it unreadable, or not decided yet. The verdict is held as a fact (`hqVerdict`).
+   * The organization's HQ once known, observed while its organization is the one shown — named
+   * before, from then on.
    * Letting it go returns the completion of the queued release decision.
    */
   readonly showHq: (hq: ShownHq | null) => void | Promise<void>;
+  /**
+   * A running press's hold on its organization's HQ stream, whichever organization is shown: the
+   * HQ last named for it stays observed until released — its hold at HQ lives with that stream —
+   * and `lapsed` is called once HQ, its stream back after it went away, holds the press no more.
+   */
+  readonly keepPress: (orgId: string, projectId: string, lapsed: () => void) => () => void;
   /** Asks the shown organization's HQ where a Mate may move; refused without one. */
   readonly moveOffers: (projectId: string) => Promise<HqMoveOffers>;
-  /** Asks the shown organization's HQ whom a Mate may be handed over to; refused without one. */
-  readonly handoverCandidates: (projectId: string) => Promise<HqHandoverCandidates>;
   /** Asks the shown organization's HQ what lies between two commits; refused without one. */
   readonly compare: (ask: CompareAsk) => Promise<CompareResponse>;
   /** Tells the shown organization's HQ the reader saw these results of a Mate. */
@@ -218,6 +245,13 @@ export interface AccountObservation {
   readonly revalidate: (demand: DetailDemand) => void;
   /** The person's "try again" on one detail of the organization shown. */
   readonly retryDetail: (demand: DetailDemand) => void;
+  /**
+   * The person's access moved in the live Zerops data of the organization shown, on these
+   * projects or on their membership alone (`followAccessChanges`): its HQ reads again the
+   * navigation and what it holds of those projects, a refusal among them asked again. A re-door
+   * is no access change and lifts no refusal.
+   */
+  readonly accessChanged: (projects: ReadonlyArray<string>) => void;
   /**
    * The person's view may have changed in this organization (`topic: "inventory"`): its Zerops
    * listing is read again while it is the one shown; another organization's is read when shown.
@@ -251,41 +285,24 @@ export function observeAccount(options: {
   readonly kinds?: ReadonlyArray<RegisteredOperationKind>;
 }): AccountObservation {
   let shown: { readonly orgId: string; readonly link: RunningLink } | null = null;
-  /** Lets go of the own rows of the Mates HQ places that the shown roster does not list yet. */
+  /**
+   * Lets go of what the shown organization holds beside its link: the own rows of the Mates HQ
+   * places that the roster does not list yet, and the member list that names HQ's people.
+   */
   let stopPlaced: (() => void) | null = null;
-  /** The HQ the app named last, and the one observed: only while it is the shown organization's. */
+  /** The HQ the app named last: observed while it is the shown organization's. */
   let wantedHq: ShownHq | null = null;
-  let heldVerdict: { readonly orgId: string; readonly verdict: HqVerdict } | null = null;
-  let verdictRevision = 0;
-  /** The verdict on the shown organization's HQ, as a fact; written only when it changes. */
-  const holdVerdict = () => {
-    if (shown === null || wantedHq === null || wantedHq.orgId !== shown.orgId || closed) return;
-    const verdict = "wire" in wantedHq ? "official" : wantedHq.verdict;
-    if (heldVerdict?.orgId === shown.orgId && heldVerdict.verdict === verdict) return;
-    heldVerdict = { orgId: shown.orgId, verdict };
-    verdictRevision += 1;
-    options.store.dispatch({
-      kind: "baseline-commit",
-      scope: hqVerdictScope(shown.orgId),
-      generation: 0,
-      via: "zerops-read",
-      members: [shown.orgId],
-      rows: [
-        {
-          family: "hqVerdict",
-          id: shown.orgId,
-          value: { verdict },
-          revision: { kind: "zerops", version: verdictRevision },
-        },
-      ],
-    });
-  };
-  let hq: {
-    readonly orgId: string;
-    readonly wire: HqWire;
-    readonly ownerId?: string;
-    readonly link: RunningHq;
-  } | null = null;
+  /** The HQ named last for each organization: a running press keeps its own observed. */
+  const named = new Map<string, ShownHq>();
+  /** Each running press's organization, by its hold (`keepPress`). */
+  const pressing = new Map<symbol, string>();
+  /** Each observed HQ, by organization: the shown one's, and each a running press keeps. */
+  const hqs = new Map<
+    string,
+    { wire: HqWire; readonly ownerId?: string; readonly link: RunningHq }
+  >();
+  /** The shown organization's HQ link, which carries the screens' HQ holds. */
+  let hq: RunningHq | null = null;
   // Every accepted operation holds the detail its handle is observed in until it settles: a
   // standing demand at its owner, whichever organization is shown, from the first shown on until
   // the observation stops — and again if it is shown after that.
@@ -299,7 +316,7 @@ export function observeAccount(options: {
   }
   const holds = new Set<Hold>();
   const linkOf = (source: Hold["source"]): Pick<RunningLink, "demandDetail"> | null =>
-    source === "hq" ? (hq?.link ?? null) : (shown?.link ?? null);
+    source === "hq" ? hq : (shown?.link ?? null);
   const attach = (source: Hold["source"]) => {
     for (const hold of holds)
       if (hold.source === source) hold.release = linkOf(source)?.demandDetail(hold.demand) ?? null;
@@ -311,44 +328,62 @@ export function observeAccount(options: {
       hold.release = null;
     }
   };
-  const stopHq = () => {
-    if (hq === null) return;
-    detach("hq");
-    hq.link.stop();
-    hq = null;
+  /** The screens' HQ holds move to `link`. */
+  const attachHq = (link: RunningHq | null) => {
+    if (hq === link) return;
+    if (hq !== null) detach("hq");
+    hq = link;
+    if (link !== null) attach("hq");
   };
-  /** Observes the HQ named for the organization shown, and none other. */
+  /**
+   * Observes the HQ named for the organization shown, and the one of each organization a running
+   * press keeps: one link, one socket, per organization.
+   */
   const followHq = () => {
-    holdVerdict();
-    const next =
-      wantedHq !== null && "wire" in wantedHq && wantedHq.orgId === shown?.orgId && !closed
-        ? wantedHq
-        : null;
-    if (hq !== null && next !== null && hq.orgId === next.orgId && hq.ownerId === next.ownerId) {
-      // Its HQ reached anew: the link and what it holds go on, its next socket over the new wire.
-      if (hq.wire !== next.wire) {
-        hq.link.rewire(next.wire);
-        hq = { ...hq, wire: next.wire };
+    const wanted = new Map<string, ShownHq>();
+    if (!closed) {
+      for (const orgId of pressing.values()) {
+        const kept = named.get(orgId);
+        if (kept !== undefined) wanted.set(orgId, kept);
       }
-      return;
+      if (wantedHq !== null && wantedHq.orgId === shown?.orgId)
+        wanted.set(wantedHq.orgId, wantedHq);
     }
-    stopHq();
-    if (next === null) return;
-    hq = { ...next, link: startHqNavigation({ ...next, store: options.store }) };
-    attach("hq");
+    for (const [orgId, running] of hqs) {
+      const next = wanted.get(orgId);
+      if (next !== undefined && next.ownerId === running.ownerId) {
+        // Its HQ reached anew: the link and what it holds go on, its next socket over the new wire.
+        if (running.wire !== next.wire) {
+          running.link.rewire(next.wire);
+          running.wire = next.wire;
+        }
+        continue;
+      }
+      if (hq === running.link) attachHq(null);
+      running.link.stop();
+      hqs.delete(orgId);
+    }
+    for (const [orgId, next] of wanted)
+      if (!hqs.has(orgId))
+        hqs.set(orgId, {
+          wire: next.wire,
+          ...(next.ownerId === undefined ? {} : { ownerId: next.ownerId }),
+          link: startHqNavigation({ ...next, store: options.store }),
+        });
+    attachHq(shown === null ? null : (hqs.get(shown.orgId)?.link ?? null));
   };
   const observation: AccountObservation = {
     show: (orgId) => {
       if (shown?.orgId === orgId || (closed && orgId !== null)) return;
       if (shown !== null) {
-        stopHq();
+        attachHq(null);
         detach("zerops");
         stopPlaced?.();
         stopPlaced = null;
         shown.link.stop();
         shown = null;
       }
-      if (orgId === null) return;
+      if (orgId === null) return followHq();
       stopStanding ??= holdStandingDemands({
         store: options.store,
         demandDetail: observation.demandDetail,
@@ -358,16 +393,28 @@ export function observeAccount(options: {
       const link = startZeropsNavigation({ ...options, orgId });
       shown = { orgId, link };
       attach("zerops");
-      stopPlaced = holdPlacedProjectRows({
+      const stopRows = holdPlacedProjectRows({
         store: options.store,
         orgId,
         demandDetail: observation.demandDetail,
       });
+      // HQ names people by Zerops user id alone: the member list names and pictures them.
+      const stopMembers = observation.demandDetail({
+        family: "organizationMembers",
+        ownerId: orgId,
+      });
+      stopPlaced = () => {
+        stopRows();
+        stopMembers();
+      };
       followHq();
     },
     showHq: (next) => {
       wantedHq = next;
-      if (next !== null) return followHq();
+      if (next !== null) {
+        named.set(next.orgId, next);
+        return followHq();
+      }
       // Let go at the end of this turn, not at once: what names the HQ remounting names it again
       // in the same turn, and its link and socket go on.
       return new Promise<void>((resolve) => {
@@ -377,19 +424,36 @@ export function observeAccount(options: {
         });
       });
     },
+    keepPress: (orgId, projectId, lapsed) => {
+      if (closed) return () => undefined;
+      const press = Symbol(projectId);
+      let watch: PressWatch = "waiting";
+      let stopHearing: () => void = () => undefined;
+      const release = () => {
+        stopHearing();
+        if (pressing.delete(press)) followHq();
+      };
+      pressing.set(press, orgId);
+      followHq();
+      const hear = () => {
+        watch = pressWatch(watch, readsOfState(options.store.state()), orgId, projectId);
+        if (watch !== "lapsed") return;
+        release();
+        lapsed();
+      };
+      stopHearing = options.store.subscribe(hear);
+      hear();
+      return release;
+    },
     moveOffers: (projectId) =>
       hq === null
         ? Promise.reject(new Error("No HQ is observed for the organization shown."))
-        : hq.link.moveOffers(projectId),
-    handoverCandidates: (projectId) =>
-      hq === null
-        ? Promise.reject(new Error("No HQ is observed for the organization shown."))
-        : hq.link.handoverCandidates(projectId),
+        : hq.moveOffers(projectId),
     compare: (ask) =>
       hq === null
         ? Promise.reject(new Error("No HQ is observed for the organization shown."))
-        : hq.link.compare(ask),
-    seen: (projectId, resultIds) => hq?.link.seen(projectId, resultIds),
+        : hq.compare(ask),
+    seen: (projectId, resultIds) => hq?.seen(projectId, resultIds),
     demandDetail: (demand) => {
       const source = familySpec(demand.family).scope.source === "hq" ? "hq" : "zerops";
       const hold: Hold = { demand, source, release: null };
@@ -440,21 +504,23 @@ export function observeAccount(options: {
       }),
     revalidate: (demand) => shown?.link.revalidate(demand),
     retryDetail: (demand) => {
-      if (familySpec(demand.family).scope.source === "hq") hq?.link.retryDetail(demand);
+      if (familySpec(demand.family).scope.source === "hq") hq?.retryDetail(demand);
       else shown?.link.retryDetail(demand);
     },
+    accessChanged: (projects) => hq?.accessChanged(projects),
     rereadListing: (orgId) => {
       if (shown?.orgId === orgId) shown.link.reread();
     },
     retry: () => {
       shown?.link.signal("manual-retry");
-      hq?.link.signal("manual-retry");
+      for (const { link } of hqs.values()) link.signal("manual-retry");
     },
     resume: () => {
       shown?.link.signal("resume");
-      hq?.link.signal("resume");
+      for (const { link } of hqs.values()) link.signal("resume");
     },
     stop: () => {
+      pressing.clear();
       stopStanding?.();
       stopStanding = null;
       observation.show(null);

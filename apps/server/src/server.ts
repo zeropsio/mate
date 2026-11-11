@@ -1,5 +1,6 @@
 import { providerUpdateSafetyLayer } from "./spi/ProviderUpdateSafety.ts";
 import { rpcUpdateAdmissionLayer } from "./RpcUpdateAdmission.ts";
+import { MateUpdateBootFence } from "./mateUpdateBoot.ts";
 import {
   EnvironmentHttpApi,
   ProviderDriverKind,
@@ -7,6 +8,7 @@ import {
 } from "@t3tools/contracts";
 import * as Duration from "effect/Duration";
 import * as Deferred from "effect/Deferred";
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
@@ -30,7 +32,10 @@ import {
   httpCompressionLayer,
   withUntracedRequests,
 } from "./http.ts";
-import { guardHttpResponseWriteErrors } from "./httpResponseErrorGuard.ts";
+import {
+  guardHttpResponseWriteErrors,
+  rejectRequestsUntilServing,
+} from "./httpResponseErrorGuard.ts";
 import { websocketRpcRouteLayer } from "./ws.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "./persistence/Layers/Sqlite.ts";
@@ -100,7 +105,10 @@ import * as ReviewService from "./review/ReviewService.ts";
 import * as SourceControlProviderRegistry from "./sourceControl/SourceControlProviderRegistry.ts";
 import * as SourceControlRepositoryService from "./sourceControl/SourceControlRepositoryService.ts";
 import * as ProjectSetupScriptRunner from "./project/ProjectSetupScriptRunner.ts";
-import { ObservabilityLive } from "./observability/Layers/Observability.ts";
+import {
+  ObservabilityLive,
+  SIGNED_URL_PATH_PREFIXES,
+} from "./observability/Layers/Observability.ts";
 import * as HeapSnapshot from "./observability/HeapSnapshot.ts";
 import * as EventLoopMonitor from "./observability/EventLoopMonitor.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
@@ -110,6 +118,7 @@ import * as ZeropsGitSpawner from "./zerops/ZeropsGitSpawner.ts";
 import * as ChildHome from "./process/childHome.ts";
 import * as ZeropsRepositorySource from "./zerops/ZeropsRepositorySource.ts";
 import { zeropsSetupRouteLayer } from "./zerops/http.ts";
+import { mcpSignInRouteLayer } from "./zerops/mcp/mcpSignInHttp.ts";
 import * as ReplayMarkers from "./auth/replayMarkers.ts";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import * as AssetSigningKey from "./assets/AssetSigningKey.ts";
@@ -139,6 +148,7 @@ import {
   persistServerRuntimeState,
 } from "./serverRuntimeState.ts";
 import { orchestrationHttpApiLayer } from "./orchestration/http.ts";
+import { makeRedactedHttpLogger } from "@t3tools/shared/httpObservability";
 import * as NetService from "@t3tools/shared/Net";
 import * as RelayClient from "@t3tools/shared/relayClient";
 import { forkParked, ServerActivation } from "./serverActivation.ts";
@@ -242,18 +252,21 @@ const HttpServerLive = Layer.unwrap(
         Effect.promise(() => import("@effect/platform-node/NodeHttpServer")),
         Effect.promise(() => import("node:http")),
       ]);
-      return NodeHttpServer.layer(() => guardHttpResponseWriteErrors(NodeHttp.createServer()), {
-        host: config.host ?? "127.0.0.1",
-        port: config.port,
-        gracefulShutdownTimeout: HTTP_PREEMPTIVE_SHUTDOWN_GRACE_MS,
-        // Negotiate permessage-deflate with clients that offer it; clients
-        // that don't still get uncompressed frames on their connection.
-        // Context takeover stays enabled (ws default) so the compression
-        // window is shared across frames — that also makes small frames cheap
-        // to compress, so no size threshold is set (ws only honors
-        // `threshold` when context takeover is disabled).
-        websocket: { perMessageDeflate: true },
-      });
+      return NodeHttpServer.layer(
+        () => rejectRequestsUntilServing(guardHttpResponseWriteErrors(NodeHttp.createServer())),
+        {
+          host: config.host ?? "127.0.0.1",
+          port: config.port,
+          gracefulShutdownTimeout: HTTP_PREEMPTIVE_SHUTDOWN_GRACE_MS,
+          // Negotiate permessage-deflate with clients that offer it; clients
+          // that don't still get uncompressed frames on their connection.
+          // Context takeover stays enabled (ws default) so the compression
+          // window is shared across frames — that also makes small frames cheap
+          // to compress, so no size threshold is set (ws only honors
+          // `threshold` when context takeover is disabled).
+          websocket: { perMessageDeflate: true },
+        },
+      );
     }
   }),
 );
@@ -261,11 +274,21 @@ const HttpServerLive = Layer.unwrap(
 const PlatformServicesLive = Layer.unwrap(
   Effect.gen(function* () {
     if (typeof Bun !== "undefined") {
-      const { layer } = yield* Effect.promise(() => import("@effect/platform-bun/BunServices"));
-      return layer;
+      const [services, crypto] = yield* Effect.promise(() =>
+        Promise.all([
+          import("@effect/platform-bun/BunServices"),
+          import("@effect/platform-bun/BunCrypto"),
+        ]),
+      );
+      return Layer.mergeAll(services.layer, crypto.layer);
     } else {
-      const { layer } = yield* Effect.promise(() => import("@effect/platform-node/NodeServices"));
-      return layer;
+      const [services, crypto] = yield* Effect.promise(() =>
+        Promise.all([
+          import("@effect/platform-node/NodeServices"),
+          import("@effect/platform-node/NodeCrypto"),
+        ]),
+      );
+      return Layer.mergeAll(services.layer, crypto.layer);
     }
   }),
 );
@@ -608,6 +631,7 @@ export const makeRoutesLayer = Layer.mergeAll(
   assetRouteLayer,
   attachmentUploadRouteLayer,
   zeropsSetupRouteLayer,
+  mcpSignInRouteLayer,
   mateUpdateRouteLayer,
   staticAndDevRouteLayer,
   websocketRpcRouteLayer,
@@ -617,14 +641,25 @@ export const makeRoutesLayer = Layer.mergeAll(
   Layer.provide(httpCompressionLayer),
 );
 
+const redactedHttpLogger = makeRedactedHttpLogger(SIGNED_URL_PATH_PREFIXES);
+
 // HttpRouter.serve builds the routes in a private memo map, so the server's
 // one TracerDisabledWhen is provided to the served layer, never merged into
-// the routes.
+// the routes. Its own response logger would log signed URL tokens, so it stays
+// off and the redacting one takes its place.
 export const serveRoutes = (options: {
   readonly routerConfig: typeof HTTP_ROUTER_CONFIG;
   readonly disableLogger?: boolean;
   readonly disableListenLog?: boolean;
-}) => HttpRouter.serve(makeRoutesLayer, options).pipe(withUntracedRequests);
+}) =>
+  HttpRouter.serve(makeRoutesLayer, {
+    routerConfig: options.routerConfig,
+    disableLogger: true,
+    ...(options.disableListenLog === undefined
+      ? {}
+      : { disableListenLog: options.disableListenLog }),
+    ...(options.disableLogger ? {} : { middleware: redactedHttpLogger }),
+  }).pipe(withUntracedRequests);
 
 export const makeServerLayer = (options: ServerLayerOptions) =>
   Layer.unwrap(
@@ -778,6 +813,8 @@ export const makeServerLayer = (options: ServerLayerOptions) =>
             rpcUpdateAdmissionLayer,
           ),
         ),
+        // Read once from zcp's update record; everything above holds its outward roots on it.
+        Layer.provideMerge(MateUpdateBootFence.layer),
         // Inside a Zerops container every git spawn above this line is rewritten
         // into `ssh <service> git -C /var/www …`; everything else reaches the
         // platform spawner below unchanged. The repository source reads the
@@ -797,5 +834,12 @@ export const makeServerLayer = (options: ServerLayerOptions) =>
     }),
   );
 
-// The CLI supplies configuration.
-export const runServer = Layer.launch(makeServerLayer({ drivers: BUILT_IN_DRIVERS }));
+// The CLI supplies configuration. A boot that fails fails the build (`abort`): every step that can
+// fail, the engine's boot included, comes before activation. Afterwards only an update's refused
+// boot fence ends the server, the same way (`MateUpdateBootFence.ended`).
+export const runServer = Effect.scoped(
+  Effect.flatMap(
+    Layer.build(makeServerLayer({ drivers: BUILT_IN_DRIVERS })),
+    (context) => Context.get(context, MateUpdateBootFence).ended,
+  ),
+);

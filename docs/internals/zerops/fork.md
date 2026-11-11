@@ -25,8 +25,8 @@ The zcp↔mate release and environment contract belongs to `../zcp/docs/spec-mat
 - **Owned product** — `apps/server/src/zerops/**`, `apps/server/src/engine/**`,
   `packages/contracts/src/engine*.ts`, `apps/web/src/zerops/**`, `apps/web/src/components/zerops/**`,
   `packages/client-runtime/src/zerops/**`, `apps/mobile/src/features/zerops/**`,
-  `packages/shared/src/{brand,threadStatus,crewHome,crewTemplates}.ts`, `apps/hq/**`,
-  `packages/hq-git/**` and `docs/internals/zerops/**`. This code is ours only. Client code follows the [design guide](design-system.md).
+  `packages/shared/src/{brand,threadStatus,crewHome,crewTemplates}.ts` and
+  `docs/internals/zerops/**`. This code is ours only. Client code follows the [design guide](design-system.md).
 - **Removed** — delete retired code; do not disable it or preserve compatibility shims.
 
 ### 3.1 Boundaries
@@ -72,8 +72,9 @@ Worktree, checks and shipping commands live in
 
 ## 6. Upstream constraints
 
-Never fetch upstream into this repository: no upstream remote, refs or history. Inspect it in a
-scratch clone. A port may bring the necessary preimage blobs, but not upstream history.
+A local clone may keep a fetch-only `upstream` remote for inspecting and porting. Its refs, tags and
+history never reach origin: never merge or rebase onto them, push only named refs (never `--tags` or
+`--mirror`). A port may bring the necessary preimage blobs, but not upstream history.
 Keep ported-zone changes explicit; do not hide skipped prerequisites by advancing a review SHA.
 Exclude upstream user guides, bot configuration, release pipelines and unconfigured Knip sweeps.
 Keep port commits free of upstream PR numbers, handles and trailers.

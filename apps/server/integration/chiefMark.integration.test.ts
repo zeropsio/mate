@@ -1,6 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off -- a loopback HQ the Mate links to.
 import { describe, expect, it } from "@effect/vitest";
-import { NodeWS } from "@effect/platform-node/NodeSocket";
+import * as NodeWS from "@effect/platform-node/NodeWS";
 import {
   CommandId,
   ConversationId,
@@ -25,8 +25,6 @@ const mateState = (chief: LinkedMate["chief"]): LinkedMate => ({
   name: "Ada",
   face: "face-1",
   standupRequestedBy: "owner",
-  closedOff: true,
-  signers: {},
   appId: null,
   appName: null,
   changes: [],
@@ -36,11 +34,11 @@ const mateState = (chief: LinkedMate["chief"]): LinkedMate => ({
 /** An HQ on a loopback port: it answers a Mate's key with the first state, and sends more on demand. */
 const fakeHq = Effect.acquireRelease(
   Effect.promise(async () => {
-    const server = new NodeWS.WebSocketServer({ host: "127.0.0.1", port: 0 });
+    const server = new NodeWS.WebSocketServer({ host: "::1", port: 0 });
     await new Promise((resolve) => server.once("listening", resolve));
     const address = server.address();
     if (typeof address === "string" || address === null) throw new Error("HQ has no port");
-    return { server, origin: `http://127.0.0.1:${address.port}` };
+    return { server, origin: `http://[::1]:${address.port}` };
   }),
   ({ server }) => Effect.sync(() => server.close()),
 );

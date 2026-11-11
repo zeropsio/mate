@@ -1,6 +1,11 @@
 import type { MateLiveView } from "@t3tools/shared/hqMates";
 import type { EnvironmentId, OrchestrationThreadShell } from "@t3tools/contracts";
 
+/** What a restart does to a Mate with nothing running: the dialog's title already asks. */
+export function idleRestartWords(name: string): string {
+  return `${name}'s container stops and starts again, which takes a minute or two. Its conversations stay.`;
+}
+
 /** Every chat on the Mate being restarted, including one that is not on screen. */
 export function restartMateWords(
   name: string,
@@ -34,7 +39,7 @@ export function restartMateWords(
     }
     titles = [...working.values()];
   }
-  if (titles.length === 0) return `Restart ${name}?`;
+  if (titles.length === 0) return idleRestartWords(name);
   const list =
     titles.length === 1 ? titles[0] : `${titles.slice(0, -1).join(", ")} and ${titles.at(-1)}`;
   return `${name} is working on ${list}; restarting interrupts ${titles.length === 1 ? "that turn" : "those turns"}.`;

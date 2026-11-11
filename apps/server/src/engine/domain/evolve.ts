@@ -397,8 +397,10 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
             answers: 0,
             kind: event.ask.kind,
             ...(event.byHelper === true ? { byHelper: true as const } : {}),
-            ...(event.ask.kind === "question" && event.ask.dismissible
-              ? { dismissible: true, questions: askedQuestions(event.ask.questions) }
+            ...(event.ask.kind === "question"
+              ? event.ask.dismissible
+                ? { dismissible: true, questions: askedQuestions(event.ask.questions) }
+                : { asked: event.ask.questions }
               : {}),
             ...(event.ask.kind === "vault"
               ? { vault: { key: event.ask.key, scope: event.ask.scope } }
@@ -406,6 +408,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
             ...(event.ask.kind === "origin"
               ? { origin: { url: event.ask.url, repo: event.ask.repo } }
               : {}),
+            ...(event.ask.kind === "mirror" ? { mirror: { repo: event.ask.repo } } : {}),
           },
         },
       };
@@ -443,8 +446,10 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
             ...(answered?.dismissible === true ? { dismissible: true } : {}),
             ...(answered?.byHelper === true ? { byHelper: true as const } : {}),
             ...(answered?.questions === undefined ? {} : { questions: answered.questions }),
+            ...(answered?.asked === undefined ? {} : { asked: answered.asked }),
             ...(answered?.vault === undefined ? {} : { vault: answered.vault }),
             ...(answered?.origin === undefined ? {} : { origin: answered.origin }),
+            ...(answered?.mirror === undefined ? {} : { mirror: answered.mirror }),
           },
         },
         answering: Object.fromEntries(
@@ -554,6 +559,9 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
       return { ...state, lease: event.lease };
     case "LeaseUnbound":
       return state.lease?.alias === event.alias ? { ...state, lease: null } : state;
+    case "LeaseReleaseSettled":
+      // A receipt only: a release that went unbinds the conversation by its own `LeaseUnbound`.
+      return state;
     case "EffectRequested": {
       const counted =
         event.kind === "session.open"

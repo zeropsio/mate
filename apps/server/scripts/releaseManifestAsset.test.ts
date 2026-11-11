@@ -8,20 +8,6 @@ import {
 const VALID_SHA256 = "a".repeat(64);
 
 describe("buildStableManifest", () => {
-  it("publishes the proved last-good range beside automatic-update permission", () => {
-    expect(
-      buildStableManifest({
-        version: "0.15.1",
-        asset: "zerops-mate-0.15.1.tgz",
-        repository: "zeropsio/mate",
-        tag: "v0.15.1",
-        sha256: VALID_SHA256,
-        size: 1,
-        publishedAt: "2026-10-08T00:00:00Z",
-        compatibility: { rollbackCompatible: true, compatibleFrom: "0.15.0" },
-      }),
-    ).toMatchObject({ rollbackCompatible: true, compatibleFrom: "0.15.0" });
-  });
   it.each([
     {
       name: "builds the manifest with the GitHub download URL and contract 2",
@@ -41,7 +27,6 @@ describe("buildStableManifest", () => {
         sha256: VALID_SHA256,
         size: 21_690_443,
         contract: 2,
-        rollbackCompatible: false,
         publishedAt: "2026-09-09T07:23:00Z",
       },
     },
@@ -63,7 +48,6 @@ describe("buildStableManifest", () => {
         sha256: VALID_SHA256,
         size: 1,
         contract: 2,
-        rollbackCompatible: false,
         publishedAt: "2026-09-09T00:00:00Z",
       },
     },
@@ -85,7 +69,6 @@ describe("buildStableManifest", () => {
         sha256: VALID_SHA256,
         size: 1,
         contract: 2,
-        rollbackCompatible: false,
         publishedAt: "2026-09-09T00:00:00Z",
       },
     },

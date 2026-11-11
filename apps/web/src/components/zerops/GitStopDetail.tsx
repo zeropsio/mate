@@ -1,7 +1,7 @@
 import { Checkbox } from "~/components/ui/checkbox";
 import {
   canonicalAppEnvironments,
-  canonicalHqNavigation,
+  hqEnvironmentOffers,
   listedProject,
   type CanonicalAppEnvironmentsRead,
 } from "@t3tools/client-runtime/data";
@@ -9,6 +9,7 @@ import { Atom } from "effect/reactivity";
 import { useAccountOrgId, useProjection } from "~/zerops/ZeropsAccountData";
 import { useAccountOperationsOptional } from "~/zerops/accountOperations";
 import { hqProjectIdOf } from "~/zerops/hqWrites";
+import { stoppedWords } from "~/zerops/stoppedWords";
 import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
 import {
   flowReleaseOf,
@@ -29,6 +30,8 @@ import type { HqOffers } from "@t3tools/shared/hqOffers";
 import { hqOffer } from "@t3tools/shared/hqOffers";
 import { useMemo, useState } from "react";
 import { Button } from "~/components/ui/button";
+import { Card } from "~/components/ui/card";
+import { SectionLabel } from "./system";
 import { toastManager } from "~/components/ui/toast";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 import { useCompactProjectFlows } from "~/zerops/projectFlows";
@@ -60,16 +63,14 @@ function gitRulesetGuide(
 
 type GitEnvironment = Omit<GitDeliveryEnvironment, "target"> & {
   readonly target: Extract<GitDeliveryEnvironment["target"], { readonly kind: "git" }>;
-} & { readonly name: string; readonly can?: HqOffers | undefined };
+} & { readonly name: string };
 /** Mounted only after the existing route resolves an environment inside the current app/account. */
 export function GitStopDetailPage({
   appId,
   environment,
-  live,
 }: {
   readonly appId: string;
   readonly environment: GitEnvironment;
-  readonly live: boolean;
 }) {
   const operations = useGitTargetOperations(appId);
   const detail = useHqAppDetail(appId);
@@ -81,6 +82,7 @@ export function GitStopDetailPage({
     orgId === null ? null : { orgId, appId },
     UNTOLD,
   ).environments;
+  const can = useEnvironmentOffers(appId, environment.id);
   return (
     <GitStopDetail
       environment={environment}
@@ -88,7 +90,7 @@ export function GitStopDetailPage({
       staged={environments?.some((row) => row.tier === "stage" && row.target.kind === "git")}
       repos={detail.repos}
       releases={detail.releases}
-      can={environment.can}
+      can={can}
       onRemove={
         operations.actions === undefined
           ? undefined
@@ -100,7 +102,6 @@ export function GitStopDetailPage({
           ? undefined
           : (repo) => operations.actions!.runAgain(environment.id, repo)
       }
-      live={live && detail.live && operations.live}
     />
   );
 }
@@ -109,11 +110,10 @@ export function GitStopDetail({
   delivery,
   repos,
   releases,
-  can = environment.can,
+  can,
   staged = false,
   onRemove,
   onRunAgain,
-  live = true,
 }: {
   readonly environment: GitEnvironment;
   readonly delivery?: GitDelivery | undefined;
@@ -124,107 +124,125 @@ export function GitStopDetail({
   readonly can?: HqOffers | undefined;
   readonly onRemove?: ((loseUnresolvedHistory?: true) => Promise<void>) | undefined;
   readonly onRunAgain?: ((repo: string) => Promise<void>) | undefined;
-  readonly live?: boolean;
 }) {
   const [notice, setNotice] = useState<string>();
   const [busy, setBusy] = useState(false);
   const pushes = gitPushHistory(environment.jobs);
+  const history =
+    environment.tier === "stage"
+      ? pushes.length
+      : releases === undefined
+        ? undefined
+        : releases.length;
   return (
-    <div data-zerops-surface="git-stop-detail">
-      <GitDeliveryStatus environment={environment} delivery={delivery} repos={repos} />
-      {environment.tier !== "production" || !staged
-        ? null
-        : repos?.map((repo) => {
-            const guide =
-              repo.remote == null
-                ? undefined
-                : gitRulesetGuide(
-                    repo.remote.url,
-                    environment.target.branch,
-                    gitRequiredChecks(environment.jobs, repo.name),
-                  );
-            return guide === undefined ? null : (
-              <p className="rv-note" data-git-ruleset key={repo.name}>
-                {guide.words}{" "}
-                <a href={guide.url} rel="noreferrer" target="_blank">
-                  Open {repo.name}'s rulesets
-                </a>
-              </p>
-            );
-          })}
-      {environment.target.kind !== "git" || environment.target.delivery === "direct" ? null : (
-        <p className="rv-note">Pull-request delivery is not available here yet.</p>
-      )}
-      {notice === undefined ? null : <p className="rv-note">{notice}</p>}
-      {onRunAgain !== undefined &&
-      hqOffer(can, "redeploy", { current: live, unavailableSince: live ? null : 0 }).kind ===
-        "allowed"
-        ? delivery?.repositories.map((repo) => (
-            <Button
-              key={repo.repo}
-              size="sm"
-              variant="secondary"
-              disabled={busy}
-              onClick={async () => {
-                setBusy(true);
-                try {
-                  await onRunAgain(repo.repo);
-                } catch {
-                  setNotice(
-                    "HQ couldn't confirm Run again. Check its outcome before trying again.",
-                  );
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            >
-              Run {repo.repo} again
-            </Button>
-          ))
-        : null}
-      <h2 className="mt-6 text-sm font-medium">History</h2>
-      {environment.tier === "stage" ? (
-        pushes.length === 0 ? (
-          <p className="rv-note">No pushes recorded.</p>
-        ) : (
-          <ul className="space-y-2">
-            {pushes.map((push) => (
-              <ZeropsEnvironmentRow
-                key={push.id}
-                name={push.name}
-                tag={push.cause}
-                summary={<span className="whitespace-normal">{push.summary}</span>}
-                status={
-                  <Badge dot tone={STATUS_BADGE_TONE[push.attention ? "attention" : "off"]}>
-                    {push.word}
-                  </Badge>
-                }
+    <Card data-zerops-surface="git-stop-detail" variant="flat">
+      <div className="flex flex-col gap-7 px-4 py-4">
+        <section className="flex min-w-0 flex-col gap-1.5">
+          <SectionLabel>Delivery</SectionLabel>
+          <GitDeliveryStatus environment={environment} delivery={delivery} repos={repos} />
+          {environment.tier !== "production" || !staged
+            ? null
+            : repos?.map((repo) => {
+                const guide =
+                  repo.remote == null
+                    ? undefined
+                    : gitRulesetGuide(
+                        repo.remote.url,
+                        environment.target.branch,
+                        gitRequiredChecks(environment.jobs, repo.name),
+                      );
+                return guide === undefined ? null : (
+                  <p className="rv-note" data-git-ruleset key={repo.name}>
+                    {guide.words}{" "}
+                    <a href={guide.url} rel="noreferrer" target="_blank">
+                      Open {repo.name}'s rulesets
+                    </a>
+                  </p>
+                );
+              })}
+          {environment.target.kind !== "git" || environment.target.delivery === "direct" ? null : (
+            <p className="rv-note">Pull-request delivery is not available here yet.</p>
+          )}
+          {notice === undefined ? null : <p className="rv-note">{notice}</p>}
+          <div className="flex flex-wrap gap-2 empty:hidden">
+            {onRunAgain !== undefined && hqOffer(can, "redeploy").kind === "allowed"
+              ? delivery?.repositories.map((repo) => (
+                  <Button
+                    key={repo.repo}
+                    size="sm"
+                    variant="secondary"
+                    disabled={busy}
+                    onClick={async () => {
+                      setBusy(true);
+                      try {
+                        await onRunAgain(repo.repo);
+                      } catch (cause) {
+                        setNotice(
+                          stoppedWords(
+                            cause,
+                            "HQ couldn't confirm Run again. Check its outcome before trying again.",
+                          ),
+                        );
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
+                  >
+                    Run {repo.repo} again
+                  </Button>
+                ))
+              : null}
+          </div>
+        </section>
+        <section className="flex min-w-0 flex-col gap-1.5">
+          <SectionLabel count={history === 0 ? undefined : history}>
+            {environment.tier === "stage" ? "Pushes" : "Releases"}
+          </SectionLabel>
+          {environment.tier === "stage" ? (
+            pushes.length === 0 ? (
+              <p className="rv-note">No pushes recorded.</p>
+            ) : (
+              <ul className="space-y-2">
+                {pushes.map((push) => (
+                  <ZeropsEnvironmentRow
+                    key={push.id}
+                    name={push.name}
+                    tag={push.cause}
+                    summary={<span className="whitespace-normal">{push.summary}</span>}
+                    status={
+                      <Badge dot tone={STATUS_BADGE_TONE[push.attention ? "attention" : "off"]}>
+                        {push.word}
+                      </Badge>
+                    }
+                  />
+                ))}
+              </ul>
+            )
+          ) : releases === undefined ? (
+            <p className="rv-note">Reading release history…</p>
+          ) : releases.length === 0 ? (
+            <p className="rv-note">No releases recorded.</p>
+          ) : (
+            <ul className="space-y-2">
+              <GitReleaseRows
+                releases={releases.map(flowReleaseOf)}
+                delivery={delivery}
+                jobs={environment.jobs}
               />
-            ))}
-          </ul>
-        )
-      ) : releases === undefined ? (
-        <p className="rv-note">Reading release history…</p>
-      ) : releases.length === 0 ? (
-        <p className="rv-note">No releases recorded.</p>
-      ) : (
-        <ul className="space-y-2">
-          <GitReleaseRows
-            releases={releases.map(flowReleaseOf)}
+            </ul>
+          )}
+        </section>
+        <div className="flex flex-col items-start gap-2 empty:hidden">
+          <GitEnvironmentRemoval
+            environment={environment}
             delivery={delivery}
-            jobs={environment.jobs}
+            repos={repos}
+            can={can}
+            onRemove={onRemove}
           />
-        </ul>
-      )}
-      <GitEnvironmentRemoval
-        environment={environment}
-        delivery={delivery}
-        repos={repos}
-        can={can}
-        onRemove={onRemove}
-        live={live}
-      />
-    </div>
+        </div>
+      </div>
+    </Card>
   );
 }
 
@@ -235,7 +253,6 @@ export function GitEnvironmentRemoval({
   repos,
   can,
   onRemove,
-  live = true,
   label = "Remove environment",
 }: {
   readonly environment: {
@@ -247,7 +264,6 @@ export function GitEnvironmentRemoval({
   readonly repos?: ReadonlyArray<RepoListEntry> | undefined;
   readonly can?: HqOffers | undefined;
   readonly onRemove?: ((loseUnresolvedHistory?: true) => Promise<void>) | undefined;
-  readonly live?: boolean;
   readonly label?: string;
 }) {
   const [historyLoss, setHistoryLoss] = useState(false);
@@ -255,16 +271,14 @@ export function GitEnvironmentRemoval({
   const [busy, setBusy] = useState(false);
   const [removing, setRemoving] = useState(false);
   const targets = repos?.flatMap((repo) =>
-    repo.remote == null ? [] : [{ name: repo.name, url: repo.remote.url }],
+    repo.remote == null
+      ? []
+      : [{ name: repo.name, url: repo.remote.url, viaApp: repo.remote.via === "app" }],
   );
   const targetKnown =
     environment.tier !== "production" || (targets !== undefined && targets.length > 0);
   const remove =
-    onRemove !== undefined &&
-    hqOffer(can, "remove_git_environment", {
-      current: live,
-      unavailableSince: live ? null : 0,
-    }).kind === "allowed";
+    onRemove !== undefined && hqOffer(can, "remove_git_environment").kind === "allowed";
   return (
     <>
       {remove ? (
@@ -296,7 +310,10 @@ export function GitEnvironmentRemoval({
           )}
           <p className="rv-note">
             Its push history goes with it. Removing this environment never deletes an external
-            branch or undoes a push. The token stays valid at its host until you revoke it there.
+            branch or undoes a push.
+            {targets?.length && targets.every((target) => target.viaApp)
+              ? ""
+              : " The token stays valid at its host until you revoke it there."}
           </p>
           {delivery?.standing === "unresolved" ? (
             <p className="rv-note">
@@ -331,8 +348,13 @@ export function GitEnvironmentRemoval({
               try {
                 await onRemove?.(historyLoss ? true : undefined);
                 setRemoving(false);
-              } catch {
-                setNotice("HQ couldn't confirm removal. Check its outcome before trying again.");
+              } catch (cause) {
+                setNotice(
+                  stoppedWords(
+                    cause,
+                    "HQ couldn't confirm removal. Check its outcome before trying again.",
+                  ),
+                );
               } finally {
                 setBusy(false);
               }
@@ -351,9 +373,19 @@ export function GitEnvironmentRemoval({
 
 const UNTOLD = Atom.make<CanonicalAppEnvironmentsRead>({
   environments: undefined,
-  refused: null,
   unread: [],
 });
+const NO_OFFERS = Atom.make<HqOffers | undefined>(undefined);
+
+/** What the person may do with this environment, as the client decides it from live Zerops data. */
+function useEnvironmentOffers(appId: string, environmentId: string): HqOffers | undefined {
+  const orgId = useAccountOrgId();
+  return useProjection(
+    hqEnvironmentOffers,
+    orgId === null ? null : { orgId, appId, environmentId },
+    NO_OFFERS,
+  );
+}
 
 /** Menu and Settings read the same authoritative environment and its removal verdict. */
 export function ProductionRemoval({
@@ -388,14 +420,14 @@ function GitProductionRemoval({
 }) {
   const detail = useHqAppDetail(appId);
   const operations = useGitTargetOperations(appId);
+  const can = useEnvironmentOffers(appId, environment.id);
   if (environment.target.kind !== "git") return null;
   return (
     <GitEnvironmentRemoval
       environment={{ ...environment, target: environment.target }}
       delivery={gitDeliveryOf(environment, { repos: detail.repos, releases: detail.releases })}
       repos={detail.repos}
-      can={environment.can}
-      live={operations.live && detail.live}
+      can={can}
       label="Remove production"
       onRemove={
         operations.actions === undefined
@@ -417,7 +449,6 @@ function ZeropsProductionRemoval({
 }) {
   const orgId = useAccountOrgId();
   const hqProjectId = orgId === null ? null : hqProjectIdOf(orgId);
-  const navigation = useProjection(canonicalHqNavigation, orgId, NO_PROJECT);
   const target = environment.target;
   const project = useProjection(
     listedProject,
@@ -428,11 +459,8 @@ function ZeropsProductionRemoval({
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string>();
-  const allowed =
-    hqOffer(environment.can, "remove_production", {
-      current: navigation?.live === true,
-      unavailableSince: navigation?.live === true ? null : 0,
-    }).kind === "allowed";
+  const can = useEnvironmentOffers(appId, environment.id);
+  const allowed = hqOffer(can, "remove_production").kind === "allowed";
   if (
     !allowed ||
     operations === null ||

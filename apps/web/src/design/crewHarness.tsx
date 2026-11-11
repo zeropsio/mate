@@ -802,6 +802,7 @@ function Tab() {
 function Column() {
   const crew = crewRead();
   const access = crewAccess({
+    readsAlong: false,
     snapshot: crew.snapshot,
     lockOf,
     defaultLogin: "claudeAgent",
@@ -841,6 +842,7 @@ function Harness() {
           serverThread: true,
           zeropsPanel: "available",
           crewStatus: status,
+          matePersona: true,
         })}
         defaultWidth={540}
         liveAgentCount={0}

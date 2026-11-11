@@ -7,18 +7,27 @@ import {
 } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import { HttpClient, HttpClientResponse } from "effect/http";
 
 import { MateEngine } from "../../engine/MateEngine.ts";
-import { ProviderMcpError, type McpConfigChange, type McpLiveServer } from "../../spi/mcpLive.ts";
+import { testTempDir } from "../../testing/testTempDir.ts";
+import {
+  ProviderMcpError,
+  type McpConfigChange,
+  type McpLiveServer,
+  type McpSignInStart,
+} from "../../spi/mcpLive.ts";
 import { antigravityProfileDirectory } from "../../spi/driverHomes.ts";
 import { mcpAgentPaths, resolveMcpAgentPaths } from "./mcpAgentPaths.ts";
 import { type McpAgentPaths } from "./mcpAgents.ts";
 import { McpFileConflict } from "./mcpFileStore.ts";
-import { make, nodeFileStore, type McpLiveAccess } from "./McpServers.ts";
+import { make, nodeFileStore, relayToListener, type McpLiveAccess } from "./McpServers.ts";
 import { inertMateEngine } from "../../engine/testing/inertEngine.ts";
 
 const HOME = "/home/zerops";
@@ -60,6 +69,8 @@ const ALL_AGENTS = ["claudeAgent", "codex", "cursor", "opencode", "grok", "antig
 
 const THREAD = ThreadId.make("thread-1");
 
+const SIGN_IN_PAGE = "https://mate-abc.prg1.zerops.app/mate/mcp/oauth/callback";
+
 const parseJson = (text: string): { readonly mcpServers?: unknown } => JSON.parse(text);
 
 interface Rig {
@@ -67,6 +78,8 @@ interface Rig {
   readonly writes: string[];
   readonly calls: string[];
   readonly locks: string[];
+  /** What each agent's running sessions were told, entries included. */
+  readonly changes: Array<{ readonly driver: string; readonly change: McpConfigChange }>;
 }
 
 const setup = (input: {
@@ -78,12 +91,20 @@ const setup = (input: {
     readonly driver: string;
     readonly servers: ReadonlyArray<McpLiveServer>;
     readonly reconnectFails?: boolean;
+    /** What the agent answers a sign-in with. */
+    readonly signIn?: McpSignInStart | "signed-in";
   };
   /** An agent writes this file once, between Mate's read and Mate's write. */
   readonly agentWritesOnce?: { readonly path: string; readonly text: string };
 }) =>
   Effect.gen(function* () {
-    const rig: Rig = { files: input.files ?? zcpFiles(), writes: [], calls: [], locks: [] };
+    const rig: Rig = {
+      files: input.files ?? zcpFiles(),
+      writes: [],
+      calls: [],
+      locks: [],
+      changes: [],
+    };
     let agentWrite = input.agentWritesOnce;
     // A running agent runs in the conversation's current session (`<conversation>/s/<n>`).
     const generation = input.generation ?? (input.running === undefined ? undefined : 1);
@@ -109,13 +130,41 @@ const setup = (input: {
               rig.calls.push(`reconnect ${name}`);
             }),
       setEnabled: () => Effect.void,
+      signIn: (threadId, name, redirectUri) =>
+        Effect.suspend(() => {
+          rig.calls.push(`sign in ${name} back to ${redirectUri ?? "none"}`);
+          return threadId === runningThread && input.running?.signIn !== undefined
+            ? Effect.succeed({
+                driver: ProviderDriverKind.make(input.running.driver),
+                started: input.running.signIn,
+              })
+            : Effect.fail(
+                new ProviderMcpError({ detail: "No conversation is running on this agent." }),
+              );
+        }),
+      signOut: (threadId, name) =>
+        threadId === runningThread && input.running !== undefined
+          ? Effect.sync(() => {
+              rig.calls.push(`sign out ${name}`);
+            })
+          : Effect.fail(
+              new ProviderMcpError({ detail: "No conversation is running on this agent." }),
+            ),
       configChanged: (driver, change: McpConfigChange) =>
         Effect.sync(() => {
           rig.calls.push(`${driver} ${change.kind} ${change.name}`);
+          rig.changes.push({ driver, change });
         }),
     };
+    let ids = 0;
     const service = yield* make({
       live,
+      signInPage: SIGN_IN_PAGE,
+      relay: (target) =>
+        Effect.sync(() => {
+          rig.calls.push(`relay ${target.href}`);
+        }),
+      newId: Effect.sync(() => `flow-${String(++ids)}`),
       paths: Effect.succeed(PATHS),
       files: {
         read: (path) => Effect.succeed(rig.files.get(path)),
@@ -238,6 +287,208 @@ describe("McpServers.list", () => {
       expect(view(yield* service.list({}))[0]).toBe(
         "zerops (managed): claudeAgent=configured cursor=configured grok=configured antigravity=configured",
       );
+    }),
+  );
+});
+
+describe("McpServers.update", () => {
+  // Values as a person would paste them, built from parts.
+  const OLD = ["Bearer", "old", "k3y"].join("-");
+  const NEW = ["team", "n3w"].join("-");
+  const ADOBE: McpServerAddInput = {
+    name: "adobe" as McpServerAddInput["name"],
+    transport: { type: "http", url: "https://mcp.example.com/mcp" },
+    headers: { Authorization: OLD, "X-Dropped": "gone" },
+  };
+
+  it.effect.each([
+    { file: `${HOME}/.claude.json`, at: ["mcpServers", "adobe", "headers"] },
+    { file: `${HOME}/.cursor/mcp.json`, at: ["mcpServers", "adobe", "headers"] },
+    { file: `${HOME}/.config/opencode/opencode.json`, at: ["mcp", "adobe", "headers"] },
+    { file: `${HOME}/.gemini/config/mcp_config.json`, at: ["mcpServers", "adobe", "headers"] },
+  ])(
+    "editing a server's headers keeps the values left masked, sets the new ones and drops the rest: $file",
+    ({ file, at }) =>
+      Effect.gen(function* () {
+        const { service, rig } = yield* setup({});
+        yield* service.add(ADOBE);
+        rig.calls.length = 0;
+        const list = yield* service.update({
+          name: ADOBE.name,
+          values: { "X-Team": NEW },
+          keep: ["Authorization"],
+        });
+        let held: unknown = JSON.parse(rig.files.get(file)!);
+        for (const key of at) held = (held as Record<string, unknown>)[key];
+        expect(held).toEqual({ Authorization: OLD, "X-Team": NEW });
+        const adobe = list.servers.find((server) => server.name === "adobe");
+        expect(adobe?.secretNames).toEqual(["Authorization", "X-Team"]);
+        // The tab sees names only.
+        expect(JSON.stringify(list)).not.toContain(OLD);
+        expect(rig.calls).toContain("opencode changed adobe");
+      }),
+  );
+
+  it.effect("Codex's and Grok's tables keep their own spellings and every other key", () =>
+    Effect.gen(function* () {
+      const { service, rig } = yield* setup({});
+      yield* service.add(ADOBE);
+      yield* service.update({ name: ADOBE.name, values: {}, keep: ["Authorization"] });
+      expect(rig.files.get(`${HOME}/.codex/config.toml`)).toContain(
+        `[mcp_servers.adobe.http_headers]\nAuthorization = "${OLD}"`,
+      );
+      expect(rig.files.get(`${HOME}/.grok/config.toml`)).toMatch(/enabled = true/);
+      expect(rig.files.get(`${HOME}/.grok/config.toml`)).not.toContain("X-Dropped");
+    }),
+  );
+
+  it.effect("renaming a key's header keeps the stored key under the new name", () =>
+    Effect.gen(function* () {
+      const { service, rig } = yield* setup({ installed: ["opencode"] });
+      yield* service.add(ADOBE);
+      yield* service.update({
+        name: ADOBE.name,
+        values: {},
+        keep: [],
+        renamed: { "X-Api-Key": "Authorization" },
+      });
+      const entry = JSON.parse(rig.files.get(`${HOME}/.config/opencode/opencode.json`)!).mcp.adobe;
+      expect(entry.headers).toEqual({ "X-Api-Key": OLD });
+    }),
+  );
+
+  it.effect(
+    "editing a turned-off server's headers leaves it off in running OpenCode sessions, keeping its own app",
+    () =>
+      Effect.gen(function* () {
+        const { service, rig } = yield* setup({ installed: ["opencode"] });
+        yield* service.add({
+          ...ADOBE,
+          auth: { kind: "oauth-app", clientId: "mate-app", clientSecret: NEW, scopes: [] },
+        });
+        yield* service.setEnabled({ name: ADOBE.name, enabled: false });
+        rig.changes.length = 0;
+        yield* service.update({ name: ADOBE.name, values: { "X-Team": NEW }, keep: [] });
+        const told = rig.changes.find(({ change }) => change.kind === "changed")?.change;
+        expect(told).toMatchObject({
+          entry: {
+            enabled: false,
+            headers: { "X-Team": NEW },
+            oauth: { clientId: "mate-app", clientSecret: NEW },
+          },
+        });
+      }),
+  );
+
+  it.effect.each([
+    ["zerops", "Zerops' own server can't be changed here."],
+    [
+      "playwright",
+      "playwright is set up in the project's .mcp.json, so it is changed there, not here.",
+    ],
+  ])("refuses to edit %s", ([name, detail]) =>
+    Effect.gen(function* () {
+      const { service } = yield* setup({});
+      const error = yield* Effect.flip(
+        service.update({ name: name as McpServerAddInput["name"], values: {}, keep: [] }),
+      );
+      expect(error.detail).toBe(detail);
+    }),
+  );
+});
+
+describe("McpServers — how a URL server signs in", () => {
+  const SECRET = ["app", "s3cret"].join("-");
+  const KEY = ["live", "k3y"].join("-");
+  const named = (list: McpServersList, name: string) =>
+    list.servers.find((server) => server.name === name);
+
+  it.effect("an API key is sent as its header to every agent", () =>
+    Effect.gen(function* () {
+      const { service, rig } = yield* setup({ installed: ["claudeAgent", "codex"] });
+      const list = yield* service.add({
+        name: "keyed" as McpServerAddInput["name"],
+        transport: { type: "http", url: "https://mcp.example.com/mcp" },
+        auth: { kind: "header", name: "Authorization", value: `Bearer ${KEY}` },
+      });
+      expect(named(list, "keyed")?.secretNames).toEqual(["Authorization"]);
+      expect(parseJson(rig.files.get(`${HOME}/.claude.json`)!).mcpServers).toMatchObject({
+        keyed: { headers: { Authorization: `Bearer ${KEY}` } },
+      });
+      expect(rig.files.get(`${HOME}/.codex/config.toml`)).toContain(
+        `Authorization = "Bearer ${KEY}"`,
+      );
+      expect(JSON.stringify(list)).not.toContain(KEY);
+    }),
+  );
+
+  it.effect(
+    "an SSE server is set up for the agents that speak it, and the others say they can't",
+    () =>
+      Effect.gen(function* () {
+        const { service } = yield* setup({ installed: ["claudeAgent", "codex"] });
+        const list = yield* service.add({
+          name: "events" as McpServerAddInput["name"],
+          transport: { type: "sse", url: "https://mcp.example.com/sse" },
+        });
+        const events = named(list, "events");
+        expect(events?.agents.map((agent) => agent.driver)).toEqual(["claudeAgent"]);
+        expect(events?.cannot).toEqual([
+          { driver: "codex", reason: "Codex can't use SSE servers." },
+        ]);
+      }),
+  );
+
+  it.effect("a server no installed agent can use is refused, saying why", () =>
+    Effect.gen(function* () {
+      const { service } = yield* setup({ installed: ["codex"] });
+      const error = yield* Effect.flip(
+        service.add({
+          name: "events" as McpServerAddInput["name"],
+          transport: { type: "sse", url: "https://mcp.example.com/sse" },
+        }),
+      );
+      expect(error.detail).toBe("No agent here can use it. Codex can't use SSE servers.");
+    }),
+  );
+
+  it.effect(
+    "an own-app sign-in lists its client id and that a secret is stored, never the secret",
+    () =>
+      Effect.gen(function* () {
+        const { service } = yield* setup({ installed: ["opencode", "cursor"] });
+        const list = yield* service.add({
+          name: "app" as McpServerAddInput["name"],
+          transport: { type: "http", url: "https://mcp.example.com/mcp" },
+          auth: { kind: "oauth-app", clientId: "mate-app", clientSecret: SECRET, scopes: ["read"] },
+        });
+        expect(named(list, "app")?.auth).toEqual({
+          kind: "oauth-app",
+          clientId: "mate-app",
+          scopes: ["read"],
+          secret: true,
+        });
+        expect(JSON.stringify(list)).not.toContain(SECRET);
+      }),
+  );
+
+  it.effect("changing a server to sign in with an API key drops its other sign-in", () =>
+    Effect.gen(function* () {
+      const { service, rig } = yield* setup({ installed: ["opencode"] });
+      yield* service.add({
+        name: "app" as McpServerAddInput["name"],
+        transport: { type: "http", url: "https://mcp.example.com/mcp" },
+        auth: { kind: "oauth", scopes: ["read"] },
+      });
+      const list = yield* service.update({
+        name: "app" as McpServerAddInput["name"],
+        values: {},
+        keep: [],
+        auth: { kind: "header", name: "X-Api-Key", value: KEY },
+      });
+      const entry = JSON.parse(rig.files.get(`${HOME}/.config/opencode/opencode.json`)!).mcp.app;
+      expect(entry).toMatchObject({ headers: { "X-Api-Key": KEY }, oauth: false });
+      expect(named(list, "app")?.auth).toEqual({ kind: "none" });
     }),
   );
 });
@@ -409,124 +660,336 @@ describe("McpServers.reconnect", () => {
   );
 });
 
-it.layer(NodeServices.layer, { excludeTestServices: true })("nodeFileStore", (it) => {
-  it.effect("writes a config whole, through a link, keeping its permissions", () =>
+const fileStoreDir = testTempDir("mcp-file-store-");
+const resetFileStore = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  for (const entry of yield* fs.readDirectory(fileStoreDir)) {
+    yield* fs.remove(`${fileStoreDir}/${entry}`, { recursive: true, force: true });
+  }
+  return fileStoreDir;
+});
+
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer), { excludeTestServices: true })(
+  "nodeFileStore",
+  (it) => {
+    it.effect("writes a config whole, through a link, keeping its permissions", () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const dir = yield* resetFileStore;
+        const store = yield* nodeFileStore;
+
+        // A new file is private to its owner: it can hold keys.
+        yield* store.write(`${dir}/new/.claude.json`, "{}\n", undefined);
+        expect(yield* store.read(`${dir}/new/.claude.json`)).toBe("{}\n");
+        expect((yield* fs.stat(`${dir}/new/.claude.json`)).mode & 0o777).toBe(0o600);
+
+        // A shadow home's link keeps pointing at the shared file the write replaced.
+        yield* fs.writeFileString(`${dir}/shared.toml`, "a = 1\n", { mode: 0o640 });
+        yield* fs.chmod(`${dir}/shared.toml`, 0o640);
+        yield* fs.symlink(`${dir}/shared.toml`, `${dir}/link.toml`);
+        yield* store.write(`${dir}/link.toml`, "a = 2\n", "a = 1\n");
+        expect(yield* fs.readLink(`${dir}/link.toml`)).toBe(`${dir}/shared.toml`);
+        expect(yield* fs.readFileString(`${dir}/shared.toml`)).toBe("a = 2\n");
+        expect((yield* fs.stat(`${dir}/shared.toml`)).mode & 0o777).toBe(0o640);
+
+        expect(yield* store.read(`${dir}/missing.json`)).toBeUndefined();
+        expect((yield* fs.readDirectory(dir)).toSorted()).toEqual([
+          "link.toml",
+          "new",
+          "shared.toml",
+        ]);
+      }),
+    );
+
+    it.effect("refuses to write over a file that changed since it was read", () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const dir = yield* resetFileStore;
+        const store = yield* nodeFileStore;
+        yield* fs.writeFileString(`${dir}/config.toml`, "a = 2\n");
+        const refused = yield* Effect.flip(store.write(`${dir}/config.toml`, "a = 3\n", "a = 1\n"));
+        expect(refused).toBeInstanceOf(McpFileConflict);
+        expect(yield* fs.readFileString(`${dir}/config.toml`)).toBe("a = 2\n");
+      }),
+    );
+
+    it.effect("holds Claude Code's lock on .claude.json while it writes, past a stale one", () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const dir = yield* resetFileStore;
+        const store = yield* nodeFileStore;
+        const lock = `${dir}/.claude.json.lock`;
+        // A lock left by a Claude that died: untouched for a minute.
+        yield* fs.makeDirectory(lock);
+        const minuteAgo = DateTime.toDateUtc(
+          DateTime.subtract(yield* DateTime.now, { minutes: 1 }),
+        );
+        yield* fs.utimes(lock, minuteAgo, minuteAgo);
+        const seen = yield* store.locked(
+          [`${dir}/.claude.json`, `${dir}/config.toml`],
+          Effect.all([fs.exists(lock), fs.exists(`${dir}/config.toml.lock`)]),
+        );
+        expect(seen).toEqual([true, false]);
+        expect(yield* fs.exists(lock)).toBe(false);
+      }),
+    );
+
+    it.effect("resolves each home the way its driver does", () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const dir = yield* resetFileStore;
+        const stateDir = `${dir}/state`;
+        // One Antigravity profile keeps a file of its own; the default's links to ~/.gemini.
+        const own = `${antigravityProfileDirectory(stateDir, "antigravity-2" as never)}/config`;
+        yield* fs.makeDirectory(own, { recursive: true });
+        yield* fs.writeFileString(`${own}/mcp_config.json`, "{}");
+        const linked = `${antigravityProfileDirectory(stateDir, "antigravity" as never)}/config`;
+        yield* fs.makeDirectory(linked, { recursive: true });
+        yield* fs.symlink(
+          `${dir}/home/.gemini/config/mcp_config.json`,
+          `${linked}/mcp_config.json`,
+        );
+
+        const paths = yield* resolveMcpAgentPaths({
+          homeDir: `${dir}/home`,
+          cwd: "/var/www/",
+          stateDir,
+          env: { CODEX_HOME: `${dir}/codex-env`, XDG_CONFIG_HOME: "/xdg", GROK_HOME: "/g" },
+          settings: {
+            providers: {
+              claudeAgent: { homePath: "" },
+              codex: { homePath: "", shadowHomePath: "" },
+            } as never,
+            providerInstances: {
+              "claudeAgent-2": {
+                driver: ProviderDriverKind.make("claudeAgent"),
+                config: { homePath: `${dir}/logins/claudeAgent-2` },
+              },
+              "claudeAgent-env": {
+                driver: ProviderDriverKind.make("claudeAgent"),
+                environment: [{ name: "CLAUDE_CONFIG_DIR", value: `${dir}/claude-env` }],
+              },
+              "codex-2": {
+                driver: ProviderDriverKind.make("codex"),
+                config: { shadowHomePath: `${dir}/logins/codex-2` },
+              },
+              "antigravity-2": { driver: ProviderDriverKind.make("antigravity") },
+            } as never,
+          },
+        });
+        expect(paths).toEqual({
+          cwd: "/var/www",
+          claudeConfigs: [
+            `${dir}/home/.claude.json`,
+            `${dir}/logins/claudeAgent-2/.claude.json`,
+            `${dir}/claude-env/.claude.json`,
+          ],
+          // The default inherits CODEX_HOME; a login's shadow home links to the shared ~/.codex.
+          codexConfigs: [`${dir}/codex-env/config.toml`, `${dir}/home/.codex/config.toml`],
+          cursorHome: `${dir}/home/.cursor`,
+          grokConfig: "/g/config.toml",
+          antigravityConfigs: [
+            `${dir}/home/.gemini/config/mcp_config.json`,
+            `${own}/mcp_config.json`,
+          ],
+          openCodeConfig: "/xdg/opencode/opencode.json",
+        });
+      }),
+    );
+  },
+);
+
+describe("McpServers sign-in", () => {
+  // A one-time code as a provider would send it, built from parts.
+  const CODE = ["c0de", "0n3", "t1me"].join("-");
+  const authorize = (redirect: string, state: string) =>
+    `https://auth.example.com/authorize?${new URLSearchParams({ client_id: "mate", redirect_uri: redirect, state }).toString()}`;
+  const signingAgent = (redirect: string, listener?: URL) => {
+    const finished: string[] = [];
+    const start: McpSignInStart = {
+      url: authorize(redirect, "s-1"),
+      ...(listener !== undefined ? { listener } : {}),
+      finish: (landed) =>
+        Effect.sync(() => {
+          finished.push(landed.searchParams.get("code") ?? "");
+        }),
+    };
+    return { start, finished };
+  };
+  const NAME = "adobe" as McpServerAddInput["name"];
+
+  it.effect(
+    "a provider that sends the browser back to the Mate's sign-in page finishes the sign-in there, once",
+    () =>
+      Effect.gen(function* () {
+        const agent = signingAgent(SIGN_IN_PAGE);
+        const { service, rig } = yield* setup({
+          installed: ["claudeAgent"],
+          running: { driver: "claudeAgent", servers: [], signIn: agent.start },
+        });
+        const opened = yield* service.signIn({ name: NAME, threadId: THREAD });
+        expect(opened).toEqual({
+          kind: "open",
+          url: agent.start.url,
+          landing: "mate",
+          flow: "flow-1",
+        });
+        const landing = new URL(`${SIGN_IN_PAGE}?code=${CODE}&state=s-1`);
+        expect(yield* service.landed(landing)).toBe("adobe");
+        expect(agent.finished).toEqual([CODE]);
+        const again = yield* Effect.flip(service.landed(landing));
+        expect(again.detail).toBe("This Mate isn't waiting for this sign-in any more.");
+        expect(rig.calls).toEqual([`sign in adobe back to ${SIGN_IN_PAGE}`]);
+      }),
+  );
+
+  it.effect(
+    "a provider that sends the browser to the agent's own listener is finished with the address the person pastes",
+    () =>
+      Effect.gen(function* () {
+        const listener = new URL("http://127.0.0.1:41234/callback");
+        const agent = signingAgent(listener.href, listener);
+        const { service, rig } = yield* setup({
+          installed: ["codex"],
+          running: { driver: "codex", servers: [], signIn: agent.start },
+        });
+        const opened = yield* service.signIn({ name: NAME, threadId: THREAD });
+        expect(opened).toMatchObject({ kind: "open", landing: "paste", flow: "flow-1" });
+        const list = yield* service.finishSignIn({
+          name: NAME,
+          flow: "flow-1",
+          landed: `http://127.0.0.1:41234/callback?code=${CODE}&state=s-1`,
+          threadId: THREAD,
+        });
+        expect(list.agents).toEqual(["codex"]);
+        expect(agent.finished).toEqual([CODE]);
+        expect(rig.calls.at(-1)).toBe(`relay ${listener.href}?code=${CODE}&state=s-1`);
+      }),
+  );
+
+  it.effect.each([
+    {
+      pasted: `http://localhost:1/callback?code=${CODE}&state=other`,
+      says: "adobe didn't sign in: that address belongs to a different sign-in.",
+    },
+    {
+      pasted:
+        "http://localhost:1/callback?error=access_denied&error_description=User%20cancelled&state=s-1",
+      says: "adobe didn't sign in: the sign-in was refused: User cancelled.",
+    },
+    { pasted: "not an address", says: "Paste the whole address from the browser's address bar." },
+  ])("a pasted address that can't finish the sign-in says why and keeps it open: $pasted", (row) =>
     Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const dir = yield* fs.makeTempDirectoryScoped();
-      const store = yield* nodeFileStore;
+      const agent = signingAgent("http://localhost:1/callback");
+      const { service } = yield* setup({
+        installed: ["opencode"],
+        running: { driver: "opencode", servers: [], signIn: agent.start },
+      });
+      yield* service.signIn({ name: NAME, threadId: THREAD });
+      const refused = yield* Effect.flip(
+        service.finishSignIn({ name: NAME, flow: "flow-1", landed: row.pasted, threadId: THREAD }),
+      );
+      expect(refused.detail).toBe(row.says);
+      yield* service.finishSignIn({
+        name: NAME,
+        flow: "flow-1",
+        landed: `http://localhost:1/callback?code=${CODE}&state=s-1`,
+        threadId: THREAD,
+      });
+      expect(agent.finished).toEqual([CODE]);
+    }),
+  );
 
-      // A new file is private to its owner: it can hold keys.
-      yield* store.write(`${dir}/new/.claude.json`, "{}\n", undefined);
-      expect(yield* store.read(`${dir}/new/.claude.json`)).toBe("{}\n");
-      expect((yield* fs.stat(`${dir}/new/.claude.json`)).mode & 0o777).toBe(0o600);
-
-      // A shadow home's link keeps pointing at the shared file the write replaced.
-      yield* fs.writeFileString(`${dir}/shared.toml`, "a = 1\n", { mode: 0o640 });
-      yield* fs.chmod(`${dir}/shared.toml`, 0o640);
-      yield* fs.symlink(`${dir}/shared.toml`, `${dir}/link.toml`);
-      yield* store.write(`${dir}/link.toml`, "a = 2\n", "a = 1\n");
-      expect(yield* fs.readLink(`${dir}/link.toml`)).toBe(`${dir}/shared.toml`);
-      expect(yield* fs.readFileString(`${dir}/shared.toml`)).toBe("a = 2\n");
-      expect((yield* fs.stat(`${dir}/shared.toml`)).mode & 0o777).toBe(0o640);
-
-      expect(yield* store.read(`${dir}/missing.json`)).toBeUndefined();
-      expect((yield* fs.readDirectory(dir)).toSorted()).toEqual([
-        "link.toml",
-        "new",
-        "shared.toml",
+  it.effect("signing out drops the running agent's sign-in and answers the fresh list", () =>
+    Effect.gen(function* () {
+      const { service, rig } = yield* setup({
+        installed: ["codex"],
+        running: {
+          driver: "codex",
+          servers: [{ name: "zerops", state: "connected", signedIn: true }],
+        },
+      });
+      const list = yield* service.signOut({
+        name: "zerops" as McpServerAddInput["name"],
+        threadId: THREAD,
+      });
+      expect(rig.calls).toEqual(["sign out zerops"]);
+      expect(list.servers.find((server) => server.name === "zerops")?.agents).toEqual([
+        { driver: "codex", state: "connected", signedIn: true },
       ]);
     }),
   );
 
-  it.effect("refuses to write over a file that changed since it was read", () =>
+  it.effect.each([
+    "javascript:alert(document.cookie)",
+    "data:text/html,<script>alert(1)</script>",
+    "http://auth.example.com/authorize?state=s-1",
+  ])("a sign-in page that isn't an https address is refused, and no sign-in starts: %s", (url) =>
     Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const dir = yield* fs.makeTempDirectoryScoped();
-      const store = yield* nodeFileStore;
-      yield* fs.writeFileString(`${dir}/config.toml`, "a = 2\n");
-      const refused = yield* Effect.flip(store.write(`${dir}/config.toml`, "a = 3\n", "a = 1\n"));
-      expect(refused).toBeInstanceOf(McpFileConflict);
-      expect(yield* fs.readFileString(`${dir}/config.toml`)).toBe("a = 2\n");
-    }),
-  );
-
-  it.effect("holds Claude Code's lock on .claude.json while it writes, past a stale one", () =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const dir = yield* fs.makeTempDirectoryScoped();
-      const store = yield* nodeFileStore;
-      const lock = `${dir}/.claude.json.lock`;
-      // A lock left by a Claude that died: untouched for a minute.
-      yield* fs.makeDirectory(lock);
-      const minuteAgo = DateTime.toDateUtc(DateTime.subtract(yield* DateTime.now, { minutes: 1 }));
-      yield* fs.utimes(lock, minuteAgo, minuteAgo);
-      const seen = yield* store.locked(
-        [`${dir}/.claude.json`, `${dir}/config.toml`],
-        Effect.all([fs.exists(lock), fs.exists(`${dir}/config.toml.lock`)]),
-      );
-      expect(seen).toEqual([true, false]);
-      expect(yield* fs.exists(lock)).toBe(false);
-    }),
-  );
-
-  it.effect("resolves each home the way its driver does", () =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const dir = yield* fs.makeTempDirectoryScoped();
-      const stateDir = `${dir}/state`;
-      // One Antigravity profile keeps a file of its own; the default's links to ~/.gemini.
-      const own = `${antigravityProfileDirectory(stateDir, "antigravity-2" as never)}/config`;
-      yield* fs.makeDirectory(own, { recursive: true });
-      yield* fs.writeFileString(`${own}/mcp_config.json`, "{}");
-      const linked = `${antigravityProfileDirectory(stateDir, "antigravity" as never)}/config`;
-      yield* fs.makeDirectory(linked, { recursive: true });
-      yield* fs.symlink(`${dir}/home/.gemini/config/mcp_config.json`, `${linked}/mcp_config.json`);
-
-      const paths = yield* resolveMcpAgentPaths({
-        homeDir: `${dir}/home`,
-        cwd: "/var/www/",
-        stateDir,
-        env: { CODEX_HOME: `${dir}/codex-env`, XDG_CONFIG_HOME: "/xdg", GROK_HOME: "/g" },
-        settings: {
-          providers: {
-            claudeAgent: { homePath: "" },
-            codex: { homePath: "", shadowHomePath: "" },
-          } as never,
-          providerInstances: {
-            "claudeAgent-2": {
-              driver: ProviderDriverKind.make("claudeAgent"),
-              config: { homePath: `${dir}/logins/claudeAgent-2` },
-            },
-            "claudeAgent-env": {
-              driver: ProviderDriverKind.make("claudeAgent"),
-              environment: [{ name: "CLAUDE_CONFIG_DIR", value: `${dir}/claude-env` }],
-            },
-            "codex-2": {
-              driver: ProviderDriverKind.make("codex"),
-              config: { shadowHomePath: `${dir}/logins/codex-2` },
-            },
-            "antigravity-2": { driver: ProviderDriverKind.make("antigravity") },
-          } as never,
+      const { service } = yield* setup({
+        installed: ["claudeAgent"],
+        running: {
+          driver: "claudeAgent",
+          servers: [],
+          signIn: { url, finish: () => Effect.void },
         },
       });
-      expect(paths).toEqual({
-        cwd: "/var/www",
-        claudeConfigs: [
-          `${dir}/home/.claude.json`,
-          `${dir}/logins/claudeAgent-2/.claude.json`,
-          `${dir}/claude-env/.claude.json`,
-        ],
-        // The default inherits CODEX_HOME; a login's shadow home links to the shared ~/.codex.
-        codexConfigs: [`${dir}/codex-env/config.toml`, `${dir}/home/.codex/config.toml`],
-        cursorHome: `${dir}/home/.cursor`,
-        grokConfig: "/g/config.toml",
-        antigravityConfigs: [
-          `${dir}/home/.gemini/config/mcp_config.json`,
-          `${own}/mcp_config.json`,
-        ],
-        openCodeConfig: "/xdg/opencode/opencode.json",
+      const refused = yield* Effect.flip(service.signIn({ name: NAME, threadId: THREAD }));
+      expect(refused.detail).toBe(
+        "adobe can't sign in: its sign-in page isn't an https address, so Mate won't open it.",
+      );
+      const ended = yield* Effect.flip(
+        service.finishSignIn({
+          name: NAME,
+          flow: "flow-1",
+          landed: `${url}&code=c`,
+          threadId: THREAD,
+        }),
+      );
+      expect(ended.detail).toBe("This sign-in to adobe has ended. Press Sign in to start again.");
+    }),
+  );
+
+  it.effect("an agent that already holds the sign-in opens nothing", () =>
+    Effect.gen(function* () {
+      const { service } = yield* setup({
+        installed: ["claudeAgent"],
+        running: { driver: "claudeAgent", servers: [], signIn: "signed-in" },
       });
+      expect(yield* service.signIn({ name: NAME, threadId: THREAD })).toEqual({
+        kind: "signed-in",
+      });
+    }),
+  );
+
+  it.effect("signing in with no conversation open says the conversation's agent signs in", () =>
+    Effect.gen(function* () {
+      const { service } = yield* setup({ installed: ["claudeAgent"] });
+      const refused = yield* Effect.flip(service.signIn({ name: NAME }));
+      expect(refused.detail).toBe(
+        "Open a conversation with this Mate first: its agent is the one that signs in.",
+      );
+    }),
+  );
+});
+
+describe("McpServers — a pasted sign-in's landing", () => {
+  it.effect("is carried to the agent's listener without its code reaching a trace", () =>
+    Effect.gen(function* () {
+      const code = ["one", "time", "c0de"].join("-");
+      const traced: string[] = [];
+      const listener = HttpClient.make((request) =>
+        Effect.gen(function* () {
+          const span = yield* Effect.option(Effect.currentSpan);
+          if (Option.isSome(span)) traced.push(JSON.stringify([...span.value.attributes]));
+          traced.push(`reached ${request.url}`);
+          return HttpClientResponse.fromWeb(request, new Response("signed in"));
+        }),
+      );
+      yield* relayToListener(listener)(
+        new URL(`http://localhost:33418/callback?code=${code}&state=s`),
+      );
+      expect(traced).toEqual([`reached http://localhost:33418/callback`]);
     }),
   );
 });

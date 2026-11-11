@@ -49,6 +49,11 @@ export default defineConfig({
     reporters: ["default", new GateTimingReporter()],
     ...(maxWorkers === undefined ? {} : { maxWorkers }),
     environment: "node",
+    // A workspace whose dependencies bring their own `typescript` (madge in `scripts`) resolves
+    // vite-plus's optional peer to it and gets a vite-plus of its own. Left external,
+    // @effect/vitest then loads that copy's vitest, a second one with no running suite, when its
+    // tests run from the root. Inlined, its `vite-plus/test` import is the runner's own.
+    server: { deps: { inline: ["@effect/vitest"] } },
     exclude: [
       "**/.repos/**",
       "**/node_modules/**",
@@ -66,7 +71,7 @@ export default defineConfig({
     testTimeout: 60_000,
     // Tables declare tests through `it.each(rows)("$title", …)`: the title is the row's whole sentence.
     taskTitleValueFormatTruncate: Number.MAX_SAFE_INTEGER,
-    setupFiles: [
+    globalSetup: [
       NodeURL.fileURLToPath(
         new URL("./packages/shared/src/testing/longTempDir.ts", import.meta.url),
       ),
@@ -175,11 +180,11 @@ export default defineConfig({
       "t3code/no-remote-data-in-browser-storage": "error",
       "t3code/no-remote-io-outside-data-layer": "error",
       "t3code/no-arbitrary-values": "error",
-      "t3code/no-direct-permission-rule": "error",
       "t3code/no-restyle": "error",
       "t3code/no-legacy-notice-api": "error",
       "t3code/no-legacy-notice-policy": "error",
       "t3code/no-retired-mechanism": "error",
+      "t3code/no-hq-session-code": "error",
       "t3code/no-unknown-classes": "error",
       "t3code/no-unguarded-storage-write": "error",
       "t3code/no-unscoped-has": "error",

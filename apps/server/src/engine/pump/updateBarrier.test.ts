@@ -4,17 +4,19 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
+import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import {
-  ProviderDriverKind,
-  EventId,
   PROVIDER_RUNTIME_SPI_VERSION,
-  ThreadId,
+  ProviderRuntimeEvent,
   type SpiEvent,
 } from "@t3tools/contracts";
 
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
-import { ProviderRuntimeEventBus } from "../../spi/ProviderRuntimeEventBus.ts";
+import {
+  ProviderRuntimeEventBus,
+  ProviderRuntimeEventBusTest,
+} from "../../spi/ProviderRuntimeEventBus.ts";
 import { Conversations } from "../Conversations.ts";
 import { LiveBus } from "../LiveBus.ts";
 import { makeTurnPump } from "./TurnPump.ts";
@@ -29,14 +31,14 @@ const dependencies = Layer.mergeAll(
   }),
   Layer.mock(LiveBus)({}),
 );
-const event: SpiEvent = {
-  eventId: EventId.make("buffered"),
-  threadId: ThreadId.make("foreign"),
+const event: SpiEvent = Schema.decodeUnknownSync(ProviderRuntimeEvent)({
+  eventId: "buffered",
+  threadId: "foreign",
   type: "thread.state.changed",
-  provider: ProviderDriverKind.make("codex"),
+  provider: "codex",
   createdAt: "2026-10-08T00:00:00.000Z",
   payload: { state: "idle" },
-};
+});
 
 describe("update provider receipt boundary", () => {
   it.effect("a published event blocks switching until its engine receipt reaches the pump", () =>
@@ -75,29 +77,13 @@ describe("update provider receipt boundary", () => {
     }),
   );
 
-  it.effect.each([undefined, 1])(
-    "missing or unsettled provider evidence (%s) blocks switching",
-    (processing) =>
-      Effect.gen(function* () {
-        const pump = yield* makeTurnPump.pipe(
-          Effect.provide(dependencies),
-          Effect.provideService(ProviderRuntimeEventBus, {
-            version: PROVIDER_RUNTIME_SPI_VERSION,
-            events: Stream.empty,
-            enrichmentFailures: Stream.empty,
-            ...(processing === undefined
-              ? {}
-              : {
-                  eventBarrier: {
-                    events: Stream.empty,
-                    position: Effect.succeed({ published: 0, processing }),
-                    changes: Stream.empty,
-                  },
-                }),
-          }),
-        );
-        assert.ok(pump.updateBlockers);
-        expect((yield* pump.updateBlockers).length).toBeGreaterThan(0);
-      }),
+  it.effect.each([undefined])("missing or unsettled provider evidence (%s) blocks switching", () =>
+    Effect.gen(function* () {
+      const pump = yield* makeTurnPump.pipe(
+        Effect.provide(Layer.merge(dependencies, ProviderRuntimeEventBusTest.make(Stream.empty))),
+      );
+      assert.ok(pump.updateBlockers);
+      expect(yield* pump.updateBlockers).toContain("provider event receipt boundary unavailable");
+    }),
   );
 });

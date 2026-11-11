@@ -10,13 +10,14 @@ import type { HqDeliveryNavigationJob } from "@t3tools/shared/hqStream";
  */
 import type { HqDeployAnswer, HqDeployOutcome } from "@t3tools/shared/hqDeploys";
 
+import { formatStorageBytes } from "../gitBrowse/home.ts";
 import { shortCommit } from "../release.ts";
 import type { HqJob } from "./environments.ts";
 import { deployLogTarget, type DeployLogTarget } from "./deployLog.ts";
 
 type DeployObservation = Pick<
   HqDeployOutcome,
-  "evidence" | "appVersionId" | "verifiedVersionId" | "steps"
+  "evidence" | "appVersionId" | "verifiedVersionId" | "steps" | "sourceArchiveBytes"
 >;
 
 /** The operation's next actor/action, shared by the answer and its durable service row. */
@@ -35,8 +36,15 @@ export function deployFollowText(
   return `${waiting ? "Waiting for Zerops to start the build." : "HQ lost track of this deploy."} ${next}`;
 }
 
+/** Only HQ's measurement of this job supplies its compressed source size. */
+export const sourceArchiveLabel = (bytes: number | null | undefined): string =>
+  bytes == null
+    ? "Source archive size is not available yet."
+    : `Source archive: ${formatStorageBytes(bytes)}`;
+
 /** One job of the answer, said. */
 export interface DeployAnswerJob extends DeployObservation {
+  readonly sourceArchive?: string | undefined;
   readonly jobId: string | null;
   readonly deployLog: DeployLogTarget | undefined;
   readonly state: HqDeployOutcome["state"];
@@ -111,6 +119,9 @@ const jobText = (
 
 function deployJobSaid(outcome: HqDeployOutcome, answer: HqDeployAnswer): DeployAnswerJob {
   return {
+    ...(outcome.kind === "deploy"
+      ? { sourceArchive: sourceArchiveLabel(outcome.sourceArchiveBytes) }
+      : {}),
     jobId: outcome.job,
     ...(outcome.evidence === undefined ? {} : { evidence: outcome.evidence }),
     ...(outcome.appVersionId === undefined ? {} : { appVersionId: outcome.appVersionId }),
@@ -139,6 +150,24 @@ function deployJobSaid(outcome: HqDeployOutcome, answer: HqDeployAnswer): Deploy
   };
 }
 
+/**
+ * HQ's note for an environment whose new services wait for a person's release: `<environment>:
+ * production_effect_approval_required`. It is HQ's own word for a rule the review already says in
+ * the person's (a production gets a service a recipe adds with its next release), so the part is
+ * dropped from the note rather than shown as a code.
+ */
+const WAITS_FOR_RELEASE = /^[^;]*: production_effect_approval_required$/;
+
+/** HQ's note without the parts the review says itself; `undefined` where nothing is left. */
+export function deployNoteSaid(note: string | null | undefined): string | undefined {
+  if (note === null || note === undefined) return undefined;
+  const parts = note
+    .split(";")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0 && !WAITS_FOR_RELEASE.test(part));
+  return parts.length === 0 ? undefined : parts.join("; ");
+}
+
 /** The answer by environment, in the order HQ named them. */
 export function deployAnswerSaid(answer: HqDeployAnswer): DeployAnswerSaid {
   const environments = new Map<string, Array<DeployAnswerJob>>();
@@ -149,7 +178,7 @@ export function deployAnswerSaid(answer: HqDeployAnswer): DeployAnswerSaid {
   }
   return {
     environments: [...environments].map(([environment, jobs]) => ({ environment, jobs })),
-    note: answer.note?.trim() || undefined,
+    note: deployNoteSaid(answer.note),
   };
 }
 
@@ -177,6 +206,9 @@ export function deployAnswerFollowing(
             ...(job.appVersionId == null ? {} : { appVersionId: job.appVersionId }),
             ...(job.verifiedVersionId == null ? {} : { verifiedVersionId: job.verifiedVersionId }),
             ...(job.steps === undefined ? {} : { steps: job.steps }),
+            ...(job.sourceArchiveBytes === undefined
+              ? {}
+              : { sourceArchiveBytes: job.sourceArchiveBytes }),
           };
     }),
   };
@@ -246,7 +278,7 @@ export function deliveryAnswerSaid(answer: HqDeliveryAnswer): DeliveryAnswerSaid
   }
   return {
     environments: [...environments].map(([environment, jobs]) => ({ environment, jobs })),
-    note: answer.note?.trim() || undefined,
+    note: deployNoteSaid(answer.note),
   };
 }
 /** A delayed receipt names the same job and sha; another operation cannot settle this answer. */

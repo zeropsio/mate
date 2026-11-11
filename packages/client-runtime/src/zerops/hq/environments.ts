@@ -8,18 +8,19 @@ import { HqGitNavigationEnvironment } from "@t3tools/shared/hqStream";
  * sends them to whoever may read the application's changes (`read_change`); one who only sees the
  * application gets none.
  *
- * Decoded here against `apps/hq/src/structure.ts`'s `EnvironmentView` until the contract moves to
+ * Decoded here against `mate-hq apps/hq/src/structure.ts`'s `EnvironmentView` until the contract moves to
  * `@t3tools/shared`; a set this build cannot read is not known, and never takes the structure
  * beside it down.
  *
  * @module hq/environments
  */
 import { hqEnvironmentCodec } from "@t3tools/shared/hqEnvironment";
-import { HqOffers } from "@t3tools/shared/hqOffers";
-import { EnvironmentBirth, HqDeployEvidence } from "@t3tools/shared/hqDeploys";
+import { EnvironmentBirth, HqDeployEvidence, HqDeployOutcome } from "@t3tools/shared/hqDeploys";
 import { ReleaseRollout, TierStop } from "@t3tools/shared/hqRelease";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+
+import type { HqOffered } from "./client.ts";
 
 /** A job of an environment, as HQ's record holds it. */
 export const HqJob = Schema.Struct({
@@ -59,6 +60,7 @@ export const HqJob = Schema.Struct({
   ref: Schema.NullOr(Schema.String),
   /** HQ's words for how it ended. */
   reason: Schema.NullOr(Schema.String),
+  sourceArchiveBytes: HqDeployOutcome.fields.sourceArchiveBytes,
   evidence: Schema.optionalKey(Schema.NullOr(HqDeployEvidence)),
   verifiedVersionId: Schema.optionalKey(Schema.NullOr(Schema.String)),
   steps: Schema.optionalKey(Schema.Array(Schema.Unknown)),
@@ -71,6 +73,8 @@ export const HqJob = Schema.Struct({
   at: Schema.String,
   endedAt: Schema.NullOr(Schema.String),
   supersededBy: Schema.NullOr(Schema.String),
+  /** A delta's: the services it creates, by hostname. Absent from an older HQ, and for a deploy. */
+  services: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 export type HqJob = typeof HqJob.Type;
 
@@ -94,6 +98,8 @@ export const HqEnvironment = Schema.Struct({
   keyHeld: Schema.Boolean,
   /** Whether the token held no longer answers, or reaches more than its project. */
   keyInvalid: Schema.Boolean,
+  /** The Zerops id of the token held, never its value; absent where HQ records none. */
+  keyId: Schema.optionalKey(Schema.String),
   /** True only when HQ proves it created this production target. Older HQs make no claim. */
   deleteProjectOnRemoval: Schema.optionalKey(Schema.Boolean),
   /** Its newest jobs, newest first, and each service's newest live one where it is older. */
@@ -113,8 +119,6 @@ export const HqEnvironment = Schema.Struct({
    * Core older than this client: none known.
    */
   tierStops: Schema.optionalKey(Schema.Array(TierStop)),
-  /** What the reader may do with it (`@t3tools/shared/hqOffers`); absent where HQ sent none. */
-  can: Schema.optional(HqOffers),
 });
 export type HqEnvironment = typeof HqEnvironment.Type;
 
@@ -131,8 +135,8 @@ export function canonicalEnvironmentsOf(
 
 /** Temporary outward DTOs only address Zerops; Git has no project to project. */
 export function zeropsEnvironments(
-  environments: ReadonlyArray<CanonicalHqEnvironment>,
-): ReadonlyArray<HqEnvironment> {
+  environments: ReadonlyArray<CanonicalHqEnvironment & HqOffered>,
+): ReadonlyArray<HqEnvironment & HqOffered> {
   return environments.flatMap(({ id: _id, target, projectId: _legacy, ...environment }) =>
     target.kind === "zerops" ? [{ ...environment, projectId: target.projectId }] : [],
   );

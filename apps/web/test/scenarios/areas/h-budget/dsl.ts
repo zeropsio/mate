@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { HqNavigationApp } from "@t3tools/shared/hqStream";
-import { ticketFor } from "../../../../../hq/test/harness/runningCore.ts";
+import { ticketFor } from "../../harness/coreSeed.ts";
 import { openAccountMenu } from "../../harness/browser.ts";
 import { openScenarioNavigation } from "../../harness/hqCore.ts";
 import type { createScenario } from "../../harness/scenario.ts";
@@ -129,6 +129,8 @@ export function budgets(s: Scenario) {
     },
     measure: {
       browser: observation.browser.sample,
+      /** The browser's organization membership search requests. */
+      membershipRequests: () => observation.browser.matching(/^POST \/client-user\/search(\?|$)/u),
       /** One project's process history read, `GET /project/{id}/process`, and its preflight. */
       projectHistoryReads: () =>
         observation.browser.matching(/^(GET|OPTIONS) \/project\/[^/]+\/process(\?|$)/u),

@@ -118,7 +118,7 @@ describe("HQ's Mate identity", () => {
       scopes: [{ scope, generation: fixture.store.state().streams.get(scope)?.generation ?? 0 }],
       reset: false,
       rows: [],
-      removals: [{ family: "placement", id: "quill", reason: "deleted" }],
+      removals: [{ family: "placement", id: "quill" }],
     });
     expect(fixture.registry.get(fixture.identities)).toEqual({});
   });

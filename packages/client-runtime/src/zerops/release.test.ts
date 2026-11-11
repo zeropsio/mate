@@ -11,6 +11,7 @@ import {
   releaseEntries,
   releaseCandidate,
   releaseInFlight,
+  releaseLanding,
   releaseRow,
   releaseStalled,
   releaseWord,
@@ -111,6 +112,28 @@ describe("what a release lists, from HQ's repositories", () => {
 });
 
 describe("a release as HQ records it", () => {
+  it("A recorded release carries HQ's finding unchanged to its outcome consumer.", () => {
+    const problem = {
+      code: "release_refused",
+      what: "Correct the production recipe",
+      where: { appId: "shop", service: "api", file: "production.yaml" },
+      rule: { source: "hq", code: "release_refused" },
+      next: { actor: "mate", action: "Propose a corrected group change" },
+    } as const;
+    expect(
+      flowReleaseOf({
+        tag: "v0.1.2",
+        sha: OLD,
+        entries: [],
+        by: "u1",
+        at: "2026-10-02T10:00:00.000Z",
+        state: "refused",
+        reason: "Correct the recipe",
+        rollbackOf: null,
+        problems: [problem],
+      }).problems,
+    ).toEqual([problem]);
+  });
   it("reads as the flow lists it: its verdict, its entries and when it was made", () => {
     expect(
       flowReleaseOf({
@@ -136,6 +159,7 @@ describe("a release as HQ records it", () => {
         { service: "web", commit: WEB },
       ],
       taggedAt: "2026-10-02T10:00:00.000Z",
+      by: "u1",
     });
   });
 
@@ -630,7 +654,114 @@ describe("a release in flight", () => {
     },
   ])("$name", ({ release, rollouts, inFlight, stalled }) => {
     expect(releaseInFlight({ newest: release, rollouts })).toBe(inFlight);
-    expect(releaseStalled({ newest: release, rollouts })).toBe(stalled);
+    expect(releaseStalled({ newest: release, rollouts, notes: undefined, jobs: [] })?.tag).toBe(
+      stalled,
+    );
+  });
+});
+
+// card-paint at 8x CPU, 2026-10-28: HQ ended the release landed a frame before production's own
+// services named it, and production's line read "Not released yet" between Releasing and Running.
+describe("a release HQ ended landed, until production's own services say they run it", () => {
+  const API_BEFORE = "a".repeat(40);
+  const WEB_BEFORE = "b".repeat(40);
+  const newest = {
+    tag: "v0.1.3",
+    verdict: "approved" as const,
+    entries: [
+      { service: "api", commit: API },
+      { service: "web", commit: WEB },
+    ],
+  };
+  const earlier = [
+    {
+      entries: [
+        { service: "api", commit: API_BEFORE },
+        { service: "web", commit: WEB_BEFORE },
+      ],
+    },
+  ];
+  const landed: ReleaseRollout = {
+    id: "7",
+    tag: "v0.1.3",
+    planned: true,
+    ended: true,
+    endedAt: "2026-09-24T11:20:00Z",
+    landed: true,
+    leftOut: [],
+  };
+  const runs = (entries: Record<string, string | null>) => new Map(Object.entries(entries));
+
+  it.each([
+    {
+      name: "a first release production runs nothing of yet is still landing",
+      productions: [runs({})],
+      landing: "v0.1.3",
+    },
+    {
+      name: "production still running the release before it is still landing",
+      productions: [runs({ api: API_BEFORE, web: WEB_BEFORE })],
+      landing: "v0.1.3",
+    },
+    {
+      name: "one service caught up and the other not yet is still landing",
+      productions: [runs({ api: shortCommit(API), web: WEB_BEFORE })],
+      landing: "v0.1.3",
+    },
+    {
+      name: "every production has to run it: one still behind keeps it landing",
+      productions: [runs({ api: API, web: WEB }), runs({})],
+      landing: "v0.1.3",
+    },
+    {
+      name: "production running all of it has it landed",
+      productions: [runs({ api: shortCommit(API), web: WEB })],
+      landing: undefined,
+    },
+    {
+      name: "production running a commit no release lists says so itself",
+      productions: [runs({ api: "f".repeat(40), web: WEB })],
+      landing: undefined,
+    },
+    {
+      name: "production running a hand-named deploy says so itself",
+      productions: [runs({ api: null, web: WEB })],
+      landing: undefined,
+    },
+    {
+      name: "a release HQ still rolls out is in flight, not landing",
+      rollout: { ...landed, ended: false, endedAt: null, landed: false },
+      productions: [runs({})],
+      landing: undefined,
+    },
+    {
+      name: "a release HQ ended with some of it not live is stalled, not landing",
+      rollout: { ...landed, landed: false },
+      productions: [runs({})],
+      landing: undefined,
+    },
+    {
+      name: "a release HQ ended without telling whether it landed is not landing",
+      rollout: (({ landed: _landed, ...rest }) => rest)(landed),
+      productions: [runs({})],
+      landing: undefined,
+    },
+    {
+      name: "a release that lists nothing production could name is not landing",
+      release: { ...newest, entries: [] },
+      productions: [runs({})],
+      landing: undefined,
+    },
+    {
+      name: "a release HQ refused is not landing",
+      release: { ...newest, verdict: "refused" as const },
+      productions: [runs({})],
+      landing: undefined,
+    },
+  ])("$name", ({ release = newest, rollout = landed, productions, landing }) => {
+    expect(releaseLanding({ newest: release, rollouts: [rollout], earlier, productions })).toBe(
+      landing,
+    );
   });
 });
 

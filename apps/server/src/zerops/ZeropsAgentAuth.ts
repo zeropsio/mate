@@ -30,9 +30,8 @@
  * `~/.claude.json`'s account section alone, even with the credential
  * artifact itself absent. Instead `refreshProviderAuth` (injected at
  * {@link layer}, composed by {@link layerVerifyAgentAuth}) runs each agent
- * CLI's OWN status command (`ZeropsAgentAuthVerify.verifyAgentAuth` —
- * `claude auth status` / `codex login status`, the same argv-list spawn
- * shape {@link ZeropsCli} uses for `zcp`) and reduces its answer to
+ * agent's OWN answer (`ZeropsAgentAuthVerify.verifyAgentAuth` —
+ * `claude auth status`, and Codex's app-server account) and reduces it to
  * `providerAuth`; that is what gates the flag write. Nothing else runs
  * alongside that probe (audit C3): the provider driver picker's own cache
  * may lag up to `CAPABILITIES_PROBE_TTL` (~5 min) behind a logout, and that
@@ -74,10 +73,12 @@ import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 import { ServerConfig } from "../config.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import { ProviderRuntimeEventBus } from "../spi/ProviderRuntimeEventBus.ts";
+import { readCodexAccountAuth } from "../spi/codexAccount.ts";
 import { ProviderInstances } from "../spi/providerInstances.ts";
 import { subscribeBeforeSnapshot } from "../utils/subscribeBeforeSnapshot.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
@@ -85,11 +86,12 @@ import * as ZeropsAgentFlagModule from "./ZeropsAgentFlag.ts";
 import { ZeropsAgentFlag } from "./ZeropsAgentFlag.ts";
 import { watchWithFallback, type WatcherHandle } from "./ZeropsAgentAuthWatcher.ts";
 import * as ZeropsProjectSignersModule from "./ZeropsProjectSigners.ts";
+import { subscribeChanges } from "./zeropsChanges.ts";
 import { turnAuthFailureAgent } from "./zeropsTurnAuthFailure.ts";
 import {
   spawnAgentAuthProbe,
   verifyAgentAuth,
-  type AgentAuthProbeSpawn,
+  type AgentAuthChecks,
   type AgentAuthVerification,
 } from "./ZeropsAgentAuthVerify.ts";
 
@@ -277,11 +279,13 @@ export interface ZeropsAgentAuthOptions {
   readonly homeDir: string;
   readonly envStorePath: string;
   /**
-   * Who this server saw sign each agent in (`ZeropsProjectSigners.signers`), read per publish:
-   * the walker keeps a sign-in before it asks for the re-check whose publish names its person.
-   * Absent disables provenance entirely — every snapshot then omits `authorizedBy`.
+   * The turn gate's signer map and its changes. Absent disables provenance entirely — every
+   * snapshot then omits `authorizedBy`.
    */
-  readonly readSigners?: Effect.Effect<ZeropsProjectSignersModule.ProjectSigners>;
+  readonly projectSigners?: Pick<
+    ZeropsProjectSignersModule.ZeropsProjectSigners["Service"],
+    "signers" | "changes"
+  >;
   /**
    * The agents whose turn just failed because they are not signed in
    * (`zeropsTurnAuthFailure.ts` over the provider runtime event bus at
@@ -396,7 +400,7 @@ export const make = (options: ZeropsAgentAuthOptions) =>
       refreshProviderSnapshot,
       homeDir,
       envStorePath,
-      readSigners,
+      projectSigners,
       turnAuthFailures,
       watch,
       isZeropsEnvironment: enabled,
@@ -445,7 +449,7 @@ export const make = (options: ZeropsAgentAuthOptions) =>
     // One publish at a time: a read and its publish are never overtaken by a newer read's.
     const publishMutex = yield* Semaphore.make(1);
     const publish = Effect.gen(function* () {
-      const signers = readSigners === undefined ? {} : yield* readSigners;
+      const signers = projectSigners === undefined ? {} : yield* projectSigners.signers;
       const current = yield* Ref.get(state);
       const authorizers: Partial<Record<ZeropsAgentId, ZeropsAgentAuthorizer>> = {};
       for (const agentId of KNOWN_AGENT_IDS) {
@@ -715,6 +719,10 @@ export const make = (options: ZeropsAgentAuthOptions) =>
       yield* publish;
     });
 
+    // Subscribe before the first signer read: a map arriving during startup must not go unheard.
+    const signerMoved =
+      projectSigners === undefined ? undefined : yield* subscribeChanges([projectSigners.changes]);
+
     // Initial reads, before any watcher starts, so a client that connects
     // immediately gets real state rather than an empty placeholder. An
     // agent whose credential already exists at startup (e.g. a restored
@@ -739,6 +747,11 @@ export const make = (options: ZeropsAgentAuthOptions) =>
       }
     }
     yield* publish;
+    if (signerMoved !== undefined) {
+      yield* Effect.forever(signerMoved.pipe(Effect.andThen(publish))).pipe(
+        Effect.forkScoped({ startImmediately: true }),
+      );
+    }
 
     /**
      * Bridges the injected callback-style {@link watch} into Effect: every
@@ -841,13 +854,13 @@ export const make = (options: ZeropsAgentAuthOptions) =>
  * probe (`ZeropsAgentAuthVerify.verifyAgentAuth`), never the provider
  * registry's probe (see the module header's "How it verifies"). Exported
  * separately from {@link layer} so this composition is directly testable
- * against a fake {@link AgentAuthProbeSpawn} without standing up
+ * against fake {@link AgentAuthChecks} without standing up
  * `ZeropsCli`/`ProcessRunner` layers.
  */
 export const layerVerifyAgentAuth =
-  (spawn: AgentAuthProbeSpawn) =>
+  (checks: AgentAuthChecks) =>
   (agentId: ZeropsAgentId): Effect.Effect<AgentAuthVerification> =>
-    verifyAgentAuth(agentId, spawn);
+    verifyAgentAuth(agentId, checks);
 
 export const layer = Layer.effect(
   ZeropsAgentAuth,
@@ -858,17 +871,23 @@ export const layer = Layer.effect(
     const projectSigners = yield* ZeropsProjectSignersModule.ZeropsProjectSigners;
     const providerInstances = yield* ProviderInstances;
     const bus = yield* ProviderRuntimeEventBus;
-    const spawnProbe = spawnAgentAuthProbe(processRunner, config.cwd);
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    const checks: AgentAuthChecks = {
+      spawn: spawnAgentAuthProbe(processRunner, config.cwd),
+      codexAccount: readCodexAccountAuth({ cwd: config.cwd }).pipe(
+        Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+      ),
+    };
 
     return yield* make({
       agentFlag,
-      refreshProviderAuth: layerVerifyAgentAuth(spawnProbe),
+      refreshProviderAuth: layerVerifyAgentAuth(checks),
       reconcileProviderAuth: providerInstances.reconcileAgentAuth,
       refreshProviderSnapshot: providerInstances.refreshAgent,
       homeDir: config.homeDir,
       // Outside a Zerops container the feed is off and reads no store.
       envStorePath: config.zerops?.envStorePath ?? "",
-      readSigners: projectSigners.signers,
+      projectSigners,
       turnAuthFailures: bus.events.pipe(
         Stream.map(turnAuthFailureAgent),
         Stream.filter((agentId) => agentId !== undefined),

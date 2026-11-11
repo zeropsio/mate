@@ -8,8 +8,6 @@
 import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
 
-import { restoreImportZoneFile, transformImportZoneFile } from "./effect-401-codemod.ts";
-
 export interface TreeFile {
   /** Path relative to the tree's root, `/`-separated. */
   readonly path: string;
@@ -24,16 +22,23 @@ export interface ImportTransform {
   readonly restore: (path: string, content: Buffer) => Buffer;
 }
 
-const TEXT = /\.(?:[cm]?[jt]sx?|json|jsonc|md|mdx|ya?ml)$/u;
+// Upstream typechecks the wire packages with `effect-tsgo tsrs`, which @effect/tsgo 0.46 does not
+// have; until the toolchain moves to 0.67, their `typecheck` script stays the fork's `tsc --noEmit`.
+const TSRS_TYPECHECK = '"typecheck": "effect-tsgo tsrs --noEmit"';
+const TSC_TYPECHECK = '"typecheck": "tsc --noEmit"';
 
-const textTransform =
-  (rewrite: (path: string, text: string) => string) => (path: string, content: Buffer) =>
-    TEXT.test(path) ? Buffer.from(rewrite(path, content.toString("utf8")), "utf8") : content;
+const packageScript = (from: string, to: string) => (path: string, content: Buffer) =>
+  path.endsWith("/package.json")
+    ? Buffer.from(
+        content.toString("utf8").replace(from, () => to),
+        "utf8",
+      )
+    : content;
 
 export const IMPORT_TRANSFORMS: Readonly<Record<string, ImportTransform>> = {
-  "effect-401": {
-    apply: textTransform(transformImportZoneFile),
-    restore: textTransform(restoreImportZoneFile),
+  "tsgo-046": {
+    apply: packageScript(TSRS_TYPECHECK, TSC_TYPECHECK),
+    restore: packageScript(TSC_TYPECHECK, TSRS_TYPECHECK),
   },
 };
 

@@ -191,6 +191,7 @@ describe("Slack in Settings", () => {
     const html = renderToStaticMarkup(
       <>
         <SlackSettingsView
+          channels={controls(known({ bot: "mate", channels: [] }))}
           controls={controls(known({ ...slackOff, connected: true, workspace: "Acme" }))}
           defaultOpen
         />
@@ -437,7 +438,7 @@ describe("Slack in Settings", () => {
 
   it("asks for an update where HQ predates these settings", () => {
     expect(shown(renderToStaticMarkup(<TaskSourcesUnsupported />))).toBe(
-      "Update HQ to take tasks from Slack, Discord, webhooks and schedules.",
+      "HQ needs an update to take tasks from Slack, Discord, webhooks and schedules.",
     );
   });
 });

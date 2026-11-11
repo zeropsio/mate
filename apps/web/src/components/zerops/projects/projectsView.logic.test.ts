@@ -5,8 +5,8 @@ import {
   type GroupFlow,
   type GroupFlowInput,
   type GroupNextStepKind,
-  type ZeropsGroup,
-  type ZeropsProject,
+  applicationEnvironments,
+  listedEnvironmentsOf,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
@@ -30,10 +30,8 @@ import {
   overviewFilterTabs,
   overviewKeeps,
   parseProjectsSearch,
-  tiersAddable,
   rowMateActivitiesOf,
   projectRowLine,
-  withoutOfficialHq,
   shownUngrouped,
   overviewPaints,
 } from "./projectsView.logic";
@@ -705,9 +703,40 @@ describe("groupFlowInputOf", () => {
       pending: [],
     });
     expect(input.mates[0]?.previews.map((preview) => preview.service)).toEqual([
-      "web",
-      "api",
-      "worker",
+      "apistage",
+      "webstage",
+      "workerstage",
+    ]);
+  });
+
+  it("A pool-era Mate's row shows every part its pools serve by its real hostname, a part with no public preview too", () => {
+    const [wren] = members;
+    const input = groupFlowInputOf({
+      groupId: "g",
+      members: [
+        {
+          ...wren!,
+          routes: [route("apipool"), route("apistage"), route("zcp")],
+          hostnames: ["noola", "apipool", "apistage", "runnerpool", "runnerstage", "zcp"],
+          pools: ["apipool", "runnerpool"],
+          controlPlane: "zcp",
+        },
+      ],
+      flow: undefined,
+      deployments: new Map(),
+      pending: [],
+    });
+    expect(
+      input.mates[0]?.parts?.map((part) => [
+        part.preview?.service,
+        part.preview?.url ?? part.preview?.why,
+      ]),
+    ).toEqual([
+      ["apistage", "https://apistage-1.prg1.zerops.app"],
+      ["runnerstage", "No web address."],
+    ]);
+    expect(input.mates[0]?.previews).toEqual([
+      { service: "apistage", url: "https://apistage-1.prg1.zerops.app" },
     ]);
   });
 
@@ -719,11 +748,11 @@ describe("groupFlowInputOf", () => {
       deployments: new Map(),
       pending: [],
     });
-    expect(input.mates).toEqual([
+    expect(input.mates.map(({ parts: _parts, ...mate }) => mate)).toEqual([
       {
         projectId: "p-wren",
         name: "Wren",
-        previews: [{ service: "app", url: "https://appstage-1.prg1.zerops.app" }],
+        previews: [{ service: "appstage", url: "https://appstage-1.prg1.zerops.app" }],
         waiting: false,
         talked: true,
       },
@@ -848,41 +877,6 @@ describe("groupFlowInputOf", () => {
       pending,
     });
     expect(input.pending).toEqual(pending);
-  });
-});
-
-describe("withoutOfficialHq — the page's projects, never the organization's HQ", () => {
-  const row = (id: string, name: string) => ({ project: { id, name } });
-  const ROWS = [row("hq-1", "Headquarters"), row("old-hq", "Headquarters"), row("shop", "Shop")];
-  const OFFICIAL = {
-    kind: "official",
-    projectId: "hq-1",
-    address: "https://hq-1.prg1-zerops.zone",
-  } as const;
-
-  it.each([
-    {
-      case: "leaves out the project the anchor names, whatever it is called",
-      hq: OFFICIAL,
-      ids: ["old-hq", "shop"],
-    },
-    {
-      case: "keeps a project merely named Headquarters that no anchor names",
-      hq: { ...OFFICIAL, projectId: "elsewhere" },
-      ids: ["hq-1", "old-hq", "shop"],
-    },
-    {
-      case: "leaves nothing out while the anchor is unknown, and guesses by no name",
-      hq: { kind: "none" } as const,
-      ids: ["hq-1", "old-hq", "shop"],
-    },
-    {
-      case: "leaves nothing out where two anchors leave the HQ unclear",
-      hq: { kind: "unclear", projectIds: ["hq-1", "old-hq"] } as const,
-      ids: ["hq-1", "old-hq", "shop"],
-    },
-  ])("$case", ({ hq, ids }) => {
-    expect(withoutOfficialHq(ROWS, hq).map(({ project }) => project.id)).toEqual(ids);
   });
 });
 
@@ -1103,32 +1097,40 @@ describe("a project row's Mates — what each is on", () => {
   });
 });
 
-describe("tiersAddable", () => {
+describe("applicationEnvironments", () => {
   type Tier = "stage" | "production";
+  const KIND_OF_ROLE = {
+    dev: "mate",
+    devstage: "devstage",
+    stage: "stage",
+    prod: "production",
+  } as const;
   const entry = (id: string, role: "dev" | "stage" | "prod" | "devstage") => ({
-    project: { id, name: id, status: "ACTIVE" } as ZeropsProject,
-    role,
+    id,
+    name: id,
+    hq: { appId: "shop", appName: "Shop", kind: KIND_OF_ROLE[role], mate: null },
   });
   const BOTH = { stage: true, production: true };
   const ask = (over: {
     offered?: { stage: boolean; production: boolean } | null;
-    environments?: ReadonlyArray<{
-      project: ZeropsProject;
-      role: "dev" | "stage" | "prod" | "devstage";
-    }>;
-    pending?: ZeropsGroup["pending"];
+    environments?: ReadonlyArray<ReturnType<typeof entry>>;
+    pending?: ReadonlyArray<{ id: string; tier: Tier }>;
     hq?: ReadonlyArray<{ id: string; tier: Tier }>;
     recipe?: { read: boolean; tiers: ReadonlyArray<Tier> };
-  }) =>
-    tiersAddable({
+  }) => {
+    const recipe = over.recipe ?? { read: true, tiers: ["stage", "production"] };
+    const { addable } = applicationEnvironments({
+      environments: over.hq ?? [],
+      ...listedEnvironmentsOf("shop", over.environments ?? [entry("dev", "dev")]),
+      pending: over.pending ?? [],
+      recipeRead: recipe.read,
+      recipeTiers: recipe.tiers,
       offered: over.offered === undefined ? BOTH : over.offered,
-      group: {
-        environments: over.environments ?? [entry("dev", "dev")],
-        pending: over.pending ?? [],
-      },
-      hq: over.hq ?? [],
-      recipe: over.recipe ?? { read: true, tiers: ["stage", "production"] },
+      merged: [{ kind: "code" }],
+      pullRequests: [],
     });
+    return (["stage", "production"] as const).filter((tier) => addable[tier]);
+  };
 
   it.each<[string, Parameters<typeof ask>[0], ReadonlyArray<Tier>]>([
     ["HQ offers both, nothing added", {}, ["stage", "production"]],
@@ -1150,11 +1152,7 @@ describe("tiersAddable", () => {
       { environments: [entry("p", "prod")] },
       ["stage"],
     ],
-    [
-      "a production being created",
-      { pending: [{ projectId: "n", kind: "production", name: "n", startedAt: 0 }] },
-      ["stage"],
-    ],
+    ["a production being created", { pending: [{ id: "n", tier: "production" }] }, ["stage"]],
     [
       "a stage and a production HQ holds, counted once beside the projects",
       {
@@ -1186,14 +1184,19 @@ it("Every Add door accepts HQ Git authority without a recipe and still holds occ
       git: true,
       zerops: { stage: false, production: false },
     },
-    group: { environments: [], pending: [] },
-    hq: [],
-    recipe: { read: false, tiers: [] },
+    environments: [],
+    devstages: [],
+    pending: [],
+    recipeRead: false,
+    recipeTiers: [],
+    merged: [{ kind: "code" as const }],
+    pullRequests: [],
   };
-  expect(tiersAddable(input)).toEqual(["stage", "production"]);
-  expect(tiersAddable({ ...input, hq: [{ id: "git-prod", tier: "production" }] })).toEqual([
-    "stage",
-  ]);
+  expect(applicationEnvironments(input).addable).toEqual({ stage: true, production: true });
+  expect(
+    applicationEnvironments({ ...input, environments: [{ id: "git-prod", tier: "production" }] })
+      .addable,
+  ).toEqual({ stage: true, production: false });
 });
 
 describe("overviewPaints — the overview paints its projects once, whole", () => {

@@ -7,8 +7,8 @@
  */
 import * as Effect from "effect/Effect";
 
-import type { ZeropsApiClient } from "../../../zerops/api.ts";
-import { PROJECT_ENV_ISOLATION_KEY, readsClosed } from "../../../zerops/projectIsolation.ts";
+import type { ZeropsApiClient, ZeropsServiceImportResult } from "../../../zerops/api.ts";
+import type { CreateServicesResult } from "../createServices.ts";
 import type { OperationIntent, OperationReceipt, OperationResult } from "../../model.ts";
 import type { OperationExecutor } from "../coordinator.ts";
 import type { IntentOf } from "../kind.ts";
@@ -33,10 +33,6 @@ export interface CreationWritesPlatform {
     projectId: string,
     keyTokenId: string | undefined,
   ) => Promise<{ readonly keyNotLowered: string | null }>;
-  readonly readProjectEnv: (
-    clientId: string,
-    projectId: string,
-  ) => Promise<ReadonlyArray<{ readonly key: string; readonly content?: string | undefined }>>;
 }
 
 type ProjectWrite = IntentOf<
@@ -53,37 +49,9 @@ const done = (
   acceptance: { kind: "accepted", ...(result === undefined ? {} : { result }) },
 });
 
-const refused = (message: string) =>
-  Effect.fail({ outcome: "definitive-refusal", message } as const);
-
 export function creationWritesExecutor(
   platform: CreationWritesPlatform,
 ): OperationExecutor["submit"] {
-  const isolation = (intent: IntentOf<"harden-project">) =>
-    Effect.flatMap(
-      verb(() => platform.readProjectEnv(intent.orgId, intent.projectId)),
-      (entries) =>
-        Effect.succeed(entries.find((entry) => entry.key === PROJECT_ENV_ISOLATION_KEY)?.content),
-    );
-  const harden = (intent: IntentOf<"harden-project">) =>
-    verb(() => platform.hardenMate(intent.orgId, intent.projectId, intent.keyTokenId));
-  const hardened = (intent: IntentOf<"harden-project">) =>
-    intent.confirm !== true
-      ? harden(intent)
-      : Effect.gen(function* () {
-          const before = yield* isolation(intent);
-          if (before === undefined)
-            return yield* refused("The project's isolation could not be read.");
-          if (readsClosed(before)) return { keyNotLowered: null };
-          const answer = yield* harden(intent);
-          const after = yield* isolation(intent);
-          if (after === undefined)
-            return yield* refused("The project's isolation could not be read.");
-          if (!readsClosed(after))
-            return yield* refused("The project does not read as closed off yet.");
-          return answer;
-        });
-
   return (requestId: string, intent: OperationIntent) => {
     const write = intent as ProjectWrite;
     switch (write.kind) {
@@ -105,9 +73,7 @@ export function creationWritesExecutor(
               projectId: write.projectId,
               projectName: write.projectName,
               agents: write.agents,
-              ...(write.setupRuntimesYaml === undefined
-                ? {}
-                : { setupRuntimesYaml: write.setupRuntimesYaml }),
+              ...(write.tierYaml === undefined ? {} : { tierYaml: write.tierYaml }),
               ...(write.birthplace === undefined ? {} : { birthplace: write.birthplace }),
             }),
           ),
@@ -119,11 +85,57 @@ export function creationWritesExecutor(
             }),
         );
       case "harden-project":
-        return Effect.map(hardened(write), ({ keyNotLowered }) =>
-          done(requestId, write.projectId, {
-            keyNotLowered,
-          }),
+        return Effect.map(
+          verb(() => platform.hardenMate(write.orgId, write.projectId, write.keyTokenId)),
+          ({ keyNotLowered }) =>
+            done(requestId, write.projectId, {
+              keyNotLowered,
+            }),
         );
     }
   };
+}
+
+/**
+ * Creating a project's missing services, followed to its end (`create-services`): Zerops' answer
+ * names each service it began and the processes bringing it up, which the receipt holds as its
+ * handles until each ended. An answer naming no process is its end.
+ */
+export function createServicesExecutor(platform: {
+  readonly importServicesIntoProject: (
+    projectId: string,
+    yaml: string,
+  ) => Promise<ZeropsServiceImportResult>;
+  readonly nowMs: () => number;
+}) {
+  return (requestId: string, intent: IntentOf<"create-services">) =>
+    Effect.map(
+      verb(() => platform.importServicesIntoProject(intent.projectId, intent.yaml)),
+      (answer): OperationReceipt => {
+        const services = (answer.serviceStacks ?? []).map((stack) => ({
+          hostname: stack.name,
+          serviceId: stack.id,
+          processIds: (stack.processes ?? []).map((process) => process.id),
+        }));
+        const result: CreateServicesResult = {
+          acceptedAtMs: platform.nowMs(),
+          services,
+        };
+        const processes = [...new Set(services.flatMap((service) => service.processIds))];
+        const [first] = processes;
+        if (first === undefined) return done(requestId, intent.projectId, result);
+        return {
+          requestId,
+          operationId: first,
+          executor: "zerops",
+          affected: [
+            { family: "project", id: intent.projectId },
+            ...processes.map((id) => ({ family: "process" as const, id })),
+          ],
+          handles: processes,
+          acceptance: { kind: "accepted", result },
+          outcome: { kind: "pending" },
+        };
+      },
+    );
 }

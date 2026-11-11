@@ -1,4 +1,5 @@
 import { useNowMs } from "../../zerops/useNowMs";
+import { useZeropsSessionOptional } from "../../zerops/ZeropsSessionProvider";
 import { useAtomValue } from "@effect/atom-react";
 import { type EnvironmentId, type UsageProviderKind } from "@t3tools/contracts";
 import { RefreshCwIcon, XIcon } from "lucide-react";
@@ -22,7 +23,12 @@ import { shortcutLabelForCommand } from "../../keybindings";
 import { useEscapeToGoBack } from "../../hooks/useNavigateBack";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useAgentUsage } from "../../state/usage";
-import { usageChartDays, usageNativeCosts, type UsageWindow } from "../../state/usage.logic";
+import {
+  usageChartDays,
+  usageCostsHidden,
+  usageNativeCosts,
+  type UsageWindow,
+} from "../../state/usage.logic";
 import { useAtomCommand } from "../../state/use-atom-command";
 import {
   isAutomatedMatesOwner,
@@ -120,8 +126,11 @@ function withoutScope(scope: UsageScope, dimension: UsageDimension): UsageScope 
   };
 }
 
+/** Why a reader sees no costs: HQ shows them as Zerops gates its own. */
+const COSTS_HIDDEN = "Costs show only to people who can view the organisation's finances in Zerops";
+
 export function UsagePage({
-  scope,
+  scope: requestedScope,
   onScopeChange,
 }: {
   readonly scope: UsageScope;
@@ -143,8 +152,6 @@ export function UsagePage({
       preferences.windowDays === 1 ? "hour" : "day",
     ),
   }));
-  const metric = preferences.metric;
-  const showingLimits = metric === "limits";
   const [provenance, setProvenance] = useState<"live-responses" | "legacy-scanner">(
     "live-responses",
   );
@@ -158,12 +165,22 @@ export function UsagePage({
     () => new Set(identityRead.identities.keys()),
     [identityRead.identities],
   );
-  const { merged, overall, read, report, overallReport, sections, refresh } = useAgentUsage(
-    window,
+  const {
+    merged,
+    overall,
+    read,
+    report,
+    overallReport,
+    sections,
+    refresh,
     scope,
-    !showingLimits,
-    provenance,
-  );
+    canSeeOtherPeople,
+  } = useAgentUsage(window, requestedScope, preferences.metric !== "limits", provenance);
+  // Costs HQ hides from this reader are not offered: Cost then shows tokens, and no cost reads $0.
+  const costsHidden = usageCostsHidden(report);
+  const metric = costsHidden && preferences.metric === "cost" ? "tokens" : preferences.metric;
+  const showingLimits = metric === "limits";
+  const unpriced = costsHidden ? "Hidden" : "Unpriced";
   const { identities, labels } = useMemo(
     () =>
       createUsageIdentityIndex({
@@ -208,7 +225,10 @@ export function UsagePage({
     [dimensionMetric, overallIndex, overall.byEnvironment],
   );
   const breakdownOptions: readonly { value: UsageBreakdown; label: string }[] = [
-    ...DIMENSION_OPTIONS.filter((option) => dimensions.visible[option.value]),
+    ...DIMENSION_OPTIONS.filter(
+      (option) =>
+        dimensions.visible[option.value] && (option.value !== "person" || canSeeOtherPeople),
+    ),
     { value: "model", label: "Model" },
     { value: "time", label: isPast24Hours ? "Hour" : "Day" },
   ];
@@ -219,7 +239,7 @@ export function UsagePage({
       : (breakdownOptions[0]?.value ?? "model");
   const whoSummary = [
     dimensions.visible.mate ? ` · ${formatCount(dimensions.mates.length)} contributing Mates` : "",
-    dimensions.visible.person
+    canSeeOtherPeople && dimensions.visible.person
       ? ` · ${formatCount(dimensions.people.filter((person) => person.owner !== null && !isAutomatedMatesOwner(person.owner)).length)} owners`
       : "",
   ].join("");
@@ -229,7 +249,8 @@ export function UsagePage({
   });
 
   const nativeCosts = usageNativeCosts(report);
-  const state = usagePageState({ read, scope, projects });
+  const viewerUserId = useZeropsSessionOptional()?.user?.id ?? null;
+  const state = usagePageState({ read, scope, projects, viewerUserId });
   const settling = state.kind === "reading";
   const noTotals =
     state.kind === "unavailable" || state.kind === "invalid" || state.kind === "empty";
@@ -276,7 +297,7 @@ export function UsagePage({
     });
   const selectWindow = (days: number) => {
     if (!isUsageWindowDays(days) || (provenance === "legacy-scanner" && days === 1)) return;
-    const nextPreferences = { metric, windowDays: days };
+    const nextPreferences = { metric: preferences.metric, windowDays: days };
     setPreferences(nextPreferences);
     saveUsagePagePreferences(nextPreferences);
     setWindowSelection({
@@ -377,6 +398,7 @@ export function UsagePage({
             identities={overallIndex.identities}
             projects={projects}
             dimensions={overallDimensions}
+            canSeeOtherPeople={canSeeOtherPeople}
             onScopeChange={onScopeChange}
           />
         )}
@@ -391,7 +413,9 @@ export function UsagePage({
         >
           {METRIC_OPTIONS.map((option) => (
             <ShortcutHint key={option.value} shortcut={shortcutOf(option)}>
-              <Toggle value={option.value}>{option.label}</Toggle>
+              <Toggle value={option.value} disabled={costsHidden && option.value === "cost"}>
+                {option.label}
+              </Toggle>
             </ShortcutHint>
           ))}
         </ToggleGroup>
@@ -449,7 +473,11 @@ export function UsagePage({
           </SelectTrigger>
           <SelectPopup align="end" alignItemWithTrigger={false}>
             {METRIC_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
+              <SelectItem
+                key={option.value}
+                value={option.value}
+                disabled={costsHidden && option.value === "cost"}
+              >
                 {option.label}
               </SelectItem>
             ))}
@@ -501,7 +529,7 @@ export function UsagePage({
         <WorkspacePageHeader electron={isElectron}>{topbarContent}</WorkspacePageHeader>
 
         <ScrollArea className="min-h-0 flex-1">
-          <WorkspacePageContainer width="wide">
+          <WorkspacePageContainer className="max-sm:px-4" width="wide">
             {showingLimits ? null : (
               <div className="flex flex-col gap-2 lg:hidden">
                 <p className="text-xs text-muted-foreground md:hidden">{windowLabel}</p>
@@ -511,6 +539,7 @@ export function UsagePage({
                     identities={overallIndex.identities}
                     projects={projects}
                     dimensions={overallDimensions}
+                    canSeeOtherPeople={canSeeOtherPeople}
                     onScopeChange={onScopeChange}
                   />
                 </div>
@@ -603,6 +632,7 @@ export function UsagePage({
                             </>
                           )}
                           {whoSummary}
+                          {costsHidden ? ` · ${COSTS_HIDDEN}` : ""}
                         </span>
                       </div>
 
@@ -617,7 +647,7 @@ export function UsagePage({
                             .join(" · ")}
                         </p>
                       ) : null}
-                      {dimensions.visible.person ? (
+                      {canSeeOtherPeople && dimensions.visible.person ? (
                         <UsagePeopleSplit people={dimensions.people} metric={dimensionMetric} />
                       ) : null}
 
@@ -655,7 +685,7 @@ export function UsagePage({
                                   <span className="truncate">
                                     {PROVIDER_PRESENTATION[provider].label}
                                   </span>
-                                  <span className="shrink-0 whitespace-nowrap text-2xs text-muted-foreground tabular-nums">
+                                  <span className="shrink-0 whitespace-nowrap text-2xs text-muted-foreground tabular-nums max-sm:text-xs">
                                     {sessionLabel}
                                   </span>
                                 </span>
@@ -663,15 +693,15 @@ export function UsagePage({
                               <span className="shrink-0 text-sm font-medium text-foreground tabular-nums">
                                 {metric === "cost"
                                   ? totals?.costKnown === false
-                                    ? "Unpriced"
+                                    ? unpriced
                                     : formatUsageCost(totals)
                                   : formatTokens(totals?.totalTokens ?? 0)}
                               </span>
                             </div>
                             <span className="text-xs text-muted-foreground">
                               {metric === "cost"
-                                ? `${totals.costKnown === false ? "Unpriced" : `${formatPercent(share)} of priced cost`} · ${formatTokens(totals.totalTokens)} tokens`
-                                : `${formatPercent(share)} of tokens · ${totals?.costKnown === false ? "Unpriced" : formatUsageCost(totals)}`}
+                                ? `${totals.costKnown === false ? unpriced : `${formatPercent(share)} of priced cost`} · ${formatTokens(totals.totalTokens)} tokens`
+                                : `${formatPercent(share)} of tokens · ${totals?.costKnown === false ? unpriced : formatUsageCost(totals)}`}
                             </span>
                           </div>
                         );
@@ -736,6 +766,8 @@ export function UsagePage({
                   <div className="min-h-5 text-sm tabular-nums">
                     {settling ? (
                       <div className="h-5 w-36 rounded-sm bg-muted" />
+                    ) : costsHidden ? (
+                      <p className="text-muted-foreground">{COSTS_HIDDEN}.</p>
                     ) : nativeCosts.length === 0 ? (
                       <p className="text-muted-foreground">
                         No agent-reported amount is available in this report.
@@ -865,7 +897,7 @@ export function UsagePage({
                                 </td>
                                 <td className="py-2 text-right text-foreground tabular-nums">
                                   {isModelCostUnknown(model) ? (
-                                    <span className="text-muted-foreground">Unpriced</span>
+                                    <span className="text-muted-foreground">{unpriced}</span>
                                   ) : (
                                     formatUsageCost(model)
                                   )}
@@ -941,7 +973,7 @@ export function UsagePage({
                                 </td>
                               ))}
                               <td className="py-2 text-right text-foreground tabular-nums">
-                                {period.costKnown === false ? "Unpriced" : formatUsageCost(period)}
+                                {period.costKnown === false ? unpriced : formatUsageCost(period)}
                               </td>
                               <td className="py-2 text-right text-muted-foreground tabular-nums">
                                 {formatTokens(period.totalTokens)}
@@ -1129,12 +1161,14 @@ function UsageScopeFilters({
   identities,
   projects,
   dimensions,
+  canSeeOtherPeople,
   onScopeChange,
 }: {
   readonly scope: UsageScope;
   readonly identities: UsageEnvironmentIdentities;
   readonly projects: ReadonlyMap<string, string>;
   readonly dimensions: UsageDimensions;
+  readonly canSeeOtherPeople: boolean;
   readonly onScopeChange: (scope: UsageScope) => void;
 }) {
   const people = dimensions.people.flatMap((person) =>
@@ -1148,7 +1182,7 @@ function UsageScopeFilters({
         : name,
   }));
   const filters = [
-    ...(dimensions.visible.person
+    ...(canSeeOtherPeople && dimensions.visible.person
       ? [{ dimension: "person" as const, all: "All owners", options: people }]
       : []),
     ...(projects.size > 1 || scope.project !== undefined || scope.legacyProject !== undefined

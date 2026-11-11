@@ -9,13 +9,14 @@
  *
  * Pure: no React, no clock of its own.
  */
-import { lacksOwnDomain, type PlaceAddresses } from "@t3tools/client-runtime/data";
 import {
   addressComing,
+  changeAsksForReview,
+  changeInMateReview,
   changeState,
-  changesCountWords,
-  placeAddresses,
+  ENVIRONMENT_NOT_ADDED,
   PRODUCTION_DEPLOYING,
+  pullRequestBlocked,
   type FlowPullRequest,
   type FlowReleaseRow,
   type GroupFlow,
@@ -23,12 +24,17 @@ import {
   type GroupFlowMate,
   type GroupFlowProduction,
   type GroupFlowStop,
+  type RecipeReach,
 } from "@t3tools/client-runtime/zerops";
 import { UNREAD_ENVIRONMENT_LINE } from "@t3tools/client-runtime/zerops/hq";
 import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 
-import { domainFaceWords } from "../addresses/addresses.logic";
-import type { ProductionChip } from "../SidebarProductionChip.logic";
+import { environmentTitle } from "../place/place.logic";
+import {
+  PLACE_RUNNING_WORD,
+  placeStateWord,
+  type ProductionChip,
+} from "../SidebarProductionChip.logic";
 import { MATE_DELETING_WORD } from "../ZeropsDeleteMateDialog.logic";
 import {
   changeLineWords,
@@ -39,7 +45,156 @@ import {
   type MateRowView,
 } from "../SidebarMateRow.logic";
 import { NOT_IN_HQ_LINE } from "../ZeropsProjectRow.logic";
+import {
+  WAITING_VERBS,
+  type WaitingChange,
+  type WaitingItem,
+  type WaitingMate,
+  type WaitingRelease,
+  type WaitingVerb,
+} from "../SidebarWaiting.logic";
+import {
+  mergedChangeWords,
+  openChangeWords,
+  releaseIsLive,
+  type MergedChangeWhere,
+} from "../system/ChangeRow.logic";
 import { releaseOfLanding, type HistoryReleaseInput } from "./projectHistory.logic";
+
+/**
+ * One thing in a project that waits on the viewer, beside its release: a Mate of theirs that asks
+ * (a question, a plan, a run stopped on an error, its agent's sign-in), or its changes waiting for
+ * their review.
+ */
+export type ProjectWait =
+  | {
+      readonly kind: "ask";
+      readonly key: string;
+      readonly ask: "question" | "plan" | "failed" | "sign-in";
+      readonly mate: WaitingMate;
+    }
+  | {
+      readonly kind: "review";
+      readonly key: string;
+      readonly mate: WaitingMate;
+      /** The newest of its changes waiting, which *Review* opens. */
+      readonly change: WaitingChange | undefined;
+    };
+
+/**
+ * What waits on the viewer in one project, read off the one list (`useViewerWaits`) so the menu,
+ * the overview card and the project page say the same: its Mates' asks first, the most urgent,
+ * then their changes to review. Its release is `projectReleaseWait`: production's next release,
+ * said where production is.
+ */
+export function projectWaits(input: {
+  readonly items: ReadonlyArray<WaitingItem>;
+  /** The project's flow: its Mates. */
+  readonly flow: Pick<GroupFlow, "mates">;
+}): ReadonlyArray<ProjectWait> {
+  const mates = new Set(input.flow.mates.map((mate) => mate.projectId));
+  const asks: Array<ProjectWait> = [];
+  const reviews: Array<ProjectWait> = [];
+  for (const item of input.items) {
+    if (item.kind === "release" || !mates.has(item.mate.projectId)) continue;
+    if (item.kind === "change")
+      reviews.push({ kind: "review", key: item.key, mate: item.mate, change: item.mate.change });
+    else asks.push({ kind: "ask", key: item.key, ask: item.kind, mate: item.mate });
+  }
+  return [...asks, ...reviews];
+}
+
+/** A project's release, where the one list says it waits on the viewer (`releaseOffered`). */
+export function projectReleaseWait(
+  items: ReadonlyArray<WaitingItem>,
+  groupId: string,
+): WaitingRelease | undefined {
+  for (const item of items)
+    if (item.kind === "release" && item.release.groupId === groupId) return item.release;
+  return undefined;
+}
+
+/** A project wait as the one list's item, for its words (`waitingPhrase`, `WAITING_VERBS`). */
+function waitingItemOf(wait: ProjectWait): WaitingItem {
+  return wait.kind === "review"
+    ? { kind: "change", key: wait.key, mate: wait.mate }
+    : { kind: wait.ask, key: wait.key, mate: wait.mate };
+}
+
+/**
+ * A wait in words, beside its verb: what waits, said from the Mate — "Juno asks: …", "Tess has a
+ * plan for you to approve". The menu leads with the verb ("Answer Juno") because its rows carry no
+ * button; here the button says it (`WAITING_VERBS`, the one table), so the line does not repeat it.
+ */
+export function projectWaitWords(wait: ProjectWait): {
+  readonly text: string;
+  readonly verb: WaitingVerb;
+} {
+  const item = waitingItemOf(wait);
+  const { name, text } = wait.mate;
+  const verb = WAITING_VERBS[item.kind];
+  if (wait.kind === "review") {
+    const count = wait.mate.changes ?? 1;
+    return {
+      text:
+        count > 1
+          ? `${String(count)} changes from ${name} to review`
+          : wait.change === undefined
+            ? `A change from ${name} to review`
+            : `${name}'s change: ${wait.change.title}`,
+      verb,
+    };
+  }
+  switch (wait.ask) {
+    case "question":
+      return { text: text === undefined ? `${name} asks you` : `${name} asks: ${text}`, verb };
+    case "plan":
+      return { text: `${name} has a plan for you to approve`, verb };
+    case "failed":
+      return { text: `${name} stopped on an error`, verb };
+    case "sign-in":
+      return { text: `${name} waits for your sign-in`, verb };
+  }
+}
+
+/** A wait's verb named for a screen reader: whose, and in which project. */
+export function projectWaitLabel(wait: ProjectWait, project: string): string {
+  const { name } = wait.mate;
+  if (wait.kind === "review")
+    return `Review ${name}'s ${(wait.mate.changes ?? 1) > 1 ? "changes" : "change"} in ${project}`;
+  switch (wait.ask) {
+    case "question":
+      return `Answer ${name} in ${project}`;
+    case "plan":
+      return `See ${name}'s plan in ${project}`;
+    case "failed":
+      return `Ask ${name} to fix it in ${project}`;
+    case "sign-in":
+      return `Sign ${name} in, in ${project}`;
+  }
+}
+
+/**
+ * A broken place as what waits on the viewer: production down, its release or deploy failed — in
+ * its own words, and the one verb: their Mate asked to fix it, or, with no Mate of theirs there,
+ * the place's page, which says why.
+ */
+export function placeFixWords(
+  line: Pick<PlaceLine, "kind" | "name" | "dot" | "words">,
+  fixer: string | undefined,
+  project: string,
+): { readonly text: string; readonly verb: string; readonly label: string } {
+  const place = placeLabel(line);
+  const what = line.words[0];
+  const text = line.dot === "down" || what === undefined ? `${place} is down` : `${place}: ${what}`;
+  return fixer === undefined
+    ? { text, verb: "See why", label: `See why in ${project}'s ${place.toLowerCase()}` }
+    : {
+        text,
+        verb: `Ask ${fixer} to fix it`,
+        label: `Ask ${fixer} to fix ${place.toLowerCase()} in ${project}`,
+      };
+}
 
 /** At most this many Mates stand on a card; past it the quiet ones fold. */
 export const CARD_MATES_SHOWN = 4;
@@ -64,6 +219,12 @@ export interface PlaceLine {
   readonly addresses: ReadonlyArray<GroupFlowAddress>;
   /** A wait it is in, whose clock counts from here (wall ms). */
   readonly clock?: { readonly since: number } | undefined;
+  /**
+   * It exists and nothing was deployed there yet, or it does not exist: its panel says its name and
+   * its line alone — no services shown as up, no address doors (the live audit, 2026-10-28: an
+   * empty production stood with green service dots and *Manage addresses*).
+   */
+  readonly nothingDeployed?: true | undefined;
 }
 
 const WEEKDAY = new Intl.DateTimeFormat(undefined, { weekday: "short" });
@@ -75,16 +236,19 @@ const CLOCK = new Intl.DateTimeFormat(undefined, {
 });
 
 /** "since 10:42" today, "since Tue" this week, "since Sep 18" before; nothing for a bad date. */
+/** How a place's since-when fact starts ("since Tue"): a compact place line leaves it out. */
+export const SINCE_WORD = "since";
+
 export function sinceWords(at: string | undefined, nowMs: number): string | undefined {
   if (at === undefined) return undefined;
   const then = Date.parse(at);
   if (Number.isNaN(then)) return undefined;
   const day = new Date(then);
   const today = new Date(nowMs);
-  if (day.toDateString() === today.toDateString()) return `since ${CLOCK.format(day)}`;
+  if (day.toDateString() === today.toDateString()) return `${SINCE_WORD} ${CLOCK.format(day)}`;
   const days = (nowMs - then) / 86_400_000;
-  if (days >= 0 && days < 6) return `since ${WEEKDAY.format(day)}`;
-  return `since ${DAY.format(day)}`;
+  if (days >= 0 && days < 6) return `${SINCE_WORD} ${WEEKDAY.format(day)}`;
+  return `${SINCE_WORD} ${DAY.format(day)}`;
 }
 
 const joined = (names: ReadonlyArray<string>): string =>
@@ -97,27 +261,6 @@ function releasingWords(tag: string, rollsBackTo: string | undefined): string {
   return rollsBackTo === undefined ? `Releasing ${tag}` : `Rolling back to ${rollsBackTo}`;
 }
 
-/**
- * What production's line opens while it says a release on its way: that release's review, or a
- * roll back's by the release it goes back to — the door the card's "Putting v2.4.0 live" block
- * had. The platform's build is on its way before HQ names it, and its line opens the same review
- * from that frame, its words only what the build or HQ reports. Nothing while none is on its way,
- * or while the line says production's trouble instead.
- */
-export function releaseLineOpens(
-  line: PlaceLine,
-  production: GroupFlowProduction,
-  rollsBackTo: string | undefined,
-): { readonly kind: "release" } | { readonly kind: "rollback"; readonly tag: string } | undefined {
-  if (
-    line.kind !== "production" ||
-    line.dot !== "releasing" ||
-    (production.kind !== "releasing" && production.kind !== "deploying")
-  )
-    return undefined;
-  return rollsBackTo === undefined ? { kind: "release" } : { kind: "rollback", tag: rollsBackTo };
-}
-
 /** What production's line says from its chip, the menu's reading of it. */
 function chipLine(
   chip: ProductionChip,
@@ -126,63 +269,58 @@ function chipLine(
     readonly down: ReadonlyArray<string>;
     readonly rollsBackTo?: string | undefined;
   },
-): Pick<PlaceLine, "dot" | "words" | "trouble"> {
+): PlaceLineSaid {
   const runs = chip.version;
+  const word = placeStateWord(chip.label, chip.state);
   switch (chip.state) {
     case "ok":
     case "waiting":
       return {
-        dot: chip.lastKnown === true ? "unknown" : "running",
-        words: ["Running", runs, facts.since].filter((word) => word !== undefined),
+        dot: "running",
+        words: [word, runs, facts.since].filter((each) => each !== undefined),
         trouble: false,
       };
     case "unverified":
-      return { dot: "unknown", words: [chip.readLine ?? "Checking what runs…"], trouble: false };
+      return { dot: "unknown", words: [chip.readLine ?? word], trouble: false };
     case "releasing":
       return {
         dot: "releasing",
-        words: [
-          chip.next === undefined ? "Deploying…" : releasingWords(chip.next, facts.rollsBackTo),
-        ],
+        words: [chip.next === undefined ? word : releasingWords(chip.next, facts.rollsBackTo)],
         trouble: false,
       };
     case "failed":
       return {
         dot: "failed",
-        words: [
-          chip.label === "prod" ? "Release failed" : "Deploy failed",
-          ...(runs === undefined ? [] : [`still runs ${runs}`]),
-        ],
+        words: [word, ...(runs === undefined ? [] : [`still runs ${runs}`])],
         trouble: true,
       };
     case "down":
       return {
         dot: "down",
         words: [
-          "Down",
+          word,
           facts.down.length === 0 ? "its services failed" : `${joined(facts.down)} failed`,
         ],
         trouble: true,
       };
     case "stopped":
-      return { dot: "none", words: ["Stopped"], trouble: false };
+      return { dot: "none", words: [word], trouble: false };
     case "creating":
-      return { dot: "unknown", words: ["Setting up…"], trouble: false };
+      return { dot: "unknown", words: [word], trouble: false };
     case "empty":
-      return {
-        dot: "none",
-        words: [chip.label === "prod" ? "Not released yet" : "Not deployed yet"],
-        trouble: false,
-      };
+      return { dot: "none", words: [word], trouble: false, nothingDeployed: true };
   }
 }
+
+/** What a place's line says of it, before its name and its doors. */
+type PlaceLineSaid = Pick<PlaceLine, "dot" | "words" | "trouble" | "nothingDeployed">;
 
 /** What production's line says from the flow alone, where no chip was read. */
 function flowLine(
   production: Exclude<GroupFlowProduction, { readonly kind: "absent" | "unread" }>,
   since: string | undefined,
   rollsBackTo: string | undefined,
-): Pick<PlaceLine, "dot" | "words" | "trouble"> {
+): PlaceLineSaid {
   switch (production.kind) {
     case "creating":
       return { dot: "unknown", words: [production.line], trouble: false };
@@ -193,11 +331,16 @@ function flowLine(
         trouble: false,
       };
     case "empty":
-      return { dot: "none", words: ["Not released yet"], trouble: false };
+      return {
+        dot: "none",
+        words: [placeStateWord("prod", "empty")],
+        trouble: false,
+        nothingDeployed: true,
+      };
     case "pushed":
       return { dot: "none", words: [production.line], trouble: false };
     case "deploying":
-      return { dot: "releasing", words: ["Deploying…"], trouble: false };
+      return { dot: "releasing", words: [placeStateWord("prod", "releasing")], trouble: false };
     case "releasing":
       return {
         dot: "releasing",
@@ -208,7 +351,10 @@ function flowLine(
       const runs = production.stop.version?.label;
       return {
         dot: "failed",
-        words: ["Release failed", ...(runs === undefined ? [] : [`still runs ${runs}`])],
+        words: [
+          placeStateWord("prod", "failed"),
+          ...(runs === undefined ? [] : [`still runs ${runs}`]),
+        ],
         trouble: true,
       };
     }
@@ -217,12 +363,17 @@ function flowLine(
       // A release offered does not make production run anything: a new one runs nothing until its
       // first release (the onboarding run read "Running" for a minute there).
       if (production.stop.state === "empty")
-        return { dot: "none", words: ["Not released yet"], trouble: false };
+        return {
+          dot: "none",
+          words: [placeStateWord("prod", "empty")],
+          trouble: false,
+          nothingDeployed: true,
+        };
       if (production.stop.state === "deploying")
         return { dot: "releasing", words: [PRODUCTION_DEPLOYING], trouble: false };
       return {
         dot: "running",
-        words: ["Running", production.stop.version?.label, since].filter(
+        words: [PLACE_RUNNING_WORD, production.stop.version?.label, since].filter(
           (word) => word !== undefined,
         ),
         trouble: false,
@@ -235,8 +386,8 @@ function stageLine(
   stop: GroupFlowStop,
   chip: ProductionChip | undefined,
   down: ReadonlyArray<string>,
-  /** It serves a port its public address would open; `undefined` while its services are unread. */
-  offered: boolean | undefined,
+  /** Its public-access projection holds a pending publication; `undefined` while unread. */
+  pending: boolean | undefined,
 ): PlaceLine {
   const base = {
     projectId: stop.projectId,
@@ -265,40 +416,41 @@ function stageLine(
       unnamed.every((name) => word !== name && word !== `still runs ${name}`),
     ),
   };
-  // HQ brings a stage up until its first deploy's address is on (`EnvironmentBirth`): running
-  // with nowhere to open is still coming up, as the menu's heading says (`stopComing`). HQ ends
-  // its bringing up as that deploy ends, and the address comes in the platform's next read: one
-  // it brought up that serves a port its address opens runs once that address is there, and one
-  // serving none runs as it is.
   const turningOn = addressComing({
-    birth: stop.birth,
     addresses: stop.addresses.length,
-    offered,
+    pending,
   });
   if (said.dot === "running" && turningOn)
     return { ...base, dot: "unknown", words: ["Turning its address on…"], trouble: false };
+  if (said.dot === "running" && pending === false && stop.addresses.length === 0)
+    return { ...base, ...said, words: ["No public address yet"] };
   return { ...base, ...said };
 }
 
 /** A stage's line from the flow alone, where no chip was read. */
-function flowStageLine(stop: GroupFlowStop): Pick<PlaceLine, "dot" | "words" | "trouble"> {
+function flowStageLine(stop: GroupFlowStop): PlaceLineSaid {
   switch (stop.state) {
     case "failed":
-      return { dot: "failed", words: ["Deploy failed"], trouble: true };
+      return { dot: "failed", words: [placeStateWord("stage", "failed")], trouble: true };
     case "deploying":
-      return { dot: "releasing", words: ["Deploying…"], trouble: false };
+      return { dot: "releasing", words: [placeStateWord("stage", "releasing")], trouble: false };
     case "empty":
-      return { dot: "none", words: ["Not deployed yet"], trouble: false };
+      return {
+        dot: "none",
+        words: [placeStateWord("stage", "empty")],
+        trouble: false,
+        nothingDeployed: true,
+      };
     case "checking":
       return {
         dot: "unknown",
-        words: [stop.readLine ?? "Checking what runs…"],
+        words: [stop.readLine ?? placeStateWord("stage", "unverified")],
         trouble: false,
       };
     case "deployed":
       return {
         dot: "running",
-        words: ["Running", stop.version?.name].filter((word) => word !== undefined),
+        words: [PLACE_RUNNING_WORD, stop.version?.name].filter((word) => word !== undefined),
         trouble: false,
       };
   }
@@ -307,8 +459,8 @@ function flowStageLine(stop: GroupFlowStop): Pick<PlaceLine, "dot" | "words" | "
 /**
  * A card's places in the order the code travels: every stage by its name, then production — each
  * how it is and where it is (the owner, 2026-10-11: the overview showed production alone, and
- * everything else was a click or more away). Production is always said, "Not released yet" where
- * nothing runs there, so every card ends on it.
+ * everything else was a click or more away). Production is always said — "Not added" where there
+ * is none, "Not released yet" where nothing runs in it — so every card ends on it.
  */
 export function placeLines(input: {
   readonly flow: Pick<GroupFlow, "production" | "stages"> &
@@ -322,10 +474,10 @@ export function placeLines(input: {
   /** The services the platform marks failed, by place. */
   readonly down?: ReadonlyMap<string, ReadonlyArray<string>> | undefined;
   /**
-   * Whether each stage serves a port its public address would open (`derivePublicRouteOffers`),
-   * by its project; absent while its services are unread.
+   * Whether each stage has a publication in progress (`publicAccess.pending`),
+   * by its project; absent while public access is unread.
    */
-  readonly addressOffered?: ReadonlyMap<string, boolean> | undefined;
+  readonly addressPending?: ReadonlyMap<string, boolean> | undefined;
   /** The release on its way to production rolls it back to this one (`FlowRelease.rollbackOf`). */
   readonly rollsBackTo?: string | undefined;
   readonly nowMs: number;
@@ -339,7 +491,7 @@ export function placeLines(input: {
         stop,
         input.stageChips?.get(stop.projectId),
         downOf(stop.projectId),
-        input.addressOffered?.get(stop.projectId),
+        input.addressPending?.get(stop.projectId),
       ),
     ),
     ...(input.flow.unreadStages ?? []).map((name): PlaceLine => ({
@@ -373,8 +525,9 @@ export function placeLines(input: {
         projectId: undefined,
         addresses: [],
         dot: "none",
-        words: ["Not released yet"],
+        words: [ENVIRONMENT_NOT_ADDED],
         trouble: false,
+        nothingDeployed: true,
       },
     ];
   const stop = production.kind === "creating" ? undefined : production.stop;
@@ -413,8 +566,7 @@ export function placeLines(input: {
 
 /** What a place is called on its card: production in full, a stage by its own name, capitalised. */
 export function placeLabel(line: Pick<PlaceLine, "kind" | "name">): string {
-  if (line.kind === "production") return "Production";
-  return line.name.charAt(0).toLocaleUpperCase() + line.name.slice(1);
+  return environmentTitle(line.kind, line.name);
 }
 
 /** The release a card offers: how many changes, where they were tested, what production runs. */
@@ -468,26 +620,6 @@ export function historyOffered(input: {
 }
 
 /**
- * Whether production's panel holds History's room where it does not offer it yet: while a release
- * is on its way, whichever names it first (the platform's build says Deploying before HQ's accepted
- * release says Releasing), and while it runs a version it can name. One release on its way keeps
- * one height: CI's held card drew the build without the room and HQ's release with it, 44 px apart.
- */
-export function historyHeld(input: {
-  readonly kind: GroupFlowProduction["kind"];
-  readonly dot: PlaceLine["dot"];
-  /** It runs a version it can name. */
-  readonly runsNamed: boolean;
-}): boolean {
-  return (
-    input.kind === "releasing" ||
-    input.kind === "deploying" ||
-    input.dot === "releasing" ||
-    (input.dot === "running" && input.runsNamed)
-  );
-}
-
-/**
  * The platform's build as the card's chip reads it: only where the card's flow says production
  * deploys, so the chip's Releasing and the ready block's leaving are one answer, never a frame apart.
  */
@@ -508,51 +640,6 @@ export function releaseProductionRuns(
   inFlight: string | undefined,
 ): string | undefined {
   return releases.find((release) => release.standing === "live" && release.tag !== inFlight)?.tag;
-}
-
-/**
- * Whether there is something for *Put it live* to put live: the app's code merged, or a change of
- * it open that its one press merges. A Mate's setup files are no app.
- */
-export function putLiveHasChange(flow: Pick<GroupFlow, "main" | "pullRequests">): boolean {
-  return (
-    flow.main.hasCode === true || flow.pullRequests.some((entry) => entry.pull.kind === "code")
-  );
-}
-
-/** "3 changes ready to release", "1 change ready to release". */
-export function readyTitle(ready: CardReady): string {
-  if (ready.changeCount !== undefined)
-    return `${changesCountWords(ready.count, ready.atLeast, ready.changeCount)} ready to release`;
-  const count = `${ready.atLeast ? "At least " : ""}${String(ready.count)}`;
-  return `${count} change${ready.count === 1 ? "" : "s"} ready to release`;
-}
-
-/**
- * "On stage. Production runs v2.3.1." — where the changes are as the stage's deploys say, never
- * that anyone tried them there: nothing a release offers says a test ran on the stage.
- */
-export function readyLine(
-  ready: CardReady,
-  /** The stage runs every change the release carries; `undefined` while that is unread. */
-  onStage: boolean | undefined,
-): string | undefined {
-  const where =
-    ready.stage === undefined || onStage === undefined
-      ? "Merged."
-      : onStage
-        ? `On ${ready.stage}.`
-        : `Not on ${ready.stage} yet.`;
-  // Nothing released is production's own line ("Not released yet"), and merged is the title's:
-  // with no stage there is nothing more to say (a stage's line keeps its place while it is read).
-  if (!ready.failed && ready.from === undefined)
-    return ready.stage === undefined ? undefined : where;
-  const runs = ready.failed
-    ? ready.from === undefined
-      ? "Production's last release failed."
-      : `Production's last release failed; it still runs ${ready.from}.`
-    : `Production runs ${ready.from}.`;
-  return `${where} ${runs}`;
 }
 
 /** What a Mate waiting on the viewer is lifted onto a card with, and its buttons. */
@@ -655,7 +742,6 @@ export function cardSecondWords(input: {
   const muted = (text: string | undefined) => ({ text, tone: "muted" as const });
   switch (second.kind) {
     case "coming":
-    case "finishing":
     case "none":
       return muted(undefined);
     case "deleting":
@@ -696,13 +782,20 @@ export function cardSecondWords(input: {
 /**
  * The changes of a Mate's that wait for review, by the rule the menu reads (`changeShowsReview`,
  * the flow's `review`): none while it works. An automated Mate holds one per task, several at once.
+ * Its code only (`changeInMateReview`): its recipe change is the project's setup, which the card
+ * asks for once (`cardChanges`).
  */
 export function mateChangesForReview(
   flow: Pick<GroupFlow, "pullRequests">,
   mateProjectId: string,
 ): ReadonlyArray<FlowPullRequest> {
   return flow.pullRequests
-    .filter((entry) => entry.review && entry.pull.mateProjectId === mateProjectId)
+    .filter(
+      (entry) =>
+        entry.review &&
+        entry.pull.mateProjectId === mateProjectId &&
+        changeInMateReview(entry.pull),
+    )
     .map((entry) => entry.pull);
 }
 
@@ -743,11 +836,6 @@ export function foldMates<M>(
   };
 }
 
-/** "2 more Mates", "1 more Mate". */
-export function foldWords(count: number): string {
-  return `${String(count)} more Mate${count === 1 ? "" : "s"}`;
-}
-
 /** Production's address as a person reads it: no scheme, no trailing slash. */
 export function siteOf(route: string | undefined): string | undefined {
   if (route === undefined) return undefined;
@@ -759,105 +847,6 @@ export function siteOf(route: string | undefined): string | undefined {
 export function soleSite(addresses: ReadonlyArray<GroupFlowAddress>): string | undefined {
   return addresses.length === 1 ? siteOf(addresses[0]?.url) : undefined;
 }
-
-/** A domain of a place's own not answering yet, and how far it is, in the addresses sheet's words. */
-export interface PanelPendingDomain {
-  readonly name: string;
-  readonly word: string;
-  /** Attention where it waits on the person or went wrong; muted while it is on its way. */
-  readonly tone: "muted" | "attention";
-}
-
-/** A place's addresses on its panel, as the addresses sheet and the globe's popover read them. */
-export interface PanelAddresses {
-  /** The address that stands for the place: its own domain where one answers, else its sole service's. */
-  readonly head: { readonly host: string; readonly url: string } | undefined;
-  /** Several services serving: a door each, by its service, at its own domain where it has one. */
-  readonly doors: ReadonlyArray<GroupFlowAddress>;
-  readonly pending: ReadonlyArray<PanelPendingDomain>;
-  /**
-   * The card's door into the addresses sheet: only once the place runs something and its addresses
-   * are read and it has one — before, there is nothing to put on a domain, and a door read early
-   * would change its words once they are (the run: "Manage addresses", then "Put it on your domain").
-   */
-  readonly door: boolean;
-  /** That door is production's "Put it on your domain": it has none of its own (`lacksOwnDomain`). */
-  readonly offerDomain: boolean;
-}
-
-/**
- * What a place's panel says of its addresses. Read from the place's addresses (the sheet's
- * projection) once read; until then — or outside an account — as its listing says them. A service
- * answering at a domain of the place's own is opened there, its zerops.app address otherwise; the
- * place's own domain heads the panel wherever one answers.
- */
-export function panelAddresses(input: {
-  readonly kind: PlaceLine["kind"];
-  /** The place's listed doors (`PlaceLine.addresses`). */
-  readonly listed: ReadonlyArray<GroupFlowAddress>;
-  /** The place's addresses as read; `undefined` outside an account. */
-  readonly place: PlaceAddresses | undefined;
-  /** Something runs there: a release on production, a deploy on a stage. */
-  readonly runs: boolean;
-}): PanelAddresses {
-  const { place } = input;
-  if (place?.state !== "ready") {
-    const host = soleSite(input.listed);
-    const first = input.listed[0];
-    return {
-      head: host === undefined || first === undefined ? undefined : { host, url: first.url },
-      doors: input.listed.length < 2 ? [] : input.listed,
-      pending: [],
-      door: false,
-      offerDomain: false,
-    };
-  }
-  const live = place.domains.filter((domain) => domain.face === "live");
-  // Each service's own domains before its zerops.app address, services by name as the popover lists them.
-  const routes = [
-    ...live.flatMap((domain) =>
-      domain.targets.map((target) => ({ service: target.serviceName, url: domain.url, own: true })),
-    ),
-    ...place.zerops.flatMap((address) =>
-      address.hosts.map((host) => ({ service: address.serviceName, url: host.url, own: false })),
-    ),
-  ].toSorted((left, right) => left.service.localeCompare(right.service, "en"));
-  const doors = placeAddresses(routes);
-  const own = routes.find((route) => route.own);
-  const headUrl = own?.url ?? (doors.length === 1 ? doors[0]?.url : undefined);
-  const host = siteOf(headUrl);
-  const seen = new Set<string>();
-  const door = input.runs && routes.length > 0;
-  return {
-    head: host === undefined || headUrl === undefined ? undefined : { host, url: headUrl },
-    doors: doors.length < 2 ? [] : doors,
-    pending: place.domains.flatMap((domain): ReadonlyArray<PanelPendingDomain> => {
-      if (domain.face === "live" || seen.has(domain.domainName)) return [];
-      seen.add(domain.domainName);
-      const { word, tone } = domainFaceWords(domain.face);
-      return [{ name: domain.domainName, word, tone: tone === "warn" ? "attention" : "muted" }];
-    }),
-    door,
-    offerDomain: door && input.kind === "production" && lacksOwnDomain(place),
-  };
-}
-
-/** The people on a project, once each, in order; drawn only when more than one. */
-export function cardPeople<P extends { readonly userId: string }>(
-  owners: ReadonlyArray<P | null | undefined>,
-): ReadonlyArray<P> {
-  const seen = new Set<string>();
-  const people: P[] = [];
-  for (const owner of owners) {
-    if (owner == null || seen.has(owner.userId)) continue;
-    seen.add(owner.userId);
-    people.push(owner);
-  }
-  return people.length > 1 ? people : [];
-}
-
-/** How many of its latest changes a card shows. */
-export const CARD_CHANGES = 5;
 
 /** One of a card's latest changes: open, with what stops it; or merged, with where it went. */
 export interface CardChange {
@@ -872,6 +861,13 @@ export interface CardChange {
   readonly tone: NonNullable<ReturnType<typeof changeState>>["tone"];
   /** When it last moved: updated while open, merged once landed. */
   readonly at: string | undefined;
+  /** Where a merged one went, which its `words` say (`mergedChangeWords`). */
+  readonly where?: MergedChangeWhere | undefined;
+  /**
+   * A setup change waiting for a person: its row reads what it does from its review
+   * (`setupChangeWords`), its `words` until then.
+   */
+  readonly setup?: true;
 }
 
 const newestFirst = (left: string | undefined, right: string | undefined) =>
@@ -912,6 +908,37 @@ function holds(
 }
 
 /**
+ * A recipe change that waits for a person: nothing stops its merge, so Core held it — its merge
+ * would change an environment built from the recipe. Its Mate's Review leaves it out
+ * (`changeInMateReview`); the project's card asks for it, here, once.
+ */
+function setupChangeWaits(pull: FlowPullRequest): boolean {
+  return (
+    pull.kind === "recipe" &&
+    pull.mateGone !== true &&
+    changeAsksForReview(pull) &&
+    pullRequestBlocked(pull) === null
+  );
+}
+
+/**
+ * What a waiting setup change does, by what its review reads of it (`recipeReach`, from the files
+ * HQ recorded): "Changes how Stage is built". Never guessed from which environments exist: until its
+ * files are read, or where it changes none of them, it changes the project's setup.
+ */
+export function setupChangeWords(reach: RecipeReach | undefined): string {
+  const stages = reach?.stages ?? 0;
+  if (stages > 0 && reach?.production === true)
+    return stages > 1
+      ? "Changes how the stages and Production are built"
+      : "Changes how Stage and Production are built";
+  if (stages > 0)
+    return stages > 1 ? "Changes how the stages are built" : "Changes how Stage is built";
+  if (reach?.production === true) return "Changes how Production is built";
+  return "Changes the project's setup";
+}
+
+/**
  * A card's latest changes (the owner, 2026-10-11: "quick history of latest PRs"): the open ones
  * first, each with what stops it, then the merged ones, each with where it went — in the oldest
  * release made after it landed, else on stage where the stage runs it, deploying to it where it is
@@ -941,13 +968,14 @@ export function cardChanges(input: {
   const open = input.open
     .toSorted((left, right) => newestFirst(left.updatedAt, right.updatedAt))
     .map((pull): CardChange => {
-      const state = changeState(pull);
+      const state = openChangeWords(pull);
       return {
         pull,
         open: true,
-        words: state?.word ?? "Open",
-        tone: state?.tone ?? "off",
+        words: setupChangeWaits(pull) ? setupChangeWords(undefined) : state.words,
+        tone: state.tone,
         at: pull.updatedAt,
+        ...(setupChangeWaits(pull) ? { setup: true as const } : {}),
       };
     });
   const merged = input.merged
@@ -965,69 +993,34 @@ export function cardChanges(input: {
       const on = (shas: ReadonlyArray<string> | undefined) =>
         stage !== undefined &&
         (shas ?? []).some((sha) => holds(sha, pull, landed, stage.mainHeads));
+      // Every change to the setup repository, as `broughtBy` leaves them out of a release.
+      const where: MergedChangeWhere =
+        pull.kind === "recipe"
+          ? { kind: "setup" }
+          : took !== undefined
+            ? {
+                kind: "released",
+                tag: took.tag,
+                live: releaseIsLive(took.tag, input.releases),
+                at: took.taggedAt,
+              }
+            : on(stage?.runs)
+              ? { kind: "on-stage" }
+              : on(stage?.deploying)
+                ? { kind: "deploying-to-stage" }
+                : input.production && input.releases.length > 0
+                  ? { kind: "waits-for-production" }
+                  : { kind: "merged" };
       return {
         pull,
         open: false,
-        // Every change to the setup repository, as `broughtBy` leaves them out of a release.
-        words:
-          pull.kind === "recipe"
-            ? "Setup files, not part of a release"
-            : took !== undefined
-              ? `In ${took.tag}`
-              : on(stage?.runs)
-                ? "On stage"
-                : on(stage?.deploying)
-                  ? "Deploying to stage…"
-                  : input.production && input.releases.length > 0
-                    ? "Not released yet"
-                    : "Merged",
+        words: mergedChangeWords(where),
         tone: "off",
         at: pull.mergedAt,
+        where,
       };
     });
   return [...open, ...merged].slice(0, input.limit);
-}
-
-/** A row of a card's changes: a change, or a release cut among them. */
-export type CardChangeRow =
-  | { readonly kind: "change"; readonly change: CardChange }
-  | { readonly kind: "release"; readonly tag: string; readonly live: boolean };
-
-/**
- * A card's changes with the releases cut among them (the owner, 2026-10-12: the changes "should
- * show where tags were marked, where the prod is"): the open ones first, on no release yet; each
- * release over the merged changes it took, newest first — one that took none of them left out —
- * and production's always, closing the list where it is older than every change shown.
- */
-export function cardChangeRows(
-  changes: ReadonlyArray<CardChange>,
-  /** Newest first, as the flow lists them. */
-  releases: ReadonlyArray<{
-    readonly tag: string;
-    readonly taggedAt: string;
-    readonly live: boolean;
-  }>,
-): ReadonlyArray<CardChangeRow> {
-  const rows: CardChangeRow[] = [];
-  let next = 0;
-  for (const change of changes) {
-    const mergedAt = change.open ? undefined : change.at;
-    if (mergedAt !== undefined) {
-      const cut: Array<(typeof releases)[number]> = [];
-      while (next < releases.length && releases[next]!.taggedAt >= mergedAt) {
-        cut.push(releases[next]!);
-        next += 1;
-      }
-      // The oldest of them took this change; one that took none shown is noise, but production's.
-      for (const [index, release] of cut.entries())
-        if (release.live || index === cut.length - 1)
-          rows.push({ kind: "release", tag: release.tag, live: release.live });
-    }
-    rows.push({ kind: "change", change });
-  }
-  const live = releases.slice(next).find((release) => release.live);
-  if (live !== undefined) rows.push({ kind: "release", tag: live.tag, live: true });
-  return rows;
 }
 
 /** A release as production's panel reads it: newest first, as the flow lists them. */

@@ -161,16 +161,24 @@ export interface OpenRequest {
   readonly dismissible?: boolean;
   /** Asked by a helper: it outlives its run while the session that asked lives. */
   readonly byHelper?: true;
+  /**
+   * A question its agent waits on: its questions as asked, so a session's end can ask them again
+   * by message (`endRun`). Absent in a snapshot taken before it was kept.
+   */
+  readonly asked?: ReadonlyArray<unknown>;
   /** A question asked by message: what it asks, by question id, to word the answer's message. */
   readonly questions?: ReadonlyArray<{ readonly id: string; readonly question: string }>;
   /** A value asked of the person: its key and vault, to word the agent's line on the answer. */
   readonly vault?: Pick<VaultAsk, "key" | "scope">;
   /** An origin asked of the person: its address and HQ repository, to word the agent's line. */
   readonly origin?: Pick<OriginAsk, "url" | "repo">;
+  /** A repository asked to be connected to GitHub: its name, to word the agent's line. */
+  readonly mirror?: Pick<MirrorAsk, "repo">;
 }
 
 export type VaultAsk = Extract<RequestAsk, { readonly kind: "vault" }>;
 export type OriginAsk = Extract<RequestAsk, { readonly kind: "origin" }>;
+export type MirrorAsk = Extract<RequestAsk, { readonly kind: "mirror" }>;
 
 export interface ArmedWake {
   readonly id: WakeId;

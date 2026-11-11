@@ -4,6 +4,7 @@
  */
 import { folderReads, foldersAbove } from "@t3tools/client-runtime/zerops/gitBrowse/tree";
 import type { GitTree } from "@t3tools/shared/hqGitBrowse/tree";
+import type { FileTree } from "@pierre/trees";
 import type { RepoPathTarget } from "./RepoMarkdown";
 
 /** A folder in the tree's terms: its path with a trailing slash, as the tree tells folders apart. */
@@ -54,3 +55,35 @@ export const treeShape = (
     selected: selected !== null && present.has(selected) ? selected : null,
   };
 };
+
+/** Apply the projection to the tree that owns expansion, selection and keyboard focus. */
+export function syncTree(
+  model: FileTree,
+  shape: TreeShape,
+  at: RepoPathTarget,
+  collapsed: Set<string>,
+) {
+  // A tree click has already selected its target and may have just collapsed it. Only a link
+  // from outside the tree (or a target whose listing just arrived) needs its ancestors revealed.
+  const reveal = shape.selected !== null && !model.getSelectedPaths().includes(shape.selected);
+  const wayDown = new Set(foldersOpenedAt(at).map(folderRow));
+  model.resetPaths(shape.rows, {
+    initialExpandedPaths: shape.expanded,
+  });
+  // Pierre expands ancestors of every initial expanded path. Restore explicit closures after
+  // that expansion so a hidden descendant does not reopen its parent during a listing update.
+  for (const row of collapsed) {
+    if (reveal && wayDown.has(row)) {
+      collapsed.delete(row);
+      continue;
+    }
+    const item = model.getItem(row);
+    if (item !== null && "collapse" in item) item.collapse();
+  }
+  for (const row of model.getSelectedPaths())
+    if (row !== shape.selected) model.getItem(row)?.deselect();
+  if (shape.selected !== null) {
+    model.getItem(shape.selected)?.select();
+    if (reveal) model.scrollToPath(shape.selected, { offset: "center" });
+  }
+}

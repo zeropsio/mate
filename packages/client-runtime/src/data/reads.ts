@@ -7,7 +7,10 @@ import {
   EMPTY_MATE_DIRECTORY,
 } from "./projections/hqMateDirectory.ts";
 import { zeropsStructure } from "../zerops/hq/structure.ts";
+import type { RoleMateVisibility } from "../zerops/mateAccess.ts";
+import { mateVisibility } from "./projections/mateVisibility.ts";
 import { mateHealth } from "./projections/mateHealth.ts";
+import { sharedBirths, type SharedBirthState } from "./projections/birthProgress.ts";
 /**
  * What a screen, and the account runtime's derivations outside React, may reach of the account's
  * data: the store's reads and the hold on a detail — never its writer. An app sets
@@ -20,15 +23,27 @@ import { Atom, type AtomRegistry } from "effect/reactivity";
 
 import type { ZeropsOrganization } from "../zerops/api.ts";
 import type { DetailDemand } from "./demand.ts";
+import type { StreamState } from "./streamMachine.ts";
 import { linkKeys } from "./model.ts";
 import { mateVariablesScope } from "./families/mateVariables.ts";
-import { hqMateSetup, UNKNOWN_MATE_SETUP, type HqMateSetup } from "./projections/hqMateSetup.ts";
 import { mateVariables } from "./projections/mateVariables.ts";
 import { projectProcesses, type ProjectProcesses } from "./projections/processes.ts";
-import type { ProjectValue } from "./families/project.ts";
+import { ROUTE_PROJECT, type ProjectValue } from "./families/project.ts";
+import { ROUTE_SERVICES } from "./families/service.ts";
 import { projectServices, projectsServices, type ProjectServices } from "./projections/services.ts";
 import { projectUsage, type ProjectUsage } from "./projections/usage.ts";
+import { publicAccess, type PublicAccess } from "./projections/publicAccess.ts";
+import { PROJECT_ROUTINGS_LISTING } from "./families/publicRouting.ts";
 import { creditForecast } from "./projections/creditForecast.ts";
+import {
+  balanceLive,
+  organizationBilling,
+  projectsCredit,
+  type OrganizationBilling,
+  type ProjectCredit,
+} from "./projections/billing.ts";
+import { pipelineRead, type PipelineRead } from "./projections/pipeline.ts";
+import type { PipelineConfigValue } from "./families/pipelineConfig.ts";
 import { balanceScope } from "./families/organizationBalance.ts";
 import { creditScope } from "./families/organizationCredit.ts";
 import { vault } from "./projections/vault.ts";
@@ -53,8 +68,6 @@ import {
   hqMatesAnswered,
   type HqMatesRead,
 } from "./projections/hqMates.ts";
-import { hqVerdict } from "./projections/hqVerdict.ts";
-import type { HqVerdict } from "./families/hqVerdict.ts";
 import type { MateLinkValue } from "./families/mateLink.ts";
 import { mateLinks, mateOfEnvironment, type MateLinksRead } from "./projections/mateLinks.ts";
 import {
@@ -86,6 +99,48 @@ export const accountReadsAtom = Atom.make<AccountReads | null>(null).pipe(
   Atom.withLabel("data:account-reads"),
 );
 
+/** The open births of the account's organization, as both sources prove them. */
+export const sharedBirthsAtom = Atom.family((personId: string) => {
+  const source = Atom.make((get): SharedBirthState => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId === null) return { open: [], readyProjectIds: [] };
+    return get(account.data.project(sharedBirths, { orgId: account.orgId, personId }));
+  });
+  // Status changes do not release and reacquire reads whose identities did not change.
+  const details = Atom.make((get) => {
+    const births = get(source).open;
+    return JSON.stringify([
+      [
+        ...new Set(births.flatMap(({ projectId }) => (projectId === null ? [] : [projectId]))),
+      ].sort(),
+      [
+        ...new Set(
+          births.flatMap(({ importProcessId }) =>
+            importProcessId === null ? [] : [importProcessId],
+          ),
+        ),
+      ].sort(),
+    ]);
+  }).pipe(Atom.withEquality(Object.is));
+  const demand = Atom.make((get) => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId === null) return;
+    const [projects, imports] = JSON.parse(get(details)) as [string[], string[]];
+    for (const projectId of projects)
+      get.addFinalizer(
+        account.demandDetail({ family: "process", listing: "history", ownerId: projectId }),
+      );
+    for (const importId of imports)
+      get.addFinalizer(
+        account.demandDetail({ family: "process", listing: "process", ownerId: importId }),
+      );
+  });
+  return Atom.make((get): SharedBirthState => {
+    get(demand);
+    return get(source);
+  }).pipe(Atom.withLabel(`data:shared-births:${personId}`));
+});
+
 export const NOT_READ_PROCESSES: ProjectProcesses = {
   retained: undefined,
   processes: undefined,
@@ -104,6 +159,33 @@ export const projectProcessesAtom = Atom.family((projectId: string) =>
   }).pipe(Atom.withLabel(`data:project-processes:${projectId}`)),
 );
 
+const PIPELINE_READING: PipelineRead = { kind: "reading" };
+
+/**
+ * One pipeline read by id under the organization the mounted account observes (`pipelineRead`);
+ * still reading without one.
+ */
+export const pipelineReadAtom = Atom.family((versionId: string) =>
+  Atom.make((get): PipelineRead => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId === null) return PIPELINE_READING;
+    return get(account.data.project(pipelineRead, { orgId: account.orgId, versionId }));
+  }).pipe(Atom.withLabel(`data:pipeline:${versionId}`)),
+);
+
+/**
+ * What one pipeline ran — its name and zerops.yaml (`pipelineConfig`) — once the organization the
+ * mounted account observes answered it; `null` before, or where it answered none.
+ */
+export const pipelineConfigAtom = Atom.family((versionId: string) =>
+  Atom.make((get): PipelineConfigValue | null => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId === null) return null;
+    const fact = get(account.data.fact("pipelineConfig", versionId));
+    return fact.kind === "known" ? fact.value : null;
+  }).pipe(Atom.withLabel(`data:pipeline-config:${versionId}`)),
+);
+
 export const NOT_READ_SERVICES: ProjectServices = {
   services: undefined,
   live: false,
@@ -118,6 +200,41 @@ export const projectServicesAtom = Atom.family((projectId: string) =>
     return get(account.data.project(projectServices, { orgId: account.orgId, projectId }));
   }).pipe(Atom.withLabel(`data:project-services:${projectId}`)),
 );
+
+const NOT_READ_PUBLIC_ACCESS: PublicAccess = {
+  state: "reading",
+  routes: [],
+  pending: [],
+  offers: [],
+  readsProject: false,
+};
+
+/** One project's public access, with its fallback listing held while a consumer reads it. */
+export const projectPublicAccessAtom = Atom.family((projectId: string) => {
+  const source = Atom.make((get): PublicAccess => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId === null) return NOT_READ_PUBLIC_ACCESS;
+    return get(account.data.project(publicAccess, { orgId: account.orgId, projectId }));
+  });
+  const readsProject = Atom.make((get) => get(source).readsProject).pipe(
+    Atom.withEquality((left, right) => left === right),
+  );
+  const demand = Atom.make((get) => {
+    const account = get(accountReadsAtom);
+    if (account !== null && get(readsProject))
+      get.addFinalizer(
+        account.demandDetail({
+          family: "publicRouting",
+          listing: PROJECT_ROUTINGS_LISTING,
+          ownerId: projectId,
+        }),
+      );
+  });
+  return Atom.make((get): PublicAccess => {
+    get(demand);
+    return get(source);
+  });
+});
 
 /**
  * The organization's credit read as far as it went: its generation, which a create dialog holds
@@ -142,6 +259,55 @@ export const balanceReadGenerationAtom = Atom.family((orgId: string) =>
     if (account === null || account.orgId !== orgId) return 0;
     return get(account.data.stream(balanceScope(orgId))).generation;
   }).pipe(Atom.withLabel(`data:balance-read-generation:${orgId}`)),
+);
+
+/**
+ * Whether the organization's balance is live and listed: Zerops pushes every change of it, so it
+ * says the balance as it stands without a read of its own; `false` without the mounted account's
+ * organization.
+ */
+export const balanceLiveAtom = Atom.family((orgId: string) =>
+  Atom.make((get): boolean => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId !== orgId) return false;
+    return get(account.data.project(balanceLive, orgId));
+  }).pipe(Atom.withLabel(`data:balance-live:${orgId}`)),
+);
+
+const BILLING_READING: OrganizationBilling = {
+  kind: "reading",
+  balance: null,
+  total: null,
+  cost: { kind: "reading" },
+  daysLeft: null,
+  soonest: null,
+  verification: "unread",
+  lastsShort: false,
+  tone: "quiet",
+};
+
+/** The organization's money as the mounted account observes it (`organizationBilling`). */
+export const organizationBillingAtom = Atom.family((orgId: string) =>
+  Atom.make((get): OrganizationBilling => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId !== orgId) return BILLING_READING;
+    return get(account.data.project(organizationBilling, orgId));
+  }).pipe(Atom.withLabel(`data:organization-billing:${orgId}`)),
+);
+
+const NO_PROJECT_CREDIT: ProjectCredit = { projectId: null, hoursLeft: null, tone: "quiet" };
+
+/**
+ * Whether Zerops will stop any of some projects soon for insufficient funds (`projectsCredit`),
+ * keyed by their ids joined with commas, in any order.
+ */
+export const projectsCreditAtom = Atom.family((projectIds: string) =>
+  Atom.make((get): ProjectCredit => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId === null || projectIds === "") return NO_PROJECT_CREDIT;
+    const ids = projectIds.split(",").sort();
+    return get(account.data.project(projectsCredit, { orgId: account.orgId, projectIds: ids }));
+  }).pipe(Atom.withLabel(`data:projects-credit:${projectIds}`)),
 );
 
 const creditForecastFamily = Atom.family((key: string) =>
@@ -255,6 +421,32 @@ export const listedProjectAtom = Atom.family((projectId: string) =>
   }).pipe(Atom.withLabel(`data:listed-project:${projectId}`)),
 );
 
+/** A Mate's visibility for the person, as the mounted account reads it (`mateVisibility`). */
+export const shownMateVisibilityAtom = Atom.family((projectId: string) =>
+  Atom.make((get): RoleMateVisibility | "unknown" => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId === null) return "unknown";
+    return get(account.data.project(mateVisibility, { orgId: account.orgId, projectId }));
+  }).pipe(Atom.withLabel(`data:mate-visibility:${projectId}`)),
+);
+
+/**
+ * Several Mates' visibility for the person at once, by project id, as the mounted account reads it
+ * (`mateVisibility`); a Mate not judged yet (`unknown`) is absent: nothing is hidden on a guess.
+ * Keyed by the ids joined with `,`.
+ */
+export const shownMateVisibilitiesAtom = Atom.family((projectIds: string) =>
+  Atom.make((get): Readonly<Record<string, RoleMateVisibility>> => {
+    const judged: Record<string, RoleMateVisibility> = {};
+    if (projectIds === "") return judged;
+    for (const projectId of projectIds.split(",")) {
+      const visibility = get(shownMateVisibilityAtom(projectId));
+      if (visibility !== "unknown") judged[projectId] = visibility;
+    }
+    return judged;
+  }).pipe(Atom.withLabel(`data:mate-visibilities:${projectIds}`)),
+);
+
 /** Whether the mounted account's owner proved a project deleted; `false` without an account. */
 export const projectGoneAtom = Atom.family((projectId: string) =>
   Atom.make((get): boolean => {
@@ -306,10 +498,10 @@ export const NOT_READ_HQ: HqNavigationRead = {
   people: {},
   read: "unread",
   refusal: null,
+  link: { kind: "unreachable", since: null },
+  retrying: false,
   capped: false,
   slow: false,
-  live: false,
-  reconnecting: false,
 };
 
 /** HQ's navigation of the organization the mounted account shows; not read without one. */
@@ -321,7 +513,7 @@ export const shownHqNavigationAtom = Atom.make(
   },
 ).pipe(Atom.withLabel("data:shown-hq-navigation"));
 
-const NO_MATES: HqMatesRead = { mates: {}, live: false };
+const NO_MATES: HqMatesRead = { mates: {} };
 
 /** The Mates HQ relays for the organization the mounted account shows; none without one. */
 export const shownHqMatesAtom = Atom.make((get): HqMatesRead => {
@@ -345,16 +537,6 @@ export const shownHqPersonFactsAtom = Atom.make((get): Readonly<Record<string, H
   if (account === null || account.orgId === null) return NO_PERSON_FACTS;
   return get(account.data.project(hqPersonFacts, account.orgId));
 }).pipe(Atom.withLabel("data:shown-hq-person-facts"));
-
-/**
- * Whether the organization shown has an official HQ, as the account decided it; pending without
- * one shown, or before it decided.
- */
-export const shownHqVerdictAtom = Atom.make((get): HqVerdict => {
-  const account = get(accountReadsAtom);
-  if (account === null || account.orgId === null) return "pending";
-  return get(account.data.project(hqVerdict, account.orgId));
-}).pipe(Atom.withLabel("data:shown-hq-verdict"));
 
 /** How the organization shown's HQ stands, as its navigation says it; `null` before it said. */
 export const shownHqStatusAtom = Atom.make((get): HqStatusValue | null => {
@@ -403,6 +585,56 @@ export function holdServiceRead(
     unsubscribe();
     release?.();
     release = null;
+  };
+}
+
+/**
+ * Holds the route's project read ahead of the organization's listing, from outside React: its own
+ * row and its services, each over plain REST (`DetailListing.ahead`), through whichever account is
+ * mounted in `registry`; let go on release. What it reads is the store's like any other answer.
+ */
+export function holdRoutePreview(
+  registry: AtomRegistry.AtomRegistry,
+  projectId: string,
+): () => void {
+  let held: {
+    readonly demandDetail: AccountReads["demandDetail"];
+    readonly release: () => void;
+  } | null = null;
+  const hold = (account: AccountReads | null) => {
+    // The account's reads are published again as they change; the same account's demand is the
+    // same hold, so a read under way goes on through it.
+    if (account?.demandDetail === held?.demandDetail) return;
+    const before = held;
+    held =
+      account === null
+        ? null
+        : {
+            demandDetail: account.demandDetail,
+            release: (() => {
+              const project = account.demandDetail({
+                family: "project",
+                listing: ROUTE_PROJECT,
+                ownerId: projectId,
+              });
+              const services = account.demandDetail({
+                family: "service",
+                listing: ROUTE_SERVICES,
+                ownerId: projectId,
+              });
+              return () => {
+                project();
+                services();
+              };
+            })(),
+          };
+    before?.release();
+  };
+  const unsubscribe = registry.subscribe(accountReadsAtom, hold, { immediate: true });
+  return () => {
+    unsubscribe();
+    held?.release();
+    held = null;
   };
 }
 
@@ -490,14 +722,40 @@ export function readMateFlag(
   });
 }
 
-/** A Mate’s setup evidence, already delivered by the organization’s navigation. No detail demand. */
-export const hqMateSetupAtom = Atom.family((projectId: string) =>
-  Atom.make((get): HqMateSetup => {
-    const account = get(accountReadsAtom);
-    if (account === null || account.orgId === null) return UNKNOWN_MATE_SETUP;
-    return get(account.data.project(hqMateSetup, { orgId: account.orgId, projectId }));
-  }),
-);
+/** The organization's Zerops link as the mounted account holds it; null without one. */
+const zeropsLinkPhase = Atom.make((get): StreamState["phase"] | null => {
+  const account = get(accountReadsAtom);
+  if (account === null || account.orgId === null) return null;
+  return get(account.data.stream(linkKeys.zerops(account.orgId))).phase;
+}).pipe(Atom.withLabel("data:zerops-link-phase"));
+
+/**
+ * `readMateFlag` for a container machine, which reads its flag once: a flag that could not be
+ * said while the organization's link was not live yet — still logging in, or catching up — is
+ * read again once the link is live, so a Mate found before the listing (`holdRoutePreview`) is
+ * not left "unknown" for its life. A link refused, or the account gone, leaves it unknown.
+ */
+export async function readMateFlagOnceLive(
+  registry: AtomRegistry.AtomRegistry,
+  serviceId: string,
+): Promise<boolean | "unknown"> {
+  const before = registry.get(zeropsLinkPhase);
+  const flag = await readMateFlag(registry, serviceId);
+  if (flag !== "unknown" || before === null || before === "live") return flag;
+  const live = await new Promise<boolean>((resolve) => {
+    let unsubscribe: (() => void) | null = null;
+    let settled = false;
+    const heard = (phase: StreamState["phase"] | null) => {
+      if (settled || (phase !== null && phase !== "live" && phase !== "refused")) return;
+      settled = true;
+      unsubscribe?.();
+      resolve(phase === "live");
+    };
+    unsubscribe = registry.subscribe(zeropsLinkPhase, heard, { immediate: true });
+    if (settled) unsubscribe();
+  });
+  return live ? readMateFlag(registry, serviceId) : flag;
+}
 
 /** Account/org switching replaces dependencies; every surface shares the same project reader. */
 function projectReader<Key, Value>(
@@ -518,10 +776,7 @@ const mateKey = (orgId: string, projectId: string) => ({ orgId, projectId });
 export const hqMateOverviewAtom = projectReader(hqMateOverview, mateKey, null);
 export const hqMateRefusalAtom = projectReader(hqMateRefusal, mateKey, null);
 export const hqMateAnsweredAtom = projectReader(hqMateAnswered, mateKey, false);
-export const hqMatePresenceAtom = projectReader(hqMatePresence, mateKey, {
-  presence: null,
-  live: false,
-});
+export const hqMatePresenceAtom = projectReader(hqMatePresence, mateKey, null);
 export const hqMateLoginsAtom = projectReader(hqMateLogins, mateKey, undefined);
 export const hqMateReadyAtom = projectReader(hqMateReady, mateKey, undefined);
 export const mateHealthAtom = projectReader(mateHealth, mateKey, {

@@ -1,7 +1,7 @@
 import * as NodeBuffer from "node:buffer";
 
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -490,7 +490,7 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const vcsProcess = yield* VcsProcess.VcsProcess;
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
   const capabilities = {
     kind: "git" as const,
     supportsWorktrees: true,
@@ -529,25 +529,45 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
   const detectRepository: VcsDriver.VcsDriver["Service"]["detectRepository"] = Effect.fn(
     "detectRepository",
   )(function* (cwd) {
-    if (!(yield* isInsideWorkTree(cwd))) {
-      return null;
-    }
-
-    const root = yield* gitCommand(vcsProcess, "GitVcsDriver.detectRepository.root", cwd, [
-      "rev-parse",
-      "--show-toplevel",
-    ]);
-    const gitCommonDir = yield* gitCommand(
+    // One spawn answers all three; outside a work tree it exits non-zero or prints "false".
+    const result = yield* gitCommand(
       vcsProcess,
-      "GitVcsDriver.detectRepository.commonDir",
+      "GitVcsDriver.detectRepository",
       cwd,
-      ["rev-parse", "--git-common-dir"],
-    ).pipe(Effect.orElseSucceed(() => null));
+      ["rev-parse", "--is-inside-work-tree", "--show-toplevel", "--git-common-dir"],
+      {
+        allowNonZeroExit: true,
+        timeoutMs: 5_000,
+        maxOutputBytes: 16_384,
+      },
+    );
+    if (result.exitCode !== 0) return null;
+    const lines = result.stdout.replace(/\r?\n$/u, "").split(/\r?\n/u);
+    if (lines[0]?.trim() !== "true") return null;
+    // A newline inside a path breaks the line framing; ask for each path on its own.
+    if (lines.length !== 3) {
+      const root = yield* gitCommand(vcsProcess, "GitVcsDriver.detectRepository.root", cwd, [
+        "rev-parse",
+        "--show-toplevel",
+      ]);
+      const gitCommonDir = yield* gitCommand(
+        vcsProcess,
+        "GitVcsDriver.detectRepository.commonDir",
+        cwd,
+        ["rev-parse", "--git-common-dir"],
+      ).pipe(Effect.orElseSucceed(() => null));
+      return {
+        kind: "git" as const,
+        rootPath: root.stdout.trim(),
+        metadataPath: gitCommonDir?.stdout.trim() || null,
+        freshness: yield* nowFreshness(),
+      };
+    }
 
     return {
       kind: "git" as const,
-      rootPath: root.stdout.trim(),
-      metadataPath: gitCommonDir?.stdout.trim() || null,
+      rootPath: lines[1]!.trim(),
+      metadataPath: lines[2]!.trim() || null,
       freshness: yield* nowFreshness(),
     };
   });

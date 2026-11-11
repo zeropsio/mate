@@ -6,15 +6,15 @@ import { appAtomRegistry } from "~/rpc/atomRegistry";
  * `design-newmate.html`): the Mate coming up, drawn by the real stage (`MateEmptyStateView`), the
  * real steps (`ComingBelow`, `arrivalSteps`) and the real sentence (`comingSentenceOf`) over a
  * creation as the app draws it (`newProjectBirth.ts`), whose steps a fake press moves at the pace run 6
- * measured (2026-10-03): a New project registered in 0.4 s, its Mate's project in 2.0 s, closed
- * off in 4.0 s, registered in 3.6 s; an added Mate's project in 2.0 s, its container in 0.8 s,
- * closed off in 5.2 s, registered in 2.0 s.
+ * measured (2026-10-03): a New project registered in 0.4 s, its Mate's project in 2.0 s,
+ * registered in 3.6 s, its one import in 4.0 s; an added Mate's project in 2.0 s, registered in
+ * 2.0 s, its one import in 0.8 s.
  *
  * Once the platform takes its project the page hands over to the Mate's own view, as the app's
- * route does (`/mate/$projectId`), its press kept as `runPress` keeps it and forgotten once closed
- * off and registered (`endPress`). `?fail=<step>` stops the press there to watch a stop said where
- * the app says it: `created` before the take (on `/mate/new`, *Try again* goes through),
- * `closed-off` after it (on the Mate's own view, with its press's *Try again*), `registered` a
+ * route does (`/mate/$projectId`), its press kept as `runPress` keeps it and forgotten once
+ * imported and registered (`endPress`). `?fail=<step>` stops the press there to watch a stop said
+ * where the app says it: `created` before the take (on `/mate/new`, *Try again* goes through),
+ * `imported` after it (on the Mate's own view, with its press's *Try again*), `registered` a
  * registration refused (never a stop: the press ends with it). Fixtures only: nothing here ships,
  * and no route imports this module.
  */
@@ -68,22 +68,18 @@ type Kind = EnvironmentCreationStep["kind"];
 
 const STEP: Readonly<Record<string, EnvironmentCreationStep>> = {
   "create-project": { kind: "create-project", name: "Acme Docs - Ida" } as EnvironmentCreationStep,
-  "import-managed": {
-    kind: "import-managed",
-    yaml: "services:\n  - hostname: db\n    type: postgresql@16\n  - hostname: cache\n    type: valkey@7.2\n",
-  } as EnvironmentCreationStep,
   "import-container": {
     kind: "import-container",
     agents: [],
-    runtimes: {
+    tier: {
       yaml: "",
-      services: [
+      managed: ["db", "cache"],
+      runtimes: [
         { hostname: "appdev", role: "dev" },
         { hostname: "appstage", role: "stage" },
       ],
     },
   } as EnvironmentCreationStep,
-  "close-off": { kind: "close-off" },
   register: { kind: "register" },
   "await-ready": { kind: "await-ready", withAgent: true },
 };
@@ -107,7 +103,7 @@ const retries = new Map<string, () => void>();
 
 /**
  * Moves a press through its steps at their measured pace — once the platform took its project,
- * telling its press record, as `runPress` does: over (forgotten) once closed off and registered,
+ * telling its press record, as `runPress` does: over (forgotten) once imported and registered,
  * stopped with *Try again* where a step stops after the take.
  */
 function press(
@@ -174,7 +170,7 @@ export function beginHarnessPress(input: {
   const adds = input.flow === "add";
   const id = `harness-${input.flow}`;
   const failAt: Kind | null =
-    FAIL === "closed-off" ? "close-off" : FAIL === "registered" ? "register" : null;
+    FAIL === "imported" ? "import-container" : FAIL === "registered" ? "register" : null;
   let tries = 0;
   let taken: string | null = null;
   const projectOf = () => taken;
@@ -190,6 +186,7 @@ export function beginHarnessPress(input: {
       ...state.creations,
       [id]: {
         organizationId: "org-harness",
+        creator: "cu-harness",
         birthId: id,
         name: input.project,
         botName: input.botName,
@@ -224,8 +221,8 @@ export function beginHarnessPress(input: {
     if (adds) return;
     press(
       [
-        ["close-off", 4_000],
         ["register", 3_600],
+        ["import-container", 4_000],
         ["await-ready", 400],
       ],
       failAt,
@@ -242,10 +239,8 @@ export function beginHarnessPress(input: {
           ? [["create-project", 2_000]]
           : [
               ["create-project", 2_000],
-              ["import-managed", 0],
-              ["import-container", 800],
-              ["close-off", 5_200],
               ["register", 2_000],
+              ["import-container", 800],
               ["await-ready", 400],
             ],
         refused ? "create-project" : failAt,

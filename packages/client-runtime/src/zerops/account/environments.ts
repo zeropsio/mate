@@ -7,7 +7,10 @@
  *   them (B4, `mateListingsAtom`) — and from the catalog's registrations at a listed Mate's address
  *   (C1). A remembered Mate is looked for where it was registered until its project's services are
  *   read (A16);
- *   one they were read without is gone only once a direct read lacks it too (§9 C19). A listing
+ *   one they were read without is gone only once a direct read lacks it too (§9 C19). The route's
+ *   project — HQ's word, or what this account remembered of it — is read ahead of the listing
+ *   over plain REST (`holdRoutePreview`): its own row and its services, so the route's Mate is
+ *   found while the platform's socket logs in and the organization's whole search runs. A listing
  *   change that changes no row and settles no absence feeds nothing. No React holds a fact here:
  *   the web and mobile hand over ports and send intents — the route, the active organization, a
  *   Connect.
@@ -20,9 +23,6 @@
  *   HQ — never by reading other projects. A remembered Mate with no lease is parked: its
  *   registration and cached data stay, its socket closes.
  * - A registration no Mate holds — and that no install is writing — is released.
- * - Nobody is let into a Mate before its project is closed off (`closeOff.ts`): a Mate whose
- *   container carries the press's marker, and whose project HQ does not say is closed off, holds
- *   no lease's connection until it is; *Finish setup* closes it off.
  *
  * The adapter is constructed by the account runtime alone (§7.2 rule 6); this module only wires
  * it. Plain callbacks and promises, like the adapter: the bus runs with the account's services.
@@ -35,9 +35,11 @@ import type { MateAdapter, MateAdapterPorts, MateTarget } from "../../data/adapt
 import type { ProjectProcesses } from "../../data/projections/processes.ts";
 import {
   holdProjectHistory,
+  holdRoutePreview,
   holdServiceRead,
+  hqMatePresenceAtom,
   projectProcessesAtom,
-  readMateFlag,
+  readMateFlagOnceLive,
 } from "../../data/reads.ts";
 
 import { normalizeOrigin } from "../candidates.ts";
@@ -63,12 +65,13 @@ import {
   type DescriptorIndex,
 } from "../environments/descriptorIndex.ts";
 import {
-  closedOffOf,
-  closeOffGate,
-  type CloseOffHold,
-  type CloseOffWord,
-} from "../environments/closeOff.ts";
-import { mateListingsAtom, type OrganizationListing } from "../environments/listings.ts";
+  listsProjectRows,
+  mateListingsAtom,
+  routePreviewAtom,
+  withRoutePreview,
+  type OrganizationListing,
+  type RoutePreview,
+} from "../environments/listings.ts";
 import type {
   DescriptorFacts,
   EnvironmentMachine,
@@ -168,25 +171,7 @@ export interface AccountEnvironmentPorts {
     readonly projectOf: (environmentId: EnvironmentId) => string | null;
     readonly subscribe: (listener: () => void) => () => void;
   };
-  /**
-   * HQ's word on which Mates' projects are closed off (`closeOff.ts`); null while none is known,
-   * and always on a surface no HQ answers: then only `closeOffPending` holds a Mate.
-   */
-  readonly closeOff: {
-    readonly read: () => CloseOffWord | null;
-    readonly subscribe: (listener: () => void) => () => void;
-  };
-  /**
-   * The projects this browser knows are not closed off yet — a press here that runs, or stopped
-   * before its close-off: where HQ says nothing, only these are held (`closeOffGate`).
-   */
-  readonly closeOffPending: {
-    readonly read: () => ReadonlySet<string>;
-    readonly subscribe: (listener: () => void) => () => void;
-  };
 }
-
-export type { CloseOffHold };
 
 // ── What surfaces read and ask ───────────────────────────────────────────────────────────────
 
@@ -194,7 +179,7 @@ export interface AccountEnvironments {
   /** Projects whose detail is currently held by a route, screen, or action. */
   readonly detailProjects: () => ReadonlySet<string>;
   /**
-   * Told after the detail, the close-off holds or a Mate moved. Each Mate itself is read from the
+   * Told after the detail or a Mate moved. Each Mate itself is read from the
    * account's store (`mateLinks`).
    */
   readonly subscribe: (listener: () => void) => () => void;
@@ -224,11 +209,6 @@ export interface AccountEnvironments {
   readonly next: (origin: string) => Promise<ProbeReading>;
   /** Suppress all connection leases during project deletion; false restores them on failure. */
   readonly setDeleting: (projectId: string, deleting: boolean) => void;
-  /**
-   * The projects whose Mate is held for its close-off, and why: none of their leases connects it
-   * until HQ says its project is closed off. The same map until it changes.
-   */
-  readonly closeOffHolds: () => ReadonlyMap<string, CloseOffHold>;
   /** The route's environment, whose target is exchanged first (§4.4); null off a thread route. */
   readonly setRoute: (environmentId: EnvironmentId | null) => void;
   /** The organization the tab has open: a target nothing names has its inventory read (§6.2). */
@@ -252,8 +232,8 @@ export interface EnvironmentStage {
   readonly hear: (signal: PlatformSignal) => void;
   /** A container's facts may have changed at the source (§6.2): it is read again. */
   readonly request: (key: TargetKey) => void;
-  /** HQ placed the project's Mate for the person again: its refused Mate is asked again. */
-  readonly accessChanged: (projectId: string) => void;
+  /** The person's role on the project changed (`followAccessChanges`): its refused Mate is asked again. */
+  readonly roleChanged: (projectId: string) => void;
   /** The account closed: every machine, timer, probe, exchange and listener ends. */
   readonly dispose: () => void;
 }
@@ -298,12 +278,27 @@ const origin = (url: string | undefined | null): string | null =>
 /** How long the Mate left last stays connected (krok-a-hub §3, the warm policy Q8). */
 const RECENT_MS = 5 * 60_000;
 
+/** The route's project read ahead of the listing: the hold on its reads, and what they hold. */
+interface HeldPreview {
+  readonly projectId: string;
+  readonly stop: () => void;
+  rows: RoutePreview | null;
+}
+
 // ── The wiring ───────────────────────────────────────────────────────────────────────────────
 
 export function makeEnvironmentWiring(options: EnvironmentWiringOptions): EnvironmentWiring {
   const { ports, atomRegistry } = options;
   let adapter: MateAdapter | null = null;
   let closed = false;
+  /** The account's listing as `mateListingsAtom` last published it. */
+  let listed: ReadonlyArray<OrganizationListing> = [];
+  /**
+   * The route's project read ahead of the listing, while the listing holds none of its rows
+   * (`withRoutePreview`): the hold on its reads, and what they hold now.
+   */
+  let preview: HeldPreview | null = null;
+  /** The listing, with the route's project read ahead of it until it holds that project itself. */
   let listings: ReadonlyArray<OrganizationListing> = [];
   let rows: ReadonlyArray<CandidateRow> = [];
   let registered: ReadonlyArray<RegisteredEnvironment> = [];
@@ -337,6 +332,14 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   const exchangedAt = new Map<TargetKey, string>();
   /** What runs in each booting target's project, as the account's store holds it: followed. */
   const activity = new Map<string, { readonly stop: () => void }>();
+  /**
+   * HQ's presence for each target's Mate, by project, as the account's store holds it: a
+   * container coming up is read on its word instead of on a timer.
+   */
+  const hqPresence = new Map<
+    string,
+    { stop: () => void; online: boolean | null; keys: ReadonlyArray<TargetKey> }
+  >();
   const listeners = new Set<() => void>();
   /**
    * The processes each project of the active organization is read for while a container of it is
@@ -346,7 +349,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
    */
   const addressWatch = new Map<string, () => void>();
   let detailProjects: ReadonlySet<string> = new Set();
-  let closeOffHolds: ReadonlyMap<string, CloseOffHold> = new Map();
 
   const rowOf = (key: TargetKey) => rows.find((row) => row.key === key);
   const organizationRef = (organizationId: string): OrganizationRef => ({
@@ -379,7 +381,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   /** `ZCP_MATE_ENABLED` for a target's service, read by key with the organization's Mate variables. */
   const readTargetMateFlag = async (key: TargetKey): Promise<MateFlag> => {
     const serviceId = key.split(":")[1];
-    return serviceId === undefined ? "unknown" : readMateFlag(atomRegistry, serviceId);
+    return serviceId === undefined ? "unknown" : readMateFlagOnceLive(atomRegistry, serviceId);
   };
 
   /** Whose organization lists the target's project: the listing's, else the one shown. */
@@ -613,6 +615,47 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         };
       }),
     );
+    followHqPresence(listed.targets.map((target) => target.key));
+  };
+
+  /** Follows HQ's presence for every target's project and tells the adapter each target's. */
+  const followHqPresence = (keys: ReadonlyArray<TargetKey>) => {
+    if (adapter === null || closed) return;
+    const current = adapter;
+    const byProject = new Map<string, Array<TargetKey>>();
+    for (const key of keys) {
+      const projectKeys = byProject.get(targetProject(key));
+      if (projectKeys === undefined) byProject.set(targetProject(key), [key]);
+      else projectKeys.push(key);
+    }
+    for (const [projectId, followed] of hqPresence) {
+      if (byProject.has(projectId)) continue;
+      hqPresence.delete(projectId);
+      followed.stop();
+    }
+    for (const [projectId, projectKeys] of byProject) {
+      const followed = hqPresence.get(projectId);
+      if (followed !== undefined) {
+        followed.keys = projectKeys;
+        for (const key of projectKeys) current.presence(key, followed.online);
+        continue;
+      }
+      const entry = {
+        stop: (): void => undefined,
+        online: null as boolean | null,
+        keys: projectKeys as ReadonlyArray<TargetKey>,
+      };
+      hqPresence.set(projectId, entry);
+      entry.stop = atomRegistry.subscribe(
+        hqMatePresenceAtom(projectId),
+        (read) => {
+          if (adapter === null || closed) return;
+          entry.online = read === null ? null : read.online;
+          for (const key of entry.keys) adapter.presence(key, entry.online);
+        },
+        { immediate: true },
+      );
+    }
   };
 
   /** The Mate left last stays connected `RECENT_MS`, unless another is left after it. */
@@ -639,10 +682,43 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     if (left !== undefined) keepRecent(left);
   };
 
+  /**
+   * The route's project is read ahead of the listing while the listing holds none of its rows:
+   * the hold moves with the route, and goes once the listing reads the project itself. Whether
+   * what the preview holds changed.
+   */
+  const updatePreview = (projectId: string | null): boolean => {
+    const wanted = projectId !== null && !listsProjectRows(listed, projectId) ? projectId : null;
+    if (preview?.projectId === wanted) return false;
+    const before = preview?.rows ?? null;
+    preview?.stop();
+    preview = null;
+    if (wanted !== null) {
+      const releaseReads = holdRoutePreview(atomRegistry, wanted);
+      const held: HeldPreview = {
+        projectId: wanted,
+        rows: atomRegistry.get(routePreviewAtom(wanted)),
+        stop: () => {
+          stopFollowing();
+          releaseReads();
+        },
+      };
+      const stopFollowing = atomRegistry.subscribe(routePreviewAtom(wanted), (next) => {
+        if (preview !== held || closed) return;
+        held.rows = next;
+        listingsChanged();
+      });
+      preview = held;
+    }
+    return before !== (preview?.rows ?? null);
+  };
+
   /** Hold detail only for the route, the project on screen, or an explicit action. */
   const updateRoute = () => {
     if (adapter === null || closed) return;
     const routedProject = route === null ? null : projectOfEnvironment(route);
+    // What the route's project read ahead holds is part of the listing: it is fed again, once.
+    if (updatePreview(routedProject)) return listingsChanged();
     const actionProjects = [...actions].map(({ environmentId }) =>
       projectOfEnvironment(environmentId),
     );
@@ -672,14 +748,15 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   };
 
   /**
-   * The platform's processes for every booting target's project: a boot's cap runs from the
-   * moment the last process ends (§4.5), so a long restart or start is never overdue while it runs.
+   * The platform's processes for every booting or restarting target's project: a boot's cap runs
+   * from the moment the last process ends (§4.5), so a long restart or start is never overdue while
+   * it runs, and a restart's process ending is the platform's word that the restart is over.
    */
   const updateProcesses = () => {
     if (adapter === null || closed) return;
     const booting = new Map<string, ProjectRef>();
     for (const [key, machine] of adapter.containers()) {
-      if (machine.state.level !== "booting") continue;
+      if (machine.state.level !== "booting" && machine.state.level !== "restarting") continue;
       const projectId = targetProject(key);
       if (!detailProjects.has(projectId)) continue;
       const ref = projectRefOf(projectId);
@@ -703,41 +780,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       });
       activity.set(projectId, { stop: unsubscribe });
     }
-  };
-
-  /**
-   * The close-off gate over every listed Mate (`closeOffGate`): the held ones take no lease's
-   * demand (`ExchangeDriver.setCloseOffHeld`).
-   */
-  const updateCloseOff = () => {
-    if (adapter === null || closed) return;
-    const word = ports.closeOff.read();
-    const pending = ports.closeOffPending.read();
-    const holds = new Map<string, CloseOffHold>();
-    for (const row of rows) {
-      if (row.service === undefined) continue;
-      const project = projectRefOf(row.project.id);
-      if (project === undefined) continue;
-      const closedOff = closedOffOf(word, project.organization.organizationId, row.project.id);
-      if (closedOff === true) continue;
-      const gate = closeOffGate({
-        marker:
-          word?.organizationId === project.organization.organizationId
-            ? (word.markers.get(row.project.id) ?? "unknown")
-            : "unknown",
-        closedOff,
-        pendingHere: pending.has(row.project.id),
-      });
-      if (gate === "connect") continue;
-      if (holds.get(row.project.id) !== "open") holds.set(row.project.id, gate);
-    }
-    const moved =
-      holds.size !== closeOffHolds.size ||
-      [...holds].some(([projectId, hold]) => closeOffHolds.get(projectId) !== hold);
-    if (!moved) return;
-    closeOffHolds = holds;
-    adapter.setCloseOffHeld(holds.keys());
-    notify();
   };
 
   /**
@@ -857,6 +899,23 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     }
   };
 
+  /** The listing, or the route's project read ahead of it, moved: every target is fed again. */
+  function listingsChanged() {
+    if (closed) return;
+    const before = listings;
+    const next = withRoutePreview(listed, preview?.rows ?? null);
+    listings = next;
+    const listedRows = next.flatMap(({ listing }) => heldCandidates(listing).rows);
+    const moved = !sameItems(rows, listedRows);
+    if (moved) rows = listedRows;
+    updateAddressWatch();
+    updateRoute();
+    updateActions();
+    updateDrawn();
+    if (moved || JSON.stringify(before.map(settling)) !== JSON.stringify(next.map(settling)))
+      updateTargets();
+  }
+
   const start = (built: MateAdapter): EnvironmentStage => {
     adapter = built;
     route = ports.route?.() ?? route;
@@ -899,8 +958,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         updateActions();
         updateDrawn();
       }),
-      ports.closeOff.subscribe(updateCloseOff),
-      ports.closeOffPending.subscribe(updateCloseOff),
       ports.catalog.listen({
         environments: (next) => {
           registered = next;
@@ -918,23 +975,12 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       atomRegistry.subscribe(
         mateListingsAtom,
         (next) => {
-          const before = listings;
-          listings = next;
-          const listedRows = next.flatMap(({ listing }) => heldCandidates(listing).rows);
-          const moved = !sameItems(rows, listedRows);
-          if (moved) rows = listedRows;
-          updateAddressWatch();
-          updateRoute();
-          updateActions();
-          updateDrawn();
-          if (moved || JSON.stringify(before.map(settling)) !== JSON.stringify(next.map(settling)))
-            updateTargets();
-          if (moved) updateCloseOff();
+          listed = next;
+          listingsChanged();
         },
         { immediate: true },
       ),
     );
-    updateCloseOff();
     updateTargets();
     release();
     updateParking();
@@ -974,7 +1020,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       initAt: (key) => (closed ? Promise.resolve(null) : built.initAt(key)),
       next: built.next,
       setDeleting: built.setDeleting,
-      closeOffHolds: () => closeOffHolds,
       setRoute: (environmentId) => {
         route = environmentId;
         preferRoute();
@@ -1019,8 +1064,8 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       request: (key) => {
         if (!closed) built.request(key);
       },
-      accessChanged: (projectId) => {
-        if (!closed) built.accessChanged(projectId);
+      roleChanged: (projectId) => {
+        if (!closed) built.roleChanged(projectId);
       },
       dispose: () => {
         if (closed) return;
@@ -1029,10 +1074,14 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         for (const stop of stops) stop();
         for (const followed of activity.values()) followed.stop();
         activity.clear();
+        for (const followed of hqPresence.values()) followed.stop();
+        hqPresence.clear();
         recent?.disarm();
         actions.clear();
         for (const stop of addressWatch.values()) stop();
         addressWatch.clear();
+        preview?.stop();
+        preview = null;
         detailProjects = new Set();
         built.dispose();
         preferRoute();

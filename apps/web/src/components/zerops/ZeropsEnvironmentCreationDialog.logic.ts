@@ -7,13 +7,14 @@ import {
   nameUnderApp,
   projectNameInApp,
   isRecipeProposal,
+  recipeProposalRedone,
   ZEROPS_BOT_NAME_MAX_LENGTH,
-  type EnvironmentCreationStep,
   type EnvironmentCreationStepProgress,
   type EnvironmentRecipeChoice,
   type FlowPullRequest,
   type ZeropsGroupPendingMember,
   type ZeropsMateFace,
+  type ZeropsEnvironmentRole,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { crewPossessive } from "@t3tools/client-runtime/zerops/crew/phrases";
@@ -155,10 +156,13 @@ export function validateCreationForm(
     readonly options: ReadonlyArray<RecipeOption>;
     /** Where the recipe stands (`creationRecipe`). */
     readonly recipe: CreationRecipe;
+    readonly role?: ZeropsEnvironmentRole | undefined;
   },
 ): CreationFormErrors {
   const errors: { name?: string; recipe?: string } = {};
   if (form.name.trim().length === 0) errors.name = "Give the environment a name.";
+
+  if (context.role === "prod") return errors;
 
   // What is created comes from this read: a recipe not read yet, or not read at all, holds it.
   const held = creationRecipeHold(context.recipe);
@@ -192,7 +196,7 @@ export function creationRecipe(read: {
 
 const RECIPE_UNREADABLE = "The project's setup files can't be read right now.";
 
-/** What holds a stage's or a production's form: its recipe still being read, or not readable. */
+/** What holds a form that imports its recipe: still being read, or not readable. */
 export function creationRecipeHold(recipe: CreationRecipe): string | undefined {
   if (recipe === "reading") return READING_RECIPE;
   return recipe === "unreadable" ? RECIPE_UNREADABLE : undefined;
@@ -207,11 +211,12 @@ export const PEOPLE_UNREADABLE = "Who can see the project can't be read right no
 
 /**
  * What a stage's or a production's one sheet sends, or why its button waits. It asks nothing the
- * project already says: its name, the project's setup, and the people who reach the project now, at
+ * project already says: its name, a stage's setup, and the people who reach the project now, at
  * their level there (`draftPeople`) — a Developer or a Guest on the project sees the new
  * environment too.
  */
 export function environmentSheetSubmit(input: {
+  readonly role?: ZeropsEnvironmentRole | undefined;
   readonly name: string;
   readonly withAgent: boolean;
   readonly options: ReadonlyArray<RecipeOption>;
@@ -235,13 +240,13 @@ export function environmentSheetSubmit(input: {
       };
     } {
   const option = input.options[0];
-  // The form's own checks, on what the sheet decided: nothing empty is made with no one to fill it.
+  // The stage needs services now; production reserves its project for the first release.
   const errors = validateCreationForm(
     { name: input.name, withAgent: input.withAgent, recipeId: option?.id ?? "" },
-    { options: input.options, recipe: input.recipe },
+    { options: input.options, recipe: input.recipe, role: input.role },
   );
   const reason = errors.recipe ?? errors.name;
-  if (reason !== undefined || option === undefined)
+  if (reason !== undefined || (option === undefined && input.role !== "prod"))
     return {
       kind: "held",
       reason: reason ?? "Choose what goes in the environment.",
@@ -257,8 +262,8 @@ export function environmentSheetSubmit(input: {
     kind: "create",
     choice: {
       name: input.name,
-      withAgent: input.withAgent,
-      recipe: option.choice,
+      withAgent: input.role === "prod" ? false : input.withAgent,
+      recipe: input.role === "prod" ? { kind: "none" } : (option?.choice ?? { kind: "none" }),
       ...(userRoles.length === 0 ? {} : { userRoles }),
     },
   };
@@ -408,6 +413,8 @@ export interface NewMateDoorMate {
 export interface NewMateRecipeChange {
   readonly number: number;
   readonly mate: string | undefined;
+  /** It conflicts with main, and its Mate composes it again from main (`recipeProposalRedone`). */
+  readonly redone?: true;
 }
 
 /** The one thing to do while the project takes no Mate. */
@@ -466,6 +473,14 @@ export function newMateDoor(input: {
   if (mates.length === 0) return { kind: "open", recipe: "none" };
   if (change !== undefined) {
     const where = change.mate === undefined ? "a change" : `${crewPossessive(change.mate)} change`;
+    // Its Mate composes it again from main by itself: the person only looks.
+    if (change.redone === true) {
+      return {
+        kind: "closed",
+        reason: `${crewPossessive(groupName)} setup for new Mates is waiting in ${where}, which ${change.mate ?? "its Mate"} is redoing from main. New Mates can join once it lands.`,
+        action: { kind: "change", label: "See the change", number: change.number },
+      };
+    }
     return {
       kind: "closed",
       reason: `${crewPossessive(groupName)} setup for new Mates is waiting in ${where}. New Mates can join once it's merged.`,
@@ -582,7 +597,11 @@ export function newMateRecipeChange(input: {
     if (first === undefined || pull.number < first.number) first = pull;
   }
   if (first === undefined) return undefined;
-  return { number: first.number, mate: input.mateName(first.mateProjectId) };
+  return {
+    number: first.number,
+    mate: input.mateName(first.mateProjectId),
+    ...(recipeProposalRedone(first) ? { redone: true as const } : {}),
+  };
 }
 
 /** Where *Review the change* goes: the recipe's change in its recipe repository, on its own page. */
@@ -603,57 +622,19 @@ export function recipeChangeView(
   };
 }
 
-/** One step of a press, as the Add dialog draws it while it stays open. */
-export interface PressStepView {
-  readonly label: string;
-  readonly state: "waiting" | "active" | "done" | "failed";
-}
-
-/** The press's steps the person waits on, and which runner steps make each. */
-const PRESS_STEPS: ReadonlyArray<{
-  readonly label: string;
-  readonly kinds: ReadonlyArray<EnvironmentCreationStep["kind"]>;
-}> = [
-  { label: "Project", kinds: ["create-project", "import-project", "import-managed"] },
-  { label: "Registered", kinds: ["register"] },
-  { label: "Its computer", kinds: ["import-container"] },
-  { label: "Private network ready", kinds: ["close-off"] },
-];
-
 /**
- * The press as the Add dialog draws it, in the order it runs: Project, Registered — its record in
- * its application before its container (F6b) — Container, Closed off: what the Mate needs before
- * it needs no browser. The wait for it comes after, the dialog gone. A step a press does not make
- * is left out.
- */
-export function pressSteps(
-  progress: ReadonlyArray<EnvironmentCreationStepProgress>,
-): ReadonlyArray<PressStepView> {
-  return PRESS_STEPS.flatMap(({ label, kinds }) => {
-    const own = progress.filter((entry) => kinds.includes(entry.step.kind));
-    if (own.length === 0) return [];
-    const state: PressStepView["state"] = own.some((entry) => entry.state === "failed")
-      ? "failed"
-      : own.every((entry) => entry.state === "done")
-        ? "done"
-        : own.some((entry) => entry.state === "running" || entry.state === "done")
-          ? "active"
-          : "waiting";
-    return [{ label, state }];
-  });
-}
-
-/**
- * The press has marked the project closed off — the Mate needs no browser — and its registration,
- * where it writes one, went through or was refused: its record may go.
+ * Every step before the wait is through — Zerops accepted its one import, so the platform finishes
+ * it and the Mate needs no browser — and its registration, where it writes one, went through or was
+ * refused: its record may go.
  */
 export function pressThrough(progress: ReadonlyArray<EnvironmentCreationStepProgress>): boolean {
-  const closedOff = progress.some(
-    (entry) => entry.step.kind === "close-off" && entry.state === "done",
-  );
-  const registration = progress.find((entry) => entry.step.kind === "register");
   return (
-    closedOff &&
-    (registration === undefined || registration.state === "done" || registration.state === "failed")
+    progress.length > 0 &&
+    progress.every(
+      ({ step, state }) =>
+        step.kind === "await-ready" ||
+        state === "done" ||
+        (step.kind === "register" && state === "failed"),
+    )
   );
 }

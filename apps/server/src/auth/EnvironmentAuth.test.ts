@@ -1,4 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { describe, expect, it } from "@effect/vitest";
 import { AuthSessionId } from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
@@ -22,7 +23,7 @@ import * as EnvironmentAuth from "./EnvironmentAuth.ts";
 import * as ServerSecretStore from "./ServerSecretStore.ts";
 import { resolveZeropsEnvironment } from "../zerops/ZeropsEnvironment.ts";
 import * as SessionStore from "./SessionStore.ts";
-import { layer as accessListLayer } from "../zerops/ZeropsMateAccessList.ts";
+import { AccessScene, accessSceneLayer, type SceneRoles } from "../zerops/testing/accessScene.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import * as TerminalManager from "../terminal/Manager.ts";
 import type * as PtyAdapter from "../terminal/PtyAdapter.ts";
@@ -53,34 +54,20 @@ const makeEnvironmentAuthLayer = (overrides?: Partial<ServerConfig.ServerConfig[
     Layer.provide(makeServerConfigLayer(overrides)),
   );
 
-/** The auth boundary inside a Zerops Mate, its admission read from HQ's access list. */
+/** The auth boundary inside a Zerops Mate, its admission read from the Mate's own Zerops list. */
 const makeAdmissionAuthLayer = () =>
   EnvironmentAuth.zeropsLayer.pipe(
     Layer.provideMerge(
       ZeropsConnections.layer.pipe(
         Layer.provideMerge(ZeropsTicketDoor.layer),
-        Layer.provideMerge(accessListLayer),
+        Layer.provideMerge(accessSceneLayer({})),
       ),
     ),
     Layer.provide(makeServerConfigLayer({ zerops: zeropsTestEnvironment })),
   );
 
-/** HQ's full list, opening the project for `open` and listing `listed`. */
-const accessFrame = (
-  version: number,
-  open: ReadonlyArray<string>,
-  listed: ReadonlyArray<string> = [],
-) =>
-  ({
-    type: "access",
-    version,
-    viewAt: "2026-10-24T10:00:00.000Z",
-    full: true,
-    members: [
-      ...open.map((userId) => ({ userId, role: "ADMIN", visibility: "open" }) as const),
-      ...listed.map((userId) => ({ userId, role: "READ_ONLY", visibility: "listed" }) as const),
-    ],
-  }) as const;
+/** Zerops now holds `roles`, and the Mate's list has read it. */
+const zeropsHolds = (roles: SceneRoles) => Effect.flatMap(AccessScene, (scene) => scene.set(roles));
 
 const makeCookieRequest = (
   cookieName: string,
@@ -117,7 +104,7 @@ const requestMetadata = {
   ipAddress: "192.168.1.23",
 };
 
-it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("EnvironmentAuth.layer", (it) => {
   it.effect("classifies invalid bootstrap credential failures for the HTTP boundary", () =>
     Effect.sync(() => {
       const error = EnvironmentAuth.toBootstrapExchangeError(
@@ -247,73 +234,76 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
   );
 });
 
-it.layer(NodeServices.layer)("current admission for existing sessions", (it) => {
-  it.effect(
-    "an existing session opens only while HQ's access list opens the project for its person",
-    () =>
-      Effect.gen(function* () {
-        const auth = yield* EnvironmentAuth.EnvironmentAuth;
-        const list = yield* ZeropsConnections.ZeropsConnections;
-        const ticket = "owner-ticket";
-        yield* (yield* ZeropsTicketDoor.ZeropsTicketDoor).heard({
-          type: "ticket",
-          ticket,
-          userId: "owner",
-          sessionId: "hq-owner",
-          expiresIn: 60,
-        });
-        const opens = () =>
-          auth
-            .authenticateHttpRequest(makeBearerRequest(ticket))
-            .pipe(Effect.match({ onFailure: () => false, onSuccess: () => true }));
-        const admitted = [yield* opens()];
-        yield* list.heard(accessFrame(1, ["owner"]));
-        expect(Option.isSome(yield* list.admit({ ticket }, Effect.void))).toBe(true);
-        admitted.push(yield* opens());
-        yield* list.heard(accessFrame(2, [], ["owner"]));
-        admitted.push(yield* opens());
-        yield* list.heard(accessFrame(3, ["owner"]));
-        yield* list.heard({ type: "access", version: 4, full: true, refused: true, members: [] });
-        admitted.push(yield* opens());
-        expect(admitted).toEqual([false, true, false, false]);
-      }).pipe(Effect.provide(makeAdmissionAuthLayer())),
-  );
-});
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))(
+  "current admission for existing sessions",
+  (it) => {
+    it.effect(
+      "an existing session opens only while the Mate's Zerops list opens the project for its person",
+      () =>
+        Effect.gen(function* () {
+          const auth = yield* EnvironmentAuth.EnvironmentAuth;
+          const list = yield* ZeropsConnections.ZeropsConnections;
+          const ticket = "owner-ticket";
+          yield* (yield* ZeropsTicketDoor.ZeropsTicketDoor).heard(
+            {
+              type: "ticket",
+              ticket,
+              userId: "owner",
+              sessionId: "hq-owner",
+              expiresIn: 60,
+            },
+            () => true,
+          );
+          const opens = () =>
+            auth
+              .authenticateHttpRequest(makeBearerRequest(ticket))
+              .pipe(Effect.match({ onFailure: () => false, onSuccess: () => true }));
+          const admitted = [yield* opens()];
+          yield* zeropsHolds({ owner: "ADMIN" });
+          expect(Option.isSome(yield* list.admit({ ticket }, Effect.void))).toBe(true);
+          admitted.push(yield* opens());
+          yield* zeropsHolds({ owner: "READ_ONLY" });
+          admitted.push(yield* opens());
+          expect(admitted).toEqual([false, true, false]);
+        }).pipe(Effect.provide(makeAdmissionAuthLayer())),
+    );
+  },
+);
 
-// F1 (permission audit): an open bearer session outlived the person's org role. HQ's next list
-// after the change ends it at once.
+// F1 (permission audit): an open bearer session outlived the person's org role. The Mate's next
+// read of Zerops after the change ends it at once.
 const demotions = [
-  { case: "lowered to Developer: HQ's next list leaves her out", to: "NO_ACCESS" },
-  { case: "lowered to Read only: HQ's next list only lists her", to: "READ_ONLY" },
+  { case: "lowered to Developer: the Mate's next Zerops read leaves her out", to: "NO_ACCESS" },
+  { case: "lowered to Read only: the Mate's next Zerops read only lists her", to: "READ_ONLY" },
 ] as const;
 
 const makeDemotionScene = () => ({ layer: makeAdmissionAuthLayer() });
 
-/** HQ's next list after Bea is lowered: without her, or listing her only. */
-const demote = (to: (typeof demotions)[number]["to"]) =>
-  Effect.flatMap(ZeropsConnections.ZeropsConnections, (list) =>
-    list.heard(to === "READ_ONLY" ? accessFrame(2, ["owner"], ["bea"]) : accessFrame(2, ["owner"])),
-  );
+/** Zerops after Bea is lowered: she is out of the list, or only listed. */
+const demote = (to: (typeof demotions)[number]["to"]) => zeropsHolds({ owner: "ADMIN", bea: to });
 
 /** HQ admits Bea's connection, which also authorizes her HTTP requests. */
 const signInBea = Effect.fn("signInBea")(function* (close: Effect.Effect<void> = Effect.void) {
   const auth = yield* EnvironmentAuth.EnvironmentAuth;
   const connections = yield* ZeropsConnections.ZeropsConnections;
-  yield* connections.heard(accessFrame(1, ["owner", "bea"]));
+  yield* zeropsHolds({ owner: "ADMIN", bea: "ADMIN" });
   const ticket = "bea-ticket";
-  yield* (yield* ZeropsTicketDoor.ZeropsTicketDoor).heard({
-    type: "ticket",
-    ticket,
-    userId: "bea",
-    sessionId: "hq-bea",
-    expiresIn: 60,
-  });
+  yield* (yield* ZeropsTicketDoor.ZeropsTicketDoor).heard(
+    {
+      type: "ticket",
+      ticket,
+      userId: "bea",
+      sessionId: "hq-bea",
+      expiresIn: 60,
+    },
+    () => true,
+  );
   expect(Option.isSome(yield* connections.admit({ ticket }, close))).toBe(true);
   const session = yield* auth.authenticateHttpRequest(makeBearerRequest(ticket));
   return { access: { access_token: ticket }, session };
 });
 
-it.layer(NodeServices.layer)(
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))(
   "a person whose Zerops access ended loses their open session within 60 seconds",
   (it) => {
     it.effect.each(demotions)("$case", ({ to }) => {
@@ -324,7 +314,7 @@ it.layer(NodeServices.layer)(
         const live = yield* Effect.forkChild(Deferred.await(ended));
         const { access } = yield* signInBea(Deferred.succeed(ended, "revoked").pipe(Effect.asVoid));
         const later = { ticket: "unused-ticket" };
-        // The live socket is listening before HQ's next list lands, as a connected one is.
+        // The live socket is listening before the Mate's next Zerops read lands, as a connected one is.
         yield* TestClock.adjust(Duration.zero);
 
         yield* demote(to);
@@ -357,128 +347,134 @@ it.layer(NodeServices.layer)(
 );
 
 // Decision: removal ends every channel within one bound, terminals included.
-it.layer(NodeServices.layer)("Terminals a removed person opened end with their session", (it) => {
-  it.effect.each(demotions)("$case", ({ to }) => {
-    const { layer } = makeDemotionScene();
-    const signals: Array<string | undefined> = [];
-    const typed: Array<string> = [];
-    const pty: PtyAdapter.PtyAdapter["Service"] = {
-      spawn: () =>
-        Effect.succeed({
-          pid: 4242,
-          write: (data) => {
-            typed.push(data);
-          },
-          resize: () => undefined,
-          kill: (signal) => {
-            signals.push(signal);
-          },
-          onData: () => () => undefined,
-          onExit: () => () => undefined,
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))(
+  "Terminals a removed person opened end with their session",
+  (it) => {
+    it.effect.each(demotions)("$case", ({ to }) => {
+      const { layer } = makeDemotionScene();
+      const signals: Array<string | undefined> = [];
+      const typed: Array<string> = [];
+      const pty: PtyAdapter.PtyAdapter["Service"] = {
+        spawn: () =>
+          Effect.succeed({
+            pid: 4242,
+            write: (data) => {
+              typed.push(data);
+            },
+            resize: () => undefined,
+            kill: (signal) => {
+              signals.push(signal);
+            },
+            onData: () => () => undefined,
+            onExit: () => () => undefined,
+          }),
+      };
+      const terminals = Layer.effect(
+        TerminalManager.TerminalManager,
+        Effect.gen(function* () {
+          const dir = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped({
+            prefix: "t3-revoked-terminals-",
+          });
+          return yield* TerminalManager.makeWithOptions({
+            logsDir: dir,
+            homeDir: dir,
+            ptyAdapter: pty,
+            processKillGraceMs: 1,
+            subprocessInspector: () =>
+              Effect.succeed({ hasRunningSubprocess: false, childCommand: null, processIds: [] }),
+          });
         }),
-    };
-    const terminals = Layer.effect(
-      TerminalManager.TerminalManager,
-      Effect.gen(function* () {
-        const dir = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped({
-          prefix: "t3-revoked-terminals-",
+      ).pipe(Layer.provide(ProcessRunner.layer));
+      return Effect.gen(function* () {
+        const manager = yield* TerminalManager.TerminalManager;
+        let openedBy: AuthSessionId | undefined;
+        const { session } = yield* signInBea(
+          Effect.suspend(() =>
+            openedBy === undefined
+              ? Effect.void
+              : manager.closeOpenedBy(openedBy).pipe(Effect.asVoid),
+          ),
+        );
+        openedBy = session.sessionId;
+        const terminal = { threadId: "thread-bea", terminalId: "default" };
+        yield* manager.open({
+          ...terminal,
+          cwd: process.cwd(),
+          cols: 80,
+          rows: 24,
+          openedBy: session.sessionId,
         });
-        return yield* TerminalManager.makeWithOptions({
-          logsDir: dir,
-          homeDir: dir,
-          ptyAdapter: pty,
-          processKillGraceMs: 1,
-          subprocessInspector: () =>
-            Effect.succeed({ hasRunningSubprocess: false, childCommand: null, processIds: [] }),
-        });
-      }),
-    ).pipe(Layer.provide(ProcessRunner.layer));
-    return Effect.gen(function* () {
-      const manager = yield* TerminalManager.TerminalManager;
-      let openedBy: AuthSessionId | undefined;
-      const { session } = yield* signInBea(
-        Effect.suspend(() =>
-          openedBy === undefined
-            ? Effect.void
-            : manager.closeOpenedBy(openedBy).pipe(Effect.asVoid),
+
+        yield* demote(to);
+        yield* TestClock.adjust(Duration.seconds(60));
+
+        yield* manager.write({ ...terminal, data: "echo still here\r" }).pipe(Effect.ignore);
+        expect({
+          // An interactive shell ignores SIGTERM; a hangup or a kill ends it.
+          shellEnded: signals.some((signal) => signal === "SIGHUP" || signal === "SIGKILL"),
+          typedAfterRemoval: typed,
+        }).toEqual({ shellEnded: true, typedAfterRemoval: [] });
+      }).pipe(
+        // A shell still open at teardown waits out its kill grace on the test clock: close it first
+        // so a red run fails instead of hanging.
+        Effect.ensuring(
+          Effect.gen(function* () {
+            const manager = yield* TerminalManager.TerminalManager;
+            yield* manager.close({ threadId: "thread-bea" }).pipe(Effect.ignore);
+          }),
         ),
+        Effect.provide(Layer.mergeAll(terminals, layer)),
       );
-      openedBy = session.sessionId;
-      const terminal = { threadId: "thread-bea", terminalId: "default" };
-      yield* manager.open({
-        ...terminal,
-        cwd: process.cwd(),
-        cols: 80,
-        rows: 24,
-        openedBy: session.sessionId,
-      });
+    });
+  },
+);
 
-      yield* demote(to);
-      yield* TestClock.adjust(Duration.seconds(60));
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))(
+  "a refused session credential",
+  (it) => {
+    // A client tells a session that merely reached the end of its life (its door mints the next)
+    // from every other refusal by this flag; the HTTP boundary sends it as the 401's `expired`.
+    it.effect.each([
+      {
+        case: "a session past its deadline",
+        present: (auth: EnvironmentAuth.EnvironmentAuth["Service"]) =>
+          auth
+            .issueSession({ subject: "zerops-user:a-zerops-user-id", ttl: Duration.zero })
+            .pipe(Effect.map((issued) => issued.token)),
+        expired: true,
+      },
+      {
+        case: "a revoked session",
+        present: (auth: EnvironmentAuth.EnvironmentAuth["Service"]) =>
+          Effect.gen(function* () {
+            const issued = yield* auth.issueSession({ subject: "zerops-user:a-zerops-user-id" });
+            yield* auth.revokeSession(issued.sessionId);
+            return issued.token;
+          }),
+        expired: false,
+      },
+      {
+        case: "a token this server never signed",
+        present: () => Effect.succeed(["eyJ2IjoxfQ", "not-a-signature"].join(".")),
+        expired: false,
+      },
+    ])("says whether $case expired: $expired", ({ present, expired }) =>
+      Effect.gen(function* () {
+        const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
+        const token = yield* present(serverAuth);
+        const error = yield* Effect.flip(
+          serverAuth.authenticateHttpRequest(makeBearerRequest(token)),
+        );
 
-      yield* manager.write({ ...terminal, data: "echo still here\r" }).pipe(Effect.ignore);
-      expect({
-        // An interactive shell ignores SIGTERM; a hangup or a kill ends it.
-        shellEnded: signals.some((signal) => signal === "SIGHUP" || signal === "SIGKILL"),
-        typedAfterRemoval: typed,
-      }).toEqual({ shellEnded: true, typedAfterRemoval: [] });
-    }).pipe(
-      // A shell still open at teardown waits out its kill grace on the test clock: close it first
-      // so a red run fails instead of hanging.
-      Effect.ensuring(
-        Effect.gen(function* () {
-          const manager = yield* TerminalManager.TerminalManager;
-          yield* manager.close({ threadId: "thread-bea" }).pipe(Effect.ignore);
-        }),
-      ),
-      Effect.provide(Layer.mergeAll(terminals, layer)),
+        expect(error._tag).toBe("ServerAuthInvalidCredentialError");
+        expect(
+          EnvironmentAuth.isServerAuthCredentialError(error) &&
+            EnvironmentAuth.serverAuthCredentialExpired(error),
+        ).toBe(expired);
+      }).pipe(Effect.provide(makeEnvironmentAuthLayer({ zerops: zeropsTestEnvironment }))),
     );
-  });
-});
-
-it.layer(NodeServices.layer)("a refused session credential", (it) => {
-  // A client tells a session that merely reached the end of its life (its door mints the next)
-  // from every other refusal by this flag; the HTTP boundary sends it as the 401's `expired`.
-  it.effect.each([
-    {
-      case: "a session past its deadline",
-      present: (auth: EnvironmentAuth.EnvironmentAuth["Service"]) =>
-        auth
-          .issueSession({ subject: "zerops-user:a-zerops-user-id", ttl: Duration.zero })
-          .pipe(Effect.map((issued) => issued.token)),
-      expired: true,
-    },
-    {
-      case: "a revoked session",
-      present: (auth: EnvironmentAuth.EnvironmentAuth["Service"]) =>
-        Effect.gen(function* () {
-          const issued = yield* auth.issueSession({ subject: "zerops-user:a-zerops-user-id" });
-          yield* auth.revokeSession(issued.sessionId);
-          return issued.token;
-        }),
-      expired: false,
-    },
-    {
-      case: "a token this server never signed",
-      present: () => Effect.succeed(["eyJ2IjoxfQ", "not-a-signature"].join(".")),
-      expired: false,
-    },
-  ])("says whether $case expired: $expired", ({ present, expired }) =>
-    Effect.gen(function* () {
-      const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
-      const token = yield* present(serverAuth);
-      const error = yield* Effect.flip(
-        serverAuth.authenticateHttpRequest(makeBearerRequest(token)),
-      );
-
-      expect(error._tag).toBe("ServerAuthInvalidCredentialError");
-      expect(
-        EnvironmentAuth.isServerAuthCredentialError(error) &&
-          EnvironmentAuth.serverAuthCredentialExpired(error),
-      ).toBe(expired);
-    }).pipe(Effect.provide(makeEnvironmentAuthLayer({ zerops: zeropsTestEnvironment }))),
-  );
-});
+  },
+);
 
 describe("rejectedCredentialAnnotations", () => {
   // The log line names the session a refused credential belonged to, and when it ended, so the

@@ -124,6 +124,18 @@ export function useVaultWriter(project: VaultProject | undefined, view: VaultVie
   return { run, write };
 }
 
+/**
+ * One Zerops project's vault as the account reads it, held while its caller is drawn: the project's
+ * variables, its services' variables and its process history (without which no reader's state is
+ * known), shared with every other holder and let go by the last. Unread for `null`.
+ */
+export function useProjectVault(projectId: string | null): VaultView {
+  useDetailDemand("projectVariables", undefined, projectId);
+  useDetailDemand("serviceVariable", undefined, projectId);
+  useDetailDemand("process", "history", projectId);
+  return useAtomValue(projectId === null ? UNREAD : vaultAtom(projectId));
+}
+
 /** One project's vault, fed from the account. `onWritten` hears each write the platform took. */
 export function ProjectVaultPanel({
   project,
@@ -140,12 +152,18 @@ export function ProjectVaultPanel({
   readonly renderDeployConfig?: VaultPanelBodyProps["renderDeployConfig"];
 }) {
   const projectId = project?.projectId ?? null;
-  useDetailDemand("projectVariables", undefined, projectId);
-  useDetailDemand("serviceVariable", undefined, projectId);
-  useDetailDemand("process", "history", projectId);
-  const shown = useAtomValue(projectId === null ? UNREAD : vaultAtom(projectId));
+  const shown = useProjectVault(projectId);
   const { run, write: writeVault } = useVaultWriter(project, shown);
-  const reveal = useAccountDataOptional()?.reveal;
+  const account = useAccountDataOptional();
+  const reveal = account?.reveal;
+  const retryDetail = account?.retryDetail;
+  // Try again asks each read the vault is made of again; a read that is fine reads once more.
+  const onRetry = useCallback(() => {
+    if (projectId === null || retryDetail === undefined) return;
+    retryDetail({ family: "projectVariables", ownerId: projectId });
+    retryDetail({ family: "serviceVariable", ownerId: projectId });
+    retryDetail({ family: "process", listing: "history", ownerId: projectId });
+  }, [projectId, retryDetail]);
   const onWrite = useCallback(
     async (scope: VaultScopeRef, write: VaultWrite): Promise<VaultWriteOutcome> => {
       const { outcome, change } = await writeVault(scope, write);
@@ -171,6 +189,7 @@ export function ProjectVaultPanel({
       actor={actor}
       impactOf={(scope, write) => vaultImpact(shown, scope, write)}
       onRestart={onRestart}
+      onRetry={onRetry}
       onWrite={onWrite}
       pending={NO_PENDING}
       restarting={NO_RESTARTS}

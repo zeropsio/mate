@@ -23,6 +23,7 @@
  * it stays in it: nothing the conversation behind listens for acts while the review is open.
  */
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
+import { useLocation } from "@tanstack/react-router";
 import {
   createContext,
   useCallback,
@@ -36,6 +37,7 @@ import {
 } from "react";
 
 import { gatedPortal } from "~/components/ui/portal-gate";
+import { pipelineOfSearch } from "~/zerops/pipelineSearch";
 
 import { isField, keyStaysInReview, pressesPrimary, reviewOrigin } from "./ZeropsReview.logic";
 
@@ -114,6 +116,9 @@ export function ZeropsReviewDialog({
 }) {
   const popup = useRef<HTMLDivElement | null>(null);
   const escape = useRef<ReviewEscape | null>(null);
+  const pipelineOver = useLocation({
+    select: (location) => pipelineOfSearch(location.search) !== null,
+  });
   const takeEscape = useCallback<TakeEscape>((onEscape) => {
     escape.current = onEscape;
     return () => {
@@ -200,6 +205,16 @@ export function ZeropsReviewDialog({
   return (
     <DialogPrimitive.Root
       onOpenChange={(next, details) => {
+        // A pipeline opened from the review stands over it: its Escape and its presses are the
+        // pipeline's, never the review's close.
+        if (
+          !next &&
+          pipelineOver &&
+          (details.reason === "escape-key" || details.reason === "outside-press")
+        ) {
+          details.cancel();
+          return;
+        }
         if (!next && details.reason === "escape-key" && escape.current?.() === true) {
           details.cancel();
           return;

@@ -6,6 +6,7 @@
  * contract bump fails CI instead of crash-looping a container.
  */
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NetService from "@t3tools/shared/Net";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -15,7 +16,7 @@ import { Command } from "effect/cli";
 
 import { cli } from "../src/bin.ts";
 
-const CliRuntimeLayer = Layer.mergeAll(NodeServices.layer, NetService.layer);
+const CliRuntimeLayer = Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, NetService.layer);
 
 /** spec-mate.md §2.8 C-2, §2.2 — the flag set `ServeArgv` may pass. */
 const CONTRACT_1_SERVE_FLAGS = [

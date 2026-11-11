@@ -1,6 +1,6 @@
 /**
- * The two shapes every Zerops read in this server takes: one authenticated
- * `GET`, and the failures that read can have.
+ * The shapes every Zerops read in this server takes: one authenticated `GET`
+ * (or a search's `POST`), and the failures that read can have.
  *
  * Both doors — the one that proves a person and the loop that re-checks them —
  * talk to the same REST API with the same two kinds of credential (the
@@ -16,7 +16,7 @@
  */
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { HttpClient, HttpClientResponse } from "effect/http";
+import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 
 /** The presented token is not a valid Zerops credential. */
 export class ZeropsInvalidTokenError extends Schema.TaggedError<ZeropsInvalidTokenError>()(
@@ -67,6 +67,24 @@ export const zeropsGet = Effect.fn("Zerops.apiGet")(function* (input: {
     .pipe(
       Effect.catchCause(() => Effect.fail(unavailable("The Zerops API could not be reached."))),
     );
+});
+
+/** One authenticated JSON POST, for the platform's searches; failures as {@link zeropsGet}'s. */
+export const zeropsPost = Effect.fn("Zerops.apiPost")(function* (input: {
+  readonly url: string;
+  readonly token: string;
+  readonly body: unknown;
+}) {
+  const httpClient = yield* HttpClient.HttpClient;
+  return yield* HttpClientRequest.post(input.url).pipe(
+    HttpClientRequest.setHeaders({
+      authorization: `Bearer ${input.token}`,
+      accept: "application/json",
+    }),
+    HttpClientRequest.bodyJsonUnsafe(input.body),
+    httpClient.execute,
+    Effect.catchCause(() => Effect.fail(unavailable("The Zerops API could not be reached."))),
+  );
 });
 
 export const readJson = (response: HttpClientResponse.HttpClientResponse) =>

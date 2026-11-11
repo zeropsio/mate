@@ -13,6 +13,8 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as Layer from "effect/Layer";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { it } from "@effect/vitest";
 import { type ProviderApprovalDecision, type ProviderEvent, ThreadId } from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
@@ -26,6 +28,9 @@ import * as TestClock from "effect/testing/TestClock";
 import { waitForFileContent } from "../../testUtils/waitForFileContent.ts";
 
 import wireFixture from "../testFixtures/codexMultiAgentWire.json" with { type: "json" };
+import { MATE_PLACES_INSTRUCTIONS } from "../../matePlacesInstructions.ts";
+import { PICTURE_ASK_INSTRUCTIONS } from "../../pictureAskInstructions.ts";
+import { personaInstructions } from "../../personaInstructions.ts";
 import { makeCodexSessionRuntime } from "./CodexSessionRuntime.ts";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 
@@ -233,7 +238,7 @@ describe("CodexSessionRuntime collab integration", () => {
       );
       assert.deepEqual(events[0]?.payload, params);
       yield* runtime.close;
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("preserves each child's native response and turn identity through parent routing", () =>
@@ -281,7 +286,7 @@ describe("CodexSessionRuntime collab integration", () => {
       assert.equal(events[0]?.turnId, "child-native-turn");
       assert.deepEqual(events[0]?.payload, { ...params, parentThreadId: ROOT });
       yield* runtime.close;
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("looks up child model metadata once after activity registration", () =>
@@ -350,7 +355,7 @@ describe("CodexSessionRuntime collab integration", () => {
       ]);
 
       yield* runtime.close;
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("keeps child settings and reroutes newer than the resume snapshot", () =>
@@ -457,7 +462,7 @@ describe("CodexSessionRuntime collab integration", () => {
       assert.equal(readRecordedRequests().length, 1);
 
       yield* runtime.close;
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("does not delay the parent turn when the child lookup fails", () =>
@@ -512,7 +517,7 @@ describe("CodexSessionRuntime collab integration", () => {
           NodeFS.rmSync(`${scriptPath}.requests`, { force: true });
         }).pipe(Effect.scoped);
       }
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("replays the captured fan-out into synthetic agent events without child leaks", () =>
@@ -584,7 +589,7 @@ describe("CodexSessionRuntime collab integration", () => {
       );
 
       yield* runtime.close;
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("Stop interrupts every live child regardless of registration timing", () =>
@@ -714,7 +719,7 @@ describe("CodexSessionRuntime collab integration", () => {
       assert.isTrue(interruptedThreads.has(ROOT), "parent turn must be interrupted last");
 
       yield* runtime.close;
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   // it.live: the runtime talks to a real child process; under it.effect's
@@ -820,7 +825,7 @@ describe("CodexSessionRuntime collab integration", () => {
       assert.deepEqual(answer.result, { permissions: {} });
 
       yield* runtime.close;
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.live("Stop targets the active turn when Codex has accepted a queued follow-up", () =>
@@ -868,7 +873,7 @@ describe("CodexSessionRuntime collab integration", () => {
       });
 
       yield* runtime.close;
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   const elicitationCases = [
@@ -983,11 +988,12 @@ describe("CodexSessionRuntime collab integration", () => {
       assert.deepEqual(recordedResponse.result, response);
 
       yield* runtime.close;
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 });
 
 describe("CodexSessionRuntime compaction", () => {
+  const PERSONA = personaInstructions({ name: "Pirate", instructions: "Talk like a pirate." });
   it.effect("restores T3 context after the root thread compacts", () =>
     Effect.gen(function* () {
       const compacted = (threadId: string) => ({
@@ -1023,6 +1029,7 @@ describe("CodexSessionRuntime compaction", () => {
         models: Effect.succeed([
           { slug: "gpt-5.6-sol", name: "GPT-5.6 Sol", isCustom: false, capabilities: null },
         ]),
+        persona: Effect.succeed(PERSONA),
       });
       const completedFiber = yield* runtime.events.pipe(
         Stream.filter((event) => event.method === "turn/completed"),
@@ -1048,13 +1055,20 @@ describe("CodexSessionRuntime compaction", () => {
         assert.equal(item.role, "developer");
         return item.content[0].text;
       });
-      assert.lengthOf(texts, 1);
+      assert.lengthOf(texts, 6);
       assert.match(
         texts[0] ?? "",
         /^<mate_runtime><runtime_info>.*as GPT-5\.6 Sol \(model slug: gpt-5\.6-sol\).*<\/mate_runtime>$/s,
       );
+      assert.equal(texts[1], `<mate_places>${MATE_PLACES_INSTRUCTIONS}</mate_places>`);
+      assert.equal(texts[2], `<mate_picture_ask>${PICTURE_ASK_INSTRUCTIONS}</mate_picture_ask>`);
+      assert.deepStrictEqual(texts.slice(3), [
+        `<mate_persona>${PERSONA}</mate_persona>`,
+        "<mate_persona_2></mate_persona_2>",
+        "<mate_persona_3></mate_persona_3>",
+      ]);
 
       yield* runtime.close;
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 });

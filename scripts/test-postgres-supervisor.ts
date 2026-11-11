@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off globalDate:off globalTimers:off -- standalone host-only test PostgreSQL supervisor.
+// @effect-diagnostics nodeBuiltinImport:off globalJsonInEffect:off globalDate:off globalTimers:off -- standalone host-only test PostgreSQL supervisor.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
@@ -11,8 +11,6 @@ import {
   lifecycleLock,
   postgresBinDir,
   postgresHome,
-  pruneStaleClusters,
-  reclaimDeadRuns,
   startCluster,
   startRecord,
 } from "./test-postgres.ts";
@@ -29,7 +27,7 @@ const run = (command: string, args: string[]) => {
   });
   if (result.status !== 0)
     throw new Error(
-      `${command} failed: ${result.error?.message ?? ""}\n${result.stdout}\n${result.stderr}${command === "pg_ctl" && NodeFS.existsSync(NodePath.join(postgresHome, "postgres.log")) ? NodeFS.readFileSync(NodePath.join(postgresHome, "postgres.log"), "utf8") : ""}`,
+      `${command} failed: ${result.error?.message ?? ""}\n${result.stdout}\n${command === "pg_ctl" && NodeFS.existsSync(NodePath.join(postgresHome, "postgres.log")) ? NodeFS.readFileSync(NodePath.join(postgresHome, "postgres.log"), "utf8") : ""}\n${command} exited: ${result.status ?? result.signal}\n${result.stderr?.slice(-4096) ?? ""}`,
     );
   return result.stdout;
 };
@@ -85,7 +83,9 @@ async function guardPostgres() {
   // The guard holds the reservation until it ends, so no other test is handed PostgreSQL's port.
   const { port, release } = await reservePort();
   try {
-    startCluster(data, { initialise, start: () => start(port), report });
+    // server.lock excludes every previous guard. Live leases join their existing supervisor,
+    // so only this startup can discard the disposable cluster, including retained databases/roles.
+    startCluster(data, { initialise, start: () => start(port), report, discardRetained: true });
     const postmaster = NodeFS.readFileSync(NodePath.join(data, "postmaster.pid"), "utf8");
     NodeFS.writeFileSync(startRecord(data), `${postmaster.split("\n")[0]}\n`);
   } catch (error) {
@@ -96,8 +96,8 @@ async function guardPostgres() {
   let running = true;
   const stop = () => {
     if (!running) return;
-    stopPostgres();
     running = false;
+    stopPostgres();
   };
   process.once("exit", stop);
   const finish = () => {
@@ -113,7 +113,6 @@ async function guardPostgres() {
 }
 
 async function supervise() {
-  pruneStaleClusters({ home: postgresHome, now: Date.now(), report });
   let bootstrapOwner = process.connected;
   let onIdle: (() => void) | undefined;
   process.once("disconnect", () => {
@@ -130,12 +129,21 @@ async function supervise() {
       NodeURL.fileURLToPath(import.meta.url),
       "guard",
     ],
-    { stdio: ["pipe", "ignore", "inherit", "ipc"] },
+    { stdio: ["pipe", "ignore", "pipe", "ipc"] },
   );
+  let stderrTail = "";
+  guard.stderr!.setEncoding("utf8");
+  guard.stderr!.on("data", (chunk: string) => {
+    stderrTail = (stderrTail + chunk).slice(-8192);
+    process.stderr.write(chunk);
+  });
   const exited = new Promise<void>((resolve, reject) => {
     guard.once("error", reject);
-    guard.once("exit", (code, signal) =>
-      code === 0 ? resolve() : reject(new Error(`PostgreSQL guard exited: ${code ?? signal}`)),
+    // close follows the stderr drain, so the relayed failure includes the last pg_ctl diagnostic.
+    guard.once("close", (code, signal) =>
+      code === 0
+        ? resolve()
+        : reject(new Error(`PostgreSQL guard exited: ${code ?? signal}\n${stderrTail}`)),
     );
   });
   try {
@@ -157,8 +165,6 @@ async function supervise() {
       guard.stdin!.end();
       await exited;
     };
-    const sql = (query: string) =>
-      run("psql", [urlOf(port, "postgres"), "-X", "-v", "ON_ERROR_STOP=1", "-Atc", query]);
     // Lease DDL runs off the event loop, so admission never waits behind another lease's DDL.
     const ddl = async (query: string) => {
       await execFile(
@@ -197,8 +203,6 @@ async function supervise() {
         END LOOP; END $$`,
       ]);
     };
-    // A healed cluster has none; a reused one still holds what its killed runs left.
-    reclaimDeadRuns(sql);
     const owners = new Set<NodeNet.Socket>();
     let shutdown: Promise<void> | undefined;
     const idle = (): Promise<void> => {
@@ -231,7 +235,7 @@ async function supervise() {
       );
       return shutdown;
     };
-    // Serialize all leases, including cleanup, rather than just pairing each lease's replies.
+    // Serialize database commands across leases rather than just pairing each lease's replies.
     let queue = Promise.resolve();
     const server = NodeNet.createServer({ allowHalfOpen: true }, (socket) => {
       owners.add(socket);
@@ -301,7 +305,8 @@ async function supervise() {
         released = true;
         lines.close();
         try {
-          for (const name of databases) await ddl(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
+          // Other workers still run here. Database drops wait for checkpoints, so reclaim them
+          // only by rebuilding at the next supervisor startup, before admitting tests.
           owners.delete(socket);
           await idle();
           if (requested) socket.write(`${JSON.stringify({ url: "" })}\n`);

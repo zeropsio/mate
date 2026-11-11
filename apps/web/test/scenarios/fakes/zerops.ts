@@ -1,16 +1,21 @@
 import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import { scenarioWorld, type ScenarioWorld } from "./zeropsWorld.ts";
 import { ZeropsWrites } from "./zeropsWrites.ts";
-import { ZeropsDeviceLogin } from "./zeropsDeviceLogin.ts";
+import { FakeClock } from "./fakeClock.ts";
+// Zerops' published import schema, as the platform serves it to whoever validates an import (HQ
+// checks every group recipe tier against it before a recipe change merges).
+import importSchema from "./import-project-yml-json-schema.json" with { type: "json" };
+import type { TestHq } from "@zerops/session/testing/test-hq";
 import * as NodeEvents from "node:events";
 import { WebSocket } from "ws";
-import type { FakeWorld } from "../../../../hq/test/harness/zeropsFake.ts";
+import type { FakeWorld } from "../harness/fakeWorld.ts";
 import {
   deadline,
   type HttpHandler,
   type WireRequest,
   type WireResponse,
 } from "../harness/http.ts";
+import { fromTestHq, toTestHq } from "../harness/testHqWire.ts";
 
 export type EntityRow = Record<string, unknown> & { id: string; _version: number };
 export interface SearchTerm {
@@ -38,30 +43,6 @@ export type Fault = {
   silence?: boolean;
 };
 
-/** Fake time advances only when its driver says so; pending HTTP work is released by advance. */
-export class FakeClock {
-  now = 0;
-  private wall: { at: number; elapsed: number } | undefined;
-  /** Live wall time until a driver/page clock pins it; latency/credential time stays independent. */
-  currentTimeMillis() {
-    return this.wall ? this.wall.at + this.now - this.wall.elapsed : Date.now() + this.now;
-  }
-  setTime(timestamp: number) {
-    if (!Number.isFinite(timestamp)) throw new Error("Clock timestamp must be finite");
-    this.wall = { at: timestamp, elapsed: this.now };
-  }
-  private pending: { at: number; resolve: () => void }[] = [];
-  wait(ms: number) {
-    return new Promise<void>((resolve) => this.pending.push({ at: this.now + ms, resolve }));
-  }
-  advance(ms: number) {
-    this.now += ms;
-    const due = this.pending.filter((task) => task.at <= this.now);
-    this.pending = this.pending.filter((task) => task.at > this.now);
-    for (const task of due) task.resolve();
-  }
-}
-
 /** One platform world, served over HTTP to both the browser and real Core. */
 export class ZeropsFake {
   readonly clock = new FakeClock();
@@ -81,8 +62,12 @@ export class ZeropsFake {
   }
   origin = "";
   readonly writes: ZeropsWrites;
-  /** Device login, its consent page, and the sessions it issues. */
-  readonly deviceLogin: ZeropsDeviceLogin;
+  /**
+   * Zerops HQ, in a scenario of the `zerops-hq` build: its sessions act as their person, and the
+   * API's `/auth/*` are its own.
+   */
+  hq: TestHq | undefined;
+  private heldStarts: Promise<void> | undefined;
   private token = 0;
   socketTokenTtl = 60_000;
   private socketSerial = 0;
@@ -99,7 +84,27 @@ export class ZeropsFake {
   constructor(world: FakeWorld & Partial<ScenarioWorld>) {
     this.world = scenarioWorld(world);
     this.writes = new ZeropsWrites(this);
-    this.deviceLogin = new ZeropsDeviceLogin(this.world, () => this.clock.currentTimeMillis());
+  }
+
+  /**
+   * New device logins are answered only once released: a test gets the Zerops window ready (its
+   * routing) before the client points it at the consent page.
+   */
+  holdDeviceLoginStarts(): () => void {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    this.heldStarts = promise;
+    return () => {
+      if (this.heldStarts === promise) this.heldStarts = undefined;
+      resolve();
+    };
+  }
+
+  /** The person an HQ session acts as, by their credential; undefined for any other token. */
+  private hqPerson(token: string | undefined) {
+    const userId = token === undefined ? undefined : this.hq?.whoIs(token)?.userId;
+    if (userId === undefined) return undefined;
+    for (const [credential, name] of this.world.people) if (name === userId) return credential;
+    throw new Error(`HQ signed in ${userId}, whom the scenario never defined`);
   }
 
   matches(row: EntityRow, search: SearchTerm[]) {
@@ -330,14 +335,19 @@ export class ZeropsFake {
     );
   }
 
-  async waitForRequest(key: string, count = 1) {
-    if ((this.requests.get(key) ?? 0) >= count) return;
+  /** Waits for `count` requests to `key`, or for `count` that carry `credential` where named. */
+  async waitForRequest(key: string, count = 1, credential?: string) {
+    const seen = () =>
+      (credential === undefined
+        ? this.requests.get(key)
+        : this.requestsByCredential.get(credential)?.get(key)) ?? 0;
+    if (seen() >= count) return;
     let listener = () => {};
     try {
       await deadline(
         new Promise<void>((resolve) => {
           listener = () => {
-            if ((this.requests.get(key) ?? 0) >= count) resolve();
+            if (seen() >= count) resolve();
           };
           this.events.on("request", listener);
         }),
@@ -475,23 +485,25 @@ export class ZeropsFake {
         headers: fault.status === 429 ? { "Retry-After": String(fault.retryAfter ?? 1) } : {},
       };
     if (request.method === "OPTIONS") return { body: {} };
-    const device = await this.deviceLogin.handle(request, path);
-    if (device) return device;
-    // A device-login session acts as its person; one refused (expired, rotated, ended) is refused.
+    if (request.method === "GET" && path === "/settings/import-project-yml-json-schema.json")
+      return { body: importSchema };
+    if (this.hq && path.startsWith("/auth/")) {
+      if (/^\/auth\/device-login(?:\/sudo)?$/u.test(path)) await this.heldStarts;
+      return fromTestHq(this.hq.auth(toTestHq(request)));
+    }
+    // An HQ session acts as its person. If HQ refuses the token (expired, rotated, ended), it reads as unknown here.
     const sessionToken = request.headers.authorization?.replace(/^Bearer /u, "");
-    const person = this.deviceLogin.credential(sessionToken);
-    if (person === null) return this.error(401, "notAuthorized", "Not authorized");
+    const person = this.hqPerson(sessionToken);
     if (person !== undefined) {
       if (
         /^\/(?:project-env|user-data)\/[^/]+\/reveal$/u.test(path) &&
-        !this.deviceLogin.inSudo(sessionToken!)
+        !this.hq!.whoIs(sessionToken!)!.inSudo
       )
         return this.error(403, "notInSudoMode", "Not in sudo mode");
       request = { ...request, headers: { ...request.headers, authorization: `Bearer ${person}` } };
     }
     if (path === "/web-socket/login") {
-      const socketPerson = this.deviceLogin.credential(String(request.body.token));
-      if (socketPerson === null) return this.error(401, "notAuthorized", "Not authorized");
+      const socketPerson = this.hqPerson(String(request.body.token));
       if (socketPerson !== undefined)
         request = { ...request, body: { ...request.body, token: socketPerson } };
     }
@@ -653,6 +665,8 @@ export class ZeropsFake {
     const logs = path.match(/^\/project\/([^/]+)\/log$/u);
     if (logs) return { body: { url: `${this.origin}/scenario-logs/${logs[1]}` } };
     if (path.startsWith("/scenario-logs/")) return { body: { items: [] } };
+    if (path === "/client-user/search" && request.method === "POST")
+      return this.memberSearch(request, bearer);
     if (path.endsWith("/search")) return this.search(path.split("/")[1]!, request, bearer);
     if (clientScope && path === `/client/${clientScope}/project`) {
       const rows = this.rows("project").filter(
@@ -708,6 +722,44 @@ export class ZeropsFake {
     }
     return undefined;
   };
+
+  /**
+   * The organisation's persons, one row per membership as Zerops answers them: top-level `id` is
+   * the membership (`clientUserId`), `userId` and `user.id` the person (ZEROPS-067). Tokens are
+   * no persons and stay out (ZEROPS-062); any credential of the organisation reads them
+   * (ZEROPS-055). Rows carry `_version` like every search row (ZEROPS-064).
+   */
+  private memberSearch(request: WireRequest, apiToken: string): WireResponse {
+    const search = (request.body.search ?? []) as SearchTerm[];
+    const rows = [...this.world.members]
+      .filter(([orgId]) => this.canAccessOrg(apiToken, orgId))
+      .flatMap(([orgId, members]) =>
+        members
+          .filter((member) => member.kind === "person")
+          .map((member) => ({
+            id: member.clientUserId,
+            clientId: orgId,
+            userId: member.userId,
+            roleCode: member.roleCode,
+            status: member.status,
+            canCreateProjects: member.canCreateProjects,
+            user: {
+              id: member.userId,
+              email: member.email ?? `${member.userId}@example.test`,
+              firstName: member.name,
+              lastName: "",
+              fullName: member.name,
+            },
+            _version: 1,
+          })),
+      )
+      .filter((row) => this.matches(row, search));
+    const limit = Number(request.body.limit ?? 1000);
+    const offset = Number(request.body.offset ?? 0);
+    return {
+      body: { items: rows.slice(offset, offset + limit), totalHits: rows.length, limit, offset },
+    };
+  }
 
   private search(kind: string, request: WireRequest, apiToken: string): WireResponse {
     const search = (request.body.search ?? []) as SearchTerm[];

@@ -1,3 +1,4 @@
+import { HqProblems } from "./HqProblems";
 /**
  * A change's review: a pull request, read before it is merged (R2–R6).
  *
@@ -18,6 +19,7 @@
  */
 import {
   changeAskPrompt,
+  changeCommitRows,
   changeHandedPrompt,
   changeRemarks,
   changeReview,
@@ -43,7 +45,9 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { Button, InlineButton } from "~/components/ui/button";
 import { buildThreadRouteParams } from "~/threadRoutes";
 import { useAskMateToFix, type FixProblem } from "~/zerops/fixRequest";
-import { useHqAppDetailHold } from "~/zerops/useHqAppDetail";
+import { useHqAppDetailHold, useHqAppFailure } from "~/zerops/useHqAppDetail";
+import { useAccountDataOptional } from "~/zerops/ZeropsAccountData";
+import { CHANGE_HEAD_PATIENCE_MS, changeReviewReadout } from "~/zerops/changeReviewReadout.logic";
 import { useFlowVerbs } from "~/zerops/flowVerbs";
 import { useMateNames, useProjectFlows, type ZeropsProjectFlow } from "~/zerops/projectFlows";
 import { reviewTargetKey, useOpenReview, type ReviewTarget } from "~/zerops/review";
@@ -76,6 +80,7 @@ import {
   changeReceipt,
   changeReadVerdict,
   mergeFoot,
+  NOT_RECORDED_ASIDE,
   otherOpenChanges,
   reviewBranch,
   reviewKindLine,
@@ -92,11 +97,12 @@ import {
   type GitRepoAt,
 } from "../gitBrowser/GitBrowserLink";
 import { ReviewCommits } from "./ReviewCommits";
-import { mainStageOf, useGroupName, useMatePreviews, type ReviewPreview } from "./reviewReads";
+import { mainStagesOf, useGroupName, useMatePreviews, type ReviewPreview } from "./reviewReads";
 import { ReviewConversation } from "./ReviewConversation";
 import { ReviewDescription } from "./ReviewDescription";
 import { useReviewHold } from "./ZeropsReviewDialog";
 import {
+  ReviewFailed,
   ReviewFiles,
   ReviewSection,
   ReviewTry,
@@ -108,9 +114,9 @@ import {
   type ReviewDiffState,
 } from "./ZeropsReviewSurface";
 
+const NO_STAGES: ReadonlyArray<string> = [];
+
 const KIND: ReviewKind = "change";
-/** How long a change with no description holds the room of its run's words for them. */
-const RUN_WORDS_WAIT_MS = 3_000;
 
 type ChangeTarget = Extract<ReviewTarget, { readonly kind: "change" }>;
 
@@ -279,8 +285,22 @@ function ChangeReviewData({
   // The offer HQ sends right after a merge is not read yet; once it has gone pending and is read
   // again, it counts the change this review merged, and the review stops adding it.
   const offerPending = flow?.release.summaryRead === "pending";
-  const [offerMoved, setOfferMoved] = useState(false);
-  if (press.kind === "done" && offerPending && !offerMoved) setOfferMoved(true);
+  const [offerWentPending, setOfferWentPending] = useState(false);
+  if (press.kind === "done" && offerPending && !offerWentPending) setOfferWentPending(true);
+  // The offer can also arrive whole, never seen pending — before the merge's own answer, even. It
+  // is then told from the one in hand at the press by what its tag would list.
+  const offerKey =
+    flow === undefined
+      ? undefined
+      : [
+          flow.release.groupHead,
+          ...flow.release.entries.map(({ service, commit }) => `${service}@${commit}`),
+        ].join(" ");
+  const [offerAtPress, setOfferAtPress] = useState<string | undefined>(undefined);
+  const offerMoved = offerWentPending || offerKey !== offerAtPress;
+  // Until it has moved, the offer in hand was read before this merge: its gate may still say
+  // nothing waits for production, which the merge just made untrue.
+  const offerStale = press.kind === "done" && !offerMoved;
   const [closePress, setClosePress] = useState({
     head: pull.headSha,
     press: { kind: "idle" } as ReviewClose,
@@ -295,13 +315,14 @@ function ChangeReviewData({
   const setClosing = (press: ReviewClose) => setClosePress({ head: pull.headSha, press });
   const change = { repository: pull.repository, number: pull.number };
   const merge = async () => {
+    setOfferAtPress(offerKey);
     setPress({ kind: "running" });
     // The head the review shows: its files were read for it, and one pushed since HQ refuses.
     const outcome = await verbs.merge(target.groupId, change, pull.headSha);
     setPress(
       outcome.ok
         ? { kind: "done", deploys: outcome.deploys, rollout: outcome.rollout }
-        : { kind: "refused", reason: outcome.reason },
+        : { kind: "refused", reason: outcome.reason, problems: outcome.problems },
     );
   };
   const close = async () => {
@@ -350,7 +371,37 @@ function ChangeReviewData({
     main:
       flow?.repos?.find((repo) => repo.name === pull.repository)?.mainHead ??
       mergedMain(pull.repository, flow?.merged),
+    // A record read while HQ still checked it is read again once the live change says it judged.
+    mergeability: pull.mergeability,
   });
+  // A change drawn from the menu's row has no head, so nothing is read for it until the
+  // application's detail says one: HQ's reason, or after a while its silence, is said with Try again.
+  const appFailure = useHqAppFailure(target.groupId);
+  const account = useAccountDataOptional();
+  const headless = detail.readout.kind === "none" && appFailure === undefined;
+  const [tries, setTries] = useState(0);
+  const [outwaitedAt, setOutwaitedAt] = useState<number | null>(null);
+  if (!headless && outwaitedAt !== null) setOutwaitedAt(null);
+  useEffect(() => {
+    if (!headless) return;
+    const timer = setTimeout(() => {
+      setOutwaitedAt(tries);
+    }, CHANGE_HEAD_PATIENCE_MS);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [headless, tries]);
+  const readout = changeReviewReadout({
+    detail: detail.readout,
+    appFailure: appFailure?.reason,
+    outwaited: outwaitedAt === tries,
+  });
+  const retry = () => {
+    if (detail.readout.kind !== "none") return detail.retry();
+    setTries((count) => count + 1);
+    if (appFailure !== undefined) appFailure.again();
+    else account?.retryDetail({ family: "hqAppDetail", ownerId: target.groupId });
+  };
   // The recorded review holds no diff: a file's is read when the person unfolds it.
   const fileDiffs = useZeropsChangeFileDiffs({
     appId: target.groupId,
@@ -408,25 +459,10 @@ function ChangeReviewData({
         : NO_REMARKS,
     [comments.state, me, nameOf, mateNameOf],
   );
-  // A conversation that never answers is not waited on for ever: its lines give way.
-  const [runGaveUp, setRunGaveUp] = useState(false);
-  useEffect(() => {
-    if (!run.reading) return;
-    const timer = setTimeout(() => {
-      setRunGaveUp(true);
-    }, RUN_WORDS_WAIT_MS);
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [run.reading]);
   const runRef = run.threadRef;
-  // The sheet slides in once it can say all of it: its files and commits, how it merges, whether
-  // HQ offers Merge, and its words — or after a moment, each part still read standing in its shape.
-  useReviewHold(
-    detail.readout.kind === "reading" ||
-      reviewOffers === undefined ||
-      (pull.description === undefined && run.reading && !runGaveUp),
-  );
+  // The sheet slides in once it can say all of it: its description, files and commits, how it
+  // merges, whether HQ offers Merge — or after a moment, each part still read standing in its shape.
+  useReviewHold(readout.kind === "reading" || reviewOffers === undefined);
   const project = useGroupName(target.groupId);
   // A recipe change is no pair's code: it offers every preview.
   const previews = useMatePreviews(
@@ -438,7 +474,6 @@ function ChangeReviewData({
   return (
     <ChangeReviewView
       environments={flow?.environmentInputs ?? NO_ENVIRONMENTS}
-      productionHeld={question.productionHeld}
       addable={question.addable}
       onAddEnvironment={(tier) => {
         onClose();
@@ -455,8 +490,8 @@ function ChangeReviewData({
       previews={previews}
       project={project}
       appId={target.groupId}
-      stage={flow === undefined ? undefined : mainStageOf(flow)?.name}
-      release={flow?.release.gate}
+      stages={flow === undefined ? NO_STAGES : mainStagesOf(flow).map((entry) => entry.name)}
+      release={offerStale ? undefined : flow?.release.gate}
       mate={
         mate === undefined
           ? {
@@ -501,7 +536,7 @@ function ChangeReviewData({
         if (refusal === null) onClose();
       }}
       onClose={onClose}
-      onRetry={detail.retry}
+      onRetry={retry}
       showFiles={detail.showFiles}
       fileDiffs={fileDiffs}
       commits={readCommits}
@@ -514,6 +549,14 @@ function ChangeReviewData({
         onClose();
       }}
       others={flow === undefined ? NO_OTHERS : otherOpenChanges(pull, flow.pullRequests)}
+      landedTitle={
+        pull.corePush === undefined
+          ? undefined
+          : flow?.merged.find(
+              (other) =>
+                other.repository === pull.repository && other.number === pull.corePush?.landed,
+            )?.title
+      }
       onOpenChange={(number) => {
         const other = {
           kind: "change",
@@ -545,13 +588,12 @@ function ChangeReviewData({
       }
       pictures={pictures}
       pull={pull}
-      readout={detail.readout}
-      run={{ words: run.words, reading: run.reading && !runGaveUp }}
+      readout={readout}
       titleId={titleId}
       waitingForProduction={waitingForProduction({
         summary: flow?.release.summary,
         pending: offerPending,
-        mergedAhead: press.kind === "done" && !offerMoved,
+        mergedAhead: offerStale,
       })}
     />
   );
@@ -596,7 +638,6 @@ export interface ChangeReviewViewProps {
   /** Handing it to one of them, as pressed. */
   readonly hand?: ReviewHand | undefined;
   readonly onHand?: ((mateProjectId: string) => void) | undefined;
-  readonly run: { readonly words: string | undefined; readonly reading: boolean };
   /** The organization's official HQ, which its description's pictures and links are on. */
   readonly hqAddress: string | undefined;
   /** Where its description's pictures are read from, as the person. */
@@ -608,8 +649,6 @@ export interface ChangeReviewViewProps {
   readonly environments: ReadonlyArray<{ readonly tier: GroupEnvironmentTier }>;
   /** How many changes wait for production, as HQ's release offer counts them; `undefined` until it has. */
   readonly waitingForProduction: number | undefined;
-  /** Whether the application holds a production in any state (`ReviewQuestion`). */
-  readonly productionHeld?: boolean | undefined;
   /** The environments the one question after a first merge may offer. */
   readonly addable?: ChangeReviewInput["addable"];
   /** Opens the form that adds the stage or the production the question offered. */
@@ -622,8 +661,8 @@ export interface ChangeReviewViewProps {
   readonly project?: string | undefined;
   /** The change's application at HQ: where its code opens in the Git browser; absent, it opens nowhere. */
   readonly appId?: string | undefined;
-  /** The stage that follows `main`, by name: "Merge to stage". */
-  readonly stage?: string | undefined;
+  /** The stages that deploy what merges into `main`, by name (`mainStagesOf`). */
+  readonly stages?: ReadonlyArray<string>;
   /** The Mate's previews, each pair's stage half by its service: "Try it". */
   readonly previews?: ReadonlyArray<ReviewPreview> | undefined;
   readonly now: number;
@@ -650,6 +689,11 @@ export interface ChangeReviewViewProps {
    * review; none where it is the Mate's only one there.
    */
   readonly others?: ReadonlyArray<Pick<FlowPullRequest, "number" | "title">> | undefined;
+  /**
+   * The title of the merged change HQ last brought `main` in after (`corePush.landed`), where the
+   * flow holds it: HQ's push names it in the commits.
+   */
+  readonly landedTitle?: string | undefined;
   /** Opens the review of the Mate's other open change `number` in the repository. */
   readonly onOpenChange?: ((number: number) => void) | undefined;
   /** Keeps the words on the change and hands them to its Mate, who changes the code. */
@@ -670,16 +714,33 @@ export interface ChangeReviewViewProps {
   readonly onClose: () => void;
 }
 
+/** Where a change merges: every change here merges into `main`. */
+const MERGES_INTO = { words: "main" } as const;
+
 export function ChangeReviewView(props: ChangeReviewViewProps) {
   const { pull, readout, mate, press, closing } = props;
   const read = readout.kind === "read" ? readout.value : undefined;
-  const commits: ReadoutPart<ReadonlyArray<ChangeReadoutCommit>> =
+  const listed: ReadoutPart<ReadonlyArray<ChangeReadoutCommit>> =
     props.commits ??
     (readout.kind === "read" ? { kind: "read", value: readout.value.commits } : readout);
+  // HQ's merge of main on its branch reads as HQ's push, never as its Mate's commit.
+  const commits: ReadoutPart<ReadonlyArray<ChangeReadoutCommit>> =
+    listed.kind === "read"
+      ? {
+          kind: "read",
+          value: changeCommitRows({
+            commits: listed.value,
+            corePush: pull.corePush,
+            landedTitle: props.landedTitle,
+          }),
+        }
+      : listed;
   const history = useReviewFold();
+  // A stage picks a merge up only where it deploys merges from `main` (`mainStagesOf`): one that
+  // never deployed from it is promised nothing (Larkspur, 2026-10-28).
   const downstream = {
     production: props.environments.some((entry) => entry.tier === "production"),
-    stage: props.environments.some((entry) => entry.tier === "stage"),
+    stage: (props.stages ?? NO_STAGES).length > 0,
   };
   const model = changeReview({
     // How it merges, and whether `main` moved on under it, are the flow's until HQ's record of it
@@ -693,14 +754,21 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
             behind: read.behind,
           },
     mateName: mate.name,
-    readout: readout.kind === "read" ? "read" : readout.kind === "failed" ? "failed" : "reading",
+    // A change whose head HQ never said has nothing Merge could name: its failure holds Merge.
+    readout:
+      readout.kind === "read"
+        ? "read"
+        : readout.kind === "failed"
+          ? pull.headSha === undefined
+            ? "unread"
+            : "failed"
+          : "reading",
     commits: commits.kind === "read" ? commits.value.length : undefined,
     conflict:
       read === undefined || read.mergeability !== "conflicting"
         ? undefined
         : { files: read.conflict, by: undefined },
     downstream,
-    productionHeld: props.productionHeld,
     addable: props.addable,
     waiting: {
       count: props.waitingForProduction,
@@ -708,7 +776,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     },
     release: props.release,
     recipe:
-      pull.kind === "recipe" && read !== undefined
+      pull.kind === "recipe" && read?.filesKnown === true
         ? recipeReach({
             files: read.files.map((file) => ({ filename: file.path })),
             environments: props.environments,
@@ -721,8 +789,9 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     hand: props.hand,
     now: props.now,
   });
+  // Files HQ has not recorded are not known, never none: no size is said of them.
   const size = sizeWords({
-    files: read?.files.length,
+    files: read?.filesKnown === false ? undefined : read?.files.length,
     additions: read?.files.reduce((sum, file) => sum + file.additions, 0),
     deletions: read?.files.reduce((sum, file) => sum + file.deletions, 0),
   });
@@ -750,6 +819,15 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
   const fromRelease = props.back !== undefined;
   const primary = fromRelease ? undefined : model.primary;
   const secondary = model.secondary;
+  // The ask to close it, where the review offers it: asked, the quiet word keeps it open instead.
+  const closeOffer = asked || fromRelease ? undefined : secondary;
+  const onPage = props.frame === "page";
+  // Beside Merge, closing it is rare and takes the change away: it stands behind ⋯ in the sheet's
+  // top line. Where closing is what the review is for — nothing to merge, its Mate gone — and on a
+  // page, which has no top line, it stays in the foot.
+  const closeInMenu =
+    closeOffer !== undefined && !onPage && primary !== undefined && model.orphan === undefined;
+  const busy = model.verdict.state === "merging" || model.verdict.state === "closing";
   const files = useReviewFold();
   const checks = useReviewFold();
   const talk = useReviewFold();
@@ -816,12 +894,37 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
             : mergeFoot({
                 state: model.verdict.state,
                 consequence: model.consequence,
-                stage: props.stage,
+                stages: props.stages ?? NO_STAGES,
                 live: props.live,
                 warning: receipt?.warning,
+                recipe: pull.kind === "recipe",
               })
       }
-      dismiss={over && !fromRelease ? "Close" : undefined}
+      consequenceRoom={
+        question !== undefined || model.consequenceRoom === undefined
+          ? undefined
+          : mergeFoot({
+              state: model.verdict.state,
+              consequence: model.consequenceRoom,
+              stages: props.stages ?? NO_STAGES,
+              live: props.live,
+              warning: receipt?.warning,
+              recipe: pull.kind === "recipe",
+            })
+      }
+      // Beside the one button the quiet way out stands where a release's Cancel does, and leaves
+      // the change open; with nothing to press, × closes the sheet.
+      dismiss={
+        fromRelease
+          ? undefined
+          : over
+            ? "Close"
+            : primary === undefined
+              ? undefined
+              : busy
+                ? "Close"
+                : "Keep it open"
+      }
       face={mate.tint === undefined ? undefined : { tint: mate.tint, shape: mate.shape }}
       frame={props.frame}
       fix={
@@ -864,6 +967,19 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
           </GitBrowserLink>
         )
       }
+      menu={
+        closeOffer === undefined || !closeInMenu
+          ? undefined
+          : [
+              {
+                label: closeOffer.label,
+                destructive: true,
+                onPress: () => {
+                  props.onClosing("ask");
+                },
+              },
+            ]
+      }
       onOpenPage={props.onOpenPage}
       onClose={props.onClose}
       primary={
@@ -871,7 +987,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
           ? undefined
           : {
               ...primary,
-              busy: model.verdict.state === "merging" || model.verdict.state === "closing",
+              busy,
               label:
                 model.verdict.state === "merging"
                   ? "Merging"
@@ -884,9 +1000,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
                   ? undefined
                   : pull.pullRequest?.state === "open"
                     ? "Merge on GitHub"
-                    : props.stage !== undefined
-                      ? `Merge to ${props.stage}`
-                      : undefined,
+                    : undefined,
               onPress: () => {
                 if (asked) props.onClosing("press");
                 else props.onMerge();
@@ -894,7 +1008,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
             }
       }
       secondary={
-        secondary === undefined
+        secondary === undefined || closeInMenu
           ? undefined
           : {
               ...secondary,
@@ -917,8 +1031,17 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       title={pull.title}
       titleId={props.titleId}
       verdict={model.verdict}
+      where={MERGES_INTO}
       whySaid={!onLine && whySaid(model.verdict, pull.ready === false)}
     >
+      <HqProblems problems={model.problems} />
+      {readout.kind === "failed" ? (
+        <ReviewFailed
+          onRetry={props.onRetry}
+          reason={readout.reason}
+          what="The change details couldn't be loaded."
+        />
+      ) : null}
       {others.length === 0 ? null : (
         <p className="rv-words" data-zerops-surface="change-others">
           Other open changes in {pull.repository}:{" "}
@@ -966,14 +1089,16 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       )}
       <ReviewDescription
         code={filesAt}
-        description={pull.description}
+        // The live change's description, else the one its record holds: a change drawn from the
+        // menu's row carries none until the application's detail says it.
+        description={pull.description ?? read?.description}
         hqAddress={props.hqAddress}
         onOpenRun={props.onOpenRun}
         pictures={props.pictures}
-        run={props.run}
+        reading={pull.description === undefined && readout.kind === "reading"}
       />
       {props.previews === undefined || props.previews.length === 0 ? null : (
-        <ReviewTry previews={props.previews} />
+        <ReviewTry mateName={mate.name} previews={props.previews} />
       )}
       {receipt === undefined ? null : (
         <ReviewSection aside={String(receipt.parts.length)} title="Parts">
@@ -988,7 +1113,9 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       )}
       <ReviewSection
         aside={
-          size === undefined ? undefined : (
+          read?.filesKnown === false ? (
+            NOT_RECORDED_ASIDE
+          ) : size === undefined ? undefined : (
             <>
               {read?.files.length} changed ·{" "}
               <ReviewSize additions={size.additions} deletions={size.deletions} />

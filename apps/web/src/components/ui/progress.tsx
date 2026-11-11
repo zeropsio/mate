@@ -1,21 +1,11 @@
 import { CheckIcon, CircleAlertIcon, CircleDashedIcon } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
+import { useSecondsNowMs } from "~/zerops/useNowMs";
 
 import { FailureDetails } from "./failure";
 import { progressClock, progressFraction, type ProgressState } from "./progress.logic";
-
-/** Now, once a second while `ticking`: the clock reads the start time on every paint. */
-function useSecondClock(ticking: boolean): number {
-  const [nowMs, setNowMs] = useState(() => Date.now());
-  useEffect(() => {
-    if (!ticking) return;
-    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [ticking]);
-  return nowMs;
-}
 
 /** The highest value seen for `key`: the bar never takes a step back, even when its input does. */
 function useForwardOnly(value: number, key: string): number {
@@ -84,7 +74,7 @@ function Progress({
    * says it once, in its own place.
    */
   readonly paceMs?: number | null;
-  /** The caller's clock, when it has one; else the row keeps its own, once a second. */
+  /** The caller's clock, when it has one; else the row reads the shared second while it runs. */
   readonly nowMs?: number | undefined;
   /** The operation's identity: a new one starts its bar afresh. */
   readonly identity?: string;
@@ -95,7 +85,7 @@ function Progress({
   const state: ProgressState = view.state;
   // A step once reached stays reached: an input that lags behind never takes the row back.
   const reached = useForwardOnly(at, `${identity}:step`);
-  const ownNow = useSecondClock(nowMs === undefined && state === "running");
+  const ownNow = useSecondsNowMs(nowMs === undefined && state === "running");
   const now = nowMs ?? ownNow;
   const ended = state === "running" ? null : (endedAtMs ?? now);
   // An ended row whose end is unknown says no time rather than one it would make up.

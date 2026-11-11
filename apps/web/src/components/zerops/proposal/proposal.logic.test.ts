@@ -7,11 +7,14 @@ import type {
 import type { ZeropsAccessLevel, ZeropsProposal } from "@t3tools/client-runtime/zerops/model";
 import { describe, expect, it } from "vite-plus/test";
 
+import { askWhereWords } from "../../ask/ask.logic";
+
 import type { HqProposalDecision } from "@t3tools/client-runtime/zerops/hq";
 
 import {
   PROPOSAL_DECISIONS_KEPT,
   accessAskLines,
+  approveAuthority,
   chiefAsk,
   chiefMessageTarget,
   decisionFromHq,
@@ -23,7 +26,10 @@ import {
   proposalMessage,
   handOverWords,
   heldMessageWords,
+  proposalAskState,
+  proposalAskWhere,
   proposalOutcomeWords,
+  proposalPress,
   proposalRecipient,
   proposalStage,
   proposalTitle,
@@ -222,6 +228,21 @@ describe("envProposalWrite", () => {
         },
       ],
       [
+        "a secret held already is never rewritten as a plain value",
+        view([{ values: [{ ...value("v1", "STRIPE_KEY"), sensitive: true }] }]),
+        envProposal("project", "STRIPE_KEY"),
+        { refused: "STRIPE_KEY is a secret: change it in the Vault." },
+      ],
+      [
+        "a secret held already takes a secret value in place",
+        view([{ values: [{ ...value("v1", "STRIPE_KEY"), sensitive: true }] }]),
+        envProposal("project", "STRIPE_KEY", true),
+        {
+          scope: { kind: "shared" },
+          write: { kind: "update", id: "v1", key: "STRIPE_KEY", value: "v2", sensitive: true },
+        },
+      ],
+      [
         "a service's value goes to that service's vault",
         view([
           {},
@@ -237,6 +258,15 @@ describe("envProposalWrite", () => {
         {
           scope: { kind: "service", serviceId: "s-api" },
           write: { kind: "update", id: "v9", key: "LOG_LEVEL", value: "v2", sensitive: false },
+        },
+      ],
+      [
+        "a name the Mate keeps for itself is refused: the Vault would never list the value",
+        view([{ values: [value("v1", "OTHER")] }]),
+        envProposal("project", "MATE_CARD_SECRET_CHECK", true),
+        {
+          refused:
+            "MATE_CARD_SECRET_CHECK is a name Mate keeps for itself: the Vault wouldn't list it.",
         },
       ],
       [
@@ -351,6 +381,7 @@ const place = (
   waitingDomains: [],
   waitingPorts: [],
   readsProject: false,
+  nothingDeployed: false,
   ...over,
 });
 
@@ -505,7 +536,7 @@ describe("proposalOutcomeWords", () => {
     projectId: "p-shop",
     params: { words: "Who owns orders?" },
   };
-  it.each<[ZeropsProposal, Exclude<ProposalStage, "open" | "failed">, string]>([
+  it.each<[ZeropsProposal, Exclude<ProposalStage, "open" | "failed" | "declined">, string]>([
     [restart, "running", "Restarting medusa…"],
     [restart, "done", "Restarted medusa."],
     [start, "running", "Starting medusa…"],
@@ -520,7 +551,6 @@ describe("proposalOutcomeWords", () => {
     [askChief, "done", "Sent to your Chief."],
     [domain, "running", "Adding contoso.com and www.contoso.com…"],
     [domain, "done", "Added contoso.com and www.contoso.com."],
-    [restart, "declined", "Declined. Nothing ran."],
     [restart, "unseen", "Approved before the page reloaded. How it ended was not seen here."],
   ])("%j %s: %s", (proposal, stage, words) => {
     expect(proposalOutcomeWords(proposal, stage)).toBe(words);
@@ -545,12 +575,12 @@ describe("proposalWhere", () => {
     [
       "a project value is every app's",
       { ...envProposal("project", "A"), projectName: "Contoso" },
-      "Every app in Contoso",
+      "Shared vault in Contoso",
     ],
     [
       "a service's value is its own",
       { ...envProposal("service", "A"), projectName: "Contoso", serviceName: "api" },
-      "api's own · Contoso",
+      "api vault · Contoso",
     ],
     ["a domain names the service and the web port it points at", domain, "→ medusa · port 9000"],
     [
@@ -604,19 +634,23 @@ const held = (fields: Partial<HqProposalDecision>): HqProposalDecision => ({
 
 describe("decisions kept at HQ", () => {
   it.each<[string, HqProposalDecision, ProposalDecision]>([
-    ["an approval HQ holds no end of is still running", held({}), { state: "running", at: AT }],
-    ["an approval that ended done", held({ outcome: "done" }), { state: "done", at: AT }],
+    [
+      "an approval HQ holds no end of is still running",
+      held({}),
+      { state: "running", at: AT, by: "u1" },
+    ],
+    ["an approval that ended done", held({ outcome: "done" }), { state: "done", at: AT, by: "u1" }],
     [
       "an approval that failed says the platform's words",
       held({ outcome: "failed", words: "Zerops said no." }),
-      { state: "failed", at: AT, message: "Zerops said no." },
+      { state: "failed", at: AT, by: "u1", message: "Zerops said no." },
     ],
     [
       "a failure HQ holds no words of still says it failed",
       held({ outcome: "failed" }),
-      { state: "failed", at: AT, message: "Zerops did not do it." },
+      { state: "failed", at: AT, by: "u1", message: "Zerops did not do it." },
     ],
-    ["a decline", held({ decision: "declined" }), { state: "declined", at: AT }],
+    ["a decline", held({ decision: "declined" }), { state: "declined", at: AT, by: "u1" }],
   ])("a card reads %s", (_title, record, decision) => {
     expect(decisionFromHq(record)).toEqual(decision);
   });
@@ -895,7 +929,7 @@ describe("accessProposalPlan", () => {
     ],
     [
       "offers nothing where none of its projects can be given",
-      { projects: new Map(), hq: new Set() },
+      { projects: new Map() },
       "None of these projects can be given from here.",
     ],
   ])("access approval %s", (_title, over, words) => {
@@ -910,18 +944,6 @@ describe("accessProposalPlan", () => {
       kind: "ready",
       changes: [{ clientUserId: "cu-greta", projectId: "pProd", roleCode: "READ_ONLY" }],
       dropped: ["Contoso - Dana's Mate: not a project in your organization"],
-    });
-  });
-
-  it("an approved access change never gives anyone the Headquarters project", () => {
-    const plan = ready([{ person: "Greta Guest", level: "read" }], {
-      projects: new Map([...projects, ["pDana", "Headquarters"]]),
-      hq: new Set(["pDana"]),
-    });
-    expect(plan).toMatchObject({
-      kind: "ready",
-      changes: [{ clientUserId: "cu-greta", projectId: "pProd", roleCode: "READ_ONLY" }],
-      dropped: ["Headquarters: the Headquarters project is never given"],
     });
   });
 
@@ -1046,7 +1068,7 @@ describe("accessProposalPlan", () => {
     },
   );
 
-  it.each<[string, Exclude<ProposalStage, "open" | "failed">, string]>([
+  it.each<[string, Exclude<ProposalStage, "open" | "failed" | "declined">, string]>([
     ["running", "running", "Changing access to Contoso…"],
     ["done", "done", "Access to Contoso changed."],
   ])("an approved access change says it %s", (_title, stage, words) => {
@@ -1057,5 +1079,174 @@ describe("accessProposalPlan", () => {
     expect(proposalWhere(proposal([{ person: "Dana", level: "full" }]))).toBe(
       "All of Contoso: its environments and Mates",
     );
+  });
+});
+
+describe("approveAuthority", () => {
+  const restart: ZeropsProposal = {
+    id: "p1",
+    kind: "service.restart",
+    summary: "Restart api in Production",
+    projectId: "p-prod",
+    projectName: "Production",
+    serviceId: "s-api",
+  };
+  const message: ZeropsProposal = {
+    id: "p2",
+    kind: "mate.message",
+    summary: "Message Rossy",
+    projectId: "p-rossy",
+    params: { to: { projectId: "p-rossy", mateName: "Rossy" }, words: "Ship it." },
+  };
+  it.each<[string, ZeropsProposal, boolean | undefined, boolean | undefined, string | undefined]>([
+    ["a viewer who may work in the Mate and change its target", restart, true, true, undefined],
+    ["a viewer whose Zerops roles are not read yet", restart, undefined, undefined, undefined],
+    [
+      "a viewer who may not work in the Mate",
+      restart,
+      false,
+      true,
+      "Only someone who can work in this Mate can decide this.",
+    ],
+    [
+      "a viewer who may not change the card's target",
+      restart,
+      true,
+      false,
+      "Only someone who can change Production can approve this.",
+    ],
+    ["a message, which changes no project of the viewer's", message, true, false, undefined],
+  ])(
+    "Approve is held back only where the viewer's Zerops role does not let them do it: %s",
+    (_case, proposal, home, target, words) => {
+      expect(approveAuthority(proposal, home, target)).toBe(words);
+    },
+  );
+});
+
+describe("a proposal on the ask card", () => {
+  const restart: ZeropsProposal = {
+    id: "p1",
+    kind: "service.restart",
+    summary: "Restart medusa in Contoso",
+    projectId: "p-contoso",
+    projectName: "Contoso",
+    serviceId: "s",
+    serviceName: "medusa",
+  };
+  const message: ZeropsProposal = {
+    id: "p2",
+    kind: "mate.message",
+    summary: "Ask Rossy",
+    params: { to: { projectId: "p", mateName: "Rossy" }, words: "Hi" },
+  };
+
+  it.each<[string, ZeropsProposal, "stage" | "production" | null, string]>([
+    ["a restart names its service", restart, null, "Restart medusa"],
+    ["a stop names its service", { ...restart, kind: "service.stop" }, null, "Stop medusa"],
+    ["a start names its service", { ...restart, kind: "service.start" }, null, "Start medusa"],
+    [
+      "a value on production",
+      envProposal("project", "STRIPE_KEY"),
+      "production",
+      "Set on production",
+    ],
+    ["a value on stage", envProposal("project", "STRIPE_KEY"), "stage", "Set on stage"],
+    [
+      "a value elsewhere names its key",
+      envProposal("project", "STRIPE_KEY"),
+      null,
+      "Set STRIPE_KEY",
+    ],
+    ["a message names its Mate", message, null, "Send to Rossy"],
+    ["two domains", domain, null, "Add the domains"],
+  ])("the main press names what it does: %s", (_name, proposal, tier, want) => {
+    expect(proposalPress(proposal, tier)).toBe(want);
+  });
+
+  it.each<[string, ZeropsProposal, "stage" | "production" | null, string | null, string | null]>([
+    ["a service on production", restart, "production", null, "Production · medusa"],
+    ["a service on stage", restart, "stage", null, "Stage · medusa"],
+    ["a service in the Mate's own project", restart, null, "p-contoso", "This Mate · medusa"],
+    ["a service in another project", restart, null, "p-home", "Project · medusa"],
+    [
+      "an app's own value, by the app alone",
+      { ...envProposal("service", "LOG_LEVEL"), projectName: "Shop", serviceName: "api" },
+      null,
+      "p-home",
+      "Project · api",
+    ],
+    [
+      "an app's own value on stage",
+      { ...envProposal("service", "LOG_LEVEL"), serviceName: "api" },
+      "stage",
+      null,
+      "Stage · api",
+    ],
+    [
+      "a production value for every app",
+      envProposal("project", "STRIPE_KEY"),
+      "production",
+      null,
+      "Production · every app",
+    ],
+    ["a message names the Mate it goes to", message, null, null, "Rossy"],
+  ])("the chip names where it acts: %s", (_name, proposal, tier, home, want) => {
+    const where = proposalAskWhere(proposal, tier, home);
+    expect(where === null ? null : askWhereWords(where)).toBe(want);
+  });
+
+  const state = (
+    stage: ProposalStage,
+    over: Partial<Parameters<typeof proposalAskState>[0]> = {},
+  ) =>
+    proposalAskState({
+      proposal: restart,
+      stage,
+      failure: undefined,
+      readOnlyReason: undefined,
+      by: "Aleš",
+      at: "15:02",
+      ...over,
+    });
+
+  it.each<[string, ProposalStage, Partial<Parameters<typeof proposalAskState>[0]>, unknown]>([
+    ["undecided: the press and Not now", "open", {}, { kind: "waiting" }],
+    [
+      "someone else's to decide",
+      "open",
+      { readOnlyReason: "Only someone who can work in this Mate can decide this." },
+      { kind: "othersToAnswer", words: "Only someone who can work in this Mate can decide this." },
+    ],
+    [
+      "approved and running",
+      "running",
+      {},
+      { kind: "working", words: "Restarting medusa…", pressed: "main" },
+    ],
+    [
+      "done: the result and who",
+      "done",
+      {},
+      { kind: "done", words: "Restarted medusa · Aleš, 15:02", told: null },
+    ],
+    [
+      "failed: the platform's words",
+      "failed",
+      { failure: "Service is mid-deploy." },
+      { kind: "failed", words: "Service is mid-deploy." },
+    ],
+    ["Not now: who and when", "declined", {}, { kind: "notNow", words: "Not now · Aleš, 15:02" }],
+    [
+      "approved before a reload, its end not seen",
+      "unseen",
+      { by: null, at: null },
+      {
+        kind: "replaced",
+        words: "Approved before the page reloaded. How it ended was not seen here.",
+      },
+    ],
+  ])("the card's state comes from HQ's decision record: %s", (_name, stage, over, want) => {
+    expect(state(stage, over)).toEqual(want);
   });
 });

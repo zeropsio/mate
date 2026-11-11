@@ -1,0 +1,42 @@
+{
+  "$provenance": {
+    "producer": "mate-hq",
+    "via": "rolling-restart.test.ts",
+    "schema": "navigation project:<id>",
+    "target": "Local conformance HQ from the recorded source, with disposable PostgreSQL, fake Zerops, and a second HQ instance",
+    "recordedAt": "2026-11-09",
+    "steps": [
+      "Use Node 24.19.0 and follow conformance/README.md for PostgreSQL, Git, Go and object-store prerequisites; run vp install in conformance/.",
+      "From conformance/ set recordings_dir to a new empty temporary directory outside the checkout.",
+      "From conformance/ run TMPDIR=/private/tmp GOTOOLCHAIN=local HQ_RECORD_EXEMPLARS=\"$recordings_dir\" env -u HQ_COMMAND vp test run rolling-restart.test.ts s10a-github-app.test.ts s8-stream.test.ts s19a-link.test.ts s21b-interactions.test.ts -t \"Every HQ instance's organisation view holds|An installation GitHub does not answer|An app no person is recorded|Members see whether the GitHub App is connected|A delivered application's deletion|Another person cannot enter a personal Chief|A Discord account is linked only\".",
+      "The selected cases use local fake services; the navigation case reads through a second HQ instance.",
+      "Compare the generated navigation-project.signed-in.json value with this recording. Remove the temporary directory; the harness stops its local processes and fixtures."
+    ],
+    "command": "cd conformance && TMPDIR=/private/tmp GOTOOLCHAIN=local HQ_RECORD_EXEMPLARS=<empty-output-dir> env -u HQ_COMMAND vp test run rolling-restart.test.ts s10a-github-app.test.ts s8-stream.test.ts s19a-link.test.ts s21b-interactions.test.ts -t \"Every HQ instance's organisation view holds|An installation GitHub does not answer|An app no person is recorded|Members see whether the GitHub App is connected|A delivered application's deletion|Another person cannot enter a personal Chief|A Discord account is linked only\""
+  },
+  "value": {
+    "appId": "00000000-0000-4000-8000-000000000001",
+    "everSignedIn": {
+      "claude-code": "owner"
+    },
+    "kind": "mate",
+    "mate": {
+      "face": "S5",
+      "madeBy": "owner",
+      "serviceId": "zcp",
+      "standupRequestedBy": null
+    },
+    "name": "P-s5-00000000-0000-4000-8000-000000000002",
+    "person": {
+      "chiefProjectId": null,
+      "mine": true,
+      "ownerUserId": "owner",
+      "unseen": null,
+      "waitsOnViewer": true
+    },
+    "projectId": "P-s5-00000000-0000-4000-8000-000000000002",
+    "signedInNow": {
+      "claude-code": "owner"
+    }
+  }
+}

@@ -39,7 +39,8 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
     >
       {showTerminalControl ? (
         <Tooltip>
-          <TooltipTrigger render={<span className="flex shrink-0" />}>
+          {/* A phone's header carries the terminal in its menu (`ChatHeader`): one toggle here. */}
+          <TooltipTrigger render={<span className="flex shrink-0 max-sm:hidden" />}>
             <Toggle
               className="shrink-0 [-webkit-app-region:no-drag]"
               pressed={terminalOpen}

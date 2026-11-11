@@ -1,0 +1,65 @@
+{
+  "$provenance": {
+    "producer": "vitest 5.0.1 JSON reporter (vite-plus 1.0.0)",
+    "revision": "85ed94e73c891f818dde8d68d686c49dba926313",
+    "source": "cd apps/server && vp test run --fileParallelism <abs>/src/spi/serverCommandReadiness.test.ts --reporter=json --outputFile=<file> --includeTaskLocation; mutation: apps/server/src/spi/serverCommandReadiness.ts | await: Deferred.await(ready), → await: Effect.void,",
+    "schema": "decodeVitestReport in scripts/witness-replay.ts"
+  },
+  "value": {
+    "numTotalTestSuites": 2,
+    "numPassedTestSuites": 0,
+    "numFailedTestSuites": 2,
+    "numPendingTestSuites": 0,
+    "numTotalTests": 1,
+    "numPassedTests": 0,
+    "numFailedTests": 1,
+    "numPendingTests": 0,
+    "numTodoTests": 0,
+    "snapshot": {
+      "added": 0,
+      "failure": false,
+      "filesAdded": 0,
+      "filesRemoved": 0,
+      "filesRemovedList": [],
+      "filesUnmatched": 0,
+      "filesUpdated": 0,
+      "matched": 0,
+      "total": 0,
+      "unchecked": 0,
+      "uncheckedKeysByFile": [],
+      "unmatched": 0,
+      "updated": 0,
+      "didUpdate": false
+    },
+    "startTime": 1794017194714,
+    "success": false,
+    "testResults": [
+      {
+        "assertionResults": [
+          {
+            "ancestorTitles": ["ServerCommandReadiness"],
+            "fullName": "ServerCommandReadiness holds a waiter until startup completes it, then releases every waiter",
+            "status": "failed",
+            "title": "holds a waiter until startup completes it, then releases every waiter",
+            "duration": 4.863584000000003,
+            "failureMessages": [
+              "AssertionError: a waiter ran before completion: expected { _id: 'Exit', _tag: 'Success', …(1) } to equal undefined\n    at /Volumes/mate-wt/z3/b1-birth/apps/server/src/spi/serverCommandReadiness.test.ts:14:14\n    at Generator.next (<anonymous>)\n    at IteratorImpl.~effect/Effect/successCont (file:///Volumes/mate-wt/z3/b1-birth/node_modules/.pnpm/effect@4.0.1_patch_hash=4432458ea742ee6a8cd0358d3be6f57557b10df74f0efd7a4eb0a64eedd84586/node_modules/effect/dist/internal/effect.js:973:28)\n    at ExitPrimitive.~effect/Effect/evaluate (file:///Volumes/mate-wt/z3/b1-birth/node_modules/.pnpm/effect@4.0.1_patch_hash=4432458ea742ee6a8cd0358d3be6f57557b10df74f0efd7a4eb0a64eedd84586/node_modules/effect/dist/internal/core.js:326:30)\n    at FiberImpl.runLoop (file:///Volumes/mate-wt/z3/b1-birth/node_modules/.pnpm/effect@4.0.1_patch_hash=4432458ea742ee6a8cd0358d3be6f57557b10df74f0efd7a4eb0a64eedd84586/node_modules/effect/dist/internal/effect.js:448:95)\n    at FiberImpl.evaluate (file:///Volumes/mate-wt/z3/b1-birth/node_modules/.pnpm/effect@4.0.1_patch_hash=4432458ea742ee6a8cd0358d3be6f57557b10df74f0efd7a4eb0a64eedd84586/node_modules/effect/dist/internal/effect.js:398:23)\n    at AsyncResource.runInAsyncScope (node:async_hooks:226:14)\n    at FiberImpl.evaluate (file:///Volumes/mate-wt/z3/b1-birth/node_modules/.pnpm/effect@4.0.1_patch_hash=4432458ea742ee6a8cd0358d3be6f57557b10df74f0efd7a4eb0a64eedd84586/node_modules/effect/dist/internal/effect.js:392:27)\n    at Array.<anonymous> (file:///Volumes/mate-wt/z3/b1-birth/node_modules/.pnpm/effect@4.0.1_patch_hash=4432458ea742ee6a8cd0358d3be6f57557b10df74f0efd7a4eb0a64eedd84586/node_modules/effect/dist/internal/effect.js:722:13)\n    at MixedSchedulerDispatcher.runTasks (file:///Volumes/mate-wt/z3/b1-birth/node_modules/.pnpm/effect@4.0.1_patch_hash=4432458ea742ee6a8cd0358d3be6f57557b10df74f0efd7a4eb0a64eedd84586/node_modules/effect/dist/Scheduler.js:169:17)"
+            ],
+            "location": {
+              "line": 9,
+              "column": 6
+            },
+            "meta": {},
+            "tags": [],
+            "benchmarks": []
+          }
+        ],
+        "startTime": 1794017194873,
+        "endTime": 1794017194877.8635,
+        "status": "failed",
+        "message": "",
+        "name": "/Volumes/mate-wt/z3/b1-birth/apps/server/src/spi/serverCommandReadiness.test.ts"
+      }
+    ]
+  }
+}

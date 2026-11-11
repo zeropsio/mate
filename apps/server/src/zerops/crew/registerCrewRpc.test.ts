@@ -12,7 +12,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 
-import { ZEROPS_SUBJECT_PREFIX } from "../zeropsSubject.ts";
+import { ZEROPS_SUBJECT_PREFIX } from "@t3tools/contracts";
 import { inertCrewEngine } from "./CrewEngine.ts";
 import { registerCrewRpc } from "./registerCrewRpc.ts";
 import { eventually } from "./testing/crewEngineFixture.ts";
@@ -32,7 +32,7 @@ describe("registerCrewRpc", () => {
     "during update, an accepted crew can pause or stop while new crew work is refused",
     () =>
       Effect.gen(function* () {
-        const admission = yield* makeRpcUpdateAdmission(undefined);
+        const admission = yield* makeRpcUpdateAdmission(false);
         yield* admission.begin;
         const handlers = registerCrewRpc({
           crew: { ...inertCrewEngine, command: () => Effect.succeed({ _tag: "done" }) },

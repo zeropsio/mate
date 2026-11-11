@@ -17,7 +17,7 @@ import {
   isBootstrapStartWithRoute,
 } from "./classify.ts";
 import { compareAnchors } from "./order.ts";
-import { readZeropsProposal } from "./proposal.ts";
+import { ORG_TOOL_PREFIX, readZeropsProposal } from "./proposal.ts";
 import type {
   ZeropsCall,
   ZeropsOperation,
@@ -76,6 +76,39 @@ const CARD_TOOL_KINDS: Readonly<Record<string, ZeropsOperationKind>> = {
   zerops_discover: "discover",
   zerops_standup: "standup",
 };
+
+/**
+ * The read tools whose results only an opened card draws: how the agent looked, never what the
+ * run left — a closed card counts them on its worked line, from its run's summary.
+ */
+const OPENED_CARD_TOOLS: ReadonlySet<string> = new Set([
+  "zerops_logs",
+  "zerops_events",
+  "zerops_discover",
+]);
+
+/**
+ * The tools whose results a settled run's closed card draws from (`engine.readRun`'s `tools`, a
+ * trailing `*` naming every tool it begins): every tool a card is built from but the reads an
+ * opened card alone draws; the workflow and mount calls a bootstrap or a mount folds; the page
+ * the Mate publishes; and the tools that answer proposals — the Chief's organization tools and
+ * the propose tools. A tool given a card here is read by a closed card unless named a read above.
+ */
+export const CLOSED_CARD_RESULT_TOOLS: ReadonlyArray<string> = [
+  ...Object.keys(CARD_TOOL_KINDS).filter((tool) => !OPENED_CARD_TOOLS.has(tool)),
+  "zerops_workflow",
+  "zerops_mount",
+  "zerops_publish_page",
+  `${ORG_TOOL_PREFIX}*`,
+  "zerops_propose_*",
+];
+
+/** Whether a closed card reads a tool's result: `CLOSED_CARD_RESULT_TOOLS` names it. */
+export function closedCardReadsResultOf(toolName: string): boolean {
+  return CLOSED_CARD_RESULT_TOOLS.some((named) =>
+    named.endsWith("*") ? toolName.startsWith(named.slice(0, -1)) : toolName === named,
+  );
+}
 
 /**
  * The read tools' kinds: a read is how the agent looked, not an outcome, so
@@ -197,7 +230,9 @@ function buildStandaloneOperation(
     ...(fields.target !== undefined ? { target: fields.target } : {}),
     ...(fields.batch !== undefined ? { batch: fields.batch } : {}),
     ...(fields.strategy !== undefined ? { strategy: fields.strategy } : {}),
+    ...(fields.devServer === undefined ? {} : { devServer: fields.devServer }),
     ...(fields.refused !== undefined ? { refused: fields.refused } : {}),
+    ...(fields.standIn !== undefined ? { standIn: fields.standIn } : {}),
     ...(fields.pullRequest !== undefined ? { pullRequest: fields.pullRequest } : {}),
     ...(fields.resultStatus !== undefined ? { resultStatus: fields.resultStatus } : {}),
     hasResult: fields.hasResult,

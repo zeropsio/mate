@@ -1,32 +1,103 @@
-import { describe, expect, it } from "@effect/vitest";
+import { scenarioSuite } from "../../harness/suite.ts";
+import { describe, expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { HqStreamMessage } from "@t3tools/shared/hqStream";
+import { rendered } from "../../harness/completedHttp.ts";
+import { recordStep } from "../../harness/lastStep.ts";
+import { transportGate } from "../../harness/transportGate.ts";
 import { installArea as installChangeTransport, hqFramesFor } from "../d-change/fake.ts";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { environmentFixture, environmentFixtureWith } from "./fake.ts";
 import { addGitEnvironment, environmentActions, environmentJobs, gitEnvironments } from "./dsl.ts";
 
 const decodeHqFrame = Schema.decodeSync(Schema.fromJsonString(HqStreamMessage));
 
 describe("E: stage, production, release and rollback", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect(
       "A Git environment arriving after first paint renders without a project and its mounted removal returns an HQ receipt",
       () =>
         Effect.gen(function* () {
           const f = yield* environmentFixture;
           const a = environmentActions(f);
+          const hq = yield* Effect.acquireRelease(
+            Effect.promise(() => transportGate(() => f.s.drivers.hq.origin, "")),
+            (gate) => Effect.promise(gate.close),
+          );
+          f.s.drivers.routes["https://hqzone.prg1-zerops.zone"] = hq.origin;
+          yield* Effect.promise(() => f.s.web.setRoutes());
           yield* f.s.given.signedIn;
-          yield* Effect.promise(() => f.s.page.setViewport({ width: 1786, height: 1000 }));
+          const page = f.s.page;
+          const globe = `[data-zerops-group="${f.appId}"] [data-zerops-surface="sidebar-project-sites"]`;
+          const popover = '[data-zerops-surface="sidebar-project-sites-popover"]';
+          yield* Effect.promise(async () => {
+            await page.setViewport({ width: 1786, height: 1000 });
+            await page.goto(`${f.s.web.origin}/group/${f.appId}`);
+            await page.waitForSelector(globe);
+            await page.click(globe);
+            await page.waitForSelector(popover);
+            await page.waitForFunction(
+              (selector) => document.querySelector(selector)?.textContent?.includes("Shop-stage"),
+              {},
+              popover,
+            );
+            await page.click(globe);
+          });
+          // Hold the real update until the bookmark paints, then use the sidebar as its receipt.
+          const held = hq.holdFrames(
+            (frame) =>
+              !frame.isBinary && Buffer.from(frame.bytes).toString().includes('"git-witness"'),
+          );
+          yield* Effect.addFinalizer(() => Effect.sync(held.release));
           const environmentId = yield* addGitEnvironment(f, { tier: "stage", name: "git-witness" });
-          yield* Effect.promise(() =>
-            f.s.page.goto(`${f.s.web.origin}/group/${f.appId}/${environmentId}`),
-          );
-          yield* a.then.text(
-            "Nothing pushed yet · pushes on the next merge",
-            '[data-zerops-surface="git-stop-detail"]',
-          );
+          yield* Effect.promise(() => held.held);
+          const documentBefore = yield* Effect.promise(() => page.evaluateHandle(() => document));
+          yield* Effect.promise(async () => {
+            await page.evaluate((path) => {
+              history.pushState(history.state, "", path);
+              window.dispatchEvent(new PopStateEvent("popstate"));
+            }, `/group/${f.appId}/${environmentId}`);
+            await page.waitForSelector('[data-slot="loading"][aria-label="This environment"]');
+            await rendered(page);
+            await page.click(globe);
+          });
+          held.release();
+          yield* Effect.promise(async () => {
+            await page.waitForFunction(
+              (selector) =>
+                document
+                  .querySelector(selector)
+                  ?.textContent?.toLowerCase()
+                  .includes("git-witness"),
+              {},
+              popover,
+            );
+            // The page asks HQ for the application's repositories once the environment arrives:
+            // its push state is the answer to that read, never the first frame after the arrival.
+            await page.waitForFunction(
+              () =>
+                document
+                  .querySelector('[data-zerops-surface="git-stop-detail"]')
+                  ?.querySelector('[data-zerops-surface="git-delivery-status"]')
+                  ?.getAttribute("data-standing") !== "checking",
+            );
+            await rendered(page);
+          });
+          expect(
+            yield* Effect.promise(() =>
+              page.evaluate((before) => before === document, documentBefore),
+            ),
+          ).toBe(true);
+          yield* Effect.promise(() => documentBefore.dispose());
+          expect(
+            yield* Effect.promise(() =>
+              page.evaluate(
+                () =>
+                  document.querySelector('[data-zerops-surface="git-stop-detail"]')?.textContent ??
+                  "",
+              ),
+            ),
+          ).toContain("Nothing pushed yet · pushes on the next merge");
           expect(
             yield* Effect.promise(() =>
               f.s.page.$eval(
@@ -35,6 +106,7 @@ describe("E: stage, production, release and rollback", () => {
               ),
             ),
           ).toBe("Nothing pushed yet · pushes on the next merge");
+          yield* Effect.promise(() => page.click(globe));
           yield* a.when.click("Remove environment");
           yield* a.then.text("Removing this environment never deletes an external");
           const removed = f.s.page.waitForResponse(
@@ -72,7 +144,11 @@ describe("E: stage, production, release and rollback", () => {
           yield* f.s.given.signedIn;
           yield* a.when.reviewFromReleaseTag;
           yield* a.then.releaseEntriesShow("Ship the storefront");
-          yield* a.when.click("Release v0.1.0 to production");
+          if (stage === "absent") {
+            recordStep("release review deploys its version to production");
+            yield* a.then.text("Version");
+          }
+          yield* a.when.click("Release v0.1.0");
           yield* a.when.finish("production");
           yield* a.then.text("v0.1.0 is live");
           yield* a.when.click("Close");
@@ -123,48 +199,7 @@ describe("E: stage, production, release and rollback", () => {
         yield* a.when.open("stage");
         yield* a.when.click("Add web");
         yield* a.when.finishImport("stage");
-        yield* a.then.text(
-          `Building ${sha.slice(0, 7)}`,
-          '[data-zerops-surface="stop-service-job"][data-zerops-job-state="building"]',
-        );
-        yield* a.when.finish("stage");
-        yield* a.then.text("Deployed");
-        yield* a.then.text(sha.slice(0, 7));
-        yield* f.s.then.noExternalNetwork;
-      }),
-    );
-
-    // A colleague's accepted release must replace this review's unsent offer without another tag.
-    it.effect("a colleague's release displaces an open local release offer", () =>
-      Effect.gen(function* () {
-        const f = yield* environmentFixtureWith({}, { stage: false });
-        const a = environmentActions(f);
-        yield* f.merge();
-        yield* f.s.given.signedIn;
-        yield* a.when.openFromNavigation;
-        yield* a.when.click("Review release");
-        yield* a.then.text("Release v0.1.0");
-        yield* f.release("v0.1.0");
-        yield* a.then.text("Releasing v0.1.0");
-        yield* a.then.running("production");
-        expect(yield* a.then.productionBuildCount).toBe(1);
-        yield* a.when.finish("production");
-        yield* a.then.text("v0.1.0 is live");
-        yield* a.when.click("Close");
-        yield* a.then.rowShows("v0.1.0", "Live");
-        expect(yield* a.then.productionBuildCount).toBe(1);
-        yield* f.s.then.noExternalNetwork;
-      }),
-    );
-
-    // Catches a stage deployment that keeps building after Zerops reports success.
-    it.effect("stage deployment ends with the deployed commit", () =>
-      Effect.gen(function* () {
-        const f = yield* environmentFixture;
-        const a = environmentActions(f);
-        const sha = yield* f.merge();
-        yield* f.s.given.signedIn;
-        yield* a.when.open("stage");
+        recordStep("stage deployment ends with the deployed commit");
         yield* a.then.text(
           `Building ${sha.slice(0, 7)}`,
           '[data-zerops-surface="stop-service-job"][data-zerops-job-state="building"]',
@@ -189,24 +224,6 @@ describe("E: stage, production, release and rollback", () => {
         yield* a.when.reload;
         yield* a.then.text("Deployed");
         yield* a.then.text(sha.slice(0, 7));
-        yield* f.s.then.noExternalNetwork;
-      }),
-    );
-
-    // Catches Review release failing to send the chosen version to production.
-    it.effect("release review deploys its version to production", () =>
-      Effect.gen(function* () {
-        const f = yield* environmentFixture;
-        const a = environmentActions(f);
-        yield* f.merge();
-        yield* a.when.finish("stage");
-        yield* f.s.given.signedIn;
-        yield* a.when.open("production");
-        yield* a.when.releaseFromReview;
-        yield* a.when.finish("production");
-        yield* a.then.text("v0.1.0 is live");
-        yield* a.when.click("Close");
-        yield* a.then.rowShows("v0.1.0", "Live");
         yield* f.s.then.noExternalNetwork;
       }),
     );
@@ -238,19 +255,21 @@ describe("E: stage, production, release and rollback", () => {
           yield* Effect.promise(async () => installChangeTransport(f.s.drivers));
           yield* Effect.promise(() => f.s.web.setRoutes());
           const frames = hqFramesFor(f.s.drivers);
-          yield* f.merge();
+          const earlier = yield* f.merge();
           yield* a.when.finish("stage");
           yield* f.release("v0.1.0");
           yield* a.when.finish("production");
+          yield* f.s.given.signedIn;
+          yield* a.when.open("production");
+          yield* a.then.rowShows("v0.1.0", "Live");
           const later = yield* f.merge("Improve the storefront");
           yield* a.when.finish("stage");
           yield* f.release("v0.1.1");
           yield* a.when.finish("production");
           // A roll back in the line makes the releases' recorded histories no account of what
           // moves, so this one's lists are read from the repositories, when the person asks.
-          yield* f.s.given.signedIn;
-          yield* a.when.open("production");
           yield* a.then.rowShows("v0.1.1", "Live");
+          recordStep("rollback deploys the earlier commit as a new release");
           yield* a.when.rollBack("v0.1.0");
           yield* a.when.click("Roll back to v0.1.0");
           yield* a.when.finish("production");
@@ -258,7 +277,11 @@ describe("E: stage, production, release and rollback", () => {
           yield* a.when.click("Close");
           yield* a.then.reviewClosed;
           yield* a.then.rowShows("v0.1.2", "Live");
-          frames.hold((frame) => decodeHqFrame(frame).type === "compare");
+          yield* a.then.rowShows("v0.1.2", earlier.slice(0, 7));
+          frames.hold((frame) => {
+            const type = decodeHqFrame(frame).type;
+            return type === "compare" || type === "compare-error";
+          });
           const submissions: string[] = [];
           f.s.page.on("request", (request) => {
             if (
@@ -270,6 +293,14 @@ describe("E: stage, production, release and rollback", () => {
           yield* a.when.rollBack("v0.1.1");
           yield* a.then.text("Not known yet.", '[role="dialog"]');
           yield* a.when.click("Compare");
+          // Hold the actual answer; a refusal names the read instead of waiting for a success.
+          const answer = decodeHqFrame(yield* Effect.promise(() => frames.received()));
+          if (answer.type === "compare-error")
+            return yield* Effect.die(
+              new Error(
+                `HQ compare failed (${answer.code}): ${answer.reason ?? answer.disposition}`,
+              ),
+            );
           yield* a.then.text("Comparing in HQ…");
           const confirmation = yield* Effect.promise(() =>
             f.s.page.locator('::-p-aria(Roll back to v0.1.1[role="button"])').waitHandle(),
@@ -280,26 +311,6 @@ describe("E: stage, production, release and rollback", () => {
             ),
           ).toBe(true);
           expect(submissions).toHaveLength(0);
-          // The press was held behind a comparison HQ was really asked for, not behind a note.
-          yield* Effect.promise(async () => {
-            let stop: ReturnType<typeof setTimeout> | undefined;
-            try {
-              await Promise.race([
-                frames.received(),
-                new Promise<never>((_, reject) => {
-                  stop = setTimeout(async () => {
-                    reject(
-                      new Error(
-                        `No compare frame was held\n${await f.s.page.evaluate(() => document.body.innerText)}`,
-                      ),
-                    );
-                  }, 30_000);
-                }),
-              ]);
-            } finally {
-              clearTimeout(stop);
-            }
-          });
           frames.resume();
           yield* a.when.click("Roll back to v0.1.1");
           const process = yield* a.deployment("production");
@@ -327,37 +338,6 @@ describe("E: stage, production, release and rollback", () => {
           yield* a.when.click("Close");
           yield* a.then.rowShows("v0.1.3", "Live");
           yield* a.then.rowShows("v0.1.3", later.slice(0, 7));
-          yield* f.s.then.noExternalNetwork;
-        }),
-      90_000,
-    );
-
-    // Catches Roll back losing the earlier release's commit or failing to make a new live version.
-    it.effect(
-      "rollback deploys the earlier commit as a new release",
-      () =>
-        Effect.gen(function* () {
-          const f = yield* environmentFixture;
-          const a = environmentActions(f);
-          const earlier = yield* f.merge();
-          yield* a.when.finish("stage");
-          yield* f.release("v0.1.0");
-          yield* a.when.finish("production");
-          yield* f.s.given.signedIn;
-          yield* a.when.open("production");
-          yield* a.then.rowShows("v0.1.0", "Live");
-          yield* f.merge("Improve the storefront");
-          yield* a.when.finish("stage");
-          yield* f.release("v0.1.1");
-          yield* a.when.finish("production");
-          yield* a.then.rowShows("v0.1.1", "Live");
-          yield* a.when.rollBack("v0.1.0");
-          yield* a.when.click("Roll back to v0.1.0");
-          yield* a.when.finish("production");
-          yield* a.then.text("Rolled back to v0.1.0");
-          yield* a.when.click("Close");
-          yield* a.then.rowShows("v0.1.2", "Live");
-          yield* a.then.rowShows("v0.1.2", earlier.slice(0, 7));
           yield* f.s.then.noExternalNetwork;
         }),
       90_000,

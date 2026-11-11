@@ -6,6 +6,7 @@ import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as Cause from "effect/Cause";
 import * as Queue from "effect/Queue";
+import * as Deferred from "effect/Deferred";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -14,6 +15,7 @@ import { request } from "../../rpc/client.ts";
 import {
   WORKSPACE_READS,
   workspaceId,
+  workspaceLinkKey,
   workspaceScope,
   type WorkspaceRead,
   type WorkspaceTarget,
@@ -26,9 +28,17 @@ import type { LinkKey } from "../model.ts";
 import type { StreamEvent, StreamFault } from "../streamMachine.ts";
 
 const denied = Schema.is(EnvironmentAuthorizationError);
+/** A failure's own words: a Mate error's `detail` (its message is empty), else its message. */
+function failureWords(cause: unknown): string | undefined {
+  if (typeof cause !== "object" || cause === null) return undefined;
+  const { detail, message } = cause as { detail?: unknown; message?: unknown };
+  if (typeof detail === "string" && detail.trim() !== "") return detail;
+  if (typeof message === "string" && message.trim() !== "") return message;
+  return undefined;
+}
+
 export function workspaceFailure(cause: unknown): StreamFault {
-  const message =
-    cause instanceof Error ? cause.message : "The Mate could not read this workspace detail.";
+  const message = failureWords(cause) ?? "The Mate could not read this workspace detail.";
   if (
     typeof cause === "object" &&
     cause !== null &&
@@ -88,10 +98,22 @@ interface Entry {
   environmentId: string;
   cwd?: string;
   wake?: () => void;
+  /** Asked to read again before `wake` was there: woken as it arrives. */
+  wakeAsked?: boolean;
+  /** The read under way: since when, and how to give it up for a fresh one. */
+  reading?: { readonly since: number; readonly restart: Deferred.Deferred<void> };
   supervisor?: LinkSupervisor;
   fiber?: Fiber.Fiber<never>;
   expiry?: Fiber.Fiber<void>;
 }
+/**
+ * Views asking again within this long of a read starting share it (one window focus answered by
+ * several views); a read under way longer is given up for a fresh one, so a read that never
+ * answers recovers on a refresh, not only at its deadline.
+ */
+const SHARED_READ_MS = 1_000;
+const RESTARTED = Symbol("restarted");
+
 export function makeWorkspaceReads(store: AccountStore, wire: WorkspaceWire) {
   let closed = false;
   const active = new Map<string, Entry>();
@@ -103,7 +125,7 @@ export function makeWorkspaceReads(store: AccountStore, wire: WorkspaceWire) {
   const demand = <K extends WorkspaceRead>(kind: K, target: WorkspaceTarget<K>, manual = false) => {
     if (closed) return () => {};
     const scope = workspaceScope(kind, target);
-    const key: LinkKey = `mate:workspace-${encodeURIComponent(scope)}`;
+    const key = workspaceLinkKey(scope);
     const id = workspaceId(target);
     const family = WORKSPACE_READS[kind].family;
     // A released URL may expire with no view present; its next demand cannot reuse it.
@@ -154,7 +176,8 @@ export function makeWorkspaceReads(store: AccountStore, wire: WorkspaceWire) {
       made.fiber = Effect.runFork(
         Effect.scoped(
           Effect.gen(function* () {
-            const changes = yield* Queue.unbounded<void>();
+            // One read waiting is enough: asks landing before it starts share it.
+            const changes = yield* Queue.dropping<void>(1);
             const supervisor: LinkSupervisor = yield* superviseLink({
               store,
               key,
@@ -171,8 +194,14 @@ export function makeWorkspaceReads(store: AccountStore, wire: WorkspaceWire) {
                     yield* signal(scope, { kind: "attempt" });
                     yield* signal(scope, { kind: "handshake" });
                     const generation = streamOf(store.state(), scope).generation;
-                    const answer = yield* Effect.result(wire.read(kind, target));
+                    const restart = yield* Deferred.make<void>();
+                    made.reading = { since: yield* Clock.currentTimeMillis, restart };
+                    const answer = yield* Effect.raceFirst(
+                      Effect.result(wire.read(kind, target)),
+                      Deferred.await(restart).pipe(Effect.as(RESTARTED)),
+                    ).pipe(Effect.ensuring(Effect.sync(() => delete made.reading)));
                     if (closed || active.get(scope) !== made) return yield* Effect.never;
+                    if (answer === RESTARTED) continue;
                     if (streamOf(store.state(), scope).generation !== generation) {
                       yield* Queue.take(changes);
                       continue;
@@ -300,6 +329,13 @@ export function makeWorkspaceReads(store: AccountStore, wire: WorkspaceWire) {
                 Queue.offerUnsafe(changes, undefined);
               }
             };
+            // A refresh asked before now: the first read is still to come and answers it, unless
+            // a refusal from before stands in its way.
+            if (made.wakeAsked) {
+              delete made.wakeAsked;
+              if (["refused", "recovering", "paused"].includes(streamOf(store.state(), key).phase))
+                made.wake();
+            }
             return yield* supervisor.run;
           }),
         ),
@@ -354,8 +390,24 @@ export function makeWorkspaceReads(store: AccountStore, wire: WorkspaceWire) {
       release = demand(kind, target, true);
       check();
     });
+  /**
+   * Reads a demanded read again without letting its demand go: however many views ask before the
+   * read starts, it is read once. Nothing is read for a read no view demands.
+   */
+  const refresh = <K extends WorkspaceRead>(kind: K, target: WorkspaceTarget<K>) => {
+    const entry = closed ? undefined : active.get(workspaceScope(kind, target));
+    if (entry === undefined) return;
+    if (entry.reading !== undefined) {
+      const age = Effect.runSync(Clock.currentTimeMillis) - entry.reading.since;
+      if (age >= SHARED_READ_MS) Deferred.doneUnsafe(entry.reading.restart, Effect.void);
+      return;
+    }
+    if (entry.wake === undefined) entry.wakeAsked = true;
+    else entry.wake();
+  };
   return {
     demand,
+    refresh,
     sample,
     invalidateRefs: (environmentId: string, cwd: string) => {
       for (const entry of active.values())

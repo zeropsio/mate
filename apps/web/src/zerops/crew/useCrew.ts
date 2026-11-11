@@ -27,7 +27,7 @@ import {
   resolveThreadStatus,
   type ThreadStatusInput,
 } from "@t3tools/shared/threadStatus";
-import { hqMateOverviewAtom, hqMatePresenceAtom } from "@t3tools/client-runtime/data";
+import { hqMateOverviewAtom } from "@t3tools/client-runtime/data";
 import { Atom } from "effect/reactivity";
 import { useMemo } from "react";
 import { shareEqual } from "@t3tools/shared/structuralSharing";
@@ -97,8 +97,8 @@ export interface MateCrewRead {
   /** Whose each of its logins is, for what a crewmate's login lets the viewer do. */
   readonly logins: OverviewLogins;
   /**
-   * HQ's answer now, of a Mate whose overview is live: what its crew does is true now. Otherwise
-   * the crew is as last known, at rest — HQ not answering, or the Mate asleep.
+   * HQ's last answer, of a Mate whose overview is live: what its crew does is true now. Otherwise
+   * the crew is as last known, at rest — the Mate asleep. HQ away changes neither (`hqLink`).
    */
   readonly current: boolean;
   /** The Mate's environment, as its overview names it: where a crewmate's chat opens. */
@@ -107,14 +107,14 @@ export interface MateCrewRead {
 
 const NO_LOGINS: OverviewLogins = {};
 
-/** A Mate's crew in HQ's view of it, `current` whether that view is HQ's answer now. */
-export function mateCrewOf(mate: MateLiveView | undefined, current: boolean): MateCrewRead {
+/** A Mate's crew in HQ's last view of it. */
+export function mateCrewOf(mate: MateLiveView | undefined): MateCrewRead {
   const crew = mate?.crew;
   return {
     status: crew?.status ?? null,
     crew: crew?.status === "applied" ? crew : null,
     logins: mate?.logins ?? NO_LOGINS,
-    current: current && mate?.presence.overview === "live",
+    current: mate?.presence.overview === "live",
     environmentId: mate?.identity?.environmentId,
   };
 }
@@ -123,14 +123,11 @@ export function mateCrewOf(mate: MateLiveView | undefined, current: boolean): Ma
  * The crew of the Mate in `projectId`, as the organization in view's HQ last told this tab of it;
  * none for no project.
  */
-const NO_MATE_CREW = Atom.make(mateCrewOf(undefined, false));
+const NO_MATE_CREW = Atom.make(mateCrewOf(undefined));
 export const mateCrewAtom = Atom.family((projectId: string) =>
-  Atom.make((get) =>
-    mateCrewOf(
-      get(hqMateOverviewAtom(projectId)) ?? undefined,
-      get(hqMatePresenceAtom(projectId)).live,
-    ),
-  ).pipe(Atom.withEquality((a, b) => shareEqual(a, b) === a)),
+  Atom.make((get) => mateCrewOf(get(hqMateOverviewAtom(projectId)) ?? undefined)).pipe(
+    Atom.withEquality((a, b) => shareEqual(a, b) === a),
+  ),
 );
 export function useMateCrew(projectId: string | null): MateCrewRead {
   return useAtomValue(projectId === null ? NO_MATE_CREW : mateCrewAtom(projectId));

@@ -545,6 +545,20 @@ describe("detailLines — what the card read of the platform counts", () => {
       lines: 2,
     },
     {
+      name: "a batch deploy: a row per service, not the one pipeline it follows",
+      op: deploy({ batch: true, steps: [step("api", "running"), step("web", "running")] }),
+      observed: {
+        steps: [],
+        chips: [],
+        pipeline: pipeline(["finished", "running", "waiting"]),
+        services: [
+          { name: "api", state: "running", stateLabel: "Deploying", steps: [] },
+          { name: "web", state: "queued", stateLabel: "Waiting", steps: [] },
+        ],
+      },
+      lines: 2,
+    },
+    {
       name: "nothing read yet: what the call says",
       op: deploy({ steps: [step("Build", "queued")] }),
       observed: undefined,

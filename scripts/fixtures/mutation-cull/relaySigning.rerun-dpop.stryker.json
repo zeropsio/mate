@@ -1,0 +1,197 @@
+{
+  "$provenance": {
+    "producer": "StrykerJS 10.1.1 via scripts/mutation-cull.ts",
+    "revision": "a91a2ebf9724a71c49261bbcb936b539ab088eef",
+    "source": "packages/shared/src/relaySigning.ts with packages/shared/src/dpop.test.ts",
+    "schema": "mutation-testing-report-schema 1.0"
+  },
+  "schemaVersion": "1.0",
+  "files": {
+    "packages/shared/src/relaySigning.ts": {
+      "language": "typescript",
+      "mutants": [
+        {
+          "id": "0",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "true",
+          "statusReason": "Hit limit reached (7002/7000)",
+          "status": "Timeout",
+          "static": false,
+          "duration": 149,
+          "coveredBy": ["0", "2", "3", "4", "5"],
+          "location": { "end": { "column": 78, "line": 2 }, "start": { "column": 10, "line": 2 } }
+        },
+        {
+          "id": "1",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "false",
+          "status": "Survived",
+          "static": false,
+          "testsCompleted": 5,
+          "duration": 32.81670799999998,
+          "coveredBy": ["0", "2", "3", "4", "5"],
+          "location": { "end": { "column": 78, "line": 2 }, "start": { "column": 10, "line": 2 } }
+        },
+        {
+          "id": "2",
+          "mutatorName": "LogicalOperator",
+          "replacement": "typeof value === \"object\" && value !== null || !Array.isArray(value)",
+          "statusReason": "Hit limit reached (7002/7000)",
+          "status": "Timeout",
+          "static": false,
+          "duration": 129,
+          "coveredBy": ["0", "2", "3", "4", "5"],
+          "location": { "end": { "column": 78, "line": 2 }, "start": { "column": 10, "line": 2 } }
+        },
+        {
+          "id": "3",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "true",
+          "statusReason": "Hit limit reached (7002/7000)",
+          "status": "Timeout",
+          "static": false,
+          "duration": 135,
+          "coveredBy": ["0", "2", "3", "4", "5"],
+          "location": { "end": { "column": 53, "line": 2 }, "start": { "column": 10, "line": 2 } }
+        },
+        {
+          "id": "4",
+          "mutatorName": "LogicalOperator",
+          "replacement": "typeof value === \"object\" || value !== null",
+          "statusReason": "Hit limit reached (7002/7000)",
+          "status": "Timeout",
+          "static": false,
+          "duration": 133,
+          "coveredBy": ["0", "2", "3", "4", "5"],
+          "location": { "end": { "column": 53, "line": 2 }, "start": { "column": 10, "line": 2 } }
+        },
+        {
+          "id": "5",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "true",
+          "statusReason": "Hit limit reached (7002/7000)",
+          "status": "Timeout",
+          "static": false,
+          "duration": 134,
+          "coveredBy": ["0", "2", "3", "4", "5"],
+          "location": { "end": { "column": 35, "line": 2 }, "start": { "column": 10, "line": 2 } }
+        },
+        {
+          "id": "6",
+          "mutatorName": "EqualityOperator",
+          "replacement": "typeof value !== \"object\"",
+          "status": "Survived",
+          "static": false,
+          "testsCompleted": 5,
+          "duration": 32.576707999999996,
+          "coveredBy": ["0", "2", "3", "4", "5"],
+          "location": { "end": { "column": 35, "line": 2 }, "start": { "column": 10, "line": 2 } }
+        },
+        {
+          "id": "7",
+          "mutatorName": "StringLiteral",
+          "replacement": "\"\"",
+          "status": "Survived",
+          "static": false,
+          "testsCompleted": 5,
+          "duration": 34.90320900000003,
+          "coveredBy": ["0", "2", "3", "4", "5"],
+          "location": { "end": { "column": 35, "line": 2 }, "start": { "column": 27, "line": 2 } }
+        },
+        {
+          "id": "8",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "true",
+          "status": "Survived",
+          "static": false,
+          "testsCompleted": 5,
+          "duration": 39.02733399999998,
+          "coveredBy": ["0", "2", "3", "4", "5"],
+          "location": { "end": { "column": 53, "line": 2 }, "start": { "column": 39, "line": 2 } }
+        },
+        {
+          "id": "9",
+          "mutatorName": "EqualityOperator",
+          "replacement": "value === null",
+          "status": "Survived",
+          "static": false,
+          "testsCompleted": 5,
+          "duration": 32.34000000000003,
+          "coveredBy": ["0", "2", "3", "4", "5"],
+          "location": { "end": { "column": 53, "line": 2 }, "start": { "column": 39, "line": 2 } }
+        },
+        {
+          "id": "10",
+          "mutatorName": "BooleanLiteral",
+          "replacement": "Array.isArray(value)",
+          "status": "Survived",
+          "static": false,
+          "testsCompleted": 5,
+          "duration": 36.11887400000002,
+          "coveredBy": ["0", "2", "3", "4", "5"],
+          "location": { "end": { "column": 78, "line": 2 }, "start": { "column": 57, "line": 2 } }
+        },
+        {
+          "id": "11",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "true",
+          "statusReason": "Hit limit reached (7002/7000)",
+          "status": "Timeout",
+          "static": false,
+          "duration": 135,
+          "coveredBy": ["0", "2", "3", "4", "5"],
+          "location": { "end": { "column": 22, "line": 9 }, "start": { "column": 7, "line": 9 } }
+        },
+        {
+          "id": "12",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "false",
+          "status": "Survived",
+          "static": false,
+          "testsCompleted": 5,
+          "duration": 37.31120900000002,
+          "coveredBy": ["0", "2", "3", "4", "5"],
+          "location": { "end": { "column": 22, "line": 9 }, "start": { "column": 7, "line": 9 } }
+        }
+      ],
+      "source": "function isRecord(value: unknown): value is Record<string, unknown> {\n  return typeof value === \"object\" && value !== null && !Array.isArray(value);\n}\n\nexport function stableStringify(value: unknown): string {\n  if (Array.isArray(value)) {\n    return `[${value.map(stableStringify).join(\",\")}]`;\n  }\n  if (isRecord(value)) {\n    return `{${Object.entries(value)\n      .filter(([, entryValue]) => entryValue !== undefined)\n      .sort(([left], [right]) => left.localeCompare(right))\n      .map(([key, entryValue]) => `${JSON.stringify(key)}:${stableStringify(entryValue)}`)\n      .join(\",\")}}`;\n  }\n  return JSON.stringify(value) ?? \"null\";\n}\n"
+    }
+  },
+  "testFiles": {
+    "packages/shared/src/dpop.test.ts": {
+      "tests": [
+        {
+          "id": "0",
+          "name": "verifyDpopProof > verifies an ES256 DPoP proof and returns the RFC 7638 thumbprint",
+          "location": { "start": { "column": 3, "line": 58 } }
+        },
+        {
+          "id": "1",
+          "name": "verifyDpopProof > rejects malformed DPoP header and payload JSON",
+          "location": { "start": { "column": 3, "line": 75 } }
+        },
+        {
+          "id": "2",
+          "name": "verifyDpopProof > rejects method, URL, thumbprint, and time-window mismatches",
+          "location": { "start": { "column": 3, "line": 105 } }
+        },
+        {
+          "id": "3",
+          "name": "verifyDpopProof > requires the RFC 9449 access token hash when an access token is expected",
+          "location": { "start": { "column": 3, "line": 149 } }
+        },
+        {
+          "id": "4",
+          "name": "verifyDpopProof > normalizes htu by excluding query and fragment components per RFC 9449",
+          "location": { "start": { "column": 3, "line": 199 } }
+        },
+        {
+          "id": "5",
+          "name": "verifyDpopProof > rejects DPoP public JWK headers that expose private key material",
+          "location": { "start": { "column": 3, "line": 226 } }
+        }
+      ],
+      "source": "// @effect-diagnostics-next-line nodeBuiltinImport:off -- Effect's Crypto has no KeyObject, generateKeyPairSync, or sign.\nimport * as NodeCrypto from \"node:crypto\";\n\nimport { assert, describe, it } from \"@effect/vitest\";\n\nimport {\n  computeDpopAccessTokenHash,\n  computeDpopJwkThumbprint,\n  normalizeDpopHtu,\n  type DpopPublicJwk,\n  verifyDpopProof,\n} from \"./dpop.ts\";\n\nfunction signDpopProof(input: {\n  readonly method: string;\n  readonly url: string;\n  readonly iat: number;\n  readonly privateKey: NodeCrypto.KeyObject;\n  readonly publicJwk: DpopPublicJwk | (DpopPublicJwk & { readonly d: string });\n  readonly accessToken?: string;\n}) {\n  const header = Buffer.from(\n    JSON.stringify({\n      typ: \"dpop+jwt\",\n      alg: \"ES256\",\n      jwk: input.publicJwk,\n    }),\n  ).toString(\"base64url\");\n  const payload = Buffer.from(\n    JSON.stringify({\n      htm: input.method,\n      htu: input.url,\n      jti: \"proof-1\",\n      iat: input.iat,\n      ...(input.accessToken ? { ath: computeDpopAccessTokenHash(input.accessToken) } : {}),\n    }),\n  ).toString(\"base64url\");\n  const signature = NodeCrypto.sign(\"sha256\", Buffer.from(`${header}.${payload}`), {\n    key: input.privateKey,\n    dsaEncoding: \"ieee-p1363\",\n  }).toString(\"base64url\");\n  return `${header}.${payload}.${signature}`;\n}\n\ndescribe(\"verifyDpopProof\", () => {\n  const { privateKey, publicKey } = NodeCrypto.generateKeyPairSync(\"ec\", {\n    namedCurve: \"P-256\",\n  });\n  const publicJwk = publicKey.export({ format: \"jwk\" }) as DpopPublicJwk;\n  const proof = signDpopProof({\n    method: \"POST\",\n    url: \"https://example.com/oauth/token\",\n    iat: 100,\n    privateKey,\n    publicJwk,\n  });\n\n  it(\"verifies an ES256 DPoP proof and returns the RFC 7638 thumbprint\", () => {\n    const thumbprint = computeDpopJwkThumbprint(publicJwk);\n    const result = verifyDpopProof({\n      proof,\n      method: \"POST\",\n      url: \"https://example.com/oauth/token\",\n      nowEpochSeconds: 101,\n      expectedThumbprint: thumbprint,\n    });\n\n    if (!result.ok) {\n      assert.fail(result.reason);\n    }\n    assert.equal(result.thumbprint, thumbprint);\n    assert.equal(result.jti, \"proof-1\");\n  });\n\n  it(\"rejects malformed DPoP header and payload JSON\", () => {\n    const [header, payload, signature] = proof.split(\".\");\n    if (!header || !payload || !signature) {\n      assert.fail(\"Expected the test DPoP proof to use compact JWT format.\");\n    }\n    const malformedJson = Buffer.from(\"{\").toString(\"base64url\");\n\n    const malformedHeader = verifyDpopProof({\n      proof: `${malformedJson}.${payload}.${signature}`,\n      method: \"POST\",\n      url: \"https://example.com/oauth/token\",\n      nowEpochSeconds: 101,\n    });\n    if (malformedHeader.ok) {\n      assert.fail(\"Expected malformed DPoP header JSON to fail.\");\n    }\n    assert.equal(malformedHeader.reason, \"Invalid DPoP JWT header.\");\n\n    const malformedPayload = verifyDpopProof({\n      proof: `${header}.${malformedJson}.${signature}`,\n      method: \"POST\",\n      url: \"https://example.com/oauth/token\",\n      nowEpochSeconds: 101,\n    });\n    if (malformedPayload.ok) {\n      assert.fail(\"Expected malformed DPoP payload JSON to fail.\");\n    }\n    assert.equal(malformedPayload.reason, \"Invalid DPoP JWT payload.\");\n  });\n\n  it(\"rejects method, URL, thumbprint, and time-window mismatches\", () => {\n    const thumbprint = computeDpopJwkThumbprint(publicJwk);\n    assert.equal(\n      verifyDpopProof({\n        proof,\n        method: \"GET\",\n        url: \"https://example.com/oauth/token\",\n        nowEpochSeconds: 101,\n        expectedThumbprint: thumbprint,\n      }).ok,\n      false,\n    );\n    assert.equal(\n      verifyDpopProof({\n        proof,\n        method: \"POST\",\n        url: \"https://example.com/other\",\n        nowEpochSeconds: 101,\n        expectedThumbprint: thumbprint,\n      }).ok,\n      false,\n    );\n    assert.equal(\n      verifyDpopProof({\n        proof,\n        method: \"POST\",\n        url: \"https://example.com/oauth/token\",\n        nowEpochSeconds: 101,\n        expectedThumbprint: \"other-thumbprint\",\n      }).ok,\n      false,\n    );\n    assert.equal(\n      verifyDpopProof({\n        proof,\n        method: \"POST\",\n        url: \"https://example.com/oauth/token\",\n        nowEpochSeconds: 1_000,\n        expectedThumbprint: thumbprint,\n      }).ok,\n      false,\n    );\n  });\n\n  it(\"requires the RFC 9449 access token hash when an access token is expected\", () => {\n    const thumbprint = computeDpopJwkThumbprint(publicJwk);\n    const accessTokenProof = signDpopProof({\n      method: \"POST\",\n      url: \"https://example.com/v1/environments/env/connect\",\n      iat: 100,\n      privateKey,\n      publicJwk,\n      accessToken: \"clerk-access-token\",\n    });\n\n    assert.equal(\n      verifyDpopProof({\n        proof: accessTokenProof,\n        method: \"POST\",\n        url: \"https://example.com/v1/environments/env/connect\",\n        nowEpochSeconds: 101,\n        expectedThumbprint: thumbprint,\n        expectedAccessToken: \"clerk-access-token\",\n      }).ok,\n      true,\n    );\n\n    const missingHash = verifyDpopProof({\n      proof,\n      method: \"POST\",\n      url: \"https://example.com/oauth/token\",\n      nowEpochSeconds: 101,\n      expectedThumbprint: thumbprint,\n      expectedAccessToken: \"clerk-access-token\",\n    });\n    if (missingHash.ok) {\n      assert.fail(\"Expected DPoP proof without an access token hash to fail.\");\n    }\n    assert.equal(missingHash.reason, \"DPoP access token hash mismatch.\");\n\n    const mismatchedHash = verifyDpopProof({\n      proof: accessTokenProof,\n      method: \"POST\",\n      url: \"https://example.com/v1/environments/env/connect\",\n      nowEpochSeconds: 101,\n      expectedThumbprint: thumbprint,\n      expectedAccessToken: \"other-access-token\",\n    });\n    if (mismatchedHash.ok) {\n      assert.fail(\"Expected DPoP proof with a mismatched access token hash to fail.\");\n    }\n    assert.equal(mismatchedHash.reason, \"DPoP access token hash mismatch.\");\n  });\n\n  it(\"normalizes htu by excluding query and fragment components per RFC 9449\", () => {\n    assert.equal(\n      normalizeDpopHtu(\"https://example.com/v1/environments/env/connect?foo=bar#frag\"),\n      \"https://example.com/v1/environments/env/connect\",\n    );\n\n    const thumbprint = computeDpopJwkThumbprint(publicJwk);\n    const queryProof = signDpopProof({\n      method: \"POST\",\n      url: \"https://example.com/v1/environments/env/connect\",\n      iat: 100,\n      privateKey,\n      publicJwk,\n    });\n\n    assert.equal(\n      verifyDpopProof({\n        proof: queryProof,\n        method: \"POST\",\n        url: \"https://example.com/v1/environments/env/connect?foo=bar#frag\",\n        nowEpochSeconds: 101,\n        expectedThumbprint: thumbprint,\n      }).ok,\n      true,\n    );\n  });\n\n  it(\"rejects DPoP public JWK headers that expose private key material\", () => {\n    const thumbprint = computeDpopJwkThumbprint(publicJwk);\n    const privateJwk = privateKey.export({ format: \"jwk\" }) as DpopPublicJwk & {\n      readonly d: string;\n    };\n    const proofWithPrivateJwk = signDpopProof({\n      method: \"POST\",\n      url: \"https://example.com/oauth/token\",\n      iat: 100,\n      privateKey,\n      publicJwk: privateJwk,\n    });\n\n    const result = verifyDpopProof({\n      proof: proofWithPrivateJwk,\n      method: \"POST\",\n      url: \"https://example.com/oauth/token\",\n      nowEpochSeconds: 101,\n      expectedThumbprint: thumbprint,\n    });\n\n    if (result.ok) {\n      assert.fail(\"Expected DPoP proof with private JWK material to fail.\");\n    }\n    assert.equal(result.reason, \"Invalid DPoP JWT header.\");\n  });\n});\n"
+    }
+  }
+}

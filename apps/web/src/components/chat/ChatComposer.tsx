@@ -55,6 +55,7 @@ import {
   composerSubmissionIntentForEnter,
   detectComposerTrigger,
   expandCollapsedComposerCursor,
+  isPathSuggestionCurrent,
   replaceTextRange,
 } from "../../composer-logic";
 import {
@@ -95,6 +96,7 @@ import {
   type PromptStashEntry,
 } from "../../promptStashStore";
 import { ComposerStashBadge } from "./ComposerStashBadge";
+import { COMPOSER_PROMPT_TYPE_CLASS_NAME } from "./composerTypography";
 import { FULL_COMPOSER_MS, fullComposerHeight } from "./fullComposer.logic";
 import { ComposerStashMenu } from "./ComposerStashMenu";
 import { useComposerTriggerState } from "./useComposerTriggerState";
@@ -120,7 +122,7 @@ import {
 import { attachmentUploadBlockReason } from "../../lib/attachmentUploadState";
 import { picturesBlockReason } from "../../lib/composerPictures";
 import type { ComposerPictureView } from "./ComposerPicture";
-import { useComposerPictures } from "./useComposerPictures";
+import { type ComposerPictureOptions, useComposerPictures } from "./useComposerPictures";
 import type { ComposerFileView } from "./ComposerFile";
 import { useComposerFiles } from "./useComposerFiles";
 import { isCommandPaletteOpen } from "../../commandPaletteBus";
@@ -166,10 +168,9 @@ import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
 import { ComposerAskFace, useComposerAskName } from "./ComposerAsk";
 import { ComposerPendingApprovalPanel } from "./ComposerPendingApprovalPanel";
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
-import {
-  ComposerVaultAskContainer,
-  useOpenVaultAskId,
-} from "../zerops/vault/ComposerVaultAskContainer";
+import { ComposerVaultAskContainer, useOpenVaultAskId } from "../zerops/vault/VaultAskContainer";
+import { docksAboveComposer } from "../ask/ask.logic";
+import { useAskCardOnScreen, useDockedAsk } from "../ask/askReveal";
 import {
   ComposerAccessControl,
   ComposerInteractionModeToggle,
@@ -471,7 +472,9 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
 export interface ChatComposerHandle {
   focusAtEnd: () => void;
   focusAt: (cursor: number) => void;
-  addDroppedFiles: (files: File[]) => void;
+  /** `keepOriginal`: each picture sends its untouched file beside the copy fitted for the agent. */
+  /** Settles once every picture is read into the draft, so a send after it carries them. */
+  addDroppedFiles: (files: File[], options?: ComposerPictureOptions) => Promise<void>;
   insertTextAtEnd: (text: string, options?: { ensureLeadingBoundary?: boolean }) => boolean;
   openModelPicker: () => void;
   toggleModelPicker: () => void;
@@ -1466,6 +1469,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         type: "path" as const,
         path: entry.path,
         pathKind: entry.kind,
+        searchTarget: workspaceEntries.searchedTarget,
         label: basenameOfPath(entry.path),
         description: entry.path.slice(0, Math.max(0, entry.path.lastIndexOf("/"))),
       }));
@@ -1600,6 +1604,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     selectedProviderStatus,
     settings.showSkillsInSlashMenu,
     workspaceEntries.entries,
+    workspaceEntries.searchedTarget,
   ]);
 
   const composerMenuOpen = Boolean(composerTrigger);
@@ -1656,14 +1661,33 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const activePendingUserInput = pendingUserInputs[0] ?? null;
   const isChoiceOnlyPendingQuestion =
     activePendingProgress?.activeQuestion?.allowCustomAnswer === false;
-  // A value the Mate asked for waits after any approval or question: one ask at a time.
+  // A value the Mate asked for waits after any approval or question: one ask at a time. Its card
+  // stands in the conversation; it docks here too once the Mate's turn has stopped on it, while
+  // that card is out of view.
   const openVaultAskId = useOpenVaultAskId(routeKind === "server" ? routeThreadRef : null);
+  const cardOnScreen = useAskCardOnScreen(openVaultAskId);
   const vaultAskWaits =
-    openVaultAskId !== null && !isComposerApprovalState && pendingUserInputs.length === 0;
+    openVaultAskId !== null &&
+    docksAboveComposer("waiting", { turnRunning: phase === "running", cardOnScreen }) &&
+    !isComposerApprovalState &&
+    pendingUserInputs.length === 0;
+  // Any other ask a card offered to dock (an MCP server's setup) stands there by the same rule.
+  const dockedAsk = useDockedAsk(routeKind === "server" ? scopedThreadKey(routeThreadRef) : null);
+  const dockedOnScreen = useAskCardOnScreen(dockedAsk?.askId ?? null);
+  const dockedAskWaits =
+    dockedAsk !== null &&
+    !vaultAskWaits &&
+    docksAboveComposer("waiting", {
+      turnRunning: phase === "running",
+      cardOnScreen: dockedOnScreen,
+    }) &&
+    !isComposerApprovalState &&
+    pendingUserInputs.length === 0;
   // What the agent asks stands at the composer's top in the look of the change waiting for review
   // (the owner's pick, S6 on the "Composer Strips" board, 2026-10-12); a phone's folded composer
   // keeps it in the drawer over its one line.
-  const composerAsks = isComposerApprovalState || pendingUserInputs.length > 0 || vaultAskWaits;
+  const composerAsks =
+    isComposerApprovalState || pendingUserInputs.length > 0 || vaultAskWaits || dockedAskWaits;
   const showComposerTopDrawer = isComposerCollapsedMobile && composerAsks;
   const askFace = <ComposerAskFace environmentId={environmentId} />;
   const askName = useComposerAskName(environmentId);
@@ -2293,6 +2317,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         return;
       }
       if (item.type === "path") {
+        if (!isPathSuggestionCurrent(item.searchTarget, trigger, environmentId, gitCwd)) return;
         const replacement = `${serializeComposerFileLink(item.path)} `;
         const replacementRangeEnd = extendReplacementRangeForTrailingSpace(
           snapshot.value,
@@ -2404,6 +2429,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     [
       applyPromptReplacement,
       attachDataMentionContext,
+      environmentId,
+      gitCwd,
       handleInteractionModeChange,
       planModeUiEnabled,
       onUsageLimitsCommand,
@@ -3172,7 +3199,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // ------------------------------------------------------------------
   // Callbacks: images
   // ------------------------------------------------------------------
-  const addComposerImages = async (files: File[]) => {
+  const addComposerImages = async (files: File[], options?: ComposerPictureOptions) => {
     if (!activeThreadId || files.length === 0) return;
     // Captured before the awaits below: the user may switch threads while a
     // picture is read. It still lands in this thread's draft (the pictures
@@ -3181,7 +3208,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     const pendingCount = pendingImageCompressionsRef.current.get(threadId) ?? 0;
     pendingImageCompressionsRef.current.set(threadId, pendingCount + files.length);
     try {
-      await composerPictures.add(files);
+      await composerPictures.add(files, options);
     } finally {
       const remaining = (pendingImageCompressionsRef.current.get(threadId) ?? 0) - files.length;
       if (remaining > 0) {
@@ -3199,8 +3226,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
    * Pasted or dropped files: a picture Claude can look at goes to the
    * pictures, anything else to the files, and what cannot go says why.
    */
-  const addComposerAttachments = (files: ReadonlyArray<File>) => {
-    if (!activeThreadId || files.length === 0) return;
+  const addComposerAttachments = (
+    files: ReadonlyArray<File>,
+    options?: ComposerPictureOptions,
+  ): Promise<void> => {
+    if (!activeThreadId || files.length === 0) return Promise.resolve();
     const pictures: File[] = [];
     const others: File[] = [];
     for (const file of files) {
@@ -3211,7 +3241,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }
     // Files land at once; pictures are read first, and land after them.
     composerFileList.add(others);
-    void addComposerImages(pictures);
+    return addComposerImages(pictures, options);
   };
 
   const onComposerPaste = (event: React.ClipboardEvent<HTMLElement>) => {
@@ -3223,7 +3253,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         void props.questionAttachments?.add(files);
       return;
     }
-    addComposerAttachments(files);
+    void addComposerAttachments(files);
   };
 
   const insertComposerTextAtEnd = (
@@ -3529,6 +3559,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     </>
   ) : vaultAskWaits ? (
     <ComposerVaultAskContainer environmentId={environmentId} threadRef={routeThreadRef} />
+  ) : dockedAskWaits ? (
+    dockedAsk.render()
   ) : null;
 
   // Render
@@ -3649,6 +3681,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   threadRef={routeThreadRef}
                 />
               </div>
+            ) : dockedAskWaits ? (
+              <div data-chat-composer-collapsed-controls="true">{dockedAsk.render()}</div>
             ) : null}
           </div>
         ) : null}
@@ -3706,8 +3740,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 <div className="flex items-center justify-between gap-2 px-3 py-2">
                   <button
                     type="button"
+                    // The editor's own type (16 px under a finger): opening it changes no letter's
+                    // size. It reaches the pill's top, bottom and left edge, so a finger anywhere
+                    // on the words' side opens it.
                     className={cn(
-                      "min-w-0 flex-1 truncate bg-transparent p-0 text-left text-[14px] focus:outline-none",
+                      "-my-2 -ms-3 min-w-0 flex-1 self-stretch truncate bg-transparent py-2 ps-3 text-left focus:outline-none",
+                      COMPOSER_PROMPT_TYPE_CLASS_NAME,
                       (activePendingProgress ? activePendingProgress.customAnswer : prompt.trim())
                         ? "text-foreground"
                         : "text-placeholder",
@@ -3738,6 +3776,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     type="button"
                     className="flex size-8 shrink-0 items-center justify-center rounded-full bg-message-action text-message-action-foreground hover:bg-message-action-hover disabled:opacity-64"
                     disabled={collapsedComposerPrimaryActionDisabled}
+                    data-composer-primary=""
                     aria-label={collapsedComposerPrimaryActionLabel}
                     onPointerDown={(event) => event.preventDefault()}
                     onClick={(event) => {
@@ -3976,8 +4015,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 message={providerInputSubmissionError ?? composerSubmissionError}
               />
               {/* What stops the agent taking a message is the composer's own to say (S6): the
-                  model control's dot names it, and this line says why sending waits. */}
+                  model control's dot names it, and this line says why sending waits. Where the
+                  Mate's admission holds the send, its own notice says why, once. */}
               {providerSendBlockReason === null ||
+              zeropsSendBlockReason !== null ||
               providerInputSubmissionError !== null ||
               composerSubmissionError !== null ||
               isComposerCollapsedMobile ? null : (

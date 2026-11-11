@@ -10,10 +10,9 @@
  * and undeletable.
  *
  * So nothing here reads a container. Every step is a platform call with the
- * user's own token, over a tier read from the group repo (`recipeTier.ts`) —
- * which is why a group can create its production environment while every one
- * of its dev environments is switched off, and why deleting any member breaks
- * nothing.
+ * user's own token. Production reserves its project and access only: its
+ * services arrive with an approved release. Other environments use a tier read
+ * from the group repo (`recipeTier.ts`).
  *
  * ## Pure, like `candidates.ts`
  *
@@ -28,16 +27,16 @@
  */
 
 import type { ZeropsAgentType } from "./newProject.ts";
-import type { ProjectGrant } from "./projectAccess.ts";
+import { type ProjectGrant, withProjectGrant } from "./projectAccess.ts";
 import { withZeropsMateTag, type ZeropsEnvironmentRole } from "./groups.ts";
 import {
   deployTargetTier,
   hasProjectBlock,
   recipeProjectImportYaml,
   recipeServicesYaml,
+  mateTier,
   recipeTierZcpServices,
-  splitRecipeTier,
-  type RecipeRuntimes,
+  type MateTier,
   type RecipeTier,
 } from "./recipeTier.ts";
 
@@ -71,7 +70,12 @@ export function defaultAgentForRole(role: ZeropsEnvironmentRole): boolean {
  * looked created and could not build.
  */
 export type EnvironmentRecipeChoice =
-  | { readonly kind: "tier"; readonly tier: RecipeTier; readonly yaml: string }
+  | {
+      readonly kind: "tier";
+      readonly tier: RecipeTier;
+      readonly revision: string;
+      readonly yaml: string;
+    }
   | { readonly kind: "none" };
 
 export interface EnvironmentCreationInput {
@@ -97,6 +101,11 @@ export interface EnvironmentCreationInput {
   readonly birth?: string;
   /** Who reaches it beyond their organization role, as its creator chose (`projectAccess.ts`). */
   readonly userRoles?: ReadonlyArray<ProjectGrant>;
+  /**
+   * The membership a Mate's project marks its owner (`OWNER`), where `ownerAtAdd` names its
+   * creator: sent with its project (ZEROPS-074). No environment without an agent is marked.
+   */
+  readonly owner?: string;
 }
 
 export type EnvironmentCreationStep =
@@ -111,10 +120,10 @@ export type EnvironmentCreationStep =
       readonly userRoles?: ReadonlyArray<ProjectGrant>;
     }
   /**
-   * `PUT /project/{id}/first-class-recipe/development-container` — the zcp
-   * that carries the agent, holding the key the person mints for it on its
-   * own project (`api.ts`, `importDevelopmentContainer`), and the tier's
-   * runtimes for zcp to import on its first boot (`MATE_SETUP_RUNTIMES`).
+   * A Mate's birth import, one `POST /project/{id}/service-stack/import`: the zcp that carries the
+   * agent, holding the key the person mints for it on its own project, first by `priority`, and its
+   * tier beside it, every service isolated but to the container (`api.ts`,
+   * `importDevelopmentContainer`; `mateBirthImportYaml`).
    *
    * `agents` is the group's own selection, so a Mate added to a group comes up
    * offering what that group signed in with rather than the platform's whole
@@ -125,24 +134,8 @@ export type EnvironmentCreationStep =
   | {
       readonly kind: "import-container";
       readonly agents: ReadonlyArray<ZeropsAgentType>;
-      /** The tier's runtimes, in one wave (`splitRecipeTier`); absent when it has none. */
-      readonly runtimes?: RecipeRuntimes;
-    }
-  /**
-   * The project closed off and marked so at HQ (`markClosedOff`): read back at
-   * once — the container recipe leaves it `service service@zcp` within a
-   * second of the import, and a new project starts `service` — and written
-   * `service` only where it reads anything else (`projectIsolation.ts`). zcp
-   * imports the runtimes on the mark alone, so no service the project runs
-   * ever reads another's variables, the Mate's key among them.
-   */
-  | {
-      readonly kind: "close-off";
-      /**
-       * The press has just isolated the project itself (`hardenMate`): the step trusts that and
-       * reads no trailing index to isolate it again.
-       */
-      readonly isolated?: true;
+      /** The tier it imports beside the container (`mateTier`); absent for a Mate alone. */
+      readonly tier?: MateTier;
     }
   /**
    * The environment's registration in the organization's HQ: a Mate's record
@@ -151,9 +144,9 @@ export type EnvironmentCreationStep =
    */
   | { readonly kind: "register" }
   /**
-   * `POST /project/{id}/service-stack/import` with a stage's or a
-   * production's tier, whole, services only, converted for the platform
-   * (`deployTargetTier`).
+   * `POST /project/{id}/service-stack/import` with a stage's tier,
+   * whole, services only, converted for the platform
+   * (`deployTargetTier`). A stage without a Mate only.
    */
   | {
       readonly kind: "import-recipe";
@@ -161,14 +154,8 @@ export type EnvironmentCreationStep =
       readonly yaml: string;
     }
   /**
-   * `POST /project/{id}/service-stack/import` with a Mate's managed services
-   * alone, into the project `create-project` made — the second half of what
-   * `import-project` does in one call for a tier that describes its project.
-   */
-  | { readonly kind: "import-managed"; readonly yaml: string }
-  /**
    * `POST /client/{clientId}/project/import` — the project *and* its services
-   * from one document, taken when the recipe carries a `project:` block.
+   * from one document, taken when a stage's recipe carries a `project:` block.
    *
    * Preferred over create-then-import because stripping that block drops its
    * `envVariables`, and a published tier puts real things there (`APP_KEY` in
@@ -186,7 +173,10 @@ export type EnvironmentCreationStep =
       /** Who reaches it, given once Zerops made it: an import document has no room for them. */
       readonly userRoles?: ReadonlyArray<ProjectGrant>;
     }
-  /** Poll until the services are up. Measured at ~2 minutes for a two-service recipe. */
+  /**
+   * The services up, as the account's services listing pushes them; a Mate's is handed to its
+   * coming-up view. Measured at ~2 minutes for a two-service recipe.
+   */
   | { readonly kind: "await-ready"; readonly withAgent: boolean };
 
 export type EnvironmentCreationPlan =
@@ -203,29 +193,43 @@ export type EnvironmentCreationPlan =
  * with, where it gets an agent, is the Zerops GUI's `mate` marker, which
  * nothing here reads.
  *
- * The container is imported before the application's runtimes: it is the part
- * the user can start talking to, and on the roles that get one it is what
- * narrates the rest. When the recipe import fails, that agent is the thing
- * that fixes it — which is the whole reason mate does not try to be clever
- * here.
+ * A Mate's birth is three steps: its project, created with its creator's `OWNER` override
+ * (ZEROPS-074); its registration in its application at HQ, which authorizes its key; and one import
+ * of its container, holding that key, and its whole tier (`mateBirthImportYaml`). The import states
+ * what used to be steps of their own: the container first by `priority`, so its build queues
+ * behind no service (the add of 2026-09-30), and every service isolated but to the container from
+ * its creation, so nothing restarts to close the project off. Zerops finishes the import whether
+ * the browser stays or not.
  *
- * An environment with an agent takes its tier in two imports
- * (`splitRecipeTier`). The project goes in with its managed services alone —
- * its variables and generated secrets evaluated there and nowhere else — and
- * then the container, holding its key and the runtimes for zcp to import on
- * its first boot (`MATE_SETUP_RUNTIMES`) — registered in its application before it — and the
- * press then closes the project off, so nothing after it needs this browser. Measured on
- * the add of 2026-09-30, the whole tier in one import cost the container's
- * build a queue behind the services' priority waves, and closing off
- * afterwards restarted nine services, a storage's restart failing: closed off
- * before any runtime exists, it restarts nothing.
- *
- * An environment without one — a stage, a production — has nothing to close
- * off, and takes its tier whole, as one import (`deployTargetTier`).
+ * A stage without an agent takes its tier whole, as one import (`deployTargetTier`). Production
+ * imports no services here.
  */
 export function planEnvironmentCreation(input: EnvironmentCreationInput): EnvironmentCreationPlan {
   const name = input.name.trim();
   if (name.length === 0) return { ok: false, reason: "An environment needs a name." };
+
+  const access =
+    input.userRoles === undefined || input.userRoles.length === 0
+      ? {}
+      : { userRoles: input.userRoles };
+  // Production birth reserves the project and access only. Even a bundled recipe or an explicit
+  // agent request must leave every service to an approved release, without waiting on services.
+  if (input.role === "prod") {
+    return {
+      ok: true,
+      steps: [
+        {
+          kind: "create-project",
+          name,
+          tagList: [],
+          location: input.location,
+          ...(input.birth === undefined ? {} : { birth: input.birth }),
+          ...access,
+        },
+        { kind: "register" },
+      ],
+    };
+  }
 
   const withAgent = input.withAgent ?? defaultAgentForRole(input.role);
   const recipe = input.recipe ?? { kind: "none" };
@@ -235,8 +239,10 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
       reason: "An environment with neither an agent nor an application has nothing in it.",
     };
   }
-  const tier = recipe.kind === "tier" ? readTier(recipe.yaml, withAgent) : null;
-  if (tier === undefined) return { ok: false, reason: "This project has no recipe merged yet." };
+  const birthTier = withAgent && recipe.kind === "tier" ? mateTier(recipe.yaml) : undefined;
+  const whole = !withAgent && recipe.kind === "tier" ? deployTargetTier(recipe.yaml) : undefined;
+  if (recipe.kind === "tier" && birthTier === undefined && whole === undefined)
+    return { ok: false, reason: "This project has no recipe merged yet." };
   // A project holds one Mate (audit D2): the container is the press's, never the tier's too.
   const zcp = withAgent && recipe.kind === "tier" ? recipeTierZcpServices(recipe.yaml) : [];
   if (zcp.length > 0) {
@@ -246,101 +252,73 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
     };
   }
 
-  // The Zerops GUI's marker on a project with an agent; where it belongs is HQ's.
-  const tagList = withAgent ? withZeropsMateTag([]) : [];
-
-  // A recipe that describes a whole project creates one in a single call. Not
-  // taken when the caller placed the environment in a region: the project
-  // block has no location, and silently ignoring one would put the
-  // environment somewhere the user did not ask for.
-  const wholeProject =
-    tier !== null && input.location === undefined && hasProjectBlock(tier.withProject);
-
-  const access =
-    input.userRoles === undefined || input.userRoles.length === 0
-      ? {}
-      : { userRoles: input.userRoles };
-  const steps: Array<EnvironmentCreationStep> = wholeProject
-    ? [
-        {
-          kind: "import-project",
-          name,
-          tagList,
-          ...(input.birth === undefined ? {} : { birth: input.birth }),
-          yaml: recipeProjectImportYaml(tier.withProject, { name, tagList }),
-          ...access,
-        },
-      ]
-    : [
+  if (withAgent) {
+    // The Zerops GUI's marker on a project with an agent; where it belongs is HQ's.
+    const tagList = withZeropsMateTag([]);
+    return {
+      ok: true,
+      steps: [
         {
           kind: "create-project",
           name,
           tagList,
           location: input.location,
           ...(input.birth === undefined ? {} : { birth: input.birth }),
-          ...access,
+          ...(input.owner === undefined
+            ? access
+            : { userRoles: withProjectGrant(input.userRoles ?? [], input.owner, "OWNER") }),
         },
-      ];
-  // Into a project that exists: the platform refuses a project block there,
-  // and an import that names no service at all.
-  if (tier !== null && !wholeProject && tier.firstImportHasServices) {
-    const yaml = recipeServicesYaml(tier.withProject);
-    steps.push(
-      withAgent
-        ? { kind: "import-managed", yaml }
-        : { kind: "import-recipe", role: input.role, yaml },
-    );
+        // Its record in its application before its container (F6b, 2026-10-03): a press that stops
+        // after it leaves a Mate HQ holds there, which any browser finishes under its name.
+        { kind: "register" },
+        {
+          kind: "import-container",
+          agents: input.agents ?? [],
+          ...(birthTier === undefined ? {} : { tier: birthTier }),
+        },
+        { kind: "await-ready", withAgent: true },
+      ],
+    };
   }
 
-  // Every environment is registered in the organization's HQ, which decides who may: an owner or
-  // an admin, or a member attaching their own new Mate. A Mate's record in its application comes
-  // before its container (F6b, 2026-10-03): a press that stops after it leaves a Mate HQ holds
-  // there, which any browser finishes under its name. A registration HQ refuses stops the press.
-  if (withAgent) steps.push({ kind: "register" });
-  if (withAgent) {
-    steps.push({
-      kind: "import-container",
-      agents: input.agents ?? [],
-      ...(tier?.runtimes === undefined ? {} : { runtimes: tier.runtimes }),
-    });
+  // A recipe that describes a whole project creates one in a single call. Not
+  // taken when the caller placed the environment in a region: the project
+  // block has no location, and silently ignoring one would put the
+  // environment somewhere the user did not ask for.
+  const wholeProject =
+    whole !== undefined && input.location === undefined && hasProjectBlock(whole);
+  const steps: Array<EnvironmentCreationStep> =
+    wholeProject && whole !== undefined
+      ? [
+          {
+            kind: "import-project",
+            name,
+            tagList: [],
+            ...(input.birth === undefined ? {} : { birth: input.birth }),
+            yaml: recipeProjectImportYaml(whole, { name }),
+            ...access,
+          },
+        ]
+      : [
+          {
+            kind: "create-project",
+            name,
+            tagList: [],
+            location: input.location,
+            ...(input.birth === undefined ? {} : { birth: input.birth }),
+            ...access,
+          },
+        ];
+  // Into a project that exists: the platform refuses a project block there.
+  if (whole !== undefined && !wholeProject) {
+    steps.push({ kind: "import-recipe", role: input.role, yaml: recipeServicesYaml(whole) });
   }
-  // The close-off after the container: it is what makes the Mate need no browser.
-  if (withAgent) steps.push({ kind: "close-off" });
-  if (!withAgent) steps.push({ kind: "register" });
+  steps.push({ kind: "register" });
   // Last, and the only step that waits on anything: everything the person's rights are needed
   // for is done before it.
-  steps.push({ kind: "await-ready", withAgent });
+  steps.push({ kind: "await-ready", withAgent: false });
 
   return { ok: true, steps };
-}
-
-/** A tier as the plan imports it; `undefined` when it declares no services. */
-function readTier(
-  yaml: string,
-  withAgent: boolean,
-):
-  | {
-      /** The first import's document, project block and all. */
-      readonly withProject: string;
-      readonly firstImportHasServices: boolean;
-      /** What zcp imports on its first boot, once the press has closed the project off. */
-      readonly runtimes: RecipeRuntimes | undefined;
-    }
-  | undefined {
-  if (withAgent) {
-    const split = splitRecipeTier(yaml);
-    return split === undefined
-      ? undefined
-      : {
-          withProject: split.managed,
-          firstImportHasServices: split.managedServices.length > 0,
-          runtimes: split.runtimes,
-        };
-  }
-  const whole = deployTargetTier(yaml);
-  return whole === undefined
-    ? undefined
-    : { withProject: whole, firstImportHasServices: true, runtimes: undefined };
 }
 
 /**
@@ -360,15 +338,11 @@ export function environmentCreationStepLabel(
     case "import-project":
       return subject === undefined ? "Creating it" : `Creating ${subject}`;
     case "import-container":
-      return "Adding its Mate's computer";
-    case "close-off":
-      return "Making its network private";
+      return "Adding its Mate's computer and services";
     case "register":
       return subject === undefined ? "Adding it to HQ" : `Adding ${subject} to your project`;
     case "import-recipe":
       return "Adding its services";
-    case "import-managed":
-      return "Adding its databases and storage";
     case "await-ready":
       return step.withAgent
         ? "Waiting for its Mate"

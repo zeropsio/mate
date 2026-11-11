@@ -6,10 +6,11 @@ import { liveZerops, ORG, processValue, zeropsVersion } from "../__fixtures__/ac
 import { runningScope } from "../families/process.ts";
 import { linkKeys } from "../model.ts";
 import { makeAccountStore, type AccountStore } from "../store.ts";
-import { ZeropsApiError } from "../../zerops/api.ts";
+import { ZeropsApiError, ZeropsTargetWriteRefused, ZeropsWriteNotSent } from "../../zerops/api.ts";
 import { isUncertainZeropsFailure } from "../../zerops/errors.ts";
 import { makeOperations, type OperationExecutor } from "./coordinator.ts";
 import { runToEnd } from "./runToEnd.ts";
+import { verb } from "./executors/write.ts";
 
 const CREATE = { kind: "create-project", orgId: ORG, name: "shop", tagList: [] } as const;
 
@@ -70,6 +71,63 @@ const failure = async (promise: Promise<unknown>) => {
 };
 
 describe("runToEnd", () => {
+  it.effect.each([401, 429])("a sent create or import answered %s remains uncertain", (status) =>
+    Effect.gen(function* () {
+      const reply = new ZeropsApiError(
+        "The target did not give a definitive answer.",
+        "invalid-input",
+        status,
+      );
+      const create = yield* Effect.result(verb(() => Promise.reject(reply), { targetWrite: true }));
+      const imported = yield* Effect.result(
+        verb(() => Promise.reject(new ZeropsTargetWriteRefused(reply))),
+      );
+      expect(create).toMatchObject({ failure: { outcome: "uncertain-acceptance" } });
+      expect(imported).toMatchObject({ failure: { outcome: "uncertain-acceptance" } });
+    }),
+  );
+
+  it("a failure before the target write is sent retains that proof", async () => {
+    const local = setUp(() =>
+      verb(() => Promise.reject(new ZeropsWriteNotSent(new Error("Key unavailable.")))),
+    );
+    await expect(local.run(CREATE, { orgId: ORG, unobserved: "" })).rejects.toMatchObject({
+      message: "Key unavailable.",
+      writeNotSent: true,
+    });
+    const remote = setUp(() =>
+      verb(() => Promise.reject(new ZeropsApiError("No room.", "invalid-input", 400)), {
+        targetWrite: true,
+      }),
+    );
+    await expect(remote.run(CREATE, { orgId: ORG, unobserved: "" })).rejects.toMatchObject({
+      writeNotSent: false,
+    });
+    const process = setUp(accepted);
+    const ran = process.run(CREATE, { orgId: ORG, unobserved: "" });
+    creation(process.store, "FAILED", "Failed after acceptance.");
+    await expect(ran).rejects.toMatchObject({ writeNotSent: false });
+  });
+
+  it("only a synchronous refusal of the target write proves it was refused by Zerops", async () => {
+    const refused = new ZeropsApiError("No room.", "invalid-input", 400);
+    const remote = setUp(() => verb(() => Promise.reject(refused), { targetWrite: true }));
+    await expect(remote.run(CREATE, { orgId: ORG, unobserved: "" })).rejects.toMatchObject({
+      message: "No room.",
+      synchronousRefusal: true,
+    });
+    const local = setUp(() =>
+      verb(() => Promise.reject(new ZeropsWriteNotSent(refused)), { targetWrite: true }),
+    );
+    await expect(local.run(CREATE, { orgId: ORG, unobserved: "" })).rejects.toMatchObject({
+      synchronousRefusal: false,
+    });
+    const process = setUp(accepted);
+    const ran = process.run(CREATE, { orgId: ORG, unobserved: "" });
+    creation(process.store, "FAILED", "Creation failed after acceptance.");
+    await expect(ran).rejects.toMatchObject({ synchronousRefusal: false });
+  });
+
   it("resolves with the operation's result once its owner's facts end it", async () => {
     const { store, run } = setUp(accepted);
     const ran = run(CREATE, { orgId: ORG, unobserved: "Not followed." });
@@ -162,14 +220,5 @@ describe("runToEnd", () => {
       message: "Decided already.",
       code: "conflict",
     });
-  });
-
-  it("an uncertain stop is the client's own uncertain failure", async () => {
-    const { run } = setUp(() =>
-      Effect.fail({ outcome: "uncertain-acceptance", message: "It may have landed." }),
-    );
-    await expect(run(CREATE, { orgId: ORG, unobserved: "" })).rejects.toBeInstanceOf(
-      ZeropsApiError,
-    );
   });
 });

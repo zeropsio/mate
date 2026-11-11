@@ -6,7 +6,8 @@
  * review; one none did — a person's, a recipe's — is a line. Every commit's id opens its page in
  * the Git browser.
  *
- * Mounted by the group's page, the stop's own, and a release row that says what it carried.
+ * Mounted by the group's page and the stop's own; an opened release lists what it carried in its
+ * own rows (`ZeropsReleaseCarried`).
  *
  * Same language as the left menu: one spine, a node per commit, and the stops that are running a
  * commit wear their name on it. The rows sit flush and the rail is opaque for the same reason they
@@ -177,13 +178,14 @@ function HistoryRow({
               }}
               type="button"
             >
-              {/* What opens says so at rest. Hover was the only sign this row
-                  had more in it, and a touch screen has no hover at all. */}
+              <span className="min-w-0 truncate">{entry.subject}</span>
+              {/* What opens says so at rest: hover was the only sign this row had more in it,
+                  and a touch screen has no hover at all. At its end, as on everything that goes
+                  somewhere; a chevron at a row's start opens it in place. */}
               <ChevronRightIcon
                 aria-hidden="true"
                 className="size-3.5 shrink-0 self-center text-muted-foreground/60"
               />
-              <span className="min-w-0 truncate">{entry.subject}</span>
             </button>
           )}
           {/* The name it went live under, where a release carried it: on a

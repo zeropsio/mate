@@ -32,7 +32,7 @@ import {
   ProviderSendTurnInput,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Queue from "effect/Queue";
@@ -60,6 +60,8 @@ import {
 import { type CodexAdapterShape } from "../Services/CodexAdapter.ts";
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
+import { makePersonaReader } from "../../personaInstructions.ts";
+import { ServerSettingsService } from "../../serverSettings.ts";
 import {
   codexThreadStart,
   codexTurnModelSelection,
@@ -94,6 +96,12 @@ const isCodexSessionRuntimeThreadIdMissingError = Schema.is(
 const isCodexResumeCursorSchema = Schema.is(CodexResumeCursorSchema);
 
 const PROVIDER = ProviderDriverKind.make("codex");
+/**
+ * Codex's `serverOverloaded` failure, for the person: its own words ("Selected model is at
+ * capacity. Please try a different model.") left a person asking "What?" (2026-10-28).
+ */
+const CODEX_AT_CAPACITY =
+  "Codex is at capacity right now. Try again in a minute: send a message to pick up where it left off.";
 
 export interface CodexAdapterLiveOptions {
   readonly instanceId?: ProviderInstanceId;
@@ -1183,7 +1191,10 @@ function mapToRuntimeEvents(
     if (!payload) {
       return [];
     }
-    const errorMessage = trimText(payload.turn.error?.message);
+    const errorMessage =
+      payload.turn.error?.codexErrorInfo === "serverOverloaded"
+        ? CODEX_AT_CAPACITY
+        : trimText(payload.turn.error?.message);
     return [
       {
         ...runtimeEventBase(event, canonicalThreadId),
@@ -1695,7 +1706,10 @@ function mapToRuntimeEvents(
 
   if (event.method === "error") {
     const payload = readPayload(EffectCodexSchema.V2ErrorNotification, event.payload);
-    const message = payload?.error.message ?? event.message ?? "Provider runtime error";
+    const message =
+      payload?.error.codexErrorInfo === "serverOverloaded"
+        ? CODEX_AT_CAPACITY
+        : (payload?.error.message ?? event.message ?? "Provider runtime error");
     const willRetry = payload?.willRetry === true;
     return [
       {
@@ -1805,8 +1819,9 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
 ) {
   const boundInstanceId = options?.instanceId ?? ProviderInstanceId.make("codex");
   const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
   const serverConfig = yield* Effect.service(ServerConfig);
+  const readPersona = yield* makePersonaReader(yield* ServerSettingsService);
   const threadPolicies = yield* readCodexThreadPolicies;
   const nativeEventLogger =
     options?.nativeEventLogger ??
@@ -1868,7 +1883,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
           ...(thread.modelSelection ? { model: thread.modelSelection.model } : {}),
           ...(serviceTier ? { serviceTier } : {}),
           ...(contextWindow ? { contextWindow } : {}),
-          ...(thread.setup ? { threadSetup: thread.setup } : {}),
+          ...(thread.setup ? { threadSetup: thread.setup } : { persona: readPersona }),
         };
         const sessionScope = yield* Scope.make("sequential");
         let sessionScopeTransferred = false;
@@ -1885,7 +1900,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
         const runtime = yield* createRuntime(runtimeInput).pipe(
           Effect.provideService(Scope.Scope, sessionScope),
           Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, childProcessSpawner),
-          Effect.provideService(Crypto.Crypto, crypto),
+          Effect.provideService(SecureRandom.SecureRandom, crypto),
           Effect.mapError(
             (cause) =>
               new ProviderAdapterProcessError({

@@ -1,5 +1,6 @@
 /**
- * The Git tab, connected: two sources joined where the person already is.
+ * The Code page, connected: where the Mate's work is — two sources joined where the person
+ * already is — above what changed in its code (`CodeChanges`).
  *
  * The checkout half is one live `subscribeVcsStatus` **per mount** — a child
  * per repository, because a hook cannot be called in a loop and because each
@@ -45,10 +46,11 @@ import {
   type GroupEnvironment,
 } from "@t3tools/client-runtime/zerops";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 
-import { useComposerDraftStore } from "../../composerDraftStore";
+import { useComposerDraftStore, type DraftId } from "../../composerDraftStore";
 import { useThreadShell } from "../../state/entities";
+import { useUiStateStore } from "../../uiStateStore";
 import { useThreadLeases } from "../../zerops/useThreadLeases";
 import { useThreadPoolPairs } from "../../zerops/useThreadPoolPairs";
 
@@ -60,9 +62,14 @@ import { useZeropsGroupRecipe } from "../../zerops/useZeropsGroupRecipe";
 import { useVcsPullAction } from "../../state/sourceControlActions";
 import { useEnvironmentQuery } from "../../state/query";
 import { vcsEnvironment } from "../../state/vcs";
+import { CodeChanges } from "../CodeChanges";
 import { ZeropsAskDialog } from "./ZeropsAskDialog";
 import { ZeropsGitBlockCommits } from "./ZeropsGitBlockCommits";
 import { ZeropsGitCommitChanges, type OpenGitCommit } from "./ZeropsGitCommitChanges";
+import type { RepoState } from "./gitMirror.logic";
+import { gitWorkRows, lineWork, type MateLine } from "./matePanels.logic";
+import type { MatePanelProject } from "./MatePanelPlaces";
+import { projectLine } from "./system";
 import { ZeropsGitPanel } from "./ZeropsGitPanel";
 import { ZeropsMateVerb } from "./ZeropsMateCard";
 
@@ -171,6 +178,8 @@ function RepositoryPullAction({
 
 export interface ZeropsGitTabProps {
   readonly threadRef: ScopedThreadRef | null;
+  /** Where a comment on a changed line goes: the conversation's composer. */
+  readonly composerDraftTarget: ScopedThreadRef | DraftId;
   /** The Mate's application in HQ, which is its group. */
   readonly appId: string | undefined;
   /** The application's environments as HQ records them, when they could be read. */
@@ -191,13 +200,28 @@ export interface ZeropsGitTabProps {
   readonly isOwner: boolean;
   /** The Mate whose panel this is, so a request names who it is going to. */
   readonly mateName?: string | undefined;
-  /** Opens a block's change on its own page. */
-  readonly onOpenChange?: ((block: GitBlock) => void) | undefined;
+  /** The Mate's face, small, at the start of its rows. */
+  readonly mateFace?: ReactNode;
+  /** The Mate's project: its places and the way to its page. */
+  readonly project?: MatePanelProject | undefined;
+  /** The project's line for this Mate (`mateLineInput`); its work on disk is read here. */
+  readonly line?: MateLine | undefined;
+  /** Opens a change's sheet from its bead on the line. */
+  readonly onOpenPull?: ((pull: FlowPullRequest, from: HTMLElement) => void) | undefined;
   /**
-   * Opens the change's review from the verb pressed — the one door to merging (pass 16, R1):
-   * nothing merges from the tab.
+   * Where a landed change went, in the words the project's change rows use ("Merged · waits for
+   * production"); `undefined` where they cannot say.
    */
-  readonly onReviewPullRequest?: ((block: GitBlock, from: HTMLElement) => void) | undefined;
+  readonly landedWords?: ((change: FlowPullRequest) => string | undefined) | undefined;
+  /** Each repository's state on GitHub, by its name at HQ, where HQ lists it. */
+  readonly github?: ((repository: string) => RepoState | undefined) | undefined;
+  /** Opens the dialog that connects a repository to GitHub, where this person may. */
+  readonly onConnect?: ((repository: string) => void) | undefined;
+  /**
+   * Opens a change's sheet from its row: its review while open — the one door to merging (pass
+   * 16, R1): nothing merges from the tab — and what it became once landed.
+   */
+  readonly onOpenChange?: ((block: GitBlock, from: HTMLElement) => void) | undefined;
 }
 
 export function ZeropsGitTab(props: ZeropsGitTabProps) {
@@ -230,10 +254,15 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
       : gitEmptyLine(topology.view.services, lifecycle);
   if (repositories === undefined)
     return (
-      <div role="status">
-        <p>{topology.error ?? "Reading repositories."}</p>
-        <ZeropsMateVerb label="Read again" onClick={topology.again} />
-      </div>
+      <CodeChanges
+        composerDraftTarget={props.composerDraftTarget}
+        top={
+          <div role="status">
+            <p>{topology.error ?? "Reading repositories."}</p>
+            <ZeropsMateVerb label="Read again" onClick={topology.again} />
+          </div>
+        }
+      />
     );
   return (
     <>
@@ -288,10 +317,15 @@ function KnownGitTab({
     generation,
   });
 
-  const blocks = useMemo(
+  const { github, landedWords } = props;
+  const rows = useMemo(
     () =>
-      repositories.map((repository) =>
-        gitBlock({
+      repositories.map((repository) => {
+        const change =
+          props.changes === undefined
+            ? undefined
+            : mateChangeIn(props.changes, props.mateProjectId, repository, leases);
+        const block = gitBlock({
           checkout: checkouts.get(repository) ?? {
             repository,
             read: false,
@@ -307,10 +341,7 @@ function KnownGitTab({
           changes:
             props.changes === undefined
               ? { read: false, change: undefined }
-              : {
-                  read: true,
-                  change: mateChangeIn(props.changes, props.mateProjectId, repository, leases),
-                },
+              : { read: true, change },
           declarations: props.declarations,
           ...(props.mateName === undefined ? {} : { mateName: props.mateName }),
           leases,
@@ -318,18 +349,43 @@ function KnownGitTab({
             remoteReachable: remotes.get(repository)?.reachable,
             remoteDetail: remotes.get(repository)?.detail,
           },
-        }),
-      ),
+        });
+        return {
+          block,
+          work: gitWorkRows(
+            block,
+            change === undefined
+              ? undefined
+              : {
+                  pull: change,
+                  landedWords: change.merged ? landedWords?.(change) : undefined,
+                },
+          ),
+          github: github?.(block.hqRepository),
+          checking: remotes.get(repository)?.checking,
+        };
+      }),
     [
       checkouts,
       leases,
       props.changes,
+      github,
+      landedWords,
       props.declarations,
       props.mateName,
       props.mateProjectId,
       remotes,
       repositories,
     ],
+  );
+  // The project's line for this Mate, with its work on disk as the beads that are no change yet.
+  const line = props.line;
+  const lineView = useMemo(
+    () =>
+      line === undefined || line.mine === undefined
+        ? undefined
+        : projectLine({ ...line, work: lineWork(rows, line.mine) }),
+    [line, rows],
   );
 
   /**
@@ -375,12 +431,8 @@ function KnownGitTab({
           onSettled={() => setGeneration((current) => current + 1)}
         />
       );
-    return (
-      <ZeropsMateVerb
-        label={action.label}
-        onClick={(event) => props.onReviewPullRequest?.(block, event.currentTarget)}
-      />
-    );
+    // *Review* is the row itself: pressing the change opens its review.
+    return null;
   };
 
   /**
@@ -428,29 +480,49 @@ function KnownGitTab({
           onBack={() => setOpenCommit(null)}
         />
       )}
-      <ZeropsGitPanel
+      <CodeChanges
         {...(openCommit === null ? {} : { className: "hidden" })}
-        model={{ blocks, emptyLine }}
-        renderBlockAction={renderBlockVerbs}
-        renderBlockCommits={(block) => (
-          <ZeropsGitBlockCommits
-            appId={props.appId}
-            change={
-              block.pullRequestNumber === undefined || block.pullRequestHead === undefined
-                ? undefined
-                : { number: block.pullRequestNumber, head: block.pullRequestHead }
-            }
-            // Each repository has its own main, independent of the application's other merges.
-            main={mergedMain(block.hqRepository, props.changes?.merged)}
-            onOpenCommit={
-              threadRef === null
-                ? undefined
-                : (commit) => setOpenCommit({ repository: block.hqRepository, ...commit })
-            }
-            repository={block.hqRepository}
+        commitsFor={(repository) => {
+          const block = rows.find((row) => row.block.repository === repository)?.block;
+          // No change, no history to read: the section draws nothing for it, not an empty heading.
+          return props.appId === undefined ||
+            block?.pullRequestNumber === undefined ||
+            block.pullRequestHead === undefined ? null : (
+            <ZeropsGitBlockCommits
+              appId={props.appId}
+              change={{ number: block.pullRequestNumber, head: block.pullRequestHead }}
+              // Each repository has its own main, independent of the application's other merges.
+              main={mergedMain(block.hqRepository, props.changes?.merged)}
+              onOpenCommit={
+                threadRef === null
+                  ? undefined
+                  : (commit) => setOpenCommit({ repository: block.hqRepository, ...commit })
+              }
+              repository={block.hqRepository}
+            />
+          );
+        }}
+        composerDraftTarget={props.composerDraftTarget}
+        top={
+          <ZeropsGitPanel
+            mateFace={props.mateFace}
+            mateName={props.mateName}
+            model={{ repositories: rows, emptyLine }}
+            // Every remote is asked again: one round, as after a verb.
+            onCheckAgain={() => setGeneration((current) => current + 1)}
+            onConnect={props.onConnect}
+            line={lineView}
+            onOpenChange={props.onOpenChange}
+            onOpenPull={props.onOpenPull}
+            // The project's page remembers the line in full per project: it arrives open.
+            onShowFullPicture={() => {
+              if (props.project !== undefined)
+                useUiStateStore.getState().setProjectLineFull(props.project.groupId, true);
+            }}
+            project={props.project}
+            renderBlockAction={renderBlockVerbs}
           />
-        )}
-        {...(props.onOpenChange === undefined ? {} : { onOpenChange: props.onOpenChange })}
+        }
       />
       <ZeropsAskDialog
         ask={asking?.ask ?? ""}

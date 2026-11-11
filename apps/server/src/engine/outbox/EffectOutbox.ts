@@ -28,7 +28,7 @@ import {
   type RunId,
 } from "@t3tools/contracts";
 
-import type { EffectClass, EffectLane } from "../domain/command.ts";
+import type { ConversationLane, EffectClass, EffectLane } from "../domain/command.ts";
 import { EngineStoreError } from "../store/EngineStore.ts";
 
 export type EffectRowState = "pending" | "running" | "settling" | "done" | "failed" | "cut";
@@ -65,8 +65,9 @@ export interface RecoveryOwner {
 }
 
 /**
- * Whose effects a claim takes: the conversations', or every other owner's (the crew's git, checks
- * and deliveries, which may hold a fiber for minutes). Absent: any.
+ * Whose effects a claim takes: the conversations', or the Mate-wide ones — every other owner's (the
+ * crew's git, checks and deliveries) and a conversation's `workspace` lane (a release through zcp),
+ * any of which may hold a fiber for minutes. Absent: any.
  */
 export type EffectPool = "conversations" | "owners";
 
@@ -159,12 +160,15 @@ export const retryPolicyOf = (
   },
 ): RetryPolicy => (row.ownerKind === "conversation" ? policies.conversation : policies.owner);
 
+/** The conversation lane the Mate-wide fibers run (`ConversationLane`). */
+const MATE_WIDE_LANE = "workspace" satisfies ConversationLane;
+
 const poolFilter = (pool: EffectPool | undefined, alias: string): string =>
   pool === undefined
     ? "1 = 1"
     : pool === "conversations"
-      ? `${alias}.owner_kind = 'conversation'`
-      : `${alias}.owner_kind != 'conversation'`;
+      ? `(${alias}.owner_kind = 'conversation' AND ${alias}.lane != '${MATE_WIDE_LANE}')`
+      : `(${alias}.owner_kind != 'conversation' OR ${alias}.lane = '${MATE_WIDE_LANE}')`;
 
 interface Row {
   readonly effect_id: string;

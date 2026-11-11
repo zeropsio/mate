@@ -17,6 +17,7 @@ const AVAILABLE_INPUT: RightPanelAvailabilityInput = {
   serverThread: true,
   zeropsPanel: "available",
   crewStatus: "applied",
+  matePersona: true,
 };
 
 describe("right panel kinds", () => {
@@ -54,10 +55,10 @@ describe("right panel kinds", () => {
         unavailableHint: "Available in a Zerops project.",
       },
       {
-        kind: "diff",
-        label: "Diff",
-        description: "See what is not committed or not on main.",
-        shortcut: "D",
+        kind: "git",
+        label: "Code",
+        description: "See where the work is, and what changed.",
+        shortcut: "G",
         unavailableHint: "Available for Git repositories.",
       },
       {
@@ -89,13 +90,6 @@ describe("right panel kinds", () => {
         unavailableHint: "Available when a project is open.",
       },
       {
-        kind: "git",
-        label: "Git",
-        description: "Follow branches and where they go.",
-        shortcut: "G",
-        unavailableHint: "Available in a Zerops project.",
-      },
-      {
         kind: "data",
         label: "Data",
         description: "Browse databases and storage.",
@@ -118,10 +112,17 @@ describe("right panel kinds", () => {
       },
       {
         kind: "mcp",
-        label: "MCP",
-        description: "Add and check this Mate's tools.",
-        shortcut: "M",
+        label: "Tools",
+        description: "Add and check the tools this Mate's agents use.",
+        shortcut: null,
         unavailableHint: "Available from a conversation.",
+      },
+      {
+        kind: "persona",
+        label: "Persona",
+        description: "Choose how this Mate works with you.",
+        shortcut: "P",
+        unavailableHint: "Update this Mate to give it a persona.",
       },
     ]);
   });
@@ -152,16 +153,16 @@ describe("right panel kinds", () => {
       [
         "browser",
         "mac",
-        "diff",
+        "git",
         "zerops",
         "agents",
         "crew",
         "files",
-        "git",
         "data",
         "vault",
         "terminal",
         "mcp",
+        "persona",
       ],
     ],
   ] as const)("%s", (_title, chief, kinds) => {
@@ -187,7 +188,6 @@ describe("right panel kinds", () => {
       name: "makes every supported kind available",
       input: AVAILABLE_INPUT,
       expected: {
-        diff: "available",
         files: "available",
         file: "available",
         terminal: "available",
@@ -200,7 +200,9 @@ describe("right panel kinds", () => {
         crew: "available",
         mcp: "available",
         vault: "available",
+        persona: "available",
         overview: "hidden",
+        express: "hidden",
       },
     },
     {
@@ -213,7 +215,6 @@ describe("right panel kinds", () => {
         zeropsPanel: "unavailable",
       },
       expected: {
-        diff: "unavailable",
         files: "unavailable",
         file: "unavailable",
         terminal: "unavailable",
@@ -226,14 +227,15 @@ describe("right panel kinds", () => {
         crew: "hidden",
         mcp: "available",
         vault: "unavailable",
+        persona: "available",
         overview: "hidden",
+        express: "hidden",
       },
     },
     {
       name: "keeps late Git and Zerops answers unknown",
       input: { ...AVAILABLE_INPUT, gitRepo: null, zeropsPanel: "unknown" },
       expected: {
-        diff: "unknown",
         files: "available",
         file: "available",
         terminal: "available",
@@ -246,14 +248,15 @@ describe("right panel kinds", () => {
         crew: "hidden",
         mcp: "available",
         vault: "unknown",
+        persona: "available",
         overview: "hidden",
+        express: "hidden",
       },
     },
     {
       name: "does not wait for Git when there is no server thread",
       input: { ...AVAILABLE_INPUT, gitRepo: null, serverThread: false },
       expected: {
-        diff: "unavailable",
         files: "available",
         file: "available",
         terminal: "available",
@@ -266,7 +269,9 @@ describe("right panel kinds", () => {
         crew: "available",
         mcp: "available",
         vault: "available",
+        persona: "available",
         overview: "hidden",
+        express: "hidden",
       },
     },
   ] as const;
@@ -298,24 +303,70 @@ describe("right panel kinds", () => {
   );
 
   /**
-   * A Mate's workspace (`/var/www`) is no Git repository of its own, so Diff
+   * A Mate's workspace (`/var/www`) is no Git repository of its own, so Code
    * read "Available for Git repositories." on every Mate — yet the services'
    * checkouts below it are (the owner: "the diff tab hasn't been working /
    * doing anything for ages").
    */
+  // witness: apps/web/src/rightPanelKinds.ts | input.zeropsPanel === "available" || (input.serverThread && input.gitRepo === true) → input.zeropsPanel === "available"
   it.each([
-    { gitRepo: false, zeropsPanel: "available", serverThread: true, diff: "available" },
-    { gitRepo: false, zeropsPanel: "unknown", serverThread: true, diff: "unknown" },
-    { gitRepo: null, zeropsPanel: "unavailable", serverThread: true, diff: "unknown" },
-    { gitRepo: false, zeropsPanel: "unavailable", serverThread: true, diff: "unavailable" },
-    { gitRepo: false, zeropsPanel: "available", serverThread: false, diff: "unavailable" },
+    { gitRepo: false, zeropsPanel: "available", serverThread: true, code: "available" },
+    { gitRepo: false, zeropsPanel: "unknown", serverThread: true, code: "unknown" },
+    { gitRepo: null, zeropsPanel: "unavailable", serverThread: true, code: "unknown" },
+    { gitRepo: false, zeropsPanel: "unavailable", serverThread: true, code: "unavailable" },
+    { gitRepo: true, zeropsPanel: "unavailable", serverThread: true, code: "available" },
+    { gitRepo: true, zeropsPanel: "unavailable", serverThread: false, code: "unavailable" },
   ] as const)(
-    "Diff with Git $gitRepo and the Zerops panel $zeropsPanel (server thread $serverThread): $diff",
-    ({ gitRepo, zeropsPanel, serverThread, diff }) => {
+    "Code with Git $gitRepo and the Zerops panel $zeropsPanel (server thread $serverThread): $code",
+    ({ gitRepo, zeropsPanel, serverThread, code }) => {
       expect(
         resolveRightPanelAvailability({ ...AVAILABLE_INPUT, gitRepo, zeropsPanel, serverThread })
-          .diff,
-      ).toBe(diff);
+          .git,
+      ).toBe(code);
+    },
+  );
+
+  it("the Chief's panel never offers Persona, even on a Mate that takes one", () => {
+    const availability = resolveRightPanelAvailability({ ...AVAILABLE_INPUT, chief: true });
+    expect(availability.persona).toBe("hidden");
+    expect(launcherActions(availability).some(({ kind }) => kind === "persona")).toBe(false);
+  });
+
+  it.each([
+    { matePersona: true, persona: "available" },
+    { matePersona: null, persona: "unknown" },
+    { matePersona: false, persona: "unavailable" },
+  ] as const)(
+    "a Mate whose server says persona support is $matePersona: Persona $persona",
+    ({ matePersona, persona }) => {
+      expect(resolveRightPanelAvailability({ ...AVAILABLE_INPUT, matePersona }).persona).toBe(
+        persona,
+      );
+    },
+  );
+
+  it.each([
+    { matePersona: null, hint: "Waiting for this Mate to answer." },
+    { matePersona: false, hint: "Update this Mate to give it a persona." },
+  ] as const)(
+    "Persona says a Mate needs an update only once its server says so: $hint",
+    ({ matePersona, hint }) => {
+      const persona = launcherActions(
+        resolveRightPanelAvailability({ ...AVAILABLE_INPUT, matePersona }),
+      ).find(({ kind }) => kind === "persona");
+      expect(persona?.available).toBe(false);
+      expect(persona?.unavailableHint).toBe(hint);
+    },
+  );
+
+  it.each([
+    { express: true, launcher: true },
+    { express: false, launcher: false },
+  ] as const)(
+    "the panel offers Adobe Express only while the person's Labs switch is on: $express",
+    ({ express, launcher }) => {
+      const availability = resolveRightPanelAvailability({ ...AVAILABLE_INPUT, express });
+      expect(launcherActions(availability).some(({ kind }) => kind === "express")).toBe(launcher);
     },
   );
 
@@ -359,7 +410,11 @@ describe("a side-panel page's head", () => {
   it.each([
     { kind: "terminal", mate: "Nova", line: "A shell on Nova's computer." },
     { kind: "terminal", mate: undefined, line: "A shell on this Mate's computer." },
-    { kind: "mcp", mate: "Nova", line: "Tools Nova can use, with each of its coding agents." },
+    {
+      kind: "mcp",
+      mate: "Nova",
+      line: "Nova's agents use these while they work.",
+    },
     { kind: "vault", mate: "Nova", line: "Settings and secrets your apps read." },
   ] as const)(
     "a page's line names the Mate once its name is known: $kind for $mate reads $line",

@@ -27,7 +27,8 @@ user-facing copy and quotes its replacement; `packages/shared/src/legacyVocabula
 One word for each thing:
 
 - **HQ** — the shared headquarters app, with one tenant per organization. Organizations do not create an HQ project.
-  Zerops's own account site is "Zerops".
+  hq.zerops.io (billing, top-ups, tokens) is HQ too. Copy never says "Zerops" as a place: the
+  products are Platform (app.zerops.io), Box, Mate and HQ.
 - **project** — what the menu lists. Source words: environment (a server connection), application, an HQ application.
   A Zerops project beside an application is called by its name. A Zerops-level part of a project is never a project:
   it is Stage, Production or a Mate's workspace.
@@ -36,6 +37,8 @@ One word for each thing:
 - **coding agent** — Claude, Codex and the others, only where a Mate is signed in. Source: provider, agent. Say
   "Sign {Mate} in with Claude or ChatGPT", or "Sign this Mate in"; never "Sign in an agent".
 - **helpers** — a Mate's own sub-agents; on a crew they are crewmates.
+- **persona** — how a Mate works and talks in every chat: a name and instructions its coding agents follow.
+  It starts from a template, **from Zerops** or **{organization}'s**, or is written by hand.
 - **workspace** — a Mate's own place to build (the engine's dev service, `appdev`); its private address is
   **{Mate}'s preview** (the stage half of a dev/stage pair, `appstage`). Engine service names never stand as copy.
 - **Stage**, **Production** — the project's shared environments; "environment" is only their collective word.
@@ -47,13 +50,26 @@ One word for each thing:
   own object stays a **change**.
 - **release** — "Putting {version} live", "{service} gets {version}". No commit hash names a release.
   In the Git browser a commit's 7-character id may stand beside its subject, as a link, never alone.
+- **didn't go out**, **didn't go live** — a release that did not go through, said with HQ's own words for why
+  (the platform's build message, HQ's refusal, its rollout's note, a service it left out) on every surface that
+  says it; **Deploy status unknown** only where HQ itself could not tell how the deploy ended. Every surface reads
+  one verdict, `releaseFailure` in client-runtime's `zerops/releaseFacts.ts`.
+- **key was refused**, **HQ doesn't accept the key**, **HQ couldn't check the key** — HQ's word on a Mate's key,
+  told to the people in the Mate over its conversation with what its owner can do and, for a refusal, when the
+  Mate asks HQ again (a refusal is not redialled on a timer of seconds), until the key works again.
+  Zerops is named as the one that did not answer only where HQ says so; its `1011` at admission does not.
+  Every surface reads one verdict, the Mate server's `hqKeyOf` (`ServerConfig.hqKey`).
 - **planning** — HQ deciding which deploys a merge or release asks for. Until HQ has, a surface says **Waiting for
   planning**, never that nothing will deploy. Source words: rollout, plan lock.
 - **setup**, **setup files** — never recipe or import files.
+- **No access** — a project HQ does not list for this person, explained under it as **Deleted or access removed**.
+  HQ never says which of the two it was, so no surface does.
 - **Read access**, **Full access** — sentence case, each explained once where it is chosen.
 - **Owner**, **Admin**, **Developer**, **Guest** — the roles, as the invite names them; the menu's foot says
   "{organization} · {role}" for every role. A Zerops role no preset names reads by what it reaches (**Works on every
   project**, **Sees every project**); a Zerops role code appears only where a Zerops role itself is chosen.
+- **Invited — accept from the Zerops email** — an organization whose Zerops invitation the account has not
+  accepted: listed with the organizations, never chosen, because only the email's link accepts it.
 - **Put it on your domain** — the first own domain, everywhere it is offered; **Manage addresses** once
   there is one.
 - **page** — what the side panel opens; never surface.
@@ -70,7 +86,8 @@ Source words and the product words that replace them:
 - T3 Connect, Tailscale, T3 Code → **omit**
 - Open in editor → **Cloud IDE**
 - zcp → **Zerops Control Plane**
-- project-level variables, Shared → **every app**; an app's own: **{app}'s own**
+- project-level variables → **Shared vault**, "accessible to every app"; an app's own → **{app} vault**, "only {app} can read";
+  the apps' own vaults together, under the shared one → **Each app's own**
 - environment variables, Plain / Sensitive → **vault values**; sensitive: **hidden**
 - control plane (product name) → **Zerops Mate**
 - stage half of a dev/stage pair, appstage → **{Mate}'s preview**
@@ -106,11 +123,11 @@ Source words and the product words that replace them:
 - log in, logged in, log out → **sign in, signed in, sign out**
 - Sign in an agent → **Sign {Mate} in**
 - Basic user, Read only (an organization's role) → **Works on every project**, **Sees every project**; at least
-  Basic user access (a project's) → **more than Read access**; Member → the role's own name
+  Basic user access (a project's) → **Edit**; Member → the role's own name
 - surface → **page**
 - Add your domain → **Put it on your domain**
 - Set custom accesses → **Choose projects**; Advanced (a role's Zerops settings) → **Fine-tune permissions**
-- container (a Mate's) → **its computer**; closed off → **private network ready**
+- container (a Mate's) → **its computer**
 
 ## 3. Visual grammar
 
@@ -125,13 +142,45 @@ Nested rounded edges run parallel: the outer radius is the inner radius plus the
   durations (`--duration-quick`, `--duration-base`, `--duration-slow`) with `ease-out-strong` for
   what arrives and `ease-in-out-strong` for a paired enter and leave.
 - An action is a `Button`: `primary` for the one next step, `secondary` beside it, `ghost` for
-  quiet tools, `destructive` only for what deletes or stops, `link` inside text. Buttons are
-  rectangles; a word that acts inside a sentence is `InlineButton`.
+  quiet tools, `destructive` only for what deletes, stops or acts on Production, `link` inside
+  text. Buttons are rectangles; a word that acts inside a sentence is `InlineButton`.
 - A label is a `Badge` pill in one of five tones (`neutral`, `info`, `success`, `warning`,
-  `danger`), so it never reads as a press; a status dot is its `dot` form, with its words or an
-  accessible name.
+  `danger`), so it never reads as a press; `danger` also names Production. A status dot is its
+  `dot` form, with its words or an accessible name.
 
-## 4. Rules — machine-checked
+## 4. Asks
+
+An ask is one thing a Mate needs from a person: approve a prepared change, provide a value only
+they have, connect a sign-in, reveal what the agent cannot see, or choose. A composite ask is
+numbered steps of these. Every ask is the same card, in two densities.
+
+- **Anatomy**, top to bottom: where it acts (This Mate, Stage, Production, Project or
+  Organization, then the service), a title that is a verb and its subject and says what the main
+  press does, the Mate's why in its own words, the body, then the footer. Production is the only
+  red: its chip and its main press.
+- **States**: waiting (the main press and Not now), working (the press as a present participle),
+  done (the real result and who), Not now (who and when), failed (the source's own sentence and
+  the press that retries), someone else's (who can answer, by name, and a press to ask them),
+  replaced (what took its place). Each kind maps its source onto these; no other state words.
+- **Truth lives at the source**: every state is read from where the setting lives (the vault,
+  the engine's request record, HQ's decision record, the MCP list). A card remembers only a press
+  under way and its refusal, never an answer.
+- **Words**: the second press is always "Not now", never Decline or Dismiss. A hidden value is
+  "hidden" and "Keep hidden", never "secret". A title never says what the Mate needs or wants.
+- **Placement**: the full card stands in the conversation where it was asked. While the Mate's
+  turn has stopped on it, the same ask also stands above the composer, compact, with "Show in
+  conversation".
+- **Secrets go card to store**: a value travels from the card to where it is stored, as the
+  person. It never enters the agent's context, the conversation, logs, telemetry or a tool
+  result; cards show names, masks and facts. The Mate hears outcomes, including Not now, never
+  values.
+- **A revealed value** stands only on the person's screen, read with their access, and hides
+  after 30 seconds or when they leave; it is recorded at HQ (who, which key, when) before it shows,
+  and the Mate hears nothing of it.
+- **Authority**: anyone in the conversation sees the ask; only someone with the authority acts,
+  and the card names who can.
+
+## 5. Rules — machine-checked
 
 - **R1** — `client-runtime/src/zerops/**` is UI-free and platform-free
   - _Enforced by:_ zone rule 5 (import prefixes) + `t3code/no-platform-globals` (resolved globals) +
@@ -180,7 +229,7 @@ Nested rounded edges run parallel: the outer radius is the inner radius plus the
 - **R9** — UI kit exports are used, not restyled
   - _Enforced by:_ `t3code/no-restyle` — `@shadcn/lint`'s no-restyle run as a fork guard through
     `oxlint-plugin-t3code/shadcnGuard.ts` (a `CollapsibleTrigger` is exempt); CI reconciles `--rule
-no-restyle`
+    no-restyle`
   - _Test(s):_ `oxlint-plugin-t3code/rules/no-restyle.test.ts`
   - _Status:_ landed (intake row 5, 2026-09-25)
 - **R10** — Class names are known and static
@@ -192,13 +241,13 @@ no-restyle`
 - **R11** — Scale values, not arbitrary ones
   - _Enforced by:_ `t3code/no-arbitrary-values` (Tailwind arbitrary values where the theme has a
     token: `text-2xs`/`text-3xs`, `ease-drawer`, the gutters); CI reconciles `--rule
-no-arbitrary-values`
+    no-arbitrary-values`
   - _Test(s):_ `oxlint-plugin-t3code/rules/no-arbitrary-values.test.ts`
   - _Status:_ landed (intake row 5, 2026-09-25); hand-written CSS sizes, corners and transition
     lengths between the scale's steps are held to a budget that only shrinks
     (`scripts/check-css-tokens.ts`)
 
-## 5. Exceptions
+## 6. Exceptions
 
 A guard exception names one finding, its owner, reason and expiry. Review a changed finding again;
 remove a dead or expired exception. A permanent exception needs a reason why the finding is correct.

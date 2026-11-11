@@ -11,7 +11,7 @@ export interface ContainerSnapshot {
   readonly health: ReadonlyMap<TargetKey, ZeropsContainerHealth>;
   /** The server version each target's descriptor last reported. */
   readonly serverVersions: ReadonlyMap<TargetKey, string>;
-  /** `ZCP_MATE_ENABLED` as read for a target that predates Mate. */
+  /** `ZCP_MATE_ENABLED` as read for a target no Mate answered on. */
   readonly mateFlags: ReadonlyMap<TargetKey, MateFlag>;
 }
 

@@ -1,10 +1,10 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { composerLayout } from "./composerLayout.ts";
 import type { Page } from "puppeteer-core";
 import { waitForStillFrames } from "../../harness/stillFrames.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { mateChat } from "./dsl.ts";
 import { installArea, reportContainer } from "./fake.ts";
@@ -24,7 +24,7 @@ describe("owner-reported layout regressions", () => {
   // Cyd: delayed HQ app detail inserted an old landing above the painted final answer,
   // dropping its words 79 px before the end follower glided back. The source stays unchanged.
 
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect("the Chief's first message and composer enter the conversation without a jump", () =>
       Effect.gen(function* () {
         const s = yield* createScenario([], { mate: "real" });
@@ -50,7 +50,7 @@ describe("owner-reported layout regressions", () => {
             .locator('[data-sidebar="sidebar"] [data-zerops-surface="sidebar-chief-row"]')
             .click(),
         );
-        yield* Effect.promise(() => s.page.waitForSelector('[role="textbox"]', { visible: true }));
+        yield* s.then.conversation.appears;
         const question = "Look into my organization.";
         const answer = "I will look into your organization.";
         const mate = s.drivers.realMates.get("Chief")!;
@@ -100,8 +100,27 @@ describe("owner-reported layout regressions", () => {
             return state;
           }, playbackRate),
         );
+        // The conversation's route changes when the Mate's first frame naming the question reaches
+        // the page. Held there, the draft keeps its route until its message has been sampled
+        // fully faded in; the slowed fade's length against the Mate's speed would race otherwise.
+        const promotion = mate.gate.holdFrames(
+          (frame) => !frame.isBinary && Buffer.from(frame.bytes).toString().includes(question),
+        );
+        yield* Effect.addFinalizer(() => Effect.sync(promotion.release));
         yield* s.when.conversation.sends(question);
         expect((yield* mate.provider.received).input.input).toBe(question);
+        yield* Effect.promise(() =>
+          s.page.waitForFunction(
+            (state) =>
+              state.frames.some(
+                (frame) =>
+                  frame.path.includes("/draft/") && frame.opacity === 1 && frame.message !== null,
+              ),
+            { polling: "raf" },
+            trace,
+          ),
+        );
+        promotion.release();
         // The answer is real server data arriving after the saved conversation's first paint.
         yield* Effect.promise(() =>
           s.page.waitForFunction(
@@ -187,7 +206,7 @@ describe("owner-reported layout regressions", () => {
 
   describe("Decision: geometry relations only; no style pins.", () => {
     describe("Decision: recovery results float as toasts; the docked footer is clear above the card.", () => {
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         it.effect(
           "a real Mate's recovery action stays fully inside its toast and the viewport",
           () =>
@@ -543,7 +562,7 @@ describe("owner-reported layout regressions", () => {
     });
 
     describe("Decision: the composer is its own group; the conversation's end stands clear of it.", () => {
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         // Owner, 2026-10-10: "last message way too close to composer" (a person's message 18 px
         // above the card), and "in some cases, at least previously, some stuff went even into the
         // composer (like working card when it had helpers etc)". A question the run waits on is
@@ -712,7 +731,7 @@ describe("owner-reported layout regressions", () => {
     });
 
     describe("Decision: an ask never moves the conversation, and never hides its end: the person scrolls clear of it.", () => {
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         // Owner, 2026-10-10: the question in the composer covered the last 120–180 px of the run's
         // card, the agent's last words with it, and no scroll brought them out from under it.
         const asks: ReadonlyArray<{
@@ -858,7 +877,7 @@ describe("owner-reported layout regressions", () => {
     });
 
     describe("Decision: what the agent asks opens with the conversation's end in sight above it.", () => {
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         // Engine final run, C1 and C9 (light and dark): the question and the secret drawer opened
         // over the person's message and the run's card, and only a scroll brought them out.
         const asks: ReadonlyArray<{
@@ -877,8 +896,34 @@ describe("owner-reported layout regressions", () => {
           },
           {
             ask: "secret",
-            shows: "Goes to this project's vault for every app, never into this chat.",
-            raise: (engine, run) =>
+            shows: "Goes to the vault, not the chat",
+            // The agent asks through zcp's call, which answers at once: the engine records the
+            // ask on that call and the turn ends, its card holding the ask.
+            raise: (engine, run) => {
+              engine.item(run, {
+                kind: "call",
+                step: "mcp",
+                words: "MCP tool call",
+                state: "done",
+                // Just after the run began, on the engine's clock.
+                endedAt: Date.parse("2026-10-05T12:00:01.000Z"),
+                tool: { name: "zerops_env", server: "zerops" },
+                shows: {
+                  toolName: "mcp__zerops__zerops_env",
+                  input: {
+                    action: "request",
+                    key: "STRIPE_SECRET_KEY",
+                    project: true,
+                    label: "Stripe secret key",
+                    why: "to take card payments",
+                  },
+                },
+                result: {
+                  toolName: "zerops_env",
+                  resultText:
+                    '{"requested":{"key":"STRIPE_SECRET_KEY","label":"Stripe secret key","why":"to take card payments","scope":"shared","sensitive":true}}',
+                },
+              });
               engine.ask(
                 {
                   kind: "vault",
@@ -889,7 +934,9 @@ describe("owner-reported layout regressions", () => {
                   reason: "to take card payments",
                 },
                 { runId: run },
-              ),
+              );
+              engine.end(run);
+            },
           },
         ];
         const MESSAGE = "Lay out the summary for me";
@@ -950,13 +997,21 @@ describe("owner-reported layout regressions", () => {
                   message!,
                   `ASSERTION: the person's message stands above the ${ask}: ${seen}`,
                 ).toBeLessThanOrEqual(end.composerTop);
+                // An ask drawn in its own row is the conversation's last, under the run's card.
+                const inConversation =
+                  end.last.text.includes(shows) && !end.last.text.includes(LAST_WORDS);
+                const card = inConversation ? end.above : end.last;
                 expect(
-                  end.last.text,
-                  `ASSERTION: the conversation's last row is the run's card: ${seen}`,
+                  card?.text,
+                  `ASSERTION: the conversation ends on the run's card, or on the ask under it: ${seen}`,
                 ).toContain(LAST_WORDS);
                 expect(
-                  end.last.bottom,
+                  card!.bottom,
                   `ASSERTION: the run's card ends above the ${ask}: ${seen}`,
+                ).toBeLessThanOrEqual(inConversation ? end.last.top : end.composerTop);
+                expect(
+                  end.last.bottom,
+                  `ASSERTION: the conversation's end stands above the composer: ${seen}`,
                 ).toBeLessThanOrEqual(end.composerTop);
                 yield* s.then.noExternalNetwork;
               }
@@ -965,12 +1020,12 @@ describe("owner-reported layout regressions", () => {
       });
     });
 
-    describe("Decision: what the composer's drawer says stands fully clear of the composer card.", () => {
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    describe("Decision: a link that is only reconnecting says so beside the Mate's name; the conversation and the composer stay where they were.", () => {
+      scenarioSuite((it) => {
         /**
-         * Ada's conversation, then her link gone: the reconnect notice in the composer's drawer, its
-         * last-known line quoting `lastWords`. Where its box and its painted card end, against the
-         * composer card's top.
+         * Ada's conversation, then her link gone, with `lastWords` as her last reply: where the
+         * conversation's last row and the composer card stand before the link goes, and once her
+         * header says she is reconnecting.
          */
         const reconnecting = (lastWords: string, evidence: string) =>
           Effect.gen(function* () {
@@ -1011,100 +1066,74 @@ describe("owner-reported layout regressions", () => {
             yield* chat.when.open();
             yield* chat.then.text("The existing conversation is still here");
             yield* Effect.promise(() => ownerMenu(s.page));
-            unavailable = true;
-            yield* s.drivers.links.get("Ada")!.close;
-            wire.disconnect();
-            yield* chat.then.text("Last known");
             yield* Effect.promise(() => waitForStillFrames(s.page));
-            const geometry = yield* Effect.promise(() =>
+            const read = () =>
               s.page.evaluate(() => {
-                const alert = document.querySelector<HTMLElement>(
-                  '[data-composer-banner-drawer] [data-slot="alert"]',
-                )!;
-                const notice = alert.getBoundingClientRect();
-                // The card the person sees is the notice's backdrop, drawn by its ::before: its own
-                // box, short of its bottom inset and of the band its mask leaves transparent.
-                const card = getComputedStyle(alert, "::before");
-                const band = document.createElement("div");
-                band.style.height = "var(--chat-composer-attachment-overlap, 0px)";
-                alert.append(band);
-                const masked =
-                  card.maskImage !== "none" && card.maskImage !== ""
-                    ? band.getBoundingClientRect().height
-                    : 0;
-                band.remove();
-                const words = alert.querySelector('[data-slot="alert-description"]');
-                const lines =
-                  words === null
-                    ? 0
-                    : Math.round(
-                        words.getBoundingClientRect().height /
-                          parseFloat(getComputedStyle(words).lineHeight),
-                      );
+                const rows = [
+                  ...document.querySelectorAll(".timeline-legend-list [data-timeline-root]"),
+                ];
                 return {
-                  noticeTop: notice.top,
-                  noticeBottom: notice.bottom,
-                  paintedBottom: notice.bottom - (parseFloat(card.bottom) || 0) - masked,
-                  lines,
+                  lastRow: Math.max(...rows.map((row) => row.getBoundingClientRect().bottom)),
                   cardTop: document
                     .querySelector('[data-slot="composer-shell"]')!
                     .getBoundingClientRect().top,
+                  // What the composer's drawer says: a notice there is what moved the conversation.
+                  notices: document.querySelectorAll(
+                    '[data-composer-banner-drawer] [data-slot="alert"]',
+                  ).length,
                 };
-              }),
+              });
+            const before = yield* Effect.promise(read);
+            unavailable = true;
+            yield* s.drivers.links.get("Ada")!.close;
+            wire.disconnect();
+            // Past a blip her header says it; it does not wait for the link to be slow.
+            yield* Effect.promise(() =>
+              s.page.waitForSelector('[data-mate-link="reconnecting"]', { visible: true }),
             );
+            yield* Effect.promise(() => waitForStillFrames(s.page));
+            const after = yield* Effect.promise(read);
             yield* Effect.promise(async () => {
               if (process.env.MATE_LAYOUT_EVIDENCE)
                 await s.page.screenshot({
                   path: `${process.env.MATE_LAYOUT_EVIDENCE}/${evidence}.png`,
-                  clip: { x: 435, y: 600, width: 1786 - 435, height: 400 },
+                  clip: { x: 435, y: 0, width: 1786 - 435, height: 1000 },
                 });
             });
-            return { s, geometry };
+            return { s, before, after };
           });
 
-        // Milo restarted mid-run, 2026-10-10: the reconnect notice ("Milo is reconnecting since
-        // 10:23 AM. Last known …") stood with its bottom edge under the composer card.
-        it.effect("a Mate's reconnect notice stands fully clear of the composer card", () =>
-          Effect.gen(function* () {
-            const { s, geometry } = yield* reconnecting(
-              "The existing conversation is still here",
-              "reconnect",
-            );
-            expect(
-              geometry.noticeBottom,
-              `ASSERTION: no part of the notice stands under the composer card: ${quoted(geometry)}`,
-            ).toBeLessThanOrEqual(geometry.cardTop);
-            yield* s.then.noExternalNetwork;
-          }),
-        );
-
-        // Milo's stress run 5 (A +1:34): the restart notice's words wrapped to three lines and its
-        // card ran on under the composer, its bottom edge hidden, though its box ended at the top.
-        it.effect("the reconnect notice's card ends above the composer, whatever its words", () =>
-          Effect.gen(function* () {
-            const { s, geometry } = yield* reconnecting(
-              "The second second-wave helper is back: note written, and its job printed " +
-                '"second-wave" with exit code 0 (09:56:24 to 09:56:44). One left, and the first ' +
-                "helper's note is in the shared folder beside the job's log, both read back.",
-              "reconnect-long",
-            );
-            const seen = quoted(geometry);
-            expect(
-              geometry.lines,
-              `ASSERTION: the notice's words wrap, as Milo's did: ${seen}`,
-            ).toBeGreaterThanOrEqual(2);
-            expect(
-              geometry.paintedBottom,
-              `ASSERTION: the notice's card ends above the composer card, its bottom edge in view: ${seen}`,
-            ).toBeLessThan(geometry.cardTop);
-            yield* s.then.noExternalNetwork;
-          }),
+        // The owner, 2026-11-10: back in a tab after a minute away, "Reconnecting to …" popped in
+        // over the composer, pushed the whole conversation up, went, and let it drop back.
+        // witness: apps/web/src/zerops/mateNoticeVoice.ts | surface: "header", → surface: "banner",
+        it.effect(
+          "a Mate's lost link is said in its header and moves neither the conversation's last row nor the composer",
+          () =>
+            Effect.gen(function* () {
+              const { s, before, after } = yield* reconnecting(
+                "The existing conversation is still here",
+                "reconnect",
+              );
+              expect(
+                after.notices,
+                `ASSERTION: the composer's drawer says nothing of a link that is reconnecting: ${quoted(after)}`,
+              ).toBe(0);
+              expect(
+                Math.abs(after.cardTop - before.cardTop),
+                `ASSERTION: the composer card stays where it was: ${quoted({ before, after })}`,
+              ).toBeLessThanOrEqual(0.5);
+              expect(
+                Math.abs(after.lastRow - before.lastRow),
+                `ASSERTION: the conversation's last row stays where it was: ${quoted({ before, after })}`,
+              ).toBeLessThanOrEqual(0.5);
+              yield* s.then.noExternalNetwork;
+            }),
         );
       });
     });
 
     describe("Decision: restore pre-regression behaviour; no test weakened; titles kept.", () => {
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         for (const state of ["plain", "review"] as const)
           it.effect(
             `the last row ends above the docked composer and history never paints below it (${state})`,
@@ -1236,7 +1265,7 @@ describe("owner-reported layout regressions", () => {
           }),
         );
 
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         const LONG =
           "Live stress test 4D: what number is in this picture? Then open example.com in the browser, take a screenshot of the page and describe its layout in twenty lines: the background, the column, the icon at the top, each paragraph and the language it is written in, and the link at the end.";
 

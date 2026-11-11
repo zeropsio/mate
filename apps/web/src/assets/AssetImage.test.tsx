@@ -2,15 +2,17 @@ import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { mateImageSource } from "@t3tools/client-runtime/data";
 import { act, useRef } from "react";
 import { create } from "react-test-renderer";
-import { afterEach, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 
-const image = vi.hoisted(() => ({
+const image = {
   keys: [] as unknown[],
   near: true,
   failure: null as null | { reason: string; retryable: boolean },
-}));
-vi.mock("./MateImages", () => ({
-  useMateImage: (key: unknown) => {
+};
+beforeEach(async () => {
+  const images = await import("./MateImages");
+  const viewport = await import("../hooks/useNearViewport");
+  vi.spyOn(images, "useMateImage").mockImplementation(((key: unknown) => {
     image.keys.push(key);
     if (key && typeof key === "object" && "rendition" in key && key.rendition === "original")
       return {
@@ -29,14 +31,16 @@ vi.mock("./MateImages", () => ({
           originalUrl: "blob:preview",
           retry: () => {},
         };
-  },
-}));
-vi.mock("../hooks/useNearViewport", () => ({
-  useNearViewport: () => ({ ref: useRef(null), near: image.near }),
-}));
+  }) as typeof images.useMateImage);
+  vi.spyOn(viewport, "useNearViewport").mockImplementation((() => ({
+    ref: useRef(null),
+    near: image.near,
+  })) as typeof viewport.useNearViewport);
+});
 import { AssetImage } from "./AssetImage";
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   image.failure = null;
   image.near = true;
@@ -207,5 +211,23 @@ it("the selected original shows its retained preview before viewport observation
     renderer = create(<AssetImage src={src} original width={640} height={400} />);
   });
   expect(renderer.root.findByProps({ "aria-hidden": true }).props.src).toBe("blob:preview");
+  act(() => renderer.unmount());
+});
+
+it("a picture's preview laid over its original never starts a drag of its own, so a zoomed picture pans", () => {
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  const src = mateImageSource({
+    environmentId: EnvironmentId.make("mate"),
+    resource: {
+      _tag: "workspace-file",
+      threadId: ThreadId.make("thread"),
+      path: "mate-asset:shot",
+    },
+  });
+  let renderer!: ReturnType<typeof create>;
+  act(() => {
+    renderer = create(<AssetImage src={src} original draggable={false} width={640} height={400} />);
+  });
+  expect(renderer.root.findByProps({ "aria-hidden": true }).props.draggable).toBe(false);
   act(() => renderer.unmount());
 });

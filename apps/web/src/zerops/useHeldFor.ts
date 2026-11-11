@@ -1,4 +1,21 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
+
+const subscribeTab = (hear: () => void) => {
+  document.addEventListener("visibilitychange", hear);
+  return () => document.removeEventListener("visibilitychange", hear);
+};
+
+/**
+ * Whether the tab is shown. A wait measured for the person counts only while they could see it:
+ * `useHeldFor(waiting && shown, ms)` starts its stretch again when they come back.
+ */
+export function useTabShown(): boolean {
+  return useSyncExternalStore(
+    subscribeTab,
+    () => document.visibilityState !== "hidden",
+    () => true,
+  );
+}
 
 /**
  * Whether `active` has held for `ms` without a break: false the moment it drops, and false again

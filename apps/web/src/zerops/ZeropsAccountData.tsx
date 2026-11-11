@@ -16,6 +16,8 @@ import {
   observeAccount,
   repairZeropsSession,
   accountReadsAtom,
+  followAccessChanges,
+  finishGoneProjects,
   platformMembership,
 } from "@t3tools/client-runtime/data";
 import { useAtomValue } from "@effect/atom-react";
@@ -24,11 +26,13 @@ import { useContext, useEffect, useMemo, type ReactNode } from "react";
 import { MateBrowserFrames } from "./browserStreamLinks";
 import { MateMacViews } from "./macViewLinks";
 import { useAccountWorkspace } from "./accountWorkspace";
+import { holdPressStreams } from "./pressStreams";
 import { useAccountDatabase } from "./accountDatabase";
 import { useAccountBuildLogs } from "./accountBuildLogs";
 import { onZeropsInvalidation } from "./accountInvalidations";
 import { onAccountLifetimeClose } from "./accountLifetime";
 import { accountOperations, AccountOperationsContext } from "./accountOperations";
+import { configuredHq } from "./accountHq";
 import { useMateResultsSeen, useOpenMatesAttention } from "./mateAttentionLinks";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
@@ -100,11 +104,20 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
   useEffect(() => {
     observation.show(orgId);
   }, [observation, orgId]);
+  // The person's access moving in Zerops' own data has HQ read again what it shows them.
+  useEffect(
+    () => followAccessChanges(registry, observation.accessChanged),
+    [observation, registry],
+  );
+  // A running press keeps its organization's HQ stream open through this account's observation.
+  useEffect(() => holdPressStreams(observation.keepPress), [observation]);
   useEffect(() => () => observation.stop(), [observation]);
   useEffect(() => {
     if (typeof window === "undefined" || typeof document === "undefined") return;
+    // Visible is enough: `navigator.onLine` can say offline while requests flow, and resuming
+    // through a real outage only fails the reads it makes.
     const resume = () => {
-      if (document.visibilityState === "visible" && navigator.onLine) observation.resume();
+      if (document.visibilityState === "visible") observation.resume();
     };
     window.addEventListener("online", resume);
     window.addEventListener("focus", resume);
@@ -133,7 +146,6 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
       retry: observation.retry,
       showHq: observation.showHq,
       moveOffers: observation.moveOffers,
-      handoverCandidates: observation.handoverCandidates,
       logs,
       reveal,
       compare: observation.compare,
@@ -156,6 +168,16 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
       ),
     [client, observation, registry, store],
   );
+  // A project HQ still places that the person's own read proved gone is told to HQ once.
+  useEffect(() => {
+    if (orgId === null) return;
+    return finishGoneProjects({
+      store,
+      orgId,
+      hqProjectId: configuredHq().projectId,
+      submit: ({ intent, requestId }) => void operations.submit(intent, requestId),
+    });
+  }, [operations, orgId, store]);
   // The account's reads move to each new value as it comes, never unset between: a moment without
   // them would read every organization's listing as gone. They go only with this mount.
   useEffect(() => {

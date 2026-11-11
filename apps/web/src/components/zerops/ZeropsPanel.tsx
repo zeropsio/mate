@@ -5,8 +5,9 @@ import { ServiceBrowserLinkContext } from "../ServiceBrowserLink";
 import { ZeropsDataLinkContext } from "./dataLink";
 import { useRightPanelStore } from "../../rightPanelStore";
 /**
- * The Zerops right-panel surface: the service map for the project this thread
- * runs in.
+ * The Zerops right-panel surface: the project this Mate works in — its places,
+ * each opening its page, and the way to the project's page — then the service
+ * map of the Mate's own project.
  *
  * Reads both feeds and renders. Nothing here mutates the project — the agent
  * owns every change, through MCP.
@@ -39,22 +40,21 @@ import { useEnvironment } from "~/state/environments";
 import { useAgentLoginCancel } from "../../zerops/useAgentLoginCancel";
 import { useAgentSignOut } from "../../zerops/useAgentSignOut";
 import { useCrew } from "../../zerops/crew/useCrew";
+import { useLeaseChats } from "../../zerops/useLeaseChats";
 import { useMateLogins } from "../../zerops/useMateLogins";
 import { useProjectTopology } from "../../zerops/useProjectTopology";
-import { activityOfNow, mateFaceFor } from "../../zerops/agentActivity";
-import { useMatesActivity } from "../../zerops/useZeropsAgentActivity";
 import { useZeropsEnvironmentProject } from "../../zerops/useZeropsEnvironmentProject";
 import { useHqPersonNames } from "../../zerops/useZeropsMateOwners";
 import { useZeropsLifecycle } from "../../zerops/useZeropsFeeds";
-import { mateIdentityPose, zeropsMateAt } from "../../zerops/mateIdentities";
-import { useNowMs } from "../../zerops/useNowMs";
-import { useZeropsMateDirectory } from "../../zerops/useZeropsMates";
 import { useZeropsSessionOptional } from "../../zerops/ZeropsSessionProvider";
 import { OpenCodeAgentKeys } from "./OpenCodeAgentKeys";
 import { ZeropsAgentAuthCard } from "./ZeropsAgentAuthCard";
 import { ZeropsAgentSignInDialog } from "./ZeropsAgentSignIn";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
+import { useMateOnPanel } from "./useMateOnPanel";
+import { useMatePanelProject } from "./useMatePanelProject";
 import { ZeropsServiceMap } from "./ZeropsServiceMap";
+import { MatePanelColumn } from "./MatePanelPlaces";
 import { MicroLabel } from "./primitives";
 import { automatedAgentsLine } from "~/zerops/automatedMate.logic";
 import { useAutomatedKey } from "~/zerops/useAutomationSettings";
@@ -100,12 +100,15 @@ export function ZeropsPanel({
   // Whose login each agent is, so a row can say so (D6). Silent for your own.
   const viewerSubject = useZeropsSessionOptional()?.user?.id;
   const crew = useCrew(threadRef?.environmentId ?? null);
-  // A dev service's crew ports name their routes by whose app answers there.
+  const leaseChats = useLeaseChats(threadRef?.environmentId ?? null);
+  // A dev service's crew ports name their routes by whose app answers there; a dev pool's
+  // workspaces go by the chats working in them.
   const view = buildZeropsServiceMap(
     topology.view,
     lifecycle,
     runningToolLabel,
     crew.snapshot === null ? undefined : crewPortOwners(crew.snapshot),
+    leaseChats,
   );
   const authorizationSnapshot = agentAuthSnapshot ?? agentAuthCard;
   const authorizationAgent = authorizationSnapshot?.agents.find(
@@ -125,33 +128,11 @@ export function ZeropsPanel({
   const authorizationLogin = logins.find(
     (login) => !login.default && login.id === authorizationLoginId,
   );
-  const mates = useZeropsMateDirectory();
-  const activity = useMatesActivity();
-  const nowMs = useNowMs();
   const environmentId = threadRef?.environmentId;
   // An environment the Mate list has not reached shows the panel without a
   // Mate, and no service is marked as its container until one is known.
-  const whoLivesHere = environmentId === undefined ? null : zeropsMateAt(mates, environmentId);
-  const mateIdentity = whoLivesHere?.kind === "mate" ? whoLivesHere.mate : undefined;
-  // What it does now, where its attention is a word of now.
-  const live =
-    environmentId === undefined ? undefined : activityOfNow(activity.ofEnvironment(environmentId));
-  const mate =
-    mateIdentity === undefined || environmentId === undefined
-      ? undefined
-      : {
-          name: mateIdentity.name,
-          tint: mateIdentity.tint,
-          shape: mateIdentity.shape,
-          // Asleep until its socket is up or HQ's live word says what it does, as the
-          // lists draw it: a Mate is known from its project's tags and its container's
-          // origin before there is anything to resolve — see `ChatHeader`.
-          face: mateFaceFor(
-            mateIdentity.connected || live !== undefined,
-            live,
-            mateIdentityPose(mateIdentity, nowMs),
-          ),
-        };
+  const { identity: mateIdentity, mate } = useMateOnPanel(environmentId);
+  const project = useMatePanelProject(environmentId);
   const signOutPending = new Set<ZeropsAgentId>(
     (agentAuthCard?.agents ?? [])
       .filter((agent) => agentSignOut.statusFor(agent.agentId).pending)
@@ -165,6 +146,11 @@ export function ZeropsPanel({
   );
   // An automated Mate's agents run on the organization's key: nothing here signs it in.
   const automatedKey = useAutomatedKey();
+  const currentServiceId = mateIdentity?.serviceId;
+  const hasCurrentControlPlane =
+    view?.groups.some((group) =>
+      group.rows.some((row) => row.isControlPlane && row.service.serviceId === currentServiceId),
+    ) ?? false;
   const agents =
     mateIdentity?.automated === true ? (
       <p className="text-sm text-muted-foreground" data-zerops-surface="automated-mate-agents">
@@ -176,6 +162,8 @@ export function ZeropsPanel({
       )
     ) : (
       <ZeropsAgentAuthCard
+        density={hasCurrentControlPlane ? "compact" : "card"}
+        openCodeEnvironmentId={threadRef?.environmentId}
         otherAgents={
           threadRef === null ? undefined : (
             <OpenCodeAgentKeys environmentId={threadRef.environmentId} />
@@ -224,11 +212,6 @@ export function ZeropsPanel({
         loginStatus={mateLogins.statusFor}
       />
     );
-  const currentServiceId = mateIdentity?.serviceId;
-  const hasCurrentControlPlane =
-    view?.groups.some((group) =>
-      group.rows.some((row) => row.isControlPlane && row.service.serviceId === currentServiceId),
-    ) ?? false;
   const body =
     view === undefined ? (
       <ZeropsPanelPlaceholder />
@@ -257,6 +240,7 @@ export function ZeropsPanel({
             error={topology.error}
             liveness={topology.liveness}
             mate={mate}
+            project={project}
             mateUpdate={
               // The Mate's version and its one verb live with its body: the
               // same control the project page's menus read, so an update
@@ -276,21 +260,24 @@ export function ZeropsPanel({
   return (
     <>
       <ScrollArea className="h-full">
-        <div className="mx-auto w-full max-w-3xl space-y-5 p-4" data-zerops-project-panel>
-          {body}
-          {topology.error === undefined ? null : (
-            <div>
-              <Button variant="secondary" size="sm" onClick={topology.again}>
-                Try again
-              </Button>
-            </div>
-          )}
-          {agents === null || hasCurrentControlPlane ? null : (
-            <section className="space-y-2" data-zerops-agent-auth-tray>
-              <MicroLabel>Coding agents</MicroLabel>
-              {agents}
-            </section>
-          )}
+        <div className="pb-4">
+          {/* The Code page's own column: the project's card stands where it does there. */}
+          <MatePanelColumn data-zerops-project-panel>
+            {body}
+            {topology.error === undefined ? null : (
+              <div>
+                <Button variant="secondary" size="sm" onClick={topology.again}>
+                  Try again
+                </Button>
+              </div>
+            )}
+            {agents === null || hasCurrentControlPlane ? null : (
+              <section className="space-y-2" data-zerops-agent-auth-tray>
+                <MicroLabel>Coding agents</MicroLabel>
+                {agents}
+              </section>
+            )}
+          </MatePanelColumn>
         </div>
       </ScrollArea>
       {authorizationAgent === undefined ? null : (

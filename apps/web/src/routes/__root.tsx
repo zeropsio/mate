@@ -2,6 +2,7 @@ import { RecoveryOutcomeStatus } from "../zerops/recoveryOutcomes";
 import { AgentAdmissionComposition } from "../zerops/AgentAdmissionComposition";
 import { ConversationOpeningProvider } from "~/components/chat/ConversationOpeningStage";
 import { useThreadDetail } from "~/state/entities";
+import { useMateHandOverDestination } from "~/zerops/useMateHandOverDestination";
 import { useMateOfflineSince, useLastKnownMateWords } from "../zerops/useMenuMateReadings";
 import { useMateRecovery } from "../zerops/useMateRecovery";
 import { useMateHeld } from "../zerops/accountEnvironments";
@@ -14,12 +15,15 @@ import {
 } from "@t3tools/client-runtime/environment";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import {
+  MATE_VOICE_QUIET_MS,
+  MATE_VOICE_SLOW_MS,
   type Reachability,
   reachabilityCountsDown,
   routeGatePhrase,
   selectRouteGate,
   type MateVoice,
 } from "@t3tools/client-runtime/zerops/environments";
+import { useHeldFor, useTabShown } from "~/zerops/useHeldFor";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import {
   Link,
@@ -51,7 +55,6 @@ import { ZeropsNewProjectHost } from "../components/zerops/ZeropsNewProjectHost"
 import { ChiefSetupHost } from "../components/zerops/chief/ChiefSetupHost";
 import { AddressesSheetHost } from "../components/zerops/addresses/AddressesSheetContainer";
 import { ZeropsDeleteApplicationHost } from "../components/zerops/ZeropsDeleteApplicationDialog";
-import { ZeropsHqGate } from "../components/zerops/ZeropsHqGate";
 import { Button } from "../components/ui/button";
 import {
   AnchoredToastProvider,
@@ -81,6 +84,7 @@ import {
   primaryServerConfigAtom,
   primaryServerConfigEventAtom,
   primaryServerWelcomeAtom,
+  serverEnvironment,
 } from "../state/server";
 import { readProject, setActiveEnvironmentId, useActiveEnvironmentId } from "../state/entities";
 import {
@@ -100,13 +104,13 @@ import { MateLinkStage } from "../components/zerops/MateLinkStage";
 import { RouteStandIn } from "../components/zerops/RouteStandIn";
 import { resolveThreadRouteRef } from "../threadRoutes";
 import { RouteGateView } from "./-routeGate";
-import { useHqGate } from "../zerops/hqGate";
-import { HQ_BORN_HERE, useHqBornHere } from "../zerops/useHqBornHere";
 import { staleChunkRecovery } from "../lib/staleChunk";
 import { installMateDiagnostics } from "~/zerops/diagnostics";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { ZeropsReviewProvider } from "~/zerops/ZeropsReviewProvider";
+import { validatePipelineSearch } from "~/zerops/pipelineSearch";
+import { PipelineDialogHost } from "~/components/zerops/pipeline/PipelineDialog";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 const NO_ENVIRONMENT = EnvironmentId.make("none");
@@ -119,6 +123,8 @@ installMateDiagnostics();
 
 export const Route = createRootRoute({
   beforeLoad: () => ({ authGateState: { status: "hosted-static" } as AuthGateState }),
+  // Every page carries the pipeline dialog's address (`zerops/pipelineSearch.ts`).
+  validateSearch: validatePipelineSearch,
   component: RootRouteView,
   // The whole page's wait (a route's guard holds every route above it): nothing drawn into #root,
   // so index.html's frame stands (`bootFrame.ts`) — never a "Loading…" in place of the app.
@@ -190,10 +196,6 @@ function SignedInRootRouteView() {
         : EnvironmentId.make(routeEnvironmentId),
   );
   const gate = selectRouteGate(gateInputs.target);
-  const { gate: hqGate } = useHqGate(pathname);
-  // HQ's setup this page watched finish stays on screen until the menu has read the new HQ: the
-  // product takes over in one piece, never through a blank page while the new HQ starts answering.
-  const hqBornHere = useHqBornHere();
   // The link's one voice (`mateVoice`): the banner over a mounted conversation, the stage where
   // none can show yet; the Mate by its own name, never its container's host.
   const routeEnvironment =
@@ -239,6 +241,18 @@ function SignedInRootRouteView() {
       : `${gateInputs.projectId}:${gateInputs.serviceId}`,
   );
   const speaksFor = routeEnvironment ?? draftEnvironmentId;
+  const hqKey = useAtomValue(serverEnvironment.hqKeyValueAtom(speaksFor));
+  const conversationShown = gate.kind === "outlet" && conversation.kind === "shown";
+  // One stretch however the lost link alternates between reconnecting and retrying, and only
+  // while the tab is shown: a link lost while the person was away is not slow when they return,
+  // it starts being waited for then.
+  const tabShown = useTabShown();
+  const linkLost =
+    conversationShown &&
+    tabShown &&
+    (linkReachability?.kind === "reconnecting" || linkReachability?.kind === "retrying");
+  const linkHeld = useHeldFor(linkLost, MATE_VOICE_QUIET_MS);
+  const linkSlow = useHeldFor(linkLost, MATE_VOICE_SLOW_MS);
   const voice =
     speaksFor !== null &&
     (gate.kind === "outlet" ||
@@ -250,7 +264,10 @@ function SignedInRootRouteView() {
           lastKnown,
           offlineSince,
           timestampFormat,
-          conversationShown: gate.kind === "outlet" && conversation.kind === "shown",
+          conversationShown,
+          linkHeld,
+          linkSlow,
+          hqKey,
           nowMs,
           mateName: speakingName,
         })
@@ -261,6 +278,8 @@ function SignedInRootRouteView() {
     threadId: pathname.split("/").filter((part) => part.length > 0)[1],
   });
   const routeDetailHeld = useThreadDetail(routeThreadRef, (detail) => detail !== null);
+  const handOverId = useLocation({ select: (location) => location.state.mateHandOver });
+  useMateHandOverDestination(routeThreadRef, handOverId);
   useEffect(() => {
     mateDiagnostics.record({
       kind: "route-gate",
@@ -293,64 +312,52 @@ function SignedInRootRouteView() {
         <CommandPalette>
           <AppSidebarLayout status={<RecoveryOutcomeStatus />}>
             <ConversationOpeningProvider>
-              {/* The organization's gate (ADR 0001): no product without its HQ. */}
-              {hqGate.kind !== "open" ? (
-                <ZeropsHqGate gate={hqGate} />
-              ) : hqBornHere ? (
-                <ZeropsHqGate gate={HQ_BORN_HERE} />
-              ) : (
-                <RouteGateView
-                  gate={gate}
-                  phrase={gatePhrase}
-                  projectId={projectUnavailable ? null : gateInputs.projectId}
-                  recoveryPhrase={recoveryPhrase}
-                  projectUnavailable={projectUnavailable}
-                  conversation={
-                    projectUnavailable
-                      ? { kind: "suppressed", reason: "access-denied" }
-                      : conversation
-                  }
-                  voice={voice}
-                  stage={
-                    gate.kind === "wait" ||
-                    (gate.kind === "unavailable" && gate.reachability !== null) ? (
-                      <MateLinkStage
-                        readPending={!routeDetailHeld}
-                        threadKey={
-                          routeThreadRef === null ? undefined : scopedThreadKey(routeThreadRef)
-                        }
-                        composer={
-                          routeThreadRef === null ? null : (
-                            <RouteStandIn threadRef={routeThreadRef} />
-                          )
-                        }
-                        environmentId={routeEnvironment}
-                        projectId={gateInputs.projectId}
-                        voice={voice.surface === "none" ? SILENT_STAGE : voice}
-                      />
-                    ) : null
-                  }
-                >
-                  <Outlet />
-                </RouteGateView>
-              )}
+              <RouteGateView
+                gate={gate}
+                phrase={gatePhrase}
+                environmentId={routeEnvironment}
+                projectId={projectUnavailable ? null : gateInputs.projectId}
+                recoveryPhrase={recoveryPhrase}
+                projectUnavailable={projectUnavailable}
+                conversation={
+                  projectUnavailable
+                    ? { kind: "suppressed", reason: "access-denied" }
+                    : conversation
+                }
+                voice={voice}
+                stage={
+                  gate.kind === "wait" ||
+                  (gate.kind === "unavailable" && gate.reachability !== null) ? (
+                    <MateLinkStage
+                      readPending={!routeDetailHeld}
+                      threadKey={
+                        routeThreadRef === null ? undefined : scopedThreadKey(routeThreadRef)
+                      }
+                      composer={
+                        routeThreadRef === null ? null : <RouteStandIn threadRef={routeThreadRef} />
+                      }
+                      environmentId={routeEnvironment}
+                      projectId={gateInputs.projectId}
+                      voice={voice.surface === "none" ? SILENT_STAGE : voice}
+                    />
+                  ) : null
+                }
+              >
+                <Outlet />
+              </RouteGateView>
             </ConversationOpeningProvider>
           </AppSidebarLayout>
           {/* The New Mate dialog over whatever is on screen — every "Add a Mate" asks here — and a
             new Mate's hand-over to its conversation; the New project dialog, of its family, the
             same way for every "New project"; a place's addresses, wherever a door opens them; a
-            project's Delete; Put it live, its sheet and its runs.
-            None behind the organization's gate. */}
-          {hqGate.kind === "open" ? (
-            <>
-              <ZeropsNewMateHost />
-              <ZeropsNewProjectHost />
-              <ChiefSetupHost />
-              <AddressesSheetHost />
-              <ZeropsDeleteApplicationHost />
-              <PutLiveHost />
-            </>
-          ) : null}
+            project's Delete; Put it live, its sheet and its runs. */}
+          <ZeropsNewMateHost />
+          <ZeropsNewProjectHost />
+          <ChiefSetupHost />
+          <AddressesSheetHost />
+          <ZeropsDeleteApplicationHost />
+          <PutLiveHost />
+          <PipelineDialogHost />
         </CommandPalette>
       </ZeropsReviewProvider>
     </AgentAdmissionComposition>
@@ -494,7 +501,7 @@ function HostedStaticEnvironmentBootstrap() {
 /** A new build came while a Mate's setup runs in this tab: the reload waits for the setup. */
 function ReloadAfterSetup() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4 text-center text-foreground">
+    <div className="flex min-h-svh items-center justify-center bg-background px-4 text-center text-foreground">
       <div className="max-w-sm">
         <h1 className="text-lg font-semibold">Mate was updated.</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -514,7 +521,7 @@ function RootRouteErrorView({ error }: ErrorComponentProps) {
   const details = errorDetails(error);
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4 py-10 text-foreground sm:px-6">
+    <div className="relative flex min-h-svh items-center justify-center overflow-hidden bg-background px-4 py-10 text-foreground sm:px-6">
       <div className="pointer-events-none absolute inset-0 opacity-80">
         <div className="absolute inset-x-0 top-0 h-44 bg-[radial-gradient(44rem_16rem_at_top,color-mix(in_srgb,var(--color-red-500)_16%,transparent),transparent)]" />
         <div className="absolute inset-0 bg-[linear-gradient(145deg,color-mix(in_srgb,var(--background)_90%,var(--color-black))_0%,var(--background)_55%)]" />

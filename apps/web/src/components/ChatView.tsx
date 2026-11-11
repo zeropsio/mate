@@ -77,6 +77,7 @@ import {
   type ThreadId,
   type TurnId,
   type KeybindingCommand,
+  type MateInterruption,
   OrchestrationThreadActivity,
   ProviderInteractionMode,
   ProviderDriverKind,
@@ -127,6 +128,8 @@ import {
   useEffectEvent,
   useRef,
   useState,
+  type Dispatch,
+  type SetStateAction,
 } from "react";
 import { flushSync } from "react-dom";
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -162,6 +165,7 @@ import {
   hasActionableProposedPlan,
   selectHandoffImageResources,
   type TimelineEntriesProjection,
+  type TimelineFlowEvent,
 } from "../session-logic";
 import { deriveZeropsThreadModel } from "../state/zerops";
 import { isLatestTurnSettled } from "@t3tools/shared/orchestrationTiming";
@@ -222,6 +226,10 @@ import { useMateAddresses } from "../zerops/useMateAddresses";
 import { useCrew } from "../zerops/crew/useCrew";
 import { useCrewAccess } from "../zerops/crew/useCrewAccess";
 import { useOpenZeropsChange } from "../zerops/useOpenZeropsChange";
+import { useEditPictureInExpress, useOpenExpressDesign } from "./express/useOpenExpressDesign";
+import { ExpressHistoryContext, useExpressHistoryScope } from "./express/useExpressHistory";
+import { PictureAskContext, usePictureAsks } from "./ask/PictureAsk";
+import { useExpressGate } from "./express/useExpressGate";
 import { useThreadOnScreen } from "../zerops/threadOnScreen";
 import { useZeropsNextStepStrip } from "./zerops/ZeropsNextStepBanner";
 import { zeropsMateAt } from "../zerops/mateIdentities";
@@ -230,8 +238,11 @@ import { mateVoiceSpeaks } from "@t3tools/client-runtime/zerops/environments";
 import { useMateVoice } from "../zerops/mateVoiceContext";
 import { useReviveFailedMate } from "../zerops/mateRestart";
 import { useZeropsMate, useZeropsMateDirectory } from "../zerops/useZeropsMates";
+import { mirrorAskPlaces, mirrorAskPlacesKey } from "./zerops/mirror/mirrorAsk.logic";
+import { MirrorAskWatch } from "./zerops/mirror/MirrorAskWatch";
 import { originAskPlaces, originAskPlacesKey } from "./zerops/origin/originAsk.logic";
 import { MateFaceAsMark } from "./zerops/primitives";
+import { mateAsker } from "./zerops/SidebarMateRow.logic";
 import { ComposerRoomHeld } from "./chat/ComposerStandIn";
 import {
   nextReadAlongRoom,
@@ -267,9 +278,12 @@ import {
   useZeropsChangeLandedEvents,
   useZeropsMateAppDetailHold,
   useZeropsConversationLandings,
+  useZeropsConversationReleases,
   useZeropsProductionLive,
+  useZeropsReleaseEnded,
 } from "../zerops/useZeropsChangeLandedEvents";
 import { useVaultTurnNotes } from "../zerops/vaultTurnNotes";
+import { useMcpTurnNotes } from "../zerops/mcpTurnNotes";
 import { vaultChipsOnlyText } from "../zerops/vaultTurnNotes.logic";
 import {
   agentLastSpokeAt,
@@ -294,7 +308,7 @@ import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings"
 import { isEditableFocused } from "../lib/editableFocus";
 import { undoLatestThreadAction } from "../hooks/showUndoToast";
 import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
-import { ArrowDownIcon, PaperclipIcon } from "lucide-react";
+import { ArrowDownIcon, PaperclipIcon, XIcon } from "lucide-react";
 import { cn, randomHex } from "~/lib/utils";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { decodeProjectScriptKeybindingRule } from "~/lib/projectScriptKeybindings";
@@ -313,7 +327,11 @@ import {
   NO_PROVIDER_MODEL_SELECTION,
   sortProviderInstanceEntries,
 } from "../providerInstances";
-import { useClientSettings, useEnvironmentSettings } from "../hooks/useSettings";
+import {
+  useClientSettings,
+  useClientSettingsHydrated,
+  useEnvironmentSettings,
+} from "../hooks/useSettings";
 import { useNowMinute } from "../hooks/useNowMinute";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { useRemoveClonedProject } from "../hooks/useRemoveClonedProject";
@@ -412,6 +430,8 @@ import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline, type TimelinePersonInput } from "./chat/MessagesTimeline";
 import { KeptTimelines } from "./chat/KeptTimelines";
+import { useStableHandlers } from "../hooks/useStableHandlers";
+import { ConversationOpeningWaits } from "./chat/ConversationOpeningStage";
 import { useWarmTimelineAsk } from "./chat/warmTimeline";
 import { shouldTypeToFocusComposer } from "./chat/typeToFocus";
 import { rememberTimelineInset, rememberedTimelineInset } from "./chat/timelineInsets";
@@ -472,6 +492,7 @@ import {
   deriveComposerSendState,
   projectScriptKeybindingWrites,
   hasEnvironmentReconnectWarningGraceElapsed,
+  compactionAnswered,
   latestTurnStartFailureId,
   scheduleEnvironmentReconnectWarning,
   hasServerAcknowledgedLocalDispatch,
@@ -643,6 +664,9 @@ const ZeropsMacSurface = lazy(
     })),
   ),
 );
+const CodeChanges = lazy(
+  appChunk(() => import("./CodeChanges").then((module) => ({ default: module.CodeChanges }))),
+);
 const ZeropsGitSurface = lazy(
   appChunk(() =>
     import("./zerops/ZeropsGitSurface").then((module) => ({ default: module.ZeropsGitSurface })),
@@ -675,6 +699,16 @@ const ZeropsProjectsPage = lazy(
 const McpPanel = lazy(
   appChunk(() => import("./mcp/McpPanel").then((module) => ({ default: module.McpPanel }))),
 );
+const ExpressPanel = lazy(
+  appChunk(() =>
+    import("./express/ExpressPanel").then((module) => ({ default: module.ExpressPanel })),
+  ),
+);
+const PersonaPanel = lazy(
+  appChunk(() =>
+    import("./persona/PersonaPanel").then((module) => ({ default: module.PersonaPanel })),
+  ),
+);
 const ZeropsPanel = lazy(
   appChunk(() =>
     import("./zerops/ZeropsPanel").then((module) => ({ default: module.ZeropsPanel })),
@@ -687,7 +721,6 @@ const VaultPanelContainer = lazy(
     })),
   ),
 );
-const DiffPanel = lazy(appChunk(() => import("./DiffPanel")));
 const FilePreviewPanel = lazy(appChunk(() => import("./files/FilePreviewPanel")));
 const EMPTY_PENDING_FILE_SURFACE_IDS: ReadonlySet<string> = new Set();
 type EnvironmentUnavailableState = {
@@ -731,7 +764,6 @@ type ChatViewProps =
   | {
       environmentId: EnvironmentId;
       threadId: ThreadId;
-      onDiffPanelOpen?: () => void;
       reserveTitleBarControlInset?: boolean;
       forceExpandedMobileComposer?: boolean;
       threadSyncPhase?: ThreadSyncPhase | null;
@@ -741,12 +773,13 @@ type ChatViewProps =
   | {
       environmentId: EnvironmentId;
       threadId: ThreadId;
-      onDiffPanelOpen?: () => void;
       reserveTitleBarControlInset?: boolean;
       forceExpandedMobileComposer?: boolean;
       threadSyncPhase?: never;
       routeKind: "draft";
       draftId: DraftId;
+      optimisticMessages: ChatMessage[];
+      setOptimisticMessages: Dispatch<SetStateAction<ChatMessage[]>>;
     };
 
 interface TerminalLaunchContext {
@@ -1503,7 +1536,6 @@ function ConversationView(props: ChatViewProps) {
     environmentId,
     threadId,
     routeKind,
-    onDiffPanelOpen,
     reserveTitleBarControlInset = true,
     forceExpandedMobileComposer = false,
   } = props;
@@ -1686,7 +1718,12 @@ function ConversationView(props: ChatViewProps) {
   const [isWorkspaceFileDragActive, setIsWorkspaceFileDragActive] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [expandedImage, setExpandedImage] = useState<ExpandedImagePreview | null>(null);
-  const [optimisticUserMessages, setOptimisticUserMessages] = useState<ChatMessage[]>([]);
+  // The draft route keeps these rows until its destination has their exact message IDs.
+  const [serverOptimisticMessages, setServerOptimisticMessages] = useState<ChatMessage[]>([]);
+  const optimisticUserMessages =
+    props.routeKind === "draft" ? props.optimisticMessages : serverOptimisticMessages;
+  const setOptimisticUserMessages =
+    props.routeKind === "draft" ? props.setOptimisticMessages : setServerOptimisticMessages;
   const [feedbackSubmissionsByThreadKey, setFeedbackSubmissionsByThreadKey] = useState<
     Record<string, ReadonlyArray<CodexFeedbackSubmission>>
   >({});
@@ -2046,11 +2083,11 @@ function ConversationView(props: ChatViewProps) {
   const activeRightPanelKind = useRightPanelStore((state) =>
     selectActiveRightPanel(state.byThreadKey, activeThreadRef),
   );
-  const diffOpen = activeRightPanelKind === "diff";
-  // Every opening of Diff shows what is not on main yet, whatever it showed before.
+  const codeOpen = activeRightPanelKind === "git";
+  // Every opening of Code shows what is not on main yet, whatever it showed before.
   useLayoutEffect(() => {
-    if (activeThreadRef && diffOpen) useDiffPanelStore.getState().clearSelection(activeThreadRef);
-  }, [activeThreadRef, diffOpen]);
+    if (activeThreadRef && codeOpen) useDiffPanelStore.getState().clearSelection(activeThreadRef);
+  }, [activeThreadRef, codeOpen]);
   const rightPanelState = useRightPanelStore((state) =>
     selectThreadRightPanelState(state.byThreadKey, activeThreadRef),
   );
@@ -2583,6 +2620,14 @@ function ConversationView(props: ChatViewProps) {
   ]);
   // The task this conversation works, on an automated Mate: the header names it.
   const activeThreadMessages = activeThread?.messages;
+  // Adobe Express is a Labs preview: while the person's switch is off, nothing of it shows.
+  const expressOn = useExpressGate() === "on";
+  // What the conversation holds of Express: the panel's history and a design card's picture.
+  const expressHistory = useExpressHistoryScope(
+    activeThreadEnvironmentId,
+    activeThreadMessages,
+    expressOn,
+  );
   const activeThreadTask = useMemo(
     () => conversationTask(activeThreadMessages ?? []),
     [activeThreadMessages],
@@ -2681,6 +2726,8 @@ function ConversationView(props: ChatViewProps) {
   // The origins the engine asked of the person, by run card: a key, so streaming draws nothing.
   const originAskKey = useMemo(() => originAskPlacesKey(threadActivities), [threadActivities]);
   const originAsks = useMemo(() => originAskPlaces(originAskKey), [originAskKey]);
+  const mirrorAskKey = useMemo(() => mirrorAskPlacesKey(threadActivities), [threadActivities]);
+  const mirrorAsks = useMemo(() => mirrorAskPlaces(mirrorAskKey), [mirrorAskKey]);
   const activeContextWindow = useMemo(
     () => deriveLatestContextWindowSnapshot(threadActivities),
     [threadActivities],
@@ -2705,6 +2752,16 @@ function ConversationView(props: ChatViewProps) {
     ],
   );
   useRunningBuildDemand(zeropsBuilds.projectId, zeropsThreadModel.running);
+  // The conversation's MCP proposals: the Tools tab lists the ones still waiting on the person.
+  const mcpProposals = useMemo(
+    () =>
+      zeropsThreadModel.entries.flatMap((entry) =>
+        entry.kind === "operation" && entry.operation.proposal?.kind === "mcp.add"
+          ? [entry.operation.proposal]
+          : [],
+      ),
+    [zeropsThreadModel.entries],
+  );
   const workLogEntries = useMemo(
     () => deriveWorkLogEntries(threadActivities, { exclude: zeropsThreadModel.zeropsActivityIds }),
     [threadActivities, zeropsThreadModel.zeropsActivityIds],
@@ -2734,6 +2791,19 @@ function ConversationView(props: ChatViewProps) {
     [threadActivities],
   );
   const activePendingUserInput = pendingUserInputs[0] ?? null;
+  // A file's failure is said in the conversation it was attached in: preparing a picture takes a
+  // while, and the person may have opened another conversation by then.
+  const { threadErrorIn } = useStableHandlers({
+    threadErrorIn: (threadId: ThreadId, message: string) => {
+      setThreadError(threadId, message);
+    },
+  });
+  const questionAttachmentError = useCallback(
+    (message: string) => {
+      if (activeThreadId) threadErrorIn(activeThreadId, message);
+    },
+    [activeThreadId, threadErrorIn],
+  );
   const questionAttachments = useQuestionAttachments({
     scope: activePendingUserInput ? `${activeThreadKey}:${activePendingUserInput.requestId}` : null,
     environmentId,
@@ -2746,9 +2816,7 @@ function ConversationView(props: ChatViewProps) {
         ? null
         : supportsAttachmentUploads &&
           attachmentEnvironmentConfig.environment.capabilities.questionAttachments === true,
-    onError: (message) => {
-      if (activeThreadId) setThreadError(activeThreadId, message);
-    },
+    onError: questionAttachmentError,
   });
   const activePendingDraftAnswers = useMemo(
     () =>
@@ -2969,12 +3037,7 @@ function ConversationView(props: ChatViewProps) {
         pendingCompactionMessage.createdAt === activeLatestTurn.requestedAt));
   const compactionSettled =
     pendingCompactionMessage !== undefined &&
-    (latestTurnStartFailureId(activeThread, pendingCompactionMessage.id) !== null ||
-      activeThread?.activities.some((activity) => {
-        if (activity.kind !== "context-compaction") return false;
-        const payload = activity.payload as { readonly requestId?: unknown } | null | undefined;
-        return payload?.requestId === pendingCompactionMessage.id;
-      }));
+    compactionAnswered(activeThread, pendingCompactionMessage);
   const isCompacting =
     (isSendBusy || phase === "connecting" || phase === "running") &&
     compactRequestIsActive &&
@@ -3152,27 +3215,70 @@ function ConversationView(props: ChatViewProps) {
   const changeLandedEvents = useZeropsChangeLandedEvents(activeThreadEnvironmentId);
   // Production running a release is news to the Mate too: where the app answers now.
   const productionLive = useZeropsProductionLive(activeThreadEnvironmentId);
+  // How its application's releases ended: a release that did not go live is news to the Mate too.
+  const releasesEnded = useZeropsReleaseEnded(activeThreadEnvironmentId);
   // When the agent last spoke — the line between what it knows and what has
   // happened since. Without one nothing is said rather than everything.
   const agentSpokeAt = useMemo(() => agentLastSpokeAt(timelineMessages), [timelineMessages]);
   // What the Mate hears of its vault: the person's changes since it last spoke, as chips and a note.
   const vaultTurn = useVaultTurnNotes(activeThreadEnvironmentId, activeThreadKey, agentSpokeAt);
+  // What the Mate hears of an MCP server the person added from its proposal card.
+  const mcpTurn = useMcpTurnNotes(activeThreadEnvironmentId);
   // Fitted to the bound a send takes: a vault change a line, the rest counted and told later.
   const turnContext = useMemo(() => {
     const context = agentContext(
       [
         ...agentTurnNotes(changeLandedEvents, agentSpokeAt),
-        ...productionTurnNotes(productionLive, agentSpokeAt),
+        ...productionTurnNotes(productionLive, agentSpokeAt, releasesEnded),
+        ...mcpTurn.lines,
       ],
       vaultTurn.changes,
     );
     return { notes: context.lines, vaultChanges: context.told };
-  }, [agentSpokeAt, changeLandedEvents, productionLive, vaultTurn.changes]);
+  }, [
+    agentSpokeAt,
+    changeLandedEvents,
+    mcpTurn.lines,
+    productionLive,
+    releasesEnded,
+    vaultTurn.changes,
+  ]);
   const agentNotes = turnContext.notes;
   // The Mate hears of every landing; this conversation shows the ones it named.
   const conversationLandedEvents = useZeropsConversationLandings(
     changeLandedEvents,
     timelineMessages,
+  );
+  // When the Mate raised each ask about production here: the releases made after one are this
+  // conversation's to hear the end of.
+  const productionAsks = useMemo(
+    () =>
+      zeropsThreadModel.entries.flatMap((entry) =>
+        entry.kind === "operation" &&
+        (entry.operation.proposal?.kind === "release.offer" ||
+          entry.operation.proposal?.kind === "service.create")
+          ? [entry.operation.anchorAt]
+          : [],
+      ),
+    [zeropsThreadModel.entries],
+  );
+  const conversationReleaseEvents = useZeropsConversationReleases(
+    activeThreadEnvironmentId,
+    releasesEnded,
+    timelineMessages,
+    productionAsks,
+  );
+  // What the forge and production say into the conversation, in the order it happened.
+  const conversationFlowEvents = useMemo<ReadonlyArray<TimelineFlowEvent>>(
+    () =>
+      conversationReleaseEvents.length === 0
+        ? conversationLandedEvents
+        : [...conversationLandedEvents, ...conversationReleaseEvents].toSorted((left, right) =>
+            ("outcome" in left ? left.endedAt : left.landedAt).localeCompare(
+              "outcome" in right ? right.endedAt : right.landedAt,
+            ),
+          ),
+    [conversationLandedEvents, conversationReleaseEvents],
   );
   const timelineProjectionRef = useRef<{
     threadKey: string | null;
@@ -3188,7 +3294,7 @@ function ConversationView(props: ChatViewProps) {
       previous?.threadKey === activeThreadKey ? previous.projection : null,
       turnPlans,
       zeropsThreadModel.entries,
-      conversationLandedEvents,
+      conversationFlowEvents,
     );
     timelineProjectionRef.current = { threadKey: activeThreadKey, projection };
     mateDiagnostics.record({
@@ -3207,7 +3313,7 @@ function ConversationView(props: ChatViewProps) {
     turnPlans,
     workLogEntries,
     zeropsThreadModel.entries,
-    conversationLandedEvents,
+    conversationFlowEvents,
   ]);
   // While the thread detail reloads, repaint this thread's own last timeline
   // instead of an empty pane.
@@ -3396,6 +3502,7 @@ function ConversationView(props: ChatViewProps) {
     mateName: admissionMate.kind === "mate" ? admissionMate.mate.name : "This Mate",
     // It runs on the organization's key: no sign-in, and with no agent to run, it says so.
     automated: automatedHere,
+    hqSigners: admissionPeople?.everSignedIn,
     owner:
       admissionMate.kind === "nobody" || admissionPeople?.owned === false
         ? null
@@ -3407,7 +3514,7 @@ function ConversationView(props: ChatViewProps) {
     admissionOwner?.isViewer === false
       ? colleagueMateReadOnly({
           mateName: admissionMate.kind === "mate" ? admissionMate.mate.name : "This Mate",
-          ownerName: admissionOwner.name,
+          ownerName: admissionOwner.called,
         })
       : admission.readOnly
         ? {
@@ -3494,18 +3601,19 @@ function ConversationView(props: ChatViewProps) {
     () => shortcutLabelForCommand(keybindings, "terminal.close", terminalShortcutLabelOptions),
     [keybindings, terminalShortcutLabelOptions],
   );
+  // The diff shortcut opens Code at "What changed", and closes it from there.
   const onToggleDiff = useCallback(() => {
-    // A Chief's panel offers no diff (`rightPanelKinds.ts`): its shortcut opens none either.
-    if (!isServerThread || chiefConversation) {
+    // A Chief's panel offers no Code (`rightPanelKinds.ts`): its shortcut opens none either.
+    if (!isServerThread || chiefConversation || !activeThreadRef) {
       return;
     }
-    if (!diffOpen) {
-      onDiffPanelOpen?.();
+    if (codeOpen) {
+      useRightPanelStore.getState().toggle(activeThreadRef, "git");
+      return;
     }
-    if (activeThreadRef) {
-      useRightPanelStore.getState().toggle(activeThreadRef, "diff");
-    }
-  }, [activeThreadRef, chiefConversation, diffOpen, isServerThread, onDiffPanelOpen]);
+    useDiffPanelStore.getState().askChanges(activeThreadRef);
+    useRightPanelStore.getState().open(activeThreadRef, "git");
+  }, [activeThreadRef, chiefConversation, codeOpen, isServerThread]);
 
   const envLocked = Boolean(
     activeThread &&
@@ -4164,13 +4272,6 @@ function ConversationView(props: ChatViewProps) {
     },
     [environmentId, navigate],
   );
-  // The launcher's availability decides who may open Diff.
-  const addDiffSurface = useCallback(() => {
-    if (!activeThreadRef || !isServerThread) return;
-    useDiffPanelStore.getState().clearSelection(activeThreadRef);
-    useRightPanelStore.getState().open(activeThreadRef, "diff");
-    onDiffPanelOpen?.();
-  }, [activeThreadRef, isServerThread, onDiffPanelOpen]);
   const addFilesSurface = useCallback(() => {
     if (!activeThreadRef || !activeProject) return;
     useRightPanelStore.getState().open(activeThreadRef, "files");
@@ -4192,6 +4293,12 @@ function ConversationView(props: ChatViewProps) {
     if (!activeThreadRef) return;
     useRightPanelStore.getState().open(activeThreadRef, "git");
   }, [activeThreadRef]);
+  /** Code at "What changed" (the launcher's D). */
+  const addCodeChangesSurface = useCallback(() => {
+    if (!activeThreadRef) return;
+    useDiffPanelStore.getState().askChanges(activeThreadRef);
+    useRightPanelStore.getState().open(activeThreadRef, "git");
+  }, [activeThreadRef]);
   const addCrewSurface = useCallback(() => {
     if (!activeThreadRef) return;
     useRightPanelStore.getState().open(activeThreadRef, "crew");
@@ -4204,6 +4311,59 @@ function ConversationView(props: ChatViewProps) {
     if (!activeThreadRef) return;
     useRightPanelStore.getState().open(activeThreadRef, "vault");
   }, [activeThreadRef]);
+  const addPersonaSurface = useCallback(() => {
+    if (!activeThreadRef) return;
+    useRightPanelStore.getState().open(activeThreadRef, "persona");
+  }, [activeThreadRef]);
+  const addExpressSurface = useCallback(() => {
+    if (!activeThreadRef) return;
+    useRightPanelStore.getState().open(activeThreadRef, "express");
+  }, [activeThreadRef]);
+  // Turning Express off closes its tab; read only once the switch is known, so a reload keeps it.
+  const clientSettingsHydrated = useClientSettingsHydrated();
+  const expressTabOpen = rightPanelState.surfaces.some((surface) => surface.kind === "express");
+  useEffect(() => {
+    if (expressOn || !clientSettingsHydrated || !expressTabOpen || !activeThreadRef) return;
+    useRightPanelStore.getState().closeSurface(activeThreadRef, "express");
+  }, [activeThreadRef, clientSettingsHydrated, expressOn, expressTabOpen]);
+  /**
+   * A change's address at HQ a Mate wrote into its conversation opens on the
+   * change's own page here. Anything this account's HQ does not own is left
+   * exactly as it was.
+   */
+  const resolveChangeLink = useOpenZeropsChange(activeThreadRef);
+  // An Adobe Express design a Mate made opens in the Express tab, to continue it there.
+  const resolveExpressDesign = useOpenExpressDesign(activeThreadRef, expressOn);
+  const resolveAppLink = useCallback(
+    (href: string) => resolveChangeLink(href) ?? resolveExpressDesign(href),
+    [resolveChangeLink, resolveExpressDesign],
+  );
+  const editPictureInExpress = useEditPictureInExpress(activeThreadRef, expressOn);
+  // A picture ask's answer: its pictures into the composer, sent with the words that say what
+  // they are, after whatever the person had typed.
+  const answerPictureAsk = useCallback(
+    (files: File[], words: string) => {
+      if (!activeThreadRef) return;
+      const threadRef = activeThreadRef;
+      void (async () => {
+        await composerRef.current?.addDroppedFiles(files, { keepOriginal: true });
+        const drafts = useComposerDraftStore.getState();
+        const typed = drafts.getComposerDraft(threadRef)?.prompt.trim() ?? "";
+        drafts.requestSend(threadRef, typed === "" ? words : `${typed}\n\n${words}`);
+      })();
+    },
+    [activeThreadRef],
+  );
+  const pictureAsks = usePictureAsks(activeThreadMessages);
+  const pictureAskScope = useMemo(
+    () => ({
+      answers: pictureAsks.answers,
+      passed: pictureAsks.passed,
+      answer: activeThreadRef ? answerPictureAsk : null,
+      mate: pageMateName,
+    }),
+    [activeThreadRef, answerPictureAsk, pageMateName, pictureAsks],
+  );
   const addOverviewSurface = useCallback(() => {
     if (!activeThreadRef) return;
     useRightPanelStore.getState().open(activeThreadRef, "overview");
@@ -4433,11 +4593,8 @@ function ConversationView(props: ChatViewProps) {
       if (surface.kind === "terminal") {
         setTerminalFocusRequestId((value) => value + 1);
       }
-      if (surface.kind === "diff" && !diffOpen) {
-        onDiffPanelOpen?.();
-      }
     },
-    [activeThreadRef, diffOpen, onDiffPanelOpen],
+    [activeThreadRef],
   );
   const toggleRightPanel = useCallback(() => {
     if (!activeThreadRef) return;
@@ -4453,6 +4610,22 @@ function ConversationView(props: ChatViewProps) {
       threadKey === routeThreadKey ? null : routeThreadKey,
     );
   }, [canMaximizeRightPanel, routeThreadKey]);
+  // Adobe's editor is a desktop tool: the panel takes the room while it is open and gives back
+  // only the room it took.
+  const expressMaximizedPanel = useRef(false);
+  const onExpressEditingChange = useCallback(
+    (editing: boolean) => {
+      if (editing) {
+        if (!canMaximizeRightPanel || maximizedRightPanelThreadKey === routeThreadKey) return;
+        expressMaximizedPanel.current = true;
+        setMaximizedRightPanelThreadKey(routeThreadKey);
+      } else if (expressMaximizedPanel.current) {
+        expressMaximizedPanel.current = false;
+        setMaximizedRightPanelThreadKey(null);
+      }
+    },
+    [canMaximizeRightPanel, maximizedRightPanelThreadKey, routeThreadKey],
+  );
   const cleanupRightPanelSurfaces = useCallback(
     (surfaces: readonly RightPanelSurface[]) => {
       if (!activeThreadRef) return;
@@ -5113,7 +5286,13 @@ function ConversationView(props: ChatViewProps) {
     return () => {
       window.clearTimeout(timer);
     };
-  }, [activeThread?.id, activeThread?.messages, handoffAttachmentPreviews, optimisticUserMessages]);
+  }, [
+    activeThread?.id,
+    activeThread?.messages,
+    handoffAttachmentPreviews,
+    optimisticUserMessages,
+    setOptimisticUserMessages,
+  ]);
 
   useEffect(() => {
     setOptimisticUserMessages((existing) => {
@@ -5124,7 +5303,7 @@ function ConversationView(props: ChatViewProps) {
     });
     resetLocalDispatch();
     setExpandedImage(null);
-  }, [draftId, resetLocalDispatch, threadId]);
+  }, [draftId, resetLocalDispatch, setOptimisticUserMessages, threadId]);
 
   const closeExpandedImage = useCallback(() => {
     setExpandedImage(null);
@@ -6391,7 +6570,7 @@ function ConversationView(props: ChatViewProps) {
     if (activeEnvironmentUnavailable) {
       // A Mate's banner already says where its link is (`mateVoice`): no second voice. Where the
       // banner has no words yet, the refused send says so itself.
-      if (mateVoiceSpeaks(mateLinkVoice)) return "declined";
+      if (mateLinkVoice.surface !== "header" && mateVoiceSpeaks(mateLinkVoice)) return "declined";
       toastManager.add(
         stackedThreadToast({
           type: "warning",
@@ -6843,6 +7022,17 @@ function ConversationView(props: ChatViewProps) {
         clearComposerDraftContent(composerDraftTarget);
         composerRef.current?.resetCursorState();
       }
+      // The person's own send pins the end here too, with no row of its own to bring: the
+      // message and its run's card are followed from the frame the engine writes them. Left
+      // out, a conversation opened where it was left mid-read never followed its own sends.
+      if (
+        nextTimelineFollow(
+          liveFollowUserScrollGenerationRef.current === anchorUserScrollGenerationRef.current,
+          { type: "sent", byPerson: sentBy === "person" },
+        )
+      ) {
+        scrollToEnd(false, sentBy === "person");
+      }
       const crewResult = await sendCrewCommand({ environmentId, input: crewMessage });
       if (crewResult._tag === "Success") {
         if (queuedMessage && activeThreadKey) settleQueuedSend(activeThreadKey, null);
@@ -7152,6 +7342,7 @@ function ConversationView(props: ChatViewProps) {
       } else {
         turnStartSucceeded = true;
         vaultTurn.told(toldVault);
+        mcpTurn.told(turnAgentNotes);
         // The turn is under way and will spend quota, so that thread's limits
         // snapshot is stale. Uploads may have outlasted a navigation, so only
         // the sending thread's panel clears.
@@ -7755,6 +7946,7 @@ function ConversationView(props: ChatViewProps) {
       runtimeMode,
       scrollToEnd,
       setComposerDraftInteractionMode,
+      setOptimisticUserMessages,
       setThreadError,
       startThreadTurn,
       environmentId,
@@ -8055,11 +8247,74 @@ function ConversationView(props: ChatViewProps) {
     setExpandedImage(preview);
   }, []);
 
+  const restartContinue = (interruption: MateInterruption) => {
+    const pending = activeServerThread?.session?.interruption;
+    if (
+      activeThreadKey === null ||
+      pending == null ||
+      pending.turnId !== interruption.turnId ||
+      pending.messageId !== interruption.messageId
+    )
+      return;
+    const message = useQueuedMessageStore.getState().enqueue(activeThreadKey, {
+      prompt: "Continue the work that was interrupted by the restart.",
+      images: [],
+      terminalContexts: [],
+      reviewComments: [],
+      submissionIntent: "foreground",
+      queuedAfterToolActivityId: null,
+      createdAt: new Date().toISOString(),
+      holdUntilUserAction: true,
+    });
+    void onSend(undefined, "foreground", message);
+  };
+  const usageContinue = () => {
+    if (activeThreadKey === null || activeThread === undefined) return;
+    // The engine tries the provider itself: the held message, else the
+    // limited work's resume. V1 continues by a message.
+    if (engineConversation) {
+      void continueAfterLimit({
+        environmentId: activeThread.environmentId,
+        input: { threadId: activeThread.id },
+      });
+      return;
+    }
+    const message = useQueuedMessageStore.getState().enqueue(activeThreadKey, {
+      prompt: "Continue the work that was paused.",
+      images: [],
+      terminalContexts: [],
+      reviewComments: [],
+      submissionIntent: "foreground",
+      queuedAfterToolActivityId: null,
+      createdAt: new Date().toISOString(),
+      holdUntilUserAction: true,
+    });
+    void onSend(undefined, "foreground", message);
+  };
+  // What the header, the composer and the conversation's rows are handed to call: the same
+  // functions for this view's life (`useStableHandlers`), so those children render for what they
+  // show and not for each of the many reads this view renders for.
+  const handed = useStableHandlers({
+    restartContinue,
+    usageContinue,
+    withdrawHeldMessage: onWithdrawHeldMessage,
+    startFreshConversation,
+    editCrewmateJob,
+    editCrewGoal,
+    runProjectScript,
+    compactContext: onCompactContext,
+    send: onSend,
+    advanceActivePendingUserInput: onAdvanceActivePendingUserInput,
+    dismissUserInput: onDismissUserInput,
+    startFromOriginChange: onStartFromOriginChange,
+  });
+
   // Empty state: no active thread
   if (!activeThread) {
     return <NoActiveThreadState />;
   }
 
+  const rightPanelCoversHeader = shouldUseRightPanelSheet && isMobileViewport;
   const panelToggleControls = (
     <PanelLayoutControls
       terminalAvailable={activeProject !== null}
@@ -8078,7 +8333,8 @@ function ConversationView(props: ChatViewProps) {
     />
   );
   const panelLayoutControls = (
-    <div
+    <ConversationOpeningWaits
+      as="div"
       className={cn(
         // One inset in both states: the controls move between containers when
         // the right panel opens, and a different right offset made them jump
@@ -8086,6 +8342,7 @@ function ConversationView(props: ChatViewProps) {
         "absolute top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] z-50 mr-px flex h-[var(--workspace-topbar-height)] items-center gap-1 [-webkit-app-region:no-drag]",
       )}
       data-workspace-titlebar-controls
+      // The panel toggles arrive with the conversation, as the header's actions do.
     >
       {rightPanelOpen && !shouldUseRightPanelSheet ? (
         <RightPanelMaximizeControl
@@ -8094,7 +8351,7 @@ function ConversationView(props: ChatViewProps) {
         />
       ) : null}
       {panelToggleControls}
-    </div>
+    </ConversationOpeningWaits>
   );
   // A Chief's overview opens wide enough for two of its cards side by side, as its opening's
   // panel stood (`conversationPanelWidth`).
@@ -8109,12 +8366,14 @@ function ConversationView(props: ChatViewProps) {
     zeropsPanel: zeropsChrome.panel,
     crewStatus: crew.status,
     chief: chiefConversation,
+    matePersona:
+      attachmentEnvironmentConfig === null
+        ? null
+        : attachmentEnvironmentConfig.environment.capabilities.matePersona === true,
+    express: expressOn,
   });
   const onAddRightPanelSurface = (kind: Exclude<RightPanelKind, "file" | "terminal">): void => {
     switch (kind) {
-      case "diff":
-        addDiffSurface();
-        return;
       case "files":
         addFilesSurface();
         return;
@@ -8144,6 +8403,12 @@ function ConversationView(props: ChatViewProps) {
         return;
       case "vault":
         addVaultSurface();
+        return;
+      case "persona":
+        addPersonaSurface();
+        return;
+      case "express":
+        addExpressSurface();
         return;
       case "overview":
         addOverviewSurface();
@@ -8177,16 +8442,6 @@ function ConversationView(props: ChatViewProps) {
                   newShortcutLabel={newTerminalShortcutLabel ?? undefined}
                   closeShortcutLabel={closeTerminalShortcutLabel ?? undefined}
                 />
-              );
-            case "diff":
-              return (
-                <Suspense fallback={<Loading label="The changes" shape="room" />}>
-                  <DiffPanel
-                    key={activeThreadKey}
-                    mode="embedded"
-                    composerDraftTarget={composerDraftTarget}
-                  />
-                </Suspense>
               );
             case "agents":
               return (
@@ -8245,7 +8500,16 @@ function ConversationView(props: ChatViewProps) {
                   );
                 });
             case "git":
-              return <ZeropsGitSurface threadRef={zeropsChrome.threadRef} />;
+              // Outside a Zerops project, Code is what changed alone.
+              return rightPanelAvailability.zerops === "unavailable" ? (
+                <CodeChanges composerDraftTarget={composerDraftTarget} key={activeThreadKey} />
+              ) : (
+                <ZeropsGitSurface
+                  composerDraftTarget={composerDraftTarget}
+                  key={activeThreadKey}
+                  threadRef={zeropsChrome.threadRef}
+                />
+              );
             case "crew":
               // One Mate's crew: another Mate's draws afresh, its sheets and drafts closed. A crew
               // closed to this viewer offers the conversation's one way out, its one dialog.
@@ -8263,6 +8527,16 @@ function ConversationView(props: ChatViewProps) {
                   driver={selectedProvider}
                   environmentId={activeThreadRef.environmentId}
                   key={`${activeThreadRef.environmentId}|${activeThreadRef.threadId}`}
+                  mateCanSignIn={
+                    attachmentEnvironmentConfig === null ||
+                    attachmentEnvironmentConfig.environment.capabilities.mcpSignIn === true
+                  }
+                  proposals={mcpProposals}
+                  run={{
+                    phase,
+                    turnId: activeLatestTurn?.turnId ?? null,
+                    completedAt: activeLatestTurn?.completedAt ?? null,
+                  }}
                   threadId={isServerThread ? activeThreadRef.threadId : undefined}
                 />
               );
@@ -8272,6 +8546,30 @@ function ConversationView(props: ChatViewProps) {
                 <VaultPanelContainer
                   environmentId={activeThreadRef.environmentId}
                   key={activeThreadRef.environmentId}
+                />
+              );
+            case "express":
+              // What the person saves lands in the composer like a pasted picture.
+              return expressOn ? (
+                <ExpressPanel
+                  environmentId={expressHistory.environmentId}
+                  history={expressHistory.history}
+                  mate={pageMateName}
+                  onAnswer={answerPictureAsk}
+                  onAttach={(files) =>
+                    composerRef.current?.addDroppedFiles(files, { keepOriginal: true })
+                  }
+                  threadId={activeThreadRef.threadId}
+                  onEditingChange={onExpressEditingChange}
+                />
+              ) : null;
+            case "persona":
+              // One Mate's persona: another Mate's draws afresh, no editor or draft carried over.
+              return (
+                <PersonaPanel
+                  environmentId={activeThreadRef.environmentId}
+                  key={activeThreadRef.environmentId}
+                  mate={pageMateName ?? null}
                 />
               );
             case "overview":
@@ -8349,18 +8647,11 @@ function ConversationView(props: ChatViewProps) {
     composerBannerItems.length > 0 ||
     Boolean(shownThreadSyncPhase && !activeEnvironmentUnavailable);
 
-  /**
-   * A change's address at HQ a Mate wrote into its conversation opens on the
-   * change's own page here. Anything this account's HQ does not own is left
-   * exactly as it was.
-   */
-  const resolveChangeLink = useOpenZeropsChange(activeThreadRef);
-
-  return (
+  const page = (
     <ServiceBrowserScope
       threadRef={activeThreadRef}
       services={zeropsTopology?.services}
-      resolveAppLink={resolveChangeLink}
+      resolveAppLink={resolveAppLink}
       className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background"
     >
       {rightPanelOpen && !shouldUseRightPanelSheet ? panelLayoutControls : null}
@@ -8378,7 +8669,9 @@ function ConversationView(props: ChatViewProps) {
           reserveNativeControls={reserveTitleBarControlInset && !inlineRightPanelOwnsTitleBar}
           className="relative bg-background"
         >
-          {!rightPanelOpen ? panelLayoutControls : null}
+          {/* A phone's sheet covers the whole header, so the header stays as it is under it: its
+              toggle and its actions stand where they stood as the sheet comes and goes. */}
+          {!rightPanelOpen || rightPanelCoversHeader ? panelLayoutControls : null}
           <ChatHeader
             activeThreadEnvironmentId={activeThread.environmentId}
             activeThreadId={activeThread.id}
@@ -8387,7 +8680,6 @@ function ConversationView(props: ChatViewProps) {
             activeThreadTask={activeThreadTask ?? undefined}
             conversationLoading={threadDetailLoading}
             isServerThread={isServerThread}
-            readAlong={colleagueReadOnly !== null}
             activeProjectName={activeProjectDisplayName}
             activeProjectCwd={activeProject?.workspaceRoot ?? null}
             activeProjectFaviconPath={activeProject?.faviconPath ?? null}
@@ -8398,16 +8690,18 @@ function ConversationView(props: ChatViewProps) {
             }
             keybindings={keybindings}
             availableEditors={availableEditors}
-            rightPanelOpen={rightPanelOpen}
+            rightPanelOpen={rightPanelOpen && !rightPanelCoversHeader}
+            terminalOpen={terminalUiState.terminalOpen}
+            onToggleTerminal={activeProject !== null ? toggleTerminalVisibility : undefined}
             gitCwd={gitCwd}
             onNewThreadInProject={handleNewThreadInActiveProject}
-            onStartFresh={startFreshConversation}
-            onEditCrewmateJob={editCrewmateJob}
-            onEditBrief={editCrewGoal}
+            onStartFresh={handed.startFreshConversation}
+            onEditCrewmateJob={handed.editCrewmateJob}
+            onEditBrief={handed.editCrewGoal}
             {...(activeDraftLogicalProjectKey
               ? { onOpenProjectSettings: handleOpenDraftProjectSettings }
               : {})}
-            onRunProjectScript={runProjectScript}
+            onRunProjectScript={handed.runProjectScript}
             onAddProjectScript={saveProjectScript}
             onUpdateProjectScript={updateProjectScript}
             onDeleteProjectScript={deleteProjectScript}
@@ -8440,6 +8734,8 @@ function ConversationView(props: ChatViewProps) {
                 </div>
               </div>
             ) : null}
+            {/* Its open asks to connect a repository to GitHub, drawn or not. */}
+            <MirrorAskWatch threadRef={routeKind === "server" ? routeThreadRef : null} />
             {/* Messages Wrapper */}
             <div className="relative flex min-h-0 flex-1 flex-col">
               {/* Messages — LegendList handles virtualization and scrolling
@@ -8465,6 +8761,7 @@ function ConversationView(props: ChatViewProps) {
                   workingStepLabel,
                   isCompacting,
                   originAsks,
+                  mirrorAsks,
                   isStopping,
                   activeTurnStartedAt: activeWorkStartedAt,
                   listRef: legendListRef,
@@ -8473,7 +8770,10 @@ function ConversationView(props: ChatViewProps) {
                   runningTurnId: activeRunningTurnId,
                   activeThreadEnvironmentId: activeThread.environmentId,
                   routeThreadKey,
-                  arrivesFromItsDraft: draftArrival.fromItsDraft,
+                  keepsDraftMessage:
+                    draftArrival.fromItsDraft ||
+                    (routeKind === "draft" &&
+                      timelineMessages.some((message) => message.role === "user")),
                   provider:
                     activeThread.session?.providerName ??
                     conversationProviderStatus?.driver ??
@@ -8514,59 +8814,14 @@ function ConversationView(props: ChatViewProps) {
                   onRestartContinue:
                     isWorking || isSendBusy || queueBlockedByPendingRequest || !admission.canSend
                       ? null
-                      : (interruption) => {
-                          const pending = activeServerThread?.session?.interruption;
-                          if (
-                            activeThreadKey === null ||
-                            pending == null ||
-                            pending.turnId !== interruption.turnId ||
-                            pending.messageId !== interruption.messageId
-                          )
-                            return;
-                          const message = useQueuedMessageStore
-                            .getState()
-                            .enqueue(activeThreadKey, {
-                              prompt: "Continue the work that was interrupted by the restart.",
-                              images: [],
-                              terminalContexts: [],
-                              reviewComments: [],
-                              submissionIntent: "foreground",
-                              queuedAfterToolActivityId: null,
-                              createdAt: new Date().toISOString(),
-                              holdUntilUserAction: true,
-                            });
-                          void onSend(undefined, "foreground", message);
-                        },
+                      : handed.restartContinue,
                   onUsageContinue:
                     isWorking || isSendBusy || queueBlockedByPendingRequest
                       ? null
-                      : () => {
-                          if (activeThreadKey === null || activeThread === undefined) return;
-                          // The engine tries the provider itself: the held message, else the
-                          // limited work's resume. V1 continues by a message.
-                          if (engineConversation) {
-                            void continueAfterLimit({
-                              environmentId: activeThread.environmentId,
-                              input: { threadId: activeThread.id },
-                            });
-                            return;
-                          }
-                          const message = useQueuedMessageStore
-                            .getState()
-                            .enqueue(activeThreadKey, {
-                              prompt: "Continue the work that was paused.",
-                              images: [],
-                              terminalContexts: [],
-                              reviewComments: [],
-                              submissionIntent: "foreground",
-                              queuedAfterToolActivityId: null,
-                              createdAt: new Date().toISOString(),
-                              holdUntilUserAction: true,
-                            });
-                          void onSend(undefined, "foreground", message);
-                        },
+                      : handed.usageContinue,
                   usageContinueTries: engineConversation,
-                  onWithdrawHeldMessage: engineConversation ? onWithdrawHeldMessage : null,
+                  onWithdrawHeldMessage: engineConversation ? handed.withdrawHeldMessage : null,
+                  asker: mateAsker(admissionOwner),
                   onSteerQueuedMessage,
                   queueBlockedByAnswer: queueBlockedByPendingRequest,
                   steerQueuedMessageShortcutLabel: shortcutLabelForCommand(
@@ -8597,7 +8852,7 @@ function ConversationView(props: ChatViewProps) {
                     or a key focused it) lets the focus go with it. */}
                 <button
                   aria-label="Scroll to end"
-                  className="pointer-events-auto flex size-8 cursor-pointer items-center justify-center rounded-full border border-border/70 bg-popover text-foreground shadow-lg/8 transition-[opacity,translate,scale,background-color] duration-200 ease-out hover:bg-accent active:scale-95 not-data-shown:pointer-events-none not-data-shown:translate-y-1.5 not-data-shown:scale-96 not-data-shown:opacity-0"
+                  className="pointer-events-auto relative flex size-8 cursor-pointer items-center justify-center rounded-full border border-border/70 bg-popover text-foreground shadow-lg/8 transition-[opacity,translate,scale,background-color] duration-200 ease-out hover:bg-accent active:scale-95 not-data-shown:pointer-events-none not-data-shown:translate-y-1.5 not-data-shown:scale-96 not-data-shown:opacity-0 pointer-coarse:after:absolute pointer-coarse:after:size-11"
                   data-shown={showScrollToBottom ? "" : undefined}
                   inert={!showScrollToBottom}
                   onClick={() => {
@@ -8611,7 +8866,9 @@ function ConversationView(props: ChatViewProps) {
             </div>
 
             {/* Input bar — centered hero while a draft has no messages, docked at the bottom otherwise */}
-            <div
+            <ConversationOpeningWaits
+              as="div"
+              whole
               ref={setComposerOverlayElement}
               data-conversation-footer=""
               data-chat-composer-overlay="true"
@@ -8821,8 +9078,8 @@ function ConversationView(props: ChatViewProps) {
                               promptRef={promptRef}
                               composerImagesRef={composerImagesRef}
                               composerTerminalContextsRef={composerTerminalContextsRef}
-                              onCompactContext={onCompactContext}
-                              onSend={onSend}
+                              onCompactContext={handed.compactContext}
+                              onSend={handed.send}
                               onInterrupt={onInterrupt}
                               backgroundWork={composerBackgroundWork}
                               stopping={isStopping}
@@ -8831,8 +9088,8 @@ function ConversationView(props: ChatViewProps) {
                               onSelectActivePendingUserInputOption={
                                 onSelectActivePendingUserInputOption
                               }
-                              onAdvanceActivePendingUserInput={onAdvanceActivePendingUserInput}
-                              onDismissActivePendingUserInput={onDismissUserInput}
+                              onAdvanceActivePendingUserInput={handed.advanceActivePendingUserInput}
+                              onDismissActivePendingUserInput={handed.dismissUserInput}
                               onPreviousActivePendingUserInputQuestion={
                                 onPreviousActivePendingUserInputQuestion
                               }
@@ -8869,7 +9126,7 @@ function ConversationView(props: ChatViewProps) {
                                 {...(routeKind === "draft" && draftId ? { draftId } : {})}
                                 onEnvModeChange={onEnvModeChange}
                                 startFromOrigin={startFromOrigin}
-                                onStartFromOriginChange={onStartFromOriginChange}
+                                onStartFromOriginChange={handed.startFromOriginChange}
                                 {...(canOverrideServerThreadEnvMode || isPreparingWorktree
                                   ? { effectiveEnvModeOverride: envMode }
                                   : {})}
@@ -8900,7 +9157,7 @@ function ConversationView(props: ChatViewProps) {
                   </div>
                 </div>
               </div>
-            </div>
+            </ConversationOpeningWaits>
 
             <AlertDialog open={branchRestoreConfirmOpen} onOpenChange={setBranchRestoreConfirmOpen}>
               <AlertDialogPopup>
@@ -8995,6 +9252,7 @@ function ConversationView(props: ChatViewProps) {
           onCopyFilePath={copyRightPanelFilePath}
           availability={rightPanelAvailability}
           onAdd={onAddRightPanelSurface}
+          onAddAt={addCodeChangesSurface}
           onAddTerminal={addTerminalSurface}
           liveAgentCount={agentPanelModel.liveCount}
           keybindings={keybindings}
@@ -9019,7 +9277,24 @@ function ConversationView(props: ChatViewProps) {
             // (pr-3 in the tab bar plus this pixel equals the absolute
             // right inset plus mr-px), so the cluster does not creep when
             // the sheet opens.
-            layoutControls={<div className="mr-px flex items-center">{panelToggleControls}</div>}
+            layoutControls={
+              <div className="mr-px flex items-center">
+                {isMobileViewport ? (
+                  // A phone's sheet covers the conversation whole: its way back is a close, where
+                  // the toggle that opened it stood.
+                  <Button
+                    aria-label="Close panel"
+                    onClick={closePreviewPanel}
+                    size="icon-md"
+                    variant="ghost"
+                  >
+                    <XIcon />
+                  </Button>
+                ) : (
+                  panelToggleControls
+                )}
+              </div>
+            }
             surfaces={rightPanelState.surfaces}
             activeSurfaceId={activeRightPanelSurface?.id ?? null}
             pendingSurfaceIds={pendingFileSurfaceIds}
@@ -9032,6 +9307,7 @@ function ConversationView(props: ChatViewProps) {
             onCopyFilePath={copyRightPanelFilePath}
             availability={rightPanelAvailability}
             onAdd={onAddRightPanelSurface}
+            onAddAt={addCodeChangesSurface}
             onAddTerminal={addTerminalSurface}
             liveAgentCount={agentPanelModel.liveCount}
             keybindings={keybindings}
@@ -9055,9 +9331,15 @@ function ConversationView(props: ChatViewProps) {
           key={`${expandedImage.images[expandedImage.index]?.src ?? "image"}:${expandedImage.index}`}
           preview={expandedImage}
           onClose={closeExpandedImage}
+          onEditInExpress={editPictureInExpress}
         />
       )}
     </ServiceBrowserScope>
+  );
+  return (
+    <ExpressHistoryContext value={expressHistory}>
+      <PictureAskContext value={pictureAskScope}>{page}</PictureAskContext>
+    </ExpressHistoryContext>
   );
 }
 

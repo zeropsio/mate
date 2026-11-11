@@ -14,7 +14,7 @@ import {
   type BatchRule,
   type LiveBatch,
 } from "@t3tools/shared/liveBatch";
-import type { ChangeLandedEvent } from "@t3tools/client-runtime/zerops";
+import type { ChangeLandedEvent, ReleaseEndedEvent } from "@t3tools/client-runtime/zerops";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { AgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
 import {
@@ -85,6 +85,7 @@ import {
 import type { LiveJobs } from "./liveJobs.logic";
 import { engineCardEffort, heldLines, withPagedEffort } from "../../zerops/engineCardPaging.logic";
 import { chatItemHasLine, selectChatItems, slotModelOf } from "./runCard.logic";
+import { type MirrorAskPlace, mirrorAskRowId } from "../zerops/mirror/mirrorAsk.logic";
 import type { OriginAskPlace } from "../zerops/origin/originAsk.logic";
 import { vaultAskOf } from "../zerops/vault/vaultRequest.logic";
 import type { ThreadEndNotice } from "./threadErrorNotice.logic";
@@ -476,6 +477,8 @@ export function liveCallsOf(now: TurnHeaderActivity | null): ReadonlyArray<LiveC
 
 export type ConversationEvent =
   | { readonly type: "landed"; readonly event: ChangeLandedEvent }
+  /** A production release of the Mate's application ended: live, or not, why, and what runs. */
+  | { readonly type: "release"; readonly event: ReleaseEndedEvent }
   | { readonly type: "compaction"; readonly label: string }
   | { readonly type: "command"; readonly command: SlashCommand; readonly done: boolean }
   /** The server resumed the thread itself after a usage limit reset. */
@@ -783,9 +786,21 @@ type MessagesTimelineRowBody =
       /**
        * An origin the Mate asked the person to deliver finished work back to (`zerops_origin
        * action=request`): theirs to answer, so it stands after the run and its answer. The row
-       * names the engine's request; its card reads the ask as it stands.
+       * names the engine's requests it stands for, one question per address (`originAskPlaces`);
+       * its card reads the asks as they stand.
        */
       kind: "origin-request";
+      id: string;
+      createdAt: string;
+      requestIds: ReadonlyArray<string>;
+    }
+  | {
+      /**
+       * A repository the Mate asked the person to connect to GitHub (`zerops_mirror
+       * action=request`): theirs to answer, so it stands after the run and its answer; its card
+       * reads the ask as it stands.
+       */
+      kind: "mirror-request";
       id: string;
       createdAt: string;
       requestId: string;
@@ -835,7 +850,9 @@ type MessagesTimelineRowBody =
  * between a person's messages in a run, rows sit closer (`tight`, `line`,
  * `block`). A row's gap depends only on its predecessor, so it never changes
  * once both are on screen (opening a log changes the row after it — a click
- * moves what is under it, nothing else does).
+ * moves what is under it, nothing else does). A seam right under a seam (a
+ * day nobody spoke on, a fresh start nobody wrote into) opens a turn as any
+ * seam does, named apart (`turn-seam`) so a phone can stand the pair close.
  */
 export type RowGap =
   | "none"
@@ -845,7 +862,8 @@ export type RowGap =
   | "part"
   | "part-words"
   | "turn"
-  | "turn-after-words";
+  | "turn-after-words"
+  | "turn-seam";
 
 /**
  * The run whose Mate at work stood where this row now begins: a run with
@@ -1161,7 +1179,11 @@ export function rowGap(
   // as a run's line with no chat does.
   if (row.kind === "working") return "tight";
   // A seam opens the turn under it: a turn's air above it, a part's under it.
-  if (row.kind === "seam" || row.kind === "crew-seam") return turnAfter(previous);
+  if (row.kind === "seam" || row.kind === "crew-seam") {
+    return previous.kind === "seam" || previous.kind === "crew-seam"
+      ? "turn-seam"
+      : turnAfter(previous);
+  }
   if (previous.kind === "seam" || previous.kind === "crew-seam")
     return isMateProse(row) ? "part-words" : "part";
   if (isPersonRow(row)) {
@@ -2103,6 +2125,14 @@ function stretchRecord(input: {
           event: { type: "landed", event: entry.event },
         });
         break;
+      case "release-ended":
+        push({
+          kind: "event",
+          key: `event:${entry.id}`,
+          at: entry.createdAt,
+          event: { type: "release", event: entry.event },
+        });
+        break;
       case "proposed-plan":
         rows.push({
           kind: "proposed-plan",
@@ -2444,6 +2474,8 @@ export function deriveMessagesTimelineRows(input: {
   liveLines?: ReadonlyMap<string, boolean>;
   /** The origins the engine asked of the person, each by the run card it was asked in. */
   originAsks?: ReadonlyArray<OriginAskPlace>;
+  /** The repositories the engine asked the person to connect to GitHub, by run card. */
+  mirrorAsks?: ReadonlyArray<MirrorAskPlace>;
   /**
    * What the last derive of this conversation read and drew
    * (`createMessagesTimelineRowsCache`): a run whose reads are the same draws
@@ -3435,6 +3467,15 @@ export function deriveMessagesTimelineRows(input: {
         kind: "origin-request",
         id: `origin-request:${ask.requestId}`,
         createdAt: ask.createdAt,
+        requestIds: ask.requestIds,
+      });
+    }
+    for (const ask of input.mirrorAsks ?? []) {
+      if (!turnIds.has(ask.turnId)) continue;
+      rows.push({
+        kind: "mirror-request",
+        id: mirrorAskRowId(ask.requestId),
+        createdAt: ask.createdAt,
         requestId: ask.requestId,
       });
     }
@@ -3512,6 +3553,13 @@ export function deriveMessagesTimelineRows(input: {
           id: `event:${entry.id}`,
           createdAt: entry.createdAt,
           event: { type: "landed", event: entry.event },
+        });
+      } else if (entry.kind === "release-ended") {
+        rows.push({
+          kind: "event",
+          id: `event:${entry.id}`,
+          createdAt: entry.createdAt,
+          event: { type: "release", event: entry.event },
         });
       } else if (entry.kind === "work" && entry.entry.crewSeam !== undefined) {
         rows.push(crewSeamRow(entry.id, entry.entry, entry.entry.crewSeam));
@@ -3685,7 +3733,7 @@ function sameFold(a: FoldsFrom | undefined, b: FoldsFrom | undefined): boolean {
  * Whether a record's item draws the same as the one on screen: messages by
  * identity (a streamed message is a new object), the rest by what it holds.
  */
-function sameRecordItem(a: RecordItem, b: RecordItem): boolean {
+export function sameRecordItem(a: RecordItem, b: RecordItem): boolean {
   if (a === b) return true;
   if (a.kind !== b.kind || a.key !== b.key || a.at !== b.at) return false;
   switch (a.kind) {

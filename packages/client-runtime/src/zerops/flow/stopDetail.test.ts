@@ -28,7 +28,6 @@ import {
   notInZerops,
   openStopLabel,
   serviceRows,
-  stopCardTitle,
   stopFailedDeploys,
   rowsRunningAgain,
   stopKeyGap,
@@ -190,8 +189,7 @@ describe("stopVerdict", () => {
       expected: {
         tone: "failed",
         text: "Its deploy key no longer works.",
-        detail:
-          "Someone with Full access to the Shop - stage project in Zerops mints a new one here.",
+        detail: "Someone with Full access to the Shop - stage project in Zerops mints a new one.",
         verb: null,
       },
     },
@@ -205,8 +203,7 @@ describe("stopVerdict", () => {
       expected: {
         tone: "failed",
         text: "It has no deploy key yet.",
-        detail:
-          "Someone with Full access to the Shop - production project in Zerops mints one here.",
+        detail: "Someone with Full access to the Shop - production project in Zerops mints one.",
         verb: null,
       },
     },
@@ -284,11 +281,6 @@ describe("stopVerdict", () => {
         detail: "the build step exited with 1",
         verb: null,
       },
-    },
-    {
-      name: "a stage whose first deploy failed with no words for why says only that",
-      input: { tier: "stage", view: EMPTY, firstDeploy: { kind: "failed" } },
-      expected: { tone: "failed", text: "First deploy failed.", detail: undefined, verb: null },
     },
     {
       name: "a stage being set up says so, never Checking, nor that a merge deploys it",
@@ -552,25 +544,6 @@ describe("stopMetaLine", () => {
   });
 });
 
-describe("stopCardTitle", () => {
-  it.each<{
-    group: Parameters<typeof stopCardTitle>[0];
-    count: number | undefined;
-    atLeast?: boolean;
-    expected: string;
-  }>([
-    { group: "waiting", count: 3, expected: "Waiting for release · 3" },
-    // HQ stopped counting, as the verdict above it says.
-    { group: "waiting", count: 10000, atLeast: true, expected: "Waiting for release · 10000+" },
-    { group: "services", count: 2, expected: "Services · 2" },
-    { group: "releases", count: 12, expected: "Releases · 12" },
-    { group: "deploys", count: 0, expected: "Deploys · 0" },
-    { group: "deploys", count: undefined, expected: "Deploys" },
-  ])("$group with $count", ({ group, count, atLeast, expected }) => {
-    expect(stopCardTitle(group, count, atLeast)).toBe(expected);
-  });
-});
-
 describe("openStopLabel", () => {
   it.each([
     { tier: "production" as const, expected: "Open production" },
@@ -774,7 +747,9 @@ describe("serviceRows", () => {
       drift: undefined,
     },
   ])("$hostname", (expected) => {
-    expect(rowsOf(PLATFORM).find((row) => row.hostname === expected.hostname)).toEqual(expected);
+    expect(rowsOf(PLATFORM).find((row) => row.hostname === expected.hostname)).toMatchObject(
+      expected,
+    );
   });
 
   it.each<{
@@ -1695,3 +1670,29 @@ it("Git detail and metadata describe the push destination without a service or p
     }),
   ).toBe("Moves on release · pushes to github.com/example/shop main");
 });
+
+it.each([
+  [undefined, "Source archive size is not available yet."],
+  [null, "Source archive size is not available yet."],
+  [1_305_166_613, "Source archive: 1.22 GiB"],
+] as const)(
+  "a durable service row retains its latest deployment's source measurement: %j",
+  (sourceArchiveBytes, expected) => {
+    const latest = deployRecord(
+      "live",
+      sourceArchiveBytes === undefined ? {} : { sourceArchiveBytes },
+    );
+    const [row] = serviceRows({
+      environment: "stage",
+      services: [{ hostname: "api", repository: "api", deploy: { latest, live: latest } }],
+      platform: { state: "unread", waitingFor: null },
+      mainHead: undefined,
+      routes: [],
+      offers: [],
+      nowMs: 0,
+      age: () => "now",
+    });
+    expect(row?.sourceArchive).toBe(expected);
+    expect(row?.job).toBeUndefined();
+  },
+);

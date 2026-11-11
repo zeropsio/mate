@@ -2,7 +2,8 @@ import { useProjectActivityRead } from "~/zerops/activity/useProjectActivity";
 import { useState } from "react";
 import { deployLogProcess, type DeployLogTarget } from "@t3tools/client-runtime/zerops/hq";
 import { useDeployLog } from "~/zerops/activity/useDeployLog";
-import { Button } from "../ui/button";
+import { useOpenPipeline } from "~/zerops/pipelineSearch";
+import { Button, InlineButton } from "../ui/button";
 import { ZeropsBuildLog } from "./ZeropsBuildLog";
 import { PipelineCalculating, PipelineStepList } from "./operation/PipelineStepList";
 
@@ -22,6 +23,18 @@ export function ZeropsDeployLog({
 }) {
   const [open, setOpen] = useState(false);
   const unavailable = useDeployLogUnavailable(projectId, target);
+  const openPipeline = useOpenPipeline();
+  const versionId = target.appVersionId;
+  if (versionId !== null) {
+    // A deploy whose version is known opens its pipeline: one place for a pipeline's detail.
+    return (
+      <span className="rv-where-go" data-zerops-deploy-job={target.jobId}>
+        <Button onClick={() => openPipeline(versionId)} size="sm" variant="link">
+          View deploy
+        </Button>
+      </span>
+    );
+  }
   return (
     <>
       <span className="rv-where-go" data-zerops-deploy-job={target.jobId}>
@@ -68,7 +81,7 @@ export function DeployLogDetails({
   readonly target: DeployLogTarget;
   readonly service: string;
 }) {
-  const { read, buildLog, words } = useDeployLog(projectId, target, service);
+  const { read, buildLog, words, again } = useDeployLog(projectId, target, service);
   const [logOpen, setLogOpen] = useState(false);
   const log =
     read?.query === undefined ? undefined : (
@@ -84,7 +97,19 @@ export function DeployLogDetails({
   const pipeline = read?.pipeline;
   return (
     <div className="pt-2" data-zerops-deploy-inspection>
-      {words === undefined ? null : <p className="text-xs text-muted-foreground">{words}</p>}
+      {words === undefined ? null : (
+        <p className="text-xs text-muted-foreground">
+          {words}
+          {again === undefined ? null : (
+            <>
+              {" "}
+              <InlineButton onClick={again} tone="muted">
+                Try again
+              </InlineButton>
+            </>
+          )}
+        </p>
+      )}
       {pipeline === undefined ? null : pipeline.calculating || pipeline.steps.length === 0 ? (
         read?.live ? (
           <PipelineCalculating aria-label={`${service} deploy steps`} />

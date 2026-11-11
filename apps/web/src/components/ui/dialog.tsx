@@ -8,6 +8,7 @@ import {
   DIALOG_BACKDROP_CLASS,
   DIALOG_BACKDROP_MEDIA_CLASS,
   DIALOG_BACKDROP_PLAIN_CLASS,
+  DIALOG_MOBILE_FOOTER_CLASS,
   DIALOG_MOBILE_SHEET_CLASS,
   DIALOG_POPUP_CLASS,
   DIALOG_VIEWPORT_CLASS,
@@ -15,6 +16,7 @@ import {
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { gatedPortal } from "~/components/ui/portal-gate";
 import { useHeldHeight } from "~/components/ui/useHeldHeight";
+import { ControlledOpenContext, renderRetainedPopup } from "~/components/ui/retainedPopup";
 
 type DialogProps = Omit<DialogPrimitive.Root.Props, "open" | "onOpenChange"> &
   (
@@ -24,7 +26,11 @@ type DialogProps = Omit<DialogPrimitive.Root.Props, "open" | "onOpenChange"> &
 
 /** A controlled dialog must give dismissal back to the owner of its open state. */
 function Dialog(props: DialogProps) {
-  return <DialogPrimitive.Root {...props} />;
+  return (
+    <ControlledOpenContext value={props.open}>
+      <DialogPrimitive.Root {...props} />
+    </ControlledOpenContext>
+  );
 }
 
 const DialogPortal = gatedPortal(DialogPrimitive.Portal);
@@ -111,6 +117,7 @@ function DialogPopup({
             className,
           )}
           data-slot="dialog-popup"
+          render={renderRetainedPopup}
           {...props}
           ref={held}
         >
@@ -180,6 +187,7 @@ function DialogFooter({
         "flex flex-col-reverse gap-2 px-6 sm:flex-row sm:justify-end sm:rounded-b-[calc(var(--radius-2xl)-1px)]",
         variant === "default" && "border-t bg-muted/72 py-4",
         variant === "bare" && "py-4",
+        DIALOG_MOBILE_FOOTER_CLASS,
         className,
       )}
       data-slot="dialog-footer"

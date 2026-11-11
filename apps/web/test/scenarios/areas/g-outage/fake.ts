@@ -1,7 +1,7 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { MateLinkUp, MateOverview } from "@t3tools/shared/mateLink";
-import { overviewOf, mainAt } from "../../../../../hq/test/harness/overviews.ts";
+import { overviewOf, mainAt } from "../../harness/overviews.ts";
 import { deadline } from "../../harness/http.ts";
 import type { ScenarioExtension, ScenarioDrivers } from "../../harness/scenario.ts";
 import type { Page } from "puppeteer-core";

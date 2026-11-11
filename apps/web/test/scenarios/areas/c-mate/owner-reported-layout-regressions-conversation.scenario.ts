@@ -1,4 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off -- a picture file in the isolated Mate workspace.
+import { scenarioSuite } from "../../harness/suite.ts";
 import liveSlotSteps from "./live-slot-order.fixture.json";
 import { composerLayout } from "./composerLayout.ts";
 import type { Page } from "puppeteer-core";
@@ -16,7 +17,6 @@ import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import * as Effect from "effect/Effect";
 import * as Clock from "effect/Clock";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { mateChat } from "./dsl.ts";
 import { installArea } from "./fake.ts";
@@ -24,7 +24,7 @@ import { journey, sampled } from "./pageJourney.ts";
 import { ownerMenu, quoted } from "./ownerReportedLayout.ts";
 
 describe("owner-reported layout regressions", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect(
       "thoughts handing off to history keep source order and separate space from the next tool",
       () =>
@@ -161,11 +161,114 @@ describe("owner-reported layout regressions", () => {
           ).toBeGreaterThanOrEqual(0);
         }),
     );
+
+    // The owner, 2026-11-10: while the Mate's words stood in the working row, the three dots that
+    // say they are still being written were "positioned overlapping both the text and the bottom
+    // row". They stood inside the bubble, in its foot, under its last line.
+    // witness: apps/web/src/index.css | margin: 0 0 9px 8px; → margin: 0 0 9px -48px;
+    it.effect.each([
+      {
+        case: "one line of words",
+        text: "Running the full test suite on shop now (it takes several minutes).",
+      },
+      {
+        case: "words past one line",
+        text: Array.from(
+          { length: 6 },
+          (_, index) =>
+            `Sentence ${index + 1}: the suite is running on shop and each file reports as it ends.`,
+        ).join(" "),
+      },
+    ])(
+      "the dots that say the Mate's words are still being written stand beside the bubble on its last line, on no words and no edge: $case",
+      ({ text }) =>
+        Effect.gen(function* () {
+          const s = yield* createScenario([installArea]);
+          yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+          yield* s.given.project("Ada", { mate: true });
+          const chat = mateChat(s);
+          chat
+            .fixture()
+            .exchange("Previous navigation", "The existing conversation is still here.");
+          const engine = chat.fixture().wire.engine;
+          yield* s.given.signedIn;
+          yield* Effect.promise(() => ownerMenu(s.page));
+          yield* chat.when.open();
+          yield* chat.when.send("Run the tests and tell me as you go");
+          const run = [...engine.runs.values()].at(-1)!.id;
+          const note = engine.item(run, { kind: "note", text: "", streaming: true, answer: false });
+          engine.stream(note, text);
+          yield* Effect.promise(() =>
+            s.page.waitForFunction(
+              (words: string) =>
+                document
+                  .querySelector("[data-run-chat][data-run-live] [data-note-writing]")
+                  ?.previousElementSibling?.textContent?.includes(words) === true,
+              { polling: "raf" },
+              text.slice(-24),
+            ),
+          );
+          yield* Effect.promise(() => waitForStillFrames(s.page, { stillFrames: 12 }));
+          const seen = yield* Effect.promise(() =>
+            s.page.evaluate(() => {
+              const seat = document.querySelector(
+                "[data-run-chat][data-run-live] [data-note-writing]",
+              )!;
+              const bubble = seat.previousElementSibling!;
+              const edges = (element: Element) => {
+                const rect = element.getBoundingClientRect();
+                return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
+              };
+              // The words' own boxes, a line each: never the boxes that hold them.
+              const words: DOMRect[] = [];
+              const walker = document.createTreeWalker(bubble, NodeFilter.SHOW_TEXT);
+              for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+                const range = document.createRange();
+                range.selectNodeContents(node);
+                words.push(...range.getClientRects());
+              }
+              const foot = Math.max(...words.map((rect) => rect.bottom));
+              const last = words.filter((rect) => rect.bottom > foot - 4);
+              return {
+                dots: edges(seat.firstElementChild!),
+                bubble: edges(bubble),
+                row: edges(seat.closest("[data-chat-row]")!),
+                lines: new Set(words.map((rect) => Math.round(rect.bottom))).size,
+                lastLine: { top: Math.min(...last.map((rect) => rect.top)), bottom: foot },
+              };
+            }),
+          );
+          const { dots, bubble, row, lastLine } = seen;
+          const middle = (dots.top + dots.bottom) / 2;
+          if (text.length > 200)
+            expect(
+              seen.lines,
+              `ASSERTION: the words run past one line: ${quoted(seen)}`,
+            ).toBeGreaterThan(1);
+          expect(
+            dots.left - bubble.right,
+            `ASSERTION: the dots stand after the bubble, on none of its words and not on its edge: ${quoted(seen)}`,
+          ).toBeGreaterThanOrEqual(4);
+          expect(
+            row.right - dots.right,
+            `ASSERTION: the dots stand inside their row: ${quoted(seen)}`,
+          ).toBeGreaterThanOrEqual(-0.5);
+          expect(
+            middle > lastLine.top && middle < lastLine.bottom,
+            `ASSERTION: the dots stand on the words' last line: ${quoted(seen)}`,
+          ).toBe(true);
+          expect(
+            bubble.bottom - dots.bottom,
+            `ASSERTION: the dots end over the bubble's foot, never on what stands under it: ${quoted(seen)}`,
+          ).toBeGreaterThanOrEqual(0);
+          yield* s.then.noExternalNetwork;
+        }),
+    );
   });
 
   describe("Decision: geometry relations only; no style pins.", () => {
     describe("Decision: a conversation opens in place; nothing it does overflows its column.", () => {
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         // The owner (2026-10-12): "after mate is fully loaded (nad scrollbar is introduced I
         // think) there is layout / width shift that looks shit". The arrival's rise overflowed
         // the column for its frames: a scrollbar came and went, narrowing the column by its width.
@@ -243,7 +346,7 @@ describe("owner-reported layout regressions", () => {
     });
 
     describe("Decision: the end is where the list stops; a step short of it is the person's.", () => {
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         // The owner (2026-10-12): "at this scroll (like 100px from bottom), a single tiny scroll to
         // bottom causes it to jump to bottom".
         it.effect(
@@ -287,7 +390,7 @@ describe("owner-reported layout regressions", () => {
     // 320 px short of its end and glided there: the page's row was first measured in its 240 px
     // first box, before its width was read.
     describe("Decision: product fix; the 2 px bound stays.", () => {
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         // Found moving the chat journeys onto a real Mate: the list's own scroll up was glided
         // back on the follow curve, as an arriving row is, and real history's 1,471 px still
         // stood 5 px off the end a second later.
@@ -309,13 +412,33 @@ describe("owner-reported layout regressions", () => {
               ["How did deploy 3 go?", answer],
               ["And now?", "The existing conversation is still here"],
             ] as const) {
+              const previousReply = yield* Effect.promise(() =>
+                s.page.evaluate(() =>
+                  [...document.querySelectorAll('[data-message-role="assistant"]')]
+                    .at(-1)
+                    ?.getAttribute("data-message-id"),
+                ),
+              );
               yield* ada.provider.turn([{ kind: "say", text: reply }]);
               yield* s.when.conversation.sends(question);
               expect((yield* ada.provider.received).input.input).toBe(question);
               yield* Effect.promise(() =>
                 s.page.waitForFunction(
-                  () => !document.querySelector('button[aria-label="Stop generation"]'),
-                  { polling: 100 },
+                  (previousReply, text) => {
+                    const latest = [
+                      ...document.querySelectorAll('[data-message-role="assistant"]'),
+                    ].at(-1);
+                    return (
+                      !location.pathname.startsWith("/draft/") &&
+                      latest !== undefined &&
+                      latest.getAttribute("data-message-id") !== previousReply &&
+                      latest.textContent?.includes(text) &&
+                      !document.querySelector('button[aria-label="Stop generation"]')
+                    );
+                  },
+                  { polling: "mutation" },
+                  previousReply ?? null,
+                  reply.split("\n", 1)[0]!,
                 ),
               );
             }
@@ -359,7 +482,7 @@ describe("owner-reported layout regressions", () => {
     });
 
     describe("Decision: product fix at the boundary; no witness weakening.", () => {
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         it.effect("a draft becoming its conversation never hides the chat area", () =>
           Effect.gen(function* () {
             const s = yield* createScenario([], { mate: "real" });
@@ -433,7 +556,7 @@ describe("owner-reported layout regressions", () => {
     });
 
     describe("Decision: a reload paints nothing it takes back.", () => {
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         it.effect(
           "a conversation ending in a full-height page, reloaded, is at its end from its first visible frame",
           () =>
@@ -634,7 +757,6 @@ describe("owner-reported layout regressions", () => {
             tool: { name: "Bash" },
             words: `Command ${step}`,
             state: "done",
-            endedAt: yield* Clock.currentTimeMillis,
             input: `Bash: echo step-${step}`,
           });
         yield* Effect.promise(() =>
@@ -785,7 +907,7 @@ describe("owner-reported layout regressions", () => {
         return longest;
       };
 
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         it.effect("a conversation opened at its end stays at its end while its rows settle", () =>
           Effect.gen(function* () {
             const s = yield* createScenario([], { mate: "real" });
@@ -955,6 +1077,217 @@ describe("owner-reported layout regressions", () => {
               expect(
                 moved,
                 "ASSERTION: every line in the card stands where it is; nothing plops toward a place out of view",
+              ).toEqual([]);
+              yield* s.then.noExternalNetwork;
+            }),
+        );
+
+        // k27, Aleš on mate.zerops.io: Mates that had worked a while opened onto their cards
+        // playing back every step since the turn began, one at a time. A page out of sight wakes
+        // its timers once a second at best, then once a minute: what arrived meanwhile waited its
+        // turn in the card's slot.
+        const workedOutOfSight = Effect.gen(function* () {
+          const s = yield* createScenario([installArea]);
+          yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+          yield* s.given.project("Ada", { mate: true });
+          const chat = mateChat(s);
+          chat.fixture().exchange("And now?", "The existing conversation is still here");
+          const engine = chat.fixture().wire.engine;
+          yield* s.given.signedIn;
+          yield* Effect.promise(() => ownerMenu(s.page));
+          yield* chat.when.open();
+          yield* chat.when.send("Run the long piece of work");
+          const run = [...engine.runs.values()].at(-1)!.id;
+          // The person reads another tab while the Mate works: its page is out of sight.
+          const tab = yield* Effect.promise(() => s.web.newPage(s.page.browserContext()));
+          yield* Effect.promise(() => tab.bringToFront());
+          yield* Effect.promise(() =>
+            s.page.waitForFunction(() => document.visibilityState === "hidden"),
+          );
+          // Past a window's tail and a page after it: read back once the card is opened afresh,
+          // the card reads the second page as the reader nears its top.
+          const done = 2 * engine.liveTailItems + engine.runPageItems;
+          let last = "";
+          for (let step = 0; step < done; step++) {
+            // The person wrote to it mid-run: the window pins their words however old, far above
+            // the newest lines it carries (review of k27).
+            if (step === done / 2)
+              engine.item(run, {
+                kind: "person",
+                by: { kind: "person", principal: { kind: "person", subject: "owner" } },
+                text: "Keep the build logs too",
+                attachments: [],
+                sendId: "steer-mid-run",
+                delivery: { state: "delivered", at: yield* Clock.currentTimeMillis },
+              });
+            last = engine.item(run, {
+              kind: "call",
+              step: "command",
+              tool: { name: "Bash" },
+              words: `Command ${step}`,
+              state: "done",
+              input: `Bash: echo step-${step}`,
+            });
+          }
+          // Out of sight it paints nothing, yet it takes in what arrives: once the last step is
+          // drawn in its card, the page holds them all (a slow runner took them in for seconds,
+          // the last ones after the page was shown again).
+          yield* Effect.promise(() =>
+            s.page.waitForFunction(
+              (key: string) => document.querySelector(`[data-run-key="${key}"]`) !== null,
+              { polling: "mutation" },
+              `step:${last}#started`,
+            ),
+          );
+          return { s, tab, engine, run, done };
+        });
+        /** Each frame the page paints, from now: the lines the live card's slot draws. */
+        const startSlotTrace = (page: Page) =>
+          page.evaluate(() => {
+            const frames: string[][] = [];
+            const state = { active: true, frames };
+            const tick = () => {
+              const slot = [...document.querySelectorAll<HTMLElement>("[data-run-now]")].at(-1);
+              frames.push(
+                [...(slot?.querySelectorAll<HTMLElement>("[data-run-key]") ?? [])].map(
+                  (line) => line.dataset.runKey!,
+                ),
+              );
+              if (state.active) requestAnimationFrame(tick);
+            };
+            (window as unknown as { slotTrace: typeof state }).slotTrace = state;
+            requestAnimationFrame(tick);
+          });
+        const stopSlotTrace = (page: Page) =>
+          page.evaluate(() => {
+            const state = (
+              window as unknown as { slotTrace: { active: boolean; frames: string[][] } }
+            ).slotTrace;
+            state.active = false;
+            return state.frames;
+          });
+        /** Waits until the Working card's scroll has stood still for `frames` painted frames. */
+        const scrollStands = (page: Page, frames: number) =>
+          page.evaluate(
+            (selector: string, wanted: number) =>
+              new Promise<void>((resolve) => {
+                let last = Number.NaN;
+                let still = 0;
+                const tick = () => {
+                  const top = [...document.querySelectorAll<HTMLElement>(selector)].at(
+                    -1,
+                  )!.scrollTop;
+                  still = Math.abs(top - last) < 0.5 ? still + 1 : 0;
+                  last = top;
+                  if (still >= wanted) resolve();
+                  else requestAnimationFrame(tick);
+                };
+                requestAnimationFrame(tick);
+              }),
+            INNER,
+            frames,
+          );
+
+        it.effect(
+          "a working Mate looked at again after a while out of sight shows the work it did meanwhile at once",
+          () =>
+            Effect.gen(function* () {
+              const { s, done } = yield* workedOutOfSight;
+              yield* Effect.promise(() => startSlotTrace(s.page));
+              yield* Effect.promise(() => s.page.bringToFront());
+              yield* Effect.promise(() => waitForStillFrames(s.page, { stillFrames: 12 }));
+              const frames = yield* Effect.promise(() => stopSlotTrace(s.page));
+              expect(frames.length, "ASSERTION: the page was seen again").toBeGreaterThan(6);
+              const replayed = [...new Set(frames.flat())];
+              expect(
+                replayed,
+                `ASSERTION: none of the ${done} steps it did out of sight passes through the card's slot`,
+              ).toEqual([]);
+              yield* s.then.noExternalNetwork;
+            }),
+        );
+
+        // k27, Aleš: reading up through the steps of a working conversation, each one landing
+        // threw the reader around. A window carries a live run's newest lines; the card reads the
+        // rest back a page at a time as the reader nears its top.
+        it.effect(
+          "reading up through a long Working card, its earlier lines read in above and its new ones below leave the reader's lines where they stand",
+          () =>
+            Effect.gen(function* () {
+              const { s, engine, run, done } = yield* workedOutOfSight;
+              yield* Effect.promise(() => s.page.bringToFront());
+              // Opened afresh: the window holds the run's newest lines, the card the rest by page.
+              yield* mateChat(s).when.reload();
+              yield* Effect.promise(() =>
+                s.page.waitForFunction(
+                  (selector: string) => {
+                    const inner = document.querySelector<HTMLElement>(selector);
+                    return inner !== null && inner.scrollHeight > inner.clientHeight + 200;
+                  },
+                  { polling: "raf" },
+                  INNER,
+                ),
+              );
+              yield* Effect.promise(() => waitForStillFrames(s.page, { stillFrames: 12 }));
+              // The reader goes up through the card toward its top: the page before is read in.
+              yield* Effect.promise(async () => {
+                const inner = (await s.page.$$(INNER)).at(-1)!;
+                const box = (await inner.boundingBox())!;
+                await s.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+                const read = () =>
+                  s.page.evaluate((selector: string) => {
+                    const card = [...document.querySelectorAll<HTMLElement>(selector)].at(-1)!;
+                    return { top: card.scrollTop, height: card.scrollHeight };
+                  }, INNER);
+                const held = (await read()).height;
+                // Up to the top of the lines it holds, and no further once the page before lands:
+                // the reader reads there, under the lines the page brings.
+                for (let turn = 0; turn < 40; turn++) {
+                  const { top, height } = await read();
+                  if (top < 300 || height > held + 200) break;
+                  await s.page.mouse.wheel({ deltaY: -Math.min(2000, top - 200) });
+                  await scrollStands(s.page, 3);
+                }
+                await s.page.waitForFunction(
+                  (selector: string, from: number) =>
+                    [...document.querySelectorAll<HTMLElement>(selector)].at(-1)!.scrollHeight >
+                    from + 200,
+                  { polling: "raf" },
+                  INNER,
+                  held,
+                );
+                await scrollStands(s.page, 6);
+              });
+              yield* Effect.promise(() => startScrollTrace(s.page));
+              // Steps keep arriving at its foot while the earlier ones are read in at its head.
+              for (let step = done; step < done + 6; step++) {
+                engine.item(run, {
+                  kind: "note",
+                  by: { kind: "mate" },
+                  text: `Step ${step} is under way, and the build log reads clean so far.`,
+                  streaming: false,
+                  answer: false,
+                });
+                yield* Effect.sleep("300 millis");
+              }
+              yield* Effect.promise(() => waitForStillFrames(s.page, { stillFrames: 20 }));
+              const trace = yield* Effect.promise(() => stopScrollTrace(s.page));
+              const view = Object.entries(trace[0]!.innerLines)
+                .filter(([, top]) => top >= 0 && top < 400)
+                .map(([key]) => key);
+              const moved = view
+                .map((key) => {
+                  const tops = trace.flatMap((frame) => frame.innerLines[key] ?? []);
+                  return { key, travel: Math.max(...tops) - Math.min(...tops) };
+                })
+                .filter((line) => line.travel > 2)
+                .map((line) => `${line.key} ${Math.round(line.travel)} px`);
+              expect(view.length, "ASSERTION: the reader reads lines in the card").toBeGreaterThan(
+                3,
+              );
+              expect(
+                moved,
+                "ASSERTION: every line the reader reads stands where it is while lines arrive above and below",
               ).toEqual([]);
               yield* s.then.noExternalNetwork;
             }),

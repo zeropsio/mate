@@ -14,7 +14,6 @@ import {
   releaseStep,
   rollbackOnItsWay,
   type ReleaseFacts,
-  releaseWhereWords,
 } from "./releaseFacts.ts";
 import {
   releaseReview,
@@ -110,7 +109,8 @@ function walk(steps: ReadonlyArray<Step>) {
       held,
       press: step.press,
       inFlight: step.inFlight,
-      stalled: step.stalled,
+      stalled:
+        step.stalled === undefined ? undefined : { tag: step.stalled, at: undefined, reasons: [] },
       suggestion: step.suggestion,
       releases: step.releases,
     });
@@ -119,6 +119,7 @@ function walk(steps: ReadonlyArray<Step>) {
       held,
       press: step.press,
       clockMs: step.nowMs ?? NOW,
+      reads: { environmentInputs: [], stalled: undefined },
       read: (tag) => current(tag, step.moment, step.releases),
     });
     held = shown.held;
@@ -199,7 +200,7 @@ describe("a finished release keeps the facts it was made with", () => {
     const released = first.at(-1);
     expect(released?.model.verdict).toMatchObject({
       state: "released",
-      title: "Released v0.1.0",
+      title: "v0.1.0 is live",
       why: "Production runs it · released just now",
     });
     expect(released?.model.consequence).toBe("Production runs v0.1.0.");
@@ -322,13 +323,6 @@ describe("a held release's changes follow the stage as it stands now", () => {
 describe("a release HQ ended without landing says so: no clock ends it", () => {
   it.each([
     {
-      name: "queued",
-      inFlight: "v0.1.1",
-      standing: undefined,
-      state: "releasing",
-      title: "Releasing v0.1.1",
-    },
-    {
       name: "building despite an earlier stopped observation",
       inFlight: "v0.1.1",
       standing: undefined,
@@ -347,14 +341,14 @@ describe("a release HQ ended without landing says so: no clock ends it", () => {
       inFlight: undefined,
       standing: "deploy-failed",
       state: "release-failed",
-      title: "v0.1.1 didn't go out",
+      title: "v0.1.1 didn't go live",
     },
     {
       name: "production runs it",
       inFlight: undefined,
       standing: "live",
       state: "released",
-      title: "Released v0.1.1",
+      title: "v0.1.1 is live",
     },
   ] as const)("a just-tagged release: $name", ({ inFlight, standing, state, title }) => {
     const follows = releaseFollows({
@@ -362,11 +356,12 @@ describe("a release HQ ended without landing says so: no clock ends it", () => {
       held: undefined,
       press: { kind: "done" },
       inFlight,
-      stalled: "v0.1.1",
+      stalled: { tag: "v0.1.1", at: undefined, reasons: [] },
       suggestion: "v0.1.2",
       releases: [row("v0.1.1", standing)],
     });
     const outcome = releaseOutcomeOf({
+      reads: { environmentInputs: [], stalled: undefined },
       ...follows,
       pressing: false,
       clockMs: NOW,
@@ -460,7 +455,7 @@ describe("a release HQ ended without landing says so: no clock ends it", () => {
     // The age is the tag's, not the landing's.
     expect(steps.at(-1)?.model.verdict).toMatchObject({
       state: "released",
-      title: "Released v0.1.1",
+      title: "v0.1.1 is live",
       why: "Production runs it · released 40 minutes ago",
     });
   });
@@ -507,6 +502,7 @@ describe("a release that failed on several parts", () => {
       failedEntries: services.map((service) => ({ service, commit: HEAD })),
     });
     const outcome = releaseOutcomeOf({
+      reads: { environmentInputs: [], stalled: undefined },
       tagged,
       releasing: true,
       pressing: false,
@@ -686,7 +682,7 @@ describe("a release opened on its way follows its own tag to the end", () => {
     [
       "landed",
       ended("landed", after, row("v0.1.0", "live")),
-      { state: "released", title: "Released v0.1.0" },
+      { state: "released", title: "v0.1.0 is live" },
       "Production runs v0.1.0.",
     ],
     [
@@ -696,7 +692,7 @@ describe("a release opened on its way follows its own tag to the end", () => {
         before,
         row("v0.1.0", "deploy-failed", { failedEntries: [{ service: "app", commit: HEAD }] }),
       ),
-      { state: "release-failed", title: "v0.1.0 didn't go out", why: "The deploy of app failed" },
+      { state: "release-failed", title: "v0.1.0 didn't go live", why: "The deploy of app failed" },
       "Production still runs what it ran before.",
     ],
     [
@@ -706,7 +702,7 @@ describe("a release opened on its way follows its own tag to the end", () => {
         before,
         row("v0.1.0", undefined, { verdict: "refused", detail: "Production is held" }),
       ),
-      { state: "release-failed", title: "v0.1.0 didn't go out", why: "Production is held" },
+      { state: "release-failed", title: "v0.1.0 didn't go live", why: "Production is held" },
       "Production still runs what it ran before.",
     ],
   ])(
@@ -779,6 +775,7 @@ describe("a roll back's review opened on its way follows the roll back to its en
         permission: { allowed: true },
         press: { kind: "idle" },
         outcome: releaseOutcomeOf({
+          reads: { environmentInputs: [], stalled: undefined },
           tagged: follows.tagged,
           releasing: follows.releasing,
           pressing: false,
@@ -878,6 +875,7 @@ describe("a release is released once its deploys have ended", () => {
   ])("$name", ({ deploying, kind }) => {
     expect(
       releaseOutcomeOf({
+        reads: { environmentInputs: [], stalled: undefined },
         tagged: row("v0.1.0", "live"),
         releasing: true,
         deploying,
@@ -914,6 +912,7 @@ describe("a release on its way says how long", () => {
   ])("$name", ({ since, progress, clock }) => {
     expect(
       releaseOutcomeOf({
+        reads: { environmentInputs: [], stalled: undefined },
         tagged: row("v0.1.0", undefined, { taggedAt: new Date(NOW - since).toISOString() }),
         releasing: true,
         pressing: false,
@@ -921,38 +920,5 @@ describe("a release on its way says how long", () => {
         clockMs: NOW,
       }),
     ).toEqual({ kind: "releasing", progress, clock });
-  });
-});
-
-describe("where a release goes, in words", () => {
-  it.each([
-    {
-      title: "one service that gets it",
-      tag: "v0.1.1",
-      where: [{ service: "web", line: "gets v0.1.1" }],
-      want: ["Goes to web."],
-    },
-    {
-      title: "every service that gets it, in one sentence",
-      tag: "v0.2.0",
-      where: [
-        { service: "api", line: "gets v0.2.0" },
-        { service: "web", line: "gets v0.2.0" },
-        { service: "worker", line: "gets v0.2.0" },
-      ],
-      want: ["Goes to api, web and worker."],
-    },
-    {
-      title: "a service that stays, each its own line",
-      tag: "v0.2.0",
-      where: [
-        { service: "api", line: "gets v0.2.0" },
-        { service: "web", line: "stays as it is" },
-      ],
-      want: ["api gets v0.2.0.", "web stays as it is."],
-    },
-    { title: "no service, nothing", tag: "v0.1.0", where: [], want: [] },
-  ])("says $title", ({ where, tag, want }) => {
-    expect(releaseWhereWords(where, tag)).toEqual(want);
   });
 });

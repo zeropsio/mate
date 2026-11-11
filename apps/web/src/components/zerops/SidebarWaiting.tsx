@@ -22,7 +22,6 @@ import {
 import { buildPlanImplementationPrompt } from "~/proposedPlan";
 import { findLatestProposedPlan } from "~/session-logic";
 import type { FixProblem } from "~/zerops/fixRequest";
-import { REVIEW_LABEL } from "@t3tools/client-runtime/zerops";
 import { useOpenReview } from "~/zerops/review";
 import { useMateWrite } from "~/zerops/useMateWrite";
 
@@ -33,6 +32,7 @@ import { mateDecision } from "./mateDecision.logic";
 import { MateFace } from "./primitives";
 import {
   releaseWaitingLine,
+  WAITING_VERBS,
   waitingCountWords,
   waitingTitle,
   type WaitingItem,
@@ -48,8 +48,12 @@ export interface WaitingVerbs {
   readonly onAskToFix: (projectId: string, problem: FixProblem) => void;
 }
 
-/** Where the list stands: beside the menu, its title on the trigger's title line. */
+/**
+ * Where the list stands: beside the menu, its title on the trigger's title line. In a phone's sheet
+ * there is no beside: it hangs under the menu's head, across the screen.
+ */
 interface Placement {
+  readonly side: "right" | "bottom";
   readonly sideOffset: number;
   readonly alignOffset: number;
 }
@@ -63,7 +67,16 @@ function placementOf(trigger: HTMLElement): Placement {
   const box = trigger.getBoundingClientRect();
   const menu = trigger.closest('[data-sidebar="sidebar"]')?.getBoundingClientRect();
   const line = trigger.querySelector("[data-waiting-line]")?.getBoundingClientRect() ?? box;
+  if (trigger.closest('[data-sidebar="sidebar"][data-mobile="true"]') !== null) {
+    const head = trigger.closest('[data-slot="sidebar-header"]')?.getBoundingClientRect();
+    return {
+      side: "bottom",
+      sideOffset: Math.round((head?.bottom ?? box.bottom) - box.bottom + BESIDE_PX),
+      alignOffset: 0,
+    };
+  }
   return {
+    side: "right",
     sideOffset: Math.round((menu?.right ?? box.right) - box.right + BESIDE_PX),
     alignOffset: Math.round(line.top + line.height / 2 - box.top - TITLE_CENTRE_PX),
   };
@@ -89,7 +102,11 @@ export function SidebarWaitingPopover({
   readonly tooltip?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  const [placement, setPlacement] = useState<Placement>({ sideOffset: 16, alignOffset: -5 });
+  const [placement, setPlacement] = useState<Placement>({
+    side: "right",
+    sideOffset: 16,
+    alignOffset: -5,
+  });
   const anchor = useRef<HTMLElement | null>(null);
   // Nothing waits any more: the list has nothing to hold.
   const shown = open && items.length > 0;
@@ -117,10 +134,11 @@ export function SidebarWaitingPopover({
       )}
       <WaitingPortal>
         <PopoverPrimitive.Positioner
-          align="start"
+          align={placement.side === "bottom" ? "center" : "start"}
           alignOffset={placement.alignOffset}
           className="z-130"
-          side="right"
+          {...(placement.side === "bottom" ? { collisionPadding: 8 } : {})}
+          side={placement.side}
           sideOffset={placement.sideOffset}
         >
           <PopoverPrimitive.Popup
@@ -306,16 +324,29 @@ function WaitingEntry({
         <div className="menu-wait-actions">
           {item.kind === "release" ? (
             <ReviewButton
-              label="Review release"
+              label={WAITING_VERBS.release}
               onClose={onClose}
               target={{ kind: "release", groupId: item.release.groupId }}
             />
+          ) : item.kind === "sign-in" ? (
+            // Its conversation holds the sign-in.
+            <OpenButton
+              label={WAITING_VERBS["sign-in"]}
+              mate={item.mate}
+              onClose={onClose}
+              verbs={verbs}
+            />
           ) : item.kind === "change" ? (
             item.mate.change === undefined ? (
-              <OpenButton mate={item.mate} onClose={onClose} verbs={verbs} />
+              <OpenButton
+                label={WAITING_VERBS.change}
+                mate={item.mate}
+                onClose={onClose}
+                verbs={verbs}
+              />
             ) : (
               <ReviewButton
-                label={REVIEW_LABEL}
+                label={WAITING_VERBS.change}
                 onClose={onClose}
                 target={{
                   kind: "change",
@@ -327,6 +358,7 @@ function WaitingEntry({
             )
           ) : item.kind === "failed" ? (
             <Button
+              aria-label={`Ask ${item.mate.name} to fix it`}
               onClick={() => {
                 verbs.onAskToFix(item.mate.projectId, {
                   what: `${item.mate.name} stopped on an error`,
@@ -337,7 +369,7 @@ function WaitingEntry({
                 onClose();
               }}
             >
-              Ask {item.mate.name} to fix it
+              {WAITING_VERBS.failed}
             </Button>
           ) : (
             <MateActions mate={item.mate} onClose={onClose} onDone={went} verbs={verbs} />
@@ -371,11 +403,14 @@ function ReviewButton({
   );
 }
 
+/** Its conversation, where the wait is acted on: its kind's verb (`WAITING_VERBS`). */
 function OpenButton({
+  label,
   mate,
   verbs,
   onClose,
 }: {
+  readonly label: string;
   readonly mate: WaitingMate;
   readonly verbs: WaitingVerbs;
   readonly onClose: () => void;
@@ -387,7 +422,7 @@ function OpenButton({
         verbs.onOpenMate(mate.projectId);
       }}
     >
-      Open {mate.name}
+      {label}
     </Button>
   );
 }
@@ -551,7 +586,7 @@ function MateActions({
     );
   }
   // More than the list can answer in place, or no conversation to answer in: its conversation.
-  return <OpenButton mate={mate} onClose={onClose} verbs={verbs} />;
+  return <OpenButton label={WAITING_VERBS.question} mate={mate} onClose={onClose} verbs={verbs} />;
 }
 
 /**

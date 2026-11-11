@@ -5,6 +5,7 @@
  * from, with what HQ answered as it was set: the webhook it made, or the URL and secret to paste,
  * the secret shown this once.
  */
+import { couldntRead, hqNeedsUpdate } from "@t3tools/client-runtime/zerops/hq";
 import type { OrgAiKeysRead } from "@t3tools/client-runtime/data";
 import type { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
 import { useId, useState } from "react";
@@ -15,15 +16,14 @@ import { Button, InlineButton } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { aiKeyLine } from "./automatedMatesSettings.logic";
+import { settingDay } from "./automationParts";
+import { type NameOf, NOBODY_NAMED } from "./automationSettings.logic";
 import { IntegrationAction, IntegrationRow } from "./IntegrationRow";
 import { searchableSetting } from "./settingsSearch";
 import { AppIntakeView } from "../zerops/projectAutomation/sourceForms";
 
 // A project's GitHub issues form lives on its page (`projectAutomation/sourceForms`); importable from here.
 export { AppIntakeView };
-
-const day = (iso: string) =>
-  new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 
 /** In the settings' place, where this HQ can't do automated Mates. */
 export function AutomatedMatesUnsupported() {
@@ -32,7 +32,7 @@ export function AutomatedMatesUnsupported() {
       className="px-3 pb-3 text-sm text-muted-foreground sm:px-4"
       data-zerops-surface="settings-automated-unsupported"
     >
-      Update HQ to set up automated Mates.
+      {hqNeedsUpdate("set up automated Mates")}
     </p>
   );
 }
@@ -44,12 +44,15 @@ export function OrganizationKeyView({
   onSet,
   onRemove,
   onAgain,
+  nameOf = NOBODY_NAMED,
 }: {
   readonly provider: (typeof OPENCODE_KEY_PROVIDERS)[number];
   readonly read: OrgAiKeysRead;
   readonly onSet: (provider: string, value: string) => void;
   readonly onRemove: (provider: string) => void;
   readonly onAgain: () => void;
+  /** A member's name by Zerops user id, as the organization's member list names them. */
+  readonly nameOf?: NameOf;
 }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState("");
@@ -70,7 +73,7 @@ export function OrganizationKeyView({
         {problem}
       </span>
     ) : read.keys.state === "failed" ? (
-      read.keys.words
+      couldntRead(`the organization's ${provider.name} key`, read.keys.words)
     ) : read.keys.state === "withheld" ? (
       "Only the organization's Owner and Admins see its key."
     ) : working ? (
@@ -80,7 +83,7 @@ export function OrganizationKeyView({
         "Saving…"
       )
     ) : set ? (
-      `${provider.name} · ${aiKeyLine(view, day)}`
+      `${provider.name} · ${aiKeyLine(view, settingDay, nameOf)}`
     ) : (
       `Your ${provider.name} key pays for the open models automated Mates run.`
     );
@@ -93,7 +96,7 @@ export function OrganizationKeyView({
       action={
         read.keys.state === "failed" ? (
           <Button onClick={onAgain} size="sm" variant="secondary">
-            Read again
+            Try again
           </Button>
         ) : known ? (
           <IntegrationAction

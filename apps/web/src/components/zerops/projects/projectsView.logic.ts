@@ -4,7 +4,8 @@
  * is the person's (`projectOrderPreference.ts`), and nothing reorders them.
  */
 
-import type { OfficialHq, UnreadEnvironment } from "@t3tools/client-runtime/zerops/hq";
+import type { UnreadEnvironment } from "@t3tools/client-runtime/zerops/hq";
+import { mateParts, type MatePart } from "@t3tools/client-runtime/zerops/mateParts";
 import {
   deployWord,
   firstDeployLine,
@@ -14,7 +15,6 @@ import {
   flowVerbLabel,
   hasMate,
   projectNameInApp,
-  pairPreviewRoutes,
   placeAddresses,
   releaseContentsSummary,
   releaseInFlightReason,
@@ -23,12 +23,10 @@ import {
   type FlowPullRequest,
   type Moved,
   type GroupEnvironmentTier,
-  type HeldEnvironment,
-  environmentAddable,
-  heldTiers,
   type GroupFlow,
   type GroupFlowComing,
   type GroupFlowInput,
+  type GroupFlowPreview,
   type GroupFlowStop,
   type GroupFlowStopState,
   type GroupNextStepKind,
@@ -37,7 +35,6 @@ import {
   type ReleaseGate,
   type ZeropsEnvironmentRole,
   type ZeropsEnvironmentServices,
-  type ZeropsGroup,
   type ZeropsGroupPendingMember,
   type ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
@@ -90,6 +87,34 @@ export function overviewKeeps(input: {
   return true;
 }
 
+/** What a project's card says needs the person, as the overview orders by it. */
+export interface OverviewUrgency {
+  /** Production is down, or its last release failed. */
+  readonly broken: boolean;
+  /** A Mate of the viewer's asks: a question, a plan, a run stopped on an error. */
+  readonly asks: boolean;
+  /** A change waits for the viewer's review, or a release they may make. */
+  readonly reviews: boolean;
+}
+
+/**
+ * The overview's order: what waits on the person first, the most urgent first — a broken
+ * production, then a Mate's question, then reviews and releases — and within each, the order they
+ * came in (the menu's own). A card moves only when what waits in its project changes, never as its
+ * Mates work.
+ */
+export function overviewOrder<G>(
+  groups: ReadonlyArray<G>,
+  urgencyOf: (group: G) => OverviewUrgency,
+): ReadonlyArray<G> {
+  const rank = (urgency: OverviewUrgency) =>
+    urgency.broken ? 0 : urgency.asks ? 1 : urgency.reviews ? 2 : 3;
+  return groups
+    .map((group) => ({ group, urgency: urgencyOf(group) }))
+    .toSorted((left, right) => rank(left.urgency) - rank(right.urgency))
+    .map(({ group }) => group);
+}
+
 /** One of the overview's filters: its words, and how many projects it holds when any. */
 export interface OverviewFilterTab {
   readonly show: OverviewShow | undefined;
@@ -98,13 +123,15 @@ export interface OverviewFilterTab {
 }
 
 /**
- * The overview's filters as offered: All, then Waiting on you and Mine, each counting the projects
- * it holds and saying nothing at none (a zero names nothing to look at). A role that never has a
+ * The overview's filters as offered: All, then Waiting on you — counting the things that wait on
+ * the viewer, as the menu's badge does (`useViewerWaits`) — and Mine, counting the projects it
+ * holds; each says nothing at none (a zero names nothing to look at). A role that never has a
  * Mate of its own (`ownsMates` false: no project, so no Mate, to make) is offered neither while
  * it could not fill them — Waiting on you comes when something does wait — and the one an address
  * opened stays. With All alone left there is no filter at all.
  */
 export function overviewFilterTabs(input: {
+  /** How many things wait on the viewer (`useViewerWaits().items`), not how many projects. */
   readonly waiting: number;
   readonly mine: number;
   readonly ownsMates: boolean;
@@ -221,7 +248,7 @@ export const CONTAINERS_NOT_IN_A_PROJECT = "Not in a project";
 /**
  * The containers no project holds, as one line: how many are in each state,
  * and how many a re-probe (*Try again*) would ask again — the ones not
- * answering, which a browser cannot tell from one that predates Mate (H9).
+ * answering (H9).
  */
 export function containersSummary(
   kinds: ReadonlyArray<ZeropsRowAction["kind"]>,
@@ -243,20 +270,6 @@ export function containersSummary(
     line: [placementNotice ?? CONTAINERS_NOT_IN_A_PROJECT, ...parts].join(" · "),
     retry: counts.get("not-answering") ?? 0,
   };
-}
-
-/**
- * The projects the page lists, without the organization's HQ — the project its anchor names
- * (`findOfficialHq`), which HQ's card stands for, and which is never a Mate to set up. A
- * project is never left out by its name or its tag, and none at all while the anchor names no one
- * HQ.
- */
-export function withoutOfficialHq<T extends { readonly project: { readonly id: string } }>(
-  rows: ReadonlyArray<T>,
-  hq: OfficialHq,
-): ReadonlyArray<T> {
-  if (hq.kind !== "official") return rows;
-  return rows.filter((row) => row.project.id !== hq.projectId);
 }
 
 /** Foreign environments without a Mate do not belong among the page's other containers. */
@@ -448,8 +461,12 @@ export interface GroupMemberFacts {
       }
     | undefined;
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
-  /** The developer's services by hostname — the pairs `pairPreviewRoutes` looks for. */
+  /** The developer's services by hostname — the pairs `mateParts` looks for. */
   readonly hostnames: ReadonlyArray<string>;
+  /** Its dev pools by hostname (`ZeropsEnvironmentServices.pools`); none while unread. */
+  readonly pools?: ReadonlyArray<string>;
+  /** The control plane's hostname (the zcp service), never a part. */
+  readonly controlPlane?: string | undefined;
 }
 
 /** A group member as the group tree carries it: a candidate, with what its container serves. */
@@ -508,66 +525,10 @@ export function groupMemberFactsOf<T extends GroupMemberCandidate>(
         : undefined,
       routes: item.routes ?? [],
       hostnames: item.services?.hostnames ?? [],
+      pools: item.services?.pools ?? [],
+      controlPlane: item.service?.name,
     };
   });
-}
-
-/**
- * The tiers a project's menu offers *Add* for — the one answer (`environmentAddable`) for the
- * group as its tree holds it: its projects by role (a Mate that is also the stage counts as the
- * stage), its creations under way, and what HQ records of it, each counted once; whether the
- * recipe holds the tier; and whether HQ offers this person the tier. Nothing is offered before HQ
- * says.
- */
-export function tiersAddable(input: {
-  /** The tiers HQ offers this person to add (`add_stage` / `add_production`); `null` before it says. */
-  readonly offered: {
-    readonly stage: boolean;
-    readonly production: boolean;
-    readonly git?: boolean;
-    readonly zerops?: { readonly stage: boolean; readonly production: boolean };
-  } | null;
-  readonly group: Pick<ZeropsGroup, "pending"> & {
-    readonly environments: ReadonlyArray<{
-      readonly role: import("@t3tools/client-runtime/zerops").ZeropsEnvironmentRole | undefined;
-      readonly project: { readonly id: string } | undefined;
-    }>;
-  };
-  /** The application's environments as HQ records them. */
-  readonly hq: ReadonlyArray<HeldEnvironment>;
-  readonly recipe: { readonly read: boolean; readonly tiers: ReadonlyArray<GroupEnvironmentTier> };
-}): ReadonlyArray<GroupEnvironmentTier> {
-  const { offered, group } = input;
-  if (offered === null) return [];
-  const held = heldTiers([
-    ...input.hq,
-    ...group.environments.flatMap((entry): ReadonlyArray<HeldEnvironment> => {
-      const tier =
-        entry.role === "prod"
-          ? "production"
-          : entry.role === "stage" || entry.role === "devstage"
-            ? "stage"
-            : undefined;
-      return tier === undefined || entry.project === undefined
-        ? []
-        : [{ id: entry.project.id, tier }];
-    }),
-    ...group.pending.flatMap((entry): ReadonlyArray<HeldEnvironment> =>
-      entry.kind === "stage" || entry.kind === "production"
-        ? [{ id: entry.projectId, tier: entry.kind }]
-        : [],
-    ),
-  ]);
-  return (["stage", "production"] as const).filter((tier) =>
-    environmentAddable({
-      tier,
-      recipeRead: input.recipe.read,
-      recipeTiers: input.recipe.tiers,
-      offered: offered.zerops?.[tier] ?? offered[tier],
-      gitOffered: offered.git === true,
-      held,
-    }),
-  );
 }
 
 /** The part of a group's project flow `groupFlow` reads. */
@@ -595,6 +556,32 @@ export interface GroupFlowReads {
       | undefined;
     /** Production's services whose commit cannot be told. */
     readonly untold: ReadonlyArray<string>;
+  };
+}
+
+/**
+ * A Mate row's parts (`mateParts`, the reader the Sites lists and the Browser page share) and its
+ * previews among them, one per part with a public preview, by its real hostname. Its leases are not
+ * read here: a pool part's preview is what the row offers.
+ */
+function mateRowParts(
+  member: GroupMemberFacts,
+  tier: string | undefined,
+): { readonly parts: ReadonlyArray<MatePart>; readonly previews: ReadonlyArray<GroupFlowPreview> } {
+  const { parts } = mateParts({
+    services: member.hostnames.map((hostname) => ({ hostname })),
+    routes: member.routes,
+    controlPlane: member.controlPlane,
+    pools: member.pools,
+    tier,
+  });
+  return {
+    parts,
+    previews: parts.flatMap((part) =>
+      part.preview?.url === undefined
+        ? []
+        : [{ service: part.preview.service, url: part.preview.url }],
+    ),
   };
 }
 
@@ -644,6 +631,7 @@ export function groupFlowInputOf(input: {
   readonly pending: ReadonlyArray<ZeropsGroupPendingMember>;
 }): GroupFlowInput {
   const { flow } = input;
+  const listedIds = new Set(input.members.map((member) => member.projectId));
   return {
     groupId: input.groupId,
     mates: input.members.flatMap((member) =>
@@ -653,7 +641,7 @@ export function groupFlowInputOf(input: {
             {
               projectId: member.projectId,
               name: member.mate.name,
-              previews: pairPreviewRoutes(member.routes, member.hostnames, flow?.mateTier),
+              ...mateRowParts(member, flow?.mateTier),
               waiting: member.mate.waiting,
               ...(member.mate.failed === true ? { failed: true } : {}),
               ...(member.mate.working === true ? { working: true } : {}),
@@ -685,22 +673,24 @@ export function groupFlowInputOf(input: {
           },
         ];
       }),
-      // An environment HQ delivers to a Git branch has no Zerops project, so no member of the
-      // group tree stands for it: its row alone is the stop.
-      ...(flow?.environments ?? []).flatMap((row) =>
-        row.target.kind === "git"
-          ? [
-              {
-                projectId: row.id,
-                name: row.name,
-                tier: row.tier,
-                row,
-                deployment: undefined,
-                addresses: [],
-              },
-            ]
-          : [],
-      ),
+      // An environment HQ records that no member of the group tree stands for — delivered to a Git
+      // branch, or a Zerops project the account does not list — is its row alone, as the project's
+      // *Environments* draws it.
+      ...(flow?.environments ?? []).flatMap((row) => {
+        const { target } = row;
+        if (target.kind === "zerops" && listedIds.has(target.projectId)) return [];
+        return [
+          {
+            projectId: row.id,
+            name: row.name,
+            tier: row.tier,
+            row,
+            deployment:
+              target.kind === "zerops" ? input.deployments?.get(target.projectId) : undefined,
+            addresses: [],
+          },
+        ];
+      }),
     ],
     release:
       flow === undefined

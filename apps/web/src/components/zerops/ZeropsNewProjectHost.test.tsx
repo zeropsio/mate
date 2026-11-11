@@ -86,11 +86,7 @@ vi.mock("~/zerops/useZeropsCandidates", () => ({
   useTakenBotNames: () => ({ names: [], complete: true }),
 }));
 vi.mock("~/zerops/accountHq", () => ({
-  useAccountHq: () => ({
-    admins: [],
-    hq: { kind: "official", projectId: "hq", address: "https://hq.example" },
-  }),
-  officialHq: (account: { hq: unknown }) => account.hq,
+  configuredHq: () => ({ projectId: "hq", address: "https://hq.example" }),
 }));
 vi.mock("./ZeropsNewProjectForm", () => ({
   ZeropsNewProjectDialog: (props: { readonly onCreate: (choice: NewProjectChoice) => void }) => {

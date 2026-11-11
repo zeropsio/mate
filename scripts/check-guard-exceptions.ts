@@ -26,7 +26,6 @@ import * as NodePath from "node:path";
 import * as NodeOS from "node:os";
 import * as NodeURL from "node:url";
 
-import { rewriteImportPaths } from "./effect-401-codemod.ts";
 import { decodeGitHubEvent, githubRatchetRevision } from "./lib/github-ratchet.ts";
 import {
   guardCacheKey,
@@ -194,8 +193,7 @@ export const ratchetAdditions = (
 ): ReadonlyArray<string> => {
   const counts = new Map<string, number>();
   for (const entry of baseline) {
-    // A baseline from before Effect 4.0.1 names the same import by its effect/unstable/* path.
-    const identity = identityOf({ ...entry, fingerprint: rewriteImportPaths(entry.fingerprint) });
+    const identity = identityOf(entry);
     counts.set(identity, (counts.get(identity) ?? 0) + 1);
   }
   const additions: Array<string> = [];
@@ -246,31 +244,62 @@ export const loadRatchetBaseline = (
     process.env.CI === "true" && process.env.GITHUB_ACTIONS !== "true" && ancestor === head
       ? git(["rev-parse", "HEAD^"])
       : ancestor;
+  const ledgerPaths = RATCHET_RULES.map(
+    (ruleName) => `oxlint-plugin-t3code/exceptions/${ruleName}.json`,
+  );
+  // Read all immutable ledger objects in one Git process.
+  const objects = NodeChildProcess.spawnSync("git", ["cat-file", "--batch"], {
+    cwd,
+    input: ledgerPaths.map((ledgerPath) => `${revision}:${ledgerPath}`).join("\n") + "\n",
+    maxBuffer: ledgerPaths.length * 1024 * 1024,
+  });
+  if (objects.error || objects.status !== 0) {
+    throw new Error(objects.stderr?.toString() || "git cat-file --batch failed", {
+      cause: objects.error,
+    });
+  }
+  const contents = new Map<string, Buffer>();
+  let offset = 0;
+  for (const ledgerPath of ledgerPaths) {
+    const headerEnd = objects.stdout.indexOf(10, offset);
+    const header = objects.stdout.toString("utf8", offset, headerEnd);
+    if (header === `${revision}:${ledgerPath} missing`) {
+      offset = headerEnd + 1;
+      if (ledgerPath.endsWith("/no-legacy-notice-policy.json")) continue;
+      if (
+        ledgerPath.endsWith("/no-environment-as-project.json") &&
+        git(["ls-tree", "--name-only", revision, "--", ledgerPath]) === ""
+      )
+        continue;
+      throw new Error(`Missing Git ledger ${revision}:${ledgerPath}`);
+    }
+    const size = Number(/^[a-f0-9]+ \S+ (\d+)$/u.exec(header)?.[1]);
+    const start = headerEnd + 1;
+    const end = start + size;
+    if (
+      headerEnd < 0 ||
+      !Number.isSafeInteger(size) ||
+      end >= objects.stdout.length ||
+      objects.stdout[end] !== 10
+    ) {
+      throw new Error(`Failed to read Git ledger object ${ledgerPath}: ${header}`);
+    }
+    contents.set(ledgerPath, objects.stdout.subarray(start, end));
+    offset = end + 1;
+  }
   const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "guard-baseline-"));
   try {
     return new Map(
       RATCHET_RULES.map((ruleName) => {
         // The admission guard was bootstrapped with this slice; the frozen AST findings are its first baseline.
         const ledgerPath = `oxlint-plugin-t3code/exceptions/${ruleName}.json`;
-        if (ruleName === "no-environment-as-project") {
-          // Only an absent path in a valid ancestor is the guard's first empty baseline.
-          // ls-tree errors stay fatal; cat-file's generic failure must not mask a Git error.
-          const existing = git(["ls-tree", "--name-only", revision, "--", ledgerPath]);
-          if (existing === "") return [ruleName, []];
+        const content = contents.get(ledgerPath);
+        if (content === undefined) {
+          if (ruleName === "no-environment-as-project") return [ruleName, []];
+          if (ruleName === "no-legacy-notice-policy") return [ruleName, ADMISSION_POLICY_BOOTSTRAP];
+          throw new Error(`Missing Git ledger ${revision}:${ledgerPath}`);
         }
-        if (
-          ruleName === "no-legacy-notice-policy" &&
-          NodeChildProcess.spawnSync("git", ["cat-file", "-e", `${revision}:${ledgerPath}`], {
-            cwd,
-            encoding: "utf8",
-          }).status !== 0
-        ) {
-          return [ruleName, ADMISSION_POLICY_BOOTSTRAP];
-        }
-        NodeFS.writeFileSync(
-          NodePath.join(directory, `${ruleName}.json`),
-          git(["show", `${revision}:oxlint-plugin-t3code/exceptions/${ruleName}.json`]),
-        );
+        NodeFS.writeFileSync(NodePath.join(directory, `${ruleName}.json`), content);
         const entries = loadExceptionLedger(ruleName, directory).entries;
         return [
           ruleName,

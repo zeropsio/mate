@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
@@ -7,6 +7,7 @@ import {
   type ChatImageAttachment,
   type ChatFileAttachment,
 } from "@t3tools/contracts";
+import { useStableHandlers } from "../../hooks/useStableHandlers";
 import { randomUUID } from "../../lib/utils";
 import type { ComposerImageAttachment } from "../../composerDraftStore";
 import { composerAttachmentRoute, type ComposerFileAttachment } from "../../lib/composerFiles";
@@ -26,8 +27,16 @@ interface QuestionFile {
   readonly attachment: ComposerImageAttachment | ComposerFileAttachment;
 }
 
+const NO_FILES: ReadonlyArray<QuestionFile> = [];
+
 /** An answer's files belong to its request and question, never the next chat draft. */
-export function useQuestionAttachments(input: {
+export function useQuestionAttachments({
+  scope,
+  environmentId,
+  questionId,
+  supported,
+  onError,
+}: {
   readonly scope: string | null;
   readonly environmentId: EnvironmentId;
   readonly questionId: string | null;
@@ -52,23 +61,25 @@ export function useQuestionAttachments(input: {
       files.clear();
     };
   }, []);
-  const entries = input.scope === null ? [] : (byScope[input.scope] ?? []);
-  const pending = input.scope === null ? 0 : (preparing[input.scope] ?? 0);
+  const entries = scope === null ? NO_FILES : (byScope[scope] ?? NO_FILES);
+  const pending = scope === null ? 0 : (preparing[scope] ?? 0);
   const blocked =
     pending > 0 || entries.some((entry) => uploads[entry.attachment.id]?.status !== "ready");
-  const current = entries.filter((entry) => entry.questionId === input.questionId);
+  const current = useMemo(
+    () => entries.filter((entry) => entry.questionId === questionId),
+    [entries, questionId],
+  );
 
   const add = async (files: ReadonlyArray<File>) => {
-    const { scope, questionId, environmentId } = input;
     if (scope === null || questionId === null) return;
-    if (input.supported === null)
-      return input.onError(
+    if (supported === null)
+      return onError(
         "This Mate's attachment support is still being read. Try again once it is ready.",
       );
-    if (!input.supported) return input.onError("This Mate cannot take question attachments yet.");
+    if (!supported) return onError("This Mate cannot take question attachments yet.");
     const count = reserved.current.get(scope) ?? 0;
     if (count + files.length > PROVIDER_SEND_TURN_MAX_ATTACHMENTS)
-      return input.onError(
+      return onError(
         `Attach up to ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS} files to a question response.`,
       );
     reserved.current.set(scope, count + files.length);
@@ -78,7 +89,7 @@ export function useQuestionAttachments(input: {
       for (const source of files) {
         const route = composerAttachmentRoute(source);
         if (route.kind === "refused") {
-          input.onError(route.message);
+          onError(route.message);
           continue;
         }
         const id = randomUUID();
@@ -90,7 +101,7 @@ export function useQuestionAttachments(input: {
           );
           if (!mounted.current || retired.current.has(scope)) return;
           if (!prepared.ok) {
-            input.onError(`Could not attach ${source.name}: ${prepared.reason}.`);
+            onError(`Could not attach ${source.name}: ${prepared.reason}.`);
             continue;
           }
           const file = prepared.file;
@@ -130,32 +141,35 @@ export function useQuestionAttachments(input: {
         setPreparing((state) => ({ ...state, [scope]: (state[scope] ?? 0) - files.length }));
     }
   };
-  const remove = (id: string) => {
+  // Of the scope it is told, never of the render it is called in: a question's files are cleared
+  // once its answer has been taken, by when another question may be the one open.
+  const removeIn = useCallback((inScope: string | null, id: string) => {
     const attachment = owned.current.get(id);
-    if (!attachment || input.scope === null) return;
+    if (!attachment || inScope === null) return;
     releaseAttachmentUploads([attachment]);
     if (attachment.type === "image") URL.revokeObjectURL(attachment.previewUrl);
     owned.current.delete(id);
-    const scope = input.scope;
-    reserved.current.set(scope, Math.max(0, (reserved.current.get(scope) ?? 0) - 1));
+    reserved.current.set(inScope, Math.max(0, (reserved.current.get(inScope) ?? 0) - 1));
     setByScope((state) => ({
       ...state,
-      [scope]: (state[scope] ?? []).filter((entry) => entry.attachment.id !== id),
+      [inScope]: (state[inScope] ?? []).filter((entry) => entry.attachment.id !== id),
     }));
+  }, []);
+  const remove = (id: string) => {
+    removeIn(scope, id);
   };
   const retry = (id: string) => {
     const attachment = owned.current.get(id);
     if (!attachment) return;
-    if (attachment.type === "image")
-      retryAttachmentUpload({ environmentId: input.environmentId, image: attachment });
-    else retryFileUpload({ environmentId: input.environmentId, file: attachment });
+    if (attachment.type === "image") retryAttachmentUpload({ environmentId, image: attachment });
+    else retryFileUpload({ environmentId, file: attachment });
   };
   const forResponse = (): UserInputAttachments | null => {
     if (blocked) return null;
     const result: Record<string, ReadonlyArray<ChatImageAttachment | ChatFileAttachment>> = {};
     for (const { questionId, attachment } of entries) {
       const ready = getUploadedAttachments({
-        environmentId: input.environmentId,
+        environmentId,
         images: attachment.type === "image" ? [attachment] : [],
         files: attachment.type === "file" ? [attachment] : [],
       });
@@ -170,19 +184,19 @@ export function useQuestionAttachments(input: {
     }
     return result;
   };
-  return {
-    current,
-    entries,
-    pending,
-    blocked,
-    uploads,
-    add,
-    remove,
-    retry,
-    forResponse,
-    clear: () => {
-      if (input.scope !== null) retired.current.add(input.scope);
-      for (const entry of entries) remove(entry.attachment.id);
-    },
-  };
+  // This question's own files, as this render reads them: called once its answer is taken — after
+  // a wait in which the person may have opened another conversation's question — it clears the
+  // question that was answered, never the one open by then.
+  const clear = useCallback(() => {
+    if (scope !== null) retired.current.add(scope);
+    for (const entry of entries) removeIn(scope, entry.attachment.id);
+  }, [entries, removeIn, scope]);
+  // Called from the press itself, these act on the question open at that press.
+  const act = useStableHandlers({ add, remove, retry, forResponse });
+  // The same object while what it says stands: the composer it is handed to is drawn again for a
+  // file added or uploaded, not for every render of the conversation around it.
+  return useMemo(
+    () => ({ current, entries, pending, blocked, uploads, ...act, clear }),
+    [current, entries, pending, blocked, uploads, act, clear],
+  );
 }

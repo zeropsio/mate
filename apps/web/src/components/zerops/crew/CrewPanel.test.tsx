@@ -80,6 +80,7 @@ const render = (crew: CrewRead, viewer: "runs it" | "may not" = "runs it") =>
   renderToStaticMarkup(
     <CrewPanelBody
       access={crewAccess({
+        readsAlong: false,
         snapshot: crew.snapshot,
         lockOf: viewer === "runs it" ? () => null : CLOSED,
         defaultLogin: "claudeAgent",

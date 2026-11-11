@@ -1,9 +1,10 @@
+import { ownerAtAdd } from "@t3tools/client-runtime/zerops/projectAccess";
 import { shownCanonicalHqListNavigationAtom } from "@t3tools/client-runtime/data";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { useAddMateOffer } from "../../zerops/useHqOffers";
 import { useNewMateGate } from "../../zerops/useNewMateGates";
 import { placementNotice } from "./projects/placementNotice.logic";
-import { overviewPaints, tiersAddable } from "./projects/projectsView.logic";
+import { overviewPaints } from "./projects/projectsView.logic";
 import { useGitEnvironmentFormInputs } from "~/zerops/useGitEnvironmentFormInputs";
 import { isChief } from "~/zerops/chief";
 import { roleOffers } from "@t3tools/client-runtime/data";
@@ -29,7 +30,7 @@ import { useMateUpgradeRecovery, type UpgradeRecovery } from "~/zerops/useMateUp
 import { useAtomValue } from "@effect/atom-react";
 import * as DateTime from "effect/DateTime";
 import { useNavigate, useRouteContext, useSearch } from "@tanstack/react-router";
-import type { EnvironmentId } from "@t3tools/contracts";
+import { EnvironmentId } from "@t3tools/contracts";
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
 import type * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -39,10 +40,15 @@ import { PlayIcon, PlusIcon } from "lucide-react";
 
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
-import { shownHqPersonFactsAtom, shownHqProjectPeopleAtom } from "@t3tools/client-runtime/data";
-import { useSidebarWaiting } from "~/zerops/useSidebarWaiting";
-import { useEnvironmentOffers } from "~/zerops/useAddEnvironment";
-import { hqDown, hqPlacementsAtom, hqPlacementStatusAtom } from "~/state/zerops";
+import {
+  shownHqPersonFactsAtom,
+  shownHqProjectPeopleAtom,
+  shownMateVisibilitiesAtom,
+} from "@t3tools/client-runtime/data";
+import { useViewerWaits } from "~/zerops/useSidebarWaiting";
+import { useSecondsNowMs } from "~/zerops/useNowMs";
+import { useApplicationEnvironmentFacts } from "~/zerops/useAddEnvironment";
+import { hqPlacementsAtom, hqPlacementStatusAtom } from "~/state/zerops";
 import { useProjectOrderOptions } from "~/zerops/projectOrderPreference";
 import {
   applyFirstBuildVerdict,
@@ -51,10 +57,7 @@ import {
   normalizeOrigin,
   type ZeropsCandidate,
 } from "@t3tools/client-runtime/zerops/candidates";
-import {
-  resolveMateVisibility,
-  type RoleMateVisibility,
-} from "@t3tools/client-runtime/zerops/mateAccess";
+import type { RoleMateVisibility } from "@t3tools/client-runtime/zerops/mateAccess";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import {
   deployBuilding,
@@ -73,19 +76,19 @@ import {
 } from "@t3tools/client-runtime/zerops/knowledge";
 import { heldCandidates, listsNoProject } from "@t3tools/client-runtime/zerops/projections";
 import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
-import { useAddMate } from "~/zerops/newMate";
+import { newMateView, useAddMate } from "~/zerops/newMate";
 import { useSetUpEnvironment } from "~/zerops/setUpEnvironment";
-import {
-  environmentDoorLabel,
-  PUT_LIVE_AFTER_CREATION,
-  putLiveHoldsRelease,
-} from "~/zerops/putLive.logic";
+import { environmentDoorLabel, PUT_LIVE_AFTER_CREATION } from "~/zerops/putLive.logic";
 import { useOpenPutLive, usePutLive } from "~/zerops/putLive";
 import { askNewProject } from "~/zerops/newProjectAsk";
 import { useEnvironmentCreation } from "~/zerops/useEnvironmentCreation";
 import { useConnectMate, type MateConnectTarget } from "~/zerops/accountEnvironments";
 import { intendContainer, useZeropsContainers } from "~/zerops/zeropsContainers";
 import { useDeleteProject } from "~/zerops/deleteProject";
+import { useAccountOrgId } from "~/zerops/accountData";
+import { placeVaults, type PlaceVault } from "./vault/placeVault.logic";
+import { usePlaceVaultDrawer } from "./vault/StopVault";
+import { VaultPanelContainer } from "./vault/VaultPanelContainer";
 import { useRestartMate } from "~/zerops/mateRestart";
 import {
   birthPresses,
@@ -102,7 +105,12 @@ import {
   type MatePress,
 } from "~/zerops/matePress";
 import { useCreations } from "~/zerops/creations";
-import { placedNewProjects } from "~/zerops/newProjectBirth";
+import { newProjectView, placedNewProjects } from "~/zerops/newProjectBirth";
+import {
+  placedSharedBirths,
+  sharedBirthPresentation,
+  useSharedBirthState,
+} from "~/zerops/sharedBirths";
 import {
   useTakenBotNames,
   useZeropsCandidates,
@@ -131,6 +139,7 @@ import { mateAutomation } from "./SidebarMateRow.logic";
 import type { ZeropsRowPresentation } from "./ZeropsProjectRow.logic";
 
 import {
+  applicationEnvironments,
   assignCandidateMateTints,
   mateShapeOf,
   newMateTint,
@@ -139,7 +148,6 @@ import {
   defaultAgentForRole,
   hasMate,
   type FlowPullRequest,
-  type GroupFlowPreview,
   projectNameInApp,
   readZeropsMembership,
   type EnvironmentCreationStepProgress,
@@ -153,12 +161,12 @@ import {
   matePoseOf,
   zeropsProjectOf,
 } from "@t3tools/client-runtime/zerops";
+import type { MatePart } from "@t3tools/client-runtime/zerops/mateParts";
 import { invalidateZerops } from "~/zerops/accountInvalidations";
 
 import { MateFace, STATUS_BADGE_TONE } from "./primitives";
 import { useOverviewSlots } from "./projects/overviewSlots";
 import { ProductionRun } from "./ProductionRun";
-import { putLiveHasChange } from "./projects/projectCard.logic";
 import { OverviewCardMate } from "./projects/OverviewCardMate";
 import { ArrivalWelcome } from "./projects/ArrivalWelcome";
 import { signInSettled } from "./projects/arrival.logic";
@@ -193,18 +201,22 @@ import {
   proposedEnvironmentName,
 } from "./ZeropsEnvironmentCreationDialog.logic";
 import { ZeropsCreditForecast } from "./ZeropsCreditForecast";
-import { ZeropsProjectMenu, type ZeropsMenuAction } from "./ZeropsProjectMenu";
+import {
+  ZeropsProjectMenu,
+  type ZeropsMenuAction,
+  type ZeropsMenuEntry,
+} from "./ZeropsProjectMenu";
 import { GitMirrorDialog } from "./GitMirrorDialog";
 import { ProjectAccessDraft, roleProjectKind, WithDraftPeople } from "./projects/ProjectPeople";
 import { ZeropsDeleteProjectDialog } from "./ZeropsDeleteProjectDialog";
 import { ZeropsProjectRenameMenu } from "./ZeropsProjectRenameMenu";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
 import { useMateActions } from "~/zerops/useMateActions";
-import { useHqOffers, useMateOffers, useOrgOffers } from "~/zerops/useHqOffers";
+import { useMateOffers, useOrgOffers } from "~/zerops/useHqOffers";
+import { hqOfferWords } from "@t3tools/client-runtime/zerops/hq";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
-import { officialHq, useAccountHq } from "~/zerops/accountHq";
+import { configuredHq } from "~/zerops/accountHq";
 import { useEnvironmentSetup } from "~/zerops/useEnvironmentSetup";
-import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { useFlowVerbs } from "~/zerops/flowVerbs";
 import {
   useCompactProjectFlows,
@@ -212,8 +224,9 @@ import {
   useStopDeploymentsShown,
 } from "~/zerops/projectFlows";
 import { REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
+import { useAskMateToFix } from "~/zerops/fixRequest";
 import { useReadGroupAgents } from "~/zerops/groupAgents";
-import { deployRowTone } from "./ZeropsProjectRow.logic";
+import { deployRowTone, setUpMateRecord } from "./ZeropsProjectRow.logic";
 import { ZeropsSetUpMateDialog } from "./ZeropsSetUpMateDialog";
 
 import { ZeropsReleaseVerb } from "./ZeropsReleaseVerb";
@@ -221,13 +234,16 @@ import { ZeropsReleaseVerb } from "./ZeropsReleaseVerb";
 import { environmentRoleLabel, environmentRoleTag, groupNameUnread } from "./ZeropsGroupTree.logic";
 import {
   ZeropsProjectsFlow,
+  type MateLayout,
   type ProjectPageSlot,
   type ProjectsFlowGroup,
 } from "./projects/ZeropsProjectsFlow";
+import { projectReleaseWait, projectWaits } from "./projects/projectCard.logic";
+import { CardGroupMenu } from "./projects/CardGroupMenu";
 import {
   overviewKeeps,
+  overviewOrder,
   parseProjectsSearch,
-  withoutOfficialHq,
   shownUngrouped,
   type OverviewShow,
   type ProjectsSearch,
@@ -252,6 +268,7 @@ import {
 } from "./ZeropsProjectRow.logic";
 import { ZeropsOrganizationScope } from "./ZeropsOrganizationScope";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
+import { InPhoneBar, useInPhoneBar } from "./system/PhoneBar";
 import { useMenuRows, usePaintStanding } from "~/zerops/useMenuRows";
 import { Badge } from "~/components/ui/badge";
 
@@ -415,17 +432,12 @@ export function hasNoZeropsProject(input: {
    * invitation in that gap is the flash the roster then takes back.
    */
   readonly creationPending?: boolean;
-  /** The organization's official HQ's project (`withoutOfficialHq`), where the anchor names it. */
-  readonly hqProjectId?: string | undefined;
 }): boolean {
   if (input.creationPending === true) return false;
-  // A tool is not a project: the tree lists it apart (`partitionZeropsToolProjects`). Nor is HQ's
-  // own project: an organization holding only HQ has nothing of its own to start in yet.
+  // A tool is not a project: the tree lists it apart (`partitionZeropsToolProjects`).
   return listsNoProject(
     input.listing,
-    (candidate) =>
-      readZeropsToolKind(candidate.project) === undefined &&
-      candidate.project.id !== input.hqProjectId,
+    (candidate) => readZeropsToolKind(candidate.project) === undefined,
   );
 }
 
@@ -614,25 +626,32 @@ export function ZeropsProjectsHeader({
   readonly notice?: ProjectsListingNotice | null;
   readonly onRetry?: (() => void) | undefined;
 }) {
+  const inBar = useInPhoneBar();
   return (
-    // Its row stands on the menu's logo row, centre to centre, not a bar's height below it.
-    <div
-      className="-mt-1.5 flex items-center justify-between gap-3"
-      data-zerops-project-scope="true"
-    >
-      <div className="flex min-w-0 items-center gap-3">
-        <h1 className="text-xl font-medium text-foreground">Overview</h1>
-        {notice === null ? null : <ProjectsFreshness notice={notice} onRetry={onRetry} />}
+    <InPhoneBar>
+      <div
+        className={cn(
+          "flex items-center justify-between gap-3",
+          // Its row stands on the menu's logo row, centre to centre, not a bar's height below it;
+          // on a phone it is the bar's line, beside the menu's button.
+          inBar ? "min-w-0 flex-1" : "-mt-1.5",
+        )}
+        data-zerops-project-scope="true"
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <h1 className="text-xl font-medium text-foreground">Overview</h1>
+          {notice === null ? null : <ProjectsFreshness notice={notice} onRetry={onRetry} />}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {newProject ? (
+            <Button onClick={askNewProject} size="sm" variant="secondary">
+              <PlusIcon />
+              New project
+            </Button>
+          ) : null}
+        </div>
       </div>
-      <div className="flex items-center gap-2">
-        {newProject ? (
-          <Button onClick={askNewProject} size="sm" variant="secondary">
-            <PlusIcon />
-            New project
-          </Button>
-        ) : null}
-      </div>
-    </div>
+    </InPhoneBar>
   );
 }
 
@@ -845,8 +864,6 @@ export function useZeropsProjectConnection(): {
   };
 }
 
-/** Every Mate counts toward what waits on the viewer: the overview's filter is not the menu's. */
-const SHOWS_EVERY_MATE = () => true;
 const NO_ROWS: ReadonlyArray<never> = [];
 
 /**
@@ -867,6 +884,11 @@ export function ZeropsProjectsContent({
   readonly painted?: boolean;
 }) {
   const openMate = useOpenMate();
+  // A place's vault, opened from its line on a card or the project page: one drawer over the page.
+  // A place's vault restarts what a change needs itself; a Mate's, opened from its card, is the
+  // Mate's own panel, which tells the Mate (changing a value under a Mate at work and restarting
+  // its services from outside would pull its ground away).
+  const placeVault = usePlaceVaultDrawer(useAccountOrgId(), mateVaultBody);
   const authGate = useRouteContext({
     from: "__root__",
     select: (context) => context.authGateState,
@@ -880,6 +902,7 @@ export function ZeropsProjectsContent({
     organizationStatus,
     selectOrganization,
     status,
+    user,
   } = useZeropsSession();
   const { organizationRef } = useZeropsData();
   const operations = useAccountOperations();
@@ -962,7 +985,7 @@ export function ZeropsProjectsContent({
   }, [presses, candidates, connectingOrigin, finishBirth, opening]);
   // Every row's container as the container store holds it (DESIGN §4.5): the
   // platform's processes hold a boot's cap (H7/R9), and the Mate flag is read
-  // only for a container that predates Mate (H9).
+  // once no Mate answers a container (H9).
   const {
     health: candidateHealth,
     serverVersions,
@@ -986,19 +1009,10 @@ export function ZeropsProjectsContent({
     readonly groupId: string;
     readonly tier: GroupEnvironmentTier;
   } | null>(null);
-  // Ticks once a second while a creation runs, so the checklist's durations
+  // The shared second while a creation runs, so the checklist's durations
   // move; stops the moment it settles.
-  const [creationNowMs, setCreationNowMs] = useState(() => Date.now());
   const creationRunning = creation !== null && creation.outcome === undefined;
-  useEffect(() => {
-    if (!creationRunning) return;
-    const timer = setInterval(() => {
-      setCreationNowMs(Date.now());
-    }, 1000);
-    return () => {
-      clearInterval(timer);
-    };
-  }, [creationRunning]);
+  const creationNowMs = useSecondsNowMs(creationRunning);
   const projectOrder = useProjectOrderOptions();
   // A creation the platform accepted is drawn in its group before the
   // listing holds its project, and a New project this tab is making from the
@@ -1006,15 +1020,20 @@ export function ZeropsProjectsContent({
   // An application HQ holds with no project is drawn too, empty, for a Mate to be added to it.
   const hqStructure = useAtomValue(shownCanonicalHqListNavigationAtom);
   const placementStatus = useAtomValue(hqPlacementStatusAtom);
+  const { open: sharedBirths, readyProjectIds } = useSharedBirthState();
   // Whether HQ's structure is known: only then does a Mate it places nowhere have no record.
-  const hqKnown = useAtomValue(hqPlacementsAtom) !== null && hqStructure.live;
+  const hqKnown = useAtomValue(hqPlacementsAtom) !== null;
   const groupTree = useProjectsInventory(
     candidates,
     projectOrder,
-    placedPressesIn(
-      presses,
-      activeOrganization?.id,
-      placedNewProjects(made, activeOrganization?.id),
+    placedSharedBirths(
+      sharedBirths,
+      placedPressesIn(
+        presses,
+        activeOrganization?.id,
+        placedNewProjects(made, activeOrganization?.id),
+      ),
+      user?.id,
     ),
   );
   const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);
@@ -1027,19 +1046,13 @@ export function ZeropsProjectsContent({
   // Whether a Mate is still coming up, or never came, as its menu row says it: its card says the same.
   const comingOf = useMateComingOf(observedCandidates);
   const updates = useMateUpdateStates();
-  // What this person may do with each Mate, from the one role function the
-  // door runs too (D5). A `listed` row is shown and never opened.
-  const viewer =
-    activeOrganization === null
-      ? null
-      : {
-          id: activeOrganization.id,
-          membershipId: activeOrganization.membershipId,
-          roleCode: activeOrganization.roleCode,
-          canCreateProjects: activeOrganization.canCreateProjects,
-        };
+  // What this person may do with each Mate, as the account reads it from live Zerops data
+  // (`mateVisibility`). A `listed` row is shown, never opened; one not judged yet is not held back.
+  const visibilities = useAtomValue(
+    shownMateVisibilitiesAtom(candidates.map((candidate) => candidate.project.id).join(",")),
+  );
   const visibilityOf = (candidate: ZeropsCandidate): RoleMateVisibility | undefined =>
-    viewer === null ? undefined : resolveMateVisibility({ project: candidate.project, viewer });
+    visibilities[candidate.project.id];
   // What HQ offers of each row's project (`mateRowCan`), and of the organization.
   const mateOffersOf = useMateOffers();
   const orgOffer = useOrgOffers();
@@ -1048,11 +1061,9 @@ export function ZeropsProjectsContent({
 
   /** A press of the organization on show: the page is not empty while one is on its way. */
   const activeBirths = presses.some((press) => press.organizationId === activeOrganization?.id);
-  const accountHq = useAccountHq(activeOrganization?.id);
   const noProjectYet = hasNoZeropsProject({
     listing,
     creationPending: activeBirths,
-    hqProjectId: accountHq.hq.kind === "official" ? accountHq.hq.projectId : undefined,
   });
   // What the viewer's role makes and reaches here: an empty first screen says it (`firstRunWords`).
   const capabilities = usePlatformCapabilities(null);
@@ -1078,9 +1089,8 @@ export function ZeropsProjectsContent({
     );
   };
 
-  // The organization's HQ, where the registry lives: its project is no project of the page's.
   // What says a project is its person's own, for Set up Mate on it (`plainEvidenceOf`): HQ's
-  // records of every kind, its presses, its anchor, and what this tab is making. None while HQ's
+  // records of every kind, its presses, and what this tab is making. None while HQ's
   // structure is not known, so nothing is plain then.
   const knownStructure = hqStructure.structure;
   const hqPresses = hqStructure.read === "unread" ? null : hqStructure.presses;
@@ -1090,13 +1100,12 @@ export function ZeropsProjectsContent({
         hqKnown,
         structure: knownStructure,
         presses: hqPresses,
-        hq: accountHq.hq,
         local: [
           ...presses.map((press) => press.projectId),
           ...made.flatMap((birth) => (birth.projectId === null ? [] : [birth.projectId])),
         ],
       }),
-    [accountHq.hq, hqKnown, hqPresses, knownStructure, made, presses],
+    [hqKnown, hqPresses, knownStructure, made, presses],
   );
 
   const rowInput = (
@@ -1105,7 +1114,7 @@ export function ZeropsProjectsContent({
   ): ZeropsRowInput => {
     const visibility = visibilityOf(candidate);
     const ownerName =
-      visibility === "listed" ? projectPeople[candidate.project.id]?.owner?.name : undefined;
+      visibility === "listed" ? projectPeople[candidate.project.id]?.owner?.called : undefined;
     const waiting = candidate.group !== "connected" && waitedOn(candidate);
     const mateFlag = candidateMateFlags.get(candidate.key);
     return {
@@ -1155,8 +1164,8 @@ export function ZeropsProjectsContent({
                 group.environments.flatMap(({ item }) => (item === undefined ? [] : [{ item }])),
               );
         if (!isCurrent()) return;
-        const hq = officialHq(accountHq);
-        // What it registers, by the rule Finish setup registers by, before its container: in the
+        const hq = configuredHq();
+        // Register before the container: in the
         // application HQ or the press this tab holds places it in, under that face (F6b);
         // a new Mate in no application only where neither does.
         const held = readMatePress(projectId);
@@ -1182,7 +1191,12 @@ export function ZeropsProjectsContent({
           container: true,
           placement: matePressPlacement(held) ?? null,
         });
-        // Its container with its own key, and its project closed off before anyone is let in.
+        // Its owner marked first where the project names none and the person may (`ownerAtAdd`),
+        // then its container with its own key, isolated in its own import.
+        const owner = ownerAtAdd({
+          userRoles: candidate.project.userRoles,
+          adder: activeOrganization,
+        });
         const pressed = await finishMateSetup({
           inputs: { client, operations, organizationId: activeOrganization.id },
           projectId,
@@ -1191,6 +1205,7 @@ export function ZeropsProjectsContent({
           registration,
           hq,
           isCurrent,
+          ...(owner === null ? {} : { owner }),
         });
         if (!pressed.ok) throw new Error(pressed.error);
         if (!isCurrent()) return;
@@ -1212,7 +1227,6 @@ export function ZeropsProjectsContent({
       }
     },
     [
-      accountHq,
       activeOrganization,
       mateOffersOf,
       candidates,
@@ -1276,17 +1290,22 @@ export function ZeropsProjectsContent({
     updateMenuActions?: ReadonlyArray<ZeropsMenuAction>,
   ): React.ReactNode => {
     if (isZeropsToolCandidate(candidate)) return undefined;
+    const birth = mate ? mateActions.birthForProject(candidate.project.id) : undefined;
     return (
       <ZeropsProjectMenu
         actions={mate ? mateActions.actionsFor(candidate, tags, updateMenuActions ?? []) : []}
         enablingServiceId={route.enablingServiceId}
         label={`More for ${projectNameInApp(candidate.project)}`}
-        projectId={tags.role === "prod" || tags.role === "stage" ? candidate.project.id : undefined}
-        offers={candidate.routeOffers}
+        projectId={
+          birth === undefined && (tags.role === "prod" || tags.role === "stage")
+            ? candidate.project.id
+            : undefined
+        }
+        offers={birth === undefined ? candidate.routeOffers : undefined}
         onEnableRoute={(offer) => {
           void route.enable(candidate.project.id, offer.serviceId);
         }}
-        routes={candidate.routes}
+        routes={birth === undefined ? candidate.routes : undefined}
       />
     );
   };
@@ -1416,6 +1435,9 @@ export function ZeropsProjectsContent({
     live: ZeropsAgentActivity | undefined,
     busy: boolean,
   ): React.ReactNode => {
+    const birth = sharedBirths.find((entry) => entry.projectId === candidate.project.id);
+    if (birth !== undefined)
+      return <span data-zerops-surface="mate-subject">{sharedBirthPresentation(birth).line}</span>;
     if (action.kind === "not-in-hq") return presentation.detail;
     if (candidate.group === "connected" || live !== undefined) {
       return live?.subject === undefined ? null : (
@@ -1430,6 +1452,7 @@ export function ZeropsProjectsContent({
     // checklist (`birthProgress.ts`), read off the platform's processes and
     // statuses — whenever the wait has nothing more pressing to say.
     if (
+      !readyProjectIds.includes(candidate.project.id) &&
       showsZeropsBirthLine({
         projectId: candidate.project.id,
         birthProjectIds,
@@ -1518,9 +1541,9 @@ export function ZeropsProjectsContent({
       case "set-up-mate":
         setConfirmingSetUp(candidate);
         return;
-      // A harmless re-probe (H9) — `unreachable`/`stalled` cannot be told
-      // apart from `predates-mate` by a browser, so nothing here writes;
-      // this only asks for the container to be read again.
+      // A harmless re-probe (H9) — a container that does not answer while its
+      // flag reads on, or could not be read, is away or stalled, so nothing
+      // here writes; this only asks for the container to be read again.
       case "retry-probe":
         readContainerAgain(candidate);
         return;
@@ -1529,14 +1552,16 @@ export function ZeropsProjectsContent({
         if (!serviceId || activeOrganization === null) return;
         setConnectError(null);
         setEnablingCandidateKey(candidate.key);
-        // Write the flag, then restart: the install step re-runs on boot and
-        // comes back with the current zcp, which only installs Zerops Mate
-        // when it finds ZCP_MATE_ENABLED set. A restart on its own returns the
-        // container to the identical state.
+        // Its record in HQ first, where HQ holds none, and its own key, so its hello is admitted;
+        // then the flag and the restart: the install step re-runs on boot and comes back with the
+        // current zcp, which only installs Zerops Mate when it finds ZCP_MATE_ENABLED set.
+        const record = setUpMateRecord({ project: candidate.project, candidates });
         void submitZeropsWrite(operations, activeOrganization.id, {
           kind: "enable-zerops-mate",
           projectId: candidate.project.id,
+          projectName: candidate.project.name,
           serviceId,
+          ...(record === undefined ? {} : { record }),
         })
           .then(() => {
             intendContainer(candidate.key, { kind: "enable" });
@@ -1657,7 +1682,7 @@ export function ZeropsProjectsContent({
   );
 
   // Which tiers HQ offers this person to add to the group (`add_stage` / `add_production`).
-  const environmentOffers = useEnvironmentOffers();
+  const environmentFacts = useApplicationEnvironmentFacts();
 
   // "Add stage" opens the form; the form's answer is what gets created.
   const [creationRequest, setCreationRequest] = useState<{
@@ -1668,14 +1693,12 @@ export function ZeropsProjectsContent({
     activeOrganization?.id,
     creationRequest?.groupId ?? null,
   );
-  const hqOffers = useHqOffers();
   // Why Add a Mate stands off, where that is known before the press (`newMateGate`): HQ refusing
   // the person a Mate here, or the project's setup files not ready for another.
   const addMateGate = useNewMateGate();
   const addMateWhy = (groupId: string): string | null => {
     const offer = addMateOffer(groupId);
-    if (offer.kind === "refused" || offer.kind === "unavailable")
-      return hqOffers.words(offer) ?? null;
+    if (offer.kind === "refused") return hqOfferWords(offer) ?? null;
     const entry = groupTree.groups.find((candidate) => candidate.group.groupId === groupId);
     if (entry === undefined) return null;
     return addMateGate({
@@ -1692,12 +1715,9 @@ export function ZeropsProjectsContent({
         : groupTree.groups.find((entry) => entry.group.groupId === creationRequest.groupId),
     [creationRequest, groupTree.groups],
   );
-  // The registry — which groups exist and which projects are in them (ADR 0002), read from HQ.
-  const registryState = useZeropsRegistry();
-
   // Every verb a Mate has, from the one place that defines them — shared with
   // a project's own page, which listed its Mates and could do nothing to them.
-  const mateActions = useMateActions({ registry: registryState, serverVersions });
+  const mateActions = useMateActions({ serverVersions });
 
   // The recipe is the application's, read as the person through its HQ (guide
   // 4.3) — never a sibling's export, which carried service shapes without their
@@ -1744,6 +1764,8 @@ export function ZeropsProjectsContent({
     });
   };
   const openReview = useOpenReview();
+  const askToFix = useAskMateToFix();
+  const navigate = useNavigate();
   // The change that adds a project's setup files, where one waits: what moves on a stage or a
   // production held for want of them.
   const setupChangeOf = (groupId: string) => {
@@ -1865,7 +1887,6 @@ export function ZeropsProjectsContent({
         choice,
         onPlanned: (steps) => {
           setToolError(null);
-          setCreationNowMs(Date.now());
           setCreation((current) =>
             current === null
               ? current
@@ -1974,8 +1995,8 @@ export function ZeropsProjectsContent({
   // for the new account, preferred over inferring it from a candidate's
   // status. A returning account never infers a new setup flow from an
   // unrelated provisioning project in the inventory. The claimed project is
-  // finished like any other once the inventory lists it — its key lowered and
-  // its project closed off: a claim hands over a brand-new project, so the
+  // finished like any other once the inventory lists it — its key lowered: a
+  // claim hands over a brand-new project, so the
   // newest one of its organization is it.
   const claimRef = useRef<string | null>(null);
   useEffect(() => {
@@ -2013,12 +2034,13 @@ export function ZeropsProjectsContent({
       // The pool made its container.
       container: null,
       registration: null,
-      hq: accountHq.hq.kind === "official" ? accountHq.hq : null,
+      hq: configuredHq(),
       isCurrent: captureAccountLifetime(),
       // A container the pool made: its key at ADMIN, lowered.
       harden: true,
+      onKeyNotLowered: setConnectError,
     });
-  }, [accountHq, clearLastRegistration, client, inventory.projects, lastRegistration, operations]);
+  }, [clearLastRegistration, client, inventory.projects, lastRegistration, operations]);
 
   // Every group's flow, from the one derivation the thread and the left menu
   // read too (`groupFlow`): what each step holds and the one next step.
@@ -2040,7 +2062,6 @@ export function ZeropsProjectsContent({
   );
   // The cards' places as the menu's chips read them, their panels, and the people on each.
   const overview = useOverviewSlots<ZeropsCandidatePresentation>({
-    onPage: project !== undefined,
     flows: groupDeploys,
     deployments,
     mateFace: (candidate) => {
@@ -2053,14 +2074,6 @@ export function ZeropsProjectsContent({
           tint={tint}
         />
       );
-    },
-    fixerOf: (entry) => {
-      const mine = [...entry.mates.values()].find(
-        (candidate) => projectPeople[candidate.project.id]?.waitsOnViewer === true,
-      );
-      return mine === undefined
-        ? undefined
-        : { projectId: mine.project.id, name: projectNameInApp(mine.project) };
     },
     nowMs,
   });
@@ -2079,36 +2092,10 @@ export function ZeropsProjectsContent({
     deployments,
     lines: groupLines,
   });
-  // The overview's filter (`overviewKeeps`): what waits on the viewer is the menu's own word —
-  // a Mate of theirs that asks, a change for their review, a release they may make — and theirs is
-  // what HQ records as theirs.
-  const waitingReleases = useMemo(
-    () =>
-      flowGroups.flatMap((entry) => {
-        const release = projectFlow.flows.get(entry.group.groupId)?.release;
-        // Put it live releases the production it makes: no release waits on the viewer meanwhile.
-        return release?.gate.allowed === true &&
-          !putLiveHoldsRelease(putLiveRuns.get(entry.group.groupId))
-          ? [
-              {
-                groupId: entry.group.groupId,
-                name: entry.group.name,
-                ahead: release.summary?.total,
-                changeCount: release.summary?.changeCount,
-              },
-            ]
-          : [];
-      }),
-    [flowGroups, projectFlow.flows, putLiveRuns],
-  );
-  const waiting = useSidebarWaiting({
-    candidates,
-    activityOf,
-    shown: SHOWS_EVERY_MATE,
-    activeProjectId: null,
-    enabled: status === "signed-in",
-    releases: waitingReleases,
-  });
+  // The overview's filter (`overviewKeeps`): what waits on the viewer is the menu's own list
+  // (`useViewerWaits`) — a Mate of theirs that asks, its changes for their review, its sign-in, a
+  // release they may make — and theirs is what HQ records as theirs.
+  const waiting = useViewerWaits({ text: true });
   const personFacts = useAtomValue(shownHqPersonFactsAtom);
   const filterFacts = useMemo(() => {
     const groupOf = new Map(
@@ -2154,17 +2141,43 @@ export function ZeropsProjectsContent({
   const arrivalSettled =
     signInSettled({
       recordRead: hqOrganization !== null,
-      hqUnavailable: hqStructure.refusal !== null || hqDown(hqStructure),
+      hqUnavailable: hqStructure.refusal !== null || hqStructure.capped,
     }) &&
     candidates.every(
       (candidate) => !hasMate(candidate) || personFacts[candidate.project.id] !== undefined,
     ) &&
     flowGroups.every((entry) => addMateOffer(entry.group.groupId).kind !== "unknown");
-  const keptGroups = flowGroups.filter((entry) =>
-    overviewKeeps({
-      show: search.show,
-      waits: filterFacts.waits.has(entry.group.groupId),
-      mine: filterFacts.mine.has(entry.group.groupId),
+  // What waits on the viewer in each project, by kind: a Mate that asks, or a review or release.
+  const waitKinds = useMemo(() => {
+    const groupOf = new Map(
+      candidates.map(
+        (candidate) =>
+          [candidate.project.id, readZeropsMembership(candidate.project).groupId] as const,
+      ),
+    );
+    const asks = new Set<string>();
+    const reviews = new Set<string>();
+    for (const item of waiting.items) {
+      const groupId =
+        item.kind === "release" ? item.release.groupId : groupOf.get(item.mate.projectId);
+      if (groupId === undefined) continue;
+      (item.kind === "release" || item.kind === "change" ? reviews : asks).add(groupId);
+    }
+    return { asks, reviews };
+  }, [candidates, waiting.items]);
+  // The overview's order (`overviewOrder`): what waits on the viewer first, most urgent first.
+  const keptGroups = overviewOrder(
+    flowGroups.filter((entry) =>
+      overviewKeeps({
+        show: search.show,
+        waits: filterFacts.waits.has(entry.group.groupId),
+        mine: filterFacts.mine.has(entry.group.groupId),
+      }),
+    ),
+    (entry) => ({
+      broken: overview.productionBroken(entry),
+      asks: waitKinds.asks.has(entry.group.groupId),
+      reviews: waitKinds.reviews.has(entry.group.groupId),
     }),
   );
 
@@ -2227,6 +2240,12 @@ export function ZeropsProjectsContent({
       !input.can.open
       ? undefined
       : () => openMate(candidate);
+  };
+
+  /** Opens a Mate's conversation by its project, where it can open. */
+  const openMateById = (projectId: string) => {
+    const candidate = candidates.find((entry) => entry.project.id === projectId);
+    if (candidate !== undefined) mateOpenerOf(candidate)?.();
   };
 
   const renderEnvironment = (
@@ -2320,12 +2339,14 @@ export function ZeropsProjectsContent({
     candidate: ZeropsCandidatePresentation,
     {
       layout,
-      previews,
+      parts,
       review,
+      quiet,
     }: {
-      readonly layout: "card" | "row";
-      readonly previews: ReadonlyArray<GroupFlowPreview>;
+      readonly layout: MateLayout;
+      readonly parts: ReadonlyArray<MatePart>;
       readonly review?: FlowPullRequest | undefined;
+      readonly quiet?: boolean | undefined;
     },
   ): React.ReactNode => {
     const role = roleOf.get(candidate.project.id);
@@ -2384,10 +2405,11 @@ export function ZeropsProjectsContent({
       );
 
     // On its project's card: read as its menu row reads it — one face, one line 2, one time.
-    if (layout === "row") {
+    if (layout === "row" || layout === "page-card") {
       return (
         <OverviewCardMate
           candidate={candidate}
+          card={layout === "page-card"}
           change={review}
           coming={comingOf(candidate)}
           // A Mate whose container has something to say first says it: coming up, a failed
@@ -2403,11 +2425,26 @@ export function ZeropsProjectsContent({
           conversationsRead={conversationsRead(candidate)}
           flow={tags.groupId === undefined ? undefined : projectFlow.flows.get(tags.groupId)}
           groupId={tags.groupId}
-          previews={previews}
+          parts={parts}
           key={candidate.key}
           name={name}
           onOpen={select}
+          // Its card's Vault door, on its project's page: the page's one drawer, on its own values,
+          // told to the Mate where it is connected.
+          onVault={
+            layout === "page-card" && placeVault.open !== undefined
+              ? () =>
+                  placeVault.open?.({
+                    projectId: candidate.project.id,
+                    name,
+                    ...(candidate.group === "connected" && candidate.environmentId !== undefined
+                      ? { environmentId: candidate.environmentId }
+                      : {}),
+                  })
+              : undefined
+          }
           outsideHq={input.outsideHq === true}
+          quiet={quiet === true}
           shape={shape}
           tint={tint}
         />
@@ -2456,17 +2493,18 @@ export function ZeropsProjectsContent({
     );
   };
 
-  const addableTiers = ({ groupId }: Pick<ZeropsGroup, "groupId">) => {
-    const group = groupTree.groups.find((entry) => entry.group.groupId === groupId)?.group;
-    if (group === undefined) return [];
+  // What each project holds and may be added to, as every surface tells it (`applicationEnvironments`).
+  const environmentsOf = ({ groupId }: Pick<ZeropsGroup, "groupId">) => {
     const flow = projectFlow.flows.get(groupId);
-    if (flow === undefined) return [];
-    return tiersAddable({
-      offered: environmentOffers(groupId),
-      group,
-      hq: [...flow.environments.values()].map((row) => ({ id: row.id, tier: row.tier })),
-      recipe: { read: flow.recipeRead, tiers: flow.recipeTiers },
-    });
+    return flow === undefined
+      ? undefined
+      : applicationEnvironments(environmentFacts(groupId, flow));
+  };
+  const addableTiers = (group: Pick<ZeropsGroup, "groupId">) => {
+    const environments = environmentsOf(group);
+    return (["stage", "production"] as const).filter(
+      (tier) => environments?.addable[tier] === true,
+    );
   };
 
   /**
@@ -2476,114 +2514,144 @@ export function ZeropsProjectsContent({
    * role is still there to take (`creatableRoles`) and HQ offers it to this
    * person (`useEnvironmentOffers`).
    */
-  const renderGroupMenu = ({ group, flow }: ProjectsFlowGroup<ZeropsCandidatePresentation>) => {
+  const renderGroupMenu = (
+    entry: ProjectsFlowGroup<ZeropsCandidatePresentation>,
+    options?: { readonly page?: boolean },
+  ) => {
+    const { group, flow } = entry;
     // Each Mate's previews, one per service and named by it: links out, so the menu's, not the
     // row's. Its Mate is named where the project has more than one with a preview.
     const previews = flow.mates.flatMap((mate) =>
       mate.previews.map((preview) => ({ mate: mate.name, ...preview })),
     );
     const oneMate = new Set(previews.map((preview) => preview.mate)).size <= 1;
+    const openVault = placeVault.open;
+    const vaults = openVault === undefined ? [] : placeVaults(flow, nowMs);
     const mateWhy = addMateWhy(group.groupId);
-    return (
-      <ZeropsProjectRenameMenu
-        actions={[
-          ...previews.map((preview) => ({
-            id: `preview:${preview.mate}:${preview.service}`,
-            label: oneMate
-              ? `Open ${preview.service} preview`
-              : `Open ${preview.mate}’s ${preview.service} preview`,
-            onSelect: () => {
-              window.open(preview.url, "_blank", "noopener,noreferrer");
-            },
-          })),
-          ...(previews.length === 0 ? [] : [{ id: "previews-end", separator: true as const }]),
-          // A project with nothing in it is offered its first Mate, and nothing more.
-          ...(groupIsEmpty(group) && addMateOffer(group.groupId).kind === "allowed"
-            ? [
-                {
-                  id: "add-mate",
-                  label: "Add Mate",
-                  disabled: creationRunning,
-                  onSelect: () => {
-                    requestEnvironment(group.groupId, "dev");
-                  },
-                },
-              ]
-            : []),
-          ...(addsOfferedFor(group)
-            ? [
-                {
-                  id: "add-mate",
-                  label: "Add Mate",
-                  disabled: creationRunning || mateWhy !== null,
-                  ...(mateWhy === null ? {} : { why: mateWhy }),
-                  onSelect: () => {
-                    requestEnvironment(group.groupId, "dev");
-                  },
-                },
-              ]
-            : []),
-          ...(addableTiers(group).includes("stage") && !groupIsEmpty(group)
-            ? [
-                {
-                  id: "add-stage",
-                  label: "Add stage",
-                  disabled: creationRunning,
-                  onSelect: () => {
-                    requestEnvironment(group.groupId, "stage");
-                  },
-                },
-              ]
-            : []),
-          ...(addableTiers(group).includes("production") && !groupIsEmpty(group)
-            ? [
-                {
-                  id: "add-production",
-                  label: environmentDoorLabel("production", "production"),
-                  disabled: creationRunning,
-                  ...(creationRunning ? { why: PUT_LIVE_AFTER_CREATION } : {}),
-                  onSelect: () => {
-                    openPutLive(group.groupId);
-                  },
-                },
-              ]
-            : []),
-          // A stage or a production whose setup is not finished, finished as the person asks —
-          // where HQ offers them finishing it (`can.finish`), as on the application's own page.
-          ...halfMade
-            .filter((entry) => entry.groupId === group.groupId && entry.finish)
-            .map((entry) => ({
-              id: `finish-${entry.tier}`,
-              label: `Finish setting up ${entry.tier}`,
-              disabled: creationRunning || finishing.finishing.has(group.groupId),
+    const canonicalGroup = groupTree.groups.find(
+      (entry) => entry.group.groupId === group.groupId,
+    )?.group;
+    const actions: ReadonlyArray<ZeropsMenuEntry> = [
+      ...previews.map((preview) => ({
+        id: `preview:${preview.mate}:${preview.service}`,
+        label: oneMate
+          ? `Open ${preview.service} preview`
+          : `Open ${preview.mate}’s ${preview.service} preview`,
+        onSelect: () => {
+          window.open(preview.url, "_blank", "noopener,noreferrer");
+        },
+      })),
+      ...(previews.length === 0 ? [] : [{ id: "previews-end", separator: true as const }]),
+      // Each place's vault, as its line's Vault icon opens it: for the keyboard, and to be found.
+      ...vaults.map((vault) => ({
+        id: `vault:${vault.projectId}`,
+        label: `${vault.name} vault`,
+        onSelect: () => {
+          openVault?.(vault);
+        },
+      })),
+      ...(vaults.length === 0 ? [] : [{ id: "vaults-end", separator: true as const }]),
+      // A project with nothing in it is offered its first Mate, and nothing more.
+      ...(groupIsEmpty(group) && addMateOffer(group.groupId).kind === "allowed"
+        ? [
+            {
+              id: "add-mate",
+              label: "Add Mate",
+              disabled: creationRunning,
               onSelect: () => {
-                finishing.finish(entry);
+                requestEnvironment(group.groupId, "dev");
               },
-            })),
-          // Where its code mirrors to: each repository's remote, connected or changed in a dialog.
-          ...(!groupIsEmpty(group)
-            ? [
-                {
-                  id: "mirror-code",
-                  label: "Mirror code to GitHub or GitLab…",
-                  onSelect: () => {
-                    setRowDialog({ kind: "mirror-code", group });
-                  },
-                },
-              ]
-            : []),
-          // A project with no Mate goes, at whoever writes the structure's word.
-          ...projectDeleteActions({
-            group,
+            },
+          ]
+        : []),
+      ...(addsOfferedFor(group)
+        ? [
+            {
+              id: "add-mate",
+              label: "Add Mate",
+              disabled: creationRunning || mateWhy !== null,
+              ...(mateWhy === null ? {} : { why: mateWhy }),
+              onSelect: () => {
+                requestEnvironment(group.groupId, "dev");
+              },
+            },
+          ]
+        : []),
+      ...(addableTiers(group).includes("stage") && !groupIsEmpty(group)
+        ? [
+            {
+              id: "add-stage",
+              label: "Add stage",
+              disabled: creationRunning,
+              onSelect: () => {
+                requestEnvironment(group.groupId, "stage");
+              },
+            },
+          ]
+        : []),
+      ...(addableTiers(group).includes("production") && !groupIsEmpty(group)
+        ? [
+            {
+              id: "add-production",
+              label: environmentDoorLabel("production", "production"),
+              disabled: creationRunning,
+              ...(creationRunning ? { why: PUT_LIVE_AFTER_CREATION } : {}),
+              onSelect: () => {
+                openPutLive(group.groupId);
+              },
+            },
+          ]
+        : []),
+      // A stage or a production whose setup is not finished, finished as the person asks —
+      // where HQ offers them finishing it (`can.finish`), as on the application's own page.
+      ...halfMade
+        .filter((entry) => entry.groupId === group.groupId && entry.finish)
+        .map((entry) => ({
+          id: `finish-${entry.tier}`,
+          label: `Finish setting up ${entry.tier}`,
+          disabled: creationRunning || finishing.finishing.has(group.groupId),
+          onSelect: () => {
+            finishing.finish(entry);
+          },
+        })),
+      // Where its code goes on GitHub: one code repository's connection, chosen in a dialog.
+      ...(!groupIsEmpty(group)
+        ? [
+            {
+              id: "mirror-code",
+              label: "Connect to GitHub…",
+              onSelect: () => {
+                setRowDialog({ kind: "mirror-code", group });
+              },
+            },
+          ]
+        : []),
+      // A project with no Mate goes, at whoever writes the structure's word.
+      ...(canonicalGroup === undefined
+        ? []
+        : projectDeleteActions({
+            group: canonicalGroup,
             offer: orgOffer("delete_app").kind,
             contents: applicationContents(hqStructure, activeOrganization?.id, group.groupId),
             openEmpty: () => {
               setRowDialog({ kind: "delete-group", group });
             },
-          }),
-        ]}
-        group={group}
-      />
+          })),
+    ];
+    // On the project's own page every other verb has its one place there: the stage it lacks,
+    // and the project's rename and deletion, stay here.
+    if (options?.page === true)
+      return (
+        <ZeropsProjectRenameMenu
+          actions={actions.filter(
+            (action) => action.id === "add-stage" || action.id === "delete-group",
+          )}
+          group={group}
+        />
+      );
+    // On its card, production's rarer verbs too: the card no longer carries them (P2).
+    return (
+      <CardGroupMenu actions={actions} group={group} production={overview.productionVerbs(entry)} />
     );
   };
 
@@ -2596,7 +2664,7 @@ export function ZeropsProjectsContent({
   // merge or a release the project flow refused included — one at a time.
   const trouble = toolError ?? route.trouble ?? verbs.trouble;
   const ungroupedRows = shownUngrouped(
-    withoutOfficialHq(groupTree.ungrouped, accountHq.hq).map((candidate) => ({
+    groupTree.ungrouped.map((candidate) => ({
       item: candidate,
       action: deriveZeropsRowAction(rowInput(candidate)).kind,
     })),
@@ -2653,7 +2721,8 @@ export function ZeropsProjectsContent({
           onShow={onShow}
           ownsMates={roleOffered.newProject}
           show={search.show}
-          waiting={flowGroups.filter((entry) => filterFacts.waits.has(entry.group.groupId)).length}
+          // The things that wait on the viewer, the menu's badge's number at the same moment.
+          waiting={waiting.items.length}
         />
       ) : null}
       {project === undefined && search.show !== undefined && keptGroups.length === 0 ? (
@@ -2669,6 +2738,7 @@ export function ZeropsProjectsContent({
             ? undefined
             : { ...project, addMateWhy: addMateWhy(project.groupId) }
         }
+        undrawn={groupTree.undrawn}
         isMate={hasMate}
         onCreateProject={noProjectYet && roleOffered.newProject ? askNewProject : undefined}
         noProjectYet={noProjectYet}
@@ -2679,8 +2749,35 @@ export function ZeropsProjectsContent({
           for (const candidate of items) runRowAction(candidate, "retry-probe");
         }}
         renderEnvironment={renderEnvironment}
+        openPlaceVault={placeVault.open}
         renderGroupMenu={renderGroupMenu}
         renderMate={renderMate}
+        renderComingBirth={(projectId) => {
+          const birth = sharedBirths.find(
+            (entry) => entry.projectId === projectId || entry.id === projectId,
+          );
+          if (birth === undefined) return undefined;
+          // The row says how far it got; why, and who can continue, are its own page's.
+          const shown = sharedBirthPresentation(birth);
+          return {
+            line: shown.row,
+            stopped: shown.attention,
+            onOpen: () => {
+              void navigate(
+                birth.projectId === null ? newProjectView(birth.id) : newMateView(birth.projectId),
+              );
+            },
+            menu: (
+              <ZeropsProjectMenu
+                actions={mateActions.birthActionsFor(birth.id)}
+                label={`More for ${birth.intent?.placement.name ?? "Mate"}`}
+              />
+            ),
+          };
+        }}
+        mateTint={(candidate: ZeropsCandidatePresentation) =>
+          tints.get(candidate.project.id) ?? "slate"
+        }
         renderMateFace={(candidate: ZeropsCandidatePresentation, size) => {
           const tint = tints.get(candidate.project.id) ?? "slate";
           return (
@@ -2700,14 +2797,9 @@ export function ZeropsProjectsContent({
             releaseSince: run?.phase === "releasing" ? run.stepAt : undefined,
           };
         }}
-        renderPlacePanel={overview.renderPlacePanel}
-        renderChanges={overview.renderChanges}
         renderHistory={overview.renderHistory}
-        setUpProduction={({ group, flow }) =>
-          !addableTiers(group).includes("production") ||
-          groupIsEmpty(group) ||
-          // Nothing to put live yet: production says so, and the press comes with a change.
-          !putLiveHasChange(flow)
+        setUpProduction={({ group }) =>
+          !addableTiers(group).includes("production") || groupIsEmpty(group)
             ? undefined
             : creationRunning
               ? "busy"
@@ -2715,6 +2807,7 @@ export function ZeropsProjectsContent({
                   openPutLive(group.groupId);
                 }
         }
+        stageDevstage={(entry) => environmentsOf(entry.group)?.devstages[0]?.line}
         // A stage being added says how far it has got on its card's Stage line, where it stands.
         stageSettingUp={({ group }) =>
           creation?.tier === "stage" &&
@@ -2722,15 +2815,6 @@ export function ZeropsProjectsContent({
           creation.groupId === group.groupId
             ? creationNow(creation.progress, "stage")
             : undefined
-        }
-        setUpStage={({ group }) =>
-          !addableTiers(group).includes("stage") || groupIsEmpty(group)
-            ? undefined
-            : creationRunning
-              ? "busy"
-              : () => {
-                  requestEnvironment(group.groupId, "stage");
-                }
         }
         // As the project's own page offers it: always there, standing off with why where HQ says
         // one — never coming and going with what the platform says of its Mates.
@@ -2740,19 +2824,80 @@ export function ZeropsProjectsContent({
           },
           why: creationRunning ? PUT_LIVE_AFTER_CREATION : addMateWhy(group.groupId),
         })}
-        renderCardPeople={overview.renderCardPeople}
-        renderProductionRun={({ group }) => <ProductionRun groupId={group.groupId} />}
-        renderReleaseVerb={({ group, flow }) => {
-          const { production } = flow;
-          const candidate =
-            production.kind === "ready-to-release" || production.kind === "deploy-failed"
-              ? production.candidate
-              : undefined;
-          if (candidate === undefined) return null;
-          // Production being made by Put it live is released by it: nothing asks for a release.
-          if (putLiveHoldsRelease(putLiveRuns.get(group.groupId))) return null;
-          return <ZeropsReleaseVerb groupId={group.groupId} label={REVIEW_RELEASE_LABEL} offered />;
+        // A broken production waits on the viewer: their own Mate in the project is asked to fix
+        // it, as the menu's production chip asks; with none of theirs there, its page says why.
+        placeFix={(entry) => {
+          const fixer = [...entry.mates.values()].find(
+            (candidate) => projectPeople[candidate.project.id]?.waitsOnViewer === true,
+          );
+          const { production } = entry.flow;
+          const projectId = "stop" in production ? production.stop.projectId : undefined;
+          return {
+            fixer: fixer === undefined ? undefined : projectNameInApp(fixer.project),
+            onVerb: () => {
+              if (fixer !== undefined) {
+                askToFix(
+                  fixer.project.id,
+                  overview.productionFix(entry) ?? {
+                    what: "Production is not running as it should.",
+                    ask: "Find out why and fix it.",
+                  },
+                );
+                return;
+              }
+              if (projectId === undefined) return;
+              void navigate({
+                to: "/group/$groupId/$projectId",
+                params: { groupId: entry.group.groupId, projectId },
+              });
+            },
+          };
         }}
+        cardWaits={(entry) =>
+          projectWaits({ items: waiting.items, flow: entry.flow }).map((wait) => ({
+            wait,
+            face: (
+              <MateFace
+                shape={wait.mate.shape}
+                size={24}
+                state={wait.mate.face}
+                tint={wait.mate.tint}
+              />
+            ),
+            onVerb: (from) => {
+              if (wait.kind === "review") {
+                const { change } = wait;
+                if (change === undefined) {
+                  openMateById(wait.mate.projectId);
+                  return;
+                }
+                openReview(
+                  {
+                    kind: "change",
+                    groupId: change.groupId,
+                    repository: change.repository,
+                    number: change.number,
+                  },
+                  { from },
+                );
+              } else if (wait.ask === "failed") {
+                askToFix(wait.mate.projectId, {
+                  what: `${wait.mate.name} stopped on an error`,
+                  error: wait.mate.text,
+                  ask: "Find out why, fix it, and carry on.",
+                });
+              } else openMateById(wait.mate.projectId);
+            },
+          }))
+        }
+        renderProductionRun={({ group }) => <ProductionRun groupId={group.groupId} />}
+        // The release waits on the viewer where the one list says it (`releaseOffered`), the menu's
+        // count with it.
+        renderReleaseVerb={({ group }) =>
+          projectReleaseWait(waiting.items, group.groupId) === undefined ? null : (
+            <ZeropsReleaseVerb groupId={group.groupId} label={REVIEW_RELEASE_LABEL} offered />
+          )
+        }
         placementNotice={placementNotice(
           placementStatus,
           hqStructure.capped || placementStatus.reconnecting,
@@ -2792,6 +2937,7 @@ export function ZeropsProjectsContent({
           }}
         />
       ) : null}
+      {placeVault.drawer}
       {rowDialog?.kind === "mirror-code" ? (
         <GitMirrorDialog
           appId={rowDialog.group.groupId}
@@ -2896,6 +3042,16 @@ export function ZeropsProjectsContent({
   );
 }
 
+/**
+ * What the page's vault drawer holds for a Mate's workspace: the Mate's own panel, which tells the
+ * Mate each write. Nothing for a place: the drawer's own panel is its.
+ */
+function mateVaultBody(place: PlaceVault): React.ReactNode {
+  return place.environmentId === undefined ? undefined : (
+    <VaultPanelContainer environmentId={EnvironmentId.make(place.environmentId)} />
+  );
+}
+
 export function ZeropsProjectsPage({ inPanel = false }: { readonly inPanel?: boolean }) {
   const roleOffered = useRoleOffers();
   const { activeOrganization, organizationStatus, status } = useZeropsSession();
@@ -2933,13 +3089,11 @@ export function ZeropsProjectsPage({ inPanel = false }: { readonly inPanel?: boo
   // over nothing frames emptiness as a failed list.
   const presses = useMatePresses();
   const made = useCreations();
-  const accountHq = useAccountHq(activeOrganization?.id);
   const firstRun = hasNoZeropsProject({
     listing,
     creationPending: [...presses, ...made].some(
       (birth) => birth.organizationId === activeOrganization?.id,
     ),
-    hqProjectId: accountHq.hq.kind === "official" ? accountHq.hq.projectId : undefined,
   });
 
   return (

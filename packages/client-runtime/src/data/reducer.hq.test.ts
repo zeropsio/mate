@@ -20,7 +20,6 @@ const placements = placementsScope(ORG);
 const app = (id: string, name: string): HqAppValue => ({
   id,
   name,
-  can: {},
   contents: { empty: false, deletingProjectIds: [] },
   projectIds: [],
   births: [],
@@ -35,8 +34,6 @@ const project = (projectId: string, appId: string | null): PlacementValue => ({
   kind: "mate",
   mate: null,
   person: {
-    role: "DEVELOPER",
-    mayWrite: true,
     mine: false,
     ownerUserId: null,
     waitsOnViewer: false,
@@ -77,7 +74,6 @@ const delivery = (input: {
   readonly removals?: ReadonlyArray<{
     readonly family: "hqApp" | "placement";
     readonly id: string;
-    readonly reason: "deleted" | "no-access";
   }>;
   readonly generation?: number;
 }): AccountInput => ({
@@ -137,7 +133,7 @@ describe("an HQ scope's delivery", () => {
       expect(readsOfState(next).coverage(apps)).toBe("complete");
     },
   );
-  it("incomplete Git input preserves evidence, while an explicit environment denial replaces it", () => {
+  it("incomplete Git input preserves evidence, while an explicit empty environment list replaces it", () => {
     const value = hqAppFamily.hq!.decode(
       { ...app("shop", "Shop"), environments: [gitEnvironment] },
       "app:shop",
@@ -159,15 +155,13 @@ describe("an HQ scope's delivery", () => {
       gitEnvironment,
     ]);
     const denied = hqAppFamily.hq!.decode(
-      { ...app("shop", "Shop"), environments: { refused: "Cannot read changes" } },
+      { ...app("shop", "Shop"), environments: [] },
       "app:shop",
     )!;
     const purged = apply(preserved, [
       delivery({ revision: 3, rows: [{ family: "hqApp", id: "shop", value: denied }] }),
     ]);
-    expect(hqNavigation.derive(readsOfState(purged), ORG).deliveryEnvironments.shop).toEqual({
-      refused: "Cannot read changes",
-    });
+    expect(hqNavigation.derive(readsOfState(purged), ORG).deliveryEnvironments.shop).toEqual([]);
     expect(JSON.stringify([...purged.facts.values()])).not.toContain("push-v2");
   });
   it.each([
@@ -229,39 +223,36 @@ describe("an HQ scope's delivery", () => {
     expect(omitted.state).toBe(added.state);
   });
 
-  it.each(["deleted", "no-access"] as const)(
-    "publishes exclusion and owner reauthorization after %s",
-    (reason) => {
-      const held = apply(attached(), [
-        delivery({
-          revision: 1,
-          rows: [{ family: "hqApp", id: "shop", value: app("shop", "Shop") }],
-        }),
-      ]);
-      const removed = reduceAccount(
-        held,
-        delivery({ revision: 2, removals: [{ family: "hqApp", id: "shop", reason }] }),
-      );
-      expect(removed.changed).toEqual(new Set(["hqApp:shop", `members:${apps}`]));
-      expect(members(removed.state, apps).excluded).toEqual(["shop"]);
-      const repeated = reduceAccount(
-        removed.state,
-        delivery({ revision: 2, removals: [{ family: "hqApp", id: "shop", reason }] }),
-      );
-      expect(repeated.changed).toEqual(new Set(["hqApp:shop"]));
-      expect(repeated.state.memberships).toBe(removed.state.memberships);
-      const restored = reduceAccount(
-        removed.state,
-        delivery({
-          reset: true,
-          revision: 3,
-          rows: [{ family: "hqApp", id: "shop", value: app("shop", "Restored") }],
-        }),
-      );
-      expect(restored.changed).toEqual(new Set(["hqApp:shop", `members:${apps}`]));
-      expect(members(restored.state, apps)).toMatchObject({ ids: ["shop"], excluded: [] });
-    },
-  );
+  it.each(["no-access"] as const)("publishes exclusion and owner reauthorization after %s", () => {
+    const held = apply(attached(), [
+      delivery({
+        revision: 1,
+        rows: [{ family: "hqApp", id: "shop", value: app("shop", "Shop") }],
+      }),
+    ]);
+    const removed = reduceAccount(
+      held,
+      delivery({ revision: 2, removals: [{ family: "hqApp", id: "shop" }] }),
+    );
+    expect(removed.changed).toEqual(new Set(["hqApp:shop", `members:${apps}`]));
+    expect(members(removed.state, apps).excluded).toEqual(["shop"]);
+    const repeated = reduceAccount(
+      removed.state,
+      delivery({ revision: 2, removals: [{ family: "hqApp", id: "shop" }] }),
+    );
+    expect(repeated.changed).toEqual(new Set(["hqApp:shop"]));
+    expect(repeated.state.memberships).toBe(removed.state.memberships);
+    const restored = reduceAccount(
+      removed.state,
+      delivery({
+        reset: true,
+        revision: 3,
+        rows: [{ family: "hqApp", id: "shop", value: app("shop", "Restored") }],
+      }),
+    );
+    expect(restored.changed).toEqual(new Set(["hqApp:shop", `members:${apps}`]));
+    expect(members(restored.state, apps)).toMatchObject({ ids: ["shop"], excluded: [] });
+  });
 
   it("publishes coverage once and rejects obsolete deliveries without publication", () => {
     const held = attached();
@@ -366,21 +357,21 @@ describe("an HQ scope's delivery", () => {
     expect(members(state, apps).ids).toEqual(["shop"]);
   });
 
-  it.each([
-    { reason: "deleted" as const, read: "deleted" },
-    { reason: "no-access" as const, read: "withheld" },
-  ])("a removal for $reason unlists the record and reads $read", ({ reason, read }) => {
-    const state = apply(attached(), [
-      delivery({
-        reset: true,
-        revision: 1,
-        rows: [{ family: "hqApp", id: "shop", value: app("shop", "Shop") }],
-      }),
-      delivery({ revision: 2, removals: [{ family: "hqApp", id: "shop", reason }] }),
-    ]);
-    expect(appName(state, "shop")).toBe(read);
-    expect(members(state, apps).ids).toEqual([]);
-  });
+  it.each([{ reason: "no-access" as const, read: "withheld" }])(
+    "a removal for $reason unlists the record and reads $read",
+    ({ read }) => {
+      const state = apply(attached(), [
+        delivery({
+          reset: true,
+          revision: 1,
+          rows: [{ family: "hqApp", id: "shop", value: app("shop", "Shop") }],
+        }),
+        delivery({ revision: 2, removals: [{ family: "hqApp", id: "shop" }] }),
+      ]);
+      expect(appName(state, "shop")).toBe(read);
+      expect(members(state, apps).ids).toEqual([]);
+    },
+  );
 
   it("fences out a delivery of a superseded registration whole", () => {
     const state = apply(attached(), [

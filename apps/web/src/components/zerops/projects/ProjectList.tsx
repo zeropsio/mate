@@ -14,7 +14,7 @@ import { Button } from "../../ui/button";
 import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
 import { heldLine } from "./emptyApps.logic";
 import { GroupName } from "./flowSteps";
-import { PlaceDot, PlaceWords } from "./ProjectCards";
+import { PlaceLine } from "../system/PlaceLine";
 import { placeLines } from "./projectCard.logic";
 import { containersSummary } from "./projectsView.logic";
 import type { ProjectsFlowGroup, ZeropsProjectsFlowProps } from "./ZeropsProjectsFlow";
@@ -28,7 +28,10 @@ function OtherProject<T>({
   readonly props: ZeropsProjectsFlowProps<T>;
 }) {
   const nowMs = useNowMs();
-  const [line] = placeLines({ flow: entry.flow, ...props.cardPlaces?.(entry), nowMs });
+  // Production's line: `placeLines` lists the stages first.
+  const line = placeLines({ flow: entry.flow, ...props.cardPlaces?.(entry), nowMs }).find(
+    (place) => place.kind === "production",
+  );
   const held = entry.line ?? heldLine(entry.flow.mates.length, entry.contents);
   return (
     <li
@@ -41,10 +44,7 @@ function OtherProject<T>({
       </span>
       {held === undefined ? (
         line === undefined ? null : (
-          <>
-            <PlaceDot dot={line.dot} />
-            <PlaceWords line={line} />
-          </>
+          <PlaceLine density="compact" groupId={entry.group.groupId} line={line} />
         )
       ) : (
         <span className="ov-place-words">{held}</span>
@@ -143,7 +143,7 @@ export function OtherContainers<T>({
               <div className="grid gap-2 @2xl/flow:grid-cols-2">
                 {mates.map(({ item }) => (
                   <Fragment key={props.getKey(item)}>
-                    {props.renderMate(item, { layout: "card", previews: [] })}
+                    {props.renderMate(item, { layout: "card", parts: [] })}
                   </Fragment>
                 ))}
               </div>

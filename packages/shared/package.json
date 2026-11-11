@@ -15,6 +15,10 @@
       "types": "./src/mateAutoUpdatePolicy.ts",
       "import": "./src/mateAutoUpdatePolicy.ts"
     },
+    "./personaTemplates": {
+      "types": "./src/personaTemplates.ts",
+      "import": "./src/personaTemplates.ts"
+    },
     "./hqEnvironment": {
       "types": "./src/hqEnvironment.ts",
       "import": "./src/hqEnvironment.ts"
@@ -103,6 +107,10 @@
       "types": "./src/zeropsPermissions.ts",
       "import": "./src/zeropsPermissions.ts"
     },
+    "./zeropsOffers": {
+      "types": "./src/zeropsOffers.ts",
+      "import": "./src/zeropsOffers.ts"
+    },
     "./mateAccess": {
       "types": "./src/mateAccess.ts",
       "import": "./src/mateAccess.ts"
@@ -134,6 +142,10 @@
     "./hqGitBrowse/*": {
       "types": "./src/hqGitBrowse/*.ts",
       "import": "./src/hqGitBrowse/*.ts"
+    },
+    "./hqProblems": {
+      "types": "./src/hqProblems.ts",
+      "import": "./src/hqProblems.ts"
     },
     "./hqChanges": {
       "types": "./src/hqChanges.ts",
@@ -478,7 +490,7 @@
     }
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "effect-tsgo tsrs --noEmit",
     "test": "vp test run --config ../../vite.config.ts --dir ."
   },
   "dependencies": {

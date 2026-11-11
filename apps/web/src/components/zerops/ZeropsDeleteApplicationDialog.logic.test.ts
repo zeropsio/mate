@@ -1,3 +1,5 @@
+import { HqEnvironmentId } from "@t3tools/contracts";
+import type { ZeropsProject } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -5,6 +7,9 @@ import {
   applicationHoldings,
   deleteApplication,
   deleteApplicationWords,
+  groupWithoutMate,
+  lastMateDeletionTarget,
+  projectDeleteOffered,
   type DeleteApplicationTarget,
 } from "./ZeropsDeleteApplicationDialog.logic";
 
@@ -39,6 +44,13 @@ describe("deleteApplicationWords — what the Delete project dialog lists", () =
         "Production shop-prod. Delete it in Zerops if you no longer need it.",
         "Anything on GitHub",
       ],
+    },
+    {
+      title: "says a Git production stays on Git, with nothing to delete in Zerops",
+      target: target({ productions: [{ name: "main", branch: "main" }] }),
+      holdings: { repos: ["appdev"], openChanges: 0 },
+      goes: ["Repository appdev, with its history"],
+      stays: ["Production on Git branch main. Nothing to delete in Zerops.", "Anything on GitHub"],
     },
     {
       title: "names no open change where none is open",
@@ -81,6 +93,103 @@ describe("applicationDeletionTarget — what deleting a project takes, from its 
       stages: [{ projectId: "P_STAGE", name: "shop-stage" }],
       productions: [{ name: "shop-prod" }],
     });
+  });
+
+  it("lists a production on a Git branch, which has no Zerops project, as staying", () => {
+    expect(
+      applicationDeletionTarget({
+        groupId: "app-1",
+        name: "shop",
+        environments: [
+          { role: "stage", project: { id: "P_STAGE", name: "shop-stage" } },
+          { role: "prod", project: undefined, branch: "main" },
+          { role: "prod", project: undefined },
+        ],
+      }),
+    ).toEqual({
+      appId: "app-1",
+      name: "shop",
+      stages: [{ projectId: "P_STAGE", name: "shop-stage" }],
+      productions: [{ name: "main", branch: "main" }],
+    });
+  });
+});
+
+describe("lastMateDeletionTarget — what deleting a project with its last Mate takes", () => {
+  const placed = (id: string, name: string, kind: "mate" | "stage"): ZeropsProject => ({
+    id,
+    name,
+    status: "ACTIVE",
+    tagList: [],
+    hq: { appId: "app-1", appName: "shop", kind, mate: null },
+  });
+
+  it("Deleting a project's last Mate lists a Git production as staying, as the other two delete dialogs do", () => {
+    expect(
+      lastMateDeletionTarget(
+        [placed("P_MATE", "Fen", "mate"), placed("P_STAGE", "shop-stage", "stage")],
+        {
+          id: "app-1",
+          name: "shop",
+          environments: [
+            {
+              id: HqEnvironmentId.make("git-production"),
+              target: { kind: "git", branch: "main", delivery: "direct" },
+              tier: "production",
+              name: "Production",
+              sources: ["release"],
+              order: 1,
+              keyHeld: false,
+              keyInvalid: false,
+              birth: null,
+              release: null,
+              jobs: [],
+            },
+          ],
+        },
+      ),
+    ).toEqual({
+      appId: "app-1",
+      name: "shop",
+      stages: [{ projectId: "P_STAGE", name: "shop-stage" }],
+      productions: [{ name: "main", branch: "main" }],
+    });
+  });
+});
+
+describe("a project without a Mate is offered Delete, on the menu and the projects page alike", () => {
+  it.each([
+    { name: "no Mate, to a writer: offered", withoutMate: true, mayDelete: true, offered: true },
+    { name: "no Mate, to anyone else: not", withoutMate: true, mayDelete: false, offered: false },
+    { name: "holding a Mate: not", withoutMate: false, mayDelete: true, offered: false },
+  ])("$name", ({ withoutMate, mayDelete, offered }) => {
+    expect(projectDeleteOffered({ withoutMate, mayDelete })).toBe(offered);
+  });
+
+  it.each([
+    { name: "nothing in it", environments: [], pending: [], without: true },
+    {
+      name: "a stage and a production alone",
+      environments: [{ role: "stage" }, { role: "prod" }],
+      pending: [],
+      without: true,
+    },
+    { name: "a Mate listed", environments: [{ role: "dev" }], pending: [], without: false },
+    {
+      name: "a dev and stage place listed",
+      environments: [{ role: "devstage" }],
+      pending: [],
+      without: false,
+    },
+    { name: "a Mate coming", environments: [], pending: [{ kind: "mate" }], without: false },
+    {
+      name: "only a stage coming",
+      environments: [],
+      pending: [{ kind: "stage" }],
+      without: true,
+    },
+  ])("a group with $name has no Mate: $without", ({ environments, pending, without }) => {
+    expect(groupWithoutMate({ environments, pending })).toBe(without);
   });
 });
 

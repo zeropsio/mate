@@ -1,7 +1,7 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import type { ElementHandle } from "puppeteer-core";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { definePerson } from "../../fakes/zeropsWorld.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { creation } from "./dsl.ts";
@@ -18,8 +18,8 @@ interface AddPlace {
   readonly pressLandsOnIt: boolean;
 }
 
-/** The New project dialog against the window, as it opens. */
-interface NewProjectPlace {
+/** A creation dialog against the window, as it opens. */
+interface DialogPlace {
   readonly top: number;
   readonly bottom: number;
   readonly windowHeight: number;
@@ -28,8 +28,8 @@ interface NewProjectPlace {
   readonly line: string;
 }
 
-/** The New project dialog measured once it says who can open the project. */
-const newProjectPlace = (page: Parameters<typeof creation>[0]["page"]) =>
+/** A creation dialog measured once it says who can open what it makes. */
+const dialogPlace = (page: Parameters<typeof creation>[0]["page"]) =>
   Effect.promise(async () => {
     const handle = await page.waitForFunction(
       () => {
@@ -47,15 +47,61 @@ const newProjectPlace = (page: Parameters<typeof creation>[0]["page"]) =>
           windowHeight: window.innerHeight,
           bodyOverflow: body.scrollHeight - body.clientHeight,
           line: line.textContent ?? "",
-        } satisfies NewProjectPlace;
+        } satisfies DialogPlace;
       },
       { polling: "raf" },
     );
-    return (await handle.jsonValue()) as NewProjectPlace;
+    return (await handle.jsonValue()) as DialogPlace;
+  });
+
+/** With the world's own four, eighteen people in the organization, Shop taking new Mates. */
+const shopWithEighteen = Effect.gen(function* () {
+  const s = yield* createScenario([
+    installCreation,
+    (drivers) => {
+      for (const name of [
+        "Ada",
+        "Bo",
+        "Cy",
+        "Di",
+        "Ed",
+        "Fay",
+        "Gus",
+        "Hal",
+        "Ivy",
+        "Jo",
+        "Kit",
+        "Lu",
+        "Mo",
+        "Ned",
+      ])
+        definePerson(drivers.zerops.world, name, { role: "ADMIN" });
+    },
+  ]);
+  // Shop's recipe holds its Mates' tier: it takes new Mates.
+  yield* environmentRecipe(s, "mate");
+  yield* s.given.signedIn;
+  return s;
+});
+
+/** Shop's card's own Add a Mate, as the owner pressed it. */
+const openShopAddMate = (s: Parameters<typeof creation>[0]) =>
+  Effect.promise(async () => {
+    await s.page.goto(`${s.web.origin}/zerops`);
+    const add = await s.page.waitForFunction(
+      () =>
+        [
+          ...document.querySelectorAll<HTMLElement>(
+            '[data-zerops-surface="project-cards"] article[aria-label="Shop"] button',
+          ),
+        ].find((button) => button.textContent?.trim().startsWith("Add a Mate")),
+      { polling: "raf" },
+    );
+    await (add.asElement() as ElementHandle<Element>).click();
   });
 
 describe("owner-reported layout regressions", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     // The owner's org listed fourteen people under "Who can work with this Mate": the form could
     // not shrink, its panel never scrolled, and Add stood below the window — a press there landed
     // outside the dialog and closed it, so no Mate was ever added.
@@ -63,46 +109,9 @@ describe("owner-reported layout regressions", () => {
       "Add a Mate's Add stays inside its dialog and the window however many people it lists",
       () =>
         Effect.gen(function* () {
-          const s = yield* createScenario([
-            installCreation,
-            (drivers) => {
-              for (const name of [
-                "Ada",
-                "Bo",
-                "Cy",
-                "Di",
-                "Ed",
-                "Fay",
-                "Gus",
-                "Hal",
-                "Ivy",
-                "Jo",
-                "Kit",
-                "Lu",
-                "Mo",
-                "Ned",
-              ])
-                definePerson(drivers.zerops.world, name, { role: "ADMIN" });
-            },
-          ]);
-          // Shop's recipe holds its Mates' tier: it takes new Mates.
-          yield* environmentRecipe(s, "mate");
-          yield* s.given.signedIn;
+          const s = yield* shopWithEighteen;
           yield* Effect.promise(() => s.page.setViewport({ width: 1280, height: 633 }));
-          // Shop's card's own Add a Mate, as the owner pressed it.
-          yield* Effect.promise(async () => {
-            await s.page.goto(`${s.web.origin}/zerops`);
-            const add = await s.page.waitForFunction(
-              () =>
-                [
-                  ...document.querySelectorAll<HTMLElement>(
-                    '[data-zerops-surface="project-cards"] article[aria-label="Shop"] button',
-                  ),
-                ].find((button) => button.textContent?.trim().startsWith("Add a Mate")),
-              { polling: "raf" },
-            );
-            await (add.asElement() as ElementHandle<Element>).click();
-          });
+          yield* openShopAddMate(s);
           const place = yield* Effect.promise(() =>
             s.page.waitForFunction(
               () => {
@@ -136,6 +145,35 @@ describe("owner-reported layout regressions", () => {
             at.dialogBottom,
           );
           expect(at.pressLandsOnIt, `A press on Add lands on it: ${trace}`).toBe(true);
+        }),
+    );
+
+    // The owner's Add a Mate stood under the window's top and nearly touched its bottom, a grid
+    // of eighteen people's access and every repository's storage under its steps.
+    it.effect(
+      "Add a Mate stands in the window's middle and says who can work with it in one line",
+      () =>
+        Effect.gen(function* () {
+          const s = yield* shopWithEighteen;
+          yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+          yield* openShopAddMate(s);
+          for (const size of [
+            { width: 1786, height: 1000 },
+            { width: 1280, height: 800 },
+          ]) {
+            yield* Effect.promise(() => s.page.setViewport(size));
+            const at = yield* dialogPlace(s.page);
+            const below = at.windowHeight - at.bottom;
+            const trace = `${String(size.width)} × ${String(size.height)}: dialog ${String(at.top)}–${String(at.bottom)}, body scrolls ${String(at.bodyOverflow)} px, access says "${at.line}"`;
+            expect(at.line, `Access is one line of words: ${trace}`).toMatch(/can open it/u);
+            expect(at.bodyOverflow, `Nothing scrolls: ${trace}`).toBeLessThanOrEqual(0);
+            expect(at.top, `It keeps off the window's top: ${trace}`).toBeGreaterThanOrEqual(16);
+            expect(below, `It keeps off the window's bottom: ${trace}`).toBeGreaterThanOrEqual(16);
+            expect(
+              Math.abs(at.top - below),
+              `It stands in the middle: ${trace}`,
+            ).toBeLessThanOrEqual(1);
+          }
         }),
     );
 
@@ -180,11 +218,11 @@ describe("owner-reported layout regressions", () => {
             { width: 1280, height: 800 },
           ]) {
             yield* Effect.promise(() => s.page.setViewport(size));
-            const at = yield* newProjectPlace(s.page);
+            const at = yield* dialogPlace(s.page);
             const below = at.windowHeight - at.bottom;
             const trace = `${String(size.width)} × ${String(size.height)}: dialog ${String(at.top)}–${String(at.bottom)}, body scrolls ${String(at.bodyOverflow)} px, access says "${at.line}"`;
             expect(at.line, `Access is one line of words: ${trace}`).toMatch(
-              /^17 of 18 people in .+ can open it: 15 with Full access, Karlos with more than Read access, reader with Read access\.$/u,
+              /^17 of 18 people in .+ can open it: 15 with Full access, Karlos with Edit access, reader with Read access\.$/u,
             );
             expect(at.bodyOverflow, `Nothing scrolls: ${trace}`).toBeLessThanOrEqual(0);
             expect(at.top, `It keeps off the window's top: ${trace}`).toBeGreaterThanOrEqual(16);

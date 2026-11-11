@@ -1,20 +1,15 @@
 /**
- * Handing a Mate to a person (guide 0.8, D11).
+ * Handing a Mate to a person: a Mate made *for* a colleague, a leaver's, one being reassigned, or
+ * one whose key Zerops refused needs somebody to say whose it is now. Whoever HQ says may hand it
+ * over picks; HQ moves its project's `OWNER` override and gives it a new key.
  *
- * A Mate belongs to whoever created it — the platform makes its creator the
- * project's `OWNER` — so a Mate made *for* a colleague, a leaver's, or one
- * being reassigned needs somebody to say whose it is now. That somebody is an
- * org owner or admin, and what they write is a per-project role override.
- *
- * One list, one verb. The list is the org's people as HQ answers them as the
- * picker opens (`handoverCandidates`: its active people, never one of its
- * integration tokens), and nobody is picked until the person picks; picking one
- * raises them to `OWNER` here, which is what makes the Mate open for them and
- * theirs to rename. Nothing else on the project moves. The dialog stays while
- * the platform answers, and says its refusal.
+ * One list, one verb. The list is the organization's active members as Zerops answers the person's
+ * own read (`mateHandOver.logic.ts`), and nobody is picked until the person picks. The dialog stays
+ * while HQ answers, and says its refusal or where it stopped; Hand it over asks again.
  */
-import type { HqHandoverCandidate } from "@t3tools/shared/hqStream";
 import { useId, useState } from "react";
+
+import type { HandOverCandidate } from "../../zerops/mateHandOver.logic";
 
 import { Button } from "../ui/button";
 import {
@@ -37,34 +32,31 @@ export function ZeropsAssignMateForm({
   error,
   readingOrganization,
   readFailed,
-  readRefused,
 }: {
   readonly projectName: string;
-  /** Whom HQ lets the Mate be handed over to. */
-  readonly candidates: ReadonlyArray<HqHandoverCandidate>;
+  /** Whom the Mate may be handed over to. */
+  readonly candidates: ReadonlyArray<HandOverCandidate>;
   /** The organization whose people are still being read, while there is nobody to pick yet. */
   readonly readingOrganization?: string | undefined;
   /** The organization whose people could not be read, and the way to read them again. */
   readonly readFailed?:
     | { readonly organization: string; readonly onReadAgain: () => void }
     | undefined;
-  /** The organization whose people HQ refused to list: its word, nothing to try again. */
-  readonly readRefused?: { readonly organization: string } | undefined;
   readonly onCancel: () => void;
-  readonly onSubmit: (clientUserId: string) => void;
-  /** The platform is answering the hand-over. */
+  /** The person picked, by their person id (HQ's `ownerUserId`). */
+  readonly onSubmit: (ownerUserId: string) => void;
+  /** HQ is answering the hand-over. */
   readonly pending: boolean;
-  /** Why the platform refused it, in its words; null before a refusal. */
+  /** Why HQ refused it or where it stopped, in its words; null before either. */
   readonly error: string | null;
 }) {
   const id = useId();
   const [selected, setSelected] = useState("");
-  const candidate = candidates.find((person) => person.clientUserId === selected);
+  const candidate = candidates.find((person) => person.userId === selected);
   const canSubmit =
     !pending &&
     readingOrganization === undefined &&
     readFailed === undefined &&
-    readRefused === undefined &&
     candidate !== undefined;
 
   return (
@@ -80,9 +72,10 @@ export function ZeropsAssignMateForm({
       <DialogHeader>
         <DialogTitle>Hand {projectName} over</DialogTitle>
         <DialogDescription>
-          Whoever you pick becomes this Mate's single owner. Previous owner grants are removed;
-          everyone else's access follows their organization and project permissions. Personal agent
-          logins stay with their signer: the new owner must use their own account to run an agent.
+          Whoever you pick becomes this Mate's single owner, and it gets a new key. Previous owner
+          grants are removed; everyone else's access follows their organization and project
+          permissions. Personal agent logins stay with their signer: the new owner must use their
+          own account to run an agent.
         </DialogDescription>
       </DialogHeader>
       <DialogPanel>
@@ -92,12 +85,7 @@ export function ZeropsAssignMateForm({
             aria-busy={readingOrganization === undefined ? undefined : true}
             autoFocus
             className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground"
-            disabled={
-              pending ||
-              readingOrganization !== undefined ||
-              readFailed !== undefined ||
-              readRefused !== undefined
-            }
+            disabled={pending || readingOrganization !== undefined || readFailed !== undefined}
             id={`${id}-member`}
             onChange={(event) => {
               setSelected(event.target.value);
@@ -110,17 +98,12 @@ export function ZeropsAssignMateForm({
                 : `Reading ${readingOrganization}…`}
             </option>
             {candidates.map((candidate) => (
-              <option key={candidate.clientUserId} value={candidate.clientUserId}>
+              <option key={candidate.userId} value={candidate.userId}>
                 {candidate.name}
               </option>
             ))}
           </select>
         </div>
-        {readRefused === undefined ? null : (
-          <p className="mt-3 text-sm text-foreground" role="alert">
-            HQ refused to list {readRefused.organization}'s people.
-          </p>
-        )}
         {readFailed === undefined ? null : (
           <div className="mt-3 flex flex-col items-start gap-3">
             <p className="text-sm text-foreground" role="alert">

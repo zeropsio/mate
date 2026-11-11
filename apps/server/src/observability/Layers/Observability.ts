@@ -1,4 +1,7 @@
-import { httpHeaderRedactionLayer } from "@t3tools/shared/httpObservability";
+import {
+  httpHeaderRedactionLayer,
+  makeUrlAttributeRedactor,
+} from "@t3tools/shared/httpObservability";
 import {
   makeLocalFileTracer,
   makeTraceSink,
@@ -13,10 +16,18 @@ import * as OtlpExporter from "effect/observability/OtlpExporter";
 import * as OtlpMetrics from "effect/observability/OtlpMetrics";
 import * as OtlpTracer from "effect/observability/OtlpTracer";
 
+import { ASSET_ROUTE_PREFIX } from "../../assets/AssetAccess.ts";
+import { ATTACHMENT_UPLOAD_ROUTE_PREFIX } from "../../assets/AttachmentUpload.ts";
 import * as ServerConfig from "../../config.ts";
 import * as ResourceAttribution from "../../resourceTelemetry/ResourceAttribution.ts";
 import { ServerLoggerLive } from "../../serverLogger.ts";
 import * as BrowserTraceCollector from "../BrowserTraceCollector.ts";
+
+/**
+ * Signed asset and upload URLs carry their bearer token as the first path
+ * segment after these prefixes; traces and the HTTP log line redact it.
+ */
+export const SIGNED_URL_PATH_PREFIXES = [ASSET_ROUTE_PREFIX, ATTACHMENT_UPLOAD_ROUTE_PREFIX];
 
 export const ObservabilityLive = Layer.unwrap(
   Effect.gen(function* () {
@@ -68,6 +79,7 @@ export const ObservabilityLive = Layer.unwrap(
           maxFiles: config.traceMaxFiles,
           batchWindowMs: config.traceBatchWindowMs,
           sink,
+          redactAttribute: makeUrlAttributeRedactor(SIGNED_URL_PATH_PREFIXES),
           ...(delegate ? { delegate } : {}),
         });
 

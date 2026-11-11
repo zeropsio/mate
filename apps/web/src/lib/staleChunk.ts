@@ -2,8 +2,10 @@
  * A page loaded before a deploy still asks for the old build's lazy chunks, which the new build
  * removed: the static host answers a missing asset with the app's page (HTML), so the import
  * fails. Each deploy replaces the whole bundle (the hosted client's static service, a Mate's
- * /mate/), so an old chunk cannot be kept; the app reloads once to the new build instead. A tab
- * that reloaded for this a moment ago and fails again shows the error screen: never a loop.
+ * /mate/); the hosted client's worker keeps every file a kept page boots and warms from, and the
+ * chunks this browser fetched since (`appShell/`), never others. The app reloads once to the new
+ * build instead: the worker answers a load with the origin's page whenever the origin answers. A
+ * tab that reloaded for this a moment ago and fails again shows the error screen: never a loop.
  *
  * A Mate's setup runs in the tab that pressed it and stops with the page: the reload waits for
  * it to end.
@@ -84,7 +86,7 @@ export function makeStaleChunkRecovery(host: StaleChunkHost) {
   return { recover, waiting: () => waiting };
 }
 
-/** The page's own recovery: its session storage, its clock, its reload. */
+/** The page's own recovery: its session storage, its clock, its reload into the origin's page. */
 export const staleChunkRecovery = makeStaleChunkRecovery({
   storage: () => window.sessionStorage,
   now: () => Date.now(),

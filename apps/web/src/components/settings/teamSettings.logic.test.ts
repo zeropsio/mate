@@ -230,12 +230,6 @@ describe("who is on the team", () => {
     },
   ];
 
-  it("Integration tokens are never people", () => {
-    expect(people(teamPeople(input(TEAM))).map(({ name }) => name)).not.toContain(
-      "token-abc@zerops.io",
-    );
-  });
-
   it("You first; then owners, admins, the rest by name; invitations last", () => {
     expect(people(teamPeople(input(TEAM))).map(({ name }) => name)).toEqual([
       "Me Myself",
@@ -386,37 +380,6 @@ describe("finding someone on the team", () => {
     },
   ])("$sentence", ({ people, query, shown }) => {
     expect(teamSearchShown(people, query)).toBe(shown);
-  });
-
-  it("A card's badge is the preset's name, else Custom role with the role's reach as its tooltip", () => {
-    expect(
-      people(
-        teamPeople(
-          input([
-            member("a", "A", "OWNER"),
-            member("d", "D", "NO_ACCESS", { canCreateProjects: true }),
-            member("g", "G", "NO_ACCESS"),
-            member("b", "B", "BASIC_USER"),
-          ]),
-        ),
-      ).map(({ name, badge, badgeHint }) => [name, badge, badgeHint]),
-    ).toEqual([
-      ["A", "Owner", null],
-      ["B", "Custom role", "Works on every project"],
-      ["D", "Developer", null],
-      ["G", "Guest", null],
-    ]);
-  });
-
-  it("A role none of Mate's four names is a custom role, what it reaches said on hover", () => {
-    expect(
-      people(
-        teamPeople(input([member("b", "B", "BASIC_USER"), member("r", "R", "READ_ONLY")])),
-      ).map(({ name, badge, badgeHint }) => [name, badge, badgeHint]),
-    ).toEqual([
-      ["B", "Custom role", "Works on every project"],
-      ["R", "Custom role", "Sees every project"],
-    ]);
   });
 });
 

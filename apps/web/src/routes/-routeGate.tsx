@@ -1,11 +1,13 @@
 import {
+  askAgainLabel,
   conversationPhrase,
   type ConversationView,
   type RouteGate,
   type RouteGatePhrase,
 } from "@t3tools/client-runtime/zerops/environments";
 import type { WebMateVoice as MateVoice } from "../zerops/mateNoticeVoice";
-import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
+import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/gui";
+import type { EnvironmentId } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
@@ -16,17 +18,20 @@ import type { RecoveryNotice } from "@t3tools/client-runtime/data";
 import { MateConnectionState } from "../components/zerops/ZeropsMateEmptyState";
 import { PortalGate } from "../components/ui/portal-gate";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
+import { useAccountDataOptional } from "../zerops/accountData";
+import { useTryMateAgain } from "../zerops/accountEnvironments";
 
 /**
  * What a route renders under the route gate (DESIGN §4.8). The outlet keeps its place in the tree
  * whether or not a banner shows over it, so a verdict on its way somewhere — a restart, a
- * reconnect — never remounts the conversation; only `wait`, `choose-organization` and
+ * reconnect — never remounts the conversation; only `wait`, `choose-organization`, `ended` and
  * `unavailable` replace it. A conversation its project's access no longer vouches for (DESIGN §9
  * C1b) stays mounted with its content, drafts and floating layers hidden, and its cause in place.
  */
 export function RouteGateView({
   gate,
   phrase,
+  environmentId,
   projectId,
   conversation,
   recoveryPhrase,
@@ -37,6 +42,8 @@ export function RouteGateView({
 }: {
   readonly gate: RouteGate;
   readonly phrase: RouteGatePhrase;
+  /** The route's environment, whose Mate an ended opening asks again. */
+  readonly environmentId: EnvironmentId | null;
   /** What the route's Mate link says, and where (`mateVoice`). */
   readonly voice: MateVoice;
   /** The Mate's stage, drawn where the route waits for its conversation. */
@@ -89,8 +96,20 @@ export function RouteGateView({
         return (
           <RouteGateWords phrase={recoveryPhrase} projectId={null} tone={recoveryPhrase.tone} />
         );
+      // Only HQ can name the conversation's Mate, and has not: the wait says where HQ stands, as
+      // the menu says it, with a verb only where one can act — never that the conversation is gone.
+      if (gate.hq !== undefined)
+        return (
+          <RouteGateWords
+            phrase={phrase}
+            projectId={null}
+            tone={gate.hq.kind === "outage" && gate.hq.again ? "warning" : undefined}
+          />
+        );
       // The Mate's stage (`MateLinkStage`, drawn by the root): face asleep, name, the link's line.
       return stage;
+    case "ended":
+      return <RouteGateWords phrase={phrase} projectId={null} environmentId={environmentId} />;
     case "unavailable":
       if (projectUnavailable && recoveryPhrase != null)
         return (
@@ -100,15 +119,20 @@ export function RouteGateView({
   }
 }
 
-/** A route's own words where nothing else stands: centred, with each verb once. */
-function RouteGateWords({
+/**
+ * A route's own words where nothing else stands: centred, with each verb once. With the route's
+ * environment, asking again asks its Mate too (`useTryMateAgain`), not only the account's sources.
+ */
+export function RouteGateWords({
   phrase,
   projectId,
+  environmentId = null,
   tone,
 }: {
   readonly tone?: RecoveryNotice["tone"] | undefined;
   readonly phrase: RouteGatePhrase | RecoveryNotice;
   readonly projectId: string | null;
+  readonly environmentId?: EnvironmentId | null;
 }) {
   return (
     <MateConnectionState
@@ -121,7 +145,7 @@ function RouteGateWords({
       severity={tone === "error" ? "danger" : tone === "warning" ? "attention" : "info"}
       actions={
         <div className="flex flex-wrap items-center justify-center gap-2">
-          <RouteGateActions phrase={phrase} projectId={projectId} />
+          <RouteGateActions phrase={phrase} projectId={projectId} environmentId={environmentId} />
         </div>
       }
     />
@@ -135,10 +159,15 @@ function RouteGateWords({
 function RouteGateActions({
   phrase,
   projectId,
+  environmentId,
 }: {
   readonly phrase: RouteGatePhrase;
   readonly projectId: string | null;
+  readonly environmentId: EnvironmentId | null;
 }) {
+  const retry = useAccountDataOptional()?.retry;
+  const tryMateAgain = useTryMateAgain();
+  const askAgain = askAgainLabel(phrase.actions);
   const openInZerops = projectId !== null && phrase.actions.includes("open-in-zerops");
   const toProjects = phrase.actions.some(
     (action) =>
@@ -148,9 +177,22 @@ function RouteGateActions({
       action === "restart" ||
       (action === "open-in-zerops" && projectId === null),
   );
-  if (!openInZerops && !toProjects) return null;
+  if (!openInZerops && !toProjects && (askAgain === null || retry === undefined)) return null;
   return (
     <>
+      {askAgain === null || retry === undefined ? null : (
+        // The account's sources asked again now — HQ's among them, as the menu's *Try again*.
+        <Button
+          onClick={() => {
+            retry();
+            if (environmentId !== null) tryMateAgain(environmentId);
+          }}
+          size="sm"
+          variant="secondary"
+        >
+          {askAgain}
+        </Button>
+      )}
       {openInZerops ? (
         <Button
           render={<a href={zeropsProjectUrl(projectId)} target="_blank" rel="noreferrer" />}

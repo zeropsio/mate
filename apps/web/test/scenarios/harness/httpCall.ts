@@ -1,0 +1,143 @@
+// @effect-diagnostics nodeBuiltinImport:off -- the harness uses the real HTTP client boundary.
+import * as NodeHttp from "node:http";
+import * as NodeStreamConsumers from "node:stream/consumers";
+import * as Cause from "effect/Cause";
+import * as DateTime from "effect/DateTime";
+import * as Duration from "effect/Duration";
+import * as Effect from "effect/Effect";
+import * as Schedule from "effect/Schedule";
+import * as Schema from "effect/Schema";
+
+type HealthStage = "handler" | "SQL" | "SQL complete" | "handler complete";
+
+export type ReadinessStep =
+  | "connect"
+  | "request written"
+  | "response headers"
+  | "body"
+  | HealthStage;
+export const READINESS_HEADER = "x-hq-readiness-id";
+
+const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
+const decodeJson = Schema.decodeSync(Schema.fromJsonString(Schema.Unknown));
+
+export const makeHttpCall = (
+  base: string,
+  observers = new Map<string, (step: ReadinessStep) => void>(),
+) => {
+  let requestId = 0;
+  const access = new Map<string, string>();
+  const call = (
+    method: string,
+    path: string,
+    options: {
+      /** JSON, or bytes sent as they are (their `content-type` among the headers). */
+      readonly body?: unknown;
+      readonly session?: string;
+      readonly headers?: Record<string, string>;
+      /** Ends the call from the client's side, as a browser that gave up does. */
+      readonly signal?: AbortSignal;
+      readonly onReadinessStep?: (step: ReadinessStep) => void;
+    } = {},
+  ) =>
+    Effect.promise(async () => {
+      const token = options.session === undefined ? undefined : access.get(options.session);
+      const input = options.body;
+      const body =
+        token === undefined || method === "GET" || method === "HEAD" || input instanceof Uint8Array
+          ? input
+          : input === undefined
+            ? { accessToken: token }
+            : typeof input === "object" && input !== null && !Array.isArray(input)
+              ? { ...input, accessToken: token }
+              : input;
+      const raw = body instanceof Uint8Array;
+      const observer = options.onReadinessStep;
+      const id = observer === undefined ? undefined : String(++requestId);
+      if (id !== undefined && observer !== undefined) observers.set(id, observer);
+      try {
+        // Node's HTTP client returns each redirect as an answer, without following it.
+        const response = await new Promise<NodeHttp.IncomingMessage>((resolve, reject) => {
+          const request = NodeHttp.request(
+            `http://${base}${path}`,
+            {
+              method,
+              // A scenario's next step may follow an idle server-side close before its FIN
+              // reaches this client. Use a fresh connection rather than replaying a write.
+              agent: false,
+              ...(options.signal === undefined ? {} : { signal: options.signal }),
+              headers: {
+                ...(body === undefined || raw ? {} : { "content-type": "application/json" }),
+                ...(options.session === undefined
+                  ? {}
+                  : { authorization: `Bearer ${options.session}` }),
+                // A read has no body: the person's token rides beside the session, as the product
+                // client sends it, and HQ shows only the projects Zerops lists to that token.
+                ...(token !== undefined && (method === "GET" || method === "HEAD")
+                  ? { "x-zerops-access-token": token }
+                  : {}),
+                ...options.headers,
+                ...(id === undefined ? {} : { [READINESS_HEADER]: id }),
+              },
+            },
+            (response) => {
+              observer?.("response headers");
+              resolve(response);
+            },
+          );
+          if (observer !== undefined) {
+            request.once("socket", (socket) => {
+              if (socket.connecting) socket.once("connect", () => observer("connect"));
+              else observer("connect");
+            });
+            request.once("finish", () => observer("request written"));
+          }
+          request.once("error", reject);
+          request.end(
+            body === undefined ? undefined : body instanceof Uint8Array ? body : encodeJson(body),
+          );
+        });
+        if (response.statusCode === undefined) throw new Error("Core's HTTP answer has no status");
+        const headers = new Headers();
+        for (let index = 0; index < response.rawHeaders.length; index += 2) {
+          headers.append(response.rawHeaders[index]!, response.rawHeaders[index + 1]!);
+        }
+        const bytes = new Uint8Array(await NodeStreamConsumers.arrayBuffer(response));
+        observer?.("body");
+        const text = new TextDecoder().decode(bytes);
+        const isJson = headers.get("content-type")?.includes("json") ?? false;
+        const answer = {
+          status: response.statusCode,
+          body: text === "" ? null : isJson ? decodeJson(text) : text,
+          bytes,
+          headers,
+        };
+        if (
+          method === "POST" &&
+          path === "/api/door" &&
+          answer.status === 200 &&
+          typeof input === "object" &&
+          input !== null &&
+          "accessToken" in input &&
+          typeof input.accessToken === "string" &&
+          typeof answer.body === "object" &&
+          answer.body !== null &&
+          "session" in answer.body &&
+          typeof answer.body.session === "string"
+        )
+          access.set(answer.body.session, input.accessToken);
+        return answer;
+      } finally {
+        if (id !== undefined) observers.delete(id);
+      }
+    });
+  return Object.assign(call, {
+    accessOf: (session: string) => {
+      const token = access.get(session);
+      if (token === undefined) throw new Error("No person access token for the HQ session");
+      return token;
+    },
+  });
+};
+
+export type Call = ReturnType<typeof makeHttpCall>;

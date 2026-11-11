@@ -3,7 +3,8 @@
  * a Chief registered for a project, and one decision on a proposal. HQ answers each at once and
  * keeps no request id for it, so a lost answer stays uncertain and is never sent again blindly — a
  * Chief's registration is asked for again by the person (a second answers the same one), and a
- * decision is written once: a second is HQ's conflict.
+ * decision is written once: a second is HQ's conflict. A reveal's record goes to the organization's
+ * activity, once per reveal: the value it names is shown only once HQ kept the record.
  *
  * @module data/operations/hqChief
  */
@@ -11,6 +12,7 @@ import type {
   HqChief,
   HqProposalDecision,
   HqProposalDecisionWrite,
+  HqRevealRecord,
 } from "../../zerops/hq/chief.ts";
 import type { OperationIntent, OperationReceipt } from "../model.ts";
 import type { OperationKind } from "./kind.ts";
@@ -18,15 +20,19 @@ import type { OperationKind } from "./kind.ts";
 declare module "../model.ts" {
   interface OperationIntents {
     readonly "set-chief": { readonly orgId: string; readonly projectId: string };
+    readonly "register-birth-chief": { readonly orgId: string; readonly birthId: string };
     readonly "decide-proposal": {
       readonly orgId: string;
       readonly proposalId: string;
       readonly write: HqProposalDecisionWrite;
     };
+    readonly "record-reveal": { readonly orgId: string; readonly reveal: HqRevealRecord };
   }
   interface OperationResults {
     readonly "set-chief": { readonly chief: HqChief };
+    readonly "register-birth-chief": { readonly projectId: string };
     readonly "decide-proposal": { readonly decision: HqProposalDecision };
+    readonly "record-reveal": Record<string, never>;
   }
 }
 
@@ -40,13 +46,25 @@ export const setChief: OperationKind<"set-chief"> = {
   reflected: answered,
 };
 
+export const registerBirthChief: OperationKind<"register-birth-chief"> = {
+  kind: "register-birth-chief",
+  executor: "hq",
+  reflected: answered,
+};
+
 export const decideProposal: OperationKind<"decide-proposal"> = {
   kind: "decide-proposal",
   executor: "hq",
   reflected: answered,
 };
 
-export const HQ_CHIEF_KINDS = [setChief, decideProposal] as const;
+export const recordReveal: OperationKind<"record-reveal"> = {
+  kind: "record-reveal",
+  executor: "hq",
+  reflected: answered,
+};
+
+export const HQ_CHIEF_KINDS = [setChief, registerBirthChief, decideProposal, recordReveal] as const;
 
 export type HqChiefIntent = Extract<
   OperationIntent,
@@ -55,3 +73,9 @@ export type HqChiefIntent = Extract<
 
 /** The code a decision's refusal carries where HQ holds another decision of the proposal. */
 export const PROPOSAL_DECIDED_ELSEWHERE = "conflict";
+
+/**
+ * The code a reveal's refusal carries where no retry records it: an older HQ with no reveals to
+ * record it at, or one that refuses the person. Updating HQ, or someone else, changes that.
+ */
+export const REVEAL_UNRECORDABLE = "reveal_unrecordable";

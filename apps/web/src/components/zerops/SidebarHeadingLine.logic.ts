@@ -21,7 +21,7 @@ import type { GitDelivery } from "@t3tools/client-runtime/zerops";
  */
 import { comingLine, type StopComing } from "@t3tools/client-runtime/zerops";
 
-import type { ChipState, ProductionChip } from "./SidebarProductionChip.logic";
+import { placeTitle, type ChipState, type ProductionChip } from "./SidebarProductionChip.logic";
 
 /** How long "is live" and "is up" stand on the line before it folds. */
 export const LANDING_MS = 4_000;
@@ -77,7 +77,7 @@ function stageWord(
   stages: HeadingLineInput["stages"],
   stage: HeadingLineInput["stages"][number],
 ): string {
-  return stages.length > 1 ? stage.name : "Stage";
+  return stages.length > 1 ? placeTitle(stage.name) : "Stage";
 }
 
 /** Production's pill states that serve something a release was cut from. */

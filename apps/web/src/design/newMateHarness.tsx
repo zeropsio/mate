@@ -72,6 +72,7 @@ const RESOLVES = STATE === "none" || params.get("resolves") === "none" ? "none" 
 
 const TIER = {
   kind: "tier" as const,
+  revision: "recipe-revision",
   tier: "mate" as const,
   yaml: "services:\n  - hostname: app\n    startWithoutCode: true\n",
 };
@@ -185,7 +186,11 @@ function Harness() {
                 setOpen(false);
               }}
               onOpenKeySettings={() => setLanded("/settings/automation")}
-              people={{ kind: "ready", userRoles: [] }}
+              people={
+                params.get("people") === "failed"
+                  ? { kind: "failed", again: () => {} }
+                  : { kind: "ready", userRoles: [] }
+              }
               propose={(names) => ROLLS.find((roll) => !names.includes(roll)) ?? "Juno"}
               sources={sources}
               takenBotNames={{ names: TAKEN, complete: true }}

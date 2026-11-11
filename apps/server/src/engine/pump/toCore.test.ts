@@ -414,6 +414,47 @@ describe("the pump's mapping", () => {
     });
   });
 
+  it("a call that finds an asked origin already connected says so as it closes", () => {
+    const toCore = makeToCore();
+    const asking = (status: string) =>
+      sig({
+        type: "item.upsert",
+        turn: H1,
+        item: "h1.i3",
+        body: {
+          kind: "tool",
+          toolKind: "mcp_tool_call",
+          title: "MCP tool call",
+          call: { name: "zerops_origin", server: "zerops" },
+          facts: {
+            result: {
+              toolName: "zerops_origin",
+              resultText: JSON.stringify({
+                connected: {
+                  origin: { url: "https://github.com/acme/kiln", repo: "apidev" },
+                  repo: "kiln",
+                },
+                nextActions: "Nothing was asked.",
+              }),
+            },
+          },
+        },
+        status,
+      });
+    toCore.step(asking("running"), 0);
+    const closed = toCore.step(asking("completed"), 0).signals;
+    assert.deepStrictEqual(
+      closed.map((signal) => signal.kind),
+      ["item-closed", "origin-settled"],
+    );
+    assert.deepStrictEqual(closed[1], {
+      kind: "origin-settled",
+      url: "https://github.com/acme/kiln",
+      how: "connected",
+      repo: "apidev",
+    });
+  });
+
   it.each([
     ["completed", "done"],
     ["failed", "failed"],

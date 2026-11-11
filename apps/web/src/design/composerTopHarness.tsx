@@ -17,9 +17,13 @@ import {
   ComposerPendingUserInputReadOnlyPanel,
 } from "~/components/chat/ComposerPendingUserInputPanel";
 import { MateFace } from "~/components/zerops/primitives";
-import { ComposerVaultAsk } from "~/components/zerops/vault/ComposerVaultAsk";
+import { VaultAsk } from "~/components/zerops/vault/VaultAsk";
 import { VAULT_FIXTURE, VAULT_FIXTURE_NOW } from "~/components/zerops/vault/vaultFixture";
-import { vaultAskState, type VaultAsk } from "~/components/zerops/vault/vaultRequest.logic";
+import {
+  type VaultAsk as VaultAskModel,
+  vaultAskState,
+  vaultAskView,
+} from "~/components/zerops/vault/vaultRequest.logic";
 import {
   ZeropsNextStepStrip,
   type ZeropsNextStepStripModel,
@@ -36,7 +40,7 @@ const ONLY_ASK = params.get("ask");
 const FACE = <MateFace size={24} state="needs" tint="sky" />;
 const nothing = async () => undefined;
 
-const VAULT_ASK: VaultAsk = {
+const VAULT_ASK: VaultAskModel = {
   key: "NEW_STRIPE_KEY",
   label: "Stripe secret key",
   scope: { kind: "shared" },
@@ -44,6 +48,8 @@ const VAULT_ASK: VaultAsk = {
   reason: "to take card payments",
   askedAt: new Date(VAULT_FIXTURE_NOW - 5 * 60_000).toISOString(),
 };
+
+const VAULT_STATE = vaultAskState(VAULT_FIXTURE, VAULT_ASK);
 
 const QUESTION = {
   requestId: ApprovalRequestId.make("question-harness"),
@@ -117,14 +123,27 @@ const ASKS: ReadonlyArray<{ readonly name: string; readonly top: ReactNode }> = 
   {
     name: "vault",
     top: (
-      <ComposerVaultAsk
+      <VaultAsk
         ask={VAULT_ASK}
+        askId="vault-harness"
+        density="compact"
         face={FACE}
         mateName="Wren"
         onNotNow={() => undefined}
-        onSave={async () => ({ ok: true })}
+        onSave={async () => true}
+        onShowInConversation={() => undefined}
         onUseGiven={() => undefined}
-        state={vaultAskState(VAULT_FIXTURE, VAULT_ASK)}
+        vault={VAULT_STATE}
+        view={vaultAskView({
+          ask: VAULT_ASK,
+          mateName: "Wren",
+          record: { state: "open", answer: null },
+          vault: VAULT_STATE,
+          pending: null,
+          refusal: null,
+          nameOf: () => undefined,
+          clock: () => "",
+        })}
       />
     ),
   },

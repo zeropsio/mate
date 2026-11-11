@@ -1,6 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off globalFetch:off -- loopback wire fidelity tests.
 import { describe, expect, it } from "vite-plus/test";
-import { emptyWorld } from "../../../../../hq/test/harness/zeropsFake.ts";
+import { emptyWorld } from "../../harness/fakeWorld.ts";
 import { serve } from "../../harness/http.ts";
 import { ZeropsFake } from "../zerops.ts";
 import { definePerson } from "../zeropsWorld.ts";

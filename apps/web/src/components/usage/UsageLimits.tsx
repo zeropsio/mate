@@ -191,7 +191,8 @@ export function LimitWindows({
       className={
         compact
           ? "grid grid-cols-[minmax(0,9rem)_minmax(3rem,1fr)_auto] gap-x-3 gap-y-0.5"
-          : "grid grid-cols-[11rem_minmax(0,1fr)_7rem] gap-x-4 gap-y-1"
+          : // On a phone the fixed columns would leave the bar 30 px: it takes the compact ones.
+            "grid grid-cols-[11rem_minmax(0,1fr)_7rem] gap-x-4 gap-y-1 max-sm:grid-cols-[minmax(0,9rem)_minmax(3rem,1fr)_auto] max-sm:gap-x-3"
       }
     >
       {windows.map((window) => {
@@ -228,7 +229,7 @@ function AccountLimitsStandIn() {
         <Skeleton className="size-5 shrink-0" shape="pill" />
         <Skeleton className="h-3 w-40" />
       </div>
-      <div className="grid grid-cols-[11rem_minmax(0,1fr)_7rem] gap-x-4 gap-y-1">
+      <div className="grid grid-cols-[11rem_minmax(0,1fr)_7rem] gap-x-4 gap-y-1 max-sm:grid-cols-[minmax(0,9rem)_minmax(3rem,1fr)_auto] max-sm:gap-x-3">
         {[0, 1].map((row) => (
           <Fragment key={row}>
             <span className="flex h-6 items-center">

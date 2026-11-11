@@ -110,5 +110,5 @@ function VerdictPanelWaiting({ className, ...props }: React.ComponentProps<"div"
   );
 }
 
-export { VerdictPanel, VerdictPanelWaiting, VERDICT_BORDER_CLASS };
+export { VerdictPanel, VerdictPanelWaiting };
 export type { VerdictPanelProps };

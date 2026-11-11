@@ -42,7 +42,9 @@ import { compareReleaseTags, type Release, type ReleaseRollout } from "@t3tools/
 
 import type { HqEnvironmentTarget } from "@t3tools/shared/hqEnvironment";
 import type { HqGitReleasePreflight, HqReleaseTarget } from "@t3tools/shared/hqRelease";
+import type { HqNavigationRollout } from "@t3tools/shared/hqStream";
 import type { GitDelivery } from "./gitDelivery.ts";
+import type { HqJob } from "./hq/environments.ts";
 
 import type { ReleaseDeployFailure } from "./groupDeploys.ts";
 import type { EnvironmentRow } from "./groupRows.ts";
@@ -326,13 +328,110 @@ export function releaseInFlight(input: Parameters<typeof releaseDeploy>[0]): str
 }
 
 /**
- * The newest release, once HQ ended its deploy to production saying some of it did not go live
- * (`releaseDeploy`), or `undefined`: one that landed waits for production's own word that it runs
- * it, and one a Core says nothing of landing of is never called stalled.
+ * The newest release HQ ended landed — all of it live, by HQ's word — while production's own
+ * services do not yet say they run it, or `undefined`: still on its way to the person, so
+ * production's line keeps saying it releases instead of what it ran before (at 8x CPU it read
+ * "Not released yet" for a frame between Releasing and Running). Evidence alone ends it: every
+ * production runs each commit it lists. A production running something HQ's releases never
+ * listed, or a hand-named deploy, says so itself; a release that lists nothing, or one HQ ended
+ * without saying it landed, is never held, since nothing could confirm it.
  */
-export function releaseStalled(input: Parameters<typeof releaseDeploy>[0]): string | undefined {
+export function releaseLanding(input: {
+  readonly newest: (ReleaseAttempt & Pick<FlowRelease, "entries">) | undefined;
+  readonly rollouts: ReadonlyArray<ReleaseRollout | null | undefined>;
+  /** HQ's earlier releases: what production may still run until it catches up. */
+  readonly earlier: ReadonlyArray<Pick<FlowRelease, "entries">>;
+  /**
+   * What each production's services run, `{hostname: sha}` (`deployedCommit`): `null` for a name
+   * that is not a commit, absent where the service runs nothing.
+   */
+  readonly productions: ReadonlyArray<ReadonlyMap<string, string | null>>;
+}): string | undefined {
+  const { newest } = input;
   const deploy = releaseDeploy(input);
-  return deploy?.ended === true && deploy.landed === false ? deploy.tag : undefined;
+  if (newest === undefined || deploy?.ended !== true || deploy.landed !== true) return undefined;
+  if (newest.entries.length === 0) return undefined;
+  let behind = false;
+  for (const running of input.productions)
+    for (const entry of newest.entries) {
+      if (!running.has(entry.service)) {
+        behind = true;
+        continue;
+      }
+      const commit = running.get(entry.service) ?? undefined;
+      if (sameCommit(commit, entry.commit)) continue;
+      const before = input.earlier.some((release) =>
+        release.entries.some(
+          (listed) => listed.service === entry.service && sameCommit(commit, listed.commit),
+        ),
+      );
+      if (!before) return undefined;
+      behind = true;
+    }
+  return behind ? newest.tag : undefined;
+}
+
+/** The newest release HQ ended without all of it going live, and HQ's words for why. */
+export interface ReleaseStall {
+  readonly tag: string;
+  /** When HQ ended its last job of it (`ReleaseRollout.endedAt`); `undefined` where unsaid. */
+  readonly at: string | undefined;
+  /**
+   * HQ's words, each once: its rollout's note, each service it left out ("api: …", never one it
+   * stopped on purpose), each release job it skipped or superseded. None where HQ could not tell —
+   * a job it ended `unresolved` — or said nothing: the deploy's outcome is unknown.
+   */
+  readonly reasons: ReadonlyArray<string>;
+}
+
+/**
+ * The newest release, once HQ ended its deploy to production saying some of it did not go live
+ * (`releaseDeploy`), with HQ's words for why; `undefined` otherwise: one that landed waits for
+ * production's own word that it runs it, and one a Core says nothing of landing of is never
+ * called stalled.
+ */
+export function releaseStalled(
+  input: Parameters<typeof releaseDeploy>[0] & {
+    /** HQ's notes on the application's recent rollouts (`HqNavigationRollout`), by rollout id. */
+    readonly notes: ReadonlyArray<HqNavigationRollout> | undefined;
+    /** Each production service's newest job (`ReleaseDeploys.jobs`). */
+    readonly jobs: ReadonlyArray<HqJob>;
+  },
+): ReleaseStall | undefined {
+  const deploy = releaseDeploy(input);
+  if (deploy?.ended !== true || deploy.landed !== false) return undefined;
+  const its = input.rollouts.filter(
+    (rollout): rollout is ReleaseRollout => rollout != null && rollout.tag === deploy.tag,
+  );
+  const reasons = new Set<string>();
+  for (const rollout of its) {
+    const note = input.notes?.find((entry) => entry.id === rollout.id)?.note?.trim();
+    if (note !== undefined && note.length > 0) reasons.add(note);
+  }
+  const waitedOn = new Set(its.flatMap((rollout) => rollout.leftOut.map((left) => left.job)));
+  for (const job of input.jobs) {
+    const reason = job.reason?.trim();
+    const released = (job.cause === "release" && job.ref === deploy.tag) || waitedOn.has(job.id);
+    if (
+      released &&
+      job.service !== null &&
+      (job.state === "skipped" || job.state === "superseded") &&
+      reason !== undefined &&
+      reason.length > 0
+    )
+      reasons.add(`${job.service}: ${reason}`);
+  }
+  for (const left of its.flatMap((rollout) => rollout.leftOut))
+    if (left.stopped === undefined && left.job === null)
+      reasons.add(`${left.service}: ${left.reason}`);
+  const at = its
+    .map((rollout) => rollout.endedAt)
+    .filter((ended): ended is string => ended !== null)
+    .reduce<string | undefined>(
+      (latest, ended) => (latest === undefined || ended > latest ? ended : latest),
+      undefined,
+    );
+  return { tag: deploy.tag, at, reasons: [...reasons] };
 }
 
 /** The one word beside a release's dot (R5). */
@@ -344,12 +443,14 @@ export function releaseWord(verdict: ReleaseVerdict): string {
 export function flowReleaseOf(release: Release): FlowRelease {
   const entries = release.entries.map(({ service, sha }) => ({ service, commit: sha }));
   return {
+    ...(release.problems === undefined ? {} : { problems: release.problems }),
     tag: release.tag,
     verdict: release.state,
     detail: release.reason ?? undefined,
     line: entries.map((entry) => `${entry.service} ${shortCommit(entry.commit)}`).join(" · "),
     entries,
     taggedAt: release.at,
+    by: release.by,
     ...(release.history === undefined ? {} : { history: release.history }),
     ...(release.rollbackOf === null ? {} : { rollbackOf: release.rollbackOf }),
   };
@@ -357,6 +458,7 @@ export function flowReleaseOf(release: Release): FlowRelease {
 
 /** One release of the application, as HQ judged it. */
 export interface FlowRelease {
+  readonly problems?: Release["problems"] | undefined;
   readonly history?: Release["history"];
   readonly tag: string;
   readonly verdict: ReleaseVerdict;
@@ -368,6 +470,8 @@ export interface FlowRelease {
   readonly entries: ReadonlyArray<ReleaseEntry>;
   /** When HQ made it. */
   readonly taggedAt: string;
+  /** Who asked for it: their Zerops user id, as HQ records it; absent on a release not from HQ. */
+  readonly by?: string | undefined;
   /** The release it rolls production back to, where it is a roll back. */
   readonly rollbackOf?: string | undefined;
 }

@@ -3,6 +3,7 @@
  * on — and the sources its tasks come from, one row each, from what is read of them.
  */
 import type { SettingValue } from "@t3tools/client-runtime/data";
+import { couldntRead } from "@t3tools/client-runtime/zerops/hq";
 import type {
   HqChannelView,
   HqScheduleRule,
@@ -57,7 +58,7 @@ export type SourceRow =
       readonly id: string;
       readonly words: string;
     }
-  /** A source whose read failed: HQ's words, and *Read again*. */
+  /** A source whose read failed: HQ's words, and *Try again*. */
   | {
       readonly key: string;
       readonly kind: "failed";
@@ -120,7 +121,12 @@ export function sourceRows(reads: SourceReads): {
     connected: boolean | undefined,
   ) => {
     if (setting.state === "failed")
-      rows.push({ key: `failed:${kind}`, kind: "failed", source: kind, words: setting.words });
+      rows.push({
+        key: `failed:${kind}`,
+        kind: "failed",
+        source: kind,
+        words: couldntRead(`its ${kind === "slack" ? "Slack" : "Discord"} channel`, setting.words),
+      });
     if (setting.state !== "known" || setting.held.channel === null) return;
     rows.push({
       key: kind,
@@ -136,7 +142,7 @@ export function sourceRows(reads: SourceReads): {
       key: "failed:webhook",
       kind: "failed",
       source: "webhook",
-      words: reads.webhooks.words,
+      words: couldntRead("its webhooks", reads.webhooks.words),
     });
   if (reads.webhooks.state === "known" && reads.webhooks.held.length > 0) {
     const count = reads.webhooks.held.length;
@@ -151,7 +157,7 @@ export function sourceRows(reads: SourceReads): {
       key: "failed:schedule",
       kind: "failed",
       source: "schedule",
-      words: reads.schedules.words,
+      words: couldntRead("its schedules", reads.schedules.words),
     });
   if (reads.schedules.state === "known")
     for (const schedule of reads.schedules.held)

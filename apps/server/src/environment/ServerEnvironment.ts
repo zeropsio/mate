@@ -4,25 +4,21 @@ import {
   PROVIDER_SEND_TURN_MAX_FILE_BYTES,
   type ExecutionEnvironmentDescriptor,
 } from "@t3tools/contracts";
-import {
-  HostProcessArchitecture,
-  HostProcessEnvironment,
-  HostProcessPlatform,
-} from "@t3tools/shared/hostProcess";
+import { HostProcessArchitecture, HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
-import packageJson from "../../package.json" with { type: "json" };
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import { readAgentActivityPublishingActive } from "../cloud/config.ts";
 import * as ServerConfig from "../config.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import { resolveServerEnvironmentLabel } from "./ServerEnvironmentLabel.ts";
+import { readServerVersion } from "./serverVersion.ts";
 import { type ZeropsPolicy, zeropsPolicy } from "../zerops/ZeropsPolicy.ts";
 import { isZeropsEnvironment } from "../zerops/ZeropsEnvironment.ts";
 import { ZeropsMateUpdate } from "../zerops/ZeropsMateUpdate.ts";
@@ -109,6 +105,8 @@ export const makeServerEnvironmentCapabilities = (
     threadPullRequestLinking: true,
     projectCloneTracking: true,
     crewProposals: true,
+    matePersona: true,
+    mcpSignIn: true,
     ...(options?.mateUpdate === undefined ? {} : { mateUpdate: options.mateUpdate }),
     ...(options?.mateUpdateCheck === undefined ? {} : { mateUpdateCheck: options.mateUpdateCheck }),
     ...(options?.dataConsole === undefined ? {} : { dataConsole: options.dataConsole }),
@@ -124,7 +122,7 @@ export const make = Effect.gen(function* () {
   const path = yield* Path.Path;
   const serverConfig = yield* ServerConfig.ServerConfig;
   const secrets = yield* ServerSecretStore.ServerSecretStore;
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
   const hostPlatform = yield* HostProcessPlatform;
   const hostArchitecture = yield* HostProcessArchitecture;
 
@@ -176,7 +174,7 @@ export const make = Effect.gen(function* () {
       return persisted;
     }
 
-    const generated = yield* crypto.randomUUIDv4;
+    const generated = yield* crypto.uuidV4();
     yield* persistEnvironmentId(generated);
     return generated;
   });
@@ -185,7 +183,7 @@ export const make = Effect.gen(function* () {
   const cwdBaseName = path.basename(serverConfig.cwd).trim();
   const label = yield* resolveServerEnvironmentLabel({ cwdBaseName });
   // This process: never persisted, so every start names a boot of its own.
-  const bootId = yield* crypto.randomUUIDv4;
+  const bootId = yield* crypto.uuidV4();
   const descriptor: ExecutionEnvironmentDescriptor = {
     environmentId,
     label,
@@ -193,8 +191,7 @@ export const make = Effect.gen(function* () {
       os: platformOs(hostPlatform),
       arch: platformArch(hostArchitecture),
     },
-    serverVersion:
-      (yield* HostProcessEnvironment).T3CODE_SERVER_VERSION?.trim() || packageJson.version,
+    serverVersion: yield* readServerVersion,
     bootId,
     ...(serverConfig.basePath === "" ? {} : { basePath: serverConfig.basePath }),
     ...(serverConfig.zerops === undefined

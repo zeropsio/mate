@@ -1,11 +1,11 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { composerLayout, composerStates } from "./composerLayout.ts";
 
 // Paint comparison complements geometry: transparent surfaces still have the same boxes.
 describe("Decision: restore pre-regression behaviour; no test weakened; titles kept.", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     for (const state of composerStates)
       it.effect(`history does not paint through the composer footer (${state})`, () =>
         Effect.gen(function* () {

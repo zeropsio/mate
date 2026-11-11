@@ -211,6 +211,24 @@ describe("create-project", () => {
   };
   const OTHER = { id: "p1", name: "shop-stage" };
 
+  it.effect(
+    "a lost birth creation waits for shared reconciliation instead of adopting a same-name project",
+    () =>
+      Effect.gen(function* () {
+        const store = account();
+        const { operations, calls } = operationsOf(store, lost, [
+          [OTHER],
+          [OTHER, { id: "p9", name: "shop-stage" }],
+        ]);
+        yield* operations.submit({ ...CREATE, birthId: "birth-1" });
+        expect(calls.filter((call) => call !== "list")).toHaveLength(1);
+        expect(
+          operationResult(store.state().operations.get("r1"), "create-project"),
+        ).toBeUndefined();
+        expect(progress(store)).toEqual({ stage: "uncertain", next: "ask-owner-again" });
+      }),
+  );
+
   it.effect("an uncertain creation goes on with its one new project, never a duplicate", () =>
     Effect.gen(function* () {
       const store = account();
@@ -250,30 +268,8 @@ describe("create-project", () => {
     }),
   );
 
-  it.effect(
-    "a lost answer adopts the one project of its name Zerops lists now and did not before",
-    () =>
-      Effect.gen(function* () {
-        const store = account();
-        const { operations, calls } = operationsOf(store, lost, [
-          [OTHER],
-          [OTHER, { id: "p9", name: "shop-stage" }],
-        ]);
-        yield* operations.submit(CREATE);
-        expect(calls.filter((call) => call !== "list")).toHaveLength(1);
-        expect(progress(store)).toEqual({ stage: "accepted", operationId: "p9" });
-        expect(operationResult(store.state().operations.get("r1"), "create-project")).toEqual({
-          projectId: "p9",
-        });
-      }),
-  );
-
   it.effect.each([
     ["no new project of its name", [[OTHER], [OTHER]]],
-    [
-      "two new projects of its name",
-      [[OTHER], [OTHER, { id: "p8", name: "shop-stage" }, { id: "p9", name: "shop-stage" }]],
-    ],
     ["a listing that could not be read again", [[OTHER]]],
   ] as const)("a lost answer with %s stays uncertain, never sent again", ([, listings]) =>
     Effect.gen(function* () {

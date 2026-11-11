@@ -43,7 +43,7 @@ it.effect(
         (core) => Effect.promise(core.close),
       );
       const result = yield* Effect.exit(
-        openScenarioNavigation(core.origin, "ticket").pipe(Effect.scoped),
+        openScenarioNavigation(core.origin, { ticket: "ticket" }).pipe(Effect.scoped),
       );
       yield* Effect.promise(() => closed.promise);
       expect(requests).toEqual([
@@ -98,7 +98,7 @@ it.effect("scenario navigation ignores another scope's failure while answering C
       ),
       (core) => Effect.promise(core.close),
     );
-    yield* openScenarioNavigation(core.origin, "ticket");
+    yield* openScenarioNavigation(core.origin, { ticket: "ticket" });
     expect(requests).toEqual([
       { type: "subscribe", scopes: [{ scope: { kind: "navigation" } }] },
       { type: "pong" },

@@ -1,4 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
+import { AuthZeropsClientScopes } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -7,6 +9,7 @@ import * as Option from "effect/Option";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as ServerConfig from "../config.ts";
 import * as Access from "../zerops/ZeropsMateAccessList.ts";
+import { makeAccessScene } from "../zerops/testing/accessScene.ts";
 import * as Tickets from "../zerops/ZeropsTicketDoor.ts";
 import * as Connections from "../zerops/ZeropsConnections.ts";
 import { resolveZeropsEnvironment } from "../zerops/ZeropsEnvironment.ts";
@@ -28,10 +31,10 @@ const request = (headers: Record<string, string> = {}, query = "") =>
   HttpServerRequest.fromWeb(new Request(`https://mate.example/api/shell${query}`, { headers }));
 
 const setup = Effect.gen(function* () {
-  const access = yield* Access.make;
+  const scene = yield* makeAccessScene({ jan: "OWNER" });
   const tickets = yield* Tickets.make;
   const connections = yield* Connections.make.pipe(
-    Effect.provideService(Access.ZeropsMateAccessList, access),
+    Effect.provideService(Access.ZeropsMateAccessList, scene.list),
     Effect.provideService(Tickets.ZeropsTicketDoor, tickets),
   );
   const auth = yield* Auth.EnvironmentAuth.pipe(
@@ -42,106 +45,108 @@ const setup = Effect.gen(function* () {
       ),
     ),
   );
-  yield* connections.heard({
-    type: "access",
-    version: 1,
-    full: true,
-    viewAt: "2026-10-24T10:00:00.000Z",
-    members: [{ userId: "jan", role: "OWNER", visibility: "open" }],
-  });
-  yield* tickets.heard({
-    type: "ticket",
-    ticket: "opaque-ticket",
-    userId: "jan",
-    sessionId: "hq-session",
-    expiresIn: 60,
-  });
-  return { auth, connections };
+  yield* Effect.flatten(
+    connections.ticket(
+      {
+        type: "ticket",
+        ticket: "opaque-ticket",
+        userId: "jan",
+        sessionId: "hq-session",
+        expiresIn: 60,
+      },
+      () => true,
+    ),
+  );
+  return { auth, connections, set: scene.set };
 });
 
-it.layer(NodeServices.layer)("EnvironmentAuth Zerops connections", (it) => {
-  it.effect(
-    "Zerops advertises only HQ tickets and starts without a session database or boot credential",
-    () =>
-      Effect.gen(function* () {
-        const { auth } = yield* setup;
-        assert.deepEqual((yield* auth.getDescriptor()).bootstrapMethods, ["ticket"]);
-        assert.deepEqual(yield* auth.listSessions(), []);
-        assert.isTrue(Exit.isFailure(yield* Effect.exit(auth.issueSession())));
-        assert.isTrue(Exit.isFailure(yield* Effect.exit(auth.createPairingLink())));
-      }).pipe(Effect.scoped),
-  );
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))(
+  "EnvironmentAuth Zerops connections",
+  (it) => {
+    it.effect(
+      "Zerops advertises only HQ tickets and starts without a session database or boot credential",
+      () =>
+        Effect.gen(function* () {
+          const { auth } = yield* setup;
+          assert.deepEqual((yield* auth.getDescriptor()).bootstrapMethods, ["ticket"]);
+          assert.deepEqual(yield* auth.listSessions(), []);
+          assert.isTrue(Exit.isFailure(yield* Effect.exit(auth.issueSession())));
+          assert.isTrue(Exit.isFailure(yield* Effect.exit(auth.createPairingLink())));
+        }).pipe(Effect.scoped),
+    );
 
-  it.effect(
-    "Mate HTTP uses the consumed ticket only while its connection lives and exposes a non-secret session id",
-    () =>
-      Effect.gen(function* () {
-        const { auth, connections } = yield* setup;
-        const read = auth.authenticateHttpRequest(
-          request({ authorization: "Bearer opaque-ticket" }),
-        );
-        assert.isTrue(Exit.isFailure(yield* Effect.exit(read)));
-        const admitted = Option.getOrThrow(
-          yield* connections.admit({ ticket: "opaque-ticket" }, Effect.void),
-        );
-        const session = yield* read;
-        assert.strictEqual(session.subject, "zerops-user:jan");
-        assert.strictEqual(session.sessionId, admitted.connectionId);
-        assert.notEqual(session.sessionId, "opaque-ticket");
-        assert.notEqual(session.sessionId, "hq-session");
-        assert.include(session.scopes, "exec:operate");
-        yield* connections.close("opaque-ticket");
-        assert.isTrue(Exit.isFailure(yield* Effect.exit(read)));
-      }).pipe(Effect.scoped),
-  );
+    it.effect(
+      "Mate HTTP uses the consumed ticket only while its connection lives and exposes a non-secret session id",
+      () =>
+        Effect.gen(function* () {
+          const { auth, connections } = yield* setup;
+          const read = auth.authenticateHttpRequest(
+            request({ authorization: "Bearer opaque-ticket" }),
+          );
+          assert.isTrue(Exit.isFailure(yield* Effect.exit(read)));
+          const admitted = Option.getOrThrow(
+            yield* connections.admit({ ticket: "opaque-ticket" }, Effect.void),
+          );
+          const session = yield* read;
+          assert.strictEqual(session.subject, "zerops-user:jan");
+          assert.strictEqual(session.sessionId, admitted.connectionId);
+          assert.notEqual(session.sessionId, "opaque-ticket");
+          assert.notEqual(session.sessionId, "hq-session");
+          assert.include(session.scopes, "exec:operate");
+          assert.deepEqual([...session.scopes].sort(), [...AuthZeropsClientScopes].sort());
+          yield* connections.close("opaque-ticket");
+          assert.isTrue(Exit.isFailure(yield* Effect.exit(read)));
+        }).pipe(Effect.scoped),
+    );
 
-  it.effect(
-    "MS1-6 Zerops refuses cookies and upgrade credentials even when they name a live connection",
-    () =>
-      Effect.gen(function* () {
-        const { auth, connections } = yield* setup;
-        yield* connections.admit({ ticket: "opaque-ticket" }, Effect.void);
-        const descriptor = yield* auth.getDescriptor();
-        for (const input of [
-          request({ cookie: `${descriptor.sessionCookieName}=opaque-ticket` }),
-          request({}, "?wsTicket=opaque-ticket"),
-          request({ authorization: "DPoP opaque-ticket" }),
-        ])
-          assert.isTrue(Exit.isFailure(yield* Effect.exit(auth.authenticateHttpRequest(input))));
-        assert.isTrue(
-          Exit.isFailure(
-            yield* Effect.exit(
-              auth.authenticateWebSocketUpgrade(request({ authorization: "Bearer opaque-ticket" })),
-            ),
-          ),
-        );
-      }).pipe(Effect.scoped),
-  );
-
-  it.effect("Mate HTTP loses access at the same sign-out and refusal boundary as the socket", () =>
-    Effect.gen(function* () {
-      for (const cause of ["sign-out", "refusal"] as const) {
-        yield* Effect.gen(function* () {
+    it.effect(
+      "MS1-6 Zerops refuses cookies and upgrade credentials even when they name a live connection",
+      () =>
+        Effect.gen(function* () {
           const { auth, connections } = yield* setup;
           yield* connections.admit({ ticket: "opaque-ticket" }, Effect.void);
-          if (cause === "sign-out") yield* connections.closeSession("hq-session");
-          else
-            yield* connections.heard({
-              type: "access",
-              version: 2,
-              full: true,
-              refused: true,
-              members: [],
-            });
+          const descriptor = yield* auth.getDescriptor();
+          for (const input of [
+            request({ cookie: `${descriptor.sessionCookieName}=opaque-ticket` }),
+            request({}, "?wsTicket=opaque-ticket"),
+            request({ authorization: "DPoP opaque-ticket" }),
+          ])
+            assert.isTrue(Exit.isFailure(yield* Effect.exit(auth.authenticateHttpRequest(input))));
           assert.isTrue(
             Exit.isFailure(
               yield* Effect.exit(
-                auth.authenticateHttpRequest(request({ authorization: "Bearer opaque-ticket" })),
+                auth.authenticateWebSocketUpgrade(
+                  request({ authorization: "Bearer opaque-ticket" }),
+                ),
               ),
             ),
           );
-        }).pipe(Effect.scoped);
-      }
-    }),
-  );
-});
+        }).pipe(Effect.scoped),
+    );
+
+    it.effect(
+      "Mate HTTP loses access at the same sign-out and refusal boundary as the socket",
+      () =>
+        Effect.gen(function* () {
+          for (const cause of ["sign-out", "refusal"] as const) {
+            yield* Effect.gen(function* () {
+              const { auth, connections, set } = yield* setup;
+              yield* connections.admit({ ticket: "opaque-ticket" }, Effect.void);
+              if (cause === "sign-out") yield* connections.end({ session: "hq-session" });
+              // Zerops no longer lets Jan in: the list refuses him.
+              else yield* set({ jan: "NO_ACCESS" });
+              assert.isTrue(
+                Exit.isFailure(
+                  yield* Effect.exit(
+                    auth.authenticateHttpRequest(
+                      request({ authorization: "Bearer opaque-ticket" }),
+                    ),
+                  ),
+                ),
+              );
+            }).pipe(Effect.scoped);
+          }
+        }),
+    );
+  },
+);

@@ -15,7 +15,7 @@ import {
   Wakeups,
 } from "@t3tools/client-runtime/connection";
 import { EnvironmentRpcRequestObserver } from "@t3tools/client-runtime/rpc";
-import type { PlatformSignal, PlatformSignals } from "@t3tools/client-runtime/zerops/knowledge";
+import type { PlatformSignals } from "@t3tools/client-runtime/zerops/knowledge";
 import { AuthZeropsClientScopes, PRIMARY_LOCAL_ENVIRONMENT_ID } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
@@ -44,20 +44,26 @@ import { clientPresentationMetadata } from "./clientMetadata";
 
 let nextObservedRpcRequestId = 0;
 
-function currentNetworkStatus(): "unknown" | "offline" | "online" {
-  if (typeof navigator === "undefined") {
-    return "unknown";
-  }
-  return navigator.onLine ? "online" : "offline";
+/**
+ * The network as the connection layer hears it from the browser. `navigator.onLine` is trusted
+ * only when it says online: Chrome on macOS can report offline while every request still flows
+ * (a VPN or virtual interface), and an "offline" here parks every Mate's connection with no
+ * attempt and no error. A browser that calls itself offline is "unknown", so its Mates still try
+ * and a real outage shows as their failed attempts.
+ */
+export function browserNetworkStatus(onLine: boolean | undefined): "unknown" | "online" {
+  return onLine === true ? "online" : "unknown";
 }
 
 const connectivityLayer = Connectivity.layer({
-  status: Effect.sync(currentNetworkStatus),
+  status: Effect.sync(() =>
+    browserNetworkStatus(typeof navigator === "undefined" ? undefined : navigator.onLine),
+  ),
   changes: Stream.callback((queue) =>
     Effect.acquireRelease(
       Effect.sync(() => {
         const online = () => Queue.offerUnsafe(queue, "online");
-        const offline = () => Queue.offerUnsafe(queue, "offline");
+        const offline = () => Queue.offerUnsafe(queue, browserNetworkStatus(false));
         window.addEventListener("online", online);
         window.addEventListener("offline", offline);
         return { online, offline };
@@ -71,28 +77,6 @@ const connectivityLayer = Connectivity.layer({
   ),
 });
 
-/**
- * The connection wakeup a tab signal stands for, or `null` when it means
- * nothing to the connection layer. The connection hears the same coalesced
- * visible wake as the account (DESIGN §6.4): focus back from another
- * application after 30 s is one, a click into an iframe and back or a short
- * tab switch is not.
- */
-export function connectionWakeupForSignal(signal: PlatformSignal): Wakeups.ConnectionWakeup | null {
-  switch (signal.type) {
-    case "restored":
-      // A back/forward cache restore comes back with a socket the browser
-      // already killed: replace the lease instead of probing it.
-      return "application-active-reconnect";
-    case "wake":
-      // The restore's own wake follows its `restored`, which already replaced the lease.
-      return signal.visible && signal.cause !== "pageshow" ? "application-active" : null;
-    case "visibility":
-    case "network":
-      return null;
-  }
-}
-
 /** The tab's signals for the connection layer, made when a connection first listens. */
 let tabSignals: PlatformSignals | null = null;
 
@@ -102,7 +86,7 @@ const wakeupsLayer = Wakeups.layer({
       Effect.sync(() => {
         tabSignals ??= browserPlatformSignals(document, window);
         return tabSignals.listen((signal) => {
-          const wakeup = connectionWakeupForSignal(signal);
+          const wakeup = Wakeups.connectionWakeupForSignal(signal);
           if (wakeup !== null) Queue.offerUnsafe(queue, wakeup);
         });
       }),
@@ -126,6 +110,21 @@ function clientMetadata() {
 
 /** The open account's HQ API per organisation, for Mate tickets; none while no account is open. */
 let mateTicketHq: (orgId: string) => Pick<HqApi, "mateTicket"> | null = () => null;
+
+/**
+ * The web's one Mate ticket issuer: every connection attempt's, and the account door's ticket
+ * asked for ahead (`primeMateTicket`).
+ */
+const mateTickets = mateTicketIssuer((orgId) => mateTicketHq(orgId));
+
+/**
+ * Asks HQ for the Mate's next connection ticket now, beside the descriptor read the door makes
+ * before that connection: the ticket and the descriptor take one round trip between them, not two
+ * in a row. A ticket no attempt presents ends unused (one use, 60 s).
+ */
+export function primeMateTicket(mate: { readonly orgId: string; readonly projectId: string }) {
+  mateTickets.prime(mate);
+}
 
 /** Names where Mate tickets are asked for (`zerops/mateTickets.ts`), until the returned reset. */
 export function setMateTicketHq(hqOf: typeof mateTicketHq): () => void {
@@ -169,10 +168,7 @@ const capabilitiesLayer = Layer.effectContext(
       Context.add(RelayDeviceIdentity, identity),
       Context.add(ClientPresentation, presentation),
       Context.add(SshEnvironmentGateway, ssh),
-      Context.add(
-        MateTicketIssuer,
-        mateTicketIssuer((orgId) => mateTicketHq(orgId)),
-      ),
+      Context.add(MateTicketIssuer, mateTickets),
       Context.add(MatePresence, {
         // The Mate on screen is the one the address names.
         onScreen: (environmentId) =>

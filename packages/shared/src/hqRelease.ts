@@ -6,7 +6,7 @@
  * it tags: a release it refuses is only an answer, never a tag nor a record; one it makes, Core tags
  * for the person `can`'s `release` allows (HQ's `permissions.ts`), so every release Core records
  * is approved. A refused record is either main's history, imported (T13), or one tag-record
- * recovery found refused (`apps/hq/src/reconcile.ts`); either stays refused for ever. Releases are
+ * recovery found refused (`mate-hq apps/hq/src/reconcile.ts`); either stays refused for ever. Releases are
  * ordered by version everywhere ({@link compareReleaseTags}): a new one must be newer than every
  * release, and production follows the newest approved one.
  *
@@ -23,6 +23,7 @@
  *
  * @module hqRelease
  */
+import { HqProblem } from "./hqProblems.ts";
 import * as Schema from "effect/Schema";
 
 import { HqRepoRemote, RepoName, Sha } from "./hqChanges.ts";
@@ -119,6 +120,7 @@ export type ReleaseHistory = typeof ReleaseHistory.Type;
  * and, for a rollback, the release it goes back to.
  */
 export const Release = Schema.Struct({
+  problems: Schema.optionalKey(Schema.Array(HqProblem)),
   tag: ReleaseTag,
   sha: Sha,
   entries: Schema.Array(GitReleaseEntry),
@@ -199,6 +201,27 @@ const Entries = Schema.Array(GitReleaseEntry).check(
   ),
 );
 
+/** HQ's persisted exact production effects, reviewed before service creation. */
+export const ReleaseServicePlan = Schema.Struct({
+  hash: Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/u)),
+  operations: Schema.Array(
+    Schema.Union([
+      Schema.Struct({
+        kind: Schema.Literal("create"),
+        service: Schema.String,
+        settings: Schema.Record(Schema.String, Schema.Unknown),
+        cost: Schema.String,
+      }),
+      Schema.Struct({ kind: Schema.Literal("deploy"), service: Schema.String, sha: Sha }),
+    ]),
+  ),
+});
+export type ReleaseServicePlan = typeof ReleaseServicePlan.Type;
+
+/** Whether the reviewed release creates a production service: its approval then carries `planHash`. */
+export const releasePlanCreates = (plan: ReleaseServicePlan): boolean =>
+  plan.operations.some((operation) => operation.kind === "create");
+
 /**
  * A release as the person was offered it: its name, the recipe repository's `main` head read with
  * the offer (never one read at the press), and each production service at its repository's `main`
@@ -208,6 +231,7 @@ export const CreateReleaseRequest = Schema.Struct({
   tag: ReleaseTag,
   groupHead: Sha,
   entries: Entries,
+  planHash: Schema.optionalKey(Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/u))),
   ...targetFields,
   preflight: Schema.optionalKey(Schema.Array(HqGitReleasePreflight)),
 }).check(

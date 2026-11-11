@@ -1,4 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, it } from "@effect/vitest";
 import * as Cause from "effect/Cause";
 import * as Deferred from "effect/Deferred";
@@ -37,7 +38,7 @@ const PermissionDeniedFileSystemLayer = Layer.effect(
         ),
     } satisfies FileSystem.FileSystem;
   }),
-).pipe(Layer.provide(NodeServices.layer));
+).pipe(Layer.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)));
 
 const makePermissionDeniedSecretStoreLayer = () =>
   ServerSecretStore.layer.pipe(
@@ -64,7 +65,7 @@ const RenameFailureFileSystemLayer = Layer.effect(
         ),
     } satisfies FileSystem.FileSystem;
   }),
-).pipe(Layer.provide(NodeServices.layer));
+).pipe(Layer.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)));
 
 const makeRenameFailureSecretStoreLayer = () =>
   ServerSecretStore.layer.pipe(
@@ -91,7 +92,7 @@ const RemoveFailureFileSystemLayer = Layer.effect(
         ),
     } satisfies FileSystem.FileSystem;
   }),
-).pipe(Layer.provide(NodeServices.layer));
+).pipe(Layer.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)));
 
 const makeRemoveFailureSecretStoreLayer = () =>
   ServerSecretStore.layer.pipe(
@@ -137,7 +138,7 @@ const ConcurrentReadMissFileSystemLayer = Layer.effect(
           : fileSystem.readFile(path),
     } satisfies FileSystem.FileSystem;
   }),
-).pipe(Layer.provide(NodeServices.layer));
+).pipe(Layer.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)));
 
 const makeConcurrentCreateSecretStoreLayer = () =>
   ServerSecretStore.layer.pipe(
@@ -145,7 +146,7 @@ const makeConcurrentCreateSecretStoreLayer = () =>
     Layer.provideMerge(ConcurrentReadMissFileSystemLayer),
   );
 
-it.layer(NodeServices.layer)("ServerSecretStore.layer", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("ServerSecretStore.layer", (it) => {
   it.effect("returns Option.none when a secret file does not exist", () =>
     Effect.gen(function* () {
       const secretStore = yield* ServerSecretStore.ServerSecretStore;
@@ -205,7 +206,7 @@ it.layer(NodeServices.layer)("ServerSecretStore.layer", (it) => {
               }),
           } satisfies FileSystem.FileSystem;
         }),
-      ).pipe(Layer.provide(NodeServices.layer));
+      ).pipe(Layer.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)));
 
       const secretStore = yield* Effect.service(ServerSecretStore.ServerSecretStore).pipe(
         Effect.provide(
@@ -222,7 +223,7 @@ it.layer(NodeServices.layer)("ServerSecretStore.layer", (it) => {
         chmodCalls.some((call) => call.mode === 0o700 && /[\\/]secrets$/.test(call.path)),
       );
       assert.isAtLeast(chmodCalls.filter((call) => call.mode === 0o600).length, 2);
-    }).pipe(Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("propagates read failures other than missing-file errors", () =>

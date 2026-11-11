@@ -1,5 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Stream from "effect/Stream";
 
 import { CrewPlatformProcesses } from "../../crewDeployState.ts";
 import { attempt, effectRow, okValue } from "../../testing/crewEffectFixture.ts";
@@ -18,7 +19,13 @@ const row = (attemptNumber = 1) =>
 const platform = (answers: ReadonlyArray<ReadonlyArray<unknown> | undefined>) => {
   const state = { reads: 0 };
   const read = Effect.sync(() => answers[Math.min(state.reads++, answers.length - 1)]);
-  return { state, provide: Effect.provideService(CrewPlatformProcesses, { read }) };
+  return {
+    state,
+    provide: Effect.provideService(CrewPlatformProcesses, {
+      read,
+      moved: Effect.succeed(Stream.never),
+    }),
+  };
 };
 
 const deploy = (status: string) => ({
@@ -29,27 +36,14 @@ const deploy = (status: string) => ({
 
 describe("crew.deployPoll", () => {
   it.effect("a deploy still running on the host is running; one that ended is settled", () => {
-    const { provide } = platform([[deploy("RUNNING")], [deploy("FINISHED")]]);
-    return Effect.gen(function* () {
-      const handler = yield* makeDeployPoll;
-      const running = okValue(yield* attempt(handler, row()));
-      const settled = okValue(yield* attempt(handler, row()));
-      assert.deepStrictEqual(
-        { running, settled },
-        { running: { state: "running" }, settled: { state: "settled" } },
-      );
-    }).pipe(provide);
-  });
-
-  it.effect("a poll the restart cut asks the platform again", () => {
     const { state, provide } = platform([[deploy("RUNNING")], [deploy("FINISHED")]]);
     return Effect.gen(function* () {
       const handler = yield* makeDeployPoll;
-      yield* attempt(handler, row(1));
-      const again = okValue(yield* attempt(handler, row(2)));
+      const running = okValue(yield* attempt(handler, row(1)));
+      const settled = okValue(yield* attempt(handler, row(2)));
       assert.deepStrictEqual(
-        { again, reads: state.reads },
-        { again: { state: "settled" }, reads: 2 },
+        { running, settled, reads: state.reads },
+        { running: { state: "running" }, settled: { state: "settled" }, reads: 2 },
       );
     }).pipe(provide);
   });

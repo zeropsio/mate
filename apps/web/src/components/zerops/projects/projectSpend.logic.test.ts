@@ -2,14 +2,11 @@ import type { UsageReport } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  averageLine,
-  dayLabel,
   formatUsd,
   joinSpend,
   moneyParts,
   spendBarPx,
   spendState,
-  subscriptionLine,
   tokenSpendByDay,
   tokenSpendQuery,
 } from "./projectSpend.logic";
@@ -117,41 +114,6 @@ describe("spend's words", () => {
 
   it("splits the figure into dollars and cents", () => {
     expect(moneyParts(64.3)).toEqual({ whole: "$64", cents: ".30" });
-  });
-
-  it.each([
-    { day: "2026-09-19", label: "19 Sep" },
-    { day: TODAY, label: "Today" },
-  ])("labels $day as $label", ({ day, label }) => {
-    expect(dayLabel(day, TODAY)).toBe(label);
-  });
-
-  it("says the daily average", () => {
-    expect(averageLine(64.3 / 30)).toBe("avg $2.14 a day");
-  });
-
-  it.each([
-    { mates: [], line: null },
-    {
-      mates: [{ name: "Raya", provider: "Claude" }],
-      line: "Raya runs on a Claude subscription; it is not in this figure.",
-    },
-    {
-      mates: [
-        { name: "Raya", provider: "Claude" },
-        { name: "Vera", provider: "Claude" },
-      ],
-      line: "Raya and Vera run on a Claude subscription; it is not in this figure.",
-    },
-    {
-      mates: [
-        { name: "Raya", provider: "Claude" },
-        { name: "Juno", provider: "Codex" },
-      ],
-      line: "Raya runs on a Claude subscription and Juno runs on a Codex subscription; they are not in this figure.",
-    },
-  ])("names the Mates on a subscription: $line", ({ mates, line }) => {
-    expect(subscriptionLine(mates)).toBe(line);
   });
 });
 

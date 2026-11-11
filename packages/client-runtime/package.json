@@ -47,6 +47,10 @@
       "types": "./src/errors/index.ts",
       "default": "./src/errors/index.ts"
     },
+    "./rpc/testing": {
+      "types": "./src/rpc/__fixtures__/mateRecovery.ts",
+      "default": "./src/rpc/__fixtures__/mateRecovery.ts"
+    },
     "./rpc": {
       "types": "./src/rpc/index.ts",
       "default": "./src/rpc/index.ts"
@@ -195,6 +199,10 @@
       "types": "./src/zerops/activity/attribution.ts",
       "default": "./src/zerops/activity/attribution.ts"
     },
+    "./zerops/activity/runningNow": {
+      "types": "./src/zerops/activity/runningNow.ts",
+      "default": "./src/zerops/activity/runningNow.ts"
+    },
     "./zerops/activity/buildLog": {
       "types": "./src/zerops/activity/buildLog.ts",
       "default": "./src/zerops/activity/buildLog.ts"
@@ -290,6 +298,10 @@
     "./zerops/appAccess": {
       "types": "./src/zerops/appAccess.ts",
       "default": "./src/zerops/appAccess.ts"
+    },
+    "./zerops/billingAccess": {
+      "types": "./src/zerops/billingAccess.ts",
+      "default": "./src/zerops/billingAccess.ts"
     },
     "./zerops/teamRoles": {
       "types": "./src/zerops/teamRoles.ts",
@@ -411,6 +423,10 @@
       "types": "./src/zerops/deviceLogin.ts",
       "default": "./src/zerops/deviceLogin.ts"
     },
+    "./zerops/gui": {
+      "types": "./src/zerops/gui.ts",
+      "default": "./src/zerops/gui.ts"
+    },
     "./zerops/handover": {
       "types": "./src/zerops/handover.ts",
       "default": "./src/zerops/handover.ts"
@@ -430,6 +446,10 @@
     "./zerops/serviceMap": {
       "types": "./src/zerops/serviceMap.ts",
       "default": "./src/zerops/serviceMap.ts"
+    },
+    "./zerops/mateParts": {
+      "types": "./src/zerops/mateParts.ts",
+      "default": "./src/zerops/mateParts.ts"
     },
     "./zerops/servicePairs": {
       "types": "./src/zerops/servicePairs.ts",
@@ -505,7 +525,7 @@
     }
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "effect-tsgo tsrs --noEmit",
     "test": "vp test run"
   },
   "dependencies": {
@@ -520,6 +540,7 @@
   },
   "devDependencies": {
     "@effect/vitest": "catalog:",
+    "@t3tools/test-recordings": "workspace:*",
     "@types/node": "catalog:",
     "micromark-util-types": "^2.0.2",
     "vite-plus": "catalog:"

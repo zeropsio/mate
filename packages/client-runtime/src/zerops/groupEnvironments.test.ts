@@ -12,9 +12,7 @@ import {
   environmentSlots,
   heldTiers,
   halfMadeGroupEnvironments,
-  missingEnvironmentRows,
   productionRunsOf,
-  MISSING_ENVIRONMENT_LINE,
 } from "./groupEnvironments.ts";
 
 /** HQ's registry of group `g-1`, with these members. */
@@ -163,74 +161,6 @@ describe("halfMadeGroupEnvironments", () => {
   );
 });
 
-describe("missingEnvironmentRows", () => {
-  // The owner, twice on 2026-09-17: "it never asked me to setup production".
-  const cases = [
-    {
-      name: "asks for both once the recipe offers both and the group has neither",
-      tiersOnMain: ["stage", "production"],
-      declared: [],
-      want: ["Stage", "Production"],
-    },
-    {
-      name: "asks only for what is missing",
-      tiersOnMain: ["stage", "production"],
-      declared: ["stage"],
-      want: ["Production"],
-    },
-    {
-      name: "asks for nothing before the recipe is on main",
-      tiersOnMain: [],
-      declared: [],
-      want: [],
-    },
-    {
-      name: "asks for nothing the recipe does not offer",
-      tiersOnMain: ["stage"],
-      declared: [],
-      want: ["Stage"],
-    },
-    {
-      name: "stage before production, whatever the order on main",
-      tiersOnMain: ["production", "stage"],
-      declared: [],
-      want: ["Stage", "Production"],
-    },
-    {
-      // A tier whose environment is being created has no declaration on the
-      // group repo yet — the recipe change lands minutes later. Asking for it
-      // meanwhile put "Stage — not set up yet — Add stage" directly under the
-      // stage it was watching come up (measured on the test account,
-      // 2026-09-20: the row stood for 75 seconds).
-      name: "does not ask for a tier the account already holds a project for",
-      tiersOnMain: ["stage", "production"],
-      declared: [],
-      filled: ["stage"],
-      want: ["Production"],
-    },
-    {
-      name: "asks for nothing once both tiers are held, declared or not",
-      tiersOnMain: ["stage", "production"],
-      declared: ["production"],
-      filled: ["stage"],
-      want: [],
-    },
-  ] as const;
-
-  it.each(Array.from(cases, (tc) => ({ title: tc.name, tc })))("$title", ({ tc }) => {
-    const rows = missingEnvironmentRows({
-      tiersOnMain: tc.tiersOnMain,
-      declarations: tc.declared.map((tier) => ({ tier })),
-      ...("filled" in tc ? { filledTiers: tc.filled } : {}),
-    });
-    expect(rows.map((row) => row.name)).toEqual(tc.want);
-    for (const row of rows) {
-      expect(row.kind).toBe("missing-environment");
-      expect(row.line).toBe(MISSING_ENVIRONMENT_LINE);
-    }
-  });
-});
-
 // The one rule every door asks (the projects page's menu, the sidebar's, the Environments section, the
 // question after a first merge): HQ offers the tier (`add_stage` / `add_production`, its `attach`
 // rule over the application's live projects), the recipe holds it, and no creation of the tier is
@@ -296,6 +226,8 @@ describe("environmentSlots", () => {
     productionRuns: "unknown",
     waiting: { count: 0, atLeast: false },
     mainHasCode: true,
+    merged: [{ kind: "code" }],
+    pullRequests: [],
     releaseOffered: false,
     releasing: undefined,
   };
@@ -460,20 +392,17 @@ describe("environmentSlots", () => {
     {
       case: "an empty production, main has code, the person may release: the first release",
       input: withProduction({ productionRuns: "empty", releaseOffered: true }),
-      rows: [NO_STAGE_RECIPE, ["environment", "p-prod", "No release yet", true]],
+      rows: [NO_STAGE_RECIPE, ["environment", "p-prod", "Waiting for its first release", true]],
     },
     {
       case: "an empty production, main has code, the person may not release: only the information",
       input: withProduction({ productionRuns: "empty" }),
-      rows: [NO_STAGE_RECIPE, ["environment", "p-prod", "No release yet", false]],
+      rows: [NO_STAGE_RECIPE, ["environment", "p-prod", "Waiting for its first release", false]],
     },
     {
       case: "an empty production while main is empty: waiting for the first merge",
       input: withProduction({ productionRuns: "empty", mainHasCode: false }),
-      rows: [
-        NO_STAGE_RECIPE,
-        ["environment", "p-prod", "No release yet — waiting for the first merge", false],
-      ],
+      rows: [NO_STAGE_RECIPE, ["environment", "p-prod", "Waiting for the first merge", false]],
     },
     {
       case: "production runs and changes wait: the count, with Review release for a releaser",
@@ -545,6 +474,8 @@ it("A recorded environment replaces its target's pending and half-made rows with
     productionRuns: "unknown",
     waiting: { count: 0, atLeast: false },
     mainHasCode: undefined,
+    merged: [],
+    pullRequests: [],
     releaseOffered: false,
     releasing: undefined,
   });
@@ -581,6 +512,8 @@ it("A git production takes the production slot, so Add production is no longer o
     productionRuns: "unknown",
     waiting: { count: 0, atLeast: false },
     mainHasCode: true,
+    merged: [{ kind: "code" }],
+    pullRequests: [],
     releaseOffered: true,
     releasing: undefined,
   });

@@ -1,7 +1,7 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { resizeMenu } from "../../harness/browser.ts";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { environmentFixture } from "./fake.ts";
 import { environmentActions } from "./dsl.ts";
 
@@ -19,7 +19,7 @@ const sheetGeometry = `(() => {
 })()`;
 
 describe("owner-reported layout regressions", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     // 2026-10-20, the owner on a one-change release: "can we improve design of this?" — the sheet
     // stood the window's full height, its buttons 1 400 px under its last line.
     it.effect(
@@ -71,7 +71,7 @@ describe("owner-reported layout regressions", () => {
             offered!.sheet,
             "ASSERTION: the sheet ends well above the window's bottom",
           ).toBeLessThan(900);
-          yield* a.when.click("Release v0.1.1 to production");
+          yield* a.when.click("Release v0.1.1");
           const pressed = yield* measure;
           yield* a.when.finish("production");
           yield* a.then.text("v0.1.1 is live");

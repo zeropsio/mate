@@ -1,90 +1,67 @@
 /**
- * Who signed each login in last, as this server saw it: the one record of whose a login is.
+ * Who signed each login in last, as this server knows it: the one record of whose a login is.
  *
  * The turn gate (`ZeropsProjectSigners`), the logins' rows and the Mate's overview to its HQ all
- * go by the person this server watched sign a login in — the subject of the door session that
- * started it. The credential lives on under `/home/zerops` across a restart, so the knowledge of
- * whose it is has to as well.
+ * go by it. Two writers: the person this server watched sign a login in — the subject of the door
+ * session that started it — and HQ, which keeps each login's last signer the Mate reported
+ * (`lastSignedInBy`) and sends the map on the link (`signers`) after every `hello` and again when
+ * an HQ write moves it. That is how whose a login is outlives a restart, or a container that
+ * boots with nothing: the server keeps no file of who may act.
  *
- * One small document beside the logins' homes (`~/.mate/signed-in.json`), written atomically,
- * written with every sign-in that succeeds (a fresh one replaces it). When the credential goes,
- * its entry becomes display history and never authorizes a turn. It is read once, at start: while
- * the server runs, what it saw is the record, whatever the document says by then. A login with nothing kept — a credential from before this
- * record existed, or one signed in from a terminal — is nobody's until somebody signs it in here.
+ * A sign-in watched here is kept with when it happened, by this server's clock (`signedAt`), in the
+ * server's state directory (`sign-ins.json`, `{ [key]: { by, at } }`), because HQ's map names no
+ * time and the Mate restarts on every update. The time is reported only while the login's signer is
+ * the one that file names; a signer HQ's map fills in for another person has none. The Mate reports
+ * that time to HQ (`lastSignedInAt`): a new one is a sign-in, which moves the Mate's owner in HQ.
+ *
+ * When the credential goes, its entry becomes display history and never authorizes a turn. A
+ * login nobody signed in here and HQ names nobody for — one signed in from a terminal — is
+ * nobody's until somebody signs it in here.
  *
  * @module zeropsSignIns
  */
 import * as Context from "effect/Context";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
+import * as Stream from "effect/Stream";
 
-import { writeFileStringAtomically } from "../atomicWrite.ts";
 import { ServerConfig } from "../config.ts";
 
-/** One login's latest successful sign-in: the Zerops user id, and when it started (epoch ms). */
+/** One login's latest signer. */
 export interface SignInRecord {
   readonly by: string;
-  readonly at: number;
   /** Display history only after logout; never credential authority. */
   readonly credentialCleared?: true;
 }
 
 export type SignInRecords = Readonly<Record<string, SignInRecord>>;
 
-export class SignInSaveError extends Schema.TaggedError<SignInSaveError>()("SignInSaveError", {
-  key: Schema.String,
-}) {
-  readonly detail = "Your sign-in could not be recorded. Try signing in again.";
-}
-
 export interface SignInStore {
   /** Current credential authority, by signer key; excludes logout history. */
   readonly load: Effect.Effect<SignInRecords>;
   /** The last recorded signer, including logins whose credentials are gone. */
   readonly lastSigners: Effect.Effect<Readonly<Record<string, string>>>;
-  readonly save: (key: string, record: SignInRecord) => Effect.Effect<void, SignInSaveError>;
+  /**
+   * When the last recorded signer signed each login in (ISO 8601), for the sign-ins this server
+   * watched, before a restart too; a login whose signer another sign-in than the watched one
+   * named has none.
+   */
+  readonly signedAt: Effect.Effect<Readonly<Record<string, string>>>;
+  /** Records that `record.by` signed the login `key` in now, stamped with this server's clock. */
+  readonly save: (key: string, record: SignInRecord) => Effect.Effect<void>;
   readonly clear: (key: string) => Effect.Effect<void>;
+  /** Fill logins without a signer from HQ's `signers` frame. */
+  readonly heard: (signers: Readonly<Record<string, string>>) => Effect.Effect<void>;
+  /** Fires after each save, clear or map that moved a record: whose a login is may have moved. */
+  readonly changes: Stream.Stream<void>;
 }
-
-/** Where the document lives under the server's home. */
-export const signInsPath = (path: Path.Path, homeDir: string): string =>
-  path.join(homeDir, ".mate", "signed-in.json");
-
-const decodeJson = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
-const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
-
-/** The latest instant a `DateTime` holds, in epoch ms: anything past it is no time at all. */
-const MAX_EPOCH_MS = 8_640_000_000_000_000;
-/** A Zerops user id is a short token; anything longer is not one. */
-const MAX_USER_ID_LENGTH = 128;
-
-/**
- * Only well-formed entries count, and anything else is a login with nothing kept: the file sits
- * where the agent's own user can write it, so whatever it holds, the server still starts.
- */
-export const toRecords = (parsed: unknown): SignInRecords => {
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return {};
-  const out: Record<string, SignInRecord> = {};
-  for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
-    if (typeof value !== "object" || value === null || Array.isArray(value)) continue;
-    const { by, at, credentialCleared } = value as {
-      readonly by?: unknown;
-      readonly at?: unknown;
-      readonly credentialCleared?: unknown;
-    };
-    if (typeof by !== "string" || by.length === 0 || by.length > MAX_USER_ID_LENGTH) continue;
-    if (typeof at !== "number" || !Number.isSafeInteger(at) || at < 0 || at > MAX_EPOCH_MS) {
-      continue;
-    }
-    out[key] = { by, at, ...(credentialCleared === true ? { credentialCleared: true } : {}) };
-  }
-  return out;
-};
 
 /** Current authority excludes display history left by a credential that went. */
 const activeRecords = (records: SignInRecords): SignInRecords =>
@@ -92,118 +69,134 @@ const activeRecords = (records: SignInRecords): SignInRecords =>
 const lastSignersOf = (records: SignInRecords): Readonly<Record<string, string>> =>
   Object.fromEntries(Object.entries(records).map(([key, record]) => [key, record.by]));
 
-/** How the store reaches its document: read it (absent when there is none), write it, remove it. */
-export interface SignInDocument {
-  readonly read: Effect.Effect<string | undefined>;
-  /** `true` once the whole document is written. */
-  readonly write: (contents: string) => Effect.Effect<boolean>;
-  /** `true` once there is no document. */
-  readonly remove: Effect.Effect<boolean>;
+/**
+ * Fill gaps in `current` from HQ's map. Existing records, including logout history, stay in place.
+ * `undefined` when nothing moves.
+ */
+const applySigners = (
+  current: SignInRecords,
+  signers: Readonly<Record<string, string>>,
+): SignInRecords | undefined => {
+  const moved: Record<string, SignInRecord> = {};
+  for (const [key, by] of Object.entries(signers)) {
+    if (current[key] !== undefined) continue;
+    moved[key] = { by };
+  }
+  return Object.keys(moved).length === 0 ? undefined : { ...current, ...moved };
+};
+
+/** A sign-in watched here: who signed the login in, and when (ISO 8601), by this server's clock. */
+const SignedAt = Schema.Struct({ by: Schema.String, at: Schema.String });
+const SignedAtMap = Schema.Record(Schema.String, SignedAt);
+type SignedAtMap = typeof SignedAtMap.Type;
+const decodeSignedAt = Schema.decodeUnknownEffect(Schema.fromJsonString(SignedAtMap));
+const encodeSignedAt = Schema.encodeEffect(Schema.fromJsonString(SignedAtMap));
+
+/** Where the watched sign-ins' times outlive the process. */
+export interface SignedAtKeep {
+  readonly read: Effect.Effect<SignedAtMap>;
+  readonly write: (all: SignedAtMap) => Effect.Effect<void>;
 }
 
-/**
- * The store over one document, read once: a read that fails is nothing kept. A save that cannot
- * be written never leaves the sign-in before it standing on disk — after a restart that one would
- * be trusted: the login's entry goes instead, and failing that, the whole document. This server
- * refuses to authorize a login whose new signer could not be kept.
- */
-export const makeSignInStore = (document: SignInDocument) =>
-  Effect.gen(function* () {
-    const lock = yield* Semaphore.make(1);
-    const kept = yield* document.read.pipe(
-      Effect.flatMap((contents) =>
-        contents === undefined
-          ? Effect.succeed<SignInRecords>({})
-          : decodeJson(contents).pipe(Effect.map(toRecords)),
-      ),
-      Effect.orElseSucceed((): SignInRecords => ({})),
-    );
-    const records = yield* Ref.make(kept);
-    const without = (current: SignInRecords, key: string): SignInRecords => {
-      const { [key]: _gone, ...rest } = current;
-      return rest;
-    };
-    const forget = (current: SignInRecords, key: string) =>
-      Effect.gen(function* () {
-        if (yield* document.write(encodeJson(without(current, key)))) return;
-        if (yield* document.remove) return;
-        yield* Effect.logWarning("zerops sign-ins: could not let go of a sign-in", { key });
-      });
-    return {
-      load: Ref.get(records).pipe(Effect.map(activeRecords)),
-      lastSigners: Ref.get(records).pipe(Effect.map(lastSignersOf)),
-      save: (key, record) =>
-        Effect.gen(function* () {
-          const current = yield* Ref.updateAndGet(records, (held) => ({ ...held, [key]: record }));
-          if (yield* document.write(encodeJson(current))) return;
-          yield* Ref.set(records, without(current, key));
-          yield* forget(current, key);
-          return yield* new SignInSaveError({ key });
-        }).pipe(lock.withPermits(1)),
-      clear: (key) =>
-        Effect.gen(function* () {
-          const current = yield* Ref.get(records);
-          const record = current[key];
-          if (record === undefined || record.credentialCleared) return;
-          const next = { ...current, [key]: { ...record, credentialCleared: true as const } };
-          yield* Ref.set(records, next);
-          if (yield* document.write(encodeJson(next))) return;
-          // If history cannot be written, the former credential's authority must still go.
-          yield* forget(current, key);
-        }).pipe(lock.withPermits(1)),
-    } satisfies SignInStore;
-  });
+const keptNowhere: SignedAtKeep = { read: Effect.succeed({}), write: () => Effect.void };
 
-/** The store over one file, written atomically. */
-export const fileSignInStore = (filePath: string) =>
+/**
+ * The times as one JSON file at `at`, replaced whole in one rename. A missing file is no sign-in
+ * yet; an unreadable one or a failed write is logged and leaves the times this process holds.
+ */
+export const signedAtFile = (at: string) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    return yield* makeSignInStore({
-      read: fs.exists(filePath).pipe(
-        Effect.flatMap((exists) =>
-          exists ? fs.readFileString(filePath) : Effect.succeed(undefined),
+    const directory = path.dirname(at);
+    const staged = path.join(directory, `.${path.basename(at)}.next`);
+    return {
+      read: fs.readFileString(at).pipe(
+        Effect.flatMap(decodeSignedAt),
+        Effect.catch((error) =>
+          error._tag === "PlatformError" && error.reason._tag === "NotFound"
+            ? Effect.succeed({})
+            : Effect.logWarning("zerops sign-ins: times unreadable", { reason: error._tag }).pipe(
+                Effect.as({}),
+              ),
         ),
-        Effect.orElseSucceed(() => undefined),
       ),
-      write: (contents) =>
-        writeFileStringAtomically({ filePath, contents }).pipe(
-          Effect.provideService(FileSystem.FileSystem, fs),
-          Effect.provideService(Path.Path, path),
-          Effect.as(true),
-          Effect.catchCause(() => Effect.succeed(false)),
+      write: (all) =>
+        Effect.gen(function* () {
+          const json = yield* encodeSignedAt(all);
+          yield* fs.makeDirectory(directory, { recursive: true });
+          yield* fs.writeFileString(staged, json, { mode: 0o600 });
+          yield* fs.rename(staged, at);
+        }).pipe(
+          Effect.onError(() => fs.remove(staged, { force: true }).pipe(Effect.ignore)),
+          Effect.catch((error) =>
+            Effect.logWarning("zerops sign-ins: times not kept", { reason: error._tag }),
+          ),
+          Effect.uninterruptible,
         ),
-      remove: fs.remove(filePath, { force: true }).pipe(
-        Effect.as(true),
-        Effect.catchCause(() => Effect.succeed(false)),
-      ),
-    });
+    } satisfies SignedAtKeep;
   });
 
-/** The store in memory: a test's, or a server that keeps nothing across restarts. */
-export const memorySignInStore = (initial: SignInRecords = {}) =>
+/**
+ * The store, starting from `initial`: empty in a running server, until HQ's map or a sign-in. The
+ * times of the sign-ins it watched start from and go to `keep`.
+ */
+export const memorySignInStore = (initial: SignInRecords = {}, keep: SignedAtKeep = keptNowhere) =>
   Effect.gen(function* () {
     const records = yield* Ref.make(initial);
+    const signedAt = yield* Ref.make<SignedAtMap>(yield* keep.read);
+    // One write at a time, in the order the sign-ins were kept.
+    const stamps = yield* Semaphore.make(1);
+    const moved = yield* PubSub.unbounded<void>();
+    const told = PubSub.publish(moved, undefined);
     return {
       load: Ref.get(records).pipe(Effect.map(activeRecords)),
       lastSigners: Ref.get(records).pipe(Effect.map(lastSignersOf)),
-      save: (key, record) => Ref.update(records, (current) => ({ ...current, [key]: record })),
+      signedAt: Effect.all([Ref.get(records), Ref.get(signedAt)]).pipe(
+        Effect.map(([current, stamped]) =>
+          Object.fromEntries(
+            Object.entries(stamped)
+              .filter(([key, { by }]) => current[key]?.by === by)
+              .map(([key, { at }]) => [key, at]),
+          ),
+        ),
+      ),
+      save: (key, record) =>
+        stamps
+          .withPermits(1)(
+            DateTime.now.pipe(
+              Effect.flatMap((now) =>
+                Ref.updateAndGet(signedAt, (current) => ({
+                  ...current,
+                  [key]: { by: record.by, at: DateTime.formatIso(now) },
+                })),
+              ),
+              Effect.flatMap(keep.write),
+            ),
+          )
+          .pipe(
+            Effect.andThen(Ref.update(records, (current) => ({ ...current, [key]: record }))),
+            Effect.andThen(told),
+          ),
       clear: (key) =>
-        Ref.update(records, (current) => {
+        Ref.modify(records, (current) => {
           const record = current[key];
-          return record === undefined
-            ? current
-            : {
-                ...current,
-                [key]: { ...record, credentialCleared: true as const },
-              };
-        }),
+          return record === undefined || record.credentialCleared
+            ? [false, current]
+            : [true, { ...current, [key]: { ...record, credentialCleared: true as const } }];
+        }).pipe(Effect.flatMap((cleared) => (cleared ? told : Effect.void))),
+      heard: (signers) =>
+        Ref.modify(records, (current) => {
+          const next = applySigners(current, signers);
+          return next === undefined ? [false, current] : [true, next];
+        }).pipe(Effect.flatMap((changed) => (changed ? told : Effect.void))),
+      changes: Stream.fromPubSub(moved),
     } satisfies SignInStore;
   });
 
 /**
- * The one store of a running server: the login walker writes it, and the gate, the logins' rows
- * and the Mate's overview read it.
+ * The one store of a running server: the login walker and HQ's link write it, and the gate, the
+ * logins' rows and the Mate's overview read it.
  */
 export class ZeropsSignIns extends Context.Service<ZeropsSignIns, SignInStore>()(
   "t3/zerops/zeropsSignIns",
@@ -212,8 +205,11 @@ export class ZeropsSignIns extends Context.Service<ZeropsSignIns, SignInStore>()
 export const layer = Layer.effect(
   ZeropsSignIns,
   Effect.gen(function* () {
-    const path = yield* Path.Path;
     const config = yield* ServerConfig;
-    return yield* fileSignInStore(signInsPath(path, config.homeDir));
+    const path = yield* Path.Path;
+    return yield* memorySignInStore(
+      {},
+      yield* signedAtFile(path.join(config.stateDir, "sign-ins.json")),
+    );
   }),
 );

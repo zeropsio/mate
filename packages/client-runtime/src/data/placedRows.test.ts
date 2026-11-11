@@ -145,7 +145,7 @@ describe("holdPlacedProjectRows", () => {
       via: "hq-stream",
       scopes: [{ scope, generation: store.state().streams.get(scope)?.generation ?? 0 }],
       reset: false,
-      removals: [{ family: "placement", id: "nova", reason: "deleted" }],
+      removals: [{ family: "placement", id: "nova" }],
       rows: [],
     } as AccountInput);
     expect(released).toEqual(["nova"]);

@@ -1,12 +1,23 @@
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { MouseEvent } from "react";
+import { act, type ComponentProps, type MouseEvent } from "react";
+import { create, type ReactTestRenderer } from "react-test-renderer";
 import { ServiceBrowserLink } from "./ServiceBrowserLink";
 
-vi.mock("react", async (original) => ({
-  ...(await original<typeof import("react")>()),
-  useContext: () => null,
-}));
+const trees: ReactTestRenderer[] = [];
+function link(props: ComponentProps<typeof ServiceBrowserLink>) {
+  let tree!: ReactTestRenderer;
+  act(() => {
+    tree = create(<ServiceBrowserLink {...props} />);
+  });
+  trees.push(tree);
+  return tree.root.findByType("a");
+}
+afterEach(() => {
+  act(() => {
+    for (const tree of trees.splice(0)) tree.unmount();
+  });
+});
 
 function click(overrides: Partial<MouseEvent<HTMLAnchorElement>> = {}) {
   return {
@@ -27,9 +38,7 @@ describe("ServiceBrowserLink", () => {
     const resolvePreview = () => onOpen;
     const onClick = vi.fn();
     const event = click();
-    ServiceBrowserLink({ href: "https://example.com", resolvePreview, onClick }).props.onClick(
-      event,
-    );
+    link({ href: "https://example.com", resolvePreview, onClick }).props.onClick(event);
     expect(onOpen).toHaveBeenCalledOnce();
     expect(event.preventDefault).toHaveBeenCalled();
     expect(onClick).toHaveBeenCalled();
@@ -38,7 +47,7 @@ describe("ServiceBrowserLink", () => {
     const resolvePreview = () => null;
     const onClick = vi.fn();
     const event = click();
-    ServiceBrowserLink({
+    link({
       href: "https://example.com/mate/shortlink/pulls/4",
       resolvePreview,
       onClick,
@@ -75,7 +84,7 @@ describe("ServiceBrowserLink", () => {
     const onOpen = vi.fn();
     const resolvePreview = () => onOpen;
     const event = click(modifiers);
-    ServiceBrowserLink({ href: "https://example.com", resolvePreview }).props.onClick(event);
+    link({ href: "https://example.com", resolvePreview }).props.onClick(event);
     expect(onOpen).not.toHaveBeenCalled();
     expect(event.preventDefault).not.toHaveBeenCalled();
   });
@@ -85,7 +94,7 @@ describe("ServiceBrowserLink", () => {
       const onOpen = vi.fn();
       const resolvePreview = () => onOpen;
       const onClick = vi.fn();
-      ServiceBrowserLink({ href, resolvePreview, onClick }).props.onClick(click());
+      link({ href, resolvePreview, onClick }).props.onClick(click());
       expect(onOpen).not.toHaveBeenCalled();
       expect(onClick).toHaveBeenCalled();
     },
@@ -93,7 +102,7 @@ describe("ServiceBrowserLink", () => {
 
   it("takes a link the app can answer itself, ahead of a preview or a new tab", () => {
     const opened: string[] = [];
-    const element = ServiceBrowserLink({
+    const element = link({
       href: "https://gitea.example/links/appdev/pulls/5",
       resolvePreview: () => () => opened.push("preview"),
     });

@@ -2,6 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
 import * as Clock from "effect/Clock";
+import * as TestClock from "effect/testing/TestClock";
 import { AtomRegistry } from "effect/reactivity";
 
 import { hqFixtureWire } from "../__fixtures__/hqWire.ts";
@@ -29,7 +30,7 @@ const until = (store: AccountStore, ready: () => boolean) =>
   }).pipe(Effect.timeout("2 seconds"));
 
 describe("HQ picture demand on the account link", () => {
-  it.live.each([
+  it.effect.each([
     { name: "accepted bytes", refused: false },
     { name: "definitive refusal", refused: true },
   ])("$name stays shared across remount and segment rotation", ({ refused }) =>
@@ -95,7 +96,7 @@ describe("HQ picture demand on the account link", () => {
 });
 
 describe("HQ picture registration fencing", () => {
-  it.live.each(["release", "deadline", "refusal"] as const)(
+  it.effect.each(["release", "deadline", "refusal"] as const)(
     "ignores an answer after %s",
     (ending) =>
       Effect.gen(function* () {
@@ -136,5 +137,50 @@ describe("HQ picture registration fencing", () => {
         expect(hqPicture.derive(readsOfState(store.state()), key).kind).not.toBe("read");
         expect(store.state().facts.size).toBe(0);
       }).pipe(Effect.scoped),
+  );
+});
+
+describe("HQ detail reads past their deadline", () => {
+  // A read whose request never answers held its place after its deadline, so the retry the stream
+  // scheduled never ran: a change's record stayed "No answer came in time." until Try again.
+  it.effect("reads again once a read that never answered passes its deadline", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const interrupted = yield* Deferred.make<void>();
+      const firstStarted = yield* Deferred.make<void>();
+      const secondStarted = yield* Deferred.make<void>();
+      let reads = 0;
+      const signal = (event: Parameters<Parameters<typeof makeHqPictureReads>[0]["signal"]>[1]) =>
+        Effect.map(Clock.currentTimeMillis, (now) =>
+          store.dispatch({ kind: "stream", key: scope, now, event }),
+        );
+      yield* signal({ kind: "demand", demanded: true });
+      const observe = yield* makeHqPictureReads({
+        orgId: key.orgId,
+        store,
+        signal: (_scope, event) => signal(event),
+        read: () =>
+          Effect.suspend(() => {
+            reads += 1;
+            return Deferred.succeed(reads === 1 ? firstStarted : secondStarted, undefined).pipe(
+              Effect.andThen(Effect.never),
+              Effect.onInterrupt(() => Deferred.succeed(interrupted, undefined)),
+            );
+          }),
+        wake: () => {},
+      });
+      yield* observe([scope]);
+      yield* until(store, () => streamOf(store.state(), scope).phase === "baselining");
+      yield* Deferred.await(firstStarted);
+      expect(reads).toBe(1);
+      yield* signal({ kind: "deadline" });
+      const wakeAt = yield* observe([scope]);
+      yield* Deferred.await(interrupted);
+      const now = yield* Clock.currentTimeMillis;
+      yield* TestClock.adjust(Math.max(0, wakeAt - now));
+      yield* observe([scope]);
+      yield* Deferred.await(secondStarted);
+      expect(reads).toBe(2);
+    }).pipe(Effect.scoped),
   );
 });

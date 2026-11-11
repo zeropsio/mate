@@ -137,13 +137,13 @@ it.each(["Update Mates", "automatically", "Mates automatically"])(
   },
 );
 
-describe("Automation settings section", () => {
-  it("registers /settings/automation right after Zerops so the sidebar nav renders it", () => {
-    const paths = Object.keys(SETTINGS_SECTION_LABELS);
-    expect(SETTINGS_SECTION_LABELS["/settings/automation"]).toBe("Automation");
-    expect(paths.indexOf("/settings/automation")).toBe(paths.indexOf("/settings/zerops") + 1);
+describe("Personas settings section", () => {
+  it.each(["persona", "persona templates"])("finds %s on the Personas page", (query) => {
+    expect(searchSettings(query)[0]?.to).toBe("/settings/personas");
   });
+});
 
+describe("Automation settings section", () => {
   it.each(["github", "model key", "slack", "discord", "limits per task"])(
     "finds %s on the Automation page",
     (query) => {

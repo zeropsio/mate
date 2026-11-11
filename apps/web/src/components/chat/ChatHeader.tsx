@@ -1,9 +1,10 @@
 import { useMateVoice } from "../../zerops/mateVoiceContext";
-import { mateStatus } from "../../zerops/mateStatus.logic";
+import { mateStatus, type MateStatusAsk } from "../../zerops/mateStatus.logic";
 import { taskTitle, type ConversationTask } from "../../zerops/automatedMate.logic";
 import { MateTaskStatus } from "../zerops/MateTaskCard";
+import { MateLinkMarker } from "../zerops/MateLinkMarker";
 import { MateStatusMarker } from "../zerops/MateStatusMarker";
-import { ZeropsWorkspaceChip } from "../zerops/ZeropsWorkspaceChip";
+import { useTryMateAgain } from "../../zerops/accountEnvironments";
 import { useEnvironmentSettings } from "../../hooks/useSettings";
 import {
   type EnvironmentId,
@@ -17,7 +18,14 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { ArchiveIcon, ChevronDownIcon, EllipsisIcon } from "lucide-react";
+import {
+  ArchiveIcon,
+  ChevronDownIcon,
+  EllipsisIcon,
+  LayoutDashboardIcon,
+  PanelBottomIcon,
+} from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
 import {
   memo,
   useCallback,
@@ -52,17 +60,20 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { useThreadShell } from "../../state/entities";
 import { useZeropsThreadActivity } from "~/zerops/useZeropsAgentActivity";
-import type { ZeropsMateAt } from "~/zerops/mateIdentities";
+import { mateProjectPage, type ZeropsMateAt } from "~/zerops/mateIdentities";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { ZeropsProjectLink } from "../zerops/ZeropsProjectLink";
+import { ConversationOpeningWaits } from "./ConversationOpeningStage";
 import { useProjectReviewOf, useProjectSitesOf } from "~/zerops/projectPartsShown";
 import { HeaderReviewDoor } from "../zerops/SidebarProjectReview";
 import { headerReviewItems } from "../zerops/SidebarProjectReview.logic";
 import { useHeldBehindReview } from "~/zerops/heldBehindReview";
 import { useRightPanelStore } from "~/rightPanelStore";
+import { RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY } from "~/rightPanelLayout";
 import { MateFaceAsMark } from "../zerops/primitives";
 import { ChatHeaderLinks } from "./ChatHeaderLinks";
 import { ConversationStrip, useMateWorks } from "./ConversationStrip";
+import { MatePersonaPress } from "./MatePersonaPress";
 import { registerThreadSyncSlot } from "./threadSyncSlot";
 import {
   WorkspaceBreadcrumb,
@@ -70,7 +81,11 @@ import {
   WorkspaceBreadcrumbSeparator,
 } from "../WorkspaceBreadcrumb";
 import { cn } from "~/lib/utils";
-import { useIsMobile } from "~/hooks/useMediaQuery";
+import { useMateReadOnly } from "~/zerops/useMateReadOnly";
+import { useHqProjectPerson } from "~/zerops/useZeropsMateOwners";
+import { showWaitingAsk } from "../ask/askReveal";
+import { useOpenVaultAskDoor } from "../zerops/vault/VaultAskContainer";
+import { useIsMobile, useMediaQuery } from "~/hooks/useMediaQuery";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
 
 interface ChatHeaderProps {
@@ -91,11 +106,6 @@ interface ChatHeaderProps {
   conversationLoading?: boolean;
   /** Drafts have no server thread yet, so the title carries no action menu. */
   isServerThread: boolean;
-  /**
-   * The viewer only reads along (a colleague's Mate, or a member without operator rights): it
-   * sends the conversation's agent nothing, so nothing here asks it to act.
-   */
-  readAlong?: boolean;
   activeProjectName: string | undefined;
   activeProjectCwd: string | null;
   activeProjectFaviconPath: string | null;
@@ -105,6 +115,12 @@ interface ChatHeaderProps {
   keybindings: ResolvedKeybindingsConfig;
   availableEditors: ReadonlyArray<EditorId>;
   rightPanelOpen: boolean;
+  /**
+   * The terminal drawer's toggle, where there is a terminal to open: on a phone the header's menu
+   * carries it, its own button gone from beside the panel's (`PanelLayoutControls`).
+   */
+  terminalOpen?: boolean;
+  onToggleTerminal?: (() => void) | undefined;
   gitCwd: string | null;
   onNewThreadInProject: () => void;
   /** Archives the Mate's conversation and opens a fresh one in its place. */
@@ -214,7 +230,6 @@ export const ChatHeader = memo(function ChatHeader({
   activeThreadTask,
   conversationLoading = false,
   isServerThread,
-  readAlong = false,
   activeProjectName,
   activeProjectCwd,
   activeProjectFaviconPath,
@@ -224,6 +239,8 @@ export const ChatHeader = memo(function ChatHeader({
   keybindings,
   availableEditors,
   rightPanelOpen,
+  terminalOpen = false,
+  onToggleTerminal,
   gitCwd,
   onNewThreadInProject,
   onStartFresh,
@@ -250,6 +267,12 @@ export const ChatHeader = memo(function ChatHeader({
     return () => observer.disconnect();
   }, []);
   const actionsCollapsed = isMobile || isNarrowHeader;
+  // A phone's header has room for the Mate, what waits on the person and one panel toggle: the
+  // terminal drawer's goes into the menu, as CSS takes its button out below the same width
+  // (`PanelLayoutControls`), and the project's page with it.
+  const phone = useMediaQuery("max-sm");
+  const terminalInMenu = phone && onToggleTerminal !== undefined;
+  const navigate = useNavigate();
   const [actionsOpen, setActionsOpen] = useState(false);
   const [actionsContainer] = useState(() => {
     const container = document.createElement("div");
@@ -290,6 +313,9 @@ export const ChatHeader = memo(function ChatHeader({
   // share and leaves out what only one of them has.
   const whoLivesHere = useZeropsMate(activeThreadEnvironmentId);
   const mate = whoLivesHere.kind === "mate" ? whoLivesHere.mate : undefined;
+  // Whether its project has a page, known from who the Mate is on the first frame: the header's
+  // links never wait for the menu to say it, and never show one they would take back.
+  const projectPage = mate === undefined || mate.chief === true ? undefined : mateProjectPage(mate);
   // Sites opens the menu's panel for this Mate's project, with its ways to Zerops in it.
   const headerSites = useProjectSitesOf(mate?.chief === true ? undefined : mate?.projectId);
   // What waits on a review in its project, the same Review its row's tag opened (the owner,
@@ -321,16 +347,20 @@ export const ChatHeader = memo(function ChatHeader({
     [activeThreadEnvironmentId, activeThreadId],
   );
   const mateActivity = useZeropsThreadActivity(activeThreadRef);
-  // A Chief's conversation opens beside its organization's overview, until the person closes it.
+  // A Chief's conversation opens beside its organization's overview, until the person closes it:
+  // beside, never over. Where the panel is a sheet (a phone), it covers the conversation, so only
+  // the person opens it there.
   const chiefHere = mate?.chief === true && isServerThread;
   useEffect(() => {
     if (!chiefHere) return;
+    if (window.matchMedia(RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY).matches) return;
     const panels = useRightPanelStore.getState();
     const key = scopedThreadKey(activeThreadRef);
     if (key in panels.byThreadKey) return;
     panels.open(activeThreadRef, "overview");
   }, [chiefHere, activeThreadRef]);
   const linkVoice = useMateVoice();
+  const tryMateAgain = useTryMateAgain();
   const status = linkVoice.surface === "none" ? mateStatus(mateActivity, null) : null;
   const settings = useEnvironmentSettings(activeThreadEnvironmentId);
   const activeThreadShell = useThreadShell(activeThreadRef);
@@ -338,6 +368,27 @@ export const ChatHeader = memo(function ChatHeader({
   // A crewmate's chat is headed by the crewmate, and it is the crew engine's:
   // no rename, no archive, no new session, no commit from here.
   const crewOrigin = activeThreadShell?.crew ?? null;
+  const mateReadOnly = useMateReadOnly(activeThreadEnvironmentId);
+  // A Mate that waits on its person leads to what it waits on: its status names the key or the
+  // question, and a press goes to the ask. Someone reading along is told who is asked instead.
+  const waitsOnAnswer = status?.kind === "answer" ? status : undefined;
+  const vaultAsk = useOpenVaultAskDoor(
+    waitsOnAnswer?.key === true && isServerThread ? activeThreadRef : null,
+  );
+  const mateOwner = useHqProjectPerson(mate?.projectId ?? "")?.owner;
+  const statusAsk: MateStatusAsk | undefined =
+    waitsOnAnswer === undefined
+      ? undefined
+      : mateReadOnly
+        ? { askedOf: mateOwner?.called }
+        : { asked: waitsOnAnswer.key === true ? vaultAsk?.name : mateActivity?.question };
+  const openStatusAsk =
+    waitsOnAnswer === undefined || mateReadOnly
+      ? undefined
+      : () => {
+          // Drawn above the composer or in view: there. A card the list set aside: by its row.
+          if (!showWaitingAsk()) vaultAsk?.show();
+        };
   // A Mate's chat is headed by what the Mate is on in it — the subject its
   // row shows for the main chat (`agentActivity.ts`): the last task as the
   // person put it, not the chat's title, which names its first task forever.
@@ -504,11 +555,14 @@ export const ChatHeader = memo(function ChatHeader({
   const showGitActions =
     Boolean(activeProjectName) && stackedActionsSupported && crewOrigin === null;
   // The header's one menu: upstream's project actions on a narrow header,
-  // and a Mate's own start-over wherever the Mate lives.
-  const startsFresh = mate !== undefined && crewOrigin === null;
+  // and a Mate's own start-over wherever the Mate lives — its owner's, as its
+  // server rules: a colleague reading along archives nothing.
+  const startsFresh = mate !== undefined && crewOrigin === null && !mateReadOnly;
   const projectActionsInMenu =
     actionsCollapsed && (showProjectScripts || showOpenInPicker || showGitActions);
-  const menuShown = startsFresh || projectActionsInMenu;
+  const projectPageInMenu = phone && projectPage?.kind === "page" ? projectPage : undefined;
+  const menuShown =
+    startsFresh || projectActionsInMenu || terminalInMenu || projectPageInMenu !== undefined;
   if (!menuShown && actionsOpen) setActionsOpen(false);
   // The chat's title as it is renamed: under a Mate — whose line says what the
   // chat is about only on hover — over the line from the Mate's name, on the
@@ -620,7 +674,7 @@ export const ChatHeader = memo(function ChatHeader({
     // A Chief's face is the product's own mark here as in its conversation.
     <MateFaceAsMark.Provider value={mate?.chief === true}>
       <div
-        className="@container/header-actions flex min-w-0 flex-1 items-center gap-2 sm:gap-3"
+        className="@container/header-actions flex min-w-0 flex-1 items-center gap-1 sm:gap-3"
         onContextMenu={handleHeaderContextMenu}
       >
         {lead === "reserved" ? (
@@ -644,6 +698,16 @@ export const ChatHeader = memo(function ChatHeader({
               onEditBrief={onEditBrief}
               onEditJob={onEditCrewmateJob}
               onRename={isServerThread && crewOrigin === null ? startRename : null}
+              persona={
+                // A crewmate's chat takes no persona: only the Mate's own chats show it.
+                crewOrigin === null && mate !== undefined && settings.persona != null ? (
+                  <MatePersonaPress
+                    mateName={mate.name}
+                    onOpen={() => useRightPanelStore.getState().open(activeThreadRef, "persona")}
+                    persona={settings.persona.name}
+                  />
+                ) : null
+              }
               renameField={
                 renamingTitle === null ? null : (
                   <div className="absolute inset-y-0 start-8.5 end-0 flex max-w-96 items-center">
@@ -679,28 +743,25 @@ export const ChatHeader = memo(function ChatHeader({
                 )
               }
             />
-            {status === null ? null : (
+            {linkVoice.surface === "header" ? (
+              // A link that is only reconnecting says so here, in the status's seat: no banner.
+              <MateLinkMarker
+                cause={linkVoice.details}
+                onTryNow={
+                  linkVoice.actions.includes("try-now")
+                    ? () => tryMateAgain(activeThreadEnvironmentId)
+                    : undefined
+                }
+                words={linkVoice.text ?? "Reconnecting…"}
+              />
+            ) : status === null ? null : (
               <MateStatusMarker
+                ask={statusAsk}
                 mateName={mate?.name}
+                onOpen={openStatusAsk}
                 status={status}
                 timestampFormat={settings.timestampFormat}
               />
-            )}
-            {/* A conversation bound to a lease: its workspace by name, when it was last
-              active, what a release would lose there, whether it is idle, how many other
-              workspaces the Mate holds (pressed, it lists them), and a Release that asks first —
-              where the header has room. */}
-            {activeThreadShell?.lease == null ? null : (
-              <span className="hidden shrink-0 @3xl/header-actions:block">
-                <ZeropsWorkspaceChip
-                  canRelease={!readAlong}
-                  environmentId={activeThreadEnvironmentId}
-                  latestTurn={activeThreadShell.latestTurn}
-                  lease={activeThreadShell.lease}
-                  mateName={mate?.name}
-                  threadId={activeThreadId}
-                />
-              </span>
             )}
           </>
         ) : (
@@ -750,23 +811,27 @@ export const ChatHeader = memo(function ChatHeader({
           data-thread-sync-slot="true"
           ref={registerThreadSyncSlot}
         />
-        <div
+        <ConversationOpeningWaits
+          as="div"
           ref={headerActionsRef}
           data-chat-header-actions
+          // Every action here arrives with the conversation at the opening's hand-off, never a
+          // step ahead of it (`[data-opening-waits]`, index.css).
           className={cn(
             "flex shrink-0 items-center justify-end",
             // A Mate's header is a row of borderless buttons, 4 px apart like
             // the panel toggles beside it — held so while its Mate is not named yet.
             lead === "breadcrumb" ? "gap-2 @3xl/header-actions:gap-3" : "gap-1",
-            // Reserve two panel toggles (32px, 28px at sm) with their 4px gap and
+            // Reserve two panel toggles (28px at sm) with their 4px gap and
             // 1px edge inset, plus the gap the actions keep between themselves so
             // the terminal toggle does not sit against the last action. The page
-            // header adds 8px more right padding at sm.
+            // header adds 8px more right padding at sm. A phone shows the panel's
+            // toggle alone (32px): the terminal's is in the menu.
             rightPanelOpen
               ? "pr-0"
               : lead === "breadcrumb"
-                ? "pr-19.25 sm:pr-15.25 @3xl/header-actions:pr-16.25"
-                : "pr-18.25 sm:pr-14.25",
+                ? "pr-10.25 sm:pr-15.25 @3xl/header-actions:pr-16.25"
+                : "pr-9.25 sm:pr-14.25",
           )}
         >
           {/* The Mate's version and its update live with its body in the right
@@ -795,35 +860,73 @@ export const ChatHeader = memo(function ChatHeader({
             >
               <div ref={mountMenuActions} className="contents" />
               {createPortal(headerActions, actionsContainer)}
-              {startsFresh ? (
+              {projectPageInMenu !== undefined || terminalInMenu ? (
                 <>
                   {projectActionsInMenu ? <MenuSeparator /> : null}
+                  {projectPageInMenu === undefined ? null : (
+                    <MenuItem
+                      data-zerops-surface="header-project-page"
+                      onClick={() => {
+                        void navigate({
+                          to: "/group/$groupId/flow",
+                          params: { groupId: projectPageInMenu.groupId },
+                        });
+                      }}
+                    >
+                      <LayoutDashboardIcon />
+                      {projectPageInMenu.projectName === undefined
+                        ? "Open the project"
+                        : `Open ${projectPageInMenu.projectName}`}
+                    </MenuItem>
+                  )}
+                  {terminalInMenu ? (
+                    <MenuItem data-header-terminal onClick={onToggleTerminal}>
+                      <PanelBottomIcon />
+                      {terminalOpen ? "Hide terminal" : "Terminal"}
+                    </MenuItem>
+                  ) : null}
+                </>
+              ) : null}
+              {startsFresh ? (
+                <>
+                  {projectActionsInMenu || terminalInMenu || projectPageInMenu !== undefined ? (
+                    <MenuSeparator />
+                  ) : null}
                   <StartFreshMenuItem onStartFresh={onStartFresh} />
                 </>
               ) : null}
             </MenuPopup>
           </Menu>
-          <ChatHeaderLinks
-            environmentId={activeThreadEnvironmentId}
-            mateProjectId={mate?.projectId}
-            sites={headerSites}
-            threadId={activeThreadId}
-          />
+          {/* Project and Sites hold their room while the conversation opens and arrive with it,
+              as the Zerops link beside them does: never a step ahead of the conversation. */}
+          <ConversationOpeningWaits
+            aria-hidden={conversationLoading ? true : undefined}
+            className={conversationLoading ? "invisible contents" : "contents"}
+          >
+            <ChatHeaderLinks
+              environmentId={activeThreadEnvironmentId}
+              mateProjectId={mate?.projectId}
+              page={projectPage}
+              projectInMenu={phone}
+              sites={headerSites}
+              threadId={activeThreadId}
+            />
+          </ConversationOpeningWaits>
           {mate === undefined ? null : (
-            <span
+            <ConversationOpeningWaits
               aria-hidden={conversationLoading ? true : undefined}
               className={conversationLoading ? "invisible contents" : "contents"}
-              data-opening-waits=""
             >
               {mate.chief === true ? (
                 // A Chief's way out is its organization: the overview's cards beside it.
                 <ChiefOverviewButton threadRef={activeThreadRef} />
-              ) : headerSites === undefined ? (
+              ) : projectPage?.kind === "none" ? (
+                // Only a Mate in no project: a project's page and its Sites carry the way there.
                 <ZeropsProjectLink projectUrl={mate.projectUrl} />
               ) : null}
-            </span>
+            </ConversationOpeningWaits>
           )}
-        </div>
+        </ConversationOpeningWaits>
       </div>
     </MateFaceAsMark.Provider>
   );

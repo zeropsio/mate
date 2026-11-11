@@ -25,6 +25,9 @@ export function OperationSubjectLine({
           >
             {subject.host}
           </span>
+          {subject.serverName !== undefined ? (
+            <span className="me-1.5 text-foreground">{subject.serverName}</span>
+          ) : null}
           {subject.path !== undefined ? (
             <span className="font-mono text-muted-foreground" data-zerops-subject-path>
               {subject.path}

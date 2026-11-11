@@ -7,35 +7,40 @@
  */
 import { useState } from "react";
 
+import { cn } from "~/lib/utils";
 import { rememberedOverviewCards } from "~/zerops/overviewCardCount";
 
 import { Loading } from "../../ui/loading";
 import { Skeleton } from "../../ui/skeleton";
 import { ZeropsHostedFrame } from "../landing/ZeropsHostedFrame";
+import { InPhoneBar, useInPhoneBar } from "../system/PhoneBar";
 
 /** The title row, as `ZeropsProjectsHeader` stands it: its height is its buttons'. */
 function TitleRow() {
+  const inBar = useInPhoneBar();
   return (
-    <div
-      className="-mt-1.5 flex min-h-7 items-center justify-between gap-3"
-      data-overview-stand-in-title=""
-    >
-      <h1 className="text-xl font-medium text-foreground">Overview</h1>
-    </div>
+    <InPhoneBar>
+      <div
+        className={cn(
+          "flex min-h-7 items-center justify-between gap-3",
+          inBar ? "min-w-0 flex-1" : "-mt-1.5",
+        )}
+        data-overview-stand-in-title=""
+      >
+        <h1 className="text-xl font-medium text-foreground">Overview</h1>
+      </div>
+    </InPhoneBar>
   );
 }
 
 /**
- * One project card's box, its words grey; `page` is the card a project's own page draws. A card
- * waiting for its detail stands in with it under the card's own name (`label`, `ref`, `id`).
+ * One project card's box, its words grey. A card waiting for its detail stands in with it under the card's own name (`label`, `ref`, `id`).
  */
 export function ProjectCardStandIn({
-  page = false,
   label,
   id,
   ref,
 }: {
-  readonly page?: boolean;
   readonly label?: string | undefined;
   readonly id?: string | undefined;
   readonly ref?: ((element: HTMLElement | null) => void) | undefined;
@@ -45,10 +50,9 @@ export function ProjectCardStandIn({
       aria-busy={label === undefined ? undefined : "true"}
       aria-label={label}
       className="ov-card gap-3"
-      data-page={page ? "" : undefined}
       id={id}
       ref={ref}
-      role={label === undefined || page ? undefined : "listitem"}
+      role={label === undefined ? undefined : "listitem"}
     >
       <div className="flex items-center gap-2.5 px-1">
         <Skeleton className="size-8 shrink-0" shape="pill" />

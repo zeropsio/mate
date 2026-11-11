@@ -6,8 +6,9 @@
  * A listing row names at most the viewer's own grant on the project (`{mine, roleCode}`, a
  * NO_ACCESS member's) or none at all (`[]`, an organization member's; read 2026-10-06): everybody's
  * grants — whose `OWNER` makes a Mate somebody's — come only with the project's own row, read
- * while a screen shows it, and that row is Zerops' whole word on them (none named is none). A
- * listing's empty list is unsaid, so a push, a listing or the roster read again never takes the
+ * while a screen shows it, and that row is Zerops' whole word on them (none named is none). So is
+ * an update frame's list: a push that names it, empty or not, is the project's whole override
+ * list. A listing's empty list is unsaid, so a listing or the roster read again never takes the
  * grants an own read brought, nor the viewer's own grant a listing named.
  *
  * @module data/families/project
@@ -17,6 +18,7 @@ import * as Schema from "effect/Schema";
 
 import type { ZeropsProject } from "../../zerops/api.ts";
 import type { ScopeKey } from "../model.ts";
+import { viewerMembershipChanged } from "./clientUser.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
 
 /**
@@ -96,6 +98,9 @@ function valueOf(row: typeof Row.Type): ProjectValue {
 
 const organization = (orgId: string) => [{ name: "clientId", operator: "eq", value: orgId }];
 
+/** The route's project read ahead of the roster (`routeProjectScope`). */
+export const ROUTE_PROJECT = "route-project";
+
 export const projectFamily: FamilySpec<"project"> = {
   family: "project",
   labelOf: (project) => project.name,
@@ -111,23 +116,26 @@ export const projectFamily: FamilySpec<"project"> = {
     const { userRoles: _everybody, viewerRoleCode: _own, ...rest } = held;
     return { ...rest, ...pushed };
   },
-  keepUnsaid: (held, row, own) => {
+  keepUnsaid: (held, row, from) => {
     const { userRoles, viewerRoleCode, listingNamesGrants: _listed, ...fields } = row;
     // The own row is Zerops' whole word on everybody's grants: none named takes them away, and the
     // viewer's own grant a listing named is retired by it.
-    if (own)
+    if (from === "own")
       return {
         ...fields,
         listingNamesGrants: held?.listingNamesGrants ?? false,
         ...(userRoles === undefined ? {} : { userRoles }),
         ...(viewerRoleCode === undefined ? {} : { viewerRoleCode }),
       };
-    // A listing's empty list is unsaid: the list held stays, and so does the viewer's own grant —
-    // only the account's membership says the viewer is an organization member (the grant's
-    // judgement), never a row.
+    // An update frame's list is the project's whole override list (ZEROPS-069/071): an empty one
+    // takes every override away, the viewer's own among them. A listing's empty list is unsaid:
+    // the list held stays, and so does the viewer's own grant — only the account's membership says
+    // the viewer is an organization member (the grant's judgement), never a row. A row without the
+    // field says nothing either way.
+    const whole = from === "push" && userRoles !== undefined;
     const everybody =
-      userRoles === undefined || userRoles.length === 0 ? held?.userRoles : userRoles;
-    const kept = viewerRoleCode ?? held?.viewerRoleCode;
+      whole || (userRoles !== undefined && userRoles.length > 0) ? userRoles : held?.userRoles;
+    const kept = whole ? viewerRoleCode : (viewerRoleCode ?? held?.viewerRoleCode);
     return {
       ...fields,
       listingNamesGrants:
@@ -157,11 +165,26 @@ export const projectFamily: FamilySpec<"project"> = {
           typeof answer === "object" && answer !== null && "id" in answer ? [answer] : undefined,
       },
     },
+    {
+      // The route's project, read ahead of the roster (`DetailListing.ahead`): what its Mate's
+      // target needs — its status and organization — while the platform's socket logs in.
+      suffix: ROUTE_PROJECT,
+      leaving: "absent-unverified",
+      ahead: true,
+      zerops: {
+        path: ({ ownerId }) => `/project/${encodeURIComponent(ownerId ?? "")}`,
+        items: (answer) =>
+          typeof answer === "object" && answer !== null && "id" in answer ? [answer] : undefined,
+      },
+    },
   ],
   zerops: {
     entity: "project",
     membership: ({ orgId }) => organization(orgId),
     updates: ({ orgId }) => organization(orgId),
+    // A promotion from NO_ACCESS lists no project to the person (ZEROPS-073): any frame of their
+    // own membership reads the roster again.
+    refreshOn: ({ orgId }, row, previous) => viewerMembershipChanged(orgId, row, previous),
     decode: (raw) =>
       Option.match(decodeRow(raw), {
         onNone: () => null,
@@ -177,3 +200,7 @@ export const projectFamily: FamilySpec<"project"> = {
 };
 
 export const projectsScope = (orgId: string): ScopeKey => scopeOf(projectFamily, orgId);
+
+/** The route's project, read ahead of the organization's roster. */
+export const routeProjectScope = (orgId: string, projectId: string): ScopeKey =>
+  `zerops:${orgId}:${ROUTE_PROJECT}:${projectId}`;

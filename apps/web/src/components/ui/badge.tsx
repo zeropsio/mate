@@ -11,7 +11,8 @@ import { cn } from "~/lib/utils";
  * The one label: a short word or count beside the thing it describes. A pill on the status
  * surfaces, so it never reads as a press (a press is a Button, a rectangle). Five tones carry
  * meaning, never decoration: `neutral` for a fact, `info` for work under way, `success` for
- * done or running, `warning` for what needs the person, `danger` for what broke.
+ * done or running, `warning` for what needs the person, `danger` for what broke and for
+ * Production.
  */
 const badgeVariants = cva(
   "relative inline-flex min-w-0 shrink-0 items-center gap-1 whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background [&_svg:not([class*='size-'])]:size-3 [&_svg]:pointer-events-none [&_svg]:shrink-0",
@@ -70,6 +71,11 @@ type BadgeProps = Omit<useRender.ComponentProps<"span">, "children"> & {
         readonly dot: true;
         /** The dot breathes while the work it marks runs (`info`'s default). */
         readonly pulse?: boolean;
+        /**
+         * The words wrap instead of truncating, the dot on their first line: a status said as a
+         * sentence (a failure in its source's words) is never cut.
+         */
+        readonly wrap?: boolean;
         readonly children: ReactNode;
       }
     | {
@@ -89,11 +95,16 @@ function Badge({
   render,
   ...props
 }: BadgeProps) {
+  const wraps = "wrap" in props && props.wrap === true;
   const form = dot === true ? "dot" : "pill";
   const breathes = dot === true && (pulse ?? tone === "info");
   const labelled = dot === true && props.children === undefined;
   const defaultProps = {
-    className: cn(badgeVariants({ form, tone }), className),
+    className: cn(
+      badgeVariants({ form, tone }),
+      wraps && "shrink items-start whitespace-normal",
+      className,
+    ),
     "data-slot": "badge",
     "data-tone": tone,
     "data-dot": dot === true ? "" : undefined,
@@ -101,24 +112,31 @@ function Badge({
     children:
       dot === true ? (
         <>
-          <span
-            aria-hidden="true"
-            data-pulse={breathes ? "" : undefined}
-            className={cn(
-              "inline-flex size-2 shrink-0 rounded-full",
-              DOT_TONE[tone],
-              breathes && "animate-status-pulse motion-reduce:animate-none",
-            )}
-          />
+          {wraps ? (
+            <span aria-hidden="true" className="flex h-lh shrink-0 items-center">
+              <span className={cn("inline-flex size-2 rounded-full", DOT_TONE[tone])} />
+            </span>
+          ) : (
+            <span
+              aria-hidden="true"
+              data-pulse={breathes ? "" : undefined}
+              className={cn(
+                "inline-flex size-2 shrink-0 rounded-full",
+                DOT_TONE[tone],
+                breathes && "animate-status-pulse motion-reduce:animate-none",
+              )}
+            />
+          )}
           {props.children === undefined ? null : (
-            <span className="min-w-0 truncate">{props.children}</span>
+            <span className={wraps ? "min-w-0" : "min-w-0 truncate"}>{props.children}</span>
           )}
         </>
       ) : (
         props.children
       ),
   };
-  const { children: _children, ...rest } = props;
+  const { children: _children, ...given } = props;
+  const { wrap: _wrap, ...rest } = given as typeof given & { readonly wrap?: boolean };
 
   return useRender({
     defaultTagName: "span",

@@ -6,8 +6,14 @@ import { PACE_GAP_MS } from "./runPace.logic";
 import { usePace } from "./usePace";
 
 /** What shows of `keys`: those the pace does not hold. */
-function Shown({ keys }: { readonly keys: ReadonlyArray<string> }) {
-  const held = usePace({ keys, flush: false });
+function Shown({
+  keys,
+  flush = false,
+}: {
+  readonly keys: ReadonlyArray<string>;
+  readonly flush?: boolean;
+}) {
+  const held = usePace({ keys, flush });
   return <>{keys.filter((key) => !held.has(key)).join(",")}</>;
 }
 
@@ -53,6 +59,19 @@ describe("usePace — as drawn", () => {
         vi.advanceTimersByTime(100);
       });
     }
+    expect(renderer.toJSON()).toBe("a,n1,n2,n3");
+  });
+
+  // k27 item 5: a kept conversation shown again swaps in what arrived while it was away, in the
+  // same draw that says it is in sight: nobody watched those arrive.
+  it("lets in at once what arrived while nobody watched, in the draw that shows it again", () => {
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(<Shown flush keys={["a"]} />);
+    });
+    act(() => {
+      renderer.update(<Shown keys={["a", "n1", "n2", "n3"]} />);
+    });
     expect(renderer.toJSON()).toBe("a,n1,n2,n3");
   });
 });

@@ -34,6 +34,7 @@ import {
   ApprovalRequestId,
   type CanonicalItemType,
   type CanonicalRequestType,
+  CLAUDE_DEFAULT_AUTO_COMPACT_WINDOW,
   type ClaudeSettings,
   EventId,
   type ProviderApprovalDecision,
@@ -74,7 +75,7 @@ import {
   formatClaudeResumeCompactionQuestion,
 } from "@t3tools/shared/claudeCompaction";
 import * as Cause from "effect/Cause";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -108,14 +109,17 @@ const claudeMcpSession = (context: {
 }) => ({ runtime: context.query, profiled: context.profiled });
 import { resolveClaudeSdkExecutablePath } from "../Drivers/ClaudeExecutable.ts";
 import { claudeSignedOutMessage, makeClaudeEnvironment } from "../Drivers/ClaudeHome.ts";
-import { planClaudeSkillDispatch } from "../Drivers/ClaudeSkillDispatch.ts";
+import { planClaudeSkillDispatch, type ClaudeSkillTarget } from "../Drivers/ClaudeSkillDispatch.ts";
 import {
   placeClaudePictures,
   rememberTurnPictures,
   turnPictureError,
 } from "../../providerPictures.ts";
-import { discoverClaudeSkills } from "../Drivers/ClaudeSkills.ts";
+import { claudeLaunchArgDirectories, discoverClaudeSkills } from "../Drivers/ClaudeSkills.ts";
 import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
+import { instructionsMark, instructionsRefresh } from "../../resumedInstructions.ts";
+import { makePersonaReader } from "../../personaInstructions.ts";
+import { ServerSettingsService } from "../../serverSettings.ts";
 import {
   BUNDLED_CLAUDE_MODEL_CATALOG,
   type ClaudeModelCatalog,
@@ -282,6 +286,10 @@ interface ClaudeResumeState {
   readonly resumeSessionAt?: string;
   readonly turnCount?: number;
   readonly turnStartMessageIds?: ReadonlyArray<string | null>;
+  /** The mark of the instructions its Claude session holds: a resume keeps its first prompt. */
+  readonly instructions?: string;
+  /** The mark of the system prompt its Claude session began with: compaction returns to it. */
+  readonly startInstructions?: string;
 }
 
 interface ClaudeTurnState {
@@ -497,6 +505,12 @@ interface ClaudeSessionContext {
    * effort override inherit this. */
   currentEffort: string | undefined;
   resumeSessionId: string | undefined;
+  /** The mark of the instructions its Claude session holds; another one hears the current ones. */
+  instructions: string | undefined;
+  /** The mark of the system prompt it began with, which it holds again after compacting. */
+  readonly startInstructions: string | undefined;
+  /** A crewmate's whole appended prompt, fixed at start: Mate's instructions and its crew context. */
+  readonly crewInstructions: string | undefined;
   readonly pendingApprovals: Map<ApprovalRequestId, PendingApproval>;
   readonly pendingUserInputs: Map<ApprovalRequestId, PendingUserInput>;
   /** Completed turn ids, reported by readThread and trimmed on rollback.
@@ -1103,6 +1117,8 @@ function readClaudeResumeState(resumeCursor: unknown): ClaudeResumeState | undef
     resumeSessionAt?: unknown;
     turnCount?: unknown;
     turnStartMessageIds?: unknown;
+    instructions?: unknown;
+    startInstructions?: unknown;
   };
 
   const threadIdCandidate = typeof cursor.threadId === "string" ? cursor.threadId : undefined;
@@ -1131,6 +1147,10 @@ function readClaudeResumeState(resumeCursor: unknown): ClaudeResumeState | undef
     ...(resume ? { resume } : {}),
     ...(resumeSessionAt ? { resumeSessionAt } : {}),
     ...(turnStartMessageIds ? { turnStartMessageIds } : {}),
+    ...(typeof cursor.instructions === "string" ? { instructions: cursor.instructions } : {}),
+    ...(typeof cursor.startInstructions === "string"
+      ? { startInstructions: cursor.startInstructions }
+      : {}),
     ...(turnCountValue !== undefined && Number.isInteger(turnCountValue) && turnCountValue >= 0
       ? { turnCount: turnCountValue }
       : {}),
@@ -1707,6 +1727,16 @@ const SUPPORTED_CLAUDE_IMAGE_MIME_TYPES = new Set([
   "image/png",
   "image/webp",
 ]);
+// Model and effort can change after this session-level prompt is set.
+const CLAUDE_INSTRUCTIONS = buildRuntimeInstructions({ harness: "Claude Code" });
+/** The text a preset system prompt appends, when it is one. */
+const presetAppend = (systemPrompt: ClaudeQueryOptions["systemPrompt"]) =>
+  typeof systemPrompt === "object" && !Array.isArray(systemPrompt) && "append" in systemPrompt
+    ? systemPrompt.append
+    : undefined;
+/** Mate's instructions for a session, with the persona unless it runs in a crew. */
+const claudeInstructions = (persona: string | undefined) =>
+  persona === undefined ? CLAUDE_INSTRUCTIONS : `${CLAUDE_INSTRUCTIONS}\n${persona}`;
 const CLAUDE_SETTING_SOURCES = [
   "user",
   "project",
@@ -1765,18 +1795,20 @@ const buildUserMessageEffect = Effect.fn("buildUserMessageEffect")(function* (
     readonly attachmentsDir: string;
     readonly boundInstanceId: ProviderInstanceId;
     readonly modelCatalog: ClaudeModelCatalog;
-    /** Names of the skills Claude Code can run for this session's cwd. */
-    readonly skillNames: ReadonlySet<string>;
+    /** The skills Claude Code can run for this session's cwd, by name. */
+    readonly skills: ReadonlyMap<string, ClaudeSkillTarget>;
+    /** Text the message leads with, ahead of everything the person sent. */
+    readonly preface?: string | undefined;
   },
 ) {
   const text = buildPromptText(input, dependencies.boundInstanceId, dependencies.modelCatalog);
   const sdkContent: Array<Record<string, unknown>> = [];
 
   // Claude Code expands a skill only from the LAST text block, and only when
-  // `/name` is its first character. A `$skill` chip anywhere in the prompt is
-  // therefore split into [leading text, "/name trailing text"] so the CLI
-  // runs it natively and the prose around it survives. See ClaudeSkillDispatch.
-  const dispatch = planClaudeSkillDispatch(text, dependencies.skillNames);
+  // `/name` is its first character. A `$skill` chip anywhere in the prompt
+  // therefore becomes [whole request, "/name trailing text"] so the CLI runs
+  // it natively and the model still reads the full request. See ClaudeSkillDispatch.
+  const dispatch = planClaudeSkillDispatch(text, dependencies.skills);
   if (dispatch?.leadingText !== undefined) {
     sdkContent.push({ type: "text", text: dispatch.leadingText });
   }
@@ -1840,7 +1872,12 @@ const buildUserMessageEffect = Effect.fn("buildUserMessageEffect")(function* (
     sdkContent.push({ type: "text", text });
   }
 
-  return buildUserMessage({ sdkContent: placeClaudePictures(sdkContent) });
+  return buildUserMessage({
+    sdkContent: [
+      ...(dependencies.preface === undefined ? [] : [{ type: "text", text: dependencies.preface }]),
+      ...placeClaudePictures(sdkContent),
+    ],
+  });
 });
 
 /**
@@ -1878,7 +1915,7 @@ function resultOutcome(
   // reported its cause (expired login, rejected usage window).
   const successTaggedFailure = result.subtype === "success" && result.is_error === true;
   const structuredError = isOverloadedResult(result)
-    ? "Claude API is overloaded (529). Try again shortly."
+    ? "Claude is at capacity right now. Try again in a minute: send a message to pick up where it left off."
     : (terminalResultError(result.terminal_reason, failureHint) ??
       (successTaggedFailure ? failureHint : undefined));
   // CLI diagnostic entries must not become the error banner. Success results
@@ -2285,9 +2322,22 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const serverConfig = yield* ServerConfig;
-  const crypto = yield* Crypto.Crypto;
+  const readPersona = yield* makePersonaReader(yield* ServerSettingsService);
+  const crypto = yield* SecureRandom.SecureRandom;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const threadRegistries = yield* readClaudeThreadRegistries;
+  /**
+   * The instructions a session should hold now: a crewmate's are its whole prompt from start,
+   * with no persona. Undefined when no persona was ever read, and the session keeps what it heard.
+   */
+  const currentInstructions = (crewInstructions: string | undefined) =>
+    crewInstructions !== undefined
+      ? Effect.succeed(crewInstructions)
+      : readPersona.pipe(
+          Effect.map((persona) =>
+            persona === undefined ? undefined : claudeInstructions(persona),
+          ),
+        );
   const claudeEnvironment = yield* makeClaudeEnvironment(claudeSettings, options?.environment).pipe(
     Effect.provideService(Path.Path, path),
   );
@@ -2320,7 +2370,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
   const runtimeEventQueue = yield* Queue.unbounded<ProviderRuntimeEvent>();
 
   const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
-  const randomUUIDv4 = crypto.randomUUIDv4.pipe(
+  const randomUUIDv4 = crypto.uuidV4().pipe(
     Effect.mapError(
       (cause) =>
         new ProviderAdapterRequestError({
@@ -2403,6 +2453,8 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       ...(context.lastAssistantUuid ? { resumeSessionAt: context.lastAssistantUuid } : {}),
       turnCount: context.turnStartMessageIds.length,
       turnStartMessageIds: [...context.turnStartMessageIds],
+      ...(context.instructions ? { instructions: context.instructions } : {}),
+      ...(context.startInstructions ? { startInstructions: context.startInstructions } : {}),
     };
 
     context.session = {
@@ -4175,6 +4227,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         });
         return;
       case "compact_boundary": {
+        // Compaction drops every reminder that led a message; the session holds its first prompt.
+        context.instructions = context.startInstructions;
+        yield* updateResumeCursor(context);
         if (context.turnState) {
           context.turnState.latestAssistantUsage = undefined;
           context.turnState.compactedSinceLatestAssistantUsage = true;
@@ -5541,6 +5596,8 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       });
       const claudeBinaryPath = claudeSdkExecutablePath;
       const {
+        // claudeLaunchArgDirectories reads every --add-dir into additionalDirectories.
+        "add-dir": _launchArgAddDir,
         "permission-mode": launchArgPermissionMode,
         "dangerously-skip-permissions": launchArgSkipPermissions,
         ...extraArgs
@@ -5609,9 +5666,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         ...(requestThinkingSummaries ? { showThinkingSummaries: true } : {}),
         ...(fastMode ? { fastMode: true } : {}),
         ...(ultracode ? { ultracode: true } : {}),
-        ...(claudeSettings.autoCompactWindow
-          ? { autoCompactWindow: Number(claudeSettings.autoCompactWindow) }
-          : {}),
+        autoCompactWindow: claudeSettings.autoCompactWindow
+          ? Number(claudeSettings.autoCompactWindow)
+          : CLAUDE_DEFAULT_AUTO_COMPACT_WINDOW,
       };
       if (requestThinkingSummaries && extraArgs["thinking-display"] === undefined) {
         extraArgs["thinking-display"] = "summarized";
@@ -5623,8 +5680,13 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       const additionalDirectories = [
         ...(input.cwd ? [input.cwd] : []),
         serverConfig.attachmentsDir,
+        ...claudeLaunchArgDirectories(claudeSettings.launchArgs),
       ];
       const stderrTail = makeStderrTail();
+      const startInstructions =
+        threadSetup === undefined
+          ? ((yield* currentInstructions(undefined)) ?? CLAUDE_INSTRUCTIONS)
+          : CLAUDE_INSTRUCTIONS;
       const baseQueryOptions: ClaudeQueryOptions = {
         ...(input.cwd ? { cwd: input.cwd } : {}),
         // Kept for the log: why the stream died, when it dies.
@@ -5634,8 +5696,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         systemPrompt: {
           type: "preset",
           preset: "claude_code",
-          // Model and effort can change after this session-level prompt is set.
-          append: buildRuntimeInstructions({ harness: "Claude Code" }),
+          append: startInstructions,
         },
         settingSources: [...CLAUDE_SETTING_SOURCES],
         // `ultracode` is a Claude Code setting, not an API effort level. It is
@@ -5657,7 +5718,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         ...(permissionMode === "bypassPermissions"
           ? { allowDangerouslySkipPermissions: true }
           : {}),
-        ...(Object.keys(settings).length > 0 ? { settings } : {}),
+        settings,
         ...(existingResumeSessionId ? { resume: existingResumeSessionId } : {}),
         ...(newSessionId ? { sessionId: newSessionId } : {}),
         includePartialMessages: true,
@@ -5666,7 +5727,14 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         supportedDialogKinds: ["resume_return"],
         // Claude says when it is idle: only once every background result reached the model, which
         // the engine reads as nothing finished still waiting for a turn (`session_state_changed`).
-        env: { ...claudeEnvironment, CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1" },
+        // The CLI waits for its MCP servers (its connect timeout, about 5 s) before reading the
+        // first prompt. Started in the background, a resumed session's first prompt told the model
+        // its tools were gone and then back, and it spent a round loading them again.
+        env: {
+          ...claudeEnvironment,
+          CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1",
+          MCP_CONNECTION_NONBLOCKING: "false",
+        },
         additionalDirectories,
         ...(Object.keys(extraArgs).length > 0 ? { extraArgs } : {}),
       };
@@ -5681,6 +5749,13 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
             ),
           )
         : baseQueryOptions;
+      // What the session holds: a crewmate's profile appends its crew context.
+      const appended = presetAppend(queryOptions.systemPrompt) ?? startInstructions;
+      const freshMark = instructionsMark(appended);
+      const heardMark =
+        existingResumeSessionId === undefined ? freshMark : resumeState?.instructions;
+      const startMark =
+        existingResumeSessionId === undefined ? freshMark : resumeState?.startInstructions;
 
       yield* Effect.annotateCurrentSpan({
         "provider.kind": PROVIDER,
@@ -5774,6 +5849,8 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
             ...(resumeState?.turnStartMessageIds
               ? { turnStartMessageIds: resumeState.turnStartMessageIds }
               : {}),
+            ...(heardMark ? { instructions: heardMark } : {}),
+            ...(startMark ? { startInstructions: startMark } : {}),
           },
           createdAt: startedAt,
           updatedAt: startedAt,
@@ -5796,6 +5873,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           currentApiModelId: apiModelId,
           currentEffort: effectiveEffort ?? undefined,
           resumeSessionId: sessionId,
+          instructions: heardMark,
+          startInstructions: startMark,
+          crewInstructions: threadSetup === undefined ? undefined : appended,
           pendingApprovals,
           pendingUserInputs,
           turns: [],
@@ -6029,15 +6109,24 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       Effect.provideService(FileSystem.FileSystem, fileSystem),
       Effect.provideService(Path.Path, path),
     );
+    // Instructions changed since the session last heard them (a persona switched, a resume or a
+    // compaction): its next message leads with the current ones.
+    const instructions = yield* currentInstructions(context.crewInstructions);
+    const heard = instructions === undefined ? undefined : instructionsMark(instructions);
+    const preface =
+      instructions === undefined || context.instructions === heard
+        ? undefined
+        : instructionsRefresh(instructions);
     const message = yield* buildUserMessageEffect(input, {
+      preface,
       fileSystem,
       attachmentsDir: serverConfig.attachmentsDir,
       boundInstanceId,
       modelCatalog,
-      skillNames: new Set(
+      skills: new Map(
         skills
           .filter((skill) => skill.enabled && skill.userInvocable !== false)
-          .map((skill) => skill.name),
+          .map((skill) => [skill.name, skill]),
       ),
     });
 
@@ -6107,6 +6196,10 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         provider: PROVIDER,
         threadId: input.threadId,
       });
+    }
+    if (preface !== undefined) {
+      context.instructions = heard;
+      yield* updateResumeCursor(context);
     }
 
     return {
@@ -6323,6 +6416,13 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
               resume: fork.sessionId,
               turnCount: retainedCount,
               turnStartMessageIds: retainedBoundaries,
+              // A reminder may sit in a trimmed turn: the fork has heard only its first prompt.
+              ...(context.startInstructions
+                ? {
+                    instructions: context.startInstructions,
+                    startInstructions: context.startInstructions,
+                  }
+                : {}),
             }
           : undefined,
       });

@@ -1,7 +1,8 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { resizeMenu } from "../../harness/browser.ts";
+import { waitForStillFrames } from "../../harness/stillFrames.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { installCreation } from "./fake.ts";
 import { creation } from "./dsl.ts";
@@ -38,7 +39,7 @@ function recordMatesTop(cardAt: string) {
 }
 
 describe("owner-reported layout regressions", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     // The run's Add stage: the Stage section came, was re-titled, grew its Manage addresses and,
     // a minute in, its app and db dots — Project Mates moved down three times while it was set up.
     it.effect(
@@ -63,8 +64,7 @@ describe("owner-reported layout regressions", () => {
           yield* c.click("Add stage to Shop");
           yield* c.environmentAppears("Shop-b", "stage");
           yield* c.stageAdded;
-          // What a settled card might still move shows within a beat.
-          yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 1_500)));
+          yield* Effect.promise(() => waitForStillFrames(s.page));
           const frames = yield* Effect.promise(() =>
             s.page.evaluate(
               () => (window as unknown as { addingFrames: AddingFrame[] }).addingFrames,

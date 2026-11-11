@@ -1,4 +1,8 @@
 import { describe, expect, it, vi } from "vite-plus/test";
+import {
+  resolveMateVisibility,
+  type RoleMateVisibility,
+} from "@t3tools/client-runtime/zerops/mateAccess";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { HqMates, HqStructure } from "@t3tools/client-runtime/zerops/hq";
 import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
@@ -495,10 +499,72 @@ describe("buildThreadActionItems — chats HQ lists", () => {
     current: true,
     connected: (environmentId: EnvironmentId) => environmentId === OPEN,
     linkable: () => true,
+    visibilityByProject: Object.fromEntries([...mates.keys()].map((id) => [id, "open" as const])),
     lastVisitedAt: () => undefined,
     mateName: (projectId: string) => (projectId === "project-parked" ? "Ida" : undefined),
     mateApp: (projectId: string) => (projectId === "project-parked" ? "Shop" : undefined),
     renderStatus: (status: { readonly kind: string }) => `status:${status.kind}`,
+  });
+
+  it("the palette shows no conversation titles of a Mate the person's role only lists", () => {
+    const viewer = { id: "org", membershipId: "member", roleCode: "READ_ONLY" };
+    const listed = resolveMateVisibility({
+      project: { id: "project-parked", clientId: "org", userRoles: [] },
+      viewer,
+    });
+    const open = resolveMateVisibility({
+      project: {
+        id: "project-allowed",
+        clientId: "org",
+        userRoles: [{ clientUserId: "member", roleCode: "BASIC_USER" }],
+      },
+      viewer,
+    });
+    expect([listed, open]).toEqual(["listed", "open"]);
+
+    const allowed = EnvironmentId.make("environment-allowed");
+    const unknown = EnvironmentId.make("environment-unknown");
+    const itemsFor = (visibilityByProject: Readonly<Record<string, RoleMateVisibility>>) =>
+      buildThreadActionItems({
+        threads: [
+          makeThread({
+            id: ThreadId.make("thread-kept"),
+            environmentId: PARKED,
+            title: "Kept private conversation",
+          }),
+        ],
+        hq: {
+          ...hq(
+            new Map([
+              [
+                "project-parked",
+                mate(PARKED, [digest("private", { title: "Private conversation" })]),
+              ],
+              [
+                "project-allowed",
+                mate(allowed, [digest("allowed", { title: "Allowed conversation" })]),
+              ],
+              [
+                "project-unknown",
+                mate(unknown, [digest("unknown", { title: "Unverified conversation" })]),
+              ],
+            ]),
+          ),
+          visibilityByProject,
+        },
+        projectTitleById: new Map(),
+        sortOrder: "updated_at",
+        icon: null,
+        runThread: async (_thread) => undefined,
+      });
+
+    expect(itemsFor({}).map((item) => item.title)).toEqual([]);
+    expect(
+      itemsFor({ "project-parked": listed, "project-allowed": open }).map((item) => item.title),
+    ).toEqual(["Allowed conversation"]);
+    expect(
+      itemsFor({ "project-parked": open, "project-allowed": open }).map((item) => item.title),
+    ).toEqual(["Private conversation", "Allowed conversation"]);
   });
 
   it("lists an unopened Mate's chats from HQ without branch or terminal badges", async () => {
@@ -572,23 +638,6 @@ describe("buildThreadActionItems — chats HQ lists", () => {
     expect(items.map((item) => [item.value, item.title, item.titleTrailingContent])).toEqual([
       ["thread:thread-parked", "Checkout flow", undefined],
     ]);
-  });
-
-  it("lists the chats of HQ's view kept from before without a status", () => {
-    const [item] = buildThreadActionItems({
-      threads: [],
-      hq: {
-        ...hq(new Map([["project-parked", mate(PARKED, [digest("t1", { kind: "approval" })])]])),
-        current: false,
-      },
-      projectTitleById: new Map(),
-      sortOrder: "updated_at",
-      icon: null,
-      runThread: async (_thread) => undefined,
-    });
-
-    expect(item?.value).toBe("thread:t1");
-    expect(item?.titleLeadingContent).toBeUndefined();
   });
 });
 
@@ -728,16 +777,6 @@ describe("hqChatMateNames", () => {
 
 describe('paletteNoMatchMessage: no "no matching" before the lists are read', () => {
   it.each([
-    [
-      "threads and projects not read yet: says nothing",
-      { isActionsOnly: false, listsRead: false },
-      "",
-    ],
-    [
-      "read, nothing matches",
-      { isActionsOnly: false, listsRead: true },
-      "No matching commands, projects, or threads.",
-    ],
     // Actions are the palette's own: known from the first frame.
     [
       "actions only, the lists not read yet",

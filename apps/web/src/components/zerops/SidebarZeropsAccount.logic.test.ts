@@ -110,6 +110,7 @@ describe("sidebarAccountDestinationOf", () => {
     ["/usage", "usage"],
     ["/settings/team", "team"],
     ["/settings/team/invite", "team"],
+    ["/settings/billing", "billing"],
     ["/git", "git"],
     ["/zerops", "projects"],
     ["/", null],

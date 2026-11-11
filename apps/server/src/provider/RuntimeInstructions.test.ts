@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 import { CONTENT_CONTRACT } from "../contentContract.ts";
 import { MAC_HOST_INSTRUCTIONS } from "../macHostInstructions.ts";
+import { PICTURE_ASK_INSTRUCTIONS } from "../pictureAskInstructions.ts";
+import { MATE_PLACES_INSTRUCTIONS } from "../matePlacesInstructions.ts";
 import { buildRuntimeInstructions } from "./RuntimeInstructions.ts";
 
 describe("buildRuntimeInstructions", () => {
@@ -20,6 +22,13 @@ describe("buildRuntimeInstructions", () => {
     "tells the %s harness how to work on a Mac the user pairs",
     (harness) => {
       expect(buildRuntimeInstructions({ harness }).endsWith(MAC_HOST_INSTRUCTIONS)).toBe(true);
+    },
+  );
+
+  it.each(["Claude Code", "Codex", "Cursor", "OpenCode", "Grok", "Antigravity"])(
+    "tells the %s harness where the person does things in Mate",
+    (harness) => {
+      expect(buildRuntimeInstructions({ harness })).toContain(MATE_PLACES_INSTRUCTIONS);
     },
   );
 
@@ -63,7 +72,7 @@ describe("buildRuntimeInstructions", () => {
       expect(instructions).not.toContain("cannot see images");
       expect(instructions).toBe(buildRuntimeInstructions({ harness: "Claude Code" }));
       expect(instructions).toContain(
-        `</runtime_info>\n${CONTENT_CONTRACT}\n${MAC_HOST_INSTRUCTIONS}`,
+        `</runtime_info>\n${CONTENT_CONTRACT}\n${MATE_PLACES_INSTRUCTIONS}\n${PICTURE_ASK_INSTRUCTIONS}\n${MAC_HOST_INSTRUCTIONS}`,
       );
     },
   );

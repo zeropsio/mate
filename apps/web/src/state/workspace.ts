@@ -28,8 +28,10 @@ export function workspaceQuery<K extends WorkspaceRead>(kind: K) {
   const family = Atom.family((key: string) => {
     const target = JSON.parse(key) as WorkspaceTarget<K>;
     let manual = false;
+    let held: { readonly reads: ReturnType<typeof makeWorkspaceReads> } | null = null;
     const holder = Atom.make((get) => {
       const host = get(workspaceHostAtom);
+      held = host;
       if (host === null) return null;
       // Existing stacked Git actions signal invalidation, without restoring their retired refs cache.
       if (kind === "refs") get(vcsRefsCacheStateAtom({ environmentId: target.environmentId }));
@@ -53,6 +55,8 @@ export function workspaceQuery<K extends WorkspaceRead>(kind: K) {
         );
       },
       (refresh) => {
+        // Views reading again together (each on window focus) share one read of the live demand.
+        if (held !== null) return held.reads.refresh(kind, target);
         manual = true;
         refresh(holder);
       },

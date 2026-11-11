@@ -6,14 +6,15 @@ import { serve } from "../../harness/http.ts";
 
 export async function observeBrowserBudget(zerops: ZeropsFake) {
   const events = new NodeEvents.EventEmitter();
+  const counts = new Map<string, number>();
   let pending = 0;
   let registrations = 0;
   const handle = zerops.handle;
-  const isBrowser = (credential: string) => credential === "personal" || credential === "anonymous";
   // Core retains the original fake origin; only browser routes use this observed listener.
   const server = await serve(async (request) => {
-    const credential = request.headers.authorization?.replace(/^Bearer /u, "") ?? "anonymous";
-    if (!isBrowser(credential)) return handle(request);
+    const path = request.url.pathname.replace(/^\/api\/rest\/public/u, "");
+    const key = `${request.method} ${path}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
     pending++;
     if (request.method !== "OPTIONS" && request.body.wsOutputType) registrations++;
     events.emit("activity");
@@ -29,19 +30,13 @@ export async function observeBrowserBudget(zerops: ZeropsFake) {
     settled: () => settled(events, () => pending === 0, "browser Zerops traffic quiet for 1 s"),
     sample() {
       let requests = 0;
-      for (const [credential, counts] of zerops.requestsByCredential) {
-        if (!isBrowser(credential)) continue;
-        for (const [key, count] of counts) if (!key.startsWith("OPTIONS ")) requests += count;
-      }
+      for (const [key, count] of counts) if (!key.startsWith("OPTIONS ")) requests += count;
       return { requests, registrations, otherRequests: requests - registrations };
     },
     /** The browser's requests whose `METHOD path` matches, CORS preflights included. */
     matching(pattern: RegExp) {
       let count = 0;
-      for (const [credential, counts] of zerops.requestsByCredential) {
-        if (!isBrowser(credential)) continue;
-        for (const [key, spent] of counts) if (pattern.test(key)) count += spent;
-      }
+      for (const [key, spent] of counts) if (pattern.test(key)) count += spent;
       return count;
     },
   };

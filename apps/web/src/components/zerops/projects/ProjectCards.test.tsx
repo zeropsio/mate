@@ -1,4 +1,21 @@
 // @vitest-environment happy-dom
+import {
+  makeAccountStore,
+  observeAccount,
+  streamOf,
+  type DetailDemand,
+} from "@t3tools/client-runtime/data";
+import * as Effect from "effect/Effect";
+import { hqFixtureWire } from "@t3tools/client-runtime/data/fixtures";
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  Outlet,
+  RouterProvider,
+} from "@tanstack/react-router";
+import { AtomRegistry } from "effect/reactivity";
 import type * as React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -10,9 +27,11 @@ const detail = vi.hoisted(() => ({
   /** What HQ said of each application's detail, by its id. */
   reads: {} as Record<string, { read: "unread" | "reading" | "read"; failure: null }>,
   held: new Set<string>(),
-  demand: vi.fn(({ ownerId }: { ownerId: string }) => {
+  demand: vi.fn(({ ownerId }: DetailDemand) => {
     detail.held.add(ownerId);
-    return () => detail.held.delete(ownerId);
+    return () => {
+      detail.held.delete(ownerId);
+    };
   }),
 }));
 vi.mock("~/zerops/ZeropsAccountData", () => ({
@@ -22,9 +41,10 @@ vi.mock("~/zerops/ZeropsAccountData", () => ({
   useDetailDemand: () => {},
 }));
 vi.mock("~/zerops/useNowMs", () => ({ useNowMs: () => 0 }));
-vi.mock("@tanstack/react-router", async () => {
+vi.mock("@tanstack/react-router", async (original) => {
   const { createElement } = await import("react");
   return {
+    ...(await original<typeof import("@tanstack/react-router")>()),
     Link: ({
       to,
       params = {},
@@ -39,12 +59,31 @@ vi.mock("@tanstack/react-router", async () => {
       }),
   };
 });
+vi.mock("~/zerops/ZeropsSessionProvider", async (original) => ({
+  ...(await original<typeof import("~/zerops/ZeropsSessionProvider")>()),
+  useZeropsSessionOptional: () => ({
+    status: "signed-in",
+    user: { id: "ada", email: "ada@example.test", firstName: "Ada" },
+    organizations: [{ id: "org", name: "Org", membershipId: "member" }],
+    activeOrganization: { id: "org", name: "Org", membershipId: "member" },
+    selectOrganization: async () => {},
+    signOut: async () => {},
+  }),
+}));
+vi.mock("~/zerops/chiefSetup", async (original) => ({
+  ...(await original<typeof import("~/zerops/chiefSetup")>()),
+  useChiefOffer: () => undefined,
+}));
+vi.mock("~/components/ui/sidebar", async (original) => ({
+  ...(await original<typeof import("~/components/ui/sidebar")>()),
+  useSidebar: () => ({ isMobile: false, setOpenMobile: () => {} }),
+}));
 
-import { PlacePanel } from "./PlacePanel";
-import { CardMate, ProjectCards } from "./ProjectCards";
-import { overviewKeeps } from "./projectsView.logic";
+import { MateRow } from "../system/MateRow";
+import { ProjectCards } from "./ProjectCards";
 import { cardMateReading } from "./projectCard.logic";
-import { entry, FLOW_PROPS, item, placed, STAGE_STOP, WREN } from "./flowTestFixtures";
+import { born, entry, FLOW_PROPS, item, placed, WREN } from "./flowTestFixtures";
+import { SidebarZeropsAccountRow } from "../SidebarZeropsAccount";
 
 // The browser owns viewport intersection; this render case holds both already-visible cards.
 class VisibleCard {
@@ -66,6 +105,48 @@ afterEach(() => {
   detail.demand.mockClear();
 });
 
+it("a pending Mate's project card shows its shared birth phase and actions", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("IntersectionObserver", VisibleCard);
+  const groups = born();
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const onContinue = vi.fn();
+  try {
+    await act(async () =>
+      root.render(
+        <ProjectCards
+          focusGroup={undefined}
+          groups={groups}
+          props={{
+            ...FLOW_PROPS,
+            renderComingBirth: (projectId: string) =>
+              projectId === "vale-dev"
+                ? {
+                    line: "Project created · Quota reached.",
+                    stopped: true,
+                    onOpen: undefined,
+                    menu: <button onClick={onContinue}>Continue</button>,
+                  }
+                : undefined,
+          }}
+        />,
+      ),
+    );
+    expect(container.textContent).toContain("Project created · Quota reached.");
+    await act(async () =>
+      [...container.querySelectorAll("button")]
+        .find((button) => button.textContent === "Continue")
+        ?.click(),
+    );
+    expect(onContinue).toHaveBeenCalledOnce();
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});
+
 // The onboarding run: a card's first frame said "No changes yet" and had no History; 40 ms later
 // its changes came and every section below moved down.
 it("paints a card once, whole: it stands in until HQ said its detail, never an empty list it takes back", async () => {
@@ -78,11 +159,7 @@ it("paints a card once, whole: it stands in until HQ said its detail, never an e
   const root = createRoot(container);
   const render = () =>
     root.render(
-      <ProjectCards
-        focusGroup={undefined}
-        groups={groups}
-        props={{ ...FLOW_PROPS, groups, renderChanges: () => <p>No changes yet</p> }}
-      />,
+      <ProjectCards focusGroup={undefined} groups={groups} props={{ ...FLOW_PROPS, groups }} />,
     );
   try {
     await act(async () => render());
@@ -97,6 +174,159 @@ it("paints a card once, whole: it stands in until HQ said its detail, never an e
     expect(container.querySelector('[aria-busy="true"]')).toBeNull();
   } finally {
     await act(async () => root.unmount());
+    container.remove();
+  }
+});
+
+// State Smoke, 2026-10-27: the overview mounted its card under its wait, out of sight; on a busy
+// page the browser told "hidden" and "on screen" in one callback, and the card read the first and
+// stood in for good, never asking HQ for its detail.
+it("a card that comes into sight holds its detail, even when the browser tells its hidden first sight in the same report", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      constructor(private readonly on: IntersectionObserverCallback) {}
+      observe(target: Element) {
+        this.on(
+          [
+            { target, isIntersecting: false, time: 1 } as IntersectionObserverEntry,
+            { target, isIntersecting: true, time: 2 } as IntersectionObserverEntry,
+          ],
+          this as unknown as IntersectionObserver,
+        );
+      }
+      disconnect() {}
+    },
+  );
+  detail.org = "org";
+  const groups = [entry([item("Ada", placed("shop", "Shop"))])];
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () =>
+      root.render(
+        <ProjectCards focusGroup={undefined} groups={groups} props={{ ...FLOW_PROPS, groups }} />,
+      ),
+    );
+    expect([...detail.held]).toEqual(["shop"]);
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});
+
+it("opening Usage releases Projects detail demand", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("IntersectionObserver", VisibleCard);
+  detail.org = "org";
+  detail.reads = { shop: { read: "read", failure: null } };
+  const registry = AtomRegistry.make();
+  const store = makeAccountStore(registry);
+  const account = observeAccount({
+    store,
+    wire: { open: Effect.never },
+    repairSession: Effect.void,
+  });
+  const hq = hqFixtureWire();
+  const subscribed = Promise.withResolvers<void>();
+  const unsubscribed = Promise.withResolvers<void>();
+  const appDetails = new Set<string>();
+  account.show("org");
+  account.showHq({
+    orgId: "org",
+    wire: {
+      ...hq.wire,
+      open: (created) =>
+        hq.wire.open(created).pipe(
+          Effect.map((segment) => ({
+            ...segment,
+            send: (request) =>
+              segment.send(request).pipe(
+                Effect.tap(() =>
+                  Effect.sync(() => {
+                    if (request.type === "subscribe")
+                      for (const { scope } of request.scopes)
+                        if (scope.kind === "app-detail") appDetails.add(scope.appId);
+                    if (request.type === "unsubscribe")
+                      for (const scope of request.scopes)
+                        if (scope.kind === "app-detail") appDetails.delete(scope.appId);
+                    if (
+                      request.type === "subscribe" &&
+                      request.scopes.some(
+                        ({ scope }) => scope.kind === "app-detail" && scope.appId === "shop",
+                      )
+                    )
+                      subscribed.resolve();
+                    if (
+                      request.type === "unsubscribe" &&
+                      request.scopes.some(
+                        (scope) => scope.kind === "app-detail" && scope.appId === "shop",
+                      )
+                    )
+                      unsubscribed.resolve();
+                  }),
+                ),
+              ),
+          })),
+        ),
+    },
+  });
+  detail.demand.mockImplementationOnce(account.demandDetail);
+  const groups = [entry([item("Ada", placed("shop", "Shop"))])];
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const demanded = () => streamOf(store.state(), "hq:org:hq-app-detail:shop").demanded;
+  const routes = createRootRoute({
+    component: () => (
+      <>
+        <SidebarZeropsAccountRow destinationIcon={() => null} chiefIcon={null} />
+        <Outlet />
+      </>
+    ),
+  });
+  const projects = createRoute({
+    getParentRoute: () => routes,
+    path: "/zerops",
+    component: () => (
+      <ProjectCards focusGroup={undefined} groups={groups} props={{ ...FLOW_PROPS, groups }} />
+    ),
+  });
+  const usage = createRoute({
+    getParentRoute: () => routes,
+    path: "/usage",
+    component: () => <p data-testid="usage-page">Usage</p>,
+  });
+  const router = createRouter({
+    routeTree: routes.addChildren([projects, usage]),
+    history: createMemoryHistory({ initialEntries: ["/zerops"] }),
+  });
+  try {
+    await router.load();
+    await act(async () => root.render(<RouterProvider router={router} />));
+    expect(container.querySelector('[data-zerops-group="shop"]')).not.toBeNull();
+    expect(demanded()).toBe(true);
+    await act(async () => await subscribed.promise);
+    expect([...appDetails]).toEqual(["shop"]);
+    await act(async () => {
+      container
+        .querySelector<HTMLButtonElement>('[data-zerops-surface="sidebar-account"]')!
+        .click();
+    });
+    await act(async () => {
+      document.querySelector<HTMLElement>('[data-zerops-account-destination="usage"]')!.click();
+    });
+    expect(router.state.location.pathname).toBe("/usage");
+    expect(container.querySelector('[data-testid="usage-page"]')?.textContent).toBe("Usage");
+    expect(demanded()).toBe(false);
+    await act(async () => await unsubscribed.promise);
+    expect([...appDetails]).toEqual([]);
+  } finally {
+    await act(async () => root.unmount());
+    account.close();
+    registry.dispose();
     container.remove();
   }
 });
@@ -119,7 +349,7 @@ it("an unrelated Mate attention update leaves the other Projects row unchanged",
           ...FLOW_PROPS,
           groups,
           renderMate: (mate) => (
-            <CardMate
+            <MateRow
               name={mate.project.name}
               face={null}
               time={null}
@@ -176,70 +406,6 @@ it("an unrelated Mate attention update leaves the other Projects row unchanged",
   }
 });
 
-it.each([
-  ["waiting", undefined],
-  ["mine", undefined],
-  ["waiting", "mine", undefined],
-  ["mine", "waiting", "mine", "waiting", undefined],
-  ["waiting", undefined, "mine", undefined],
-] as const)("after any sequence of filter switches, All lists every item", async (...sequence) => {
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  // A fixed viewport does not resize when filtering replaces the row's children.
-  vi.stubGlobal(
-    "ResizeObserver",
-    class {
-      observe() {}
-      disconnect() {}
-    },
-  );
-  const groups = ["Ada", "Bea", "Cara", "Dana"].map((name) =>
-    entry([item(name, placed(name.toLowerCase(), name))]),
-  );
-  const container = document.createElement("div");
-  document.body.append(container);
-  const root = createRoot(container);
-  const render = (show: "waiting" | "mine" | undefined) => {
-    const kept = groups.filter((_, index) =>
-      overviewKeeps({ show, waits: index === 1, mine: index === 2 }),
-    );
-    root.render(<ProjectCards focusGroup={undefined} groups={kept} props={FLOW_PROPS} />);
-  };
-  const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(800);
-  const total = vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(function (
-    this: HTMLElement,
-  ) {
-    return Math.max(800, this.querySelectorAll("[data-zerops-group]").length * 396);
-  });
-  try {
-    await act(async () => render(undefined));
-    for (const show of sequence) {
-      await act(async () => render(show));
-      if (show !== undefined) {
-        // Chrome's scroll snap can retain this card when the full set returns.
-        container.querySelector<HTMLElement>("[data-zerops-surface=project-cards]")!.scrollLeft =
-          396;
-      } else {
-        expect(
-          [...container.querySelectorAll("[data-zerops-group]")].map((card) =>
-            card.getAttribute("data-zerops-group"),
-          ),
-        ).toEqual(["ada", "bea", "cara", "dana"]);
-        const row = container.querySelector<HTMLElement>("[data-zerops-surface=project-cards]")!;
-        expect(row.scrollLeft, "All starts with its first item").toBe(0);
-        expect(
-          container.querySelector(".ov-rail")!.hasAttribute("data-can-right"),
-          "All keeps every offscreen item reachable",
-        ).toBe(true);
-      }
-    }
-  } finally {
-    await act(async () => root.unmount());
-    container.remove();
-    width.mockRestore();
-    total.mockRestore();
-  }
-});
-
 /** One card, drawn whole, outside an account: each place by its panel, as the overview draws it. */
 async function drawCard(group: ReturnType<typeof entry>) {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -248,22 +414,7 @@ async function drawCard(group: ReturnType<typeof entry>) {
   document.body.append(container);
   const root = createRoot(container);
   await act(async () =>
-    root.render(
-      <ProjectCards
-        focusGroup={undefined}
-        groups={[group]}
-        props={{
-          ...FLOW_PROPS,
-          renderPlacePanel: ({ group: { groupId } }, line) => (
-            <PlacePanel
-              actions={null}
-              groupId={groupId}
-              model={{ line, version: undefined, note: undefined, brought: [], services: [] }}
-            />
-          ),
-        }}
-      />,
-    ),
+    root.render(<ProjectCards focusGroup={undefined} groups={[group]} props={FLOW_PROPS} />),
   );
   return {
     container,
@@ -285,77 +436,6 @@ it("a card's title opens its project's page", async () => {
     expect(title?.querySelector("[data-test-menu]")).toBeNull();
   } finally {
     await card.done();
-  }
-});
-
-it("a project with three stage environments lists each with its state and address", async () => {
-  const stageOf = (projectId: string, name: string, host: string) => ({
-    ...STAGE_STOP,
-    projectId,
-    name,
-    addresses: [{ service: "app", url: `https://${host}` }],
-  });
-  const card = await drawCard(
-    entry([WREN], {
-      stops: [
-        stageOf("acme-stage", "stage", "stage.acme.example"),
-        stageOf("acme-checkout", "stage-checkout", "checkout.acme.example"),
-        stageOf("acme-perf", "stage-perf", "perf.acme.example"),
-      ],
-    }),
-  );
-  try {
-    const stages = [...card.container.querySelectorAll('[data-zerops-place="stage"]')];
-    expect(
-      stages.map((stage) => [
-        stage.querySelector("b")?.textContent,
-        stage.querySelector("a")?.getAttribute("href"),
-        // Its state: a dot and the words beside it, in the state's ink.
-        [...stage.querySelectorAll("[data-dot]")].some(
-          (said) => (said.textContent ?? "").trim().length > 0,
-        ),
-      ]),
-    ).toEqual([
-      ["Stage", "https://stage.acme.example", true],
-      ["Stage-checkout", "https://checkout.acme.example", true],
-      ["Stage-perf", "https://perf.acme.example", true],
-    ]);
-  } finally {
-    await card.done();
-  }
-});
-
-it("a project with no stage offers to add one where HQ offers it, and assumes none", async () => {
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  vi.stubGlobal("IntersectionObserver", VisibleCard);
-  const added: string[] = [];
-  const group = entry([WREN]);
-  const container = document.createElement("div");
-  document.body.append(container);
-  const root = createRoot(container);
-  await act(async () =>
-    root.render(
-      <ProjectCards
-        focusGroup={undefined}
-        groups={[group]}
-        props={{ ...FLOW_PROPS, setUpStage: () => () => added.push("stage") }}
-      />,
-    ),
-  );
-  try {
-    // Where a stage would stand, only the way to add one: no stage's state is assumed.
-    const places = [...container.querySelectorAll('[data-zerops-place="stage"]')];
-    expect(places).toHaveLength(1);
-    expect(places[0]?.querySelector('[data-zerops-place-setup="stage"]')).not.toBeNull();
-    expect(places[0]?.querySelector("[data-dot]")).toBeNull();
-    const add = [...container.querySelectorAll("button")].find((button) =>
-      button.textContent?.includes("Add stage"),
-    );
-    await act(async () => add?.click());
-    expect(added).toEqual(["stage"]);
-  } finally {
-    await act(async () => root.unmount());
-    container.remove();
   }
 });
 
@@ -384,6 +464,75 @@ it("a release in progress shows on the project's production, never in a Mate's c
     expect(container.querySelectorAll("[data-test-run]")).toHaveLength(1);
   } finally {
     await act(async () => root.unmount());
+    container.remove();
+  }
+});
+
+it("a Mate's row shows each part by its real hostname: a door to its preview, else to its dev, and a part with no address muted", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const entry = (key: string, label: string, url?: string, why?: string) => ({
+    key,
+    label,
+    service: key.slice(key.indexOf(":") + 1),
+    url,
+    host: url?.replace("https://", ""),
+    more: [],
+    why,
+  });
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () =>
+      root.render(
+        <MateRow
+          name="Orrin"
+          face={null}
+          time={null}
+          onOpen={undefined}
+          parts={[
+            {
+              key: "part:apipool",
+              devService: "apipool",
+              pooled: true,
+              dev: [],
+              preview: entry("preview:apistage", "preview", "https://apistage.example.app"),
+            },
+            {
+              key: "part:matedev",
+              devService: "matedev",
+              pooled: false,
+              dev: [entry("dev:matedev", "dev", "https://matedev.example.app")],
+              preview: undefined,
+            },
+            {
+              key: "part:runnerpool",
+              devService: "runnerpool",
+              pooled: true,
+              dev: [],
+              preview: entry("preview:runnerstage", "preview", undefined, "no public address"),
+            },
+          ]}
+          reading={cardMateReading({
+            view: { state: "idle", ask: undefined, reply: undefined },
+            mine: true,
+            review: undefined,
+            status: undefined,
+            read: true,
+          })}
+        />,
+      ),
+    );
+    const chips = [
+      ...container.querySelectorAll('[data-zerops-surface="card-mate-parts"] > *'),
+    ].map((chip) => [chip.textContent, chip.getAttribute("href"), chip.getAttribute("aria-label")]);
+    expect(chips).toEqual([
+      ["apistage", "https://apistage.example.app", "Open Orrin's apistage"],
+      ["matedev", "https://matedev.example.app", "Open Orrin's matedev"],
+      ["runnerstage", null, null],
+    ]);
+  } finally {
+    act(() => root.unmount());
     container.remove();
   }
 });

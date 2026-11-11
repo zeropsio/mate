@@ -59,6 +59,24 @@ export function applyServerConfigProjection(
         latestEvent: event,
         source: "live",
       }));
+    case "providersChanged":
+      return Option.map(current, (projection) => {
+        const byId = new Map(
+          projection.config.providers.map((provider) => [provider.instanceId, provider]),
+        );
+        for (const provider of event.payload.providers) byId.set(provider.instanceId, provider);
+        return {
+          config: {
+            ...projection.config,
+            providers: event.payload.instanceIds.flatMap((instanceId) => {
+              const provider = byId.get(instanceId);
+              return provider === undefined ? [] : [provider];
+            }),
+          },
+          latestEvent: event,
+          source: "live",
+        };
+      });
     case "mateUpdate":
       return Option.map(current, (projection) => {
         const { update: _previous, ...environment } = projection.config.environment;
@@ -70,6 +88,15 @@ export function applyServerConfigProjection(
               ...(event.payload.update === null ? {} : { update: event.payload.update }),
             },
           },
+          latestEvent: event,
+          source: "live",
+        };
+      });
+    case "hqKey":
+      return Option.map(current, (projection) => {
+        const { hqKey: _previous, ...config } = projection.config;
+        return {
+          config: event.payload.hqKey === null ? config : { ...config, hqKey: event.payload.hqKey },
           latestEvent: event,
           source: "live",
         };

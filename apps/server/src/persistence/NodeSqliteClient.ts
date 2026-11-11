@@ -278,6 +278,7 @@ const make = Effect.fn("makeWithDatabase")(function* (
   });
 
   return yield* Client.make({
+    driver: "node:sqlite",
     acquirer,
     compiler,
     transactionAcquirer,

@@ -1,11 +1,17 @@
+import type { HqProblem } from "@t3tools/shared/hqProblems";
+import { problemsFix } from "@t3tools/client-runtime/zerops/hq";
+import { HqProblems } from "./HqProblems";
 import { GitDeliveryStatus, gitWhereLine } from "../GitDeliveryStatus";
 /**
  * A release's review, and a roll back's (R5, R6).
  *
- * What goes out — one row per change, its Mate's face, and whether the stage that follows `main`
- * runs it — where it goes, and what to do if it goes wrong. The button names the version and the
- * foot says what the tag does. Pressed, it stays: it shows the release on its way, and ends with
- * "Released" or with the failure and the fix to hand to the person's own Mate (S6).
+ * What goes out — one row per change, its Mate's face and when it merged — and what happens in
+ * production: the steps HQ runs, in its order, a creation per service production lacks, a deploy
+ * per service, and production answering (`ZeropsReleasePlan`). One button does all of it and names
+ * the version. Pressed, it stays: the same steps tick in place, and it ends live, or stopped on
+ * the step that stopped with the way out of that failure (S6). The sheet is as tall as what it
+ * says: while it reads, its places stand in the ready sheet's size, a step the plan brings more
+ * only pushes the buttons down, and from the press they never rise.
  *
  * Each change row opens that change's review in place (`ZeropsReleaseSteps`): the change, merged,
  * and "← Release" back to where the release was.
@@ -20,12 +26,12 @@ import { GitDeliveryStatus, gitWhereLine } from "../GitDeliveryStatus";
 import {
   cannotTellWhatRuns,
   type GroupFlowAddress,
-  servicesDeploying,
   carriedByRecords,
   outsideMoved,
   carriedMoved,
   changesCountWords,
   holdReleaseFacts,
+  releaseFailureOf,
   movedCommits,
   movedCount,
   releaseFacts,
@@ -35,7 +41,6 @@ import {
   releaseStageMarks,
   releaseStep,
   releaseVersionField,
-  releaseWhereWords,
   releaseVersionSuggestions,
   reviewAge,
   rollbackFromHistories,
@@ -43,6 +48,10 @@ import {
   rollbackReads,
   rollbackReview,
   RELEASE_CHECKING,
+  RELEASE_READING,
+  RELEASE_READING_LATE,
+  RELEASE_READING_WORKING,
+  RELEASE_TAKES,
   rollbackServices,
   shortCommit,
   stageRead,
@@ -57,10 +66,13 @@ import {
   type ReleaseReplaces,
   type ReleaseVersionSuggestion,
   type ReviewPress,
+  productionProjectOf,
 } from "@t3tools/client-runtime/zerops";
+import { ArrowUpRightIcon } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { Input } from "~/components/ui/input";
+import type { ReleaseServicePlan } from "@t3tools/shared/hqRelease";
 
 import { putLiveAddress } from "~/zerops/putLive.logic";
 import { useAddressesSheet } from "~/zerops/addressesSheet";
@@ -68,31 +80,77 @@ import { useFixMates } from "~/zerops/fixMates";
 import { useLacksOwnDomain } from "~/zerops/ownDomain";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
-import type { HqAppDetailRead } from "@t3tools/client-runtime/data";
+import {
+  NO_ANSWER_IN_TIME,
+  releaseRequestOf,
+  type HqAppDetailRead,
+} from "@t3tools/client-runtime/data";
+import { NOT_RENEWING } from "~/zerops/renewDeployKey.logic";
+import { releasePressKey, useReleasePresses } from "~/zerops/releasePresses";
+import { useRunningNow } from "~/zerops/activity/useRunningNow";
+import { useRenewDeployKey } from "~/zerops/useRenewDeployKey";
 import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
 import { useAskMateToFix, type FixProblem } from "~/zerops/fixRequest";
 import { useFlowVerbs } from "~/zerops/flowVerbs";
+import {
+  useReleasePlanWait,
+  useReleaseServicePlan,
+  type ReleasePlanWait,
+} from "~/zerops/useReleaseServicePlan";
+import { servicePlanImportYaml } from "~/zerops/releaseImport.logic";
+import { randomUUID } from "~/lib/utils";
+import { useAccountOperationsOptional } from "~/zerops/accountOperations";
 import { useMateNames, useProjectFlows, type ZeropsProjectFlow } from "~/zerops/projectFlows";
-import type { ReviewTarget } from "~/zerops/review";
+import { useOpenReview, type ReviewTarget } from "~/zerops/review";
+import { beginServiceCreation, useServiceCreation } from "~/zerops/serviceCreationRuns";
+import { useZeropsSessionOptional } from "~/zerops/sessionContext";
+import { usePersonNames } from "~/zerops/useZeropsMateOwners";
 import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
 import { ZeropsReadFailure } from "../ZeropsReadFailure";
 import { useReleaseComparisons, type ComparedCommits } from "~/zerops/useReleaseComparisons";
 import { useZeropsReviewMates, type ZeropsReviewMate } from "~/zerops/useZeropsReviewMates";
 
+import type { RunningLine } from "@t3tools/client-runtime/zerops/activity/runningNow";
+import { GrowsInPlace, RunningClock } from "../system";
 import { ZeropsChangeReview } from "./ZeropsChangeReview";
+import {
+  ReleasePlan,
+  ReleasePlanSkeleton,
+  WordsOf,
+  type ReleaseStepLog,
+} from "./ZeropsReleasePlan";
 import { useReleaseSteps, ZeropsReleaseSteps } from "./ZeropsReleaseSteps";
+import {
+  inProductionWords,
+  keyRenewedSteps,
+  productionBusyWords,
+  releaseRunning,
+  planCreations,
+  releaseNoteSaid,
+  releasePressLabel,
+  releaseSheetSteps,
+  releaseStepWords,
+  releaseStopReason,
+  releaseSubtitle,
+  wordsNaming,
+  type KeyRenewal,
+  type ReleaseCreateOperation,
+  type ReleaseProgress,
+  type ReleaseSheetStep,
+} from "./releaseSheet.logic";
+import {
+  serviceCreateRunOf,
+  serviceCreateTrouble,
+  type ServiceCreateRun,
+} from "../proposal/productionAsk.logic";
 import { mainStageOf, useGroupName, useProductionAddresses } from "./reviewReads";
 import {
   productionBefore,
-  productionNow,
   releaseChangeRows,
-  releaseHeading,
-  releaseLine,
   outsideCommitsWords,
   productionCode,
   reviewKindLine,
   rollbackListNote,
-  sinceWords,
   whySaid,
   type ReleaseChangeRow,
   type ReleaseStageMark,
@@ -103,13 +161,22 @@ import {
   ReviewSection,
   ReviewWhere,
   ZeropsReviewSurface,
+  type ReviewButton,
+  type ReviewPrimaryButton,
   type ReviewReleaseRow,
 } from "./ZeropsReviewSurface";
 import { useReviewDeploys } from "../ZeropsDeployAnswer";
-import { jobInFlight } from "@t3tools/client-runtime/zerops/hq";
+import {
+  deployAnswerSaid,
+  deployLogTarget,
+  jobInFlight,
+  type HqJob,
+} from "@t3tools/client-runtime/zerops/hq";
 import { useDeployAnswerFollowing } from "~/zerops/activity/useDeployAnswerFollowing";
-import { Button } from "~/components/ui/button";
+import { Button, InlineButton } from "~/components/ui/button";
+import { Spinner } from "~/components/ui/spinner";
 import { GitBrowserLink, gitCodeLink } from "../gitBrowser/GitBrowserLink";
+import { changeTitle } from "../projects/projectHistory.logic";
 
 type ReleaseTarget = Extract<ReviewTarget, { readonly kind: "release" | "rollback" }>;
 
@@ -140,6 +207,9 @@ export function ZeropsReleaseReview({
   const flow = flows.get(target.groupId);
   const name = useGroupName(target.groupId);
   const kind = target.kind === "release" ? "release" : "rollback";
+  if (flow === undefined && target.kind === "release") {
+    return <ReleaseReadingView name={name} onClose={onClose} titleId={titleId} />;
+  }
   if (flow === undefined) {
     return (
       <ZeropsReviewSurface
@@ -246,7 +316,7 @@ function reviewRowsOf(
     readonly mates: ReadonlyMap<string, ZeropsReviewMate>;
     readonly mateNames: ReadonlyMap<string, string> | undefined;
     readonly now: number;
-    /** A release names each change's Mate alone; a roll back says when it merged too. */
+    /** Whether each says when it merged; the commits outside changes name their Mate alone. */
     readonly ages: boolean;
   },
 ): ReadonlyArray<ReviewReleaseRow> {
@@ -261,7 +331,10 @@ function reviewRowsOf(
         : reviewAge(row.mergedAt, names.now)?.toLowerCase();
     return {
       ...row,
+      // GitHub's `(#n)`, every one a squash stacked on it, is no part of its title.
+      title: changeTitle(row.title),
       ...(mate === undefined ? {} : { face: { tint: mate.tint, shape: mate.shape } }),
+      ...(mateName === undefined ? {} : { mate: mateName }),
       sub: [mateName, age === undefined ? undefined : `merged ${age}`]
         .filter((part) => part !== undefined)
         .join(" · "),
@@ -307,9 +380,27 @@ function ReleaseData({
     repositories: flow.release.repositories ?? new Map(),
     tags: versionTags,
   });
+  // "See why": opened while the newest release didn't go live and nothing is on its way, the
+  // sheet opens on that release's stop, not on the next offer. Which release that is, is the one
+  // fact the next-release bar's "Didn't go live" is read from (`releaseFailureOf`: the newest that
+  // did not go through among those newer than what production runs, so one a newer live release
+  // followed is not reopened). It is followed as one this tab pressed is, decided once when the
+  // releases are first known; *Review a new release* lets it go for the offer.
+  const [reopened, setReopened] = useState<string | null | undefined>(undefined);
+  if (reopened === undefined && flow.releasesKnown)
+    setReopened(
+      flow.release.git !== undefined || flow.release.inFlight !== undefined || made !== undefined
+        ? null
+        : (releaseFailureOf({
+            releases: flow.releases,
+            environmentInputs: flow.environmentInputs,
+            stalled: flow.release.stalled,
+          })?.tag ?? null),
+    );
+  const stoppedBefore = reopened === null ? undefined : reopened;
   const follows = releaseFollows({
-    made,
-    held,
+    made: made ?? stoppedBefore,
+    held: held ?? (stoppedBefore === undefined ? undefined : { tag: stoppedBefore }),
     press,
     inFlight: flow.release.inFlight,
     stalled: flow.release.stalled,
@@ -344,6 +435,9 @@ function ReleaseData({
   const productionProject =
     production?.target.kind === "zerops" ? production.target.projectId : undefined;
   const productionAddresses = useProductionAddresses(productionProject);
+  // What the platform runs in production now: under the steps, and beside them where it is not
+  // this release's (`releaseRunning`).
+  const productionRunning = useRunningNow(productionProject);
   // Its Where row follows HQ's deploys of it: released is said with them, never before.
   const followed = useDeployAnswerFollowing(useReviewDeploys(press)).answer;
   const {
@@ -356,6 +450,7 @@ function ReleaseData({
     held,
     press,
     clockMs,
+    reads: { environmentInputs: flow.environmentInputs, stalled: flow.release.stalled },
     deploying: followed?.jobs.some(jobInFlight) === true,
     read: (tag) =>
       releaseFacts({
@@ -409,7 +504,7 @@ function ReleaseData({
     mates,
     mateNames,
     now,
-    ages: false,
+    ages: true,
   });
   const outsideRecorded = useMemo<RecordedOutside | undefined>(() => {
     const stored = legacy ? undefined : detail.releaseOutside;
@@ -471,24 +566,303 @@ function ReleaseData({
     });
   }, [canCheck, checking]);
 
+  const reviewing = press.kind === "idle" || press.kind === "refused";
+  const listedServices = useMemo(
+    () => [...new Set(flow.release.entries.map((entry) => entry.service))],
+    [flow.release.entries],
+  );
+  const plan = useReleaseServicePlan(
+    flow,
+    chosen.error === undefined ? chosen.tag : undefined,
+    reviewing,
+  );
+  const reviewedPlan = plan.required && plan.view.kind === "ready" ? plan.view.plan : undefined;
+  // The read's own deadline passed is HQ slow, not HQ's answer: the data layer asks it again by
+  // itself, so the review still waits, and says so.
+  const unanswered = plan.view.kind === "failed" && plan.view.reason === NO_ANSWER_IN_TIME;
+  // HQ reads no plan for someone it does not offer the release: that is a refusal, never a wait.
+  const planWaiting =
+    reviewing &&
+    plan.required &&
+    flow.release.permission?.allowed !== false &&
+    (plan.view.kind === "pending" || unanswered);
+  // The wait is the review's to end: nothing is asked for a version it cannot review under.
+  const planWait = useReleasePlanWait(planWaiting && plan.asked);
+  const planPending = planWaiting && planWait.stage !== "expired";
+  const planFailure =
+    !reviewing || !plan.required
+      ? undefined
+      : plan.view.kind === "failed" && !unanswered
+        ? plan.view.reason
+        : planWaiting && planWait.stage === "expired"
+          ? NO_ANSWER_IN_TIME
+          : undefined;
+  const [heldPlan, setHeldPlan] = useState<ReleaseServicePlan>();
+  const shownPlan = reviewing ? reviewedPlan : heldPlan;
+  const reviewedRequest = releaseRequestOf(flow.release, chosen.tag, reviewedPlan);
+  const releaseGate =
+    "refused" in reviewedRequest
+      ? { allowed: false as const, reason: reviewedRequest.refused }
+      : planFailure !== undefined
+        ? { allowed: false as const, reason: planFailure }
+        : { allowed: true as const };
+
+  // The early path: what production lacks, created now with the person's own Zerops access — HQ's
+  // release permission says they may write production — and followed to its end. The step says
+  // where it stands; HQ's plan is read again once it is done, and then creates nothing.
+  const operations = useAccountOperationsOptional();
+  const creationKey = `release:${flow.groupId}`;
+  const creation = useServiceCreation(creationKey);
+  const [sending, setSending] = useState(false);
+  const [created, setCreated] = useState<ReadonlyArray<ReleaseCreateOperation>>(NOTHING_CREATED);
+  const [unsent, setUnsent] = useState<string>();
+  const run: ServiceCreateRun =
+    unsent === undefined
+      ? serviceCreateRunOf(creation, sending)
+      : { kind: "failed", words: unsent };
+  const productionProjectId = productionProjectOf(flow.environments);
+  const lacking = planCreations(shownPlan).filter(
+    (operation) => !created.some((made) => made.service === operation.service),
+  );
+  const importYaml =
+    shownPlan === undefined || lacking.length === 0
+      ? undefined
+      : servicePlanImportYaml({ ...shownPlan, operations: lacking });
+  const createNow =
+    importYaml === undefined ||
+    operations === null ||
+    orgId === null ||
+    productionProjectId === undefined ||
+    flow.release.permission?.allowed !== true ||
+    outcome.kind === "releasing" ||
+    outcome.kind === "released"
+      ? undefined
+      : async () => {
+          if (sending || run.kind === "working") return;
+          setSending(true);
+          setUnsent(undefined);
+          try {
+            const requestId = randomUUID();
+            beginServiceCreation(creationKey, requestId);
+            await operations.submit(
+              {
+                kind: "create-services",
+                orgId,
+                projectId: productionProjectId,
+                yaml: importYaml,
+              },
+              requestId,
+            );
+            const trouble = serviceCreateTrouble(await operations.untilEnd(requestId, orgId));
+            if (trouble !== null) return;
+            setCreated((made) => [...made, ...lacking]);
+            // HQ's plan is read again: it lists what production still lacks.
+            if (reviewing) plan.again();
+          } catch (cause) {
+            setUnsent(cause instanceof Error ? cause.message : "It could not be carried out.");
+          } finally {
+            setSending(false);
+          }
+        };
+
+  // Production's deploy key, renewed from the sheet where it is what stopped the release.
+  const renewKey = useRenewDeployKey(
+    productionProjectId === undefined || production === undefined
+      ? undefined
+      : {
+          appId: flow.groupId,
+          projectId: productionProjectId,
+          name: production.environment,
+          place: "production",
+        },
+  );
+
+  // The press's own time, and this tab's first sight of the release live (`releasePresses`).
+  const pressRecord = useReleasePresses((state) =>
+    follows.tag === undefined
+      ? undefined
+      : state.presses[releasePressKey(flow.groupId, follows.tag)],
+  );
   const release = async () => {
     if (chosen.tag === undefined || chosen.error !== undefined) return;
+    if (plan.required && reviewedPlan === undefined) return;
     // Capture the offer in the press. HQ's stream may change it before React draws "running".
+    setHeldPlan(reviewedPlan);
     setHeld({ ...facts, tag: chosen.tag });
     setMade(chosen.tag);
+    const presses = useReleasePresses.getState();
+    presses.pressed(flow.groupId, chosen.tag, new Date().toISOString());
     setPress({ kind: "running" });
-    const answer = await verbs.release(flow, chosen.tag);
+    const answer =
+      reviewedPlan === undefined
+        ? await verbs.release(flow, chosen.tag)
+        : await verbs.release(flow, chosen.tag, reviewedPlan);
+    if (!answer.ok && plan.required) plan.again();
     setPress(
       answer.ok
         ? { kind: "done", deploys: answer.deploys, rollout: answer.rollout }
-        : { kind: "refused", reason: answer.reason },
+        : { kind: "refused", reason: answer.reason, problems: answer.problems },
     );
     // The tag it made is the one the review follows from here.
     setMade(answer.ok ? (answer.tag ?? chosen.tag) : undefined);
+    if (!answer.ok) presses.refused(flow.groupId, chosen.tag);
+    else if (answer.tag !== undefined) presses.renamed(flow.groupId, chosen.tag, answer.tag);
   };
+  const sawLive =
+    outcome.kind === "released" && pressRecord !== undefined && pressRecord.liveAt === undefined
+      ? follows.tag
+      : undefined;
+  useEffect(() => {
+    if (sawLive !== undefined)
+      useReleasePresses.getState().live(flow.groupId, sawLive, new Date().toISOString());
+  }, [flow.groupId, sawLive]);
+
+  // What HQ does in production for the followed release, as its jobs there stand: the steps'
+  // marks, clocks and words (`releaseSheetSteps`).
+  const jobs = useMemo(
+    () =>
+      production === undefined
+        ? NO_JOBS
+        : production.services.flatMap((service) => {
+            const latest = service.deploy?.latest;
+            return latest !== undefined && latest.cause === "release" && latest.ref === follows.tag
+              ? [{ service: service.hostname, job: latest }]
+              : [];
+          }),
+    [follows.tag, production],
+  );
+  // Until HQ's navigation carries a job, the press's own answer says where it stands.
+  const answered = useMemo(
+    () =>
+      followed === undefined || production === undefined
+        ? NO_ANSWERED
+        : followed.jobs.flatMap((job) =>
+            job.kind === "deploy" &&
+            job.service !== null &&
+            job.environment === production.environment
+              ? [
+                  {
+                    service: job.service,
+                    state: job.state,
+                    reason: job.reason,
+                    processId: job.processId,
+                    appVersionId: job.appVersionId,
+                  },
+                ]
+              : [],
+          ),
+    [followed, production],
+  );
+  const progress = useMemo<ReleaseProgress>(
+    () => ({
+      creation: production?.releaseCreations?.find((entry) => entry.tag === follows.tag),
+      deploys: [
+        ...jobs.map(({ service, job }) => ({
+          service,
+          state: job.state,
+          reason: job.reason?.trim() || undefined,
+          at: job.at,
+          endedAt: job.endedAt,
+          processId: job.processId,
+          appVersionId: job.appVersionId,
+        })),
+        ...answered
+          .filter((job) => !jobs.some((streamed) => streamed.service === job.service))
+          .map((job) => ({
+            service: job.service,
+            state: job.state,
+            reason: job.reason?.trim() || undefined,
+            at: undefined,
+            endedAt: null,
+            processId: job.processId,
+            appVersionId: job.appVersionId,
+          })),
+      ],
+    }),
+    [answered, follows.tag, jobs, production?.releaseCreations],
+  );
+  const viewer = useZeropsSessionOptional()?.user?.id;
+  const nameOf = usePersonNames(orgId === null ? undefined : orgId);
+  const startedBy =
+    follows.tagged?.by === undefined
+      ? press.kind === "running" || press.kind === "done"
+        ? "you"
+        : undefined
+      : follows.tagged.by === viewer
+        ? "you"
+        : nameOf(follows.tagged.by);
+  const openReview = useOpenReview();
+  const replaced = facts.replaces.kind === "release" ? facts.replaces.tag : undefined;
+  const rollBackOffered =
+    replaced !== undefined &&
+    flow.releases.find((entry) => entry.tag === replaced)?.rollBack === true;
+  const summary =
+    legacy || flow.release.summary === undefined || flow.release.summaryRead === "pending"
+      ? undefined
+      : flow.release.summary;
 
   return (
     <ReleaseReviewView
+      servicePlan={shownPlan}
+      servicePlanPending={planPending}
+      servicePlanWait={planWait.stage === "expired" ? undefined : planWait.stage}
+      problems={flow.release.problems}
+      servicePlanFailure={planFailure}
+      servicePlanProblems={
+        reviewing && plan.required && plan.view.kind === "failed" ? plan.view.problems : undefined
+      }
+      onRetryServicePlan={() => {
+        planWait.restart();
+        plan.again();
+      }}
+      creation={{
+        run,
+        created,
+        onCreate:
+          createNow === undefined
+            ? undefined
+            : () => {
+                void createNow();
+              },
+      }}
+      progress={progress}
+      // The clock the press started keeps counting from the press: HQ tags when it gets to it,
+      // and counting from its tag would take time back under the person's eyes. "Took" is the
+      // press to this tab's sight of it live; a tab that did not press says HQ's own times.
+      started={{
+        at: pressRecord?.pressedAt ?? follows.tagged?.taggedAt,
+        by: startedBy,
+        liveAt: pressRecord?.liveAt,
+      }}
+      running={productionRunning}
+      logOf={(service) => {
+        const job = jobs.find((entry) => entry.service === service)?.job;
+        const target = job === undefined ? undefined : deployLogTarget(job);
+        return target === undefined || productionProject === undefined
+          ? undefined
+          : { projectId: productionProject, target };
+      }}
+      expected={summary?.changeCount}
+      commits={summary?.total}
+      onRollBack={
+        !rollBackOffered || replaced === undefined
+          ? undefined
+          : () => {
+              openReview({ kind: "rollback", groupId: flow.groupId, tag: replaced });
+            }
+      }
+      onReviewNew={() => {
+        setPress({ kind: "idle" });
+        setMade(undefined);
+        setHeld(undefined);
+        setHeldPlan(undefined);
+        setTypedVersion(undefined);
+        setReopened(null);
+        renewKey.reset();
+      }}
+      environmentName={production?.environment}
+      listed={listedServices}
+      keyRenewal={renewKey}
       git={
         flow.release.git === undefined
           ? undefined
@@ -500,26 +874,21 @@ function ReleaseData({
       changesPending={!contentsKnown}
       comparisonFailure={flow.release.comparisonFailure}
       fixer={fixer?.name}
-      gate={flow.release.gate}
+      gate={releaseGate}
       production={{
         ...productionBefore({
           replaces: facts.replaces,
           releases: flow.releases,
-          services: production?.services ?? [],
+          services: production === undefined ? NO_SERVICES : production.services,
           releasing: outcome.kind === "releasing",
         }),
         addresses: productionAddresses,
       }}
-      stage={
-        mainStage === undefined
-          ? undefined
-          : { name: mainStage.name, at: newestLive(mainStage.services) }
-      }
       permission={flow.release.permission}
       // A stage HQ never put anything live on counts nothing: no "0 of N".
       hasStage={stage !== undefined && stageRead(stage)}
       name={name}
-      now={now}
+      now={follows.ticking ? clockMs : now}
       onClose={onClose}
       onOpenChange={onOpenChange}
       onFix={(problem) => {
@@ -555,6 +924,17 @@ function ReleaseData({
   );
 }
 
+const NOTHING_CREATED: ReadonlyArray<ReleaseCreateOperation> = [];
+const NO_JOBS: ReadonlyArray<{ readonly service: string; readonly job: HqJob }> = [];
+const NO_ANSWERED: ReadonlyArray<{
+  readonly service: string;
+  readonly state: HqJob["state"];
+  readonly reason: string | null;
+  readonly processId: string | null;
+  readonly appVersionId: string | null | undefined;
+}> = [];
+const NO_SERVICES: ReadonlyArray<never> = [];
+
 const NO_MOVED: ReadonlyArray<Moved> = [];
 
 /** The count of commits outside changes, with Show commits to list them. */
@@ -568,8 +948,9 @@ function OutsideCommitsList({
   readonly onOpen: ((row: ReviewReleaseRow) => void) | undefined;
 }) {
   const { list } = outside;
+  // Not counted yet: its line's place, never a sentence the count takes back.
   if (list.state === "pending") {
-    return <p className="rv-note">Commits outside changes: not known yet.</p>;
+    return <span aria-hidden="true" className="rv-pskel mt-2.5 w-44" />;
   }
   return (
     <>
@@ -693,36 +1074,72 @@ function useOutsideCommits({
   return { count: count.total, atLeast: count.atLeast, list };
 }
 
-/** When the newest of these services' deploys went live: since when the stage runs what it runs. */
-function newestLive(
-  services: ReadonlyArray<{
-    readonly deploy?:
-      | { readonly live: { readonly at: string; readonly endedAt: string | null } | null }
-      | undefined;
-  }>,
-): string | undefined {
-  let newest: string | undefined;
-  for (const service of services) {
-    const live = service.deploy?.live;
-    const at = live === null || live === undefined ? undefined : (live.endedAt ?? live.at);
-    if (at !== undefined && (newest === undefined || Date.parse(at) > Date.parse(newest))) {
-      newest = at;
-    }
-  }
-  return newest;
-}
-
 export interface ReleaseReviewViewProps {
+  readonly problems?: ReadonlyArray<HqProblem> | undefined;
+  /** Read from HQ for these exact immutable release inputs, never reconstructed in the browser. */
+  readonly servicePlan?: ReleaseServicePlan | undefined;
+  readonly servicePlanPending?: boolean | undefined;
+  /** How long that read has been waited for, as the person saw it wait; just begun where unsaid. */
+  readonly servicePlanWait?: ReleasePlanWait | undefined;
+  readonly servicePlanFailure?: string | undefined;
+  readonly servicePlanProblems?: ReadonlyArray<HqProblem> | undefined;
+  readonly onRetryServicePlan?: () => void;
+  /**
+   * The early path, on a creation's step: where the person's own create stands, what it has made
+   * here, and its press — offered to whoever may release.
+   */
+  readonly creation?:
+    | {
+        readonly run: ServiceCreateRun;
+        readonly created: ReadonlyArray<ReleaseCreateOperation>;
+        readonly onCreate: (() => void) | undefined;
+      }
+    | undefined;
+  /** What HQ does in production for the release, as its jobs there stand. */
+  readonly progress?: ReleaseProgress | undefined;
+  /** When the release on its way was made, and who asked for it: "you", or a person's name. */
+  readonly started?:
+    | {
+        readonly at: string | undefined;
+        readonly by: string | undefined;
+        /** When the tab that pressed saw it live; none for a tab that did not press. */
+        readonly liveAt?: string | undefined;
+      }
+    | undefined;
+  /** What the platform runs or holds waiting in production now (`runningLines`). */
+  readonly running?: ReadonlyArray<RunningLine> | undefined;
+  /** A service's deploy log, once its job has one. */
+  readonly logOf?: ((service: string) => ReleaseStepLog | undefined) | undefined;
+  /** How many changes the offer counts, known before they are listed. */
+  readonly expected?: number | undefined;
+  /** How many commits the offer counts. */
+  readonly commits?: number | undefined;
+  /** Production as HQ names it: where HQ's words lead with that name, the sheet says Production. */
+  readonly environmentName?: string | undefined;
+  /** The services the release lists, known before HQ's plan: the steps it names while it is read. */
+  readonly listed?: ReadonlyArray<string> | undefined;
+  /**
+   * The renewal of production's deploy key, for a release HQ stopped because it will not use the
+   * one it keeps: where the sheet's own run of it stands, and its press — absent for a person
+   * without admin access to production's project, who cannot renew it.
+   */
+  readonly keyRenewal?:
+    | { readonly run: KeyRenewal; readonly onRenew: (() => void) | undefined }
+    | undefined;
+  /** The roll back's review of the release this one replaced, where HQ offers it. */
+  readonly onRollBack?: (() => void) | undefined;
+  /** Back to the offer, after a release that stopped: the next version's review. */
+  readonly onReviewNew?: (() => void) | undefined;
   readonly git?: ZeropsProjectFlow["release"]["git"];
   readonly onReplaceToken?: (() => void) | undefined;
-  /** HQ has not said what the release carries: no count, no list — "not known yet". */
+  /** HQ has not said what the release carries: its rows hold their places. */
   readonly changesPending?: boolean | undefined;
   /** The commits no change landed, once the offer counts them. */
   readonly outside?: OutsideCommits | undefined;
   readonly comparisonFailure?:
     | { readonly reason: string; readonly again?: (() => void) | undefined }
     | undefined;
-  /** The project's name: the title is it and the version. */
+  /** The project's name, beside where it acts. */
   readonly name: string | undefined;
   readonly tag: string;
   /** The person's editable name, shown only while this review offers a release. */
@@ -747,9 +1164,7 @@ export interface ReleaseReviewViewProps {
   /** The code production runs, per service, to browse before it is replaced. */
   readonly productionCode?: ReturnType<typeof productionCode> | undefined;
   readonly hasStage: boolean;
-  /** The stage that follows `main`: its name, and when what it runs went live. */
-  readonly stage?: { readonly name: string; readonly at: string | undefined } | undefined;
-  /** Production: when the release it runs was tagged, its parts, and the addresses it answers at. */
+  /** Production: its parts and what each runs, and the addresses it answers at. */
   readonly production?:
     | {
         readonly at: string | undefined;
@@ -769,6 +1184,7 @@ export interface ReleaseReviewViewProps {
   readonly press: ReviewPress;
   /** The person's own Mate a failure is handed to, the one they used last. */
   readonly fixer: string | undefined;
+  /** The clock every age and elapsed time here is read against: seconds while it is on its way. */
   readonly now: number;
   readonly titleId?: string | undefined;
   readonly onRelease: () => void;
@@ -780,34 +1196,223 @@ export interface ReleaseReviewViewProps {
   readonly onClose: () => void;
 }
 
+const PRODUCTION = { words: "Production", production: true } as const;
+const NO_CREATION: ServiceCreateRun = { kind: "none" };
+/** How many changes stand before "Show N more". */
+const ROWS_SHOWN = 6;
+
+/**
+ * The release before its project is read: every section's place held, the button waiting. Nothing
+ * here is taken back when the reads land.
+ */
+export function ReleaseReadingView({
+  name,
+  titleId,
+  onClose,
+}: {
+  readonly name: string | undefined;
+  readonly titleId: string;
+  readonly onClose: () => void;
+}) {
+  const stateId = useId();
+  return (
+    <ZeropsReviewSurface
+      consequence=""
+      consequenceRoom={RELEASE_TAKES}
+      dismiss="Cancel"
+      kind="release"
+      kindLabel={name ?? ""}
+      onClose={onClose}
+      primary={{
+        label: "Release",
+        enabled: false,
+        safe: false,
+        held: { by: stateId, words: RELEASE_READING },
+        onPress: () => undefined,
+      }}
+      subtitle={<span aria-hidden="true" className="rv-pskel my-1 w-56" />}
+      title="Release"
+      titleId={titleId}
+      verdict={{
+        state: "release-blocked",
+        tone: "busy",
+        title: "Release",
+        why: RELEASE_READING,
+        fix: undefined,
+      }}
+      where={PRODUCTION}
+    >
+      {/* The least a release says: one change, one service and production answering. What the
+          project's reads bring more of only pushes the buttons down. */}
+      <ReviewSection title="What goes out">
+        <ReleaseRowsSkeleton count={1} />
+      </ReviewSection>
+      <ReviewSection
+        aside={<PlanState id={stateId} state={READING_STARTED} />}
+        title="What happens in production"
+      >
+        <ReleasePlanSkeleton steps={2} />
+      </ReviewSection>
+    </ZeropsReviewSurface>
+  );
+}
+
+/** The changes' places while HQ has not listed them: as many rows as it counted, in their size. */
+function ReleaseRowsSkeleton({ count }: { readonly count: number }) {
+  return (
+    <div aria-busy="true" className="rv-rel">
+      {Array.from({ length: Math.max(1, Math.min(count, ROWS_SHOWN)) }, (_, index) => (
+        <div aria-hidden="true" className="rv-relrow" data-skeleton="" key={index}>
+          <span className="rv-pskel" />
+          <span className={`rv-pskel rv-relrow-t ${index % 2 === 0 ? "w-64" : "w-48"}`} />
+          <span className="rv-pskel rv-relrow-sub w-28" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** What "What happens in production" says of itself at its label: its wait, or why it is not read. */
+type PlanStateSaid =
+  | { readonly kind: "reading"; readonly wait: ReleasePlanWait }
+  | { readonly kind: "failed"; readonly words: string; readonly again: string };
+
+const READING_STARTED: PlanStateSaid = { kind: "reading", wait: "started" };
+const WAIT_WORDS: Record<ReleasePlanWait, string> = {
+  started: RELEASE_READING,
+  working: RELEASE_READING_WORKING,
+  late: RELEASE_READING_LATE,
+};
+const WAITS: ReadonlyArray<ReleasePlanWait> = ["started", "working", "late"];
+/** Asks HQ now, where it has not answered; where it answered that it could not, it reviews again. */
+const TRY_AGAIN = "Try again";
+const REVIEW_AGAIN = "Review again";
+
+const planStateWords = (state: PlanStateSaid): string =>
+  state.kind === "failed" ? state.words : WAIT_WORDS[state.wait];
+
+/**
+ * The section's state at its label's end: the mark and the words of its wait — what it reads
+ * once that lasts, then that it is late, with the way to ask now — or why it was not read, with
+ * the same way. The wait's longest words hold its room from the start: what it says next never
+ * moves the label.
+ */
+function PlanState({
+  id,
+  state,
+  onAgain,
+}: {
+  readonly id: string;
+  readonly state: PlanStateSaid;
+  readonly onAgain?: (() => void) | undefined;
+}) {
+  const again =
+    onAgain !== undefined && (state.kind === "failed" || state.wait === "late") ? (
+      <InlineButton data-release-plan-again="" onClick={onAgain}>
+        {state.kind === "failed" ? state.again : TRY_AGAIN}
+      </InlineButton>
+    ) : null;
+  return (
+    <span
+      aria-live="polite"
+      className="rv-sec-state"
+      data-release-plan-state={state.kind === "failed" ? "failed" : state.wait}
+      data-tone={state.kind === "failed" ? "attention" : undefined}
+    >
+      <span>
+        {state.kind === "reading" ? <Spinner aria-hidden="true" size="xs" tone="muted" /> : null}
+        <span id={id}>{planStateWords(state)}</span>
+        {/* A cause's press follows it as a word does; the wait's own row sets its gaps. */}
+        {again === null ? null : " "}
+        {again}
+      </span>
+      {state.kind === "failed"
+        ? null
+        : WAITS.filter((wait) => wait !== state.wait).map((wait) => (
+            <span aria-hidden="true" data-room="" key={wait}>
+              <span>{WAIT_WORDS[wait]}</span>
+              {wait === "late" && onAgain !== undefined ? <span>{TRY_AGAIN}</span> : null}
+            </span>
+          ))}
+    </span>
+  );
+}
+
 export function ReleaseReviewView(props: ReleaseReviewViewProps) {
-  const { rows, press, tag } = props;
+  return props.git === undefined ? (
+    <ProductionReleaseView {...props} />
+  ) : (
+    <GitReleaseView {...props} git={props.git} />
+  );
+}
+
+/** The version's field with its rules and what the code declares: shown once asked for. */
+export function ReleaseVersionField({
+  version,
+  error,
+  disabled,
+}: {
+  readonly version: NonNullable<ReleaseReviewViewProps["version"]>;
+  readonly error: string | undefined;
+  readonly disabled: boolean;
+}) {
   const versionId = useId();
-  const answer = useReviewDeploys(press);
-  // Pressed, its Version stays — not to be changed — until Where takes its place: the panel's foot
-  // does not jump up and back down under the pointer (the onboarding run: 110 px up, 76 px down).
-  const offered = props.outcome.kind === "offered";
-  const version =
-    offered || (props.outcome.kind === "releasing" && answer === undefined)
-      ? props.version
-      : undefined;
+  return (
+    <div className="rv-version">
+      <div className="w-44">
+        <Input
+          aria-label="Version"
+          aria-describedby={`${versionId}-help`}
+          aria-invalid={error !== undefined}
+          autoComplete="off"
+          disabled={disabled}
+          font="mono"
+          id={versionId}
+          nativeInput
+          onChange={(event) => version.onChange(event.target.value)}
+          spellCheck={false}
+          value={version.value}
+        />
+      </div>
+      <p className="rv-note" id={`${versionId}-help`}>
+        {error ??
+          // The next patch, said only while the field holds something else.
+          (`v${version.value}` === version.nextPatch
+            ? "Must be newer than every release."
+            : `Must be newer than every release. Next patch is ${version.nextPatch}.`)}
+      </p>
+      {version.suggestions.map((suggestion) => (
+        <p className="rv-note rv-version-use" key={suggestion.source}>
+          Your code names {suggestion.tag}.
+          <Button
+            disabled={disabled}
+            onClick={() => version.onChange(suggestion.tag.slice(1))}
+            size="sm"
+            variant="link"
+          >
+            Use it
+          </Button>
+        </p>
+      ))}
+    </div>
+  );
+}
+
+/** A release to a Zerops production, from reading to done (the module's note). */
+function ProductionReleaseView(props: ReleaseReviewViewProps) {
+  const { rows, press, tag, outcome } = props;
+  const offered = outcome.kind === "offered";
   const checkedVersion =
-    version === undefined || !offered
+    props.version === undefined || !offered
       ? undefined
-      : releaseVersionField(version.value, version.tags);
-  // A first release names its version in words: the field and its rules — semver, what the code
-  // declares — come only when the person asks to change it, or when what they typed is wrong.
+      : releaseVersionField(props.version.value, props.version.tags);
+  // The version stands in words; its field and rules — semver, what the code declares — come when
+  // the person asks to change it, or when what they typed is wrong.
   const [changing, setChanging] = useState(false);
-  const inWords =
-    props.replaces.kind === "first" && !changing && checkedVersion?.error === undefined;
-  // What goes out is still compared: how many is not said until it is known.
-  const comparing =
-    offered &&
-    (props.changesPending === true ||
-      (!props.gate.allowed && props.gate.reason === RELEASE_CHECKING));
+  const [allRows, setAllRows] = useState(false);
   const model = releaseReview({
     tag,
-    git: props.git,
+    git: undefined,
     gate: props.gate,
     permission: props.permission,
     changes: props.changesPending === true ? undefined : rows.length,
@@ -817,75 +1422,492 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
         : undefined,
     services: props.services,
     replaces: props.replaces,
+    outcome,
+    productionMoved: props.productionMoved,
+    now: props.now,
+  });
+  const { state } = model.verdict;
+  // Not read yet is no refusal: the sections hold their places and the button waits.
+  const reading =
+    offered &&
+    ((!props.gate.allowed && props.gate.reason === RELEASE_CHECKING) ||
+      (props.gate.allowed && props.servicePlanPending === true));
+  const blocked = offered && !reading && !props.gate.allowed;
+  // Nothing to release is nothing to plan: no steps, no version to name.
+  const nothing = blocked && model.verdict.tone === "done";
+  // HQ's plan not said, or not read: what the release lists is known all the same, and stands.
+  const unread = offered && (reading || props.servicePlanFailure !== undefined);
+  const plan = unread ? undefined : props.servicePlan;
+  const services = unread ? (props.listed ?? props.services) : props.services;
+  const refused = press.kind === "refused" ? press.reason : undefined;
+  const problems =
+    press.kind === "refused"
+      ? press.problems
+      : (props.servicePlanProblems ??
+        (outcome.kind === "failed" ? outcome.problems : props.problems));
+  const fix = problemsFix(problems ?? NO_PROBLEMS) ?? model.verdict.fix;
+
+  const early = props.creation?.run ?? NO_CREATION;
+  const made = props.creation === undefined ? NO_OPERATIONS : props.creation.created;
+  const open = putLiveAddress(props.production === undefined ? [] : props.production.addresses);
+  const deployed = planDeployServices(plan, services);
+  const steps = releaseSheetSteps({
+    tag,
+    outcome,
+    pressing: press.kind === "running",
+    plan,
+    created: made,
+    early,
+    canCreate: props.creation?.onCreate !== undefined,
+    services,
+    untouched: props.where
+      .map((entry) => entry.service)
+      .filter((service) => !deployed.includes(service)),
+    versions: new Map(
+      (props.production === undefined ? [] : props.production.parts).flatMap((part) =>
+        part.version === undefined ? [] : [[part.hostname, part.version] as const],
+      ),
+    ),
+    replaces: props.replaces,
+    host: open?.host,
+    progress: props.progress,
+    stopped:
+      state === "release-stalled"
+        ? model.verdict.why
+        : state === "release-superseded"
+          ? model.consequence
+          : undefined,
+    environmentName: props.environmentName,
+    renewal: props.keyRenewal?.run,
+    mayRenew: props.keyRenewal?.onRenew !== undefined,
+    nowMs: props.now,
+  });
+  const creates = offered
+    ? steps.flatMap((step) =>
+        step.kind === "create" && step.mark !== "done" && step.service !== undefined
+          ? [step.service]
+          : [],
+      )
+    : [];
+  const liveAt =
+    props.started?.liveAt ??
+    newestEnd(props.progress) ??
+    (outcome.kind === "released" ? outcome.at : undefined);
+  // The platform's own work in production while the release runs: each deploy's under its step,
+  // anything else said above the plan, where it explains a wait.
+  const platform =
+    outcome.kind === "releasing" && props.running !== undefined
+      ? releaseRunning({ lines: props.running, steps, tag, progress: props.progress })
+      : undefined;
+  const busy = platform === undefined ? undefined : productionBusyWords(platform.outside);
+  const subtitle = releaseSubtitle({
+    state,
+    said: state === "release-stalled" ? model.consequence : model.verdict.why,
+    changes: props.changesPending === true ? props.expected : rows.length,
+    mates: [...new Set(rows.flatMap((row) => (row.mate === undefined ? [] : [row.mate])))],
+    replaces: props.replaces,
+    startedAt: props.started?.at,
+    startedBy: props.started?.by,
+    liveAt,
+    deployed: steps.some((step) => step.kind === "deploy" && step.mark === "done"),
+    nowMs: props.now,
+  });
+  const where = releaseStepWords({
+    steps,
+    outcome,
+    startedAt: props.started?.at,
+    nowMs: props.now,
+  });
+
+  // The foot: its note, and the way out of whatever state it stands in.
+  const stopped = outcome.kind === "failed" || outcome.kind === "stalled";
+  // Stopped on production's deploy key: creating again cannot help, renewing the key does, and
+  // then the way on is a new release — HQ runs nothing of a release whose creation did not stand.
+  const keyStop = steps.find((step) => step.deployKey !== undefined);
+  const renewal = props.keyRenewal?.run ?? NOT_RENEWING;
+  const onRenew = props.keyRenewal?.onRenew;
+  const failedCreation = steps.find((step) => step.kind === "create" && step.mark === "failed");
+  const onCreate = props.creation?.onCreate;
+  const { onReviewNew } = props;
+  const wayOut: ReviewPrimaryButton | undefined = !stopped
+    ? undefined
+    : keyStop !== undefined
+      ? renewal.kind === "renewed"
+        ? onReviewNew === undefined
+          ? undefined
+          : { label: "Review a new release", enabled: true, safe: false, onPress: onReviewNew }
+        : onRenew === undefined
+          ? undefined
+          : {
+              label: renewal.kind === "working" ? "Renewing" : "Renew the key",
+              enabled: true,
+              safe: false,
+              busy: renewal.kind === "working",
+              onPress: onRenew,
+            }
+      : early.kind === "working"
+        ? {
+            label: "Creating",
+            enabled: false,
+            safe: false,
+            busy: true,
+            onPress: () => undefined,
+          }
+        : failedCreation?.action !== undefined && onCreate !== undefined
+          ? {
+              label: `Create ${creationNames(steps)} again`,
+              enabled: true,
+              safe: false,
+              onPress: onCreate,
+            }
+          : onReviewNew !== undefined
+            ? { label: "Review a new release", enabled: true, safe: false, onPress: onReviewNew }
+            : undefined;
+  // A stop whose one button is its own way out (the key, the creation) keeps the way to the next
+  // release behind ⋯: no stop is a dead end, opened again or not.
+  const reviewNext =
+    stopped && onReviewNew !== undefined && wayOut?.onPress !== onReviewNew
+      ? [{ label: "Review a new release", onPress: onReviewNew }]
+      : [];
+  const press1 = releasePressLabel(tag, creates);
+  // The section's own state, at its label: the wait for HQ's plan, or why it was not read. A
+  // version that cannot be reviewed under asks HQ nothing: its field says what is wrong.
+  const stateId = useId();
+  const planState: PlanStateSaid | undefined = !unread
+    ? undefined
+    : props.servicePlanFailure !== undefined
+      ? {
+          kind: "failed",
+          // HQ's finding stands above in its own words: the section says only what it holds back.
+          words:
+            problems !== undefined && problems.length > 0
+              ? "Nothing is released until this is fixed"
+              : inProductionWords(props.servicePlanFailure, props.environmentName).replace(
+                  /\.$/u,
+                  "",
+                ),
+          again: props.servicePlanFailure === NO_ANSWER_IN_TIME ? TRY_AGAIN : REVIEW_AGAIN,
+        }
+      : checkedVersion?.error !== undefined
+        ? undefined
+        : {
+            kind: "reading",
+            // The wait counted is the plan's: what can be released is the project's own read.
+            wait: props.gate.allowed ? (props.servicePlanWait ?? "started") : "started",
+          };
+  const primary: ReviewPrimaryButton | undefined = offered
+    ? {
+        label: press1,
+        enabled:
+          model.primary?.enabled === true &&
+          !reading &&
+          checkedVersion?.error === undefined &&
+          props.servicePlanFailure === undefined &&
+          early.kind !== "working",
+        safe: false,
+        held:
+          planState === undefined ? undefined : { by: stateId, words: planStateWords(planState) },
+        onPress: props.onRelease,
+      }
+    : wayOut;
+  const note: {
+    readonly words: string;
+    readonly tone?: "attention" | "failed";
+    readonly action?: ReviewButton;
+  } = !offered
+    ? outcome.kind === "released"
+      ? props.onRollBack !== undefined && props.replaces.kind === "release"
+        ? {
+            words: "",
+            action: {
+              label: `Roll back to ${props.replaces.tag}…`,
+              onPress: props.onRollBack,
+            },
+          }
+        : { words: "" }
+      : where.tone === "quiet"
+        ? { words: where.note }
+        : { words: where.note, tone: where.tone }
+    : refused !== undefined
+      ? { words: inProductionWords(refused, props.environmentName), tone: "failed" }
+      : unread
+        ? // The section says it, at its label: the foot keeps its seat and says nothing twice.
+          { words: "" }
+        : blocked
+          ? {
+              words: inProductionWords(model.verdict.why, props.environmentName),
+              ...(model.verdict.tone === "attention" ? { tone: "attention" as const } : {}),
+            }
+          : { words: creates.length > 0 ? "Takes a few minutes" : RELEASE_TAKES };
+
+  // HQ's own note on what it asked for at the press, where it left one.
+  const answer = useReviewDeploys(press);
+  const answerNote = releaseNoteSaid({
+    note: answer === undefined ? undefined : deployAnswerSaid(answer).note,
+    stopped: releaseStopReason(props.progress),
+    // The key renewed, its sentence stands nowhere: the note says only what HQ could not do.
+    reasonGone: renewal.kind === "renewed",
+    environmentName: props.environmentName,
+  });
+  const shown = allRows ? rows : rows.slice(0, ROWS_SHOWN);
+  const counted =
+    props.changesPending === true ? props.expected : rows.length === 0 ? undefined : rows.length;
+  const browse =
+    offered && props.appId !== undefined
+      ? (props.productionCode ?? NO_CODE).map((entry) => ({
+          label:
+            (props.productionCode ?? NO_CODE).length === 1
+              ? "Browse production's files"
+              : `Browse ${entry.service}'s files`,
+          to: gitCodeLink({ appId: props.appId!, repo: entry.repository }, entry.sha),
+        }))
+      : [];
+  // While it releases, a service it redeploys is deploying — its step says so — and what it ran
+  // is no fact to be unable to tell.
+  const untold =
+    outcome.kind === "releasing"
+      ? props.untold.filter((service) => !deployed.includes(service))
+      : props.untold;
+  const version = offered && !nothing ? props.version : undefined;
+  return (
+    <ZeropsReviewSurface
+      consequence={note.words}
+      consequenceRoom={unread && note.words === "" ? RELEASE_TAKES : undefined}
+      consequenceTone={note.tone}
+      dismiss={offered ? "Cancel" : outcome.kind === "released" ? "Done" : "Close"}
+      held={!offered}
+      // What HQ refused with a fix a Mate can make: asked for beside the way out.
+      ask={
+        // Offered, or stopped on something a Mate can fix: never for the key, which is a person's.
+        (offered || (stopped && keyStop === undefined && early.kind !== "working")) &&
+        fix !== undefined &&
+        props.fixer !== undefined
+          ? {
+              label: `Ask ${props.fixer} to ${fix.verb}`,
+              onPress: () => {
+                props.onFix(fix.problem);
+              },
+            }
+          : undefined
+      }
+      kind="release"
+      kindLabel={props.name ?? ""}
+      menu={[...browse, ...reviewNext]}
+      noteAction={note.action}
+      onClose={props.onClose}
+      primary={primary}
+      subtitle={
+        <>
+          <WordsOf words={subtitle} />
+          {outcome.kind === "released" && open !== undefined ? (
+            <>
+              {" · "}
+              <InlineButton render={<a href={open.url} rel="noreferrer" target="_blank" />}>
+                {open.host}
+                <ArrowUpRightIcon aria-hidden="true" className="ms-0.5 inline size-3" />
+              </InlineButton>
+            </>
+          ) : null}
+        </>
+      }
+      title={model.verdict.title}
+      titleId={props.titleId}
+      titleWords={<WordsOf words={wordsNaming(model.verdict.title)} />}
+      verdict={model.verdict}
+      where={PRODUCTION}
+    >
+      <HqProblems problems={problems} />
+      {rows.length === 0 &&
+      props.outside === undefined &&
+      props.changesPending !== true &&
+      untold.length === 0 &&
+      props.comparisonFailure === undefined ? null : (
+        <ReviewSection
+          aside={
+            counted === undefined
+              ? undefined
+              : [
+                  `${String(counted)} ${counted === 1 ? "change" : "changes"}`,
+                  ...(props.commits === undefined || props.commits < counted
+                    ? []
+                    : [`${String(props.commits)} ${props.commits === 1 ? "commit" : "commits"}`]),
+                ].join(" · ")
+          }
+          title="What goes out"
+        >
+          {props.comparisonFailure === undefined ? null : (
+            <ZeropsReadFailure action="Compare again" {...props.comparisonFailure} />
+          )}
+          {props.changesPending === true ? (
+            offered ? (
+              <ReleaseRowsSkeleton count={props.expected ?? 1} />
+            ) : null
+          ) : rows.length === 0 ? null : (
+            <ReviewReleaseRows appId={props.appId} onOpen={props.onOpenChange} rows={shown} />
+          )}
+          {rows.length > shown.length ? (
+            <Button onClick={() => setAllRows(true)} size="sm" variant="ghost">
+              Show {rows.length - shown.length} more
+            </Button>
+          ) : null}
+          {props.outside === undefined ? null : (
+            <OutsideCommitsList
+              appId={props.appId}
+              onOpen={props.onOpenChange}
+              outside={props.outside}
+            />
+          )}
+          {untold.length === 0 ? null : <p className="rv-note">{cannotTellWhatRuns(untold)}.</p>}
+        </ReviewSection>
+      )}
+      {nothing ? null : (
+        <ReviewSection
+          aside={
+            planState === undefined ? undefined : (
+              <PlanState id={stateId} onAgain={props.onRetryServicePlan} state={planState} />
+            )
+          }
+          title="What happens in production"
+        >
+          <GrowsInPlace>
+            {busy === undefined ? null : (
+              <p className="rv-busy" data-zerops-surface="release-production-busy">
+                <b>Production is busy:</b> {busy.words} · <RunningClock since={busy.first.since} />
+                {busy.more}.{" "}
+                {platform?.waits === true
+                  ? `This release waits for ${busy.more === "" ? "it" : "them"}.`
+                  : null}
+              </p>
+            )}
+            {/* One list from reading to done. Unread, it holds a step per service the release
+                lists, by its name, and production answering: HQ's plan then says each one's line
+                in place and adds what it creates. */}
+            <ReleasePlan
+              live={{ open, onAddDomain: props.onAddDomain }}
+              logOf={props.logOf}
+              running={platform?.ofStep}
+              // Stopped, the way out is the foot's button: the step does not say it twice.
+              onCreate={stopped ? undefined : onCreate}
+              onRenew={onRenew}
+              renewing={renewal.kind === "working"}
+              steps={renewal.kind === "renewed" ? keyRenewedSteps(steps) : steps}
+              unread={!unread ? undefined : planState?.kind === "reading" ? "reading" : "unsaid"}
+            />
+          </GrowsInPlace>
+          {answerNote === undefined ? null : <p className="rv-note">{answerNote}</p>}
+        </ReviewSection>
+      )}
+      {version === undefined ? null : changing || checkedVersion?.error !== undefined ? (
+        <ReviewSection title="Version">
+          <ReleaseVersionField
+            disabled={press.kind === "running"}
+            error={checkedVersion?.error}
+            version={version}
+          />
+        </ReviewSection>
+      ) : (
+        // A section as its field is: the sheet's last, the one its buttons follow.
+        <section className="rv-version-row" data-zerops-surface="release-version">
+          Version
+          <span className="rv-code text-foreground">
+            {checkedVersion?.tag ?? `v${version.value}`}
+          </span>
+          <span aria-hidden="true">·</span>
+          <InlineButton onClick={() => setChanging(true)}>Change</InlineButton>
+        </section>
+      )}
+    </ZeropsReviewSurface>
+  );
+}
+
+const NO_PROBLEMS: ReadonlyArray<HqProblem> = [];
+const NO_OPERATIONS: ReadonlyArray<ReleaseCreateOperation> = [];
+const NO_CODE: ReturnType<typeof productionCode> = [];
+
+/** The services the release deploys to: the plan's, else the ones the comparison moves. */
+function planDeployServices(
+  plan: ReleaseServicePlan | undefined,
+  services: ReadonlyArray<string>,
+): ReadonlyArray<string> {
+  const planned =
+    plan === undefined
+      ? []
+      : plan.operations.flatMap((operation) =>
+          operation.kind === "deploy" ? [operation.service] : [],
+        );
+  return planned.length > 0 ? planned : services;
+}
+
+/** The creations Zerops failed, by name: "db", "db and cache". */
+function creationNames(steps: ReadonlyArray<ReleaseSheetStep>): string {
+  const names = steps.flatMap((step) =>
+    step.kind === "create" && step.mark === "failed" && step.service !== undefined
+      ? [step.service]
+      : [],
+  );
+  return names.length <= 1
+    ? (names[0] ?? "it")
+    : `${names.slice(0, -1).join(", ")} and ${names.at(-1)!}`;
+}
+
+/** When the last of the release's deploys ended: when production took it. */
+function newestEnd(progress: ReleaseProgress | undefined): string | undefined {
+  let newest: string | undefined;
+  for (const deploy of progress === undefined ? [] : progress.deploys) {
+    if (deploy.state !== "live" || deploy.endedAt === null) continue;
+    if (newest === undefined || Date.parse(deploy.endedAt) > Date.parse(newest))
+      newest = deploy.endedAt;
+  }
+  return newest;
+}
+
+/**
+ * A release delivered to a branch of a repository: Mate's push is the hand-over, and what happens
+ * after it is that repository's. Its own facts, in the review's frame.
+ */
+function GitReleaseView(
+  props: ReleaseReviewViewProps & {
+    readonly git: NonNullable<ReleaseReviewViewProps["git"]>;
+  },
+) {
+  const { rows, press, tag } = props;
+  const offered = props.outcome.kind === "offered";
+  const version = offered || props.outcome.kind === "releasing" ? props.version : undefined;
+  const checkedVersion =
+    version === undefined || !offered
+      ? undefined
+      : releaseVersionField(version.value, version.tags);
+  const [changing, setChanging] = useState(false);
+  const inWords =
+    props.replaces.kind === "first" && !changing && checkedVersion?.error === undefined;
+  const model = releaseReview({
+    tag,
+    git: props.git,
+    gate: props.gate,
+    permission: props.permission,
+    changes: props.changesPending === true ? undefined : rows.length,
+    onStage: undefined,
+    services: props.services,
+    replaces: props.replaces,
     outcome: props.outcome,
     productionMoved: props.productionMoved,
     now: props.now,
   });
-  const answered = new Set(answer?.jobs.map(({ service }) => service));
-  const fix = model.verdict.fix;
+  const problems =
+    press.kind === "refused"
+      ? press.problems
+      : props.outcome.kind === "failed"
+        ? props.outcome.problems
+        : props.problems;
+  const fix = problemsFix(problems ?? NO_PROBLEMS) ?? model.verdict.fix;
   const refused = press.kind === "refused" ? press.reason : undefined;
-  // While it releases, a service it redeploys is deploying: its version names what is going, or
-  // nothing yet, and is no fact to be unable to tell.
-  const deploying =
-    props.outcome.kind === "releasing"
-      ? props.untold.filter((service) => props.services.includes(service))
-      : [];
-  const untold = props.untold.filter(
-    (service) => !deploying.includes(service) && !answered.has(service),
-  );
-  const untoldDeploying = deploying.filter((service) => !answered.has(service));
-  // What production runs as this one was offered: the version a roll back goes to.
-  const live =
-    props.replaces.kind === "release"
-      ? props.replaces.tag
-      : props.replaces.kind === "unnamed"
-        ? "what production runs"
-        : undefined;
   const ready = model.verdict.state === "release-ready";
-  const openLive =
-    model.primary === undefined && props.outcome.kind === "released" && props.git === undefined
-      ? putLiveAddress(props.production?.addresses ?? [])
-      : undefined;
-  const now = productionNow({
-    live,
-    since: sinceWords(props.production?.at, props.now),
-    parts: props.production?.parts ?? [],
-    addresses: props.production?.addresses ?? [],
-  });
-  const line = releaseLine({
-    changes: comparing ? undefined : rows.length,
-    stage: props.hasStage ? props.stage?.name : undefined,
-    since: sinceWords(props.stage?.at, props.now),
-    onStage:
-      props.hasStage && !comparing
-        ? { total: rows.length, running: rows.filter((row) => row.stage === "on-stage").length }
-        : undefined,
-    live,
-  });
-  // Pressed, the head says where it stands once — its title and its step's clock — never the
-  // offer's facts beside it (the owner's 10-19 look: "1 change, on stage… · Releasing v0.1.4").
-  const heading = releaseHeading({
-    tag,
-    model,
-    line,
-    live: props.replaces.kind === "release" ? props.replaces.tag : undefined,
-  });
-  const git = props.git !== undefined;
+  const { onReplaceToken } = props;
   return (
     <ZeropsReviewSurface
-      consequence={refused ?? (git ? model.consequence : heading.foot)}
-      // Released onto the live app, its foot is the way in: the panel's × closes it, no Close
-      // wraps onto a line of its own beside it.
-      dismiss={
-        props.git !== undefined
-          ? "Cancel"
-          : model.primary !== undefined
-            ? "Cancel"
-            : props.outcome.kind === "released" &&
-                (openLive !== undefined || props.onAddDomain !== undefined)
-              ? undefined
-              : "Close"
-      }
+      consequence={refused ?? model.consequence}
+      consequenceTone={refused === undefined ? undefined : "failed"}
+      dismiss="Cancel"
       fix={
         fix === undefined || props.fixer === undefined
           ? undefined
@@ -897,40 +1919,12 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
             }
       }
       kind="release"
-      kindLabel={props.name ?? reviewKindLine("release")}
-      meta={git || heading.meta === undefined ? undefined : <span>{heading.meta}</span>}
+      kindLabel={props.name ?? ""}
       onClose={props.onClose}
-      // Released, it ends on the live app: its address the way in, a domain of its own beside it.
-      secondary={
-        openLive !== undefined && props.onAddDomain !== undefined
-          ? { label: "Put it on your domain", enabled: true, onPress: props.onAddDomain }
-          : undefined
-      }
       primary={
         model.primary === undefined ||
-        (model.primary.label === "Replace token" && props.onReplaceToken === undefined)
-          ? openLive !== undefined
-            ? {
-                label: "Open",
-                text: `Open ${openLive.host}`,
-                enabled: true,
-                safe: true,
-                icon: "globe",
-                onPress: () => {
-                  window.open(openLive.url, "_blank", "noopener,noreferrer");
-                },
-              }
-            : model.primary === undefined &&
-                props.outcome.kind === "released" &&
-                props.onAddDomain !== undefined
-              ? {
-                  label: "Put it on your domain",
-                  enabled: true,
-                  safe: false,
-                  icon: "globe",
-                  onPress: props.onAddDomain,
-                }
-              : undefined
+        (model.primary.label === "Replace token" && onReplaceToken === undefined)
+          ? undefined
           : {
               ...model.primary,
               enabled: model.primary.enabled && checkedVersion?.error === undefined,
@@ -938,84 +1932,62 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
               label: press.kind === "running" ? `Releasing ${tag}` : model.primary.label,
               text: `${model.primary.label} to production`,
               onPress:
-                model.primary.label === "Replace token"
-                  ? props.onReplaceToken!
-                  : (event?: { readonly currentTarget: EventTarget | null }) => {
-                      holdSheetHeight(event?.currentTarget);
-                      props.onRelease();
-                    },
+                model.primary.label === "Replace token" && onReplaceToken !== undefined
+                  ? onReplaceToken
+                  : props.onRelease,
             }
       }
-      title={git ? `Release ${tag} to production` : heading.title}
+      title={`Release ${tag}`}
       titleId={props.titleId}
-      verdict={
-        git
-          ? model.verdict
-          : {
-              ...model.verdict,
-              title: heading.state ?? model.verdict.title,
-              why: heading.note ?? "",
-            }
-      }
-      verdictInLine={git ? !ready : heading.state !== undefined}
-      whySaid={git ? whySaid(model.verdict, false) : heading.note !== undefined}
+      titleWords={<WordsOf words={wordsNaming(`Release ${tag}`)} />}
+      verdict={model.verdict}
+      verdictInLine={!ready}
+      whySaid={whySaid(model.verdict, false)}
+      where={PRODUCTION}
     >
-      {props.git === undefined ? null : (
-        <>
-          <ReviewSection title="Where">
-            {model.repositories?.map((repo) => (
-              <div key={repo.repository}>
-                <p className="rv-words">
-                  {repo.repository} ·{" "}
-                  {repo.included ? "Included" : `Left out: ${repo.reason ?? "Not ready"}`} ·{" "}
-                  {repo.sha == null ? (
-                    "Nothing merged yet"
-                  ) : props.appId === undefined ? (
-                    repo.sha.slice(0, 7)
-                  ) : (
-                    <GitBrowserLink
-                      to={gitCodeLink({ appId: props.appId, repo: repo.repository }, repo.sha)}
-                    >
-                      {repo.sha.slice(0, 7)}
-                    </GitBrowserLink>
-                  )}
-                </p>
-                {repo.remote == null ? null : (
-                  <p className="rv-note">
-                    {gitWhereLine("production", props.git!.attachment.target, repo.remote.url)}
-                    {repo.expiry === undefined ? null : <> · {repo.expiry}</>}
-                  </p>
-                )}
-              </div>
-            ))}
-            {props.outcome.kind === "offered" ? null : (
-              <GitDeliveryStatus
-                environment={{ tier: "production", target: props.git.attachment.target }}
-                delivery={props.git.delivery}
-                showDestination={false}
-              />
+      <ReviewSection title="Where">
+        {model.repositories?.map((repo) => (
+          <div key={repo.repository}>
+            <p className="rv-words">
+              {repo.repository} ·{" "}
+              {repo.included ? "Included" : `Left out: ${repo.reason ?? "Not ready"}`} ·{" "}
+              {repo.sha == null ? (
+                "Nothing merged yet"
+              ) : props.appId === undefined ? (
+                repo.sha.slice(0, 7)
+              ) : (
+                <GitBrowserLink
+                  to={gitCodeLink({ appId: props.appId, repo: repo.repository }, repo.sha)}
+                >
+                  {repo.sha.slice(0, 7)}
+                </GitBrowserLink>
+              )}
+            </p>
+            {repo.remote == null ? null : (
+              <p className="rv-note">
+                {gitWhereLine("production", props.git.attachment.target, repo.remote.url)}
+                {repo.expiry === undefined ? null : <> · {repo.expiry}</>}
+              </p>
             )}
-          </ReviewSection>
-        </>
-      )}
+          </div>
+        ))}
+        {offered ? null : (
+          <GitDeliveryStatus
+            environment={{ tier: "production", target: props.git.attachment.target }}
+            delivery={props.git.delivery}
+            showDestination={false}
+          />
+        )}
+      </ReviewSection>
+      <HqProblems problems={problems} />
       {props.comparisonFailure === undefined ? null : (
         <ZeropsReadFailure action="Compare again" {...props.comparisonFailure} />
       )}
-      {props.git !== undefined &&
-      rows.length === 0 &&
-      props.outside === undefined ? null : rows.length === 0 &&
-        props.outside === undefined &&
-        props.changesPending !== true &&
-        untold.length === 0 &&
-        untoldDeploying.length === 0 &&
-        (answer !== undefined || props.where.length === 0) ? null : (
+      {rows.length === 0 && props.outside === undefined ? null : (
         <ReviewSection title="What goes out">
           {rows.length === 0 ? null : (
             <ReviewReleaseRows appId={props.appId} onOpen={props.onOpenChange} rows={rows} />
           )}
-          {props.changesPending === true && offered ? (
-            <p className="rv-note">Not known yet.</p>
-          ) : null}
           {props.outside === undefined ? null : (
             <OutsideCommitsList
               appId={props.appId}
@@ -1023,107 +1995,32 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
               outside={props.outside}
             />
           )}
-          {props.git !== undefined || untoldDeploying.length === 0 ? null : (
-            <p className="rv-note">{servicesDeploying(untoldDeploying)}.</p>
-          )}
-          {props.git !== undefined || untold.length === 0 ? null : (
-            <p className="rv-note">{cannotTellWhatRuns(untold)}.</p>
-          )}
-          {/* Which release each service gets, until HQ answers where it went. */}
-          {props.git === undefined && answer === undefined
-            ? releaseWhereWords(props.where, tag).map((words) => (
-                <p className="rv-note" key={words}>
-                  {words}
-                </p>
-              ))
-            : null}
-        </ReviewSection>
-      )}
-      {/* What ran before it, until production runs it: then the head says so, and since when. */}
-      {props.git !== undefined ||
-      props.replaces.kind === "first" ||
-      props.outcome.kind === "released" ? null : (
-        <ReviewSection title="Production now">
-          <p className="rv-words">{now.line}</p>
-          {now.rows.map((row) => (
-            <p className="rv-note" data-zerops-production-part="" key={row}>
-              {row}
-            </p>
-          ))}
-          {offered && props.appId !== undefined ? (
-            <ProductionCode appId={props.appId} code={props.productionCode ?? []} />
-          ) : null}
-        </ReviewSection>
-      )}
-      {props.git !== undefined || answer === undefined ? null : (
-        <ReviewSection title="Where">
-          <ReviewWhere answer={answer} rows={props.where} />
         </ReviewSection>
       )}
       {version === undefined ? null : inWords ? (
-        <ReviewSection title="Version">
-          <div className="rv-version-use">
-            <span className="rv-words">{checkedVersion?.tag ?? `v${version.value}`}</span>
-            {offered ? (
-              <Button onClick={() => setChanging(true)} size="sm" variant="link">
-                Change
-              </Button>
-            ) : null}
-          </div>
-        </ReviewSection>
+        <p className="rv-version-row" data-zerops-surface="release-version">
+          Version
+          <span className="rv-code text-foreground">
+            {checkedVersion?.tag ?? `v${version.value}`}
+          </span>
+          {offered ? (
+            <>
+              <span aria-hidden="true">·</span>
+              <InlineButton onClick={() => setChanging(true)}>Change</InlineButton>
+            </>
+          ) : null}
+        </p>
       ) : (
         <ReviewSection title="Version">
-          <div className="rv-version">
-            <div className="w-44">
-              <Input
-                aria-label="Version"
-                aria-describedby={`${versionId}-help`}
-                aria-invalid={checkedVersion?.error !== undefined}
-                autoComplete="off"
-                disabled={press.kind === "running" || !offered}
-                font="mono"
-                id={versionId}
-                nativeInput
-                onChange={(event) => version.onChange(event.target.value)}
-                spellCheck={false}
-                value={version.value}
-              />
-            </div>
-            <p className="rv-note" id={`${versionId}-help`}>
-              {checkedVersion?.error ??
-                // The next patch, said only while the field holds something else.
-                (`v${version.value}` === version.nextPatch
-                  ? "Must be newer than every release."
-                  : `Must be newer than every release. Next patch is ${version.nextPatch}.`)}
-            </p>
-            {version.suggestions.map((suggestion) => (
-              <p className="rv-note rv-version-use" key={suggestion.source}>
-                Your code names {suggestion.tag}.
-                <Button
-                  disabled={!offered}
-                  onClick={() => version.onChange(suggestion.tag.slice(1))}
-                  size="sm"
-                  variant="link"
-                >
-                  Use it
-                </Button>
-              </p>
-            ))}
-          </div>
+          <ReleaseVersionField
+            disabled={press.kind === "running" || !offered}
+            error={checkedVersion?.error}
+            version={version}
+          />
         </ReviewSection>
       )}
     </ZeropsReviewSurface>
   );
-}
-
-/**
- * From the press, the release's sheet keeps at least the height it stood at: what it says next —
- * its progress, then Where — never pulls its buttons up under the pointer (the onboarding run: the
- * foot rose 110 px at the press).
- */
-function holdSheetHeight(pressed: EventTarget | null | undefined) {
-  const sheet = pressed instanceof HTMLElement ? pressed.closest<HTMLElement>(".rv") : null;
-  if (sheet !== null) sheet.style.minHeight = `${String(sheet.getBoundingClientRect().height)}px`;
 }
 
 /** A roll back's list as HQ compared it: its rows and how many move, or why that is not known. */
@@ -1267,6 +2164,7 @@ function RollbackData({
     releasing: tracking,
     stalled: tracking && follows.stalled,
     superseded: tracking ? follows.superseded : undefined,
+    reads: { environmentInputs: flow.environmentInputs, stalled: flow.release.stalled },
     pressing: false,
     tag: followed ?? suggestion,
     clockMs,
@@ -1341,7 +2239,7 @@ function RollbackData({
     setPress(
       answer.ok
         ? { kind: "done", deploys: answer.deploys, rollout: answer.rollout }
-        : { kind: "refused", reason: answer.reason },
+        : { kind: "refused", reason: answer.reason, problems: answer.problems },
     );
     if (answer.ok) setMade(answer.tag);
     else setAsked(undefined);
@@ -1489,7 +2387,13 @@ export function RollbackReviewView(props: RollbackReviewViewProps) {
     outcome: props.outcome,
     now: props.now,
   });
-  const fix = model.verdict.fix;
+  const problems =
+    press.kind === "refused"
+      ? press.problems
+      : props.outcome.kind === "failed"
+        ? props.outcome.problems
+        : undefined;
+  const fix = problemsFix(problems ?? []) ?? model.verdict.fix;
   const onFix = props.onFix;
   const answer = useReviewDeploys(press);
   const answered = new Set(answer?.jobs.map(({ service }) => service));
@@ -1536,7 +2440,9 @@ export function RollbackReviewView(props: RollbackReviewViewProps) {
       title={`Roll back to ${tag}`}
       titleId={props.titleId}
       verdict={model.verdict}
+      where={PRODUCTION}
     >
+      <HqProblems problems={problems} />
       <RollbackListSection
         appId={props.appId}
         list={props.leaving}
@@ -1569,40 +2475,5 @@ export function RollbackReviewView(props: RollbackReviewViewProps) {
         </ReviewSection>
       )}
     </ZeropsReviewSurface>
-  );
-}
-
-/**
- * The code production runs, to read before a release replaces it: one service's is "Browse files",
- * several are each by its name — never by a hash, which names no release.
- */
-function ProductionCode({
-  appId,
-  code,
-}: {
-  readonly appId: string;
-  readonly code: ReturnType<typeof productionCode>;
-}) {
-  if (code.length === 0) return null;
-  const link = (entry: (typeof code)[number], words: string) => (
-    <GitBrowserLink
-      key={entry.service}
-      to={gitCodeLink({ appId, repo: entry.repository }, entry.sha)}
-    >
-      {words}
-    </GitBrowserLink>
-  );
-  return (
-    <p className="rv-note">
-      {code.length === 1
-        ? link(code[0]!, "Browse files")
-        : [
-            "Browse files: ",
-            ...code.flatMap((entry, index) => [
-              index === 0 ? null : " · ",
-              link(entry, entry.service),
-            ]),
-          ]}
-    </p>
   );
 }

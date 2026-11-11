@@ -8,7 +8,8 @@
  * Every event is encoded by its kind's codec before it is written, and a step one of whose events
  * does not encode is refused (`invalid-signal`): the store never writes what it could not read
  * back. A rejected command is committed too (its receipt only), so a retry of it returns the same
- * answer. `load` is the latest snapshot plus a fold of the events after it.
+ * answer. `load` is the latest snapshot plus a fold of the events after it; a fold past the cadence
+ * (a snapshot of another state version, or none) writes its snapshot as it goes.
  *
  * `load`, `commit` and `events` are the conversation's; `owner(domain)` gives any kind the same.
  *
@@ -34,6 +35,7 @@ import type { Command, EventDraft } from "../domain/command.ts";
 import { conversationDomain } from "../domain/conversationDomain.ts";
 import type { ConversationState } from "../domain/state.ts";
 import type { Domain, OwnerDecision, OwnerEnvelope, OwnerEvent } from "../owners.ts";
+import { ServerCommandReadiness } from "../../spi/serverCommandReadiness.ts";
 
 /** The record could not be read or written, or held a row this build cannot decode. */
 export class EngineStoreError extends Schema.TaggedError<EngineStoreError>()("EngineStoreError", {
@@ -63,8 +65,11 @@ export interface OwnerCommitted<S, E> {
   /** The state after the step. */
   readonly state: S;
   readonly duplicate: boolean;
-  /** The step queued outbox rows: the worker has work. */
-  readonly enqueued: boolean;
+  /**
+   * The step queued outbox rows or recorded an effect's outcome (its row closed, so its lane's
+   * next row may run): the worker looks again.
+   */
+  readonly outboxChanged: boolean;
   /** The step armed, fired or cancelled a wake: the scheduler re-reads. */
   readonly wakesChanged: boolean;
 }
@@ -249,6 +254,9 @@ export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
   options: EngineStoreOptions = {},
 ) {
   const sql = yield* SqlClient.SqlClient;
+  // A load is the boot's long work when a history is folded: each page folded is its progress.
+  const boot = yield* Effect.serviceOption(ServerCommandReadiness);
+  const folded = Option.isSome(boot) ? boot.value.advance : Effect.void;
   const snapshotEvery = options.snapshotEvery ?? DEFAULT_SNAPSHOT_EVERY;
   const fault = (stage: CommitStage) => (options.fault ? options.fault(stage) : Effect.void);
   const storeError = (operation: string) => (cause: unknown) =>
@@ -279,7 +287,7 @@ export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
         events: [],
         state,
         duplicate,
-        enqueued: false,
+        outboxChanged: false,
         wakesChanged: false,
       });
 
@@ -414,7 +422,8 @@ export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
         events,
         state: next,
         duplicate: false,
-        enqueued: step.effects.length > 0,
+        outboxChanged:
+          step.effects.length > 0 || events.some((event) => event._tag === "EffectOutcomeRecorded"),
         wakesChanged: events.some(touchesWakes),
       } satisfies OwnerCommitted<S, E>;
     });
@@ -443,9 +452,25 @@ export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
           };
           if (snapshot.v === domain.stateVersion) state = snapshot.state;
         }
+        // A snapshot of another state version is unusable and commit rewrites it only when the head
+        // next crosses the cadence, so a quiet owner with a long history would fold all of it on
+        // every load. The fold rewrites it at commit's cadence instead: the next load starts here,
+        // and a load cut short (a boot killed for missing its budget) keeps what it folded. Any
+        // state folded from the stored events is a valid snapshot at its head.
+        let snapshotSeq = state.headSeq;
         for (;;) {
           const page = yield* readEvents(owner, state.headSeq, DEFAULT_EVENTS_PAGE);
           for (const event of page) state = domain.evolve(state, event);
+          yield* folded;
+          if (Math.floor(state.headSeq / snapshotEvery) > Math.floor(snapshotSeq / snapshotEvery)) {
+            yield* sql`
+              UPDATE engine_conversation
+              SET snapshot_json = ${jsonText({ v: domain.stateVersion, state })},
+                snapshot_seq = ${state.headSeq}
+              WHERE conversation_id = ${owner}
+            `;
+            snapshotSeq = state.headSeq;
+          }
           if (page.length < DEFAULT_EVENTS_PAGE) return state;
         }
       }).pipe(Effect.mapError(storeError("load")));

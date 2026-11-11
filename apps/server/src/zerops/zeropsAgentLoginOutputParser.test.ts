@@ -31,6 +31,7 @@ describe("zeropsAgentLoginOutputParser — ported from the Zerops GUI's zcp-agen
       "OSC 8 hyperlink row",
       `\x1b]8;id=auth-url;${URI}\x07${URI.slice(0, 30)}\x1b[m\x1b]8;;\x07\r\n\n`,
     ],
+    // A visual terminal wrap adds no newline to the raw PTY stream.
     ["plain-printed URL", `some prompt text\n${URI}\n`],
     ["PTY-style CRLF", `some prompt text\r\n${URI}\r\n`],
   ])("never yields a short complete at any cut offset: %s", (_label, input) => {
@@ -103,18 +104,6 @@ describe("zeropsAgentLoginOutputParser — ported from the Zerops GUI's zcp-agen
   it("prompt patterns survive injected invalidation boundaries (`\\v` is inside `\\s`)", () => {
     const raw = `Select${"\x1b[2K"}login${"\r"}method${"\x1b[K"}now`;
     expect(/Select\s+login\s+method\s+now/i.test(parseTerminalOutput(raw).clean)).toBe(true);
-  });
-
-  it("soft-wrap is a rendering concern, not a raw-byte one: no inserted newline mid-URL", () => {
-    // F8's live finding: a long OAuth URL wraps across visual terminal rows.
-    // The raw PTY byte stream this parser reads carries no line break at the
-    // wrap point — only the client's own terminal rendering wraps it — so a
-    // single unbroken write completes in one shot with no chunking needed.
-    const raw = `Use the url below to sign in (c to copy)\n${URI}\n`;
-    expect(matchAuthUrl(parseTerminalOutput(raw), AUTH_URL_PATTERN)).toEqual({
-      status: "complete",
-      value: URI,
-    });
   });
 
   describe("matchCompletedToken gate", () => {

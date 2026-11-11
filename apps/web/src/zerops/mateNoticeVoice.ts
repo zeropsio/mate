@@ -1,3 +1,4 @@
+import type { MateHqKey } from "@t3tools/contracts";
 import type { OperationProgress } from "@t3tools/client-runtime/data";
 import {
   comingSentence,
@@ -6,13 +7,9 @@ import {
   pressRuns,
   type ArrivalSubstep,
 } from "./mateArrival";
-import {
-  ALMOST_THERE_LINE,
-  TAKING_LONGER_LINE,
-  type MateComing,
-} from "@t3tools/client-runtime/data";
+import { COMING_UP_LINE, TAKING_LONGER_LINE, type MateComing } from "@t3tools/client-runtime/data";
 import { NOT_SET_UP_LINE } from "~/components/zerops/ZeropsProjectRow.logic";
-import { usageLimitWords } from "./noticeWords";
+import { hqKeyWords, usageLimitWords } from "./noticeWords";
 
 const UNCERTAIN_RESTART =
   "Zerops did not answer whether it took the restart. Check the Mate before trying again.";
@@ -36,7 +33,7 @@ export function restartRefusal(progress: OperationProgress): string | null {
 }
 
 export interface MateOperationRefusal {
-  readonly kind: "retry" | "finish" | "remove";
+  readonly kind: "retry" | "redeploy" | "remove";
   readonly details: string;
   readonly receipt?: OperationProgress | undefined;
   /** A retry answers this failed source attempt, not any later attempt. */
@@ -55,7 +52,6 @@ export interface MateArrivalNoticeInput {
   readonly details?: string | undefined;
   readonly attemptId?: string | undefined;
   readonly refusal?: MateOperationRefusal | null | undefined;
-  readonly finish?: string | undefined;
 }
 
 /** Current source evidence chooses the words; refusals keep their diagnostics collapsed. */
@@ -81,7 +77,7 @@ export function mateArrivalNotice(input: MateArrivalNoticeInput) {
             ? "Zerops didn't accept the setup retry."
             : refusal.kind === "remove"
               ? "Zerops didn't accept removing the project."
-              : "Zerops couldn't finish setting up the Mate.";
+              : "Zerops couldn't redeploy the Mate.";
   const secondary =
     coming?.kind === "failed" && coming.verb === "redeploy"
       ? coming.line
@@ -95,12 +91,11 @@ export function mateArrivalNotice(input: MateArrivalNoticeInput) {
                 : note?.kind === "stopped"
                   ? NOT_SET_UP_LINE
                   : coming.line))
-            : (input.finish ??
-              (pressRuns(progress?.press)
+            : coming.line !== COMING_UP_LINE && coming.line !== TAKING_LONGER_LINE
+              ? coming.line
+              : pressRuns(progress?.press)
                 ? KEEP_TAB_OPEN_LINE
-                : coming.line === ALMOST_THERE_LINE
-                  ? ALMOST_THERE_LINE
-                  : comingSentence(coming.line === TAKING_LONGER_LINE)))));
+                : comingSentence(coming.line === TAKING_LONGER_LINE)));
   const details = [
     ...new Set(
       [
@@ -142,20 +137,29 @@ import {
   type MateVoiceInput,
 } from "@t3tools/client-runtime/zerops/environments";
 
+type SpokenVoice = Exclude<MateVoice, { readonly surface: "none" }> & {
+  readonly face?: "idle" | "sleep" | "waking";
+  readonly severity?: "info" | "attention" | "danger" | undefined;
+  readonly headline?: string;
+  /** The source is still opening the conversation; its waiting pose follows readiness. */
+  readonly opening?: true;
+  readonly secondary?: string;
+  readonly details?: string;
+  /** Its container is restarting: its face plays the restart for as long as it lasts. */
+  readonly restarting?: true;
+  readonly restartLines?: ReadonlyArray<string>;
+};
+
+/**
+ * Where the web says it: the banner over the composer, the stage, or `header`: beside the Mate's
+ * name in the conversation's header, where a link that is only reconnecting says so and moves
+ * nothing (the owner, 2026-11-10: a notice that pops in over the composer and shifts the whole
+ * conversation, twice, for a tab left a minute).
+ */
 export type WebMateVoice =
   | { readonly surface: "none" }
-  | (Exclude<MateVoice, { readonly surface: "none" }> & {
-      readonly face?: "idle" | "sleep" | "waking";
-      readonly severity?: "info" | "attention" | "danger" | undefined;
-      readonly headline?: string;
-      /** The source is still opening the conversation; its waiting pose follows readiness. */
-      readonly opening?: true;
-      readonly secondary?: string;
-      readonly details?: string;
-      /** Its container is restarting: its face plays the restart for as long as it lasts. */
-      readonly restarting?: true;
-      readonly restartLines?: ReadonlyArray<string>;
-    });
+  | SpokenVoice
+  | (Omit<SpokenVoice, "surface"> & { readonly surface: "header" });
 
 /** Web copy and pose follow source evidence. Native clients keep their current presentation. */
 export function mateNoticeVoice(
@@ -171,6 +175,12 @@ export function mateNoticeVoice(
     readonly lastKnown?: string | undefined;
     readonly offlineSince?: string | undefined;
     readonly timestampFormat?: TimestampFormat;
+    /** A lost link over a shown conversation has lasted past `MATE_VOICE_QUIET_MS`: no blip. */
+    readonly linkHeld?: boolean;
+    /** A lost link over a shown conversation has lasted past `MATE_VOICE_SLOW_MS`. */
+    readonly linkSlow?: boolean;
+    /** HQ's word on the Mate's key, from its own config (`ServerConfig.hqKey`). */
+    readonly hqKey?: MateHqKey | undefined;
   },
 ): WebMateVoice {
   const { reachability } = input;
@@ -183,7 +193,7 @@ export function mateNoticeVoice(
     face: "idle" | "sleep" | "waking" = "sleep",
     actions: Exclude<MateVoice, { surface: "none" }>["actions"] = [],
     processes = false,
-  ): Exclude<WebMateVoice, { readonly surface: "none" }> => ({
+  ): SpokenVoice => ({
     surface,
     severity: decision.severity,
     headline,
@@ -238,6 +248,10 @@ export function mateNoticeVoice(
           "The conversation will open once the update finishes.",
           "waking",
         );
+  if (decision.phase === "hq-key" && input.hqKey !== undefined) {
+    const words = hqKeyWords(input.hqKey, name);
+    return say(words.headline, words.secondary, "idle");
+  }
   if (decision.phase === "none") return { surface: "none" };
   if (decision.phase === "opening")
     return {
@@ -333,6 +347,26 @@ export function mateNoticeVoice(
       );
     case "reconnecting":
     case "retrying": {
+      // Over a shown conversation a lost link never takes the composer's banner: the conversation
+      // stays where it was. A blip says nothing; past it, one line in the Mate's name stands
+      // beside that name in the header, and Try now joins it once the link is slow. The
+      // conversation already shows what the Mate last said, and a raw cause waits under Details.
+      if (surface === "banner") {
+        if (input.linkHeld !== true && input.linkSlow !== true) return { surface: "none" };
+        const cause =
+          reachability.kind === "reconnecting" ? reachability.unavailableReason : undefined;
+        return {
+          ...say(
+            `Reconnecting to ${name}…`,
+            "",
+            "sleep",
+            input.linkSlow === true ? ["try-now"] : [],
+          ),
+          surface: "header",
+          severity: "info",
+          ...(cause === undefined ? {} : { details: cause }),
+        };
+      }
       if (reachability.kind === "reconnecting" && reachability.retryAtMs === undefined) {
         return say(
           mateUnreachableWords(name, input.offlineSince, input.timestampFormat, true),

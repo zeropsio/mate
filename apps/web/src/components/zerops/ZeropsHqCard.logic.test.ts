@@ -1,33 +1,21 @@
-import type { ZeropsService } from "@t3tools/client-runtime/zerops";
 import type { HqStructure } from "@t3tools/client-runtime/zerops/hq";
 import { describe, expect, it } from "vite-plus/test";
 
 import { hqCardView, hqNavigationTrouble, type HqCardInput } from "./ZeropsHqCard.logic";
 
 const RUNS = "20261003T080500Z.ba9876543210";
-const CARRIED = "20261004T100000Z.0123456789ab";
 
 const LINKS: HqStructure = {
   ungrouped: [],
   apps: [{ id: "a1", name: "Links", projects: [] }],
 };
 
-const service = (name: string, status: string, isSystem = false): ZeropsService => ({
-  id: `s-${name}`,
-  name,
-  status,
-  isSystem,
-});
-
 /** An admin's view of a healthy HQ with nothing else read. */
 const input = (overrides: Partial<HqCardInput> = {}): HqCardInput => ({
   admin: true,
   standing: { kind: "healthy", build: RUNS, parts: { quarantined: [] } },
-  services: undefined,
   structure: null,
   online: undefined,
-  update: undefined,
-  updating: false,
   time: (ms) => `t${String(ms)}`,
   ...overrides,
 });
@@ -36,22 +24,11 @@ describe("hqCardView — the headline", () => {
   it.each<[string, Partial<HqCardInput>, ReturnType<typeof hqCardView>["state"]]>([
     ["before HQ's health is read", { standing: { kind: "unknown" } }, null],
     ["HQ answering as the official HQ", {}, { kind: "healthy", tone: "ok", word: "Running" }],
-    [
-      "HQ not answering as the official HQ",
-      { standing: { kind: "unavailable", since: 7 } },
-      { kind: "down", tone: "failed", word: "Unavailable since t7" },
-    ],
     // A refusal is HQ answering this person, not an outage anybody else shares.
     [
       "HQ refusing this person's sign-in",
       { standing: { kind: "refused" } },
       { kind: "down", tone: "failed", word: "Refused your sign-in" },
-    ],
-    // Serving inside HQ's grace: no outage, but not all is well either.
-    [
-      "HQ serving while it cannot check Zerops",
-      { standing: { kind: "unchecked", build: RUNS, parts: { quarantined: [] } } },
-      { kind: "degraded", tone: "attention", word: "Can't check Zerops right now" },
     ],
     [
       "an admin's HQ with something wrong",
@@ -66,21 +43,6 @@ describe("hqCardView — the headline", () => {
         standing: { kind: "healthy", build: RUNS, parts: { db: "down", quarantined: [] } },
       },
       { kind: "healthy", tone: "ok", word: "Running" },
-    ],
-    [
-      "an update this tab runs",
-      { updating: true },
-      { kind: "updating", tone: "busy", word: "Updating" },
-    ],
-    [
-      "an update another started, as the opened card read it",
-      { update: { kind: "read", state: { kind: "updating", target: CARRIED } } },
-      { kind: "healthy", tone: "ok", word: "Running" },
-    ],
-    [
-      "an update while HQ does not answer",
-      { updating: true, standing: { kind: "unavailable", since: 7 } },
-      { kind: "down", tone: "failed", word: "Unavailable since t7" },
     ],
   ])("%s", (_name, overrides, state) => {
     expect(hqCardView(input(overrides)).state).toEqual(state);
@@ -168,7 +130,7 @@ describe("hqCardView — what an admin is told is wrong", () => {
       parts({ backup: { state: "failed", reason: "database" } }),
       ["The last backup failed: HQ's database didn't answer."],
     ],
-    // HQ refuses every stage or production deploy it cannot open a token for (`apps/hq/src/deploys.ts`).
+    // HQ refuses every stage or production deploy it cannot open a token for (`mate-hq apps/hq/src/deploys.ts`).
     [
       "no key for deploy tokens",
       parts({ keys: "no_secret" }),
@@ -185,43 +147,8 @@ describe("hqCardView — what an admin is told is wrong", () => {
       parts({ keys: "other_secret" }),
       ["Some deploy tokens are sealed under another key: HQ can't deploy with them."],
     ],
-    [
-      "a service of HQ's Zerops does not run",
-      {
-        services: [
-          service("hq", "ACTIVE"),
-          service("db", "STOPPED"),
-          service("core", "FAILED", true),
-        ],
-      },
-      ["db isn't active in Zerops: Stopped."],
-    ],
-    // Down, what Zerops says of HQ's services is what tells why.
-    [
-      "a service that does not run while HQ does not answer",
-      { standing: { kind: "unavailable", since: 7 }, services: [service("hq", "ACTION_FAILED")] },
-      ["hq isn't active in Zerops: Action failed."],
-    ],
   ])("%s", (_name, overrides, troubles) => {
     expect(hqCardView(input(overrides)).troubles).toEqual(troubles);
-  });
-});
-
-describe("hqCardView — HQ's services, as Zerops says them", () => {
-  const services = [
-    service("hq", "ACTIVE"),
-    service("db", "STOPPED"),
-    service("vol", "UPGRADING"),
-    service("backup", "ACTION_FAILED"),
-    service("core", "ACTIVE", true),
-  ];
-  it("to an admin, each with its dot and its word; the system's left out", () => {
-    expect(hqCardView(input({ services })).services).toEqual([
-      { name: "hq", tone: "ok", word: "Active" },
-      { name: "db", tone: "off", word: "Stopped" },
-      { name: "vol", tone: "busy", word: "Upgrading" },
-      { name: "backup", tone: "failed", word: "Action failed" },
-    ]);
   });
 });
 
@@ -311,11 +238,6 @@ describe("hqCardView — the Core HQ runs and its last backup", () => {
       },
       { core: "2026-10-03 08:05 UTC · ba9876543210", backup: null },
     ],
-    [
-      "an admin's, HQ not answering",
-      { standing: { kind: "unavailable", since: 7 } },
-      { core: null, backup: null },
-    ],
     ["a developer's", { admin: false }, { core: null, backup: null }],
   ])("%s", (_name, overrides, rows) => {
     const view = hqCardView(input(overrides));
@@ -323,63 +245,9 @@ describe("hqCardView — the Core HQ runs and its last backup", () => {
   });
 });
 
-describe("hqCardView — HQ's builds, as the opened card read them", () => {
-  it.each<
-    [string, Partial<HqCardInput>, Pick<ReturnType<typeof hqCardView>, "coreNote" | "troubles">]
-  >([
-    ["not read", {}, { coreNote: null, troubles: [] }],
-    [
-      "an update under way",
-      { update: { kind: "read", state: { kind: "updating", target: CARRIED } } },
-      {
-        coreNote: "HQ is updating to the version from 2026-10-04 10:00 UTC.",
-        troubles: [],
-      },
-    ],
-    [
-      "this tab's own update, before anything is read",
-      { updating: true },
-      { coreNote: "HQ is updating.", troubles: [] },
-    ],
-    // No hidden retry: the read failed, and says so.
-    [
-      "a read that failed",
-      { update: { kind: "failed", reason: "Zerops could not be reached." } },
-      {
-        coreNote: "Couldn't read HQ from Zerops: Zerops could not be reached.",
-        troubles: [],
-      },
-    ],
-    [
-      "HQ's last update failed",
-      {
-        update: {
-          kind: "read",
-          state: {
-            kind: "failed",
-            running: RUNS,
-            carried: CARRIED,
-            reason: "Readiness check failed.",
-          },
-        },
-      },
-      {
-        coreNote: null,
-        troubles: [
-          "HQ's last update failed: Readiness check failed. HQ still runs the version from 2026-10-03 08:05 UTC.",
-        ],
-      },
-    ],
-  ])("%s", (_name, overrides, rows) => {
-    const view = hqCardView(input(overrides));
-    expect({ coreNote: view.coreNote, troubles: view.troubles }).toEqual(rows);
-  });
-});
-
 describe("hqCardView — whether the card opens", () => {
   it.each<[string, Partial<HqCardInput>, boolean]>([
     ["an admin's, HQ's health read", {}, true],
-    ["an admin's, HQ not answering", { standing: { kind: "unavailable", since: 7 } }, true],
     ["an admin's, before HQ's health is read", { standing: { kind: "unknown" } }, false],
     ["a developer's: the line and what HQ holds", { admin: false }, false],
   ])("%s", (_name, overrides, opens) => {
@@ -398,7 +266,6 @@ describe("hqCardView — the Core on the header line, the day it was committed",
       "Version b6e65699e0.20261003T120000",
     ],
     ["an admin's, a Core HQ names no build of", runs(""), null],
-    ["an admin's, HQ not answering", { standing: { kind: "unavailable", since: 7 } }, null],
     ["a developer's", { admin: false }, null],
   ])("%s", (_name, overrides, coreDay) => {
     expect(hqCardView(input(overrides)).coreDay).toBe(coreDay);
@@ -410,26 +277,41 @@ describe("hqCardView — the Core on the header line, the day it was committed",
 describe("the HQ line before HQ's navigation is read", () => {
   const UNAVAILABLE = "HQ is unavailable. Restore its connection or retry.";
   it.each([
-    { case: "on its way", refusal: null, capped: false, reconnecting: false, trouble: null },
+    { case: "on its way", refusal: null, capped: false, retrying: false, trouble: null },
     {
       case: "refused",
       refusal: "forbidden",
       capped: false,
-      reconnecting: false,
+      retrying: false,
       trouble: "HQ read refused: forbidden",
     },
-    { case: "capped", refusal: null, capped: true, reconnecting: false, trouble: UNAVAILABLE },
+    { case: "capped", refusal: null, capped: true, retrying: false, trouble: UNAVAILABLE },
     {
       case: "reconnecting",
       refusal: null,
       capped: false,
-      reconnecting: true,
+      retrying: true,
       trouble: UNAVAILABLE,
     },
   ])(
     "names a refusal or an outage, never a read still on its way: $case",
-    ({ refusal, capped, reconnecting, trouble }) => {
-      expect(hqNavigationTrouble({ refusal, capped, reconnecting })).toBe(trouble);
+    ({ refusal, capped, retrying, trouble }) => {
+      expect(hqNavigationTrouble({ refusal, capped, retrying })).toBe(trouble);
     },
   );
+});
+
+describe("hqCardView — the Version row names a build that is not a commit identity", () => {
+  it.each([
+    ["no name at all", "", "unnamed"],
+    [
+      "a dotted name that is not a commit identity",
+      "b6e65699e0.20261003T120000",
+      "b6e65699e0.20261003T120000",
+    ],
+    ["a plain name", "hq-core", "hq-core"],
+  ])("%s", (_name, build, core) => {
+    const standing = { kind: "healthy", build, parts: { quarantined: [] } } as const;
+    expect(hqCardView(input({ standing })).core).toBe(core);
+  });
 });

@@ -6,12 +6,13 @@
  * navigation says their tasks moved (`hqTaskBoardRefresh`); then the sources
  * its tasks come from — GitHub issues by label, a Slack or Discord channel, webhooks, schedules —
  * one row each with its own Edit and Stop, and *Take tasks from…* to add one. Configured where the
- * project is: Settings keeps only what is the organization's (its key, its GitHub app, its Slack
+ * project is: Settings keeps only what is the organization's (its key, its GitHub apps, its Slack
  * and Discord, its limits and budget).
  *
  * An Owner or Admin sets it up here; anyone else reads the pool, the board and the GitHub source,
  * and sees the section only once it holds something.
  */
+import { couldntRead, hqNeedsUpdate } from "@t3tools/client-runtime/zerops/hq";
 import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import type { HqNavigationMateTask } from "@t3tools/shared/hqStream";
@@ -46,6 +47,7 @@ import { useNowMs } from "~/zerops/useNowMs";
 import { useAtomValue } from "@effect/atom-react";
 
 import { Button } from "../../ui/button";
+import { WaitLine } from "../WaitLine";
 import {
   Dialog,
   DialogDescription,
@@ -58,7 +60,11 @@ import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
 import { Skeleton } from "../../ui/skeleton";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { intakeRepoChoices } from "../../settings/automatedMatesSettings.logic";
+import { appName, appReaching } from "../../settings/automationSettings.logic";
 import { MateFace } from "../primitives";
+import { SetupRow } from "../project/SetupCard";
+import { automationSummary } from "../project/projectSetup.logic";
+import { SectionAction } from "../system";
 import { changesInReview, mateAutomation, type MateAutomationLine } from "../SidebarMateRow.logic";
 import {
   automationSection,
@@ -178,6 +184,91 @@ export function ProjectAutomation({
   );
 }
 
+/**
+ * The Automation row of a project page's side column: one line until the project has automated
+ * Mates — *No automated Mates* and *Add* for an Owner or Admin — then their faces, how many are at
+ * work, and *Manage*, which opens the whole section (`ProjectAutomation`). Not drawn for anyone
+ * else while there is nothing to read, nor where HQ is older than automated Mates.
+ */
+export function ProjectAutomationRow({
+  groupId,
+  onManage,
+}: {
+  readonly groupId: string;
+  readonly onManage: (from: HTMLElement) => void;
+}) {
+  const { activeOrganization } = useZeropsSession();
+  const admin = roleAtLeast(activeOrganization?.roleCode, "ADMIN");
+  const keys = useOrgAiKeys(admin);
+  const held = useAutomatedKey();
+  const key = admin ? automatedKeyState(keys.read.keys) : held;
+  const { pool } = usePool(groupId);
+  const addMate = useAddAutomatedMate(groupId);
+  const openMate = useOpenMate();
+  if (automationSection({ admin, key, pool: pool.length, sources: 0 }) !== "shown") return null;
+  const onOpen = (projectId: string) => {
+    openMate({ projectId });
+  };
+  return (
+    <ProjectAutomationRowView
+      face={(mate) => <PoolFace key={mate.projectId} mate={mate} onOpen={onOpen} />}
+      onAdd={admin ? (addMate ?? onManage) : undefined}
+      onManage={onManage}
+      pool={pool}
+    />
+  );
+}
+
+/** What an automated Mate is for, where the project has none. */
+const AUTOMATION_IS_FOR =
+  "A Mate that takes tasks from GitHub issues, Slack, Discord or a schedule.";
+
+export function ProjectAutomationRowView({
+  pool,
+  onAdd,
+  onManage,
+  face,
+}: {
+  readonly pool: ReadonlyArray<PoolMate>;
+  /** *Add*, for an Owner or Admin while the project has no automated Mate. */
+  readonly onAdd: ((from: HTMLElement) => void) | undefined;
+  readonly onManage: (from: HTMLElement) => void;
+  /** A pool Mate's face, which opens it (`PoolFace`). */
+  readonly face: (mate: PoolMate) => ReactNode;
+}) {
+  if (pool.length === 0)
+    return (
+      <SetupRow empty label="Automation" surface="project-automation-row">
+        <p>{AUTOMATION_IS_FOR}</p>
+        {onAdd === undefined ? null : (
+          <Button
+            onClick={(event) => {
+              onAdd(event.currentTarget);
+            }}
+            size="sm"
+            variant="secondary"
+          >
+            Add one
+          </Button>
+        )}
+      </SetupRow>
+    );
+  return (
+    <SetupRow
+      action={<SectionAction onClick={onManage}>Manage</SectionAction>}
+      label="Automation"
+      surface="project-automation-row"
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="flex shrink-0 items-center">{pool.slice(0, 5).map(face)}</span>
+        <span className="min-w-0 truncate text-line text-muted-foreground">
+          {automationSummary(pool)}
+        </span>
+      </div>
+    </SetupRow>
+  );
+}
+
 const WITHHELD = { state: "withheld" } as const;
 
 /**
@@ -282,7 +373,7 @@ function useTaskBoard(
       board !== null
         ? { state: "known", board }
         : setting.state === "failed"
-          ? { state: "failed", words: setting.words }
+          ? { state: "failed", words: couldntRead("its tasks", setting.words) }
           : setting.state === "withheld" || setting.state === "unsupported"
             ? { state: "none" }
             : { state: "reading", predicted: { ...predicted, ...landed.get(groupId) } },
@@ -350,10 +441,12 @@ function AdminAutomation({
   const webhooks = useAppTaskSource("hqAppWebhooks", groupId);
   const schedules = useAppTaskSource("hqAppSchedules", groupId);
   const github = useGithubApp();
-  const githubApp =
-    github.read.setting.state === "known" && github.read.setting.held.state === "connected"
-      ? github.read.setting.held.slug
-      : undefined;
+  // The app GitHub tells Mate through about the intake's repository.
+  const reaching = appReaching(
+    github.read.setting.state === "known" ? github.read.setting.held : null,
+    intake.read.answer?.repo,
+  );
+  const githubApp = reaching === undefined ? undefined : appName(reaching);
   const orgSlack = useOrgTaskSource("hqSlack");
   const orgDiscord = useOrgTaskSource("hqDiscord");
   const navigate = useNavigate();
@@ -661,10 +754,15 @@ export function ProjectAutomationView({
   readonly workingOf?: ((projectId: string) => boolean) | undefined;
 }) {
   return (
-    <section aria-label="Automation" className="ov-side" data-zerops-surface="project-automation">
-      <h2 className="ov-side-name">Automation</h2>
+    <section
+      aria-label="Automation"
+      className="flex flex-col gap-1"
+      data-zerops-surface="project-automation"
+    >
       {update ? (
-        <p className="px-2 text-sm text-muted-foreground">Update HQ to set up automated Mates.</p>
+        <p className="px-2 text-sm text-muted-foreground">
+          {hqNeedsUpdate("set up automated Mates")}
+        </p>
       ) : (
         <AutomationBody
           admin={admin}
@@ -759,7 +857,9 @@ function AutomationBody({
           ))}
         </ul>
       ) : sources.reading ? (
-        <p className="px-2 text-sm text-muted-foreground">Reading…</p>
+        <div className="px-2">
+          <WaitLine text="Reading…" />
+        </div>
       ) : sources.withheld ? null : (
         <p className="px-2 text-sm text-muted-foreground">Nowhere yet.</p>
       )}
@@ -1011,7 +1111,7 @@ export function TaskBoardView({
           {read.words}
         </span>
         <Button onClick={board.onReadAgain} size="sm" variant="ghost">
-          Read again
+          Try again
         </Button>
       </div>
     );
@@ -1253,7 +1353,7 @@ function SourceRowView({
           size="sm"
           variant="ghost"
         >
-          Read again
+          Try again
         </Button>
       ) : (
         <>

@@ -188,6 +188,30 @@ describe("decide: a value the agent asks the person for", () => {
     expect(last).toMatchObject({ _tag: "Reject" });
   });
 
+  it.each([
+    { case: "the same value for the same vault: the one card still open", ask: stripe, cards: 1 },
+    {
+      case: "another value: a card of its own",
+      ask: { ...stripe, key: "STRIPE_WEBHOOK_SECRET" },
+      cards: 2,
+    },
+    {
+      case: "the same value for another vault: a card of its own",
+      ask: { ...stripe, scope: { kind: "service", hostname: "billing" } },
+      cards: 2,
+    },
+  ] satisfies ReadonlyArray<{ case: string; ask: RequestAsk; cards: number }>)(
+    "asked again while its card is open, a value is $case",
+    ({ ask, cards }) => {
+      const { log } = play([
+        ...running,
+        asked(),
+        signal({ kind: "request-opened", turn: T(1), key: "vault:call-2", ask }),
+      ]);
+      expect(of(log, "RequestOpened").length).toBe(cards);
+    },
+  );
+
   it("keeps no session open: an idle session closes with the ask still open", () => {
     const { state, log } = play([
       ...afterTurn,

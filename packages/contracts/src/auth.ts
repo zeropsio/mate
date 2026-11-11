@@ -45,7 +45,6 @@ export type ServerAuthPolicy = typeof ServerAuthPolicy.Type;
  * values describe the non-Zerops credential protocol.
  */
 export const ServerAuthBootstrapMethod = Schema.Literals([
-  "desktop-bootstrap",
   "one-time-token",
   "zerops-throwaway",
   "ticket",
@@ -391,3 +390,13 @@ export const AuthSessionState = Schema.Struct({
   expiresAt: Schema.optionalKey(Schema.DateTimeUtc),
 });
 export type AuthSessionState = typeof AuthSessionState.Type;
+
+/**
+ * A Zerops person's connection subject, and the subject a person's answer is recorded under
+ * (`Principal` `person`): the prefix, then their Zerops user id.
+ */
+export const ZEROPS_SUBJECT_PREFIX = "zerops-user:";
+
+/** The Zerops user behind a connection; unrelated subjects remain distinct. */
+export const zeropsUserIdOf = (subject: string): string =>
+  subject.startsWith(ZEROPS_SUBJECT_PREFIX) ? subject.slice(ZEROPS_SUBJECT_PREFIX.length) : subject;

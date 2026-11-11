@@ -1,7 +1,8 @@
 /**
  * A setting HQ answers in one read — the organization's keys, its Slack app, an application's
  * webhooks — read while a screen demands it, supervised by the common retry and refusal policy, and
- * read again when asked (`again`, after a write of ours). Each read started has its number, which
+ * read again when asked (`again`, after a write of ours) — or given the value a write of ours answered
+ * (`answered`). Each read started has its number, which
  * the committed value's revision carries: a write's answer names the last read started before it
  * (`started`), so whoever waits for the write to show knows the read that can show it.
  *
@@ -16,6 +17,7 @@ import * as Result from "effect/Result";
 import { HqError } from "../../zerops/hq/client.ts";
 import { SETTING_UNSUPPORTED } from "../families/hqAutomation.ts";
 import type { Family, FamilyValues, LinkKey, ScopeKey } from "../model.ts";
+import { sameValue } from "../projections/equal.ts";
 import { streamOf } from "../reducer.ts";
 import type { AccountStore } from "../store.ts";
 import type { StreamEvent, StreamFault } from "../streamMachine.ts";
@@ -213,6 +215,40 @@ export function makeSettingsReads(store: AccountStore) {
      */
     started: <F extends Family>(spec: SettingRead<F>): number =>
       readings.get(keyOf(spec))?.started ?? committed(spec),
+    /**
+     * Our own write answered with the setting as it stands now: that answer is its value,
+     * numbered after every read started, so none of them landing later replaces it. An answer
+     * that repeats the value held, with no read left to land over it, says nothing new.
+     */
+    answered: <F extends Family>(spec: SettingRead<F>, value: FamilyValues[F]) => {
+      if (closed) return;
+      const entry = readings.get(keyOf(spec));
+      const held = factOf(spec);
+      if (
+        held?.access === "allowed" &&
+        held.content.kind === "value" &&
+        sameValue(held.content.value, value) &&
+        (entry?.started ?? 0) <= committed(spec)
+      )
+        return;
+      const number = Math.max(entry?.started ?? 0, committed(spec)) + 1;
+      if (entry !== undefined) entry.started = number;
+      store.dispatch({
+        kind: "rows",
+        scope: spec.scope,
+        generation: streamOf(store.state(), spec.scope).generation,
+        method: "read",
+        via: "hq-stream",
+        rows: [
+          {
+            family: spec.family,
+            id: spec.id,
+            value,
+            revision: { kind: "mate-link", sequence: number },
+          } as never,
+        ],
+      });
+    },
     /**
      * Our own write's effect is read from HQ: the setting is held and read again until it
      * answers, then let go unless a screen still demands it.

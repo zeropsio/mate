@@ -9,10 +9,11 @@ import { ComingBelow } from "~/components/zerops/ZeropsMateComingPage";
 import { MateEmptyStateView } from "~/components/zerops/ZeropsMateEmptyState";
 import { ZeropsOperationCard } from "~/components/zerops/ZeropsOperationCard";
 import { comingSentenceOf } from "~/zerops/mateNoticeVoice";
+import { useSecondsNowMs } from "~/zerops/useNowMs";
 
 import { defineKitSection } from "../kitSection";
 import { Specimen } from "../Specimen";
-import { CensusLook, StateCensus, StateFrame, useKitNowMs } from "../states/Census";
+import { CensusLook, StateCensus, StateFrame } from "../states/Census";
 import { ChosenProgress } from "../states/Chosen";
 import {
   birthProgress,
@@ -27,7 +28,7 @@ const AGES: readonly BirthAge[] = ["start", "midway", "over-time"];
 
 /** A Mate's own page while it comes up: the real stage with its real steps under it. */
 function ArrivalStage({ age }: { readonly age: BirthAge }) {
-  const nowMs = useKitNowMs();
+  const nowMs = useSecondsNowMs(true);
   const progress = birthProgress(age, nowMs);
   const coming: MateComing = { kind: "coming", line: "Coming up. A few minutes." };
   return (
@@ -55,12 +56,12 @@ function ArrivalStage({ age }: { readonly age: BirthAge }) {
 }
 
 function BirthLine({ age }: { readonly age: BirthAge }) {
-  const nowMs = useKitNowMs();
+  const nowMs = useSecondsNowMs(true);
   return <ZeropsBirthLine nowMs={nowMs} progress={birthProgress(age, nowMs)} />;
 }
 
 function BirthChecklist() {
-  const nowMs = useKitNowMs();
+  const nowMs = useSecondsNowMs(true);
   return <ZeropsBirthChecklist nowMs={nowMs} progress={birthProgress("midway", nowMs)} />;
 }
 
@@ -88,7 +89,7 @@ function WorkingLine({ secondsAgo }: { readonly secondsAgo: number }) {
 }
 
 function RunningOperation() {
-  const nowMs = useKitNowMs();
+  const nowMs = useSecondsNowMs(true);
   const [mountedAt] = useState(nowMs);
   const operation = showcaseOperation("running");
   if (operation === null) return null;
@@ -134,10 +135,9 @@ function WaitingCensus() {
 
       <CensusLook
         name="Ringed step list with durations (ProcessSteps)"
-        uses="8 sites in 5 files"
+        uses="7 sites in 4 files"
         places={[
           "apps/web/src/components/zerops/primitives/ProcessSteps.tsx:82 ProcessSteps",
-          "apps/web/src/components/zerops/ZeropsEnvironmentCreationDialog.tsx:118 PressSteps",
           "apps/web/src/components/zerops/ZeropsOperationCard.tsx:664 ZeropsOperationCard",
           "apps/web/src/components/zerops/ZeropsToolResultCards.tsx:181",
           "apps/web/src/components/zerops/ZeropsBirthProgress.tsx:122 ZeropsBirthChecklist",

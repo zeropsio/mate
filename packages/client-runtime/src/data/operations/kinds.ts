@@ -16,26 +16,29 @@ import { MATE_ENGINE_KINDS } from "./mateEngine.ts";
  * @module data/operations/kinds
  */
 import type { OperationIntent } from "../model.ts";
-import { assignMateOwner, finishMateHandover } from "./assignMateOwner.ts";
 import { createProject } from "./createProject.ts";
 import { changeComment } from "./changeComment.ts";
 import { deleteProject } from "./deleteProject.ts";
 import { enableSubdomainAccess } from "./enableSubdomainAccess.ts";
+import { cancelBuild } from "./cancelBuild.ts";
 import { enableZeropsMate } from "./enableZeropsMate.ts";
 import { hardenProject } from "./hardenProject.ts";
-import { HQ_BIRTH_KINDS } from "./hqBirth.ts";
 import { HQ_CHIEF_KINDS } from "./hqChief.ts";
-import { hqUpdate } from "./hqUpdate.ts";
+import { authorizeObserve } from "./hqObserveAuthorization.ts";
 import { HQ_WRITE_KINDS } from "./hqWrites.ts";
-import { importContainer } from "./importContainer.ts";
+import { PERSONA_TEMPLATE_KINDS } from "./hqPersonaTemplates.ts";
+import { importContainer, prepareTierVariables } from "./importContainer.ts";
 import { importProject } from "./importProject.ts";
+import { createServices } from "./createServices.ts";
 import { importServices } from "./importServices.ts";
 import { renameApp, deleteApp, answerKeptGit } from "./hqAppWrites.ts";
 import {
   connectGitRemoteViaApp,
+  deleteRepository,
   followGithubRepository,
   stopFollowingGithubRepository,
 } from "./hqGithubRemote.ts";
+import { setRepoCap } from "./hqRepoStorage.ts";
 import { FLOW_WRITE_KINDS } from "./flowWrites.ts";
 import type { RegisteredOperationKind } from "./kind.ts";
 import { mateDeploy } from "./mateDeploy.ts";
@@ -83,6 +86,7 @@ export const OPERATION_KINDS = defineOperationKinds([
   mateUpdate,
   deleteProject,
   enableSubdomainAccess,
+  cancelBuild,
   startService,
   stopService,
   deleteService,
@@ -90,19 +94,19 @@ export const OPERATION_KINDS = defineOperationKinds([
   enableZeropsMate,
   renameProject,
   updateProjectTags,
-  assignMateOwner,
-  finishMateHandover,
   moveProject,
   ...MATE_DELETION_KINDS,
   createProject,
   importProject,
   importServices,
+  createServices,
   importContainer,
+  prepareTierVariables,
   hardenProject,
-  hqUpdate,
   ...HQ_WRITE_KINDS,
-  ...HQ_BIRTH_KINDS,
+  ...PERSONA_TEMPLATE_KINDS,
   ...HQ_CHIEF_KINDS,
+  authorizeObserve,
   changeComment,
   renameApp,
   deleteApp,
@@ -110,6 +114,8 @@ export const OPERATION_KINDS = defineOperationKinds([
   connectGitRemoteViaApp,
   followGithubRepository,
   stopFollowingGithubRepository,
+  deleteRepository,
+  setRepoCap,
   vaultWrite,
   serviceRestart,
   ...FLOW_WRITE_KINDS,

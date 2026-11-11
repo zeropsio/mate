@@ -6,6 +6,18 @@ import {
   type ServerConfig,
 } from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
+import * as Layer from "effect/Layer";
+import * as Queue from "effect/Queue";
+import * as Schema from "effect/Schema";
+import * as Socket from "effect/socket/Socket";
+import {
+  EnvironmentAuthorizationError,
+  EnvironmentId,
+  ServerConfig as ServerConfigSchema,
+} from "@t3tools/contracts";
+import { RpcClientError } from "effect/rpc";
+import * as RpcSessionModule from "../../rpc/session.ts";
+import { TestWebSocket } from "../../rpc/__fixtures__/mateRecovery.ts";
 import * as Option from "effect/Option";
 import { EnvironmentSupervisor } from "../../connection/supervisor.ts";
 import type { EnvironmentRegistry } from "../../connection/registry.ts";
@@ -30,11 +42,13 @@ import { settle } from "../__fixtures__/zeropsWire.ts";
 import {
   makeMateFeeds,
   makeMateFeedWire,
+  MATE_SERVER_CONFIG_SUBSCRIPTION,
   classifyMateFeedFailure,
   crewFrameMark,
   isNewerCrewFrame,
   type MateFeedEvent,
 } from "./mateFeeds.ts";
+const encodeServerConfig = Schema.encodeSync(ServerConfigSchema);
 const auth = { available: true, agents: [] } as const;
 const key: MateFeedKey<"mateAgentAuth"> = {
   family: "mateAgentAuth",
@@ -383,6 +397,13 @@ it.live(
       const session = (initialConfig: Effect.Effect<ServerConfig>): RpcSession =>
         ({
           initialConfig,
+          subscribeServerConfig: () =>
+            Stream.concat(
+              Stream.fromEffect(initialConfig).pipe(
+                Stream.map((config) => ({ version: 1, type: "snapshot", config }) as const),
+              ),
+              Stream.never,
+            ),
           client: { [WS_METHODS.subscribeServerConfig]: () => Stream.never },
         }) as unknown as RpcSession;
       const sessions = yield* SubscriptionRef.make(Option.none<RpcSession>());
@@ -465,6 +486,156 @@ it.live(
       feeds.close();
       r.close();
     }),
+);
+
+it.live("a Mate connection sends one config subscription, the account's config feed included", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const r = rig();
+      const messages = yield* Queue.unbounded<string>();
+      const created = yield* Deferred.make<TestWebSocket>();
+      const factory = yield* RpcSessionModule.RpcSessionFactory.pipe(
+        Effect.provide(
+          RpcSessionModule.layerWithOptions(MATE_SERVER_CONFIG_SUBSCRIPTION).pipe(
+            Layer.provide(
+              Layer.succeed(Socket.WebSocketConstructor, (url) => {
+                const socket = new (class extends TestWebSocket {
+                  override addEventListener(
+                    ...args: Parameters<TestWebSocket["addEventListener"]>
+                  ) {
+                    super.addEventListener(...args);
+                    if (args[0] === "open") Deferred.doneUnsafe(created, Effect.succeed(this));
+                  }
+                })(url, messages);
+                return socket as unknown as globalThis.WebSocket;
+              }),
+            ),
+          ),
+        ),
+      );
+      const session = yield* factory.connect({
+        environmentId: EnvironmentId.make("mate"),
+        label: "Test Mate",
+        httpBaseUrl: "https://mate.example.test",
+        socketUrl: "wss://mate.example.test/ws",
+        httpAuthorization: null,
+        target: { kind: "primary" } as never,
+      });
+      const ready = yield* Effect.forkChild(session.ready);
+      const socket = yield* Deferred.await(created);
+      socket.open();
+      const requests = () =>
+        socket.sent
+          .map((message) => JSON.parse(message) as { _tag: string; id: string; tag: string })
+          .filter((message) => message._tag === "Request");
+      while (requests().length === 0) yield* Queue.take(messages);
+      const config: ServerConfig = {
+        environment: {
+          environmentId: EnvironmentId.make("mate"),
+          label: "Test Mate",
+          platform: { os: "linux", arch: "x64" },
+          serverVersion: "0.0.1",
+          capabilities: { repositoryIdentity: true },
+        },
+        auth: {
+          policy: "loopback-browser",
+          bootstrapMethods: ["one-time-token"],
+          sessionMethods: ["bearer-access-token"],
+          sessionCookieName: "t3_session",
+        },
+        cwd: "/mate",
+        keybindingsConfigPath: "/mate/keybindings.json",
+        keybindings: [],
+        issues: [],
+        providers: [],
+        availableEditors: [],
+        observability: {
+          logsDirectoryPath: "/mate/logs",
+          localTracingEnabled: false,
+          otlpTracesEnabled: false,
+          otlpMetricsEnabled: false,
+          otlpLogsEnabled: false,
+        },
+        settings: DEFAULT_SERVER_SETTINGS,
+      };
+      socket.serverMessage(
+        JSON.stringify({
+          _tag: "Chunk",
+          requestId: requests()[0]!.id,
+          values: [{ version: 1, type: "snapshot", config: encodeServerConfig(config) }],
+        }),
+      );
+      yield* Fiber.join(ready);
+      const sessions = yield* SubscriptionRef.make(Option.some(session));
+      const supervisor = { session: sessions } as unknown as EnvironmentSupervisor["Service"];
+      const registry = {
+        followStream: <A, E, R>(_environmentId: string, stream: Stream.Stream<A, E, R>) =>
+          Stream.provideService(stream, EnvironmentSupervisor, supervisor),
+        stateChanges: () => Stream.never,
+      } as unknown as EnvironmentRegistry["Service"];
+      const feeds = makeMateFeeds({ store: r.store, wire: makeMateFeedWire(registry) });
+      const configKey: MateFeedKey<"mateServerConfig"> = {
+        family: "mateServerConfig",
+        environmentId: "mate",
+        input: {},
+      };
+      const release = feeds.hold(configKey);
+      yield* Effect.callback<void>((resume) => {
+        const check = () => {
+          if (
+            mateFeed("mateServerConfig").derive(readsOfState(r.store.state()), configKey).state ===
+            "known"
+          )
+            resume(Effect.void);
+        };
+        const stop = r.store.subscribe(check);
+        check();
+        return Effect.sync(stop);
+      });
+      expect(
+        mateFeed("mateServerConfig").derive(readsOfState(r.store.state()), configKey),
+      ).toMatchObject({ state: "known", value: { config: { cwd: "/mate" } } });
+      expect(
+        requests().filter((request) => request.tag === WS_METHODS.subscribeServerConfig),
+      ).toHaveLength(1);
+      release();
+      feeds.close();
+      r.close();
+    }),
+  ),
+);
+
+it.effect("a config refusal under the connection's shared subscription stays a refusal", () =>
+  Effect.gen(function* () {
+    const refusal = new EnvironmentAuthorizationError({
+      message: "This Mate refused the configuration.",
+      requiredScope: "orchestration:read",
+    });
+    const session = {
+      subscribeServerConfig: () =>
+        Stream.fail(
+          new RpcClientError.RpcClientError({
+            reason: new RpcClientError.RpcClientDefect({
+              message: "Test Mate config subscription failed.",
+              cause: Cause.fail(refusal),
+            }),
+          }),
+        ),
+    } as unknown as RpcSession;
+    const sessions = yield* SubscriptionRef.make(Option.some(session));
+    const supervisor = { session: sessions } as unknown as EnvironmentSupervisor["Service"];
+    const registry = {
+      followStream: <A, E, R>(_environmentId: string, stream: Stream.Stream<A, E, R>) =>
+        Stream.provideService(stream, EnvironmentSupervisor, supervisor),
+    } as unknown as EnvironmentRegistry["Service"];
+    const fault = yield* makeMateFeedWire(registry)
+      .open({ family: "mateServerConfig", environmentId: "mate", input: {} })
+      .pipe(Stream.runDrain, Effect.flip);
+    expect(fault).toMatchObject({
+      outcome: "authoritative-denial",
+      message: "This Mate refused the configuration.",
+    });
+  }),
 );
 
 it("a session HTTP scope refusal withdraws protected content rather than retrying as an outage", () => {

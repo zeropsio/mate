@@ -23,6 +23,7 @@ const EMPTY_QUEUED_MESSAGES: ReadonlyArray<QueuedComposerMessage> = [];
 const EMPTY_NOTICES: ReadonlyArray<ConversationNotice> = [];
 const NOOP_QUEUED_MESSAGE_ACTION = (_id: string) => {};
 const EMPTY_ORIGIN_ASKS: ReadonlyArray<OriginAskPlace> = [];
+const EMPTY_MIRROR_ASKS: ReadonlyArray<MirrorAskPlace> = [];
 import { resolveChatListAnchoredEndSpace } from "@t3tools/shared/chatList";
 import {
   classifyTimelineScroll,
@@ -60,6 +61,7 @@ import {
 } from "./timelineEndFollow";
 import { landingHolds } from "./answerLanding.logic";
 import { headStoodJustNow, takeWordsStood, wordsJustStood, type WordsStood } from "./wordsLanding";
+import { AsPainted } from "./AsPainted";
 import { foldTimelineWork } from "./timelineFold";
 import { revealBy } from "./timelineReveal.logic";
 import { usePace } from "./usePace";
@@ -199,7 +201,7 @@ import { easeRooms, type Rooms } from "./runRoom";
 import type { LiveJobs } from "./liveJobs.logic";
 import { backgroundLineOf, backgroundRowItems } from "./backgroundLine.logic";
 import { KeptTimelineContext } from "./keptTimelineContext";
-import { ConversationOpeningStage } from "./ConversationOpeningStage";
+import { ConversationOpeningStage, ConversationOpeningWaits } from "./ConversationOpeningStage";
 import { useZeropsThreadActivity } from "../../zerops/useZeropsAgentActivity";
 import type { CarriedRow } from "./stepHeight";
 import {
@@ -231,11 +233,17 @@ import { MateTaskCard, MateTaskMessageRow } from "../zerops/MateTaskCard";
 import { useRightPanelStore } from "~/rightPanelStore";
 import { CrewmateEmptyState } from "../zerops/crew/CrewmateEmptyState";
 import { ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
-import { ProposalCardContainer } from "../zerops/proposal/ProposalCardContainer";
+import {
+  NewestReleaseAskContext,
+  ProposalCardContainer,
+} from "../zerops/proposal/ProposalCardContainer";
 import { useProposalDecisionsRead } from "../../zerops/proposalRecord";
+import { MirrorAskCardContainer } from "../zerops/mirror/MirrorAskCardContainer";
+import { type MirrorAskPlace } from "../zerops/mirror/mirrorAsk.logic";
 import { OriginAskCardContainer } from "../zerops/origin/OriginAskCardContainer";
 import { type OriginAskPlace } from "../zerops/origin/originAsk.logic";
-import { VaultRequestCardContainer } from "../zerops/vault/VaultRequestCardContainer";
+import { VaultRequestCardContainer } from "../zerops/vault/VaultAskContainer";
+import { useAskReveal } from "../ask/askReveal";
 import { vaultAskOf } from "../zerops/vault/vaultRequest.logic";
 import { useOperationCard } from "../../zerops/activity/useOperationCard";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
@@ -381,6 +389,8 @@ interface MessagesTimelineProps {
   isCompacting?: boolean;
   /** The origins the engine asked of the person, each by its run card (`originAskPlaces`). */
   originAsks?: ReadonlyArray<OriginAskPlace>;
+  /** The repositories the engine asked the person to connect to GitHub (`mirrorAskPlaces`). */
+  mirrorAsks?: ReadonlyArray<MirrorAskPlace>;
   /** A person's Stop is in force (`conversationStop`). */
   isStopping?: boolean;
   activeTurnStartedAt: string | null;
@@ -390,10 +400,9 @@ interface MessagesTimelineProps {
   runningTurnId: TurnId | null;
   routeThreadKey: string;
   /**
-   * The conversation its own draft just became: its message was already on screen in the draft's
-   * frame, so it opens with no opening of its own — nothing fades out and back in.
+   * A draft's sent message, and the conversation it becomes, stay visible while the list places.
    */
-  arrivesFromItsDraft?: boolean;
+  keepsDraftMessage?: boolean;
   /** The thread's provider driver: how its live field reads a batch (`batchesByTiming`). */
   provider?: string | null;
   onRunShellCommand?: (command: string) => void;
@@ -468,6 +477,8 @@ interface MessagesTimelineProps {
   onUsageContinue?: (() => void) | null;
   usageContinueTries?: boolean;
   onWithdrawHeldMessage?: ((runId: string) => void) | null;
+  /** Who the person's messages are headed with (`TimelineRowSharedState.asker`). */
+  asker?: string | undefined;
   onSteerQueuedMessage?: (id: string) => void;
   steerQueuedMessageShortcutLabel?: string | null;
   /** A question or an approval waits on the person: the queue waits with it. */
@@ -484,6 +495,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   workingStepLabel = null,
   isCompacting = false,
   originAsks = EMPTY_ORIGIN_ASKS,
+  mirrorAsks = EMPTY_MIRROR_ASKS,
   isStopping = false,
   activeTurnStartedAt,
   agentPanelModel,
@@ -498,7 +510,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   latestTurn,
   runningTurnId,
   routeThreadKey,
-  arrivesFromItsDraft = false,
+  keepsDraftMessage = false,
   provider = null,
   onRunShellCommand,
   onImageExpand,
@@ -532,6 +544,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   onUsageContinue = null,
   usageContinueTries = false,
   onWithdrawHeldMessage = null,
+  asker,
   onSteerQueuedMessage = NOOP_QUEUED_MESSAGE_ACTION,
   steerQueuedMessageShortcutLabel = null,
   queueBlockedByAnswer = false,
@@ -679,11 +692,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         liveLines,
         isCompacting,
         originAsks,
+        mirrorAsks,
       }),
     [
       cardPaging,
       liveLines,
       originAsks,
+      mirrorAsks,
       isCompacting,
       runCards,
       nowMs,
@@ -748,6 +763,18 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     [stableRows],
   );
   useProposalDecisionsRead(proposalIds);
+  // The newest release ask: an earlier one in the conversation says it took its place.
+  const newestReleaseAsk = useMemo(
+    () =>
+      stableRows
+        .flatMap((row) =>
+          row.kind === "proposal" && row.operation.proposal?.kind === "release.offer"
+            ? [row.operation.proposal.id]
+            : [],
+        )
+        .at(-1) ?? null,
+    [stableRows],
+  );
   // A crewmate's conversation (`CrewTimelineContext`, given for a crew thread
   // only) is empty while it holds nothing but seams.
   const crew = use(CrewTimelineContext);
@@ -1389,6 +1416,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const notePersonSession = useCallback((event: PersonScrollSessionEvent) => {
     personSessionRef.current = nextPersonScrollSession(personSessionRef.current, event);
   }, []);
+  // "Show in conversation" on an ask docked above the composer: the person's way to its card.
+  useAskReveal(rows, (index) => {
+    onManualNavigation();
+    notePersonSession({ type: "input", at: performance.now() });
+    return listRef.current?.scrollToIndex({ index, animated: !reducedMotion(), viewOffset: 24 });
+  });
   // The wheel gesture under way and whether it is the list's (`latchWheelGesture`).
   const wheelLatchRef = useRef<WheelGestureLatch | null>(null);
   const onPersonInputRef = useRef(onPersonInput);
@@ -1872,6 +1905,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onUsageContinue,
       usageContinueTries,
       onWithdrawHeldMessage,
+      asker,
       agentPanelModel: agentPanelModel ?? EMPTY_AGENT_PANEL_MODEL,
       onOpenAgents,
       onSteerQueuedMessage,
@@ -1912,6 +1946,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onUsageContinue,
       usageContinueTries,
       onWithdrawHeldMessage,
+      asker,
       agentPanelModel,
       onOpenAgents,
       onSteerQueuedMessage,
@@ -1965,6 +2000,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // later, 1,480 px away.
   const onItsWay = loading && timelineEntries.length === 0;
   const showsList = !onItsWay && (!empty || isWorking);
+  const lastDraftMessage =
+    keepsDraftMessage && !listPlaced
+      ? rows.findLastIndex((row) => row.kind === "message" && row.message.role === "user")
+      : -1;
+  // LegendList mounts its rows after its container. Keep the draft's first rows on screen until
+  // the measured list stands in their place, including when its conversation mounts afresh.
+  const draftRows = lastDraftMessage >= 0 ? rows.slice(0, lastDraftMessage + 1) : [];
   if (!showsList && (listReady || listPlaced)) {
     setListReady(false);
     setListPlaced(false);
@@ -2226,119 +2268,136 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     )
   ) : (
     <TimelineRowCtx value={sharedState}>
-      <TimelineNoticesCtx value={noticesById}>
-        <TimelineRowActivityCtx value={activityState}>
-          <TimelineWorkingCtx value={working}>
-            {/* A failed notice is said once here, outside the list that remounts its rows. */}
-            <NoticeAnnouncer notices={notices} />
-            <TooltipScrollDismissArea
-              ref={setTimelineViewportElement}
-              className="relative h-full min-h-0"
-              // Whether the list follows its end: a run's fold then keeps its
-              // line in place while the list catches up (`foldAway`).
-              data-timeline-follows-end={followingEnd ? "" : undefined}
-              // Rows waiting their turn to enter (`usePace`): a run's fold waits for them.
-              data-timeline-arriving={rowsHeldKey === "" ? undefined : ""}
-              data-timeline-placing={listPlaced ? undefined : ""}
-              // Placement proves readiness; the opening stage owns the conversation's entrance.
-              data-timeline-arrives="at-once"
-              // Its own draft's frame showed these rows: they show again in place, not eased in.
-              data-timeline-from-draft={arrivesFromItsDraft ? "" : undefined}
-              data-timeline-thread={routeThreadKey}
-            >
-              <LegendList<MessagesTimelineRow>
-                ref={listRef}
-                data={rows}
-                // Each container reads its row again whenever a row comes, goes
-                // or moves. LegendList (3.3.5) draws `data[indexByKey(key)]`
-                // once per container and keeps it until that container's own
-                // data changes: read while a row was being inserted, the index
-                // was the old one, and the container went on drawing the row
-                // that slid into it — a row twice, a card's edge gone (Rhea,
-                // run 11). A row that only changed in place is its container's
-                // own data, which the list hands it: the rest are not drawn
-                // again for it, on every streamed update.
-                extraData={rowOrder}
-                keyExtractor={keyExtractor}
-                getItemType={getItemType}
-                renderItem={renderItem}
-                estimatedItemSize={90}
-                // Bootstrap ends at placement: keeping it armed re-pins new rows before their glide.
-                initialScrollAtEnd={!listPlaced && rememberedPosition?.atEnd !== false}
-                {...(restoringAlwaysRender ? { alwaysRender: restoringAlwaysRender } : {})}
-                {...(anchoredEndSpace ? { anchoredEndSpace } : {})}
-                contentInsetEndAdjustment={contentInsetEndAdjustment}
-                // Off, no band: an end scroll LegendList queued before the person
-                // left is dropped once their scroll lands.
-                maintainScrollAtEndThreshold={followingEnd ? TIMELINE_FOLLOW_THRESHOLD : 0}
-                // The end is kept here (`createEndFollow`), never by the list: its keeping jumps.
-                maintainScrollAtEnd={false}
-                onItemSizeChanged={onItemSizeChanged}
-                maintainVisibleContentPosition={
-                  restoringReadingPosition || followingEnd
-                    ? false
-                    : MAINTAIN_VISIBLE_CONTENT_POSITION
-                }
-                onScroll={handleScroll}
-                onLoad={onListLoad}
-                className={cn(
-                  "timeline-legend-list scrollbar-gutter-both h-full min-h-0 overflow-x-hidden overscroll-y-contain px-3 [overflow-anchor:none] sm:px-5",
-                  topFadeEnabled && "conversation-scroll-fade",
-                )}
-                ListHeaderComponent={
-                  loadEarlier !== null ? (
-                    <TimelineLoadEarlierHeader
-                      loading={loadEarlier.loading}
-                      onLoadEarlier={onLoadEarlier}
-                      fade={topFadeEnabled}
-                    />
-                  ) : topFadeEnabled ? (
-                    TIMELINE_LIST_FADE_HEADER
-                  ) : (
-                    TIMELINE_LIST_HEADER
-                  )
-                }
-                ListFooterComponent={
-                  askRoom > 0 ? (
-                    <>
-                      {pauseStageId === null ? TIMELINE_LIST_FOOTER : null}
-                      <div aria-hidden style={{ height: askRoom }} />
-                    </>
-                  ) : pauseStageId === null ? (
-                    TIMELINE_LIST_FOOTER
-                  ) : null
-                }
-              />
-              <TimelineMinimap
-                items={minimapItems}
-                hasPersistentGutter={minimapHasPersistentGutter}
-                hitStripWidth={minimapHitStripWidth}
-                currentIndex={minimapCurrentIndex}
-                stripMap={minimapStripMap}
-                onSelect={(item) => {
-                  onManualNavigation();
-                  // The person picked where to go: the list's way there is
-                  // theirs, and landing on the latest follows it.
-                  notePersonSession({ type: "input", at: performance.now() });
-                  void listRef.current?.scrollToIndex({
-                    index: item.rowIndex,
-                    animated: !reducedMotion(),
-                    viewOffset: 24,
-                  });
-                }}
-              />
-            </TooltipScrollDismissArea>
-          </TimelineWorkingCtx>
-        </TimelineRowActivityCtx>
-      </TimelineNoticesCtx>
+      <NewestReleaseAskContext value={newestReleaseAsk}>
+        <TimelineNoticesCtx value={noticesById}>
+          <TimelineRowActivityCtx value={activityState}>
+            <TimelineWorkingCtx value={working}>
+              {/* A failed notice is said once here, outside the list that remounts its rows. */}
+              <NoticeAnnouncer notices={notices} />
+              <TooltipScrollDismissArea
+                ref={setTimelineViewportElement}
+                className="relative h-full min-h-0"
+                // Whether the list follows its end: a run's fold then keeps its
+                // line in place while the list catches up (`foldAway`).
+                data-timeline-follows-end={followingEnd ? "" : undefined}
+                // Rows waiting their turn to enter (`usePace`): a run's fold waits for them.
+                data-timeline-arriving={rowsHeldKey === "" ? undefined : ""}
+                data-timeline-placing={listPlaced ? undefined : ""}
+                // Placement proves readiness; the opening stage owns the conversation's entrance.
+                data-timeline-arrives="at-once"
+                // Its own draft's frame showed these rows: they show again in place, not eased in.
+                data-timeline-from-draft={keepsDraftMessage ? "" : undefined}
+                data-timeline-thread={routeThreadKey}
+              >
+                <LegendList<MessagesTimelineRow>
+                  ref={listRef}
+                  data={rows}
+                  // Each container reads its row again whenever a row comes, goes
+                  // or moves. LegendList (3.3.5) draws `data[indexByKey(key)]`
+                  // once per container and keeps it until that container's own
+                  // data changes: read while a row was being inserted, the index
+                  // was the old one, and the container went on drawing the row
+                  // that slid into it — a row twice, a card's edge gone (Rhea,
+                  // run 11). A row that only changed in place is its container's
+                  // own data, which the list hands it: the rest are not drawn
+                  // again for it, on every streamed update.
+                  extraData={rowOrder}
+                  keyExtractor={keyExtractor}
+                  getItemType={getItemType}
+                  renderItem={renderItem}
+                  estimatedItemSize={90}
+                  // Bootstrap ends at placement: keeping it armed re-pins new rows before their glide.
+                  initialScrollAtEnd={!listPlaced && rememberedPosition?.atEnd !== false}
+                  {...(restoringAlwaysRender ? { alwaysRender: restoringAlwaysRender } : {})}
+                  {...(anchoredEndSpace ? { anchoredEndSpace } : {})}
+                  contentInsetEndAdjustment={contentInsetEndAdjustment}
+                  // Off, no band: an end scroll LegendList queued before the person
+                  // left is dropped once their scroll lands.
+                  maintainScrollAtEndThreshold={followingEnd ? TIMELINE_FOLLOW_THRESHOLD : 0}
+                  // The end is kept here (`createEndFollow`), never by the list: its keeping jumps.
+                  maintainScrollAtEnd={false}
+                  onItemSizeChanged={onItemSizeChanged}
+                  maintainVisibleContentPosition={
+                    restoringReadingPosition || followingEnd
+                      ? false
+                      : MAINTAIN_VISIBLE_CONTENT_POSITION
+                  }
+                  onScroll={handleScroll}
+                  onLoad={onListLoad}
+                  {...(draftRows.length > 0 ? { style: { visibility: "hidden" as const } } : {})}
+                  className={cn(
+                    "timeline-legend-list scrollbar-gutter-both max-sm:scrollbar-none h-full min-h-0 overflow-x-hidden overscroll-y-contain px-3 [overflow-anchor:none] sm:px-5",
+                    topFadeEnabled && "conversation-scroll-fade",
+                  )}
+                  ListHeaderComponent={
+                    loadEarlier !== null ? (
+                      <TimelineLoadEarlierHeader
+                        loading={loadEarlier.loading}
+                        onLoadEarlier={onLoadEarlier}
+                        fade={topFadeEnabled}
+                      />
+                    ) : topFadeEnabled ? (
+                      TIMELINE_LIST_FADE_HEADER
+                    ) : (
+                      TIMELINE_LIST_HEADER
+                    )
+                  }
+                  ListFooterComponent={
+                    askRoom > 0 ? (
+                      <>
+                        {pauseStageId === null ? TIMELINE_LIST_FOOTER : null}
+                        <div aria-hidden style={{ height: askRoom }} />
+                      </>
+                    ) : pauseStageId === null ? (
+                      TIMELINE_LIST_FOOTER
+                    ) : null
+                  }
+                />
+                {draftRows.length > 0 ? (
+                  <div className="absolute inset-0 overflow-hidden px-3 sm:px-5">
+                    {draftRows.map((row) => (
+                      <Fragment key={row.id}>{renderItem({ item: row })}</Fragment>
+                    ))}
+                  </div>
+                ) : null}
+                <TimelineMinimap
+                  items={minimapItems}
+                  hasPersistentGutter={minimapHasPersistentGutter}
+                  hitStripWidth={minimapHitStripWidth}
+                  currentIndex={minimapCurrentIndex}
+                  stripMap={minimapStripMap}
+                  onSelect={(item) => {
+                    onManualNavigation();
+                    // The person picked where to go: the list's way there is
+                    // theirs, and landing on the latest follows it.
+                    notePersonSession({ type: "input", at: performance.now() });
+                    void listRef.current?.scrollToIndex({
+                      index: item.rowIndex,
+                      animated: !reducedMotion(),
+                      viewOffset: 24,
+                    });
+                  }}
+                />
+              </TooltipScrollDismissArea>
+            </TimelineWorkingCtx>
+          </TimelineRowActivityCtx>
+        </TimelineNoticesCtx>
+      </NewestReleaseAskContext>
     </TimelineRowCtx>
   );
   return (
     <>
-      <div className="h-full min-h-0" data-conversation-content="">
+      <ConversationOpeningWaits
+        as="div"
+        whole
+        className="h-full min-h-0"
+        data-conversation-content=""
+      >
         <TimelineRowReadsCtx value={rowReads}>{content}</TimelineRowReadsCtx>
-      </div>
-      {kept?.shown === false || pauseStageId !== null || arrivesFromItsDraft ? null : (
+      </ConversationOpeningWaits>
+      {/* Its live card's head, read as painted before a commit that changes its rows. */}
+      <AsPainted of={rows} />
+      {kept?.shown === false || pauseStageId !== null || keepsDraftMessage ? null : (
         <ConversationOpeningStage
           ready={standing}
           readPending={onItsWay}
@@ -2357,8 +2416,17 @@ function keyExtractor(item: MessagesTimelineRow) {
   return item.id;
 }
 
+// LegendList estimates unmeasured rows from the running average size of their
+// type. One type for every assistant reply lets a few very long replies, or
+// one that is streaming, lift the estimate for short replies to thousands of
+// pixels. Rows then mount one at a time, each measurement shrinks the list
+// and mounts the next row in the same commit, and scrolling into unmeasured
+// history exceeds React's nested update limit. Doubling-length buckets keep
+// each average within about 2x of the rows it estimates.
 function getItemType(item: MessagesTimelineRow) {
-  return item.kind === "message" ? `message:${item.message.role}` : item.kind;
+  if (item.kind !== "message") return item.kind;
+  const lengthBucket = Math.max(0, Math.floor(Math.log2(item.message.text.length / 1000)));
+  return `message:${item.message.role}:${lengthBucket}`;
 }
 
 interface TimelinePositionState {
@@ -2680,7 +2748,9 @@ type TimelineRow = MessagesTimelineRow;
  * the rhythm says: a part 24 px under the person's bubble or the card's
  * edge, a turn 64 px under them. The answer's prose adds its own: 3 px of
  * leading above its first line (21 + 3), and under its last line 3 px of
- * leading and its 28 px copy line (33 + 31).
+ * leading and its 28 px copy line (33 + 31). A phone's screen is a third of a desk's tall: a turn
+ * opens under 48 px there, twice a part's room still, and a seam right under a seam (a day nobody
+ * spoke on) under a part's, so a week of silence is a few lines and not a screen of nothing.
  */
 const GAP_CLASS: Record<RowGap, string> = {
   none: "",
@@ -2689,8 +2759,9 @@ const GAP_CLASS: Record<RowGap, string> = {
   block: "pt-5",
   part: "pt-6",
   "part-words": "pt-5.25",
-  turn: "pt-16",
-  "turn-after-words": "pt-8.25",
+  turn: "pt-12 sm:pt-16",
+  "turn-after-words": "pt-4.25 sm:pt-8.25",
+  "turn-seam": "pt-6 sm:pt-16",
 };
 
 /**
@@ -2713,7 +2784,8 @@ function rowInset(row: TimelineRow): string {
   // A line with no card keeps the card's geometry in a frame nobody sees, so
   // opening it draws the card around the line without moving it.
   if (row.kind === "work-line") return "run-tray-ghost";
-  return "px-4.25";
+  // The composer's text edge: 13 px inside its frame on a phone, 17 from sm up.
+  return "px-3.25 sm:px-4.25";
 }
 
 /**
@@ -2934,6 +3006,7 @@ function TimelineRowBody({ row }: { row: TimelineRow }) {
       {row.kind === "page" ? <PageTimelineRow row={row} /> : null}
       {row.kind === "vault-request" ? <VaultRequestTimelineRow row={row} /> : null}
       {row.kind === "origin-request" ? <OriginRequestTimelineRow row={row} /> : null}
+      {row.kind === "mirror-request" ? <MirrorRequestTimelineRow row={row} /> : null}
       {row.kind === "proposal" ? <ProposalTimelineRow row={row} /> : null}
       {row.kind === "seam" ? <SeamTimelineRow row={row} /> : null}
       {row.kind === "crew-seam" ? <CrewSeamActivity seam={row.seam} words={row.words} /> : null}
@@ -3657,7 +3730,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
           className="relative max-w-4/5 rounded-2xl bg-message px-3.5 py-2.5 text-prose text-message-foreground"
           data-message-aside={row.aside ? "true" : undefined}
         >
-          <MessageAuthorHeading>You</MessageAuthorHeading>
+          <MessageAuthorHeading>{ctx.asker ?? "You"}</MessageAuthorHeading>
           {imagesAbove.length > 0 && (
             <div className="mb-2 grid max-w-[420px] grid-cols-2 gap-2">
               {imagesAbove.map((image: ChatImageAttachment) => {
@@ -3973,21 +4046,22 @@ const OperationTimelineRow = memo(function OperationTimelineRow({
     true,
     ctx.threadRef?.threadId ?? null,
   );
-  // A request for a vault value is the person's to answer: its card is the ask.
-  if (vaultAskOf(row.operation) !== null) {
-    return (
-      <div className="min-w-0 px-1 py-0.5">
+  const card = (
+    <ZeropsOperationCard operation={row.operation} threadRef={ctx.threadRef} {...regions} />
+  );
+  return (
+    <div className="min-w-0 px-1 py-0.5">
+      {/* A request for a vault value is the person's to answer: its card is the ask. */}
+      {vaultAskOf(row.operation) === null ? (
+        card
+      ) : (
         <VaultRequestCardContainer
           environmentId={ctx.activeThreadEnvironmentId}
+          fallback={card}
           operation={row.operation}
           threadRef={ctx.threadRef}
         />
-      </div>
-    );
-  }
-  return (
-    <div className="min-w-0 px-1 py-0.5">
-      <ZeropsOperationCard operation={row.operation} threadRef={ctx.threadRef} {...regions} />
+      )}
     </div>
   );
 });
@@ -3999,10 +4073,12 @@ const VaultRequestTimelineRow = memo(function VaultRequestTimelineRow({
   row: Extract<TimelineRow, { kind: "vault-request" }>;
 }) {
   const ctx = use(TimelineRowCtx);
+  // Without the engine's record (older history) the run's own line is all it shows: no frame here.
   return (
-    <div className="min-w-0 px-1 py-0.5">
+    <div className="min-w-0 px-1 py-0.5 empty:hidden">
       <VaultRequestCardContainer
         environmentId={ctx.activeThreadEnvironmentId}
+        fallback={null}
         operation={row.operation}
         threadRef={ctx.threadRef}
       />
@@ -4021,6 +4097,24 @@ const OriginRequestTimelineRow = memo(function OriginRequestTimelineRow({
     <div className="min-w-0 px-1 py-0.5">
       <OriginAskCardContainer
         environmentId={ctx.activeThreadEnvironmentId}
+        requestIds={row.requestIds}
+        threadRef={ctx.threadRef}
+      />
+    </div>
+  );
+});
+
+/** A repository the Mate asked the person to connect to GitHub, after its run: the card that does. */
+const MirrorRequestTimelineRow = memo(function MirrorRequestTimelineRow({
+  row,
+}: {
+  row: Extract<TimelineRow, { kind: "mirror-request" }>;
+}) {
+  const ctx = use(TimelineRowCtx);
+  return (
+    <div className="min-w-0 px-1 py-0.5">
+      <MirrorAskCardContainer
+        environmentId={ctx.activeThreadEnvironmentId}
         requestId={row.requestId}
         threadRef={ctx.threadRef}
       />
@@ -4038,8 +4132,10 @@ const ProposalTimelineRow = memo(function ProposalTimelineRow({
   return (
     <div className="min-w-0 px-1 py-0.5">
       <ProposalCardContainer
+        driver={ctx.driver ?? null}
         environmentId={ctx.activeThreadEnvironmentId}
         operation={row.operation}
+        threadId={ctx.threadRef?.threadId ?? null}
       />
     </div>
   );
@@ -4702,8 +4798,9 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
         "aria-label": accessibleDisplayText,
         "aria-expanded": expanded,
         onClick: () => setExpanded((v) => !v),
+        // Only the row itself: Enter or Space on an action inside the expanded row is that action's.
         onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => {
-          if (e.key === "Enter" || e.key === " ") {
+          if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
             e.preventDefault();
             setExpanded((v) => !v);
           }

@@ -1,30 +1,36 @@
 /**
  * Who each project HQ places is, for the reader, as HQ computed it: its
- * owner — named and pictured from HQ's person records —, whether its Mate waits on the reader, and
- * who is signed in to each agent's own login now and who ever was — of a Mate the reader operates. Nothing is computed here from member lists or roles; an
- * owner HQ names no person record of is drawn as nobody's. A project HQ removed, or withheld, is in
- * none of it. To a viewer who may not operate a Mate (`mayWrite` false: HQ's `observe_mate`), HQ
- * sends no signers and no owner it read off the Mate: empty there is withheld, never "nobody".
+ * owner — HQ's user id (`ownerUserId`), the only word on whose a Mate is, named and pictured from
+ * the client's own member list (`zeropsPeople`); never guessed from who signed its agent in —,
+ * whether its Mate waits on the reader, and who is signed in to each agent's own login now and who
+ * ever was. Nothing is computed here from roles; an owner the member list does not name is drawn
+ * as nobody's. A project HQ removed is in none of it.
+ * Whether Zerops refused its key — the case a hand-over answers — is HQ's word too (`keyRefused`).
+ * What the reader may do with it is no HQ word: the client decides that from live Zerops data
+ * (`@t3tools/shared/zeropsPermissions`).
  *
  * @module data/projections/hqProjectPeople
  */
 import type { MateProjectKey } from "./mateAttention.ts";
 import type { PlacementValue } from "../families/hqNavigation.ts";
 
-import { hqPeopleScope, placementsScope } from "../families/hqNavigation.ts";
+import { placementsScope } from "../families/hqNavigation.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import { sameValue } from "./equal.ts";
+import { zeropsPeople } from "./zeropsPeople.ts";
 
-/** A Mate's owner as HQ names them. */
+/** A Mate's owner: HQ's user id, as the member list names them. */
 export interface HqMateOwner {
   readonly userId: string;
   readonly name: string;
+  /** What every surface calls them (`ZeropsPerson.called`). */
+  readonly called: string;
   /** The platform's picture of them; `null` where they have none. */
   readonly avatarUrl: string | null | undefined;
 }
 
 export interface HqProjectPeople {
-  /** HQ names an owner of it (`ownerUserId`), whether or not it sends their person record. */
+  /** HQ names an owner of it (`ownerUserId`), whether or not the member list names them. */
   readonly owned: boolean | undefined;
   /** The Chief of this Mate's person and whether the reader is that person. */
   readonly chief?: { readonly projectId: string | null; readonly mine: boolean | undefined };
@@ -33,14 +39,12 @@ export interface HqProjectPeople {
   readonly mine: boolean | undefined;
   /** Its Mate waits on the reader, as HQ says (`waitsOnViewer`). */
   readonly waitsOnViewer: boolean | undefined;
-  /**
-   * Who is signed in to each login now, by login id: whose the composer is. `undefined` for a Mate
-   * the reader may not operate: HQ sends them no overview of it, and its empty record is no fact.
-   */
+  /** Zerops refused its key and HQ admitted none since: it cannot connect until handed over. */
+  readonly keyRefused?: true | undefined;
+  /** Who is signed in to each login now, by login id: whose the composer is. */
   readonly signedInNow: PlacementValue["signedInNow"] | undefined;
   /**
    * Who last signed each login in, by login id, signed out since or not: whether anybody has.
-   * Undefined where HQ withholds it from the viewer.
    */
   readonly everSignedIn: PlacementValue["everSignedIn"] | undefined;
 }
@@ -52,22 +56,19 @@ function peopleOf(
   placement: PlacementValue,
 ): HqProjectPeople {
   const { person, signedInNow, everSignedIn } = placement;
-  const withheld = person?.mayWrite === false;
   return {
     ...(person?.chiefProjectId === undefined
       ? {}
       : {
           chief: { projectId: person.chiefProjectId, mine: person.mine },
         }),
-    owned:
-      person?.ownerUserId === undefined || (withheld && person.ownerUserId === null)
-        ? undefined
-        : person.ownerUserId !== null,
+    owned: person?.ownerUserId === undefined ? undefined : person.ownerUserId !== null,
     owner: ownerOf(read, orgId, person?.ownerUserId),
     mine: person?.mine,
     waitsOnViewer: person?.waitsOnViewer,
-    signedInNow: withheld ? undefined : signedInNow,
-    everSignedIn: withheld ? undefined : everSignedIn,
+    keyRefused: placement.mate?.keyRefused,
+    signedInNow,
+    everSignedIn,
   };
 }
 
@@ -76,11 +77,11 @@ function ownerOf(
   orgId: string,
   userId: string | null | undefined,
 ): HqMateOwner | null {
-  if (userId == null || !read.members(hqPeopleScope(orgId)).ids.includes(userId)) return null;
-  const person = read.fact("hqPerson", userId);
-  return person.kind === "known"
-    ? { userId, name: person.value.name ?? "Unknown", avatarUrl: person.value.avatarUrl }
-    : null;
+  if (userId == null) return null;
+  const person = zeropsPeople(read, orgId).get(userId);
+  return person === undefined
+    ? null
+    : { userId, name: person.name, called: person.called, avatarUrl: person.avatarUrl };
 }
 
 export const hqProjectPeople: Projection<string, Readonly<Record<string, HqProjectPeople>>> = {

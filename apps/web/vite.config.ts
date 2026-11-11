@@ -1,3 +1,7 @@
+// @effect-diagnostics nodeBuiltinImport:off -- Vite config runs in Node before any Effect runtime exists.
+import * as NodeChildProcess from "node:child_process";
+import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
 import * as NodeZlib from "node:zlib";
 
 import tailwindcss from "@tailwindcss/vite";
@@ -7,7 +11,7 @@ import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import compression from "compression";
 import { defineProject, type TestProjectInlineConfiguration } from "vite-plus/test/config";
 import "vite-plus/test/config";
-import { defineConfig, type Connect, type Plugin } from "vite-plus";
+import { build as viteBuild, defineConfig, type Connect, type Plugin } from "vite-plus";
 import pkg from "./package.json" with { type: "json" };
 
 import { normalizeBasePath } from "@t3tools/shared/basePath";
@@ -15,6 +19,8 @@ import { DEV_PROXIED_PATH_PREFIXES } from "@t3tools/shared/devProxy";
 
 import { loadRepoEnv } from "../../scripts/lib/public-config";
 import { buildDocumentTitle } from "./src/branding.logic";
+import { embedShellFiles } from "./src/appShell/appShell.logic";
+import { precacheList } from "./src/appShell/appShellBuild.logic";
 
 const repoEnv = loadRepoEnv();
 Object.assign(process.env, repoEnv);
@@ -47,6 +53,19 @@ const configuredRelayTracingDataset = repoEnv.VITE_RELAY_OTLP_TRACES_DATASET?.tr
 const configuredRelayTracingToken = repoEnv.VITE_RELAY_OTLP_TRACES_TOKEN?.trim() || "";
 const configuredHostedAppChannel = process.env.VITE_HOSTED_APP_CHANNEL?.trim() || "";
 const configuredAppVersion = process.env.APP_VERSION?.trim() || pkg.version;
+// The commit the bundle is built from, shown beside the version (Settings → General); empty
+// when the build runs outside a git checkout.
+const builtCommit = (() => {
+  try {
+    return NodeChildProcess.execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: import.meta.dirname,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    return "";
+  }
+})();
 const configuredHostedAppUrl = (() => {
   const explicitHostedAppUrl = process.env.VITE_HOSTED_APP_URL?.trim();
   if (explicitHostedAppUrl) {
@@ -75,19 +94,45 @@ const buildSourcemap: boolean | "hidden" =
       ? "hidden"
       : true;
 
+const unitTestOptions = {
+  fsModuleCache: true,
+  // Tables declare tests through `it.each(rows)("$title", …)`: the title is the row's whole sentence.
+  taskTitleValueFormatTruncate: Number.MAX_SAFE_INTEGER,
+  // Dynamic imports and isolated module reloads run inside cases and hooks. Their wall
+  // time under contention is not an assertion; CI's 10-minute job guard owns hangs.
+  hookTimeout: 660_000,
+  testTimeout: 660_000,
+  globalSetup: ["../../packages/shared/src/testing/longTempDir.ts"],
+} satisfies TestProjectInlineConfiguration["test"];
+
+// A shared worker (`isolate: false`) loads the module graph once for all its files, but Vitest
+// resets neither its mock registry nor its evaluated modules between them: a file that replaces
+// modules (`vi.mock`) would hand its fakes, and every consumer evaluated against them, to the
+// next file. Those files run in workers of their own; Vitest shares a worker only within one
+// project and environment, so no other file ever sees their replacements.
+const moduleMockingTestFiles = NodeFS.globSync(["src/**/*.test.ts", "src/**/*.test.tsx"], {
+  cwd: import.meta.dirname,
+}).filter((file) =>
+  /\bvi\.(?:mock|doMock)\(/u.test(
+    NodeFS.readFileSync(NodePath.join(import.meta.dirname, file), "utf8"),
+  ),
+);
+
 const unitTestProject = {
   extends: true,
   test: {
+    ...unitTestOptions,
     name: "unit",
-    // Tables declare tests through `it.each(rows)("$title", …)`: the title is the row's whole sentence.
-    taskTitleValueFormatTruncate: Number.MAX_SAFE_INTEGER,
+    isolate: false,
+    setupFiles: ["./test/sharedWorkerSetup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
-    // Dynamic imports and isolated module reloads run inside cases and hooks. Their wall
-    // time under contention is not an assertion; CI's 10-minute job guard owns hangs.
-    hookTimeout: 660_000,
-    testTimeout: 660_000,
-    setupFiles: ["../../packages/shared/src/testing/longTempDir.ts"],
+    exclude: moduleMockingTestFiles,
   },
+} satisfies TestProjectInlineConfiguration;
+
+const isolatedUnitTestProject = {
+  extends: true,
+  test: { ...unitTestOptions, name: "unit-isolated", include: moduleMockingTestFiles },
 } satisfies TestProjectInlineConfiguration;
 
 /**
@@ -103,7 +148,7 @@ const engineOracleProject = {
     include: ["test/engine-oracle/**/*.test.ts"],
     testTimeout: 600_000,
     hookTimeout: 60_000,
-    setupFiles: ["../../packages/shared/src/testing/longTempDir.ts"],
+    globalSetup: ["../../packages/shared/src/testing/longTempDir.ts"],
   },
 } satisfies TestProjectInlineConfiguration;
 
@@ -171,6 +216,34 @@ function documentTitlePlugin(): Plugin {
   };
 }
 
+/**
+ * Opens the connections every load makes first — the Zerops API's (`/user/info`) and Mate HQ's (its
+ * stream ticket) — while the bundle still downloads, not after it has run. Both are asked without
+ * cookies, so each link is `crossorigin`: the browser keeps credentialed connections apart.
+ */
+function preconnectPlugin(): Plugin {
+  return {
+    name: "mate:preconnect",
+    transformIndexHtml() {
+      const origins = [
+        process.env.VITE_ZEROPS_API_URL?.trim() || PRODUCTION_ZEROPS_API_ORIGIN,
+        process.env.VITE_HQ_ORIGIN?.trim(),
+      ].flatMap((url) => {
+        try {
+          return url ? [new URL(url).origin] : [];
+        } catch {
+          return [];
+        }
+      });
+      return [...new Set(origins)].map((href) => ({
+        tag: "link",
+        attrs: { rel: "preconnect", href, crossorigin: "" },
+        injectTo: "head-prepend" as const,
+      }));
+    },
+  };
+}
+
 function devCompressionPlugin(): Plugin {
   return {
     name: "t3code:dev-compression",
@@ -193,6 +266,8 @@ function bundleCompositionPlugin(): Plugin {
     name: "mate:bundle-composition",
     apply: "build",
     generateBundle(_options, bundle) {
+      const relative = (id: string) =>
+        id.replace(`${import.meta.dirname.replace(/\/apps\/web$/u, "")}/`, "");
       this.emitFile({
         type: "asset",
         fileName: "bundle-composition.json",
@@ -208,8 +283,12 @@ function bundleCompositionPlugin(): Plugin {
                         dynamicImports: chunk.dynamicImports,
                         modules: Object.fromEntries(
                           Object.entries(chunk.modules).map(([id, module]) => [
-                            id.replace(`${import.meta.dirname.replace(/\/apps\/web$/u, "")}/`, ""),
-                            { renderedLength: module.renderedLength },
+                            relative(id),
+                            {
+                              renderedLength: module.renderedLength,
+                              // What it imports statically: the graph a lazy boundary is chosen from.
+                              imports: (this.getModuleInfo(id)?.importedIds ?? []).map(relative),
+                            },
                           ]),
                         ),
                       },
@@ -226,6 +305,88 @@ function bundleCompositionPlugin(): Plugin {
   };
 }
 
+/**
+ * The hosted client's app-shell worker (`src/appShell/sw.ts`), or its kill switch
+ * (`src/appShell/retire.ts`), as `/sw.js`: a stable, unhashed path the browser checks for updates,
+ * which nginx serves as the real file under zerops.yml's `no-cache` rule. Its own build makes it one
+ * classic script: an entry of the app's build would share chunks with the page and need a module
+ * worker. Emitted only for a bundle served at an origin root that asks for it
+ * (`VITE_APP_SHELL_WORKER`); a Mate's `/mate/` bundle and every other build ship none.
+ */
+function appShellWorkerPlugin(mode: string): Plugin {
+  const entry = mode === "retire" ? "retire.ts" : "sw.ts";
+  return {
+    name: "mate:app-shell-worker",
+    apply: "build",
+    async generateBundle() {
+      const built = await viteBuild({
+        configFile: false,
+        logLevel: "warn",
+        root: import.meta.dirname,
+        resolve: { tsconfigPaths: true },
+        build: {
+          write: false,
+          emptyOutDir: false,
+          minify: true,
+          sourcemap: false,
+          lib: {
+            entry: `src/appShell/${entry}`,
+            formats: ["iife"],
+            name: "mateAppShellWorker",
+            fileName: () => "sw.js",
+          },
+        },
+      });
+      const outputs = Array.isArray(built) ? built : [built];
+      const chunk = outputs
+        .flatMap((output) => ("output" in output ? output.output : []))
+        .find((file) => file.type === "chunk");
+      if (chunk === undefined || chunk.type !== "chunk") {
+        throw new Error("The app-shell worker build produced no script");
+      }
+      this.emitFile({ type: "asset", fileName: "sw.js", source: chunk.code });
+    },
+  };
+}
+
+/**
+ * Lists in the page every file it may load while it runs (`src/appShell/appShellBuild.logic.ts`):
+ * the worker keeps a page only once all of it is kept, and keeps the replaced page's files beside
+ * it for tabs still running it.
+ */
+function appShellFilesPlugin(): Plugin {
+  return {
+    name: "mate:app-shell-files",
+    apply: "build",
+    generateBundle: {
+      order: "post",
+      handler(_options, bundle) {
+        const chunks = Object.values(bundle).flatMap((file) =>
+          file.type === "chunk"
+            ? [
+                {
+                  fileName: file.fileName,
+                  isEntry: file.isEntry,
+                  imports: file.imports,
+                  dynamicImports: file.dynamicImports,
+                  css: [...(file.viteMetadata?.importedCss ?? [])],
+                  assets: [...(file.viteMetadata?.importedAssets ?? [])],
+                },
+              ]
+            : [],
+        );
+        const page = bundle["index.html"];
+        if (page === undefined || page.type !== "asset") {
+          throw new Error("The app-shell file list found no index.html to embed itself in");
+        }
+        page.source = embedShellFiles(String(page.source), precacheList(chunks));
+      },
+    },
+  };
+}
+
+const configuredAppShellWorker = process.env.VITE_APP_SHELL_WORKER?.trim().toLowerCase() || "";
+
 // Vite rejects requests whose Host header isn't localhost, which blocks sharing
 // a dev server over a LAN alias (ngrok, a LAN IP alias) — goes through the env var.
 const configuredAllowedHosts = (process.env.T3CODE_DEV_ALLOWED_HOSTS ?? "")
@@ -234,14 +395,28 @@ const configuredAllowedHosts = (process.env.T3CODE_DEV_ALLOWED_HOSTS ?? "")
   .filter((entry) => entry.length > 0);
 const allowedHosts = configuredAllowedHosts;
 
-export default defineConfig(() => {
+// The one HQ every organization shares: the client names it at build time, never reads it off an
+// organization (`zerops/accountHq.ts` `configuredHq`). A build without `VITE_HQ_ORIGIN` (the
+// desktop staging build, a local `vp build`) names production's, as `zerops.yml` does for `prod`;
+// `vite dev` names alfa's, so a dev server never writes to the shared production HQ.
+const PRODUCTION_HQ_ORIGIN = "https://mate-hq.zerops.io";
+/** The platform a build talks to when it names none (`DEFAULT_ZEROPS_API_BASE`, client-runtime). */
+const PRODUCTION_ZEROPS_API_ORIGIN = "https://api.app-prg1.zerops.io";
+const ALFA_HQ_ORIGIN = "https://hq-31d9-8080.prg1.zerops.app";
+
+export default defineConfig(({ command }) => {
+  process.env.VITE_HQ_ORIGIN ||= command === "build" ? PRODUCTION_HQ_ORIGIN : ALFA_HQ_ORIGIN;
   return {
     base,
     assetsInclude: ["**/*.wasm"],
     plugins: [
       documentTitlePlugin(),
+      preconnectPlugin(),
       devCompressionPlugin(),
       ...(process.env.T3CODE_WEB_ANALYZE === "1" ? [bundleCompositionPlugin()] : []),
+      ...(base === "/" && ["app-shell", "retire"].includes(configuredAppShellWorker)
+        ? [appShellWorkerPlugin(configuredAppShellWorker), appShellFilesPlugin()]
+        : []),
       tanstackRouter({ autoCodeSplitting: true }),
       react(),
       babel({
@@ -281,6 +456,8 @@ export default defineConfig(() => {
       "import.meta.env.VITE_HOSTED_APP_URL": JSON.stringify(configuredHostedAppUrl ?? ""),
       "import.meta.env.VITE_HOSTED_APP_CHANNEL": JSON.stringify(configuredHostedAppChannel),
       "import.meta.env.APP_VERSION": JSON.stringify(configuredAppVersion),
+      "import.meta.env.APP_COMMIT": JSON.stringify(builtCommit),
+      "import.meta.env.VITE_APP_SHELL_WORKER": JSON.stringify(configuredAppShellWorker),
     },
     resolve: {
       tsconfigPaths: true,
@@ -350,7 +527,11 @@ export default defineConfig(() => {
       },
     },
     test: {
-      projects: [defineProject(unitTestProject), defineProject(engineOracleProject)],
+      projects: [
+        defineProject(unitTestProject),
+        defineProject(isolatedUnitTestProject),
+        defineProject(engineOracleProject),
+      ],
     },
   };
 });

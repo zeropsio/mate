@@ -12,6 +12,7 @@ import { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
 
 import { automatedKeyState } from "~/zerops/automatedMate.logic";
 import { useOrgAiKeys } from "~/zerops/useAutomationSettings";
+import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { AutomatedMatesUnsupported, OrganizationKeyView } from "./AutomatedMatesSettings";
@@ -33,9 +34,12 @@ const ADMINS_ONLY = "Only the organization's Owner and Admins see and change thi
 
 export function AutomationSettings({
   returned = null,
+  returnedApp = null,
 }: {
   /** How GitHub brought the person back here, if it did. */
   readonly returned?: GithubReturn;
+  /** The app whose install trip brought the person back, if one did. */
+  readonly returnedApp?: number | null;
 }) {
   const { activeOrganization } = useZeropsSession();
   const admin = roleAtLeast(activeOrganization?.roleCode, "ADMIN");
@@ -47,7 +51,7 @@ export function AutomationSettings({
             Choose an organization in Settings › Zerops to set up automated Mates.
           </p>
         ) : admin ? (
-          <AdminParts returned={returned} />
+          <AdminParts returned={returned} returnedApp={returnedApp} />
         ) : (
           <>
             <IntegrationList>
@@ -59,7 +63,7 @@ export function AutomationSettings({
                 state={{ kind: "none" }}
                 surface="settings-org-ai-key"
               />
-              <GithubAppSettings admin={false} returned={returned} />
+              <GithubAppSettings admin={false} returned={returned} returnedApp={returnedApp} />
               <IntegrationRow
                 line={ADMINS_ONLY}
                 mark={<SlackMark />}
@@ -92,8 +96,16 @@ export function AutomationSettings({
   );
 }
 
-function AdminParts({ returned }: { readonly returned: GithubReturn }) {
+function AdminParts({
+  returned,
+  returnedApp,
+}: {
+  readonly returned: GithubReturn;
+  readonly returnedApp: number | null;
+}) {
   const { read, setKey, removeKey, again } = useOrgAiKeys(true);
+  const { activeOrganization } = useZeropsSession();
+  const nameOf = useHqPersonNames(activeOrganization?.id);
   // An HQ that keeps no organization keys predates automated Mates: one line, nothing to set.
   if (automatedKeyState(read.keys) === "unsupported") return <AutomatedMatesUnsupported />;
   return (
@@ -101,6 +113,7 @@ function AdminParts({ returned }: { readonly returned: GithubReturn }) {
       <IntegrationList>
         {NEBIUS === undefined ? null : (
           <OrganizationKeyView
+            nameOf={nameOf}
             onAgain={again}
             onRemove={removeKey}
             onSet={setKey}
@@ -108,8 +121,8 @@ function AdminParts({ returned }: { readonly returned: GithubReturn }) {
             read={read}
           />
         )}
-        <GithubAppSettings admin returned={returned} />
-        <TaskSourcesSettings />
+        <GithubAppSettings admin returned={returned} returnedApp={returnedApp} />
+        <TaskSourcesSettings nameOf={nameOf} />
       </IntegrationList>
       <TaskLimitsSettings />
     </>

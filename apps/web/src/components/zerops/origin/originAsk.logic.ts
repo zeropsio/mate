@@ -11,34 +11,75 @@ import {
 import type { OrchestrationThreadActivity, TurnId } from "@t3tools/contracts";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 
-import { githubName, type GitMirrorApp } from "../gitMirror.logic";
+import { type AskState, answeredWords } from "../../ask/ask.logic";
+import type { GitMirrorApps } from "~/zerops/useGitMirrorApps";
 
-/** Where an origin ask stands in the timeline: the run card it was asked in. */
+import { githubName, type GitMirrorApp, waitingAccount } from "../gitMirror.logic";
+import { anothersOwnApp } from "../github/githubConnect.logic";
+
+/**
+ * Where an origin question stands in the timeline: the run card its first ask was asked in, and
+ * every ask it stands for (`originAskPlaces`).
+ */
 export interface OriginAskPlace {
+  /** Its first ask's request: the card's identity. */
   readonly requestId: string;
+  readonly requestIds: ReadonlyArray<string>;
   readonly turnId: TurnId;
   readonly createdAt: string;
 }
 
 /**
- * What the person picked on the card here, before the engine's record says it: `connected`, the
- * code kept on GitHub; `declined`, kept in Mate. Memory only.
+ * A pick on the card: `connected`, the code kept on GitHub; `declined`, kept in Mate (never "Not
+ * now": both are answers).
  */
 export type OriginAskSaid = "connected" | "declined";
 
-export type OriginAskFace = OriginAskActivityPayload["state"];
-
 /**
- * What the card draws: the engine's record; while it is open, connected once HQ mounts the origin
- * — however the person mounted it — else what the person just picked here.
+ * The card's state: the engine's record of the pick (kept on GitHub or in Mate, who and when, or
+ * closed some other way); while it is open, kept on GitHub once HQ mounts the origin — however the
+ * person mounted it —, the person's pick still on its way, or waiting on them.
  */
-export function originAskFace(
-  state: OriginAskActivityPayload["state"],
-  said: OriginAskSaid | null,
-  connected: boolean,
-): OriginAskFace {
-  if (state !== "open") return state;
-  return connected ? "connected" : (said ?? state);
+export function originAskState(input: {
+  readonly state: OriginAskActivityPayload["state"];
+  /** The pick pressed here that the engine has not recorded yet. */
+  readonly pending: OriginAskSaid | null;
+  readonly connected: boolean;
+  readonly url: string;
+  readonly mateName: string;
+  /** Who picked, by name, and when, as the engine's record says. */
+  readonly by: string | null;
+  readonly at: string | null;
+}): AskState {
+  const address = originAddress(input.url);
+  const kept = (where: string, recorded: boolean): AskState => ({
+    kind: "done",
+    words: answeredWords(
+      `${address} · Kept ${where}`,
+      recorded ? input.by : null,
+      recorded ? input.at : null,
+    ),
+    told: null,
+  });
+  switch (input.state) {
+    case "connected":
+      return kept("on GitHub", true);
+    case "declined":
+      return kept("in Mate", true);
+    case "closed":
+      return { kind: "replaced", words: `${input.mateName} isn't waiting on this any more.` };
+    case "open":
+      if (input.connected) return kept("on GitHub", false);
+      if (input.pending === null) return { kind: "waiting" };
+      return {
+        kind: "working",
+        words:
+          input.pending === "connected"
+            ? "Keeping the code on GitHub…"
+            : "Keeping the code in Mate…",
+        pressed: null,
+      };
+  }
 }
 
 /**
@@ -106,6 +147,8 @@ export type OriginMountStep =
   | { readonly kind: "no-app" }
   | { readonly kind: "unknown" }
   | { readonly kind: "not-reached"; readonly name: string; readonly installUrl: string }
+  /** The app is installed where the repository is, but that installation waits for an OK. */
+  | { readonly kind: "waiting"; readonly account: string }
   | { readonly kind: "ready"; readonly name: string; readonly repository: string };
 
 /**
@@ -130,9 +173,71 @@ export function originMountStep(
   if (github.kind === "unknown") return { kind: "unknown" };
   const wanted = githubName(ask.url)?.toLowerCase();
   const repository = github.repositories.find((name) => name.toLowerCase() === wanted);
-  return repository === undefined
+  if (repository !== undefined) return { kind: "ready", name: github.name, repository };
+  const waiting = wanted === undefined ? null : waitingAccount(github, wanted);
+  return waiting === null
     ? { kind: "not-reached", name: github.name, installUrl: github.installUrl }
-    : { kind: "ready", name: github.name, repository };
+    : { kind: "waiting", account: waiting };
+}
+
+/**
+ * The organization's app keeping the asked origin on GitHub goes through, as the sheet reads it:
+ * among the apps an Owner or Admin confirmed (any, while none is), the one whose accepted
+ * installation reaches the repository, else one installed where it waits for an OK, else the
+ * oldest — its accepted installations' repositories flattened into what it reaches. An app nobody
+ * confirmed may be another person's, so it is never picked over one somebody did; and where none
+ * reaches the repository yet, another person's own app (`anothersOwnApp`) comes last and says
+ * whose it is (`anothersOwner`). `githubAppId` names it to HQ once it reaches the repository. `app` is `null` while HQ
+ * is still asked.
+ */
+export function originGithubApp(
+  apps: GitMirrorApps | null,
+  url: string,
+  viewerId: string | null = null,
+): { readonly app: GitMirrorApp | null; readonly githubAppId: number | null } {
+  if (apps === null) return { app: null, githubAppId: null };
+  if (apps.kind === "unknown") return { app: { kind: "unknown" }, githubAppId: null };
+  const wanted = githubName(url)?.toLowerCase();
+  const reaches = (standing: "accepted" | "waiting") => (appId: number) =>
+    apps.installations.some(
+      (installation) =>
+        installation.appId === appId &&
+        installation.standing === standing &&
+        installation.repositories.some(
+          (repository) => repository.fullName.toLowerCase() === wanted,
+        ),
+    );
+  const confirmed = apps.apps.filter((each) => each.setUpBy !== null);
+  const candidates = confirmed.length > 0 ? confirmed : apps.apps;
+  // Where none reaches it yet, the organization's own before another person's own app.
+  const entry =
+    candidates.find((each) => reaches("accepted")(each.appId)) ??
+    candidates.find((each) => reaches("waiting")(each.appId)) ??
+    candidates.find((each) => !anothersOwnApp(each, viewerId)) ??
+    candidates[0];
+  if (entry === undefined) return { app: { kind: "none" }, githubAppId: null };
+  const own = apps.installations.filter((installation) => installation.appId === entry.appId);
+  return {
+    app: {
+      kind: "connected",
+      name: entry.name,
+      appId: entry.appId,
+      repositories: own
+        .filter((installation) => installation.standing === "accepted")
+        .flatMap((installation) => installation.repositories.map((each) => each.fullName)),
+      installUrl: entry.installUrl,
+      installTrip: entry.installTrip,
+      waiting: own
+        .filter((installation) => installation.standing === "waiting")
+        .map((installation) => ({
+          account: installation.account,
+          repositories: installation.repositories.map((each) => each.fullName),
+        })),
+      unanswered: entry.unanswered,
+      ...(anothersOwnApp(entry, viewerId) ? { anothersOwner: entry.owner } : {}),
+    },
+    githubAppId: reaches("accepted")(entry.appId) ? entry.appId : null,
+  };
 }
 
 const sameAddress = (a: string, b: string) =>
@@ -149,35 +254,58 @@ export function originAskQuestion(url: string): string {
 }
 
 /**
- * The thread's origin asks as one string — a line each: its request, run card and time — so a
- * change elsewhere in the thread draws nothing new in the timeline.
+ * The thread's origin asks as one string — a line each: its request, run card, time, the address
+ * it names and until when it stood open — so a change elsewhere in the thread draws nothing new in
+ * the timeline.
  */
 export function originAskPlacesKey(
   activities: ReadonlyArray<OrchestrationThreadActivity> | undefined,
 ): string {
   return (activities ?? [])
-    .flatMap((activity) =>
-      activity.kind !== ORIGIN_ASK_ACTIVITY_KIND || activity.turnId === null
-        ? []
-        : [
-            [
-              (activity.payload as OriginAskActivityPayload).requestId,
-              activity.turnId,
-              activity.createdAt,
-            ].join("\t"),
-          ],
-    )
+    .flatMap((activity) => {
+      if (activity.kind !== ORIGIN_ASK_ACTIVITY_KIND || activity.turnId === null) return [];
+      const payload = activity.payload as OriginAskActivityPayload;
+      // Open: still open now. Settled with no answer's time: never open with a later ask.
+      const openUntil =
+        payload.state === "open" ? "open" : String(payload.answer?.at ?? Number.NEGATIVE_INFINITY);
+      return [
+        [
+          payload.requestId,
+          activity.turnId,
+          activity.createdAt,
+          originAddress(payload.url).toLowerCase(),
+          openUntil,
+        ].join("\t"),
+      ];
+    })
     .join("\n");
 }
 
-/** The places back from their string: where the timeline stands each ask. */
+/**
+ * The places back from their string: one question per address at a time. An ask naming the
+ * address of an earlier ask still open when it was asked — a Mate with several dev services from
+ * one repository asks once for each — is that ask's question, standing where it was first asked
+ * and answered with it; asked again after its answer, it is a new question.
+ */
 export function originAskPlaces(key: string): ReadonlyArray<OriginAskPlace> {
-  return key === ""
-    ? []
-    : key.split("\n").map((line) => {
-        const [requestId = "", turnId = "", createdAt = ""] = line.split("\t");
-        return { requestId, turnId: turnId as TurnId, createdAt };
-      });
+  if (key === "") return [];
+  const places: Array<OriginAskPlace & { readonly requestIds: Array<string> }> = [];
+  const open = new Map<string, { place: (typeof places)[number]; until: number }>();
+  for (const line of key.split("\n")) {
+    const [requestId = "", turnId = "", createdAt = "", address = "", openUntil = ""] =
+      line.split("\t");
+    const until = openUntil === "open" ? Number.POSITIVE_INFINITY : Number(openUntil);
+    const earlier = open.get(address);
+    if (earlier !== undefined && Date.parse(createdAt) < earlier.until) {
+      earlier.place.requestIds.push(requestId);
+      earlier.until = Math.max(earlier.until, until);
+      continue;
+    }
+    const place = { requestId, requestIds: [requestId], turnId: turnId as TurnId, createdAt };
+    places.push(place);
+    open.set(address, { place, until });
+  }
+  return places;
 }
 
 /** The engine's record of one origin ask, by its request. */
@@ -193,22 +321,109 @@ export function originAskOf(
   return null;
 }
 
-/** What the card reads of an ask: never who answered, which the card does not say. */
+/** What the card reads of an ask, and who answered it when: a person's Zerops user id. */
 export type OriginAsk = Pick<OriginAskActivityPayload, "url" | "repo" | "reason" | "state">;
 
-/** An ask as one string, for a selector whose answer is compared by value. */
-export function originAskKey(ask: OriginAskActivityPayload | null): string {
-  return ask === null ? "" : JSON.stringify([ask.url, ask.repo, ask.reason, ask.state]);
+/** An ask the card stands for, by its request, with who answered it (a person) and when. */
+export type OriginAskOfRequest = OriginAsk & {
+  readonly requestId: string;
+  readonly answeredBy?: string | null;
+  readonly answeredAt?: number | null;
+};
+
+type AskTuple = [
+  string,
+  string,
+  string,
+  string | null,
+  OriginAsk["state"],
+  string | null,
+  number | null,
+];
+
+/** The asks a card stands for as one string, for a selector whose answer is compared by value. */
+export function originAsksKey(asks: ReadonlyArray<OriginAskActivityPayload | null>): string {
+  return JSON.stringify(
+    asks.flatMap((ask): ReadonlyArray<AskTuple> =>
+      ask === null
+        ? []
+        : [
+            [
+              ask.requestId,
+              ask.url,
+              ask.repo,
+              ask.reason,
+              ask.state,
+              ask.answer?.by.kind === "person" ? ask.answer.by.subject : null,
+              ask.answer?.at ?? null,
+            ],
+          ],
+    ),
+  );
 }
 
-/** The ask back from its string. */
-export function originAskFromKey(key: string): OriginAsk | null {
-  if (key === "") return null;
-  const [url, repo, reason, state] = JSON.parse(key) as [
-    string,
-    string,
-    string | null,
-    OriginAsk["state"],
-  ];
-  return { url, repo, reason, state };
+/** The asks back from their string. */
+export function originAsksFromKey(key: string): ReadonlyArray<OriginAskOfRequest> {
+  return (JSON.parse(key) as ReadonlyArray<AskTuple>).map(
+    ([requestId, url, repo, reason, state, answeredBy, answeredAt]) => ({
+      requestId,
+      url,
+      repo,
+      reason,
+      state,
+      answeredBy,
+      answeredAt,
+    }),
+  );
+}
+
+/**
+ * One card for the asks it stands for (`originAskPlaces`): the question its first ask put, the
+ * first why any gave, open while any is; the asks its answer goes to — those still open — and the
+ * HQ repositories they name, each wired to the one address: an ask closed already, answered or
+ * settled by its Mate, names none. Kept on GitHub once HQ mounts every one of them through the
+ * GitHub app.
+ */
+export function originAskGroup(asks: ReadonlyArray<OriginAskOfRequest>): {
+  readonly ask: OriginAsk;
+  /** Who answered the card's first answered ask, and when. */
+  readonly answered: { readonly by: string | null; readonly at: number | null };
+  readonly open: ReadonlyArray<string>;
+  readonly repos: ReadonlyArray<string>;
+  readonly connected: (repos: ReadonlyArray<RepoListEntry> | undefined) => boolean;
+} {
+  const [first] = asks;
+  const url = first?.url ?? "";
+  const live = asks.filter((ask) => ask.state === "open");
+  const open = live.map((ask) => ask.requestId);
+  const repos = [...new Set(live.map((ask) => ask.repo))];
+  return {
+    ask: {
+      url,
+      repo: live[0]?.repo ?? first?.repo ?? "",
+      reason: asks.find((ask) => ask.reason !== null)?.reason ?? null,
+      state: open.length > 0 ? "open" : (first?.state ?? "closed"),
+    },
+    answered: (() => {
+      const settled = asks.find((ask) => ask.state !== "open");
+      return { by: settled?.answeredBy ?? null, at: settled?.answeredAt ?? null };
+    })(),
+    open,
+    repos,
+    connected: (listed) =>
+      repos.length > 0 && repos.every((repo) => originConnected({ url, repo }, listed)),
+  };
+}
+
+/**
+ * Whether the engine refused the person's pick for an ask it holds open no more
+ * (`unknown-request`): its Mate settled it, or it was answered elsewhere. The pick stands, and the
+ * card's other asks still hear it.
+ */
+export function originAnswerSettled(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { readonly code?: unknown }).code === "unknown-request"
+  );
 }

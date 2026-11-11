@@ -9,6 +9,7 @@ import { canonicalAppEnvironments } from "./appEnvironments.ts";
 import type { ZeropsPlacedBirth, ZeropsProjectOrder } from "../../zerops/groups.ts";
 import type { ZeropsProject } from "../../zerops/api.ts";
 import { hqAppsScope } from "../families/hqNavigation.ts";
+import { scopeFreshness } from "./freshness.ts";
 import type { Projection } from "../store.ts";
 import { inventory, type InventoryKey } from "./inventory.ts";
 import { sameValue } from "./equal.ts";
@@ -21,9 +22,17 @@ export interface InventoryGroupsKey extends InventoryKey {
   /** Accepted local intents remain visible before the platform roster catches up. */
   readonly births: ReadonlyArray<ZeropsPlacedBirth>;
 }
+export interface InventoryGroupsView<T> extends CanonicalGroupTreeView<T> {
+  /**
+   * The applications HQ's complete apps scope knows that the tree draws no group for, so a page
+   * opened on one says why instead of waiting.
+   */
+  readonly undrawn: ReadonlyArray<string>;
+}
+
 export const canonicalInventoryGroups: Projection<
   InventoryGroupsKey,
-  CanonicalGroupTreeView<{ readonly project: ZeropsProject }>
+  InventoryGroupsView<{ readonly project: ZeropsProject }>
 > = {
   name: "canonicalInventoryGroups",
   keyOf: (key) => JSON.stringify(key),
@@ -31,9 +40,12 @@ export const canonicalInventoryGroups: Projection<
     const projects = inventory
       .derive(read, key)
       .projects.filter(({ id }) => key.projectIds.includes(id));
-    const apps = read.members(hqAppsScope(key.organization.organizationId)).ids.flatMap((id) => {
+    const scope = hqAppsScope(key.organization.organizationId);
+    const known: Array<string> = [];
+    const apps = read.members(scope).ids.flatMap((id) => {
       const app = read.fact("hqApp", id);
       if (app.kind !== "known") return [];
+      known.push(id);
       const { environments } = canonicalAppEnvironments.derive(read, {
         orgId: key.organization.organizationId,
         appId: id,
@@ -45,7 +57,7 @@ export const canonicalInventoryGroups: Projection<
         ? [{ id, name: app.value.name ?? "Unknown", environments }]
         : [];
     });
-    return buildCanonicalGroupTree(
+    const tree = buildCanonicalGroupTree(
       projects.map((project) => ({ project })),
       {
         order: key.order,
@@ -54,6 +66,9 @@ export const canonicalInventoryGroups: Projection<
         apps,
       },
     );
+    if (!scopeFreshness(read, scope).complete) return { ...tree, undrawn: [] };
+    const drawn = new Set(tree.groups.map(({ group }) => group.groupId));
+    return { ...tree, undrawn: known.filter((id) => !drawn.has(id)) };
   },
   equals: sameValue,
 };

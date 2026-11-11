@@ -1,12 +1,13 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { composerLayout } from "./composerLayout.ts";
 import type { Page } from "puppeteer-core";
 import { waitForStillFrames } from "../../harness/stillFrames.ts";
+import { resizeMenu } from "../../harness/browser.ts";
 import { describe, expect, it } from "@effect/vitest";
 import { TurnId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { mateChat } from "./dsl.ts";
 import { installArea } from "./fake.ts";
@@ -23,7 +24,7 @@ import {
 } from "./ownerReportedLayout.ts";
 
 describe("owner-reported layout regressions", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect(
       "a reload of the Chief's page keeps its split from the first frame, and nothing moves once its conversation shows",
       () =>
@@ -51,9 +52,7 @@ describe("owner-reported layout regressions", () => {
               .locator('[data-sidebar="sidebar"] [data-zerops-surface="sidebar-chief-row"]')
               .click(),
           );
-          yield* Effect.promise(() =>
-            s.page.waitForSelector('[role="textbox"]', { visible: true }),
-          );
+          yield* s.then.conversation.appears;
           const mate = s.drivers.realMates.get("Chief")!;
           yield* mate.provider.turn([
             {
@@ -115,7 +114,7 @@ describe("owner-reported layout regressions", () => {
   describe("Decision: geometry relations only; no style pins.", () => {
     describe("Decision: a mark between two names gives way whole; the Mate's name keeps its letters while a mark holds room.", () => {
       describe("B: marks between a project's name and its Mate's", () => {
-        it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        scenarioSuite((it) => {
           it.effect(
             "a waiting release's mark is never cut, and never cuts the Mate's name, at any menu width",
             () =>
@@ -173,7 +172,7 @@ describe("owner-reported layout regressions", () => {
 
     describe("Decision: restore the expected end of the list; no other menu changes.", () => {
       describe("B: list end spacing", () => {
-        it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        scenarioSuite((it) => {
           it.effect("the last project keeps one regular row gap above the list's foot", () =>
             Effect.gen(function* () {
               const s = yield* menuScenario();
@@ -265,9 +264,130 @@ describe("owner-reported layout regressions", () => {
       });
     });
 
+    describe("Decision: opening a menu row brings what it opened into view.", () => {
+      describe("B: a project opened in a long list", () => {
+        scenarioSuite((it) => {
+          it.effect(
+            "the last project's Mates come into view when it opens; one already in view leaves the list where it is",
+            () =>
+              Effect.gen(function* () {
+                const s = yield* menuScenario();
+                yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+                for (let index = 0; index < 24; index++) {
+                  const name = `Project${String(index).padStart(2, "0")}`;
+                  yield* s.given.project(name, {
+                    app: name,
+                    kind: "stage",
+                    environmentName: "stage",
+                  });
+                }
+                for (const [app, mates] of [
+                  ["Alpha Titan", ["Ada", "Bea"]],
+                  ["Zulu Titan", ["Cy", "Di"]],
+                ] as const) {
+                  for (const name of mates) yield* s.given.project(name, { mate: true, app });
+                }
+                yield* s.given.signedIn;
+                yield* s.colleague.reports("Ada", {
+                  latestUserMessageAt: "2026-10-27T00:00:00Z",
+                  updatedAt: "2026-10-27T00:00:00Z",
+                });
+                yield* Effect.promise(() => ownerMenu(s.page));
+                const seen = yield* Effect.promise(async () => {
+                  await s.page.waitForFunction(
+                    () => document.querySelectorAll("section[data-zerops-group]").length === 26,
+                  );
+                  // The two projects that open: the first of them and the last, as the menu lists
+                  // them; the list's own scroller holds both.
+                  const headings = '[data-zerops-surface="sidebar-project"][aria-expanded]';
+                  const state = (at: number) =>
+                    s.page.evaluate(
+                      (selector, index) => {
+                        const all = [...document.querySelectorAll<HTMLElement>(selector)];
+                        const heading = all.at(index)!;
+                        const scroller = heading.closest<HTMLElement>(
+                          '[data-slot="scroll-area-viewport"]',
+                        )!;
+                        const view = scroller.getBoundingClientRect();
+                        const box = heading.getBoundingClientRect();
+                        const mate = heading
+                          .closest("section[data-zerops-group]")!
+                          .querySelector("[data-zerops-kids] [data-zerops-row]")
+                          ?.getBoundingClientRect();
+                        return {
+                          open: heading.getAttribute("aria-expanded") === "true",
+                          scrollTop: scroller.scrollTop,
+                          headingTop: box.top - view.top,
+                          headingBottom: view.bottom - box.bottom,
+                          mateTop: mate === undefined ? -1 : mate.top - view.top,
+                          mateBottom: mate === undefined ? -1 : view.bottom - mate.bottom,
+                        };
+                      },
+                      headings,
+                      at,
+                    );
+                  const press = async (at: number) => {
+                    const all = await s.page.$$(headings);
+                    await all.at(at)!.click();
+                    await waitForStillFrames(s.page);
+                  };
+                  const before = await state(0);
+                  await press(0);
+                  const inView = await state(0);
+                  await s.page.evaluate(() => {
+                    const scroller = document
+                      .querySelector('[data-sidebar="content"]')!
+                      .closest<HTMLElement>('[data-slot="scroll-area-viewport"]')!;
+                    scroller.scrollTop = scroller.scrollHeight;
+                  });
+                  await waitForStillFrames(s.page);
+                  const atEnd = await state(-1);
+                  await press(-1);
+                  const brought = await state(-1);
+                  return { before, inView, atEnd, brought };
+                });
+                const said = Object.entries(seen)
+                  .map(([name, at]) =>
+                    [
+                      name,
+                      ...Object.entries(at).map(([key, value]) => `${key}=${String(value)}`),
+                    ].join(" "),
+                  )
+                  .join("; ");
+                expect(
+                  seen.before.headingBottom,
+                  `ASSERTION: the first project stands in view before it opens: ${said}`,
+                ).toBeGreaterThan(0);
+                expect(
+                  seen.inView.scrollTop,
+                  `ASSERTION: a project whose Mates fit in view opens without moving the list: ${said}`,
+                ).toBe(seen.before.scrollTop);
+                expect(
+                  seen.atEnd.open,
+                  `ASSERTION: the last project is folded at the list's end: ${said}`,
+                ).toBe(false);
+                expect(
+                  seen.brought.mateTop,
+                  `ASSERTION: the last project's first Mate stands inside the list's visible rect once it opens: ${said}`,
+                ).toBeGreaterThanOrEqual(0);
+                expect(
+                  seen.brought.mateBottom,
+                  `ASSERTION: the last project's first Mate stands inside the list's visible rect once it opens: ${said}`,
+                ).toBeGreaterThanOrEqual(0);
+                expect(
+                  seen.brought.headingTop,
+                  `ASSERTION: its heading stays in view above them: ${said}`,
+                ).toBeGreaterThanOrEqual(0);
+                yield* s.then.noExternalNetwork;
+              }),
+          );
+        });
+      });
+    });
+
     describe("Decision: an overview card is as tall as what it holds.", () => {
       describe("B: overview cards", () => {
-        it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        scenarioSuite((it) => {
           // The owner (2026-10-12): "why the gap at bottom".
           it.effect("an overview card ends where what it holds ends, beside a taller one", () =>
             Effect.gen(function* () {
@@ -324,6 +444,193 @@ describe("owner-reported layout regressions", () => {
       });
     });
 
+    describe("Decision: what wears an outline shows it whole; nothing that cuts stands flush against it.", () => {
+      describe("B: overview cards", () => {
+        scenarioSuite((it) => {
+          // The owner (2026-11-10): every project card on the overview had lost its top edge, and
+          // the Review pill on a Mate's line its top, bottom and right: each outline is drawn
+          // outside its own box, inside a box that hides what overflows it.
+          // witness: apps/web/src/index.css | padding: 1px 20px 6px; → padding: 0 20px 6px;
+          it.effect(
+            "a project's card on the overview shows its whole outline: the row that scrolls keeps room above it",
+            () =>
+              Effect.gen(function* () {
+                const s = yield* menuScenario();
+                yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+                yield* s.given.project("Ada", { mate: true, app: "Shop" });
+                yield* s.given.signedIn;
+                const seen = yield* Effect.promise(async () => {
+                  await s.page.goto(`${s.web.origin}/zerops`);
+                  await s.page.waitForFunction(() =>
+                    [
+                      ...document.querySelectorAll('[data-zerops-surface="project-cards"] article'),
+                    ].some((card) => card.getBoundingClientRect().height > 0),
+                  );
+                  await waitForStillFrames(s.page);
+                  return s.page.evaluate(() => {
+                    const hides = (value: string) => value !== "visible";
+                    const cut: string[] = [];
+                    let outlined = 0;
+                    for (const element of document.querySelectorAll<HTMLElement>(
+                      '[data-zerops-surface="project-cards"] *',
+                    )) {
+                      // An outline drawn as a shadow one pixel past the box.
+                      if (!/0px 0px 0px 1px/.test(getComputedStyle(element).boxShadow)) continue;
+                      const box = element.getBoundingClientRect();
+                      if (box.width < 8 || box.height < 8) continue;
+                      outlined += 1;
+                      // The nearest box that hides what overflows it decides what is cut.
+                      for (
+                        let parent = element.parentElement;
+                        parent !== null && parent !== document.body;
+                        parent = parent.parentElement
+                      ) {
+                        const style = getComputedStyle(parent);
+                        if (!hides(style.overflowX) && !hides(style.overflowY)) continue;
+                        const edge = parent.getBoundingClientRect();
+                        const sides = [
+                          hides(style.overflowY) &&
+                          box.top - 1 < edge.top &&
+                          box.top >= edge.top - 0.5
+                            ? "top"
+                            : null,
+                          hides(style.overflowY) &&
+                          box.bottom + 1 > edge.bottom &&
+                          box.bottom <= edge.bottom + 0.5
+                            ? "bottom"
+                            : null,
+                          hides(style.overflowX) &&
+                          box.left - 1 < edge.left &&
+                          box.left >= edge.left - 0.5
+                            ? "left"
+                            : null,
+                          hides(style.overflowX) &&
+                          box.right + 1 > edge.right &&
+                          box.right <= edge.right + 0.5
+                            ? "right"
+                            : null,
+                        ].filter((side) => side !== null);
+                        if (sides.length > 0)
+                          cut.push(
+                            `${element.className || element.tagName} in ${parent.className || parent.tagName}: ${sides.join(", ")}`,
+                          );
+                        break;
+                      }
+                    }
+                    return { outlined, cut };
+                  });
+                });
+                expect(
+                  seen.outlined,
+                  `ASSERTION: the card wears an outline: ${quoted(seen)}`,
+                ).toBeGreaterThan(0);
+                expect(
+                  seen.cut,
+                  `ASSERTION: no outline stands flush against a box that hides it: ${quoted(seen)}`,
+                ).toEqual([]);
+                yield* s.then.noExternalNetwork;
+              }),
+          );
+        });
+      });
+    });
+
+    // The live audit, 2026-10-28: Noola's Odin row put seven parts' chips on its name's line, its
+    // name went to 0 px and the chips and its time ran over the card into Mate Web's row.
+    describe("Decision: a Mate row's parts wrap inside its card, and its name never gives way.", () => {
+      scenarioSuite((it) => {
+        it.effect(
+          "a Mate with many parts keeps its whole name, its parts wrap inside the card and nothing leaves it",
+          () =>
+            Effect.gen(function* () {
+              const s = yield* menuScenario();
+              yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+              yield* s.given.project("Odin", { mate: true, app: "Noola" });
+              const parts = ["api", "edge", "embedder", "geo", "runner", "site", "web"];
+              for (const part of parts)
+                for (const half of ["dev", "stage"])
+                  s.drivers.zerops.put("service-stack", {
+                    id: `service-${part}${half}`,
+                    projectId: "Odin",
+                    clientId: "ORG",
+                    name: `${part}${half}`,
+                    status: "ACTIVE",
+                    subdomainAccess: true,
+                    serviceStackTypeInfo: {
+                      serviceStackTypeName: "nodejs",
+                      serviceStackTypeVersionName: "nodejs@22",
+                      serviceStackTypeCategory: "USER",
+                    },
+                    ports: [{ port: 3000, scheme: "http" }],
+                  });
+              yield* s.given.signedIn;
+              yield* Effect.promise(() => resizeMenu(s.page, 435));
+              const row = yield* Effect.promise(async () => {
+                await s.page.goto(`${s.web.origin}/zerops`);
+                await s.page.waitForFunction(
+                  (count) =>
+                    document.querySelectorAll(
+                      '[data-zerops-surface="card-mate-parts"] .ov-mate-preview',
+                    ).length === count,
+                  {},
+                  parts.length,
+                );
+                await waitForStillFrames(s.page);
+                return s.page.evaluate(() => {
+                  const mate = document.querySelector('[data-zerops-surface="card-mate"]')!;
+                  const card = mate.closest("article")!;
+                  const name = mate.querySelector<HTMLElement>(".ov-mate-name")!;
+                  const box = (element: Element) => {
+                    const rect = element.getBoundingClientRect();
+                    return {
+                      top: rect.top,
+                      bottom: rect.bottom,
+                      left: rect.left,
+                      right: rect.right,
+                    };
+                  };
+                  const chips = [
+                    ...mate.querySelectorAll('[data-zerops-surface="card-mate-parts"] > *'),
+                  ].map(box);
+                  return {
+                    card: box(card),
+                    name: { ...box(name), width: name.clientWidth, needs: name.scrollWidth },
+                    chips,
+                    time: box(mate.querySelector(".ov-mate-time")!),
+                    rows: new Set(chips.map((chip) => Math.round(chip.top))).size,
+                  };
+                });
+              });
+              const seen = quoted(row);
+              expect(
+                row.name.width,
+                `ASSERTION: the Mate's whole name shows: ${seen}`,
+              ).toBeGreaterThanOrEqual(row.name.needs);
+              expect(
+                row.rows,
+                `ASSERTION: the parts wrap onto more lines: ${seen}`,
+              ).toBeGreaterThan(1);
+              for (const chip of [...row.chips, row.time]) {
+                expect(
+                  chip.left,
+                  `ASSERTION: nothing starts left of the card: ${seen}`,
+                ).toBeGreaterThanOrEqual(row.card.left);
+                expect(
+                  chip.right,
+                  `ASSERTION: nothing leaves the card: ${seen}`,
+                ).toBeLessThanOrEqual(row.card.right);
+              }
+              for (const chip of row.chips)
+                expect(
+                  chip.left >= row.name.right && chip.right <= row.time.left,
+                  `ASSERTION: the parts stand between the name and the time: ${seen}`,
+                ).toBe(true);
+              yield* s.then.noExternalNetwork;
+            }),
+        );
+      });
+    });
+
     const ROW = '[data-zerops-surface="sidebar-mate"]';
     const ASK = "Keep the running row steady";
     type Witness = {
@@ -333,7 +640,7 @@ describe("owner-reported layout regressions", () => {
     };
 
     describe("B: running row refresh", () => {
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         // The owner (2026-10-11): the left side "jumps in height" with a Mate's step row, "then it
         // disappears and it jumps again".
         it.effect(
@@ -542,7 +849,7 @@ describe("owner-reported layout regressions", () => {
     // The owner, 2026-10-18, at a narrower window: the Mate's name was cut to "Mir" and the blue
     // Review pill stood over it, while the conversation's subject kept its length to its ellipsis.
     describe("Decision: the subject gives way in the header; the face, the name and the pill never do.", () => {
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         it.effect(
           "at a narrow header the Mate's whole name shows, the pill stands clear of it, and the subject is what is cut",
           () =>
@@ -639,7 +946,7 @@ describe("owner-reported layout regressions", () => {
           };
           return { frame: box(frame), row: box(row), content: box(content) };
         });
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         it.effect(
           "an open site's page starts right under its address row and fills the panel to its bottom and sides, at the side, expanded and as a sheet",
           () =>
@@ -731,7 +1038,7 @@ describe("owner-reported layout regressions", () => {
             ]),
           ),
         );
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         it.effect("the Helpers surface's rows stay where they stand as helpers start and end", () =>
           Effect.gen(function* () {
             const s = yield* createScenario([installArea]);
@@ -882,7 +1189,7 @@ describe("owner-reported layout regressions", () => {
           await waitForStillFrames(page);
         });
 
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         // The owner's ask for a smooth peek did not trade away a click: resting on a face and
         // clicking it opened whatever row of the peek had slid under the pointer.
         it.effect("a rest on a rail face and a click opens that Mate, with no peek over it", () =>
@@ -1080,13 +1387,14 @@ describe("owner-reported layout regressions", () => {
               : `tag "${String(reading.tag.says)}" ${String(reading.tag.left)}–${String(reading.tag.right)} mid ${String(reading.tag.middle)}`,
           ].join(", ");
 
-        it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        scenarioSuite((it) => {
           // Run 2, S15: a stage being set up put a spinner chip before the Mate's quote on its
           // project's row, which pushed the quote 30 px aside, and back when it went.
           it.effect("a stage building moves neither the project row's words nor its time", () =>
             Effect.gen(function* () {
               const s = yield* menuScenario();
-              yield* s.given.project("Ada", { mate: true, app: "Shop" });
+              const ada = yield* s.given.project("Ada", { mate: true, app: "Shop" });
+              yield* s.stageToAdd("Shop-stage", "Shop", ada!);
               yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
               yield* s.given.signedIn;
               yield* s.menu.grouped("Ada", "Shop");
@@ -1107,15 +1415,22 @@ describe("owner-reported layout regressions", () => {
               });
               const calm = yield* Effect.promise(() => rowReading(s.page));
               expect(calm.tag, "ASSERTION: a calm project's row shows no tag").toBeNull();
-              // A stage is added and comes up, then builds: its tag comes, then changes its words.
-              yield* s.stage("Shop-stage", "Shop");
-              yield* s.menu.chip("coming up", 15_000);
-              yield* Effect.promise(() => waitForStillFrames(s.page));
-              const coming = yield* Effect.promise(() => rowReading(s.page));
+              // It builds, then its address is being published: its tag comes, then changes words.
               yield* s.colleague.builds("Shop-stage");
               yield* s.menu.chip("\\b(?:building|deploying|releasing)\\b", 15_000);
               yield* Effect.promise(() => waitForStillFrames(s.page));
               const building = yield* Effect.promise(() => rowReading(s.page));
+              yield* s.colleague.buildEnds("Shop-stage");
+              s.drivers.zerops.put("service-stack", {
+                ...s.drivers.zerops
+                  .rows("service-stack")
+                  .find((row) => row.id === "app-Shop-stage")!,
+                id: "app-Shop-stage",
+                subdomainAccess: true,
+              });
+              yield* s.menu.chip("turning its address on", 15_000);
+              yield* Effect.promise(() => waitForStillFrames(s.page));
+              const coming = yield* Effect.promise(() => rowReading(s.page));
               for (const busy of [coming, building]) {
                 const seen = `calm ${said(calm)}; busy ${said(busy)}`;
                 expect(
@@ -1142,5 +1457,179 @@ describe("owner-reported layout regressions", () => {
         });
       });
     });
+
+    describe("Decision: a reload paints nothing it takes back.", () => {
+      describe("B: the menu after a reload on a Mate's conversation", () => {
+        scenarioSuite((it) => {
+          // Aleš, 2026-10-27: aiming at Jago opened Dara. A reload on a Mate's conversation drew its
+          // folded project's row, then opened the project once the Mate was found, seconds later,
+          // pushing every row below it by three rows.
+          it.effect(
+            "after a reload on a Mate's conversation, a row below its project never moves while that Mate is found",
+            () =>
+              Effect.gen(function* () {
+                const s = yield* menuScenario();
+                yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+                for (const name of ["Ada", "Bea", "Cy"])
+                  yield* s.given.project(name, { mate: true, app: "Alpha Titan" });
+                yield* s.given.project("Di", { mate: true, app: "Zulu" });
+                yield* s.given.signedIn;
+                yield* Effect.promise(() => ownerMenu(s.page));
+                const recorded = yield* Effect.promise(async () => {
+                  const heading = '[data-zerops-surface="sidebar-project"][aria-expanded]';
+                  const expanded = (value: "true" | "false") =>
+                    s.page.waitForFunction(
+                      (selector, value) =>
+                        document.querySelector(selector)?.getAttribute("aria-expanded") === value,
+                      {},
+                      heading,
+                      value,
+                    );
+                  await s.page.waitForSelector(heading);
+                  if (
+                    (await s.page.$eval(heading, (row) => row.getAttribute("aria-expanded"))) !==
+                    "true"
+                  )
+                    await s.page.click(heading);
+                  await expanded("true");
+                  await waitForStillFrames(s.page);
+                  // Ada's conversation open, and her project folded around it by its person.
+                  const from = await s.page.evaluate(() => location.pathname);
+                  await s.page.click("[data-zerops-kids] [data-zerops-row]");
+                  await s.page.waitForFunction((from) => location.pathname !== from, {}, from);
+                  await waitForStillFrames(s.page);
+                  await s.page.click(heading);
+                  await expanded("false");
+                  await waitForStillFrames(s.page);
+                  await s.page.evaluateOnNewDocument(recordRowBelow);
+                  await s.page.reload({ waitUntil: "domcontentloaded" });
+                  await s.page.waitForFunction(
+                    () => (window as unknown as { belowDone?: boolean }).belowDone === true,
+                  );
+                  return s.page.evaluate(() => {
+                    const self = window as unknown as {
+                      belowFrames: BelowFrame[];
+                      menuShifts: string[];
+                    };
+                    return { frames: self.belowFrames, shifts: self.menuShifts };
+                  });
+                });
+                const { frames, shifts } = recorded;
+                const said = frames
+                  .map(
+                    (frame) =>
+                      `${frame.at}ms ${frame.where} expanded=${frame.expanded} current=${frame.current} kids=${frame.kids} below=${frame.below}`,
+                  )
+                  .join("; ");
+                const tops = frames.flatMap((frame) => (frame.below === null ? [] : [frame.below]));
+                expect(tops.length, `ASSERTION: the row below is drawn: ${said}`).toBeGreaterThan(
+                  0,
+                );
+                expect(
+                  frames.at(-1)?.current,
+                  `ASSERTION: the folded project marks the conversation open in it once its Mate is found: ${said}`,
+                ).toBe(true);
+                expect(
+                  Math.max(...tops) - Math.min(...tops),
+                  `ASSERTION: the row below the project keeps its top from its first frame: ${said}`,
+                ).toBe(0);
+                expect(
+                  shifts,
+                  `ASSERTION: the browser records no layout shift in the menu: ${said}`,
+                ).toEqual([]);
+                yield* s.then.noExternalNetwork;
+              }),
+          );
+        });
+      });
+    });
   });
 });
+
+/** One change of the menu after a reload: the first project's fold and the row below it. */
+interface BelowFrame {
+  readonly at: number;
+  readonly where: "boot" | "app";
+  readonly expanded: string | null;
+  readonly kids: number;
+  /** The first project's row marks the conversation open in it. */
+  readonly current: boolean;
+  /** The top of the project row below the first one, or null before it draws. */
+  readonly below: number | null;
+}
+
+// Runs in every new document: each change of the first project and the row below it, until the
+// menu has stood still for 90 frames with the open conversation's Mate found.
+function recordRowBelow() {
+  const frames: BelowFrame[] = [];
+  const shifts: string[] = [];
+  const self = window as unknown as {
+    belowFrames: BelowFrame[];
+    menuShifts: string[];
+    belowDone: boolean;
+  };
+  self.belowFrames = frames;
+  self.menuShifts = shifts;
+  self.belowDone = false;
+  // The browser's own layout-shift record: every shift of a node in the menu.
+  new PerformanceObserver((list) => {
+    for (const entry of list.getEntries() as unknown as Array<{
+      startTime: number;
+      sources: Array<{
+        node: Node | null;
+        previousRect: DOMRectReadOnly;
+        currentRect: DOMRectReadOnly;
+      }>;
+    }>)
+      for (const source of entry.sources)
+        if (
+          source.node instanceof Element &&
+          source.node.closest('[data-sidebar="sidebar"]') !== null
+        )
+          shifts.push(
+            `${Math.round(entry.startTime)}ms ${Math.round(source.previousRect.top)}→${Math.round(source.currentRect.top)}`,
+          );
+  }).observe({ type: "layout-shift", buffered: true });
+  let still = 0;
+  // The frame's own time, as the browser hands it to the frame: no clock read of the scenario's.
+  const sample = (now: DOMHighResTimeStamp) => {
+    const boot = document.getElementById("boot-shell");
+    const where: "boot" | "app" =
+      boot !== null && !boot.hidden && boot.getBoundingClientRect().width > 0 ? "boot" : "app";
+    const root =
+      where === "boot"
+        ? document.getElementById("boot-shell-menu")
+        : document.querySelector('[data-sidebar="sidebar"]');
+    const sections = [...(root?.querySelectorAll("section[data-zerops-group]") ?? [])].filter(
+      (section) => section.getBoundingClientRect().height > 0,
+    );
+    const open = sections[0];
+    const heading = open?.querySelector('[data-zerops-surface="sidebar-project"]') ?? null;
+    const below = sections[1]?.getBoundingClientRect().top;
+    const frame: BelowFrame = {
+      at: Math.round(now),
+      where,
+      expanded: heading?.getAttribute("aria-expanded") ?? null,
+      kids: open?.querySelectorAll("[data-zerops-kids] [data-zerops-row]").length ?? 0,
+      current:
+        heading?.getAttribute("aria-current") === "true" ||
+        open?.querySelector('[data-zerops-kids] [aria-current="true"]') != null,
+      below: below === undefined ? null : Math.round(below * 10) / 10,
+    };
+    const last = frames.at(-1);
+    if (
+      last === undefined ||
+      last.where !== frame.where ||
+      last.expanded !== frame.expanded ||
+      last.kids !== frame.kids ||
+      last.current !== frame.current ||
+      last.below !== frame.below
+    ) {
+      frames.push(frame);
+      still = 0;
+    } else still += 1;
+    if (where === "app" && frame.current && still > 90) self.belowDone = true;
+    else requestAnimationFrame(sample);
+  };
+  requestAnimationFrame(sample);
+}

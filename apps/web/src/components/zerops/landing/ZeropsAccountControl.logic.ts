@@ -1,13 +1,16 @@
 /**
  * What the bar shows for the signed-in person, derived once from the Zerops
- * user record (`GET /user/info`): a short name to say, initials to fall back
- * on, and the picture when the account has one.
+ * user record (`GET /user/info`): the name every surface calls them by, initials
+ * to fall back on, and the picture when the account has one.
  */
 
 import type { ZeropsUser } from "@t3tools/client-runtime/zerops";
 
 export interface ZeropsAccountDisplay {
-  /** What the trigger says: the first name, else the full name's first word, else the email's local part. */
+  /**
+   * What the trigger says: what the organization's member list calls them (`ZeropsPerson.called`),
+   * else their full name, else the email's local part.
+   */
   readonly name: string;
   readonly fullName: string | null;
   readonly email: string | null;
@@ -41,15 +44,17 @@ export function zeropsInitials(source: string): string {
     : firstLetter(first);
 }
 
-export function zeropsAccountDisplay(user: ZeropsAccountSource | null): ZeropsAccountDisplay {
+export function zeropsAccountDisplay(
+  user: ZeropsAccountSource | null,
+  called?: string | undefined,
+): ZeropsAccountDisplay {
   const email = text(user?.email);
   const firstName = text(user?.firstName);
   const lastName = text(user?.lastName);
   const joined = [firstName, lastName].filter((part) => part !== null).join(" ");
   const fullName = text(user?.fullName) ?? text(joined);
   const localPart = email === null ? null : text(email.split("@")[0]);
-  const firstWord = fullName === null ? null : text(fullName.split(/\s+/u)[0]);
-  const name = firstName ?? firstWord ?? localPart ?? "Account";
+  const name = text(called) ?? fullName ?? localPart ?? "Account";
   const avatar = user?.avatar;
   return {
     name,

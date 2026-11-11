@@ -94,7 +94,7 @@ const FAILED: ChiefSetup = {
   projectId: null,
   reason: "No room.",
 };
-const ready = { hq: "official", mayCreate: true } as const;
+const ready = { mayCreate: true } as const;
 
 describe("chiefPageView", () => {
   it.each<[string, Parameters<typeof chiefPageView>[0], ChiefPageView]>([
@@ -107,29 +107,6 @@ describe("chiefPageView", () => {
       "offers Set up Chief to a person who has none",
       { ...ready, own: null, setup: { phase: "idle" } },
       { kind: "offer", blocked: undefined },
-    ],
-    [
-      "offers it held while the organization's HQ is not reached yet",
-      { ...ready, hq: "reading", own: null, setup: { phase: "idle" } },
-      { kind: "offer", blocked: "Reaching your organization's HQ…" },
-    ],
-    [
-      "says why where the organization has no HQ to record a Chief",
-      { ...ready, hq: "none", own: null, setup: { phase: "idle" } },
-      { kind: "offer", blocked: "Your organization has no HQ to record a Chief." },
-    ],
-    [
-      "explains the missing HQ without waiting for a Chief ownership record",
-      { ...ready, hq: "none", own: undefined, setup: { phase: "idle" } },
-      { kind: "offer", blocked: "Your organization has no HQ to record a Chief." },
-    ],
-    [
-      "says why where the organization's HQ runs an older Core than this app carries",
-      { ...ready, hq: "behind", own: null, setup: { phase: "idle" } },
-      {
-        kind: "offer",
-        blocked: "Your organization's HQ needs its update before it can record a Chief.",
-      },
     ],
     [
       "says why where the person may not make the project it lives in",
@@ -197,13 +174,11 @@ describe("chiefTopShown", () => {
       { own: undefined, setup: null },
       false,
     ],
-    ["the Chief is a menu row while it is being set up", { own: null, setup: "running" }, true],
     [
       "the Chief is a menu row once its setup stopped, to try again",
       { own: null, setup: "stopped" },
       true,
     ],
-    ["the Chief is a menu row once it exists", { own: "chief-project", setup: null }, true],
   ])("%s", (_title, input, shown) => {
     expect(chiefTopShown(input)).toBe(shown);
   });

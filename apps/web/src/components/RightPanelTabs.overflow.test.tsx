@@ -11,7 +11,6 @@ import type { RightPanelSurface } from "~/rightPanelStore";
 import { RightPanelTabs } from "./RightPanelTabs";
 
 const ALL_AVAILABLE = {
-  diff: "available",
   files: "available",
   file: "available",
   terminal: "available",
@@ -23,12 +22,14 @@ const ALL_AVAILABLE = {
   git: "available",
   crew: "available",
   mcp: "available",
+  persona: "available",
   vault: "available",
   overview: "hidden",
+  express: "hidden",
 } as const;
 
 const SURFACES = [
-  { id: "diff", kind: "diff" },
+  { id: "git", kind: "git" },
   { id: "files", kind: "files" },
   { id: "agents", kind: "agents" },
   { id: "zerops", kind: "zerops" },
@@ -136,9 +137,9 @@ describe("RightPanelTabs overflow", () => {
       expect(closes).toEqual(
         folded
           ? ["Close Browser"]
-          : ["Close Diff", "Close Files", "Close Helpers", "Close Zerops", "Close Browser"],
+          : ["Close Code", "Close Files", "Close Helpers", "Close Zerops", "Close Browser"],
       );
-      expect(host.querySelector("button[aria-label='Diff']") !== null).toBe(folded);
+      expect(host.querySelector("button[aria-label='Code']") !== null).toBe(folded);
     },
   );
 });

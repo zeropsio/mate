@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off globalTimers:off globalDate:off preferSchemaOverJson:off -- machine-wide host gate admission.
+// @effect-diagnostics nodeBuiltinImport:off globalTimers:off globalDate:off globalJsonInEffect:off -- machine-wide host gate admission.
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";

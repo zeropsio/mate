@@ -1,4 +1,3 @@
-import * as Offers from "./hqOffers.ts";
 import * as Changes from "./hqChanges.ts";
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
@@ -185,6 +184,19 @@ const change = (patch: Record<string, unknown> = {}) => ({
   ...patch,
 });
 
+/** One of a Mate's own changes, as its own state carries it. */
+const mateChange = (patch: Record<string, unknown> = {}) => ({
+  repo: "appdev",
+  number: 7,
+  title: "Add a login page",
+  state: "open",
+  head: SHA,
+  mergedSha: null,
+  landedHead: null,
+  ready: false,
+  ...patch,
+});
+
 describe("hqChanges — the wire", () => {
   const read = (schema: Schema.Codec<unknown, unknown>, value: unknown) =>
     Schema.decodeUnknownExit(schema)(value)._tag;
@@ -238,6 +250,29 @@ describe("hqChanges — the wire", () => {
     ["an edit of nothing", EditChangeRequest, {}, "Failure"],
   ])("a Mate's request: %s", (_name, schema, value, expected) => {
     expect(read(schema as Schema.Codec<unknown, unknown>, value)).toBe(expected);
+  });
+
+  it("a repository listing keeps HQ's offer to delete it and its reason for not offering", () => {
+    const listed = Schema.decodeUnknownSync(RepoListResponse)({
+      repos: [
+        {
+          name: "appdev",
+          mainHead: null,
+          updatedAt: "2026-10-02T10:00:00.000Z",
+          canDelete: { allow: true },
+        },
+        {
+          name: "group",
+          mainHead: null,
+          updatedAt: "2026-10-02T09:00:00.000Z",
+          canDelete: { allow: false, reason: "group_repository" },
+        },
+      ],
+    });
+    expect(listed.repos.map((repo) => repo.canDelete)).toEqual([
+      { allow: true },
+      { allow: false, reason: "group_repository" },
+    ]);
   });
 
   it.each([
@@ -458,6 +493,38 @@ describe("hqChanges — the wire", () => {
     expect(read(HqChange, change({ firstCodeMerge: "yes" }))).toBe("Failure");
   });
 
+  const corePush = {
+    at: "2026-10-02T11:00:00Z",
+    from: "c".repeat(40),
+    head: "d".repeat(40),
+    landed: 4,
+    squash: "e".repeat(40),
+  };
+
+  it.each([
+    ["a change HQ never pushed to", {}, undefined],
+    ["a change HQ brought main into", { corePush }, corePush],
+  ])("reads HQ's own push on a change's branch from %s", (_name, patch, push) => {
+    expect(decodeChange(change(patch)).corePush).toEqual(push);
+    expect(
+      Schema.decodeUnknownSync(MateChanges)({ appId: APP, changes: [mateChange(patch)] }).changes[0]
+        ?.corePush,
+    ).toEqual(push);
+  });
+
+  it.each([
+    ["a change that is no draft again", {}, undefined],
+    ["a push HQ could not check in time", { draftReason: "notes_timed_out" }, "notes_timed_out"],
+    ["a push HQ could not read", { draftReason: "notes_unread" }, "notes_unread"],
+    ["a reason this client does not know yet", { draftReason: "later_reason" }, "later_reason"],
+  ])("reads why a described change is a draft again from %s", (_name, patch, reason) => {
+    expect(decodeChange(change(patch)).draftReason).toBe(reason);
+    expect(
+      Schema.decodeUnknownSync(MateChanges)({ appId: APP, changes: [mateChange(patch)] }).changes[0]
+        ?.draftReason,
+    ).toBe(reason);
+  });
+
   it("reads a comment from an HQ that kept only people's as a person's", () => {
     const [said] = decodeComments({ comments: [comment("Looks good")] }).comments;
     expect([said?.authorUserId, said?.authorMateProjectId]).toEqual(["owner", null]);
@@ -647,25 +714,6 @@ it("Probe and adoption responses retain only safe evidence and reject partial mo
       }),
     ),
   ).not.toContain("TOKEN_MARKER");
-});
-
-it("Direct-target verbs travel through the existing open offers without a second permission verdict.", () => {
-  expect(Offers.HQ_GIT_TARGET_VERBS).toEqual([
-    "connect_remote",
-    "replace_remote_token",
-    "update_remote_address",
-    "disconnect_remote",
-    "add_git_environment",
-    "remove_git_environment",
-  ]);
-  for (const verb of Offers.HQ_GIT_TARGET_VERBS) {
-    expect(
-      Offers.hqOffer({ [verb]: { allow: false, reason: "not_writer" } }, verb, {
-        current: true,
-        unavailableSince: null,
-      }),
-    ).toEqual({ kind: "refused", reason: "not_writer" });
-  }
 });
 
 describe("hqChanges — a change's metadata", () => {

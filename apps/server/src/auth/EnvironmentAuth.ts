@@ -18,7 +18,7 @@ import {
 } from "@t3tools/contracts";
 import { encodeOAuthScope } from "@t3tools/shared/oauthScope";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -28,7 +28,7 @@ import * as Schema from "effect/Schema";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 
 import { ZeropsConnections } from "../zerops/ZeropsConnections.ts";
-import { ZEROPS_SUBJECT_PREFIX } from "../zerops/zeropsSubject.ts";
+import { ZEROPS_SUBJECT_PREFIX } from "@t3tools/contracts";
 import * as EnvironmentAuthPolicy from "./EnvironmentAuthPolicy.ts";
 import * as PairingGrantStore from "./PairingGrantStore.ts";
 import * as ServerSecretStore from "./ServerSecretStore.ts";
@@ -586,7 +586,7 @@ export const make = Effect.gen(function* () {
   const bootstrapCredentials = yield* PairingGrantStore.PairingGrantStore;
   const sessions = yield* SessionStore.SessionStore;
   const secretStore = yield* ServerSecretStore.ServerSecretStore;
-  const crypto = yield* Crypto.Crypto;
+  const digest = yield* Digest.Digest;
   const descriptor = yield* policy.getDescriptor();
   const sessionAdmission = yield* EnvironmentAuthPolicy.SessionAdmission;
   const verifyAdmission = (session: Pick<AuthenticatedSession, "subject">) =>
@@ -663,7 +663,7 @@ export const make = Effect.gen(function* () {
             expectedAccessToken: dpopToken,
           }).pipe(
             Effect.provideService(ServerSecretStore.ServerSecretStore, secretStore),
-            Effect.provideService(Crypto.Crypto, crypto),
+            Effect.provideService(Digest.Digest, digest),
             Effect.as(session),
           );
         }

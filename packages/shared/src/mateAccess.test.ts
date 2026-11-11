@@ -87,7 +87,7 @@ describe("projectAccess", () => {
           projectId: "P",
           members: [member("mine", "BASIC_USER"), member("other", role)],
           overrides: {},
-          chief: { userId: "mine", ownerName: "Ada" },
+          chief: { userId: "mine" },
         }),
       ).toEqual([{ userId: "mine", role: "BASIC_USER", visibility: "open" }]);
     },

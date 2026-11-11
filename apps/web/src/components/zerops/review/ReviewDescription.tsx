@@ -1,7 +1,7 @@
 /**
- * What a change does, first: the description its author wrote, rendered as the Mate's other words
- * are — Markdown, its pictures in it — or, where it wrote none, what the run that made it said of
- * it; and the way back to that run, where it is known (`reviewDescription`).
+ * What a change does, first: the description its Mate wrote, rendered as the Mate's other words
+ * are — Markdown, its pictures in it — and the way back to the run that made it, where it is known;
+ * where it wrote none, nothing (`reviewDescription`).
  *
  * The description's pictures are the change's own, kept by the organization's HQ. Each is read as
  * the person from HQ's picture projection (`useProjectedHqPicture`). Once read it is drawn from its bytes, at most
@@ -57,17 +57,17 @@ export type ChangeCodeAt = GitRepoAt & { readonly sha: string };
 export function ReviewDescription({
   description,
   code,
-  run,
+  reading,
   hqAddress,
   pictures,
   onOpenRun,
 }: {
   /** Where a file it names opens; absent, such a file opens nothing. */
   readonly code?: ChangeCodeAt | undefined;
-  /** The change's description as its author wrote it. */
+  /** The change's description as its Mate wrote it. */
   readonly description: string | undefined;
-  /** What the run that made it said of it, while its conversation is read. */
-  readonly run: { readonly words: string | undefined; readonly reading: boolean };
+  /** The change's record, which may hold its description, is still read. */
+  readonly reading: boolean;
   /** The organization's official HQ, which keeps the change's pictures. */
   readonly hqAddress: string | undefined;
   /** Where its pictures are read from, as the person. */
@@ -75,8 +75,39 @@ export function ReviewDescription({
   /** Opens the run that made it, where one is known. */
   readonly onOpenRun: (() => void) | undefined;
 }) {
-  const shown = reviewDescription({ description, run });
-  if (shown.kind === "none") return null;
+  // Words once shown stay while the change is read again (a merge reads it anew): the description
+  // never gives its place back to a skeleton.
+  const [kept, setKept] = useState(description);
+  if (description !== undefined && description !== kept) setKept(description);
+  const shown = reviewDescription({
+    description: description ?? (reading ? kept : undefined),
+    reading,
+  });
+  // A description that was read for and turned out not to exist folds shut: what stood under its
+  // lines glides up into their place, never jumps.
+  const [was, setWas] = useState(shown.kind);
+  const [leaving, setLeaving] = useState(false);
+  if (was !== shown.kind) {
+    setWas(shown.kind);
+    setLeaving(was === "reading" && shown.kind === "none");
+  }
+  if (shown.kind === "none") {
+    return leaving ? (
+      <div
+        aria-hidden="true"
+        className="rv-what-leaves"
+        onAnimationEnd={() => {
+          setLeaving(false);
+        }}
+      >
+        <ReviewSection title={WHAT_IT_DOES}>
+          <div className="rv-what">
+            <ReviewSkeleton lines={2} />
+          </div>
+        </ReviewSection>
+      </div>
+    ) : null;
+  }
   return (
     <ReviewSection
       aside={
@@ -98,8 +129,6 @@ export function ReviewDescription({
             pictures={pictures}
             text={shown.text}
           />
-        ) : shown.kind === "run" ? (
-          <p className="rv-words">{shown.words}</p>
         ) : (
           <ReviewSkeleton lines={2} />
         )}

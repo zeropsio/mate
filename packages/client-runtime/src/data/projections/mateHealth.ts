@@ -10,7 +10,10 @@ export interface MateHealthRead {
   readonly live: boolean;
 }
 
-/** Health uses source ordering on both its direct subscription and independent HQ relay. */
+/**
+ * Health uses source ordering on both its direct subscription and independent HQ relay. HQ's relay
+ * is current where HQ said the Mate is live; HQ away keeps that word (`hqLink`).
+ */
 export const mateHealth: Projection<MateProjectKey, MateHealthRead> = {
   name: "mateHealth",
   keyOf: ({ orgId, projectId }) => `${orgId}/${projectId}`,
@@ -26,9 +29,7 @@ export const mateHealth: Projection<MateProjectKey, MateHealthRead> = {
       attention.kind === "known" &&
       attention.scope === hqMateHealthScope(orgId, projectId) &&
       attention.revision.kind === "mate-attention" &&
-      attention.revision.live &&
-      read.stream(linkKeys.hq(orgId)).phase === "live" &&
-      read.stream(hqMateHealthScope(orgId, projectId)).phase === "live";
+      attention.revision.live;
     const live = directLive || storedLive;
     return {
       health,

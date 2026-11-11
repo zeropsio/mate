@@ -135,6 +135,17 @@ const CASES: ReadonlyArray<{
   { driver: "antigravity", lines: acpCalls("npm run build") },
 ];
 
+// Both independent assertions use the same immutable recording for each driver.
+const recordings = new Map<BridgeDriver, Promise<Recording>>();
+const recordingFor = (driver: BridgeDriver): Promise<Recording> => {
+  let recording = recordings.get(driver);
+  if (recording === undefined) {
+    recording = recordCallHeavy(driver);
+    recordings.set(driver, recording);
+  }
+  return recording;
+};
+
 describe("a call reads on the engine as V1's row of the same call", () => {
   it.each(
     Array.from(CASES, ({ driver, lines }) => ({
@@ -143,7 +154,7 @@ describe("a call reads on the engine as V1's row of the same call", () => {
       lines,
     })),
   )("$title", { timeout: 30_000 }, async ({ driver, lines }) => {
-    const calls = engineCalls(driver, await recordCallHeavy(driver));
+    const calls = engineCalls(driver, await recordingFor(driver));
     assert.deepStrictEqual(calls.map(callLine), lines);
   });
   it.each(
@@ -152,7 +163,7 @@ describe("a call reads on the engine as V1's row of the same call", () => {
       driver,
     })),
   )("$title", { timeout: 30_000 }, async ({ driver }) => {
-    const recording = await recordCallHeavy(driver);
+    const recording = await recordingFor(driver);
     const engine = engineCalls(driver, recording);
     const v1 = v1Calls(recording);
     assert.strictEqual(engine.length, v1.length);

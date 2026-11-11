@@ -102,9 +102,9 @@ export function entry(
 
 /** A Mate being created, as the group tree carries it and the flow reads it. */
 export const VERA_COMING = {
-  projectId: "vera-dev",
+  projectId: "vale-dev",
   kind: "mate" as const,
-  name: "Vera",
+  name: "Vale",
   startedAt: 5,
 };
 
@@ -119,7 +119,7 @@ export function born(members: ReadonlyArray<Item> = []): ReadonlyArray<ProjectsF
       {
         projectId: VERA_COMING.projectId,
         startedAt: Date.parse("2026-09-24T12:00:00.000Z"),
-        placement: { groupId: "ccc", groupName: "Todo", kind: "mate", displayName: "Vera" },
+        placement: { groupId: "ccc", groupName: "Todo", kind: "mate", displayName: "Vale" },
       },
     ],
   });
@@ -206,74 +206,6 @@ export const RELEASING = entry([WREN, PROD], {
 });
 export const FRESH = entry([UMA]);
 
-/** A production whose last deploy failed, with merged work a release could put there. */
-export function brokenProduction() {
-  const FAILED_PROD_SHA = "055a7e8f0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f";
-  return entry([WREN, PROD], {
-    merged: [pull({ number: 4, merged: true })],
-    stops: [
-      {
-        ...PRODUCTION_STOP,
-        row: environmentRow({
-          projectId: "fixture-prod",
-          name: "production",
-          tier: "production",
-          sources: "release",
-          services: [
-            {
-              hostname: "app",
-              appVersionName: FAILED_PROD_SHA,
-              deploy: {
-                latest: {
-                  id: "job-failed-prod",
-                  kind: "deploy",
-                  service: "app",
-                  sha: FAILED_PROD_SHA,
-                  state: "failed",
-                  cause: "release",
-                  ref: null,
-                  reason: null,
-                  appVersionId: null,
-                  processId: null,
-                  requestedBy: null,
-                  at: "2026-09-29T10:41:00Z",
-                  endedAt: "2026-09-29T10:41:00Z",
-                  supersededBy: null,
-                },
-                live: null,
-              },
-            },
-          ],
-        }),
-        deployment: {
-          state: "known",
-          value: {
-            kind: "running",
-            activatedAt: null,
-            version: {
-              name: undefined,
-              commit: "055a7e8",
-              sha: FAILED_PROD_SHA,
-              taggedBy: undefined,
-              label: "055a7e8",
-            },
-          },
-          asOf: { ordinal: 1, atMs: 0 },
-          coverage: "complete",
-          freshness: { kind: "live" },
-        },
-      },
-    ],
-    release: {
-      gate: { allowed: true },
-      suggestion: "v0.1.0",
-      waiting: 1,
-      waitingAtLeast: false,
-      untold: [],
-    },
-  });
-}
-
 /** Every slot, drawn as a marker the tests look for. */
 export const FLOW_PROPS: ZeropsProjectsFlowProps<Item> = {
   getKey: (value) => value.project.id,
@@ -286,7 +218,6 @@ export const FLOW_PROPS: ZeropsProjectsFlowProps<Item> = {
     h("div", {
       "data-test-mate": value.project.id,
       "data-test-layout": options.layout,
-      "data-test-previews": options.previews.map((preview) => preview.service).join(" "),
       "data-test-review": options.review?.number,
     }),
   renderMateFace: (value, size) =>

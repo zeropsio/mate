@@ -1,7 +1,7 @@
 /**
  * Each Mate HQ places, as HQ relays it: whether it is online and its last overview, by project.
- * A Mate HQ said nothing of yet is absent; one it relayed keeps its last word through an outage,
- * and `live` says whether that word is current.
+ * A Mate HQ said nothing of yet is absent; one it relayed keeps its last word while HQ is away
+ * (`hqLink`): HQ away says nothing of a Mate.
  *
  * @module data/projections/hqMates
  */
@@ -10,17 +10,15 @@ import type { Reachability } from "../../zerops/environments/index.ts";
 
 import { hqMateScope } from "../families/hqMate.ts";
 import { placementsScope } from "../families/hqNavigation.ts";
-import { linkKeys } from "../model.ts";
+import type { ScopeKey } from "../model.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import type { MateProjectKey } from "./mateAttention.ts";
 import { sameValue } from "./equal.ts";
-import { placedMates } from "../placedRows.ts";
-import { liveOrHeld } from "../streamMachine.ts";
+import { scopeSlow } from "./freshness.ts";
+import { zeropsPeople } from "./zeropsPeople.ts";
 
 export interface HqMatesRead {
   readonly mates: Readonly<Record<string, MateLiveView>>;
-  /** HQ relays them now: its link is live. Each Mate's own presence says whether it is up. */
-  readonly live: boolean;
 }
 
 export const hqMates: Projection<string, HqMatesRead> = {
@@ -33,32 +31,8 @@ export const hqMates: Projection<string, HqMatesRead> = {
       if (fact.kind !== "known") continue;
       mates[projectId] = { presence: fact.value.presence, ...fact.value.overview };
     }
-    return {
-      mates,
-      live:
-        liveOrHeld(read.stream(linkKeys.hq(orgId))) &&
-        liveOrHeld(read.stream(placementsScope(orgId))),
-    };
+    return { mates };
   },
-  equals: sameValue,
-};
-
-/**
- * The projects whose Mate HQ places for the reader, and whether that is HQ's current word: its
- * link and its placements live (`zerops/account/hqView.ts` hears a project enter or leave).
- */
-export const hqPlacedMates: Projection<
-  string,
-  { readonly live: boolean; readonly placed: ReadonlyArray<string> }
-> = {
-  name: "hqPlacedMates",
-  keyOf: (orgId) => orgId,
-  derive: (read, orgId) => ({
-    live:
-      liveOrHeld(read.stream(linkKeys.hq(orgId))) &&
-      liveOrHeld(read.stream(placementsScope(orgId))),
-    placed: placedMates(read, orgId),
-  }),
   equals: sameValue,
 };
 
@@ -94,6 +68,73 @@ export const hqMatesAnswered: Projection<string, boolean> = {
   equals: Object.is,
 };
 
+/**
+ * Where HQ's index of the Mates the reader observes stands for the organization — whether it may
+ * still name the project an environment's Mate serves:
+ *
+ * - `answered`: its placements are read whole and each placed Mate relayed the environment it
+ *   serves, had its scope refused (that Mate is not the reader's to open), or never connected
+ *   (`neverConnected`): an environment none of them names is none of its Mates. What it said so
+ *   stands through a later outage.
+ * - `slow`: that answer is not whole, and a scope it waits on is slow (`scopeSlow`): HQ's
+ *   connection is open and the scope still waits past a first answer's patience — the menu's own
+ *   word for HQ slow.
+ * - `due`: that answer is not whole — placements unread or a row of them unknown, or a placed
+ *   Mate relayed no environment (an overview without one, or none) — and nothing says HQ is slow.
+ *   Its silence proves nothing; an outage is the menu's to say (`hqOutage`).
+ */
+export type HqIndexWord = "answered" | "slow" | "due";
+
+export const hqIndexWord: Projection<string, HqIndexWord> = {
+  name: "hqIndexWord",
+  keyOf: (orgId) => orgId,
+  derive: (read, orgId) => {
+    const placements = placementsScope(orgId);
+    const waiting: ScopeKey[] = [];
+    if (read.coverage(placements) !== "complete") waiting.push(placements);
+    for (const projectId of read.members(placements).ids) {
+      const placement = read.fact("placement", projectId);
+      if (placement.kind !== "known") {
+        waiting.push(placements);
+        continue;
+      }
+      if (placement.value.mate == null || neverConnected(read, projectId, placement.value.appId))
+        continue;
+      const scope = hqMateScope(orgId, projectId);
+      if (read.stream(scope).phase === "refused") continue;
+      const mate = read.fact("hqMate", projectId);
+      if (mate.kind === "known" && mate.value.overview?.identity?.environmentId != null) continue;
+      waiting.push(scope);
+    }
+    if (waiting.length === 0) return "answered";
+    return waiting.some((scope) => scopeSlow(read, scope)) ? "slow" : "due";
+  },
+  equals: Object.is,
+};
+
+/**
+ * Whether HQ says the project's Mate never connected: its application still holds the Mate's
+ * birth open. HQ ends a birth on the Mate's first admitted link (mate-hq `matelink/link.go`, the
+ * `hq_birth_intent SET ended_at` on link) and lists only open ones (`structure/read.go`,
+ * `ended_at IS NULL`), so an open birth bound to the project is a Mate that has never had the
+ * HQ link a conversation's ticket needs. A Chief's birth stays open past its link until it is
+ * registered, and an adopted one may name a Mate that linked before: neither says so.
+ */
+function neverConnected(
+  read: ProjectionReads,
+  projectId: string,
+  appId: string | null | undefined,
+): boolean {
+  if (appId == null) return false;
+  const app = read.fact("hqApp", appId);
+  return (
+    app.kind === "known" &&
+    (app.value.births ?? []).some(
+      (birth) => birth.projectId === projectId && birth.chief !== true && birth.adopted !== true,
+    )
+  );
+}
+
 function overviewOf(
   read: ProjectionReads,
   { orgId, projectId }: MateProjectKey,
@@ -110,6 +151,19 @@ export const hqMateOverview: Projection<MateProjectKey, MateLiveView | null> = {
   equals: sameValue,
 };
 
+/**
+ * The person HQ names as a Chief's owner: HQ gives their Zerops user id (an older HQ their
+ * name), and the organization's member list names them; somebody it does not hold is
+ * "another person".
+ */
+function chiefOwnerName(read: ProjectionReads, orgId: string, reason: string): string {
+  const people = zeropsPeople(read, orgId);
+  const byId = people.get(reason)?.name;
+  if (byId !== undefined) return byId;
+  for (const { name } of people.values()) if (name === reason) return name;
+  return "another person";
+}
+
 /** A targeted HQ refusal names an inaccessible Chief without adding it to personal navigation. */
 export const hqMateRefusal: Projection<
   MateProjectKey,
@@ -120,26 +174,17 @@ export const hqMateRefusal: Projection<
   derive: (read, { orgId, projectId }) => {
     const stream = read.stream(hqMateScope(orgId, projectId));
     return stream.phase === "refused" && stream.fault?.code === "chief_owner_required"
-      ? { kind: "refused-role", chiefOwnerName: stream.fault.message }
+      ? { kind: "refused-role", chiefOwnerName: chiefOwnerName(read, orgId, stream.fault.message) }
       : null;
   },
   equals: sameValue,
 };
 
 /** Field readers retain access/freshness dependencies without publishing unrelated overview sections. */
-export const hqMatePresence: Projection<
-  MateProjectKey,
-  { readonly presence: MateLiveView["presence"] | null; readonly live: boolean }
-> = {
+export const hqMatePresence: Projection<MateProjectKey, MateLiveView["presence"] | null> = {
   name: "hqMatePresence",
   keyOf: hqMateOverview.keyOf,
-  derive: (read, key) => ({
-    presence: overviewOf(read, key)?.presence ?? null,
-    live:
-      liveOrHeld(read.stream(linkKeys.hq(key.orgId))) &&
-      liveOrHeld(read.stream(placementsScope(key.orgId))) &&
-      liveOrHeld(read.stream(hqMateScope(key.orgId, key.projectId))),
-  }),
+  derive: (read, key) => overviewOf(read, key)?.presence ?? null,
   equals: sameValue,
 };
 export const hqMateLogins: Projection<MateProjectKey, MateLiveView["logins"]> = {

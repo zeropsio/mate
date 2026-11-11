@@ -1,0 +1,248 @@
+import {
+  sharedBirthsAtom,
+  type SharedBirth,
+  type SharedBirthState,
+} from "@t3tools/client-runtime/data";
+import { readMateFace, type ZeropsPlacedBirth } from "@t3tools/client-runtime/zerops";
+import { useAtomValue } from "@effect/atom-react";
+import type { Atom, AtomRegistry } from "effect/reactivity";
+import { useZeropsSession } from "./ZeropsSessionProvider";
+import { onAccountLifetimeClose } from "./accountLifetime";
+
+/** An answered HQ write is followed by its shared navigation, or stopped when authority is lost. */
+export function waitForBirthPlacement(
+  registry: AtomRegistry.AtomRegistry,
+  source: Atom.Atom<SharedBirthState>,
+  input: {
+    readonly birthId: string;
+    readonly projectId: string;
+    readonly placement: "bound" | "attached";
+    readonly active: () => boolean;
+  },
+): Promise<SharedBirth | undefined> {
+  return new Promise((resolve) => {
+    let ended = false;
+    let cancel = () => {};
+    let leave = () => {};
+    const finish = (birth: SharedBirth | undefined) => {
+      if (ended) return;
+      ended = true;
+      cancel();
+      leave();
+      resolve(birth);
+    };
+    const check = () => {
+      const birth = registry.get(source).open.find((entry) => entry.id === input.birthId);
+      if (
+        !input.active() ||
+        birth === undefined ||
+        !birth.canContinue ||
+        (birth.projectId !== null && birth.projectId !== input.projectId)
+      ) {
+        finish(undefined);
+        return;
+      }
+      if (
+        birth.projectId === input.projectId &&
+        (input.placement === "bound" || birth.placement === "attached")
+      )
+        finish(birth);
+    };
+    leave = onAccountLifetimeClose(() => finish(undefined));
+    cancel = registry.subscribe(source, check, { immediate: false });
+    check();
+  });
+}
+
+/** A birth that stopped, on a list's row: how far it got, in one statement that fits the row. */
+const ROW_STOPPED: Record<SharedBirth["progress"]["phase"], string> = {
+  "creating-project": "Setup stopped while creating its project",
+  "project-created": "Setup stopped after its project was created",
+  "import-accepted": "Setup stopped while its services were being made",
+  "container-starting": "Setup stopped while its computer was starting",
+};
+
+/** A birth under way, on a list's row. */
+const ROW_GOING: Record<SharedBirth["progress"]["phase"], string> = {
+  "creating-project": "Creating its project…",
+  "project-created": "Its project is made, setting it up…",
+  "import-accepted": "Making its services…",
+  "container-starting": "Starting its computer…",
+};
+
+/** A birth whose Continue runs in this tab, on its own page: the step it is at, going. */
+export function continuingLine(birth: SharedBirth): string {
+  return ROW_GOING[birth.progress.phase];
+}
+
+export function sharedBirthPresentation(birth: SharedBirth): {
+  /** Everything known, for the birth's own page: its phase, why it stopped, who can continue. */
+  readonly line: string;
+  /**
+   * One statement for a list's row, which opens the birth's own page for the rest: "Setup stopped
+   * while creating its project".
+   */
+  readonly row: string;
+  readonly attention: boolean;
+  readonly actions: ReadonlyArray<"continue" | "delete">;
+} {
+  const { phase, next, reason } = birth.progress;
+  const phaseLine = {
+    "creating-project": "Creating project",
+    "project-created": "Project created",
+    "import-accepted": "Import accepted",
+    "container-starting": "Container starting",
+  }[phase];
+  const detail =
+    reason ??
+    (next.kind === "unknown"
+      ? "Outcome unknown — waiting for Zerops"
+      : next.kind === "blocked"
+        ? "Zerops reported that the step failed or was canceled"
+        : next.kind === "wait"
+          ? {
+              creation: "Waiting for project creation to finish",
+              "creation-history": "Waiting for project creation history",
+              project: "Waiting for Zerops to show the project",
+              "service-observation": "Waiting for Zerops service information",
+              service: "The Mate service has not appeared in Zerops",
+              "several-services": "Several Mate services are present in the project",
+              container: "Waiting for the Mate container to start",
+              hello: "Waiting for the Mate to link",
+            }[next.for]
+          : null);
+  const step = !birth.canContinue
+    ? null
+    : next.kind === "create"
+      ? "Continue will create the project, attach the Mate, and submit the import."
+      : next.kind === "register-chief"
+        ? "Continue will register the Chief."
+        : next.kind === "bind"
+          ? "Continue will bind the project and check the next step."
+          : next.kind === "import" && birth.projectId !== null
+            ? birth.placement === "unplaced"
+              ? "Continue will attach the Mate and submit the import."
+              : birth.placement === "plain"
+                ? "Continue will register the Mate and submit the import."
+                : birth.placement === "attached"
+                  ? "Continue will submit the import."
+                  : null
+            : next.kind === "record-import"
+              ? birth.placement === "unplaced"
+                ? "Continue will attach the Mate and record the accepted import."
+                : birth.placement === "plain"
+                  ? "Continue will register the Mate and record the accepted import."
+                  : birth.placement === "attached"
+                    ? "Continue will record the accepted import."
+                    : null
+              : next.kind === "wait" && next.attach
+                ? birth.placement === "plain"
+                  ? "Continue will register the Mate."
+                  : "Continue will attach the Mate."
+                : null;
+  const attention =
+    reason !== null ||
+    next.kind === "unknown" ||
+    next.kind === "blocked" ||
+    (next.kind === "wait" && next.for === "several-services") ||
+    birth.progress.sessionEnded === true;
+  return {
+    row: (attention ? ROW_STOPPED : ROW_GOING)[phase],
+    line: [
+      phaseLine,
+      birth.progress.sessionEnded === true ? "Setup session ended" : null,
+      detail,
+      step,
+      birth.continuePermission === "maker"
+        ? "The person who started this setup can continue if they can add Mates and attach the project."
+        : birth.continuePermission === "attach"
+          ? "Someone who can add Mates and attach this project can continue."
+          : birth.continuePermission === "record"
+            ? "Someone who can add Mates and administer this project can continue."
+            : birth.continuePermission === "add-mate"
+              ? "Someone who can add Mates to this application can continue."
+              : null,
+    ]
+      .filter((part) => part !== null)
+      .join(" · "),
+    attention,
+    actions: [
+      ...(birth.canContinue ? ["continue" as const] : []),
+      ...(birth.canDelete ? ["delete" as const] : []),
+    ],
+  };
+}
+
+/** The organization's births, proven by the account data layer for this person. */
+export function useSharedBirthState(): SharedBirthState {
+  const { user } = useZeropsSession();
+  return useAtomValue(sharedBirthsAtom(user?.id ?? ""));
+}
+
+export function useSharedBirths(): ReadonlyArray<SharedBirth> {
+  return useSharedBirthState().open;
+}
+
+/** A person's Chief remains visible during its shared birth, including after a reload. */
+export function useOwnChiefBirth(): SharedBirth | undefined {
+  const { user } = useZeropsSession();
+  const { open } = useSharedBirthState();
+  return user == null
+    ? undefined
+    : open.find((birth) => birth.chief === true && birth.madeBy === user.id);
+}
+
+/** Where a shared birth's Mate is drawn: its application, its kind, its name and face. */
+export function birthPlacement(birth: SharedBirth): ZeropsPlacedBirth["placement"] {
+  const face = readMateFace(birth.face);
+  return {
+    groupId: birth.appId,
+    groupName: birth.appName,
+    kind:
+      birth.intent?.placement.role === "stage" || birth.intent?.placement.role === "devstage"
+        ? "devstage"
+        : "mate",
+    displayName: birth.intent?.placement.name ?? "Mate",
+    ...(face?.tint === undefined || face.shape === undefined
+      ? {}
+      : { face: { tint: face.tint, shape: face.shape } }),
+  };
+}
+
+/** Place shared births ahead of locally pending creations. */
+export function placedSharedBirths(
+  births: ReadonlyArray<SharedBirth>,
+  local: ReadonlyArray<ZeropsPlacedBirth>,
+  personId?: string,
+): ReadonlyArray<ZeropsPlacedBirth> {
+  const ids = new Set(births.map(({ id }) => id));
+  const projects = new Set(
+    births.flatMap(({ projectId }) => (projectId === null ? [] : [projectId])),
+  );
+  const shared = births.flatMap((birth): ReadonlyArray<ZeropsPlacedBirth> => {
+    if (
+      birth.intent?.placement.chief === true &&
+      (personId === undefined ||
+        birth.madeBy === personId ||
+        birth.chiefRegistered !== false ||
+        !birth.canContinue)
+    )
+      return [];
+    return [
+      {
+        intent: birth.id,
+        projectId: birth.projectId ?? birth.id,
+        placement: birthPlacement(birth),
+      },
+    ];
+  });
+  return [
+    ...shared,
+    ...local.filter(
+      (entry) =>
+        !ids.has(entry.projectId) &&
+        !projects.has(entry.projectId) &&
+        (entry.intent === undefined || !ids.has(entry.intent)),
+    ),
+  ];
+}

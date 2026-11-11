@@ -2,12 +2,14 @@
  * A deploy's pipeline: one row per step the pipeline has, every one of them
  * from its first frame — the state's mark (`StepGlyph`, the one every step
  * list in the card uses), the step's plain name at the card's row size, and
- * once it ended its duration at the right in tabular figures. The marks are
+ * once it ended its duration at the right in tabular figures, at the size and
+ * on the edge of the time of the line it stands under. The marks are
  * the progress (the owner, 2026-10-05: "it should be steps, but they should
  * be visible … without a premade space for logs and … long
  * texts"): a name never changes with the state, and nothing under a step
  * holds room for what may come. The step that is running or failed reads in
- * the ink, a finished one muted, one still to come fainter. Before the
+ * the ink, a finished one muted with its mark (three green rings under a line
+ * that already says "Deployed" said nothing more), one still to come fainter. Before the
  * platform has worked the steps out of zerops.yml, one row says so.
  *
  * Presentational, props only (R2): every sentence is `readPipeline`'s, every
@@ -65,7 +67,7 @@ function Row({
   sentence,
   state,
 }: {
-  /** What belongs to this step on its own line, at its end — the way to the build's log. */
+  /** What belongs to this step on its own line, after its name — the way to the build's log. */
   readonly after?: ReactNode;
   /** What only a failure adds under its step: why, in one line. */
   readonly beneath?: ReactNode;
@@ -83,28 +85,38 @@ function Row({
       data-zerops-pipeline-state={state}
     >
       <span className="flex h-5 shrink-0 items-center" data-zerops-pipeline-glyph={state}>
-        <StepGlyph state={GLYPH_STATE[state]} />
+        {/* A step that went through is the list's quiet: only the one running and one that broke wear a colour. */}
+        <StepGlyph
+          state={GLYPH_STATE[state]}
+          {...(state === "finished" ? { className: "text-muted-foreground" } : {})}
+        />
       </span>
       <span className="min-w-0 flex-1">
-        <span
-          className={cn(
-            "block text-line leading-5",
-            emphasised
-              ? "text-foreground"
-              : state === "waiting"
-                ? "text-muted-foreground/70"
-                : "text-muted-foreground",
-          )}
-        >
-          {sentence}
-          {/* Its name never says how it stands: its mark does, and this for a reader without it. */}
-          <span className="sr-only"> · {STATE_WORD[state]}</span>
+        <span className="flex min-w-0 items-center gap-2.5">
+          <span
+            className={cn(
+              "min-w-0 text-line leading-5",
+              emphasised
+                ? "text-foreground"
+                : state === "waiting"
+                  ? "text-muted-foreground/70"
+                  : "text-muted-foreground",
+            )}
+          >
+            {sentence}
+            {/* Its name never says how it stands: its mark does, and this for a reader without it. */}
+            <span className="sr-only"> · {STATE_WORD[state]}</span>
+          </span>
+          {after}
         </span>
         {beneath}
       </span>
-      {after}
       {duration !== undefined ? (
-        <span className="shrink-0 text-muted-foreground text-xs leading-5 tabular-nums">
+        // Under a line of the run's log the times end where the line's own does (`.line-time`).
+        <span
+          className="line-time shrink-0 text-line text-muted-foreground leading-5 tabular-nums"
+          data-zerops-pipeline-duration
+        >
           {duration}
         </span>
       ) : null}
@@ -124,7 +136,7 @@ export function PipelineStepList({
 }: {
   readonly "aria-label": string;
   readonly steps: ReadonlyArray<PipelineStepRow>;
-  /** What stands at the end of a step's line, by the step's id. */
+  /** What stands after a step's name on its line, by the step's id. */
   readonly after?: Readonly<Partial<Record<string, ReactNode>>> | undefined;
   /** What stands under a step, by the step's id. */
   readonly beneath?: Readonly<Partial<Record<string, ReactNode>>> | undefined;

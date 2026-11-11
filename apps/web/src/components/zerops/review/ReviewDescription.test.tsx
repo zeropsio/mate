@@ -2,7 +2,7 @@ import { markupDom } from "../../../../test/markupDom";
 /**
  * A change's review leads with what it does: the description its author wrote — its pictures read
  * as the person from the organization's HQ, holding their room, anything else a plain link — or
- * what the run that made it said, or nothing at all.
+ * nothing at all: never words borrowed from a run's reply.
  */
 import { RegistryContext } from "@effect/atom-react";
 import {
@@ -76,7 +76,6 @@ vi.mock("~/components/ChatMarkdown", async () => {
 const HQ = "https://hq.example.test";
 /** Where the change keeps its pictures (`attachmentPath`). */
 const PICTURES = "/api/apps/g1/changes/appdev/2/attachments";
-const NO_RUN = { words: undefined, reading: false } as const;
 
 function source(readBytes: (url: string) => Promise<Blob> = () => new Promise(() => {})) {
   const store = makeAccountStore(registry);
@@ -141,7 +140,7 @@ function html(props: Partial<Parameters<typeof ReviewDescription>[0]> = {}): str
       hqAddress={HQ}
       onOpenRun={undefined}
       pictures={source()}
-      run={NO_RUN}
+      reading={false}
       {...props}
     />,
   );
@@ -155,13 +154,8 @@ describe("what a change does, first", () => {
       ["What it does", "The run that made it", 'data-markdown="Adds a **/status** page."'],
     ],
     [
-      "what the run said, where it wrote no description",
-      { run: { words: "Added a /status route.", reading: false } },
-      ["What it does", "Added a /status route."],
-    ],
-    [
-      "the room of the run's words while its conversation is read",
-      { run: { words: undefined, reading: true } },
+      "the room of its description while the change's record is read",
+      { reading: true },
       ["What it does", "rv-skeleton"],
     ],
   ] as const)("shows %s", (_case, props, words) => {
@@ -187,6 +181,10 @@ describe("what a change does, first", () => {
 
   it("shows nothing at all where neither said anything: no heading over no words", () => {
     expect(html()).toBe("");
+  });
+
+  it("borrows no words from the run that made it where its Mate wrote no description", () => {
+    expect(html({ onOpenRun: () => {} })).toBe("");
   });
 
   it("points what was written without its host at the official HQ", () => {
@@ -277,7 +275,7 @@ describe("reading its pictures", () => {
             hqAddress={HQ}
             onOpenRun={undefined}
             pictures={pictures}
-            run={NO_RUN}
+            reading={false}
           />,
         );
       });
@@ -303,7 +301,7 @@ describe("reading its pictures", () => {
             hqAddress={HQ}
             onOpenRun={undefined}
             pictures={refused}
-            run={NO_RUN}
+            reading={false}
           />,
         );
       });
@@ -331,7 +329,7 @@ describe("reading its pictures", () => {
             hqAddress={HQ}
             onOpenRun={undefined}
             pictures={read}
-            run={NO_RUN}
+            reading={false}
           />,
         );
       });
@@ -359,7 +357,7 @@ describe("reading its pictures", () => {
             hqAddress={HQ}
             onOpenRun={undefined}
             pictures={refused}
-            run={NO_RUN}
+            reading={false}
           />,
         );
       });

@@ -238,6 +238,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
         stdin: {
           stream: Stream.encodeText(Stream.make(prompt)),
         },
+        forceKillAfter: "1 second",
       });
 
       const child = yield* commandSpawner

@@ -1,16 +1,15 @@
 /**
- * A project's spend over the last 30 days, as its card and its page show it: what Zerops billed
+ * A project's spend over the last 30 days, as its page shows it: what Zerops billed
  * for the projects it is made of (compute), and what its automated Mates' models cost on the
  * organization's key (model tokens), joined day by day. Subscriptions (a person's Claude or Codex
- * sign-in) bill no tokens and are not in the figure; the card names who runs on one.
+ * sign-in) bill no tokens and are not in the figure.
  */
 import type { ComputeSpendRead, SpendDay } from "@t3tools/client-runtime/data";
 import type { AgentUsageRead } from "@t3tools/client-runtime/data";
 import type { GroupFlow } from "@t3tools/client-runtime/zerops";
 import { USAGE_AUTOMATED_OWNER, type UsageReport, type UsageReportQuery } from "@t3tools/contracts";
-import { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
 
-import { AUTOMATED_KEY_PROVIDER } from "~/zerops/automatedMate.logic";
+import { usageCostsHidden } from "~/state/usage.logic";
 
 export interface SpendDayRow {
   readonly day: SpendDay;
@@ -115,6 +114,8 @@ export function spendState(
 ): SpendState {
   if (compute.kind === "unknown" || tokens.kind === "unavailable") return { kind: "unknown" };
   if (compute.kind === "reading" || tokens.kind === "reading") return { kind: "loading" };
+  // Token costs HQ hides from this reader are no zero: the spend is not known to them.
+  if (usageCostsHidden(tokens.report)) return { kind: "unknown" };
   return { kind: "loaded", series: joinSpend(compute, tokenSpendByDay(tokens.report), today) };
 }
 
@@ -161,62 +162,11 @@ export function spendBarPx(usd: number, scale: number): number {
   return usd > 0 ? Math.max(LEAST_BAR_PX, Math.round(usd * scale)) : 0;
 }
 
-/** An axis's day: "19 Sep", or "Today". */
-export function dayLabel(day: SpendDay, today: SpendDay): string {
-  if (day === today) return "Today";
-  const { date, month } = partsOf(day);
-  return `${date} ${month}`;
-}
-
 /** A bar's tooltip heading: "Sat 18 Oct", or "Today". */
 export function tooltipDay(day: SpendDay, today: SpendDay): string {
   if (day === today) return "Today";
   const { weekday, date, month } = partsOf(day);
   return `${weekday} ${date} ${month}`;
-}
-
-export function averageLine(averageUsd: number): string {
-  return `avg ${formatUsd(averageUsd)} a day`;
-}
-
-/** Who the organization's key is with, as the legend names it: "Nebius". */
-export const TOKEN_SOURCE =
-  OPENCODE_KEY_PROVIDERS.find((provider) => provider.id === AUTOMATED_KEY_PROVIDER)?.name.split(
-    " ",
-  )[0] ?? "organization key";
-
-export interface SubscriptionMate {
-  readonly name: string;
-  /** The sign-in's product, as people say it: "Claude", "Codex". */
-  readonly provider: string;
-}
-
-const names = (list: ReadonlyArray<string>): string =>
-  list.length <= 1
-    ? (list[0] ?? "")
-    : list.length <= 3
-      ? `${list.slice(0, -1).join(", ")} and ${list.at(-1)}`
-      : `${list.slice(0, 2).join(", ")} and ${String(list.length - 2)} more`;
-
-/**
- * "Raya and Vera run on a Claude subscription; it is not in this figure." Null when no Mate of the
- * project runs on one.
- */
-export function subscriptionLine(mates: ReadonlyArray<SubscriptionMate>): string | null {
-  const byProvider = new Map<string, Array<string>>();
-  for (const mate of mates)
-    byProvider.set(mate.provider, [...(byProvider.get(mate.provider) ?? []), mate.name]);
-  const groups = [...byProvider].map(([provider, list]) => ({ provider, list }));
-  if (groups.length === 0) return null;
-  const verb = (list: ReadonlyArray<string>) => (list.length === 1 ? "runs" : "run");
-  if (groups.length === 1) {
-    const [{ provider, list }] = groups as [(typeof groups)[number]];
-    return `${names(list)} ${verb(list)} on a ${provider} subscription; it is not in this figure.`;
-  }
-  const clauses = groups.map(
-    ({ provider, list }) => `${names(list)} ${verb(list)} on a ${provider} subscription`,
-  );
-  return `${clauses.slice(0, -1).join(", ")} and ${clauses.at(-1)}; they are not in this figure.`;
 }
 
 /** The Zerops projects a project is made of: its Mates', its stages' and its production's. */

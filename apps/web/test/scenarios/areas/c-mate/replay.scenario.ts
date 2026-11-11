@@ -1,7 +1,7 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { ThreadId, TurnId } from "@t3tools/contracts";
 import { describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import {
   reportConversation,
@@ -15,7 +15,7 @@ import { mateChat } from "./dsl.ts";
 
 // Z26/Z35: what a Mate reports and what each person read keep their own meaning.
 describe("C: reading, replay and attention", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect("a source epoch and each person's reading evidence keep their own meaning", () =>
       Effect.gen(function* () {
         const s = yield* createScenario([installArea]);

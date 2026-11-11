@@ -1,12 +1,14 @@
 import { act, createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create } from "react-test-renderer";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { EnvironmentId } from "@t3tools/contracts";
+import * as environments from "../../state/environments";
+import * as mateUpdate from "../../zerops/useMateUpdate";
 
 /** The environment record the menu's update entries read, as `useEnvironment` serves it. */
-const environmentRecord = vi.hoisted(() => ({
+const environmentRecord = {
   environment: undefined as
     | undefined
     | {
@@ -19,21 +21,23 @@ const environmentRecord = vi.hoisted(() => ({
           readonly checkedAt: string;
         };
       },
-}));
-vi.mock("../../state/environments", () => ({
-  useEnvironment: () =>
+};
+beforeEach(() => {
+  vi.spyOn(environments, "useEnvironment").mockImplementation(() =>
     environmentRecord.environment === undefined
       ? null
-      : { serverConfig: { environment: environmentRecord.environment } },
-}));
-vi.mock("../../zerops/useMateUpdate", () => ({
-  useMateUpdate: () => ({
+      : ({ serverConfig: { environment: environmentRecord.environment } } as ReturnType<
+          typeof environments.useEnvironment
+        >),
+  );
+  vi.spyOn(mateUpdate, "useMateUpdate").mockReturnValue({
     state: { phase: "idle" },
     checked: undefined,
     update: () => {},
     check: async () => undefined,
-  }),
-}));
+  } as ReturnType<typeof mateUpdate.useMateUpdate>);
+});
+afterEach(() => vi.restoreAllMocks());
 
 import { Menu } from "../ui/menu";
 import { MateMenuItems, MateRenameField, type MateRowActions } from "./SidebarMateMenu";
@@ -71,6 +75,17 @@ const order = (html: string) =>
   [...html.matchAll(/data-zerops-mate-menu="([^"]+)"/gu)].map((match) => match[1]);
 
 describe("MateMenuItems — a Mate's own menu", () => {
+  it("an open shared birth's menu contains only its Continue and Delete actions", () => {
+    const actions: MateRowActions = {
+      ...ACTIONS,
+      birthOnly: true,
+      entries: [
+        { id: "continue", label: "Continue", onSelect: () => {} },
+        { id: "delete", label: "Delete", variant: "destructive", onSelect: () => {} },
+      ],
+    };
+    expect(order(items({ actions }))).toEqual(["continue", "delete"]);
+  });
   it("lists the ways in, what this viewer keeps, the shared verbs, then the stop", () => {
     expect(order(items({ actions: { ...ACTIONS, stop: () => {} } }))).toEqual([
       "open",

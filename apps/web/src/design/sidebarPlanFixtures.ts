@@ -366,18 +366,21 @@ export const PLAN_ACTIVITY = new Map<string, ZeropsAgentActivity>([
 
 const VIEWER: ZeropsMateOwner = {
   name: "Petra Malá",
+  called: "Petra",
   initials: "PM",
   avatarUrl: null,
   isViewer: true,
 };
 const KAREL: ZeropsMateOwner = {
   name: "Alex Novák",
+  called: "Alex",
   initials: "AN",
   avatarUrl: null,
   isViewer: false,
 };
 const MILO: ZeropsMateOwner = {
   name: "Milo Dvořák",
+  called: "Milo",
   initials: "MD",
   avatarUrl: null,
   isViewer: false,

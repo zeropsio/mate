@@ -198,14 +198,6 @@ describe("what each person may do on the project, in words", () => {
       line: "Full access on dev / stage",
     },
     {
-      name: "An integration token in the member list is not a person on the project",
-      member: member("ada", "Ada", "ADMIN", {
-        user: { id: "u-ada", fullName: "Ada", email: "token-AbCdEfGhIjKlMnOpQrStUv@zerops.io" },
-      }),
-      places: PROD_AND_STAGE(),
-      line: undefined,
-    },
-    {
       name: "A member not yet joined is listed as invited, with what they would get",
       member: member("ada", "Ada", "ADMIN", { status: "WAITING_AUTHORIZATION" }),
       places: PROD_AND_STAGE(),
@@ -522,7 +514,7 @@ describe("what an owner or admin may change of each person's access", () => {
     expect(
       personMenu({
         clientUserId: "cu-inv",
-        level: "mixed",
+        level: "read",
         levels: both,
         actions: [],
         self: false,
@@ -538,7 +530,7 @@ describe("an owner's, admin's or every-project member's chip menu, as legacy off
     sentence: string;
     viewer: string;
     member: "OWNER" | "ADMIN" | "BASIC_USER" | "READ_ONLY";
-    held: "full" | "basic" | "read" | "hidden" | "mixed";
+    held: "full" | "basic" | "read" | "hidden";
     override?: boolean;
     self?: boolean;
     offered: ReadonlyArray<string> | null;
@@ -721,18 +713,6 @@ describe("each person as a chip", () => {
       level: "full",
     },
     {
-      name: "A member whose level differs from place to place is mixed",
-      member: member("ada", "Ada", "NO_ACCESS"),
-      places: PROD_AND_STAGE([["ada", "READ_ONLY"]], [["ada", "ADMIN"]]),
-      level: "mixed",
-    },
-    {
-      name: "A member on some places and not others is mixed",
-      member: member("ada", "Ada", "NO_ACCESS"),
-      places: PROD_AND_STAGE([["ada", "ADMIN"]]),
-      level: "mixed",
-    },
-    {
       name: "An app with no place is judged on its Mates",
       member: member("ada", "Ada", "NO_ACCESS"),
       places: [
@@ -761,23 +741,6 @@ describe("each person as a chip", () => {
     ).toBe(level);
   });
 
-  it("A mixed chip lists each project and their level there", () => {
-    const view = projectPeople(
-      input({
-        members: known([member("ada", "Ada", "NO_ACCESS")]),
-        projects: [
-          ...PROD_AND_STAGE([["ada", "READ_ONLY"]], [["ada", "ADMIN"]]),
-          { ...mate("m-1", undefined, [["ada", "ADMIN"]]), name: "Fen" },
-        ],
-      }),
-    );
-    expect(chip(view, "Ada")?.across).toEqual([
-      { label: "Production", level: "read" },
-      { label: "Stage", level: "full" },
-      { label: "Fen", level: "full" },
-    ]);
-  });
-
   it("A chip names a person short, with their e-mail and their role for the hover card", () => {
     const view = projectPeople(
       input({
@@ -794,16 +757,6 @@ describe("each person as a chip", () => {
       role: "Works on every project",
     });
     expect([shortName("Bo"), shortName("cy@example.com")]).toEqual(["Bo", "cy@example.com"]);
-  });
-
-  it("When the viewer is an admin, an owner's or another admin's chip has no menu: Zerops refuses those writes", () => {
-    const view = projectPeople(
-      input({
-        members: known([member("own", "Olga", "OWNER"), member("adm", "Adam", "ADMIN")]),
-        viewer: ADMIN_VIEWER,
-      }),
-    );
-    expect(people(view).map(({ change }) => change)).toEqual([null, null]);
   });
 
   it("Remove access is offered only where a person holds a grant of their own here", () => {

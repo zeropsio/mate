@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 /**
  * *Add automated Mates* asks how many, proposes who they are, says what they do and what happens
  * next — and asks nobody's access: automated Mates belong to the organization.
@@ -10,7 +11,12 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { Dialog } from "../ui/dialog";
 import { AddAutomatedMatesForm, type AutomatedMatesChoice } from "./AddAutomatedMatesForm";
 
-const TIER = { kind: "tier" as const, tier: "mate" as const, yaml: "services: []\n" };
+const TIER = {
+  kind: "tier" as const,
+  revision: "recipe-revision",
+  tier: "mate" as const,
+  yaml: "services: []\n",
+};
 const TINTS: Readonly<Record<string, MateTintId>> = { Otto: "violet", Ada: "sky", Milo: "coral" };
 const PEOPLE = [{ clientUserId: "member-2", roleCode: "DEVELOPER" }];
 
@@ -47,12 +53,6 @@ afterEach(() => {
 
 function mount(element: ReactElement): ReactTestRenderer {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-  // Each name's die has a tooltip, which listens on `window` once mounted; there is no DOM here.
-  const noDom = Object.fromEntries(
-    ["Node", "Element", "HTMLElement", "ShadowRoot"].map((name) => [name, function none() {}]),
-  );
-  vi.stubGlobal("window", Object.assign(new EventTarget(), noDom));
-  for (const [name, type] of Object.entries(noDom)) vi.stubGlobal(name, type);
   let tree: ReactTestRenderer | undefined;
   act(() => {
     tree = create(element);
@@ -241,7 +241,7 @@ describe("Add automated Mates: the organization's key", () => {
     const onCreate = vi.fn();
     const tree = mount(form({ keyState: "unknown", onCreate }));
     act(() => tree.update(form({ keyState: "unsupported", onCreate })));
-    expect(spoken(tree.root)).toContain("Update HQ to make automated Mates.");
+    expect(spoken(tree.root)).toContain("HQ needs an update to make automated Mates.");
     expect(button(tree, "Add 1 automated Mate").props.disabled).toBe(true);
     press(tree);
     expect(onCreate).not.toHaveBeenCalled();

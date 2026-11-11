@@ -84,46 +84,79 @@ function roomTheViewNeeds(scroll: ScrollRoom, natural: number): number {
   return Math.max(0, scroll.scrollTop + scroll.clientHeight - natural);
 }
 
+/** A box's vertical edges, in the page's coordinates. */
+export interface Span {
+  readonly top: number;
+  readonly bottom: number;
+}
+
+/**
+ * How far the list scrolls down for a group just opened: its heading and Mates (`unit`) brought
+ * above the view's end (`view`), never so far that the heading leaves the view's top. Nothing
+ * where they already stand in view, or where the heading is already above it.
+ */
+export function unfoldScroll(input: { readonly view: Span; readonly unit: Span }): number {
+  const hanging = input.unit.bottom - input.view.bottom;
+  const headingRoom = input.unit.top - input.view.top;
+  return Math.max(0, Math.min(hanging, headingRoom));
+}
+
 /** What the menu's reveal of the open Mate has seen (`openMateReveal`). */
 export interface MateReveal {
   /** The open conversation it is for: the route's Mate, as the route names it. */
   readonly conversation: string | null;
   /** The Mate whose row stands in view: the one a reload opened on, or the last brought there. */
   readonly shown: string | null;
-  /** The conversation was opened afterwards: its Mate's row is brought into view once found. */
+  /** Its Mate's row is still to be brought into view once found. */
   readonly owed: boolean;
+  /** The conversation is the one the page opened on, not yet brought into view. */
+  readonly reload: boolean;
 }
 
 /**
- * Which open Mate's row the menu scrolls into view, and what it has seen. A reload leaves the menu
- * where it was: the conversation it opened on is never revealed, however late the listing finds its
- * Mate (`resolving`, or missed first). Only a conversation opened afterwards — Add landing on a new
- * Mate, a link, a page — or a press lighting another Mate brings a row into view, once; the caller
- * marks it shown once its row is drawn, so rows drawn again never scroll the menu again.
+ * Which open Mate's row the menu scrolls into view, and what it has seen. A reload brings the
+ * conversation it opened on into view, however late the listing finds its Mate (`resolving`, or
+ * missed first), at once (`instant`): the menu never slides there from its top. A conversation
+ * opened afterwards — Add landing on a new Mate, a link, a page — or a press lighting another Mate
+ * brings its row into view too, once; the caller marks it shown once its row is drawn, so rows
+ * drawn again never scroll the menu again.
  */
 export function openMateReveal(input: {
   readonly seen: MateReveal | undefined;
   readonly conversation: string | null;
   readonly open: string | null;
   readonly resolving: boolean;
-}): { readonly reveal: string | undefined; readonly seen: MateReveal } {
+}): { readonly reveal: string | undefined; readonly instant: boolean; readonly seen: MateReveal } {
   const { conversation, open } = input;
-  if (input.seen === undefined)
-    return { reveal: undefined, seen: { conversation, shown: open, owed: false } };
-  const seen =
-    conversation === input.seen.conversation
-      ? input.seen
-      : { ...input.seen, conversation, owed: true };
-  if (!seen.owed) {
-    // The reload's own Mate, found late: it stands where the menu is, unscrolled.
-    if (seen.shown === null) return { reveal: undefined, seen: { ...seen, shown: open } };
-    return open !== null && open !== seen.shown
-      ? { reveal: open, seen }
-      : { reveal: undefined, seen };
-  }
-  if (input.resolving || open === null) return { reveal: undefined, seen };
-  if (open === seen.shown) return { reveal: undefined, seen: { ...seen, owed: false } };
-  return { reveal: open, seen };
+  const seen: MateReveal =
+    input.seen === undefined
+      ? { conversation, shown: null, owed: true, reload: conversation !== null }
+      : conversation === input.seen.conversation
+        ? input.seen
+        : { ...input.seen, conversation, owed: true, reload: false };
+  const instant = seen.reload;
+  if (!seen.owed)
+    return { reveal: open !== null && open !== seen.shown ? open : undefined, instant, seen };
+  if (input.resolving || open === null) return { reveal: undefined, instant, seen };
+  if (open === seen.shown) return { reveal: undefined, instant, seen: { ...seen, owed: false } };
+  return { reveal: open, instant, seen };
+}
+
+/**
+ * Whether the open conversation's project opens around it (`groupId`, unknown while its Mate is
+ * not found). It opens unless the menu already drew it folded (`paintedFolded`: the conversation
+ * open when it did; `undefined` where it did not): a reload's Mate, found seconds after the menu
+ * stood, leaves its project as it was drawn, its row marking the conversation, so no row below it
+ * moves under a pointer (Aleš, 2026-10-27: aiming at Jago opened Dara). A conversation opened after
+ * that draw opens its project, as the person asked for it.
+ */
+export function opensOpenProject(input: {
+  readonly groupId: string | undefined;
+  readonly paintedFolded: string | null | undefined;
+  readonly conversation: string | null;
+}): boolean {
+  if (input.groupId === undefined) return false;
+  return input.paintedFolded === undefined || input.paintedFolded !== input.conversation;
 }
 
 /**

@@ -1,6 +1,12 @@
+import * as EffectVitest from "@effect/vitest";
+import * as Duration from "effect/Duration";
+import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+import * as SubscriptionRef from "effect/SubscriptionRef";
+import * as TestClock from "effect/testing/TestClock";
 import { describe, expect, it } from "vite-plus/test";
 
-import type * as EffectAcpSchema from "effect-acp/schema";
+import type * as EffectAcpSchema from "effect-acp/compat";
 
 import {
   decideToolCallUpdateEmission,
@@ -13,9 +19,44 @@ import {
   syntheticLoadSessionResponseFromInitialize,
   toolCallProgressLength,
   type AcpToolCallState,
+  type SessionLoadGate,
+  waitForSessionLoadReplayIdle,
 } from "./AcpRuntimeModel.ts";
 
 describe("AcpRuntimeModel", () => {
+  EffectVitest.it.effect("an ACP replay ends at its own instant; no periodic scan finds it", () =>
+    Effect.gen(function* () {
+      const initializeResult = { protocolVersion: 1 } satisfies EffectAcpSchema.InitializeResponse;
+      const loading: SessionLoadGate = {
+        active: true,
+        lastActivityAtMillis: undefined,
+        idleGap: Duration.seconds(2),
+        initializeResult,
+      };
+      const gateRef = yield* SubscriptionRef.make(Option.some(loading));
+      const idle = yield* Effect.forkChild(waitForSessionLoadReplayIdle({ gateRef }));
+
+      // No replay yet: nothing has gone quiet, however long the agent takes.
+      yield* TestClock.adjust(10_000);
+      expect(idle.pollUnsafe()).toBeUndefined();
+      // Replay at 10 010 ms, again at 11 010 ms: quiet for the gap ends at 13 010 ms.
+      yield* TestClock.adjust(10);
+      yield* SubscriptionRef.set(
+        gateRef,
+        Option.some({ ...loading, lastActivityAtMillis: 10_010 }),
+      );
+      yield* TestClock.adjust(1_000);
+      yield* SubscriptionRef.set(
+        gateRef,
+        Option.some({ ...loading, lastActivityAtMillis: 11_010 }),
+      );
+      yield* TestClock.adjust(1_999);
+      expect(idle.pollUnsafe()).toBeUndefined();
+      yield* TestClock.adjust(1);
+      expect(idle.pollUnsafe()).toBeDefined();
+    }),
+  );
+
   it("parses session mode state from typed ACP session setup responses", () => {
     const modeState = parseSessionModeState({
       sessionId: "session-1",
@@ -385,7 +426,7 @@ describe("AcpRuntimeModel", () => {
 
   it("preserves native command inputs and empty command lists", () => {
     const availableCommands = [
-      { name: "plan", description: "Plan a task", input: { hint: "task" } },
+      { name: "plan", description: "Plan a task", input: { type: "text" as const, hint: "task" } },
       { name: "logout", description: "Sign out" },
     ] satisfies ReadonlyArray<EffectAcpSchema.AvailableCommand>;
 

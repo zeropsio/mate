@@ -8,7 +8,7 @@ import {
   type EngineCallResult,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Layer from "effect/Layer";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -173,11 +173,8 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
                 run: (_id, effect) => r.run(effect),
               } as EnvironmentRegistry["Service"]),
               Layer.succeed(
-                Crypto.Crypto,
-                Crypto.make({
-                  randomBytes: (size) => new Uint8Array(size),
-                  digest: (_algorithm, data) => Effect.succeed(data),
-                }),
+                SecureRandom.SecureRandom,
+                SecureRandom.make((size) => new Uint8Array(size)),
               ),
             ),
           );
@@ -217,11 +214,8 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
                 run: (_id, effect) => r.run(effect),
               } as EnvironmentRegistry["Service"]),
               Layer.succeed(
-                Crypto.Crypto,
-                Crypto.make({
-                  randomBytes: (size) => new Uint8Array(size),
-                  digest: (_algorithm, data) => Effect.succeed(data),
-                }),
+                SecureRandom.SecureRandom,
+                SecureRandom.make((size) => new Uint8Array(size)),
               ),
             ),
           );
@@ -690,22 +684,19 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
         ],
         SESSION(true),
       );
-      yield* Effect.forkChild(
-        r.run(
-          viaEngine(
-            r.registry,
-            ENV,
-            engineInterruptTurn(ENV, {
-              type: "thread.turn.interrupt",
-              commandId: "stop-1",
-              threadId: "thread-ada",
-              turnId: "thread-ada/r/1",
-              createdAt: "2026-10-08T00:00:00.000Z",
-            } as never),
-          ),
+      yield* r.run(
+        viaEngine(
+          r.registry,
+          ENV,
+          engineInterruptTurn(ENV, {
+            type: "thread.turn.interrupt",
+            commandId: "stop-1",
+            threadId: "thread-ada",
+            turnId: "thread-ada/r/1",
+            createdAt: "2026-10-08T00:00:00.000Z",
+          } as never),
         ),
       );
-      yield* Effect.yieldNow;
       expect(r.calls).toMatchObject([{ kind: "stop", runId: "thread-ada/r/2" }]);
     }),
   );

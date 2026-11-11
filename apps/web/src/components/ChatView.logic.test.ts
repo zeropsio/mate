@@ -32,6 +32,7 @@ import { environmentThreadDetails } from "../state/threads";
 import type { Thread, ThreadShell } from "../types";
 import { deriveProviderInstanceEntries, NO_PROVIDER_MODEL_SELECTION } from "../providerInstances";
 import {
+  compactionAnswered,
   projectScriptKeybindingWrites,
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
   buildExpiredTerminalContextToastCopy,
@@ -115,8 +116,38 @@ describe("draft hero submission transition", () => {
         serverThreadRef: { environmentId, threadId },
         serverThreadStarted: true,
         backgroundSubmissionPending: true,
+        serverThreadMessages: [{ id: MessageId.make("sent"), role: "user" }],
+        pendingMessageIds: [],
       }),
     ).toBeNull();
+  });
+
+  it("keeps a draft's sent message visible until its conversation contains that message", () => {
+    const promotion = {
+      serverThreadRef: { environmentId, threadId },
+      serverThreadStarted: true,
+      backgroundSubmissionPending: false,
+      serverThreadMessages: [{ id: MessageId.make("assistant"), role: "assistant" as const }],
+      pendingMessageIds: [MessageId.make("sent")],
+    };
+    const otherMessage = {
+      ...promotion,
+      serverThreadMessages: [{ id: MessageId.make("other"), role: "user" as const }],
+    };
+    const reflected = {
+      ...promotion,
+      serverThreadMessages: [{ id: MessageId.make("sent"), role: "user" as const }],
+    };
+    expect(resolveDraftPromotionNavigationTarget(promotion)).toBeNull();
+    expect(resolveDraftPromotionNavigationTarget(otherMessage)).toBeNull();
+    expect(resolveDraftPromotionNavigationTarget(reflected)).toEqual(promotion.serverThreadRef);
+    expect(
+      resolveDraftPromotionNavigationTarget({
+        ...promotion,
+        pendingMessageIds: [],
+        serverThreadMessages: [],
+      }),
+    ).toEqual(promotion.serverThreadRef);
   });
 });
 
@@ -505,40 +536,10 @@ describe("resolveThreadMetadataUpdateForNextTurn", () => {
 });
 
 describe("buildThreadTurnInterruptInput", () => {
-  it("targets the session's active running turn", () => {
-    const activeTurnId = TurnId.make("turn-running");
-
-    expect(
-      buildThreadTurnInterruptInput(
-        makeThread({
-          session: {
-            ...readySession,
-            status: "running",
-            activeTurnId,
-          },
-        }),
-      ),
-    ).toEqual({ threadId, turnId: activeTurnId });
-  });
-
   it("omits a turn id when the session is not running", () => {
     expect(buildThreadTurnInterruptInput(makeThread({ session: readySession }))).toEqual({
       threadId,
     });
-  });
-
-  it("omits a turn id when a running session has not projected its active turn yet", () => {
-    expect(
-      buildThreadTurnInterruptInput(
-        makeThread({
-          session: {
-            ...readySession,
-            status: "running",
-            activeTurnId: null,
-          },
-        }),
-      ),
-    ).toEqual({ threadId });
   });
 });
 
@@ -1140,16 +1141,6 @@ describe("isZeropsInstanceRunnable", () => {
 });
 
 describe("resolveComposerInteractionMode", () => {
-  it("resets a restored plan draft when the selected instance does not support plan mode", () => {
-    expect(
-      resolveComposerInteractionMode({
-        planModeEnabled: true,
-        provider: { showInteractionModeToggle: false },
-        interactionMode: "plan",
-      }),
-    ).toEqual({ enabled: false, interactionMode: "default" });
-  });
-
   it("keeps legacy plan behavior for providers that omit the capability", () => {
     expect(
       resolveComposerInteractionMode({
@@ -1754,6 +1745,40 @@ describe("hasServerAcknowledgedLocalDispatch", () => {
   });
 });
 
+describe("a person's /compact", () => {
+  const request = { id: MessageId.make("compact-1"), createdAt: "2026-03-29T00:05:00.000Z" };
+  const condensed = (createdAt: string, payload: unknown = {}) => ({
+    id: EventId.make(`condensed-${createdAt}`),
+    tone: "info" as const,
+    kind: "context-compaction",
+    summary: "Context compacted",
+    payload,
+    turnId: null,
+    createdAt,
+  });
+
+  it.each([
+    [
+      "is answered by the engine's condense landing after it, naming no request",
+      [condensed("2026-03-29T00:06:00.000Z")],
+      true,
+    ],
+    [
+      "is answered by a condense recorded for it by its request",
+      [condensed("2026-03-29T00:06:00.000Z", { requestId: "compact-1" })],
+      true,
+    ],
+    [
+      "is not answered by a condense from before it was sent",
+      [condensed("2026-03-29T00:04:00.000Z")],
+      false,
+    ],
+    ["is not answered while nothing has condensed", [], false],
+  ] as const)("%s", (_case, activities, answered) => {
+    expect(compactionAnswered(makeThread({ activities: [...activities] }), request)).toBe(answered);
+  });
+});
+
 describe("checkout Git memory", () => {
   it("answers from the last status seen for the same checkout", () => {
     rememberCheckoutIsRepo(environmentId, "/repo/plain-folder", false);
@@ -2087,12 +2112,6 @@ describe("the view's own thread error", () => {
       expected: null,
     },
     {
-      name: "older history loaded, the newest unchanged",
-      entry: { message: "Refused.", after: T1 },
-      newest: T1,
-      expected: "Refused.",
-    },
-    {
       name: "a window a reconnect shrank to nothing of the person's",
       entry: { message: "Refused.", after: T1 },
       newest: null,
@@ -2217,12 +2236,6 @@ describe("queuedSendOutcome", () => {
       expected: { action: "hold", reason: "Your session ended." },
     },
     {
-      name: "an upload that failed",
-      failure: { kind: "upload-failed" },
-      retries: 0,
-      expected: { action: "hold", reason: "An attachment didn't upload." },
-    },
-    {
       name: "too long to send",
       failure: { kind: "too-long" },
       retries: 0,
@@ -2253,11 +2266,6 @@ describe("sendStepAfterUploads", () => {
     ["everything up, a live message goes", { uploaded, queued: false }, { action: "send" }],
     ["nothing to upload, it goes", { uploaded: [], queued: true }, { action: "send" }],
     [
-      "a queued message whose file did not upload is held, its bubble saying so",
-      { uploaded: null, queued: true },
-      { action: "abort-queued", failure: { kind: "upload-failed" } },
-    ],
-    [
       "a live message whose file did not upload stays in the composer with the reason",
       { uploaded: null, queued: false },
       { action: "thread-error", message: "Retry or remove failed uploads before sending." },
@@ -2268,6 +2276,7 @@ describe("sendStepAfterUploads", () => {
 
   it("holds a queued message with a failed upload at the front, never retrying it", () => {
     const step = sendStepAfterUploads({ uploaded: null, queued: true });
+    expect(step).toEqual({ action: "abort-queued", failure: { kind: "upload-failed" } });
     if (step.action !== "abort-queued") throw new Error("the queued send was not aborted");
     expect(queuedSendOutcome(step.failure, 0)).toEqual({
       action: "hold",

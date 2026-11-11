@@ -10,6 +10,7 @@ import { recordedMoveRemainder } from "./recordedMoveRemainder.ts";
 
 const MOVE: HqLifecycleRecord = {
   requestId: "move",
+  at: "2026-11-05T14:02:00.000Z",
   intent: {
     kind: "move-project",
     orgId: ORG,
@@ -22,6 +23,7 @@ const MOVE: HqLifecycleRecord = {
 };
 const PREPARED: HqLifecycleRecord = {
   requestId: "prepare",
+  at: "2026-11-05T14:02:00.000Z",
   intent: { kind: "prepare-mate-deletion", orgId: ORG, hqProjectId: "hq", projectId: "p1" },
   result: { keyTokenId: "exact-key", completion: "seal" },
 };
@@ -115,6 +117,7 @@ it.each(["prepared", "completed", "retired", "other-HQ"] as const)(
     if (caseName !== "prepared")
       records.push({
         requestId: "prepare:complete",
+        at: "2026-11-05T14:03:00.000Z",
         intent: {
           kind: "complete-mate-deletion",
           ...target,
@@ -125,6 +128,7 @@ it.each(["prepared", "completed", "retired", "other-HQ"] as const)(
     if (caseName === "retired")
       records.push({
         requestId: "prepare:retired",
+        at: "2026-11-05T14:03:00.000Z",
         intent: {
           kind: "complete-key-retirement",
           ...target,

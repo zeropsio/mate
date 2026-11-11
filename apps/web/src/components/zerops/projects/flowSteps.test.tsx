@@ -1,48 +1,14 @@
-import type * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vite-plus/test";
-
-vi.mock("@tanstack/react-router", async () => {
-  const { createElement } = await import("react");
-  return {
-    Link: ({
-      to,
-      params = {},
-      ...props
-    }: React.ComponentProps<"a"> & { to: string; params?: Record<string, string> }) =>
-      createElement("a", {
-        href: to.replace(/\$(\w+)/gu, (_, key: string) => params[key] ?? ""),
-        ...props,
-      }),
-  };
-});
-
-// Base UI's tooltip reads `window` as it mounts, which a node render has none of: the trigger
-// draws what it renders, and the hover it opens is not drawn.
-vi.mock("~/components/ui/tooltip", async () => {
-  const { cloneElement, Fragment, createElement } = await import("react");
-  return {
-    Tooltip: ({ children }: { readonly children: React.ReactNode }) =>
-      createElement(Fragment, null, children),
-    TooltipTrigger: ({
-      children,
-      render,
-    }: {
-      readonly children: React.ReactNode;
-      readonly render: React.ReactElement;
-    }) => cloneElement(render, undefined, children),
-    TooltipPopup: () => null,
-  };
-});
+import { describe, expect, it } from "vite-plus/test";
 
 import { ComingMateFace, matesOf } from "./flowSteps";
 import { entry, UMA, WREN } from "./flowTestFixtures";
 
 describe("a group's Mates", () => {
   const VERA = {
-    projectId: "vera-dev",
+    projectId: "vale-dev",
     kind: "mate" as const,
-    name: "Vera",
+    name: "Vale",
     startedAt: 5,
   };
   const pairs = (value: ReturnType<typeof entry>) =>
@@ -79,7 +45,7 @@ describe("a group's Mates", () => {
       value: entry([WREN], { pending: [VERA] }),
       want: [
         ["wren-dev", "wren-dev", "Wren", undefined],
-        [undefined, "vera-dev", "Vera", "coming"],
+        [undefined, "vale-dev", "Vale", "coming"],
       ],
     },
     {

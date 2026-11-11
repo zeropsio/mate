@@ -1,8 +1,9 @@
-import { inProcessCore } from "../../harness/hqCore.ts";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
+import { HqStreamMessage } from "@t3tools/shared/hqStream";
 import { STREAM_POLICY } from "../../../../../../packages/client-runtime/src/data/streamMachine.ts";
 import type { Page } from "puppeteer-core";
-import { startCore, untilHealth } from "../../../../../hq/test/harness/runningCore.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import {
   installArea,
@@ -28,8 +29,7 @@ export const givenOutage = Effect.fn("outage.given")(function* () {
   return s;
 });
 
-export const stopHq = (s: Scenario) =>
-  s.drivers.core.kind === "external" ? s.drivers.core.control("stop") : s.drivers.core.stop;
+export const stopHq = (s: Scenario) => s.drivers.core.control("stop");
 
 export const declareNewerProtocol = (s: Scenario) => Effect.sync(() => newerHqProtocol(s.drivers));
 /** Ends the tab's HQ session; returns how many HQ sockets had opened before it ended. */
@@ -83,24 +83,8 @@ export const hqRefusalShown = (s: Scenario) =>
 export const retryHq = (s: Scenario) =>
   Effect.promise(() => s.page.click('[data-zerops-surface="sidebar-hq-outage"]'));
 
-export const startHq = Effect.fn("outage.startHq")(function* (s: Scenario, build?: string) {
-  if (s.drivers.core.kind === "external") {
-    yield* s.drivers.core.control(build === undefined ? "start" : "start-new-build");
-    return;
-  }
-  const previous = inProcessCore(s.drivers.core);
-  const core = yield* startCore(true, {
-    zeropsHttp: { baseUrl: `${s.drivers.zerops.origin}/api/rest/public`, world: previous.fake },
-    url: previous.url,
-    gitRoot: previous.gitRoot,
-    storeDir: previous.storeDir,
-    stagingDir: previous.stagingDir,
-    ...(build === undefined ? {} : { build }),
-  });
-  yield* untilHealth(core.call, "active");
-  s.drivers.core = { ...core, kind: "in-process" };
-  s.drivers.hq.replaceCore(core.origin);
-});
+export const startHq = (s: Scenario, build?: string) =>
+  s.drivers.core.control(build === undefined ? "start" : "start-new-build");
 
 export const reportsWork = (s: Scenario, name: string, subject: string, question?: string) =>
   reportWork(s.drivers, name, subject, question);
@@ -238,12 +222,28 @@ export const heartbeatsWithoutSnapshot = (s: Scenario) =>
     yield* Effect.promise(() => s.clock.advance(5_000));
   });
 
+const decodeStreamMessage = Schema.decodeUnknownOption(Schema.fromJsonString(HqStreamMessage));
+
 export const stallsHq = (s: Scenario) =>
   Effect.gen(function* () {
     const stalled = yield* Effect.promise(() => outageControls(s.drivers).stall());
     yield* Effect.promise(() => stallSleepSocket(s.page));
     return stalled;
   });
+
+/** HQ tells a held scope's change with no values (`scope-changed`); the client asks it again. */
+const navigationChanged = (frame: string) => {
+  const parsed = decodeStreamMessage(frame);
+  return (
+    Option.isSome(parsed) &&
+    parsed.value.type === "scope-changed" &&
+    parsed.value.scope.kind === "navigation"
+  );
+};
+
+/** HQ told the stalled link its navigation changed: the change exists, and the tab missed it. */
+export const hqToldWhileStalled = (stalled: Effect.Success<ReturnType<typeof stallsHq>>) =>
+  Effect.promise(() => stalled.waitForDownstream("navigation changed", navigationChanged));
 
 export const frozenMenuStillSays = (s: Scenario, name: string, absent: string) =>
   Effect.promise(async () => {

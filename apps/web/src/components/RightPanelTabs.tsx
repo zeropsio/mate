@@ -2,23 +2,24 @@ import type { ContextMenuItem, ResolvedKeybindingsConfig } from "@t3tools/contra
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
 import {
   Bot,
-  Cloud,
   Database,
-  FileDiff,
+  Drama as PersonaIcon,
   Files,
   GitBranch,
   GitPullRequestArrow,
   Globe,
   Laptop,
   LayersIcon,
-  type LucideIcon,
   Plus,
   TerminalSquare,
   Plug,
   Users,
-  Vault,
+  KeyRound,
+  X,
 } from "lucide-react";
+import { useMediaQuery } from "~/hooks/useMediaQuery";
 import {
+  type ComponentType,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactElement,
@@ -32,6 +33,8 @@ import {
 } from "react";
 
 import { isElectron } from "~/env";
+import { ExpressMark } from "./express/ExpressMark";
+import { ZeropsMark } from "./ZeropsMark";
 import { resolveShortcutCommand, type ShortcutMatchContext } from "~/keybindings";
 import {
   launcherActions,
@@ -82,6 +85,8 @@ interface RightPanelTabsProps {
   onCopyFilePath: (relativePath: string) => void;
   availability: Record<RightPanelKind, RightPanelAvailability>;
   onAdd: (kind: Exclude<RightPanelKind, "file" | "terminal">) => void;
+  /** A launcher letter's alias, a page's second part (Code's D: what changed); else `onAdd`. */
+  onAddAt?: (kind: Exclude<RightPanelKind, "file" | "terminal">) => void;
   onAddTerminal: () => void;
   /** Running + waiting subagents; badges the Agents card in the empty state. */
   liveAgentCount: number;
@@ -95,30 +100,37 @@ interface RightPanelTabsProps {
 const SURFACE_DISABLED_REASONS = {
   terminal: "The terminal is available from a project's chat.",
   files: "Files are only available when a project is open.",
-  diff: "Diff is only available for server threads in Git repositories.",
   agents: "Agents are only available from a thread.",
   zerops: "The Zerops project map is only available from a thread.",
   browser: "The Browser view is only available from a Zerops project thread.",
   mac: "The Mac view is only available from a Zerops project thread.",
   data: "Data is only available from a Zerops project thread.",
-  git: "Git is only available from a Zerops project thread.",
+  git: "Code is only available for Git repositories.",
   crew: "The crew is only available from a Zerops project thread with crew mode on.",
-  mcp: "MCP servers are only available from a conversation.",
+  mcp: "Tools are only available from a conversation.",
+  persona: "Update this Mate to give it a persona.",
+  express: "Adobe Express is not set up in this build.",
   vault: "The vault is only available from a Zerops project thread.",
   overview: "The overview opens from a Chief's conversation.",
 } as const satisfies Record<Exclude<RightPanelKind, "file">, string>;
 
-/** Overlays that must win over the launcher's letter shortcuts. */
+/**
+ * Overlays that must win over the launcher's letter shortcuts, while they are open: a popup kept
+ * mounted closed (the conversation header's actions menu is) carries `data-closed` and blocks
+ * nothing, or no letter would ever open a page beside a conversation.
+ */
 const LAUNCHER_SHORTCUT_BLOCKING_LAYERS = [
-  '[data-slot="dialog-popup"]',
-  '[data-slot="alert-dialog-popup"]',
-  '[data-slot="command-dialog-popup"]',
-  '[data-slot="menu-popup"]',
-  '[data-slot="select-popup"]',
-  '[data-slot="popover-popup"]',
-  '[data-slot="combobox-popup"]',
-  '[data-slot="autocomplete-popup"]',
-].join(",");
+  "dialog-popup",
+  "alert-dialog-popup",
+  "command-dialog-popup",
+  "menu-popup",
+  "select-popup",
+  "popover-popup",
+  "combobox-popup",
+  "autocomplete-popup",
+]
+  .map((slot) => `[data-slot="${slot}"]:not([data-closed])`)
+  .join(",");
 
 type TabContextMenuAction = "copy-path" | "close" | "close-others" | "close-to-right" | "close-all";
 
@@ -128,18 +140,27 @@ type SurfaceShortcutEvent = Pick<
 >;
 
 export function surfaceShortcutActionForKey<
-  const Action extends { available: boolean; shortcut: string | null },
+  const Action extends { available: boolean; shortcut: string | null; alias?: string },
 >(actions: readonly Action[], event: SurfaceShortcutEvent): Action | null {
   if (event.defaultPrevented || event.isComposing) return null;
   if (event.metaKey || event.ctrlKey || event.altKey) return null;
+  const key = event.key.toLowerCase();
   return (
     actions.find(
       (action) =>
         action.available &&
-        action.shortcut !== null &&
-        action.shortcut.toLowerCase() === event.key.toLowerCase(),
+        (action.shortcut?.toLowerCase() === key || action.alias?.toLowerCase() === key),
     ) ?? null
   );
+}
+
+/** Opens what a launcher letter names: the page, or for its alias the page at its second part. */
+function launchFromKey(
+  action: { readonly alias?: string; readonly onClick: () => void; readonly onAlias: () => void },
+  event: Pick<KeyboardEvent, "key">,
+) {
+  if (action.alias?.toLowerCase() === event.key.toLowerCase()) action.onAlias();
+  else action.onClick();
 }
 
 /**
@@ -193,7 +214,9 @@ function SurfaceMenuItem(props: {
         descriptionId={descriptionId}
         label={props.label}
       />
-      {props.shortcut === null ? null : <MenuShortcut>{props.shortcut}</MenuShortcut>}
+      {props.shortcut === null ? null : (
+        <MenuShortcut className="pointer-coarse:hidden">{props.shortcut}</MenuShortcut>
+      )}
     </MenuItem>
   );
   if (props.available || !props.disabledReason) return item;
@@ -201,23 +224,34 @@ function SurfaceMenuItem(props: {
 }
 
 type SurfaceAction = ReturnType<typeof launcherActions>[number] & {
-  readonly icon: LucideIcon;
+  readonly icon: SurfaceLauncherIcon;
   readonly onClick: () => void;
+  readonly onAlias: () => void;
   readonly badgeCount: number;
 };
 
-function surfaceLauncherIcon(kind: Exclude<RightPanelKind, "file">): LucideIcon {
+/**
+ * Adobe's mark at a launcher card's glyph size, its tile rounded like the glyphs' strokes. A
+ * picture, so a menu's glyph sizing (which reaches only svgs) never sizes it: it carries the
+ * menu glyph's size itself, and a card's own class replaces it.
+ */
+function ExpressLauncherMark({ className }: { readonly className?: string }) {
+  return <ExpressMark className={cn("size-4.5 shrink-0 sm:size-4", className, "rounded-sm")} />;
+}
+
+/** A launcher card's mark: a lucide glyph, or a product's own mark (Adobe Express's). */
+type SurfaceLauncherIcon = ComponentType<{ readonly className?: string }>;
+
+function surfaceLauncherIcon(kind: Exclude<RightPanelKind, "file">): SurfaceLauncherIcon {
   switch (kind) {
     case "terminal":
       return TerminalSquare;
     case "files":
       return Files;
-    case "diff":
-      return FileDiff;
     case "agents":
       return Bot;
     case "zerops":
-      return Cloud;
+      return ZeropsMark;
     case "browser":
       return Globe;
     case "mac":
@@ -230,11 +264,36 @@ function surfaceLauncherIcon(kind: Exclude<RightPanelKind, "file">): LucideIcon 
       return Users;
     case "mcp":
       return Plug;
+    case "persona":
+      return PersonaIcon;
+    case "express":
+      return ExpressLauncherMark;
     case "vault":
-      return Vault;
+      return KeyRound;
     case "overview":
       return LayersIcon;
   }
+}
+
+/** The launcher's cards for what a conversation can open, each with its mark and its presses. */
+export function surfaceActions(input: {
+  readonly availability: Record<RightPanelKind, RightPanelAvailability>;
+  readonly onAdd: (kind: Exclude<RightPanelKind, "file" | "terminal">) => void;
+  readonly onAddAt?: ((kind: Exclude<RightPanelKind, "file" | "terminal">) => void) | undefined;
+  readonly onAddTerminal: () => void;
+  readonly liveAgentCount: number;
+}): SurfaceAction[] {
+  return launcherActions(input.availability).map((action) => {
+    const kind = action.kind;
+    return {
+      ...action,
+      icon: surfaceLauncherIcon(kind),
+      onClick: kind === "terminal" ? input.onAddTerminal : () => input.onAdd(kind),
+      onAlias:
+        kind === "terminal" ? input.onAddTerminal : () => (input.onAddAt ?? input.onAdd)(kind),
+      badgeCount: kind === "agents" ? input.liveAgentCount : 0,
+    };
+  });
 }
 
 /**
@@ -242,7 +301,7 @@ function surfaceLauncherIcon(kind: Exclude<RightPanelKind, "file">): LucideIcon 
  * letter opens it outside typing contexts, while unavailable surfaces remain
  * visible with a one-line reason.
  */
-function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] }) {
+export function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] }) {
   // -1 means no highlight: it only appears on hover or arrow use.
   const [highlight, setHighlight] = useState(-1);
   // Only an arrow key scrolls the lit card into view: a hovered one is
@@ -270,7 +329,7 @@ function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] }) {
       if (target instanceof Element && surfaceShortcutTargetsTypingContext(target)) return;
       event.preventDefault();
       event.stopPropagation();
-      action.onClick();
+      launchFromKey(action, event);
     };
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
@@ -345,7 +404,8 @@ function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] }) {
           </span>
         ) : null}
         {action.shortcut === null ? null : (
-          <Kbd className="ms-auto shrink-0">{action.shortcut}</Kbd>
+          // A key's letter says nothing to a finger.
+          <Kbd className="ms-auto shrink-0 pointer-coarse:hidden">{action.shortcut}</Kbd>
         )}
       </span>
     );
@@ -354,7 +414,10 @@ function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] }) {
   const cardShellClass =
     "flex w-full min-w-0 flex-col items-start gap-1 rounded-lg border border-border/80 bg-card p-3 text-left @[22rem]:p-3.5 dark:border-transparent dark:shadow-none dark:inset-ring-1 dark:inset-ring-white/5";
   const highlightedCardClass = "bg-accent/60 dark:inset-ring-white/20";
-  const cardTextClass = "text-muted-foreground text-xs leading-relaxed";
+  // Two lines held under every name, whether its words need one or two: every card is one height,
+  // and none grows when a neighbour's words wrap. A phone's one column is wide enough for every
+  // card's words on one line, so the second is not held there: nine rows fit a screen.
+  const cardTextClass = "min-h-[2lh] text-muted-foreground text-xs leading-relaxed max-sm:min-h-0";
 
   return (
     <div
@@ -364,7 +427,7 @@ function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] }) {
       aria-label="Open a page"
       data-surface-launcher-keys={availableActions.map((action) => action.shortcut ?? "").join("")}
       className={cn(
-        "flex min-h-0 flex-1 overflow-y-auto px-4 pt-4 outline-none @container",
+        "flex min-h-0 flex-1 overflow-y-auto px-4 pt-4 outline-none @container max-sm:scrollbar-none",
         // The panel topbar sits above this container; matching bottom padding
         // keeps the cards centered against the full panel, not the leftover.
         "pb-[calc(var(--workspace-topbar-height)+--spacing(6))]",
@@ -377,7 +440,9 @@ function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] }) {
           <h3 className="font-medium text-foreground text-sm">Open a page</h3>
           <p className="mt-1 text-muted-foreground text-xs">Choose what to show beside the chat.</p>
         </div>
-        <div className="grid grid-cols-1 gap-2 @[24rem]:grid-cols-2">
+        {/* Rows of one height, the tallest card's: words that need a third line in a narrow panel
+            raise every card with them. */}
+        <div className="grid auto-rows-fr grid-cols-1 gap-2 @[24rem]:grid-cols-2">
           {props.actions.map((action) =>
             action.available ? (
               <button
@@ -420,8 +485,6 @@ function surfaceTitle(
   terminalLabelsById: ReadonlyMap<string, string>,
 ): string {
   switch (surface.kind) {
-    case "diff":
-      return "Diff";
     case "files":
       return "Files";
     case "file":
@@ -443,11 +506,15 @@ function surfaceTitle(
     case "data":
       return "service" in surface ? surface.service : "Data";
     case "git":
-      return "Git";
+      return "Code";
     case "crew":
       return "Crew";
     case "mcp":
-      return "MCP";
+      return "Tools";
+    case "persona":
+      return "Persona";
+    case "express":
+      return "Express";
     case "vault":
       return "Vault";
     case "overview":
@@ -459,8 +526,6 @@ function surfaceTitle(
 
 function SurfaceIcon({ surface, theme }: { surface: RightPanelSurface; theme: "light" | "dark" }) {
   switch (surface.kind) {
-    case "diff":
-      return <FileDiff className="size-3 shrink-0" />;
     case "files":
       return <Files className="size-3 shrink-0" />;
     case "file":
@@ -477,7 +542,7 @@ function SurfaceIcon({ surface, theme }: { surface: RightPanelSurface; theme: "l
     case "agents":
       return <Bot className="size-3 shrink-0" />;
     case "zerops":
-      return <Cloud className="size-3 shrink-0" />;
+      return <ZeropsMark className="size-3 shrink-0" />;
     case "browser":
       return <Globe className="size-3 shrink-0" />;
     case "mac":
@@ -490,8 +555,12 @@ function SurfaceIcon({ surface, theme }: { surface: RightPanelSurface; theme: "l
       return <Users className="size-3 shrink-0" />;
     case "mcp":
       return <Plug className="size-3 shrink-0" />;
+    case "persona":
+      return <PersonaIcon className="size-3 shrink-0" />;
+    case "express":
+      return <ExpressMark className="size-3.5 shrink-0 rounded-xs" />;
     case "vault":
-      return <Vault className="size-3 shrink-0" />;
+      return <KeyRound className="size-3 shrink-0" />;
     case "overview":
       return <LayersIcon className="size-3 shrink-0" />;
     case "change":
@@ -502,7 +571,9 @@ function SurfaceIcon({ surface, theme }: { surface: RightPanelSurface; theme: "l
 /**
  * A page's tab: its icon, which turns into its close button under the pointer, and its name. Folded
  * (`useTabStripCompact`), a tab other than the open one is its icon alone, which opens it, its name
- * in a tooltip; it closes from its menu or a middle click.
+ * in a tooltip; it closes from its menu or a middle click. Where nothing hovers (a finger), the icon
+ * stays an icon and never closes blind: a press anywhere on a tab opens it, and the open tab shows
+ * its close after its name.
  */
 function SurfaceTabFace(props: {
   readonly icon: ReactNode;
@@ -519,6 +590,34 @@ function SurfaceTabFace(props: {
       aria-hidden
     />
   ) : null;
+  const touch = useMediaQuery("(hover: none)");
+  if (touch && !compact) {
+    return (
+      <>
+        <button
+          className="flex min-w-0 cursor-pointer items-center gap-1"
+          onClick={props.onActivate}
+          type="button"
+        >
+          <span className="relative flex size-4 shrink-0 items-center justify-center">
+            {props.icon}
+            {pendingDot}
+          </span>
+          <span className="truncate">{props.title}</span>
+        </button>
+        {props.active ? (
+          <button
+            aria-label={`Close ${props.title}`}
+            className="flex size-4 shrink-0 cursor-pointer items-center justify-center rounded-sm"
+            onClick={props.onClose}
+            type="button"
+          >
+            <X className="size-3" />
+          </button>
+        ) : null}
+      </>
+    );
+  }
   if (compact) {
     return (
       <Tooltip>
@@ -600,15 +699,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
     return () => document.removeEventListener("keydown", handler, true);
   }, []);
 
-  const addSurfaceActions: SurfaceAction[] = launcherActions(props.availability).map((action) => {
-    const kind = action.kind;
-    return {
-      ...action,
-      icon: surfaceLauncherIcon(kind),
-      onClick: kind === "terminal" ? props.onAddTerminal : () => props.onAdd(kind),
-      badgeCount: kind === "agents" ? props.liveAgentCount : 0,
-    };
-  });
+  const addSurfaceActions = surfaceActions(props);
 
   const handleAddSurfaceMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     const action = surfaceShortcutActionForKey(addSurfaceActions, event.nativeEvent);
@@ -616,7 +707,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
     event.preventDefault();
     event.stopPropagation();
     setAddSurfaceMenuOpen(false);
-    action.onClick();
+    launchFromKey(action, event.nativeEvent);
   };
 
   const handleTabContextMenu = useCallback(
@@ -739,7 +830,11 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                       <SurfaceMenuItem
                         key={action.label}
                         available={action.available}
-                        disabledReason={SURFACE_DISABLED_REASONS[action.kind]}
+                        disabledReason={
+                          action.waiting
+                            ? action.unavailableHint
+                            : SURFACE_DISABLED_REASONS[action.kind]
+                        }
                         shortcut={action.shortcut}
                         onClick={action.onClick}
                         icon={<Icon />}

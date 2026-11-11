@@ -8,8 +8,7 @@
  * into zcp any more.
  *
  * Shape (spec-mate.md §2.1c):
- * `{version, asset, url, sha256, size, contract, publishedAt, rollbackCompatible, compatibleFrom?}`.
- * The rollback range is proved against the preceding stable tag, never assumed. `sha256`
+ * `{version, asset, url, sha256, size, contract, publishedAt}`. `sha256`
  * must be the same digest `SHA256SUMS` carries for the tarball — this script
  * takes it as input rather than recomputing it, so the two files can never
  * disagree about which bytes they describe.
@@ -23,10 +22,6 @@ import * as Schema from "effect/Schema";
 import { Command, Flag } from "effect/cli";
 
 import { fromJsonStringPretty } from "@t3tools/shared/schemaJson";
-import {
-  readRollbackCompatibility,
-  type RollbackCompatibility,
-} from "./releaseRollbackCompatibility.ts";
 
 /** `contract` today (spec-mate.md §2.8: C-1…C-6). Bumped only alongside a zcp-side change. */
 export const RELEASE_MANIFEST_CONTRACT = 2;
@@ -39,8 +34,6 @@ export const StableManifest = Schema.Struct({
   size: Schema.Int,
   contract: Schema.Int,
   publishedAt: Schema.String,
-  rollbackCompatible: Schema.optionalKey(Schema.Boolean),
-  compatibleFrom: Schema.optionalKey(Schema.String),
 });
 export type StableManifest = typeof StableManifest.Type;
 
@@ -69,7 +62,6 @@ export interface BuildStableManifestInput {
   readonly size: number;
   /** RFC3339. */
   readonly publishedAt: string;
-  readonly compatibility?: RollbackCompatibility;
 }
 
 /** Builds the manifest object. Throws {@link ReleaseManifestAssetInvalidShaError} on a malformed digest. */
@@ -86,7 +78,6 @@ export function buildStableManifest(input: BuildStableManifestInput): StableMani
     size: input.size,
     contract: RELEASE_MANIFEST_CONTRACT,
     publishedAt: input.publishedAt,
-    ...(input.compatibility ?? { rollbackCompatible: false }),
   };
 }
 
@@ -112,16 +103,11 @@ const releaseManifestAssetCommand = Command.make(
       Flag.withDescription("RFC3339 publish timestamp."),
     ),
     out: Flag.String("out").pipe(Flag.withDescription("Where to write stable.json.")),
-    previousTag: Flag.String("previous-tag").pipe(
-      Flag.withDefault(""),
-      Flag.withDescription("Previous published stable tag; absence requires an attended update."),
-    ),
   },
   (config) =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
-      const compatibility = yield* readRollbackCompatibility(config.previousTag, config.version);
-      const manifest = buildStableManifest({ ...config, compatibility });
+      const manifest = buildStableManifest(config);
       const json = yield* encodeStableManifest(manifest);
       yield* fs.writeFileString(config.out, `${json}\n`);
       yield* Console.log(`[release-manifest-asset] Wrote ${config.out}`);

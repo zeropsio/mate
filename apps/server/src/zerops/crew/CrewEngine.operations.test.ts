@@ -2,14 +2,14 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import { assert, describe, it } from "@effect/vitest";
-import * as Clock from "effect/Clock";
-import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as TestClock from "effect/testing/TestClock";
 import { EDITED_AFTER_CHECK } from "./crewMachines.ts";
 import { write, git } from "./testing/crewGitFixture.ts";
 import {
   applied,
+  KAREL,
   crewJourney,
   eventually,
   firstTurn,
@@ -378,35 +378,90 @@ it.live("the boot sweep holds each crewmate's copy: a press during it waits its 
         const hold = yield* world.hold({ step: "sweep" });
         yield* world.serverReady;
         yield* hold.reached;
-        const waiting = yield* Deferred.make<void>();
-        const clock = yield* Clock.Clock;
-        const press = yield* world
-          .press({
-            _tag: "message",
-            handle: "backend",
-            text: "Work",
-            attachments: [],
-          })
-          .pipe(
-            Effect.provideService(Clock.Clock, {
-              currentTimeMillisUnsafe: () => clock.currentTimeMillisUnsafe(),
-              currentTimeMillis: clock.currentTimeMillis,
-              currentTimeNanosUnsafe: () => clock.currentTimeNanosUnsafe(),
-              currentTimeNanos: clock.currentTimeNanos,
-              monotonicTimeNanosUnsafe: () => clock.monotonicTimeNanosUnsafe(),
-              monotonicTimeNanos: clock.monotonicTimeNanos,
-              sleep: (duration) =>
-                Deferred.succeed(waiting, undefined).pipe(Effect.andThen(clock.sleep(duration))),
-            }),
-            Effect.forkChild({ startImmediately: true }),
-          );
-        yield* Effect.raceFirst(Deferred.await(waiting), Fiber.await(press));
-        assert.strictEqual(press.pollUnsafe() === undefined, true);
-        yield* hold.release;
-        yield* Fiber.join(press);
-        yield* world.snapshotWhere((frame) => frame.board.tasks[0]?.state === "working");
+        yield* Effect.gen(function* () {
+          const press = yield* world
+            .press({
+              _tag: "message",
+              handle: "backend",
+              text: "Work",
+              attachments: [],
+            })
+            .pipe(Effect.forkChild({ startImmediately: true }));
+          yield* TestClock.adjust(0);
+          assert.strictEqual(press.pollUnsafe() === undefined, true);
+          yield* hold.release;
+          yield* Fiber.join(press);
+          yield* world.snapshotWhere((frame) => frame.board.tasks[0]?.state === "working");
+        }).pipe(Effect.provide(TestClock.layer()));
       }),
   ]),
+);
+
+it.live(
+  "A press held by copy recovery waits for that recovery's receipt before the copy is used.",
+  () =>
+    crewJourney((world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        yield* world.deploy("started");
+        yield* world.snapshotWhere((frame) => frame.crewmates[0]?.lane?.state === "frozen");
+        const hold = yield* world.hold({ step: "recover" });
+        yield* world.deploy("finished");
+        yield* hold.reached;
+        const service = yield* world.service;
+        yield* Effect.gen(function* () {
+          const press = yield* service
+            .command(
+              {
+                _tag: "message",
+                handle: "backend",
+                text: "Work",
+                attachments: [],
+              },
+              KAREL,
+            )
+            .pipe(Effect.forkChild({ startImmediately: true }));
+          yield* TestClock.adjust(120_001);
+          assert.isUndefined(press.pollUnsafe(), "the press must still await the recovery receipt");
+          yield* hold.release;
+          assert.deepStrictEqual(yield* Fiber.join(press), { _tag: "done" });
+          yield* world.snapshotWhere((frame) => frame.board.tasks[0]?.state === "working");
+          assert.strictEqual((yield* turnsSent(world)).length, 1);
+        }).pipe(Effect.provide(TestClock.layer()));
+      }),
+    ),
+);
+
+it.live(
+  "Discard does not report completed preservation while the task's keep effect is pending.",
+  () =>
+    crewJourney((world) =>
+      Effect.gen(function* () {
+        yield* readyTask(world);
+        const [task] = yield* world.tasks;
+        const copy = NodePath.join(world.root, ".crew/backend");
+        write(copy, "kept.txt", "preserve me\n");
+        const hold = yield* world.hold({ step: "keep" });
+        const service = yield* world.service;
+        yield* Effect.gen(function* () {
+          const discard = yield* service
+            .command({ _tag: "discard", taskId: task!.id }, KAREL)
+            .pipe(Effect.forkChild({ startImmediately: true }));
+          yield* hold.reached;
+          yield* TestClock.adjust(30_001);
+          assert.isUndefined(discard.pollUnsafe(), "discard must still await the keep receipt");
+          assert.strictEqual((yield* world.tasks)[0]!.state, "ready");
+          yield* hold.release;
+          assert.deepStrictEqual(yield* Fiber.join(discard), { _tag: "done" });
+          yield* world.snapshotWhere((frame) => frame.board.tasks[0]?.state === "discarded");
+          const kept = git(world.root, ["for-each-ref", "--format=%(refname)", "refs/t3/crew/"])
+            .split("\n")
+            .filter((ref) => !ref.startsWith("refs/t3/crew/landing/"));
+          assert.strictEqual(kept.length, 1);
+          assert.strictEqual(git(world.root, ["show", `${kept[0]}:kept.txt`]), "preserve me");
+        }).pipe(Effect.provide(TestClock.layer()));
+      }),
+    ),
 );
 
 it.live("a Land whose browser went away mid-landing still lands", () =>

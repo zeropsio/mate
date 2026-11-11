@@ -5,8 +5,6 @@ import * as NodeUtil from "node:util";
 
 import { assert, describe, it } from "@effect/vitest";
 import { type CrewCommand, type CrewCommandError } from "@t3tools/contracts";
-import * as Deferred from "effect/Deferred";
-import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -1164,91 +1162,51 @@ describe("CrewEngine", () => {
     ]),
   );
 
-  it.live("an unreadable redeploy is asked less and less, then offered to the person to thaw", () =>
-    crewJourney([
-      (world) =>
-        Effect.gen(function* () {
-          yield* applied(world);
-          yield* world.deploy("started");
-          yield* world.snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen");
-        }),
-      (world) =>
-        Effect.gen(function* () {
-          yield* world.deployState("unreadable");
-          yield* world.serverReady;
-          const offered = yield* world.snapshotWhere((snapshot) =>
-            snapshot.attention.some((need) => need.kind === "deploy-unreadable"),
-          );
-          // Asked at boot, then after 50, 100, 200, 200 ms: a handful, not one every tick.
-          assert.isAtMost(yield* world.deployReads, 8);
-          const observed = yield* Deferred.make<void>();
-          const frames = yield* world.frames.pipe(
-            Stream.tap(() => Deferred.succeed(observed, undefined)),
-            Stream.interruptWhen(
-              Deferred.await(observed).pipe(Effect.andThen(world.advanceTime(700))),
-            ),
-            Stream.runCount,
-          );
-          // Nothing moved meanwhile: the feed holds still, its current frame alone.
-          assert.isAtMost(frames, 1);
-          assert.strictEqual(
-            offered.attention.find((need) => need.kind === "deploy-unreadable")!.host,
-            TEST_HOST,
-          );
-          yield* world.press({ _tag: "thawHost", host: TEST_HOST });
-          yield* world.snapshotWhere(
-            (snapshot) =>
-              snapshot.crewmates[0]!.lane?.state === "ready" &&
-              !snapshot.attention.some((need) => need.kind === "deploy-unreadable"),
-          );
-          // Thawed, it stops asking.
-          const after = yield* world.deployReads;
-          yield* world.advanceTime(600);
-          assert.strictEqual(yield* world.deployReads, after);
-        }),
-    ]),
-  );
-
   it.live(
-    "a deploy's end recovers the copies before it thaws: a press meanwhile waits its turn",
+    "an unreadable redeploy is read again only when Zerops pushes a process, then offered to the person to thaw",
     () =>
-      crewJourney((world) =>
-        Effect.gen(function* () {
-          yield* applied(world);
-          yield* world.deploy("started");
-          yield* world.snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen");
-          const hold = yield* world.hold({ step: "recover" });
-          yield* world.deploy("finished");
-          yield* hold.reached;
-          const waiting = yield* Deferred.make<void>();
-          const clock = yield* Clock.Clock;
-          const press = yield* world
-            .press({
-              _tag: "message",
-              handle: "backend",
-              text: "Work",
-              attachments: [],
-            })
-            .pipe(
-              Effect.provideService(Clock.Clock, {
-                currentTimeMillisUnsafe: () => clock.currentTimeMillisUnsafe(),
-                currentTimeMillis: clock.currentTimeMillis,
-                currentTimeNanosUnsafe: () => clock.currentTimeNanosUnsafe(),
-                currentTimeNanos: clock.currentTimeNanos,
-                monotonicTimeNanosUnsafe: () => clock.monotonicTimeNanosUnsafe(),
-                monotonicTimeNanos: clock.monotonicTimeNanos,
-                sleep: (duration) =>
-                  Deferred.succeed(waiting, undefined).pipe(Effect.andThen(clock.sleep(duration))),
-              }),
-              Effect.forkChild({ startImmediately: true }),
+      crewJourney([
+        (world) =>
+          Effect.gen(function* () {
+            yield* applied(world);
+            yield* world.deploy("started");
+            yield* world.snapshotWhere(
+              (snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen",
             );
-          yield* Effect.raceFirst(Deferred.await(waiting), Fiber.await(press));
-          assert.isTrue(press.pollUnsafe() === undefined);
-          yield* hold.release;
-          yield* Fiber.join(press);
-          yield* world.snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "working");
-        }),
-      ),
+          }),
+        (world) =>
+          Effect.gen(function* () {
+            yield* world.deployState("unreadable");
+            yield* world.serverReady;
+            const offered = yield* world.snapshotWhere((snapshot) =>
+              snapshot.attention.some((need) => need.kind === "deploy-unreadable"),
+            );
+            assert.strictEqual(
+              offered.attention.find((need) => need.kind === "deploy-unreadable")!.host,
+              TEST_HOST,
+            );
+            // No push, no read: time passing alone asks Zerops nothing.
+            yield* world.settled;
+            const quiet = yield* world.deployReads;
+            yield* world.advanceTime(700);
+            yield* world.settled;
+            assert.strictEqual(yield* world.deployReads, quiet);
+            yield* world.deployState("unreadable");
+            yield* eventually(Effect.map(world.deployReads, (reads) => reads > quiet));
+            yield* world.press({ _tag: "thawHost", host: TEST_HOST });
+            yield* world.snapshotWhere(
+              (snapshot) =>
+                snapshot.crewmates[0]!.lane?.state === "ready" &&
+                !snapshot.attention.some((need) => need.kind === "deploy-unreadable"),
+            );
+            // Thawed, it stops asking.
+            yield* world.settled;
+            const after = yield* world.deployReads;
+            yield* world.advanceTime(700);
+            yield* world.settled;
+            assert.strictEqual(yield* world.deployReads, after);
+          }),
+      ]),
   );
 
   it.live(

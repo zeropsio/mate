@@ -28,7 +28,7 @@ describe("hqRefusalWords — HQ's refusal, in the person's words", () => {
     expect(words).toMatch(/^[A-Z].*\.$/u);
   });
 
-  // Automated Mates' sources (`apps/hq/src/{intake,slack,discord,webhooks,schedules,taskLimits}.ts`).
+  // Automated Mates' sources (`mate-hq apps/hq/src/{intake,slack,discord,webhooks,schedules,taskLimits}.ts`).
   it.each([...AUTOMATION_REFUSALS])(
     "says why HQ refused a task source's setting (%s) in words of its own, never the code",
     (reason) => {
@@ -39,8 +39,13 @@ describe("hqRefusalWords — HQ's refusal, in the person's words", () => {
     },
   );
 
+  // witness: packages/client-runtime/src/zerops/hq/refusals.ts | needs_owner_seal: → needs_owner_seal_unknown:
   it.each([
     ["github_unavailable", "HQ could not set the GitHub app up just now. Try again."],
+    [
+      "needs_owner_seal",
+      "Nobody is recorded to have set this GitHub app up, so Mate uses it for nothing. An Owner or Admin makes it again.",
+    ],
     [
       "repository_changed",
       "The repository on GitHub is no longer the one connected. Connect it again under Repositories.",
@@ -153,7 +158,6 @@ describe("hqRefusalWords — HQ's refusal, in the person's words", () => {
     ["unrelated", "It shares no history with main."],
     ["no_change", "Nothing was pushed to it yet."],
     ["main_moved", "Other changes kept landing on main meanwhile. Try again."],
-    ["change_not_open", "This change is merged or closed already."],
     [
       "github_blocked",
       "GitHub won't merge its PR yet: the repository's rules or required checks hold it back. See its PR on GitHub.",
@@ -218,11 +222,11 @@ describe("hqRefusalWords — HQ's refusal, in the person's words", () => {
   });
 });
 
-// zcp's enrollment, refused (`MateRefused` in `apps/hq/src/mateCredentials.ts`): what stands, and
+// zcp's enrollment, refused (`MateRefused` in `mate-hq apps/hq/src/mateCredentials.ts`): what stands, and
 // what the person can do — or that it tries again on its own.
 describe("enrollmentRefusalWords — HQ's refusal of a Mate's enrollment", () => {
   it.each([
-    ["not_a_mate", "HQ has no record of this Mate yet. Finish its setup from its menu."],
+    ["not_a_mate", "HQ has no record of this Mate yet."],
     ["project_not_in_org", "Its Zerops project is not in this HQ's organization."],
     ["project_gone", "Its Zerops project is gone."],
     ["env_mismatch", "HQ could not check its Zerops project yet. It tries again on its own."],
@@ -240,29 +244,30 @@ describe("enrollmentRefusalWords — HQ's refusal of a Mate's enrollment", () =>
 });
 
 describe("hqOfferWords — what a control says beside a verb HQ does not offer", () => {
-  const at = (ms: number) => `@${String(ms)}`;
-  it.each<[string, HqOfferState, string | null, string | undefined]>([
-    ["nothing for an offered verb", { kind: "allowed" }, null, undefined],
-    [
-      "HQ's refusal, as of the roles it was decided over",
-      { kind: "refused", reason: "not_releaser" },
-      "1970-01-01T00:00:01.000Z",
-      "To release, this project needs a Zerops project, and you need more than Read access to its production. Zerops roles as of @1000.",
-    ],
+  it.each<[string, HqOfferState, string | undefined]>([
+    ["nothing for an offered verb", { kind: "allowed" }, undefined],
     [
       "HQ's refusal alone where it named no time",
       { kind: "refused", reason: "not_structure_writer" },
-      null,
       "Only an owner or admin of the organization can do this.",
     ],
-    ["that HQ has not said yet", { kind: "unknown" }, null, "HQ has not said yet."],
-    [
-      "since when HQ does not answer",
-      { kind: "unavailable", since: 2_000 },
-      null,
-      "HQ unavailable since @2000.",
-    ],
-  ])("%s", (_, state, rolesAnsweredAt, words) => {
-    expect(hqOfferWords(state, { at, rolesAnsweredAt })).toBe(words);
+    ["that HQ has not said yet", { kind: "unknown" }, "HQ has not said yet."],
+  ])("%s", (_, state, words) => {
+    expect(hqOfferWords(state)).toBe(words);
+  });
+});
+
+describe("hqRefusalWords — a repository HQ will not delete", () => {
+  it.each([
+    ["group_repository", "main repository"],
+    ["in_use:git_environment", "environment"],
+    ["in_use:remote", "mirror"],
+    ["in_use:open_change", "open change"],
+    ["in_use:deploy", "deploy"],
+  ])("says %s in plain words that name what holds it", (reason, holder) => {
+    const words = hqRefusalWords({ code: "conflict", reason });
+    expect(words).toContain(holder);
+    expect(words).not.toContain(reason);
+    expect(words).toMatch(/^[A-Z].*\.$/u);
   });
 });

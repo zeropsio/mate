@@ -236,6 +236,62 @@ it.each([false, true])(
   },
 );
 
+it.each([
+  { held: "a live process cwd inside it", cwd: "src", change: undefined },
+  { held: "an edited tracked file", cwd: undefined, change: "file" },
+  { held: "an untracked file", cwd: undefined, change: "notes" },
+])("preparation never hands out a landed locked lane held by $held", async ({ cwd, change }) => {
+  const root = NodeFS.realpathSync(
+    NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-lane-held-")),
+  );
+  const main = NodePath.join(root, "z3");
+  const git = (cwd: string, ...args: string[]) => {
+    const result = NodeChildProcess.spawnSync("git", args, { cwd, encoding: "utf8" });
+    if (result.status !== 0) throw new Error(result.stderr);
+    return result.stdout.trim();
+  };
+  let live: NodeChildProcess.ChildProcess | undefined;
+  vi.stubEnv("WT_ROOT", undefined);
+  try {
+    NodeFS.mkdirSync(main);
+    git(main, "init", "-q");
+    git(main, "config", "user.name", "Pool fixture");
+    git(main, "config", "user.email", "pool@example.test");
+    NodeFS.mkdirSync(NodePath.join(main, "src"));
+    NodeFS.writeFileSync(NodePath.join(main, "src/index"), "base");
+    NodeFS.writeFileSync(NodePath.join(main, "file"), "base");
+    git(main, "add", ".");
+    git(main, "commit", "-qm", "base");
+    git(main, "update-ref", "refs/remotes/origin/main", "HEAD");
+    const lane = NodePath.join(root, "z3-wt/held-job");
+    git(main, "worktree", "add", "-qb", "held-job", lane);
+    git(main, "worktree", "lock", "--reason", "held-job", lane);
+    NodeFS.writeFileSync(NodePath.join(lane, "file"), "landed work");
+    git(lane, "commit", "-qam", "work");
+    git(main, "update-ref", "refs/remotes/origin/main", "held-job");
+    if (change) NodeFS.writeFileSync(NodePath.join(lane, change), "in progress");
+    if (cwd) {
+      live = NodeChildProcess.spawn(
+        process.execPath,
+        ["-e", "process.stdout.write('ready'); process.stdin.resume()"],
+        { cwd: NodePath.join(lane, cwd), stdio: ["pipe", "pipe", "pipe"] },
+      );
+      await NodeEvents.EventEmitter.once(live.stdout!, "data");
+    }
+    const acquired = acquireWorktree(main, "next-job");
+    expect(acquired).toMatchObject({ path: NodePath.join(root, "z3-wt/next-job"), reused: false });
+    expect(git(lane, "branch", "--show-current")).toBe("held-job");
+    expect(git(main, "worktree", "list", "--porcelain")).toContain("locked held-job");
+  } finally {
+    if (live) {
+      const exited = NodeEvents.EventEmitter.once(live, "exit");
+      live.stdin?.end();
+      await exited;
+    }
+    NodeFS.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 it("counts new filesystem entries without following dependency symlinks", () => {
   const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-entry-test-"));
   try {

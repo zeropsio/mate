@@ -12,7 +12,6 @@ const source = vi.hoisted(() => ({
 }));
 let completed: Promise<void>;
 const hq = { projectId: "hq", address: "https://hq.example" };
-const accountHq = { hq: { kind: "official", ...hq }, status: "ready" };
 const operations = { run: source.run, readCreation: () => UNSENT };
 vi.mock("./accountOperations", () => ({
   HQ_UNFOLLOWED: "HQ isn't answering.",
@@ -20,9 +19,7 @@ vi.mock("./accountOperations", () => ({
   useAccountOperationsOptional: () => operations,
 }));
 vi.mock("./accountHq", () => ({
-  useAccountHq: () => accountHq,
-  officialHq: () => hq,
-  useCarriedCoreBuild: () => undefined,
+  configuredHq: () => hq,
 }));
 vi.mock("./accountInvalidations", () => ({ invalidateZerops: vi.fn() }));
 vi.mock("./zeropsDataContext", () => ({ useZeropsData: () => ({ organizationRef: () => null }) }));
@@ -64,6 +61,10 @@ vi.mock("./useZeropsMates", () => ({
 vi.mock("./useAskMate", () => ({ useAskMate: () => vi.fn() }));
 vi.mock("./useOpenMate", () => ({ useOpenMate: () => vi.fn() }));
 vi.mock("./ownChief", () => ({ useOwnChief: () => null, useKeepOwnChief: () => vi.fn() }));
+vi.mock("./sharedBirths", async (original) => ({
+  ...(await original<typeof import("./sharedBirths")>()),
+  useOwnChiefBirth: () => undefined,
+}));
 vi.mock("./useHqOffers", () => ({ useOrgOffers: () => () => ({ kind: "allowed" }) }));
 vi.mock("./creations", async (original) => ({
   ...(await original<typeof import("./creations")>()),
@@ -85,7 +86,7 @@ vi.mock("../components/zerops/ZeropsMateComingPage", () => ({
   MateComingHeader: () => null,
   ZeropsMateComingPage: () => null,
 }));
-vi.mock("@effect/atom-react", () => ({ useAtomValue: () => ({ kind: "unchecked" }) }));
+vi.mock("@effect/atom-react", () => ({ useAtomValue: () => ({ kind: "unknown" }) }));
 
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import { useChiefSetupRunner } from "./chiefSetup";
@@ -125,6 +126,8 @@ describe("every Chief creation entry uses the same setup intent", () => {
             return { appId: "app" };
           case "record-birth":
             return { birthId: "birth" };
+          case "claim-birth-attempt":
+            return { claim: { by: "alex", at: "claim-at" } };
           case "create-project":
             return { projectId: "chief-project" };
           default:

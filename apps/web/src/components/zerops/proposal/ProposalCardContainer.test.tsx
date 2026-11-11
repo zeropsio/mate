@@ -61,9 +61,7 @@ vi.mock("~/zerops/ZeropsAccountData", async () => {
   };
 });
 vi.mock("~/zerops/accountHq", () => ({
-  useAccountHq: () => ({
-    hq: { kind: "official", projectId: "hq", address: "https://hq.example" },
-  }),
+  configuredHq: () => ({ projectId: "hq", address: "https://hq.example" }),
 }));
 vi.mock("~/zerops/ownChief", () => ({ useOwnChief: () => "readers-chief" }));
 vi.mock("~/zerops/useZeropsEnvironmentProject", () => ({
@@ -122,10 +120,24 @@ async function draw() {
     ),
   );
 }
+/**
+ * The card's decision presses, by the verb they stand for: its main press approves (setting up a
+ * Chief decides nothing), Not now declines.
+ */
 const decisions = () =>
-  [...document.querySelectorAll("button")].filter((button) =>
-    ["Approve", "Decline"].includes(button.textContent ?? ""),
-  );
+  [...document.querySelectorAll<HTMLButtonElement>("[data-ask-main], [data-ask-not-now]")]
+    .filter((button) => button.textContent !== "Set up Chief")
+    .map((button) => ({
+      button,
+      textContent: button.hasAttribute("data-ask-main") ? "Approve" : "Decline",
+    }));
+/** A press by its words; Approve and Decline are the card's main press and Not now. */
+const pressable = (label: string) =>
+  label === "Approve"
+    ? document.querySelector<HTMLButtonElement>("[data-ask-main]")
+    : label === "Decline"
+      ? document.querySelector<HTMLButtonElement>("[data-ask-not-now]")
+      : [...document.querySelectorAll("button")].find((each) => each.textContent === label);
 async function identify(next: HqProjectPeople) {
   await act(async () => {
     source.person = next;
@@ -156,7 +168,7 @@ describe("a Chief proposal's real card", () => {
     expect(decisions()).toHaveLength(0);
     await identify(person("owners-chief", true));
     expect(decisions().map((button) => button.textContent)).toEqual(["Approve", "Decline"]);
-    await act(async () => decisions()[1]!.click());
+    await act(async () => decisions()[1]!.button.click());
     expect(source.record).toHaveBeenCalledWith(expect.objectContaining({ state: "declined" }));
   });
 });
@@ -168,7 +180,7 @@ describe("a Mate can ask its Chief only when one exists", () => {
       if (!later) source.person = person(null, true);
       await draw();
       if (later) await identify(person(null, true));
-      expect(document.querySelector("[data-proposal-summary]")?.textContent).toBe(
+      expect(document.querySelector("[data-ask-id]")?.getAttribute("aria-label")).toBe(
         "This Mate has no Chief to ask.",
       );
       expect(document.querySelector("[data-proposal-recipient]")).toBeNull();
@@ -186,7 +198,7 @@ describe("a Mate can ask its Chief only when one exists", () => {
   it("does not claim the reader has no Chief when the source Mate's person has none", async () => {
     source.person = person(null, false);
     await draw();
-    expect(document.querySelector("[data-proposal-summary]")?.textContent).toBe(
+    expect(document.querySelector("[data-ask-id]")?.getAttribute("aria-label")).toBe(
       "This Mate has no Chief to ask.",
     );
     expect(decisions()).toHaveLength(0);
@@ -194,16 +206,16 @@ describe("a Mate can ask its Chief only when one exists", () => {
   });
   it("withholds the promised recipient until HQ identifies a Chief, then withdraws it if none exists", async () => {
     await draw();
-    expect(document.querySelector("[data-proposal-summary]")?.textContent).toBe(
+    expect(document.querySelector("[data-ask-id]")?.getAttribute("aria-label")).toBe(
       "Finding this Mate's Chief…",
     );
     await identify(person("owners-chief", true));
-    expect(document.querySelector("[data-proposal-summary]")?.textContent).toBe(
+    expect(document.querySelector("[data-ask-id]")?.getAttribute("aria-label")).toBe(
       "Ask your Chief who owns orders",
     );
     expect(decisions().map((button) => button.textContent)).toEqual(["Approve", "Decline"]);
     await identify(person(null, true));
-    expect(document.querySelector("[data-proposal-summary]")?.textContent).toBe(
+    expect(document.querySelector("[data-ask-id]")?.getAttribute("aria-label")).toBe(
       "This Mate has no Chief to ask.",
     );
     expect(decisions().map((button) => button.textContent)).toEqual(["Decline"]);
@@ -248,13 +260,12 @@ const production = (
   waitingDomains,
   waitingPorts: [],
   readsProject: false,
+  nothingDeployed: false,
 });
 
 describe("the Chief's proposal to put a project on a domain", () => {
   const press = async (label: string) => {
-    const button = [...document.querySelectorAll("button")].find(
-      (each) => each.textContent === label,
-    );
+    const button = pressable(label);
     expect(button).toBeDefined();
     await act(async () => button!.click());
   };
@@ -382,9 +393,7 @@ describe("an access proposal's real card", () => {
     })),
   });
   const press = async (label: string) => {
-    const button = [...document.querySelectorAll("button")].find(
-      (one) => one.textContent === label,
-    );
+    const button = pressable(label);
     await act(async () => button!.click());
   };
   const first = operation;

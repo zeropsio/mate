@@ -20,7 +20,7 @@ import {
 } from "@t3tools/contracts";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
 import { normalizeModelSlug } from "@t3tools/shared/model";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -41,6 +41,7 @@ import { buildCodexInitializeParams } from "./CodexProvider.ts";
 import { codexSessionAppServerArgs } from "./codexLaunchArgs.ts";
 import { expandHomePath } from "../../pathExpansion.ts";
 import type { CodexFileChange, CodexThreadSetup } from "../../spi/codexThreadProfile.ts";
+import { CODEX_SIGN_IN_TIMEOUT_SECONDS, ProviderMcpError } from "../../spi/mcpControl.ts";
 import {
   buildCodexAdditionalContext,
   buildCodexDeveloperInstructions,
@@ -166,6 +167,8 @@ export interface CodexSessionRuntimeOptions {
   readonly models?: Effect.Effect<ReadonlyArray<ServerProviderModel>>;
   /** A thread with a tool profile: its overrides, and the gate that answers its approvals. */
   readonly threadSetup?: CodexThreadSetup;
+  /** The Mate's persona text, read for each turn; absent in a crew, which takes none. */
+  readonly persona?: Effect.Effect<string | undefined>;
 }
 
 export interface CodexSessionRuntimeSendTurnInput {
@@ -220,9 +223,31 @@ export interface CodexSessionRuntimeShape {
   >;
   /** Re-reads the MCP servers of `config.toml` (`config/mcpServer/reload`). */
   readonly reloadMcpServers?: Effect.Effect<void, CodexSessionRuntimeError>;
+  /**
+   * Starts a server's OAuth sign-in (`mcpServer/oauth/login`); `completed`
+   * settles on the app-server's `mcpServer/oauthLogin/completed` for it.
+   */
+  readonly loginMcpServer?: (name: string) => Effect.Effect<
+    {
+      readonly authorizationUrl: string;
+      readonly completed: Effect.Effect<void, Error>;
+    },
+    CodexSessionRuntimeError
+  >;
+  /** Drops a server's OAuth sign-in: `codex mcp logout`, with this session's binary and home. */
+  readonly logoutMcpServer?: (name: string) => Effect.Effect<void, ProviderMcpError>;
   readonly events: Stream.Stream<ProviderEvent, never>;
   readonly close: Effect.Effect<void>;
 }
+
+/** What a Codex session generates a random identifier for. */
+type CodexIdentifierPurpose =
+  | "provider-event"
+  | "command-approval-request"
+  | "file-change-approval-request"
+  | "mcp-elicitation-request"
+  | "app-permission-approval-request"
+  | "user-input-request";
 
 export type CodexSessionRuntimeError =
   | CodexErrors.CodexAppServerError
@@ -588,26 +613,29 @@ function buildCodexTurnInstructions(input: {
   readonly model?: string;
   readonly modelName?: string;
   readonly effort?: EffectCodexSchema.V2TurnStartParams__ReasoningEffort;
+  readonly persona?: string;
 }): Pick<CodexTurnStartParamsWithCollaborationMode, "collaborationMode" | "additionalContext"> {
-  if (input.interactionMode === undefined) {
-    return {};
-  }
   const model = normalizeCodexModelSlug(input.model) ?? DEFAULT_MODEL;
   const reasoningEffort = input.effort ?? "medium";
   return {
-    collaborationMode: {
-      mode: input.interactionMode,
-      settings: {
-        model,
-        reasoning_effort: reasoningEffort,
-        developer_instructions: buildCodexDeveloperInstructions(input.interactionMode),
-      },
-    },
-    additionalContext: buildCodexAdditionalContext({
-      model,
-      modelName: input.modelName,
-      reasoningEffort,
-    }),
+    // The engine names only a mode other than the default; a turn without one keeps Codex's own.
+    ...(input.interactionMode === undefined
+      ? {}
+      : {
+          collaborationMode: {
+            mode: input.interactionMode,
+            settings: {
+              model,
+              reasoning_effort: reasoningEffort,
+              developer_instructions: buildCodexDeveloperInstructions(input.interactionMode),
+            },
+          },
+        }),
+    // Every turn carries Mate's context: default-mode turns arrive without a mode.
+    additionalContext: buildCodexAdditionalContext(
+      { model, modelName: input.modelName, reasoningEffort },
+      input.persona,
+    ),
   };
 }
 
@@ -629,6 +657,8 @@ export function buildTurnStartParams(input: {
   readonly serviceTier?: CodexServiceTier;
   readonly effort?: EffectCodexSchema.V2TurnStartParams__ReasoningEffort;
   readonly interactionMode?: ProviderInteractionMode;
+  /** The persona text, as its own context entry. */
+  readonly persona?: string;
   readonly overrides?: CodexThreadSetup["turn"];
 }): Effect.Effect<
   CodexTurnStartParamsWithCollaborationMode,
@@ -651,6 +681,7 @@ export function buildTurnStartParams(input: {
     ...(input.model ? { model: input.model } : {}),
     ...(input.modelName ? { modelName: input.modelName } : {}),
     ...(input.effort ? { effort: input.effort } : {}),
+    ...(input.persona !== undefined ? { persona: input.persona } : {}),
   });
 
   return decodeCodexTurnStartParamsWithCollaborationMode({
@@ -1342,13 +1373,13 @@ export const makeCodexSessionRuntime = (
 ): Effect.Effect<
   CodexSessionRuntimeShape,
   CodexErrors.CodexAppServerError,
-  ChildProcessSpawner.ChildProcessSpawner | Crypto.Crypto | Scope.Scope
+  ChildProcessSpawner.ChildProcessSpawner | SecureRandom.SecureRandom | Scope.Scope
 > =>
   Effect.gen(function* () {
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     // A child of the caller's scope, so closing the runtime never closes the caller's.
     const runtimeScope = yield* Scope.fork(yield* Scope.Scope);
-    const crypto = yield* Crypto.Crypto;
+    const crypto = yield* SecureRandom.SecureRandom;
     const events = yield* Queue.unbounded<ProviderEvent>();
     const pendingApprovalsRef = yield* Ref.make(new Map<ApprovalRequestId, PendingApproval>());
     const approvalCorrelationsRef = yield* Ref.make(new Map<string, ApprovalCorrelation>());
@@ -1408,16 +1439,19 @@ export const makeCodexSessionRuntime = (
     );
     const serverNotifications = yield* Queue.unbounded<CodexServerNotification>();
     const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
-    const randomUUIDv4 = (purpose: CodexErrors.CodexAppServerIdentifierPurpose) =>
-      crypto.randomUUIDv4.pipe(
-        Effect.mapError(
-          (cause) =>
-            new CodexErrors.CodexAppServerIdentifierGenerationError({
-              purpose,
-              cause,
-            }),
-        ),
-      );
+    // A failed random source answers Codex the way any failed handler does: an internal error.
+    const randomUUIDv4 = (purpose: CodexIdentifierPurpose) =>
+      crypto
+        .uuidV4()
+        .pipe(
+          Effect.mapError((cause) =>
+            CodexErrors.CodexAppServerRequestError.internalError(
+              `Failed to generate Codex App Server identifier for ${purpose}.`,
+              undefined,
+              { cause },
+            ),
+          ),
+        );
 
     const sessionCreatedAt = yield* nowIso;
     const initialSession = {
@@ -2113,6 +2147,19 @@ export const makeCodexSessionRuntime = (
 
     const currentSessionProviderThreadId = Effect.map(Ref.get(sessionRef), currentProviderThreadId);
 
+    // Each MCP sign-in in flight, by server name, until the app-server says how it ended.
+    const mcpLogins = new Map<string, Deferred.Deferred<void, Error>>();
+    yield* client.handleServerNotification("mcpServer/oauthLogin/completed", (payload) =>
+      Effect.suspend(() => {
+        const pending = mcpLogins.get(payload.name);
+        if (pending === undefined) return Effect.void;
+        mcpLogins.delete(payload.name);
+        return payload.success
+          ? Deferred.succeed(pending, undefined)
+          : Deferred.fail(pending, new Error(payload.error ?? "the sign-in did not finish"));
+      }).pipe(Effect.asVoid),
+    );
+
     yield* client.handleServerNotification("thread/started", (payload) =>
       currentSessionProviderThreadId.pipe(
         Effect.flatMap((providerThreadId) => {
@@ -2199,7 +2246,7 @@ export const makeCodexSessionRuntime = (
     const correlateGated = (
       key: string,
       requestKind: ProviderRequestKind,
-      purpose: CodexErrors.CodexAppServerIdentifierPurpose,
+      purpose: CodexIdentifierPurpose,
       payload: { readonly turnId: string; readonly itemId: string },
     ) =>
       Effect.gen(function* () {
@@ -2541,10 +2588,13 @@ export const makeCodexSessionRuntime = (
 
         return {
           answers: yield* toCodexUserInputAnswers(resolvedAnswers).pipe(
-            Effect.mapError((error) =>
-              CodexErrors.CodexAppServerRequestError.invalidParams(error.message, {
-                questionId: error.questionId,
-              }),
+            Effect.mapError(
+              (error) =>
+                new CodexErrors.CodexAppServerRequestError({
+                  code: -32602,
+                  errorMessage: error.message,
+                  data: { questionId: error.questionId },
+                }),
             ),
           ),
         } satisfies EffectCodexSchema.ToolRequestUserInputResponse;
@@ -2725,6 +2775,7 @@ export const makeCodexSessionRuntime = (
           );
           const models = options.models ? yield* options.models : [];
           const modelName = models.find((model) => model.slug === normalizedModel)?.name;
+          const persona = options.persona ? yield* options.persona : undefined;
           const params = yield* buildTurnStartParams({
             threadId: providerThreadId,
             runtimeMode: options.runtimeMode,
@@ -2735,6 +2786,7 @@ export const makeCodexSessionRuntime = (
             ...(input.serviceTier ? { serviceTier: input.serviceTier } : {}),
             ...(input.effort ? { effort: input.effort } : {}),
             ...(input.interactionMode ? { interactionMode: input.interactionMode } : {}),
+            ...(persona !== undefined ? { persona } : {}),
             ...(options.threadSetup ? { overrides: options.threadSetup.turn } : {}),
           });
           yield* Ref.set(lastAdditionalContextRef, params.additionalContext);
@@ -2841,6 +2893,46 @@ export const makeCodexSessionRuntime = (
         });
       }),
       reloadMcpServers: client.request("config/mcpServer/reload", undefined).pipe(Effect.asVoid),
+      loginMcpServer: (name) =>
+        Effect.gen(function* () {
+          const providerThreadId = yield* readProviderThreadId;
+          const completed = yield* Deferred.make<void, Error>();
+          mcpLogins.set(name, completed);
+          const { authorizationUrl } = yield* client.request("mcpServer/oauth/login", {
+            name,
+            threadId: providerThreadId,
+            timeoutSecs: CODEX_SIGN_IN_TIMEOUT_SECONDS,
+          });
+          return { authorizationUrl, completed: Deferred.await(completed) };
+        }),
+      logoutMcpServer: (name) =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const logout = yield* resolveSpawnCommand(options.binaryPath, ["mcp", "logout", name], {
+              env,
+              extendEnv,
+            });
+            const process = yield* spawner.spawn(
+              ChildProcess.make(logout.command, logout.args, {
+                cwd: options.cwd,
+                env,
+                extendEnv,
+                shell: logout.shell,
+              }),
+            );
+            const code = yield* process.exitCode;
+            if (code !== 0) {
+              return yield* new ProviderMcpError({
+                detail: `codex mcp logout ${name} exited with ${String(code)}`,
+              });
+            }
+          }),
+        ).pipe(
+          Effect.catchTags({
+            PlatformError: () =>
+              Effect.fail(new ProviderMcpError({ detail: `codex mcp logout ${name} didn't run` })),
+          }),
+        ),
       respondToRequest: (requestId, decision) =>
         Effect.gen(function* () {
           const pending = (yield* Ref.get(pendingApprovalsRef)).get(requestId);

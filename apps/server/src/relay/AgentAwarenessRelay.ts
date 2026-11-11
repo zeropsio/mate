@@ -20,7 +20,7 @@ import {
 } from "@t3tools/shared/relayJwt";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -305,7 +305,7 @@ export const make = Effect.gen(function* () {
   const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
   const snapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
   const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
   const cloudLinkKeyPair = yield* getOrCreateEnvironmentKeyPairFromSecretStore(secrets);
   const startedAt = (yield* DateTime.now).epochMilliseconds;
   const activeSnapshotPublishedRef = yield* Ref.make(false);
@@ -386,7 +386,7 @@ export const make = Effect.gen(function* () {
           environmentId,
           threadId,
           state: input.state,
-          jti: yield* crypto.randomUUIDv4,
+          jti: yield* crypto.uuidV4(),
         });
 
         yield* Effect.logInfo("publishing agent activity for thread", {

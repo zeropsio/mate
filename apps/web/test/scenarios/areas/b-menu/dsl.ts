@@ -2,11 +2,11 @@ import type { MateFake } from "../../fakes/mate.ts";
 import { expect } from "@effect/vitest";
 import type { Page } from "puppeteer-core";
 import * as Effect from "effect/Effect";
-import type { ElementHandle } from "puppeteer-core";
-import { clickText, menuMateIn } from "../../harness/browser.ts";
+import { clickText, menuMateIn, xpathLiteral } from "../../harness/browser.ts";
 import type { ScenarioExtension, ScenarioOptions } from "../../harness/scenario.ts";
 import type { OverviewMain, MateThreadKind } from "@t3tools/shared/mateLink";
 import { createScenario } from "../../harness/scenario.ts";
+import { landCode, mateAccess, publishRecipe } from "../../harness/mateAccess.ts";
 import {
   conversationHistory,
   relayAttention,
@@ -18,6 +18,7 @@ import {
   removeProject,
   denyProjectRead,
   startStageBuild,
+  finishStageBuild,
   stageService,
   holdDetails,
   releaseDetails,
@@ -76,22 +77,13 @@ export function environmentRows(page: Page, expected: ReadonlyArray<string>) {
 
 export function openEnvironment(page: Page, appId: string, name: string, id: string) {
   return Effect.promise(async () => {
-    const button = await page.waitForFunction(
-      (name) => {
-        // The rows paint beside the card's stand-in; where the column stacks under the card, the
-        // answered card pushes them down, and a click aimed before that lands on the card.
-        if (document.querySelector('main [aria-busy="true"]') !== null) return undefined;
-        const section = [...document.querySelectorAll("main section")].find(
-          (section) => section.querySelector("h2")?.textContent === "Environments",
-        );
-        return [...(section?.querySelectorAll("button[data-zerops-environment-id]") ?? [])].find(
-          (row) => row.firstChild?.textContent?.trim() === name,
-        );
-      },
-      { polling: "raf" },
-      name,
-    );
-    await (button.asElement() as ElementHandle<HTMLElement>).click();
+    await page
+      .locator(
+        `::-p-xpath(//main//section[h2="Environments"]//button[@data-zerops-environment-id][normalize-space(text()[1])=${xpathLiteral(name)} or normalize-space(*[1])=${xpathLiteral(name)}])`,
+      )
+      // The answered card can push these rows down after their first paint.
+      .filter(() => document.querySelector('main [aria-busy="true"]') === null)
+      .click();
     await page
       .waitForFunction(
         (path) => location.pathname === path,
@@ -270,32 +262,16 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
     opensApplication: (name: string) =>
       Effect.promise(async () => {
         // The project's ···: its group's, or the one its only Mate's row shares with it.
-        const more = await s.page.waitForFunction(
-          (name) => {
-            const said = (node: Element | null) =>
-              node?.textContent
-                ?.replaceAll("\u00a0", " ")
-                .replace(/, \d+ Mates$/, "")
-                .trim();
-            const row = [
-              ...document.querySelectorAll<HTMLElement>(
-                // A lone Mate's ··· sits in its row's box, beside the row's own button.
-                '[data-zerops-surface="sidebar-project-row"], [data-zerops-surface="sidebar-mate-row"]',
-              ),
-            ].find((row) => {
-              const words = said(
-                row.querySelector(
-                  '[data-zerops-surface="sidebar-project-name"], [data-zerops-surface="sidebar-mate-name"]',
-                ),
-              );
-              return words === name || words?.startsWith(`${name} · `) === true;
-            });
-            return row?.querySelector<HTMLElement>('button[aria-label^="More for"]') ?? null;
-          },
-          { polling: "raf" },
-          name,
-        );
-        await (more.asElement() as ElementHandle<HTMLElement>).click();
+        const words = `normalize-space(translate(., "\u00a0", " "))`;
+        // A grouped project's direct text excludes its screen-reader-only Mate count; a lone
+        // Mate's label nests the project's name beside the Mate's, so read that label whole.
+        const project = `normalize-space(translate(text()[1], "\u00a0", " "))`;
+        const named = `${project}=${xpathLiteral(name)} or ${words}=${xpathLiteral(name)} or starts-with(${words}, ${xpathLiteral(`${name} · `)})`;
+        await s.page
+          .locator(
+            `::-p-xpath(//*[@data-zerops-surface="sidebar-project-row" or @data-zerops-surface="sidebar-mate-row"][.//*[@data-zerops-surface="sidebar-project-name" or @data-zerops-surface="sidebar-mate-name"][${named}]]//button[starts-with(@aria-label,"More for")])`,
+          )
+          .click();
         await s.page.locator("::-p-aria(Open project)").click();
         await s.page.waitForFunction(
           (name) =>
@@ -367,6 +343,8 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
         }
       }),
   };
+  /** Each stage to add, by its application's id. */
+  const stagesToAdd = new Map<string, string>();
   return {
     ...s,
     menu,
@@ -374,6 +352,38 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
       Effect.gen(function* () {
         yield* s.given.project(name, { app, kind: "stage", environmentName: "stage" });
         yield* stageService(s.drivers, name);
+      }),
+    /**
+     * The stage `name` stands in Zerops, not yet in `app`, whose Mate `credential` has put a stage
+     * recipe deploying its `web` code and that code on `main`: adding the stage deploys it.
+     */
+    stageToAdd: (name: string, app: string, credential: string) =>
+      Effect.gen(function* () {
+        const appId = s.appIds.get(app);
+        if (appId === undefined) return yield* Effect.die(new Error(`No application ${app}`));
+        const { core } = s.drivers;
+        yield* publishRecipe(
+          core,
+          s.owner,
+          credential,
+          appId,
+          "stage",
+          [
+            "services:",
+            "  - hostname: app",
+            "    type: ubuntu/nodejs@22",
+            `    buildFromGit: ${mateAccess(core, s.owner, credential).url(appId, "web")}`,
+            "    zeropsSetup: app",
+            "",
+          ].join("\n"),
+        );
+        yield* landCode(core, s.owner, credential, appId, "web", {
+          "zerops.yaml": "zerops:\n  - setup: app\n    run:\n      start: node index.js\n",
+          "index.js": 'console.log("shop");\n',
+        });
+        yield* s.given.project(name, { app, kind: "stage", registered: false });
+        yield* stageService(s.drivers, name);
+        stagesToAdd.set(name, appId);
       }),
     colleague: {
       said: (name: string, text: string) => conversationHistory(s.drivers, name, text),
@@ -398,7 +408,14 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
       ) => moveMate(s.drivers, name, app, kind),
       deletes: (name: string) => removeProject(s.drivers, name),
       denies: (name: string) => denyProjectRead(s.drivers, name),
-      builds: (name: string) => startStageBuild(s.drivers, name),
+      /** Adds the stage `name` (`stageToAdd`), which HQ builds. */
+      builds: (name: string) => {
+        const appId = stagesToAdd.get(name);
+        return appId === undefined
+          ? Effect.die(new Error(`${name} is no stage to add`))
+          : startStageBuild(s.drivers, s.owner, appId, name);
+      },
+      buildEnds: (name: string) => finishStageBuild(s.drivers, name),
     },
   };
 });

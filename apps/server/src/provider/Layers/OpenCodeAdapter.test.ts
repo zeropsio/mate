@@ -1,5 +1,6 @@
 import * as NodeAssert from "node:assert/strict";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { it } from "@effect/vitest";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
@@ -37,6 +38,7 @@ import { attachmentRelativePath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
+import { personaInstructions } from "../../personaInstructions.ts";
 import { ProviderSessionDirectory } from "../Services/ProviderSessionDirectory.ts";
 import type { OpenCodeAdapterShape } from "../Services/OpenCodeAdapter.ts";
 import {
@@ -58,6 +60,9 @@ class OpenCodeAdapter extends Context.Service<OpenCodeAdapter, OpenCodeAdapterSh
 ) {}
 
 const asThreadId = (value: string): ThreadId => ThreadId.make(value);
+
+/** The system text of a chat outside a crew, while the Mate has no persona. */
+const withoutPersona = (runtime: string) => `${runtime}\n\n${personaInstructions(null)}`;
 
 type MessageEntry = {
   info: {
@@ -639,7 +644,7 @@ const OpenCodeAdapterTestLayer = Layer.effect(
     }),
   ),
   Layer.provideMerge(providerSessionDirectoryTestLayer),
-  Layer.provideMerge(NodeServices.layer),
+  Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
 );
 
 beforeEach(() => {
@@ -1540,7 +1545,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
           Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
           Layer.provideMerge(ServerSettingsService.layerTest()),
           Layer.provideMerge(providerSessionDirectoryTestLayer),
-          Layer.provideMerge(NodeServices.layer),
+          Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
         );
         const context = yield* Layer.buildWithScope(adapterLayer, scope);
         const adapter = yield* Effect.service(OpenCodeAdapter).pipe(Effect.provide(context));
@@ -1925,12 +1930,16 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
           (call) => (call as { system: string }).system,
         );
         NodeAssert.deepEqual(systems, [
-          buildRuntimeInstructions({
-            harness: "OpenCode",
-            model: "nebius/zai-org/GLM-5.3-Flash",
-            imageInput: false,
-          }),
-          buildRuntimeInstructions({ harness: "OpenCode", model: "nebius/moonshotai/Kimi-K3" }),
+          withoutPersona(
+            buildRuntimeInstructions({
+              harness: "OpenCode",
+              model: "nebius/zai-org/GLM-5.3-Flash",
+              imageInput: false,
+            }),
+          ),
+          withoutPersona(
+            buildRuntimeInstructions({ harness: "OpenCode", model: "nebius/moonshotai/Kimi-K3" }),
+          ),
         ]);
         NodeAssert.ok(systems[0]!.includes("cannot see images"));
         NodeAssert.ok(!systems[1]!.includes("cannot see images"));
@@ -1957,7 +1966,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       NodeAssert.deepEqual(prompt.parts, [{ type: "text", text: "/unknown explain this" }]);
       NodeAssert.equal(
         prompt.system,
-        buildRuntimeInstructions({ harness: "OpenCode", model: "openai/gpt-5" }),
+        withoutPersona(buildRuntimeInstructions({ harness: "OpenCode", model: "openai/gpt-5" })),
       );
       yield* adapter.stopSession(threadId);
     }),
@@ -6466,7 +6475,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
       Layer.provideMerge(ServerSettingsService.layerTest()),
       Layer.provideMerge(providerSessionDirectoryTestLayer),
-      Layer.provideMerge(NodeServices.layer),
+      Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
     );
 
     return Effect.gen(function* () {
@@ -6503,10 +6512,12 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
         },
         agent: "github-copilot",
         variant: "high",
-        system: buildRuntimeInstructions({
-          harness: "OpenCode",
-          model: "anthropic/claude-sonnet-4-5",
-        }),
+        system: withoutPersona(
+          buildRuntimeInstructions({
+            harness: "OpenCode",
+            model: "anthropic/claude-sonnet-4-5",
+          }),
+        ),
         parts: [{ type: "text", text: "Fix it" }],
       });
     }).pipe(Effect.provide(adapterLayer));
@@ -6522,7 +6533,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
       Layer.provideMerge(ServerSettingsService.layerTest()),
       Layer.provideMerge(providerSessionDirectoryTestLayer),
-      Layer.provideMerge(NodeServices.layer),
+      Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
     );
 
     return Effect.gen(function* () {
@@ -6554,10 +6565,12 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
           providerID: "anthropic",
           modelID: "claude-sonnet-4-5",
         },
-        system: buildRuntimeInstructions({
-          harness: "OpenCode",
-          model: "anthropic/claude-sonnet-4-5",
-        }),
+        system: withoutPersona(
+          buildRuntimeInstructions({
+            harness: "OpenCode",
+            model: "anthropic/claude-sonnet-4-5",
+          }),
+        ),
         parts: [{ type: "text", text: "Fix it" }],
       });
     }).pipe(Effect.provide(adapterLayer));
@@ -6573,7 +6586,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
       Layer.provideMerge(ServerSettingsService.layerTest()),
       Layer.provideMerge(providerSessionDirectoryTestLayer),
-      Layer.provideMerge(NodeServices.layer),
+      Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
     );
 
     return Effect.gen(function* () {
@@ -7815,7 +7828,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
           }),
         ),
         Layer.provideMerge(providerSessionDirectoryTestLayer),
-        Layer.provideMerge(NodeServices.layer),
+        Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
       );
 
       const session = yield* Effect.gen(function* () {
@@ -7897,7 +7910,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
           }),
         ),
         Layer.provideMerge(providerSessionDirectoryTestLayer),
-        Layer.provideMerge(NodeServices.layer),
+        Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
       );
 
       // Capture closeCalls *inside* the provided layer scope: the adapter's
@@ -7967,10 +7980,52 @@ const OpenCodeProfiledAdapterTestLayer = Layer.effect(
   Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
   Layer.provideMerge(ServerSettingsService.layerTest()),
   Layer.provideMerge(providerSessionDirectoryTestLayer),
-  Layer.provideMerge(NodeServices.layer),
+  Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
 );
 
 it.layer(OpenCodeProfiledAdapterTestLayer)("OpenCodeAdapter with a thread profile", (it) => {
+  it.effect.each([
+    { label: "a person's chat", threadId: asThreadId("thread-person"), heard: ["persona", "none"] },
+    { label: "a crewmate's chat", threadId: CREWMATE_THREAD, heard: ["missing", "missing"] },
+  ])(
+    "OpenCode carries the Mate's current persona on every turn of $label, and its removal",
+    ({ threadId, heard }) =>
+      Effect.gen(function* () {
+        const pirate = { name: "Pirate", instructions: "Talk like a pirate." };
+        const settings = yield* ServerSettingsService;
+        yield* settings.updateSettings({ persona: pirate });
+        const adapter = yield* OpenCodeAdapter;
+        yield* adapter.startSession({
+          provider: ProviderDriverKind.make("opencode"),
+          threadId,
+          runtimeMode: "full-access",
+        });
+        for (const input of ["one", "two"]) {
+          yield* adapter.sendTurn({
+            threadId,
+            input,
+            modelSelection: createModelSelection(
+              ProviderInstanceId.make("opencode"),
+              "openai/gpt-5",
+            ),
+          });
+          yield* settings.updateSettings({ persona: null });
+        }
+        yield* adapter.stopSession(threadId);
+        NodeAssert.deepEqual(
+          runtimeMock.state.promptCalls.map((call) => {
+            const system = (call as { system: string }).system;
+            return system.includes(personaInstructions(pirate))
+              ? "persona"
+              : system.includes(personaInstructions(null))
+                ? "none"
+                : "missing";
+          }),
+          heard,
+        );
+      }),
+  );
+
   it.effect(
     "a crewmate's session asks for everything, serves its tools, and its gate answers each ask",
     () =>

@@ -7,8 +7,8 @@
  * routing stay owned and a port of a driver only has to keep those calls:
  *
  * - Claude Code: the SDK query's `mcpServerStatus()`, `reconnectMcpServer`,
- *   `toggleMcpServer` (the toggle also persists the project's disabled list).
- *   A server added or removed in a config reaches the next conversation.
+ *   `toggleMcpServer` (the toggle also persists the project's disabled list),
+ *   and `setMcpServers` for a server added while a conversation runs.
  * - Codex: the app-server's `mcpServerStatus/list` for the thread and
  *   `config/mcpServer/reload`, which re-reads `config.toml` — the nudge after
  *   every write, and the closest it has to a reconnect.
@@ -28,6 +28,7 @@ import { ProviderRegistry } from "../provider/Services/ProviderRegistry.ts";
 import {
   type McpConfigChange,
   type McpLiveServer,
+  type McpSignInStart,
   NOT_RUNNING,
   ProviderMcpError,
 } from "./mcpControl.ts";
@@ -53,6 +54,17 @@ export class McpLive extends Context.Service<
       name: string,
       enabled: boolean,
     ) => Effect.Effect<void, ProviderMcpError>;
+    /** Starts the thread's agent's sign-in to a server (`ProviderAdapterMcp.signIn`). */
+    readonly signIn: (
+      threadId: ThreadId,
+      name: string,
+      redirectUri: string | undefined,
+    ) => Effect.Effect<
+      { readonly driver: ProviderDriverKind; readonly started: McpSignInStart | "signed-in" },
+      ProviderMcpError
+    >;
+    /** Drops the thread's agent's sign-in to a server (`ProviderAdapterMcp.signOut`). */
+    readonly signOut: (threadId: ThreadId, name: string) => Effect.Effect<void, ProviderMcpError>;
     /** The drivers installed here, each once: the agents an added server is written for. */
     readonly installedDrivers: Effect.Effect<ReadonlyArray<ProviderDriverKind>>;
     /** Every running session of every instance of `driver`, best effort. */
@@ -110,6 +122,33 @@ export const layer = Layer.effect(
       setEnabled: (threadId, name, enabled) =>
         hookOf(threadId).pipe(
           Effect.flatMap((hook) => answeredInTime(hook.setEnabled(threadId, name, enabled))),
+        ),
+      signIn: (threadId, name, redirectUri) =>
+        Effect.gen(function* () {
+          const instance = yield* running(threadId);
+          const signIn = instance?.adapter.mcp?.signIn;
+          if (instance === undefined || instance.adapter.mcp === undefined) {
+            return yield* NOT_RUNNING;
+          }
+          if (signIn === undefined) {
+            return yield* new ProviderMcpError({
+              detail: "This agent can't sign in to MCP servers from Mate.",
+            });
+          }
+          const started = yield* answeredInTime(signIn(threadId, name, redirectUri));
+          return { driver: instance.driverKind, started };
+        }),
+      signOut: (threadId, name) =>
+        hookOf(threadId).pipe(
+          Effect.flatMap((hook) =>
+            hook.signOut === undefined
+              ? Effect.fail(
+                  new ProviderMcpError({
+                    detail: "This agent can't sign out of MCP servers from Mate.",
+                  }),
+                )
+              : answeredInTime(hook.signOut(threadId, name)),
+          ),
         ),
       installedDrivers: providers.getProviders.pipe(
         Effect.map((snapshots) => [

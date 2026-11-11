@@ -12,7 +12,7 @@ import { useClientSettings } from "~/hooks/useSettings";
 import { ConversationOpeningStage } from "../chat/ConversationOpeningStage";
 import { useConversationPanelStandIn } from "../chat/ConversationPanelStandIn";
 import { askAgainLabel } from "@t3tools/client-runtime/zerops/environments";
-import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
+import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/gui";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import type { ReactNode } from "react";
 

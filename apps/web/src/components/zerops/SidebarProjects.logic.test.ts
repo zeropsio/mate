@@ -7,8 +7,10 @@ import {
   menuDrawsLoadingRows,
   newProjectOffered,
   openMateReveal,
+  opensOpenProject,
   slackAfterScroll,
   slackForFold,
+  unfoldScroll,
   type MateReveal,
 } from "./SidebarProjects.logic";
 
@@ -175,50 +177,90 @@ describe("newProjectOffered — New project at the menu's foot (D11)", () => {
   });
 });
 
+describe("opensOpenProject — the open conversation's project opens around it", () => {
+  it.each([
+    {
+      title: "a project the menu has not drawn folded opens around the conversation",
+      paintedFolded: undefined,
+      conversation: "c1",
+      opens: true,
+    },
+    {
+      title:
+        "a reload on a Mate's conversation leaves its project folded once the menu drew it folded",
+      paintedFolded: "c1",
+      conversation: "c1",
+      opens: false,
+    },
+    {
+      title: "a conversation opened after the menu drew its project folded opens the project",
+      paintedFolded: "c1",
+      conversation: "c2",
+      opens: true,
+    },
+    {
+      title: "a project drawn folded while no conversation was open opens for one opened after",
+      paintedFolded: null,
+      conversation: "c1",
+      opens: true,
+    },
+  ])("$title", ({ paintedFolded, conversation, opens }) => {
+    expect(opensOpenProject({ groupId: "g", paintedFolded, conversation })).toBe(opens);
+  });
+
+  it("opens nothing while the open conversation's project is not known", () => {
+    expect(
+      opensOpenProject({ groupId: undefined, paintedFolded: undefined, conversation: "c1" }),
+    ).toBe(false);
+  });
+});
+
 describe("openMateReveal", () => {
   const MILO = "env-milo";
   const FEN = "env-fen";
-  const seen = (conversation: string | null, shown: string | null, owed = false): MateReveal => ({
-    conversation,
-    shown,
-    owed,
-  });
-  // Stress run 3 (+17:00): the open Mate was found after the menu drew, the menu then slid to it.
+  const seen = (
+    conversation: string | null,
+    shown: string | null,
+    owed = false,
+    reload = false,
+  ): MateReveal => ({ conversation, shown, owed, reload });
+  // The owner, 2026-11-06: a reload left the menu at its top, the open Mate scrolled out of view.
   it.each([
     [
       "a reload on an open Mate",
-      { seen: seen(MILO, "milo"), conversation: MILO, open: "milo", resolving: false },
-      undefined,
+      { seen: undefined, conversation: MILO, open: "milo", resolving: false },
+      { reveal: "milo", instant: true },
     ],
     [
       "a reload while the open Mate is still being found",
       { seen: undefined, conversation: MILO, open: null, resolving: true },
-      undefined,
+      { reveal: undefined, instant: true },
     ],
     [
       "a reload's open Mate found after the menu drew",
-      { seen: seen(MILO, null), conversation: MILO, open: "milo", resolving: false },
-      undefined,
+      { seen: seen(MILO, null, true, true), conversation: MILO, open: "milo", resolving: false },
+      { reveal: "milo", instant: true },
     ],
     [
       "a Mate opened from elsewhere",
       { seen: seen(MILO, "milo"), conversation: FEN, open: "fen", resolving: false },
-      "fen",
+      { reveal: "fen", instant: false },
     ],
     [
       "a Mate opened where none was",
       { seen: seen(null, null), conversation: FEN, open: "fen", resolving: false },
-      "fen",
+      { reveal: "fen", instant: false },
     ],
     [
       "no Mate open",
       { seen: seen(MILO, "milo"), conversation: null, open: null, resolving: false },
-      undefined,
+      { reveal: undefined, instant: false },
     ],
   ] as const)(
-    "A reload leaves the menu where it was; only a Mate opened afterwards scrolls into view: %s",
-    (_case, input, reveal) => {
-      expect(openMateReveal(input).reveal).toBe(reveal);
+    "A reload brings its open Mate into view at once; a Mate opened afterwards slides there: %s",
+    (_case, input, expected) => {
+      const { reveal, instant } = openMateReveal(input);
+      expect({ reveal, instant }).toEqual(expected);
     },
   );
 
@@ -234,31 +276,23 @@ describe("openMateReveal", () => {
     return draws.map(({ conversation, open, resolving = false }) => {
       const next = openMateReveal({ seen: state, conversation, open, resolving });
       state =
-        next.reveal === undefined ? next.seen : { conversation, shown: next.reveal, owed: false };
+        next.reveal === undefined
+          ? next.seen
+          : { conversation, shown: next.reveal, owed: false, reload: false };
       return next.reveal;
     });
   };
 
-  it("The open Mate a reload finds late is the one it opened on, not one opened afterwards", () => {
-    expect(
-      walk([
-        { conversation: MILO, open: null, resolving: true },
-        { conversation: MILO, open: "milo" },
-        { conversation: MILO, open: "milo" },
-        { conversation: FEN, open: "fen" },
-      ]),
-    ).toEqual([undefined, undefined, undefined, "fen"]);
-  });
-
-  it("A reload's open Mate the listing first misses and finds later is not scrolled to", () => {
+  it("A reload's open Mate the listing first misses and finds later is brought into view once found", () => {
     expect(
       walk([
         { conversation: MILO, open: null, resolving: true },
         { conversation: MILO, open: null },
         { conversation: MILO, open: null, resolving: true },
         { conversation: MILO, open: "milo" },
+        { conversation: MILO, open: "milo" },
       ]),
-    ).toEqual([undefined, undefined, undefined, undefined]);
+    ).toEqual([undefined, undefined, undefined, "milo", undefined]);
   });
 
   it("A Mate opened afterwards is scrolled to once, however often its rows are drawn again", () => {
@@ -271,7 +305,7 @@ describe("openMateReveal", () => {
         { conversation: FEN, open: null, resolving: true },
         { conversation: FEN, open: "fen" },
       ]),
-    ).toEqual([undefined, undefined, undefined, "fen", undefined, undefined]);
+    ).toEqual(["milo", undefined, undefined, "fen", undefined, undefined]);
   });
 
   it("A Mate lit by a press is brought into view, and not again when its conversation opens", () => {
@@ -281,7 +315,7 @@ describe("openMateReveal", () => {
         { conversation: MILO, open: "fen" },
         { conversation: FEN, open: "fen" },
       ]),
-    ).toEqual([undefined, "fen", undefined]);
+    ).toEqual(["milo", "fen", undefined]);
   });
 });
 
@@ -319,5 +353,43 @@ describe("menuDrawsLoadingRows — the list's loading rows, while it has nothing
     { case: "no listing on its way", input: { ...reading, reading: false }, drawn: false },
   ])("draws them for $case: $drawn", ({ input, drawn }) => {
     expect(menuDrawsLoadingRows(input)).toBe(drawn);
+  });
+});
+
+describe("unfoldScroll — a group opened at the list's end brings its Mates into view", () => {
+  const view = { top: 100, bottom: 700 };
+  it.each([
+    {
+      case: "its Mates stand wholly in view: the list stays",
+      unit: { top: 500, bottom: 650 },
+      by: 0,
+    },
+    {
+      case: "its Mates end exactly at the view's edge: the list stays",
+      unit: { top: 500, bottom: 700 },
+      by: 0,
+    },
+    {
+      case: "its Mates end below the view: it scrolls by what hangs below",
+      unit: { top: 600, bottom: 780 },
+      by: 80,
+    },
+    {
+      case: "its heading is the list's last row, its Mates wholly below: they come up under it",
+      unit: { top: 650, bottom: 830 },
+      by: 130,
+    },
+    {
+      case: "more Mates than the view holds: the heading stops at the view's top",
+      unit: { top: 450, bottom: 1250 },
+      by: 350,
+    },
+    {
+      case: "its heading already above the view: nothing scrolls it further up",
+      unit: { top: 40, bottom: 900 },
+      by: 0,
+    },
+  ])("$case", ({ unit, by }) => {
+    expect(unfoldScroll({ view, unit })).toBe(by);
   });
 });

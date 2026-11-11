@@ -16,7 +16,7 @@ import {
   type PlaceAddresses,
   type Projection,
 } from "@t3tools/client-runtime/data";
-import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
+import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/gui";
 import { Atom } from "effect/reactivity";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -98,6 +98,7 @@ const NOT_READ = Atom.make<PlaceAddresses>({
   waitingDomains: [],
   waitingPorts: [],
   readsProject: false,
+  nothingDeployed: false,
 });
 const NO_FACTS = Atom.make<PlaceFacts>({ name: undefined, ipv4: { state: "reading" } });
 

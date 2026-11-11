@@ -10,7 +10,7 @@ import {
   type ArrivalApp,
 } from "./arrival.logic";
 
-const SNAP: ArrivalApp = { groupId: "g-snap", name: "Snap", mine: false, addMate: true };
+const KETTLE: ArrivalApp = { groupId: "g-kettle", name: "Kettle", mine: false, addMate: true };
 const BEVIRO: ArrivalApp = { groupId: "g-beviro", name: "Beviro", mine: false, addMate: true };
 const SHOP: ArrivalApp = { groupId: "g-shop", name: "Shop", mine: false, addMate: true };
 
@@ -20,17 +20,17 @@ describe("the first minute after an invitation", () => {
       sentence:
         "A Developer is told their role on the team's project and starts their own Mate there",
       viewer: { roleCode: "NO_ACCESS", canCreateProjects: true },
-      apps: [SNAP],
-      line: "Welcome to Acme. You're a Developer on Snap.",
+      apps: [KETTLE],
+      line: "Welcome to Acme. You're a Developer on Kettle.",
       detail: null,
-      action: { label: "Add a project Mate to Snap", groupId: "g-snap" },
+      action: { label: "Add a project Mate to Kettle", groupId: "g-kettle" },
     },
     {
       sentence:
         "A Guest is told they can see the changes and open the app, and offered nothing to create",
       viewer: { roleCode: "NO_ACCESS", canCreateProjects: false },
-      apps: [{ ...SNAP, addMate: false }],
-      line: "Welcome to Acme. You're a Guest on Snap.",
+      apps: [{ ...KETTLE, addMate: false }],
+      line: "Welcome to Acme. You're a Guest on Kettle.",
       detail: "You can see the changes and open the app once it is released.",
       action: null,
     },
@@ -38,8 +38,8 @@ describe("the first minute after an invitation", () => {
       sentence:
         "A Developer on several projects hears them named, and starts on the first they may",
       viewer: { roleCode: "NO_ACCESS", canCreateProjects: true },
-      apps: [{ ...SNAP, addMate: false }, BEVIRO, SHOP],
-      line: "Welcome to Acme. You're a Developer on Snap and 2 more projects.",
+      apps: [{ ...KETTLE, addMate: false }, BEVIRO, SHOP],
+      line: "Welcome to Acme. You're a Developer on Kettle and 2 more projects.",
       detail: null,
       action: { label: "Add a project Mate to Beviro", groupId: "g-beviro" },
     },
@@ -47,10 +47,10 @@ describe("the first minute after an invitation", () => {
       sentence: "A Developer whose projects take no Mate of theirs is offered none",
       viewer: { roleCode: "NO_ACCESS", canCreateProjects: true },
       apps: [
-        { ...SNAP, addMate: false },
+        { ...KETTLE, addMate: false },
         { ...BEVIRO, addMate: false },
       ],
-      line: "Welcome to Acme. You're a Developer on Snap and Beviro.",
+      line: "Welcome to Acme. You're a Developer on Kettle and Beviro.",
       detail: null,
       action: null,
     },
@@ -63,13 +63,13 @@ describe("the first minute after an invitation", () => {
   });
 
   it.each([{ roleCode: "OWNER" }, { roleCode: "ADMIN" }])(
-    "Where an older HQ keeps no first sign-in, an Owner or an Admin is not welcomed: a new browser is no arrival",
+    "Where HQ gives no word on a first sign-in, an Owner or an Admin is not welcomed: a new browser is no arrival",
     (viewer) => {
       expect(
         arrivalWelcome({
           organizationName: "Acme",
           viewer,
-          apps: [SNAP, BEVIRO],
+          apps: [KETTLE, BEVIRO],
           firstVisit: null,
         }),
       ).toBeNull();
@@ -81,7 +81,7 @@ describe("the first minute after an invitation", () => {
       { firstSignedInAt: "2026-10-16T11:00:00Z", founder: true },
       Date.parse("2026-10-16T11:05:00Z"),
     );
-    expect(welcomeOwed({ welcomed: false, apps: [SNAP], firstVisit: first })).toBe(false);
+    expect(welcomeOwed({ welcomed: false, apps: [KETTLE], firstVisit: first })).toBe(false);
   });
 
   it("an organization whose name ends in a period is welcomed with one period", () => {
@@ -89,9 +89,9 @@ describe("the first minute after an invitation", () => {
       arrivalWelcome({
         organizationName: "Acme s.r.o.",
         viewer: { roleCode: "NO_ACCESS", canCreateProjects: true },
-        apps: [SNAP],
+        apps: [KETTLE],
       })?.line,
-    ).toBe("Welcome to Acme s.r.o. You're a Developer on Snap.");
+    ).toBe("Welcome to Acme s.r.o. You're a Developer on Kettle.");
   });
 });
 
@@ -100,19 +100,19 @@ describe("when the welcome is said", () => {
     {
       sentence: "A first visit to projects someone else started is welcomed",
       welcomed: false,
-      apps: [SNAP],
+      apps: [KETTLE],
       owed: true,
     },
     {
       sentence: "A later visit is quiet",
       welcomed: true,
-      apps: [SNAP],
+      apps: [KETTLE],
       owed: false,
     },
     {
       sentence: "Someone with a Mate of their own here started it: no welcome",
       welcomed: false,
-      apps: [{ ...SNAP, mine: true }, BEVIRO],
+      apps: [{ ...KETTLE, mine: true }, BEVIRO],
       owed: false,
     },
     {
@@ -219,7 +219,7 @@ describe("a first visit, as HQ records it", () => {
       owed: true,
     },
   ])("$sentence", ({ welcomed, first, owed }) => {
-    expect(welcomeOwed({ welcomed, apps: [SNAP], firstVisit: first })).toBe(owed);
+    expect(welcomeOwed({ welcomed, apps: [KETTLE], firstVisit: first })).toBe(owed);
   });
 
   it.each([
@@ -238,11 +238,11 @@ describe("a first visit, as HQ records it", () => {
     },
   ])("$sentence", ({ viewer, line, detail }) => {
     expect(
-      arrivalWelcome({ organizationName: "Acme", viewer, apps: [SNAP], firstVisit: true }),
+      arrivalWelcome({ organizationName: "Acme", viewer, apps: [KETTLE], firstVisit: true }),
     ).toEqual({
       line,
       detail,
-      action: { label: "Add a project Mate to Snap", groupId: "g-snap" },
+      action: { label: "Add a project Mate to Kettle", groupId: "g-kettle" },
     });
   });
 });
@@ -276,9 +276,9 @@ describe("the welcome never waits on an HQ that does not answer", () => {
 // Run 2 (2026-10-16): the welcome offered "Start your own Mate" while the project's first Mate was
 // still setting it up; the press opened a dialog that refused, and the button came back unchanged.
 describe("the welcome's way to start a Mate, while the project takes none yet", () => {
-  const action = { label: "Add a project Mate to Snap", groupId: "g-snap" };
+  const action = { label: "Add a project Mate to Kettle", groupId: "g-kettle" };
   it("says why in the button's place while the project takes no Mate, and offers it once it does", () => {
-    const waiting = "Ada is still setting Snap up. New Mates can join once it's done.";
+    const waiting = "Ada is still setting Kettle up. New Mates can join once it's done.";
     expect(welcomeStart(action, () => waiting)).toEqual({ kind: "waits", line: waiting });
     expect(welcomeStart(action, () => null)).toEqual({ kind: "start", ...action });
     expect(welcomeStart(null, () => waiting)).toBeNull();

@@ -14,7 +14,7 @@ export {
 } from "./account.ts";
 export { makeMateAttentionWire, type MateAttentionWire } from "./adapters/mateAttention.ts";
 export { makeHqWire } from "./adapters/hqWire.ts";
-export type { HqHandoverCandidates, HqMoveOffers, HqWire } from "./adapters/hq.ts";
+export type { HqMoveOffers, HqWire } from "./adapters/hq.ts";
 export type {
   HqAppValue,
   HqOrganizationValue,
@@ -31,11 +31,20 @@ export {
   canonicalHqNavigation,
   canonicalHqMenuNavigation,
   type CanonicalHqNavigationRead,
+  hqEnvironmentOffers,
   hqNavigation,
   hqPersonFacts,
   hqStatus,
+  type HqNavigationPeople,
   type HqNavigationRead,
 } from "./projections/hqNavigation.ts";
+export {
+  HQ_AWAY_BUDGET_MS,
+  hqAwayAnswer,
+  hqAwaySaidAt,
+  hqLinkOf,
+  type HqLink,
+} from "./projections/hqLink.ts";
 export {
   hqMateOverview,
   hqMateRefusal,
@@ -45,6 +54,8 @@ export {
   hqMateReady,
   hqMates,
   hqMatesAnswered,
+  hqIndexWord,
+  type HqIndexWord,
   type HqMatesRead,
 } from "./projections/hqMates.ts";
 export {
@@ -90,6 +101,8 @@ export {
   type ZeropsPrincipalVerdict,
   type ZeropsSessionCalls,
 } from "../zerops/data/zeropsSession.ts";
+export { followAccessChanges } from "../zerops/account/accessChanges.ts";
+export { finishGoneProjects } from "./goneProjects.ts";
 export { endIssuedSession } from "./adapters/issuedSessions.ts";
 export { makeBuildLogTransport } from "./adapters/buildLog.ts";
 export { makeVaultReveal, type VaultReveal, type VaultRevealed } from "./adapters/vaultReveal.ts";
@@ -134,7 +147,41 @@ export {
 export { addonsScope, type ProjectIpv4Addon } from "./families/projectAddons.ts";
 export { creditForecast } from "./projections/creditForecast.ts";
 export { creditScope } from "./families/organizationCredit.ts";
-export { balanceScope } from "./families/organizationBalance.ts";
+export {
+  balanceScope,
+  type AutoTopUp,
+  type OrganizationBalanceValue,
+} from "./families/organizationBalance.ts";
+export {
+  organizationCostScope,
+  type OrganizationCostValue,
+  type PeriodCost,
+} from "./families/organizationCost.ts";
+export { projectStatusScope, type ProjectStatusValue } from "./families/projectStatus.ts";
+export {
+  STOP_IMMINENT_HOURS,
+  STOP_SOON_HOURS,
+  billingTone,
+  lastsShort,
+  stopWords,
+  type BillingTone,
+  type CostRead,
+  type OrganizationBilling,
+  type ProjectCredit,
+} from "./projections/billing.ts";
+export {
+  pipelineScope,
+  readPipelineRow,
+  type PipelineGit,
+  type PipelineStarter,
+  type PipelineValue,
+} from "./families/pipeline.ts";
+export { pipelineRead, type PipelineRead } from "./projections/pipeline.ts";
+export {
+  pipelineConfigScope,
+  readPipelineConfig,
+  type PipelineConfigValue,
+} from "./families/pipelineConfig.ts";
 export {
   dayIn,
   projectSpendScope,
@@ -144,6 +191,7 @@ export {
 } from "./families/projectSpend.ts";
 export {
   computeSpend,
+  organizationComputeSpend,
   type ComputeSpendKey,
   type ComputeSpendRead,
 } from "./projections/projectSpend.ts";
@@ -203,8 +251,16 @@ export {
   type OrganizationProjects,
   type RosterRead,
 } from "./projections/projects.ts";
+export { mateVisibility } from "./projections/mateVisibility.ts";
 export { HQ_SLOW, type UnavailableReason } from "./projections/freshness.ts";
 export { projectCreations } from "./projections/creation.ts";
+export { creationImports } from "./projections/creationImports.ts";
+export {
+  sharedBirths,
+  type SharedBirth,
+  type SharedBirthState,
+  type BirthProgress,
+} from "./projections/birthProgress.ts";
 export {
   creationStepId,
   creationSteps,
@@ -235,20 +291,26 @@ export { releaseRequestOf, type FlowWriteIntent } from "./operations/flowWrites.
 export { flowAnswer, type FlowWriteAnswer } from "./projections/flowAnswer.ts";
 export { restartWay } from "./operations/mateRestart.ts";
 export { OperationStopped, runToEnd, type RunToEnd } from "./operations/runToEnd.ts";
-export { PROPOSAL_DECIDED_ELSEWHERE } from "./operations/hqChief.ts";
+export { birthAttempt } from "./operations/birthAttempt.ts";
+export { continueBirth } from "./operations/continueBirth.ts";
+export { REVEAL_UNRECORDABLE, PROPOSAL_DECIDED_ELSEWHERE } from "./operations/hqChief.ts";
 export { readProposalDecisions } from "./adapters/hqProposalDecisions.ts";
 export {
   recordedEnvironment,
   type RecordedEnvironment,
 } from "./projections/recordedEnvironment.ts";
 export { operationProgress, type OperationProgress } from "./projections/operation.ts";
+export { serviceCreation, type ServiceCreation } from "./projections/serviceCreation.ts";
+export type { CreateServicesResult } from "./operations/createServices.ts";
 export { operationEnd, type OperationEnd } from "./projections/operationEnd.ts";
 export { operationWait, type OperationWait } from "./projections/operationWait.ts";
 export {
   accountReadsAtom,
+  sharedBirthsAtom,
   NOT_READ_PROCESSES,
   listedProjectAtom,
-  hqMateSetupAtom,
+  shownMateVisibilityAtom,
+  shownMateVisibilitiesAtom,
   NOT_READ_PROJECTS,
   NOT_READ_SERVICES,
   NOT_READ_USAGE,
@@ -256,9 +318,15 @@ export {
   projectStandingAtom,
   projectProcessesAtom,
   projectServicesAtom,
+  projectPublicAccessAtom,
   creditForecastAtom,
   creditReadGenerationAtom,
   balanceReadGenerationAtom,
+  balanceLiveAtom,
+  organizationBillingAtom,
+  projectsCreditAtom,
+  pipelineReadAtom,
+  pipelineConfigAtom,
   projectsServicesAtom,
   projectUsageAtom,
   NOT_READ_VAULT,
@@ -282,18 +350,12 @@ export {
   shownHqAppChangesAtom,
   shownHqPersonFactsAtom,
   shownHqStatusAtom,
-  shownHqVerdictAtom,
   mateOfEnvironmentAtom,
   NO_MATE_LINKS,
   shownMateLinksAtom,
   type AccountReads,
 } from "./reads.ts";
 
-export {
-  hqBirthProgress,
-  hqBirthRequestId,
-  type HqBirthProgress,
-} from "./projections/hqBirthProgress.ts";
 export {
   mateRegistration,
   registrationRequestId,
@@ -305,11 +367,9 @@ export {
   type HqMateOwner,
   type HqProjectPeople,
 } from "./projections/hqProjectPeople.ts";
-export type { HqVerdict } from "./families/hqVerdict.ts";
 
 export { environmentSetup } from "./projections/environmentSetup.ts";
 
-export { hqMateSetup, type HqMateSetup } from "./projections/hqMateSetup.ts";
 export { hqPicture, type HqPictureRead } from "./projections/hqPicture.ts";
 export {
   pictureOwner,
@@ -347,7 +407,7 @@ export { readsOfState } from "./store.ts";
 export { streamOf } from "./reducer.ts";
 export { classifyHqCall } from "./adapters/hqWire.ts";
 
-export { makeBrowserHqApi, readAccountHqHealth } from "./adapters/hqBrowser.ts";
+export { makeBrowserHqApi } from "./adapters/hqBrowser.ts";
 
 export {
   lifecycleRemainders,
@@ -426,6 +486,7 @@ export {
 } from "./projections/inventoryTopology.ts";
 
 export { makeMateUpdates, makeMateUpdateWire, type MateUpdateHost } from "./adapters/mateUpdate.ts";
+export type { MateRestartTarget } from "./operations/mateUpdate.ts";
 export { mateUpdate, mateUpdateStates, type MateUpdateRead } from "./projections/mateUpdate.ts";
 export { composerControl, type ComposerControlLook } from "./projections/composerControl.ts";
 export { mateImage, mateImagePreview, mateImageDimensions } from "./projections/mateImage.ts";
@@ -450,6 +511,23 @@ export {
   autoUpdatePolicySettings,
   type AutoUpdatePolicySettings,
 } from "./projections/hqAutoUpdatePolicy.ts";
+export {
+  hqPersonaTemplatesFamily,
+  personaTemplatesScope,
+  type HqPersonaTemplatesRecord,
+} from "./families/hqPersonaTemplates.ts";
+export {
+  PERSONA_TEMPLATE_CONFLICT,
+  personaTemplateGone,
+  personaTemplateIn,
+  personaTemplateSaved,
+} from "./operations/hqPersonaTemplates.ts";
+export {
+  orgPersonaTemplates,
+  personaTemplateWrite,
+  type OrgPersonaTemplates,
+  type PersonaTemplateWrite,
+} from "./projections/hqPersonaTemplates.ts";
 export { gitBrowse, type GitBrowseView } from "./projections/gitBrowse.ts";
 export { makeGitBrowseReads } from "./adapters/hqGitBrowse.ts";
 export { type GitBrowseKey } from "./families/hqGitBrowse.ts";
@@ -514,8 +592,7 @@ export { makeVcsReads, makeVcsWire } from "./adapters/mateVcs.ts";
 export { mateVcs, type VcsKey } from "./projections/mateVcs.ts";
 export {
   acquireHqPressLease,
-  PRESS_RENEW_MS,
-  PRESS_STEP_RENEW_MS,
+  type KeepPress,
   type PressHold,
 } from "./operations/executors/hqPressLease.ts";
 
@@ -546,12 +623,6 @@ export {
   arrivalAwaitsAnswer,
   mateArrivalShown,
   mateConnectKey,
-  HALF_MADE_LINE,
-  HALF_MADE_OWNER_LINE,
-  CLOSING_OFF_LINE,
-  CHECKING_SETUP_LINE,
-  AWAITING_HQ_LINE,
-  halfMadeFor,
   asSentence,
   RESTARTING_SERVICE_STATUSES,
   COMING_UP_LINE,
@@ -571,7 +642,7 @@ export {
 export { makeSendTurnReceipts } from "./operations/executors/mateSendTurn.ts";
 export type { SentAsk } from "./operations/mateSendTurn.ts";
 
-export { STREAM_POLICY } from "./streamMachine.ts";
+export { NO_ANSWER_IN_TIME, STREAM_POLICY } from "./streamMachine.ts";
 export { faceAction, NO_FACE_ACTION } from "./projections/faceAction.ts";
 
 export {
@@ -666,6 +737,7 @@ export {
   canonicalInventoryGroups,
   inventoryGroups,
   type InventoryGroupsKey,
+  type InventoryGroupsView,
 } from "./projections/inventoryGroups.ts";
 
 export { hqProjectPerson } from "./projections/hqProjectPeople.ts";
@@ -688,6 +760,8 @@ export {
   engineThreadOf,
   overlayEngineRow,
   overlayEngineShell,
+  MIRROR_ASK_ACTIVITY_KIND,
+  type MirrorAskActivityPayload,
   ORIGIN_ASK_ACTIVITY_KIND,
   type OriginAskActivityPayload,
   VAULT_ASK_ACTIVITY_KIND,
@@ -731,6 +805,7 @@ export {
 export {
   admissionNeedsSignIn,
   agentAdmission,
+  readsAlong,
   resolveZeropsProviderAvailability,
   isZeropsInstanceRunnable,
   admissionRefusalWords,
@@ -783,10 +858,14 @@ export {
   shownHqListedMatesAtom,
   shownMateListProjectsAtom,
 } from "./reads.ts";
-export { zeropsAccessToken, zeropsOrgStart, type OrgStartClient } from "./adapters/hqOrgStart.ts";
+export { zeropsAccessToken } from "./adapters/hqAccessToken.ts";
 export { mateTicketIssuer } from "./adapters/hqMateTicket.ts";
 
-export { hqKeptGitQuestions, type KeptGitQuestionView } from "./projections/hqKeptGit.ts";
+export {
+  hqKeptGitQuestions,
+  KEPT_GIT_UNCONFIRMED,
+  type KeptGitQuestionView,
+} from "./projections/hqKeptGit.ts";
 
 export { hqKeptGitFamily, hqKeptGitScope } from "./families/hqKeptGit.ts";
 
@@ -795,3 +874,24 @@ export { changeMetadataScope } from "./families/hqChangeMetadata.ts";
 
 export { hqChangeCommits, type HqChangeCommits } from "./projections/hqChangeCommits.ts";
 export { changeCommitsScope } from "./families/hqChangeCommits.ts";
+
+export { hqChangeVerdict, type HqChangeVerdict } from "./projections/hqChangeVerdict.ts";
+export { changeVerdictScope } from "./families/hqChangeVerdict.ts";
+
+export {
+  releaseReviewOwner,
+  releaseReviewRequest,
+  releaseReviewId,
+  releaseReviewScope,
+  type ReleaseReviewRequest,
+} from "./families/hqReleaseReview.ts";
+export { hqReleaseReview, type HqReleaseReview } from "./projections/hqReleaseReview.ts";
+
+export { makeObserveCredential } from "./adapters/hqObserveCredential.ts";
+export { observeCredential, type ObserveCredentialRead } from "./projections/observeCredential.ts";
+export {
+  authorizesObserveByItself,
+  automaticObserveRequestId,
+  offersObserveAuthorize,
+} from "./projections/observeAuthorization.ts";
+export { projectOperator } from "./projections/permissionFacts.ts";

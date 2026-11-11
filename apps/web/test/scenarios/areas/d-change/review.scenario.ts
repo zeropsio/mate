@@ -1,13 +1,17 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import type { Page } from "puppeteer-core";
 import { resizeMenu } from "../../harness/browser.ts";
-import { describe, expect, it } from "@effect/vitest";
+import { describe, expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
+import type { ChangeReceiptPart } from "@t3tools/shared/hqChanges";
 import { createScenario } from "../../harness/scenario.ts";
+import { recordStep } from "../../harness/lastStep.ts";
 import { CHUNKS_WARMED, SETTLE_MS } from "../../../../src/lib/appChunks.ts";
 import { installArea, mergeFor } from "./fake.ts";
 import { changeFixture, review } from "./dsl.ts";
 import { changeFixture as sourceChange } from "../../fakes/d-change/changes.ts";
+
+const OLDER = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678";
 
 /** The sheet's entrance has finished: nothing it measures still slides. */
 const sheetSettled = (s: { readonly page: Page }) =>
@@ -23,74 +27,80 @@ const sheetSettled = (s: { readonly page: Page }) =>
 
 const setup = Effect.gen(function* () {
   const s = yield* createScenario([installArea]);
+  s.given.person("owner", { role: "OWNER", grants: { Ada: "OWNER" } });
   const area = { merge: mergeFor(s.drivers) };
   const change = yield* changeFixture(s);
   return { s, change, area, r: review(s) };
 });
 
 describe("D: change review, comments and merge", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
-    it.effect(
-      "opens the menu change with its description and files",
-      () =>
-        Effect.gen(function* () {
-          const s = yield* createScenario([installArea], { mate: "real" });
-          const change = yield* sourceChange(s, {
-            title: `Order summary ${"checkout".repeat(12)}`,
-            summary: `Order total: ${"1234567890".repeat(80)}\n`,
-          });
-          const r = review(s);
-          yield* Effect.promise(async () => {
-            await s.page.setViewport({ width: 1786, height: 1000 });
-          });
-          yield* s.given.signedIn;
-          yield* Effect.promise(() => resizeMenu(s.page, 435));
-          yield* r.open;
-          yield* r.text(change.title);
-          yield* r.text(change.description);
-          yield* r.file("summary.txt");
-          yield* r.mergeEnabled;
-          yield* Effect.promise(async () => {
-            await s.page.locator(".rv-file").click();
-            await s.page.waitForSelector(".rv-dl");
-            await s.page.evaluate(() => document.fonts.ready);
-            for (const width of [1786, 390]) {
-              await s.page.setViewport({ width, height: 1000 });
-              const overflow = await s.page.evaluate(() => {
-                const review = document.querySelector('[data-zerops-surface="review"]')!;
-                const regions = [".rv-title", ".rv-diff"].map((selector) =>
-                  review.querySelector<HTMLElement>(selector),
-                );
-                return {
-                  visible: regions.every((node) => {
-                    if (!node?.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }))
-                      return false;
-                    const box = node.getBoundingClientRect();
-                    return box.width > 32 && box.height > 8;
-                  }),
-                  excess: regions.map((node) =>
-                    node === null
-                      ? 0
-                      : Math.max(
-                          node.scrollWidth - node.clientWidth,
-                          node.getBoundingClientRect().right - review.getBoundingClientRect().right,
-                        ),
-                  ),
-                };
-              });
-              expect(
-                overflow.visible,
-                "ASSERTION: review title and expanded diff are visible with nonzero geometry",
-              ).toBe(true);
-              expect(
-                Math.max(...overflow.excess),
-                "ASSERTION: long review headings and diffs have no horizontal overflow",
-              ).toBeLessThanOrEqual(4);
-            }
-          });
-          yield* s.then.noExternalNetwork;
-        }),
-      10_000,
+  scenarioSuite((it) => {
+    it.effect("opens the menu change with its description and files", () =>
+      Effect.gen(function* () {
+        const s = yield* createScenario([installArea], { mate: "real" });
+        const change = yield* sourceChange(s, {
+          title: `Order summary ${"checkout".repeat(12)}`,
+          summary: `Order total: ${"1234567890".repeat(80)}\n`,
+        });
+        const r = review(s);
+        yield* Effect.promise(async () => {
+          await s.page.setViewport({ width: 1786, height: 1000 });
+        });
+        yield* s.given.signedIn;
+        yield* Effect.promise(() => resizeMenu(s.page, 435));
+        yield* r.open;
+        yield* r.text(change.title);
+        yield* r.text(change.description);
+        yield* r.file("summary.txt");
+        yield* r.mergeEnabled;
+        yield* Effect.promise(async () => {
+          const compared = s.page.waitForResponse((response) =>
+            new URL(response.url()).pathname.endsWith("/browse/compare-file"),
+          );
+          await s.page.locator(".rv-file").click();
+          const response = await compared;
+          if (!response.ok())
+            throw new Error(
+              `HQ compare-file read failed (${response.status()}): ${await response.text()}`,
+            );
+          await s.page.waitForSelector(".rv-dl");
+          await s.page.evaluate(() => document.fonts.ready);
+          for (const width of [1786, 390]) {
+            await s.page.setViewport({ width, height: 1000 });
+            const overflow = await s.page.evaluate(() => {
+              const review = document.querySelector('[data-zerops-surface="review"]')!;
+              const regions = [".rv-title", ".rv-diff"].map((selector) =>
+                review.querySelector<HTMLElement>(selector),
+              );
+              return {
+                visible: regions.every((node) => {
+                  if (!node?.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }))
+                    return false;
+                  const box = node.getBoundingClientRect();
+                  return box.width > 32 && box.height > 8;
+                }),
+                excess: regions.map((node) =>
+                  node === null
+                    ? 0
+                    : Math.max(
+                        node.scrollWidth - node.clientWidth,
+                        node.getBoundingClientRect().right - review.getBoundingClientRect().right,
+                      ),
+                ),
+              };
+            });
+            expect(
+              overflow.visible,
+              "ASSERTION: review title and expanded diff are visible with nonzero geometry",
+            ).toBe(true);
+            expect(
+              Math.max(...overflow.excess),
+              "ASSERTION: long review headings and diffs have no horizontal overflow",
+            ).toBeLessThanOrEqual(4);
+          }
+        });
+        yield* s.then.noExternalNetwork;
+      }),
     );
 
     // Catches a bookmarked change URL losing the review after reload.
@@ -129,31 +139,11 @@ describe("D: change review, comments and merge", () => {
         yield* s.then.noExternalNetwork;
       }),
     );
-
-    // Catches Merge hiding progress or continuing to offer the completed change for merging.
-    it.effect("merge shows progress and the real result", () =>
-      Effect.gen(function* () {
-        const { s, r, area } = yield* setup;
-        yield* s.given.signedIn;
-        yield* r.open;
-        yield* r.mergeEnabled;
-        area.merge.hold();
-        yield* r.merge;
-        yield* Effect.promise(() => area.merge.received());
-        yield* r.text("Merging into main");
-        yield* r.cannotMerge;
-        area.merge.resume();
-        yield* r.text("Merged into main");
-        yield* r.cannotMerge;
-        yield* s.then.noReload;
-        yield* s.then.noExternalNetwork;
-      }),
-    );
   });
 });
 
 describe("owner-reported layout regressions", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     // 2026-10-20, the owner on a narrow window: "these buttons are bit unfortunately positioned".
     // The row wrapped where it ran out of room, leaving Merge alone under the other two.
     it.effect(
@@ -165,6 +155,9 @@ describe("owner-reported layout regressions", () => {
           yield* s.given.signedIn;
           yield* r.open;
           yield* r.mergeEnabled;
+          yield* Effect.promise(() =>
+            s.page.waitForSelector("[data-review-ask]", { visible: true }),
+          );
           yield* Effect.promise(() => s.page.setViewport({ width: 400, height: 900 }));
           yield* sheetSettled(s);
           const at = yield* Effect.promise(() =>
@@ -206,10 +199,59 @@ describe("owner-reported layout regressions", () => {
     // person's eye dropped 24 px, then the question after a first merge came in above it.
     it.effect("merge leaves the review's body where the person's eye is", () =>
       Effect.gen(function* () {
-        const { s, r, area } = yield* setup;
+        const { s, change, r, area } = yield* setup;
+        const head = change.head;
+        const part = (setup: string, more: Partial<ChangeReceiptPart>): ChangeReceiptPart => ({
+          setup,
+          previewHostname: `${setup}stage`,
+          deploy: "ok",
+          deployedAt: "2026-10-14T21:06:00Z",
+          workspaceClean: true,
+          deployedCommit: head,
+          verified: true,
+          ...more,
+        });
+        // zcp's receipt of the change's last push: web at its head, api from an older commit,
+        // worker's preview failed.
+        yield* change.reports({
+          at: "2026-10-14T21:10:00Z",
+          parts: [
+            part("web", {}),
+            part("api", { deployedCommit: OLDER }),
+            (({ deployedCommit: _none, ...failed }) => failed)(
+              part("worker", { deploy: "failed", verified: false }),
+            ),
+          ],
+        });
         yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
         yield* s.given.signedIn;
         yield* r.open;
+        recordStep(
+          "A change review lists each part's preview from its receipt, one stale and one failed, and still offers Merge",
+        );
+        yield* r.text(change.title);
+        yield* r.text("workerstage");
+        const short = head.slice(0, 7);
+        expect(
+          yield* Effect.promise(() =>
+            s.page.evaluate(() => {
+              const section = [
+                ...document.querySelectorAll<HTMLElement>('[data-zerops-surface="review"] section'),
+              ].find(
+                (node) =>
+                  node.getBoundingClientRect().height > 0 &&
+                  node.querySelector(".rv-sec-h")?.textContent?.startsWith("Parts") === true,
+              );
+              return [...(section?.querySelectorAll("li") ?? [])].map((li) => li.innerText.trim());
+            }),
+          ),
+          "ASSERTION: the review lists the receipt's three parts, each as its preview stands",
+        ).toEqual([
+          `web · webstage · from ${short} · verified`,
+          `api · apistage · from a1b2c3d, the change is at ${short} · verified`,
+          "worker · workerstage · deploy failed",
+        ]);
+        yield* r.text("Not tried at this change: api (older commit), worker (failed).");
         yield* r.mergeEnabled;
         yield* sheetSettled(s);
         const bodyTop = Effect.promise(() =>
@@ -225,13 +267,17 @@ describe("owner-reported layout regressions", () => {
         yield* r.merge;
         yield* Effect.promise(() => area.merge.received());
         yield* r.text("Merging into main");
+        yield* r.cannotMerge;
         const merging = yield* bodyTop;
         area.merge.resume();
         yield* r.text("Merged into main");
+        yield* r.cannotMerge;
         const merged = yield* bodyTop;
         expect(before).not.toBeNull();
         // Within half a pixel: the dialog's entrance may still settle its last fraction.
         for (const top of [merging, merged]) expect(Math.abs(top! - before!)).toBeLessThan(0.5);
+        yield* s.then.noReload;
+        yield* s.then.noExternalNetwork;
       }),
     );
 

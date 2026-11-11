@@ -3,10 +3,10 @@
  * jump box and its toast's *Open*, a project's page, an ask handed to it.
  *
  * Its main chat opens (`resolvePrimaryConversation`), never whichever project anywhere was touched
- * last, which is what landing on the index would pick; its other chats are in its conversation
- * strip. A Mate this page holds no socket to, or whose conversations it has not read, opens the
- * main chat HQ names for it (`useHqMainChats`): the route connects it (A9). A Mate with no
- * conversation yet starts one in its environment's project. What its row
+ * last; its other chats are in its conversation strip. A Mate this page holds no socket to, or whose main chat its conversations here lack — this
+ * page keeps them current only while the Mate is open, so one started in another browser is not
+ * among them — opens the main chat HQ names for it (`useHqMainChats`): the route connects it (A9).
+ * A Mate with no conversation, here or by HQ's word, starts one in its environment's project. What its row
  * shows is the listing's; what opens it is its machine (`mateLink`), so a row that stands for its
  * whole project while the project's services are read still opens its Mate.
  *
@@ -47,8 +47,7 @@ import { newMateView } from "./newMate";
 import { madeOf } from "./newProjectBirth";
 import { useHqMainChats } from "./useMenuMateReadings";
 import { useZeropsDetailCandidates } from "./useZeropsCandidates";
-import { useCloseOffHolds } from "./accountEnvironments";
-import { closeOffHoldOf, pressComingInput, useMatePresses } from "./matePress";
+import { pressComingInput, useMatePresses } from "./matePress";
 
 /** Opens a Mate — its row, or its project where the caller holds no row — as every door does. */
 export type OpenMate = (
@@ -63,7 +62,6 @@ export function useOpenMate(): OpenMate {
   const projects = useProjects();
   const handleNewThread = useNewThreadHandler();
   const presses = useMatePresses();
-  const closeOffHolds = useCloseOffHolds();
   const creations = useCreations();
   const { listing } = useZeropsDetailCandidates();
   const mainChatOf = useHqMainChats();
@@ -105,12 +103,6 @@ export function useOpenMate(): OpenMate {
       const created = madeOf(creations, projectId) !== undefined;
       const { coming } = mateArrival({
         press: pressed.press,
-        // Held by the close-off gate, it opens on its own view, which says why.
-        closeOffHold: closeOffHoldOf(
-          closeOffHolds,
-          projectId,
-          presses.find((press) => press.projectId === projectId),
-        ),
         candidate,
         setUpFailed: pressed.setUpFailed,
         nowMs: Date.now(),
@@ -135,11 +127,16 @@ export function useOpenMate(): OpenMate {
         openConversation(scopeThreadRef(environmentId, primary.id));
         return;
       }
+      // This page keeps a Mate's conversations current only while it is open: one started
+      // elsewhere since is HQ's to name (what its row shows), never a reason for a new chat.
+      if (told !== undefined) {
+        openConversation(told);
+        return;
+      }
       const project = projects.find((entry) => entry.environmentId === environmentId);
       if (project === undefined) {
-        // Its conversations are not read yet: HQ's main chat opens, else its own view waits.
-        if (told === undefined) ownView();
-        else openConversation(told);
+        // Its conversations are not read yet, and HQ names none: its own view waits.
+        ownView();
         return;
       }
       void handleNewThread(scopeProjectRef(project.environmentId, project.id)).then((opened) => {
@@ -154,7 +151,6 @@ export function useOpenMate(): OpenMate {
     },
     [
       presses,
-      closeOffHolds,
       creations,
       handleNewThread,
       linkTarget,

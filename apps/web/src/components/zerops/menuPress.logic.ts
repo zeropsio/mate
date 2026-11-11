@@ -8,6 +8,8 @@
 
 export interface MenuPress {
   readonly projectId: string;
+  /** Its conversation as its route will name it, where the press knows it: its environment. */
+  readonly conversation?: string | undefined;
   /** The Mate open when it was pressed. */
   readonly from: string | null;
   /** The overview was open when it was pressed. */

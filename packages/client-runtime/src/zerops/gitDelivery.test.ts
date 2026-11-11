@@ -99,7 +99,6 @@ const environment = (jobs: ReadonlyArray<HqPushNavigationJob>): HqGitNavigationE
   order: 1,
   keyHeld: false,
   keyInvalid: false,
-  can: {},
   birth: null,
   release: {
     id: "rollout-2",
@@ -141,7 +140,6 @@ describe("Git standing from the accepted release", () => {
           order: 1,
           keyHeld: false,
           keyInvalid: false,
-          can: {},
           birth: null,
         },
       ],
@@ -434,22 +432,6 @@ describe("Git standing from the accepted release", () => {
       nextActor: "hq",
       nextAction: "Wait until 11:00",
       release: { allowed: false, actions: ["cancel"] },
-    });
-  });
-
-  it("a replaced environment inherits no release standing, and an HQ outage preserves only last known hand-over", () => {
-    expect(
-      gitDeliveryOf(
-        { ...environment([]), id: HqEnvironmentId.make("new-prod"), release: null },
-        facts,
-      ),
-    ).toMatchObject({ standing: "not-released", pushed: 0 });
-    expect(
-      gitDeliveryOf(environment([job("pushed"), job("pushed", "web")]), { ...facts, live: false }),
-    ).toMatchObject({
-      standing: "last-known",
-      line: "Last known · Pushed v2.0.0",
-      release: { allowed: false },
     });
   });
 });

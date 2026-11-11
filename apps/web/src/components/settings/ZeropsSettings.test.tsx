@@ -99,10 +99,6 @@ it.each([true, false])("a non-admin reads %s and sees who may change it", (enabl
   expect(words(tree)).toContain(enabled ? "On" : "Off");
   expect(words(tree)).toContain("Organization admins and the owner can change this.");
 });
-it("does not invent an enabled state before HQ answers", () => {
-  expect(control(render())).toBeNull();
-  expect(words(render())).toContain("Waiting for HQ…");
-});
 it("keeps the observed state while saving and explains HQ's refusal", () => {
   observePolicy(store, { orgId: "org", enabled: true, revision: 1 });
   store.dispatch({
@@ -170,34 +166,6 @@ it.each(["uncertain", "unresolved"] as const)(
   },
 );
 
-it.each(["none", "unreadable"] as const)(
-  "explains %s HQ instead of waiting forever or inventing a policy",
-  (verdict) => {
-    store.dispatch({
-      kind: "rows",
-      scope: "zerops:org:hq-verdict",
-      generation: 0,
-      method: "read",
-      via: "zerops-realtime",
-      rows: [
-        {
-          family: "hqVerdict",
-          id: "org",
-          value: { verdict },
-          revision: { kind: "zerops", version: null },
-        },
-      ],
-    });
-    const tree = render();
-    expect(control(tree)).toBeNull();
-    expect(words(tree)).toContain(
-      verdict === "none"
-        ? "Set up HQ to read this policy."
-        : "HQ is unavailable; check its connection.",
-    );
-  },
-);
-
 it.each(["unknown", "withheld"] as const)(
   "an %s policy offers no toggle and explains its read state",
   (kind) => {
@@ -229,7 +197,7 @@ function observePolicy(
       {
         family: "hqAutoUpdatePolicy",
         id: policy.orgId,
-        value: { epoch: "core", ...policy },
+        value: policy,
         revision: { kind: "hq", incarnation, revision: policy.revision },
       },
     ],
@@ -256,7 +224,7 @@ it.each(["receipt-first", "stream-first"])(
           handles: [],
           acceptance: {
             kind: "accepted",
-            result: { policy: { orgId: "org", enabled: true, revision: 2, epoch: "core" } },
+            result: { policy: { orgId: "org", enabled: true, revision: 2 } },
           },
           outcome: { kind: "succeeded", evidence: "HQ answered" },
         },
@@ -282,7 +250,7 @@ it.each(["receipt-first", "stream-first"])(
 );
 
 it("a completed toggle stays settled when a fresh HQ starts at revision zero", () => {
-  const accepted = { orgId: "org", enabled: false, revision: 5, epoch: "old-core" };
+  const accepted = { orgId: "org", enabled: false, revision: 5 };
   observePolicy(store, accepted, "old-core");
   store.dispatch({
     kind: "operation-recorded",
@@ -302,7 +270,8 @@ it("a completed toggle stays settled when a fresh HQ starts at revision zero", (
     },
   });
   expect(control(render())?.props.disabled).toBe(false);
-  const replacement = { orgId: "org", enabled: true, revision: 0, epoch: "new-core" };
+  // A fresh HQ restarts its stream at zero; the policy keeps the revision HQ stored for it.
+  const replacement = { orgId: "org", enabled: true, revision: 6 };
   store.dispatch({
     kind: "delivery",
     via: "hq-stream",

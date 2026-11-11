@@ -16,7 +16,7 @@ async function main() {
   process.send?.("ready");
   await start;
   process.send?.("attempting");
-  const dist = await cachedBundle(process.argv[2]!, {}, async (dist) => {
+  const dist = await cachedBundle(process.argv[2]!, { GITHUB_ACTIONS: "true" }, async (dist) => {
     const finish = command("finish");
     process.send?.("building");
     await finish;

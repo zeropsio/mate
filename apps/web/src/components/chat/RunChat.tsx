@@ -39,6 +39,7 @@ import { AssetImage } from "~/assets/AssetImage";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import { releaseEndedWords } from "@t3tools/client-runtime/zerops";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import {
   isActiveSubagentStatus,
@@ -49,6 +50,7 @@ import {
   AppWindowIcon,
   AsteriskIcon,
   BotIcon,
+  CheckIcon,
   ChevronDownIcon,
   FilePenLineIcon,
   FileTextIcon,
@@ -57,6 +59,7 @@ import {
   ListTodoIcon,
   OctagonAlertIcon,
   SearchIcon,
+  SquareStackIcon,
   SquareTerminalIcon,
   TriangleAlertIcon,
   WrenchIcon,
@@ -65,6 +68,7 @@ import {
 import {
   createContext,
   Fragment,
+  memo,
   use,
   useCallback,
   useEffect,
@@ -113,7 +117,8 @@ import {
   useOperationCard,
   type OperationCardRegions,
 } from "../../zerops/activity/useOperationCard";
-import { useZeropsTopology } from "../../zerops/useZeropsFeeds";
+import { standInOf } from "@t3tools/client-runtime/zerops/serviceMap";
+import { useZeropsLifecycle, useZeropsTopology } from "../../zerops/useZeropsFeeds";
 import { helpersBubbleOf } from "./helpersBubble.logic";
 import { BrowserStrip, BrowserTakes } from "./BrowserStrip";
 import {
@@ -126,10 +131,20 @@ import {
   operationUnreturnedWords,
   type BrokeOff,
   type BrowserStripModel,
+  incidentToneNow,
+  servicesWithStandIns,
   type IncidentModel,
   type OutcomeModel,
 } from "./conversation.logic";
+import {
+  foldQuickCalls,
+  quickCallsAtEnd,
+  quickCallsSpanMs,
+  quickCallsWords,
+} from "./quickCalls.logic";
+import { AsPainted } from "./AsPainted";
 import { Button } from "../ui/button";
+import { Spinner } from "../ui/spinner";
 import { restartWords } from "../../zerops/restartWords";
 import { calmClockMs } from "./nowLineCalm.logic";
 import { keepInPlace, scrollerOf } from "./keepInPlace";
@@ -137,12 +152,14 @@ import { useCalmLine } from "./useCalmLine";
 import {
   headStood,
   headStoodJustNow,
+  watchPainted,
   wordsCutUnder,
   wordsStood,
   wordsStoodUnder,
 } from "./wordsLanding";
 import {
   SLOT_MAX_ROWS,
+  slotBurst,
   slotHoldsIn,
   slotRunningPast,
   type LiveSlot as LiveSlotState,
@@ -154,7 +171,6 @@ import { KeptTimelineContext } from "./keptTimelineContext";
 import {
   type DrawnRow,
   landingHosts,
-  landsInView,
   orderedGlides,
   rowShifts,
   slotMoves,
@@ -168,26 +184,18 @@ import {
   reportsInline,
   type BackgroundLineModel,
 } from "./backgroundLine.logic";
-import { useRunEffortWords } from "./runResultFacts";
+import { useRunEffort } from "./runResultFacts";
 import { pageReached, type ScrollPages } from "~/zerops/engineCardPaging.logic";
 import { useEngineCardPages } from "~/zerops/useEngineCardPaging";
-import {
-  type EaseBudget,
-  ROOM_TAU_MS,
-  approach,
-  glideStep,
-  glidesTo,
-  keepsFoot,
-  movesAsPerson,
-} from "./runMotion.logic";
+import { glideStep, glidesTo, keepsFoot, movesAsPerson } from "./runMotion.logic";
 import { easeRooms, forgetScrollTop, noteScrollTop, type Rooms, unclamp } from "./runRoom";
+import { RIDE_MS, type Travel, type Travels, createTravels } from "./runTravel";
 import { followScrollTo } from "~/lib/followScroll";
 import { StatusBar } from "./StatusBar";
 import { versionText } from "../zerops/operation/version";
 import { ImportDetail } from "./ImportDetail";
 import { useStandupReading } from "../../zerops/activity/useStandupReading";
 import {
-  cardOperationOf,
   detailLines,
   liveOperationBar,
   observedLinesOf,
@@ -195,6 +203,7 @@ import {
   showsCardInSlot,
   slotOpenDeployLine,
 } from "./operationBar.logic";
+import { standupBar, type StandupBarModel } from "./standupBar.logic";
 import { opensOnto, stepOutput } from "./opens.logic";
 import { showHelper } from "./helperFocus";
 import { ElapsedSince, LimitContinue } from "./ConversationRows";
@@ -203,6 +212,7 @@ import { StandupDetail } from "./StandupDetail";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import {
   normalizeCompactToolLabel,
+  sameRecordItem,
   shouldPreserveAssistantLineBreaks,
   thoughtParagraphs,
   type ConversationEvent,
@@ -214,7 +224,6 @@ import {
 import {
   chatOpensAt,
   cutEdges,
-  earlierShown,
   followAfter,
   NOTHING_OPENED,
   footTop,
@@ -233,6 +242,16 @@ import {
   slotWords,
   operationNowWords,
   reachesEarlier,
+  stretchesAside,
+  windowAside,
+  windowEarlier,
+  windowOver,
+  logWindow,
+  roomAside,
+  KEPT_ABOVE_PX,
+  SET_ASIDE_PAST_PX,
+  type AsideStretch,
+  type LogWindow,
   runCardShows,
   chooseLiveRunFold,
   runFoldOf,
@@ -244,6 +263,8 @@ import {
   subscribeRunFolds,
   type NowLine as NowLineModel,
   cardHeadLine,
+  thoughtOpening,
+  underHeadWords,
   runClockMs,
   type RunFold,
   type RunScrollPosition,
@@ -399,11 +420,8 @@ const FOLD_FADE_HEIGHT_REM = 1.75;
 /** A folded message's bottom, fading into the bubble it sits in. */
 export const FOLD_FADE_MASK = `linear-gradient(to bottom, black calc(100% - ${FOLD_FADE_HEIGHT_REM}rem), transparent)`;
 
-/** A thought's surface: the faintest fill in the card — the quietest thing in it. */
-const THOUGHT_FILL = "bg-foreground/3";
-
-/** What the Mate did: a light hairline drawn outside the box, so it takes no room — outlined on the tray, never filled. */
-const CALL_SURFACE = "ring-1 ring-foreground/9";
+/** A well in the log — a command's code opened, what it printed: the page's own ground, under the tray. */
+const WELL = "rounded-card bg-background/70";
 
 // ---------------------------------------------------------------------------
 // The chat, drawn once
@@ -512,12 +530,22 @@ const PlopsContext = createContext(false);
 /** A call riding in a new card that lands by a plop: it rises in, the card plops. */
 const RidesContext = createContext(false);
 
+/**
+ * Whether the log draws lines over the ones in view in this commit — earlier
+ * ones as the person scrolls up to them, ones set aside coming back: they
+ * were there all along, and are simply there.
+ */
+const DrawnEarlierContext = createContext<{ readonly current: boolean } | null>(null);
+
 /** Whether this bubble arrived while the person watched: what the chat opened onto is simply there. */
 function useArrivedLive(): boolean {
   const shown = use(ChatShownContext);
+  const earlier = use(DrawnEarlierContext);
   // What a resync brings nobody watched happen: it is simply there.
   const { syncing } = use(TimelineRowCtx);
-  const [arrived] = useState(() => (shown?.current ?? false) && !syncing);
+  const [arrived] = useState(
+    () => (shown?.current ?? false) && !syncing && !(earlier?.current ?? false),
+  );
   return arrived;
 }
 
@@ -561,22 +589,18 @@ export function useHoldReading(part?: string): (opens: boolean, which?: string) 
 // ---------------------------------------------------------------------------
 
 /**
- * The chat's one bubble (the owner, 2026-09-28: "the design of every element
- * has to be largely the same, differences subtle but obvious"): every bubble
- * is this shape — one round, 14 px in, 10 px down — on one left edge, and its
- * words start 14 px in whatever it holds. What tells them apart is only the
- * surface, and the mark each wears in the Mate's column beside it.
+ * The log is a ledger (the owner's board, 2026-11-10: "one quiet log, one loud
+ * now"): what the Mate did and thought are rows on the tray, no box around
+ * any of them, told apart by the mark each wears in the Mate's column — a
+ * stack of equal boxes let nothing lead. What it said to the person is the
+ * one bubble in it, in its tint, 12 px in and 8 px down; the person's own
+ * words keep their bubble on their side.
  */
 const BUBBLE_SHAPE = "rounded-2xl";
 const BUBBLE_PAD = "px-3.5 py-2.5";
-/**
- * A call's row: compact beside the bubbles — 7 px down, 12 px in, and 14 px
- * from the right so its chevron ends on the card's one right edge, with the
- * now line's clock and the result's actions (S2).
- */
-const CALL_PAD = "ps-3 pe-3.5 py-1.75";
-/** A thought: 8 px down, 12 px in. */
-const THOUGHT_PAD = "px-3 py-2";
+/** The Mate's words: one round of 12 px, hugging what it says. */
+const SPEECH_SHAPE = "w-fit max-w-full rounded-card";
+const SPEECH_PAD = "px-3 py-2 leading-5";
 
 /**
  * The chat's two sizes, by weight (K14): what anyone said — the person's
@@ -586,23 +610,25 @@ const THOUGHT_PAD = "px-3 py-2";
  */
 const WORDS = "text-prose";
 const META = "text-line";
+/** A row's first line in the log: what it did, 14 px on the card's 20 px line. */
+const ROW = "text-prose leading-5";
 
 /** How a bubble reads: its words to the person, a thought, a thing it did — and in what state. */
 type BubbleTone = "speech" | "thought" | "tool";
 
 const BUBBLE_TONE: Record<BubbleTone, string> = {
-  // Its words to the person: its own tint, lightly (`.run-speech`).
-  speech: "run-speech text-foreground",
-  // Talking to itself: the same bubble, half the fill, the words italic and faint.
-  thought: `${THOUGHT_FILL} text-muted-foreground`,
-  // A thing it did: a hairline on the tray, never a fill, so a call never
-  // reads as something said.
-  tool: `${CALL_SURFACE} text-foreground`,
+  // Its words to the person: its own tint, lightly (`.run-speech`) — the log's one bubble.
+  speech: `run-speech text-foreground overflow-hidden ${SPEECH_SHAPE}`,
+  // Talking to itself: plain words on the tray, quiet.
+  thought: "w-full text-muted-foreground",
+  // A thing it did: a row on the tray.
+  tool: "w-full text-foreground",
 };
 
 /**
- * A bubble in the Mate's column: as wide as the column, as a card of calls is,
- * so every bubble shares its right edge as well as its left.
+ * A line's box in the Mate's column: a row as wide as the column, or the
+ * Mate's words in their bubble. Named a bubble for what reads it — the
+ * card's motion, the page's probes — whatever surface it has.
  */
 function Bubble({
   tone,
@@ -615,19 +641,13 @@ function Bubble({
   /** What the bubble stands for, for the page's own tests and probes. */
   readonly kind: string;
   /** Its words' size: said at the prose size, thought at the quiet one. */
-  readonly size?: typeof WORDS | typeof META;
+  readonly size?: typeof WORDS | typeof META | typeof ROW;
   readonly className?: string;
   readonly children: ReactNode;
 }) {
   return (
     <div
-      className={cn(
-        "w-full min-w-0 overflow-hidden",
-        BUBBLE_SHAPE,
-        size,
-        BUBBLE_TONE[tone],
-        className,
-      )}
+      className={cn("min-w-0", size, BUBBLE_TONE[tone], className)}
       data-chat-bubble={tone}
       data-chat-kind={kind}
     >
@@ -661,6 +681,12 @@ interface CappedBoxProps {
    * answer is read while it is written, never through a four-line slit.
    */
   readonly words?: boolean;
+  /**
+   * What it holds, where that sets its lines (the board, 2026-11-10): a
+   * thought two lines in the log and five in the working row, a command's
+   * code six in the working row.
+   */
+  readonly lines?: "thought" | "code";
   /** In the slot, the message its words are: where they stood is told as the box leaves. */
   readonly stood?: string;
   /** Which of its line's boxes it is, where the line has several. */
@@ -677,10 +703,11 @@ interface CappedBoxProps {
 }
 
 /**
- * One item's box: at most four of the card's lines (`--run-item-cap`), in the
- * working row and in the log alike, so a plop moves an item and never resizes
- * it (run 11). In the working row what runs past the cap scrolls inside it
- * (`SlotBox`); in the log nothing scrolls inside it (`LogBox`).
+ * One item's box, capped at its lines (`lines`, else four of the card's:
+ * `--run-item-cap`). In the working row what runs past the cap scrolls inside
+ * it (`SlotBox`) — what the Mate does now is read with its body; in the log
+ * nothing scrolls inside it (`LogBox`) and it is shorter — what happened is
+ * skimmed (the board, 2026-11-10).
  */
 function CappedBox(props: CappedBoxProps) {
   return use(InSlotContext) ? <SlotBox {...props} /> : <LogBox {...props} />;
@@ -694,12 +721,15 @@ function CappedBox(props: CappedBoxProps) {
  * said nothing of what ran past. Closed, it shows the head of what it holds —
  * the head names it, the newest words were for while it ran — a fade at its
  * foot where more runs past; opened by its item, all of it. One that stood at
- * its end in the working row rolls back to its head as it lands, so the swap
- * reads as the one box moving.
+ * its end in the working row lands at its head, its words fading in: rolled
+ * back there, a thought showed its end, its middle and its start in 220 ms,
+ * and read as three texts (2026-11-10). One the cap cut nothing of is the
+ * same words in both, and does not move at all.
  */
 function LogBox({
   detail = false,
   words = false,
+  lines,
   part,
   open,
   onCut,
@@ -750,7 +780,7 @@ function LogBox({
   const tellCut = useEffectEvent((next: boolean) => onCut?.(next));
   useEffect(() => tellCut(cut), [cut]);
   // Once, as it lands: the carried end is spent.
-  const rollBack = useEffectEvent(() => {
+  const settleAtHead = useEffectEvent(() => {
     if (!stoodAtEnd) return;
     setStoodAtEnd(false);
     const box = boxRef.current;
@@ -758,18 +788,19 @@ function LogBox({
     if (box === null || content === null || typeof content.animate !== "function") return;
     const past = content.offsetHeight - box.clientHeight;
     if (past < 1 || prefersReducedMotion()) return;
-    content.animate([{ transform: `translateY(${-past}px)` }, { transform: "none" }], {
-      duration: FOLD_EASE_MS,
+    content.animate([{ opacity: 0 }, { opacity: 1 }], {
+      duration: HEAD_SETTLE_MS,
       easing: FOLD_EASING,
     });
   });
-  useLayoutEffect(() => rollBack(), []);
+  useLayoutEffect(() => settleAtHead(), []);
   return (
     <div
       ref={boxRef}
       className={cn("run-capped min-w-0", className)}
       data-capped={detail ? "detail" : words ? "words" : "item"}
       data-capped-at="log"
+      data-capped-lines={lines}
       data-more-below={cut && !whole ? "" : undefined}
       data-whole={whole ? "" : undefined}
     >
@@ -779,6 +810,9 @@ function LogBox({
     </div>
   );
 }
+
+/** How long a box that stood at its end takes to show its head as it lands in the log. */
+const HEAD_SETTLE_MS = 150;
 
 /** A burst of words grows their box by more than this: it glides there. */
 const WORDS_LEAP_PX = 48;
@@ -826,6 +860,7 @@ function SlotBox({
   follows = false,
   detail = false,
   words = false,
+  lines,
   stood,
   part,
   className,
@@ -884,7 +919,9 @@ function SlotBox({
   }, [words]);
   // Standing at its foot, it tells each frame where its last line is: the answer it becomes lands
   // there. Read as painted, never in the commit that takes it away — that commit may already have
-  // swapped its words and clamped its scroll to their head.
+  // swapped its words and clamped its scroll to their head. In every frame, and only while the
+  // Mate's words stand here: the row the answer becomes asks whether they stood as it is first
+  // drawn, before any commit could be read ahead of (`AsPainted`).
   useEffect(() => {
     const box = boxRef.current;
     if (stood === undefined || box === null || typeof requestAnimationFrame !== "function") return;
@@ -921,6 +958,7 @@ function SlotBox({
       ref={boxRef}
       className={cn("run-capped min-w-0", className)}
       data-capped={detail ? "detail" : words ? "words" : "item"}
+      data-capped-lines={lines}
       onScroll={() => {
         const box = boxRef.current;
         if (box === null) return;
@@ -1045,19 +1083,22 @@ function collapseInPlace(pressed: HTMLElement, close: () => void) {
 }
 
 /**
- * A bubble's words in its item's box. In the working row, the box as it
- * streams. In the log, the head of them; past the cap the bubble is a press
- * onto the whole of them — "Show all" at its foot under the pointer — and
+ * A line's words in its item's box. In the working row, the box as it
+ * streams. In the log, the head of them; past the cap the line is a press
+ * onto the whole of them — "more" at the end of its last line — and
  * "Show less" under them closes it again, standing where it was pressed.
  */
 function OpensWhole({
   follows = false,
   words = false,
+  lines,
   stood,
   what,
   children,
 }: {
   readonly follows?: boolean;
+  /** Which lines cap it (`CappedBox`'s `lines`). */
+  readonly lines?: "thought";
   /** The Mate's words to the person: the taller box (`CappedBox`'s `words`). */
   readonly words?: boolean;
   /** The message they are (`CappedBox`'s `stood`). */
@@ -1071,14 +1112,24 @@ function OpensWhole({
   const [cut, setCut] = useState(false);
   if (inSlot)
     return (
-      <CappedBox follows={follows} words={words} {...(stood === undefined ? {} : { stood })}>
+      <CappedBox
+        follows={follows}
+        words={words}
+        {...(lines === undefined ? {} : { lines })}
+        {...(stood === undefined ? {} : { stood })}
+      >
         {children}
       </CappedBox>
     );
   return (
     <>
       <div className="relative min-w-0">
-        <CappedBox onCut={setCut} open={disclosure.open} words={words}>
+        <CappedBox
+          onCut={setCut}
+          open={disclosure.open}
+          words={words}
+          {...(lines === undefined ? {} : { lines })}
+        >
           {children}
         </CappedBox>
         {cut && !disclosure.open ? (
@@ -1091,7 +1142,7 @@ function OpensWhole({
             type="button"
           >
             <span aria-hidden="true" className={cn(META, "run-item-more")}>
-              Show all
+              more
             </span>
           </button>
         ) : null}
@@ -1136,11 +1187,7 @@ function OutputBlock({
   return (
     <section aria-label={label ?? undefined} className="grid min-w-0 gap-1">
       {label === null ? null : <h4 className={cn(META, "text-muted-foreground")}>{label}</h4>}
-      <CappedBox
-        className="rounded-xl bg-foreground/4"
-        detail
-        {...(part === undefined ? {} : { part })}
-      >
+      <CappedBox className={WELL} detail {...(part === undefined ? {} : { part })}>
         <pre
           className={cn(
             "min-w-0 whitespace-pre-wrap break-words px-3 py-2 text-foreground/80 select-text",
@@ -1169,8 +1216,11 @@ function Headline({
   opens = false,
   column = false,
   running = false,
+  now = null,
 }: {
   readonly children: ReactNode;
+  /** In the working row, at its line's end: that it runs, and for how long (`RunsNow`). */
+  readonly now?: ReactNode;
   readonly time?: ReactNode;
   readonly timeTone?: "muted" | "failed";
   readonly opens?: boolean;
@@ -1182,19 +1232,26 @@ function Headline({
    */
   readonly running?: boolean;
 }) {
+  const listed = use(ListedContext);
   // In the slot a row has no time of its own: it gets it when it lands, and the run's one clock
   // stands on the card's foot.
   if (use(InSlotContext)) {
     return (
-      <span className={cn("flex min-w-0 items-start gap-2", META)}>
+      <span className={cn("flex min-w-0 items-start gap-2 font-medium", ROW)}>
         <RunShimmer className="min-w-0 flex-1 break-words" sweeps={running}>
           {children}
         </RunShimmer>
+        {now}
       </span>
     );
   }
   return (
-    <span className={cn("flex min-w-0 items-start gap-2", META)}>
+    <span
+      className={cn(
+        "flex min-w-0 items-start gap-2",
+        listed ? cn(META, "text-foreground/80") : ROW,
+      )}
+    >
       <RunShimmer className="min-w-0 flex-1 break-words" sweeps={running}>
         {children}
       </RunShimmer>
@@ -1243,6 +1300,18 @@ function StepMark({ icon, running }: { readonly icon: LucideIcon; readonly runni
   );
 }
 
+/**
+ * A call running in the working row, at its line's end: a spinner, the one
+ * thing in the card that turns. Its time is the run's, on the card's head (K3).
+ */
+function RunsNow() {
+  return (
+    <span className="flex h-[1lh] shrink-0 items-center ps-2" data-runs-now>
+      <Spinner aria-hidden="true" role="presentation" size="xs" tone="muted" />
+    </span>
+  );
+}
+
 /** Whether a failure still stands, or a later step undid it (K9). */
 type Failure = "broken" | "undone";
 
@@ -1273,11 +1342,11 @@ const MARK_GAP = "gap-2";
 /** Which first line a mark stands beside: the words', a call's or a thought's. */
 type MarkLine = "words" | "call" | "thought";
 
-/** Each first line's top and height: a bubble's 10 px and 14 px words, a call's 7 and 13, a thought's 8 and 13. */
+/** Each first line's top and height: the Mate's words 8 px under their bubble's top, a row's at its top. */
 const MARK_LINE: Record<MarkLine, string> = {
-  words: "pt-2.5 text-prose",
-  call: "pt-1.75 text-line",
-  thought: "pt-2 text-line",
+  words: "pt-2 text-prose leading-5",
+  call: "text-prose leading-5",
+  thought: "text-line leading-5",
 };
 
 /**
@@ -1291,13 +1360,11 @@ function Mark({
   readonly line?: MarkLine | undefined;
   readonly children: ReactNode;
 }) {
-  const inSlot = use(InSlotContext);
   return (
     <span
       aria-hidden="true"
       className={cn(MARK_COLUMN, "flex justify-center", MARK_LINE[line])}
       data-run-mark=""
-      data-slot-mark={inSlot ? "" : undefined}
     >
       <span className="flex h-[1lh] items-center">{children}</span>
     </span>
@@ -1336,6 +1403,7 @@ function NoteWords({ message }: { readonly message: ChatMessage }) {
  */
 function ThoughtParagraphs({ messages }: { readonly messages: ReadonlyArray<ChatMessage> }) {
   const ctx = use(TimelineRowCtx);
+  const inSlot = use(InSlotContext);
   const paragraphs = messages.flatMap((message) => {
     const said = thoughtParagraphs(message.text);
     return said.map((text, index) => ({
@@ -1345,11 +1413,11 @@ function ThoughtParagraphs({ messages }: { readonly messages: ReadonlyArray<Chat
     }));
   });
   return (
-    <div className="grid gap-2.5 italic">
+    <div className="grid gap-2.5">
       {paragraphs.map((paragraph) => (
         <ChatMarkdown
           key={paragraph.key}
-          className={THOUGHT_TEXT}
+          className={inSlot ? THOUGHT_NOW_TEXT : THOUGHT_TEXT}
           cwd={ctx.markdownCwd}
           headingLevelOffset={MESSAGE_HEADING_LEVEL}
           isStreaming={paragraph.streaming}
@@ -1380,7 +1448,7 @@ function keyedByOccurrence(
  */
 function QuestionBubble({ questions }: { readonly questions: ReadonlyArray<string> }) {
   return (
-    <Bubble className={BUBBLE_PAD} kind="question" tone="speech">
+    <Bubble className={SPEECH_PAD} kind="question" tone="speech">
       <OpensWhole what="question">
         {keyedByOccurrence(questions).map(({ key, value }) => (
           <p key={key} className="whitespace-pre-wrap break-words">
@@ -1399,26 +1467,36 @@ function QuestionBubble({ questions }: { readonly questions: ReadonlyArray<strin
  */
 function NoteBubble({ message: recorded }: { readonly message: ChatMessage }) {
   const message = useEngineLiveMessage(recorded);
-  // Words still being written say so at their foot, in the bubble's own padding: nothing beside
-  // them says the run goes on, and the bubble lands at the height it stood.
-  const writing = use(InSlotContext) && Boolean(message.streaming);
-  return (
-    <Bubble className={cn(BUBBLE_PAD, writing && "relative")} kind="note" tone="speech">
+  const inSlot = use(InSlotContext);
+  const bubble = (
+    <Bubble className={SPEECH_PAD} kind="note" tone="speech">
       <OpensWhole follows={Boolean(message.streaming)} stood={message.id} what="message" words>
         <NoteWords message={message} />
       </OpensWhole>
-      {writing ? (
-        <span className="run-note-writing" data-note-writing>
-          <TypingDots />
-        </span>
-      ) : null}
     </Bubble>
+  );
+  if (!inSlot) return bubble;
+  // Words still being written say so beside their last line, outside the bubble: the dots follow
+  // the words as they do after "Writing", on no text and no edge. Their seat is held while the
+  // words stand in the working row, written or not, so the bubble is as wide when they end.
+  return (
+    <>
+      {bubble}
+      <span
+        aria-hidden="true"
+        className="run-note-writing"
+        data-note-writing={message.streaming ? "" : undefined}
+      >
+        {message.streaming ? <TypingDots /> : null}
+      </span>
+    </>
   );
 }
 
-/** A thought's hand: small, faint and italic — its code and file names too. */
-/** A thought's words at the card's quiet size, 13 px on 20 px lines, however it is drawn. */
+/** A thought's words in the log: the card's quiet size, 13 px on 20 px lines, in the muted ink. */
 const THOUGHT_TEXT = "chat-markdown-aside text-muted-foreground text-line leading-5";
+/** A thought as it is thought, in the working row: the prose size on 22 px lines, in ink. */
+const THOUGHT_NOW_TEXT = "chat-markdown-aside text-foreground text-prose leading-5.5";
 
 /**
  * Whether what `watch` is given runs past the lines it is clamped to — or,
@@ -1467,19 +1545,23 @@ function ThoughtBubble({ messages: recorded }: { readonly messages: ReadonlyArra
   const text = messages.map((message) => message.text).join("\n\n");
   if (text.trim().length === 0) return null;
   const words = (
-    <OpensWhole follows={messages.some((message) => message.streaming)} what="thought">
+    <OpensWhole
+      follows={messages.some((message) => message.streaming)}
+      lines="thought"
+      what="thought"
+    >
       <ThoughtParagraphs messages={messages} />
     </OpensWhole>
   );
   if (!quiet)
     return (
-      <Bubble className={THOUGHT_PAD} kind="thought" size={META} tone="thought">
+      <Bubble kind="thought" size={META} tone="thought">
         {words}
       </Bubble>
     );
   const line = thinkingLine(messages);
   return (
-    <Bubble className={THOUGHT_PAD} kind="thought" size={META} tone="thought">
+    <Bubble kind="thought" size={META} tone="thought">
       <DisclosureButton
         label={`${line}. ${disclosure.open ? "Hide" : "Show"} the thought`}
         onToggle={disclosure.toggle}
@@ -1500,13 +1582,13 @@ function ThoughtBubble({ messages: recorded }: { readonly messages: ReadonlyArra
 // ---------------------------------------------------------------------------
 
 /**
- * A call said plainly: the verb in the secondary ink, the names it took in
- * full ink — in mono where the code knows them, a file by its name alone,
- * never in a chip.
+ * A call said plainly: the verb and the names it took in the row's ink — the
+ * names in mono where the code knows them, a file by its name alone, never
+ * in a chip.
  */
 function PhraseWords({ phrase }: { readonly phrase: StepPhrase }) {
   const name = (target: string) => (
-    <span className={cn("min-w-0 break-words text-foreground", phrase.code && "font-mono")}>
+    <span className={cn("min-w-0 break-words", phrase.code && "font-mono text-line")}>
       {target}
     </span>
   );
@@ -1518,19 +1600,17 @@ function PhraseWords({ phrase }: { readonly phrase: StepPhrase }) {
     const last = index === phrase.targets.length - 1;
     parts.push(
       <span key={`${target}#${occurrence}`}>
-        {index > 0 ? (
-          <span className="text-foreground/75">{last && phrase.more === 0 ? " and " : ", "}</span>
-        ) : null}
+        {index > 0 ? <span>{last && phrase.more === 0 ? " and " : ", "}</span> : null}
         {name(target)}
       </span>,
     );
   });
   return (
     <span>
-      <span className="text-foreground/75">{phrase.verb}</span>
+      <span>{phrase.verb}</span>
       {phrase.targets.length > 0 ? " " : null}
       {parts}
-      {phrase.more > 0 ? <span className="text-foreground/75"> and {phrase.more} more</span> : null}
+      {phrase.more > 0 ? <span> and {phrase.more} more</span> : null}
     </span>
   );
 }
@@ -1554,7 +1634,7 @@ function StepPictures({ step }: { readonly step: WorkStep }) {
   );
   if (shown.length === 0 || threadRef === null) return null;
   return (
-    <span className="flex min-w-0 flex-wrap gap-1.5 px-3 pb-1.75">
+    <span className="flex min-w-0 flex-wrap gap-1.5 pt-2">
       {shown.map(({ key, path }) => (
         <StepPicture key={key} onOpen={onImageExpand} path={path} threadRef={threadRef} />
       ))}
@@ -1623,11 +1703,10 @@ const STEP_GLYPH: Record<StepKind, LucideIcon> = {
  * say what it does, and four lines of shell read heavy (Bodhi, run 9).
  */
 /**
- * A run of calls, one after another, as one bubble of the chat's shape: each
- * call a row of it and a hairline between them. Ten reads in a row are one
- * stretch of work, not ten boxes, and every call's time stands on the
- * bubble's one right edge (the owner, 2026-09-28: "there is no spacing between
- * items"). Each row wears its own mark in the Mate's column, beside it.
+ * A run of calls, one after another: each a row of the ledger, 16 px apart as
+ * every row is, every call's time on the card's one right edge. Each wears
+ * its own mark in the Mate's column, beside it. One holder for the run, so a
+ * call joining it grows it at its foot and never re-keys a row above.
  */
 function CallGroup({ children }: { readonly children: ReactNode }) {
   const shownRef = useRef(false);
@@ -1636,10 +1715,7 @@ function CallGroup({ children }: { readonly children: ReactNode }) {
   }, []);
   return (
     <CallGroupContext value={shownRef}>
-      <div
-        className={cn("w-full min-w-0 divide-y divide-foreground/9", BUBBLE_SHAPE, CALL_SURFACE)}
-        data-chat-calls
-      >
+      <div className="grid w-full min-w-0 gap-4" data-chat-calls>
         {children}
       </div>
     </CallGroupContext>
@@ -1648,6 +1724,13 @@ function CallGroup({ children }: { readonly children: ReactNode }) {
 
 /** Whether a call's card was drawn before the call joined it. */
 const CallGroupContext = createContext<{ readonly current: boolean } | null>(null);
+
+/**
+ * Whether a call is drawn in the list a folded row of quick calls opens onto
+ * (`QuickCallsBubble`): one line of the list — its words at the quiet size,
+ * no mark and no code beside it — that still opens what it ran and printed.
+ */
+const ListedContext = createContext(false);
 
 /**
  * One call, as its row of the bubble — a failure by its mark, never a flood —
@@ -1679,12 +1762,22 @@ function CallRow({
   // As it mounted: a call that landed by a plop never rises in later.
   const plopping = use(PlopsContext);
   const [plops] = useState(plopping);
+  // In a folded row's list it is a line of that row: the row is what the card's motion reads.
+  if (use(ListedContext)) {
+    return (
+      <div
+        className="relative min-w-0"
+        data-chat-failed={failure ?? undefined}
+        data-chat-kind={kind}
+        data-quick-call
+      >
+        {children}
+      </div>
+    );
+  }
   return (
     <div
-      className={cn(
-        "relative min-w-0 first:rounded-t-2xl last:rounded-b-2xl",
-        joined && !plops && "run-rise",
-      )}
+      className={cn("relative min-w-0", joined && !plops && "run-rise")}
       data-run-rises={joined && !plops ? "" : undefined}
       data-chat-bubble={failure === null ? "tool" : "failed"}
       data-chat-failed={failure ?? undefined}
@@ -1704,29 +1797,46 @@ function CallRow({
 /**
  * A command's code, in mono, in its item's box — a script never prints whole
  * into the chat unasked (the owner, 2026-09-28: "I see 100s of LoC printed
- * directly"): four lines of it, following the code as it streams in; in the
- * log its head, and all of it once its call is opened. It is how, under what
- * the command was for, on the words' own edge: in the muted ink, failed too —
- * its mark and its right edge say that it failed. Its grammar tints that ink
- * without raising it (`CommandScript`).
+ * directly"). In the working row, six lines of it, following the code as it
+ * streams in. In the log its first line under what the command was for,
+ * muted — its title already says what it does, and three commands of four
+ * lines each filled the card (the board, 2026-11-10); opened, all of it in a
+ * well, nothing scrolling in it. Its grammar tints its ink without raising
+ * it (`CommandScript`). `onCut` says whether lines run past the one shown,
+ * `watch` measures whether that line itself is cut.
  */
 function CommandCode({
   script,
   follows,
   open,
   onCut,
+  watch,
 }: {
   readonly script: string;
   readonly follows: boolean;
   readonly open: boolean;
   readonly onCut: (cut: boolean) => void;
+  readonly watch: (element: HTMLElement | null) => void;
 }) {
+  const inSlot = use(InSlotContext);
+  const whole = !inSlot && open;
   return (
-    <CappedBox follows={follows} onCut={onCut} open={open}>
+    <CappedBox
+      follows={follows}
+      lines="code"
+      onCut={onCut}
+      open={open}
+      {...(whole ? { className: cn(WELL, "px-3 py-3") } : {})}
+    >
       <code
+        ref={inSlot || whole ? undefined : watch}
         className={cn(
-          "block whitespace-pre-wrap break-words font-mono text-muted-foreground",
+          "block font-mono",
           META,
+          inSlot || whole
+            ? "whitespace-pre-wrap break-words text-foreground/80"
+            : "overflow-hidden text-ellipsis whitespace-pre text-muted-foreground/80",
+          whole && "select-text",
         )}
       >
         <CommandScript script={script} />
@@ -1736,12 +1846,12 @@ function CommandCode({
 }
 
 /**
- * A call the Mate made, as its row in the card of calls: led by what kind of
- * call it was, its time and a chevron on the card's right edge. A command
- * says what it was for, then its code in its item's box. What it printed
- * opens under it, on its first line's press, in an inset on the code's own
- * left edge. The one it is making now counts its time in the same quiet ink:
- * blue means something to click (S3), and the run has one clock.
+ * A call the Mate made, as its row of the ledger: led by what kind of call it
+ * was, its time and a chevron on the card's right edge. A command says what
+ * it was for, then one line of its code; pressed, the row opens its code
+ * whole in place, and what it printed under it. In the working row it stands
+ * with its body — its code, six lines of it — and a spinner at its line's
+ * end; the run's one clock stays the head's (K3).
  */
 function StepBubble({
   step,
@@ -1754,7 +1864,7 @@ function StepBubble({
   const inSlot = use(InSlotContext);
   const script = step.kind === "command" ? (step.script ?? step.code) : null;
   // A command that said nothing of itself is its own title (K4): its first
-  // line, in mono, and the whole of it in its box under it when it runs on.
+  // line, in mono, and the whole of it under it when it runs on.
   const bare = script !== null && step.words === null;
   const disclosure = useDisclosure(false, "open");
   const outputs = stepOutput(step);
@@ -1763,13 +1873,19 @@ function StepBubble({
   const running = step.state === "running";
   const time = stepTime(step);
   const showsCode = script !== null && (!bare || step.codeLines > 1);
-  // In the log its code stands at its head: past the cap, the call opens onto the rest.
-  const [codeCut, setCodeCut] = useState(false);
-  const opens = opensOnto({ control: "step", step, codeCut: !inSlot && showsCode && codeCut });
+  // In the log its code is one line: a script of several, or a line that runs
+  // past the row, opens onto the whole of it.
+  const [linesPast, setLinesPast] = useState(false);
+  const [linePast, watchLine] = useRunsPast(false, true);
+  // In a folded row's list it is its words alone: its code is all behind its press.
+  const listed = use(ListedContext);
+  const codeCut = !inSlot && showsCode && (listed || linesPast || linePast);
+  const opens = opensOnto({ control: "step", step, codeCut });
   const title = step.words ?? step.code ?? "A command";
   const headline = (
     <Headline
       column
+      now={running ? <RunsNow /> : null}
       opens={opens}
       running={running}
       time={failure !== null ? "Failed" : step.state === "stopped" ? "Stopped" : time}
@@ -1777,24 +1893,25 @@ function StepBubble({
     >
       {step.kind === "command" ? (
         step.words === null && step.code === null ? (
-          // Its input not streamed in yet: what it does, never an empty bubble (run 5).
-          <span className="text-foreground/75">{running ? stepNowWords(step) : title}</span>
+          // Its input not streamed in yet: what it does, never an empty row (run 5).
+          <span>{running ? stepNowWords(step) : title}</span>
         ) : step.words === null ? (
-          <span className="font-mono text-foreground">{step.code}</span>
+          <span className="font-mono text-line">{step.code}</span>
         ) : (
-          <span className="text-foreground/75">{step.words}</span>
+          <span>{step.words}</span>
         )
       ) : step.phrase !== null ? (
         <PhraseWords phrase={step.phrase} />
       ) : (
-        <span className="text-foreground/75">{title}</span>
+        <span>{title}</span>
       )}
       {step.kind === "edit" && step.entries.length > 1 ? (
         <span className="text-muted-foreground">{` · ${step.entries.length} edits`}</span>
       ) : null}
     </Headline>
   );
-  const pad = showsCode ? "ps-3 pe-3.5 pt-1.75 pb-0.5" : CALL_PAD;
+  // Its code stands under its line: in a folded row's list only once it is opened.
+  const code = showsCode && (!listed || disclosure.open);
   return (
     <CallRow
       failure={failure}
@@ -1809,7 +1926,10 @@ function StepBubble({
     >
       {opens ? (
         <DisclosureButton
-          className={pad}
+          // Closed, the whole row is its press: its line and the code under it.
+          {...(disclosure.open
+            ? {}
+            : { className: "after:absolute after:inset-0 after:content-['']" })}
           label={`${title}. ${disclosure.open ? "Hide" : "Show"} ${outputs.length > 0 ? "what it returned" : writeCalls.length > 0 ? "what it wrote" : "all of its code"}`}
           onToggle={disclosure.toggle}
           open={disclosure.open}
@@ -1817,22 +1937,23 @@ function StepBubble({
           {headline}
         </DisclosureButton>
       ) : (
-        <div className={pad}>{headline}</div>
+        <div>{headline}</div>
       )}
-      {showsCode ? (
-        <div className="px-3 pb-1.75">
+      {code ? (
+        <div className={inSlot || disclosure.open ? "pt-2" : undefined}>
           <CommandCode
             follows={inSlot && running}
-            onCut={setCodeCut}
-            open={disclosure.open}
+            onCut={setLinesPast}
+            open={disclosure.open && codeCut}
             script={script}
+            watch={watchLine}
           />
         </div>
       ) : null}
       <StepPictures step={step} />
       {disclosure.open && outputs.length > 0 ? (
         <div
-          className={cn("grid gap-2 px-3 pb-2", rises(disclosure.made))}
+          className={cn("grid gap-2 pt-2", rises(disclosure.made))}
           data-chat-detail
           data-chat-detail-rises={disclosure.made ? "" : undefined}
         >
@@ -1847,15 +1968,77 @@ function StepBubble({
         </div>
       ) : null}
       {disclosure.open && writeCalls.length > 0 ? (
-        <div className={cn("px-3 pb-2", rises(disclosure.made))} data-chat-detail>
+        <div className={cn("pt-2", rises(disclosure.made))} data-chat-detail>
           <FileWriteDetail
             box={(part, text) => (
-              <CappedBox className="rounded-xl bg-foreground/4" detail part={part}>
+              <CappedBox className={WELL} detail part={part}>
                 {text}
               </CappedBox>
             )}
             callIds={writeCalls}
           />
+        </div>
+      ) : null}
+    </CallRow>
+  );
+}
+
+/**
+ * Quick calls in a row as one row of the ledger (`quickCalls.logic`): what
+ * they were and how many, their time together on the card's right edge, and
+ * a chevron — pressed, it opens in place onto each of them, a line apiece.
+ * While its burst goes on (`ticks`) its count stands in a chip that turns:
+ * the count is the one thing in the log that changes then, and the words
+ * beside it never shift for it.
+ */
+function QuickCallsBubble({
+  lines,
+  steps,
+  ticks,
+}: {
+  /** Each of its calls, as the line it is on its own. */
+  readonly lines: ReadonlyArray<ChatLine>;
+  readonly steps: ReadonlyArray<WorkStep>;
+  readonly ticks: boolean;
+}) {
+  const disclosure = useDisclosure(false, "quick");
+  const { verb, count, noun } = quickCallsWords(steps);
+  const span = quickCallsSpanMs(steps);
+  return (
+    <CallRow kind="quick" mark={<DidMark icon={SquareStackIcon} />}>
+      <DisclosureButton
+        label={`${verb} ${count} ${noun}. ${disclosure.open ? "Hide" : "Show"} each one`}
+        onToggle={disclosure.toggle}
+        open={disclosure.open}
+      >
+        <Headline
+          column
+          opens
+          time={span !== null && span >= 1000 ? formatWorkDuration(span) : null}
+        >
+          {verb}{" "}
+          <span className="run-quick-count" data-quick-count data-ticking={ticks ? "" : undefined}>
+            {ticks ? (
+              <Spinner aria-hidden="true" role="presentation" size="xs" tone="muted" />
+            ) : null}
+            <span className="run-quick-number">{count}</span>
+          </span>{" "}
+          {noun}
+        </Headline>
+      </DisclosureButton>
+      {disclosure.open ? (
+        <div
+          className={cn("run-quick-list", rises(disclosure.made))}
+          data-chat-detail
+          data-quick-list
+        >
+          <ListedContext value>
+            {lines.map((line) => (
+              <ChatLineContext key={line.key} value={line.key}>
+                {line.bubble}
+              </ChatLineContext>
+            ))}
+          </ListedContext>
         </div>
       ) : null}
     </CallRow>
@@ -1892,12 +2075,7 @@ export function OperationDetail({
   }
   if (regions !== undefined) {
     return (
-      <ZeropsOperationCard
-        headless
-        operation={cardOperationOf(operation, regions.service)}
-        threadRef={threadRef}
-        {...regions}
-      />
+      <ZeropsOperationCard headless operation={operation} threadRef={threadRef} {...regions} />
     );
   }
   return (
@@ -1926,14 +2104,7 @@ function ZeropsOperationDetail({
     true,
     threadRef?.threadId ?? null,
   );
-  return (
-    <ZeropsOperationCard
-      headless
-      operation={cardOperationOf(operation, regions.service)}
-      threadRef={threadRef}
-      {...regions}
-    />
-  );
+  return <ZeropsOperationCard headless operation={operation} threadRef={threadRef} {...regions} />;
 }
 
 /**
@@ -1966,6 +2137,7 @@ function StandupBubble({
     <OperationBubble
       lines={detailLines(operation, reading?.rows.length ?? null)}
       operation={operation}
+      standing={reading === null || reading.rows.length === 0 ? undefined : standupBar(reading)}
       undone={undone}
     />
   );
@@ -1983,6 +2155,12 @@ interface OperationLineProps {
   readonly noResult?: "stale" | "closed" | undefined;
   /** How much it opens to: its services' lines, its card's parts (`detailLines`). */
   readonly lines?: number;
+  /**
+   * A stand-up's own instrument while its call runs: a segment a service, what they do and how
+   * many are up (`standupBar`), the same reading the band under the card draws once its call
+   * returned. None for any other operation, or before any service is read.
+   */
+  readonly standing?: StandupBarModel | undefined;
 }
 
 /**
@@ -2020,11 +2198,38 @@ function WatchedOperationBubble(props: OperationLineProps) {
   return <OperationLine {...props} regions={regions} />;
 }
 
+/**
+ * A line's words with the service they name in the mono face: a hostname is a real thing's own
+ * name, never a label (`.real-name`). Only where it stands as a word of its own.
+ */
+function ServiceNamed({
+  words,
+  name,
+}: {
+  readonly words: string;
+  readonly name: string | undefined;
+}) {
+  const at = name === undefined || name === "" ? -1 : words.indexOf(name);
+  if (name === undefined || at === -1) return words;
+  const end = at + name.length;
+  const inWord = /[\w-]/u;
+  if ((at > 0 && inWord.test(words[at - 1]!)) || (end < words.length && inWord.test(words[end]!)))
+    return words;
+  return (
+    <>
+      {words.slice(0, at)}
+      <span className="real-name">{name}</span>
+      {words.slice(end)}
+    </>
+  );
+}
+
 function OperationLine({
   operation,
   undone = false,
   noResult,
   lines: given,
+  standing,
   regions,
 }: OperationLineProps & {
   /** What its card read of the platform: null where nothing reads it here. */
@@ -2043,9 +2248,14 @@ function OperationLine({
   const topology = useZeropsTopology(ctx.activeThreadEnvironmentId);
   const devServerUrl = devServerUrlFor(operation, topology);
   const lines = inBand ? 0 : (given ?? detailLines(operation, null, observed, devServerUrl));
-  // In the slot the newest running deploy stands open on what its card read, and lands so.
+  // In the slot the newest running deploy stands open on what its card read, and lands so. A
+  // stand-up stands open on its services the same way: each one's state is its progress, and a
+  // line with a bar alone said nothing of it for the minutes its builds take.
   const disclosure = useDisclosure(
-    inSlot && line !== null && line === standsOpen && showsCardInSlot(observed),
+    inSlot &&
+      line !== null &&
+      line === standsOpen &&
+      (operation.kind === "standup" ? lines > 0 : showsCardInSlot(observed)),
     "open",
     true,
     inBand,
@@ -2057,10 +2267,16 @@ function OperationLine({
   // A batch's bar keeps a segment per service; a deploy's follows its pipeline.
   const live =
     running && inSlot
-      ? liveOperationBar(
-          operation,
-          operation.batch === true ? undefined : regions?.observed?.pipeline,
-        )
+      ? standing !== undefined
+        ? {
+            segments: standing.segments,
+            word:
+              standing.figure === null ? standing.words : `${standing.words} · ${standing.figure}`,
+          }
+        : liveOperationBar(
+            operation,
+            operation.batch === true ? undefined : regions?.observed?.pipeline,
+          )
       : null;
   // Settled, a bar only where it says what the line does not (`settledOperationBar`).
   const settled = settledOperationBar(operation, undone, inSlot ? "slot" : "log");
@@ -2099,7 +2315,7 @@ function OperationLine({
           // A deploy's running step pulses: its name stands still in the ink.
           sweeps={live !== null && !stepped}
         >
-          {words}
+          <ServiceNamed name={operation.target?.hostname} words={words} />
         </RunShimmer>
         {stepped ? null : live !== null ? (
           <>
@@ -2133,7 +2349,6 @@ function OperationLine({
     >
       {opens ? (
         <DisclosureButton
-          className={CALL_PAD}
           label={`${words}. ${disclosure.open ? "Hide" : "Show"} it`}
           onToggle={disclosure.toggle}
           open={disclosure.open}
@@ -2141,12 +2356,14 @@ function OperationLine({
           {head}
         </DisclosureButton>
       ) : (
-        <div className={CALL_PAD}>{head}</div>
+        <div>{head}</div>
       )}
       {opens && disclosure.open ? (
         <div
           className={cn(
-            "px-3 pb-2",
+            "pt-2",
+            // In the log its times end where the line's own does, the chevron's seat held.
+            !inSlot && "run-line-detail",
             // Only an open the person made moves; a carried or a landing one is simply there.
             rises(disclosure.made),
           )}
@@ -2313,7 +2530,6 @@ function ChecksBubble({ strip: recorded }: { readonly strip: BrowserStripModel }
     >
       {opens ? (
         <DisclosureButton
-          className={CALL_PAD}
           label={`${words}${verdict === null ? "" : `, ${verdict}`}. ${disclosure.open ? "Hide" : "Show"} the checks`}
           onToggle={disclosure.toggle}
           open={disclosure.open}
@@ -2321,10 +2537,10 @@ function ChecksBubble({ strip: recorded }: { readonly strip: BrowserStripModel }
           {head}
         </DisclosureButton>
       ) : (
-        <div className={CALL_PAD}>{head}</div>
+        <div>{head}</div>
       )}
       {disclosure.open || !takes ? null : (
-        <div className="px-3 pb-2">
+        <div className="pt-2">
           <BrowserTakes
             threadRef={ctx.threadRef}
             environmentId={ctx.activeThreadEnvironmentId}
@@ -2335,7 +2551,7 @@ function ChecksBubble({ strip: recorded }: { readonly strip: BrowserStripModel }
       )}
       {opens && disclosure.open ? (
         <div
-          className={cn("px-3 pb-2", rises(disclosure.made))}
+          className={cn("pt-2", rises(disclosure.made))}
           data-chat-detail
           data-chat-detail-rises={disclosure.made ? "" : undefined}
         >
@@ -2353,7 +2569,17 @@ function ChecksBubble({ strip: recorded }: { readonly strip: BrowserStripModel }
 }
 
 /** A service's trouble, in its colour: red while broken, amber while it needs the person. */
-function IncidentMark({ tone }: { readonly tone: IncidentModel["tone"] }) {
+function IncidentMark({ incident }: { readonly incident: IncidentModel }) {
+  const ctx = use(TimelineRowCtx);
+  const topology = useZeropsTopology(ctx.activeThreadEnvironmentId);
+  const lifecycle = useZeropsLifecycle(
+    ctx.activeThreadEnvironmentId,
+    ctx.threadRef?.threadId ?? null,
+  );
+  const tone = incidentToneNow(
+    incident,
+    servicesWithStandIns(topology?.services, (hostname) => standInOf(hostname, lifecycle)),
+  ).tone;
   return (
     <ActivityIcon
       aria-hidden="true"
@@ -2372,7 +2598,7 @@ function IncidentMark({ tone }: { readonly tone: IncidentModel["tone"] }) {
 /** A service that stopped answering, and what became of it: its phases in order. */
 function IncidentBubble({ incident }: { readonly incident: IncidentModel }) {
   return (
-    <Bubble kind="incident" tone="tool" className={BUBBLE_PAD}>
+    <Bubble kind="incident" size={ROW} tone="tool">
       <span className="font-medium">{incident.hostname}</span>
       <span className="text-muted-foreground">{` ${incident.phases.join(" → ")}`}</span>
     </Bubble>
@@ -2486,7 +2712,6 @@ function HelpersBubble({ entry }: { readonly entry: WorkLogEntry }) {
     >
       {opens ? (
         <DisclosureButton
-          className={CALL_PAD}
           label={`${words}. ${disclosure.open ? "Hide" : "Show"} them`}
           onToggle={disclosure.toggle}
           open={disclosure.open}
@@ -2494,7 +2719,7 @@ function HelpersBubble({ entry }: { readonly entry: WorkLogEntry }) {
           {head}
         </DisclosureButton>
       ) : (
-        <div className={CALL_PAD}>{head}</div>
+        <div>{head}</div>
       )}
       {opens && disclosure.open ? (
         // Its helpers' words on the bubble's text edge: 8 px in, and their own 6.
@@ -2558,7 +2783,6 @@ function TaskBubble({ entry }: { readonly entry: WorkLogEntry }) {
     >
       {reported ? (
         <DisclosureButton
-          className={CALL_PAD}
           label={`${words}. ${disclosure.open ? "Hide" : "Show"} what it reported`}
           onToggle={disclosure.toggle}
           open={disclosure.open}
@@ -2566,11 +2790,11 @@ function TaskBubble({ entry }: { readonly entry: WorkLogEntry }) {
           {line}
         </DisclosureButton>
       ) : (
-        <div className={CALL_PAD}>{line}</div>
+        <div>{line}</div>
       )}
       {disclosure.open ? (
         <div
-          className={cn("px-3 pb-2", rises(disclosure.made))}
+          className={cn("pt-2", rises(disclosure.made))}
           data-chat-detail
           data-chat-detail-rises={disclosure.made ? "" : undefined}
         >
@@ -2604,7 +2828,6 @@ function PlanBubble({ plan }: { readonly plan: TurnPlanEntry }) {
     <CallRow kind="plan" mark={<DidMark icon={ListTodoIcon} />}>
       {opens ? (
         <DisclosureButton
-          className={CALL_PAD}
           label={`To-do list, ${done} of ${steps.length} done. ${disclosure.open ? "Hide" : "Show"} it`}
           onToggle={disclosure.toggle}
           open={disclosure.open}
@@ -2612,11 +2835,11 @@ function PlanBubble({ plan }: { readonly plan: TurnPlanEntry }) {
           {head}
         </DisclosureButton>
       ) : (
-        <div className={CALL_PAD}>{head}</div>
+        <div>{head}</div>
       )}
       {opens && disclosure.open ? (
         <div
-          className={cn("px-3 pb-2", rises(disclosure.made))}
+          className={cn("pt-2", rises(disclosure.made))}
           data-chat-detail
           data-chat-detail-rises={disclosure.made ? "" : undefined}
         >
@@ -2654,10 +2877,9 @@ function NoticeBubble({
   return (
     <Bubble kind={kind} tone="tool">
       {more === null ? (
-        <div className={BUBBLE_PAD}>{line}</div>
+        <div>{line}</div>
       ) : (
         <DisclosureButton
-          className={BUBBLE_PAD}
           label={`${label}. ${disclosure.open ? "Hide" : "Show"} the whole ${kind}`}
           onToggle={disclosure.toggle}
           open={disclosure.open}
@@ -2667,7 +2889,7 @@ function NoticeBubble({
       )}
       {disclosure.open && more !== null ? (
         <div
-          className={cn("px-3 pb-2", rises(disclosure.made))}
+          className={cn("pt-2", rises(disclosure.made))}
           data-chat-detail
           data-chat-detail-rises={disclosure.made ? "" : undefined}
         >
@@ -2695,6 +2917,8 @@ export function recordEventWords(
         words: `${event.event.repository} #${event.event.number} landed`,
         detail: event.event.title,
       };
+    case "release":
+      return { words: releaseEndedWords(event.event), detail: null };
     case "compaction":
       return {
         words: "Context condensed",
@@ -2767,6 +2991,8 @@ interface ChatLine {
   readonly call?: boolean;
   /** The Mate's question: the person's answer under it pairs with it. */
   readonly asks?: boolean;
+  /** The Mate's words to the person, the log's one bubble: more room over and under it than a row gets. */
+  readonly said?: boolean;
   /** An answer under its question, 6 px under it — a pair, not two lines (K14). */
   readonly pairs?: boolean;
   /** It lands from the live slot by a plop, rather than rising in. */
@@ -2777,6 +3003,18 @@ interface ChatLine {
 const THOUGHT_MARK = (
   <AsteriskIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground/70" />
 );
+
+/**
+ * A thought's mark where it stands: its asterisk in the log; in the working
+ * row the Mate's own face at work, as every item there wears while it is
+ * what the Mate does now (the board, 2026-11-10).
+ */
+function ThoughtMark() {
+  const ctx = use(TimelineRowCtx);
+  if (!use(InSlotContext)) return THOUGHT_MARK;
+  if (ctx.speaker.helper) return <HelperFace />;
+  return <MateFace shape={ctx.speaker.shape} size={20} state="working" tint={ctx.speaker.tint} />;
+}
 
 /** Its words' mark: its own face, at rest — who is speaking, beside what it said. */
 function SpeakerMark() {
@@ -2967,7 +3205,7 @@ function itemLine(item: RecordItem, undone: ReadonlySet<string>): ChatLine {
       return {
         key: item.key,
         bubble: <ThoughtBubble messages={item.messages} />,
-        mark: THOUGHT_MARK,
+        mark: <ThoughtMark />,
         markLine: "thought",
       };
     case "note":
@@ -2975,6 +3213,7 @@ function itemLine(item: RecordItem, undone: ReadonlySet<string>): ChatLine {
         key: item.key,
         bubble: <NoteBubble message={item.message} />,
         mark: <SpeakerMark />,
+        said: true,
       };
     case "question":
       return {
@@ -2982,6 +3221,7 @@ function itemLine(item: RecordItem, undone: ReadonlySet<string>): ChatLine {
         bubble: <QuestionBubble questions={item.questions} />,
         mark: <SpeakerMark />,
         asks: true,
+        said: true,
       };
     case "person":
       return { key: item.key, bubble: <PersonMark item={item} />, theirs: true };
@@ -3012,7 +3252,8 @@ function itemLine(item: RecordItem, undone: ReadonlySet<string>): ChatLine {
       return {
         key: item.key,
         bubble: <IncidentBubble incident={item.incident} />,
-        mark: <IncidentMark tone={item.incident.tone} />,
+        mark: <IncidentMark incident={item.incident} />,
+        markLine: "call",
       };
     case "event":
       return { key: item.key, bubble: <EventCaption event={item.event} />, across: true };
@@ -3027,6 +3268,7 @@ function itemLine(item: RecordItem, undone: ReadonlySet<string>): ChatLine {
       return {
         key: item.key,
         bubble: <NoticeBubble entry={item.entry} kind={item.kind} />,
+        markLine: "call",
         mark:
           item.kind === "warning" ? (
             <TriangleAlertIcon
@@ -3053,6 +3295,7 @@ function ChatRow({
   across,
   theirs,
   pairs = false,
+  said = false,
   mark,
   markLine,
   children,
@@ -3061,13 +3304,17 @@ function ChatRow({
   readonly lineKey: string;
   readonly across: boolean;
   readonly theirs: boolean;
-  /** It answers the question right above it: 6 px under it, not 12. */
+  /** It answers the question right above it: 6 px under it, not 16. */
   readonly pairs?: boolean;
+  /** The Mate's words: 22 px over and under them, where rows stand 16 px apart. */
+  readonly said?: boolean;
   readonly mark?: ReactNode;
   readonly markLine?: MarkLine | undefined;
   readonly children: ReactNode;
 }) {
   const rises = useRisesIn();
+  // In the working row an item stands alone: the panel's own padding is its room.
+  const roomy = said && !use(InSlotContext);
   // What it opens is kept by its key, across its slot row and its history row.
   children = <ChatLineContext value={lineKey}>{children}</ChatLineContext>;
   if (across) {
@@ -3079,7 +3326,7 @@ function ChatRow({
   }
   return (
     <li
-      className={cn("flex min-w-0 items-start", MARK_GAP, pairs && "-mt-1.5")}
+      className={cn("flex min-w-0 items-start", MARK_GAP, pairs ? "-mt-4" : roomy && "my-1.5")}
       data-chat-row
       data-run-key={lineKey}
     >
@@ -3249,15 +3496,9 @@ function NowWords({ line }: { readonly line: NowLineModel }) {
       );
     case "working":
       return <span className="run-now-verb">Working</span>;
+    // What it came to stands beside it, in its facts (`NowLine`).
     case "worked":
-      return (
-        <>
-          <span className="run-now-worked">{line.words}</span>
-          {line.effort === null ? null : (
-            <span className="run-now-effort">{` · ${line.effort}`}</span>
-          )}
-        </>
-      );
+      return <span className="run-now-worked">{line.words}</span>;
   }
 }
 
@@ -3343,7 +3584,8 @@ function NowLine({
   const now = useEngineLiveNow(recordedNow);
   const ctx = use(TimelineRowCtx);
   const { isCompacting, isStopping } = use(TimelineRowActivityCtx);
-  const effort = useRunEffortWords(outcome);
+  const worked = useRunEffort(outcome);
+  const effort = worked.words;
   const baseLine = nowLineOf({
     status,
     now,
@@ -3403,10 +3645,32 @@ function NowLine({
     </span>
   );
   const toggle = head?.toggle ?? null;
+  // Its log hidden while it works, the head says what happens now under its
+  // line (the board, 2026-11-10): the working row is the hidden work's too.
+  const under = useCalmLine(latest, nowLineWords(latest), !status.live);
+  const sub =
+    head === undefined || !status.live || toggle === null || toggle.open
+      ? null
+      : underHeadWords(
+          under,
+          now?.kind === "thinking"
+            ? thoughtOpening(now.messages.map((message) => message.text).join("\n\n"))
+            : null,
+        );
+  // Its work opened, the counts its closed line leaves out stand under it, with its steps.
+  const rest =
+    line.kind !== "worked" || line.effort === null || head === undefined || toggle?.open !== true
+      ? []
+      : [
+          ...worked.rest,
+          ...(head.steps > 0 ? [`${head.steps} ${head.steps === 1 ? "step" : "steps"}`] : []),
+        ];
+  const restWords = rest.length === 0 ? null : rest.join(" · ");
   return (
     <div
       className="run-now"
       data-run-now={line.kind}
+      data-run-sub={sub === null && restWords === null ? undefined : ""}
       data-run-head={head === undefined ? undefined : ""}
       data-run-titled={head?.title === undefined ? undefined : ""}
       data-run-status={
@@ -3465,6 +3729,26 @@ function NowLine({
             {head.steps > 0 ? ` · ${head.steps} ${head.steps === 1 ? "step" : "steps"}` : null}
           </span>
         ) : null}
+        {/* Over: at most two facts of what it came to beside its time — what changed for the
+            person first — and, its work opened, the other counts under its line. */}
+        {line.kind !== "worked" || line.effort === null
+          ? null
+          : worked.facts.map((fact) => (
+              <Fragment key={fact}>
+                <span className="sr-only">{" · "}</span>
+                <span className="run-now-fact">{fact}</span>
+              </Fragment>
+            ))}
+        {restWords === null ? null : (
+          <span className="run-now-sub" data-run-now-rest>
+            {restWords}
+          </span>
+        )}
+        {sub === null ? null : (
+          <span className="run-now-sub" data-run-now-sub>
+            {sub}
+          </span>
+        )}
         {/* What a screen reader hears: the line's words as they change —
             never the thought's latest words or a step's ticking time. */}
         {status.live && (head === undefined || head.toggle?.open === false) ? (
@@ -3503,6 +3787,12 @@ function NowLine({
               </Button>
             )
           ) : null}
+          {/* Over, its press is named in sight too; its button says it to a screen reader. */}
+          {toggle === null || line.kind !== "worked" ? null : (
+            <span aria-hidden="true" className="run-head-toggle-words">
+              {toggle.open ? "Hide work" : "Show work"}
+            </span>
+          )}
           {toggle === null ? null : (
             <ChevronDownIcon
               aria-hidden="true"
@@ -3564,14 +3854,23 @@ function BrokeOffLine({
   const ctx = use(TimelineRowCtx);
   const [heldNext, setHeldNext] = useState(brokeOff.next);
   if (brokeOff.next !== null && brokeOff.next !== heldNext) setHeldNext(brokeOff.next);
-  // A usage limit or a refused sign-in in the voice the Mate's other surfaces use.
-  const reason = mateFailureWords(brokeOff.reason, ctx.driver, ctx.speaker.name);
+  // A usage limit or a refused sign-in in the voice the Mate's other surfaces use; a refused
+  // attempt is a quiet record in its own words.
+  const reason =
+    brokeOff.quiet === true
+      ? brokeOff.reason
+      : mateFailureWords(brokeOff.reason, ctx.driver, ctx.speaker.name);
   return (
     <div
       className={cn("grid min-w-0 [grid-column:2/-1]", rises && "motion-safe:animate-room-open")}
       data-run-broke-off
     >
-      <p className="min-h-0 min-w-0 overflow-hidden pt-0.5 text-sm leading-5 text-status-failed-text">
+      <p
+        className={cn(
+          "min-h-0 min-w-0 overflow-hidden pt-0.5 text-sm leading-5",
+          brokeOff.quiet === true ? "text-muted-foreground" : "text-status-failed-text",
+        )}
+      >
         {reason}
         {heldNext === null ? null : (
           <span
@@ -3605,11 +3904,21 @@ const EASED_BOXES = "[data-chat-bubble],[data-chat-calls],[data-zerops-pipeline-
 /** What the motions of a run's card share: the live slot's rooms, read by the history beside it. */
 interface RunMotion {
   slot: Rooms | null;
-  /** The speed a frame gives the slot's and the history's eases, each way. */
-  readonly budget: EaseBudget;
+  /**
+   * The travels of the card (`runTravel`): what one draw changes — the slot's
+   * room, the history's, the card's own, the rows a landing moves — goes by one.
+   */
+  readonly travels: Travels;
+  /**
+   * How the history keeps to its foot, while one is drawn: called in each
+   * frame a box of the card eased, once it shows its height (`afterStep`).
+   */
+  keep: (() => void) | null;
 }
 
 const NO_KEYS: ReadonlyArray<string> = [];
+const NO_STRETCHES: ReadonlyArray<AsideStretch> = [];
+const NO_TOPS: ReadonlyMap<string, number> = new Map();
 const NO_HOLDS: ReadonlySet<string> = new Set();
 
 /** Lines landing from the live slot: where each stood, and where the history's lines stood. */
@@ -3618,12 +3927,30 @@ interface Landing {
   readonly from: ReadonlyMap<string, number>;
   /** The lines leaving that stood in the slot: they join the history at once (`usePace`). */
   readonly hosts: ReadonlySet<string>;
-  /** Where the slot stood: what lands above it moves it, and it glides there. */
+  /** Where the slot stood on screen. */
   readonly slot: number | null;
+  /**
+   * How far under the history's top its view ended, at the slot's top: a slot
+   * that grew took room a line stood in.
+   */
+  readonly viewEnd: number | null;
   /** How tall the card's row stood: a list that follows its end moves it a frame late. */
   readonly card: number | null;
-  /** The history's lines by their key, by where each stood on screen. */
+  /**
+   * The history's lines by their key, by how far under the history's top each
+   * stood: read against its own box, so the conversation scrolling the card
+   * since — it follows a card that grows — is never a move of theirs (a card
+   * of calls came down 35 px and went back up 70).
+   */
   readonly rows: ReadonlyMap<string, number>;
+  /**
+   * Where the history's scroll stood as those were read. What it moved between
+   * that read and the landing's draw the person saw happen — their own wheel
+   * over a log that runs on — so it is no move of the landing's: read a few
+   * frames before a landing, lines wheeled past since went back four rows and
+   * glided down again (2026-11-10).
+   */
+  readonly scrollTop: number | null;
   /**
    * The slot's rows, by where each stood in it (from the slot's top): one that
    * stays keeps its place in the slot as a row above it leaves.
@@ -3633,12 +3960,12 @@ interface Landing {
   readonly bubbles: ReadonlyMap<string, number>;
 }
 
-/** Where each of the chat's lines under `root` stands on screen, by its key. */
-function lineTops(root: HTMLElement | null): ReadonlyMap<string, number> {
+/** Where each of the chat's lines under `root` stands, by its key, from `from` (a top on screen). */
+function lineTops(root: HTMLElement | null, from: number): ReadonlyMap<string, number> {
   const tops = new Map<string, number>();
   if (typeof root?.querySelectorAll !== "function") return tops;
   for (const line of root.querySelectorAll<HTMLElement>("li[data-chat-row][data-run-key]")) {
-    tops.set(line.dataset.runKey!, line.getBoundingClientRect().top);
+    tops.set(line.dataset.runKey!, line.getBoundingClientRect().top - from);
   }
   return tops;
 }
@@ -3667,6 +3994,38 @@ function bubbleHeights(root: HTMLElement | null): ReadonlyMap<string, number> {
     if (bubble !== null) heights.set(row.dataset.runKey!, bubble.getBoundingClientRect().height);
   }
   return heights;
+}
+
+/** Where `row` stands among its scroll's lines: from their start, wherever the scroll stands. */
+function topAmongLines(scroll: HTMLElement, row: Element): number {
+  return row.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop;
+}
+
+/** The first of the log's rows that reaches into its view, and where it stands among its lines. */
+function rowInView(
+  scroll: HTMLElement | null,
+  list: HTMLElement | null,
+): { readonly key: string; readonly top: number } | null {
+  if (scroll === null || list === null || typeof scroll.getBoundingClientRect !== "function") {
+    return null;
+  }
+  const viewTop = scroll.getBoundingClientRect().top;
+  for (const row of list.children) {
+    const key = (row as HTMLElement).dataset.runKey;
+    if (key === undefined || row.getBoundingClientRect().bottom <= viewTop) continue;
+    return { key, top: topAmongLines(scroll, row) };
+  }
+  return null;
+}
+
+/** Whether what the person has selected on the page touches `list`: begun in it, ended in it, or dragged across it. */
+function selectionTouches(list: HTMLElement): boolean {
+  const selection = typeof getSelection === "function" ? getSelection() : null;
+  if (selection === null || selection.isCollapsed) return false;
+  for (let index = 0; index < selection.rangeCount; index += 1) {
+    if (selection.getRangeAt(index).intersectsNode(list)) return true;
+  }
+  return false;
 }
 
 /** The row drawn for the chat's line `key` under `root`, if one is. */
@@ -3698,41 +4057,24 @@ function writeStyle(element: HTMLElement, name: string, value: string | null): v
 }
 
 /**
- * Places the live slot's face and clock on its first line, and says the room
- * the slot takes, its gap above it included: on a short page the card holds
- * it whole once the history has none left to give.
+ * Says the room the live slot takes, its gap above it included: on a short
+ * page the card holds it whole once the history has none left to give.
  */
 function placeSlot(list: HTMLOListElement | null): void {
   // Drawn outside a page (a test's renderer), it has no layout to read.
   if (typeof list?.querySelector !== "function") return;
-  const mark = list.querySelector<HTMLElement>("[data-slot-mark] > span");
   const slotBox = list.parentElement;
-  if (slotBox === null) return;
+  const chat = slotBox?.parentElement ?? null;
+  if (slotBox === null || chat === null) return;
   // Every box read before anything is written: a write between two reads
   // restyled the card, and the second read laid it out again.
-  const line = mark?.getBoundingClientRect();
   const slotRect = slotBox.getBoundingClientRect();
-  const y = line === undefined ? null : line.top + line.height / 2 - slotRect.top;
-  // The room the slot takes, its gap above it included: on a short page
-  // the card holds it whole once the history has none left to give.
-  const chat = slotBox.parentElement;
   const above = slotBox.previousElementSibling ?? null;
   const from =
-    chat === null
-      ? null
-      : above === null
-        ? chat.getBoundingClientRect().top
-        : above.getBoundingClientRect().bottom;
-  writeStyle(slotBox, "--run-slot-line", y === null ? null : `${y}px`);
-  // Said on the card, which every line of it inherits: written only when it changes.
-  if (chat !== null && from !== null) {
-    writeStyle(chat, "--run-slot-room", `${Math.ceil(slotRect.bottom - from)}px`);
-  }
-  // They move with the first line only once placed: a first paint, a
-  // thread opened or a card scrolled back to never slides them in.
-  if (!slotBox.hasAttribute("data-placed")) {
-    requestAnimationFrame(() => slotBox.setAttribute("data-placed", ""));
-  }
+    above === null ? chat.getBoundingClientRect().top : above.getBoundingClientRect().bottom;
+  // Said on the card for its own cap (`@property --run-slot-room`): nothing
+  // under it inherits it, so a change of it restyles the card's box alone.
+  writeStyle(chat, "--run-slot-room", `${Math.ceil(slotRect.bottom - from)}px`);
 }
 
 /**
@@ -3740,7 +4082,10 @@ function placeSlot(list: HTMLOListElement | null): void {
  * first frame — a word fading in late left the Mate's face alone on the line
  * for half a second (run 5, E +0:23.6); a quick gap between two steps is
  * bridged by the step standing its minimum — its words on their way, a wait
- * on the person, the context condensing.
+ * on the person, the context condensing. It stands as the row that takes its
+ * place does: its mark in the Mate's column, its words on the items' text
+ * edge, so what comes next replaces it where it stands (2026-11-10: a bare
+ * word 12 px left of every item, no mark beside it).
  */
 function SlotFillerWords({ filler }: { readonly filler: SlotFiller }) {
   switch (filler.kind) {
@@ -3780,14 +4125,14 @@ function SlotFillerWords({ filler }: { readonly filler: SlotFiller }) {
 }
 
 /**
- * The live slot, the card's foot while the run goes on (pass 35, replacing
- * the one-line now line): the Mate's face in the 28 px column, the run's one
- * clock on its first line's right edge, and what the Mate is doing this
- * moment drawn whole, as the row it becomes in the history — the same
- * bubble, inks and caps, with a sweep over a call's words while it runs and
- * no chevron: it shows the thing in full up to its cap. Several at once are
- * a row each, three at most, then "+N more running". Nothing standing in it,
- * it says what the Mate does between things: "Thinking", "Writing", a wait.
+ * The working row, the card's foot while the run goes on (pass 35; the board,
+ * 2026-11-10): the one panel inside the card, holding what the Mate is doing
+ * this moment with its body — its face at work, its words in ink, a
+ * command's code, a spinner while a call runs — and nothing to open: it
+ * shows the thing up to its cap, and lands in the log as its row. Several at
+ * once are a row each, three at most, then "+N more running". In a burst it
+ * is one compact line of one height. Nothing standing in it, it says what
+ * the Mate does between things: "Thinking", "Writing", a wait.
  */
 const NO_ITEMS: ReadonlyMap<string, RecordItem> = new Map();
 
@@ -3809,6 +4154,7 @@ function fillerKey(filler: SlotFiller): string {
 function LiveSlot({
   ref,
   folded,
+  burst,
   slot,
   live,
   items,
@@ -3821,6 +4167,8 @@ function LiveSlot({
 }: {
   readonly ref: Ref<HTMLDivElement>;
   readonly folded: boolean;
+  /** The burst it is in (`slotBurst`): which of how many passes through it. */
+  readonly burst: { readonly at: number; readonly of: number } | null;
   readonly slot: LiveSlotState;
   /** What is live now, as the items they become. */
   readonly live: ReadonlyArray<RecordItem>;
@@ -3931,15 +4279,19 @@ function LiveSlot({
     const list = listRef.current;
     const slotBox = list?.parentElement;
     if (list === null || slotBox === null || slotBox === undefined) return;
+    const motion = motionRef.current;
     const rooms = easeRooms({
       root: slotBox,
       selector: EASED_BOXES,
       eases: () => shownRef.current && !syncingRef.current,
       rootClips: true,
-      budget: motionRef.current.budget,
+      // The working row grows as it shrinks: a thought gaining lines, a
+      // command's body arriving, the next thing taller than the last.
+      grows: () => true,
+      travels: motion.travels,
+      afterStep: () => motion.keep?.(),
     });
     slotRoomsRef.current = rooms;
-    const motion = motionRef.current;
     motion.slot = rooms;
     return () => {
       rooms.stop();
@@ -3968,11 +4320,12 @@ function LiveSlot({
     observer.observe(slotBox);
     return () => observer.disconnect();
   }, []);
-  // Folded, the card keeps what the Mate is doing this moment — a call, an operation, a question —
-  // under its head; its words and its thoughts are the folded work's, the head saying it works.
-  const foldedAway =
-    folded && drawn.every(({ item }) => item.kind === "note" || item.kind === "thought");
-  const shut = foldedAway || saysHead;
+  // Folded, the card is its head alone: the working row is the hidden work's
+  // too, and the head says what it shows under its line (`underHeadWords`).
+  // What waits on the person stays in sight: a question it asked, their
+  // answer under it.
+  const asksPerson = drawn.some(({ item }) => item.kind === "question" || item.kind === "person");
+  const shut = (folded && !asksPerson) || saysHead;
   return (
     <div
       ref={ref}
@@ -3981,17 +4334,52 @@ function LiveSlot({
       style={shut ? { display: "none" } : undefined}
       data-run-now={lines.length === 0 ? said.kind : "items"}
       data-run-status={latest.kind === "waiting" ? "waiting" : "working"}
+      data-slot-compact={burst === null ? undefined : ""}
       data-work-line={status.face}
     >
       <InSlotContext value>
         <SlotStandsOpenContext value={standsOpen}>
           <ChatShownContext value={shownRef}>
             <ol ref={listRef} className="run-slot-list">
-              {lines.length === 0 ? (
-                <li key={`filler:${said.kind}`} className="run-slot-filler">
-                  <span aria-hidden="true" className={MARK_COLUMN} data-slot-mark="">
-                    <span className="flex h-[1lh] items-center" />
+              {burst !== null ? (
+                // A burst: one line of one height, whatever passes through it — what it is,
+                // and which of how many (the board, 2026-11-10).
+                <li key="compact" className="run-slot-compact">
+                  <Mark line="call">
+                    {ctx.speaker.helper ? (
+                      <HelperFace />
+                    ) : (
+                      <MateFace
+                        shape={ctx.speaker.shape}
+                        size={20}
+                        state="working"
+                        tint={ctx.speaker.tint}
+                      />
+                    )}
+                  </Mark>
+                  <span className="run-slot-compact-words">
+                    {slotWords(firstDrawn?.item ?? null, said)}
                   </span>
+                  <span className="run-slot-compact-count">{`${burst.at} of ${burst.of}`}</span>
+                  <span className="run-slot-compact-mark">
+                    {burst.at === burst.of && firstDrawn?.entry.endedAt != null ? (
+                      <CheckIcon aria-hidden="true" className="size-3.5 text-muted-foreground" />
+                    ) : (
+                      <Spinner aria-hidden="true" role="presentation" size="xs" tone="muted" />
+                    )}
+                  </span>
+                </li>
+              ) : lines.length === 0 ? (
+                <li
+                  key={`filler:${said.kind}`}
+                  className="run-slot-filler"
+                  data-slot-filler={said.kind}
+                >
+                  {/* "Thinking" wears the thought's mark: the thought that follows
+                      keeps it where it is. The card's head has the one face. */}
+                  <Mark line={said.kind === "thinking" ? "thought" : "call"}>
+                    {said.kind === "thinking" ? THOUGHT_MARK : null}
+                  </Mark>
                   <span className="run-now-words">
                     <SlotFillerWords filler={said} />
                   </span>
@@ -4016,6 +4404,7 @@ function LiveSlot({
                       mark={entry.mark}
                       markLine={entry.markLine}
                       pairs={entry.pairs === true}
+                      said={entry.said === true}
                       theirs={entry.theirs === true}
                     >
                       {entry.bubble}
@@ -4023,7 +4412,9 @@ function LiveSlot({
                   ),
                 )
               )}
-              {more > 0 ? <li className="run-slot-more">{`+${more} more running`}</li> : null}
+              {more > 0 && burst === null ? (
+                <li className="run-slot-more">{`+${more} more running`}</li>
+              ) : null}
             </ol>
           </ChatShownContext>
         </SlotStandsOpenContext>
@@ -4047,6 +4438,8 @@ function LiveSlot({
 export function RunChat({ row }: { readonly row: RecordRow }) {
   // What the person opened, kept as a row lands from the slot in the history.
   const [carriedOpen] = useState(() => new Map<string, Carried>());
+  // Its log's lines as last built: one that draws the same is the same line (`chatLines`).
+  const [lineCache] = useState<LineCache>(() => new Map());
   const ctx = use(TimelineRowCtx);
   // An engine run too long to read whole: its effort from its summary, its lines a page at a time.
   const paging = row.paging;
@@ -4061,11 +4454,12 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   // something in it opened: a run settling then stays open.
   const readingRef = useRef(false);
   // How the history's scroll keeps to its foot, for a line landing in it.
-  const keepScrollRef = useRef<(() => void) | null>(null);
+  const keepScrollRef = useRef<((lands?: boolean) => void) | null>(null);
   // How its boxes ease (`easeRooms`), for a line landing in it.
   const historyRoomsRef = useRef<Rooms | null>(null);
   // What its parts' motions share (`RunMotion`).
-  const motionRef = useRef<RunMotion>({ slot: null, budget: { at: -1, grow: 0, shrink: 0 } });
+  const [travels] = useState(createTravels);
+  const motionRef = useRef<RunMotion>({ slot: null, travels, keep: null });
   // What in it involves the person: a question it asked, their words in it.
   const personKeys = useMemo(
     () =>
@@ -4128,21 +4522,26 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   const turnOverRef = useRef(turnOver);
   // How tall the card stood as last painted while its turn went on.
   const paintedHeightRef = useRef<number | null>(null);
+  // Where its history's scroll stood as last painted, while the run goes on: a landing's lines
+  // glide from where they stood then (`Landing.scrollTop`).
+  const paintedScrollRef = useRef<number | null>(null);
+  // Read as painted before each commit that draws the card or its conversation again
+  // (`AsPainted`): never in every frame, which ran the page's main thread sixty times a second
+  // for as long as a run went on.
+  const live = row.live;
   useEffect(() => {
-    if (
-      turnOver ||
-      typeof requestAnimationFrame !== "function" ||
-      typeof cancelAnimationFrame !== "function"
-    )
-      return;
-    let frame = requestAnimationFrame(function tell() {
-      const head = rootRef.current?.querySelector<HTMLElement>(":scope > [data-run-head]");
-      if (head != null) headStood(head, head.getBoundingClientRect().top);
-      paintedHeightRef.current = heightOf(rootRef.current);
-      frame = requestAnimationFrame(tell);
+    const root = rootRef.current;
+    // Drawn outside a page (a test's renderer), it has no head to find.
+    if (!live || root === null || typeof root.querySelector !== "function") return;
+    return watchPainted(root, () => {
+      paintedScrollRef.current = scrollIn(aboveRef.current)?.scrollTop ?? null;
+      // Its turn over while what it started runs on, the card stands at the height it showed then.
+      if (turnOver) return;
+      const head = root.querySelector<HTMLElement>(":scope > [data-run-head]");
+      if (head !== null) headStood(head, head.getBoundingClientRect().top);
+      paintedHeightRef.current = heightOf(root);
     });
-    return () => cancelAnimationFrame(frame);
-  }, [turnOver]);
+  }, [live, turnOver]);
   // Its turn over while what it started runs on, the card stands at the height it showed without
   // its slot: its history never grows into the room the slot gave back, which pushed the answer
   // landing under it a slot's height down (recheck on 0.15.44, +15:38: 305 px).
@@ -4184,12 +4583,18 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   useLayoutEffect(() => {
     const root = rootRef.current;
     if (root === null) return;
+    const motion = motionRef.current;
     const rooms = easeRooms({
       root,
       selector: ":not(*)",
       eases: () => cardEasesRef.current,
       rootClips: true,
       attributes: ["data-run-live"],
+      // Its history arriving with its first line: the card's bottom edge
+      // travels to uncover what stands under it, laid out where it will stand.
+      grows: () => true,
+      travels: motion.travels,
+      afterStep: () => motion.keep?.(),
     });
     cardRoomsRef.current = rooms;
     return () => {
@@ -4251,7 +4656,9 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     record: liveHeld.size === 0 ? recordKeys : recordKeys.filter((key) => !liveHeld.has(key)),
     final: !slotted,
     turnOver: row.status?.waitingOnHelpers === true,
-    syncing: ctx.syncing,
+    // Kept out of sight, nobody watches either: what arrives is history at once, so coming back
+    // shows it, never a backlog still playing one line at a time.
+    syncing: ctx.syncing || outOfSight,
     quietFrom,
     onChange: (from, to, redrawn) => {
       // Out of sight, nobody watches it land: what arrives is simply there.
@@ -4274,7 +4681,9 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
         from: stood,
         hosts: landingHosts(from, leaving, new Set(painted.slotRows.keys())),
         rows: slotted ? painted.rows : new Map(),
+        scrollTop: slotted ? painted.scrollTop : null,
         slot: slotted ? painted.slot : null,
+        viewEnd: slotted ? painted.viewEnd : null,
         card: painted.card,
         staying: slotted ? painted.slotRows : new Map(),
         bubbles: slotted ? painted.slotBubbles : new Map(),
@@ -4284,31 +4693,37 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   /** Where the history's lines, the slot and its rows stand on screen now. */
   const paintedNow = () => {
     const slotTop = boxOf(slotRef.current)?.top ?? null;
+    const scroll = scrollIn(aboveRef.current);
+    const historyTop = boxOf(scroll)?.top ?? null;
     return {
-      rows: lineTops(aboveRef.current),
+      rows: historyTop === null ? NO_TOPS : lineTops(aboveRef.current, historyTop),
+      scrollTop: scroll?.scrollTop ?? null,
       slot: slotTop,
+      viewEnd: slotTop === null || historyTop === null ? null : slotTop - historyTop,
       slotRows: rowTops(slotRef.current, slotTop ?? 0),
       slotBubbles: bubbleHeights(slotRef.current),
       card: boxOf(cardRowOf(rootRef.current))?.height ?? null,
     };
   };
   const paintedRef = useRef<ReturnType<typeof paintedNow> | null>(null);
-  // What left the slot lands: the history at its foot, its lines gliding
-  // where the landing moved them, each landed line plopping from where it
-  // stood in the slot. Once the card holds its height the slot glides to its
-  // new place too; growing, the card grows at its bottom, and a list that
-  // follows its end moves it — a frame late, as for any row that grows.
+  // What left the slot lands, and everything it moves goes by one travel
+  // (`runTravel`): the history makes its room at its foot as the slot gives
+  // or takes its own, each by its height; the history's lines glide from
+  // where they stood to where the landing put them, and the landed line comes
+  // up with them from under the history's edge. Nothing else moves the slot:
+  // it rides the history's edge, and a card that grows grows at its bottom.
   useLayoutEffect(() => {
     // Each landing once: it stays the last one heard until the next.
     if (landing === null) return;
     if (prefersReducedMotion()) return;
-    const grew = (boxOf(cardRowOf(rootRef.current))?.height ?? 0) - (landing.card ?? 0);
-    // A history that follows its foot follows it to where the landed line
-    // ends; a move up the person made just before is read first, and stops it.
-    keepScrollRef.current?.();
+    const travel = motionRef.current.travels.current();
+    // A history that follows its foot stands where the landed line ends, at
+    // once: its lines glide there from where they stood, by the travel. A
+    // move up the person made just before is read first, and stops it.
+    keepScrollRef.current?.(true);
     const scroll = scrollIn(aboveRef.current);
     const list = scroll?.querySelector<HTMLElement>(":scope > ol") ?? null;
-    const landed = new Map<HTMLElement, number>();
+    const landed = new Set<HTMLElement>();
     for (const [key, from] of landing.from) {
       // One that rode along unseen rises in as it arrives (`useRisesIn`).
       if (!Number.isFinite(from)) continue;
@@ -4317,27 +4732,40 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
       // A call that opened a card of its own lands with its card.
       const card = line.closest<HTMLElement>("[data-chat-calls]");
       const alone = card !== null && card.childElementCount === 1;
-      landed.set(alone ? (card.closest<HTMLElement>("[data-chat-row]") ?? line) : line, from);
+      landed.add(alone ? (card.closest<HTMLElement>("[data-chat-row]") ?? line) : line);
       // Its bubble grows from the height it showed in the slot (a thought
       // the slot showed four lines of, the history in full).
       const stoodHeight = landing.bubbles.get(key);
       const bubble = line.matches("[data-chat-bubble]")
         ? line
         : line.querySelector<HTMLElement>("[data-chat-bubble]");
-      if (stoodHeight !== undefined && bubble !== null) {
+      // One that lands shorter than it stood — a thought of five lines to its two, a
+      // command's code to its one — is simply its row: easing it shut held its
+      // words over an emptying box, and the log's edge went by both at once.
+      if (
+        stoodHeight !== undefined &&
+        bubble !== null &&
+        stoodHeight < bubble.getBoundingClientRect().height - 0.5
+      ) {
         historyRoomsRef.current?.easeFrom(bubble, stoodHeight);
       }
     }
-    if (scroll !== null && list !== null)
-      glideLines(scroll, list, landing.rows, landed, landing.slot);
+    if (scroll !== null && list !== null) {
+      // The room the history still gives the slot as it glides: its lines go
+      // by both, and the travel is timed for what they come to.
+      const gives = Math.max(0, -(historyRoomsRef.current?.pending() ?? 0));
+      // What its scroll moved from the read of its lines to this draw was seen as it happened.
+      const painted = paintedScrollRef.current;
+      const scrolled =
+        landing.scrollTop === null || painted === null ? 0 : painted - landing.scrollTop;
+      glideLines(scroll, list, landing.rows, scrolled, landed, landing.viewEnd, travel, gives);
+    }
     const element = slotRef.current;
     if (landing.slot === null || landing.card === null || element === null) return;
-    // Growing, the card grows at its bottom, and the list moves the slot.
-    if (grew <= 0.5) glideFrom(element, landing.slot);
     // A row that stays in the slot keeps its place in it as a row above it
-    // leaves, and travels to its new one on the same curve: read from what
-    // holds it — the slot, or its card of calls — so the slot's own move, a
-    // glide or the list's, is never added to it.
+    // leaves, and travels to its new one by the same travel: read from what
+    // holds it — the slot, or its card of calls — so the slot's own move, the
+    // history's edge or the list's, is never added to it.
     const rowSelector = "[data-chat-row][data-run-key]";
     for (const row of element.querySelectorAll<HTMLElement>(rowSelector)) {
       const stood = landing.staying.get(row.dataset.runKey!);
@@ -4351,6 +4779,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
       glideBy(
         row,
         visibleTravel(row, stood - holderStood - (row.getBoundingClientRect().top - base)),
+        travel,
       );
     }
   }, [landing]);
@@ -4374,6 +4803,16 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
       painted.due = false;
       if (painted.wanted) paintedRef.current = paintedNow();
     });
+  });
+  // The history arrives with its first line, where that line stood in the
+  // slot: the slot takes its new place under it at once, and the card's own
+  // edge uncovers it there (its flush, next) — a slot easing shut from the
+  // height it showed stood past the card's edge all the way.
+  const loggedRef = useRef(false);
+  useLayoutEffect(() => {
+    const logged = aboveRef.current !== null;
+    if (logged && !loggedRef.current) motionRef.current.slot?.settle();
+    loggedRef.current = logged;
   });
   // Every commit, before the list's row measures the card in its own.
   useLayoutEffect(() => cardRoomsRef.current?.flush());
@@ -4427,7 +4866,28 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   });
   const entered =
     historyHeld.size === 0 ? history : history.filter(({ item }) => !historyHeld.has(item.key));
-  const lines = above || !folded ? chatLines(entered, undone) : [];
+  // A burst (`slotBurst`): quick calls land folded into one row. The first of
+  // them is no row on its own — it waits for the second, and they enter as
+  // the one row whose count then ticks, so the log moves once for the batch
+  // and never once per row. What the log held as the burst began stays.
+  const burst = slotted ? slotBurst(slot) : null;
+  const [burstBase, setBurstBase] = useState<ReadonlySet<string> | null>(null);
+  if (burst === null && burstBase !== null) setBurstBase(null);
+  if (burst !== null && burstBase === null) {
+    setBurstBase(new Set(entered.map(({ item }) => item.key)));
+  }
+  const landedQuick = burst === null ? 0 : quickCallsAtEnd(entered, stepOfSelected);
+  const lone =
+    burst !== null && burstBase !== null && landedQuick === 1 ? entered.at(-1) : undefined;
+  // Which of how many the working row says: counted with the calls the folded
+  // row already holds, so the row's count and the working row's agree.
+  const passedBefore = burst === null ? 0 : Math.max(landedQuick, burst.at - 1);
+  const passingOf = burst === null ? 0 : passedBefore + burst.of - (burst.at - 1);
+  const passing =
+    burst === null ? null : { at: Math.min(passedBefore + 1, passingOf), of: passingOf };
+  const logged =
+    lone !== undefined && !burstBase?.has(lone.item.key) ? entered.slice(0, -1) : entered;
+  const lines = above || !folded ? chatLines(logged, undone, burst !== null, lineCache) : [];
   // The scroll mounts with its first line, so its box is there from its
   // first frame for what keeps it at its foot.
   const scroll =
@@ -4571,6 +5031,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
               filler={model.filler}
               now={now}
               answering={row.answering}
+              burst={passing}
               slot={slot}
               status={row.status}
               undone={undone}
@@ -4580,15 +5041,90 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
           <div key="below" ref={feedRef} className="run-later-feed">
             {above ? null : scroll}
           </div>
+          {/* A landing is drawn in a commit of its own, its row the same: read before that one too. */}
+          <AsPainted key="painted" of={row} and={landing} />
         </div>
       </ResultPicturesContext>
     </CarriedOpenContext>
   );
 }
 
-/** Build bubbles only for the selected history once its work is drawn. */
-function chatLines(items: RecordRow["chatItems"], undone: ReadonlySet<string>): ChatLine[] {
-  return items.map(({ item, pairs }) => ({ ...itemLine(item, undone), pairs }));
+/** A line's step where the line is a call of the Mate's own: what may be a quick call. */
+function stepOfSelected({ item }: RecordRow["chatItems"][number]): WorkStep | null {
+  return item.kind === "step" ? item.step : null;
+}
+
+/**
+ * A run's lines as they were last built, by key: what each was built from,
+ * and the line. An item that draws the same keeps its line — the same object,
+ * so React leaves its row alone. Every event of a run rebuilds its record's
+ * items; built anew each time, every row of the log was drawn again for one
+ * word streamed into the working row (at 1000 rows, a fifth of every second).
+ */
+type LineCache = Map<
+  string,
+  {
+    readonly items: ReadonlyArray<RecordItem>;
+    readonly undone: boolean;
+    readonly pairs: boolean;
+    readonly ticks: boolean;
+    readonly line: ChatLine;
+  }
+>;
+
+/**
+ * Build bubbles only for the selected history once its work is drawn: each
+ * item its line, quick calls in a row folded into one (`foldQuickCalls`).
+ * `ticks`: a burst goes on, and the folded row at the log's foot counts it.
+ * A line whose items draw as they did is the line `cache` holds.
+ */
+function chatLines(
+  items: RecordRow["chatItems"],
+  undone: ReadonlySet<string>,
+  ticks: boolean,
+  cache: LineCache,
+): ChatLine[] {
+  const folded = foldQuickCalls(items, stepOfSelected, ({ item }) => item.key);
+  const drawn = new Set<string>();
+  const lines = folded.map((entry, index) => {
+    const quick = "quick" in entry;
+    const key = quick ? `quick:${entry.key}` : entry.item.key;
+    const made = quick ? entry.quick.map(({ item }) => item) : [entry.item];
+    const fails = made.some((item) => undone.has(item.key));
+    const pairs = quick ? false : entry.pairs;
+    const counts = quick && ticks && index === folded.length - 1;
+    drawn.add(key);
+    const held = cache.get(key);
+    if (
+      held !== undefined &&
+      held.undone === fails &&
+      held.pairs === pairs &&
+      held.ticks === counts &&
+      held.items.length === made.length &&
+      held.items.every((item, at) => sameRecordItem(item, made[at]!))
+    ) {
+      return held.line;
+    }
+    const line: ChatLine = quick
+      ? {
+          key: entry.key,
+          bubble: (
+            <QuickCallsBubble
+              lines={made.map((item) => itemLine(item, undone))}
+              steps={entry.quick.flatMap((selected) => stepOfSelected(selected) ?? [])}
+              ticks={counts}
+            />
+          ),
+          call: true,
+        }
+      : { ...itemLine(entry.item, undone), pairs };
+    cache.set(key, { items: made, undone: fails, pairs, ticks: counts, line });
+    return line;
+  });
+  // What left the log is not kept: the cache holds one run's lines as drawn.
+  if (cache.size > drawn.size)
+    for (const key of cache.keys()) if (!drawn.has(key)) cache.delete(key);
+  return lines;
 }
 
 /**
@@ -4826,7 +5362,7 @@ function RunScroll({
   /** Told whether the person reads the work: scrolled up in it, or something in it opened. */
   readonly readingRef?: { current: boolean };
   /** Given how to keep it at its foot while it follows, read first (`keep`). */
-  readonly keepRef?: { current: (() => void) | null };
+  readonly keepRef?: { current: ((lands?: boolean) => void) | null };
   /** The lines landing from the live slot this draw: they plop into place, never rise in. */
   readonly landing?: ReadonlyMap<string, number> | null;
   /** Whether its room eases as lines join it, and it glides to its foot: a live run, watched. */
@@ -4839,8 +5375,8 @@ function RunScroll({
   readonly opensAtStart?: boolean;
   /** Given how its boxes ease, for a line landing in it. */
   readonly roomsRef?: { current: Rooms | null };
-  /** Its card's motion: the live slot's ease beside it. */
-  readonly motionRef?: { readonly current: RunMotion };
+  /** Its card's motion: the live slot's ease beside it, and the travels they share. */
+  readonly motionRef: { readonly current: RunMotion };
   /**
    * An engine run too long to read whole: the lines past the ones held, read a page at a time
    * as the scroll nears them (`pageReached`).
@@ -4854,7 +5390,23 @@ function RunScroll({
   }, []);
   // Where the chat starts: its newest lines when it opens. What arrives after
   // only ever joins at the end, so the window grows and never slides.
-  const [from, setFrom] = useState(() => (opensAtStart ? 0 : chatOpensAt(lines.length)));
+  // With it, the lines set aside over the first one drawn, far above the view
+  // (`stretchesAside`), and the room they took: kept over the first line
+  // drawn, so nothing drawn moves and the scroll is as long. Lines joining or
+  // leaving before the first one drawn leave the same lines drawn
+  // (`windowOver`).
+  const [held, setHeld] = useState<LogWindow>(() =>
+    logWindow(lines, opensAtStart ? 0 : chatOpensAt(lines.length), NO_STRETCHES),
+  );
+  const win = windowOver(held, lines);
+  const { from, aside } = win;
+  const spacer = useMemo(() => roomAside(aside), [aside]);
+  // The rows it draws: its lines from the first one drawn, each run of calls in one card.
+  const shown = gatherCalls(
+    (from > 0 ? lines.slice(from) : lines).map((line) =>
+      plopsIn(landing, line.key) ? { ...line, plops: true } : line,
+    ),
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLOListElement>(null);
   const easesRef = useRef(eases);
@@ -4922,13 +5474,19 @@ function RunScroll({
     // It, its lines — so lines leaving or shrinking at its foot let it settle
     // there gradually, never clamp it down at once — and each bubble and card
     // of calls in it, as what they hold changes.
+    const motion = motionRef.current;
     const rooms = easeRooms({
       root: element,
       selector: `[data-run-scroll] > ol, ${EASED_BOXES}`,
       // Earlier lines drawn over the ones in view take their room at once:
-      // where the person reads is kept by the scroll (`keepFromFootRef`).
+      // where the person reads is kept by the scroll (`keptRowRef`).
       eases: () => easesRef.current && shownRef.current && !drawingEarlierRef.current,
-      budget: motionRef?.current.budget ?? null,
+      // Its own box grows by a travel as a line joins it, uncovering the line
+      // at its foot while the slot under it rides its edge. What it holds
+      // takes its room at once: a line held at an older height would be cut.
+      grows: (box) => box === element,
+      travels: motion.travels,
+      afterStep: () => motion.keep?.(),
     });
     roomRef.current = rooms;
     if (roomsRef !== undefined) roomsRef.current = rooms;
@@ -4986,7 +5544,7 @@ function RunScroll({
      * slot easing beside a 5 px history moved it 2 px up between two reads;
      * read as the person's, the run stopped following).
      */
-    const slotEases = () => motionRef?.current.slot?.easing() ?? false;
+    const slotEases = () => motionRef.current.slot?.easing() ?? false;
     /** The page puts its top at `top`, and remembers where the browser took it. */
     const putAt = (element: HTMLElement, top: number) => {
       followScrollTo(element, top);
@@ -5098,13 +5656,15 @@ function RunScroll({
     };
     // How tall its lines stood at the last keep: lines joining glide it on,
     // its own box changing keeps its foot where it is.
-    const laid: { height: number | null; again: number } = { height: null, again: 0 };
+    const laid: { height: number | null } = { height: null };
     /**
      * Read where it stands — a move up not heard yet (a scroll event comes a
      * frame late) is the person's — and, while it follows, keep it at its
-     * foot: gliding there as lines join it, at once as its box changes.
+     * foot: gliding there as lines join it, at once as its box changes — and
+     * at once as a line `lands` from the slot, whose travel glides its lines
+     * there (a glide of its own beside it went 14 px in its first frame).
      */
-    const keep = () => {
+    const keep = (lands = false) => {
       const element = scrollRef.current;
       if (element === null) return;
       // A draw laid out before its boxes held their heights (a row leaving
@@ -5119,25 +5679,16 @@ function RunScroll({
       const foot = footOf(position);
       const keeps = keepsFoot({
         follows: followRef.current.follows,
-        heldAbove: followRef.current.follows && heldAbove(),
         grew,
         below: foot > element.scrollTop + 0.5,
         eases: easesRef.current,
-        // Its own boxes, or the slot squeezing it as it eases taller.
-        roomEases: (roomRef.current?.easing() ?? false) || slotEases(),
+        // Its own boxes, the slot squeezing it as it eases taller, or the
+        // card around it uncovering it.
+        roomEases: (roomRef.current?.easing() ?? false) || slotEases() || heldAbove(),
         gliding: gliding.frame !== 0,
       });
-      // The card around it easing taller gives it the room it needs: it
-      // stays, and keeps to its foot again once that ease is over.
-      if (keeps === "waits") {
-        if (laid.again === 0) {
-          laid.again = requestAnimationFrame(() => {
-            laid.again = 0;
-            keep();
-          });
-        }
-      } else if (keeps === "glides") glide();
-      else if (keeps === "puts") putAt(element, foot);
+      if (keeps === "glides" && !lands) glide();
+      else if (keeps !== "stays") putAt(element, foot);
       markEdges(element);
     };
     return {
@@ -5146,6 +5697,9 @@ function RunScroll({
       putAt,
       keep,
       glide,
+      /** Whether anything of the card moves it this moment: its glide, a room easing in it, beside it or around it. */
+      moving: () =>
+        gliding.frame !== 0 || (roomRef.current?.easing() ?? false) || slotEases() || heldAbove(),
       hold: (key: string, opens: boolean) => {
         const element = scrollRef.current;
         // A move of theirs not heard yet is theirs, before the press counts.
@@ -5166,9 +5720,18 @@ function RunScroll({
       },
     };
   }, [readingRef, motionRef]);
-  // Its node re-inserted puts it back at 0, silently: following, it stands at its foot again.
+  // Its node re-inserted puts it back at 0, silently: following, it stands at
+  // its foot again; read above the foot, where the person read.
+  const startRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
-  useRunScrollResettle({ scrollRef, endRef, followRef, positionOf, putAt: follow.putAt });
+  const resettle = useRunScrollResettle({
+    scrollRef,
+    startRef,
+    endRef,
+    followRef,
+    positionOf,
+    putAt: follow.putAt,
+  });
   useLayoutEffect(() => {
     if (keepRef === undefined) return;
     keepRef.current = follow.keep;
@@ -5176,15 +5739,78 @@ function RunScroll({
       keepRef.current = null;
     };
   }, [follow, keepRef]);
-  // How far above its foot the scroll stood before earlier lines were drawn
-  // over the ones in view.
-  const keepFromFootRef = useRef<number | null>(null);
+  // In each frame a box of its card eased, it keeps to its foot before the
+  // frame is read again (`afterStep`): its foot rides the slot's top.
+  useLayoutEffect(() => {
+    const motion = motionRef.current;
+    const keep = () => follow.keep();
+    motion.keep = keep;
+    return () => {
+      if (motion.keep === keep) motion.keep = null;
+    };
+  }, [follow, motionRef]);
+  // A drawn row in view, and where it stood among the scroll's lines, before
+  // earlier lines were drawn over it: what keeps it there after.
+  const keptRowRef = useRef<{ readonly key: string; readonly top: number } | null>(null);
   const drawEarlier = (position: RunScrollPosition) => {
-    if (!reachesEarlier(position, from)) return;
+    // Off the page (its work hidden) nothing is near its view.
+    if (position.clientHeight === 0) return;
+    // How far under the first drawn line the view stands: the room of the lines set aside is not it.
+    const above = position.scrollTop - spacer;
+    if (!reachesEarlier({ scrollTop: above }, from)) return;
     drawingEarlierRef.current = true;
-    keepFromFootRef.current = position.scrollHeight - position.scrollTop;
-    setFrom(earlierShown(from).next);
+    keptRowRef.current = rowInView(scrollRef.current, listRef.current);
+    // The lines set aside come back first, the newest stretch of them: as tall
+    // as they stood, so the scroll is as long. Then the ones never drawn.
+    setHeld(windowEarlier(win, lines, above));
   };
+  // The view may come to stand over lines set aside with no scroll heard — its
+  // box shown again after "Hide work": asked as its box changes size, while
+  // it does not follow its foot (following, it is put back there).
+  const drawEarlierHere = useEffectEvent(() => {
+    const element = scrollRef.current;
+    if (element === null || followRef.current.follows) return;
+    drawEarlier(positionOf(element));
+  });
+  // Lines far above the view are set aside (`stretchesAside`): asked as the
+  // scroll moves and as its lines or its box change size, answered at once
+  // while they do not reach that far. Never while anything of the card moves
+  // — a row's place is read — nor a row the person holds: the focus in it, a
+  // selection that touches the log.
+  const setLinesAside = useEffectEvent(() => {
+    const element = scrollRef.current;
+    const list = listRef.current;
+    if (element === null || list === null || drawingEarlierRef.current) return;
+    // Drawn outside a page (a test's renderer), it has no rows to read; off
+    // the page (its work hidden), no row has a place.
+    if (typeof list.getBoundingClientRect !== "function" || list.children === undefined) return;
+    if (element.clientHeight === 0) return;
+    const above = element.scrollTop - spacer;
+    if (!(above >= KEPT_ABOVE_PX + SET_ASIDE_PAST_PX) || follow.moving()) return;
+    if (selectionTouches(list)) return;
+    const rows = list.children;
+    if (rows.length === 0) return;
+    // A row's room starts where its margin does: one that keeps more air over
+    // it, or draws into the row before it, takes that with it.
+    const startOf = (row: Element) =>
+      row.getBoundingClientRect().top - (Number.parseFloat(getComputedStyle(row).marginTop) || 0);
+    const first = startOf(rows[0]!);
+    const focused = document.activeElement;
+    const over: Array<{ readonly lines: number; readonly nextTop: number }> = [];
+    // The last row always stays; read only as far as rows go.
+    for (let index = 0; index < rows.length - 1 && index < shown.length - 1; index += 1) {
+      if (focused !== null && rows[index]!.contains(focused)) break;
+      const entry = shown[index]!;
+      const nextTop = startOf(rows[index + 1]!) - first;
+      over.push({ lines: "calls" in entry ? entry.calls.length : 1, nextTop });
+      if (nextTop > above - KEPT_ABOVE_PX) break;
+    }
+    const stretches = stretchesAside(over, above);
+    if (stretches.length === 0) return;
+    // They take no room they did not take: nothing eases for it.
+    drawingEarlierRef.current = true;
+    setHeld(windowAside(win, lines, stretches));
+  });
   // It opens at its foot — or its start — before the first paint.
   const opensAtStartRef = useRef(opensAtStart);
   useLayoutEffect(() => {
@@ -5193,18 +5819,43 @@ function RunScroll({
     follow.putAt(element, opensAtStartRef.current ? 0 : footTop(positionOf(element)));
     markEdges(element);
   }, [follow]);
-  // Earlier lines drawn above the ones in view keep those where they stood;
-  // a chat too short to scroll draws them at once, as nothing reaches them.
+  // Lines joined or left before the first one drawn: the window over them is
+  // held from here on, and the scroll moves up by the room of the lines set
+  // aside that are gone, so the drawn ones stand where they stood — from
+  // where it last stood, as the browser has clamped it to its shorter lines
+  // by the time it is read here.
+  useLayoutEffect(() => {
+    if (win === held) return;
+    setHeld(win);
+    const element = scrollRef.current;
+    const gone = roomAside(held.aside) - roomAside(win.aside);
+    if (element === null || !(gone > 0.5)) return;
+    const { stood } = followRef.current;
+    follow.putAt(element, Math.max(0, (Number.isFinite(stood) ? stood : element.scrollTop) - gone));
+  }, [win, held, follow]);
+  // Earlier lines drawn above the ones in view keep those where they stood:
+  // the scroll moves by what the row read before moved among its lines, and
+  // not at all when the lines set aside came back as tall as they stood — a
+  // write cuts the person's own scroll short. A chat too short to scroll
+  // draws them at once, as nothing reaches them: never off the page (its work
+  // hidden), where it has no height to be short of.
+  const drawEarlierYet = useEffectEvent(() => {
+    drawingEarlierRef.current = true;
+    setHeld(windowEarlier(win, lines, 0));
+  });
   useLayoutEffect(() => {
     const element = scrollRef.current;
-    const keep = keepFromFootRef.current;
-    keepFromFootRef.current = null;
+    const kept = keptRowRef.current;
+    keptRowRef.current = null;
     if (element === null) return;
-    if (keep !== null) follow.putAt(element, positionOf(element).scrollHeight - keep);
+    const row = kept === null ? null : rowByKey(listRef.current, kept.key);
+    if (kept !== null && row !== null) {
+      const moved = topAmongLines(element, row) - kept.top;
+      if (Math.abs(moved) > 0.5) follow.putAt(element, element.scrollTop + moved);
+    }
     drawingEarlierRef.current = false;
-    if (from > 0 && element.scrollHeight <= element.clientHeight) {
-      drawingEarlierRef.current = true;
-      setFrom(earlierShown(from).next);
+    if (from > 0 && element.clientHeight > 0 && element.scrollHeight <= element.clientHeight) {
+      drawEarlierYet();
     }
     markEdges(element);
   }, [from, follow]);
@@ -5283,7 +5934,13 @@ function RunScroll({
     // A landing glides the history itself, and plops what lands.
     if (drawn === null || drawn.landing !== landing || !shownRef.current) return;
     // Earlier lines drawn over the ones in view keep their place by the scroll.
-    glideShifted(list, drawn.rows, rows, drawn.from === from && !prependedRef.current);
+    glideShifted(
+      list,
+      drawn.rows,
+      rows,
+      drawn.from === from && !prependedRef.current,
+      motionRef.current.travels.current(),
+    );
   });
   // A line arriving, a bubble growing as its words stream, a call opening,
   // the live slot under it growing into its room: a scroll that follows its
@@ -5295,13 +5952,18 @@ function RunScroll({
     if (element === null || list === null || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(() => {
       forgetPadding(element);
+      // Put back at its start by nobody as its box changed, a reader's place
+      // is theirs before anything reads where it stands as a move.
+      if (!followRef.current.follows) resettle();
       follow.keep();
       redraw();
+      drawEarlierHere();
+      setLinesAside();
     });
     observer.observe(list);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [follow, redraw]);
+  }, [follow, redraw, resettle]);
   // Where the browser never says a move ended (Safari before `scrollend`),
   // it ended once the scroll stood still a moment.
   const quietRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -5319,71 +5981,87 @@ function RunScroll({
       follow.heard({ kind: "ended" });
     }, SCROLL_QUIET_MS);
   };
-  const shown = gatherCalls(
-    (from > 0 ? lines.slice(from) : lines).map((line) =>
-      plopsIn(landing, line.key) ? { ...line, plops: true } : line,
-    ),
-  );
   return (
     <RunScrollHoldContext value={follow.hold}>
       <ChatShownContext value={shownRef}>
-        <div
-          ref={scrollRef}
-          aria-label={label}
-          className="run-scroll"
-          data-run-scroll=""
-          onScroll={(event) => {
-            // One read of where it stands serves the whole event, and every
-            // read comes before its fades are written: a write between two
-            // reads restyled and laid out the page again, on every tick.
-            const position = positionOf(event.currentTarget);
-            const followed = followRef.current.follows;
-            follow.read(position);
-            redraw();
-            const element = scrollRef.current;
-            if (element !== null) {
-              // Brought back to the foot it set out for, it glides on to
-              // where the foot moved on since — at once under reduced
-              // motion, which moves it: then it is read anew.
-              if (!followed && followRef.current.follows) {
-                follow.glide();
-                markEdges(element);
-              } else markEdges(element, position);
-            }
-            drawEarlier(position);
-            readPage(position);
-            endsOnQuiet();
-          }}
-          onScrollEnd={() => follow.heard({ kind: "ended" })}
-          role="region"
-          tabIndex={0}
-        >
-          <ol ref={listRef} className="flex min-w-0 flex-col gap-3">
-            {shown.map((entry) =>
-              "calls" in entry ? (
-                <CallsCard key={entry.key} entry={entry} />
-              ) : (
-                <PlopsContext key={entry.key} value={entry.plops === true}>
-                  <ChatRow
-                    across={entry.across === true}
-                    lineKey={entry.key}
-                    mark={entry.mark}
-                    markLine={entry.markLine}
-                    pairs={entry.pairs === true}
-                    theirs={entry.theirs === true}
-                  >
-                    {entry.bubble}
-                  </ChatRow>
-                </PlopsContext>
-              ),
-            )}
-          </ol>
-          <div ref={endRef} aria-hidden="true" data-run-scroll-end="" />
-        </div>
+        <DrawnEarlierContext value={drawingEarlierRef}>
+          <div
+            ref={scrollRef}
+            aria-label={label}
+            className="run-scroll"
+            data-run-scroll=""
+            onScroll={(event) => {
+              // One read of where it stands serves the whole event, and every
+              // read comes before its fades are written: a write between two
+              // reads restyled and laid out the page again, on every tick.
+              const position = positionOf(event.currentTarget);
+              const followed = followRef.current.follows;
+              follow.read(position);
+              redraw();
+              const element = scrollRef.current;
+              if (element !== null) {
+                // Brought back to the foot it set out for, it glides on to
+                // where the foot moved on since — at once under reduced
+                // motion, which moves it: then it is read anew.
+                if (!followed && followRef.current.follows) {
+                  follow.glide();
+                  markEdges(element);
+                } else markEdges(element, position);
+              }
+              drawEarlier(position);
+              readPage(position);
+              setLinesAside();
+              endsOnQuiet();
+            }}
+            onScrollEnd={() => follow.heard({ kind: "ended" })}
+            role="region"
+            tabIndex={0}
+          >
+            <div ref={startRef} aria-hidden="true" data-run-scroll-start="" />
+            <ol
+              ref={listRef}
+              className="flex min-w-0 flex-col gap-4"
+              // The room of the lines set aside over the first one drawn.
+              style={spacer > 0 ? { paddingTop: spacer } : undefined}
+            >
+              {shown.map((entry) =>
+                "calls" in entry ? (
+                  <CallsCard key={entry.key} entry={entry} />
+                ) : (
+                  <LogLine key={entry.key} line={entry} />
+                ),
+              )}
+            </ol>
+            <div ref={endRef} aria-hidden="true" data-run-scroll-end="" />
+          </div>
+        </DrawnEarlierContext>
       </ChatShownContext>
     </RunScrollHoldContext>
   );
 }
+
+/**
+ * A line of the log on its own row. Drawn again only when its line is another
+ * (`chatLines` keeps the line of an item that draws the same): the log's
+ * other rows stand as they are while one word streams into the working row.
+ */
+const LogLine = memo(function LogLine({ line }: { readonly line: ChatLine }) {
+  return (
+    <PlopsContext value={line.plops === true}>
+      <ChatRow
+        across={line.across === true}
+        lineKey={line.key}
+        mark={line.mark}
+        markLine={line.markLine}
+        pairs={line.pairs === true}
+        said={line.said === true}
+        theirs={line.theirs === true}
+      >
+        {line.bubble}
+      </ChatRow>
+    </PlopsContext>
+  );
+});
 
 /** Where an element stands on screen; null drawn outside a page (a test's renderer). */
 function boxOf(element: HTMLElement | null): DOMRect | null {
@@ -5422,12 +6100,16 @@ const GLIDE_ID = "run-glide";
 
 /**
  * An element gliding to its place from where it showed (`stood`, its top on
- * screen) on the plop's curve; how far it glides. One in flight is taken over
- * from where it shows.
+ * screen) by `travel`; how far it glides. One in flight is taken over from
+ * where it shows.
  */
-function glideFrom(element: HTMLElement, stood: number): number {
+function glideFrom(element: HTMLElement, stood: number, travel: Travel): number {
   stopGliding(element);
-  return glideBy(element, visibleTravel(element, stood - element.getBoundingClientRect().top));
+  return glideBy(
+    element,
+    visibleTravel(element, stood - element.getBoundingClientRect().top),
+    travel,
+  );
 }
 
 /** A translated row stays inside the scroll that clips it, including its first frame. */
@@ -5450,60 +6132,82 @@ function visibleTravel(element: HTMLElement, moved: number): number {
   return Math.max(lower, Math.min(upper, moved));
 }
 
-/** An element gliding from `moved` px off its place to it, on the plop's curve. */
-function glideBy(element: HTMLElement, moved: number): number {
+/**
+ * An element gliding from `moved` px off its place to it by `travel`: the
+ * same share of its way, in every frame, as the heights the travel eases.
+ */
+function glideBy(element: HTMLElement, moved: number, travel: Travel): number {
   if (Math.abs(moved) < 0.5) return 0;
   // Added to what moves it already: a call's rise keeps the rest of its way.
-  element.animate([{ translate: `0 ${moved}px` }, { translate: "0 0" }], {
-    id: GLIDE_ID,
-    composite: "add",
-    duration: PLOP_MS,
-    easing: "cubic-bezier(0.23, 1, 0.32, 1)",
-  }).currentTime = 0;
+  // Its travel says where in its way it stands, frame by frame (`ride`).
+  travel.ride(
+    element.animate([{ translate: `0 ${moved}px` }, { translate: "0 0" }], {
+      id: GLIDE_ID,
+      composite: "add",
+      duration: RIDE_MS,
+      easing: "linear",
+    }),
+    moved,
+  );
   return moved;
 }
 
 /**
  * The lines in the scroll's view that moved on screen since `before`, gliding
- * from where they stood on the plop's curve — the room a plop takes moves them,
- * and they move as it does, never in one frame.
+ * from where they stood by `travel` — the room a landing takes moves them, and
+ * they move as it does, never in one frame. A line that was not there — the
+ * one landing, one that rode along with it — comes with the line over it, from
+ * under the scroll's edge: where it stood in the slot is outside the scroll,
+ * which would cut it.
  */
 function glideLines(
   scroll: HTMLElement,
   list: HTMLElement,
   before: ReadonlyMap<string, number>,
-  landed: ReadonlyMap<HTMLElement, number>,
-  /** Where the view ended before: a slot that grew took room a line stood in. */
-  stoodBottom: number | null = null,
+  /** How far the scroll moved since `before` was read, as painted: its lines stood that much higher. */
+  scrolled: number,
+  landed: ReadonlySet<HTMLElement>,
+  /** How far under the scroll's top its view ended before: a slot that grew took room a line stood in. */
+  stoodEnd: number | null,
+  travel: Travel,
+  /** How far the scroll's box still shrinks under the lines: they go by that too. */
+  gives: number,
 ): void {
   if ((before.size === 0 && landed.size === 0) || prefersReducedMotion()) return;
   const shown = scroll.getBoundingClientRect();
-  const view = { top: shown.top, bottom: Math.max(shown.bottom, stoodBottom ?? shown.bottom) };
+  const view = {
+    top: shown.top,
+    bottom: Math.max(shown.bottom, stoodEnd === null ? shown.bottom : shown.top + stoodEnd),
+  };
   const rows = [...list.children].filter(
     (line): line is HTMLElement => line instanceof HTMLElement,
   );
   // Cancel every sibling before measuring any: one plan owns their travel,
   // including a landed row whose old slot position the scroll clips.
   for (const line of rows) stopGliding(line);
-  const travel = rows.map((line) => {
+  // How far the line over the one read glides: what was not there comes with it.
+  let over = 0;
+  const moves = rows.map((line) => {
     const stood =
-      landed.get(line) ??
-      (line.dataset.runKey === undefined ? undefined : before.get(line.dataset.runKey));
-    if (stood === undefined) return 0;
-    const box = line.getBoundingClientRect();
-    if (landed.has(line) && !landsInView(box, shown)) return 0;
-    const moved = stood - box.top;
-    if (box.bottom + moved < view.top || box.top + moved > view.bottom) return 0;
-    return visibleTravel(line, moved);
+      landed.has(line) || line.dataset.runKey === undefined
+        ? undefined
+        : before.get(line.dataset.runKey);
+    if (stood !== undefined) {
+      const box = line.getBoundingClientRect();
+      const moved = stood - scrolled - (box.top - shown.top);
+      // Where it stood it was drawn: it comes from there whole, its foot under
+      // the scroll's edge if the landing grew it (a call joining its card).
+      const seen = box.bottom + moved >= view.top && box.top + moved <= view.bottom;
+      over = seen ? moved : 0;
+    }
+    return over;
   });
-  const ordered = orderedGlides(travel);
-  for (let index = 0; index < rows.length; index += 1) glideBy(rows[index]!, ordered[index]!);
-  // A call joining an existing card travels inside that card; the card's
-  // sibling travel was already accounted for by the plan above.
-  for (const [line, stood] of landed) {
-    if (!rows.includes(line) && landsInView(line.getBoundingClientRect(), shown))
-      glideFrom(line, stood);
+  const ordered = orderedGlides(moves);
+  // A call joining a card that stood there rides its card, as what the card holds does.
+  for (let index = 0; index < rows.length; index += 1) {
+    glideBy(rows[index]!, ordered[index]!, travel);
   }
+  travel.far(Math.max(0, ...ordered) + gives);
 }
 
 /** The rows of one holder of a run's history — its list, or a card of calls — as drawn, each by its top in it. */
@@ -5655,6 +6359,7 @@ function glideShifted(
   before: ReadonlyMap<string, HolderRows>,
   after: ReadonlyMap<string, HolderRows>,
   lines: boolean,
+  travel: Travel,
 ): void {
   if (prefersReducedMotion()) return;
   const scroll = list.parentElement;
@@ -5671,42 +6376,46 @@ function glideShifted(
       if (shift === undefined) continue;
       const box = row.getBoundingClientRect();
       if (box.bottom - shift < view.top || box.top - shift > view.bottom) continue;
-      glideFrom(row, box.top - shift);
+      glideFrom(row, box.top - shift, travel);
     }
   }
 }
 
 /**
  * A card of calls in the history. One that a call starting it lands with
- * plops as that call does, and never rises in on top of the plop.
+ * plops as that call does, and never rises in on top of the plop. Drawn again
+ * only when a call of it is another line, or one joined it (`LogLine`).
  */
-function CallsCard({ entry }: { readonly entry: Extract<ChatEntry, { calls: unknown }> }) {
-  const plops = entry.calls.some((line) => line.plops === true);
-  return (
-    <PlopsContext value={plops}>
-      <ChatRow across={false} lineKey={entry.key} theirs={false}>
-        <CallGroup>
-          {entry.calls.map((line) => (
-            <ChatLineContext key={line.key} value={line.key}>
-              <PlopsContext value={line.plops === true}>
-                <RidesContext value={plops && line.plops !== true}>{line.bubble}</RidesContext>
-              </PlopsContext>
-            </ChatLineContext>
-          ))}
-        </CallGroup>
-      </ChatRow>
-    </PlopsContext>
-  );
-}
+const CallsCard = memo(
+  function CallsCard({ entry }: { readonly entry: Extract<ChatEntry, { calls: unknown }> }) {
+    const plops = entry.calls.some((line) => line.plops === true);
+    return (
+      <PlopsContext value={plops}>
+        <ChatRow across={false} lineKey={entry.key} theirs={false}>
+          <CallGroup>
+            {entry.calls.map((line) => (
+              <ChatLineContext key={line.key} value={line.key}>
+                <PlopsContext value={line.plops === true}>
+                  <RidesContext value={plops && line.plops !== true}>{line.bubble}</RidesContext>
+                </PlopsContext>
+              </ChatLineContext>
+            ))}
+          </CallGroup>
+        </ChatRow>
+      </PlopsContext>
+    );
+  },
+  (was, now) =>
+    was.entry.key === now.entry.key &&
+    was.entry.calls.length === now.entry.calls.length &&
+    was.entry.calls.every((line, index) => line === now.entry.calls[index]),
+);
 
 /** Whether a line lands by a plop: it stood in the slot (a rider rises in on its own). */
 function plopsIn(landing: ReadonlyMap<string, number> | null, key: string): boolean {
   const from = landing?.get(key);
   return from !== undefined && Number.isFinite(from);
 }
-
-/** Landing glides share one curve so their ordered offsets stay ordered in every frame. */
-const PLOP_MS = 340;
 
 /**
  * Marks the edges the scroll has more past — a fade there says so — straight
@@ -5746,7 +6455,8 @@ function paddingOf(scroll: HTMLElement): number {
  * row travelling into its place paints past it (`laidOutPosition`).
  */
 function positionOf(scroll: HTMLElement): RunScrollPosition {
-  const list = scroll.firstElementChild as HTMLElement | null | undefined;
+  // Its lines' list: after the mark at its start.
+  const list = scroll.firstElementChild?.nextElementSibling as HTMLElement | null | undefined;
   // Drawn outside a page (a test's renderer), it is as it says.
   if (list === null || list === undefined || typeof getComputedStyle !== "function") return scroll;
   const pad = paddingOf(scroll);

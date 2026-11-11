@@ -44,6 +44,8 @@ describe("zeropsRegistrations", () => {
       "zerops:org:active",
       "zerops:org:services",
       "zerops:org:services",
+      // Membership changes: their updates alone, never a listing.
+      "zerops:org:client-users",
       "zerops:org:routings",
       "zerops:org:routings",
       "zerops:org:portRoutings",

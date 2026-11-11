@@ -27,9 +27,10 @@
  *   message does, under its id (`task-message:<id>`), so one told twice is heard once: it joins
  *   the run on, or starts the next — more work on the same task, said `working` again. One on a
  *   task the working copies no longer hold, told with the task's change while nothing is at work,
- *   first puts them on that change's branch, so the follow-up lands in its own change. HQ tells a
- *   follow-up only while the Mate is on no other task; one told under another task's run still
- *   joins that run, on its session and its working copy. A person writing in the tasks'
+ *   first puts them on that change's branch, so the follow-up lands in its own change. A follow-up
+ *   never joins another task's run: one told while another task's run is on or coming (queued,
+ *   its continuation due, a usage limit holding it) waits until it ended, its undelivered work
+ *   told first, then starts as its own run and is answered then. A person writing in the tasks'
  *   conversation after the task taken last ended done (or asking) is more work on it: the task
  *   says `working` while their run is on, so HQ, where its work is unsettled, links what it
  *   delivers; their run stays their own (never stopped for the task, never failing it), and once
@@ -44,7 +45,7 @@
  *   budget was reached before HQ heard the Mate take it) stops its runs as a stop does, and the
  *   Mate says nothing of it, no longer its own; HQ handing it again, it takes it again in the same
  *   conversation. One it never took leaves nothing to keep.
- * - **Limits** (`MateTask.limits`, else `DEFAULT_TASK_LIMITS`): the minutes its runs took, never
+ * - **Limits** (`MateTask.limits`, kept in the ledger; `DEFAULT_TASK_LIMITS` for a task it never kept them of): the minutes its runs took, never
  *   the time it waited between them, and the cost its turns reported at each turn's end and, for
  *   a turn still at work, as it runs (OpenCode tells it at each model call's end, so a task
  *   ends at most a call or two past its limit); reaching either stops its runs, mid-turn too,
@@ -239,7 +240,7 @@ export const taskQuestionOf = (
   };
 };
 
-/** What a task from an HQ that names no limits may spend: an hour of work, no cost limit. */
+/** What a task whose limits the Mate never kept may spend: an hour of work, no cost limit. */
 export const DEFAULT_TASK_LIMITS: MateTaskLimits = { minutes: 60, costUsd: null };
 
 const MINUTE_MS = 60_000;
@@ -582,6 +583,9 @@ export const make = Effect.gen(function* () {
   // The task conversations that moved since they were last read: a burst of moves (a streaming
   // answer) is read once, one read at a time.
   const moved = yield* Queue.unbounded<ConversationId>();
+  // Each time the moves taken were read (an ended run's delivery word given first): a follow-up
+  // waiting for another task's run reads the tasks' conversation again.
+  const movesRead = yield* PubSub.sliding<void>(1);
   // Each task's minutes limit while its run is on: due, its conversation is read again.
   const deadlines = yield* FiberMap.make<string>();
   // When this Mate began: a task's run that ended before it (a task long done) is never told to
@@ -892,7 +896,9 @@ export const make = Effect.gen(function* () {
   yield* Effect.forkScoped(
     Effect.forever(
       Effect.flatMap(Queue.takeAll(moved), (ids) =>
-        Effect.forEach(new Set(ids), readMoved, { discard: true }),
+        Effect.forEach(new Set(ids), readMoved, { discard: true }).pipe(
+          Effect.andThen(PubSub.publish(movesRead, undefined)),
+        ),
       ),
     ),
   );
@@ -1038,7 +1044,7 @@ export const make = Effect.gen(function* () {
       // Taken before and past its limits (its last turn's cost came in as HQ put it back in
       // line): handed again, it starts nothing, and says why.
       if (held !== undefined && kept !== undefined && (yield* ranIn(task.id, held))) {
-        const limits = task.limits ?? kept.limits ?? DEFAULT_TASK_LIMITS;
+        const { limits } = task;
         const reached =
           kept.limitHit ??
           reachedLimit(
@@ -1104,7 +1110,7 @@ export const make = Effect.gen(function* () {
       }
       // Its limits kept before its first run can start, so the run is held to them from the start.
       const { limits } = task;
-      if (limits !== undefined) yield* ledger.update(task.id, (kept) => ({ ...kept, limits }));
+      yield* ledger.update(task.id, (kept) => ({ ...kept, limits }));
       // Its commits by the organization's app's bot, set before its run can commit; a working copy
       // that keeps its author never stops the task, and its report says where.
       const author = task.commitAuthor;
@@ -1175,12 +1181,43 @@ export const make = Effect.gen(function* () {
       }),
     );
 
+  /** Whether another task's run is on or coming in the tasks' one conversation. */
+  const anotherTaskAt = (taskId: string, view: ConversationView): boolean =>
+    view.conversationId === TASKS_CONVERSATION_ID &&
+    workOf(view).some((run) => run.principal.kind === "task" && run.principal.taskId !== taskId);
+
+  /** Until no other task's run is on or coming, read again each time the Mate read its moves. */
+  const anotherTaskEnded = (taskId: string) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const read = yield* PubSub.subscribe(movesRead);
+        for (;;) {
+          const view = yield* engine.conversation(TASKS_CONVERSATION_ID);
+          if (view === undefined || !anotherTaskAt(taskId, view)) return;
+          yield* PubSub.take(read);
+        }
+      }),
+    );
+
   /**
    * A follow-up heard in the task's conversation, under its id so one told twice is heard once:
    * as a person's message is, joining the run on or starting the next — more work on the same
-   * task. A task people stopped, or past its limits, starts nothing; how it stands is said.
+   * task. One told while another task's run is on or coming waits, outside the takes, until it
+   * ended, then starts as its own run. A task people stopped, or past its limits, starts
+   * nothing; how it stands is said.
    */
   const hear = (taskId: string, message: MateTaskMessage, change?: TaskChange) =>
+    Effect.gen(function* () {
+      for (;;) {
+        const heard = yield* hearNow(taskId, message, change);
+        if (heard !== "after another task") return heard;
+        yield* anotherTaskEnded(taskId);
+      }
+    }).pipe(
+      Effect.catchTags({ ViewUnreadable: () => Effect.succeed(Option.none<MateTaskReport>()) }),
+    );
+
+  const hearNow = (taskId: string, message: MateTaskMessage, change?: TaskChange) =>
     Effect.gen(function* () {
       const { conversationId, held } = yield* placeOf(taskId);
       // Not a task this Mate took: nothing to steer.
@@ -1199,6 +1236,8 @@ export const make = Effect.gen(function* () {
         );
         if (reached !== undefined) {
           yield* ledger.update(taskId, (kept) => ({ ...kept, limitHit: reached }));
+        } else if (anotherTaskAt(taskId, held)) {
+          return "after another task" as const;
         } else {
           const words = followUpOf(message);
           // Another task was worked since: the agent's session starts afresh for this one, so it

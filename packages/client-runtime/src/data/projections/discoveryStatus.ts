@@ -6,14 +6,11 @@ import { hqNavigation } from "./hqNavigation.ts";
 import { mateLinks } from "./mateLinks.ts";
 import { sameValue } from "./equal.ts";
 export type DiscoveryStatus = "complete" | "incomplete" | "unavailable";
-export const discoveryStatus: Projection<
-  { readonly orgId: string; readonly hqAbsent: boolean },
-  DiscoveryStatus
-> = {
+export const discoveryStatus: Projection<string, DiscoveryStatus> = {
   name: "discoveryStatus",
-  keyOf: (key) => JSON.stringify(key),
+  keyOf: (orgId) => orgId,
   equals: sameValue,
-  derive: (read, { orgId, hqAbsent }) => {
+  derive: (read, orgId) => {
     const projects = organizationProjects.derive(read, orgId);
     const services = servicesScope(orgId);
     const serviceMembers = read.members(services);
@@ -21,7 +18,8 @@ export const discoveryStatus: Projection<
     if (
       projects.unavailableReason !== undefined ||
       read.stream(services).phase === "refused" ||
-      (!hqAbsent && (hq.refusal !== null || hq.updateRequired))
+      hq.refusal !== null ||
+      hq.updateRequired
     )
       return "unavailable";
     if (
@@ -29,7 +27,8 @@ export const discoveryStatus: Projection<
       serviceMembers.coverage !== "complete" ||
       serviceMembers.unverified.length > 0 ||
       serviceMembers.ids.some((id) => read.fact("service", id).kind === "unknown") ||
-      (!hqAbsent && (hq.read !== "read" || hq.structure === null))
+      hq.read !== "read" ||
+      hq.structure === null
     )
       return "incomplete";
     for (const target of mateLinks.derive(read, null).targets.values()) {

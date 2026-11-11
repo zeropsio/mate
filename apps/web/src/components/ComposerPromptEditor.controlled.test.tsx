@@ -10,12 +10,12 @@
  * about: a keystroke that lands inside that moment must still be heard.
  */
 
-import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
-import { $getRoot, $getSelection, type LexicalEditor } from "lexical";
+import { $getRoot, $getSelection } from "lexical";
 import { act, createRef, useEffect, useLayoutEffect, useState } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { getLexicalEditor, resetLexicalEditor } from "./ComposerPromptEditor.test-fixture";
 import { ComposerPromptEditor, type ComposerPromptEditorHandle } from "./ComposerPromptEditor";
 
 vi.mock("./chat/FileTagChip", () => ({
@@ -27,14 +27,8 @@ vi.mock("./chat/ComposerPendingTerminalContexts", () => ({
 }));
 vi.mock("./chat/AssistantCitationChip", () => ({ AssistantCitationChip: () => null }));
 
-let lexicalEditor: LexicalEditor;
-// Keep the real composer, its nodes, its updates and its snapshot API. Only
-// the DOM view is omitted so Lexical runs headlessly in this component test.
-vi.mock("@lexical/react/LexicalPlainTextPlugin", () => ({
-  PlainTextPlugin: function HeadlessEditor() {
-    [lexicalEditor] = useLexicalComposerContext();
-    return null;
-  },
+vi.mock("@lexical/react/LexicalPlainTextPlugin", async () => ({
+  PlainTextPlugin: (await import("./ComposerPromptEditor.test-fixture")).HeadlessEditor,
 }));
 
 let renderer: ReactTestRenderer | undefined;
@@ -53,8 +47,8 @@ let writePrompt: (prompt: string) => void = () => {};
  */
 function focusEditor() {
   const rootElement = { nodeName: "DIV" };
-  lexicalEditor.getRootElement = () => rootElement as unknown as HTMLElement;
-  (lexicalEditor as unknown as { _headless: boolean })._headless = true;
+  getLexicalEditor().getRootElement = () => rootElement as unknown as HTMLElement;
+  (getLexicalEditor() as unknown as { _headless: boolean })._headless = true;
   vi.stubGlobal("document", { activeElement: rootElement });
 }
 
@@ -100,6 +94,7 @@ beforeEach(() => {
 afterEach(async () => {
   await act(() => renderer?.unmount());
   renderer = undefined;
+  resetLexicalEditor();
   vi.unstubAllGlobals();
 });
 
@@ -117,7 +112,7 @@ function $typeInto(text: string) {
 
 async function type(text: string) {
   await act(() => {
-    lexicalEditor.update(() => $typeInto(text), { discrete: true });
+    getLexicalEditor().update(() => $typeInto(text), { discrete: true });
   });
 }
 
@@ -180,7 +175,7 @@ describe("the composer's controlled round trip", () => {
     // write must not silence the keystroke riding along with it.
     await act(() => {
       queueMicrotask(() => {
-        lexicalEditor.update(() => $typeInto("c"));
+        getLexicalEditor().update(() => $typeInto("c"));
       });
       writePrompt("ab");
     });
@@ -227,7 +222,7 @@ function KeystrokeOnCommit({ owner }: { readonly owner: string }) {
     if (keystrokeOnCommit === undefined) return;
     const character = keystrokeOnCommit;
     keystrokeOnCommit = undefined;
-    lexicalEditor.update(() => $typeInto(character), { discrete: true });
+    getLexicalEditor().update(() => $typeInto(character), { discrete: true });
   }, [owner]);
   return null;
 }

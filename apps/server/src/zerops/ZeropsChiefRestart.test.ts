@@ -1,6 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { type CommandResult, ConversationId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 
 import { DeliveryUnrecorded } from "../engine/MateEngine.ts";
 import { makeChiefRestart } from "./ZeropsChiefRestart.ts";
@@ -13,7 +14,7 @@ const C2 = ConversationId.make("c2");
  * `MateEngineService.deliver`, as `<conversation> <reason> <fresh> <seed> <principal>`.
  * A conversation in `refusing` answers `Rejected`; one in `unrecorded` fails to record.
  */
-const engineRig = () => {
+const engineRig = (keptChief: Option.Option<string | null> = Option.none()) => {
   const conversations = [C1, C2];
   const refusing = new Set<ConversationId>();
   const unrecorded = new Set<ConversationId>();
@@ -40,24 +41,34 @@ const engineRig = () => {
             : { _tag: "Accepted", seq: 1 }
         ) satisfies CommandResult;
       }),
+    keptChief,
   });
   return { restart, refusing, unrecorded, delivered, acted };
 };
 
 describe("ZeropsChiefRestart", () => {
-  it.effect("the first state a server hears restarts nothing, whichever Chief it names", () =>
-    Effect.gen(function* () {
-      const { restart, delivered } = engineRig();
-      const heard = yield* restart;
-      yield* heard.heard("P_MATE");
-      yield* heard.heard("P_MATE");
-      assert.deepStrictEqual(delivered, []);
-      yield* heard.heard(null);
-      assert.deepStrictEqual(delivered, [
-        "c1 chief false null engine",
-        "c2 chief false null engine",
-      ]);
-    }),
+  // witness: apps/server/src/zerops/ZeropsChiefRestart.ts | Ref.make(deps.keptChief) → Ref.make(Option.none<string | null>())
+  it.effect(
+    "The first state a process hears is compared with the Chief its state file kept from the last run; with none kept it restarts nothing.",
+    () =>
+      Effect.gen(function* () {
+        const rotated = ["c1 chief false null engine", "c2 chief false null engine"];
+        const noneKept = engineRig();
+        const first = yield* noneKept.restart;
+        yield* first.heard("P_MATE");
+        yield* first.heard("P_MATE");
+        assert.deepStrictEqual(noneKept.delivered, []);
+        yield* first.heard(null);
+        assert.deepStrictEqual(noneKept.delivered, rotated);
+
+        const sameKept = engineRig(Option.some("P_MATE"));
+        yield* (yield* sameKept.restart).heard("P_MATE");
+        assert.deepStrictEqual(sameKept.delivered, []);
+
+        const otherKept = engineRig(Option.some(null));
+        yield* (yield* otherKept.restart).heard("P_MATE");
+        assert.deepStrictEqual(otherKept.delivered, rotated);
+      }),
   );
 
   // The engine records the rotation at once and closes the session between turns: an idle one

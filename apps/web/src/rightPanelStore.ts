@@ -5,7 +5,7 @@ import { isServiceBrowserUrl } from "./zerops/serviceBrowserPolicy";
  * This is intentionally a shallow workspace model: it owns an ordered set of
  * surface descriptors and the active surface, while each feature continues to
  * own its durable resource state. Terminal surfaces point at terminal session
- * ids, file surfaces point at workspace paths, and diff/files remain
+ * ids, file surfaces point at workspace paths, and Code/files remain
  * singleton surfaces.
  */
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
@@ -38,7 +38,6 @@ export type RightPanelSurface =
       activeTerminalId: string;
       splitDirection?: "horizontal" | "vertical";
     }
-  | { id: "diff"; kind: "diff" }
   | { id: "files"; kind: "files" }
   | {
       id: `file:${string}`;
@@ -54,10 +53,15 @@ export type RightPanelSurface =
   /** The app an agent opened on the paired Mac, live. */
   | { id: "mac"; kind: "mac" }
   | { id: "data"; kind: "data" }
+  /** Code: where the Mate's work is, and what changed (once two tabs, Git and Diff). */
   | { id: "git"; kind: "git" }
   /** The crew's one home: its setup, or its section above its board. */
   | { id: "crew"; kind: "crew" }
   | { id: "mcp"; kind: "mcp" }
+  /** How the Mate works and talks in every chat: its persona and the templates to start from. */
+  | { id: "persona"; kind: "persona" }
+  /** Adobe Express, whose saved pictures go into the message. */
+  | { id: "express"; kind: "express" }
   /** The Zerops project's variables: Shared and each service's, who reads them, what is not live. */
   | { id: "vault"; kind: "vault" }
   /** The organization's project cards, in a Chief's conversation. */
@@ -95,7 +99,8 @@ const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
 // v19 adds the "crew" surface kind (the crew's board).
 // v20 adds the "mcp" surface kind (the Mate's MCP servers).
 // v21 drops the address tabs Browser opened by itself: a tab exists only for an address a person opened.
-const RIGHT_PANEL_STORAGE_VERSION = 21;
+// v22 folds the "diff" surface into Code (`git`): an open Diff tab opens Code.
+const RIGHT_PANEL_STORAGE_VERSION = 22;
 const FIRST_VERSION_OPENING_ADDRESSES_ONLY_BY_HAND = 21;
 
 /** Legacy shared review-workspace panel keys are discarded during migration. */
@@ -153,8 +158,6 @@ const singletonSurface = (
   kind: Exclude<RightPanelKind, "file" | "terminal">,
 ): RightPanelSurface => {
   switch (kind) {
-    case "diff":
-      return { id: "diff", kind };
     case "files":
       return { id: "files", kind };
     case "agents":
@@ -173,6 +176,10 @@ const singletonSurface = (
       return { id: "crew", kind };
     case "mcp":
       return { id: "mcp", kind };
+    case "persona":
+      return { id: "persona", kind };
+    case "express":
+      return { id: "express", kind };
     case "vault":
       return { id: "vault", kind };
     case "overview":
@@ -284,9 +291,10 @@ export function migratePersistedRightPanelState(
             .map(([threadKey, threadState]) => {
               const validThreadState =
                 threadState && typeof threadState === "object" ? threadState : null;
-              const surfaces = Array.isArray(validThreadState?.surfaces)
+              const migratedSurfaces = Array.isArray(validThreadState?.surfaces)
                 ? validThreadState.surfaces.flatMap<RightPanelSurface>((surface) => {
                     const kind = (surface as { kind?: string }).kind;
+                    if (kind === "diff") return [{ id: "git", kind: "git" }];
                     if (
                       kind !== undefined &&
                       DROPPED_RIGHT_PANEL_KINDS.includes(
@@ -364,7 +372,14 @@ export function migratePersistedRightPanelState(
                     ];
                   })
                 : [];
-              const rawActiveSurfaceId = validThreadState?.activeSurfaceId;
+              // Diff and Git both open fold into one Code tab.
+              const surfaces = migratedSurfaces.filter(
+                (surface, index) =>
+                  migratedSurfaces.findIndex((entry) => entry.id === surface.id) === index,
+              );
+              const storedActiveSurfaceId = validThreadState?.activeSurfaceId;
+              const rawActiveSurfaceId =
+                storedActiveSurfaceId === "diff" ? "git" : storedActiveSurfaceId;
               const persistedActiveSurfaceId = surfaces.some(
                 (surface) => surface.id === rawActiveSurfaceId,
               )

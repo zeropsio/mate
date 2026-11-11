@@ -64,6 +64,27 @@ function play(moments: ReadonlyArray<Moment>, until: number) {
 }
 
 describe("the live slot's schedule", () => {
+  it.each([
+    {
+      title: "words already shown stay until their record arrives while nothing else is live",
+      live: [],
+    },
+    {
+      title: "words already shown stay until their record arrives while a steer is live",
+      live: ["person:steer"],
+    },
+  ])("$title", ({ live }) => {
+    const shown = slotStart({ at: 0, live: ["note:words"], record: [] });
+    const advancing = slotOffer(shown, { at: 1000, live, record: [], final: false });
+    const waiting = slotSettle(advancing, 10000);
+    expect(
+      [...slotHolds(waiting)],
+      "ASSERTION: words cannot plop into a record that has not arrived",
+    ).toContain("note:words");
+    const recorded = slotOffer(waiting, { at: 10010, live, record: ["note:words"], final: false });
+    expect([...slotHolds(slotSettle(recorded, 20000))]).not.toContain("note:words");
+  });
+
   it.each<{
     readonly name: string;
     readonly moments: ReadonlyArray<Moment>;
@@ -439,6 +460,52 @@ describe("the live slot's schedule", () => {
     expect(slot.entries).toEqual([]);
     expect(slotDue(slot)).toBeNull();
   });
+
+  // k27 item 5: a live card opens on its run's newest lines and its scroll reads back the earlier
+  // ones at once; each page went through the slot one at a time, a hundred lines replayed.
+  it("draws a live card's earlier lines read in above the ones it holds as history at once", () => {
+    const slot = slotStart({ at: 0, live: ["c11"], record: ["c8", "c9", "c10"] });
+    const record = ["c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8", "c9", "c10"];
+    const read = slotOffer(slot, { at: 100, live: ["c11"], record, final: false });
+    expect([...slotHoldsIn(read, record)]).toEqual(["c11"]);
+    expect(slotDue(read)).toBeNull();
+    // What arrives after them, at the run's foot, still stands its turn.
+    const next = slotOffer(read, { at: 200, live: [], record: [...record, "c11"], final: false });
+    expect(next.entries.map((entry) => entry.key)).toEqual(["c11"]);
+  });
+
+  // Review of k27: a window pins the person's messages however old, so the card opened on one far
+  // above its tail; and a call that opened before the tail and returned later sorts inside it.
+  it.each([
+    {
+      name: "the person's message the window pinned, the page read in around it",
+      opened: ["person:p", "c7", "c8", "c9"],
+      record: ["c1", "c2", "person:p", "c3", "c4", "c5", "c6", "c7", "c8", "c9"],
+    },
+    {
+      name: "a call that opened before the tail and returned within it",
+      opened: ["c6", "c7", "c8", "c9"],
+      record: ["c1", "c2", "c3", "c4", "c6", "c7", "c5", "c8", "c9"],
+    },
+  ])(
+    "draws every line read in before the newest it has seen as history at once: $name",
+    ({ opened, record }) => {
+      const slot = slotStart({ at: 0, live: ["c10"], record: opened });
+      const read = slotOffer(slot, { at: 100, live: ["c10"], record, final: false });
+      expect([...slotHoldsIn(read, record)]).toEqual(["c10"]);
+      expect(slotDue(read)).toBeNull();
+      // A line joining after the newest it has seen still stands its turn.
+      const next = slotOffer(read, {
+        at: 200,
+        live: ["c10"],
+        record: [...record, "c11"],
+        final: false,
+      });
+      expect(next.pending.length + next.entries.filter((entry) => entry.key === "c11").length).toBe(
+        1,
+      );
+    },
+  );
 
   it("leaves out of the history what arrived since the slot last heard, before it places it", () => {
     const slot = slotStart({ at: 0, live: [], record: ["c1"] });

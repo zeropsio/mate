@@ -201,7 +201,7 @@ describe("readersOf", () => {
       world: world(app({ LOG: "${LOG_LEVEL}", ALSO: "${LOG_LEVEL}" }), { LOG_LEVEL: "i" }),
       readers: {
         [valueIdOf(SHARED, "LOG_LEVEL")]: [
-          { serviceId: "s-app", hostname: "appdev", via: ["ALSO", "LOG"] },
+          { serviceId: "s-app", hostname: "appdev", via: ["ALSO", "LOG", "LOG_LEVEL"] },
         ],
       },
     },
@@ -210,7 +210,7 @@ describe("readersOf", () => {
       world: world(app({ R: "${SECRET}", R2: "${R}-x", R3: "${R2}" }), { SECRET: null }),
       readers: {
         [valueIdOf(SHARED, "SECRET")]: [
-          { serviceId: "s-app", hostname: "appdev", via: ["R", "R2", "R3"] },
+          { serviceId: "s-app", hostname: "appdev", via: ["R", "R2", "R3", "SECRET"] },
         ],
       },
     },
@@ -221,10 +221,14 @@ describe("readersOf", () => {
       }),
       readers: {
         [valueIdOf(SHARED, "DATABASE_URL")]: [
-          { serviceId: "s-app", hostname: "appdev", via: ["URL"] },
+          { serviceId: "s-app", hostname: "appdev", via: ["DATABASE_URL", "URL"] },
         ],
-        [valueIdOf(DB, "user")]: [{ serviceId: "s-app", hostname: "appdev", via: ["URL"] }],
-        [valueIdOf(DB, "password")]: [{ serviceId: "s-app", hostname: "appdev", via: ["URL"] }],
+        [valueIdOf(DB, "user")]: [
+          { serviceId: "s-app", hostname: "appdev", via: ["DATABASE_URL", "URL"] },
+        ],
+        [valueIdOf(DB, "password")]: [
+          { serviceId: "s-app", hostname: "appdev", via: ["DATABASE_URL", "URL"] },
+        ],
       },
     },
     {
@@ -241,7 +245,9 @@ describe("readersOf", () => {
       name: "a shadowed Shared value is not read",
       world: world(app({ LOG: "${LOG_LEVEL}" }, { LOG_LEVEL: "d" }), { LOG_LEVEL: "i" }),
       readers: {
-        [valueIdOf(APP, "LOG_LEVEL")]: [{ serviceId: "s-app", hostname: "appdev", via: ["LOG"] }],
+        [valueIdOf(APP, "LOG_LEVEL")]: [
+          { serviceId: "s-app", hostname: "appdev", via: ["LOG", "LOG_LEVEL"] },
+        ],
       },
     },
     {
@@ -253,7 +259,10 @@ describe("readersOf", () => {
       name: "a cycle ends",
       world: world(app({ A: "${B}", B: "${A}${LOG}" }), { LOG: "i", C: "${C}" }),
       readers: {
-        [valueIdOf(SHARED, "LOG")]: [{ serviceId: "s-app", hostname: "appdev", via: ["A", "B"] }],
+        [valueIdOf(SHARED, "LOG")]: [
+          { serviceId: "s-app", hostname: "appdev", via: ["A", "B", "LOG"] },
+        ],
+        [valueIdOf(SHARED, "C")]: [{ serviceId: "s-app", hostname: "appdev", via: ["C"] }],
       },
     },
     {
@@ -266,7 +275,30 @@ describe("readersOf", () => {
           entries: new Map([["X", "${X}x"]]),
         }),
       ]),
-      readers: {},
+      readers: {
+        [valueIdOf(SHARED, "X")]: [{ serviceId: "s-app", hostname: "appdev", via: ["X"] }],
+      },
+    },
+    {
+      name: "every runtime service reads a Shared value by its name, with no entry naming it",
+      world: world(app({}), { GOOGLE_CLIENT_ID: null }, [
+        service({ serviceId: "s-web", hostname: "web" }),
+      ]),
+      readers: {
+        [valueIdOf(SHARED, "GOOGLE_CLIENT_ID")]: [
+          { serviceId: "s-app", hostname: "appdev", via: ["GOOGLE_CLIENT_ID"] },
+          { serviceId: "s-web", hostname: "web", via: ["GOOGLE_CLIENT_ID"] },
+        ],
+      },
+    },
+    {
+      name: "a service reads its own value by its name, with no entry naming it",
+      world: world(app({}, { PUBLIC_URL: "https://shop.example.com" })),
+      readers: {
+        [valueIdOf(APP, "PUBLIC_URL")]: [
+          { serviceId: "s-app", hostname: "appdev", via: ["PUBLIC_URL"] },
+        ],
+      },
     },
   ])("$name", ({ world: refWorld, readers: expected }) => {
     expect(readers(refWorld)).toEqual(expected);

@@ -12,17 +12,14 @@
  * persisted server-side.
  */
 
-import { readProjectProcesses, type ActivityProcess } from "./activity/dto.ts";
 import {
   buildZeropsContainerUrl,
   isZcpService,
   mateContainerOf,
   severalMatesLine,
-  zeropsRegionFromPublicZone,
+  zeropsSubdomainDomainFromPublicZone,
 } from "./containerAddress.ts";
-import { withMateProjectRole } from "./mateAccess.ts";
 import { creationUserRoles, withProjectGrant, type ProjectGrant } from "./projectAccess.ts";
-import { planProjectIsolation, type ProjectEnvEntry } from "./projectIsolation.ts";
 import { projectProcessSearchBody, zcpCreationUnderWay } from "./projectCreation.ts";
 import {
   findHeldMateKey,
@@ -42,7 +39,6 @@ import type {
 import type { HqPlacement } from "./hq/placement.ts";
 import {
   buildCreateProjectBody,
-  buildDevelopmentContainerImportBody,
   buildZcpDeploymentYaml,
   buildZcpServiceImportYaml,
   generateVscodePassword,
@@ -50,6 +46,7 @@ import {
   type MateBirthplace,
   type ZeropsAgentType,
 } from "./newProject.ts";
+import { mateBirthImportYaml } from "./recipeTier.ts";
 import {
   ZEROPS_CAPTCHA_ERROR_CODE,
   buildZeropsRegistrationBody,
@@ -68,6 +65,12 @@ const PUBLIC_API_PREFIX = "/api/rest/public";
 
 /** How long an app version's archive may take to upload. */
 const APP_VERSION_UPLOAD_TIMEOUT_MS = 120_000;
+
+/** The person's Zerops access token and, when the platform gave one, its expiry (ISO). */
+export interface ZeropsAccess {
+  readonly token: string;
+  readonly expiresAt?: string;
+}
 
 export interface ZeropsClientMembership {
   readonly id: string;
@@ -407,17 +410,6 @@ export interface ZeropsService {
   readonly currentAutoscaling?: ZeropsAutoscaling | null;
 }
 
-/**
- * A managed service — a database, a cache, a storage: any type category but a
- * runtime's `USER`, the line the service map draws between its data and its
- * runtimes (`topology.ts`). A service whose category is not known is taken as
- * one that runs code.
- */
-function isManagedService(service: ZeropsService): boolean {
-  const category = service.serviceStackTypeInfo?.serviceStackTypeCategory;
-  return category !== undefined && category !== "USER";
-}
-
 /** One vault write's body: `sensitive` is always said (a write without it turns a value plain). */
 export interface ZeropsVariableWrite {
   readonly key: string;
@@ -425,12 +417,16 @@ export interface ZeropsVariableWrite {
   readonly sensitive: boolean;
 }
 
-/** One record from `GET /service-stack/{id}/env`. */
+/** One record from `GET /service-stack/{id}/env` (or `GET /project/{id}/env`). */
 export interface ZeropsServiceEnvVar {
   readonly id: string;
   readonly key: string;
   readonly content: string;
+  readonly sensitive?: boolean;
 }
+
+/** The container's own Zerops key, as zcp and a Mate's server read it (spec-mate §3.3). */
+const ZCP_API_KEY = "ZCP_API_KEY";
 
 /**
  * The service env key zcp keys every mate-shaped effect off. Nothing about
@@ -540,6 +536,21 @@ export class ZeropsApiError extends Error {
   }
 }
 
+/** The target import itself, rather than an earlier read or key write, was refused. */
+export class ZeropsTargetWriteRefused extends ZeropsApiError {
+  readonly targetWriteRefused = true;
+  constructor(refusal: ZeropsApiError) {
+    super(
+      refusal.message,
+      refusal.kind,
+      refusal.status,
+      refusal.code,
+      refusal.detail,
+      refusal.retryAfterMs,
+    );
+  }
+}
+
 /** The longest a `Retry-After` holds a read: a header asking for a day is read as ten minutes. */
 export const RETRY_AFTER_CAP_MS = 10 * 60_000;
 
@@ -580,11 +591,11 @@ export function servicePortOrigin(
   if (service.subdomainAccess !== true) return undefined;
   if (port.scheme !== "http" && port.scheme !== "https") return undefined;
   if (!project.publicZone || !project.zeropsSubdomainHost) return undefined;
-  const region = zeropsRegionFromPublicZone(project.publicZone);
-  if (!region) return undefined;
+  const domain = zeropsSubdomainDomainFromPublicZone(project.publicZone);
+  if (!domain) return undefined;
   return port.port === 80
-    ? `https://${service.name}-${project.zeropsSubdomainHost}.${region}.zerops.app`
-    : buildZeropsContainerUrl(service.name, project.zeropsSubdomainHost, port.port, region);
+    ? `https://${service.name}-${project.zeropsSubdomainHost}.${domain}`
+    : buildZeropsContainerUrl(service.name, project.zeropsSubdomainHost, port.port, domain);
 }
 
 /**
@@ -616,6 +627,37 @@ export function zeropsClientsFromUser(user: ZeropsUser): ReadonlyArray<ZeropsOrg
     });
   }
   return organizations;
+}
+
+/** An organization that invited the account, and the account has not yet accepted. */
+export interface ZeropsOrganizationInvitation {
+  readonly id: string;
+  readonly name: string;
+}
+
+/**
+ * Every organization whose invitation the account has not accepted yet: a `clientUserList` row
+ * in `WAITING_AUTHORIZATION` (measured on test-ro's KRLS row, 2026-11-08). The row carries no
+ * accept token. Only the invitation email has one (`PUT /user/authorize-client`), so Mate can
+ * show the invitation but cannot accept it.
+ */
+export function zeropsInvitationsFromUser(
+  user: ZeropsUser,
+): ReadonlyArray<ZeropsOrganizationInvitation> {
+  const joined = new Set(zeropsClientsFromUser(user).map((organization) => organization.id));
+  const seen = new Set<string>();
+  const invitations: ZeropsOrganizationInvitation[] = [];
+  for (const membership of user.clientUserList ?? []) {
+    if (membership.status !== "WAITING_AUTHORIZATION") continue;
+    const id = membership.clientId ?? membership.client?.id ?? "";
+    if (!id || joined.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    invitations.push({
+      id,
+      name: membership.client?.accountName ?? membership.client?.companyName ?? "Organization",
+    });
+  }
+  return invitations;
 }
 
 export type FetchImplementation = (input: string, init?: RequestInit) => Promise<Response>;
@@ -710,6 +752,17 @@ export interface ZeropsApiClientOptions {
    * writes queue per token in memory.
    */
   readonly holdToken?: TokenWriteHold;
+  /**
+   * The session belongs to another party that keeps its refresh token (hq's session bridge). A
+   * renewal hands it the refused session and holds what it answers; `null` says the session ended.
+   * A `ZeropsApiError` it throws refuses the renewal and keeps the session.
+   */
+  readonly sessionOwner?: ZeropsSessionOwnerPort;
+}
+
+/** The party that renews a session this client holds only the access token of. */
+export interface ZeropsSessionOwnerPort {
+  readonly renew: (stale: ZeropsSession) => Promise<ZeropsSession | null>;
 }
 
 export interface ZeropsDataHttpRequest {
@@ -719,7 +772,10 @@ export interface ZeropsDataHttpRequest {
   readonly operationKind: "read" | "project-write";
   readonly signal: AbortSignal;
   readonly beforeWrite?: () => Promise<void>;
-  /** Background data failures are scoped and never sign the account out. */
+  /**
+   * Background data failures stay scoped: a background read's own 401 never signs the account
+   * out, while a refresh the platform refuses still ends the session.
+   */
   readonly background: boolean;
 }
 
@@ -734,14 +790,15 @@ interface RequestOptions {
   /** Rechecked immediately before every project-mutating fetch, including retries. */
   readonly beforeProjectWrite?: () => Promise<void>;
   /**
-   * Whether a 401 that survives a refresh attempt (or a refresh that itself
-   * fails) signs the account out via `onSessionChange(null)`. Defaults to
-   * `true` for every ordinary call — an expired session should sign a person
-   * out of the UI they are looking at. `false` is for a background reader
-   * whose own 401 is not evidence the account's session is gone (a poll that
-   * only proves that ONE endpoint refused THIS request): it still surfaces the
-   * 401 as a thrown `ZeropsApiError`, it just never clears the held session
-   * out from under whatever else is using it.
+   * Whether a 401 that survives a refresh attempt signs the account out via
+   * `onSessionChange(null)`. Defaults to `true` for every ordinary call — an
+   * expired session should sign a person out of the UI they are looking at.
+   * `false` is for a background reader whose own 401 is not evidence the
+   * account's session is gone (a poll that only proves that ONE endpoint
+   * refused THIS request): it still surfaces the 401 as a thrown
+   * `ZeropsApiError`, it just never clears the held session for that 401
+   * alone. A refresh the platform refuses is that evidence: it ends the
+   * session whichever way this is set.
    */
   readonly clearSessionOnUnauthorized?: boolean;
   /**
@@ -874,62 +931,6 @@ export interface ZeropsPortRoutingWrite {
   readonly firewallIpRanges: ReadonlyArray<string>;
 }
 
-/** A routing of a project's own domains (`GET /project/{id}/public-http-routing`). */
-export interface ZeropsPublicHttpRouting {
-  readonly id: string;
-  /** Whether it is in place as it reads, or waits for the project's routings to be synced. */
-  readonly isSynced: boolean;
-  readonly domains: ReadonlyArray<{
-    readonly domainName: string;
-    /** The certificate's state: `ACTIVE` once the domain serves over HTTPS. */
-    readonly sslStatus: string | undefined;
-    /** Why the certificate could not be installed, where the platform says. */
-    readonly sslError: string | undefined;
-  }>;
-}
-
-const textOf = (value: unknown): string | undefined =>
-  typeof value === "string" && value.length > 0 ? value : undefined;
-
-export function publicHttpRoutingsOf(
-  items: ReadonlyArray<unknown>,
-): ReadonlyArray<ZeropsPublicHttpRouting> {
-  return items.flatMap((item): ReadonlyArray<ZeropsPublicHttpRouting> => {
-    if (typeof item !== "object" || item === null) return [];
-    const { id, isSynced, domains } = item as {
-      readonly id?: unknown;
-      readonly isSynced?: unknown;
-      readonly domains?: unknown;
-    };
-    const routingId = textOf(id);
-    if (routingId === undefined) return [];
-    return [
-      {
-        id: routingId,
-        isSynced: isSynced === true,
-        domains: (Array.isArray(domains) ? domains : []).flatMap((domain: unknown) => {
-          if (typeof domain !== "object" || domain === null) return [];
-          const { domainName, sslStatus, sslCertificateInstallationError } = domain as {
-            readonly domainName?: unknown;
-            readonly sslStatus?: unknown;
-            readonly sslCertificateInstallationError?: unknown;
-          };
-          const name = textOf(domainName);
-          return name === undefined
-            ? []
-            : [
-                {
-                  domainName: name,
-                  sslStatus: textOf(sslStatus),
-                  sslError: textOf(sslCertificateInstallationError),
-                },
-              ];
-        }),
-      },
-    ];
-  });
-}
-
 /**
  * The container's creation process out of the processes a container import answered with: its
  * `stack.create`, else the first it named; none where it named none.
@@ -954,8 +955,7 @@ export class ZeropsApiClient {
   #session: ZeropsSession | null = null;
   #generation = 0;
   #refreshPromise: Promise<ZeropsSession> | null = null;
-  /** OR'd across every caller sharing the current `#refreshPromise` — see `#refreshSession`'s doc comment. */
-  #refreshClearOnFailure = true;
+  readonly #sessionOwner: ZeropsSessionOwnerPort | undefined;
 
   constructor(options: ZeropsApiClientOptions = {}) {
     this.#baseUrl = (options.baseUrl ?? DEFAULT_ZEROPS_API_BASE).replace(/\/+$/, "");
@@ -967,6 +967,7 @@ export class ZeropsApiClient {
     this.#renewSession = options.renewSession ?? ((_stale, refresh) => refresh());
     this.#renewAhead = options.renewAhead;
     this.#holdToken = options.holdToken ?? makeTokenWriteLock();
+    this.#sessionOwner = options.sessionOwner;
   }
 
   get session(): ZeropsSession | null {
@@ -1009,21 +1010,23 @@ export class ZeropsApiClient {
    * person signs in again — while one that never reached the platform leaves it held.
    */
   async renewHeldSession(): Promise<void> {
-    await this.#refreshSession(true);
+    await this.#refreshSession();
   }
 
   /**
-   * The held session's access token, for the one call that hands it to HQ's sign-in, once no
-   * renewal stands in front of it. `refused`, a token HQ refused, renews the session first, as a
-   * request does after a 401, unless a renewal has already replaced it.
+   * The held session's access token and its expiry, for the one call that hands them to HQ's
+   * sign-in, once no renewal stands in front of it. `refused`, a token HQ refused, renews the
+   * session first, as a request does after a 401, unless a renewal has already replaced it. A
+   * personal token from the hand-over has no expiry.
    */
-  async accessToken(refused?: string): Promise<string> {
+  async accessToken(refused?: string): Promise<ZeropsAccess> {
     const current = await this.#currentSession(null);
-    if (current !== null && current.accessToken === refused)
-      return (await this.#refreshSession(true)).accessToken;
-    if (current === null)
-      throw new ZeropsApiError("Sign in to Zerops again.", "expired-session", 401);
-    return current.accessToken;
+    const held =
+      current !== null && current.accessToken === refused ? await this.#refreshSession() : current;
+    if (held === null) throw new ZeropsApiError("Sign in to Zerops again.", "expired-session", 401);
+    return held.expiresAt === undefined
+      ? { token: held.accessToken }
+      : { token: held.accessToken, expiresAt: held.expiresAt };
   }
 
   /** Adopts a session read back from storage without re-notifying the owner. */
@@ -1448,65 +1451,6 @@ export class ZeropsApiClient {
   }
 
   /**
-   * Hands a Mate to a person — or takes it away (guide 0.8, D11).
-   *
-   * A per-project role override, written by an org owner or admin. It is the
-   * verb the hand-over cases need: a Mate created for a colleague, a leaver's,
-   * a reassignment. Without one the colleague is whatever the org says they
-   * are, which for a plain member is `READ_ONLY` — they see the Mate and never
-   * open it.
-   *
-   * It is written on the person, `PUT /client-user/{id}/roles`, never on the
-   * project: `PUT /project/{id}` with `userRoles` replaces the project's whole
-   * list, refuses to name an integration token (`400 userNotFound`), and a
-   * list of people only drops the Mate key's own grant (measured 2026-10-03,
-   * `f7-handover-probe.json`). The person's list is read and sent back whole
-   * with this project's role set — or, `null`, without it: what a hand over
-   * takes from the Mate's previous owner (F23) — so their other projects keep
-   * theirs. What it answers is the project as the platform holds it after the
-   * write.
-   */
-  async setProjectMemberRole(
-    input: {
-      readonly projectId: string;
-      /** The `clientUser` id — what a project's `userRoles` names. */
-      readonly clientUserId: string;
-      readonly roleCode: ZeropsProjectRole | null;
-    },
-    beforeWrite?: () => Promise<void>,
-  ): Promise<ZeropsProject> {
-    const generation = this.#generation;
-    this.#assertGeneration(generation);
-    const roles = `/client-user/${input.clientUserId}/roles`;
-    const held = await this.#request<{
-      readonly projectRoleList?: ReadonlyArray<{
-        readonly projectId: string;
-        readonly roleCode: string;
-      }>;
-    }>(roles, {}, { operationKind: "read" });
-    this.#assertGeneration(generation);
-    await this.#request(
-      roles,
-      {
-        method: "PUT",
-        body: JSON.stringify({
-          projectRoleList: withMateProjectRole(
-            held.projectRoleList,
-            input.projectId,
-            input.roleCode,
-          ),
-        }),
-      },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-    this.#assertGeneration(generation);
-    return this.fetchProject(input.projectId);
-  }
-
-  /**
    * `POST /client/{id}/user/validate` — who an address is to the organization before it is
    * invited: an existing Zerops account (its user id) or a new one. Changes nothing. An address
    * already a member, or invited, is refused `userAlreadyConnectedToCompany`; anyone but an owner
@@ -1873,13 +1817,13 @@ export class ZeropsApiClient {
       if (
         !(cause instanceof ZeropsApiError) ||
         cause.kind !== "expired-session" ||
-        !this.#session?.refreshToken
+        !this.#renewable(this.#session)
       ) {
         throw cause;
       }
       // A renewal that replaced the token this login carried leaves nothing to renew again.
       if (this.#session.accessToken === sentToken)
-        await waitForPromiseOrAbort(this.#refreshSession(false), signal);
+        await waitForPromiseOrAbort(this.#refreshSession(), signal);
       return attempt();
     }
   }
@@ -1954,14 +1898,15 @@ export class ZeropsApiClient {
   }
 
   /**
-   * `PUT /project/{id}/first-class-recipe/development-container` — the zcp
-   * that carries the agent, imported into a project that already exists,
-   * holding the Mate's own key.
+   * A Mate's birth as one `POST /project/{id}/service-stack/import` into the project that exists:
+   * the zcp that carries the agent, holding the Mate's own key, first by `priority`, and the tier's
+   * services beside it, every one isolated but to the container (`mateBirthImportYaml`). Zerops
+   * creates them in their waves whether this browser stays or not. The zcp@1 type and its inline
+   * `zeropsYaml` are an ordinary import's (the platform's import schema); the platform's own
+   * first-class-recipe endpoint takes the container alone.
    *
-   * The key is minted here, by the person, with its own project and nothing
-   * more: `BASIC_USER` there, no grant on any other project (ADR 0003), no
-   * delegation. It goes into the container
-   * as the secret `ZCP_API_KEY`, and the platform is asked for no token of
+   * The key is the Mate's own, established here by the person (`#establishMateKey`). It goes into
+   * the container as the secret `ZCP_API_KEY`, and the platform is asked for no token of
    * its own (`createIntegrationToken: false`). The platform's would be
    * `ADMIN`, a project variable every service can read, and a one-time
    * delegation — three things a later step had to take back, from a browser
@@ -1971,10 +1916,8 @@ export class ZeropsApiClient {
    * the first one started:
    * - a project that has its container already makes no write at all, and one holding several zcp
    *   services is refused, naming them: a project holds one Mate (audit D2);
-   * - a key an earlier press minted, its container never imported, is reused
-   *   — set to its own project alone where it is still `ADMIN` (`planMateKey`),
-   *   and its value regenerated, because the value is shown once and nothing
-   *   kept it — never a second key beside it.
+   * - a key an earlier press minted, its container never imported, is reused, never a second key
+   *   beside it — only while no zcp is being created that may hold it already.
    *
    * The value lives in this call alone: it is in the import's body and in no
    * answer, no log and no error.
@@ -1987,61 +1930,152 @@ export class ZeropsApiClient {
       readonly projectName: string;
       readonly zcpVersion?: string;
       readonly agents?: ReadonlyArray<ZeropsAgentType>;
-      /** The tier's runtimes, for zcp to import on boot (`MATE_SETUP_RUNTIMES`). */
-      readonly setupRuntimesYaml?: string;
+      /** The tier's services as the birth imports them (`mateTier`); absent for a Mate alone. */
+      readonly tierYaml?: string;
       readonly birthplace?: MateBirthplace;
     },
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
+    /** Establish the actual credential's person context before handing it to its container. */
+    onKeyEstablished?: (context: {
+      readonly projectId: string;
+      readonly keyHash: string;
+    }) => Promise<void>,
   ): Promise<{
     readonly serviceName: string;
     readonly imported: boolean;
     /** The container's creation process Zerops answered the import with, where it named one. */
     readonly processId?: string;
   }> {
-    const services = await this.listProjectServices(input.projectId, signal);
-    const container = mateContainerOf(services);
-    if (container.kind === "several") throw new Error(severalMatesLine(container.names));
-    if (container.kind === "one") return { serviceName: container.service.name, imported: false };
+    let importRequested = false;
+    try {
+      const generation = this.#generation;
+      const services = await this.listProjectServices(input.projectId, signal);
+      this.#assertGeneration(generation);
+      const container = mateContainerOf(services);
+      if (container.kind === "several") throw new Error(severalMatesLine(container.names));
+      if (container.kind === "one") return { serviceName: container.service.name, imported: false };
 
-    const generation = this.#generation;
+      const tokens = await this.listIntegrationTokens(input.clientId, signal);
+      const earlier = newestMateKey(tokens, input.projectId);
+      this.#assertGeneration(generation);
+      if (earlier !== undefined) {
+        // A key is regenerated only where no container holds it: a zcp the platform is still
+        // creating does, though the listing above may not show it yet.
+        const processes = await this.#request<{ readonly items?: ReadonlyArray<unknown> }>(
+          "/process/search",
+          {
+            method: "POST",
+            signal: signal ?? null,
+            body: JSON.stringify(projectProcessSearchBody(input)),
+          },
+          { operationKind: "read" },
+        );
+        if (zcpCreationUnderWay(Array.isArray(processes.items) ? processes.items : [])) {
+          throw new Error("Its container is still being created. Try again in a minute.");
+        }
+        this.#assertGeneration(generation);
+      }
+      const { apiKey } = await this.#establishMateKey(
+        { ...input, earlier },
+        generation,
+        signal,
+        beforeWrite,
+        onKeyEstablished,
+      );
+
+      const serviceName = nextZcpServiceName(services.map((service) => service.name));
+      this.#assertGeneration(generation);
+      importRequested = true;
+      const answered = await this.importServicesIntoProject(
+        input.projectId,
+        mateBirthImportYaml(
+          buildZcpServiceImportYaml({
+            serviceName,
+            vscodePassword: generateVscodePassword(),
+            apiKey,
+            ...(input.zcpVersion ? { zcpVersion: input.zcpVersion } : {}),
+            ...(input.agents ? { agents: input.agents } : {}),
+            ...(input.birthplace ? { birthplace: input.birthplace } : {}),
+            ...(this.#baseUrl === DEFAULT_ZEROPS_API_BASE
+              ? {}
+              : { apiHost: new URL(this.#baseUrl).host }),
+          }),
+          input.tierYaml,
+        ),
+        signal,
+        beforeWrite,
+      ).catch((cause: unknown) => {
+        if (
+          cause instanceof ZeropsApiError &&
+          cause.status !== null &&
+          cause.status >= 400 &&
+          cause.status < 500
+        )
+          throw new ZeropsTargetWriteRefused(cause);
+        throw cause;
+      });
+      const processId = importProcessOf(
+        answered.serviceStacks?.find((stack) => stack.name === serviceName)?.processes,
+      );
+      return { serviceName, imported: true, ...(processId === undefined ? {} : { processId }) };
+    } catch (cause) {
+      if (
+        !importRequested &&
+        !(cause instanceof ZeropsWriteNotSent) &&
+        !(cause instanceof ZeropsApiError && cause.kind === "uncertain")
+      )
+        throw new ZeropsWriteNotSent(cause);
+      throw cause;
+    }
+  }
+
+  /**
+   * The Mate's own key, established by the person as a birth and an Enable do: minted with its own
+   * project and nothing more — `BASIC_USER` there, no grant on any other project (ADR 0003), no
+   * delegation — named `zcp-<project>` as the platform names its own. An earlier press's key
+   * (`earlier`, `newestMateKey`) is reused instead, never a second key beside it: set to its own
+   * project alone where it is still `ADMIN` (`planMateKey`) and its value regenerated, because the
+   * value is shown once and nothing kept it. A key this call minted whose authorization
+   * `onKeyEstablished` refused is deleted: no container will hold it.
+   *
+   * The value leaves only in the answer; `minted` names the key this call made, never an earlier
+   * press's.
+   */
+  async #establishMateKey(
+    input: {
+      readonly clientId: string;
+      readonly projectId: string;
+      readonly projectName: string;
+      readonly earlier: ZeropsIntegrationToken | undefined;
+    },
+    generation: number,
+    signal: AbortSignal | undefined,
+    beforeWrite: (() => Promise<void>) | undefined,
+    onKeyEstablished:
+      | ((context: { readonly projectId: string; readonly keyHash: string }) => Promise<void>)
+      | undefined,
+  ): Promise<{ readonly apiKey: string; readonly minted: string | undefined }> {
     const grants: ReadonlyArray<ZeropsProjectGrant> = [
       { projectId: input.projectId, roleCode: MATE_SELF_PROJECT_ROLE },
     ];
-    const tokens = await this.listIntegrationTokens(input.clientId, signal);
-    const earlier = newestMateKey(tokens, input.projectId);
-    this.#assertGeneration(generation);
-    if (earlier !== undefined) {
-      // A key is regenerated only where no container holds it: a zcp the platform is still
-      // creating does, though the listing above may not show it yet.
-      const processes = await this.#request<{ readonly items?: ReadonlyArray<unknown> }>(
-        "/process/search",
-        {
-          method: "POST",
-          signal: signal ?? null,
-          body: JSON.stringify(projectProcessSearchBody(input)),
-        },
-        { operationKind: "read" },
-      );
-      if (zcpCreationUnderWay(Array.isArray(processes.items) ? processes.items : [])) {
-        throw new Error("Its container is still being created. Try again in a minute.");
-      }
-      this.#assertGeneration(generation);
-    }
+    const earlier = input.earlier;
     let apiKey: string;
+    /** The key this call minted, never an earlier press's. */
+    let minted: string | undefined;
     if (earlier === undefined) {
-      apiKey = (
-        await this.mintIntegrationToken(
-          {
-            clientId: input.clientId,
-            name: mateKeyName(input.projectName),
-            roleCode: "NO_ACCESS",
-            projects: grants,
-          },
-          signal,
-          beforeWrite,
-        )
-      ).token;
+      const key = await this.mintIntegrationToken(
+        {
+          clientId: input.clientId,
+          name: mateKeyName(input.projectName),
+          roleCode: "NO_ACCESS",
+          projects: grants,
+        },
+        signal,
+        beforeWrite,
+      );
+      apiKey = key.token;
+      minted = key.id;
     } else {
       // The write replaces the key's whole project list: it is planned from the key as read
       // under its lock, every token writer's, and lowers its org role to none. Found by its name,
@@ -2083,34 +2117,29 @@ export class ZeropsApiClient {
       );
     }
 
-    const serviceName = nextZcpServiceName(services.map((service) => service.name));
     this.#assertGeneration(generation);
-    const answered = await this.#request<{ readonly processes?: ReadonlyArray<unknown> }>(
-      `/project/${input.projectId}/first-class-recipe/development-container`,
-      {
-        method: "PUT",
-        signal: signal ?? null,
-        body: JSON.stringify(
-          buildDevelopmentContainerImportBody({
-            serviceImportYaml: buildZcpServiceImportYaml({
-              serviceName,
-              vscodePassword: generateVscodePassword(),
-              apiKey,
-              ...(input.zcpVersion ? { zcpVersion: input.zcpVersion } : {}),
-              ...(input.agents ? { agents: input.agents } : {}),
-              ...(input.setupRuntimesYaml ? { setupRuntimesYaml: input.setupRuntimesYaml } : {}),
-              ...(input.birthplace ? { birthplace: input.birthplace } : {}),
-            }),
-          }),
-        ),
-      },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-    const processId = importProcessOf(answered.processes);
-    return { serviceName, imported: true, ...(processId === undefined ? {} : { processId }) };
+    if (onKeyEstablished !== undefined) {
+      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(apiKey));
+      this.#assertGeneration(generation);
+      const keyHash = Array.from(new Uint8Array(digest), (byte) =>
+        byte.toString(16).padStart(2, "0"),
+      ).join("");
+      try {
+        await onKeyEstablished({ projectId: input.projectId, keyHash });
+      } catch (cause) {
+        // A key HQ did not authorize is a key no container holds: the one this call minted is
+        // taken back, by the account that minted it; an earlier press's stays for the next to reuse.
+        if (minted !== undefined && this.#generation === generation)
+          await this.deleteIntegrationToken(
+            { clientId: input.clientId, tokenId: minted },
+            signal,
+            beforeWrite,
+          ).catch(() => undefined);
+        throw cause;
+      }
+      this.#assertGeneration(generation);
+    }
+    return { apiKey, minted };
   }
 
   /**
@@ -2264,86 +2293,6 @@ export class ZeropsApiClient {
   }
 
   /**
-   * Reads HQ's append-only birth journal directly from its project env file.
-   * Expose only this plain metadata, never unrelated env values.
-   */
-  async readProjectBirthEnv(projectId: string): Promise<ReadonlyMap<string, string>> {
-    const response = await this.#request<{ readonly envFile: string }>(
-      `/project/${projectId}/env-file`,
-      {},
-      { operationKind: "read" },
-    );
-    const entries = new Map<string, string>();
-    for (const line of response.envFile.split("\n")) {
-      const match = /^(MATE_HQ_BIRTH_[A-Za-z0-9_]+)="((?:[^"\\]|\\.)*)"$/u.exec(line);
-      if (match?.[1] === undefined || match[2] === undefined) continue;
-      const escapes: Readonly<Record<string, string>> = { n: "\n", r: "\r", t: "\t" };
-      entries.set(
-        match[1],
-        match[2].replace(/\\(.)/gu, (_, char: string) => escapes[char] ?? char),
-      );
-    }
-    return entries;
-  }
-
-  /**
-   * A create-once slot: project env keys are unique case-insensitively. Never update or delete
-   * a birth slot. The process id is retained by the journal; it is not an env entry id.
-   */
-  async createProjectEnv(
-    projectId: string,
-    key: string,
-    content: string,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<{ readonly processId: string }> {
-    const response = await this.#request<{ readonly id: string }>(
-      `/project/${projectId}/env`,
-      { method: "POST", body: JSON.stringify({ key, content, sensitive: false }) },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-    return { processId: response.id };
-  }
-
-  /**
-   * `POST /project/search` for one project, for its `envList` alone.
-   *
-   * The only read that carries project variables **with their entry ids**, and
-   * an id is what every update and delete needs — `POST /project/{pid}/env`
-   * answers with a *process* id, not the entry's (measured 2026-09-16). The
-   * index trails the write path, so this is re-read rather than remembered.
-   */
-  async readProjectEnv(
-    clientId: string,
-    projectId: string,
-    signal?: AbortSignal,
-  ): Promise<ReadonlyArray<ProjectEnvEntry>> {
-    const response = await this.#request<{
-      readonly items?: ReadonlyArray<{ readonly envList?: ReadonlyArray<ProjectEnvEntry> }>;
-    }>(
-      "/project/search",
-      {
-        method: "POST",
-        signal: signal ?? null,
-        body: JSON.stringify({
-          limit: 1,
-          // The organization scopes every project search: an id on its own is
-          // `400 invalidUserInput` — "clientId not defined" — which failed the
-          // isolation step of a second Mate's creation (measured 2026-09-18).
-          search: [
-            { name: "id", operator: "eq", value: projectId },
-            { name: "clientId", operator: "eq", value: clientId },
-          ],
-        }),
-      },
-      { operationKind: "read" },
-    );
-    return response.items?.[0]?.envList ?? [];
-  }
-
-  /**
    * `GET /project/{id}/service-stack` — the project's own services.
    *
    * Answered under `list`, not the `items` the search endpoints use (measured
@@ -2365,124 +2314,8 @@ export class ZeropsApiClient {
   }
 
   /**
-   * Stops a Mate's project handing its container's key — and its agent's
-   * login — to every container in it (`projectIsolation.ts`, guide 0.10).
-   *
-   * The decision is the pure planner's; this reads what it needs, walks the
-   * plan, and re-reads the entry ids before the delete because that is the
-   * only place they come from. Safe to call on a project that has already been
-   * through it: the plan is then empty and nothing, restarts included, runs.
-   *
-   * Returns whether the plan it ran restarted anything — the project's
-   * services that run its code, whose running processes still hold the
-   * sibling variables they captured at start; never a managed service, and
-   * never the Mate's own container, which needs no restart of its own
-   * (server commit 7d544119b, `projectIsolation.ts`).
-   */
-  async isolateProjectEnvironment(
-    clientId: string,
-    projectId: string,
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<{ readonly restarted: boolean; readonly steps: number }> {
-    const generation = this.#generation;
-    const [envList, services] = await Promise.all([
-      this.readProjectEnv(clientId, projectId, signal),
-      this.listProjectServices(projectId, signal),
-    ]);
-    const own = services.filter((service) => service.isSystem !== true);
-    const plan = planProjectIsolation({
-      envList,
-      services: own.map((service) => ({
-        name: service.name,
-        isControlPlane: isZcpService(service),
-        managed: isManagedService(service),
-      })),
-    });
-    // The read has not caught up with a project this new. Nothing is written
-    // from a list that cannot be complete; the caller comes back. `uncertain`
-    // is the conservative kind here — nothing was written at all, and the step
-    // is idempotent, so a caller that re-reads loses nothing.
-    if (!plan.ok)
-      throw new ZeropsApiError(
-        "This project's variables have not all appeared yet, so its isolation was left alone.",
-        "uncertain",
-      );
-    const { steps } = plan;
-    const restarted = steps.some((step) => step.kind === "restart-service");
-    if (steps.length === 0) return { restarted: false, steps: 0 };
-
-    const write = {
-      operationKind: "project-write" as const,
-      ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-    };
-    const serviceIdByName = new Map(own.map((service) => [service.name, service.id]));
-    const valueOf = (entryId: string): string =>
-      envList.find((entry) => entry.id === entryId)?.content ?? "";
-    let fresh = envList;
-
-    for (const step of steps) {
-      this.#assertGeneration(generation);
-      switch (step.kind) {
-        case "update-project-env":
-          // `key` beside `content`: a body carrying content alone is
-          // `400 invalidUserInput` — "key: field is required" — even for the
-          // project's owner (measured 2026-09-16).
-          await this.#request(
-            `/project-env/${step.entryId}`,
-            {
-              method: "PUT",
-              signal: signal ?? null,
-              body: JSON.stringify({ key: step.key, content: step.content }),
-            },
-            write,
-          );
-          break;
-        case "move-key-to-service": {
-          const serviceId = serviceIdByName.get(step.serviceName);
-          if (serviceId === undefined) {
-            throw new ZeropsApiError(
-              `The container "${step.serviceName}" is no longer in this project.`,
-              "uncertain",
-            );
-          }
-          const content = valueOf(step.fromEntryId);
-          await this.#writeServiceEnvOnce(
-            { clientId, serviceId, key: step.key, content, sensitive: true },
-            signal,
-            beforeWrite,
-          );
-          break;
-        }
-        case "reread-project-env":
-          fresh = await this.readProjectEnv(clientId, projectId, signal);
-          break;
-        case "delete-project-env": {
-          const entry = fresh.find((candidate) => candidate.key === step.key);
-          // Gone already — a half-finished earlier run, or someone else's
-          // edit. Nothing to take back.
-          if (entry === undefined) break;
-          await this.#request(
-            `/project-env/${entry.id}`,
-            { method: "DELETE", signal: signal ?? null },
-            write,
-          );
-          break;
-        }
-        case "restart-service": {
-          const serviceId = serviceIdByName.get(step.serviceName);
-          if (serviceId === undefined) break;
-          await this.restartService(serviceId, signal, beforeWrite);
-          break;
-        }
-      }
-    }
-    return { restarted, steps: steps.length };
-  }
-
-  /**
-   * The birth's hardening (spec-mate §3 B-1/B-2/B-3), whole: the token half
-   * and the isolation half, together, for one Mate's own project.
+   * A Mate's key hardened (spec-mate §3 B-1/B-3), for one Mate's own project: the isolation is the
+   * birth import's (`mateBirthImportYaml`), never written here.
    *
    * The token half sets the Mate's key to its own project alone at `BASIC_USER` (`planMateKey`):
    * the key HQ holds by id loses any other grant; a key found by its name is the Mate's only while
@@ -2491,15 +2324,8 @@ export class ZeropsApiClient {
    * (`groupReach.ts`, guide 0.4).
    *
    * Idempotent, and cheap to prove so: a token already at `BASIC_USER` with
-   * no wider grant plans nothing, a token with no delegations lists an empty
-   * page, and `isolateProjectEnvironment` is already idempotent on its own.
-   * A hardened Mate re-run through this makes no writes at all.
-   *
-   * `read-incomplete` from the isolation half is not caught here: it is the
-   * same "the read has not caught up yet, come back" signal the caller
-   * already knows from `isolateProjectEnvironment` alone, and swallowing it
-   * here would hide a retryable wait behind a token/delegation write that
-   * already succeeded.
+   * no wider grant plans nothing, and a token with no delegations lists an
+   * empty page. A hardened Mate re-run through this makes no writes at all.
    */
   async hardenMate(
     clientId: string,
@@ -2516,8 +2342,6 @@ export class ZeropsApiClient {
     /** Why a key of the Mate's could not be lowered — the platform refused this account the write. */
     readonly keyNotLowered: string | null;
     readonly delegationsDropped: number;
-    readonly isolationSteps: number;
-    readonly restarted: boolean;
   }> {
     const generation = this.#generation;
     let tokenLowered = false;
@@ -2554,21 +2378,7 @@ export class ZeropsApiClient {
       }
     }
 
-    this.#assertGeneration(generation);
-    const isolation = await this.isolateProjectEnvironment(
-      clientId,
-      projectId,
-      signal,
-      beforeWrite,
-    );
-
-    return {
-      tokenLowered,
-      keyNotLowered,
-      delegationsDropped,
-      isolationSteps: isolation.steps,
-      restarted: isolation.restarted,
-    };
+    return { tokenLowered, keyNotLowered, delegationsDropped };
   }
 
   /**
@@ -2635,120 +2445,6 @@ export class ZeropsApiClient {
         beforeWrite,
       );
       told.dropped();
-    }
-  }
-
-  /**
-   * The names of a service's own variables — never a value: whether a
-   * variable the app wrote is there, as HQ's birth reads its own token's
-   * (`hq/birth.ts`).
-   */
-  async listServiceVariableNames(
-    serviceId: string,
-    signal?: AbortSignal,
-  ): Promise<ReadonlyArray<string>> {
-    return (await this.#serviceEnv(serviceId, signal)).map((entry) => entry.key);
-  }
-
-  /**
-   * Whether a service holds the variable `key` — its presence, never its value or any other
-   * variable: one key searched (`POST /user-data/search`); a sensitive value answers `REDACTED`.
-   */
-  async hasServiceVariable(
-    input: { readonly clientId: string; readonly serviceId: string; readonly key: string },
-    signal?: AbortSignal,
-  ): Promise<boolean> {
-    const found = await this.#request<{ readonly items?: ReadonlyArray<unknown> }>(
-      "/user-data/search",
-      {
-        method: "POST",
-        signal: signal ?? null,
-        body: JSON.stringify({
-          search: [
-            { name: "clientId", operator: "eq", value: input.clientId },
-            { name: "serviceStackId", operator: "eq", value: input.serviceId },
-            { name: "key", operator: "eq", value: input.key },
-          ],
-          sort: [],
-          limit: 1,
-        }),
-      },
-    );
-    return (found.items ?? []).length > 0;
-  }
-
-  /** `POST /service-stack/{id}/user-data` — one sensitive variable on a service, written once. */
-  async writeServiceSecret(
-    input: {
-      readonly clientId: string;
-      readonly serviceId: string;
-      readonly key: string;
-      readonly content: string;
-    },
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<void> {
-    await this.#writeServiceEnvOnce({ ...input, sensitive: true }, signal, beforeWrite);
-  }
-
-  /**
-   * `POST /service-stack/{id}/user-data`.
-   *
-   * A create the platform refuses is checked rather than swallowed: the only
-   * way the key is already there is a run of this that moved it and then
-   * failed before deleting the project entry, and in that case the move is
-   * done. Anything else still throws, because losing the key silently would
-   * leave a Mate that cannot reach the platform at all. The check reads that
-   * one key (`POST /user-data/search`), never the service's every variable;
-   * its value, sensitive, answers `REDACTED`, so the key's presence is the
-   * answer.
-   */
-  async #writeServiceEnvOnce(
-    input: {
-      readonly clientId: string;
-      readonly serviceId: string;
-      readonly key: string;
-      readonly content: string;
-      readonly sensitive: boolean;
-    },
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<void> {
-    try {
-      await this.#request(
-        `/service-stack/${input.serviceId}/user-data`,
-        {
-          method: "POST",
-          signal: signal ?? null,
-          body: JSON.stringify({
-            key: input.key,
-            content: input.content,
-            sensitive: input.sensitive,
-          }),
-        },
-        {
-          operationKind: "project-write",
-          ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-        },
-      );
-    } catch (cause) {
-      const found = await this.#request<{ readonly items?: ReadonlyArray<unknown> }>(
-        "/user-data/search",
-        {
-          method: "POST",
-          signal: signal ?? null,
-          body: JSON.stringify({
-            search: [
-              { name: "clientId", operator: "eq", value: input.clientId },
-              { name: "serviceStackId", operator: "eq", value: input.serviceId },
-              { name: "key", operator: "eq", value: input.key },
-            ],
-            sort: [],
-            limit: 1,
-          }),
-        },
-      );
-      if ((found.items ?? []).length === 0) throw cause;
     }
   }
 
@@ -2974,27 +2670,6 @@ export class ZeropsApiClient {
       },
     );
     return { processId: typeof process?.id === "string" ? process.id : undefined };
-  }
-
-  /**
-   * `GET /project/{id}/public-http-routing` — the project's routings of its own domains, each
-   * domain with its certificate's state (`sslStatus`: `WAITING_FOR_DNS`, `ACTIVE`, …).
-   */
-  async listPublicHttpRoutings(
-    projectId: string,
-    signal?: AbortSignal,
-  ): Promise<ReadonlyArray<ZeropsPublicHttpRouting>> {
-    const response = await this.#request<{
-      readonly list?: ReadonlyArray<unknown>;
-      readonly items?: ReadonlyArray<unknown>;
-    }>(
-      `/project/${projectId}/public-http-routing`,
-      { signal: signal ?? null },
-      {
-        operationKind: "read",
-      },
-    );
-    return publicHttpRoutingsOf(response.list ?? response.items ?? []);
   }
 
   /**
@@ -3226,29 +2901,6 @@ export class ZeropsApiClient {
   }
 
   /**
-   * `GET /project/{id}/process` — the project's newest twenty processes, each with its app version
-   * and why it failed: what HQ's update reads of its `hq` service's deploys (`hq/update.ts`).
-   */
-  async listProjectProcesses(
-    projectId: string,
-    signal?: AbortSignal,
-  ): Promise<ReadonlyArray<ActivityProcess>> {
-    const document = await this.#request<unknown>(
-      `/project/${projectId}/process?limit=20`,
-      { signal: signal ?? null },
-      { operationKind: "read" },
-    );
-    const processes = readProjectProcesses(document);
-    if (processes === undefined) {
-      throw new ZeropsApiError(
-        "Zerops answered the project's processes in an unknown shape.",
-        "unexpected",
-      );
-    }
-    return processes;
-  }
-
-  /**
    * `PUT /service-stack/{id}/start` with the user's own token — starts a
    * STOPPED service (a zcp container included). Answers the start's process id.
    */
@@ -3356,88 +3008,6 @@ export class ZeropsApiClient {
   }
 
   /**
-   * `POST /service-stack/{id}/app-version` — the first of the three calls a deploy through the API
-   * is (then {@link uploadAppVersionArchive} and {@link buildAndDeployAppVersion}). A version exists
-   * whether or not its answer arrives, so a lost answer is `uncertain`.
-   */
-  async createAppVersion(
-    serviceId: string,
-    name: string,
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<{ readonly id: string }> {
-    const response = await this.#request<{ readonly id?: string }>(
-      `/service-stack/${serviceId}/app-version`,
-      { method: "POST", signal: signal ?? null, body: JSON.stringify({ name }) },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-    if (!response.id) {
-      throw new ZeropsApiError(
-        "Zerops accepted the app version but did not return its id, so it cannot be deployed.",
-        "uncertain",
-      );
-    }
-    return { id: response.id };
-  }
-
-  /** `PUT /app-version/{id}/upload` — the code's `tar.gz`, as raw bytes; it answers no body. */
-  async uploadAppVersionArchive(
-    appVersionId: string,
-    archive: Uint8Array<ArrayBuffer>,
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<void> {
-    await this.#request(
-      `/app-version/${appVersionId}/upload`,
-      {
-        method: "PUT",
-        signal: signal ?? AbortSignal.timeout(APP_VERSION_UPLOAD_TIMEOUT_MS),
-        headers: { "Content-Type": "application/octet-stream" },
-        body: archive,
-      },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-        ignoreAnswer: true,
-      },
-    );
-  }
-
-  /**
-   * `PUT /app-version/{id}/build-and-deploy` — builds the uploaded code with `zeropsYaml`'s
-   * `setup` entry and deploys it; the answer is the process that does so.
-   */
-  async buildAndDeployAppVersion(
-    appVersionId: string,
-    input: { readonly zeropsYaml: string; readonly setup: string },
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<{ readonly processId: string }> {
-    const response = await this.#request<{ readonly id?: string }>(
-      `/app-version/${appVersionId}/build-and-deploy`,
-      {
-        method: "PUT",
-        signal: signal ?? null,
-        body: JSON.stringify({ zeropsYaml: input.zeropsYaml, zeropsYamlSetup: input.setup }),
-      },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-    if (!response.id) {
-      throw new ZeropsApiError(
-        "Zerops accepted the deploy but did not return its process, so it cannot be followed.",
-        "uncertain",
-      );
-    }
-    return { processId: response.id };
-  }
-
-  /**
    * `PUT /service-stack/{id}/enable-subdomain-access` — publish a service on
    * its `*.zerops.app` subdomain.
    *
@@ -3446,6 +3016,22 @@ export class ZeropsApiClient {
    * cloned from dev comes up unpublished whatever its recipe said, and answers
    * 502 after its first deploy until this runs.
    */
+  /**
+   * `PUT /app-version/{id}/cancel-build` — stops a pipeline whose build has not ended: the GUI's
+   * Cancel build, offered while the version uploads, waits to build or builds
+   * (`process-base.api.ts`). The build's process then ends `CANCELED`.
+   */
+  async cancelBuild(appVersionId: string, beforeWrite?: () => Promise<void>): Promise<void> {
+    await this.#request(
+      `/app-version/${encodeURIComponent(appVersionId)}/cancel-build`,
+      { method: "PUT" },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
+  }
+
   async enableSubdomainAccess(serviceId: string, beforeWrite?: () => Promise<void>): Promise<void> {
     await this.#request(
       `/service-stack/${serviceId}/enable-subdomain-access`,
@@ -3463,15 +3049,90 @@ export class ZeropsApiClient {
       `/service-stack/${serviceId}/user-data`,
       {
         method: "POST",
-        // `sensitive` is required on every service userData write — the
-        // platform rejects a body without it as "field is required".
-        body: JSON.stringify({ key: ZEROPS_MATE_ENV_KEY, content: "1", sensitive: true }),
+        // `sensitive` is required on every service userData write — the platform rejects a body
+        // without it as "field is required". The flag is no secret, and a sensitive value reads
+        // back as `REDACTED`: never as on, so the read-back below would create it a second time.
+        body: JSON.stringify({ key: ZEROPS_MATE_ENV_KEY, content: "1", sensitive: false }),
       },
       {
         operationKind: "project-write",
         ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
       },
     );
+  }
+
+  /**
+   * Gives a container made without Mate the Mate's own key, as a birth gives its zcp
+   * (`#establishMateKey`): the person establishes the key, and it is written as the secret
+   * `ZCP_API_KEY` of the container's zcp service, over the one there or beside the project's
+   * variable of that name — a service's own variable outranks its project's (zerops-docs
+   * `features/env-variables`, Variable Precedence). The key the platform made with the container
+   * is never reused nor read: it is `sudo`, which HQ's Mate door never admits, and a plain
+   * project variable on older containers. Its restart, the boot that reads the key, is the
+   * caller's. No observe authorization is asked for: HQ grants one only to a Mate placed in an
+   * application, and an Enabled Mate is placed in none (`authorize-observe` asks once it is).
+   *
+   * A key this call minted that no variable came to hold is deleted. The value lives in this call
+   * alone: in the variable's body and in no answer, no log and no error.
+   */
+  async installMateKey(
+    input: {
+      readonly clientId: string;
+      readonly projectId: string;
+      /** The project's name: the key is `zcp-<name>`, as the platform names its own. */
+      readonly projectName: string;
+      readonly serviceId: string;
+    },
+    beforeWrite?: () => Promise<void>,
+  ): Promise<void> {
+    const generation = this.#generation;
+    let written = false;
+    try {
+      const earlier = newestMateKey(
+        await this.listIntegrationTokens(input.clientId),
+        input.projectId,
+      );
+      this.#assertGeneration(generation);
+      const { apiKey, minted } = await this.#establishMateKey(
+        { ...input, earlier },
+        generation,
+        undefined,
+        beforeWrite,
+        undefined,
+      );
+      const write = { key: ZCP_API_KEY, content: apiKey, sensitive: true };
+      try {
+        const current = (await this.#serviceEnv(input.serviceId)).find(
+          (entry) => entry.key === ZCP_API_KEY,
+        );
+        this.#assertGeneration(generation);
+        written = true;
+        await (current === undefined
+          ? this.addServiceVariable(input.serviceId, write, beforeWrite)
+          : this.updateServiceVariable(current.id, write, beforeWrite));
+      } catch (cause) {
+        // A key no variable holds is taken back, by the account that minted it.
+        if (
+          minted !== undefined &&
+          this.#generation === generation &&
+          !(cause instanceof ZeropsApiError && cause.kind === "uncertain")
+        )
+          await this.deleteIntegrationToken(
+            { clientId: input.clientId, tokenId: minted },
+            undefined,
+            beforeWrite,
+          ).catch(() => undefined);
+        throw cause;
+      }
+    } catch (cause) {
+      if (
+        !written &&
+        !(cause instanceof ZeropsWriteNotSent) &&
+        !(cause instanceof ZeropsApiError && cause.kind === "uncertain")
+      )
+        throw new ZeropsWriteNotSent(cause);
+      throw cause;
+    }
   }
 
   /**
@@ -3534,27 +3195,21 @@ export class ZeropsApiClient {
   }
 
   /**
-   * `clearOnFailure` governs only what happens when the refresh itself fails
-   * (no refresh token, the refresh call rejected, an unusable refreshed
-   * session) — a SUCCESSFUL refresh always adopts the new session regardless.
-   *
-   * Concurrent callers SHARE one in-flight refresh, and its outcome is an OR
-   * across every caller that joined it: if the background poller starts the
-   * refresh with `false` and a user-initiated request piggybacks with `true`
-   * before it settles, a failure still clears the session — the user-facing
-   * caller's stricter preference wins, whichever caller happened to start
-   * the request. Only when EVERY joiner opted out does a failure leave the
-   * (now-dead) session in place for the poller alone to observe as a 401.
+   * Renews the held session: one `/auth/refresh` shared by every caller that
+   * asks while it runs, a background reader's as much as a person's. A
+   * renewed session is adopted. A refresh the platform refuses
+   * (`expired-session`), an unusable session in its answer, or no refresh
+   * token to renew with ends the held session: nothing repairs it until the
+   * person signs in again. Any other failure — the network, a 403 or 5xx
+   * answer — rejects and leaves the session held. An answer that arrives
+   * after another login replaced this one changes nothing.
    */
-  async #refreshSession(clearOnFailure = true): Promise<ZeropsSession> {
-    if (this.#refreshPromise) {
-      this.#refreshClearOnFailure ||= clearOnFailure;
-      return this.#refreshPromise;
-    }
+  async #refreshSession(): Promise<ZeropsSession> {
+    if (this.#refreshPromise) return this.#refreshPromise;
     const generation = this.#generation;
     const current = this.#session;
-    if (!current?.refreshToken) {
-      if (clearOnFailure) await this.#setSession(null);
+    if (!this.#renewable(current)) {
+      await this.#setSession(null);
       throw new ZeropsApiError(
         "Your Zerops session has expired. Sign in again.",
         "expired-session",
@@ -3562,7 +3217,6 @@ export class ZeropsApiClient {
       );
     }
 
-    this.#refreshClearOnFailure = clearOnFailure;
     const refresh = async () => {
       const response = await this.#fetch(`${this.#baseUrl}${PUBLIC_API_PREFIX}/auth/refresh`, {
         method: "POST",
@@ -3575,9 +3229,7 @@ export class ZeropsApiClient {
       if (!response.ok) {
         const error = await apiErrorFromResponse(response);
         this.#assertGeneration(generation);
-        if (error.kind === "expired-session" && this.#refreshClearOnFailure) {
-          await this.#setSession(null);
-        }
+        if (error.kind === "expired-session") await this.#setSession(null);
         throw error;
       }
       // `/auth/refresh` answers with the session fields at the top level, not
@@ -3585,7 +3237,7 @@ export class ZeropsApiClient {
       const session = (await response.json()) as ZeropsSession;
       this.#assertGeneration(generation);
       if (!isUsableZeropsSession(session)) {
-        if (this.#refreshClearOnFailure) await this.#setSession(null);
+        await this.#setSession(null);
         throw new ZeropsApiError(
           "Zerops returned an invalid refreshed session.",
           "expired-session",
@@ -3596,22 +3248,53 @@ export class ZeropsApiClient {
       return session;
     };
     this.#refreshPromise = (async () => {
-      const renewed = await this.#renewSession(current, refresh);
+      const renewed =
+        this.#sessionOwner === undefined
+          ? await this.#renewSession(current, refresh)
+          : await this.#renewWithOwner(this.#sessionOwner, current, generation);
       this.#assertGeneration(generation);
       if (renewed !== this.#session) this.adoptRenewedSession(renewed);
       return renewed;
     })().finally(() => {
       this.#refreshPromise = null;
-      this.#refreshClearOnFailure = true;
     });
 
     return this.#refreshPromise;
   }
 
+  /** A session this client can renew: one with a refresh token, or any while its owner renews it. */
+  #renewable(session: ZeropsSession | null): session is ZeropsSession {
+    return session !== null && (this.#sessionOwner !== undefined || Boolean(session.refreshToken));
+  }
+
+  /** The owner's answer for `stale`. An owner that can't answer leaves the session held, as a network failure does. */
+  async #renewWithOwner(
+    owner: ZeropsSessionOwnerPort,
+    stale: ZeropsSession,
+    generation: number,
+  ): Promise<ZeropsSession> {
+    let renewed: ZeropsSession | null;
+    try {
+      renewed = await owner.renew(stale);
+    } catch (cause) {
+      if (cause instanceof ZeropsApiError) throw cause;
+      throw new ZeropsApiError("Couldn't reach Zerops to renew the session.", "network");
+    }
+    this.#assertGeneration(generation);
+    if (renewed !== null) return renewed;
+    await this.#setSession(null);
+    throw new ZeropsApiError(
+      "Your Zerops session has ended. Sign in again.",
+      "expired-session",
+      401,
+    );
+  }
+
   /**
    * The held session once no renewal stands in front of it: a renewal already under way is
-   * waited for, and one that is due runs first. A renewal that fails here leaves the held session
-   * in use and says nothing: the platform's refusal of it, if any, is the request's to answer.
+   * waited for, and one that is due runs first. A renewal the platform refuses ends the session,
+   * and the request with it. Any other failed renewal leaves the held session in use and says
+   * nothing: the platform's refusal of it, if any, is the request's to answer.
    */
   #currentSession(
     signal: AbortSignal | null | undefined,
@@ -3628,7 +3311,7 @@ export class ZeropsApiClient {
   ): Promise<ZeropsSession | null> {
     const generation = this.#generation;
     try {
-      await waitForPromiseOrAbort(this.#refreshSession(false), signal);
+      await waitForPromiseOrAbort(this.#refreshSession(), signal);
     } catch (cause) {
       if (cause instanceof DOMException && cause.name === "AbortError") throw cause;
       if (this.#session === held) this.#renewAheadFailed = held;
@@ -3707,14 +3390,11 @@ export class ZeropsApiClient {
       this.#assertGeneration(generation);
       if (response.status === 401 && retryAfterRefresh) {
         const session = this.#session;
-        if (session?.refreshToken) {
+        if (this.#renewable(session)) {
           // A renewal that replaced the token this request carried revoked it: the request
           // repeats with the renewed one, and renewing again would revoke that under others.
           if (session.accessToken === sentToken)
-            await waitForPromiseOrAbort(
-              this.#refreshSession(clearSessionOnUnauthorized),
-              init.signal,
-            );
+            await waitForPromiseOrAbort(this.#refreshSession(), init.signal);
           response = await run();
           this.#assertGeneration(generation);
         }

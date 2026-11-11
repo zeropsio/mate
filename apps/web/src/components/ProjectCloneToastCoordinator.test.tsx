@@ -2,7 +2,7 @@ import type { AccountEnvironments } from "@t3tools/client-runtime/zerops/account
 import type { EnvironmentId, ProjectCloneSnapshot, ProjectId } from "@t3tools/contracts";
 import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { bindAccountEnvironments } from "../zerops/accountEnvironments";
 import { ProjectCloneToastCoordinator } from "./ProjectCloneToastCoordinator";
@@ -39,7 +39,11 @@ vi.mock("@tanstack/react-router", () => ({
   useRouter: () => ({ state: { matches: [] }, navigate: async () => {} }),
 }));
 vi.mock("../hooks/useHandleNewThread", () => ({ useNewThreadHandler: () => async () => {} }));
-vi.mock("../state/use-atom-command", () => ({ useAtomCommand: () => async () => ({}) }));
+beforeEach(async () => {
+  const commands = await import("../state/use-atom-command");
+  vi.spyOn(commands, "useAtomCommand").mockImplementation((() =>
+    async () => ({})) as unknown as typeof commands.useAtomCommand);
+});
 
 const mounted: ReactTestRenderer[] = [];
 
@@ -89,17 +93,6 @@ describe("ProjectCloneToastCoordinator", () => {
     expect([...new Set(reads.followed)]).toEqual(["open-mate"]);
   });
 
-  it("holds the Mate a clone runs on, so a park does not take its toast", () => {
-    const unbind = bindHolder();
-    reads.clones.set("open-mate", [clone("running")]);
-    act(() => {
-      mounted.push(create(<ProjectCloneToastCoordinator />));
-    });
-
-    expect(reads.log).toEqual(["hold open-mate"]);
-    unbind();
-  });
-
   it("keeps holding a running clone's Mate while its link comes back", () => {
     const unbind = bindHolder();
     reads.clones.set("open-mate", [clone("running")]);
@@ -108,6 +101,7 @@ describe("ProjectCloneToastCoordinator", () => {
       renderer = create(<ProjectCloneToastCoordinator />);
     });
     mounted.push(renderer);
+    expect(reads.log).toEqual(["hold open-mate"]);
     act(() => {
       reads.openPhase = "backoff";
       renderer.update(<ProjectCloneToastCoordinator />);

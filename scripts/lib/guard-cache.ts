@@ -54,7 +54,8 @@ const packageName = (specifier: string) =>
     .split("/")
     .slice(0, specifier.startsWith("@") ? 2 : 1)
     .join("/");
-const hashPackageTree = (manifest: string): string => {
+/** Hash installed package bytes, including transitive implementations, once per dependency tree. */
+export const hashPackageTrees = (manifests: ReadonlyArray<string>, strict = false): string => {
   const hash = NodeCrypto.createHash("sha256");
   const visited = new Set<string>();
   const visit = (manifest: string) => {
@@ -69,12 +70,20 @@ const hashPackageTree = (manifest: string): string => {
         if (entry.name === "node_modules" || entry.name === ".git") continue;
         const file = NodePath.join(directory, entry.name);
         if (entry.isDirectory()) walk(file);
-        else if (entry.isFile())
+        else if (entry.isSymbolicLink() && strict)
+          throw new Error(`Cannot fingerprint linked package input ${file}`);
+        else if (entry.isFile()) {
+          const bytes = NodeFS.readFileSync(file);
           hash
-            .update(JSON.stringify(`${metadata.name}/${NodePath.relative(root, file)}`))
-            .update("\0")
-            .update(NodeFS.readFileSync(file))
-            .update("\0");
+            .update(
+              JSON.stringify([
+                `${metadata.name}/${NodePath.relative(root, file)}`,
+                NodeFS.statSync(file).mode & 0o111,
+                bytes.length,
+              ]),
+            )
+            .update(bytes);
+        }
       }
     };
     walk(root);
@@ -89,9 +98,11 @@ const hashPackageTree = (manifest: string): string => {
         throw new Error(`Missing guard dependency ${name}`);
     }
   };
-  visit(manifest);
+  for (const manifest of manifests) visit(NodeFS.realpathSync(manifest));
   return hash.digest("hex");
 };
+
+const hashPackageTree = (manifest: string): string => hashPackageTrees([manifest]);
 
 const moduleSpecifiers = (file: string, source: string) => {
   const parsed = parseSync(file, source);

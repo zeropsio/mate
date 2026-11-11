@@ -7,8 +7,9 @@ import type { HqGitTargetIntent } from "./hqGitTargets.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { AtomRegistry } from "effect/reactivity";
-import { ORG } from "../__fixtures__/account.ts";
-import { hqAppsScope } from "../families/hqNavigation.ts";
+import { liveProjects, ORG } from "../__fixtures__/account.ts";
+import { membershipInputs } from "../__fixtures__/membership.ts";
+import { hqAppsScope, placementsScope } from "../families/hqNavigation.ts";
 import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
 import { operationProgress } from "../projections/operation.ts";
 import { makeOperations } from "./coordinator.ts";
@@ -37,15 +38,30 @@ const answer = (requestId: string): OperationReceipt => ({
 let revision = 0;
 const publish = (
   store: AccountStore,
-  can: Record<string, unknown>,
   jobs: ReadonlyArray<HqDeliveryNavigationJob> = gitEnvironment.jobs,
 ) =>
   store.dispatch({
     kind: "delivery",
     via: "hq-stream",
-    scopes: [{ scope: hqAppsScope(ORG), generation: 1 }],
+    scopes: [hqAppsScope(ORG), placementsScope(ORG)].map((scope) => ({ scope, generation: 1 })),
     reset: true,
     rows: [
+      // A project the application develops in: who releases it is who develops in it.
+      {
+        family: "placement",
+        id: "dev",
+        revision: { kind: "hq", incarnation: "i", revision: ++revision },
+        value: {
+          projectId: "dev",
+          appId: "shop",
+          name: "dev",
+          kind: "mate",
+          mate: null,
+          person: { mine: false, ownerUserId: null, waitsOnViewer: false, unseen: null },
+          signedInNow: {},
+          everSignedIn: {},
+        },
+      } as never,
       {
         family: "hqApp",
         id: "shop",
@@ -53,17 +69,10 @@ const publish = (
         value: {
           id: "shop",
           name: "Shop",
-          can,
           contents: { empty: false, deletingProjectIds: [] },
-          projectIds: [],
+          projectIds: ["dev"],
           births: [],
-          environments: [
-            {
-              ...gitEnvironment,
-              jobs,
-              can: { remove_git_environment: { allow: true }, redeploy: { allow: true } },
-            },
-          ],
+          environments: [{ ...gitEnvironment, jobs }],
         },
       } as never,
     ],
@@ -71,26 +80,22 @@ const publish = (
   });
 function setup(
   options: {
-    can?: Record<string, unknown>;
+    /** The person's role in the organization, as Zerops reads it; unread where `null`. */
+    orgRole?: string | null;
     send?: HqWrites["gitTargetWrite"];
     lookup?: HqWrites["gitTargetReceipt"];
   } = {},
 ) {
   const store = makeAccountStore(AtomRegistry.make());
-  for (const key of [linkKeys.hq(ORG), hqAppsScope(ORG)]) {
+  for (const key of [linkKeys.hq(ORG), hqAppsScope(ORG), placementsScope(ORG)]) {
     store.dispatch({ kind: "stream", key, now: 0, event: { kind: "demand", demanded: true } });
     store.dispatch({ kind: "stream", key, now: 0, event: { kind: "attempt" } });
   }
-  publish(
-    store,
-    options.can ?? {
-      connect_remote: { allow: true },
-      replace_remote_token: { allow: true },
-      release: { allow: true },
-      disconnect_remote: { allow: true },
-      add_git_environment: { allow: true },
-    },
-  );
+  const orgRole = options.orgRole === undefined ? "ADMIN" : options.orgRole;
+  if (orgRole !== null)
+    for (const input of [...membershipInputs(orgRole), ...liveProjects(ORG, [{ id: "dev" }])])
+      store.dispatch(input);
+  publish(store);
   const transcript: unknown[] = [];
   let bodyHadToken = false;
   const executor = makeHqExecutor({
@@ -206,12 +211,12 @@ describe("Git target operations through the existing HQ executor", () => {
       expect(serialized(f.store)).not.toContain(TOKEN);
     }),
   );
-  it.effect.each([
-    { can: {}, reason: "unknown" },
-    { can: { connect_remote: { allow: false, reason: "structure_read_only" } }, reason: "refused" },
-  ])("every write requires the server offer: $reason", ({ can }) =>
+  it.effect.each<{ readonly orgRole: string | null; readonly reason: string }>([
+    { orgRole: null, reason: "unknown" },
+    { orgRole: "BASIC_USER", reason: "refused" },
+  ])("every write requires the server offer: $reason", ({ orgRole }) =>
     Effect.gen(function* () {
-      const f = setup({ can });
+      const f = setup({ orgRole });
       yield* f.executor.submitGitCandidate(f.operations, "r1", intent, TOKEN);
       expect(f.transcript).toEqual([]);
       expect(f.store.state().operations.get("r1")?.receipt?.acceptance.kind).toBe("refused");
@@ -389,7 +394,7 @@ it.effect(
           outcome: { kind: "pending" },
         }),
       });
-      publish(f.store, {}, []);
+      publish(f.store, []);
       const write = {
         ...app,
         kind: "run-git-again",
@@ -398,9 +403,9 @@ it.effect(
       } as const;
       yield* f.operations.submit(write);
       expect(operationProgress.derive(readsOfState(f.store.state()), "r1").stage).toBe("accepted");
-      publish(f.store, {}, [{ ...gitEnvironment.jobs[0]!, id: "another-job" }]);
+      publish(f.store, [{ ...gitEnvironment.jobs[0]!, id: "another-job" }]);
       expect(operationProgress.derive(readsOfState(f.store.state()), "r1").stage).toBe("accepted");
-      publish(f.store, {}, gitEnvironment.jobs);
+      publish(f.store, gitEnvironment.jobs);
       expect(operationProgress.derive(readsOfState(f.store.state()), "r1")).toMatchObject({
         stage: "done",
         outcome: "succeeded",
@@ -431,29 +436,25 @@ it.effect("a server offer withdrawn after candidate entry prevents the write", (
   Effect.gen(function* () {
     const f = setup();
     const pending = f.executor.submitGitCandidate(f.operations, "r1", intent, TOKEN);
-    publish(f.store, { connect_remote: { allow: false, reason: "structure_read_only" } });
+    for (const input of membershipInputs("BASIC_USER", false, 2)) f.store.dispatch(input);
     yield* pending;
     expect(f.transcript).toEqual([]);
     expect(operationProgress.derive(readsOfState(f.store.state()), "r1")).toMatchObject({
       stage: "refused",
-      reason: "structure_read_only",
+      reason: "not_structure_writer",
     });
   }),
 );
-it.effect(
-  "a refused or diverged release offer cannot send preflight or manufacture a release",
-  () =>
-    Effect.gen(function* () {
-      for (const reason of ["credential", "diverged", "releasing"]) {
-        const f = setup({ can: { release: { allow: false, reason } } });
-        yield* f.operations.submit({ ...app, kind: "preflight-git-release" });
-        expect(f.transcript).toEqual([]);
-        expect(operationProgress.derive(readsOfState(f.store.state()), "r1")).toMatchObject({
-          stage: "refused",
-          reason,
-        });
-      }
-    }),
+it.effect("a release the person may not make cannot send preflight or manufacture a release", () =>
+  Effect.gen(function* () {
+    const f = setup({ orgRole: "READ_ONLY" });
+    yield* f.operations.submit({ ...app, kind: "preflight-git-release" });
+    expect(f.transcript).toEqual([]);
+    expect(operationProgress.derive(readsOfState(f.store.state()), "r1")).toMatchObject({
+      stage: "refused",
+      reason: "not_releaser",
+    });
+  }),
 );
 it.effect(
   "Git host recovery preserves the current remote and never invalidates it in the client",
@@ -498,7 +499,7 @@ it.effect(
   "A reviewed remote address update is one authority-gated operation with a stable id and no token",
   () =>
     Effect.gen(function* () {
-      const f = setup({ can: { update_remote_address: { allow: true } } });
+      const f = setup();
       const update = {
         kind: "update-git-remote-address",
         orgId: ORG,

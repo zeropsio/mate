@@ -78,6 +78,15 @@ export const ENGINE_WIRE_BUDGETS = {
   liveTailItems: 40,
   runPageItems: 200,
   runPageBytes: 512 * 1024,
+  /**
+   * An opening's `outcome` frames: one frame, sent as a message of its own, under the window's
+   * budget; a call's result whole in it up to `outcomeResultBytes`, a longer one cut as anywhere;
+   * every run's frames of one opening together within `outcomesBytes`. What does not fit is read
+   * by the client (`engine.readRun`, `engine.readDetail`).
+   */
+  outcomeFrameBytes: 192 * 1024,
+  outcomeResultBytes: 96 * 1024,
+  outcomesBytes: 1024 * 1024,
   detailBytes: 256 * 1024,
   liveFrameBytes: 4 * 1024,
   /** Records a resume may carry; past it the subscriber is reset to a fresh snapshot. */
@@ -187,6 +196,7 @@ const toUnknownFrame = (_raw: Record<string, unknown>, was: string) => ({
 
 const FRAME_TYPES = [
   "snapshot",
+  "outcome",
   "changes",
   "synchronized",
   "reset",
@@ -216,6 +226,21 @@ export const EngineConversationFrame = forwardCompatibleUnion({
       items: ItemRecords,
       requests: RequestRecords,
       window: EngineWindow,
+    }),
+    /**
+     * Before a snapshot, to a subscriber that asked for `outcomes`: what a finished run of its
+     * window draws its closed card's result from, as `engine.readRun` reads it (`only:
+     * "outcome"`) from the run's start, in order, each frame a message of its own within the
+     * budgets (`outcomeFrameBytes`, `outcomesBytes`). `more`: the run holds outcome items after
+     * this frame's last that no frame of this opening carries; the subscriber reads on from it
+     * (`engine.readRun` with `afterSeq`). A run with no frame is read whole the same way.
+     */
+    Schema.Struct({
+      type: Schema.Literal("outcome"),
+      runId: RunId,
+      items: ItemRecords,
+      requests: RequestRecords,
+      more: Schema.Boolean,
     }),
     /**
      * Every record that changed in `(from, to]`, whole, upserted by id. A split frame's parts
@@ -301,6 +326,12 @@ export const EngineSubscribeInput = Schema.Struct({
   after: Schema.optionalKey(EngineCursor),
   /** Run groups the window opens with (default and cap: the budget's). */
   groups: Schema.optionalKey(Schema.Int),
+  /**
+   * With a snapshot, its finished runs' `outcome` frames first, as far as their budgets carry:
+   * the results of these `tools`, as `engine.readRun` names them. A server before it ignores it
+   * and sends none; the client then reads each run (`engine.readRun`), drawn the same.
+   */
+  outcomes: Schema.optionalKey(Schema.Struct({ tools: Schema.Array(Schema.String) })),
 });
 export type EngineSubscribeInput = typeof EngineSubscribeInput.Type;
 
@@ -320,7 +351,11 @@ export type EngineReadEarlierInput = typeof EngineReadEarlierInput.Type;
  * A run's items, the newest page first (`beforeSeq` pages back); with `afterSeq`, the oldest page
  * after it (`more`: later ones exist). `only: "outcome"` reads just the items a closed card draws
  * its result from: calls with a result or a picture looked at, and background work with the calls
- * that started it.
+ * that started it. With `tools`, a call's result counts only for the tools it names — those whose
+ * results the client draws a closed card from; a name ending in `*` names every tool it begins —
+ * and for every tool a call failed with in the runs its card draws with it: its failure, and the
+ * calls that may have recovered from it. A server before `tools` ignores it and reads every
+ * result, drawn the same.
  */
 export const EngineReadRunInput = Schema.Struct({
   ...protocol,
@@ -329,6 +364,7 @@ export const EngineReadRunInput = Schema.Struct({
   beforeSeq: Schema.optionalKey(Schema.Int),
   afterSeq: Schema.optionalKey(Schema.Int),
   only: Schema.optionalKey(Schema.Literal("outcome")),
+  tools: Schema.optionalKey(Schema.Array(Schema.String)),
   limit: Schema.optionalKey(Schema.Int),
 });
 export type EngineReadRunInput = typeof EngineReadRunInput.Type;
@@ -445,7 +481,7 @@ export type EngineStopInput = typeof EngineStopInput.Type;
 /** The person's answer to a request, as its kind takes it. */
 export const EngineAnswer = forwardCompatibleUnion({
   key: "kind",
-  known: ["approval", "input", "secret", "origin", "unknown"],
+  known: ["approval", "input", "secret", "origin", "mirror", "unknown"],
   members: [
     Schema.Struct({ kind: Schema.Literal("approval"), decision: ProviderApprovalDecision }),
     Schema.Struct({
@@ -470,6 +506,16 @@ export const EngineAnswer = forwardCompatibleUnion({
     Schema.Struct({
       kind: Schema.Literal("origin"),
       outcome: Schema.Literals(["connected", "declined"]),
+    }),
+    /**
+     * A repository asked to be connected to GitHub (a `mirror` request): `connected`, with the
+     * GitHub address HQ shows as its remote — the person's client set it itself; `declined`, not
+     * now. Never a token.
+     */
+    Schema.Struct({
+      kind: Schema.Literal("mirror"),
+      outcome: Schema.Literals(["connected", "declined"]),
+      url: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(512))),
     }),
   ],
   fallback: Schema.Struct({ kind: Schema.Literal("unknown"), type: Schema.String }),

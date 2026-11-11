@@ -31,7 +31,7 @@ beforeEach(() => {
   held.records = [
     {
       requestId: "original",
-      projectName: "Ada",
+      at: new Date(2026, 10, 5, 14, 2).toISOString(),
       intent: { kind: "prepare-mate-deletion", orgId: "org", hqProjectId: "hq", projectId: "p" },
       result: { keyTokenId: "exact-key", completion: "seal" },
     },
@@ -60,7 +60,7 @@ it("a person who reopens the account after the project was deleted is offered Fi
   held.records = prepared;
   act(() => tree?.update(<ZeropsDeletionRecovery />));
   expect(tree?.root.findByType("span").children.join("")).toBe(
-    "Ada was deleted. Its cleanup still needs confirmation.",
+    "A Mate deleted on 5 Nov, 14:02 — its cleanup still needs confirmation.",
   );
   expect(tree?.root.findByType(Button).props.children).toBe("Finish deleting Mate");
 

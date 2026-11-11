@@ -13,6 +13,8 @@ import {
   buildCodexAdditionalContext,
   buildCodexDeveloperInstructions,
 } from "../CodexDeveloperInstructions.ts";
+import { MATE_PLACES_INSTRUCTIONS } from "../../matePlacesInstructions.ts";
+import { personaInstructions } from "../../personaInstructions.ts";
 import { codexSessionAppServerArgs } from "./codexLaunchArgs.ts";
 import {
   buildTurnStartParams,
@@ -99,9 +101,10 @@ describe("Codex thread history", () => {
 
   it.effect("surfaces Codex rejecting a revert of a legacy thread", () =>
     Effect.gen(function* () {
-      const rejection = CodexErrors.CodexAppServerRequestError.invalidRequest(
-        "thread/revert only supports paginated threads",
-      );
+      const rejection = new CodexErrors.CodexAppServerRequestError({
+        code: -32600,
+        errorMessage: "thread/revert only supports paginated threads",
+      });
       const client: Parameters<typeof rollbackCodexThread>[0] = {
         raw: {
           request: (method) => {
@@ -121,23 +124,6 @@ describe("Codex thread history", () => {
       NodeAssert.strictEqual(error, rejection);
     }),
   );
-});
-
-describe("CodexSessionRuntimeIdentifierGenerationError", () => {
-  it("retains identifier purpose and the random source failure", () => {
-    const cause = new Error("random source unavailable");
-    const error = new CodexErrors.CodexAppServerIdentifierGenerationError({
-      purpose: "provider-event",
-      cause,
-    });
-
-    NodeAssert.equal(error.purpose, "provider-event");
-    NodeAssert.strictEqual(error.cause, cause);
-    NodeAssert.equal(
-      error.message,
-      "Failed to generate Codex App Server identifier for provider-event.",
-    );
-  });
 });
 
 function makeThreadOpenResponse(
@@ -370,7 +356,9 @@ describe("buildTurnStartParams", () => {
         prompt: "Ship it",
       });
 
-      NodeAssert.deepStrictEqual(params, {
+      const { additionalContext, ...rest } = params;
+      NodeAssert.ok(additionalContext?.mate_runtime);
+      NodeAssert.deepStrictEqual(rest, {
         threadId: "provider-thread-1",
         summary: "auto",
         approvalPolicy: "on-request",
@@ -397,7 +385,10 @@ describe("buildTurnStartParams", () => {
       }),
     );
 
-    NodeAssert.deepStrictEqual(params, {
+    // Mate's context still rides the turn; only the mode is left to Codex.
+    const { additionalContext, ...rest } = params;
+    NodeAssert.ok(additionalContext?.mate_runtime);
+    NodeAssert.deepStrictEqual(rest, {
       threadId: "provider-thread-1",
       summary: "auto",
       approvalPolicy: "untrusted",
@@ -660,6 +651,54 @@ describe("buildCodexAdditionalContext", () => {
     NodeAssert.doesNotMatch(value, /<runtime_info>[^<]*\n/);
   });
 
+  it("gives Codex Mate's places as an entry of their own, apart from the runtime", () => {
+    const context = buildCodexAdditionalContext(runtime);
+
+    NodeAssert.equal(context.mate_places?.kind, "application");
+    NodeAssert.equal(context.mate_places?.value, MATE_PLACES_INSTRUCTIONS);
+    NodeAssert.doesNotMatch(runtimeValue(context), /<mate_places>/);
+  });
+
+  // A persona's 3,000 UTF-16 units run to 9,000 UTF-8 bytes in CJK, past one entry's 4,000.
+  it.each([
+    ["Chinese", "诚实地回答问题并保持简洁。"],
+    ["Czech", "Piš česky, stručně a věcně; žluťoučký kůň úpěl ďábelské ódy. "],
+    ["emoji", "Answer 🙂 kindly 🚀 "],
+    ["unbroken CJK", "诚"],
+  ])(
+    "a long multi-byte persona reaches Codex whole across its context entries: %s",
+    (_case, unit) => {
+      const instructions = unit.repeat(Math.ceil(3_000 / unit.length)).slice(0, 3_000);
+      // A surrogate pair cut at the 3,000th unit would not be a persona the contract admits.
+      const persona = personaInstructions({
+        name: "长".repeat(40),
+        instructions: instructions.replace(/[\uD800-\uDBFF]$/, "x"),
+      });
+      const context = buildCodexAdditionalContext(runtime, persona);
+      const pieces = ["mate_persona", "mate_persona_2", "mate_persona_3"].map(
+        (key) => context[key]?.value ?? "",
+      );
+      NodeAssert.equal(pieces.join(""), persona);
+      for (const piece of pieces) {
+        NodeAssert.ok(Buffer.byteLength(piece) <= 4_000);
+        NodeAssert.ok(piece.toWellFormed() === piece, "a piece splits a character");
+      }
+    },
+  );
+
+  it("a short persona fills Codex's first persona entry and leaves the later ones empty", () => {
+    const persona = personaInstructions(null);
+    const context = buildCodexAdditionalContext(runtime, persona);
+    NodeAssert.deepStrictEqual(
+      ["mate_persona", "mate_persona_2", "mate_persona_3"].map((key) => context[key]),
+      [
+        { kind: "application", value: persona },
+        { kind: "application", value: "" },
+        { kind: "application", value: "" },
+      ],
+    );
+  });
+
   it("keeps every entry under Codex's 1,000 token cap per entry", () => {
     const context = buildCodexAdditionalContext(runtime);
     for (const entry of Object.values(context)) {
@@ -673,7 +712,11 @@ describe("Codex developer instructions never mention preview tools", () => {
   it("Codex developer instructions never mention preview tools", () => {
     const runtime = { model: "gpt-5.3-codex", reasoningEffort: "medium" };
     const context = buildCodexAdditionalContext(runtime);
-    NodeAssert.deepStrictEqual(Object.keys(context), ["mate_runtime"]);
+    NodeAssert.deepStrictEqual(Object.keys(context), [
+      "mate_runtime",
+      "mate_places",
+      "mate_picture_ask",
+    ]);
     for (const instructions of [
       buildCodexDeveloperInstructions("default"),
       buildCodexDeveloperInstructions("plan"),

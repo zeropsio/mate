@@ -1,13 +1,13 @@
-// @effect-diagnostics preferSchemaOverJson:off -- controlled report inputs on the existing scenario wire.
-import { describe, expect, it } from "@effect/vitest";
+// @effect-diagnostics globalJsonInEffect:off -- controlled report inputs on the existing scenario wire.
+import { scenarioSuite } from "../../harness/suite.ts";
+import { describe, expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import type { HqStreamMessage } from "@t3tools/shared/hqStream";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { recordedReport, statistics } from "../../../../src/components/usage/usageTestFixtures.ts";
 
 describe("B: Usage report presentation", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     for (const check of ["filters", "geometry"] as const) {
       it.effect(
         check === "filters"
@@ -16,8 +16,17 @@ describe("B: Usage report presentation", () => {
         () =>
           Effect.gen(function* () {
             const s = yield* createScenario();
+            s.given.person("owner", { role: "OWNER", grants: { Ada: "OWNER" } });
+            s.given.person("admin", { role: "ADMIN" });
+            s.given.person("dev", { role: "Developer", grants: { Bea: "OWNER" } });
             yield* s.given.project("Ada", { mate: true, app: "Shop" });
             yield* s.given.project("Bea", { mate: true, app: "Lab" });
+            for (const name of ["Ada", "Bea"]) {
+              const registration = yield* s.drivers.core.call("GET", "/api/mate/self", {
+                headers: { authorization: `Project mate-key-${name}` },
+              });
+              expect(registration.status).toBe(200);
+            }
             const inactive = yield* s.given.app("Archive");
             s.drivers.hq.mapFrames((frame) => {
               const message = JSON.parse(frame) as HqStreamMessage;
@@ -28,28 +37,36 @@ describe("B: Usage report presentation", () => {
                 return frame;
               const query = message.scope.query;
               const empty = query.appId === inactive;
+              const rows = [
+                { name: "Ada", owner: "owner", app: "Shop", provider: "claude" },
+                { name: "Bea", owner: "dev", app: "Lab", provider: "codex" },
+              ] as const;
+              const selected = rows.filter(
+                (row) => query.ownerUserId === null || query.ownerUserId === row.owner,
+              );
+              const count = empty ? 0 : selected.length;
               const report = recordedReport({
                 query,
                 provenance: query.provenance ?? "live-responses",
-                totals: statistics(empty ? "0" : "2000", empty ? "0" : "2"),
+                totals: statistics(String(count * 1000), String(count)),
                 pricing: {
                   ...recordedReport().pricing,
-                  costUsdNanos: empty ? "0" : "2000000000",
-                  pricedModelEntries: empty ? "0" : "2",
+                  costUsdNanos: String(count * 1000000000),
+                  pricedModelEntries: String(count),
                 },
-                coverage: ["Ada", "Bea"].map((name, i) => ({
+                coverage: selected.map(({ name, owner, app }) => ({
                   ...recordedReport().coverage[0]!,
                   originId: name,
                   mateId: name,
                   label: name,
-                  appId: s.appIds.get(i === 0 ? "Shop" : "Lab")!,
-                  ownerUserId: i === 0 ? "owner" : "dev",
+                  appId: s.appIds.get(app)!,
+                  ownerUserId: owner,
                 })),
                 groups: empty
                   ? []
-                  : ["Ada", "Bea"].map((name, i) => ({
+                  : selected.map(({ name, provider }) => ({
                       key: name,
-                      provider: i === 0 ? "claude" : "codex",
+                      provider,
                       model: "recorded-model",
                       period: (query.since ?? "2026-10-01").slice(0, 10),
                       totals: statistics(),
@@ -58,14 +75,16 @@ describe("B: Usage report presentation", () => {
               });
               return JSON.stringify({ ...message, values: [{ key: "report", value: report }] });
             });
+            s.given.asPerson(check === "filters" ? "owner" : "admin");
             yield* s.given.signedIn;
             yield* Effect.promise(async () => {
               await s.page.setViewport({ width: 320, height: 740 });
               await s.page.goto(`${s.web.origin}/usage`);
               await s.page.locator("::-p-aria(Usage metric)").click();
               await s.page.locator('::-p-aria(Cost[role="option"])').click();
-              await s.page.waitForFunction(() => document.body.innerText.includes("2 turns"));
+              await s.page.waitForFunction(() => /\b[12] turns?\b/u.test(document.body.innerText));
               if (check === "filters") {
+                expect(await s.page.evaluate(() => document.body.innerText)).toContain("2 turns");
                 const visible = await s.page.$$eval(
                   '[aria-label="Usage project"], [aria-label="Usage person"]',
                   (nodes) =>
@@ -82,6 +101,7 @@ describe("B: Usage report presentation", () => {
                 );
                 expect(await s.page.evaluate(() => document.body.innerText)).toContain("Archive");
               } else {
+                expect(await s.page.evaluate(() => document.body.innerText)).toContain("2 turns");
                 for (const width of [320, 390, 1786]) {
                   await s.page.setViewport({ width, height: width > 1000 ? 1000 : 844 });
                   const modes = await s.page.$$eval(

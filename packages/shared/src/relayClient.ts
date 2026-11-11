@@ -5,7 +5,8 @@ import type {
 } from "@t3tools/contracts";
 import * as Config from "effect/Config";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Hex from "effect/encoding/Hex";
@@ -175,12 +176,14 @@ export const makeCloudflaredRelayClient = Effect.fn("cloudflared.make")(function
   RelayClientShape,
   never,
   | ChildProcessSpawner.ChildProcessSpawner
-  | Crypto.Crypto
+  | Digest.Digest
   | FileSystem.FileSystem
   | HttpClient.HttpClient
   | Path.Path
+  | SecureRandom.SecureRandom
 > {
-  const crypto = yield* Crypto.Crypto;
+  const digest = yield* Digest.Digest;
+  const random = yield* SecureRandom.SecureRandom;
   const fileSystem = yield* FileSystem.FileSystem;
   const httpClient = yield* HttpClient.HttpClient;
   const path = yield* Path.Path;
@@ -306,7 +309,7 @@ export const makeCloudflaredRelayClient = Effect.fn("cloudflared.make")(function
       ),
     );
     yield* report("verifying");
-    const checksum = yield* crypto.digest("SHA-256", bytes).pipe(
+    const checksum = yield* digest.digest(Digest.sha256, bytes).pipe(
       Effect.mapError(
         (cause) =>
           new RelayClientInstallError({
@@ -424,7 +427,7 @@ export const makeCloudflaredRelayClient = Effect.fn("cloudflared.make")(function
         wrapInstallFailure("validation_failed", "The downloaded relay client binary did not run."),
       );
 
-      const stagedPath = `${managedPath}.${yield* crypto.randomUUIDv4}.tmp`;
+      const stagedPath = `${managedPath}.${yield* random.uuidV4()}.tmp`;
       yield* report("activating");
       yield* fileSystem
         .rename(executablePath, stagedPath)

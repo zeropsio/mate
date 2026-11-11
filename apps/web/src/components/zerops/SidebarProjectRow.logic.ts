@@ -49,6 +49,30 @@ export function groupMateOrder<M extends GroupMate>(mates: ReadonlyArray<M>): Re
   );
 }
 
+/**
+ * The rows' order as drawn, `drawn` the last: while `held` — the pointer over the list — a row
+ * keeps its place, so a press lands on the row it was aimed at (Aleš, 2026-10-27: aiming at Jago
+ * opened Dara). A row that leaves still leaves, and one that comes in stands after the row it
+ * follows in `next`; only a new ranking waits, until nothing is held.
+ */
+export function heldOrder(
+  drawn: ReadonlyArray<string>,
+  next: ReadonlyArray<string>,
+  held: boolean,
+): ReadonlyArray<string> {
+  if (!held || drawn.length === 0) return next;
+  const coming = new Set(next);
+  const shown = drawn.filter((key) => coming.has(key));
+  const placed = new Set(shown);
+  next.forEach((key, at) => {
+    if (placed.has(key)) return;
+    const after = at === 0 ? undefined : next[at - 1];
+    shown.splice(after === undefined ? 0 : shown.indexOf(after) + 1, 0, key);
+    placed.add(key);
+  });
+  return shown.length === next.length && shown.every((key, at) => key === next[at]) ? next : shown;
+}
+
 /** One Mate of a group as its lead is chosen: what it asks of the viewer, and when it acted. */
 export interface LeadReading {
   readonly projectId: string;

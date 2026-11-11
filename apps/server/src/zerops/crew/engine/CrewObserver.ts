@@ -14,6 +14,9 @@
  * - **Gauges**, the two reads off the record: a login's fullest usage window, from its instance's
  *   snapshot (`Gauge`, `planUsage.ts`), and a sign-in or signer that moved (`LoginsChanged`). A
  *   missed gauge is replaced by the next one.
+ * - **A process Zerops pushed** (or its socket's (re)connect) while a host is frozen is told as
+ *   `ProcessesMoved`, and once when the observer subscribes, for what came before: the crew
+ *   reads the frozen host's redeploy then, never on a timer.
  *
  * @module crew/engine/CrewObserver
  */
@@ -27,7 +30,7 @@ import type { ConversationId, EngineEvent, KnownEngineEvent } from "@t3tools/con
 
 import type { EventsUnreadable } from "../../../engine/MateEngine.ts";
 import type { CrewInput } from "./command.ts";
-import { membersInOrder, type CrewState } from "./state.ts";
+import { frozenHosts, membersInOrder, type CrewState } from "./state.ts";
 
 /** An input the crew did not take in: its step refused it or never committed. */
 export class CrewInputUnrecorded extends Data.TaggedError("CrewInputUnrecorded")<{
@@ -65,6 +68,8 @@ export interface CrewObserverInputs {
   readonly gauges: Stream.Stream<CrewGaugeReading>;
   /** Logins whose sign-in or signer moved. */
   readonly signIns: Stream.Stream<ReadonlyArray<string>>;
+  /** The project's processes moved (`CrewPlatformProcesses.moved`), subscribed when it runs. */
+  readonly processes: Effect.Effect<Stream.Stream<void>, never, Scope.Scope>;
 }
 
 const toolNameOf = (name: string): string => name.replace(/^mcp__[^_]+__/, "");
@@ -266,6 +271,25 @@ export const observeCrew = (inputs: CrewObserverInputs): Effect.Effect<void, nev
             ),
         ),
       ),
+      Effect.forkScoped,
+    );
+    let moves = 0;
+    const moved = Effect.gen(function* () {
+      if (frozenHosts(yield* inputs.crewState).length === 0) return;
+      const now = yield* Clock.currentTimeMillis;
+      yield* inputs
+        .tell({ _tag: "ProcessesMoved" }, `processes:${(moves += 1)}:${now}`)
+        .pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning("crew: a process move was not taken in", cause),
+          ),
+        );
+    });
+    // Subscribed before the first tell, so nothing between the two is missed.
+    const processes = yield* inputs.processes;
+    yield* moved;
+    yield* processes.pipe(
+      Stream.runForEach(() => moved),
       Effect.forkScoped,
     );
   });

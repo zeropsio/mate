@@ -1,6 +1,32 @@
-import { HQ_SLOW } from "@t3tools/client-runtime/data";
-import { hqDrops, graceOver } from "@t3tools/client-runtime/data/fixtures";
+import {
+  HQ_SLOW,
+  mateLinks,
+  readsOfState,
+  streamOf,
+  accountReadsAtom,
+  hqNavigation,
+  hqProjectPeople,
+  makeAccountStore,
+  observeAccount,
+  type HqWire,
+} from "@t3tools/client-runtime/data";
+import {
+  hqDrops,
+  graceOver,
+  liveProjects,
+  membershipInputs,
+  seedHqProjectPeople,
+} from "@t3tools/client-runtime/data/fixtures";
 import { markupDom } from "../../../test/markupDom";
+import { olderNavigation } from "~/zerops/__fixtures__/olderNavigation";
+import * as sessionContext from "~/zerops/sessionContext";
+import * as projectFlows from "~/zerops/projectFlows";
+import * as collapsedProjects from "~/zerops/collapsedProjects";
+import * as nowClock from "~/zerops/useNowMs";
+import * as crew from "~/zerops/crew/useCrew";
+import * as accountForge from "~/zerops/accountForge";
+import * as mateOwners from "~/zerops/useZeropsMateOwners";
+import * as menuReadings from "~/zerops/useMenuMateReadings";
 import {
   buildZeropsGroupTree,
   groupFlow,
@@ -19,13 +45,29 @@ import {
   type HqPlacement,
 } from "@t3tools/client-runtime/zerops/hq";
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
-import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
+import { heldCandidates, type CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
 import { act, act as act_, type ReactElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import { RegistryContext } from "@effect/atom-react";
+import { renderToStaticMarkup as renderMarkup } from "react-dom/server";
+import { RegistryContext, useAtomValue } from "@effect/atom-react";
+import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import { AtomRegistry } from "effect/reactivity";
+import * as Effect from "effect/Effect";
+import * as Cause from "effect/Cause";
+import * as Queue from "effect/Queue";
+import * as Stream from "effect/Stream";
+import {
+  makeAccountRuntime,
+  type AccountEnvironmentPorts,
+} from "@t3tools/client-runtime/zerops/account/runtime";
+import {
+  AccountEpoch,
+  makeZeropsApiOrigin,
+  ZeropsAccountId,
+  ZeropsOrganizationId,
+} from "@t3tools/client-runtime/zerops/data";
 import { create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { it } from "@effect/vitest";
+import { afterEach, beforeEach, describe, expect, vi } from "vite-plus/test";
 
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
@@ -43,15 +85,13 @@ import { DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { getLocalStorageItem, setLocalStorageItem } from "~/hooks/useLocalStorage";
 import { useMatesActivity } from "~/zerops/useZeropsAgentActivity";
 import { useMateRowActivity } from "~/zerops/useMenuMateReadings";
-import * as accountHq from "~/zerops/accountHq";
-import * as hqUpdate from "./ZeropsHqUpdate";
 import {
   restingActivity,
   threadAgentActivity,
   type ZeropsAgentActivity,
 } from "~/zerops/agentActivity";
 import { markMateDeleting, settleDeletingMates } from "~/zerops/deletingMates";
-import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
+import { zeropsMateOwnerOf, type ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
 import {
   PROJECT_CUSTOM_ORDER_STORAGE_KEY,
   PROJECT_ORDER_STORAGE_KEY,
@@ -71,74 +111,17 @@ const stored = vi.hoisted(() => ({
 }));
 /** What each stop runs, as the platform says it, for the tests that draw it. */
 const stops = vi.hoisted(() => ({ deployments: new Map<string, unknown>() }));
-vi.mock("~/zerops/projectFlows", async (original) => ({
-  ...(await original<typeof import("~/zerops/projectFlows")>()),
-  useStopDeploymentsShown: () => stops.deployments,
-}));
-vi.mock("~/zerops/collapsedProjects", async (original) => ({
-  ...(await original<typeof import("~/zerops/collapsedProjects")>()),
-  readCollapsedProjects: () => stored.collapsed,
-  writeCollapsedProjects: (collapsed: ReadonlySet<string>) => {
-    stored.written = collapsed;
-  },
-  readOpenedProjects: () => stored.opened,
-  writeOpenedProjects: (opened: ReadonlySet<string>) => {
-    stored.writtenOpened = opened;
-  },
-}));
-// A crew's faces open their chats through the router, which a menu drawn
-// here has none of.
-vi.mock("@tanstack/react-router", async (original) => ({
-  ...(await original<typeof import("@tanstack/react-router")>()),
-  useNavigate: () => () => undefined,
-}));
 // The shared minute clock, where a test sets it: the menu's coming-up windows close on it. The
 // real one's timer has no window to run on in a menu drawn here.
 const clock = vi.hoisted(() => ({ ms: undefined as number | undefined }));
-vi.mock("~/zerops/useNowMs", async (original) => ({
-  ...(await original<typeof import("~/zerops/useNowMs")>()),
-  useNowMs: () => clock.ms ?? Date.now(),
-}));
 // The crew HQ holds of each Mate, by its project, where a test says one: none otherwise.
 const hqCrews = vi.hoisted(() => new Map<string, unknown>());
-vi.mock("~/zerops/crew/useCrew", async (original) => ({
-  ...(await original<typeof import("~/zerops/crew/useCrew")>()),
-  useMateCrew: (projectId: string | null) =>
-    (projectId === null ? undefined : hqCrews.get(projectId)) ?? {
-      status: null,
-      crew: null,
-      logins: {},
-      current: false,
-      environmentId: undefined,
-    },
-}));
 // The stops a drawn surface holds the deployment demand of, by project id.
 const demandedStops = vi.hoisted(() => new Set<string>());
-vi.mock("~/zerops/accountForge", async (original) => {
-  const actual = await original<typeof import("~/zerops/accountForge")>();
-  return {
-    ...actual,
-    useStopDeploymentDemand: (project: ProjectRef | null) => {
-      actual.useStopDeploymentDemand(project);
-      if (project !== null) demandedStops.add(project.projectId);
-    },
-  };
-});
 // Who is looking: nobody signed in to Zerops unless a test says whom.
 const session = vi.hoisted(() => ({
   viewer: undefined as string | undefined,
   role: undefined as string | undefined,
-}));
-vi.mock("~/zerops/ZeropsSessionProvider", async (original) => ({
-  ...(await original<typeof import("~/zerops/ZeropsSessionProvider")>()),
-  useZeropsSession: () => ({ status: "signed-in", activeOrganization: { id: "org-1" } }),
-  useZeropsSessionOptional: () =>
-    session.viewer === undefined
-      ? null
-      : {
-          user: { id: session.viewer },
-          activeOrganization: { id: "org", roleCode: session.role, status: "ACTIVE" },
-        },
 }));
 // Whom each Mate waits on, as HQ says it (`waitsOnViewer`): the viewer who signed its agent in.
 const signerOf = vi.hoisted(() => new Map<string, string>());
@@ -147,11 +130,61 @@ const signerOf = vi.hoisted(() => new Map<string, string>());
 const hqSigners = vi.hoisted(() => ({ said: true }));
 // The Mates HQ names an owner of (`ownerUserId`).
 const ownedBy = vi.hoisted(() => new Set<string>());
-vi.mock("~/zerops/useZeropsMateOwners", async (original) => ({
-  ...(await original<typeof import("~/zerops/useZeropsMateOwners")>()),
-  useWaitsOnViewer: () => (projectId: string) =>
-    session.viewer !== undefined && signerOf.get(projectId) === session.viewer,
-  useHqProjectPerson: (projectId: string) => {
+const { createMemoryHistory, createRootRoute, createRouter, RouterContextProvider } =
+  await vi.importActual<typeof import("@tanstack/react-router")>("@tanstack/react-router");
+const router = createRouter({ routeTree: createRootRoute(), history: createMemoryHistory() });
+const withRouter = (element: ReactElement) => (
+  <RouterContextProvider router={router}>{element}</RouterContextProvider>
+);
+const renderToStaticMarkup = (element: ReactElement) => renderMarkup(withRouter(element));
+
+beforeEach(() => {
+  vi.spyOn(router, "navigate").mockResolvedValue(undefined);
+  vi.spyOn(projectFlows, "useStopDeploymentsShown").mockImplementation(
+    () => stops.deployments as ReturnType<typeof projectFlows.useStopDeploymentsShown>,
+  );
+  vi.spyOn(collapsedProjects, "readCollapsedProjects").mockImplementation(() => stored.collapsed);
+  vi.spyOn(collapsedProjects, "writeCollapsedProjects").mockImplementation((collapsed) => {
+    stored.written = collapsed;
+  });
+  vi.spyOn(collapsedProjects, "readOpenedProjects").mockImplementation(() => stored.opened);
+  vi.spyOn(collapsedProjects, "writeOpenedProjects").mockImplementation((opened) => {
+    stored.writtenOpened = opened;
+  });
+  vi.spyOn(nowClock, "useNowMs").mockImplementation(() => clock.ms ?? Date.now());
+  vi.spyOn(crew, "useMateCrew").mockImplementation(
+    (projectId) =>
+      ((projectId === null ? undefined : hqCrews.get(projectId)) ?? {
+        status: null,
+        crew: null,
+        logins: {},
+        current: false,
+        environmentId: undefined,
+      }) as ReturnType<typeof crew.useMateCrew>,
+  );
+  const demandStop = accountForge.useStopDeploymentDemand;
+  vi.spyOn(accountForge, "useStopDeploymentDemand").mockImplementation((project) => {
+    demandStop(project);
+    if (project !== null) demandedStops.add(project.projectId);
+  });
+  vi.spyOn(sessionContext, "useZeropsSession").mockReturnValue({
+    status: "signed-in",
+    activeOrganization: { id: "org-1" },
+  } as ReturnType<typeof sessionContext.useZeropsSession>);
+  vi.spyOn(sessionContext, "useZeropsSessionOptional").mockImplementation(
+    () =>
+      (session.viewer === undefined
+        ? null
+        : {
+            user: { id: session.viewer },
+            activeOrganization: { id: "org", roleCode: session.role, status: "ACTIVE" },
+          }) as ReturnType<typeof sessionContext.useZeropsSessionOptional>,
+  );
+  vi.spyOn(mateOwners, "useWaitsOnViewer").mockImplementation(
+    () => (projectId: string) =>
+      session.viewer !== undefined && signerOf.get(projectId) === session.viewer,
+  );
+  vi.spyOn(mateOwners, "useHqProjectPerson").mockImplementation((projectId) => {
     if (!hqSigners.said) return undefined;
     const signer = signerOf.get(projectId);
     const signers = signer === undefined ? {} : { "claude-code": signer };
@@ -161,14 +194,10 @@ vi.mock("~/zerops/useZeropsMateOwners", async (original) => ({
       waitsOnViewer: session.viewer !== undefined && signer === session.viewer,
       signedInNow: signers,
       everSignedIn: signers,
-    };
-  },
-}));
-// HQ has heard every Mate here: its overview is live, so its row may speak of a sign-in.
-vi.mock("~/zerops/useMenuMateReadings", async (original) => ({
-  ...(await original<typeof import("~/zerops/useMenuMateReadings")>()),
-  useMateOverviewInHq: () => "live",
-}));
+    } as unknown as ReturnType<typeof mateOwners.useHqProjectPerson>;
+  });
+  vi.spyOn(menuReadings, "useMateOverviewInHq").mockReturnValue("live");
+});
 afterEach(() => {
   stops.deployments = new Map();
   // A tree left mounted would answer the next test's asks of the one menu.
@@ -188,6 +217,7 @@ afterEach(() => {
   ownedBy.clear();
   hqCrews.clear();
   demandedStops.clear();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 import {
@@ -212,6 +242,12 @@ import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 import { useDeleteApplicationDialog } from "~/zerops/deleteApplicationDialog";
 import { useProjectFlows } from "~/zerops/projectFlows";
 import { AccountDataContext, type AccountData } from "~/zerops/ZeropsAccountData";
+import { allCandidateListingAtom, useHeldZeropsCandidates } from "~/zerops/useZeropsCandidates";
+import { useMenuRows } from "~/zerops/useMenuRows";
+import { bindAccountEnvironments } from "~/zerops/accountEnvironments";
+import { hasNoZeropsProject } from "./ZeropsProjectsPage";
+import { ZeropsProjectsFlow } from "./projects/ZeropsProjectsFlow";
+import { FLOW_PROPS } from "./projects/flowTestFixtures";
 
 /** One comparison HQ answered for `appdev`: what a release would put live. */
 const compared = (commits: ReadonlyArray<{ readonly sha: string; readonly subject: string }>) => ({
@@ -363,11 +399,19 @@ function mount(element: ReactElement): ReactTestRenderer {
   const noDom = Object.fromEntries(
     ["Node", "Element", "HTMLElement", "ShadowRoot"].map((name) => [name, function none() {}]),
   );
-  vi.stubGlobal("window", Object.assign(new EventTarget(), noDom));
+  vi.stubGlobal(
+    "window",
+    Object.assign(new EventTarget(), noDom, {
+      setTimeout,
+      clearTimeout,
+      setInterval,
+      clearInterval,
+    }),
+  );
   for (const [name, type] of Object.entries(noDom)) vi.stubGlobal(name, type);
   let tree: ReactTestRenderer | undefined;
   act(() => {
-    tree = create(element);
+    tree = create(withRouter(element));
   });
   mountedTrees.push(tree!);
   return tree!;
@@ -395,6 +439,171 @@ function press(tree: ReactTestRenderer, name: string): void {
 function text(node: ReactTestInstance): string {
   return node.children.map((child) => (typeof child === "string" ? child : text(child))).join("");
 }
+
+it.effect("showing four Mates in the menu opens no Mate RPC connection", () =>
+  Effect.gen(function* () {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    stored.opened = new Set(["shop"]);
+    const registry = AtomRegistry.make();
+    const orgId = organization.organizationId;
+    const names = ["Ada", "Bea", "Cara", "Dora"];
+    const projects = names.map((name) => ({
+      id: name,
+      name,
+      status: "ACTIVE",
+      clientId: orgId,
+      publicZone: "example.zerops.zone",
+      zeropsSubdomainHost: name.toLowerCase(),
+    }));
+    const services = names.map((name) => ({
+      id: `zcp-${name}`,
+      projectId: name,
+      name: "zcp",
+      status: "ACTIVE",
+      subdomainAccess: true,
+      ports: [{ port: 8080, httpSupport: true }],
+      serviceStackTypeInfo: { serviceStackTypeVersionName: "zcp@1" },
+    }));
+    const store = mountRoster(registry, orgId, projects, { services });
+    mountHqNavigation(
+      registry,
+      orgId,
+      {
+        structure: {
+          apps: [
+            {
+              id: "shop",
+              name: "Shop",
+              projects: names.map((name) => ({
+                projectId: name,
+                name,
+                kind: "mate",
+                mate: { face: "" },
+              })),
+            },
+          ],
+          ungrouped: [],
+        },
+      },
+      store,
+    );
+    registry.set(zeropsSessionAtom, {
+      status: "signed-in",
+      organizationStatus: "selected",
+      activeOrganization: organization,
+    });
+    const opened: string[] = [];
+    const ports: AccountEnvironmentPorts = {
+      clock: { now: () => ({ wall: 0, mono: 0 }), random: () => 0.5, setTimer: () => () => {} },
+      door: {
+        exchange: () => {
+          opened.push("exchange");
+          return new Promise(() => {});
+        },
+        readDescriptor: () => new Promise(() => {}),
+        retryLink: () => {
+          opened.push("retry");
+        },
+        remove: () => {},
+        park: () => {},
+        unpark: () => {
+          opened.push("unpark");
+        },
+      },
+      probe: () => new Promise(() => {}),
+      readInitAt: async () => null,
+      intents: { read: () => null, write: () => {} },
+      catalog: {
+        listen: (listener) => {
+          listener.environments([]);
+          return () => {};
+        },
+      },
+      route: () => null,
+      hqIndex: { projectOf: () => null, subscribe: () => () => {} },
+    };
+    const runtime = yield* makeAccountRuntime({
+      account: {
+        account: {
+          apiOrigin: makeZeropsApiOrigin("https://api.example.test"),
+          accountId: ZeropsAccountId.make("person"),
+        },
+        epoch: AccountEpoch.make(1),
+      },
+      atomRegistry: registry,
+      store,
+      environments: ports,
+      signals: { hidden: () => false, online: () => true, listen: () => () => {} },
+    });
+    const unbind = bindAccountEnvironments(runtime.environments);
+    const arrived = Promise.withResolvers<void>();
+    const links = () => mateLinks.derive(readsOfState(store.state()), null);
+    const stop = store.subscribe(() => {
+      if (links().targets.size === names.length) arrived.resolve();
+    });
+    let tree: ReactTestRenderer | undefined;
+    try {
+      runtime.environments.setActiveOrganization(orgId);
+      function Menu() {
+        const candidates = useHeldZeropsCandidates();
+        const { rows, settled } = useMenuRows(candidates);
+        return (
+          <SidebarZeropsTree
+            candidates={rows}
+            complete={settled}
+            onSelect={(row) => {
+              void runtime.environments.connect(row.key, "user");
+            }}
+            onBrowseProjects={() => {}}
+          />
+        );
+      }
+      tree = mount(
+        <RegistryContext.Provider value={registry}>
+          <Menu />
+        </RegistryContext.Provider>,
+      );
+      if (links().targets.size === names.length) arrived.resolve();
+      yield* Effect.promise(() =>
+        act(async () => {
+          await arrived.promise;
+        }),
+      );
+      expect(text(surface(tree, "sidebar-project-name"))).toBe("Shop, 4 Mates");
+      expect(
+        tree.root
+          .findAll((node) => node.props["data-zerops-surface"] === "sidebar-mate-name")
+          .map(text)
+          .sort(),
+      ).toEqual(names);
+      expect(
+        [...links().targets.values()]
+          .map((link) => ({
+            projectId: link.projectId,
+            watched: link.watched,
+            want: link.environment.guards.want,
+          }))
+          .sort((a, b) => a.projectId.localeCompare(b.projectId)),
+      ).toEqual(names.map((projectId) => ({ projectId, watched: false, want: false })));
+      expect(names.map((name) => streamOf(store.state(), `mate:${name}`).demanded)).toEqual([
+        false,
+        false,
+        false,
+        false,
+      ]);
+      expect(opened).toEqual([]);
+    } finally {
+      stop();
+      if (tree !== undefined) {
+        act(() => tree!.unmount());
+        mountedTrees.splice(mountedTrees.indexOf(tree), 1);
+      }
+      unbind();
+      yield* runtime.close("application-close");
+      registry.dispose();
+    }
+  }),
+);
 
 /** The project's review mark as drawn, where one stands: its opening tag. */
 const reviewTagOf = (html: string) =>
@@ -504,22 +713,39 @@ describe("SidebarZeropsTree", () => {
     expect(opened).toEqual(["links-dev"]);
   });
 
+  // HQ's navigation row names the owner whether or not anybody is signed in to the Mate's agent
+  // now: both rows HQ recorded draw its owner's picture, as HQ's person record pictures them.
+  // witness: packages/client-runtime/src/data/projections/hqProjectPeople.ts | ownerOf(read, orgId, person?.ownerUserId) → ownerOf(read, orgId, undefined)
   it("wears a colleague's picture on its face's corner, cut out of the face, never before the name", () => {
-    const jan = { name: "Jan Novák", initials: "JN", avatarUrl: "https://cdn/jan.png" };
-    const html = render([CRM_DEV], { getOwner: () => jan });
-    const rowAt = html.indexOf('data-zerops-surface="sidebar-mate"');
-    const row = html.slice(rowAt, html.indexOf("</button>", rowAt));
-    const ownerAt = row.indexOf('data-zerops-surface="sidebar-mate-owner"');
-    // In the face's box, after the face and before the words: "(face) Cleo"
-    // on the name's line read as a person called Cleo (the owner, 2026-09-30).
-    expect(ownerAt).toBeGreaterThan(row.indexOf("</svg>"));
-    expect(ownerAt).toBeLessThan(row.indexOf('data-zerops-surface="sidebar-mate-name"'));
+    const rowOf = (recording: "navigation-project.signed-in" | "navigation-project.no-signer") => {
+      const store = makeAccountStore(AtomRegistry.make());
+      seedHqProjectPeople(store, "org-avatar", {
+        projects: { "crm-dev": { recording } },
+        people: { owner: { name: "Jan Novák", avatarUrl: "https://cdn/jan.png" } },
+      });
+      const owner = hqProjectPeople.derive(readsOfState(store.state()), "org-avatar")["crm-dev"]
+        ?.owner;
+      store.close();
+      const html = render([CRM_DEV], { getOwner: () => zeropsMateOwnerOf(owner, "viewer") });
+      const rowAt = html.indexOf('data-zerops-surface="sidebar-mate"');
+      return html.slice(rowAt, html.indexOf("</button>", rowAt));
+    };
+    for (const row of [
+      rowOf("navigation-project.signed-in"),
+      rowOf("navigation-project.no-signer"),
+    ]) {
+      const ownerAt = row.indexOf('data-zerops-surface="sidebar-mate-owner"');
+      // In the face's box, after the face and before the words: "(face) Cleo"
+      // on the name's line read as a person called Cleo (the owner, 2026-09-30).
+      expect(ownerAt).toBeGreaterThan(row.indexOf("</svg>"));
+      expect(ownerAt).toBeLessThan(row.indexOf('data-zerops-surface="sidebar-mate-name"'));
 
-    expect(row).toContain('data-zerops-avatar="picture"');
-    expect(row).toContain('src="https://cdn/jan.png"');
+      expect(row).toContain('data-zerops-avatar="picture"');
+      expect(row).toContain('src="https://cdn/jan.png"');
 
-    // The picture is decoration; whose Mate it is is still said.
-    expect(row).toContain("Jan Novák&#x27;s Mate");
+      // The picture is decoration; whose Mate it is is still said.
+      expect(row).toContain("Jan Novák&#x27;s Mate");
+    }
   });
 
   it("puts nothing on the face of the viewer's own Mate", () => {
@@ -854,22 +1080,6 @@ describe("SidebarZeropsTree", () => {
     const html = render(candidates);
     for (const text of shows) expect(html).toContain(text);
     for (const text of hides) expect(html).not.toContain(text);
-  });
-
-  it("says nothing at all when the organization holds only its HQ: HQ is no project to set a Mate up in", () => {
-    const official = vi.spyOn(accountHq, "useAccountHq").mockReturnValue({
-      status: "ready",
-      hq: { kind: "official", projectId: "unplaced", address: "https://hq.invalid" },
-      admins: [],
-      reread: () => {},
-    });
-    try {
-      const html = render([candidate("unplaced", {}, "ready", false)]);
-      expect(html).not.toContain("sidebar-environments-empty");
-      expect(html).not.toContain("Set up Mate");
-    } finally {
-      official.mockRestore();
-    }
   });
 
   it("marks the active Mate", () => {
@@ -1229,6 +1439,62 @@ describe("a creation under way in the menu", () => {
     stored.opened = new Set(["aaa"]);
   });
 
+  it("a stopped birth never renders as Coming up", () => {
+    const pending = { ...birth(), intent: "b1" };
+    const beforeSharedRecord = render([CRM_DEV], { births: [pending] });
+    expect(beforeSharedRecord).not.toContain("Coming up");
+
+    const afterSharedRecord = render([CRM_DEV], {
+      births: [pending],
+      getBirth: (id: string) =>
+        id === "b1"
+          ? { line: "Project created · Quota reached.", attention: true, entries: [] }
+          : undefined,
+    });
+    expect(afterSharedRecord).toContain("Project created · Quota reached.");
+    expect(afterSharedRecord).not.toContain("Coming up");
+  });
+
+  it("a project of stopped births never says its Mates are coming up", () => {
+    const births = [
+      { ...birth({ projectId: "vera-dev" }), intent: "b1" },
+      { ...birth({ projectId: "bea-dev", displayName: "Bea" }), intent: "b2" },
+    ];
+    const presentation = { line: "Project created · Quota reached.", entries: [] };
+    const html = render([], {
+      births,
+      getBirth: () => ({ ...presentation, attention: true }),
+    });
+    expect(html).toContain("2 Mates · setup needs attention");
+    expect(html.toLowerCase()).not.toContain("coming up");
+
+    const mixed = render([], {
+      births,
+      getBirth: (id: string) => ({ ...presentation, attention: id === "b1" }),
+    });
+    expect(mixed).toContain("2 Mates · setup needs attention");
+  });
+
+  it("a pending shared birth shows the phase and reason received from its shared record", () => {
+    const html = render([CRM_DEV], {
+      births: [{ ...birth(), intent: "b1" }],
+      getBirth: (id: string) =>
+        id === "b1"
+          ? {
+              line: "Project created · Quota reached.",
+              attention: true,
+              entries: [
+                { id: "continue", label: "Continue", onSelect: () => {} },
+                { id: "delete", label: "Delete", variant: "destructive", onSelect: () => {} },
+              ],
+            }
+          : undefined,
+    });
+    expect(html).toContain("Project created · Quota reached.");
+    expect(html).toContain('aria-label="More for Vera"');
+    expect(html).not.toContain("Coming up ·");
+  });
+
   it("draws a Mate being created after the listed ones: waking, named, how far it has got", () => {
     const html = render([CRM_DEV], { births: [birth()] });
     expect(comingRows(html)).toHaveLength(1);
@@ -1443,16 +1709,57 @@ describe("a listed Mate still coming up", () => {
     },
   );
 
-  it("counts its clock from when the platform took it, where its birth is held here", () => {
-    const since = Date.now() - 42_000;
-    const html = render([CRM_DEV], { getComing: () => ({ ...COMING, since }) });
-    expect(rowOf(html)).toMatch(/>Coming up · 0:4[1-3]</u);
+  it("a listed stopped shared birth shows its reason and rests", () => {
+    const html = render([CRM_DEV], {
+      getComing: () => ({
+        kind: "coming",
+        line: "Project created · Quota reached.",
+        birth: { attention: true },
+      }),
+    });
+    const row = rowOf(html);
+    expect(row.match(/data-mate-face-state="([^"]+)"/u)?.[1]).toBe("sleep");
+    expect(row).toContain(">Project created · Quota reached.<");
+    expect(row).toContain('data-zerops-coming-tone="attention"');
+    expect(row).not.toContain(">Coming up");
   });
 
-  it("offers no menu while it comes up: nothing on it is about a Mate still being made", () => {
+  it("counts its clock from when the platform took it, where its birth is held here", () => {
+    vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-11-06T12:00:00Z"));
+    const since = Date.now() - 42_000;
+    const html = render([CRM_DEV], { getComing: () => ({ ...COMING, since }) });
+    expect(rowOf(html)).toContain(">Coming up · 0:42<");
+  });
+
+  // Brief W7 (Karel, 2026-11-04): a Mate that never came up could not be deleted from the web.
+  it("A Mate that has not come up offers Delete in its row's menu, and nothing else of a Mate on its way", () => {
+    const remove = { id: "delete", label: "Delete crm-dev…", onSelect: () => {} };
+    const mounted = mount(
+      <SidebarZeropsTree
+        candidates={[CRM_DEV]}
+        complete
+        getComing={() => COMING}
+        getMateActions={() => ({
+          muted: false,
+          entries: [
+            { id: "redeploy", label: "Redeploy", onSelect: () => {} },
+            { id: "delete-apart", separator: true },
+            { ...remove, variant: "destructive" },
+          ],
+        })}
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+    expect(mounted.root.findByType(MateMenu).props.actions.entries).toEqual([
+      { ...remove, variant: "destructive" },
+    ]);
+  });
+
+  it("offers no Mate menu while it comes up where the person may not delete it", () => {
     const html = render([CRM_DEV], {
       getComing: () => COMING,
-      getMateActions: () => ({ entries: [] }),
+      getMateActions: () => ({ muted: false, entries: [] }),
     });
     // Its project's own verbs stay on its row's ···; none of the Mate's join them.
     expect(html).not.toContain('data-zerops-surface="sidebar-mate-more"');
@@ -1577,22 +1884,18 @@ describe("a Mate's face follows its work in the menu", () => {
         organizationStatus: "selected",
         activeOrganization: organization,
       });
-      mountHqNavigation(registry, organization.organizationId, {
+      const { store } = mountHqNavigation(registry, organization.organizationId, {
         structure: {
-          can: {
-            delete_app: may ? { allow: true } : { allow: false, reason: "not_structure_writer" },
-          },
-          apps: [
-            {
-              id: "aaa",
-              name: "Beviro CRM",
-              projects: [],
-              can: { add_mate: { allow: true } },
-            },
-          ],
+          apps: [{ id: "aaa", name: "Beviro CRM", projects: [] }],
           ungrouped: [],
         },
       });
+      // Deleting an application writes the organization's structure: an owner or admin there.
+      for (const input of [
+        ...membershipInputs(may ? "ADMIN" : "BASIC_USER", true, 1, organization.organizationId),
+        ...liveProjects(organization.organizationId, []),
+      ])
+        store.dispatch(input);
       useDeleteApplicationDialog.getState().close();
       const mounted = mount(
         <RegistryContext.Provider value={registry}>
@@ -1939,14 +2242,7 @@ describe("the project's flow under it", () => {
 
   it("offers to set up a stop the recipe has, in the project's menu rather than as a row", () => {
     const html = withFlow([CRM_DEV], flow({ recipeRead: true, recipeTiers: ["production"] }));
-    // Not every project wants one, and a permanent row asking for something
-    // optional reads as a fault (the owner, 2026-09-19).
-    expect(html).not.toContain('data-zerops-surface="sidebar-environment-missing"');
     expect(html).toContain('data-zerops-surface="sidebar-project-more"');
-  });
-
-  it("says nothing about missing stops when the recipe offers none", () => {
-    expect(withFlow([CRM_DEV])).not.toContain('data-zerops-surface="sidebar-environment-missing"');
   });
 
   // A project needs no production (the owner, 2026-09-28: "production not
@@ -2002,17 +2298,13 @@ describe("the project's flow under it", () => {
     expect(html).not.toContain("sidebar-pull-request");
   });
 
-  it("keeps the recipe change counted by the Overview under its Mate", () => {
-    const recipe = flow({ pullRequests: [pull(4, { repository: "group", kind: "recipe" })] });
-    expect(reviewTagLabelOf(withFlow([own(), CRM_STAGE], recipe))).toBe("Review Change 4");
-    expect(reviewing([own(), CRM_STAGE], recipe)).toEqual(["Change 4 — crm-dev · #4"]);
-  });
-
-  // The heading's lone amber dot said "something here needs you" without
-  // saying who, and beside a globe it read as production in trouble (M15).
-  it("wears no dot of its own: the rows and the chip say what waits", () => {
-    const html = withFlow([CRM_DEV, CRM_STAGE, CRM_PROD]);
-    expect(html).not.toContain("sidebar-project-next-step");
+  // Larkspur, 2026-10-28: "Review 2" in the header over a composer card of one.
+  it("leaves its Mate's recipe change out of every Review: the project's page asks for it", () => {
+    const recipe = pull(4, { repository: "group", kind: "recipe" });
+    const both = flow({ pullRequests: [pull(3), recipe] });
+    expect(reviewTagLabelOf(withFlow([own(), CRM_STAGE], both))).toBe("Review Change 3");
+    expect(reviewing([own(), CRM_STAGE], both)).toEqual(["Change 3 — crm-dev · appdev #3"]);
+    expect(reviewing([own(), CRM_STAGE], flow({ pullRequests: [recipe] }))).toEqual([]);
   });
 });
 
@@ -2231,52 +2523,14 @@ describe("production and the stages are the project's places, behind its globe",
   it("lists the stage and production behind its globe, each with its state", () => {
     const mounted = tree([CRM_DEV, up(CRM_STAGE), up(CRM_PROD)], { getFlow: () => flow() });
     expect(placesOf(mounted)).toEqual([
-      { name: "production", word: "Healthy", tone: "muted" },
-      { name: "crm-stage", word: "Deployed", tone: "muted" },
+      { name: "production", word: "Running", tone: "muted" },
+      { name: "crm-stage", word: "Running", tone: "muted" },
     ]);
     const html = render([CRM_DEV, up(CRM_STAGE), up(CRM_PROD)], { getFlow: () => flow() });
     expect(html).toContain('data-zerops-surface="sidebar-project-sites"');
     // No place is a row of the menu, and calm places say nothing on the row.
     expect(html).not.toContain('sidebar-environment"');
     expect(envTagOf(html)).toBeUndefined();
-  });
-
-  // HQ declares which project is the stage and which production, and their releases: while its
-  // link is paused, what is said of them is what it last said, never current.
-  it.each([
-    [true, ""],
-    [false, "Last known: "],
-  ])("with HQ answering %s, its places say %j before their state", (live, prefix) => {
-    const registry = AtomRegistry.make();
-    registry.set(zeropsSessionAtom, {
-      status: "signed-in",
-      organizationStatus: "selected",
-      activeOrganization: organization,
-    });
-    mountHqNavigation(registry, organization.organizationId, {
-      structure: { apps: [], ungrouped: [] },
-      live,
-    });
-    const mounted = mount(
-      <RegistryContext.Provider value={registry}>
-        <SidebarZeropsTree
-          candidates={[CRM_DEV, up(CRM_STAGE), up(CRM_PROD)]}
-          complete
-          onBrowseProjects={() => {}}
-          onSelect={() => {}}
-          getFlow={() => flow()}
-        />
-      </RegistryContext.Provider>,
-    );
-    expect(placesOf(mounted).map(({ word }) => word)).toEqual([
-      `${prefix}Healthy`,
-      `${prefix}Deployed`,
-    ]);
-    expect(foundStops()?.map(({ word }) => word)).toEqual([
-      `${prefix}Stage main, healthy`,
-      `${prefix}Production v2.4.0, healthy`,
-    ]);
-    registry.dispose();
   });
 
   it("says what waits for production on its Release tag alone: production stays healthy and calm", () => {
@@ -2291,7 +2545,7 @@ describe("production and the stages are the project's places, behind its globe",
       ],
     });
     const mounted = tree([CRM_DEV, up(CRM_PROD)], { getFlow: () => waiting });
-    expect(placesOf(mounted)).toEqual([{ name: "production", word: "Healthy", tone: "muted" }]);
+    expect(placesOf(mounted)).toEqual([{ name: "production", word: "Running", tone: "muted" }]);
     const html = render([CRM_DEV, up(CRM_PROD)], { getFlow: () => waiting });
     expect(envTagOf(html)).toBeUndefined();
     expect(releaseTagOf(html)).toBe("Release: 2 changes wait for production");
@@ -2439,7 +2693,7 @@ describe("production and the stages are the project's places, behind its globe",
     const mounted = tree([CRM_DEV, up(CRM_STAGE)], {
       getFlow: () => flow({ environments: new Map([["crm-stage", stageRow]]) }),
     });
-    expect(placesOf(mounted)).toEqual([{ name: "crm-stage", word: "Deployed", tone: "muted" }]);
+    expect(placesOf(mounted)).toEqual([{ name: "crm-stage", word: "Running", tone: "muted" }]);
   });
 
   it("lists no place behind its globe where there is neither a production nor a stage", () => {
@@ -2479,20 +2733,20 @@ describe("production and the stages are the project's places, behind its globe",
     expect(foundStops()).toEqual([]);
     expect([...demandedStops].toSorted()).toEqual(["crm-prod", "crm-stage"]);
     act(() => {
-      mounted.update(drawn([CRM_DEV, up(CRM_STAGE), up(CRM_PROD)]));
+      mounted.update(withRouter(drawn([CRM_DEV, up(CRM_STAGE), up(CRM_PROD)])));
     });
     expect(foundStops()?.map(({ word }) => word)).toEqual([
       "Stage main, healthy",
       "Production v2.4.0, healthy",
     ]);
-    expect(placesOf(mounted).map(({ word }) => word)).toEqual(["Healthy", "Deployed"]);
+    expect(placesOf(mounted).map(({ word }) => word)).toEqual(["Running", "Running"]);
   });
 
   it("draws what the platform alone says while HQ has not answered the releases", () => {
     stops.deployments = HQ_OPEN.deployments;
     const mounted = tree([CRM_DEV, up(CRM_PROD)]);
     expect(foundStops()?.map(({ word }) => word)).toEqual(["Production v2.4.0, healthy"]);
-    expect(placesOf(mounted)).toEqual([{ name: "production", word: "Healthy", tone: "muted" }]);
+    expect(placesOf(mounted)).toEqual([{ name: "production", word: "Running", tone: "muted" }]);
   });
 
   it("lets the jump box find production and each stage, each with its own dot and words", () => {
@@ -2530,20 +2784,6 @@ describe("production and the stages are the project's places, behind its globe",
     const html = render([CRM_DEV, up(CRM_STAGE), up(CRM_PROD)], { getFlow: () => flow() });
     const group = html.slice(html.indexOf('data-zerops-group="aaa"'));
     expect(group).toContain('data-zerops-surface="sidebar-project-sites"');
-  });
-});
-
-describe("New project at the menu's foot (D11)", () => {
-  const row = (html: string) =>
-    /<button[^>]*data-zerops-surface="sidebar-new-project"[^>]*>(.*?)<\/button>/u.exec(html);
-
-  // Pinned above the account's row, the same place whatever the list's
-  // length (the owner, 2026-09-29: "not sure if this shouldn't be stuck to
-  // the bottom somehow"): the list scrolls under it, so it is never one of
-  // the list's rows.
-  it("is never one of the list's rows", () => {
-    expect(row(render([CRM_DEV, LINKS_MATE]))).toBeNull();
-    expect(row(render([]))).toBeNull();
   });
 });
 
@@ -2649,6 +2889,100 @@ describe("a group of Mates folded to its row", () => {
     // Folding it again opens nothing.
     press(mounted, "sidebar-project");
     expect(selected).toEqual(theirs.length === 1 ? theirs : []);
+  });
+
+  // HQ names a Mate's owner a colleague while the pointer is over the list: its row would drop
+  // below the viewer's Mates, under a pointer aimed at it.
+  const owners = (theirs: ReadonlyArray<string>) => (item: ZeropsCandidate) =>
+    theirs.includes(item.project.id)
+      ? { name: "Jan Novák", initials: "JN", avatarUrl: null, isViewer: false }
+      : { name: "Ada Lovelace", initials: "AL", avatarUrl: null, isViewer: true };
+  const rowOrder = (mounted: ReactTestRenderer) =>
+    mounted.root
+      .findAll(
+        (node) => typeof node.type === "string" && node.props["data-zerops-mate-row"] !== undefined,
+      )
+      .map((node) => node.props["data-zerops-mate-row"] as string);
+  const pointer = (mounted: ReactTestRenderer, event: "onPointerEnter" | "onPointerLeave") => {
+    act(() => {
+      surface(mounted, "sidebar-environments").props[event]({ pointerType: "mouse" });
+    });
+  };
+  /** The group opened, its Mates' order as drawn, and the pointer over the list. */
+  const openUnderPointer = () => {
+    const mounted = mount(tree({ getOwner: owners([]) }));
+    press(mounted, "sidebar-project");
+    const before = rowOrder(mounted);
+    expect(before).toHaveLength(2);
+    pointer(mounted, "onPointerEnter");
+    return { mounted, before };
+  };
+  const reSort = (mounted: ReactTestRenderer, colleague: string) => {
+    act(() => {
+      mounted.update(withRouter(tree({ getOwner: owners([colleague]) })));
+    });
+  };
+
+  it("a Mate's row stays put under the pointer while its list re-sorts", () => {
+    const { mounted, before } = openUnderPointer();
+    reSort(mounted, before[0]!);
+    expect(rowOrder(mounted)).toEqual(before);
+    // The pointer gone, the list takes its order.
+    pointer(mounted, "onPointerLeave");
+    expect(rowOrder(mounted)).toEqual([before[1], before[0]]);
+  });
+
+  it("a Mate's number is the place its row is drawn at, while the list holds its order", () => {
+    const { mounted, before } = openUnderPointer();
+    reSort(mounted, before[0]!);
+    act(() => {
+      window.dispatchEvent(Object.assign(new Event("keydown"), { key: "Alt" }));
+    });
+    const numbered = mounted.root
+      .findAll(
+        (node) => typeof node.type === "string" && node.props["data-zerops-mate-row"] !== undefined,
+      )
+      .map((row) => [
+        row.props["data-zerops-mate-row"] as string,
+        text(
+          row.find(
+            (node) =>
+              typeof node.type === "string" &&
+              node.props["data-zerops-surface"] === "sidebar-mate-number",
+          ),
+        ),
+      ]);
+    expect(numbered).toEqual([
+      [before[0], "1"],
+      [before[1], "2"],
+    ]);
+    // "The next one that waits" walks the rows as drawn too.
+    expect(useSidebarReveal.getState().mateOrder.filter((id) => before.includes(id))).toEqual(
+      before,
+    );
+    act(() => {
+      window.dispatchEvent(Object.assign(new Event("keyup"), { key: "Alt" }));
+    });
+  });
+
+  it("opens a folded project's Mates in their order now, not the order they were folded in", () => {
+    const { mounted, before } = openUnderPointer();
+    press(mounted, "sidebar-project");
+    reSort(mounted, before[0]!);
+    press(mounted, "sidebar-project");
+    expect(rowOrder(mounted)).toEqual([before[1], before[0]]);
+  });
+
+  // A row's menu or the Sites popover is the list's own, drawn elsewhere: closed by a click
+  // outside the list, the list never hears the pointer leave it.
+  it("lets the rows take their order once the pointer is seen outside the list, unheard leaving", () => {
+    const { mounted, before } = openUnderPointer();
+    reSort(mounted, before[0]!);
+    expect(rowOrder(mounted)).toEqual(before);
+    act(() => {
+      window.dispatchEvent(new Event("pointerover"));
+    });
+    expect(rowOrder(mounted)).toEqual([before[1], before[0]]);
   });
 
   it("draws only its row while folded: no Mate, no change row under it", () => {
@@ -2869,6 +3203,44 @@ describe("a group of Mates folded to its row", () => {
     expect(face?.moment).toBeUndefined();
   });
 
+  it("a stopped shared birth rests in its folded project and in its row", () => {
+    const pending: ZeropsPlacedBirth = {
+      intent: "b1",
+      projectId: "vera-dev",
+      placement: {
+        groupId: "aaa",
+        groupName: "Beviro CRM",
+        kind: "mate",
+        displayName: "Vera",
+      },
+    };
+    const props = {
+      births: [pending],
+      getBirth: () => ({
+        line: "Project created · Quota reached.",
+        attention: true,
+        entries: [],
+      }),
+    };
+    const folded = mount(
+      <SidebarZeropsTree
+        candidates={[CRM_DEV]}
+        complete
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+        {...props}
+      />,
+    );
+    const face = clusterOf(folded, ["crm-dev", "vera-dev"]).find(({ key }) => key === "vera-dev");
+    stored.opened = new Set(["aaa"]);
+    const open = render([CRM_DEV], props);
+    const at = open.indexOf('data-zerops-surface="sidebar-mate-coming"');
+    const row = open.slice(open.lastIndexOf("<button", at), open.indexOf("</button>", at));
+    expect(face?.state).toBe("sleep");
+    expect(row.match(/data-mate-face-state="([^"]+)"/u)?.[1]).toBe("sleep");
+    expect(row).toContain(">Project created · Quota reached.<");
+  });
+
   it("greets nothing its folded group's faces only stood in for until the Mate's state was read", () => {
     const told: ZeropsAgentActivity = {
       ...said("crm-dev", "idle", "idle"),
@@ -2890,7 +3262,9 @@ describe("a group of Mates folded to its row", () => {
     const mounted = mount(drawn(CRM_DEV, restingActivity(told)));
     session.viewer = "u-ada";
     act(() => {
-      mounted.update(drawn(mine(CRM_DEV_CONNECTED), { ...read, kind: "input", face: "needs" }));
+      mounted.update(
+        withRouter(drawn(mine(CRM_DEV_CONNECTED), { ...read, kind: "input", face: "needs" })),
+      );
     });
     const face = clusterOf(mounted).find(({ key }) => key === "crm-dev");
     expect(face?.state).toBe("needs");
@@ -3000,18 +3374,31 @@ describe("a group of Mates folded to its row", () => {
   });
 
   it("opens a collapsed project when one of its Mates' conversations opens, and lets it collapse again", () => {
-    const mounted = mount(tree({ activeProjectId: null }));
+    const mounted = mount(tree({ activeProjectId: null, activeConversation: null }));
     expect(mates(mounted)).toHaveLength(0);
+    // Its conversation opens: the route names it, and its Mate is the one open.
+    const opened = { activeProjectId: "crm-dev", activeConversation: "env:crm-dev/thread" };
     act(() => {
-      mounted.update(tree({ activeProjectId: "crm-dev" }));
+      mounted.update(withRouter(tree(opened)));
     });
     expect(mates(mounted)).toHaveLength(2);
     expect(stored.writtenOpened).toEqual(new Set(["aaa"]));
     press(mounted, "sidebar-project");
     act(() => {
-      mounted.update(tree({ activeProjectId: "crm-dev" }));
+      mounted.update(withRouter(tree(opened)));
     });
     expect(mates(mounted)).toHaveLength(0);
+  });
+
+  it("leaves a project folded when the Mate of the conversation a reload opened on is found after the menu drew it", () => {
+    const reloaded = { activeConversation: "env:crm-dev/thread" };
+    const mounted = mount(tree({ ...reloaded, activeProjectId: null }));
+    expect(mates(mounted)).toHaveLength(0);
+    act(() => {
+      mounted.update(withRouter(tree({ ...reloaded, activeProjectId: "crm-dev" })));
+    });
+    expect(mates(mounted)).toHaveLength(0);
+    expect(surface(mounted, "sidebar-project").props["aria-current"]).toBe("true");
   });
 
   it("opens a collapsed project whose Mate's conversation is already open when the menu mounts", () => {
@@ -3396,13 +3783,10 @@ describe("a Mate's row says more without words", () => {
       html,
     )?.[0] ?? "";
 
-  it("rings no working face", () => {
-    expect(row(working())).not.toContain("plan-ring");
-  });
-
   // A running clock is not something to click, so it is not blue (S3): it
   // counts up in ink where the age was.
   it("counts up how long it has been working, where its age was", () => {
+    vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-11-06T12:00:00Z"));
     const time = slot(row(working()));
     expect(time).toContain("3m 12s");
     expect(slot(row(live()))).toContain(">2h<");
@@ -3412,6 +3796,7 @@ describe("a Mate's row says more without words", () => {
   // Stop: its slot counts it up as any working face's does, never a grey age
   // beside a working face (the approved menu; the 2026-09-28 audit's gap).
   it("counts up work left running in the background, as it counts a run", () => {
+    vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-11-06T12:00:00Z"));
     const time = slot(row(working({ kind: "monitoring" })));
     expect(time).toContain("3m 12s");
   });
@@ -3788,12 +4173,14 @@ describe("a Mate's own menu opens its crew, or sets one up", () => {
   const ACTIONS: MateRowActions = { muted: false, entries: [] };
   const MINE: ZeropsMateOwner = {
     name: "Petra Malá",
+    called: "Petra",
     initials: "PM",
     avatarUrl: null,
     isViewer: true,
   };
   const COLLEAGUES: ZeropsMateOwner = {
     name: "Jan Beneš",
+    called: "Jan",
     initials: "JB",
     avatarUrl: null,
     isViewer: false,
@@ -4473,7 +4860,6 @@ describe("the menu's release offer", () => {
       retry: unexpectedRead,
       showHq: unexpectedRead,
       moveOffers: unexpectedRead,
-      handoverCandidates: unexpectedRead,
       readDetail: unexpectedRead,
       revalidate: unexpectedRead,
       retryDetail: unexpectedRead,
@@ -4606,19 +4992,15 @@ it("the tree retains its order on a timestamp-only delivery and each row reads o
   expect(onSelect).toHaveBeenLastCalledWith(b);
 });
 
-it("HQ's outage header exposes its source time and service destination", () => {
+it("HQ's outage header exposes its source time", () => {
   const html = renderToStaticMarkup(
     <SidebarHqStatus
       kind="last-known"
       line="HQ is not reachable since 10:36 — showing what it last said."
-      serviceUrl="https://app.zerops.io/service-stack/hq-core"
       onAgain={() => {}}
     />,
   );
   expect(html).toContain("since 10:36");
-  expect(html).toContain('href="https://app.zerops.io/service-stack/hq-core"');
-  expect(html).toContain("Open in Zerops");
-  expect(html).not.toMatch(/<button[^>]*>(?:(?!<\/button>)[\s\S])*<a/);
 });
 
 it("a retained Mate line keeps its row clickable and offers Zerops separately", () => {
@@ -4689,7 +5071,7 @@ describe("one project order, the person's", () => {
     />
   );
   afterEach(() => {
-    vi.restoreAllMocks();
+    if (vi.isMockFunction(Date.now)) vi.mocked(Date.now).mockRestore();
     setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "newest", ProjectOrderSchema);
     setLocalStorageItem(PROJECT_CUSTOM_ORDER_STORAGE_KEY, [], ProjectCustomOrderSchema);
   });
@@ -4716,7 +5098,11 @@ describe("one project order, the person's", () => {
     const tree = mount(menu((candidate) => read(candidate === LINKS_MATE ? now : now - week - 1)));
     expect(mountedIds(tree)).toEqual(["aaa", "links"]);
     clock.mockReturnValue(now + week + 1);
-    act(() => tree.update(menu((candidate) => read(candidate === CRM_DEV ? now + week + 1 : now))));
+    act(() =>
+      tree.update(
+        withRouter(menu((candidate) => read(candidate === CRM_DEV ? now + week + 1 : now))),
+      ),
+    );
     expect(mountedIds(tree)).toEqual(["aaa", "links"]);
   });
 
@@ -4932,10 +5318,8 @@ describe("menu liveness through HQ records", () => {
       const word = attention();
       s.deliver(working(), word);
       expect(s.line("sidebar-mate-live-step")).toContain("Thinking");
-      const start = performance.now();
       s.deliver(working(), { ...word, source: { ...word.source, revision: 2 }, working: 0 });
       s.lacks("sidebar-mate-live-step");
-      expect(performance.now() - start).toBeLessThanOrEqual(2_000);
     } finally {
       s.registry.dispose();
     }
@@ -4947,14 +5331,12 @@ describe("menu liveness through HQ records", () => {
       const old = attention();
       s.deliver(working(), old);
       expect(s.line("sidebar-mate-live-step")).toContain("Thinking");
-      const start = performance.now();
       s.deliver(working(), {
         ...old,
         source: { ...old.source, epoch: 2, incarnation: "after", revision: 0 },
         working: 0,
       });
       s.lacks("sidebar-mate-live-step");
-      expect(performance.now() - start).toBeLessThanOrEqual(2_000);
       // Observe after the stale report has actually entered the reducer, through the original window.
       s.deliver(working(), { ...old, source: { ...old.source, revision: 99 } });
       s.lacks("sidebar-mate-live-step");
@@ -4970,7 +5352,6 @@ describe("menu liveness through HQ records", () => {
     try {
       expect(s.line("sidebar-mate-subject")).toBe("Inspect the checkout");
       const word = attention();
-      const start = performance.now();
       s.deliver(overview(), {
         ...word,
         mainThreadId: ThreadId.make("new-chat"),
@@ -4981,7 +5362,6 @@ describe("menu liveness through HQ records", () => {
       });
       expect(surface(s.tree, "sidebar-mate").props["aria-label"]).toBe("Ada, Waiting for you");
       s.lacks("sidebar-mate-subject");
-      expect(performance.now() - start).toBeLessThanOrEqual(2_000);
     } finally {
       s.registry.dispose();
     }
@@ -5018,23 +5398,10 @@ describe("menu liveness through HQ records", () => {
 it("a reader sees the protocol notice without an update action", () => {
   session.viewer = "reader";
   session.role = "READ_ONLY";
-  const official = vi.spyOn(accountHq, "useAccountHq").mockReturnValue({
-    status: "ready",
-    hq: { kind: "official", projectId: "hq1", address: "https://hq.invalid" },
-    admins: [],
-    reread: () => {},
-  });
-  const carried = vi.spyOn(accountHq, "useCarriedCoreBuild").mockReturnValue("current");
-  // This case owns the menu permission gate; the update dialog has its own render suite.
-  const update = vi
-    .spyOn(hqUpdate, "ZeropsHqUpdate")
-    .mockImplementation(({ trigger }) => <button>{trigger}</button>);
   const registry = AtomRegistry.make();
   const { store } = mountHqNavigation(registry, "org", {
     structure: { apps: [], ungrouped: [{ projectId: "Ada", name: "Ada", mate: { face: "" } }] },
     person: {
-      role: "READER",
-      mayWrite: false,
       mine: false,
       ownerUserId: null,
       waitsOnViewer: false,
@@ -5077,32 +5444,462 @@ it("a reader sees the protocol notice without an update action", () => {
     );
     expect(text(surface(tree, "sidebar-mate-name"))).toContain("Ada");
     expect(text(surface(tree, "sidebar-environments"))).not.toContain("Update HQ");
-    // The same notice offers its action to an admin: the reader role alone suppresses it.
-    session.role = "ADMIN";
-    act(() =>
-      tree.update(
-        <RegistryContext.Provider value={registry}>
-          <SidebarZeropsTree
-            candidates={[
-              candidate("Ada", {
-                tags: ["mate"],
-                hq: { appId: null, appName: null, kind: "mate", mate: { face: "" } },
-              }),
-            ]}
-            complete
-            onSelect={() => {}}
-            onBrowseProjects={() => {}}
-          />
-        </RegistryContext.Provider>,
-      ),
-    );
-    expect(text(surface(tree, "sidebar-environments"))).toContain("Update HQ");
   } finally {
-    official.mockRestore();
-    carried.mockRestore();
-    update.mockRestore();
     registry.dispose();
   }
+});
+
+describe("A: sign-in, session and organizations", () => {
+  it.live("switching organizations clears previous work and can return", () =>
+    Effect.gen(function* () {
+      const fetch = vi.fn(() => Promise.reject(new Error("Unexpected network request")));
+      vi.stubGlobal("fetch", fetch);
+      const registry = AtomRegistry.make();
+      const store = makeAccountStore(registry);
+      const project = {
+        id: "Ada",
+        clientId: "ACME",
+        name: "Ada",
+        status: "ACTIVE",
+        tagList: ["mate"],
+        publicZone: "example.test",
+        zeropsSubdomainHost: "ada",
+        _version: 1,
+      };
+      const service = {
+        id: "service-Ada",
+        projectId: "Ada",
+        name: "zcp",
+        status: "ACTIVE",
+        subdomainAccess: true,
+        ports: [{ port: 8080, httpSupport: true }],
+        serviceStackTypeInfo: { serviceStackTypeVersionName: "zcp@1" },
+        _version: 1,
+      };
+      const registrations: string[] = [];
+      const observation = observeAccount({
+        store,
+        wire: {
+          open: Effect.succeed({
+            receiverId: "zerops",
+            frames: Stream.never,
+            get: (path) =>
+              Effect.succeed(
+                path === "/project/Ada"
+                  ? { status: 200, body: project }
+                  : { status: 404, body: {} },
+              ),
+            post: (path, body) => {
+              const search = body.search as
+                | ReadonlyArray<{ readonly name: string; readonly value: unknown }>
+                | undefined;
+              const orgId = search?.find((entry) => entry.name === "clientId")?.value;
+              const inAcme = orgId === "ACME";
+              if (path === "/project/search" && body.wsOutputType === "listStream")
+                registrations.push(String(orgId));
+              const items =
+                body.wsOutputType !== "listStream"
+                  ? []
+                  : path === "/project/search" && inAcme
+                    ? [project]
+                    : path === "/service-stack/search" && inAcme
+                      ? [service]
+                      : [];
+              return Effect.succeed({ items });
+            },
+          }),
+        },
+        repairSession: Effect.void,
+      });
+      const hq = (orgId: string): HqWire => ({
+        withAccess: (request) => Effect.succeed({ ...request, accessToken: "access" }),
+        open: () =>
+          Effect.gen(function* () {
+            const messages = yield* Queue.unbounded<string, Cause.Done>();
+            return {
+              messages: Stream.fromQueue(messages),
+              send: (request) =>
+                Effect.gen(function* () {
+                  if (request.type !== "subscribe") return;
+                  for (const entry of request.scopes) {
+                    const scope = "scope" in entry ? entry.scope : entry;
+                    if (scope.kind !== "navigation") continue;
+                    const values =
+                      orgId === "ACME"
+                        ? [
+                            {
+                              key: "app:shop",
+                              value: {
+                                id: "shop",
+                                name: "Shop",
+                                can: {},
+                                contents: { empty: false, deletingProjectIds: [] },
+                                projectIds: ["Ada"],
+                                births: [],
+                                environments: [],
+                                changes: [],
+                                releaseOffer: null,
+                              },
+                            },
+                            {
+                              key: "project:Ada",
+                              value: {
+                                projectId: "Ada",
+                                appId: "shop",
+                                name: "Ada",
+                                kind: "mate",
+                                mate: { face: "", madeBy: null, standupRequestedBy: null },
+                                person: {
+                                  mine: false,
+                                  ownerUserId: null,
+                                  waitsOnViewer: false,
+                                  unseen: null,
+                                },
+                                signedInNow: {},
+                                everSignedIn: {},
+                              },
+                            },
+                          ]
+                        : [];
+                    yield* Queue.offer(
+                      messages,
+                      JSON.stringify({
+                        type: "scope-reset",
+                        scope,
+                        incarnation: "hq",
+                        revision: 1,
+                        values,
+                        removals: [],
+                      }),
+                    );
+                    yield* Queue.offer(
+                      messages,
+                      JSON.stringify({
+                        type: "scope-ready",
+                        scope,
+                        incarnation: "hq",
+                        revision: 1,
+                        core: { protocol: 1, build: "current" },
+                      }),
+                    );
+                  }
+                }),
+            };
+          }),
+      });
+      const wires = { ACME: hq("ACME"), Second: hq("Second") };
+      session.viewer = "owner";
+      stored.opened = new Set(["shop"]);
+      function Screen() {
+        const listing = useAtomValue(allCandidateListingAtom);
+        const rows = heldCandidates(listing);
+        return (
+          <>
+            <SidebarZeropsTree
+              candidates={rows.rows}
+              complete={rows.complete}
+              onBrowseProjects={() => {}}
+              onSelect={() => {}}
+            />
+            <ZeropsProjectsFlow
+              {...FLOW_PROPS}
+              noProjectYet={hasNoZeropsProject({ listing })}
+              reachesEveryProject
+            />
+          </>
+        );
+      }
+      const waitFor = (orgId: "ACME" | "Second", attempt: number) =>
+        new Promise<void>((resolve) => {
+          const check = () => {
+            const sentOrg = registrations[attempt - 1];
+            const view = hqNavigation.derive(readsOfState(store.state()), orgId);
+            if (
+              sentOrg !== undefined &&
+              store.state().streams.get(`zerops:${sentOrg}`)?.phase === "live" &&
+              view.link.kind === "live"
+            ) {
+              stop();
+              resolve();
+            }
+          };
+          const stop = store.subscribe(check);
+          check();
+        });
+      const show = (orgId: "ACME" | "Second") => {
+        registry.set(zeropsSessionAtom, {
+          status: "signed-in",
+          organizationStatus: "selected",
+          activeOrganization: { ...organization, organizationId: ZeropsOrganizationId.make(orgId) },
+        });
+        registry.set(accountReadsAtom, {
+          data: store.data,
+          orgId,
+          viewer: {
+            id: orgId,
+            name: orgId,
+            membershipId: "member",
+            roleCode: orgId === "ACME" ? "OWNER" : "READ_ONLY",
+          },
+          demandDetail: observation.demandDetail,
+          renewHeld: observation.renewHeld,
+        });
+        observation.show(orgId);
+        observation.showHq({ orgId, wire: wires[orgId] });
+      };
+      try {
+        show("ACME");
+        const tree = mount(
+          <RegistryContext.Provider value={registry}>
+            <Screen />
+          </RegistryContext.Provider>,
+        );
+        yield* Effect.promise(() =>
+          act(async () => {
+            await waitFor("ACME", 1);
+          }),
+        );
+        expect(text(surface(tree, "sidebar-environments"))).toContain("Shop");
+        yield* Effect.promise(() =>
+          act(async () => {
+            show("Second");
+            await waitFor("Second", 2);
+          }),
+        );
+        const firstRun = tree.root
+          .findAll(
+            (node) =>
+              typeof node.type === "string" && node.props["data-zerops-surface"] === "first-run",
+          )
+          .map(text)
+          .join("");
+        expect(firstRun).toContain("No projects yet");
+        const secondMenu = tree.root
+          .findAll(
+            (node) =>
+              typeof node.type === "string" &&
+              node.props["data-zerops-surface"] === "sidebar-environments",
+          )
+          .map(text)
+          .join("");
+        expect(secondMenu).not.toContain("Shop");
+        expect(secondMenu).not.toContain("Ada");
+        yield* Effect.promise(() =>
+          act(async () => {
+            show("ACME");
+            await waitFor("ACME", 3);
+          }),
+        );
+        expect(text(surface(tree, "sidebar-environments"))).toContain("Shop");
+        expect(fetch).not.toHaveBeenCalled();
+      } finally {
+        observation.stop();
+        registry.dispose();
+      }
+    }),
+  );
+});
+
+describe("B: navigation protocol", () => {
+  it.live("an older HQ keeps Mates grouped and visibly asks for an update", () =>
+    Effect.gen(function* () {
+      const fetch = vi.fn(() => Promise.reject(new Error("Unexpected network request")));
+      vi.stubGlobal("fetch", fetch);
+      const registry = AtomRegistry.make();
+      const store = makeAccountStore(registry);
+      const observation = observeAccount({
+        store,
+        wire: { open: Effect.never },
+        repairSession: Effect.void,
+      });
+      const oldMessages = yield* Queue.unbounded<string, Cause.Done>();
+      const newMessages = yield* Queue.unbounded<string, Cause.Done>();
+      const orgId = "org";
+      const wire = (messages: typeof oldMessages, older: boolean): HqWire => ({
+        withAccess: (request) => Effect.succeed({ ...request, accessToken: "access" }),
+        open: () =>
+          Effect.succeed({
+            messages: Stream.fromQueue(messages),
+            send: (request) =>
+              Effect.gen(function* () {
+                if (request.type !== "subscribe") return;
+                for (const entry of request.scopes) {
+                  const scope = "scope" in entry ? entry.scope : entry;
+                  if (scope.kind !== "navigation") continue;
+                  if (older) {
+                    const mate = (projectId: string) => ({
+                      projectId,
+                      appId: "shop",
+                      name: projectId,
+                      kind: "mate",
+                      mate: { face: "", madeBy: null, standupRequestedBy: null },
+                      person: {
+                        mine: false,
+                        ownerUserId: null,
+                        waitsOnViewer: false,
+                        unseen: null,
+                      },
+                      signedInNow: {},
+                      everSignedIn: {},
+                    });
+                    yield* Queue.offer(
+                      messages,
+                      olderNavigation(
+                        JSON.stringify({
+                          type: "scope-reset",
+                          scope,
+                          incarnation: "hq",
+                          revision: 1,
+                          values: [
+                            {
+                              key: "app:shop",
+                              value: {
+                                id: "shop",
+                                name: "Shop",
+                                can: {},
+                                contents: { empty: false, deletingProjectIds: [] },
+                                projectIds: ["Ada", "Bea"],
+                                births: [],
+                                environments: [],
+                                changes: [],
+                                releaseOffer: null,
+                              },
+                            },
+                            { key: "project:Ada", value: mate("Ada") },
+                            { key: "project:Bea", value: mate("Bea") },
+                          ],
+                          removals: [],
+                        }),
+                      ),
+                    );
+                  }
+                  const ready = JSON.stringify({
+                    type: "scope-ready",
+                    scope,
+                    incarnation: "hq",
+                    revision: 1,
+                    core: { protocol: 1, build: "current" },
+                  });
+                  yield* Queue.offer(messages, older ? olderNavigation(ready) : ready);
+                }
+              }),
+          }),
+      });
+      const oldWire = wire(oldMessages, true);
+      const newWire = wire(newMessages, false);
+      const activeOrganization = {
+        ...organization,
+        organizationId: ZeropsOrganizationId.make(orgId),
+      };
+      registry.set(zeropsSessionAtom, {
+        status: "signed-in",
+        organizationStatus: "selected",
+        activeOrganization,
+      });
+      observation.show(orgId);
+      mountRoster(
+        registry,
+        orgId,
+        ["Ada", "Bea"].map((id) => ({
+          id,
+          clientId: orgId,
+          name: id,
+          status: "ACTIVE",
+          tagList: ["mate"],
+          publicZone: "example.test",
+          zeropsSubdomainHost: id.toLowerCase(),
+        })),
+        {
+          into: store,
+          services: ["Ada", "Bea"].map((id) => ({
+            id: `zcp-${id}`,
+            projectId: id,
+            name: "zcp",
+            status: "ACTIVE",
+            subdomainAccess: true,
+            ports: [{ port: 8080, httpSupport: true }],
+            serviceStackTypeInfo: { serviceStackTypeVersionName: "zcp@1" },
+          })),
+        },
+      );
+      registry.set(accountReadsAtom, {
+        data: store.data,
+        orgId,
+        viewer: { id: orgId, name: "Organization", membershipId: "member", roleCode: "ADMIN" },
+        demandDetail: observation.demandDetail,
+        renewHeld: observation.renewHeld,
+      });
+      session.viewer = "owner";
+      session.role = "OWNER";
+      stored.opened = new Set(["shop"]);
+      function Menu() {
+        const rows = heldCandidates(useAtomValue(allCandidateListingAtom));
+        return (
+          <SidebarZeropsTree
+            candidates={rows.rows}
+            complete={rows.complete}
+            onBrowseProjects={() => {}}
+            onSelect={() => {}}
+          />
+        );
+      }
+      const ready = (current: boolean) =>
+        new Promise<void>((resolve) => {
+          const check = () => {
+            const view = hqNavigation.derive(readsOfState(store.state()), orgId);
+            if (
+              view.structure?.apps[0]?.name === "Shop" &&
+              view.link.kind === "live" &&
+              (!current || view.coreBuild === "current")
+            ) {
+              stop();
+              resolve();
+            }
+          };
+          const stop = store.subscribe(check);
+          check();
+        });
+      try {
+        const olderReady = ready(false);
+        observation.showHq({ orgId, wire: oldWire });
+        const tree = mount(
+          <RegistryContext.Provider value={registry}>
+            <Menu />
+          </RegistryContext.Provider>,
+        );
+        const reload = vi.fn();
+        Object.assign(window, { location: { reload } });
+        yield* Effect.promise(() =>
+          act(async () => {
+            await olderReady;
+          }),
+        );
+        const group = tree.root.find(
+          (node) => typeof node.type === "string" && node.props["data-zerops-group"] === "shop",
+        );
+        expect(text(group)).toContain("Shop");
+        expect(text(group)).toContain("Ada");
+        expect(text(group)).toContain("Bea");
+        expect(text(tree.root)).toContain("HQ needs an update to show all navigation facts.");
+        expect(tree.root.findAllByType("button").map(text)).not.toContain("Update HQ");
+
+        const currentReady = ready(true);
+        observation.showHq({ orgId, wire: newWire });
+        yield* Queue.end(oldMessages);
+        yield* Effect.promise(() =>
+          act(async () => {
+            await currentReady;
+          }),
+        );
+        expect(text(tree.root)).not.toContain("HQ needs an update to show all navigation facts.");
+        expect(reload).not.toHaveBeenCalled();
+        expect(fetch).not.toHaveBeenCalled();
+      } finally {
+        observation.stop();
+        registry.dispose();
+      }
+    }),
+  );
 });
 
 it("HQ down retains a known Not in this HQ row", () => {

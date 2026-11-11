@@ -7,16 +7,26 @@
 import { MoreHorizontalIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { dismissCreation, startAddOver, useCreation } from "~/zerops/creations";
+import { useCreation, useCreationEnds } from "~/zerops/creations";
 import { creationEnds, type NewProjectBirth } from "~/zerops/newProjectBirth";
 
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
+import type { ZeropsMenuAction } from "./ZeropsProjectMenu";
+
+export interface SharedBirthRow {
+  readonly line: string;
+  readonly attention: boolean;
+  readonly entries: ReadonlyArray<ZeropsMenuAction>;
+}
 
 const ROW_ACTION_CLASS =
   "inline-flex size-5 cursor-pointer items-center justify-center rounded text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active data-popup-open:text-sidebar-foreground";
 
 /** What a stopped creation's ⋯ offers, in order: none for one with nothing to end. */
-export function comingEndsEntries(birth: NewProjectBirth): ReadonlyArray<{
+export function comingEndsEntries(
+  birth: NewProjectBirth,
+  actions: ReturnType<typeof useCreationEnds>,
+): ReadonlyArray<{
   readonly id: "start-over" | "dismiss";
   readonly label: string;
   readonly onSelect: () => void;
@@ -30,10 +40,10 @@ export function comingEndsEntries(birth: NewProjectBirth): ReadonlyArray<{
           {
             id: "start-over" as const,
             label: "Start over",
-            onSelect: () => startAddOver(birth),
+            onSelect: () => actions.startOver(birth),
           },
         ]),
-    { id: "dismiss", label: "Dismiss", onSelect: () => dismissCreation(birth.birthId) },
+    { id: "dismiss", label: "Dismiss", onSelect: () => actions.dismiss(birth) },
   ];
 }
 
@@ -49,7 +59,24 @@ export function SidebarComingEnds({
   readonly children: ReactNode;
 }) {
   const made = useCreation(birthId);
-  const entries = made === undefined ? [] : comingEndsEntries(made);
+  const actions = useCreationEnds();
+  const entries = made === undefined ? [] : comingEndsEntries(made, actions);
+  return (
+    <SidebarBirthMenu name={name} entries={entries}>
+      {children}
+    </SidebarBirthMenu>
+  );
+}
+
+export function SidebarBirthMenu({
+  name,
+  entries,
+  children,
+}: {
+  readonly name: string;
+  readonly entries: ReadonlyArray<ZeropsMenuAction>;
+  readonly children: ReactNode;
+}) {
   if (entries.length === 0) return children;
   return (
     // The row is the container, the menu's trigger beside its button, as a Mate's own row.
@@ -69,7 +96,12 @@ export function SidebarComingEnds({
           </MenuTrigger>
           <MenuPopup align="start" className="w-56" side="right">
             {entries.map((entry) => (
-              <MenuItem key={entry.id} onClick={entry.onSelect}>
+              <MenuItem
+                disabled={entry.disabled === true}
+                key={entry.id}
+                onClick={entry.onSelect}
+                variant={entry.variant ?? "default"}
+              >
                 {entry.label}
               </MenuItem>
             ))}

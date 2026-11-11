@@ -1,7 +1,8 @@
 /**
  * The jump box: one field that finds anything the left menu holds — a Mate, a
- * project, a change, a stop, words inside a conversation — with what matched
- * marked, and, after `@`, writes to a Mate without opening it.
+ * project, a change, a place, words inside a conversation — and the app's own
+ * pages and settings, with what matched marked, and, after `@`, writes to a
+ * Mate without opening it.
  *
  * ⌘K opens it, and `/` anywhere nothing is being typed. `@nova`, then Tab or
  * Enter, picks Nova: Nova's chip — its face and name — stands in the field,
@@ -12,7 +13,7 @@
  *
  * It is the app's own palette — the same field, list and keys row
  * (`CommandPaletteContent`) — with the menu's own glyphs in its rows: a
- * Mate's face, a stop's badge; a change's row is its title and whose it is. `>` hands over to the
+ * Mate's face, a place's dot, a settings section's glyph; a change's row is its title and whose it is. `>` hands over to the
  * palette's commands.
  *
  * `useJumpBoxState` keeps what is typed and which Mate the words are for,
@@ -32,6 +33,8 @@ import {
   type ReactNode,
 } from "react";
 
+import { useMediaQuery } from "~/hooks/useMediaQuery";
+import { useZeropsSessionOptional } from "~/zerops/sessionContext";
 import { useSidebarReveal } from "~/zerops/sidebarReveal";
 
 import { CommandPaletteContent } from "../CommandPaletteContent";
@@ -43,6 +46,8 @@ import {
   CommandItem,
   CommandList,
 } from "../ui/command";
+import { SETTINGS_SECTION_ICONS } from "../settings/settingsSectionIcons";
+import { sidebarAccountDestinationIcon } from "../sidebar/SidebarChrome";
 import { Kbd, KbdGroup } from "../ui/kbd";
 import {
   highlightParts,
@@ -55,11 +60,14 @@ import {
   type JumpHit,
   type JumpItem,
   type JumpMate,
+  type JumpPage,
   type JumpStop,
   type SidebarJumpIndex,
 } from "./JumpBox.logic";
+import { findJumpPages } from "./jumpPages";
 import { MateFace } from "./primitives";
 import { EnvDot } from "./SidebarProductionChip";
+import { mayReadBilling } from "@t3tools/client-runtime/zerops/billingAccess";
 
 export interface JumpBoxModel {
   readonly value: string;
@@ -112,9 +120,18 @@ export function useJumpBoxModel(
   const target =
     targetId === null ? undefined : index.mates.find((mate) => mate.projectId === targetId);
   const newProject = useRoleOffers().newProject;
+  // The team and persona templates are found where the settings nav offers them: in an organization.
+  const organization = useZeropsSessionOptional()?.activeOrganization ?? null;
+  const withOrganization = organization !== null;
+  const readsBilling = mayReadBilling(organization?.roleCode);
   const groups = useMemo(
-    () => (target === undefined ? jumpGroups(index, value, hits, readOnly, newProject) : []),
-    [hits, index, newProject, readOnly, target, value],
+    () =>
+      target === undefined
+        ? jumpGroups(index, value, hits, readOnly, newProject, (text) =>
+            findJumpPages(text, { withOrganization, readsBilling }),
+          )
+        : [],
+    [hits, index, newProject, readOnly, readsBilling, target, value, withOrganization],
   );
   const items = groups.flatMap((group) => group.items);
   const highlighted = items.find((item) => item.value === highlightedValue) ?? items[0];
@@ -156,21 +173,24 @@ export function useJumpBoxModel(
   };
 }
 
-/** Where a find goes where the menu cannot show it: its own page. */
+/** A find's own page: a place's always, a project's or a change's where the menu cannot show it. */
 export interface JumpPages {
   readonly openMate: (mate: JumpMate) => void;
   readonly openProject: (groupId: string) => void;
   readonly openStop: (stop: JumpStop) => void;
   readonly openChange: (change: JumpChange) => void;
+  /** The app's own page: the overview, a settings section, or one setting scrolled to. */
+  readonly openPage: (page: JumpPage) => void;
   /** Starts a new project, where projects are made. */
   readonly newProject: () => void;
 }
 
 /**
  * What choosing a row does. `@`'s Mate with a conversation becomes the one
- * written to; any other Mate, or words in its conversation, open it. A
- * project, a stop or a change is shown in the menu, which comes out to show
- * it (`showable`), and opens its own page where the menu cannot.
+ * written to; any other Mate, or words in its conversation, open it. A place
+ * opens its own page. A project or a change is shown in the menu, which comes
+ * out to show it (`showable`), and opens its own page where the menu cannot.
+ * The app's own pages open.
  */
 export function chooseJumpItem(
   item: JumpItem,
@@ -199,9 +219,10 @@ export function chooseJumpItem(
       else pages.openProject(item.project.groupId);
       return;
     case "stop":
-      if (showable)
-        reveal({ kind: "stop", groupId: item.stop.groupId, projectId: item.stop.projectId });
-      else pages.openStop(item.stop);
+      pages.openStop(item.stop);
+      return;
+    case "page":
+      pages.openPage(item.page);
       return;
     case "change":
       if (showable) {
@@ -290,19 +311,23 @@ function JumpFindView({
 }) {
   const { value, groups, highlighted } = model;
   const writing = readJumpQuery(value).mode === "write";
+  const phone = useMediaQuery("max-sm");
   const footerKeys = (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-      <KbdGroup>
-        <Kbd>
-          <ArrowUpIcon />
-        </Kbd>
-        <Kbd>
-          <ArrowDownIcon />
-        </Kbd>
-        <span>Navigate</span>
-      </KbdGroup>
+      {/* A keyboard's own keys mean nothing under a finger; what is typed (@, >) still does. */}
+      <span className="contents pointer-coarse:hidden">
+        <KbdGroup>
+          <Kbd>
+            <ArrowUpIcon />
+          </Kbd>
+          <Kbd>
+            <ArrowDownIcon />
+          </Kbd>
+          <span>Navigate</span>
+        </KbdGroup>
+      </span>
       {writing ? (
-        <>
+        <span className="contents pointer-coarse:hidden">
           <KbdGroup>
             <Kbd>Tab</Kbd>
             <Kbd>Enter</Kbd>
@@ -312,13 +337,15 @@ function JumpFindView({
             <Kbd>Esc</Kbd>
             <span>Close</span>
           </KbdGroup>
-        </>
+        </span>
       ) : (
         <>
-          <KbdGroup>
-            <Kbd>Enter</Kbd>
-            <span>Open</span>
-          </KbdGroup>
+          <span className="contents pointer-coarse:hidden">
+            <KbdGroup>
+              <Kbd>Enter</Kbd>
+              <span>Open</span>
+            </KbdGroup>
+          </span>
           <KbdGroup>
             <Kbd>@</Kbd>
             <span>Write to a Mate</span>
@@ -332,6 +359,8 @@ function JumpFindView({
       aria-label="Jump to"
       autoHighlight="always"
       footerKeys={footerKeys}
+      // Writing to a Mate, every hint is a keyboard's key.
+      footerKeysOnTouch={!writing}
       footerTrailing={
         !writing && onCommands !== undefined ? (
           <KbdGroup>
@@ -341,7 +370,10 @@ function JumpFindView({
         ) : null
       }
       inputProps={{
-        placeholder: "Jump to a Mate, project, change or stop. Type @ to write to a Mate",
+        // A phone's field holds the first half; the footer says the other.
+        placeholder: phone
+          ? "Jump to a Mate, project or setting"
+          : "Jump to a Mate, project, place, change or setting. Type @ to write to a Mate",
         "aria-label": "Jump to, or write to a Mate",
         onKeyDown: (event) => {
           const action = jumpKey({
@@ -573,14 +605,30 @@ function JumpRow({ item, match }: { readonly item: JumpItem; readonly match: str
           <EnvDot dot={item.stop.dot} />
         </span>
       );
-      title = <Marked match={match} text={item.stop.title} />;
-      sub = (
+      title = (
         <Marked
           match={match}
-          text={[item.stop.projectName, item.stop.line].filter((part) => part !== "").join(" · ")}
+          text={[item.stop.projectName, item.stop.title].filter((part) => part !== "").join(" · ")}
         />
       );
+      sub = item.stop.line === "" ? "" : <Marked match={match} text={item.stop.line} />;
       break;
+    case "page": {
+      const { page } = item;
+      if (page.glyph.kind === "section") {
+        const Icon = SETTINGS_SECTION_ICONS[page.glyph.section];
+        lead = <Icon className="size-4" />;
+      } else {
+        lead = (
+          <span className="inline-flex [&>svg]:size-4">
+            {sidebarAccountDestinationIcon(page.glyph.id)}
+          </span>
+        );
+      }
+      title = <Marked match={match} text={page.title} />;
+      sub = page.where ?? "";
+      break;
+    }
     case "text":
       lead = (
         <MateFace shape={item.mate.shape} size={20} state={item.mate.face} tint={item.mate.tint} />

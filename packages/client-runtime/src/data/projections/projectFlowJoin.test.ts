@@ -104,7 +104,6 @@ function join(input: {
     live: input.live ?? new Map(),
     changes: null,
     changesFailure: undefined,
-    changesRefused: new Map(),
     withheld: input.withheld ?? NOTHING_WITHHELD,
   });
 }
@@ -500,15 +499,6 @@ describe("joinProjectFlows", () => {
     }).get("g1");
   }
 
-  it("colleague release appears while production is still building", () => {
-    const flow = flowWithProductionDeploy(record(MERGED, "building", "2026-09-24T10:01:00Z"));
-    expect(flow?.releases.map(({ tag, word }) => ({ tag, word }))).toEqual([
-      { tag: "v0.1.1", word: "Approved" },
-      { tag: "v0.1.0", word: "Live" },
-    ]);
-    expect(flow?.environmentInputs[0]?.services[0]?.deploy?.latest?.state).toBe("building");
-  });
-
   const rowsOf = (flow: ReturnType<typeof flowWithProductionDeploy>) =>
     flow?.releases.map(({ tag, standing, word, rollBack }) => ({ tag, standing, word, rollBack }));
 
@@ -517,6 +507,7 @@ describe("joinProjectFlows", () => {
       name: "the release production runs reads Live; the newer one is not a state it was in yet",
       latest: record(MERGED, "building", "2026-09-24T10:01:00Z"),
       runs: RUNNING,
+      deployState: "building",
       rows: [
         { tag: "v0.1.1", standing: undefined, word: "Approved", rollBack: false },
         { tag: "v0.1.0", standing: "live", word: "Live", rollBack: false },
@@ -526,6 +517,7 @@ describe("joinProjectFlows", () => {
       name: "the production deploy the newest release's rollout asked for failed: it reads Deploy failed",
       latest: record(MERGED, "failed", "2026-09-24T10:01:00Z"),
       runs: RUNNING,
+      deployState: "failed",
       rows: [
         { tag: "v0.1.1", standing: "deploy-failed", word: "Deploy failed", rollBack: false },
         { tag: "v0.1.0", standing: "live", word: "Live", rollBack: false },
@@ -535,13 +527,16 @@ describe("joinProjectFlows", () => {
       name: "production moved to the newest: it reads Live, the earlier one offers a roll-back",
       latest: record(MERGED, "live", "2026-09-24T10:01:00Z"),
       runs: MERGED,
+      deployState: "live",
       rows: [
         { tag: "v0.1.1", standing: "live", word: "Live", rollBack: false },
         { tag: "v0.1.0", standing: undefined, word: "Approved", rollBack: true },
       ],
     },
-  ])("$name", ({ latest, runs, rows }) => {
-    expect(rowsOf(flowWithProductionDeploy(latest, runs))).toEqual(rows);
+  ])("$name", ({ latest, runs, deployState, rows }) => {
+    const flow = flowWithProductionDeploy(latest, runs);
+    expect(rowsOf(flow)).toEqual(rows);
+    expect(flow?.environmentInputs[0]?.services[0]?.deploy?.latest?.state).toBe(deployState);
   });
 
   // HQ's rollout of the newest release says whether it is on its way; no clock and no guess from
@@ -587,6 +582,22 @@ describe("joinProjectFlows", () => {
       release: rollout("v0.1.1", true),
       inFlight: undefined,
       stalled: "v0.1.1",
+    },
+    {
+      name: "HQ ended its rollout landed while production still runs the release before: on its way",
+      latest: record(MERGED, "live", "2026-09-24T10:01:00Z"),
+      runs: RUNNING,
+      release: { ...rollout("v0.1.1", true), landed: true },
+      inFlight: "v0.1.1",
+      stalled: undefined,
+    },
+    {
+      name: "HQ ended its rollout landed and production runs it: landed",
+      latest: record(MERGED, "live", "2026-09-24T10:01:00Z"),
+      runs: MERGED,
+      release: { ...rollout("v0.1.1", true), landed: true },
+      inFlight: undefined,
+      stalled: undefined,
     },
     {
       name: "an older release's rollout says nothing of the newest",

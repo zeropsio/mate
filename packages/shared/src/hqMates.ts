@@ -1,5 +1,5 @@
 /**
- * The Mates as HQ hands them to a reader on its structure socket (`apps/hq/src/stream.ts`), apart
+ * The Mates as HQ hands them to a reader on its structure socket (`mate-hq apps/hq/src/stream.ts`), apart
  * from the structure itself: each Mate the reader may observe (`observe_mate`) by its project, and
  * the people the reader's view names.
  *

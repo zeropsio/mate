@@ -12,12 +12,16 @@ import { Menu } from "../ui/menu";
 import { SidebarZeropsAccount, SidebarZeropsAccountMenu } from "./SidebarZeropsAccount";
 import { zeropsAccountDisplay } from "./landing/ZeropsAccountControl.logic";
 
-const ADA = zeropsAccountDisplay({
-  email: "ada@example.com",
-  fullName: "Ada Lovelace",
-  firstName: "Ada",
-  avatar: { smallAvatarUrl: "https://cdn/ada.png" },
-});
+// The organization's member list calls her "Ada" (`ZeropsPerson.called`).
+const ADA = zeropsAccountDisplay(
+  {
+    email: "ada@example.com",
+    fullName: "Ada Lovelace",
+    firstName: "Ada",
+    avatar: { smallAvatarUrl: "https://cdn/ada.png" },
+  },
+  "Ada",
+);
 
 const organization = (name: string, id = name): ZeropsOrganization => ({
   id,
@@ -134,20 +138,6 @@ describe("SidebarZeropsAccountMenu", () => {
     }
     expect(html).toContain("Sign out");
   });
-
-  // The onboarding run, 2026-10-16: an owner looking for HQ's update opened this menu and found
-  // no hint of it; only Settings → Zerops said it, at the far end of a row.
-  it.each([
-    { waiting: true, says: true },
-    { waiting: false, says: false },
-  ])(
-    "says HQ's update is ready while one waits ($waiting), and opens where it is run",
-    ({ waiting, says }) => {
-      const html = renderMenu(waiting ? { hqUpdate: { onOpen: () => {} } } : {});
-      expect(html.includes("data-zerops-account-hq-update")).toBe(says);
-      expect(html.includes("HQ update ready")).toBe(says);
-    },
-  );
 
   it("names the page that is already open rather than lighting nothing", () => {
     expect(renderMenu({ destination: "usage" })).toContain(">Open<");

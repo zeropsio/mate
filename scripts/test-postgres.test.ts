@@ -219,46 +219,68 @@ it.each([
   }
 });
 
-/**
- * A cluster's catalog as `psql -At` answers the supervisor: `oid|quoted name` rows. initdb's own
- * databases and roles are always there; `left` is what a killed run made beside them.
- */
+/** Catalog entries live in the disposable directory; initdb only adds its own entries. */
 function catalog(left: { databases: [number, string][]; roles: [number, string][] }) {
-  const databases = new Map<number, string>([
-    [1, "template1"],
-    [4, "template0"],
-    [5, "postgres"],
-    ...left.databases,
-  ]);
-  const roles = new Map<number, string>([[10, "postgres"], [3373, "pg_monitor"], ...left.roles]);
-  const sql = (query: string) => {
-    const select =
-      /^SELECT oid, quote_ident\((datname|rolname)\) FROM (pg_database|pg_roles)$/u.exec(query);
-    if (select)
-      return [...(select[2] === "pg_database" ? databases : roles)]
-        .map(([oid, name]) => `${oid}|${name}\n`)
-        .join("");
-    const database = /^DROP DATABASE (.+) WITH \(FORCE\)$/u.exec(query)?.[1];
-    const role = /^DROP OWNED BY (.+); DROP ROLE \1$/u.exec(query)?.[1];
-    const from = database === undefined ? roles : databases;
-    const oid = [...from].find(([, name]) => name === (database ?? role))?.[0];
-    if (oid === undefined) throw new Error(`fake catalog: ${query}`);
-    from.delete(oid);
-    return "";
+  const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-pg-catalog-"));
+  const data = NodePath.join(home, "data");
+  const own = {
+    databases: [
+      [1, "template1"],
+      [4, "template0"],
+      [5, "postgres"],
+    ] as [number, string][],
+    roles: [
+      [10, "postgres"],
+      [3373, "pg_monitor"],
+    ] as [number, string][],
   };
-  return { sql, databases, roles };
+  const write = (kind: "databases" | "roles", entries: [number, string][]) => {
+    NodeFS.mkdirSync(NodePath.join(data, kind), { recursive: true });
+    for (const [oid, name] of entries)
+      NodeFS.writeFileSync(NodePath.join(data, kind, String(oid)), name);
+  };
+  const read = (kind: "databases" | "roles") =>
+    new Map(
+      NodeFS.readdirSync(NodePath.join(data, kind))
+        .map(
+          (oid) =>
+            [Number(oid), NodeFS.readFileSync(NodePath.join(data, kind, oid), "utf8")] as const,
+        )
+        .sort(([a], [b]) => a - b),
+    );
+  NodeFS.mkdirSync(data);
+  NodeFS.writeFileSync(NodePath.join(data, "PG_VERSION"), "17\n");
+  for (const kind of ["databases", "roles"] as const) write(kind, [...own[kind], ...left[kind]]);
+  return {
+    data,
+    initialise: () => {
+      for (const kind of ["databases", "roles"] as const) write(kind, own[kind]);
+    },
+    get databases() {
+      return read("databases");
+    },
+    get roles() {
+      return read("roles");
+    },
+    [Symbol.dispose]: () => NodeFS.rmSync(home, { recursive: true, force: true }),
+  };
 }
 
 it("a killed supervisor's lease databases are dropped when the next one starts", async () => {
-  const { reclaimDeadRuns } = await import("./test-postgres.ts");
-  const cluster = catalog({
+  const { startCluster } = await import("./test-postgres.ts");
+  using cluster = catalog({
     databases: [
       [70001, "mate_test_0a1b"],
       [70002, "mate_test_ff00"],
     ],
     roles: [],
   });
-  reclaimDeadRuns(cluster.sql);
+  startCluster(cluster.data, {
+    initialise: cluster.initialise,
+    start: () => {},
+    report: () => {},
+    discardRetained: true,
+  });
   expect([...cluster.databases.values()]).toEqual(["template1", "template0", "postgres"]);
 });
 
@@ -297,9 +319,14 @@ it.each([
 ])(
   "A test run reclaims the databases a killed run left behind: $left, keeping initdb's own",
   async ({ databases, roles }) => {
-    const { reclaimDeadRuns } = await import("./test-postgres.ts");
-    const cluster = catalog({ databases, roles });
-    reclaimDeadRuns(cluster.sql);
+    const { startCluster } = await import("./test-postgres.ts");
+    using cluster = catalog({ databases, roles });
+    startCluster(cluster.data, {
+      initialise: cluster.initialise,
+      start: () => {},
+      report: () => {},
+      discardRetained: true,
+    });
     expect([[...cluster.databases.values()], [...cluster.roles.values()]]).toEqual([
       ["template1", "template0", "postgres"],
       ["postgres", "pg_monitor"],
@@ -307,36 +334,40 @@ it.each([
   },
 );
 
-it("a later run removes test PostgreSQL homes unused for a day unless a postmaster still runs on them", async () => {
-  const { pruneStaleClusters } = await import("./test-postgres.ts");
+// witness: scripts/test-postgres.ts | return record !== undefined && record !== "" && !exists(record); → return record !== undefined && record !== "";
+it("a later run removes a test PostgreSQL home whose recorded checkout is gone unless a postmaster still runs on it, and never touches a home whose checkout exists or that records none", async () => {
+  const { pruneOrphanedClusters } = await import("./test-postgres.ts");
   const parent = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-pg-prune-"));
+  const live = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-pg-checkout-"));
   try {
-    const now = Date.parse("2026-10-24T12:00:00Z");
-    const hours = (count: number) => (now - count * 60 * 60 * 1000) / 1000;
-    const home = (name: string, idleHours: number, postmaster?: number) => {
+    const removed = "/Volumes/mate-wt/mate-hq/removed-worktree";
+    const longAgo = Date.parse("2026-10-01T00:00:00Z") / 1000;
+    const home = (name: string, checkout?: string, postmaster?: number, idle?: boolean) => {
       const path = NodePath.join(parent, name);
       writeCluster(NodePath.join(path, "data"), "base");
-      NodeFS.writeFileSync(NodePath.join(path, "postgres.log"), "");
+      // mate-hq's recordCheckout writes the checkout's path, nothing else.
+      if (checkout !== undefined) NodeFS.writeFileSync(NodePath.join(path, "checkout"), checkout);
       if (postmaster !== undefined)
         NodeFS.writeFileSync(
           NodePath.join(path, "data", "postmaster.pid"),
           `${postmaster}\n${path}\n`,
         );
-      for (const entry of ["data", "postgres.log", "."])
-        NodeFS.utimesSync(NodePath.join(path, entry), hours(idleHours), hours(idleHours));
+      if (idle)
+        for (const entry of ["data", "checkout", "."])
+          NodeFS.utimesSync(NodePath.join(path, entry), longAgo, longAgo);
       return path;
     };
-    const self = home("mate-test-pg-501", 48);
-    home("mate-test-pg-501-0a1b2c3d4e5f", 25);
-    home("mate-test-pg-501-111111111111", 25, 4242);
-    home("mate-test-pg-501-222222222222", 25, 4343);
-    home("mate-test-pg-501-333333333333", 23);
-    home("another-cache", 72);
+    const self = home("mate-test-pg-501");
+    home("mate-test-pg-501-0a1b2c3d4e5f", removed);
+    home("mate-test-pg-501-111111111111", removed, 4242);
+    home("mate-test-pg-501-222222222222", removed, 4343);
+    home("mate-test-pg-501-333333333333", live, undefined, true);
+    home("mate-test-pg-501-444444444444");
+    home("another-cache", removed);
     const reported: string[] = [];
 
-    pruneStaleClusters({
+    pruneOrphanedClusters({
       home: self,
-      now,
       alive: (pid) => pid === 4242,
       report: (line) => reported.push(line),
     });
@@ -346,14 +377,16 @@ it("a later run removes test PostgreSQL homes unused for a day unless a postmast
       "mate-test-pg-501",
       "mate-test-pg-501-111111111111",
       "mate-test-pg-501-333333333333",
+      "mate-test-pg-501-444444444444",
     ]);
     expect(reported).toEqual(
       ["mate-test-pg-501-0a1b2c3d4e5f", "mate-test-pg-501-222222222222"].map(
         (name) =>
-          `Removed test PostgreSQL home ${NodePath.join(parent, name)}: unused for over 24 h and no postmaster runs on it.`,
+          `Removed test PostgreSQL home ${NodePath.join(parent, name)}: its checkout ${removed} no longer exists and no postmaster runs on it.`,
       ),
     );
   } finally {
+    NodeFS.rmSync(live, { recursive: true, force: true });
     NodeFS.rmSync(parent, { recursive: true, force: true });
   }
 });
@@ -400,6 +433,130 @@ function fakeCluster() {
   NodeFS.writeFileSync(NodePath.join(data, "global", "pg_control"), "valid");
   return { root, home, bin, data };
 }
+type FakeCluster = ReturnType<typeof fakeCluster>;
+
+/** The PID in the cluster's postmaster.pid while its command line still runs this cluster. */
+function runningPostmaster({ data }: FakeCluster): number | undefined {
+  const record = NodePath.join(data, "postmaster.pid");
+  if (!NodeFS.existsSync(record)) return undefined;
+  const pid = Number(NodeFS.readFileSync(record, "utf8").split("\n")[0]);
+  const shown = NodeChildProcess.spawnSync("ps", ["-ww", "-o", "command=", "-p", String(pid)], {
+    encoding: "utf8",
+  });
+  return shown.status === 0 && shown.stdout.trim().endsWith(`postgres -D ${data}`)
+    ? pid
+    : undefined;
+}
+
+/**
+ * A case that fails before its supervisor stops PostgreSQL would delete postmaster.pid under the
+ * detached fake postmaster, so the supervisor's later pg_ctl stop finds no server and it runs on.
+ */
+function removeCluster(cluster: FakeCluster) {
+  const pid = runningPostmaster(cluster);
+  if (pid !== undefined) process.kill(pid, "SIGKILL");
+  NodeFS.rmSync(cluster.root, { recursive: true, force: true });
+}
+
+it("Decision: A nonzero guard exit carries pg_ctl's exit code and the tail of its stderr in the relayed error. Decision: No retry, no wider bound; diagnostics only.", async () => {
+  const cluster = fakeCluster();
+  const attempts = NodePath.join(cluster.home, "stop-attempts");
+  const command = NodePath.join(cluster.bin, "pg_ctl");
+  const wrapper = NodeFS.readFileSync(command, "utf8");
+  const stderr = `${"earlier stop diagnostics\n".repeat(2000)}pg_ctl: shutdown failed at checkpoint`;
+  NodeFS.writeFileSync(
+    command,
+    wrapper.replace(
+      "exec ",
+      `case "$*" in *" stop")\nprintf 'stop\\n' >> "${attempts}"\n${wrapper.split("\n")[1]!.replace("exec ", "")}\nprintf '%s\\n' '${stderr}' >&2\nexit 23\n;; esac\nexec `,
+    ),
+  );
+  vi.stubEnv("MATE_TEST_PG_HOME", cluster.home);
+  vi.stubEnv("MATE_PG_BIN", cluster.bin);
+  vi.resetModules();
+  try {
+    const { acquireTestPostgres } = await import("./test-postgres.ts");
+    const owner = await acquireTestPostgres();
+    const error = await owner.close().then(
+      () => {
+        throw new Error("Expected guard stop to fail");
+      },
+      (error: unknown) => error,
+    );
+    await guardStopped(cluster.home);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain("PostgreSQL guard exited: 1");
+    expect((error as Error).message).toContain("pg_ctl exited: 23");
+    expect((error as Error).message).toContain("pg_ctl: shutdown failed at checkpoint");
+    expect((error as Error).message.length).toBeLessThan(10_000);
+    expect(NodeFS.readFileSync(attempts, "utf8")).toBe("stop\n");
+  } finally {
+    vi.unstubAllEnvs();
+    removeCluster(cluster);
+  }
+});
+
+it("Decision: A test PostgreSQL supervisor that starts with no surviving leases rebuilds its disposable cluster once instead of dropping retained databases one by one", async () => {
+  const cluster = fakeCluster();
+  const commands = NodePath.join(cluster.home, "commands.log");
+  for (let i = 0; i < 34; i++)
+    NodeFS.mkdirSync(NodePath.join(cluster.data, "base", `retained_${i}`));
+  for (const command of ["initdb", "pg_ctl", "psql"]) {
+    const path = NodePath.join(cluster.bin, command);
+    const wrapper = NodeFS.readFileSync(path, "utf8");
+    NodeFS.writeFileSync(
+      path,
+      wrapper.replace("exec ", `printf '%s\\n' '${command}' "$@" >> "${commands}"\nexec `),
+    );
+  }
+  vi.stubEnv("MATE_TEST_PG_HOME", cluster.home);
+  vi.stubEnv("MATE_PG_BIN", cluster.bin);
+  vi.resetModules();
+  try {
+    const { acquireTestPostgres } = await import("./test-postgres.ts");
+    const first = await acquireTestPostgres();
+    try {
+      const url = await first.createDatabase();
+      const held = await acquireTestPostgres();
+      try {
+        // Joining a surviving lease keeps its existing database and never initialises again.
+        expect(NodeFS.readdirSync(NodePath.join(cluster.data, "base"))).toEqual([
+          new URL(url).pathname.slice(1),
+        ]);
+        const calls = NodeFS.readFileSync(commands, "utf8").split("\n");
+        expect(calls.filter((line) => line === "initdb")).toHaveLength(1);
+        expect(calls.filter((line) => line.startsWith("DROP DATABASE"))).toEqual([]);
+      } finally {
+        await held.close();
+      }
+    } finally {
+      await first.close();
+    }
+    await guardStopped(cluster.home);
+  } finally {
+    vi.unstubAllEnvs();
+    removeCluster(cluster);
+  }
+});
+
+// witness: scripts/test-postgres-supervisor.ts | if (!running) return; → return;
+it("the last lease's close stops the cluster's PostgreSQL before its guard lets go of the cluster", async () => {
+  const cluster = fakeCluster();
+  vi.stubEnv("MATE_TEST_PG_HOME", cluster.home);
+  vi.stubEnv("MATE_PG_BIN", cluster.bin);
+  vi.resetModules();
+  try {
+    const { acquireTestPostgres } = await import("./test-postgres.ts");
+    const owner = await acquireTestPostgres();
+    expect(runningPostmaster(cluster)).toBeTypeOf("number");
+    await owner.close();
+    await guardStopped(cluster.home);
+    expect(runningPostmaster(cluster)).toBeUndefined();
+  } finally {
+    vi.unstubAllEnvs();
+    removeCluster(cluster);
+  }
+});
 
 it.each([
   {
@@ -452,7 +609,7 @@ it.each([
   } finally {
     if (orphan?.exitCode === null && orphan.signalCode === null) orphan.kill("SIGKILL");
     vi.unstubAllEnvs();
-    NodeFS.rmSync(cluster.root, { recursive: true, force: true });
+    removeCluster(cluster);
   }
 });
 
@@ -480,7 +637,7 @@ it("a live postmaster no supervisor recorded keeps running, and the start names 
   } finally {
     stranger.kill("SIGKILL");
     vi.unstubAllEnvs();
-    NodeFS.rmSync(cluster.root, { recursive: true, force: true });
+    removeCluster(cluster);
   }
 });
 
@@ -506,6 +663,60 @@ it("a run whose cluster volume has less free space than the floor is refused bef
     expect(refusal).toContain(`The disk ${volume} holding the PostgreSQL test cluster is full:`);
     expect(refusal).toMatch(/ballast \(3\.0 MiB\)/u);
     expect(NodeFS.existsSync(NodePath.join(home, "supervisor.log"))).toBe(false);
+  } finally {
+    vi.unstubAllEnvs();
+    NodeFS.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// witness: scripts/test-postgres.setup.ts |   ensureRoom(postgresHome); → void postgresHome;
+it("a test run on a disk without room stops at its start, before any case, even when another run's PostgreSQL supervisor already serves", async () => {
+  const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-pg-room-"));
+  const home = NodePath.join(root, "home");
+  NodeFS.mkdirSync(home);
+  // Another run's supervisor: it answers every request, so only the room check can stop the run.
+  const served = NodeNet.createServer((socket) =>
+    socket.on("data", () => socket.write(`${JSON.stringify({ url: "postgres://served" })}\n`)),
+  );
+  await new Promise<void>((resolve) =>
+    served.listen(NodePath.join(home, "supervisor.sock"), resolve),
+  );
+  vi.stubEnv("MATE_TEST_PG_HOME", home);
+  vi.stubEnv("MATE_TEST_PG_MIN_FREE_BYTES", String(Number.MAX_SAFE_INTEGER));
+  vi.resetModules();
+  try {
+    const { default: setup } = await import("./test-postgres.setup.ts");
+    const refusal = await setup().then(
+      () => "",
+      (error: unknown) => String(error),
+    );
+    expect(refusal).toMatch(
+      /holding the PostgreSQL test cluster is full: \d+\.\d MiB free, below the 8589934592\.0 MiB a run needs/u,
+    );
+  } finally {
+    vi.unstubAllEnvs();
+    await new Promise<void>((resolve) => served.close(() => resolve()));
+    NodeFS.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// witness: scripts/test-postgres.ts | pruneOrphanedClusters({ home, report: stderrLine }); → stderrLine("");
+it("a run reclaims a removed worktree's test PostgreSQL home before it judges the volume's free space", async () => {
+  const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-pg-room-"));
+  const home = NodePath.join(root, "mate-test-pg-501");
+  const orphan = NodePath.join(root, "mate-test-pg-501-0a1b2c3d4e5f");
+  writeCluster(NodePath.join(orphan, "data"), "base");
+  NodeFS.writeFileSync(NodePath.join(orphan, "checkout"), NodePath.join(root, "removed-worktree"));
+  vi.stubEnv("MATE_TEST_PG_HOME", home);
+  vi.stubEnv("MATE_TEST_PG_MIN_FREE_BYTES", String(Number.MAX_SAFE_INTEGER));
+  vi.resetModules();
+  try {
+    const { acquireTestPostgres } = await import("./test-postgres.ts");
+    await acquireTestPostgres().then(
+      () => undefined,
+      () => undefined,
+    );
+    expect(NodeFS.existsSync(orphan)).toBe(false);
   } finally {
     vi.unstubAllEnvs();
     NodeFS.rmSync(root, { recursive: true, force: true });

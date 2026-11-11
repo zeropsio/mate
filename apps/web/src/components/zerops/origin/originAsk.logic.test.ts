@@ -1,3 +1,5 @@
+import { ORIGIN_ASK_ACTIVITY_KIND, OperationStopped } from "@t3tools/client-runtime/data";
+import type { OrchestrationThreadActivity } from "@t3tools/contracts";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -5,9 +7,14 @@ import { githubName, type GitMirrorApp } from "../gitMirror.logic";
 import {
   keepInMate,
   originAskAnswer,
-  originAskFace,
+  originAskState,
+  originAnswerSettled,
+  originAskGroup,
+  originAskPlaces,
+  originAskPlacesKey,
   originConnected,
   originMountStep,
+  type OriginAsk,
 } from "./originAsk.logic";
 
 const ask = { url: "https://github.com/krls2020/eval2", repo: "appdev" };
@@ -82,10 +89,67 @@ describe("an origin HQ already delivers to", () => {
   ] as const)(
     "an ask $state, said $said, connected in HQ $connected draws $face and answers $answer",
     ({ state, said, connected, face, answer }) => {
-      expect(originAskFace(state, said, connected)).toBe(face);
+      const drawn = originAskState({
+        state,
+        pending: said,
+        connected,
+        url: ask.url,
+        mateName: "Fen",
+        by: null,
+        at: null,
+      });
+      expect(
+        drawn.kind === "done"
+          ? drawn.words.endsWith("Kept on GitHub")
+            ? "connected"
+            : "declined"
+          : drawn.kind === "working"
+            ? said
+            : drawn.kind === "replaced"
+              ? "closed"
+              : "open",
+      ).toBe(face);
       expect(originAskAnswer(state, said, connected)).toBe(answer);
     },
   );
+
+  it.each([
+    {
+      name: "kept on GitHub, who and when",
+      state: "connected",
+      want: {
+        kind: "done",
+        words: "github.com/krls2020/eval2 · Kept on GitHub · Aleš, 15:02",
+        told: null,
+      },
+    },
+    {
+      name: "kept in Mate, who and when",
+      state: "declined",
+      want: {
+        kind: "done",
+        words: "github.com/krls2020/eval2 · Kept in Mate · Aleš, 15:02",
+        told: null,
+      },
+    },
+    {
+      name: "closed without an answer",
+      state: "closed",
+      want: { kind: "replaced", words: "Fen isn't waiting on this any more." },
+    },
+  ] as const)("the card says the engine's record of the pick: $name", ({ state, want }) => {
+    expect(
+      originAskState({
+        state,
+        pending: null,
+        connected: false,
+        url: ask.url,
+        mateName: "Fen",
+        by: "Aleš",
+        at: "15:02",
+      }),
+    ).toEqual(want);
+  });
 });
 
 const app = (repositories: ReadonlyArray<string>): GitMirrorApp => ({
@@ -170,6 +234,17 @@ describe("keeping an asked origin's code on GitHub", () => {
       step: { kind: "not-reached", name: "Acme Mate" },
     },
     {
+      case: "the app is installed where the repository is, but that installation waits for an OK",
+      github: {
+        ...app(["krls2020/other"]),
+        installTrip: true,
+        waiting: [{ account: "krls2020", repositories: ["krls2020/eval2"] }],
+      },
+      repos: [repo("appdev", null)],
+      mountable: true,
+      step: { kind: "waiting", account: "krls2020" },
+    },
+    {
       case: "the app reaches the repository in another case",
       github: app(["Krls2020/Eval2"]),
       repos: [repo("appdev", null)],
@@ -235,5 +310,148 @@ describe("keeping the asked origin's code in Mate", () => {
     );
     expect(seen).toEqual(steps);
     expect(answer).toBe(said);
+  });
+});
+
+/** An origin ask as the engine records it in the thread: asked at `at`, answered at `answeredAt`. */
+const asked = (
+  requestId: string,
+  url: string,
+  repoName: string,
+  at: string,
+  answeredAt?: string,
+): OrchestrationThreadActivity =>
+  ({
+    id: `${requestId}#origin`,
+    kind: ORIGIN_ASK_ACTIVITY_KIND,
+    tone: "info",
+    summary: "Origin requested",
+    turnId: "turn-1",
+    createdAt: at,
+    payload: {
+      requestId,
+      url,
+      repo: repoName,
+      reason: null,
+      state: answeredAt === undefined ? "open" : "connected",
+      answer:
+        answeredAt === undefined
+          ? null
+          : { by: { kind: "person", userId: "viewer" }, at: Date.parse(answeredAt) },
+    },
+  }) as unknown as OrchestrationThreadActivity;
+
+const NOOLA = "https://github.com/fxck/noola";
+
+// The owner, 2026-10-27: a Mate with seven dev services from one repository asked "Where do you
+// keep the code of github.com/fxck/noola?" seven times, one card each.
+describe("one question per repository address", () => {
+  const places = (activities: ReadonlyArray<OrchestrationThreadActivity>) =>
+    originAskPlaces(originAskPlacesKey(activities)).map(({ requestId, requestIds }) => ({
+      requestId,
+      requestIds,
+    }));
+
+  it("stands asks naming the same address while one is open as one card where the first was asked", () => {
+    expect(
+      places([
+        asked("r1", NOOLA, "appdev", "2026-10-27T09:00:00.000Z"),
+        asked("r2", `${NOOLA.replace("fxck", "FXCK")}.git`, "apidev", "2026-10-27T09:00:01.000Z"),
+        asked("r3", "https://github.com/fxck/other", "webdev", "2026-10-27T09:00:02.000Z"),
+        asked("r4", NOOLA, "workerdev", "2026-10-27T09:00:03.000Z"),
+      ]),
+    ).toEqual([
+      { requestId: "r1", requestIds: ["r1", "r2", "r4"] },
+      { requestId: "r3", requestIds: ["r3"] },
+    ]);
+  });
+
+  it("keeps them one card once their answer settled them", () => {
+    expect(
+      places([
+        asked("r1", NOOLA, "appdev", "2026-10-27T09:00:00.000Z", "2026-10-27T09:05:00.000Z"),
+        asked("r2", NOOLA, "apidev", "2026-10-27T09:00:01.000Z", "2026-10-27T09:05:00.000Z"),
+      ]),
+    ).toEqual([{ requestId: "r1", requestIds: ["r1", "r2"] }]);
+  });
+
+  it("asks an address again as a new question once its earlier ask was answered", () => {
+    expect(
+      places([
+        asked("r1", NOOLA, "appdev", "2026-10-27T09:00:00.000Z", "2026-10-27T09:05:00.000Z"),
+        asked("r2", NOOLA, "apidev", "2026-10-27T10:00:00.000Z"),
+      ]),
+    ).toEqual([
+      { requestId: "r1", requestIds: ["r1"] },
+      { requestId: "r2", requestIds: ["r2"] },
+    ]);
+  });
+});
+
+describe("a card standing for several asks", () => {
+  const asks: ReadonlyArray<OriginAsk & { readonly requestId: string }> = [
+    { requestId: "r1", url: NOOLA, repo: "appdev", reason: null, state: "connected" },
+    {
+      requestId: "r2",
+      url: `${NOOLA}.git`,
+      repo: "apidev",
+      reason: "Its CI runs there.",
+      state: "open",
+    },
+    { requestId: "r3", url: NOOLA, repo: "apidev", reason: null, state: "open" },
+  ];
+
+  it("asks while any of its asks is open, and its answer goes to each of those", () => {
+    const group = originAskGroup(asks);
+    expect(group.ask).toEqual({
+      url: NOOLA,
+      repo: "apidev",
+      reason: "Its CI runs there.",
+      state: "open",
+    });
+    expect(group.open).toEqual(["r2", "r3"]);
+    expect(group.repos).toEqual(["apidev"]);
+  });
+
+  it.each([
+    { case: "withdrawn by its Mate", state: "closed" as const },
+    { case: "answered already", state: "declined" as const },
+  ])(
+    "an ask of the same address $case stands in no repository its answer mounts or follows",
+    ({ state }) => {
+      const group = originAskGroup([
+        { requestId: "r1", url: NOOLA, repo: "apidev", reason: null, state: "open" },
+        { requestId: "r2", url: NOOLA, repo: "webdev", reason: null, state },
+      ]);
+      expect(group.open).toEqual(["r1"]);
+      expect(group.repos).toEqual(["apidev"]);
+      expect(group.connected([repo("apidev", NOOLA, "app")])).toBe(true);
+    },
+  );
+
+  it("is kept on GitHub once HQ mounts every repository its asks name", () => {
+    const group = originAskGroup(asks);
+    const mounted = repo("apidev", `${NOOLA}.git`, "app");
+    expect(group.connected([repo("appdev", NOOLA, "app")])).toBe(false);
+    expect(group.connected([mounted])).toBe(true);
+  });
+});
+
+describe("the person's pick refused for an ask the engine holds open no more", () => {
+  it.each([
+    {
+      case: "an ask the Mate settled meanwhile: the pick stands",
+      error: new OperationStopped("That question is no longer open.", "unknown-request"),
+      settled: true,
+    },
+    {
+      case: "an ask the engine cannot take an answer for: refused",
+      error: new OperationStopped("That question can no longer be answered.", "not-answerable"),
+      settled: false,
+    },
+    { case: "a failure that says no reason: refused", error: new Error("socket"), settled: false },
+    { case: "nothing: refused", error: undefined, settled: false },
+  ])("$case", ({ error, settled }) => {
+    expect(originAnswerSettled(error)).toBe(settled);
   });
 });

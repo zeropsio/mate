@@ -55,6 +55,7 @@ const task = (id: string, number = 42): MateTask => ({
     author: "nova",
   },
   body: "Add two teas, reload: the cart is empty.",
+  limits: { minutes: 60, costUsd: null },
 });
 
 /** The organization's GitHub app's bot, as HQ names a task's commit author. */
@@ -1619,16 +1620,6 @@ describe("a task stops at its limits", () => {
     }),
   );
 
-  it.effect("a task from an HQ that sets no limits stops after 60 minutes of work", () =>
-    Effect.gen(function* () {
-      const { delivered, id, sent } = yield* working("task-1");
-      yield* TestClock.adjust("60 minutes");
-      yield* settle;
-      assert.deepStrictEqual(stopsOf(delivered), [RunId.make(`${id}/r/1`)]);
-      assert.strictEqual(sent.at(-1)?.detail, "It reached its 60-minute limit.");
-    }),
-  );
-
   it.effect(
     "only the minutes its agent works count toward a task's limit, never its wait for an answer",
     () =>
@@ -2348,8 +2339,11 @@ describe("an automated Mate's working copies hold the task it works", () => {
         lastEnded: doneRun("task-1", 1, 0, 1),
       });
       yield* link.receive(task("task-2", 43));
-      // Task 2's run is on: task 1's follow-up joins it where the working copies are.
-      yield* link.message("task-1", message("m-1", "Keep the green tea first."), CHANGE_1);
+      // Task 2's run is on: task 1's follow-up waits for it to end, the working copies untouched.
+      yield* Effect.forkChild(
+        link.message("task-1", message("m-1", "Keep the green tea first."), CHANGE_1),
+      );
+      yield* Effect.yieldNow;
       assert.deepStrictEqual(
         copies.map((each) => each.taskId),
         ["task-1", "task-2"],

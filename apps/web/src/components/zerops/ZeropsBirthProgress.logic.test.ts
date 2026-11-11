@@ -46,6 +46,7 @@ describe("birthStepToProcessStep", () => {
   it("maps waiting to the queued glyph, hidden state word", () => {
     const result = birthStepToProcessStep(step({ id: "mate", state: "waiting" }), NOW);
     expect(result).toMatchObject({ id: "mate", state: "queued", stateLabel: "Waiting" });
+    expect(result.durationMs).toBeUndefined();
   });
 
   it("maps done to the done glyph, hidden state word", () => {
@@ -75,11 +76,6 @@ describe("birthStepToProcessStep", () => {
       stateLabel: "Failed",
       note: "Could not be created.",
     });
-  });
-
-  it("carries no duration when the step has not started", () => {
-    const result = birthStepToProcessStep(step({ id: "mate", state: "waiting" }), NOW);
-    expect(result.durationMs).toBeUndefined();
   });
 
   it("takes a finished step's duration from its own started/ended timestamps", () => {

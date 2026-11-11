@@ -75,6 +75,8 @@ it("a fresh engine draft consumes the sidebar's terminal run verdict and settles
         serverThreadRef: inferred,
         serverThreadStarted: threadHasStarted(thread),
         backgroundSubmissionPending: false,
+        serverThreadMessages: thread?.messages ?? [],
+        pendingMessageIds: [],
       }),
     ).toEqual(ref);
     expect(

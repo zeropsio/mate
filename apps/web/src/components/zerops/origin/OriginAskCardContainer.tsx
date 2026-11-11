@@ -1,9 +1,12 @@
 /**
- * An origin ask as the conversation draws it: the engine's record of the request, the application
- * HQ places the Mate in (whose repository the GitHub app mounts) and the pick — on GitHub once HQ
- * mounts the asked repository, from the card's sheet or anywhere else, or in Mate on its press,
- * once HQ follows a GitHub repository or leaves its follow to an owner or admin — only the pick reaches the engine. What the person picked here is kept in memory by the request,
- * so the card folds at once and stays folded until the engine's record says so too.
+ * An origin question as the conversation draws it: the engine's records of the requests it stands
+ * for — one per address at a time (`originAskPlaces`): a Mate with several dev services from one
+ * repository asks once for each —, the application HQ places the Mate in (whose repositories the
+ * GitHub app mounts) and the pick — on GitHub once HQ mounts every asked repository, from the
+ * card's sheet or anywhere else, or in Mate on its press, once HQ follows each GitHub repository
+ * or leaves its follow to an owner or admin — only the pick reaches the engine, for every ask
+ * still open. The card's state is the engine's records and HQ's mount; this tab holds only a pick
+ * still on its way, which the record outranks once it says so.
  */
 import {
   isAtomCommandInterrupted,
@@ -12,80 +15,81 @@ import {
 import { OperationStopped } from "@t3tools/client-runtime/data";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useRef } from "react";
-import { create } from "zustand";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useThreadDetail } from "~/state/entities";
 import { threadEnvironment } from "~/state/threads";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { useMateOfEnvironment } from "~/zerops/accountEnvironments";
 import { useApplicationOfProject } from "~/zerops/useGitEnvironmentFormInputs";
-import { useGitMirrorApp } from "~/zerops/useGitMirrorApp";
+import { useGitMirrorApps } from "~/zerops/useGitMirrorApps";
+import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
+import { hqOfferWords } from "@t3tools/client-runtime/zerops/hq";
+import { HQ_REMOTE_WRITE_VERB, hqOffer } from "@t3tools/shared/hqOffers";
+import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
-import { useHqOffers } from "~/zerops/useHqOffers";
 import { useKnownMate } from "~/zerops/useZeropsMates";
+import { usePersonNames } from "~/zerops/useZeropsMateOwners";
+import { useClientSettings } from "~/hooks/useSettings";
+import { formatDayAwareTimestamp } from "~/timestampFormat";
 import { OriginAskCard } from "./OriginAskCard";
 import {
-  type OriginAsk,
+  type OriginAskOfRequest,
   type OriginAskSaid,
+  originAnswerSettled,
   originAskAnswer,
-  originAskFace,
-  originAskFromKey,
-  originAskKey,
+  originAskState,
+  originAskGroup,
+  originAsksFromKey,
+  originAsksKey,
   keepInMate,
   originAskOf,
   originConnected,
+  originGithubApp,
 } from "./originAsk.logic";
 
-/** What the person said to each ask here, by its request. Memory only. */
-const useOriginAskSaid = create<Readonly<Record<string, OriginAskSaid>>>()(() => ({}));
-
-const say = (requestId: string, said: OriginAskSaid | null) =>
-  useOriginAskSaid.setState((state) => {
-    if (said !== null) return { ...state, [requestId]: said };
-    const { [requestId]: _gone, ...rest } = state;
-    return rest;
-  });
-
 export function OriginAskCardContainer({
-  requestId,
+  requestIds,
   environmentId,
   threadRef,
 }: {
-  readonly requestId: string;
+  readonly requestIds: ReadonlyArray<string>;
   readonly environmentId: EnvironmentId | null;
   readonly threadRef: ScopedThreadRef | null;
 }) {
   // As a string, so a change elsewhere in the thread draws nothing here.
-  const askKey = useThreadDetail(
+  const requests = requestIds.join("\n");
+  const asksKey = useThreadDetail(
     threadRef,
     useMemo(
       () => (detail: { readonly activities?: unknown } | null) =>
-        originAskKey(
-          originAskOf(detail?.activities as Parameters<typeof originAskOf>[0], requestId),
+        originAsksKey(
+          requests
+            .split("\n")
+            .map((requestId) =>
+              originAskOf(detail?.activities as Parameters<typeof originAskOf>[0], requestId),
+            ),
         ),
-      [requestId],
+      [requests],
     ),
   );
-  const ask = useMemo(() => originAskFromKey(askKey), [askKey]);
-  if (ask === null || environmentId === null || threadRef === null) return null;
-  return (
-    <AskCard ask={ask} environmentId={environmentId} requestId={requestId} threadRef={threadRef} />
-  );
+  const asks = useMemo(() => originAsksFromKey(asksKey), [asksKey]);
+  if (asks.length === 0 || environmentId === null || threadRef === null) return null;
+  return <AskCard asks={asks} environmentId={environmentId} threadRef={threadRef} />;
 }
 
 function AskCard({
-  ask,
+  asks,
   environmentId,
-  requestId,
   threadRef,
 }: {
-  readonly ask: OriginAsk;
+  readonly asks: ReadonlyArray<OriginAskOfRequest>;
   readonly environmentId: EnvironmentId;
-  readonly requestId: string;
   readonly threadRef: ScopedThreadRef;
 }) {
+  const group = useMemo(() => originAskGroup(asks), [asks]);
+  const { ask, open, repos: asked } = group;
   const mate = useKnownMate(environmentId);
   const location = useMateOfEnvironment(environmentId);
   const application = useApplicationOfProject(location?.projectId ?? mate?.projectId);
@@ -93,32 +97,46 @@ function AskCard({
   const detail = useHqAppDetail(appId);
   const repos = detail.live ? detail.repos : undefined;
   const target = useGitTargetOperations(appId ?? "");
-  const hqOffers = useHqOffers();
-  const offer = hqOffers.state(target.can, "connect_remote");
+  const offer = hqOffer(target.can, HQ_REMOTE_WRITE_VERB);
   const viaApp = target.actions?.viaApp;
   const follow = appId === null ? undefined : target.actions?.follow;
-  // The app is read while the GitHub way can still be picked.
-  const github = useGitMirrorApp(ask.state === "open");
+  // The apps are read while the GitHub way can still be picked.
+  const github = useGitMirrorApps(ask.state === "open");
+  const session = useZeropsSession();
+  const { app, githubAppId } = originGithubApp(github.apps, ask.url, session.user?.id ?? null);
+  const admin = roleAtLeast(session.activeOrganization?.roleCode, "ADMIN");
   const navigate = useNavigate();
-  const said = useOriginAskSaid((state) => state[requestId] ?? null);
+  // A pick on its way: the engine's record outranks it once it says so.
+  const [pending, setPending] = useState<OriginAskSaid | null>(null);
+  const pendingRef = useRef<OriginAskSaid | null>(null);
+  const nameOf = usePersonNames(location?.orgId ?? undefined);
+  const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const answerOriginAsk = useAtomCommand(threadEnvironment.answerOriginAsk, {
     reportFailure: false,
   });
   const tell = useCallback(
     async (outcome: OriginAskSaid): Promise<string | null> => {
       // The sheet's production and HQ's record both answer connected: the engine hears it once.
-      if (useOriginAskSaid.getState()[requestId] === outcome) return null;
-      say(requestId, outcome);
-      const result = await answerOriginAsk({
-        environmentId,
-        input: { threadId: threadRef.threadId, requestId, outcome },
-      });
-      if (result._tag === "Success" || isAtomCommandInterrupted(result)) return null;
-      say(requestId, null);
-      const error = squashAtomCommandFailure(result);
-      return error instanceof Error ? error.message : "The Mate did not take the answer.";
+      if (pendingRef.current === outcome) return null;
+      pendingRef.current = outcome;
+      setPending(outcome);
+      // Every ask the card stands for that is still open hears the one pick.
+      for (const each of open) {
+        const result = await answerOriginAsk({
+          environmentId,
+          input: { threadId: threadRef.threadId, requestId: each, outcome },
+        });
+        if (result._tag === "Success" || isAtomCommandInterrupted(result)) continue;
+        const error = squashAtomCommandFailure(result);
+        // Settled by its Mate (or answered) meanwhile: nothing left to tell it.
+        if (originAnswerSettled(error)) continue;
+        pendingRef.current = null;
+        setPending(null);
+        return error instanceof Error ? error.message : "The Mate did not take the answer.";
+      }
+      return null;
     },
-    [answerOriginAsk, environmentId, requestId, threadRef.threadId],
+    [answerOriginAsk, environmentId, open, threadRef.threadId],
   );
   const onAnswer = useCallback(
     (outcome: OriginAskSaid): Promise<string | null> =>
@@ -133,7 +151,8 @@ function AskCard({
                 ? undefined
                 : async (url) => {
                     try {
-                      await follow(ask.repo, url);
+                      // Each repository the asks name follows the one address.
+                      for (const repo of asked) await follow(repo, url);
                       return null;
                     } catch (cause) {
                       return cause instanceof OperationStopped
@@ -143,11 +162,13 @@ function AskCard({
                   },
             () => tell(outcome),
           ),
-    [ask.repo, ask.url, follow, offer.kind, tell],
+    [ask.url, asked, follow, offer.kind, tell],
   );
-  const connected = originConnected(ask, repos);
+  const connected = group.connected(repos);
+  // The repositories HQ does not mount yet: the sheet speaks of the first, and mounts them all.
+  const unmounted = asked.filter((repo) => !originConnected({ url: ask.url, repo }, repos));
   // HQ mounting the asked repository, from the sheet or anywhere else, answers once here.
-  const due = originAskAnswer(ask.state, said, connected);
+  const due = originAskAnswer(ask.state, pending, connected);
   const answered = useRef(false);
   useEffect(() => {
     if (due === null || answered.current) return;
@@ -156,19 +177,21 @@ function AskCard({
   }, [due, onAnswer]);
   return (
     <OriginAskCard
-      ask={ask}
+      ask={unmounted[0] === undefined ? ask : { ...ask, repo: unmounted[0] }}
       github={
         appId === null
           ? undefined
           : {
-              app: github.app,
+              app,
               repos,
               mountable: offer.kind === "allowed" && viaApp !== undefined,
-              refusal: hqOffers.words(offer),
+              refusal: hqOfferWords(offer),
               onMount: async (repository) => {
                 if (viaApp === undefined) return "HQ doesn't let you connect a repository here.";
                 try {
-                  await viaApp(ask.repo, repository);
+                  // Each repository the asks name, through the app, to the one GitHub repository.
+                  for (const repo of unmounted)
+                    await viaApp(repo, repository, githubAppId ?? undefined);
                   return null;
                 } catch (cause) {
                   return cause instanceof OperationStopped
@@ -178,11 +201,27 @@ function AskCard({
               },
               onCheckAgain: github.again,
               onOpenAutomation: () => void navigate({ to: "/settings/automation" }),
+              admin,
+              onInstall: () => {
+                if (app?.kind === "connected" && app.appId !== undefined)
+                  void github.install(app.appId);
+              },
             }
       }
-      face={originAskFace(ask.state, said, connected)}
       mateName={mate?.name ?? "Your Mate"}
       onAnswer={onAnswer}
+      state={originAskState({
+        state: ask.state,
+        pending,
+        connected,
+        url: ask.url,
+        mateName: mate?.name ?? "Your Mate",
+        by: group.answered.by === null ? null : (nameOf(group.answered.by) ?? null),
+        at:
+          group.answered.at === null
+            ? null
+            : formatDayAwareTimestamp(new Date(group.answered.at).toISOString(), timestampFormat),
+      })}
     />
   );
 }

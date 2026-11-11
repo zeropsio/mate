@@ -1,4 +1,4 @@
-import type { McpServerAddInput } from "@t3tools/contracts";
+import { MCP_AGENT_LIMITS, type McpServerAddInput } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -11,6 +11,7 @@ import {
   type McpFileEdit,
   type McpFiles,
 } from "./mcpAgents.ts";
+import { readTomlServers } from "./mcpToml.ts";
 
 const PATHS: McpAgentPaths = {
   cwd: "/var/www",
@@ -370,7 +371,7 @@ describe("decodeMcpTransport", () => {
     [{ command: ["bunx", "x"] }, { type: "stdio", command: "bunx", args: ["x"] }],
     [
       { type: "sse", url: "https://a" },
-      { type: "http", url: "https://a" },
+      { type: "sse", url: "https://a" },
     ],
     [{ httpUrl: "https://b" }, { type: "http", url: "https://b" }],
     [
@@ -488,4 +489,195 @@ describe("a write that would not read back", () => {
     const files = new Map([[PATHS.codexConfigs[0]!, "[a]\nx = 1\n[a]\n"]]);
     expect(() => store("codex").read(files)).toThrow(McpConfigParseError);
   });
+});
+
+describe("transports and sign-ins each agent can take", () => {
+  // A client secret as a person would paste it, built from parts.
+  const SECRET = ["s3cr", "et", "v4lue"].join("-");
+  const URL_SERVER = (input: Partial<McpServerAddInput>): McpServerAddInput => ({
+    name: "app",
+    transport: { type: "http", url: "https://mcp.example.com/mcp" },
+    ...input,
+  });
+  /** The server as the agent's own config holds it after the add. */
+  const written = (driver: string, input: McpServerAddInput): unknown => {
+    const files = apply(ZCP_FILES, store(driver).add(ZCP_FILES, input));
+    switch (driver) {
+      case "claudeAgent":
+        return JSON.parse(files.get(PATHS.claudeConfigs[0]!)!).mcpServers.app;
+      case "cursor":
+        return JSON.parse(files.get("/home/zerops/.cursor/mcp.json")!).mcpServers.app;
+      case "opencode":
+        return JSON.parse(files.get(PATHS.openCodeConfig)!).mcp.app;
+      case "antigravity":
+        return JSON.parse(files.get(PATHS.antigravityConfigs[0]!)!).mcpServers.app;
+      case "codex":
+        return readTomlServers(files.get(PATHS.codexConfigs[0]!)!, "mcp_servers")["app"];
+      default:
+        return readTomlServers(files.get(PATHS.grokConfig)!, "mcp_servers")["app"];
+    }
+  };
+  const SSE = URL_SERVER({ transport: { type: "sse", url: "https://mcp.example.com/sse" } });
+
+  it.each([
+    { driver: "claudeAgent", shape: { type: "sse", url: "https://mcp.example.com/sse" } },
+    { driver: "cursor", shape: { type: "sse", url: "https://mcp.example.com/sse" } },
+    { driver: "codex", cannot: "Codex can't use SSE servers." },
+    { driver: "grok", cannot: "Grok can't use SSE servers." },
+    { driver: "antigravity", cannot: "Antigravity can't use SSE servers." },
+    { driver: "opencode", cannot: "OpenCode can't use SSE servers." },
+  ])("an SSE server is written as SSE where $driver speaks it, and refused where not", (row) => {
+    expect(store(row.driver).cannot(SSE)).toBe(row.cannot ?? null);
+    if (row.shape !== undefined) {
+      expect(written(row.driver, SSE)).toEqual(row.shape);
+      const back = store(row.driver).read(apply(ZCP_FILES, store(row.driver).add(ZCP_FILES, SSE)));
+      expect(back.find((server) => server.name === "app")?.transport).toEqual(SSE.transport);
+    }
+  });
+
+  const APP = URL_SERVER({
+    auth: {
+      kind: "oauth-app",
+      clientId: "mate-app",
+      clientSecret: SECRET,
+      scopes: ["read", "write"],
+    },
+  });
+  const PUBLIC_APP = URL_SERVER({ auth: { kind: "oauth-app", clientId: "mate-app" } });
+  it.each([
+    {
+      driver: "claudeAgent",
+      input: PUBLIC_APP,
+      shape: {
+        type: "http",
+        url: "https://mcp.example.com/mcp",
+        oauth: { clientId: "mate-app", callbackPort: 33418 },
+      },
+    },
+    {
+      driver: "claudeAgent",
+      input: APP,
+      cannot: "Claude Code can't take your app's client secret from Mate.",
+    },
+    {
+      driver: "cursor",
+      input: APP,
+      shape: {
+        url: "https://mcp.example.com/mcp",
+        auth: { CLIENT_ID: "mate-app", CLIENT_SECRET: SECRET, scopes: ["read", "write"] },
+      },
+    },
+    {
+      driver: "opencode",
+      input: APP,
+      shape: {
+        type: "remote",
+        url: "https://mcp.example.com/mcp",
+        oauth: {
+          clientId: "mate-app",
+          clientSecret: SECRET,
+          scope: "read write",
+          callbackPort: 33419,
+          redirectUri: "http://127.0.0.1:33419/mcp/oauth/callback",
+        },
+        enabled: true,
+      },
+    },
+    {
+      driver: "codex",
+      input: PUBLIC_APP,
+      cannot:
+        "Codex can't sign in with your own app: it picks a new sign-in address each time, which an app can't register.",
+    },
+    { driver: "grok", input: PUBLIC_APP, cannot: "Grok can't sign in with your own app." },
+    {
+      driver: "antigravity",
+      input: PUBLIC_APP,
+      cannot: "Antigravity can't sign in with your own app.",
+    },
+  ])("signing in with your own app is written the way $driver reads it, or refused", (row) => {
+    expect(store(row.driver).cannot(row.input)).toBe(row.cannot ?? null);
+    if (row.shape !== undefined) expect(written(row.driver, row.input)).toEqual(row.shape);
+  });
+
+  const SCOPED = URL_SERVER({ auth: { kind: "oauth", scopes: ["read", "write"] } });
+  it.each([
+    { driver: "claudeAgent", field: (entry: any) => entry.oauth, value: { scopes: "read write" } },
+    { driver: "codex", field: (entry: any) => entry.scopes, value: ["read", "write"] },
+    { driver: "opencode", field: (entry: any) => entry.oauth, value: { scope: "read write" } },
+  ])("a sign-in's scopes are kept where $driver reads them", ({ driver, field, value }) => {
+    expect(store(driver).cannot(SCOPED)).toBeNull();
+    expect(field(written(driver, SCOPED))).toEqual(value);
+  });
+
+  it("OpenCode is told not to try a sign-in on a server that needs none", () => {
+    const entry = written("opencode", URL_SERVER({ auth: { kind: "none" } })) as {
+      oauth?: unknown;
+    };
+    expect(entry.oauth).toBe(false);
+  });
+
+  it.each([
+    {
+      driver: "cursor",
+      view: { kind: "oauth-app", clientId: "mate-app", scopes: ["read", "write"], secret: true },
+    },
+    {
+      driver: "opencode",
+      view: { kind: "oauth-app", clientId: "mate-app", scopes: ["read", "write"], secret: true },
+    },
+  ])(
+    "$driver reads back an app's client id and that a secret is stored, never the secret",
+    ({ driver, view }) => {
+      const files = apply(ZCP_FILES, store(driver).add(ZCP_FILES, APP));
+      const server = store(driver)
+        .read(files)
+        .find((found) => found.name === "app");
+      expect(server?.auth).toEqual(view);
+      expect(JSON.stringify(server)).not.toContain(SECRET);
+    },
+  );
+
+  it.each(["cursor", "opencode"])(
+    "changing %s's own-app sign-in keeps the stored client secret when none is given",
+    (driver) => {
+      const files = apply(ZCP_FILES, store(driver).add(ZCP_FILES, APP));
+      const next = apply(
+        files,
+        store(driver).setAuth(files, "app", { kind: "oauth-app", clientId: "other-app" }),
+      );
+      expect(JSON.stringify(written(driver, APP))).toContain(SECRET);
+      const server = store(driver)
+        .read(next)
+        .find((found) => found.name === "app");
+      expect(server?.auth).toEqual({
+        kind: "oauth-app",
+        clientId: "other-app",
+        scopes: [],
+        secret: true,
+      });
+    },
+  );
+});
+
+describe("what each agent can't take, as the client reads it", () => {
+  it.each([...stores.keys()])(
+    "%s refuses an SSE server, an own app or its secret exactly where MCP_AGENT_LIMITS says",
+    (driver) => {
+      const limits = MCP_AGENT_LIMITS[driver];
+      expect(limits, `MCP_AGENT_LIMITS names ${driver}`).toBeDefined();
+      const store = stores.get(driver)!;
+      const url = { type: "http" as const, url: "https://mcp.example.com/mcp" };
+      expect(store.cannot({ transport: { type: "sse", url: url.url } }) === null).toBe(limits!.sse);
+      expect(
+        store.cannot({ transport: url, auth: { kind: "oauth-app", clientId: "app" } }) === null,
+      ).toBe(limits!.ownApp);
+      expect(
+        store.cannot({
+          transport: url,
+          auth: { kind: "oauth-app", clientId: "app", clientSecret: "s" },
+        }) === null,
+      ).toBe(limits!.ownApp && limits!.ownAppSecret);
+    },
+  );
 });

@@ -24,7 +24,13 @@
  */
 
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
-import { type ChangeReceipt, changeUrl, type HqChange, repoUrl } from "@t3tools/shared/hqChanges";
+import {
+  type ChangeReceipt,
+  changeUrl,
+  type HqChange,
+  type HqCorePush,
+  repoUrl,
+} from "@t3tools/shared/hqChanges";
 import type { HqPullRequest } from "@t3tools/shared/hqGithub";
 import type { HqNavigationChange } from "@t3tools/shared/hqStream";
 import { RECIPE_PROPOSAL_TITLE, RECIPE_REPO } from "@t3tools/shared/hqRecipe";
@@ -40,6 +46,8 @@ export type FlowPullRequestKind = "code" | "recipe";
 /** One open pull request of the project, as every surface shows it. */
 export interface FlowPullRequest {
   readonly pipeline?: HqChange["pipeline"] | undefined;
+  readonly recipeValidation?: HqChange["recipeValidation"] | undefined;
+  readonly problems?: HqChange["problems"] | undefined;
   /** The repository's name in the group's org. */
   readonly repository: string;
   /**
@@ -93,6 +101,11 @@ export interface FlowPullRequest {
   /** Closed without merging by its own Mate (`HqChange.closedByMate`). */
   readonly closedByMate?: true | undefined;
   /**
+   * Closed by HQ because the landing of this change of its repository carried all of it onto
+   * `main` (`HqChange.landedWith`): it landed, with that one.
+   */
+  readonly landedWith?: number | undefined;
+  /**
    * `open` or `closed`, as HQ says. A change read on its own by number may be closed without
    * ever merging: its review must not offer to merge it. Optional, as every flow built before a
    * review read it carries none.
@@ -124,6 +137,13 @@ export interface FlowPullRequest {
    */
   readonly ready?: boolean | undefined;
   /**
+   * On a draft described before a push: why it is a draft again (`HqChange.draftReason`), an open
+   * word, of which `draftAgainWords` knows some. Absent otherwise.
+   */
+  readonly draftReason?: string | undefined;
+  /** HQ's latest own push on its branch (`HqChange.corePush`); absent where HQ never moved it. */
+  readonly corePush?: HqCorePush | undefined;
+  /**
    * What zcp last said of each part's preview (`HqChange.receipt`); absent for a change of a
    * single-part application, which never carries one.
    */
@@ -132,9 +152,45 @@ export interface FlowPullRequest {
   readonly pullRequest?: HqPullRequest | undefined;
 }
 
-/** Whether a change asks for the person's review at all: it is no draft. */
-export function changeAsksForReview(pull: Pick<FlowPullRequest, "ready">): boolean {
-  return pull.ready !== false;
+/**
+ * Whether a change asks for the person's review at all: it is no draft, no Mate's automatic
+ * proposal of the recipe's missing tiers its Mate redoes from main (`recipeProposalRedone`), and
+ * `main` lacks something of it. One `main` already holds all of (`empty`) leaves nothing to read
+ * and nothing to merge, so it waits for nobody: no Review counts it and no strip lists it, while
+ * its own row still says `Nothing to merge` (the owner, 2026-11-10: a change its Mate had
+ * retitled to say another had already taken it to main stood among the changes waiting for a
+ * review, with a Review of its own).
+ */
+export function changeAsksForReview(
+  pull: Pick<FlowPullRequest, "ready" | "kind" | "title" | "mergeability" | "mateGone">,
+): boolean {
+  return pull.ready !== false && pull.mergeability !== "empty" && !recipeProposalRedone(pull);
+}
+
+/**
+ * A Mate's automatic proposal of the recipe's missing tiers (`isRecipeProposal`) that conflicts
+ * with main: zcp composes it again from main by itself, and Core lands it or closes it, so nobody
+ * is asked. One that stays open otherwise is one Core refused — it judges a recipe change once, on
+ * its push — and only a person lands it; one whose Mate is gone nobody redoes.
+ */
+export function recipeProposalRedone(
+  pull: Pick<FlowPullRequest, "kind" | "title" | "mergeability" | "mateGone">,
+): boolean {
+  return isRecipeProposal(pull) && pull.mergeability === "conflicting" && pull.mateGone !== true;
+}
+
+/**
+ * Whether a change is listed where a Mate's review is asked for — its conversation's Review, its
+ * menu row's mark, its project row's tag and popover — and so counted alike there and in the
+ * composer's top (`mateNextStep`): its code that asks for review. A recipe change is the project's
+ * setup, whichever Mate proposed it: Core lands it by itself unless its merge would change an
+ * environment, and then the project's page asks for it, once, as a setup change (Larkspur,
+ * 2026-10-28: "Review 2" in the header over a composer card of one).
+ */
+export function changeInMateReview(
+  pull: Pick<FlowPullRequest, "ready" | "kind" | "title" | "mergeability" | "mateGone">,
+): boolean {
+  return pull.kind === "code" && changeAsksForReview(pull);
 }
 
 /** A change's Mate as its Review reads it: whether it works now, in any of its chats. */
@@ -149,7 +205,7 @@ export interface MateRunFacts {
  * still move: none asks for review until it rests.
  */
 export function changeShowsReview(
-  pull: Pick<FlowPullRequest, "ready">,
+  pull: Pick<FlowPullRequest, "ready" | "kind" | "title" | "mergeability" | "mateGone">,
   mate: MateRunFacts | undefined,
 ): boolean {
   return changeAsksForReview(pull) && mate?.working !== true;
@@ -172,6 +228,8 @@ export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest
   const merged = change.state === "merged";
   return {
     pipeline: change.pipeline,
+    ...(change.recipeValidation === undefined ? {} : { recipeValidation: change.recipeValidation }),
+    ...(change.problems === undefined ? {} : { problems: change.problems }),
     repository: change.repo,
     repositoryUrl: repoUrl(hqAddress, change.appId, change.repo),
     number: change.number,
@@ -189,6 +247,9 @@ export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest
     ...(change.firstCodeMerge === undefined ? {} : { firstCodeMerge: change.firstCodeMerge }),
     ...(merged && change.landedOutside === true ? { landedOutside: true } : {}),
     ...(change.state === "closed" && change.closedByMate === true ? { closedByMate: true } : {}),
+    ...(change.state === "closed" && change.landedWith !== undefined
+      ? { landedWith: change.landedWith }
+      : {}),
     state: change.state === "open" ? "open" : "closed",
     headSha: change.head ?? undefined,
     ...(change.state === "open" && change.head === null ? { unpushed: true } : {}),
@@ -203,6 +264,8 @@ export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest
     description: change.body.trim().length === 0 ? undefined : change.body,
     commentCount: change.comments ?? undefined,
     ready: change.ready,
+    ...(change.draftReason === undefined ? {} : { draftReason: change.draftReason }),
+    ...(change.corePush === undefined ? {} : { corePush: change.corePush }),
     ...(change.receipt === undefined || change.receipt === null ? {} : { receipt: change.receipt }),
     ...(change.pullRequest === undefined ? {} : { pullRequest: change.pullRequest }),
   };
@@ -416,24 +479,77 @@ export function productionRelease(
 }
 
 /**
+ * A production release ending, as a conversation places it and its Mate is told of it: it runs
+ * there now, or it did not go live. Read from the application's releases as the flow holds them,
+ * never from a passing event, so a reload says the same.
+ */
+export interface ReleaseEndedEvent {
+  /** Stable across reads, so a timeline can key on it. */
+  readonly key: string;
+  readonly tag: string;
+  readonly outcome: "live" | "failed";
+  /** When HQ made the release. */
+  readonly taggedAt: string;
+  /** When it ended, as far as the flow says: its deploy's end, else when HQ made it. */
+  readonly endedAt: string;
+  /** A failed one's cause in a clause, where the flow knows it: "db could not be created". */
+  readonly cause: string | undefined;
+  /** A failed one: the release production still runs, where an earlier one does. */
+  readonly stillRuns: string | undefined;
+}
+
+/** "Release v0.1.5 didn't go live: db could not be created · v0.1.3 still runs", "v0.1.6 is live". */
+export function releaseEndedWords(event: ReleaseEndedEvent): string {
+  if (event.outcome === "live") return `${event.tag} is live`;
+  const failed = `Release ${event.tag} didn't go live${event.cause === undefined ? "" : `: ${event.cause}`}`;
+  return event.stillRuns === undefined ? failed : `${failed} · ${event.stillRuns} still runs`;
+}
+
+/**
  * What to tell a Mate of its application's production, in the turn that wakes it: a release that
- * went live there since it last spoke, and where the app answers now. Its own address previews the
- * work with test data; once production runs a release, that is the app the person uses, and a
- * Mate that was never told keeps sending them to its preview.
+ * went live there since it last spoke, and where the app answers now — or the newest release that
+ * did not go live since, why, and what still runs. Its own address previews the work with test
+ * data; once production runs a release, that is the app the person uses, and a Mate that was never
+ * told keeps sending them to its preview. A Mate never told a release failed goes on as if its
+ * work were live.
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  */
 export function productionTurnNotes(
   live: ProductionLive | undefined,
   since: string | undefined,
+  ended: ReadonlyArray<ReleaseEndedEvent> = [],
 ): ReadonlyArray<string> {
-  if (live === undefined || since === undefined) return [];
-  if (!(Date.parse(live.taggedAt) > Date.parse(since))) return [];
-  return [
-    live.address === undefined
-      ? `${live.tag} is live on production: that is the app now. Your own address is only their preview.`
-      : `${live.tag} is live on production at ${live.address}: that is the app now. Send the person there for anything real; your own address is only their preview.`,
-  ];
+  if (since === undefined) return [];
+  const spoke = Date.parse(since);
+  const notes: Array<string> = [];
+  if (live !== undefined && Date.parse(live.taggedAt) > spoke)
+    notes.push(
+      live.address === undefined
+        ? `${live.tag} is live on production: that is the app now. Your own address is only their preview.`
+        : `${live.tag} is live on production at ${live.address}: that is the app now. Send the person there for anything real; your own address is only their preview.`,
+    );
+  // A failure a later release put behind it is history: the live note says what matters now.
+  const failed = ended.findLast(
+    (event) =>
+      event.outcome === "failed" &&
+      Date.parse(event.endedAt) > spoke &&
+      (live === undefined || Date.parse(event.taggedAt) > Date.parse(live.taggedAt)),
+  );
+  if (failed !== undefined) {
+    // A long cause is cut so what still runs and where to read more stay in the line.
+    const cause = failed.cause?.trim().slice(0, AGENT_NOTE_TITLE);
+    notes.push(
+      [
+        `Release ${failed.tag} did not go live on production${cause === undefined || cause === "" ? "" : `: ${cause}`}.`,
+        failed.stillRuns === undefined
+          ? "Nothing of it runs there."
+          : `Production still runs ${failed.stillRuns}.`,
+        "zerops_observe (action deployments) has Zerops' own words for why.",
+      ].join(" "),
+    );
+  }
+  return notes;
 }
 
 /**
@@ -590,15 +706,18 @@ export function changeState(pull: {
   readonly mergeability: MergeabilityKind;
   readonly ready?: boolean | undefined;
   readonly mateGone?: true | undefined;
+  readonly kind: FlowPullRequestKind;
+  readonly title: string;
 }): ChangeState | undefined {
   // Nobody carries it on until a person closes it or hands it to another Mate.
   if (pull.mateGone === true) return { word: "Mate gone", tone: "attention" };
   const blocked = pullRequestBlocked(pull);
   if (blocked !== null) {
-    return {
-      word: blocked.word.charAt(0).toLocaleUpperCase() + blocked.word.slice(1),
-      tone: blocked.tone,
-    };
+    const word = blocked.word.charAt(0).toLocaleUpperCase() + blocked.word.slice(1);
+    // Its Mate composes it again from main: nobody else has to.
+    return recipeProposalRedone(pull)
+      ? { word: `${word} · its Mate redoes it`, tone: "off" }
+      : { word, tone: blocked.tone };
   }
   // Its Mate has not described it as it is: nothing asks for its merge yet.
   if (!changeAsksForReview(pull)) return { word: "Draft", tone: "off" };

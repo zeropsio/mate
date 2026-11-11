@@ -41,11 +41,9 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
-  HQ_PROJECT_NAME,
   type HqMateOfferStates,
   type HqPresses,
   type CanonicalHqStructure,
-  type OfficialHq,
 } from "@t3tools/client-runtime/zerops/hq";
 import { RESTARTING_PHRASE } from "@t3tools/client-runtime/zerops/environments";
 import type { CandidatePresence } from "@t3tools/client-runtime/zerops/projections";
@@ -74,6 +72,13 @@ export function mateOutsideHq(
 ): boolean {
   return known && project.hq === undefined && !birthing;
 }
+
+/**
+ * No Mate is on this container yet: its flag reads off (the container machine's `needs-enable`).
+ * Enable writes HQ's record itself, so HQ holding none is no reason to withhold it.
+ */
+const awaitsEnable = (input: ZeropsRowInput): boolean =>
+  input.health === "predates-mate" && input.mateFlag === false;
 
 export const NOT_IN_HQ_LINE = "Not in this HQ";
 
@@ -104,10 +109,9 @@ export interface ZeropsRowInput {
   readonly runningProcessKind?: "restart-service" | "start-service" | "start-project" | undefined;
   /**
    * `ZCP_MATE_ENABLED`'s own read, by key (`data/projections/mateVariables`),
-   * for a `predates-mate` row only — the fact that tells this container
-   * apart from one merely away (spec-mate §4.5, H9). `"unknown"` for a read
-   * that failed; absent for one not yet made (or made for any other
-   * health), read the same conservative way as `false`.
+   * made once no Mate answers its container — the fact that tells a
+   * container with no Mate yet apart from one merely away (spec-mate §4.5,
+   * H9). `"unknown"` for a read that failed; absent for one not yet made.
    */
   readonly mateFlag?: boolean | "unknown" | undefined;
   /**
@@ -140,26 +144,21 @@ export interface ZeropsRowInput {
   };
 }
 
-const ROW_VERBS = (offered: boolean): ZeropsRowInput["can"] => ({
-  open: offered,
-  enable: offered,
-  setUpMate: offered,
-  start: offered,
-  restart: offered,
-  remove: offered,
-});
-
 /**
  * A row's verbs for this person, none of them HQ's to enforce: opening is its Mate's door's, the
- * rest Zerops' — each refusal shown as they word it. None where HQ refuses following its Mate
- * (`observe_mate`): the door would refuse them too. Every one otherwise — where HQ offers it, has
- * not said (an HQ from before its offers, a structure not read yet), or does not answer, and on a
- * project HQ holds as no Mate. *Set up Mate* on a plain project only where HQ offers writing its
- * Mate's record (`create_mate_record`), which the press registers and HQ enforces.
+ * rest Zerops' — each refusal shown as they word it. A Mate the person may only see is the row's
+ * `visibility` (`mateVisibility`), never an HQ offer. *Set up Mate* on a plain project only
+ * where HQ offers writing its Mate's record (`create_mate_record`), which the press registers and
+ * HQ enforces.
  */
 export function mateRowCan(offers: HqMateOfferStates | undefined): ZeropsRowInput["can"] {
   return {
-    ...ROW_VERBS(offers?.held !== true || offers.observe.kind !== "refused"),
+    open: true,
+    enable: true,
+    setUpMate: true,
+    start: true,
+    restart: true,
+    remove: true,
     setUpPlainProject: offers?.held === false && offers.createRecord.kind === "allowed",
   };
 }
@@ -243,6 +242,9 @@ const RUNNING_PROCESS_DETAIL: Readonly<
   "start-service": "Starting the container",
   "start-project": "Starting the project",
 };
+
+/** The line under a Mate whose project is gone on Zerops while HQ still holds it. */
+const MATE_PROJECT_GONE_LINE = "Its project is gone on Zerops. HQ still holds this Mate.";
 
 /**
  * The line under a project the platform failed to create, with the
@@ -346,21 +348,19 @@ export function mateSetupOffered(role: ZeropsEnvironmentRole | undefined): boole
 
 /**
  * What says a project is its person's own — evidence the caller gathers once for the page: HQ's
- * records, its anchor and this tab's own presses (`plainZeropsProject`).
+ * records and this tab's own presses (`plainZeropsProject`).
  */
 export interface PlainProjectEvidence {
   /** Every project HQ holds any record of (`hqRecordedProjects`), a press's included. */
   readonly hqRecords: ReadonlySet<string>;
-  /** The project the organization's official HQ anchor names: the HQ carries no record of itself. */
-  readonly hqAnchors: ReadonlySet<string>;
   /** The projects this tab is making or finishing. */
   readonly local: ReadonlySet<string>;
 }
 
 /**
  * An existing plain Zerops project, on HQ's word (security review 1, 11; ADR 0002, HQ holds the
- * structure): no Mate, no place in HQ and no record of it there at all, not the organization's HQ
- * by its anchor or its name, and not one this tab is making. A project's tags and its age decide
+ * structure): no Mate, no place in HQ and no record of it there at all, and not one this tab is
+ * making. A project's tags and its age decide
  * nothing. Anything nothing can tell apart — HQ's structure not known — is not plain.
  */
 export function plainZeropsProject(
@@ -370,34 +370,29 @@ export function plainZeropsProject(
   if (evidence === undefined) return false;
   return (
     project.hq === undefined &&
-    project.name !== HQ_PROJECT_NAME &&
     !evidence.hqRecords.has(project.id) &&
-    !evidence.hqAnchors.has(project.id) &&
     !evidence.local.has(project.id)
   );
 }
 
 /**
- * The page's evidence for `plainZeropsProject`: none while HQ's structure is not known, or the
- * organization has no official HQ — with none, or an unclear one, nothing is plain. A press HQ holds
- * a record of, running elsewhere or stopped, is its Mate being made: never plain.
+ * The page's evidence for `plainZeropsProject`: none while HQ's structure is not known, so nothing is
+ * plain then. A press HQ holds a record of, running elsewhere or stopped, is its Mate being made: never plain.
  */
 export function plainEvidenceOf(input: {
   readonly hqKnown: boolean;
   readonly structure: CanonicalHqStructure | null;
   /** Each press HQ holds a record of, by project (`hq_press`); none before HQ said. */
   readonly presses: Readonly<Record<string, unknown>> | null;
-  readonly hq: OfficialHq;
   /** The projects this tab is making or finishing. */
   readonly local: Iterable<string>;
 }): PlainProjectEvidence | undefined {
-  if (!input.hqKnown || input.structure === null || input.hq.kind !== "official") return undefined;
+  if (!input.hqKnown || input.structure === null) return undefined;
   return {
     hqRecords: new Set([
       ...hqRecordedProjects(input.structure),
       ...Object.keys(input.presses ?? {}),
     ]),
-    hqAnchors: new Set([input.hq.projectId]),
     local: new Set(input.local),
   };
 }
@@ -445,7 +440,7 @@ function isStopped(candidate: ZeropsRowCandidate): boolean {
 
 export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPresentation {
   const { candidate, health, runningProcessKind } = input;
-  if (input.outsideHq) {
+  if (input.outsideHq && !awaitsEnable(input)) {
     return { status: { label: NOT_IN_HQ_LINE, tone: "off" }, detail: NOT_IN_HQ_LINE };
   }
 
@@ -483,6 +478,10 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
     };
   }
   if (candidate.group === "unavailable") {
+    // Deleted on Zerops while HQ still holds its Mate: said as it is, nothing offered.
+    if (candidate.projectGone === true) {
+      return { status: { label: "Gone", tone: "off" }, detail: MATE_PROJECT_GONE_LINE };
+    }
     // The platform failed to make the project: it will sit in NEW for good,
     // so the row says so in the failed tone rather than "coming up" forever.
     if (candidate.creationFailed !== undefined) {
@@ -648,7 +647,7 @@ export function deriveZeropsRestartAction(input: ZeropsRowInput): ZeropsRowActio
 export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
   const { candidate, health, can } = input;
   const role = input.role ?? readZeropsMembership(candidate.project).role;
-  if (input.outsideHq) return { kind: "not-in-hq" };
+  if (input.outsideHq && !awaitsEnable(input)) return { kind: "not-in-hq" };
   if (isZeropsToolCandidate(candidate)) return { kind: "none" };
   // A verb the door would refuse is not offered (D5). The row says why in
   // place of it.

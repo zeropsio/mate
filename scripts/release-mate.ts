@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// @effect-diagnostics nodeBuiltinImport:off globalConsole:off globalFetch:off globalTimers:off globalDate:off - a release driver over git and the published manifest.
+// @effect-diagnostics nodeBuiltinImport:off globalConsole:off globalTimers:off globalDate:off - a release driver over git and the published manifest.
 /**
  * Cuts a mate release from a pinned green main SHA. In a throwaway worktree it bumps the three
  * package versions, commits `chore(release): mate X.Y.Z` naming what was merged since the last
@@ -22,6 +22,8 @@ import { readReleaseSource, VERSIONED_RELEASE_PACKAGES } from "@t3tools/shared/r
 export const VERSIONED_PACKAGES = VERSIONED_RELEASE_PACKAGES;
 
 const REPOSITORY = "zeropsio/mate";
+// GitHub CLI for API calls and release downloads; a maintainer may point MATE_GH at a wrapper holding the release token.
+const GH = process.env.MATE_GH || "gh";
 
 type Version = readonly [number, number, number];
 
@@ -104,12 +106,21 @@ interface PublishedRelease {
 // `jq` keeps only the fields read here: a full page of releases outgrows execFileSync's buffer.
 const github = <T>(repo: string, endpoint: string, jq?: string): T =>
   JSON.parse(
-    NodeChildProcess.execFileSync("gh-mate", ["api", endpoint, ...(jq ? ["--jq", jq] : [])], {
+    NodeChildProcess.execFileSync(GH, ["api", endpoint, ...(jq ? ["--jq", jq] : [])], {
       cwd: repo,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "inherit"],
     }),
   ) as T;
+
+// Signed in through the same CLI: anonymous github.com downloads can connect and never answer.
+// Without a tag `gh release download` reads the latest release, as `releases/latest/download` does.
+const releaseAsset = (repo: string, tag: string | undefined, name: string): string =>
+  NodeChildProcess.execFileSync(
+    GH,
+    ["release", "download", ...(tag ? [tag] : []), "-R", REPOSITORY, "-p", name, "-O", "-"],
+    { cwd: repo, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+  );
 
 const sourceOf = (repo: string, ref: string) => {
   const source = Effect.runSync(
@@ -166,7 +177,7 @@ async function waitForManifest(repo: string, version: string, releaseSHA: string
       console.log(`${failure}; retrying the same release workflow once`);
       try {
         NodeChildProcess.execFileSync(
-          "gh-mate",
+          GH,
           ["api", "--method", "POST", `repos/${REPOSITORY}/actions/runs/${run.id}/rerun`],
           { cwd: repo, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
         );
@@ -177,22 +188,21 @@ async function waitForManifest(repo: string, version: string, releaseSHA: string
       continue;
     }
 
-    const manifest =
-      run?.status === "completed" && run.conclusion === "success"
-        ? await fetch(`https://github.com/${REPOSITORY}/releases/latest/download/stable.json`, {
-            cache: "no-store",
-          })
-            .then((response) => (response.ok ? (response.json() as Promise<Manifest>) : undefined))
-            .catch(() => undefined)
-        : undefined;
+    // Until the latest release carries stable.json the download fails and the poll goes on.
+    let manifest: Manifest | undefined;
+    if (run?.status === "completed" && run.conclusion === "success") {
+      try {
+        manifest = JSON.parse(releaseAsset(repo, undefined, "stable.json")) as Manifest;
+      } catch {
+        manifest = undefined;
+      }
+    }
     if (
       run?.status === "completed" &&
       run.conclusion === "success" &&
       manifest?.version === version
     ) {
-      const sums = await fetch(
-        `https://github.com/${REPOSITORY}/releases/download/v${version}/SHA256SUMS`,
-      ).then((response) => response.text());
+      const sums = releaseAsset(repo, `v${version}`, "SHA256SUMS");
       const listed = sums
         .split("\n")
         .find((line) => manifest.asset !== undefined && line.trim().endsWith(manifest.asset))

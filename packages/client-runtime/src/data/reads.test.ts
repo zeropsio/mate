@@ -2,27 +2,65 @@ import { seedHqNavigation } from "./__fixtures__/hqNavigation.ts";
 import { AtomRegistry } from "effect/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 
-import { liveZerops, ORG } from "./__fixtures__/account.ts";
+import { liveZerops, ORG, zeropsVersion } from "./__fixtures__/account.ts";
 import { detailScopeOf } from "./demand.ts";
 import { linkKeys } from "./model.ts";
 import { mateVariablesScope } from "./families/mateVariables.ts";
 import {
   accountReadsAtom,
-  hqMateSetupAtom,
+  sharedBirthsAtom,
   holdProjectHistory,
   holdServiceRead,
   NOT_READ_PROCESSES,
   NOT_READ_SERVICES,
   NOT_READ_USAGE,
+  holdRoutePreview,
   readMateFlag,
+  readMateFlagOnceLive,
   projectProcessesAtom,
   projectUsageAtom,
   projectServicesAtom,
+  projectPublicAccessAtom,
   projectsServicesAtom,
   projectStandingAtom,
 } from "./reads.ts";
 import { makeAccountStore, readsOfState } from "./store.ts";
+import { projectRoutingsScope, routingsScope } from "./families/publicRouting.ts";
 import { usageOwnerOf, usageScope } from "./families/usage.ts";
+
+it("open births hold their exact import and project history only while observed", () => {
+  const registry = AtomRegistry.make();
+  const store = makeAccountStore(registry);
+  liveZerops({ running: [], projects: [{ id: "p1" }] }).forEach(store.dispatch);
+  const held: string[] = [];
+  registry.set(accountReadsAtom, {
+    data: store.data,
+    orgId: ORG,
+    demandDetail: (demand) => {
+      const key = `${demand.listing}:${demand.ownerId}`;
+      held.push(key);
+      return () => void held.splice(held.indexOf(key), 1);
+    },
+    renewHeld: () => {},
+  });
+  const atom = sharedBirthsAtom("ada");
+  const unmount = registry.mount(atom);
+  const seed = (
+    births: Array<{ id: string; face: string; projectId?: string; importProcessId?: string }>,
+  ) =>
+    seedHqNavigation(store, ORG, {
+      structure: { apps: [{ id: "app", name: "App", projects: [], births }], ungrouped: [] },
+    });
+  seed([{ id: "birth", face: "", projectId: "p1", importProcessId: "import" }]);
+  expect(registry.get(atom).open).toMatchObject([{ projectId: "p1", importProcessId: "import" }]);
+  expect(held.toSorted()).toEqual(["history:p1", "process:import"]);
+  seed([]);
+  expect(registry.get(atom).open).toEqual([]);
+  expect(held).toEqual([]);
+  unmount();
+  store.close();
+  registry.dispose();
+});
 
 describe("projectProcessesAtom", () => {
   it("reads a project's processes through the mounted account, and nothing without one", () => {
@@ -137,6 +175,165 @@ describe("projectServicesAtom", () => {
       renewHeld: () => {},
     });
     expect(registry.get(atom)).toEqual(NOT_READ_SERVICES);
+  });
+});
+
+describe("projectPublicAccessAtom", () => {
+  it.each([
+    {
+      publication: "none",
+      subdomainAccess: false,
+      routing: false,
+      isSynced: false,
+      routes: [],
+      pending: [],
+    },
+    {
+      publication: "pending",
+      subdomainAccess: false,
+      routing: true,
+      isSynced: false,
+      routes: [],
+      pending: ["https://shop.example.com"],
+    },
+    {
+      publication: "serving",
+      subdomainAccess: false,
+      routing: true,
+      isSynced: true,
+      routes: ["https://shop.example.com"],
+      pending: [],
+    },
+  ])(
+    "reads $publication publication from the mounted account's routing evidence",
+    ({ subdomainAccess, routing, isSynced, routes, pending }) => {
+      const registry = AtomRegistry.make();
+      const store = makeAccountStore(registry);
+      const atom = projectPublicAccessAtom("p1");
+      expect(registry.get(atom).state).toBe("reading");
+      liveZerops({
+        running: [],
+        projects: [{ id: "p1" }],
+        services: [
+          {
+            id: "app",
+            projectId: "p1",
+            name: "app",
+            subdomainAccess,
+            ports: [{ port: 80, scheme: "http" }],
+          },
+        ],
+      }).forEach(store.dispatch);
+      registry.set(accountReadsAtom, {
+        data: store.data,
+        orgId: ORG,
+        demandDetail: () => () => {},
+        renewHeld: () => {},
+      });
+      const unmount = registry.mount(atom);
+      expect(registry.get(atom).state).toBe("reading");
+      const scope = routingsScope(ORG);
+      for (const event of [
+        { kind: "demand", demanded: true },
+        { kind: "attempt" },
+        { kind: "handshake" },
+      ] as const)
+        store.dispatch({ kind: "stream", key: scope, now: 0, event });
+      store.dispatch({ kind: "baseline-begin", scope, generation: 1 });
+      store.dispatch({
+        kind: "baseline-commit",
+        scope,
+        generation: 1,
+        via: "zerops-realtime",
+        members: routing ? ["route"] : [],
+        rows: routing
+          ? [
+              {
+                family: "publicRouting",
+                id: "route",
+                revision: zeropsVersion(1),
+                value: {
+                  projectId: "p1",
+                  isSynced,
+                  sslEnabled: true,
+                  domains: [{ domainName: "shop.example.com" }],
+                  locations: [{ path: "/", port: 80, serviceStackId: "app" }],
+                },
+              },
+            ]
+          : [],
+      });
+      store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "baseline-committed" } });
+      const access = registry.get(atom);
+      expect(access.state).toBe("ready");
+      expect(access.routes.map(({ url }) => url)).toEqual(routes);
+      expect(access.pending.map(({ url }) => url)).toEqual(pending);
+      registry.set(accountReadsAtom, null);
+      expect(registry.get(atom).state).toBe("reading");
+      unmount();
+      registry.dispose();
+    },
+  );
+
+  it("holds a refused organization routing's project fallback once until the account closes", () => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    liveZerops({ running: [], projects: [{ id: "p1" }], services: [] }).forEach(store.dispatch);
+    const demands: Array<import("./demand.ts").DetailDemand> = [];
+    let released = 0;
+    registry.set(accountReadsAtom, {
+      data: store.data,
+      orgId: ORG,
+      demandDetail: (demand) => {
+        demands.push(demand);
+        return () => {
+          released++;
+        };
+      },
+      renewHeld: () => {},
+    });
+    const atom = projectPublicAccessAtom("p1");
+    const stop = registry.mount(atom);
+    const scope = routingsScope(ORG);
+    for (const event of [
+      { kind: "demand", demanded: true },
+      { kind: "attempt" },
+      {
+        kind: "fault",
+        fault: { outcome: "authoritative-denial", message: "Insufficient permissions" },
+        jitter: 0,
+      },
+    ] as const)
+      store.dispatch({ kind: "stream", key: scope, now: 0, event });
+    expect(registry.get(atom).readsProject).toBe(true);
+    expect(demands).toEqual([
+      { family: "publicRouting", listing: "projectRoutings", ownerId: "p1" },
+    ]);
+    const own = projectRoutingsScope(ORG, "p1");
+    for (const event of [
+      { kind: "demand", demanded: true },
+      { kind: "attempt" },
+      { kind: "handshake" },
+    ] as const)
+      store.dispatch({ kind: "stream", key: own, now: 0, event });
+    store.dispatch({ kind: "baseline-begin", scope: own, generation: 1 });
+    store.dispatch({
+      kind: "baseline-commit",
+      scope: own,
+      generation: 1,
+      via: "zerops-realtime",
+      members: [],
+      rows: [],
+    });
+    store.dispatch({ kind: "stream", key: own, now: 0, event: { kind: "baseline-committed" } });
+    expect(registry.get(atom).state).toBe("ready");
+    expect(demands).toHaveLength(1);
+    expect(released).toBe(0);
+    registry.set(accountReadsAtom, null);
+    expect(registry.get(atom).readsProject).toBe(false);
+    expect(released).toBe(1);
+    stop();
+    registry.dispose();
   });
 });
 
@@ -256,6 +453,7 @@ describe("readMateFlag", () => {
     const store = makeAccountStore(registry);
     liveZerops({ running: [], services: [{ id: "zcp", projectId: "p1" }] }).forEach(store.dispatch);
     const holds: Array<string> = [];
+    let notifyDemand: (() => void) | undefined;
     registry.set(accountReadsAtom, {
       renewHeld: () => {},
       data: store.data,
@@ -269,6 +467,8 @@ describe("readMateFlag", () => {
           now: 0,
           event: { kind: "demand", demanded: true },
         });
+        notifyDemand?.();
+        notifyDemand = undefined;
         return () => {
           holds.splice(holds.indexOf(scope), 1);
           if (!holds.includes(scope))
@@ -310,7 +510,8 @@ describe("readMateFlag", () => {
         event: { kind: "baseline-committed" },
       });
     };
-    return { registry, store, holds, answer };
+    const nextDemand = () => new Promise<void>((resolve) => (notifyDemand = resolve));
+    return { registry, store, holds, answer, nextDemand };
   };
   /** What the read answered once every answer already due has run; `pending` if none did. */
   const settled = async <T>(promise: Promise<T>): Promise<T | "pending"> => {
@@ -318,7 +519,8 @@ describe("readMateFlag", () => {
     void promise.then((value) => {
       answer = value;
     });
-    for (let turn = 0; turn < 3; turn += 1) await Promise.resolve();
+    // These reads settle through Promise reactions after synchronous store updates.
+    await new Promise<void>((resolve) => setImmediate(resolve));
     return answer;
   };
 
@@ -381,43 +583,82 @@ describe("readMateFlag", () => {
         jitter: 0,
       },
     });
-    expect(await settled(readMateFlag(registry, "zcp"))).toBe("unknown");
+    const notImmediate = Symbol("not immediate");
+    expect(await Promise.race([readMateFlag(registry, "zcp"), Promise.resolve(notImmediate)])).toBe(
+      "unknown",
+    );
   });
+
+  it.each([
+    { title: "it comes back", back: true, flag: true },
+    { title: "it is refused", back: false, flag: "unknown" },
+  ])(
+    "a container's flag that could not be said while the organization's link was down is read again once the link is live: $title",
+    async ({ back, flag }) => {
+      const { registry, store, answer, nextDemand } = mounted();
+      const link = (event: object) =>
+        store.dispatch({ kind: "stream", key: linkKeys.zerops(ORG), now: 0, event } as never);
+      link({ kind: "fault", fault: { outcome: "transient", message: "socket closed" }, jitter: 0 });
+      const read = readMateFlagOnceLive(registry, "zcp");
+      expect(await settled(read)).toBe("pending");
+
+      if (back) {
+        const requested = nextDemand();
+        link({ kind: "retry-due" });
+        link({ kind: "handshake" });
+        link({ kind: "baseline-committed" });
+        await requested;
+        answer("1");
+      } else {
+        link({
+          kind: "fault",
+          fault: { outcome: "definitive-refusal", message: "refused" },
+          jitter: 0,
+        });
+      }
+
+      expect(await read).toBe(flag);
+    },
+  );
 
   it("without a mounted account, unknown", async () => {
     expect(await readMateFlag(AtomRegistry.make(), "zcp")).toBe("unknown");
   });
 });
 
-describe("hqMateSetupAtom", () => {
-  it("reads navigation evidence without demanding variables or any other detail", () => {
+describe("holdRoutePreview", () => {
+  it("the route's project read ahead goes on through the account's reads published again, and moves to another account's", () => {
     const registry = AtomRegistry.make();
     const store = makeAccountStore(registry);
-    seedHqNavigation(store, ORG, {
-      structure: {
-        apps: [],
-        ungrouped: [
-          { projectId: "p1", name: "Ada", mate: { face: "", closedOff: false, setupMarker: true } },
-        ],
-      },
-    });
-    registry.set(accountReadsAtom, {
+    const events: Array<string> = [];
+    const demandOf = (account: string) => (demand: { readonly listing?: string }) => {
+      events.push(`${account} hold ${demand.listing}`);
+      return () => events.push(`${account} release ${demand.listing}`);
+    };
+    const first = demandOf("a");
+    const reads = (demandDetail: ReturnType<typeof demandOf>) => ({
       data: store.data,
       orgId: ORG,
-      demandDetail: () => {
-        throw new Error("Navigation must never demand detail");
-      },
+      demandDetail,
       renewHeld: () => {},
     });
-    expect(registry.get(hqMateSetupAtom("p1"))).toEqual({ closedOff: false, marker: true });
-    expect(registry.get(hqMateSetupAtom("not-known"))).toEqual({
-      closedOff: "unknown",
-      marker: "unknown",
-    });
-    registry.set(accountReadsAtom, null);
-    expect(registry.get(hqMateSetupAtom("p1"))).toEqual({
-      closedOff: "unknown",
-      marker: "unknown",
-    });
+    registry.set(accountReadsAtom, reads(first));
+    const release = holdRoutePreview(registry, "p1");
+    registry.set(accountReadsAtom, reads(first));
+    expect(events).toEqual(["a hold route-project", "a hold route-services"]);
+
+    registry.set(accountReadsAtom, reads(demandOf("b")));
+    release();
+
+    expect(events).toEqual([
+      "a hold route-project",
+      "a hold route-services",
+      "b hold route-project",
+      "b hold route-services",
+      "a release route-project",
+      "a release route-services",
+      "b release route-project",
+      "b release route-services",
+    ]);
   });
 });

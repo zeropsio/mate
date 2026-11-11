@@ -4,8 +4,9 @@
  * and requests; streamed text into the live registry, never the store. A cursor per conversation
  * (`{epoch, origin, seq}`) resumes it after a drop or a release; a gap resubscribes from it; a
  * reset, another sequence space or an epoch from the past forget what was held first. The last
- * release keeps the conversation for {@link ENGINE_FORGET_AFTER_MS}; then it is forgotten. An
- * authoritative denial forgets it at once.
+ * release keeps the conversation for {@link ENGINE_FORGET_AFTER_MS}, the most recent
+ * {@link ENGINE_KEPT_RELEASED} of them; then it is forgotten. An authoritative denial forgets it at
+ * once.
  *
  * @module data/adapters/mateEngine
  */
@@ -42,6 +43,7 @@ import { EnvironmentSupervisor } from "../../connection/supervisor.ts";
 import { request } from "../../rpc/client.ts";
 import type { RpcSession } from "../../rpc/session.ts";
 
+import { CLOSED_CARD_RESULT_TOOLS } from "../../zerops/model/operations.ts";
 import type { EngineLiveText } from "../engineLive.ts";
 import {
   engineConversationId,
@@ -61,8 +63,19 @@ import { readsOfState, type AccountStore } from "../store.ts";
 import type { StreamEvent, StreamFault } from "../streamMachine.ts";
 import { superviseLink } from "../supervisor.ts";
 
-/** How long a released conversation is kept, so a return resumes instead of reading it again. */
-export const ENGINE_FORGET_AFTER_MS = 5 * 60 * 1_000;
+/**
+ * How long a released conversation is kept, so a return resubscribes from its cursor and takes
+ * only the changes since, painting what it held meanwhile, instead of reading it again whole (a
+ * Mate's conversation read whole measured 1.88 MB). Bounded by {@link ENGINE_KEPT_RELEASED}.
+ */
+export const ENGINE_FORGET_AFTER_MS = 30 * 60 * 1_000;
+
+/**
+ * How many released conversations are kept at once; leaving one more forgets the one left longest
+ * ago. A kept conversation is its window and the run pages its cards read, a few hundred KB to
+ * ~1.5 MB of JSON, so the bound keeps an all-day tab within ~10 MB of conversations nobody shows.
+ */
+export const ENGINE_KEPT_RELEASED = 6;
 
 /**
  * How many pages of what a finished run's result draws from it reads before its card is drawn. A
@@ -75,6 +88,16 @@ export interface RunPageAt {
   readonly before?: number;
   readonly after?: number;
   readonly only?: "outcome";
+  /** With `only`: the tools whose results it reads (`CLOSED_CARD_RESULT_TOOLS`). */
+  readonly tools?: ReadonlyArray<string>;
+}
+
+/** What a finished run's closed card draws its result from, as its subscription sent it. */
+interface SentOutcome {
+  readonly items: ReadonlyArray<Item>;
+  readonly requests: ReadonlyArray<Request>;
+  /** Its run holds outcome items after the last of these: they are read from there. */
+  readonly more: boolean;
 }
 
 /** How many runs read their missing items at once. */
@@ -190,6 +213,8 @@ export function makeEngineConversationWire(
           protocol: PROTOCOL,
           conversationId: key.conversationId as never,
           ...(after === null ? {} : { after }),
+          // Asked with every subscription: a cursor that cannot resume is answered by a snapshot.
+          outcomes: { tools: CLOSED_CARD_RESULT_TOOLS },
         }),
       ),
     subscribeRows: (environmentId) =>
@@ -218,6 +243,7 @@ export function makeEngineConversationWire(
             ...(at.before === undefined ? {} : { beforeSeq: at.before }),
             ...(at.after === undefined ? {} : { afterSeq: at.after }),
             ...(at.only === undefined ? {} : { only: at.only }),
+            ...(at.tools === undefined ? {} : { tools: at.tools }),
           }),
         )
         .pipe(Effect.catchCause((cause) => Effect.fail(classifyEngineFailure(cause)))),
@@ -354,11 +380,13 @@ interface Held {
  */
 function makeLinks(options: {
   readonly store: AccountStore;
+  readonly keptReleased: number;
   readonly setTimer: (callback: () => void, delayMs: number) => unknown;
   readonly clearTimer: (handle: unknown) => void;
 }) {
   const held = new Map<LinkKey, Held>();
-  const expiring = new Map<LinkKey, unknown>();
+  /** Released links still kept, the one left longest ago first. */
+  const expiring = new Map<LinkKey, { readonly timer: unknown; readonly expire: () => void }>();
   let closed = false;
   const hold = (
     link: LinkKey,
@@ -367,9 +395,9 @@ function makeLinks(options: {
     release: { readonly graceMs: number; readonly expire: () => void } | null,
   ) => {
     if (closed) return () => {};
-    const timer = expiring.get(link);
-    if (timer !== undefined) {
-      options.clearTimer(timer);
+    const kept = expiring.get(link);
+    if (kept !== undefined) {
+      options.clearTimer(kept.timer);
       expiring.delete(link);
     }
     let entry = held.get(link);
@@ -426,13 +454,19 @@ function makeLinks(options: {
       active.stop();
       held.delete(link);
       if (release === null || closed) return;
-      expiring.set(
-        link,
-        options.setTimer(() => {
+      expiring.set(link, {
+        timer: options.setTimer(() => {
           expiring.delete(link);
           if (!closed && !held.has(link)) release.expire();
         }, release.graceMs),
-      );
+        expire: release.expire,
+      });
+      for (const [oldest, entry] of expiring) {
+        if (expiring.size <= options.keptReleased) break;
+        options.clearTimer(entry.timer);
+        expiring.delete(oldest);
+        entry.expire();
+      }
     };
   };
   return {
@@ -442,7 +476,7 @@ function makeLinks(options: {
       closed = true;
       for (const entry of held.values()) entry.stop();
       held.clear();
-      for (const timer of expiring.values()) options.clearTimer(timer);
+      for (const { timer } of expiring.values()) options.clearTimer(timer);
       expiring.clear();
     },
   };
@@ -457,7 +491,7 @@ export function makeMateEngineConversations(options: {
   readonly clearTimer: (handle: unknown) => void;
 }) {
   const { store, wire, live } = options;
-  const links = makeLinks(options);
+  const links = makeLinks({ ...options, keptReleased: ENGINE_KEPT_RELEASED });
   const cursors = new Map<string, EngineCursor>();
   /** Every conversation held or kept, by environment: whom a denial forgets. */
   const known = new Map<string, Map<string, EngineConversationKey>>();
@@ -485,18 +519,27 @@ export function makeMateEngineConversations(options: {
    * What the runs a frame or a page carries lack of their own items, before they are drawn. A
    * card's closed face needs none of its run's items but what its result draws from: its worked
    * line counts its effort from the run's summary. So a finished run that made calls reads just
-   * those (`only: "outcome"`, one page however long the run, up to `ENGINE_RUN_PAGES`), and a live
+   * those (`only: "outcome"`, one page however long the run, up to `ENGINE_RUN_PAGES`) — of its
+   * calls' results only those of the tools a closed card draws (`CLOSED_CARD_RESULT_TOOLS`); a
+   * server before them reads every result, drawn the same — and a live
    * one reads nothing — the window carries its newest items, under the lines its card opens on.
    * Each such run says what stretch of its lines it holds (`mateEngineSpan`): a finished one none
    * until its card opens, a live one from its earliest held; the rest are read a page at a time
    * as its card opens and scrolls (`readRunPage`). A read that fails leaves the run with what it
    * holds, its span all the same. A finished run already read from its start keeps its span (its
-   * pages stay held across a resubscribe), and reads nothing again.
+   * pages stay held across a resubscribe), and reads nothing again. Nor does a run whose outcome
+   * came whole before its snapshot (`sent`, the subscription's `outcome` frames): a Mate that
+   * sends them opens a conversation on the one answer, never a read a run and a read a long
+   * result after it (measured on a three-run window: 10 requests in two more round trips). A
+   * run whose frames end with `more` (the opening's budget ran out in it) is read on from the
+   * last item they brought, and one with no frame from its start, so a card draws from the same
+   * items whichever way they came.
    */
   const wholeRuns = (
     key: EngineConversationKey,
     runs: ReadonlyArray<RunRecord>,
     items: ReadonlyArray<Item>,
+    sent?: ReadonlyMap<string, SentOutcome>,
   ): Effect.Effect<{
     readonly items: ReadonlyArray<Item>;
     readonly requests: ReadonlyArray<Request>;
@@ -548,11 +591,24 @@ export function makeMateEngineConversations(options: {
               return { items: [], requests: [], spans: [span(null, kept.value.to)] };
             const items: Item[] = [];
             const requests: Request[] = [];
-            if (Object.keys(run.summary.calls).length > 0)
+            const outcome = sent?.get(run.id);
+            if (outcome !== undefined) {
+              for (const item of outcome.items)
+                if (!held.has(item.id)) {
+                  held.set(item.id, item);
+                  items.push(item);
+                }
+              requests.push(...outcome.requests);
+            }
+            if (outcome === undefined ? Object.keys(run.summary.calls).length > 0 : outcome.more)
               yield* Effect.gen(function* () {
-                let after = 0;
+                let after = Math.max(0, ...(outcome?.items ?? []).map((item) => item.seq));
                 for (let page = 0; page < ENGINE_RUN_PAGES; page++) {
-                  const answer = yield* wire.readRun(key, run.id, { after, only: "outcome" });
+                  const answer = yield* wire.readRun(key, run.id, {
+                    after,
+                    only: "outcome",
+                    tools: CLOSED_CARD_RESULT_TOOLS,
+                  });
                   if (answer._tag !== "Page") return;
                   for (const item of answer.items)
                     if (!held.has(item.id)) {
@@ -686,6 +742,8 @@ export function makeMateEngineConversations(options: {
           scope,
           generation: streamOf(store.state(), scope).generation,
         }));
+        /** The finished runs' outcomes this subscription sent ahead of its snapshot, by run. */
+        const sent = new Map<string, SentOutcome>();
         /** The header of a split commit's first part, until the part that moves the cursor. */
         let splitHeader: { readonly from: number; readonly header: ConversationHeader } | undefined;
         /** An item whose record arrives whole drops its streamed text, settle frame or not. */
@@ -724,7 +782,9 @@ export function makeMateEngineConversations(options: {
                 )
                   forget(key);
                 return Effect.gen(function* () {
-                  const lacked = yield* wholeRuns(key, frame.runs, frame.items);
+                  const outcomes = new Map(sent);
+                  sent.clear();
+                  const lacked = yield* wholeRuns(key, frame.runs, frame.items, outcomes);
                   const items = yield* wholeResults(key, [...frame.items, ...lacked.items]);
                   // A denial told while the runs were read keeps nothing of this frame either.
                   if (closed || withheld.has(key.environmentId)) return;
@@ -820,7 +880,17 @@ export function makeMateEngineConversations(options: {
                 });
                 return Effect.void;
               }
+              case "outcome": {
+                const outcome = sent.get(frame.runId);
+                sent.set(frame.runId, {
+                  items: [...(outcome?.items ?? []), ...frame.items],
+                  requests: [...(outcome?.requests ?? []), ...frame.requests],
+                  more: frame.more,
+                });
+                return Effect.void;
+              }
               case "reset":
+                sent.clear();
                 forget(key);
                 return Effect.void;
               case "live.open":

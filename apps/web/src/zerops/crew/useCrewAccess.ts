@@ -1,5 +1,6 @@
 /**
- * What this viewer may run or change on an environment's crew (D6), read as
+ * What this viewer may run or change on an environment's crew (D6, and nothing
+ * while they read along in a colleague's Mate — `useMateReadOnly`), read as
  * `ChatView` reads its own agent: each login resolved as admission resolves
  * it (`resolveSpentLogin`), its signer as the server recorded it
  * (`resolveAgentAuthorizer`) — then decided by `crewAccess`, the answer the
@@ -27,6 +28,7 @@ import { useMemo } from "react";
 import { environmentProjects } from "../../state/projects";
 import { environmentServerConfigsAtom } from "../../state/server";
 import { resolveAgentAuthorizer } from "@t3tools/client-runtime/zerops/agentOwnership";
+import { useMateReadOnly } from "../useMateReadOnly";
 import { useZeropsAgentAuth } from "../useZeropsFeeds";
 import { useZeropsSessionOptional } from "../ZeropsSessionProvider";
 
@@ -51,6 +53,7 @@ export function useCrewAccess(
     environmentId === null ? NO_PROJECTS : environmentProjects.projectsAtom,
   );
   const viewerSubject = useZeropsSessionOptional()?.user?.id;
+  const readsAlong = useMateReadOnly(environmentId);
   // The Mate's project: the one whose tree the server works in, as the engine finds it.
   const defaultLogin =
     projects.find(
@@ -62,6 +65,7 @@ export function useCrewAccess(
     return crewAccess({
       snapshot,
       defaultLogin,
+      readsAlong,
       reading:
         agentAuth === undefined || agentAuth.state === "unread" || agentAuth.state === "reading",
       lockOf: (login) => {
@@ -78,5 +82,5 @@ export function useCrewAccess(
         );
       },
     });
-  }, [agentAuth, defaultLogin, providers, snapshot, viewerSubject]);
+  }, [agentAuth, defaultLogin, providers, readsAlong, snapshot, viewerSubject]);
 }

@@ -1,38 +1,41 @@
 import { RegistryContext } from "@effect/atom-react";
-import { seedHqNavigation, seedHqVerdict } from "@t3tools/client-runtime/data/fixtures";
+import { seedHqNavigation } from "@t3tools/client-runtime/data/fixtures";
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import { projectNameInApp } from "@t3tools/client-runtime/zerops";
 import { EnvironmentId } from "@t3tools/contracts";
 import { AtomRegistry } from "effect/reactivity";
-import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-vi.mock("~/zerops/accountEnvironments", () => ({
-  useMateDetailRead: () => ({ failure: null, again: () => undefined }),
-  useTryMateAgain: () => () => undefined,
-}));
-vi.mock("~/state/presentation", async () => {
-  const { Atom } = await import("effect/reactivity");
-  return { environmentPresentations: { presentationsAtom: Atom.make(new Map()) } };
-});
-vi.mock("~/components/zerops/ZeropsMateComingPage", () => ({
-  MateComingFrame: ({ header, children }: { header: ReactNode; children: ReactNode }) => (
+import * as environments from "~/zerops/accountEnvironments";
+import * as comingPage from "~/components/zerops/ZeropsMateComingPage";
+import * as emptyState from "~/components/zerops/ZeropsMateEmptyState";
+
+beforeEach(() => {
+  vi.spyOn(environments, "useMateDetailRead").mockReturnValue({
+    failure: null,
+    again: () => undefined,
+  });
+  vi.spyOn(environments, "useTryMateAgain").mockReturnValue(() => undefined);
+  vi.spyOn(comingPage, "MateComingFrame").mockImplementation(({ header, children }) => (
     <main>
       {header}
       {children}
     </main>
-  ),
-  MateComingHeader: ({ mate }: { mate: { name: string; tint: string; shape: string } }) => (
+  ));
+  vi.spyOn(comingPage, "MateComingHeader").mockImplementation(({ mate }) => (
     <h1 data-tint={mate.tint} data-shape={mate.shape}>
       {mate.name}
     </h1>
-  ),
-}));
-vi.mock("~/components/zerops/ZeropsMateEmptyState", () => ({
-  MateConnectionState: ({ headline }: { headline: string }) => <h2>{headline}</h2>,
-  MateEmptyStateView: ({ coming }: { coming: { headline: string } }) => <h2>{coming.headline}</h2>,
-}));
+  ));
+  vi.spyOn(emptyState, "MateConnectionState").mockImplementation(({ headline }) => (
+    <h2>{headline}</h2>
+  ));
+  vi.spyOn(emptyState, "MateEmptyStateView").mockImplementation(({ coming }) => (
+    <h2>{coming?.headline}</h2>
+  ));
+});
+afterEach(() => vi.restoreAllMocks());
 
 import { MateLinkStage } from "~/components/zerops/MateLinkStage";
 import { candidateListingAtom } from "./useZeropsCandidates";
@@ -69,7 +72,6 @@ describe("a Mate's first frame", () => {
   it("names and draws the menu's Mate in its stage and voice before the candidate listing is read", () => {
     const registry = AtomRegistry.make();
     const store = mountRoster(registry, ORG, [PROJECT]);
-    seedHqVerdict(store, ORG, "official");
     seedHqNavigation(store, ORG, {
       structure: {
         apps: [
@@ -107,6 +109,7 @@ describe("a Mate's first frame", () => {
     expect(firstFrame).toContain('data-tint="sky" data-shape="seal">Quill</h1>');
     expect(firstFrame).toContain("Quill is opening the conversation.</h2>");
     expect(firstFrame).not.toContain("The Mate is opening");
+    store.close();
     registry.dispose();
   });
 });

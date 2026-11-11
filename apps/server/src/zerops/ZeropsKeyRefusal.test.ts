@@ -11,14 +11,14 @@ import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import { HttpClient, HttpClientResponse } from "effect/http";
 
-import * as ServerConfig from "../config.ts";
-import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { makeZeropsHqLink, type LinkSocket } from "./ZeropsHqLink.ts";
 import { make, requestWithMateKey, ZeropsMateKey } from "./ZeropsMateKey.ts";
-import * as ZeropsOrgRead from "./ZeropsOrgRead.ts";
-import * as ZeropsRestartRead from "./ZeropsRestartRead.ts";
+import * as ZeropsAccessRead from "./ZeropsAccessRead.ts";
 
 const decode = Schema.decodeSync(Schema.fromJsonString(Schema.Unknown));
+/** The admission HQ names for the key, and a later one: a new admission, even of the same key. */
+const ADMISSION_A = "0b6f3c1e-2d4a-4e5f-8a7b-9c0d1e2f3a4b";
+const ADMISSION_B = "7e8f9a0b-1c2d-4e3f-a4b5-c6d7e8f9a0b1";
 
 class Socket implements LinkSocket {
   readonly sent: unknown[] = [];
@@ -35,9 +35,6 @@ class Socket implements LinkSocket {
   close() {
     this.closed = true;
   }
-  family() {
-    return "IPv6" as const;
-  }
   addEventListener(
     type: string,
     listener: (event: { data: unknown; code: number; reason: unknown }) => void,
@@ -48,13 +45,31 @@ class Socket implements LinkSocket {
     for (const listener of this.listeners.get("open") ?? [])
       listener({ data: undefined, code: 1006, reason: "" });
   }
+  hearState(admission: string) {
+    const mate = {
+      projectId: "P_MATE",
+      name: "Ada",
+      face: "face-1",
+      standupRequestedBy: "owner",
+      appId: null,
+      appName: null,
+      changes: [],
+      chief: null,
+    };
+    for (const listener of this.listeners.get("message") ?? [])
+      listener({
+        data: JSON.stringify({ type: "state", mate, admission }),
+        code: 1006,
+        reason: "",
+      });
+  }
   disconnect() {
     for (const listener of this.listeners.get("close") ?? [])
       listener({ data: undefined, code: 1006, reason: "" });
   }
 }
 
-const rig = (open = true) =>
+const rig = () =>
   Effect.gen(function* () {
     let store = '{"ZCP_API_KEY":"old-key"}';
     const storePath = "/test/env-store.json";
@@ -65,7 +80,12 @@ const rig = (open = true) =>
           store = value;
         }),
     });
-    const reader = yield* make({ fs, storePath, snapshot: undefined });
+    const reader = yield* make({
+      fs,
+      storePath,
+      snapshot: undefined,
+      watch: () => ({ dispose: () => {} }),
+    });
     const sockets: Socket[] = [];
     const connected = yield* Queue.unbounded<Socket>();
     yield* makeZeropsHqLink({
@@ -83,13 +103,13 @@ const rig = (open = true) =>
       overview: Effect.succeed(Option.none()),
       changes: Stream.never,
       attention: Stream.never,
-      access: () => Effect.void,
       gitCredential: () => Effect.void,
       gitFingerprint: Effect.succeed(Option.none()),
+      heldSessions: Effect.succeed([]),
       reconnectDelaysMs: [20],
     });
     const socket = yield* Queue.take(connected);
-    if (open) socket.open();
+    socket.open();
     yield* TestClock.adjust(Duration.zero);
     return { reader, sockets, connected, fs, storePath };
   });
@@ -97,7 +117,12 @@ const rig = (open = true) =>
 it.effect("An unchanged key refused by Zerops is reported to HQ in one key-refused frame", () =>
   Effect.gen(function* () {
     const { reader, sockets } = yield* rig();
-    const own = yield* ZeropsOrgRead.make.pipe(
+    sockets[0]!.hearState(ADMISSION_A);
+    yield* TestClock.adjust(Duration.zero);
+    const own = yield* ZeropsAccessRead.ZeropsAccessRead.pipe(
+      Effect.provide(
+        ZeropsAccessRead.layer({ apiBaseUrl: "https://zerops.test", projectId: "own-project" }),
+      ),
       Effect.provideService(ZeropsMateKey, reader),
       Effect.provideService(
         HttpClient.HttpClient,
@@ -109,14 +134,17 @@ it.effect("An unchanged key refused by Zerops is reported to HQ in one key-refus
         }),
       ),
     );
-    assert.deepStrictEqual(
-      yield* own.project({ apiBaseUrl: "https://zerops.test", projectId: "own-project" }),
-      { kind: "answered", status: 401, body: undefined },
-    );
+    assert.deepStrictEqual(yield* own.read, { kind: "refused", status: 401 });
     yield* requestWithMateKey(reader, () => Effect.succeed({ status: 401 }));
     yield* TestClock.adjust(Duration.zero);
     assert.deepStrictEqual(sockets[0]!.sent, [
-      { type: "hello", key: "old-key", serviceId: "zcp", origin: "https://mate.test" },
+      {
+        type: "hello",
+        key: "old-key",
+        serviceId: "zcp",
+        origin: "https://mate.test",
+        heldSessionIds: [],
+      },
       { type: "key-refused" },
     ]);
   }).pipe(Effect.scoped),
@@ -131,6 +159,8 @@ it.effect.each([
 ])("$title", ({ rotate }) =>
   Effect.gen(function* () {
     const { reader, sockets, connected, fs, storePath } = yield* rig();
+    sockets[0]!.hearState(ADMISSION_A);
+    yield* TestClock.adjust(Duration.zero);
     sockets[0]!.failRefusal = !rotate;
     yield* requestWithMateKey(reader, () => Effect.succeed({ status: 401 }));
     yield* TestClock.adjust(Duration.zero);
@@ -143,12 +173,15 @@ it.effect.each([
     const next = yield* Queue.take(connected);
     next.open();
     yield* TestClock.adjust(Duration.zero);
+    next.hearState(rotate ? ADMISSION_B : ADMISSION_A);
+    yield* TestClock.adjust(Duration.zero);
     assert.deepStrictEqual(next.sent, [
       {
         type: "hello",
         key: rotate ? "new-key" : "old-key",
         serviceId: "zcp",
         origin: "https://mate.test",
+        heldSessionIds: [],
       },
       ...(rotate ? [] : [{ type: "key-refused" }]),
     ]);
@@ -157,40 +190,29 @@ it.effect.each([
   }).pipe(Effect.scoped),
 );
 
-it.effect("A refused startup read notifies HQ without repeating the Zerops request", () =>
-  Effect.gen(function* () {
-    const { reader, sockets, fs } = yield* rig();
-    const environment = resolveZeropsEnvironment({ projectId: "own-project", apiHost: undefined })!;
-    let requests = 0;
-    const http = HttpClient.make((request) => {
-      requests++;
-      assert.equal(request.headers["authorization"], "Bearer old-key");
-      return Effect.succeed(
-        HttpClientResponse.fromWeb(request, new Response(null, { status: 401 })),
+it.effect(
+  "a key refusal whose send was lost on a closing link is reported again on the next link",
+  () =>
+    Effect.gen(function* () {
+      const { reader, sockets, connected } = yield* rig();
+      sockets[0]!.hearState(ADMISSION_A);
+      yield* TestClock.adjust(Duration.zero);
+      yield* requestWithMateKey(reader, () => Effect.succeed({ status: 401 }));
+      yield* TestClock.adjust(Duration.zero);
+      assert.equal(sockets[0]!.sent.length, 2);
+      sockets[0]!.disconnect();
+      yield* TestClock.adjust(Duration.millis(30));
+      yield* TestClock.adjust(Duration.zero);
+      const next = yield* Queue.take(connected);
+      next.open();
+      yield* TestClock.adjust(Duration.zero);
+      next.hearState(ADMISSION_A);
+      yield* TestClock.adjust(Duration.zero);
+      assert.equal(
+        next.sent.filter((frame) => (frame as { type: string }).type === "key-refused").length,
+        1,
       );
-    });
-    const result = yield* Effect.gen(function* () {
-      const own = yield* ZeropsOrgRead.make;
-      const restart = yield* ZeropsRestartRead.make({ serviceId: "zcp" }).pipe(
-        Effect.provideService(ZeropsOrgRead.ZeropsOrgRead, own),
-      );
-      return yield* restart.read.pipe(Effect.result);
-    }).pipe(
-      Effect.provideService(ZeropsMateKey, reader),
-      Effect.provideService(FileSystem.FileSystem, fs),
-      Effect.provideService(HttpClient.HttpClient, http),
-      Effect.provideService(ServerConfig.ServerConfig, {
-        zerops: environment,
-      } as ServerConfig.ServerConfig["Service"]),
-    );
-    assert.equal(result._tag, "Failure");
-    assert.equal(requests, 1);
-    yield* TestClock.adjust(Duration.zero);
-    assert.deepStrictEqual(sockets[0]!.sent, [
-      { type: "hello", key: "old-key", serviceId: "zcp", origin: "https://mate.test" },
-      { type: "key-refused" },
-    ]);
-  }).pipe(Effect.scoped),
+    }).pipe(Effect.scoped),
 );
 
 it.effect.each([
@@ -206,7 +228,13 @@ it.effect.each([
     assert.equal(result._tag, status === undefined ? "Failure" : "Success");
     yield* TestClock.adjust(Duration.zero);
     assert.deepStrictEqual(sockets[0]!.sent, [
-      { type: "hello", key: "old-key", serviceId: "zcp", origin: "https://mate.test" },
+      {
+        type: "hello",
+        key: "old-key",
+        serviceId: "zcp",
+        origin: "https://mate.test",
+        heldSessionIds: [],
+      },
     ]);
     assert.equal(sockets.length, 1);
     assert.equal(sockets[0]!.closed, false);
@@ -218,6 +246,8 @@ it.effect(
   () =>
     Effect.gen(function* () {
       const { reader, sockets, connected, fs, storePath } = yield* rig();
+      sockets[0]!.hearState(ADMISSION_A);
+      yield* TestClock.adjust(Duration.zero);
       const entered = yield* Deferred.make<void>();
       const release = yield* Deferred.make<void>();
       const late = yield* requestWithMateKey(reader, (token) =>
@@ -247,44 +277,16 @@ it.effect(
       yield* Fiber.join(late);
       yield* TestClock.adjust(Duration.zero);
       assert.deepStrictEqual(next.sent, [
-        { type: "hello", key: "new-key", serviceId: "zcp", origin: "https://mate.test" },
+        {
+          type: "hello",
+          key: "new-key",
+          serviceId: "zcp",
+          origin: "https://mate.test",
+          heldSessionIds: [],
+        },
       ]);
       assert.equal(sockets[0]!.sent.length, 1);
       assert.equal(sockets.length, 2);
       assert.equal(next.closed, false);
-    }).pipe(Effect.scoped),
-);
-
-it.effect(
-  "A late old-key response cannot erase a refusal of the current key before the link opens",
-  () =>
-    Effect.gen(function* () {
-      const { reader, sockets, connected, fs, storePath } = yield* rig(false);
-      const entered = yield* Deferred.make<void>();
-      const release = yield* Deferred.make<void>();
-      const late = yield* requestWithMateKey(reader, (token) =>
-        token === "old-key"
-          ? Deferred.succeed(entered, undefined).pipe(
-              Effect.andThen(Deferred.await(release)),
-              Effect.as({ status: 401 }),
-            )
-          : Effect.succeed({ status: 200 }),
-      ).pipe(Effect.forkScoped);
-      yield* Deferred.await(entered);
-      yield* fs.writeFileString(storePath, '{"ZCP_API_KEY":"new-key"}');
-      yield* requestWithMateKey(reader, () => Effect.succeed({ status: 401 }));
-      yield* Deferred.succeed(release, undefined);
-      yield* Fiber.join(late);
-      sockets[0]!.open();
-      yield* TestClock.adjust(Duration.zero);
-      assert.equal(sockets.length, 2);
-      const next = yield* Queue.take(connected);
-      next.open();
-      yield* TestClock.adjust(Duration.zero);
-      assert.deepStrictEqual(next.sent, [
-        { type: "hello", key: "new-key", serviceId: "zcp", origin: "https://mate.test" },
-        { type: "key-refused" },
-      ]);
-      assert.equal(sockets[0]!.sent.length, 1);
     }).pipe(Effect.scoped),
 );

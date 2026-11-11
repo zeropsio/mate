@@ -1,12 +1,12 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { ZEROPS_SESSION_STORAGE_KEY } from "../../../../../../packages/client-runtime/src/zerops/session.ts";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { visibleText } from "../../harness/browser.ts";
 
 describe("Scenario session setup", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect("scenarios can explicitly exercise the OAuth UI journey", () =>
       Effect.gen(function* () {
         const s = yield* createScenario([], { signIn: "ui" });

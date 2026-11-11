@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { mirrorGateLine, mirrorLeadLine, mirrorStateLine } from "./gitMirror.logic";
+import { installOffer, parseMirrorSearch, mirrorGateLine, waitingAccount } from "./gitMirror.logic";
 
-const NOW = Date.parse("2026-10-18T09:00:00Z");
 const remote = {
   url: "https://github.com/acme/tea-shop.git",
   repositoryId: "7",
@@ -12,83 +11,6 @@ const remote = {
   invalidSince: null,
 } as const;
 const app = { kind: "connected", name: "Acme Mate", repositories: [], installUrl: "" } as const;
-
-describe("a repository's line in the mirror dialog", () => {
-  it.each([
-    { case: "nothing mirrored", remote: null, app, says: "Not mirrored" },
-    {
-      case: "the GitHub repository a repository follows while Mate keeps its code",
-      remote: null,
-      follows: "https://github.com/acme/tea-shop.git",
-      app,
-      says: "Follows github.com/acme/tea-shop · Mate keeps the code",
-    },
-    {
-      case: "where it mirrors to, never what it followed before",
-      remote: { ...remote, via: "app" },
-      follows: "https://github.com/acme/old.git",
-      app,
-      says: "Mirrors to github.com/acme/tea-shop · through Acme Mate",
-    },
-    {
-      case: "a mirror through the app",
-      remote: { ...remote, via: "app" },
-      app,
-      says: "Mirrors to github.com/acme/tea-shop · through Acme Mate",
-    },
-    {
-      case: "a mirror with a token",
-      remote: { ...remote, expiresAt: "2027-10-17T09:00:00Z" },
-      app,
-      says: "Mirrors to github.com/acme/tea-shop · with a token that expires 2027-10-17",
-    },
-    {
-      case: "a diverged mirror, never that it mirrors",
-      remote: { ...remote, via: "app", divergedSince: "2026-10-16T12:00:00Z" },
-      app,
-      says: "GitHub's main and Mate's main differ since 2026-10-16 — nothing moves until they match",
-    },
-    {
-      case: "a token the remote refused, before where it mirrors",
-      remote: { ...remote, invalidSince: "2026-10-15T08:00:00Z" },
-      app,
-      says: "github.com/acme/tea-shop refused Mate's token on 2026-10-15 — replace the token",
-    },
-    {
-      case: "a mirror through an app that is gone from HQ",
-      remote: { ...remote, via: "app" },
-      app: { kind: "none" },
-      says: "The app is gone — connect GitHub again or use a token",
-    },
-    {
-      case: "a mirror through an app HQ says no longer reaches it",
-      remote: { ...remote, via: "app", invalidSince: "2026-10-15T08:00:00Z" },
-      app,
-      says: "The app is gone — connect GitHub again or use a token",
-    },
-    {
-      case: "a mirror through the app while the app is not read",
-      remote: { ...remote, via: "app" },
-      app: { kind: "unknown" },
-      says: "Mirrors to github.com/acme/tea-shop · through the organization's GitHub app",
-    },
-  ] as const)("says $case", (row) => {
-    const { remote: held, app: reach, says } = row;
-    const follows = "follows" in row ? { follows: row.follows } : {};
-    expect(mirrorStateLine({ remote: held, ...follows }, reach, NOW)).toBe(says);
-  });
-});
-
-describe("the mirror dialog's lead line", () => {
-  it("promises review on GitHub only where the app mirrors, and says a token pushes main", () => {
-    expect(mirrorLeadLine(app)).toBe(
-      "Mirror a repository to GitHub, and Mate's changes to it open there for review.",
-    );
-    expect(mirrorLeadLine({ kind: "none" })).toBe(
-      "Mirror a repository to GitHub or GitLab: Mate pushes what lands on its main there.",
-    );
-  });
-});
 
 describe("whether GitHub lets only what was approved in Mate reach a repository's main", () => {
   const viaApp = { ...remote, via: "app" } as const;
@@ -108,12 +30,6 @@ describe("whether GitHub lets only what was approved in Mate reach a repository'
     },
     {
       case: "a repository without a ruleset is advisory and names the app id to require",
-      remote: { ...viaApp, governance: "no_ruleset" },
-      app: withId,
-      says: `Main is not protected. Nothing on GitHub stops a push or merge into main without Mate's approval. Add a ruleset on main that turns on "Require a pull request before merging" with 0 approvals and requires the check mate/gate from app ID 123456.`,
-    },
-    {
-      case: "a ruleset that requires mate/gate but lets anyone push to main is told to require a pull request in it",
       remote: { ...viaApp, governance: "no_ruleset" },
       app: withId,
       says: `Main is not protected. Nothing on GitHub stops a push or merge into main without Mate's approval. Add a ruleset on main that turns on "Require a pull request before merging" with 0 approvals and requires the check mate/gate from app ID 123456.`,
@@ -156,5 +72,60 @@ describe("whether GitHub lets only what was approved in Mate reach a repository'
     },
   ] as const)("$case", ({ remote: given, app: reading, says }) => {
     expect(mirrorGateLine(given, reading)).toBe(says);
+  });
+});
+
+describe("installing the app on another account or more repositories", () => {
+  const INSTALL = "https://github.com/apps/acme-mate/installations/new";
+  const newer = { ...app, installUrl: INSTALL, installTrip: true } as const;
+  it.each([
+    {
+      case: "an admin, with an HQ of install trips",
+      app: newer,
+      admin: true,
+      offer: { kind: "trip" },
+    },
+    {
+      case: "a member, with an HQ of install trips",
+      app: newer,
+      admin: false,
+      offer: {
+        kind: "page",
+        url: INSTALL,
+        note: "What you install there waits for an admin's OK.",
+      },
+    },
+    {
+      case: "an admin, with an older HQ",
+      app: { ...app, installUrl: INSTALL },
+      admin: true,
+      offer: { kind: "page", url: INSTALL, note: null },
+    },
+  ] as const)("$case gets $offer.kind", ({ app: shown, admin, offer }) => {
+    expect(installOffer(shown, admin)).toEqual(offer);
+  });
+
+  it("names the account whose installation reaches a repository but waits for an OK", () => {
+    const waiting = {
+      ...newer,
+      waiting: [{ account: "Stranger", repositories: ["Stranger/Notes"] }],
+    };
+    expect(waitingAccount(waiting, "stranger/notes")).toBe("Stranger");
+    expect(waitingAccount(waiting, "acme/api")).toBeNull();
+  });
+});
+
+describe("back from GitHub's install page, the mirror dialog opens again over its project", () => {
+  it.each([
+    { case: "the project it left from", raw: { mirror: "app-1" }, opens: "app-1" },
+    {
+      case: "beside what HQ adds to the return",
+      raw: { mirror: "app-1", github: "connected" },
+      opens: "app-1",
+    },
+    { case: "nothing without one", raw: { github: "connected" }, opens: undefined },
+    { case: "nothing for an empty one", raw: { mirror: "" }, opens: undefined },
+  ])("$case", ({ raw, opens }) => {
+    expect(parseMirrorSearch(raw).mirror).toBe(opens);
   });
 });

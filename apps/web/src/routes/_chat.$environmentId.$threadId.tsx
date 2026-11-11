@@ -1,7 +1,9 @@
 import { useAtomValue } from "@effect/atom-react";
 import { shownHqMenuNavigationAtom } from "@t3tools/client-runtime/data";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { openingEndPhrase } from "@t3tools/client-runtime/zerops/environments";
+import { STILL_READING_PATIENCE_MS } from "@t3tools/client-runtime/zerops/projections";
+import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 
 import ChatViewBoundary from "../components/ChatViewBoundary";
@@ -16,15 +18,18 @@ import {
 import { resolveThreadSyncPhase } from "../threadSync";
 import { EnvironmentId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
+import { Atom } from "effect/reactivity";
 
 import { SidebarInset } from "~/components/ui/sidebar";
 import { MateOpeningView } from "~/components/zerops/MateLinkStage";
 import { Loading } from "~/components/ui/loading";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
+import { ObserveAuthorizationKeeper } from "~/zerops/useObserveAuthorization";
 import { useThreadDetail, useThreadShell, useThreadStatus } from "../state/entities";
 import { useEnvironmentQuery } from "../state/query";
 import { environmentShell } from "../state/shell";
 import { useEnvironmentThread } from "../state/threads";
+import { RouteGateWords } from "./-routeGate";
 
 function ChatThreadRoutePending() {
   const threadRef = Route.useParams({ select: (params) => resolveThreadRouteRef(params) });
@@ -54,12 +59,16 @@ function ChatThreadRouteView() {
   const draftThread = useComposerDraftStore((store) =>
     threadRef ? store.getDraftThreadByRef(threadRef) : null,
   );
+  const shellStatus = shell.data?.status ?? "empty";
   const renderState = resolveThreadRouteRenderState({
-    shell: shell.data?.status ?? "empty",
+    shell: shellStatus,
     serverThreadShellExists: serverThreadShell !== null,
     serverThreadDetailExists: serverThreadDetail !== null,
     serverThreadDetailDeleted: serverThreadStatus === "deleted",
     draftThreadExists,
+    threadsListed: useAtomValue(
+      threadRef === null ? NOT_LISTED : environmentShell.threadsListedAtom(threadRef.environmentId),
+    ),
   });
   const threadSyncPhase = resolveThreadSyncPhase({
     detailExists: serverThreadDetail !== null,
@@ -82,21 +91,30 @@ function ChatThreadRouteView() {
       navigation.capped ||
       navigation.updateRequired,
   );
+  // The stage's one wait: for a named thread's messages and HQ's answer, the read's short
+  // patience; for a thread nothing names yet, the route's deadline, after which the opening ends.
+  const named = serverThreadShell !== null || serverThreadDetail !== null;
+  const awaited = named
+    ? !conversationShown && (serverThreadDetail === null || !directoryAnswered)
+      ? "read"
+      : null
+    : renderState === "loading" && routeMate.kind !== "nobody"
+      ? "find"
+      : null;
   const patienceSpent = usePatienceSpent(
-    threadRef !== null &&
-      !conversationShown &&
-      (serverThreadShell !== null || serverThreadDetail !== null) &&
-      (serverThreadDetail === null || !directoryAnswered)
-      ? `${threadRef.environmentId}/${threadRef.threadId}`
-      : null,
-    THREAD_READ_PATIENCE_MS,
+    threadRef === null || awaited === null
+      ? null
+      : `${awaited}:${threadRef.environmentId}/${threadRef.threadId}`,
+    awaited === "find" ? STILL_READING_PATIENCE_MS : THREAD_READ_PATIENCE_MS,
   );
   const stage = resolveThreadRouteStage({
     renderState,
     serverThreadShellExists: serverThreadShell !== null,
     conversationShown,
     nobodyLivesHere: routeMate.kind === "nobody",
-    readGivenUp: readFailed || patienceSpent,
+    readGivenUp: readFailed || (awaited === "read" && patienceSpent),
+    findGivenUp: awaited === "find" && patienceSpent,
+    shellLive: shellStatus === "live",
     directoryAnswered,
     promotedDraft: draftThreadExists,
   });
@@ -136,6 +154,7 @@ function ChatThreadRouteView() {
 
   return (
     <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh">
+      <ObserveAuthorizationKeeper environmentId={threadRef.environmentId} />
       {stage === "conversation" ? (
         <ChatViewBoundary
           waiting={<ChatThreadRoutePending />}
@@ -144,19 +163,19 @@ function ChatThreadRouteView() {
           routeKind="server"
           threadSyncPhase={threadSyncPhase}
         />
-      ) : stage === "missing" ? (
-        <div
-          role="status"
-          className="flex h-full items-center justify-center p-8 text-center text-sm text-muted-foreground"
-        >
-          This conversation is no longer available. <Link to="/zerops">Open your projects</Link>
-        </div>
-      ) : null}
+      ) : stage === "quiet" ? null : (
+        <RouteGateWords
+          phrase={openingEndPhrase(stage)}
+          projectId={null}
+          environmentId={threadRef.environmentId}
+        />
+      )}
     </SidebarInset>
   );
 }
 
 const NO_ENVIRONMENT = EnvironmentId.make("none");
+const NOT_LISTED = Atom.make(false).pipe(Atom.withLabel("thread-route:not-listed"));
 
 /** Whether `ms` has passed since `key` began to be waited on; a new key (or none) starts over. */
 function usePatienceSpent(key: string | null, ms: number): boolean {

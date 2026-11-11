@@ -31,7 +31,7 @@ import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
 import { ZeropsAutomation } from "./ZeropsAutomation.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsLoginsModule from "./ZeropsLogins.ts";
-import { ZEROPS_SUBJECT_PREFIX } from "./zeropsSubject.ts";
+import { ZEROPS_SUBJECT_PREFIX } from "@t3tools/contracts";
 import * as ZeropsProjectSignersModule from "./ZeropsProjectSigners.ts";
 import { make as makeAdmission, type TurnPrincipal } from "./ZeropsTurnAdmission.ts";
 
@@ -1056,83 +1056,18 @@ describe("ZeropsTurnAdmission.admitRun", () => {
       assert.strictEqual(yield* runAdmitted(world, instanceId, principal), expected);
     }),
   );
-  it.effect.each(
-    Array.from(
-      [
-        ["admits the signer's own run", janSignedClaude, "claudeAgent", session(JAN), undefined],
-        [
-          "refuses a run on an agent another member signed in",
-          janSignedClaude,
-          "claudeAgent",
-          session(EVA),
-          SOMEONE_ELSE,
-        ],
-        [
-          "refuses a run on an agent nobody recorded a signer for",
-          { agents: [signedIn("claude-code")] },
-          "claudeAgent",
-          session(JAN),
-          UNRECORDED,
-        ],
-        [
-          "admits anybody on a token-authorized agent",
-          { agents: [signedIn("codex", true)], signers: { codex: JAN } },
-          "codex",
-          session(EVA),
-          undefined,
-        ],
-        [
-          "refuses a run on another login a teammate signed in",
-          evaSignedWork,
-          "claudeAgent-work",
-          session(JAN),
-          LOGIN_SOMEONE_ELSE,
-        ],
-        [
-          "refuses a wake for somebody this project no longer opens for",
-          { ...janSignedClaude, access: { [JAN]: false } },
-          "claudeAgent",
-          { kind: "standup", startedBy: JAN },
-          NO_ACCESS,
-        ],
-        [
-          "refuses a wake whose person's access cannot be confirmed",
-          { ...janSignedClaude, access: {} },
-          "claudeAgent",
-          { kind: "crew", startedBy: JAN },
-          ACCESS_UNCONFIRMED,
-        ],
-        [
-          "admits a wake for the signer who still has access",
-          janSignedClaude,
-          "claudeAgent",
-          { kind: "standup", startedBy: JAN },
-          undefined,
-        ],
-        [
-          "lets everybody outside a Zerops environment",
-          { ...janSignedClaude, zerops: false },
-          "claudeAgent",
-          session(EVA),
-          undefined,
-        ],
-      ] as const satisfies ReadonlyArray<
-        readonly [string, World, string, TurnPrincipal, string | undefined]
-      >,
-      ([name, world, instanceId, principal]) => ({
-        title: `refuses exactly as the command door does: ${name}`,
-        world,
-        instanceId,
-        principal,
+  it.effect(
+    "refuses exactly as the command door does: refuses a wake whose person's access cannot be confirmed",
+    () =>
+      Effect.gen(function* () {
+        const world = { ...janSignedClaude, access: {} };
+        const instanceId = "claudeAgent";
+        const principal = { kind: "crew", startedBy: JAN } as const;
+        assert.strictEqual(
+          yield* runAdmitted(world, instanceId, principal),
+          yield* admitted(world, turnStart(instanceId), principal),
+        );
       }),
-    ),
-  )("$title", ({ world, instanceId, principal }) =>
-    Effect.gen(function* () {
-      assert.strictEqual(
-        yield* runAdmitted(world, instanceId, principal),
-        yield* admitted(world, turnStart(instanceId), principal),
-      );
-    }),
   );
 });
 

@@ -40,6 +40,7 @@ import type { AccountStore } from "../store.ts";
 import { streamOf } from "../reducer.ts";
 import { commitOwn, makeSettingsReads, type SettingRead } from "./hqSettingsReads.ts";
 import { appTasksSignature, orgTasksSignature } from "./hqTaskBoardRefresh.ts";
+import { hqNeedsUpdate } from "../../zerops/hq/refusals.ts";
 
 export type TaskSourceApi = TaskSourceWrites &
   Pick<
@@ -57,10 +58,11 @@ export type TaskSourceApi = TaskSourceWrites &
   >;
 
 /** What an HQ that predates these settings is asked. */
-export const TASK_SOURCES_UNSUPPORTED =
-  "Update HQ to take tasks from Slack, Discord, webhooks and schedules.";
+export const TASK_SOURCES_UNSUPPORTED = hqNeedsUpdate(
+  "take tasks from Slack, Discord, webhooks and schedules",
+);
 /** What an HQ that predates the organization's GitHub app is asked. */
-export const GITHUB_UNSUPPORTED = "Update HQ to connect GitHub.";
+export const GITHUB_UNSUPPORTED = hqNeedsUpdate("connect GitHub");
 
 /** A webhook's answer as a list holds it: never its secret. */
 const withoutSecret = ({ secret: _secret, ...view }: HqWebhookView): HqWebhookView => view;
@@ -184,6 +186,8 @@ export function makeTaskSourceSettings(options: {
   const secrets = new Map<string, TypedSecrets>();
   /** HQ's manifest for the GitHub app, by the request that asked: taken by that request alone. */
   const manifests = new Map<string, HqGithubManifestView>();
+  /** HQ's install link, by the request that asked: taken by that request alone. */
+  const links = new Map<string, string>();
   const operations = makeOperations({
     store,
     makeId: options.makeId,
@@ -207,6 +211,9 @@ export function makeTaskSourceSettings(options: {
         },
         manifested: (requestId, view) => {
           if (!closed) manifests.set(requestId, view);
+        },
+        linked: (requestId, url) => {
+          if (!closed) links.set(requestId, url);
         },
       }),
     },
@@ -265,7 +272,7 @@ export function makeTaskSourceSettings(options: {
           });
         reads.readAfterWrite(spec);
         // HQ renames or drops applications' Slack channels as Slack connects again — to another
-        // workspace, all of them (`apps/hq/src/slack.ts`) — and the bot it connects is in
+        // workspace, all of them (`mate-hq apps/hq/src/slack.ts`) — and the bot it connects is in
         // channels of its own; Discord keeps its channels.
         if (change.kind === "slack-connect" || change.kind === "slack-disconnect") {
           const ofOrg = (held: string) => (JSON.parse(held) as [string])[0] === key.orgId;
@@ -291,8 +298,25 @@ export function makeTaskSourceSettings(options: {
     return view;
   };
 
+  /**
+   * Asks HQ for GitHub's page installing the app on another account or more repositories: its
+   * address with a one-time state, for the screen to open, or `null` where HQ refused or did not
+   * answer — its words are the GitHub setting's action.
+   */
+  const githubInstall = async (
+    key: OrgSettingKey,
+    githubAppId: number,
+    returnTo: string,
+  ): Promise<string | null> => {
+    const requestId = await write(key, { kind: "github-install", githubAppId, returnTo });
+    const url = links.get(requestId) ?? null;
+    links.delete(requestId);
+    return url;
+  };
+
   return {
     githubManifest,
+    githubInstall,
     /** Reads an organization's setting while a screen shows it. */
     demandOrg: (family: OrgSetting, key: OrgSettingKey) => demandFollowed(specOf(family, key), key),
     /** Reads an application's setting while a screen shows it. */

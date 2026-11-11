@@ -89,7 +89,6 @@ function gitProduction(preflight: ReadonlyArray<HqGitReleasePreflight>) {
               order: 1,
               keyHeld: true,
               keyInvalid: false,
-              can: {},
               birth: null,
               release: null,
               jobs: [],

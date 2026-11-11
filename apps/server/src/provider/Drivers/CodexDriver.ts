@@ -22,7 +22,7 @@
  * @module provider/Drivers/CodexDriver
  */
 import { CodexSettings, ProviderDriverKind } from "@t3tools/contracts";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -104,7 +104,7 @@ export type CodexDriverEnv =
   | BackgroundPolicy.BackgroundPolicy
   | ChildProcessSpawner.ChildProcessSpawner
   | ResetCreditCoordinator.ResetCreditCoordinator
-  | Crypto.Crypto
+  | SecureRandom.SecureRandom
   | FileSystem.FileSystem
   | HttpClient.HttpClient
   | ModelManifest.ModelManifest
@@ -132,7 +132,14 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
       const eventLoggers = yield* ProviderEventLoggers;
       const modelManifest = yield* ModelManifest.ModelManifest;
       const processEnv = mergeProviderInstanceEnvironment(environment);
-      const homeLayout = yield* resolveCodexHomeLayout(config);
+      // An instance's own CODEX_HOME names its home when the settings leave both homes empty,
+      // so switches and continuations read the home Codex actually uses.
+      const environmentHome = processEnv.CODEX_HOME;
+      const homeLayout = yield* resolveCodexHomeLayout(
+        !config.homePath.trim() && !config.shadowHomePath.trim() && environmentHome?.trim()
+          ? { ...config, homePath: environmentHome }
+          : config,
+      );
       const continuationIdentity = codexContinuationIdentity(homeLayout);
       const stampIdentity = withInstanceIdentity({
         instanceId,

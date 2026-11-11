@@ -5,7 +5,13 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { parse } from "yaml";
 import { expect, it } from "vite-plus/test";
-import { blameMatrices, blameSelection } from "./ci-blame.ts";
+import {
+  blameMatrices,
+  blameSelection,
+  ciSelectionManifest,
+  stateSmokeMatrix,
+} from "./ci-blame.ts";
+import { stateSmokePlan } from "./state-smoke.ts";
 
 const root = NodePath.resolve(import.meta.dirname, "..");
 const workflow = parse(
@@ -19,13 +25,14 @@ it("Bisect CI selects only the failed job and preserves its full partition size"
   ]);
   expect(selection.matrices.test_web).toEqual({ include: [{ shard: 2, total: 3 }] });
   for (const [job, definition] of Object.entries(workflow.jobs) as [string, { if?: string }][]) {
-    if (job === "prepare" || job === "cache") continue;
+    if (["verification", "selection", "prepare", "scenario_bundle", "cache"].includes(job))
+      continue;
     expect(definition.if, `ASSERTION: ${job} consumes the one selected job verdict`).toContain(
-      `contains(fromJSON(needs.prepare.outputs.jobs), '${job}')`,
+      `contains(fromJSON(needs.selection.outputs.jobs), '${job}')`,
     );
   }
   expect(workflow.jobs.test_web.strategy.matrix).toBe(
-    "${{ fromJSON(needs.prepare.outputs.test_web) }}",
+    "${{ fromJSON(needs.selection.outputs.test_web) }}",
   );
   expect(
     workflow.jobs.test_web.steps.find((step: { name: string }) => step.name === "Test").run,
@@ -38,13 +45,22 @@ it("Blocking blame runs state smoke with its bundle and never selects Signal job
     selection.selected.sort(),
     "ASSERTION: blocking State Smoke selects only its execution dependencies",
   ).toEqual(["changes", "state_smoke"]);
-  expect(selection.matrices.state_smoke).toEqual({ include: [{ shard: 2, total: 8 }] });
+  expect(stateSmokeMatrix(8, selection.stateSmokeShards)).toEqual({
+    include: [{ shard: 2, total: 8 }],
+  });
   for (const context of ["Test Web Scenarios (C shard 3)", "Signal classification"]) {
     expect(
       () => blameSelection("refs/heads/kh-bisect/abc1234", context),
       "ASSERTION: Signal jobs cannot be selected by blocking CI blame",
     ).toThrow("No known failed CI job");
   }
+});
+
+it("A failed State Smoke bundle selects its scenario shards for bisect", () => {
+  expect(workflow.jobs.scenario_bundle.name).toBe("State Smoke bundle");
+  const selection = blameSelection("refs/heads/kh-bisect/abc1234", "State Smoke bundle\n");
+  expect(selection.selected.sort()).toEqual(["changes", "state_smoke"]);
+  expect(selection.stateSmokeShards).toBe("all");
 });
 
 it("Summary failures rerun their failed dependencies without selecting unrelated suites", () => {
@@ -62,8 +78,8 @@ it("Summary failures rerun their failed dependencies without selecting unrelated
     "test",
     "test_scripts",
   ]);
-  expect(selection.matrices.test_hq!.include).toEqual([]);
-  expect(workflow.jobs.test.steps.at(-1).run).toContain("needs.prepare.outputs.blame == 'true'");
+  expect(selection.matrices.test_client_runtime!.include).toEqual([]);
+  expect(workflow.jobs.test.steps.at(-1).run).toContain("needs.selection.outputs.blame == 'true'");
 });
 
 it.each([
@@ -85,13 +101,41 @@ it.each(["refs/heads/main", "refs/heads/kh-next", "refs/pull/1/merge"])(
     expect(selection.narrowed).toBe(false);
     expect(selection.selected.sort()).toEqual(
       Object.keys(workflow.jobs)
-        .filter((job) => job !== "prepare" && job !== "cache")
+        .filter(
+          (job) =>
+            !["verification", "selection", "prepare", "scenario_bundle", "cache"].includes(job),
+        )
         .sort(),
     );
     expect(selection.matrices.test_server!.include).toEqual(
       [1, 2, 3].map((shard) => ({ shard, total: 3 })),
     );
     expect(selection.selected).not.toContain("chat_scenarios");
+  },
+);
+
+// witness: scripts/ci-blame.ts | event === "workflow_dispatch" || ref.startsWith("refs/heads/kh-bisect/"); → true;
+it.each([
+  ["refs/heads/main", "push"],
+  ["refs/heads/kh-next", "push"],
+  ["refs/pull/1/merge", "pull_request"],
+])(
+  "Decision: a %s %s runs lint, typecheck and build only; test suites wait for a manual dispatch",
+  (ref, event) => {
+    const checks = [
+      "changes",
+      "check",
+      "check_build",
+      "check_guards",
+      "check_types",
+      "mobile_native_static_analysis",
+      "release_smoke",
+    ];
+    expect(ciSelectionManifest(ref, undefined, undefined, event).jobs.sort()).toEqual(checks);
+    expect(
+      ciSelectionManifest(ref, undefined, undefined, "workflow_dispatch").jobs,
+      "ASSERTION: a manual dispatch runs every test suite",
+    ).toEqual(expect.arrayContaining(["state_smoke", "test", "test_web", "test_server"]));
   },
 );
 
@@ -127,7 +171,10 @@ it("A kh-bisect manifest of all selects every job at full partition size", () =>
   expect(selection.narrowed).toBe(false);
   expect(selection.selected.sort()).toEqual(
     Object.keys(workflow.jobs)
-      .filter((job) => job !== "prepare" && job !== "cache")
+      .filter(
+        (job) =>
+          !["verification", "selection", "prepare", "scenario_bundle", "cache"].includes(job),
+      )
       .sort(),
   );
   expect(selection.matrices.test_server!.include).toHaveLength(3);
@@ -143,11 +190,18 @@ it("CI's real selector command publishes its narrowed job and matrix outputs", (
     );
     NodeFS.writeFileSync(NodePath.join(dir, ".ci-blame-jobs"), "Test Server 2\n");
     const output = NodePath.join(dir, "output");
-    const step = workflow.jobs.prepare.steps.find((entry: { id?: string }) => entry.id === "blame");
+    const step = workflow.jobs.selection.steps.find(
+      (entry: { id?: string }) => entry.id === "blame",
+    );
     const result = NodeChildProcess.spawnSync("bash", ["-c", step.run], {
       cwd: dir,
       encoding: "utf8",
-      env: { ...process.env, GITHUB_REF: "refs/heads/kh-bisect/abc1234", GITHUB_OUTPUT: output },
+      env: {
+        ...process.env,
+        GITHUB_REF: "refs/heads/kh-bisect/abc1234",
+        GITHUB_SHA: "0123456789012345678901234567890123456789",
+        GITHUB_OUTPUT: output,
+      },
     });
     expect(result.status, result.stderr).toBe(0);
     const outputs = Object.fromEntries(
@@ -164,6 +218,14 @@ it("CI's real selector command publishes its narrowed job and matrix outputs", (
       "ASSERTION: CI runs the selected job through its real command",
     ).toEqual(["test_server"]);
     expect(JSON.parse(outputs.test_server!)).toEqual({ include: [{ shard: 2, total: 3 }] });
+    expect(JSON.parse(outputs.selection_manifest ?? "null")).toMatchObject({
+      version: 1,
+      context: "ci",
+      candidate: "0123456789012345678901234567890123456789",
+      ref: "refs/heads/kh-bisect/abc1234",
+      jobs: ["test_server"],
+      matrices: { test_server: { include: [{ shard: 2, total: 3 }] } },
+    });
   } finally {
     NodeFS.rmSync(dir, { recursive: true, force: true });
   }
@@ -187,17 +249,23 @@ it.each([
     >;
     const needsOf = (job: string) => [jobs[job]!.needs ?? []].flat();
     const smokeNeeds = new Set(needsOf("state_smoke"));
+    // The most shards State Smoke emits: its plan when every scenario file is affected.
+    const smokeShards = stateSmokePlan(
+      NodeFS.globSync("apps/web/test/scenarios/areas/**/*.scenario.ts", { cwd: root }),
+    ).shards.length;
     // Running or ready when the smoke shards become ready: every job whose needs
     // the smoke shards' needs cover, minus those needs themselves (already done).
     const wave = Object.keys(jobs)
-      .filter((job) => job !== "prepare" && !smokeNeeds.has(job))
+      .filter((job) => job !== "selection" && !smokeNeeds.has(job))
       .filter((job) => needsOf(job).every((need) => smokeNeeds.has(need)))
       .filter((job) => nativeClients || !jobs[job]!.if?.includes("native_clients"))
       .filter((job) => mainPush || job !== "cache")
       .map((job) =>
         job === "cache"
           ? jobs.cache!.strategy!.matrix.os!.length
-          : (blameMatrices[job as keyof typeof blameMatrices]?.length ?? 1),
+          : job === "state_smoke"
+            ? smokeShards
+            : (blameMatrices[job as keyof typeof blameMatrices]?.length ?? 1),
       )
       .reduce((sum, count) => sum + count, 0);
     expect(wave, "ASSERTION: no State Smoke shard queues behind a full pool").toBeLessThanOrEqual(

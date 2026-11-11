@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  allowlistAfter,
   channelLine,
   budgetLine,
   limitsLine,
@@ -89,7 +88,6 @@ describe("the words a task source's settings say", () => {
   it.each([
     ["slack-connect", "Connecting…"],
     ["slack-disconnect", "Disconnecting…"],
-    ["discord-allow", "Saving…"],
     ["webhook-make", "Making…"],
     ["webhook-delete", "Deleting…"],
     ["task-limits", "Saving…"],
@@ -167,31 +165,10 @@ describe("what the settings' forms take", () => {
   ])("limits of $minutes minutes and $cost dollars read as $read", ({ minutes, cost, read }) => {
     expect(readLimits(minutes, cost)).toEqual(read);
   });
-
-  const IDA = "123456789012345678";
-  const NOVA = "223456789012345678";
-  it.each([
-    {
-      case: "an ID added joins it",
-      held: [IDA],
-      add: ` ${NOVA} `,
-      after: { userIds: [IDA, NOVA] },
-    },
-    { case: "an ID already on it is there once", held: [IDA], add: IDA, after: { userIds: [IDA] } },
-    {
-      case: "what is no Discord user ID is refused",
-      held: [],
-      add: "not-an-id",
-      after: { error: "A Discord user ID is a number of up to 20 digits." },
-    },
-    { case: "an ID removed leaves it", held: [IDA, NOVA], remove: IDA, after: { userIds: [NOVA] } },
-  ])("the Discord allowlist: $case", ({ held, add, remove, after }) => {
-    expect(allowlistAfter(held, add === undefined ? { remove: remove! } : { add })).toEqual(after);
-  });
 });
 
 describe("making the organization's Slack app from HQ's manifest", () => {
-  // As HQ makes it (`apps/hq/src/slack.ts`): its events sent to HQ's own address.
+  // As HQ makes it (`mate-hq apps/hq/src/slack.ts`): its events sent to HQ's own address.
   const EVENTS = "https://hq-acme.zerops.app/api/intake/slack/acme";
   const manifest = {
     display_information: { name: "Mate" },

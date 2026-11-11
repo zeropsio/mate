@@ -15,6 +15,7 @@ import {
 } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, it } from "@effect/vitest";
 import { IMAGE_ONLY_BOOTSTRAP_PROMPT, USAGE_LIMIT_RESUME_PROMPT } from "@t3tools/shared/userAsk";
 import * as Effect from "effect/Effect";
@@ -62,7 +63,7 @@ const makeProjectionPipelinePrefixedTestLayer = (prefix: string) =>
     Layer.provideMerge(OrchestrationEventStoreLive),
     Layer.provideMerge(ServerConfig.layerTest(process.cwd(), { prefix })),
     Layer.provideMerge(SqlitePersistenceMemory),
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
   );
 
 const exists = (filePath: string) =>
@@ -505,72 +506,6 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
   );
 });
 
-it.layer(Layer.fresh(makeProjectionPipelinePrefixedTestLayer("t3-base-")))(
-  "OrchestrationProjectionPipeline",
-  (it) => {
-    it.effect("stores message attachment references without mutating payloads", () =>
-      Effect.gen(function* () {
-        const projectionPipeline = yield* OrchestrationProjectionPipeline;
-        const eventStore = yield* OrchestrationEventStore;
-        const sql = yield* SqlClient.SqlClient;
-        const now = "2026-01-01T00:00:00.000Z";
-
-        yield* eventStore.append({
-          type: "thread.message-sent",
-          eventId: EventId.make("evt-attachments"),
-          aggregateKind: "thread",
-          aggregateId: ThreadId.make("thread-attachments"),
-          occurredAt: now,
-          commandId: CommandId.make("cmd-attachments"),
-          causationEventId: null,
-          correlationId: CommandId.make("cmd-attachments"),
-          metadata: {},
-          payload: {
-            threadId: ThreadId.make("thread-attachments"),
-            messageId: MessageId.make("message-attachments"),
-            role: "user",
-            text: "Inspect this",
-            attachments: [
-              {
-                type: "image",
-                id: "thread-attachments-att-1",
-                name: "example.png",
-                mimeType: "image/png",
-                sizeBytes: 5,
-              },
-            ],
-            turnId: null,
-            streaming: false,
-            createdAt: now,
-            updatedAt: now,
-          },
-        });
-
-        yield* projectionPipeline.bootstrap;
-
-        const rows = yield* sql<{
-          readonly attachmentsJson: string | null;
-        }>`
-            SELECT
-              attachments_json AS "attachmentsJson"
-            FROM projection_thread_messages
-            WHERE message_id = 'message-attachments'
-          `;
-        assert.equal(rows.length, 1);
-        assert.deepEqual(JSON.parse(rows[0]?.attachmentsJson ?? "null"), [
-          {
-            type: "image",
-            id: "thread-attachments-att-1",
-            name: "example.png",
-            mimeType: "image/png",
-            sizeBytes: 5,
-          },
-        ]);
-      }),
-    );
-  },
-);
-
 it.layer(Layer.fresh(makeProjectionPipelinePrefixedTestLayer("t3-projection-attachments-safe-")))(
   "OrchestrationProjectionPipeline",
   (it) => {
@@ -597,6 +532,13 @@ it.layer(Layer.fresh(makeProjectionPipelinePrefixedTestLayer("t3-projection-atta
             role: "user",
             text: "Inspect this",
             attachments: [
+              {
+                type: "image",
+                id: "thread-attachments-att-1",
+                name: "example.png",
+                mimeType: "image/png",
+                sizeBytes: 5,
+              },
               {
                 type: "image",
                 id: "thread-attachments-safe-att-1",
@@ -631,6 +573,13 @@ it.layer(Layer.fresh(makeProjectionPipelinePrefixedTestLayer("t3-projection-atta
           `;
         assert.equal(rows.length, 1);
         assert.deepEqual(JSON.parse(rows[0]?.attachmentsJson ?? "null"), [
+          {
+            type: "image",
+            id: "thread-attachments-att-1",
+            name: "example.png",
+            mimeType: "image/png",
+            sizeBytes: 5,
+          },
           {
             type: "image",
             id: "thread-attachments-safe-att-1",
@@ -3759,7 +3708,7 @@ it.effect("restores pending turn-start metadata across projection pipeline resta
         ServerConfig.layerTest(process.cwd(), {
           prefix: "t3-projection-pipeline-restart-",
         }),
-        NodeServices.layer,
+        Layer.mergeAll(NodeServices.layer, NodeCrypto.layer),
       ),
     ),
   ),
@@ -3781,7 +3730,7 @@ const engineLayer = it.layer(
         prefix: "t3-projection-pipeline-engine-dispatch-",
       }),
     ),
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
   ),
 );
 

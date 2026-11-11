@@ -1,5 +1,5 @@
 import { NO_RESTARTS, readRestartRecovery, type MateRecovery } from "@t3tools/client-runtime/data";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import type { Reachability } from "@t3tools/client-runtime/zerops/environments";
 import { mateArrivalNotice, mateNoticeVoice } from "./mateNoticeVoice";
 import type { MateArrivalNoticeInput } from "./mateNoticeVoice";
@@ -121,11 +121,10 @@ describe("the web Mate's link notice", () => {
     { kind: "not-answering", overdue: false },
     { kind: "refused-configuration" },
     { kind: "refused-credential" },
-    { kind: "retrying", retryAtMs: 5_000, last: { kind: "network" }, restart: false },
   ] satisfies Reachability[])("failure evidence offers recovery: %j", (state) => {
     expect(say(state)).toMatchObject({
       actions:
-        state.kind === "not-answering" || state.kind === "retrying"
+        state.kind === "not-answering"
           ? [expect.stringMatching(/^try-/), "open-in-zerops"]
           : [expect.stringMatching(/^try-/)],
     });
@@ -298,21 +297,27 @@ it("a failed restart separates its cause and Details while retaining last-known 
 });
 
 it("uses the offline source time without turning retained work time into outage onset", () => {
-  expect(
-    mateNoticeVoice({
-      reachability: { kind: "not-answering", overdue: false },
-      conversationShown: false,
-      nowMs: Date.parse("2026-10-08T11:00:00Z"),
-      mateName: "Eddy",
-      offlineSince: new Date().toISOString(),
-      timestampFormat: "24-hour",
-      lastKnown: "Last known 09:20: Eddy was working.",
-    }),
-  ).toMatchObject({
-    headline: expect.stringContaining("Eddy isn't answering since"),
-    secondary: "Last known 09:20: Eddy was working.",
-    actions: ["try-now", "open-in-zerops"],
-  });
+  const nowMs = new Date(2026, 9, 8, 11).getTime();
+  const clock = vi.spyOn(Date, "now").mockReturnValue(nowMs);
+  try {
+    expect(
+      mateNoticeVoice({
+        reachability: { kind: "not-answering", overdue: false },
+        conversationShown: false,
+        nowMs,
+        mateName: "Eddy",
+        offlineSince: new Date(2026, 9, 8, 10, 10).toISOString(),
+        timestampFormat: "24-hour",
+        lastKnown: "Last known 09:20: Eddy was working.",
+      }),
+    ).toMatchObject({
+      headline: "Eddy isn't answering since 10:10.",
+      secondary: "Last known 09:20: Eddy was working.",
+      actions: ["try-now", "open-in-zerops"],
+    });
+  } finally {
+    clock.mockRestore();
+  }
 });
 
 it("a recovered Mate does not repeat its old failed process as a connection banner", () => {
@@ -423,4 +428,72 @@ it("a creation page says Almost there only once its Mate is up and its conversat
     mateArrivalNotice({ coming: { kind: "coming", line }, progress: undefined }).secondary;
   expect(say("Coming up. A few minutes.")).toBe("Usually two to four minutes.");
   expect(say("Almost there.")).toBe("Almost there.");
+});
+
+describe("a lost link over a shown conversation", () => {
+  const WITH_CAUSE: Reachability = {
+    kind: "reconnecting",
+    unavailableReason: "WebSocket closed (1006) before the server said why",
+  };
+  const LOST = [
+    WITH_CAUSE,
+    { kind: "reconnecting", retryAtMs: 4_000 },
+    { kind: "retrying", retryAtMs: 4_000, last: { kind: "network" }, restart: false },
+  ] satisfies Reachability[];
+  const over = (reachability: Reachability, lost: "blip" | "held" | "slow") =>
+    mateNoticeVoice({
+      reachability,
+      conversationShown: true,
+      linkHeld: lost !== "blip",
+      linkSlow: lost === "slow",
+      nowMs: 0,
+      mateName: "Rosa",
+      offlineSince: "2026-11-05T22:46:00.000Z",
+      lastKnown:
+        "Last known 10:21: Rosa had no active work. The store now keeps its files in a bucket.",
+    });
+
+  // witness: apps/web/src/zerops/mateNoticeVoice.ts | if (input.linkHeld !== true && input.linkSlow !== true) return { surface: "none" }; → if (false) return { surface: "none" };
+  it.each(LOST)("stays quiet while a lost link is a blip: %j", (reachability) => {
+    expect(over(reachability, "blip")).toEqual({ surface: "none" });
+  });
+
+  // witness: apps/web/src/zerops/mateNoticeVoice.ts | input.linkSlow === true ? ["try-now"] : [] → ["try-now"]
+  it.each(LOST)(
+    "says it is reconnecting beside the Mate's name once the blip is over, never over the composer, and offers no verb until the link is slow: %j",
+    (reachability) => {
+      expect(over(reachability, "held")).toMatchObject({
+        surface: "header",
+        text: "Reconnecting to Rosa…",
+        actions: [],
+      });
+    },
+  );
+
+  it.each(LOST)(
+    "says one short line in the Mate's name once reconnecting is slow, never its last words, a countdown or the raw cause: %j",
+    (reachability) => {
+      const voice = over(reachability, "slow");
+      expect(voice).toMatchObject({
+        surface: "header",
+        headline: "Reconnecting to Rosa…",
+        text: "Reconnecting to Rosa…",
+        actions: ["try-now"],
+        severity: "info",
+      });
+      const said = JSON.stringify({ ...voice, details: undefined });
+      expect(said).not.toContain("Last known");
+      expect(said).not.toContain("bucket");
+      expect(said).not.toContain("next try");
+      expect(said).not.toContain("Trying again");
+      expect(said).not.toContain("since");
+      expect(said).not.toContain("WebSocket");
+    },
+  );
+
+  it("keeps a raw cause under its Details", () => {
+    expect(over(WITH_CAUSE, "slow")).toMatchObject({
+      details: "WebSocket closed (1006) before the server said why",
+    });
+  });
 });

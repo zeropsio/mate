@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off globalFetch:off globalFetchInEffect:off preferSchemaOverJson:off -- localhost wire drivers and failure diagnostics.
+// @effect-diagnostics nodeBuiltinImport:off globalFetch:off globalFetchInEffect:off globalJsonInEffect:off -- localhost wire drivers and failure diagnostics.
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import type * as Scope from "effect/Scope";
@@ -11,20 +11,13 @@ import { MINIMUM_MATE_SERVER_VERSION } from "../../../../../packages/client-runt
 import { STREAM_POLICY } from "../../../../../packages/client-runtime/src/data/streamMachine.ts";
 import { HqAttentionScopeValue } from "@t3tools/shared/hqStream";
 import { MateLinkUp, MateOverview } from "@t3tools/shared/mateLink";
-import {
-  seedCoreWorld,
-  sessionFor,
-  enrollMate,
-  untilHealth,
-  ticketFor,
-} from "../../../../hq/test/harness/runningCore.ts";
-import { mateInApp, remoteOf } from "../../../../hq/test/harness/mates.ts";
-import { overviewOf, digest } from "../../../../hq/test/harness/overviews.ts";
+import { seedCoreWorld, ticketFor } from "./coreSeed.ts";
+import { overviewOf, digest } from "./overviews.ts";
 import { definePerson, projectRoles, type PersonOptions } from "../fakes/zeropsWorld.ts";
 import { ZeropsFake } from "../fakes/zerops.ts";
 import { startGithubFake } from "../fakes/github.ts";
 import { MateFake } from "../fakes/mate.ts";
-import { hqConnection } from "../fakes/hqConnection.ts";
+import { hqConnection, untilMateOpens } from "../fakes/hqConnection.ts";
 import { rendered } from "./completedHttp.ts";
 import { serve, type HttpHandler } from "./http.ts";
 import {
@@ -38,20 +31,20 @@ import {
 import { DataConsoleSpawn } from "../../../../server/src/zerops/ZeropsDataConsole.ts";
 import { transportGate } from "./transportGate.ts";
 import { answerInZerops, openZeropsWindow } from "./deviceLogin.ts";
-import {
-  openScenarioNavigation,
-  startScenarioCore,
-  type HqTimings,
-  type ScenarioCore,
-} from "./hqCore.ts";
+import { ZEROPS_HQ_ORIGIN } from "./build.ts";
+import { MATE_ORIGIN, signedInAtHq, startZeropsHq } from "./zeropsHq.ts";
+import { personDoor } from "./mateAccess.ts";
+import { openScenarioNavigation, startScenarioCore, type ScenarioCore } from "./hqCore.ts";
 import {
   openBrowser,
   menuMateRow,
   visibleText,
   visibleInMenu,
   sendConversationMessage,
+  waitForConversation,
 } from "./browser.ts";
-import { trackSteps } from "./lastStep.ts";
+import { recordPhaseDuration, trackSteps } from "./lastStep.ts";
+import { scenarioMonotonicTime } from "./clientClock.ts";
 
 const decodeOverview = Schema.decodeUnknownEffect(MateOverview);
 const encodeLink = Schema.encodeEffect(MateLinkUp);
@@ -93,13 +86,14 @@ export interface ScenarioDrivers {
 }
 
 export interface ScenarioOptions {
-  hq?: HqTimings;
   /**
-   * Restore an account by default; UI sign-in cases explicitly retain the OAuth journey, and
-   * `device-login` signs in through the Zerops window, on the build in `dist`.
+   * Restore an account by default, and UI sign-in cases explicitly retain the OAuth journey.
+   * The other two take the `zerops-hq` build in `dist`. `zerops-hq` serves it at Mate's hosted origin, where it shares Zerops HQ's session.
+   * `device-login` serves it at an origin that HQ's bridge refuses, so it signs in through the Zerops window.
+   * Their `given.signedIn` signs the person in at Zerops HQ first.
    */
-  signIn?: "injected" | "ui" | "device-login";
-  /** A build to serve instead of the shipped one (`deviceLoginDist`). */
+  signIn?: "injected" | "ui" | "zerops-hq" | "device-login";
+  /** A build to serve instead of the shipped one (`zeropsHqDist`). */
   dist?: string;
   /** `real` starts the real Mate server and engine for each Mate project; the fake stays default. */
   mate?: "fake" | "real";
@@ -110,6 +104,8 @@ export interface RealMate {
   /** The agent: script its turns, read what it was sent. */
   readonly provider: ScriptedProvider;
   readonly gate: Awaited<ReturnType<typeof transportGate>>;
+  /** The Mate's link to HQ, observed for refusal receipts. */
+  readonly link: Awaited<ReturnType<typeof hqConnection>>;
 }
 
 // Calls a Mate makes on its own and survives refused: the model manifest every provider sync
@@ -126,6 +122,15 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
   extensions: ScenarioExtension[] = [],
   options: ScenarioOptions = {},
 ) {
+  const setupStarted = process.env.MATE_SIGNAL_REPORT ? scenarioMonotonicTime() : undefined;
+  let cleanupStarted: number | undefined;
+  if (setupStarted !== undefined)
+    yield* Effect.addFinalizer(() =>
+      Effect.sync(() => {
+        if (cleanupStarted !== undefined)
+          recordPhaseDuration("scenarioCleanup", scenarioMonotonicTime() - cleanupStarted);
+      }),
+    );
   const cleanup: (() => Promise<void>)[] = [];
   yield* Effect.addFinalizer(() =>
     Effect.promise(async () => {
@@ -152,11 +157,11 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
   const github = yield* Effect.acquireRelease(Effect.promise(startGithubFake), (github) =>
     Effect.promise(github.close),
   );
-  const core = yield* startScenarioCore(
-    { baseUrl: `${api.origin}/api/rest/public`, world, github },
-    options.hq,
-  );
-  if (core.kind === "in-process") yield* untilHealth(core.call, "active");
+  const core = yield* startScenarioCore({
+    baseUrl: `${api.origin}/api/rest/public`,
+    world,
+    github,
+  });
   const personal = core.fake.tokens.get("door-owner")!;
   core.fake.tokens.set("personal", {
     ...personal,
@@ -164,19 +169,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     name: "Scenario personal access token",
   });
   zerops.people.set("personal", "owner");
-  const external = core.kind === "external";
-  const owner = external
-    ? yield* core
-        .call("POST", "/api/door", {
-          body: { accessToken: "personal", orgId: "ORG", orgKey: "hq" },
-        })
-        .pipe(
-          Effect.map((response) => {
-            expect(response.status, JSON.stringify(response.body)).toBe(200);
-            return (response.body as { session: string }).session;
-          }),
-        )
-    : yield* sessionFor(core.call, "door-owner");
+  const owner = yield* personDoor(core, "owner");
   const mates = new Map<string, MateFake>();
   const realMates = new Map<string, RealMate>();
   if (real)
@@ -193,37 +186,43 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     "https://app.zerops.io": api.origin,
     "https://hqzone.prg1-zerops.zone": hq.origin,
   };
+  const zeropsHq =
+    options.signIn === "zerops-hq" || options.signIn === "device-login"
+      ? yield* Effect.promise(() => startZeropsHq(() => zerops.clock.currentTimeMillis()))
+      : undefined;
+  if (zeropsHq !== undefined) {
+    cleanup.push(zeropsHq.server.close);
+    zerops.hq = zeropsHq.hq;
+    routes[ZEROPS_HQ_ORIGIN] = zeropsHq.server.origin;
+  }
   const linkMate = Effect.fn("scenarios.linkMate")(function* (name: string, credential?: string) {
-    if (external) {
-      const link = yield* core.socket("/api/mate/link");
-      yield* link.send({
-        type: "hello",
-        key: `mate-key-${name}`,
-        serviceId: `service-${name}`,
-        origin: `https://zcp-${name.toLowerCase()}-8080.prg1.zerops.app`,
-      });
-      return link;
-    }
-    const issued = credential ?? (yield* enrollMate(core.call, core.fake, name));
-    const { ticket } = (yield* core.call("POST", "/api/mate/link-ticket", {
-      headers: { authorization: `Mate ${issued}` },
-    })).body as { ticket: string };
-    return yield* core.socket(`/api/mate/link?ticket=${ticket}`);
+    const link = yield* core.socket("/api/mate/link");
+    yield* link.send({
+      type: "hello",
+      key: `mate-key-${name}`,
+      serviceId: `service-${name}`,
+      origin: `https://zcp-${name.toLowerCase()}-8080.prg1.zerops.app`,
+      heldSessionIds: [],
+    });
+    return link;
   });
-  const mateAuthorization = (credential: string) =>
-    external ? `Project ${credential}` : `Mate ${credential}`;
-  const mateClone = (credential: string, appId: string, repo: string, dir: string) =>
-    external
-      ? [
-          "clone",
-          "-c",
-          `http.extraHeader=Authorization: Project ${credential}`,
-          `${core.origin}/git/ORG/${appId}/${repo}.git`,
-          dir,
-        ]
-      : ["clone", remoteOf(core.origin, credential, appId, repo), dir];
+  const mateAuthorization = (credential: string) => `Project ${credential}`;
+  const mateClone = (credential: string, appId: string, repo: string, dir: string) => [
+    "clone",
+    "-c",
+    `http.extraHeader=Authorization: Project ${credential}`,
+    `${core.origin}/git/ORG/${appId}/${repo}.git`,
+    dir,
+  ];
   const drivers = {
     hq,
+    /** Zerops HQ's stand-in, in a scenario of the `zerops-hq` build. */
+    zeropsHq: zeropsHq?.hq,
+    /** The next answer on that HQ's consent page, once HQ has taken it. */
+    zeropsHqAnswered: () => {
+      if (zeropsHq === undefined) throw new Error("This scenario has no Zerops HQ");
+      return zeropsHq.answered();
+    },
     linkMate,
     mateAuthorization,
     mateClone,
@@ -248,7 +247,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
   const person = (name: string, options: PersonOptions = {}) => {
     persons.set(name, definePerson(zerops.world, name, options));
   };
-  person("owner", { role: "OWNER" });
+  person("owner", { role: "OWNER", grants: { Chief: "OWNER" } });
   person("dev", { role: "Developer" });
   person("reader", { role: "READ_ONLY" });
   const app = Effect.fn("scenarios.given.app")(function* (name: string) {
@@ -292,32 +291,19 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     });
   };
   const enroll = Effect.fn("scenarios.given.enroll")(function* (name: string, inApp?: string) {
-    if (external) {
-      const appId = inApp ? yield* app(inApp) : undefined;
-      const response = yield* core.call(
-        "POST",
-        appId ? `/api/apps/${appId}/projects` : "/api/mates",
-        {
-          session: owner,
-          body: appId
-            ? { projectId: name, kind: "mate", mate: { face: "face-1" } }
-            : { projectId: name, face: "face-1" },
-        },
-      );
-      expect(response.status, JSON.stringify(response.body)).toBe(201);
-      return `mate-key-${name}`;
-    }
-    if (inApp) {
-      const placed = yield* mateInApp(core.call, core.fake, owner, name, inApp, appIds);
-      appIds.set(inApp, placed.appId);
-      return placed.credential;
-    }
-    const created = yield* core.call("POST", "/api/mates", {
-      session: owner,
-      body: { projectId: name, face: "face-1" },
-    });
-    expect(created.status).toBe(201);
-    return yield* enrollMate(core.call, core.fake, name);
+    const appId = inApp ? yield* app(inApp) : undefined;
+    const response = yield* core.call(
+      "POST",
+      appId ? `/api/apps/${appId}/projects` : "/api/mates",
+      {
+        session: owner,
+        body: appId
+          ? { projectId: name, kind: "mate", mate: { face: "face-1" } }
+          : { projectId: name, face: "face-1" },
+      },
+    );
+    expect(response.status, JSON.stringify(response.body)).toBe(201);
+    return `mate-key-${name}`;
   });
   const seedProjectKey = (name: string) => {
     const key = `mate-key-${name}`;
@@ -350,6 +336,19 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     const key = seedProjectKey(name);
     putMateService(name);
     const credential = options.registered === false ? undefined : yield* enroll(name, options.app);
+    if (credential) {
+      const registration = yield* core.call("GET", "/api/mate/self", {
+        headers: { authorization: `Project ${key}` },
+      });
+      if (registration.status !== 200)
+        return yield* Effect.die(
+          new Error(
+            `Mate project key refused: ${registration.status} ${JSON.stringify(registration.body)}`,
+          ),
+        );
+    }
+    const link = yield* Effect.promise(() => hqConnection(core.origin, "::1"));
+    cleanup.push(link.close);
     const provider = yield* makeScriptedProvider(options.provider);
     const publicOrigin = `https://zcp-${name.toLowerCase()}-8080.prg1.zerops.app`;
     const spawnDataConsole = yield* DataConsoleSpawn;
@@ -361,8 +360,8 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
         zeropsApiBaseUrl: `${zerops.origin}/api/rest/public`,
         zeropsApiToken: key,
         publicOrigin,
-        ...(external ? { allowedOrigins: [web.origin] } : {}),
-        ...(credential ? { hq: { origin: core.origin, credential } } : {}),
+        allowedOrigins: [web.origin],
+        ...(credential ? { hq: { origin: link.origin, credential } } : {}),
         now: () => zerops.clock.currentTimeMillis(),
         drivers: [provider.driver],
         ...(spawnDataConsole === undefined ? {} : { spawnDataConsole }),
@@ -377,22 +376,35 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     cleanup.push(server.remove, server.stop);
     const gate = yield* Effect.promise(() => transportGate(() => server.origin));
     cleanup.push(gate.close);
-    realMates.set(name, { server, provider, gate });
+    realMates.set(name, { server, provider, gate, link });
     routes[publicOrigin] = gate.origin;
     yield* Effect.promise(() => web.setRoutes());
     if (!credential) return;
     // The Mate links itself; consumers read HQ's attention for it, so that is the receipt.
-    const attentionTicket = yield* ticketFor(core.call, owner);
-    yield* openScenarioNavigation(
-      core.origin,
-      attentionTicket,
-      (message) =>
-        (message.type === "scope-reset" || message.type === "scope-values") &&
-        message.scope.kind === "attention" &&
-        message.scope.projectId === name &&
-        message.values.some((entry) => decodeAttentionScope(entry.value).overview != null),
-      { kind: "attention", projectId: name },
-    ).pipe(Effect.scoped);
+    const attentionDoor = yield* ticketFor(core.call, owner);
+    yield* Effect.gen(function* () {
+      const watch = yield* Effect.acquireRelease(
+        Effect.sync(() => link.watchMateRefusal(0)),
+        (watch) => Effect.sync(watch.cancel),
+      );
+      yield* Effect.raceFirst(
+        openScenarioNavigation(
+          core.origin,
+          attentionDoor,
+          (message) =>
+            (message.type === "scope-reset" || message.type === "scope-values") &&
+            message.scope.kind === "attention" &&
+            message.scope.projectId === name &&
+            message.values.some((entry) => decodeAttentionScope(entry.value).overview != null),
+          { kind: "attention", projectId: name },
+        ),
+        Effect.promise(() => watch.promise).pipe(
+          Effect.flatMap((receipt) =>
+            Effect.die(new Error(`Mate ${name} ${receipt.kind} refused: ${receipt.reason}`)),
+          ),
+        ),
+      );
+    }).pipe(Effect.scoped);
     return credential;
   });
   const project = Effect.fn("scenarios.given.project")(function* (
@@ -447,7 +459,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     yield* Effect.promise(() => web.setRoutes());
     putMateService(name);
     if (options.registered === false) return;
-    if (external) seedProjectKey(name);
+    seedProjectKey(name);
     const credential = yield* enroll(name, options.app);
     const link = yield* linkMate(name, credential);
     drivers.links.set(name, link);
@@ -475,10 +487,10 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     });
     yield* link.send(yield* encodeLink({ type: "overview", full: true, overview }));
     // Sending is not an application receipt: wait for the overview consumers will actually read.
-    const attentionTicket = yield* ticketFor(core.call, owner);
+    const attentionDoor = yield* ticketFor(core.call, owner);
     yield* openScenarioNavigation(
       core.origin,
-      attentionTicket,
+      attentionDoor,
       (message) =>
         (message.type === "scope-reset" || message.type === "scope-values") &&
         message.scope.kind === "attention" &&
@@ -493,11 +505,19 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
   });
 
   const dist = options.dist ?? inject("scenarioDist");
-  const web = yield* Effect.promise(() => openBrowser(dist, routes, zerops.clock));
+  const web = yield* Effect.promise(() =>
+    openBrowser(
+      dist,
+      routes,
+      zerops.clock,
+      options.signIn === "zerops-hq" ? MATE_ORIGIN : undefined,
+    ),
+  );
   cleanup.push(web.close);
   const actor = (page: Page, initialPerson = "owner") => {
     let selectedPerson = initialPerson;
     let openedMate: MateFake | undefined;
+    let opening: { name: string; link: RealMate["link"]; cursor: number } | undefined;
     let signedInDocument: number | undefined;
     const given = {
       org: (name: string) => {
@@ -517,6 +537,8 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
         web.setPerson(page, token);
         await web.setRoutes();
         const signIn = options.signIn ?? "injected";
+        if (zeropsHq !== undefined)
+          await signedInAtHq(zeropsHq.hq, page, zerops.people.get(token) ?? token);
         if (signIn === "injected") await web.gotoWithSession(page, token);
         else await page.goto(web.origin);
         try {
@@ -567,6 +589,9 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
         opensMate: (name: string) =>
           Effect.promise(async () => {
             const row = await menuMateRow(page, name);
+            const link = realMates.get(name)?.link;
+            opening =
+              link === undefined ? undefined : { name, link, cursor: link.mateRefusalCursor() };
             await row.click();
             openedMate = mates.get(name);
           }),
@@ -674,13 +699,18 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
       },
       conversation: {
         appears: Effect.promise(async () => {
+          const stop = new AbortController();
           try {
-            await page.waitForSelector('[role="textbox"]', { visible: true });
+            const wait = waitForConversation(page, stop.signal);
+            if (opening) await untilMateOpens(wait, opening.link, opening.name, opening.cursor);
+            else await wait;
           } catch (error) {
             throw new Error(
-              `${await page.evaluate(() => document.body.innerText)}\n${web.errors.join("\n")}\nRequests: ${JSON.stringify([...zerops.requests])}\nMate requests: ${JSON.stringify([...mates.values()].map((mate) => mate.requests.map((r) => r.tag)))}\nReal Mate requests: ${JSON.stringify([...realMates.values()].map(({ gate }) => gate.requests))}`,
+              `${String(error)}\n${await page.evaluate(() => document.body.innerText)}\n${web.errors.join("\n")}\nRequests: ${JSON.stringify([...zerops.requests])}\nMate requests: ${JSON.stringify([...mates.values()].map((mate) => mate.requests.map((r) => r.tag)))}\nReal Mate requests: ${JSON.stringify([...realMates.values()].map(({ gate }) => gate.requests))}`,
               { cause: error },
             );
+          } finally {
+            stop.abort();
           }
         }),
         showsMessage: (text: string) =>
@@ -769,6 +799,14 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     const page = yield* Effect.promise(() => web.newPage(context));
     return tracked(actor(page, options.person ?? "owner"));
   });
+  if (setupStarted !== undefined) {
+    recordPhaseDuration("scenarioSetup", scenarioMonotonicTime() - setupStarted);
+    yield* Effect.addFinalizer(() =>
+      Effect.sync(() => {
+        cleanupStarted = scenarioMonotonicTime();
+      }),
+    );
+  }
   // oxlint-disable-next-line unicorn/no-thenable -- the scenario keeps its `then` step, never awaited.
   return {
     ...tracked({ ...primary, given: { ...primary.given, browserActor: newActor } }),

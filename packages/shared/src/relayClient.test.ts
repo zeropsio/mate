@@ -1,5 +1,6 @@
 import { sha256 } from "@noble/hashes/sha2";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { describe, expect, it } from "@effect/vitest";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
@@ -105,6 +106,7 @@ describe("RelayClient", () => {
         Effect.provide(
           Layer.mergeAll(
             NodeServices.layer,
+            NodeCrypto.layer,
             makeHttpClientLayer(new Uint8Array()),
             makeSpawnerLayer([]),
             hostRuntimeLayer(),
@@ -164,6 +166,7 @@ describe("RelayClient", () => {
         Effect.provide(
           Layer.mergeAll(
             NodeServices.layer,
+            NodeCrypto.layer,
             makeHttpClientLayer(new TextEncoder().encode("test-cloudflared-binary")),
             makeSpawnerLayer([]),
             hostRuntimeLayer(),
@@ -195,6 +198,7 @@ describe("RelayClient", () => {
       Effect.provide(
         Layer.mergeAll(
           NodeServices.layer,
+          NodeCrypto.layer,
           makeHttpClientLayer(new TextEncoder().encode("tampered")),
           makeSpawnerLayer([]),
           hostRuntimeLayer(),
@@ -230,6 +234,7 @@ describe("RelayClient", () => {
       Effect.provide(
         Layer.mergeAll(
           NodeServices.layer,
+          NodeCrypto.layer,
           makeHttpClientLayer(bytes),
           makeSpawnerLayer(commands),
           hostRuntimeLayer(),
@@ -274,6 +279,7 @@ describe("RelayClient", () => {
         Effect.provide(
           Layer.mergeAll(
             NodeServices.layer,
+            NodeCrypto.layer,
             makeHttpClientLayer(new Uint8Array()),
             makeSpawnerLayer([]),
             hostRuntimeLayer(env),

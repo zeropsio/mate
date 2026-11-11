@@ -2,8 +2,10 @@
 
 - A **Mate** is a coding environment in a Zerops project: its code, coding agents and durable work.
 - A **Zerops project** groups services on the platform. It is distinct from an application.
-- **HQ** is the shared authority for applications, repositories, changes and deployments, with
-  one tenant per organization. **Core** is the service that carries that authority.
+- **HQ** is the shared authority for applications, repositories, changes and deployments, one
+  service for every organization (mate-hq).
+- **Zerops HQ** is Zerops's own sign-in service, shared by every Zerops app (hq.zerops.io); it is
+  not HQ. A build that signs in through it shares its session and never holds the refresh token.
 - An **application** groups related repositories and environments in HQ.
 - An **environment** is a place an application's code runs. A Mate is for development, **stage**
   follows merged work, and **production** runs a release. A Mate's **preview** is its development
@@ -14,6 +16,13 @@
 - A **release** names a fixed selection of application code and configuration for production.
   A **rollback** is a release selecting earlier work.
 - A **login** is a coding agent's account access; its **signer** is the person who signed in with it.
+- A Mate's **owner** is the person HQ records on it: its maker, then whoever signs its agent in, or
+  the person a hand-over names; a registered Chief's is its registered person. Only HQ keeps it. The
+  Mate and the web read it from HQ (`ownerUserId`), never from the Zerops `OWNER` override or a
+  login's signer; the Mate only reports its sign-ins (`lastSignedInAt`).
+- A **persona** is a Mate's standing instructions for how its coding agents work and talk in its chats
+  outside a crew. It starts from a **persona template**, Zerops's own or one an organization keeps in HQ,
+  or is written by hand.
 - A **crew** is a Mate's standing group of coding agents. A **crewmate** is one member.
 - A **writer** builds in its own **copy** of the code; a **reader** reviews without writing;
   a **lead** plans and reviews the crew's work without writing.

@@ -1,38 +1,29 @@
 /**
- * What a Mate proposes, on its card: what it would do as its title, why in the Mate's words, what
- * exactly — the service, the value (hidden when it is secret), the words and attachment another
- * Mate, or the person's own Chief, would be sent, or the service and port a domain points at — and
- * Approve or Decline. Decided, the same card says how it went in place: running, done, failed in
- * the platform's words, or declined; an approved domain says how far it is from answering, and
- * opens the project's addresses. Nothing ran before the person approved it. Props only: the
- * container carries out the approval.
+ * What a Mate proposes, on the ask card: where it acts (Stage or Production where its project is
+ * one), what it would do as its title, why in the Mate's words, what exactly — the service, the
+ * value (hidden when it is secret), the words and attachment another Mate, or the person's own
+ * Chief, would be sent, or the domain's names — and its main press, named for what it does, beside
+ * Not now. Decided, the same card says how it went in place, from HQ's decision record: running,
+ * done with who and when, failed in the platform's words, or Not now with who and when; an
+ * approved domain says how far it is from answering, and opens the project's addresses. Nothing
+ * ran before the person approved it. Props only: the container carries out the approval.
  */
 import type { ZeropsProposal } from "@t3tools/client-runtime/zerops/model";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
-import {
-  CheckIcon,
-  ChevronRightIcon,
-  CircleAlertIcon,
-  GlobeIcon,
-  KeyRoundIcon,
-  PlayIcon,
-  RotateCwIcon,
-  SendIcon,
-  SquareIcon,
-  UsersIcon,
-  type LucideIcon,
-} from "lucide-react";
+import { CheckIcon, ChevronRightIcon, CircleAlertIcon } from "lucide-react";
 import { useState } from "react";
 
+import { AskCard, AskFooter } from "../../ask/AskCard";
 import { MateMark } from "../../MateMark";
 import { DnsRecords } from "../addresses/DnsRecords";
 import { Button } from "../../ui/button";
 import { Spinner } from "../../ui/spinner";
-import { Card } from "../../ui/card";
 import { MateFace } from "../primitives";
 import {
   chiefMessageTarget,
-  proposalOutcomeWords,
+  proposalAskState,
+  proposalAskWhere,
+  proposalPress,
   proposalTitle,
   proposalWhere,
   type DomainProposalState,
@@ -85,76 +76,125 @@ export interface ProposalCardProps {
   readonly access?:
     | { readonly lines: ReadonlyArray<string>; readonly dropped: ReadonlyArray<string> }
     | undefined;
+  /** Stage or Production, where the proposal's project is one of its application's environments. */
+  readonly tier?: "stage" | "production" | null;
+  /** The conversation's own project: a proposal acting there acts in this Mate. */
+  readonly homeProjectId?: string | null;
+  /** Who decided it, by name, and when, as HQ's decision record says. */
+  readonly decidedBy?: string | null;
+  readonly decidedAt?: string | null;
 }
-
-const KIND_ICON: Record<ZeropsProposal["kind"], LucideIcon> = {
-  "service.restart": RotateCwIcon,
-  "service.start": PlayIcon,
-  "service.stop": SquareIcon,
-  "env.set": KeyRoundIcon,
-  "mate.message": SendIcon,
-  "chief.message": SendIcon,
-  "domain.add": GlobeIcon,
-  "access.set": UsersIcon,
-};
 
 /** A secret value is never drawn: the card says it is hidden. */
 const HIDDEN_VALUE = "••••••••";
 
 export function ProposalCard(props: ProposalCardProps) {
   const { proposal, stage } = props;
-  const Icon = KIND_ICON[proposal.kind];
+  const tier = props.tier ?? null;
   const chiefTarget =
     proposal.kind === "chief.message"
       ? (props.chiefTarget ?? { kind: "unknown" as const })
       : undefined;
-  const where = proposalWhere(proposal);
+  const where = proposalAskWhere(proposal, tier, props.homeProjectId ?? null);
+  const state = proposalAskState({
+    proposal,
+    stage,
+    failure: props.failure,
+    readOnlyReason: props.readOnlyReason,
+    by: props.decidedBy ?? null,
+    at: props.decidedAt ?? null,
+  });
+  const title =
+    stage === "open" && proposal.kind === "chief.message" && chiefTarget?.kind === "none"
+      ? "This Mate has no Chief to ask."
+      : stage === "open" && proposal.kind === "chief.message" && chiefTarget?.kind === "unknown"
+        ? "Finding this Mate's Chief…"
+        : proposalTitle(proposal);
+  const main =
+    props.onSetUpChief !== undefined
+      ? { label: "Set up Chief", onPress: props.onSetUpChief }
+      : chiefTarget !== undefined && chiefTarget.kind !== "chief"
+        ? null
+        : {
+            label: proposalPress(proposal, tier),
+            onPress: props.onApprove,
+            disabled: props.approveBlocked !== undefined,
+          };
+  const decided = stage === "done" || stage === "unseen";
+  const action =
+    stage === "done" && props.onOpenRecipient !== undefined ? (
+      proposal.kind === "mate.message" ? (
+        <Button onClick={props.onOpenRecipient} variant="secondary">
+          Open {props.recipient?.name ?? proposal.params.to.mateName}
+        </Button>
+      ) : proposal.kind === "chief.message" ? (
+        <Button onClick={props.onOpenRecipient} variant="secondary">
+          Open Chief
+        </Button>
+      ) : undefined
+    ) : proposal.kind === "domain.add" && decided && props.onOpenAddresses !== undefined ? (
+      <Button onClick={props.onOpenAddresses} variant="secondary">
+        Open addresses
+      </Button>
+    ) : undefined;
   return (
-    <Card
-      data-proposal={proposal.id}
-      data-proposal-kind={proposal.kind}
-      data-proposal-stage={stage}
-      size="sm"
-      variant="flat"
-    >
-      <div className="flex min-w-0 items-start gap-2.5">
-        <Icon aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-        <div className="grid min-w-0 flex-1 gap-2.5">
-          <div className="grid min-w-0 gap-0.5">
-            <p className="text-sm font-medium text-foreground" data-proposal-summary>
-              {stage === "open" && proposal.kind === "chief.message" && chiefTarget?.kind === "none"
-                ? "This Mate has no Chief to ask."
-                : stage === "open" &&
-                    proposal.kind === "chief.message" &&
-                    chiefTarget?.kind === "unknown"
-                  ? "Finding this Mate's Chief…"
-                  : proposalTitle(proposal)}
-            </p>
-            {where === null ? null : (
-              <p className="text-xs text-muted-foreground" data-proposal-where>
-                {where}
-              </p>
-            )}
-            {proposal.reason === undefined || proposal.reason.trim() === "" ? null : (
-              <p className="text-xs leading-4.5 text-muted-foreground" data-proposal-reason>
-                {props.mateName}: <q className="italic">{proposal.reason}</q>
-              </p>
-            )}
-          </div>
-          <ProposalBody
-            access={props.access}
-            proposal={proposal}
-            recipient={props.recipient}
-            chiefTarget={stage === "open" ? chiefTarget : undefined}
+    <div data-proposal={proposal.id} data-proposal-kind={proposal.kind} data-proposal-stage={stage}>
+      <AskCard
+        askId={proposal.id}
+        density="full"
+        footer={
+          <AskFooter
+            action={action}
+            density="full"
+            // Production carries the risk; stopping takes a service offline anywhere.
+            destructive={tier === "production" || proposal.kind === "service.stop"}
+            // While its approval runs the presses stand, held, the main one saying what runs.
+            main={main}
+            note={
+              stage === "open" && props.onSetUpChief === undefined
+                ? props.approveBlocked
+                : undefined
+            }
+            onNotNow={props.onDecline}
+            state={state}
           />
-          <ProposalFoot {...props} chiefTarget={chiefTarget} />
-        </div>
-      </div>
-    </Card>
+        }
+        kind="proposal"
+        state={state.kind}
+        title={title}
+        where={where}
+        why={
+          proposal.reason === undefined || proposal.reason.trim() === ""
+            ? null
+            : { who: props.mateName, words: proposal.reason }
+        }
+      >
+        {proposalBody({
+          access: props.access,
+          proposal,
+          recipient: props.recipient,
+          chiefTarget: stage === "open" ? chiefTarget : undefined,
+        })}
+        {stage === "open" && props.domainAlso !== undefined ? (
+          <p className="text-caption text-muted-foreground" data-proposal-also>
+            {props.domainAlso}
+          </p>
+        ) : null}
+        {stage === "open" && props.refusal !== undefined ? (
+          <p className="text-caption text-destructive-foreground" role="alert">
+            {props.refusal}
+          </p>
+        ) : null}
+        {proposal.kind === "domain.add" && decided ? (
+          <DomainProgress {...props} stage={stage} />
+        ) : null}
+      </AskCard>
+    </div>
   );
 }
 
-function ProposalBody({
+/** What exactly it would do, where there is more to show than its title; `null` where not. */
+function proposalBody({
   access,
   proposal,
   recipient,
@@ -222,6 +262,13 @@ function ProposalBody({
       </div>
     );
   }
+  if (proposal.kind === "domain.add") {
+    return (
+      <p className="text-caption text-muted-foreground" data-proposal-where>
+        {proposalWhere(proposal)}
+      </p>
+    );
+  }
   if (proposal.kind !== "mate.message") return null;
   const { to, words, attachment } = proposal.params;
   return (
@@ -260,7 +307,8 @@ function Words({ words }: { readonly words: string }) {
   );
 }
 
-function Attachment({ title, text }: { readonly title: string; readonly text: string }) {
+/** Something handed along, folded under its title until asked for: a log, an import. */
+export function Attachment({ title, text }: { readonly title: string; readonly text: string }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="grid min-w-0 gap-1.5" data-proposal-attachment>
@@ -285,115 +333,25 @@ function Attachment({ title, text }: { readonly title: string; readonly text: st
   );
 }
 
-function ProposalFoot(props: ProposalCardProps) {
-  const { proposal, stage } = props;
-  if (stage === "open" && props.readOnlyReason !== undefined) {
-    return <p className="text-xs text-muted-foreground">{props.readOnlyReason}</p>;
-  }
-  if (stage === "open") {
-    return (
-      <div className="grid gap-1.5">
-        {props.domainAlso === undefined ? null : (
-          <p className="text-xs leading-4 text-muted-foreground" data-proposal-also>
-            {props.domainAlso}
-          </p>
-        )}
-        <div className="flex flex-wrap items-center gap-2" data-proposal-decide>
-          {props.onSetUpChief === undefined ? (
-            props.chiefTarget !== undefined && props.chiefTarget.kind !== "chief" ? null : (
-              <Button
-                disabled={props.approveBlocked !== undefined}
-                onClick={props.onApprove}
-                size="sm"
-              >
-                Approve
-              </Button>
-            )
-          ) : (
-            <Button onClick={props.onSetUpChief} size="sm">
-              Set up Chief
-            </Button>
-          )}
-          <Button onClick={props.onDecline} size="sm" variant="ghost">
-            Decline
-          </Button>
-          {props.approveBlocked === undefined || props.onSetUpChief !== undefined ? null : (
-            <span className="text-xs text-muted-foreground">{props.approveBlocked}</span>
-          )}
-        </div>
-        {props.refusal === undefined ? null : (
-          <p className="text-xs leading-4 text-destructive-foreground" role="alert">
-            {props.refusal}
-          </p>
-        )}
-      </div>
-    );
-  }
-  if (stage === "failed") {
-    return (
-      <p
-        className="flex items-start gap-1.5 text-xs leading-4 text-destructive-foreground"
-        data-proposal-outcome="failed"
-        role="alert"
-      >
-        <CircleAlertIcon aria-hidden="true" className="size-3.5 shrink-0" />
-        {props.failure ?? "Zerops did not do it."}
-      </p>
-    );
-  }
-  if (proposal.kind === "domain.add" && (stage === "done" || stage === "unseen")) {
-    return <DomainFoot {...props} stage={stage} />;
-  }
-  const words = proposalOutcomeWords(proposal, stage);
-  return (
-    <div
-      className="flex min-h-6 flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground"
-      data-proposal-outcome={stage}
-      role="status"
-    >
-      <span className="flex min-w-0 items-center gap-1.5">
-        {stage === "running" ? <Spinner size="xs" /> : null}
-        {stage === "done" ? (
-          <CheckIcon aria-hidden="true" className="size-3.5 shrink-0 text-status-ok-text" />
-        ) : null}
-        {words}
-      </span>
-      {stage === "done" && props.onOpenRecipient !== undefined ? (
-        proposal.kind === "mate.message" ? (
-          <Button onClick={props.onOpenRecipient} size="sm" variant="secondary">
-            Open {props.recipient?.name ?? proposal.params.to.mateName}
-          </Button>
-        ) : proposal.kind === "chief.message" ? (
-          <Button onClick={props.onOpenRecipient} size="sm" variant="secondary">
-            Open Chief
-          </Button>
-        ) : null
-      ) : null}
-    </div>
-  );
-}
-
 /**
- * An approved domain: how far it is from answering, as the project's addresses show it — until
- * they show it, that it was added — and the way to its records.
+ * An approved domain: how far it is from answering, as the project's addresses show it, and the
+ * records it still needs at the DNS provider.
  */
-function DomainFoot(props: ProposalCardProps & { readonly stage: "done" | "unseen" }) {
-  const { domainState, domainRecords, proposal, stage } = props;
-  const tone = domainState?.tone ?? (stage === "done" ? "live" : "waiting");
+function DomainProgress(props: ProposalCardProps & { readonly stage: "done" | "unseen" }) {
+  const { domainState, domainRecords } = props;
+  if (domainState === undefined && domainRecords === undefined) return null;
+  const tone = domainState?.tone;
   return (
     <div className="grid gap-3">
-      <div
-        className="flex min-h-6 flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground"
-        data-proposal-outcome={stage}
-        data-proposal-domain={domainState?.tone}
-        role="status"
-      >
-        <span
+      {domainState === undefined ? null : (
+        <p
           className={
             tone === "problem"
-              ? "flex min-w-0 items-start gap-1.5 text-destructive-foreground"
-              : "flex min-w-0 items-center gap-1.5"
+              ? "flex min-w-0 items-start gap-1.5 text-body text-destructive-foreground"
+              : "flex min-w-0 items-center gap-1.5 text-body text-muted-foreground"
           }
+          data-proposal-domain={tone}
+          role="status"
         >
           {tone === "working" ? <Spinner size="xs" /> : null}
           {tone === "live" ? (
@@ -402,14 +360,9 @@ function DomainFoot(props: ProposalCardProps & { readonly stage: "done" | "unsee
           {tone === "problem" ? (
             <CircleAlertIcon aria-hidden="true" className="size-3.5 shrink-0" />
           ) : null}
-          {domainState?.words ?? proposalOutcomeWords(proposal, stage)}
-        </span>
-        {props.onOpenAddresses === undefined ? null : (
-          <Button onClick={props.onOpenAddresses} size="sm" variant="secondary">
-            Open addresses
-          </Button>
-        )}
-      </div>
+          {domainState.words}
+        </p>
+      )}
       {domainRecords === undefined ? null : <DnsRecords {...domainRecords} />}
     </div>
   );

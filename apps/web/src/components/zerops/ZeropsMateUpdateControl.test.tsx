@@ -1,9 +1,21 @@
+import {
+  makeAccountStore,
+  makeMateUpdates,
+  mateUpdate,
+  readsOfState,
+} from "@t3tools/client-runtime/data";
 import { EnvironmentId } from "@t3tools/contracts";
+import * as Effect from "effect/Effect";
+import { AtomRegistry } from "effect/reactivity";
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { MateUpdateState } from "../../zerops/mateUpdate";
 import type { ZeropsMateUpdateView } from "./ZeropsMateUpdateControl";
+import * as environments from "../../state/environments";
+import * as mateUpdates from "../../zerops/useMateUpdate";
+import * as matePermissions from "../../zerops/useMateReadOnly";
+import * as confirmDialog from "../../confirmDialog";
 
 const environmentState = vi.hoisted(() => ({
   environment: undefined as
@@ -19,6 +31,8 @@ const environmentState = vi.hoisted(() => ({
           readonly latest: string;
           readonly available: boolean;
           readonly checkedAt: string;
+          readonly zcp?: { installed: string; latest: string; behind: boolean };
+          readonly restart?: { needed: boolean; why?: string };
         };
       },
 }));
@@ -33,13 +47,6 @@ const mateUpdateState = vi.hoisted<{
   checked: undefined,
 }));
 
-vi.mock("../../state/environments", () => ({
-  useEnvironment: () =>
-    environmentState.environment === undefined
-      ? null
-      : { serverConfig: { environment: environmentState.environment } },
-}));
-
 const verbs = vi.hoisted(() => ({
   update: vi.fn(),
   check: vi.fn(),
@@ -47,18 +54,8 @@ const verbs = vi.hoisted(() => ({
   confirm: vi.fn(),
 }));
 
-vi.mock("../../zerops/useMateUpdate", () => ({
-  useMateUpdate: () => ({
-    state: mateUpdateState.state,
-    update: verbs.update,
-    checked: mateUpdateState.checked,
-    check: verbs.check,
-  }),
-}));
-
-vi.mock("../../confirmDialog", () => ({
-  requestConfirmDialog: verbs.confirm,
-}));
+/** Whether the viewer may update the Mate: its owner, or an admin of its project. */
+const viewer = vi.hoisted(() => ({ mayUpdate: true }));
 
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 
@@ -85,6 +82,16 @@ function menuAction(id: string) {
   return action;
 }
 
+async function settledCheck() {
+  expect(verbs.check).toHaveBeenCalledTimes(1);
+  await verbs.check.mock.results[0]?.value;
+}
+
+async function settledConfirmation() {
+  expect(verbs.confirm).toHaveBeenCalledTimes(1);
+  await verbs.confirm.mock.results[0]?.value;
+}
+
 function render() {
   return renderToStaticMarkup(
     <ZeropsMateUpdateControl environmentId={ENVIRONMENT_ID}>
@@ -104,12 +111,33 @@ function render() {
 
 describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §2.9, MU-2)", () => {
   beforeEach(() => {
+    environmentState.environment = undefined;
     mateUpdateState.state = { phase: "idle" };
     mateUpdateState.checked = undefined;
     verbs.update.mockReset();
     verbs.check.mockReset();
     verbs.confirm.mockReset();
+    viewer.mayUpdate = true;
+    vi.spyOn(environments, "useEnvironment").mockImplementation(() =>
+      environmentState.environment === undefined
+        ? null
+        : ({ serverConfig: { environment: environmentState.environment } } as unknown as ReturnType<
+            typeof environments.useEnvironment
+          >),
+    );
+    vi.spyOn(mateUpdates, "useMateUpdate").mockImplementation(
+      () =>
+        ({
+          state: mateUpdateState.state,
+          update: verbs.update,
+          checked: mateUpdateState.checked,
+          check: verbs.check,
+        }) as unknown as ReturnType<typeof mateUpdates.useMateUpdate>,
+    );
+    vi.spyOn(matePermissions, "useMayUpdateMate").mockImplementation(() => viewer.mayUpdate);
+    vi.spyOn(confirmDialog, "requestConfirmDialog").mockImplementation(verbs.confirm);
   });
+  afterEach(() => vi.restoreAllMocks());
 
   it("renders nothing before the environment's descriptor has been read", () => {
     environmentState.environment = undefined;
@@ -169,6 +197,25 @@ describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §
     expect(html).toContain("Check for updates");
   });
 
+  it.each([
+    { who: "its owner or an admin of its project", mayUpdate: true, offered: true },
+    { who: "a colleague reading along", mayUpdate: false, offered: false },
+  ])(
+    "a Mate's update is offered to its owner or an admin of its project: $who",
+    ({ mayUpdate, offered }) => {
+      environmentState.environment = {
+        serverVersion: "0.8.0",
+        capabilities: { mateUpdate: true, mateUpdateCheck: true },
+        update: { installed: "0.8.0", latest: "0.8.1", available: true, checkedAt: "now" },
+      };
+      viewer.mayUpdate = mayUpdate;
+      const html = render();
+      expect(html).toContain("Server 0.8.0");
+      expect(html.includes("Update to 0.8.1")).toBe(offered);
+      expect(html.includes("Check for updates")).toBe(offered);
+    },
+  );
+
   // The bug this replaces: *Update to x.y.z* in a Mate's menu armed a
   // question drawn only on the update line, and the menus draw no line — the
   // click did nothing anyone could see (the owner, 2026-09-26).
@@ -191,9 +238,9 @@ describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §
       });
       verbs.confirm.mockResolvedValue(answer);
       menuAction("update").onSelect();
-      await vi.waitFor(() => expect(verbs.confirm).toHaveBeenCalledTimes(1));
+      await settledCheck();
+      await settledConfirmation();
       expect(verbs.confirm.mock.calls[0]?.[0]).toMatch(/^Update Nova to 0\.8\.1\?\n/);
-      await Promise.resolve();
       expect(verbs.update.mock.calls.map(([to]) => to)).toEqual(updates);
     },
   );
@@ -214,9 +261,9 @@ describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §
     });
     verbs.confirm.mockResolvedValue(true);
     menuAction("update").onSelect();
-    await vi.waitFor(() => expect(verbs.confirm).toHaveBeenCalledTimes(1));
+    await settledCheck();
+    await settledConfirmation();
     expect(verbs.confirm.mock.calls[0]?.[0]).toMatch(/^Update Nova to 0\.8\.2\?\n/);
-    await Promise.resolve();
     expect(verbs.update.mock.calls.map(([to]) => to)).toEqual(["0.8.2"]);
   });
 
@@ -234,10 +281,89 @@ describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §
       verbs.check.mockResolvedValue(found);
       verbs.confirm.mockResolvedValue(true);
       menuAction("update").onSelect();
-      await vi.waitFor(() => expect(verbs.confirm).toHaveBeenCalledTimes(1));
+      if (check) await settledCheck();
+      await settledConfirmation();
       expect(verbs.confirm.mock.calls[0]?.[0]).toMatch(/^Update Nova to the newest version\?\n/);
     },
   );
+
+  it("a Mate only a restart gets current offers the same Update, saying zcp's why, and restarts once asked", async () => {
+    const needsRestart = {
+      installed: "0.8.0",
+      latest: "0.8.0",
+      available: false,
+      checkedAt: "now",
+      zcp: { installed: "9.225.0", latest: "9.226.0", behind: true },
+      restart: { needed: true, why: "zcp 9.226.0 is out; only a restart installs it" },
+    };
+    environmentState.environment = {
+      serverVersion: "0.8.0",
+      capabilities: { mateUpdate: true, mateUpdateCheck: true },
+      update: needsRestart,
+    };
+    const html = render();
+    expect(html).toContain("Zerops Control Plane 9.226.0 available");
+    expect(html).toContain('aria-label="Update: zcp 9.226.0 is out; only a restart installs it"');
+    expect(menuAction("update").label).toBe("Update");
+    verbs.check.mockResolvedValue(needsRestart);
+    verbs.confirm.mockResolvedValue(true);
+    menuAction("update").onSelect();
+    await settledCheck();
+    await settledConfirmation();
+    expect(verbs.update).toHaveBeenCalledTimes(1);
+    expect(verbs.confirm.mock.calls[0]?.[0]).toMatch(
+      /^Update Nova to Zerops Control Plane 9\.226\.0\?\n/,
+    );
+    expect(verbs.update).toHaveBeenCalledWith("Zerops Control Plane 9.226.0", { zcp: "9.226.0" });
+  });
+
+  // The owner's open Mate read "zcp 9.226.0 available" beside "Up to date" and no Update: the
+  // account's projection called a line with no newer mate current.
+  it("a Mate only a restart gets current keeps its Update through the account's own reading", async () => {
+    const needsRestart = {
+      installed: "0.8.0",
+      latest: "0.8.0",
+      available: false,
+      checkedAt: "now",
+      automatic: {
+        protocol: 1 as const,
+        phase: "idle" as const,
+        runningVersion: "0.8.0",
+      },
+      zcp: { installed: "9.225.0", latest: "9.226.0", behind: true },
+      restart: { needed: true, why: "zcp 9.226.0 is out" },
+    };
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    const host = makeMateUpdates({
+      store,
+      wire: {
+        update: () => Effect.die("not pressed"),
+        check: () => Effect.succeed(needsRestart),
+      },
+      isCurrent: () => true,
+      makeId: () => "request-1",
+    });
+    let projected: ReturnType<typeof mateUpdate.derive>;
+    try {
+      await host.check(ENVIRONMENT_ID);
+      projected = mateUpdate.derive(readsOfState(store.state()), ENVIRONMENT_ID);
+    } finally {
+      host.close();
+      store.close();
+      registry.dispose();
+    }
+    mateUpdateState.state = projected.state;
+    mateUpdateState.checked = projected.checked;
+    environmentState.environment = {
+      serverVersion: "0.8.0",
+      capabilities: { mateUpdate: true, mateUpdateCheck: true },
+      update: needsRestart,
+    };
+    const html = render();
+    expect(html).not.toContain("Up to date");
+    expect(html).toContain('aria-label="Update: zcp 9.226.0 is out"');
+  });
 
   it("a check that finds nothing newer asks nothing: the Mate is up to date", async () => {
     environmentState.environment = {
@@ -252,9 +378,7 @@ describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §
       checkedAt: "now",
     });
     menuAction("update").onSelect();
-    await vi.waitFor(() => expect(verbs.check).toHaveBeenCalledTimes(1));
-    await Promise.resolve();
-    await Promise.resolve();
+    await settledCheck();
     expect(verbs.confirm).not.toHaveBeenCalled();
     expect(verbs.update).not.toHaveBeenCalled();
   });
@@ -280,11 +404,12 @@ describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §
       verbs.check.mockResolvedValue(answer);
       verbs.confirm.mockResolvedValue(true);
       menuAction("check-for-updates").onSelect();
-      await vi.waitFor(() => expect(verbs.check).toHaveBeenCalledTimes(1));
-      await Promise.resolve();
-      await Promise.resolve();
+      await settledCheck();
       expect(verbs.confirm).toHaveBeenCalledTimes(asks);
-      if (asks > 0) expect(verbs.confirm.mock.calls[0]?.[0]).toMatch(/^Update Nova to 0\.8\.2\?/);
+      if (asks > 0) {
+        await settledConfirmation();
+        expect(verbs.confirm.mock.calls[0]?.[0]).toMatch(/^Update Nova to 0\.8\.2\?/);
+      }
     },
   );
 

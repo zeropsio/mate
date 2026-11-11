@@ -14,7 +14,7 @@ import {
 import { makeAccountStore } from "../store.ts";
 import type { StreamFault } from "../streamMachine.ts";
 import { superviseLink } from "../supervisor.ts";
-import { classifyHttp, zeropsNavigationLink } from "./zerops.ts";
+import { classifyHttp, SLOW_RECEIVER_MS, zeropsNavigationLink } from "./zerops.ts";
 import { historyScope, runningScope } from "../families/process.ts";
 import { projectsScope } from "../families/project.ts";
 import { activeScope, versionScope } from "../families/version.ts";
@@ -39,6 +39,8 @@ import { usageScope, usageOwnerOf } from "../families/usage.ts";
 import { usageHistoryScope } from "../families/usageHistory.ts";
 import { projectVariablesScope } from "../families/projectVariables.ts";
 import { serviceVariablesScope } from "../families/serviceVariables.ts";
+import { zeropsClientsFromUser } from "../../zerops/api.ts";
+import { resolveMateVisibility } from "../../zerops/mateAccess.ts";
 
 import {
   RECORDED_ROUTING,
@@ -410,7 +412,7 @@ describe("zeropsNavigationLink", () => {
       expect(fixture.opens()).toBe(2);
       expect(
         fixture.requests.filter((request) => request.body?.receiverId === "receiver-2"),
-      ).toHaveLength(12);
+      ).toHaveLength(17);
       // One project was taken from the viewer meanwhile: every scope is registered once more.
       const again = store.state().streams.get(linkKeys.zerops(ORG));
       yield* TestClock.adjust(again?.next.kind === "retry" ? again.next.at : 0);
@@ -586,6 +588,109 @@ describe("zeropsNavigationLink", () => {
     }),
   );
 
+  it.effect("a project the viewer regains has its services read again", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const project = { id: "regained", name: "Regained", status: "ACTIVE", clientId: ORG };
+      const service = {
+        id: "regained-service",
+        projectId: project.id,
+        clientId: ORG,
+        name: "zcp",
+        status: "ACTIVE",
+      };
+      let granted = false;
+      const fixture = fixtureWire((request) => {
+        if (request.body?.wsOutputType === "updateStream") return Effect.succeed({ success: true });
+        return Effect.succeed({
+          items:
+            request.path === PROJECT_SEARCH && granted
+              ? [project]
+              : request.path === "/service-stack/search" && granted
+                ? [service]
+                : [],
+        });
+      });
+      const fiber = yield* run(store, fixture);
+      const services = () =>
+        projectServices.derive(readsOfState(store.state()), { orgId: ORG, projectId: project.id })
+          .services;
+      expect(services()).toBeUndefined();
+      const requestsBeforeGrant = fixture.requests.length;
+
+      granted = true;
+      yield* fixture.push(fixture.subscription(PROJECT_SEARCH, "listStream"), {
+        add: [project.id],
+      });
+      yield* settle;
+
+      expect(fixture.requests.slice(requestsBeforeGrant)).toContainEqual({
+        method: "POST",
+        path: "/service-stack/search",
+        body: {
+          search: [{ name: "clientId", operator: "eq", value: ORG }],
+          sort: [],
+          limit: 2000,
+        },
+      });
+      expect(services()).toMatchObject([service]);
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  it.effect("a project regained during the services baseline gets a fresh services read", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const project = { id: "regained", name: "Regained", status: "ACTIVE", clientId: ORG };
+      const service = {
+        id: "regained-service",
+        projectId: project.id,
+        clientId: ORG,
+        name: "zcp",
+        status: "ACTIVE",
+      };
+      const oldServices = yield* Deferred.make<void>();
+      let granted = false;
+      const fixture = fixtureWire((request) => {
+        if (request.body?.wsOutputType === "updateStream") return Effect.succeed({ success: true });
+        if (request.path === "/service-stack/search" && !granted)
+          return Effect.as(Deferred.await(oldServices), { items: [] });
+        return Effect.succeed({
+          items:
+            request.path === PROJECT_SEARCH && granted
+              ? [project]
+              : request.path === "/service-stack/search" && granted
+                ? [service]
+                : [],
+        });
+      });
+      const fiber = yield* run(store, fixture);
+      const requestsBeforeGrant = fixture.requests.length;
+
+      granted = true;
+      yield* fixture.push(fixture.subscription(PROJECT_SEARCH, "listStream"), {
+        add: [project.id],
+      });
+      yield* settle;
+      yield* Deferred.succeed(oldServices, undefined);
+      yield* settle;
+      const link = store.state().streams.get(linkKeys.zerops(ORG));
+      if (link?.next.kind === "retry") yield* TestClock.adjust(link.next.at);
+      yield* settle;
+
+      expect(
+        fixture.requests
+          .slice(requestsBeforeGrant)
+          .some((request) => request.path === "/service-stack/search"),
+      ).toBe(true);
+      expect(
+        projectServices.derive(readsOfState(store.state()), { orgId: ORG, projectId: project.id })
+          .services,
+      ).toMatchObject([service]);
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
   it.effect("ends the attempt when a read of a member answers 401: the session is repaired", () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());
@@ -623,10 +728,14 @@ describe("zeropsNavigationLink", () => {
         const fixture = fixtureWire((request) =>
           request.method === "GET"
             ? Effect.succeed({ status: 403, body: null })
-            : answers(
-                () => [],
-                () => [project],
-              )(request),
+            : request.path === PROJECT_SEARCH && request.body?.wsOutputType === undefined
+              ? Effect.succeed({ items: [project] })
+              : request.path === "/service-stack/search" && request.body?.wsOutputType === undefined
+                ? Effect.succeed({ items: [] })
+                : answers(
+                    () => [],
+                    () => [project],
+                  )(request),
         );
         const fiber = yield* run(store, fixture);
         yield* fixture.push(fixture.subscription(PROJECT_SEARCH, "listStream"), {
@@ -688,6 +797,104 @@ function counter() {
   return () => `sub-${(next += 1)}`;
 }
 
+describe("a receiver slow to open", () => {
+  const projects = projectsScope(ORG);
+  const renamed = { ...PROBE_PROJECT, name: "mate-rig-renamed", _version: 2 };
+  /** Listed over REST; deleted before the receiver's registration answered. */
+  const gone = { ...PROBE_PROJECT, id: "gone", name: "gone", _version: 1 };
+  /** Over REST the project as it was; the receiver's registration answers it renamed. */
+  const platform =
+    (restHeld?: Deferred.Deferred<void>) =>
+    (request: WireRequest): Effect.Effect<unknown, StreamFault> => {
+      if (request.rest !== true)
+        return answers(
+          () => [],
+          () => [renamed],
+        )(request);
+      const answer = Effect.succeed({
+        items: request.path === PROJECT_SEARCH ? [PROBE_PROJECT, gone] : [],
+      });
+      return restHeld === undefined ? answer : Effect.andThen(Deferred.await(restHeld), answer);
+    };
+  const projectName = (store: ReturnType<typeof makeAccountStore>) => {
+    const content = factOf(store.state(), "project", PROBE_PROJECT_ID)?.content;
+    return content?.kind === "value" ? (content.value as { readonly name: string }).name : null;
+  };
+  const restReads = (fixture: ReturnType<typeof fixtureWire>) =>
+    fixture.requests.filter((request) => request.rest === true);
+
+  it.effect(
+    "does not hold the first menu: each listing is read over REST, then the receiver's answer replaces it",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const gate = yield* Deferred.make<void>();
+        const fixture = fixtureWire(platform(), { rest: true, opening: Deferred.await(gate) });
+        const { fiber } = yield* runLink(store, fixture);
+        expect(store.state().memberships.get(projects)?.coverage ?? "unknown").toBe("unknown");
+        yield* TestClock.adjust(SLOW_RECEIVER_MS);
+        yield* settle;
+        expect(store.state().memberships.get(projects)?.coverage).toBe("complete");
+        expect(projectName(store)).toBe("mate-rig-live");
+        expect(store.state().memberships.get(projects)?.members.get("gone")).toBe("member");
+        expect(store.state().streams.get(linkKeys.zerops(ORG))?.phase).not.toBe("live");
+        // One plain search per listing, none registered on a receiver.
+        expect(restReads(fixture).every((request) => request.body?.receiverId === undefined)).toBe(
+          true,
+        );
+        expect(new Set(restReads(fixture).map((request) => request.path)).size).toBe(
+          restReads(fixture).length,
+        );
+
+        yield* Deferred.succeed(gate, undefined);
+        yield* settle;
+        expect(store.state().streams.get(linkKeys.zerops(ORG))?.phase).toBe("live");
+        expect(projectName(store)).toBe("mate-rig-renamed");
+        // Gone from the receiver's answer: it left the listing, which the owner is asked about.
+        expect(store.state().memberships.get(projects)?.members.get("gone")).not.toBe("member");
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect("a receiver that opens in time reads nothing over REST", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = fixtureWire(platform(), { rest: true });
+      const { fiber } = yield* runLink(store, fixture);
+      yield* TestClock.adjust(SLOW_RECEIVER_MS * 5);
+      yield* settle;
+      expect(restReads(fixture)).toHaveLength(0);
+      expect(projectName(store)).toBe("mate-rig-renamed");
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  it.effect("a REST answer landing after the receiver's baseline never replaces it", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const gate = yield* Deferred.make<void>();
+      const restHeld = yield* Deferred.make<void>();
+      const fixture = fixtureWire(platform(restHeld), {
+        rest: true,
+        opening: Deferred.await(gate),
+      });
+      const { fiber } = yield* runLink(store, fixture);
+      yield* TestClock.adjust(SLOW_RECEIVER_MS);
+      yield* settle;
+      expect(restReads(fixture).length).toBeGreaterThan(0);
+      yield* Deferred.succeed(gate, undefined);
+      yield* settle;
+      expect(projectName(store)).toBe("mate-rig-renamed");
+      yield* Deferred.succeed(restHeld, undefined);
+      yield* settle;
+      expect(projectName(store)).toBe("mate-rig-renamed");
+      expect(store.state().memberships.get(projects)?.members.get("gone")).toBeUndefined();
+      expect(store.state().memberships.get(projects)?.coverage).toBe("complete");
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+});
+
 describe("a demanded detail", () => {
   const HISTORY_PATH = `/project/${PROBE_PROJECT_ID}/process?limit=100`;
   const history = historyScope(ORG, PROBE_PROJECT_ID);
@@ -702,6 +909,69 @@ describe("a demanded detail", () => {
   const historyReads = (fixture: ReturnType<typeof fixtureWire>) =>
     fixture.requests.filter((request) => request.method === "GET" && request.path === HISTORY_PATH)
       .length;
+
+  it.effect(
+    "follows an exact import beyond project history through a late answer and its terminal update",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const answered = yield* Deferred.make<void>();
+        const importId = "accepted-import";
+        const path = `/process/${importId}`;
+        const imported = {
+          ...finished,
+          id: importId,
+          actionName: "project.create",
+          status: "RUNNING",
+        };
+        const fixture = fixtureWire((request) =>
+          request.method === "GET" && request.path === path
+            ? Effect.as(Deferred.await(answered), { status: 200, body: imported })
+            : request.method === "GET" && request.path === HISTORY_PATH
+              ? Effect.succeed({
+                  status: 200,
+                  body: { list: [{ ...finished, id: "newest", status: "FAILED" }] },
+                })
+              : answers(() => [])(request),
+        );
+        const { fiber, link } = yield* runLink(store, fixture);
+        link.demandDetail(DEMAND);
+        const demand = { family: "process", listing: "process", ownerId: importId } as const;
+        const release = link.demandDetail(demand);
+        const releaseSecond = link.demandDetail(demand);
+        yield* settle;
+        expect(fixture.requests.filter((request) => request.path === path)).toHaveLength(1);
+        expect(factOf(store.state(), "process", importId)).toBeUndefined();
+        expect(factOf(store.state(), "process", "newest")?.content).toMatchObject({
+          value: { status: "FAILED" },
+        });
+        yield* Deferred.succeed(answered, undefined);
+        yield* settle;
+        expect(factOf(store.state(), "process", importId)?.content).toMatchObject({
+          value: { id: importId, status: "RUNNING" },
+        });
+        yield* fixture.push(fixture.subscription(PROCESS_SEARCH, "updateStream"), {
+          update: [{ ...imported, status: "FINISHED", _version: 2 }],
+        });
+        yield* settle;
+        expect(factOf(store.state(), "process", importId)?.content).toMatchObject({
+          value: { id: importId, status: "FINISHED" },
+        });
+        expect(fixture.requests.filter((request) => request.path === path)).toHaveLength(1);
+        expect(
+          fixture.requests.every(
+            (request) => request.method === "GET" || request.path.endsWith("/search"),
+          ),
+        ).toBe(true);
+        release();
+        yield* settle;
+        expect(store.state().streams.get(detailScopeOf(ORG, demand))?.demanded).toBe(true);
+        releaseSecond();
+        yield* settle;
+        expect(store.state().streams.get(detailScopeOf(ORG, demand))?.demanded).toBe(false);
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
 
   it.effect("repairs a refused history session while an unrelated baseline is still opening", () =>
     Effect.gen(function* () {
@@ -1373,36 +1643,6 @@ describe("a sampled detail", () => {
     }),
   );
 
-  it.effect(
-    "reads a member list again on the cadence while somebody is invited, until they have joined",
-    () =>
-      Effect.gen(function* () {
-        const store = makeAccountStore(AtomRegistry.make());
-        const invited = { ...member("m2"), status: "WAITING_TO_ACCEPT" };
-        const list = { current: [member("m1"), invited] as ReadonlyArray<unknown> };
-        const fixture = fixtureWire(sampledAnswers(list));
-        const { fiber, link } = yield* runLink(store, fixture);
-        link.demandDetail(MEMBERS);
-        yield* settle;
-        expect(readsOf(fixture, MEMBERS_PATH)).toBe(1);
-        yield* TestClock.adjust(STREAM_POLICY.sampledIntervalMs);
-        yield* settle;
-        expect(readsOf(fixture, MEMBERS_PATH)).toBe(2);
-        list.current = [member("m1"), { ...invited, status: "ACTIVE" }];
-        yield* TestClock.adjust(STREAM_POLICY.sampledIntervalMs);
-        yield* settle;
-        expect(readsOf(fixture, MEMBERS_PATH)).toBe(3);
-        expect(factOf(store.state(), "organizationMembers", ORG)?.content).toEqual({
-          kind: "value",
-          value: list.current,
-        });
-        yield* TestClock.adjust(STREAM_POLICY.sampledIntervalMs * 10);
-        yield* settle;
-        expect(readsOf(fixture, MEMBERS_PATH)).toBe(3);
-        yield* Fiber.interrupt(fiber);
-      }),
-  );
-
   it.effect("reads a service's agents by a search of their own keys, never its variables", () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());
@@ -1445,6 +1685,130 @@ describe("a sampled detail", () => {
       yield* Fiber.interrupt(fiber);
     }),
   );
+
+  describe("the person's own membership record", () => {
+    const USER_PATH = "/user/info";
+    const ME = { family: "organizationUser", ownerId: ORG } as const;
+    const user = (canCreateProjects: boolean) => ({
+      id: "u1",
+      email: "person@example.test",
+      clientUserList: [
+        { id: "cu1", roleCode: "OWNER", status: "ACTIVE", canCreateProjects, client: { id: ORG } },
+      ],
+    });
+    const platform = (request: WireRequest): Effect.Effect<unknown, StreamFault> =>
+      request.method === "GET" && request.path === USER_PATH
+        ? Effect.succeed({ status: 200, body: user(true) })
+        : answers(() => [])(request);
+
+    it.effect.each([
+      { name: "verified moments ago", verifiedAgoMs: 1_000, reads: 0, canCreate: false },
+      { name: "verified past its freshness", verifiedAgoMs: 30_000, reads: 1, canCreate: true },
+      { name: "never verified here", verifiedAgoMs: null, reads: 1, canCreate: true },
+    ])(
+      "takes the session's own user/info answer when it was $name: $reads read(s)",
+      ({ verifiedAgoMs, reads, canCreate }) =>
+        Effect.gen(function* () {
+          yield* TestClock.adjust(60_000);
+          const now = 60_000;
+          const store = makeAccountStore(AtomRegistry.make());
+          const fixture = fixtureWire(platform, {
+            held: (path) =>
+              path === USER_PATH && verifiedAgoMs !== null
+                ? { body: user(false), atMs: now - verifiedAgoMs }
+                : undefined,
+          });
+          const { fiber, link } = yield* runLink(store, fixture);
+          link.demandDetail(ME);
+          yield* settle;
+          expect(readsOf(fixture, USER_PATH)).toBe(reads);
+          expect(factOf(store.state(), "organizationUser", ORG)?.content).toMatchObject({
+            kind: "value",
+            value: { clientUserList: [{ canCreateProjects: canCreate }] },
+          });
+          yield* Fiber.interrupt(fiber);
+        }),
+    );
+
+    it.effect(
+      "after our own write, a platform read that fails is retried on the platform, never the session's answer",
+      () =>
+        Effect.gen(function* () {
+          const store = makeAccountStore(AtomRegistry.make());
+          let failures = 0;
+          const fixture = fixtureWire(
+            (request) =>
+              request.method === "GET" &&
+              request.path === USER_PATH &&
+              readsOf(fixture, USER_PATH) === 1 &&
+              failures++ === 0
+                ? Effect.fail({ outcome: "transient", message: "Zerops did not answer." })
+                : platform(request),
+            { held: (path) => (path === USER_PATH ? { body: user(false), atMs: 0 } : undefined) },
+          );
+          const { fiber, link } = yield* runLink(store, fixture);
+          link.demandDetail(ME);
+          yield* settle;
+          link.revalidate(ME);
+          yield* settle;
+          expect(readsOf(fixture, USER_PATH)).toBe(1);
+          // The retry comes due well inside the session answer's freshness.
+          yield* TestClock.adjust(5_000);
+          yield* settle;
+          expect(readsOf(fixture, USER_PATH)).toBe(2);
+          expect(factOf(store.state(), "organizationUser", ORG)?.content).toMatchObject({
+            value: { clientUserList: [{ canCreateProjects: true }] },
+          });
+          yield* Fiber.interrupt(fiber);
+        }),
+    );
+
+    it.effect("a link opened again never takes the session's answer over a newer one held", () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const held = {
+          held: (path: string) => (path === USER_PATH ? { body: user(false), atMs: 0 } : undefined),
+        };
+        const first = fixtureWire(platform, held);
+        const opened = yield* runLink(store, first);
+        const release = opened.link.demandDetail(ME);
+        yield* settle;
+        opened.link.revalidate(ME);
+        yield* settle;
+        expect(readsOf(first, USER_PATH)).toBe(1);
+        release();
+        yield* Fiber.interrupt(opened.fiber);
+        const again = fixtureWire(platform, held);
+        const reopened = yield* runLink(store, again);
+        reopened.link.demandDetail(ME);
+        yield* settle;
+        expect(factOf(store.state(), "organizationUser", ORG)?.content).toMatchObject({
+          value: { clientUserList: [{ canCreateProjects: true }] },
+        });
+        yield* Fiber.interrupt(reopened.fiber);
+      }),
+    );
+
+    it.effect("reads the platform after our own write, however fresh the session's answer", () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = fixtureWire(platform, {
+          held: (path) => (path === USER_PATH ? { body: user(false), atMs: 0 } : undefined),
+        });
+        const { fiber, link } = yield* runLink(store, fixture);
+        link.demandDetail(ME);
+        yield* settle;
+        expect(readsOf(fixture, USER_PATH)).toBe(0);
+        link.revalidate(ME);
+        yield* settle;
+        expect(readsOf(fixture, USER_PATH)).toBe(1);
+        expect(factOf(store.state(), "organizationUser", ORG)?.content).toMatchObject({
+          value: { clientUserList: [{ canCreateProjects: true }] },
+        });
+        yield* Fiber.interrupt(fiber);
+      }),
+    );
+  });
 
   it.effect("reads it again at once after our own write, held or held next", () =>
     Effect.gen(function* () {
@@ -1980,7 +2344,13 @@ describe("menu rows from Zerops owner evidence", () => {
       listed = [];
       yield* fixture.push(fixture.subscription(PROJECT_SEARCH, "listStream"), { delete: ["Bea"] });
       yield* settle;
-      expect(menuRows(store).map((row) => row.project.name)).toEqual(["Ada"]);
+      // Bea's read proves it deleted: HQ still places it, so it is drawn gone on Zerops.
+      expect(
+        menuRows(store).map((row) => [row.project.name, row.projectGone === true] as const),
+      ).toEqual([
+        ["Ada", false],
+        ["Bea", true],
+      ]);
       expect(observed.length).toBeGreaterThan(0);
       expect(observed.every((rows) => rows.includes("Ada"))).toBe(true);
       stop();
@@ -2034,6 +2404,584 @@ describe("menu rows from Zerops owner evidence", () => {
       expect(readsOfState(store.state()).fact("service", "service-Bea").kind).toBe("deleted");
       expect(rows()).toEqual(["Ada"]);
       expect(fixture.opens()).toBe(1);
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+});
+
+// Brief W3 (Karel, 2026-11-04): a Mate's visibility is the client's verdict from live Zerops data —
+// the project row Zerops pushes and the person's own org role — and a membership frame
+// (`client-user`, ZEROPS-070) reads again what Zerops pushes no listing for (ZEROPS-073).
+describe("visibility from what Zerops pushes", () => {
+  const MATE = "mate-project";
+  const CLIENT_USER_SEARCH = "/client-user/search";
+  const USER_INFO = "/user/info";
+  const MEMBERS_PATH = `/client/${ORG}/user/list?limit=100`;
+  const mateRow = (userRoles: ReadonlyArray<unknown> = [], version = 1) => ({
+    id: MATE,
+    name: "Fen",
+    status: "ACTIVE",
+    clientId: ORG,
+    userRoles,
+    _version: version,
+  });
+  /** The account Zerops answers for, its org role and the projects it reaches as they are now. */
+  const account = (roleCode: string, projects: ReadonlyArray<unknown>) => {
+    const now = { roleCode, projects, services: [] as ReadonlyArray<unknown> };
+    const answer = (request: WireRequest): Effect.Effect<unknown, StreamFault> => {
+      if (request.path === USER_INFO)
+        return Effect.succeed({
+          status: 200,
+          body: {
+            id: "user",
+            email: "ada@example.test",
+            clientUserList: [
+              {
+                id: "member",
+                clientId: ORG,
+                status: "ACTIVE",
+                roleCode: now.roleCode,
+                canCreateProjects: false,
+              },
+            ],
+          },
+        });
+      if (request.path === MEMBERS_PATH)
+        return Effect.succeed({ status: 200, body: { clientUserList: [{ id: "member" }] } });
+      if (request.path === `/project/${MATE}`) return Effect.succeed({ status: 403, body: {} });
+      if (request.body?.wsOutputType === "updateStream") return Effect.succeed({ success: true });
+      return Effect.succeed({
+        items:
+          request.path === PROJECT_SEARCH
+            ? now.projects
+            : request.path === "/service-stack/search"
+              ? now.services
+              : [],
+      });
+    };
+    return { now, answer };
+  };
+  const membershipFrame = (userId: string, roleCode: string) => ({
+    update: [{ id: `cu-${userId}`, clientId: ORG, userId, roleCode, status: "ACTIVE" }],
+  });
+  const projectReads = (fixture: ReturnType<typeof fixtureWire>) =>
+    fixture.requests.filter(
+      (request) => request.path === PROJECT_SEARCH && request.body?.wsOutputType === undefined,
+    ).length;
+  const readsOf = (fixture: ReturnType<typeof fixtureWire>, path: string) =>
+    fixture.requests.filter((request) => request.path === path).length;
+  /** The person's verdict on the Mate from the store's project row and their own membership. */
+  const visibility = (store: ReturnType<typeof makeAccountStore>) => {
+    const reads = readsOfState(store.state());
+    const user = reads.fact("organizationUser", ORG);
+    const project = reads.fact("project", MATE);
+    if (user.kind !== "known" || project.kind !== "known") return "hidden";
+    const viewer = zeropsClientsFromUser(user.value).find((org) => org.id === ORG);
+    return viewer === undefined
+      ? "hidden"
+      : resolveMateVisibility({ project: project.value, viewer });
+  };
+
+  it.effect("subscribes to the organization's membership changes and never lists them", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = fixtureWire(account("OWNER", []).answer);
+      const { fiber } = yield* runLink(store, fixture);
+      expect(
+        fixture.requests
+          .filter((request) => request.path === CLIENT_USER_SEARCH)
+          .map((request) => [request.body?.wsOutputType, request.body?.search]),
+      ).toEqual([["updateStream", [{ name: "clientId", operator: "eq", value: ORG }]]]);
+      expect(store.state().streams.get(linkKeys.zerops(ORG))?.phase).toBe("live");
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  it.effect(
+    "a project push granting the person Basic user opens a Mate they were only shown, with no HQ call",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = fixtureWire(account("READ_ONLY", [mateRow()]).answer);
+        const { fiber, link } = yield* runLink(store, fixture);
+        link.demandDetail({ family: "organizationUser", ownerId: ORG });
+        yield* settle;
+        expect(visibility(store)).toBe("listed");
+        const asked = fixture.requests.length;
+        yield* fixture.push(fixture.subscription(PROJECT_SEARCH, "updateStream"), {
+          update: [mateRow([{ clientUserId: "member", roleCode: "BASIC_USER" }], 2)],
+        });
+        yield* settle;
+        expect(visibility(store)).toBe("open");
+        // The push alone: nothing read again, and this link talks to Zerops only.
+        expect(fixture.requests.length).toBe(asked);
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect(
+    "a membership frame for another member reads the organization's members again, never the projects",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = fixtureWire(account("OWNER", [mateRow()]).answer);
+        const { fiber, link } = yield* runLink(store, fixture);
+        link.demandDetail({ family: "organizationUser", ownerId: ORG });
+        link.demandDetail({ family: "organizationMembers", ownerId: ORG });
+        yield* settle;
+        expect([readsOf(fixture, MEMBERS_PATH), readsOf(fixture, USER_INFO)]).toEqual([1, 1]);
+        yield* fixture.push(
+          fixture.subscription(CLIENT_USER_SEARCH, "updateStream"),
+          membershipFrame("colleague", "READ_ONLY"),
+        );
+        yield* settle;
+        expect(readsOf(fixture, MEMBERS_PATH)).toBe(2);
+        expect(readsOf(fixture, USER_INFO)).toBe(1);
+        expect(projectReads(fixture)).toBe(0);
+        // The same frame again says nothing new: nothing is read again.
+        yield* fixture.push(
+          fixture.subscription(CLIENT_USER_SEARCH, "updateStream"),
+          membershipFrame("colleague", "READ_ONLY"),
+        );
+        yield* settle;
+        expect(readsOf(fixture, MEMBERS_PATH)).toBe(2);
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect(
+    "a membership frame for the signed-in person reads their own role and the projects they reach again",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const { now, answer } = account("NO_ACCESS", []);
+        const fixture = fixtureWire(answer);
+        const { fiber, link } = yield* runLink(store, fixture);
+        link.demandDetail({ family: "organizationUser", ownerId: ORG });
+        yield* settle;
+        expect(visibility(store)).toBe("hidden");
+        // Promoted to Read only: Zerops pushes the membership, and no project (ZEROPS-073).
+        now.roleCode = "READ_ONLY";
+        now.projects = [mateRow()];
+        now.services = [{ id: "service", projectId: MATE, name: "zcp", status: "ACTIVE" }];
+        yield* fixture.push(
+          fixture.subscription(CLIENT_USER_SEARCH, "updateStream"),
+          membershipFrame("user", "READ_ONLY"),
+        );
+        yield* settle;
+        expect(projectReads(fixture)).toBe(1);
+        expect(readsOf(fixture, USER_INFO)).toBe(2);
+        expect(store.state().memberships.get(projectsScope(ORG))?.members.get(MATE)).toBe("member");
+        expect(visibility(store)).toBe("listed");
+        expect(
+          projectServices.derive(readsOfState(store.state()), { orgId: ORG, projectId: MATE })
+            .services,
+        ).toMatchObject(now.services);
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect(
+    "a demotion to No access hides the organization's Mates once the projects read again answer none",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const { now, answer } = account("READ_ONLY", [mateRow()]);
+        const fixture = fixtureWire(answer);
+        const { fiber, link } = yield* runLink(store, fixture);
+        link.demandDetail({ family: "organizationUser", ownerId: ORG });
+        yield* settle;
+        expect(visibility(store)).toBe("listed");
+        now.roleCode = "NO_ACCESS";
+        now.projects = [];
+        yield* fixture.push(
+          fixture.subscription(CLIENT_USER_SEARCH, "updateStream"),
+          membershipFrame("user", "NO_ACCESS"),
+        );
+        yield* settle;
+        expect(projectReads(fixture)).toBe(1);
+        expect(store.state().memberships.get(projectsScope(ORG))?.members.get(MATE)).not.toBe(
+          "member",
+        );
+        expect(visibility(store)).toBe("hidden");
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect("a malformed membership reread reconnects and restores the project list", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const { now, answer } = account("NO_ACCESS", []);
+      let malformed = false;
+      const fixture = fixtureWire((request) =>
+        malformed && request.path === PROJECT_SEARCH && request.body?.wsOutputType === undefined
+          ? Effect.succeed({ invalid: true })
+          : answer(request),
+      );
+      const { fiber, link } = yield* runLink(store, fixture);
+      link.demandDetail({ family: "organizationUser", ownerId: ORG });
+      yield* settle;
+      now.roleCode = "READ_ONLY";
+      now.projects = [mateRow()];
+      malformed = true;
+      yield* fixture.push(
+        fixture.subscription(CLIENT_USER_SEARCH, "updateStream"),
+        membershipFrame("user", "READ_ONLY"),
+      );
+      yield* settle;
+      const recovering = store.state().streams.get(linkKeys.zerops(ORG));
+      expect(recovering?.phase).toBe("recovering");
+      malformed = false;
+      yield* TestClock.adjust(recovering?.next.kind === "retry" ? recovering.next.at : 0);
+      yield* settle;
+      expect(visibility(store)).toBe("listed");
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+});
+
+describe("a returned project's service evidence", () => {
+  const project = { id: "Ada", clientId: ORG, name: "Ada", status: "ACTIVE", _version: 1 };
+  const service = {
+    id: "service-Ada",
+    clientId: ORG,
+    projectId: project.id,
+    name: "zcp",
+    status: "ACTIVE",
+    serviceStackTypeInfo: { serviceStackTypeVersionName: "zcp@1" },
+    _version: 1,
+  };
+  const servicesOf = (store: ReturnType<typeof makeAccountStore>) =>
+    projectServices.derive(readsOfState(store.state()), { orgId: ORG, projectId: project.id })
+      .services;
+  const saysMissing = (store: ReturnType<typeof makeAccountStore>) => {
+    const current = readsOfState(store.state()).fact("project", project.id);
+    return (
+      current.kind === "known" &&
+      deriveZeropsCandidates(current.value, servicesOf(store) ?? null, new Map()).some(
+        (row) => row.missingContainer === true,
+      )
+    );
+  };
+  it.effect(
+    'Decision: Root cause first: name the projection/state that kept the old answer (a cached "not in projects" verdict, a per-project state not reset on return, or a Mate row state derived from a missing birth record) and fix that owner; no caller patch, no reload, no polling.',
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        let allowed = true;
+        let holdServices = false;
+        const servicesAnswered = yield* Deferred.make<void>();
+        const fallback = answers(() => []);
+        const fixture = fixtureWire((request) => {
+          if (
+            request.method === "GET" &&
+            ["/project/Ada", "/service-stack/service-Ada"].includes(request.path)
+          )
+            return Effect.succeed({ status: allowed ? 200 : 403, body: {} });
+          if (request.body?.wsOutputType !== "updateStream") {
+            if (request.path === PROJECT_SEARCH)
+              return Effect.succeed({ items: allowed ? [project] : [] });
+            if (request.path === "/service-stack/search")
+              return holdServices && request.body?.wsOutputType === undefined
+                ? Deferred.await(servicesAnswered).pipe(Effect.as({ items: [service] }))
+                : Effect.succeed({ items: allowed ? [service] : [] });
+          }
+          return fallback(request);
+        });
+        const { fiber } = yield* runLink(store, fixture);
+        const services = () => servicesOf(store);
+        expect(services()?.map((row) => row.id)).toEqual([service.id]);
+
+        allowed = false;
+        yield* fixture.push(fixture.subscription(PROJECT_SEARCH, "listStream"), {
+          delete: [project.id],
+        });
+        yield* settle;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const recovering = store.state().streams.get(linkKeys.zerops(ORG));
+          if (recovering?.phase === "live" && fixture.opens() > 1) break;
+          yield* TestClock.adjust(recovering?.next.kind === "retry" ? recovering.next.at : 0);
+          yield* settle;
+        }
+        expect(readsOfState(store.state()).fact("project", project.id)).toMatchObject({
+          kind: "withheld",
+          reason: "denied",
+        });
+        expect(services()).toBeUndefined();
+        expect(readsOfState(store.state()).fact("service", service.id).kind).toBe("withheld");
+
+        allowed = true;
+        holdServices = true;
+        yield* fixture.push(fixture.subscription(PROJECT_SEARCH, "listStream"), {
+          add: [project.id],
+        });
+        yield* settle;
+        // Until the service roster has answered under the returned grant, its old empty answer
+        // cannot become a "missing container" on a newly readable project.
+        expect(saysMissing(store)).toBe(false);
+        yield* Deferred.succeed(servicesAnswered, undefined);
+        yield* settle;
+        expect(services()?.map((row) => row.id)).toEqual([service.id]);
+        const candidates = deriveZeropsCandidates(project, services() ?? null, new Map());
+        expect(selectMateEnvironments(candidates).map((row) => row.service?.id)).toEqual([
+          service.id,
+        ]);
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect(
+    "Decision: What must NOT happen: no new stream field; no role computation outside the shared function; no change to the server.",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        let allowed = true;
+        let holdServices = false;
+        const other = { ...project, id: "Bea", name: "Bea" };
+        const servicesAnswered = yield* Deferred.make<void>();
+        const fallback = answers(() => []);
+        const fixture = fixtureWire((request) => {
+          if (request.method === "GET")
+            return Effect.succeed({ status: allowed ? 200 : 403, body: {} });
+          if (request.body?.wsOutputType !== "updateStream") {
+            if (request.path === PROJECT_SEARCH)
+              return Effect.succeed({
+                items: allowed ? [project, ...(holdServices ? [other] : [])] : [],
+              });
+            if (request.path === "/service-stack/search")
+              return holdServices && request.body?.wsOutputType === "listStream"
+                ? Deferred.await(servicesAnswered).pipe(Effect.as({ items: [service] }))
+                : Effect.succeed({ items: allowed ? [service] : [] });
+          }
+          return fallback(request);
+        });
+        const { fiber } = yield* runLink(store, fixture);
+        allowed = false;
+        yield* fixture.push(fixture.subscription(PROJECT_SEARCH, "listStream"), {
+          delete: [project.id],
+        });
+        yield* settle;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const recovering = store.state().streams.get(linkKeys.zerops(ORG));
+          if (recovering?.phase === "live" && fixture.opens() > 1) break;
+          yield* TestClock.adjust(recovering?.next.kind === "retry" ? recovering.next.at : 0);
+          yield* settle;
+        }
+        expect(readsOfState(store.state()).fact("service", service.id).kind).toBe("withheld");
+        allowed = true;
+        holdServices = true;
+        yield* fixture.drop({ outcome: "transient", message: "socket closed" });
+        yield* settle;
+        const recovering = store.state().streams.get(linkKeys.zerops(ORG));
+        yield* TestClock.adjust(recovering?.next.kind === "retry" ? recovering.next.at : 0);
+        yield* settle;
+        expect(saysMissing(store)).toBe(false);
+        expect(readsOfState(store.state()).fact("project", other.id).kind).toBe("known");
+        yield* Deferred.succeed(servicesAnswered, undefined);
+        yield* settle;
+        expect(servicesOf(store)?.map((row) => row.id)).toEqual([service.id]);
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+});
+
+describe("the route's project read ahead of the listing", () => {
+  const ROUTE_PROJECT_ROW = { ...PROBE_PROJECT, clientId: ORG };
+  /** The route's Mate as its project's own service list answers it: no `projectId` named. */
+  const ZCP = { id: "s1", name: "zcp", status: "ACTIVE", _version: 4 };
+  const ROUTE_SERVICES_PATH = `/project/${PROBE_PROJECT_ID}/service-stack?limit=500`;
+  const readAhead = (link: ReturnType<typeof zeropsNavigationLink>) => {
+    link.demandDetail({ family: "project", listing: "route-project", ownerId: PROBE_PROJECT_ID });
+    link.demandDetail({ family: "service", listing: "route-services", ownerId: PROBE_PROJECT_ID });
+  };
+  const restAnswers =
+    (fallback: (request: WireRequest) => Effect.Effect<unknown, StreamFault>) =>
+    (request: WireRequest): Effect.Effect<unknown, StreamFault> =>
+      request.rest !== true
+        ? fallback(request)
+        : request.path === `/project/${PROBE_PROJECT_ID}`
+          ? Effect.succeed({ status: 200, body: ROUTE_PROJECT_ROW })
+          : request.path === ROUTE_SERVICES_PATH
+            ? Effect.succeed({ status: 200, body: { list: [ZCP] } })
+            : Effect.succeed({ status: 404, body: null });
+
+  it.effect(
+    "the route's project and its services are read over plain REST while the platform's socket is still logging in",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = fixtureWire(restAnswers(answers(() => [])), { opening: Effect.never });
+        const { fiber, link } = yield* runLink(store, fixture);
+
+        readAhead(link);
+        yield* settle;
+
+        expect(fixture.opens()).toBe(0);
+        expect(fixture.requests.map(({ method, path, rest }) => ({ method, path, rest }))).toEqual([
+          { method: "GET", path: `/project/${PROBE_PROJECT_ID}`, rest: true },
+          { method: "GET", path: ROUTE_SERVICES_PATH, rest: true },
+        ]);
+        const read = readsOfState(store.state());
+        expect(listedProject.derive(read, { orgId: ORG, projectId: PROBE_PROJECT_ID })?.id).toBe(
+          PROBE_PROJECT_ID,
+        );
+        expect(
+          projectServices
+            .derive(read, { orgId: ORG, projectId: PROBE_PROJECT_ID })
+            .services?.map(({ id, projectId }) => ({ id, projectId })),
+        ).toEqual([{ id: "s1", projectId: PROBE_PROJECT_ID }]);
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect(
+    "what the organization's listing reads of the route's Mate replaces what was read ahead of it",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const listing = answers(
+          () => [],
+          () => [ROUTE_PROJECT_ROW],
+        );
+        const opened = yield* Deferred.make<void>();
+        const fixture = fixtureWire(
+          restAnswers((request) =>
+            request.path === "/service-stack/search" && request.body?.wsOutputType === "listStream"
+              ? Effect.succeed({
+                  items: [
+                    { ...ZCP, projectId: PROBE_PROJECT_ID, clientId: ORG, status: "STOPPED" },
+                  ],
+                })
+              : listing(request),
+          ),
+          { opening: Deferred.await(opened) },
+        );
+        const { fiber, link } = yield* runLink(store, fixture);
+        readAhead(link);
+        yield* settle;
+        expect(factOf(store.state(), "service", "s1")?.content).toMatchObject({
+          value: { status: "ACTIVE" },
+        });
+
+        yield* Deferred.succeed(opened, undefined);
+        yield* settle;
+
+        expect(factOf(store.state(), "service", "s1")?.content).toMatchObject({
+          value: { status: "STOPPED" },
+        });
+        expect(
+          projectServices
+            .derive(readsOfState(store.state()), { orgId: ORG, projectId: PROBE_PROJECT_ID })
+            .services?.map(({ id }) => id),
+        ).toEqual(["s1"]);
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect(
+    "the owner refusing the route's project after it was read ahead withholds what that read wrote",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        let refused = false;
+        const fixture = fixtureWire(
+          (request) =>
+            refused && request.rest === true
+              ? Effect.succeed({ status: 403, body: null })
+              : restAnswers(answers(() => []))(request),
+          { opening: Effect.never },
+        );
+        const { fiber, link } = yield* runLink(store, fixture);
+        const project = link.demandDetail({
+          family: "project",
+          listing: "route-project",
+          ownerId: PROBE_PROJECT_ID,
+        });
+        const services = link.demandDetail({
+          family: "service",
+          listing: "route-services",
+          ownerId: PROBE_PROJECT_ID,
+        });
+        yield* settle;
+        project();
+        services();
+        refused = true;
+
+        readAhead(link);
+        yield* settle;
+
+        const read = readsOfState(store.state());
+        expect(listedProject.derive(read, { orgId: ORG, projectId: PROBE_PROJECT_ID })).toBeNull();
+        expect(factOf(store.state(), "service", "s1")).toBeUndefined();
+        expect(
+          projectServices.derive(read, { orgId: ORG, projectId: PROBE_PROJECT_ID }).services,
+        ).toBeUndefined();
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect(
+    "what is read ahead after the organization's listing read the project whole adds nothing to it",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const late = yield* Deferred.make<void>();
+        const listing = answers(
+          () => [],
+          () => [ROUTE_PROJECT_ROW],
+        );
+        const fixture = fixtureWire((request) =>
+          request.rest === true
+            ? Effect.as(Deferred.await(late), {
+                status: 200,
+                body:
+                  request.path === ROUTE_SERVICES_PATH
+                    ? { list: [ZCP, { ...ZCP, id: "s2", name: "gone" }] }
+                    : ROUTE_PROJECT_ROW,
+              } as unknown)
+            : request.path === "/service-stack/search" &&
+                request.body?.wsOutputType === "listStream"
+              ? Effect.succeed({
+                  items: [{ ...ZCP, projectId: PROBE_PROJECT_ID, clientId: ORG }],
+                })
+              : listing(request),
+        );
+        const { fiber, link } = yield* runLink(store, fixture);
+        readAhead(link);
+        yield* settle;
+
+        yield* Deferred.succeed(late, undefined);
+        yield* settle;
+
+        expect(
+          projectServices
+            .derive(readsOfState(store.state()), { orgId: ORG, projectId: PROBE_PROJECT_ID })
+            .services?.map(({ id }) => id),
+        ).toEqual(["s1"]);
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect("a route project the platform refuses says nothing ahead of the listing", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = fixtureWire(
+        (request) =>
+          request.rest === true
+            ? Effect.succeed({ status: 403, body: null })
+            : answers(() => [])(request),
+        { opening: Effect.never },
+      );
+      const { fiber, link } = yield* runLink(store, fixture);
+
+      readAhead(link);
+      yield* settle;
+
+      const read = readsOfState(store.state());
+      expect(listedProject.derive(read, { orgId: ORG, projectId: PROBE_PROJECT_ID })).toBeNull();
+      expect(
+        projectServices.derive(read, { orgId: ORG, projectId: PROBE_PROJECT_ID }).services,
+      ).toBeUndefined();
       yield* Fiber.interrupt(fiber);
     }),
   );

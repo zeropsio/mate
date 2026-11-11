@@ -1,14 +1,45 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { mateChat } from "./dsl.ts";
 import { ownerMenu } from "./ownerReportedLayout.ts";
+import { waitForConversation } from "../../harness/browser.ts";
 
 const REGISTER = '::-p-aria([name="Make this my Chief"][role="button"])';
 
 describe("Chief registration", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
+    it.effect("a person who does not own the Chief sees its access denial when opening", () =>
+      Effect.gen(function* () {
+        const s = yield* createScenario([], { mate: "real" });
+        yield* s.given.project("Chief", { mate: true });
+        const { zerops, core, owner } = s.drivers;
+        zerops.put("project", {
+          ...zerops.rows("project").find((project) => project.id === "Chief")!,
+          tagList: ["chief"],
+        });
+        const registered = yield* core.call("PUT", "/api/chief", {
+          session: owner,
+          body: { projectId: "Chief" },
+        });
+        expect(registered.status).toBe(200);
+        s.given.person("owner", { role: "OWNER", grants: {} });
+        zerops.put(
+          "project",
+          zerops.rows("project").find((project) => project.id === "Chief")!,
+        );
+        yield* s.given.signedIn;
+        yield* Effect.promise(() => s.page.goto(`${s.web.origin}/mate/Chief`));
+        yield* Effect.promise(() =>
+          expect(waitForConversation(s.page)).rejects.toThrow(
+            "Chief isn't available with your access.",
+          ),
+        );
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
     it.effect("a person registers a tagged Chief from its page and opens its conversation", () =>
       Effect.gen(function* () {
         const s = yield* createScenario([], { mate: "real" });

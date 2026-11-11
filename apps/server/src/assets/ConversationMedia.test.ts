@@ -2,6 +2,7 @@
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { EventId, ThreadId, OrchestrationThreadDetailSnapshot } from "@t3tools/contracts";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -37,7 +38,7 @@ const layer = Layer.mergeAll(
   Layer.succeed(AssetSigningKey.AssetSigningKey, { get: Effect.die("legacy signing is not used") }),
 ).pipe(
   Layer.provideMerge(layerTest(process.cwd(), { prefix: "mate-capture-" })),
-  Layer.provideMerge(NodeServices.layer),
+  Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
 );
 it.effect(
   "captures a produced image without a viewer and gives pathname reuse a new occurrence",
@@ -418,6 +419,13 @@ it.effect("an engine conversation resolves the screenshot captured by its provid
       result._tag,
       "ASSERTION: the engine conversation can resolve its provider-session screenshot",
     ).toBe("Success");
+    if (occurrence.original.status !== "ready" || result._tag !== "Success") {
+      throw new Error("The screenshot was not retained and resolved");
+    }
+    expect(result.success?.occurrence?.id).toBe(occurrence.id);
+    expect(result.success?.relativeUrl).toBe(
+      `/api/assets/objects/${occurrence.original.digest}/original`,
+    );
     yield* w.shutdown;
   }).pipe(Effect.provide(layer)),
 );

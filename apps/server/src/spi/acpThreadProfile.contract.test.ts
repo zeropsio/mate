@@ -12,6 +12,7 @@ import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, it } from "@effect/vitest";
 import {
   CursorSettings,
@@ -33,6 +34,7 @@ import { makeCursorAdapter } from "../provider/Layers/CursorAdapter.ts";
 import { makeGrokAdapter } from "../provider/Layers/GrokAdapter.ts";
 import type { ProviderAdapterError } from "../provider/Errors.ts";
 import type { ProviderAdapterShape } from "../provider/Services/ProviderAdapter.ts";
+import { personaInstructions } from "../personaInstructions.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { parseCompleteJsonLines } from "../testUtils/jsonLines.ts";
 import { execScriptSource, writeFakeCli } from "../testUtils/fakeCli.ts";
@@ -177,7 +179,7 @@ const layer = it.layer(
   Layer.mergeAll(ThreadToolPolicyRegistry.layer).pipe(
     Layer.provideMerge(ServerSettingsService.layerTest()),
     Layer.provideMerge(ServerConfig.layerTest(process.cwd(), { prefix: "acp-profile-contract-" })),
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
   ),
 );
 
@@ -208,6 +210,60 @@ const permissionAnswers = (requests: ReadonlyArray<Record<string, unknown>>) =>
     return !("method" in entry) && result?.outcome?.optionId !== undefined
       ? [result.outcome.optionId]
       : [];
+  });
+
+const PIRATE = { name: "Pirate", instructions: "Talk like a pirate." };
+
+/**
+ * Two turns on `threadId`, the persona switched from PIRATE to none between them; every text
+ * each prompt carried.
+ */
+const twoTurnsAcrossAPersonaRemoval = (driver: AcpDriver, threadId: ThreadId) =>
+  Effect.gen(function* () {
+    const settings = yield* ServerSettingsService;
+    yield* settings.updateSettings({ persona: PIRATE });
+    yield* (yield* ThreadToolPolicyRegistry).install({
+      profileFor: (thread) =>
+        Effect.succeed(
+          thread.threadId === CREW_THREAD ? profile([], driver.profileModel) : undefined,
+        ),
+    });
+    const dir = yield* Effect.promise(() =>
+      NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "acp-persona-")),
+    );
+    const requestLogPath = NodePath.join(dir, "requests.ndjson");
+    yield* Effect.promise(() => NodeFSP.writeFile(requestLogPath, "", "utf8"));
+    const binaryPath = writeFakeCli({
+      directory: dir,
+      name: "fake-agent",
+      env: { T3_ACP_REQUEST_LOG_PATH: requestLogPath },
+      source: execScriptSource({ scriptPath: mockAgentPath }),
+    });
+    const adapter = yield* driver.make(binaryPath);
+    const completed = yield* adapter.streamEvents.pipe(
+      Stream.filter((event) => event.type === "turn.completed"),
+      Stream.take(2),
+      Stream.runDrain,
+      Effect.forkChild,
+    );
+    yield* adapter.startSession({
+      threadId,
+      provider: driver.kind,
+      cwd: process.cwd(),
+      runtimeMode: "full-access",
+      modelSelection: { instanceId: ProviderInstanceId.make(driver.kind), model: driver.ownModel },
+    });
+    yield* adapter.sendTurn({ threadId, input: "one", attachments: [] });
+    yield* settings.updateSettings({ persona: null });
+    yield* adapter.sendTurn({ threadId, input: "two", attachments: [] });
+    yield* Fiber.join(completed);
+    yield* adapter.stopSession(threadId);
+    const requests = yield* Effect.promise(() => readJsonLines(requestLogPath));
+    return method(requests, "session/prompt").map((entry) =>
+      ((entry.params as { prompt?: Array<{ text?: string }> }).prompt ?? []).flatMap((part) =>
+        part.text === undefined ? [] : [part.text],
+      ),
+    );
   });
 
 for (const driver of DRIVERS)
@@ -273,6 +329,36 @@ for (const driver of DRIVERS)
             },
             { servers: [], decided: [], parked: true },
           );
+        }),
+      ),
+    );
+
+    it.effect(
+      `${driver.name} carries the Mate's current persona on every turn, and is told when it is removed`,
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const prompts = yield* twoTurnsAcrossAPersonaRemoval(driver, PERSON_THREAD);
+            assert.deepStrictEqual(
+              prompts.map((texts) =>
+                texts.some((text) => text.endsWith(`\n${personaInstructions(PIRATE)}`))
+                  ? "persona"
+                  : texts.some((text) => text.endsWith(`\n${personaInstructions(null)}`))
+                    ? "none"
+                    : "missing",
+              ),
+              ["persona", "none"],
+            );
+          }),
+        ),
+    );
+
+    it.effect(`a crewmate on ${driver.name} takes no persona`, () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const prompts = yield* twoTurnsAcrossAPersonaRemoval(driver, CREW_THREAD);
+          assert.lengthOf(prompts, 2);
+          assert.notInclude(JSON.stringify(prompts), "<persona");
         }),
       ),
     );

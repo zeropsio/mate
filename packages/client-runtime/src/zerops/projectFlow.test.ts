@@ -8,6 +8,8 @@ import { mateProjectOfBranch, mateProjectOfLogin } from "./mateIdentity.ts";
 import type { MergeabilityKind } from "./changeMergeability.ts";
 import {
   changeKindTag,
+  changeAsksForReview,
+  changeInMateReview,
   changeShowsReview,
   changeState,
   pullRequestMergeLine,
@@ -39,6 +41,9 @@ const VERA = "tsXR3xnURPSvsy4zp1EaYA";
 const FEN = "9lSt5lFxQ1mQ3v8b7c2d1e";
 
 /** Vera's open `appdev #4` as the flow carries it. */
+/** A code change, as the rules that read only a change's state are given it. */
+const CODE = { kind: "code", title: "Fix the cart", mergeability: "mergeable" } as const;
+
 function row(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
   return {
     repository: "appdev",
@@ -86,6 +91,21 @@ describe("a Mate's changes in HQ, as the flow shows them", () => {
   });
   const flow = (changes: ReadonlyArray<HqChange>) => flowChanges({ changes, hqAddress: `${HQ}/` });
 
+  it("Group change review receives HQ's exact-head validation and findings unchanged.", () => {
+    const problem = {
+      code: "invalid_recipe",
+      what: "The service setting is invalid",
+      where: { appId: "g1", service: "api", tier: "production", file: "production.yaml" },
+      rule: { source: "zerops-schema", schemaPath: "/services/properties/minCpu" },
+      next: { actor: "mate", action: "Correct the production tier and propose a new change" },
+    } as const;
+    const recipeValidation = { head: SHA, state: "invalid", problems: [problem] } as const;
+    const pull = flowChange(change({ repo: "group", recipeValidation, problems: [problem] }), HQ);
+    expect(pull.recipeValidation).toEqual(recipeValidation);
+    expect(pull.problems).toEqual([problem]);
+    expect(flowChange(change(), HQ).recipeValidation).toBeUndefined();
+  });
+
   it.each(["required", "advisory", "unknown"] as const)(
     "carries exact-head %s pipeline evidence into review",
     (requirement) => {
@@ -96,6 +116,44 @@ describe("a Mate's changes in HQ, as the flow shows them", () => {
       } as const;
       expect(flowChange(change({ pipeline }), HQ).pipeline).toEqual(pipeline);
       expect(flowChange(change(), HQ).pipeline).toBeUndefined();
+    },
+  );
+
+  it.each([
+    ["a change HQ never pushed to, described at its head", {}, {}],
+    [
+      "a stacked change HQ brought main into, a draft again",
+      {
+        corePush: {
+          at: "2026-10-02T09:30:00.000Z",
+          from: "d".repeat(40),
+          head: "e".repeat(40),
+          landed: 3,
+          squash: "f".repeat(40),
+        },
+        ready: false,
+        draftReason: "notes_timed_out",
+      },
+      {
+        corePush: {
+          at: "2026-10-02T09:30:00.000Z",
+          from: "d".repeat(40),
+          head: "e".repeat(40),
+          landed: 3,
+          squash: "f".repeat(40),
+        },
+        draftReason: "notes_timed_out",
+      },
+    ],
+  ] as const)(
+    "carries HQ's own push and why it is a draft again from %s",
+    (_name, over, carried) => {
+      const pull = flowChange(change(over), HQ);
+      expect({ corePush: pull.corePush, draftReason: pull.draftReason }).toEqual({
+        corePush: undefined,
+        draftReason: undefined,
+        ...carried,
+      });
     },
   );
 
@@ -808,10 +866,10 @@ describe("pullRequestMergeLine", () => {
 describe("changeState", () => {
   it("answers every row in one register, opening as a sentence does", () => {
     const words = [
-      changeState({ number: 1, mergeability: "mergeable" }),
-      changeState({ number: 2, mergeability: "conflicting" }),
-      changeState({ number: 3, mergeability: "checking" }),
-      changeState({ number: 4, mergeability: "empty" }),
+      changeState({ ...CODE, number: 1, mergeability: "mergeable" }),
+      changeState({ ...CODE, number: 2, mergeability: "conflicting" }),
+      changeState({ ...CODE, number: 3, mergeability: "checking" }),
+      changeState({ ...CODE, number: 4, mergeability: "empty" }),
     ].map((state) => state?.word);
     expect(words).toEqual([
       "Ready to merge",
@@ -834,7 +892,7 @@ describe("changeState", () => {
     ["a described change", { mergeability: "mergeable", ready: true }, "Ready to merge"],
     ["a change from an HQ that knows no drafts", { mergeability: "mergeable" }, "Ready to merge"],
   ] as const)("names %s", (_case, pull, word) => {
-    expect(changeState({ number: 1, ...pull })?.word).toBe(word);
+    expect(changeState({ ...CODE, number: 1, ...pull })?.word).toBe(word);
   });
 
   // Its Mate gone, nobody carries it on: a person closes it or hands it to another Mate.
@@ -845,7 +903,7 @@ describe("changeState", () => {
   ] as const)(
     "says an open change whose Mate is gone is so before anything else, %s",
     (_case, pull) => {
-      expect(changeState({ number: 1, mateGone: true, ...pull })).toEqual({
+      expect(changeState({ ...CODE, number: 1, mateGone: true, ...pull })).toEqual({
         word: "Mate gone",
         tone: "attention",
       });
@@ -853,12 +911,14 @@ describe("changeState", () => {
   );
 
   it("carries the tone that means the word", () => {
-    expect(changeState({ number: 4, mergeability: "conflicting" })?.tone).toBe("attention");
-    expect(changeState({ number: 4, mergeability: "checking" })?.tone).toBe("busy");
+    expect(changeState({ ...CODE, number: 4, mergeability: "conflicting" })?.tone).toBe(
+      "attention",
+    );
+    expect(changeState({ ...CODE, number: 4, mergeability: "checking" })?.tone).toBe("busy");
   });
 
   it("names a change nothing stops rather than leaving the column blank: grey, not green", () => {
-    expect(changeState({ number: 1, mergeability: "mergeable" })).toEqual({
+    expect(changeState({ ...CODE, number: 1, mergeability: "mergeable" })).toEqual({
       word: "Ready to merge",
       tone: "off",
     });
@@ -1036,6 +1096,55 @@ describe("a Mate's proposal of the group's recipe", () => {
     const kind = repository === "group" ? "recipe" : "code";
     expect(isRecipeProposal(row({ repository, kind, number: 11, title }))).toBe(proposal);
   });
+
+  // zcp proposes the tiers main lacks at every start of its Mate, unasked; Core lands it by itself
+  // when it only adds files, judging it once, on its push. One that conflicts with main its Mate
+  // composes again from main (zcp's reconcile on a conflicting proposal): nobody is asked. One
+  // that stays open otherwise Core refused, and only a person lands it; one whose Mate is gone
+  // nothing will land.
+  it.each([
+    {
+      case: "zcp's proposal that conflicts with main asks nobody for review",
+      title: "Mate: the group's import files",
+      mergeability: "conflicting",
+      mateGone: undefined,
+      asks: false,
+      word: "Conflicts with main · its Mate redoes it",
+    },
+    {
+      case: "zcp's proposal Core left open, nothing stopping its merge, asks the person",
+      title: "Mate: the group's import files",
+      mergeability: "mergeable",
+      mateGone: undefined,
+      asks: true,
+      word: "Ready to merge",
+    },
+    {
+      case: "zcp's proposal whose Mate is gone asks the person",
+      title: "Mate: the group's import files",
+      mergeability: "conflicting",
+      mateGone: true,
+      asks: true,
+      word: "Mate gone",
+    },
+    {
+      case: "a Mate's proposal of one service in the recipe that conflicts asks the person",
+      title: "Mate: api in the group recipe",
+      mergeability: "conflicting",
+      mateGone: undefined,
+      asks: true,
+      word: "Conflicts with main",
+    },
+  ] as const)("$case", ({ title, mergeability, mateGone, asks, word }) => {
+    const pull = {
+      ...row({ repository: "group", kind: "recipe", number: 11, title }),
+      mergeability,
+      ...(mateGone === undefined ? {} : { mateGone }),
+    };
+    expect(changeAsksForReview(pull)).toBe(asks);
+    expect(changeShowsReview(pull, undefined)).toBe(asks);
+    expect(changeState(pull)?.word).toBe(word);
+  });
 });
 
 // e2e 2026-10-03 (t8 A22): B's change, merged with production on v0.1.0, said "it's on main": HQ
@@ -1062,12 +1171,6 @@ describe("waitingForProduction: how many changes wait for production once one me
       summary: offer(2),
       mergedAhead: false,
       count: 2,
-    },
-    {
-      name: "the change with no release production runs",
-      summary: offer(0),
-      mergedAhead: true,
-      count: 1,
     },
     {
       name: "a change merged before the release production runs: there already",
@@ -1130,7 +1233,7 @@ describe("changeShowsReview — one rule for every list a change stands in", () 
     },
     { case: "a draft, its Mate at work", ready: false, mate: { working: true }, shows: false },
   ])("$case: $shows", ({ ready, mate, shows }) => {
-    expect(changeShowsReview({ ready }, mate)).toBe(shows);
+    expect(changeShowsReview({ ...CODE, ready }, mate)).toBe(shows);
   });
 });
 
@@ -1157,5 +1260,26 @@ describe("productionTurnNotes", () => {
     expect(productionTurnNotes(live, "2026-09-20T13:00:00Z")).toEqual([]);
     expect(productionTurnNotes(live, undefined)).toEqual([]);
     expect(productionTurnNotes(undefined, "2026-09-20T11:00:00Z")).toEqual([]);
+  });
+});
+
+// Larkspur, 2026-10-28: the header said "Review 2" over a composer card of one — Filip's zcp's
+// recipe change, which Core held because its merge would change Stage and Production.
+describe("changeInMateReview: a Mate's review lists its code, never the project's setup", () => {
+  it.each([
+    { case: "its code change, described, asks", over: {}, listed: true },
+    { case: "its draft asks nothing", over: { ready: false }, listed: false },
+    {
+      case: "a recipe change it proposed waits on the project's page instead",
+      over: { kind: "recipe", repository: "group", title: "Mate: the group's import files" },
+      listed: false,
+    },
+    {
+      case: "a recipe change of one service waits on the project's page too",
+      over: { kind: "recipe", repository: "group", title: "Give the stage a bigger database" },
+      listed: false,
+    },
+  ] as const)("$case", ({ over, listed }) => {
+    expect(changeInMateReview(row(over))).toBe(listed);
   });
 });

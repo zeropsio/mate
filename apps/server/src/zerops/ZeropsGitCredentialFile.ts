@@ -39,7 +39,7 @@ const OWNER_ONLY = 0o600;
 const sha256 = (value: string) => NodeCrypto.createHash("sha256").update(value).digest("hex");
 
 /** The digest of the credential's digest: HQ stores the first and compares this one (`spec/protocol.md`, _Mate Git credential_). */
-const fingerprintOf = (credential: string) => sha256(sha256(credential));
+export const fingerprintOf = (credential: string) => sha256(sha256(credential));
 
 /**
  * The file at `at`. A write that fails is logged without the value and leaves the last file as it

@@ -21,6 +21,7 @@ import {
 } from "@t3tools/client-runtime/data";
 import {
   isEngineItemId,
+  isRefusedAttempt,
   TurnId,
   type CrewCard as ContractCrewCard,
   type RunRecord,
@@ -683,13 +684,14 @@ function lastOwnEntry(entries: ReadonlyArray<TimelineEntry>): TimelineEntry | un
 }
 
 /**
- * The Mate's own entry: its words, a thought, a step. A plan update, a landing, a message of
+ * The Mate's own entry: its words, a thought, a step. A plan update, a landing, a release ending, a message of
  * nothing, a background task reporting in, the context condensed, or a row that only tells is not.
  */
 function isOwnEntry(entry: TimelineEntry): boolean {
   return (
     entry.kind !== "turn-plan" &&
     entry.kind !== "change-landed" &&
+    entry.kind !== "release-ended" &&
     !(entry.kind === "message" && saysNothing(entry.message)) &&
     !(
       (entry.kind === "work" || entry.kind === "generic-call") &&
@@ -749,7 +751,18 @@ export interface BrokeOff {
   readonly entryId: string | null;
   readonly reason: string;
   readonly next: string | null;
+  /** A refused attempt (`isRefusedAttempt`): a quiet record of it, never an alarm. */
+  readonly quiet?: true;
 }
+
+/**
+ * A run admission refused over whose agent login it is. The engine keeps the words its sender was
+ * told ("…only they can run it"), which read as addressed to whoever opens the conversation later,
+ * the login's own signer included: every reader is told the fact, quietly, and the composer tells
+ * the person writing now what stops them.
+ */
+const NOT_THE_SENDERS_LOGIN =
+  "This message did not run: only the person signed in to this agent can run it.";
 
 function brokeOffOn(input: {
   readonly entries: ReadonlyArray<TimelineEntry>;
@@ -1081,13 +1094,15 @@ export function deriveConversationStructure(given: {
       live || waiting
         ? null
         : typed
-          ? run?.end?.kind === "failed" || run?.end?.kind === "crashed"
-            ? {
-                entryId: null,
-                reason: run.end.reason,
-                next: run.end.kind === "failed" && isLatestTurn ? run.end.next : null,
-              }
-            : null
+          ? isRefusedAttempt(run?.end)
+            ? { entryId: null, reason: NOT_THE_SENDERS_LOGIN, next: null, quiet: true as const }
+            : run?.end?.kind === "failed" || run?.end?.kind === "crashed"
+              ? {
+                  entryId: null,
+                  reason: run.end.reason,
+                  next: run.end.kind === "failed" && isLatestTurn ? run.end.next : null,
+                }
+              : null
           : brokeOffOn({
               entries: turnEntries,
               latest: span === spans.at(-1),
@@ -1130,8 +1145,22 @@ export function deriveConversationStructure(given: {
     const { limit, limitOnly, answerIsRefusal } = refusal;
 
     const firstRun = cardRuns[0];
+    // When an engine card's runs began, by their records: a stretch nobody wrote to start begins
+    // where its run did, never at its first held line — a closed card holds only the lines its
+    // result draws, often a later one first.
+    const runStarts = typed
+      ? cardRuns.flatMap((each) => (each.startedAt === null ? [] : [each.startedAt]))
+      : [];
+    /** The start of the latest of the card's runs to begin by `at`, else of its first. */
+    const runStartBy = (at: string | undefined): string | null => {
+      const by = at === undefined ? Number.POSITIVE_INFINITY : (parseMs(at) ?? Infinity);
+      const began = runStarts.filter((start) => start <= by);
+      const start = began.length > 0 ? Math.max(...began) : runStarts[0];
+      return start === undefined ? null : new Date(start).toISOString();
+    };
     const turnStart =
       span.opener?.createdAt ??
+      (runStarts.length > 0 ? new Date(Math.min(...runStarts)).toISOString() : null) ??
       turnEntries[0]?.createdAt ??
       (live ? input.activeTurnStartedAt : null) ??
       // A card the page holds nothing of yet began where its first run did.
@@ -1188,6 +1217,11 @@ export function deriveConversationStructure(given: {
           : null;
       const startedAt =
         draft.lead?.createdAt ??
+        (typed && draft.lead === null && (position === 0 || stretchEntries.length > 0)
+          ? position === 0
+            ? turnStart
+            : runStartBy(stretchEntries[0]?.createdAt)
+          : null) ??
         stretchEntries[0]?.createdAt ??
         wokenAt ??
         turnStart ??
@@ -1781,6 +1815,12 @@ export function operationLineWords(operation: ZeropsOperation): string {
       // What it came to, as its pill says it: "Running app" read as work
       // still going on, under a finished bar.
       if (failed) return `Dev server on ${subject} failed`;
+      if (operation.phase === "done" && devServerAction(operation) === "stop") {
+        const name = operation.devServer?.name;
+        return name === undefined || name === subject
+          ? `Dev server stopped on ${subject}`
+          : `Dev server ${name} stopped on ${subject}`;
+      }
       return statusWord === "Running" || statusWord === "Not running"
         ? `Dev server ${statusWord.toLowerCase()} on ${subject}`
         : `Dev server on ${subject}`;
@@ -1811,6 +1851,8 @@ export function unrecoveredFailures(
         (later) =>
           later.phase === "done" &&
           operationTargetKey(later) === target &&
+          (operation.kind !== "devServer" ||
+            devServerTargetKey(later) === devServerTargetKey(operation)) &&
           (later.kind === operation.kind ||
             (operation.kind === "verify" && later.kind === "deploy") ||
             (operation.kind === "deploy" && later.kind === "verify")),
@@ -1820,6 +1862,12 @@ export function unrecoveredFailures(
 
 export function operationTargetKey(operation: ZeropsOperation): string {
   return operation.target?.hostname ?? operation.subject;
+}
+
+/** The supervisor's server identity; display rows never decide which server a call acted on. */
+export function devServerTargetKey(operation: ZeropsOperation): string {
+  const hostname = operationTargetKey(operation);
+  return JSON.stringify([hostname, operation.devServer?.name ?? hostname]);
 }
 
 /** Operations whose done phase means the turn produced something the person can use. */
@@ -1924,7 +1972,7 @@ export function stretchFace(input: {
 }): WorkLineFace {
   const { stretch, turn } = input;
   if (stretch.live) return "working";
-  if (turn.brokeOff !== null && stretch.last) return "brokeOff";
+  if (turn.brokeOff !== null && turn.brokeOff.quiet !== true && stretch.last) return "brokeOff";
   if (turn.interruption?.continuation === "manual" && stretch.last) return "interrupted";
   if (turn.interrupted && stretch.last) return turn.byMessage ? "interrupted" : "stopped";
   if (input.pausedHere) return "paused";
@@ -2220,7 +2268,8 @@ export function checksVerdict(strip: BrowserStripModel): string | null {
   return settled === 1 ? null : `${settled} checks passed`;
 }
 
-export type IncidentTone = "attention" | "ok" | "failed";
+/** `rest`: not running where nothing is meant to run — said, never as a fault. */
+export type IncidentTone = "attention" | "ok" | "failed" | "rest";
 
 export interface IncidentModel {
   readonly key: string;
@@ -2230,6 +2279,8 @@ export interface IncidentModel {
   readonly tone: IncidentTone;
   /** When the incident began: its first failure. */
   readonly appearedAt: string;
+  /** What zcp held the service in place for, as the call that found it said (a stand-in). */
+  readonly standIn?: { readonly for: string };
 }
 
 /** What a dev-server call found: running, not running, or nothing (still running, another kind). */
@@ -2239,6 +2290,7 @@ export function devServerRunning(operation: ZeropsOperation): boolean | null {
   if (devServerAction(operation) === "logs") return null;
   // A call zcp refused before reading any server found nothing; any other failure is a start that did not come up.
   if (operation.phase === "failed") return operation.refused === true ? null : false;
+  if (operation.devServer?.running !== undefined) return operation.devServer.running;
   if (operation.statusWord === "Not running") return false;
   if (operation.statusWord === "Running") return true;
   const step = operation.steps[0];
@@ -2246,8 +2298,14 @@ export function devServerRunning(operation: ZeropsOperation): boolean | null {
   return step.state === "done";
 }
 
+/** A selected stop says nothing against the sibling servers this same call read running. */
+function hostDevServerRunning(operation: ZeropsOperation): boolean | null {
+  if (operation.devServer?.servers?.some((server) => server.status === "running")) return true;
+  return devServerRunning(operation);
+}
+
 function devServerAction(operation: ZeropsOperation): string {
-  return (operation.steps[0]?.label ?? "").toLowerCase();
+  return operation.devServer?.action ?? "";
 }
 
 function devServerFailurePhrase(operation: ZeropsOperation): string {
@@ -2260,6 +2318,7 @@ function devServerFailurePhrase(operation: ZeropsOperation): string {
 
 /** The kinds that act on a service: after one of them, what was found of it before is old. */
 const ACTING_KINDS: ReadonlySet<ZeropsOperation["kind"]> = new Set([
+  "delete",
   "deploy",
   "devServer",
   "import",
@@ -2310,9 +2369,17 @@ function actedOn(operation: ZeropsOperation): ReadonlyArray<string> {
  * only what is true now.
  */
 export function standingIncidents(stretch: Stretch): IncidentModel[] {
-  const latest = new Map<string, ZeropsOperation>();
+  const latest = new Map<string, { hostname: string; operation: ZeropsOperation }>();
   for (const operation of stretchOperations(stretch)) {
-    for (const host of actedOn(operation)) latest.set(host, operation);
+    for (const hostname of actedOn(operation)) {
+      if (operation.kind !== "devServer") {
+        for (const [key, held] of latest) {
+          if (held.hostname === hostname) latest.delete(key);
+        }
+      }
+      const key = operation.kind === "devServer" ? devServerTargetKey(operation) : hostname;
+      latest.set(key, { hostname, operation });
+    }
   }
   const lineOf = (operation: ZeropsOperation) =>
     stretch.entries.findIndex(
@@ -2322,8 +2389,9 @@ export function standingIncidents(stretch: Stretch): IncidentModel[] {
     stretch.entries
       .slice(lineOf(operation) + 1)
       .some((entry) => !(entry.kind === "message" && entry.message.role === "reasoning"));
-  return [...latest.entries()].flatMap(([hostname, operation]): IncidentModel[] => {
+  return [...latest.values()].flatMap(({ hostname, operation }): IncidentModel[] => {
     if (operation.kind !== "devServer" || devServerRunning(operation) !== false) return [];
+    if (devServerAction(operation) === "stop" && operation.phase === "done") return [];
     if (!movedOnFrom(operation)) return [];
     const failed = operation.phase === "failed";
     return [
@@ -2337,6 +2405,7 @@ export function standingIncidents(stretch: Stretch): IncidentModel[] {
         ],
         tone: failed ? "failed" : "attention",
         appearedAt: operation.settledAt ?? operation.anchorAt,
+        ...(operation.standIn === undefined ? {} : { standIn: operation.standIn }),
       },
     ];
   });
@@ -2352,6 +2421,96 @@ export function incidentsStanding(
     : incidents;
 }
 
+/** What a service the platform holds nothing running on says instead of "not running", by its status. */
+const AT_REST_WORDS: Readonly<Record<string, string>> = {
+  READY_TO_DEPLOY: "nothing deployed yet",
+  STOPPED: "stopped",
+};
+
+/** A service as the platform and zcp state it now: its status, and what zcp holds it for, if anything. */
+export type ServiceStatus = {
+  readonly hostname: string;
+  readonly status: string;
+  readonly standIn?: { readonly for: string };
+};
+
+/** Why nothing is meant to run on a service now, by its status; undefined where something is. */
+function atRestWords(status: string): string | undefined {
+  return AT_REST_WORDS[status.replace(/^SERVICE_/u, "")];
+}
+
+/** What a stand-in is held for, in words, by what zcp names; a reason this build has no words for, as named. */
+const STAND_IN_WORDS: Readonly<Record<string, string>> = {
+  "pool-migrate": "moving onto dev pools",
+};
+
+function standInWords(standIn: { readonly for: string }): string {
+  return STAND_IN_WORDS[standIn.for] ?? `held for ${standIn.for}`;
+}
+
+/** The services the topology lists, each with what zcp holds it for; undefined while unread. */
+export function servicesWithStandIns(
+  services: ReadonlyArray<{ readonly hostname: string; readonly status: string }> | undefined,
+  standInOf: (hostname: string) => { readonly for: string } | undefined,
+): ReadonlyArray<ServiceStatus> | undefined {
+  return services?.map(({ hostname, status }) => {
+    const standIn = standInOf(hostname);
+    return { hostname, status, ...(standIn === undefined ? {} : { standIn }) };
+  });
+}
+
+/**
+ * A dev server found not running is a fault only where something is meant to
+ * run. The dock says nothing until the platform's state of the project is
+ * read (`services` undefined) — never amber first — and nothing of a service
+ * no longer in it. On a service the platform says holds nothing — never
+ * deployed (a stand-in while services move, say) — or stopped, it reads at
+ * rest and says why. A start that failed stays a failure.
+ */
+export function incidentsAtRest(
+  incidents: ReadonlyArray<IncidentModel>,
+  services: ReadonlyArray<ServiceStatus> | undefined,
+): ReadonlyArray<IncidentModel> {
+  if (services === undefined) return [];
+  return incidents.flatMap((incident) => {
+    const service = services.find((one) => one.hostname === incident.hostname);
+    if (service === undefined) return [];
+    // A stand-in zcp holds is never a fault, whatever the platform says of it.
+    const standIn = service.standIn ?? incident.standIn;
+    const words =
+      standIn !== undefined && incident.tone !== "ok"
+        ? standInWords(standIn)
+        : incident.tone === "attention"
+          ? atRestWords(service.status)
+          : undefined;
+    return [words === undefined ? incident : { ...incident, tone: "rest", phases: [words] }];
+  });
+}
+
+/**
+ * The run's record of a dev server found not running, in its own words; its
+ * colour says whether it still needs anyone: amber only on a service the
+ * platform says is meant to run — never while its state is unread, once the
+ * service is gone, or while it holds nothing or is stopped. A stand-in zcp
+ * holds is never amber nor red, whatever the platform says of it.
+ */
+export function incidentToneNow(
+  incident: IncidentModel,
+  services: ReadonlyArray<ServiceStatus> | undefined,
+): IncidentModel {
+  const service = services?.find((one) => one.hostname === incident.hostname);
+  if (
+    (incident.tone === "attention" || incident.tone === "failed") &&
+    (service?.standIn ?? incident.standIn) !== undefined
+  ) {
+    return { ...incident, tone: "rest" };
+  }
+  if (incident.tone !== "attention") return incident;
+  return service === undefined || atRestWords(service.status) !== undefined
+    ? { ...incident, tone: "rest" }
+    : incident;
+}
+
 /**
  * A service that stopped answering and what happened to it, as one line per
  * service and stretch — "nextstoredev · stopped answering (502) · restarted ·
@@ -2361,24 +2520,38 @@ export function incidentsStanding(
 export function stretchIncidents(stretch: Stretch): IncidentModel[] {
   const byHost = new Map<
     string,
-    { phases: string[]; tone: IncidentTone; appearedAt: string; key: string }
+    {
+      hostname: string;
+      phases: string[];
+      tone: IncidentTone;
+      appearedAt: string;
+      key: string;
+      standIn?: { readonly for: string };
+    }
   >();
   for (const operation of stretchOperations(stretch)) {
     if (operation.kind !== "devServer") continue;
-    const host = operationTargetKey(operation);
+    const host = devServerTargetKey(operation);
     const running = devServerRunning(operation);
+    if (devServerAction(operation) === "stop" && operation.phase === "done") {
+      byHost.delete(host);
+      continue;
+    }
     const incident = byHost.get(host);
     if (incident === undefined) {
       if (running !== false) continue;
       byHost.set(host, {
         key: `incident:${operation.key}`,
+        hostname: operationTargetKey(operation),
         phases: [devServerFailurePhrase(operation)],
         tone: "attention",
         appearedAt: operation.settledAt ?? operation.anchorAt,
+        ...(operation.standIn === undefined ? {} : { standIn: operation.standIn }),
       });
       continue;
     }
     if (operation.phase === "running") continue;
+    if (operation.standIn !== undefined) incident.standIn = operation.standIn;
     const action = devServerAction(operation);
     if (running === true) {
       if (action === "restart") incident.phases.push("restarted");
@@ -2387,17 +2560,18 @@ export function stretchIncidents(stretch: Stretch): IncidentModel[] {
       incident.tone = "ok";
     } else if (running === false) {
       incident.phases.push(
-        action === "health check" ? "still not answering" : `${action || "start"} failed`,
+        action === "status" ? "still not answering" : `${action || "start"} failed`,
       );
       incident.tone = operation.phase === "failed" ? "failed" : "attention";
     }
   }
-  return [...byHost.entries()].map(([hostname, incident]) => ({
+  return [...byHost.values()].map((incident) => ({
     key: incident.key,
-    hostname,
+    hostname: incident.hostname,
     phases: dedupeAdjacent(incident.phases),
     tone: incident.tone,
     appearedAt: incident.appearedAt,
+    ...(incident.standIn === undefined ? {} : { standIn: incident.standIn }),
   }));
 }
 
@@ -2984,7 +3158,7 @@ export function deriveOutcome(input: {
       continue;
     }
     if (operation.kind === "devServer") {
-      if (devServerRunning(operation) === true) devServerRuns.add(host);
+      if (hostDevServerRunning(operation) === true) devServerRuns.add(host);
       else devServerRuns.delete(host);
     }
     // A deploy replaces what ran: the dev server found before it is not what runs now.
@@ -3020,7 +3194,7 @@ export function deriveOutcome(input: {
     const url = operation.links[0]?.url ?? known?.url ?? null;
     if (operation.kind === "devServer") {
       // Stopped on purpose, it no longer runs because of the run.
-      if (devServerAction(operation) === "stop") {
+      if (devServerAction(operation) === "stop" && hostDevServerRunning(operation) !== true) {
         if (known?.word.startsWith("Dev server") === true) services.delete(host);
         continue;
       }
@@ -3031,7 +3205,7 @@ export function deriveOutcome(input: {
       ) {
         continue;
       }
-      const running = operation.statusWord !== "Not running";
+      const running = hostDevServerRunning(operation) === true;
       services.set(host, {
         hostname: host,
         tone: running ? "ok" : "attention",

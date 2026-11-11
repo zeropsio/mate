@@ -19,7 +19,7 @@ import { closeAccountLifetime } from "./zerops/accountLifetime";
 const refA = scopeThreadRef("env-1" as EnvironmentId, ThreadId.make("thread-A"));
 const refB = scopeThreadRef("env-1" as EnvironmentId, ThreadId.make("thread-B"));
 
-const DIFF: ReopenableSurface = { id: "diff", kind: "diff" };
+const MCP: ReopenableSurface = { id: "mcp", kind: "mcp" };
 const GIT: ReopenableSurface = { id: "git", kind: "git" };
 const FILE: ReopenableSurface = {
   id: "file:src/app.ts",
@@ -47,15 +47,15 @@ beforeEach(() => {
 describe("the closed-tab history", () => {
   it("remembers a closed tab, newest first, once per tab and thread", () => {
     const { remember } = useClosedViewStore.getState();
-    remember({ threadRef: refA, surface: DIFF });
+    remember({ threadRef: refA, surface: MCP });
     remember({ threadRef: refA, surface: GIT });
-    remember({ threadRef: refB, surface: DIFF });
-    remember({ threadRef: refA, surface: DIFF });
+    remember({ threadRef: refB, surface: MCP });
+    remember({ threadRef: refA, surface: MCP });
     expect(
       useClosedViewStore
         .getState()
         .entries.map((entry) => `${entry.threadRef.threadId}:${entry.surface.id}`),
-    ).toEqual(["thread-A:diff", "thread-B:diff", "thread-A:git"]);
+    ).toEqual(["thread-A:mcp", "thread-B:mcp", "thread-A:git"]);
   });
 
   it("keeps the last twenty", () => {
@@ -71,14 +71,14 @@ describe("the closed-tab history", () => {
 
   it("sends a tab that could not reopen to the back of the line", () => {
     const { remember } = useClosedViewStore.getState();
-    remember({ threadRef: refA, surface: DIFF });
+    remember({ threadRef: refA, surface: MCP });
     const gitId = remember({ threadRef: refA, surface: GIT });
     useClosedViewStore.getState().defer(gitId);
-    expect(closedSurfaces()).toEqual(["diff", "git"]);
+    expect(closedSurfaces()).toEqual(["mcp", "git"]);
   });
 
   it("forgets everything when the account closes", () => {
-    useClosedViewStore.getState().remember({ threadRef: refA, surface: DIFF });
+    useClosedViewStore.getState().remember({ threadRef: refA, surface: MCP });
     closeAccountLifetime();
     expect(closedSurfaces()).toEqual([]);
   });
@@ -87,15 +87,15 @@ describe("the closed-tab history", () => {
 describe("closing a tab records it", () => {
   it("records the tab a person closes", () => {
     const store = useRightPanelStore.getState();
-    store.open(refA, "diff");
+    store.open(refA, "mcp");
     store.open(refA, "git");
-    store.closeSurface(refA, "diff");
-    expect(closedSurfaces()).toEqual(["diff"]);
+    store.closeSurface(refA, "mcp");
+    expect(closedSurfaces()).toEqual(["mcp"]);
   });
 
   it("records closed-together tabs so the one that was showing comes back first", () => {
     const store = useRightPanelStore.getState();
-    store.open(refA, "diff");
+    store.open(refA, "mcp");
     store.open(refA, "git");
     store.open(refA, "zerops");
     store.activateSurface(refA, "git");
@@ -106,13 +106,13 @@ describe("closing a tab records it", () => {
 
   it("records the tabs Close Others and Close to the Right remove", () => {
     const store = useRightPanelStore.getState();
-    store.open(refA, "diff");
+    store.open(refA, "mcp");
     store.open(refA, "git");
     store.open(refA, "zerops");
     store.closeSurfacesToRight(refA, "git");
     expect(closedSurfaces()).toEqual(["zerops"]);
     store.closeOtherSurfaces(refA, "git");
-    expect(closedSurfaces()).toEqual(["diff", "zerops"]);
+    expect(closedSurfaces()).toEqual(["mcp", "zerops"]);
   });
 
   it("never records a terminal, whose shell is gone once closed", () => {
@@ -127,7 +127,7 @@ describe("closing a tab records it", () => {
     const store = useRightPanelStore.getState();
     store.open(refA, "files");
     store.reconcileFileSurfaces(refA, false);
-    store.open(refB, "diff");
+    store.open(refB, "mcp");
     store.removeThread(refB);
     expect(closedSurfaces()).toEqual([]);
   });
@@ -161,35 +161,35 @@ describe("planNextReopen", () => {
   }> = [
     {
       name: "restores the newest tab",
-      entries: [entry("1", DIFF), entry("2", GIT)],
+      entries: [entry("1", MCP), entry("2", GIT)],
       state: () => owner(),
       drop: [],
       restore: "1",
     },
     {
       name: "drops a tab that is already open and restores the next",
-      entries: [entry("1", DIFF), entry("2", GIT)],
-      state: () => owner({ panel: open([DIFF]) }),
+      entries: [entry("1", MCP), entry("2", GIT)],
+      state: () => owner({ panel: open([MCP]) }),
       drop: ["1"],
       restore: "2",
     },
     {
       name: "restores a tab still listed in a hidden panel",
-      entries: [entry("1", DIFF)],
-      state: () => owner({ panel: { ...open([DIFF]), isOpen: false } }),
+      entries: [entry("1", MCP)],
+      state: () => owner({ panel: { ...open([MCP]), isOpen: false } }),
       drop: [],
       restore: "1",
     },
     {
       name: "skips but keeps a tab whose conversation a live list no longer has",
-      entries: [entry("1", DIFF, refB), entry("2", GIT)],
+      entries: [entry("1", MCP, refB), entry("2", GIT)],
       state: (item) => owner({ ownerExists: item.threadRef === refA }),
       drop: [],
       restore: "2",
     },
     {
       name: "waits while the conversation list has not arrived",
-      entries: [entry("1", DIFF, refB), entry("2", GIT)],
+      entries: [entry("1", MCP, refB), entry("2", GIT)],
       state: (item) => owner({ ownerExists: item.threadRef === refA, shellLive: false }),
       drop: [],
       restore: null,
@@ -208,7 +208,7 @@ describe("planNextReopen", () => {
 
 describe("reopenClosedView", () => {
   it("puts the closed tab back, as it was, and shows it", () => {
-    useRightPanelStore.getState().open(refA, "diff");
+    useRightPanelStore.getState().open(refA, "mcp");
     for (const surface of [FILE, SERVICE, GIT]) {
       expect(reopenClosedView({ threadRef: refA, surface }, { workspaceAvailable: true })).toBe(
         true,

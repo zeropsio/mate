@@ -1,33 +1,8 @@
-export {
-  findOfficialHq,
-  hqAnchorName,
-  hqOrgTokenName,
-  hqProjectsOf,
-  hqZeropsProject,
-  ownersAndAdmins,
-  SHARED_HQ_DOOR,
-  sharedHq,
-  type OfficialHq,
-} from "./anchor.ts";
-export {
-  HQ_BIRTH_DOING,
-  HQ_BIRTH_START,
-  HQ_BIRTH_STEPS,
-  HQ_PROJECT_NAME,
-  HQ_SERVICE,
-  hqImportYaml,
-  runHqBirth,
-  type HqBirthDeps,
-  type HqBirthOutcome,
-  type HqBirthRecord,
-  type HqBirthStep,
-  type HqCoreArtifact,
-} from "./birth.ts";
+export { sharedHq } from "./anchor.ts";
 export {
   HQ_WRITE_UNCERTAIN,
   HqError,
   makeHqApi,
-  readHqHealth,
   readHqParts,
   type Asked,
   type HqApi,
@@ -38,7 +13,6 @@ export {
   type HqEndpoint,
   type HqBackup,
   type HqBackupUsage,
-  type HqHealth,
   type HqKeys,
   type HqParts,
   type HqSocket,
@@ -50,6 +24,8 @@ export {
 export {
   deployAnswerFollowing,
   deployAnswerSaid,
+  deployNoteSaid,
+  sourceArchiveLabel,
   type DeployAnswerEnvironment,
   type DeployAnswerJob,
   type DeployAnswerSaid,
@@ -66,7 +42,6 @@ export {
   inspectDeployLog,
   type DeployLogTarget,
 } from "./deployLog.ts";
-export { hqUpdateOffered, hqUpdateState, type HqUpdateState } from "./update.ts";
 export {
   birthFaceOf,
   birthIntentOf,
@@ -82,7 +57,6 @@ export {
   type HqPlacement,
 } from "./placement.ts";
 export {
-  nextPressExpiry,
   pressElsewhere,
   type HqPressHold,
   type HqPresses,
@@ -104,8 +78,14 @@ export {
   type ServiceJobs,
 } from "./environments.ts";
 export {
+  couldntRead,
+  deployKeyTrouble,
+  type DeployKeyTrouble,
   enrollmentRefusalWords,
+  HQ_HANDOVER_UNFINISHED,
   HQ_NOT_OPEN,
+  hqDisagreesOn,
+  hqNeedsUpdate,
   hqOfferWords,
   hqRefusalWords,
   NO_HQ_WORDS,
@@ -126,4 +106,7 @@ export {
   PROPOSAL_IDS_PER_READ,
   type HqChiefCalls,
   type HqProposalDecisionWrite,
+  type HqRevealRecord,
 } from "./chief.ts";
+
+export { problemPresentation, problemSaid, problemsFix, unverifiedStops } from "./problems.ts";

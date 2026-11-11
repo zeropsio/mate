@@ -8,19 +8,26 @@
  */
 import * as Effect from "effect/Effect";
 
-import { ZeropsApiError, ZeropsWriteNotSent } from "../../../zerops/api.ts";
+import {
+  ZeropsApiError,
+  ZeropsTargetWriteRefused,
+  ZeropsWriteNotSent,
+} from "../../../zerops/api.ts";
 import { zeropsFault } from "../../../zerops/data/zeropsWire.ts";
 import type { StreamFault } from "../../streamMachine.ts";
-import type { UncertainAcceptance } from "../coordinator.ts";
+import type { SubmissionFault, UncertainAcceptance } from "../coordinator.ts";
 
-function faultOf(cause: unknown): StreamFault | UncertainAcceptance {
+function faultOf(cause: unknown, targetWrite: boolean): SubmissionFault {
   const message = cause instanceof Error ? cause.message : String(cause);
   // Refused before it was sent: final until the person changes the input or tries again.
-  if (cause instanceof ZeropsWriteNotSent) return { outcome: "definitive-refusal", message };
+  if (cause instanceof ZeropsWriteNotSent)
+    return { outcome: "definitive-refusal", message, writeNotSent: true };
   if (!(cause instanceof ZeropsApiError)) return { outcome: "uncertain-acceptance", message };
   if (
     cause.kind === "network" ||
     cause.kind === "uncertain" ||
+    ((targetWrite || cause instanceof ZeropsTargetWriteRefused) &&
+      (cause.status === 401 || cause.status === 429)) ||
     (cause.status !== null && cause.status >= 500)
   )
     return { outcome: "uncertain-acceptance", message };
@@ -29,11 +36,20 @@ function faultOf(cause: unknown): StreamFault | UncertainAcceptance {
     ...zeropsFault(cause),
     message: cause.detail ?? message,
     ...(cause.code === null ? {} : { code: cause.code }),
+    ...((targetWrite || cause instanceof ZeropsTargetWriteRefused) &&
+    cause.status !== null &&
+    cause.status >= 400 &&
+    cause.status < 500 &&
+    cause.status !== 401 &&
+    cause.status !== 429
+      ? { synchronousRefusal: true as const }
+      : {}),
   };
 }
 
 /** One Zerops write, its failure classified. */
-export const verb = <A>(call: () => Promise<A>) => Effect.tryPromise({ try: call, catch: faultOf });
+export const verb = <A>(call: () => Promise<A>, options?: { readonly targetWrite?: true }) =>
+  Effect.tryPromise({ try: call, catch: (cause) => faultOf(cause, options?.targetWrite === true) });
 
 /** The codes Zerops answers a missing permission with (`insufficientPermissions`, measured). */
 const PERMISSION_CODES = new Set(["forbidden", "insufficientPermissions"]);

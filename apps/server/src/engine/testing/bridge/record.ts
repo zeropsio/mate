@@ -18,6 +18,7 @@ import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import {
   AntigravitySettings,
   CursorSettings,
@@ -27,7 +28,7 @@ import {
   type SpiEvent,
   ThreadId,
 } from "@t3tools/contracts";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -36,6 +37,7 @@ import type * as Stream from "effect/Stream";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 import { ServerConfig } from "../../../config.ts";
+import { ServerSettingsService } from "../../../serverSettings.ts";
 import type { ProviderAdapterError } from "../../../provider/Errors.ts";
 import {
   makeAntigravityAdapter,
@@ -216,7 +218,7 @@ export async function recordAcp(
         return (yield* makeGrokAdapter(grokSettings)) as unknown as AcpAdapter;
       case "antigravity": {
         const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-        const crypto = yield* Crypto.Crypto;
+        const crypto = yield* SecureRandom.SecureRandom;
         // As acpReplay.ts: production's install/profile/sign-in machinery is
         // irrelevant to a mock peer, so the mock is spawned through the same
         // runtime seam AntigravityDriver.ts uses.
@@ -230,7 +232,7 @@ export async function recordAcp(
               cwd: input.cwd,
               env: { ...process.env, T3_ACP_ANTIGRAVITY: "1" },
             },
-          }).pipe(Effect.provideService(Crypto.Crypto, crypto));
+          }).pipe(Effect.provideService(SecureRandom.SecureRandom, crypto));
         return (yield* makeAntigravityAdapter(antigravitySettings, {
           instanceId: ProviderInstanceId.make("antigravity"),
           makeRuntime,
@@ -323,7 +325,10 @@ export async function recordAcp(
 
   const layer = ServerConfig.layerTest(process.cwd(), {
     prefix: "bridge-acp-record-",
-  }).pipe(Layer.provideMerge(NodeServices.layer));
+  }).pipe(
+    Layer.provideMerge(ServerSettingsService.layerTest()),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+  );
   const log = await Effect.runPromise(Effect.scoped(program).pipe(Effect.provide(layer)));
   return { threadId, log };
 }

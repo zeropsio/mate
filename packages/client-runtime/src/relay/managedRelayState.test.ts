@@ -112,12 +112,21 @@ describe("ManagedRelaySession", () => {
       accountId: "account-1",
       readClerkToken: () => Promise.resolve("first-token"),
     });
+    let subscriptionReady!: () => void;
+    const subscribed = new Promise<void>((resolve) => {
+      subscriptionReady = resolve;
+    });
+    const subscribe = registry.subscribe.bind(registry);
+    vi.spyOn(registry, "subscribe").mockImplementation((atom, listener, options) => {
+      const unsubscribe = subscribe(atom, listener, options);
+      subscriptionReady();
+      return unsubscribe;
+    });
     const changes = Effect.runPromise(
       managedRelayAccountChanges(registry).pipe(Stream.take(2), Stream.runCollect),
     );
-    await vi.waitFor(() => {
-      expect(registry.getNodes().get(managedRelaySessionAtom)?.listeners.size).toBeGreaterThan(0);
-    });
+    await subscribed;
+    expect(registry.getNodes().get(managedRelaySessionAtom)?.listeners.size).toBeGreaterThan(0);
 
     setManagedRelaySession(registry, {
       accountId: "account-1",

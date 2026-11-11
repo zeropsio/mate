@@ -40,7 +40,8 @@ const RETRY_BASE_DELAY_MS = 1_000;
  * it to come back, so the ladder tops out at 30 s.
  */
 const RETRY_MAX_DELAY_MS = 30_000;
-const CONNECTION_ESTABLISHMENT_TIMEOUT = "15 seconds";
+const CONNECTION_SETUP_PATIENCE = "15 seconds";
+const SETUP_STAGE_ORDER = { preparing: 0, opening: 1, synchronizing: 2 } as const;
 const CONNECTION_PROBE_TIMEOUT = "15 seconds";
 /**
  * Mobile resumes, explicit retries and the network's return after an offline spell want a fast
@@ -327,8 +328,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
   );
   const session = yield* SubscriptionRef.make<Option.Option<RpcSession.RpcSession>>(Option.none());
   const prepared = yield* SubscriptionRef.make<Option.Option<PreparedConnection>>(Option.none());
-  /** The attempt in flight is waiting its turn for a socket. */
-  const queued = yield* SubscriptionRef.make(false);
+  const setup = yield* SubscriptionRef.make({ stage: 0, queued: false });
 
   const clearLease = Effect.all(
     [SubscriptionRef.set(session, Option.none()), SubscriptionRef.set(prepared, Option.none())],
@@ -371,18 +371,20 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
 
   /**
    * The attempt waits in the browser's socket queue (`admission.ts`): time there is another
-   * Mate's, so the setup timeout runs only outside it, and afresh after each wait.
+   * Mate's, so patience runs only outside it, and afresh after each wait. Only a strictly
+   * advancing stage earns more patience; the finite stages need no whole-attempt ceiling.
    */
   const setupTimeout = Effect.gen(function* () {
     for (;;) {
-      yield* SubscriptionRef.changes(queued).pipe(
-        Stream.filter((waiting) => !waiting),
+      const current = yield* SubscriptionRef.changes(setup).pipe(
+        Stream.filter((progress) => !progress.queued),
         Stream.runHead,
+        Effect.map(Option.getOrThrow),
       );
       const expired = yield* Effect.raceFirst(
-        Effect.sleep(CONNECTION_ESTABLISHMENT_TIMEOUT).pipe(Effect.as(true)),
-        SubscriptionRef.changes(queued).pipe(
-          Stream.filter((waiting) => waiting),
+        Effect.sleep(CONNECTION_SETUP_PATIENCE).pipe(Effect.as(true)),
+        SubscriptionRef.changes(setup).pipe(
+          Stream.filter((progress) => progress.queued || progress.stage > current.stage),
           Stream.runHead,
           Effect.as(false),
         ),
@@ -400,8 +402,15 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
     return yield* driver.connect(
       entry,
       (progress) =>
-        publishProgress ? reportProgress(attempt, generation, lastFailure, progress) : Effect.void,
-      (waiting) => SubscriptionRef.set(queued, waiting),
+        Effect.gen(function* () {
+          // Replacement attempts advance patience without replacing the live connection's face.
+          yield* SubscriptionRef.update(setup, (current) => ({
+            ...current,
+            stage: Math.max(current.stage, SETUP_STAGE_ORDER[progress.stage]),
+          }));
+          if (publishProgress) yield* reportProgress(attempt, generation, lastFailure, progress);
+        }),
+      (queued) => SubscriptionRef.update(setup, (current) => ({ ...current, queued })),
     );
   });
 
@@ -759,7 +768,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
 
     let failureCount = 0;
     for (;;) {
-      yield* SubscriptionRef.set(queued, false);
+      yield* SubscriptionRef.set(setup, { stage: 0, queued: false });
       const candidate = yield* forkScopedTracedConnection(
         failureCount + 1,
         generation,
@@ -861,7 +870,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
   ) {
     const initialGeneration = previousGeneration + 1;
     yield* SubscriptionRef.set(prepared, Option.none());
-    yield* SubscriptionRef.set(queued, false);
+    yield* SubscriptionRef.set(setup, { stage: 0, queued: false });
     const initial = yield* forkScopedTracedConnection(
       attempt,
       initialGeneration,
@@ -1107,9 +1116,12 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
     let generation = 0;
     let latestFailure: ConnectionAttemptError | null = null;
     let pendingRetry = Option.none<PendingRetryTrace>();
+    /** A new ticket was already asked at once for a Mate's `4401`, since the ladder last reset. */
+    let mateAccessEndedAnswered = false;
     const resetRetryLadder = () => {
       failureCount = 0;
       pendingRetry = Option.none();
+      mateAccessEndedAnswered = false;
     };
     // Set after a long resume ends an attempt or a session. The fresh attempt
     // runs even while the network reports offline: the report is often wrong,
@@ -1119,9 +1131,8 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
 
     for (;;) {
       if (yield* Ref.getAndSet(resetRetryState, false)) {
-        failureCount = 0;
+        resetRetryLadder();
         latestFailure = null;
-        pendingRetry = Option.none();
       }
       const currentIntent = yield* Ref.get(intent);
       if (!currentIntent.desired) {
@@ -1213,9 +1224,14 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
         continue;
       }
 
-      failureCount += 1;
-      const delayMs =
-        target._tag === "ZeropsMateConnectionTarget"
+      // A Mate's `4401` takes back this ticket and says nothing else: the next attempt asks HQ for
+      // a new one without a wait, once, and HQ's answer decides. A second `4401` is on the ladder.
+      const asksAtOnce = error.reason === "mate-access-ended" && !mateAccessEndedAnswered;
+      if (asksAtOnce) mateAccessEndedAnswered = true;
+      else failureCount += 1;
+      const delayMs = asksAtOnce
+        ? 0
+        : target._tag === "ZeropsMateConnectionTarget"
           ? reconnectWaitMs(failureCount, presence.onScreen(target.environmentId))
           : retryDelayMs(failureCount - 1, yield* Random.next);
       pendingRetry = Option.map(attemptSpan, (previousAttempt) => ({
@@ -1236,12 +1252,15 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
         retryAt: (yield* Clock.currentTimeMillis) + delayMs,
       });
       let applicationActivated = yield* waitForRetrySignal(delayMs);
-      // A hidden tab asks a Mate for no ticket: the wait holds until the tab is seen again.
+      // A hidden tab asks a Mate for no ticket: the wait holds until the tab is seen again, and
+      // names no time for a try that is not timed.
       while (
         !applicationActivated &&
         target._tag === "ZeropsMateConnectionTarget" &&
         presence.hidden()
       ) {
+        const held = yield* SubscriptionRef.get(state);
+        if (held.retryAt !== null) yield* setState({ ...held, retryAt: null });
         applicationActivated = yield* waitForSignal;
       }
       if (applicationActivated) {
@@ -1263,7 +1282,19 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
     Effect.forkScoped,
   );
   yield* wakeups.changes.pipe(
-    Stream.runForEach((reason) => signal({ _tag: "Wakeup", reason })),
+    Stream.runForEach((reason) =>
+      Effect.gen(function* () {
+        // Visibility releases a Mate's pending retry even after a short tab switch. Healthy
+        // sockets and definitive refusals still wait for their existing recovery signals.
+        if (
+          reason === "application-visible" &&
+          (target._tag !== "ZeropsMateConnectionTarget" ||
+            (yield* SubscriptionRef.get(state)).phase !== "backoff")
+        )
+          return;
+        yield* signal({ _tag: "Wakeup", reason });
+      }),
+    ),
     Effect.forkScoped,
   );
   yield* run().pipe(Effect.forkScoped);

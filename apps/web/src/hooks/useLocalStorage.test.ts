@@ -21,6 +21,8 @@ function createStorage(overrides: Partial<Storage> = {}): Storage {
 }
 
 async function loadWithStorage(storage: Storage) {
+  // The storage backend is selected when the module loads, after a window exists.
+  vi.resetModules();
   vi.stubGlobal("window", { localStorage: storage });
   vi.stubGlobal("localStorage", storage);
   const { openAccountLifetime } = await import("../zerops/accountLifetime");

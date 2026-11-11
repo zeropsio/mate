@@ -94,9 +94,18 @@ describe("codexRateLimitsToLimits", () => {
     "supports legacy reads with no bucket map: %j",
     (rateLimitsByLimitId) => {
       const snapshot = { primary: { usedPercent: 12, windowDurationMins: 300 } };
-      expect(codexRateLimitsToLimits({ checkedAt, snapshot, rateLimitsByLimitId })).toEqual(
-        codexRateLimitsToLimits({ checkedAt, snapshot }),
-      );
+      expect(codexRateLimitsToLimits({ checkedAt, snapshot, rateLimitsByLimitId })).toEqual({
+        checkedAt,
+        windows: [
+          {
+            id: "primary",
+            kind: "session",
+            label: "Session",
+            usedPercent: 12,
+            windowDurationMins: 300,
+          },
+        ],
+      });
     },
   );
 

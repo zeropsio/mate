@@ -57,6 +57,7 @@ describe("submitZeropsWrite", () => {
       submitZeropsWrite(operations, "org-1", {
         kind: "enable-zerops-mate",
         projectId: "p1",
+        projectName: "app",
         serviceId: "s1",
       }),
     ).rejects.toThrow(

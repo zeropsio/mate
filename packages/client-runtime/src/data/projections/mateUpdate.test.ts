@@ -24,7 +24,7 @@ const streamed = (
   latest,
   available: latest !== "",
   checkedAt: "live-state",
-  automatic: { protocol: 1, rollbackCompatible: true, phase, runningVersion: "1" },
+  automatic: { protocol: 1, phase, runningVersion: "1" },
 });
 const read = (watched: boolean, update: ExecutionEnvironmentUpdate, ready = true) => {
   const link: MateLinkValue = {
@@ -105,6 +105,17 @@ describe("automatic update evidence", () => {
   });
   it("an unknown latest version keeps the streamed phase without claiming up to date", () => {
     const update = streamed("", "postponed");
+    expect(read(true, update)).toEqual({ checked: update, state: { phase: "idle" } });
+  });
+  // zcp always sends its updater record, so the streamed line is the check: a Mate whose zcp is
+  // behind read "Up to date" in place of Update.
+  it("a Mate that only a restart gets current is never up to date", () => {
+    const update: ExecutionEnvironmentUpdate = {
+      ...streamed("1", "idle"),
+      available: false,
+      zcp: { installed: "9.225.0", latest: "9.226.0", behind: true },
+      restart: { needed: true, why: "zcp 9.226.0 is out" },
+    };
     expect(read(true, update)).toEqual({ checked: update, state: { phase: "idle" } });
   });
 });

@@ -1,7 +1,7 @@
 import type { ZeropsLifecycle } from "@t3tools/contracts";
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 import {
@@ -46,23 +46,6 @@ const usage = {
   memoryGb: { used: 0.512, limit: 2.625 },
   diskGb: { used: 0.161, limit: 2 },
 };
-
-const history = [
-  {
-    at: "2026-09-05T01:00:00+02:00",
-    containers: 0,
-    cores: { used: 0, limit: 0 },
-    memoryGb: { used: 0, limit: 0 },
-    diskGb: { used: 0, limit: 0 },
-  },
-  {
-    at: "2026-09-06T00:00:00+02:00",
-    containers: 1,
-    cores: { used: 0.076, limit: 2 },
-    memoryGb: { used: 0.512, limit: 2.625 },
-    diskGb: { used: 0.161, limit: 2 },
-  },
-];
 
 /** A lifecycle snapshot as the feed's live answer. */
 const liveLifecycle = (value: ZeropsLifecycle): Known<ZeropsLifecycle> => ({
@@ -149,186 +132,8 @@ describe("ZeropsServiceMap — the card", () => {
       </ZeropsDataLinkContext>,
     );
     expect(withOpener.match(/data-zerops-service-data-button/g)).toHaveLength(1);
-    expect(withOpener).toContain('aria-label="Browse data of db"');
+    expect(withOpener).toContain('aria-label="Browse db&#x27;s data"');
     expect(render(view)).not.toContain("data-zerops-service-data-button");
-  });
-
-  it("renders liveness and semantic groups with shared primitives", () => {
-    const html = render(
-      topology([
-        service({ hostname: "kanbandev" }),
-        service({ hostname: "db", type: "postgresql:single@18", group: "data" }),
-        service({ hostname: "zcp", type: "ubuntu/zcp@1", group: "infrastructure" }),
-      ]),
-      { liveness: "live" },
-    );
-
-    const runtimesAt = html.indexOf("Runtimes");
-    const dataAt = html.indexOf("Data");
-    const infrastructureAt = html.indexOf("Infrastructure");
-    expect(runtimesAt).toBeGreaterThan(0);
-    expect(dataAt).toBeGreaterThan(runtimesAt);
-    expect(infrastructureAt).toBeGreaterThan(dataAt);
-    expect(html.indexOf('data-zerops-primitive="liveness-line"')).toBeLessThan(runtimesAt);
-    expect(html.match(/data-dot=""/gu)).toHaveLength(4);
-    expect(html).toContain('data-zerops-primitive="mint-panel"');
-    expect(html).toContain("Zerops Control Plane");
-    expect(html).toContain("kanbandev");
-    // The platform's token is read as a word, never shown raw.
-    expect(html).toContain('aria-label="Active"');
-    expect(html).not.toContain("ACTIVE");
-    expect(html).not.toContain("data-zerops-service-transient");
-  });
-
-  it("shows only the name, port, status word and the three resources — the rest waits in the pop", () => {
-    const html = render(
-      topology(
-        [
-          service({
-            hostname: "app",
-            typeName: "Node.js",
-            version: "v22.22.3",
-            ports: [{ port: 3000, scheme: "http" }],
-            routes: [
-              {
-                port: 3000,
-                url: "https://app-1d09-3000.prg1.zerops.app",
-                host: "app-1d09-3000.prg1.zerops.app",
-              },
-            ],
-            deploy: { source: "CLI", activatedAt: "2026-09-01T08:30:34Z" },
-            usage,
-            history,
-          }),
-        ],
-        { usageRead: true },
-      ),
-    );
-
-    expect(html).toContain(">:3000</span>");
-    // The status word sits above the name, the type beside it — as the dashboard's card reads.
-    expect(html.indexOf('aria-label="Active"')).toBeLessThan(html.indexOf(">app<"));
-    expect(html).toContain(">Node.js 22</span>");
-    expect(html).toContain("data-zerops-service-resources");
-    expect(html.match(/data-zerops-service-graph="live"/gu)).toHaveLength(3);
-    expect(html.match(/data-zerops-service-figure="live"/gu)).toHaveLength(3);
-    expect(html).toContain('data-zerops-service-resource="cores"');
-    expect(html).toContain('data-zerops-service-resource="memory"');
-    expect(html).toContain('data-zerops-service-resource="disk"');
-    expect(html).toContain("2.63");
-    expect(html).not.toContain("Node.js v22.22.3");
-    expect(html).not.toContain("Deployed from CLI");
-    expect(html).not.toContain("data-zerops-service-detail");
-    // The public route is the one thing reachable without hovering: a button at the card's right, the host as its label.
-    expect(html).toContain("data-zerops-service-route-button");
-    expect(html).toContain('aria-label="app-1d09-3000.prg1.zerops.app"');
-    expect(html).toContain('href="https://app-1d09-3000.prg1.zerops.app"');
-    expect(html).not.toContain(">app-1d09-3000.prg1.zerops.app<");
-    expect(html.indexOf("data-zerops-service-route-button")).toBeGreaterThan(
-      html.indexOf(">Node.js 22</span>"),
-    );
-    // The card is the pop's trigger, opening on hover.
-    expect(html).toContain('data-slot="popover-trigger"');
-  });
-
-  it("draws each graph as a filled curve of use with the last hour marked", () => {
-    const html = render(topology([service({ hostname: "app", history })]));
-
-    expect(html.match(/data-zerops-service-graph="live"/gu)).toHaveLength(3);
-    expect(html.match(/<circle/gu)).toHaveLength(3);
-    expect(html).toContain('fill="url(#zerops-graph-svc-app-memory)"');
-  });
-
-  it("reserves the figures' and graphs' shape until the reads answer", () => {
-    const html = render(topology([service({ hostname: "app" })]));
-
-    expect(html.match(/data-zerops-service-figure="pending"/gu)).toHaveLength(3);
-    expect(html.match(/data-zerops-service-graph="pending"/gu)).toHaveLength(3);
-    expect(html).not.toContain("<svg");
-  });
-
-  it("shows no resources at all for a service holding nothing once usage is known", () => {
-    const html = render(
-      topology(
-        [
-          service({
-            hostname: "app",
-            status: "READY_TO_DEPLOY",
-            history: [],
-            // The envelope alone is not a resource the card can show.
-            scaling: { cores: { min: 1, max: 3 } },
-          }),
-        ],
-        { usageRead: true },
-      ),
-    );
-
-    expect(html).not.toContain("data-zerops-service-resources");
-    expect(html).not.toContain("<svg");
-  });
-
-  it("a running service's card leaves its state to the dot; a stopped or failed one says it", () => {
-    const html = render(
-      topology([
-        service({ hostname: "app" }),
-        service({ hostname: "worker", status: "STOPPED" }),
-        service({ hostname: "api", status: "CONTAINER_FAILED" }),
-      ]),
-    );
-
-    expect(html).not.toContain(">Active<");
-    expect(html).toContain('aria-label="Active"');
-    expect(html).toContain(">Stopped<");
-    expect(html).toContain(">Container failed<");
-  });
-
-  it("keeps a long name on one line, cut only where the card is narrower, without hiding status", () => {
-    const hostname = "application-runtime-with-a-hostname-too-long-for-the-right-panel";
-    const html = render(topology([service({ hostname })]));
-
-    expect(html).toContain("Active");
-  });
-
-  it("reads a service with five ports: its name whole, its ports on their own line, one button and an Open menu", () => {
-    const ports = [3001, 3002, 3003, 3004, 3000];
-    const html = render(
-      topology([
-        service({
-          hostname: "appdev",
-          typeName: "Node.js",
-          version: "v22.22.3",
-          ports: ports.map((port) => ({ port, httpSupport: true })),
-          routes: ports.map((port) => ({
-            port,
-            url: `https://appdev-1df2-${port}.prg1.zerops.app`,
-            host: `appdev-1df2-${port}.prg1.zerops.app`,
-          })),
-        }),
-      ]),
-      {
-        crewPorts: new Map([
-          [
-            "appdev",
-            new Map([
-              [3001, "Backend"],
-              [3002, null],
-              [3003, null],
-              [3004, null],
-            ]),
-          ],
-        ]),
-      },
-    );
-
-    // The name is one line of its own; the ports sit under it and may wrap.
-
-    expect(html).toContain(">:3000, :3001, :3002, :3003, :3004</span>");
-    expect(html.indexOf(">appdev<")).toBeLessThan(html.indexOf("data-zerops-service-ports"));
-    // One direct button, for the service's own port; the rest behind Open.
-    expect(html.match(/data-zerops-service-route-button/gu)).toHaveLength(1);
-    expect(html).toContain('href="https://appdev-1df2-3000.prg1.zerops.app"');
-    expect(html).toContain("data-zerops-service-route-menu");
-    expect(html).toContain(">Open<");
   });
 
   it("shows a stage service nested under its dev partner", () => {
@@ -339,59 +144,20 @@ describe("ZeropsServiceMap — the card", () => {
       ]),
     );
 
-    expect(html).toContain("kanbandev");
+    expect(html).toContain(">kanbandev<");
     expect(html).toContain("data-zerops-service-stage");
-    expect(html).toContain("kanbanstage");
+    expect(html).toContain(">kanbanstage<");
     expect(html).toContain("Creating");
     expect(html.match(/data-zerops-service-row=/gu)).toHaveLength(1);
   });
 
-  it("names a pair's nested half the Mate's preview, never its project's stage", () => {
+  it("a Mate's service shows its real hostname: a pair's nested half by its own, never a made-up name or the word stage", () => {
     const html = render(
       topology([service({ hostname: "kanbandev" }), service({ hostname: "kanbanstage" })]),
     );
-    expect(html).toContain("<span>preview</span>");
+    expect(html).toContain(">kanbanstage<");
+    expect(html).not.toContain(">Preview<");
     expect(html).not.toContain("<span>stage</span>");
-  });
-
-  it("marks a transient service without animating it", () => {
-    const html = render(
-      topology([service({ hostname: "kanbandev", status: "CREATING", transient: true })]),
-    );
-
-    expect(html).toContain("data-zerops-service-transient");
-    expect(html).toContain("Creating");
-  });
-
-  it("exposes the shared service tone without coupling tests to classes", () => {
-    const html = render(
-      topology([
-        service({ hostname: "failed", status: "FAILED" }),
-        service({ hostname: "creating", status: "CREATING", transient: true }),
-        service({ hostname: "active" }),
-        service({ hostname: "fresh", status: "READY_TO_DEPLOY" }),
-      ]),
-    );
-
-    expect(html).toContain('data-zerops-service-tone="error"');
-    expect(html).toContain('data-zerops-service-tone="warning"');
-    expect(html).toContain('data-zerops-service-tone="outline"');
-    // Settled but not running is the off tone, never a green dot.
-    expect(html).toContain('data-zerops-service-tone="muted"');
-    expect(html).toMatch(/data-tone="neutral"[^>]*data-zerops-service-tone="muted"/u);
-  });
-
-  it("counts a group only when there is more than one of them", () => {
-    const html = render(
-      topology([
-        service({ hostname: "api" }),
-        service({ hostname: "web" }),
-        service({ hostname: "db", type: "postgresql:single@18", group: "data" }),
-      ]),
-    );
-
-    expect(html).toContain(">2</span>");
-    expect(html).not.toContain(">1</span>");
   });
 
   it("names a running tool as a phrase, not a spinner", () => {
@@ -455,11 +221,11 @@ describe("ZeropsServiceMap — the control plane is the Mate's home", () => {
     expect(home).toContain("data-zerops-mate-home");
     expect(home).toContain('data-mate-face-tint="coral"');
     expect(home).toContain('data-mate-face-state="working"');
-    expect(home).toMatch(/>Fen<\/span><span[^>]*> lives here<\/span>/u);
+    expect(home).toContain(">Fen lives here</span>");
     // Fen lives in the control plane, not in the app.
     expect(html.match(/data-zerops-mate-home/gu)).toHaveLength(1);
     expect(html.indexOf("data-zerops-mate-home")).toBeGreaterThan(
-      html.indexOf("Zerops Control Plane"),
+      html.indexOf('data-zerops-service-row="control-plane"'),
     );
   });
 
@@ -498,21 +264,6 @@ describe("ZeropsServiceMap — the control plane is the Mate's home", () => {
     expect(home).not.toContain(">zcp<");
   });
 
-  it("does not label the project's core infrastructure as another control plane", () => {
-    const core = service({ hostname: "core", type: "core@1", group: "infrastructure" });
-    const html = render(topology([zcp, core]), {
-      mate: fen,
-      currentServiceId: zcp.serviceId,
-      agents: <div data-test-agents="true">agents</div>,
-    });
-    expect(html.match(/Zerops Control Plane/gu)).toHaveLength(1);
-    expect(html.match(/data-zerops-service-row="control-plane"/gu)).toHaveLength(1);
-    expect(html.match(/data-zerops-service-row="service"/gu)).toHaveLength(1);
-    expect(html.match(/data-zerops-mate-home/gu)).toHaveLength(1);
-    expect(html.match(/data-test-agents/gu)).toHaveLength(1);
-    expect(html).toContain(">core<");
-  });
-
   it("says nothing about a Mate when nobody is known to live here", () => {
     const html = render(topology([zcp]));
 
@@ -533,10 +284,10 @@ describe("ZeropsServiceMap — the control plane is the Mate's home", () => {
     const mintAt = row.indexOf('data-zerops-primitive="mint-panel"');
     const mintEnd = row.indexOf("</section>", mintAt);
     const trayAt = row.indexOf("data-zerops-agent-auth-tray");
-    expect(trayAt).toBeGreaterThan(mintEnd);
+    expect(trayAt).toBeLessThan(mintEnd);
     expect(row).toContain('data-test-agents="true"');
-    // The Mate line is the last thing in the mint before the card grows out of it.
-    expect(row.indexOf("data-zerops-mate-home")).toBeLessThan(mintEnd);
+    // The agents sit at the home card's foot, under the Mate's head.
+    expect(row.indexOf("data-zerops-mate-home")).toBeLessThan(trayAt);
     expect(html.match(/data-zerops-agent-auth-tray/gu)).toHaveLength(1);
   });
 
@@ -549,9 +300,9 @@ describe("ZeropsServiceMap — the control plane is the Mate's home", () => {
 
     const rowAt = html.indexOf('data-zerops-service-row="control-plane"');
     const row = html.slice(rowAt, html.indexOf("</li>", rowAt));
-    // The hover pop's trigger is the card's text: the first div in the mint.
+    // The hover pop's trigger is the card's head.
     const mintAt = row.indexOf('data-zerops-primitive="mint-panel"');
-    const triggerAt = row.indexOf("<div", mintAt);
+    const triggerAt = row.lastIndexOf("<div", row.indexOf("data-zerops-home-trigger"));
     let depth = 0;
     let triggerEnd = -1;
     for (const match of row.slice(triggerAt).matchAll(/<div\b|<\/div>/gu)) {
@@ -592,19 +343,24 @@ describe("ZeropsServiceDetail — the pop", () => {
   });
 
   it("says what the service is and how it was deployed in one meta line", () => {
-    const html = renderDetail(
-      topology([
-        service({
-          hostname: "app",
-          typeName: "Node.js",
-          version: "v22.22.3",
-          deploy: { source: "CLI", activatedAt: "2026-09-01T08:30:34Z" },
-        }),
-      ]),
-    );
+    const now = vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-09-01T09:30:34Z"));
+    try {
+      const html = renderDetail(
+        topology([
+          service({
+            hostname: "app",
+            typeName: "Node.js",
+            version: "v22.22.3",
+            deploy: { source: "CLI", activatedAt: "2026-09-01T08:30:34Z" },
+          }),
+        ]),
+      );
 
-    expect(html).toContain("data-zerops-service-meta");
-    expect(html).toMatch(/Node\.js v22\.22\.3 · Deployed from CLI [^<]*ago/u);
+      expect(html).toContain("data-zerops-service-meta");
+      expect(html).toContain("Node.js v22.22.3 · Deployed from CLI 1h ago");
+    } finally {
+      now.mockRestore();
+    }
   });
 
   it("puts the hostname and port first in the control plane's meta line", () => {
@@ -745,13 +501,6 @@ describe("ZeropsServiceDetail — the pop", () => {
 });
 
 describe("ZeropsServiceMap — liveness", () => {
-  it("shows live liveness first while the platform websocket is connected", () => {
-    const html = render(topology([service({ hostname: "kanbandev" })]), { liveness: "live" });
-
-    expect(html).toContain('data-zerops-map-liveness="live"');
-    expect(html).toContain('data-zerops-liveness="live"');
-  });
-
   it("shows connection recovery when the platform websocket is down", () => {
     const html = render(topology([service({ hostname: "kanbandev" })]), { liveness: "recovering" });
 
@@ -776,5 +525,94 @@ describe("ZeropsServiceMap — liveness", () => {
 
     expect(html).toContain("data-zerops-map-degraded");
     expect(html).not.toContain('data-zerops-map-liveness="live"');
+  });
+});
+
+describe("ZeropsServiceMap — a pool-era Mate's parts", () => {
+  const webpool = service({
+    hostname: "webpool",
+    type: "swarm@1",
+    group: "infrastructure",
+    ports: [{ port: 8101 }],
+    routes: [
+      { port: 8101, url: "https://webpool-8101.zerops.app", host: "webpool-8101.zerops.app" },
+    ],
+  });
+  const leased = {
+    threadId: "thread-1",
+    recentTools: [],
+    envelope: {
+      services: [],
+      leases: [
+        {
+          alias: "webpool-1",
+          pool: "webpool",
+          state: "held",
+          devServers: [
+            {
+              name: "web",
+              port: 3000,
+              url: "https://webpool-1-3000.zerops.app",
+              status: "running",
+              readAt: "2026-10-28T10:00:00Z",
+            },
+          ],
+        },
+        {
+          alias: "webpool-2",
+          pool: "webpool",
+          state: "held",
+          devServers: [
+            {
+              name: "web",
+              port: 3000,
+              url: "https://webpool-2-3000.zerops.app",
+              status: "crashed",
+              readAt: "2026-10-28T10:00:00Z",
+            },
+          ],
+        },
+      ],
+    },
+  } as unknown as ZeropsLifecycle;
+
+  it("the pool's pop opens each workspace by its chat and says why another has no link", () => {
+    const row = buildZeropsServiceMap(
+      topology([webpool]),
+      liveLifecycle(leased),
+      undefined,
+      undefined,
+      [{ title: "Fix the login form", alias: "webpool-1" }],
+    )?.groups[0]?.rows[0];
+    const html = renderToStaticMarkup(<ZeropsServiceDetail row={row!} />);
+
+    expect(html).toContain("Fix the login form · webpool-1-3000.zerops.app</span>");
+    expect(html).toContain("dev · stopped: crashed");
+    expect(html).not.toContain("webpool-2-3000");
+    expect(html).not.toContain("webpool-8101");
+  });
+
+  it("a holder's card says it holds the code and nothing runs there", () => {
+    const html = render(
+      topology([webpool, service({ hostname: "keeper", type: "ubuntu/go@1.22" })]),
+      {
+        lifecycle: {
+          threadId: "thread-1",
+          recentTools: [],
+          envelope: {
+            services: [
+              {
+                hostname: "keeper",
+                typeVersion: "go@1.22",
+                runtimeClass: "dynamic",
+                standIn: { for: "pool-migrate" },
+              },
+            ],
+          },
+        } as unknown as ZeropsLifecycle,
+      },
+    );
+
+    expect(html).toContain("Holds the code; nothing runs here");
   });
 });

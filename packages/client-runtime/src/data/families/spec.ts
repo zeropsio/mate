@@ -44,17 +44,28 @@ export interface ScopeOwner {
 export interface ZeropsFamilySource<Value> {
   /** The REST entity: registrations and reads by id go to `/{entity}/search`. */
   readonly entity: string;
-  /** The `listStream` whose answer is the scope's baseline and whose deltas are its membership. */
-  readonly membership: (owner: ScopeOwner) => SearchTerms;
+  /**
+   * The `listStream` whose answer is the scope's baseline and whose deltas are its membership.
+   * Absent: the family is observed by its updates alone — its scope is never listed, and each
+   * pushed row is held as it says.
+   */
+  readonly membership?: (owner: ScopeOwner) => SearchTerms;
   /** The `updateStream` of whole rows. */
   readonly updates: (owner: ScopeOwner) => SearchTerms;
+  /**
+   * A pushed row of another family after which the scope's membership is read again: a change
+   * Zerops pushes no listing for (an organization promotion lists no project, ZEROPS-073).
+   */
+  readonly refreshOn?: (owner: ScopeOwner, row: Row, previous: ProjectionReads) => boolean;
   readonly decode: (raw: unknown) => ZeropsRow<Value> | null;
   /**
    * Whether the organization's search may be refused to a viewer who reads the rest of it (a
    * member without organization read answers 401 or 403 there): that refusal is this scope's
    * alone — never the link's, never its session's — until the person tries again.
+   * `any-refusal`: any definitive refusal too (`400`, `404`, `422`), for a scope whose search Zerops
+   * may answer however it refuses a viewer — billing's, whose failure must never cost the rest.
    */
-  readonly refusedAlone?: boolean;
+  readonly refusedAlone?: boolean | "any-refusal";
   /** The owner's answer to "gone or not yours?" (404 / 403), where leaving the scope asks it. */
   readonly verifyPath?: (id: string) => string;
   /**
@@ -123,10 +134,17 @@ export interface DetailListing {
    * member reads it again while a screen holds it (`holdStandingDemands`).
    */
   readonly member?: true;
+  /**
+   * A preview of what the family's own scope will say of one owner — the route's project, before
+   * the organization's listing lands: read once per hold over plain REST (`ZeropsWire.read`),
+   * outside the receiver, so neither its socket's login nor its family's registration holds it
+   * back. Its rows carry no revision, so any row the family's own scope reads replaces them.
+   */
+  readonly ahead?: true;
   /** Zerops: the `GET` whose answer is the listing's baseline, and the rows in that answer. */
   readonly zerops: {
     readonly path: (owner: ScopeOwner) => string;
-    readonly items: (answer: unknown) => ReadonlyArray<unknown> | undefined;
+    readonly items: (answer: unknown, owner?: ScopeOwner) => ReadonlyArray<unknown> | undefined;
     /** Try a project-filtered list/update pair before falling back to the GET. */
     readonly subscription?: (owner: ScopeOwner) => SearchTerms;
     /** Owner evidence that refreshes a GET fallback after its subscription was refused. */
@@ -150,15 +168,16 @@ export interface SampledSource<Value> {
   /** The value the answer says, stripped to what a screen needs; `null` for one it cannot read. */
   readonly decode: (answer: unknown) => Value | null;
   /**
-   * A new demand reads it again once its last read is this old; `0`, on every new demand. `null`:
-   * time never ages it — read once, and again only on our write or the person's again; no cadence.
+   * A new demand reads it again once its last read is this old, and a demanded one is read again
+   * then; `0`: on every new demand, and on the sampled cadence while demanded. `null`: time never
+   * ages it — read once, and again only on our write or the person's again; no cadence.
    */
   readonly freshMs: number | null;
   /**
-   * A value read once that still changes without any write of ours while this holds: it is read
-   * again on the sampled cadence while demanded, until an answer no longer holds it.
+   * A pushed row of another family that says this value changed: it is read again at once while
+   * demanded, and on its next demand whatever its age.
    */
-  readonly agesWhile?: (value: Value) => boolean;
+  readonly refreshOn?: (owner: ScopeOwner, row: Row, previous: ProjectionReads) => boolean;
 }
 
 /** An index the reducer keeps for the family: under which key a fact counts now, if any. */
@@ -166,6 +185,12 @@ export interface FamilyIndex<Value> {
   readonly name: string;
   readonly keyOf: (value: Value, listed: MemberState | undefined) => string | null;
 }
+
+/**
+ * Where a row came from: a member's own row read by its id, a listing's update frame, or a
+ * listing's read or baseline.
+ */
+export type RowSource = "own" | "push" | "listing";
 
 export interface FamilySpec<F extends Family> {
   /** Nonsensitive content that remains public while access is unverified; denial still purges it. */
@@ -217,16 +242,16 @@ export interface FamilySpec<F extends Family> {
    */
   readonly merge?: (held: FamilyValues[F], pushed: FamilyValues[F]) => FamilyValues[F];
   /**
-   * What a row of any kind — a push, a read, a baseline — says, by where it came from: `own`, the
-   * member's own row read by its id (a `member` detail listing), Zerops' whole word on it; else a
-   * listing's row, which may leave unsaid what the value held says (a project's listing never
-   * names everybody's grants). `held` is the value held, if any. Without it, a row that is not
-   * merged replaces the value whole.
+   * What a row of any kind — a push, a read, a baseline — says, by where it came from
+   * ({@link RowSource}): `own`, the member's own row read by its id (a `member` detail listing),
+   * Zerops' whole word on it; `push`, a listing's update frame; else a listing's row, which may
+   * leave unsaid what the value held says (a project's listing never names everybody's grants).
+   * `held` is the value held, if any. Without it, a row that is not merged replaces the value whole.
    */
   readonly keepUnsaid?: (
     held: FamilyValues[F] | undefined,
     row: FamilyValues[F],
-    own: boolean,
+    from: RowSource,
   ) => FamilyValues[F];
   /**
    * The owner's own ordering of a read that carries no revision (a by-id read, or a detail

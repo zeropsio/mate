@@ -1,4 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { expect, it } from "@effect/vitest";
 import {
   AntigravitySettings,
@@ -8,7 +9,7 @@ import {
   type ProviderRuntimeEvent,
 } from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -20,9 +21,11 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as AcpErrors from "effect-acp/errors";
-import type * as AcpSchema from "effect-acp/schema";
+import type * as AcpSchema from "effect-acp/compat";
 
 import { ServerConfig } from "../../config.ts";
+import { personaInstructions } from "../../personaInstructions.ts";
+import { ServerSettingsService } from "../../serverSettings.ts";
 import { ANTIGRAVITY_SIGN_IN_REQUIRED_MESSAGE } from "../antigravityAuthSupport.ts";
 import type { AcpSessionRuntimeEvent } from "../acp/AcpSessionRuntime.ts";
 import { makeAntigravityAcpRuntime } from "../acp/AntigravityAcpSupport.ts";
@@ -43,6 +46,7 @@ const threadId = ThreadId.make("antigravity-thread");
 const nativeSessionId = "b75db7e9-cd99-40e5-aa63-ac2b4674a6a9";
 const nativeDefault = "gemini-test-low";
 const nativeAlternative = "gemini-test-high";
+const nativeRequestContext = { requestId: "native-request", method: "test" };
 const decodeSettings = Schema.decodeSync(AntigravitySettings);
 const decodeRequestLog = Schema.decodeEffect(
   Schema.Array(
@@ -101,11 +105,7 @@ const makeHarness = Effect.fn("makeAntigravityAdapterHarness")(function* (option
     read?: Parameters<Runtime["handleReadTextFile"]>[0];
     write?: Parameters<Runtime["handleWriteTextFile"]>[0];
   } = {};
-  let permissionHandler:
-    | ((
-        request: AcpSchema.RequestPermissionRequest,
-      ) => Effect.Effect<AcpSchema.RequestPermissionResponse, AcpErrors.AcpError>)
-    | undefined;
+  let permissionHandler: Parameters<Runtime["handleRequestPermission"]>[0] | undefined;
 
   const configOptions = (): ReadonlyArray<AcpSchema.SessionConfigOption> => [
     {
@@ -275,7 +275,7 @@ const makeHarness = Effect.fn("makeAntigravityAdapterHarness")(function* (option
   const invokePermission = (request: AcpSchema.RequestPermissionRequest) =>
     Effect.suspend(() =>
       permissionHandler
-        ? permissionHandler(request)
+        ? permissionHandler(request, nativeRequestContext)
         : Effect.die("Missing native permission handler"),
     );
   return {
@@ -304,7 +304,10 @@ const makeHarness = Effect.fn("makeAntigravityAdapterHarness")(function* (option
 
 const layer = ServerConfig.layerTest(process.cwd(), {
   prefix: "t3-antigravity-adapter-test-",
-}).pipe(Layer.provideMerge(NodeServices.layer));
+}).pipe(
+  Layer.provideMerge(ServerSettingsService.layerTest()),
+  Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+);
 
 it.layer(layer)("AntigravityAdapter", (it) => {
   it.effect(
@@ -313,7 +316,7 @@ it.layer(layer)("AntigravityAdapter", (it) => {
       Effect.gen(function* () {
         const fileSystem = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
-        const crypto = yield* Crypto.Crypto;
+        const crypto = yield* SecureRandom.SecureRandom;
         const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
         const cwd = yield* fileSystem.makeTempDirectoryScoped({
           prefix: "t3-antigravity-transport-",
@@ -344,7 +347,7 @@ it.layer(layer)("AntigravityAdapter", (it) => {
                 },
                 extendEnv: false,
               },
-            }).pipe(Effect.provideService(Crypto.Crypto, crypto)),
+            }).pipe(Effect.provideService(SecureRandom.SecureRandom, crypto)),
           onAvailableCommands: (available) =>
             Effect.sync(() => {
               commands.push(...available.map((command) => command.name));
@@ -529,6 +532,57 @@ it.layer(layer)("AntigravityAdapter", (it) => {
         item: { aggregatedOutput: "after\n", exitCode: 0 },
       });
     }),
+  );
+
+  it.effect.each([
+    { label: "a person's chat", crewmate: false, heard: ["persona", "none"] },
+    { label: "a crewmate's chat", crewmate: true, heard: ["missing", "missing"] },
+  ])(
+    "Antigravity carries the Mate's current persona on every turn of $label, and its removal",
+    ({ crewmate, heard }) =>
+      Effect.gen(function* () {
+        const pirate = { name: "Pirate", instructions: "Talk like a pirate." };
+        const settings = yield* ServerSettingsService;
+        yield* settings.updateSettings({ persona: pirate });
+        const policies = yield* makeInstallSlot<ThreadToolPolicy>();
+        yield* policies.install({
+          profileFor: () =>
+            Effect.succeed(
+              crewmate
+                ? {
+                    sessionContext: "You are @backend on the crew.",
+                    contextWindow: 100_000,
+                    decideTool: () => Effect.succeed({ kind: "allow" as const }),
+                    tools: [],
+                  }
+                : undefined,
+            ),
+        });
+        const h = yield* makeHarness().pipe(
+          Effect.provideService(ThreadToolPolicyRegistry, policies),
+        );
+        yield* h.adapter.startSession({ threadId, cwd: process.cwd(), runtimeMode: "full-access" });
+        const contents: Array<ReadonlyArray<AcpSchema.ContentBlock>> = [];
+        for (const input of ["one", "two"]) {
+          const sending = yield* h.adapter.sendTurn({ threadId, input }).pipe(Effect.forkChild);
+          const prompt = yield* h.nextPrompt;
+          contents.push(prompt.content);
+          yield* Deferred.succeed(prompt.result, { stopReason: "end_turn" });
+          yield* Fiber.join(sending);
+          yield* settings.updateSettings({ persona: null });
+        }
+        const texts = (content: ReadonlyArray<AcpSchema.ContentBlock>) =>
+          content.flatMap((part) => (part.type === "text" ? [part.text] : []));
+        expect(
+          contents.map((content) =>
+            texts(content).some((text) => text.endsWith(`\n${personaInstructions(pirate)}`))
+              ? "persona"
+              : texts(content).some((text) => text.endsWith(`\n${personaInstructions(null)}`))
+                ? "none"
+                : "missing",
+          ),
+        ).toEqual(heard);
+      }),
   );
 
   it.effect(
@@ -1435,34 +1489,49 @@ it.layer(layer)("AntigravityAdapter", (it) => {
       const write = h.fileHandlers.write;
       if (!read || !write) return yield* Effect.die("File handlers were not registered.");
 
-      const full = yield* read({ sessionId: nativeSessionId, path: path.join(cwd, "notes.txt") });
+      const full = yield* read(
+        { sessionId: nativeSessionId, path: path.join(cwd, "notes.txt") },
+        nativeRequestContext,
+      );
       expect(full.content).toBe("one\ntwo\nthree\n");
-      const window = yield* read({
-        sessionId: nativeSessionId,
-        path: path.join(cwd, "notes.txt"),
-        line: 2,
-        limit: 1,
-      });
+      const window = yield* read(
+        {
+          sessionId: nativeSessionId,
+          path: path.join(cwd, "notes.txt"),
+          line: 2,
+          limit: 1,
+        },
+        nativeRequestContext,
+      );
       expect(window.content).toBe("two");
 
-      yield* write({
-        sessionId: nativeSessionId,
-        path: path.join(cwd, "nested", "new.txt"),
-        content: "created",
-      });
+      yield* write(
+        {
+          sessionId: nativeSessionId,
+          path: path.join(cwd, "nested", "new.txt"),
+          content: "created",
+        },
+        nativeRequestContext,
+      );
       expect(yield* fs.readFileString(path.join(cwd, "nested", "new.txt"))).toBe("created");
 
-      const escape = yield* write({
-        sessionId: nativeSessionId,
-        path: path.join(outside, "escape.txt"),
-        content: "nope",
-      }).pipe(Effect.flip);
+      const escape = yield* write(
+        {
+          sessionId: nativeSessionId,
+          path: path.join(outside, "escape.txt"),
+          content: "nope",
+        },
+        nativeRequestContext,
+      ).pipe(Effect.flip);
       expect(escape._tag).toBe("AcpRequestError");
       expect(yield* fs.exists(path.join(outside, "escape.txt"))).toBe(false);
-      const missing = yield* read({
-        sessionId: nativeSessionId,
-        path: path.join(cwd, "missing.txt"),
-      }).pipe(Effect.flip);
+      const missing = yield* read(
+        {
+          sessionId: nativeSessionId,
+          path: path.join(cwd, "missing.txt"),
+        },
+        nativeRequestContext,
+      ).pipe(Effect.flip);
       expect(missing._tag).toBe("AcpRequestError");
     }).pipe(Effect.scoped),
   );

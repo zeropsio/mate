@@ -151,12 +151,14 @@ const ACTIVITY = new Map<string, ZeropsAgentActivity>([
 
 const NINA: ZeropsMateOwner = {
   name: "Nina Hale",
+  called: "Nina",
   initials: "NH",
   avatarUrl: null,
   isViewer: true,
 };
 const THEO: ZeropsMateOwner = {
   name: "Theo Park",
+  called: "Theo",
   initials: "TP",
   avatarUrl: null,
   isViewer: false,

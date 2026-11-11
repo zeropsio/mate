@@ -2,17 +2,18 @@
  * The projects page's applications with nothing in them: one HQ holds with no project — what a New
  * project that stopped before its Mate leaves (`mate-rig-e2e-a`, 2026-10-02) — is drawn as its
  * project all the same (`deriveZeropsGroups`'s `apps`), offered *Add a Mate* for the Mate it was
- * made for, and to whoever writes the structure *Delete* (`deleteOffered`) — with its code where HQ
- * still holds some.
+ * made for.
  */
 import type { ZeropsGroup } from "@t3tools/client-runtime/zerops";
 import type { HqAppContents, HqStructure } from "@t3tools/client-runtime/zerops/hq";
 
 import type { HqNavigationView } from "~/state/zerops";
 
+import { groupWithoutMate, projectDeleteOffered } from "../ZeropsDeleteApplicationDialog.logic";
+
 /** HQ's applications needing a row without a listed project, including unfinished deletion. */
 export function emptyApplications(
-  view: Pick<HqNavigationView, "orgId" | "live" | "reconnecting"> & {
+  view: Pick<HqNavigationView, "orgId"> & {
     readonly structure: {
       readonly apps: ReadonlyArray<
         Pick<HqStructure["apps"][number], "id" | "name" | "projects" | "contents">
@@ -36,9 +37,9 @@ export function groupIsEmpty(
   return group.environments.length === 0 && group.pending.length === 0;
 }
 
-/** Only HQ's current answer for this organization and application can establish emptiness. */
+/** Only HQ's answer for this organization and application, as last read, establishes emptiness. */
 export function applicationContents(
-  view: Pick<HqNavigationView, "orgId" | "live" | "reconnecting"> & {
+  view: Pick<HqNavigationView, "orgId"> & {
     readonly structure: {
       readonly apps: ReadonlyArray<
         Pick<HqStructure["apps"][number], "id" | "name" | "projects" | "contents">
@@ -48,7 +49,7 @@ export function applicationContents(
   organizationId: string | undefined,
   appId: string,
 ): HqAppContents | undefined {
-  if (view.orgId !== organizationId || !view.live) return undefined;
+  if (view.orgId !== organizationId) return undefined;
   return view.structure?.apps.find((app) => app.id === appId)?.contents;
 }
 
@@ -71,18 +72,18 @@ export function heldLine(mates: number, contents: HqAppContents | undefined): st
 }
 
 /**
- * Which *Delete* a project's menu offers, where it has no listed or coming member and the person
- * writes the structure (`delete_app`): on HQ's empty answer the plain one, whose dialog has nothing
- * to list (`empty`); on HQ's word that it still holds code or changes, the menu's dialog that lists
- * what goes with it (`with-code`, `ZeropsDeleteApplicationDialog`). None while HQ has not answered
- * or a deletion is still under way.
+ * Which *Delete* a project's menu offers, where it has no Mate in it and the person writes the
+ * structure (`delete_app`; `projectDeleteOffered`, the menu's rule): on HQ's empty answer the plain
+ * one, whose dialog has nothing to list (`empty`); on HQ's word that it still holds code or
+ * changes, the menu's dialog that lists what goes with it (`with-code`,
+ * `ZeropsDeleteApplicationDialog`). None while HQ has not answered or a deletion is still under way.
  */
 export function deleteOffered(
-  group: Pick<ZeropsGroup, "pending"> & { readonly environments: ReadonlyArray<unknown> },
+  group: Parameters<typeof groupWithoutMate>[0],
   mayDelete: boolean,
   contents: HqAppContents | undefined,
 ): "empty" | "with-code" | undefined {
-  if (!mayDelete || !groupIsEmpty(group) || contents === undefined) return undefined;
-  if (contents.deletingProjectIds.length > 0) return undefined;
+  if (!projectDeleteOffered({ withoutMate: groupWithoutMate(group), mayDelete })) return undefined;
+  if (contents === undefined || contents.deletingProjectIds.length > 0) return undefined;
   return contents.empty ? "empty" : "with-code";
 }

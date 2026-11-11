@@ -38,7 +38,7 @@ function hqAnswering(answer: (seen: Seen) => Response) {
   const api = makeHqApi({
     address: ADDRESS,
     fetch,
-    accessToken: async () => "access",
+    accessToken: async () => ({ token: "access" }),
     orgId: "org-1",
     openSocket: NO_SOCKET,
   });
@@ -61,7 +61,12 @@ describe("the Chief at HQ", () => {
     const { api, seen } = hqAnswering(() => json(200, answer));
     await expect(api.setChief("p-chief")).resolves.toEqual(answer);
     expect(seen).toEqual([
-      { method: "PUT", path: "/api/chief", ids: null, body: { projectId: "p-chief" } },
+      {
+        method: "PUT",
+        path: "/api/chief",
+        ids: null,
+        body: { projectId: "p-chief", accessToken: "access" },
+      },
     ]);
   });
 
@@ -105,7 +110,14 @@ describe("decisions on proposals at HQ", () => {
       words: "Zerops said no.",
     } as const;
     await expect(api.decideProposal("p/1", write)).resolves.toEqual(stored);
-    expect(seen).toEqual([{ method: "PUT", path: "/api/proposals/p%2F1", ids: null, body: write }]);
+    expect(seen).toEqual([
+      {
+        method: "PUT",
+        path: "/api/proposals/p%2F1",
+        ids: null,
+        body: { ...write, accessToken: "access" },
+      },
+    ]);
   });
 
   it("says a decision HQ already holds otherwise is refused", async () => {
@@ -113,5 +125,21 @@ describe("decisions on proposals at HQ", () => {
     await expect(
       api.decideProposal("p1", { projectId: "x", decision: "declined" }),
     ).rejects.toMatchObject({ kind: "refused", status: 409 });
+  });
+});
+
+describe("a reveal recorded at HQ", () => {
+  it("posts where the value lives and its name, never the value", async () => {
+    const { api, seen } = hqAnswering(() => new Response(null, { status: 204 }));
+    const reveal = { projectId: "p-prod", service: "db", key: "DATABASE_PASSWORD" };
+    await expect(api.recordReveal(reveal)).resolves.toBeUndefined();
+    expect(seen).toEqual([
+      {
+        method: "POST",
+        path: "/api/reveals",
+        ids: null,
+        body: { ...reveal, accessToken: "access" },
+      },
+    ]);
   });
 });

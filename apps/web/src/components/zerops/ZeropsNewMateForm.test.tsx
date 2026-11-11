@@ -32,6 +32,7 @@ function ChosenAccess({
 
 const TIER = {
   kind: "tier" as const,
+  revision: "recipe-revision",
   tier: "mate" as const,
   yaml: "services:\n  - hostname: app\n    startWithoutCode: true\n",
 };
@@ -574,14 +575,5 @@ describe("the New Mate dialog's Automated choice", () => {
 
   it("offers no Automated choice where HQ can't make automated Mates", () => {
     expect(spoken(mount(form()).root)).not.toContain("Automated");
-  });
-
-  it("offers no Automated choice where the dialog was given none", () => {
-    const tree = mount(form());
-    expect(
-      tree.root.findAll(
-        (node) => node.props.id !== undefined && String(node.props.id).endsWith("-automated"),
-      ),
-    ).toHaveLength(0);
   });
 });

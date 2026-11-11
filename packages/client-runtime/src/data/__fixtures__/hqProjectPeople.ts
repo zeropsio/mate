@@ -1,17 +1,23 @@
 /**
- * What HQ computed of the reader for each project, and the people it names, put into an account's
- * store as HQ's navigation would deliver them: for tests of the surfaces that read who a project's
- * owner is, whether its Mate waits on the reader, and who signed its agents in.
+ * What HQ computed of the reader for each project, put into an account's store as HQ's navigation
+ * would deliver it, and the people its user ids name as the organization's member list answers
+ * them: for tests of the surfaces that read who a project's owner is, whether its Mate waits on the
+ * reader, and who signed its agents in. Each project's row is one HQ recorded
+ * (`@t3tools/test-recordings`), with the test's facts written over it.
  */
 import type { HqNavigationProject } from "@t3tools/shared/hqStream";
+import { recorded } from "@t3tools/test-recordings/recorded";
 
-import { hqPeopleScope, placementsScope } from "../families/hqNavigation.ts";
+import { placementsScope } from "../families/hqNavigation.ts";
+import { membersScope } from "../families/organizationMembers.ts";
 import { linkKeys, type ScopeKey } from "../model.ts";
 import type { Row } from "../reducer.ts";
 import type { AccountStore } from "../store.ts";
 import type { StreamEvent } from "../streamMachine.ts";
 
 export interface SeededProjectPerson {
+  /** The row HQ recorded this project's starts from; one nobody is signed in to, unless named. */
+  readonly recording?: "navigation-project.signed-in" | "navigation-project.no-signer";
   readonly ownerUserId?: string | null;
   readonly waitsOnViewer?: boolean;
   readonly mine?: boolean;
@@ -24,7 +30,15 @@ export interface SeededProjectPerson {
 export interface SeededProjectPeople {
   readonly projects: Readonly<Record<string, SeededProjectPerson>>;
   readonly people?: Readonly<
-    Record<string, { readonly name: string; readonly avatarUrl?: string | null }>
+    Record<
+      string,
+      {
+        readonly name: string;
+        readonly avatarUrl?: string | null;
+        /** Their membership's id; `cu-<user id>` unless a test names it. */
+        readonly clientUserId?: string;
+      }
+    >
   >;
 }
 
@@ -36,7 +50,7 @@ export function seedHqProjectPeople(
   seed: SeededProjectPeople,
 ): void {
   const revision = { kind: "hq", incarnation: "people", revision: (revisions += 1) } as const;
-  const scopes: ReadonlyArray<ScopeKey> = [placementsScope(orgId), hqPeopleScope(orgId)];
+  const scopes: ReadonlyArray<ScopeKey> = [placementsScope(orgId)];
   const event = (key: ScopeKey | ReturnType<typeof linkKeys.hq>, streamEvent: StreamEvent) =>
     store.dispatch({ kind: "stream", key, now: 0, event: streamEvent });
   const live = (key: ScopeKey | ReturnType<typeof linkKeys.hq>) =>
@@ -61,33 +75,23 @@ export function seedHqProjectPeople(
       family: "placement",
       id: projectId,
       revision,
-      value: {
-        projectId,
-        appId: null,
-        name: projectId,
-        kind: "mate",
-        mate: null,
-        person: {
-          role: "DEVELOPER",
-          mayWrite: true,
-          mine: person.mine ?? false,
-          ownerUserId: person.ownerUserId ?? null,
-          waitsOnViewer: person.waitsOnViewer ?? false,
-          unseen: null,
-        },
-        signedInNow: person.signedInNow ?? {},
-        everSignedIn: person.everSignedIn ?? person.signedInNow ?? {},
-      },
-    })),
-    ...Object.entries(seed.people ?? {}).map(([userId, person]): Row => ({
-      family: "hqPerson",
-      id: userId,
-      revision,
-      value: {
-        name: person.name,
-        clientUserId: `cu-${userId}`,
-        avatarUrl: person.avatarUrl ?? null,
-      },
+      value: recorded(
+        "navigation project:<id>",
+        person.recording ?? "navigation-project.no-signer",
+        (row) => ({
+          ...row,
+          projectId,
+          name: projectId,
+          person: {
+            ...row.person,
+            ...(person.mine === undefined ? {} : { mine: person.mine }),
+            ...(person.ownerUserId === undefined ? {} : { ownerUserId: person.ownerUserId }),
+            ...(person.waitsOnViewer === undefined ? {} : { waitsOnViewer: person.waitsOnViewer }),
+          },
+          signedInNow: person.signedInNow ?? row.signedInNow,
+          everSignedIn: person.everSignedIn ?? person.signedInNow ?? row.everSignedIn,
+        }),
+      ),
     })),
   ];
   store.dispatch({
@@ -100,4 +104,49 @@ export function seedHqProjectPeople(
   });
   store.dispatch({ kind: "hq-ready", scopes: generations });
   for (const scope of opening) event(scope, { kind: "baseline-committed" });
+  if (seed.people !== undefined) seedMembers(store, orgId, seed.people);
+}
+
+/** `people`, by user id, as the organization's member list (`GET /client/{id}/user/list`) answers. */
+export function seedMembers(
+  store: AccountStore,
+  orgId: string,
+  people: NonNullable<SeededProjectPeople["people"]>,
+): void {
+  const scope = membersScope(orgId);
+  for (const streamEvent of [
+    { kind: "demand", demanded: true },
+    { kind: "attempt" },
+    { kind: "handshake" },
+  ] as const)
+    store.dispatch({ kind: "stream", key: scope, now: 0, event: streamEvent });
+  const generation = store.state().streams.get(scope)?.generation ?? 0;
+  store.dispatch({ kind: "baseline-begin", scope, generation });
+  store.dispatch({
+    kind: "baseline-commit",
+    scope,
+    generation,
+    via: "zerops-read",
+    members: [orgId],
+    rows: [
+      {
+        family: "organizationMembers",
+        id: orgId,
+        revision: { kind: "zerops", version: null },
+        value: Object.entries(people).map(([userId, person]) => ({
+          id: person.clientUserId ?? `cu-${userId}`,
+          userId,
+          status: "ACTIVE",
+          user: {
+            id: userId,
+            fullName: person.name,
+            avatar:
+              person.avatarUrl === undefined || person.avatarUrl === null
+                ? null
+                : { smallAvatarUrl: person.avatarUrl },
+          },
+        })),
+      },
+    ],
+  });
 }

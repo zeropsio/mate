@@ -367,25 +367,6 @@ describe("ZeropsNextStepStrip", () => {
     expect(markup).not.toContain("Merge");
   });
 
-  it("opens the change's review from the button that was pressed", () => {
-    const onReview = vi.fn();
-    const tree = ZeropsNextStepStrip({ onReview, strip: STRIP }) as ReactElement;
-    const button = visitElements(
-      tree,
-      (element) => element.type === Button && element.props.children === "Review",
-    );
-    if (button === null) throw new Error("the strip has no Review button");
-    const pressed = { tagName: "BUTTON" } as unknown as HTMLElement;
-    (button.props.onClick as (event: { currentTarget: HTMLElement }) => void)({
-      currentTarget: pressed,
-    });
-
-    expect(onReview).toHaveBeenCalledWith(
-      { kind: "change", groupId: "g-1", repository: "app", number: 2 },
-      pressed,
-    );
-  });
-
   it("lists every change waiting, each with its own Review, under a count", () => {
     const strip: ZeropsNextStepStripModel = {
       ...STRIP,
@@ -526,6 +507,7 @@ describe("the composer's top on a reload's first render", () => {
 
   beforeEach(() => {
     stored.clear();
+    vi.stubEnv("VITE_HQ_ORIGIN", "https://hq.example.test");
     vi.stubGlobal("window", {
       localStorage: {
         getItem: (key: string) => stored.get(key) ?? null,
@@ -538,6 +520,7 @@ describe("the composer's top on a reload's first render", () => {
 
   afterEach(() => {
     closeAccountLifetime();
+    vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
 

@@ -1,42 +1,58 @@
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { mateImageSource } from "@t3tools/client-runtime/data";
-import { act, type ImgHTMLAttributes, type ReactNode } from "react";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { act, type ReactNode } from "react";
 import { create } from "react-test-renderer";
-import { afterEach, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 
-const reads = vi.hoisted(() => ({ keys: [] as unknown[] }));
-vi.mock("~/assets/MateImages", () => ({
-  useImageIntent: () => ({}),
-  useMateImage: (key: unknown) => {
+const reads = { keys: [] as unknown[] };
+import { ExpandedImageDialog } from "./ExpandedImageDialog";
+import { useEditPictureInExpress } from "../express/useOpenExpressDesign";
+
+const drawn: Array<ReturnType<typeof create>> = [];
+beforeEach(async () => {
+  reads.keys = [];
+  const images = await import("~/assets/MateImages");
+  const asset = await import("~/assets/AssetImage");
+  const buttons = await import("../ui/button");
+  const dialog = await import("../ui/dialog");
+  vi.spyOn(images, "useImageIntent").mockReturnValue(
+    {} as ReturnType<typeof images.useImageIntent>,
+  );
+  vi.spyOn(images, "useMateImage").mockImplementation((key) => {
     reads.keys.push(key);
     return {
       read: { kind: "ready", occurrence: { name: "retained-original.png" } },
       url: "blob:original",
-    };
-  },
-}));
-vi.mock("~/assets/AssetImage", () => ({
-  AssetImage: ({
-    original,
-    ...props
-  }: ImgHTMLAttributes<HTMLImageElement> & { original?: boolean }) => (
+    } as unknown as ReturnType<typeof images.useMateImage>;
+  });
+  vi.spyOn(asset, "AssetImage").mockImplementation((({ original, ...props }) => (
     <img {...props} data-original={original} />
-  ),
-}));
-vi.mock("../ui/button", () => ({
-  Button: ({ children, ...props }: { children: ReactNode }) => (
-    <button {...props}>{children}</button>
-  ),
-}));
-import { ExpandedImageDialog } from "./ExpandedImageDialog";
+  )) as typeof asset.AssetImage);
+  vi.spyOn(buttons, "Button").mockImplementation((({
+    children,
+    ...props
+  }: {
+    children: ReactNode;
+  }) => <button {...props}>{children}</button>) as typeof buttons.Button);
+  // The kit's dialog portals out of the tree this renderer draws: here it is its children.
+  vi.spyOn(dialog, "Dialog").mockImplementation(
+    (({ children }: { children: ReactNode }) => children) as typeof dialog.Dialog,
+  );
+  vi.spyOn(dialog, "DialogMediaPopup").mockImplementation((({
+    children,
+  }: {
+    children: ReactNode;
+  }) => <div>{children}</div>) as typeof dialog.DialogMediaPopup);
+});
 
-// The kit's dialog portals out of the tree this renderer draws: here it is its children.
-vi.mock("../ui/dialog", () => ({
-  Dialog: ({ children }: { children: ReactNode }) => children,
-  DialogMediaPopup: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-}));
-
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  act(() => {
+    for (const renderer of drawn.splice(0)) renderer.unmount();
+  });
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 it("a gallery reference zooms the original and downloads its authorized bytes with its retained name", () => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   vi.stubGlobal("window", {
@@ -74,6 +90,7 @@ it("a gallery reference zooms the original and downloads its authorized bytes wi
       },
     );
   });
+  drawn.push(renderer);
   expect(reads.keys.at(-1)).toMatchObject({
     rendition: "original",
     resource: { path: "mate-asset:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" },
@@ -96,5 +113,52 @@ it("a gallery reference zooms the original and downloads its authorized bytes wi
     href: "blob:original",
     download: "retained-original.png",
   });
-  act(() => renderer.unmount());
+});
+
+function PictureWithExpress({ enabled, src }: { readonly enabled: boolean; readonly src: string }) {
+  const edit = useEditPictureInExpress(
+    scopeThreadRef(EnvironmentId.make("mate"), ThreadId.make("thread")),
+    enabled,
+  );
+  return (
+    <ExpandedImageDialog
+      preview={{ index: 0, images: [{ src, name: "Drawn shot" }] }}
+      onClose={() => {}}
+      onEditInExpress={edit}
+    />
+  );
+}
+
+it.each([
+  { title: "the picture viewer offers Edit in Adobe Express while Express is on", enabled: true },
+  { title: "the picture viewer offers no Adobe Express while Express is off", enabled: false },
+])("$title", ({ enabled }) => {
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  vi.stubGlobal("window", {
+    innerWidth: 1200,
+    innerHeight: 800,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  });
+  const src = mateImageSource({
+    environmentId: EnvironmentId.make("mate"),
+    resource: {
+      _tag: "media-file",
+      threadId: ThreadId.make("thread"),
+      path: "mate-asset:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    },
+  });
+  let renderer!: ReturnType<typeof create>;
+  act(() => {
+    renderer = create(<PictureWithExpress enabled={enabled} src={src} />, {
+      createNodeMock: () => ({
+        clientWidth: 500,
+        clientHeight: 400,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }),
+    });
+  });
+  drawn.push(renderer);
+  expect(JSON.stringify(renderer.toJSON()).includes("Edit in Adobe Express")).toBe(enabled);
 });

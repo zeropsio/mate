@@ -390,7 +390,8 @@ describe("resultRows", () => {
       facts: facts({
         services: { appdev: { status: "STOPPED", since: at(40), versionAt: at(0) } },
       }),
-      rows: [["waiting", "attention", "appdev", "Dev server not running"]],
+      // Stopped, nothing is meant to run there: its words stay, never amber.
+      rows: [["waiting", "muted", "appdev", "Dev server not running"]],
     },
     {
       name: "a page whose check stayed failed is broken; one retried until it passed is not",
@@ -1242,18 +1243,10 @@ describe("resultRows — a value the run asked the person for", () => {
 
   it.each([
     {
-      name: "saved: added for every app, hidden",
+      name: "saved: the ask's card says so, the run adds nothing",
       key: "STRIPE_SECRET_KEY",
       state: "saved",
-      want: [
-        {
-          title: "Stripe secret key",
-          words: "added for every app · hidden",
-          sub: null,
-          action: null,
-          tone: "ok",
-        },
-      ],
+      want: [],
     },
     {
       name: "saved, and an app runs the value it started with: restart it",
@@ -1262,20 +1255,18 @@ describe("resultRows — a value the run asked the person for", () => {
       want: [
         {
           title: "Stripe secret key",
-          words: "added for every app",
-          sub: { kind: "text", text: "restart appdev to use it" },
+          words: "restart appdev to use it",
+          sub: null,
           action: { kind: "restart", services: [{ serviceId: "svc-appdev", hostname: "appdev" }] },
-          tone: "ok",
+          tone: "attention",
         },
       ],
     },
     {
-      name: "not given: Not now",
+      name: "not given: the ask's card says Not now, the run adds nothing",
       key: "STRIPE_SECRET_KEY",
       state: "declined",
-      want: [
-        { title: "Stripe secret key", words: "Not now", sub: null, action: null, tone: "muted" },
-      ],
+      want: [],
     },
     { name: "still asked: the drawer holds it", key: "STRIPE_SECRET_KEY", state: "open", want: [] },
     { name: "an ask the engine does not keep", key: "STRIPE_SECRET_KEY", state: null, want: [] },

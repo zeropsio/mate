@@ -230,7 +230,11 @@ import {
 } from "./providerUsageLimits.ts";
 import {
   McpServerAddInput,
+  McpServerFinishSignInInput,
   McpServerSetEnabledInput,
+  McpServerSignIn,
+  McpServerSignInInput,
+  McpServerUpdateInput,
   McpServersError,
   McpServersList,
   McpServersListInput,
@@ -291,6 +295,10 @@ export const WS_METHODS = {
   mcpServersRemove: "mcp.servers.remove",
   mcpServersSetEnabled: "mcp.servers.setEnabled",
   mcpServersReconnect: "mcp.servers.reconnect",
+  mcpServersSignIn: "mcp.servers.signIn",
+  mcpServersFinishSignIn: "mcp.servers.finishSignIn",
+  mcpServersSignOut: "mcp.servers.signOut",
+  mcpServersUpdate: "mcp.servers.update",
 
   // Provider methods
   providerUploadFeedback: "provider.uploadFeedback",
@@ -801,6 +809,30 @@ const WsMcpServersReconnectRpc = Rpc.make(WS_METHODS.mcpServersReconnect, {
   error: McpServersRpcError,
 });
 
+const WsMcpServersSignInRpc = Rpc.make(WS_METHODS.mcpServersSignIn, {
+  payload: McpServerSignInInput,
+  success: McpServerSignIn,
+  error: McpServersRpcError,
+});
+
+const WsMcpServersFinishSignInRpc = Rpc.make(WS_METHODS.mcpServersFinishSignIn, {
+  payload: McpServerFinishSignInInput,
+  success: McpServersList,
+  error: McpServersRpcError,
+});
+
+const WsMcpServersUpdateRpc = Rpc.make(WS_METHODS.mcpServersUpdate, {
+  payload: McpServerUpdateInput,
+  success: McpServersList,
+  error: McpServersRpcError,
+});
+
+const WsMcpServersSignOutRpc = Rpc.make(WS_METHODS.mcpServersSignOut, {
+  payload: McpServerTargetInput,
+  success: McpServersList,
+  error: McpServersRpcError,
+});
+
 const WsProviderUploadFeedbackRpc = Rpc.make(WS_METHODS.providerUploadFeedback, {
   payload: ProviderUploadFeedbackInput,
   success: ProviderUploadFeedbackResult,
@@ -1001,6 +1033,14 @@ export const WsSubscribeServerConfigRpc = Rpc.make(WS_METHODS.subscribeServerCon
     usageLimitsCommand: Schema.optional(Schema.Boolean),
     /** Opt-in prevents an older client receiving a new event it cannot decode. */
     mateUpdate: Schema.optional(Schema.Boolean),
+    /** Whether this client understands `hqKey` events; the snapshot's `hqKey` goes to every client. */
+    hqKey: Schema.optional(Schema.Boolean),
+    /**
+     * Whether this client applies `providersChanged` events. Such a client is
+     * sent only the providers that changed; any other gets the whole list as
+     * `providerStatuses`.
+     */
+    providerChanges: Schema.optional(Schema.Boolean),
   }),
   success: ServerConfigStreamEvent,
   error: Schema.Union([KeybindingsConfigError, ServerSettingsError, EnvironmentAuthorizationError]),
@@ -1498,6 +1538,10 @@ export const WsRpcGroup = RpcGroup.make(
   WsMcpServersRemoveRpc,
   WsMcpServersSetEnabledRpc,
   WsMcpServersReconnectRpc,
+  WsMcpServersSignInRpc,
+  WsMcpServersFinishSignInRpc,
+  WsMcpServersSignOutRpc,
+  WsMcpServersUpdateRpc,
   WsSubscribeVcsStatusRpc,
   WsVcsPullRpc,
   WsVcsRefreshStatusRpc,

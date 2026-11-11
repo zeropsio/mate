@@ -1,4 +1,8 @@
-import type { CreationRead, CreationStepRead } from "@t3tools/client-runtime/data";
+import {
+  mateArrival,
+  type CreationRead,
+  type CreationStepRead,
+} from "@t3tools/client-runtime/data";
 import {
   birthCopyServices,
   birthRuntimesFacts,
@@ -29,6 +33,7 @@ import {
   newProjectSteps,
   newProjectView,
   placedNewProjects,
+  refusedAddBirth,
   runAdd,
   runNewProjectBirth,
   type CreationAsk,
@@ -40,6 +45,8 @@ import {
 /** What Create asked for: Acme CRM, and Vera in it. */
 const ASK: NewProjectAsk = {
   organizationId: "org-acme",
+  creator: "cu-me",
+  creatorRole: "OWNER",
   birthId: "b-acme",
   name: "Acme CRM",
   botName: "Vera",
@@ -497,6 +504,48 @@ describe("creationOf — where a creation stands, read off its steps' operations
     expect(creationOf(asked, steps)).toMatchObject(want);
   });
 
+  it("an accepted project creation failure keeps its source reason and Remove after handover", () => {
+    const creation = creationOf(
+      held(),
+      read({
+        appId: "app-acme",
+        birthId: "b-vera",
+        projectId: "p-vera",
+        steps: {
+          app: DONE,
+          birth: DONE,
+          project: stopped("create-project", "Project capacity exhausted."),
+        },
+      }),
+    );
+    expect(
+      mateArrival({
+        press: undefined,
+        candidate: { group: "unavailable", missingContainer: true },
+        created: true,
+        setUpFailed: creation.failed?.reason,
+      }).coming,
+      "ASSERTION: the accepted project's own failed creation offers its source details and Remove",
+    ).toEqual({
+      kind: "failed",
+      line: "Could not be set up.",
+      details: "Project capacity exhausted.",
+      verb: "remove",
+    });
+  });
+
+  it.each([
+    stopped("import-project", "Its import stopped."),
+    stopped("create-project", "Its answer was lost.", true),
+  ])(
+    "an accepted project leaves an unconfirmed or imported creation to its owner (%j)",
+    (project) => {
+      expect(
+        creationOf(held(), read({ projectId: "p-vera", steps: { project } })).failed,
+      ).toBeNull();
+    },
+  );
+
   it("names an Add's presses: its own id, then one per Try again", () => {
     expect(creationRunId(held({ adds: ADDS }))).toBe("b-acme");
     expect(creationRunId(held({ adds: ADDS }, { presses: 2 }))).toBe("b-acme#2");
@@ -526,6 +575,7 @@ function ports(start: CreationRead = read(), over: Partial<NewProjectPorts> = {}
       record("birth", { birthId: "b-vera" });
       return { birthId: "b-vera" };
     }),
+    attemptProject: async (_birthId, send) => send(),
     createProject: vi.fn(async (requestId: string) => {
       order.push(`create ${requestId}`);
       record("project", { projectId: "p-vera" });
@@ -539,7 +589,92 @@ function ports(start: CreationRead = read(), over: Partial<NewProjectPorts> = {}
   return { order, ports: made, read: () => now };
 }
 
+/** The Mate's owner marker: its creator's own `OWNER` override. */
+const CREATOR_OWNS = { clientUserId: "cu-me", roleCode: "OWNER" } as const;
+
 describe("runNewProjectBirth — the project, then its first Mate", () => {
+  it.each([
+    { case: "when it registers the application", start: read() },
+    {
+      case: "when it resumes after registering the application",
+      start: read({ appId: "app-acme", steps: { app: DONE } }),
+    },
+  ])("records that its birth created the application $case", async ({ start }) => {
+    const { ports: made, read: now } = ports(start);
+    await runNewProjectBirth(held(), now, made);
+    expect(made.recordBirth).toHaveBeenCalledWith(
+      "b-acme:birth",
+      expect.objectContaining({ appId: "app-acme", createdApp: true }),
+    );
+  });
+
+  it("records a Chief as a top-level birth field before creating its project", async () => {
+    const { ports: made, read: now } = ports();
+    await runNewProjectBirth(held({ chief: true }), now, made);
+    expect(made.recordBirth).toHaveBeenCalledWith(
+      "b-acme:birth",
+      expect.objectContaining({ chief: true }),
+    );
+  });
+
+  it("records the first Mate's original creation intent before creating its project", async () => {
+    const { ports: made, read: now } = ports();
+    await runNewProjectBirth(held({ locationId: "prg1", agents: ["claude-code"] }), now, made);
+    expect(made.recordBirth).toHaveBeenCalledWith("b-acme:birth", {
+      appId: "app-acme",
+      id: "b-acme",
+      face: "rose:seal",
+      createdApp: true,
+      intent: {
+        projectName: "Acme CRM - Vera",
+        recipe: { kind: "none" },
+        agents: ["claude-code"],
+        standUp: false,
+        automated: false,
+        placement: { role: "dev", name: "Vera", chief: false },
+        location: "prg1",
+        userRoles: [CREATOR_OWNS],
+      },
+    });
+  });
+
+  // Decision: A birth from the web writes an organization owner's own OWNER override in the create
+  // body, so their Mate carries its owner marker from creation; Zerops refuses it anyone else.
+  it.each<{ readonly case: string; readonly ask: Partial<NewProjectAsk> }>([
+    { case: "with no access chosen", ask: {} },
+    {
+      case: "beside the access chosen at Create",
+      ask: { userRoles: [{ clientUserId: "cu-ada", roleCode: "ADMIN" }] },
+    },
+    {
+      case: "over any lower grant the creator was given",
+      ask: { userRoles: [{ clientUserId: "cu-me", roleCode: "READ_ONLY" }] },
+    },
+  ])("writes its creator's OWNER override into every birth, $case", async ({ ask }) => {
+    const { ports: made, read: now } = ports(
+      read({ appId: "app-acme", birthId: "b-1", steps: { app: DONE, birth: DONE } }),
+    );
+    await runNewProjectBirth(held(ask), now, made);
+    const sent = vi.mocked(made.createProject).mock.calls[0]?.[1].userRoles ?? [];
+    expect(sent.filter((grant) => grant.clientUserId === "cu-me")).toEqual([CREATOR_OWNS]);
+    expect(sent.filter((grant) => grant.clientUserId !== "cu-me")).toEqual(
+      (ask.userRoles ?? []).filter((grant) => grant.clientUserId !== "cu-me"),
+    );
+  });
+
+  // witness: apps/web/src/zerops/newProjectBirth.ts | adder: { membershipId: ask.creator, roleCode: ask.creatorRole }, → adder: { membershipId: ask.creator, roleCode: "OWNER" },
+  it.each([{ creatorRole: "ADMIN" }, { creatorRole: "BASIC_USER" }, { creatorRole: undefined }])(
+    "writes no OWNER override for a creator Zerops refuses it, $creatorRole",
+    async ({ creatorRole }) => {
+      const { ports: made, read: now } = ports(
+        read({ appId: "app-acme", birthId: "b-1", steps: { app: DONE, birth: DONE } }),
+      );
+      const chosen = [{ clientUserId: "cu-ada", roleCode: "ADMIN" }];
+      await runNewProjectBirth(held({ creatorRole, userRoles: chosen }), now, made);
+      expect(vi.mocked(made.createProject).mock.calls[0]?.[1].userRoles).toEqual(chosen);
+    },
+  );
+
   it("registers the project in the organization's HQ, records its Mate's birth, then creates its Mate", async () => {
     const { order, ports: made, read: now } = ports();
     await runNewProjectBirth(held(), now, made);
@@ -559,13 +694,19 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
       // face are HQ's, which the press's registration writes.
       case: "named in full under its application, under its birth intent",
       ask: {},
-      args: { name: "Acme CRM - Vera", appId: "app-acme", birth: "b-1" },
+      args: { name: "Acme CRM - Vera", appId: "app-acme", birth: "b-1", userRoles: [CREATOR_OWNS] },
     },
     {
       // Its agents are its container's, which its press imports.
       case: "in the location chosen",
       ask: { locationId: "prg1", agents: ["claude-code"] },
-      args: { name: "Acme CRM - Vera", location: "prg1", appId: "app-acme", birth: "b-1" },
+      args: {
+        name: "Acme CRM - Vera",
+        location: "prg1",
+        appId: "app-acme",
+        birth: "b-1",
+        userRoles: [CREATOR_OWNS],
+      },
     },
     {
       case: "with the access its creator chose",
@@ -574,7 +715,7 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
         name: "Acme CRM - Vera",
         appId: "app-acme",
         birth: "b-1",
-        userRoles: [{ clientUserId: "cu-ada", roleCode: "READ_ONLY" }],
+        userRoles: [{ clientUserId: "cu-ada", roleCode: "READ_ONLY" }, CREATOR_OWNS],
       },
     },
   ])("creates its first Mate $case", async ({ ask, args }) => {
@@ -723,13 +864,7 @@ describe("runAdd — an Add's press, under its press's id", () => {
   });
 });
 
-type Kind =
-  | "create-project"
-  | "import-managed"
-  | "import-container"
-  | "close-off"
-  | "register"
-  | "await-ready";
+type Kind = "create-project" | "import-container" | "register" | "await-ready";
 type RunState = "queued" | "running" | "done" | "failed";
 
 /** A press's progress: each step's kind and state, in order, with what a stop said. */
@@ -738,11 +873,9 @@ const pressed = (...entries: ReadonlyArray<readonly [Kind, RunState]>) =>
     step:
       kind === "create-project"
         ? ({ kind, name: "Ida" } as never)
-        : kind === "import-managed"
-          ? ({ kind, yaml: "" } as never)
-          : kind === "import-container"
-            ? ({ kind, agents: [] } as never)
-            : ({ kind } as never),
+        : kind === "import-container"
+          ? ({ kind, agents: [] } as never)
+          : ({ kind } as never),
     state,
     ...(state === "failed" ? { error: `${kind} said no.` } : {}),
   }));
@@ -792,7 +925,6 @@ describe("creationSubsteps — a New project's steps this tab runs, under its ro
         "Created:waiting",
         "Vera registered:waiting",
         "Its computer:waiting",
-        "Private network ready:waiting",
       ],
     },
     {
@@ -803,7 +935,6 @@ describe("creationSubsteps — a New project's steps this tab runs, under its ro
         "Created:waiting",
         "Vera registered:waiting",
         "Its computer:waiting",
-        "Private network ready:waiting",
       ],
     },
     {
@@ -814,52 +945,38 @@ describe("creationSubsteps — a New project's steps this tab runs, under its ro
         "Created:active",
         "Vera registered:waiting",
         "Its computer:waiting",
-        "Private network ready:waiting",
       ],
     },
     {
       case: "taken, its Mate's press not yet heard",
       made: birth({ step: "created", projectId: "p-1" }),
-      want: [
-        "Registered:done",
-        "Created:done",
-        "Vera registered:waiting",
-        "Its computer:waiting",
-        "Private network ready:waiting",
-      ],
+      want: ["Registered:done", "Created:done", "Vera registered:waiting", "Its computer:waiting"],
     },
     {
-      case: "closing off",
+      case: "its one import coming",
       made: birth({
         step: "created",
         projectId: "p-1",
         progress: pressed(
-          ["close-off", "running"],
-          ["register", "queued"],
+          ["register", "done"],
+          ["import-container", "running"],
           ["await-ready", "queued"],
         ),
       }),
-      want: [
-        "Registered:done",
-        "Created:done",
-        "Vera registered:waiting",
-        "Its computer:waiting",
-        "Private network ready:active",
-      ],
+      want: ["Registered:done", "Created:done", "Vera registered:done", "Its computer:active"],
     },
     {
-      case: "a close-off that stopped",
+      case: "an import that stopped",
       made: birth({
         step: "created",
         projectId: "p-1",
-        progress: pressed(["close-off", "failed"], ["register", "queued"]),
+        progress: pressed(["register", "done"], ["import-container", "failed"]),
       }),
       want: [
         "Registered:done",
         "Created:done",
-        "Vera registered:waiting",
-        "Its computer:waiting",
-        "Private network ready:failed (close-off said no.)",
+        "Vera registered:done",
+        "Its computer:failed (import-container said no.)",
       ],
     },
     {
@@ -867,14 +984,17 @@ describe("creationSubsteps — a New project's steps this tab runs, under its ro
       made: birth({
         step: "created",
         projectId: "p-1",
-        progress: pressed(["close-off", "done"], ["register", "failed"], ["await-ready", "done"]),
+        progress: pressed(
+          ["register", "failed"],
+          ["import-container", "done"],
+          ["await-ready", "done"],
+        ),
       }),
       want: [
         "Registered:done",
         "Created:done",
         "Not registered:unfinished (Register said no.)",
-        "Its computer:waiting",
-        "Private network ready:done",
+        "Its computer:done",
       ],
     },
     {
@@ -882,15 +1002,13 @@ describe("creationSubsteps — a New project's steps this tab runs, under its ro
       made: birth({
         step: "created",
         projectId: "p-1",
-        progress: pressed(["close-off", "done"], ["register", "done"], ["await-ready", "running"]),
+        progress: pressed(
+          ["register", "done"],
+          ["import-container", "done"],
+          ["await-ready", "running"],
+        ),
       }),
-      want: [
-        "Registered:done",
-        "Created:done",
-        "Vera registered:done",
-        "Its computer:waiting",
-        "Private network ready:done",
-      ],
+      want: ["Registered:done", "Created:done", "Vera registered:done", "Its computer:done"],
     },
   ])("$case", ({ made, want }) => {
     expect(drawnSubsteps(made)).toEqual(want);
@@ -902,35 +1020,23 @@ describe("creationSubsteps — an added Mate's steps this tab runs, under its co
     {
       case: "pressed, its plan not yet made",
       made: added(),
-      want: [
-        "Created:active",
-        "Ida registered:waiting",
-        "Its computer:waiting",
-        "Private network ready:waiting",
-      ],
+      want: ["Created:active", "Ida registered:waiting", "Its computer:waiting"],
     },
     {
       case: "where its registration is nobody's here to write",
       made: added({ adds: { appId: "app-acme", registers: false } }),
-      want: ["Created:active", "Its computer:waiting", "Private network ready:waiting"],
+      want: ["Created:active", "Its computer:waiting"],
     },
     {
       case: "creating its project",
       made: added({
         progress: pressed(
           ["create-project", "running"],
-          ["import-managed", "queued"],
-          ["import-container", "queued"],
-          ["close-off", "queued"],
           ["register", "queued"],
+          ["import-container", "queued"],
         ),
       }),
-      want: [
-        "Created:active",
-        "Ida registered:waiting",
-        "Its computer:waiting",
-        "Private network ready:waiting",
-      ],
+      want: ["Created:active", "Ida registered:waiting", "Its computer:waiting"],
     },
     {
       case: "refused before the platform took it",
@@ -939,7 +1045,6 @@ describe("creationSubsteps — an added Mate's steps this tab runs, under its co
         "Created:failed (No room in this account.)",
         "Ida registered:waiting",
         "Its computer:waiting",
-        "Private network ready:waiting",
       ],
     },
     {
@@ -949,18 +1054,11 @@ describe("creationSubsteps — an added Mate's steps this tab runs, under its co
         projectId: "p-ida",
         progress: pressed(
           ["create-project", "done"],
-          ["import-managed", "done"],
+          ["register", "done"],
           ["import-container", "running"],
-          ["close-off", "queued"],
-          ["register", "queued"],
         ),
       }),
-      want: [
-        "Created:done",
-        "Ida registered:waiting",
-        "Its computer:active",
-        "Private network ready:waiting",
-      ],
+      want: ["Created:done", "Ida registered:done", "Its computer:active"],
     },
     {
       case: "a container that stopped",
@@ -969,16 +1067,14 @@ describe("creationSubsteps — an added Mate's steps this tab runs, under its co
         projectId: "p-ida",
         progress: pressed(
           ["create-project", "done"],
+          ["register", "done"],
           ["import-container", "failed"],
-          ["close-off", "queued"],
-          ["register", "queued"],
         ),
       }),
       want: [
         "Created:done",
-        "Ida registered:waiting",
+        "Ida registered:done",
         "Its computer:failed (import-container said no.)",
-        "Private network ready:waiting",
       ],
     },
     {
@@ -988,18 +1084,12 @@ describe("creationSubsteps — an added Mate's steps this tab runs, under its co
         projectId: "p-ida",
         progress: pressed(
           ["create-project", "done"],
-          ["import-container", "done"],
-          ["close-off", "done"],
           ["register", "done"],
+          ["import-container", "done"],
           ["await-ready", "running"],
         ),
       }),
-      want: [
-        "Created:done",
-        "Ida registered:done",
-        "Its computer:done",
-        "Private network ready:done",
-      ],
+      want: ["Created:done", "Ida registered:done", "Its computer:done"],
     },
     {
       case: "a registration refused: Ida runs on, not registered, and why",
@@ -1008,18 +1098,12 @@ describe("creationSubsteps — an added Mate's steps this tab runs, under its co
         projectId: "p-ida",
         progress: pressed(
           ["create-project", "done"],
-          ["import-container", "done"],
-          ["close-off", "done"],
           ["register", "failed"],
+          ["import-container", "done"],
           ["await-ready", "done"],
         ),
       }),
-      want: [
-        "Created:done",
-        "Not registered:unfinished (Register said no.)",
-        "Its computer:done",
-        "Private network ready:done",
-      ],
+      want: ["Created:done", "Not registered:unfinished (Register said no.)", "Its computer:done"],
     },
   ])("$case", ({ made, want }) => {
     expect(drawnSubsteps(made)).toEqual(want);
@@ -1268,6 +1352,38 @@ describe("creationEnds — a creation that stopped can end", () => {
   });
 });
 
+// The owner's 2026-11-10 menu: an Add refused for certain, started over, stood twice for everyone,
+// its first HQ birth left open with nothing to continue.
+describe("refusedAddBirth — the HQ birth an ended Add lets go of", () => {
+  const refused = { reason: "No room.", uncertain: false };
+  // witness: apps/web/src/zerops/newProjectBirth.ts | if (birth.failed === null || birth.failed.uncertain) return null; → if (birth.failed === null) return null;
+  it.each([
+    {
+      case: "an Add refused for certain, its birth recorded: let go of",
+      made: added({ intent: "b-ida", failed: refused }),
+      want: { appId: "app-acme", birthId: "b-ida" },
+    },
+    {
+      case: "an Add Zerops may have made: kept, it places that project",
+      made: added({ intent: "b-ida", failed: { reason: "Lost.", uncertain: true } }),
+      want: null,
+    },
+    {
+      case: "an Add refused before HQ recorded its birth: nothing to let go of",
+      made: added({ failed: refused }),
+      want: null,
+    },
+    { case: "running: kept", made: added({ intent: "b-ida" }), want: null },
+    {
+      case: "a New project refused for certain: kept, its own Try again",
+      made: birth({ intent: "b-1", failed: refused }),
+      want: null,
+    },
+  ])("$case", ({ made, want }) => {
+    expect(refusedAddBirth(made)).toEqual(want);
+  });
+});
+
 // Run 6's second review: an owner whose broker grant timed out read "An owner registers Ida for
 // Git." with a hollow mark, never why. The step keeps why while its press is held, and follows
 // Finish setup's own press.
@@ -1275,30 +1391,18 @@ describe("a registration not finished, and Finish setup's own steps", () => {
   const made = added({ step: "created", projectId: "p-ida" });
   it.each([
     {
-      case: "refused by its press: not registered, and why",
-      progress: pressed(
-        ["create-project", "done"],
-        ["import-container", "done"],
-        ["close-off", "done"],
-        ["register", "failed"],
-        ["await-ready", "done"],
-      ),
-      want: "Not registered:unfinished (Register said no.)",
-    },
-    {
       case: "Finish setup registering",
-      progress: pressed(["close-off", "done"], ["register", "running"]),
+      progress: pressed(["register", "running"]),
       want: "Ida registered:active",
     },
     {
       case: "Finish setup registered",
-      progress: pressed(["close-off", "done"], ["register", "done"]),
+      progress: pressed(["register", "done"]),
       want: "Ida registered:done",
     },
     {
       case: "Finish setup refused again: the new reason",
       progress: [
-        { step: { kind: "close-off" } as never, state: "done" as const },
         {
           step: { kind: "register" } as never,
           state: "failed" as const,

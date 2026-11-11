@@ -9,6 +9,7 @@ import {
   MateLinkClosed,
   MATE_LINK_TEXT_MAX,
   MateLinkDown,
+  MateSelf,
   LoginDigest,
   MateLinkUp,
   linkFrameBytes,
@@ -364,7 +365,6 @@ describe("mateLink", () => {
           name: "Ada",
           face: "face-1",
           standupRequestedBy: null,
-          closedOff: true,
           appId: "A1",
           changes: [
             {
@@ -435,32 +435,78 @@ it("carries display ownership separately from current signer authority", () => {
 describe("the keys model's link", () => {
   const decodeKeyUp = Schema.decodeUnknownExit(Schema.fromJsonString(KeyLinkUp));
   const decodeKeyDown = Schema.decodeUnknownExit(Schema.fromJsonString(KeyLinkDown));
+  /** The UUID of the key's admission HQ names in every state. */
+  const admission = "0f3c6a52-9f1e-4b7a-8d2c-5e4b3a2f1c0d";
   const self = {
     projectId: "P_MATE",
     name: "Ada",
     face: "face-1",
     standupRequestedBy: null,
-    closedOff: true,
-    signers: { "claude-code": "U1" },
     appId: "A1",
     appName: "Shop",
     changes: [],
     chief: { projectId: "P_CHIEF" },
   };
-  const member = { userId: "U1", role: "ADMIN", visibility: "open" };
+
+  it("preserves the registered Chief opener including null and absence", () => {
+    for (const extra of [{}, { chiefOpenerUserId: null }, { chiefOpenerUserId: "U1" }]) {
+      const mate = { ...self, ...extra };
+      const decoded = decodeKeyDown(JSON.stringify({ type: "state", mate, admission }));
+      expect(
+        decoded._tag === "Success" && decoded.value.type === "state" && decoded.value.mate,
+      ).toEqual(mate);
+    }
+  });
+
+  it("Decision: HQ's state and self read decode without closedOff or signers; signers come only from their own frame", () => {
+    // The unplaced Mate's self record, as link.go and ReadMateChanges build it.
+    const mate = {
+      projectId: "P_MATE",
+      name: "Ada",
+      face: "face-1",
+      standupRequestedBy: null,
+      chief: null,
+      appId: null,
+      appName: null,
+      changes: [],
+      repos: [],
+    };
+    const frame = { type: "state", mate, admission, pingIntervalMs: 20_000 };
+    expect(Schema.decodeUnknownExit(MateSelf)(mate)._tag).toBe("Success");
+    const decoded = decodeKeyDown(JSON.stringify(frame));
+    expect(decoded._tag).toBe("Success");
+    const withRetiredFields = decodeKeyDown(
+      JSON.stringify({
+        ...frame,
+        mate: { ...mate, closedOff: true, signers: { codex: "U1" } },
+      }),
+    );
+    expect(withRetiredFields._tag === "Success" && withRetiredFields.value).toEqual(
+      decoded._tag === "Success" && decoded.value,
+    );
+  });
 
   it("a Mate opens its link with its project key and a service label, and every frame either side sends under the keys model decodes as its own type", () => {
     const up = [
-      { type: "hello", key: "zcp-key", serviceId: "S_ZCP", origin: "https://mate.zerops.app" },
+      {
+        type: "hello",
+        key: "zcp-key",
+        serviceId: "S_ZCP",
+        origin: "https://mate.zerops.app",
+        heldSessionIds: [],
+      },
       {
         type: "hello",
         key: "zcp-key",
         serviceId: "S_ZCP",
         origin: "https://mate.zerops.app",
         gitFingerprint: "a".repeat(64),
+        heldSessionIds: ["00000000-0000-4000-8000-000000000001"],
       },
       { type: "pong" },
       { type: "ticket-ack", ticket: "tk-1" },
+      { type: "observe-credential-ack", id: "obs-1", ok: true },
+      { type: "observe-credential-ack", id: "obs-2", ok: false },
       { type: "key-refused" },
       { type: "auto-update-policy", requestId: "r1" },
     ];
@@ -471,26 +517,21 @@ describe("the keys model's link", () => {
       ]);
     const down = [
       { type: "ping" },
-      { type: "state", mate: self },
+      { type: "state", mate: self, admission },
       {
         type: "state",
         mate: { ...self, chief: null, ownerUserId: "U1" },
+        admission,
         autoUpdate: { orgId: "O", enabled: true, revision: 1 },
       },
-      { type: "access", version: 3, viewAt: AT, full: true, members: [member] },
-      {
-        type: "access",
-        version: 4,
-        viewAt: AT,
-        full: false,
-        members: [{ ...member, visibility: "none" }],
-      },
-      { type: "access", version: 5, viewAt: AT, full: false, members: [] },
-      { type: "access", version: 6, full: true, refused: true, members: [] },
       { type: "ticket", ticket: "tk-1", userId: "U1", sessionId: "hs-1", expiresIn: 60 },
       { type: "close-session", sessionId: "hs-1" },
       { type: "git-credential", credential: "gc-1" },
       { type: "git-credential", credential: null },
+      { type: "observe-credential", id: "obs-1", credential: "zobs.value" },
+      { type: "observe-credential", id: "obs-2", credential: null },
+      { type: "signers", signers: { "claude-code": "U1" } },
+      { type: "signers", signers: {} },
       // Today's frames a Mate keeps: its tasks, its usage and its update policy.
       { type: "task-stop", taskId: "task-1", reason: "closed" },
       { type: "provider-keys", keys: [] },
@@ -506,10 +547,32 @@ describe("the keys model's link", () => {
         frame.type,
         "Success",
       ]);
-    const refused = decodeKeyDown(JSON.stringify(down[6]));
-    expect(
-      refused._tag === "Success" && refused.value.type === "access" && "refused" in refused.value,
-    ).toBe(true);
+  });
+
+  it("the signers frame carries no write time", () => {
+    const frame = { type: "signers", signers: { "claude-code": "U1" } };
+    const decoded = decodeKeyDown(JSON.stringify({ ...frame, at: 1 }));
+    expect(decoded._tag === "Success" && decoded.value).toEqual(frame);
+  });
+
+  it("HQ announces a positive ping period on its state while older HQ states remain readable", () => {
+    for (const pingIntervalMs of [1, 20_000, 600_000, undefined]) {
+      const decoded = decodeKeyDown(
+        JSON.stringify({ type: "state", mate: self, admission, pingIntervalMs }),
+      );
+      expect(decoded._tag).toBe("Success");
+      expect(
+        decoded._tag === "Success" &&
+          decoded.value.type === "state" &&
+          decoded.value.pingIntervalMs,
+      ).toBe(pingIntervalMs);
+    }
+    for (const pingIntervalMs of [0, -1, 0.5, "20000", null]) {
+      expect(
+        decodeKeyDown(JSON.stringify({ type: "state", mate: self, admission, pingIntervalMs }))
+          ._tag,
+      ).toBe("Failure");
+    }
   });
 
   it("a state under the keys model brings every open change a Mate holds per branch with its review, and an older HQ's state reads without them", () => {
@@ -530,7 +593,7 @@ describe("the keys model's link", () => {
       updatedAt: "2026-10-25T09:00:00.000Z",
     };
     const read = (mate: Record<string, unknown>) => {
-      const decoded = decodeKeyDown(JSON.stringify({ type: "state", mate }));
+      const decoded = decodeKeyDown(JSON.stringify({ type: "state", mate, admission }));
       return decoded._tag === "Success" && decoded.value.type === "state"
         ? decoded.value.mate
         : undefined;
@@ -556,23 +619,19 @@ describe("the keys model's link", () => {
     expect(read({ ...self, openPerBranch: false })).toBeUndefined();
   });
 
-  it("a hello without its key, an access delta naming an unknown visibility, a refused access frame carrying members and a state without its Chief are no frames", () => {
+  it("a hello without its key, a state without its Chief and an older HQ's access frame are no frames", () => {
     const { chief: _chief, ...withoutChief } = self;
     for (const hello of [
-      { key: "", serviceId: "S", origin: "https://mate.zerops.app" },
-      { key: "zcp-key", serviceId: "S" },
+      { key: "", serviceId: "S", origin: "https://mate.zerops.app", heldSessionIds: [] },
+      { key: "zcp-key", serviceId: "S", heldSessionIds: [] },
     ])
       expect(decodeKeyUp(JSON.stringify({ type: "hello", ...hello }))._tag).toBe("Failure");
+    const member = { userId: "U1", role: "ADMIN", visibility: "open" };
     const down = [
-      {
-        type: "access",
-        version: 1,
-        viewAt: AT,
-        full: false,
-        members: [{ ...member, visibility: "hidden" }],
-      },
-      { type: "access", version: 1, full: true, refused: true, members: [member] },
-      { type: "state", mate: withoutChief },
+      { type: "state", mate: withoutChief, admission },
+      { type: "access", version: 3, viewAt: AT, full: true, members: [member] },
+      { type: "access", version: 4, viewAt: AT, full: false, members: [] },
+      { type: "access", version: 6, full: true, refused: true, members: [] },
     ];
     for (const frame of down) expect(decodeKeyDown(JSON.stringify(frame))._tag).toBe("Failure");
   });

@@ -222,6 +222,9 @@ describe("ZeropsAgentAuthCard", () => {
     );
     expect(alone).toContain("Action required");
     expect(alone).toContain('data-tone="warning"');
+    expect(alone).toContain("Sign in to Claude");
+    expect(alone).toContain("data-zerops-agent-primary-action");
+    expect(alone).not.toContain(">Cancel<");
 
     const withClaude = renderToStaticMarkup(
       <ZeropsAgentAuthCard
@@ -241,19 +244,6 @@ describe("ZeropsAgentAuthCard", () => {
     expect(withClaude).not.toContain("Action required");
     expect(withClaude).toContain("Not signed in");
     expect(withClaude).toContain("Sign in to Codex");
-  });
-
-  it("shows a sign-in button for a not-authorized agent", () => {
-    const html = renderToStaticMarkup(
-      <ZeropsAgentAuthCard
-        snapshot={snapshot([agent({ agentId: "claude-code", state: "not-authorized" })])}
-        onSignIn={noop}
-        onCancel={noop}
-      />,
-    );
-
-    expect(html).toContain("Sign in to Claude");
-    expect(html).toContain("data-zerops-agent-primary-action");
   });
 
   it("shows a sign-in button for a reconnect agent, worded the same as not-authorized", () => {
@@ -437,6 +427,7 @@ describe("ZeropsAgentAuthCard — server-driven login session (S7 follow-up F8)"
     expect(html).toContain("Continue authorization");
     expect(html).not.toContain('disabled=""');
     expect(html).toContain("Choosing");
+    expect(html).toContain(">Cancel<");
   });
 
   it("keeps browser details in the modal instead of expanding the tray", () => {
@@ -458,6 +449,7 @@ describe("ZeropsAgentAuthCard — server-driven login session (S7 follow-up F8)"
 
     expect(html).not.toContain('href="https://claude.com/cai/oauth/authorize"');
     expect(html).not.toContain("Copy link");
+    expect(html).not.toContain("Open sign-in link");
     expect(html).toContain("Continue authorization");
     expect(html).toContain(">Cancel<");
   });
@@ -504,21 +496,6 @@ describe("ZeropsAgentAuthCard — server-driven login session (S7 follow-up F8)"
     );
     expect(claudeHtml).not.toContain("Copy code");
     expect(claudeHtml).not.toContain("data-zerops-agent-device-code");
-  });
-
-  it("shows the paste-into-terminal prompt and a Cancel button in awaiting-code (S7 fix2 finding 4)", () => {
-    const html = renderToStaticMarkup(
-      <ZeropsAgentAuthCard
-        snapshot={snapshot([
-          agent({ agentId: "claude-code", login: loginState({ phase: "awaiting-code" }) }),
-        ])}
-        onSignIn={noop}
-        onCancel={noop}
-      />,
-    );
-
-    expect(html).toContain("Continue authorization");
-    expect(html).toContain(">Cancel<");
   });
 
   it("offers account actions once succeeded and verified, ownership unrecorded", () => {
@@ -609,6 +586,7 @@ describe("ZeropsAgentAuthCard — server-driven login session (S7 follow-up F8)"
 
     expect(html).toContain("Not signed in");
     expect(html).toContain("Sign in to Claude");
+    expect(html).not.toContain(">Cancel<");
   });
 });
 
@@ -618,7 +596,7 @@ describe("ZeropsAgentAuthCard — server-driven login session (S7 follow-up F8)"
  * except reloading the page.
  */
 describe("ZeropsAgentAuthCard — cancel (S7 fix2 finding 4)", () => {
-  it.each(["starting", "menu", "awaiting-browser", "awaiting-code"] as const)(
+  it.each(["starting", "awaiting-browser", "awaiting-code"] as const)(
     "shows Continue and Cancel while phase is %s",
     (phase) => {
       const html = renderToStaticMarkup(
@@ -634,7 +612,7 @@ describe("ZeropsAgentAuthCard — cancel (S7 fix2 finding 4)", () => {
     },
   );
 
-  it.each(["succeeded", "failed", "cancelled"] as const)(
+  it.each(["succeeded", "failed"] as const)(
     "shows no Cancel button once phase is %s (session already ended)",
     (phase) => {
       const html = renderToStaticMarkup(
@@ -648,40 +626,6 @@ describe("ZeropsAgentAuthCard — cancel (S7 fix2 finding 4)", () => {
       expect(html).not.toContain(">Cancel<");
     },
   );
-
-  it("shows no Cancel button when there is no active session", () => {
-    const html = renderToStaticMarkup(
-      <ZeropsAgentAuthCard
-        snapshot={snapshot([agent({ agentId: "claude-code", state: "not-authorized" })])}
-        onSignIn={noop}
-        onCancel={noop}
-      />,
-    );
-
-    expect(html).not.toContain(">Cancel<");
-  });
-
-  it("routes an awaiting-browser session back into the modal alongside Cancel", () => {
-    const html = renderToStaticMarkup(
-      <ZeropsAgentAuthCard
-        snapshot={snapshot([
-          agent({
-            agentId: "claude-code",
-            login: loginState({
-              phase: "awaiting-browser",
-              url: "https://claude.com/cai/oauth/authorize",
-            }),
-          }),
-        ])}
-        onSignIn={noop}
-        onCancel={noop}
-      />,
-    );
-
-    expect(html).toContain("Continue authorization");
-    expect(html).not.toContain("Open sign-in link");
-    expect(html).toContain(">Cancel<");
-  });
 });
 
 describe("whose agent it is (D6)", () => {

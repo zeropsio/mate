@@ -1,10 +1,24 @@
 #!/usr/bin/env node
-// @effect-diagnostics nodeBuiltinImport:off globalConsole:off globalDate:off preferSchemaOverJson:off -- host gate runner.
+// @effect-diagnostics nodeBuiltinImport:off globalConsole:off globalDate:off globalJsonInEffect:off -- host gate runner.
+import { HostProcessArchitecture, HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
-import { guardScopePaths, runtimeCycleSourceRoots, retainedTestFile } from "./gate-input-scopes.ts";
+import * as NodeUtil from "node:util";
+import { browserPath, relatedScenarioLimit, scenarioSelectionManifest } from "./ci-blame.ts";
+import {
+  guardScopePaths,
+  runtimeCycleSourceRoots,
+  retainedTestFile,
+  scenarioCapInput,
+  scenarioCapsFile,
+  testClockFile,
+  testClockLedger,
+  testInputFile,
+  witnessOwners,
+} from "./gate-input-scopes.ts";
 import { fileReadInputs, hasFileReads } from "./gate-file-inputs.ts";
 import { staleDependencies } from "./gate-installed-dependencies.ts";
 import { stateOnlySmoke } from "./state-smoke-cases.ts";
@@ -36,11 +50,8 @@ export const repositoryInvariants = [
   "scripts/generate-theme-tokens.test.ts",
   "scripts/check-runtime-cycles.test.ts",
   "scripts/mate-readiness.test.ts",
+  "packages/test-recordings/recorded.test.ts",
 ];
-
-// Opt-in local witnesses are bounded; required CI witnesses use the full affected selection.
-// Full related scenario files, nearest first; edited and explicitly named files are uncapped.
-export const relatedScenarioLimit = 8;
 
 export const scenarioAreas = [
   "a-signin",
@@ -55,9 +66,6 @@ export const scenarioAreas = [
   "harness",
   "lifecycle-mutations",
 ] as const;
-
-// Native runtimes are outside the hosted browser scenario harness.
-const browserPath = (path: string) => !/^apps\/(?:mobile|desktop)(?:\/|$)/u.test(path);
 
 const sourceFile = /\.[cm]?[jt]sx?$/u;
 const documentation = (path: string) => /^(?:docs|\.plans)\//u.test(path) || /\.md$/iu.test(path);
@@ -139,23 +147,31 @@ function sourceShape(path: string, text: string): string | undefined {
 }
 
 /** Compare parsed source, preserving syntax and literal content while ignoring comments. */
-export function meaningfulChanges(root: string, base: string, paths: ReadonlyArray<string>) {
+export function meaningfulChanges(
+  root: string,
+  base: string,
+  paths: ReadonlyArray<string>,
+  entries = baseEntries(
+    NodeChildProcess.execFileSync("git", baseTreeArgs(base), {
+      cwd: root,
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+    }),
+  ),
+) {
   const previous = new Map<string, string>();
-  const tracked = NodeChildProcess.spawnSync("git", ["ls-tree", "-r", "--name-only", "-z", base], {
-    cwd: root,
-    encoding: "utf8",
-    maxBuffer: 64 * 1024 * 1024,
-  });
-  if (tracked.error) throw tracked.error;
-  if (tracked.status !== 0) throw new Error(tracked.stderr);
-  const oldFiles = new Set(tracked.stdout.split("\0"));
+  const oldFiles = new Set(
+    [...entries].filter(([, entry]) => !entry.startsWith("040000 ")).map(([path]) => path),
+  );
   const meaningful = paths.filter((path) => {
     if (documentation(path)) return false;
     if (oldFiles.has(path)) {
       const old = NodeChildProcess.spawnSync("git", ["show", `${base}:${path}`], {
         cwd: root,
         encoding: "utf8",
+        maxBuffer: 64 * 1024 * 1024,
       });
+      if (old.error) throw old.error;
       if (old.status !== 0) throw new Error(old.stderr);
       previous.set(path, old.stdout);
     }
@@ -767,28 +783,59 @@ export function comparisonBase(root: string, base: string): string {
   return result.stdout.trim();
 }
 
-export function changedPaths(root: string, base: string): string[] {
-  const git = (args: string[]) => {
-    const result = NodeChildProcess.spawnSync("git", args, {
-      cwd: root,
-      encoding: "utf8",
-      maxBuffer: 64 * 1024 * 1024,
-    });
-    if (result.error) throw result.error;
-    if (result.status !== 0) throw new Error(result.stderr || `git ${args.join(" ")} failed`);
-    return result.stdout.split("\0").filter(Boolean);
-  };
-  // merge-base excludes changes made on main after the lane branched; include index, working tree,
-  // untracked additions, deletions and both sides of renames (no rename detection).
-  const ancestor = comparisonBase(root, base);
-  return [
-    ...new Set([
-      ...git(["diff", "--name-only", "--no-renames", "-z", ancestor]),
-      ...git(["ls-files", "--others", "--exclude-standard", "-z"]),
-    ]),
-  ]
+// merge-base excludes changes made on main after the lane branched; include index, working tree,
+// untracked additions, deletions and both sides of renames (no rename detection).
+const laneReads = (ancestor: string) => [
+  ["diff", "--name-only", "--no-renames", "-z", ancestor],
+  ["ls-files", "--others", "--exclude-standard", "-z"],
+];
+
+const lanePaths = (outputs: ReadonlyArray<string>) =>
+  [...new Set(outputs.flatMap((output) => output.split("\0").filter(Boolean)))]
     .filter((path) => path !== ".gate-receipt.json" && path !== ".gate-receipt.json.tmp")
     .sort();
+
+export function changedPaths(root: string, base: string): string[] {
+  const ancestor = comparisonBase(root, base);
+  return lanePaths(
+    laneReads(ancestor).map((args) => {
+      const result = NodeChildProcess.spawnSync("git", args, {
+        cwd: root,
+        encoding: "utf8",
+        maxBuffer: 64 * 1024 * 1024,
+      });
+      if (result.error) throw result.error;
+      if (result.status !== 0) throw new Error(result.stderr || `git ${args.join(" ")} failed`);
+      return result.stdout;
+    }),
+  );
+}
+
+const execFile = NodeUtil.promisify(NodeChildProcess.execFile);
+const readGit = async (root: string, args: ReadonlyArray<string>) =>
+  (await execFile("git", args, { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }))
+    .stdout;
+
+/** Everything a receipt reads from Git about the lane, read concurrently once per evaluation. */
+async function laneSnapshot(root: string, comparison: string) {
+  const [changes, inventory, log, head] = await Promise.all([
+    Promise.all(laneReads(comparison).map((args) => readGit(root, args))),
+    readGit(root, ["ls-files", "--cached", "--others", "--exclude-standard", "-z"]),
+    readGit(root, ["log", "--format=%(trailers)", `${comparison}..HEAD`]),
+    readGit(root, ["rev-parse", "--verify", "HEAD^{commit}"]),
+  ]);
+  return {
+    headSha: head.trim(),
+    paths: lanePaths(changes),
+    inventory: inventory
+      .split("\0")
+      .filter((path) => path && !path.startsWith(".gate-receipt.json")),
+    trailers: log
+      .split("\n")
+      .filter((line) => line.startsWith("Drops-test:") || line.startsWith("Drops-test-file:"))
+      .sort()
+      .join("\n"),
+  };
 }
 
 function workspacePackages(root: string): GatePackage[] {
@@ -849,7 +896,7 @@ export function relatedTestPackages(packages: ReadonlyArray<GatePackage>) {
   return packages.filter((pkg) => /^(?:apps|infra)\//u.test(pkg.directory));
 }
 
-interface GateStage {
+export interface GateStage {
   readonly name: string;
   readonly command: string;
   readonly args: string[];
@@ -858,10 +905,17 @@ interface GateStage {
 }
 
 interface GateReceipt {
+  readonly version: 1;
+  readonly context: "gate";
+  readonly paths: ReadonlyArray<string>;
+  readonly headSha: string;
+  readonly baseSha: string;
   readonly stageHashes?: Readonly<Record<string, string>>;
   readonly diffHash: string;
   readonly selectionHash: string;
   readonly selectedStages: GateStage[];
+  readonly omittedWitnesses: OmittedWitness[];
+  readonly selectionMs: number;
   results: { name: string; status: number; durationMs: number }[];
   durationMs: number;
   queueWaitMs: number;
@@ -869,19 +923,44 @@ interface GateReceipt {
   atRisk: TimeoutRisk[];
 }
 
+type OmittedWitness =
+  | {
+      readonly file: string;
+      readonly kind: "scenario";
+      readonly reason: "opt-out" | "cap" | "unrelated";
+    }
+  | {
+      readonly file: string;
+      readonly kind: "smoke";
+      readonly reason: "opt-out";
+      readonly cases: ReadonlyArray<string>;
+    };
+
+const baseTreeArgs = (comparison: string) => ["ls-tree", "-r", "-t", "-z", comparison];
+
+// Every blob and tree entry of the comparison commit by path; the commit is immutable, so one read
+// serves every hash of a gate run.
+function baseEntries(listing: string): ReadonlyMap<string, string> {
+  return new Map(
+    listing
+      .split("\0")
+      .filter(Boolean)
+      .map((entry) => [entry.slice(entry.indexOf("\t") + 1), entry]),
+  );
+}
+
+const baseIdentity = (base: ReadonlyMap<string, string>, paths: ReadonlyArray<string>) =>
+  JSON.stringify(paths.flatMap((path) => base.get(path) ?? []));
+
 // Hash before/after file identities, independent of whether additions are untracked, staged or committed.
-// Only the lane's changed paths participate, so unrelated main changes preserve the receipt on rebase.
-function diffHash(root: string, comparison: string): string {
-  const paths = changedPaths(root, comparison);
+// Only the lane's changed paths participate, so unchanged stages can be reused after a rebase.
+function diffHash(
+  root: string,
+  base: ReadonlyMap<string, string>,
+  paths: ReadonlyArray<string>,
+): string {
   const hash = NodeCrypto.createHash("sha256");
-  if (paths.length)
-    hash.update(
-      NodeChildProcess.execFileSync(
-        "git",
-        ["--literal-pathspecs", "ls-tree", "-z", comparison, "--", ...paths],
-        { cwd: root, maxBuffer: 64 * 1024 * 1024 },
-      ),
-    );
+  hash.update(baseIdentity(base, paths));
   for (const path of paths) {
     const absolute = NodePath.join(root, path);
     const stat = NodeFS.lstatSync(absolute, { throwIfNoEntry: false });
@@ -911,6 +990,7 @@ function selectionHash(root: string): string {
   hash.update(process.version);
   const inputs = [
     "scripts/gate-changed.ts",
+    "scripts/ci-blame.ts",
     "scripts/gate-input-scopes.ts",
     "scripts/state-smoke-cases.ts",
     "scripts/gate-file-inputs.ts",
@@ -943,33 +1023,99 @@ function selectionHash(root: string): string {
   return hash.digest("hex");
 }
 
+/** A scenario receipt is reusable only when its HQ source revision is known and unchanged. */
+function scenarioHqReceiptInput(root: string, unknownRevision: string): unknown[] {
+  const command = process.env.MATE_HQ_TEST_COMMAND ?? null;
+  const pinPath = NodePath.join(root, ".mate-hq-ref");
+  const pin = NodeFS.existsSync(pinPath) ? NodeFS.readFileSync(pinPath, "utf8").trim() : null;
+  const input = [command, pin, process.env.HQ_BUILD_COMMIT ?? null];
+  if (command === null) return input;
+
+  // Only the standard launcher identifies a checkout without interpreting arbitrary shell code.
+  const launcher = /^node ([A-Za-z0-9_./-]+)$/u.exec(command)?.[1];
+  if (
+    !launcher ||
+    !NodePath.isAbsolute(launcher) ||
+    !launcher.endsWith("/conformance/scripts/test-hq.ts") ||
+    !NodeFS.existsSync(launcher)
+  )
+    return [...input, unknownRevision];
+  const hqRoot = NodePath.resolve(NodePath.dirname(launcher), "../..");
+  const git = (...args: string[]) => {
+    const result = NodeChildProcess.spawnSync("git", ["-C", hqRoot, ...args], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return result.status === 0 ? result.stdout.trim() : undefined;
+  };
+  const top = git("rev-parse", "--show-toplevel");
+  const revision = git("rev-parse", "--verify", "HEAD^{commit}");
+  const dirty = git("status", "--porcelain", "--untracked-files=normal");
+  if (
+    !top ||
+    NodeFS.realpathSync(top) !== NodeFS.realpathSync(hqRoot) ||
+    !revision ||
+    !/^[0-9a-f]{40}$/u.test(revision) ||
+    dirty !== "" ||
+    NodeFS.existsSync(NodePath.join(hqRoot, "COMMIT"))
+  )
+    return [...input, unknownRevision];
+  return [...input, revision];
+}
+
+/**
+ * Never a stage input wherever it sits under a scanned root: dependencies, Git's store and the
+ * output of builds and test runs, which the stages themselves write (the server bundle builds
+ * `apps/web/dist`), so hashing it would fail a run on its own output.
+ */
+const nonInputDirectories = new Set([
+  "node_modules",
+  ".git",
+  ".tanstack",
+  "dist",
+  "build",
+  "coverage",
+]);
+
 /** Each stage proves its own inputs, rather than invalidating every success on a lane edit. */
 function stageHashes(
   root: string,
   comparison: string,
+  base: ReadonlyMap<string, string>,
+  { paths, inventory, trailers: laneTrailers }: Awaited<ReturnType<typeof laneSnapshot>>,
   stages: GateStage[],
   graph: ReturnType<typeof buildGateGraph>,
   selection: string,
+  unknownHqRevision: string,
 ): Record<string, string> {
-  const inventory = NodeChildProcess.execFileSync(
-    "git",
-    ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
-    { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
-  )
-    .split("\0")
-    .filter((path) => path && !path.startsWith(".gate-receipt.json"));
   const inputs = graph.related ?? buildRelatedFileGraph(root, []);
+  let hqInput: unknown[] | undefined;
+  // The scanners walk the filesystem, including ignored source files that Git's inventory omits.
+  const scanned = (roots: ReadonlyArray<string>) => {
+    const files: string[] = [];
+    const visit = (directory: string) => {
+      const absolute = NodePath.join(root, directory);
+      if (!NodeFS.existsSync(absolute)) return;
+      for (const entry of NodeFS.readdirSync(absolute, { withFileTypes: true })) {
+        const path = NodePath.posix.join(directory, entry.name);
+        if (entry.isDirectory() && !nonInputDirectories.has(entry.name)) visit(path);
+        else if (
+          entry.isSymbolicLink() ||
+          /\.(?:[cm]?[jt]sx?|css)$/u.test(entry.name) ||
+          /^(?:components\.json|package\.json|[jt]sconfig(?:\.[^/]*)?\.json|\.gitignore|\.ignore|\.oxlintignore)$/u.test(
+            entry.name,
+          )
+        )
+          files.push(path);
+      }
+    };
+    roots.forEach(visit);
+    return files;
+  };
   const digest = (paths: ReadonlyArray<string>, baseline: ReadonlyArray<string>) => {
     const hash = NodeCrypto.createHash("sha256");
     const files = [...new Set(paths)].sort();
-    if (baseline.length)
-      hash.update(
-        NodeChildProcess.execFileSync(
-          "git",
-          ["--literal-pathspecs", "ls-tree", "-z", comparison, "--", ...baseline],
-          { cwd: root, maxBuffer: 64 * 1024 * 1024 },
-        ),
-      );
+    hash.update(baseIdentity(base, [...baseline].sort()));
     for (const path of files) {
       const absolute = NodePath.join(root, path);
       const stat = NodeFS.lstatSync(absolute, { throwIfNoEntry: false });
@@ -990,7 +1136,8 @@ function stageHashes(
     }
     return hash.digest("hex");
   };
-  const laneTests = changedPaths(root, comparison).filter((path) => retainedTestFile.test(path));
+  const laneTests = paths.filter((path) => retainedTestFile.test(path));
+  const tracked = new Set(inventory);
   return Object.fromEntries(
     stages
       .filter((stage) => !stage.slot)
@@ -1011,9 +1158,11 @@ function stageHashes(
         let trailers = "";
         if (stage.name === "check touched files") {
           files.push(...inventory.filter((path) => path.startsWith("oxlint-plugin-t3code/")));
-        } else if (stage.name.startsWith("typecheck ")) {
+        } else if (stage.name.startsWith("typecheck ") || stage.name === "build server bundle") {
           const owners = new Set(
-            graph.workspace.filter((pkg) => pkg.directory === stage.cwd).map((pkg) => pkg.name),
+            stage.name === "build server bundle"
+              ? bundlePackages
+              : graph.workspace.filter((pkg) => pkg.directory === stage.cwd).map((pkg) => pkg.name),
           );
           for (const name of owners)
             graph.workspace
@@ -1028,7 +1177,7 @@ function stageHashes(
             ),
           );
           // Root-configured scenario/oracle typechecks have an explicit project path.
-          if (!stage.cwd)
+          if (!stage.cwd && stage.name !== "build server bundle")
             files.push(
               ...inventory.filter(
                 (path) => path.startsWith("apps/web/") || path.startsWith("packages/"),
@@ -1036,10 +1185,14 @@ function stageHashes(
             );
         } else if (stage.name === "guard ledgers") {
           files.push(
+            ...scanned(["apps/web", ...guardScopePaths]),
             ...inventory.filter(
               (path) =>
                 guardScopePaths.some((directory) => path.startsWith(`${directory}/`)) ||
-                path.startsWith("oxlint-plugin-t3code/"),
+                path.startsWith("oxlint-plugin-t3code/") ||
+                /(?:^|\/)(?:\.gitignore|\.ignore|\.oxlintignore|components\.json|[jt]sconfig(?:\.[^/]*)?\.json)$/u.test(
+                  path,
+                ),
             ),
           );
           baseline = [
@@ -1050,6 +1203,7 @@ function stageHashes(
         } else if (stage.name === "runtime cycle ratchet") {
           files.push(
             "scripts/runtime-cycles.json",
+            ...scanned(runtimeCycleSourceRoots),
             ...inventory.filter(
               (path) =>
                 runtimeCycleSourceRoots.some((directory) => path.startsWith(`${directory}/`)) ||
@@ -1057,33 +1211,84 @@ function stageHashes(
             ),
           );
           baseline = ["scripts/runtime-cycles.json", "scripts/check-runtime-cycles.ts"];
+        } else if (stage.name === "test clock ratchet") {
+          // The check reads its scanned files, never their imports.
+          files = [
+            ...inputs.inputFiles(["scripts/check-test-clock.ts"], inventory),
+            testClockLedger,
+            ...(stage.args.length === 3 ? inventory.filter(testClockFile) : files),
+          ];
+          baseline = [testClockLedger];
+        } else if (stage.name === "scenario caps") {
+          // The check counts every area's scenario files, never their imports.
+          files = [
+            ...inputs.inputFiles(["scripts/check-scenario-caps.ts"], inventory),
+            scenarioCapsFile,
+            ...inventory.filter(scenarioCapInput),
+          ];
+        } else if (stage.name === "test input ratchet") {
+          // The check reads the changed test and fixture files (and their base), never their imports.
+          files = [
+            ...inputs.inputFiles(["scripts/check-test-inputs.ts"], inventory),
+            ...paths.filter(testInputFile),
+          ];
         } else if (stage.name === "test sentence retention") {
-          files.push(...laneTests);
+          // Witnesses tie lane tests to their owners and untouched tests to touched owners.
+          const touched = new Set(paths);
+          files.push(...paths);
+          for (const [test, owners] of witnessOwners(root))
+            if (touched.has(test)) files.push(...[...owners].filter((owner) => tracked.has(owner)));
+            else if ([...owners].some((owner) => touched.has(owner))) files.push(test);
           baseline = laneTests;
-          trailers = NodeChildProcess.execFileSync(
-            "git",
-            ["log", "--format=%(trailers)", `${comparison}..HEAD`],
-            { cwd: root, encoding: "utf8" },
-          )
-            .split("\n")
-            .filter((line) => line.startsWith("Drops-test:"))
-            .sort()
-            .join("\n");
+          trailers = laneTrailers;
+        } else if (stage.name === "witness replay") {
+          // Which witnesses are new depends on the base tests; replays read owners and configs too.
+          const replayed = paths.filter((path) => /\.test\.tsx?$/u.test(path));
+          files.push(...replayed);
+          for (const [test, owners] of witnessOwners(root))
+            if (replayed.includes(test))
+              files.push(...[...owners].filter((owner) => tracked.has(owner)));
+          for (const placement of testStages(replayed, graph.workspace)) {
+            const config = placement.args.indexOf("--config");
+            files.push(
+              NodePath.posix.join(
+                placement.cwd ?? ".",
+                config >= 0 ? placement.args[config + 1]! : "vite.config.ts",
+              ),
+            );
+          }
+          baseline = replayed;
         }
-        if (stage.name !== "check touched files") files = inputs.inputFiles(files, inventory);
+        if (
+          ![
+            "check touched files",
+            "test clock ratchet",
+            "test input ratchet",
+            "scenario caps",
+          ].includes(stage.name)
+        )
+          files = inputs.inputFiles(files, inventory);
         const command = {
           ...stage,
           args: stage.args.map((arg) => (arg === comparison ? "<comparison>" : arg)),
         };
-        // A receipt from the in-process Core cannot prove scenarios against an external HQ.
-        const hqCommand = stage.args.some((arg) => arg.endsWith("/scenarios/vitest.config.ts"))
-          ? (process.env.MATE_HQ_TEST_COMMAND ?? null)
+        // A launcher path alone cannot prove which revision its HQ binary was built from.
+        const scenarioHqInput = stage.args.some((arg) =>
+          arg.endsWith("/scenarios/vitest.config.ts"),
+        )
+          ? (hqInput ??= scenarioHqReceiptInput(root, unknownHqRevision))
           : null;
         return [
           stage.name,
           NodeCrypto.createHash("sha256")
             .update(
-              JSON.stringify([selection, command, digest(files, baseline), trailers, hqCommand]),
+              JSON.stringify([
+                selection,
+                command,
+                digest(files, baseline),
+                trailers,
+                scenarioHqInput,
+              ]),
             )
             .digest("hex"),
         ];
@@ -1091,10 +1296,180 @@ function stageHashes(
   );
 }
 
+const sharedStageNames = new Set(["guard ledgers", "runtime cycle ratchet"]);
+
+/** Share only successful stages whose checkout inputs and local toolchain match. */
+async function sharedStageCache(
+  root: string,
+  base: ReadonlyMap<string, string>,
+  inventory: ReadonlyArray<string>,
+  full: boolean,
+) {
+  if (
+    full ||
+    process.env.CI ||
+    process.env.GITHUB_ACTIONS ||
+    process.env.NODE_OPTIONS ||
+    process.env.NODE_PATH ||
+    process.env.NAPI_RS_NATIVE_LIBRARY_PATH ||
+    process.env.NAPI_RS_FORCE_WASI ||
+    process.env.NAPI_RS_WASI_FLAVOR ||
+    process.env.VP_OVERRIDE_PACKAGES ||
+    Object.keys(process.env).some((key) => /^T3CODE_.*LEDGER_DIRECTORY$/u.test(key))
+  ) {
+    return undefined;
+  }
+
+  // The checks can follow links, whereas Git inventories the link text, not its target.
+  const hasLink = (directory: string): boolean => {
+    const absolute = NodePath.join(root, directory);
+    if (!NodeFS.existsSync(absolute)) return false;
+    return NodeFS.readdirSync(absolute, { withFileTypes: true }).some((entry) => {
+      if (nonInputDirectories.has(entry.name)) return false;
+      return (
+        entry.isSymbolicLink() ||
+        (entry.isDirectory() && hasLink(NodePath.posix.join(directory, entry.name)))
+      );
+    });
+  };
+  if (
+    ["apps/web", ...guardScopePaths, ...runtimeCycleSourceRoots].some(hasLink) ||
+    inventory.some(
+      (file) =>
+        /^(?:scripts|oxlint-plugin-t3code|apps|packages)\//u.test(file) &&
+        !/(?:^|\/)node_modules(?:\/|$)/u.test(file) &&
+        NodeFS.lstatSync(NodePath.join(root, file), { throwIfNoEntry: false })?.isSymbolicLink(),
+    )
+  ) {
+    return undefined;
+  }
+
+  const env = stageEnvironment(root);
+  const snapshot = async () => {
+    try {
+      const { hashGuardContext, hashPackageTrees, makeGuardSourceHasher } =
+        await import("./lib/guard-cache.ts");
+      const node = NodeChildProcess.spawnSync("which", ["node"], {
+        cwd: root,
+        env,
+        encoding: "utf8",
+      });
+      if (
+        node.status !== 0 ||
+        NodeFS.realpathSync(node.stdout.trim()) !== NodeFS.realpathSync(process.execPath)
+      ) {
+        return undefined;
+      }
+      const tools = hashPackageTrees(
+        ["vite-plus", "madge", "effect", "@effect/platform-node"].map((name) =>
+          NodePath.join(root, "scripts/node_modules", name, "package.json"),
+        ),
+        true,
+      );
+      const runLint = (args: ReadonlyArray<string>) =>
+        NodeChildProcess.spawnSync("vp", ["lint", ...args], {
+          cwd: root,
+          env,
+          encoding: "utf8",
+          maxBuffer: 64 * 1024 * 1024,
+        });
+      const version = runLint(["--version"]);
+      const config = runLint(["--print-config"]);
+      const selection = runLint(["--debug=files", ...guardScopePaths]);
+      if ([version, config, selection].some((result) => result.status !== 0)) {
+        return undefined;
+      }
+      if (!/^Version: \S+/u.test(version.stdout.trim())) return undefined;
+      const files = selection.stdout
+        .split(/\r?\n/u)
+        .filter(Boolean)
+        .map((file) =>
+          (NodePath.isAbsolute(file) ? NodePath.relative(root, file) : file).replaceAll("\\", "/"),
+        )
+        .sort();
+      if (files.some((file) => !guardScopePaths.some((scope) => file.startsWith(`${scope}/`))))
+        return undefined;
+      const context = hashGuardContext({
+        cwd: root,
+        config: config.stdout,
+        version: version.stdout.trim(),
+        ruleNames: [],
+      });
+      const source = makeGuardSourceHasher(root, files);
+      const guard = NodeCrypto.createHash("sha256")
+        .update(context)
+        .update(JSON.stringify(files.map((file) => [file, source(file)])))
+        .digest("hex");
+      const executable = NodeFS.readFileSync(
+        NodePath.join(root, "node_modules/.bin/vp"),
+        "utf8",
+      ).replaceAll(root, "<repo>");
+      return { tools, guard, executable, jobs: env.MATE_TEST_JOBS };
+    } catch {
+      // An unidentifiable toolchain must run the checks rather than reuse a result.
+      return undefined;
+    }
+  };
+  const before = await snapshot();
+  if (!before) return undefined;
+  const directory = NodePath.join(
+    process.env.XDG_CACHE_HOME || NodePath.join(NodeOS.homedir(), ".cache"),
+    "mate-gate-stages",
+  );
+  const key = (stage: GateStage, fingerprint: string | undefined) => {
+    if (!sharedStageNames.has(stage.name) || fingerprint === undefined) return undefined;
+    // Before enrollment the guard also reads the lane's Git history, not just its base tree.
+    if (
+      stage.name === "guard ledgers" &&
+      !base.has("oxlint-plugin-t3code/failure-to-empty-enrollment.json")
+    )
+      return undefined;
+    return NodeCrypto.createHash("sha256")
+      .update(
+        JSON.stringify([
+          fingerprint,
+          HostProcessPlatform.defaultValue(),
+          HostProcessArchitecture.defaultValue(),
+          process.version,
+          before,
+        ]),
+      )
+      .digest("hex");
+  };
+  const has = (value: string) => {
+    try {
+      return NodeFS.readFileSync(NodePath.join(directory, `${value}.json`), "utf8") === value;
+    } catch {
+      return false;
+    }
+  };
+  const put = (value: string) => {
+    let temporary: string | undefined;
+    try {
+      NodeFS.mkdirSync(directory, { recursive: true });
+      temporary = NodePath.join(directory, `${value}.${NodeCrypto.randomUUID()}.tmp`);
+      NodeFS.writeFileSync(temporary, value, { flag: "wx" });
+      NodeFS.renameSync(temporary, NodePath.join(directory, `${value}.json`));
+    } catch {
+      // An unavailable cache never prevents the actual checks from running.
+    } finally {
+      if (temporary) NodeFS.rmSync(temporary, { force: true });
+    }
+  };
+  const unchanged = async () => JSON.stringify(await snapshot()) === JSON.stringify(before);
+  return { key, has, put, unchanged };
+}
+
 function readReceipt(path: string): GateReceipt | undefined {
   try {
     const receipt = JSON.parse(NodeFS.readFileSync(path, "utf8")) as GateReceipt | null;
     return receipt &&
+      receipt.version === 1 &&
+      receipt.context === "gate" &&
+      Array.isArray(receipt.paths) &&
+      receipt.paths.every((path) => typeof path === "string") &&
+      Number.isFinite(receipt.selectionMs) &&
+      receipt.selectionMs >= 0 &&
       Array.isArray(receipt.selectedStages) &&
       Array.isArray(receipt.results) &&
       receipt.selectedStages.every((stage) => stage && typeof stage.name === "string") &&
@@ -1108,16 +1483,22 @@ function readReceipt(path: string): GateReceipt | undefined {
 
 function reusableReceipt(
   receipt: GateReceipt | undefined,
+  headSha: string,
+  baseSha: string,
   hash: string,
   selection: string,
   stages: GateStage[],
+  omissions: OmittedWitness[],
 ): boolean {
   return (
     receipt !== undefined &&
     receipt.completed === true &&
+    receipt.headSha === headSha &&
+    receipt.baseSha === baseSha &&
     receipt.diffHash === hash &&
     receipt.selectionHash === selection &&
     JSON.stringify(receipt.selectedStages) === JSON.stringify(stages) &&
+    JSON.stringify(receipt.omittedWitnesses) === JSON.stringify(omissions) &&
     Number.isFinite(receipt.durationMs) &&
     receipt.durationMs >= 0 &&
     Number.isFinite(receipt.queueWaitMs) &&
@@ -1193,30 +1574,6 @@ export function buildGateGraph(
   return Object.freeze({ workspace, units, scenarios, related });
 }
 
-function selectScenarioFiles(
-  graph: ReturnType<typeof buildGateGraph>,
-  paths: ReadonlyArray<string>,
-  existing: ReadonlyArray<string>,
-  namedScenarios: ReadonlyArray<string>,
-  limit: number,
-) {
-  const scenarioPaths = paths.filter(browserPath);
-  const explicit = new Set([
-    ...namedScenarios,
-    ...scenarioPaths.filter((file) => file.endsWith(".scenario.ts") && existing.includes(file)),
-  ]);
-  const ranked =
-    graph.related
-      ?.rank(scenarioPaths)
-      .filter(({ file }) => graph.scenarios.includes(file) && !explicit.has(file)) ?? [];
-  const selectedScenarios = ranked.slice(0, limit);
-  return {
-    selectedScenarios,
-    overflowScenarios: ranked.slice(limit),
-    inventory: [...new Set([...explicit, ...selectedScenarios.map(({ file }) => file)])].sort(),
-  };
-}
-
 function validateNamedScenarios(root: string, files: ReadonlyArray<string>): void {
   for (const file of files) {
     if (
@@ -1239,16 +1596,18 @@ export function affectedScenarioFiles(
   const paths = changedPaths(root, comparison);
   const meaningful = meaningfulChanges(root, comparison, paths);
   const graph = buildGateGraph(root, meaningful.previous, meaningful.paths);
-  const { inventory } = selectScenarioFiles(
+  const { inventory } = scenarioSelectionManifest(
+    "state-smoke",
     graph,
     meaningful.paths,
     paths.filter((path) => NodeFS.existsSync(NodePath.join(root, path))),
     namedScenarios,
-    Infinity,
   );
   validateSelectedFiles(root, inventory);
   return inventory;
 }
+
+const bundlePackages = ["t3", "@t3tools/web"];
 
 export function selectGateSteps(
   graph: ReturnType<typeof buildGateGraph>,
@@ -1259,6 +1618,7 @@ export function selectGateSteps(
     inventory,
     smokeFiles,
     slots,
+    tests,
     withScenarios = false,
   }: {
     readonly comparison: string;
@@ -1267,13 +1627,15 @@ export function selectGateSteps(
     readonly inventory: ReadonlyArray<string>;
     readonly smokeFiles: ReadonlyArray<string>;
     readonly slots: number;
+    /** Test suites and test machinery run only when asked (`--tests`); lint, typecheck and build always. */
+    readonly tests: boolean;
     readonly withScenarios?: boolean;
   },
 ) {
   const { workspace, units, related } = graph;
-  const files = (withScenarios ? inventory : []).map((file) =>
-    NodePath.posix.relative("apps/web", file),
-  );
+  const selectedScenarios = withScenarios
+    ? inventory
+    : inventory.filter((file) => paths.includes(file) && existing.includes(file));
   const packages = typecheckPackages(paths, workspace);
   const steps: GateStage[] = [];
   steps.push({
@@ -1286,18 +1648,49 @@ export function selectGateSteps(
     command: "node",
     args: ["scripts/check-runtime-cycles.ts", "--base", comparison],
   });
-  steps.push({
-    name: "test sentence retention",
-    command: "node",
-    args: ["scripts/check-test-sentences.ts", "--base", comparison],
-  });
+  if (tests)
+    steps.push({
+      name: "test sentence retention",
+      command: "node",
+      args: ["scripts/check-test-sentences.ts", "--base", comparison],
+    });
+  if (
+    tests &&
+    paths.some(
+      (path) =>
+        scenarioCapInput(path) ||
+        ["scripts/check-scenario-caps.ts", "scripts/check-test-sentences.ts"].includes(path),
+    )
+  )
+    steps.push({
+      name: "scenario caps",
+      command: "node",
+      args: ["scripts/check-scenario-caps.ts"],
+    });
+  const clockFiles = paths.filter(testClockFile);
+  // A ledger or check edit scans every test file; otherwise only the touched ones.
+  const clockScan = paths.some((path) =>
+    [testClockLedger, "scripts/check-test-clock.ts"].includes(path),
+  );
+  if (tests && (clockScan || clockFiles.length))
+    steps.push({
+      name: "test clock ratchet",
+      command: "node",
+      args: ["scripts/check-test-clock.ts", "--base", comparison, ...(clockScan ? [] : clockFiles)],
+    });
+  if (tests && paths.some((path) => testInputFile(path) || path === "scripts/check-test-inputs.ts"))
+    steps.push({
+      name: "test input ratchet",
+      command: "node",
+      args: ["scripts/check-test-inputs.ts", "--base", comparison],
+    });
   if (existing.length)
     steps.push({
       name: "check touched files",
       command: "vp",
       args: ["check", "--no-error-on-unmatched-pattern", ...existing],
     });
-  if (paths.length)
+  if (tests && paths.length)
     steps.push({
       name: "repository invariants",
       command: "vp",
@@ -1307,35 +1700,47 @@ export function selectGateSteps(
     steps.push({
       name: `typecheck ${pkg.name}`,
       command: "vp",
-      args: ["exec", "tsc", "--noEmit", "--incremental"],
+      args: ["exec", "effect-tsgo", "tsrs", "--noEmit", "--incremental"],
       cwd: pkg.directory,
     });
-  if (paths.some((path) => path.startsWith("apps/web/test/engine-oracle/")))
+  // The web's own test projects import the web and its dependencies, so they typecheck whenever it does.
+  const webTypechecks = packages.some((pkg) => pkg.name === "@t3tools/web");
+  if (webTypechecks)
     steps.push({
       name: "typecheck engine oracle",
       command: "vp",
       args: [
         "exec",
-        "tsc",
+        "effect-tsgo",
+        "tsrs",
         "--noEmit",
         "--incremental",
         "-p",
         "apps/web/test/engine-oracle/tsconfig.json",
       ],
     });
-  if (paths.some((path) => path.startsWith("apps/web/test/scenarios/")))
+  if (webTypechecks)
     steps.push({
       name: "typecheck scenarios",
       command: "vp",
       args: [
         "exec",
-        "tsc",
+        "effect-tsgo",
+        "tsrs",
         "--noEmit",
         "--incremental",
         "-p",
         "apps/web/test/scenarios/tsconfig.json",
       ],
     });
+  // The hosted product bundle: the server build builds the web client first.
+  if (packages.some((pkg) => bundlePackages.includes(pkg.name)))
+    steps.push({
+      name: "build server bundle",
+      command: "vp",
+      args: ["run", "--filter", "t3", "build"],
+    });
+  if (!tests) return { steps, ownedUnits: [], selectedScenarios: [] };
   // Explicit owned files avoid Vitest's manifest/lockfile fallback to full suites.
   const manifestPaths = new Set(paths.filter(packageManifest));
   // A lockfile has no package-local owner. It never promotes the entire workspace's units;
@@ -1364,54 +1769,14 @@ export function selectGateSteps(
       ...units.filter((file) => manifestOwners.some((pkg) => file.startsWith(`${pkg.directory}/`))),
     ]),
   ].filter((file) => !repositoryInvariants.includes(file));
-  const driverUnits = ownedUnits.filter((file) =>
-    file.startsWith("apps/web/test/scenarios/fakes/"),
-  );
-  const consumerUnits = ownedUnits.filter((file) => !driverUnits.includes(file));
-  const consumers = [
-    { directory: ".", name: "root tests", typecheck: false },
-    ...relatedTestPackages(workspace),
-  ];
-  for (const pkg of consumers) {
-    const own = consumerUnits.filter((file) =>
-      pkg.directory === "."
-        ? !consumers.slice(1).some((consumer) => file.startsWith(`${consumer.directory}/`))
-        : file.startsWith(`${pkg.directory}/`),
-    );
-    if (own.length)
-      steps.push({
-        name: `related ${pkg.name}`,
-        command: "vp",
-        cwd: pkg.directory,
-        args: [
-          "test",
-          "run",
-          // L2's selected server files use the existing worker budget rather than full-suite serialization.
-          ...(pkg.directory === "apps/server" ? ["--fileParallelism"] : []),
-          ...own.map((file) => NodePath.posix.relative(pkg.directory, file)),
-        ],
-      });
-  }
-  if (driverUnits.length)
+  // New witnesses replay before the test stages, so a nested browser slot never waits on the gate's.
+  if (existing.some((path) => /\.test\.tsx?$/u.test(path)))
     steps.push({
-      name: "related scenario-driver units",
-      cwd: "apps/web",
-      command: "vp",
-      args: [
-        "test",
-        "run",
-        "--config",
-        "test/scenarios/vitest.config.ts",
-        ...driverUnits.map((file) => NodePath.posix.relative("apps/web", file)),
-      ],
+      name: "witness replay",
+      command: "node",
+      args: ["scripts/witness-replay.ts", "--changed", comparison],
     });
-  if (files.length)
-    steps.push({
-      name: "edited scenario files",
-      cwd: "apps/web",
-      command: "vp",
-      args: ["test", "run", "--config", "test/scenarios/vitest.config.ts", ...files],
-    });
+  steps.push(...testStages([...ownedUnits, ...selectedScenarios], workspace));
   // Edited smoke files already ran in full, so do not run their cases a second time.
   const smoke = withScenarios ? smokeFiles.filter((file) => !inventory.includes(file)) : [];
   for (const [name, configArgs, files] of [
@@ -1460,28 +1825,125 @@ export function selectGateSteps(
       args: [`GATE_SLOTS=${slots}`, gateSlotDirectory()],
       slot: true,
     });
-  return { steps, ownedUnits };
+  return { steps, ownedUnits, selectedScenarios };
 }
 
-if (import.meta.main) {
-  const root = NodePath.resolve(import.meta.dirname, "..");
-  const args = process.argv.slice(2);
+/** The stages that run test and scenario files, each under its package and Vitest config. */
+export function testStages(
+  testFiles: ReadonlyArray<string>,
+  workspace: ReadonlyArray<GatePackage>,
+): GateStage[] {
+  const steps: GateStage[] = [];
+  const scenarios = testFiles.filter((file) => file.endsWith(".scenario.ts"));
+  const files = scenarios.map((file) => NodePath.posix.relative("apps/web", file));
+  const ownedUnits = testFiles.filter((file) => !scenarios.includes(file));
+  const driverUnits = ownedUnits.filter((file) =>
+    file.startsWith("apps/web/test/scenarios/fakes/"),
+  );
+  // Only test/e-env's config (PostgreSQL, serial files) includes these; CI runs them through it too.
+  const environmentSourceUnits = ownedUnits.filter((file) =>
+    file.startsWith("apps/web/test/scenarios/areas/e-env/"),
+  );
+  const consumerUnits = ownedUnits.filter(
+    (file) => !driverUnits.includes(file) && !environmentSourceUnits.includes(file),
+  );
+  const consumers = [
+    { directory: ".", name: "root tests", typecheck: false },
+    ...relatedTestPackages(workspace),
+  ];
+  for (const pkg of consumers) {
+    const own = consumerUnits.filter((file) =>
+      pkg.directory === "."
+        ? !consumers.slice(1).some((consumer) => file.startsWith(`${consumer.directory}/`))
+        : file.startsWith(`${pkg.directory}/`),
+    );
+    if (own.length)
+      steps.push({
+        name: `related ${pkg.name}`,
+        command: "vp",
+        cwd: pkg.directory,
+        args: [
+          "test",
+          "run",
+          // L2's selected server files use the existing worker budget rather than full-suite serialization.
+          ...(pkg.directory === "apps/server" ? ["--fileParallelism"] : []),
+          ...own.map((file) => NodePath.posix.relative(pkg.directory, file)),
+        ],
+      });
+  }
+  if (environmentSourceUnits.length)
+    steps.push({
+      name: "related environment source consumers",
+      cwd: "apps/web",
+      command: "vp",
+      args: [
+        "test",
+        "run",
+        "--config",
+        "test/e-env/vitest.config.ts",
+        ...environmentSourceUnits.map((file) => NodePath.posix.relative("apps/web", file)),
+      ],
+    });
+  if (driverUnits.length)
+    steps.push({
+      name: "related scenario-driver units",
+      cwd: "apps/web",
+      command: "vp",
+      args: [
+        "test",
+        "run",
+        "--config",
+        "test/scenarios/vitest.config.ts",
+        ...driverUnits.map((file) => NodePath.posix.relative("apps/web", file)),
+      ],
+    });
+  if (files.length)
+    steps.push({
+      name: "edited scenario files",
+      cwd: "apps/web",
+      command: "vp",
+      args: ["test", "run", "--config", "test/scenarios/vitest.config.ts", ...files],
+    });
+  return steps;
+}
+
+/** The environment a stage runs under; the witness replay runs its test files the same way. */
+export function stageEnvironment(root: string, stage?: GateStage): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    MATE_TEST_JOBS: process.env.MATE_TEST_JOBS ?? "8",
+    PATH: [NodePath.join(root, "node_modules/.bin"), process.env.PATH ?? ""].join(
+      NodePath.delimiter,
+    ),
+  };
+  // Keep the scenarios' configured serial PostgreSQL fixtures when unit workers are bounded.
+  if (stage?.args.some((arg) => arg.endsWith("/scenarios/vitest.config.ts")))
+    delete env.VITEST_MAX_WORKERS;
+  return env;
+}
+
+/** The CLI for one worktree; resolves to the exit status. */
+export async function runGate(root: string, args: ReadonlyArray<string>): Promise<number> {
   if (args.includes("--help")) {
     console.log(
-      "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--full] [--force] [--with-scenarios] [--scenarios <file...>]\n" +
+      "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--full] [--force] [--tests] [--with-scenarios] [--scenarios <file...>]\n" +
+        "Default: lint, typecheck and build of the changed packages. Tests run only when the owner asks:\n" +
+        "--tests adds test suites and test machinery; --with-scenarios and --scenarios imply it.\n" +
         "GATE_SLOTS: positive integer, default 3. Machine-wide slots for browser/scenario stages.\n" +
         `Slots: ${gateSlotDirectory()}. Queue waits have no timeout and are reported separately from stage timings.`,
     );
-    process.exit(0);
+    return 0;
   }
   const stale = staleDependencies(root);
   if (stale) {
     console.error(`gate refused: ${stale}`);
-    process.exit(1);
+    return 1;
   }
+  const selectionStarted = process.hrtime.bigint();
   const slots = gateSlotCount();
   const verbose = args.includes("--verbose");
   const withScenarios = args.includes("--with-scenarios") || args.includes("--scenarios");
+  const tests = withScenarios || args.includes("--tests");
   let base = "origin/main";
   const namedScenarios: string[] = [];
   for (let index = 0; index < args.length; index++) {
@@ -1491,6 +1953,7 @@ if (import.meta.main) {
       arg === "--force" ||
       arg === "--full" ||
       arg === "--verbose" ||
+      arg === "--tests" ||
       arg === "--with-scenarios"
     )
       continue;
@@ -1505,39 +1968,95 @@ if (import.meta.main) {
       if (namedScenarios.length === start) throw new Error("--scenarios needs scenario file paths");
     } else {
       throw new Error(
-        "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--full] [--force] [--with-scenarios] [--scenarios <file...>]",
+        "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--full] [--force] [--tests] [--with-scenarios] [--scenarios <file...>]",
       );
     }
   }
   validateNamedScenarios(root, namedScenarios);
   const comparison = comparisonBase(root, base);
-  const paths = changedPaths(root, comparison);
+  const [lane, baseTree] = await Promise.all([
+    laneSnapshot(root, comparison),
+    readGit(root, baseTreeArgs(comparison)).then(baseEntries),
+  ]);
+  const paths = lane.paths;
   if (paths.length === 0 && namedScenarios.length === 0) {
     console.log("No changed files; no gates to run.");
-    process.exit(0);
+    return 0;
   }
   const existing = paths.filter((path) => NodeFS.existsSync(NodePath.join(root, path)));
-  const meaningful = meaningfulChanges(root, comparison, paths);
+  const meaningful = meaningfulChanges(root, comparison, paths, baseTree);
   const scenarioPaths = meaningful.paths.filter(browserPath);
   const smokeFiles = scenarioPaths.length ? Object.keys(stateOnlySmoke) : [];
   validateSelectedFiles(root, smokeFiles);
-  const graph = buildGateGraph(root, meaningful.previous, meaningful.paths);
-  const { inventory, selectedScenarios, overflowScenarios } = selectScenarioFiles(
+  // Even a comment-only edit to an existing scenario must execute that scenario.
+  const selectionPaths = [
+    ...new Set([...meaningful.paths, ...existing.filter((file) => file.endsWith(".scenario.ts"))]),
+  ].sort();
+  const graph = buildGateGraph(root, meaningful.previous, selectionPaths);
+  const scenarioSelection = scenarioSelectionManifest(
+    "gate",
     graph,
-    meaningful.paths,
+    selectionPaths,
     existing,
     namedScenarios,
-    relatedScenarioLimit,
   );
+  const { inventory, selectedScenarios, overflowScenarios } = scenarioSelection;
   validateSelectedFiles(root, inventory);
-  if (verbose || args.includes("--list")) {
+  const { steps, selectedScenarios: selectedFilesForGate } = selectGateSteps(graph, {
+    comparison,
+    existing,
+    paths: selectionPaths,
+    inventory,
+    smokeFiles,
+    slots,
+    tests,
+    withScenarios,
+  });
+  const selectedFiles = new Set(selectedFilesForGate);
+  const related = new Set(selectedScenarios.map(({ file }) => file));
+  const overflow = new Set(overflowScenarios.map(({ file }) => file));
+  const omittedWitnesses: OmittedWitness[] = !tests
+    ? []
+    : [
+        ...graph.scenarios
+          .filter((file) => !selectedFiles.has(file))
+          .sort()
+          .map((file): OmittedWitness => ({
+            file,
+            kind: "scenario",
+            reason: overflow.has(file)
+              ? withScenarios
+                ? "cap"
+                : "opt-out"
+              : related.has(file)
+                ? "opt-out"
+                : "unrelated",
+          })),
+        ...(!withScenarios
+          ? smokeFiles
+              .filter((file) => !selectedFiles.has(file))
+              .map((file): OmittedWitness => ({
+                file,
+                kind: "smoke",
+                reason: "opt-out",
+                cases: stateOnlySmoke[file as keyof typeof stateOnlySmoke],
+              }))
+          : []),
+      ];
+  // Unrelated inventory is recorded, but it is not an affected omission.
+  const affectedOmissions = omittedWitnesses.filter(({ reason }) => reason !== "unrelated").length;
+  const selectionMs = Number(process.hrtime.bigint() - selectionStarted) / 1_000_000;
+  const reportOmissions = () => {
+    if (affectedOmissions) console.log(`${affectedOmissions} affected witnesses omitted`);
+  };
+  if (tests && (verbose || args.includes("--list"))) {
     console.log(
-      `Scenario files: ${inventory.length}; reason: ${meaningful.paths.length || namedScenarios.length ? "edited files, explicit --scenarios or import graph" : "documentation/comments only"}`,
+      `Scenario files: ${inventory.length}; reason: ${selectionPaths.length || namedScenarios.length ? "edited files, explicit --scenarios or import graph" : "documentation/comments only"}`,
     );
     for (const file of inventory)
       console.log(
         `Scenario ${file}; reason: ${[
-          ...(meaningful.paths.includes(file) ? ["changed file"] : []),
+          ...(paths.includes(file) ? ["changed file"] : []),
           ...(namedScenarios.includes(file) ? ["explicit --scenarios"] : []),
           ...selectedScenarios
             .filter((selected) => selected.file === file)
@@ -1545,42 +2064,80 @@ if (import.meta.main) {
         ].join("; ")}`,
       );
   }
-  console.log(
-    `Related scenario cap: ${relatedScenarioLimit}; selected ${selectedScenarios.length}; overflow ${overflowScenarios.length} (deferred, no full-suite fallback)`,
-  );
-  for (const { file, distance } of overflowScenarios)
-    console.log(`Deferred scenario ${file}; import graph distance ${distance}`);
-  const { steps } = selectGateSteps(graph, {
-    comparison,
-    existing,
-    paths: meaningful.paths,
-    inventory,
-    smokeFiles,
-    slots,
-    withScenarios,
-  });
+  if (tests) {
+    console.log(
+      `Related scenario cap: ${relatedScenarioLimit}; selected ${selectedScenarios.length}; overflow ${overflowScenarios.length} (deferred, no full-suite fallback)`,
+    );
+    for (const { file, distance } of overflowScenarios)
+      console.log(`Deferred scenario ${file}; import graph distance ${distance}`);
+  } else console.log("Tests not selected: lint, typecheck and build only (--tests runs them).");
   if (args.includes("--list")) {
     console.log(`Diff from ${base}: ${paths.length} files`);
     for (const step of steps) console.log(`${step.name}: ${step.command} ${step.args.join(" ")}`);
   } else {
     const receiptPath = NodePath.join(root, ".gate-receipt.json");
-    const hash = diffHash(root, comparison);
+    const hash = diffHash(root, baseTree, paths);
     const selection = selectionHash(root);
-    // The ancestor SHA may move on rebase while the lane patch and selected checks stay identical.
+    // Stage inputs normalize the ancestor so unchanged checks can survive a rebase.
     const selectedStages = steps.map((step) => ({
       ...step,
       args: step.args.map((arg) => (arg === comparison ? "<comparison>" : arg)),
     }));
     const full = args.includes("--full") || args.includes("--force");
-    const fingerprints = stageHashes(root, comparison, steps, graph, selection);
+    const shared = await sharedStageCache(root, baseTree, lane.inventory, full);
+    const unknownHqRevision = NodeCrypto.randomUUID();
+    const fingerprintsFor = (snapshot: typeof lane) => {
+      const fingerprints = stageHashes(
+        root,
+        comparison,
+        baseTree,
+        snapshot,
+        steps,
+        graph,
+        selection,
+        unknownHqRevision,
+      );
+      if (shared)
+        for (const step of steps) {
+          const key = shared.key(step, fingerprints[step.name]);
+          if (key) fingerprints[step.name] = key;
+        }
+      return fingerprints;
+    };
+    const fingerprints = fingerprintsFor(lane);
+    // The base ref is shared with every worktree and moves on any fetch; the gate checks against
+    // the ancestor it resolved at start, so only this worktree's own inputs can invalidate a run.
+    const unchanged = async () => {
+      const after = await laneSnapshot(root, comparison);
+      return (
+        after.headSha === lane.headSha &&
+        diffHash(root, baseTree, after.paths) === hash &&
+        selectionHash(root) === selection &&
+        JSON.stringify(fingerprintsFor(after)) === JSON.stringify(fingerprints) &&
+        (!shared || (await shared.unchanged()))
+      );
+    };
     const previousReceipt = full ? undefined : readReceipt(receiptPath);
     if (
       !full &&
-      reusableReceipt(previousReceipt, hash, selection, selectedStages) &&
+      reusableReceipt(
+        previousReceipt,
+        lane.headSha,
+        comparison,
+        hash,
+        selection,
+        selectedStages,
+        omittedWitnesses,
+      ) &&
       JSON.stringify(previousReceipt?.stageHashes) === JSON.stringify(fingerprints)
     ) {
+      if (!(await unchanged()))
+        throw new Error(
+          "Lane revision, diff or selection inputs changed during the gate; run again for the changed code.",
+        );
       console.log(`reused receipt: ${receiptPath} (${hash})`);
-      process.exit(0);
+      reportOmissions();
+      return 0;
     }
     const reusable = new Map(
       steps
@@ -1600,12 +2157,25 @@ if (import.meta.main) {
         )
         .map((step) => [step.name, { name: step.name, status: 0, durationMs: 0 }]),
     );
+    if (shared)
+      for (const step of steps) {
+        const key = shared.key(step, fingerprints[step.name]);
+        if (!reusable.has(step.name) && key && shared.has(key))
+          reusable.set(step.name, { name: step.name, status: 0, durationMs: 0 });
+      }
     const gateStarted = Date.now();
     const receipt: GateReceipt = {
+      version: scenarioSelection.version,
+      context: "gate",
+      paths,
+      headSha: lane.headSha,
+      baseSha: comparison,
       diffHash: hash,
       stageHashes: fingerprints,
       selectionHash: selection,
       selectedStages,
+      omittedWitnesses,
+      selectionMs,
       results: [...reusable.values()],
       durationMs: 0,
       queueWaitMs: 0,
@@ -1614,9 +2184,6 @@ if (import.meta.main) {
     };
     // Retain only proven unchanged successes; pending stages are invalidated before any check.
     writeReceipt(receiptPath, receipt);
-    const PATH = [NodePath.join(root, "node_modules/.bin"), process.env.PATH ?? ""].join(
-      NodePath.delimiter,
-    );
     const logs = gateLogDirectory("gate-changed");
     if (verbose) console.log(`Full logs: ${logs}`);
     let slot: Awaited<ReturnType<typeof acquireGateSlot>> | undefined;
@@ -1664,11 +2231,9 @@ if (import.meta.main) {
       const logPath = NodePath.join(logs, `${index + 1}.log`);
       const started = Date.now();
       const timingPath = NodePath.join(logs, `${index + 1}.timings.jsonl`);
-      const env: typeof process.env = {
-        ...process.env,
-        MATE_TEST_JOBS: process.env.MATE_TEST_JOBS ?? "8",
+      const env: NodeJS.ProcessEnv = {
+        ...stageEnvironment(root, step),
         MATE_GATE_TIMINGS: timingPath,
-        PATH,
       };
       const selectedSmoke = smokeFiles.filter(
         (file) =>
@@ -1683,9 +2248,6 @@ if (import.meta.main) {
             ]),
           ),
         );
-      // Keep the scenarios' configured serial PostgreSQL fixtures when unit workers are bounded.
-      if (step.args.some((arg) => arg.endsWith("/scenarios/vitest.config.ts")))
-        delete env.VITEST_MAX_WORKERS;
       const status = runLogged(
         step.command,
         [
@@ -1736,22 +2298,29 @@ if (import.meta.main) {
       );
       if (status !== 0) {
         console.error(failureSummary(NodeFS.readFileSync(logPath, "utf8"), logPath));
-        process.exit(status);
+        slot?.release();
+        reportOmissions();
+        return status;
       }
     }
     slot?.release();
-    if (
-      diffHash(root, comparison) !== hash ||
-      selectionHash(root) !== selection ||
-      JSON.stringify(stageHashes(root, comparison, steps, graph, selection)) !==
-        JSON.stringify(fingerprints)
-    )
+    if (!(await unchanged()))
       throw new Error(
-        "Lane diff or selection inputs changed during the gate; run again for the changed code.",
+        "Lane revision, diff or selection inputs changed during the gate; run again for the changed code.",
       );
+    if (shared)
+      for (const step of steps) {
+        const key = shared.key(step, fingerprints[step.name]);
+        if (key) shared.put(key);
+      }
     receipt.completed = true;
     receipt.durationMs = Date.now() - gateStarted - receipt.queueWaitMs;
     writeReceipt(receiptPath, receipt);
     removeGateLogs(logs);
   }
+  reportOmissions();
+  return 0;
 }
+
+if (import.meta.main)
+  process.exit(await runGate(NodePath.resolve(import.meta.dirname, ".."), process.argv.slice(2)));

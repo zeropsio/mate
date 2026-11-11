@@ -41,6 +41,11 @@ export interface UncertainAcceptance {
   readonly message: string;
 }
 
+/** A submission's failure can carry proof that the target write itself was refused. */
+export type SubmissionFault =
+  | (StreamFault & { readonly synchronousRefusal?: true; readonly writeNotSent?: true })
+  | UncertainAcceptance;
+
 /**
  * The operation's owner. A lost answer is resolved by what the owner can be asked: by the request
  * id where it keeps one (HQ), by an external handle where one is known (a Zerops process), or else
@@ -52,7 +57,7 @@ export interface OperationExecutor {
   readonly submit: (
     requestId: string,
     intent: OperationIntent,
-  ) => Effect.Effect<OperationReceipt | OwnerUnobservable, StreamFault | UncertainAcceptance>;
+  ) => Effect.Effect<OperationReceipt | OwnerUnobservable, SubmissionFault>;
   /** The receipt the owner holds for this request id; `null` when it never took it. */
   readonly lookup?: (
     requestId: string,
@@ -134,7 +139,12 @@ export function makeOperations(options: {
                 acceptance: {
                   kind: "refused",
                   reason: fault.message,
+                  ...(fault.problems === undefined ? {} : { problems: fault.problems }),
                   ...(fault.code === undefined ? {} : { code: fault.code }),
+                  ...(fault.synchronousRefusal === true
+                    ? { synchronousRefusal: true as const }
+                    : {}),
+                  ...(fault.writeNotSent === true ? { writeNotSent: true as const } : {}),
                 },
                 outcome: { kind: "pending" },
               },

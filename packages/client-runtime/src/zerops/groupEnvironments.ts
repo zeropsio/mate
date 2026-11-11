@@ -19,11 +19,12 @@
 
 import type { HqPlacement } from "./hq/placement.ts";
 import type { ZeropsRegistry } from "./hq/registry.ts";
-import { readZeropsMembership } from "./groups.ts";
+import { projectNameInApp, readZeropsMembership } from "./groups.ts";
 import type { ZeropsEnvironmentRole } from "./groups.ts";
 import { environmentKeyed } from "./deployToken.ts";
 import { deploymentReadFailed, type Deployment } from "./flow/deployment.ts";
 import type { Shown } from "./knowledge/known.ts";
+import type { FlowPullRequest } from "./projectFlow.ts";
 import { PRODUCTION_SETTING_UP } from "./groupFlow.ts";
 import { changesCountWords } from "./projectAttention.ts";
 import { STAGE_SETTING_UP } from "./stopComing.ts";
@@ -52,53 +53,6 @@ export interface GroupEnvironment {
    * the newest approved `v*` tag and nothing else.
    */
   readonly sources: ReadonlyArray<string> | "release";
-}
-
-/**
- * A tier the group's recipe offers and the group does not have yet — the row
- * that asks. Once the recipe is on the group repo's `main`, a stage and a
- * production are the person's next steps, and a group that showed only its
- * Mate never said so (the owner, twice, 2026-09-17: "it never asked me to
- * setup production").
- */
-export interface MissingEnvironmentRow {
-  readonly kind: "missing-environment";
-  readonly tier: GroupEnvironmentTier;
-  readonly name: string;
-  readonly line: string;
-}
-
-/** What a missing tier's row says. */
-export const MISSING_ENVIRONMENT_LINE = "not set up yet";
-
-/**
- * One row per tier the recipe offers on `main` and no declared environment
- * fills, stage before production — the order the person adds them in.
- */
-export function missingEnvironmentRows(input: {
-  /** The tiers whose import is on the group repo's `main`. */
-  readonly tiersOnMain: ReadonlyArray<GroupEnvironmentTier>;
-  readonly declarations: ReadonlyArray<Pick<GroupEnvironment, "tier">>;
-  /**
-   * The tiers the account already holds a project for. A declaration lands on
-   * the group repo minutes after the environment is made, and until it does
-   * the tier is declared nowhere — so the row that asks for it stood directly
-   * under the environment the person was watching come up.
-   */
-  readonly filledTiers?: ReadonlyArray<GroupEnvironmentTier> | undefined;
-}): ReadonlyArray<MissingEnvironmentRow> {
-  const declared = new Set(input.declarations.map((entry) => entry.tier));
-  const held = new Set(input.filledTiers ?? []);
-  const offered = new Set(input.tiersOnMain);
-  const order: ReadonlyArray<GroupEnvironmentTier> = ["stage", "production"];
-  return order
-    .filter((tier) => offered.has(tier) && !declared.has(tier) && !held.has(tier))
-    .map((tier) => ({
-      kind: "missing-environment",
-      tier,
-      name: tier === "stage" ? "Stage" : "Production",
-      line: MISSING_ENVIRONMENT_LINE,
-    }));
 }
 
 /**
@@ -169,7 +123,10 @@ export function halfMadeGroupEnvironments(input: {
   return out;
 }
 
-/** A slot's line while the tier is absent and could be added. */
+/**
+ * What a tier the application does not have says, on its card and its slot: never the words of one
+ * declared with nothing deployed in it ("Not released yet").
+ */
 export const ENVIRONMENT_NOT_ADDED = "Not added";
 /** A slot's line where the recipe on `main` does not hold the tier yet: the Mate composes it. */
 export const ENVIRONMENT_AWAITS_RECIPE = "Waiting for the Mate's recipe";
@@ -226,6 +183,147 @@ export function environmentAddable(input: {
   const zerops = input.offered && input.recipeRead && input.recipeTiers.includes(input.tier);
   if (!zerops && input.gitOffered !== true) return false;
   return input.tier === "production" ? !input.held.production : input.held.stages === 0;
+}
+
+/** The tiers HQ offers this person to add (`add_stage` / `add_production`, `add_git_environment`). */
+export interface EnvironmentOffers {
+  readonly stage: boolean;
+  readonly production: boolean;
+  /** HQ offers direct Git setup; it needs no Zerops recipe. */
+  readonly git?: boolean;
+  /** The Zerops path alone, where Git setup is offered beside it. */
+  readonly zerops?: { readonly stage: boolean; readonly production: boolean };
+}
+
+/**
+ * Everything an application's environments are told from, gathered once for every surface that
+ * draws or offers one (the projects page's card and ···, the sidebar's menu, the *Environments*
+ * section, the question after a first merge).
+ */
+export interface ApplicationEnvironmentFacts {
+  /** The application's environments as HQ records them. */
+  readonly environments: ReadonlyArray<
+    HeldEnvironment & {
+      readonly target?: import("@t3tools/shared/hqEnvironment").HqEnvironmentIdentity["target"];
+    }
+  >;
+  /**
+   * The account's projects of the application placed as a stage or a production, HQ recording the
+   * environment or not (a half-made one, one a press still writes).
+   */
+  readonly listed?: ReadonlyArray<HeldEnvironment> | undefined;
+  /** Mates that are also the stage (`devstage`). */
+  readonly devstages: ReadonlyArray<{ readonly id: string; readonly name: string }>;
+  /** Creations the platform accepted and the listing does not hold yet (the group tree's `pending`). */
+  readonly pending: ReadonlyArray<HeldEnvironment>;
+  /** The tiers the recipe on `main` holds; meaningful once `recipeRead`. */
+  readonly recipeTiers: ReadonlyArray<GroupEnvironmentTier>;
+  /** Whether the recipe is read: until it is, no tier is offered or said to wait for it. */
+  readonly recipeRead: boolean;
+  /** What HQ offers this person; `null` before it says, and nothing is offered on a guess. */
+  readonly offered: EnvironmentOffers | null;
+  /** The application's changes landed on `main`: what *Put it live* would put live. */
+  readonly merged: ReadonlyArray<Pick<FlowPullRequest, "kind">>;
+  /** Its changes open, which *Put it live*'s one press merges. */
+  readonly pullRequests: ReadonlyArray<Pick<FlowPullRequest, "kind">>;
+}
+
+/**
+ * Whether there is something for *Put it live* to put live: the app's code merged, or a change of
+ * it open that its one press merges. A Mate's setup files are no app.
+ */
+export function putLiveHasChange(
+  changes: Pick<ApplicationEnvironmentFacts, "merged" | "pullRequests">,
+): boolean {
+  return [...changes.merged, ...changes.pullRequests].some((pull) => pull.kind === "code");
+}
+
+/** What an application holds of each tier and what may be added to it: one answer, every surface. */
+export interface ApplicationEnvironments {
+  /** Everything it holds, in any state, each once. */
+  readonly held: ReadonlyArray<HeldEnvironment>;
+  /**
+   * Which tier may be added. Production is added by *Put it live*, so every door offers it only
+   * where there is a change to put live (`putLiveHasChange`).
+   */
+  readonly addable: { readonly stage: boolean; readonly production: boolean };
+  /** What an absent tier's slot says: not added, or waiting for the recipe to hold it. */
+  readonly absentLine: { readonly stage: string; readonly production: string };
+  /** Mates that are also the stage, each with the line its Stage row says. */
+  readonly devstages: ReadonlyArray<{ readonly id: string; readonly line: string }>;
+}
+
+/**
+ * The account's projects of an application as its environments' facts read them: each placed as a
+ * stage or a production, and each Mate that is also the stage (`devstage`), by its name in the app.
+ */
+export function listedEnvironmentsOf(
+  groupId: string,
+  projects: ReadonlyArray<{
+    readonly id: string;
+    readonly name: string;
+    readonly hq?: HqPlacement | undefined;
+  }>,
+): Pick<ApplicationEnvironmentFacts, "listed" | "devstages"> {
+  const listed: Array<HeldEnvironment> = [];
+  const devstages: Array<{ readonly id: string; readonly name: string }> = [];
+  for (const project of projects) {
+    const membership = readZeropsMembership(project);
+    if (membership.groupId !== groupId) continue;
+    if (membership.role === "devstage")
+      devstages.push({ id: project.id, name: projectNameInApp(project) });
+    const tier = environmentTierForRole(membership.role);
+    if (tier !== undefined) listed.push({ id: project.id, tier });
+  }
+  return { listed, devstages };
+}
+
+/**
+ * The one projection of an application's environments: what it holds — HQ's record (a Zerops one
+ * by its project), the account's projects placed as a tier, a Mate that is also the stage, a
+ * creation under way — and, by the one rule (`environmentAddable`), which tier may be added: a
+ * production only with a change to put live.
+ */
+export function applicationEnvironments(
+  facts: ApplicationEnvironmentFacts,
+): ApplicationEnvironments {
+  const held: ReadonlyArray<HeldEnvironment> = [
+    ...facts.environments.map(({ id, tier, target }) => ({
+      id: target?.kind === "zerops" ? target.projectId : id,
+      tier,
+    })),
+    ...(facts.listed ?? []),
+    ...facts.devstages.map(({ id }) => ({ id, tier: "stage" as const })),
+    ...facts.pending,
+  ];
+  const tiers = heldTiers(held);
+  const { offered } = facts;
+  const addable = (tier: GroupEnvironmentTier) =>
+    offered !== null &&
+    environmentAddable({
+      tier,
+      recipeRead: facts.recipeRead,
+      recipeTiers: facts.recipeTiers,
+      offered: offered.zerops?.[tier] ?? offered[tier],
+      gitOffered: offered.git === true,
+      held: tiers,
+    });
+  const absentLine = (tier: GroupEnvironmentTier) =>
+    offered?.git !== true && facts.recipeRead && !facts.recipeTiers.includes(tier)
+      ? ENVIRONMENT_AWAITS_RECIPE
+      : ENVIRONMENT_NOT_ADDED;
+  return {
+    held,
+    addable: {
+      stage: addable("stage"),
+      production: addable("production") && putLiveHasChange(facts),
+    },
+    absentLine: { stage: absentLine("stage"), production: absentLine("production") },
+    devstages: facts.devstages.map(({ id, name }) => ({
+      id,
+      line: `${name} — deployed by its agent`,
+    })),
+  };
 }
 
 /**
@@ -287,47 +385,29 @@ export const ENVIRONMENT_UNFINISHED = "Setup isn't finished";
  * slot. Stage and production are peers (P3): either, both or neither may exist, and neither waits
  * on the other.
  */
-export function environmentSlots(input: {
-  readonly environments: ReadonlyArray<
-    HeldEnvironment & {
-      readonly target?: import("@t3tools/shared/hqEnvironment").HqEnvironmentIdentity["target"];
-    }
-  >;
-  /** Mates that are also the stage (`devstage`). */
-  readonly devstages: ReadonlyArray<{ readonly id: string; readonly name: string }>;
-  /** Creations the platform accepted and HQ does not hold yet (the group tree's `pending`). */
-  readonly pending: ReadonlyArray<HeldEnvironment>;
-  /**
-   * Projects made as a tier that HQ does not hold in full (`halfMadeGroupEnvironments`), each with
-   * whether HQ offers this person finishing it (`can.finish` of its project).
-   */
-  readonly halfMade: ReadonlyArray<HeldEnvironment & { readonly finish: boolean }>;
-  /** The tiers the recipe on `main` holds; meaningful once `recipeRead`. */
-  readonly recipeTiers: ReadonlyArray<GroupEnvironmentTier>;
-  /** Whether the recipe is read: until it is, no slot is offered or said to wait for it. */
-  readonly recipeRead: boolean;
-  /** The tiers HQ offers this person to add (`add_stage` / `add_production`). */
-  readonly offered: {
-    readonly stage: boolean;
-    readonly production: boolean;
-    readonly git?: boolean;
-    readonly zerops?: { readonly stage: boolean; readonly production: boolean };
-  };
-  /** What production runs: nothing (`empty`), a deploy under way, a release, or not known. */
-  readonly productionRuns: ProductionRuns;
-  /** The changes merged and waiting for production, as the release counts them. */
-  readonly waiting: {
-    readonly count: number;
-    readonly atLeast: boolean;
-    readonly changeCount?: number | undefined;
-  };
-  /** Whether `main` holds code; `undefined` where it is not known. */
-  readonly mainHasCode: boolean | undefined;
-  /** Whether *Review release* is offered to this person (the release gate allows). */
-  readonly releaseOffered: boolean;
-  /** The release tag on its way to production. */
-  readonly releasing: string | undefined;
-}): ReadonlyArray<EnvironmentSlotRow> {
+export function environmentSlots(
+  input: ApplicationEnvironmentFacts & {
+    /**
+     * Projects made as a tier that HQ does not hold in full (`halfMadeGroupEnvironments`), each with
+     * whether HQ offers this person finishing it (`can.finish` of its project).
+     */
+    readonly halfMade: ReadonlyArray<HeldEnvironment & { readonly finish: boolean }>;
+    /** What production runs: nothing (`empty`), a deploy under way, a release, or not known. */
+    readonly productionRuns: ProductionRuns;
+    /** The changes merged and waiting for production, as the release counts them. */
+    readonly waiting: {
+      readonly count: number;
+      readonly atLeast: boolean;
+      readonly changeCount?: number | undefined;
+    };
+    /** Whether `main` holds code; `undefined` where it is not known. */
+    readonly mainHasCode: boolean | undefined;
+    /** Whether *Review release* is offered to this person (the release gate allows). */
+    readonly releaseOffered: boolean;
+    /** The release tag on its way to production. */
+    readonly releasing: string | undefined;
+  },
+): ReadonlyArray<EnvironmentSlotRow> {
   const heldIds = new Set(
     input.environments.flatMap((entry) =>
       entry.target === undefined
@@ -342,31 +422,28 @@ export function environmentSlots(input: {
   const halfMade = input.halfMade.filter(
     (entry) => !heldIds.has(entry.id) && !pending.some((other) => other.id === entry.id),
   );
-  const held = heldTiers([
-    ...input.environments,
-    ...pending,
-    ...halfMade,
-    ...input.devstages.map(({ id }) => ({ id, tier: "stage" as const })),
+  // A project placed as its tier that HQ does not record and nothing calls half-made yet: a press
+  // still writes it, so it stands as being set up.
+  const shown = new Set([
+    ...heldIds,
+    ...pending.map(({ id }) => id),
+    ...halfMade.map(({ id }) => id),
   ]);
+  const writing = [...pending, ...(input.listed ?? []).filter((entry) => !shown.has(entry.id))];
+  const { addable, absentLine, devstages } = applicationEnvironments({
+    ...input,
+    // A half-made project is the account's, placed as its tier.
+    listed: [...(input.listed ?? []), ...halfMade],
+  });
   const slot = (tier: GroupEnvironmentTier): EnvironmentSlotRow => ({
     kind: "slot",
     tier,
     name: tier === "stage" ? "Stage" : "Production",
-    line:
-      !input.offered.git && input.recipeRead && !input.recipeTiers.includes(tier)
-        ? ENVIRONMENT_AWAITS_RECIPE
-        : ENVIRONMENT_NOT_ADDED,
-    add: environmentAddable({
-      tier,
-      recipeRead: input.recipeRead,
-      recipeTiers: input.recipeTiers,
-      offered: input.offered.zerops?.[tier] ?? input.offered[tier],
-      gitOffered: input.offered.git === true,
-      held,
-    }),
+    line: absentLine[tier],
+    add: addable[tier],
   });
   const coming = (tier: GroupEnvironmentTier): ReadonlyArray<EnvironmentSlotRow> => [
-    ...pending
+    ...writing
       .filter((entry) => entry.tier === tier)
       .map((entry): EnvironmentSlotRow => ({
         kind: "creating",
@@ -394,11 +471,7 @@ export function environmentSlots(input: {
         id,
         note: undefined,
       })),
-    ...input.devstages.map(({ id, name }): EnvironmentSlotRow => ({
-      kind: "devstage",
-      id,
-      line: `${name} — deployed by its agent`,
-    })),
+    ...devstages.map(({ id, line }): EnvironmentSlotRow => ({ kind: "devstage", id, line })),
     ...coming("stage"),
   ];
   if (rows.length === 0) rows.push(slot("stage"));
@@ -431,9 +504,10 @@ function productionNote(input: {
   if (input.releasing !== undefined)
     return { text: `Releasing ${input.releasing}…`, review: false };
   if (input.productionRuns === "empty") {
+    // Its row says it is not released yet; the note says what that waits for, never the same again.
     return input.mainHasCode === false
-      ? { text: "No release yet — waiting for the first merge", review: false }
-      : { text: "No release yet", review: input.releaseOffered };
+      ? { text: "Waiting for the first merge", review: false }
+      : { text: "Waiting for its first release", review: input.releaseOffered };
   }
   if (input.waiting.count > 0)
     return {

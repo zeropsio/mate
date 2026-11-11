@@ -2,7 +2,7 @@
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { HostProcessPlatform } from "./hostProcess.ts";
 
 import {
@@ -12,13 +12,15 @@ import {
 } from "./logging.ts";
 
 const windowsHost = HostProcessPlatform.defaultValue() === "win32";
-const tempDirectories: string[] = [];
+let fixtureRoot: string;
 
-const makeTempDirectory = (): string => {
-  const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3code-logging-"));
-  tempDirectories.push(directory);
-  return directory;
-};
+beforeAll(() => {
+  fixtureRoot = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3code-logging-"));
+});
+
+afterAll(() => {
+  NodeFS.rmSync(fixtureRoot, { recursive: true, force: true });
+});
 
 const captureError = (run: () => unknown): unknown => {
   try {
@@ -28,12 +30,6 @@ const captureError = (run: () => unknown): unknown => {
   }
   throw new Error("Expected operation to throw");
 };
-
-afterEach(() => {
-  for (const directory of tempDirectories.splice(0)) {
-    NodeFS.rmSync(directory, { recursive: true, force: true });
-  }
-});
 
 describe("RotatingFileSink", () => {
   it.each([
@@ -59,7 +55,7 @@ describe("RotatingFileSink", () => {
   });
 
   it("preserves directory initialization failures", () => {
-    const directory = makeTempDirectory();
+    const directory = fixtureRoot;
     const parentFile = NodePath.join(directory, "not-a-directory");
     const filePath = NodePath.join(parentFile, "log.ndjson");
     NodeFS.writeFileSync(parentFile, "occupied");
@@ -75,7 +71,7 @@ describe("RotatingFileSink", () => {
   // permission problem on posix. Windows reports it as ENOENT, so the sink
   // correctly treats it as an absent file and there is nothing to assert.
   it.skipIf(windowsHost)("only treats a missing log file as an empty current size", () => {
-    const directory = makeTempDirectory();
+    const directory = fixtureRoot;
     const filePath = NodePath.join(directory, "a".repeat(300));
 
     const thrown = captureError(() => new RotatingFileSink({ filePath, maxBytes: 1, maxFiles: 1 }));
@@ -86,8 +82,8 @@ describe("RotatingFileSink", () => {
   });
 
   it("starts an absent log file at zero bytes", () => {
-    const directory = makeTempDirectory();
-    const filePath = NodePath.join(directory, "log.ndjson");
+    const directory = fixtureRoot;
+    const filePath = NodePath.join(directory, "start.ndjson");
     const sink = new RotatingFileSink({ filePath, maxBytes: 100, maxFiles: 1 });
 
     sink.write("entry");
@@ -96,8 +92,8 @@ describe("RotatingFileSink", () => {
   });
 
   it("preserves write failures", () => {
-    const directory = makeTempDirectory();
-    const filePath = NodePath.join(directory, "log.ndjson");
+    const directory = fixtureRoot;
+    const filePath = NodePath.join(directory, "write.ndjson");
     NodeFS.mkdirSync(filePath);
     const sink = new RotatingFileSink({
       filePath,
@@ -114,8 +110,8 @@ describe("RotatingFileSink", () => {
   });
 
   it("preserves rotation failures without an artificial write wrapper", () => {
-    const directory = makeTempDirectory();
-    const filePath = NodePath.join(directory, "log.ndjson");
+    const directory = fixtureRoot;
+    const filePath = NodePath.join(directory, "rotation.ndjson");
     NodeFS.writeFileSync(filePath, "a");
     NodeFS.mkdirSync(`${filePath}.1`);
     const sink = new RotatingFileSink({
@@ -133,8 +129,8 @@ describe("RotatingFileSink", () => {
   });
 
   it("never reports a rotation failure after successfully appending a chunk", () => {
-    const directory = makeTempDirectory();
-    const filePath = NodePath.join(directory, "log.ndjson");
+    const directory = fixtureRoot;
+    const filePath = NodePath.join(directory, "append.ndjson");
     NodeFS.mkdirSync(`${filePath}.1`);
     const sink = new RotatingFileSink({
       filePath,
@@ -152,8 +148,8 @@ describe("RotatingFileSink", () => {
   });
 
   it("preserves backup pruning failures", () => {
-    const directory = makeTempDirectory();
-    const filePath = NodePath.join(directory, "log.ndjson");
+    const directory = fixtureRoot;
+    const filePath = NodePath.join(directory, "prune.ndjson");
     const overflowBackup = `${filePath}.2`;
     NodeFS.mkdirSync(overflowBackup);
     NodeFS.writeFileSync(NodePath.join(overflowBackup, "entry"), "occupied");

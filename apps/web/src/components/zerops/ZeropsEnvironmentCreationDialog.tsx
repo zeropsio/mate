@@ -3,11 +3,8 @@
  *
  * A Mate is somebody: its dialog asks who — a name, a colour, a shape — and
  * decides the rest (`ZeropsNewMateForm`), its project named in full after its application. A
- * stage or a production in Zerops leaves three things to the person: what the
- * environment is called — the one name its project has, an agent in it going
- * by it too — whether it runs an agent, and what application goes in — the
- * group's published recipe, or nothing yet. Everything else follows from the
- * role.
+ * stage can choose its name, agent and published recipe. Production reserves its project and
+ * access; its services arrive with the first approved release.
  */
 import type {
   EnvironmentRecipeChoice,
@@ -15,6 +12,7 @@ import type {
   ZeropsMateFace,
 } from "@t3tools/client-runtime/zerops";
 import type { ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
+import type { MatePersona } from "@t3tools/contracts";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { useId, useMemo, useRef, useState, type ReactNode } from "react";
@@ -46,9 +44,7 @@ import {
   type CreationRecipe,
   type NewMateDoorAction,
   type NewMateDoorClosed,
-  type PressStepView,
 } from "./ZeropsEnvironmentCreationDialog.logic";
-import { ProcessSteps, type ProcessStep } from "./primitives";
 import { ZeropsNewMateForm } from "./ZeropsNewMateForm";
 import type { ProjectAccessSlot } from "./projects/ProjectAccessChips";
 import type { DraftPeople } from "./projects/accessDraft.logic";
@@ -64,6 +60,8 @@ export interface EnvironmentCreationChoice {
   readonly userRoles?: ReadonlyArray<ProjectGrant>;
   /** A Mate made automated (*Add automated Mates*): it takes tasks on the organization's key. */
   readonly automated?: true;
+  /** How a Mate works with its person from its stand-up (`NewMatePersona`). */
+  readonly persona?: MatePersona;
 }
 
 export interface ZeropsEnvironmentCreationFormProps {
@@ -118,36 +116,6 @@ export interface ZeropsEnvironmentCreationFormProps {
     | undefined;
 }
 
-const PRESS_STEP_STATES: Readonly<
-  Record<PressStepView["state"], { readonly state: ProcessStep["state"]; readonly label: string }>
-> = {
-  waiting: { state: "queued", label: "Waiting" },
-  active: { state: "running", label: "In progress" },
-  done: { state: "done", label: "Done" },
-  failed: { state: "failed", label: "Failed" },
-};
-
-/** A press's steps, as *Finish setup* on a Mate's view draws them. */
-export function PressSteps({
-  name,
-  steps,
-}: {
-  readonly name: string;
-  readonly steps: ReadonlyArray<PressStepView>;
-}) {
-  return (
-    <ProcessSteps
-      aria-label={`Setting up ${name}`}
-      steps={steps.map((step) => ({
-        id: step.label,
-        label: step.label,
-        state: PRESS_STEP_STATES[step.state].state,
-        stateLabel: PRESS_STEP_STATES[step.state].label,
-      }))}
-    />
-  );
-}
-
 /** The form on its own, so it can be rendered and read without a portal. */
 export function ZeropsEnvironmentCreationForm(props: ZeropsEnvironmentCreationFormProps) {
   return <CreationForm {...props} />;
@@ -166,13 +134,14 @@ function CreationForm(props: ZeropsEnvironmentCreationFormProps) {
       groupName={groupName}
       onCancel={onCancel}
       onDoorAction={onDoorAction}
-      onCreate={({ name, recipe, face, userRoles }) => {
+      onCreate={({ name, recipe, face, userRoles, persona }) => {
         onCreate({
           name,
           withAgent: true,
           recipe,
           face,
           ...(userRoles === undefined ? {} : { userRoles }),
+          ...(persona === undefined ? {} : { persona }),
         });
       }}
       access={props.access}
@@ -187,8 +156,8 @@ function CreationForm(props: ZeropsEnvironmentCreationFormProps) {
 
 /**
  * A stage or a production, as one sheet: what it is for in one line, where it goes, one button —
- * asking nothing the project already says: its name after the project, its recipe, no agent. Its
- * own form (the name, an agent, the application) and a branch of the person's Git repository are
+ * asking nothing the project already says. A stage takes its recipe; production reserves its
+ * project for the first approved release. Its own form and a branch of the person's Git repository are
  * the sheet's quiet ways out (the owner delegated the call on 2026-10-15: adding an environment is
  * one sheet, like putting it live).
  */
@@ -225,6 +194,7 @@ function EnvironmentSheet(
   const what = environmentWord(role);
   const options = recipeOptions({ roleLabel: what, tier, services: tierServices, recipe });
   const submit = environmentSheetSubmit({
+    role,
     name: defaultName,
     withAgent: props.defaultWithAgent,
     options,
@@ -248,7 +218,7 @@ function EnvironmentSheet(
         </DialogTitle>
         <DialogDescription>
           {role === "prod"
-            ? "Where your releases go live."
+            ? "Reserve production and its access. Its services arrive with the first approved release."
             : "A place to try merged changes before they go live."}
         </DialogDescription>
       </DialogHeader>
@@ -260,12 +230,14 @@ function EnvironmentSheet(
             <p className="text-muted-foreground text-sm">
               {/* The person's project is the application: this is a copy of it, never a second
                   project (the run's owner read "a new Zerops project" as another in the menu). */}
-              A separate copy of {groupName} with its own address, ready in a few minutes.
+              {role === "prod"
+                ? `A production environment for ${groupName}, reserved for its first release.`
+                : `A separate copy of ${groupName} with its own address, ready in a few minutes.`}
             </p>
           </section>
           <div className="flex flex-col gap-1">
             <Button className={SHEET_LINK} onClick={props.onYourself} size="sm" variant="link">
-              Change its name or services…
+              {role === "prod" ? "Change its name…" : "Change its name or services…"}
             </Button>
             {props.git === undefined ? null : (
               <>
@@ -309,7 +281,7 @@ function EnvironmentSheet(
   );
 }
 
-/** A stage's or a production's form: its name, its agent, its application. */
+/** Its name and access; a stage can also choose its agent and application. */
 function EnvironmentForm({
   groupName,
   role,
@@ -333,8 +305,8 @@ function EnvironmentForm({
     () => recipeOptions({ roleLabel: what, tier, services: tierServices, recipe }),
     [what, tier, tierServices, recipe],
   );
-  // A recipe being read, or one that could not be read, holds Add: what is created comes from it.
-  const held = creationRecipeHold(recipe);
+  // A stage imports its recipe now; production reserves its project without reading one.
+  const held = role === "prod" ? undefined : creationRecipeHold(recipe);
   const [name, setName] = useState(defaultName);
   const [withAgent, setWithAgent] = useState(defaultWithAgent);
   // The best option on offer is the default, and it improves the moment the
@@ -345,7 +317,7 @@ function EnvironmentForm({
 
   const errors: CreationFormErrors = validateCreationForm(
     { name, withAgent, recipeId },
-    { options, recipe },
+    { options, recipe, role },
   );
   const showErrors = submitted;
 
@@ -361,8 +333,8 @@ function EnvironmentForm({
         if (option === undefined) return;
         onCreate({
           name: name.trim(),
-          withAgent,
-          recipe: option.choice,
+          withAgent: role === "prod" ? false : withAgent,
+          recipe: role === "prod" ? { kind: "none" } : option.choice,
           ...(userRoles.length === 0 ? {} : { userRoles }),
         });
       }}
@@ -372,7 +344,9 @@ function EnvironmentForm({
             Carrying one string in both said nothing twice. */}
         <DialogTitle>{`New ${what} environment`}</DialogTitle>
         <DialogDescription>
-          A separate copy of {groupName}. It takes a few minutes to come up.
+          {role === "prod"
+            ? "Reserve production and its access. Its services arrive with the first approved release."
+            : `A separate copy of ${groupName}. It takes a few minutes to come up.`}
         </DialogDescription>
       </DialogHeader>
       <DialogPanel className="flex flex-col gap-5 space-y-0">
@@ -389,71 +363,80 @@ function EnvironmentForm({
           {showErrors && errors.name !== undefined ? <FieldError>{errors.name}</FieldError> : null}
         </div>
 
-        <div className="space-y-3">
-          <label
-            className="flex items-center justify-between gap-3 text-sm"
-            htmlFor={`${id}-agent`}
-          >
-            <span className="flex flex-col gap-0.5">
-              <span>Has its own Mate</span>
-              <span className="text-xs text-muted-foreground">{agentSwitchNote(role)}</span>
-            </span>
-            <Switch
-              checked={withAgent}
-              id={`${id}-agent`}
-              onCheckedChange={(checked) => {
-                setWithAgent(checked);
-              }}
-            />
-          </label>
-        </div>
-
-        <div className="space-y-2">
-          <span className="text-sm">Starts with</span>
-          <RadioGroup
-            aria-label="Starts with"
-            className="gap-2"
-            onValueChange={(value) => {
-              setChosenRecipeId(String(value));
-            }}
-            value={recipeId}
-          >
-            {options.map((option) => (
+        {role === "prod" ? null : (
+          <>
+            <div className="space-y-3">
               <label
-                className={cn(
-                  "flex cursor-pointer items-start gap-3 rounded-[var(--zerops-card-radius)] border border-border/55 px-3 py-2.5 text-sm transition-colors",
-                  option.id === recipeId ? "border-primary/40 bg-primary/5" : "hover:bg-accent/50",
-                )}
-                key={option.id}
+                className="flex items-center justify-between gap-3 text-sm"
+                htmlFor={`${id}-agent`}
               >
-                <Radio className="mt-0.5" value={option.id} />
-                <span className="flex min-w-0 flex-col gap-0.5">
-                  <span>{option.label}</span>
-                  <span className="text-xs text-muted-foreground">{option.detail}</span>
+                <span className="flex flex-col gap-0.5">
+                  <span>Has its own Mate</span>
+                  <span className="text-xs text-muted-foreground">{agentSwitchNote(role)}</span>
                 </span>
+                <Switch
+                  checked={withAgent}
+                  id={`${id}-agent`}
+                  onCheckedChange={(checked) => {
+                    setWithAgent(checked);
+                  }}
+                />
               </label>
-            ))}
-            {held === undefined ? null : (
-              <div className="flex items-center justify-between gap-3 px-3 py-2.5" role="status">
-                <span className="text-xs text-muted-foreground">{held}</span>
-                {recipe === "unreadable" && onRecipeRetry !== undefined ? (
-                  <Button
-                    aria-busy={recipeRereading === true || undefined}
-                    disabled={recipeRereading === true}
-                    onClick={onRecipeRetry}
-                    type="button"
-                    variant="secondary"
+            </div>
+
+            <div className="space-y-2">
+              <span className="text-sm">Starts with</span>
+              <RadioGroup
+                aria-label="Starts with"
+                className="gap-2"
+                onValueChange={(value) => {
+                  setChosenRecipeId(String(value));
+                }}
+                value={recipeId}
+              >
+                {options.map((option) => (
+                  <label
+                    className={cn(
+                      "flex cursor-pointer items-start gap-3 rounded-[var(--zerops-card-radius)] border border-border/55 px-3 py-2.5 text-sm transition-colors",
+                      option.id === recipeId
+                        ? "border-primary/40 bg-primary/5"
+                        : "hover:bg-accent/50",
+                    )}
+                    key={option.id}
                   >
-                    Try again
-                  </Button>
-                ) : null}
-              </div>
-            )}
-          </RadioGroup>
-          {showErrors && held === undefined && errors.recipe !== undefined ? (
-            <FieldError>{errors.recipe}</FieldError>
-          ) : null}
-        </div>
+                    <Radio className="mt-0.5" value={option.id} />
+                    <span className="flex min-w-0 flex-col gap-0.5">
+                      <span>{option.label}</span>
+                      <span className="text-xs text-muted-foreground">{option.detail}</span>
+                    </span>
+                  </label>
+                ))}
+                {held === undefined ? null : (
+                  <div
+                    className="flex items-center justify-between gap-3 px-3 py-2.5"
+                    role="status"
+                  >
+                    <span className="text-xs text-muted-foreground">{held}</span>
+                    {recipe === "unreadable" && onRecipeRetry !== undefined ? (
+                      <Button
+                        aria-busy={recipeRereading === true || undefined}
+                        disabled={recipeRereading === true}
+                        onClick={onRecipeRetry}
+                        type="button"
+                        variant="secondary"
+                      >
+                        Try again
+                      </Button>
+                    ) : null}
+                  </div>
+                )}
+              </RadioGroup>
+              {showErrors && held === undefined && errors.recipe !== undefined ? (
+                <FieldError>{errors.recipe}</FieldError>
+              ) : null}
+            </div>
+          </>
+        )}
 
         {access === undefined ? null : access(setUserRoles)}
         {forecast}
@@ -476,15 +459,8 @@ function environmentWord(role: ZeropsEnvironmentRole): string {
   return (environmentRoleLabel(role) ?? role).toLowerCase();
 }
 
-/**
- * Why this default, in the role's own terms. Production argues for its own
- * "off"; a stage was left with the generic line and so argued for nothing,
- * even though its default is "on".
- */
+/** Why a stage's optional Mate is off by default. */
 function agentSwitchNote(role: ZeropsEnvironmentRole): string {
-  if (role === "prod") {
-    return "Production usually does not: a Mate with a shell in production is a separate decision.";
-  }
   if (role === "stage") {
     return "Only if someone will build directly in stage.";
   }
@@ -523,6 +499,7 @@ export function ZeropsEnvironmentCreationDialog({
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogPopup
         className="max-w-lg"
+        placement="center"
         // Refused, the footer's Close is its one way out: never a second one in its corner.
         showCloseButton={form.closed === undefined}
         finalFocus={() => {

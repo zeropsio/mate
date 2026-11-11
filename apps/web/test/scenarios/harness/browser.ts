@@ -14,6 +14,36 @@ import { ZEROPS_SESSION_STORAGE_KEY } from "../../../../../packages/client-runti
 import { clientClock, type ScenarioWallClock } from "./clientClock.ts";
 import { deadline, serve } from "./http.ts";
 
+/** An access denial is a completed opening, not a reason to wait for a composer forever. */
+export async function waitForConversation(page: Page, signal?: AbortSignal) {
+  const receipt = await page.waitForFunction(
+    () => {
+      const visible = (element: HTMLElement) =>
+        element.getBoundingClientRect().height > 0 &&
+        getComputedStyle(element).visibility !== "hidden";
+      const denied = [
+        ...document.querySelectorAll<HTMLElement>(
+          '[data-zerops-surface="mate-empty-state"] h1, [data-zerops-surface="mate-opening"] [role="status"]',
+        ),
+      ].find(
+        (element) =>
+          visible(element) &&
+          element.innerText.trim().endsWith(" isn't available with your access."),
+      );
+      if (denied) return denied.innerText.trim();
+      return [...document.querySelectorAll<HTMLElement>('[role="textbox"]')].some(
+        (element) => !element.closest('[inert], [aria-hidden="true"]') && visible(element),
+      )
+        ? "opened"
+        : false;
+    },
+    { polling: "raf", ...(signal === undefined ? {} : { signal }) },
+  );
+  const result = await receipt.jsonValue();
+  await receipt.dispose();
+  if (result !== "opened") throw new Error(String(result));
+}
+
 /** A positive send waits for the composer to acknowledge its text and offer Send or Queue. */
 export async function sendConversationMessage(page: Page, message: string, waitForReady = true) {
   const input = page.locator(
@@ -85,10 +115,15 @@ const contentTypes: Record<string, string> = {
   ".wasm": "application/wasm",
 };
 
+/**
+ * `publicOrigin` serves the build at that address too, as production's origin: the `zerops-hq`
+ * build shares Zerops HQ's session only there, same-site with HQ.
+ */
 export async function openBrowser(
   dist: string,
   routes: Record<string, string>,
   wallClock?: ScenarioWallClock,
+  publicOrigin?: string,
 ) {
   const web = await serve(async ({ url }) => {
     const path = NodePath.resolve(dist, `.${decodeURIComponent(url.pathname)}`);
@@ -108,6 +143,8 @@ export async function openBrowser(
       };
     }
   });
+  if (publicOrigin !== undefined) routes[publicOrigin] = web.origin;
+  const origin = publicOrigin ?? web.origin;
   const browser = await (workerBrowser ??= puppeteer.connect({
     browserWSEndpoint: inject("scenarioBrowserEndpoint"),
   }));
@@ -222,7 +259,7 @@ export async function openBrowser(
           if (!["localhost", "127.0.0.1"].includes(local.hostname))
             throw new Error("Fake route is not loopback");
           const headers = { ...request.headers() };
-          if (url.pathname === "/authorize-app" || url.pathname === "/authorize-login")
+          if (url.pathname === "/authorize-app")
             headers["x-scenario-person"] = identities.get(page) ?? "personal";
           delete headers.host;
           delete headers["content-length"];
@@ -353,12 +390,12 @@ export async function openBrowser(
           if (location.origin === origin && localStorage.getItem(key) === null)
             localStorage.setItem(key, JSON.stringify({ accessToken }));
         },
-        web.origin,
+        origin,
         ZEROPS_SESSION_STORAGE_KEY,
         token,
       );
       try {
-        await page.goto(`${web.origin}/zerops`);
+        await page.goto(`${origin}/zerops`);
       } finally {
         await page.removeScriptToEvaluateOnNewDocument(script.identifier);
       }
@@ -366,7 +403,7 @@ export async function openBrowser(
     setRoutes: async () => {
       for (const update of routeSetters.values()) await update();
     },
-    origin: web.origin,
+    origin,
     errors,
     pageErrors,
     blocked,
@@ -509,13 +546,9 @@ export async function menuMateIn(page: Page, name: string, app: string) {
  * every group is opened once.
  */
 export async function menuMateRow(page: Page, name: string) {
-  const literal = (value: string) => {
-    const parts = value.split('"').map((part) => `"${part}"`);
-    return parts.length === 1 ? parts[0] : `concat(${parts.join(`, '"', `)})`;
-  };
   const words = `normalize-space(translate(., "\u00a0", " "))`;
-  const suffix = literal(` · ${name}`);
-  const named = `${words}=${literal(name)} or substring(${words}, string-length(${words}) - string-length(${suffix}) + 1)=${suffix}`;
+  const suffix = xpathLiteral(` · ${name}`);
+  const named = `${words}=${xpathLiteral(name)} or substring(${words}, string-length(${words}) - string-length(${suffix}) + 1)=${suffix}`;
   const path = `//*[@data-zerops-surface="sidebar-mate"][.//*[@data-zerops-surface="sidebar-mate-name"][${named}]]`;
   const row = page.locator(`::-p-xpath(${path})`).filter(
     (row) =>
@@ -603,9 +636,13 @@ export async function openAccountMenu(page: Page) {
   await page.mouse.click(x, y);
 }
 
+export function xpathLiteral(value: string) {
+  const parts = value.split('"').map((part) => `"${part}"`);
+  return parts.length === 1 ? parts[0] : `concat(${parts.join(`, '"', `)})`;
+}
+
 export async function clickText(page: Page, surface: string, text: string) {
-  const parts = text.split('"').map((part) => `"${part}"`);
-  const literal = parts.length === 1 ? parts[0] : `concat(${parts.join(`, '"', `)})`;
+  const literal = xpathLiteral(text);
   await page
     .locator(
       `::-p-xpath(//*[@data-zerops-surface="${surface}"][.//text()[normalize-space(.)=${literal}]])`,

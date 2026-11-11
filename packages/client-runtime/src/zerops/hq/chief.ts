@@ -9,10 +9,15 @@
  *   {@link PROPOSAL_IDS_PER_READ} per call.
  * - `PUT /api/proposals/:id` → one decision, then once how an approval ended: `decision` is
  *   written once, `outcome` once after `approved`, and anything else is HQ's `409`.
+ * - `POST /api/reveals` → `204` once HQ recorded, in the organization's activity, that the person
+ *   was shown a hidden value of the project, never the value; the service's hostname and the
+ *   variable's name it is sent only an older HQ keeps (mate-hq `spec/protocol.md`, "Activity").
  *
  * @module hq/chief
  */
 import * as Schema from "effect/Schema";
+
+import type { HqApi } from "./client.ts";
 
 /** The reader's own Chief: its project, and since when HQ holds it. */
 export const HqChief = Schema.Struct({ projectId: Schema.NonEmptyString, since: Schema.String });
@@ -47,6 +52,14 @@ export interface HqProposalDecisionWrite {
   readonly words?: string;
 }
 
+/** A hidden value the person was shown, as HQ records it: where it lives and its name. */
+export interface HqRevealRecord {
+  readonly projectId: string;
+  /** The service's hostname, for a service's own value. */
+  readonly service?: string;
+  readonly key: string;
+}
+
 /** How many proposals one read names: HQ refuses more. */
 export const PROPOSAL_IDS_PER_READ = 100;
 
@@ -61,26 +74,37 @@ export interface HqChiefCalls {
     id: string,
     write: HqProposalDecisionWrite,
   ) => Promise<HqProposalDecision>;
+  /** Records that the person was shown a hidden value; resolves once HQ kept the record. */
+  readonly recordReveal: (reveal: HqRevealRecord) => Promise<void>;
 }
 
-/** The client's session call (`makeHqApi`'s `authorized`) and its schema read (`decoded`). */
+/**
+ * The client's session call (`makeHqApi`'s `authorized`), its schema read (`decoded`) and the body
+ * carrying the person's access token (`withAccess`).
+ */
 export interface HqChiefTransport {
   readonly authorized: (path: string, init?: RequestInit, write?: boolean) => Promise<Response>;
+  readonly withAccess: HqApi["withAccess"];
   readonly decoded: <S extends Schema.Decoder<unknown>>(
     schema: S,
+    what: string,
   ) => (response: Response) => Promise<S["Type"]>;
 }
 
-export function makeChiefCalls({ authorized, decoded }: HqChiefTransport): HqChiefCalls {
-  const readRegistration = decoded(HqChiefRegistration);
-  const readDecisions = decoded(DecisionsAnswer);
-  const readDecision = decoded(HqProposalDecision);
+export function makeChiefCalls({
+  authorized,
+  decoded,
+  withAccess,
+}: HqChiefTransport): HqChiefCalls {
+  const readRegistration = decoded(HqChiefRegistration, "Chief's registration");
+  const readDecisions = decoded(DecisionsAnswer, "Chief's decisions");
+  const readDecision = decoded(HqProposalDecision, "a decision on a proposal");
   return {
     setChief: async (projectId) =>
       readRegistration(
         await authorized(
           "/api/chief",
-          { method: "PUT", body: JSON.stringify({ projectId }) },
+          { method: "PUT", body: JSON.stringify(await withAccess({ projectId })) },
           true,
         ),
       ),
@@ -105,9 +129,16 @@ export function makeChiefCalls({ authorized, decoded }: HqChiefTransport): HqChi
       readDecision(
         await authorized(
           `/api/proposals/${encodeURIComponent(id)}`,
-          { method: "PUT", body: JSON.stringify(write) },
+          { method: "PUT", body: JSON.stringify(await withAccess(write)) },
           true,
         ),
       ),
+    recordReveal: async (reveal) => {
+      await authorized(
+        "/api/reveals",
+        { method: "POST", body: JSON.stringify(await withAccess(reveal)) },
+        true,
+      );
+    },
   };
 }

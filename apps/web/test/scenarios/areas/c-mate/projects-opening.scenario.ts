@@ -1,10 +1,10 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 
 describe("opening a Mate from the projects page", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect("a project's Mate chip opens that Mate's conversation", () =>
       Effect.gen(function* () {
         const s = yield* createScenario([], { mate: "real" });
@@ -52,7 +52,7 @@ describe("opening a Mate from the projects page", () => {
 });
 
 describe("Projects source states", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect(
       "account verification failure separates Verify again from Sign out without a storage claim",
       () =>

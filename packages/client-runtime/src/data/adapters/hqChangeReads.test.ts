@@ -8,6 +8,7 @@ import { changeReadOwner } from "../families/hqChangeRead.ts";
 import { changeMetadataScope } from "../families/hqChangeMetadata.ts";
 import { hqChangeMetadata } from "../projections/hqChangeMetadata.ts";
 import { hqChangeCommits } from "../projections/hqChangeCommits.ts";
+import { hqChangeVerdict } from "../projections/hqChangeVerdict.ts";
 import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
 import { streamOf } from "../reducer.ts";
 import { superviseLink } from "../supervisor.ts";
@@ -123,7 +124,7 @@ describe("HQ review read on the account's shared link", () => {
         link.stop();
       }).pipe(Effect.scoped),
   );
-  it.live.each(["metadata", "commits"] as const)(
+  it.live.each(["metadata", "commits", "verdict"] as const)(
     "A %s demand uses its own answer without loading review contents.",
     (purpose) =>
       Effect.gen(function* () {
@@ -137,7 +138,13 @@ describe("HQ review read on the account's shared link", () => {
           commits: [],
           commitsTruncated: false,
         };
-        const answer = purpose === "metadata" ? RECORD : commits;
+        const verdict = {
+          change: RECORD.change,
+          mainHead: "a".repeat(40),
+          mergeBase: "a".repeat(40),
+          mergeability: { kind: "clean" as const },
+        };
+        const answer = { metadata: RECORD, commits, verdict }[purpose];
         const wire: HqWire = {
           open: (created) =>
             fixture.wire.open(created).pipe(Effect.tap(() => Deferred.succeed(opened, undefined))),
@@ -149,10 +156,24 @@ describe("HQ review read on the account's shared link", () => {
             requests.push(request);
             return Effect.succeed(commits);
           },
+          verdict: (request) => {
+            requests.push(request);
+            return Effect.succeed(verdict);
+          },
         };
         const link = hqNavigationLink({ orgId: "org", store, wire });
-        const family = purpose === "metadata" ? "hqChangeMetadata" : "hqChangeCommits";
-        const projection = purpose === "metadata" ? hqChangeMetadata : hqChangeCommits;
+        const family = (
+          {
+            metadata: "hqChangeMetadata",
+            commits: "hqChangeCommits",
+            verdict: "hqChangeVerdict",
+          } as const
+        )[purpose];
+        const projection = {
+          metadata: hqChangeMetadata,
+          commits: hqChangeCommits,
+          verdict: hqChangeVerdict,
+        }[purpose];
         const release = link.demandDetail({ family, ownerId: owner });
         const supervisor = yield* superviseLink({ ...link, store, repairSession: Effect.void });
         yield* Effect.forkScoped(supervisor.run);

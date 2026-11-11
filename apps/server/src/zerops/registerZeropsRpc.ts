@@ -30,7 +30,7 @@ import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
 import * as ZeropsBrowserStreamModule from "./ZeropsBrowserStream.ts";
 import * as ZeropsMacStreamModule from "./ZeropsMacStream.ts";
-import { zeropsUserIdOf } from "./zeropsSubject.ts";
+import { zeropsUserIdOf } from "@t3tools/contracts";
 import * as ZeropsDataConsoleModule from "./ZeropsDataConsole.ts";
 import type * as ZeropsCrewProposalsModule from "./ZeropsCrewProposals.ts";
 import type * as ZeropsGitRemoteProbeModule from "./ZeropsGitRemoteProbe.ts";
@@ -94,6 +94,8 @@ export interface RegisterZeropsRpcDeps {
   readonly isZeropsEnvironment: boolean;
   /** This server's own version, read before `zcp mate update` runs. */
   readonly serverVersion: string;
+  /** This server's boot: every answer to Update names it, so a reboot is judged against it. */
+  readonly bootId?: string | undefined;
   readonly zeropsDataConsole: ZeropsDataConsoleModule.ZeropsDataConsole["Service"];
   readonly zeropsGitRemoteProbe: ZeropsGitRemoteProbeModule.ZeropsGitRemoteProbe["Service"];
   /** *Let Fen suggest a crew*: a roster from the goal, on the Mate's own agent. */
@@ -104,6 +106,11 @@ export interface RegisterZeropsRpcDeps {
    * input: a client that could name its own subject could claim to be anyone.
    */
   readonly subject: string;
+  /**
+   * The connection these calls arrive on, from `ws.ts`, never from RPC input: an agent sign-in
+   * started on it ends with it.
+   */
+  readonly connection: ZeropsAgentLoginModule.LoginConnection;
   /**
    * `ws.ts`'s update admission: while a Mate update waits, a call that changes something is
    * refused (or, for a continuation, let through) so the update starts once work is done.
@@ -132,7 +139,7 @@ const TIMEOUT_MESSAGE_MARKER = "timed out";
 export const runZeropsMateUpdate = (
   deps: Pick<
     RegisterZeropsRpcDeps,
-    "zeropsCli" | "zeropsMateUpdate" | "isZeropsEnvironment" | "serverVersion"
+    "zeropsCli" | "zeropsMateUpdate" | "isZeropsEnvironment" | "serverVersion" | "bootId"
   >,
 ) =>
   Effect.gen(function* () {
@@ -143,6 +150,31 @@ export const runZeropsMateUpdate = (
       });
     }
     const serverVersion = deps.serverVersion;
+    // Every answer names the boot that gave it, so the client judges a reboot against it.
+    const boot = deps.bootId === undefined ? {} : { bootId: deps.bootId };
+    // Only a container restart gets this Mate current: the same verb restarts it once idle, and
+    // the answer says so, whatever the client read before it pressed.
+    if ((yield* deps.zeropsMateUpdate.current)?.restart?.needed === true) {
+      const start = yield* deps.zeropsMateUpdate.restart;
+      return start.started
+        ? {
+            action: "none" as const,
+            restarted: false,
+            started: true,
+            restartAttempt: start.attempt,
+            restartTarget: start.target,
+            restartStartedAt: start.startedAt,
+            ...boot,
+            serverVersion,
+          }
+        : {
+            action: "none" as const,
+            restarted: false,
+            error: start.reason,
+            ...boot,
+            serverVersion,
+          };
+    }
     const result = yield* deps.zeropsCli.mateUpdate().pipe(
       Effect.catchTags({
         ZeropsCliNotFound: () =>
@@ -160,7 +192,7 @@ export const runZeropsMateUpdate = (
     if (result.action === "updated") {
       yield* deps.zeropsMateUpdate.refresh;
     }
-    return { ...result, serverVersion };
+    return { ...result, ...boot, serverVersion };
   });
 
 /**
@@ -387,6 +419,7 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
     zeropsDataConsole,
     zeropsGitRemoteProbe,
     subject,
+    connection,
     admit,
   } = deps;
 
@@ -403,10 +436,10 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
       admit(
         WS_METHODS.zeropsAgentLoginStart,
         input.loginId === undefined
-          ? zeropsAgentLogin.start(input.agentId, input.threadId, subject)
+          ? zeropsAgentLogin.start(input.agentId, input.threadId, subject, connection)
           : resolveLoginTarget(zeropsLogins, input.agentId, input.loginId).pipe(
               Effect.flatMap((login) =>
-                zeropsAgentLogin.start(input.agentId, input.threadId, subject, login),
+                zeropsAgentLogin.start(input.agentId, input.threadId, subject, connection, login),
               ),
             ),
       ),

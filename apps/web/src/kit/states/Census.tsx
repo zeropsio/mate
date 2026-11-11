@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import { SpecimenBlock, SpecimenGrid } from "../Specimen";
 
@@ -85,14 +85,4 @@ export function StateFrame({
       {children}
     </div>
   );
-}
-
-/** Now, every second: what a wait's clock reads from, so its elapsed time runs on the page. */
-export function useKitNowMs(): number {
-  const [nowMs, setNowMs] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, []);
-  return nowMs;
 }

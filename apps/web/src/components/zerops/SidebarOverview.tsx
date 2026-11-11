@@ -6,7 +6,11 @@ import { shownCanonicalHqListNavigationAtom } from "@t3tools/client-runtime/data
  * conversation's header, the Chief page's, the rail and ⌥0.
  */
 import { useAtomValue } from "@effect/atom-react";
-import type { ZeropsEnvironmentServices, ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
+import {
+  releaseFailureOf,
+  type ZeropsEnvironmentServices,
+  type ZeropsPublicRoute,
+} from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { useEffect, useMemo } from "react";
 
@@ -19,7 +23,7 @@ import {
   overviewProjectOf,
   type OverviewProject,
 } from "./SidebarOverview.logic";
-import { releaseFailureOf, stopServing } from "./SidebarProductionChip.logic";
+import { stopServing } from "./SidebarProductionChip.logic";
 
 /** The organization's projects as HQ's navigation names them, by name. */
 export function useMenuProjects(): ReadonlyArray<SidebarCreateProject> {
@@ -74,8 +78,11 @@ export function overviewProjectsOf(input: {
       releaseFailed:
         flow !== undefined &&
         flow.releasesKnown &&
-        releaseFailureOf({ releases: flow.releases, environmentInputs: flow.environmentInputs }) !==
-          undefined,
+        releaseFailureOf({
+          releases: flow.releases,
+          environmentInputs: flow.environmentInputs,
+          stalled: flow.release.stalled,
+        }) !== undefined,
       releasing: flow?.release.inFlight !== undefined,
     });
   });

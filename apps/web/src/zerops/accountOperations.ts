@@ -33,9 +33,9 @@ import * as Effect from "effect/Effect";
 import type { AtomRegistry } from "effect/reactivity";
 import { createContext, useContext } from "react";
 
+import { toastManager } from "~/components/ui/toast";
 import { randomUUID } from "~/lib/utils";
 
-import { readCarriedCore } from "./bundledCore";
 import { hqProjectIdOf, hqWritesOf } from "./hqWrites";
 import type { ZeropsSessionValue } from "./ZeropsSessionProvider";
 
@@ -114,6 +114,9 @@ export function accountOperations(
     active: captureAccountLifetime(),
     hqProjectIdOf,
     gitStore: store,
+    store,
+    tokenLeft: (description) =>
+      toastManager.add({ type: "warning", title: "Old deploy token still valid", description }),
   });
   const operations = makeOperations({
     store,
@@ -121,6 +124,7 @@ export function accountOperations(
       hq: hqExecutor,
       zerops: makeZeropsExecutor({
         client,
+        hqApiOf: hqWritesOf,
         viewerOf: (orgId) => platformMembership.derive(readsOfState(store.state()), orgId).viewer,
         active: captureAccountLifetime(),
         readDetail,
@@ -133,8 +137,6 @@ export function accountOperations(
         nowMs: () => Date.now(),
         makeId: randomUUID,
         run: (intent, options) => run(intent, options),
-        // The Core this build carries, read from its own bundle once HQ's update runs.
-        hqCore: readCarriedCore,
         ...(locks === undefined ? {} : { locks }),
       }),
     },
@@ -186,7 +188,7 @@ export function accountOperations(
           if (ended || recorded.kind === "waiting") return;
           ended = true;
           if (recorded.kind === "recorded") resolve({ name: recorded.name, keyed: recorded.keyed });
-          else reject(new Error(recorded.kind === "refused" ? recorded.reason : HQ_UNOBSERVED));
+          else reject(new Error(HQ_UNOBSERVED));
           cancel?.();
         },
         { immediate: true },
@@ -240,10 +242,12 @@ export function accountOperations(
     askAgain: (requestId) => Effect.runPromise(operations.retry(requestId)),
     submit: async (intent, named) => {
       const requestId = await Effect.runPromise(operations.submit(intent, named));
-      const outcome = store.state().operations.get(requestId)?.receipt?.outcome;
+      // Read from the store's state, never the registry: the account may have closed meanwhile.
+      const state = store.state();
+      const outcome = state.operations.get(requestId)?.receipt?.outcome;
       return {
         requestId,
-        progress: registry.get(store.data.project(operationProgress, requestId)),
+        progress: operationProgress.derive(readsOfState(state), requestId),
         evidence: outcome === undefined || outcome.kind === "pending" ? null : outcome.evidence,
       };
     },

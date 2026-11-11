@@ -52,6 +52,7 @@ function render(
           takenBotNames={{ names: ["Fen"], complete: true }}
           tier={{
             kind: "tier",
+            revision: "recipe-revision",
             tier: "stage",
             yaml: "services:\n  - hostname: app\n    startWithoutCode: true\n",
           }}
@@ -66,7 +67,11 @@ function render(
   if (props.git === undefined && props.role !== "dev" && !destination) {
     act(() =>
       [...document.querySelectorAll("button")]
-        .find((button) => button.textContent === "Change its name or services…")!
+        .find(
+          (button) =>
+            button.textContent ===
+            (props.role === "prod" ? "Change its name…" : "Change its name or services…"),
+        )!
         .click(),
     );
   }
@@ -88,6 +93,11 @@ describe("ZeropsEnvironmentCreationForm", () => {
     expect(html).not.toContain("Agent's name");
     expect(html).not.toContain("Mate's name");
     expect(html).toContain("Add stage to Acme Docs");
+    expect(html).toContain(">New stage environment<");
+    expect(html).not.toContain('data-zerops-surface="new-mate-form"');
+    expect(html).toContain("Same services as the project");
+    expect(html).toContain("app, db");
+    expect(html).toContain("Empty");
   });
 
   it("hands a Mate to a form of its own: who it is, its project named as it is", () => {
@@ -106,19 +116,6 @@ describe("ZeropsEnvironmentCreationForm", () => {
       "Nova runs on its own computer, which Zerops bills by use while it runs. Zerops pricing",
     );
     expect(line?.querySelector("a")?.getAttribute("href")).toBe("https://zerops.io/pricing");
-  });
-
-  it("keeps a stage's own form, its title naming the role", () => {
-    const html = render();
-    expect(html).toContain(">New stage environment<");
-    expect(html).not.toContain('data-zerops-surface="new-mate-form"');
-  });
-
-  it("offers the project's own recipe, and nothing yet", () => {
-    const html = render();
-    expect(html).toContain("Same services as the project");
-    expect(html).toContain("app, db");
-    expect(html).toContain("Empty");
   });
 
   it("offers only an empty environment when HQ says nothing is merged on main", () => {
@@ -150,9 +147,11 @@ describe("ZeropsEnvironmentCreationForm", () => {
     expect(submitDisabled(html)).toBe(true);
   });
 
-  it("says why production usually runs no agent", () => {
+  it("The person creating production is told that its services come with the first release", () => {
     const html = render({ role: "prod", defaultWithAgent: false });
-    expect(html).toContain("Production usually does not");
+    expect(html).toContain("Its services arrive with the first approved release.");
+    expect(host.querySelector('[role="switch"]')).toBeNull();
+    expect(host.querySelector('[aria-label="Starts with"]')).toBeNull();
   });
 
   it("asks who will reach the stage, and adds it with the access chosen", () => {
@@ -218,19 +217,93 @@ it("Adding a stage is one sheet: what it is for, where, and one button", () => {
     withAgent: true,
     recipe: {
       kind: "tier",
+      revision: "recipe-revision",
       tier: "stage",
       yaml: "services:\n  - hostname: app\n    startWithoutCode: true\n",
     },
   });
 });
 
-it("The sheet waits for the recipe before it adds anything, saying so", () => {
-  const html = render({ role: "prod", recipe: "reading", tier: undefined }, true);
-  expect(html).toContain("Set up production for Acme Docs");
-  const button = [...document.querySelectorAll("button")].find(
-    (entry) => entry.textContent === "Set up production",
+it.each(["reading", "unreadable", "absent", "present"] as const)(
+  "Production reserves its project and access before its recipe is available: %s",
+  (recipe) => {
+    const onCreate = vi.fn();
+    const html = render(
+      {
+        role: "prod",
+        recipe,
+        tier: undefined,
+        onCreate,
+        people: { kind: "ready", userRoles: CHOSEN },
+      },
+      true,
+    );
+    expect(html).toContain("Its services arrive with the first approved release.");
+    const button = [...document.querySelectorAll("button")].find(
+      (entry) => entry.textContent === "Set up production",
+    )!;
+    expect(button.hasAttribute("disabled")).toBe(false);
+    act(() => button.click());
+    expect(onCreate).toHaveBeenCalledWith({
+      name: "Acme Docs - stage",
+      withAgent: false,
+      recipe: { kind: "none" },
+      userRoles: CHOSEN,
+    });
+  },
+);
+
+it.each(["reading", "failed"] as const)(
+  "Production waits for its access and keeps the grants when they arrive: %s",
+  (kind) => {
+    const onCreate = vi.fn();
+    render({ role: "prod", recipe: "unreadable", people: { kind }, onCreate }, true);
+    const submit = () =>
+      [...document.querySelectorAll("button")].find(
+        (entry) => entry.textContent === "Set up production",
+      )!;
+    expect(submit().hasAttribute("disabled")).toBe(true);
+    expect(onCreate).not.toHaveBeenCalled();
+    render(
+      {
+        role: "prod",
+        recipe: "unreadable",
+        people: { kind: "ready", userRoles: CHOSEN },
+        onCreate,
+      },
+      true,
+    );
+    expect(submit().hasAttribute("disabled")).toBe(false);
+    act(() => submit().click());
+    expect(onCreate).toHaveBeenCalledWith({
+      name: "Acme Docs - stage",
+      withAgent: false,
+      recipe: { kind: "none" },
+      userRoles: CHOSEN,
+    });
+  },
+);
+
+it("Production's own form reserves the chosen name and access without its recipe", () => {
+  const onCreate = vi.fn();
+  render({
+    role: "prod",
+    recipe: "unreadable",
+    tier: undefined,
+    onCreate,
+    access: (onChange) => <Chosen onChange={onChange} />,
+  });
+  act(() =>
+    host
+      .querySelector('form[data-zerops-surface="environment-creation-form"]')!
+      .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })),
   );
-  expect(button?.hasAttribute("disabled")).toBe(true);
+  expect(onCreate).toHaveBeenCalledWith({
+    name: "Acme Docs - stage",
+    withAgent: false,
+    recipe: { kind: "none" },
+    userRoles: CHOSEN,
+  });
 });
 
 const gitChoice = () =>
@@ -238,16 +311,13 @@ const gitChoice = () =>
     (button) => button.textContent === "Use a branch in your Git repository instead…",
   );
 
-function gitAuthority(can: HqOffers | undefined, current = true) {
-  const add = hqOffer(can, "add_git_environment", {
-    current,
-    unavailableSince: current ? null : 0,
-  });
+function gitAuthority(can: HqOffers | undefined) {
+  const add = hqOffer(can, "add_git_environment");
   return {
     repos: [],
     takenNames: [],
     offered: { add: add.kind === "allowed", connect: false, replace: false },
-    unavailableReason: hqOfferWords(add, { at: () => "12:00", rolesAnsweredAt: null }),
+    unavailableReason: hqOfferWords(add),
     setup: {
       connect: async () => ({ ok: false as const, reason: "refused" }),
       preview: async () => [],
@@ -260,24 +330,16 @@ function gitAuthority(can: HqOffers | undefined, current = true) {
 it.each([
   {
     situation: "a developer cannot add a Git production",
-    can: { add_git_environment: { allow: false, reason: "not_structure_writer" } },
-    current: true,
+    can: { add_git_environment: { allow: false, reason: "not_structure_writer" } as const },
     reason: "Only an owner or admin of the organization can do this.",
   },
   {
     situation: "HQ has not answered Git production setup",
     can: undefined,
-    current: true,
     reason: "HQ has not said yet.",
   },
-  {
-    situation: "HQ stopped answering Git production setup",
-    can: { add_git_environment: { allow: true } },
-    current: false,
-    reason: "HQ unavailable since 12:00.",
-  },
-])("says why the Git choice is unavailable when $situation", ({ can, current, reason }) => {
-  const html = render({ role: "prod", git: gitAuthority(can, current) });
+])("says why the Git choice is unavailable when $situation", ({ can, reason }) => {
+  const html = render({ role: "prod", git: gitAuthority(can) });
   expect(html).toContain(reason);
   expect(gitChoice()?.hasAttribute("disabled")).toBe(true);
 });
@@ -285,12 +347,14 @@ it.each([
 it("updates the Git choice's reason when HQ refuses setup after the form opens", () => {
   const initial = render({
     role: "prod",
-    git: gitAuthority({ add_git_environment: { allow: true } }),
+    git: gitAuthority({ add_git_environment: { allow: true } as const }),
   });
   expect(initial).not.toContain("Only an owner or admin of the organization can do this.");
   const html = render({
     role: "prod",
-    git: gitAuthority({ add_git_environment: { allow: false, reason: "not_structure_writer" } }),
+    git: gitAuthority({
+      add_git_environment: { allow: false, reason: "not_structure_writer" } as const,
+    }),
   });
   expect(html).toContain("Only an owner or admin of the organization can do this.");
   expect(gitChoice()?.hasAttribute("disabled")).toBe(true);

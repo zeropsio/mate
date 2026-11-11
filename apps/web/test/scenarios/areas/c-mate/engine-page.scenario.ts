@@ -1,7 +1,8 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { ANSWER, TITLE, journey, sampled, type Sample } from "./pageJourney.ts";
+import { waitForStillFrames } from "../../harness/stillFrames.ts";
 
 type Scenario = Effect.Success<ReturnType<typeof journey>>["s"];
 
@@ -13,7 +14,7 @@ const countLoads = (s: Scenario) =>
         "load",
         (event) => {
           if (event.target instanceof HTMLIFrameElement && event.target.title === title)
-            (window as unknown as { pageLoads: number[] }).pageLoads.push(performance.now());
+            (window as unknown as { pageLoads: number[] }).pageLoads.push(1);
         },
         true,
       );
@@ -43,7 +44,7 @@ const settled = (s: Scenario) =>
   );
 
 describe("C: a page the Mate publishes", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect(
       "a page the Mate publishes draws inline above its answer, and reaches no network",
       () =>
@@ -83,7 +84,7 @@ describe("C: a page the Mate publishes", () => {
   // Milo, 2026-10-10: every page closed itself 0.4 s after it landed live, saying it had tried to
   // open something else, with no navigation at all: the run settling around it reloaded its frame.
   describe("Decision: only the page's own navigation takes it down.", () => {
-    it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    scenarioSuite((it) => {
       it.effect(
         "a page published during a live run is still open 3 s after its run settles and folds",
         () =>
@@ -92,29 +93,34 @@ describe("C: a page the Mate publishes", () => {
             yield* Effect.sync(publishLive);
             yield* Effect.promise(() => s.page.waitForSelector(`iframe[title="${TITLE}"]`));
             yield* measured;
+            yield* Effect.promise(() => s.clock.install({ currentDocument: true }));
             yield* Effect.sync(answer);
             yield* settled(s);
-            // The title promises a three-second observation after the run folded, not a blind
-            // delay: every paint must still have its page and no navigation notice.
+            // Observe every DOM transition while three seconds pass on the browser's clock.
+            yield* Effect.promise(() =>
+              s.page.evaluate((title) => {
+                const state = { stood: true };
+                const sample = () => {
+                  state.stood &&=
+                    document.querySelector(`iframe[title="${title}"]`) !== null &&
+                    !document.body.textContent?.includes("The page tried to open something else");
+                };
+                const observer = new MutationObserver(sample);
+                observer.observe(document.body, { childList: true, subtree: true });
+                Reflect.set(window, "pageRetention", { state, observer });
+                sample();
+              }, TITLE),
+            );
+            yield* Effect.promise(() => s.clock.advanceStepped(3_000));
             const observed = yield* Effect.promise(() =>
-              s.page.evaluate(
-                (title) =>
-                  new Promise<boolean>((resolve) => {
-                    const start = performance.now();
-                    let stood = true;
-                    const paint = () => {
-                      stood &&=
-                        document.querySelector(`iframe[title="${title}"]`) !== null &&
-                        !document.body.textContent?.includes(
-                          "The page tried to open something else",
-                        );
-                      if (performance.now() - start >= 3000) resolve(stood);
-                      else requestAnimationFrame(paint);
-                    };
-                    requestAnimationFrame(paint);
-                  }),
-                TITLE,
-              ),
+              s.page.evaluate(() => {
+                const { state, observer } = Reflect.get(window, "pageRetention") as {
+                  state: { stood: boolean };
+                  observer: MutationObserver;
+                };
+                observer.disconnect();
+                return state.stood;
+              }),
             );
             expect(
               observed,
@@ -245,36 +251,107 @@ describe("C: a page the Mate publishes", () => {
   });
 
   describe("Decision: a page that navigates its own frame is not the page the Mate published.", () => {
-    it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    scenarioSuite((it) => {
       const LOGIN = "https://example.com/login";
-      for (const trick of [
-        { how: "by script", script: `location.href=${JSON.stringify(LOGIN)};` },
+      const tricks = [
         {
+          title:
+            "a published page that navigates itself by script sends nothing and is never shown",
+          how: "by script",
+          script: `location.href=${JSON.stringify(LOGIN)};`,
+        },
+        {
+          title:
+            "a published page that navigates itself to a data: document sends nothing and is never shown",
           how: "to a data: document",
           script: 'location.href="data:text/html,<h1>Sign in to Zerops</h1>";',
         },
         {
+          title:
+            "a published page that navigates itself by a refresh sends nothing and is never shown",
           how: "by a refresh",
           script: `document.head.insertAdjacentHTML("beforeend",'<meta http-equiv="refresh" content="0;url=${LOGIN}">');`,
         },
         {
+          title:
+            "a published page that navigates itself by a link it clicks itself sends nothing and is never shown",
           how: "by a link it clicks itself",
           script: `var a=document.createElement("a");a.href=${JSON.stringify(LOGIN)};document.body.append(a);a.click();`,
         },
         {
+          title:
+            "a published page that navigates itself by a named target sends nothing and is never shown",
           how: "by a named target",
           script: `window.name="self";window.open(${JSON.stringify(LOGIN)},"self");`,
         },
-      ])
-        it.effect(
-          `a published page that navigates itself ${trick.how} sends nothing and is never shown`,
-          () =>
-            Effect.gen(function* () {
-              const { s, publish } = yield* journey(180, {
-                script: `setTimeout(function(){${trick.script}},400);`,
+      ] as const;
+
+      it.effect(
+        "a published page that navigates itself by script sends nothing and is never shown",
+        ({ annotate }) =>
+          Effect.gen(function* () {
+            const { s, publish } = yield* journey(180, {
+              script: `window.addEventListener("message",function(event){${tricks
+                .map((trick) => `if(event.data===${JSON.stringify(trick.how)}){${trick.script}}`)
+                .join("")}});`,
+            });
+            // Observe each document while it exists, before removal can hide a transient spoof.
+            let shown = false;
+            yield* Effect.promise(async () => {
+              await s.page.exposeFunction("recordSpoof", () => {
+                shown = true;
               });
-              publish();
-              yield* Effect.promise(() => s.page.waitForSelector(`iframe[title="${TITLE}"]`));
+              await s.page.evaluateOnNewDocument(() => {
+                let reported = false;
+                const sample = () => {
+                  if (
+                    !reported &&
+                    /Sign in to Zerops|Example Domain/.test(document.body?.innerText ?? "")
+                  ) {
+                    reported = true;
+                    void (window as unknown as { recordSpoof(): Promise<void> }).recordSpoof();
+                  }
+                };
+                new MutationObserver(sample).observe(document, {
+                  childList: true,
+                  subtree: true,
+                  characterData: true,
+                });
+                document.addEventListener("DOMContentLoaded", sample, { once: true });
+                document.addEventListener(
+                  "load",
+                  (event) => {
+                    if (event.target instanceof HTMLIFrameElement && event.target.id === "page")
+                      Reflect.set(window, "scenarioPageLoaded", true);
+                  },
+                  true,
+                );
+              });
+            });
+            publish();
+            for (const [index, trick] of tricks.entries()) {
+              yield* Effect.promise(() => annotate(trick.title, "step"));
+              shown = false;
+              if (index > 0)
+                yield* Effect.promise(() =>
+                  s.page.locator("::-p-aria(Show the page again)").click(),
+                );
+              // Reopening makes a fresh pair of frames; wait for the inner one's initial load.
+              const page = yield* Effect.promise(async () => {
+                const outer = await s.page.waitForSelector(`iframe[title="${TITLE}"]`);
+                const wrapper = await outer!.contentFrame();
+                if (wrapper === null) throw new Error("Published page wrapper did not load");
+                await wrapper.waitForFunction(
+                  () => Reflect.get(window, "scenarioPageLoaded") === true,
+                );
+                const inner = await wrapper.$("#page");
+                const page = await inner?.contentFrame();
+                if (!page) throw new Error("Published page did not load");
+                return page;
+              });
+              yield* Effect.promise(() =>
+                page.evaluate((how) => window.postMessage(how, "*"), trick.how),
+              );
               yield* Effect.promise(() =>
                 s.page.waitForFunction(
                   (title) =>
@@ -313,15 +390,20 @@ describe("C: a page the Mate publishes", () => {
                 readable.some((text) => /Sign in to Zerops|Example Domain/.test(text)),
                 "ASSERTION: what it navigated to stands nowhere in the conversation",
               ).toBe(false);
+              expect(
+                shown,
+                "ASSERTION: what it navigated to was never shown before the frame closed",
+              ).toBe(false);
               // Nothing left: the harness records any request it would have made.
               yield* s.then.noExternalNetwork;
-            }),
-        );
+            }
+          }),
+      );
     });
   });
 
   describe("Decision: geometry relations only; no style pins.", () => {
-    it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    scenarioSuite((it) => {
       for (const shape of [
         {
           title: "a published page stands at its full height in the run, like the answer it is",

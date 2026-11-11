@@ -11,17 +11,19 @@ import {
 } from "@t3tools/client-runtime/state/subagentRuntime";
 import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { AgentsPanel } from "./AgentsPanel";
 import { showHelper } from "./chat/helperFocus";
 
-vi.mock("~/zerops/useZeropsMates", () => ({ useKnownMate: () => undefined }));
-// The card a row opens onto has tests of its own: here, only which row opens.
-vi.mock("~/components/chat/HelperCard", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("~/components/chat/HelperCard")>()),
-  HelperCard: () => null,
-}));
+const frames: FrameRequestCallback[] = [];
+beforeEach(async () => {
+  vi.spyOn(await import("~/zerops/useZeropsMates"), "useKnownMate").mockReturnValue(undefined);
+  // The card a row opens onto has tests of its own: here, only which row opens.
+  vi.spyOn(await import("~/components/chat/HelperCard"), "HelperCard").mockReturnValue(<></>);
+  vi.stubGlobal("requestAnimationFrame", (frame: FrameRequestCallback) => frames.push(frame));
+  vi.stubGlobal("cancelAnimationFrame", () => undefined);
+});
 
 const ENVIRONMENT = EnvironmentId.make("environment-panel");
 const THREAD = ThreadId.make("thread-panel");
@@ -81,10 +83,6 @@ const WORKFLOW = [
   row("task.completed", 5, { taskId: "wf", status: "completed", summary: "Reviewed" }),
 ];
 
-// The panel brings an asked-for row into view on the next frame.
-globalThis.requestAnimationFrame ??= () => 0;
-globalThis.cancelAnimationFrame ??= () => undefined;
-
 const drawn: ReactTestRenderer[] = [];
 function panel(activities: ReadonlyArray<OrchestrationThreadActivity>) {
   const model = deriveAgentPanelModel({ agents: foldSubagentActivities(activities) });
@@ -105,7 +103,10 @@ function panel(activities: ReadonlyArray<OrchestrationThreadActivity>) {
 afterEach(() => {
   act(() => {
     for (const renderer of drawn.splice(0)) renderer.unmount();
+    for (const frame of frames.splice(0)) frame(0);
   });
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 /** The helper rows drawn, and whether each is open. */

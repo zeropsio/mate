@@ -17,7 +17,7 @@
  * @module acpThreadProfile
  */
 import type { ModelSelection } from "@t3tools/contracts";
-import type * as EffectAcpSchema from "effect-acp/schema";
+import type * as EffectAcpSchema from "effect-acp/compat";
 import * as Effect from "effect/Effect";
 import type * as Option from "effect/Option";
 import type * as Scope from "effect/Scope";
@@ -361,10 +361,13 @@ export const acpTurnProfile = (
   selection: ModelSelection | undefined,
   effortOption: string | undefined,
 ): Effect.Effect<{
+  /** A crewmate's thread: it takes no persona. */
+  readonly profiled: boolean;
   readonly instructions: string | undefined;
   readonly modelSelection: ModelSelection | undefined;
 }> =>
   Effect.map(threadProfileFor(policies, thread), (profile) => ({
+    profiled: profile !== undefined,
     instructions: profile === undefined ? undefined : acpProfileInstructions(profile),
     modelSelection: profileModelSelection(profile, thread.instanceId, selection, effortOption),
   }));

@@ -13,7 +13,7 @@ import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import { environmentRow } from "~/components/zerops/projects/flowTestFixtures";
 import {
   deployedVersion,
-  environmentSlots,
+  listedEnvironmentsOf,
   releaseRow,
   type CanonicalEnvironmentRow as EnvironmentRow,
   type EnvironmentServiceState,
@@ -38,30 +38,27 @@ import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 import type { CompareCommit } from "@t3tools/shared/hqChanges";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { Window } from "happy-dom";
-import { act, type ReactNode } from "react";
+import { act, type ReactElement, type ReactNode } from "react";
 import { RegistryContext } from "@effect/atom-react";
 import { AtomRegistry } from "effect/reactivity";
 import { AccountDataContext, type AccountData } from "~/zerops/ZeropsAccountData";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
+import * as projectFlows from "~/zerops/projectFlows";
+import * as projectActivity from "~/zerops/activity/useProjectActivity";
+import * as sessionContext from "~/zerops/sessionContext";
+import * as accountHq from "~/zerops/accountHq";
+import * as nowClock from "~/zerops/useNowMs";
 import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
 import type { CanonicalHqStructure } from "@t3tools/client-runtime/zerops/hq";
-import { create, type ReactTestRenderer } from "react-test-renderer";
-import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { create as createTree, type ReactTestRenderer } from "react-test-renderer";
+import { renderToStaticMarkup as renderMarkup } from "react-dom/server";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { service as platformService } from "~/zerops/__fixtures__/platformData";
 import type { ZeropsHistoryState } from "~/zerops/useRepositoryHistory";
 
-import {
-  detailTrail,
-  ZeropsStopDetailPage,
-  ZeropsGroupPane,
-  ZeropsStopPane,
-  ZeropsRuntimeStops,
-  devstagesOf,
-  runtimeStopsOf,
-  stopRepository,
-} from "./ZeropsGroupDetail";
+import { StopLine, ZeropsRuntimeStops, runtimeStopsOf } from "./ZeropsGroupDetail";
+import { ZeropsStopDetailPage, ZeropsStopPane, stopRepository } from "./PlacePage";
 import { markupDom } from "../../../test/markupDom";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
 
@@ -74,133 +71,65 @@ const platform = vi.hoisted(() => ({
   projectReads: [] as Array<string>,
   navigation: [] as Array<unknown>,
 }));
-vi.mock("~/zerops/activity/useProjectActivity", async (original) => {
-  const activity = await original<typeof import("~/zerops/activity/useProjectActivity")>();
-  return {
-    ...activity,
-    useProjectActivityRead: () => activity.EMPTY_PROJECT_ACTIVITY_SNAPSHOT,
-  };
-});
-vi.mock("~/zerops/projectFlows", async (importOriginal) => ({
-  ...(await importOriginal<object>()),
-  useStopDeploymentsShown: () => platform.deployments,
-  useProjectFlows: (...args: unknown[]) => {
+const { createMemoryHistory, createRootRoute, createRouter, RouterContextProvider } =
+  await vi.importActual<typeof import("@tanstack/react-router")>("@tanstack/react-router");
+const router = createRouter({ routeTree: createRootRoute(), history: createMemoryHistory() });
+const withRouter = (element: ReactNode) => (
+  <RouterContextProvider router={router}>{element}</RouterContextProvider>
+);
+const renderToStaticMarkup = (element: ReactNode) => renderMarkup(withRouter(element));
+const create = (element: ReactElement) => createTree(withRouter(element));
+
+// Render the popup in place so the stop page's project link is visible in SSR.
+const menuParts = await import("../ui/menu");
+beforeEach(() => {
+  vi.spyOn(projectActivity, "useProjectActivityRead").mockReturnValue(
+    projectActivity.EMPTY_PROJECT_ACTIVITY_SNAPSHOT,
+  );
+  vi.spyOn(sessionContext, "useZeropsSession").mockReturnValue({
+    status: "signed-in",
+    activeOrganization: { id: "org" },
+  } as ReturnType<typeof sessionContext.useZeropsSession>);
+  vi.spyOn(accountHq, "configuredHq").mockReturnValue({
+    projectId: "hq",
+    address: "https://hq.test",
+  } as ReturnType<typeof accountHq.configuredHq>);
+  vi.spyOn(nowClock, "useNowMs").mockReturnValue(NOW);
+  vi.spyOn(router, "navigate").mockImplementation((target) => {
+    platform.navigation.push(
+      Object.fromEntries(
+        Object.entries(target).filter(([key, value]) => key !== "from" || value !== undefined),
+      ),
+    );
+    return Promise.resolve();
+  });
+  vi.spyOn(projectFlows, "useStopDeploymentsShown").mockImplementation(
+    () => platform.deployments as ReturnType<typeof projectFlows.useStopDeploymentsShown>,
+  );
+  vi.spyOn(projectFlows, "useProjectFlows").mockImplementation((...args) => {
     if (platform.routeWitness) {
       platform.projectReads.push("project/service/log/version/token consumer");
       throw new Error("Project reads reached before target dispatch");
     }
     throw new Error(`Unexpected flow read: ${String(args)}`);
-  },
-}));
-vi.mock("~/zerops/ZeropsSessionProvider", async (original) => ({
-  ...(await original<typeof import("~/zerops/ZeropsSessionProvider")>()),
-  useZeropsSession: () => ({ status: "signed-in", activeOrganization: { id: "org" } }),
-}));
-vi.mock("~/zerops/accountHq", () => ({
-  useAccountHq: () => ({ status: "ready", hq: { kind: "official", address: "https://hq.test" } }),
-}));
-vi.mock("~/zerops/useNowMs", async (importOriginal) => ({
-  ...(await importOriginal<object>()),
-  useNowMs: () => NOW,
-}));
-
-vi.mock("@tanstack/react-router", async (actual) => {
-  const { createElement } = await import("react");
-  return {
-    ...(await actual<typeof import("@tanstack/react-router")>()),
-    // Standing alone, the frame's bar carries the lockup as a link home.
-    Link: ({ to, ...props }: React.ComponentProps<"a"> & { to: string }) =>
-      createElement("a", { href: to, ...props }),
-    useNavigate: () => (target: unknown) => {
-      platform.navigation.push(target);
-    },
-  };
+  });
+  vi.spyOn(menuParts, "MenuPopup").mockImplementation(
+    (({ children }: { children: ReactNode }) => children) as typeof menuParts.MenuPopup,
+  );
+});
+const mountedTrees = new Set<ReactTestRenderer>();
+const mountedRegistries = new Set<ReturnType<typeof AtomRegistry.make>>();
+afterEach(() => {
+  act(() => {
+    for (const tree of mountedTrees) tree.unmount();
+  });
+  mountedTrees.clear();
+  for (const registry of mountedRegistries) registry.dispose();
+  mountedRegistries.clear();
+  vi.restoreAllMocks();
 });
 
-// Render the popup in place so the stop page's project link is visible in SSR.
-vi.mock("../ui/menu", async (actual) => ({
-  ...(await actual<typeof import("../ui/menu")>()),
-  MenuPopup: ({ children }: { children: ReactNode }) => children,
-}));
-
 const CHECKING = "Checking your access to this project…";
-
-const environment = (
-  projectId: string,
-  name: string,
-  tier: EnvironmentRow["tier"] = "stage",
-): EnvironmentRow =>
-  ({
-    id: HqEnvironmentId.make(projectId),
-    target: { kind: "zerops", projectId: ProjectId.make(projectId) },
-    name,
-    tier,
-    source: "main",
-    tone: "good",
-    version: {
-      name: undefined,
-      label: "3f9c1b2",
-      commit: "3f9c1b2e",
-      sha: "3f9c1b2e".padEnd(40, "0"),
-      taggedBy: undefined,
-    },
-    versionRepository: undefined,
-  }) as EnvironmentRow;
-
-/** The Environments section as it stands for these environments and nothing else. */
-const slotsOf = (environments: ReadonlyArray<EnvironmentRow>) =>
-  environmentSlots({
-    environments: environments.map((entry) => ({ id: entry.id, tier: entry.tier })),
-    devstages: [],
-    pending: [],
-    halfMade: [],
-    recipeTiers: [],
-    recipeRead: false,
-    offered: { stage: false, production: false },
-    productionRuns: "unknown",
-    waiting: { count: 0, atLeast: false },
-    mainHasCode: undefined,
-    releaseOffered: false,
-    releasing: undefined,
-  });
-
-function render(
-  stops: Pick<
-    React.ComponentProps<typeof ZeropsGroupPane>,
-    "environments" | "withheldNotice" | "firstDeployOf" | "repos" | "onMirror"
-  > & { readonly slots?: React.ComponentProps<typeof ZeropsGroupPane>["slots"] } = {
-    environments: [environment("stage", "stage"), environment("prod", "production", "production")],
-  },
-  /** The page's flow; absent, it holds none. */
-  flow?: ReadonlyMap<string, Shown<Deployment>>,
-) {
-  const pane = (
-    <ZeropsGroupPane
-      history={null}
-      groupId="shop"
-      name="Shop"
-      {...stops}
-      slots={stops.slots ?? slotsOf(stops.environments)}
-      onFinish={() => {}}
-      finishing={false}
-      onAdd={() => {}}
-      onSetUp={() => {}}
-      release={{
-        offered: false,
-        releasing: false,
-        tag: undefined,
-        reason: undefined,
-        onReview: () => {},
-      }}
-      repo={undefined}
-    />
-  );
-  platform.deployments = flow ?? new Map();
-  return renderToStaticMarkup(pane);
-}
-
-/** What the platform answered of each stop, as the page reads it. */
-const flowOf = (deployments: ReadonlyMap<string, Shown<Deployment>>) => deployments;
 
 describe("runtime without HQ detail", () => {
   it("keeps the inventory's placed stop identities when HQ has no environment read", () => {
@@ -228,12 +157,12 @@ describe("runtime without HQ detail", () => {
       hq: { appId, appName: "Shop", kind, mate: null },
     });
     expect(
-      devstagesOf("shop", [
+      listedEnvironmentsOf("shop", [
         project("vera", "devstage"),
         project("iris", "mate"),
         project("shop-stage", "stage"),
         project("other-dev", "devstage", "links"),
-      ]),
+      ]).devstages,
     ).toEqual([{ id: "vera", name: "vera" }]);
   });
 
@@ -271,259 +200,6 @@ describe("runtime without HQ detail", () => {
     );
     expect(html).toContain("Production");
     expect(html).toContain(words);
-  });
-});
-
-describe("ZeropsGroupPane", () => {
-  it("says nothing of repositories until one mirrors somewhere, then names where", () => {
-    const environments = [environment("stage", "stage")];
-    const repo = (name: string, url: string | null) => ({
-      name,
-      mainHead: null,
-      updatedAt: "2026-10-13T10:00:00Z",
-      remote:
-        url === null
-          ? null
-          : {
-              url,
-              repositoryId: "1",
-              keptAt: "2026-10-13T10:00:00Z",
-              keptBy: "Zerops custodian",
-              expiresAt: null,
-              invalidSince: null,
-            },
-    });
-    expect(render({ environments, repos: [repo("mailpit", null)] })).not.toContain("Repositories");
-    const markup = render({
-      environments,
-      repos: [repo("mailpit", null), repo("medusadev", "https://github.com/acme/medusa.git")],
-    });
-    expect(markup).toContain("Repositories");
-    expect(markup).toContain("medusadev → github.com/acme/medusa");
-    expect(markup).not.toContain("mailpit");
-  });
-
-  it("offers mirroring a project's code from its page once it has a repository", () => {
-    const environments = [environment("stage", "stage")];
-    const mailpit = {
-      name: "mailpit",
-      mainHead: null,
-      updatedAt: "2026-10-13T10:00:00Z",
-      remote: null,
-    };
-    const onMirror = () => undefined;
-    expect(render({ environments, repos: [], onMirror })).not.toContain("Mirror code");
-    const markup = render({ environments, repos: [mailpit], onMirror });
-    expect(markup).toContain("Repositories");
-    expect(markup).toContain("Mirror code to GitHub or GitLab…");
-  });
-
-  it("draws every line's content", () => {
-    const markup = render();
-
-    expect(markup).toContain("stage");
-    expect(markup).toContain("production");
-    expect(markup).toContain("3f9c1b2");
-  });
-
-  // DESIGN §3.4, M7: a stop the grant withholds keeps its place in the list and nothing of its
-  // project — neither its name, what it runs, nor a way into it.
-  it("draws a stop the grant withholds as its tier and why", () => {
-    const markup = render({
-      environments: [
-        environment("stage", "Shop stage"),
-        {
-          ...environment("prod", "Harbor live", "production"),
-          version: {
-            name: undefined,
-            label: "9e8d7c6",
-            commit: "9e8d7c6",
-            sha: "9e8d7c6".padEnd(40, "0"),
-            taggedBy: undefined,
-          },
-        },
-      ],
-      withheldNotice: (projectId) => (projectId === "prod" ? CHECKING : null),
-    });
-
-    expect(markup).toContain("production");
-    expect(markup).toContain(CHECKING);
-    expect(markup).not.toContain("Harbor live");
-    expect(markup).not.toContain("9e8d7c6");
-    expect(markup).toContain("3f9c1b2");
-    expect(markup.match(/<button/g)?.length).toBe(render().match(/<button/g)!.length - 1);
-  });
-
-  describe("the Environments section", () => {
-    const slots = (over: Partial<Parameters<typeof environmentSlots>[0]>) =>
-      environmentSlots({
-        environments: [],
-        devstages: [],
-        pending: [],
-        halfMade: [],
-        recipeTiers: ["stage", "production"],
-        recipeRead: true,
-        offered: { stage: true, production: true },
-        productionRuns: "unknown",
-        waiting: { count: 0, atLeast: false },
-        mainHasCode: true,
-        releaseOffered: false,
-        releasing: undefined,
-        ...over,
-      });
-
-    it("is not drawn before HQ's environments are read: nothing is known to be absent", () => {
-      const markup = render({ environments: [], slots: [] });
-      expect(markup).not.toContain("Environments");
-      expect(markup).not.toContain("Not added");
-    });
-
-    it("is there with nothing added: two quiet slots, each with its Add", () => {
-      const markup = render({ environments: [], slots: slots({}) });
-      expect(markup).toContain("Environments");
-      expect(markup).toContain("Add stage");
-      expect(markup).toContain("Put it live");
-    });
-
-    // The project's card says production first, then each stage: its page's column the same.
-    it("lists production before its stages, as the project's card does", () => {
-      const markup = render({ environments: [], slots: slots({}) });
-      expect(markup.indexOf("Put it live")).toBeLessThan(markup.indexOf("Add stage"));
-    });
-
-    it("offers no Add HQ does not offer, and says a tier waits for the recipe", () => {
-      const markup = render({
-        environments: [],
-        slots: slots({ offered: { stage: false, production: false }, recipeTiers: ["stage"] }),
-      });
-      expect(markup).not.toContain("Add stage");
-      expect(markup).toContain("Waiting for the Mate&#x27;s recipe");
-    });
-
-    describe("B: authoritative placement", () => {
-      it("a Mate used as stage occupies the stage slot and explains who deploys it", () => {
-        const devstages = devstagesOf("shop", [
-          {
-            id: "Ada",
-            name: "Ada",
-            status: "ACTIVE",
-            hq: { appId: "shop", appName: "Shop", kind: "devstage", mate: { face: "" } },
-          },
-        ]);
-        const markup = render({ environments: [], slots: slots({ devstages }) });
-        expect(markup).toContain("Ada — deployed by its agent");
-        expect(markup).not.toContain("Add stage");
-        expect(markup).toContain("Put it live");
-      });
-    });
-
-    it("says a Mate that is the stage is the stage, and asks no second one of the person", () => {
-      const markup = render({
-        environments: [],
-        slots: slots({ devstages: [{ id: "dev", name: "Vera" }] }),
-      });
-      expect(markup).toContain("Vera — deployed by its agent");
-      expect(markup).not.toContain("Add stage");
-      expect(markup).toContain("Put it live");
-    });
-
-    it("says a production being created is being set up, and offers no second Add for it", () => {
-      const markup = render({
-        environments: [],
-        slots: slots({ pending: [{ id: "p-new", tier: "production" }] }),
-      });
-      expect(markup).toContain("Setting up production…");
-      expect(markup).not.toContain("Put it live");
-    });
-
-    it("says a half-made environment is unfinished, with Finish setup and no Add for its tier", () => {
-      const markup = render({
-        environments: [],
-        slots: slots({ halfMade: [{ id: "p-half", tier: "production", finish: true }] }),
-      });
-      expect(markup).toContain("Setup isn&#x27;t finished");
-      expect(markup).toContain("Finish setup");
-      expect(markup).not.toContain("Put it live");
-      expect(markup).not.toContain("Waiting for the Mate&#x27;s recipe");
-    });
-
-    it("says an empty production waits for its first release, with Review release where offered", () => {
-      const prod = environment("prod", "production", "production");
-      const markup = render({
-        environments: [prod],
-        slots: slots({
-          environments: [{ id: "prod", tier: "production" }],
-          recipeTiers: [],
-          productionRuns: "empty",
-          releaseOffered: true,
-        }),
-      });
-      expect(markup).toContain("No release yet");
-      expect(markup).not.toContain("Put it live");
-    });
-  });
-
-  it("says an empty stage's first deploy on its line, as its cell does", () => {
-    const empty = {
-      ...environment("stage", "stage"),
-      version: { ...environment("stage", "stage").version, label: undefined, commit: undefined },
-    } as EnvironmentRow;
-    const markup = render({
-      environments: [empty],
-      firstDeployOf: (projectId) => (projectId === "stage" ? { kind: "on-its-way" } : undefined),
-    });
-    expect(markup).toContain("First deploy on its way");
-  });
-
-  // F13, 2026-10-03: a stage whose version was still being read wrote "none" in its version column,
-  // while its page said it was checking.
-  describe("names what a stop runs in its version column, as its page does", () => {
-    const unnamed = {
-      ...environment("stage", "stage"),
-      version: { ...environment("stage", "stage").version, label: undefined, commit: undefined },
-      tone: "neutral",
-    } as EnvironmentRow;
-    const running = (name: string): Shown<Deployment> => ({
-      state: "known",
-      value: { kind: "running", activatedAt: null, version: deployedVersion(name) },
-      asOf: { ordinal: 1, atMs: NOW },
-      coverage: "complete",
-      freshness: { kind: "live" },
-    });
-
-    it.each([
-      {
-        name: "checking while nothing has answered",
-        deployment: undefined,
-        expected: "Checking what runs here…",
-      },
-      {
-        name: "checking while what runs is read",
-        deployment: UNREAD,
-        expected: "Checking what runs here…",
-      },
-      {
-        name: "the version the platform names before the row does",
-        deployment: running("main 6aeae99"),
-        expected: "6aeae99",
-      },
-      {
-        name: "none once the platform says nothing runs",
-        deployment: NONE,
-        expected: "Nothing deployed yet",
-      },
-    ])("$name", ({ deployment, expected }) => {
-      const markup = render(
-        { environments: [unnamed] },
-        flowOf(new Map(deployment === undefined ? [] : [["stage", deployment]])),
-      );
-      const document = new Window().document;
-      document.body.innerHTML = markup;
-      const row = Array.from(document.querySelectorAll("button")).find((button) =>
-        button.textContent?.startsWith("stage"),
-      );
-      expect(row?.textContent).toContain(expected);
-    });
   });
 });
 
@@ -697,14 +373,14 @@ interface StopCase {
   readonly carried?: ReadonlyMap<string, MovedCommits> | undefined;
   /** Production's services whose commit cannot be told. */
   readonly untold?: ReadonlyArray<string>;
-  /** The environment's vault beside its page. */
+  /** The environment's vault, a drawer over its page. */
   readonly vault?: {
     readonly orgId: string;
     readonly open: boolean;
-    readonly onToggle: () => void;
+    readonly onOpenChange: (open: boolean) => void;
   };
   /** Who reaches the environment's project, as the page draws it. */
-  readonly access?: React.ReactNode;
+  readonly access?: React.ComponentProps<typeof ZeropsStopPane>["access"];
   /** The place's own name; its tier's unless given. */
   readonly name?: string;
   /** Where the place answers publicly. */
@@ -787,7 +463,7 @@ function renderStop(input: StopCase): string {
           : undefined
       }
       carried={input.carried}
-      crumbs={[{ label: "Projects", onClick: () => {} }]}
+      trail={[{ label: "Overview", onClick: () => {} }]}
       deployAgain={
         input.mayDeployAgain === true
           ? { running: () => false, onDeployAgain: () => {} }
@@ -832,8 +508,7 @@ it.each(["stage", "production"] as const)(
   "keeps unread %s services and their repository unknown rather than empty",
   (tier) => {
     const markup = renderStop({ tier, services: [], servicesRead: false, repository: null });
-    expect(markup).toContain("Services aren");
-    expect(markup).toContain("known yet");
+    expect(markup).toContain('data-zerops-surface="place-services-waiting"');
     expect(markup).not.toContain("None yet");
     expect(markup).not.toContain("No repository is declared");
   },
@@ -1117,10 +792,10 @@ describe("ZeropsStopPane — a service's job, and a version HQ did not deploy", 
       mayDeployAgain: true,
     });
     expect(offered).toContain('data-zerops-surface="stop-not-in-zerops"');
-    expect(offered).toContain("db · in its setup files, not in Zerops");
+    expect(offered).toContain("In its setup files, not in Zerops yet");
     expect(offered).toContain("Add db");
     const told = renderStop({ tier: "stage", services: TWO_LIVE, notInZerops: ["db"] });
-    expect(told).toContain("db · in its setup files, not in Zerops");
+    expect(told).toContain("In its setup files, not in Zerops yet");
     expect(told).not.toContain("Add db");
   });
 
@@ -1202,15 +877,6 @@ describe("ZeropsStopPane — the environment's vault", () => {
       (entry) => entry.textContent === "Vault",
     );
   };
-  it("offers its vault beside the page, pressed while it shows", () => {
-    expect(
-      vaultToggle({
-        tier: "production",
-        services: [],
-        vault: { orgId: "org", open: false, onToggle: () => {} },
-      })?.getAttribute("aria-pressed"),
-    ).toBe("false");
-  });
   it("offers no vault where the account's organization is not read", () => {
     expect(vaultToggle({ tier: "stage", services: [] })).toBeUndefined();
   });
@@ -1238,10 +904,14 @@ describe("ZeropsStopPane", () => {
   it.each(["stage", "production"] as const)(
     "the %s environment's page shows who reaches its project, under its card",
     (tier) => {
-      const markup = renderStop({ tier, services: [], access: <ul aria-label="Chips" /> });
-      expect(markup).toContain("Project access");
-      expect(markup).toContain('aria-label="Chips"');
-      expect(renderStop({ tier, services: [] })).not.toContain("Project access");
+      const markup = renderStop({
+        tier,
+        services: [],
+        access: { summary: null, line: "Reading who has access…" },
+      });
+      expect(markup).toContain("Who has access");
+      expect(markup).toContain("Reading who has access…");
+      expect(renderStop({ tier, services: [] })).not.toContain("Who has access");
     },
   );
   it.each(["stage", "production"] as const)(
@@ -1389,7 +1059,7 @@ describe("ZeropsStopPane", () => {
       },
       contains: [
         "It has no deploy key yet.",
-        "Someone with Full access to the stage project in Zerops mints one here.",
+        "Someone with Full access to the stage project in Zerops mints one.",
       ],
       lacks: ["Run again"],
     },
@@ -1423,7 +1093,7 @@ describe("ZeropsStopPane", () => {
       },
       contains: [
         "Its deploy key no longer works.",
-        "Someone with Full access to the stage project in Zerops mints a new one here.",
+        "Someone with Full access to the stage project in Zerops mints a new one.",
       ],
       lacks: ["Run again"],
     },
@@ -1455,7 +1125,7 @@ describe("ZeropsStopPane", () => {
         "Nothing deployed yet.",
         "The next merge to main deploys here.",
         "Deploys · 0",
-        "None yet",
+        "Nothing runs here yet.",
       ],
       lacks: ["Nothing has landed on this repository yet."],
     },
@@ -1539,13 +1209,6 @@ describe("ZeropsStopPane", () => {
     expect(card).not.toContain("b200000");
   });
 
-  it("says None yet under Services where the stop has no code service", () => {
-    const markup = renderStop({ tier: "production", services: [], deployment: NONE });
-    const services = markup.indexOf("Services · 0");
-    expect(services).toBeGreaterThan(-1);
-    expect(markup.slice(services)).toContain("None yet");
-  });
-
   it("lists a place's platform services though it has no code service, never None yet under their count", () => {
     const document = new Window().document;
     document.body.innerHTML = renderStop({
@@ -1565,7 +1228,7 @@ describe("ZeropsStopPane", () => {
 
   it("offers the way back only to an earlier release, never to the one that runs", () => {
     const markup = renderStop({ tier: "production", services: TWO_LIVE, releases: 2 });
-    expect(count(markup, ">Roll back to this</button>")).toBe(1);
+    expect(count(markup, ">Roll back to v")).toBe(1);
   });
 
   it("lists the newest five releases and a quiet way to the rest", () => {
@@ -1680,7 +1343,7 @@ describe("ZeropsStopPane", () => {
       { name: "unread" },
     ])("keeps the list's own pins with its commits $name", ({ carried }) => {
       const two = renderStop({ tier: "production", services: TWO_LIVE, releases: 2, carried });
-      expect(count(two, ">Roll back to this</button>")).toBe(1);
+      expect(count(two, ">Roll back to v")).toBe(1);
       const seven = renderStop({
         tier: "production",
         services: TWO_LIVE,
@@ -1767,22 +1430,12 @@ describe("ZeropsStopPane", () => {
   });
 });
 
-describe("detailTrail: where a detail page sits", () => {
-  it.each([
-    ["the projects page", undefined, ["Projects"]],
-    ["a project whose name is known", { groupId: "grp7Kq2", name: "Shop" }, ["Projects", "Shop"]],
-    // Before the listing is read the project's crumb waits: its id is never a name.
-    ["a project whose name is not read yet", { groupId: "grp7Kq2", name: undefined }, ["Projects"]],
-  ] as const)("%s", (_case, inside, labels) => {
-    expect(detailTrail(inside).map((crumb) => crumb.label)).toEqual(labels);
-  });
-});
-
 describe("environment route target dispatch", () => {
   it.each(["unknown", "empty", "git"] as const)(
     "The environment route resolves its target before observing a Zerops project.",
     (kind) => {
       const registry = AtomRegistry.make();
+      mountedRegistries.add(registry);
       const id = HqEnvironmentId.make("environment-without-project");
       const structure = {
         apps: [
@@ -1804,7 +1457,6 @@ describe("environment route target dispatch", () => {
                       order: 1,
                       keyHeld: false,
                       keyInvalid: false,
-                      can: {},
                       birth: null,
                       release: null,
                       jobs: [],
@@ -1843,6 +1495,7 @@ describe("environment route target dispatch", () => {
               </AccountDataContext.Provider>
             </RegistryContext.Provider>,
           );
+          mountedTrees.add(mounted);
         });
       } catch (cause) {
         failure = cause;
@@ -1872,7 +1525,6 @@ describe("environment route target dispatch", () => {
                       order: 1,
                       keyHeld: false,
                       keyInvalid: false,
-                      can: {},
                       birth: null,
                       release: null,
                       jobs: [],
@@ -1887,8 +1539,8 @@ describe("environment route target dispatch", () => {
           mounted!.root
             .findAllByType("h1")
             .flatMap((node) => node.children)
-            .filter((text) => text === "Late production"),
-        ).toEqual(["Late production"]);
+            .filter((text) => text === "Production"),
+        ).toEqual(["Production"]);
         expect(platform.projectReads).toEqual([]);
         expect(requests.filter((family) => family !== "hqAppDetail")).toEqual([]);
       }
@@ -1917,11 +1569,14 @@ describe("environment route target dispatch", () => {
       expect(platform.projectReads).toEqual([]);
       expect(requests.filter((family) => family !== "hqAppDetail")).toEqual([]);
       act(() => mounted?.unmount());
+      if (mounted !== undefined) mountedTrees.delete(mounted);
       registry.dispose();
+      mountedRegistries.delete(registry);
     },
   );
 });
 
+// witness: apps/web/src/components/zerops/ZeropsGroupDetail.tsx | onClick={open} → onClick={undefined}
 it("Environment navigation keeps its identity when the target's project name changes.", () => {
   const id = HqEnvironmentId.make("stable-environment");
   const target = {
@@ -1930,6 +1585,7 @@ it("Environment navigation keeps its identity when the target's project name cha
   };
   const open = (name: string) => {
     const registry = AtomRegistry.make();
+    mountedRegistries.add(registry);
     const store = mountRoster(registry, "org", [
       { id: target.projectId, name: `Shop - ${name}`, status: "ACTIVE" },
     ]);
@@ -1978,27 +1634,10 @@ it("Environment navigation keeps its identity when the target's project name cha
     act(() => {
       mounted = create(
         <RegistryContext.Provider value={registry}>
-          <ZeropsGroupPane
-            groupId="shop"
-            name="Shop"
-            environments={[row]}
-            slots={slotsOf([row])}
-            history={null}
-            repo={undefined}
-            release={{
-              offered: false,
-              releasing: false,
-              tag: undefined,
-              reason: undefined,
-              onReview: () => {},
-            }}
-            onFinish={() => {}}
-            finishing={false}
-            onAdd={() => {}}
-            onSetUp={() => {}}
-          />
+          <StopLine environment={row} groupId="shop" notice={null} />
         </RegistryContext.Provider>,
       );
+      mountedTrees.add(mounted);
     });
     const button = mounted.root
       .findAllByType("button")
@@ -2006,7 +1645,9 @@ it("Environment navigation keeps its identity when the target's project name cha
     expect(button).toBeDefined();
     act(() => button!.props.onClick());
     act(() => mounted.unmount());
+    mountedTrees.delete(mounted);
     registry.dispose();
+    mountedRegistries.delete(registry);
   };
   platform.navigation = [];
   open("Original project name");
@@ -2021,46 +1662,6 @@ it("Environment navigation keeps its identity when the target's project name cha
       params: { groupId: "shop", projectId: "stable-environment" },
     },
   ]);
-});
-
-it("An environment page explains HQ's refusal in words without opening project readers.", () => {
-  const registry = AtomRegistry.make();
-  const { store } = mountHqNavigation(registry, "org", {
-    structure: {
-      apps: [
-        { id: "shop", name: "Shop", projects: [], environments: { refused: "changes_not_seen" } },
-      ],
-      ungrouped: [],
-    },
-  });
-  platform.routeWitness = true;
-  platform.projectReads = [];
-  try {
-    const markup = renderToStaticMarkup(
-      <RegistryContext.Provider value={registry}>
-        <AccountDataContext.Provider
-          value={
-            { data: store.data, orgId: "org", demandDetail: () => () => {} } as Pick<
-              AccountData,
-              "data" | "orgId" | "demandDetail"
-            > as AccountData
-          }
-        >
-          <InventoryContext.Provider value={EMPTY_ROUTE_INVENTORY}>
-            <ZeropsStopDetailPage groupId="shop" environmentId="stage" />
-          </InventoryContext.Provider>
-        </AccountDataContext.Provider>
-      </RegistryContext.Provider>,
-    );
-    expect(markup).toContain(
-      "You need more than Read access to one of this project&#x27;s Zerops projects to see its changes.",
-    );
-    expect(markup).not.toContain("changes_not_seen");
-    expect(platform.projectReads).toEqual([]);
-  } finally {
-    platform.routeWitness = false;
-    registry.dispose();
-  }
 });
 
 const EMPTY_ROUTE_INVENTORY: Inventory = {
@@ -2157,9 +1758,9 @@ it("a deleted production names its removal before opening runtime readers", () =
   }
 });
 
-it.each(["empty", "refused"] as const)(
+it.each(["empty"] as const)(
   "A placed stage keeps its runtime page while HQ has no environment row (%s).",
-  (standing) => {
+  () => {
     const registry = AtomRegistry.make();
     const { store } = mountHqNavigation(registry, "org", {
       structure: {
@@ -2168,7 +1769,7 @@ it.each(["empty", "refused"] as const)(
             id: "shop",
             name: "Shop",
             projects: [{ projectId: "placed-stage", name: "Stage", kind: "stage", mate: null }],
-            environments: standing === "refused" ? { refused: "changes_not_seen" } : [],
+            environments: [],
           },
         ],
         ungrouped: [],
@@ -2248,10 +1849,12 @@ it("A runtime stop opens its recorded environment identity and keeps an unrecord
     mounted = create(
       <ZeropsRuntimeStops stops={stops} deployments={new Map()} onOpen={(id) => opened.push(id)} />,
     );
+    mountedTrees.add(mounted);
   });
   act(() => {
     for (const button of mounted.root.findAllByType("button")) button.props.onClick();
   });
   expect(opened).toEqual(["environment-stage", "unregistered-stage"]);
   act(() => mounted.unmount());
+  mountedTrees.delete(mounted);
 });

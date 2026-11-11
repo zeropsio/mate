@@ -5,10 +5,10 @@ import { describe, expect, it } from "vite-plus/test";
 import { hqMateScope } from "../families/hqMate.ts";
 import {
   hqAppFamily,
+  hqPressFamily,
   placementFamily,
   hqAppsScope,
   hqOrganizationScope,
-  hqPeopleScope,
   hqPressesScope,
   hqStatusScope,
   placementsScope,
@@ -17,10 +17,12 @@ import { emptyAccount, linkKeys, type AccountState, type ScopeKey } from "../mod
 import { reduceAccount, type AccountInput, type Row } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
 import type { StreamEvent } from "../streamMachine.ts";
-import { pastGrace } from "../__fixtures__/account.ts";
+import { liveProjects, pastGrace } from "../__fixtures__/account.ts";
+import { membershipInputs } from "../__fixtures__/membership.ts";
 import { hqMates } from "./hqMates.ts";
 import { hqAppChanges, hqNavigation, hqPersonFacts, hqStatus } from "./hqNavigation.ts";
 import { gitEnvironment } from "../__fixtures__/hqWire.ts";
+import { membersScope } from "../families/organizationMembers.ts";
 
 const ORG = "org";
 const NAV: ReadonlyArray<ScopeKey> = [
@@ -28,7 +30,6 @@ const NAV: ReadonlyArray<ScopeKey> = [
   hqStatusScope(ORG),
   hqAppsScope(ORG),
   placementsScope(ORG),
-  hqPeopleScope(ORG),
   hqPressesScope(ORG),
 ];
 const revision = { kind: "hq", incarnation: "i", revision: 1 } as const;
@@ -47,12 +48,9 @@ const CHANGE = {
 const PRESS = {
   kind: "stage",
   appId: "shop",
-  heldForMs: 30_000,
-  until: "2026-10-06T00:00:30.000Z",
+  held: true,
 } as const;
 const person = {
-  role: "DEVELOPER",
-  mayWrite: true,
   mine: true,
   ownerUserId: null,
   waitsOnViewer: false,
@@ -62,21 +60,19 @@ const mate = {
   face: "",
   madeBy: null,
   standupRequestedBy: null,
-  closedOff: false,
-  setupMarker: null,
 };
 const rows: ReadonlyArray<Row> = [
   {
     family: "hqOrganization",
     id: ORG,
     revision,
-    value: { can: {}, unheld: {}, tools: [], build: "b1" },
+    value: { build: "b1" },
   },
   {
     family: "hqStatus",
     id: ORG,
     revision,
-    value: { official: "ok", parts: { quarantined: [] } },
+    value: { parts: { quarantined: [] } },
   },
   {
     family: "hqApp",
@@ -85,7 +81,6 @@ const rows: ReadonlyArray<Row> = [
     value: {
       id: "shop",
       name: "Shop",
-      can: {},
       contents: { empty: false, deletingProjectIds: [] },
       projectIds: ["ada", "stage"],
       births: [],
@@ -138,12 +133,6 @@ const rows: ReadonlyArray<Row> = [
       signedInNow: {},
       everSignedIn: {},
     },
-  },
-  {
-    family: "hqPerson",
-    id: "u1",
-    revision,
-    value: { name: "Jan", clientUserId: "cu1", avatarUrl: null },
   },
   { family: "hqPress", id: "p1", revision, value: PRESS },
 ];
@@ -205,7 +194,6 @@ it("the delivery reader keeps mixed targets while existing project navigation ke
       order: 2,
       keyHeld: true,
       keyInvalid: false,
-      can: {},
       jobs: [],
       release: null,
       birth: null,
@@ -219,6 +207,26 @@ const read = apply(demanded, [
   { kind: "delivery", via: "hq-stream", scopes: generations, reset: true, rows, removals: [] },
   { kind: "hq-ready", scopes: generations },
   ...NAV.map((scope) => stream(scope, { kind: "baseline-committed" })),
+  // The organization's member list names HQ's user ids (`GET /client/{id}/user/list`).
+  stream(membersScope(ORG), { kind: "demand", demanded: true }),
+  stream(membersScope(ORG), { kind: "attempt" }),
+  stream(membersScope(ORG), { kind: "handshake" }),
+  { kind: "baseline-begin", scope: membersScope(ORG), generation: 1 },
+  {
+    kind: "baseline-commit",
+    scope: membersScope(ORG),
+    generation: 1,
+    via: "zerops-read",
+    members: [ORG],
+    rows: [
+      {
+        family: "organizationMembers",
+        id: ORG,
+        value: [{ id: "cu1", userId: "u1", user: { id: "u1", fullName: "Jan" } }],
+        revision: { kind: "zerops", version: null },
+      },
+    ],
+  },
 ]);
 const down = pastGrace(
   apply(read, [
@@ -245,33 +253,129 @@ const removed = apply(read, [
     reset: false,
     rows: [],
     removals: [
-      { family: "placement", id: "lone", reason: "deleted" },
-      { family: "placement", id: "stage", reason: "no-access" },
+      { family: "placement", id: "lone" },
+      { family: "placement", id: "stage" },
     ],
   },
 ]);
 
 const navigation = (state: AccountState) => hqNavigation.derive(readsOfState(state), ORG);
 
+it.each([true, false])(
+  "HQ's late press hold %s reaches the navigation of another device",
+  (held) => {
+    const wire = { kind: "mate", held, importProcessId: "accepted-import" } as const;
+    const value = hqPressFamily.hq!.decode(wire, "press:p1");
+    expect(value).toEqual(wire);
+    const state = apply(read, [
+      {
+        kind: "delivery",
+        via: "hq-stream",
+        scopes: generations,
+        reset: false,
+        rows: [
+          { family: "hqPress", id: "p1", value: value!, revision: { ...revision, revision: 2 } },
+        ],
+        removals: [],
+      },
+    ]);
+    expect(navigation(state).presses.p1).toEqual(wire);
+  },
+);
+
+it("a later HQ birth carries its original intent and attempts to another device", () => {
+  const birth = {
+    id: "birth-ada",
+    face: "rose:seal",
+    madeBy: "person-1",
+    intent: {
+      projectName: "Shop - Ada",
+      recipe: { id: "group", revision: "abc123", tier: "dev" },
+      agents: ["codex"],
+    },
+    attempts: {
+      create: {
+        by: "person-1",
+        at: "2026-11-05T17:00:00Z",
+        refused: { at: "2026-11-05T17:01:00Z", reason: "Project quota reached" },
+      },
+    },
+  };
+  const app = rows.find((row) => row.family === "hqApp")!;
+  const value = hqAppFamily.hq!.decode({ ...app.value, births: [birth] }, "app:shop")!;
+  const state = apply(read, [
+    {
+      kind: "delivery",
+      via: "hq-stream",
+      scopes: generations,
+      reset: false,
+      rows: [{ family: "hqApp", id: "shop", value, revision: { ...revision, revision: 2 } }],
+      removals: [],
+    },
+  ]);
+  expect(navigation(state).structure?.apps[0]?.births).toEqual([birth]);
+});
+
+it("navigation keeps each accepted import identity after the browser press is gone", () => {
+  const birth = {
+    id: "birth-ada",
+    face: "ada",
+    projectId: "ada",
+    importProcessId: "birth-import",
+  };
+  const nextRows = rows.flatMap((row): ReadonlyArray<Row> => {
+    if (row.family === "hqPress") return [];
+    if (row.family === "hqApp") {
+      const value = hqAppFamily.hq!.decode({ ...row.value, births: [birth] }, "app:shop")!;
+      return [{ ...row, value }];
+    }
+    if (row.family === "placement" && row.value.mate !== null) {
+      const value = placementFamily.hq!.decode(
+        { ...row.value, mate: { ...row.value.mate, importProcessId: `${row.id}-import` } },
+        `project:${row.id}`,
+      )!;
+      return [{ ...row, value }];
+    }
+    return [row];
+  });
+  const state = apply(demanded, [
+    {
+      kind: "delivery",
+      via: "hq-stream",
+      scopes: generations,
+      reset: true,
+      rows: nextRows,
+      removals: [],
+    },
+  ]);
+  const view = navigation(state);
+  expect(view.presses).toEqual({});
+  expect(view.structure?.apps[0]?.births).toEqual([birth]);
+  expect(view.structure?.apps[0]?.projects[0]?.mate).toMatchObject({
+    importProcessId: "ada-import",
+  });
+  expect(view.structure?.ungrouped[0]?.mate).toMatchObject({ importProcessId: "lone-import" });
+});
+
 describe("hqNavigation", () => {
   it.each([
     {
       name: "not asked",
       state: emptyAccount,
-      expected: { read: "unread", structure: null, live: false },
+      expected: { read: "unread", structure: null, link: { kind: "unreachable" } },
     },
     {
       name: "first catchup",
       state: demanded,
-      expected: { read: "reading", structure: null, live: false },
+      expected: { read: "reading", structure: null, link: { kind: "unreachable" } },
     },
-    { name: "read", state: read, expected: { read: "read", live: true, reconnecting: false } },
-    { name: "HQ down", state: down, expected: { read: "read", live: false, reconnecting: true } },
+    { name: "read", state: read, expected: { read: "read", link: { kind: "live" } } },
+    { name: "HQ down", state: down, expected: { read: "read", link: { kind: "unreachable" } } },
     {
       name: "refused",
       state: refused,
       expected: {
-        live: false,
+        link: { kind: "live" },
         refusal: "Zerops refused HQ.",
         unavailableReason: "expired-session",
       },
@@ -289,7 +393,6 @@ describe("hqNavigation", () => {
     const raw = {
       id: "shop",
       name: "Shop",
-      can: {},
       contents: { empty: false, deletingProjectIds: [] },
       environments: [],
       changes: [],
@@ -384,7 +487,6 @@ describe("hqNavigation", () => {
         {
           id: "shop",
           name: "Shop",
-          can: {},
           contents: { empty: false, deletingProjectIds: [] },
           environments: [],
           changes: [],
@@ -458,7 +560,7 @@ describe("hqNavigation", () => {
       structure?.apps.map(({ name, projects }) => [name, projects.map((p) => p.name)]),
     ).toEqual([["Shop", ["Ada", "Stage"]]]);
     expect(structure?.ungrouped.map(({ name }) => name)).toEqual(["Lone"]);
-    expect(people).toEqual({ u1: { name: "Jan", clientUserId: "cu1", avatarUrl: null } });
+    expect(people).toEqual({ u1: { name: "Jan", clientUserId: "cu1" } });
     expect(presses).toEqual({ p1: PRESS });
     expect(organization?.build).toBe("b1");
   });
@@ -492,7 +594,7 @@ describe("hqNavigation", () => {
         stream(scope, { kind: "handshake" }),
       ]),
     ]);
-    expect(navigation(asking)).toMatchObject({ live: false, reconnecting: true });
+    expect(navigation(asking)).toMatchObject({ link: { kind: "unreachable" } });
   });
 
   it("a planned HQ reconnect is no outage: what it read stays current while HQ confirms it again", () => {
@@ -504,13 +606,12 @@ describe("hqNavigation", () => {
         stream(scope, { kind: "handshake" }, 100_080),
       ]),
     );
-    expect(navigation(reasking)).toMatchObject({ live: true, reconnecting: false });
-    expect(navigation(reasking).downSince).toBeUndefined();
+    expect(navigation(reasking)).toMatchObject({ link: { kind: "live" } });
     const confirmed = apply(reasking, [
       { kind: "hq-ready", scopes: NAV.map((scope) => ({ scope, generation: 2 })) },
       ...NAV.map((scope) => stream(scope, { kind: "baseline-committed" }, 100_200)),
     ]);
-    expect(navigation(confirmed)).toMatchObject({ live: true, reconnecting: false });
+    expect(navigation(confirmed)).toMatchObject({ link: { kind: "live" } });
   });
 
   it("is down only once HQ stays away past the grace, and down since it went away", () => {
@@ -526,12 +627,39 @@ describe("hqNavigation", () => {
       ),
       ...NAV.map((scope) => stream(scope, { kind: "parent-lost" }, 60_000)),
     ]);
-    expect(navigation(lost)).toMatchObject({ live: true, reconnecting: false });
+    expect(navigation(lost)).toMatchObject({ link: { kind: "live" } });
     expect(navigation(pastGrace(lost))).toMatchObject({
-      live: false,
-      reconnecting: true,
-      downSince: 60_000,
+      link: { kind: "unreachable", since: 60_000 },
     });
+  });
+
+  it("Navigation projects HQ's actionable finding for the same application.", () => {
+    const problem = {
+      code: "invalid_recipe",
+      what: "Invalid setting",
+      where: { appId: "shop", service: "api" },
+      rule: { source: "hq", code: "invalid_recipe" },
+      next: { actor: "mate", action: "Propose a corrected recipe" },
+    } as const;
+    const held = rows.find((row) => row.family === "hqApp")!;
+    const next = apply(read, [
+      {
+        kind: "delivery",
+        via: "hq-stream",
+        scopes: generations,
+        reset: false,
+        rows: [
+          {
+            ...held,
+            revision: { ...revision, revision: 2 },
+            value: { ...held.value, problems: [problem] },
+          } as Row,
+        ],
+        removals: [],
+      },
+    ]);
+    expect(navigation(next).structure?.apps[0]?.problems).toEqual([problem]);
+    expect(navigation(read).structure?.apps[0]?.problems).toBeUndefined();
   });
 
   it("keeps what it read through an outage", () => {
@@ -542,6 +670,31 @@ describe("hqNavigation", () => {
     const { structure } = navigation(removed);
     expect(structure?.apps[0]?.projects.map(({ name }) => name)).toEqual(["Ada"]);
     expect(structure?.ungrouped).toEqual([]);
+  });
+});
+
+// Brief W18 (2026-11-05): HQ names no project it holds nowhere; the client derives the placeable
+// set from the person's own live Zerops list and HQ's rows, and offers by the shared role rule.
+describe("placeable projects", () => {
+  const placeable = (role: string) =>
+    navigation(
+      apply(read, [
+        ...liveProjects(ORG, [{ id: "ada" }, { id: "stage" }, { id: "lone" }, { id: "free" }]),
+        ...membershipInputs(role),
+      ]),
+    ).structure?.placeable;
+
+  it("a project in the person's live Zerops list that HQ holds no row for is placeable", () => {
+    expect(Object.keys(placeable("ADMIN") ?? {})).toContain("free");
+  });
+
+  it("a project HQ holds as a Mate, a stage or a production is not placeable", () => {
+    expect(Object.keys(placeable("ADMIN") ?? {})).toEqual(["free"]);
+  });
+
+  it("a read-only person is offered no Mate record on a placeable project", () => {
+    expect(placeable("ADMIN")?.free?.create_mate_record?.allow).toBe(true);
+    expect(placeable("READ_ONLY")?.free?.create_mate_record?.allow).toBe(false);
   });
 });
 
@@ -568,26 +721,10 @@ describe("hqMates", () => {
   ]);
 
   it.each([
-    { name: "a relayed Mate, live", state: withMate, live: true, mates: { ada: { presence } } },
-    { name: "none relayed yet", state: read, live: true, mates: {} },
-  ])("$name", ({ state, live, mates }) => {
-    expect(hqMates.derive(readsOfState(state), ORG)).toEqual({ live, mates });
-  });
-
-  it("keeps a Mate's last word through an outage, no longer live", () => {
-    const outage = pastGrace(
-      apply(withMate, [
-        stream(linkKeys.hq(ORG), {
-          kind: "fault",
-          fault: { outcome: "transient", message: "HQ's stream broke." },
-          jitter: 0,
-        }),
-      ]),
-    );
-    expect(hqMates.derive(readsOfState(outage), ORG)).toEqual({
-      live: false,
-      mates: { ada: { presence } },
-    });
+    { name: "a relayed Mate, live", state: withMate, mates: { ada: { presence } } },
+    { name: "none relayed yet", state: read, mates: {} },
+  ])("$name", ({ state, mates }) => {
+    expect(hqMates.derive(readsOfState(state), ORG)).toEqual({ mates });
   });
 });
 
@@ -606,7 +743,6 @@ describe("hqPersonFacts", () => {
 describe("hqStatus", () => {
   it("is how HQ stands as its navigation says it, apart from the organization's record", () => {
     expect(hqStatus.derive(readsOfState(read), ORG)).toEqual({
-      official: "ok",
       parts: { quarantined: [] },
     });
     expect(hqStatus.derive(readsOfState(emptyAccount), ORG)).toBeNull();
@@ -673,12 +809,6 @@ describe("HQ-computed Mate owners", () => {
   ])("$name", ({ state, owner, expected }) => {
     expect(owners(readsOfState(owned(state, owner)), ORG)).toEqual(expected);
   });
-  it("withholds an owner when HQ denies their person fact", () => {
-    const state = apply(owned(read, "u1"), [
-      { kind: "access", family: "hqPerson", id: "u1", access: "denied" },
-    ]);
-    expect(owners(readsOfState(state), ORG)).toEqual({});
-  });
   it("moves the owner on newer HQ evidence without reading project grants", () => {
     const before = owned(read, "u1");
     const after = apply(before, [
@@ -701,7 +831,7 @@ describe("HQ-computed Mate owners", () => {
               mate,
               person: { ...person, ownerUserId: null },
               signedInNow: {},
-              everSignedIn: { codex: "u1" },
+              everSignedIn: {},
             },
           },
         ],

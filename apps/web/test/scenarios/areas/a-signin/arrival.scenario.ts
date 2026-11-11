@@ -1,14 +1,15 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { beforeAll, describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
-import { deviceLoginDist } from "../../harness/deviceLoginBundle.ts";
+import { zeropsHqDist } from "../../harness/zeropsHqBundle.ts";
 import { createScenario } from "../../harness/scenario.ts";
+import { signedInAtHq } from "../../harness/zeropsHq.ts";
 import { installSignIn } from "./fake.ts";
 import { account } from "./dsl.ts";
 
-/** The device-login build, once `beforeAll` has it. */
+/** The `zerops-hq` build, once `beforeAll` has it. */
 let dist = "";
-const deviceLoginScenario = () => createScenario([installSignIn], { signIn: "device-login", dist });
+const zeropsHqScenario = () => createScenario([installSignIn], { signIn: "zerops-hq", dist });
 
 /** What the window's first seconds showed, each time it changed. */
 interface ArrivalFrame {
@@ -120,22 +121,22 @@ function expectSettledArrival(frames: ReadonlyArray<ArrivalFrame>) {
 
 describe("owner-reported layout regressions", () => {
   beforeAll(async () => {
-    dist = await deviceLoginDist();
+    dist = await zeropsHqDist();
   });
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     // Seen on an arrival from HQ's invitation (run 2): the mark jumped 12 px as the menu came,
     // and its loading rows went away and came back while the members were read.
+    // witness: apps/web/src/zerops/ZeropsSessionProvider.tsx | (view) => (view === null ? null : zeropsSessionOf(view)), → () => null,
     it.effect(
-      "an arrival from HQ's card and its reload paint the menu's mark in one place, its loading row until the rows, and no card taken back",
+      "an arrival signed in at Zerops HQ and its reload paint the menu's mark in one place, its loading row until the rows, and no card taken back",
       () =>
         Effect.gen(function* () {
-          const s = yield* deviceLoginScenario();
+          const s = yield* zeropsHqScenario();
           yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
           yield* s.given.project("Ada", { mate: true, app: "Shop" });
-          s.drivers.zerops.deviceLogin.approvesFromHq = true;
-          s.web.setPerson(s.page, "personal");
+          yield* Effect.promise(() => signedInAtHq(s.drivers.zeropsHq!, s.page, "owner"));
           yield* Effect.promise(() => s.page.evaluateOnNewDocument(recordArrival));
-          yield* Effect.promise(() => s.page.goto(`${s.web.origin}/?signin=hq`));
+          yield* Effect.promise(() => s.page.goto(s.web.origin));
           yield* account(s.page).showsPerson("owner");
           yield* s.then.menu.row("Shop").appears();
           const settled = () =>

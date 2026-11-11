@@ -111,7 +111,7 @@ describe("headingLine — the heading's second line, the board's D′ ladder", (
         production: undefined,
         stages: [stage(undefined, "qa"), stage({ kind: "coming", step: "address" }, "demo")],
       },
-      line: ["demo coming up · turning its address on", "ink", "", ""],
+      line: ["Demo coming up · turning its address on", "ink", "", ""],
     },
     {
       case: "production unread: nothing claimed",
@@ -136,7 +136,7 @@ describe("headingLine — the heading's second line, the board's D′ ladder", (
     {
       case: "one of several stages deploys: it is named",
       over: { stages: [stage(undefined, "qa"), stage(undefined, "demo", true, true)] },
-      line: ["demo is deploying…", "ink", "spinner", ""],
+      line: ["Demo is deploying…", "ink", "spinner", ""],
     },
     {
       case: "production deploys with no release on its way",

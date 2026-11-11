@@ -13,7 +13,6 @@ import {
   pendingBornLine,
   mateCrewItem,
   mateDeletingView,
-  mateFinishingView,
   mateOwnerView,
   mateNotYours,
   mateRowHeldLines,
@@ -31,7 +30,7 @@ import {
   mateRowReading,
   mateRowView,
   ownerMark,
-  mateRowOffersMenu,
+  mateRowMenu,
 } from "./SidebarMateRow.logic";
 
 describe("ownerMark — whose Mate it is, as a 16 px mark before its name", () => {
@@ -966,39 +965,6 @@ describe("mateDeletingView — a Mate on its way off Zerops", () => {
 
 // Finish setup runs in place: its row says so where its last line stood, so the row keeps its
 // height — and the Mate is not going anywhere, so its face, its time and its name stay as they were.
-describe("mateFinishingView — a Mate whose setup is being finished", () => {
-  const activity = (overrides: Partial<ZeropsAgentActivity> = {}): ZeropsAgentActivity => ({
-    threadId: ThreadId.make("thread-1"),
-    kind: "idle",
-    status: null,
-    face: "idle",
-    subject: "Speed up the photo gallery",
-    at: "2026-09-29T08:00:00.000Z",
-    snippet: "Thumbnails load lazily now.",
-    unread: false,
-    pausedUntil: undefined,
-    threadKey: "env:thread-1",
-    task: "Speed up the photo gallery",
-    ...overrides,
-  });
-
-  it.each([
-    {
-      case: "asked, with words back: the ask stays, the words give way",
-      input: activity(),
-      ask: "Speed up the photo gallery",
-    },
-    {
-      case: "asked, with no words back: the ask gives way",
-      input: activity({ snippet: undefined }),
-      ask: undefined,
-    },
-    { case: "never spoken to", input: undefined, ask: undefined },
-  ])("$case", ({ input, ask }) => {
-    const view = mateRowView(input, input?.face ?? "sleep");
-    expect(mateFinishingView(view)).toEqual({ ...view, ask, reply: undefined });
-  });
-});
 
 // The owner, 2026-09-29, of a new Mate at work on its first job: its row read "Working on a
 // reply" under an asleep face. The words came from one reading — what this browser remembered the
@@ -1234,6 +1200,24 @@ describe("mateComingRowView — a Mate coming up, or one that did not come", () 
       coming,
     });
   });
+
+  it("a stopped shared birth rests and shows its reason", () => {
+    const coming = {
+      kind: "coming",
+      line: "Project created · Quota reached.",
+      birth: { attention: true },
+    } as const;
+    expect(mateComingRowView(view, coming)).toMatchObject({
+      state: "needs",
+      face: "sleep",
+      dot: "attention",
+    });
+    expect(mateBornLine(coming)).toEqual({
+      words: "Project created · Quota reached.",
+      since: undefined,
+      tone: "attention",
+    });
+  });
 });
 
 // The pose its face wears in the row (`mateFaceFor`): waking while it arrives — from its press
@@ -1382,6 +1366,21 @@ describe("mateBornLine — a Mate being born, as its row's one line", () => {
     expect(mateBornLine(coming).words).toBe("Coming up");
     expect(mateBornLine({ ...coming, line: "Coming up. A few minutes." }).words).toBe("Coming up");
   });
+
+  it("a shared birth's row shows its proven phase and reason without a local clock", () => {
+    expect(
+      mateBornLine({
+        kind: "coming",
+        line: "Import accepted · No capacity.",
+        birth: { attention: true },
+        since: SINCE,
+      }),
+    ).toEqual({
+      words: "Import accepted · No capacity.",
+      since: undefined,
+      tone: "attention",
+    });
+  });
 });
 
 // A creation the listing does not hold yet, drawn from its birth (`ZeropsGroupPendingMember`),
@@ -1427,56 +1426,38 @@ describe("mateNotYours — whether a Mate's face is paler under its owner's badg
     mark: ownerMark({ name: "Jan", initials: "J", avatarUrl: null }),
   } as const;
   it.each([
-    {
-      name: "a colleague's",
-      seat: person,
-      isViewer: false,
-      signer: "u-jan",
-      viewer: "u-eva",
-      pale: true,
-    },
-    {
-      name: "the viewer's own",
-      seat: person,
-      isViewer: true,
-      signer: "u-eva",
-      viewer: "u-eva",
-      pale: false,
-    },
+    { name: "a colleague's", seat: person, isViewer: false, mine: false, pale: true },
+    { name: "the viewer's own", seat: person, isViewer: true, mine: true, pale: false },
     {
       name: "nobody's",
       seat: { kind: "nobody", label: "" },
       isViewer: false,
-      signer: undefined,
-      viewer: "u-eva",
+      mine: undefined,
       pale: true,
     },
     {
-      name: "unnamed, signed by somebody else",
+      name: "unnamed, HQ names somebody else",
       seat: { kind: "unnamed" },
       isViewer: false,
-      signer: "u-jan",
-      viewer: "u-eva",
+      mine: false,
       pale: true,
     },
     {
-      name: "unnamed, signed by the viewer",
+      name: "unnamed, HQ names the viewer",
       seat: { kind: "unnamed" },
       isViewer: false,
-      signer: "u-eva",
-      viewer: "u-eva",
+      mine: true,
       pale: false,
     },
     {
       name: "unnamed, whose unknown",
       seat: { kind: "unnamed" },
       isViewer: false,
-      signer: undefined,
-      viewer: "u-eva",
+      mine: undefined,
       pale: false,
     },
-  ] as const)("$name", ({ seat, isViewer, signer, viewer, pale }) => {
-    expect(mateNotYours({ seat, isViewer, signer, viewer })).toBe(pale);
+  ] as const)("$name", ({ seat, isViewer, mine, pale }) => {
+    expect(mateNotYours({ seat, isViewer, mine })).toBe(pale);
   });
 });
 
@@ -1616,7 +1597,6 @@ describe("mateRowAskLine — the row's second line: what the person asked, or is
     draft: undefined,
     sent: undefined,
     deleting: false,
-    finishing: false,
     read: true,
     asker: undefined,
   };
@@ -1734,26 +1714,6 @@ describe("mateRowAskLine — the row's second line: what the person asked, or is
       input: { ...base, deleting: true },
       line: undefined,
     },
-    {
-      // Live, 2026-10-02: Finish setup on a Mate waiting for its sign-in, and its row said nothing.
-      case: "finishing its setup, waiting for a sign-in: its finishing line in the sign-in's place",
-      input: {
-        ...base,
-        finishing: true,
-        signIn: { text: "Nobody has signed in yet", waitsOnViewer: false },
-      },
-      line: undefined,
-    },
-    {
-      case: "finishing its setup, asked: the ask, and no draft waits on it",
-      input: {
-        ...base,
-        view: { ask: ASK, reply: undefined, coming: undefined },
-        finishing: true,
-        draft: "hi",
-      },
-      line: { kind: "ask", text: ASK },
-    },
   ])("$case", ({ input, line }) => {
     expect(mateRowAskLine(input)).toEqual(line);
   });
@@ -1815,16 +1775,16 @@ describe("mateRowAskLine — the row's second line: what the person asked, or is
 // Only its owner talks to a Mate (D5), so the person who asked is its owner.
 describe("mateAsker — who a row says asked its Mate", () => {
   it.each([
-    { case: "the viewer's own Mate", owner: { name: "Petra Malá", isViewer: true }, by: "You" },
-    { case: "a colleague's", owner: { name: "Jan Novák", isViewer: false }, by: "Jan" },
+    { case: "the viewer's own Mate", owner: { called: "Petra", isViewer: true }, by: "You" },
+    { case: "a colleague's", owner: { called: "Jan", isViewer: false }, by: "Jan" },
     {
       case: "a colleague named by one word",
-      owner: { name: "Alex", isViewer: false },
+      owner: { called: "Alex", isViewer: false },
       by: "Alex",
     },
     {
       case: "a colleague HQ names without a name",
-      owner: { name: "  ", isViewer: false },
+      owner: { called: "  ", isViewer: false },
       by: undefined,
     },
     { case: "an owner HQ has not named", owner: undefined, by: undefined },
@@ -1834,16 +1794,49 @@ describe("mateAsker — who a row says asked its Mate", () => {
 });
 
 // A row whose setup stopped offers its menu — *Finish setup* is on it — while one still coming
-// offers none (live, 2026-10-01: a half-made Mate's row read "Setting up stopped" with no ⋯).
-describe("mateRowOffersMenu", () => {
+// offers its Delete alone (live, 2026-10-01: a half-made Mate's row read "Setting up stopped" with
+// no ⋯; Brief W7, Karel 2026-11-04: a Mate that never came up could not be deleted from the web).
+describe("mateRowMenu", () => {
+  it("keeps both shared-birth actions while the birth is on its way", () => {
+    const actions = {
+      muted: false,
+      birthOnly: true,
+      entries: [{ id: "continue" }, { id: "delete" }],
+    };
+    expect(
+      mateRowMenu({
+        deleting: false,
+        coming: { kind: "coming", line: "Project created", birth: { attention: false } },
+        actions,
+      }),
+    ).toBe(actions);
+  });
+  const ACTIONS = {
+    muted: false,
+    entries: [
+      { id: "redeploy", label: "Redeploy", onSelect: () => {} },
+      { id: "delete-apart", separator: true },
+      { id: "delete", label: "Delete crm…", onSelect: () => {}, variant: "destructive" },
+    ],
+  } as const;
+  const offered = (menu: ReturnType<typeof mateRowMenu<typeof ACTIONS>>) =>
+    menu === undefined
+      ? null
+      : menu.entries.flatMap((entry) => ("separator" in entry ? [] : [entry.id]));
+
   it.each([
-    { case: "a Mate that is up", deleting: false, coming: undefined, want: true },
-    { case: "a Mate going", deleting: true, coming: undefined, want: false },
+    {
+      case: "a Mate that is up",
+      deleting: false,
+      coming: undefined,
+      offers: ["redeploy", "delete"],
+    },
+    { case: "a Mate going", deleting: true, coming: undefined, offers: null },
     {
       case: "a Mate still coming",
       deleting: false,
       coming: { kind: "coming", line: "Coming up" } satisfies MateComing,
-      want: false,
+      offers: ["delete"],
     },
     {
       case: "a Mate whose setup stopped",
@@ -1851,12 +1844,22 @@ describe("mateRowOffersMenu", () => {
       coming: {
         kind: "failed",
         line: "Its setup stopped.",
-        verb: "finish-setup",
+        verb: "try-again",
       } satisfies MateComing,
-      want: true,
+      offers: ["redeploy", "delete"],
     },
-  ])("$case: $want", ({ deleting, coming, want }) => {
-    expect(mateRowOffersMenu({ deleting, coming })).toBe(want);
+  ])("$case offers $offers on its row's menu", ({ deleting, coming, offers }) => {
+    expect(offered(mateRowMenu({ deleting, coming, actions: ACTIONS }))).toEqual(offers);
+  });
+
+  it("a Mate still coming that the person may not delete offers no menu", () => {
+    expect(
+      mateRowMenu({
+        deleting: false,
+        coming: { kind: "coming", line: "Coming up" },
+        actions: { muted: false, entries: [ACTIONS.entries[0]] },
+      }),
+    ).toBeUndefined();
   });
 });
 
@@ -1931,7 +1934,8 @@ it("a connected machine keeps the row menu available while its listing still pro
       errorsSinceConnect: 0,
     },
   };
-  expect(mateRowOffersMenu({ deleting: false, coming: mateComing(input) })).toBe(true);
+  const actions = { muted: false, entries: [] };
+  expect(mateRowMenu({ deleting: false, coming: mateComing(input), actions })).toBe(actions);
 });
 
 describe("mateRowSecond — the one line under a Mate's name", () => {
@@ -1945,7 +1949,6 @@ describe("mateRowSecond — the one line under a Mate's name", () => {
       view: view("idle"),
       askLine: { kind: "ask", text: "Add a search box" },
       deleting: false,
-      finishing: false,
       outsideHq: false,
       mine: true,
       waitsOn: undefined,
@@ -2074,7 +2077,6 @@ describe("mateRowSecond — the one line under a Mate's name", () => {
       line: { kind: "none" },
     },
     { case: "on its way off Zerops", over: { deleting: true }, line: { kind: "deleting" } },
-    { case: "its setup being finished", over: { finishing: true }, line: { kind: "finishing" } },
     { case: "outside this HQ", over: { outsideHq: true }, line: { kind: "outside" } },
   ] as const)("$case", ({ over, line }) => {
     expect(second(over as Partial<Parameters<typeof mateRowSecond>[0]>)).toEqual(line);
@@ -2244,7 +2246,6 @@ describe("mateRowSecond — an automated Mate's line", () => {
       view: view("idle"),
       askLine: { kind: "ask", text: "Work issue #12 in the project, then open a change." },
       deleting: false,
-      finishing: false,
       outsideHq: false,
       mine: true,
       waitsOn: undefined,

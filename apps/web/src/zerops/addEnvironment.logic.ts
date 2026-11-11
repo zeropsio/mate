@@ -1,7 +1,7 @@
 /**
  * What the one question after an application's first merge is told about its environments: which
  * of *Add stage* and *Add production* it may offer — the one rule every door asks
- * (`environmentAddable`) over HQ's offers — and whether a production is held at all.
+ * (`environmentAddable`) over HQ's offers.
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  *
@@ -32,9 +32,8 @@ export function questionFactsOf(input: {
    */
   readonly held: ReadonlyArray<HeldEnvironment>;
 }): {
+  /** A tier held in any state — held, half-made, being made — is not addable. */
   readonly addable: { readonly stage: boolean; readonly production: boolean };
-  /** A production in any state — held, half-made, being made — is a production. */
-  readonly productionHeld: boolean;
 } {
   const held = heldTiers(input.held);
   const ask = (tier: GroupEnvironmentTier) =>
@@ -46,43 +45,26 @@ export function questionFactsOf(input: {
       gitOffered: input.offered.git === true,
       held,
     });
-  return {
-    addable: { stage: ask("stage"), production: ask("production") },
-    productionHeld: held.production,
-  };
+  return { addable: { stage: ask("stage"), production: ask("production") } };
 }
 
 /**
  * The tiers HQ offers this person to add to an application (`add_stage` / `add_production`), from
- * its `can` record as HQ streamed it (`hqOffer`): only an allowed decision offers, and nothing while
- * HQ does not answer. `null` while HQ has not said of the application.
+ * its `can` record as HQ last streamed it (`hqOffer`): only an allowed decision offers. `null` while
+ * HQ has not said of the application.
  */
-export function environmentOffersOf(
-  can: HqOffers | undefined,
-  hq: Parameters<typeof hqOffer>[2],
-): {
+export function environmentOffersOf(can: HqOffers | undefined): {
   readonly stage: boolean;
   readonly production: boolean;
   readonly git?: boolean;
   readonly zerops?: { readonly stage: boolean; readonly production: boolean };
 } | null {
   if (can === undefined) return null;
-  const offered = (verb: string) => hqOffer(can, verb, hq).kind === "allowed";
+  const offered = (verb: string) => hqOffer(can, verb).kind === "allowed";
   const zerops = { stage: offered("add_stage"), production: offered("add_production") };
   return offered("add_git_environment")
     ? { stage: true, production: true, git: true, zerops }
     : zerops;
-}
-
-/**
- * Whether HQ offers this person finishing a half-made environment (`finish`, its project's own
- * `can`): only an allowed decision, and nothing while HQ does not answer.
- */
-export function finishOffered(
-  can: HqOffers | undefined,
-  hq: Parameters<typeof hqOffer>[2],
-): boolean {
-  return hqOffer(can, "finish", hq).kind === "allowed";
 }
 
 /**

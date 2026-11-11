@@ -7,7 +7,7 @@
  * repository; on a task, the task's one change. HQ checks every body it reads with these schemas;
  * zcp reads this file as the spec.
  *
- * **The Mate's side**, `Authorization: Mate <credential>` (`apps/hq/src/mateCredentials.ts`), always
+ * **The Mate's side**, `Authorization: Mate <credential>` (`mate-hq apps/hq/src/mateCredentials.ts`), always
  * within the application HQ holds the Mate in (`mate` or `devstage`):
  *
  * - `POST /api/mate/repos` {@link EnsureRepoRequest} → {@link HqRepo};
@@ -19,7 +19,7 @@
  *   `unknown_change`, one no longer open `409 conflict` `change_not_open`, a task's `409 conflict`
  *   `change_on_task` (decided with its task, closed by a person);
  * - `POST /api/mate/changes/:repo/:n/attachments`, a raster picture → {@link AttachmentResponse};
- * - `GET /api/mate/self` → its state (`mateLink.ts` `MateState`), {@link MateChanges} included;
+ * - the link's `state` → its state (`mateLink.ts` `MateState`), {@link MateChanges} included;
  * - git over HTTPS at `/git/<appId>/<repo>.git`, Basic auth with the user `mate` and the credential
  *   as the password. A Mate fetches its application's repositories and pushes any branch but
  *   `main`, only forward: never a branch another Mate's open change is on (`not_your_ref`), nor one
@@ -38,7 +38,8 @@
  *   commits between two of a repository's commits, each with the change that landed it;
  * - `GET /api/apps/:appId/changes` → {@link ChangeListResponse};
  * - `GET /api/apps/:appId/changes/:repo/:n/metadata` → {@link ChangeMetadataResponse}; `GET …/commits`
- *   {@link ChangeDetailQuery} → {@link ChangeCommitsResponse};
+ *   {@link ChangeDetailQuery} → {@link ChangeCommitsResponse}; `GET …/:n` {@link ChangeDetailQuery}
+ *   → {@link ChangeDetailResponse};
  * - `GET`, `POST /api/apps/:appId/changes/:repo/:n/comments` → {@link CommentListResponse},
  *   {@link HqChangeComment};
  * - `POST /api/apps/:appId/changes/:repo/:n/merge` {@link MergeChangeRequest} and `POST …/close`,
@@ -57,18 +58,17 @@
  * for a change opened on another open change's branch / on `main`, `mate/…` or a full ref,
  * `too_many_open` for a new change of a Mate already holding {@link MATE_OPEN_CHANGES_MAX} open ones
  * in the repository, `400 invalid` for a body these
- * schemas refuse, `413 too_large`. Only the HQ that leads serves any of it: a standby answers `503
- * not_active` with `Retry-After` (two instances overlap through a deploy), which is "try again",
- * never a refusal; so is `503 zerops_unavailable`.
+ * schemas refuse, `413 too_large`. A `503 zerops_unavailable` is "try again", never a refusal.
  *
  * @module hqChanges
  */
+import { HqProblem, HqRecipeValidation } from "./hqProblems.ts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { HqPullRequest } from "./hqGithub.ts";
 import { HqDirectGitTarget, HqGitBranch, HqTargetTimestamp } from "./hqEnvironment.ts";
 
-/** An id the git layer takes for an application or a repository (`@t3tools/hq-git`, mirrored). */
+/** An id the git layer takes for an application or a repository (mate-hq `hq-git`, mirrored). */
 const ID = "[A-Za-z0-9][A-Za-z0-9_-]{0,127}";
 
 /** A change's title, at most this many characters (code points: zcp counts runes). */
@@ -189,7 +189,31 @@ export const ChangeReceipt = Schema.Struct({
 });
 export type ChangeReceipt = typeof ChangeReceipt.Type;
 
+/**
+ * HQ's latest own push on a change's branch: right after change `landed` was squashed onto `main`
+ * as `squash`, HQ brought `main` into this change stacked on it, moving its branch from `from` to
+ * its merge commit `head` (authored `Core <core@hq.invalid>`) at `at`.
+ */
+export const HqCorePush = Schema.Struct({
+  at: Instant,
+  from: Sha,
+  head: Sha,
+  landed: ChangeNumber,
+  squash: Sha,
+});
+export type HqCorePush = typeof HqCorePush.Type;
+
+/**
+ * Why an open change described before a push is a draft though HQ never compared its own diff:
+ * `notes_timed_out` (its check of the push ran out of time) or `notes_unread` (it could not read
+ * it). Open, so a reason a later HQ adds still decodes.
+ */
+export const HqDraftReason = Schema.String;
+export type HqDraftReason = typeof HqDraftReason.Type;
+
 export const HqChange = Schema.Struct({
+  recipeValidation: Schema.optionalKey(HqRecipeValidation),
+  problems: Schema.optionalKey(Schema.Array(HqProblem)),
   pipeline: Schema.optionalKey(ChangePipeline),
   appId: Schema.String,
   repo: RepoName,
@@ -220,6 +244,14 @@ export const HqChange = Schema.Struct({
    * other's. Absent where a person or HQ closed it, and from an older HQ.
    */
   closedByMate: Schema.optionalKey(Schema.Literal(true)),
+  /**
+   * On a closed change: another change of its repository was built on it and landed first, so
+   * that landing's squash carried every commit of this one onto `main`, and HQ closed it by
+   * itself. The number of that change. Nothing of it was given up: it has no squash of its own
+   * (`mergedSha` stays `null`) and its work is on `main`. Absent on every other change, and from an
+   * older HQ, which leaves such a change open.
+   */
+  landedWith: Schema.optionalKey(ChangeNumber),
   /** Its last push, edit of its words, or comment. */
   updatedAt: Instant,
   /**
@@ -246,6 +278,13 @@ export const HqChange = Schema.Struct({
    * and never asks. Added after the rest: an older HQ's change, which knows no drafts, is ready.
    */
   ready: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(true))),
+  /** HQ's latest own push on its branch ({@link HqCorePush}); absent where HQ never moved it. */
+  corePush: Schema.optionalKey(HqCorePush),
+  /**
+   * On an open change described before a push: why it is a draft again ({@link HqDraftReason}).
+   * Absent otherwise, and gone once it is described again.
+   */
+  draftReason: Schema.optionalKey(HqDraftReason),
   /**
    * How many comments were said on it: the room its review's conversation holds while it reads
    * them. Added after the rest: an older HQ's change counts none.
@@ -334,10 +373,15 @@ export const HqRepoRemote = Schema.Struct({
   expiresAt: Schema.NullOr(HqTargetTimestamp),
   invalidSince: Schema.NullOr(HqTargetTimestamp),
   /**
-   * How HQ reaches it: the organization's GitHub app (no token kept) or a person's token. Absent
-   * from an older HQ: a token.
+   * How HQ reaches it: one of the organization's GitHub apps (no token kept) or a person's token.
+   * Absent from an older HQ: a token.
    */
   via: Schema.optionalKey(Schema.Literals(["app", "token"])),
+  /**
+   * The organization's GitHub app it goes through (`HqGithubApp.appId`); `null` through a token or
+   * an app HQ no longer holds. Absent from an older HQ.
+   */
+  githubAppId: Schema.optionalKey(Schema.NullOr(Schema.Number)),
   /**
    * Since when HQ's `main` and the default branch there hold histories neither contains, so the
    * mirror moves neither (`githubMirror.ts`); absent while they follow each other.
@@ -443,10 +487,32 @@ export const RepoListEntry = Schema.Struct({
   remote: Schema.optionalKey(Schema.NullOr(HqRepoRemote)),
   /** The GitHub repository whose code its Mates fetch while HQ keeps it (`follow`); a remote outranks it. */
   follows: Schema.optionalKey(HqRemoteUrl),
+  /**
+   * How HQ's mirror last followed its remote: when it last pushed or fetched (`syncedAt`, `null`
+   * before it has) and since when the histories split. Absent or `null` with no mirrored remote.
+   */
+  mirror: Schema.optionalKey(
+    Schema.NullOr(
+      Schema.Struct({
+        syncedAt: Schema.NullOr(Schema.String),
+        divergedSince: Schema.NullOr(Schema.String),
+      }),
+    ),
+  ),
   mainHead: Schema.NullOr(Sha),
   updatedAt: Instant,
   /** Where Git clones it, as HQ gives it; used as given (protocol §repos). */
   url: Schema.optionalKey(Schema.String),
+  /**
+   * HQ's offer to this person to delete it, with the reason it does not (`group_repository`,
+   * `in_use:<holder>`, a permission's). Absent from an HQ that does not offer deletion.
+   */
+  canDelete: Schema.optionalKey(
+    Schema.Union([
+      Schema.Struct({ allow: Schema.Literal(true) }),
+      Schema.Struct({ allow: Schema.Literal(false), reason: Schema.String }),
+    ]),
+  ),
   /** An optional suggestion, read from bounded root metadata at this exact main head. */
   releaseVersion: Schema.optionalKey(
     Schema.Struct({
@@ -578,6 +644,12 @@ export const MateChange = Schema.Struct({
    * which this Mate pushes from then on. Absent otherwise.
    */
   handed: Schema.optionalKey(Schema.Literal(true)),
+  /** On a closed change: the landing that carried it whole, as {@link HqChange} `landedWith`. */
+  landedWith: Schema.optionalKey(ChangeNumber),
+  /** HQ's latest own push on its branch, as {@link HqChange} `corePush`. */
+  corePush: Schema.optionalKey(HqCorePush),
+  /** Why a described change is a draft again, as {@link HqChange} `draftReason`. */
+  draftReason: Schema.optionalKey(HqDraftReason),
   /**
    * On an open change: whether it asks for review, described at its head ({@link HqChange}
    * `ready`); a draft otherwise. Absent on a merged or closed one, and from an older HQ.
@@ -597,7 +669,7 @@ export type MateChange = typeof MateChange.Type;
 
 /**
  * What a Mate's own state carries of its changes, beside its record (`@t3tools/shared/mateLink`
- * `MateState`, which `GET /api/mate/self` answers and its link brings down). The application HQ holds the Mate
+ * `MateState`, which the link's `state` brings down). The application HQ holds the Mate
  * in, by id and by its name now, none for a Mate in no application; and in each of that application's repositories, every
  * open change of the Mate's and its latest {@link MATE_CHANGES_PER_REPO} merged or closed ones,
  * newest first. A change missing from it is merged or closed. An automated Mate holds one open per
@@ -639,7 +711,7 @@ export const ChangeCommit = Schema.Struct({
 });
 export type ChangeCommit = typeof ChangeCommit.Type;
 
-/** How many commits a comparison names at most: the git layer's bound on a log (`@t3tools/hq-git`). */
+/** How many commits a comparison names at most: the git layer's bound on a log (mate-hq `hq-git`). */
 export const COMPARE_COMMITS_MAX = 100;
 
 /**
@@ -729,6 +801,30 @@ export const ChangeMetadataResponse = Schema.Struct({
   review: ChangeReview,
 });
 export type ChangeMetadataResponse = typeof ChangeMetadataResponse.Type;
+
+/**
+ * Whether a change merges into `main` now, as Git judges it on the box: never `unknown`. `no_change`:
+ * nothing was pushed to it; a conflict names its files.
+ */
+export const Mergeability = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literals(["clean", "empty", "already_merged", "no_change", "unrelated"]),
+  }),
+  Schema.Struct({ kind: Schema.Literal("conflict"), paths: Schema.Array(Schema.String) }),
+]);
+export type Mergeability = typeof Mergeability.Type;
+
+/**
+ * What Git judges of a change now, at the head and `main` asked ({@link ChangeDetailQuery}; `409
+ * conflict` `head_moved` / `main_moved` where either moved): no file or commit is read.
+ */
+export const ChangeDetailResponse = Schema.Struct({
+  change: HqChange,
+  mainHead: Schema.NullOr(Sha),
+  mergeBase: Schema.NullOr(Sha),
+  mergeability: Mergeability,
+});
+export type ChangeDetailResponse = typeof ChangeDetailResponse.Type;
 
 /** Commit history requested explicitly, without file statistics or patches. */
 export const ChangeCommitsResponse = Schema.Struct({

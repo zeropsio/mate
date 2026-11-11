@@ -3,6 +3,7 @@ import type {
   CanonicalEnvironmentRow as EnvironmentRow,
   FlowPullRequest,
   FlowReleaseRow,
+  ReleaseFailure,
 } from "@t3tools/client-runtime/zerops";
 
 /** How many releases History shows before *Show all*. */
@@ -10,22 +11,39 @@ export const HISTORY_RELEASES = 5;
 
 /** A release as History reads it: newest first, as the flow lists them. */
 export type HistoryReleaseInput = Pick<FlowReleaseRow, "tag" | "taggedAt"> &
-  Partial<Pick<FlowReleaseRow, "verdict" | "rollbackOf" | "standing" | "history">>;
+  Partial<Pick<FlowReleaseRow, "verdict" | "rollbackOf" | "standing" | "history" | "by">>;
+
+/** A change a release recorded putting live: its recorded title, and its row where it is read. */
+export interface HistoryChange {
+  readonly repository: string;
+  readonly number: number;
+  /** Its title as the release recorded it, without GitHub's trailing `(#n)`. */
+  readonly title: string;
+  /** The change as the project's merged changes read it: its Mate and when it landed. */
+  readonly pull: FlowPullRequest | undefined;
+}
 
 export interface HistoryRelease {
   readonly tag: string;
   readonly taggedAt: string;
-  /** Live where production runs it; Rolled back where production went back past it. */
-  readonly state: "live" | "rolled-back" | "deploy-failed" | undefined;
+  /**
+   * Live where production runs it; how it did not go through (`releaseFailure`); Rolled back where
+   * production went back past it.
+   */
+  readonly state: "live" | ReleaseFailure["kind"] | "rolled-back" | undefined;
+  /** HQ's words for how it did not go through, in one line (`releaseFailureWords`). */
+  readonly failure: string | undefined;
   /** The release a roll back went back to: it put no change of its own live. */
   readonly backTo: string | undefined;
   /** The Mates' changes it put live, newest first. */
   readonly changes: ReadonlyArray<FlowPullRequest>;
+  /** Who released it: their Zerops user id, as HQ records it. */
+  readonly by?: string | undefined;
   /** Recorded numeric facts; undefined on releases predating recording. */
   readonly outsideCommitCount?: number | undefined;
   readonly commitCount?: number | undefined;
-  readonly changeTitles?: ReadonlyArray<string> | undefined;
-  readonly ranges?: NonNullable<FlowReleaseRow["history"]>["ranges"] | undefined;
+  /** Every change it recorded putting live, as recorded; undefined on releases predating recording. */
+  readonly recorded?: ReadonlyArray<HistoryChange> | undefined;
 }
 
 const time = (at: string) => Date.parse(at);
@@ -65,47 +83,67 @@ function rolledBack(release: HistoryReleaseInput, releases: ReadonlyArray<Histor
   });
 }
 
-export function historyReleases(input: {
+export function historyReleases<R extends HistoryReleaseInput>(input: {
   /** Newest first, as the flow lists them. */
-  readonly releases: ReadonlyArray<HistoryReleaseInput>;
+  readonly releases: ReadonlyArray<R>;
   readonly merged: ReadonlyArray<FlowPullRequest>;
+  /** How a release did not go through (`releaseFailure`); none where it did, or is on its way. */
+  readonly failureOf?: ((release: R) => ReleaseFailure | undefined) | undefined;
 }): ReadonlyArray<HistoryRelease> {
-  const releases = input.releases.filter((release) => release.verdict !== "refused");
+  // A refused release deployed nothing: it is listed for its refusal, never rolled back past.
+  const deployed = input.releases.filter((release) => release.verdict !== "refused");
   const newestFirst = (left: string | undefined, right: string | undefined) =>
     time(right ?? "") - time(left ?? "");
   const changes = input.merged
     .filter((change) => change.kind === "code")
     .toSorted((left, right) => newestFirst(left.mergedAt, right.mergedAt));
-  return releases.map((release) => ({
-    tag: release.tag,
-    taggedAt: release.taggedAt,
-    state:
-      release.standing === "live"
-        ? "live"
-        : release.standing === "deploy-failed"
-          ? "deploy-failed"
-          : rolledBack(release, releases)
-            ? "rolled-back"
-            : undefined,
-    backTo: release.rollbackOf ?? undefined,
-    changes: changes.filter((change) =>
-      release.history?.changes.some(
-        (recorded) => recorded.repo === change.repository && recorded.number === change.number,
+  return input.releases.map((release) => {
+    const failure = input.failureOf?.(release);
+    return {
+      tag: release.tag,
+      taggedAt: release.taggedAt,
+      state:
+        release.standing === "live"
+          ? "live"
+          : failure !== undefined
+            ? failure.kind
+            : release.verdict !== "refused" && rolledBack(release, deployed)
+              ? "rolled-back"
+              : undefined,
+      failure: failure === undefined ? undefined : releaseFailureWords(failure),
+      backTo: release.rollbackOf ?? undefined,
+      changes: changes.filter((change) =>
+        release.history?.changes.some(
+          (recorded) => recorded.repo === change.repository && recorded.number === change.number,
+        ),
       ),
-    ),
-    changeTitles: release.history?.changes.map((change) => change.title),
-    outsideCommitCount: release.history?.outsideCommitCount,
-    commitCount: release.history?.commitCount,
-    ranges: release.history?.ranges,
-  }));
+      by: release.by,
+      recorded: release.history?.changes.map((recorded) => ({
+        repository: recorded.repo,
+        number: recorded.number,
+        title: changeTitle(recorded.title),
+        pull: changes.find(
+          (change) => change.repository === recorded.repo && change.number === recorded.number,
+        ),
+      })),
+      outsideCommitCount: release.history?.outsideCommitCount,
+      commitCount: release.history?.commitCount,
+    };
+  });
+}
+
+/** A failure's one line: HQ's words, or — a stall HQ could not tell the end of — that it is unknown. */
+function releaseFailureWords(failure: ReleaseFailure): string | undefined {
+  if (failure.error !== undefined) return failure.error;
+  return failure.kind === "stalled" ? "Deploy status unknown — check it in Zerops" : undefined;
 }
 
 /** A release's second line: how many changes it put live, or where it went back to. */
 export function releaseLine(release: HistoryRelease): string {
   if (release.backTo !== undefined) return `Back to ${release.backTo}`;
-  if (release.changeTitles === undefined && release.changes.length === 0)
-    return "Membership not recorded";
-  const count = release.changeTitles?.length ?? release.changes.length;
+  if (release.recorded === undefined && release.changes.length === 0)
+    return "Which changes it carried was not recorded";
+  const count = release.recorded?.length ?? release.changes.length;
   return count === 0 ? "No changes" : count === 1 ? "1 change" : `${String(count)} changes`;
 }
 
@@ -114,7 +152,37 @@ export const RELEASE_STATE_WORDS = {
   live: "Live",
   "rolled-back": "Rolled back",
   "deploy-failed": "Deploy failed",
+  refused: "Refused",
+  stalled: "Not live",
 } as const;
+
+/**
+ * An opened release's header line: "6 changes · 6 commits · released by Dana" — or where it went
+ * back to, or that its changes were not recorded.
+ */
+export function releaseFacts(release: HistoryRelease, byName: string | undefined): string {
+  return [
+    releaseLine(release),
+    ...(release.commitCount === undefined
+      ? []
+      : [`${String(release.commitCount)} ${release.commitCount === 1 ? "commit" : "commits"}`]),
+    ...(byName === undefined ? [] : [`released by ${byName}`]),
+  ].join(" · ");
+}
+
+/**
+ * A closed release's line: its first change's title and how many more ("· +3"), or — with no change
+ * to name — what its header would say.
+ */
+export function releaseGist(release: HistoryRelease): {
+  readonly text: string;
+  readonly more: number;
+} {
+  const titles = release.recorded?.map((change) => change.title) ?? [];
+  const first = titles[0];
+  if (first === undefined) return { text: releaseLine(release), more: 0 };
+  return { text: first, more: titles.length - 1 };
+}
 
 /** The quiet line of a release's commits no Mate's change landed. */
 export function outsideLine(count: number): string {

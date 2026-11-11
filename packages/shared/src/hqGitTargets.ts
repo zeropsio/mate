@@ -34,7 +34,9 @@ export const HqRemoteRefusalReason = Schema.Literals([
   "key_unavailable",
   "app_not_installed",
   "app_unavailable",
+  "needs_owner_seal",
   "object_too_large",
+  "app_ambiguous",
 ]);
 export type HqRemoteRefusalReason = typeof HqRemoteRefusalReason.Type;
 export const HqGitEnvironmentRefusalReason = Schema.Literals([
@@ -108,11 +110,15 @@ const REMOTE_WORDS: Record<HqRemoteRefusalReason, string> = {
   bad_branch: "This branch name is not valid. Enter a valid Git branch name.",
   key_unavailable: "HQ cannot open the saved token. Replace it with a new token.",
   app_not_installed:
-    "The organization's GitHub app isn't installed on this repository. Add the repository to the app on GitHub, then try again.",
+    "No GitHub app in this organization is installed on this repository. Add the repository to an app's account on GitHub, then try again.",
   app_unavailable:
-    "GitHub didn't let the organization's GitHub app act on this repository just now. Check the app's installation on GitHub, then try again.",
+    "GitHub didn't let the GitHub app act on this repository just now. Check the app's installation on GitHub, then try again.",
+  needs_owner_seal:
+    "This GitHub app needs an Owner or Admin to remake it before Mate uses it. They do it in Settings › GitHub.",
   object_too_large:
     "A file in this repository's history is larger than 100 MiB. HQ takes files up to 100 MiB, as GitHub does.",
+  app_ambiguous:
+    "More than one of the organization's GitHub apps reaches this repository. Pick the account to connect through, then try again.",
 };
 /** The same explanation reaches HTTP clients and internal Git consumers. */
 export function remoteRefusalWords(

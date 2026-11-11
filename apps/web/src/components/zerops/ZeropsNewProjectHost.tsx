@@ -21,7 +21,7 @@
  * shape, asked with the picker *New Mate* uses (`MateFacePicker`) and the same
  * rules — the face follows the name until a pick sticks, the name is new on
  * the account (`ZeropsNewProjectForm`). The Mate is born as *New Mate* makes
- * one — its record in HQ, its project closed off — but asks for no stand-up:
+ * one — its record in HQ, its one import — but asks for no stand-up:
  * a new project has no code to stand up, and its person says what to build.
  * No brief and no agent pick: the container offers
  * every agent when `ZCP_AGENTS` is absent, which an empty selection is
@@ -33,11 +33,10 @@
  * Create closes the dialog and lands on the first Mate's own view at once (`/mate/new/$birthId`,
  * the owner, 2026-10-03: "why are these two screens separate?"). The steps this tab runs with the
  * person's session — the application and its birth intent in HQ, the
- * Mate's project, its close-off and its registration (`newProjectBirth.ts`, `matePress.ts`) — run
+ * Mate's project, its registration and its import (`newProjectBirth.ts`, `matePress.ts`) — run
  * on in the account's creations, whatever the person opens next, and the view draws them under
- * the project's row, saying to keep the tab open only while they run. A step that stops says why
- * there, with *Try again*; a tab closed before the close-off is the person's choice, and the Mate's
- * ⋯ menu finishes it (*Finish setup*).
+ * the project's row, saying to keep the tab open only while they run. A birth that stops says why
+ * and offers continuation where the viewer may continue it.
  */
 import { useNavigate } from "@tanstack/react-router";
 import {
@@ -53,20 +52,20 @@ import { useContext, useEffect, useMemo, useState } from "react";
 
 import {
   generateBotName,
-  generateZeropsGroupId,
   newMateTint,
   resolveAddProjectVerb,
   type ZeropsOrganization,
 } from "@t3tools/client-runtime/zerops";
 
-import { officialHq, useAccountHq } from "~/zerops/accountHq";
+import { configuredHq } from "~/zerops/accountHq";
+import { randomUUID } from "~/lib/utils";
 import { beginCreation } from "~/zerops/creations";
 import { newProjectView, type NewProjectAsk } from "~/zerops/newProjectBirth";
 import { useRunNewProject } from "~/zerops/useRunNewProject";
 import { useCreditForecastRead } from "~/zerops/useCreditForecast";
 import { usePreloadMateViews } from "~/zerops/usePreloadMateViews";
 import { useNewProjectAsk } from "~/zerops/newProjectAsk";
-import { useHqOffers, useOrgOffers } from "~/zerops/useHqOffers";
+import { useOrgOffers } from "~/zerops/useHqOffers";
 import { useTakenBotNames, useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import {
   AccountStoreContext,
@@ -141,13 +140,7 @@ function NewProjectDialog() {
   const [creating, setCreating] = useState(false);
 
   // HQ offers application creation to the people Zerops allows to create projects.
-  const accountHq = useAccountHq(activeOrganization?.id);
-  const { at } = useHqOffers();
-  const addProject = resolveAddProjectVerb({
-    offer: useOrgOffers()("create_app"),
-    admins: accountHq.admins,
-    at,
-  });
+  const addProject = resolveAddProjectVerb({ offer: useOrgOffers()("create_app") });
   const canCreate = addProject.offered;
   // Where it may live is read while the dialog can create: once on opening, and again while open.
   const account = useAccountDataOptional();
@@ -232,7 +225,9 @@ function NewProjectDialog() {
     const organizationId = activeOrganization.id;
     const ask: NewProjectAsk = {
       organizationId,
-      birthId: generateZeropsGroupId((bytes) => crypto.getRandomValues(bytes)),
+      creator: activeOrganization.membershipId,
+      creatorRole: activeOrganization.roleCode,
+      birthId: randomUUID(),
       name,
       botName,
       face,
@@ -245,7 +240,7 @@ function NewProjectDialog() {
     const birthId = ask.birthId;
     beginCreation({
       ask,
-      hq: officialHq(accountHq),
+      hq: configuredHq(),
       now: Date.now(),
       run: runNewProject,
     });
@@ -258,13 +253,7 @@ function NewProjectDialog() {
     <ZeropsNewProjectDialog
       // A brand new app: its creator, and whom the organization's roles give it.
       access={(onChange) => (
-        <ProjectAccessDraft
-          fold={{ organization: activeOrganization.name }}
-          groupId={null}
-          kind="mate"
-          label="Project access"
-          onChange={onChange}
-        />
+        <ProjectAccessDraft groupId={null} kind="mate" label="Project access" onChange={onChange} />
       )}
       forecast={
         credit.forecast ? <CreditForecastLine organizationId={activeOrganization.id} /> : null

@@ -5,7 +5,6 @@ import type { HqOfferState } from "@t3tools/shared/hqOffers";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
 import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
-import type { OfficialHq } from "@t3tools/client-runtime/zerops/hq";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -111,6 +110,24 @@ describe("a Mate the platform restarts", () => {
   });
 });
 
+describe("a Mate whose project is gone on Zerops while HQ still holds it", () => {
+  const GONE: ZeropsRowCandidate = {
+    key: "p-gone",
+    project: { id: "p-gone", name: "Shop - Zoe", status: "UNKNOWN" },
+    group: "unavailable",
+    presence: "known",
+    projectGone: true,
+  };
+
+  it("reads as gone on Zerops, HQ still holding it, and offers nothing", () => {
+    expect(deriveZeropsRowPresentation(input(GONE, undefined))).toEqual({
+      status: { label: "Gone", tone: "off" },
+      detail: "Its project is gone on Zerops. HQ still holds this Mate.",
+    });
+    expect(deriveZeropsRowAction(input(GONE, undefined))).toEqual({ kind: "none" });
+  });
+});
+
 describe("a project the platform failed to create", () => {
   const FAILED_CREATION: ZeropsRowCandidate = {
     key: "p-new",
@@ -192,13 +209,6 @@ describe("deriveZeropsRowAction", () => {
   it("offers nothing while this client is already waiting on the container", () => {
     expect(deriveZeropsRowAction({ ...input(READY, "ready"), waiting: true })).toEqual({
       kind: "pending",
-    });
-  });
-
-  it("offers Enable Zerops Mate only for predates-mate with the flag read off", () => {
-    expect(deriveZeropsRowAction({ ...input(READY, "predates-mate"), mateFlag: false })).toEqual({
-      kind: "enable",
-      label: "Enable Zerops Mate",
     });
   });
 
@@ -305,7 +315,6 @@ describe("deriveZeropsRowAction", () => {
     /** Nothing at HQ of it. */
     const EVIDENCE: PlainProjectEvidence = {
       hqRecords: new Set(),
-      hqAnchors: new Set(["hq-1"]),
       local: new Set(),
     };
     const offered = (
@@ -333,23 +342,15 @@ describe("deriveZeropsRowAction", () => {
     });
 
     // Security review 1 and 11: plain needs positive evidence. A project HQ holds any record of, one
-    // this tab is making, the HQ itself — or one nothing can tell apart, HQ's structure not known —
+    // this tab is making — or one nothing can tell apart, HQ's structure not known —
     // is never offered it.
     const shop = plain("shop", []);
     it.each([
       { case: "HQ holds a record of it", evidence: { ...EVIDENCE, hqRecords: new Set(["bare"]) } },
-      {
-        case: "an HQ anchor names it, official or not",
-        evidence: { ...EVIDENCE, hqAnchors: new Set(["bare"]) },
-      },
       { case: "this tab is making it", evidence: { ...EVIDENCE, local: new Set(["bare"]) } },
       { case: "no evidence read at all", evidence: "none" as const },
     ])("is not offered where $case", ({ evidence }) => {
       expect(offered(shop, PLAIN, evidence)).toBe("none");
-    });
-
-    it("is not offered on a project named as the HQ is", () => {
-      expect(offered(plain("Headquarters", []))).toBe("none");
     });
 
     it("is offered on a project made after the organization's HQ, or of no known age", () => {
@@ -387,18 +388,10 @@ describe("deriveZeropsRowAction", () => {
 
     describe("plainEvidenceOf — the page's evidence", () => {
       const STRUCTURE = { ungrouped: [], apps: [] } as never;
-      const evidence = (
-        hq: OfficialHq = { kind: "official", projectId: "hq-1", address: "https://hq.test" },
-        hqKnown = true,
-      ) => plainEvidenceOf({ hqKnown, structure: STRUCTURE, presses: null, hq, local: [] });
-
-      it("names the official HQ's own project as its anchor", () => {
-        expect(evidence()?.hqAnchors).toEqual(new Set(["hq-1"]));
-      });
-
-      it("is none while HQ's structure is not known, or with no official HQ", () => {
-        expect(evidence({ kind: "none" }, false)).toBeUndefined();
-        expect(evidence({ kind: "unclear", projectIds: ["hq-1", "old-hq"] })).toBeUndefined();
+      it("is none while HQ's structure is not known", () => {
+        expect(
+          plainEvidenceOf({ hqKnown: false, structure: STRUCTURE, presses: null, local: [] }),
+        ).toBeUndefined();
       });
 
       // A press HQ holds a record of — at work in another browser, or stopped — is that Mate
@@ -413,7 +406,6 @@ describe("deriveZeropsRowAction", () => {
             hqKnown: true,
             structure: STRUCTURE,
             presses,
-            hq: { kind: "official", projectId: "hq-1", address: "https://hq.test" },
             local: [],
           })?.hqRecords,
         ).toEqual(new Set(["p-pressing", "p-stopped"]));
@@ -554,7 +546,6 @@ describe("deriveZeropsRowAction", () => {
 describe("deriveZeropsRowPresentation", () => {
   it.each([
     { mateFlag: false, want: "Needs Zerops Mate" },
-    { mateFlag: undefined, want: "Needs Zerops Mate" },
     { mateFlag: true, want: "Starting" },
     { mateFlag: "unknown", want: "Not answering" },
   ] as const)("predates-mate, mateFlag=$mateFlag -> $want (H9)", ({ mateFlag, want }) => {
@@ -1141,39 +1132,33 @@ describe("releaseRowTone", () => {
 
 // The web review, 2026-10-05: a row's verbs are the door's and Zerops', who refuse in their own
 // words; an HQ that has not said — one from before it streamed offers, or one being read again —
-// takes none of them away. Only HQ's refusal of following the Mate does.
-describe("mateRowCan — a row's verbs, unless HQ refuses following its Mate", () => {
+// takes none of them away. Whether the person may open the Mate at all is its visibility, from
+// live Zerops data (Karel, 2026-11-04), never HQ's offer.
+describe("mateRowCan — a row's verbs, which HQ's offers on a Mate never take away", () => {
   const held = (kind: HqOfferState["kind"]): HqMateOfferStates => {
-    const observe: HqOfferState =
-      kind === "refused"
-        ? { kind, reason: "not_mate_operator" }
-        : kind === "unavailable"
-          ? { kind, since: 1 }
-          : { kind };
-    return { held: true, observe, edit: observe, detach: observe };
+    const offer: HqOfferState =
+      kind === "refused" ? { kind, reason: "not_project_admin" } : { kind };
+    return { held: true, edit: offer, detach: offer };
   };
-  it.each<[string, HqMateOfferStates | undefined, boolean]>([
-    ["offered", held("allowed"), true],
-    ["while HQ does not answer: the door and Zerops decide", held("unavailable"), true],
-    ["refused: the door would refuse it too", held("refused"), false],
-    ["not said: an HQ from before its offers", held("unknown"), true],
-    ["before HQ's structure is known", undefined, true],
+  it.each<[string, HqMateOfferStates | undefined]>([
+    ["offered", held("allowed")],
+    ["refused its record: its visibility, not HQ, says whether it opens", held("refused")],
+    ["not said: an HQ from before its offers", held("unknown")],
+    ["before HQ's structure is known", undefined],
     [
       "a project HQ holds as no Mate: the door and Zerops decide",
       { held: false, createRecord: { kind: "unknown" } },
-      true,
     ],
-  ])("%s", (_name, offers, offered) => {
-    expect(mateRowCan(offers)).toEqual({ ...(offered ? ALL : NONE), setUpPlainProject: false });
+  ])("%s", (_name, offers) => {
+    expect(mateRowCan(offers)).toEqual({ ...ALL, setUpPlainProject: false });
   });
 
   // Set up Mate on a plain project writes its Mate's record at HQ first: only where HQ offers it
-  // (`create_mate_record`), never on what it has not said or while it does not answer.
+  // (`create_mate_record`), never on what it has not said.
   it.each<[HqOfferState, boolean]>([
     [{ kind: "allowed" }, true],
     [{ kind: "refused", reason: "not_project_admin" }, false],
     [{ kind: "unknown" }, false],
-    [{ kind: "unavailable", since: 1 }, false],
   ])("brings a Mate into a plain project where HQ's word is %j: %s", (createRecord, want) => {
     expect(mateRowCan({ held: false, createRecord }).setUpPlainProject).toBe(want);
   });

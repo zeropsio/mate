@@ -6,7 +6,7 @@
  * Mounted once, above every view, so a creation outlives the dialog and whatever the person opens
  * next. Add closes the dialog and lands on the new Mate's own view at once (`/mate/new/$birthId`,
  * the owner, 2026-10-03: "why are these two screens separate?"): the steps this tab runs with the
- * person's session — its project, its container, closed off, registered — run on in the account's
+ * person's session — its project, registered, its one import — run on in the account's
  * creations (`newProjectBirth.ts`), and the view draws them under its copy's row, saying to keep
  * the tab open only while they run. Once the platform takes its project the view hands the route
  * to the Mate's own (`/mate/$projectId`), in place. A step that stops says why there, with *Try
@@ -20,22 +20,18 @@
  * changing under the person paints the view's last frame, never a loading pane.
  */
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
-import {
-  buildZeropsGroupTree,
-  generateBotName,
-  generateZeropsGroupId,
-  newMateTint,
-} from "@t3tools/client-runtime/zerops";
+import { buildZeropsGroupTree, generateBotName, newMateTint } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { usePreloadMateViews } from "~/zerops/usePreloadMateViews";
 import { useAtomValue } from "@effect/atom-react";
-import { useContext, useEffect, useMemo, useState } from "react";
+import { useContext, useMemo, useState } from "react";
 import { AccountDataContext } from "../../zerops/accountData";
 
 import { useThreadDetail, useThreadStatus } from "~/state/entities";
-import { officialHq, useAccountHq } from "~/zerops/accountHq";
+import { randomUUID } from "~/lib/utils";
+import { configuredHq } from "~/zerops/accountHq";
 import { hqNavigationAtom } from "~/state/zerops";
 import { useAccountOperations } from "~/zerops/accountOperations";
 import { beginCreation, refuseAddHere, runOnce } from "~/zerops/creations";
@@ -72,7 +68,8 @@ import {
   type NewMateDoorAction,
   type NewMateDoorClosed,
 } from "./ZeropsEnvironmentCreationDialog.logic";
-import { useAddMateOffer, useHqOffers } from "../../zerops/useHqOffers";
+import { useAddMateOffer } from "../../zerops/useHqOffers";
+import { hqOfferWords } from "@t3tools/client-runtime/zerops/hq";
 import { emptyApplications } from "./projects/emptyApps.logic";
 
 export function ZeropsNewMateHost() {
@@ -103,9 +100,6 @@ function HoldAutomatedKey() {
   return null;
 }
 
-/** How long a hand-over's conversation is kept read from here, across the route changing. */
-const HAND_OVER_KEPT_MS = 3_000;
-
 /**
  * A new Mate's conversation, and its agents' sign-in, kept read while its own view hands over to
  * it: the view let go of them as the route changed and the conversation picked them up in the same
@@ -116,11 +110,6 @@ function KeepHandOverRead({ conversation }: { readonly conversation: ScopedThrea
   useThreadStatus(conversation);
   useThreadDetail(conversation);
   useZeropsAgentAuth(conversation.environmentId);
-  const handingOver = useMateHandOver((state) => state.handingOver);
-  useEffect(() => {
-    const timer = setTimeout(() => handingOver(null), HAND_OVER_KEPT_MS);
-    return () => clearTimeout(timer);
-  }, [handingOver]);
   return null;
 }
 
@@ -136,7 +125,6 @@ function NewMateDialog({
   readonly again?: NewMateAgain | undefined;
 }) {
   const { activeOrganization } = useZeropsSession();
-  const accountHq = useAccountHq(activeOrganization?.id);
   const { listing } = useZeropsCandidates();
   const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
   // A Mate's name must be new on the account, not just in the project: it is what the left menu
@@ -184,7 +172,6 @@ function NewMateDialog({
   usePreloadMateViews();
 
   const addOffer = useAddMateOffer()(groupId);
-  const { words } = useHqOffers();
   // Whether the organization holds the API key automated Mates run on: said in their dialog. An
   // HQ that keeps no organization keys can't make them. Read from the app's root once signed in,
   // it is known before the dialog's first frame.
@@ -204,7 +191,11 @@ function NewMateDialog({
   });
   const closed: NewMateDoorClosed | undefined =
     addOffer.kind !== "allowed"
-      ? { kind: "closed", reason: words(addOffer) ?? "Checking your access…", action: undefined }
+      ? {
+          kind: "closed",
+          reason: hqOfferWords(addOffer) ?? "Checking your access…",
+          action: undefined,
+        }
       : door.kind === "closed"
         ? door
         : undefined;
@@ -224,11 +215,13 @@ function NewMateDialog({
     const face = choice.face ?? { tint: "slate", shape: "squircle" };
     const tier = choice.recipe.kind === "tier" ? choice.recipe.yaml : undefined;
     // Its own id, its view's: a random one, as a New project's group's.
-    const id = generateZeropsGroupId((bytes) => crypto.getRandomValues(bytes));
+    const id = randomUUID();
     const organizationId = activeOrganization.id;
     beginCreation({
       ask: {
         organizationId,
+        creator: activeOrganization.membershipId,
+        creatorRole: activeOrganization.roleCode,
         birthId: id,
         name: group.name,
         botName: name,
@@ -246,7 +239,7 @@ function NewMateDialog({
           ...(choice.automated === true ? { automated: true as const } : {}),
         },
       },
-      hq: officialHq(accountHq),
+      hq: configuredHq(),
       now: Date.now(),
       run: (held) =>
         void runOnce(id, () =>
@@ -260,6 +253,7 @@ function NewMateDialog({
                 role: "dev",
                 choice,
                 creationId,
+                birthId: held.ask.birthId,
                 pressedAt: held.startedAt,
               }),
             (reason) => refuseAddHere(id, reason),
@@ -407,7 +401,7 @@ function AutomatedMatesDialog({
       }}
       open
     >
-      <DialogPopup className="max-w-lg">
+      <DialogPopup className="max-w-lg" placement="center">
         <AddAutomatedMatesForm
           {...form}
           admin={roleAtLeast(activeOrganization?.roleCode, "ADMIN")}

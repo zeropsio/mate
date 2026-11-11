@@ -6,9 +6,10 @@
  * reads and no session, so there is no door to get through and nothing live to disturb.
  * `?review=<id>` shows one state alone, `?review=all` every one (the default); `?theme=dark` the
  * dark palette. The page's states are `page`, `page-settle` and `page-reading`; `settle` is the
- * dialog's reads landing late, to set its first frame against its settled one. `?release=open`
- * opens the release's sheet, whose change rows step into each change's review and back;
- * `?sheet=change` opens the change's sheet.
+ * dialog's reads landing late, to set its first frame against its settled one. `?release=<id>`
+ * opens the release's sheet in that state (`open` the plain one, `journey` reading to live,
+ * `reading-play` its wait for HQ's plan through time), its change rows stepping into each change's
+ * review and back; `?sheet=change` opens the change's.
  *
  * Fixtures only. Nothing here ships in the app bundle — `design-change.html` is not
  * `index.html`, and no route imports this module.
@@ -34,21 +35,37 @@ import "../index.css";
 /** `?review=<id>` shows one review state alone; `?review=all` every one. */
 const REVIEW = new URLSearchParams(location.search).get("review") ?? "all";
 /**
- * `?release=open`: the release's dialog open as the page loads, to step into its changes;
- * `?release=running`, the release on its way.
+ * `?release=<id>`: the release's dialog open as the page loads, in that state of it
+ * (`RELEASE_SHEETS`); `open` is the plain release, `journey` one from reading to live.
  */
 const RELEASE = new URLSearchParams(location.search).get("release");
-const RELEASE_OPEN = RELEASE === "open" || RELEASE === "running";
-/** `?sheet=change`: the change's sheet open as the page loads. */
-const SHEET_OPEN = new URLSearchParams(location.search).get("sheet") === "change";
+const RELEASE_STATE =
+  RELEASE === null
+    ? undefined
+    : RELEASE === "open"
+      ? "release"
+      : RELEASE === "running"
+        ? "release-running-steps"
+        : RELEASE === "create"
+          ? "release-create"
+          : RELEASE;
+/**
+ * `?sheet=change`: the change's sheet open as the page loads; `?sheet=<id>`, one of the review's
+ * states standing in the sheet's frame.
+ */
+const SHEET = new URLSearchParams(location.search).get("sheet");
+const SHEET_OPEN = SHEET !== null;
 
 function Harness() {
   const shown =
     REVIEW === "all" ? REVIEW_STATES : REVIEW_STATES.filter((entry) => entry.id === REVIEW);
   return (
     <div className="flex flex-col gap-8 bg-background p-6">
-      <ReviewDialogTry openAtStart={SHEET_OPEN} />
-      <ReleaseDialogTry openAtStart={RELEASE_OPEN} running={RELEASE === "running"} />
+      <ReviewDialogTry
+        openAtStart={SHEET_OPEN}
+        state={SHEET === null || SHEET === "change" ? undefined : SHEET}
+      />
+      <ReleaseDialogTry openAtStart={RELEASE_STATE !== undefined} state={RELEASE_STATE} />
       {shown.map((entry) =>
         entry.page === true ? (
           <ReviewPageStage key={entry.id} label={entry.label}>

@@ -38,6 +38,19 @@ export interface Observation {
   readonly buildLog?: BuildLogQuery;
   /** The services the step source names — which of a batch's services it is. */
   readonly serviceIds?: ReadonlyArray<string>;
+  /** A batch deploy's: each service's own pipeline, one per service its processes name. */
+  readonly services?: ReadonlyArray<ObservedService>;
+}
+
+/** One of a batch's services as the platform states it: which, its pipeline, how it ended. */
+export interface ObservedService {
+  readonly serviceIds: ReadonlyArray<string>;
+  /**
+   * Its version, whenever its process carries one — also one with no step to show (refused
+   * before its build, cancelled once it ran), which its row reads as such.
+   */
+  readonly pipeline?: ObservedPipeline;
+  readonly outcome?: "finished" | "failed" | "cancelled";
 }
 
 /** Extracts the `off` variant's `reason` union, so both sides of the contract share one list. */
@@ -89,7 +102,9 @@ export interface ObservationInput {
 }
 
 /** `undefined` appVersion.id + build.serviceStackId → no build log to offer. */
-export function buildLogFor(stepSource: ActivityProcess | undefined): BuildLogQuery | undefined {
+export function buildLogFor(
+  stepSource: Pick<ActivityProcess, "appVersion"> | undefined,
+): BuildLogQuery | undefined {
   const appVersion = stepSource?.appVersion;
   const appVersionId = appVersion?.id;
   const buildServiceStackId = appVersion?.build?.serviceStackId;
@@ -156,6 +171,20 @@ function pipelineFor(stepSource: ActivityProcess | undefined): ObservedPipeline 
   };
 }
 
+function observedService(process: ActivityProcess): ObservedService {
+  const appVersion = process.appVersion;
+  const pipeline =
+    appVersion === undefined
+      ? undefined
+      : { appVersion, ...(process.started === undefined ? {} : { startedAt: process.started }) };
+  const outcome = outcomeFor(process);
+  return {
+    serviceIds: process.serviceStackIds,
+    ...(pipeline === undefined ? {} : { pipeline }),
+    ...(outcome === undefined ? {} : { outcome }),
+  };
+}
+
 function observationFor(attribution: AttributionResult): Observation {
   const stepSource = attribution.stepSource;
   const pipeline = pipelineFor(stepSource);
@@ -167,6 +196,9 @@ function observationFor(attribution: AttributionResult): Observation {
     ...(outcome === undefined ? {} : { outcome }),
     ...(buildLog === undefined ? {} : { buildLog }),
     ...(stepSource === undefined ? {} : { serviceIds: stepSource.serviceStackIds }),
+    ...(attribution.services === undefined
+      ? {}
+      : { services: attribution.services.map(observedService) }),
   };
 }
 
