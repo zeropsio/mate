@@ -34,6 +34,9 @@ import {
   MateInterruption,
   CrewHandle,
   CrewTask,
+  ExecErrorReason,
+  ExecRunInput,
+  ExecRunResult,
   ExecutionEnvironmentDescriptor,
   ExecutionEnvironmentUpdate,
   IsoDateTime,
@@ -157,6 +160,8 @@ export const OverviewIdentity = Schema.Struct({
    * does not know (off Zerops, an older Mate).
    */
   setupMarker: Schema.optionalKey(Schema.Boolean),
+  /** That it runs HQ's `command` frame, by the protocol of that frame; absent: HQ sends none. */
+  command: Schema.optionalKey(Schema.Struct({ protocol: Schema.Int })),
 });
 export type OverviewIdentity = typeof OverviewIdentity.Type;
 
@@ -518,6 +523,48 @@ export type LinkedMate = typeof LinkedMate.Type;
 const Ticket = Schema.String.check(Schema.isMinLength(1));
 const CredentialFingerprint = Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/u));
 
+/** The protocol of the operator's `command` frame and its `command-result` this build speaks. */
+export const LINK_COMMAND_PROTOCOL = 1;
+
+/**
+ * One command HQ's operator has the Mate run in its container, by `exec.run`'s meaning and limits:
+ * an executable and its argument list, never a shell string. Run at most once per `id` in a server
+ * process, whatever the update phase and whether or not the Mate is automated.
+ */
+export const LinkCommandDown = Schema.Struct({
+  type: Schema.Literal("command"),
+  id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+  command: ExecRunInput.fields.command,
+  args: Schema.Array(Schema.String),
+  cwd: ExecRunInput.fields.cwd,
+  timeoutMs: ExecRunInput.fields.timeoutMs,
+});
+export type LinkCommandDown = typeof LinkCommandDown.Type;
+
+/** Why a `command` did not run: `exec.run`'s reasons, or an `id` this server process already ran. */
+export const LinkCommandNotRun = Schema.Union([ExecErrorReason, Schema.Literal("duplicate")]);
+export type LinkCommandNotRun = typeof LinkCommandNotRun.Type;
+
+/**
+ * How a `command` went, up the link the Mate holds when it ends (none: dropped). Each stream keeps
+ * its end, both cut until the frame fits {@link MATE_LINK_FRAME_MAX}; its `…Truncated` says so.
+ */
+export const LinkCommandResultUp = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal("command-result"),
+    id: Schema.String,
+    ran: Schema.Literal(true),
+    ...ExecRunResult.fields,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("command-result"),
+    id: Schema.String,
+    ran: Schema.Literal(false),
+    reason: LinkCommandNotRun,
+  }),
+]);
+export type LinkCommandResultUp = typeof LinkCommandResultUp.Type;
+
 export const KeyLinkUp = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("hello"),
@@ -537,6 +584,7 @@ export const KeyLinkUp = Schema.Union([
     id: Schema.String,
     ok: Schema.Boolean,
   }),
+  ...LinkCommandResultUp.members,
   Schema.Struct({ type: Schema.Literal("key-refused") }),
   /**
    * A ticket the Mate's own list does not admit, sent instead of `ticket-ack`: definitive.
@@ -586,6 +634,7 @@ export const KeyLinkDown = Schema.Union([
   TaskMessageDown,
   TaskStopDown,
   ProviderKeysDown,
+  LinkCommandDown,
 ]);
 export type KeyLinkDown = typeof KeyLinkDown.Type;
 
