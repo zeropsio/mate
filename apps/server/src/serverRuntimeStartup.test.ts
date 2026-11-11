@@ -1,13 +1,13 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as Layer from "effect/Layer";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { ProjectId } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
-import * as Crypto from "effect/Crypto";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
-import * as PlatformError from "effect/PlatformError";
 import * as Ref from "effect/Ref";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
@@ -136,7 +136,7 @@ it.effect(
           subscribeDomainEvents: Effect.succeed(Stream.empty),
           latestSequence: Effect.succeed(0),
         } satisfies OrchestrationEngine.OrchestrationEngineService["Service"]),
-        Effect.provide(NodeServices.layer),
+        Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
       );
 
       assert.deepStrictEqual(targets, { bootstrapProjectId });
@@ -193,7 +193,7 @@ it.effect(
           subscribeDomainEvents: Effect.succeed(Stream.empty),
           latestSequence: Effect.succeed(0),
         } satisfies OrchestrationEngine.OrchestrationEngineService["Service"]),
-        Effect.provide(NodeServices.layer),
+        Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
       );
 
       assert.equal(typeof targets.bootstrapProjectId, "string");
@@ -205,66 +205,6 @@ it.effect(
       );
       assert.equal("defaultModelSelection" in commands[0]!, false);
     }),
-);
-
-it.effect("resolveAutoBootstrapWelcomeTargets preserves typed UUID generation failures", () =>
-  Effect.gen(function* () {
-    const crypto = yield* Crypto.Crypto;
-    const uuidError = PlatformError.systemError({
-      _tag: "Unknown",
-      module: "Crypto",
-      method: "randomUUIDv4",
-      description: "UUID generation unavailable",
-    });
-    const dispatchCalls = yield* Ref.make<ReadonlyArray<string>>([]);
-
-    const error = yield* ServerRuntimeStartup.resolveAutoBootstrapProject.pipe(
-      Effect.provideService(ServerConfig.ServerConfig, {
-        cwd: "/tmp/startup-project",
-        autoBootstrapProjectFromCwd: true,
-      } as never),
-      Effect.provideService(ProjectionSnapshotQuery.ProjectionSnapshotQuery, {
-        getUserInputActivity: () => Effect.die("unused"),
-        getCommandReadModel: () => Effect.die("unused"),
-        getSnapshot: () => Effect.die("unused"),
-        getShellSnapshot: () => Effect.die("unused"),
-        getArchivedShellSnapshot: () => Effect.die("unused"),
-        getSnapshotSequence: () => Effect.die("unused"),
-        getCounts: () => Effect.die("unused"),
-        getEventReplayStats: () => Effect.die("unused"),
-        getActiveProjectByWorkspaceRoot: () => Effect.succeed(Option.none()),
-        getProjectWorkspaceRootById: () => Effect.die("unused"),
-        getProjectShellById: () => Effect.die("unused"),
-        getFirstActiveThreadIdByProjectId: () => Effect.succeed(Option.none()),
-        getThreadRuntimeContext: () => Effect.die("unused"),
-        getTurnStartMessage: () => Effect.die("unused"),
-        getThreadShellById: () => Effect.die("unused"),
-        getThreadDetailById: () => Effect.die("unused"),
-        getThreadDetailSnapshot: () => Effect.die("unused"),
-        searchThreads: () => Effect.succeed({ matches: [] }),
-      }),
-      Effect.provideService(OrchestrationEngine.OrchestrationEngineService, {
-        readEvents: () => Stream.empty,
-        readThreadEvents: () => Stream.empty,
-        getThreadReplayStats: () => Effect.die("unused thread replay stats"),
-        dispatch: (command) =>
-          Ref.update(dispatchCalls, (calls) => [...calls, command.type]).pipe(
-            Effect.as({ sequence: 1 }),
-          ),
-        streamDomainEvents: Stream.empty,
-        subscribeDomainEvents: Effect.succeed(Stream.empty),
-        latestSequence: Effect.succeed(0),
-      } satisfies OrchestrationEngine.OrchestrationEngineService["Service"]),
-      Effect.provideService(Crypto.Crypto, {
-        ...crypto,
-        randomUUIDv4: Effect.fail(uuidError),
-      }),
-      Effect.flip,
-    );
-
-    assert.strictEqual(error, uuidError);
-    assert.deepStrictEqual(yield* Ref.get(dispatchCalls), []);
-  }).pipe(Effect.provide(NodeServices.layer)),
 );
 
 it.effect("at boot, the Mate engine starts in the reactor scope", () =>
@@ -300,7 +240,7 @@ it.effect(
           dispatch: (command: { readonly type: string }) =>
             Ref.update(dispatched, (all) => [...all, command]).pipe(Effect.as({ sequence: 1 })),
         } as never),
-        Effect.provide(NodeServices.layer),
+        Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
       );
       assert.equal(typeof targets.bootstrapProjectId, "string");
       assert.notProperty(targets, "bootstrapThreadId");

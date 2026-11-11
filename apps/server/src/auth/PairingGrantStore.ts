@@ -5,7 +5,7 @@ import {
   type ServerAuthBootstrapMethod,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -240,7 +240,7 @@ const PAIRING_TOKEN_REJECTION_LIMIT =
   Math.floor(256 / PAIRING_TOKEN_ALPHABET.length) * PAIRING_TOKEN_ALPHABET.length;
 
 export const make = Effect.gen(function* () {
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
   const config = yield* ServerConfig.ServerConfig;
   const pairingLinks = yield* AuthPairingLinks.AuthPairingLinkRepository;
   const changesPubSub = yield* PubSub.unbounded<BootstrapCredentialChange>();
@@ -328,11 +328,14 @@ export const make = Effect.gen(function* () {
   const issueOneTimeToken: PairingGrantStore["Service"]["issueOneTimeToken"] = Effect.fn(
     "PairingGrantStore.issueOneTimeToken",
   )(function* (input) {
-    const id = yield* crypto.randomUUIDv4.pipe(
-      Effect.mapError(
-        (cause) => new PairingCredentialRandomGenerationError({ operation: "generate-id", cause }),
-      ),
-    );
+    const id = yield* crypto
+      .uuidV4()
+      .pipe(
+        Effect.mapError(
+          (cause) =>
+            new PairingCredentialRandomGenerationError({ operation: "generate-id", cause }),
+        ),
+      );
     const credential = yield* generatePairingToken;
     const isDevStartupToken = config.devUrl !== undefined && input?.purpose === "startup";
     const ttl =

@@ -1,4 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as Layer from "effect/Layer";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { ProviderDriverKind, ThreadId } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
 import * as Cause from "effect/Cause";
@@ -11,7 +13,7 @@ import * as AcpErrors from "effect-acp/errors";
 import type { EventNdjsonLogger } from "../Layers/EventNdjsonLogger.ts";
 import { makeAcpNativeLoggerFactory } from "./AcpNativeLogging.ts";
 
-const nodeServicesIt = it.layer(NodeServices.layer);
+const nodeServicesIt = it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer));
 const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 
 nodeServicesIt("ACP native logging", (it) => {

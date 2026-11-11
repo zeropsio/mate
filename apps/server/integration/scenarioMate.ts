@@ -18,6 +18,7 @@ import * as NodePath from "node:path";
 
 import { HostProcessEnvironment } from "@t3tools/shared/hostProcess";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -219,7 +220,12 @@ export async function startScenarioMate(options: ScenarioMateOptions): Promise<S
           envStorePath: NodePath.join(root, "zembed", "env.json"),
         },
       })),
-      Effect.provide(ServerConfig.layerTest(cwd, baseDir).pipe(Layer.provide(NodeServices.layer))),
+      Effect.provide(
+        Layer.mergeAll(
+          ServerConfig.layerTest(cwd, baseDir).pipe(Layer.provide(NodeServices.layer)),
+          NodeCrypto.layer,
+        ),
+      ),
       Effect.provideService(FetchHttpClient.Fetch, loopbackFetch),
       Effect.provideService(DataConsoleSpawn, options.spawnDataConsole),
       Effect.provideService(HostProcessEnvironment, {

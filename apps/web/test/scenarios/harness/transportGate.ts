@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off -- a loopback byte proxy reading request envelopes.
+// @effect-diagnostics nodeBuiltinImport:off globalJsonInEffect:off -- a loopback byte proxy reading request envelopes.
 /**
  * The container's reverse proxy for a real scenario Mate: strips the published `/mate` prefix, as
  * zcp's does, and forwards HTTP bodies and WebSocket frames byte for byte. A case can hold the

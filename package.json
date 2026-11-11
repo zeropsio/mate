@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "prepare": "effect-tsgo patch && vp config --no-agent",
+    "prepare": "vp config --no-agent",
     "dev": "node scripts/dev-runner.ts dev",
     "dev:server": "node scripts/dev-runner.ts dev:server",
     "dev:web": "node scripts/dev-runner.ts dev:web",
@@ -45,9 +45,8 @@
     "sync:repos": "node scripts/sync-reference-repos.ts"
   },
   "devDependencies": {
-    "@effect/tsgo": "catalog:",
+    "@effect/tsgo": "0.67.1",
     "@types/node": "catalog:",
-    "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
   "engines": {

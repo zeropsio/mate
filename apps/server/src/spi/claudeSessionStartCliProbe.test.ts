@@ -8,6 +8,7 @@
  * (`T3_CLAUDE_CLI_PROBE_BINARY` overrides the `claude` on PATH).
  */
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, describe, it } from "@effect/vitest";
 import {
   ClaudeSettings,
@@ -43,7 +44,7 @@ const probeLayer = Layer.mergeAll(
   ServerSettingsService.layerTest(),
   ThreadToolPolicyRegistry.layer,
   ClaudeThreadExtensionRegistry.layer,
-).pipe(Layer.provideMerge(NodeServices.layer));
+).pipe(Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)));
 
 describe.runIf(process.env.T3_CLAUDE_CLI_PROBE === "1")("Claude CLI probe: session start", () => {
   it.live(

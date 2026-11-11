@@ -8,7 +8,7 @@ import * as NodeURL from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 
 const compiler = NodeURL.fileURLToPath(
-  new URL("../node_modules/typescript/bin/tsc", import.meta.url),
+  new URL("../node_modules/@effect/tsgo/dist/effect-tsgo.cjs", import.meta.url),
 );
 const scenarioConfig = NodeURL.fileURLToPath(
   new URL("../apps/web/test/scenarios/tsconfig.json", import.meta.url),
@@ -26,13 +26,13 @@ describe("Decision: no test deleted or weakened; no gate exit-code masking.", ()
       title: "rejects unsuppressed source globals",
       source: "console.log('source');",
       diagnostic: "effect(globalConsole)",
-      status: 1,
+      status: 2,
     },
     {
       title: "rejects TypeScript errors",
       source: "const value: number = 'invalid';",
       diagnostic: "TS2322",
-      status: 1,
+      status: 2,
     },
   ])("$title", ({ source, diagnostic, status }) => {
     const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-scenario-tc-"));
@@ -72,7 +72,7 @@ console.log('scenario');
       );
       const result = NodeChildProcess.spawnSync(
         process.execPath,
-        [compiler, "--noEmit", "-p", config],
+        [compiler, "tsrs", "--noEmit", "-p", config],
         {
           encoding: "utf8",
         },

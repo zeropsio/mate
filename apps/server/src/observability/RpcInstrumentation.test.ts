@@ -69,10 +69,11 @@ const withTelemetry = <A, E, R>(
 const rpcSpans = (ended: ReadonlyArray<Tracer.NativeSpan>) =>
   ended.filter((span) => span.name.startsWith("ws.rpc."));
 
-// RpcTest keeps Effect's own RpcServer/RpcClient spans, which ws.ts turns off with
-// `disableTracing: true`. Everything else comes from the middleware or the handlers.
+// RpcTest keeps Effect's own server and client spans, each named by its method alone, which
+// ws.ts turns off with `disableTracing: true`. Everything else comes from the middleware or the
+// handlers.
 const appSpans = (ended: ReadonlyArray<Tracer.NativeSpan>) =>
-  ended.filter((span) => !/^Rpc(Server|Client)\./.test(span.name));
+  ended.filter((span) => !WsRpcGroup.requests.has(span.name));
 
 const exitTag = (span: Tracer.NativeSpan | undefined) =>
   span?.status._tag === "Ended" ? span.status.exit._tag : undefined;

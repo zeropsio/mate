@@ -5,6 +5,7 @@ import * as NodeFSP from "node:fs/promises";
 import * as NodeURL from "node:url";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -66,7 +67,7 @@ const grokAdapterTestLayer = ServerConfig.layerTest(process.cwd(), {
   prefix: "t3code-grok-adapter-test-",
 }).pipe(
   Layer.provideMerge(ServerSettingsService.layerTest()),
-  Layer.provideMerge(NodeServices.layer),
+  Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
 );
 
 const makeTestAdapter = (binaryPath: string, options?: Parameters<typeof makeGrokAdapter>[1]) =>

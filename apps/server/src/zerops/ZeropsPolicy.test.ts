@@ -1,4 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -80,7 +81,7 @@ const threadCreate = {
   createdAt: "2026-08-28T00:00:00.000Z",
 } as unknown as OrchestrationCommand;
 
-it.layer(NodeServices.layer)("zeropsPolicy", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("zeropsPolicy", (it) => {
   it.effect("is the upstream policy when no server config is in context at all", () =>
     Effect.gen(function* () {
       assert.deepStrictEqual(yield* zeropsPolicy, UPSTREAM_POLICY);
@@ -100,59 +101,65 @@ it.layer(NodeServices.layer)("zeropsPolicy", (it) => {
   );
 });
 
-it.layer(NodeServices.layer)("the decider is where the worktree rule is enforced", (it) => {
-  it.effect("thread.create persists a null worktree path on Zerops", () =>
-    Effect.gen(function* () {
-      const [event] = yield* decide(threadCreate);
-      assert.isDefined(event);
-      assert.strictEqual(event.type, "thread.created");
-      assert.strictEqual((event.payload as { readonly worktreePath: unknown }).worktreePath, null);
-    }).pipe(Effect.provide(onZerops)),
-  );
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))(
+  "the decider is where the worktree rule is enforced",
+  (it) => {
+    it.effect("thread.create persists a null worktree path on Zerops", () =>
+      Effect.gen(function* () {
+        const [event] = yield* decide(threadCreate);
+        assert.isDefined(event);
+        assert.strictEqual(event.type, "thread.created");
+        assert.strictEqual(
+          (event.payload as { readonly worktreePath: unknown }).worktreePath,
+          null,
+        );
+      }).pipe(Effect.provide(onZerops)),
+    );
 
-  it.effect("thread.create keeps the client's worktree path off Zerops", () =>
-    Effect.gen(function* () {
-      const [event] = yield* decide(threadCreate);
-      assert.isDefined(event);
-      assert.strictEqual(
-        (event.payload as { readonly worktreePath: unknown }).worktreePath,
-        "/home/zerops/.t3/worktrees/thread-1",
-      );
-    }).pipe(Effect.provide(offZerops)),
-  );
+    it.effect("thread.create keeps the client's worktree path off Zerops", () =>
+      Effect.gen(function* () {
+        const [event] = yield* decide(threadCreate);
+        assert.isDefined(event);
+        assert.strictEqual(
+          (event.payload as { readonly worktreePath: unknown }).worktreePath,
+          "/home/zerops/.t3/worktrees/thread-1",
+        );
+      }).pipe(Effect.provide(offZerops)),
+    );
 
-  it.effect("project.meta.update forces the default thread env mode to local", () =>
-    Effect.gen(function* () {
-      const [event] = yield* decide({
-        type: "project.meta.update",
-        commandId: "cmd-2",
-        projectId: "project-1",
-        defaultThreadEnvMode: "worktree",
-      } as unknown as OrchestrationCommand);
-      assert.isDefined(event);
-      assert.strictEqual(
-        (event.payload as { readonly defaultThreadEnvMode: unknown }).defaultThreadEnvMode,
-        "local",
-      );
-    }).pipe(Effect.provide(onZerops)),
-  );
+    it.effect("project.meta.update forces the default thread env mode to local", () =>
+      Effect.gen(function* () {
+        const [event] = yield* decide({
+          type: "project.meta.update",
+          commandId: "cmd-2",
+          projectId: "project-1",
+          defaultThreadEnvMode: "worktree",
+        } as unknown as OrchestrationCommand);
+        assert.isDefined(event);
+        assert.strictEqual(
+          (event.payload as { readonly defaultThreadEnvMode: unknown }).defaultThreadEnvMode,
+          "local",
+        );
+      }).pipe(Effect.provide(onZerops)),
+    );
 
-  it.effect("project.meta.update keeps the requested env mode off Zerops", () =>
-    Effect.gen(function* () {
-      const [event] = yield* decide({
-        type: "project.meta.update",
-        commandId: "cmd-2",
-        projectId: "project-1",
-        defaultThreadEnvMode: "worktree",
-      } as unknown as OrchestrationCommand);
-      assert.isDefined(event);
-      assert.strictEqual(
-        (event.payload as { readonly defaultThreadEnvMode: unknown }).defaultThreadEnvMode,
-        "worktree",
-      );
-    }).pipe(Effect.provide(offZerops)),
-  );
-});
+    it.effect("project.meta.update keeps the requested env mode off Zerops", () =>
+      Effect.gen(function* () {
+        const [event] = yield* decide({
+          type: "project.meta.update",
+          commandId: "cmd-2",
+          projectId: "project-1",
+          defaultThreadEnvMode: "worktree",
+        } as unknown as OrchestrationCommand);
+        assert.isDefined(event);
+        assert.strictEqual(
+          (event.payload as { readonly defaultThreadEnvMode: unknown }).defaultThreadEnvMode,
+          "worktree",
+        );
+      }).pipe(Effect.provide(offZerops)),
+    );
+  },
+);
 
 describe("the capabilities the client reads", () => {
   it("hides the stacked git pipeline on Zerops", () => {
@@ -197,40 +204,43 @@ const managerLayer = (driver: Layer.Layer<GitVcsDriver.GitVcsDriver>) =>
     ServerSettings.ServerSettingsService.layerTest(),
   );
 
-it.layer(NodeServices.layer)("GitManager under the Zerops policy", (it) => {
-  it.effect("refuses the stacked commit/push/PR action server-side", () =>
-    Effect.gen(function* () {
-      const recorded = yield* Ref.make<ReadonlyArray<unknown>>([]);
-      const manager = yield* GitManager.make.pipe(
-        Effect.provide(managerLayer(recordingDriverLayer(recorded))),
-      );
-
-      const error = yield* manager
-        .runStackedAction({ cwd: "/var/www/kanbandev", action: "commit_push" } as never)
-        .pipe(Effect.flip);
-
-      assert.instanceOf(error, GitManagerError);
-      assert.include(error.detail ?? "", "zcp");
-    }).pipe(Effect.provide(onZerops)),
-  );
-
-  it.effect("never lets a status read fetch from a remote", () =>
-    Effect.gen(function* () {
-      const recorded = yield* Ref.make<ReadonlyArray<unknown>>([]);
-      const manager = yield* GitManager.make.pipe(
-        Effect.provide(managerLayer(recordingDriverLayer(recorded))),
-      );
-
-      yield* manager.remoteStatus({ cwd: "/var/www/kanbandev" } as never);
-
-      const calls = yield* Ref.get(recorded);
-      assert.isAbove(calls.length, 0);
-      for (const options of calls) {
-        assert.strictEqual(
-          (options as { readonly refreshUpstream?: boolean }).refreshUpstream,
-          false,
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))(
+  "GitManager under the Zerops policy",
+  (it) => {
+    it.effect("refuses the stacked commit/push/PR action server-side", () =>
+      Effect.gen(function* () {
+        const recorded = yield* Ref.make<ReadonlyArray<unknown>>([]);
+        const manager = yield* GitManager.make.pipe(
+          Effect.provide(managerLayer(recordingDriverLayer(recorded))),
         );
-      }
-    }).pipe(Effect.provide(onZerops)),
-  );
-});
+
+        const error = yield* manager
+          .runStackedAction({ cwd: "/var/www/kanbandev", action: "commit_push" } as never)
+          .pipe(Effect.flip);
+
+        assert.instanceOf(error, GitManagerError);
+        assert.include(error.detail ?? "", "zcp");
+      }).pipe(Effect.provide(onZerops)),
+    );
+
+    it.effect("never lets a status read fetch from a remote", () =>
+      Effect.gen(function* () {
+        const recorded = yield* Ref.make<ReadonlyArray<unknown>>([]);
+        const manager = yield* GitManager.make.pipe(
+          Effect.provide(managerLayer(recordingDriverLayer(recorded))),
+        );
+
+        yield* manager.remoteStatus({ cwd: "/var/www/kanbandev" } as never);
+
+        const calls = yield* Ref.get(recorded);
+        assert.isAbove(calls.length, 0);
+        for (const options of calls) {
+          assert.strictEqual(
+            (options as { readonly refreshUpstream?: boolean }).refreshUpstream,
+            false,
+          );
+        }
+      }).pipe(Effect.provide(onZerops)),
+    );
+  },
+);

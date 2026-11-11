@@ -53,7 +53,7 @@ import { ProviderInstances } from "../spi/providerInstances.ts";
 import * as NodeDns from "node:dns";
 import * as NodeNet from "node:net";
 
-import { NodeWS } from "@effect/platform-node/NodeSocket";
+import * as NodeWS from "@effect/platform-node/NodeWS";
 import type {
   ConversationRow,
   CrewSnapshot,

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// @effect-diagnostics nodeBuiltinImport:off globalConsole:off globalDate:off preferSchemaOverJson:off -- host mutation-testing tool.
+// @effect-diagnostics nodeBuiltinImport:off globalConsole:off globalDate:off globalJsonInEffect:off -- host mutation-testing tool.
 /**
  * mutation-cull <package-or-dir> [--out DIR] [--concurrency N] [--tests a.test.ts,b.test.ts]
  *

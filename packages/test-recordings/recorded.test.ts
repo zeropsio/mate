@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off -- a drifted copy of a recording.
+// @effect-diagnostics nodeBuiltinImport:off globalJsonInEffect:off -- a drifted copy of a recording.
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";

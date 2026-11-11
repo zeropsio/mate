@@ -1,4 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { expect, it } from "@effect/vitest";
 import {
   AntigravitySettings,
@@ -8,7 +9,7 @@ import {
   type ProviderRuntimeEvent,
 } from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -305,7 +306,7 @@ const layer = ServerConfig.layerTest(process.cwd(), {
   prefix: "t3-antigravity-adapter-test-",
 }).pipe(
   Layer.provideMerge(ServerSettingsService.layerTest()),
-  Layer.provideMerge(NodeServices.layer),
+  Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
 );
 
 it.layer(layer)("AntigravityAdapter", (it) => {
@@ -315,7 +316,7 @@ it.layer(layer)("AntigravityAdapter", (it) => {
       Effect.gen(function* () {
         const fileSystem = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
-        const crypto = yield* Crypto.Crypto;
+        const crypto = yield* SecureRandom.SecureRandom;
         const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
         const cwd = yield* fileSystem.makeTempDirectoryScoped({
           prefix: "t3-antigravity-transport-",
@@ -346,7 +347,7 @@ it.layer(layer)("AntigravityAdapter", (it) => {
                 },
                 extendEnv: false,
               },
-            }).pipe(Effect.provideService(Crypto.Crypto, crypto)),
+            }).pipe(Effect.provideService(SecureRandom.SecureRandom, crypto)),
           onAvailableCommands: (available) =>
             Effect.sync(() => {
               commands.push(...available.map((command) => command.name));

@@ -49,6 +49,11 @@ export default defineConfig({
     reporters: ["default", new GateTimingReporter()],
     ...(maxWorkers === undefined ? {} : { maxWorkers }),
     environment: "node",
+    // A workspace whose dependencies bring their own `typescript` (madge in `scripts`) resolves
+    // vite-plus's optional peer to it and gets a vite-plus of its own. Left external,
+    // @effect/vitest then loads that copy's vitest, a second one with no running suite, when its
+    // tests run from the root. Inlined, its `vite-plus/test` import is the runner's own.
+    server: { deps: { inline: ["@effect/vitest"] } },
     exclude: [
       "**/.repos/**",
       "**/node_modules/**",

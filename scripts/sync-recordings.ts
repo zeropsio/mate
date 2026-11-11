@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// @effect-diagnostics nodeBuiltinImport:off globalConsole:off preferSchemaOverJson:off -- copies a producer's files.
+// @effect-diagnostics nodeBuiltinImport:off globalConsole:off globalJsonInEffect:off -- copies a producer's files.
 /**
  * `node scripts/sync-recordings.ts <producer checkout>`: the one writer of
  * `packages/test-recordings/<producer>/`. It copies the checkout's `conformance/recordings/*.json`

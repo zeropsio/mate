@@ -1,5 +1,6 @@
 import * as NodePath from "@effect/platform-node/NodePath";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -98,7 +99,7 @@ function makeLayer(input: {
         Layer.provide(Layer.succeed(FileSystem.FileSystem, input.fileSystem)),
         Layer.provideMerge(NodePath.layer),
       )
-    : serviceLayer.pipe(Layer.provideMerge(NodeServices.layer));
+    : serviceLayer.pipe(Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)));
 }
 
 it.effect("looks up repositories through the requested provider without search", () => {
@@ -306,7 +307,7 @@ it.effect("clones a looked-up repository into the requested destination", () =>
         }),
       ),
     );
-  }).pipe(Effect.provide(NodeServices.layer)),
+  }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
 );
 
 it.effect.each(["--bare", "source.git"])(
@@ -340,7 +341,7 @@ it.effect.each(["--bare", "source.git"])(
               prefix: "t3-clone-options-config-",
             }),
           ),
-          Layer.provideMerge(NodeServices.layer),
+          Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
         ),
       ),
     ),
@@ -404,7 +405,7 @@ it.effect("reports clone progress from git's stderr and keeps its error text on 
       error.detail,
       "fatal: early EOF fatal: unable to access 'https://github.com/octocat/t3code.git/': could not resolve host",
     );
-  }).pipe(Effect.provide(NodeServices.layer)),
+  }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
 );
 
 it.effect("strips embedded credentials from the remote URL it reports", () =>
@@ -436,7 +437,7 @@ it.effect("strips embedded credentials from the remote URL it reports", () =>
     assert.equal(result.remoteUrl, "https://github.com/octocat/t3code.git");
     // Git itself still receives the credentials.
     assert.equal(result.cloneUrl, "https://user:s3cret@github.com/octocat/t3code.git");
-  }).pipe(Effect.provide(NodeServices.layer)),
+  }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
 );
 
 it.effect("discards only a directory git wrote to", () =>
@@ -470,7 +471,7 @@ it.effect("discards only a directory git wrote to", () =>
     assert.deepStrictEqual(yield* fs.readDirectory(partial), []);
     assert.deepStrictEqual(yield* fs.readDirectory(foreign), ["notes.txt"]);
     assert.strictEqual(yield* fs.readFileString(replaced), "not a directory");
-  }).pipe(Effect.provide(NodeServices.layer)),
+  }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
 );
 
 it.effect("redacts query tokens and userinfo containing '@' from reported URLs", () =>
@@ -491,7 +492,7 @@ it.effect("redacts query tokens and userinfo containing '@' from reported URLs",
       });
       assert.equal(nested.remoteUrl, "https://github.com/octocat/t3code.git");
     }).pipe(Effect.provide(makeLayer({})));
-  }).pipe(Effect.provide(NodeServices.layer)),
+  }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
 );
 
 it.effect("preserves destination probe failures instead of treating them as missing paths", () => {

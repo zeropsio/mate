@@ -30,7 +30,7 @@ import type {
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -273,7 +273,7 @@ export const layer = Layer.effect(
     const shared = {
       environmentId: yield* (yield* ServerEnvironment).getEnvironmentId,
       epoch: yield* nextMateEpoch(config.mateEpochPath),
-      incarnation: yield* (yield* Crypto.Crypto).randomUUIDv4,
+      incarnation: yield* (yield* SecureRandom.SecureRandom).uuidV4(),
       healthDemand: PubSub.publish(healthDemand, undefined).pipe(Effect.asVoid),
       health: resourceHealthChanges(
         config.stateDir,

@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off globalConsole:off preferSchemaOverJson:off -- stops admission in the worker, before the next case starts.
+// @effect-diagnostics nodeBuiltinImport:off globalConsole:off globalJsonInEffect:off -- stops admission in the worker, before the next case starts.
 import * as NodeFS from "node:fs";
 import { inject, TestRunner, type RunnerTestCase } from "vite-plus/test";
 import { hungReason, signalEvidence } from "./signal-reporter.ts";

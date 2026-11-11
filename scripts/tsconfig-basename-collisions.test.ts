@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off - This repository guard reads compiler-selected directories and invokes the installed TypeScript CLI.
+// @effect-diagnostics nodeBuiltinImport:off - This repository guard reads compiler-selected directories and invokes the installed typechecker.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeFSP from "node:fs/promises";
@@ -11,7 +11,9 @@ import { describe, expect, it } from "@effect/vitest";
 import { parse } from "yaml";
 
 const repoRoot = NodeURL.fileURLToPath(new URL("..", import.meta.url));
-const tsc = NodeURL.fileURLToPath(new URL("../node_modules/typescript/bin/tsc", import.meta.url));
+const effectTsgo = NodeURL.fileURLToPath(
+  new URL("../node_modules/@effect/tsgo/dist/effect-tsgo.cjs", import.meta.url),
+);
 const execFile = NodeUtil.promisify(NodeChildProcess.execFile);
 
 function collisions(files: ReadonlyArray<string>): Array<Array<string>> {
@@ -28,14 +30,26 @@ function collisions(files: ReadonlyArray<string>): Array<Array<string>> {
 
 async function configCollisions(config: string): Promise<Array<Array<string>>> {
   // Let the compiler resolve JSONC, extends, files, include, exclude and default includes.
-  // Its file list suppresses same-basename siblings, so use it only to discover directories;
-  // inspect each directory's raw entries to catch the files the compiler silently dropped.
-  const { stdout } = await execFile(process.execPath, [tsc, "--showConfig", "-p", config], {
-    maxBuffer: 8 * 1024 * 1024,
-  });
-  const { files } = JSON.parse(stdout) as { files: Array<string> };
+  // Its file list suppresses same-basename siblings and follows imports into dependencies, so
+  // use it only to discover the repository's directories; inspect each directory's raw entries
+  // to catch the files the compiler silently dropped.
+  const { stdout } = await execFile(
+    process.execPath,
+    [effectTsgo, "tsrs", "--listFilesOnly", "-p", config],
+    { maxBuffer: 64 * 1024 * 1024 },
+  );
+  // The compiler prints real paths; name each directory the way the config was named.
+  const configDirectory = NodePath.dirname(config);
+  const realConfigDirectory = await NodeFSP.realpath(configDirectory);
   const directories = new Set(
-    files.map((file) => NodePath.dirname(NodePath.resolve(NodePath.dirname(config), file))),
+    stdout
+      .split("\n")
+      .filter((file) => NodePath.isAbsolute(file) && !file.includes("/node_modules/"))
+      .map((file) =>
+        NodePath.dirname(
+          NodePath.resolve(configDirectory, NodePath.relative(realConfigDirectory, file)),
+        ),
+      ),
   );
   const findings: Array<Array<string>> = [];
   for (const directory of [...directories].sort()) {

@@ -3,6 +3,7 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, describe, it } from "@effect/vitest";
 import {
   ProjectId,
@@ -455,7 +456,7 @@ const serverOn = (world: World, database: string) =>
         Layer.provideMerge(NodeSqliteClient.layer({ filename: database })),
       ),
     ),
-    Layer.provide(NodeServices.layer),
+    Layer.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
   );
 
 const withServer = <A, E>(
@@ -1098,7 +1099,7 @@ describe("ZeropsSetup: the stand-up", () => {
         Effect.provide(
           Layer.effectDiscard(runMigrations()).pipe(
             Layer.provideMerge(NodeSqliteClient.layer({ filename: database })),
-            Layer.provide(NodeServices.layer),
+            Layer.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
           ),
         ),
       );
@@ -1558,7 +1559,7 @@ describe("ZeropsSetup: the git step reads HQ's credential as the Mate keeps it",
 describe("zcpProcessGone", () => {
   const goneOf = (pid: number, start: string) =>
     Effect.flatMap(FileSystem.FileSystem, (fs) => zcpProcessGone(fs, { pid, start })).pipe(
-      Effect.provide(NodeServices.layer),
+      Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
     );
   const ownStart = () => {
     try {
@@ -1604,7 +1605,7 @@ describe("ZeropsSetup: the stand-up on the Mate engine", () => {
       Effect.provide(
         Layer.effectDiscard(runMigrations()).pipe(
           Layer.provideMerge(NodeSqliteClient.layer({ filename: database })),
-          Layer.provide(NodeServices.layer),
+          Layer.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
         ),
       ),
     );

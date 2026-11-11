@@ -10,7 +10,7 @@
  */
 import type { ProviderConsumeResetCreditOutcome } from "@t3tools/contracts";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type * as PlatformError from "effect/PlatformError";
@@ -42,7 +42,7 @@ export class ResetCreditCoordinator extends Context.Service<
 
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.gen(function* () {
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
   const statesRef = yield* Ref.make<ReadonlyMap<string, AccountRedemptionState>>(new Map());
 
   // Get-or-create through one Ref.modify so two first redemptions for the
@@ -69,7 +69,7 @@ export const make = Effect.gen(function* () {
       return yield* state.lock.withPermits(1)(
         Effect.gen(function* () {
           const existing = yield* Ref.get(state.pendingKey);
-          const idempotencyKey = existing ?? (yield* crypto.randomUUIDv4);
+          const idempotencyKey = existing ?? (yield* crypto.uuidV4());
           yield* Ref.set(state.pendingKey, idempotencyKey);
           const outcome = yield* consume(idempotencyKey).pipe(
             Effect.tapError((error) =>
@@ -88,7 +88,7 @@ export const make = Effect.gen(function* () {
 export const layer = Layer.effect(ResetCreditCoordinator, make);
 
 /**
- * Self-contained for tests: a counter-backed Crypto so keys are deterministic
+ * Self-contained for tests: a counter-backed SecureRandom so keys are deterministic
  * and distinct without the platform layer.
  */
 export const layerTest = Layer.effect(
@@ -97,13 +97,10 @@ export const layerTest = Layer.effect(
     let counter = 0;
     return yield* make.pipe(
       Effect.provideService(
-        Crypto.Crypto,
-        Crypto.make({
-          randomBytes: (size) => {
-            counter += 1;
-            return new Uint8Array(size).fill(counter);
-          },
-          digest: (_algorithm, data) => Effect.succeed(data),
+        SecureRandom.SecureRandom,
+        SecureRandom.make((size) => {
+          counter += 1;
+          return new Uint8Array(size).fill(counter);
         }),
       ),
     );

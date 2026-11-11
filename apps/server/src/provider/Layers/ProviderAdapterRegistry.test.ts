@@ -27,6 +27,7 @@ import { makeManualOnlyProviderMaintenanceCapabilities } from "../providerMainte
 import type * as TextGeneration from "../../textGeneration/TextGeneration.ts";
 import * as ProviderAdapterRegistryLayer from "./ProviderAdapterRegistry.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 
 const CODEX_DRIVER = ProviderDriverKind.make("codex");
 const CLAUDE_AGENT_DRIVER = ProviderDriverKind.make("claudeAgent");
@@ -158,6 +159,7 @@ const layer = Layer.mergeAll(
     fakeInstanceRegistryLayer,
   ),
   NodeServices.layer,
+  NodeCrypto.layer,
 );
 
 it.layer(layer)("ProviderAdapterRegistryLive", (it) => {
@@ -282,5 +284,5 @@ it.effect("blocks shared credential session startup and preserves guarded adapte
     yield* auth.logout(Effect.void);
     yield* Deferred.await(stopped);
     assert.strictEqual(Exit.isFailure(yield* Fiber.await(startup)), true);
-  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
 );

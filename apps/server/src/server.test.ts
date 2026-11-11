@@ -1,5 +1,6 @@
-import * as NodeSocket from "@effect/platform-node/NodeSocket";
+import * as NodeWS from "@effect/platform-node/NodeWS";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCryptoLayer from "@effect/platform-node/NodeCrypto";
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- Effect's Crypto has no KeyObject, generateKeyPairSync, or sign.
 import * as NodeCrypto from "node:crypto";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
@@ -1432,7 +1433,7 @@ const wsRpcProtocolLayer = (
     Socket.WebSocketConstructor,
     (socketUrl, protocols) => {
       // Socket.makeWebSocket only ever passes its `protocols` option here.
-      const socket = new NodeSocket.NodeWS.WebSocket(
+      const socket = new NodeWS.WebSocket(
         socketUrl,
         protocols as string | string[] | undefined,
         ticket
@@ -1866,7 +1867,7 @@ const getWsServerUrl = (
     );
   });
 
-it.layer(NodeServices.layer)("server router seam", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCryptoLayer.layer))("server router seam", (it) => {
   it.effect(
     "an exact first-frame HQ ticket opens RPC and authorizes HTTP only for its live connection",
     () =>
@@ -1919,7 +1920,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       yield* buildAppUnderTest({ config: { zerops: zeropsTestEnvironment() } });
       const url = yield* getWsServerUrl("/ws", { authenticated: false });
       const status = yield* Effect.callback<number | undefined, Error>((resume) => {
-        const socket = new NodeSocket.NodeWS.WebSocket(url, {
+        const socket = new NodeWS.WebSocket(url, {
           origin: "https://foreign.example.test",
         });
         socket.once("unexpected-response", (_request, response) => {
@@ -4771,8 +4772,8 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       const { cookie, url } = parseAuthorizationFromWsUrl(yield* getWsServerUrl("/ws"));
       const openSocket = (perMessageDeflate: boolean) =>
         Effect.acquireRelease(
-          Effect.callback<NodeSocket.NodeWS.WebSocket, Error>((resume) => {
-            const socket = new NodeSocket.NodeWS.WebSocket(url, {
+          Effect.callback<NodeWS.WebSocket, Error>((resume) => {
+            const socket = new NodeWS.WebSocket(url, {
               perMessageDeflate,
               ...(cookie ? { headers: { authorization: cookie } } : {}),
             });
@@ -5037,7 +5038,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       assert.deepInclude(yield* ticketResponse.json, { reason: "missing_credential" });
       const url = yield* getWsServerUrl("/ws", { authenticated: false });
       const code = yield* Effect.callback<number, Error>((resume) => {
-        const socket = new NodeSocket.NodeWS.WebSocket(url, {
+        const socket = new NodeWS.WebSocket(url, {
           origin: "https://mate.zerops.io",
           headers: { cookie },
         });
@@ -5794,7 +5795,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       // Other routes keep their HTTP server span.
       const session = yield* HttpClient.get("/api/auth/session", { headers: { authorization } });
       assert.equal(session.status, 200);
-      assert.include(spanNames, "http.server GET");
+      assert.include(spanNames, "GET");
     }).pipe(Effect.provide(layerLoopbackTest())),
   );
 

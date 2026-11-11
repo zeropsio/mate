@@ -15,7 +15,7 @@
 import { OpenCodeSettings, ProviderDriverKind } from "@t3tools/contracts";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { mergePathValues } from "@t3tools/shared/shell";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -99,7 +99,7 @@ const UPDATE = makePackageManagedProviderMaintenanceResolver({
 export type OpenCodeDriverEnv =
   | BackgroundPolicy.BackgroundPolicy
   | ChildProcessSpawner.ChildProcessSpawner
-  | Crypto.Crypto
+  | SecureRandom.SecureRandom
   | FileSystem.FileSystem
   | HttpClient.HttpClient
   | OpenCodeRuntime

@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off -- Reads a recorded Stryker report.
+// @effect-diagnostics nodeBuiltinImport:off globalJsonInEffect:off -- Reads a recorded Stryker report.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";

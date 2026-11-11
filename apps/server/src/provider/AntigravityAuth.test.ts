@@ -1,4 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as Layer from "effect/Layer";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, it } from "@effect/vitest";
 import { ProviderInstanceId, ProviderSetupError, type ProviderAuthState } from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
@@ -144,7 +146,7 @@ const makeHarness = Effect.fn("makeAuthTestHarness")(function* (
   };
 });
 
-it.layer(NodeServices.layer)("AntigravityAuth", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("AntigravityAuth", (it) => {
   it.effect("successful native sign-in still waits for owned callback delivery", () =>
     Effect.gen(function* () {
       const deliver = yield* Deferred.make<void>();
