@@ -131,9 +131,9 @@ zerops:
               Cache-Control: "'public, max-age=31536000, immutable' always"
               X-Content-Type-Options: "'nosniff' always"
 
-  # The alpha experiment: the same web client against the Zerops alpha platform
-  # (`api.app-alpha.zerops.dev`), with its own HQ beside it (KRLS project
-  # `mate-alpha`, HQ_ZEROPS_API on alpha). The client's Zerops calls go to
+  # The alpha experiment: the same web client against the Zerops alpha platform,
+  # with its own HQ beside it (KRLS project `mate-alpha`, HQ_ZEROPS_API on
+  # alpha). The client's Zerops calls go to
   # alpha's API (`VITE_ZEROPS_API_URL`); Mates born from it name that API to
   # their container (`ZCP_API_HOST`). Alpha has no device login and no GUI of
   # its own, so the build keeps the hand-over and its Zerops links stay on

@@ -12,7 +12,7 @@ interface ImportMetaEnv {
   readonly VITE_RELAY_OTLP_TRACES_TOKEN: string;
   /** The Zerops app every Zerops link and the sign-in hand-over go to; `https://app.zerops.io` when unset. */
   readonly VITE_ZEROPS_APP_URL?: string;
-  /** The Zerops API this build talks to (`https://api.app-alpha.zerops.dev`); prg1's when unset. */
+  /** The Zerops API this build talks to; prg1's when unset. */
   readonly VITE_ZEROPS_API_URL?: string;
   /** The way in: `handover` (the default) or `zerops-hq` (`zerops/zeropsHq.ts`). */
   readonly VITE_ZEROPS_SIGN_IN?: string;
