@@ -1309,21 +1309,9 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
             }),
           ),
         [WS_METHODS.serverUpsertKeybinding]: (rule) =>
-          admit(
-            WS_METHODS.serverUpsertKeybinding,
-            Effect.gen(function* () {
-              const keybindingsConfig = yield* keybindings.upsertKeybindingRule(rule);
-              return { keybindings: keybindingsConfig, issues: [] };
-            }),
-          ),
+          admit(WS_METHODS.serverUpsertKeybinding, keybindings.upsertKeybindingRule(rule)),
         [WS_METHODS.serverRemoveKeybinding]: (rule) =>
-          admit(
-            WS_METHODS.serverRemoveKeybinding,
-            Effect.gen(function* () {
-              const keybindingsConfig = yield* keybindings.removeKeybindingRule(rule);
-              return { keybindings: keybindingsConfig, issues: [] };
-            }),
-          ),
+          admit(WS_METHODS.serverRemoveKeybinding, keybindings.removeKeybindingRule(rule)),
         [WS_METHODS.serverGetSettings]: (_input) =>
           serverSettings.getSettings.pipe(Effect.map(ServerSettings.redactServerSettingsForClient)),
         [WS_METHODS.serverUpdateSettings]: ({ patch }) =>

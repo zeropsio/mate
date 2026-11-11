@@ -5821,7 +5821,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       yield* buildAppUnderTest({
         layers: {
           keybindings: {
-            upsertKeybindingRule: () => Effect.succeed([resolved]),
+            upsertKeybindingRule: () => Effect.succeed({ keybindings: [resolved], issues: [] }),
           },
         },
       });
@@ -5857,7 +5857,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       yield* buildAppUnderTest({
         layers: {
           keybindings: {
-            removeKeybindingRule: () => Effect.succeed([resolved]),
+            removeKeybindingRule: () => Effect.succeed({ keybindings: [resolved], issues: [] }),
           },
         },
       });
