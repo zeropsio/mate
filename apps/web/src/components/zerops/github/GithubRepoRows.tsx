@@ -549,9 +549,8 @@ function HowToFix() {
     <div className="grid gap-2 text-sm">
       <p className="font-medium">GitHub's main has commits Mate's main doesn't</p>
       <p className="text-muted-foreground">
-        Mate stopped pushing so it doesn't overwrite them. Bring those commits into Mate as a
-        change, or, if nobody needs them, reset GitHub's main to Mate's. Mate pushes again once the
-        two mains match.
+        Mate stopped pushing so it overwrites nothing. Ask this project's Mate to bring the two back
+        in step: it opens one change that holds both. Merge it in Mate, and Mate pushes again.
       </p>
     </div>
   );

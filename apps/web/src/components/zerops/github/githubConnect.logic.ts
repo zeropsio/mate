@@ -323,15 +323,20 @@ export type ConnectStep = "connect" | "push" | "rules";
 /**
  * Where a connect stands, from the press and the repository's record: sent and not shown yet
  * (`connect`), shown and main not pushed yet (`push`), pushed and GitHub's rules not read yet
- * (`rules`, through an app only), or done. A token remote has no rules to read.
+ * (`rules`, through an app only), or done. A token remote has no rules to read. `paused`: it is
+ * connected, and HQ found the two mains each holding commits the other lacks, so it moves neither
+ * — a repository that was ahead of Mate's code when it was picked. Nothing is being pushed then,
+ * and the step never says it is.
  */
 export function connectProgress(input: {
   readonly answered: boolean;
   readonly entry: RepoListEntry | undefined;
   readonly syncedAt: string | null | undefined;
-}): ConnectStep | "done" {
+}): ConnectStep | "paused" | "done" {
   const remote = input.entry?.remote;
   if (!input.answered || remote == null) return "connect";
+  if ((remote.divergedSince ?? input.entry?.mirror?.divergedSince ?? null) !== null)
+    return "paused";
   if (input.syncedAt === null) return "push";
   if (remote.via === "app" && remote.governance === undefined && input.syncedAt !== undefined)
     return "rules";
