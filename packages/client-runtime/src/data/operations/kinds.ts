@@ -20,6 +20,7 @@ import { createProject } from "./createProject.ts";
 import { changeComment } from "./changeComment.ts";
 import { deleteProject } from "./deleteProject.ts";
 import { enableSubdomainAccess } from "./enableSubdomainAccess.ts";
+import { cancelBuild } from "./cancelBuild.ts";
 import { enableZeropsMate } from "./enableZeropsMate.ts";
 import { hardenProject } from "./hardenProject.ts";
 import { HQ_CHIEF_KINDS } from "./hqChief.ts";
@@ -85,6 +86,7 @@ export const OPERATION_KINDS = defineOperationKinds([
   mateUpdate,
   deleteProject,
   enableSubdomainAccess,
+  cancelBuild,
   startService,
   stopService,
   deleteService,
