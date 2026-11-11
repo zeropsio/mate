@@ -201,9 +201,10 @@ const runStartupPhase = <A, E, R>(phase: string, effect: Effect.Effect<A, E, R>)
 
 /**
  * The conversation's roots: the engine's start in `reactorScope`. Under an update's boot fence the
- * engine's admission closes and its start waits for the fence to lift, in its own fiber: the start
- * tells every owner `Recovered` and runs the effects that queues (the crew's sweeps reach its dev
- * services' git), while the readiness proof zcp commits on must answer before that.
+ * engine's admission closes and its start is held, in its own fiber, until zcp commits or cancels
+ * (the fence then reopens admission only after it): the start tells every owner `Recovered` and
+ * runs the effects that queues (the crew's sweeps reach its dev services' git), while the readiness
+ * proof zcp commits on must answer before that.
  */
 export const startConversationRoots = (input: {
   readonly engine: Pick<MateEngineService, "start" | "updateDrain">;
@@ -221,7 +222,7 @@ export const startConversationRoots = (input: {
         return yield* Effect.die(new Error("This Mate cannot fence an automatic update boot."));
       yield* input.engine.updateDrain.begin;
       yield* Effect.forkIn(
-        fence.lifted.pipe(Effect.andThen(input.engine.start()), Scope.provide(input.reactorScope)),
+        fence.holdStart(input.engine.start().pipe(Scope.provide(input.reactorScope))),
         input.reactorScope,
       );
     }),

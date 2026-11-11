@@ -17,20 +17,30 @@ import { ServerConfig } from "./config.ts";
  * The one rule: client and engine admission and new terminals start closed while `pending`, and
  * every root that acts outward awaits `lifted` inside its own fiber. Nothing on the way to command
  * readiness awaits it: zcp commits only after the readiness proof, which needs startup finished.
+ *
+ * The lift keeps the order of a boot outside an update: the engine's start (its boot reconcile
+ * cuts whatever a restart left running) finishes before admission reopens, and admission reopens
+ * before the outward roots run, so nothing admitted at the commit is taken for restart debris.
  */
 export interface MateUpdateBootFenceShape {
   /** This boot started under a switch zcp has not committed or cancelled. */
   readonly pending: boolean;
-  /** Resolves once zcp commits or cancels; at once on a boot that is not pending. */
+  /** Resolves once the lift has reopened admission; at once on a boot that is not pending. */
   readonly lifted: Effect.Effect<void>;
-  /** Called by the commit and cancel routes; idempotent. */
-  readonly lift: Effect.Effect<void>;
+  /** The engine's start: under a pending fence it runs once zcp commits or cancels. */
+  readonly holdStart: (start: Effect.Effect<void>) => Effect.Effect<void>;
+  /**
+   * The commit and cancel routes: releases the held start, waits for it, runs `reopen`, then
+   * lifts. Idempotent, and it finishes even when its caller goes away.
+   */
+  readonly lift: (reopen: Effect.Effect<void>) => Effect.Effect<void>;
 }
 
 const openFence: MateUpdateBootFenceShape = {
   pending: false,
   lifted: Effect.void,
-  lift: Effect.void,
+  holdStart: (start) => start,
+  lift: (reopen) => reopen,
 };
 
 /** Open unless the server layer provides the fence its update record asks for. */
@@ -43,12 +53,26 @@ export class MateUpdateBootFence extends Context.Reference<MateUpdateBootFenceSh
     Effect.gen(function* () {
       const config = yield* ServerConfig;
       if (!mateUpdateBootPending(config.zerops?.mateUpdateStateFile)) return openFence;
+      const released = yield* Deferred.make<void>();
+      const started = yield* Deferred.make<void>();
       const lifted = yield* Deferred.make<void>();
       return {
         pending: true,
         lifted: Deferred.await(lifted),
-        lift: Deferred.succeed(lifted, undefined).pipe(Effect.asVoid),
-      };
+        holdStart: (start) =>
+          Deferred.await(released).pipe(
+            Effect.andThen(start),
+            Effect.ensuring(Deferred.succeed(started, undefined)),
+          ),
+        lift: (reopen) =>
+          Deferred.succeed(released, undefined).pipe(
+            Effect.andThen(Deferred.await(started)),
+            Effect.andThen(reopen),
+            Effect.andThen(Deferred.succeed(lifted, undefined)),
+            Effect.asVoid,
+            Effect.uninterruptible,
+          ),
+      } satisfies MateUpdateBootFenceShape;
     }),
   );
 }

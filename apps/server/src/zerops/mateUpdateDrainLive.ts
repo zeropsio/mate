@@ -169,8 +169,9 @@ export const makeMateUpdateDrain = Effect.gen(function* () {
 });
 
 /**
- * Opens admission an update drain closed (the engine's, the terminals' and the clients'), then
- * lifts the boot fence, so the roots it held act on an open server.
+ * Opens admission an update drain closed (the engine's, the terminals' and the clients'). On a boot
+ * under an update it is the boot fence's lift: the held engine start first, then this, then the
+ * outward roots.
  */
 export const reopenMateUpdateAdmission = Effect.map(
   Effect.all([
@@ -180,9 +181,10 @@ export const reopenMateUpdateAdmission = Effect.map(
     MateUpdateBootFence,
   ]),
   ([engine, terminals, rpcAdmission, fence]) =>
-    (engine.updateDrain?.cancel ?? Effect.void).pipe(
-      Effect.andThen(terminals.updateDrain?.cancel ?? Effect.void),
-      Effect.andThen(Option.isSome(rpcAdmission) ? rpcAdmission.value.cancel : Effect.void),
-      Effect.andThen(fence.lift),
+    fence.lift(
+      (engine.updateDrain?.cancel ?? Effect.void).pipe(
+        Effect.andThen(terminals.updateDrain?.cancel ?? Effect.void),
+        Effect.andThen(Option.isSome(rpcAdmission) ? rpcAdmission.value.cancel : Effect.void),
+      ),
     ),
 );
