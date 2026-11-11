@@ -3,6 +3,10 @@
  * whose and where it stands ("Juno · Ready to merge"), when it last moved, and at most one verb —
  * *Review* while it is open. The whole row opens it (today's change review, `openReview`), and its
  * pull request on GitHub stands beside it where it is mirrored to one.
+ *
+ * In a ledger (`ChangeList ledger`, a project's Changes under their line) a change is one line:
+ * its bead as the line draws it, its title, then columns — what stops it, where anything does;
+ * whose and when; *Review* where a review is due, else the mark of where the row leads.
  */
 import type { FlowPullRequest } from "@t3tools/client-runtime/zerops";
 import { ArrowUpRightIcon, ChevronRightIcon, GitMergeIcon, GitPullRequestIcon } from "lucide-react";
@@ -16,8 +20,9 @@ import { useNowMs } from "~/zerops/useNowMs";
 import { compactSidebarTimeLabel } from "../../Sidebar.logic";
 import type { CardChange } from "../projects/projectCard.logic";
 import { changeTitle } from "../projects/projectHistory.logic";
-import { PageRows } from "./pageRows";
-import { lineChangeKey } from "./projectLine.logic";
+import { changeReviewable } from "./ChangeRow.logic";
+import { LedgerRows, PageRows } from "./pageRows";
+import { lineChangeKey, type LineBead } from "./projectLine.logic";
 
 /** How long a cut line is pointed at before its whole shows, as a tooltip waits. */
 const CUT_TEXT_DELAY_MS = 500;
@@ -97,6 +102,11 @@ export type ChangeRowProps = ChangeRowSubject & {
   /** Its Mate's face, 20 px; its git mark where `undefined` and it is a change. */
   readonly face?: ReactNode;
   /**
+   * In a ledger, its bead as the line over the list draws it: its Mate's tint, the ring of one that
+   * waits on the person or is stuck. Stands in the face's place.
+   */
+  readonly bead?: Pick<LineBead, "tint" | "mark"> | undefined;
+  /**
    * Opens it — a change's review (`openReview({ kind: "change", … })` or `useOpenZeropsChange`).
    * The row is a button only with it; without it the row is plain.
    */
@@ -117,13 +127,19 @@ export type ChangeRowProps = ChangeRowSubject & {
  * has no verb ends in a chevron while it is pointed at or focused.
  */
 export function ChangeRow(props: ChangeRowProps) {
-  const { pull, open = false, line, tone, at, by, face, onOpen, verb } = props;
+  const { pull, open = false, line, tone, at, by, face, bead, onOpen, verb } = props;
   // One title for a change on every page: GitHub's squash suffix "(#17)" is never part of it.
   const title = changeTitle(pull?.title ?? props.title ?? "");
   const Icon = open ? GitPullRequestIcon : GitMergeIcon;
   const github = pull?.pullRequest;
-  const review = open && verb === undefined && onOpen !== undefined;
   const page = use(PageRows);
+  const ledger = use(LedgerRows);
+  // In a ledger *Review* stands only where a review is due; a change something stops says what.
+  const review =
+    open &&
+    verb === undefined &&
+    onOpen !== undefined &&
+    (!ledger || (pull !== undefined && changeReviewable(pull)));
   // Where it leads: only a row that opens, and says so with no verb of its own.
   const goes = page && onOpen !== undefined && !review && (verb === undefined || verb === null);
   const when =
@@ -136,19 +152,53 @@ export function ChangeRow(props: ChangeRowProps) {
         <ChangeAge at={at} />
       </span>
     );
-  const contents = (
-    <>
-      {face === undefined || face === null ? (
-        pull === undefined ? (
-          <span aria-hidden="true" className="ov-change-face" />
-        ) : (
-          <Icon aria-hidden="true" className="ov-change-icon" />
-        )
+  const mark =
+    ledger && bead !== undefined ? (
+      <i
+        aria-hidden="true"
+        className="ln-bead ov-change-bead"
+        data-mark={bead.mark}
+        data-tint={bead.tint}
+      />
+    ) : face === undefined || face === null ? (
+      pull === undefined ? (
+        <span aria-hidden="true" className="ov-change-face" />
       ) : (
-        <span aria-hidden="true" className="ov-change-face">
-          {face}
+        <Icon aria-hidden="true" className="ov-change-icon" />
+      )
+    ) : (
+      <span aria-hidden="true" className="ov-change-face">
+        {face}
+      </span>
+    );
+  const act = review ? (
+    <span className="ov-change-act">
+      <span className="ov-review" data-zerops-surface="card-change-review">
+        Review
+      </span>
+    </span>
+  ) : goes ? (
+    <span className="ov-change-act">
+      <ChevronRightIcon aria-hidden="true" className="ov-go" />
+    </span>
+  ) : null;
+  const contents = ledger ? (
+    <>
+      {mark}
+      <span className="ov-change-text">
+        <CutText className="ov-change-title" text={title} />
+      </span>
+      {line === undefined ? null : (
+        <span className="ov-change-state" data-tone={tone}>
+          {line}
         </span>
       )}
+      <span className="ov-change-when">{when}</span>
+      {act}
+    </>
+  ) : (
+    <>
+      {mark}
       <span className="ov-change-text">
         {page ? (
           <span className="ov-change-head">
@@ -168,17 +218,7 @@ export function ChangeRow(props: ChangeRowProps) {
           limited in functionality than the left menu"); the row opens it too. */}
       {/* When it last moved: the list's last column of facts, after its pull request's. */}
       {page ? null : <span className="ov-change-when">{when}</span>}
-      {review ? (
-        <span className="ov-change-act">
-          <span className="ov-review" data-zerops-surface="card-change-review">
-            Review
-          </span>
-        </span>
-      ) : goes ? (
-        <span className="ov-change-act">
-          <ChevronRightIcon aria-hidden="true" className="ov-go" />
-        </span>
-      ) : null}
+      {act}
     </>
   );
   return (
@@ -226,6 +266,7 @@ export function ChangeList({
   label,
   group,
   page = false,
+  ledger = false,
 }: {
   readonly children: ReactNode;
   /** Its accessible name where no heading names it. */
@@ -234,15 +275,20 @@ export function ChangeList({
   readonly group?: string | undefined;
   /** A page's own list, as wide as its column (`PageRows`). */
   readonly page?: boolean;
+  /** A ledger of changes, a line each under the line that pictures them (`LedgerRows`). */
+  readonly ledger?: boolean;
 }) {
   return (
     <ul
       aria-label={label}
       className="ov-changes"
+      data-ledger={ledger ? "" : undefined}
       data-page={page ? "" : undefined}
       data-zerops-change-group={group}
     >
-      <PageRows value={page}>{children}</PageRows>
+      <PageRows value={page}>
+        <LedgerRows value={ledger}>{children}</LedgerRows>
+      </PageRows>
     </ul>
   );
 }

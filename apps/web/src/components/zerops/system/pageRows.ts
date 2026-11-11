@@ -7,3 +7,10 @@
 import { createContext } from "react";
 
 export const PageRows = createContext(false);
+
+/**
+ * Whether a row stands in a ledger of changes (`ChangeList ledger`, a project's Changes): one line
+ * a change, marked by its bead as the line over it draws it, what stops it and whose and when in
+ * columns of their own, *Review* only where a review is due, and where it leads always shown.
+ */
+export const LedgerRows = createContext(false);

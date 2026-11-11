@@ -1,7 +1,8 @@
 /* The line: a picture of where a project's changes are. One horizontal track through its stations,
-   by name; the changes between them as beads; a count under each segment. 104 px in every state.
-   Under 700 px of its own width it is compact: short captions, the same beads. Behind the control
-   in its corner the card grows in place into the line in full (`.lnx`). */
+   by name; the changes between them as beads; a count under each segment. 104 px in every state
+   as a card of its own, 98 px as the masthead of a page's Changes card (`.ln-band`). Under 700 px of
+   its own width it is compact: short captions, the same beads. Behind the control in its corner
+   it grows in place into the line in full (`.lnx`). */
 .ln {
   --ln-ground: var(--ov-ground, var(--card));
   --ln-track: color-mix(in oklab, var(--foreground) 30%, var(--ln-ground));
@@ -424,25 +425,26 @@ button.ln-name:hover {
   margin-right: 6px;
 }
 
-/* A place's dot in its state's tone; one that runs something, ringed. */
-.lnx .ln-node {
+/* A place's dot in its state's tone; one that runs something, ringed. The masthead's picture
+   draws it too: a production that runs is never a grey dot. */
+:is(.lnx, .ln-band) .ln-node {
   --ln-node: var(--ln-track);
   background: var(--ln-node);
 }
 
-.lnx .ln-node[data-tone="success"] {
+:is(.lnx, .ln-band) .ln-node[data-tone="success"] {
   --ln-node: var(--success);
 }
 
-.lnx .ln-node[data-tone="danger"] {
+:is(.lnx, .ln-band) .ln-node[data-tone="danger"] {
   --ln-node: var(--destructive);
 }
 
-.lnx .ln-node[data-tone="info"] {
+:is(.lnx, .ln-band) .ln-node[data-tone="info"] {
   --ln-node: var(--info);
 }
 
-.lnx .ln-node[data-node="live"] {
+:is(.lnx, .ln-band) .ln-node[data-node="live"] {
   top: 0;
   left: -2px;
   width: 16px;
@@ -451,7 +453,7 @@ button.ln-name:hover {
   box-shadow: 0 0 0 1px var(--ln-node);
 }
 
-.lnx .ln-node[data-node="absent"] {
+:is(.lnx, .ln-band) .ln-node[data-node="absent"] {
   background: var(--ln-ground);
 }
 
@@ -561,6 +563,30 @@ button.ln-name:hover {
 
 .ln[data-stations="4"] .lnx[data-release="failed"] .lnx-col[data-kind="production"] > .lnx-foot {
   visibility: hidden;
+}
+
+/* The masthead of a page's Changes card: the line with no box of its own. 98 px: 14 px, a name's
+   20, 8, the track's 16, 8, a count's 16, 16. Its sides are the rows' under it (18 px: the card's
+   8 and a row's 10), so its first dot stands over the column of their beads. */
+.ln-band .ln-grid {
+  height: 98px;
+  padding: 14px 18px 0;
+}
+
+.ln-band .ln-fold {
+  grid-template-rows: 98px 0fr;
+}
+
+.ln-band .ln-fold[data-open] {
+  grid-template-rows: 98px 1fr;
+}
+
+.ln-band .lnx-grid {
+  padding: 16px 18px 0;
+}
+
+.ln-band .lnx-legend {
+  margin-inline: 18px;
 }
 
 /* What a bead's marks mean, at the card's foot. */

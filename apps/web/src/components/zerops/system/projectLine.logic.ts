@@ -132,6 +132,18 @@ export const lineChangeKey = (pull: Pick<FlowPullRequest, "repository" | "number
 export const READY_FOR_REVIEW = "Ready for your review";
 
 /**
+ * A change's mark, on the line and on its row under it: the ring of one that waits on the person
+ * (`waiting`, by `lineChangeKey`), the ring of a stuck one; none for any other.
+ */
+export function lineMarkOf(
+  change: Pick<CardChange, "pull" | "tone">,
+  waiting: ReadonlySet<string>,
+): LineBead["mark"] {
+  if (waiting.has(lineChangeKey(change.pull))) return "waits";
+  return change.tone === "attention" || change.tone === "failed" ? "stuck" : undefined;
+}
+
+/**
  * A merged change that production does not run: on `main`, on the stage or on its way there, or in
  * a release that is not live (one that didn't go live, or was rolled back past).
  */
@@ -229,12 +241,7 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
   // What is between them.
   const open = input.changes.filter((change) => change.open);
   const merged = mergedNotLive(input.changes);
-  const markOf = (change: CardChange): LineBead["mark"] =>
-    input.waiting.has(lineChangeKey(change.pull))
-      ? "waits"
-      : change.tone === "attention" || change.tone === "failed"
-        ? "stuck"
-        : undefined;
+  const markOf = (change: CardChange) => lineMarkOf(change, input.waiting);
   const rank = (mark: LineBead["mark"]) => (mark === "waits" ? 2 : mark === "stuck" ? 1 : 0);
   const opened = open
     .map((change) => beadOf(change, markOf(change)))

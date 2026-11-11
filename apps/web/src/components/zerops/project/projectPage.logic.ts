@@ -23,7 +23,7 @@ import {
   type PlaceLine,
 } from "../projects/projectCard.logic";
 
-/** How many recent changes the page lists before *All history* or *All changes*. */
+/** How many changes not live yet the page lists before its card's foot lists the rest. */
 export const PAGE_CHANGES = 6;
 
 /** How many recent changes the page holds for *All changes*. */
@@ -189,4 +189,50 @@ export function linesProductionFirst(lines: ReadonlyArray<PlaceLine>): ReadonlyA
     ...lines.filter((line) => line.kind === "production"),
     ...lines.filter((line) => line.kind === "stage"),
   ];
+}
+
+/** The rows a project's page lists of its changes, and how many of those not live yet it holds back. */
+export interface PageChangeRows {
+  readonly open: ReadonlyArray<CardChange>;
+  readonly groups: ReadonlyArray<ChangeGroup>;
+  readonly live: ReadonlyArray<ChangeGroup>;
+  readonly setup: ReadonlyArray<CardChange>;
+  /** Changes not live yet past the first few: the card's foot lists them (`all`). */
+  readonly more: number;
+}
+
+/**
+ * Which of a project's changes its page lists (`whole`: `changeGroups` of them all). What is not
+ * live yet comes first and is never cut without saying so: the first `PAGE_CHANGES` of it, open
+ * ones before merged ones, and `more` counts the rest — all of it with `all`. What is live is a
+ * record of whole releases, never part of one: the newest always, then older ones while the
+ * page's rows have room; the history holds the rest. Setup files stand where room is left.
+ */
+export function pageChangeRows(
+  whole: ReturnType<typeof changeGroups>,
+  all: boolean,
+): PageChangeRows {
+  const waiting =
+    whole.open.length + whole.groups.reduce((n, group) => n + group.changes.length, 0);
+  let left = all ? waiting : Math.min(waiting, PAGE_CHANGES);
+  const shown = left;
+  const take = <Row>(rows: ReadonlyArray<Row>): ReadonlyArray<Row> => {
+    const taken = rows.slice(0, left);
+    left -= taken.length;
+    return taken;
+  };
+  const open = take(whole.open);
+  const groups = whole.groups
+    .map((group) => ({ ...group, changes: take(group.changes) }))
+    .filter((group) => group.changes.length > 0);
+  let room = Math.max(PAGE_CHANGES - shown, 0);
+  const live = whole.live.filter((group, at) => {
+    if (at > 0 && group.changes.length > room) {
+      room = 0;
+      return false;
+    }
+    room = Math.max(room - group.changes.length, 0);
+    return true;
+  });
+  return { open, groups, live, setup: whole.setup.slice(0, room), more: waiting - shown };
 }

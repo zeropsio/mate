@@ -50,8 +50,10 @@ import type {
 import {
   ChangeList,
   ChangeRow,
+  changeReviewable,
   changeRowLine,
   lineChangeKey,
+  lineMarkOf,
   NextRelease,
   nextReleaseView,
   PageHeader,
@@ -77,7 +79,7 @@ import {
   BROUGHT_SHOWN,
   changeGroups,
   lineGroupOf,
-  PAGE_CHANGES,
+  pageChangeRows,
   linesProductionFirst,
   productionFirst,
   waitingChanges,
@@ -900,26 +902,28 @@ function releaseDoor<T>(
 const GROUP_LIT_MS = 1400;
 
 /**
- * The project's recent changes. First their picture (`ProjectLine`): where each change is between
- * the Mates' work, `main`, the stage and production, a bead each, a count under each segment that
- * leads to its group below; the control in its corner grows it in place into the line in full
- * (`projectLineFull`: what each station is and opens, each segment's one verb, each copy of the
- * code and further place under `main`), which this device remembers per project. Open, the line
- * says a place's state and its release's verb beside Places; a place's doors and addresses are
- * Places' alone.
+ * The project's recent changes, one instrument: the line that pictures them (`ProjectLine`) is the
+ * masthead of the card that lists them, and each row under it wears the bead the line draws for it
+ * (`ChangeList ledger`), so five beads before `main` over "5 open" are the five rows under it.
+ * The control in the line's corner grows it in place into the line in full (`projectLineFull`:
+ * what each station is and opens, each segment's one verb, each copy of the code and further place
+ * under `main`), which this device remembers per project.
  *
- * Then the list, less the changes Waiting on you lists, in two zones told apart by ground, ink and
- * room. What is not live yet is the card, the part that moves: open ones each with what stops it,
- * merged ones grouped by where they stand — the group's label says it once, in the picture's words
- * ("On stage, ready for production · 12"), and with one group and nothing live the section's label
- * is it ("On main, not live yet · 5"). What is live is the record under it, on the page's own
- * ground: a group for each release with when it was made, rows between hairlines, titles in the
- * muted ink. With nothing on its way the card says so in one line; with nothing live there is no
- * record. Setup files stand last, quiet. The group a release would carry names no verb: *Review
- * release* is production's, the page's one. *All history* opens its releases in place, each with
- * the changes it put live; with no history, *All changes* lists past the first few.
+ * The list, less the changes Waiting on you lists, in two zones told apart by ground, ink and
+ * room. What is not live yet is the card, the part that moves, grouped by where it stands in the
+ * line's own order: what is not on `main` yet (a row offers *Review* where a review is due, and
+ * says what stops it where anything does; labelled only beside another group — alone, the line's
+ * count over it is its label), then merged ones — the group's label says where once ("On stage,
+ * ready for production · 12"), and with one group and nothing live the section's label is it ("On
+ * main, not live yet · 5"). What is live is the record under it, on the page's own ground: a
+ * group for each release with when it was made, rows between hairlines, in the muted ink. With
+ * nothing on its way the card says so in one line; with nothing live there is no record. Setup
+ * files stand last, quiet. A row names its Mate only in a project of several: in a project of one
+ * every change is its. The group a release would carry names no verb: *Review release* is
+ * production's, the page's one. *All history* opens its releases in place, each with the changes
+ * it put live. Past the first few rows the card's foot lists the rest in place.
  *
- * The picture and the list name a change alike (`data-zerops-change`): the row pointed at or
+ * The line and the list name a change alike (`data-zerops-change`): the row pointed at or
  * focused marks its bead, the bead its row (`useMarksItsChange`).
  */
 function ProjectChanges<T>({
@@ -941,18 +945,19 @@ function ProjectChanges<T>({
   const openChange = useOpenChange();
   const door = releaseDoor(entry, props, facts);
   const listed = facts.changes.filter((change) => !waiting.has(changeKey(change.pull)));
-  const changes = all ? listed : listed.slice(0, PAGE_CHANGES);
-  const { open, groups, live, setup } = changeGroups(changes);
   // A group counts every change that went there, the rows past the first few too.
   const whole = changeGroups(listed);
+  const { open, groups, live, setup, more } = pageChangeRows(whole, all);
   const every = [...whole.groups, ...whole.live];
   const countOf = (group: ChangeGroup) =>
     every.find((each) => each.label === group.label)?.changes.length ?? group.changes.length;
   const mateName = (projectId: string) =>
     entry.flow.mates.find((mate) => mate.projectId === projectId)?.name;
-  const faceOf = (projectId: string) => {
+  // In a project of one Mate every change is its: a row names its Mate only among several.
+  const several = entry.flow.mates.length > 1;
+  const tintOf = (projectId: string) => {
     const item = entry.mates.get(projectId);
-    return item === undefined ? undefined : props.renderMateFace(item, 20);
+    return item === undefined ? undefined : props.mateTint?.(item);
   };
   const historyShown = history && facts.repo !== undefined;
   // One group alone, nothing open beside it and no record under it: its place is the section's label.
@@ -966,10 +971,7 @@ function ProjectChanges<T>({
   const pictureInput = {
     flow: entry.flow,
     places: lines,
-    tintOf: (projectId: string) => {
-      const item = entry.mates.get(projectId);
-      return item === undefined ? undefined : props.mateTint?.(item);
-    },
+    tintOf,
     changes: facts.changes,
     changesKnown: facts.changesUnknown === undefined && !entry.changesAwaiting,
     waiting,
@@ -1041,32 +1043,43 @@ function ProjectChanges<T>({
       target.removeAttribute("data-lit");
     };
   }, [shown]);
-  const row = (change: CardChange, line: string | undefined) => (
-    <ChangeRow
-      at={change.at}
-      face={
-        change.pull.kind === "recipe" && !change.open ? (
-          <FileIcon aria-hidden="true" className="pp-setup-file" />
-        ) : (
-          faceOf(change.pull.mateProjectId)
-        )
-      }
-      key={`${change.pull.repository}#${String(change.pull.number)}`}
-      line={line}
-      onOpen={(from) => {
-        openChange(entry.group.groupId, change.pull, from);
-      }}
-      open={change.open}
-      pull={change.pull}
-      tone={change.tone}
-    />
-  );
+  // A row of the ledger: its bead as the line draws it; what stops it, where anything does (a
+  // change that can be reviewed says so by its verb alone); whose, among several Mates.
+  const row = (change: CardChange, words?: string) => {
+    const setupFile = change.pull.kind === "recipe" && !change.open;
+    const stops = change.open && !changeReviewable(change.pull) ? change.words : undefined;
+    return (
+      <ChangeRow
+        at={change.at}
+        bead={
+          setupFile
+            ? undefined
+            : {
+                tint: tintOf(change.pull.mateProjectId),
+                mark: change.open ? lineMarkOf(change, waiting) : undefined,
+              }
+        }
+        by={several && !setupFile ? mateName(change.pull.mateProjectId) : undefined}
+        face={setupFile ? <FileIcon aria-hidden="true" className="pp-setup-file" /> : undefined}
+        key={`${change.pull.repository}#${String(change.pull.number)}`}
+        line={words ?? stops}
+        onOpen={(from) => {
+          openChange(entry.group.groupId, change.pull, from);
+        }}
+        open={change.open}
+        pull={change.pull}
+        tone={change.tone}
+      />
+    );
+  };
   const setupRows =
     setup.length === 0 ? null : (
-      <ChangeList label="Setup files" page>
+      <ChangeList label="Setup files" ledger page>
         {setup.map((change) => row(change, change.words))}
       </ChangeList>
     );
+  // The rows past the first few are listed by the card's own foot: the label's action is the
+  // history alone.
   const action =
     facts.repo !== undefined ? (
       <SectionAction
@@ -1075,14 +1088,6 @@ function ProjectChanges<T>({
         }}
       >
         {history ? "Recent changes" : "All history"}
-      </SectionAction>
-    ) : listed.length > PAGE_CHANGES ? (
-      <SectionAction
-        onClick={() => {
-          setAll((now) => !now);
-        }}
-      >
-        {all ? "Fewer changes" : "All changes"}
       </SectionAction>
     ) : undefined;
   return (
@@ -1099,7 +1104,7 @@ function ProjectChanges<T>({
       >
         {historyShown ? "History" : (only?.label ?? "Changes")}
       </SectionLabel>
-      <div className="pp-picture">
+      <div className="pp-card pp-changes">
         <ProjectLine
           full={{
             kind: "here",
@@ -1132,59 +1137,77 @@ function ProjectChanges<T>({
           }}
           view={picture}
         />
-      </div>
-      <div className="pp-card pp-list" data-history={historyShown ? "" : undefined} ref={list}>
-        {historyShown ? (
-          props.renderHistory?.(entry)
-        ) : changes.length === 0 ? (
-          facts.repo === undefined ? (
-            <EmptyState size="row">
-              No repository is declared for this project’s services yet.
-            </EmptyState>
-          ) : (
-            <p className="pp-empty">
-              {facts.changesUnknown ?? "No changes yet — a Mate opens one as it works."}
-            </p>
-          )
-        ) : (
-          <>
-            {open.length > 0 || groups.length > 0 || !record ? null : (
+        <div className="pp-list" data-history={historyShown ? "" : undefined} ref={list}>
+          {historyShown ? (
+            props.renderHistory?.(entry)
+          ) : listed.length === 0 ? (
+            facts.repo === undefined ? (
+              <EmptyState size="row">
+                No repository is declared for this project’s services yet.
+              </EmptyState>
+            ) : (
               <p className="pp-empty">
-                {facts.changes.some((change) => change.open)
-                  ? "Nothing else is on its way to production."
-                  : "Nothing is waiting to go live."}
+                {facts.changesUnknown ?? "No changes yet — a Mate opens one as it works."}
               </p>
-            )}
-            {open.length === 0 ? null : (
-              <ChangeList page group="open" label="Open changes">
-                {open.map((change) =>
-                  row(change, changeRowLine(mateName(change.pull.mateProjectId), change.words)),
-                )}
-              </ChangeList>
-            )}
-            {only === undefined ? (
-              groups.map((group) => (
-                <div
-                  className="pp-change-group"
-                  data-zerops-change-group={lineGroupOf(group)}
-                  key={group.label}
-                >
-                  <SectionLabel count={countOf(group)} level={3}>
-                    <GroupWords group={group} />
-                  </SectionLabel>
-                  <ChangeList page>
-                    {group.changes.map((change) => row(change, undefined))}
+            )
+          ) : (
+            <>
+              {open.length > 0 || groups.length > 0 || !record ? null : (
+                <p className="pp-empty">
+                  {facts.changes.some((change) => change.open)
+                    ? "Nothing else is on its way to production."
+                    : "Nothing is waiting to go live."}
+                </p>
+              )}
+              {open.length === 0 ? null : (
+                <div className="pp-change-group" data-zerops-change-group="open">
+                  {/* Alone in the card, the line's count right over them is their label. */}
+                  {groups.length === 0 ? null : (
+                    <SectionLabel count={whole.open.length} level={3}>
+                      <MainNamed words={NOT_ON_MAIN_YET} />
+                    </SectionLabel>
+                  )}
+                  <ChangeList label="Open changes" ledger page>
+                    {open.map((change) => row(change))}
                   </ChangeList>
                 </div>
-              ))
-            ) : (
-              <ChangeList page group={lineGroupOf(only)} label={only.label}>
-                {only.changes.map((change) => row(change, undefined))}
-              </ChangeList>
-            )}
-            {record ? null : setupRows}
-          </>
-        )}
+              )}
+              {only === undefined ? (
+                groups.map((group) => (
+                  <div
+                    className="pp-change-group"
+                    data-zerops-change-group={lineGroupOf(group)}
+                    key={group.label}
+                  >
+                    <SectionLabel count={countOf(group)} level={3}>
+                      <GroupWords group={group} />
+                    </SectionLabel>
+                    <ChangeList ledger page>
+                      {group.changes.map((change) => row(change))}
+                    </ChangeList>
+                  </div>
+                ))
+              ) : (
+                <ChangeList group={lineGroupOf(only)} label={only.label} ledger page>
+                  {only.changes.map((change) => row(change))}
+                </ChangeList>
+              )}
+              {record ? null : setupRows}
+              {/* What is not live yet past the first few: listed in place, by the card's foot. */}
+              {more > 0 || all ? (
+                <div className="pp-more">
+                  <SectionAction
+                    onClick={() => {
+                      setAll((now) => !now);
+                    }}
+                  >
+                    {all ? "Show fewer" : `+ ${String(more)} more`}
+                  </SectionAction>
+                </div>
+              ) : null}
+            </>
+          )}
+        </div>
       </div>
       {record ? (
         <div className="pp-record" data-zerops-changes-record="">
@@ -1194,7 +1217,9 @@ function ProjectChanges<T>({
                 <GroupWords group={group} />
                 <LiveSince at={group.release?.at} />
               </SectionLabel>
-              <ChangeList page>{group.changes.map((change) => row(change, undefined))}</ChangeList>
+              <ChangeList ledger page>
+                {group.changes.map((change) => row(change))}
+              </ChangeList>
             </div>
           ))}
           {setupRows}
@@ -1204,14 +1229,30 @@ function ProjectChanges<T>({
   );
 }
 
-/** A group's words: where its changes stand, a release's version in the face of a real name. */
+/** The open changes' group, in the line's own order of places: before `main`. */
+const NOT_ON_MAIN_YET = "Not on main yet";
+
+/** A group's words: where its changes stand, `main` and a release's version in the face of a real name. */
 function GroupWords({ group }: { readonly group: ChangeGroup }) {
   const tag = group.release?.tag;
-  if (tag === undefined || !group.label.endsWith(tag)) return group.label;
+  if (tag === undefined || !group.label.endsWith(tag)) return <MainNamed words={group.label} />;
   return (
     <>
       {group.label.slice(0, -tag.length)}
       <span className="real-name">{tag}</span>
+    </>
+  );
+}
+
+/** Words that name `main`: the branch in the face of a real name, as the line over the list has it. */
+function MainNamed({ words }: { readonly words: string }) {
+  const [before, after] = words.split(/\bmain\b/u, 2);
+  if (before === undefined || after === undefined) return words;
+  return (
+    <>
+      {before}
+      <span className="real-name">main</span>
+      {after}
     </>
   );
 }

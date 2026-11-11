@@ -6,7 +6,11 @@
  *
  * Pure: no React.
  */
-import { changeState } from "@t3tools/client-runtime/zerops";
+import {
+  changeAsksForReview,
+  changeState,
+  pullRequestBlocked,
+} from "@t3tools/client-runtime/zerops";
 
 /** An open change's words and their tone, by what stops it (`changeState`). */
 export function openChangeWords(pull: Parameters<typeof changeState>[0]): {
@@ -15,6 +19,14 @@ export function openChangeWords(pull: Parameters<typeof changeState>[0]): {
 } {
   const state = changeState(pull);
   return { words: state?.word ?? "Open", tone: state?.tone ?? "off" };
+}
+
+/**
+ * Whether an open change can be reviewed now: nothing stops it, its Mate asks for it and still
+ * carries it. A ledger's row offers *Review* only then; any other says what stops it instead.
+ */
+export function changeReviewable(pull: Parameters<typeof changeState>[0]): boolean {
+  return pull.mateGone !== true && pullRequestBlocked(pull) === null && changeAsksForReview(pull);
 }
 
 /** Where a merged change went, as its row says it. */

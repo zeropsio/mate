@@ -3,25 +3,29 @@
  * on one horizontal track, by name; the changes between them are beads; a count stands under each
  * segment.
  *
- * The picture shows and never acts for a place: no state line, no address, no verb — those are
- * the project's Places and the place's page. A bead names its change on hover and focus and opens
- * it when pressed; a count leads to the group of the Changes list it counts.
+ * The picture shows and never acts for a place: no address, no verb — those are the project's
+ * Places and the place's page. A bead names its change on hover and focus and opens it when
+ * pressed.
  *
- * Its height is the same in every state, and `held` keeps its shape (names, track, dots, no bead)
- * while the project's reads have not answered. Under 700 px of its own width it is compact: short
- * captions, the same beads (a container query; a Mate's Code page).
+ * A count stands under each segment and leads to the group of the Changes list it counts. On a
+ * project's page (`surface="page"`) the line is the masthead of the Changes card, with no box of
+ * its own, a place's dot in its state's tone: the rows right under it wear the same beads. In a
+ * Mate's panel (`surface="panel"`) it is a card of its own. Its height is the same in every
+ * state, and `held` keeps its shape (names, track, dots, no bead) while the project's reads have
+ * not answered. Under 700 px of its own width it is compact: short captions, the same beads (a
+ * container query; a Mate's Code page).
  *
  * Behind it stands the line in full (`ProjectLineFull`: each station's state and page, each
- * segment's verb, the rows under `main`), by one control in the card's corner. `full.kind` says
- * where: `here`, the card grows in place into it and back (the project's page), the control in the
+ * segment's verb, the rows under `main`), by one control in its corner. `full.kind` says
+ * where: `here`, it grows in place into it and back (the project's page), the control in the
  * top corner in both states, and the door carries what the full line acts on
  * (`ProjectLineFullActs`); `page`, the control is the way to the project's page, which arrives
  * with it open (a Mate's panel has no room for it), in the corner under production.
  *
- * Props: `view` (`projectLine(…)`; `undefined` while the project is unread: the card holds the
+ * Props: `view` (`projectLine(…)`; `undefined` while the project is unread: it holds the
  * line's height, nothing drawn); `held`; `onOpenChange(pull, from)` (a bead: the change's review,
  * as its row in the Changes list opens it); `onShowGroup(group)` (a count: the group it counts —
- * without it a count is plain words); `surface` (`panel`: a Mate's panel's own card); `full`.
+ * without it a count is plain words); `surface`; `full`.
  */
 import { Link } from "@tanstack/react-router";
 import { Maximize2Icon, Minimize2Icon } from "lucide-react";
@@ -37,7 +41,7 @@ import {
   type OpenLineChange,
   type ShowLineGroup,
 } from "./ProjectLineParts";
-import type { ProjectLineFullView, ProjectLineView } from "./projectLine.logic";
+import type { LineStationFull, ProjectLineFullView, ProjectLineView } from "./projectLine.logic";
 
 /** The control's words, closed and open. */
 export const SHOW_FULL_PICTURE = "Show the full picture";
@@ -84,16 +88,21 @@ export function ProjectLine({
   // Pressed since it was drawn: only then does a state travel to the next; the first frame is the
   // remembered state as it stands.
   const [moved, setMoved] = useState(false);
+  const band = surface === "page";
   const picture = (
-    <LinePicture held={held} onOpenChange={onOpenChange} onShowGroup={onShowGroup} view={view} />
+    <LinePicture
+      held={held}
+      onOpenChange={onOpenChange}
+      onShowGroup={onShowGroup}
+      places={here?.view?.stations}
+      view={view}
+    />
   );
   return (
     <div
       aria-busy={held || view === undefined ? true : undefined}
       aria-label="Where each change is"
-      className={
-        surface === "panel" ? "ln rounded-xl border border-border/70 bg-card" : "pp-card ln"
-      }
+      className={band ? "ln ln-band" : "ln rounded-xl border border-border/70 bg-card"}
       data-stations={String((view ?? UNREAD).stations.length)}
       data-zerops-line={here === undefined ? undefined : open ? "full" : "picture"}
       data-zerops-surface="project-line"
@@ -178,15 +187,20 @@ export function ProjectLine({
   );
 }
 
-/** The picture itself: the stations, the track, the beads, a count under each segment. */
+/**
+ * The picture itself: the stations, the track, the beads, a count under each segment. `places`:
+ * each station as the line in full knows it, whose dot then wears its state.
+ */
 function LinePicture({
   view,
   held,
+  places,
   onOpenChange,
   onShowGroup,
 }: {
   readonly view: ProjectLineView | undefined;
   readonly held: boolean;
+  readonly places: ReadonlyArray<LineStationFull> | undefined;
   readonly onOpenChange: OpenLineChange;
   readonly onShowGroup: ShowLineGroup;
 }) {
@@ -196,6 +210,7 @@ function LinePicture({
     <div className="ln-grid">
       {stations.map((station, at) => {
         const segment = segments[at];
+        const place = held ? undefined : places?.find((each) => each.kind === station.kind);
         return (
           <div
             className="ln-col"
@@ -222,7 +237,8 @@ function LinePicture({
               <span
                 aria-hidden="true"
                 className="ln-node"
-                data-node={held ? "solid" : station.node}
+                data-node={held ? "solid" : (place?.node ?? station.node)}
+                data-tone={place?.tone}
               />
               {segment === undefined || held ? null : (
                 <SegmentBeads
