@@ -435,6 +435,8 @@ it("carries display ownership separately from current signer authority", () => {
 describe("the keys model's link", () => {
   const decodeKeyUp = Schema.decodeUnknownExit(Schema.fromJsonString(KeyLinkUp));
   const decodeKeyDown = Schema.decodeUnknownExit(Schema.fromJsonString(KeyLinkDown));
+  /** The UUID of the key's admission HQ names in every state. */
+  const admission = "0f3c6a52-9f1e-4b7a-8d2c-5e4b3a2f1c0d";
   const self = {
     projectId: "P_MATE",
     name: "Ada",
@@ -449,7 +451,7 @@ describe("the keys model's link", () => {
   it("preserves the registered Chief opener including null and absence", () => {
     for (const extra of [{}, { chiefOpenerUserId: null }, { chiefOpenerUserId: "U1" }]) {
       const mate = { ...self, ...extra };
-      const decoded = decodeKeyDown(JSON.stringify({ type: "state", mate }));
+      const decoded = decodeKeyDown(JSON.stringify({ type: "state", mate, admission }));
       expect(
         decoded._tag === "Success" && decoded.value.type === "state" && decoded.value.mate,
       ).toEqual(mate);
@@ -469,7 +471,7 @@ describe("the keys model's link", () => {
       changes: [],
       repos: [],
     };
-    const frame = { type: "state", mate, pingIntervalMs: 20_000 };
+    const frame = { type: "state", mate, admission, pingIntervalMs: 20_000 };
     expect(Schema.decodeUnknownExit(MateSelf)(mate)._tag).toBe("Success");
     const decoded = decodeKeyDown(JSON.stringify(frame));
     expect(decoded._tag).toBe("Success");
@@ -508,10 +510,11 @@ describe("the keys model's link", () => {
       ]);
     const down = [
       { type: "ping" },
-      { type: "state", mate: self },
+      { type: "state", mate: self, admission },
       {
         type: "state",
         mate: { ...self, chief: null, ownerUserId: "U1" },
+        admission,
         autoUpdate: { orgId: "O", enabled: true, revision: 1 },
       },
       { type: "ticket", ticket: "tk-1", userId: "U1", sessionId: "hs-1", expiresIn: 60 },
@@ -547,7 +550,9 @@ describe("the keys model's link", () => {
 
   it("HQ announces a positive ping period on its state while older HQ states remain readable", () => {
     for (const pingIntervalMs of [1, 20_000, 600_000, undefined]) {
-      const decoded = decodeKeyDown(JSON.stringify({ type: "state", mate: self, pingIntervalMs }));
+      const decoded = decodeKeyDown(
+        JSON.stringify({ type: "state", mate: self, admission, pingIntervalMs }),
+      );
       expect(decoded._tag).toBe("Success");
       expect(
         decoded._tag === "Success" &&
@@ -557,7 +562,8 @@ describe("the keys model's link", () => {
     }
     for (const pingIntervalMs of [0, -1, 0.5, "20000", null]) {
       expect(
-        decodeKeyDown(JSON.stringify({ type: "state", mate: self, pingIntervalMs }))._tag,
+        decodeKeyDown(JSON.stringify({ type: "state", mate: self, admission, pingIntervalMs }))
+          ._tag,
       ).toBe("Failure");
     }
   });
@@ -580,7 +586,7 @@ describe("the keys model's link", () => {
       updatedAt: "2026-10-25T09:00:00.000Z",
     };
     const read = (mate: Record<string, unknown>) => {
-      const decoded = decodeKeyDown(JSON.stringify({ type: "state", mate }));
+      const decoded = decodeKeyDown(JSON.stringify({ type: "state", mate, admission }));
       return decoded._tag === "Success" && decoded.value.type === "state"
         ? decoded.value.mate
         : undefined;
@@ -615,7 +621,7 @@ describe("the keys model's link", () => {
       expect(decodeKeyUp(JSON.stringify({ type: "hello", ...hello }))._tag).toBe("Failure");
     const member = { userId: "U1", role: "ADMIN", visibility: "open" };
     const down = [
-      { type: "state", mate: withoutChief },
+      { type: "state", mate: withoutChief, admission },
       { type: "access", version: 3, viewAt: AT, full: true, members: [member] },
       { type: "access", version: 4, viewAt: AT, full: false, members: [] },
       { type: "access", version: 6, full: true, refused: true, members: [] },

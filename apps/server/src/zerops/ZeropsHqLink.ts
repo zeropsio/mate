@@ -1,5 +1,9 @@
-import { ZeropsConnections } from "./ZeropsConnections.ts";
-import type { TicketFrame } from "./ZeropsTicketDoor.ts";
+import {
+  type ConnectionSubject,
+  type TicketAnswer,
+  ZeropsConnections,
+} from "./ZeropsConnections.ts";
+import type { AdmissionLive, TicketFrame } from "./ZeropsTicketDoor.ts";
 // @effect-diagnostics nodeBuiltinImport:off -- the link's socket resolves HQ through `node:dns`.
 /**
  * The Mate's link to its HQ (mate-hq `spec/protocol.md`, "Mate link"; `@t3tools/shared/mateLink`, the keys model): one
@@ -22,7 +26,8 @@ import type { TicketFrame } from "./ZeropsTicketDoor.ts";
  *   Mate's owner (`ownerUserId`), and to `ZeropsChiefOpener`, whom it lets open a Chief
  *   (`chiefOpenerUserId`); the raw `mate` of every state, decoded or not, is kept by
  *   `ZeropsMateStateFile` where zcp reads it; tickets (`ticket`), each answered `ticket-ack`, or
- *   `ticket_refused` when the access list does not admit its person; the
+ *   `ticket_refused` when the access list does not admit its person, or not at all when the key
+ *   it came under was refused, which closes the link and leaves HQ to answer it; the
  *   Mate's Git credential (`git-credential`), handed on to
  *   `ZeropsGitCredentialFile`, never logged; an automated Mate's keys (`provider-keys`), handed on
  *   to `ZeropsAutomation`, never logged; and the tasks HQ hands an automated Mate (`task`), the
@@ -39,6 +44,12 @@ import type { TicketFrame } from "./ZeropsTicketDoor.ts";
  *   (`4403`, its code the reason) is the Mate's standing until HQ next sends its state, and so is
  *   an admission that could not resolve the key (`1011`, {@link KEY_UNRESOLVED}) unless a refusal
  *   stands; a link superseded by the Mate's own newer one (`4409`) is expected.
+ * - **A dead key:** each state names the admission of the key its link presented. Zerops refusing
+ *   that key outright (`401`) to a request started under the admission HQ last named, while the
+ *   env still holds it, or HQ closing `4401 key_refused`, marks that admission dead first; then
+ *   everyone's connections and tickets end (`ZeropsConnections`), and the Mate tells HQ
+ *   `key-refused` on the link that named it and again on each state naming it, until a state names
+ *   another admission. A refusal from before HQ's first state names no admission and is dropped.
  *
  * A link that closes or never opens is tried again after a growing wait; one superseded (`4409`)
  * after the shortest. A refused key (`4401`, `4403`) is HQ's answer to that key in that project's
@@ -69,7 +80,6 @@ import {
   KeyLinkUp,
   type KeyNotAdmitted,
   type LinkedMate,
-  type TicketRefusal,
   KEY_UNRESOLVED,
   LINK_COMMAND_PROTOCOL,
   type LinkCommandDown,
@@ -201,6 +211,12 @@ const verdictOf = (close: LinkClose | undefined): KeyVerdict | undefined => {
     : { refusal: closed.value.reason };
 };
 
+/** HQ's `4401 key_refused`: the key the link presented is dead (no other close says so). */
+const keyRefused = (close: LinkClose | undefined): boolean => {
+  const closed = decodeClosed(close);
+  return Option.isSome(closed) && closed.value.code === 4401;
+};
+
 /** Why the Mate is not linked after one attempt: why none was dialled, or HQ's word on the key. */
 const linkEndOf = (ended: MateLinkEnd | undefined, heard: KeyVerdict | undefined): MateLinkEnd => {
   if (ended !== undefined) return ended;
@@ -267,12 +283,16 @@ export interface ZeropsHqLinkOptions {
   /** The Mate's attention now, then each new revision (`ZeropsMateAttention.changes`). */
   readonly attention: Stream.Stream<MateAttention>;
   /**
-   * Takes HQ's ticket and gives what admits it or says why not, answered `ticket-ack` or
-   * `ticket_refused` (`ZeropsConnections.ticket`).
+   * Takes HQ's ticket, with whether the admission it came under is still live, and gives what
+   * admits it or says why not, answered `ticket-ack` or `ticket_refused`, or not at all
+   * (`ZeropsConnections.ticket`).
    */
-  readonly ticket?: (frame: TicketFrame) => Effect.Effect<Effect.Effect<"open" | TicketRefusal>>;
-  /** Ends a session HQ closed (`ZeropsConnections.end`). */
-  readonly end?: (subject: { readonly session: string }) => Effect.Effect<void>;
+  readonly ticket?: (
+    frame: TicketFrame,
+    live: AdmissionLive,
+  ) => Effect.Effect<Effect.Effect<TicketAnswer>>;
+  /** Ends a session HQ closed, or everyone's once the key is dead (`ZeropsConnections.end`). */
+  readonly end?: (subject: ConnectionSubject) => Effect.Effect<void>;
   /** Hands on whom each state lets open a Chief, if it names one (`ZeropsChiefOpener.named`). */
   readonly chiefOpener?: (userId: string | null | undefined) => Effect.Effect<void>;
   /** Hands on whom each state names the Mate's owner, `null` for none (`ZeropsMateOwner.named`). */
@@ -427,7 +447,48 @@ export const makeZeropsHqLink = (
     // to that link's end.
     const state = yield* SubscriptionRef.make<Option.Option<LinkedMate>>(Option.none());
     const keyVerdict = yield* SubscriptionRef.make<KeyVerdict | undefined>(undefined);
-    let reportedKey: string | undefined;
+    // The admission HQ last named in a state, and the key the link presented for it: kept across
+    // this process's links. Its key once refused, it is `fenced` until a state names another.
+    let admitted: { readonly admission: string; readonly key: string } | undefined;
+    let fenced: string | undefined;
+    // The link that heard the latest state, until it ends: where `key-refused` goes.
+    let reportTo: ((message: KeyLinkUp) => Effect.Effect<void>) | undefined;
+    /** A ticket's admission is live unless it is the fenced one; asked where it is used. */
+    const liveness = (): AdmissionLive => {
+      const admission = admitted?.admission;
+      return () => fenced === undefined || fenced !== admission;
+    };
+    /** The admission's key is dead: marked first, then everyone's connections and tickets end. */
+    const fenceAdmission = (admission: string | undefined) =>
+      Effect.suspend(() => {
+        if (admission !== undefined) fenced = admission;
+        return options.end?.({ everyone: true }) ?? Effect.void;
+      });
+    if (options.keyRefusal !== undefined) {
+      const keyRefusal = options.keyRefusal;
+      yield* keyRefusal.installAdmission(() => admitted?.admission);
+      yield* Effect.forkScoped(
+        Stream.runForEach(keyRefusal.changes, (notice) =>
+          Effect.gen(function* () {
+            const current = admitted;
+            // Only a refusal of the key HQ admitted, which the env still holds, by a request
+            // started under that admission: one from before HQ's first state, of an older
+            // admission or of a key rotated meanwhile accuses nobody.
+            if (
+              current === undefined ||
+              fenced === current.admission ||
+              notice.admission !== current.admission ||
+              notice.refusedKey !== current.key ||
+              notice.currentKey !== current.key
+            )
+              return;
+            yield* fenceAdmission(current.admission);
+            if (fenced === current.admission)
+              yield* reportTo?.({ type: "key-refused" }) ?? Effect.void;
+          }),
+        ),
+      );
+    }
     const delays = options.reconnectDelaysMs ?? DEFAULT_RECONNECT_DELAYS_MS;
     const keyStore = options.keyStore ?? {
       revision: Effect.succeed(0),
@@ -533,31 +594,16 @@ export const makeZeropsHqLink = (
           ? { observeFingerprint: observeFingerprint.value }
           : {}),
       });
-      const keyChanged = yield* Deferred.make<LinkClose>();
-      let sentKey: string | undefined;
+      // The Mate ends this link itself: its key changed, or HQ sent a ticket under a dead key.
+      const ending = yield* Deferred.make<LinkClose>();
       // GAP-RIGHTS-7: nothing pushes a key's deletion or edit; the Mate learns of it at its next own
       // call; see docs/architecture/identity-and-access.md#gap-rights (mate-hq).
+      // A refusal is where the env is read again: one that moved on dials with its new key.
       const keyRefusals = options.keyRefusal
-        ? Stream.runForEach(options.keyRefusal.changes, (notice) =>
+        ? Stream.runForEach(options.keyRefusal.changes, () =>
             Effect.gen(function* () {
-              // Notices are retained across reconnects; fence them with the live env value.
-              const currentKey = yield* options.readKey;
-              if (currentKey !== key) {
-                yield* Deferred.succeed(keyChanged, { keyChanged: true });
-                return;
-              }
-              // An old request cannot accuse a newer link's key.
-              if (notice.refusedKey !== key || notice.currentKey !== key) return;
-              yield* Effect.sync(() => {
-                if (reportedKey === key || sentKey === key) return;
-                try {
-                  socket.send(encodeUp({ type: "key-refused" }));
-                  // Delivered only once HQ speaks after it: a send on a closing link is lost.
-                  sentKey = key;
-                } catch {
-                  // A failed send is still owed on the next link.
-                }
-              });
+              if ((yield* options.readKey) !== key)
+                yield* Deferred.succeed(ending, { keyChanged: true });
             }),
           )
         : Effect.never;
@@ -662,8 +708,16 @@ export const makeZeropsHqLink = (
           case "ping":
             return send({ type: "pong" }).pipe(Effect.andThen(usage?.ping ?? Effect.void));
           case "state":
-            if (sentKey !== undefined) reportedKey = sentKey;
-            return (options.chiefOpener?.(frame.mate.chiefOpenerUserId) ?? Effect.void).pipe(
+            // A state naming the dead admission has not heard the refusal: it is told again. One
+            // naming another is a new admission, even of the same key, and lifts the fence.
+            return Effect.sync(() => {
+              admitted = { admission: frame.admission, key };
+              reportTo = send;
+              if (fenced !== frame.admission) fenced = undefined;
+              return fenced !== undefined;
+            }).pipe(
+              Effect.flatMap((dead) => (dead ? send({ type: "key-refused" }) : Effect.void)),
+              Effect.andThen(options.chiefOpener?.(frame.mate.chiefOpenerUserId) ?? Effect.void),
               Effect.andThen(SubscriptionRef.set(state, Option.some(frame.mate))),
               Effect.andThen(options.owner?.(frame.mate.ownerUserId ?? null) ?? Effect.void),
               Effect.andThen(SubscriptionRef.set(keyVerdict, undefined)),
@@ -699,17 +753,20 @@ export const makeZeropsHqLink = (
           case "ticket":
             // Taken here, in the order heard; answered aside, since a verdict may wait on a
             // Zerops read that must not hold back pings, close-session or the frames after it.
+            // One under a dead key is not answered: the link ends, and HQ answers it not-connected.
             return options.ticket === undefined
               ? Effect.void
-              : options.ticket(frame).pipe(
+              : options.ticket(frame, liveness()).pipe(
                   Effect.flatMap((answer) =>
                     answer.pipe(
                       Effect.flatMap((verdict) =>
-                        send(
-                          verdict === "open"
-                            ? { type: "ticket-ack", ticket: frame.ticket }
-                            : { type: "ticket_refused", ticket: frame.ticket, reason: verdict },
-                        ),
+                        verdict === "fenced"
+                          ? Deferred.succeed(ending, {})
+                          : send(
+                              verdict === "open"
+                                ? { type: "ticket-ack", ticket: frame.ticket }
+                                : { type: "ticket_refused", ticket: frame.ticket, reason: verdict },
+                            ),
                       ),
                       Effect.forkChild,
                     ),
@@ -783,7 +840,7 @@ export const makeZeropsHqLink = (
       );
       const relayed = yield* Effect.forkScoped(
         Effect.raceFirst(
-          Effect.raceFirst(Effect.raceFirst(relay, silence), Deferred.await(keyChanged)),
+          Effect.raceFirst(Effect.raceFirst(relay, silence), Deferred.await(ending)),
           Effect.all(
             [
               onceAnswered(overviews),
@@ -797,7 +854,14 @@ export const makeZeropsHqLink = (
             ],
             { concurrency: "unbounded" },
           ).pipe(Effect.as(undefined)),
-        ).pipe(Effect.ensuring(autoUpdatePolicy?.close ?? Effect.void)),
+        ).pipe(
+          Effect.ensuring(autoUpdatePolicy?.close ?? Effect.void),
+          Effect.ensuring(
+            Effect.sync(() => {
+              if (reportTo === send) reportTo = undefined;
+            }),
+          ),
+        ),
       );
       return Result.succeed<Link>(Fiber.join(relayed));
     });
@@ -848,6 +912,7 @@ export const makeZeropsHqLink = (
           const close = "close" in ran ? ran.close : undefined;
           const heard = verdictOf(close);
           yield* SubscriptionRef.set(state, Option.none());
+          if (keyRefused(close)) yield* fenceAdmission(admitted?.admission);
           const ended = "ended" in ran ? ran.ended : undefined;
           yield* options.mateState?.notLinked(linkEndOf(ended, heard)) ?? Effect.void;
           if (close?.keyChanged) {

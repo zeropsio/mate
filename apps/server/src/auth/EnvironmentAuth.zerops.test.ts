@@ -46,13 +46,16 @@ const setup = Effect.gen(function* () {
     ),
   );
   yield* Effect.flatten(
-    connections.ticket({
-      type: "ticket",
-      ticket: "opaque-ticket",
-      userId: "jan",
-      sessionId: "hq-session",
-      expiresIn: 60,
-    }),
+    connections.ticket(
+      {
+        type: "ticket",
+        ticket: "opaque-ticket",
+        userId: "jan",
+        sessionId: "hq-session",
+        expiresIn: 60,
+      },
+      () => true,
+    ),
   );
   return { auth, connections, set: scene.set };
 });

@@ -3,7 +3,9 @@
  * (`ZeropsMateAccessList`). A ticket HQ sends is admitted only for a person that list opens for;
  * a list that changes closes the connections of whoever it no longer opens for or holds at another
  * role than it admitted them at, and one that only aged closes nothing. A Chief's door is that list's too: it opens for whom HQ lets open the Chief
- * (`ZeropsChiefOpener`, read by the list), so its tickets and connections follow that answer.
+ * (`ZeropsChiefOpener`, read by the list), so its tickets and connections follow that answer. A
+ * ticket also needs the admission of the key it came under to be live (`ZeropsHqLink`'s verdict,
+ * read with it): once that key is refused, everyone's connections and tickets end.
  */
 import type { MateAccessMember } from "@t3tools/shared/mateAccess";
 import type { TicketRefusal } from "@t3tools/shared/mateLink";
@@ -16,7 +18,7 @@ import * as Option from "effect/Option";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import { type AccessList, ticketVerdict, ZeropsMateAccessList } from "./ZeropsMateAccessList.ts";
-import { type TicketFrame, ZeropsTicketDoor } from "./ZeropsTicketDoor.ts";
+import { type AdmissionLive, type TicketFrame, ZeropsTicketDoor } from "./ZeropsTicketDoor.ts";
 
 export interface ConnectionIdentity {
   readonly ticket: string;
@@ -34,8 +36,16 @@ interface ConnectionInput {
   readonly admittedRole: MateAccessMember["role"];
   readonly close: Effect.Effect<void>;
 }
-/** Whose connections end: one HQ session's, or all of one person's. */
-export type ConnectionSubject = { readonly session: string } | { readonly person: string };
+/** Whose connections end: one HQ session's, all of one person's, or everyone's where the key was refused. */
+export type ConnectionSubject =
+  | { readonly session: string }
+  | { readonly person: string }
+  | { readonly everyone: true };
+/**
+ * What answers HQ's ticket: `ticket-ack`, `ticket_refused` for why, or nothing at all where the key
+ * it came under was refused (`fenced`): the link then closes and HQ answers it not-connected.
+ */
+export type TicketAnswer = "open" | TicketRefusal | "fenced";
 
 const openMember = (list: AccessList | undefined, userId: string) =>
   list?.members.find((member) => member.userId === userId && member.visibility === "open");
@@ -44,11 +54,15 @@ export class ZeropsConnections extends Context.Service<
   ZeropsConnections,
   {
     /**
-     * Takes HQ's ticket in the order the link heard it, and gives what answers it: kept for its
-     * socket when the list opens for its person, else refused. The answer may wait on a recompute,
-     * so the link runs it aside; a ticket whose session closed meanwhile is never kept.
+     * Takes HQ's ticket in the order the link heard it, with the liveness of the admission it came
+     * under, and gives what answers it: kept for its socket when the list opens for its person,
+     * else refused. The answer may wait on a recompute, so the link runs it aside; a ticket whose
+     * session closed meanwhile is never kept, and one whose admission died is not answered.
      */
-    readonly ticket: (frame: TicketFrame) => Effect.Effect<Effect.Effect<"open" | TicketRefusal>>;
+    readonly ticket: (
+      frame: TicketFrame,
+      live: AdmissionLive,
+    ) => Effect.Effect<Effect.Effect<TicketAnswer>>;
     readonly admit: (
       firstFrame: unknown,
       close: Effect.Effect<void>,
@@ -57,10 +71,12 @@ export class ZeropsConnections extends Context.Service<
     readonly close: (id: string) => Effect.Effect<void>;
     /**
      * The only way a connection ends for a reason of authority. A session's end also drops its
-     * tickets; a person's touches none, since admission judges each against the list then.
+     * tickets; a person's touches none, since admission judges each against the list then;
+     * everyone's, where the key was refused, drops every ticket, held or waiting.
      *
-     * GAP-RIGHTS-4: a connection never sees its person's token revoked; it ends at sign-out or a
-     * list change; see docs/architecture/identity-and-access.md#gap-rights (mate-hq).
+     * GAP-RIGHTS-4: a connection never sees its person's token revoked; it ends at sign-out, a
+     * list change or a refusal of the Mate's key; see
+     * docs/architecture/identity-and-access.md#gap-rights (mate-hq).
      */
     readonly end: (subject: ConnectionSubject) => Effect.Effect<void>;
   }
@@ -73,7 +89,7 @@ export const make = Effect.gen(function* () {
   const scope = yield* Effect.scope;
   const lock = yield* Semaphore.make(1);
   const connections = new Map<string, ConnectionInput>();
-  /** Tickets taken and not yet answered; a closed session drops its own. */
+  /** Tickets taken and not yet answered; a closed session drops its own, a refused key all. */
   const pending = new Set<TicketFrame>();
   const current = Effect.fn("ZeropsConnections.current")(function* (id: string) {
     const connection = connections.get(id);
@@ -105,6 +121,11 @@ export const make = Effect.gen(function* () {
     for (const frame of pending) if (frame.sessionId === session) pending.delete(frame);
     yield* removeWhere((connection) => connection.sessionId === session);
   });
+  const endEveryone = Effect.gen(function* () {
+    yield* tickets.end({ everyone: true });
+    pending.clear();
+    yield* removeWhere(() => true);
+  });
   const reconcile = Effect.gen(function* () {
     const list = yield* access.current;
     if (Option.isNone(list)) return;
@@ -117,13 +138,16 @@ export const make = Effect.gen(function* () {
     Effect.forkIn(scope, { startImmediately: true }),
   );
   return ZeropsConnections.of({
-    ticket: (frame) =>
+    ticket: (frame, live) =>
       Effect.sync(() => {
+        if (!live()) return Effect.succeed<TicketAnswer>("fenced");
         pending.add(frame);
         return access.admits(frame.userId).pipe(
           Effect.flatMap((admitted) =>
             lock.withPermits(1)(
               Effect.gen(function* () {
+                // The key it came under was refused while it waited: neither kept nor answered.
+                if (!live()) return "fenced" as const;
                 // A list that moved while the ticket waited (a Chief's opener moving on) answers it.
                 const verdict =
                   admitted === "open"
@@ -133,7 +157,7 @@ export const make = Effect.gen(function* () {
                         yield* Clock.currentTimeMillis,
                       )
                     : admitted;
-                if (verdict === "open" && pending.has(frame)) yield* tickets.heard(frame);
+                if (verdict === "open" && pending.has(frame)) yield* tickets.heard(frame, live);
                 return verdict;
               }),
             ),
@@ -145,7 +169,7 @@ export const make = Effect.gen(function* () {
       Effect.gen(function* () {
         const ticket = yield* tickets.consume(firstFrame);
         if (Option.isNone(ticket)) return Option.none<ConnectionIdentity>();
-        const { ticket: id, userId, sessionId } = ticket.value;
+        const { ticket: id, userId, sessionId } = ticket.value.identity;
         if (connections.has(id)) return Option.none<ConnectionIdentity>();
         const now = yield* Clock.currentTimeMillis;
         const list = Option.getOrUndefined(yield* access.current);
@@ -153,6 +177,9 @@ export const make = Effect.gen(function* () {
         if (member === undefined || ticketVerdict(list, userId, now) !== "open")
           return Option.none<ConnectionIdentity>();
         const connectionId = yield* crypto.uuidV4().pipe(Effect.orDie);
+        // Read after the last wait, with no yield before it is registered: a key refused by now
+        // ends everyone, whose end waits on this lock and then finds nothing of it to close.
+        if (!ticket.value.live()) return Option.none<ConnectionIdentity>();
         connections.set(id, {
           connectionId,
           id,
@@ -169,9 +196,12 @@ export const make = Effect.gen(function* () {
         connections.delete(id);
       }),
     end: (subject) =>
-      ("session" in subject ? endSession(subject.session) : endPerson(subject.person)).pipe(
-        lock.withPermits(1),
-      ),
+      ("session" in subject
+        ? endSession(subject.session)
+        : "person" in subject
+          ? endPerson(subject.person)
+          : endEveryone
+      ).pipe(lock.withPermits(1)),
   });
 });
 export const layer = Layer.effect(ZeropsConnections, make);

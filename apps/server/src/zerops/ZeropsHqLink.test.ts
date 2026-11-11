@@ -168,6 +168,11 @@ const STATE: LinkedMate = {
   chief: null,
 };
 
+/** The admission of the project's key HQ names in each state. */
+const ADMISSION = "6d0c2f4e-3b1a-4c8d-9e7f-5a2b1c0d9e8f";
+/** A ticket taken under an admission whose key stands. */
+const live = () => true;
+
 /** The hello a link opens with: the project's key, the service it is labelled by, and the Mate's public origin. */
 const hello = (key: string) => ({
   type: "hello",
@@ -178,7 +183,7 @@ const hello = (key: string) => ({
 
 /** HQ admits the key: its first state on the link. */
 const admit = (socket: FakeSocket, mate: LinkedMate = STATE) =>
-  socket.hear({ type: "state", mate: { ...mate, repos: [] } });
+  socket.hear({ type: "state", mate: { ...mate, repos: [] }, admission: ADMISSION });
 
 /**
  * A link over a fake HQ, a socket per connect, the project's key `zk-1` unless a test takes it. It
@@ -384,13 +389,16 @@ describe("ZeropsHqLink", () => {
           yield* TestClock.adjust(Duration.zero);
           assert.strictEqual(
             yield* Effect.flatten(
-              connections.ticket({
-                type: "ticket",
-                ticket: "t1",
-                userId: "jan",
-                sessionId: "s",
-                expiresIn: 60,
-              }),
+              connections.ticket(
+                {
+                  type: "ticket",
+                  ticket: "t1",
+                  userId: "jan",
+                  sessionId: "s",
+                  expiresIn: 60,
+                },
+                live,
+              ),
             ),
             "not_in_list",
           );
@@ -399,13 +407,16 @@ describe("ZeropsHqLink", () => {
           const next = yield* linked(sockets, 1);
           assert.strictEqual(
             yield* Effect.flatten(
-              connections.ticket({
-                type: "ticket",
-                ticket: "t2",
-                userId: "jan",
-                sessionId: "s",
-                expiresIn: 60,
-              }),
+              connections.ticket(
+                {
+                  type: "ticket",
+                  ticket: "t2",
+                  userId: "jan",
+                  sessionId: "s",
+                  expiresIn: 60,
+                },
+                live,
+              ),
             ),
             "not_in_list",
           );
@@ -413,13 +424,16 @@ describe("ZeropsHqLink", () => {
           yield* TestClock.adjust(Duration.zero);
           assert.strictEqual(
             yield* Effect.flatten(
-              connections.ticket({
-                type: "ticket",
-                ticket: "t-new",
-                userId: "jan",
-                sessionId: "s",
-                expiresIn: 60,
-              }),
+              connections.ticket(
+                {
+                  type: "ticket",
+                  ticket: "t-new",
+                  userId: "jan",
+                  sessionId: "s",
+                  expiresIn: 60,
+                },
+                live,
+              ),
             ),
             "open",
           );
@@ -427,13 +441,16 @@ describe("ZeropsHqLink", () => {
           yield* TestClock.adjust(Duration.zero);
           assert.strictEqual(
             yield* Effect.flatten(
-              connections.ticket({
-                type: "ticket",
-                ticket: "t3",
-                userId: "eva",
-                sessionId: "s",
-                expiresIn: 60,
-              }),
+              connections.ticket(
+                {
+                  type: "ticket",
+                  ticket: "t3",
+                  userId: "eva",
+                  sessionId: "s",
+                  expiresIn: 60,
+                },
+                live,
+              ),
             ),
             "not_in_list",
           );
@@ -512,7 +529,7 @@ describe("ZeropsHqLink", () => {
                 const { sockets } = yield* rig({ everyMs: 10_000_000 });
                 yield* TestClock.adjust(Duration.zero);
                 const socket = yield* opened(sockets, 0);
-                socket.hear({ type: "state", mate: STATE, pingIntervalMs });
+                socket.hear({ type: "state", mate: STATE, admission: ADMISSION, pingIntervalMs });
                 yield* TestClock.adjust(Duration.millis(3 * pingIntervalMs - 1));
                 assert.isFalse(socket.closed);
                 assert.lengthOf(sockets, 1);
@@ -533,12 +550,17 @@ describe("ZeropsHqLink", () => {
       Effect.gen(function* () {
         const { sockets } = yield* rig({ everyMs: 10_000_000 });
         const first = yield* opened(sockets, 0);
-        first.hear({ type: "state", mate: STATE, pingIntervalMs: 20_000 });
+        first.hear({ type: "state", mate: STATE, admission: ADMISSION, pingIntervalMs: 20_000 });
         yield* TestClock.adjust(Duration.seconds(10));
         first.closeWith(4409);
         yield* TestClock.adjust(Duration.millis(30));
         const successor = yield* opened(sockets, 1);
-        successor.hear({ type: "state", mate: STATE, pingIntervalMs: 30_000 });
+        successor.hear({
+          type: "state",
+          mate: STATE,
+          admission: ADMISSION,
+          pingIntervalMs: 30_000,
+        });
         yield* TestClock.adjust(Duration.zero);
         assert.isTrue(first.closed);
         // The old deadline passes while the successor has its own longer budget.
@@ -567,7 +589,7 @@ describe("ZeropsHqLink", () => {
           const { sockets, key, link, taken } = yield* rig();
           yield* TestClock.adjust(Duration.zero);
           const first = yield* opened(sockets, 0);
-          first.hear({ type: "state", mate: STATE, pingIntervalMs: 1_000 });
+          first.hear({ type: "state", mate: STATE, admission: ADMISSION, pingIntervalMs: 1_000 });
           yield* TestClock.adjust(Duration.zero);
           yield* TestClock.adjust(Duration.seconds(3));
           assert.isTrue(first.closed);
@@ -612,7 +634,7 @@ describe("ZeropsHqLink", () => {
           });
           yield* TestClock.adjust(Duration.zero);
           const socket = yield* opened(sockets, 0);
-          socket.hear({ type: "state", mate: STATE, pingIntervalMs: 1_000 });
+          socket.hear({ type: "state", mate: STATE, admission: ADMISSION, pingIntervalMs: 1_000 });
           socket.hear({ type: "git-credential", credential: "credential-fixture" });
           yield* Deferred.await(writing);
           yield* TestClock.adjust(Duration.millis(2_999));
@@ -644,6 +666,7 @@ describe("ZeropsHqLink", () => {
           socket.hear({
             type: "state",
             mate: STATE,
+            admission: ADMISSION,
             autoUpdate: { orgId: "ORG", enabled: true, revision: 0 },
           });
           yield* Stream.runHead(autoUpdatePolicy.changes.pipe(Stream.filter(Option.isSome)));
@@ -887,8 +910,8 @@ describe("ZeropsHqLink", () => {
           overview: Effect.succeed(Option.none()),
           changes: Stream.never,
           attention: Stream.never,
-          ticket: (frame) =>
-            connections.ticket(frame).pipe(
+          ticket: (frame, live) =>
+            connections.ticket(frame, live).pipe(
               Effect.map(
                 Effect.tap(() =>
                   Effect.sync(() => {
@@ -980,9 +1003,9 @@ describe("ZeropsHqLink", () => {
           const { sockets } = yield* rig({
             ticket: () =>
               Effect.succeed(Deferred.await(readAnswers).pipe(Effect.as("open" as const))),
-            end: ({ session }) =>
+            end: (subject) =>
               Effect.sync(() => {
-                closedSessions.push(session);
+                if ("session" in subject) closedSessions.push(subject.session);
               }),
           });
           const socket = yield* linked(sockets, 0);
@@ -1219,7 +1242,7 @@ describe("ZeropsHqLink", () => {
       socket.onSent = (message) => {
         if (message.type === "pong") Deferred.doneUnsafe(ponged, Effect.void);
       };
-      socket.hear({ type: "state", mate: newer });
+      socket.hear({ type: "state", mate: newer, admission: ADMISSION });
       socket.hear({ type: "ping" });
       yield* Deferred.await(ponged);
       assert.deepStrictEqual(yield* read, {
@@ -1239,7 +1262,7 @@ describe("ZeropsHqLink", () => {
         const socket = yield* until(() => sockets[0]);
         socket.emit("open");
         const automated: LinkedMate = { ...STATE, automated: true };
-        socket.hear({ type: "state", mate: automated });
+        socket.hear({ type: "state", mate: automated, admission: ADMISSION });
         const keys = [{ env: "NEBIUS_API_KEY", value: ["nb", "acme", "fixture"].join("-") }];
         socket.hear({ type: "provider-keys", keys });
         const model = "nebius/zai-org/GLM-5.3-Flash";
@@ -1276,7 +1299,7 @@ describe("ZeropsHqLink", () => {
         yield* until(() => socket.sent.find((message) => message.type === "pong"));
         assert.deepStrictEqual(taken, []);
         assert.isFalse(socket.sent.some((message) => message.type === "task-state"));
-        socket.hear({ type: "state", mate: { ...STATE, automated: true } });
+        socket.hear({ type: "state", mate: { ...STATE, automated: true }, admission: ADMISSION });
         yield* until(() => (taken.length > 0 ? taken : undefined));
         const reports = yield* until(() => {
           const found = socket.sent.filter((message) => message.type === "task-state");
@@ -1307,7 +1330,7 @@ describe("ZeropsHqLink", () => {
         socket.hear({ type: "ping" });
         yield* until(() => socket.sent.find((message) => message.type === "pong"));
         assert.deepStrictEqual(taken, []);
-        socket.hear({ type: "state", mate: { ...STATE, automated: true } });
+        socket.hear({ type: "state", mate: { ...STATE, automated: true }, admission: ADMISSION });
         yield* until(() => (taken.length > 0 ? taken : undefined));
         socket.hear({ type: "task-stop", taskId: "task-1", reason: "The issue was closed." });
         yield* until(() => (taken.length > 1 ? taken : undefined));
@@ -1326,7 +1349,7 @@ describe("ZeropsHqLink", () => {
         const socket = yield* until(() => sockets[0]);
         socket.emit("open");
         // An HQ from before automated Mates: its state names no flag, and it never hears of tasks.
-        socket.hear({ type: "state", mate: STATE });
+        socket.hear({ type: "state", mate: STATE, admission: ADMISSION });
         socket.hear({
           type: "task",
           task: {
@@ -1361,7 +1384,7 @@ describe("ZeropsHqLink", () => {
           const { sockets, until, taken } = yield* rig({ everyMs: 10 });
           const socket = yield* until(() => sockets[0]);
           socket.emit("open");
-          socket.hear({ type: "state", mate: { ...STATE, automated: true } });
+          socket.hear({ type: "state", mate: { ...STATE, automated: true }, admission: ADMISSION });
           // A task this Mate cannot read: its limits allow no minutes.
           socket.hear({
             type: "task",
@@ -1428,7 +1451,7 @@ describe("ZeropsHqLink", () => {
             },
           ],
         };
-        socket.hear({ type: "state", mate: placed });
+        socket.hear({ type: "state", mate: placed, admission: ADMISSION });
         const held = yield* link.standing.pipe(
           Effect.flatMap((standing) =>
             standing.kind === "linked" ? Effect.succeed(standing.mate) : Effect.fail("not yet"),
@@ -1448,7 +1471,7 @@ describe("ZeropsHqLink", () => {
         const socket = yield* until(() => sockets[0]);
         socket.emit("open");
         const { appName: _appName, ...older } = { ...STATE, appId: "app-1" };
-        socket.hear({ type: "state", mate: older });
+        socket.hear({ type: "state", mate: older, admission: ADMISSION });
         const held = yield* link.standing.pipe(
           Effect.flatMap((standing) =>
             standing.kind === "linked" ? Effect.succeed(standing.mate) : Effect.fail("not yet"),
@@ -1483,7 +1506,11 @@ describe("ZeropsHqLink", () => {
             ),
             Effect.retry(Schedule.spaced(Duration.millis(5))),
           );
-        socket.hear({ type: "state", mate: { ...STATE, ownerUserId: "owner-1" } });
+        socket.hear({
+          type: "state",
+          mate: { ...STATE, ownerUserId: "owner-1" },
+          admission: ADMISSION,
+        });
         const named = yield* ownerNamed("owner-1");
         assert.deepStrictEqual(
           ["zerops-user:colleague", "zerops-user:owner-1", "local-owner"].map((subject) =>
@@ -1492,7 +1519,7 @@ describe("ZeropsHqLink", () => {
           ["reads-along", "acts", "acts"],
         );
         // HQ that knows no owner names none.
-        socket.hear({ type: "state", mate: STATE });
+        socket.hear({ type: "state", mate: STATE, admission: ADMISSION });
         assert.strictEqual(actingOf(yield* ownerNamed(undefined), "zerops-user:colleague"), "acts");
       }),
     ),

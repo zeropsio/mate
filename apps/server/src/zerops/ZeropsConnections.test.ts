@@ -16,6 +16,8 @@ import { type AccessLiveEvent, decodeAccessFrame } from "./ZeropsAccessSocket.ts
 import { makeAccessScene, type SceneRoles, sceneRead } from "./testing/accessScene.ts";
 
 const AT = Date.parse("2026-10-24T10:00:00.000Z");
+/** The admission a ticket came under stands. */
+const live = () => true;
 const ticket = (id: string, userId: string) =>
   ({ type: "ticket", ticket: id, userId, sessionId: "session-1", expiresIn: 60 }) as const;
 const over = (access: Access.ZeropsMateAccessList["Service"]) =>
@@ -30,7 +32,10 @@ const over = (access: Access.ZeropsMateAccessList["Service"]) =>
     const closeReceipt = yield* Deferred.make<void>();
     const open = (id: string, userId: string, sessionId = "session-1") =>
       Effect.gen(function* () {
-        yield* tickets.heard({ type: "ticket", ticket: id, userId, sessionId, expiresIn: 60 });
+        yield* tickets.heard(
+          { type: "ticket", ticket: id, userId, sessionId, expiresIn: 60 },
+          live,
+        );
         return yield* connections.admit(
           { ticket: id },
           Effect.sync(() => {
@@ -135,34 +140,34 @@ describe("ZeropsConnections", () => {
         assert.isTrue(Option.isSome(yield* open("jan", "jan")));
         assert.isTrue(Option.isNone(yield* open("eva", "eva")));
         assert.strictEqual(
-          yield* Effect.flatten(connections.ticket(ticket("issued", "jan"))),
+          yield* Effect.flatten(connections.ticket(ticket("issued", "jan"), live)),
           "open",
         );
         yield* chiefOpener("eva");
         assert.deepEqual(closed, ["jan"]);
         assert.isTrue(Option.isSome(yield* open("eva-now", "eva")));
         assert.strictEqual(
-          yield* Effect.flatten(connections.ticket(ticket("owner", "jan"))),
+          yield* Effect.flatten(connections.ticket(ticket("owner", "jan"), live)),
           "not_in_list",
         );
         yield* chiefOpener(undefined);
         assert.strictEqual(
-          yield* Effect.flatten(connections.ticket(ticket("still-owner", "jan"))),
+          yield* Effect.flatten(connections.ticket(ticket("still-owner", "jan"), live)),
           "not_in_list",
         );
         yield* chiefOpener("read");
         assert.strictEqual(
-          yield* Effect.flatten(connections.ticket(ticket("reader", "read"))),
+          yield* Effect.flatten(connections.ticket(ticket("reader", "read"), live)),
           "read_only",
         );
         yield* chiefOpener("unknown");
         assert.strictEqual(
-          yield* Effect.flatten(connections.ticket(ticket("unknown", "unknown"))),
+          yield* Effect.flatten(connections.ticket(ticket("unknown", "unknown"), live)),
           "not_in_list",
         );
         yield* chiefOpener(null);
         assert.strictEqual(
-          yield* Effect.flatten(connections.ticket(ticket("nobody", "eva"))),
+          yield* Effect.flatten(connections.ticket(ticket("nobody", "eva"), live)),
           "not_in_list",
         );
         assert.isTrue(Option.isNone(yield* connections.admit({ ticket: "issued" }, Effect.void)));
@@ -178,7 +183,7 @@ describe("ZeropsConnections", () => {
         read: Deferred.await(readAnswers).pipe(Effect.as(sceneRead({ jan: "OWNER" }, ["chief"]))),
         opener,
       });
-      const answer = yield* connections.ticket(ticket("pending", "jan"));
+      const answer = yield* connections.ticket(ticket("pending", "jan"), live);
       const verdict = yield* Effect.forkChild(answer);
       yield* opener.named("eva");
       yield* Deferred.succeed(readAnswers, undefined);
@@ -203,16 +208,19 @@ describe("ZeropsConnections", () => {
       yield* TestClock.adjust(0);
       yield* opener.named("eva");
       assert.strictEqual(
-        yield* Effect.flatten(connections.ticket(ticket("eva", "eva"))),
+        yield* Effect.flatten(connections.ticket(ticket("eva", "eva"), live)),
         "not_in_list",
       );
       assert.strictEqual(
-        yield* Effect.flatten(connections.ticket(ticket("jan", "jan"))),
+        yield* Effect.flatten(connections.ticket(ticket("jan", "jan"), live)),
         "not_in_list",
       );
       yield* opener.named("jan");
       yield* TestClock.adjust(0);
-      assert.strictEqual(yield* Effect.flatten(connections.ticket(ticket("owner", "jan"))), "open");
+      assert.strictEqual(
+        yield* Effect.flatten(connections.ticket(ticket("owner", "jan"), live)),
+        "open",
+      );
     }).pipe(Effect.scoped),
   );
   it.effect.each([
@@ -279,13 +287,16 @@ describe("ZeropsConnections", () => {
         yield* open("after-renewal", "jan", "stable-session");
         yield* open("other-session", "jan", "other");
         yield* open("other-person", "eva", "eva-session");
-        yield* tickets.heard({
-          type: "ticket",
-          ticket: "pending",
-          userId: "jan",
-          sessionId: "stable-session",
-          expiresIn: 60,
-        });
+        yield* tickets.heard(
+          {
+            type: "ticket",
+            ticket: "pending",
+            userId: "jan",
+            sessionId: "stable-session",
+            expiresIn: 60,
+          },
+          live,
+        );
         yield* connections.end({ session: "stable-session" });
         assert.deepEqual(closed, ["before-renewal", "after-renewal"]);
         assert.isTrue(Option.isNone(yield* tickets.consume({ ticket: "pending" })));
@@ -306,13 +317,16 @@ describe("ZeropsConnections", () => {
   it.effect("Sign-out and ticket admission cannot leave a signed-out connection alive", () =>
     Effect.gen(function* () {
       const { connections, tickets } = yield* setupScene({ jan: "OWNER" });
-      yield* tickets.heard({
-        type: "ticket",
-        ticket: "racing",
-        userId: "jan",
-        sessionId: "ending",
-        expiresIn: 60,
-      });
+      yield* tickets.heard(
+        {
+          type: "ticket",
+          ticket: "racing",
+          userId: "jan",
+          sessionId: "ending",
+          expiresIn: 60,
+        },
+        live,
+      );
       yield* Effect.all(
         [
           connections.admit({ ticket: "racing" }, Effect.void),
@@ -331,15 +345,15 @@ describe("ZeropsConnections", () => {
       Effect.gen(function* () {
         const { connections, tickets } = yield* setupOwn;
         assert.strictEqual(
-          yield* Effect.flatten(connections.ticket(ticket("t-jan", "jan"))),
+          yield* Effect.flatten(connections.ticket(ticket("t-jan", "jan"), live)),
           "open",
         );
         assert.strictEqual(
-          yield* Effect.flatten(connections.ticket(ticket("t-eva", "eva"))),
+          yield* Effect.flatten(connections.ticket(ticket("t-eva", "eva"), live)),
           "read_only",
         );
         assert.strictEqual(
-          yield* Effect.flatten(connections.ticket(ticket("t-bob", "bob"))),
+          yield* Effect.flatten(connections.ticket(ticket("t-bob", "bob"), live)),
           "not_in_list",
         );
         assert.isTrue(Option.isSome(yield* tickets.consume({ ticket: "t-jan" })));
@@ -358,7 +372,7 @@ describe("ZeropsConnections", () => {
         yield* TestClock.adjust("15 minutes");
         yield* TestClock.adjust(1);
         assert.strictEqual(
-          yield* Effect.flatten(connections.ticket(ticket("late", "jan"))),
+          yield* Effect.flatten(connections.ticket(ticket("late", "jan"), live)),
           "list_unconfirmed",
         );
         assert.deepEqual(closed, []);
@@ -375,7 +389,7 @@ describe("ZeropsConnections", () => {
           projectId: "P_MATE",
           read: Deferred.await(readAnswers).pipe(Effect.as(sceneRead({ jan: "OWNER" }))),
         });
-        const answer = yield* connections.ticket(ticket("before-close", "jan"));
+        const answer = yield* connections.ticket(ticket("before-close", "jan"), live);
         const verdict = yield* Effect.forkChild(answer);
         yield* connections.end({ session: "session-1" });
         yield* Deferred.succeed(readAnswers, undefined);
