@@ -2817,7 +2817,7 @@ export default function Sidebar() {
     />
   );
   return (
-    <SidebarStage rail={zeropsRail}>
+    <SidebarStage rail={zeropsRail} railHolds={zeropsRailTiles.tiles.length}>
       <SidebarChromeHeader
         brand={
           zeropsChiefTop(false) ??
