@@ -11,6 +11,8 @@ import {
   connectedByLine,
   defaultAppName,
   githubReturnLine,
+  accountLine,
+  addingApp,
   appSetUpWords,
   githubReturnTo,
   githubSection,
@@ -87,19 +89,19 @@ describe("Settings › Automation's GitHub section", () => {
       case: "an organization with no app",
       setting: known(NONE),
       admin: true,
-      says: "No GitHub app yet",
+      says: "Mate isn't on GitHub yet",
     },
     {
       case: "a member where no app is connected",
       setting: known(NONE),
       admin: false,
-      says: "No GitHub app yet · The organization's Owner and Admins add GitHub apps.",
+      says: "Mate isn't on GitHub yet · Owners and Admins change this.",
     },
     {
       case: "a connected app",
       setting: known(CONNECTED),
       admin: false,
-      says: "1 GitHub app · pushes as acme-mate[bot]",
+      says: "Mate works in 2 GitHub accounts, as a bot of its own",
     },
     {
       case: "an HQ older than the app",
@@ -134,19 +136,28 @@ describe("Settings › Automation's GitHub section", () => {
     expect(section.kind === "apps" ? section.apps[0]?.installations : null).toEqual([
       {
         id: 1,
-        line: "acme · 3 repositories",
+        account: "acme",
+        accountType: "Organization",
+        line: "3 repositories Mate may use · none connected yet",
+        addedBy: "u-ada",
         manageUrl: "https://github.com/organizations/acme/settings/installations/1",
         suspended: false,
       },
       {
         id: 2,
-        line: "nova · all repositories",
+        account: "nova",
+        accountType: "User",
+        line: "All its repositories · none connected yet",
+        addedBy: null,
         manageUrl: "https://github.com/settings/installations/2",
         suspended: false,
       },
       {
         id: 3,
-        line: "juno · suspended",
+        account: "juno",
+        accountType: "Organization",
+        line: "Suspended on GitHub",
+        addedBy: null,
         manageUrl: "https://github.com/organizations/juno/settings/installations/3",
         suspended: true,
       },
@@ -219,7 +230,15 @@ describe("an installation GitHub did not answer about", () => {
   it("GitHub settings list it by its id, with no page to manage it, and no account waiting", () => {
     const section = githubSection(known(unread), true);
     expect(section.kind === "apps" ? section.apps[0]?.installations : null).toEqual([
-      { id: 10006, line: expect.any(String), manageUrl: null, suspended: false },
+      {
+        id: 10006,
+        account: null,
+        accountType: null,
+        line: expect.any(String),
+        addedBy: null,
+        manageUrl: null,
+        suspended: false,
+      },
     ]);
     expect(section.kind === "apps" ? section.apps[0]?.waiting : null).toEqual([]);
   });
@@ -237,10 +256,10 @@ describe("an installation GitHub did not answer about", () => {
 describe("coming back from GitHub", () => {
   it("confirms a connected app, and says an owner's approval is asked where GitHub asked one", () => {
     expect(githubReturnLine("connected", githubSection(known(CONNECTED), true))).toBe(
-      "Acme Mate is set up. Mate acts through it as acme-mate[bot].",
+      "Mate is on GitHub as acme-mate[bot].",
     );
     expect(githubReturnLine("requested", githubSection(known(CONNECTED), true))).toBe(
-      "GitHub asked an owner of the GitHub account to approve the app; it's installed once they do.",
+      "GitHub asked an owner of that account to approve Mate. It's added once they do.",
     );
     expect(githubReturnLine(null, githubSection(known(CONNECTED), true))).toBeNull();
     expect(githubReturnLine("connected", githubSection(known(NONE), true))).toBeNull();
@@ -275,9 +294,9 @@ describe("one app on many GitHub accounts", () => {
   };
 
   it("an app installed on two accounts lists both", () => {
-    expect(first(MANY, true)?.installations.map(({ line }) => line)).toEqual([
-      "acme · 3 repositories",
-      "nova · all repositories",
+    expect(first(MANY, true)?.installations.map(({ account }) => account)).toEqual([
+      "acme",
+      "nova",
     ]);
     expect(appRepositories(MANY)).toEqual(["acme/api", "acme/tea-shop", "acme/web", "nova/notes"]);
   });
@@ -287,6 +306,7 @@ describe("one app on many GitHub accounts", () => {
       {
         id: 4,
         account: "stranger",
+        accountType: "User",
         repositories: ["stranger/notes", "stranger/site"],
       },
     ]);
@@ -320,11 +340,51 @@ describe("one app on many GitHub accounts", () => {
 
   it("says GitHub's install waits for an OK only while an installation here waits for one", () => {
     expect(githubReturnLine("waiting", githubSection(known(MANY), true))).toBe(
-      "GitHub installed the app. It waits for an Owner's or Admin's OK before Mate uses it.",
+      "The account is added on GitHub. It waits for an Owner's or Admin's OK before Mate uses it.",
     );
     // Accepted or suspended since, another organization's, or one with no app: nothing to say.
     expect(githubReturnLine("waiting", githubSection(known(CONNECTED), true))).toBeNull();
     expect(githubReturnLine("waiting", githubSection(known(NONE), true))).toBeNull();
+  });
+});
+
+describe("the GitHub accounts Mate works in", () => {
+  // witness: apps/web/src/components/settings/automationSettings.logic.ts | repository.usedBy !== null && repository.usedBy.githubAppId === githubAppId → repository.usedBy !== null
+  it("an account says what Mate may use there, and how many of Mate's repositories are connected through this bot", () => {
+    const repositories = [
+      {
+        ...repo(11, "acme/tea-shop"),
+        usedBy: { application: "a-1", repo: "shop", githubAppId: 1 },
+      },
+      { ...repo(12, "acme/api"), usedBy: { application: "a-2", repo: "api", githubAppId: 2 } },
+      repo(13, "acme/web"),
+    ];
+    expect(accountLine({ repositorySelection: "selected", repositories }, 1)).toBe(
+      "3 repositories Mate may use · 1 connected",
+    );
+    expect(
+      accountLine({ repositorySelection: "all", repositories: [repo(21, "nova/notes")] }, 1),
+    ).toBe("All its repositories · none connected yet");
+  });
+
+  // witness: apps/web/src/components/settings/automationSettings.logic.ts | sealed.find((app) => !app.personal) ?? → sealed[0] ??
+  it("Add a GitHub account uses the bot the person set up, else the organization's, never another person's own", () => {
+    const janes = {
+      ...ACME,
+      appId: 2,
+      name: "Octo Mate",
+      ownerType: "User",
+      sealedBy: "u-jane",
+    } as const;
+    const rows = (apps: HqGithubView["apps"]) => {
+      const section = githubSection(known({ apps }), true);
+      return section.kind === "apps" ? section.apps : [];
+    };
+    expect(addingApp(rows([janes, ACME]), "u-zed")?.appId).toBe(1);
+    expect(addingApp(rows([janes, ACME]), "u-jane")?.appId).toBe(2);
+    // Another person's own bot, or one nobody set up: none, and the press makes the organization's.
+    expect(addingApp(rows([janes]), "u-zed")).toBeNull();
+    expect(addingApp(rows([{ ...ACME, sealedBy: null, sealedAt: null }]), "u-ada")).toBeNull();
   });
 });
 
