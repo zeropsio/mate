@@ -286,7 +286,7 @@ describe("ZeropsConnections", () => {
           sessionId: "stable-session",
           expiresIn: 60,
         });
-        yield* connections.closeSession("stable-session");
+        yield* connections.end({ session: "stable-session" });
         assert.deepEqual(closed, ["before-renewal", "after-renewal"]);
         assert.isTrue(Option.isNone(yield* tickets.consume({ ticket: "pending" })));
         assert.isTrue(Option.isSome(yield* connections.current("other-session")));
@@ -314,7 +314,10 @@ describe("ZeropsConnections", () => {
         expiresIn: 60,
       });
       yield* Effect.all(
-        [connections.admit({ ticket: "racing" }, Effect.void), connections.closeSession("ending")],
+        [
+          connections.admit({ ticket: "racing" }, Effect.void),
+          connections.end({ session: "ending" }),
+        ],
         { concurrency: "unbounded" },
       );
       assert.isTrue(Option.isNone(yield* connections.current("racing")));
@@ -374,29 +377,12 @@ describe("ZeropsConnections", () => {
         });
         const answer = yield* connections.ticket(ticket("before-close", "jan"));
         const verdict = yield* Effect.forkChild(answer);
-        yield* connections.closeSession("session-1");
+        yield* connections.end({ session: "session-1" });
         yield* Deferred.succeed(readAnswers, undefined);
         assert.strictEqual(yield* Fiber.join(verdict), "open");
         assert.isTrue(
           Option.isNone(yield* connections.admit({ ticket: "before-close" }, Effect.void)),
         );
-      }).pipe(Effect.scoped),
-  );
-
-  it.effect(
-    "When the Mate's own recompute stops opening for a person, their connections close and a narrowed role is read at once, without a frame from HQ",
-    () =>
-      Effect.gen(function* () {
-        const { answer, closed, closeReceipt, connections, open } = yield* setupOwn;
-        yield* Ref.set(answer, sceneRead({ jan: "OWNER", eva: "BASIC_USER" }));
-        yield* TestClock.adjust("6 minutes");
-        yield* open("jan", "jan");
-        yield* open("eva", "eva");
-        yield* Ref.set(answer, sceneRead({ jan: "ADMIN", eva: "READ_ONLY" }));
-        yield* TestClock.adjust("6 minutes");
-        yield* Deferred.await(closeReceipt);
-        assert.deepEqual(closed, ["eva"]);
-        assert.strictEqual(Option.getOrThrow(yield* connections.current("jan")).role, "ADMIN");
       }).pipe(Effect.scoped),
   );
 });

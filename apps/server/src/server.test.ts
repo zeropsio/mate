@@ -1904,7 +1904,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                 headers: { authorization: `Bearer ${ticket}` },
               });
               assert.deepInclude(yield* active.json, { authenticated: true });
-              yield* connections.closeSession("hq-owner");
+              yield* connections.end({ session: "hq-owner" });
               const ended = yield* HttpClient.get("/api/auth/session", {
                 headers: { authorization: `Bearer ${ticket}` },
               });

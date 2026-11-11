@@ -202,7 +202,7 @@ const rig = (
     readonly observeCredential?: (credential: string | null) => Effect.Effect<boolean>;
     /** The Mate's own verdict on each ticket HQ sends; no tickets unless a test says. */
     readonly ticket?: ZeropsHqLinkOptions["ticket"];
-    readonly closeSession?: ZeropsHqLinkOptions["closeSession"];
+    readonly end?: ZeropsHqLinkOptions["end"];
     readonly chiefOpener?: ZeropsHqLinkOptions["chiefOpener"];
     readonly mateChanges?: ZeropsHqLinkOptions["mateChanges"];
   } = {},
@@ -251,7 +251,7 @@ const rig = (
       attention: options.attention ?? Stream.never,
       ...(options.health === undefined ? {} : { health: options.health }),
       ...(options.ticket === undefined ? {} : { ticket: options.ticket }),
-      ...(options.closeSession === undefined ? {} : { closeSession: options.closeSession }),
+      ...(options.end === undefined ? {} : { end: options.end }),
       ...(options.chiefOpener === undefined ? {} : { chiefOpener: options.chiefOpener }),
       ...(options.mateChanges === undefined ? {} : { mateChanges: options.mateChanges }),
       gitCredential: (credential) =>
@@ -846,7 +846,7 @@ describe("ZeropsHqLink", () => {
           changes: Stream.never,
           attention: Stream.never,
           ticket: connections.ticket,
-          closeSession: connections.closeSession,
+          end: connections.end,
           gitCredential: () => Effect.void,
           gitFingerprint: Effect.succeed(Option.none()),
         });
@@ -924,7 +924,7 @@ describe("ZeropsHqLink", () => {
                 ),
               ),
             ),
-          closeSession: connections.closeSession,
+          end: connections.end,
           gitCredential: () => Effect.void,
           gitFingerprint: Effect.succeed(Option.none()),
         });
@@ -1007,9 +1007,9 @@ describe("ZeropsHqLink", () => {
           const { sockets } = yield* rig({
             ticket: () =>
               Effect.succeed(Deferred.await(readAnswers).pipe(Effect.as("open" as const))),
-            closeSession: (sessionId) =>
+            end: ({ session }) =>
               Effect.sync(() => {
-                closedSessions.push(sessionId);
+                closedSessions.push(session);
               }),
           });
           const socket = yield* linked(sockets, 0);
