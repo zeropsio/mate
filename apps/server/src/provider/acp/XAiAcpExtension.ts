@@ -6,7 +6,7 @@ import * as Effect from "effect/Effect";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as EffectAcpErrors from "effect-acp/errors";
-import type * as EffectAcpSchema from "effect-acp/schema";
+import type * as EffectAcpSchema from "effect-acp/compat";
 
 import type * as AcpSessionRuntime from "./AcpSessionRuntime.ts";
 
@@ -14,7 +14,7 @@ const XAiPromptCompleteNotification = Schema.Struct({
   sessionId: Schema.String,
   promptId: Schema.optional(Schema.String),
   stopReason: Schema.optional(Schema.String),
-  agentResult: Schema.optional(Schema.NullOr(Schema.Unknown)),
+  agentResult: Schema.optional(Schema.NullOr(Schema.Json)),
 });
 
 type XAiPromptCompleteNotification = typeof XAiPromptCompleteNotification.Type;
@@ -654,7 +654,7 @@ function promptResponseFromXAi(
   notification: XAiPromptCompleteNotification,
 ): EffectAcpSchema.PromptResponse {
   const stopReason = normalizeXAiStopReason(notification.stopReason);
-  const meta: Record<string, unknown> = {
+  const meta: Record<string, Schema.Json> = {
     sessionId: notification.sessionId,
   };
   if (notification.stopReason === undefined) {

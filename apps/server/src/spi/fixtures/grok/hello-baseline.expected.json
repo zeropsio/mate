@@ -7,6 +7,13 @@
     "threadId": "spi-replay-grok-thread",
     "payload": {
       "resume": {
+        "protocolVersion": 1,
+        "agentCapabilities": {
+          "loadSession": true,
+          "sessionCapabilities": {
+            "resume": {}
+          }
+        },
         "_meta": {
           "modelState": {
             "currentModelId": "grok-4.6",
@@ -46,14 +53,7 @@
               }
             ]
           }
-        },
-        "agentCapabilities": {
-          "loadSession": true,
-          "sessionCapabilities": {
-            "resume": {}
-          }
-        },
-        "protocolVersion": 1
+        }
       }
     }
   },

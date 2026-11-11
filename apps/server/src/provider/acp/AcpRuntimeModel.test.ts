@@ -6,7 +6,7 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as TestClock from "effect/testing/TestClock";
 import { describe, expect, it } from "vite-plus/test";
 
-import type * as EffectAcpSchema from "effect-acp/schema";
+import type * as EffectAcpSchema from "effect-acp/compat";
 
 import {
   decideToolCallUpdateEmission,
@@ -426,7 +426,7 @@ describe("AcpRuntimeModel", () => {
 
   it("preserves native command inputs and empty command lists", () => {
     const availableCommands = [
-      { name: "plan", description: "Plan a task", input: { hint: "task" } },
+      { name: "plan", description: "Plan a task", input: { type: "text" as const, hint: "task" } },
       { name: "logout", description: "Sign out" },
     ] satisfies ReadonlyArray<EffectAcpSchema.AvailableCommand>;
 
