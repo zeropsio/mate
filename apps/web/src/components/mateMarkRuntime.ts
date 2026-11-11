@@ -76,7 +76,12 @@ const lerpTo = (v: number, target: number, rate: number, dt: number) => {
   const next = v + (target - v) * (1 - Math.exp(-rate * dt));
   return Math.abs(next - target) < LANDED ? target : next;
 };
-const round = (v: number) => Math.round(v * 1000) / 1000;
+/**
+ * What a frame writes, to a hundredth of a logo unit: at a hero's size that is a twenty-fifth of
+ * a pixel. Written to a thousandth, the long tail of every ease wrote a new value each frame that
+ * nobody could tell from the last, and the page was laid out and painted again for it.
+ */
+const round = (v: number) => Math.round(v * 100) / 100;
 
 interface MarkRuntime {
   readonly root: SVGSVGElement;
