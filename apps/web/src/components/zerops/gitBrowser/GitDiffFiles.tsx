@@ -152,7 +152,7 @@ export function GitDiffFiles({
   readonly className?: string;
 }) {
   const { resolvedTheme } = useTheme();
-  const wordWrap = useClientSettings().wordWrap;
+  const wordWrap = useClientSettings((settings) => settings.wordWrap);
   const diffRenderMode = useDiffPanelStore((state) => state.diffRenderMode);
   const setDiffRenderMode = useDiffPanelStore((state) => state.setDiffRenderMode);
   const viewer = useRef<CodeViewHandle<undefined>>(null);

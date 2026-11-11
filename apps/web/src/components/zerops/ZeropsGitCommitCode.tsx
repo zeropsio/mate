@@ -39,7 +39,7 @@ export default function ZeropsGitCommitCode({
   readonly composerDraftTarget: ScopedThreadRef;
 }) {
   const { resolvedTheme } = useTheme();
-  const wordWrap = useClientSettings().wordWrap;
+  const wordWrap = useClientSettings((settings) => settings.wordWrap);
   const diffRenderMode = useDiffPanelStore((state) => state.diffRenderMode);
   const getDiffFileContents = useAtomCommand(reviewEnvironment.diffFileContents);
   const patch = useMemo(

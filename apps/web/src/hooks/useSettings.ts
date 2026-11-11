@@ -9,7 +9,7 @@
  * access is intentionally named as such so environment-sensitive consumers
  * cannot silently read the wrong server's settings.
  */
-import { useCallback, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { useAtomValue } from "@effect/atom-react";
 import {
   DEFAULT_SERVER_SETTINGS,
@@ -26,6 +26,7 @@ import {
 import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
 import { ensureLocalApi } from "~/localApi";
 import { isHostedStaticApp } from "~/hostedPairing";
+import * as Equal from "effect/Equal";
 import * as Struct from "effect/Struct";
 import { primaryServerSettingsAtom, serverEnvironment } from "~/state/server";
 import { usePrimaryEnvironment } from "~/state/environments";
@@ -196,12 +197,38 @@ export function useClientSettingsHydrated(): boolean {
   );
 }
 
-function useClientSettingsValue(): ClientSettings {
-  return useSyncExternalStore(
-    subscribeClientSettings,
-    getClientSettingsSnapshot,
-    () => DEFAULT_CLIENT_SETTINGS,
-  );
+const selectWholeClientSettings = (settings: ClientSettings) => settings;
+
+/**
+ * The selection, not the whole snapshot, is what the store compares, so a write re-renders only
+ * readers whose selected value changed. Selectors may build objects or arrays: a structurally
+ * equal result keeps the previous reference.
+ */
+export function useClientSettings<T = ClientSettings>(
+  selector?: (settings: ClientSettings) => T,
+): T {
+  const select = selector ?? (selectWholeClientSettings as (settings: ClientSettings) => T);
+  const committed = useRef<{ readonly value: T } | null>(null);
+  const [getSelection, getServerSelection] = useMemo(() => {
+    let memo: { readonly snapshot: ClientSettings; readonly value: T } | null = null;
+    const selectFrom = (snapshot: ClientSettings): T => {
+      if (memo?.snapshot === snapshot) return memo.value;
+      const next = select(snapshot);
+      const previous = memo?.value ?? committed.current?.value;
+      const value = previous !== undefined && Equal.equals(previous, next) ? (previous as T) : next;
+      memo = { snapshot, value };
+      return value;
+    };
+    return [
+      () => selectFrom(getClientSettingsSnapshot()),
+      () => selectFrom(DEFAULT_CLIENT_SETTINGS),
+    ] as const;
+  }, [select]);
+  const value = useSyncExternalStore(subscribeClientSettings, getSelection, getServerSelection);
+  useEffect(() => {
+    committed.current = { value };
+  }, [value]);
+  return value;
 }
 
 export function mergeEnvironmentSettings(
@@ -211,25 +238,15 @@ export function mergeEnvironmentSettings(
   return { ...serverSettings, ...clientSettings };
 }
 
+/** Selecting inside the client store keeps a client write from re-rendering unaffected readers. */
 function useMergedSettings<T>(
   serverSettings: ServerSettings,
   selector: ((settings: UnifiedSettings) => T) | undefined,
 ): T {
-  const clientSettings = useClientSettingsValue();
-
-  const merged = useMemo<UnifiedSettings>(
-    () => mergeEnvironmentSettings(serverSettings, clientSettings),
-    [clientSettings, serverSettings],
-  );
-
-  return useMemo(() => (selector ? selector(merged) : (merged as T)), [merged, selector]);
-}
-
-export function useClientSettings<T = ClientSettings>(
-  selector?: (settings: ClientSettings) => T,
-): T {
-  const settings = useClientSettingsValue();
-  return useMemo(() => (selector ? selector(settings) : (settings as T)), [selector, settings]);
+  return useClientSettings((clientSettings) => {
+    const merged = mergeEnvironmentSettings(serverSettings, clientSettings);
+    return selector ? selector(merged) : (merged as T);
+  });
 }
 
 /** Read current settings for one environment, merged with client-local preferences. */
