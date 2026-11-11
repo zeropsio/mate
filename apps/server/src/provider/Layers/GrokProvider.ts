@@ -42,7 +42,7 @@ import {
   resolveGrokAcpBaseModelId,
 } from "../acp/GrokAcpSupport.ts";
 import { sessionModelStateFromInitialize } from "../acp/AcpRuntimeModel.ts";
-import { discoverGrokSkills } from "../Drivers/GrokSkills.ts";
+import { discoverGrokSkills, grokProbeEnvironment } from "../Drivers/GrokSkills.ts";
 
 const GROK_PRESENTATION = {
   displayName: "Grok",
@@ -391,10 +391,13 @@ export const checkGrokProviderStatus = Effect.fn("checkGrokProviderStatus")(func
     });
   }
 
-  const versionResult = yield* runGrokCliCommand(grokSettings, ["--version"], environment).pipe(
-    Effect.timeoutOption(VERSION_PROBE_TIMEOUT_MS),
-    Effect.result,
-  );
+  const probeEnvironment = grokProbeEnvironment(environment);
+
+  const versionResult = yield* runGrokCliCommand(
+    grokSettings,
+    ["--version"],
+    probeEnvironment,
+  ).pipe(Effect.timeoutOption(VERSION_PROBE_TIMEOUT_MS), Effect.result);
 
   if (Result.isFailure(versionResult)) {
     const error = versionResult.failure;
@@ -458,7 +461,7 @@ export const checkGrokProviderStatus = Effect.fn("checkGrokProviderStatus")(func
   }
 
   // `grok models` reports login state and model slugs without starting the agent.
-  const modelsResult = yield* runGrokCliCommand(grokSettings, ["models"], environment).pipe(
+  const modelsResult = yield* runGrokCliCommand(grokSettings, ["models"], probeEnvironment).pipe(
     Effect.timeoutOption(AUTH_PROBE_TIMEOUT_MS),
     Effect.result,
   );
@@ -491,12 +494,13 @@ export const checkGrokProviderStatus = Effect.fn("checkGrokProviderStatus")(func
         ? { status: "unauthenticated" }
         : { status: "unknown" };
 
+  // Skill discovery applies the probe environment itself.
   const skills = yield* discoverGrokSkills(grokSettings, environment, cwd).pipe(
     Effect.tapError((cause) => Effect.logDebug("Grok skill discovery failed.", { cause })),
     Effect.orElseSucceed(() => []),
   );
 
-  const acpExit = yield* discoverGrokMetadataViaAcpInitialize(grokSettings, environment).pipe(
+  const acpExit = yield* discoverGrokMetadataViaAcpInitialize(grokSettings, probeEnvironment).pipe(
     Effect.timeoutOption(GROK_ACP_INITIALIZE_TIMEOUT_MS),
     Effect.exit,
   );

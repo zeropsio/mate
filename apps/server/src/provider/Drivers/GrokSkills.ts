@@ -92,6 +92,16 @@ function decodeGrokInspectSkills(stdout: string): ReadonlyArray<ServerProviderSk
 }
 
 /**
+ * Grok checks for a newer CLI when it launches. Health probes (`grok --version`, `grok models`,
+ * `grok inspect --json`, ACP `initialize`) run in the background, so an update they start is
+ * invisible. `GROK_DISABLE_AUTOUPDATER=1` suppresses it per process; sessions, text generation
+ * and `grok update` keep the caller's environment and update as the user configured.
+ */
+export function grokProbeEnvironment(environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return { ...environment, GROK_DISABLE_AUTOUPDATER: "1" };
+}
+
+/**
  * Run `grok inspect --json` and map the reported catalog onto provider
  * skills. Callers that need best-effort discovery can recover this effect to
  * an empty list; workspace callers leave failures typed so they are not cached.
@@ -102,15 +112,16 @@ export const discoverGrokSkills = Effect.fn("discoverGrokSkills")(function* (
   cwd?: string,
 ) {
   const command = grokSettings.binaryPath || "grok";
+  const probeEnvironment = grokProbeEnvironment(environment);
   const inspectResult = yield* Effect.gen(function* () {
     const spawnCommand = yield* resolveSpawnCommand(command, ["inspect", "--json"], {
-      env: environment,
+      env: probeEnvironment,
     });
     return yield* spawnAndCollect(
       command,
       ChildProcess.make(spawnCommand.command, spawnCommand.args, {
         ...(cwd ? { cwd } : {}),
-        env: environment,
+        env: probeEnvironment,
         shell: spawnCommand.shell,
       }),
     );
