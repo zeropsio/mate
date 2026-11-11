@@ -244,12 +244,13 @@ zerops:
         - port: 5743
           httpSupport: true
       envVariables:
-        # The hosted client against the shared HQ, signing in by Zerops device
-        # login, as `prod` builds it; served from the subdomain, not localhost.
+        # The hosted client against the shared HQ, signing in through Zerops HQ
+        # as `prod` builds it (a device login, since HQ's bridge refuses the
+        # pool's origin); served from the subdomain, not localhost.
         VITE_HOSTED_APP_CHANNEL: latest
         VITE_HQ_ORIGIN: https://mate-hq.zerops.io
-        VITE_ZEROPS_SIGN_IN: device-login
-        VITE_ZEROPS_CONSENT_ORIGIN: https://hq.zerops.io
+        VITE_ZEROPS_SIGN_IN: zerops-hq
+        VITE_ZEROPS_HQ_ORIGIN: https://hq.zerops.io
         # Single-origin dev, so a `.env` cannot bake a backend URL back in.
         T3CODE_SINGLE_ORIGIN_DEV: "1"
         # Vite answers only the hosts it knows: the pool's subdomain.
