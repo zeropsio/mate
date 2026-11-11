@@ -535,9 +535,6 @@ importers:
       '@effect/atom-react':
         specifier: 4.1.2
         version: 4.1.2(effect@4.1.2(patch_hash=9238d7f6cd5cb9b940cdd69b17c7c700e0da446681c81966a9c711b7ad496206))(react@19.2.6)(scheduler@0.27.0)
-      '@formkit/auto-animate':
-        specifier: ^0.9.0
-        version: 0.9.0
       '@legendapp/list':
         specifier: 'catalog:'
         version: 3.3.5(patch_hash=f2ca9aff2c74c12dc1b69eae576b92b999766309c60859e3e9bcc13575aff702)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -2342,9 +2339,6 @@ packages:
 
   '@floating-ui/utils@0.2.11':
     resolution: {integrity: sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg==}
-
-  '@formkit/auto-animate@0.9.0':
-    resolution: {integrity: sha512-VhP4zEAacXS3dfTpJpJ88QdLqMTcabMg0jwpOSxZ/VzfQVfl3GkZSCZThhGC5uhq/TxPHPzW0dzr4H9Bb1OgKA==}
 
   '@hono/node-server@1.19.17':
     resolution: {integrity: sha512-dSneS5qhiauZWGDCeK4o695Xd9nUNjviSZCMQrj10eetr8Uln1ucn6bbphOM6UynAMMtNIzZNSpL9vnASJwrPQ==}
@@ -11903,8 +11897,6 @@ snapshots:
       tabbable: 6.4.0
 
   '@floating-ui/utils@0.2.11': {}
-
-  '@formkit/auto-animate@0.9.0': {}
 
   '@hono/node-server@1.19.17(hono@4.13.8)':
     dependencies:

@@ -50,9 +50,8 @@ export interface ZeropsEnvironmentServices {
   readonly pools: ReadonlyArray<string>;
 }
 
-function byName(left: string, right: string): number {
-  return left.localeCompare(right, "en", { sensitivity: "base" });
-}
+/** One collator for every comparison: `localeCompare` with options builds one per call. */
+const byName = new Intl.Collator("en", { sensitivity: "base" }).compare;
 
 function newer(left: string | undefined, right: string | undefined): string | undefined {
   if (left === undefined) return right;

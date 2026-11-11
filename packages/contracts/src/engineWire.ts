@@ -78,6 +78,15 @@ export const ENGINE_WIRE_BUDGETS = {
   liveTailItems: 40,
   runPageItems: 200,
   runPageBytes: 512 * 1024,
+  /**
+   * An opening's `outcome` frames: one frame, sent as a message of its own, under the window's
+   * budget; a call's result whole in it up to `outcomeResultBytes`, a longer one cut as anywhere;
+   * every run's frames of one opening together within `outcomesBytes`. What does not fit is read
+   * by the client (`engine.readRun`, `engine.readDetail`).
+   */
+  outcomeFrameBytes: 192 * 1024,
+  outcomeResultBytes: 96 * 1024,
+  outcomesBytes: 1024 * 1024,
   detailBytes: 256 * 1024,
   liveFrameBytes: 4 * 1024,
   /** Records a resume may carry; past it the subscriber is reset to a fresh snapshot. */
@@ -187,6 +196,7 @@ const toUnknownFrame = (_raw: Record<string, unknown>, was: string) => ({
 
 const FRAME_TYPES = [
   "snapshot",
+  "outcome",
   "changes",
   "synchronized",
   "reset",
@@ -216,6 +226,21 @@ export const EngineConversationFrame = forwardCompatibleUnion({
       items: ItemRecords,
       requests: RequestRecords,
       window: EngineWindow,
+    }),
+    /**
+     * Before a snapshot, to a subscriber that asked for `outcomes`: what a finished run of its
+     * window draws its closed card's result from, as `engine.readRun` reads it (`only:
+     * "outcome"`) from the run's start, in order, each frame a message of its own within the
+     * budgets (`outcomeFrameBytes`, `outcomesBytes`). `more`: the run holds outcome items after
+     * this frame's last that no frame of this opening carries; the subscriber reads on from it
+     * (`engine.readRun` with `afterSeq`). A run with no frame is read whole the same way.
+     */
+    Schema.Struct({
+      type: Schema.Literal("outcome"),
+      runId: RunId,
+      items: ItemRecords,
+      requests: RequestRecords,
+      more: Schema.Boolean,
     }),
     /**
      * Every record that changed in `(from, to]`, whole, upserted by id. A split frame's parts
@@ -301,6 +326,12 @@ export const EngineSubscribeInput = Schema.Struct({
   after: Schema.optionalKey(EngineCursor),
   /** Run groups the window opens with (default and cap: the budget's). */
   groups: Schema.optionalKey(Schema.Int),
+  /**
+   * With a snapshot, its finished runs' `outcome` frames first, as far as their budgets carry:
+   * the results of these `tools`, as `engine.readRun` names them. A server before it ignores it
+   * and sends none; the client then reads each run (`engine.readRun`), drawn the same.
+   */
+  outcomes: Schema.optionalKey(Schema.Struct({ tools: Schema.Array(Schema.String) })),
 });
 export type EngineSubscribeInput = typeof EngineSubscribeInput.Type;
 

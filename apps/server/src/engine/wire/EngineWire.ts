@@ -58,9 +58,11 @@ import {
   type EngineSubscribeRowsInput,
   type EngineUnserved,
   type EngineWindow,
+  type Item,
   type ItemId,
   type KnownEngineEvent,
   type Principal,
+  type Request,
 } from "@t3tools/contracts";
 
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
@@ -76,7 +78,9 @@ import {
   bytesOf,
   changesFrames,
   fitItem,
+  fitOutcomeItem,
   fitRecords,
+  fitRequest,
   frameSizer,
   liveFrames,
   sliceUtf8,
@@ -283,6 +287,8 @@ type Inbox =
 const INBOX = 1024;
 /** Streamed text the live plane named by a key no committed item has yet. */
 const PENDING_KEYS = 8;
+/** Outcome items a run's first read asks for; the next is sized by what these weighed. */
+const OUTCOME_FIRST_READ = 32;
 /** Keys of items whose boundary was sent: their late deltas are dropped. */
 const SETTLED_KEYS = 512;
 /** Conversations whose last snapshot is kept: at most this many window budgets (256 KiB) held. */
@@ -430,6 +436,134 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
         return read.frame;
       });
 
+    const pageOf = <E>(
+      read: (count: number) => Effect.Effect<
+        {
+          readonly records: Parameters<typeof fitRecords>[0];
+          readonly window: EngineWindow;
+          readonly more: boolean;
+        },
+        E
+      >,
+      count: number,
+      budget: number,
+    ) =>
+      Effect.gen(function* () {
+        let n = count;
+        for (;;) {
+          const got = yield* read(n);
+          const page: EnginePage = {
+            _tag: "Page",
+            ...fitRecords(got.records),
+            window: got.window,
+            more: got.more,
+          };
+          if (bytesOf(page) <= budget || n <= 1) return page;
+          n = Math.max(1, Math.floor(n / 2));
+        }
+      }).pipe(Effect.catch(wireError(UNREADABLE)));
+
+    /**
+     * What the finished runs of a snapshot draw their closed cards' results from, as
+     * `engine.readRun` reads it (`only: "outcome"`) from each run's start, with each result whole
+     * up to the outcome's budget: the runs whose items the snapshot does not carry. Each row is
+     * read, fitted and counted once; a read is sized by what the one before it learned an item
+     * weighs. A frame stays within a frame's budget and all of them within the opening's; a run
+     * the budget ends in says `more`, one it never reaches, or that cannot be read, has no frame,
+     * and the client reads what is left.
+     */
+    const outcomeFrames = (
+      conversation: ConversationId,
+      frame: Extract<EngineConversationFrame, { readonly type: "snapshot" }>,
+      tools: ReadonlyArray<string>,
+    ) =>
+      Effect.gen(function* () {
+        type Outcome = Extract<EngineConversationFrame, { readonly type: "outcome" }>;
+        const carried = new Map<string, number>();
+        for (const item of frame.items)
+          if (item.runId !== null) carried.set(item.runId, (carried.get(item.runId) ?? 0) + 1);
+        const frames: Array<Outcome> = [];
+        let left: number = ENGINE_WIRE_BUDGETS.outcomesBytes;
+        for (const run of frame.runs) {
+          // Too little left for a call's record: the runs after it are the client's to read.
+          if (left < ENGINE_WIRE_BUDGETS.itemBytes) break;
+          if (
+            run.end === null ||
+            Object.keys(run.summary.calls).length === 0 ||
+            (carried.get(run.id) ?? 0) >= run.summary.items
+          )
+            continue;
+          const budget = left;
+          const read = yield* Effect.gen(function* () {
+            const items: Array<{ readonly item: Item; readonly bytes: number }> = [];
+            let requests: ReadonlyArray<Request> | undefined;
+            let taken = 0;
+            let more = false;
+            let afterSeq = 0;
+            let limit = OUTCOME_FIRST_READ;
+            reading: for (;;) {
+              const page = yield* records.runPage(conversation, run.id, {
+                afterSeq,
+                only: "outcome",
+                tools,
+                limit,
+              });
+              if (requests === undefined) {
+                requests = page.requests.map(fitRequest);
+                taken += bytesOf(requests);
+              }
+              for (const record of page.items) {
+                const item = fitOutcomeItem(record);
+                const bytes = bytesOf(item) + 1;
+                if (taken + bytes > budget) {
+                  more = true;
+                  break reading;
+                }
+                items.push({ item, bytes });
+                taken += bytes;
+              }
+              if (!page.more || page.items.length === 0) break;
+              afterSeq = Math.max(...page.items.map((item) => item.seq));
+              limit = Math.min(
+                ENGINE_WIRE_BUDGETS.runPageItems,
+                Math.max(1, Math.ceil((budget - taken) / (taken / items.length))),
+              );
+            }
+            // Nothing of it fits: no frame, and the client reads the run from its start.
+            if (more && items.length === 0) return { frames: [] as Array<Outcome>, taken: 0 };
+            const packed: Array<Outcome> = [];
+            let held: Array<Item> = [];
+            let bytes = bytesOf(requests);
+            for (const next of items) {
+              if (held.length > 0 && bytes + next.bytes > ENGINE_WIRE_BUDGETS.outcomeFrameBytes) {
+                packed.push({
+                  type: "outcome",
+                  runId: run.id,
+                  items: held,
+                  requests: packed.length === 0 ? requests : [],
+                  more: true,
+                });
+                held = [];
+                bytes = 0;
+              }
+              held.push(next.item);
+              bytes += next.bytes;
+            }
+            packed.push({
+              type: "outcome",
+              runId: run.id,
+              items: held,
+              requests: packed.length === 0 ? requests : [],
+              more,
+            });
+            return { frames: packed, taken };
+          }).pipe(Effect.orElseSucceed(() => ({ frames: [] as Array<Outcome>, taken: 0 })));
+          frames.push(...read.frames);
+          left -= read.taken;
+        }
+        return frames;
+      });
+
     const subscribe: EngineWireShape["subscribe"] = (input, caller) => {
       const refused = protocolRefusal(input.protocol);
       if (refused !== undefined) return Stream.make(refused);
@@ -463,6 +597,8 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
           const head = yield* records.head(conversation);
           const after = input.after;
           const opening: Array<EngineConversationFrame> = [];
+          /** A snapshot's `outcome` frames: each goes out as a message of its own, before it. */
+          let outcomes: ReadonlyArray<EngineConversationFrame> = [];
           let cursor = head;
           let lastHeader = "";
           const resetReason =
@@ -499,6 +635,8 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
               origin,
             );
             lastHeader = headerJson(frame.header);
+            if (input.outcomes !== undefined)
+              outcomes = yield* outcomeFrames(conversation, frame, input.outcomes.tools);
             opening.push(frame);
           }
           opening.push({ type: "synchronized", epoch, head: cursor });
@@ -731,8 +869,21 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
             return [...first, ...(yield* Queue.clear(inbox))];
           });
 
+          // The opening is one message, as it always was: a window within its budget. Outcomes
+          // never ride in it: megabytes in one message hold the socket's other frames back, pongs
+          // among them, and decode as one task. A reset stays ahead of them: it forgets what the
+          // subscriber held, and would forget them too.
+          const resets = opening.filter((frame) => frame.type === "reset");
+          const opened =
+            outcomes.length === 0
+              ? Stream.fromIterable(opening)
+              : Stream.fromArrays(
+                  resets,
+                  ...outcomes.map((frame) => [frame]),
+                  opening.filter((frame) => frame.type !== "reset"),
+                );
           return Stream.concat(
-            Stream.fromIterable(opening),
+            opened,
             Stream.fromEffectRepeat(Effect.flatMap(take, step)).pipe(Stream.flattenIterable),
           );
         }).pipe(Effect.catch(wireError(UNREADABLE))),
@@ -819,33 +970,6 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
         }).pipe(Effect.catch(wireError(UNREADABLE))),
       ).pipe(Stream.catch((cause) => Stream.fromEffect(wireError(UNREADABLE)(cause))));
     };
-
-    const pageOf = <E>(
-      read: (count: number) => Effect.Effect<
-        {
-          readonly records: Parameters<typeof fitRecords>[0];
-          readonly window: EngineWindow;
-          readonly more: boolean;
-        },
-        E
-      >,
-      count: number,
-      budget: number,
-    ) =>
-      Effect.gen(function* () {
-        let n = count;
-        for (;;) {
-          const got = yield* read(n);
-          const page: EnginePage = {
-            _tag: "Page",
-            ...fitRecords(got.records),
-            window: got.window,
-            more: got.more,
-          };
-          if (bytesOf(page) <= budget || n <= 1) return page;
-          n = Math.max(1, Math.floor(n / 2));
-        }
-      }).pipe(Effect.catch(wireError(UNREADABLE)));
 
     const readEarlier: EngineWireShape["readEarlier"] = (input) => {
       const refused = protocolRefusal(input.protocol);

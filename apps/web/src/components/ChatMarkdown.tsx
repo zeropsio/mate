@@ -1238,10 +1238,16 @@ const MarkdownLinkFavicon = memo(function MarkdownLinkFavicon({
       ) : faviconUrl === null || failedHost === host || failedFaviconHosts.has(host) ? (
         <GlobeIcon className={cn(MARKDOWN_LINK_FAVICON_CLASS_NAME, "text-muted-foreground")} />
       ) : (
+        // Loaded at once, never left to the browser's lazy loading: a picture waiting on
+        // `loading="lazy"` is an observer of the browser's own, and for as long as one waits
+        // anywhere on the page every animation costs the main thread a frame per tick
+        // (`restingIntersections.ts`); one link scrolled out of a conversation was enough. At
+        // once also means a conversation kept warm has them before it opens, and a row drawn
+        // again paints its mark in the same frame.
         <img
           src={faviconUrl}
           alt=""
-          loading="lazy"
+          loading="eager"
           decoding="async"
           draggable={false}
           className={cn(MARKDOWN_LINK_FAVICON_CLASS_NAME, "rounded-sm")}

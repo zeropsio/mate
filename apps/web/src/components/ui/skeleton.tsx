@@ -1,5 +1,6 @@
 import { cva, type VariantProps } from "class-variance-authority";
 
+import { watchIntersections } from "~/lib/restingIntersections";
 import { cn } from "~/lib/utils";
 
 // A skeleton's width and height are its content, so consumers size it through
@@ -24,16 +25,36 @@ const skeletonVariants = cva(
   },
 );
 
+/**
+ * Its sweep runs only while it is in view (`data-seen`, read by `index.css`): a page's stand-ins
+ * out of sight keep their boxes and move nothing. One watcher serves every skeleton on the page.
+ */
+const seen = watchIntersections((entries) => {
+  for (const entry of entries) entry.target.toggleAttribute("data-seen", entry.isIntersecting);
+});
+
+function sweepWhileSeen(node: HTMLDivElement | null) {
+  if (node === null) return;
+  // Nowhere to ask (a test's page): it sweeps as it always did.
+  if (seen === undefined) {
+    node.setAttribute("data-seen", "");
+    return;
+  }
+  seen.observe(node);
+  return () => seen.unobserve(node);
+}
+
 function Skeleton({
   className,
   shape,
   surface,
   ...props
-}: React.ComponentProps<"div"> & VariantProps<typeof skeletonVariants>) {
+}: Omit<React.ComponentProps<"div">, "ref"> & VariantProps<typeof skeletonVariants>) {
   return (
     <div
       className={cn(skeletonVariants({ shape, surface }), className)}
       data-slot="skeleton"
+      ref={sweepWhileSeen}
       {...props}
     />
   );

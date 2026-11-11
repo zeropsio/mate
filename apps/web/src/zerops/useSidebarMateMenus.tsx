@@ -23,7 +23,7 @@ import { projectNameInApp, readZeropsMembership } from "@t3tools/client-runtime/
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
-import { createSharer } from "@t3tools/shared/structuralSharing";
+import { createSharer, shareEqual } from "@t3tools/shared/structuralSharing";
 import { useRouter } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
@@ -148,13 +148,59 @@ export function mateMenuTarget(input: {
   };
 }
 
-/** Keeps each row's actions while its own inputs stand, even when another row's factory changes. */
+/** A function of a built menu, in what the menu says (`saidOf`). */
+const CALLED = Symbol("called through");
+
+function isPlain(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== "object") return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+/** What a built menu says: its words and which verbs it offers, each function one mark. */
+function saidOf(value: unknown): unknown {
+  if (typeof value === "function") return CALLED;
+  if (Array.isArray(value)) return value.map(saidOf);
+  if (isPlain(value))
+    return Object.fromEntries(Object.entries(value).map(([key, part]) => [key, saidOf(part)]));
+  return value;
+}
+
+/** A built menu as its row is handed it: each function calls the latest build's at its place. */
+function handedOf(
+  value: unknown,
+  latest: { current: unknown },
+  path: ReadonlyArray<string | number>,
+): unknown {
+  if (typeof value === "function")
+    return (...args: ReadonlyArray<unknown>) => {
+      let at = latest.current;
+      for (const step of path) at = (at as Record<string | number, unknown>)[step];
+      return (at as (...args: ReadonlyArray<unknown>) => unknown)(...args);
+    };
+  if (Array.isArray(value)) return value.map((part, i) => handedOf(part, latest, [...path, i]));
+  if (isPlain(value))
+    return Object.fromEntries(
+      Object.entries(value).map(([key, part]) => [key, handedOf(part, latest, [...path, key])]),
+    );
+  return value;
+}
+
+/**
+ * Keeps each row's actions while its own inputs stand, even when another row's factory changes —
+ * and while a menu built anew says the same: the same words, the same verbs offered. The row is
+ * handed one object for as long as that holds, its functions calling the latest build's, so the
+ * factories every row's menu is built off (who is coming, which write is under way, the server's
+ * versions) may change without every row of the menu redrawing for it.
+ */
 export function createMateMenuReader<A>() {
   const built = new WeakMap<
     ZeropsCandidatePresentation,
     {
       readonly facts: ReadonlyArray<unknown>;
-      readonly actions: A;
+      readonly said: unknown;
+      readonly latest: { current: A };
+      readonly handed: A;
     }
   >();
   return (
@@ -168,10 +214,18 @@ export function createMateMenuReader<A>() {
       held.facts.length === facts.length &&
       facts.every((fact, i) => Object.is(fact, held.facts[i]))
     )
-      return held.actions;
+      return held.handed;
     const actions = build();
-    built.set(candidate, { facts, actions });
-    return actions;
+    const said = saidOf(actions);
+    if (held !== undefined && shareEqual(held.said, said) === held.said) {
+      held.latest.current = actions;
+      built.set(candidate, { ...held, facts });
+      return held.handed;
+    }
+    const latest = { current: actions };
+    const handed = handedOf(actions, latest, []) as A;
+    built.set(candidate, { facts, said, latest, handed });
+    return handed;
   };
 }
 

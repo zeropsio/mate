@@ -1,4 +1,8 @@
-import { ConversationOpeningAvatar, ConversationOpeningYields } from "./ConversationOpeningStage";
+import {
+  ConversationOpeningAvatar,
+  ConversationOpeningYields,
+  useConversationOpeningArrives,
+} from "./ConversationOpeningStage";
 import { useAtomValue } from "@effect/atom-react";
 import { environmentActivitiesAtom } from "../../zerops/mateActivityAtoms";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -14,6 +18,7 @@ import {
   useContext,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
@@ -164,22 +169,37 @@ function MateChatsMenu({
 
 /**
  * Whether the text in the element it is given ends in an ellipsis: measured
- * before paint after every draw — its words may change while its box keeps
- * its size — and whenever its box changes size.
+ * after every draw — its words may change while its box keeps its size — and
+ * whenever its box changes size. Both are heard from one ResizeObserver, which
+ * the browser calls once it has laid the page out: read in the draw's layout
+ * effect, the two widths forced the style and layout of the whole page on
+ * every draw of the header, ten times in one load. Observing the element anew
+ * asks for one call after this draw's layout. What is measured is only whether
+ * the hover repeats the words, so it may follow the draw by a frame.
  */
 function useCut(): readonly [(node: HTMLElement | null) => void, boolean] {
   const [node, setNode] = useState<HTMLElement | null>(null);
   const [cut, setCut] = useState(false);
+  const observer = useRef<ResizeObserver | null>(null);
   useLayoutEffect(() => {
-    const measure = () => setCut(node !== null && node.scrollWidth > node.clientWidth);
-    measure();
-  });
+    if (node === null || typeof ResizeObserver === "undefined") return;
+    const watching = new ResizeObserver(() => setCut(node.scrollWidth > node.clientWidth));
+    observer.current = watching;
+    return () => {
+      watching.disconnect();
+      observer.current = null;
+    };
+  }, [node]);
   useLayoutEffect(() => {
     if (node === null) return;
-    const observer = new ResizeObserver(() => setCut(node.scrollWidth > node.clientWidth));
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [node]);
+    if (observer.current === null) {
+      // Nothing to hear the layout from: measured here, as it was.
+      setCut(node.scrollWidth > node.clientWidth);
+      return;
+    }
+    observer.current.unobserve(node);
+    observer.current.observe(node);
+  });
   return [setNode, node !== null && cut];
 }
 
@@ -188,11 +208,21 @@ function useCut(): readonly [(node: HTMLElement | null) => void, boolean] {
  * line was first painted without — the first words sent — arrives; one
  * there from the start is simply there.
  */
-function useArrival(present: boolean): boolean {
+function useArrival(present: boolean, broughtIn = false): boolean {
   const [seen, setSeen] = useState({ present, arrived: false });
-  if (seen.present === present) return seen.arrived;
-  setSeen({ present, arrived: present });
-  return present;
+  if (seen.present !== present) {
+    setSeen({ present, arrived: present });
+    return present;
+  }
+  // Brought in by something else — the opening's hand-off fades the header in — its own arrival
+  // is over for good: the mark gone, the fade it names has nothing to come back as when that
+  // other motion ends. Left standing, the subject fell back to its own fade as the opening
+  // ended, went unseen and faded in a second time.
+  if (broughtIn && seen.arrived) {
+    setSeen({ present, arrived: false });
+    return false;
+  }
+  return seen.arrived;
 }
 
 /**
@@ -231,7 +261,7 @@ function MatePill({
   const opens = crew && !mate.open && mate.threadId !== null;
   const [subjectRef, cut] = useCut();
   const { subject, hover } = mateWords(mate, { crew, cut });
-  const arrived = useArrival(subject !== null);
+  const arrived = useArrival(subject !== null, useConversationOpeningArrives());
   const personaArrived = useArrival(persona != null);
   // The header's face is carried to the opening stage, outside the header: it takes its mark along.
   const asMark = useContext(MateFaceAsMark);

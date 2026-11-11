@@ -92,6 +92,14 @@ export interface RunPageAt {
   readonly tools?: ReadonlyArray<string>;
 }
 
+/** What a finished run's closed card draws its result from, as its subscription sent it. */
+interface SentOutcome {
+  readonly items: ReadonlyArray<Item>;
+  readonly requests: ReadonlyArray<Request>;
+  /** Its run holds outcome items after the last of these: they are read from there. */
+  readonly more: boolean;
+}
+
 /** How many runs read their missing items at once. */
 const RUN_READS_AT_ONCE = 4;
 
@@ -205,6 +213,8 @@ export function makeEngineConversationWire(
           protocol: PROTOCOL,
           conversationId: key.conversationId as never,
           ...(after === null ? {} : { after }),
+          // Asked with every subscription: a cursor that cannot resume is answered by a snapshot.
+          outcomes: { tools: CLOSED_CARD_RESULT_TOOLS },
         }),
       ),
     subscribeRows: (environmentId) =>
@@ -517,12 +527,19 @@ export function makeMateEngineConversations(options: {
    * until its card opens, a live one from its earliest held; the rest are read a page at a time
    * as its card opens and scrolls (`readRunPage`). A read that fails leaves the run with what it
    * holds, its span all the same. A finished run already read from its start keeps its span (its
-   * pages stay held across a resubscribe), and reads nothing again.
+   * pages stay held across a resubscribe), and reads nothing again. Nor does a run whose outcome
+   * came whole before its snapshot (`sent`, the subscription's `outcome` frames): a Mate that
+   * sends them opens a conversation on the one answer, never a read a run and a read a long
+   * result after it (measured on a three-run window: 10 requests in two more round trips). A
+   * run whose frames end with `more` (the opening's budget ran out in it) is read on from the
+   * last item they brought, and one with no frame from its start, so a card draws from the same
+   * items whichever way they came.
    */
   const wholeRuns = (
     key: EngineConversationKey,
     runs: ReadonlyArray<RunRecord>,
     items: ReadonlyArray<Item>,
+    sent?: ReadonlyMap<string, SentOutcome>,
   ): Effect.Effect<{
     readonly items: ReadonlyArray<Item>;
     readonly requests: ReadonlyArray<Request>;
@@ -574,9 +591,18 @@ export function makeMateEngineConversations(options: {
               return { items: [], requests: [], spans: [span(null, kept.value.to)] };
             const items: Item[] = [];
             const requests: Request[] = [];
-            if (Object.keys(run.summary.calls).length > 0)
+            const outcome = sent?.get(run.id);
+            if (outcome !== undefined) {
+              for (const item of outcome.items)
+                if (!held.has(item.id)) {
+                  held.set(item.id, item);
+                  items.push(item);
+                }
+              requests.push(...outcome.requests);
+            }
+            if (outcome === undefined ? Object.keys(run.summary.calls).length > 0 : outcome.more)
               yield* Effect.gen(function* () {
-                let after = 0;
+                let after = Math.max(0, ...(outcome?.items ?? []).map((item) => item.seq));
                 for (let page = 0; page < ENGINE_RUN_PAGES; page++) {
                   const answer = yield* wire.readRun(key, run.id, {
                     after,
@@ -716,6 +742,8 @@ export function makeMateEngineConversations(options: {
           scope,
           generation: streamOf(store.state(), scope).generation,
         }));
+        /** The finished runs' outcomes this subscription sent ahead of its snapshot, by run. */
+        const sent = new Map<string, SentOutcome>();
         /** The header of a split commit's first part, until the part that moves the cursor. */
         let splitHeader: { readonly from: number; readonly header: ConversationHeader } | undefined;
         /** An item whose record arrives whole drops its streamed text, settle frame or not. */
@@ -754,7 +782,9 @@ export function makeMateEngineConversations(options: {
                 )
                   forget(key);
                 return Effect.gen(function* () {
-                  const lacked = yield* wholeRuns(key, frame.runs, frame.items);
+                  const outcomes = new Map(sent);
+                  sent.clear();
+                  const lacked = yield* wholeRuns(key, frame.runs, frame.items, outcomes);
                   const items = yield* wholeResults(key, [...frame.items, ...lacked.items]);
                   // A denial told while the runs were read keeps nothing of this frame either.
                   if (closed || withheld.has(key.environmentId)) return;
@@ -850,7 +880,17 @@ export function makeMateEngineConversations(options: {
                 });
                 return Effect.void;
               }
+              case "outcome": {
+                const outcome = sent.get(frame.runId);
+                sent.set(frame.runId, {
+                  items: [...(outcome?.items ?? []), ...frame.items],
+                  requests: [...(outcome?.requests ?? []), ...frame.requests],
+                  more: frame.more,
+                });
+                return Effect.void;
+              }
               case "reset":
+                sent.clear();
                 forget(key);
                 return Effect.void;
               case "live.open":

@@ -157,11 +157,14 @@ export interface MateComingInput {
 
 /**
  * The moments at which what `mateComing` says of a listed Mate changes by time alone, wall ms: its
- * arrival's window closing, its first build's grace running out. A surface that draws the line
- * redraws at the earliest of them still ahead (`useComingClock`), not on whatever else happens.
+ * arrival's window closing, its first build's grace running out, and — for one this tab made
+ * (`madeAt`) — the catch-up in which a container not listed yet still counts as coming up. A
+ * surface that draws it redraws at the earliest of them still ahead (`useComingClock`), not on
+ * whatever else happens to redraw it.
  */
 export function mateComingDeadlines(
   candidate: MateComingInput["candidate"],
+  madeAt?: number,
 ): ReadonlyArray<number> {
   const deadlines: number[] = [];
   if (candidate?.arriving !== undefined) deadlines.push(candidate.arriving.until);
@@ -169,6 +172,7 @@ export function mateComingDeadlines(
     const created = Date.parse(candidate.service.created ?? "");
     if (!Number.isNaN(created)) deadlines.push(created + FIRST_BUILD_GRACE_MS);
   }
+  if (madeAt !== undefined) deadlines.push(madeAt + CONTAINER_CATCH_UP_MS);
   return deadlines;
 }
 

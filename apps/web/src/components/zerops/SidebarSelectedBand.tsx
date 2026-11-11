@@ -222,6 +222,24 @@ export function SidebarSelectedBand({
     };
   });
 
+  const observer = useRef<ResizeObserver | null>(null);
+  // The list's observer, made before the first draw is placed: that draw too is heard from it,
+  // after the page is laid out. Placed in its own layout effect, the first draw of the menu
+  // forced the style and layout of the whole page (20 ms at a load).
+  useLayoutEffect(() => {
+    const root = band.current?.parentElement ?? null;
+    if (root === null || typeof ResizeObserver === "undefined") return;
+    const watching = new ResizeObserver(() => {
+      place.current();
+    });
+    observer.current = watching;
+    watching.observe(root);
+    return () => {
+      watching.disconnect();
+      observer.current = null;
+    };
+  }, []);
+
   // After every draw of the menu, before it paints, and whenever the list
   // changes size without a draw of its own: a crew's line arriving, a
   // project's fold opening, a font settling. Both are heard from the list's
@@ -231,7 +249,6 @@ export function SidebarSelectedBand({
   // page (~2,000 elements) on every click of a menu row, before the rest of
   // the draw had even been written. Observing the list anew asks for one
   // call after this draw's layout, as observing it does the first time.
-  const observer = useRef<ResizeObserver | null>(null);
   useLayoutEffect(() => {
     key.current = current ?? undefined;
     const root = band.current?.parentElement ?? null;
@@ -251,20 +268,6 @@ export function SidebarSelectedBand({
     pressTo = move;
     return () => {
       if (pressTo === move) pressTo = null;
-    };
-  }, []);
-
-  useLayoutEffect(() => {
-    const root = band.current?.parentElement ?? null;
-    if (root === null || typeof ResizeObserver === "undefined") return;
-    const watching = new ResizeObserver(() => {
-      place.current();
-    });
-    observer.current = watching;
-    watching.observe(root);
-    return () => {
-      watching.disconnect();
-      observer.current = null;
     };
   }, []);
 
