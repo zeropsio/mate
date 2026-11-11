@@ -521,6 +521,11 @@ export const LinkedMate = Schema.Struct({
 export type LinkedMate = typeof LinkedMate.Type;
 
 const Ticket = Schema.String.check(Schema.isMinLength(1));
+/**
+ * The UUID of the admission of the project key a link runs under (`state.admission`), not a secret:
+ * one that differs from the one the Mate last heard is a new admission, even of the same key.
+ */
+const Admission = Schema.String.check(Schema.isMinLength(1));
 const CredentialFingerprint = Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/u));
 
 /** The protocol of the operator's `command` frame and its `command-result` this build speaks. */
@@ -604,7 +609,12 @@ export const KeyLinkDown = Schema.Union([
   AutoUpdatePolicyDown,
   ...UsageLinkDown.members,
   Schema.Struct({ type: Schema.Literal("ping") }),
-  Schema.Struct({ type: Schema.Literal("state"), mate: LinkedMate, ...StateExtras }),
+  Schema.Struct({
+    type: Schema.Literal("state"),
+    mate: LinkedMate,
+    admission: Admission,
+    ...StateExtras,
+  }),
   Schema.Struct({
     type: Schema.Literal("ticket"),
     ticket: Ticket,
