@@ -34,6 +34,9 @@ branch's commits not yet on main. Nothing per turn is stored.
 - **Runtime mode**: The safety and access policy for a session.
 - **Interaction mode**: The agent’s style of interaction.
 - **Assistant delivery mode**: The policy for delivering assistant text to a conversation.
+- **Access ended**: A person's connection to the Mate closed for a reason of authority: their HQ
+  session ended, their role on the Mate's project changed, or they are no longer open. Their next
+  ticket admits them at the role they hold then.
 - **Snapshot**: A point-in-time view of state.
 - **Model manifest**: Provider-owned model catalogue metadata.
 

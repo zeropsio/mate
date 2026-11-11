@@ -1,8 +1,8 @@
 /**
  * Live sockets are the sessions; all authorization reads the access list that decides now
  * (`ZeropsMateAccessList`). A ticket HQ sends is admitted only for a person that list opens for;
- * a list that changes closes the connections of whoever it no longer opens for, and one that only
- * aged closes nothing. A Chief's door is that list's too: it opens for whom HQ lets open the Chief
+ * a list that changes closes the connections of whoever it no longer opens for or holds at another
+ * role than it admitted them at, and one that only aged closes nothing. A Chief's door is that list's too: it opens for whom HQ lets open the Chief
  * (`ZeropsChiefOpener`, read by the list), so its tickets and connections follow that answer.
  */
 import type { MateAccessMember } from "@t3tools/shared/mateAccess";
@@ -15,7 +15,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
-import { ticketVerdict, ZeropsMateAccessList } from "./ZeropsMateAccessList.ts";
+import { type AccessList, ticketVerdict, ZeropsMateAccessList } from "./ZeropsMateAccessList.ts";
 import { type TicketFrame, ZeropsTicketDoor } from "./ZeropsTicketDoor.ts";
 
 export interface ConnectionIdentity {
@@ -30,8 +30,15 @@ interface ConnectionInput {
   readonly id: string;
   readonly userId: string;
   readonly sessionId: string;
+  /** What a later list is compared with; authorization reads the live role instead. */
+  readonly admittedRole: MateAccessMember["role"];
   readonly close: Effect.Effect<void>;
 }
+/** Whose connections end: one HQ session's, or all of one person's. */
+export type ConnectionSubject = { readonly session: string } | { readonly person: string };
+
+const openMember = (list: AccessList | undefined, userId: string) =>
+  list?.members.find((member) => member.userId === userId && member.visibility === "open");
 
 export class ZeropsConnections extends Context.Service<
   ZeropsConnections,
@@ -48,9 +55,14 @@ export class ZeropsConnections extends Context.Service<
     ) => Effect.Effect<Option.Option<ConnectionIdentity>>;
     readonly current: (id: string) => Effect.Effect<Option.Option<ConnectionIdentity>>;
     readonly close: (id: string) => Effect.Effect<void>;
-    // GAP-RIGHTS-4: a connection never sees its person's token revoked; it ends at sign-out or a
-    // list change; see docs/architecture/identity-and-access.md#gap-rights (mate-hq).
-    readonly closeSession: (sessionId: string) => Effect.Effect<void>;
+    /**
+     * The only way a connection ends for a reason of authority. A session's end also drops its
+     * tickets; a person's touches none, since admission judges each against the list then.
+     *
+     * GAP-RIGHTS-4: a connection never sees its person's token revoked; it ends at sign-out or a
+     * list change; see docs/architecture/identity-and-access.md#gap-rights (mate-hq).
+     */
+    readonly end: (subject: ConnectionSubject) => Effect.Effect<void>;
   }
 >()("t3/zerops/ZeropsConnections") {}
 
@@ -66,11 +78,7 @@ export const make = Effect.gen(function* () {
   const current = Effect.fn("ZeropsConnections.current")(function* (id: string) {
     const connection = connections.get(id);
     if (connection === undefined) return Option.none<ConnectionIdentity>();
-    const list = yield* access.current;
-    if (Option.isNone(list)) return Option.none<ConnectionIdentity>();
-    const member = list.value.members.find(
-      (member) => member.userId === connection.userId && member.visibility === "open",
-    );
+    const member = openMember(Option.getOrUndefined(yield* access.current), connection.userId);
     return member === undefined
       ? Option.none<ConnectionIdentity>()
       : Option.some({
@@ -86,8 +94,23 @@ export const make = Effect.gen(function* () {
     connections.delete(id);
     if (connection !== undefined) yield* connection.close;
   });
+  const removeWhere = Effect.fn("ZeropsConnections.removeWhere")(function* (
+    matches: (connection: ConnectionInput) => boolean,
+  ) {
+    for (const [id, connection] of connections) if (matches(connection)) yield* remove(id);
+  });
+  const endPerson = (person: string) => removeWhere((connection) => connection.userId === person);
+  const endSession = Effect.fn("ZeropsConnections.endSession")(function* (session: string) {
+    yield* tickets.end({ session });
+    for (const frame of pending) if (frame.sessionId === session) pending.delete(frame);
+    yield* removeWhere((connection) => connection.sessionId === session);
+  });
   const reconcile = Effect.gen(function* () {
-    for (const id of connections.keys()) if (Option.isNone(yield* current(id))) yield* remove(id);
+    const list = yield* access.current;
+    if (Option.isNone(list)) return;
+    for (const connection of connections.values())
+      if (openMember(list.value, connection.userId)?.role !== connection.admittedRole)
+        yield* endPerson(connection.userId);
   });
   // Every change of the list, a recompute's or a Zerops frame's, re-evaluates the connections.
   yield* Stream.runForEach(access.changes, () => lock.withPermits(1)(reconcile)).pipe(
@@ -122,35 +145,33 @@ export const make = Effect.gen(function* () {
       Effect.gen(function* () {
         const ticket = yield* tickets.consume(firstFrame);
         if (Option.isNone(ticket)) return Option.none<ConnectionIdentity>();
-        const connection: ConnectionInput = {
-          connectionId: yield* crypto.randomUUIDv4.pipe(Effect.orDie),
-          id: ticket.value.ticket,
-          userId: ticket.value.userId,
-          sessionId: ticket.value.sessionId,
-          close,
-        };
-        if (connections.has(connection.id)) return Option.none<ConnectionIdentity>();
+        const { ticket: id, userId, sessionId } = ticket.value;
+        if (connections.has(id)) return Option.none<ConnectionIdentity>();
         const now = yield* Clock.currentTimeMillis;
         const list = Option.getOrUndefined(yield* access.current);
-        if (ticketVerdict(list, connection.userId, now) !== "open")
+        const member = openMember(list, userId);
+        if (member === undefined || ticketVerdict(list, userId, now) !== "open")
           return Option.none<ConnectionIdentity>();
-        connections.set(connection.id, connection);
-        const identity = yield* current(connection.id);
-        if (Option.isNone(identity)) connections.delete(connection.id);
-        return identity;
+        const connectionId = yield* crypto.randomUUIDv4.pipe(Effect.orDie);
+        connections.set(id, {
+          connectionId,
+          id,
+          userId,
+          sessionId,
+          admittedRole: member.role,
+          close,
+        });
+        return Option.some({ ticket: id, connectionId, userId, sessionId, role: member.role });
       }).pipe(lock.withPermits(1)),
     current,
     close: (id) =>
       Effect.sync(() => {
         connections.delete(id);
       }),
-    closeSession: (sessionId) =>
-      Effect.gen(function* () {
-        yield* tickets.closeSession(sessionId);
-        for (const frame of pending) if (frame.sessionId === sessionId) pending.delete(frame);
-        for (const [id, connection] of connections)
-          if (connection.sessionId === sessionId) yield* remove(id);
-      }).pipe(lock.withPermits(1)),
+    end: (subject) =>
+      ("session" in subject ? endSession(subject.session) : endPerson(subject.person)).pipe(
+        lock.withPermits(1),
+      ),
   });
 });
 export const layer = Layer.effect(ZeropsConnections, make);

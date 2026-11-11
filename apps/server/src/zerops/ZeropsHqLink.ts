@@ -252,7 +252,8 @@ export interface ZeropsHqLinkOptions {
    * `ticket_refused` (`ZeropsConnections.ticket`).
    */
   readonly ticket?: (frame: TicketFrame) => Effect.Effect<Effect.Effect<"open" | TicketRefusal>>;
-  readonly closeSession?: (sessionId: string) => Effect.Effect<void>;
+  /** Ends a session HQ closed (`ZeropsConnections.end`). */
+  readonly end?: (subject: { readonly session: string }) => Effect.Effect<void>;
   /** Hands on whom each state lets open a Chief, if it names one (`ZeropsChiefOpener.named`). */
   readonly chiefOpener?: (userId: string | null | undefined) => Effect.Effect<void>;
   /** Hands on whom each state names the Mate's owner, `null` for none (`ZeropsMateOwner.named`). */
@@ -679,7 +680,7 @@ export const makeZeropsHqLink = (
                   Effect.asVoid,
                 );
           case "close-session":
-            return options.closeSession?.(frame.sessionId) ?? Effect.void;
+            return options.end?.({ session: frame.sessionId }) ?? Effect.void;
           default:
             return usage?.receive(frame) ?? Effect.void;
         }
@@ -1037,7 +1038,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
         keyStore: key,
         connect: connectLinkSocket,
         ticket: connections.ticket,
-        closeSession: connections.closeSession,
+        end: connections.end,
         // HQ's state is where the Mate learns who may open its Chief: the one source behind the
         // access list's Chief filter, which the tickets and connections follow.
         chiefOpener: chiefOpener.named,

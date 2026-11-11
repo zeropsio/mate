@@ -122,7 +122,7 @@ it.layer(NodeServices.layer)("EnvironmentAuth Zerops connections", (it) => {
         yield* Effect.gen(function* () {
           const { auth, connections, set } = yield* setup;
           yield* connections.admit({ ticket: "opaque-ticket" }, Effect.void);
-          if (cause === "sign-out") yield* connections.closeSession("hq-session");
+          if (cause === "sign-out") yield* connections.end({ session: "hq-session" });
           // Zerops no longer lets Jan in: the list refuses him.
           else yield* set({ jan: "NO_ACCESS" });
           assert.isTrue(

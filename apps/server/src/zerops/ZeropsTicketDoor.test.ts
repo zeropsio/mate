@@ -65,7 +65,7 @@ describe("ZeropsTicketDoor", () => {
     Effect.gen(function* () {
       const door = yield* make;
       yield* door.heard(ticket);
-      yield* door.closeSession("hq-session");
+      yield* door.end({ session: "hq-session" });
       yield* door.heard(ticket);
       assert.isTrue(Option.isNone(yield* door.consume({ ticket: "hq-ticket" })));
     }),
