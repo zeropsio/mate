@@ -109,6 +109,8 @@ import { installMateDiagnostics } from "~/zerops/diagnostics";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { ZeropsReviewProvider } from "~/zerops/ZeropsReviewProvider";
+import { validatePipelineSearch } from "~/zerops/pipelineSearch";
+import { PipelineDialogHost } from "~/components/zerops/pipeline/PipelineDialog";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 const NO_ENVIRONMENT = EnvironmentId.make("none");
@@ -121,6 +123,8 @@ installMateDiagnostics();
 
 export const Route = createRootRoute({
   beforeLoad: () => ({ authGateState: { status: "hosted-static" } as AuthGateState }),
+  // Every page carries the pipeline dialog's address (`zerops/pipelineSearch.ts`).
+  validateSearch: validatePipelineSearch,
   component: RootRouteView,
   // The whole page's wait (a route's guard holds every route above it): nothing drawn into #root,
   // so index.html's frame stands (`bootFrame.ts`) — never a "Loading…" in place of the app.
@@ -353,6 +357,7 @@ function SignedInRootRouteView() {
           <AddressesSheetHost />
           <ZeropsDeleteApplicationHost />
           <PutLiveHost />
+          <PipelineDialogHost />
         </CommandPalette>
       </ZeropsReviewProvider>
     </AgentAdmissionComposition>
