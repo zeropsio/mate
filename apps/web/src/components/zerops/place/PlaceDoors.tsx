@@ -142,8 +142,10 @@ export function usePlaceSitesDrawn(groupId: string): boolean {
 
 /**
  * The whole project's Sites, in its page's header: the worded door a place's page has, opening
- * every address of the project grouped by where it runs (`PageSites`). Draws nothing where the
- * project answers nowhere (`answers`), or where the menu has not drawn it.
+ * every address of the project grouped by where it runs (`PageSites`). It says **All sites**: the
+ * page has a Sites door on every place and every Mate, each opening only its own (the owner,
+ * 2026-11-11: "now we have ten sites button which each do something diff"). Draws nothing where
+ * the project answers nowhere (`answers`), or where the menu has not drawn it.
  *
  * Props: `groupId`; `name` (the project's); `answers` (it has an address or a Mate's preview:
  * `projectAnswers(…)`).
@@ -160,11 +162,11 @@ export function ProjectSitesDoor({
   const drawn = useProjectSitesOfGroup(answers ? groupId : undefined);
   if (drawn === undefined) return null;
   return (
-    <Door label={`Sites · ${name}`} look="page">
+    <Door label={`All sites · ${name}`} look="page">
       {(button) => (
         <PageSites sites={drawn} trigger={button}>
           <GlobeIcon aria-hidden="true" />
-          <span>Sites</span>
+          <span>All sites</span>
           <ChevronDownIcon aria-hidden="true" className={MARK.page} />
         </PageSites>
       )}
