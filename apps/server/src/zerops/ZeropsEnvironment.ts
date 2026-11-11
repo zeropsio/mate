@@ -67,8 +67,6 @@ export interface ZeropsEnvironment {
   readonly hostname: string | undefined;
   /** zcp's status file (`ZCP_STATUS_FILE`), when this zcp writes one. */
   readonly statusFile: string | undefined;
-  /** zcp's Mate update state (`ZCP_MATE_UPDATE_STATE_FILE`), written before it switches versions. */
-  readonly mateUpdateStateFile: string | undefined;
   /** Where this boot reports its progress to zcp until it accepts commands (`ZCP_MATE_BOOT_FILE`). */
   readonly mateBootFile?: string | undefined;
   /** Where the Mate's state is kept for zcp (`ZCP_MATE_STATE_FILE`); none: no state file is written. */
@@ -89,7 +87,6 @@ export interface ZeropsEnvironmentInput {
   readonly serviceId?: string | undefined;
   readonly hostname?: string | undefined;
   readonly statusFile?: string | undefined;
-  readonly mateUpdateStateFile?: string | undefined;
   readonly mateBootFile?: string | undefined;
   readonly mateStateFile?: string | undefined;
 }
@@ -188,7 +185,6 @@ export const resolveZeropsEnvironment = (
     serviceId: present(input.serviceId),
     hostname: present(input.hostname),
     statusFile: present(input.statusFile),
-    mateUpdateStateFile: present(input.mateUpdateStateFile),
     mateBootFile: present(input.mateBootFile),
     mateStateFile: present(input.mateStateFile),
     envStorePath: ZEMBED_ENV_STORE_PATH,

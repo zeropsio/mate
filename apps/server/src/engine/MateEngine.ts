@@ -134,13 +134,14 @@ export interface MateEngineService {
   /**
    * The engine's boot (`EngineBoot`), in the startup's reactor scope: reads every record and
    * reconciles the restart, acting on nothing outside the state directory. Its failure is the
-   * server's failed boot: a server whose engine is off never serves; `strict` fails it on a record
-   * it cannot read or recover (the boot an update's commit waits on). It returns the engine's
+   * server's failed boot: a server whose engine is off never serves. It returns the engine's
    * opening, which cannot fail: SPI ingestion, the outbox's effects and wakes, run in that scope.
    */
-  readonly boot: (options?: {
-    readonly strict?: boolean;
-  }) => Effect.Effect<Effect.Effect<void, never, Scope.Scope>, EngineStoreError, Scope.Scope>;
+  readonly boot: () => Effect.Effect<
+    Effect.Effect<void, never, Scope.Scope>,
+    EngineStoreError,
+    Scope.Scope
+  >;
   /**
    * Every conversation as the grafts read it (HQ overview, attention, the menu row), and those
    * whose view could not be read now: a reader never takes an unread one for none.

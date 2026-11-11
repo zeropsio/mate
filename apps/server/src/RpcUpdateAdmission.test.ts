@@ -7,7 +7,7 @@ import { makeRpcUpdateAdmission } from "./RpcUpdateAdmission.ts";
 describe("client work during an update", () => {
   it.effect("accepted work finishes while new work is explicitly refused", () =>
     Effect.gen(function* () {
-      const admission = yield* makeRpcUpdateAdmission(false);
+      const admission = yield* makeRpcUpdateAdmission();
       const accepted = yield* Deferred.make<void>();
       const completed = yield* Deferred.make<void>();
       const work = yield* admission
@@ -31,7 +31,7 @@ describe("client work during an update", () => {
   );
   it.effect.each([true, false])("answers and stops cross a closed fence: %s", (continuation) =>
     Effect.gen(function* () {
-      const admission = yield* makeRpcUpdateAdmission(false);
+      const admission = yield* makeRpcUpdateAdmission();
       yield* admission.begin;
       const result = yield* admission
         .run(Effect.succeed("settled"), "updating", continuation)

@@ -152,29 +152,7 @@ export const runZeropsMateUpdate = (
     const serverVersion = deps.serverVersion;
     // Every answer names the boot that gave it, so the client judges a reboot against it.
     const boot = deps.bootId === undefined ? {} : { bootId: deps.bootId };
-    // Only a container restart gets this Mate current: the same verb restarts it once idle, and
-    // the answer says so, whatever the client read before it pressed.
-    if ((yield* deps.zeropsMateUpdate.current)?.restart?.needed === true) {
-      const start = yield* deps.zeropsMateUpdate.restart;
-      return start.started
-        ? {
-            action: "none" as const,
-            restarted: false,
-            started: true,
-            restartAttempt: start.attempt,
-            restartTarget: start.target,
-            restartStartedAt: start.startedAt,
-            ...boot,
-            serverVersion,
-          }
-        : {
-            action: "none" as const,
-            restarted: false,
-            error: start.reason,
-            ...boot,
-            serverVersion,
-          };
-    }
+    // Update and restart are one verb: zcp decides what it means for this container.
     const result = yield* deps.zeropsCli.mateUpdate().pipe(
       Effect.catchTags({
         ZeropsCliNotFound: () =>
@@ -190,7 +168,7 @@ export const runZeropsMateUpdate = (
       }),
     );
     if (result.action === "updated") {
-      yield* deps.zeropsMateUpdate.refresh;
+      yield* deps.zeropsMateUpdate.check;
     }
     return { ...result, ...boot, serverVersion };
   });

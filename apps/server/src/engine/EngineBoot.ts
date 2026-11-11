@@ -16,11 +16,9 @@
  *
  * Each page of events a load folds is one unit of the boot receipt's progress (`EngineStore.load`),
  * and so is each outcome told again and each conversation recovered (`reconcileAtBoot`): the boot
- * keeps it moving however many records there are. A record that cannot be read or told
- * is, in a strict boot (one an update's commit waits on), the boot's failure: the update is then
- * rolled back onto the state it copied. Otherwise it is logged, and a conversation that cannot be
- * told is retried on its own with backoff once the engine opens; its cut work is closed first, so
- * none of it runs meanwhile.
+ * keeps it moving however many records there are. A record that cannot be read or told is
+ * logged, and a conversation that cannot be told is retried on its own with backoff once the
+ * engine opens; its cut work is closed first, so none of it runs meanwhile.
  *
  * The opening acts outward and cannot fail: the pump drains the subscription its layer made, the
  * scheduler fires what came due, the worker takes the outbox, deferred recoveries are retried.
@@ -59,8 +57,6 @@ export interface BootReport {
 
 export interface EngineBootOptions {
   readonly worker?: EffectWorkerOptions;
-  /** A record that cannot be read or told fails the boot instead of waiting for a retry. */
-  readonly strict?: boolean;
 }
 
 /** The booted engine: what its boot did, and its opening, run in the engine's scope. */
@@ -113,7 +109,6 @@ export const bootEngine = (bootId: BootId, options: EngineBootOptions = {}) =>
       const owner = ConversationId.make(row.conversation_id);
       const read = yield* Effect.exit(conversations.read(owner));
       if (read._tag === "Failure") {
-        if (options.strict === true) return yield* Effect.failCause(read.cause);
         yield* Effect.logWarning("engine boot: a record could not be read", {
           conversation: owner,
           cause: read.cause,
@@ -121,12 +116,6 @@ export const bootEngine = (bootId: BootId, options: EngineBootOptions = {}) =>
       }
     }
     const { deferred, ...reconciled } = yield* worker.reconcileAtBoot(restartFor, lastWordsFor);
-    if (options.strict === true && deferred.length > 0) {
-      return yield* new EngineStoreError({
-        operation: "boot",
-        cause: new Error(`${deferred.length} conversation(s) could not be recovered`),
-      });
-    }
     const report = {
       bootId,
       read: owners.length,

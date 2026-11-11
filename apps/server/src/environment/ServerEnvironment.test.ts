@@ -259,7 +259,6 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("ServerEnvironmen
                   serviceId: undefined,
                   hostname: undefined,
                   statusFile: undefined,
-                  mateUpdateStateFile: undefined,
                   envStorePath: "/etc/zerops-zembed/env.json",
                 },
               }),
@@ -303,7 +302,6 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("ServerEnvironmen
           serviceId: undefined,
           hostname: undefined,
           statusFile: undefined,
-          mateUpdateStateFile: undefined,
           envStorePath: "/etc/zerops-zembed/env.json",
         },
       };
@@ -327,10 +325,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("ServerEnvironmen
               checkedAt: "2026-09-09T00:00:00Z",
             }),
             changes: Stream.empty,
-            refresh: Effect.void,
-            reread: Effect.void,
             check: Effect.die("not used"),
-            restart: Effect.die("not used"),
           }),
         ),
       );

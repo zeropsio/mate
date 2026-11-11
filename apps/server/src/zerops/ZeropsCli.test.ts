@@ -104,18 +104,6 @@ describe("ZeropsCli.mateStatus", () => {
   );
 });
 
-describe("zcp versions", () => {
-  it.each([
-    { version: "v9.226.0", expected: true },
-    { version: "9.226.0", expected: true },
-    { version: "v9.227.1", expected: true },
-    { version: "v9.225.9", expected: false },
-    { version: "dev", expected: false },
-  ])("zcp $version can restart its Mate: $expected", ({ version, expected }) => {
-    expect(ZeropsCli.zcpAtLeast(version, ZeropsCli.ZCP_SELF_RESTART_SINCE)).toBe(expected);
-  });
-});
-
 describe("ZeropsCli.mateStatus reads zcp's own reading", () => {
   it.effect.each([
     {
@@ -167,86 +155,6 @@ describe("ZeropsCli.mateStatus reads zcp's own reading", () => {
       expect({ zcp: result.zcp, restartNeeded: result.restartNeeded, why: result.why }).toEqual(
         expected,
       );
-    }),
-  );
-});
-
-describe("ZeropsCli.selfRestart", () => {
-  const calls = () => NodePath.join(testTempDir("zcp-calls-"), "calls");
-  const restart = (script: string, file?: string): CliEffect =>
-    ZeropsCli.make({
-      command: process.execPath,
-      baseArgs: [
-        "-e",
-        `${file === undefined ? "" : `require("node:fs").appendFileSync(${JSON.stringify(file)}, process.argv.slice(1).join(" ") + "\\n");`} ${script}`,
-      ],
-      cwd: process.cwd(),
-    });
-
-  it.effect("asks zcp to restart its own service, and reads the platform's acceptance", () =>
-    Effect.gen(function* () {
-      const file = calls();
-      const result = yield* run(
-        restart(`process.stdout.write('{"processId":"proc-1"}')`, file),
-        (cli) => cli.selfRestart,
-      );
-      expect(result).toEqual({ outcome: "accepted", process: "proc-1" });
-      expect(NodeFS.readFileSync(file, "utf8").trim()).toBe("self restart --json");
-    }),
-  );
-
-  it.effect.each([
-    {
-      name: "a restart the platform refused reads refused, in zcp's words",
-      script: `process.stdout.write('{"error":"the project token may not restart zcp","refused":true}'); process.exit(1)`,
-      reason: "the project token may not restart zcp",
-    },
-    {
-      name: "a zcp that cannot be run reads refused: nothing was asked",
-      script: undefined,
-      reason: "Zerops Control Plane could not be run",
-    },
-  ])("$name", ({ script, reason }) =>
-    Effect.gen(function* () {
-      const result = yield* run(
-        script === undefined
-          ? ZeropsCli.make({
-              command: "definitely-not-a-real-zcp",
-              baseArgs: [],
-              cwd: process.cwd(),
-            })
-          : restart(script),
-        (cli) => cli.selfRestart,
-      );
-      expect(result).toEqual({ outcome: "refused", reason });
-    }),
-  );
-
-  // zcp says `error` for any failure of its restart call, a timeout included: only `refused`
-  // says the platform will not restart it.
-  it.effect("an error zcp does not call a refusal reads uncertain, in zcp's words", () =>
-    Effect.gen(function* () {
-      const result = yield* run(
-        restart(
-          `process.stdout.write('{"error":"the platform refused the restart: context deadline exceeded"}'); process.exit(1)`,
-        ),
-        (cli) => cli.selfRestart,
-      );
-      expect(result).toEqual({
-        outcome: "uncertain",
-        reason: "the platform refused the restart: context deadline exceeded",
-      });
-    }),
-  );
-
-  // The platform may have taken a restart zcp did not answer for: never read as refused.
-  it.effect("an answer zcp did not give in words reads uncertain, never refused", () =>
-    Effect.gen(function* () {
-      const result = yield* run(
-        restart(`process.stderr.write("unknown command \\"self\\"\\n"); process.exit(2)`),
-        (cli) => cli.selfRestart,
-      );
-      expect(result).toEqual({ outcome: "uncertain" });
     }),
   );
 });

@@ -3,7 +3,6 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
-import { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
 import { ServerEnvironment } from "../environment/ServerEnvironment.ts";
 import { ServerCommandReadiness } from "../spi/serverCommandReadiness.ts";
 import {
@@ -71,26 +70,14 @@ const readinessRoute = HttpRouter.add(
     });
   }),
 );
-/**
- * zcp sends commit and cancel once, with a fixed budget: the answer comes once the signal is taken,
- * never after the engine's opening the boot fence held nor after the reread of zcp's status that a
- * commit starts (a spawned `zcp mate status`). Admission stays closed until the engine is open
- * (`MateUpdateBootFence.lift`).
- */
-const releaseRoute = (path: `/${string}`) =>
-  HttpRouter.add(
-    "POST",
-    path,
-    Effect.gen(function* () {
-      if (!(yield* local)) return refused;
-      yield* yield* reopenMateUpdateAdmission;
-      if (path === "/api/mate/update/commit") yield* (yield* ZeropsMateUpdate).reread;
-      return HttpServerResponse.jsonUnsafe({ protocol: 1, reopened: true });
-    }),
-  );
-export const mateUpdateRouteLayer = Layer.mergeAll(
-  drainRoute,
-  readinessRoute,
-  releaseRoute("/api/mate/update/cancel"),
-  releaseRoute("/api/mate/update/commit"),
+/** zcp's call that no restart follows the drain it asked for: admission opens again now. */
+const cancelRoute = HttpRouter.add(
+  "POST",
+  "/api/mate/update/cancel",
+  Effect.gen(function* () {
+    if (!(yield* local)) return refused;
+    yield* reopenMateUpdateAdmission;
+    return HttpServerResponse.jsonUnsafe({ protocol: 1, reopened: true });
+  }),
 );
+export const mateUpdateRouteLayer = Layer.mergeAll(drainRoute, readinessRoute, cancelRoute);
