@@ -28,6 +28,7 @@ import {
 } from "@t3tools/shared/brand";
 
 import { afterLayout } from "../lib/afterLayout";
+import { watchIntersections, type RestingIntersections } from "../lib/restingIntersections";
 
 export interface LiveMarkParts {
   svg?: SVGSVGElement | null;
@@ -666,7 +667,7 @@ const browserHost: MarkLoopHost = {
 };
 
 let pageLoop: MarkLoop | undefined;
-let observer: IntersectionObserver | undefined;
+let observer: RestingIntersections | undefined;
 
 function onPointerMove(event: PointerEvent) {
   pageLoop?.pointerMove(event.clientX, event.clientY);
@@ -737,15 +738,13 @@ export function registerLiveMark(
   const loop = (pageLoop ??= createMarkLoop(browserHost));
   if (loop.size() === 0) startListening();
   const unregister = loop.register(root, parts, forced, options);
-  if (typeof IntersectionObserver === "function") {
-    observer ??= new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) pageLoop?.setVisible(entry.target, entry.isIntersecting);
-      },
-      { rootMargin: "120px" },
-    );
-    observer.observe(root);
-  }
+  observer ??= watchIntersections(
+    (entries) => {
+      for (const entry of entries) pageLoop?.setVisible(entry.target, entry.isIntersecting);
+    },
+    { rootMargin: "120px" },
+  );
+  observer?.observe(root);
   return () => {
     observer?.unobserve(root);
     unregister();
