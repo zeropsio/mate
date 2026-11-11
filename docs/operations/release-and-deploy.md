@@ -22,6 +22,9 @@ How mate reaches users. Each step names the file that owns its detail.
 - **Mate server release.** `node scripts/release-mate.ts` (`--minor` when the client's compatibility
   floor rises, `--dry-run` prints the plan). It calls GitHub through `gh`; set `MATE_GH` to use a
   wrapper that holds the release token instead. zcp installs the latest stable release in containers by itself.
+  A source that changed no server artifact input since the last release (the sources the published
+  artifact's sourcemaps name, plus the build tooling in `scripts/lib/server-artifact-inputs.ts`)
+  cuts no release: the script prints `nothing to release` and exits 0; version-only edits never count.
 - **Install check against a staged release.** Before promoting a release, run zcp's live seam case on
   an e2e container that has Mate enabled (`make e2e-deploy` in zeropsio/zcp, `ZCP_HOST` names the
   service): `ZCP_E2E_MATE_RELEASE=https://github.com/zeropsio/mate/releases/download/v<version>/stable.json
