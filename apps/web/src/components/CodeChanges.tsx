@@ -105,7 +105,10 @@ export interface CodeChangesProps {
 
 export function CodeChanges({ composerDraftTarget, top, commitsFor, className }: CodeChangesProps) {
   const { resolvedTheme } = useTheme();
-  const settings = useClientSettings();
+  const settings = useClientSettings((settings) => ({
+    diffIgnoreWhitespace: settings.diffIgnoreWhitespace,
+    wordWrap: settings.wordWrap,
+  }));
   const diffRenderMode = useDiffPanelStore((state) => state.diffRenderMode);
   const setDiffRenderMode = useDiffPanelStore((state) => state.setDiffRenderMode);
   const [wordWrap, setWordWrap] = useState(settings.wordWrap);

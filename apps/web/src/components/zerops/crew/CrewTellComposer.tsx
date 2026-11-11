@@ -32,6 +32,7 @@ import { useTheme } from "~/hooks/useTheme";
 import { useComposerPathSearch } from "~/lib/composerPathSearchState";
 import { cn } from "~/lib/utils";
 
+import { isPathSuggestionCurrent } from "../../../composer-logic";
 import { ComposerCommandMenu } from "../../chat/ComposerCommandMenu";
 import { MateFace } from "../primitives";
 import { CrewPress, CrewTip } from "./CrewParts";
@@ -42,6 +43,9 @@ import {
   tellPicks,
   type TellMenuItem,
 } from "./CrewTellComposer.logic";
+
+/** Reading only the trigger under the caret, before any search. */
+const NO_SEARCH = { environmentId: null, cwd: null, query: null };
 
 export interface CrewComposerLead {
   readonly name: string;
@@ -92,15 +96,16 @@ export function CrewTellComposer({
   const search = useComposerPathSearch({
     environmentId,
     cwd: caret === null ? null : treeCwd,
-    query: caret === null ? null : (tellMenu(text, caret, [])?.trigger.query ?? null),
+    query: caret === null ? null : (tellMenu(text, caret, [], NO_SEARCH)?.trigger.query ?? null),
   });
-  const menu = caret === null ? null : tellMenu(text, caret, search.entries);
+  const menu = caret === null ? null : tellMenu(text, caret, search.entries, search.searchedTarget);
   const items = menu?.items ?? [];
   const active = items.find((item) => item.id === highlighted) ?? items[0];
 
   const pick = useCallback(
     (item: TellMenuItem) => {
       if (menu === null) return;
+      if (!isPathSuggestionCurrent(item.searchTarget, menu.trigger, environmentId, treeCwd)) return;
       const next = pickTellItem(text, menu.trigger, item);
       setText(next.text);
       setCaret(null);
@@ -109,7 +114,7 @@ export function CrewTellComposer({
         input.current?.setSelectionRange(next.cursor, next.cursor);
       });
     },
-    [menu, text],
+    [environmentId, menu, text, treeCwd],
   );
 
   const command = tellPayload(text, lead === null ? picked : []);
