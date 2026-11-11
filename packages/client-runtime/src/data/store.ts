@@ -2,7 +2,7 @@
  * The account's store: its state behind the one reducer, and keyed publication.
  * Every read key — a fact, a scope's membership, a project's running work, a stream — has its own
  * atom, created on first read; a reduction sets only the atoms of the keys it changed, inside one
- * `Atom.batch`. A reader never gets a raw record or a writable atom: facts arrive as
+ * `Atom.batch`, and a burst of them (`gather`) the keys they changed together. A reader never gets a raw record or a writable atom: facts arrive as
  * {@link PublicRead}, withheld payloads never leave.
  *
  * `dispatch` is the adapters' door, never a component's. Its one clock of its own is a stream's
@@ -74,9 +74,22 @@ export interface AccountStore {
   readonly data: AccountData;
   /** The adapters' one entry: reduces, publishes the changed keys, returns the runtime's work. */
   readonly dispatch: (input: AccountInput) => ReadonlyArray<RuntimeDirective>;
+  /**
+   * Takes a burst of input in as one publication: from here to the returned settle (or the end of
+   * this turn of the event loop, whichever comes first) every reduction still lands in `state` at
+   * once, and the keys they changed are published together, with one call of each listener. A
+   * source that delivers many frames in one turn (HQ answering every Mate's scope, a Mate
+   * adapter's write per project) rebuilds each projection once, not once per frame. A burst
+   * within a burst joins it; its settle ends both. A listener hears the burst as one change, its
+   * end state: gather only what cannot hold both edges of something a listener counts (a press
+   * counts its stream leaving and coming back, `pressWatch`) — one drain of one socket, one
+   * flush, never a stretch a source's answer to our own ask could arrive in.
+   */
+  readonly gather: () => () => void;
   readonly state: () => AccountState;
   /**
-   * Hears every reduction, after its keys are published: for the runtime's own holds, not for UI.
+   * Hears every publication, after its keys are published — a reduction's own, or a gathered
+   * burst's (`gather`), once, at its end: for the runtime's own holds, not for UI.
    * A listener reacts to a change of what it follows, by that thing's own identity or value: a
    * read is a new object on every call, and a listener that dispatches on one calls itself.
    */
@@ -225,6 +238,32 @@ export function makeAccountStore(registry: AtomRegistry.AtomRegistry): AccountSt
       ),
     );
   };
+  const publish = (changed: ReadonlySet<ReadKey>) => {
+    if (changed.size === 0) return;
+    Atom.batch(() => {
+      for (const key of changed) {
+        const atom = cells.get(key);
+        if (atom !== undefined) registry.set(atom, valueOf(state, key));
+      }
+    });
+    for (const listener of [...listeners]) listener();
+  };
+  /** The keys a burst changed so far, while one is gathered. */
+  let gathered: Set<ReadKey> | null = null;
+  const settle = () => {
+    const changed = gathered;
+    if (changed === null) return;
+    gathered = null;
+    if (!closed) publish(changed);
+  };
+  const gather = () => {
+    if (gathered === null && !closed) {
+      gathered = new Set();
+      // A burst never outlives its turn: a reader that runs later reads what was published.
+      queueMicrotask(settle);
+    }
+    return settle;
+  };
   const dispatch = (input: AccountInput): ReadonlyArray<RuntimeDirective> => {
     if (closed) return [];
     const before = input.kind === "stream" ? streamOf(state, input.key) : null;
@@ -232,13 +271,8 @@ export function makeAccountStore(registry: AtomRegistry.AtomRegistry): AccountSt
     state = reduction.state;
     if (input.kind === "stream" && before !== null)
       keepGrace(input.key, before, streamOf(state, input.key), input.now);
-    Atom.batch(() => {
-      for (const key of reduction.changed) {
-        const atom = cells.get(key);
-        if (atom !== undefined) registry.set(atom, valueOf(state, key));
-      }
-    });
-    if (reduction.changed.size > 0) for (const listener of [...listeners]) listener();
+    if (gathered === null) publish(reduction.changed);
+    else for (const key of reduction.changed) gathered.add(key);
     return reduction.directives;
   };
   const projected = new WeakMap<Projection<never, unknown>, Map<string, Atom.Atom<unknown>>>();
@@ -269,6 +303,7 @@ export function makeAccountStore(registry: AtomRegistry.AtomRegistry): AccountSt
       project,
     },
     dispatch,
+    gather,
     subscribe: (listener) => {
       listeners.add(listener);
       return () => void listeners.delete(listener);

@@ -14,7 +14,7 @@
  * origin: an update that finds no script keeps the installed worker.
  */
 
-import { outcomeOf } from "./appShell.logic";
+import { outcomeOf, PRECACHE_CALM_MS } from "./appShell.logic";
 import { installStaticRoutes, makeAppShellWorker } from "./appShellWorker";
 
 interface ExtendableEvent extends Event {
@@ -46,6 +46,7 @@ const appShell = makeAppShellWorker({
   caches,
   fetch: (input, init) => fetch(input, init),
   scope: worker.registration.scope,
+  calm: () => new Promise((resolve) => setTimeout(resolve, PRECACHE_CALM_MS)),
 });
 
 worker.addEventListener("install", (event) => {

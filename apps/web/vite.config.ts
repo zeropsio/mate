@@ -216,6 +216,34 @@ function documentTitlePlugin(): Plugin {
   };
 }
 
+/**
+ * Opens the connections every load makes first — the Zerops API's (`/user/info`) and Mate HQ's (its
+ * stream ticket) — while the bundle still downloads, not after it has run. Both are asked without
+ * cookies, so each link is `crossorigin`: the browser keeps credentialed connections apart.
+ */
+function preconnectPlugin(): Plugin {
+  return {
+    name: "mate:preconnect",
+    transformIndexHtml() {
+      const origins = [
+        process.env.VITE_ZEROPS_API_URL?.trim() || PRODUCTION_ZEROPS_API_ORIGIN,
+        process.env.VITE_HQ_ORIGIN?.trim(),
+      ].flatMap((url) => {
+        try {
+          return url ? [new URL(url).origin] : [];
+        } catch {
+          return [];
+        }
+      });
+      return [...new Set(origins)].map((href) => ({
+        tag: "link",
+        attrs: { rel: "preconnect", href, crossorigin: "" },
+        injectTo: "head-prepend" as const,
+      }));
+    },
+  };
+}
+
 function devCompressionPlugin(): Plugin {
   return {
     name: "t3code:dev-compression",
@@ -238,6 +266,8 @@ function bundleCompositionPlugin(): Plugin {
     name: "mate:bundle-composition",
     apply: "build",
     generateBundle(_options, bundle) {
+      const relative = (id: string) =>
+        id.replace(`${import.meta.dirname.replace(/\/apps\/web$/u, "")}/`, "");
       this.emitFile({
         type: "asset",
         fileName: "bundle-composition.json",
@@ -253,8 +283,12 @@ function bundleCompositionPlugin(): Plugin {
                         dynamicImports: chunk.dynamicImports,
                         modules: Object.fromEntries(
                           Object.entries(chunk.modules).map(([id, module]) => [
-                            id.replace(`${import.meta.dirname.replace(/\/apps\/web$/u, "")}/`, ""),
-                            { renderedLength: module.renderedLength },
+                            relative(id),
+                            {
+                              renderedLength: module.renderedLength,
+                              // What it imports statically: the graph a lazy boundary is chosen from.
+                              imports: (this.getModuleInfo(id)?.importedIds ?? []).map(relative),
+                            },
                           ]),
                         ),
                       },
@@ -366,6 +400,8 @@ const allowedHosts = configuredAllowedHosts;
 // desktop staging build, a local `vp build`) names production's, as `zerops.yml` does for `prod`;
 // `vite dev` names alfa's, so a dev server never writes to the shared production HQ.
 const PRODUCTION_HQ_ORIGIN = "https://mate-hq.zerops.io";
+/** The platform a build talks to when it names none (`DEFAULT_ZEROPS_API_BASE`, client-runtime). */
+const PRODUCTION_ZEROPS_API_ORIGIN = "https://api.app-prg1.zerops.io";
 const ALFA_HQ_ORIGIN = "https://hq-31d9-8080.prg1.zerops.app";
 
 export default defineConfig(({ command }) => {
@@ -375,6 +411,7 @@ export default defineConfig(({ command }) => {
     assetsInclude: ["**/*.wasm"],
     plugins: [
       documentTitlePlugin(),
+      preconnectPlugin(),
       devCompressionPlugin(),
       ...(process.env.T3CODE_WEB_ANALYZE === "1" ? [bundleCompositionPlugin()] : []),
       ...(base === "/" && ["app-shell", "retire"].includes(configuredAppShellWorker)

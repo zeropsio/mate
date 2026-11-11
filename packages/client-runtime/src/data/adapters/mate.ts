@@ -26,7 +26,6 @@
  * @module data/adapters/mate
  */
 import type { EnvironmentId } from "@t3tools/contracts";
-import { Atom } from "effect/reactivity";
 
 import {
   readZeropsContainer,
@@ -1196,21 +1195,23 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
   function flush(): void {
     scheduled = false;
     if (disposed) return;
-    do {
-      while (queue.length > 0) queue.shift()!();
-      join();
-      allocate();
-      join();
-    } while (queue.length > 0);
-    scheduleProbes();
-    persistIntents();
-    // One publication for the turn: each Mate project's rows and each link's events are a
-    // reduction of their own, and published one by one each rebuilt the menu's projections (a
-    // reload's ~160 ms of main thread across its Mates).
-    Atom.batch(() => {
+    // One publication of the turn: every project's written rows together. What the links are
+    // told after it (`followLinks`) reads what was published, so it stays outside.
+    const settle = store.gather();
+    try {
+      do {
+        while (queue.length > 0) queue.shift()!();
+        join();
+        allocate();
+        join();
+      } while (queue.length > 0);
+      scheduleProbes();
+      persistIntents();
       write();
-      followLinks();
-    });
+    } finally {
+      settle();
+    }
+    followLinks();
     if (publish()) for (const listener of listeners) listener();
   }
 

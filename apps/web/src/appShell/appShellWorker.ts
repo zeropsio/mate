@@ -30,6 +30,12 @@ export interface AppShellWorkerHost {
   readonly fetch: (input: Request | string, init?: RequestInit) => Promise<Response>;
   /** The worker's registration scope (`self.registration.scope`). */
   readonly scope: string;
+  /**
+   * Settles once a page that just began loading has had the network to itself
+   * (`PRECACHE_CALM_MS`): the files kept for it are fetched after, never beside its boot. Absent:
+   * they are fetched at once.
+   */
+  readonly calm?: () => Promise<void>;
 }
 
 /** Work that outlives the answer (`event.waitUntil`). */
@@ -130,7 +136,7 @@ export function makeAppShellWorker(host: AppShellWorkerHost) {
     const running = inFlight.get(body);
     if (running !== undefined) return running;
     const headers = storedHeaders(response);
-    const run = keeping.then(() => keepPage(shells, body, headers));
+    const run = keeping.then(() => host.calm?.()).then(() => keepPage(shells, body, headers));
     keeping = outcomeOf(run);
     inFlight.set(body, run);
     void outcomeOf(run).then(() => inFlight.delete(body));
