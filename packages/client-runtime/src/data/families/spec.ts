@@ -62,8 +62,10 @@ export interface ZeropsFamilySource<Value> {
    * Whether the organization's search may be refused to a viewer who reads the rest of it (a
    * member without organization read answers 401 or 403 there): that refusal is this scope's
    * alone — never the link's, never its session's — until the person tries again.
+   * `any-refusal`: any definitive refusal too (`400`, `404`, `422`), for a scope whose search Zerops
+   * may answer however it refuses a viewer — billing's, whose failure must never cost the rest.
    */
-  readonly refusedAlone?: boolean;
+  readonly refusedAlone?: boolean | "any-refusal";
   /** The owner's answer to "gone or not yours?" (404 / 403), where leaving the scope asks it. */
   readonly verifyPath?: (id: string) => string;
   /**

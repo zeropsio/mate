@@ -13,6 +13,14 @@
  * a Chief (`chiefOffered`). On the rail the photo alone opens it.
  */
 
+import { useAtomValue } from "@effect/atom-react";
+import {
+  organizationBillingAtom,
+  type BillingTone,
+  type OrganizationBilling,
+} from "@t3tools/client-runtime/data";
+import { Atom } from "effect/reactivity";
+import { formatUsd } from "@t3tools/shared/usageFormat";
 import { useLocation, useNavigate, useRouter } from "@tanstack/react-router";
 import { EllipsisIcon, LogOutIcon } from "lucide-react";
 import { createContext, useContext, useId, useMemo, useState, type ReactNode } from "react";
@@ -123,6 +131,7 @@ export function SidebarZeropsAccount({
           onOpenChange: (open: boolean) => accountMenu.setOpen(open ? control : null),
         };
   const lines = sidebarAccountLines({ name: account.name, organization: activeOrganization });
+  const credit = useAccountCredit(activeOrganization?.id ?? null);
   const role = sidebarAccountRoleParts(activeOrganization);
   const menu = (
     <MenuPopup align={collapsed ? "start" : "end"} className="w-72" side="top">
@@ -175,7 +184,13 @@ export function SidebarZeropsAccount({
       <MenuTrigger
         render={
           <button
-            aria-label={`Account: ${account.name}`}
+            // The button's name replaces its content for a screen reader: the balance and how it
+            // stands are said here, as the colour says them on the line.
+            aria-label={
+              credit === null
+                ? `Account: ${account.name}`
+                : `Account: ${account.name}, credit ${credit.amount}${credit.words === null ? "" : `, ${credit.words}`}`
+            }
             className="menu-foot-who"
             data-zerops-surface="sidebar-account"
             type="button"
@@ -193,9 +208,12 @@ export function SidebarZeropsAccount({
               paint nothing it takes back. */}
           {role === null ? null : (
             <span className="menu-foot-role" data-zerops-surface="sidebar-account-role">
-              {role.before}
-              <span data-zerops-surface="sidebar-account-organization">{role.organization}</span>
-              {role.after}
+              <span className="menu-foot-role-words">
+                {role.before}
+                <span data-zerops-surface="sidebar-account-organization">{role.organization}</span>
+                {role.after}
+              </span>
+              {credit === null ? null : <AccountCredit credit={credit} />}
             </span>
           )}
         </span>
@@ -496,4 +514,60 @@ export function SidebarZeropsAccountRow({
       }
     />
   );
+}
+
+/**
+ * The organization's balance at the end of the role line, where Zerops shows this account its
+ * finances: quiet while all is well, amber while it runs low, red once it is out or Zerops is
+ * about to stop a project for it — its words for a reader who does not see the colour. Shown
+ * once known, never a placeholder: the foot paints nothing it takes back.
+ */
+interface AccountCreditFigure {
+  readonly amount: string;
+  readonly tone: BillingTone;
+  /** How it stands, for a reader who does not see the colour; `null` while all is well. */
+  readonly words: string | null;
+}
+
+const NO_BILLING = Atom.make<OrganizationBilling | null>(null);
+
+/** The organization's balance where Zerops shows this account its finances; else `null`. */
+function useAccountCredit(orgId: string | null): AccountCreditFigure | null {
+  const billing = useAtomValue(orgId === null ? NO_BILLING : organizationBillingAtom(orgId));
+  if (billing === null || billing.kind !== "known" || billing.total === null) return null;
+  const words =
+    billing.tone === "out"
+      ? billing.total < 0
+        ? "credit below zero"
+        : "a project stops soon for lack of credit"
+      : billing.tone === "low"
+        ? "credit running low"
+        : null;
+  return { amount: compactUsd(billing.total), tone: billing.tone, words };
+}
+
+function AccountCredit({ credit }: { readonly credit: AccountCreditFigure }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="menu-foot-credit"
+      data-tone={credit.tone}
+      data-zerops-surface="sidebar-account-credit"
+    >
+      {/* A flex item trims plain spaces at its edges: the separator keeps its own. */}
+      {"\u00a0·\u00a0"}
+      {credit.amount}
+    </span>
+  );
+}
+
+const WHOLE_USD = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  maximumFractionDigits: 0,
+});
+
+/** An amount at a glance: whole dollars from $100, cents below. */
+function compactUsd(value: number): string {
+  return Math.abs(value) >= 100 ? WHOLE_USD.format(value) : formatUsd(value);
 }

@@ -82,7 +82,10 @@ function read(scope: typeof SCOPE, row: Pick<AccountRow, "family" | "value">) {
 /** The organization's record read, whether a top-up verified it, beside its balance: none. */
 function creditRead(verified: boolean, promoCredit = 0) {
   read(SCOPE, { family: "organizationCredit", value: { verified } });
-  read(BALANCE, { family: "organizationBalance", value: { credit: 0, promoCredit } });
+  read(BALANCE, {
+    family: "organizationBalance",
+    value: { organizationId: ORG, credit: 0, promoCredit, autoTopUp: null, status: "ACTIVE" },
+  });
 }
 
 function show() {
@@ -138,7 +141,7 @@ describe("the create dialog's word on credit", () => {
     show();
     act(() => creditRead(false));
     expect(said()).toBe(
-      "Zerops needs credit on this organization before it makes another project. Add credit in HQ",
+      "Zerops needs credit on this organization before it makes another project. Add credit in Zerops",
     );
     const link = tree!.root.findByType("a");
     expect(link.props.href).toBe(`https://hq.zerops.io/organizations/${ORG}`);
@@ -188,7 +191,8 @@ describe("the create dialog's word on credit", () => {
   it("reads the organization's credit while the dialog is open, and lets it go when it closes", () => {
     account(["hq"]);
     show();
-    expect(held).toEqual([`organizationCredit:${ORG}`, `organizationBalance:${ORG}`]);
+    // The balance is observed with the organization, live; the dialog holds only the record.
+    expect(held).toEqual([`organizationCredit:${ORG}`]);
     act(() => tree?.unmount());
     tree = undefined;
     expect(held).toEqual([]);

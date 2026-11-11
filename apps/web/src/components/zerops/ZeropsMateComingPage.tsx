@@ -1405,7 +1405,7 @@ export function ComingBelow({
             size="md"
             render={<a href={addCredit} rel="noreferrer" target="_blank" />}
           >
-            Add credit in HQ
+            Add credit in Zerops
           </Button>
           {/* Credit may come from another tab, another device or before a reload: *Try again*
               stands beside the way to HQ for as long as the refusal does. */}

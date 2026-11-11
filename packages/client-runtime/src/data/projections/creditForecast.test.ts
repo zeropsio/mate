@@ -46,7 +46,14 @@ const credit = (verified: boolean): ReadonlyArray<AccountInput> => [
 /** The organization's balance read: its topped-up and its promo credit. */
 const balance = (topUp: number, promoCredit: number): ReadonlyArray<AccountInput> => [
   ...opening(BALANCE),
-  ...answer(BALANCE, { family: "organizationBalance", value: { credit: topUp, promoCredit } }, 1),
+  ...answer(
+    BALANCE,
+    {
+      family: "organizationBalance",
+      value: { organizationId: ORG, credit: topUp, promoCredit, autoTopUp: null, status: "ACTIVE" },
+    },
+    1,
+  ),
 ];
 const NO_BALANCE = balance(0, 0);
 const failed = event(CREDIT, {
@@ -177,7 +184,16 @@ describe("whether a new project waits for credit, before Create", () => {
       recordAnswered,
       answer(
         BALANCE,
-        { family: "organizationBalance", value: { credit: 0, promoCredit: 0 } },
+        {
+          family: "organizationBalance",
+          value: {
+            organizationId: ORG,
+            credit: 0,
+            promoCredit: 0,
+            autoTopUp: null,
+            status: "ACTIVE",
+          },
+        },
         reopened.streams.get(BALANCE)!.generation,
       ),
     );
@@ -203,7 +219,16 @@ describe("whether a new project waits for credit, before Create", () => {
       reopened,
       answer(
         BALANCE,
-        { family: "organizationBalance", value: { credit: 0, promoCredit: 25 } },
+        {
+          family: "organizationBalance",
+          value: {
+            organizationId: ORG,
+            credit: 0,
+            promoCredit: 25,
+            autoTopUp: null,
+            status: "ACTIVE",
+          },
+        },
         reopened.streams.get(BALANCE)!.generation,
       ),
     );
@@ -236,37 +261,61 @@ describe("an organization's credit, as Zerops answers its record", () => {
 });
 
 describe("an organization's balance, as billing answers it", () => {
-  const decode = organizationBalanceFamily.sampled!.decode;
+  const decode = organizationBalanceFamily.zerops!.decode;
+  const frame = (answer: Record<string, unknown>) => ({
+    id: "status-row",
+    clientId: ORG,
+    _version: 3,
+    ...answer,
+  });
+  const noRefill = { organizationId: ORG, autoTopUp: null, status: null };
 
   it.each([
     {
       name: "with promo credit only",
       answer: { credit: 0, promoCredit: 25.5, autoTopUp: null },
-      read: { credit: 0, promoCredit: 25.5 },
+      read: { credit: 0, promoCredit: 25.5, ...noRefill },
     },
     {
       name: "with topped-up credit and no promo amount said",
       answer: { credit: 40 },
-      read: { credit: 40, promoCredit: 0 },
+      read: { credit: 40, promoCredit: 0, ...noRefill },
     },
     {
       name: "with a promo amount and no topped-up amount said",
       answer: { credit: null, promoCredit: 5 },
-      read: { credit: 0, promoCredit: 5 },
+      read: { credit: 0, promoCredit: 5, ...noRefill },
     },
     {
       name: "with nothing",
       answer: { credit: 0, promoCredit: 0 },
-      read: { credit: 0, promoCredit: 0 },
+      read: { credit: 0, promoCredit: 0, ...noRefill },
     },
   ])("reads an organization $name", ({ answer, read }) => {
-    expect(decode({ clientInfo: { accountName: "Acme" }, ...answer })).toEqual(read);
+    expect(decode(frame(answer))).toEqual({ id: "status-row", value: read, version: 3 });
+  });
+
+  // witness: packages/client-runtime/src/data/families/organizationBalance.ts | const amount = typeof value === "number" ? value : Number(value); → const amount = typeof value === "number" ? value : Number.NaN;
+  it("reads its automatic top-up, whose amounts Zerops sends as decimals", () => {
+    const answer = {
+      credit: 10,
+      promoCredit: 0,
+      autoTopUp: { threshold: "50", amount: "100.5", calendarMonthlyLimit: "300" },
+      status: "ACTIVE",
+    };
+    expect(decode(frame(answer))?.value).toEqual({
+      organizationId: ORG,
+      credit: 10,
+      promoCredit: 0,
+      autoTopUp: { threshold: 50, amount: 100.5, monthlyLimit: 300 },
+      status: "ACTIVE",
+    });
   });
 
   it.each([
-    { name: "says neither amount", answer: { clientInfo: { accountName: "Acme" } } },
+    { name: "says neither amount", answer: {} },
     { name: "says an amount that is not a number", answer: { credit: "lots", promoCredit: 0 } },
   ])("reads an answer that $name as unread, never as empty", ({ answer }) => {
-    expect(decode(answer)).toBeNull();
+    expect(decode(frame(answer))).toBeNull();
   });
 });
