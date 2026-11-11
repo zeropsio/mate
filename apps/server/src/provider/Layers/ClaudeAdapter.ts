@@ -115,7 +115,7 @@ import {
   rememberTurnPictures,
   turnPictureError,
 } from "../../providerPictures.ts";
-import { discoverClaudeSkills } from "../Drivers/ClaudeSkills.ts";
+import { claudeLaunchArgDirectories, discoverClaudeSkills } from "../Drivers/ClaudeSkills.ts";
 import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
 import { instructionsMark, instructionsRefresh } from "../../resumedInstructions.ts";
 import { makePersonaReader } from "../../personaInstructions.ts";
@@ -5596,6 +5596,8 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       });
       const claudeBinaryPath = claudeSdkExecutablePath;
       const {
+        // claudeLaunchArgDirectories reads every --add-dir into additionalDirectories.
+        "add-dir": _launchArgAddDir,
         "permission-mode": launchArgPermissionMode,
         "dangerously-skip-permissions": launchArgSkipPermissions,
         ...extraArgs
@@ -5678,6 +5680,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       const additionalDirectories = [
         ...(input.cwd ? [input.cwd] : []),
         serverConfig.attachmentsDir,
+        ...claudeLaunchArgDirectories(claudeSettings.launchArgs),
       ];
       const stderrTail = makeStderrTail();
       const startInstructions =
