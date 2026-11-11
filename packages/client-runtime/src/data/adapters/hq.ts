@@ -44,6 +44,7 @@ import * as Random from "effect/Random";
 import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
+import { Atom } from "effect/reactivity";
 
 import { detailScopeOf, makeDetailDemands, type DetailDemand } from "../demand.ts";
 import { decodeHqProtocol, hqProtocolScope } from "../families/hqProtocol.ts";
@@ -461,79 +462,80 @@ export function hqNavigationLink(options: {
           subscribed.set(hqScopeKey(registered.wire), { registered, generations });
         });
 
-      const deliver = (message: HqScopeDelivery) =>
-        Effect.gen(function* () {
-          if (stopped) return;
-          const scopeKey = hqScopeKey(message.scope);
-          const entry = subscribed.get(scopeKey);
-          if (entry === undefined) return;
-          const cursor = cursors.get(scopeKey);
-          const follows =
-            message.type === "scope-reset" ||
-            (cursor !== undefined &&
-              cursor.incarnation === message.incarnation &&
-              message.revision === cursor.revision + 1);
-          if (!follows) {
-            // A delta that does not follow what was committed: ask for the scope whole.
-            cursors.delete(scopeKey);
-            yield* resubscribe(entry.registered);
-            return;
+      /**
+       * Commits a delivery that follows what was committed. One that does not is not taken: it
+       * answers the registration to ask whole again.
+       */
+      const commit = (message: HqScopeDelivery): Registered | null => {
+        if (stopped) return null;
+        const scopeKey = hqScopeKey(message.scope);
+        const entry = subscribed.get(scopeKey);
+        if (entry === undefined) return null;
+        const cursor = cursors.get(scopeKey);
+        const follows =
+          message.type === "scope-reset" ||
+          (cursor !== undefined &&
+            cursor.incarnation === message.incarnation &&
+            message.revision === cursor.revision + 1);
+        if (!follows) {
+          // A delta that does not follow what was committed: ask for the scope whole.
+          cursors.delete(scopeKey);
+          return entry.registered;
+        }
+        const revision = {
+          kind: "hq",
+          incarnation: message.incarnation,
+          revision: message.revision,
+        } as const;
+        const rows: Row[] = [];
+        for (const { key: recordKey, value } of message.values)
+          for (const { spec } of entry.registered.families) {
+            const id = spec.hq!.idOf(recordKey, entry.registered.owner);
+            if (id === null) continue;
+            const decoded = spec.hq!.decode(value, recordKey, entry.registered.owner);
+            // A record this build cannot read changes nothing: its last value stays.
+            if (decoded !== null)
+              rows.push({
+                family: spec.family,
+                id,
+                value: decoded,
+                // A relayed value keeps its author's revision; HQ's own records, the scope's.
+                revision:
+                  (
+                    spec.hq!.revisionOf as ((value: unknown, raw: unknown) => Revision) | undefined
+                  )?.(decoded, value) ?? revision,
+              } as Row);
           }
-          const revision = {
-            kind: "hq",
-            incarnation: message.incarnation,
-            revision: message.revision,
-          } as const;
-          const rows: Row[] = [];
-          for (const { key: recordKey, value } of message.values)
-            for (const { spec } of entry.registered.families) {
-              const id = spec.hq!.idOf(recordKey, entry.registered.owner);
-              if (id === null) continue;
-              const decoded = spec.hq!.decode(value, recordKey, entry.registered.owner);
-              // A record this build cannot read changes nothing: its last value stays.
-              if (decoded !== null)
-                rows.push({
-                  family: spec.family,
-                  id,
-                  value: decoded,
-                  // A relayed value keeps its author's revision; HQ's own records, the scope's.
-                  revision:
-                    (
-                      spec.hq!.revisionOf as
-                        | ((value: unknown, raw: unknown) => Revision)
-                        | undefined
-                    )?.(decoded, value) ?? revision,
-                } as Row);
-            }
-          const removals: RemovalInput[] = message.removals.flatMap(({ key: recordKey }) =>
-            entry.registered.families.flatMap(({ spec }) => {
-              const id = spec.hq!.idOf(recordKey, entry.registered.owner);
-              return id === null ? [] : [{ family: spec.family, id }];
-            }),
-          );
-          store.dispatch({
-            kind: "delivery",
-            via: "hq-stream",
-            scopes: entry.generations,
-            reset: message.type === "scope-reset",
-            rows,
-            removals,
-          });
-          // Only committed, recipient-filtered HQ values can restore a lifecycle request.
-          for (const row of rows) {
-            if (row.family !== "hqLifecycle") continue;
-            const fact = readsOfState(store.state()).fact("hqLifecycle", row.id);
-            if (fact?.kind !== "known" || fact.value.intent.orgId !== orgId) continue;
-            const record = fact.value;
-            store.dispatch({
-              kind: "operation-recorded",
-              requestId: record.requestId,
-              intent: record.intent,
-            });
-            store.dispatch({ kind: "operation-receipt", receipt: lifecycleReceipt(record) });
-          }
-          cursors.set(scopeKey, { incarnation: message.incarnation, revision: message.revision });
+        const removals: RemovalInput[] = message.removals.flatMap(({ key: recordKey }) =>
+          entry.registered.families.flatMap(({ spec }) => {
+            const id = spec.hq!.idOf(recordKey, entry.registered.owner);
+            return id === null ? [] : [{ family: spec.family, id }];
+          }),
+        );
+        store.dispatch({
+          kind: "delivery",
+          via: "hq-stream",
+          scopes: entry.generations,
+          reset: message.type === "scope-reset",
+          rows,
+          removals,
         });
+        // Only committed, recipient-filtered HQ values can restore a lifecycle request.
+        for (const row of rows) {
+          if (row.family !== "hqLifecycle") continue;
+          const fact = readsOfState(store.state()).fact("hqLifecycle", row.id);
+          if (fact?.kind !== "known" || fact.value.intent.orgId !== orgId) continue;
+          const record = fact.value;
+          store.dispatch({
+            kind: "operation-recorded",
+            requestId: record.requestId,
+            intent: record.intent,
+          });
+          store.dispatch({ kind: "operation-receipt", receipt: lifecycleReceipt(record) });
+        }
+        cursors.set(scopeKey, { incarnation: message.incarnation, revision: message.revision });
+        return null;
+      };
 
       /**
        * Asks HQ for registrations again, each on a new registration: a scope the person tried
@@ -566,92 +568,113 @@ export function hqNavigationLink(options: {
         });
       const resubscribe = (registered: Registered) => again([registered]);
 
-      /** Reads one message; a change it reports joins `changed`, answered by {@link onMessages}. */
-      const onMessage = (
+      /**
+       * Reads one message at `now`; a change it reports joins `changed`, answered by
+       * {@link onMessages}. Values, a change and a scope's end are taken at once; what a message
+       * leaves to do on the socket (an answer, an ask, an error's retry) is returned to be run.
+       */
+      const take = (
         encoded: string,
         changed: Map<string, HqScope>,
+        now: number,
+      ): Effect.Effect<void, StreamFault> | null => {
+        if (stopped) return null;
+        const tell = (target: LinkKey | ScopeKey, event: StreamEvent) =>
+          store.dispatch({ kind: "stream", key: target, now, event });
+        heardAt = now;
+        // The socket said something: its session holds, and the link is live.
+        if (!said) {
+          said = true;
+          tell(key, { kind: "baseline-committed" });
+        }
+        const message = Option.getOrUndefined(decodeMessage(encoded));
+        if (message === undefined) return null;
+        switch (message.type) {
+          case "scope-reset":
+          case "scope-values": {
+            const whole = commit(message);
+            return whole === null ? null : resubscribe(whole);
+          }
+          case "scope-changed":
+            // HQ pushes no values of a change: asking the scope again is the read that answers it.
+            changed.set(hqScopeKey(message.scope), message.scope);
+            return null;
+          case "scope-ready": {
+            const scopeKey = hqScopeKey(message.scope);
+            const entry = subscribed.get(scopeKey);
+            if (entry === undefined) return null;
+            tokenReasked.delete(scopeKey);
+            cursors.set(scopeKey, {
+              incarnation: message.incarnation,
+              revision: message.revision,
+            });
+            if (message.scope.kind === "navigation") {
+              const scope = hqProtocolScope(orgId);
+              const core: FamilyValues["hqProtocol"] = Option.getOrElse(
+                decodeHqProtocol(message.core),
+                () => ({}),
+              );
+              usageSupported = core.agentUsage === AGENT_USAGE_REPORT_PROTOCOL;
+              if (usageSupported)
+                for (const demanded of demands.scopes()) {
+                  if (
+                    detailOf(demanded)?.wire.kind === "agentUsage" &&
+                    streamOf(store.state(), demanded).fault?.code === "usage-update-required"
+                  )
+                    tell(demanded, { kind: "input-changed" });
+                }
+              store.dispatch({
+                kind: "delivery",
+                via: "hq-stream",
+                scopes: entry.generations.filter((entry) => entry.scope === scope),
+                reset: true,
+                rows: [
+                  {
+                    family: "hqProtocol",
+                    id: orgId,
+                    value: core,
+                    revision: {
+                      kind: "hq",
+                      // A Core declaration can change without a navigation revision moving.
+                      incarnation: protocolIdentity([
+                        message.incarnation,
+                        core.build ?? null,
+                        core.protocol ?? null,
+                        core.agentUsage ?? null,
+                      ]),
+                      revision: message.revision,
+                    },
+                  },
+                ],
+                removals: [],
+              });
+            }
+            if (
+              message.scope.kind === "navigation" &&
+              demands.scopes().some((scope) => detailOf(scope)?.wire.kind === "agentUsage")
+            )
+              wakeAttempt?.();
+            store.dispatch({ kind: "hq-ready", scopes: entry.generations });
+            for (const { scope } of entry.generations) tell(scope, { kind: "baseline-committed" });
+            return null;
+          }
+          default:
+            return answer(message);
+        }
+      };
+
+      /** What a message other than values, a change or a scope's end asks of the socket. */
+      const answer = (
+        message: Exclude<
+          typeof HqStreamMessage.Type,
+          { readonly type: "scope-reset" | "scope-values" | "scope-changed" | "scope-ready" }
+        >,
       ): Effect.Effect<void, StreamFault> =>
         Effect.gen(function* () {
-          if (stopped) return;
-          heardAt = yield* Clock.currentTimeMillis;
-          // The socket said something: its session holds, and the link is live.
-          if (!said) {
-            said = true;
-            yield* signal(key, { kind: "baseline-committed" });
-          }
-          const message = Option.getOrUndefined(decodeMessage(encoded));
-          if (message === undefined) return;
           switch (message.type) {
             case "ping":
               if (open !== null) yield* open.send({ type: "pong" });
               return;
-            case "scope-reset":
-            case "scope-values":
-              return yield* deliver(message);
-            case "scope-changed":
-              // HQ pushes no values of a change: asking the scope again is the read that answers it.
-              changed.set(hqScopeKey(message.scope), message.scope);
-              return;
-            case "scope-ready": {
-              const scopeKey = hqScopeKey(message.scope);
-              const entry = subscribed.get(scopeKey);
-              if (entry === undefined) return;
-              tokenReasked.delete(scopeKey);
-              cursors.set(scopeKey, {
-                incarnation: message.incarnation,
-                revision: message.revision,
-              });
-              if (message.scope.kind === "navigation") {
-                const scope = hqProtocolScope(orgId);
-                const core: FamilyValues["hqProtocol"] = Option.getOrElse(
-                  decodeHqProtocol(message.core),
-                  () => ({}),
-                );
-                usageSupported = core.agentUsage === AGENT_USAGE_REPORT_PROTOCOL;
-                if (usageSupported)
-                  for (const demanded of demands.scopes()) {
-                    if (
-                      detailOf(demanded)?.wire.kind === "agentUsage" &&
-                      streamOf(store.state(), demanded).fault?.code === "usage-update-required"
-                    )
-                      yield* signal(demanded, { kind: "input-changed" });
-                  }
-                store.dispatch({
-                  kind: "delivery",
-                  via: "hq-stream",
-                  scopes: entry.generations.filter((entry) => entry.scope === scope),
-                  reset: true,
-                  rows: [
-                    {
-                      family: "hqProtocol",
-                      id: orgId,
-                      value: core,
-                      revision: {
-                        kind: "hq",
-                        // A Core declaration can change without a navigation revision moving.
-                        incarnation: protocolIdentity([
-                          message.incarnation,
-                          core.build ?? null,
-                          core.protocol ?? null,
-                          core.agentUsage ?? null,
-                        ]),
-                        revision: message.revision,
-                      },
-                    },
-                  ],
-                  removals: [],
-                });
-              }
-              if (
-                message.scope.kind === "navigation" &&
-                demands.scopes().some((scope) => detailOf(scope)?.wire.kind === "agentUsage")
-              )
-                wakeAttempt?.();
-              store.dispatch({ kind: "hq-ready", scopes: entry.generations });
-              for (const { scope } of entry.generations)
-                yield* signal(scope, { kind: "baseline-committed" });
-              return;
-            }
             case "scope-error": {
               const scopeKey = hqScopeKey(message.scope);
               const entry = subscribed.get(scopeKey);
@@ -720,7 +743,21 @@ export function hqNavigationLink(options: {
       const onMessages = (messages: ReadonlyArray<string>) =>
         Effect.gen(function* () {
           const changed = new Map<string, HqScope>();
-          for (const encoded of messages) yield* onMessage(encoded, changed);
+          let next = 0;
+          while (next < messages.length) {
+            const now = yield* Clock.currentTimeMillis;
+            // The frames that only commit are published together: a load's hundred scopes (a
+            // reset and an end for each Mate's attention) rebuilt every projection and drew the
+            // menu once a frame, 470 ms of a reload's main thread; a drain now does both once.
+            const rest: Array<Effect.Effect<void, StreamFault>> = [];
+            Atom.batch(() => {
+              while (next < messages.length && rest.length === 0) {
+                const left = take(messages[next++]!, changed, now);
+                if (left !== null) rest.push(left);
+              }
+            });
+            for (const left of rest) yield* left;
+          }
           const segment = open;
           if (stopped || segment === null) return;
           yield* sendScopes(
