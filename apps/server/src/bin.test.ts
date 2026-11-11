@@ -4,6 +4,7 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NetService from "@t3tools/shared/Net";
 import { assert, it } from "@effect/vitest";
 import * as ConfigProvider from "effect/ConfigProvider";
@@ -17,7 +18,7 @@ import { Command } from "effect/cli";
 import { cli } from "./bin.ts";
 import { PersistedServerRuntimeState } from "./serverRuntimeState.ts";
 
-const CliRuntimeLayer = Layer.mergeAll(NodeServices.layer, NetService.layer);
+const CliRuntimeLayer = Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, NetService.layer);
 const runCli = (args: ReadonlyArray<string>, command = cli) =>
   Command.runWith(command, { version: "0.0.0" })(args);
 const runCliWithRuntime = (args: ReadonlyArray<string>) =>
@@ -32,7 +33,7 @@ const captureStdout = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     return { result, output };
   }).pipe(Effect.provide(Layer.mergeAll(CliRuntimeLayer, TestConsole.layer)));
 
-it.layer(NodeServices.layer)("bin cli parsing", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("bin cli parsing", (it) => {
   it.effect("accepts the built-in lowercase log-level flag values", () =>
     runCliWithRuntime(["--log-level", "debug", "--version"]),
   );
@@ -95,79 +96,82 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
 const encodeRuntimeState = Schema.encodeEffect(Schema.fromJsonString(PersistedServerRuntimeState));
 const pathExists = (path: string) => Effect.sync(() => NodeFS.existsSync(path));
 
-it.layer(NodeServices.layer)("mate server command safety", (it) => {
-  it.effect("rejects unknown command words without creating a home or project", () =>
-    Effect.gen(function* () {
-      const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-cli-unknown-"));
-      const baseDir = NodePath.join(root, "home");
-      for (const word of ["projcet", "triag", "servce", "package.json", "C:new-project"]) {
-        const error = yield* runCliWithRuntime([word, "--base-dir", baseDir]).pipe(Effect.flip);
-        assert.include(String(error), `Unknown command "${word}"`);
-        assert.equal(yield* pathExists(word), word === "package.json");
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))(
+  "mate server command safety",
+  (it) => {
+    it.effect("rejects unknown command words without creating a home or project", () =>
+      Effect.gen(function* () {
+        const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-cli-unknown-"));
+        const baseDir = NodePath.join(root, "home");
+        for (const word of ["projcet", "triag", "servce", "package.json", "C:new-project"]) {
+          const error = yield* runCliWithRuntime([word, "--base-dir", baseDir]).pipe(Effect.flip);
+          assert.include(String(error), `Unknown command "${word}"`);
+          assert.equal(yield* pathExists(word), word === "package.json");
+          assert.isFalse(yield* pathExists(baseDir));
+        }
+      }),
+    );
+
+    it.effect("shows help without creating state", () =>
+      Effect.gen(function* () {
+        const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-cli-help-"));
+        const baseDir = NodePath.join(root, "home");
+        const help = yield* runCliWithRuntime(["help"]).pipe(
+          Effect.provide(
+            ConfigProvider.layer(ConfigProvider.fromEnv({ env: { T3CODE_HOME: baseDir } })),
+          ),
+          Effect.flip,
+        );
+        assert.deepInclude(help, { _tag: "ShowHelp", commandPath: ["mate"], errors: [] });
         assert.isFalse(yield* pathExists(baseDir));
-      }
-    }),
-  );
+      }),
+    );
 
-  it.effect("shows help without creating state", () =>
-    Effect.gen(function* () {
-      const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-cli-help-"));
-      const baseDir = NodePath.join(root, "home");
-      const help = yield* runCliWithRuntime(["help"]).pipe(
-        Effect.provide(
-          ConfigProvider.layer(ConfigProvider.fromEnv({ env: { T3CODE_HOME: baseDir } })),
-        ),
-        Effect.flip,
-      );
-      assert.deepInclude(help, { _tag: "ShowHelp", commandPath: ["mate"], errors: [] });
-      assert.isFalse(yield* pathExists(baseDir));
-    }),
-  );
-
-  it.effect("refuses a manual start over a live server before creating directories", () =>
-    Effect.gen(function* () {
-      const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-cli-running-"));
-      const baseDir = NodePath.join(root, "home");
-      const stateDir = NodePath.join(baseDir, "userdata");
-      const statePath = NodePath.join(stateDir, "server-runtime.json");
-      const record = yield* encodeRuntimeState({
-        version: 1,
-        pid: process.pid,
-        port: 3773,
-        origin: "http://127.0.0.1:3773",
-        startedAt: "2026-10-01T00:00:00.000Z",
-      });
-      NodeFS.mkdirSync(stateDir, { recursive: true });
-      NodeFS.writeFileSync(statePath, record);
-      const newDirectory = NodePath.join(root, "new-project");
-      for (const args of [
-        [],
-        ["start"],
-        ["."],
-        ["node_modules"],
-        [newDirectory],
-        ["start", newDirectory],
-      ]) {
-        // An explicit port: the refusal is the record's, never the default port's probe.
-        const error = yield* runCliWithRuntime([
-          ...args,
-          "--base-dir",
-          baseDir,
-          "--port",
-          "3773",
-        ]).pipe(Effect.flip);
-        assert.include(String(error), "A Zerops Mate server is already running");
-        assert.equal(NodeFS.readFileSync(statePath, "utf8"), record);
-        assert.isFalse(yield* pathExists(newDirectory));
-        assert.deepEqual(NodeFS.readdirSync(stateDir), ["server-runtime.json"]);
-      }
-    }),
-  );
-});
+    it.effect("refuses a manual start over a live server before creating directories", () =>
+      Effect.gen(function* () {
+        const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-cli-running-"));
+        const baseDir = NodePath.join(root, "home");
+        const stateDir = NodePath.join(baseDir, "userdata");
+        const statePath = NodePath.join(stateDir, "server-runtime.json");
+        const record = yield* encodeRuntimeState({
+          version: 1,
+          pid: process.pid,
+          port: 3773,
+          origin: "http://127.0.0.1:3773",
+          startedAt: "2026-10-01T00:00:00.000Z",
+        });
+        NodeFS.mkdirSync(stateDir, { recursive: true });
+        NodeFS.writeFileSync(statePath, record);
+        const newDirectory = NodePath.join(root, "new-project");
+        for (const args of [
+          [],
+          ["start"],
+          ["."],
+          ["node_modules"],
+          [newDirectory],
+          ["start", newDirectory],
+        ]) {
+          // An explicit port: the refusal is the record's, never the default port's probe.
+          const error = yield* runCliWithRuntime([
+            ...args,
+            "--base-dir",
+            baseDir,
+            "--port",
+            "3773",
+          ]).pipe(Effect.flip);
+          assert.include(String(error), "A Zerops Mate server is already running");
+          assert.equal(NodeFS.readFileSync(statePath, "utf8"), record);
+          assert.isFalse(yield* pathExists(newDirectory));
+          assert.deepEqual(NodeFS.readdirSync(stateDir), ["server-runtime.json"]);
+        }
+      }),
+    );
+  },
+);
 
 const encodeTraceLine = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 
-it.layer(NodeServices.layer)("mate trace summary", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("mate trace summary", (it) => {
   it.effect("summarizes the trace file and its rotated backups", () =>
     Effect.gen(function* () {
       const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-cli-trace-"));

@@ -20,7 +20,7 @@ import {
 } from "@t3tools/contracts";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
 import { normalizeModelSlug } from "@t3tools/shared/model";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -1373,13 +1373,13 @@ export const makeCodexSessionRuntime = (
 ): Effect.Effect<
   CodexSessionRuntimeShape,
   CodexErrors.CodexAppServerError,
-  ChildProcessSpawner.ChildProcessSpawner | Crypto.Crypto | Scope.Scope
+  ChildProcessSpawner.ChildProcessSpawner | SecureRandom.SecureRandom | Scope.Scope
 > =>
   Effect.gen(function* () {
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     // A child of the caller's scope, so closing the runtime never closes the caller's.
     const runtimeScope = yield* Scope.fork(yield* Scope.Scope);
-    const crypto = yield* Crypto.Crypto;
+    const crypto = yield* SecureRandom.SecureRandom;
     const events = yield* Queue.unbounded<ProviderEvent>();
     const pendingApprovalsRef = yield* Ref.make(new Map<ApprovalRequestId, PendingApproval>());
     const approvalCorrelationsRef = yield* Ref.make(new Map<string, ApprovalCorrelation>());
@@ -1441,15 +1441,17 @@ export const makeCodexSessionRuntime = (
     const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
     // A failed random source answers Codex the way any failed handler does: an internal error.
     const randomUUIDv4 = (purpose: CodexIdentifierPurpose) =>
-      crypto.randomUUIDv4.pipe(
-        Effect.mapError((cause) =>
-          CodexErrors.CodexAppServerRequestError.internalError(
-            `Failed to generate Codex App Server identifier for ${purpose}.`,
-            undefined,
-            { cause },
+      crypto
+        .uuidV4()
+        .pipe(
+          Effect.mapError((cause) =>
+            CodexErrors.CodexAppServerRequestError.internalError(
+              `Failed to generate Codex App Server identifier for ${purpose}.`,
+              undefined,
+              { cause },
+            ),
           ),
-        ),
-      );
+        );
 
     const sessionCreatedAt = yield* nowIso;
     const initialSession = {

@@ -823,7 +823,7 @@ it("Decision: no test removed from CI coverage", () => {
   expect(oracle.run).toContain("--allowOnly=false");
   expect(oracle.run).toContain("--reporter=../../scripts/chat-gate-reporter.ts");
   expect(oracle.run).toContain(
-    "tsc --noEmit --incremental -p apps/web/test/engine-oracle/tsconfig.json",
+    "effect-tsgo tsrs --noEmit --incremental -p apps/web/test/engine-oracle/tsconfig.json",
   );
 });
 

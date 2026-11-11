@@ -1,6 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off - realpathSync.native resolves Windows 8.3 short names, which the Effect realPath does not.
 import * as NodeFS from "node:fs";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { WORKTREE_BRANCH_PREFIX } from "@t3tools/shared/git";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { assert, it, describe } from "@effect/vitest";
@@ -41,7 +42,7 @@ const ServerConfigLayer = ServerConfig.layerTest(process.cwd(), {
 });
 const TestLayer = GitVcsDriver.layer.pipe(
   Layer.provide(ServerConfigLayer),
-  Layer.provideMerge(NodeServices.layer),
+  Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
 );
 
 const makeNonRepositoryHandle = () =>
@@ -197,7 +198,13 @@ it.effect("bounds Git bursts across drivers without timing out queued commands",
     );
     assert.equal(duration.count, 16);
     assert.equal(duration.sum, 16_000);
-  }).pipe(Effect.provide(ServerConfigLayer.pipe(Layer.provideMerge(NodeServices.layer)))),
+  }).pipe(
+    Effect.provide(
+      ServerConfigLayer.pipe(
+        Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+      ),
+    ),
+  ),
 );
 
 it.effect.each([{ timeoutMs: null }, { timeoutMs: 30_001 }])(
@@ -248,7 +255,13 @@ it.effect.each([{ timeoutMs: null }, { timeoutMs: 30_001 }])(
       yield* Deferred.succeed(slowGate, undefined);
       assert.equal((yield* Fiber.join(slow)).stdout, "ok");
       assert.equal(active, 0);
-    }).pipe(Effect.provide(ServerConfigLayer.pipe(Layer.provideMerge(NodeServices.layer)))),
+    }).pipe(
+      Effect.provide(
+        ServerConfigLayer.pipe(
+          Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+        ),
+      ),
+    ),
 );
 
 it.effect.each(
@@ -305,14 +318,14 @@ it.effect("uses stable diagnostics for every parsed non-repository command", () 
         return assert.fail("expected a standard Git command");
       }
       commands.push({
-        args: command.args,
-        ...(command.options.env?.LC_ALL ? { lcAll: command.options.env.LC_ALL } : {}),
+        args: command.args.map(String),
+        ...(command.options.env?.LC_ALL ? { lcAll: String(command.options.env.LC_ALL) } : {}),
       });
       return makeNonRepositoryHandle();
     }),
   );
   const nodeServicesLayer = Layer.merge(
-    NodeServices.layer,
+    Layer.mergeAll(NodeServices.layer, NodeCrypto.layer),
     Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner),
   );
   const layer = GitVcsDriver.layer.pipe(
@@ -395,7 +408,7 @@ it.effect("coalesces concurrent ref pages into one repository snapshot", () =>
           if (!ChildProcess.isStandardCommand(command)) {
             return yield* Effect.die("expected a standard Git command");
           }
-          yield* Ref.update(spawnedArgs, (current) => [...current, command.args]);
+          yield* Ref.update(spawnedArgs, (current) => [...current, command.args.map(String)]);
           const isWorktreeScan =
             command.args.includes("worktree") && command.args.includes("--porcelain");
           const shouldDelay =
@@ -491,7 +504,13 @@ it.effect("coalesces concurrent ref pages into one repository snapshot", () =>
         2,
       );
     }),
-  ).pipe(Effect.provide(ServerConfigLayer.pipe(Layer.provideMerge(NodeServices.layer)))),
+  ).pipe(
+    Effect.provide(
+      ServerConfigLayer.pipe(
+        Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+      ),
+    ),
+  ),
 );
 
 it.effect("retries an in-flight ref snapshot invalidated by a mutation", () =>
@@ -550,7 +569,13 @@ it.effect("retries an in-flight ref snapshot invalidated by a mutation", () =>
       assert.isTrue(refs.refs.some((ref) => ref.name === "feature/during-refresh"));
       assert.equal(yield* Ref.get(refScans), 2);
     }),
-  ).pipe(Effect.provide(ServerConfigLayer.pipe(Layer.provideMerge(NodeServices.layer)))),
+  ).pipe(
+    Effect.provide(
+      ServerConfigLayer.pipe(
+        Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+      ),
+    ),
+  ),
 );
 
 it.effect("invalidates a ref snapshot when a mutation fails after changing Git", () =>
@@ -582,7 +607,13 @@ it.effect("invalidates a ref snapshot when a mutation fails after changing Git",
       const refs = yield* driver.listRefs({ cwd });
       assert.isTrue(refs.refs.some((ref) => ref.name === "feature/partial-failure"));
     }),
-  ).pipe(Effect.provide(ServerConfigLayer.pipe(Layer.provideMerge(NodeServices.layer)))),
+  ).pipe(
+    Effect.provide(
+      ServerConfigLayer.pipe(
+        Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+      ),
+    ),
+  ),
 );
 
 // A pool hands its container to another branch under the same alias: the checkout at
@@ -618,7 +649,13 @@ it.effect(
         assert.strictEqual(current(after), "feat-b");
         assert.isFalse(after.refs.some((ref) => ref.name === "feat-a"));
       }),
-    ).pipe(Effect.provide(ServerConfigLayer.pipe(Layer.provideMerge(NodeServices.layer)))),
+    ).pipe(
+      Effect.provide(
+        ServerConfigLayer.pipe(
+          Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+        ),
+      ),
+    ),
 );
 
 it.effect("fails a ref snapshot when for-each-ref exits unsuccessfully", () =>
@@ -654,7 +691,13 @@ it.effect("fails a ref snapshot when for-each-ref exits unsuccessfully", () =>
       });
       assert.equal(yield* Ref.get(snapshotAttempts), 1);
     }),
-  ).pipe(Effect.provide(ServerConfigLayer.pipe(Layer.provideMerge(NodeServices.layer)))),
+  ).pipe(
+    Effect.provide(
+      ServerConfigLayer.pipe(
+        Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+      ),
+    ),
+  ),
 );
 
 it.effect("marks the current branch when worktree metadata is unavailable", () =>
@@ -689,7 +732,13 @@ it.effect("marks the current branch when worktree metadata is unavailable", () =
       assert.isTrue(refs.isRepo);
       assert.isTrue(refs.refs.find((ref) => ref.name === initialBranch)?.current);
     }),
-  ).pipe(Effect.provide(ServerConfigLayer.pipe(Layer.provideMerge(NodeServices.layer)))),
+  ).pipe(
+    Effect.provide(
+      ServerConfigLayer.pipe(
+        Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+      ),
+    ),
+  ),
 );
 
 it.effect("ignores worktree metadata for directories that no longer exist", () =>
@@ -725,7 +774,13 @@ it.effect("ignores worktree metadata for directories that no longer exist", () =
 
       assert.equal(refs.refs.find((ref) => ref.name === "stale-worktree")?.worktreePath, null);
     }),
-  ).pipe(Effect.provide(ServerConfigLayer.pipe(Layer.provideMerge(NodeServices.layer)))),
+  ).pipe(
+    Effect.provide(
+      ServerConfigLayer.pipe(
+        Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+      ),
+    ),
+  ),
 );
 
 it.effect("refreshes the current branch after an external checkout", () =>
@@ -853,7 +908,13 @@ it.effect("backs off and logs failed fetch attempts across linked worktrees", ()
       assert.equal(yield* Ref.get(fetchAttempts), 3);
       assert.lengthOf(warnings, 3);
     }),
-  ).pipe(Effect.provide(ServerConfigLayer.pipe(Layer.provideMerge(NodeServices.layer)))),
+  ).pipe(
+    Effect.provide(
+      ServerConfigLayer.pipe(
+        Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+      ),
+    ),
+  ),
 );
 
 it.effect.each(
@@ -970,7 +1031,13 @@ it.effect.each(
     assert.notProperty(error, "stderr");
     assert.notProperty(error, "args");
     assert.equal(yield* Ref.get(attempts), 1);
-  }).pipe(Effect.provide(ServerConfigLayer.pipe(Layer.provideMerge(NodeServices.layer)))),
+  }).pipe(
+    Effect.provide(
+      ServerConfigLayer.pipe(
+        Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+      ),
+    ),
+  ),
 );
 
 it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
@@ -3316,7 +3383,7 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
             if (!ChildProcess.isStandardCommand(command))
               return yield* Effect.die("unexpected command");
             if (command.args[0] !== "fetch") return yield* delegate.spawn(command);
-            attempts.push(command.args);
+            attempts.push(command.args.map(String));
             yield* Deferred.succeed(started, undefined);
             return ChildProcessSpawner.makeHandle({
               ...makeNonRepositoryHandle(),
@@ -3862,7 +3929,7 @@ describe("a caller's ref or remote name that starts with a dash is refused befor
       const commands: Array<ReadonlyArray<string>> = [];
       const spawner = ChildProcessSpawner.make((command) =>
         Effect.sync(() => {
-          if (ChildProcess.isStandardCommand(command)) commands.push(command.args);
+          if (ChildProcess.isStandardCommand(command)) commands.push(command.args.map(String));
           return makeNonRepositoryHandle();
         }),
       );
@@ -3878,7 +3945,11 @@ describe("a caller's ref or remote name that starts with a dash is refused befor
         assert.deepStrictEqual(commands, []);
       }).pipe(
         Effect.scoped,
-        Effect.provide(ServerConfigLayer.pipe(Layer.provideMerge(NodeServices.layer))),
+        Effect.provide(
+          ServerConfigLayer.pipe(
+            Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+          ),
+        ),
       );
     },
   );

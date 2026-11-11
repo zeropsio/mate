@@ -33,6 +33,7 @@ import * as NodeOS from "node:os";
 import * as NodeUtil from "node:util";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import type {
   CanUseTool,
   HookEvent,
@@ -368,7 +369,7 @@ export async function replayClaude(
     ServerSettingsService.layerTest(),
     ThreadToolPolicyRegistry.layer,
     ClaudeThreadExtensionRegistry.layer,
-  ).pipe(Layer.provideMerge(NodeServices.layer));
+  ).pipe(Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)));
 
   return Effect.runPromise(Effect.scoped(program).pipe(Effect.provide(testLayer)));
 }

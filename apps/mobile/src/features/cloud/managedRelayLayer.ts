@@ -1,6 +1,7 @@
 import { ManagedRelay } from "@t3tools/client-runtime/relay";
 import { RelayMobileClientId } from "@t3tools/contracts/relay";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
@@ -10,9 +11,13 @@ import { managedRelayAccessTokenStore } from "./managedRelayTokenStore";
 const relayDpopSignerLayer = Layer.effect(
   ManagedRelay.ManagedRelayDpopSigner,
   Effect.gen(function* () {
-    const crypto = yield* Crypto.Crypto;
+    const random = yield* SecureRandom.SecureRandom;
+    const digest = yield* Digest.Digest;
     const loadProofKey = yield* Effect.cached(
-      loadOrCreateDpopProofKeyPair().pipe(Effect.provideService(Crypto.Crypto, crypto)),
+      loadOrCreateDpopProofKeyPair().pipe(
+        Effect.provideService(SecureRandom.SecureRandom, random),
+        Effect.provideService(Digest.Digest, digest),
+      ),
     );
     return ManagedRelay.ManagedRelayDpopSigner.of({
       thumbprint: loadProofKey.pipe(
@@ -38,7 +43,8 @@ const relayDpopSignerLayer = Layer.effect(
           ),
         );
         return yield* createDpopProof({ ...input, proofKey }).pipe(
-          Effect.provideService(Crypto.Crypto, crypto),
+          Effect.provideService(SecureRandom.SecureRandom, random),
+          Effect.provideService(Digest.Digest, digest),
           Effect.map((proof) => proof.proof),
           Effect.mapError(
             (error) =>

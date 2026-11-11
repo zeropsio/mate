@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off -- inspect the production assets the browser requests.
+// @effect-diagnostics nodeBuiltinImport:off globalJsonInEffect:off -- inspect the production assets the browser requests.
 import { scenarioSuite } from "../../harness/suite.ts";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";

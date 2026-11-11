@@ -18,6 +18,7 @@ import type {
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { ClaudeSettings, type ProviderRuntimeEvent } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -146,7 +147,7 @@ export const makeClaudeAdapterHarness = Effect.fn("makeClaudeAdapterHarness")(fu
 export const claudeAdapterHarnessLayer = Layer.mergeAll(
   ServerConfig.layerTest("/tmp/claude-adapter-harness", "/tmp"),
   ServerSettingsService.layerTest(),
-).pipe(Layer.provideMerge(NodeServices.layer));
+).pipe(Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)));
 
 /**
  * A JSON-comparable copy of recorded options: `JSON.stringify` would drop a

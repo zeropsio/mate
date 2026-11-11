@@ -12,6 +12,7 @@ import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, it } from "@effect/vitest";
 import {
   CursorSettings,
@@ -178,7 +179,7 @@ const layer = it.layer(
   Layer.mergeAll(ThreadToolPolicyRegistry.layer).pipe(
     Layer.provideMerge(ServerSettingsService.layerTest()),
     Layer.provideMerge(ServerConfig.layerTest(process.cwd(), { prefix: "acp-profile-contract-" })),
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
   ),
 );
 

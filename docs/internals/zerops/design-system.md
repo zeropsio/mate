@@ -228,7 +228,7 @@ numbered steps of these. Every ask is the same card, in two densities.
 - **R9** — UI kit exports are used, not restyled
   - _Enforced by:_ `t3code/no-restyle` — `@shadcn/lint`'s no-restyle run as a fork guard through
     `oxlint-plugin-t3code/shadcnGuard.ts` (a `CollapsibleTrigger` is exempt); CI reconciles `--rule
-no-restyle`
+    no-restyle`
   - _Test(s):_ `oxlint-plugin-t3code/rules/no-restyle.test.ts`
   - _Status:_ landed (intake row 5, 2026-09-25)
 - **R10** — Class names are known and static
@@ -240,7 +240,7 @@ no-restyle`
 - **R11** — Scale values, not arbitrary ones
   - _Enforced by:_ `t3code/no-arbitrary-values` (Tailwind arbitrary values where the theme has a
     token: `text-2xs`/`text-3xs`, `ease-drawer`, the gutters); CI reconciles `--rule
-no-arbitrary-values`
+    no-arbitrary-values`
   - _Test(s):_ `oxlint-plugin-t3code/rules/no-arbitrary-values.test.ts`
   - _Status:_ landed (intake row 5, 2026-09-25); hand-written CSS sizes, corners and transition
     lengths between the scale's steps are held to a budget that only shrinks

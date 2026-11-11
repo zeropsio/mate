@@ -9,6 +9,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import * as Redacted from "effect/Redacted";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
@@ -716,13 +717,20 @@ it.layer(fixtureLayer)("Antigravity profile preparation", (it) => {
       if (!helperCommand) return;
       const command = helperCommand;
       expect(command.args[0]).toBe("-e");
-      const gatedArgs = command.args.map((argument, index) =>
-        index === 1 ? `process.stdin.once("data", () => { ${argument} });` : argument,
-      );
+      const gatedArgs = command.args
+        .map(String)
+        .map((argument, index) =>
+          index === 1 ? `process.stdin.once("data", () => { ${argument} });` : argument,
+        );
       const child = yield* Effect.acquireRelease(
         Effect.sync(() =>
           NodeChildProcess.spawn(command.command, gatedArgs, {
-            env: { ...command.options.env },
+            env: Object.fromEntries(
+              Object.entries(command.options.env ?? {}).map(([name, value]) => [
+                name,
+                Redacted.isRedacted(value) ? Redacted.value(value) : value,
+              ]),
+            ),
             stdio: ["pipe", "ignore", "pipe"],
           }),
         ),

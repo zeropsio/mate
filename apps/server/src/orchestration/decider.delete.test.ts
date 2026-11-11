@@ -10,6 +10,8 @@ import {
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as Layer from "effect/Layer";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { expect, it } from "@effect/vitest";
 
 import { decideOrchestrationCommand } from "./decider.ts";
@@ -136,7 +138,7 @@ function normalizeDeleteEvent(event: PlannedEvent | ReadonlyArray<PlannedEvent>)
   });
 }
 
-it.layer(NodeServices.layer)("decider deletion flows", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("decider deletion flows", (it) => {
   it.effect("rejects deleting a non-empty project without force", () =>
     Effect.gen(function* () {
       const readModel = yield* seedReadModel;

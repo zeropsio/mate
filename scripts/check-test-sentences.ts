@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// @effect-diagnostics nodeBuiltinImport:off globalConsole:off preferSchemaOverJson:off -- host Git guard.
+// @effect-diagnostics nodeBuiltinImport:off globalConsole:off globalJsonInEffect:off -- host Git guard.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
@@ -444,8 +444,12 @@ export function checkTestSentences(
   const ancestor = sentenceComparison(root, base);
   const touched = changedPaths(root, ancestor);
   const imported = importedRoots(root);
+  // `.repos/` holds vendored references, synced whole from their own repositories.
   const paths = touched.filter(
-    (path) => retainedTestFile.test(path) && !imported.some((dir) => path.startsWith(`${dir}/`)),
+    (path) =>
+      retainedTestFile.test(path) &&
+      !path.startsWith(".repos/") &&
+      !imported.some((dir) => path.startsWith(`${dir}/`)),
   );
   const baseSources = readBlobs(
     root,

@@ -1,6 +1,7 @@
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- Effect's Crypto has no generateKeyPairSync.
 import * as NodeCrypto from "node:crypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCryptoLayer from "@effect/platform-node/NodeCrypto";
 
 import type {
   EnvironmentId,
@@ -643,7 +644,7 @@ describe("signRelayAgentActivityPublishProof", { concurrent: false }, () => {
           Effect.provide(
             AgentAwarenessRelay.layer.pipe(
               Layer.provide(layer),
-              Layer.provideMerge(NodeServices.layer),
+              Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCryptoLayer.layer)),
             ),
           ),
         );
@@ -815,7 +816,7 @@ describe("signRelayAgentActivityPublishProof", { concurrent: false }, () => {
           Effect.provide(
             AgentAwarenessRelay.layer.pipe(
               Layer.provide(layer),
-              Layer.provideMerge(NodeServices.layer),
+              Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCryptoLayer.layer)),
             ),
           ),
           Effect.provideService(RelayClientTracer, Option.some(collectingTracer(productSpans))),
@@ -920,7 +921,7 @@ describe("signRelayAgentActivityPublishProof", { concurrent: false }, () => {
           Effect.provide(
             AgentAwarenessRelay.layer.pipe(
               Layer.provide(layer),
-              Layer.provideMerge(NodeServices.layer),
+              Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCryptoLayer.layer)),
             ),
           ),
         );
@@ -1053,7 +1054,7 @@ describe("signRelayAgentActivityPublishProof", { concurrent: false }, () => {
           Effect.provide(
             AgentAwarenessRelay.layer.pipe(
               Layer.provide(layer),
-              Layer.provideMerge(NodeServices.layer),
+              Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCryptoLayer.layer)),
             ),
           ),
         );
@@ -1103,7 +1104,7 @@ describe("startup catch-up", { concurrent: false }, () => {
           } as unknown as ProjectionSnapshotQueryShape),
         ),
       ),
-      Layer.provideMerge(NodeServices.layer),
+      Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCryptoLayer.layer)),
     );
     const link = Effect.all(
       [

@@ -40,6 +40,8 @@ import {
 } from "../state/serverConfigProjection.ts";
 
 const SOCKET_OPEN_TIMEOUT = "15 seconds";
+// Pings go out every 5 seconds; three unanswered ones (15 seconds without a frame) drop the socket.
+const PING_TIMEOUT = "15 seconds";
 /** A Mate closed a ticket's socket: it took the ticket's access back, or refused it (`ws.ts`). */
 const MATE_ACCESS_ENDED_CLOSE = 4401;
 
@@ -165,8 +167,6 @@ export const make = Effect.fn("RpcSessionFactory.make")(function* (
     let mateAccessEnded = false;
     const hooks = RpcClient.ConnectionHooks.of({
       onConnect: Deferred.succeed(connected, undefined).pipe(Effect.asVoid),
-      onPingTimeout: Ref.set(pingTimedOut, true),
-      pingTimeoutPaused: options.pingTimeoutPaused,
       onDisconnect: Effect.all([Deferred.isDone(connected), Ref.get(pingTimedOut)]).pipe(
         Effect.flatMap(([wasConnected, timedOut]) =>
           Deferred.fail(
@@ -209,8 +209,11 @@ export const make = Effect.fn("RpcSessionFactory.make")(function* (
     const protocolLayer = Layer.effect(
       RpcClient.Protocol,
       RpcClient.makeProtocolSocket({
+        pingTimeout: PING_TIMEOUT,
         retryTransientErrors: false,
         retryPolicy: Schedule.recurs(0),
+        onPingTimeout: Ref.set(pingTimedOut, true),
+        pingTimeoutPaused: options.pingTimeoutPaused,
       }),
     ).pipe(
       Layer.provide(

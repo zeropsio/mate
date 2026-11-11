@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off -- certifies Vitest's selected smoke cases.
+// @effect-diagnostics nodeBuiltinImport:off globalJsonInEffect:off -- certifies Vitest's selected smoke cases.
 import * as NodePath from "node:path";
 import type { Reporter } from "vite-plus/test/node";
 

@@ -682,7 +682,7 @@ const evaluateStateLayout = async (
         .map((statement) => code.slice(...statement.span)),
       `return ${root};`,
     ].join("\n");
-    // oxlint-disable-next-line no-new-func -- the layout is the value the release's own code derives.
+    // `new Function`: the layout is the value the release's own code derives.
     // What it is the run tells: anything but a function returning the paths fails it.
     const derive: (
       baseDir: string,

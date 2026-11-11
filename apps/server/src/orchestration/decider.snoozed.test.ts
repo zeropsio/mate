@@ -9,6 +9,8 @@ import {
   type OrchestrationThread,
 } from "@t3tools/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as Layer from "effect/Layer";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 
@@ -60,7 +62,7 @@ function makeReadModel(input: {
   };
 }
 
-it.layer(NodeServices.layer)("snoozed thread decider", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("snoozed thread decider", (it) => {
   it.effect("a user message spends the snooze return ticket (activity wake)", () =>
     Effect.gen(function* () {
       const result = yield* decideOrchestrationCommand({

@@ -10,7 +10,7 @@ import type {
 import { OrchestrationCommand } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
@@ -93,7 +93,7 @@ const makeOrchestrationEngine = Effect.gen(function* () {
   const commandReceiptRepository = yield* OrchestrationCommandReceiptRepository;
   const projectionPipeline = yield* OrchestrationProjectionPipeline;
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
   const mediaContext = yield* Effect.context<FileSystem.FileSystem | Path.Path>();
 
   const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
@@ -198,7 +198,7 @@ const makeOrchestrationEngine = Effect.gen(function* () {
             ? { userInputActivity: userInputActivity.value }
             : {}),
         }).pipe(
-          Effect.provideService(Crypto.Crypto, crypto),
+          Effect.provideService(SecureRandom.SecureRandom, crypto),
           Effect.mapError((cause) =>
             isOrchestrationCommandInvariantError(cause)
               ? cause

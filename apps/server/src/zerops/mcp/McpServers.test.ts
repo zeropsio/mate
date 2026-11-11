@@ -7,6 +7,7 @@ import {
 } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -668,127 +669,135 @@ const resetFileStore = Effect.gen(function* () {
   return fileStoreDir;
 });
 
-it.layer(NodeServices.layer, { excludeTestServices: true })("nodeFileStore", (it) => {
-  it.effect("writes a config whole, through a link, keeping its permissions", () =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const dir = yield* resetFileStore;
-      const store = yield* nodeFileStore;
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer), { excludeTestServices: true })(
+  "nodeFileStore",
+  (it) => {
+    it.effect("writes a config whole, through a link, keeping its permissions", () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const dir = yield* resetFileStore;
+        const store = yield* nodeFileStore;
 
-      // A new file is private to its owner: it can hold keys.
-      yield* store.write(`${dir}/new/.claude.json`, "{}\n", undefined);
-      expect(yield* store.read(`${dir}/new/.claude.json`)).toBe("{}\n");
-      expect((yield* fs.stat(`${dir}/new/.claude.json`)).mode & 0o777).toBe(0o600);
+        // A new file is private to its owner: it can hold keys.
+        yield* store.write(`${dir}/new/.claude.json`, "{}\n", undefined);
+        expect(yield* store.read(`${dir}/new/.claude.json`)).toBe("{}\n");
+        expect((yield* fs.stat(`${dir}/new/.claude.json`)).mode & 0o777).toBe(0o600);
 
-      // A shadow home's link keeps pointing at the shared file the write replaced.
-      yield* fs.writeFileString(`${dir}/shared.toml`, "a = 1\n", { mode: 0o640 });
-      yield* fs.chmod(`${dir}/shared.toml`, 0o640);
-      yield* fs.symlink(`${dir}/shared.toml`, `${dir}/link.toml`);
-      yield* store.write(`${dir}/link.toml`, "a = 2\n", "a = 1\n");
-      expect(yield* fs.readLink(`${dir}/link.toml`)).toBe(`${dir}/shared.toml`);
-      expect(yield* fs.readFileString(`${dir}/shared.toml`)).toBe("a = 2\n");
-      expect((yield* fs.stat(`${dir}/shared.toml`)).mode & 0o777).toBe(0o640);
+        // A shadow home's link keeps pointing at the shared file the write replaced.
+        yield* fs.writeFileString(`${dir}/shared.toml`, "a = 1\n", { mode: 0o640 });
+        yield* fs.chmod(`${dir}/shared.toml`, 0o640);
+        yield* fs.symlink(`${dir}/shared.toml`, `${dir}/link.toml`);
+        yield* store.write(`${dir}/link.toml`, "a = 2\n", "a = 1\n");
+        expect(yield* fs.readLink(`${dir}/link.toml`)).toBe(`${dir}/shared.toml`);
+        expect(yield* fs.readFileString(`${dir}/shared.toml`)).toBe("a = 2\n");
+        expect((yield* fs.stat(`${dir}/shared.toml`)).mode & 0o777).toBe(0o640);
 
-      expect(yield* store.read(`${dir}/missing.json`)).toBeUndefined();
-      expect((yield* fs.readDirectory(dir)).toSorted()).toEqual([
-        "link.toml",
-        "new",
-        "shared.toml",
-      ]);
-    }),
-  );
+        expect(yield* store.read(`${dir}/missing.json`)).toBeUndefined();
+        expect((yield* fs.readDirectory(dir)).toSorted()).toEqual([
+          "link.toml",
+          "new",
+          "shared.toml",
+        ]);
+      }),
+    );
 
-  it.effect("refuses to write over a file that changed since it was read", () =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const dir = yield* resetFileStore;
-      const store = yield* nodeFileStore;
-      yield* fs.writeFileString(`${dir}/config.toml`, "a = 2\n");
-      const refused = yield* Effect.flip(store.write(`${dir}/config.toml`, "a = 3\n", "a = 1\n"));
-      expect(refused).toBeInstanceOf(McpFileConflict);
-      expect(yield* fs.readFileString(`${dir}/config.toml`)).toBe("a = 2\n");
-    }),
-  );
+    it.effect("refuses to write over a file that changed since it was read", () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const dir = yield* resetFileStore;
+        const store = yield* nodeFileStore;
+        yield* fs.writeFileString(`${dir}/config.toml`, "a = 2\n");
+        const refused = yield* Effect.flip(store.write(`${dir}/config.toml`, "a = 3\n", "a = 1\n"));
+        expect(refused).toBeInstanceOf(McpFileConflict);
+        expect(yield* fs.readFileString(`${dir}/config.toml`)).toBe("a = 2\n");
+      }),
+    );
 
-  it.effect("holds Claude Code's lock on .claude.json while it writes, past a stale one", () =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const dir = yield* resetFileStore;
-      const store = yield* nodeFileStore;
-      const lock = `${dir}/.claude.json.lock`;
-      // A lock left by a Claude that died: untouched for a minute.
-      yield* fs.makeDirectory(lock);
-      const minuteAgo = DateTime.toDateUtc(DateTime.subtract(yield* DateTime.now, { minutes: 1 }));
-      yield* fs.utimes(lock, minuteAgo, minuteAgo);
-      const seen = yield* store.locked(
-        [`${dir}/.claude.json`, `${dir}/config.toml`],
-        Effect.all([fs.exists(lock), fs.exists(`${dir}/config.toml.lock`)]),
-      );
-      expect(seen).toEqual([true, false]);
-      expect(yield* fs.exists(lock)).toBe(false);
-    }),
-  );
+    it.effect("holds Claude Code's lock on .claude.json while it writes, past a stale one", () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const dir = yield* resetFileStore;
+        const store = yield* nodeFileStore;
+        const lock = `${dir}/.claude.json.lock`;
+        // A lock left by a Claude that died: untouched for a minute.
+        yield* fs.makeDirectory(lock);
+        const minuteAgo = DateTime.toDateUtc(
+          DateTime.subtract(yield* DateTime.now, { minutes: 1 }),
+        );
+        yield* fs.utimes(lock, minuteAgo, minuteAgo);
+        const seen = yield* store.locked(
+          [`${dir}/.claude.json`, `${dir}/config.toml`],
+          Effect.all([fs.exists(lock), fs.exists(`${dir}/config.toml.lock`)]),
+        );
+        expect(seen).toEqual([true, false]);
+        expect(yield* fs.exists(lock)).toBe(false);
+      }),
+    );
 
-  it.effect("resolves each home the way its driver does", () =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const dir = yield* resetFileStore;
-      const stateDir = `${dir}/state`;
-      // One Antigravity profile keeps a file of its own; the default's links to ~/.gemini.
-      const own = `${antigravityProfileDirectory(stateDir, "antigravity-2" as never)}/config`;
-      yield* fs.makeDirectory(own, { recursive: true });
-      yield* fs.writeFileString(`${own}/mcp_config.json`, "{}");
-      const linked = `${antigravityProfileDirectory(stateDir, "antigravity" as never)}/config`;
-      yield* fs.makeDirectory(linked, { recursive: true });
-      yield* fs.symlink(`${dir}/home/.gemini/config/mcp_config.json`, `${linked}/mcp_config.json`);
-
-      const paths = yield* resolveMcpAgentPaths({
-        homeDir: `${dir}/home`,
-        cwd: "/var/www/",
-        stateDir,
-        env: { CODEX_HOME: `${dir}/codex-env`, XDG_CONFIG_HOME: "/xdg", GROK_HOME: "/g" },
-        settings: {
-          providers: {
-            claudeAgent: { homePath: "" },
-            codex: { homePath: "", shadowHomePath: "" },
-          } as never,
-          providerInstances: {
-            "claudeAgent-2": {
-              driver: ProviderDriverKind.make("claudeAgent"),
-              config: { homePath: `${dir}/logins/claudeAgent-2` },
-            },
-            "claudeAgent-env": {
-              driver: ProviderDriverKind.make("claudeAgent"),
-              environment: [{ name: "CLAUDE_CONFIG_DIR", value: `${dir}/claude-env` }],
-            },
-            "codex-2": {
-              driver: ProviderDriverKind.make("codex"),
-              config: { shadowHomePath: `${dir}/logins/codex-2` },
-            },
-            "antigravity-2": { driver: ProviderDriverKind.make("antigravity") },
-          } as never,
-        },
-      });
-      expect(paths).toEqual({
-        cwd: "/var/www",
-        claudeConfigs: [
-          `${dir}/home/.claude.json`,
-          `${dir}/logins/claudeAgent-2/.claude.json`,
-          `${dir}/claude-env/.claude.json`,
-        ],
-        // The default inherits CODEX_HOME; a login's shadow home links to the shared ~/.codex.
-        codexConfigs: [`${dir}/codex-env/config.toml`, `${dir}/home/.codex/config.toml`],
-        cursorHome: `${dir}/home/.cursor`,
-        grokConfig: "/g/config.toml",
-        antigravityConfigs: [
+    it.effect("resolves each home the way its driver does", () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const dir = yield* resetFileStore;
+        const stateDir = `${dir}/state`;
+        // One Antigravity profile keeps a file of its own; the default's links to ~/.gemini.
+        const own = `${antigravityProfileDirectory(stateDir, "antigravity-2" as never)}/config`;
+        yield* fs.makeDirectory(own, { recursive: true });
+        yield* fs.writeFileString(`${own}/mcp_config.json`, "{}");
+        const linked = `${antigravityProfileDirectory(stateDir, "antigravity" as never)}/config`;
+        yield* fs.makeDirectory(linked, { recursive: true });
+        yield* fs.symlink(
           `${dir}/home/.gemini/config/mcp_config.json`,
-          `${own}/mcp_config.json`,
-        ],
-        openCodeConfig: "/xdg/opencode/opencode.json",
-      });
-    }),
-  );
-});
+          `${linked}/mcp_config.json`,
+        );
+
+        const paths = yield* resolveMcpAgentPaths({
+          homeDir: `${dir}/home`,
+          cwd: "/var/www/",
+          stateDir,
+          env: { CODEX_HOME: `${dir}/codex-env`, XDG_CONFIG_HOME: "/xdg", GROK_HOME: "/g" },
+          settings: {
+            providers: {
+              claudeAgent: { homePath: "" },
+              codex: { homePath: "", shadowHomePath: "" },
+            } as never,
+            providerInstances: {
+              "claudeAgent-2": {
+                driver: ProviderDriverKind.make("claudeAgent"),
+                config: { homePath: `${dir}/logins/claudeAgent-2` },
+              },
+              "claudeAgent-env": {
+                driver: ProviderDriverKind.make("claudeAgent"),
+                environment: [{ name: "CLAUDE_CONFIG_DIR", value: `${dir}/claude-env` }],
+              },
+              "codex-2": {
+                driver: ProviderDriverKind.make("codex"),
+                config: { shadowHomePath: `${dir}/logins/codex-2` },
+              },
+              "antigravity-2": { driver: ProviderDriverKind.make("antigravity") },
+            } as never,
+          },
+        });
+        expect(paths).toEqual({
+          cwd: "/var/www",
+          claudeConfigs: [
+            `${dir}/home/.claude.json`,
+            `${dir}/logins/claudeAgent-2/.claude.json`,
+            `${dir}/claude-env/.claude.json`,
+          ],
+          // The default inherits CODEX_HOME; a login's shadow home links to the shared ~/.codex.
+          codexConfigs: [`${dir}/codex-env/config.toml`, `${dir}/home/.codex/config.toml`],
+          cursorHome: `${dir}/home/.cursor`,
+          grokConfig: "/g/config.toml",
+          antigravityConfigs: [
+            `${dir}/home/.gemini/config/mcp_config.json`,
+            `${own}/mcp_config.json`,
+          ],
+          openCodeConfig: "/xdg/opencode/opencode.json",
+        });
+      }),
+    );
+  },
+);
 
 describe("McpServers sign-in", () => {
   // A one-time code as a provider would send it, built from parts.
