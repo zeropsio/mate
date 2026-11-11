@@ -103,7 +103,10 @@ import * as ReviewService from "./review/ReviewService.ts";
 import * as SourceControlProviderRegistry from "./sourceControl/SourceControlProviderRegistry.ts";
 import * as SourceControlRepositoryService from "./sourceControl/SourceControlRepositoryService.ts";
 import * as ProjectSetupScriptRunner from "./project/ProjectSetupScriptRunner.ts";
-import { ObservabilityLive } from "./observability/Layers/Observability.ts";
+import {
+  ObservabilityLive,
+  SIGNED_URL_PATH_PREFIXES,
+} from "./observability/Layers/Observability.ts";
 import * as HeapSnapshot from "./observability/HeapSnapshot.ts";
 import * as EventLoopMonitor from "./observability/EventLoopMonitor.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
@@ -143,6 +146,7 @@ import {
   persistServerRuntimeState,
 } from "./serverRuntimeState.ts";
 import { orchestrationHttpApiLayer } from "./orchestration/http.ts";
+import { makeRedactedHttpLogger } from "@t3tools/shared/httpObservability";
 import * as NetService from "@t3tools/shared/Net";
 import * as RelayClient from "@t3tools/shared/relayClient";
 import { forkParked, ServerActivation } from "./serverActivation.ts";
@@ -625,14 +629,25 @@ export const makeRoutesLayer = Layer.mergeAll(
   Layer.provide(httpCompressionLayer),
 );
 
+const redactedHttpLogger = makeRedactedHttpLogger(SIGNED_URL_PATH_PREFIXES);
+
 // HttpRouter.serve builds the routes in a private memo map, so the server's
 // one TracerDisabledWhen is provided to the served layer, never merged into
-// the routes.
+// the routes. Its own response logger would log signed URL tokens, so it stays
+// off and the redacting one takes its place.
 export const serveRoutes = (options: {
   readonly routerConfig: typeof HTTP_ROUTER_CONFIG;
   readonly disableLogger?: boolean;
   readonly disableListenLog?: boolean;
-}) => HttpRouter.serve(makeRoutesLayer, options).pipe(withUntracedRequests);
+}) =>
+  HttpRouter.serve(makeRoutesLayer, {
+    routerConfig: options.routerConfig,
+    disableLogger: true,
+    ...(options.disableListenLog === undefined
+      ? {}
+      : { disableListenLog: options.disableListenLog }),
+    ...(options.disableLogger ? {} : { middleware: redactedHttpLogger }),
+  }).pipe(withUntracedRequests);
 
 export const makeServerLayer = (options: ServerLayerOptions) =>
   Layer.unwrap(

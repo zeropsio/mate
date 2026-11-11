@@ -1,6 +1,12 @@
+import * as Cause from "effect/Cause";
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Headers from "effect/http/Headers";
+import * as HttpServerError from "effect/http/HttpServerError";
+import * as HttpServerRequest from "effect/http/HttpServerRequest";
+import type * as HttpServerResponse from "effect/http/HttpServerResponse";
 
 export const httpHeaderRedactionLayer = Layer.effect(
   Headers.CurrentRedactedNames,
@@ -76,3 +82,102 @@ export const makeUrlAttributeRedactor =
         return value;
     }
   };
+
+const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+
+const CREDENTIAL_QUERY_IN_TEXT = new RegExp(
+  `([?&](?:${[...REDACTED_QUERY_PARAMS].map(escapeRegExp).join("|")})=)[^&\\s#"'<]+`,
+  "gu",
+);
+
+/**
+ * Redacts signed path tokens and credential query parameters wherever a URL
+ * appears inside free text, such as an error's message (`RouteNotFound` embeds
+ * `${method} ${url}`).
+ */
+export const makeUrlTextRedactor = (signedPathPrefixes: ReadonlyArray<string>) => {
+  const signedSegment =
+    signedPathPrefixes.length === 0
+      ? undefined
+      : new RegExp(`(${signedPathPrefixes.map(escapeRegExp).join("|")})/[^/\\s?#"'<>]+`, "gu");
+  return (text: string): string => {
+    const withoutTokens = signedSegment ? text.replace(signedSegment, `$1/${REDACTED}`) : text;
+    return withoutTokens.replace(CREDENTIAL_QUERY_IN_TEXT, `$1${REDACTED}`);
+  };
+};
+
+const stripSearchAndHash = (url: string): string => {
+  const end = url.search(/[?#]/u);
+  return end === -1 ? url : url.slice(0, end);
+};
+
+/**
+ * Effect's HTTP response logger (`HttpMiddleware.logger`) with its `http.url`
+ * annotation passed through {@link makeUrlAttributeRedactor} and a failure's
+ * cause text through {@link makeUrlTextRedactor}, so the server's own log lines
+ * never carry the signed token segment either. A client that hung up logs as
+ * such, with status 499, rather than as a server failure. Pass it to
+ * `HttpRouter.serve` as `middleware` with `disableLogger: true`.
+ */
+export const makeRedactedHttpLogger = (signedPathPrefixes: ReadonlyArray<string>) => {
+  const redact = makeUrlAttributeRedactor(signedPathPrefixes);
+  const redactText = makeUrlTextRedactor(signedPathPrefixes);
+  return <E, R>(
+    httpApp: Effect.Effect<
+      HttpServerResponse.HttpServerResponse,
+      E,
+      HttpServerRequest.HttpServerRequest | R
+    >,
+  ): Effect.Effect<
+    HttpServerResponse.HttpServerResponse,
+    E,
+    HttpServerRequest.HttpServerRequest | R
+  > =>
+    Effect.withFiber((fiber) => {
+      const request = Context.getUnsafe(fiber.context, HttpServerRequest.HttpServerRequest);
+      const annotations = (status: number) => ({
+        "http.method": request.method,
+        "http.url": redact("http.url", stripSearchAndHash(request.url)),
+        "http.status": status,
+      });
+      return Effect.withLogSpan(
+        Effect.flatMap(Effect.exit(httpApp), (exit) => {
+          if (exit._tag === "Success") {
+            return Effect.andThen(
+              Effect.annotateLogs(Effect.log("Sent HTTP response"), annotations(exit.value.status)),
+              exit,
+            );
+          }
+          const [response, cause] = HttpServerError.causeResponseStripped(exit.cause);
+          if (Option.isNone(cause)) {
+            return Effect.andThen(
+              Effect.annotateLogs(Effect.log("Sent HTTP response"), annotations(response.status)),
+              exit,
+            );
+          }
+          const clientHungUp = cause.value.reasons.every(
+            (reason) =>
+              reason._tag === "Interrupt" &&
+              reason.annotations.has(HttpServerError.ClientAbort.key),
+          );
+          if (clientHungUp) {
+            return Effect.andThen(
+              Effect.annotateLogs(
+                Effect.log("Client closed the request before the response"),
+                annotations(499),
+              ),
+              exit,
+            );
+          }
+          return Effect.andThen(
+            Effect.annotateLogs(
+              Effect.log(redactText(Cause.pretty(cause.value))),
+              annotations(response.status),
+            ),
+            exit,
+          );
+        }),
+        "http.span",
+      );
+    });
+};

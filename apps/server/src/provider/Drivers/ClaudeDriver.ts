@@ -19,6 +19,7 @@ import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
+import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import { HttpClient } from "effect/http";
 import { ChildProcessSpawner } from "effect/process";
@@ -40,7 +41,10 @@ import {
   probeClaudeWorkspaceSnapshot,
 } from "../Layers/ClaudeProvider.ts";
 import { ProviderEventLoggers } from "../Layers/ProviderEventLoggers.ts";
-import { resolveClaudeModelCatalog } from "../ClaudeModelCatalog.ts";
+import {
+  resolveClaudeModelCatalog,
+  scopeClaudeModelCatalogToVersion,
+} from "../ClaudeModelCatalog.ts";
 import { makeManagedServerProvider } from "../makeManagedServerProvider.ts";
 import * as ModelManifest from "../ModelManifest.ts";
 import {
@@ -122,7 +126,14 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
       const serverSettings = yield* ServerSettingsService;
       const eventLoggers = yield* ProviderEventLoggers;
       const modelManifest = yield* ModelManifest.ModelManifest;
-      const modelCatalog = modelManifest.current.pipe(Effect.map(resolveClaudeModelCatalog));
+      // The last probed Claude Code version: a typed bare alias resolves to the
+      // newest model this CLI supports, as the picker offers.
+      const probedVersion = yield* Ref.make<string | null>(null);
+      const modelCatalog = Effect.all([modelManifest.current, Ref.get(probedVersion)]).pipe(
+        Effect.map(([manifest, version]) =>
+          scopeClaudeModelCatalogToVersion(resolveClaudeModelCatalog(manifest), version),
+        ),
+      );
       const processEnv = mergeProviderInstanceEnvironment(environment);
       const fallbackContinuationIdentity = defaultProviderContinuationIdentity({
         driverKind: DRIVER_KIND,
@@ -216,6 +227,10 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
               ),
             ),
             Effect.map(stampIdentity),
+            // A failed probe reports no version; keep the last one heard.
+            Effect.tap((snapshot) =>
+              snapshot.version ? Ref.set(probedVersion, snapshot.version) : Effect.void,
+            ),
           ),
         ),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),

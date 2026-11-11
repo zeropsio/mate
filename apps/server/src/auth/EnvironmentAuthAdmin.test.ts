@@ -9,9 +9,7 @@ import * as EnvironmentAuth from "./EnvironmentAuth.ts";
 import * as ServerSecretStore from "./ServerSecretStore.ts";
 import * as SessionStore from "./SessionStore.ts";
 
-const makeServerConfigLayer = (
-  overrides?: Partial<Pick<ServerConfig.ServerConfig["Service"], "desktopBootstrapToken">>,
-) =>
+const makeServerConfigLayer = () =>
   Layer.effect(
     ServerConfig.ServerConfig,
     Effect.gen(function* () {
@@ -19,7 +17,6 @@ const makeServerConfigLayer = (
       return {
         ...config,
         zeropsFixtures: undefined,
-        ...overrides,
       } satisfies ServerConfig.ServerConfig["Service"];
     }),
   ).pipe(
@@ -30,13 +27,11 @@ const makeServerConfigLayer = (
     ),
   );
 
-const makeEnvironmentAuthLayer = (
-  overrides?: Partial<Pick<ServerConfig.ServerConfig["Service"], "desktopBootstrapToken">>,
-) =>
+const makeEnvironmentAuthLayer = () =>
   EnvironmentAuth.layer.pipe(
     Layer.provideMerge(ServerSecretStore.layer),
     Layer.provideMerge(SqlitePersistenceMemory),
-    Layer.provide(makeServerConfigLayer(overrides)),
+    Layer.provide(makeServerConfigLayer()),
   );
 
 it.layer(NodeServices.layer)("EnvironmentAuth administrative operations", (it) => {
