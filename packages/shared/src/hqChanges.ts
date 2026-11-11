@@ -19,7 +19,7 @@
  *   `unknown_change`, one no longer open `409 conflict` `change_not_open`, a task's `409 conflict`
  *   `change_on_task` (decided with its task, closed by a person);
  * - `POST /api/mate/changes/:repo/:n/attachments`, a raster picture → {@link AttachmentResponse};
- * - `GET /api/mate/self` → its state (`mateLink.ts` `MateState`), {@link MateChanges} included;
+ * - the link's `state` → its state (`mateLink.ts` `MateState`), {@link MateChanges} included;
  * - git over HTTPS at `/git/<appId>/<repo>.git`, Basic auth with the user `mate` and the credential
  *   as the password. A Mate fetches its application's repositories and pushes any branch but
  *   `main`, only forward: never a branch another Mate's open change is on (`not_your_ref`), nor one
@@ -669,7 +669,7 @@ export type MateChange = typeof MateChange.Type;
 
 /**
  * What a Mate's own state carries of its changes, beside its record (`@t3tools/shared/mateLink`
- * `MateState`, which `GET /api/mate/self` answers and its link brings down). The application HQ holds the Mate
+ * `MateState`, which the link's `state` brings down). The application HQ holds the Mate
  * in, by id and by its name now, none for a Mate in no application; and in each of that application's repositories, every
  * open change of the Mate's and its latest {@link MATE_CHANGES_PER_REPO} merged or closed ones,
  * newest first. A change missing from it is merged or closed. An automated Mate holds one open per

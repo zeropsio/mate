@@ -27,6 +27,7 @@ import { expandHomePath, hostHomeDir, resolveBaseDir } from "../os-jank.ts";
 import { isProcessAlive, readPersistedServerRuntimeState } from "../serverRuntimeState.ts";
 import {
   HQ_GIT_CREDENTIAL_ENV,
+  MATE_STATE_FILE_ENV,
   publishHqGitCredential,
   publishHqOrigin,
   resolveHqGitCredentialPath,
@@ -211,6 +212,11 @@ const EnvServerConfig = Config.all({
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
+  // Named by zcp for this server alone; removed from the environment it hands on (resolveServerConfig).
+  zcpMateStateFile: Config.String(MATE_STATE_FILE_ENV).pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
   zeropsFixtures: Config.String("T3CODE_ZEROPS_FIXTURES").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
@@ -315,6 +321,8 @@ export const resolveServerConfig = (
     const path = yield* Path.Path;
     const fs = yield* FileSystem.FileSystem;
     const env = yield* EnvServerConfig;
+    // One writer by construction: nothing this server starts may inherit the path.
+    delete process.env[MATE_STATE_FILE_ENV];
     const normalizedFlags = {
       mode: flags.mode ?? Option.none(),
       port: flags.port ?? Option.none(),
@@ -476,8 +484,12 @@ export const resolveServerConfig = (
             statusFile: env.zcpStatusFile,
             mateUpdateStateFile: env.zcpMateUpdateStateFile,
             mateBootFile: env.zcpMateBootFile,
+            mateStateFile: env.zcpMateStateFile,
           })
         : undefined;
+    if (zerops !== undefined && zerops.mateStateFile === undefined) {
+      yield* Effect.logInfo("Zerops Mate state file is off: the launch names no state file.");
+    }
     // Every process the server starts (provider CLIs, and through them zcp) inherits this
     // environment, so they all reach the HQ this Mate links to.
     if (zerops !== undefined) {
