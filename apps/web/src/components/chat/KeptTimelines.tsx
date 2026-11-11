@@ -24,6 +24,7 @@
 import {
   createRef,
   memo,
+  startTransition,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -281,7 +282,21 @@ const TimelineSlot = memo(function TimelineSlot({
   if (changedNow && !changedAway) setChangedAway(true);
   if (mode === "open" && changedAway) setChangedAway(false);
   const opened = mode === "open" || mode === "remembered" || mode === "settling";
-  if (opened && warmed !== null) setWarmed(null);
+  // Opening, it is drawn once more with what it read out of sight — the rows already placed —
+  // and takes the pane's own reading of the same conversation after that frame has painted:
+  // the pane derives every row again from its own copy, 9 ms of the frame the switch draws in.
+  const [carried, setCarried] = useState<WarmTimelineProps | null>(null);
+  if (opened && warmed !== null) {
+    setCarried(warmed);
+    setWarmed(null);
+  }
+  if (!opened && carried !== null) setCarried(null);
+  useEffect(() => {
+    if (carried === null) return;
+    startTransition(() => {
+      setCarried(null);
+    });
+  }, [carried]);
   const shown = mode === "open" || (mode === "remembered" && !changedAway);
   // Kept out of sight, gone quiet: not laid out until it shows.
   const [quietSince, setQuietSince] = useState<WarmTimelineProps | null>(null);
@@ -296,8 +311,12 @@ const TimelineSlot = memo(function TimelineSlot({
     working: warmed?.isWorking === true || warmed?.runningTurnId != null,
     quiet: warmed !== null && quietSince === warmed,
   });
+  const carriedTimeline = useMemo(
+    () => (carried === null ? null : { ...timeline, ...carried }),
+    [carried, timeline],
+  );
   const props: TimelineProps | null = opened
-    ? timeline
+    ? (carriedTimeline ?? timeline)
     : mode === "hidden"
       ? keptSlotTimeline(timeline, warmed)
       : warmed === null
