@@ -44,10 +44,13 @@ function rest() {
   timer = undefined;
   const left = awakeUntil - performance.now();
   // A frame held up reports late: wait for the report rather than let go unheard. A page in the
-  // background reports nothing at all, and coming back stirs it.
+  // background reports nothing at all, and coming back stirs it; a target off the page is never
+  // reported, so it holds nothing up.
   const unheard =
     document.visibilityState === "visible" &&
-    [...watchers].some((watcher) => watcher.unheard && watcher.targets.size > 0);
+    [...watchers].some(
+      (watcher) => watcher.unheard && [...watcher.targets].some((target) => target.isConnected),
+    );
   if (left > 0 || unheard) {
     timer = setTimeout(rest, Math.max(left, AWAKE_MS));
     return;
