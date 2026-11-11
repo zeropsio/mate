@@ -67,6 +67,7 @@ import {
 import { findJumpPages } from "./jumpPages";
 import { MateFace } from "./primitives";
 import { EnvDot } from "./SidebarProductionChip";
+import { mayReadBilling } from "@t3tools/client-runtime/zerops/billingAccess";
 
 export interface JumpBoxModel {
   readonly value: string;
@@ -120,15 +121,17 @@ export function useJumpBoxModel(
     targetId === null ? undefined : index.mates.find((mate) => mate.projectId === targetId);
   const newProject = useRoleOffers().newProject;
   // The team and persona templates are found where the settings nav offers them: in an organization.
-  const withOrganization = useZeropsSessionOptional()?.activeOrganization != null;
+  const organization = useZeropsSessionOptional()?.activeOrganization ?? null;
+  const withOrganization = organization !== null;
+  const readsBilling = mayReadBilling(organization?.roleCode);
   const groups = useMemo(
     () =>
       target === undefined
         ? jumpGroups(index, value, hits, readOnly, newProject, (text) =>
-            findJumpPages(text, withOrganization),
+            findJumpPages(text, { withOrganization, readsBilling }),
           )
         : [],
-    [hits, index, newProject, readOnly, target, value, withOrganization],
+    [hits, index, newProject, readOnly, readsBilling, target, value, withOrganization],
   );
   const items = groups.flatMap((group) => group.items);
   const highlighted = items.find((item) => item.value === highlightedValue) ?? items[0];

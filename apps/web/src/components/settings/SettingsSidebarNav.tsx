@@ -20,13 +20,15 @@ import { SectionLabel } from "../zerops/system";
 import { useZeropsSessionOptional } from "~/zerops/sessionContext";
 import { scrollToSettingsTarget } from "./settingsLayout";
 import {
-  ORGANIZATION_PAGES,
+  settingsPageOffered,
   searchSettings,
   SETTINGS_NAV_GROUPS,
   SETTINGS_SECTION_LABELS,
   type SettingsPath,
   type SettingsSearchItem,
 } from "./settingsSearch";
+import { mayReadBilling } from "@t3tools/client-runtime/zerops/billingAccess";
+
 import { SETTINGS_SECTION_ICONS } from "./settingsSectionIcons";
 
 function SettingsSectionIcon({ to }: { to: SettingsPath }) {
@@ -35,15 +37,19 @@ function SettingsSectionIcon({ to }: { to: SettingsPath }) {
 }
 
 /** The nav's groups, each with the sections it shows: an empty group is not drawn. */
-const shownNavGroups = (withOrganization: boolean) =>
+const shownNavGroups = (viewer: Parameters<typeof settingsPageOffered>[1]) =>
   SETTINGS_NAV_GROUPS.map((group) => ({
     label: group.label,
-    sections: group.sections.filter((to) => withOrganization || !ORGANIZATION_PAGES.has(to)),
+    sections: group.sections.filter((to) => settingsPageOffered(to, viewer)),
   })).filter((group) => group.sections.length > 0);
 
 export function SettingsSidebarNav({ pathname }: { pathname: string }) {
   const navigate = useNavigate();
-  const navGroups = shownNavGroups(useZeropsSessionOptional()?.activeOrganization != null);
+  const organization = useZeropsSessionOptional()?.activeOrganization ?? null;
+  const navGroups = shownNavGroups({
+    withOrganization: organization !== null,
+    readsBilling: mayReadBilling(organization?.roleCode),
+  });
   const currentHash = useLocation({ select: (location) => location.hash });
   const { isMobile, setOpenMobile, open, setOpen } = useSidebar();
   const searchInputRef = useRef<HTMLInputElement>(null);
