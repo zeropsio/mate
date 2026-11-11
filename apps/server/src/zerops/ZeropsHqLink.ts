@@ -265,6 +265,8 @@ export interface ZeropsHqLinkOptions {
   readonly signers?: (signers: Readonly<Record<string, string>>) => Effect.Effect<void>;
   /** The fingerprint of the Git credential held now, read afresh for every dial; HQ keeps a live one it names. */
   readonly gitFingerprint: Effect.Effect<Option.Option<string>>;
+  /** The fingerprint of the Observe credential held now, read afresh for every dial; HQ mints none while it names a live one. */
+  readonly observeFingerprint?: Effect.Effect<Option.Option<string>>;
   /** Keeps the Mate's changes from every state HQ sends where zcp reads them (`ZeropsChangesFile`). */
   readonly mateChanges?: (changes: MateChanges) => Effect.Effect<void>;
   /** Hands on the project HQ's Chief mark names, or none, with every state HQ sends. */
@@ -479,12 +481,18 @@ export const makeZeropsHqLink = (
         return Option.none<Link>();
       }
       const gitFingerprint = yield* options.gitFingerprint;
+      const observeFingerprint = yield* (
+        options.observeFingerprint ?? Effect.succeed(Option.none<string>())
+      );
       yield* send({
         type: "hello",
         key,
         serviceId: options.serviceId,
         origin,
         ...(Option.isSome(gitFingerprint) ? { gitFingerprint: gitFingerprint.value } : {}),
+        ...(Option.isSome(observeFingerprint)
+          ? { observeFingerprint: observeFingerprint.value }
+          : {}),
       });
       const keyChanged = yield* Deferred.make<LinkClose>();
       let sentKey: string | undefined;
@@ -1042,6 +1050,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
           paths.join(config.homeDir, ".zcp", "hq", "changes.json"),
         ),
         gitFingerprint: credential.fingerprint,
+        observeFingerprint: observeCredential.fingerprint,
         // A moved Chief mark rotates every session on this engine, so each runs a fresh zcp.
         chief: (yield* makeChiefRestart({
           conversations: Effect.map(engine.conversations, (list) => [

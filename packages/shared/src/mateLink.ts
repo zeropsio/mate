@@ -516,6 +516,7 @@ export const LinkedMate = Schema.Struct({
 export type LinkedMate = typeof LinkedMate.Type;
 
 const Ticket = Schema.String.check(Schema.isMinLength(1));
+const CredentialFingerprint = Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/u));
 
 export const KeyLinkUp = Schema.Union([
   Schema.Struct({
@@ -525,7 +526,9 @@ export const KeyLinkUp = Schema.Union([
     /** The Mate's public origin, `https://host`: HQ hands it to a client that asks for a ticket. */
     origin: Schema.String.check(Schema.isMinLength(1)),
     /** What the Git credential the Mate holds is, never its secret: HQ keeps a live one this names. */
-    gitFingerprint: Schema.optionalKey(Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/u))),
+    gitFingerprint: Schema.optionalKey(CredentialFingerprint),
+    /** What the Observe credential the Mate holds is, never its secret: HQ mints none while it names a live one. */
+    observeFingerprint: Schema.optionalKey(CredentialFingerprint),
   }),
   ...MateLinkUp.members,
   Schema.Struct({ type: Schema.Literal("ticket-ack"), ticket: Ticket }),

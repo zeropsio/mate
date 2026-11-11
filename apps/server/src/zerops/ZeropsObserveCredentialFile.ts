@@ -2,16 +2,20 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Semaphore from "effect/Semaphore";
 
 import { ServerConfig } from "../config.ts";
+import { fingerprintOf } from "./ZeropsGitCredentialFile.ts";
 
 export class ZeropsObserveCredentialFile extends Context.Service<
   ZeropsObserveCredentialFile,
   {
     /** True only after the complete file was replaced or removed. No secret leaves this service. */
     readonly write: (credential: string | null) => Effect.Effect<boolean>;
+    /** What the credential held is, without its secret (`fingerprintOf`); none while the file is missing or unreadable. */
+    readonly fingerprint: Effect.Effect<Option.Option<string>>;
   }
 >()("t3/zerops/ZeropsObserveCredentialFile") {}
 
@@ -47,6 +51,10 @@ export const makeObserveCredentialFile = (at: string) =>
             ),
           ),
         ),
+      fingerprint: fs.readFileString(at).pipe(
+        Effect.map((credential) => Option.some(fingerprintOf(credential))),
+        Effect.orElseSucceed(Option.none),
+      ),
     });
   });
 
@@ -57,7 +65,10 @@ export const layer = Layer.effect(
     const config = yield* ServerConfig;
     const path = yield* Path.Path;
     return config.zerops === undefined
-      ? ZeropsObserveCredentialFile.of({ write: () => Effect.succeed(false) })
+      ? ZeropsObserveCredentialFile.of({
+          write: () => Effect.succeed(false),
+          fingerprint: Effect.succeed(Option.none()),
+        })
       : yield* makeObserveCredentialFile(
           path.join(config.homeDir, ".zcp", "hq", "observe-credential"),
         );
