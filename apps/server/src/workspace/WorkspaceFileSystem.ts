@@ -216,19 +216,24 @@ export const make = Effect.gen(function* () {
 
           const bytesToRead = Math.min(stat.size, PROJECT_READ_FILE_MAX_BYTES);
           const buffer = Buffer.alloc(bytesToRead);
-          const { bytesRead } = yield* Effect.tryPromise({
-            try: () => handle.read(buffer, 0, bytesToRead, 0),
-            catch: (cause) =>
-              new WorkspaceFileSystemOperationError({
-                workspaceRoot: input.cwd,
-                relativePath: input.relativePath,
-                resolvedPath: realTargetPath,
-                operationPath: realTargetPath,
-                operation: "read",
-                cause,
-              }),
-          });
-          const fileBytes = buffer.subarray(0, bytesRead);
+          let offset = 0;
+          while (offset < bytesToRead) {
+            const { bytesRead } = yield* Effect.tryPromise({
+              try: () => handle.read(buffer, offset, bytesToRead - offset, offset),
+              catch: (cause) =>
+                new WorkspaceFileSystemOperationError({
+                  workspaceRoot: input.cwd,
+                  relativePath: input.relativePath,
+                  resolvedPath: realTargetPath,
+                  operationPath: realTargetPath,
+                  operation: "read",
+                  cause,
+                }),
+            });
+            if (bytesRead <= 0) break;
+            offset += bytesRead;
+          }
+          const fileBytes = buffer.subarray(0, offset);
           if (fileBytes.includes(0)) {
             return yield* new WorkspaceBinaryFileError({
               workspaceRoot: input.cwd,
@@ -237,11 +242,13 @@ export const make = Effect.gen(function* () {
             });
           }
 
+          const truncated = stat.size > PROJECT_READ_FILE_MAX_BYTES;
           return {
             relativePath: target.relativePath,
-            contents: new TextDecoder("utf-8").decode(fileBytes),
+            // Streaming decode drops a character the byte limit split, instead of ending in U+FFFD.
+            contents: new TextDecoder("utf-8").decode(fileBytes, { stream: truncated }),
             byteLength: stat.size,
-            truncated: stat.size > PROJECT_READ_FILE_MAX_BYTES,
+            truncated,
           };
         }),
       (handle) =>
