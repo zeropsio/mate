@@ -54,8 +54,9 @@ const redactUrl = (url: string, signedPathPrefixes: ReadonlyArray<string>): stri
 };
 
 /**
- * Rewrites the `url.*` span attributes so credential query parameters and the
- * signed token segment after any of `signedPathPrefixes` never reach a trace.
+ * Rewrites the `url.*` span attributes and the `http.url` log annotation so
+ * credential query parameters and the signed token segment after any of
+ * `signedPathPrefixes` never reach a trace.
  * The tracer applies it to every span, server and client alike.
  */
 export const makeUrlAttributeRedactor =
@@ -64,6 +65,8 @@ export const makeUrlAttributeRedactor =
     if (typeof value !== "string") return value;
     switch (key) {
       case "url.full":
+      // The HTTP logger's annotation, which reaches traces as a span event attribute.
+      case "http.url":
         return redactUrl(value, signedPathPrefixes);
       case "url.path":
         return redactPath(value, signedPathPrefixes);
