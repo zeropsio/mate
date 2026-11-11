@@ -7,7 +7,6 @@ export interface AutomaticUpdateEvidence {
   readonly updater?:
     | {
         readonly protocol: number;
-        readonly rollbackCompatible: boolean;
         readonly phase: string;
         readonly runningVersion: string;
         readonly failedVersion?: string;
@@ -20,7 +19,6 @@ export function mayAutoUpdate(evidence: AutomaticUpdateEvidence): boolean {
     evidence.enabled === true &&
     evidence.available &&
     updater?.protocol === 1 &&
-    updater.rollbackCompatible &&
     updater.failedVersion !== evidence.latest &&
     ["idle", "updated", "postponed"].includes(updater.phase)
   );

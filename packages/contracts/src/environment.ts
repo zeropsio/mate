@@ -196,7 +196,6 @@ export const ExecutionEnvironmentUpdate = Schema.Struct({
   automatic: Schema.optionalKey(
     Schema.Struct({
       protocol: Schema.Literal(1),
-      rollbackCompatible: Schema.Boolean,
       phase: Schema.Literals([
         "idle",
         "staging",

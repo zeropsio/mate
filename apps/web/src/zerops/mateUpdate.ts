@@ -54,9 +54,7 @@ export function mateUpdateLine(
             ? `Updated to ${automatic.runningVersion}`
             : automatic.phase === "postponed"
               ? `Update postponed; Mate is running ${automatic.runningVersion}`
-              : update.available && !automatic.rollbackCompatible
-                ? "Update available — needs your confirmation"
-                : undefined;
+              : undefined;
     if (text !== undefined) return { text, tone: "default" };
   }
   const available = [

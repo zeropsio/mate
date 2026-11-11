@@ -108,7 +108,6 @@ const statusAt = (phase: NonNullable<MateStatusResult["updater"]>["phase"]): Mat
   checkedAt: "2026-10-28T13:23:10Z",
   updater: {
     protocol: 1,
-    rollbackCompatible: true,
     phase,
     runningVersion: phase === "switching" ? "0.16.17" : "0.16.18",
   },

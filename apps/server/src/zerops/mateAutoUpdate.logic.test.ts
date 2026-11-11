@@ -2,12 +2,12 @@ import { describe, expect, it } from "@effect/vitest";
 import { mayAutoRestart, mayAutoUpdate, restartReading } from "./mateAutoUpdate.logic.ts";
 
 describe("automatic Mate updates", () => {
+  // witness: apps/server/src/zerops/mateAutoUpdate.logic.ts | updater.failedVersion !== evidence.latest → updater.failedVersion === evidence.latest
   it.each([
     {
-      name: "a compatible stable candidate and current HQ permission update",
+      name: "a stable candidate and current HQ permission update",
       policy: true,
       protocol: 1,
-      compatible: true,
       phase: "idle",
       failed: undefined,
       available: true,
@@ -17,7 +17,6 @@ describe("automatic Mate updates", () => {
       name: "unknown HQ policy postpones",
       policy: undefined,
       protocol: 1,
-      compatible: true,
       phase: "idle",
       available: true,
       expected: false,
@@ -26,7 +25,6 @@ describe("automatic Mate updates", () => {
       name: "an organization hold postpones",
       policy: false,
       protocol: 1,
-      compatible: true,
       phase: "idle",
       available: true,
       expected: false,
@@ -35,16 +33,6 @@ describe("automatic Mate updates", () => {
       name: "old zcp needs an attended restart",
       policy: true,
       protocol: undefined,
-      compatible: true,
-      phase: "idle",
-      available: true,
-      expected: false,
-    },
-    {
-      name: "incompatible release needs confirmation",
-      policy: true,
-      protocol: 1,
-      compatible: false,
       phase: "idle",
       available: true,
       expected: false,
@@ -53,7 +41,6 @@ describe("automatic Mate updates", () => {
       name: "a failed version is skipped",
       policy: true,
       protocol: 1,
-      compatible: true,
       phase: "postponed",
       failed: "0.15.0",
       available: true,
@@ -63,7 +50,6 @@ describe("automatic Mate updates", () => {
       name: "a newer release can follow a failed candidate",
       policy: true,
       protocol: 1,
-      compatible: true,
       phase: "postponed",
       failed: "0.14.9",
       available: true,
@@ -73,7 +59,6 @@ describe("automatic Mate updates", () => {
       name: "an accepted update is not launched twice",
       policy: true,
       protocol: 1,
-      compatible: true,
       phase: "draining",
       available: true,
       expected: false,
@@ -82,12 +67,11 @@ describe("automatic Mate updates", () => {
       name: "no available candidate does nothing",
       policy: true,
       protocol: 1,
-      compatible: true,
       phase: "idle",
       available: false,
       expected: false,
     },
-  ])("$name", ({ policy, protocol, compatible, phase, failed, available, expected }) => {
+  ])("$name", ({ policy, protocol, phase, failed, available, expected }) => {
     expect(
       mayAutoUpdate({
         enabled: policy,
@@ -98,7 +82,6 @@ describe("automatic Mate updates", () => {
             ? undefined
             : {
                 protocol,
-                rollbackCompatible: compatible,
                 phase,
                 runningVersion: "0.14.8",
                 ...(failed === undefined ? {} : { failedVersion: failed }),
