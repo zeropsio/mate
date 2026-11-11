@@ -91,7 +91,9 @@ import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
 import { startNewThreadFromContext } from "../lib/chatThreadActions";
 import { useClientSettings } from "../hooks/useSettings";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
+import { shareEqual } from "@t3tools/shared/structuralSharing";
 import { useStableHandlers } from "../hooks/useStableHandlers";
+import { useStandingGetter } from "../hooks/useStandingGetter";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
 import {
   useAllEnvironmentProjectSnapshotsReady,
@@ -1234,6 +1236,12 @@ const MENU_WAITS_PATIENCE_MS = 800;
 /** How long a press stands for the Mate it opens before its route must have arrived. */
 const MENU_PRESS_BOUND_MS = 6_000;
 
+const listedMateKey = (candidate: { readonly project: { readonly id: string } }): string =>
+  candidate.project.id;
+
+/** Two readings of plain data say the same (`shareEqual`). */
+const sameAsRead = <T,>(previous: T, next: T): boolean => shareEqual(previous, next) === previous;
+
 /** Runs `run` once the browser has painted the frame now being drawn; at once where none paints. */
 function afterNextPaint(run: () => void): void {
   if (typeof requestAnimationFrame !== "function") {
@@ -1944,9 +1952,9 @@ export default function Sidebar() {
       shownInScope(
         zeropsMateScope,
         zeropsPersonFacts[candidate.project.id]?.mine,
-        candidate.project.id === activeZeropsProjectId,
+        candidate.project.id === litZeropsProjectId,
       ),
-    [activeZeropsProjectId, zeropsPersonFacts, zeropsMateScope],
+    [litZeropsProjectId, zeropsPersonFacts, zeropsMateScope],
   );
   // The tree's verbs, the same functions from render to render: the tree and its rows are
   // memoised, and a streaming Mate re-renders this whole menu on every shell event.
@@ -1986,6 +1994,23 @@ export default function Sidebar() {
     void router.navigate({ to: "/chief" });
   }, [isMobile, router, setOpenMobile]);
   const zeropsListed = zeropsCandidates;
+  // Who is coming, and each row's menu, as the list is handed them: the same getters while they
+  // answer the same for every Mate listed. Both are built off shared state — every Mate's link,
+  // every write under way — and were rebuilt, and the whole list drawn again, three times as one
+  // conversation opened.
+  const zeropsListedComing = useStandingGetter(
+    zeropsComing,
+    zeropsListed,
+    listedMateKey,
+    sameAsRead,
+  );
+  const getZeropsMateActions = zeropsMateMenus.getMateActions;
+  const zeropsActionsOf = useCallback(
+    (candidate: (typeof zeropsCandidates)[number]) =>
+      getZeropsMateActions(candidate, zeropsRowActivity(candidate)),
+    [getZeropsMateActions, zeropsRowActivity],
+  );
+  const zeropsListedActions = useStandingGetter(zeropsActionsOf, zeropsListed, listedMateKey);
   const chiefSetupLine = useChiefSetupLine();
   const ownChief = useOwnChief();
   const onZeropsSelect = useCallback(
@@ -3103,13 +3128,13 @@ export default function Sidebar() {
               onAddAutomatedMates={automatedOffered ? onZeropsNewAutomatedMates : undefined}
               onInvite={teamOffered.invite ? inviteToProject : undefined}
               onSetUp={onZeropsSetUp}
-              getComing={zeropsComing}
+              getComing={zeropsListedComing}
               onOpenComing={openComingMate}
               onBrowseProjects={navigateToZeropsProjects}
               onAskToFix={zeropsRowVerbs.askToFix}
               getFlow={zeropsSidebarFlowWithPages}
               getOwner={zeropsMateOwner}
-              getMateActions={zeropsMateMenus.getMateActions}
+              getMateActions={zeropsListedActions}
               getBirth={zeropsMateMenus.getBirth}
               shown={zeropsShown}
               timestampFormat={timestampFormat}
