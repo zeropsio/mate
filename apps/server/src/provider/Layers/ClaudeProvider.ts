@@ -36,7 +36,7 @@ import {
 } from "../providerSnapshot.ts";
 import { resolveClaudeSdkExecutablePath } from "../Drivers/ClaudeExecutable.ts";
 import { makeClaudeEnvironment } from "../Drivers/ClaudeHome.ts";
-import { discoverClaudeSkills } from "../Drivers/ClaudeSkills.ts";
+import { discoverClaudeSkills, readClaudeSettingsBaseUrl } from "../Drivers/ClaudeSkills.ts";
 import type { ProviderWorkspaceSnapshot } from "../ProviderDriver.ts";
 import { makeUnavailableUsageLimits } from "../providerUsageLimits.ts";
 import {
@@ -166,6 +166,28 @@ function apiProviderAuthMetadata(
   return apiProvider === "bedrock" ? { type: "bedrock", label: "Amazon Bedrock" } : undefined;
 }
 
+/**
+ * Whether the SDK's account payload evidences a credential the CLI can use. The probe resolves
+ * for a logged-out CLI too, and `tokenSource: "none"` is the one shape that disproves login.
+ * Silence is not disproof: profile installs and older CLIs report no token source at all.
+ */
+function claudeAuthStatus(
+  capabilities: Pick<
+    ClaudeCapabilitiesProbe,
+    "email" | "subscriptionType" | "tokenSource" | "apiKeySource" | "apiProvider"
+  >,
+): "authenticated" | "unauthenticated" {
+  if (capabilities.apiProvider !== undefined && capabilities.apiProvider !== "firstParty") {
+    return "authenticated";
+  }
+  if (capabilities.tokenSource !== "none") return "authenticated";
+  // API keys can authenticate with tokenSource: none; also check key and account fields.
+  const hasApiKey = Boolean(capabilities.apiKeySource) && capabilities.apiKeySource !== "none";
+  return hasApiKey || capabilities.email || capabilities.subscriptionType
+    ? "authenticated"
+    : "unauthenticated";
+}
+
 // ── SDK capability probe ────────────────────────────────────────────
 
 // Amazon Bedrock initializes far slower than first-party auth: the SDK boots the
@@ -233,6 +255,8 @@ type ClaudeCapabilitiesProbe = {
   readonly email: string | undefined;
   readonly subscriptionType: string | undefined;
   readonly tokenSource: string | undefined;
+  /** Where the CLI found an API key, when it authenticates with one. */
+  readonly apiKeySource?: string;
   /**
    * Active API backend reported by the SDK's `AccountInfo`. Anthropic OAuth
    * login only applies when `"firstParty"`; for Amazon Bedrock (`"bedrock"`)
@@ -388,6 +412,7 @@ const probeClaudeCapabilities = (
               readonly email?: string;
               readonly subscriptionType?: string;
               readonly tokenSource?: string;
+              readonly apiKeySource?: string;
               readonly apiProvider?: string;
             }
           | undefined;
@@ -395,6 +420,7 @@ const probeClaudeCapabilities = (
           email: account?.email,
           subscriptionType: account?.subscriptionType,
           tokenSource: account?.tokenSource,
+          ...(account?.apiKeySource === undefined ? {} : { apiKeySource: account.apiKeySource }),
           apiProvider: account?.apiProvider,
           slashCommands: parseClaudeInitializationCommands(init.commands),
           ...(usage ? { usage } : {}),
@@ -589,11 +615,43 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     });
   }
 
+  // First-party account fields cannot verify a custom endpoint's credentials. Claude Code applies
+  // its settings' `env` over the process env, so a proxy set there counts too.
+  const baseUrl =
+    (yield* readClaudeSettingsBaseUrl(claudeSettings, cwd, resolvedEnvironment)) ??
+    resolvedEnvironment.ANTHROPIC_BASE_URL;
+  const endpoint = URL.parse(baseUrl?.trim() ?? "");
+  const customApiEndpoint =
+    endpoint !== null &&
+    (endpoint.protocol === "http:" || endpoint.protocol === "https:") &&
+    endpoint.hostname !== "" &&
+    endpoint.hostname !== "api.anthropic.com";
+  if (!customApiEndpoint && claudeAuthStatus(capabilities) === "unauthenticated") {
+    return buildServerProvider({
+      presentation: CLAUDE_PRESENTATION,
+      enabled: claudeSettings.enabled,
+      checkedAt,
+      models,
+      slashCommands: dedupedSlashCommands,
+      skills,
+      probe: {
+        installed: true,
+        version: parsedVersion,
+        status: "error",
+        auth: { status: "unauthenticated" },
+        message: "Claude Agent CLI is not authenticated. Run `claude auth login` and try again.",
+      },
+    });
+  }
+
+  // A proxy's ANTHROPIC_AUTH_TOKEN reads as an API key; the endpoint is what the token is for.
   const authMetadata =
+    apiProviderAuthMetadata(capabilities.apiProvider) ??
+    (customApiEndpoint ? { type: "customEndpoint", label: "Custom API endpoint" } : undefined) ??
     claudeAuthMetadata({
       subscriptionType: capabilities.subscriptionType,
       authMethod: capabilities.tokenSource,
-    }) ?? apiProviderAuthMetadata(capabilities.apiProvider);
+    });
   const usageLimits = !capabilities.usage
     ? makeUnavailableUsageLimits({ checkedAt, reason: "probeFailed" })
     : scopedLimitNames
