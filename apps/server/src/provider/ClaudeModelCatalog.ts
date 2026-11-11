@@ -158,6 +158,27 @@ function isVersionSupported(
   );
 }
 
+/**
+ * A bare alias (`haiku`, `sonnet`) names a family that several models carry,
+ * newest first. A model the installed Claude Code is too old for gives up its
+ * aliases, so the alias lands on the newest model of the family this CLI
+ * supports, the one the picker offers. Slugs still resolve. An unknown version
+ * scopes nothing.
+ */
+export function scopeClaudeModelCatalogToVersion(
+  catalog: ClaudeModelCatalog,
+  version: string | null | undefined,
+): ClaudeModelCatalog {
+  if (!version) return catalog;
+  return {
+    models: catalog.models.map((entry) => {
+      if (!entry.model.aliases || isVersionSupported(entry.compatibility, version)) return entry;
+      const { aliases: _aliases, ...model } = entry.model;
+      return { ...entry, model };
+    }),
+  };
+}
+
 export function resolveClaudeModelsForVersion(
   catalog: ClaudeModelCatalog,
   version: string | null | undefined,
