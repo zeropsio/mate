@@ -101,7 +101,7 @@ export function publicRead<T>(fact: Fact<T> | undefined, family?: Family): Publi
     case "purged":
       return {
         kind: "withheld",
-        reason: "denied",
+        reason: fact.content.removed === true ? "removed" : "denied",
         ...(fact.label === undefined ? {} : { label: fact.label }),
       };
     case "value":

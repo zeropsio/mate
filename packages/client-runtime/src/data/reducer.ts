@@ -101,6 +101,8 @@ export type AccountInput =
       readonly family: Family;
       readonly id: string;
       readonly access: Access;
+      /** A denial its source named this record for, not a refusal of its whole scope. */
+      readonly removed?: true;
     }
   | {
       readonly kind: "membership";
@@ -594,7 +596,12 @@ function reduceEvidence(
     input.kind === "proven-deletion"
       ? { ...current, content: { kind: "deleted", evidence: input.evidence } }
       : input.access === "denied"
-        ? { ...current, content: { kind: "purged" }, access: "denied" }
+        ? {
+            ...current,
+            content:
+              input.removed === true ? { kind: "purged", removed: true } : { kind: "purged" },
+            access: "denied",
+          }
         : { ...current, access: input.access };
   changed.add(key);
   const unlisted = input.kind === "proven-deletion" || input.access === "denied";
@@ -747,7 +754,7 @@ function reduceDelivery(
   for (const removal of input.removals)
     next = reduceEvidence(
       next,
-      { kind: "access", family: removal.family, id: removal.id, access: "denied" },
+      { kind: "access", family: removal.family, id: removal.id, access: "denied", removed: true },
       changed,
     );
   return next;

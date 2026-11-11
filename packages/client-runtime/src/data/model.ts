@@ -81,8 +81,11 @@ export type Family = keyof FamilyValues & string;
 export type FactContent<T> =
   | { readonly kind: "value"; readonly value: T }
   | { readonly kind: "deleted"; readonly evidence: string }
-  /** Authoritatively denied: the payload is gone, the entity is not claimed deleted. */
-  | { readonly kind: "purged" };
+  /**
+   * Authoritatively denied: the payload is gone, the entity is not claimed deleted. `removed` is
+   * its source naming this record, never a refusal of its whole scope.
+   */
+  | { readonly kind: "purged"; readonly removed?: true };
 
 export interface Fact<T> {
   /** Family-declared display identity; retained after payload deletion or denial. Never grants access. */
@@ -278,13 +281,13 @@ export type PublicRead<T> =
   | { readonly kind: "deleted"; readonly evidence: string; readonly label?: string }
   | {
       readonly kind: "withheld";
-      readonly reason: "unverified" | "denied";
+      readonly reason: "unverified" | "denied" | "removed";
       readonly label?: string;
     };
 
-/** HQ removed it for this person: a deletion and a lost grant read the same. */
+/** HQ removed this record for this person: a deletion and a lost grant read the same. */
 export const removedForViewer = (fact: PublicRead<unknown>): boolean =>
-  fact.kind === "withheld" && fact.reason === "denied";
+  fact.kind === "withheld" && fact.reason === "removed";
 
 /** The keys a reduction publishes: one per fact, membership, index and stream. */
 export type ReadKey =
