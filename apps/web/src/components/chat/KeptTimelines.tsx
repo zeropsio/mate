@@ -290,8 +290,8 @@ const TimelineSlot = memo(function TimelineSlot({
   if (opened && reads) setReads(false);
   useEffect(() => {
     if (opened || reads) return;
-    const timer = window.setTimeout(() => setReads(true), HELD_READ_EVERY_MS);
-    return () => window.clearTimeout(timer);
+    const timer = setTimeout(() => setReads(true), HELD_READ_EVERY_MS);
+    return () => clearTimeout(timer);
   }, [opened, reads]);
   // Opening, it is drawn with the pane's own reading from its first frame — what the Mate is on
   // now, its helpers, a message on its way — never with what it read out of sight, which is the
