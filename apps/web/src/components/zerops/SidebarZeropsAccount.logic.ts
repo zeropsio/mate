@@ -79,7 +79,7 @@ export function sidebarAccountOrganizationChoices(
 
 /** One destination the foot folds away, in the order the menu lists them. */
 export interface SidebarAccountDestination {
-  readonly id: "projects" | "git" | "usage" | "team" | "settings";
+  readonly id: "projects" | "git" | "usage" | "team" | "billing" | "settings";
   readonly label: string;
   readonly to: string;
 }
@@ -89,13 +89,15 @@ export interface SidebarAccountDestination {
  *
  * Ordered by how often a person goes there rather than by kind: the projects
  * screen is where a Mate is set up, Git is where a change is read, the team is
- * who works in the organization, and settings is the one nobody opens twice a day.
+ * who works in the organization, billing what it costs, and settings is the one nobody opens twice
+ * a day.
  */
 export const SIDEBAR_ACCOUNT_DESTINATIONS: ReadonlyArray<SidebarAccountDestination> = [
   { id: "projects", label: "Overview", to: "/zerops" },
   { id: "git", label: "Git", to: "/git" },
   { id: "usage", label: "Usage", to: "/usage" },
   { id: "team", label: "Team", to: "/settings/team" },
+  { id: "billing", label: "Billing", to: "/settings/billing" },
   { id: "settings", label: "Settings", to: "/settings" },
 ];
 
@@ -120,6 +122,7 @@ export function sidebarAccountDestinationOf(
   pathname: string,
 ): SidebarAccountDestination["id"] | null {
   if (/^\/settings\/team(?:\/|$)/.test(pathname)) return "team";
+  if (/^\/settings\/billing(?:\/|$)/.test(pathname)) return "billing";
   if (/^\/settings(?:\/|$)/.test(pathname)) return "settings";
   if (pathname === "/usage") return "usage";
   if (pathname === "/git") return "git";

@@ -10,6 +10,7 @@ import {
   PaletteIcon,
   Settings2Icon,
   UsersIcon,
+  WalletIcon,
   WorkflowIcon,
 } from "lucide-react";
 
@@ -28,6 +29,7 @@ export const SETTINGS_SECTION_ICONS: Readonly<
   "/settings/zerops": CloudIcon,
   "/settings/automation": WorkflowIcon,
   "/settings/team": UsersIcon,
+  "/settings/billing": WalletIcon,
   "/settings/personas": DramaIcon,
   "/settings/archived": ArchiveIcon,
 };
