@@ -141,7 +141,7 @@ describe("the create dialog's word on credit", () => {
     show();
     act(() => creditRead(false));
     expect(said()).toBe(
-      "Zerops needs credit on this organization before it makes another project. Add credit in Zerops",
+      "Zerops needs credit on this organization before it makes another project. Add credit in HQ",
     );
     const link = tree!.root.findByType("a");
     expect(link.props.href).toBe(`https://hq.zerops.io/organizations/${ORG}`);
