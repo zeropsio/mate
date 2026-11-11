@@ -41,6 +41,7 @@ import { MATE_SCOPE_CHOICES, useMateScope } from "~/zerops/mateScope";
 import { useChiefOffer } from "~/zerops/chiefSetup";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { useViewerCalled } from "~/zerops/useZeropsMateOwners";
+import { Badge, type BadgeTone } from "../ui/badge";
 import { useSidebar } from "../ui/sidebar";
 import {
   Menu,
@@ -203,17 +204,17 @@ export function SidebarZeropsAccount({
           size={32}
         />
         <span className="menu-foot-lines">
-          <span className="menu-foot-name">{lines.name}</span>
+          <span className="menu-foot-name-line">
+            <span className="menu-foot-name">{lines.name}</span>
+            {credit === null ? null : <AccountCredit credit={credit} />}
+          </span>
           {/* An organization still being resolved is absent, never a placeholder: the foot must
               paint nothing it takes back. */}
           {role === null ? null : (
             <span className="menu-foot-role" data-zerops-surface="sidebar-account-role">
-              <span className="menu-foot-role-words">
-                {role.before}
-                <span data-zerops-surface="sidebar-account-organization">{role.organization}</span>
-                {role.after}
-              </span>
-              {credit === null ? null : <AccountCredit credit={credit} />}
+              {role.before}
+              <span data-zerops-surface="sidebar-account-organization">{role.organization}</span>
+              {role.after}
             </span>
           )}
         </span>
@@ -546,6 +547,13 @@ function useAccountCredit(orgId: string | null): AccountCreditFigure | null {
   return { amount: compactUsd(billing.total), tone: billing.tone, words };
 }
 
+const CREDIT_TONE: Readonly<Record<BillingTone, BadgeTone>> = {
+  quiet: "neutral",
+  low: "warning",
+  out: "danger",
+};
+
+/** The balance as a pill after the name: its tone is how it stands; the button's name says it. */
 function AccountCredit({ credit }: { readonly credit: AccountCreditFigure }) {
   return (
     <span
@@ -554,9 +562,7 @@ function AccountCredit({ credit }: { readonly credit: AccountCreditFigure }) {
       data-tone={credit.tone}
       data-zerops-surface="sidebar-account-credit"
     >
-      {/* A flex item trims plain spaces at its edges: the separator keeps its own. */}
-      {"\u00a0·\u00a0"}
-      {credit.amount}
+      <Badge tone={CREDIT_TONE[credit.tone]}>{credit.amount}</Badge>
     </span>
   );
 }
