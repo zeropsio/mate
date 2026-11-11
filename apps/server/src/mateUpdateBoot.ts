@@ -30,8 +30,11 @@ export interface MateUpdateBootFenceShape {
   /** The engine's start: under a pending fence it runs once zcp commits or cancels. */
   readonly holdStart: (start: Effect.Effect<void>) => Effect.Effect<void>;
   /**
-   * The commit and cancel routes: releases the held start, waits for it, runs `reopen`, then
-   * lifts. Idempotent, and it finishes even when its caller goes away.
+   * Starts the lift and returns at once: releases the held start, waits for it, runs `reopen`,
+   * then resolves `lifted`. It runs in the fence's own scope, so it finishes when its caller goes
+   * away and never holds a caller that runs before the engine's start exists (the update service's
+   * first read inside a layer build); a caller that answers for the lift awaits `lifted`. Once
+   * lifted, `reopen` runs inline, as on a boot that is not pending.
    */
   readonly lift: (reopen: Effect.Effect<void>) => Effect.Effect<void>;
 }
@@ -53,6 +56,7 @@ export class MateUpdateBootFence extends Context.Reference<MateUpdateBootFenceSh
     Effect.gen(function* () {
       const config = yield* ServerConfig;
       if (!mateUpdateBootPending(config.zerops?.mateUpdateStateFile)) return openFence;
+      const scope = yield* Effect.scope;
       const released = yield* Deferred.make<void>();
       const started = yield* Deferred.make<void>();
       const lifted = yield* Deferred.make<void>();
@@ -65,12 +69,16 @@ export class MateUpdateBootFence extends Context.Reference<MateUpdateBootFenceSh
             Effect.ensuring(Deferred.succeed(started, undefined)),
           ),
         lift: (reopen) =>
-          Deferred.succeed(released, undefined).pipe(
-            Effect.andThen(Deferred.await(started)),
-            Effect.andThen(reopen),
-            Effect.andThen(Deferred.succeed(lifted, undefined)),
-            Effect.asVoid,
-            Effect.uninterruptible,
+          Effect.flatMap(Deferred.isDone(lifted), (done) =>
+            done
+              ? reopen
+              : Deferred.succeed(released, undefined).pipe(
+                  Effect.andThen(Deferred.await(started)),
+                  Effect.andThen(reopen),
+                  Effect.andThen(Deferred.succeed(lifted, undefined)),
+                  Effect.forkIn(scope),
+                  Effect.asVoid,
+                ),
           ),
       } satisfies MateUpdateBootFenceShape;
     }),
