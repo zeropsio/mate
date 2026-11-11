@@ -65,3 +65,18 @@ export class ServerCommandReadiness extends Context.Service<
     }),
   );
 }
+
+/**
+ * One schema migration about to run is one unit of boot work: a release that migrates a large
+ * Mate's database keeps its receipt moving from one migration to the next. A single migration
+ * reports nothing while it runs (its statements hold the event loop). Outside a server, nothing.
+ */
+export const withMigrationProgress = <E, R>(
+  migration: Effect.Effect<void, E, R>,
+): Effect.Effect<void, E, R> =>
+  Effect.serviceOption(ServerCommandReadiness).pipe(
+    Effect.flatMap((readiness) =>
+      Option.isSome(readiness) ? readiness.value.advance : Effect.void,
+    ),
+    Effect.andThen(migration),
+  );
