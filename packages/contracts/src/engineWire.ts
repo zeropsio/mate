@@ -78,6 +78,8 @@ export const ENGINE_WIRE_BUDGETS = {
   liveTailItems: 40,
   runPageItems: 200,
   runPageBytes: 512 * 1024,
+  /** Pages of what a finished run's closed card draws its result from, read before it is drawn. */
+  outcomePages: 5,
   detailBytes: 256 * 1024,
   liveFrameBytes: 4 * 1024,
   /** Records a resume may carry; past it the subscriber is reset to a fresh snapshot. */
@@ -187,6 +189,7 @@ const toUnknownFrame = (_raw: Record<string, unknown>, was: string) => ({
 
 const FRAME_TYPES = [
   "snapshot",
+  "outcome",
   "changes",
   "synchronized",
   "reset",
@@ -216,6 +219,18 @@ export const EngineConversationFrame = forwardCompatibleUnion({
       items: ItemRecords,
       requests: RequestRecords,
       window: EngineWindow,
+    }),
+    /**
+     * Before a snapshot, to a subscriber that asked for `outcomes`: what a finished run of its
+     * window draws its closed card's result from, as `engine.readRun` reads it (`only:
+     * "outcome"`), a page a frame, each call's result whole up to a detail's budget. The snapshot
+     * that follows draws those runs' cards with no further read.
+     */
+    Schema.Struct({
+      type: Schema.Literal("outcome"),
+      runId: RunId,
+      items: ItemRecords,
+      requests: RequestRecords,
     }),
     /**
      * Every record that changed in `(from, to]`, whole, upserted by id. A split frame's parts
@@ -301,6 +316,12 @@ export const EngineSubscribeInput = Schema.Struct({
   after: Schema.optionalKey(EngineCursor),
   /** Run groups the window opens with (default and cap: the budget's). */
   groups: Schema.optionalKey(Schema.Int),
+  /**
+   * With a snapshot, each finished run's `outcome` frames first: the results of these `tools`,
+   * as `engine.readRun` names them. A server before it ignores it and sends none; the client
+   * then reads each run (`engine.readRun`), drawn the same.
+   */
+  outcomes: Schema.optionalKey(Schema.Struct({ tools: Schema.Array(Schema.String) })),
 });
 export type EngineSubscribeInput = typeof EngineSubscribeInput.Type;
 

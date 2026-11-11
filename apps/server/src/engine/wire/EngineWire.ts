@@ -76,6 +76,7 @@ import {
   bytesOf,
   changesFrames,
   fitItem,
+  fitOutcomeRecords,
   fitRecords,
   frameSizer,
   liveFrames,
@@ -430,6 +431,97 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
         return read.frame;
       });
 
+    const pageOf = <E>(
+      read: (count: number) => Effect.Effect<
+        {
+          readonly records: Parameters<typeof fitRecords>[0];
+          readonly window: EngineWindow;
+          readonly more: boolean;
+        },
+        E
+      >,
+      count: number,
+      budget: number,
+      fit: typeof fitRecords = fitRecords,
+    ) =>
+      Effect.gen(function* () {
+        let n = count;
+        for (;;) {
+          const got = yield* read(n);
+          const page: EnginePage = {
+            _tag: "Page",
+            ...fit(got.records),
+            window: got.window,
+            more: got.more,
+          };
+          if (bytesOf(page) <= budget || n <= 1) return page;
+          n = Math.max(1, Math.floor(n / 2));
+        }
+      }).pipe(Effect.catch(wireError(UNREADABLE)));
+
+    /**
+     * What each finished run of a snapshot draws its closed card's result from, a page a frame,
+     * as `engine.readRun` reads it (`only: "outcome"`) with each result whole: the runs whose
+     * items the snapshot does not carry. A run that cannot be read sends none, and its client
+     * reads it.
+     */
+    const outcomeFrames = (
+      conversation: ConversationId,
+      frame: Extract<EngineConversationFrame, { readonly type: "snapshot" }>,
+      tools: ReadonlyArray<string>,
+    ) =>
+      Effect.gen(function* () {
+        const carried = new Map<string, number>();
+        for (const item of frame.items)
+          if (item.runId !== null) carried.set(item.runId, (carried.get(item.runId) ?? 0) + 1);
+        const frames: Array<Extract<EngineConversationFrame, { readonly type: "outcome" }>> = [];
+        for (const run of frame.runs) {
+          if (
+            run.end === null ||
+            Object.keys(run.summary.calls).length === 0 ||
+            (carried.get(run.id) ?? 0) >= run.summary.items
+          )
+            continue;
+          const pages = yield* Effect.gen(function* () {
+            const read: typeof frames = [];
+            let afterSeq = 0;
+            for (let index = 0; index < ENGINE_WIRE_BUDGETS.outcomePages; index++) {
+              const page = yield* pageOf(
+                (limit) =>
+                  Effect.map(
+                    records.runPage(conversation, run.id, {
+                      afterSeq,
+                      only: "outcome",
+                      tools,
+                      limit,
+                    }),
+                    (got) => ({
+                      records: got,
+                      window: { oldestOrdinal: run.ordinal, earlier: false },
+                      more: got.more,
+                    }),
+                  ),
+                ENGINE_WIRE_BUDGETS.runPageItems,
+                ENGINE_WIRE_BUDGETS.runPageBytes,
+                fitOutcomeRecords,
+              );
+              if (page._tag !== "Page") break;
+              read.push({
+                type: "outcome",
+                runId: run.id,
+                items: page.items,
+                requests: page.requests,
+              });
+              if (!page.more || page.items.length === 0) break;
+              afterSeq = Math.max(...page.items.map((item) => item.seq));
+            }
+            return read;
+          }).pipe(Effect.orElseSucceed((): typeof frames => []));
+          frames.push(...pages);
+        }
+        return frames;
+      });
+
     const subscribe: EngineWireShape["subscribe"] = (input, caller) => {
       const refused = protocolRefusal(input.protocol);
       if (refused !== undefined) return Stream.make(refused);
@@ -499,6 +591,8 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
               origin,
             );
             lastHeader = headerJson(frame.header);
+            if (input.outcomes !== undefined)
+              opening.push(...(yield* outcomeFrames(conversation, frame, input.outcomes.tools)));
             opening.push(frame);
           }
           opening.push({ type: "synchronized", epoch, head: cursor });
@@ -819,33 +913,6 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
         }).pipe(Effect.catch(wireError(UNREADABLE))),
       ).pipe(Stream.catch((cause) => Stream.fromEffect(wireError(UNREADABLE)(cause))));
     };
-
-    const pageOf = <E>(
-      read: (count: number) => Effect.Effect<
-        {
-          readonly records: Parameters<typeof fitRecords>[0];
-          readonly window: EngineWindow;
-          readonly more: boolean;
-        },
-        E
-      >,
-      count: number,
-      budget: number,
-    ) =>
-      Effect.gen(function* () {
-        let n = count;
-        for (;;) {
-          const got = yield* read(n);
-          const page: EnginePage = {
-            _tag: "Page",
-            ...fitRecords(got.records),
-            window: got.window,
-            more: got.more,
-          };
-          if (bytesOf(page) <= budget || n <= 1) return page;
-          n = Math.max(1, Math.floor(n / 2));
-        }
-      }).pipe(Effect.catch(wireError(UNREADABLE)));
 
     const readEarlier: EngineWireShape["readEarlier"] = (input) => {
       const refused = protocolRefusal(input.protocol);
