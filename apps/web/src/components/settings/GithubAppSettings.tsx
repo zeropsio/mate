@@ -487,7 +487,7 @@ function BotGroup({
                 key={installation.id}
               >
                 <AccountFace account={installation.account} type={installation.accountType} />
-                <span className="font-medium text-sm text-foreground">
+                <span className="font-medium text-sm text-foreground max-sm:min-w-0 max-sm:flex-1">
                   {installation.account ?? `Installation ${String(installation.id)}`}
                 </span>
                 <span className="min-w-0 flex-1 text-muted-foreground max-sm:order-last max-sm:w-full max-sm:flex-none max-sm:ps-7.5">
@@ -518,8 +518,10 @@ function BotGroup({
             >
               <span className="flex items-center gap-2.5 max-sm:flex-wrap">
                 <AccountFace account={installation.account} type={installation.accountType} />
-                <span className="font-medium text-sm text-foreground">{installation.account}</span>
-                <span className="min-w-0 flex-1 text-status-attention-text">
+                <span className="font-medium text-sm text-foreground max-sm:min-w-0 max-sm:flex-1">
+                  {installation.account}
+                </span>
+                <span className="min-w-0 flex-1 text-status-attention-text max-sm:order-last max-sm:w-full max-sm:flex-none max-sm:ps-7.5">
                   {manage ? "Waits for your OK" : "Waits for an Owner's or Admin's OK"}
                 </span>
                 {manage ? (
