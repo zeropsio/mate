@@ -48,7 +48,6 @@ import {
   type LinkSocket,
   connectLinkSocket,
   makeZeropsHqLink,
-  HQ_AUTO_UPDATE_VERIFY_BUDGET,
   REFUSAL_REASK,
   mateOverviewFeed,
   lookupIpv6,
@@ -226,7 +225,11 @@ const rig = (
     const automation: Array<unknown> = [];
     /** The tasks the link handed on; each is answered `accepted`, and the latest is `task-0`. */
     const taken: Array<string> = [];
-    const autoUpdatePolicy = yield* makeMateAutoUpdatePolicy;
+    /** The policy heard from HQ; none kept from an earlier run. */
+    const autoUpdatePolicy = yield* makeMateAutoUpdatePolicy({
+      heard: Option.none(),
+      keep: () => Effect.void,
+    });
     /** Whose each login is, as the link's `signers` frames leave it. */
     const signIns = yield* memorySignInStore();
     const link = yield* makeZeropsHqLink({
@@ -557,26 +560,19 @@ describe("ZeropsHqLink", () => {
   );
 
   it.effect(
-    "Decision: Link silence does not revoke the project key, erase remembered Mate identity, authorize an update or execute a task awaiting HQ state.",
+    "Decision: Link silence does not revoke the project key, erase remembered Mate identity or execute a task awaiting HQ state.",
     () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const { sockets, key, link, taken, autoUpdatePolicy } = yield* rig();
+          const { sockets, key, link, taken } = yield* rig();
           yield* TestClock.adjust(Duration.zero);
           const first = yield* opened(sockets, 0);
-          first.hear({
-            type: "state",
-            mate: STATE,
-            pingIntervalMs: 1_000,
-            autoUpdate: { orgId: "ORG", enabled: true, revision: 0 },
-          });
+          first.hear({ type: "state", mate: STATE, pingIntervalMs: 1_000 });
           yield* TestClock.adjust(Duration.zero);
-          const verification = yield* Effect.forkScoped(autoUpdatePolicy.verify);
           yield* TestClock.adjust(Duration.seconds(3));
           assert.isTrue(first.closed);
           assert.strictEqual(yield* Ref.get(key), "zk-1");
           assert.deepStrictEqual(yield* link.standing, { kind: "not-linked" });
-          assert.isTrue(Option.isNone(yield* autoUpdatePolicy.current));
           yield* TestClock.adjust(Duration.millis(30));
           const next = yield* opened(sockets, 1);
           next.hear({
@@ -598,8 +594,6 @@ describe("ZeropsHqLink", () => {
           yield* TestClock.adjust(Duration.seconds(31));
           assert.deepStrictEqual(taken, []);
           assert.isFalse(next.sent.some((frame) => frame.type === "task-state"));
-          assert.isTrue(Option.isNone(yield* Fiber.join(verification)));
-          assert.isTrue(Option.isNone(yield* autoUpdatePolicy.verify));
           assert.deepStrictEqual(next.sent[0], hello("zk-1"));
         }),
       ),
@@ -673,47 +667,6 @@ describe("ZeropsHqLink", () => {
       ),
   );
 
-  it.effect(
-    "a silent HQ withholds permission at the verification deadline instead of reusing its old allow",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const { autoUpdatePolicy, connected } = yield* rig();
-          const socket = yield* Queue.take(connected);
-          socket.emit("open");
-          socket.hear({
-            type: "state",
-            mate: STATE,
-            autoUpdate: { orgId: "ORG", enabled: true, revision: 0 },
-          });
-          yield* Stream.runHead(autoUpdatePolicy.changes.pipe(Stream.filter(Option.isSome)));
-          const verification = yield* Effect.forkScoped(autoUpdatePolicy.verify);
-          yield* TestClock.adjust(HQ_AUTO_UPDATE_VERIFY_BUDGET);
-          assert.isTrue(Option.isNone(yield* Fiber.join(verification)));
-          assert.isTrue(Option.isNone(yield* autoUpdatePolicy.current));
-        }),
-      ),
-  );
-  it.live(
-    "requires HQ's policy on a live authenticated link and clears it when that link closes",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const { autoUpdatePolicy, connected } = yield* rig();
-          const socket = yield* Queue.take(connected);
-          socket.emit("open");
-          const value = { orgId: "ORG", enabled: true, revision: 0 };
-          socket.hear({ type: "state", mate: STATE, autoUpdate: value });
-          const policy = yield* Stream.runHead(
-            autoUpdatePolicy.changes.pipe(Stream.filter(Option.isSome)),
-          );
-          assert.deepStrictEqual(policy, Option.some(Option.some(value)));
-          socket.emit("close");
-          yield* Stream.runHead(autoUpdatePolicy.changes.pipe(Stream.filter(Option.isNone)));
-          assert.isTrue(Option.isNone(yield* autoUpdatePolicy.current));
-        }),
-      ),
-  );
   it.effect(
     "opens its link with the project's key as its first frame, nothing in the URL, and speaks once HQ answered",
     () =>

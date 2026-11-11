@@ -4,28 +4,13 @@ import * as Option from "effect/Option";
 
 import { makeMateAutoUpdatePolicy } from "./MateAutoUpdatePolicy.ts";
 
-describe("automatic updates require a current HQ policy", () => {
-  it.effect.each(
-    Array.from([true, false], (enabled) => ({
-      title: `honors HQ's ${enabled ? "enabled" : "held"} organization policy only while linked`,
-      enabled,
-    })),
-  )("$title", ({ enabled }) =>
-    Effect.gen(function* () {
-      const policy = yield* makeMateAutoUpdatePolicy;
-      assert.isTrue(Option.isNone(yield* policy.current));
-      const link = yield* policy.open();
-      const value = { orgId: "ORG", enabled, revision: 1 };
-      yield* link.receive(Option.some(value));
-      assert.deepStrictEqual(yield* policy.current, Option.some(value));
-      yield* link.close;
-      assert.isTrue(Option.isNone(yield* policy.current));
-    }),
-  );
+/** No policy kept from an earlier run, and nothing kept from this one. */
+const nothingKept = { heard: Option.none(), keep: () => Effect.void };
 
+describe("automatic updates require a current HQ policy", () => {
   it.effect("an older rotating link cannot reopen a hold or clear its successor's policy", () =>
     Effect.gen(function* () {
-      const policy = yield* makeMateAutoUpdatePolicy;
+      const policy = yield* makeMateAutoUpdatePolicy(nothingKept);
       const old = yield* policy.open();
       const next = yield* policy.open();
       yield* old.receive(Option.some({ orgId: "ORG", enabled: true, revision: 1 }));
@@ -36,29 +21,20 @@ describe("automatic updates require a current HQ policy", () => {
       assert.deepStrictEqual(yield* policy.current, Option.some(hold));
       yield* next.close;
       yield* old.receive(Option.some({ orgId: "ORG", enabled: true, revision: 1 }));
-      assert.isTrue(Option.isNone(yield* policy.current));
+      assert.deepStrictEqual(yield* policy.current, Option.some(hold));
     }),
   );
 
-  it.effect("a successor with an older HQ supplies no automatic-update permission", () =>
-    Effect.gen(function* () {
-      const policy = yield* makeMateAutoUpdatePolicy;
-      const old = yield* policy.open();
-      yield* old.receive(Option.some({ orgId: "ORG", enabled: true, revision: 0 }));
-      const next = yield* policy.open();
-      yield* next.receive(Option.none());
-      assert.isTrue(Option.isNone(yield* policy.current));
-    }),
-  );
   it.effect("an older policy answer cannot reopen an organization hold", () =>
     Effect.gen(function* () {
-      const policy = yield* makeMateAutoUpdatePolicy;
+      const policy = yield* makeMateAutoUpdatePolicy(nothingKept);
+      const hold = { orgId: "ORG", enabled: false, revision: 2 };
       const link = yield* policy.open(
         Effect.succeedSome({ orgId: "ORG", enabled: true, revision: 1 }),
       );
-      yield* link.receive(Option.some({ orgId: "ORG", enabled: false, revision: 2 }));
-      assert.isTrue(Option.isNone(yield* policy.verify));
-      assert.isTrue(Option.isNone(yield* policy.current));
+      yield* link.receive(Option.some(hold));
+      assert.deepStrictEqual(yield* policy.verify, Option.some(hold));
+      assert.deepStrictEqual(yield* policy.current, Option.some(hold));
     }),
   );
 });
