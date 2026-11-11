@@ -25,6 +25,8 @@ How mate reaches users. Each step names the file that owns its detail.
   A source that changed no server artifact input since the last release (the sources the published
   artifact's sourcemaps name, plus the build tooling in `scripts/lib/server-artifact-inputs.ts`)
   cuts no release: the script prints `nothing to release` and exits 0; version-only edits never count.
+  `--from-sha <sha> --would-release` makes only that decision: its last stdout line is `release` or
+  `no-release`, and it cuts, tags and pushes nothing.
 - **Install check against a staged release.** Before promoting a release, run zcp's live seam case on
   an e2e container that has Mate enabled (`make e2e-deploy` in zeropsio/zcp, `ZCP_HOST` names the
   service): `ZCP_E2E_MATE_RELEASE=https://github.com/zeropsio/mate/releases/download/v<version>/stable.json

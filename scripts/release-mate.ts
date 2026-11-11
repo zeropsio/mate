@@ -11,6 +11,8 @@
  *   node scripts/release-mate.ts --from-sha S  release a green source commit
  *   node scripts/release-mate.ts --minor    the client's compatibility floor rises
  *   node scripts/release-mate.ts --dry-run  print the plan, change nothing
+ *   node scripts/release-mate.ts --from-sha S --would-release  last stdout line `release` or
+ *     `no-release`: the decision alone, no CI wait, tag, push or worktree
  */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
@@ -286,12 +288,15 @@ async function main(args: ReadonlySet<string>): Promise<void> {
   if (source === undefined || !/^[0-9a-f]{40}$/.test(source))
     throw new Error("--from-sha requires a full commit SHA");
   git(repo, "merge-base", "--is-ancestor", source, mainHead);
-  const runs = github<{ workflow_runs: WorkflowRun[] }>(
-    repo,
-    `repos/${REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${source}&branch=main&per_page=10`,
-  );
-  if (!greenSource(runs.workflow_runs, source))
-    throw new Error(`source ${source} has no green main CI`);
+  const query = args.has("--would-release");
+  if (!query) {
+    const runs = github<{ workflow_runs: WorkflowRun[] }>(
+      repo,
+      `repos/${REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${source}&branch=main&per_page=10`,
+    );
+    if (!greenSource(runs.workflow_runs, source))
+      throw new Error(`source ${source} has no green main CI`);
+  }
   const releases: PublishedRelease[] = [];
   for (let page = 1; ; page++) {
     const batch = github<PublishedRelease[]>(
@@ -313,6 +318,11 @@ async function main(args: ReadonlySet<string>): Promise<void> {
     .at(-1);
   const lastSource = lastTag === undefined ? undefined : sourceOf(repo, lastTag);
   if (lastSource === source) {
+    if (query) {
+      console.log(`already released: ${lastTag} includes source ${source}`);
+      console.log("no-release");
+      return;
+    }
     if (!args.has("--dry-run"))
       await waitForManifest(
         repo,
@@ -331,11 +341,16 @@ async function main(args: ReadonlySet<string>): Promise<void> {
       console.log(
         `nothing to release: no server artifact input changed since ${lastTag} (source ${lastSource})`,
       );
+      if (query) console.log("no-release");
       return;
     }
     console.log(
       `server artifact inputs changed since ${lastTag}: ${changes.length} (${changes.slice(0, 5).join(", ")}${changes.length > 5 ? ", …" : ""})`,
     );
+  }
+  if (query) {
+    console.log("release");
+    return;
   }
   // A throwaway tree: the release never touches a checkout someone is working in.
   const tree = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-release-"));
