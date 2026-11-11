@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off globalDate:off globalTimers:off -- standalone host-only test PostgreSQL supervisor.
+// @effect-diagnostics nodeBuiltinImport:off globalJsonInEffect:off globalDate:off globalTimers:off -- standalone host-only test PostgreSQL supervisor.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";

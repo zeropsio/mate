@@ -17,6 +17,7 @@ import {
   ProviderInstanceId,
 } from "@t3tools/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
@@ -99,7 +100,7 @@ function makeOrchestrationLayer(databasePath?: string) {
     Layer.provide(RepositoryIdentityResolver.layer),
     Layer.provide(persistence),
     Layer.provideMerge(ServerConfigLayer),
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
   );
   return orchestrationLayer;
 }
@@ -493,7 +494,7 @@ describe("OrchestrationEngine", { concurrent: false }, () => {
       Layer.provide(Layer.succeed(OrchestrationEventStore, eventStore)),
       Layer.provide(OrchestrationCommandReceiptRepositoryLive),
       Layer.provide(SqlitePersistenceMemory),
-      Layer.provideMerge(NodeServices.layer),
+      Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
     );
 
     const runtime = ManagedRuntime.make(layer);
@@ -1042,7 +1043,7 @@ describe("OrchestrationEngine", { concurrent: false }, () => {
           Layer.provide(RepositoryIdentityResolver.layer),
           Layer.provide(SqlitePersistenceMemory),
           Layer.provideMerge(ServerConfigLayer),
-          Layer.provideMerge(NodeServices.layer),
+          Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
         ),
       );
       const engine = await runtime.runPromise(Effect.service(OrchestrationEngineService));
@@ -1152,7 +1153,7 @@ describe("OrchestrationEngine", { concurrent: false }, () => {
         Layer.provide(OrchestrationCommandReceiptRepositoryLive),
         Layer.provide(RepositoryIdentityResolver.layer),
         Layer.provide(SqlitePersistenceMemory),
-        Layer.provide(NodeServices.layer),
+        Layer.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
       ),
     );
     const engine = await runtime.runPromise(Effect.service(OrchestrationEngineService));
@@ -1302,7 +1303,7 @@ describe("OrchestrationEngine", { concurrent: false }, () => {
         Layer.provide(OrchestrationCommandReceiptRepositoryLive),
         Layer.provide(RepositoryIdentityResolver.layer),
         Layer.provide(SqlitePersistenceMemory),
-        Layer.provide(NodeServices.layer),
+        Layer.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
       ),
     );
     const engine = await runtime.runPromise(Effect.service(OrchestrationEngineService));

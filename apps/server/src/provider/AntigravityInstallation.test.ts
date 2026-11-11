@@ -1,11 +1,12 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { expect, it } from "@effect/vitest";
 import {
   HostProcessArchitecture,
   HostProcessEnvironment,
   HostProcessPlatform,
 } from "@t3tools/shared/hostProcess";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Hex from "effect/encoding/Hex";
@@ -17,6 +18,7 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as PlatformError from "effect/PlatformError";
 import * as Queue from "effect/Queue";
+import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Sink from "effect/Sink";
@@ -78,11 +80,11 @@ const releaseAsset = Effect.fn("test.antigravityReleaseAsset")(function* (
   archive: Uint8Array = completeArchive,
   platform: NodeJS.Platform = hostPlatform,
 ) {
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* Digest.Digest;
   return {
     version: "fixture-new",
     url: "https://dl.google.com/antigravity-test.zip",
-    sha256: Hex.encode(yield* crypto.digest("SHA-256", archive).pipe(Effect.orDie)),
+    sha256: Hex.encode(yield* crypto.digest(Digest.sha256, archive).pipe(Effect.orDie)),
     archiveBytes: archive.byteLength,
     executable: {
       name: platform === "win32" ? "agy_acp_server.exe" : "agy_acp_server.par",
@@ -148,7 +150,7 @@ const fixtureLayer = Layer.effectDiscard(
     const fs = yield* FileSystem.FileSystem;
     fixtureRoot = yield* fs.makeTempDirectoryScoped({ prefix: "t3-agy-test-" });
   }),
-).pipe(Layer.provideMerge(NodeServices.layer));
+).pipe(Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)));
 
 const useFixtureRoot = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
@@ -356,7 +358,8 @@ it.layer(fixtureLayer)("Antigravity installation", (it) => {
           if (command._tag !== "StandardCommand") {
             return yield* Effect.die("Expected one validation process.");
           }
-          const profile = command.options.env?.GEMINI_HOME;
+          const rawProfile = command.options.env?.GEMINI_HOME;
+          const profile = Redacted.isRedacted(rawProfile) ? Redacted.value(rawProfile) : rawProfile;
           if (!profile) return yield* Effect.die("Expected a disposable validation profile.");
           profiles.add(profile);
           const helper = command.args[0] === "-e";
@@ -398,7 +401,8 @@ it.layer(fixtureLayer)("Antigravity installation", (it) => {
                       ...(request.method === "initialize"
                         ? {
                             result: {
-                              protocolVersion: 1,
+                              // The real agent answers version 2 in the v1 shape.
+                              protocolVersion: 2,
                               agentInfo: { name: testCase.agentName, version: testCase.version },
                               agentCapabilities: {
                                 loadSession: true,

@@ -16,7 +16,8 @@ import * as NodeHttp from "node:http";
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as Config from "effect/Config";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { FetchHttpClient, HttpRouter } from "effect/http";
@@ -64,20 +65,9 @@ import * as EnvironmentLinks from "./environments/EnvironmentLinks.ts";
 import * as EnvironmentPublishSignatures from "./environments/EnvironmentPublishSignatures.ts";
 
 // Node exposes the Web Crypto API globally (`globalThis.crypto`); Effect's
-// `Crypto` service just needs to be pointed at it — the same construction the
-// Cloudflare Worker build used, since Workers expose the same global.
-const webcryptoLayer = Layer.succeed(
-  Crypto.Crypto,
-  Crypto.make({
-    randomBytes: (size) => globalThis.crypto.getRandomValues(new Uint8Array(size)),
-    digest: (algorithm, data) =>
-      Effect.promise(async () => {
-        const input = new Uint8Array(data.length);
-        input.set(data);
-        return new Uint8Array(await globalThis.crypto.subtle.digest(algorithm, input.buffer));
-      }),
-  }),
-);
+// WebCrypto layers point its random and digest services at it — the same
+// construction the Cloudflare Worker build used, since Workers expose the same global.
+const webcryptoLayer = Layer.mergeAll(SecureRandom.layerWebCrypto, Digest.layerWebCrypto);
 
 const relayApiLayer = Layer.mergeAll(
   healthApi,

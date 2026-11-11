@@ -1,7 +1,7 @@
 import { CommandId, ProjectId } from "@t3tools/contracts";
 import * as Console from "effect/Console";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -142,7 +142,7 @@ export const resolveWelcomeBase = Effect.gen(function* () {
  * send or the stand-up, never here.
  */
 export const resolveAutoBootstrapProject = Effect.gen(function* () {
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
   const serverConfig = yield* ServerConfig.ServerConfig;
   const projectionReadModelQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
   const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
@@ -153,10 +153,10 @@ export const resolveAutoBootstrapProject = Effect.gen(function* () {
     serverConfig.cwd,
   );
   if (Option.isSome(existingProject)) return { bootstrapProjectId: existingProject.value.id };
-  const bootstrapProjectId = ProjectId.make(yield* crypto.randomUUIDv4);
+  const bootstrapProjectId = ProjectId.make(yield* crypto.uuidV4());
   yield* orchestrationEngine.dispatch({
     type: "project.create",
-    commandId: CommandId.make(yield* crypto.randomUUIDv4),
+    commandId: CommandId.make(yield* crypto.uuidV4()),
     projectId: bootstrapProjectId,
     title: path.basename(serverConfig.cwd) || "project",
     workspaceRoot: serverConfig.cwd,
@@ -234,7 +234,7 @@ export const make = (options?: StartupOptions) =>
     const lifecycleEvents = yield* ServerLifecycleEvents.ServerLifecycleEvents;
     const serverSettings = yield* ServerSettings.ServerSettingsService;
     const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
-    const crypto = yield* Crypto.Crypto;
+    const crypto = yield* SecureRandom.SecureRandom;
     // Optional: the full server layer provides it (server.ts); a startup
     // built on its own, as the startup integration test does, has no one
     // waiting on it.
@@ -294,7 +294,7 @@ export const make = (options?: StartupOptions) =>
             "welcome.autobootstrap",
             Effect.gen(function* () {
               const bootstrapTargets = yield* resolveAutoBootstrapProject.pipe(
-                Effect.provideService(Crypto.Crypto, crypto),
+                Effect.provideService(SecureRandom.SecureRandom, crypto),
               );
               if (!bootstrapTargets.bootstrapProjectId) return;
 

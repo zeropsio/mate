@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off -- writes Vitest evidence for Signal classification.
+// @effect-diagnostics nodeBuiltinImport:off globalJsonInEffect:off -- writes Vitest evidence for Signal classification.
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import { maskSecrets } from "@t3tools/shared/messagePreview";

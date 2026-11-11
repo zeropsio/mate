@@ -1,4 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { describe, expect, it } from "@effect/vitest";
 import { AuthSessionId } from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
@@ -103,7 +104,7 @@ const requestMetadata = {
   ipAddress: "192.168.1.23",
 };
 
-it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("EnvironmentAuth.layer", (it) => {
   it.effect("classifies invalid bootstrap credential failures for the HTTP boundary", () =>
     Effect.sync(() => {
       const error = EnvironmentAuth.toBootstrapExchangeError(
@@ -233,35 +234,38 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
   );
 });
 
-it.layer(NodeServices.layer)("current admission for existing sessions", (it) => {
-  it.effect(
-    "an existing session opens only while the Mate's Zerops list opens the project for its person",
-    () =>
-      Effect.gen(function* () {
-        const auth = yield* EnvironmentAuth.EnvironmentAuth;
-        const list = yield* ZeropsConnections.ZeropsConnections;
-        const ticket = "owner-ticket";
-        yield* (yield* ZeropsTicketDoor.ZeropsTicketDoor).heard({
-          type: "ticket",
-          ticket,
-          userId: "owner",
-          sessionId: "hq-owner",
-          expiresIn: 60,
-        });
-        const opens = () =>
-          auth
-            .authenticateHttpRequest(makeBearerRequest(ticket))
-            .pipe(Effect.match({ onFailure: () => false, onSuccess: () => true }));
-        const admitted = [yield* opens()];
-        yield* zeropsHolds({ owner: "ADMIN" });
-        expect(Option.isSome(yield* list.admit({ ticket }, Effect.void))).toBe(true);
-        admitted.push(yield* opens());
-        yield* zeropsHolds({ owner: "READ_ONLY" });
-        admitted.push(yield* opens());
-        expect(admitted).toEqual([false, true, false]);
-      }).pipe(Effect.provide(makeAdmissionAuthLayer())),
-  );
-});
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))(
+  "current admission for existing sessions",
+  (it) => {
+    it.effect(
+      "an existing session opens only while the Mate's Zerops list opens the project for its person",
+      () =>
+        Effect.gen(function* () {
+          const auth = yield* EnvironmentAuth.EnvironmentAuth;
+          const list = yield* ZeropsConnections.ZeropsConnections;
+          const ticket = "owner-ticket";
+          yield* (yield* ZeropsTicketDoor.ZeropsTicketDoor).heard({
+            type: "ticket",
+            ticket,
+            userId: "owner",
+            sessionId: "hq-owner",
+            expiresIn: 60,
+          });
+          const opens = () =>
+            auth
+              .authenticateHttpRequest(makeBearerRequest(ticket))
+              .pipe(Effect.match({ onFailure: () => false, onSuccess: () => true }));
+          const admitted = [yield* opens()];
+          yield* zeropsHolds({ owner: "ADMIN" });
+          expect(Option.isSome(yield* list.admit({ ticket }, Effect.void))).toBe(true);
+          admitted.push(yield* opens());
+          yield* zeropsHolds({ owner: "READ_ONLY" });
+          admitted.push(yield* opens());
+          expect(admitted).toEqual([false, true, false]);
+        }).pipe(Effect.provide(makeAdmissionAuthLayer())),
+    );
+  },
+);
 
 // F1 (permission audit): an open bearer session outlived the person's org role. The Mate's next
 // read of Zerops after the change ends it at once.
@@ -293,7 +297,7 @@ const signInBea = Effect.fn("signInBea")(function* (close: Effect.Effect<void> =
   return { access: { access_token: ticket }, session };
 });
 
-it.layer(NodeServices.layer)(
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))(
   "a person whose Zerops access ended loses their open session within 60 seconds",
   (it) => {
     it.effect.each(demotions)("$case", ({ to }) => {
@@ -337,128 +341,134 @@ it.layer(NodeServices.layer)(
 );
 
 // Decision: removal ends every channel within one bound, terminals included.
-it.layer(NodeServices.layer)("Terminals a removed person opened end with their session", (it) => {
-  it.effect.each(demotions)("$case", ({ to }) => {
-    const { layer } = makeDemotionScene();
-    const signals: Array<string | undefined> = [];
-    const typed: Array<string> = [];
-    const pty: PtyAdapter.PtyAdapter["Service"] = {
-      spawn: () =>
-        Effect.succeed({
-          pid: 4242,
-          write: (data) => {
-            typed.push(data);
-          },
-          resize: () => undefined,
-          kill: (signal) => {
-            signals.push(signal);
-          },
-          onData: () => () => undefined,
-          onExit: () => () => undefined,
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))(
+  "Terminals a removed person opened end with their session",
+  (it) => {
+    it.effect.each(demotions)("$case", ({ to }) => {
+      const { layer } = makeDemotionScene();
+      const signals: Array<string | undefined> = [];
+      const typed: Array<string> = [];
+      const pty: PtyAdapter.PtyAdapter["Service"] = {
+        spawn: () =>
+          Effect.succeed({
+            pid: 4242,
+            write: (data) => {
+              typed.push(data);
+            },
+            resize: () => undefined,
+            kill: (signal) => {
+              signals.push(signal);
+            },
+            onData: () => () => undefined,
+            onExit: () => () => undefined,
+          }),
+      };
+      const terminals = Layer.effect(
+        TerminalManager.TerminalManager,
+        Effect.gen(function* () {
+          const dir = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped({
+            prefix: "t3-revoked-terminals-",
+          });
+          return yield* TerminalManager.makeWithOptions({
+            logsDir: dir,
+            homeDir: dir,
+            ptyAdapter: pty,
+            processKillGraceMs: 1,
+            subprocessInspector: () =>
+              Effect.succeed({ hasRunningSubprocess: false, childCommand: null, processIds: [] }),
+          });
         }),
-    };
-    const terminals = Layer.effect(
-      TerminalManager.TerminalManager,
-      Effect.gen(function* () {
-        const dir = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped({
-          prefix: "t3-revoked-terminals-",
+      ).pipe(Layer.provide(ProcessRunner.layer));
+      return Effect.gen(function* () {
+        const manager = yield* TerminalManager.TerminalManager;
+        let openedBy: AuthSessionId | undefined;
+        const { session } = yield* signInBea(
+          Effect.suspend(() =>
+            openedBy === undefined
+              ? Effect.void
+              : manager.closeOpenedBy(openedBy).pipe(Effect.asVoid),
+          ),
+        );
+        openedBy = session.sessionId;
+        const terminal = { threadId: "thread-bea", terminalId: "default" };
+        yield* manager.open({
+          ...terminal,
+          cwd: process.cwd(),
+          cols: 80,
+          rows: 24,
+          openedBy: session.sessionId,
         });
-        return yield* TerminalManager.makeWithOptions({
-          logsDir: dir,
-          homeDir: dir,
-          ptyAdapter: pty,
-          processKillGraceMs: 1,
-          subprocessInspector: () =>
-            Effect.succeed({ hasRunningSubprocess: false, childCommand: null, processIds: [] }),
-        });
-      }),
-    ).pipe(Layer.provide(ProcessRunner.layer));
-    return Effect.gen(function* () {
-      const manager = yield* TerminalManager.TerminalManager;
-      let openedBy: AuthSessionId | undefined;
-      const { session } = yield* signInBea(
-        Effect.suspend(() =>
-          openedBy === undefined
-            ? Effect.void
-            : manager.closeOpenedBy(openedBy).pipe(Effect.asVoid),
+
+        yield* demote(to);
+        yield* TestClock.adjust(Duration.seconds(60));
+
+        yield* manager.write({ ...terminal, data: "echo still here\r" }).pipe(Effect.ignore);
+        expect({
+          // An interactive shell ignores SIGTERM; a hangup or a kill ends it.
+          shellEnded: signals.some((signal) => signal === "SIGHUP" || signal === "SIGKILL"),
+          typedAfterRemoval: typed,
+        }).toEqual({ shellEnded: true, typedAfterRemoval: [] });
+      }).pipe(
+        // A shell still open at teardown waits out its kill grace on the test clock: close it first
+        // so a red run fails instead of hanging.
+        Effect.ensuring(
+          Effect.gen(function* () {
+            const manager = yield* TerminalManager.TerminalManager;
+            yield* manager.close({ threadId: "thread-bea" }).pipe(Effect.ignore);
+          }),
         ),
+        Effect.provide(Layer.mergeAll(terminals, layer)),
       );
-      openedBy = session.sessionId;
-      const terminal = { threadId: "thread-bea", terminalId: "default" };
-      yield* manager.open({
-        ...terminal,
-        cwd: process.cwd(),
-        cols: 80,
-        rows: 24,
-        openedBy: session.sessionId,
-      });
+    });
+  },
+);
 
-      yield* demote(to);
-      yield* TestClock.adjust(Duration.seconds(60));
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))(
+  "a refused session credential",
+  (it) => {
+    // A client tells a session that merely reached the end of its life (its door mints the next)
+    // from every other refusal by this flag; the HTTP boundary sends it as the 401's `expired`.
+    it.effect.each([
+      {
+        case: "a session past its deadline",
+        present: (auth: EnvironmentAuth.EnvironmentAuth["Service"]) =>
+          auth
+            .issueSession({ subject: "zerops-user:a-zerops-user-id", ttl: Duration.zero })
+            .pipe(Effect.map((issued) => issued.token)),
+        expired: true,
+      },
+      {
+        case: "a revoked session",
+        present: (auth: EnvironmentAuth.EnvironmentAuth["Service"]) =>
+          Effect.gen(function* () {
+            const issued = yield* auth.issueSession({ subject: "zerops-user:a-zerops-user-id" });
+            yield* auth.revokeSession(issued.sessionId);
+            return issued.token;
+          }),
+        expired: false,
+      },
+      {
+        case: "a token this server never signed",
+        present: () => Effect.succeed(["eyJ2IjoxfQ", "not-a-signature"].join(".")),
+        expired: false,
+      },
+    ])("says whether $case expired: $expired", ({ present, expired }) =>
+      Effect.gen(function* () {
+        const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
+        const token = yield* present(serverAuth);
+        const error = yield* Effect.flip(
+          serverAuth.authenticateHttpRequest(makeBearerRequest(token)),
+        );
 
-      yield* manager.write({ ...terminal, data: "echo still here\r" }).pipe(Effect.ignore);
-      expect({
-        // An interactive shell ignores SIGTERM; a hangup or a kill ends it.
-        shellEnded: signals.some((signal) => signal === "SIGHUP" || signal === "SIGKILL"),
-        typedAfterRemoval: typed,
-      }).toEqual({ shellEnded: true, typedAfterRemoval: [] });
-    }).pipe(
-      // A shell still open at teardown waits out its kill grace on the test clock: close it first
-      // so a red run fails instead of hanging.
-      Effect.ensuring(
-        Effect.gen(function* () {
-          const manager = yield* TerminalManager.TerminalManager;
-          yield* manager.close({ threadId: "thread-bea" }).pipe(Effect.ignore);
-        }),
-      ),
-      Effect.provide(Layer.mergeAll(terminals, layer)),
+        expect(error._tag).toBe("ServerAuthInvalidCredentialError");
+        expect(
+          EnvironmentAuth.isServerAuthCredentialError(error) &&
+            EnvironmentAuth.serverAuthCredentialExpired(error),
+        ).toBe(expired);
+      }).pipe(Effect.provide(makeEnvironmentAuthLayer({ zerops: zeropsTestEnvironment }))),
     );
-  });
-});
-
-it.layer(NodeServices.layer)("a refused session credential", (it) => {
-  // A client tells a session that merely reached the end of its life (its door mints the next)
-  // from every other refusal by this flag; the HTTP boundary sends it as the 401's `expired`.
-  it.effect.each([
-    {
-      case: "a session past its deadline",
-      present: (auth: EnvironmentAuth.EnvironmentAuth["Service"]) =>
-        auth
-          .issueSession({ subject: "zerops-user:a-zerops-user-id", ttl: Duration.zero })
-          .pipe(Effect.map((issued) => issued.token)),
-      expired: true,
-    },
-    {
-      case: "a revoked session",
-      present: (auth: EnvironmentAuth.EnvironmentAuth["Service"]) =>
-        Effect.gen(function* () {
-          const issued = yield* auth.issueSession({ subject: "zerops-user:a-zerops-user-id" });
-          yield* auth.revokeSession(issued.sessionId);
-          return issued.token;
-        }),
-      expired: false,
-    },
-    {
-      case: "a token this server never signed",
-      present: () => Effect.succeed(["eyJ2IjoxfQ", "not-a-signature"].join(".")),
-      expired: false,
-    },
-  ])("says whether $case expired: $expired", ({ present, expired }) =>
-    Effect.gen(function* () {
-      const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
-      const token = yield* present(serverAuth);
-      const error = yield* Effect.flip(
-        serverAuth.authenticateHttpRequest(makeBearerRequest(token)),
-      );
-
-      expect(error._tag).toBe("ServerAuthInvalidCredentialError");
-      expect(
-        EnvironmentAuth.isServerAuthCredentialError(error) &&
-          EnvironmentAuth.serverAuthCredentialExpired(error),
-      ).toBe(expired);
-    }).pipe(Effect.provide(makeEnvironmentAuthLayer({ zerops: zeropsTestEnvironment }))),
-  );
-});
+  },
+);
 
 describe("rejectedCredentialAnnotations", () => {
   // The log line names the session a refused credential belonged to, and when it ended, so the

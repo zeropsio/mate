@@ -1,4 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, describe, it } from "@effect/vitest";
 import { ConnectionCatalogDocument } from "@t3tools/client-runtime/platform";
 import { EnvironmentId, type PersistedSavedEnvironmentRecord } from "@t3tools/contracts";
@@ -54,7 +55,10 @@ function makeLayer(
   baseDir: string,
   encryptionAvailable = true,
   failDecrypt: Ref.Ref<boolean> | null = null,
-  fileSystemLayer: Layer.Layer<FileSystem.FileSystem> = NodeServices.layer,
+  fileSystemLayer: Layer.Layer<FileSystem.FileSystem> = Layer.mergeAll(
+    NodeServices.layer,
+    NodeCrypto.layer,
+  ),
 ) {
   const environmentLayer = DesktopEnvironment.layer({
     dirname: "/repo/apps/desktop/src",
@@ -68,7 +72,11 @@ function makeLayer(
     runningUnderArm64Translation: false,
   }).pipe(
     Layer.provide(
-      Layer.mergeAll(NodeServices.layer, DesktopConfig.layerTest({ T3CODE_HOME: baseDir })),
+      Layer.mergeAll(
+        NodeServices.layer,
+        NodeCrypto.layer,
+        DesktopConfig.layerTest({ T3CODE_HOME: baseDir }),
+      ),
     ),
   );
   const safeStorageLayer = makeSafeStorageLayer(encryptionAvailable, failDecrypt);
@@ -76,6 +84,7 @@ function makeLayer(
     environmentLayer,
     safeStorageLayer,
     NodeServices.layer,
+    NodeCrypto.layer,
     fileSystemLayer,
   );
   const savedEnvironmentsLayer = DesktopSavedEnvironments.layer.pipe(
@@ -98,7 +107,7 @@ const withStore = <A, E, R>(
       prefix: "t3-desktop-connection-catalog-test-",
     });
     return yield* effect.pipe(Effect.provide(makeLayer(baseDir, encryptionAvailable)));
-  }).pipe(Effect.provide(NodeServices.layer), Effect.scoped);
+  }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)), Effect.scoped);
 
 describe("DesktopConnectionCatalogStore", () => {
   it.effect("persists, reads, and clears an encrypted connection catalog", () =>
@@ -302,7 +311,7 @@ describe("DesktopConnectionCatalogStore", () => {
         `Failed to read the desktop connection catalog at ${path.join(baseDir, "userdata", "connection-catalog.json")}.`,
       );
       assert.notEqual(error.message, permissionError.message);
-    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+    }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)), Effect.scoped),
   );
 
   it.effect("reports the failed catalog write operation and path", () =>
@@ -341,7 +350,7 @@ describe("DesktopConnectionCatalogStore", () => {
         `Desktop connection catalog write failed during create-directory at ${path.join(baseDir, "userdata")}.`,
       );
       assert.notEqual(error.message, permissionError.message);
-    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+    }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)), Effect.scoped),
   );
 
   it.effect("reports the legacy migration stage", () =>
@@ -438,6 +447,6 @@ describe("DesktopConnectionCatalogStore", () => {
       assert.notEqual(error.message, decryptError.message);
       yield* Ref.set(failDecrypt, false);
       assert.deepStrictEqual(yield* store.get, Option.some('{"schemaVersion":1,"targets":[]}'));
-    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+    }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)), Effect.scoped),
   );
 });

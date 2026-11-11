@@ -12,7 +12,7 @@ import {
 } from "@t3tools/contracts";
 import { isCompactCommandMessage } from "@t3tools/shared/userAsk";
 import * as DateTime from "effect/DateTime";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as Option from "effect/Option";
@@ -158,11 +158,11 @@ function withEventBase(
 ): Effect.Effect<
   Omit<OrchestrationEvent, "sequence" | "type" | "payload">,
   PlatformError.PlatformError,
-  Crypto.Crypto
+  SecureRandom.SecureRandom
 > {
-  return Crypto.Crypto.pipe(
+  return SecureRandom.SecureRandom.pipe(
     Effect.flatMap((crypto) =>
-      crypto.randomUUIDv4.pipe(
+      crypto.uuidV4().pipe(
         Effect.map((eventId) => ({
           eventId: EventId.make(eventId),
           aggregateKind: input.aggregateKind,
@@ -193,7 +193,7 @@ const decideCommandSequence = Effect.fn("decideCommandSequence")(function* ({
 }): Effect.fn.Return<
   ReadonlyArray<PlannedOrchestrationEvent>,
   OrchestrationCommandInvariantError | PlatformError.PlatformError,
-  Crypto.Crypto
+  SecureRandom.SecureRandom
 > {
   let nextReadModel = readModel;
   let nextSequence = readModel.snapshotSequence;
@@ -229,7 +229,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
 }): Effect.fn.Return<
   DecideOrchestrationCommandResult,
   OrchestrationCommandInvariantError | PlatformError.PlatformError,
-  Crypto.Crypto
+  SecureRandom.SecureRandom
 > {
   switch (command.type) {
     case "project.create": {

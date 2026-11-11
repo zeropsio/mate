@@ -1,28 +1,7 @@
 {
   "upstream": "e2a781477afd2aea1741f720afa9067294e7a1b7",
   "paths": {
-    "packages/effect-codex-app-server": "274126bb42000d200fe8150af4ee94238bef751e",
-    "packages/effect-acp": "cfd407a783d415bdd1838c5fbf8efd715b5ad0bb"
-  },
-  "transform": [
-    {
-      "name": "tsgo-046",
-      "script": "scripts/imported-lock-transform.ts",
-      "since": "2026-11-11",
-      "until": "the toolchain moves to @effect/tsgo 0.67",
-      "upstreamPaths": {
-        "packages/effect-codex-app-server": "1acd6150ffee20fa5edc65164c51bc7be3f8e3c6"
-      }
-    },
-    {
-      "name": "effect-401",
-      "script": "scripts/effect-401-codemod.ts --import-zone",
-      "since": "2026-10-07",
-      "until": "the next re-import",
-      "upstream": "422248515a1eebff607b44d5abef91e13f6228fc",
-      "upstreamPaths": {
-        "packages/effect-acp": "1c70adfcc3e3be314ee2273393cf02b6943c14e7"
-      }
-    }
-  ]
+    "packages/effect-codex-app-server": "1acd6150ffee20fa5edc65164c51bc7be3f8e3c6",
+    "packages/effect-acp": "f10342bca2015b00db96f299bfc5ce1281de7dc6"
+  }
 }

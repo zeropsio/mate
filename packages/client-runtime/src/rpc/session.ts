@@ -40,6 +40,12 @@ import {
 } from "../state/serverConfigProjection.ts";
 
 const SOCKET_OPEN_TIMEOUT = "15 seconds";
+// Pings go out every 5 seconds and the silence is judged on those ticks. Between the third and
+// the fourth tick, so timer drift never makes it two: three unanswered pings drop the socket.
+const PING_TIMEOUT = "17500 millis";
+// A ping tick this long after the last one means this client's timers stood still (a hidden tab's
+// run once a minute, a suspended machine's not at all), not that the Mate was silent meanwhile.
+const LATE_PING_TICK_MILLIS = 10_000;
 /** A Mate closed a ticket's socket: it took the ticket's access back, or refused it (`ws.ts`). */
 const MATE_ACCESS_ENDED_CLOSE = 4401;
 
@@ -165,8 +171,6 @@ export const make = Effect.fn("RpcSessionFactory.make")(function* (
     let mateAccessEnded = false;
     const hooks = RpcClient.ConnectionHooks.of({
       onConnect: Deferred.succeed(connected, undefined).pipe(Effect.asVoid),
-      onPingTimeout: Ref.set(pingTimedOut, true),
-      pingTimeoutPaused: options.pingTimeoutPaused,
       onDisconnect: Effect.all([Deferred.isDone(connected), Ref.get(pingTimedOut)]).pipe(
         Effect.flatMap(([wasConnected, timedOut]) =>
           Deferred.fail(
@@ -209,8 +213,13 @@ export const make = Effect.fn("RpcSessionFactory.make")(function* (
     const protocolLayer = Layer.effect(
       RpcClient.Protocol,
       RpcClient.makeProtocolSocket({
+        pingTimeout: PING_TIMEOUT,
         retryTransientErrors: false,
         retryPolicy: Schedule.recurs(0),
+        onPingTimeout: Ref.set(pingTimedOut, true),
+        // Either way the Mate gets three pings again before its silence drops the socket.
+        pingTimeoutPaused: (sinceLastTickMillis) =>
+          sinceLastTickMillis > LATE_PING_TICK_MILLIS || options.pingTimeoutPaused?.() === true,
       }),
     ).pipe(
       Layer.provide(

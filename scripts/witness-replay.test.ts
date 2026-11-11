@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off -- host replay script over recorded Vitest reports.
+// @effect-diagnostics nodeBuiltinImport:off globalJsonInEffect:off -- host replay script over recorded Vitest reports.
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";

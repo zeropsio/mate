@@ -13,6 +13,7 @@ import {
 import { describe, expect, it } from "@effect/vitest";
 import { vi } from "vite-plus/test";
 import * as Cause from "effect/Cause";
+import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -1025,6 +1026,48 @@ describe("RpcSessionFactory", () => {
         detail: "Test environment stopped responding.",
       });
     }).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
+  );
+
+  // witness: packages/client-runtime/src/rpc/session.ts | sinceLastTickMillis > LATE_PING_TICK_MILLIS → false
+  it.effect(
+    "a client whose timers stood still gives the Mate three pings again once they run",
+    () =>
+      Effect.gen(function* () {
+        const timers = yield* Clock.Clock;
+        // A suspended machine: its timers stand still while the time of day moves on.
+        const asleep = { millis: 0 };
+        const wallClock: Clock.Clock = {
+          ...timers,
+          currentTimeMillisUnsafe: () => timers.currentTimeMillisUnsafe() + asleep.millis,
+        };
+        const { factory, sockets } = yield* makeFactory();
+        const session = yield* factory
+          .connect(PREPARED)
+          .pipe(Effect.provideService(Clock.Clock, wallClock));
+        const readyFiber = yield* Effect.forkChild(session.ready);
+        const closedFiber = yield* Effect.forkChild(Effect.flip(session.closed));
+        const socket = yield* awaitSocket(sockets);
+        socket.open();
+        yield* completeInitialConfig(socket);
+        yield* Fiber.join(readyFiber);
+        const pings = () => socket.sent.map((message) => decodeJson(message)).filter(isPing).length;
+
+        // One ping is out and unanswered when the machine sleeps for a minute.
+        yield* TestClock.adjust("5 seconds");
+        expect(pings()).toBe(1);
+        asleep.millis = 60_000;
+
+        // Awake: the first tick finds a minute of silence that was the machine's own.
+        yield* TestClock.adjust("5 seconds");
+        expect(closedFiber.pollUnsafe()).toBeUndefined();
+        yield* TestClock.adjust("15 seconds");
+        expect(closedFiber.pollUnsafe()).toBeUndefined();
+        expect(pings()).toBe(5);
+
+        yield* TestClock.adjust("5 seconds");
+        const error = yield* Fiber.join(closedFiber);
+        expect(error).toMatchObject({ detail: "Test environment stopped responding." });
+      }).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
   );
 
   describe("a page whose own throttling may hold pongs back", () => {

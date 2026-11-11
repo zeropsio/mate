@@ -32,6 +32,7 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as PlatformError from "effect/PlatformError";
+import * as Redacted from "effect/Redacted";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as ChildProcess from "effect/process/ChildProcess";
@@ -170,6 +171,27 @@ interface SpawnShape {
   };
 }
 
+const plainWord = (word: string | Redacted.Redacted<string>): string =>
+  Redacted.isRedacted(word) ? Redacted.value(word) : word;
+
+/** A spawned command's words as the strings the process receives. */
+const spawnShapeOf = (command: ChildProcess.StandardCommand): SpawnShape => ({
+  command: command.command,
+  args: command.args.map(plainWord),
+  options: {
+    cwd: command.options.cwd,
+    env:
+      command.options.env === undefined
+        ? undefined
+        : Object.fromEntries(
+            Object.entries(command.options.env).map(([key, value]) => [
+              key,
+              value === undefined ? undefined : plainWord(value),
+            ]),
+          ),
+  },
+});
+
 /** Read Git's leading -C options even when configuration flags precede them. */
 const gitLocation = (
   spawn: SpawnShape,
@@ -227,7 +249,8 @@ const underWorkspaceRoot = (path: string): boolean =>
  * a relative option resolved against the location as git resolves it. As given: whether one is
  * under a mount is decided only for a plain one (`isPlainPath`).
  */
-const remoteLocationsOf = (command: ChildProcess.StandardCommand): ReadonlyArray<string> => {
+const remoteLocationsOf = (standard: ChildProcess.StandardCommand): ReadonlyArray<string> => {
+  const command = spawnShapeOf(standard);
   if (command.command !== "git") return [];
   const { location } = gitLocation(command);
   const resolved = (value: string): ReadonlyArray<string> =>
@@ -473,7 +496,7 @@ export const makeZeropsGitSpawner = (
         ...(repositories._tag === "available" ? repositories.repositories : []),
         ...known,
       ];
-      let invocation = rewriteGitSpawn(command, candidates);
+      let invocation = rewriteGitSpawn(spawnShapeOf(command), candidates);
       if (invocation === undefined) {
         const mentioned = remoteLocationsOf(command);
         if (mentioned.length === 0) return yield* options.inner.spawn(command);
@@ -481,7 +504,7 @@ export const makeZeropsGitSpawner = (
         // and only a read of the mount table taken for this spawn says it is not one now.
         const fresh = options.refresh === undefined ? repositories : yield* options.refresh;
         const mounted = fresh._tag === "available" ? fresh.repositories : [];
-        invocation = rewriteGitSpawn(command, mounted);
+        invocation = rewriteGitSpawn(spawnShapeOf(command), mounted);
         if (invocation === undefined) {
           // A place no mount holds, read whole, is this container's own disk (or nothing): git
           // there touches no remote checkout, and answers as it does anywhere — no repository.
@@ -516,7 +539,7 @@ export const makeZeropsGitSpawner = (
               description: observation.reason,
             }),
           );
-        invocation = rewriteGitSpawn(command, [observation.repository]);
+        invocation = rewriteGitSpawn(spawnShapeOf(command), [observation.repository]);
         if (invocation === undefined)
           return yield* Effect.fail(
             PlatformError.badArgument({

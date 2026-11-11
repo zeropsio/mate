@@ -5,6 +5,7 @@ import * as NodePath from "node:path";
 import { HostProcessEnvironment } from "@t3tools/shared/hostProcess";
 import packageJson from "../../package.json" with { type: "json" };
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
@@ -76,7 +77,6 @@ const makeServerConfig = Effect.fn(function* (baseDir: string) {
     logWebSocketEvents: false,
     port: 0,
     host: undefined,
-    desktopBootstrapToken: undefined,
     staticDir: undefined,
     devUrl: undefined,
     devAllowedOrigins: [],
@@ -89,7 +89,7 @@ const makeServerConfig = Effect.fn(function* (baseDir: string) {
   } satisfies ServerConfig.ServerConfig["Service"];
 });
 
-it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("ServerEnvironmentLive", (it) => {
   const baseDir = testTempDir("server-environment-");
   const stateDir = NodePath.join(baseDir, "userdata");
   beforeEach(() => {

@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off unsafeEffectTypeAssertion:off - a test harness: a database file, rows read back plainly, one context per life.
+// @effect-diagnostics nodeBuiltinImport:off globalJsonInEffect:off unsafeEffectTypeAssertion:off - a test harness: a database file, rows read back plainly, one context per life.
 /**
  * The running engine for end-to-end tests: the live layer (store, actors, outbox, handlers, live
  * plane, pump) on a SQLite file, over a scripted ProviderService. A life is one process: `boot` builds the layers and starts the

@@ -4,6 +4,7 @@
  * which has none.
  */
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -48,9 +49,9 @@ describe("a commit's changes on the Git page", () => {
           spawned.push({ command: command.command });
           return platform.spawn(command);
         }
-        const host = command.args.at(-2) ?? "";
+        const host = String(command.args.at(-2) ?? "");
         spawned.push({ command: "ssh", host });
-        const remote = (command.args.at(-1) ?? "").replace(
+        const remote = String(command.args.at(-1) ?? "").replace(
           /(^|\s)git -C \/var\/www(?= )/,
           (_match, lead: string) => `${lead}git -C ${shellQuote(service)}`,
         );
@@ -91,7 +92,7 @@ describe("a commit's changes on the Git page", () => {
       Effect.scoped,
       Effect.provide(
         ServerConfig.layerTest(process.cwd(), { prefix: "mate-commit-diff-config-" }).pipe(
-          Layer.provideMerge(NodeServices.layer),
+          Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
         ),
       ),
     ),

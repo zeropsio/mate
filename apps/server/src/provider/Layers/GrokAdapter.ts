@@ -16,7 +16,7 @@ import { HostProcessEnvironment, HostProcessPlatform } from "@t3tools/shared/hos
 import { getModelSelectionStringOptionValue } from "@t3tools/shared/model";
 import { stableStringify } from "@t3tools/shared/relaySigning";
 import * as Clock from "effect/Clock";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
@@ -36,7 +36,7 @@ import * as Stream from "effect/Stream";
 import * as SynchronizedRef from "effect/SynchronizedRef";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as EffectAcpErrors from "effect-acp/errors";
-import type * as EffectAcpSchema from "effect-acp/schema";
+import type * as EffectAcpSchema from "effect-acp/compat";
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
@@ -71,6 +71,7 @@ import {
   applyGrokAcpModelSelection,
   currentGrokModelIdFromSessionSetup,
   currentGrokReasoningEffortFromSessionSetup,
+  grokSessionSelectsModelByConfigOption,
   makeGrokAcpRuntime,
   normalizeGrokReasoningEffort,
   resolveGrokAcpBaseModelId,
@@ -191,6 +192,7 @@ interface GrokSessionContext {
   promptResponsesReady: number;
   currentModelId: string | undefined;
   currentReasoningEffort: string | undefined;
+  readonly selectsModelByConfigOption: boolean;
   stopped: boolean;
   terminated: boolean;
   /** Live monitor/shell identities and their originating turns. */
@@ -371,7 +373,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
     const serverConfig = yield* Effect.service(ServerConfig);
     const readPersona = yield* makePersonaReader(yield* ServerSettingsService);
     const threadPolicies = yield* readAcpThreadPolicies;
-    const crypto = yield* Crypto.Crypto;
+    const crypto = yield* SecureRandom.SecureRandom;
     const nativeEventLogger =
       options?.nativeEventLogger ??
       (options?.nativeEventLogPath !== undefined
@@ -407,7 +409,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
       BigInt(activeToolInactivityTimeoutMs) * NANOS_PER_MILLI;
 
     const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
-    const randomUUIDv4 = crypto.randomUUIDv4.pipe(
+    const randomUUIDv4 = crypto.uuidV4().pipe(
       Effect.mapError(
         (cause) =>
           new ProviderAdapterRequestError({
@@ -1060,7 +1062,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
             clientInfo: { name: "t3-code", version: "0.0.0" },
             ...acpNativeLoggers,
           }).pipe(
-            Effect.provideService(Crypto.Crypto, crypto),
+            Effect.provideService(SecureRandom.SecureRandom, crypto),
             Effect.provideService(Scope.Scope, sessionScope),
             Effect.mapError(
               (cause) =>
@@ -1290,8 +1292,12 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
             grokModelSelection,
             "reasoningEffort",
           );
+          const selectsModelByConfigOption = grokSessionSelectsModelByConfigOption(
+            started.sessionSetupResult,
+          );
           const boundModelId = yield* applyGrokAcpModelSelection({
             runtime: acp,
+            selectsModelByConfigOption,
             currentModelId: currentStartModelId,
             currentReasoningEffort: currentStartReasoningEffort,
             requestedModelId: requestedStartModelId,
@@ -1348,6 +1354,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
               requestedStartReasoningEffort !== undefined
                 ? normalizeGrokReasoningEffort(requestedStartReasoningEffort)
                 : currentStartReasoningEffort,
+            selectsModelByConfigOption,
             stopped: false,
             terminated: false,
             backgroundTasks: new Map(),
@@ -1688,6 +1695,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
 
               const currentModelId = yield* applyGrokAcpModelSelection({
                 runtime: ctx.acp,
+                selectsModelByConfigOption: ctx.selectsModelByConfigOption,
                 currentModelId: ctx.currentModelId,
                 currentReasoningEffort: ctx.currentReasoningEffort,
                 requestedModelId: requestedTurnModelId,

@@ -24,7 +24,7 @@ import {
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { createThreadEnvironmentAtoms } from "@t3tools/client-runtime/state/threads";
 import { createModelCapabilities } from "@t3tools/shared/model";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -129,11 +129,8 @@ describe("C: Codex context window", () => {
                   ),
               } as EnvironmentRegistry["Service"]),
               Layer.succeed(
-                Crypto.Crypto,
-                Crypto.make({
-                  randomBytes: (size) => new Uint8Array(size),
-                  digest: (_algorithm, data) => Effect.succeed(data),
-                }),
+                SecureRandom.SecureRandom,
+                SecureRandom.make((size) => new Uint8Array(size)),
               ),
             ),
           );

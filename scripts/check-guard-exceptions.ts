@@ -26,7 +26,6 @@ import * as NodePath from "node:path";
 import * as NodeOS from "node:os";
 import * as NodeURL from "node:url";
 
-import { rewriteImportPaths } from "./effect-401-codemod.ts";
 import { decodeGitHubEvent, githubRatchetRevision } from "./lib/github-ratchet.ts";
 import {
   guardCacheKey,
@@ -194,8 +193,7 @@ export const ratchetAdditions = (
 ): ReadonlyArray<string> => {
   const counts = new Map<string, number>();
   for (const entry of baseline) {
-    // A baseline from before Effect 4.0.1 names the same import by its effect/unstable/* path.
-    const identity = identityOf({ ...entry, fingerprint: rewriteImportPaths(entry.fingerprint) });
+    const identity = identityOf(entry);
     counts.set(identity, (counts.get(identity) ?? 0) + 1);
   }
   const additions: Array<string> = [];

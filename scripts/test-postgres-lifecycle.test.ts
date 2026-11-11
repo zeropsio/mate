@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off globalTimers:off -- deterministic kernel-lock interleaving with real worktree clients.
+// @effect-diagnostics nodeBuiltinImport:off globalJsonInEffect:off globalTimers:off -- deterministic kernel-lock interleaving with real worktree clients.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";

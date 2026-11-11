@@ -1,4 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -32,12 +33,18 @@ function makeLayer(fileSystemLayer: Layer.Layer<FileSystem.FileSystem>) {
     runningUnderArm64Translation: false,
   }).pipe(
     Layer.provide(
-      Layer.mergeAll(NodeServices.layer, DesktopConfig.layerTest({ T3CODE_HOME: baseDir })),
+      Layer.mergeAll(
+        NodeServices.layer,
+        NodeCrypto.layer,
+        DesktopConfig.layerTest({ T3CODE_HOME: baseDir }),
+      ),
     ),
   );
 
   return DesktopClientSettings.layer.pipe(
-    Layer.provideMerge(Layer.mergeAll(environmentLayer, NodeServices.layer, fileSystemLayer)),
+    Layer.provideMerge(
+      Layer.mergeAll(environmentLayer, NodeServices.layer, NodeCrypto.layer, fileSystemLayer),
+    ),
   );
 }
 

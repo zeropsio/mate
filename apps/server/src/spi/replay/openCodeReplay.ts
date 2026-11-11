@@ -18,6 +18,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 
 import {
   OpenCodeSettings,
@@ -238,7 +239,7 @@ export async function recordOpenCodeBaseline(): Promise<ReadonlyArray<SpiEvent>>
     ServerSettingsService.layerTest(),
     providerSessionDirectoryTestLayer,
     Layer.succeed(OpenCodeRuntime, makeReplayRuntime(CANNED_EVENTS)),
-  ).pipe(Layer.provideMerge(NodeServices.layer));
+  ).pipe(Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)));
 
   return Effect.runPromise(Effect.scoped(program).pipe(Effect.provide(testLayer)));
 }
@@ -291,7 +292,7 @@ export async function recordOpenCodeTurn(
     ServerSettingsService.layerTest(),
     providerSessionDirectoryTestLayer,
     Layer.succeed(OpenCodeRuntime, makeReplayRuntime(CANNED_EVENTS.slice(0, 1), events)),
-  ).pipe(Layer.provideMerge(NodeServices.layer));
+  ).pipe(Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)));
 
   return Effect.runPromise(Effect.scoped(program).pipe(Effect.provide(testLayer)));
 }

@@ -1,13 +1,15 @@
 import { readConnectAuthorizeRequest } from "@t3tools/shared/connectAuth";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, it } from "@effect/vitest";
 import * as ConfigProvider from "effect/ConfigProvider";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Base64Url from "effect/encoding/Base64Url";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Cause from "effect/Cause";
 import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Terminal from "effect/Terminal";
@@ -94,6 +96,7 @@ const makeTestTerminal = (queue: Queue.Queue<Terminal.UserInput>) =>
   Terminal.make({
     columns: Effect.succeed(80),
     rows: Effect.succeed(24),
+    size: Queue.unbounded<Terminal.Size, Cause.Done>(),
     readInput: Effect.succeed(Queue.asDequeue(queue)),
     readLine: Effect.never,
     display: () => Effect.void,
@@ -142,107 +145,110 @@ it.effect("finishes normally when the browser callback wins", () =>
   }),
 );
 
-it.layer(NodeServices.layer)("CliTokenManager.outOfBandOAuthLogin", (it) => {
-  it.effect("prints a hosted authorize URL and exchanges the out-of-band code with PKCE", () =>
-    Effect.gen(function* () {
-      const requests: Array<RecordedTokenRequest> = [];
-      let seenAuthorizeUrl = "";
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))(
+  "CliTokenManager.outOfBandOAuthLogin",
+  (it) => {
+    it.effect("prints a hosted authorize URL and exchanges the out-of-band code with PKCE", () =>
+      Effect.gen(function* () {
+        const requests: Array<RecordedTokenRequest> = [];
+        let seenAuthorizeUrl = "";
 
-      const { token, identity } = yield* CliTokenManager.outOfBandOAuthLogin(
-        ({ authorizeUrl, validate }: OutOfBandOAuthPromptInput) =>
-          Effect.gen(function* () {
-            seenAuthorizeUrl = authorizeUrl;
+        const { token, identity } = yield* CliTokenManager.outOfBandOAuthLogin(
+          ({ authorizeUrl, validate }: OutOfBandOAuthPromptInput) =>
+            Effect.gen(function* () {
+              seenAuthorizeUrl = authorizeUrl;
+              const request = readConnectAuthorizeRequest(new URL(authorizeUrl));
+              assert.isNotNull(request);
+              return yield* validate(`clerk-code-123.${request!.state}`).pipe(
+                Effect.mapError((message) => new PromptRejectedError({ message })),
+              );
+            }),
+        ).pipe(Effect.provide(makeTokenEndpointLayer(requests)), provideTestEnv);
+
+        const authorizeUrl = new URL(seenAuthorizeUrl);
+        assert.equal(authorizeUrl.origin, "https://hosted.example.test");
+        assert.equal(authorizeUrl.pathname, "/connect");
+        const request = readConnectAuthorizeRequest(authorizeUrl);
+        assert.isNotNull(request);
+        assert.match(request!.state, /^[A-Za-z0-9_-]{22}$/);
+
+        assert.equal(token.accessToken, "access-token-1");
+        assert.equal(token.refreshToken, "refresh-token-1");
+        assert.equal(token.identity, "theo@example.test");
+        // The id_token's email claim is surfaced so connect can show the account.
+        assert.equal(identity, "theo@example.test");
+
+        assert.lengthOf(requests, 1);
+        const exchange = requests[0]!;
+        assert.equal(exchange.url, "https://clerk.example.test/oauth/token");
+        assert.equal(exchange.params.get("grant_type"), "authorization_code");
+        assert.equal(exchange.params.get("code"), "clerk-code-123");
+        assert.equal(
+          exchange.params.get("redirect_uri"),
+          "https://hosted.example.test/connect/callback",
+        );
+        assert.equal(exchange.params.get("client_id"), "oauth_client_test");
+        // The verifier must hash to the challenge advertised in the authorize URL.
+        const verifier = exchange.params.get("code_verifier");
+        assert.isNotNull(verifier);
+        const crypto = yield* Digest.Digest;
+        const digest = yield* crypto.digest(Digest.sha256, new TextEncoder().encode(verifier!));
+        assert.equal(Base64Url.encode(digest), request!.challenge);
+      }),
+    );
+
+    it.effect("rejects out-of-band codes whose state does not match the request", () =>
+      Effect.gen(function* () {
+        const requests: Array<RecordedTokenRequest> = [];
+
+        const validationErrors: Array<string> = [];
+        const result = yield* CliTokenManager.outOfBandOAuthLogin(
+          ({ validate }: OutOfBandOAuthPromptInput) =>
+            validate("clerk-code-123.wrong-state").pipe(
+              Effect.tapError((message) => Effect.sync(() => validationErrors.push(message))),
+              Effect.mapError((message) => new PromptRejectedError({ message })),
+            ),
+        ).pipe(Effect.provide(makeTokenEndpointLayer(requests)), provideTestEnv, Effect.flip);
+
+        assert.lengthOf(requests, 0);
+        assert.lengthOf(validationErrors, 1);
+        assert.include(validationErrors[0], "different connect request");
+        assert.instanceOf(result, PromptRejectedError);
+      }),
+    );
+
+    it.effect("ignores an id_token whose claims are not valid JSON", () =>
+      Effect.gen(function* () {
+        const requests: Array<RecordedTokenRequest> = [];
+        const malformedIdToken = `header.${Base64Url.encode("not-json")}.signature`;
+
+        const { identity } = yield* CliTokenManager.outOfBandOAuthLogin(
+          ({ authorizeUrl }: OutOfBandOAuthPromptInput) => {
             const request = readConnectAuthorizeRequest(new URL(authorizeUrl));
             assert.isNotNull(request);
-            return yield* validate(`clerk-code-123.${request!.state}`).pipe(
-              Effect.mapError((message) => new PromptRejectedError({ message })),
-            );
-          }),
-      ).pipe(Effect.provide(makeTokenEndpointLayer(requests)), provideTestEnv);
+            return Effect.succeed(`clerk-code-123.${request!.state}`);
+          },
+        ).pipe(
+          Effect.provide(makeTokenEndpointLayer(requests, { idToken: malformedIdToken })),
+          provideTestEnv,
+        );
 
-      const authorizeUrl = new URL(seenAuthorizeUrl);
-      assert.equal(authorizeUrl.origin, "https://hosted.example.test");
-      assert.equal(authorizeUrl.pathname, "/connect");
-      const request = readConnectAuthorizeRequest(authorizeUrl);
-      assert.isNotNull(request);
-      assert.match(request!.state, /^[A-Za-z0-9_-]{22}$/);
+        assert.isNull(identity);
+        assert.lengthOf(requests, 1);
+      }),
+    );
 
-      assert.equal(token.accessToken, "access-token-1");
-      assert.equal(token.refreshToken, "refresh-token-1");
-      assert.equal(token.identity, "theo@example.test");
-      // The id_token's email claim is surfaced so connect can show the account.
-      assert.equal(identity, "theo@example.test");
+    it.effect("fails without touching the token endpoint when the prompt returns garbage", () =>
+      Effect.gen(function* () {
+        const requests: Array<RecordedTokenRequest> = [];
 
-      assert.lengthOf(requests, 1);
-      const exchange = requests[0]!;
-      assert.equal(exchange.url, "https://clerk.example.test/oauth/token");
-      assert.equal(exchange.params.get("grant_type"), "authorization_code");
-      assert.equal(exchange.params.get("code"), "clerk-code-123");
-      assert.equal(
-        exchange.params.get("redirect_uri"),
-        "https://hosted.example.test/connect/callback",
-      );
-      assert.equal(exchange.params.get("client_id"), "oauth_client_test");
-      // The verifier must hash to the challenge advertised in the authorize URL.
-      const verifier = exchange.params.get("code_verifier");
-      assert.isNotNull(verifier);
-      const crypto = yield* Crypto.Crypto;
-      const digest = yield* crypto.digest("SHA-256", new TextEncoder().encode(verifier!));
-      assert.equal(Base64Url.encode(digest), request!.challenge);
-    }),
-  );
+        const result = yield* CliTokenManager.outOfBandOAuthLogin(() =>
+          Effect.succeed("not-a-connect-code"),
+        ).pipe(Effect.provide(makeTokenEndpointLayer(requests)), provideTestEnv, Effect.flip);
 
-  it.effect("rejects out-of-band codes whose state does not match the request", () =>
-    Effect.gen(function* () {
-      const requests: Array<RecordedTokenRequest> = [];
-
-      const validationErrors: Array<string> = [];
-      const result = yield* CliTokenManager.outOfBandOAuthLogin(
-        ({ validate }: OutOfBandOAuthPromptInput) =>
-          validate("clerk-code-123.wrong-state").pipe(
-            Effect.tapError((message) => Effect.sync(() => validationErrors.push(message))),
-            Effect.mapError((message) => new PromptRejectedError({ message })),
-          ),
-      ).pipe(Effect.provide(makeTokenEndpointLayer(requests)), provideTestEnv, Effect.flip);
-
-      assert.lengthOf(requests, 0);
-      assert.lengthOf(validationErrors, 1);
-      assert.include(validationErrors[0], "different connect request");
-      assert.instanceOf(result, PromptRejectedError);
-    }),
-  );
-
-  it.effect("ignores an id_token whose claims are not valid JSON", () =>
-    Effect.gen(function* () {
-      const requests: Array<RecordedTokenRequest> = [];
-      const malformedIdToken = `header.${Base64Url.encode("not-json")}.signature`;
-
-      const { identity } = yield* CliTokenManager.outOfBandOAuthLogin(
-        ({ authorizeUrl }: OutOfBandOAuthPromptInput) => {
-          const request = readConnectAuthorizeRequest(new URL(authorizeUrl));
-          assert.isNotNull(request);
-          return Effect.succeed(`clerk-code-123.${request!.state}`);
-        },
-      ).pipe(
-        Effect.provide(makeTokenEndpointLayer(requests, { idToken: malformedIdToken })),
-        provideTestEnv,
-      );
-
-      assert.isNull(identity);
-      assert.lengthOf(requests, 1);
-    }),
-  );
-
-  it.effect("fails without touching the token endpoint when the prompt returns garbage", () =>
-    Effect.gen(function* () {
-      const requests: Array<RecordedTokenRequest> = [];
-
-      const result = yield* CliTokenManager.outOfBandOAuthLogin(() =>
-        Effect.succeed("not-a-connect-code"),
-      ).pipe(Effect.provide(makeTokenEndpointLayer(requests)), provideTestEnv, Effect.flip);
-
-      assert.lengthOf(requests, 0);
-      assert.isTrue(isAuthorizationError(result));
-    }),
-  );
-});
+        assert.lengthOf(requests, 0);
+        assert.isTrue(isAuthorizationError(result));
+      }),
+    );
+  },
+);

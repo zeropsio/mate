@@ -797,7 +797,7 @@ jobs:
         run: vpr typecheck
 
       - name: Typecheck scenarios
-        run: vp exec tsc --noEmit --incremental -p apps/web/test/scenarios/tsconfig.json
+        run: vp exec effect-tsgo tsrs --noEmit --incremental -p apps/web/test/scenarios/tsconfig.json
 
   check_build:
     name: Check Build
@@ -968,7 +968,7 @@ jobs:
       - name: Test environment source consumers
         if: matrix.shard == 1
         run: |
-          vp exec tsc -p apps/web/test/e-env/tsconfig.json
+          vp exec effect-tsgo tsrs -p apps/web/test/e-env/tsconfig.json
           vp -C apps/web test run --config test/e-env/vitest.config.ts
 
       - name: Cache the scenarios' Chrome for Testing
@@ -1291,7 +1291,7 @@ jobs:
       - name: Certify engine oracles
         if: matrix.shard == 1
         run: |
-          vp exec tsc --noEmit --incremental -p apps/web/test/engine-oracle/tsconfig.json
+          vp exec effect-tsgo tsrs --noEmit --incremental -p apps/web/test/engine-oracle/tsconfig.json
           vp -C apps/web test run --project engine-oracle test/engine-oracle/runCard.oracle.test.ts test/engine-oracle/mateHealth.oracle.test.ts --allowOnly=false --reporter=default --reporter=../../scripts/chat-gate-reporter.ts
 
       # src/server.test.ts writes the budget report, so exactly one shard

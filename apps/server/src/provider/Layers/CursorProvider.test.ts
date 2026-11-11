@@ -3,15 +3,17 @@ import * as NodeOS from "node:os";
 import { waitForFileContent } from "../../testUtils/waitForFileContent.ts";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as Layer from "effect/Layer";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { it as effectIt } from "@effect/vitest";
-import type * as Crypto from "effect/Crypto";
+import type * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Stream from "effect/Stream";
 import type * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import { describe, expect, it } from "vite-plus/test";
-import type * as EffectAcpSchema from "effect-acp/schema";
+import type * as EffectAcpSchema from "effect-acp/compat";
 import { ProviderDriverKind, ProviderInstanceId, type CursorSettings } from "@t3tools/contracts";
 import { createModelCapabilities } from "@t3tools/shared/model";
 
@@ -44,9 +46,15 @@ const runNode = <A, E>(
   effect: Effect.Effect<
     A,
     E,
-    ChildProcessSpawner.ChildProcessSpawner | Crypto.Crypto | FileSystem.FileSystem | Path.Path
+    | ChildProcessSpawner.ChildProcessSpawner
+    | SecureRandom.SecureRandom
+    | FileSystem.FileSystem
+    | Path.Path
   >,
-): Promise<A> => Effect.runPromise(effect.pipe(Effect.provide(NodeServices.layer)));
+): Promise<A> =>
+  Effect.runPromise(
+    effect.pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
+  );
 
 // Closing the probe kills the agent with SIGTERM; Windows terminates the
 // process instead, so the mock never sees a signal to log.
@@ -509,7 +517,11 @@ describe("Cursor command catalog", () => {
         yield* catalog.snapshotForCwd("/probed", probedSkills);
         yield* catalog.onAvailableCommands(
           [
-            { name: "review", description: "Review changes", input: { hint: "target" } },
+            {
+              name: "review",
+              description: "Review changes",
+              input: { type: "text" as const, hint: "target" },
+            },
             { name: "compact", description: "Native duplicate" },
             { name: "review", description: "Duplicate" },
           ],

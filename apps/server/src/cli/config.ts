@@ -7,7 +7,7 @@ import {
 } from "@t3tools/shared/observability";
 import * as OtelEnvironment from "@t3tools/shared/otelEnvironment";
 import { parsePersistedServerObservabilitySettings } from "@t3tools/shared/serverSettings";
-import { DesktopBackendBootstrap, PortSchema } from "@t3tools/contracts";
+import { PortSchema } from "@t3tools/contracts";
 import * as Config from "effect/Config";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -21,7 +21,6 @@ import * as SchemaTransformation from "effect/SchemaTransformation";
 import { Argument, Flag } from "effect/cli";
 import * as CliError from "effect/cli/CliError";
 
-import { readBootstrapEnvelope } from "../bootstrap.ts";
 import * as ServerConfig from "../config.ts";
 import { expandHomePath, hostHomeDir, resolveBaseDir } from "../os-jank.ts";
 import { isProcessAlive, readPersistedServerRuntimeState } from "../serverRuntimeState.ts";
@@ -72,11 +71,6 @@ export const zeropsFixturesFlag = Flag.String("zerops-fixtures").pipe(
 );
 export const noBrowserFlag = Flag.Boolean("no-browser").pipe(
   Flag.withDescription("Disable automatic browser opening."),
-  Flag.optional,
-);
-export const bootstrapFdFlag = Flag.Int("bootstrap-fd").pipe(
-  Flag.withSchema(Schema.Int),
-  Flag.withDescription("Read one-time bootstrap secrets from the given file descriptor."),
   Flag.optional,
 );
 export const autoBootstrapProjectFromCwdFlag = Flag.Boolean("auto-bootstrap-project-from-cwd").pipe(
@@ -227,10 +221,6 @@ const EnvServerConfig = Config.all({
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  bootstrapFd: Config.Int("T3CODE_BOOTSTRAP_FD").pipe(
-    Config.option,
-    Config.map(Option.getOrUndefined),
-  ),
   autoBootstrapProjectFromCwd: Config.Boolean("T3CODE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
@@ -251,7 +241,6 @@ export interface CliServerFlags {
   readonly devUrl: Option.Option<URL>;
   readonly zeropsFixtures: Option.Option<string>;
   readonly noBrowser: Option.Option<boolean>;
-  readonly bootstrapFd: Option.Option<number>;
   readonly autoBootstrapProjectFromCwd: Option.Option<boolean>;
   readonly logWebSocketEvents: Option.Option<boolean>;
 }
@@ -285,7 +274,6 @@ export const sharedServerCommandFlags = {
   devUrl: devUrlFlag,
   zeropsFixtures: zeropsFixturesFlag,
   noBrowser: noBrowserFlag,
-  bootstrapFd: bootstrapFdFlag,
   autoBootstrapProjectFromCwd: autoBootstrapProjectFromCwdFlag,
   logWebSocketEvents: logWebSocketEventsFlag,
 } as const;
@@ -333,32 +321,17 @@ export const resolveServerConfig = (
       devUrl: flags.devUrl ?? Option.none(),
       zeropsFixtures: flags.zeropsFixtures ?? Option.none(),
       noBrowser: flags.noBrowser ?? Option.none(),
-      bootstrapFd: flags.bootstrapFd ?? Option.none(),
       autoBootstrapProjectFromCwd: flags.autoBootstrapProjectFromCwd ?? Option.none(),
       logWebSocketEvents: flags.logWebSocketEvents ?? Option.none(),
     } satisfies CliServerFlags;
-    const bootstrapFd = Option.getOrUndefined(normalizedFlags.bootstrapFd) ?? env.bootstrapFd;
-    const bootstrapEnvelope =
-      bootstrapFd !== undefined
-        ? yield* readBootstrapEnvelope(DesktopBackendBootstrap, bootstrapFd)
-        : Option.none();
-    const bootstrap = Option.getOrUndefined(bootstrapEnvelope);
 
     const mode: ServerConfig.RuntimeMode = Option.getOrElse(
-      resolveOptionPrecedence(
-        normalizedFlags.mode,
-        Option.fromUndefinedOr(env.mode),
-        Option.fromUndefinedOr(bootstrap?.mode),
-      ),
+      resolveOptionPrecedence(normalizedFlags.mode, Option.fromUndefinedOr(env.mode)),
       () => "web",
     );
 
     const port = yield* Option.match(
-      resolveOptionPrecedence(
-        normalizedFlags.port,
-        Option.fromUndefinedOr(env.port),
-        Option.fromUndefinedOr(bootstrap?.port),
-      ),
+      resolveOptionPrecedence(normalizedFlags.port, Option.fromUndefinedOr(env.port)),
       {
         onSome: (value) => Effect.succeed(value),
         onNone: () => {
@@ -377,11 +350,7 @@ export const resolveServerConfig = (
       normalizedFlags.baseDir,
       Option.fromUndefinedOr(env.t3Home),
     ).pipe(Option.filter((value) => value.trim().length > 0));
-    const baseDir = yield* resolveBaseDir(
-      Option.getOrUndefined(
-        resolveOptionPrecedence(explicitBaseDir, Option.fromUndefinedOr(bootstrap?.t3Home)),
-      ),
-    );
+    const baseDir = yield* resolveBaseDir(Option.getOrUndefined(explicitBaseDir));
     const rawCwd = Option.getOrElse(normalizedFlags.cwd, () => process.cwd());
     const cwd = path.resolve(yield* expandHomePath(rawCwd.trim()));
     const derivedPaths = yield* ServerConfig.deriveServerPaths(baseDir, devUrl, {
@@ -411,14 +380,9 @@ export const resolveServerConfig = (
         isHeadlessStartup ? Option.some(true) : Option.none(),
         normalizedFlags.noBrowser,
         Option.fromUndefinedOr(env.noBrowser),
-        Option.fromUndefinedOr(bootstrap?.noBrowser),
       ),
       () => mode === "desktop",
     );
-    const desktopBootstrapToken = bootstrap?.desktopBootstrapToken;
-    const desktopTelemetryFd = bootstrap?.desktopTelemetryFd;
-    const desktopTelemetryControlFd = bootstrap?.desktopTelemetryControlFd;
-    const resourceMonitorPath = bootstrap?.resourceMonitorPath;
     // An explicit `--auto-bootstrap-project-from-cwd` is a decision taken for this
     // one invocation, so it outranks the command's own default (`serve` opts out)
     // and the headless presentation rule. Ambient env stays below both, which is
@@ -442,11 +406,7 @@ export const resolveServerConfig = (
     );
     const staticDir = devUrl ? undefined : yield* ServerConfig.resolveStaticDir();
     const host = Option.getOrElse(
-      resolveOptionPrecedence(
-        normalizedFlags.host,
-        Option.fromUndefinedOr(env.host),
-        Option.fromUndefinedOr(bootstrap?.host),
-      ),
+      resolveOptionPrecedence(normalizedFlags.host, Option.fromUndefinedOr(env.host)),
       () => (mode === "desktop" ? "127.0.0.1" : undefined),
     );
     const basePath = normalizeBasePath(
@@ -517,17 +477,13 @@ export const resolveServerConfig = (
       traceMaxFiles: env.traceMaxFiles,
       otlpTracesUrl: otel.disabled
         ? undefined
-        : (env.otlpTracesUrl ??
-          bootstrap?.otlpTracesUrl ??
-          persistedObservabilitySettings.otlpTracesUrl),
+        : (env.otlpTracesUrl ?? persistedObservabilitySettings.otlpTracesUrl),
       otlpMetricsUrl: otel.disabled
         ? undefined
-        : (env.otlpMetricsUrl ??
-          bootstrap?.otlpMetricsUrl ??
-          persistedObservabilitySettings.otlpMetricsUrl),
+        : (env.otlpMetricsUrl ?? persistedObservabilitySettings.otlpMetricsUrl),
       otlpLogsUrl: otel.disabled
         ? undefined
-        : (env.otlpLogsUrl ?? bootstrap?.otlpLogsUrl ?? persistedObservabilitySettings.otlpLogsUrl),
+        : (env.otlpLogsUrl ?? persistedObservabilitySettings.otlpLogsUrl),
       otlpTracesExport: signalExport,
       otlpMetricsExport: signalExport,
       otlpLogsExport: signalExport,
@@ -550,10 +506,6 @@ export const resolveServerConfig = (
       zeropsCrew: env.zeropsCrew,
       noBrowser,
       startupPresentation,
-      desktopBootstrapToken,
-      desktopTelemetryFd,
-      desktopTelemetryControlFd,
-      resourceMonitorPath,
       autoBootstrapProjectFromCwd,
       logWebSocketEvents,
     };
@@ -576,7 +528,6 @@ export const resolveCliAuthConfig = (
       devUrl: flags.devUrl ?? Option.none(),
       zeropsFixtures: Option.none(),
       noBrowser: Option.none(),
-      bootstrapFd: Option.none(),
       autoBootstrapProjectFromCwd: Option.none(),
       logWebSocketEvents: Option.none(),
     },

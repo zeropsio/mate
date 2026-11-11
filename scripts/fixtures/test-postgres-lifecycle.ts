@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off -- real-process lifecycle interleaving fixture.
+// @effect-diagnostics nodeBuiltinImport:off globalJsonInEffect:off -- real-process lifecycle interleaving fixture.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeNet from "node:net";
 import * as NodePath from "node:path";

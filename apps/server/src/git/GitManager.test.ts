@@ -4,6 +4,7 @@ import * as NodePath from "node:path";
 import * as NodeChildProcess from "node:child_process";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { it } from "@effect/vitest";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -662,7 +663,7 @@ function makeManager(input?: {
   // A reused path must not inherit the previous test's cached Git refs.
   const vcsDriverLayer = Layer.fresh(GitVcsDriver.layer).pipe(
     Layer.provideMerge(VcsProcess.layer),
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
     Layer.provideMerge(serverConfigLayer),
   );
   const sourceControlRegistryLayer = Layer.effect(
@@ -698,7 +699,10 @@ function makeManager(input?: {
     ),
     vcsDriverLayer,
     serverSettingsLayer,
-  ).pipe(Layer.provideMerge(sourceControlRegistryLayer), Layer.provideMerge(NodeServices.layer));
+  ).pipe(
+    Layer.provideMerge(sourceControlRegistryLayer),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+  );
 
   return GitManager.make.pipe(
     Effect.provide(managerLayer),
@@ -711,7 +715,7 @@ const asThreadId = (threadId: string) => threadId as ThreadId;
 const GitManagerTestLayer = GitVcsDriver.layer.pipe(
   Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-git-manager-test-" })),
   Layer.provideMerge(VcsProcess.layer),
-  Layer.provideMerge(NodeServices.layer),
+  Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
 );
 
 it.layer(GitManagerTestLayer)("GitManager", (it) => {

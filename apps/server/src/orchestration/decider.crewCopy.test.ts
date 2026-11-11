@@ -6,6 +6,8 @@ import {
   type OrchestrationReadModel,
 } from "@t3tools/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as Layer from "effect/Layer";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 
@@ -44,33 +46,36 @@ const readModel: OrchestrationReadModel = {
   updatedAt: UPDATED_AT,
 };
 
-it.layer(NodeServices.layer)("conversation copy assignment", (it) => {
-  it.effect.each(
-    Array.from([null, "/chosen/copy"], (currentPath) => ({
-      title: `refuses a stale path change from ${currentPath}`,
-      currentPath,
-    })),
-  )("$title", ({ currentPath }) =>
-    Effect.gen(function* () {
-      const error = yield* Effect.flip(
-        decideOrchestrationCommand({
-          command: {
-            type: "thread.meta.update",
-            commandId: CommandId.make("crew:copy:selected"),
-            threadId: ThreadId.make("thread-1"),
-            expectedWorktreePath: currentPath,
-            worktreePath: "/crew/copy",
-          },
-          readModel: {
-            ...readModel,
-            threads: readModel.threads.map((thread) => ({
-              ...thread,
-              worktreePath: "/new/choice",
-            })),
-          },
-        }),
-      );
-      expect(error._tag).toBe("OrchestrationCommandInvariantError");
-    }),
-  );
-});
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))(
+  "conversation copy assignment",
+  (it) => {
+    it.effect.each(
+      Array.from([null, "/chosen/copy"], (currentPath) => ({
+        title: `refuses a stale path change from ${currentPath}`,
+        currentPath,
+      })),
+    )("$title", ({ currentPath }) =>
+      Effect.gen(function* () {
+        const error = yield* Effect.flip(
+          decideOrchestrationCommand({
+            command: {
+              type: "thread.meta.update",
+              commandId: CommandId.make("crew:copy:selected"),
+              threadId: ThreadId.make("thread-1"),
+              expectedWorktreePath: currentPath,
+              worktreePath: "/crew/copy",
+            },
+            readModel: {
+              ...readModel,
+              threads: readModel.threads.map((thread) => ({
+                ...thread,
+                worktreePath: "/new/choice",
+              })),
+            },
+          }),
+        );
+        expect(error._tag).toBe("OrchestrationCommandInvariantError");
+      }),
+    );
+  },
+);

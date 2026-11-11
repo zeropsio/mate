@@ -99,6 +99,7 @@ describe("applyGrokAcpModelSelection", () => {
           if (failure) return yield* failure;
           return {};
         }),
+      setModel: () => Effect.die("A v1 session never sets its model through a config option."),
     };
     return { runtime, modelCalls };
   };
@@ -107,6 +108,7 @@ describe("applyGrokAcpModelSelection", () => {
     Effect.gen(function* () {
       const { runtime, modelCalls } = makeRecordingRuntime();
       const result = yield* applyGrokAcpModelSelection({
+        selectsModelByConfigOption: false,
         runtime,
         currentModelId: "grok-build",
         requestedModelId: "grok-mock-alt",
@@ -121,6 +123,7 @@ describe("applyGrokAcpModelSelection", () => {
     Effect.gen(function* () {
       const { runtime, modelCalls } = makeRecordingRuntime();
       const result = yield* applyGrokAcpModelSelection({
+        selectsModelByConfigOption: false,
         runtime,
         currentModelId: "grok-4.6",
         currentReasoningEffort: "high",
@@ -137,6 +140,7 @@ describe("applyGrokAcpModelSelection", () => {
     Effect.gen(function* () {
       const { runtime, modelCalls } = makeRecordingRuntime();
       const result = yield* applyGrokAcpModelSelection({
+        selectsModelByConfigOption: false,
         runtime,
         currentModelId: "grok-4.6",
         currentReasoningEffort: "high",
@@ -153,6 +157,7 @@ describe("applyGrokAcpModelSelection", () => {
     Effect.gen(function* () {
       const { runtime, modelCalls } = makeRecordingRuntime();
       yield* applyGrokAcpModelSelection({
+        selectsModelByConfigOption: false,
         runtime,
         currentModelId: "grok-4.6",
         currentReasoningEffort: "high",
@@ -168,6 +173,7 @@ describe("applyGrokAcpModelSelection", () => {
     Effect.gen(function* () {
       const { runtime, modelCalls } = makeRecordingRuntime();
       const result = yield* applyGrokAcpModelSelection({
+        selectsModelByConfigOption: false,
         runtime,
         currentModelId: "grok-build",
         requestedModelId: "grok-build",
@@ -182,6 +188,7 @@ describe("applyGrokAcpModelSelection", () => {
     Effect.gen(function* () {
       const { runtime, modelCalls } = makeRecordingRuntime();
       const result = yield* applyGrokAcpModelSelection({
+        selectsModelByConfigOption: false,
         runtime,
         currentModelId: "grok-4.6",
         requestedModelId: "grok-build",
@@ -196,6 +203,7 @@ describe("applyGrokAcpModelSelection", () => {
     Effect.gen(function* () {
       const { runtime, modelCalls } = makeRecordingRuntime();
       const result = yield* applyGrokAcpModelSelection({
+        selectsModelByConfigOption: false,
         runtime,
         currentModelId: "grok-4.6",
         currentReasoningEffort: "high",
@@ -212,6 +220,7 @@ describe("applyGrokAcpModelSelection", () => {
     Effect.gen(function* () {
       const { runtime, modelCalls } = makeRecordingRuntime();
       const result = yield* applyGrokAcpModelSelection({
+        selectsModelByConfigOption: false,
         runtime,
         currentModelId: "grok-build",
         requestedModelId: undefined,
@@ -228,6 +237,7 @@ describe("applyGrokAcpModelSelection", () => {
       const { runtime } = makeRecordingRuntime(failure);
       const error = yield* Effect.flip(
         applyGrokAcpModelSelection({
+          selectsModelByConfigOption: false,
           runtime,
           currentModelId: "grok-build",
           requestedModelId: "grok-mock-alt",

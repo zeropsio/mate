@@ -15,7 +15,7 @@ import {
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
@@ -358,7 +358,7 @@ export function canCommandNativeTelemetrySidecar(
 export const make = Effect.fn("resourceTelemetry.nativeTelemetryClient.make")(function* () {
   const binary = yield* ResourceMonitorBinary.ResourceMonitorBinary;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
   const config = yield* ServerConfig;
   const initializedAt = yield* DateTime.now;
   const state = yield* Ref.make(initialState);
@@ -831,7 +831,7 @@ export const make = Effect.fn("resourceTelemetry.nativeTelemetryClient.make")(fu
           reason: Option.getOrElse(current.lastError, () => "sidecar is not running"),
         });
       }
-      const requestId = yield* crypto.randomUUIDv4.pipe(
+      const requestId = yield* crypto.uuidV4().pipe(
         Effect.mapError(
           (cause) =>
             new NativeTelemetryCommandFailed({
@@ -890,7 +890,7 @@ export const make = Effect.fn("resourceTelemetry.nativeTelemetryClient.make")(fu
       });
     }
 
-    const requestId = yield* crypto.randomUUIDv4.pipe(
+    const requestId = yield* crypto.uuidV4().pipe(
       Effect.mapError(
         (cause) =>
           new NativeTelemetryCommandFailed({

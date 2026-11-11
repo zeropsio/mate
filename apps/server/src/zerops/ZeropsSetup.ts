@@ -46,7 +46,7 @@ import { selectionWithPreferredEffort } from "@t3tools/shared/zeropsEffort";
 import { completionReceipt } from "@t3tools/shared/completionReceipt";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Semaphore from "effect/Semaphore";
 import * as Effect from "effect/Effect";
@@ -258,7 +258,7 @@ export const makeZeropsSetup = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const projection = yield* ProjectionSnapshotQuery;
   const readiness = yield* ServerCommandReadiness;
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
   const engine = yield* MateEngine;
   // The stand-up is a wake on the Mate engine.
   // A flipped Mate's main conversation takes its earlier record before anything of the
@@ -656,7 +656,7 @@ export const makeZeropsSetup = Effect.gen(function* () {
 
       const now = yield* nowIso;
       const conversationId = ConversationId.make(
-        resuming?.threadId ?? main?.conversationId ?? (yield* crypto.randomUUIDv4),
+        resuming?.threadId ?? main?.conversationId ?? (yield* crypto.uuidV4()),
       );
       const defaults = yield* projectDefault;
       let chosen: ModelSelection;
@@ -846,7 +846,7 @@ export const makeZeropsSetup = Effect.gen(function* () {
           const held = yield* seenOnEngine(stored);
           if (stored === undefined || held?.source !== "server:failed" || held.userId !== subject)
             return false;
-          const id = `mate-standup-${held.threadId}-${yield* crypto.randomUUIDv4}`;
+          const id = `mate-standup-${held.threadId}-${yield* crypto.uuidV4()}`;
           const changed = yield* sql`UPDATE zerops_stand_ups
         SET source = 'server:claimed', command_id = ${id}, started_at = ${yield* nowIso}
         WHERE project_id = ${projectId} AND command_id = ${held.commandId}

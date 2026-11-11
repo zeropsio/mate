@@ -34,12 +34,17 @@ import {
   applyGrokAcpModelSelection,
   currentGrokModelIdFromSessionSetup as driverCurrentGrokModelIdFromSessionSetup,
   currentGrokReasoningEffortFromSessionSetup as driverCurrentGrokReasoningEffortFromSessionSetup,
+  grokSessionSelectsModelByConfigOption,
   makeGrokAcpRuntime as driverMakeGrokAcpRuntime,
   resolveGrokAcpBaseModelId as driverResolveGrokAcpBaseModelId,
 } from "../provider/acp/GrokAcpSupport.ts";
 
 export type { CursorAcpModelSelectionErrorContext };
-export { applyCursorAcpModelSelection, applyGrokAcpModelSelection };
+export {
+  applyCursorAcpModelSelection,
+  applyGrokAcpModelSelection,
+  grokSessionSelectsModelByConfigOption,
+};
 
 /** ACP `clientInfo` identity T3 Code presents to the Cursor/Grok CLIs. */
 export interface AcpClientInfo {

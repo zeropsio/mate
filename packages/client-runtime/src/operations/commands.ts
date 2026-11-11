@@ -3,7 +3,7 @@ import {
   ORCHESTRATION_WS_METHODS,
   type ClientOrchestrationCommand,
 } from "@t3tools/contracts";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 
@@ -48,7 +48,7 @@ type DispatchTag = typeof ORCHESTRATION_WS_METHODS.dispatchCommand;
 type CommandEffect = Effect.Effect<
   EnvironmentRpcSuccess<DispatchTag>,
   EnvironmentRpcFailure<DispatchTag> | EnvironmentRpcUnavailableError,
-  Crypto.Crypto | EnvironmentSupervisor
+  SecureRandom.SecureRandom | EnvironmentSupervisor
 >;
 
 function commandId(input: { readonly commandId?: CommandId }) {
@@ -56,8 +56,8 @@ function commandId(input: { readonly commandId?: CommandId }) {
     if (input.commandId !== undefined) {
       return input.commandId;
     }
-    const crypto = yield* Crypto.Crypto;
-    return yield* crypto.randomUUIDv4.pipe(Effect.orDie, Effect.map(CommandId.make));
+    const crypto = yield* SecureRandom.SecureRandom;
+    return yield* crypto.uuidV4().pipe(Effect.orDie, Effect.map(CommandId.make));
   });
 }
 

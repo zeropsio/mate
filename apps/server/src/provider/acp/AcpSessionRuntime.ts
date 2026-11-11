@@ -1,7 +1,7 @@
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -19,7 +19,7 @@ import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as EffectAcpClient from "effect-acp/client";
 import * as EffectAcpErrors from "effect-acp/errors";
-import type * as EffectAcpSchema from "effect-acp/schema";
+import type * as EffectAcpSchema from "effect-acp/compat";
 import type * as EffectAcpProtocol from "effect-acp/protocol";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
 
@@ -328,10 +328,10 @@ export const make = (
 ): Effect.Effect<
   AcpSessionRuntime["Service"],
   EffectAcpErrors.AcpError,
-  ChildProcessSpawner.ChildProcessSpawner | Crypto.Crypto | Scope.Scope
+  ChildProcessSpawner.ChildProcessSpawner | SecureRandom.SecureRandom | Scope.Scope
 > =>
   Effect.gen(function* () {
-    const crypto = yield* Crypto.Crypto;
+    const crypto = yield* SecureRandom.SecureRandom;
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const runtimeScope = yield* Scope.Scope;
     const eventQueue = yield* Queue.unbounded<AcpSessionRuntimeEvent>();
@@ -340,7 +340,7 @@ export const make = (
     // Recently shown tool calls. A late update to a finished call is not a new
     // boundary in the answer, although its progress state is gone.
     const shownToolCallIds = new Set<string>();
-    const assistantItemRuntimeId = yield* crypto.randomUUIDv4.pipe(
+    const assistantItemRuntimeId = yield* crypto.uuidV4().pipe(
       Effect.mapError(
         (cause) =>
           new EffectAcpErrors.AcpTransportError({
@@ -1076,14 +1076,41 @@ export const make = (
                 Effect.catchCauseIf(
                   (cause) =>
                     options.cancelBehavior !== "wait-for-prompt" && Cause.hasInterruptsOnly(cause),
-                  () =>
-                    Effect.succeed({
-                      stopReason: "cancelled",
-                    } satisfies EffectAcpSchema.PromptResponse),
+                  () => Effect.succeed<EffectAcpSchema.PromptResponse>({ stopReason: "cancelled" }),
                 ),
                 Effect.tap(() =>
                   closeActiveAssistantSegment({ queue: eventQueue, assistantSegmentRef }),
                 ),
+                Effect.flatMap((result) => {
+                  // ACP v2 reports a failed prompt as an idle `error`, not an RPC error, so it
+                  // fails here like one and every adapter ends the turn failed in its words.
+                  if (result.stopReason === "error") {
+                    return Effect.fail(
+                      EffectAcpErrors.AcpRequestError.fromProtocolError(
+                        result.error ?? {
+                          code: -32603,
+                          message: "The agent reported its turn failed.",
+                        },
+                        { method: "session/prompt" },
+                      ),
+                    );
+                  }
+                  // The compat client always gives a v2 turn a stop reason. A v1 answer whose
+                  // stop reason v1 does not define decodes as v2's bare acknowledgement and
+                  // loses it, so a turn with no stop reason did not end as the agent meant.
+                  if (typeof result.stopReason !== "string" || result.stopReason.length === 0) {
+                    return Effect.fail(
+                      EffectAcpErrors.AcpRequestError.fromProtocolError(
+                        {
+                          code: -32603,
+                          message: "The agent ended the turn without a stop reason Mate can read.",
+                        },
+                        { method: "session/prompt" },
+                      ),
+                    );
+                  }
+                  return Effect.succeed(result);
+                }),
               ),
             (activePrompt, result) =>
               Effect.gen(function* () {
@@ -1157,7 +1184,7 @@ export const layer = (
 ): Layer.Layer<
   AcpSessionRuntime,
   EffectAcpErrors.AcpError,
-  ChildProcessSpawner.ChildProcessSpawner | Crypto.Crypto
+  ChildProcessSpawner.ChildProcessSpawner | SecureRandom.SecureRandom
 > => Layer.effect(AcpSessionRuntime, make(options));
 
 function sessionConfigOptionsFromSetup(

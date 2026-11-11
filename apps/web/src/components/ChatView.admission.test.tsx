@@ -184,7 +184,7 @@ vi.mock("../state/threads", async (original) => {
   const { createThreadEnvironmentAtoms } = await import("@t3tools/client-runtime/state/threads");
   const { EnvironmentRegistry, EnvironmentSupervisor } =
     await import("@t3tools/client-runtime/connection");
-  const Crypto = await import("effect/Crypto");
+  const SecureRandom = await import("effect/crypto/SecureRandom");
   const Effect = await import("effect/Effect");
   const Layer = await import("effect/Layer");
   const Option = await import("effect/Option");
@@ -208,11 +208,8 @@ vi.mock("../state/threads", async (original) => {
         }),
       ),
       Layer.succeed(
-        Crypto.Crypto,
-        Crypto.make({
-          randomBytes: (size) => new Uint8Array(size),
-          digest: (_algorithm, data) => Effect.succeed(data),
-        }),
+        SecureRandom.SecureRandom,
+        SecureRandom.make((size) => new Uint8Array(size)),
       ),
     ),
   );

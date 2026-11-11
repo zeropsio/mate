@@ -1,12 +1,13 @@
 // @effect-diagnostics nodeBuiltinImport:off - tests inject swaps at the native open boundary.
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeHttpPlatform from "@effect/platform-node/NodeHttpPlatform";
 import * as NodeFSP from "node:fs/promises";
 import { AssetPreviewTypeValidationError, ThreadId } from "@t3tools/contracts";
 import { PROJECT_FAVICON_FALLBACK_MARKER } from "@t3tools/shared/projectFavicon";
 import { describe, expect, it } from "@effect/vitest";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -46,7 +47,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 const configLayer = ServerConfig.ServerConfig.layerTest(process.cwd(), {
   prefix: "t3-asset-access-test-",
 });
-const makeTestLayer = (services = NodeServices.layer) =>
+const makeTestLayer = (services = Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)) =>
   Layer.mergeAll(
     NodeHttpPlatform.layer,
     WorkspacePaths.layer,
@@ -118,7 +119,7 @@ const recordingKeyServices = (read: Effect.Effect<void, PlatformError.PlatformEr
             : fs.readFile(path),
       } satisfies FileSystem.FileSystem;
     }),
-  ).pipe(Layer.provideMerge(NodeServices.layer));
+  ).pipe(Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)));
 
 const exerciseSigningKey = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
@@ -1027,7 +1028,7 @@ describe("AssetAccess", () => {
 
   it.effect("buckets project favicon expiry after content hashing", () =>
     Effect.gen(function* () {
-      const crypto = yield* Crypto.Crypto;
+      const digest = yield* Digest.Digest;
       const fileSystem = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const root = yield* fileSystem.makeTempDirectoryScoped({
@@ -1037,14 +1038,15 @@ describe("AssetAccess", () => {
 
       const bucketMs = 30 * 60 * 1000;
       yield* TestClock.setTime(bucketMs - 1);
-      const crossingCrypto = Crypto.make({
-        randomBytes: (size) => new Uint8Array(size),
+      const crossingDigest = Digest.Digest.of({
         digest: (algorithm, data) =>
-          TestClock.adjust("2 millis").pipe(Effect.andThen(crypto.digest(algorithm, data))),
+          TestClock.adjust("2 millis").pipe(Effect.andThen(digest.digest(algorithm, data))),
+        digestHex: (algorithm, data) =>
+          TestClock.adjust("2 millis").pipe(Effect.andThen(digest.digestHex(algorithm, data))),
       });
       const result = yield* issueAssetUrl({
         resource: { _tag: "project-favicon", cwd: root },
-      }).pipe(Effect.provideService(Crypto.Crypto, crossingCrypto));
+      }).pipe(Effect.provideService(Digest.Digest, crossingDigest));
 
       expect(result.expiresAt).toBe(3 * bucketMs);
     }).pipe(Effect.provide(testLayer)),
@@ -1141,7 +1143,7 @@ describe("AssetAccess — an image outside the workspace", () => {
     "t3/assets/AssetAccess.test/OutsideImageFixture",
   ) {}
   const fixtureLayer = Layer.effect(OutsideImageFixture, makeFixture).pipe(
-    Layer.provide(NodeServices.layer),
+    Layer.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
   );
 
   const tokenAndName = (relativeUrl: string) => {

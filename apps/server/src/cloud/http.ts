@@ -44,7 +44,7 @@ import {
 } from "@t3tools/shared/relayJwt";
 import { isSecureRelayUrl } from "@t3tools/shared/relayUrl";
 import * as DateTime from "effect/DateTime";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -473,7 +473,7 @@ export const makeCloudLinkProof = Effect.fn("environment.cloud.makeLinkProof")(f
     iss: `t3-env:${descriptor.environmentId}`,
     aud: normalizeRelayIssuer(request.relayIssuer),
     sub: descriptor.environmentId,
-    jti: yield* Crypto.Crypto.pipe(Effect.flatMap((crypto) => crypto.randomUUIDv4)),
+    jti: yield* SecureRandom.SecureRandom.pipe(Effect.flatMap((crypto) => crypto.uuidV4())),
     iat: nowSeconds,
     exp: Math.floor(expiresAt.epochMilliseconds / 1_000),
     challenge: request.challenge,
@@ -532,9 +532,6 @@ const cloudLinkProofHandler = Effect.fn("environment.cloud.linkProof")(
     ServerSecretStore.isSecretStoreError,
     failEnvironmentCloudInternalError("Could not generate environment link proof."),
   ),
-  Effect.catchTags({
-    PlatformError: failEnvironmentCloudInternalError("Could not generate environment link proof."),
-  }),
 );
 
 const applyCloudRelayConfig = Effect.fn("environment.cloud.applyRelayConfig")(function* (
@@ -964,7 +961,7 @@ const cloudEnvironmentHealthHandler = Effect.fn("environment.cloud.health")(
       iss: `t3-env:${environmentId}`,
       aud: normalizeRelayIssuer(relayIssuer),
       sub: environmentId,
-      jti: yield* Crypto.Crypto.pipe(Effect.flatMap((crypto) => crypto.randomUUIDv4)),
+      jti: yield* SecureRandom.SecureRandom.pipe(Effect.flatMap((crypto) => crypto.uuidV4())),
       iat: nowSeconds,
       exp: Math.floor(responseExpiresAt.epochMilliseconds / 1_000),
       environmentId,
@@ -1003,9 +1000,6 @@ const cloudEnvironmentHealthHandler = Effect.fn("environment.cloud.health")(
     ServerSecretStore.isSecretStoreError,
     failEnvironmentCloudInternalError("Could not answer cloud health request."),
   ),
-  Effect.catchTags({
-    PlatformError: failEnvironmentCloudInternalError("Could not answer cloud health request."),
-  }),
 );
 
 const cloudMintCredentialHandler = Effect.fn("environment.cloud.mintCredential")(
@@ -1087,7 +1081,7 @@ const cloudMintCredentialHandler = Effect.fn("environment.cloud.mintCredential")
       iss: `t3-env:${environmentId}`,
       aud: normalizeRelayIssuer(relayIssuer),
       sub: environmentId,
-      jti: yield* Crypto.Crypto.pipe(Effect.flatMap((crypto) => crypto.randomUUIDv4)),
+      jti: yield* SecureRandom.SecureRandom.pipe(Effect.flatMap((crypto) => crypto.uuidV4())),
       iat: nowSeconds,
       exp: Math.floor(issued.expiresAt.epochMilliseconds / 1_000),
       environmentId,
@@ -1123,11 +1117,6 @@ const cloudMintCredentialHandler = Effect.fn("environment.cloud.mintCredential")
     ServerSecretStore.isSecretStoreError,
     failEnvironmentCloudInternalError("Could not issue cloud connection credential."),
   ),
-  Effect.catchTags({
-    PlatformError: failEnvironmentCloudInternalError(
-      "Could not issue cloud connection credential.",
-    ),
-  }),
 );
 
 export const connectHttpApiLayer = HttpApiBuilder.group(
