@@ -10,6 +10,7 @@ import {
 } from "./CrewTellComposer.logic";
 
 const { crewmates } = crewSnapshotFixture();
+const SEARCH = { environmentId: null, cwd: null, query: "" };
 const FILES = [
   { path: "src/backend/index.ts", kind: "file" as const },
   { path: "src/backend", kind: "directory" as const },
@@ -25,17 +26,18 @@ describe("tellMenu: @ finds files, never crewmates, who are picked by their face
       items: ["src/backend/index.ts", "src/backend"],
     },
   ])("$name", ({ text, items }) => {
-    const menu = tellMenu(text, text.length, FILES);
+    const menu = tellMenu(text, text.length, FILES, SEARCH);
     expect(menu === null ? null : menu.items.map((item) => item.path)).toEqual(items);
   });
 
   it("describes a file by its name and its folder", () => {
-    expect(tellMenu("Fix @inde", 9, [FILES[0]!])?.items).toEqual([
+    expect(tellMenu("Fix @inde", 9, [FILES[0]!], SEARCH)?.items).toEqual([
       {
         id: "path:file:src/backend/index.ts",
         type: "path",
         path: "src/backend/index.ts",
         pathKind: "file",
+        searchTarget: SEARCH,
         label: "index.ts",
         description: "src/backend",
       },
@@ -44,7 +46,7 @@ describe("tellMenu: @ finds files, never crewmates, who are picked by their face
 
   it("writes a picked file as its link, the caret past one space after it", () => {
     const text = "Fix @inde";
-    const menu = tellMenu(text, text.length, [{ path: "src/index.ts", kind: "file" }])!;
+    const menu = tellMenu(text, text.length, [{ path: "src/index.ts", kind: "file" }], SEARCH)!;
     expect(pickTellItem(text, menu.trigger, menu.items[0]!)).toEqual({
       text: "Fix [index.ts](src/index.ts) ",
       cursor: "Fix [index.ts](src/index.ts) ".length,
