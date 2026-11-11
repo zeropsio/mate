@@ -81,7 +81,7 @@ export const ENGINE_KEPT_RELEASED = 6;
  * How many pages of what a finished run's result draws from it reads before its card is drawn. A
  * page is up to the wire's `runPageItems`.
  */
-export const ENGINE_RUN_PAGES = ENGINE_WIRE_BUDGETS.outcomePages;
+export const ENGINE_RUN_PAGES = 5;
 
 /** Where a page of a run is read from: before a sequence, after one, or its newest. */
 export interface RunPageAt {
@@ -96,6 +96,8 @@ export interface RunPageAt {
 interface SentOutcome {
   readonly items: ReadonlyArray<Item>;
   readonly requests: ReadonlyArray<Request>;
+  /** Its run holds outcome items after the last of these: they are read from there. */
+  readonly more: boolean;
 }
 
 /** How many runs read their missing items at once. */
@@ -526,9 +528,12 @@ export function makeMateEngineConversations(options: {
    * as its card opens and scrolls (`readRunPage`). A read that fails leaves the run with what it
    * holds, its span all the same. A finished run already read from its start keeps its span (its
    * pages stay held across a resubscribe), and reads nothing again. Nor does a run whose outcome
-   * came before its snapshot (`sent`, the subscription's `outcome` frames): a Mate that sends
-   * them opens a conversation on the one answer, never a read a run and a read a long result
-   * after it (measured on a three-run window: 10 requests in two more round trips).
+   * came whole before its snapshot (`sent`, the subscription's `outcome` frames): a Mate that
+   * sends them opens a conversation on the one answer, never a read a run and a read a long
+   * result after it (measured on a three-run window: 10 requests in two more round trips). A
+   * run whose frames end with `more` (the opening's budget ran out in it) is read on from the
+   * last item they brought, and one with no frame from its start, so a card draws from the same
+   * items whichever way they came.
    */
   const wholeRuns = (
     key: EngineConversationKey,
@@ -594,9 +599,10 @@ export function makeMateEngineConversations(options: {
                   items.push(item);
                 }
               requests.push(...outcome.requests);
-            } else if (Object.keys(run.summary.calls).length > 0)
+            }
+            if (outcome === undefined ? Object.keys(run.summary.calls).length > 0 : outcome.more)
               yield* Effect.gen(function* () {
-                let after = 0;
+                let after = Math.max(0, ...(outcome?.items ?? []).map((item) => item.seq));
                 for (let page = 0; page < ENGINE_RUN_PAGES; page++) {
                   const answer = yield* wire.readRun(key, run.id, {
                     after,
@@ -879,6 +885,7 @@ export function makeMateEngineConversations(options: {
                 sent.set(frame.runId, {
                   items: [...(outcome?.items ?? []), ...frame.items],
                   requests: [...(outcome?.requests ?? []), ...frame.requests],
+                  more: frame.more,
                 });
                 return Effect.void;
               }

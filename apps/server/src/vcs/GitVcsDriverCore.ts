@@ -1826,15 +1826,9 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       );
     }
 
-    // The remote's default branch as the local status keeps it (`defaultBranchCache`): asked of
-    // git once for the repository, never again on each poll.
-    const repositoryPaths = yield* resolveRepositoryPaths(cwd).pipe(
-      Effect.catchTags({ GitCommandError: () => Effect.succeed(null) }),
-    );
-    const defaultBranch =
-      repositoryPaths === null
-        ? yield* resolveDefaultBranchName(cwd, "origin")
-        : yield* Cache.get(defaultBranchCache, repositoryPaths.gitCommonDir);
+    // Asked of git on every poll, never of the local status's cache: an agent that moves
+    // `origin/HEAD` from its shell invalidates nothing, and this answer names the pull request's base.
+    const defaultBranch = yield* resolveDefaultBranchName(cwd, "origin");
     const isDefaultBranch = isDefaultBranchName(branch, defaultBranch);
     const aheadOfDefaultCount =
       branch && !isDefaultBranch
