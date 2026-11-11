@@ -362,6 +362,17 @@ function pickerFor(dialog: string): GithubConnectPickerViewProps | null {
         entry: connected(ago(0), "no_ruleset"),
         initial: { sent: SENT },
       };
+    // Connected to a repository that was ahead: HQ found the mains apart and moves neither.
+    case "paused":
+      return {
+        ...PICKER,
+        apps: TWO_APPS,
+        entry: {
+          ...connected(null),
+          mirror: { syncedAt: null, divergedSince: ago(1) },
+        },
+        initial: { sent: SENT },
+      };
     default:
       return null;
   }
