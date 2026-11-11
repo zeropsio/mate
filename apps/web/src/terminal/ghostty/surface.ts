@@ -1780,6 +1780,8 @@ export class GhosttyTerminalSurface {
   };
 
   private readonly onContextMenu = (event: MouseEvent) => {
+    // A long press opens the menu; the touch's release must not also tap.
+    this.touchScroll = null;
     if (shouldReportTerminalMouse(this.core.isMouseTracking(), event)) {
       event.preventDefault();
       return;
