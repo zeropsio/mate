@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
@@ -141,17 +141,22 @@ export function useQuestionAttachments({
         setPreparing((state) => ({ ...state, [scope]: (state[scope] ?? 0) - files.length }));
     }
   };
-  const remove = (id: string) => {
+  // Of the scope it is told, never of the render it is called in: a question's files are cleared
+  // once its answer has been taken, by when another question may be the one open.
+  const removeIn = useCallback((inScope: string | null, id: string) => {
     const attachment = owned.current.get(id);
-    if (!attachment || scope === null) return;
+    if (!attachment || inScope === null) return;
     releaseAttachmentUploads([attachment]);
     if (attachment.type === "image") URL.revokeObjectURL(attachment.previewUrl);
     owned.current.delete(id);
-    reserved.current.set(scope, Math.max(0, (reserved.current.get(scope) ?? 0) - 1));
+    reserved.current.set(inScope, Math.max(0, (reserved.current.get(inScope) ?? 0) - 1));
     setByScope((state) => ({
       ...state,
-      [scope]: (state[scope] ?? []).filter((entry) => entry.attachment.id !== id),
+      [inScope]: (state[inScope] ?? []).filter((entry) => entry.attachment.id !== id),
     }));
+  }, []);
+  const remove = (id: string) => {
+    removeIn(scope, id);
   };
   const retry = (id: string) => {
     const attachment = owned.current.get(id);
@@ -179,20 +184,19 @@ export function useQuestionAttachments({
     }
     return result;
   };
+  // This question's own files, as this render reads them: called once its answer is taken — after
+  // a wait in which the person may have opened another conversation's question — it clears the
+  // question that was answered, never the one open by then.
+  const clear = useCallback(() => {
+    if (scope !== null) retired.current.add(scope);
+    for (const entry of entries) removeIn(scope, entry.attachment.id);
+  }, [entries, removeIn, scope]);
+  // Called from the press itself, these act on the question open at that press.
+  const act = useStableHandlers({ add, remove, retry, forResponse });
   // The same object while what it says stands: the composer it is handed to is drawn again for a
   // file added or uploaded, not for every render of the conversation around it.
-  const act = useStableHandlers({
-    add,
-    remove,
-    retry,
-    forResponse,
-    clear: () => {
-      if (scope !== null) retired.current.add(scope);
-      for (const entry of entries) remove(entry.attachment.id);
-    },
-  });
   return useMemo(
-    () => ({ current, entries, pending, blocked, uploads, ...act }),
-    [current, entries, pending, blocked, uploads, act],
+    () => ({ current, entries, pending, blocked, uploads, ...act, clear }),
+    [current, entries, pending, blocked, uploads, act, clear],
   );
 }
