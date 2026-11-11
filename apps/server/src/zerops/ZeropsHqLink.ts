@@ -18,8 +18,9 @@ import type { AdmissionLive, TicketFrame } from "./ZeropsTicketDoor.ts";
  *   changed, at most once per `MATE_OVERVIEW_EVERY_MS`, looked at again when something it is made
  *   of moves — a domain event, the crew's snapshot, a login, the update line — and never on a
  *   timer; beside it the Mate's attention (`ZeropsMateAttention`), whole on every link and again at
- *   each new revision; `pong` to each of HQ's pings. The Mate's own access list stays in
- *   the Mate.
+ *   each new revision; `person-changed` for each known person the access list's raw rows move
+ *   while the link runs (`ZeropsMateAccessList.personChanged`), a hint never told again; `pong` to
+ *   each of HQ's pings. The Mate's own access list stays in the Mate.
  * - **Down:** the Mate's state as HQ holds it, kept here for whoever asks and handed on to
  *   `ZeropsAutomation` (whether the Mate is automated) and to `ZeropsChiefRestart`, which rotates
  *   every session on a moved Chief mark (`chief`), and to `ZeropsMateOwner`, whom it names the
@@ -124,6 +125,7 @@ import { hasSetupMarker, readServiceVariableKeys } from "./zeropsSetupMarker.ts"
 import { MateEngine } from "../engine/MateEngine.ts";
 import { chatsSource } from "./engineOverview.ts";
 import { ZeropsLogins } from "./ZeropsLogins.ts";
+import { ZeropsMateAccessList } from "./ZeropsMateAccessList.ts";
 import { ZeropsMateAttention } from "./ZeropsMateAttention.ts";
 import { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
 import { makeChiefRestart } from "./ZeropsChiefRestart.ts";
@@ -282,6 +284,11 @@ export interface ZeropsHqLinkOptions {
   readonly changes: Stream.Stream<unknown>;
   /** The Mate's attention now, then each new revision (`ZeropsMateAttention.changes`). */
   readonly attention: Stream.Stream<MateAttention>;
+  /**
+   * The user ID of each known person the access list's raw rows move, from when a link runs it
+   * (`ZeropsMateAccessList.personChanged`); none: the Mate hints nobody.
+   */
+  readonly personChanged?: Stream.Stream<string>;
   /**
    * Takes HQ's ticket, with whether the admission it came under is still live, and gives what
    * admits it or says why not, answered `ticket-ack` or `ticket_refused`, or not at all
@@ -692,6 +699,14 @@ export const makeZeropsHqLink = (
       const attention = Stream.runForEach(options.attention, (value) =>
         send({ type: "attention", attention: value }),
       );
+      // Heard only while this link runs it, from HQ's first state on: a move before it, or while
+      // no link is up, is never told.
+      const personChanged =
+        options.personChanged === undefined
+          ? Effect.never
+          : Stream.runForEach(options.personChanged, (userId) =>
+              send({ type: "person-changed", userId }),
+            );
       /**
        * A task's frame (`task`, `task-message`, `task-stop`), held beside the frames that follow,
        * for as long as the link lives, until HQ's first state; HQ tells it again if that never
@@ -856,6 +871,7 @@ export const makeZeropsHqLink = (
               heard,
               onceAnswered(attention),
               onceAnswered(health),
+              onceAnswered(personChanged),
               ...(usage ? [onceAnswered(usage.run)] : []),
               reporting,
               keyRefusals,
@@ -1227,6 +1243,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
         autoUpdatePolicy: yield* MateAutoUpdatePolicy,
         attention: attention.changes,
         health: attention.healthChanges,
+        personChanged: (yield* ZeropsMateAccessList).personChanged,
         usage,
         ...feed,
       });
