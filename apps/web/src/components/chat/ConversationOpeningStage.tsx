@@ -209,6 +209,15 @@ export function ConversationOpeningYields({ children }: { readonly children: Rea
 }
 
 /**
+ * Whether an opening is bringing the conversation in now — the header's name and subject with it.
+ * A part of the header with a fade of its own reads it to end that fade's mark: once the opening
+ * has brought it in, its own animation must have nothing left to fall back to.
+ */
+export function useConversationOpeningArrives(): boolean {
+  return use(OpeningWaitContext) === "arrives";
+}
+
+/**
  * A part of the conversation's surface that waits for the opening: its children — or, `whole`,
  * the element itself — are unseen while the stage waits, and arrive with the conversation from
  * the moment it is placed (`index.css`), wherever the stage stands while the route changes.

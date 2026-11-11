@@ -1,4 +1,8 @@
-import { ConversationOpeningAvatar, ConversationOpeningYields } from "./ConversationOpeningStage";
+import {
+  ConversationOpeningAvatar,
+  ConversationOpeningYields,
+  useConversationOpeningArrives,
+} from "./ConversationOpeningStage";
 import { useAtomValue } from "@effect/atom-react";
 import { environmentActivitiesAtom } from "../../zerops/mateActivityAtoms";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -204,11 +208,21 @@ function useCut(): readonly [(node: HTMLElement | null) => void, boolean] {
  * line was first painted without — the first words sent — arrives; one
  * there from the start is simply there.
  */
-function useArrival(present: boolean): boolean {
+function useArrival(present: boolean, broughtIn = false): boolean {
   const [seen, setSeen] = useState({ present, arrived: false });
-  if (seen.present === present) return seen.arrived;
-  setSeen({ present, arrived: present });
-  return present;
+  if (seen.present !== present) {
+    setSeen({ present, arrived: present });
+    return present;
+  }
+  // Brought in by something else — the opening's hand-off fades the header in — its own arrival
+  // is over for good: the mark gone, the fade it names has nothing to come back as when that
+  // other motion ends. Left standing, the subject fell back to its own fade as the opening
+  // ended, went unseen and faded in a second time.
+  if (broughtIn && seen.arrived) {
+    setSeen({ present, arrived: false });
+    return false;
+  }
+  return seen.arrived;
 }
 
 /**
@@ -247,7 +261,7 @@ function MatePill({
   const opens = crew && !mate.open && mate.threadId !== null;
   const [subjectRef, cut] = useCut();
   const { subject, hover } = mateWords(mate, { crew, cut });
-  const arrived = useArrival(subject !== null);
+  const arrived = useArrival(subject !== null, useConversationOpeningArrives());
   const personaArrived = useArrival(persona != null);
   // The header's face is carried to the opening stage, outside the header: it takes its mark along.
   const asMark = useContext(MateFaceAsMark);
