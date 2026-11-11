@@ -10,7 +10,8 @@ import { ServerConfig } from "./config.ts";
 /**
  * The boot fence of an automatic update: a server zcp starts while its update record says a switch
  * is in progress has no effect outside its state directory until zcp commits or cancels
- * (`/api/mate/update/commit|cancel`, `zerops/mateUpdateHttp.ts`). zcp may still restore the
+ * (`/api/mate/update/commit|cancel`, `zerops/mateUpdateHttp.ts`) or its record settles on this
+ * server's version (`zerops/ZeropsMateUpdate.ts`, read again at an interval while fenced). zcp may still restore the
  * previous version's state and start it, and every effect this boot made outside that state (an HQ
  * frame, a usage row sent, a git change, a relay publish) would then happen twice.
  *
@@ -26,6 +27,11 @@ import { ServerConfig } from "./config.ts";
  *
  * The lift keeps the order of a boot outside an update: the engine opens before admission reopens,
  * and admission reopens before the outward roots run.
+ *
+ * A switch zcp settled on another version than this process runs (it rolled back or repaired the
+ * record while this boot still runs) is refused: work admitted here would be overwritten by the
+ * state zcp restores at the next start, so the fence never lifts and the process ends as a failed
+ * boot does. The unit then starts the installed version.
  */
 export interface MateUpdateBootFenceShape {
   /** This boot started under a switch zcp has not committed or cancelled. */
@@ -39,9 +45,16 @@ export interface MateUpdateBootFenceShape {
    * then resolves `lifted`. It runs in the fence's own scope, so it finishes when its caller goes
    * away and never holds a caller that runs before the engine's opening exists (the update
    * service's first read inside a layer build), nor a commit answering inside zcp's budget.
-   * Once lifted, `reopen` runs inline, as on a boot that is not pending.
+   * Once lifted, `reopen` runs inline, as on a boot that is not pending; once refused, nothing.
    */
   readonly lift: (reopen: Effect.Effect<void>) => Effect.Effect<void>;
+  /**
+   * zcp settled this switch on another version: under a pending fence no lift reached first, it
+   * never lifts and `ended` fails with `reason`. Otherwise nothing.
+   */
+  readonly refuse: (reason: string) => Effect.Effect<void>;
+  /** Fails once the fence is refused; never otherwise. The server's launch ends on it. */
+  readonly ended: Effect.Effect<never>;
 }
 
 const openFence: MateUpdateBootFenceShape = {
@@ -49,6 +62,8 @@ const openFence: MateUpdateBootFenceShape = {
   lifted: Effect.void,
   holdOpen: (open) => open,
   lift: (reopen) => reopen,
+  refuse: () => Effect.void,
+  ended: Effect.never,
 };
 
 /** Open unless the server layer provides the fence its update record asks for. */
@@ -65,6 +80,11 @@ export class MateUpdateBootFence extends Context.Reference<MateUpdateBootFenceSh
       const released = yield* Deferred.make<void>();
       const opened = yield* Deferred.make<void>();
       const lifted = yield* Deferred.make<void>();
+      const refused = yield* Deferred.make<never>();
+      // The first of a lift and a refusal decides; the other then does nothing.
+      const decided = yield* Deferred.make<"lift" | "refuse">();
+      const decide = (as: "lift" | "refuse") =>
+        Deferred.succeed(decided, as).pipe(Effect.andThen(Deferred.await(decided)));
       return {
         pending: true,
         lifted: Deferred.await(lifted),
@@ -75,17 +95,25 @@ export class MateUpdateBootFence extends Context.Reference<MateUpdateBootFenceSh
             Effect.asVoid,
           ),
         lift: (reopen) =>
-          Effect.flatMap(Deferred.isDone(lifted), (done) =>
-            done
-              ? reopen
-              : Deferred.succeed(released, undefined).pipe(
-                  Effect.andThen(Deferred.await(opened)),
-                  Effect.andThen(reopen),
-                  Effect.andThen(Deferred.succeed(lifted, undefined)),
-                  Effect.forkIn(scope),
-                  Effect.asVoid,
-                ),
-          ),
+          Effect.gen(function* () {
+            if ((yield* decide("lift")) === "refuse") return;
+            if (yield* Deferred.isDone(lifted)) return yield* reopen;
+            yield* Deferred.succeed(released, undefined).pipe(
+              Effect.andThen(Deferred.await(opened)),
+              Effect.andThen(reopen),
+              Effect.andThen(Deferred.succeed(lifted, undefined)),
+              Effect.forkIn(scope),
+            );
+          }),
+        refuse: (reason) =>
+          Effect.gen(function* () {
+            if ((yield* decide("refuse")) === "lift") return;
+            yield* Effect.logError("mate update: the switch settled on another version", {
+              reason,
+            });
+            yield* Deferred.die(refused, new Error(reason));
+          }),
+        ended: Deferred.await(refused),
       } satisfies MateUpdateBootFenceShape;
     }),
   );
