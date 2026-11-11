@@ -581,6 +581,11 @@ export const KeyLinkUp = Schema.Union([
     gitFingerprint: Schema.optionalKey(CredentialFingerprint),
     /** What the Observe credential the Mate holds is, never its secret: HQ mints none while it names a live one. */
     observeFingerprint: Schema.optionalKey(CredentialFingerprint),
+    /**
+     * Every HQ session the Mate still holds, each once: one with a live connection or an unused,
+     * unexpired ticket. HQ closes each of them it no longer holds live.
+     */
+    heldSessionIds: Schema.Array(Schema.String),
   }),
   ...MateLinkUp.members,
   Schema.Struct({ type: Schema.Literal("ticket-ack"), ticket: Ticket }),

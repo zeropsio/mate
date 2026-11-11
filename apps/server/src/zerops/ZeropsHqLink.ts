@@ -293,6 +293,11 @@ export interface ZeropsHqLinkOptions {
   ) => Effect.Effect<Effect.Effect<TicketAnswer>>;
   /** Ends a session HQ closed, or everyone's once the key is dead (`ZeropsConnections.end`). */
   readonly end?: (subject: ConnectionSubject) => Effect.Effect<void>;
+  /**
+   * Every HQ session the Mate holds now, each once, read for every hello: HQ closes each of them
+   * it no longer holds live (`ZeropsConnections.heldSessions`).
+   */
+  readonly heldSessions: Effect.Effect<ReadonlyArray<string>>;
   /** Hands on whom each state lets open a Chief, if it names one (`ZeropsChiefOpener.named`). */
   readonly chiefOpener?: (userId: string | null | undefined) => Effect.Effect<void>;
   /** Hands on whom each state names the Mate's owner, `null` for none (`ZeropsMateOwner.named`). */
@@ -584,6 +589,9 @@ export const makeZeropsHqLink = (
       const observeFingerprint = yield* (
         options.observeFingerprint ?? Effect.succeed(Option.none<string>())
       );
+      // Read once the last link's ticket work has ended with its scope, and before HQ sends this
+      // one a ticket, which it does only after the hello.
+      const heldSessionIds = yield* options.heldSessions;
       yield* send({
         type: "hello",
         key,
@@ -593,6 +601,7 @@ export const makeZeropsHqLink = (
         ...(Option.isSome(observeFingerprint)
           ? { observeFingerprint: observeFingerprint.value }
           : {}),
+        heldSessionIds,
       });
       // The Mate ends this link itself: its key changed, or HQ sent a ticket under a dead key.
       const ending = yield* Deferred.make<LinkClose>();
@@ -1191,6 +1200,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
         connect: connectLinkSocket,
         ticket: connections.ticket,
         end: connections.end,
+        heldSessions: connections.heldSessions,
         // HQ's state is where the Mate learns who may open its Chief: the one source behind the
         // access list's Chief filter, which the tickets and connections follow.
         chiefOpener: chiefOpener.named,

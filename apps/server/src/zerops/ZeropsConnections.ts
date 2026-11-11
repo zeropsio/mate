@@ -68,6 +68,12 @@ export class ZeropsConnections extends Context.Service<
       close: Effect.Effect<void>,
     ) => Effect.Effect<Option.Option<ConnectionIdentity>>;
     readonly current: (id: string) => Effect.Effect<Option.Option<ConnectionIdentity>>;
+    /**
+     * Every HQ session the Mate holds now, each once: one with a live connection or a kept ticket
+     * still unused and unexpired. Read under the lock a ticket moves into its connection under, so
+     * a session in that move is held on one side of it.
+     */
+    readonly heldSessions: Effect.Effect<ReadonlyArray<string>>;
     readonly close: (id: string) => Effect.Effect<void>;
     /**
      * The only way a connection ends for a reason of authority. A session's end also drops its
@@ -191,6 +197,16 @@ export const make = Effect.gen(function* () {
         return Option.some({ ticket: id, connectionId, userId, sessionId, role: member.role });
       }).pipe(lock.withPermits(1)),
     current,
+    heldSessions: Effect.gen(function* () {
+      const now = yield* Clock.currentTimeMillis;
+      return yield* lock.withPermits(1)(
+        Effect.gen(function* () {
+          const held = new Set(Array.from(connections.values(), (input) => input.sessionId));
+          for (const session of yield* tickets.heldSessions(now)) held.add(session);
+          return Array.from(held);
+        }),
+      );
+    }),
     close: (id) =>
       Effect.sync(() => {
         connections.delete(id);

@@ -488,13 +488,20 @@ describe("the keys model's link", () => {
 
   it("a Mate opens its link with its project key and a service label, and every frame either side sends under the keys model decodes as its own type", () => {
     const up = [
-      { type: "hello", key: "zcp-key", serviceId: "S_ZCP", origin: "https://mate.zerops.app" },
+      {
+        type: "hello",
+        key: "zcp-key",
+        serviceId: "S_ZCP",
+        origin: "https://mate.zerops.app",
+        heldSessionIds: [],
+      },
       {
         type: "hello",
         key: "zcp-key",
         serviceId: "S_ZCP",
         origin: "https://mate.zerops.app",
         gitFingerprint: "a".repeat(64),
+        heldSessionIds: ["00000000-0000-4000-8000-000000000001"],
       },
       { type: "pong" },
       { type: "ticket-ack", ticket: "tk-1" },
@@ -615,8 +622,8 @@ describe("the keys model's link", () => {
   it("a hello without its key, a state without its Chief and an older HQ's access frame are no frames", () => {
     const { chief: _chief, ...withoutChief } = self;
     for (const hello of [
-      { key: "", serviceId: "S", origin: "https://mate.zerops.app" },
-      { key: "zcp-key", serviceId: "S" },
+      { key: "", serviceId: "S", origin: "https://mate.zerops.app", heldSessionIds: [] },
+      { key: "zcp-key", serviceId: "S", heldSessionIds: [] },
     ])
       expect(decodeKeyUp(JSON.stringify({ type: "hello", ...hello }))._tag).toBe("Failure");
     const member = { userId: "U1", role: "ADMIN", visibility: "open" };

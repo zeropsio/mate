@@ -173,12 +173,16 @@ const ADMISSION = "6d0c2f4e-3b1a-4c8d-9e7f-5a2b1c0d9e8f";
 /** A ticket taken under an admission whose key stands. */
 const live = () => true;
 
-/** The hello a link opens with: the project's key, the service it is labelled by, and the Mate's public origin. */
+/**
+ * The hello a link opens with: the project's key, the service it is labelled by, the Mate's public
+ * origin, and the sessions it holds, none here.
+ */
 const hello = (key: string) => ({
   type: "hello",
   key,
   serviceId: "svc-mate",
   origin: "https://mate-1234.prg1.zerops.app",
+  heldSessionIds: [],
 });
 
 /** HQ admits the key: its first state on the link. */
@@ -273,6 +277,7 @@ const rig = (
         : { observeCredential: options.observeCredential }),
       signers: signIns.heard,
       gitFingerprint: Ref.get(fingerprint),
+      heldSessions: Effect.succeed([]),
       chief: (projectId) => Effect.sync(() => void chiefs.push(projectId)),
       automation: {
         heard: (mate) => Effect.sync(() => void automation.push({ heard: mate })),
@@ -843,6 +848,7 @@ describe("ZeropsHqLink", () => {
           attention: Stream.never,
           ticket: connections.ticket,
           end: connections.end,
+          heldSessions: connections.heldSessions,
           gitCredential: () => Effect.void,
           gitFingerprint: Effect.succeed(Option.none()),
         });
@@ -921,6 +927,7 @@ describe("ZeropsHqLink", () => {
               ),
             ),
           end: connections.end,
+          heldSessions: connections.heldSessions,
           gitCredential: () => Effect.void,
           gitFingerprint: Effect.succeed(Option.none()),
         });
@@ -1927,6 +1934,7 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
         },
         gitCredential: () => Effect.void,
         gitFingerprint: Effect.succeed(Option.none()),
+        heldSessions: Effect.succeed([]),
         attention: Stream.never,
         ...feed,
       });
