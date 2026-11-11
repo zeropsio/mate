@@ -14367,13 +14367,21 @@ a.message-file:focus-visible {
 }
 
 /* The real footer stays laid out and measured throughout. Hidden content accepts the input
-   that ends the sequence; it is never replaced by a guessed footer or a second conversation. */
-[data-opening-waits-whole="held"] {
+   that ends the sequence; it is never replaced by a guessed footer or a second conversation.
+
+   Each of these rules tests three attributes on purpose: the `:has()` rules they replace weighed
+   (0,3,0), and the rules of this sheet they must win over — a subject or a persona arriving
+   (`.conversation-subject[data-arrived]`) — were written against that weight. */
+[data-opening-waits-whole="held"]:not([data-opening-waits-whole="arrives"]):not(
+    [data-opening-waits-whole=""]
+  ) {
   opacity: 0;
   transition: none;
 }
 
-[data-opening-waits-whole="arrives"] {
+[data-opening-waits-whole="arrives"]:not([data-opening-waits-whole="held"]):not(
+    [data-opening-waits-whole=""]
+  ) {
   animation: conversation-arrive var(--duration-conversation-rise) var(--ease-out-strong)
     calc(var(--duration-conversation-exit) / 2) backwards;
 }
@@ -14382,7 +14390,7 @@ a.message-file:focus-visible {
    with it — wherever the opening stands while the route changes. Each part carries the
    opening's state itself (`ConversationOpeningWaits`): a `:has()` on an ancestor restyles
    everything under it for every node added there. */
-[data-opening-waits="held"] > * {
+[data-opening-waits="held"]:not([data-opening-waits="arrives"]):not([data-opening-waits=""]) > * {
   opacity: 0;
   pointer-events: none;
 }
@@ -14393,8 +14401,8 @@ a.message-file:focus-visible {
   pointer-events: none;
 }
 
-[data-opening-header="says"][data-opening-arrives] > *,
-[data-opening-waits="arrives"] > * {
+[data-opening-header="says"][data-opening-arrives]:not([data-opening-header="yields"]) > *,
+[data-opening-waits="arrives"]:not([data-opening-waits="held"]):not([data-opening-waits=""]) > * {
   animation: conversation-arrive var(--duration-conversation-rise) var(--ease-out-strong)
     calc(var(--duration-conversation-exit) / 2) backwards;
 }
