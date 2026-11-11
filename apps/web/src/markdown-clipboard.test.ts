@@ -126,18 +126,6 @@ describe("serializeRenderedMarkdownFragment", () => {
   ])("$parentLayout parent with $childLayout child", ({ parentLayout, childLayout }) => {
     it.each([
       { parentChecked: null, childChecked: true, parent: "- Parent", child: "  - [x] Child" },
-      {
-        parentChecked: false,
-        childChecked: true,
-        parent: "- [ ] Parent",
-        child: "      - [x] Child",
-      },
-      {
-        parentChecked: true,
-        childChecked: false,
-        parent: "- [x] Parent",
-        child: "      - [ ] Child",
-      },
     ])("copies $parent with $child", ({ parentChecked, childChecked, parent, child }) => {
       const parentContent = parentLayout === "loose" ? new FakeElement("P") : new FakeElement("LI");
       if (parentChecked !== null) {

@@ -1,3 +1,5 @@
+import type { ServerProviderSkill } from "@t3tools/contracts";
+
 /**
  * ClaudeSkillDispatch — turns `$skill` mentions in a composer prompt into the
  * slash invocation Claude Code actually runs.
@@ -19,7 +21,7 @@
  *    are rewritten to `/name` inline.
  *
  * So one mention anywhere in the prompt becomes a guaranteed invocation, and
- * the user's text on either side is kept in order.
+ * the model still reads the whole request.
  *
  * @module provider/Drivers/ClaudeSkillDispatch
  */
@@ -32,8 +34,11 @@
 const SKILL_MENTION_PATTERN =
   /(^|\s)\p{Sc}(?![0-9][0-9_]*(?:[kKmMbBtT]|[eE][0-9]+)?(?:\s|$))(?=[a-zA-Z0-9:_-]*[a-zA-Z])([a-zA-Z0-9][a-zA-Z0-9:_-]*)(?=\s|$)/gu;
 
+/** What dispatch needs of a discovered skill. */
+export type ClaudeSkillTarget = Pick<ServerProviderSkill, "path" | "userInvocationOnly">;
+
 export interface ClaudeSkillDispatch {
-  /** Text before the dispatched mention, or `undefined` when it opens the prompt. */
+  /** The whole prompt with mentions as `/name`, or `undefined` when the mention opens it. */
   readonly leadingText: string | undefined;
   /** `/name` plus the trailing text, ready to be the message's last text block. */
   readonly commandText: string;
@@ -48,33 +53,39 @@ export interface ClaudeSkillDispatch {
  */
 export function planClaudeSkillDispatch(
   prompt: string,
-  skillNames: ReadonlySet<string>,
+  skills: ReadonlyMap<string, ClaudeSkillTarget>,
 ): ClaudeSkillDispatch | undefined {
   const mentions = [...prompt.matchAll(SKILL_MENTION_PATTERN)].flatMap((match) => {
     const name = match[2] ?? "";
-    if (!skillNames.has(name)) return [];
+    const skill = skills.get(name);
+    if (!skill) return [];
     const start = (match.index ?? 0) + (match[1]?.length ?? 0);
-    return [{ name, start, end: (match.index ?? 0) + match[0].length }];
+    return [{ name, skill, start, end: (match.index ?? 0) + match[0].length }];
   });
   const last = mentions.at(-1);
   if (!last) {
     return undefined;
   }
 
-  const leading = prompt.slice(0, last.start);
-  const trailing = prompt.slice(last.end);
-  const leadingWithInlineSlashes = mentions
-    .slice(0, -1)
-    .reduceRight(
-      (text, mention) =>
-        `${text.slice(0, mention.start)}/${mention.name}${text.slice(mention.end)}`,
-      leading,
-    )
-    .trimEnd();
+  // The whole request leads, so the model reads it all; only the final skill expands natively.
+  // An earlier user-only skill points at its file, because Claude's Skill tool refuses it.
+  const annotated = new Set([last.name]);
+  let promptWithInlineSlashes = "";
+  let cursor = 0;
+  for (const mention of mentions) {
+    promptWithInlineSlashes += `${prompt.slice(cursor, mention.start)}/${mention.name}`;
+    if (mention.skill.userInvocationOnly === true && !annotated.has(mention.name)) {
+      promptWithInlineSlashes += ` [The user invoked this skill. Follow the instructions at: ${mention.skill.path}]`;
+      annotated.add(mention.name);
+    }
+    cursor = mention.end;
+  }
+  promptWithInlineSlashes = `${promptWithInlineSlashes}${prompt.slice(cursor)}`.trimEnd();
 
   return {
-    leadingText: leadingWithInlineSlashes.length > 0 ? leadingWithInlineSlashes : undefined,
-    commandText: `/${last.name}${trailing}`.trimEnd(),
+    leadingText:
+      prompt.slice(0, last.start).trim().length > 0 ? promptWithInlineSlashes : undefined,
+    commandText: `/${last.name}${prompt.slice(last.end)}`.trimEnd(),
     skillName: last.name,
   };
 }

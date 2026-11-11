@@ -28,7 +28,11 @@ import type * as Effect from "effect/Effect";
 import type * as FileSystem from "effect/FileSystem";
 import type * as Path from "effect/Path";
 
-import { makeClaudeEnvironment, resolveClaudeHomePath } from "../provider/Drivers/ClaudeHome.ts";
+import {
+  hasClaudeManagedMcpConfig,
+  makeClaudeEnvironment,
+  resolveClaudeHomePath,
+} from "../provider/Drivers/ClaudeHome.ts";
 import {
   materializeCodexShadowHome,
   resolveCodexHomeLayout,
@@ -64,6 +68,13 @@ export function claudeHomePath(
  * macOS keychain lookup the CLI needs for its stored OAuth credentials —
  * see the doc comment on `makeClaudeEnvironment` in the driver).
  */
+/** Whether Claude Code's enterprise `managed-mcp.json` is installed, so `--strict-mcp-config` must go. */
+export const claudeManagedMcpConfigInstalled: () => Effect.Effect<
+  boolean,
+  never,
+  FileSystem.FileSystem
+> = hasClaudeManagedMcpConfig;
+
 export function claudeEnvironment(
   config: Pick<ClaudeSettings, "homePath">,
   baseEnv?: NodeJS.ProcessEnv,

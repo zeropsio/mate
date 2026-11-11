@@ -285,3 +285,97 @@ table keeps the decisions.
     sends one in a Mate); `28ce9d1c1`'s split of `settings:write`/`providers:manage` out of
     `orchestration:operate`; undici 6.28.1 unaudited (`pnpm audit`); upstream's mermaid SVG
     hardening if `5e35272fd` is ever ported
+- `e2a781477afd2aea1741f720afa9067294e7a1b7` (`upstream/main`, 2026-11-11)
+  - _Date:_ 2026-11-11
+  - _Decisions:_ 5,145 upstream commits since row 6 (upstream v0.1.0–v0.1.9: V2 stable, providers
+    moved into `packages/provider-*`, source-control and secret-provider packages). Triage by zone
+    scouts kept only fixes on code the fork still runs; four lanes landed **72 `port:` +
+    1 `import:` + 12 fork fixes**.
+    - **Security and dependencies.**
+      - The undici 8 catalog pin is now 8.12.4 with an override. The old version had four high
+        advisories, including TLS validation.
+      - dompurify is now 3.4.17 and stream-json 3.7.0, and audit-flagged transitive packages were
+        re-resolved within their ranges. `pnpm audit --prod` went from 36 high and 4 critical to
+        5 high and 0 critical; all five left are desktop/mobile major bumps.
+      - Socket tickets and signed asset/upload tokens are redacted from span URL attributes and
+        span events. Spans are kept; upstream's `UrlParams.CurrentRedactedNames` is not in
+        Effect 4.0.1.
+      - Antigravity's ACP file read/write canonicalizes the deepest existing ancestor and refuses
+        dangling links.
+      - ACP stderr redacts `sk-` keys that contain `_`.
+    - **Server.**
+      - SQLite: `synchronous = NORMAL` and `temp_store = MEMORY`.
+      - `forceKillAfter` on helpers.
+      - A per-repository lock serializes git's shared-config writes. It covers only the config
+        writes, never a checkout, clone or push.
+      - Settings refuse to write over an undecodable `settings.json`.
+      - Config and keybinding subscriptions no longer miss changes made during the snapshot.
+      - Git status runs in parallel.
+      - The review diff stops indexing untracked files at 5,000.
+      - A 503 before the HTTP handler attaches.
+      - Workspace short reads.
+      - Keybindings keep entries the build cannot decode.
+      - `packages/shared`: cliArgs, Net, truncate, semver, symlink hops, JSONC, login-shell probe
+        timeouts.
+    - **Terminal.**
+      - Server: an idle terminal stops polling `ps`, terminal streams get an 8 MiB byte budget
+        with a fresh-snapshot resync, history writes batch at 250 ms, and history keeps output
+        after cut escape sequences and C1.
+      - Client: output no longer re-renders the drawer; paste fires once; mode-2026 synchronized
+        updates; the theme's ANSI palette; powerline glyphs; selection survives redraws; refit
+        after a reconnect; Option-layer, touch-scroll and Android Backspace input.
+    - **Providers.**
+      - `effect-codex-app-server` is re-imported at this SHA. `imported.lock` now keeps one
+        transform record per package. Codex needs no `effect-401` and records `tsgo-046`
+        instead, keeping `tsc --noEmit` while the fork's `@effect/tsgo` lacks `tsrs`.
+      - Codex: shadow-home locks, per-instance `CODEX_HOME`, 20 s probes.
+      - Claude: plugin and `--add-dir` skills, skill dispatch, the child environment scrub, a
+        logged-out CLI reported as unauthenticated, `managed-mcp.json`.
+      - Grok probes run without the autoupdater.
+      - The Antigravity IPv6 message.
+      - Manifest: Haiku 5.5 and Ultracode; the bare aliases moved to 5.5. Floors are unchanged.
+    - **Web.**
+      - The timeline row key is bucketed by length, ending the nested-update loop.
+      - Settings readers select their own fields.
+      - Corrupt stored settings no longer block writes.
+      - Stale `@` suggestions are refused.
+      - Popover exit and dialog content retention.
+      - IME guards.
+      - A bounded cache of rendered markdown.
+      - The tool-row keyboard guard.
+      - Question auto-advance is cancelled on navigation.
+      - The run shimmer is stepped (`steps(30)`).
+  - _Declined:_
+    - **`effect-acp` re-import.** It stays at `422248515`. Upstream's agent side is ACP v2 only
+      (`de34391427`), and the fork's v1 mock agent plus the SPI replay fixtures would need a
+      rewrite (`fork.md` §3.2). The eight ACP framing fixes and cancelled tool/plan states wait
+      for that decision.
+    - **The rest of upstream's lockfile refresh**, and the Effect 4.1.2 / tsc-rs / vite-plus 1.4
+      toolchain. That is a separate pass: about 77 `effect/Crypto` files.
+    - **Upstream migrations.**
+    - **The V2 orchestrator and its features** (queue, `delegate_task`, forks, side chats, thread
+      links, the agent MCP).
+    - **Source-control forges and 1Password secret providers.** HQ owns git hosting.
+    - **Mobile/desktop features.**
+    - **Upstream's drain on a terminal history flush.** The fork settles only the work queued
+      before a clear or close (`settleKey`). At the new 250 ms debounce, a drain lets a busy shell
+      hold Clear and the thread lock forever.
+    - **Resource-monitor sidecar polling.** The release does not build the sidecar.
+  - _Open for the owner:_
+    - The ACP v2 re-import.
+    - The Claude `>=2.1.301`, Codex `>=0.159.0` and OpenCode `>=2.0.18` floors, against the
+      image's CLIs.
+    - An OpenCode 2 adapter.
+    - Kiro as an ACP provider.
+    - A scheduled message from a person or HQ, through the engine's existing wakes.
+    - The React Compiler migration, after the toolchain pass.
+    - The screen-reader activity announcer.
+  - _Open security candidates:_
+    - The dead desktop bootstrap grant (`PairingGrantStore.ts`; reachable only through
+      `T3CODE_BOOTSTRAP_FD`).
+    - Electron 44.4.2 in the unshipped desktop app (the Brotli CVE is fixed in 44.10.1).
+    - Antigravity's check-then-write race, which is inherent while the agent has a shell anyway.
+    - The server's own log lines (`logWebSocketEvents`) still carry signed asset/upload tokens in
+      `http.url`; traces are redacted, logs are not.
+    - A typed bare `haiku`/`sonnet` alias resolves to a 5.5 model without the CLI version gate
+      (as upstream).

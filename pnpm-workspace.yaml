@@ -46,6 +46,7 @@ catalog:
   effect: 4.0.1
   jose: 6.2.2
   typescript: 7.0.2
+  undici: 8.12.4
   vite: npm:@voidzero-dev/vite-plus-core@1.0.0
   vite-plus: 1.0.0
   yaml: ^2.9.0
@@ -120,6 +121,9 @@ overrides:
   expo-modules-core: 57.0.18
   "@pierre/diffs>@shikijs/transformers": ^4.2.0
   "@types/node": "catalog:"
+  # @effect/platform-node ranges otherwise settle on an undici 8 release with
+  # known advisories.
+  "undici@^8": "catalog:"
   effect: "catalog:"
   expo-router: 57.0.17
   "expo-sharing>@expo/config-plugins": 57.0.9

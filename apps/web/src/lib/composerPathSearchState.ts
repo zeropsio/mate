@@ -10,7 +10,9 @@ import { useComposerPathSearch as useComposerPathSearchQuery } from "../state/qu
 const NO_ENTRIES: ReadonlyArray<ComposerPathSearchEntry> = [];
 
 /** `entries` keeps its identity while the search result does, so the composer's menu items can. */
-export function useComposerPathSearch(target: ComposerPathSearchTarget): ComposerPathSearchState {
+export function useComposerPathSearch(
+  target: ComposerPathSearchTarget,
+): ComposerPathSearchState & { readonly searchedTarget: ComposerPathSearchTarget } {
   const state = useComposerPathSearchQuery(target);
   const entries = useMemo(
     () =>
@@ -26,5 +28,6 @@ export function useComposerPathSearch(target: ComposerPathSearchTarget): Compose
     entries,
     error: state.error,
     isPending: state.isPending,
+    searchedTarget: state.searchedTarget,
   };
 }

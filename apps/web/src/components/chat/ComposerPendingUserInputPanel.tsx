@@ -214,14 +214,19 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
     setHighlightedIndex(-1);
   }, [activeQuestion?.id]);
 
-  // Clear auto-advance timer on unmount
+  // A delayed answer only advances its own question, while it can still be answered: moving to
+  // another question, a response in flight or losing the answer handlers cancels it.
+  const canAnswer = answer !== null && !isResponding;
   useEffect(() => {
-    return () => {
+    const clearAutoAdvance = () => {
       if (autoAdvanceTimerRef.current !== null) {
         window.clearTimeout(autoAdvanceTimerRef.current);
+        autoAdvanceTimerRef.current = null;
       }
     };
-  }, []);
+    if (!canAnswer || activeQuestion?.id === undefined) clearAutoAdvance();
+    return clearAutoAdvance;
+  }, [activeQuestion?.id, canAnswer]);
 
   const handleOptionSelection = useCallback(
     (questionId: string, optionValue: string) => {

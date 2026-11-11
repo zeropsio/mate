@@ -882,6 +882,7 @@ function SignInTerminal({
         terminalLabel={`${AGENT_SIGN_IN_CARDS[agentId].name} sign-in`}
         threadId={threadRef.threadId}
         threadRef={threadRef}
+        touchScrollback={false}
         visible
       />
     </Suspense>

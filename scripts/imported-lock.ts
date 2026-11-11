@@ -29,18 +29,24 @@ export const IMPORTED_LOCK_FILE_NAME = "imported.lock";
 // A transform the zone carries over upstream's tree until the next re-import, which drops it.
 // `paths` then holds HEAD's (transformed) tree OIDs and `upstreamPaths` upstream's; the check
 // restores HEAD with the transform's inverse and proves it is upstream's tree byte for byte.
+// Packages imported at different upstream SHAs carry one transform each; `upstream` names the
+// SHA of a transform's paths when it is not the lock's own.
 const ImportTransformSchema = Schema.Struct({
-  name: Schema.Literals(["effect-401"]),
+  name: Schema.Literals(["effect-401", "tsgo-046"]),
   script: Schema.String,
   since: Schema.String,
   until: Schema.String,
+  upstream: Schema.optionalKey(Schema.String),
   upstreamPaths: Schema.Record(Schema.String, Schema.String),
 });
+type ImportTransformRecord = typeof ImportTransformSchema.Type;
 
 const ImportedLockSchema = Schema.Struct({
   upstream: Schema.String,
   paths: Schema.Record(Schema.String, Schema.String),
-  transform: Schema.optionalKey(ImportTransformSchema),
+  transform: Schema.optionalKey(
+    Schema.Union([ImportTransformSchema, Schema.Array(ImportTransformSchema)]),
+  ),
 });
 export type ImportedLock = typeof ImportedLockSchema.Type;
 
@@ -266,24 +272,33 @@ export const checkImportedLock = Effect.fn("checkImportedLock")(function* (
   const actual = yield* resolveTreeOids(cwd, "HEAD", Object.keys(lock.paths));
   const drift = diffOidMaps(lock.paths, actual);
   if (lock.transform === undefined) return drift;
-  const transform = IMPORT_TRANSFORMS[lock.transform.name]!;
-  const upstreamPaths = lock.transform.upstreamPaths;
+  const records: ReadonlyArray<ImportTransformRecord> = Array.isArray(lock.transform)
+    ? lock.transform
+    : [lock.transform];
   const notReproduced = yield* Effect.sync(() =>
-    Object.keys(upstreamPaths).flatMap((path): ReadonlyArray<OidMismatch> => {
-      const result = reproduce(path, readTreeFiles(cwd, "HEAD", path), transform);
-      if (result.restoredTree === upstreamPaths[path] && result.notReproduced.length === 0) {
-        return [];
-      }
-      const files =
-        result.notReproduced.length === 0 ? "" : ` (${result.notReproduced.join(", ")})`;
-      return [{ path, expected: upstreamPaths[path]!, actual: `${result.restoredTree}${files}` }];
-    }),
+    records.flatMap((record) => reproduceRecord(cwd, record)),
   );
   return [
     ...drift,
     ...notReproduced.filter((mismatch) => !drift.some((entry) => entry.path === mismatch.path)),
   ];
 });
+
+const reproduceRecord = (
+  cwd: string,
+  record: ImportTransformRecord,
+): ReadonlyArray<OidMismatch> => {
+  const transform = IMPORT_TRANSFORMS[record.name]!;
+  const upstreamPaths = record.upstreamPaths;
+  return Object.keys(upstreamPaths).flatMap((path): ReadonlyArray<OidMismatch> => {
+    const result = reproduce(path, readTreeFiles(cwd, "HEAD", path), transform);
+    if (result.restoredTree === upstreamPaths[path] && result.notReproduced.length === 0) {
+      return [];
+    }
+    const files = result.notReproduced.length === 0 ? "" : ` (${result.notReproduced.join(", ")})`;
+    return [{ path, expected: upstreamPaths[path]!, actual: `${result.restoredTree}${files}` }];
+  });
+};
 
 /**
  * `--write --upstream <ref>`: regenerates the lock from `<ref>:<path>` for

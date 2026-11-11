@@ -26,6 +26,7 @@ import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFSP from "node:fs/promises";
+import * as EffectAcpErrors from "effect-acp/errors";
 import type * as NodeStream from "node:stream";
 import * as Yauzl from "yauzl";
 
@@ -72,6 +73,7 @@ export class AntigravityInstallationError extends Schema.TaggedError<Antigravity
   }
 }
 const isInstallationError = Schema.is(AntigravityInstallationError);
+const isAcpProcessExitedError = Schema.is(EffectAcpErrors.AcpProcessExitedError);
 
 export interface AntigravityExecutable {
   readonly executablePath: string;
@@ -507,12 +509,16 @@ export const makeAntigravityInstallation = Effect.fn("AntigravityInstallation.ma
       Effect.provideService(Path.Path, path),
       Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
       Effect.provideService(Crypto.Crypto, crypto),
-      Effect.mapError(
-        wrapFailure(
-          "verify",
-          "The downloaded Antigravity runtime could not start in this environment.",
-        ),
-      ),
+      Effect.mapError((cause) => {
+        if (isInstallationError(cause)) return cause;
+        // Antigravity's language server exits at startup when the kernel has no IPv6 sockets.
+        const detail =
+          isAcpProcessExitedError(cause) &&
+          /\b(?:AF_INET6|enforce_kernel_ipv6_support)\b/.test(cause.stderr ?? "")
+            ? "Antigravity requires IPv6 socket support. Enable IPv6 in this environment. On WSL, remove ipv6.disable=1 from .wslconfig and run wsl --shutdown."
+            : "The downloaded Antigravity runtime could not start in this environment.";
+        return installationError("verify", detail, cause);
+      }),
     );
 
   const install = Effect.fn("AntigravityInstallation.install")(

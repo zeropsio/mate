@@ -5,6 +5,7 @@
  * task of its own. `@` finds the files of the Mate's tree, as a chat's does;
  * nobody is ever named by a handle.
  */
+import type { ComposerPathSearchTarget } from "@t3tools/client-runtime/state/threads";
 import type { CrewCommand, Crewmate } from "@t3tools/contracts";
 import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
 
@@ -51,11 +52,12 @@ export function crewmateMenuItems(
     }));
 }
 
-/** The files under the caret's `@`, or `null` while the caret is on no `@`. */
+/** The files under the caret's `@`, found by `searchTarget`, or `null` while the caret is on no `@`. */
 export function tellMenu(
   text: string,
   cursor: number,
   files: ReadonlyArray<TellFile>,
+  searchTarget: ComposerPathSearchTarget,
 ): TellMenu | null {
   const trigger = detectComposerTrigger(text, cursor, { mentions: "crewmate" });
   if (trigger?.kind !== "crewmate") return null;
@@ -66,6 +68,7 @@ export function tellMenu(
       type: "path",
       path: file.path,
       pathKind: file.kind,
+      searchTarget,
       label: file.path.slice(file.path.lastIndexOf("/") + 1),
       description: file.path.slice(0, Math.max(0, file.path.lastIndexOf("/"))),
     })),
