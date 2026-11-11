@@ -132,7 +132,6 @@ describe("automatic update line", () => {
           checkedAt: "now",
           automatic: {
             protocol: 1,
-            rollbackCompatible: true,
             phase: "updated",
             runningVersion: "0.15.133",
           },
@@ -158,7 +157,6 @@ describe("automatic update line", () => {
           checkedAt: "now",
           automatic: {
             protocol: 1,
-            rollbackCompatible: true,
             phase,
             runningVersion: phase === "updated" ? "0.15.0" : "0.14.8",
           },
@@ -179,7 +177,6 @@ describe("automatic update line", () => {
             checkedAt: "now",
             automatic: {
               protocol: 1,
-              rollbackCompatible: false,
               phase,
               runningVersion: "0.14.70",
               failedVersion: "0.14.71",
@@ -190,25 +187,6 @@ describe("automatic update line", () => {
       ).toEqual({ text: "Server 0.14.92", tone: "default" });
     },
   );
-  it("an incompatible release asks for confirmation", () => {
-    expect(
-      mateUpdateLine(
-        {
-          installed: "0.14.8",
-          latest: "0.15.0",
-          available: true,
-          checkedAt: "now",
-          automatic: {
-            protocol: 1,
-            rollbackCompatible: false,
-            phase: "idle",
-            runningVersion: "0.14.8",
-          },
-        },
-        "0.14.8",
-      ).text,
-    ).toBe("Update available — needs your confirmation");
-  });
 });
 
 // Milo's stress run 6: after the person's Update the Zerops card read "Updated to 0.15.31 Updated
@@ -219,7 +197,7 @@ describe("mateUpdateStatusBeside", () => {
     latest: "0.15.31",
     available: false,
     checkedAt: "now",
-    automatic: { protocol: 1 as const, rollbackCompatible: true, phase, runningVersion: "0.15.31" },
+    automatic: { protocol: 1 as const, phase, runningVersion: "0.15.31" },
   });
   it.each([
     { name: "the server records it too", phase: "updated", said: null },
@@ -330,7 +308,6 @@ describe("a Mate that only a restart gets current", () => {
           available: true,
           automatic: {
             protocol: 1,
-            rollbackCompatible: true,
             phase: "draining",
             runningVersion: "0.15.200",
           },

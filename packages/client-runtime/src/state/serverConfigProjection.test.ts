@@ -14,7 +14,7 @@ const update: ExecutionEnvironmentUpdate = {
   latest: "2",
   available: true,
   checkedAt: "owner",
-  automatic: { protocol: 1, rollbackCompatible: true, phase: "draining", runningVersion: "1" },
+  automatic: { protocol: 1, phase: "draining", runningVersion: "1" },
 };
 const config: ServerConfig = {
   environment: {

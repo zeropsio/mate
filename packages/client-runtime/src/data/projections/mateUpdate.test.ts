@@ -24,7 +24,7 @@ const streamed = (
   latest,
   available: latest !== "",
   checkedAt: "live-state",
-  automatic: { protocol: 1, rollbackCompatible: true, phase, runningVersion: "1" },
+  automatic: { protocol: 1, phase, runningVersion: "1" },
 });
 const read = (watched: boolean, update: ExecutionEnvironmentUpdate, ready = true) => {
   const link: MateLinkValue = {

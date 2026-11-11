@@ -851,7 +851,7 @@ describe("when a server's automatic update is under way", () => {
         latest: "0.11.41",
         available: true,
         checkedAt: "2026-10-16T10:00:00Z",
-        automatic: { protocol: 1, rollbackCompatible: true, phase, runningVersion: "0.11.40" },
+        automatic: { protocol: 1, phase, runningVersion: "0.11.40" },
       }),
     ).toBe(from);
   });

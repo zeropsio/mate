@@ -288,7 +288,6 @@ it.effect(
         ...STATUS_RESULT,
         updater: {
           protocol: 1,
-          rollbackCompatible: true,
           phase: "switching",
           runningVersion: "0.16.17",
         },
@@ -297,7 +296,6 @@ it.effect(
         ...switching,
         updater: {
           protocol: 1,
-          rollbackCompatible: true,
           phase: "updated",
           runningVersion: "0.16.18",
         },
@@ -409,7 +407,7 @@ describe("a Mate that only a restart gets current", () => {
     contract: 1,
     updateAvailable: false,
     checkedAt: "2026-10-27T00:00:00Z",
-    updater: { protocol: 1, rollbackCompatible: true, phase: "idle", runningVersion: "0.15.200" },
+    updater: { protocol: 1, phase: "idle", runningVersion: "0.15.200" },
     zcp: { installed: "9.225.0", latest: "9.226.0", behind: true },
     restartNeeded: true,
     why: "zcp 9.226.0 is out; only a restart installs it",
@@ -615,7 +613,6 @@ describe("a Mate that only a restart gets current", () => {
           checkedAt: "2026-10-27T00:00:00Z",
           updater: {
             protocol: 1,
-            rollbackCompatible: true,
             phase: "idle",
             runningVersion: "0.15.200",
           },

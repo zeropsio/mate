@@ -946,10 +946,10 @@ const agentsAttention = (
   />
 );
 
-/** The Mate's update line where its update waits on the person, with its verb. */
-const updateWaits = (
+/** The Mate's update line where a newer version is available, with its verb. */
+const updateAvailable = (
   <MateUpdateLine
-    line={{ text: "Update available — needs your confirmation", tone: "default" }}
+    line={{ text: "Server 0.16.111 · 0.16.112 available", tone: "attention" }}
     verb={<ZeropsMateVerb label="Update" onClick={() => {}} />}
   />
 );
@@ -1057,7 +1057,7 @@ function HarnessPage() {
                                   currentServiceId="svc-zcp"
                                   mateUpdate={
                                     scenario.homeNeedsYou === true ? (
-                                      updateWaits
+                                      updateAvailable
                                     ) : (
                                       <span>Mate 0.16.112 · up to date</span>
                                     )

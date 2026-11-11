@@ -327,7 +327,6 @@ describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §
       checkedAt: "now",
       automatic: {
         protocol: 1 as const,
-        rollbackCompatible: true,
         phase: "idle" as const,
         runningVersion: "0.8.0",
       },
