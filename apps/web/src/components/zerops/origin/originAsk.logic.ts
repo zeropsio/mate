@@ -15,6 +15,7 @@ import { type AskState, answeredWords } from "../../ask/ask.logic";
 import type { GitMirrorApps } from "~/zerops/useGitMirrorApps";
 
 import { githubName, type GitMirrorApp, waitingAccount } from "../gitMirror.logic";
+import { anothersOwnApp } from "../github/githubConnect.logic";
 
 /**
  * Where an origin question stands in the timeline: the run card its first ask was asked in, and
@@ -184,12 +185,15 @@ export function originMountStep(
  * among the apps an Owner or Admin confirmed (any, while none is), the one whose accepted
  * installation reaches the repository, else one installed where it waits for an OK, else the
  * oldest — its accepted installations' repositories flattened into what it reaches. An app nobody
- * confirmed may be another person's, so it is never picked over one somebody did. `githubAppId` names it to HQ once it reaches the repository. `app` is `null` while HQ
+ * confirmed may be another person's, so it is never picked over one somebody did; and where none
+ * reaches the repository yet, another person's own app (`anothersOwnApp`) comes last and says
+ * whose it is (`anothersOwner`). `githubAppId` names it to HQ once it reaches the repository. `app` is `null` while HQ
  * is still asked.
  */
 export function originGithubApp(
   apps: GitMirrorApps | null,
   url: string,
+  viewerId: string | null = null,
 ): { readonly app: GitMirrorApp | null; readonly githubAppId: number | null } {
   if (apps === null) return { app: null, githubAppId: null };
   if (apps.kind === "unknown") return { app: { kind: "unknown" }, githubAppId: null };
@@ -205,9 +209,11 @@ export function originGithubApp(
     );
   const confirmed = apps.apps.filter((each) => each.setUpBy !== null);
   const candidates = confirmed.length > 0 ? confirmed : apps.apps;
+  // Where none reaches it yet, the organization's own before another person's own app.
   const entry =
     candidates.find((each) => reaches("accepted")(each.appId)) ??
     candidates.find((each) => reaches("waiting")(each.appId)) ??
+    candidates.find((each) => !anothersOwnApp(each, viewerId)) ??
     candidates[0];
   if (entry === undefined) return { app: { kind: "none" }, githubAppId: null };
   const own = apps.installations.filter((installation) => installation.appId === entry.appId);
@@ -228,6 +234,7 @@ export function originGithubApp(
           repositories: installation.repositories.map((each) => each.fullName),
         })),
       unanswered: entry.unanswered,
+      ...(anothersOwnApp(entry, viewerId) ? { anothersOwner: entry.owner } : {}),
     },
     githubAppId: reaches("accepted")(entry.appId) ? entry.appId : null,
   };

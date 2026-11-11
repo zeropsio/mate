@@ -142,7 +142,27 @@ export function OriginGithubSheet({
                 {app !== null && app.kind === "connected" && unansweredWords(app) !== null
                   ? unansweredWords(app)
                   : `${step.name} doesn't reach ${githubName(ask.url) ?? address} yet.`}{" "}
-                {app !== null && app.kind === "connected" ? (
+                {app !== null && app.kind === "connected" && app.anothersOwner !== undefined ? (
+                  // Another person's own app is installed further only by choice, after the
+                  // organization's own way is said.
+                  <>
+                    {step.name} belongs to {app.anothersOwner}'s personal GitHub account, and an
+                    app's owner holds its key.{" "}
+                    {admin ? (
+                      <>
+                        <InlineButton onClick={onOpenAutomation}>
+                          Make the organization's own app
+                        </InlineButton>{" "}
+                        in Settings, or{" "}
+                      </>
+                    ) : (
+                      "An Owner or Admin can make the organization's own app in Settings, or "
+                    )}
+                    <GithubInstallOffer admin={admin} app={app} onInstall={onInstall}>
+                      add this one on GitHub anyway
+                    </GithubInstallOffer>
+                  </>
+                ) : app !== null && app.kind === "connected" ? (
                   <GithubInstallOffer admin={admin} app={app} onInstall={onInstall}>
                     Add it on GitHub
                   </GithubInstallOffer>

@@ -102,8 +102,9 @@ function AskCard({
   const follow = appId === null ? undefined : target.actions?.follow;
   // The apps are read while the GitHub way can still be picked.
   const github = useGitMirrorApps(ask.state === "open");
-  const { app, githubAppId } = originGithubApp(github.apps, ask.url);
-  const admin = roleAtLeast(useZeropsSession().activeOrganization?.roleCode, "ADMIN");
+  const session = useZeropsSession();
+  const { app, githubAppId } = originGithubApp(github.apps, ask.url, session.user?.id ?? null);
+  const admin = roleAtLeast(session.activeOrganization?.roleCode, "ADMIN");
   const navigate = useNavigate();
   // A pick on its way: the engine's record outranks it once it says so.
   const [pending, setPending] = useState<OriginAskSaid | null>(null);
