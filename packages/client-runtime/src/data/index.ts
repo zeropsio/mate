@@ -322,7 +322,7 @@ export {
   balanceReadGenerationAtom,
   balanceLiveAtom,
   organizationBillingAtom,
-  projectCreditAtom,
+  projectsCreditAtom,
   pipelineReadAtom,
   pipelineConfigAtom,
   projectsServicesAtom,

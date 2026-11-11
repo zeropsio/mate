@@ -128,27 +128,41 @@ export const organizationBilling: Projection<string, OrganizationBilling> = {
 };
 
 export interface ProjectCredit {
-  /** Hours until Zerops stops the project for insufficient funds, where it says them soon. */
+  /** The project Zerops will stop soonest for insufficient funds, where it says one soon. */
+  readonly projectId: string | null;
   readonly hoursLeft: number | null;
   readonly tone: BillingTone;
 }
 
-const NO_STOP: ProjectCredit = { hoursLeft: null, tone: "quiet" };
+const NO_STOP: ProjectCredit = { projectId: null, hoursLeft: null, tone: "quiet" };
 
-/** Whether Zerops will stop one project soon for insufficient funds, and how soon. */
-export const projectCredit: Projection<
-  { readonly orgId: string; readonly projectId: string },
+/**
+ * Whether Zerops will stop any of some projects soon for insufficient funds — a card's or a
+ * project page's stage, production and Mates — and which, soonest. Only Zerops says a project
+ * stops: unread, refused or unstated, nothing is said.
+ */
+export const projectsCredit: Projection<
+  { readonly orgId: string; readonly projectIds: ReadonlyArray<string> },
   ProjectCredit
 > = {
-  name: "projectCredit",
-  keyOf: ({ orgId, projectId }) => `${orgId}/${projectId}`,
-  derive: (read, { projectId }) => {
-    const status = read.fact("projectStatus", projectId);
-    // Only Zerops says a project stops: unread, refused or unstated, nothing is said.
-    if (status.kind !== "known") return NO_STOP;
-    const hours = status.value.hoursLeft;
-    if (hours === null || hours > STOP_SOON_HOURS) return NO_STOP;
-    return { hoursLeft: hours, tone: hours <= STOP_IMMINENT_HOURS ? "out" : "low" };
+  name: "projectsCredit",
+  keyOf: ({ orgId, projectIds }) => `${orgId}/${projectIds.join(",")}`,
+  derive: (read, { projectIds }) => {
+    let soonest: ProjectCredit = NO_STOP;
+    for (const projectId of projectIds) {
+      const status = read.fact("projectStatus", projectId);
+      if (status.kind !== "known") continue;
+      const hours = status.value.hoursLeft;
+      if (hours === null || hours > STOP_SOON_HOURS) continue;
+      if (soonest.hoursLeft === null || hours < soonest.hoursLeft) {
+        soonest = {
+          projectId,
+          hoursLeft: hours,
+          tone: hours <= STOP_IMMINENT_HOURS ? "out" : "low",
+        };
+      }
+    }
+    return soonest;
   },
   equals: sameValue,
 };

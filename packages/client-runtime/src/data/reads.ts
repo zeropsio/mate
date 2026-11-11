@@ -38,7 +38,7 @@ import { creditForecast } from "./projections/creditForecast.ts";
 import {
   balanceLive,
   organizationBilling,
-  projectCredit,
+  projectsCredit,
   type OrganizationBilling,
   type ProjectCredit,
 } from "./projections/billing.ts";
@@ -293,15 +293,19 @@ export const organizationBillingAtom = Atom.family((orgId: string) =>
   }).pipe(Atom.withLabel(`data:organization-billing:${orgId}`)),
 );
 
-const NO_PROJECT_CREDIT: ProjectCredit = { hoursLeft: null, tone: "quiet" };
+const NO_PROJECT_CREDIT: ProjectCredit = { projectId: null, hoursLeft: null, tone: "quiet" };
 
-/** Whether Zerops will stop one project soon for insufficient funds (`projectCredit`). */
-export const projectCreditAtom = Atom.family((projectId: string) =>
+/**
+ * Whether Zerops will stop any of some projects soon for insufficient funds (`projectsCredit`),
+ * keyed by their ids joined with commas, in any order.
+ */
+export const projectsCreditAtom = Atom.family((projectIds: string) =>
   Atom.make((get): ProjectCredit => {
     const account = get(accountReadsAtom);
-    if (account === null || account.orgId === null) return NO_PROJECT_CREDIT;
-    return get(account.data.project(projectCredit, { orgId: account.orgId, projectId }));
-  }).pipe(Atom.withLabel(`data:project-credit:${projectId}`)),
+    if (account === null || account.orgId === null || projectIds === "") return NO_PROJECT_CREDIT;
+    const ids = projectIds.split(",").sort();
+    return get(account.data.project(projectsCredit, { orgId: account.orgId, projectIds: ids }));
+  }).pipe(Atom.withLabel(`data:projects-credit:${projectIds}`)),
 );
 
 const creditForecastFamily = Atom.family((key: string) =>
