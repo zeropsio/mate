@@ -281,6 +281,7 @@ const BILLING_READING: OrganizationBilling = {
   cost: { kind: "reading" },
   daysLeft: null,
   soonest: null,
+  verification: "unread",
   lastsShort: false,
   tone: "quiet",
 };
