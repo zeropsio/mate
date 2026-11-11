@@ -13,6 +13,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import { withMigrationProgress } from "../spi/serverCommandReadiness.ts";
+import { refuseNewerState } from "./NewerState.ts";
 
 // Import all migrations statically
 import Migration0001 from "./Migrations/001_OrchestrationEvents.ts";
@@ -180,8 +181,8 @@ export interface RunMigrationsOptions {
 /**
  * Run all pending migrations.
  *
- * Creates the migrations tracking table (effect_sql_migrations) if it doesn't exist,
- * then runs any migrations with ID greater than the latest recorded migration.
+ * Refuses state written by a newer version (`refuseNewerState`), creates the migrations
+ * tracking table (effect_sql_migrations) if it doesn't exist, then runs any migrations with ID greater than the latest recorded migration.
  *
  * Returns array of [id, name] tuples for migrations that were run.
  *
@@ -190,6 +191,7 @@ export interface RunMigrationsOptions {
 export const runMigrations = Effect.fn("runMigrations")(function* ({
   toMigrationInclusive,
 }: RunMigrationsOptions = {}) {
+  yield* refuseNewerState("effect_sql_migrations", Math.max(...migrationEntries.map(([id]) => id)));
   const executedMigrations = yield* run({ loader: makeMigrationLoader(toMigrationInclusive) });
   const migrations = executedMigrations.map(([id, name]) => `${id}_${name}`);
   yield* migrations.length === 0

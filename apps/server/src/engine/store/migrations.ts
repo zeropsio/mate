@@ -7,6 +7,7 @@
 import * as Effect from "effect/Effect";
 import * as Migrator from "effect/sql/Migrator";
 
+import { refuseNewerState } from "../../persistence/NewerState.ts";
 import { withMigrationProgress } from "../../spi/serverCommandReadiness.ts";
 
 import Migration0001 from "./Migrations/0001_EngineCore.ts";
@@ -43,8 +44,12 @@ const migrations = {
 
 const run = Migrator.make({});
 
-/** Runs the engine's pending migrations; returns the ones it ran as `[id, name]`. */
+/** Refuses state written by a newer version, then runs the engine's pending migrations; returns the ones it ran as `[id, name]`. */
 export const runEngineMigrations = Effect.fn("runEngineMigrations")(function* () {
+  yield* refuseNewerState(
+    ENGINE_MIGRATIONS_TABLE,
+    Math.max(...Object.keys(migrations).map((key) => Number.parseInt(key, 10))),
+  );
   return yield* run({
     loader: Migrator.fromRecord(
       Object.fromEntries(
