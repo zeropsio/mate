@@ -41,8 +41,8 @@ export type AccessRead =
       readonly members: ReadonlyArray<ZeropsOrgMember>;
     }
   /**
-   * Zerops refused the key for good: `401` (revoked) or `400 userNotFound|projectNotFound` (the
-   * project or its key is gone, ZEROPS-064). The last list is kept as it is.
+   * Zerops refused the key for good: `401` (revoked) or `userNotFound|projectNotFound` at `400` or
+   * `404` (the project or its key is gone, ZEROPS-064). The last list is kept as it is.
    */
   | { readonly kind: "refused"; readonly status: number }
   /** No key, no answer, or one that proves nothing: the last list is kept as it is. */
@@ -87,14 +87,15 @@ const make = (environment: Pick<ZeropsEnvironment, "apiBaseUrl" | "projectId">) 
             return Effect.map(readJson(response), (body): Answer => ({ kind: "body", body }));
           if (response.status === 401)
             return Effect.succeed<Answer>({ kind: "refused", status: 401 });
-          if (response.status !== 400)
-            return Effect.succeed<Answer>({ kind: "failed", reason: `status ${response.status}` });
+          const status = response.status;
+          if (status !== 400 && status !== 404)
+            return Effect.succeed<Answer>({ kind: "failed", reason: `status ${status}` });
           return readJson(response).pipe(
             Effect.map((body): Answer => {
               const code = errorCodeOf(body);
               return code !== undefined && GONE_CODES.has(code)
-                ? { kind: "refused", status: 400 }
-                : { kind: "failed", reason: `status 400 ${code ?? ""}`.trim() };
+                ? { kind: "refused", status }
+                : { kind: "failed", reason: `status ${status} ${code ?? ""}`.trim() };
             }),
           );
         }),

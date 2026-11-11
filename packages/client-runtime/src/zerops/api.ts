@@ -676,10 +676,10 @@ function findString(value: unknown, keys: ReadonlyArray<string>): string | null 
   return null;
 }
 
-/** The platform's answer for an integration token it no longer has (`deleteIntegrationToken`). */
+/** The platform's answer for an integration token it no longer has (`deleteIntegrationToken`), at `400` or `404`. */
 const isTokenGone = (cause: unknown): boolean =>
   cause instanceof ZeropsApiError &&
-  cause.status === 400 &&
+  (cause.status === 400 || cause.status === 404) &&
   cause.code === "clientUserConnectionNotFound";
 
 function errorKindFor(status: number, code: string | null): ZeropsApiErrorKind {
@@ -1688,9 +1688,9 @@ export class ZeropsApiClient {
    * A deletion is immediate at the platform (the value answers `401` within about 0.6 s, measured
    * 2026-09-15).
    *
-   * A token the platform no longer has is deleted already: it answers `400
-   * clientUserConnectionNotFound` for one, as a Mate's key is once the project it alone reached is
-   * deleted (measured live, 2026-10-05). That answer, and only that one, is the delete done.
+   * A token the platform no longer has is deleted already: it answers `clientUserConnectionNotFound`
+   * for one, at `400` (measured live, 2026-10-05) or `404`, as a Mate's key is once the project it
+   * alone reached is deleted. That answer, and only that one, is the delete done.
    */
   async deleteIntegrationToken(
     input: { readonly clientId: string; readonly tokenId: string },
