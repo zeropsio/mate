@@ -9,6 +9,7 @@ import { ProviderUpdateSafety } from "../spi/ProviderUpdateSafety.ts";
 import { TerminalManager } from "../terminal/Manager.ts";
 import { CrewEngine } from "./crew/CrewEngine.ts";
 import { MateAutoUpdatePolicy } from "./MateAutoUpdatePolicy.ts";
+import { MateUpdateBootFence } from "../mateUpdateBoot.ts";
 import { drainMateUpdate, joinUpdateIdleFacts } from "./mateUpdateDrain.ts";
 import { ZeropsAgentLogin } from "./ZeropsAgentLogin.ts";
 
@@ -167,12 +168,21 @@ export const makeMateUpdateDrain = Effect.gen(function* () {
     }).pipe(Effect.provideContext(owners));
 });
 
-/** Opens admission an update drain closed: the engine's, the terminals' and the clients'. */
+/**
+ * Opens admission an update drain closed (the engine's, the terminals' and the clients'), then
+ * lifts the boot fence, so the roots it held act on an open server.
+ */
 export const reopenMateUpdateAdmission = Effect.map(
-  Effect.all([MateEngine, TerminalManager, Effect.serviceOption(RpcUpdateAdmission)]),
-  ([engine, terminals, rpcAdmission]) =>
+  Effect.all([
+    MateEngine,
+    TerminalManager,
+    Effect.serviceOption(RpcUpdateAdmission),
+    MateUpdateBootFence,
+  ]),
+  ([engine, terminals, rpcAdmission, fence]) =>
     (engine.updateDrain?.cancel ?? Effect.void).pipe(
       Effect.andThen(terminals.updateDrain?.cancel ?? Effect.void),
       Effect.andThen(Option.isSome(rpcAdmission) ? rpcAdmission.value.cancel : Effect.void),
+      Effect.andThen(fence.lift),
     ),
 );

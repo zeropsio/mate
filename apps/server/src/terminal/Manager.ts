@@ -35,7 +35,7 @@ import {
   type TerminalSummary,
   type TerminalWriteInput,
 } from "@t3tools/contracts";
-import { mateUpdateBootPending } from "../mateUpdateBoot.ts";
+import { MateUpdateBootFence } from "../mateUpdateBoot.ts";
 import { makeKeyedCoalescingWorker } from "@t3tools/shared/KeyedCoalescingWorker";
 import * as KeyedLock from "@t3tools/shared/KeyedLock";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
@@ -1364,8 +1364,8 @@ interface TerminalManagerOptions {
   logsDir: string;
   /** `ServerConfig.homeDir`: where `~` in a runtime `CODEX_HOME`/`CLAUDE_CONFIG_DIR` points. */
   homeDir: string;
-  /** zcp's Mate update state file; a pending update boot fences new terminals. */
-  mateUpdateStateFile?: string | undefined;
+  /** A boot under an uncommitted update switch: new terminals are fenced until it is lifted. */
+  updateBootFenced?: boolean;
   historyLineLimit?: number;
   historyByteLimit?: number;
   ptyAdapter: PtyAdapter.PtyAdapter["Service"];
@@ -1378,12 +1378,12 @@ interface TerminalManagerOptions {
 }
 
 export const make = Effect.fn("TerminalManager.make")(function* () {
-  const { terminalLogsDir, homeDir, zerops } = yield* ServerConfig.ServerConfig;
+  const { terminalLogsDir, homeDir } = yield* ServerConfig.ServerConfig;
   const ptyAdapter = yield* PtyAdapter.PtyAdapter;
   return yield* makeWithOptions({
     logsDir: terminalLogsDir,
     homeDir,
-    mateUpdateStateFile: zerops?.mateUpdateStateFile,
+    updateBootFenced: (yield* MateUpdateBootFence).pending,
     ptyAdapter,
   });
 });
@@ -3126,7 +3126,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
       return opened.length;
     });
 
-  let updateFenced = mateUpdateBootPending(options.mateUpdateStateFile);
+  let updateFenced = options.updateBootFenced ?? false;
   let admissions = 0;
   const guardUpdate = <A, E>(
     input: { readonly threadId: string; readonly terminalId?: string },

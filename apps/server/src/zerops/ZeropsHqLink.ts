@@ -134,6 +134,7 @@ import { ZEROPS_SUBJECT_PREFIX, zeropsUserIdOf } from "@t3tools/contracts";
 import { MateAutoUpdatePolicy } from "./MateAutoUpdatePolicy.ts";
 import type { UsageLink } from "../usage/UsageLink.ts";
 import { makeUsageCapture } from "../usage/UsageCapture.ts";
+import { MateUpdateBootFence } from "../mateUpdateBoot.ts";
 
 /** The part of a WebSocket the link uses; the global `WebSocket` is one. */
 export interface LinkSocket {
@@ -826,8 +827,11 @@ export const makeZeropsHqLink = (
       }),
     );
 
+    const fence = yield* MateUpdateBootFence;
     yield* Effect.forkScoped(
       Effect.gen(function* () {
+        // A boot under an uncommitted update says nothing to HQ: no hello, overview, usage or report.
+        yield* fence.lifted;
         let attempt = 0;
         // The close HQ was last logged for while the Mate has not linked since, so a refused hello
         // retried forever writes one line, not one per retry.
