@@ -25,6 +25,8 @@ import type { AskDensity } from "../../ask/AskCard";
 import { showAskInConversation } from "../../ask/askReveal";
 import { ComposerAskFace } from "../../chat/ComposerAsk";
 import { GithubConnectPicker } from "../github/GithubConnectPicker";
+import { NOT_NOW } from "../../ask/ask.logic";
+import { Button } from "../../ui/button";
 import { MirrorAskCard } from "./MirrorAskCard";
 import { useMirrorAnswer, useTellMirror } from "./mirrorAnswers";
 import {
@@ -119,12 +121,18 @@ function MirrorAsk({
           <GithubConnectPicker
             apps={github.apps}
             density="compact"
+            footerEnd={
+              <Button onClick={notNow} size="md" variant="ghost">
+                {NOT_NOW}
+              </Button>
+            }
             project={appId}
             repo={ask.repo}
             returnTo={window.location.href}
           />
         )
       }
+      pickerFoots={appId !== null && github.apps !== null}
       onShowInConversation={
         compact
           ? () =>

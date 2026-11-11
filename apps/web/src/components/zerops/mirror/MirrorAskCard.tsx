@@ -24,6 +24,11 @@ export interface MirrorAskCardProps {
   readonly density: AskDensity;
   /** Full, while it waits: the picker that connects the repository. */
   readonly picker?: ReactNode;
+  /**
+   * The picker ends its own footer with the card's *Not now* (`GithubConnectPicker footerEnd`):
+   * the card then draws no second footer under it while it waits.
+   */
+  readonly pickerFoots?: boolean;
   /** Done: the remote's address, opened from the card. */
   readonly remoteUrl: string | null;
   readonly onNotNow: () => void;
@@ -63,17 +68,19 @@ export function MirrorAskCard(props: MirrorAskCardProps) {
         density={density}
         face={props.face}
         footer={
-          <AskFooter
-            action={action}
-            density={density}
-            main={
-              density === "compact" && props.onShowInConversation !== undefined
-                ? { label: "Connect…", onPress: props.onShowInConversation }
-                : null
-            }
-            onNotNow={props.onNotNow}
-            state={state}
-          />
+          props.pickerFoots === true && density === "full" && state.kind === "waiting" ? null : (
+            <AskFooter
+              action={action}
+              density={density}
+              main={
+                density === "compact" && props.onShowInConversation !== undefined
+                  ? { label: "Connect…", onPress: props.onShowInConversation }
+                  : null
+              }
+              onNotNow={props.onNotNow}
+              state={state}
+            />
+          )
         }
         kind="mirror"
         state={state.kind}
