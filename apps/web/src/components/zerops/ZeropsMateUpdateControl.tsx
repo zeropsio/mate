@@ -43,13 +43,9 @@ import { MateUpdateLine, MateUpdateStatusText } from "./MateUpdateLine";
 import { ZeropsMateVerb } from "./ZeropsMateCard";
 import type { ZeropsMenuAction } from "./ZeropsProjectMenu";
 
-/** An update already under way: zcp's own, or the Mate's restart waiting on its work. */
+/** An update already under way: zcp's own. */
 function busy(update: ExecutionEnvironmentUpdate): boolean {
-  return (
-    ["staging", "draining", "switching", "verifying"].includes(update.automatic?.phase ?? "") ||
-    update.restart?.phase === "draining" ||
-    update.restart?.phase === "restarting"
-  );
+  return ["staging", "draining", "switching", "verifying"].includes(update.automatic?.phase ?? "");
 }
 
 /** What a restart installs, for the question: zcp's version when zcp is what is behind. */
@@ -192,9 +188,7 @@ export function ZeropsMateUpdateControl({
       <>
         <MateUpdateLine line={line} verb={verb} />
         {mateUpdate.notice && !automaticBusy ? <span>{mateUpdate.notice}</span> : null}
-        {state.phase === "failed" &&
-        effectiveUpdate?.automatic?.phase !== "postponed" &&
-        effectiveUpdate?.restart?.phase !== "postponed" ? (
+        {state.phase === "failed" && effectiveUpdate?.automatic?.phase !== "postponed" ? (
           <span
             className="text-[var(--zerops-status-failed-text,var(--foreground))]"
             data-zerops-surface="mate-update-error"

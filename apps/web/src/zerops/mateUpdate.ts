@@ -21,21 +21,6 @@ export function mateUpdateLine(
   if (update === undefined) {
     return { text: `Server ${serverVersion}`, tone: "default" };
   }
-  // The Mate's own restart, while one is asked for: what it waits on, or why it did not happen.
-  const restart = update.restart;
-  // zcp's own update under way outranks a restart that already settled as postponed.
-  const updating = ["staging", "draining", "switching", "verifying"].includes(
-    update.automatic?.phase ?? "",
-  );
-  if (restart?.phase !== undefined && !(restart.phase === "postponed" && updating)) {
-    const text =
-      restart.phase === "draining"
-        ? "Update ready; waiting for your work to finish"
-        : restart.phase === "restarting"
-          ? `Restarting to update${update.zcp?.behind === true ? " Zerops Control Plane" : ""} — your conversations are safe`
-          : `Update postponed; ${restart.reason ?? "the restart did not happen"}`;
-    return { text, tone: "default" };
-  }
   // A settled attempt speaks only while its version is the one installed: a later update (a
   // manual one) leaves the updater's record behind, and its version is not what runs now.
   const automatic =

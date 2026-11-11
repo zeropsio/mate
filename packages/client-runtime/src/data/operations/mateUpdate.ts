@@ -9,14 +9,8 @@ declare module "../model.ts" {
     readonly "mate-update": {
       readonly alreadyCurrent: boolean;
       readonly version: string | null;
-      /** The container restart the press started or joined (`update.restart.attempt`). */
-      readonly restartAttempt?: string | undefined;
-      /** What that restart installs, as the server said. */
-      readonly restartTarget?: MateRestartTarget | undefined;
       /** The boot that answered. */
       readonly bootId?: string | undefined;
-      /** When that restart started, by the server's clock. */
-      readonly restartStartedAt?: string | undefined;
     };
   }
   interface OperationIntents {
@@ -30,8 +24,6 @@ declare module "../model.ts" {
        * mate's when that moves too. Its next boot reading them is the proof.
        */
       readonly restart?: MateRestartTarget | undefined;
-      /** When the restart on the line at the press had started (the server's clock), if one had. */
-      readonly seenRestart?: string | undefined;
     };
   }
 }
@@ -39,16 +31,10 @@ export interface MateRestartTarget {
   readonly zcp?: string | undefined;
   readonly mate?: string | undefined;
 }
-/** What the press's answer said the server is doing: absent when the answer was lost. */
+/** What the press's answer said: absent when the answer was lost. */
 export interface MateUpdateAnswer {
-  /** The container restart it started or joined. */
-  readonly attempt?: string | undefined;
-  /** What that restart installs. */
-  readonly target?: MateRestartTarget | undefined;
   /** The boot that answered: a reboot is judged against it. */
   readonly bootId?: string | undefined;
-  /** When that restart started, by the server's clock. */
-  readonly startedAt?: string | undefined;
 }
 export interface UpdateServer {
   readonly serverVersion: string;
@@ -58,16 +44,11 @@ export interface UpdateServer {
 interface Pressed {
   readonly from: string;
   readonly bootId?: string | undefined;
-  /** What the press's own check said a restart would install; the answer outranks it. */
+  /** What the press's own check said a restart would install. */
   readonly restart?: MateRestartTarget | undefined;
-  /** When the restart on the line at the press had started (the server's clock), if one had. */
-  readonly seenRestart?: string | undefined;
 }
 /** `unconfirmed`: the Mate is back but its reading cannot say yet, for a bounded wait to end. */
 export type UpdateVerdict = Settlement | "unconfirmed" | null;
-
-const POSTPONED_REASON = (reason: string | undefined) =>
-  `Update postponed; ${reason ?? "the restart did not happen"}`;
 
 /** zcp writes `v9.226.0`; the press named `9.226.0`. */
 const zcpVersionText = (version: string) => version.replace(/^v(?=\d)/u, "");
@@ -88,7 +69,7 @@ function reached(
   return current ? "yes" : "no";
 }
 
-/** A restart press: its own attempt postponed, or the next boot's reading of what it installs. */
+/** A restart press: the next boot's reading of what it installs. */
 function restartVerdict(
   target: MateRestartTarget,
   pressed: Pressed,
@@ -98,7 +79,7 @@ function restartVerdict(
   const update = server.update ?? undefined;
   const baseline = answer?.bootId ?? pressed.bootId;
   if (baseline === undefined || server.bootId === undefined || server.bootId === baseline)
-    return postponedVerdict(pressed, update, answer);
+    return null;
   const zcp = update?.zcp;
   const parts = [
     {
@@ -127,42 +108,10 @@ function restartVerdict(
 }
 
 /**
- * On the boot that answered: this press's restart postponed settles it. With the answer, its own
- * attempt, or that attempt gone from the line (no restart needed or asked any more, or a later one
- * in its place); with the answer lost, any restart that started strictly after the one seen at the
- * press.
- */
-function postponedVerdict(
-  pressed: Pressed,
-  update: ExecutionEnvironmentUpdate | undefined,
-  answer: MateUpdateAnswer | undefined,
-): UpdateVerdict {
-  const progress = update?.restart;
-  if (answer?.attempt !== undefined) {
-    if (progress?.attempt === answer.attempt)
-      return progress.phase === "postponed"
-        ? { kind: "failed", reason: POSTPONED_REASON(progress.reason) }
-        : null;
-    const gone =
-      progress !== undefined &&
-      ((progress.phase === undefined && !progress.needed) ||
-        (progress.startedAt !== undefined &&
-          answer.startedAt !== undefined &&
-          progress.startedAt > answer.startedAt));
-    return gone
-      ? { kind: "failed", reason: "The restart didn't happen; Update to try again." }
-      : null;
-  }
-  if (answer !== undefined || progress?.phase !== "postponed") return null;
-  const later =
-    progress.startedAt !== undefined &&
-    (pressed.seenRestart === undefined || progress.startedAt > pressed.seenRestart);
-  return later ? { kind: "failed", reason: POSTPONED_REASON(progress.reason) } : null;
-}
-
-/**
- * How a press ended, as far as the server's facts say: judged by what its answer said the server
- * is doing, never by the press's own check; with the answer lost, by the line and the boot.
+ * How a press ended, as far as the server's facts say: a press whose check read that only a
+ * restart gets the Mate current is judged by what the next boot reads, any other by the version
+ * the Mate answers on; the boot that answered (or, with the answer lost, the boot at the press) is
+ * the baseline a reboot is judged against.
  */
 export function updateVerdict(
   pressed: Pressed,
@@ -170,18 +119,8 @@ export function updateVerdict(
   answer?: MateUpdateAnswer,
 ): UpdateVerdict {
   if (server === null) return null;
-  const target =
-    answer === undefined
-      ? pressed.restart
-      : answer.attempt !== undefined || answer.target !== undefined
-        ? (answer.target ?? {})
-        : undefined;
-  if (target !== undefined) return restartVerdict(target, pressed, server, answer);
-  if (answer === undefined) {
-    const postponed = postponedVerdict(pressed, server.update ?? undefined, answer);
-    if (postponed !== null && (server.bootId === undefined || server.bootId === pressed.bootId))
-      return postponed;
-  }
+  if (pressed.restart !== undefined)
+    return restartVerdict(pressed.restart, pressed, server, answer);
   if (server.serverVersion !== pressed.from) return { kind: "succeeded" };
   const baseline = answer?.bootId ?? pressed.bootId;
   if (baseline === undefined || server.bootId === undefined || server.bootId === baseline)
@@ -211,12 +150,7 @@ export function updateAnswer(
   const acceptance = receipt?.acceptance;
   if (acceptance?.kind !== "accepted") return undefined;
   const result = acceptance.result as OperationResults["mate-update"] | undefined;
-  return {
-    ...(result?.restartAttempt === undefined ? {} : { attempt: result.restartAttempt }),
-    ...(result?.restartTarget === undefined ? {} : { target: result.restartTarget }),
-    ...(result?.bootId === undefined ? {} : { bootId: result.bootId }),
-    ...(result?.restartStartedAt === undefined ? {} : { startedAt: result.restartStartedAt }),
-  };
+  return result?.bootId === undefined ? {} : { bootId: result.bootId };
 }
 export const mateUpdate: OperationKind<"mate-update"> = {
   kind: "mate-update",
