@@ -761,7 +761,10 @@ export interface ZeropsDataHttpRequest {
   readonly operationKind: "read" | "project-write";
   readonly signal: AbortSignal;
   readonly beforeWrite?: () => Promise<void>;
-  /** Background data failures are scoped and never sign the account out. */
+  /**
+   * Background data failures stay scoped: a background read's own 401 never signs the account
+   * out, while a refresh the platform refuses still ends the session.
+   */
   readonly background: boolean;
 }
 
@@ -776,14 +779,15 @@ interface RequestOptions {
   /** Rechecked immediately before every project-mutating fetch, including retries. */
   readonly beforeProjectWrite?: () => Promise<void>;
   /**
-   * Whether a 401 that survives a refresh attempt (or a refresh that itself
-   * fails) signs the account out via `onSessionChange(null)`. Defaults to
-   * `true` for every ordinary call — an expired session should sign a person
-   * out of the UI they are looking at. `false` is for a background reader
-   * whose own 401 is not evidence the account's session is gone (a poll that
-   * only proves that ONE endpoint refused THIS request): it still surfaces the
-   * 401 as a thrown `ZeropsApiError`, it just never clears the held session
-   * out from under whatever else is using it.
+   * Whether a 401 that survives a refresh attempt signs the account out via
+   * `onSessionChange(null)`. Defaults to `true` for every ordinary call — an
+   * expired session should sign a person out of the UI they are looking at.
+   * `false` is for a background reader whose own 401 is not evidence the
+   * account's session is gone (a poll that only proves that ONE endpoint
+   * refused THIS request): it still surfaces the 401 as a thrown
+   * `ZeropsApiError`, it just never clears the held session for that 401
+   * alone. A refresh the platform refuses is that evidence: it ends the
+   * session whichever way this is set.
    */
   readonly clearSessionOnUnauthorized?: boolean;
   /**
@@ -940,8 +944,6 @@ export class ZeropsApiClient {
   #session: ZeropsSession | null = null;
   #generation = 0;
   #refreshPromise: Promise<ZeropsSession> | null = null;
-  /** OR'd across every caller sharing the current `#refreshPromise` — see `#refreshSession`'s doc comment. */
-  #refreshClearOnFailure = true;
 
   constructor(options: ZeropsApiClientOptions = {}) {
     this.#baseUrl = (options.baseUrl ?? DEFAULT_ZEROPS_API_BASE).replace(/\/+$/, "");
@@ -995,7 +997,7 @@ export class ZeropsApiClient {
    * person signs in again — while one that never reached the platform leaves it held.
    */
   async renewHeldSession(): Promise<void> {
-    await this.#refreshSession(true);
+    await this.#refreshSession();
   }
 
   /**
@@ -1007,9 +1009,7 @@ export class ZeropsApiClient {
   async accessToken(refused?: string): Promise<ZeropsAccess> {
     const current = await this.#currentSession(null);
     const held =
-      current !== null && current.accessToken === refused
-        ? await this.#refreshSession(true)
-        : current;
+      current !== null && current.accessToken === refused ? await this.#refreshSession() : current;
     if (held === null) throw new ZeropsApiError("Sign in to Zerops again.", "expired-session", 401);
     return held.expiresAt === undefined
       ? { token: held.accessToken }
@@ -1810,7 +1810,7 @@ export class ZeropsApiClient {
       }
       // A renewal that replaced the token this login carried leaves nothing to renew again.
       if (this.#session.accessToken === sentToken)
-        await waitForPromiseOrAbort(this.#refreshSession(false), signal);
+        await waitForPromiseOrAbort(this.#refreshSession(), signal);
       return attempt();
     }
   }
@@ -3182,27 +3182,21 @@ export class ZeropsApiClient {
   }
 
   /**
-   * `clearOnFailure` governs only what happens when the refresh itself fails
-   * (no refresh token, the refresh call rejected, an unusable refreshed
-   * session) — a SUCCESSFUL refresh always adopts the new session regardless.
-   *
-   * Concurrent callers SHARE one in-flight refresh, and its outcome is an OR
-   * across every caller that joined it: if the background poller starts the
-   * refresh with `false` and a user-initiated request piggybacks with `true`
-   * before it settles, a failure still clears the session — the user-facing
-   * caller's stricter preference wins, whichever caller happened to start
-   * the request. Only when EVERY joiner opted out does a failure leave the
-   * (now-dead) session in place for the poller alone to observe as a 401.
+   * Renews the held session: one `/auth/refresh` shared by every caller that
+   * asks while it runs, a background reader's as much as a person's. A
+   * renewed session is adopted. A refresh the platform refuses
+   * (`expired-session`), an unusable session in its answer, or no refresh
+   * token to renew with ends the held session: nothing repairs it until the
+   * person signs in again. Any other failure — the network, a 403 or 5xx
+   * answer — rejects and leaves the session held. An answer that arrives
+   * after another login replaced this one changes nothing.
    */
-  async #refreshSession(clearOnFailure = true): Promise<ZeropsSession> {
-    if (this.#refreshPromise) {
-      this.#refreshClearOnFailure ||= clearOnFailure;
-      return this.#refreshPromise;
-    }
+  async #refreshSession(): Promise<ZeropsSession> {
+    if (this.#refreshPromise) return this.#refreshPromise;
     const generation = this.#generation;
     const current = this.#session;
     if (!current?.refreshToken) {
-      if (clearOnFailure) await this.#setSession(null);
+      await this.#setSession(null);
       throw new ZeropsApiError(
         "Your Zerops session has expired. Sign in again.",
         "expired-session",
@@ -3210,7 +3204,6 @@ export class ZeropsApiClient {
       );
     }
 
-    this.#refreshClearOnFailure = clearOnFailure;
     const refresh = async () => {
       const response = await this.#fetch(`${this.#baseUrl}${PUBLIC_API_PREFIX}/auth/refresh`, {
         method: "POST",
@@ -3223,9 +3216,7 @@ export class ZeropsApiClient {
       if (!response.ok) {
         const error = await apiErrorFromResponse(response);
         this.#assertGeneration(generation);
-        if (error.kind === "expired-session" && this.#refreshClearOnFailure) {
-          await this.#setSession(null);
-        }
+        if (error.kind === "expired-session") await this.#setSession(null);
         throw error;
       }
       // `/auth/refresh` answers with the session fields at the top level, not
@@ -3233,7 +3224,7 @@ export class ZeropsApiClient {
       const session = (await response.json()) as ZeropsSession;
       this.#assertGeneration(generation);
       if (!isUsableZeropsSession(session)) {
-        if (this.#refreshClearOnFailure) await this.#setSession(null);
+        await this.#setSession(null);
         throw new ZeropsApiError(
           "Zerops returned an invalid refreshed session.",
           "expired-session",
@@ -3250,7 +3241,6 @@ export class ZeropsApiClient {
       return renewed;
     })().finally(() => {
       this.#refreshPromise = null;
-      this.#refreshClearOnFailure = true;
     });
 
     return this.#refreshPromise;
@@ -3258,8 +3248,9 @@ export class ZeropsApiClient {
 
   /**
    * The held session once no renewal stands in front of it: a renewal already under way is
-   * waited for, and one that is due runs first. A renewal that fails here leaves the held session
-   * in use and says nothing: the platform's refusal of it, if any, is the request's to answer.
+   * waited for, and one that is due runs first. A renewal the platform refuses ends the session,
+   * and the request with it. Any other failed renewal leaves the held session in use and says
+   * nothing: the platform's refusal of it, if any, is the request's to answer.
    */
   #currentSession(
     signal: AbortSignal | null | undefined,
@@ -3276,7 +3267,7 @@ export class ZeropsApiClient {
   ): Promise<ZeropsSession | null> {
     const generation = this.#generation;
     try {
-      await waitForPromiseOrAbort(this.#refreshSession(false), signal);
+      await waitForPromiseOrAbort(this.#refreshSession(), signal);
     } catch (cause) {
       if (cause instanceof DOMException && cause.name === "AbortError") throw cause;
       if (this.#session === held) this.#renewAheadFailed = held;
@@ -3359,10 +3350,7 @@ export class ZeropsApiClient {
           // A renewal that replaced the token this request carried revoked it: the request
           // repeats with the renewed one, and renewing again would revoke that under others.
           if (session.accessToken === sentToken)
-            await waitForPromiseOrAbort(
-              this.#refreshSession(clearSessionOnUnauthorized),
-              init.signal,
-            );
+            await waitForPromiseOrAbort(this.#refreshSession(), init.signal);
           response = await run();
           this.#assertGeneration(generation);
         }
