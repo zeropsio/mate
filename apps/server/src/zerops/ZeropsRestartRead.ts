@@ -71,12 +71,13 @@ export const make = Effect.fnUntraced(function* (input: {
     if (token === undefined) return yield* Effect.fail(unavailable("This Mate has no Zerops key."));
     // The direct endpoint carries finished processes too, without search-index lag. The key's
     // usual 401 retry is deliberately bypassed: startup makes one attempt and settles the turn.
+    const admission = yield* key.refusal?.admission ?? Effect.undefined;
     const response = yield* zeropsGet({
       url: `${environment.apiBaseUrl}/project/${encodeURIComponent(environment.projectId)}/process?limit=1000`,
       token,
     });
     if (response.status === 401 && key.refusal !== undefined) {
-      yield* key.refusal.check(token, response.status);
+      yield* key.refusal.check(token, response.status, admission);
     }
     if (response.status !== 200)
       return yield* Effect.fail(unavailable("Zerops could not explain this restart."));

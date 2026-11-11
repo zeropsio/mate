@@ -244,13 +244,16 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))(
           const auth = yield* EnvironmentAuth.EnvironmentAuth;
           const list = yield* ZeropsConnections.ZeropsConnections;
           const ticket = "owner-ticket";
-          yield* (yield* ZeropsTicketDoor.ZeropsTicketDoor).heard({
-            type: "ticket",
-            ticket,
-            userId: "owner",
-            sessionId: "hq-owner",
-            expiresIn: 60,
-          });
+          yield* (yield* ZeropsTicketDoor.ZeropsTicketDoor).heard(
+            {
+              type: "ticket",
+              ticket,
+              userId: "owner",
+              sessionId: "hq-owner",
+              expiresIn: 60,
+            },
+            () => true,
+          );
           const opens = () =>
             auth
               .authenticateHttpRequest(makeBearerRequest(ticket))
@@ -285,13 +288,16 @@ const signInBea = Effect.fn("signInBea")(function* (close: Effect.Effect<void> =
   const connections = yield* ZeropsConnections.ZeropsConnections;
   yield* zeropsHolds({ owner: "ADMIN", bea: "ADMIN" });
   const ticket = "bea-ticket";
-  yield* (yield* ZeropsTicketDoor.ZeropsTicketDoor).heard({
-    type: "ticket",
-    ticket,
-    userId: "bea",
-    sessionId: "hq-bea",
-    expiresIn: 60,
-  });
+  yield* (yield* ZeropsTicketDoor.ZeropsTicketDoor).heard(
+    {
+      type: "ticket",
+      ticket,
+      userId: "bea",
+      sessionId: "hq-bea",
+      expiresIn: 60,
+    },
+    () => true,
+  );
   expect(Option.isSome(yield* connections.admit({ ticket }, close))).toBe(true);
   const session = yield* auth.authenticateHttpRequest(makeBearerRequest(ticket));
   return { access: { access_token: ticket }, session };

@@ -236,7 +236,8 @@ export const snapshotOnlyReader = (snapshot: string | undefined): ZeropsMateKeyR
  * Runs one own-key request, and on `401`/`403` invalidates the reader,
  * re-resolves, and retries exactly once with the new key — never more than
  * once, so a key that is simply wrong does not loop. `token: undefined`
- * (nothing to try) short-circuits without calling `request`.
+ * (nothing to try) short-circuits without calling `request`. Each request's
+ * refusal belongs to the admission HQ had named as that request started.
  */
 export const requestWithMateKey = <A extends { readonly status: number }, E, R>(
   reader: ZeropsMateKeyReader,
@@ -246,21 +247,23 @@ export const requestWithMateKey = <A extends { readonly status: number }, E, R>(
     const token1 = yield* reader.read;
     if (token1 === undefined) return { token: undefined, response: undefined };
 
+    const admission1 = yield* reader.refusal?.admission ?? Effect.undefined;
     const response1 = yield* request(token1);
     if (response1.status !== 401 && response1.status !== 403) {
       return { token: token1, response: response1 };
     }
 
     const token2 = yield* reader.refusal
-      ? reader.refusal.check(token1, response1.status)
+      ? reader.refusal.check(token1, response1.status, admission1)
       : Effect.andThen(reader.invalidate, reader.read);
     if (token2 === undefined || token2 === token1) {
       return { token: token1, response: response1 };
     }
 
+    const admission2 = yield* reader.refusal?.admission ?? Effect.undefined;
     const response2 = yield* request(token2);
     if (response2.status === 401 && reader.refusal !== undefined) {
-      yield* reader.refusal.check(token2, response2.status);
+      yield* reader.refusal.check(token2, response2.status, admission2);
     }
     return { token: token2, response: response2 };
   });

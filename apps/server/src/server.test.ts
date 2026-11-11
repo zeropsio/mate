@@ -1887,13 +1887,16 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCryptoLayer.layer))("server rout
         const { connections } = yield* testTicketState;
         const ticket = "ticket-on-the-first-frame";
         yield* Effect.flatten(
-          connections.ticket({
-            type: "ticket",
-            ticket,
-            userId: "owner",
-            sessionId: "hq-owner",
-            expiresIn: 60,
-          }),
+          connections.ticket(
+            {
+              type: "ticket",
+              ticket,
+              userId: "owner",
+              sessionId: "hq-owner",
+              expiresIn: 60,
+            },
+            () => true,
+          ),
         );
         const before = yield* HttpClient.get("/api/auth/session", {
           headers: { authorization: `Bearer ${ticket}` },
@@ -5086,13 +5089,16 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCryptoLayer.layer))("server rout
       const { connections } = yield* testTicketState;
       const session = { token: "http-origin-ticket" };
       yield* Effect.flatten(
-        connections.ticket({
-          type: "ticket",
-          ticket: session.token,
-          userId: "owner",
-          sessionId: "hq-owner",
-          expiresIn: 60,
-        }),
+        connections.ticket(
+          {
+            type: "ticket",
+            ticket: session.token,
+            userId: "owner",
+            sessionId: "hq-owner",
+            expiresIn: 60,
+          },
+          () => true,
+        ),
       );
       assert.isTrue(
         Option.isSome(yield* connections.admit({ ticket: session.token }, Effect.void)),
