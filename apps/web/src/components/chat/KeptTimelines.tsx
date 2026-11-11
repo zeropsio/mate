@@ -282,6 +282,21 @@ const TimelineSlot = memo(function TimelineSlot({
   if (changedNow && !changedAway) setChangedAway(true);
   if (mode === "open" && changedAway) setChangedAway(false);
   const opened = mode === "open" || mode === "remembered" || mode === "settling";
+  // Just left, it is read anew once the frame that shows the other conversation has painted: its
+  // reader derives the whole conversation it showed a frame ago, for nobody to see.
+  const [reads, setReads] = useState(mode === "warm");
+  if (opened && reads) setReads(false);
+  useEffect(() => {
+    if (opened || reads) return;
+    const frame = requestAnimationFrame(() => {
+      timer = window.setTimeout(() => setReads(true), 0);
+    });
+    let timer: number | undefined;
+    return () => {
+      cancelAnimationFrame(frame);
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [opened, reads]);
   // Opening, it is drawn once more with what it read out of sight — the rows already placed —
   // and takes the pane's own reading of the same conversation after that frame has painted:
   // the pane derives every row again from its own copy, 9 ms of the frame the switch draws in.
@@ -338,7 +353,7 @@ const TimelineSlot = memo(function TimelineSlot({
             </CrewTimelineContext>
           </KeptTimelineContext>
         )}
-        {!opened ? (
+        {!opened && (reads || mode === "warm") ? (
           <Reader
             key="reader"
             hold={mode === "hidden" && !readsLive}
