@@ -1638,34 +1638,9 @@ describe("ZeropsApiClient.fetchProjectLogAccess", () => {
   });
 
   /**
-   * A background/log read's own 401 is not evidence the account's session is
-   * gone elsewhere.
-   */
-  it("rejects on a 401 with a failed refresh, but never clears the held session", async () => {
-    const stub = recordingFetch((request) =>
-      request.url.includes("/auth/refresh")
-        ? jsonResponse(401, { error: { code: "invalidRefreshToken" } })
-        : jsonResponse(401, { error: { code: "unauthorized" } }),
-    );
-    const onSessionChange = vi.fn();
-    const client = new ZeropsApiClient({ fetch: stub.fetch, onSessionChange });
-    client.restoreSession(SESSION);
-
-    const error = await client.fetchProjectLogAccess("project-1").catch((cause: unknown) => cause);
-
-    expect(error).toBeInstanceOf(ZeropsApiError);
-    expect((error as ZeropsApiError).kind).toBe("expired-session");
-    expect(onSessionChange).not.toHaveBeenCalled();
-    expect(client.session).toEqual(SESSION);
-  });
-
-  /**
-   * The poller's own 401 must never sign the user out on its own — but if a
-   * user-initiated request happens to piggyback on the SAME in-flight
-   * refresh the poller started, that refresh failing is real evidence the
-   * session is dead, and the piggybacking caller's stricter preference must
-   * win: leaving the UI signed in over a session the platform has already
-   * rejected would be worse than the poller's own 401 ever was.
+   * A user-initiated request that piggybacks on the poller's in-flight refresh
+   * shares its one answer: the platform refusing that refresh ends the session
+   * once, whichever caller started it.
    */
   it("clears the session when a user-initiated call piggybacks on the poller's in-flight refresh and it fails", async () => {
     const stub = recordingFetch((request) =>
@@ -1689,26 +1664,6 @@ describe("ZeropsApiClient.fetchProjectLogAccess", () => {
     expect(onSessionChange).toHaveBeenCalledTimes(1);
     expect(onSessionChange).toHaveBeenCalledWith(null);
     expect(client.session).toBeNull();
-  });
-
-  it("leaves the session intact when every caller sharing the refresh opted out of clearing it", async () => {
-    const stub = recordingFetch((request) =>
-      request.url.includes("/auth/refresh")
-        ? jsonResponse(401, { error: { code: "invalidRefreshToken" } })
-        : jsonResponse(401, { error: { code: "unauthorized" } }),
-    );
-    const onSessionChange = vi.fn();
-    const client = new ZeropsApiClient({ fetch: stub.fetch, onSessionChange });
-    client.restoreSession(SESSION);
-
-    const first = client.fetchProjectLogAccess("project-1").catch((cause: unknown) => cause);
-    const second = client.fetchProjectLogAccess("project-2").catch((cause: unknown) => cause);
-    const [firstResult, secondResult] = await Promise.all([first, second]);
-
-    expect(firstResult).toBeInstanceOf(ZeropsApiError);
-    expect(secondResult).toBeInstanceOf(ZeropsApiError);
-    expect(onSessionChange).not.toHaveBeenCalled();
-    expect(client.session).toEqual(SESSION);
   });
 });
 
