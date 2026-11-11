@@ -50,7 +50,7 @@ const balance = (topUp: number, promoCredit: number): ReadonlyArray<AccountInput
     BALANCE,
     {
       family: "organizationBalance",
-      value: { credit: topUp, promoCredit, autoTopUp: null, status: "ACTIVE" },
+      value: { organizationId: ORG, credit: topUp, promoCredit, autoTopUp: null, status: "ACTIVE" },
     },
     1,
   ),
@@ -186,7 +186,13 @@ describe("whether a new project waits for credit, before Create", () => {
         BALANCE,
         {
           family: "organizationBalance",
-          value: { credit: 0, promoCredit: 0, autoTopUp: null, status: "ACTIVE" },
+          value: {
+            organizationId: ORG,
+            credit: 0,
+            promoCredit: 0,
+            autoTopUp: null,
+            status: "ACTIVE",
+          },
         },
         reopened.streams.get(BALANCE)!.generation,
       ),
@@ -215,7 +221,13 @@ describe("whether a new project waits for credit, before Create", () => {
         BALANCE,
         {
           family: "organizationBalance",
-          value: { credit: 0, promoCredit: 25, autoTopUp: null, status: "ACTIVE" },
+          value: {
+            organizationId: ORG,
+            credit: 0,
+            promoCredit: 25,
+            autoTopUp: null,
+            status: "ACTIVE",
+          },
         },
         reopened.streams.get(BALANCE)!.generation,
       ),
@@ -248,7 +260,7 @@ describe("an organization's credit, as Zerops answers its record", () => {
   });
 });
 
-describe("an organization's balance, as Zerops keeps it live", () => {
+describe("an organization's balance, as billing answers it", () => {
   const decode = organizationBalanceFamily.zerops!.decode;
   const frame = (answer: Record<string, unknown>) => ({
     id: "status-row",
@@ -256,7 +268,7 @@ describe("an organization's balance, as Zerops keeps it live", () => {
     _version: 3,
     ...answer,
   });
-  const noRefill = { autoTopUp: null, status: null };
+  const noRefill = { organizationId: ORG, autoTopUp: null, status: null };
 
   it.each([
     {
@@ -280,9 +292,10 @@ describe("an organization's balance, as Zerops keeps it live", () => {
       read: { credit: 0, promoCredit: 0, ...noRefill },
     },
   ])("reads an organization $name", ({ answer, read }) => {
-    expect(decode(frame(answer))).toEqual({ id: ORG, value: read, version: 3 });
+    expect(decode(frame(answer))).toEqual({ id: "status-row", value: read, version: 3 });
   });
 
+  // witness: packages/client-runtime/src/data/families/organizationBalance.ts | const amount = typeof value === "number" ? value : Number(value); → const amount = typeof value === "number" ? value : Number.NaN;
   it("reads its automatic top-up, whose amounts Zerops sends as decimals", () => {
     const answer = {
       credit: 10,
@@ -291,6 +304,7 @@ describe("an organization's balance, as Zerops keeps it live", () => {
       status: "ACTIVE",
     };
     expect(decode(frame(answer))?.value).toEqual({
+      organizationId: ORG,
       credit: 10,
       promoCredit: 0,
       autoTopUp: { threshold: 50, amount: 100.5, monthlyLimit: 300 },

@@ -10,7 +10,7 @@
  *
  * @module data/projections/creditForecast
  */
-import { balanceScope } from "../families/organizationBalance.ts";
+import { balanceOf, balanceScope } from "../families/organizationBalance.ts";
 import { creditScope } from "../families/organizationCredit.ts";
 import { projectsScope } from "../families/project.ts";
 import type { ScopeKey } from "../model.ts";
@@ -56,7 +56,7 @@ export const creditForecast: Projection<CreditForecastKey, boolean> = {
     if (!balanceCurrent(read, balanceScope(orgId), balanceOpenedAt)) return false;
     const credit = read.fact("organizationCredit", orgId);
     if (credit.kind !== "known" || credit.value.verified) return false;
-    const balance = read.fact("organizationBalance", orgId);
+    const balance = balanceOf(read, orgId);
     if (balance.kind !== "known" || balance.value.credit + balance.value.promoCredit > 0) {
       return false;
     }

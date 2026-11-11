@@ -162,6 +162,7 @@ export {
   STOP_IMMINENT_HOURS,
   STOP_SOON_HOURS,
   billingTone,
+  lastsShort,
   stopWords,
   type BillingTone,
   type CostRead,

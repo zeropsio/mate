@@ -84,7 +84,7 @@ function creditRead(verified: boolean, promoCredit = 0) {
   read(SCOPE, { family: "organizationCredit", value: { verified } });
   read(BALANCE, {
     family: "organizationBalance",
-    value: { credit: 0, promoCredit, autoTopUp: null, status: "ACTIVE" },
+    value: { organizationId: ORG, credit: 0, promoCredit, autoTopUp: null, status: "ACTIVE" },
   });
 }
 

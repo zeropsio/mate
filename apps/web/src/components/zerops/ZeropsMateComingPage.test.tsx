@@ -1861,8 +1861,9 @@ describe("ComingBelow — a project refused for want of credit", () => {
       .map((node) => node.children.join(""));
 
   // Credit may come from another tab, another device or before a reload: Try again stands
-  // beside the way to HQ for as long as the refusal does (the owner, 2026-10-15).
-  it("offers adding credit in HQ, in a new tab, with Try again beside it while the refusal stands", () => {
+  // beside the way to Zerops for as long as the refusal does (the owner, 2026-10-15).
+  // witness: apps/web/src/components/zerops/ZeropsMateComingPage.tsx | Add credit in Zerops → Add credit in HQ
+  it("offers adding credit in Zerops, in a new tab, with Try again beside it while the refusal stands", () => {
     let tried = 0;
     const rendered = render(() => {
       tried += 1;

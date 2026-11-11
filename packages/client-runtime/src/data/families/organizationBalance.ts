@@ -12,7 +12,8 @@
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import type { ScopeKey } from "../model.ts";
+import type { PublicRead, ScopeKey } from "../model.ts";
+import type { ProjectionReads } from "../store.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
 
 /** Below `threshold`, Zerops charges `amount`, at most `monthlyLimit` a calendar month (UTC). */
@@ -23,6 +24,8 @@ export interface AutoTopUp {
 }
 
 export interface OrganizationBalanceValue {
+  /** The organization the row belongs to: rows are Zerops's own, under their own ids. */
+  readonly organizationId: string;
   /** Credit the organization topped up. */
   readonly credit: number;
   /** Credit Zerops granted it: Zerops spends it like topped-up credit. */
@@ -39,9 +42,13 @@ declare module "../model.ts" {
   }
 }
 
+/** The index from an organization to its balance row. */
+const BALANCE_OF = "balance-of-organization";
+
 const Amount = Schema.optionalKey(Schema.NullOr(Schema.Finite));
 const Decimal = Schema.Union([Schema.String, Schema.Finite]);
 const Frame = Schema.Struct({
+  id: Schema.String,
   clientId: Schema.String,
   credit: Amount,
   promoCredit: Amount,
@@ -83,6 +90,12 @@ export const organizationBalanceFamily: FamilySpec<"organizationBalance"> = {
   family: "organizationBalance",
   authority: "zerops",
   scope: { source: "zerops", suffix: "balance", leaving: "removed", demand: "navigation" },
+  indexes: [
+    {
+      name: BALANCE_OF,
+      keyOf: (value, listed) => (listed === "removed" ? null : value.organizationId),
+    },
+  ],
   zerops: {
     entity: "client-status",
     membership: ({ orgId }) => [{ name: "clientId", operator: "eq", value: orgId }],
@@ -90,13 +103,14 @@ export const organizationBalanceFamily: FamilySpec<"organizationBalance"> = {
     decode: (raw) =>
       Option.match(decodeFrame(raw), {
         onNone: () => null,
-        // Keyed by the organization: one row each, which every reader names by its id.
-        onSome: ({ clientId, credit, promoCredit, autoTopUp, status, _version }) =>
+        // Held under the row's own id, as listed; `balanceOf` finds an organization's.
+        onSome: ({ id, clientId, credit, promoCredit, autoTopUp, status, _version }) =>
           credit == null && promoCredit == null
             ? null
             : {
-                id: clientId,
+                id,
                 value: {
+                  organizationId: clientId,
                   credit: credit ?? 0,
                   promoCredit: promoCredit ?? 0,
                   autoTopUp: readAutoTopUp(autoTopUp),
@@ -105,9 +119,20 @@ export const organizationBalanceFamily: FamilySpec<"organizationBalance"> = {
                 version: _version ?? null,
               },
       }),
-    // A member Zerops shows no finances to keeps everything else.
-    refusedAlone: true,
+    // A member Zerops shows no finances to keeps everything else, however Zerops refuses them.
+    refusedAlone: "any-refusal",
   },
 };
 
 export const balanceScope = (orgId: string): ScopeKey => scopeOf(organizationBalanceFamily, orgId);
+
+const UNKNOWN: PublicRead<OrganizationBalanceValue> = { kind: "unknown" };
+
+/** The organization's balance, by its row: unknown until Zerops listed it. */
+export function balanceOf(
+  read: ProjectionReads,
+  orgId: string,
+): PublicRead<OrganizationBalanceValue> {
+  for (const id of read.index(BALANCE_OF, orgId)) return read.fact("organizationBalance", id);
+  return UNKNOWN;
+}

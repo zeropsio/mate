@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { readOrganizationCost } from "../families/organizationCost.ts";
-import { billingTone, stopWords } from "./billing.ts";
+import { billingTone, lastsShort, stopWords } from "./billing.ts";
 
-const calm = { total: 500, daysLeft: 60, refills: false, soonestHours: null };
+const calm = { total: 500, soonestHours: null };
 
 describe("an organization's money, as the menu and its projects say it", () => {
   // witness: packages/client-runtime/src/data/projections/billing.ts | if (input.total !== null && input.total < 0) return "out"; → if (input.total !== null && input.total < -1) return "out";
@@ -19,10 +19,11 @@ describe("an organization's money, as the menu and its projects say it", () => {
     expect(billingTone({ ...calm, soonestHours: 200 })).toBe("quiet");
   });
 
-  // witness: packages/client-runtime/src/data/projections/billing.ts | if (!input.refills && input.daysLeft !== null && input.daysLeft < LOW_DAYS) return "low"; → if (input.daysLeft !== null && input.daysLeft < LOW_DAYS) return "low";
-  it("a balance lasting under three days runs low, unless an automatic top-up refills it", () => {
-    expect(billingTone({ ...calm, daysLeft: 2 })).toBe("low");
-    expect(billingTone({ ...calm, daysLeft: 2, refills: true })).toBe("quiet");
+  // witness: packages/client-runtime/src/data/projections/billing.ts | return !input.refills && input.daysLeft !== null && input.daysLeft < LOW_DAYS; → return input.daysLeft !== null && input.daysLeft < LOW_DAYS;
+  it("a balance lasting under three days runs short, unless an automatic top-up refills it", () => {
+    expect(lastsShort({ daysLeft: 2, refills: false })).toBe(true);
+    expect(lastsShort({ daysLeft: 2, refills: true })).toBe(false);
+    expect(lastsShort({ daysLeft: 30, refills: false })).toBe(false);
   });
 
   // witness: packages/client-runtime/src/data/projections/billing.ts | if (hoursLeft <= 2) return "in under 2 hours"; → if (hoursLeft <= 1) return "in under 2 hours";

@@ -7,9 +7,13 @@
  *
  * @module data/projections/billing
  */
-import { balanceScope, type OrganizationBalanceValue } from "../families/organizationBalance.ts";
+import {
+  balanceOf,
+  balanceScope,
+  type OrganizationBalanceValue,
+} from "../families/organizationBalance.ts";
 import { organizationCostScope, type OrganizationCostValue } from "../families/organizationCost.ts";
-import { projectStatusScope } from "../families/projectStatus.ts";
+import { projectStatusScope, statusOfProject } from "../families/projectStatus.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import { sameValue } from "./equal.ts";
 
@@ -39,6 +43,12 @@ export interface OrganizationBilling {
   readonly daysLeft: number | null;
   /** The project Zerops will stop soonest for insufficient funds, where it says one. */
   readonly soonest: { readonly projectId: string; readonly hoursLeft: number } | null;
+  /** The balance lasts under three days and nothing refills it: the billing page says so. */
+  readonly lastsShort: boolean;
+  /**
+   * The menu's and a project's tone: from the balance and Zerops's own hours alone, never from
+   * the cost read a billing page asked for — the same balance reads the same everywhere.
+   */
   readonly tone: BillingTone;
 }
 
@@ -63,11 +73,11 @@ function costRead(read: ProjectionReads, orgId: string): CostRead {
 
 function soonestStop(read: ProjectionReads, orgId: string) {
   let soonest: { readonly projectId: string; readonly hoursLeft: number } | null = null;
-  for (const projectId of read.members(projectStatusScope(orgId)).ids) {
-    const status = read.fact("projectStatus", projectId);
+  for (const rowId of read.members(projectStatusScope(orgId)).ids) {
+    const status = read.fact("projectStatus", rowId);
     if (status.kind !== "known" || status.value.hoursLeft === null) continue;
     if (soonest === null || status.value.hoursLeft < soonest.hoursLeft) {
-      soonest = { projectId, hoursLeft: status.value.hoursLeft };
+      soonest = { projectId: status.value.projectId, hoursLeft: status.value.hoursLeft };
     }
   }
   return soonest;
@@ -75,15 +85,20 @@ function soonestStop(read: ProjectionReads, orgId: string) {
 
 export function billingTone(input: {
   readonly total: number | null;
-  readonly daysLeft: number | null;
-  readonly refills: boolean;
   readonly soonestHours: number | null;
 }): BillingTone {
   if (input.total !== null && input.total < 0) return "out";
   if (input.soonestHours !== null && input.soonestHours <= STOP_IMMINENT_HOURS) return "out";
   if (input.soonestHours !== null && input.soonestHours <= STOP_SOON_HOURS) return "low";
-  if (!input.refills && input.daysLeft !== null && input.daysLeft < LOW_DAYS) return "low";
   return "quiet";
+}
+
+/** A balance lasting under three days with nothing to refill it. */
+export function lastsShort(input: {
+  readonly daysLeft: number | null;
+  readonly refills: boolean;
+}): boolean {
+  return !input.refills && input.daysLeft !== null && input.daysLeft < LOW_DAYS;
 }
 
 export const organizationBilling: Projection<string, OrganizationBilling> = {
@@ -91,7 +106,7 @@ export const organizationBilling: Projection<string, OrganizationBilling> = {
   keyOf: (orgId) => orgId,
   derive: (read, orgId) => {
     const scope = balanceScope(orgId);
-    const fact = read.fact("organizationBalance", orgId);
+    const fact = balanceOf(read, orgId);
     const cost = costRead(read, orgId);
     const soonest = soonestStop(read, orgId);
     if (fact.kind !== "known") {
@@ -102,7 +117,8 @@ export const organizationBilling: Projection<string, OrganizationBilling> = {
         cost,
         daysLeft: null,
         soonest,
-        tone: "quiet",
+        lastsShort: false,
+        tone: billingTone({ total: null, soonestHours: soonest?.hoursLeft ?? null }),
       };
     }
     const balance = fact.value;
@@ -116,12 +132,8 @@ export const organizationBilling: Projection<string, OrganizationBilling> = {
       cost,
       daysLeft,
       soonest,
-      tone: billingTone({
-        total,
-        daysLeft,
-        refills: balance.autoTopUp !== null,
-        soonestHours: soonest?.hoursLeft ?? null,
-      }),
+      lastsShort: lastsShort({ daysLeft, refills: balance.autoTopUp !== null }),
+      tone: billingTone({ total, soonestHours: soonest?.hoursLeft ?? null }),
     };
   },
   equals: sameValue,
@@ -150,7 +162,7 @@ export const projectsCredit: Projection<
   derive: (read, { projectIds }) => {
     let soonest: ProjectCredit = NO_STOP;
     for (const projectId of projectIds) {
-      const status = read.fact("projectStatus", projectId);
+      const status = statusOfProject(read, projectId);
       if (status.kind !== "known") continue;
       const hours = status.value.hoursLeft;
       if (hours === null || hours > STOP_SOON_HOURS) continue;

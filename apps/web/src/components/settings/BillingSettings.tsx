@@ -32,12 +32,9 @@ const PROJECTS_SHOWN = 8;
 
 export function BillingSettings(): JSX.Element {
   const organization = useZeropsSessionOptional()?.activeOrganization ?? null;
-  const accountOrgId = useAccountDataOptional()?.orgId ?? null;
-  // The data layer's organization: the session names a newly chosen one a render earlier.
-  const orgId = organization !== null && organization.id === accountOrgId ? accountOrgId : null;
   return (
     <SettingsPageContainer>
-      {orgId === null || organization === null ? (
+      {organization === null ? (
         <SettingsSection title="Billing">
           <SettingsRow
             description="Billing belongs to an organization: choose one in the menu."
@@ -45,7 +42,7 @@ export function BillingSettings(): JSX.Element {
           />
         </SettingsSection>
       ) : (
-        <OrganizationBillingPage organizationName={organization.name} orgId={orgId} />
+        <OrganizationBillingPage organizationName={organization.name} orgId={organization.id} />
       )}
     </SettingsPageContainer>
   );
@@ -58,7 +55,10 @@ function OrganizationBillingPage({
   readonly orgId: string;
   readonly organizationName: string;
 }): JSX.Element {
-  useDetailDemand("organizationCost", undefined, orgId);
+  // The data layer reads the organization a render after the session names it: until then the
+  // page reads, and nothing is asked of the organization left behind.
+  const observed = useAccountDataOptional()?.orgId === orgId;
+  useDetailDemand("organizationCost", undefined, observed ? orgId : null);
   const billing = useAtomValue(organizationBillingAtom(orgId));
   const { addCredit } = useCreditOffers();
   const zerops = hqCreditUrl(orgId);
@@ -140,6 +140,11 @@ function BalanceRows({ billing }: { readonly billing: OrganizationBilling }): JS
             billing.total <= 0
               ? "Nothing is left: stopped projects can't start until a top-up."
               : `About ${daysWords(billing.daysLeft)} at the last 30 days' rate, with no automatic top-up.`
+          }
+          status={
+            billing.lastsShort ? (
+              <span className="text-status-attention-text">Running low</span>
+            ) : undefined
           }
           title="Lasts"
         />
