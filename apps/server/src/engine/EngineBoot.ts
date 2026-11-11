@@ -15,7 +15,8 @@
  *    and outbox rows and arms wakes: the effects and wakes it leaves run once the engine opens.
  *
  * Each page of events a load folds is one unit of the boot receipt's progress (`EngineStore.load`),
- * so the reads keep it moving however many records there are. A record that cannot be read or told
+ * and so is each outcome told again and each conversation recovered (`reconcileAtBoot`): the boot
+ * keeps it moving however many records there are. A record that cannot be read or told
  * is, in a strict boot (one an update's commit waits on), the boot's failure: the update is then
  * rolled back onto the state it copied. Otherwise it is logged, and a conversation that cannot be
  * told is retried on its own with backoff once the engine opens; its cut work is closed first, so

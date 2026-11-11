@@ -4,11 +4,7 @@ import {
   PROVIDER_SEND_TURN_MAX_FILE_BYTES,
   type ExecutionEnvironmentDescriptor,
 } from "@t3tools/contracts";
-import {
-  HostProcessArchitecture,
-  HostProcessEnvironment,
-  HostProcessPlatform,
-} from "@t3tools/shared/hostProcess";
+import { HostProcessArchitecture, HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import * as Context from "effect/Context";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
@@ -17,12 +13,12 @@ import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
-import packageJson from "../../package.json" with { type: "json" };
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import { readAgentActivityPublishingActive } from "../cloud/config.ts";
 import * as ServerConfig from "../config.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import { resolveServerEnvironmentLabel } from "./ServerEnvironmentLabel.ts";
+import { readServerVersion } from "./serverVersion.ts";
 import { type ZeropsPolicy, zeropsPolicy } from "../zerops/ZeropsPolicy.ts";
 import { isZeropsEnvironment } from "../zerops/ZeropsEnvironment.ts";
 import { ZeropsMateUpdate } from "../zerops/ZeropsMateUpdate.ts";
@@ -195,8 +191,7 @@ export const make = Effect.gen(function* () {
       os: platformOs(hostPlatform),
       arch: platformArch(hostArchitecture),
     },
-    serverVersion:
-      (yield* HostProcessEnvironment).T3CODE_SERVER_VERSION?.trim() || packageJson.version,
+    serverVersion: yield* readServerVersion,
     bootId,
     ...(serverConfig.basePath === "" ? {} : { basePath: serverConfig.basePath }),
     ...(serverConfig.zerops === undefined

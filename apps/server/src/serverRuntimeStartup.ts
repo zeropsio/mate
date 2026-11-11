@@ -205,8 +205,8 @@ const runStartupPhase = <A, E, R>(phase: string, effect: Effect.Effect<A, E, R>)
  * reconciles the restart before startup goes on, so a boot that cannot read this Mate's state fails
  * before command readiness; under an update's boot fence that boot is strict, and zcp rolls the
  * update back. The engine's opening acts outward and cannot fail: under the fence its admission
- * closes first and the opening is held, in its own fiber, until zcp commits or cancels (the fence
- * then reopens admission only after it).
+ * closes first and the opening is held, in its own fiber, until zcp commits or cancels or its
+ * record settles on this version (the fence then reopens admission only after it).
  */
 export const startConversationRoots = (input: {
   readonly engine: Pick<MateEngineService, "boot" | "updateDrain">;

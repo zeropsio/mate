@@ -29,14 +29,22 @@ import * as Queue from "effect/Queue";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import { MateAutoUpdatePolicy } from "./MateAutoUpdatePolicy.ts";
-import { mayAutoRestart, mayAutoUpdate, restartReading } from "./mateAutoUpdate.logic.ts";
+import {
+  mayAutoRestart,
+  mayAutoUpdate,
+  restartReading,
+  settledUpdate,
+} from "./mateAutoUpdate.logic.ts";
 import { MATE_UPDATE_DRAIN_MINUTES } from "@t3tools/shared/mateAutoUpdatePolicy";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 
 import type { ExecutionEnvironmentUpdate } from "@t3tools/contracts";
 import { ServerConfig } from "../config.ts";
+import { readServerVersion } from "../environment/serverVersion.ts";
+import { MateUpdateBootFence } from "../mateUpdateBoot.ts";
 import { forkParked, forkParkedLocal } from "../serverActivation.ts";
+import { ServerCommandReadiness } from "../spi/serverCommandReadiness.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import {
   SELF_RESTART_TOO_OLD,
@@ -174,15 +182,26 @@ export interface ZeropsMateUpdateOptions {
     listener: (event: string, name: string | null) => void,
     onError: () => void,
   ) => { readonly close: () => void };
-  readonly recoverAdmission?: Effect.Effect<void> | undefined;
+  /**
+   * What an update closed reopens once zcp's record settles on `serverVersion`, the version this
+   * process runs; a record settled on another refuses an update's boot fence.
+   */
+  readonly recoverAdmission?:
+    | { readonly serverVersion: string; readonly reopen: Effect.Effect<void> }
+    | undefined;
   /** Absent where this server cannot drain itself: a Mate needing a restart is never restarted. */
   readonly restart?: MateRestartPorts | undefined;
 }
+
+/** How often a fenced boot reads zcp's record while nothing settles it. */
+const FENCED_REREAD_INTERVAL = Duration.seconds(15);
 
 export const make = (options: ZeropsMateUpdateOptions) =>
   Effect.gen(function* () {
     const state = yield* SubscriptionRef.make<ExecutionEnvironmentUpdate | undefined>(undefined);
     const scope = yield* Effect.scope;
+    const fence = yield* MateUpdateBootFence;
+    const readiness = yield* Effect.serviceOption(ServerCommandReadiness);
 
     // The line is zcp's last reading, with this server's own restart progress laid over it.
     let reading: MateStatusResult | undefined;
@@ -436,21 +455,33 @@ export const make = (options: ZeropsMateUpdateOptions) =>
           ),
         );
       });
+    // zcp's settled record reopens what its update closed, on this server's own version only, and
+    // refuses a boot fence on any other; never under a restart's drain.
+    const settle = (status: MateStatusResult): Effect.Effect<void> => {
+      const recover = options.recoverAdmission;
+      if (recover === undefined || restartUnderWay) return Effect.void;
+      switch (settledUpdate(status.updater, recover.serverVersion)) {
+        case "own":
+          return recover.reopen;
+        case "other":
+          return fence.refuse(
+            `zcp settled the update on ${status.updater?.runningVersion}; this server runs ${recover.serverVersion}`,
+          );
+        default:
+          return Effect.void;
+      }
+    };
     const readStatus = (input?: { refresh?: boolean; local?: boolean }) =>
-      options.cli.mateStatus(input).pipe(
-        Effect.flatMap((status) =>
-          setReading(status).pipe(
-            Effect.andThen(
-              // zcp's settled record reopens what its update closed; never under a restart's drain.
-              !restartUnderWay &&
-                ["updated", "postponed", "failed"].includes(status.updater?.phase ?? "")
-                ? (options.recoverAdmission ?? Effect.void)
-                : Effect.void,
+      options.cli
+        .mateStatus(input)
+        .pipe(
+          Effect.flatMap((status) =>
+            setReading(status).pipe(
+              Effect.andThen(settle(status)),
+              Effect.andThen(input?.local ? Effect.void : automatic(status)),
             ),
-            Effect.andThen(input?.local ? Effect.void : automatic(status)),
           ),
-        ),
-      );
+        );
     const readLocal: Effect.Effect<void> = options.isZeropsEnvironment
       ? Effect.suspend(() => readStatus({ local: true })).pipe(
           Effect.catchTags({
@@ -529,7 +560,8 @@ export const make = (options: ZeropsMateUpdateOptions) =>
       }
       // Queue writes during the initial read; consume them only after it has published.
       yield* readLocal;
-      // Local reads only, so not held by an update's boot fence: a settled record lifts it.
+      // Local reads only, so not held by an update's boot fence: a record settled on this
+      // server's version lifts it.
       yield* forkParkedLocal(
         Effect.gen(function* () {
           const first = yield* Queue.take(notices);
@@ -544,6 +576,21 @@ export const make = (options: ZeropsMateUpdateOptions) =>
       );
     } else {
       yield* readLocal;
+    }
+    // A fenced boot reads zcp's record again once its readiness route answers, then at a fixed
+    // interval until the fence lifts or is refused: zcp's status settles a switch its dead worker
+    // left only by proving the running boot ready, and nothing else may write the record then.
+    if (fence.pending && options.isZeropsEnvironment && options.recoverAdmission !== undefined) {
+      yield* forkParkedLocal(
+        (Option.isSome(readiness) ? readiness.value.await : Effect.void).pipe(
+          Effect.andThen(
+            Effect.raceFirst(
+              readLocal.pipe(Effect.andThen(Effect.sleep(FENCED_REREAD_INTERVAL)), Effect.forever),
+              fence.lifted,
+            ),
+          ),
+        ),
+      );
     }
     if (options.policy !== undefined && options.isZeropsEnvironment) {
       yield* forkParked(
@@ -613,7 +660,7 @@ export const layer = Layer.effect(
       policy,
       stateFile: config.zerops?.mateUpdateStateFile,
       manifestFile: zcpManifestCacheFile(config.homeDir),
-      recoverAdmission: reopen,
+      recoverAdmission: { serverVersion: yield* readServerVersion, reopen },
       restart: {
         drain: yield* makeMateUpdateDrain,
         reopen,

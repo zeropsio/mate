@@ -55,3 +55,18 @@ export function mayAutoRestart(evidence: {
     evidence.restartedFor !== evidence.reading
   );
 }
+
+/**
+ * What zcp's settled update record says to this server: settled on the version this process runs,
+ * what the update closed reopens (`own`); settled on another, this process must admit nothing, as
+ * zcp restores that version's state at its next start (`other`). Any other record settles nothing.
+ */
+export function settledUpdate(
+  updater: { readonly phase: string; readonly runningVersion: string } | undefined,
+  serverVersion: string,
+): "own" | "other" | undefined {
+  if (updater === undefined || !["updated", "postponed", "failed"].includes(updater.phase)) {
+    return undefined;
+  }
+  return updater.runningVersion === serverVersion ? "own" : "other";
+}

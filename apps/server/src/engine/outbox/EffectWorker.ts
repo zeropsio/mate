@@ -32,6 +32,7 @@ import type { StepFailure } from "../ConversationActor.ts";
 import { Conversations } from "../Conversations.ts";
 import { effectSettledCommandId, recoveredCommandId } from "../domain/ids.ts";
 import { EngineSignals } from "../EngineSignals.ts";
+import { advanceBoot } from "../../spi/serverCommandReadiness.ts";
 import type { EngineStoreError } from "../store/EngineStore.ts";
 import {
   CONVERSATION_RETRY,
@@ -257,7 +258,8 @@ export const makeEffectWorker = Effect.fn("makeEffectWorker")(function* (
   /**
    * Boot: requeue replay-safe rows, tell each conversation the restart touched what it cut and
    * what never started (with the platform's words for the restart, when it has some), and close
-   * those rows.
+   * those rows. Each outcome told again and each conversation recovered is one unit of the boot's
+   * progress (`advanceBoot`): how many there are depends on this Mate's state.
    */
   const reconcileAtBoot = (
     restartFor: (conversation: ConversationId) => Effect.Effect<MateRestart | undefined> = () =>
@@ -273,6 +275,7 @@ export const makeEffectWorker = Effect.fn("makeEffectWorker")(function* (
       // Outcomes decided before the restart are recorded before anything is cut.
       for (let told = 0; told < 10_000; told++) {
         if (!(yield* sweepOnce(Number.POSITIVE_INFINITY))) break;
+        yield* advanceBoot;
       }
       const owners = yield* outbox.recoveryOwners(boot);
       const deferred: Array<Effect.Effect<void, StepFailure | EngineStoreError>> = [];
@@ -307,6 +310,7 @@ export const makeEffectWorker = Effect.fn("makeEffectWorker")(function* (
           });
           deferred.push(recover);
         }
+        yield* advanceBoot;
       }
       return { requeued, recovered: owners.length - deferred.length, deferred };
     });
