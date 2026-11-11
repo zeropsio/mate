@@ -34,7 +34,7 @@ import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { mateArrival, mateComingDeadlines, type MateComing } from "@t3tools/client-runtime/data";
 import { useWakeAt } from "./useNowMs";
 import { useCreations } from "./creations";
-import { madeOf } from "./newProjectBirth";
+import { madeOf, type NewProjectBirth } from "./newProjectBirth";
 import { useProjectCreations } from "./useProjectCreations";
 import { useZeropsFirstBuilds } from "./useZeropsFirstBuilds";
 import { usePressesElsewhere } from "./usePressesElsewhere";
@@ -208,7 +208,7 @@ export function useMateComingOf(
   const firstBuilds = useZeropsFirstBuilds(candidates);
   const processFacts = useProjectsActivityRead(candidates.map((candidate) => candidate.project.id));
   const pressOf = usePressesElsewhere(candidates);
-  const wokeAt = useComingClock(candidates);
+  const wokeAt = useComingClock(candidates, creations);
   return useCallback(
     (candidate: ZeropsCandidate) => {
       const birth = births.find((entry) => entry.projectId === candidate.project.id);
@@ -249,12 +249,27 @@ export function useMateComingOf(
   );
 }
 
+const NO_CREATIONS: ReadonlyArray<NewProjectBirth> = [];
+
 /**
  * The moment a listed Mate's coming-up line may last have changed by time alone
- * (`mateComingDeadlines`): its arrival's window closing, its first build's grace running out.
+ * (`mateComingDeadlines`): its arrival's window closing, its first build's grace running out,
+ * and the catch-up of one this tab made ending. The line's getter is a new function at each, and
+ * the menu's list reads it anew only then: a deadline left out here is a line that stays.
  */
-export function useComingClock(candidates: ReadonlyArray<ZeropsCandidate>): number {
-  return useWakeAt(useMemo(() => candidates.flatMap(mateComingDeadlines), [candidates]));
+export function useComingClock(
+  candidates: ReadonlyArray<ZeropsCandidate>,
+  creations: ReadonlyArray<NewProjectBirth> = NO_CREATIONS,
+): number {
+  return useWakeAt(
+    useMemo(
+      () =>
+        candidates.flatMap((candidate) =>
+          mateComingDeadlines(candidate, madeOf(creations, candidate.project.id)?.startedAt),
+        ),
+      [candidates, creations],
+    ),
+  );
 }
 
 /** The socket-loss timestamp is read through the target's keyed account state. */
