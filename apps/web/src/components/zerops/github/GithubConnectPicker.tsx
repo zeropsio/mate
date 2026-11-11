@@ -1,10 +1,13 @@
 /**
  * Connects one code repository to GitHub: the GitHub accounts the organization's apps are
- * installed on (yours first, others labelled with who added them), an account's repositories with
- * the one named like the code suggested and the ones another code repository uses visible but not
- * pickable, the explainer before leaving for GitHub to add an account, a token tab for GitLab or
- * another host, and the connect's own steps as HQ's record tells them. The connect dialog and the
- * Mate's ask card both hold it.
+ * installed on (yours first, a teammate's labelled with who added it), an account's repositories
+ * with the one named like the code suggested and the ones another code repository uses visible but
+ * not pickable, the explainer before leaving for GitHub to add an account, a token tab for GitLab
+ * or another host, and the connect's own steps as HQ's record tells them. The trip to GitHub never
+ * starts with another person's own app (`openingApp`): where the organization has no app of its
+ * own, the step says so and leads to making one. The connect dialog and the Mate's ask card both
+ * hold it: a dialog's footer ends in its main press, a card's starts with it, as every ask's does,
+ * and ends in what the card adds (`footerEnd`: its *Not now*).
  */
 import { useAtomValue } from "@effect/atom-react";
 import { shownCanonicalHqListNavigationAtom } from "@t3tools/client-runtime/data";
@@ -44,8 +47,10 @@ import {
   heldRepository,
   installWay,
   newRepositoryUrl,
+  noOwnAppWords,
   openingAccount,
   openingApp,
+  ownApps,
   type PickerAccount,
   pickerAccounts,
   pickerRepositories,
@@ -86,6 +91,8 @@ export interface GithubConnectPickerProps {
   readonly onConnected?: () => void;
   /** `full`: a dialog's panel and footer; `compact`: inline, in an ask card. */
   readonly density?: "full" | "compact";
+  /** In an ask card: what ends its footer's one row, after the picker's own presses (*Not now*). */
+  readonly footerEnd?: React.ReactNode;
 }
 
 export function GithubConnectPicker({
@@ -95,6 +102,7 @@ export function GithubConnectPicker({
   returnTo,
   onConnected,
   density = "full",
+  footerEnd,
 }: GithubConnectPickerProps) {
   const orgId = useAccountOrgId();
   const session = useZeropsSessionOptional();
@@ -213,6 +221,7 @@ export function GithubConnectPicker({
       apps={apps}
       authority={mirrorAuthorityLine(writes)}
       density={density}
+      footerEnd={footerEnd}
       entry={entry}
       fresh={freshNames(apps, before)}
       installing={mirror.installing}
@@ -252,6 +261,23 @@ export interface GithubConnectActions {
 
 type Step = "pick" | "explain" | "token";
 
+/**
+ * A step, drawn: its body, a dialog's footer (`foot`: its main press last) and an ask card's
+ * (`card`: its main press first, as every ask's footer has it).
+ */
+interface StepParts {
+  readonly body: React.ReactNode;
+  readonly foot: React.ReactNode;
+  readonly card: React.ReactNode;
+}
+
+/** A step's own title: a dialog's stands out; in an ask card it stays under the card's title. */
+const stepTitle = (density: "full" | "compact") =>
+  density === "compact" ? "text-sm font-medium" : "text-base font-medium";
+
+/** A footer press's size: a dialog's are small, an ask card's the size of every ask's. */
+const pressSize = (density: "full" | "compact") => (density === "compact" ? "md" : "sm");
+
 /** A connect this picker sent: where to, and how. */
 interface Sent {
   /** `owner/name` through an app; the address with a token. */
@@ -284,6 +310,7 @@ export interface GithubConnectPickerViewProps {
   /** This person's install trip: asked, or refused in HQ's words. */
   readonly installing: GitMirrorInstallAction;
   readonly density: "full" | "compact";
+  readonly footerEnd?: React.ReactNode;
   readonly actions: GithubConnectActions;
   /** Where it opens: a fixture's step, account, pick or sent connect. */
   readonly initial?: {
@@ -410,10 +437,12 @@ export function GithubConnectPickerView(props: GithubConnectPickerViewProps) {
 
   let body: React.ReactNode;
   let foot: React.ReactNode;
+  let card: React.ReactNode;
+  const size = pressSize(density);
   if (target !== null && progress !== null) {
-    ({ body, foot } = progressStep({ ...props, sent: target, progress }));
+    ({ body, foot, card } = progressStep({ ...props, sent: target, progress }));
   } else if (step === "explain") {
-    ({ body, foot } = explainStep({
+    ({ body, foot, card } = explainStep({
       ...props,
       explainApp,
       setExplainApp,
@@ -456,18 +485,30 @@ export function GithubConnectPickerView(props: GithubConnectPickerViewProps) {
         <Refusal words={refusal ?? pressWords ?? props.authority} />
       </>
     );
+    const back = (
+      <Button onClick={() => setStep("pick")} size={size} variant="ghost">
+        Back
+      </Button>
+    );
+    const verify = (
+      <Button disabled={!canVerify} onClick={() => void connectToken()} size={size}>
+        Verify and connect
+      </Button>
+    );
     foot = (
       <>
-        <Button onClick={() => setStep("pick")} size="sm" variant="ghost">
-          Back
-        </Button>
-        <Button disabled={!canVerify} onClick={() => void connectToken()} size="sm">
-          Verify and connect
-        </Button>
+        {back}
+        {verify}
+      </>
+    );
+    card = (
+      <>
+        {verify}
+        {back}
       </>
     );
   } else {
-    ({ body, foot } = pickStep({
+    ({ body, foot, card } = pickStep({
       ...props,
       accounts,
       account,
@@ -501,7 +542,10 @@ export function GithubConnectPickerView(props: GithubConnectPickerViewProps) {
         >
           {body}
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">{foot}</div>
+        <div className="flex flex-wrap items-center gap-2" data-github-connect-foot="">
+          {card}
+          {props.footerEnd}
+        </div>
       </div>
     );
   return (
@@ -560,15 +604,14 @@ function ConnectWay({
   );
 }
 
-/** Who added an account, beside its name. */
+/** Who added an account, beside its name; nothing where HQ does not know who. */
 function addedWords(
   account: PickerAccount,
   nameOf: (userId: string) => string | undefined,
-): string {
+): string | null {
   if (account.mine) return "you";
   const by = account.installation.addedBy;
-  if (by === null) return "added on GitHub";
-  return `added by ${nameOf(by) ?? "a teammate"}`;
+  return by === null ? null : `added by ${nameOf(by) ?? "a teammate"}`;
 }
 
 function AccountFace({ account }: { readonly account: string }) {
@@ -599,8 +642,9 @@ function pickStep(
     readonly onToken: () => void;
     readonly onConnect: () => void;
   },
-): { body: React.ReactNode; foot: React.ReactNode } {
+): StepParts {
   const { apps, accounts, account, rows, picked, repo, admin, orgName, nameOf, actions } = input;
+  const size = pressSize(input.density);
   const tokenLink = (
     <div className="me-auto self-center text-sm">
       <InlineButton onClick={input.onToken}>
@@ -608,15 +652,24 @@ function pickStep(
       </InlineButton>
     </div>
   );
+  // In a card the other way is a press beside the main one, as every ask's second way is.
+  const tokenPress = (
+    <Button onClick={input.onToken} size={size} variant="secondary">
+      Use a token
+    </Button>
+  );
   if (apps.kind === "unknown")
     return {
       body: (
         <p className="text-sm text-muted-foreground">
-          HQ didn't say which GitHub accounts {orgName ?? "the organization"} has added. Close this
-          and open it again in a moment, or connect with a token.
+          HQ didn't say which GitHub accounts {orgName ?? "the organization"} has added.{" "}
+          {input.density === "compact"
+            ? "Try again in a moment, or connect with a token."
+            : "Close this and open it again in a moment, or connect with a token."}
         </p>
       ),
       foot: tokenLink,
+      card: tokenPress,
     };
   const addLabel = admin
     ? "Add a GitHub account"
@@ -672,70 +725,55 @@ function pickStep(
   if (!pickable) {
     // GitHub not answering about an account is not the account missing: try again first.
     const silent = unanswered > 0;
+    const tryNow = silent ? (
+      <Button onClick={actions.again} size={size}>
+        Try again
+      </Button>
+    ) : null;
+    const add = (
+      <Button
+        disabled={input.authority !== null}
+        onClick={input.onAdd}
+        size={size}
+        variant={silent ? "secondary" : "primary"}
+      >
+        {addLabel}
+      </Button>
+    );
+    // Accounts teammates added whose every repository another project uses are not listed: there
+    // is nothing here to do with them (the owner, 2026-11-11: "what is this information good for?").
     return {
       body: (
         <>
           {returnedNote}
-          <p className="text-sm text-muted-foreground">Your GitHub accounts</p>
-          <div className="grid justify-items-start gap-3 rounded-lg border border-dashed border-input p-4">
-            <p className="text-sm">
-              {silent
-                ? `GitHub didn't answer about ${unanswered === 1 ? "one account" : `${String(unanswered)} accounts`} the organization's apps are installed on. Yours may be among them.`
-                : `None of your GitHub accounts is added yet. Add the account that owns ${repo}'s repository, or the one where you'll create it.`}
+          <p className="text-sm">
+            {silent
+              ? `GitHub didn't answer about ${unanswered === 1 ? "one account" : `${String(unanswered)} accounts`} the organization's apps are installed on. Yours may be among them.`
+              : `None of your GitHub accounts is added yet. Add the one that owns ${repo}'s repository, or the one where you'll create it.`}
+          </p>
+          {waiting.length === 0 ? null : (
+            <p className="text-xs text-muted-foreground">
+              {waiting.join(", ")} {waiting.length === 1 ? "waits" : "wait"} for an Owner or Admin's
+              OK in Settings › GitHub.
             </p>
-            <div className="flex flex-wrap gap-2">
-              {silent ? (
-                <Button onClick={actions.again} size="sm">
-                  Try again
-                </Button>
-              ) : null}
-              <Button
-                disabled={input.authority !== null}
-                onClick={input.onAdd}
-                size="sm"
-                variant={silent ? "secondary" : "primary"}
-              >
-                {addLabel}
-              </Button>
-            </div>
-          </div>
-          {accounts.length === 0 ? null : (
-            <div className="grid gap-2">
-              <p className="text-xs text-muted-foreground">
-                Accounts others added to {orgName ?? "the organization"}
-              </p>
-              {accounts.map((each) => (
-                <div
-                  className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground"
-                  key={each.account}
-                >
-                  <AccountFace account={each.account} />
-                  <span className="text-foreground">{each.account}</span>
-                  <span>{addedWords(each, nameOf)}</span>
-                  {pickerRepositories({
-                    account: each,
-                    project: input.project,
-                    repo,
-                    held: null,
-                    fresh: input.fresh,
-                    projectNameOf: input.projectNameOf,
-                  }).map((row) => (
-                    <span className="inline-flex gap-2" key={row.repository.fullName}>
-                      <span aria-hidden="true">·</span>
-                      <span className="font-mono text-xs leading-5">
-                        {row.repository.fullName.split("/")[1]}
-                      </span>
-                      <span>{row.taken ?? "free to use"}</span>
-                    </span>
-                  ))}
-                </div>
-              ))}
-            </div>
           )}
           <Refusal words={input.authority ?? input.refusal} />
         </>
       ),
-      foot: tokenLink,
+      foot: (
+        <>
+          {tokenLink}
+          {tryNow}
+          {add}
+        </>
+      ),
+      card: (
+        <>
+          {tryNow}
+          {add}
+          {tokenPress}
+        </>
+      ),
     };
   }
   const freshHere = rows.filter((row) => row.fresh).length;
@@ -747,6 +785,20 @@ function pickStep(
         );
   const pickedName = picked?.split("/")[1];
   const unsealed = input.pickedRow !== null && input.pickedRow.app.setUpBy === null;
+  const connect = (
+    <Button
+      disabled={
+        picked === null ||
+        unsealed ||
+        input.authority !== null ||
+        actions.connectViaApp === undefined
+      }
+      onClick={input.onConnect}
+      size={size}
+    >
+      {pickedName === undefined ? "Connect" : `Connect ${pickedName}`}
+    </Button>
+  );
   return {
     body: (
       <>
@@ -773,7 +825,9 @@ function pickStep(
             >
               <AccountFace account={each.account} />
               {each.account}
-              <span className="text-xs text-muted-foreground">{addedWords(each, nameOf)}</span>
+              {addedWords(each, nameOf) === null ? null : (
+                <span className="text-xs text-muted-foreground">{addedWords(each, nameOf)}</span>
+              )}
             </button>
           ))}
           <button
@@ -840,18 +894,13 @@ function pickStep(
     foot: (
       <>
         {tokenLink}
-        <Button
-          disabled={
-            picked === null ||
-            unsealed ||
-            input.authority !== null ||
-            actions.connectViaApp === undefined
-          }
-          onClick={input.onConnect}
-          size="sm"
-        >
-          {pickedName === undefined ? "Connect" : `Connect ${pickedName}`}
-        </Button>
+        {connect}
+      </>
+    ),
+    card: (
+      <>
+        {connect}
+        {tokenPress}
       </>
     ),
   };
@@ -977,22 +1026,28 @@ function explainStep(
     readonly pageOpened: boolean;
     readonly onPage: () => void;
   },
-): { body: React.ReactNode; foot: React.ReactNode } {
+): StepParts {
   const { apps, admin, orgName, nameOf, actions, repo, viewerId, usedApps } = input;
-  const back = (
-    <div className="me-auto">
-      <Button onClick={input.onBack} size="sm" variant="ghost">
-        Back
-      </Button>
-    </div>
+  const size = pressSize(input.density);
+  const backPress = (
+    <Button onClick={input.onBack} size={size} variant="ghost">
+      Back
+    </Button>
   );
+  const back = <div className="me-auto">{backPress}</div>;
   const list = apps.kind === "ready" ? apps.apps : [];
   const org = orgName ?? "The organization";
+  const settings =
+    admin && actions.openSettings !== undefined ? (
+      <Button onClick={actions.openSettings} size={size}>
+        Open Settings › GitHub
+      </Button>
+    ) : null;
   if (list.length === 0)
     return {
       body: (
         <div className="grid gap-2">
-          <p className="text-base font-medium">Set up a GitHub app first</p>
+          <p className={stepTitle(input.density)}>Set up a GitHub app first</p>
           <p className="text-sm text-muted-foreground">
             {org} has no GitHub app yet. Mate connects repositories through one, set up once for the
             organization.{" "}
@@ -1005,18 +1060,84 @@ function explainStep(
       foot: (
         <>
           {back}
-          {admin && actions.openSettings !== undefined ? (
-            <Button onClick={actions.openSettings} size="sm">
-              Open Settings › GitHub
-            </Button>
-          ) : null}
+          {settings}
+        </>
+      ),
+      card: (
+        <>
+          {settings}
+          {backPress}
         </>
       ),
     };
+  // Every app the organization has is another person's own: nobody is sent to install one
+  // unasked. The step says whose they are and leads to making the organization's own; one of
+  // them is installed only by choosing it here.
+  const theirs = list.filter((app) => app.setUpBy !== null);
+  if (input.explainApp === null && ownApps(list, viewerId).length === 0 && theirs.length > 0) {
+    const [first] = theirs;
+    const anyway =
+      first === undefined ? null : (
+        <Button
+          onClick={() => {
+            input.setExplainApp(first.appId);
+          }}
+          size={size}
+          variant="ghost"
+        >
+          {theirs.length === 1 ? `Install ${first.name} anyway` : "Install one of them anyway"}
+        </Button>
+      );
+    return {
+      body: (
+        <div className="grid gap-2" data-github-connect-own-app="">
+          <p className={stepTitle(input.density)}>{org} has no GitHub app of its own</p>
+          <p className="text-sm text-muted-foreground">{noOwnAppWords(theirs, nameOf, org)}</p>
+          <p className="text-sm text-muted-foreground">
+            {admin
+              ? `Make one for ${org} in Settings › GitHub: Add a GitHub app, name it after ${org} and put it on your GitHub organization. GitHub then adds your account, and this card lists its repositories.`
+              : `An Owner or Admin of ${org} makes one in Settings › GitHub.`}
+          </p>
+        </div>
+      ),
+      foot: (
+        <>
+          {back}
+          {anyway}
+          {settings}
+        </>
+      ),
+      card: (
+        <>
+          {settings}
+          {backPress}
+          {anyway}
+        </>
+      ),
+    };
+  }
   const chosenId = input.explainApp ?? openingApp(list, viewerId, usedApps);
   const chosen = list.find((app) => app.appId === chosenId) ?? null;
   const words = chosen === null ? null : explainerWords(chosen, nameOf, viewerId);
   const way = chosen === null ? null : installWay(chosen);
+  const go =
+    chosen === null || way === null || chosen.setUpBy === null ? (
+      <Button disabled size={size}>
+        Continue on GitHub
+      </Button>
+    ) : way.kind === "page" ? (
+      <Button
+        onClick={input.onPage}
+        render={<a href={way.url} rel="noreferrer" target="_blank" />}
+        size={size}
+      >
+        Continue on GitHub ↗
+      </Button>
+    ) : (
+      <Button disabled={input.pending} onClick={() => input.onTrip(chosen)} size={size}>
+        {input.pending ? "Opening GitHub…" : "Continue on GitHub"}
+      </Button>
+    );
   return {
     body: (
       <>
@@ -1126,23 +1247,13 @@ function explainStep(
     foot: (
       <>
         {back}
-        {chosen === null || way === null || chosen.setUpBy === null ? (
-          <Button disabled size="sm">
-            Continue on GitHub
-          </Button>
-        ) : way.kind === "page" ? (
-          <Button
-            onClick={input.onPage}
-            render={<a href={way.url} rel="noreferrer" target="_blank" />}
-            size="sm"
-          >
-            Continue on GitHub ↗
-          </Button>
-        ) : (
-          <Button disabled={input.pending} onClick={() => input.onTrip(chosen)} size="sm">
-            {input.pending ? "Opening GitHub…" : "Continue on GitHub"}
-          </Button>
-        )}
+        {go}
+      </>
+    ),
+    card: (
+      <>
+        {go}
+        {backPress}
       </>
     ),
   };
@@ -1173,8 +1284,9 @@ function progressStep(
     readonly sent: Sent;
     readonly progress: ReturnType<typeof connectProgress>;
   },
-): { body: React.ReactNode; foot: React.ReactNode } {
+): StepParts {
   const { sent, progress, repo, entry, actions } = input;
+  const size = pressSize(input.density);
   const href = sent.app === null ? sent.target : `https://github.com/${sent.target}`;
   const shownAs = sent.app === null ? sent.target.replace(/^https:\/\//u, "") : sent.target;
   if (progress === "done") {
@@ -1182,6 +1294,21 @@ function progressStep(
       entry?.remote,
       sent.app === null ? null : { name: sent.app.name, appId: sent.app.appId },
     );
+    const open = (
+      <Button
+        render={<a href={href} rel="noreferrer" target="_blank" />}
+        size={size}
+        variant="secondary"
+      >
+        {sent.app === null ? `Open on ${hostWords(sent.target)}` : "Open on GitHub"}
+      </Button>
+    );
+    const done =
+      actions.onConnected === undefined ? null : (
+        <Button onClick={actions.onConnected} size={size}>
+          Done
+        </Button>
+      );
     return {
       body: (
         <div className="grid justify-items-start gap-2.5 pt-3">
@@ -1202,18 +1329,14 @@ function progressStep(
       ),
       foot: (
         <>
-          <Button
-            render={<a href={href} rel="noreferrer" target="_blank" />}
-            size="sm"
-            variant="secondary"
-          >
-            {sent.app === null ? `Open on ${hostWords(sent.target)}` : "Open on GitHub"}
-          </Button>
-          {actions.onConnected === undefined ? null : (
-            <Button onClick={actions.onConnected} size="sm">
-              Done
-            </Button>
-          )}
+          {open}
+          {done}
+        </>
+      ),
+      card: (
+        <>
+          {done}
+          {open}
         </>
       ),
     };
@@ -1263,6 +1386,8 @@ function progressStep(
         You can close this. The project page shows the same steps.
       </p>
     ),
+    // A card stays where it is: nothing to close, nothing to say under its steps.
+    card: null,
   };
 }
 

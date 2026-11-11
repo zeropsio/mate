@@ -581,12 +581,61 @@ const MIRROR_APPS: GitMirrorApps = {
 };
 const PEOPLE: Readonly<Record<string, string>> = { "u-ales": "Aleš", "u-dana": "Dana K." };
 
+/**
+ * An organization whose only GitHub app is a teammate's own (a personal account owns it), installed
+ * on accounts whose every repository another project uses: nothing of the viewer's is added.
+ */
+const MIRROR_APPS_ANOTHERS: GitMirrorApps = {
+  kind: "ready",
+  apps: [
+    {
+      ...MIRROR_APPS.apps[0]!,
+      name: "Side Project Mate",
+      slug: "side-project-mate",
+      owner: "dana-k",
+      ownerType: "User",
+      botLogin: "side-project-mate[bot]",
+    },
+  ],
+  installations: [
+    {
+      ...MIRROR_APPS.installations[1]!,
+      repositories: [
+        {
+          id: 3,
+          fullName: "octo-org/site",
+          private: false,
+          defaultBranch: "main",
+          usedBy: { application: "app-store", repo: "site", githubAppId: 41 },
+        },
+      ],
+    },
+  ],
+};
+
+/** Where the picker stands while the card waits: the harness's own switch. */
+const MIRROR_PICKS = [
+  ["pick", "Pick a repository"],
+  ["none", "No account of yours"],
+  ["own-app", "No app of its own"],
+  ["anyway", "A teammate's app, by choice"],
+  ["token", "A token"],
+] as const;
+type MirrorPick = (typeof MIRROR_PICKS)[number][0];
+
 function Mirror({ density }: { readonly density: AskDensity }) {
   const [state, setState] = useState<MirrorState>("waiting");
+  const [pick, setPick] = useState<MirrorPick>("pick");
   const answered = state === "done" || state === "notNow";
+  const anothers = pick === "none" || pick === "own-app" || pick === "anyway";
   return (
     <Specimen
-      chips={<States label="Connect" onChange={setState} states={MIRROR_STATES} value={state} />}
+      chips={
+        <div className="grid justify-items-start gap-2">
+          <States label="Connect" onChange={setState} states={MIRROR_STATES} value={state} />
+          <States label="Picker" onChange={setPick} states={MIRROR_PICKS} value={pick} />
+        </div>
+      }
       density={density}
       name="Connect: a repository to GitHub"
     >
@@ -605,11 +654,27 @@ function Mirror({ density }: { readonly density: AskDensity }) {
               again: NOTHING,
               leaving: NOTHING,
               dismiss: NOTHING,
+              openSettings: NOTHING,
             }}
             admin
-            apps={MIRROR_APPS}
+            apps={anothers ? MIRROR_APPS_ANOTHERS : MIRROR_APPS}
             authority={null}
             density="compact"
+            footerEnd={
+              <Button size="md" variant="ghost">
+                Not now
+              </Button>
+            }
+            initial={
+              pick === "own-app"
+                ? { step: "explain" }
+                : pick === "anyway"
+                  ? { step: "explain", explainApp: 41 }
+                  : pick === "token"
+                    ? { step: "token" }
+                    : {}
+            }
+            key={pick}
             entry={{ name: MIRROR.repo, mainHead: null, updatedAt: "2026-11-09T10:00:00Z" }}
             fresh={new Set()}
             nameOf={(id) => PEOPLE[id]}
@@ -625,6 +690,7 @@ function Mirror({ density }: { readonly density: AskDensity }) {
             viewerId="u-ales"
           />
         }
+        pickerFoots
         reason={MIRROR.reason}
         remoteUrl={state === "done" ? MIRROR.remote : null}
         repo={MIRROR.repo}

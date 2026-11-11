@@ -31,6 +31,11 @@ export type GitMirrorApp =
       }>;
       /** Its installations GitHub did not answer about: their repositories are not listed. */
       readonly unanswered?: number;
+      /**
+       * The GitHub account that owns it, where it is another person's own app (a personal account
+       * owns it, and the viewer did not set it up): installing it further is said, never assumed.
+       */
+      readonly anothersOwner?: string;
     }
   | { readonly kind: "none" }
   | { readonly kind: "unknown" };

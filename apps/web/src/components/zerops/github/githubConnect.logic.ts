@@ -255,18 +255,60 @@ export function explainerWords(
   };
 }
 
-/** The app the explainer opens on: the one you set up, else the one others use, else the only one. */
+/**
+ * Whether `app` belongs to another person's own GitHub account: a personal account owns it and
+ * someone other than the viewer set it up (or nobody has yet). An app's owner holds its key, so
+ * installed on the viewer's account it puts the repositories they pick in that person's reach.
+ */
+export const anothersOwnApp = (app: GitMirrorAppEntry, viewerId: string | null): boolean =>
+  app.ownerType === "User" && (viewerId === null || app.setUpBy !== viewerId);
+
+/** The apps a person installs without a second thought: in use, and not another person's own. */
+export const ownApps = (
+  apps: ReadonlyArray<GitMirrorAppEntry>,
+  viewerId: string | null,
+): ReadonlyArray<GitMirrorAppEntry> =>
+  apps.filter((app) => app.setUpBy !== null && !anothersOwnApp(app, viewerId));
+
+/**
+ * The app the trip to GitHub starts with: the one the viewer set up, else the one the project's
+ * other repositories go through, else the only one — among the organization's own (`ownApps`).
+ * Never another person's own app: that one is installed only by choice (the owner, 2026-11-11, sent
+ * to install a colleague's personal app for an unrelated project: "this is important problem").
+ */
 export function openingApp(
   apps: ReadonlyArray<GitMirrorAppEntry>,
   viewerId: string | null,
   used: ReadonlyArray<number>,
 ): number | null {
-  const sealed = apps.filter((app) => app.setUpBy !== null);
+  const own = ownApps(apps, viewerId);
   return (
-    sealed.find((app) => viewerId !== null && app.setUpBy === viewerId)?.appId ??
-    used.find((id) => sealed.some((app) => app.appId === id)) ??
-    (apps.length === 1 ? (apps[0]?.appId ?? null) : null)
+    own.find((app) => viewerId !== null && app.setUpBy === viewerId)?.appId ??
+    used.find((id) => own.some((app) => app.appId === id)) ??
+    (own.length === 1 ? (own[0]?.appId ?? null) : null)
   );
+}
+
+/**
+ * What the organization is told where every GitHub app it has is another person's own: whose
+ * they are, and what installing one means.
+ */
+export function noOwnAppWords(
+  apps: ReadonlyArray<GitMirrorAppEntry>,
+  nameOf: (userId: string) => string | undefined,
+  organization: string,
+): string {
+  const key =
+    "An app's owner holds its key: installed on your account, it can act on the repositories you pick there.";
+  const [only] = apps;
+  if (apps.length === 1 && only !== undefined) {
+    const by = only.setUpBy === null ? undefined : nameOf(only.setUpBy);
+    // A name ending in its initial's period ends the sentence too.
+    const whose = `${organization}'s only GitHub app, ${only.name}, belongs to ${only.owner}'s personal GitHub account${by === undefined ? "" : `, set up by ${by}`}`;
+    return `${whose.replace(/\.?$/u, ".")} ${key}`;
+  }
+  const owners = [...new Set(apps.map((app) => app.owner))].join(", ");
+  return `${organization}'s GitHub apps belong to personal GitHub accounts (${owners}). ${key}`;
 }
 
 /** Said where Connect would act through an app that waits for an Owner or Admin to remake it. */
