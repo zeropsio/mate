@@ -3,10 +3,9 @@
  *
  * Enqueues for an active or already-queued key are merged atomically instead of
  * creating duplicate queued items. Each batch yields to other queued keys before
- * processing newer updates. `drainKey()` resolves only when that key has no
- * queued, pending, or active work left; `settleKey()` resolves once the work
- * enqueued before it was called has been processed, so a key that keeps
- * receiving work cannot hold it forever.
+ * processing newer updates. `settleKey()` resolves once the work enqueued
+ * before it was called has been processed, so a key that keeps receiving work
+ * cannot hold it forever.
  *
  * @module KeyedCoalescingWorker
  */
@@ -17,7 +16,6 @@ import * as TxRef from "effect/TxRef";
 
 export interface KeyedCoalescingWorker<K, V> {
   readonly enqueue: (key: K, value: V) => Effect.Effect<void>;
-  readonly drainKey: (key: K) => Effect.Effect<void>;
   readonly settleKey: (key: K) => Effect.Effect<void>;
 }
 
@@ -137,17 +135,6 @@ export const makeKeyedCoalescingWorker = <K, V, E, R>(options: {
         Effect.asVoid,
       );
 
-    const drainKey: KeyedCoalescingWorker<K, V>["drainKey"] = (key) =>
-      TxRef.get(stateRef).pipe(
-        Effect.tap((state) =>
-          state.latestByKey.has(key) || state.queuedKeys.has(key) || state.activeKeys.has(key)
-            ? Effect.txRetry
-            : Effect.void,
-        ),
-        Effect.asVoid,
-        Effect.tx,
-      );
-
     // Capture the target in its own transaction: a retry re-reads only the
     // settled mark, so newer enqueues cannot move the target.
     const settleKey: KeyedCoalescingWorker<K, V>["settleKey"] = (key) =>
@@ -167,5 +154,5 @@ export const makeKeyedCoalescingWorker = <K, V, E, R>(options: {
         }),
       );
 
-    return { enqueue, drainKey, settleKey } satisfies KeyedCoalescingWorker<K, V>;
+    return { enqueue, settleKey } satisfies KeyedCoalescingWorker<K, V>;
   });
