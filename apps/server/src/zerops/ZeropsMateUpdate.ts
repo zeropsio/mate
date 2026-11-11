@@ -36,7 +36,7 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 
 import type { ExecutionEnvironmentUpdate } from "@t3tools/contracts";
 import { ServerConfig } from "../config.ts";
-import { forkParked } from "../serverActivation.ts";
+import { forkParked, forkParkedLocal } from "../serverActivation.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import {
   SELF_RESTART_TOO_OLD,
@@ -526,7 +526,8 @@ export const make = (options: ZeropsMateUpdateOptions) =>
       }
       // Queue writes during the initial read; consume them only after it has published.
       yield* reread;
-      yield* forkParked(
+      // Local reads only, so not held by an update's boot fence: a settled record lifts it.
+      yield* forkParkedLocal(
         Effect.gen(function* () {
           const first = yield* Queue.take(notices);
           // One write fires several events a few milliseconds apart: one re-read.
