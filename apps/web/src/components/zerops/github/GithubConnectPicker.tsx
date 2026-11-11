@@ -1095,7 +1095,7 @@ function explainStep(
           <p className="text-sm text-muted-foreground">{noOwnAppWords(theirs, nameOf, org)}</p>
           <p className="text-sm text-muted-foreground">
             {admin
-              ? `Make one for ${org} in Settings › GitHub: Add a GitHub app, name it after ${org} and put it on your GitHub organization. GitHub then adds your account, and this card lists its repositories.`
+              ? `Make one for ${org} in Settings › GitHub: Add a GitHub app, name it after ${org} and put it on your GitHub organization. GitHub then adds your account, and its repositories are listed here.`
               : `An Owner or Admin of ${org} makes one in Settings › GitHub.`}
           </p>
         </div>
