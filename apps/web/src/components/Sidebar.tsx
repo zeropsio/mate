@@ -41,7 +41,6 @@ import {
 } from "lucide-react";
 import {
   memo,
-  startTransition,
   useCallback,
   useEffect,
   useMemo,
@@ -1931,6 +1930,10 @@ export default function Sidebar() {
   }, [zeropsPress, zeropsPressHeld]);
   const litZeropsProjectId =
     zeropsPressHeld && zeropsPress !== null ? zeropsPress.projectId : activeZeropsProjectId;
+  const litZeropsConversation =
+    zeropsPressHeld && zeropsPress?.conversation !== undefined
+      ? zeropsPress.conversation
+      : activeZeropsConversation;
   // Whose Mates the menu lists (the account menu's Mine / Everyone): the
   // tree and the waiting faces read the same answer.
   const [zeropsMateScope, setZeropsMateScope] = useMateScope();
@@ -1990,12 +1993,14 @@ export default function Sidebar() {
       if (isMobile) {
         setOpenMobile(false);
       }
-      startTransition(() => {
-        setZeropsPress({
-          projectId: candidate.project.id,
-          from: activeZeropsProjectId,
-          fromOverview: zeropsOverviewOpen,
-        });
+      // Drawn in the press's own frame: the two rows whose state changes, with the band's slide.
+      // The route's change, a frame later, then finds the menu as it already stands and draws
+      // none of it again.
+      setZeropsPress({
+        projectId: candidate.project.id,
+        conversation: candidate.environmentId ?? undefined,
+        from: activeZeropsProjectId,
+        fromOverview: zeropsOverviewOpen,
       });
       // The route changes once the band's slide — set by the press itself (`slideSelectedBandTo`)
       // — has painted: the change redraws every page reading the route at once, 40–80 ms in which
@@ -3087,7 +3092,7 @@ export default function Sidebar() {
               onShowEveryone={zeropsMateScope === "mine" ? showEveryoneMates : undefined}
               activeProjectId={litZeropsProjectId}
               activeProjectResolving={activeZeropsProjectResolving && !zeropsPressHeld}
-              activeConversation={activeZeropsConversation}
+              activeConversation={litZeropsConversation}
               births={zeropsPlacedBirths}
               candidates={zeropsListed}
               complete={zeropsMenuComplete}
