@@ -1,6 +1,11 @@
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Headers from "effect/http/Headers";
+import * as HttpServerError from "effect/http/HttpServerError";
+import * as HttpServerRequest from "effect/http/HttpServerRequest";
+import type * as HttpServerResponse from "effect/http/HttpServerResponse";
 
 export const httpHeaderRedactionLayer = Layer.effect(
   Headers.CurrentRedactedNames,
@@ -76,3 +81,63 @@ export const makeUrlAttributeRedactor =
         return value;
     }
   };
+
+const stripSearchAndHash = (url: string): string => {
+  const end = url.search(/[?#]/u);
+  return end === -1 ? url : url.slice(0, end);
+};
+
+/**
+ * Effect's HTTP response logger (`HttpMiddleware.logger`) with its `http.url`
+ * annotation passed through {@link makeUrlAttributeRedactor}, so the server's
+ * own log lines never carry the signed token segment either. Pass it to
+ * `HttpRouter.serve` as `middleware` with `disableLogger: true`.
+ */
+export const makeRedactedHttpLogger = (signedPathPrefixes: ReadonlyArray<string>) => {
+  const redact = makeUrlAttributeRedactor(signedPathPrefixes);
+  return <E, R>(
+    httpApp: Effect.Effect<
+      HttpServerResponse.HttpServerResponse,
+      E,
+      HttpServerRequest.HttpServerRequest | R
+    >,
+  ): Effect.Effect<
+    HttpServerResponse.HttpServerResponse,
+    E,
+    HttpServerRequest.HttpServerRequest | R
+  > =>
+    Effect.withFiber((fiber) => {
+      const request = Context.getUnsafe(fiber.context, HttpServerRequest.HttpServerRequest);
+      const annotations = (status: number) => ({
+        "http.method": request.method,
+        "http.url": redact("http.url", stripSearchAndHash(request.url)),
+        "http.status": status,
+      });
+      return Effect.withLogSpan(
+        Effect.flatMap(Effect.exit(httpApp), (exit) => {
+          if (exit._tag === "Success") {
+            return Effect.andThen(
+              Effect.annotateLogs(Effect.log("Sent HTTP response"), annotations(exit.value.status)),
+              exit,
+            );
+          }
+          const [response, cause] = HttpServerError.causeResponseStripped(exit.cause);
+          // A client that hung up is not a server failure worth its cause.
+          const message =
+            Option.isSome(cause) &&
+            !cause.value.reasons.every(
+              (reason) =>
+                reason._tag === "Interrupt" &&
+                reason.annotations.has(HttpServerError.ClientAbort.key),
+            )
+              ? cause.value
+              : "Sent HTTP response";
+          return Effect.andThen(
+            Effect.annotateLogs(Effect.log(message), annotations(response.status)),
+            exit,
+          );
+        }),
+        "http.span",
+      );
+    });
+};
