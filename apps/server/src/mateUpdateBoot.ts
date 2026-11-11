@@ -25,6 +25,11 @@ import { ServerConfig } from "./config.ts";
  * every root that acts outward awaits `lifted` inside its own fiber. Nothing on the way to command
  * readiness awaits it: zcp commits only after the readiness proof, which needs startup finished.
  *
+ * That proof is the boot alone while the opening is `held`: the server has started no work, and
+ * what the boot's recovery left for the opening (an effect to run, a turn to carry on) only the
+ * lift can start. Counted as work in flight it would keep the proof from ever coming, and the lift
+ * with it.
+ *
  * The lift keeps the order of a boot outside an update: the engine opens before admission reopens,
  * and admission reopens before the outward roots run.
  *
@@ -36,6 +41,11 @@ import { ServerConfig } from "./config.ts";
 export interface MateUpdateBootFenceShape {
   /** This boot started under a switch zcp has not committed or cancelled. */
   readonly pending: boolean;
+  /**
+   * The engine's opening is still held: this boot is pending and neither a lift nor a refusal has
+   * begun. Never on a boot that is not pending.
+   */
+  readonly held: Effect.Effect<boolean>;
   /** Resolves once the lift has reopened admission; at once on a boot that is not pending. */
   readonly lifted: Effect.Effect<void>;
   /** The engine's opening: under a pending fence it runs once zcp commits or cancels. */
@@ -59,6 +69,7 @@ export interface MateUpdateBootFenceShape {
 
 const openFence: MateUpdateBootFenceShape = {
   pending: false,
+  held: Effect.succeed(false),
   lifted: Effect.void,
   holdOpen: (open) => open,
   lift: (reopen) => reopen,
@@ -87,6 +98,7 @@ export class MateUpdateBootFence extends Context.Reference<MateUpdateBootFenceSh
         Deferred.succeed(decided, as).pipe(Effect.andThen(Deferred.await(decided)));
       return {
         pending: true,
+        held: Effect.map(Deferred.isDone(decided), (done) => !done),
         lifted: Deferred.await(lifted),
         holdOpen: (open) =>
           Deferred.await(released).pipe(
