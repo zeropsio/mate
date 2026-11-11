@@ -29,7 +29,7 @@ export function CreditForecastLine({ organizationId }: { readonly organizationId
         <InlineButton
           render={<a href={hqCreditUrl(organizationId)} rel="noreferrer" target="_blank" />}
         >
-          Add credit in HQ
+          Add credit in Zerops
         </InlineButton>
       ) : (
         "Ask an owner to add credit."

@@ -1867,7 +1867,7 @@ describe("ComingBelow — a project refused for want of credit", () => {
     const rendered = render(() => {
       tried += 1;
     });
-    expect(verbs(rendered)).toEqual(["Add credit in HQ", "Try again"]);
+    expect(verbs(rendered)).toEqual(["Add credit in Zerops", "Try again"]);
     const link = rendered.root.findByType("a");
     expect(link.props.href).toBe(HQ_CREDIT);
     expect(link.props.target).toBe("_blank");

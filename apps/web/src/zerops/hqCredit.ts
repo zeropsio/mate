@@ -1,13 +1,15 @@
 /**
- * Where an organization's credit is added: its page in HQ, the Zerops app Mate signs in at, which
- * shows its balance and takes a top-up from whoever manages its billing.
+ * Where an organization's billing is acted on: its page in Zerops's own account site (hq.zerops.io,
+ * where Mate signs in; the copy calls it "Zerops", as "HQ" is Mate's own). One page holds its
+ * balance, top-ups, automatic top-up, invoices, cards and billing details; no link opens a part
+ * of it.
  */
 import { zeropsConsentOrigin } from "./deviceLogin";
 
-/** HQ's origin where the build names none of its own. */
+/** The site's origin where the build names none of its own. */
 const HQ_ORIGIN = "https://hq.zerops.io";
 
-/** The organization's page in HQ, where its credit is added. */
+/** The organization's billing page in Zerops. */
 export function hqCreditUrl(
   organizationId: string,
   origin: string = zeropsConsentOrigin() ?? HQ_ORIGIN,
