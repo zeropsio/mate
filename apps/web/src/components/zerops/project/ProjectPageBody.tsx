@@ -84,6 +84,8 @@ import {
   type ChangeGroup,
 } from "./projectPage.logic";
 import { SetupCard } from "./SetupCard";
+import { spendProjectIds } from "../projects/projectSpend.logic";
+import { ProjectCreditLine } from "../projects/ProjectCreditLine";
 
 /** What the page reads beyond the overview's group: the project's environments and its release. */
 export interface ProjectPageFacts {
@@ -202,6 +204,7 @@ export function ProjectPageBody<T>({
       <div className="pp-cols">
         <div className="pp-main">
           {facts.readFailures}
+          <ProjectCreditLine projectIds={spendProjectIds(entry.flow)} />
           <ProjectWaits entry={entry} waits={waits} />
           <ProjectPlaces entry={entry} facts={facts} lines={lines} props={props} />
           <ProjectMates

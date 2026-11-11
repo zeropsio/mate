@@ -60,6 +60,8 @@ import type {
   ZeropsProjectsFlowProps,
 } from "./ZeropsProjectsFlow";
 import { Button } from "~/components/ui/button";
+import { spendProjectIds } from "./projectSpend.logic";
+import { ProjectCreditLine } from "./ProjectCreditLine";
 
 export const cardId = (groupId: string) => `project-${groupId}`;
 
@@ -685,6 +687,7 @@ function ProjectCard<T>({
           <span className="ov-card-menu">{props.renderGroupMenu(entry)}</span>
         </div>
         {quiet === undefined ? null : <p className="ov-card-site">{quiet}</p>}
+        <ProjectCreditLine projectIds={spendProjectIds(entry.flow)} />
       </header>
       <div className="ov-places" data-zerops-surface="card-places">
         {notLive || production === undefined ? (

@@ -13,6 +13,9 @@
  * a Chief (`chiefOffered`). On the rail the photo alone opens it.
  */
 
+import { useAtomValue } from "@effect/atom-react";
+import { organizationBillingAtom } from "@t3tools/client-runtime/data";
+import { formatUsd } from "@t3tools/shared/usageFormat";
 import { useLocation, useNavigate, useRouter } from "@tanstack/react-router";
 import { EllipsisIcon, LogOutIcon } from "lucide-react";
 import { createContext, useContext, useId, useMemo, useState, type ReactNode } from "react";
@@ -193,9 +196,12 @@ export function SidebarZeropsAccount({
               paint nothing it takes back. */}
           {role === null ? null : (
             <span className="menu-foot-role" data-zerops-surface="sidebar-account-role">
-              {role.before}
-              <span data-zerops-surface="sidebar-account-organization">{role.organization}</span>
-              {role.after}
+              <span className="menu-foot-role-words">
+                {role.before}
+                <span data-zerops-surface="sidebar-account-organization">{role.organization}</span>
+                {role.after}
+              </span>
+              {activeOrganization === null ? null : <AccountCredit orgId={activeOrganization.id} />}
             </span>
           )}
         </span>
@@ -496,4 +502,46 @@ export function SidebarZeropsAccountRow({
       }
     />
   );
+}
+
+/**
+ * The organization's balance at the end of the role line, where Zerops shows this account its
+ * finances: quiet while all is well, amber while it runs low, red once it is out or Zerops is
+ * about to stop a project for it — its words for a reader who does not see the colour. Shown
+ * once known, never a placeholder: the foot paints nothing it takes back.
+ */
+function AccountCredit({ orgId }: { readonly orgId: string }) {
+  const billing = useAtomValue(organizationBillingAtom(orgId));
+  if (billing.kind !== "known" || billing.total === null) return null;
+  const words =
+    billing.tone === "out"
+      ? billing.total < 0
+        ? "credit below zero"
+        : "a project stops soon for lack of credit"
+      : billing.tone === "low"
+        ? "credit running low"
+        : null;
+  return (
+    <span
+      className="menu-foot-credit"
+      data-tone={billing.tone}
+      data-zerops-surface="sidebar-account-credit"
+    >
+      {/* A flex item trims plain spaces at its edges: the separator keeps its own. */}
+      <span aria-hidden="true">{"\u00a0·\u00a0"}</span>
+      {compactUsd(billing.total)}
+      {words === null ? null : <span className="sr-only">, {words}</span>}
+    </span>
+  );
+}
+
+const WHOLE_USD = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  maximumFractionDigits: 0,
+});
+
+/** An amount at a glance: whole dollars from $100, cents below. */
+function compactUsd(value: number): string {
+  return Math.abs(value) >= 100 ? WHOLE_USD.format(value) : formatUsd(value);
 }
