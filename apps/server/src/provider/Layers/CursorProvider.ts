@@ -8,7 +8,8 @@ import type {
   ServerProviderModel,
   ServerProviderState,
 } from "@t3tools/contracts";
-import type * as EffectAcpSchema from "effect-acp/schema";
+import type * as EffectAcpSchema from "effect-acp/compat";
+import type * as AcpWireSchema from "effect-acp/schema-v1";
 import { causeErrorTag } from "@t3tools/shared/observability";
 import * as Cache from "effect/Cache";
 import * as Duration from "effect/Duration";
@@ -52,6 +53,9 @@ import {
 import * as AcpSessionRuntime from "../acp/AcpSessionRuntime.ts";
 import { CursorListAvailableModelsResponse } from "../acp/CursorAcpExtension.ts";
 import type { ServerProviderShape } from "../Services/ServerProvider.ts";
+
+// Session config options arrive normalized; `cursor/list_available_models` still answers in v1 shapes.
+type CursorConfigOption = EffectAcpSchema.SessionConfigOption | AcpWireSchema.SessionConfigOption;
 
 /** Session command catalogs stay scoped to their workspace across health refreshes. */
 export const makeCursorCommandCatalog = Effect.fn("makeCursorCommandCatalog")(function* (
@@ -219,7 +223,7 @@ interface CursorAcpDiscoveredModel {
 }
 
 function flattenSessionConfigSelectOptions(
-  configOption: EffectAcpSchema.SessionConfigOption | undefined,
+  configOption: CursorConfigOption | undefined,
 ): ReadonlyArray<CursorSessionSelectOption> {
   if (!configOption || configOption.type !== "select") {
     return [];
@@ -259,11 +263,11 @@ function normalizeCursorReasoningValue(value: string | null | undefined): string
   }
 }
 
-function getCursorConfigOptionCategory(option: EffectAcpSchema.SessionConfigOption): string {
+function getCursorConfigOptionCategory(option: CursorConfigOption): string {
   return option.category?.trim().toLowerCase() ?? "";
 }
 
-function isCursorEffortConfigOption(option: EffectAcpSchema.SessionConfigOption): boolean {
+function isCursorEffortConfigOption(option: CursorConfigOption): boolean {
   const id = option.id.trim().toLowerCase();
   const name = option.name.trim().toLowerCase();
   return (
@@ -277,8 +281,8 @@ function isCursorEffortConfigOption(option: EffectAcpSchema.SessionConfigOption)
 }
 
 function findCursorEffortConfigOption(
-  configOptions: ReadonlyArray<EffectAcpSchema.SessionConfigOption>,
-): EffectAcpSchema.SessionConfigOption | undefined {
+  configOptions: ReadonlyArray<CursorConfigOption>,
+): CursorConfigOption | undefined {
   const candidates = configOptions.filter(
     (option) => option.type === "select" && isCursorEffortConfigOption(option),
   );
@@ -290,25 +294,25 @@ function findCursorEffortConfigOption(
   );
 }
 
-function isCursorContextConfigOption(option: EffectAcpSchema.SessionConfigOption): boolean {
+function isCursorContextConfigOption(option: CursorConfigOption): boolean {
   const id = option.id.trim().toLowerCase();
   const name = option.name.trim().toLowerCase();
   return id === "context" || id === "context_size" || name.includes("context");
 }
 
-function isCursorFastConfigOption(option: EffectAcpSchema.SessionConfigOption): boolean {
+function isCursorFastConfigOption(option: CursorConfigOption): boolean {
   const id = option.id.trim().toLowerCase();
   const name = option.name.trim().toLowerCase();
   return id === "fast" || name === "fast" || name.includes("fast mode");
 }
 
-function isCursorThinkingConfigOption(option: EffectAcpSchema.SessionConfigOption): boolean {
+function isCursorThinkingConfigOption(option: CursorConfigOption): boolean {
   const id = option.id.trim().toLowerCase();
   const name = option.name.trim().toLowerCase();
   return id === "thinking" || name.includes("thinking");
 }
 
-function isBooleanLikeConfigOption(option: EffectAcpSchema.SessionConfigOption): boolean {
+function isBooleanLikeConfigOption(option: CursorConfigOption): boolean {
   if (option.type === "boolean") {
     return true;
   }
@@ -321,9 +325,7 @@ function isBooleanLikeConfigOption(option: EffectAcpSchema.SessionConfigOption):
   return values.has("true") && values.has("false");
 }
 
-function getBooleanCurrentValue(
-  option: EffectAcpSchema.SessionConfigOption | undefined,
-): boolean | undefined {
+function getBooleanCurrentValue(option: CursorConfigOption | undefined): boolean | undefined {
   if (!option) {
     return undefined;
   }
@@ -344,7 +346,7 @@ function getBooleanCurrentValue(
 }
 
 export function buildCursorCapabilitiesFromConfigOptions(
-  configOptions: ReadonlyArray<EffectAcpSchema.SessionConfigOption> | null | undefined,
+  configOptions: ReadonlyArray<CursorConfigOption> | null | undefined,
 ): ModelCapabilities {
   if (!configOptions || configOptions.length === 0) {
     return EMPTY_CAPABILITIES;
@@ -542,14 +544,14 @@ function normalizeCursorConfigOptionToken(value: string | null | undefined): str
 }
 
 function findCursorSelectOptionValue(
-  configOption: EffectAcpSchema.SessionConfigOption | undefined,
+  configOption: CursorConfigOption | undefined,
   matcher: (option: CursorSessionSelectOption) => boolean,
 ): string | undefined {
   return flattenSessionConfigSelectOptions(configOption).find(matcher)?.value;
 }
 
 function findCursorBooleanConfigValue(
-  configOption: EffectAcpSchema.SessionConfigOption | undefined,
+  configOption: CursorConfigOption | undefined,
   requested: boolean,
 ): string | boolean | undefined {
   if (!configOption) {
@@ -571,7 +573,7 @@ export function resolveCursorAcpBaseModelId(model: string | null | undefined): s
 }
 
 export function resolveCursorAcpConfigUpdates(
-  configOptions: ReadonlyArray<EffectAcpSchema.SessionConfigOption> | null | undefined,
+  configOptions: ReadonlyArray<CursorConfigOption> | null | undefined,
   selections: ReadonlyArray<ProviderOptionSelection> | null | undefined,
 ): ReadonlyArray<{
   readonly configId: string;

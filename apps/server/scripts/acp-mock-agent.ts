@@ -4,18 +4,20 @@ import * as NodeFS from "node:fs";
 
 import { waitForFileContent } from "../src/testUtils/waitForFileContent.ts";
 
+import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
+import * as FiberSet from "effect/FiberSet";
+import * as Schema from "effect/Schema";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 
-import * as EffectAcpAgent from "effect-acp/agent";
+import type * as AcpCompat from "effect-acp/compat";
 import * as AcpError from "effect-acp/errors";
-import type * as AcpSchema from "effect-acp/schema";
+import * as AcpSchema from "effect-acp/schema-v1";
 
 const requestLogPath = process.env.T3_ACP_REQUEST_LOG_PATH;
-let pendingRequestBytes = "";
 const promptStartedPath = process.env.T3_ACP_PROMPT_STARTED_PATH;
 const exitLogPath = process.env.T3_ACP_EXIT_LOG_PATH;
 const antigravityProfile = process.env.T3_ACP_ANTIGRAVITY === "1";
@@ -316,7 +318,7 @@ function availableModels(): ReadonlyArray<{
 const antigravityModels = [
   { modelId: "gemini-test-low", name: "Gemini Test Low" },
   { modelId: "gemini-test-high", name: "Gemini Test High" },
-] satisfies ReadonlyArray<AcpSchema.ModelInfo>;
+] satisfies ReadonlyArray<AcpCompat.ModelInfo>;
 
 const availableModes: ReadonlyArray<AcpSchema.SessionMode> = antigravityProfile
   ? [
@@ -351,7 +353,7 @@ function modeState(): AcpSchema.SessionModeState {
 
 // Mirrors the real Grok ACP: it advertises versioned model ids, never the CLI's own
 // "grok-build" product name, and it rejects unknown ids in session/set_model.
-const grokAcpModels: ReadonlyArray<AcpSchema.ModelInfo> = [
+const grokAcpModels: ReadonlyArray<AcpCompat.ModelInfo> = [
   {
     modelId: "grok-4.6",
     name: "Grok 4.6",
@@ -369,7 +371,7 @@ const grokAcpModels: ReadonlyArray<AcpSchema.ModelInfo> = [
   { modelId: "grok-mock-alt", name: "Grok Mock Alt" },
 ];
 
-function modelState(): AcpSchema.SessionModelState {
+function modelState(): AcpCompat.SessionModelState {
   if (antigravityProfile) {
     return { currentModelId, availableModels: antigravityModels };
   }
@@ -382,8 +384,244 @@ function modelState(): AcpSchema.SessionModelState {
   };
 }
 
+type MockRequestHandler<Request, Response> = (
+  request: Request,
+) => Effect.Effect<Response, AcpError.AcpError>;
+
+const decodeInitializeRequest = Schema.decodeUnknownEffect(AcpSchema.InitializeRequest);
+const decodeAuthenticateRequest = Schema.decodeUnknownEffect(AcpSchema.AuthenticateRequest);
+const decodeLogoutRequest = Schema.decodeUnknownEffect(AcpSchema.LogoutRequest);
+const decodeNewSessionRequest = Schema.decodeUnknownEffect(AcpSchema.NewSessionRequest);
+const decodeLoadSessionRequest = Schema.decodeUnknownEffect(AcpSchema.LoadSessionRequest);
+const decodeResumeSessionRequest = Schema.decodeUnknownEffect(AcpSchema.ResumeSessionRequest);
+const decodeSetSessionModelRequest = Schema.decodeUnknownEffect(
+  Schema.Struct({ sessionId: Schema.String, modelId: Schema.String }),
+);
+const decodeSetSessionConfigOptionRequest = Schema.decodeUnknownEffect(
+  AcpSchema.SetSessionConfigOptionRequest,
+);
+const decodePromptRequest = Schema.decodeUnknownEffect(AcpSchema.PromptRequest);
+const decodeCancelNotification = Schema.decodeUnknownEffect(AcpSchema.CancelNotification);
+const decodeRequestPermissionResponse = Schema.decodeUnknownEffect(
+  AcpSchema.RequestPermissionResponse,
+);
+const JsonRpcError = Schema.Struct({
+  code: Schema.Number,
+  message: Schema.String,
+  data: Schema.optionalKey(Schema.Json),
+});
+const JsonRpcMessage = Schema.Struct({
+  id: Schema.optionalKey(Schema.Union([Schema.Number, Schema.String])),
+  method: Schema.optionalKey(Schema.String),
+  params: Schema.optionalKey(Schema.Unknown),
+  result: Schema.optionalKey(Schema.Unknown),
+  error: Schema.optionalKey(JsonRpcError),
+});
+const decodeJsonRpcLine = Schema.decodeUnknownOption(Schema.fromJsonString(JsonRpcMessage));
+
+function writeJsonRpcMessage(message: Record<string, unknown>): void {
+  process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`);
+}
+
+/**
+ * The agent side of ACP v1 over stdio. The Cursor, Grok and Antigravity CLIs speak v1, and
+ * effect-acp's agent speaks only v2, so the mock answers v1 JSON-RPC itself: one JSON line per
+ * message, every request in its own fiber so a hanging prompt still hears its cancel.
+ */
+const makeV1Agent = Effect.fn("acpMockAgent.makeV1Agent")(function* () {
+  const run = yield* FiberSet.makeRuntime<never>();
+  const requestHandlers = new Map<
+    string,
+    (params: unknown) => Effect.Effect<unknown, AcpError.AcpError | Schema.SchemaError>
+  >();
+  const cancelHandlers: Array<MockRequestHandler<AcpSchema.CancelNotification, void>> = [];
+  let unknownRequestHandler: (
+    method: string,
+    params: unknown,
+  ) => Effect.Effect<unknown, AcpError.AcpError> = (method) =>
+    Effect.fail(AcpError.AcpRequestError.methodNotFound(method));
+  let unknownNotificationHandler: (
+    method: string,
+    params: unknown,
+  ) => Effect.Effect<void, AcpError.AcpError> = () => Effect.void;
+  const pending = new Map<
+    number,
+    { readonly method: string; readonly deferred: Deferred.Deferred<unknown, AcpError.AcpError> }
+  >();
+  let nextRequestId = 0;
+
+  const handle =
+    <Request, Response>(
+      method: string,
+      decode: (params: unknown) => Effect.Effect<Request, Schema.SchemaError>,
+    ) =>
+    (handler: MockRequestHandler<Request, Response>) =>
+      Effect.sync(() => {
+        requestHandlers.set(method, (params) => decode(params).pipe(Effect.flatMap(handler)));
+      });
+
+  const request = (method: string, params: unknown) =>
+    Effect.gen(function* () {
+      const id = nextRequestId++;
+      const deferred = yield* Deferred.make<unknown, AcpError.AcpError>();
+      pending.set(id, { method, deferred });
+      writeJsonRpcMessage({ id, method, params });
+      return yield* Deferred.await(deferred);
+    });
+
+  const answer = (id: number | string, method: string, params: unknown) => {
+    const handler = requestHandlers.get(method);
+    const handled = handler ? handler(params) : unknownRequestHandler(method, params);
+    return handled.pipe(
+      Effect.matchCause({
+        onSuccess: (result) => writeJsonRpcMessage({ id, result }),
+        onFailure: (cause) => {
+          const failure = Cause.findErrorOption(cause);
+          const error =
+            failure._tag === "None"
+              ? AcpError.AcpRequestError.internalError(`Mock handler failed for '${method}'`)
+              : Schema.isSchemaError(failure.value)
+                ? AcpError.AcpRequestError.invalidParams(failure.value.message)
+                : AcpError.AcpRequestError.fromCoreHandlerError(failure.value, method);
+          writeJsonRpcMessage({ id, error: error.toProtocolError() });
+        },
+      }),
+    );
+  };
+
+  const onLine = (line: string) => {
+    if (requestLogPath) NodeFS.appendFileSync(requestLogPath, `${line}\n`, "utf8");
+    const decoded = decodeJsonRpcLine(line);
+    if (decoded._tag === "None") return;
+    const message = decoded.value;
+    if (message.method === undefined) {
+      const waiting = typeof message.id === "number" ? pending.get(message.id) : undefined;
+      if (waiting === undefined || typeof message.id !== "number") return;
+      pending.delete(message.id);
+      run(
+        message.error === undefined
+          ? Deferred.succeed(waiting.deferred, message.result)
+          : Deferred.fail(
+              waiting.deferred,
+              AcpError.AcpRequestError.fromProtocolError(message.error, {
+                method: waiting.method,
+              }),
+            ),
+      );
+      return;
+    }
+    const method = message.method;
+    if (message.id !== undefined) {
+      run(answer(message.id, method, message.params));
+      return;
+    }
+    run(
+      (method === "session/cancel"
+        ? decodeCancelNotification(message.params).pipe(
+            Effect.flatMap((notification) =>
+              Effect.forEach(cancelHandlers, (handler) => handler(notification), {
+                discard: true,
+              }),
+            ),
+          )
+        : unknownNotificationHandler(method, message.params)
+      ).pipe(Effect.ignore),
+    );
+  };
+
+  yield* Effect.sync(() => {
+    let buffered = "";
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (chunk: string) => {
+      buffered += chunk;
+      let lineEnd = buffered.indexOf("\n");
+      while (lineEnd !== -1) {
+        const line = buffered.slice(0, lineEnd);
+        buffered = buffered.slice(lineEnd + 1);
+        if (line.trim().length > 0) onLine(line);
+        lineEnd = buffered.indexOf("\n");
+      }
+    });
+  });
+
+  return {
+    client: {
+      sessionUpdate: (params: AcpSchema.SessionNotification) =>
+        Effect.sync(() => writeJsonRpcMessage({ method: "session/update", params })),
+      requestPermission: (params: AcpSchema.RequestPermissionRequest) =>
+        request("session/request_permission", params).pipe(
+          Effect.flatMap((response) =>
+            decodeRequestPermissionResponse(response).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new AcpError.AcpTransportError({
+                    operation: "call-rpc",
+                    method: "session/request_permission",
+                    cause,
+                  }),
+              ),
+            ),
+          ),
+        ),
+      extRequest: request,
+    },
+    handleInitialize: handle<AcpSchema.InitializeRequest, AcpSchema.InitializeResponse>(
+      "initialize",
+      decodeInitializeRequest,
+    ),
+    handleAuthenticate: handle<AcpSchema.AuthenticateRequest, AcpSchema.AuthenticateResponse>(
+      "authenticate",
+      decodeAuthenticateRequest,
+    ),
+    handleLogout: handle<AcpSchema.LogoutRequest, AcpSchema.LogoutResponse>(
+      "logout",
+      decodeLogoutRequest,
+    ),
+    handleCreateSession: handle<AcpSchema.NewSessionRequest, unknown>(
+      "session/new",
+      decodeNewSessionRequest,
+    ),
+    handleLoadSession: handle<AcpSchema.LoadSessionRequest, unknown>(
+      "session/load",
+      decodeLoadSessionRequest,
+    ),
+    handleResumeSession: handle<AcpSchema.ResumeSessionRequest, unknown>(
+      "session/resume",
+      decodeResumeSessionRequest,
+    ),
+    handleSetSessionModel: handle<{ readonly sessionId: string; readonly modelId: string }, {}>(
+      "session/set_model",
+      decodeSetSessionModelRequest,
+    ),
+    handleSetSessionConfigOption: handle<AcpSchema.SetSessionConfigOptionRequest, unknown>(
+      "session/set_config_option",
+      decodeSetSessionConfigOptionRequest,
+    ),
+    handlePrompt: handle<AcpSchema.PromptRequest, AcpSchema.PromptResponse>(
+      "session/prompt",
+      decodePromptRequest,
+    ),
+    handleCancel: (handler: MockRequestHandler<AcpSchema.CancelNotification, void>) =>
+      Effect.sync(() => {
+        cancelHandlers.push(handler);
+      }),
+    handleUnknownExtRequest: (
+      handler: (method: string, params: unknown) => Effect.Effect<unknown, AcpError.AcpError>,
+    ) =>
+      Effect.sync(() => {
+        unknownRequestHandler = handler;
+      }),
+    handleUnknownExtNotification: (
+      handler: (method: string, params: unknown) => Effect.Effect<void, AcpError.AcpError>,
+    ) =>
+      Effect.sync(() => {
+        unknownNotificationHandler = handler;
+      }),
+  };
+});
+
 const program = Effect.gen(function* () {
-  const agent = yield* EffectAcpAgent.AcpAgent;
+  const agent = yield* makeV1Agent();
   const resumeRelease = yield* Deferred.make<void>();
   const nativeCancelRequested = yield* Deferred.make<void>();
   const nativeCancelRelease = yield* Deferred.make<void>();
@@ -1643,39 +1881,6 @@ const program = Effect.gen(function* () {
   );
 
   return yield* Effect.never;
-}).pipe(
-  Effect.provide(
-    EffectAcpAgent.layerStdio(
-      requestLogPath
-        ? {
-            logIncoming: true,
-            logger: (event) => {
-              if (event.direction !== "incoming" || event.stage !== "raw") {
-                return Effect.void;
-              }
-              if (typeof event.payload !== "string") {
-                return Effect.void;
-              }
-              const chunk = event.payload;
-              return Effect.sync(() => {
-                // A stdin chunk can end inside a message; log only whole lines.
-                pendingRequestBytes += chunk;
-                const lineEnd = pendingRequestBytes.lastIndexOf("\n");
-                if (lineEnd === -1) return;
-                NodeFS.appendFileSync(
-                  requestLogPath,
-                  pendingRequestBytes.slice(0, lineEnd + 1),
-                  "utf8",
-                );
-                pendingRequestBytes = pendingRequestBytes.slice(lineEnd + 1);
-              });
-            },
-          }
-        : {},
-    ),
-  ),
-  Effect.scoped,
-  Effect.provide(NodeServices.layer),
-);
+}).pipe(Effect.scoped, Effect.provide(NodeServices.layer));
 
 NodeRuntime.runMain(program);

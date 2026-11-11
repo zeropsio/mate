@@ -4,7 +4,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
-import type * as EffectAcpSchema from "effect-acp/schema";
+import type * as EffectAcpSchema from "effect-acp/compat";
 import { deriveToolActivityPresentation } from "@t3tools/shared/toolActivity";
 import type { ToolLifecycleItemType } from "@t3tools/contracts";
 
@@ -206,6 +206,23 @@ export function parseSessionModeState(
   };
 }
 
+// A cancelled entry is not outstanding work, and plan steps have no cancelled status, so it is
+// dropped rather than shown as pending.
+function planSteps(entries: ReadonlyArray<unknown>): AcpPlanUpdate["plan"] {
+  return entries.flatMap((entry, index) => {
+    if (!isRecord(entry) || typeof entry.content !== "string" || entry.status === "cancelled") {
+      return [];
+    }
+    const step = entry.content.trim();
+    return [
+      {
+        step: step.length > 0 ? step : `Step ${index + 1}`,
+        status: normalizePlanStepStatus(entry.status),
+      },
+    ];
+  });
+}
+
 function normalizePlanStepStatus(raw: unknown): "pending" | "inProgress" | "completed" {
   switch (raw) {
     case "completed":
@@ -231,6 +248,7 @@ function normalizeToolCallStatus(
     case "completed":
       return "completed";
     case "failed":
+    case "cancelled":
       return "failed";
     default:
       return fallback;
@@ -837,16 +855,22 @@ export function parseSessionUpdateEvent(params: EffectAcpSchema.SessionNotificat
       break;
     }
     case "plan": {
-      const plan = upd.entries.map((entry, index) => ({
-        step: entry.content.trim().length > 0 ? entry.content.trim() : `Step ${index + 1}`,
-        status: normalizePlanStepStatus(entry.status),
-      }));
       // An empty plan replaces the previous one, so it is forwarded too.
       events.push({
         _tag: "PlanUpdated",
-        payload: {
-          plan,
-        },
+        payload: { plan: planSteps(upd.entries) },
+        rawPayload: params,
+      });
+      break;
+    }
+    // ACP v2 names each plan and also sends markdown plans; the one plan a turn shows is
+    // its latest list of steps.
+    case "plan_update": {
+      if (upd.plan.type !== "items" || !("entries" in upd.plan)) break;
+      if (!Array.isArray(upd.plan.entries)) break;
+      events.push({
+        _tag: "PlanUpdated",
+        payload: { plan: planSteps(upd.plan.entries) },
         rawPayload: params,
       });
       break;

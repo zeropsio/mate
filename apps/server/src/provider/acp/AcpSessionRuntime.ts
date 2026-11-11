@@ -19,7 +19,7 @@ import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as EffectAcpClient from "effect-acp/client";
 import * as EffectAcpErrors from "effect-acp/errors";
-import type * as EffectAcpSchema from "effect-acp/schema";
+import type * as EffectAcpSchema from "effect-acp/compat";
 import type * as EffectAcpProtocol from "effect-acp/protocol";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
 
@@ -1076,13 +1076,25 @@ export const make = (
                 Effect.catchCauseIf(
                   (cause) =>
                     options.cancelBehavior !== "wait-for-prompt" && Cause.hasInterruptsOnly(cause),
-                  () =>
-                    Effect.succeed({
-                      stopReason: "cancelled",
-                    } satisfies EffectAcpSchema.PromptResponse),
+                  () => Effect.succeed<EffectAcpSchema.PromptResponse>({ stopReason: "cancelled" }),
                 ),
                 Effect.tap(() =>
                   closeActiveAssistantSegment({ queue: eventQueue, assistantSegmentRef }),
+                ),
+                // ACP v2 reports a failed prompt as an idle `error`, not an RPC error, so it
+                // fails here like one and every adapter ends the turn failed in its words.
+                Effect.flatMap((result) =>
+                  result.stopReason === "error"
+                    ? Effect.fail(
+                        EffectAcpErrors.AcpRequestError.fromProtocolError(
+                          result.error ?? {
+                            code: -32603,
+                            message: "The agent reported its turn failed.",
+                          },
+                          { method: "session/prompt" },
+                        ),
+                      )
+                    : Effect.succeed(result),
                 ),
               ),
             (activePrompt, result) =>
