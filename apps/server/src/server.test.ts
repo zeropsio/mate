@@ -860,6 +860,10 @@ const buildAppUnderTest = (options?: {
         ),
       ),
     );
+    // The config subscription acquires both change feeds before it reads the snapshot;
+    // the real services hand back the same feed, buffered from that moment.
+    const keybindingsChanges = options?.layers?.keybindings?.streamChanges ?? Stream.empty;
+    const serverSettingsChanges = options?.layers?.serverSettings?.streamChanges ?? Stream.empty;
     const servedRoutesLayer = serveRoutes({
       disableListenLog: true,
       disableLogger: true,
@@ -872,7 +876,8 @@ const buildAppUnderTest = (options?: {
               keybindings: [],
               issues: [],
             }),
-            streamChanges: Stream.empty,
+            streamChanges: keybindingsChanges,
+            subscribeChanges: Effect.succeed(keybindingsChanges),
             ...options?.layers?.keybindings,
           }),
           Layer.mock(UsageLimitSources.UsageLimitSources)({
@@ -914,7 +919,8 @@ const buildAppUnderTest = (options?: {
           ready: Effect.void,
           getSettings: Effect.succeed(DEFAULT_SERVER_SETTINGS),
           updateSettings: () => Effect.succeed(DEFAULT_SERVER_SETTINGS),
-          streamChanges: Stream.empty,
+          streamChanges: serverSettingsChanges,
+          subscribeChanges: Effect.succeed(serverSettingsChanges),
           ...options?.layers?.serverSettings,
         }),
       ),
