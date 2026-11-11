@@ -14,27 +14,32 @@ import { ServerConfig } from "./config.ts";
  * previous version's state and start it, and every effect this boot made outside that state (an HQ
  * frame, a usage row sent, a git change, a relay publish) would then happen twice.
  *
+ * zcp copies the state before the boot and drops the copy at its commit, so every write the boot
+ * makes to the state, and every step that can fail on it, comes before the readiness proof: the
+ * engine's boot (`engine/EngineBoot.ts`) reads, migrates and reconciles there. Only the engine's
+ * opening is held; it cannot fail, so nothing after the commit can end the process. zcp's commit
+ * has a fixed budget, so the commit answers once the lift has started.
+ *
  * The one rule: client and engine admission and new terminals start closed while `pending`, and
  * every root that acts outward awaits `lifted` inside its own fiber. Nothing on the way to command
  * readiness awaits it: zcp commits only after the readiness proof, which needs startup finished.
  *
- * The lift keeps the order of a boot outside an update: the engine's start (its boot reconcile
- * cuts whatever a restart left running) finishes before admission reopens, and admission reopens
- * before the outward roots run, so nothing admitted at the commit is taken for restart debris.
+ * The lift keeps the order of a boot outside an update: the engine opens before admission reopens,
+ * and admission reopens before the outward roots run.
  */
 export interface MateUpdateBootFenceShape {
   /** This boot started under a switch zcp has not committed or cancelled. */
   readonly pending: boolean;
   /** Resolves once the lift has reopened admission; at once on a boot that is not pending. */
   readonly lifted: Effect.Effect<void>;
-  /** The engine's start: under a pending fence it runs once zcp commits or cancels. */
-  readonly holdStart: (start: Effect.Effect<void>) => Effect.Effect<void>;
+  /** The engine's opening: under a pending fence it runs once zcp commits or cancels. */
+  readonly holdOpen: (open: Effect.Effect<void>) => Effect.Effect<void>;
   /**
-   * Starts the lift and returns at once: releases the held start, waits for it, runs `reopen`,
+   * Starts the lift and returns at once: releases the held opening, waits for it, runs `reopen`,
    * then resolves `lifted`. It runs in the fence's own scope, so it finishes when its caller goes
-   * away and never holds a caller that runs before the engine's start exists (the update service's
-   * first read inside a layer build); a caller that answers for the lift awaits `lifted`. Once
-   * lifted, `reopen` runs inline, as on a boot that is not pending.
+   * away and never holds a caller that runs before the engine's opening exists (the update
+   * service's first read inside a layer build), nor a commit answering inside zcp's budget.
+   * Once lifted, `reopen` runs inline, as on a boot that is not pending.
    */
   readonly lift: (reopen: Effect.Effect<void>) => Effect.Effect<void>;
 }
@@ -42,7 +47,7 @@ export interface MateUpdateBootFenceShape {
 const openFence: MateUpdateBootFenceShape = {
   pending: false,
   lifted: Effect.void,
-  holdStart: (start) => start,
+  holdOpen: (open) => open,
   lift: (reopen) => reopen,
 };
 
@@ -58,22 +63,23 @@ export class MateUpdateBootFence extends Context.Reference<MateUpdateBootFenceSh
       if (!mateUpdateBootPending(config.zerops?.mateUpdateStateFile)) return openFence;
       const scope = yield* Effect.scope;
       const released = yield* Deferred.make<void>();
-      const started = yield* Deferred.make<void>();
+      const opened = yield* Deferred.make<void>();
       const lifted = yield* Deferred.make<void>();
       return {
         pending: true,
         lifted: Deferred.await(lifted),
-        holdStart: (start) =>
+        holdOpen: (open) =>
           Deferred.await(released).pipe(
-            Effect.andThen(start),
-            Effect.ensuring(Deferred.succeed(started, undefined)),
+            Effect.andThen(open),
+            Effect.andThen(Deferred.succeed(opened, undefined)),
+            Effect.asVoid,
           ),
         lift: (reopen) =>
           Effect.flatMap(Deferred.isDone(lifted), (done) =>
             done
               ? reopen
               : Deferred.succeed(released, undefined).pipe(
-                  Effect.andThen(Deferred.await(started)),
+                  Effect.andThen(Deferred.await(opened)),
                   Effect.andThen(reopen),
                   Effect.andThen(Deferred.succeed(lifted, undefined)),
                   Effect.forkIn(scope),

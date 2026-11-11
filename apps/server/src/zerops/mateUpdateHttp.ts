@@ -3,7 +3,6 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
-import { MateUpdateBootFence } from "../mateUpdateBoot.ts";
 import { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
 import { ServerEnvironment } from "../environment/ServerEnvironment.ts";
 import { ServerCommandReadiness } from "../spi/serverCommandReadiness.ts";
@@ -72,6 +71,12 @@ const readinessRoute = HttpRouter.add(
     });
   }),
 );
+/**
+ * zcp sends commit and cancel once, with a fixed budget: the answer comes once the signal is taken,
+ * never after the engine's opening the boot fence held nor after the reread of zcp's status that a
+ * commit starts (a spawned `zcp mate status`). Admission stays closed until the engine is open
+ * (`MateUpdateBootFence.lift`).
+ */
 const releaseRoute = (path: `/${string}`) =>
   HttpRouter.add(
     "POST",
@@ -79,7 +84,6 @@ const releaseRoute = (path: `/${string}`) =>
     Effect.gen(function* () {
       if (!(yield* local)) return refused;
       yield* yield* reopenMateUpdateAdmission;
-      yield* (yield* MateUpdateBootFence).lifted;
       if (path === "/api/mate/update/commit") yield* (yield* ZeropsMateUpdate).reread;
       return HttpServerResponse.jsonUnsafe({ protocol: 1, reopened: true });
     }),

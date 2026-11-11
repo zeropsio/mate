@@ -1,0 +1,45 @@
+# Deploys the chosen branch to a dev environment's Mate. The build runs on Zerops, so the runner only needs zcli.
+# A GitHub-hosted runner, because a fork's pull request could otherwise point a workflow at a self-hosted one.
+name: Deploy dev Mate
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Dev environment
+        required: true
+        type: choice
+        options:
+          - alpha
+          - ranpu
+          - isu
+          - mado
+          - tatami
+          - futon
+          - gomibako
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: deploy:${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    # the token and the project ID are the environment's, so a run waits for a reviewer's approval
+    environment: dev
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install zcli
+        run: npm install -g @zerops/zcli@1.1.3
+
+      - name: Log in to Zerops
+        env:
+          ZEROPS_ACCESS_TOKEN: ${{ secrets.ZEROPS_ACCESS_TOKEN }}
+        run: zcli login "${ZEROPS_ACCESS_TOKEN:?The ZEROPS_ACCESS_TOKEN secret is not set}"
+
+      - name: Deploy
+        env:
+          PROJECT_ID: ${{ vars.MATE_DEV_PROJECT_ID }}
+          SERVICE: ${{ inputs.environment }}
+        run: zcli push "$SERVICE" -P "${PROJECT_ID:?The MATE_DEV_PROJECT_ID variable is not set}" --setup dev --version-name "${GITHUB_SHA::8}"

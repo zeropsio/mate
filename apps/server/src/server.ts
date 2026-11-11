@@ -833,5 +833,6 @@ export const makeServerLayer = (options: ServerLayerOptions) =>
     }),
   );
 
-// The CLI supplies configuration.
+// The CLI supplies configuration. A boot that fails fails the build (`abort`): every step that can
+// fail, the engine's boot included, comes before activation.
 export const runServer = Layer.launch(makeServerLayer({ drivers: BUILT_IN_DRIVERS }));

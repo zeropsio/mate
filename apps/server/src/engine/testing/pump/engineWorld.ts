@@ -220,7 +220,7 @@ export const makeEngineWorld = (options: WorldOptions) =>
       yield* within(
         Effect.gen(function* () {
           const engine = yield* MateEngine;
-          yield* Scope.provide(engine.start(), life!);
+          yield* Scope.provide(Effect.flatten(engine.boot()), life!);
         }),
       );
       yield* settle;

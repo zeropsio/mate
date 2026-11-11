@@ -1,4 +1,5 @@
 import { CommandId, ProjectId } from "@t3tools/contracts";
+import * as Cause from "effect/Cause";
 import * as Console from "effect/Console";
 import * as Context from "effect/Context";
 import * as SecureRandom from "effect/crypto/SecureRandom";
@@ -19,7 +20,7 @@ import { ProjectionThreadActivityRepositoryLive } from "./persistence/Layers/Pro
 import { ProjectionPendingApprovalRepositoryLive } from "./persistence/Layers/ProjectionPendingApprovals.ts";
 import * as ServerConfig from "./config.ts";
 import { MateUpdateBootFence } from "./mateUpdateBoot.ts";
-import { MateEngine, type MateEngineService } from "./engine/MateEngine.ts";
+import { MateEngine, type EngineStoreError, type MateEngineService } from "./engine/MateEngine.ts";
 import * as Keybindings from "./keybindings.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
@@ -46,7 +47,7 @@ export class ServerRuntimeStartupError extends Schema.TaggedError<ServerRuntimeS
   },
 ) {
   override get message(): string {
-    return "Server runtime startup failed before command readiness.";
+    return "Server runtime startup failed.";
   }
 }
 
@@ -200,31 +201,35 @@ const runStartupPhase = <A, E, R>(phase: string, effect: Effect.Effect<A, E, R>)
   );
 
 /**
- * The conversation's roots: the engine's start in `reactorScope`. Under an update's boot fence the
- * engine's admission closes and its start is held, in its own fiber, until zcp commits or cancels
- * (the fence then reopens admission only after it): the start tells every owner `Recovered` and
- * runs the effects that queues (the crew's sweeps reach its dev services' git), while the readiness
- * proof zcp commits on must answer before that.
+ * The conversation's roots: the engine in `reactorScope`. Its boot reads every record and
+ * reconciles the restart before startup goes on, so a boot that cannot read this Mate's state fails
+ * before command readiness; under an update's boot fence that boot is strict, and zcp rolls the
+ * update back. The engine's opening acts outward and cannot fail: under the fence its admission
+ * closes first and the opening is held, in its own fiber, until zcp commits or cancels (the fence
+ * then reopens admission only after it).
  */
 export const startConversationRoots = (input: {
-  readonly engine: Pick<MateEngineService, "start" | "updateDrain">;
+  readonly engine: Pick<MateEngineService, "boot" | "updateDrain">;
   readonly reactorScope: Scope.Scope;
-}): Effect.Effect<void> =>
+}): Effect.Effect<void, EngineStoreError> =>
   runStartupPhase(
     "engine.start",
     Effect.gen(function* () {
       const fence = yield* MateUpdateBootFence;
-      if (!fence.pending) {
-        yield* input.engine.start().pipe(Scope.provide(input.reactorScope));
-        return;
+      if (fence.pending) {
+        if (input.engine.updateDrain === undefined)
+          return yield* Effect.die(new Error("This Mate cannot fence an automatic update boot."));
+        yield* input.engine.updateDrain.begin;
       }
-      if (input.engine.updateDrain === undefined)
-        return yield* Effect.die(new Error("This Mate cannot fence an automatic update boot."));
-      yield* input.engine.updateDrain.begin;
-      yield* Effect.forkIn(
-        fence.holdStart(input.engine.start().pipe(Scope.provide(input.reactorScope))),
-        input.reactorScope,
-      );
+      const open = yield* input.engine
+        .boot({ strict: fence.pending })
+        .pipe(Scope.provide(input.reactorScope));
+      yield* fence.pending
+        ? Effect.forkIn(
+            fence.holdOpen(open.pipe(Scope.provide(input.reactorScope))),
+            input.reactorScope,
+          )
+        : open.pipe(Scope.provide(input.reactorScope));
     }),
   );
 
@@ -253,6 +258,25 @@ export const make = (options?: StartupOptions) =>
     const reactorScope = yield* Scope.make("sequential");
 
     yield* Effect.addFinalizer(() => Scope.close(reactorScope, Exit.void));
+
+    const failBoot = (cause: Cause.Cause<unknown>) => {
+      const error = new ServerRuntimeStartupError({
+        mode: serverConfig.mode,
+        host: serverConfig.host ?? null,
+        port: serverConfig.port,
+        cause,
+      });
+      return Effect.logError("server runtime startup failed", { cause }).pipe(
+        Effect.andThen(
+          Option.isSome(commandReadiness)
+            ? commandReadiness.value.fail("server runtime startup failed")
+            : Effect.void,
+        ),
+        Effect.andThen(commandGate.failCommandReady(error)),
+        Effect.andThen(options?.abort?.(error) ?? Effect.void),
+        Effect.asVoid,
+      );
+    };
 
     const startup = Effect.gen(function* () {
       yield* Effect.logDebug("startup phase: starting keybindings runtime");
@@ -286,10 +310,7 @@ export const make = (options?: StartupOptions) =>
       );
 
       yield* Effect.logDebug("startup phase: starting the Mate engine");
-      yield* startConversationRoots({
-        engine: mateEngine,
-        reactorScope,
-      });
+      yield* startConversationRoots({ engine: mateEngine, reactorScope });
 
       const welcomeBase = yield* resolveWelcomeBase;
       const environment = yield* serverEnvironment.getDescriptor;
@@ -392,26 +413,9 @@ export const make = (options?: StartupOptions) =>
 
     yield* Effect.forkScoped(
       Effect.exit(startup).pipe(
-        Effect.flatMap((startupExit) => {
-          if (Exit.isSuccess(startupExit)) return Effect.void;
-          const error = new ServerRuntimeStartupError({
-            mode: serverConfig.mode,
-            host: serverConfig.host ?? null,
-            port: serverConfig.port,
-            cause: startupExit.cause,
-          });
-          return Effect.logError("server runtime startup failed", {
-            cause: startupExit.cause,
-          }).pipe(
-            Effect.andThen(
-              Option.isSome(commandReadiness)
-                ? commandReadiness.value.fail("server runtime startup failed")
-                : Effect.void,
-            ),
-            Effect.andThen(commandGate.failCommandReady(error)),
-            Effect.andThen(options?.abort?.(error) ?? Effect.void),
-          );
-        }),
+        Effect.flatMap((startupExit) =>
+          Exit.isSuccess(startupExit) ? Effect.void : failBoot(startupExit.cause),
+        ),
       ),
     );
 

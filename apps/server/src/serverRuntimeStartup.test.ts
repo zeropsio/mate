@@ -60,7 +60,7 @@ it.effect("enqueueCommand fails queued work when readiness fails", () =>
       );
 
       const error = yield* Effect.flip(Fiber.join(queuedCommandFiber));
-      assert.equal(error.message, "Server runtime startup failed before command readiness.");
+      assert.equal(error.message, "Server runtime startup failed.");
     }),
   ),
 );
@@ -212,7 +212,10 @@ it.effect("at boot, the Mate engine starts in the reactor scope", () =>
     const started: Array<string> = [];
     const scope = yield* Scope.make();
     yield* ServerRuntimeStartup.startConversationRoots({
-      engine: { ...inertMateEngine, start: () => Effect.sync(() => void started.push("engine")) },
+      engine: {
+        ...inertMateEngine,
+        boot: () => Effect.succeed(Effect.sync(() => void started.push("engine"))),
+      },
       reactorScope: scope,
     });
     yield* Scope.close(scope, Exit.void);
