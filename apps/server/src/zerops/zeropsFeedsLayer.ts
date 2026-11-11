@@ -251,6 +251,7 @@ const ZeropsHqLinkLive = Layer.unwrap(
     return ZeropsHqLinkModule.layer(yield* CrewEngine);
   }),
 ).pipe(
+  Layer.provide(ProcessRunner.layer),
   Layer.provide(mateAutoUpdatePolicyLayer),
   Layer.provide(ZeropsCrewLive),
   Layer.provide(providerInstancesLayer),
