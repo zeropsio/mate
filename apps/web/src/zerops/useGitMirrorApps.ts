@@ -7,7 +7,11 @@
  */
 import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 
-import { appName, installationStanding } from "../components/settings/automationSettings.logic";
+import {
+  appName,
+  installationStanding,
+  postManifest,
+} from "../components/settings/automationSettings.logic";
 import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
 import { useGithubApp } from "./useTaskSourceSettings";
 
@@ -94,13 +98,20 @@ export function useGitMirrorApps(shown = true): {
    * resolves `false` where HQ refused or did not answer — its words are `installing`'s.
    */
   readonly install: (appId: number, returnTo?: string) => Promise<boolean>;
+  /**
+   * Leaves for GitHub to make the organization's app, named `name`, on the person's own account
+   * or on the GitHub organization `owner`; HQ adds it and sends the browser on to install it, then
+   * back to `returnTo`. Resolves `false` where HQ refused — its words are `installing`'s.
+   */
+  readonly make: (owner: string | null, name: string, returnTo?: string) => Promise<boolean>;
   readonly installing: GitMirrorInstallAction;
 } {
-  const { read, again, install } = useGithubApp(shown);
+  const { read, again, install, manifest } = useGithubApp(shown);
   const admin = roleAtLeast(useZeropsSessionOptional()?.activeOrganization?.roleCode, "ADMIN");
   const action = read.action;
   const installing: GitMirrorInstallAction =
-    action.kind === "working" && action.verb === "github-install"
+    action.kind === "working" &&
+    (action.verb === "github-install" || action.verb === "github-manifest")
       ? { kind: "working" }
       : action.kind === "failed" || action.kind === "unresolved"
         ? { kind: "refused", words: action.words }
@@ -156,6 +167,12 @@ export function useGitMirrorApps(shown = true): {
       const url = await install(appId, returnTo);
       if (url === null) return false;
       window.location.assign(url);
+      return true;
+    },
+    make: async (owner, name, returnTo = window.location.href) => {
+      const view = await manifest({ owner, name, returnTo });
+      if (view === null) return false;
+      postManifest(document, view);
       return true;
     },
     installing,

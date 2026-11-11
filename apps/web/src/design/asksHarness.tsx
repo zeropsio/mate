@@ -32,7 +32,10 @@ import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "~/components/ui/toggle-group";
 import { MateFace } from "~/components/zerops/primitives";
-import { GithubConnectPickerView } from "~/components/zerops/github/GithubConnectPicker";
+import {
+  GithubConnectPickerView,
+  GithubConnectReading,
+} from "~/components/zerops/github/GithubConnectPicker";
 import { MirrorAskCard } from "~/components/zerops/mirror/MirrorAskCard";
 import { mirrorAskState } from "~/components/zerops/mirror/mirrorAsk.logic";
 import { OriginAskCard } from "~/components/zerops/origin/OriginAskCard";
@@ -613,12 +616,18 @@ const MIRROR_APPS_ANOTHERS: GitMirrorApps = {
   ],
 };
 
+/** The organization's app with no account added yet. */
+const MIRROR_APPS_NONE: GitMirrorApps =
+  MIRROR_APPS.kind === "ready" ? { ...MIRROR_APPS, installations: [] } : MIRROR_APPS;
+
 /** Where the picker stands while the card waits: the harness's own switch. */
 const MIRROR_PICKS = [
   ["pick", "Pick a repository"],
-  ["none", "No account of yours"],
-  ["own-app", "No app of its own"],
-  ["anyway", "A teammate's app, by choice"],
+  ["reading", "Reading GitHub"],
+  ["none", "No account yet"],
+  ["first", "First time for the organization"],
+  ["member", "First time, not an Admin"],
+  ["add", "Another account"],
   ["token", "A token"],
 ] as const;
 type MirrorPick = (typeof MIRROR_PICKS)[number][0];
@@ -627,7 +636,8 @@ function Mirror({ density }: { readonly density: AskDensity }) {
   const [state, setState] = useState<MirrorState>("waiting");
   const [pick, setPick] = useState<MirrorPick>("pick");
   const answered = state === "done" || state === "notNow";
-  const anothers = pick === "none" || pick === "own-app" || pick === "anyway";
+  // The organization's only app is a teammate's own: the picker makes the organization's.
+  const first = pick === "first" || pick === "member";
   return (
     <Specimen
       chips={
@@ -648,49 +658,53 @@ function Mirror({ density }: { readonly density: AskDensity }) {
         onRetry={NOTHING}
         onShowInConversation={density === "compact" ? NOTHING : undefined}
         picker={
-          <GithubConnectPickerView
-            actions={{
-              install: async () => false,
-              again: NOTHING,
-              leaving: NOTHING,
-              dismiss: NOTHING,
-              openSettings: NOTHING,
-              // Without it the main press is held, and the specimen shows a card nobody gets.
-              connectViaApp: () => new Promise<string | null>(() => {}),
-            }}
-            admin
-            apps={anothers ? MIRROR_APPS_ANOTHERS : MIRROR_APPS}
-            authority={null}
-            density="compact"
-            footerEnd={
-              <Button size="md" variant="ghost">
-                Not now
-              </Button>
-            }
-            initial={
-              pick === "own-app"
-                ? { step: "explain" }
-                : pick === "anyway"
-                  ? { step: "explain", explainApp: 41 }
-                  : pick === "token"
-                    ? { step: "token" }
-                    : {}
-            }
-            key={pick}
-            entry={{ name: MIRROR.repo, mainHead: null, updatedAt: "2026-11-09T10:00:00Z" }}
-            fresh={new Set()}
-            nameOf={(id) => PEOPLE[id]}
-            orgName="Acme"
-            installing={{ kind: "idle" }}
-            press={{ kind: "none" }}
-            project="app-shop"
-            projectName="Shop"
-            projectNameOf={(id) => (id === "app-store" ? "Store" : undefined)}
-            repo={MIRROR.repo}
-            returned={null}
-            usedApps={[]}
-            viewerId="u-ales"
-          />
+          pick === "reading" ? (
+            <GithubConnectReading
+              footerEnd={
+                <Button size="md" variant="ghost">
+                  Not now
+                </Button>
+              }
+            />
+          ) : (
+            <GithubConnectPickerView
+              actions={{
+                install: async () => false,
+                make: async () => false,
+                again: NOTHING,
+                leaving: NOTHING,
+                dismiss: NOTHING,
+                // Without it the main press is held, and the specimen shows a card nobody gets.
+                connectViaApp: () => new Promise<string | null>(() => {}),
+              }}
+              admin={pick !== "member"}
+              apps={first ? MIRROR_APPS_ANOTHERS : pick === "none" ? MIRROR_APPS_NONE : MIRROR_APPS}
+              authority={null}
+              density="compact"
+              footerEnd={
+                <Button size="md" variant="ghost">
+                  Not now
+                </Button>
+              }
+              initial={
+                pick === "add" ? { step: "explain" } : pick === "token" ? { step: "token" } : {}
+              }
+              key={pick}
+              entry={{ name: MIRROR.repo, mainHead: null, updatedAt: "2026-11-09T10:00:00Z" }}
+              fresh={new Set()}
+              nameOf={(id) => PEOPLE[id]}
+              orgName="Acme"
+              installing={{ kind: "idle" }}
+              press={{ kind: "none" }}
+              project="app-shop"
+              projectName="Shop"
+              projectNameOf={(id) => (id === "app-store" ? "Store" : undefined)}
+              repo={MIRROR.repo}
+              returned={null}
+              usedApps={[]}
+              viewerId="u-ales"
+            />
+          )
         }
         pickerFoots
         reason={MIRROR.reason}

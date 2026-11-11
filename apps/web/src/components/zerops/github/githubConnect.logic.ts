@@ -2,7 +2,7 @@
  * What the GitHub connect picker shows, from the organization's apps (`useGitMirrorApps`): the
  * accounts its repositories can go to, yours first, each listed once through one app; each
  * account's repositories with the one whose name matches suggested and the ones another code
- * repository uses visible but not pickable; and what the trip to GitHub installs.
+ * repository uses visible but not pickable; and how the person looking adds an account (`githubTrip`).
  */
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 
@@ -13,6 +13,7 @@ import type {
   GitMirrorRepository,
 } from "~/zerops/useGitMirrorApps";
 
+import { APP_NAME_MAX, defaultAppName } from "../../settings/automationSettings.logic";
 import { githubName, remoteGithubAppId } from "../gitMirror.logic";
 
 /** A repository an account's installation reaches, and the app it goes through there. */
@@ -232,38 +233,16 @@ export const newRepositoryUrl = (account: string, name: string) =>
   `https://github.com/new?${new URLSearchParams({ owner: account, name, visibility: "private" }).toString()}`;
 
 /**
- * What the trip to GitHub installs, said before the person leaves: the app, whose it is on GitHub
- * and who set it up in the organization.
- */
-export function explainerWords(
-  app: GitMirrorAppEntry,
-  nameOf: (userId: string) => string | undefined,
-  viewerId: string | null,
-): { readonly install: string; readonly about: string } {
-  const owner = app.ownerType === "User" ? `${app.owner}, a personal account` : app.owner;
-  const by =
-    app.setUpBy === null
-      ? null
-      : app.setUpBy === viewerId
-        ? "you"
-        : (nameOf(app.setUpBy) ?? "someone in the organization");
-  const setUp = by === null ? "waits for an Owner or Admin to remake it" : `was set up by ${by}`;
-  return {
-    install: `You'll install ${app.name} on the account you pick.`,
-    // A name ending in its initial's period ends the sentence too.
-    about: `${app.name} is owned by ${owner} on GitHub and ${setUp}`.replace(/\.?$/u, "."),
-  };
-}
-
-/**
  * Whether `app` belongs to another person's own GitHub account: a personal account owns it and
  * someone other than the viewer set it up (or nobody has yet). An app's owner holds its key, so
- * installed on the viewer's account it puts the repositories they pick in that person's reach.
+ * nobody else is ever sent to install it, and no step names it (the owner, 2026-11-11, shown a
+ * colleague's app by name: "in what case would you ever want to install some random … whatever you
+ * have no idea what even is?").
  */
 export const anothersOwnApp = (app: GitMirrorAppEntry, viewerId: string | null): boolean =>
   app.ownerType === "User" && (viewerId === null || app.setUpBy !== viewerId);
 
-/** The apps a person installs without a second thought: in use, and not another person's own. */
+/** The apps a person may be sent to install: in use, and not another person's own. */
 export const ownApps = (
   apps: ReadonlyArray<GitMirrorAppEntry>,
   viewerId: string | null,
@@ -271,10 +250,9 @@ export const ownApps = (
   apps.filter((app) => app.setUpBy !== null && !anothersOwnApp(app, viewerId));
 
 /**
- * The app the trip to GitHub starts with: the one the viewer set up, else the one the project's
- * other repositories go through, else the only one — among the organization's own (`ownApps`).
- * Never another person's own app: that one is installed only by choice (the owner, 2026-11-11, sent
- * to install a colleague's personal app for an unrelated project: "this is important problem").
+ * The app the trip to GitHub installs: the one the viewer set up, else the one the project's
+ * other repositories go through, else the oldest — among those the viewer may be sent to
+ * (`ownApps`). The person is never asked which.
  */
 export function openingApp(
   apps: ReadonlyArray<GitMirrorAppEntry>,
@@ -285,30 +263,54 @@ export function openingApp(
   return (
     own.find((app) => viewerId !== null && app.setUpBy === viewerId)?.appId ??
     used.find((id) => own.some((app) => app.appId === id)) ??
-    (own.length === 1 ? (own[0]?.appId ?? null) : null)
+    own[0]?.appId ??
+    null
   );
 }
 
 /**
- * What the organization is told where every GitHub app it has is another person's own: whose
- * they are, and what installing one means.
+ * How this person adds a GitHub account, decided for them: `install` where the organization has an
+ * app they may be sent to; `make` where it has none and they are an Owner or Admin — the same trip
+ * makes the organization's app first, named `name`, and installs it; `ask` where it has none and
+ * they are not: an Owner or Admin sets GitHub up once.
  */
-export function noOwnAppWords(
+export type GithubTrip =
+  | { readonly kind: "install"; readonly app: GitMirrorAppEntry }
+  | { readonly kind: "make"; readonly name: string }
+  | { readonly kind: "ask" };
+
+export function githubTrip(input: {
+  readonly apps: ReadonlyArray<GitMirrorAppEntry>;
+  readonly viewerId: string | null;
+  readonly used: ReadonlyArray<number>;
+  /** An Owner or Admin, where the picker can start HQ's make trip. */
+  readonly makes: boolean;
+  readonly organization: string | undefined;
+}): GithubTrip {
+  const id = openingApp(input.apps, input.viewerId, input.used);
+  const app = input.apps.find((each) => each.appId === id);
+  if (app !== undefined) return { kind: "install", app };
+  if (!input.makes) return { kind: "ask" };
+  return { kind: "make", name: firstAppName(input.organization, input.apps) };
+}
+
+/**
+ * The name the organization's app is made with: the organization's ("Acme Mate"), numbered where
+ * one of its apps already has that name. GitHub's own page shows it and lets the person change it.
+ */
+export function firstAppName(
+  organization: string | undefined,
   apps: ReadonlyArray<GitMirrorAppEntry>,
-  nameOf: (userId: string) => string | undefined,
-  organization: string,
 ): string {
-  const key =
-    "An app's owner holds its key: installed on your account, it can act on the repositories you pick there.";
-  const [only] = apps;
-  if (apps.length === 1 && only !== undefined) {
-    const by = only.setUpBy === null ? undefined : nameOf(only.setUpBy);
-    // A name ending in its initial's period ends the sentence too.
-    const whose = `${organization}'s only GitHub app, ${only.name}, belongs to ${only.owner}'s personal GitHub account${by === undefined ? "" : `, set up by ${by}`}`;
-    return `${whose.replace(/\.?$/u, ".")} ${key}`;
+  const taken = apps.map((app) => app.name);
+  const first = defaultAppName(organization, taken);
+  if (first !== "") return first;
+  const base = defaultAppName(organization);
+  for (let n = 2; n < 10; n += 1) {
+    const numbered = `${base.slice(0, APP_NAME_MAX - 2).trimEnd()} ${String(n)}`;
+    if (!taken.some((one) => one.toLowerCase() === numbered.toLowerCase())) return numbered;
   }
-  const owners = [...new Set(apps.map((app) => app.owner))].join(", ");
-  return `${organization}'s GitHub apps belong to personal GitHub accounts (${owners}). ${key}`;
+  return base;
 }
 
 /** Said where Connect would act through an app that waits for an Owner or Admin to remake it. */
