@@ -3029,6 +3029,9 @@ code {
     -webkit-mask-image: var(--run-shimmer-band);
     mask-image: var(--run-shimmer-band);
     animation: run-shimmer 2s linear infinite;
+    /* Stepped, not linear: the masked, blended band redraws at each step rather than on every
+       frame of a high-refresh display. The copy steps with it, so it still stands still. */
+    animation-timing-function: steps(30);
   }
 
   [data-sweep-copy] {
@@ -3043,6 +3046,7 @@ code {
     /* Its own ellipsis in no ink: the line's stands steady under the light. */
     -webkit-text-fill-color: transparent;
     animation: run-shimmer-hold 2s linear infinite;
+    animation-timing-function: steps(30);
   }
 
   [data-sweep-ink] {
