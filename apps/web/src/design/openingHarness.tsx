@@ -34,6 +34,7 @@ import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import {
   ConversationOpeningProvider,
   ConversationOpeningStage,
+  ConversationOpeningWaits,
 } from "~/components/chat/ConversationOpeningStage";
 import { ConversationStripView } from "~/components/chat/ConversationStrip";
 import { TooltipProvider } from "~/components/ui/tooltip";
@@ -137,7 +138,12 @@ function Harness() {
             />
           </header>
           <div className="relative flex min-h-0 flex-1 flex-col">
-            <div className="flex min-h-0 flex-1 flex-col" data-conversation-content="">
+            <ConversationOpeningWaits
+              as="div"
+              whole
+              className="flex min-h-0 flex-1 flex-col"
+              data-conversation-content=""
+            >
               {params.has("empty") ? (
                 <MateEmptyStateView
                   faceSlot={null}
@@ -150,7 +156,7 @@ function Harness() {
               ) : (
                 <p className="m-auto text-sm text-muted-foreground">Fen's conversation</p>
               )}
-            </div>
+            </ConversationOpeningWaits>
             <ConversationOpeningStage
               ready={phase !== "opening"}
               readPending={!params.has("held")}
@@ -186,7 +192,7 @@ function Harness() {
                 />
               ) : undefined}
             </ConversationOpeningStage>
-            <div data-conversation-footer="">
+            <ConversationOpeningWaits as="div" whole data-conversation-footer="">
               {phase === "opening" ? (
                 <ConversationFooterStandIn key="opening" draft={DRAFT} />
               ) : (
@@ -195,7 +201,7 @@ function Harness() {
                   writer={phase === "answered" ? { kind: ANSWER } : { kind: "unknown" }}
                 />
               )}
-            </div>
+            </ConversationOpeningWaits>
           </div>
         </div>
       </ConversationOpeningProvider>

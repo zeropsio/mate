@@ -4,6 +4,7 @@ import { openingLimitWords } from "../../zerops/mateOpeningStage";
 import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
 import {
   createContext,
+  createElement,
   cloneElement,
   use,
   useCallback,
@@ -11,6 +12,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ComponentProps,
   type ReactNode,
   type ReactElement,
 } from "react";
@@ -49,6 +51,13 @@ const Opening = createContext<{
   readonly setAvatar: (avatar: AvatarSlot) => void;
   readonly releaseStage: (node: HTMLDivElement) => void;
 } | null>(null);
+
+/**
+ * How what belongs to the conversation stands while a stage opens it: held in its place unseen
+ * while the stage waits and wakes, arriving with the conversation at the hand-off.
+ */
+type OpeningWait = "held" | "arrives" | "";
+const OpeningWaitContext = createContext<OpeningWait>("");
 
 /**
  * Whether a stage that registers after another begins an opening of its own, or carries on the
@@ -130,6 +139,14 @@ export function ConversationOpeningProvider({ children }: { readonly children: R
     setPhase(next);
   }, []);
   const saysMate = stageSaysMate(stage, phase);
+  const wait: OpeningWait =
+    stage === null
+      ? ""
+      : phase === "waiting" || phase === "wake"
+        ? "held"
+        : phase === "hand-off"
+          ? "arrives"
+          : "";
   const sourceNode = stage?.node;
   useLayoutEffect(() => {
     if (sourceNode === undefined) return;
@@ -142,7 +159,7 @@ export function ConversationOpeningProvider({ children }: { readonly children: R
   );
   return (
     <Opening value={context}>
-      {children}
+      <OpeningWaitContext value={wait}>{children}</OpeningWaitContext>
       {stage === null
         ? null
         : createPortal(
@@ -176,14 +193,41 @@ export function stageSaysMate(
  */
 export function ConversationOpeningYields({ children }: { readonly children: ReactNode }) {
   const says = use(Opening)?.saysMate === true;
+  const arrives = use(OpeningWaitContext) === "arrives";
   return (
     <span
       aria-hidden={says || undefined}
       className="contents"
+      data-opening-arrives={arrives ? "" : undefined}
       data-opening-header={says ? "yields" : "says"}
     >
       {children}
     </span>
+  );
+}
+
+/**
+ * A part of the conversation's surface that waits for the opening: its children — or, `whole`,
+ * the element itself — are unseen while the stage waits and wakes, and arrive with the
+ * conversation at the hand-off (`index.css`), wherever the stage stands while the route changes.
+ * The element reads the opening itself, so the view around it never renders for an opening's
+ * steps; and the style sheet asks no `:has()` of the page, which restyled the whole document
+ * for every node added anywhere in it.
+ */
+export function ConversationOpeningWaits({
+  as = "span",
+  whole = false,
+  ...props
+}: (
+  | ({ readonly as: "div" } & ComponentProps<"div">)
+  | ({ readonly as?: "span" } & ComponentProps<"span">)
+) & { readonly whole?: boolean }) {
+  const wait = use(OpeningWaitContext);
+  return createElement(
+    as,
+    whole
+      ? { ...props, "data-opening-waits-whole": wait === "" ? undefined : wait }
+      : { ...props, "data-opening-waits": wait },
   );
 }
 

@@ -14,6 +14,7 @@ import {
   useContext,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
@@ -164,22 +165,37 @@ function MateChatsMenu({
 
 /**
  * Whether the text in the element it is given ends in an ellipsis: measured
- * before paint after every draw — its words may change while its box keeps
- * its size — and whenever its box changes size.
+ * after every draw — its words may change while its box keeps its size — and
+ * whenever its box changes size. Both are heard from one ResizeObserver, which
+ * the browser calls once it has laid the page out: read in the draw's layout
+ * effect, the two widths forced the style and layout of the whole page on
+ * every draw of the header, ten times in one load. Observing the element anew
+ * asks for one call after this draw's layout. What is measured is only whether
+ * the hover repeats the words, so it may follow the draw by a frame.
  */
 function useCut(): readonly [(node: HTMLElement | null) => void, boolean] {
   const [node, setNode] = useState<HTMLElement | null>(null);
   const [cut, setCut] = useState(false);
+  const observer = useRef<ResizeObserver | null>(null);
   useLayoutEffect(() => {
-    const measure = () => setCut(node !== null && node.scrollWidth > node.clientWidth);
-    measure();
-  });
+    if (node === null || typeof ResizeObserver === "undefined") return;
+    const watching = new ResizeObserver(() => setCut(node.scrollWidth > node.clientWidth));
+    observer.current = watching;
+    return () => {
+      watching.disconnect();
+      observer.current = null;
+    };
+  }, [node]);
   useLayoutEffect(() => {
     if (node === null) return;
-    const observer = new ResizeObserver(() => setCut(node.scrollWidth > node.clientWidth));
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [node]);
+    if (observer.current === null) {
+      // Nothing to hear the layout from: measured here, as it was.
+      setCut(node.scrollWidth > node.clientWidth);
+      return;
+    }
+    observer.current.unobserve(node);
+    observer.current.observe(node);
+  });
   return [setNode, node !== null && cut];
 }
 

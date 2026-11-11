@@ -63,6 +63,7 @@ import { useZeropsThreadActivity } from "~/zerops/useZeropsAgentActivity";
 import { mateProjectPage, type ZeropsMateAt } from "~/zerops/mateIdentities";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { ZeropsProjectLink } from "../zerops/ZeropsProjectLink";
+import { ConversationOpeningWaits } from "./ConversationOpeningStage";
 import { useProjectReviewOf, useProjectSitesOf } from "~/zerops/projectPartsShown";
 import { HeaderReviewDoor } from "../zerops/SidebarProjectReview";
 import { headerReviewItems } from "../zerops/SidebarProjectReview.logic";
@@ -810,12 +811,12 @@ export const ChatHeader = memo(function ChatHeader({
           data-thread-sync-slot="true"
           ref={registerThreadSyncSlot}
         />
-        <div
+        <ConversationOpeningWaits
+          as="div"
           ref={headerActionsRef}
           data-chat-header-actions
           // Every action here arrives with the conversation at the opening's hand-off, never a
           // step ahead of it (`[data-opening-waits]`, index.css).
-          data-opening-waits=""
           className={cn(
             "flex shrink-0 items-center justify-end",
             // A Mate's header is a row of borderless buttons, 4 px apart like
@@ -898,10 +899,9 @@ export const ChatHeader = memo(function ChatHeader({
           </Menu>
           {/* Project and Sites hold their room while the conversation opens and arrive with it,
               as the Zerops link beside them does: never a step ahead of the conversation. */}
-          <span
+          <ConversationOpeningWaits
             aria-hidden={conversationLoading ? true : undefined}
             className={conversationLoading ? "invisible contents" : "contents"}
-            data-opening-waits=""
           >
             <ChatHeaderLinks
               environmentId={activeThreadEnvironmentId}
@@ -911,12 +911,11 @@ export const ChatHeader = memo(function ChatHeader({
               sites={headerSites}
               threadId={activeThreadId}
             />
-          </span>
+          </ConversationOpeningWaits>
           {mate === undefined ? null : (
-            <span
+            <ConversationOpeningWaits
               aria-hidden={conversationLoading ? true : undefined}
               className={conversationLoading ? "invisible contents" : "contents"}
-              data-opening-waits=""
             >
               {mate.chief === true ? (
                 // A Chief's way out is its organization: the overview's cards beside it.
@@ -925,9 +924,9 @@ export const ChatHeader = memo(function ChatHeader({
                 // Only a Mate in no project: a project's page and its Sites carry the way there.
                 <ZeropsProjectLink projectUrl={mate.projectUrl} />
               ) : null}
-            </span>
+            </ConversationOpeningWaits>
           )}
-        </div>
+        </ConversationOpeningWaits>
       </div>
     </MateFaceAsMark.Provider>
   );
