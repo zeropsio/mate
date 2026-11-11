@@ -227,7 +227,10 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
               ),
             ),
             Effect.map(stampIdentity),
-            Effect.tap((snapshot) => Ref.set(probedVersion, snapshot.version ?? null)),
+            // A failed probe reports no version; keep the last one heard.
+            Effect.tap((snapshot) =>
+              snapshot.version ? Ref.set(probedVersion, snapshot.version) : Effect.void,
+            ),
           ),
         ),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
