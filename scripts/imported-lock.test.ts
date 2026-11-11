@@ -288,26 +288,26 @@ it.layer(NodeServices.layer)("imported-lock: checkImportedLock", (it) => {
   );
 });
 
-// The Import zone may carry one recorded transform over upstream's tree until the next
-// re-import (2026-10-07: Effect 4.0.1's import paths). The check reproduces it, so any edit
-// beyond the transform still fails, even one the lock's own tree OIDs were updated to hide.
+// The Import zone may carry a recorded transform over upstream's tree until the toolchain catches
+// up (2026-11-11: upstream's `effect-tsgo tsrs` typecheck script). The check reproduces it, so any
+// edit beyond the transform still fails, even one the lock's own tree OIDs were updated to hide.
 it.layer(NodeServices.layer)("imported-lock: a transformed import", (it) => {
-  // Built from parts, so the codemod's own run leaves this upstream fixture as it is.
-  const upstreamSource = `import { HttpClient } from "${["effect", "unstable", "http"].join("/")}";\nexport const a = 1;\n`;
-  const transformedSource = 'import { HttpClient } from "effect/http";\nexport const a = 1;\n';
+  const upstreamSource =
+    '{\n  "scripts": {\n    "typecheck": "effect-tsgo tsrs --noEmit"\n  }\n}\n';
+  const transformedSource = '{\n  "scripts": {\n    "typecheck": "tsc --noEmit"\n  }\n}\n';
 
   const lockFor = Effect.fn("test.lockFor")(function* (repoDir: string) {
-    const upstream = yield* makeFixtureRepo({ "pkg-a/index.ts": upstreamSource });
+    const upstream = yield* makeFixtureRepo({ "pkg-a/package.json": upstreamSource });
     const upstreamOids = yield* resolveTreeOids(upstream.repoDir, "HEAD", ["pkg-a"]);
     const headOids = yield* resolveTreeOids(repoDir, "HEAD", ["pkg-a"]);
     return {
       upstream: "deadbeef",
       paths: headOids,
       transform: {
-        name: "effect-401" as const,
-        script: "scripts/effect-401-codemod.ts --import-zone",
-        since: "2026-10-07",
-        until: "the next re-import",
+        name: "tsgo-046" as const,
+        script: "scripts/imported-lock-transform.ts",
+        since: "2026-11-11",
+        until: "the toolchain moves to @effect/tsgo 0.67",
         upstreamPaths: upstreamOids,
       },
     };
@@ -317,7 +317,7 @@ it.layer(NodeServices.layer)("imported-lock: a transformed import", (it) => {
     Effect.scoped(
       Effect.gen(function* () {
         const path = yield* Path.Path;
-        const fixture = yield* makeFixtureRepo({ "pkg-a/index.ts": transformedSource });
+        const fixture = yield* makeFixtureRepo({ "pkg-a/package.json": transformedSource });
         const lockPath = path.join(fixture.repoDir, "imported.lock");
         yield* writeImportedLockFile(lockPath, yield* lockFor(fixture.repoDir));
 
@@ -331,7 +331,7 @@ it.layer(NodeServices.layer)("imported-lock: a transformed import", (it) => {
       Effect.gen(function* () {
         const path = yield* Path.Path;
         const fixture = yield* makeFixtureRepo({
-          "pkg-a/index.ts": `${transformedSource}export const b = 2;\n`,
+          "pkg-a/package.json": transformedSource.replace("--noEmit", "--noEmit --strict"),
         });
         const lockPath = path.join(fixture.repoDir, "imported.lock");
         const lock = yield* lockFor(fixture.repoDir);
@@ -351,7 +351,7 @@ it.layer(NodeServices.layer)("imported-lock: a transformed import", (it) => {
     Effect.scoped(
       Effect.gen(function* () {
         const path = yield* Path.Path;
-        const fixture = yield* makeFixtureRepo({ "pkg-a/index.ts": upstreamSource });
+        const fixture = yield* makeFixtureRepo({ "pkg-a/package.json": upstreamSource });
         const lockPath = path.join(fixture.repoDir, "imported.lock");
         yield* writeImportedLockFile(lockPath, yield* lockFor(fixture.repoDir));
 
@@ -368,7 +368,7 @@ it.layer(NodeServices.layer)("imported-lock: a transformed import", (it) => {
   it.effect("a re-import's write ends the transform", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const fixture = yield* makeFixtureRepo({ "pkg-a/index.ts": upstreamSource });
+        const fixture = yield* makeFixtureRepo({ "pkg-a/package.json": upstreamSource });
         yield* runGit(fixture.repoDir, ["tag", "upstream-fixture"]);
 
         const lock = yield* writeImportedLock(fixture.repoDir, "upstream-fixture", ["pkg-a"]);
