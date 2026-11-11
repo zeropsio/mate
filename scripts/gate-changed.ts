@@ -1063,6 +1063,20 @@ function scenarioHqReceiptInput(root: string, unknownRevision: string): unknown[
   return [...input, revision];
 }
 
+/**
+ * Never a stage input wherever it sits under a scanned root: dependencies, Git's store and the
+ * output of builds and test runs, which the stages themselves write (the server bundle builds
+ * `apps/web/dist`), so hashing it would fail a run on its own output.
+ */
+const nonInputDirectories = new Set([
+  "node_modules",
+  ".git",
+  ".tanstack",
+  "dist",
+  "build",
+  "coverage",
+]);
+
 /** Each stage proves its own inputs, rather than invalidating every success on a lane edit. */
 function stageHashes(
   root: string,
@@ -1084,8 +1098,7 @@ function stageHashes(
       if (!NodeFS.existsSync(absolute)) return;
       for (const entry of NodeFS.readdirSync(absolute, { withFileTypes: true })) {
         const path = NodePath.posix.join(directory, entry.name);
-        if (entry.isDirectory() && entry.name !== "node_modules" && entry.name !== ".git")
-          visit(path);
+        if (entry.isDirectory() && !nonInputDirectories.has(entry.name)) visit(path);
         else if (
           entry.isSymbolicLink() ||
           /\.(?:[cm]?[jt]sx?|css)$/u.test(entry.name) ||
@@ -1312,8 +1325,7 @@ async function sharedStageCache(
     const absolute = NodePath.join(root, directory);
     if (!NodeFS.existsSync(absolute)) return false;
     return NodeFS.readdirSync(absolute, { withFileTypes: true }).some((entry) => {
-      if (["node_modules", ".git", ".tanstack", "dist", "build", "coverage"].includes(entry.name))
-        return false;
+      if (nonInputDirectories.has(entry.name)) return false;
       return (
         entry.isSymbolicLink() ||
         (entry.isDirectory() && hasLink(NodePath.posix.join(directory, entry.name)))
