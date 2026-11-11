@@ -118,14 +118,14 @@ function PipelineWait({
       : elsewhere !== undefined
         ? `Opening ${elsewhere.name}…`
         : read.kind === "missing"
-          ? "Zerops has no such pipeline this account can open. Zerops keeps old ones only for a while."
+          ? "There's no such pipeline this account can open. Old pipelines are kept only for a while."
           : read.kind === "unreadable"
-            ? "Zerops answered with a pipeline Mate can't read."
+            ? "This pipeline came back in a form Mate can't read."
             : read.kind === "trouble"
               ? read.trouble === "retrying"
-                ? "Can't reach Zerops yet. Trying again…"
-                : "Couldn't read this pipeline from Zerops."
-              : "Reading the pipeline from Zerops…";
+                ? "Can't read it yet. Trying again…"
+                : "Couldn't read this pipeline."
+              : "Reading the pipeline…";
   return (
     <>
       <DialogHeader>
@@ -258,7 +258,7 @@ function PipelineBody({
           }
           variant="ghost"
         >
-          Open in Zerops
+          Open in Platform
         </Button>
       </DialogFooter>
     </>
@@ -317,7 +317,7 @@ function sourceWords(pipeline: PipelineValue): string | null {
     case "CLI":
       return "Pushed with zcli";
     case "GUI":
-      return "Started in Zerops";
+      return "Started in Platform";
     default:
       return null;
   }

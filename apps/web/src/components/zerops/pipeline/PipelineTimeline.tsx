@@ -62,7 +62,7 @@ export function PipelineTimeline({
     return live ? (
       <PipelineCalculating aria-label={label} />
     ) : (
-      <p className="text-muted-foreground text-sm">Zerops keeps no steps for this pipeline.</p>
+      <p className="text-muted-foreground text-sm">No steps are kept for this pipeline.</p>
     );
   }
   return (
