@@ -932,6 +932,22 @@ export class GhosttyTerminalSurface {
     }, 150);
   }
 
+  /**
+   * Releasing a panel, drawer, or split divider settles the size, so the PTY
+   * hears it now instead of after the debounce. Otherwise typing right after
+   * the release reaches a shell that still lays out the old width.
+   */
+  private readonly onWindowPointerRelease = () => {
+    if (this.disposed || this.resizeNotifyTimer === null) return;
+    // The drag hook writes the release position before this bubbles to window,
+    // so fit now rather than wait a frame for the observer.
+    this.fit();
+    if (this.resizeNotifyTimer === null) return;
+    window.clearTimeout(this.resizeNotifyTimer);
+    this.resizeNotifyTimer = null;
+    this.options.onResize(this.cols, this.rows);
+  };
+
   focus(): void {
     if (this.disposed || !this.visible) return;
     this.input.focus({ preventScroll: true });
@@ -1423,9 +1439,9 @@ export class GhosttyTerminalSurface {
     this.clearHoveredLink();
     this.selectionPointer = { x: event.clientX, y: event.clientY };
     const bounds = this.canvas.getBoundingClientRect();
-    this.setSelectionAutoscroll(
-      event.clientY < bounds.top ? -1 : event.clientY > bounds.bottom ? 1 : 0,
-    );
+    const top = Math.max(bounds.top, 0) + TERMINAL_CONTENT_PADDING;
+    const bottom = Math.min(bounds.bottom, window.innerHeight) - TERMINAL_CONTENT_PADDING;
+    this.setSelectionAutoscroll(event.clientY < top ? -1 : event.clientY > bottom ? 1 : 0);
     const cell = this.cellAt(event.clientX, event.clientY);
     if (cell.x === this.selectionEnd?.x && cell.y === this.selectionEnd.y) return;
     this.extendSelectionTo(event.clientX, event.clientY);
@@ -1709,6 +1725,8 @@ export class GhosttyTerminalSurface {
     this.scrollbar.addEventListener("pointerup", this.onScrollbarPointerUp);
     this.scrollbar.addEventListener("pointercancel", this.onScrollbarPointerUp);
     this.scrollbar.addEventListener("keydown", this.onScrollbarKeyDown);
+    window.addEventListener("pointerup", this.onWindowPointerRelease);
+    window.addEventListener("pointercancel", this.onWindowPointerRelease);
   }
 
   private removeEvents(): void {
@@ -1735,6 +1753,8 @@ export class GhosttyTerminalSurface {
     this.scrollbar.removeEventListener("pointerup", this.onScrollbarPointerUp);
     this.scrollbar.removeEventListener("pointercancel", this.onScrollbarPointerUp);
     this.scrollbar.removeEventListener("keydown", this.onScrollbarKeyDown);
+    window.removeEventListener("pointerup", this.onWindowPointerRelease);
+    window.removeEventListener("pointercancel", this.onWindowPointerRelease);
   }
 
   private scrollViewport(deltaRows: number): void {
