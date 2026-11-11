@@ -36,6 +36,7 @@ import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { PAGE_BARS, SpendBars } from "../zerops/projects/ProjectSpend";
 import { formatUsd, joinSpend, moneyParts } from "../zerops/projects/projectSpend.logic";
 import { SettingsPageContainer } from "./settingsLayout";
+import { mayReadBilling } from "@t3tools/client-runtime/zerops/billingAccess";
 
 /** Projects listed before "Show all": the ones that cost most this month. */
 const PROJECTS_SHOWN = 8;
@@ -48,6 +49,12 @@ export function BillingSettings(): JSX.Element {
         <PageNote
           title="No organization chosen"
           words="Billing belongs to an organization. Choose one in the menu."
+        />
+      ) : !mayReadBilling(organization.roleCode) ? (
+        // Offered nowhere to anyone else: an address typed by hand reads nothing.
+        <PageNote
+          title="Billing is for owners and admins"
+          words={`${organization.name}'s owners and admins see its billing. Ask one of them.`}
         />
       ) : (
         <OrganizationBillingPage organizationName={organization.name} orgId={organization.id} />

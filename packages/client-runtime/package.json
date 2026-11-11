@@ -299,6 +299,10 @@
       "types": "./src/zerops/appAccess.ts",
       "default": "./src/zerops/appAccess.ts"
     },
+    "./zerops/billingAccess": {
+      "types": "./src/zerops/billingAccess.ts",
+      "default": "./src/zerops/billingAccess.ts"
+    },
     "./zerops/teamRoles": {
       "types": "./src/zerops/teamRoles.ts",
       "default": "./src/zerops/teamRoles.ts"

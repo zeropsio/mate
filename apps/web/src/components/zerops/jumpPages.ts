@@ -4,7 +4,7 @@
  * (`searchSettings`), opened on its section scrolled to it, as the settings nav's search does.
  */
 import {
-  ORGANIZATION_PAGES,
+  settingsPageOffered,
   searchSettings,
   SETTINGS_SECTION_LABELS,
   type SettingsPath,
@@ -41,10 +41,13 @@ const APP_PAGES: ReadonlyArray<JumpPage> = [
  * setting titled as its section is the section. `withOrganization`: the viewer is in one, so its
  * team and persona templates are there to open, as the settings nav offers them.
  */
-export function findJumpPages(text: string, withOrganization: boolean): ReadonlyArray<JumpPage> {
+export function findJumpPages(
+  text: string,
+  viewer: { readonly withOrganization: boolean; readonly readsBilling: boolean },
+): ReadonlyArray<JumpPage> {
   const query = fold(text.trim());
   if (query.length === 0) return [];
-  const offered = (to: SettingsPath) => withOrganization || !ORGANIZATION_PAGES.has(to);
+  const offered = (to: SettingsPath) => settingsPageOffered(to, viewer);
   const sections = (Object.keys(SETTINGS_SECTION_LABELS) as SettingsPath[])
     .filter((to) => offered(to) && fold(`settings ${SETTINGS_SECTION_LABELS[to]}`).includes(query))
     .map((to): JumpPage => ({

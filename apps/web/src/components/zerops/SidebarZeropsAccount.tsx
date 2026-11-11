@@ -70,6 +70,7 @@ import {
   sidebarAccountRoleParts,
   type SidebarAccountDestination,
 } from "./SidebarZeropsAccount.logic";
+import { mayReadBilling } from "@t3tools/client-runtime/zerops/billingAccess";
 
 type AccountMenuControl = "rail" | "menu";
 const AccountMenuContext = createContext<{
@@ -132,7 +133,11 @@ export function SidebarZeropsAccount({
           onOpenChange: (open: boolean) => accountMenu.setOpen(open ? control : null),
         };
   const lines = sidebarAccountLines({ name: account.name, organization: activeOrganization });
-  const credit = useAccountCredit(activeOrganization?.id ?? null);
+  const credit = useAccountCredit(
+    activeOrganization !== null && mayReadBilling(activeOrganization.roleCode)
+      ? activeOrganization.id
+      : null,
+  );
   const role = sidebarAccountRoleParts(activeOrganization);
   const menu = (
     <MenuPopup align={collapsed ? "start" : "end"} className="w-72" side="top">
@@ -389,7 +394,10 @@ export function SidebarZeropsAccountMenu({
           <span className="text-xs text-muted-foreground">One Mate for every project</span>
         </MenuItem>
       )}
-      {SIDEBAR_ACCOUNT_DESTINATIONS.map((entry) => (
+      {SIDEBAR_ACCOUNT_DESTINATIONS.filter(
+        // Billing is its owners' and admins' alone: nobody else is offered the page.
+        (entry) => entry.id !== "billing" || mayReadBilling(activeOrganization?.roleCode),
+      ).map((entry) => (
         <MenuItem
           data-zerops-account-destination={entry.id}
           key={entry.id}
