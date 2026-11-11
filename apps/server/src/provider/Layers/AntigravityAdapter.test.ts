@@ -20,7 +20,7 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as AcpErrors from "effect-acp/errors";
-import type * as AcpSchema from "effect-acp/schema";
+import type * as AcpSchema from "effect-acp/compat";
 
 import { ServerConfig } from "../../config.ts";
 import { personaInstructions } from "../../personaInstructions.ts";
@@ -45,6 +45,7 @@ const threadId = ThreadId.make("antigravity-thread");
 const nativeSessionId = "b75db7e9-cd99-40e5-aa63-ac2b4674a6a9";
 const nativeDefault = "gemini-test-low";
 const nativeAlternative = "gemini-test-high";
+const nativeRequestContext = { requestId: "native-request", method: "test" };
 const decodeSettings = Schema.decodeSync(AntigravitySettings);
 const decodeRequestLog = Schema.decodeEffect(
   Schema.Array(
@@ -103,11 +104,7 @@ const makeHarness = Effect.fn("makeAntigravityAdapterHarness")(function* (option
     read?: Parameters<Runtime["handleReadTextFile"]>[0];
     write?: Parameters<Runtime["handleWriteTextFile"]>[0];
   } = {};
-  let permissionHandler:
-    | ((
-        request: AcpSchema.RequestPermissionRequest,
-      ) => Effect.Effect<AcpSchema.RequestPermissionResponse, AcpErrors.AcpError>)
-    | undefined;
+  let permissionHandler: Parameters<Runtime["handleRequestPermission"]>[0] | undefined;
 
   const configOptions = (): ReadonlyArray<AcpSchema.SessionConfigOption> => [
     {
@@ -277,7 +274,7 @@ const makeHarness = Effect.fn("makeAntigravityAdapterHarness")(function* (option
   const invokePermission = (request: AcpSchema.RequestPermissionRequest) =>
     Effect.suspend(() =>
       permissionHandler
-        ? permissionHandler(request)
+        ? permissionHandler(request, nativeRequestContext)
         : Effect.die("Missing native permission handler"),
     );
   return {
@@ -1491,34 +1488,49 @@ it.layer(layer)("AntigravityAdapter", (it) => {
       const write = h.fileHandlers.write;
       if (!read || !write) return yield* Effect.die("File handlers were not registered.");
 
-      const full = yield* read({ sessionId: nativeSessionId, path: path.join(cwd, "notes.txt") });
+      const full = yield* read(
+        { sessionId: nativeSessionId, path: path.join(cwd, "notes.txt") },
+        nativeRequestContext,
+      );
       expect(full.content).toBe("one\ntwo\nthree\n");
-      const window = yield* read({
-        sessionId: nativeSessionId,
-        path: path.join(cwd, "notes.txt"),
-        line: 2,
-        limit: 1,
-      });
+      const window = yield* read(
+        {
+          sessionId: nativeSessionId,
+          path: path.join(cwd, "notes.txt"),
+          line: 2,
+          limit: 1,
+        },
+        nativeRequestContext,
+      );
       expect(window.content).toBe("two");
 
-      yield* write({
-        sessionId: nativeSessionId,
-        path: path.join(cwd, "nested", "new.txt"),
-        content: "created",
-      });
+      yield* write(
+        {
+          sessionId: nativeSessionId,
+          path: path.join(cwd, "nested", "new.txt"),
+          content: "created",
+        },
+        nativeRequestContext,
+      );
       expect(yield* fs.readFileString(path.join(cwd, "nested", "new.txt"))).toBe("created");
 
-      const escape = yield* write({
-        sessionId: nativeSessionId,
-        path: path.join(outside, "escape.txt"),
-        content: "nope",
-      }).pipe(Effect.flip);
+      const escape = yield* write(
+        {
+          sessionId: nativeSessionId,
+          path: path.join(outside, "escape.txt"),
+          content: "nope",
+        },
+        nativeRequestContext,
+      ).pipe(Effect.flip);
       expect(escape._tag).toBe("AcpRequestError");
       expect(yield* fs.exists(path.join(outside, "escape.txt"))).toBe(false);
-      const missing = yield* read({
-        sessionId: nativeSessionId,
-        path: path.join(cwd, "missing.txt"),
-      }).pipe(Effect.flip);
+      const missing = yield* read(
+        {
+          sessionId: nativeSessionId,
+          path: path.join(cwd, "missing.txt"),
+        },
+        nativeRequestContext,
+      ).pipe(Effect.flip);
       expect(missing._tag).toBe("AcpRequestError");
     }).pipe(Effect.scoped),
   );

@@ -32,7 +32,7 @@ export const IMPORTED_LOCK_FILE_NAME = "imported.lock";
 // Packages imported at different upstream SHAs carry one transform each; `upstream` names the
 // SHA of a transform's paths when it is not the lock's own.
 const ImportTransformSchema = Schema.Struct({
-  name: Schema.Literals(["effect-401", "tsgo-046"]),
+  name: Schema.Literals(["tsgo-046"]),
   script: Schema.String,
   since: Schema.String,
   until: Schema.String,

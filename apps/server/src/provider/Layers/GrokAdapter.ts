@@ -36,7 +36,7 @@ import * as Stream from "effect/Stream";
 import * as SynchronizedRef from "effect/SynchronizedRef";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as EffectAcpErrors from "effect-acp/errors";
-import type * as EffectAcpSchema from "effect-acp/schema";
+import type * as EffectAcpSchema from "effect-acp/compat";
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
@@ -71,6 +71,7 @@ import {
   applyGrokAcpModelSelection,
   currentGrokModelIdFromSessionSetup,
   currentGrokReasoningEffortFromSessionSetup,
+  grokSessionSelectsModelByConfigOption,
   makeGrokAcpRuntime,
   normalizeGrokReasoningEffort,
   resolveGrokAcpBaseModelId,
@@ -191,6 +192,7 @@ interface GrokSessionContext {
   promptResponsesReady: number;
   currentModelId: string | undefined;
   currentReasoningEffort: string | undefined;
+  readonly selectsModelByConfigOption: boolean;
   stopped: boolean;
   terminated: boolean;
   /** Live monitor/shell identities and their originating turns. */
@@ -1290,8 +1292,12 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
             grokModelSelection,
             "reasoningEffort",
           );
+          const selectsModelByConfigOption = grokSessionSelectsModelByConfigOption(
+            started.sessionSetupResult,
+          );
           const boundModelId = yield* applyGrokAcpModelSelection({
             runtime: acp,
+            selectsModelByConfigOption,
             currentModelId: currentStartModelId,
             currentReasoningEffort: currentStartReasoningEffort,
             requestedModelId: requestedStartModelId,
@@ -1348,6 +1354,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
               requestedStartReasoningEffort !== undefined
                 ? normalizeGrokReasoningEffort(requestedStartReasoningEffort)
                 : currentStartReasoningEffort,
+            selectsModelByConfigOption,
             stopped: false,
             terminated: false,
             backgroundTasks: new Map(),
@@ -1688,6 +1695,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
 
               const currentModelId = yield* applyGrokAcpModelSelection({
                 runtime: ctx.acp,
+                selectsModelByConfigOption: ctx.selectsModelByConfigOption,
                 currentModelId: ctx.currentModelId,
                 currentReasoningEffort: ctx.currentReasoningEffort,
                 requestedModelId: requestedTurnModelId,

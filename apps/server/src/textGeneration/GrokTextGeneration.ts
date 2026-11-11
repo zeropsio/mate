@@ -31,6 +31,7 @@ import {
   applyGrokAcpModelSelection,
   currentGrokModelIdFromSessionSetup,
   currentGrokReasoningEffortFromSessionSetup,
+  grokSessionSelectsModelByConfigOption,
   makeGrokAcpRuntime,
   resolveGrokAcpBaseModelId,
 } from "../spi/acpSupport.ts";
@@ -151,6 +152,9 @@ export const makeGrokTextGeneration = Effect.fn("makeGrokTextGeneration")(functi
         );
         yield* applyGrokAcpModelSelection({
           runtime,
+          selectsModelByConfigOption: grokSessionSelectsModelByConfigOption(
+            started.sessionSetupResult,
+          ),
           currentModelId: currentGrokModelIdFromSessionSetup(started.sessionSetupResult),
           currentReasoningEffort: currentGrokReasoningEffortFromSessionSetup(
             started.sessionSetupResult,

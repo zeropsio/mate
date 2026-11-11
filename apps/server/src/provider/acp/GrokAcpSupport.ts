@@ -5,7 +5,7 @@ import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as EffectAcpErrors from "effect-acp/errors";
-import type * as EffectAcpSchema from "effect-acp/schema";
+import type * as EffectAcpSchema from "effect-acp/compat";
 import { normalizeModelSlug } from "@t3tools/shared/model";
 
 import * as AcpSessionRuntime from "./AcpSessionRuntime.ts";
@@ -121,20 +121,42 @@ export function normalizeGrokReasoningEffort(value: string | undefined): string 
   return effort && isValidGrokReasoningEffortToken(effort) ? effort : undefined;
 }
 
+type GrokSessionSetup =
+  | EffectAcpSchema.LoadSessionResponse
+  | EffectAcpSchema.NewSessionResponse
+  | EffectAcpSchema.ResumeSessionResponse;
+
+function grokModelConfigOption(sessionSetupResult: GrokSessionSetup) {
+  return sessionSetupResult.configOptions?.find(
+    (option) => option.category === "model" && option.type === "select",
+  );
+}
+
+/**
+ * A v1 Grok reports its model state and switches models with `session/set_model`. ACP v2 has
+ * neither: the model is a select config option, set through `session/set_config_option`.
+ */
+export function grokSessionSelectsModelByConfigOption(
+  sessionSetupResult: GrokSessionSetup,
+): boolean {
+  return (
+    sessionSetupResult.models == null && grokModelConfigOption(sessionSetupResult) !== undefined
+  );
+}
+
 export function currentGrokModelIdFromSessionSetup(
-  sessionSetupResult:
-    | EffectAcpSchema.LoadSessionResponse
-    | EffectAcpSchema.NewSessionResponse
-    | EffectAcpSchema.ResumeSessionResponse,
+  sessionSetupResult: GrokSessionSetup,
 ): string | undefined {
-  return sessionSetupResult.models?.currentModelId?.trim() || undefined;
+  const configured = grokModelConfigOption(sessionSetupResult);
+  return (
+    sessionSetupResult.models?.currentModelId?.trim() ||
+    (configured?.type === "select" ? configured.currentValue.trim() : undefined) ||
+    undefined
+  );
 }
 
 export function currentGrokReasoningEffortFromSessionSetup(
-  sessionSetupResult:
-    | EffectAcpSchema.LoadSessionResponse
-    | EffectAcpSchema.NewSessionResponse
-    | EffectAcpSchema.ResumeSessionResponse,
+  sessionSetupResult: GrokSessionSetup,
 ): string | undefined {
   const modelState = sessionSetupResult.models;
   if (!modelState) {
@@ -154,7 +176,12 @@ export function currentGrokReasoningEffortFromSessionSetup(
 }
 
 export function applyGrokAcpModelSelection<E>(input: {
-  readonly runtime: Pick<AcpSessionRuntime.AcpSessionRuntime["Service"], "setSessionModel">;
+  readonly runtime: Pick<
+    AcpSessionRuntime.AcpSessionRuntime["Service"],
+    "setSessionModel" | "setModel"
+  >;
+  /** From {@link grokSessionSelectsModelByConfigOption}: the session speaks ACP v2's model option. */
+  readonly selectsModelByConfigOption: boolean;
   readonly currentModelId: string | undefined;
   readonly currentReasoningEffort?: string | undefined;
   readonly requestedModelId: string | undefined;
@@ -165,6 +192,14 @@ export function applyGrokAcpModelSelection<E>(input: {
   const requestedModelId =
     input.requestedModelId === GROK_DEFAULT_MODEL_SLUG ? undefined : input.requestedModelId;
   const modelChanged = requestedModelId !== undefined && requestedModelId !== input.currentModelId;
+  // The model option carries no reasoning effort, so on ACP v2 only the model is applied.
+  if (input.selectsModelByConfigOption) {
+    return modelChanged
+      ? input.runtime
+          .setModel(requestedModelId)
+          .pipe(Effect.mapError(input.mapError), Effect.as(requestedModelId))
+      : Effect.succeed(input.currentModelId);
+  }
   const reasoningProvided = input.requestedReasoningEffort !== undefined;
   const reasoningEffort = reasoningProvided
     ? normalizeGrokReasoningEffort(input.requestedReasoningEffort)

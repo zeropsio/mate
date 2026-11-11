@@ -19,7 +19,7 @@ import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as EffectAcpClient from "effect-acp/client";
 import * as EffectAcpErrors from "effect-acp/errors";
-import type * as EffectAcpSchema from "effect-acp/schema";
+import type * as EffectAcpSchema from "effect-acp/compat";
 import type * as EffectAcpProtocol from "effect-acp/protocol";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
 
@@ -1076,14 +1076,41 @@ export const make = (
                 Effect.catchCauseIf(
                   (cause) =>
                     options.cancelBehavior !== "wait-for-prompt" && Cause.hasInterruptsOnly(cause),
-                  () =>
-                    Effect.succeed({
-                      stopReason: "cancelled",
-                    } satisfies EffectAcpSchema.PromptResponse),
+                  () => Effect.succeed<EffectAcpSchema.PromptResponse>({ stopReason: "cancelled" }),
                 ),
                 Effect.tap(() =>
                   closeActiveAssistantSegment({ queue: eventQueue, assistantSegmentRef }),
                 ),
+                Effect.flatMap((result) => {
+                  // ACP v2 reports a failed prompt as an idle `error`, not an RPC error, so it
+                  // fails here like one and every adapter ends the turn failed in its words.
+                  if (result.stopReason === "error") {
+                    return Effect.fail(
+                      EffectAcpErrors.AcpRequestError.fromProtocolError(
+                        result.error ?? {
+                          code: -32603,
+                          message: "The agent reported its turn failed.",
+                        },
+                        { method: "session/prompt" },
+                      ),
+                    );
+                  }
+                  // The compat client always gives a v2 turn a stop reason. A v1 answer whose
+                  // stop reason v1 does not define decodes as v2's bare acknowledgement and
+                  // loses it, so a turn with no stop reason did not end as the agent meant.
+                  if (typeof result.stopReason !== "string" || result.stopReason.length === 0) {
+                    return Effect.fail(
+                      EffectAcpErrors.AcpRequestError.fromProtocolError(
+                        {
+                          code: -32603,
+                          message: "The agent ended the turn without a stop reason Mate can read.",
+                        },
+                        { method: "session/prompt" },
+                      ),
+                    );
+                  }
+                  return Effect.succeed(result);
+                }),
               ),
             (activePrompt, result) =>
               Effect.gen(function* () {
