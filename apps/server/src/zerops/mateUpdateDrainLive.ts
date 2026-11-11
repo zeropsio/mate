@@ -170,7 +170,7 @@ export const makeMateUpdateDrain = Effect.gen(function* () {
 
 /**
  * Opens admission an update drain closed (the engine's, the terminals' and the clients'). On a boot
- * under an update it is the boot fence's lift: the held engine start first, then this, then the
+ * under an update it is the boot fence's lift: the held engine opening first, then this, then the
  * outward roots.
  */
 export const reopenMateUpdateAdmission = Effect.map(
