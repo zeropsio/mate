@@ -25,6 +25,11 @@ export interface ProjectSpendValue {
   /** Each project's cost by day, in dollars; a day it has no row for cost nothing. */
   readonly byProject: Readonly<Record<string, Readonly<Record<SpendDay, number>>>>;
   /**
+   * What cost something outside any project, by day: a resource of the organization's own, such
+   * as an object storage (measured 2026-11-11: rows with a null `projectId`, cents a month).
+   */
+  readonly outsideProjects: Readonly<Record<SpendDay, number>>;
+  /**
    * Whether the answer held every row it counted (`totalHits`): a project missing from a partial
    * answer is unknown, never free.
    */
@@ -111,7 +116,7 @@ const lastDayOf = (till: string): SpendDay =>
     : till.slice(0, 10);
 
 const Item = Schema.Struct({
-  projectId: Schema.NonEmptyString,
+  projectId: Schema.NullOr(Schema.String),
   from: Schema.String.check(Schema.isPattern(DAY)),
   sumTotalPrice: Schema.Finite,
 });
@@ -133,19 +138,24 @@ export function decodeProjectSpend(answer: unknown): ProjectSpendValue | null {
     onNone: () => null,
     onSome: (listing) => {
       const byProject: Record<string, Record<SpendDay, number>> = {};
+      const outsideProjects: Record<SpendDay, number> = {};
       let read = 0;
       for (const raw of listing.items) {
         const item = Option.getOrNull(decodeItem(raw));
         if (item === null) continue;
         read += 1;
         const day = item.from.slice(0, 10);
-        const days = (byProject[item.projectId] ??= {});
+        const days =
+          item.projectId === null || item.projectId === ""
+            ? outsideProjects
+            : (byProject[item.projectId] ??= {});
         days[day] = (days[day] ?? 0) + item.sumTotalPrice;
       }
       return {
         firstDay: listing.from.slice(0, 10),
         lastDay: lastDayOf(listing.till),
         byProject,
+        outsideProjects,
         complete:
           read === listing.items.length &&
           (listing.totalHits == null || listing.totalHits <= listing.items.length),

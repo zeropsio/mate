@@ -28,6 +28,7 @@ const spend = (value: Partial<ProjectSpendValue> = {}): AccountInput => ({
           "tea-raya": { "2026-10-10": 2 },
           watchlist: { "2026-10-18": 9 },
         },
+        outsideProjects: {},
         ...value,
       },
       revision: { kind: "zerops", version: null },

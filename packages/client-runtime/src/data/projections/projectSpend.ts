@@ -53,3 +53,34 @@ export const computeSpend: Projection<ComputeSpendKey, ComputeSpendRead> = {
     };
   },
 };
+
+/**
+ * What the whole organization cost on Zerops each of the last 30 days: the organization's spend
+ * read summed over every project it names. Unknown where the read was refused or failed with
+ * nothing held, or answered only part of its rows.
+ */
+export const organizationComputeSpend: Projection<string, ComputeSpendRead> = {
+  name: "organizationComputeSpend",
+  keyOf: (orgId) => orgId,
+  equals: sameValue,
+  derive: (read, orgId) => {
+    const fact = read.fact("projectSpend", orgId);
+    if (fact.kind !== "known") {
+      return fact.kind === "withheld" || read.stream(projectSpendScope(orgId)).fault !== null
+        ? { kind: "unknown" }
+        : { kind: "reading" };
+    }
+    const spend = fact.value;
+    if (!spend.complete) return { kind: "unknown" };
+    const days = Array.from({ length: SPEND_DAYS }, (_, at) =>
+      addDays(spend.lastDay, at + 1 - SPEND_DAYS),
+    );
+    // Every project's days, and what cost something outside any project.
+    const sources = [...Object.values(spend.byProject), spend.outsideProjects];
+    return {
+      kind: "read",
+      days,
+      usd: days.map((day) => sources.reduce((sum, byDay) => sum + (byDay[day] ?? 0), 0)),
+    };
+  },
+};

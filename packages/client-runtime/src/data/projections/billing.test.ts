@@ -37,9 +37,10 @@ describe("an organization's money, as the menu and its projects say it", () => {
 });
 
 describe("an organization's cost, as billing answers it", () => {
-  // witness: packages/client-runtime/src/data/families/organizationCost.ts | perDay: (period?.averageLast30Days ?? 0) / 30, → perDay: period?.averageLast30Days ?? 0,
-  it("reads each period, its daily rate a thirtieth of the 30 days' average", () => {
+  // witness: packages/client-runtime/src/data/families/organizationCost.ts | perDay: (period?.last30days ?? 0) / 30, → perDay: period?.last30days ?? 0,
+  it("reads each period, its daily rate a thirtieth of the last 30 days' cost", () => {
     const period = { today: 3, thisMonth: 90, last30days: 120, averageLast30Days: 150 };
+    const noOther = { yesterday: 0, last7Days: 0, lastMonth: 0 };
     expect(
       readOrganizationCost({
         client: { id: "org", periodCost: period },
@@ -47,8 +48,8 @@ describe("an organization's cost, as billing answers it", () => {
         stack: [],
       }),
     ).toEqual({
-      organization: { today: 3, thisMonth: 90, last30Days: 120, perDay: 5 },
-      projects: { p1: { today: 3, thisMonth: 40, last30Days: 120, perDay: 5 } },
+      organization: { ...noOther, today: 3, thisMonth: 90, last30Days: 120, perDay: 4 },
+      projects: { p1: { ...noOther, today: 3, thisMonth: 40, last30Days: 120, perDay: 4 } },
     });
   });
 
