@@ -227,6 +227,11 @@ function findTaskListMarkerOffset(markdown: string, listItemStart: number): numb
   return listItemStart + firstLine.indexOf(match[1]);
 }
 
+// Native word selection stops at hyphens and dots, so a double-click takes the whole span.
+function selectInlineCode(event: ReactMouseEvent<HTMLElement>) {
+  window.getSelection()?.selectAllChildren(event.currentTarget);
+}
+
 /**
  * The default `1.25rem` marker gutter (`.chat-markdown ol`) fits markers up to
  * two characters wide. Once a marker reaches three characters (item 100+),
@@ -2536,6 +2541,11 @@ const CHAT_MARKDOWN_COMPONENTS = {
       if (fileLinkMeta) {
         return fileLinkChip(fileLinkMeta, `\`${codeText}\``);
       }
+      return (
+        <code {...props} className={className} onDoubleClick={selectInlineCode}>
+          {children}
+        </code>
+      );
     }
     return (
       <code {...props} className={className}>
