@@ -287,7 +287,7 @@ it.effect.each(["keep", "delete"] as const)(
       yield* operations.submit(intent, "kept-git");
       expect(readsOfState(store.state()).fact("hqKeptGit", appId)).toMatchObject({
         kind: "withheld",
-        reason: "denied",
+        reason: "removed",
       });
       expect(operationProgress.derive(readsOfState(store.state()), "kept-git").stage).toBe(
         "uncertain",
