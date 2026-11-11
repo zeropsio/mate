@@ -1,5 +1,6 @@
 import { providerUpdateSafetyLayer } from "./spi/ProviderUpdateSafety.ts";
 import { rpcUpdateAdmissionLayer } from "./RpcUpdateAdmission.ts";
+import { MateUpdateBootFence } from "./mateUpdateBoot.ts";
 import {
   EnvironmentHttpApi,
   ProviderDriverKind,
@@ -811,6 +812,8 @@ export const makeServerLayer = (options: ServerLayerOptions) =>
             rpcUpdateAdmissionLayer,
           ),
         ),
+        // Read once from zcp's update record; everything above holds its outward roots on it.
+        Layer.provideMerge(MateUpdateBootFence.layer),
         // Inside a Zerops container every git spawn above this line is rewritten
         // into `ssh <service> git -C /var/www …`; everything else reaches the
         // platform spawner below unchanged. The repository source reads the

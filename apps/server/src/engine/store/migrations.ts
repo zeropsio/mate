@@ -7,6 +7,8 @@
 import * as Effect from "effect/Effect";
 import * as Migrator from "effect/sql/Migrator";
 
+import { withMigrationProgress } from "../../spi/serverCommandReadiness.ts";
+
 import Migration0001 from "./Migrations/0001_EngineCore.ts";
 import Migration0002 from "./Migrations/0002_EngineWakeArming.ts";
 import Migration0003 from "./Migrations/0003_EngineEffectSettling.ts";
@@ -44,7 +46,14 @@ const run = Migrator.make({});
 /** Runs the engine's pending migrations; returns the ones it ran as `[id, name]`. */
 export const runEngineMigrations = Effect.fn("runEngineMigrations")(function* () {
   return yield* run({
-    loader: Migrator.fromRecord(migrations),
+    loader: Migrator.fromRecord(
+      Object.fromEntries(
+        Object.entries(migrations).map(([key, migration]) => [
+          key,
+          withMigrationProgress(migration),
+        ]),
+      ),
+    ),
     table: ENGINE_MIGRATIONS_TABLE,
   });
 });

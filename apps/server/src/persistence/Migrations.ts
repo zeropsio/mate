@@ -12,6 +12,8 @@ import * as Migrator from "effect/sql/Migrator";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
+import { withMigrationProgress } from "../spi/serverCommandReadiness.ts";
+
 // Import all migrations statically
 import Migration0001 from "./Migrations/001_OrchestrationEvents.ts";
 import Migration0002 from "./Migrations/002_OrchestrationCommandReceipts.ts";
@@ -161,7 +163,7 @@ const makeMigrationLoader = (throughId?: number) =>
     Object.fromEntries(
       migrationEntries
         .filter(([id]) => throughId === undefined || id <= throughId)
-        .map(([id, name, migration]) => [`${id}_${name}`, migration]),
+        .map(([id, name, migration]) => [`${id}_${name}`, withMigrationProgress(migration)]),
     ),
   );
 

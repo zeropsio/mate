@@ -3,6 +3,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
+import { MateUpdateBootFence } from "../mateUpdateBoot.ts";
 import { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
 import { ServerEnvironment } from "../environment/ServerEnvironment.ts";
 import { ServerCommandReadiness } from "../spi/serverCommandReadiness.ts";
@@ -78,6 +79,7 @@ const releaseRoute = (path: `/${string}`) =>
     Effect.gen(function* () {
       if (!(yield* local)) return refused;
       yield* yield* reopenMateUpdateAdmission;
+      yield* (yield* MateUpdateBootFence).lifted;
       if (path === "/api/mate/update/commit") yield* (yield* ZeropsMateUpdate).reread;
       return HttpServerResponse.jsonUnsafe({ protocol: 1, reopened: true });
     }),
