@@ -9,6 +9,7 @@ import {
   type ServerProviderSkill,
   type ServerProviderSlashCommand,
 } from "@t3tools/contracts";
+import type { ComposerPathSearchTarget } from "@t3tools/client-runtime/state/threads";
 import type { DataMentionEntry } from "@t3tools/client-runtime/zerops/dataConsole";
 import type { MateTintId } from "@t3tools/shared/brand";
 import {
@@ -34,6 +35,8 @@ export type ComposerCommandItem =
       type: "path";
       path: string;
       pathKind: ProjectEntry["kind"];
+      /** The search that offered this file: selecting it is refused once the live query moved on. */
+      searchTarget: ComposerPathSearchTarget;
       label: string;
       description: string;
     }

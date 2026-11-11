@@ -101,9 +101,10 @@ describe("Codex thread history", () => {
 
   it.effect("surfaces Codex rejecting a revert of a legacy thread", () =>
     Effect.gen(function* () {
-      const rejection = CodexErrors.CodexAppServerRequestError.invalidRequest(
-        "thread/revert only supports paginated threads",
-      );
+      const rejection = new CodexErrors.CodexAppServerRequestError({
+        code: -32600,
+        errorMessage: "thread/revert only supports paginated threads",
+      });
       const client: Parameters<typeof rollbackCodexThread>[0] = {
         raw: {
           request: (method) => {
@@ -123,23 +124,6 @@ describe("Codex thread history", () => {
       NodeAssert.strictEqual(error, rejection);
     }),
   );
-});
-
-describe("CodexSessionRuntimeIdentifierGenerationError", () => {
-  it("retains identifier purpose and the random source failure", () => {
-    const cause = new Error("random source unavailable");
-    const error = new CodexErrors.CodexAppServerIdentifierGenerationError({
-      purpose: "provider-event",
-      cause,
-    });
-
-    NodeAssert.equal(error.purpose, "provider-event");
-    NodeAssert.strictEqual(error.cause, cause);
-    NodeAssert.equal(
-      error.message,
-      "Failed to generate Codex App Server identifier for provider-event.",
-    );
-  });
 });
 
 function makeThreadOpenResponse(

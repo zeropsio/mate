@@ -68,9 +68,6 @@ import {
   type ServerConfigProvidersChangedPayload,
   type ServerConfigStreamEvent,
   type ServerProvider,
-  type TerminalAttachStreamEvent,
-  type TerminalError,
-  type TerminalEvent,
   type TerminalMetadataStreamEvent,
   WS_METHODS,
   WsRpcGroup,
@@ -98,7 +95,7 @@ import { makeProviderInstallation } from "./provider/providerInstallation.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
-import { withTerminalOutputWindow } from "./terminal/OutputProtocol.ts";
+import { terminalOutputStream, withTerminalOutputWindow } from "./terminal/OutputProtocol.ts";
 import { resolveAssetContext } from "./engineSessionDirectory.ts";
 import { resolveImageAsset } from "./assets/ImageAsset.ts";
 import { issueAssetUrl } from "./assets/AssetAccess.ts";
@@ -1309,21 +1306,9 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
             }),
           ),
         [WS_METHODS.serverUpsertKeybinding]: (rule) =>
-          admit(
-            WS_METHODS.serverUpsertKeybinding,
-            Effect.gen(function* () {
-              const keybindingsConfig = yield* keybindings.upsertKeybindingRule(rule);
-              return { keybindings: keybindingsConfig, issues: [] };
-            }),
-          ),
+          admit(WS_METHODS.serverUpsertKeybinding, keybindings.upsertKeybindingRule(rule)),
         [WS_METHODS.serverRemoveKeybinding]: (rule) =>
-          admit(
-            WS_METHODS.serverRemoveKeybinding,
-            Effect.gen(function* () {
-              const keybindingsConfig = yield* keybindings.removeKeybindingRule(rule);
-              return { keybindings: keybindingsConfig, issues: [] };
-            }),
-          ),
+          admit(WS_METHODS.serverRemoveKeybinding, keybindings.removeKeybindingRule(rule)),
         [WS_METHODS.serverGetSettings]: (_input) =>
           serverSettings.getSettings.pipe(Effect.map(ServerSettings.redactServerSettingsForClient)),
         [WS_METHODS.serverUpdateSettings]: ({ patch }) =>
@@ -1778,13 +1763,15 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
             terminalManager.open({ ...input, openedBy: currentSessionId }),
           ),
         [WS_METHODS.terminalAttach]: (input) =>
-          Stream.callback<TerminalAttachStreamEvent, TerminalError>((queue) =>
-            Effect.acquireRelease(
-              terminalManager.attachStream({ ...input, openedBy: currentSessionId }, (event) =>
-                Queue.offer(queue, event),
+          terminalOutputStream(
+            (listener, registerCleanup) =>
+              terminalManager.attachStream(
+                { ...input, openedBy: currentSessionId },
+                listener,
+                registerCleanup,
               ),
-              (unsubscribe) => Effect.sync(unsubscribe),
-            ),
+            (listener, registerCleanup) =>
+              terminalManager.resyncStream(input, listener, registerCleanup),
           ),
         [WS_METHODS.terminalWrite]: (input) =>
           admit(WS_METHODS.terminalWrite, terminalManager.write(input)),
@@ -1800,12 +1787,7 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
         [WS_METHODS.terminalClose]: (input) =>
           admit(WS_METHODS.terminalClose, terminalManager.close(input)),
         [WS_METHODS.subscribeTerminalEvents]: (_input) =>
-          Stream.callback<TerminalEvent>((queue) =>
-            Effect.acquireRelease(
-              terminalManager.subscribe((event) => Queue.offer(queue, event)),
-              (unsubscribe) => Effect.sync(unsubscribe),
-            ),
-          ),
+          terminalOutputStream(terminalManager.subscribe),
         [WS_METHODS.subscribeTerminalMetadata]: (_input) =>
           Stream.callback<TerminalMetadataStreamEvent>((queue) =>
             Effect.acquireRelease(
@@ -1817,8 +1799,11 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
           Stream.unwrap(
             Effect.gen(function* () {
               const usageLimitsCommand = input.usageLimitsCommand === true;
+              // Subscribe before the snapshot so changes made while it loads are buffered.
+              const keybindingsChanges = yield* keybindings.subscribeChanges;
+              const settingsChanges = yield* serverSettings.subscribeChanges;
               const config = yield* loadServerConfig({ usageLimitsCommand });
-              const keybindingsUpdates = keybindings.streamChanges.pipe(
+              const keybindingsUpdates = keybindingsChanges.pipe(
                 Stream.map((event) => ({
                   version: 1 as const,
                   type: "keybindingsUpdated" as const,
@@ -1912,7 +1897,7 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
                       })),
                     )
                   : Stream.empty;
-              const settingsUpdates = serverSettings.streamChanges.pipe(
+              const settingsUpdates = settingsChanges.pipe(
                 Stream.map((settings) => ServerSettings.redactServerSettingsForClient(settings)),
                 Stream.map((settings) => ({
                   version: 1 as const,

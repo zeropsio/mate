@@ -296,6 +296,7 @@ export function useProjectPathSearch(
     error: result.error,
     isPending:
       !areProjectPathSearchTargetsEqual(normalizedTarget, debouncedTarget) || result.isPending,
+    searchedTarget: debouncedTarget,
     searchedQuery: debouncedTarget.query ?? "",
     refresh: result.refresh,
   };

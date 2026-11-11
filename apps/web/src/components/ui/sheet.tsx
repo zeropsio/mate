@@ -5,8 +5,15 @@ import { XIcon } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
 import { gatedPortal } from "~/components/ui/portal-gate";
+import { ControlledOpenContext, renderRetainedPopup } from "~/components/ui/retainedPopup";
 
-const Sheet = SheetPrimitive.Root;
+function Sheet<Payload>(props: SheetPrimitive.Root.Props<Payload>) {
+  return (
+    <ControlledOpenContext value={props.open}>
+      <SheetPrimitive.Root {...props} />
+    </ControlledOpenContext>
+  );
+}
 
 const SheetPortal = gatedPortal(SheetPrimitive.Portal);
 
@@ -83,6 +90,7 @@ function SheetPopup({
             className,
           )}
           data-slot="sheet-popup"
+          render={keepMounted ? undefined : renderRetainedPopup}
           {...props}
         >
           {children}

@@ -2,8 +2,10 @@
  * KeyedCoalescingWorker - A keyed worker that keeps only the latest value per key.
  *
  * Enqueues for an active or already-queued key are merged atomically instead of
- * creating duplicate queued items. `drainKey()` resolves only when that key has
- * no queued, pending, or active work left.
+ * creating duplicate queued items. Each batch yields to other queued keys before
+ * processing newer updates. `settleKey()` resolves once the work enqueued
+ * before it was called has been processed, so a key that keeps receiving work
+ * cannot hold it forever.
  *
  * @module KeyedCoalescingWorker
  */
@@ -14,13 +16,17 @@ import * as TxRef from "effect/TxRef";
 
 export interface KeyedCoalescingWorker<K, V> {
   readonly enqueue: (key: K, value: V) => Effect.Effect<void>;
-  readonly drainKey: (key: K) => Effect.Effect<void>;
+  readonly settleKey: (key: K) => Effect.Effect<void>;
 }
 
 interface KeyedCoalescingWorkerState<K, V> {
   readonly latestByKey: Map<K, V>;
   readonly queuedKeys: Set<K>;
   readonly activeKeys: Set<K>;
+  /** Newest enqueue per key with work outstanding; absent once the key is idle. */
+  readonly enqueuedSeq: Map<K, number>;
+  /** Newest enqueue per key whose batch has been processed; absent once the key is idle. */
+  readonly settledSeq: Map<K, number>;
 }
 
 export const makeKeyedCoalescingWorker = <K, V, E, R>(options: {
@@ -33,46 +39,41 @@ export const makeKeyedCoalescingWorker = <K, V, E, R>(options: {
       latestByKey: new Map(),
       queuedKeys: new Set(),
       activeKeys: new Set(),
+      enqueuedSeq: new Map(),
+      settledSeq: new Map(),
     });
+    let nextSeq = 0;
 
-    const processKey = (key: K, value: V): Effect.Effect<void, E, R> =>
-      options.process(key, value).pipe(
-        Effect.flatMap(() =>
-          TxRef.modify(stateRef, (state) => {
-            const nextValue = state.latestByKey.get(key);
-            if (nextValue === undefined) {
-              const activeKeys = new Set(state.activeKeys);
-              activeKeys.delete(key);
-              return [null, { ...state, activeKeys }] as const;
-            }
-
-            const latestByKey = new Map(state.latestByKey);
-            latestByKey.delete(key);
-            return [nextValue, { ...state, latestByKey }] as const;
-          }).pipe(Effect.tx),
-        ),
-        Effect.flatMap((nextValue) =>
-          nextValue === null ? Effect.void : processKey(key, nextValue),
-        ),
-      );
-
-    const cleanupFailedKey = (key: K): Effect.Effect<void> =>
+    // Return dirty keys to the tail on success or failure. Keep pending values
+    // available for merging until the next batch starts.
+    const completeKey = (key: K, seq: number): Effect.Effect<void> =>
       TxRef.modify(stateRef, (state) => {
         const activeKeys = new Set(state.activeKeys);
         activeKeys.delete(key);
+        const enqueuedSeq = new Map(state.enqueuedSeq);
+        const settledSeq = new Map(state.settledSeq);
 
-        if (state.latestByKey.has(key) && !state.queuedKeys.has(key)) {
-          const queuedKeys = new Set(state.queuedKeys);
-          queuedKeys.add(key);
-          return [true, { ...state, activeKeys, queuedKeys }] as const;
+        if (!state.latestByKey.has(key)) {
+          // Idle: every enqueue for this key is settled.
+          enqueuedSeq.delete(key);
+          settledSeq.delete(key);
+          return [false, { ...state, activeKeys, enqueuedSeq, settledSeq }] as const;
         }
 
-        return [false, { ...state, activeKeys }] as const;
+        settledSeq.set(key, seq);
+        if (!state.queuedKeys.has(key)) {
+          const queuedKeys = new Set(state.queuedKeys);
+          queuedKeys.add(key);
+          return [true, { ...state, activeKeys, queuedKeys, settledSeq }] as const;
+        }
+
+        return [false, { ...state, activeKeys, settledSeq }] as const;
       }).pipe(
-        Effect.tx,
         Effect.flatMap((shouldRequeue) =>
           shouldRequeue ? TxQueue.offer(queue, key) : Effect.void,
         ),
+        Effect.tx,
+        Effect.asVoid,
       );
 
     yield* TxQueue.take(queue).pipe(
@@ -92,7 +93,7 @@ export const makeKeyedCoalescingWorker = <K, V, E, R>(options: {
           activeKeys.add(key);
 
           return [
-            { key, value } as const,
+            { key, value, seq: state.enqueuedSeq.get(key) ?? 0 } as const,
             { ...state, latestByKey, queuedKeys, activeKeys },
           ] as const;
         }).pipe(Effect.tx),
@@ -100,9 +101,9 @@ export const makeKeyedCoalescingWorker = <K, V, E, R>(options: {
       Effect.flatMap((item) =>
         item === null
           ? Effect.void
-          : processKey(item.key, item.value).pipe(
-              Effect.catchCause(() => cleanupFailedKey(item.key)),
-            ),
+          : options
+              .process(item.key, item.value)
+              .pipe(Effect.ignoreCause, Effect.ensuring(completeKey(item.key, item.seq))),
       ),
       Effect.forever,
       Effect.forkScoped,
@@ -113,30 +114,45 @@ export const makeKeyedCoalescingWorker = <K, V, E, R>(options: {
         const latestByKey = new Map(state.latestByKey);
         const existing = latestByKey.get(key);
         latestByKey.set(key, existing === undefined ? value : options.merge(existing, value));
+        const seq = ++nextSeq;
+        const enqueuedSeq = new Map(state.enqueuedSeq);
+        const settledSeq = state.settledSeq.has(key)
+          ? state.settledSeq
+          : // A key with no settled mark was idle: everything before this enqueue is settled.
+            new Map(state.settledSeq).set(key, seq - 1);
+        enqueuedSeq.set(key, seq);
 
         if (state.queuedKeys.has(key) || state.activeKeys.has(key)) {
-          return [false, { ...state, latestByKey }] as const;
+          return [false, { ...state, latestByKey, enqueuedSeq, settledSeq }] as const;
         }
 
         const queuedKeys = new Set(state.queuedKeys);
         queuedKeys.add(key);
-        return [true, { ...state, latestByKey, queuedKeys }] as const;
+        return [true, { ...state, latestByKey, queuedKeys, enqueuedSeq, settledSeq }] as const;
       }).pipe(
         Effect.flatMap((shouldOffer) => (shouldOffer ? TxQueue.offer(queue, key) : Effect.void)),
         Effect.tx,
         Effect.asVoid,
       );
 
-    const drainKey: KeyedCoalescingWorker<K, V>["drainKey"] = (key) =>
+    // Capture the target in its own transaction: a retry re-reads only the
+    // settled mark, so newer enqueues cannot move the target.
+    const settleKey: KeyedCoalescingWorker<K, V>["settleKey"] = (key) =>
       TxRef.get(stateRef).pipe(
-        Effect.tap((state) =>
-          state.latestByKey.has(key) || state.queuedKeys.has(key) || state.activeKeys.has(key)
-            ? Effect.txRetry
-            : Effect.void,
-        ),
-        Effect.asVoid,
         Effect.tx,
+        Effect.flatMap((state) => {
+          const target = state.enqueuedSeq.get(key);
+          if (target === undefined) return Effect.void;
+          return TxRef.get(stateRef).pipe(
+            Effect.tap((current) => {
+              const settled = current.settledSeq.get(key);
+              return settled === undefined || settled >= target ? Effect.void : Effect.txRetry;
+            }),
+            Effect.asVoid,
+            Effect.tx,
+          );
+        }),
       );
 
-    return { enqueue, drainKey } satisfies KeyedCoalescingWorker<K, V>;
+    return { enqueue, settleKey } satisfies KeyedCoalescingWorker<K, V>;
   });
