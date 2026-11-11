@@ -655,6 +655,8 @@ function Mirror({ density }: { readonly density: AskDensity }) {
               leaving: NOTHING,
               dismiss: NOTHING,
               openSettings: NOTHING,
+              // Without it the main press is held, and the specimen shows a card nobody gets.
+              connectViaApp: () => new Promise<string | null>(() => {}),
             }}
             admin
             apps={anothers ? MIRROR_APPS_ANOTHERS : MIRROR_APPS}

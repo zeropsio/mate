@@ -55,7 +55,9 @@ export const SERVICE_STATUS_TONES = {
   },
   off: {
     light: { dot: "#bdbdbd", surface: "#f3f5f7" },
-    dark: { dot: "#5e6e69", surface: "#151b1a" },
+    // Lifted off the dark card (#141918) as far as the other four surfaces stand off it (1.10:1):
+    // at #151b1a a neutral pill had no ground there, and its words read as indented text.
+    dark: { dot: "#5e6e69", surface: "#1c2221" },
   },
 } as const satisfies Readonly<Record<string, Readonly<Record<BrandAppearance, ServiceStatusTone>>>>;
 
