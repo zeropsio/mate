@@ -472,6 +472,8 @@ interface TerminalViewportProps {
   resizeEpoch: number;
   drawerHeight: number;
   keybindings: ResolvedKeybindingsConfig;
+  /** False for a terminal embedded in a scrolling page, so swipes pan the page. */
+  touchScrollback?: boolean;
 }
 
 interface TerminalLaunchLocation {
@@ -497,6 +499,7 @@ export function TerminalViewport({
   resizeEpoch,
   drawerHeight,
   keybindings,
+  touchScrollback = true,
 }: TerminalViewportProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<GhosttyTerminalSurface | null>(null);
@@ -631,6 +634,7 @@ export function TerminalViewport({
         get visible() {
           return visibleRef.current;
         },
+        touchScrollback,
         onData: (data) => handleData(data),
         onResize: (cols, rows) => void resizeTerminal(cols, rows),
         onSelectionChange: () => handleSelectionChange(),
@@ -1080,7 +1084,7 @@ export function TerminalViewport({
       teardown?.();
       if (hadFocus && mount.isConnected) mount.focus({ preventScroll: true });
     };
-  }, [cwd, environmentId, runtimeEnvKey, terminalId, threadId, worktreePath]);
+  }, [cwd, environmentId, runtimeEnvKey, terminalId, threadId, touchScrollback, worktreePath]);
 
   useEffect(() => {
     if (!autoFocus || !visible) return;

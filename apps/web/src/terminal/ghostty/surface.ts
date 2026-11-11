@@ -587,6 +587,12 @@ export interface GhosttyTerminalSurfaceOptions {
    * default — whose Paste entry can never reach a canvas terminal.
    */
   readonly onContextMenu?: (event: MouseEvent) => void;
+  /**
+   * A vertical swipe scrolls the terminal's own output (the default). An
+   * embedded terminal inside a scrolling page sets false so swipes pan the
+   * page; taps still reach the terminal.
+   */
+  readonly touchScrollback?: boolean;
 }
 
 export class GhosttyTerminalSurface {
@@ -730,7 +736,7 @@ export class GhosttyTerminalSurface {
   ): Promise<GhosttyTerminalSurface> {
     const canvas = document.createElement("canvas");
     canvas.className = "block size-full cursor-text";
-    canvas.style.touchAction = "pan-x pinch-zoom";
+    if (options.touchScrollback !== false) canvas.style.touchAction = "pan-x pinch-zoom";
     canvas.setAttribute("aria-hidden", "true");
 
     const input = document.createElement("textarea");
@@ -1492,7 +1498,8 @@ export class GhosttyTerminalSurface {
       touch.moved ||=
         Math.hypot(event.clientX - touch.startX, event.clientY - touch.startY) >
         TERMINAL_LINK_DRAG_THRESHOLD_PX;
-      if (!touch.moved) return;
+      // Without touch scrollback the browser pans the page instead.
+      if (!touch.moved || this.options.touchScrollback === false) return;
       const delta = terminalWheelDeltaRows(
         { deltaY: touch.lastY - event.clientY, deltaMode: 0 },
         this.metrics.height,
@@ -1773,6 +1780,8 @@ export class GhosttyTerminalSurface {
   };
 
   private readonly onContextMenu = (event: MouseEvent) => {
+    // A long press opens the menu; the touch's release must not also tap.
+    this.touchScroll = null;
     if (shouldReportTerminalMouse(this.core.isMouseTracking(), event)) {
       event.preventDefault();
       return;
