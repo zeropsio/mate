@@ -325,9 +325,8 @@ table keeps the decisions.
         updates; the theme's ANSI palette; powerline glyphs; selection survives redraws; refit
         after a reconnect; Option-layer, touch-scroll and Android Backspace input.
     - **Providers.**
-      - `effect-codex-app-server` is re-imported at this SHA. `imported.lock` now keeps one
-        transform record per package. Codex needs no `effect-401` and records `tsgo-046`
-        instead, keeping `tsc --noEmit` while the fork's `@effect/tsgo` lacks `tsrs`.
+      - `effect-codex-app-server` is re-imported at this SHA. `imported.lock` can keep one
+        transform record per package.
       - Codex: shadow-home locks, per-instance `CODEX_HOME`, 20 s probes.
       - Claude: plugin and `--add-dir` skills, skill dispatch, the child environment scrub, a
         logged-out CLI reported as unauthenticated, `managed-mcp.json`.
@@ -346,12 +345,6 @@ table keeps the decisions.
       - Question auto-advance is cancelled on navigation.
       - The run shimmer is stepped (`steps(30)`).
   - _Declined:_
-    - **`effect-acp` re-import.** It stays at `422248515`. Upstream's agent side is ACP v2 only
-      (`de34391427`), and the fork's v1 mock agent plus the SPI replay fixtures would need a
-      rewrite (`fork.md` §3.2). The eight ACP framing fixes and cancelled tool/plan states wait
-      for that decision.
-    - **The rest of upstream's lockfile refresh**, and the Effect 4.1.2 / tsc-rs / vite-plus 1.4
-      toolchain. That is a separate pass: about 77 `effect/Crypto` files.
     - **Upstream migrations.**
     - **The V2 orchestrator and its features** (queue, `delegate_task`, forks, side chats, thread
       links, the agent MCP).
@@ -361,21 +354,43 @@ table keeps the decisions.
       before a clear or close (`settleKey`). At the new 250 ms debounce, a drain lets a busy shell
       hold Clear and the thread lock forever.
     - **Resource-monitor sidecar polling.** The release does not build the sidecar.
+  - _7b (2026-11-11):_ the owner allowed breaking changes while Mate is not in production, so the
+    two things row 7 held back landed the same day, with the review leftovers.
+    - **`effect-acp` re-imported at this SHA** (ACP schema v2 with its v1/v2 compat client).
+      - Both wire packages are now upstream's trees byte for byte, and `imported.lock` carries no
+        transform.
+      - Cursor, Grok and Antigravity run on the compat client. It offers version 2 and takes the
+        v1 path unless the answer has v2's shape. Antigravity answers 2 in the v1 shape, so the
+        install check accepts 1 or 2.
+      - A v2 session reads its model and modes from config options; Grok sets its model through
+        the config-option request there.
+      - A prompt answer without a stop reason fails the turn, as does an idle agent's error.
+      - Cancelled tool calls end as failed; cancelled plan steps are dropped.
+      - The mock agent stays a v1 agent, because the CLIs it stands in for speak v1. Its
+        Antigravity profile answers 2 as the real one does.
+    - **Toolchain at upstream's versions.** Effect and every `@effect/*` at 4.1.2, typecheck
+      through `effect-tsgo tsrs` (`@effect/tsgo` 0.67.1), Vite+ 1.4 with vitest 5.0.5.
+      - `effect/Crypto` became `SecureRandom` and `Digest`, with a crypto layer beside every
+        platform layer.
+      - The effect patch shrank to `pingTimeoutPaused`.
+      - The Effect 4.0.1 codemod is deleted.
+    - **Hygiene.**
+      - The desktop bootstrap envelope is deleted whole (the grant, `--bootstrap-fd`,
+        `T3CODE_BOOTSTRAP_FD`, its contract).
+      - The server's HTTP log lines redact signed URL tokens, and a client hang-up logs as 499.
+      - A bare Claude alias resolves to the newest model the installed CLI can run. A failed
+        probe keeps the last known version.
+      - Electron 44.10.1.
   - _Open for the owner:_
-    - The ACP v2 re-import.
-    - The Claude `>=2.1.301`, Codex `>=0.159.0` and OpenCode `>=2.0.18` floors, against the
-      image's CLIs.
+    - The Claude `>=2.1.301`, Codex `>=0.159.0` and OpenCode `>=2.0.18` floors. The CLIs come
+      from the platform's `zcp@1` image, whose versions no repository states: a floor moves only
+      on a measured image version.
     - An OpenCode 2 adapter.
     - Kiro as an ACP provider.
     - A scheduled message from a person or HQ, through the engine's existing wakes.
-    - The React Compiler migration, after the toolchain pass.
+    - The React Compiler migration.
     - The screen-reader activity announcer.
   - _Open security candidates:_
-    - The dead desktop bootstrap grant (`PairingGrantStore.ts`; reachable only through
-      `T3CODE_BOOTSTRAP_FD`).
-    - Electron 44.4.2 in the unshipped desktop app (the Brotli CVE is fixed in 44.10.1).
     - Antigravity's check-then-write race, which is inherent while the agent has a shell anyway.
-    - The server's own log lines (`logWebSocketEvents`) still carry signed asset/upload tokens in
-      `http.url`; traces are redacted, logs are not.
-    - A typed bare `haiku`/`sonnet` alias resolves to a 5.5 model without the CLI version gate
-      (as upstream).
+    - The desktop telemetry descriptors (`desktopTelemetryFd`, `DesktopTelemetryReceiver`) are
+      never set in a Mate and can go with their host-power and resource-telemetry readers.
