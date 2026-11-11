@@ -236,4 +236,37 @@ describe("ZeropsAccessRead", () => {
       }).pipe(Effect.provide(zerops.layer));
     },
   );
+
+  // witness: apps/server/src/zerops/ZeropsAccessRead.ts | if (status !== 400 && status !== 404) → if (status !== 400)
+  it.effect.each([
+    {
+      name: "404 projectNotFound",
+      project: () => json(404, { error: { code: "projectNotFound" } }),
+      search: undefined,
+      kind: "refused",
+    },
+    {
+      name: "404 userNotFound on the search",
+      project: () => json(200, { clientId: ORG, userRoles: [], tagList: [] }),
+      search: () => json(404, { error: { code: "userNotFound" } }),
+      kind: "refused",
+    },
+    {
+      name: "a route-level 404",
+      project: () => json(404, { error: { code: "notFound" } }),
+      search: undefined,
+      kind: "failed",
+    },
+  ])(
+    "Zerops userNotFound|projectNotFound at 404 refuses the read for good, as at 400; another 404 only fails it: $name",
+    ({ project, search, kind }) => {
+      const zerops = platform({
+        project,
+        ...(search === undefined ? {} : { search }),
+      });
+      return Effect.gen(function* () {
+        assert.strictEqual((yield* readOnce).kind, kind);
+      }).pipe(Effect.provide(zerops.layer));
+    },
+  );
 });

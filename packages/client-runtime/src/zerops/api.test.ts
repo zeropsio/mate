@@ -243,6 +243,24 @@ describe("ZeropsApiClient authentication", () => {
     else await expect(outcome).rejects.toBeInstanceOf(ZeropsApiError);
   });
 
+  // witness: packages/client-runtime/src/zerops/api.ts | (cause.status === 400 || cause.status === 404) && → cause.status === 400 &&
+  it("deleting a token: one the platform answers 404 clientUserConnectionNotFound is deleted already, as at 400", async () => {
+    const stub = recordingFetch(() =>
+      jsonResponse(404, {
+        error: {
+          code: "clientUserConnectionNotFound",
+          message: "Client user connection not found.",
+        },
+      }),
+    );
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await expect(
+      client.deleteIntegrationToken({ clientId: "org-1", tokenId: "token-1" }),
+    ).resolves.toBeUndefined();
+  });
+
   it("remembers the user it last read for this session, and forgets it with the session", async () => {
     vi.useFakeTimers({ now: 5_000 });
     try {

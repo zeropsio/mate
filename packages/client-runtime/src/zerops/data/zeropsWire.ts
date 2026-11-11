@@ -78,8 +78,8 @@ const typeOf = (data: unknown): string | undefined =>
 
 /**
  * A failed request: its HTTP status where it had one, and how it classifies. The platform answers
- * a read of a project it no longer has `400 projectNotFound`; `status` says 404 for it, the one
- * code that proves a project gone — another `400 <x>NotFound` proves nothing of it.
+ * a read of a project it no longer has `projectNotFound`, at `400` or `404`, and `status` says 404
+ * for it, the one code that proves a project gone. Any other 404 has `status` null and fails the read.
  */
 interface RequestFailure {
   readonly status: number | null;
@@ -98,8 +98,8 @@ const receiverId: Effect.Effect<string> = Effect.map(
 );
 
 /**
- * The code Zerops answers a read of a gone entity with (`400 <entity>NotFound`, measured): only the
- * entity a path reads is proven gone by its own code, never by another's.
+ * The code Zerops answers a read of a gone entity with (`<entity>NotFound` at `400`, measured, or
+ * `404`): only the entity a path reads is proven gone by its own code, never by another's.
  */
 const NOT_FOUND_CODES: ReadonlyArray<readonly [RegExp, string]> = [
   [/^\/project\/[^/?]+$/u, "projectNotFound"],
@@ -108,6 +108,12 @@ const NOT_FOUND_CODES: ReadonlyArray<readonly [RegExp, string]> = [
 
 const notFoundCodeOf = (path: string): string | undefined =>
   NOT_FOUND_CODES.find(([pattern]) => pattern.test(path))?.[1];
+
+/** A failed read's status: 404 only for the path's own not-found code, whatever status carried it. */
+const statusOf = (path: string, cause: ZeropsApiError): number | null => {
+  if (cause.code !== null && notFoundCodeOf(path) === cause.code) return 404;
+  return cause.status === 404 ? null : cause.status;
+};
 
 export function makeZeropsWire(options: {
   readonly client: ZeropsWireClient;
@@ -131,12 +137,7 @@ export function makeZeropsWire(options: {
           background: true,
         }),
       catch: (cause): RequestFailure => ({
-        status:
-          cause instanceof ZeropsApiError
-            ? cause.code !== undefined && notFoundCodeOf(path) === cause.code
-              ? 404
-              : cause.status
-            : null,
+        status: cause instanceof ZeropsApiError ? statusOf(path, cause) : null,
         fault: zeropsFault(cause),
       }),
     });
