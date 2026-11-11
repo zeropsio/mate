@@ -77,6 +77,7 @@ import {
   type ThreadId,
   type TurnId,
   type KeybindingCommand,
+  type MateInterruption,
   OrchestrationThreadActivity,
   ProviderInteractionMode,
   ProviderDriverKind,
@@ -429,6 +430,7 @@ import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline, type TimelinePersonInput } from "./chat/MessagesTimeline";
 import { KeptTimelines } from "./chat/KeptTimelines";
+import { useStableHandlers } from "../hooks/useStableHandlers";
 import { ConversationOpeningWaits } from "./chat/ConversationOpeningStage";
 import { useWarmTimelineAsk } from "./chat/warmTimeline";
 import { shouldTypeToFocusComposer } from "./chat/typeToFocus";
@@ -2789,6 +2791,11 @@ function ConversationView(props: ChatViewProps) {
     [threadActivities],
   );
   const activePendingUserInput = pendingUserInputs[0] ?? null;
+  const { questionAttachmentError } = useStableHandlers({
+    questionAttachmentError: (message: string) => {
+      if (activeThreadId) setThreadError(activeThreadId, message);
+    },
+  });
   const questionAttachments = useQuestionAttachments({
     scope: activePendingUserInput ? `${activeThreadKey}:${activePendingUserInput.requestId}` : null,
     environmentId,
@@ -2801,9 +2808,7 @@ function ConversationView(props: ChatViewProps) {
         ? null
         : supportsAttachmentUploads &&
           attachmentEnvironmentConfig.environment.capabilities.questionAttachments === true,
-    onError: (message) => {
-      if (activeThreadId) setThreadError(activeThreadId, message);
-    },
+    onError: questionAttachmentError,
   });
   const activePendingDraftAnswers = useMemo(
     () =>
@@ -8234,6 +8239,68 @@ function ConversationView(props: ChatViewProps) {
     setExpandedImage(preview);
   }, []);
 
+  const restartContinue = (interruption: MateInterruption) => {
+    const pending = activeServerThread?.session?.interruption;
+    if (
+      activeThreadKey === null ||
+      pending == null ||
+      pending.turnId !== interruption.turnId ||
+      pending.messageId !== interruption.messageId
+    )
+      return;
+    const message = useQueuedMessageStore.getState().enqueue(activeThreadKey, {
+      prompt: "Continue the work that was interrupted by the restart.",
+      images: [],
+      terminalContexts: [],
+      reviewComments: [],
+      submissionIntent: "foreground",
+      queuedAfterToolActivityId: null,
+      createdAt: new Date().toISOString(),
+      holdUntilUserAction: true,
+    });
+    void onSend(undefined, "foreground", message);
+  };
+  const usageContinue = () => {
+    if (activeThreadKey === null || activeThread === undefined) return;
+    // The engine tries the provider itself: the held message, else the
+    // limited work's resume. V1 continues by a message.
+    if (engineConversation) {
+      void continueAfterLimit({
+        environmentId: activeThread.environmentId,
+        input: { threadId: activeThread.id },
+      });
+      return;
+    }
+    const message = useQueuedMessageStore.getState().enqueue(activeThreadKey, {
+      prompt: "Continue the work that was paused.",
+      images: [],
+      terminalContexts: [],
+      reviewComments: [],
+      submissionIntent: "foreground",
+      queuedAfterToolActivityId: null,
+      createdAt: new Date().toISOString(),
+      holdUntilUserAction: true,
+    });
+    void onSend(undefined, "foreground", message);
+  };
+  // What the header, the composer and the conversation's rows are handed to call: the same
+  // functions for this view's life (`useStableHandlers`), so those children render for what they
+  // show and not for each of the many reads this view renders for.
+  const handed = useStableHandlers({
+    restartContinue,
+    usageContinue,
+    withdrawHeldMessage: onWithdrawHeldMessage,
+    startFreshConversation,
+    editCrewmateJob,
+    editCrewGoal,
+    runProjectScript,
+    compactContext: onCompactContext,
+    send: onSend,
+    advanceActivePendingUserInput: onAdvanceActivePendingUserInput,
+    dismissUserInput: onDismissUserInput,
+    startFromOriginChange: onStartFromOriginChange,
+  });
+
   // Empty state: no active thread
   if (!activeThread) {
     return <NoActiveThreadState />;
@@ -8620,13 +8687,13 @@ function ConversationView(props: ChatViewProps) {
             onToggleTerminal={activeProject !== null ? toggleTerminalVisibility : undefined}
             gitCwd={gitCwd}
             onNewThreadInProject={handleNewThreadInActiveProject}
-            onStartFresh={startFreshConversation}
-            onEditCrewmateJob={editCrewmateJob}
-            onEditBrief={editCrewGoal}
+            onStartFresh={handed.startFreshConversation}
+            onEditCrewmateJob={handed.editCrewmateJob}
+            onEditBrief={handed.editCrewGoal}
             {...(activeDraftLogicalProjectKey
               ? { onOpenProjectSettings: handleOpenDraftProjectSettings }
               : {})}
-            onRunProjectScript={runProjectScript}
+            onRunProjectScript={handed.runProjectScript}
             onAddProjectScript={saveProjectScript}
             onUpdateProjectScript={updateProjectScript}
             onDeleteProjectScript={deleteProjectScript}
@@ -8739,59 +8806,13 @@ function ConversationView(props: ChatViewProps) {
                   onRestartContinue:
                     isWorking || isSendBusy || queueBlockedByPendingRequest || !admission.canSend
                       ? null
-                      : (interruption) => {
-                          const pending = activeServerThread?.session?.interruption;
-                          if (
-                            activeThreadKey === null ||
-                            pending == null ||
-                            pending.turnId !== interruption.turnId ||
-                            pending.messageId !== interruption.messageId
-                          )
-                            return;
-                          const message = useQueuedMessageStore
-                            .getState()
-                            .enqueue(activeThreadKey, {
-                              prompt: "Continue the work that was interrupted by the restart.",
-                              images: [],
-                              terminalContexts: [],
-                              reviewComments: [],
-                              submissionIntent: "foreground",
-                              queuedAfterToolActivityId: null,
-                              createdAt: new Date().toISOString(),
-                              holdUntilUserAction: true,
-                            });
-                          void onSend(undefined, "foreground", message);
-                        },
+                      : handed.restartContinue,
                   onUsageContinue:
                     isWorking || isSendBusy || queueBlockedByPendingRequest
                       ? null
-                      : () => {
-                          if (activeThreadKey === null || activeThread === undefined) return;
-                          // The engine tries the provider itself: the held message, else the
-                          // limited work's resume. V1 continues by a message.
-                          if (engineConversation) {
-                            void continueAfterLimit({
-                              environmentId: activeThread.environmentId,
-                              input: { threadId: activeThread.id },
-                            });
-                            return;
-                          }
-                          const message = useQueuedMessageStore
-                            .getState()
-                            .enqueue(activeThreadKey, {
-                              prompt: "Continue the work that was paused.",
-                              images: [],
-                              terminalContexts: [],
-                              reviewComments: [],
-                              submissionIntent: "foreground",
-                              queuedAfterToolActivityId: null,
-                              createdAt: new Date().toISOString(),
-                              holdUntilUserAction: true,
-                            });
-                          void onSend(undefined, "foreground", message);
-                        },
+                      : handed.usageContinue,
                   usageContinueTries: engineConversation,
-                  onWithdrawHeldMessage: engineConversation ? onWithdrawHeldMessage : null,
+                  onWithdrawHeldMessage: engineConversation ? handed.withdrawHeldMessage : null,
                   asker: mateAsker(admissionOwner),
                   onSteerQueuedMessage,
                   queueBlockedByAnswer: queueBlockedByPendingRequest,
@@ -9049,8 +9070,8 @@ function ConversationView(props: ChatViewProps) {
                               promptRef={promptRef}
                               composerImagesRef={composerImagesRef}
                               composerTerminalContextsRef={composerTerminalContextsRef}
-                              onCompactContext={onCompactContext}
-                              onSend={onSend}
+                              onCompactContext={handed.compactContext}
+                              onSend={handed.send}
                               onInterrupt={onInterrupt}
                               backgroundWork={composerBackgroundWork}
                               stopping={isStopping}
@@ -9059,8 +9080,8 @@ function ConversationView(props: ChatViewProps) {
                               onSelectActivePendingUserInputOption={
                                 onSelectActivePendingUserInputOption
                               }
-                              onAdvanceActivePendingUserInput={onAdvanceActivePendingUserInput}
-                              onDismissActivePendingUserInput={onDismissUserInput}
+                              onAdvanceActivePendingUserInput={handed.advanceActivePendingUserInput}
+                              onDismissActivePendingUserInput={handed.dismissUserInput}
                               onPreviousActivePendingUserInputQuestion={
                                 onPreviousActivePendingUserInputQuestion
                               }
@@ -9097,7 +9118,7 @@ function ConversationView(props: ChatViewProps) {
                                 {...(routeKind === "draft" && draftId ? { draftId } : {})}
                                 onEnvModeChange={onEnvModeChange}
                                 startFromOrigin={startFromOrigin}
-                                onStartFromOriginChange={onStartFromOriginChange}
+                                onStartFromOriginChange={handed.startFromOriginChange}
                                 {...(canOverrideServerThreadEnvMode || isPreparingWorktree
                                   ? { effectiveEnvModeOverride: envMode }
                                   : {})}
