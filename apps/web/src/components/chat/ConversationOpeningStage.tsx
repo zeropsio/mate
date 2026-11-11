@@ -54,7 +54,7 @@ const Opening = createContext<{
 
 /**
  * How what belongs to the conversation stands while a stage opens it: held in its place unseen
- * while the stage waits and wakes, arriving with the conversation at the hand-off.
+ * while the stage waits, arriving from the moment the conversation is placed.
  */
 type OpeningWait = "held" | "arrives" | "";
 const OpeningWaitContext = createContext<OpeningWait>("");
@@ -139,12 +139,14 @@ export function ConversationOpeningProvider({ children }: { readonly children: R
     setPhase(next);
   }, []);
   const saysMate = stageSaysMate(stage, phase);
+  // Held only while the stage waits: from the moment the conversation is placed — the eyes'
+  // opening and what is left of the hand-off after it — everything of it arrives.
   const wait: OpeningWait =
     stage === null
       ? ""
-      : phase === "waiting" || phase === "wake"
+      : phase === "waiting"
         ? "held"
-        : phase === "hand-off"
+        : phase === "wake" || phase === "hand-off"
           ? "arrives"
           : "";
   const sourceNode = stage?.node;
@@ -188,8 +190,8 @@ export function stageSaysMate(
 
 /**
  * What the header says of the Mate — its name, what it is on — held in its place, unseen and
- * unsaid, exactly while the opening stage says the Mate (`stageSaysMate`), and arriving with the
- * conversation at the hand-off (`data-opening-header`, `index.css`).
+ * unsaid, while the opening stage says the Mate (`stageSaysMate`), and arriving with the
+ * conversation from the moment it is placed (`data-opening-arrives`, `index.css`).
  */
 export function ConversationOpeningYields({ children }: { readonly children: ReactNode }) {
   const says = use(Opening)?.saysMate === true;
@@ -208,8 +210,8 @@ export function ConversationOpeningYields({ children }: { readonly children: Rea
 
 /**
  * A part of the conversation's surface that waits for the opening: its children — or, `whole`,
- * the element itself — are unseen while the stage waits and wakes, and arrive with the
- * conversation at the hand-off (`index.css`), wherever the stage stands while the route changes.
+ * the element itself — are unseen while the stage waits, and arrive with the conversation from
+ * the moment it is placed (`index.css`), wherever the stage stands while the route changes.
  * The element reads the opening itself, so the view around it never renders for an opening's
  * steps; and the style sheet asks no `:has()` of the page, which restyled the whole document
  * for every node added anywhere in it.

@@ -2791,11 +2791,19 @@ function ConversationView(props: ChatViewProps) {
     [threadActivities],
   );
   const activePendingUserInput = pendingUserInputs[0] ?? null;
-  const { questionAttachmentError } = useStableHandlers({
-    questionAttachmentError: (message: string) => {
-      if (activeThreadId) setThreadError(activeThreadId, message);
+  // A file's failure is said in the conversation it was attached in: preparing a picture takes a
+  // while, and the person may have opened another conversation by then.
+  const { threadErrorIn } = useStableHandlers({
+    threadErrorIn: (threadId: ThreadId, message: string) => {
+      setThreadError(threadId, message);
     },
   });
+  const questionAttachmentError = useCallback(
+    (message: string) => {
+      if (activeThreadId) threadErrorIn(activeThreadId, message);
+    },
+    [activeThreadId, threadErrorIn],
+  );
   const questionAttachments = useQuestionAttachments({
     scope: activePendingUserInput ? `${activeThreadKey}:${activePendingUserInput.requestId}` : null,
     environmentId,
