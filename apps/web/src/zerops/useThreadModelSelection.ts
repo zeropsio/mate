@@ -1,6 +1,6 @@
 import type { ModelCapabilities, ModelSelection, ScopedThreadRef } from "@t3tools/contracts";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import { useComposerDraftStore } from "../composerDraftStore";
 import {
@@ -26,8 +26,17 @@ export function useThreadModelSelection(input: {
 }): void {
   const { threadRef, threadSelection, write, capabilitiesFor } = input;
   const clearModelSelection = useComposerDraftStore((store) => store.clearModelSelection);
-  const draft = useComposerDraftStore((store) =>
-    threadRef ? store.getComposerDraft(threadRef) : null,
+  // Only the draft's picks: read whole, the draft made the conversation's view render for every
+  // key typed into its composer.
+  const modelSelectionByProvider = useComposerDraftStore((store) =>
+    threadRef ? store.getComposerDraft(threadRef)?.modelSelectionByProvider : undefined,
+  );
+  const activeProvider = useComposerDraftStore((store) =>
+    threadRef ? (store.getComposerDraft(threadRef)?.activeProvider ?? null) : null,
+  );
+  const draft = useMemo(
+    () => ({ modelSelectionByProvider, activeProvider }),
+    [activeProvider, modelSelectionByProvider],
   );
   const threadKey = modelSelectionKey(threadSelection);
 

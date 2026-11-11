@@ -201,7 +201,7 @@ import { easeRooms, type Rooms } from "./runRoom";
 import type { LiveJobs } from "./liveJobs.logic";
 import { backgroundLineOf, backgroundRowItems } from "./backgroundLine.logic";
 import { KeptTimelineContext } from "./keptTimelineContext";
-import { ConversationOpeningStage } from "./ConversationOpeningStage";
+import { ConversationOpeningStage, ConversationOpeningWaits } from "./ConversationOpeningStage";
 import { useZeropsThreadActivity } from "../../zerops/useZeropsAgentActivity";
 import type { CarriedRow } from "./stepHeight";
 import {
@@ -2387,9 +2387,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   );
   return (
     <>
-      <div className="h-full min-h-0" data-conversation-content="">
+      <ConversationOpeningWaits
+        as="div"
+        whole
+        className="h-full min-h-0"
+        data-conversation-content=""
+      >
         <TimelineRowReadsCtx value={rowReads}>{content}</TimelineRowReadsCtx>
-      </div>
+      </ConversationOpeningWaits>
       {/* Its live card's head, read as painted before a commit that changes its rows. */}
       <AsPainted of={rows} />
       {kept?.shown === false || pauseStageId !== null || keepsDraftMessage ? null : (

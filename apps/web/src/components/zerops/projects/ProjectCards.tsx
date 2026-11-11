@@ -29,6 +29,7 @@ import { useHqAppDetailHold, useHqAppDetails } from "~/zerops/useHqAppDetail";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { rememberOverviewCards } from "~/zerops/overviewCardCount";
 import { useNowMs } from "~/zerops/useNowMs";
+import { watchIntersections } from "~/lib/restingIntersections";
 import { StopReadAgain } from "../StopReadAgain";
 import { heldLine } from "./emptyApps.logic";
 import { ProjectCardStandIn } from "./OverviewStandIn";
@@ -248,12 +249,9 @@ function useDetailWhileSeen(groupId: string) {
     return () => clearTimeout(timer);
   }, [answered, seen]);
   useEffect(() => {
-    if (element === null) return;
-    if (typeof IntersectionObserver === "undefined") {
-      setSeen(true);
-      return;
-    }
-    const observer = new IntersectionObserver(
+    // Seen, it has nothing left to watch for.
+    if (element === null || seen) return;
+    const observer = watchIntersections(
       // A busy page gets several of its reports in one call, oldest first: the last says where it
       // stands now. Read first, a card mounted out of sight under the overview's wait stood in
       // for good once it came into sight (State Smoke, 2026-10-27).
@@ -264,11 +262,15 @@ function useDetailWhileSeen(groupId: string) {
       },
       { root, rootMargin: `0px ${String(CARD_STEP)}px` },
     );
+    if (observer === undefined) {
+      setSeen(true);
+      return;
+    }
     observer.observe(element);
     return () => {
       observer.disconnect();
     };
-  }, [element, root]);
+  }, [element, root, seen]);
   useHqAppDetailHold(seen ? [groupId] : NO_GROUPS);
   return { ref, answered };
 }

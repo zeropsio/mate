@@ -4,7 +4,6 @@ import {
   isListedMateEnvironment,
   shownCanonicalHqListNavigationAtom,
 } from "@t3tools/client-runtime/data";
-import { autoAnimate } from "@formkit/auto-animate";
 import { useAtomValue } from "@effect/atom-react";
 import { shownHqPersonFactsAtom, mateLimitAtom } from "@t3tools/client-runtime/data";
 import {
@@ -41,7 +40,6 @@ import {
 } from "lucide-react";
 import {
   memo,
-  startTransition,
   useCallback,
   useEffect,
   useMemo,
@@ -92,6 +90,9 @@ import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
 import { startNewThreadFromContext } from "../lib/chatThreadActions";
 import { useClientSettings } from "../hooks/useSettings";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
+import { shareEqual } from "@t3tools/shared/structuralSharing";
+import { useStableHandlers } from "../hooks/useStableHandlers";
+import { useStandingGetter } from "../hooks/useStandingGetter";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
 import {
   useAllEnvironmentProjectSnapshotsReady,
@@ -1234,6 +1235,12 @@ const MENU_WAITS_PATIENCE_MS = 800;
 /** How long a press stands for the Mate it opens before its route must have arrived. */
 const MENU_PRESS_BOUND_MS = 6_000;
 
+/** A listed Mate by its list key: a project can hold several containers, each a row of its own. */
+const listedMateKey = (candidate: { readonly key: string }): string => candidate.key;
+
+/** Two readings of plain data say the same (`shareEqual`). */
+const sameAsRead = <T,>(previous: T, next: T): boolean => shareEqual(previous, next) === previous;
+
 /** Runs `run` once the browser has painted the frame now being drawn; at once where none paints. */
 function afterNextPaint(run: () => void): void {
   if (typeof requestAnimationFrame !== "function") {
@@ -1930,6 +1937,10 @@ export default function Sidebar() {
   }, [zeropsPress, zeropsPressHeld]);
   const litZeropsProjectId =
     zeropsPressHeld && zeropsPress !== null ? zeropsPress.projectId : activeZeropsProjectId;
+  const litZeropsConversation =
+    zeropsPressHeld && zeropsPress?.conversation !== undefined
+      ? zeropsPress.conversation
+      : activeZeropsConversation;
   // Whose Mates the menu lists (the account menu's Mine / Everyone): the
   // tree and the waiting faces read the same answer.
   const [zeropsMateScope, setZeropsMateScope] = useMateScope();
@@ -1940,9 +1951,9 @@ export default function Sidebar() {
       shownInScope(
         zeropsMateScope,
         zeropsPersonFacts[candidate.project.id]?.mine,
-        candidate.project.id === activeZeropsProjectId,
+        candidate.project.id === litZeropsProjectId,
       ),
-    [activeZeropsProjectId, zeropsPersonFacts, zeropsMateScope],
+    [litZeropsProjectId, zeropsPersonFacts, zeropsMateScope],
   );
   // The tree's verbs, the same functions from render to render: the tree and its rows are
   // memoised, and a streaming Mate re-renders this whole menu on every shell event.
@@ -1982,6 +1993,23 @@ export default function Sidebar() {
     void router.navigate({ to: "/chief" });
   }, [isMobile, router, setOpenMobile]);
   const zeropsListed = zeropsCandidates;
+  // Who is coming, and each row's menu, as the list is handed them: the same getters while they
+  // answer the same for every Mate listed. Both are built off shared state — every Mate's link,
+  // every write under way — and were rebuilt, and the whole list drawn again, three times as one
+  // conversation opened.
+  const zeropsListedComing = useStandingGetter(
+    zeropsComing,
+    zeropsListed,
+    listedMateKey,
+    sameAsRead,
+  );
+  const getZeropsMateActions = zeropsMateMenus.getMateActions;
+  const zeropsActionsOf = useCallback(
+    (candidate: (typeof zeropsCandidates)[number]) =>
+      getZeropsMateActions(candidate, zeropsRowActivity(candidate)),
+    [getZeropsMateActions, zeropsRowActivity],
+  );
+  const zeropsListedActions = useStandingGetter(zeropsActionsOf, zeropsListed, listedMateKey);
   const chiefSetupLine = useChiefSetupLine();
   const ownChief = useOwnChief();
   const onZeropsSelect = useCallback(
@@ -1989,12 +2017,14 @@ export default function Sidebar() {
       if (isMobile) {
         setOpenMobile(false);
       }
-      startTransition(() => {
-        setZeropsPress({
-          projectId: candidate.project.id,
-          from: activeZeropsProjectId,
-          fromOverview: zeropsOverviewOpen,
-        });
+      // Drawn in the press's own frame: the two rows whose state changes, with the band's slide.
+      // The route's change, a frame later, then finds the menu as it already stands and draws
+      // none of it again.
+      setZeropsPress({
+        projectId: candidate.project.id,
+        conversation: candidate.environmentId ?? undefined,
+        from: activeZeropsProjectId,
+        fromOverview: zeropsOverviewOpen,
       });
       // The route changes once the band's slide — set by the press itself (`slideSelectedBandTo`)
       // — has painted: the change redraws every page reading the route at once, 40–80 ms in which
@@ -2014,6 +2044,13 @@ export default function Sidebar() {
     },
     [isMobile, openMate, setOpenMobile],
   );
+  // What every row of the list is handed to call: the same functions for the menu's life, so
+  // opening another Mate redraws the two rows whose state changed, not each row for a new handler.
+  const zeropsRowVerbs = useStableHandlers({
+    select: onZeropsSelect,
+    openCrew: onZeropsOpenCrew,
+    askToFix: onZeropsAskToFix,
+  });
   // What waits on the viewer (`useViewerWaits`), the overview's tab and cards read the same: the
   // Waiting on you row, the header's count and the rail; ⌥↓ goes to the next.
   const zeropsWaiting = useViewerWaits();
@@ -2681,11 +2718,6 @@ export default function Sidebar() {
     updateThreadJumpHintsVisibility(shouldShowJumpHintsNow);
   }, [shouldShowJumpHintsNow, updateThreadJumpHintsVisibility]);
 
-  const attachListAutoAnimateRef = useCallback((node: HTMLUListElement | null) => {
-    if (!node) return;
-    autoAnimate(node, { duration: 150, easing: "ease-out" });
-  }, []);
-
   // New thread defaults to the project you're in (active thread's project,
   // falling back to the top project) — same resolution the command palette
   // uses. The command palette already offers a "New thread in..." submenu
@@ -2809,7 +2841,7 @@ export default function Sidebar() {
     />
   );
   return (
-    <SidebarStage rail={zeropsRail}>
+    <SidebarStage rail={zeropsRail} railHolds={zeropsRailTiles.tiles.length}>
       <SidebarChromeHeader
         brand={
           zeropsChiefTop(false) ??
@@ -3079,7 +3111,7 @@ export default function Sidebar() {
               onShowEveryone={zeropsMateScope === "mine" ? showEveryoneMates : undefined}
               activeProjectId={litZeropsProjectId}
               activeProjectResolving={activeZeropsProjectResolving && !zeropsPressHeld}
-              activeConversation={activeZeropsConversation}
+              activeConversation={litZeropsConversation}
               births={zeropsPlacedBirths}
               candidates={zeropsListed}
               complete={zeropsMenuComplete}
@@ -3090,13 +3122,13 @@ export default function Sidebar() {
               onAddAutomatedMates={automatedOffered ? onZeropsNewAutomatedMates : undefined}
               onInvite={teamOffered.invite ? inviteToProject : undefined}
               onSetUp={onZeropsSetUp}
-              getComing={zeropsComing}
+              getComing={zeropsListedComing}
               onOpenComing={openComingMate}
               onBrowseProjects={navigateToZeropsProjects}
-              onAskToFix={onZeropsAskToFix}
+              onAskToFix={zeropsRowVerbs.askToFix}
               getFlow={zeropsSidebarFlowWithPages}
               getOwner={zeropsMateOwner}
-              getMateActions={zeropsMateMenus.getMateActions}
+              getMateActions={zeropsListedActions}
               getBirth={zeropsMateMenus.getBirth}
               shown={zeropsShown}
               timestampFormat={timestampFormat}
@@ -3104,8 +3136,8 @@ export default function Sidebar() {
               getActivity={zeropsRowActivity}
               keyedReadings
               getConversationsRead={zeropsConversationsRead}
-              onSelect={onZeropsSelect}
-              onOpenCrew={onZeropsOpenCrew}
+              onSelect={zeropsRowVerbs.select}
+              onOpenCrew={zeropsRowVerbs.openCrew}
             />
           ) : null}
           {/* The dialogs a Mate's own menu opens: rename, hand over, move. */}
@@ -3195,7 +3227,7 @@ export default function Sidebar() {
               closeDelay={0}
               timeout={400}
             >
-              <ul ref={attachListAutoAnimateRef} role="list" className="flex flex-col gap-px">
+              <ul role="list" className="flex flex-col gap-px">
                 {(() => {
                   const renderThreadRow = (thread: EnvironmentThreadShell, section: "active") => {
                     const threadKey = scopedThreadKey(

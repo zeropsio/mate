@@ -3,7 +3,10 @@ import { useMateRecovery } from "~/zerops/useMateRecovery";
 import { useHqMateRefusal } from "~/zerops/useHqMateRefusal";
 import { recoveryNotice } from "@t3tools/client-runtime/data";
 import { MateStateDetails } from "./MateStateDetails";
-import { ConversationOpeningStage } from "../chat/ConversationOpeningStage";
+import {
+  ConversationOpeningStage,
+  ConversationOpeningWaits,
+} from "../chat/ConversationOpeningStage";
 import { removeFailedZeropsProject } from "./removeFailedZeropsProject";
 import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/reactivity";
@@ -1222,9 +1225,9 @@ export function MateComingHeader({
           <ChiefOverviewButton threadRef={null} />
         ) : arriving || mate.projectUrl === undefined ? null : (
           // It waits with the chat header's for the opening conversation (`index.css`).
-          <span className="contents" data-opening-waits="">
+          <ConversationOpeningWaits className="contents">
             <ZeropsProjectLink projectUrl={mate.projectUrl} />
-          </span>
+          </ConversationOpeningWaits>
         )}
       </div>
       {standsIn === null || besidePanel ? null : (

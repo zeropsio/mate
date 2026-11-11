@@ -720,7 +720,11 @@ export function hqNavigationLink(options: {
       const onMessages = (messages: ReadonlyArray<string>) =>
         Effect.gen(function* () {
           const changed = new Map<string, HqScope>();
-          for (const encoded of messages) yield* onMessage(encoded, changed);
+          // HQ answers many scopes in one turn (every placed Mate's, on a load): one publication.
+          const settle = store.gather();
+          yield* Effect.forEach(messages, (encoded) => onMessage(encoded, changed), {
+            discard: true,
+          }).pipe(Effect.ensuring(Effect.sync(settle)));
           const segment = open;
           if (stopped || segment === null) return;
           yield* sendScopes(

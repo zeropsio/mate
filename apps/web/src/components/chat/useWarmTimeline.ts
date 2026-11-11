@@ -137,8 +137,26 @@ export function useWarmTimeline(
   const runningTurnId =
     (session?.status === "running" ? session.activeTurnId : null) ??
     (latestTurn?.state === "running" ? latestTurn.turnId : null);
-  const lifecycle = useZeropsLifecycle(environmentId, threadId);
-  const { builds, projectId, restarts } = useDeployBuilds(lifecycle);
+  // What its project's builds and restarts say is held with the conversation: each read of them
+  // that arrives derives the whole conversation again, and a list out of sight reads several in
+  // the moments after the person has left it.
+  const liveLifecycle = useZeropsLifecycle(environmentId, threadId);
+  const liveDeploy = useDeployBuilds(liveLifecycle);
+  const liveProject = useMemo(
+    () => ({
+      lifecycle: liveLifecycle,
+      builds: liveDeploy.builds,
+      projectId: liveDeploy.projectId,
+      restarts: liveDeploy.restarts,
+    }),
+    [liveDeploy.builds, liveDeploy.projectId, liveDeploy.restarts, liveLifecycle],
+  );
+  const { lifecycle, builds, projectId, restarts } = useHeld(
+    liveProject,
+    hold && liveThread != null,
+    warmReadBeat(liveThread),
+    HELD_READ_EVERY_MS,
+  );
   const zerops = useMemo(
     () => deriveZeropsThreadModel({ activities, lifecycle, runningTurnId, builds, restarts }),
     [activities, lifecycle, runningTurnId, builds, restarts],

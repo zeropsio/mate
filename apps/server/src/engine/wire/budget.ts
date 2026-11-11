@@ -217,6 +217,25 @@ export const fitRecords = (records: Records): Records => ({
   requests: records.requests.map(fitRequest),
 });
 
+/**
+ * An item as an opening's `outcome` frame carries it: fitted, its call's result whole up to the
+ * outcome's own budget, so its card is drawn with no further read; a longer result stays cut and
+ * is read as a detail.
+ */
+export const fitOutcomeItem = (item: Item): Item => {
+  const fitted = fitItem(item);
+  if (
+    item.kind !== "call" ||
+    fitted.kind !== "call" ||
+    fitted.cut?.part !== "result" ||
+    fitted.cut.total > ENGINE_WIRE_BUDGETS.outcomeResultBytes ||
+    item.result === undefined
+  )
+    return fitted;
+  const { cut: _cut, ...whole } = fitted;
+  return { ...whole, result: item.result };
+};
+
 type Changes = Extract<EngineConversationFrame, { readonly type: "changes" }>;
 
 /**

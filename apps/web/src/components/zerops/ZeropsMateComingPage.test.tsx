@@ -327,6 +327,15 @@ vi.mock("~/zerops/inventoryContext", () => ({
 // The DOM-owned wake/travel is covered by ConversationOpeningStage.test.tsx; this renderer
 // verifies the page keeps requesting the same waiting surface until its route can render.
 vi.mock("../chat/ConversationOpeningStage", () => ({
+  ConversationOpeningWaits: ({
+    as = "span",
+    whole: _whole,
+    ...props
+  }: {
+    as?: "span" | "div";
+    whole?: boolean;
+    children?: ReactNode;
+  }) => h(as, props),
   ConversationOpeningStage: ({
     name,
     children,

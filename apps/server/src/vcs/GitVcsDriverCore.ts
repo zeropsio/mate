@@ -1826,6 +1826,8 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       );
     }
 
+    // Asked of git on every poll, never of the local status's cache: an agent that moves
+    // `origin/HEAD` from its shell invalidates nothing, and this answer names the pull request's base.
     const defaultBranch = yield* resolveDefaultBranchName(cwd, "origin");
     const isDefaultBranch = isDefaultBranchName(branch, defaultBranch);
     const aheadOfDefaultCount =
@@ -1861,6 +1863,11 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       }),
     );
     if (indexResult === null) return NON_REPOSITORY_STATUS_DETAILS;
+    // The first command already says so: a directory that is no repository is answered by it
+    // alone, never by five more commands that each say it again (each one an ssh session where
+    // the directory is a Zerops service's).
+    if (indexResult.exitCode !== 0 && isNonRepositoryGitStderr(indexResult.stderr))
+      return NON_REPOSITORY_STATUS_DETAILS;
     if (indexResult.exitCode === 0) {
       const lockPath = `${path.resolve(cwd, indexResult.stdout.trim())}.lock`;
       const lockError = new GitCommandError({
