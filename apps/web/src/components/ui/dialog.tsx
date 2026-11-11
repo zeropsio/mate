@@ -16,6 +16,7 @@ import {
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { gatedPortal } from "~/components/ui/portal-gate";
 import { useHeldHeight } from "~/components/ui/useHeldHeight";
+import { ControlledOpenContext, renderRetainedPopup } from "~/components/ui/retainedPopup";
 
 type DialogProps = Omit<DialogPrimitive.Root.Props, "open" | "onOpenChange"> &
   (
@@ -25,7 +26,11 @@ type DialogProps = Omit<DialogPrimitive.Root.Props, "open" | "onOpenChange"> &
 
 /** A controlled dialog must give dismissal back to the owner of its open state. */
 function Dialog(props: DialogProps) {
-  return <DialogPrimitive.Root {...props} />;
+  return (
+    <ControlledOpenContext value={props.open}>
+      <DialogPrimitive.Root {...props} />
+    </ControlledOpenContext>
+  );
 }
 
 const DialogPortal = gatedPortal(DialogPrimitive.Portal);
@@ -112,6 +117,7 @@ function DialogPopup({
             className,
           )}
           data-slot="dialog-popup"
+          render={renderRetainedPopup}
           {...props}
           ref={held}
         >

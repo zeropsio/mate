@@ -15,8 +15,15 @@ import {
   DIALOG_VIEWPORT_CLASS,
 } from "~/components/ui/dialog-styles";
 import { gatedPortal } from "~/components/ui/portal-gate";
+import { ControlledOpenContext, renderRetainedPopup } from "~/components/ui/retainedPopup";
 
-const AlertDialog = AlertDialogPrimitive.Root;
+function AlertDialog<Payload>(props: AlertDialogPrimitive.Root.Props<Payload>) {
+  return (
+    <ControlledOpenContext value={props.open}>
+      <AlertDialogPrimitive.Root {...props} />
+    </ControlledOpenContext>
+  );
+}
 
 const AlertDialogPortal = gatedPortal(AlertDialogPrimitive.Portal);
 
@@ -66,6 +73,7 @@ function AlertDialogPopup({
             className,
           )}
           data-slot="alert-dialog-popup"
+          render={renderRetainedPopup}
           {...props}
           ref={held}
         >
