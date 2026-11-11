@@ -206,6 +206,23 @@ export function parseSessionModeState(
   };
 }
 
+// A cancelled entry is not outstanding work, and plan steps have no cancelled status, so it is
+// dropped rather than shown as pending.
+function planSteps(entries: ReadonlyArray<unknown>): AcpPlanUpdate["plan"] {
+  return entries.flatMap((entry, index) => {
+    if (!isRecord(entry) || typeof entry.content !== "string" || entry.status === "cancelled") {
+      return [];
+    }
+    const step = entry.content.trim();
+    return [
+      {
+        step: step.length > 0 ? step : `Step ${index + 1}`,
+        status: normalizePlanStepStatus(entry.status),
+      },
+    ];
+  });
+}
+
 function normalizePlanStepStatus(raw: unknown): "pending" | "inProgress" | "completed" {
   switch (raw) {
     case "completed":
@@ -231,6 +248,7 @@ function normalizeToolCallStatus(
     case "completed":
       return "completed";
     case "failed":
+    case "cancelled":
       return "failed";
     default:
       return fallback;
@@ -837,16 +855,10 @@ export function parseSessionUpdateEvent(params: EffectAcpSchema.SessionNotificat
       break;
     }
     case "plan": {
-      const plan = upd.entries.map((entry, index) => ({
-        step: entry.content.trim().length > 0 ? entry.content.trim() : `Step ${index + 1}`,
-        status: normalizePlanStepStatus(entry.status),
-      }));
       // An empty plan replaces the previous one, so it is forwarded too.
       events.push({
         _tag: "PlanUpdated",
-        payload: {
-          plan,
-        },
+        payload: { plan: planSteps(upd.entries) },
         rawPayload: params,
       });
       break;
