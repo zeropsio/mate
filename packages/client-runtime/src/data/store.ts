@@ -75,7 +75,11 @@ export interface AccountStore {
   /** The adapters' one entry: reduces, publishes the changed keys, returns the runtime's work. */
   readonly dispatch: (input: AccountInput) => ReadonlyArray<RuntimeDirective>;
   readonly state: () => AccountState;
-  /** Hears every reduction, after its keys are published: for the runtime's own holds, not for UI. */
+  /**
+   * Hears every reduction, after its keys are published: for the runtime's own holds, not for UI.
+   * A listener reacts to a change of what it follows, by that thing's own identity or value: a
+   * read is a new object on every call, and a listener that dispatches on one calls itself.
+   */
   readonly subscribe: (listener: () => void) => () => void;
   /** Releases resources owned by this account, independently of mounted readers. */
   readonly onClose: (listener: () => void) => () => void;
