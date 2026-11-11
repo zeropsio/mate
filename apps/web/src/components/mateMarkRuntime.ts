@@ -87,6 +87,11 @@ interface MarkRuntime {
   readonly written: Map<object, Map<string, string>>;
   hovered: boolean;
   visible: boolean;
+  /**
+   * In view, and drawn where nobody can see it: the closed menu's mark under the open menu, the
+   * open menu's while it is closed. Read with its box (`host.shown`); it keeps no pose.
+   */
+  unseen: boolean;
   /** Back in view after a while out of it: the next frame takes the pose at once. */
   returning: boolean;
   rect: DOMRect | null;
@@ -136,6 +141,11 @@ export interface MarkLoopHost {
    * no layout of its own. Absent, the loop reads its marks' boxes in the frame itself.
    */
   readonly afterLayout?: (callback: () => void) => void;
+  /**
+   * Whether a mark in view can be seen at all: not faded out, not hidden. Absent, every mark in
+   * view counts as seen.
+   */
+  readonly shown?: (root: SVGSVGElement) => boolean;
 }
 
 /** The one loop every mark on a page shares, and what moves it. */
@@ -198,19 +208,33 @@ export function createMarkLoop(host: MarkLoopHost): MarkLoop {
 
   /** The marks whose boxes are read once the page is laid out (`host.afterLayout`). */
   const wanted = new Set<MarkRuntime>();
+  /** Reads a mark's box and whether it can be seen; says whether either changed. */
+  const read = (mark: MarkRuntime): boolean => {
+    const was = mark.rect;
+    const rect = mark.root.getBoundingClientRect();
+    mark.rect = rect;
+    const unseen = host.shown?.(mark.root) === false;
+    const appeared = mark.unseen && !unseen;
+    mark.unseen = unseen;
+    // Seen again, it takes its pose at once, as one scrolled back into view does. Unseen, it
+    // stops bobbing: the stylesheet would keep repainting it for nobody.
+    if (appeared) mark.returning = true;
+    if (unseen && mark.written.get(mark.root)?.get("data-mate-mark-bob") === "on") {
+      put(mark, mark.root, "data-mate-mark-bob", "off");
+    }
+    return (
+      appeared ||
+      was === null ||
+      was.left !== rect.left ||
+      was.top !== rect.top ||
+      was.width !== rect.width ||
+      was.height !== rect.height
+    );
+  };
   const readWanted = () => {
     let moved = false;
     for (const mark of wanted) {
-      if (!marks.has(mark)) continue;
-      const was = mark.rect;
-      const rect = mark.root.getBoundingClientRect();
-      mark.rect = rect;
-      moved ||=
-        was === null ||
-        was.left !== rect.left ||
-        was.top !== rect.top ||
-        was.width !== rect.width ||
-        was.height !== rect.height;
+      if (marks.has(mark) && read(mark)) moved = true;
     }
     wanted.clear();
     // The pose follows the box it now has, from the next frame.
@@ -224,7 +248,7 @@ export function createMarkLoop(host: MarkLoopHost): MarkLoop {
   const measure = (mark: MarkRuntime, now: number) => {
     mark.rectAt = now;
     if (host.afterLayout === undefined) {
-      mark.rect = mark.root.getBoundingClientRect();
+      read(mark);
       return;
     }
     if (wanted.size === 0) host.afterLayout(readWanted);
@@ -249,13 +273,20 @@ export function createMarkLoop(host: MarkLoopHost): MarkLoop {
     lastFrameAt = now;
     const reduced = host.reducedMotion();
     pointer.asleep = !reduced && now - pointer.activeAt > SLEEP_AFTER_MS;
-    // Just after an input that may have moved the marks, measure them every frame.
-    let moving = now < measureUntil;
+    // Just after an input that may have moved the marks, measure them every frame — and only
+    // then: a mark's own motion moves no box.
+    const settling = now < measureUntil;
+    let moving = settling;
     let due = Number.POSITIVE_INFINITY;
     let shown = false;
     for (const mark of marks) {
       if (!mark.visible) continue;
-      if (moving || mark.rectAt < 0 || now - mark.rectAt > 400) measure(mark, now);
+      // An unseen mark is read again only when something may have shown it: an input, a scroll,
+      // a resize. A seen one, every 400 ms of frames.
+      if (settling || mark.rectAt < 0 || (!mark.unseen && now - mark.rectAt > 400)) {
+        measure(mark, now);
+      }
+      if (mark.unseen) continue;
       const step = tick(mark, pointer, host, now, dt, reduced);
       moving ||= step.moving;
       due = Math.min(due, step.due);
@@ -292,6 +323,7 @@ export function createMarkLoop(host: MarkLoopHost): MarkLoop {
         written: new Map(),
         hovered: false,
         visible: true,
+        unseen: false,
         returning: false,
         rect: null,
         rectAt: -1,
@@ -664,6 +696,9 @@ const browserHost: MarkLoopHost = {
   random: Math.random,
   viewport: () => ({ width: window.innerWidth, height: window.innerHeight }),
   afterLayout,
+  shown: (root) =>
+    typeof root.checkVisibility !== "function" ||
+    root.checkVisibility({ opacityProperty: true, visibilityProperty: true }),
 };
 
 let pageLoop: MarkLoop | undefined;
