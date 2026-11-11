@@ -189,15 +189,6 @@
     "class": "justified"
   },
   {
-    "path": "apps/web/src/state/terminalSessions.ts",
-    "kind": "LogicalExpression",
-    "fingerprint": "attach.data ?? EMPTY_TERMINAL_BUFFER_STATE",
-    "owner": "maintainers",
-    "reason": "Terminal replay retains connection and attach status separately; the buffer default supplies no invented terminal receipt.",
-    "expires": "never",
-    "class": "justified"
-  },
-  {
     "path": "apps/web/src/terminal/ghostty/keyCodes.ts",
     "kind": "CallExpression",
     "fingerprint": "keyboard?.getLayoutMap().catch(() => undefined)",
