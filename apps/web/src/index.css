@@ -14368,28 +14368,21 @@ a.message-file:focus-visible {
 
 /* The real footer stays laid out and measured throughout. Hidden content accepts the input
    that ends the sequence; it is never replaced by a guessed footer or a second conversation. */
-:is([data-chat-workspace-drop-target], [data-zerops-surface="mate-coming-page"]):has(
-    [data-conversation-opening="waiting"],
-    [data-conversation-opening="wake"]
-  )
-  :is([data-conversation-footer], [data-conversation-content]) {
+[data-opening-waits-whole="held"] {
   opacity: 0;
   transition: none;
 }
 
-:is([data-chat-workspace-drop-target], [data-zerops-surface="mate-coming-page"]):has(
-    [data-conversation-opening="hand-off"]
-  )
-  :is([data-conversation-footer], [data-conversation-content]) {
+[data-opening-waits-whole="arrives"] {
   animation: conversation-arrive var(--duration-conversation-rise) var(--ease-out-strong)
     calc(var(--duration-conversation-exit) / 2) backwards;
 }
 
 /* The header's way out to Zerops waits for the conversation it is the way out of, and arrives
-   with it — wherever the opening stands while the route changes. */
-:root:has([data-conversation-opening="waiting"], [data-conversation-opening="wake"])
-  [data-opening-waits]
-  > * {
+   with it — wherever the opening stands while the route changes. Each part carries the
+   opening's state itself (`ConversationOpeningWaits`): a `:has()` on an ancestor restyles
+   everything under it for every node added there. */
+[data-opening-waits="held"] > * {
   opacity: 0;
   pointer-events: none;
 }
@@ -14400,8 +14393,8 @@ a.message-file:focus-visible {
   pointer-events: none;
 }
 
-:root:has([data-conversation-opening="hand-off"]) [data-opening-header="says"] > *,
-:root:has([data-conversation-opening="hand-off"]) [data-opening-waits] > * {
+[data-opening-header="arrives"] > *,
+[data-opening-waits="arrives"] > * {
   animation: conversation-arrive var(--duration-conversation-rise) var(--ease-out-strong)
     calc(var(--duration-conversation-exit) / 2) backwards;
 }

@@ -429,6 +429,7 @@ import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline, type TimelinePersonInput } from "./chat/MessagesTimeline";
 import { KeptTimelines } from "./chat/KeptTimelines";
+import { ConversationOpeningWaits } from "./chat/ConversationOpeningStage";
 import { useWarmTimelineAsk } from "./chat/warmTimeline";
 import { shouldTypeToFocusComposer } from "./chat/typeToFocus";
 import { rememberTimelineInset, rememberedTimelineInset } from "./chat/timelineInsets";
@@ -8257,7 +8258,8 @@ function ConversationView(props: ChatViewProps) {
     />
   );
   const panelLayoutControls = (
-    <div
+    <ConversationOpeningWaits
+      as="div"
       className={cn(
         // One inset in both states: the controls move between containers when
         // the right panel opens, and a different right offset made them jump
@@ -8266,7 +8268,6 @@ function ConversationView(props: ChatViewProps) {
       )}
       data-workspace-titlebar-controls
       // The panel toggles arrive with the conversation, as the header's actions do.
-      data-opening-waits=""
     >
       {rightPanelOpen && !shouldUseRightPanelSheet ? (
         <RightPanelMaximizeControl
@@ -8275,7 +8276,7 @@ function ConversationView(props: ChatViewProps) {
         />
       ) : null}
       {panelToggleControls}
-    </div>
+    </ConversationOpeningWaits>
   );
   // A Chief's overview opens wide enough for two of its cards side by side, as its opening's
   // panel stood (`conversationPanelWidth`).
@@ -8836,7 +8837,9 @@ function ConversationView(props: ChatViewProps) {
             </div>
 
             {/* Input bar — centered hero while a draft has no messages, docked at the bottom otherwise */}
-            <div
+            <ConversationOpeningWaits
+              as="div"
+              whole
               ref={setComposerOverlayElement}
               data-conversation-footer=""
               data-chat-composer-overlay="true"
@@ -9125,7 +9128,7 @@ function ConversationView(props: ChatViewProps) {
                   </div>
                 </div>
               </div>
-            </div>
+            </ConversationOpeningWaits>
 
             <AlertDialog open={branchRestoreConfirmOpen} onOpenChange={setBranchRestoreConfirmOpen}>
               <AlertDialogPopup>
