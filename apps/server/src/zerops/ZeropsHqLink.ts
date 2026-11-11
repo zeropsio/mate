@@ -902,8 +902,8 @@ const LINK_STABLE_MS = 30_000;
  * when the Mate has not answered it.
  */
 export const HQ_TASK_HOLD = Duration.seconds(30);
-/** A missing correlated answer withholds permission; the deadline never substitutes a policy. */
-export const HQ_AUTO_UPDATE_VERIFY_BUDGET = Duration.seconds(5);
+/** How long the fresh policy question waits; past it the holder decides on the last policy heard. */
+const HQ_AUTO_UPDATE_VERIFY_BUDGET = Duration.seconds(5);
 
 /** Where a Mate's overview is read from: the services the link's layer finds, by what it reads. */
 export interface OverviewSources {
