@@ -44,13 +44,15 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("bin cli parsing"
 
   it.effect("rejects invalid log-level casing before launching the server", () =>
     Effect.gen(function* () {
-      const error = yield* runCliWithRuntime(["--log-level", "Debug"]).pipe(Effect.flip);
+      const refused = yield* runCliWithRuntime(["--log-level", "Debug"]).pipe(Effect.flip);
 
-      if (!CliError.isCliError(error)) {
-        assert.fail(`Expected CliError, got ${String(error)}`);
+      if (!CliError.isCliError(refused)) {
+        assert.fail(`Expected CliError, got ${String(refused)}`);
       }
-      if (error._tag !== "InvalidValue") {
-        assert.fail(`Expected InvalidValue, got ${error._tag}`);
+      // A parse error arrives inside the help it is shown with.
+      const error = refused._tag === "ShowHelp" ? refused.errors[0] : refused;
+      if (error?._tag !== "InvalidValue") {
+        assert.fail(`Expected InvalidValue, got ${error?._tag}`);
       }
       assert.equal(error.option, "log-level");
       assert.equal(error.value, "Debug");

@@ -5797,7 +5797,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCryptoLayer.layer))("server rout
       // Other routes keep their HTTP server span.
       const session = yield* HttpClient.get("/api/auth/session", { headers: { authorization } });
       assert.equal(session.status, 200);
-      assert.include(spanNames, "http.server GET");
+      assert.include(spanNames, "GET");
     }).pipe(Effect.provide(layerLoopbackTest())),
   );
 
