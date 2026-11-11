@@ -761,7 +761,10 @@ export interface ZeropsDataHttpRequest {
   readonly operationKind: "read" | "project-write";
   readonly signal: AbortSignal;
   readonly beforeWrite?: () => Promise<void>;
-  /** Background data failures are scoped and never sign the account out. */
+  /**
+   * Background data failures stay scoped: a background read's own 401 never signs the account
+   * out, while a refresh the platform refuses still ends the session.
+   */
   readonly background: boolean;
 }
 
