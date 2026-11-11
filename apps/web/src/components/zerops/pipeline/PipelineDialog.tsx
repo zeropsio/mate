@@ -1,35 +1,32 @@
 /**
- * A pipeline's dialog, over whatever page is open: what started it, how far it got and how long
- * each step took, why it failed in the platform's words, its build log — live while it runs —
- * and the zerops.yaml it ran. Opened by `?pipeline=<appVersionId>` (`zerops/pipelineSearch.ts`):
+ * A pipeline's dialog, over whatever page is open. Its head says what ran, how it ended and how
+ * long it took, where the version came from and who started it. Below, two columns read together:
+ * the steps in the platform's own words with why the failed one failed (`PipelineTimeline`), and
+ * what the pipeline put out — its logs and the zerops.yaml it ran (`PipelineViewer`), opened on
+ * the one that tells most. Opened by `?pipeline=<appVersionId>` (`zerops/pipelineSearch.ts`):
  * from a deploy in Mate, or from Zerops' build e-mail. A pipeline of another of the person's
  * organizations switches to it first; one the account cannot open says so.
  */
 import { useLocation } from "@tanstack/react-router";
 import type { PipelineValue } from "@t3tools/client-runtime/data";
 import {
-  processFailureWords,
-  type ActivityProcess,
-} from "@t3tools/client-runtime/zerops/activity/dto";
-import {
   formatDuration,
-  type PipelineReadout,
   type PipelineTone,
 } from "@t3tools/client-runtime/zerops/activity/pipelineReadout";
 import { zeropsGuiBase } from "@t3tools/client-runtime/zerops/gui";
-import { CheckIcon, CopyIcon } from "lucide-react";
 import { useEffect, useState, type JSX } from "react";
 
 import { useClientSettings } from "~/hooks/useSettings";
-import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { formatDayAwareTimestamp } from "~/timestampFormat";
+import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
 import { usePipeline, type PipelineView } from "~/zerops/activity/usePipeline";
+import { useCancelBuild } from "~/zerops/useCancelBuild";
+import { useProjectRoleOffers } from "~/zerops/usePlatformCapabilities";
 import { pipelineOfSearch, useClosePipeline } from "~/zerops/pipelineSearch";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
-import { Alert, AlertDescription, AlertTitle } from "../../ui/alert";
 import { Badge, type BadgeTone } from "../../ui/badge";
-import { Button, InlineButton } from "../../ui/button";
+import { Button } from "../../ui/button";
 import {
   Dialog,
   DialogDescription,
@@ -39,8 +36,8 @@ import {
   DialogPopup,
   DialogTitle,
 } from "../../ui/dialog";
-import { BuildLogLines, emptyLogWords } from "../ZeropsBuildLog";
-import { PipelineCalculating, PipelineStepList } from "../operation/PipelineStepList";
+import { PipelineTimeline } from "./PipelineTimeline";
+import { PipelineViewer, type PipelineOutput } from "./PipelineViewer";
 
 /** The host every page shares: the address says which pipeline is open. */
 export function PipelineDialogHost(): JSX.Element {
@@ -81,9 +78,14 @@ function PipelineDialog({ versionId }: { readonly versionId: string }): JSX.Elem
   }, [selectOrganization, switchTo]);
 
   return (
-    <DialogPopup className="max-w-3xl" data-zerops-pipeline={versionId}>
+    <DialogPopup className="max-w-6xl" data-zerops-pipeline={versionId}>
       {view.pipeline === null ? (
-        <PipelineWait elsewhere={elsewhere} unchosen={orgId === null} view={view} />
+        <PipelineWait
+          elsewhere={elsewhere}
+          onChoose={(membershipId) => void selectOrganization(membershipId)}
+          organizations={orgId === null ? organizations : []}
+          view={view}
+        />
       ) : (
         <PipelineBody pipeline={view.pipeline} view={view} />
       )}
@@ -95,16 +97,19 @@ function PipelineDialog({ versionId }: { readonly versionId: string }): JSX.Elem
 function PipelineWait({
   view,
   elsewhere,
-  unchosen,
+  organizations,
+  onChoose,
 }: {
   readonly view: PipelineView;
   readonly elsewhere: { readonly name: string } | null | undefined;
-  /** No organization is chosen yet: the data reads wait on one. */
-  readonly unchosen: boolean;
+  /** No organization is chosen yet, and these are the person's: the reads wait on one. */
+  readonly organizations: ReadonlyArray<{ readonly name: string; readonly membershipId: string }>;
+  readonly onChoose: (membershipId: string) => void;
 }): JSX.Element {
   const read = view.read;
+  const unchosen = organizations.length > 0;
   const words = unchosen
-    ? "Choose an organization first. The pipeline opens after, in its own organization."
+    ? "Choose the organization to open it in. If it belongs to another of yours, Mate switches there."
     : elsewhere === null
       ? "This pipeline belongs to an organization this account isn't a member of."
       : elsewhere !== undefined
@@ -124,7 +129,19 @@ function PipelineWait({
         <DialogTitle>Pipeline</DialogTitle>
         <DialogDescription>{words}</DialogDescription>
       </DialogHeader>
-      {read.kind === "trouble" && read.trouble === "stopped" ? (
+      {unchosen ? (
+        <DialogFooter variant="bare">
+          {organizations.map((organization) => (
+            <Button
+              key={organization.membershipId}
+              onClick={() => onChoose(organization.membershipId)}
+              variant="secondary"
+            >
+              {organization.name}
+            </Button>
+          ))}
+        </DialogFooter>
+      ) : read.kind === "trouble" && read.trouble === "stopped" ? (
         <DialogFooter variant="bare">
           <Button onClick={view.again} variant="secondary">
             Try again
@@ -163,8 +180,17 @@ function PipelineBody({
       : pipeline.startedBy.token
         ? `by the key ${pipeline.startedBy.name}`
         : `by ${pipeline.startedBy.name}`,
-    pipeline.created === null ? null : formatDayAwareTimestamp(pipeline.created, timestampFormat),
+    pipeline.created === null
+      ? null
+      : `started ${formatDayAwareTimestamp(pipeline.created, timestampFormat)}`,
   ].filter((fact): fact is string => fact !== null && fact !== "");
+  // The output opens on what tells most when the dialog first knows it, and then stays where the
+  // person puts it: a step ending never moves it.
+  const [opened, setOpened] = useState<PipelineOutput | null>(view.telling);
+  if (opened === null && view.telling !== null) setOpened(view.telling);
+  const [chosen, setChosen] = useState<PipelineOutput | null>(null);
+  const shown = chosen ?? opened ?? (view.config === null ? null : "config");
+  const hasOutput = shown !== null;
   return (
     <>
       <DialogHeader>
@@ -181,29 +207,44 @@ function PipelineBody({
             )}
             {view.projectName === null ? null : <span>in {view.projectName}</span>}
           </span>
-          {facts.length === 0 ? null : <span className="mt-1 block">{facts.join(" · ")}</span>}
+          {facts.length === 0 ? null : (
+            <span className="mt-1 block">{capitalize(facts.join(" · "))}</span>
+          )}
         </DialogDescription>
       </DialogHeader>
       <DialogPanel>
-        <div className="flex flex-col gap-5">
-          <PipelineFailure process={view.process} readout={readout} />
-          <PipelineSteps readout={readout} live={view.live} service={service} />
-          {view.hasBuildLog ? (
-            <section aria-label="Build log" className="flex flex-col gap-2">
-              <h3 className="font-medium text-sm">Build log</h3>
-              {view.buildLog.lines.length === 0 ? (
-                <p className="text-muted-foreground text-sm">
-                  {emptyLogWords(view.buildLog.status)}
-                </p>
-              ) : (
-                <BuildLogLines lines={view.buildLog.lines} live={view.buildLog.status === "live"} />
-              )}
-            </section>
+        <div className={hasOutput ? "grid gap-6 md:grid-cols-3" : "flex flex-col gap-6"}>
+          <div className="min-w-0">
+            {readout === undefined ? (
+              <p className="text-muted-foreground text-sm">Reading its steps…</p>
+            ) : (
+              <PipelineTimeline
+                live={view.live}
+                onServiceLog={
+                  view.logs.service === undefined ? undefined : () => setChosen("service")
+                }
+                process={view.process}
+                readout={readout}
+                service={service}
+              />
+            )}
+          </div>
+          {hasOutput ? (
+            <div className="min-w-0 md:col-span-2">
+              <PipelineViewer
+                config={view.config}
+                logs={view.logs}
+                onShow={setChosen}
+                projectId={pipeline.projectId}
+                setup={view.setup}
+                shown={shown}
+              />
+            </div>
           ) : null}
-          {view.config === null ? null : <PipelineConfig config={view.config} setup={view.setup} />}
         </div>
       </DialogPanel>
       <DialogFooter>
+        <CancelBuildControl pipeline={pipeline} process={view.process} />
         <Button
           render={
             <a
@@ -221,6 +262,46 @@ function PipelineBody({
   );
 }
 
+/** Statuses a build can still be cancelled in: the GUI offers Cancel build in these alone. */
+const CANCELABLE: ReadonlySet<string> = new Set(["UPLOADING", "WAITING_TO_BUILD", "BUILDING"]);
+
+/**
+ * Cancel build, while the build has not ended and the viewer's role operates the project. It says
+ * it is cancelling from the press until the build's process says canceled, and why Zerops refused.
+ */
+function CancelBuildControl({
+  pipeline,
+  process,
+}: {
+  readonly pipeline: PipelineValue;
+  readonly process: ActivityProcess | undefined;
+}): JSX.Element | null {
+  const offers = useProjectRoleOffers(pipeline.projectId);
+  const { cancel, cancelling, trouble } = useCancelBuild({
+    projectId: pipeline.projectId,
+    appVersionId: pipeline.id,
+    processId: process?.id ?? null,
+  });
+  const status = process?.appVersion?.status ?? pipeline.status;
+  const canceling = cancelling || process?.status === "CANCELING";
+  if (!offers.cancelBuild || (!CANCELABLE.has(status) && !canceling)) return null;
+  return (
+    <div className="mr-auto flex min-w-0 items-center gap-3">
+      <Button disabled={canceling} onClick={() => void cancel()} variant="destructive-ghost">
+        {canceling ? "Cancelling…" : "Cancel build"}
+      </Button>
+      {trouble === null ? null : (
+        <p className="min-w-0 text-destructive-foreground text-sm" role="alert">
+          {trouble}
+        </p>
+      )}
+    </div>
+  );
+}
+
+const capitalize = (words: string): string =>
+  words.length === 0 ? words : `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
+
 /** Where the version came from, in one phrase. */
 function sourceWords(pipeline: PipelineValue): string | null {
   const git = pipeline.git;
@@ -237,112 +318,4 @@ function sourceWords(pipeline: PipelineValue): string | null {
     default:
       return null;
   }
-}
-
-/** Why it failed, in the platform's words, above the steps: the first thing a failed run asks. */
-function PipelineFailure({
-  process,
-  readout,
-}: {
-  readonly process: ActivityProcess | undefined;
-  readonly readout: PipelineReadout | undefined;
-}): JSX.Element | null {
-  if (readout?.status.tone !== "failed") return null;
-  const failedStep = readout.steps.find((step) => step.state === "failed");
-  const command = process?.error?.command;
-  const exit = process?.error?.exit;
-  const said = process === undefined ? undefined : processFailureWords(process);
-  // The platform's generic words ("build command failed") add nothing to the command's own end.
-  const words = command !== undefined && said === process?.error?.message ? undefined : said;
-  return (
-    <Alert variant="error">
-      <AlertTitle>
-        {failedStep === undefined ? "The pipeline failed" : `${failedStep.label} failed`}
-      </AlertTitle>
-      <AlertDescription>
-        {command === undefined ? null : (
-          <p>
-            <code className="font-mono">{command}</code>
-            {exit === undefined ? " failed." : ` ended with ${exit}.`}
-          </p>
-        )}
-        {words === undefined ? null : <p>{words}</p>}
-        {command === undefined && words === undefined ? (
-          <p>{failedStep?.sentence ?? "Zerops didn't say why."}</p>
-        ) : null}
-      </AlertDescription>
-    </Alert>
-  );
-}
-
-function PipelineSteps({
-  readout,
-  live,
-  service,
-}: {
-  readonly readout: PipelineReadout | undefined;
-  readonly live: boolean;
-  readonly service: string;
-}): JSX.Element | null {
-  if (readout === undefined) return null;
-  const label = `${service} pipeline steps`;
-  if (readout.calculating || readout.steps.length === 0) {
-    return live ? (
-      <PipelineCalculating aria-label={label} />
-    ) : (
-      <p className="text-muted-foreground text-sm">Zerops keeps no steps for this pipeline.</p>
-    );
-  }
-  return <PipelineStepList aria-label={label} steps={readout.steps} />;
-}
-
-/** How long a copied zerops.yaml says so. */
-const COPIED_MS = 1_200;
-
-function PipelineConfig({
-  config,
-  setup,
-}: {
-  readonly config: string;
-  readonly setup: string | null;
-}): JSX.Element {
-  const [open, setOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) return;
-    const timer = setTimeout(() => setCopied(false), COPIED_MS);
-    return () => clearTimeout(timer);
-  }, [copied]);
-  return (
-    <section aria-label="zerops.yaml" className="flex flex-col gap-2">
-      <p className="text-sm">
-        <InlineButton aria-expanded={open} onClick={() => setOpen(!open)}>
-          {open ? "Hide the zerops.yaml it ran" : "Show the zerops.yaml it ran"}
-        </InlineButton>
-        {setup === null ? null : <span className="text-muted-foreground"> · setup {setup}</span>}
-      </p>
-      {open ? (
-        <div className="relative">
-          <pre className="max-h-96 overflow-auto rounded-md bg-muted/60 px-3 py-2 font-mono text-xs leading-5">
-            {config}
-          </pre>
-          <span className="absolute top-1 right-1">
-            <Button
-              aria-label={copied ? "Copied zerops.yaml" : "Copy zerops.yaml"}
-              onClick={() => {
-                void writeTextToClipboard(config, "zerops.yaml").then(
-                  () => setCopied(true),
-                  () => setCopied(false),
-                );
-              }}
-              size="icon-sm"
-              variant="ghost"
-            >
-              {copied ? <CheckIcon /> : <CopyIcon />}
-            </Button>
-          </span>
-        </div>
-      ) : null}
-    </section>
-  );
 }
