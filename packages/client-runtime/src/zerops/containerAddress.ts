@@ -42,8 +42,8 @@ export function severalMatesLine(names: ReadonlyArray<string>): string {
 
 /**
  * The domain a project's Zerops subdomains answer under, from its `publicZone`: a region's
- * `"fte23….prg1-zerops.zone"` gives `prg1.zerops.app`; the alpha platform's
- * `"tlcr….alpha.dev-zerops.cloud"` gives `app-alpha.zerops.dev` (its zcp service's
+ * `"fte23….prg1-zerops.zone"` gives `prg1.zerops.app`; a dev platform's
+ * `"….<name>.dev-zerops.cloud"` gives that platform's app domain (its zcp service's
  * `zeropsSubdomain`, read 2026-11-02). The container origin must never hard-code a region:
  * `publicZone` already rides in the project detail both clients fetch. Returns null when the zone
  * has neither shape.
