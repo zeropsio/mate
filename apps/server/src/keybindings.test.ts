@@ -377,7 +377,7 @@ it.layer(NodeServices.layer)("keybindings", (it) => {
         { key: "mod+j", command: "terminal.toggle" },
         { key: "mod+shift+r", command: "script.run-tests.run" },
       ]);
-      assert.isTrue(resolved.some((entry) => entry.command === "script.run-tests.run"));
+      assert.isTrue(resolved.keybindings.some((entry) => entry.command === "script.run-tests.run"));
     }).pipe(Effect.provide(makeKeybindingsLayer())),
   );
 

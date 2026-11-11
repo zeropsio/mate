@@ -1306,21 +1306,9 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
             }),
           ),
         [WS_METHODS.serverUpsertKeybinding]: (rule) =>
-          admit(
-            WS_METHODS.serverUpsertKeybinding,
-            Effect.gen(function* () {
-              const keybindingsConfig = yield* keybindings.upsertKeybindingRule(rule);
-              return { keybindings: keybindingsConfig, issues: [] };
-            }),
-          ),
+          admit(WS_METHODS.serverUpsertKeybinding, keybindings.upsertKeybindingRule(rule)),
         [WS_METHODS.serverRemoveKeybinding]: (rule) =>
-          admit(
-            WS_METHODS.serverRemoveKeybinding,
-            Effect.gen(function* () {
-              const keybindingsConfig = yield* keybindings.removeKeybindingRule(rule);
-              return { keybindings: keybindingsConfig, issues: [] };
-            }),
-          ),
+          admit(WS_METHODS.serverRemoveKeybinding, keybindings.removeKeybindingRule(rule)),
         [WS_METHODS.serverGetSettings]: (_input) =>
           serverSettings.getSettings.pipe(Effect.map(ServerSettings.redactServerSettingsForClient)),
         [WS_METHODS.serverUpdateSettings]: ({ patch }) =>
@@ -1811,8 +1799,11 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
           Stream.unwrap(
             Effect.gen(function* () {
               const usageLimitsCommand = input.usageLimitsCommand === true;
+              // Subscribe before the snapshot so changes made while it loads are buffered.
+              const keybindingsChanges = yield* keybindings.subscribeChanges;
+              const settingsChanges = yield* serverSettings.subscribeChanges;
               const config = yield* loadServerConfig({ usageLimitsCommand });
-              const keybindingsUpdates = keybindings.streamChanges.pipe(
+              const keybindingsUpdates = keybindingsChanges.pipe(
                 Stream.map((event) => ({
                   version: 1 as const,
                   type: "keybindingsUpdated" as const,
@@ -1906,7 +1897,7 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
                       })),
                     )
                   : Stream.empty;
-              const settingsUpdates = serverSettings.streamChanges.pipe(
+              const settingsUpdates = settingsChanges.pipe(
                 Stream.map((settings) => ServerSettings.redactServerSettingsForClient(settings)),
                 Stream.map((settings) => ({
                   version: 1 as const,

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   createKeybindingsUpdateToastController,
-  KEYBINDINGS_SUCCESS_TOAST_COOLDOWN_MS,
+  KEYBINDINGS_TOAST_COOLDOWN_MS,
 } from "./KeybindingsUpdateToast.logic";
 
 function keybindingsEvent(
@@ -29,7 +29,7 @@ describe("keybindings update toast policy", () => {
 
     expect(controller.handle(keybindingsEvent())).toEqual({ _tag: "Success" });
 
-    now += KEYBINDINGS_SUCCESS_TOAST_COOLDOWN_MS - 1;
+    now += KEYBINDINGS_TOAST_COOLDOWN_MS - 1;
     expect(controller.handle(keybindingsEvent())).toBeNull();
 
     now += 1;
