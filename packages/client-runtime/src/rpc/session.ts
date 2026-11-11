@@ -40,6 +40,8 @@ import {
 } from "../state/serverConfigProjection.ts";
 
 const SOCKET_OPEN_TIMEOUT = "15 seconds";
+/** A Mate closed a ticket's socket: it took the ticket's access back, or refused it (`ws.ts`). */
+const MATE_ACCESS_ENDED_CLOSE = 4401;
 
 export interface RpcSession {
   readonly client: WsRpcProtocolClient;
@@ -159,6 +161,8 @@ export const make = Effect.fn("RpcSessionFactory.make")(function* (
     // Set when the socket closes because pongs stopped, so the failure says so
     // instead of looking like the server closed the connection.
     const pingTimedOut = yield* Ref.make(false);
+    // Set by the socket's own close, which runs before the protocol's disconnect hook.
+    let mateAccessEnded = false;
     const hooks = RpcClient.ConnectionHooks.of({
       onConnect: Deferred.succeed(connected, undefined).pipe(Effect.asVoid),
       onPingTimeout: Ref.set(pingTimedOut, true),
@@ -168,12 +172,14 @@ export const make = Effect.fn("RpcSessionFactory.make")(function* (
           Deferred.fail(
             disconnected,
             new ConnectionTransientErrorClass({
-              reason: "transport",
-              detail: !wasConnected
-                ? `${connection.label} could not establish a WebSocket connection.`
-                : timedOut
-                  ? `${connection.label} stopped responding.`
-                  : `${connection.label} disconnected.`,
+              reason: mateAccessEnded ? "mate-access-ended" : "transport",
+              detail: mateAccessEnded
+                ? `${connection.label} ended this connection's access.`
+                : !wasConnected
+                  ? `${connection.label} could not establish a WebSocket connection.`
+                  : timedOut
+                    ? `${connection.label} stopped responding.`
+                    : `${connection.label} disconnected.`,
             }),
           ),
         ),
@@ -188,6 +194,13 @@ export const make = Effect.fn("RpcSessionFactory.make")(function* (
             const socket = webSocketConstructor(url, protocols);
             // Registered before the protocol's own listeners: the ticket is the connection's first frame.
             socket.addEventListener("open", () => socket.send(firstFrame), { once: true });
+            socket.addEventListener(
+              "close",
+              (event) => {
+                mateAccessEnded = event.code === MATE_ACCESS_ENDED_CLOSE;
+              },
+              { once: true },
+            );
             return socket;
           };
     const socketLayer = Socket.layerWebSocket(connection.socketUrl, {

@@ -1116,9 +1116,12 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
     let generation = 0;
     let latestFailure: ConnectionAttemptError | null = null;
     let pendingRetry = Option.none<PendingRetryTrace>();
+    /** A new ticket was already asked at once for a Mate's `4401`, since the ladder last reset. */
+    let mateAccessEndedAnswered = false;
     const resetRetryLadder = () => {
       failureCount = 0;
       pendingRetry = Option.none();
+      mateAccessEndedAnswered = false;
     };
     // Set after a long resume ends an attempt or a session. The fresh attempt
     // runs even while the network reports offline: the report is often wrong,
@@ -1128,9 +1131,8 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
 
     for (;;) {
       if (yield* Ref.getAndSet(resetRetryState, false)) {
-        failureCount = 0;
+        resetRetryLadder();
         latestFailure = null;
-        pendingRetry = Option.none();
       }
       const currentIntent = yield* Ref.get(intent);
       if (!currentIntent.desired) {
@@ -1222,9 +1224,14 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
         continue;
       }
 
-      failureCount += 1;
-      const delayMs =
-        target._tag === "ZeropsMateConnectionTarget"
+      // A Mate's `4401` takes back this ticket and says nothing else: the next attempt asks HQ for
+      // a new one without a wait, once, and HQ's answer decides. A second `4401` is on the ladder.
+      const asksAtOnce = error.reason === "mate-access-ended" && !mateAccessEndedAnswered;
+      if (asksAtOnce) mateAccessEndedAnswered = true;
+      else failureCount += 1;
+      const delayMs = asksAtOnce
+        ? 0
+        : target._tag === "ZeropsMateConnectionTarget"
           ? reconnectWaitMs(failureCount, presence.onScreen(target.environmentId))
           : retryDelayMs(failureCount - 1, yield* Random.next);
       pendingRetry = Option.map(attemptSpan, (previousAttempt) => ({

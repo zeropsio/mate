@@ -86,6 +86,9 @@ export const ConnectionTransientReason = Schema.Literals([
   // HQ holds no live link to the Mate's container (an imported Mate): retried like any transient
   // reason, but its own cause so the page can say so.
   "mate-not-linked",
+  // The Mate closed the socket `4401`: it took back this connection's ticket, or refused it. Only
+  // HQ decides access, so all this asks for is a new ticket, at once and once.
+  "mate-access-ended",
 ]);
 export type ConnectionTransientReason = typeof ConnectionTransientReason.Type;
 
