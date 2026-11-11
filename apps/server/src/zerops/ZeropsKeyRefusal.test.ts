@@ -105,6 +105,7 @@ const rig = () =>
       attention: Stream.never,
       gitCredential: () => Effect.void,
       gitFingerprint: Effect.succeed(Option.none()),
+      heldSessions: Effect.succeed([]),
       reconnectDelaysMs: [20],
     });
     const socket = yield* Queue.take(connected);
@@ -137,7 +138,13 @@ it.effect("An unchanged key refused by Zerops is reported to HQ in one key-refus
     yield* requestWithMateKey(reader, () => Effect.succeed({ status: 401 }));
     yield* TestClock.adjust(Duration.zero);
     assert.deepStrictEqual(sockets[0]!.sent, [
-      { type: "hello", key: "old-key", serviceId: "zcp", origin: "https://mate.test" },
+      {
+        type: "hello",
+        key: "old-key",
+        serviceId: "zcp",
+        origin: "https://mate.test",
+        heldSessionIds: [],
+      },
       { type: "key-refused" },
     ]);
   }).pipe(Effect.scoped),
@@ -174,6 +181,7 @@ it.effect.each([
         key: rotate ? "new-key" : "old-key",
         serviceId: "zcp",
         origin: "https://mate.test",
+        heldSessionIds: [],
       },
       ...(rotate ? [] : [{ type: "key-refused" }]),
     ]);
@@ -220,7 +228,13 @@ it.effect.each([
     assert.equal(result._tag, status === undefined ? "Failure" : "Success");
     yield* TestClock.adjust(Duration.zero);
     assert.deepStrictEqual(sockets[0]!.sent, [
-      { type: "hello", key: "old-key", serviceId: "zcp", origin: "https://mate.test" },
+      {
+        type: "hello",
+        key: "old-key",
+        serviceId: "zcp",
+        origin: "https://mate.test",
+        heldSessionIds: [],
+      },
     ]);
     assert.equal(sockets.length, 1);
     assert.equal(sockets[0]!.closed, false);
@@ -263,7 +277,13 @@ it.effect(
       yield* Fiber.join(late);
       yield* TestClock.adjust(Duration.zero);
       assert.deepStrictEqual(next.sent, [
-        { type: "hello", key: "new-key", serviceId: "zcp", origin: "https://mate.test" },
+        {
+          type: "hello",
+          key: "new-key",
+          serviceId: "zcp",
+          origin: "https://mate.test",
+          heldSessionIds: [],
+        },
       ]);
       assert.equal(sockets[0]!.sent.length, 1);
       assert.equal(sockets.length, 2);

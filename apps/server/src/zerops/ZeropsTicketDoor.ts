@@ -29,6 +29,8 @@ export class ZeropsTicketDoor extends Context.Service<
   {
     readonly heard: (frame: TicketFrame, live: AdmissionLive) => Effect.Effect<void>;
     readonly consume: (firstFrame: unknown) => Effect.Effect<Option.Option<ConsumedTicket>>;
+    /** The session of every ticket still unused and unexpired at `now`: one it can still open. */
+    readonly heldSessions: (now: number) => Effect.Effect<ReadonlyArray<string>>;
     /** Ends one session's tickets, or every ticket where the key was refused. */
     readonly end: (
       subject: { readonly session: string } | { readonly everyone: true },
@@ -75,6 +77,12 @@ export const make = Effect.sync(() => {
       held.used = true;
       return Option.some({ identity: held.identity, live: held.live });
     }),
+    heldSessions: (now) =>
+      Effect.sync(() =>
+        Array.from(tickets.values())
+          .filter((held) => !held.used && held.expiresAtMs > now)
+          .map((held) => held.identity.sessionId),
+      ),
     end: (subject) =>
       Effect.sync(() => {
         for (const held of tickets.values())

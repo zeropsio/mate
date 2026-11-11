@@ -202,6 +202,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
       key: `mate-key-${name}`,
       serviceId: `service-${name}`,
       origin: `https://zcp-${name.toLowerCase()}-8080.prg1.zerops.app`,
+      heldSessionIds: [],
     });
     return link;
   });
