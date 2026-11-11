@@ -2,7 +2,9 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { planClaudeSkillDispatch } from "./ClaudeSkillDispatch.ts";
 
-const SKILLS = new Set(["2spec", "implement", "review", "re-release-version"]);
+const skillMap = (names: ReadonlyArray<string>) =>
+  new Map(names.map((name) => [name, { path: `/skills/${name}/SKILL.md` }]));
+const SKILLS = skillMap(["2spec", "implement", "review", "re-release-version"]);
 
 describe("planClaudeSkillDispatch", () => {
   it("leaves a prompt without a known skill untouched", () => {
@@ -13,7 +15,7 @@ describe("planClaudeSkillDispatch", () => {
 
   it("moves a mid-prompt mention into a trailing slash command", () => {
     expect(planClaudeSkillDispatch("ok, now $implement all the tickets", SKILLS)).toEqual({
-      leadingText: "ok, now",
+      leadingText: "ok, now /implement all the tickets",
       commandText: "/implement all the tickets",
       skillName: "implement",
     });
@@ -29,7 +31,7 @@ describe("planClaudeSkillDispatch", () => {
 
   it("dispatches a known skill whose name begins with a digit", () => {
     expect(planClaudeSkillDispatch("use $2spec for this", SKILLS)).toEqual({
-      leadingText: "use",
+      leadingText: "use /2spec for this",
       commandText: "/2spec for this",
       skillName: "2spec",
     });
@@ -37,7 +39,7 @@ describe("planClaudeSkillDispatch", () => {
 
   it("dispatches the last mention and rewrites earlier ones inline", () => {
     expect(planClaudeSkillDispatch("$review the diff, then $implement the fixes", SKILLS)).toEqual({
-      leadingText: "/review the diff, then",
+      leadingText: "/review the diff, then /implement the fixes",
       commandText: "/implement the fixes",
       skillName: "implement",
     });
@@ -51,7 +53,7 @@ describe("planClaudeSkillDispatch", () => {
           SKILLS,
         ),
       ).toEqual({
-        leadingText: "/review the diff, then",
+        leadingText: "/review the diff, then /implement the fixes",
         commandText: "/implement the fixes",
         skillName: "implement",
       });
@@ -69,7 +71,7 @@ describe("planClaudeSkillDispatch", () => {
   });
 
   it("ignores currency amounts and compact monetary expressions", () => {
-    const skillsWithCurrency = new Set([...SKILLS, "20", "20k", "100M", "1e6"]);
+    const skillsWithCurrency = skillMap([...SKILLS.keys(), "20", "20k", "100M", "1e6"]);
     for (const symbol of ["$", "€", "£", "¥", "₹", "₩", "₿", "𑿝"]) {
       expect(
         planClaudeSkillDispatch(

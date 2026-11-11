@@ -109,7 +109,7 @@ const claudeMcpSession = (context: {
 }) => ({ runtime: context.query, profiled: context.profiled });
 import { resolveClaudeSdkExecutablePath } from "../Drivers/ClaudeExecutable.ts";
 import { claudeSignedOutMessage, makeClaudeEnvironment } from "../Drivers/ClaudeHome.ts";
-import { planClaudeSkillDispatch } from "../Drivers/ClaudeSkillDispatch.ts";
+import { planClaudeSkillDispatch, type ClaudeSkillTarget } from "../Drivers/ClaudeSkillDispatch.ts";
 import {
   placeClaudePictures,
   rememberTurnPictures,
@@ -1795,8 +1795,8 @@ const buildUserMessageEffect = Effect.fn("buildUserMessageEffect")(function* (
     readonly attachmentsDir: string;
     readonly boundInstanceId: ProviderInstanceId;
     readonly modelCatalog: ClaudeModelCatalog;
-    /** Names of the skills Claude Code can run for this session's cwd. */
-    readonly skillNames: ReadonlySet<string>;
+    /** The skills Claude Code can run for this session's cwd, by name. */
+    readonly skills: ReadonlyMap<string, ClaudeSkillTarget>;
     /** Text the message leads with, ahead of everything the person sent. */
     readonly preface?: string | undefined;
   },
@@ -1805,10 +1805,10 @@ const buildUserMessageEffect = Effect.fn("buildUserMessageEffect")(function* (
   const sdkContent: Array<Record<string, unknown>> = [];
 
   // Claude Code expands a skill only from the LAST text block, and only when
-  // `/name` is its first character. A `$skill` chip anywhere in the prompt is
-  // therefore split into [leading text, "/name trailing text"] so the CLI
-  // runs it natively and the prose around it survives. See ClaudeSkillDispatch.
-  const dispatch = planClaudeSkillDispatch(text, dependencies.skillNames);
+  // `/name` is its first character. A `$skill` chip anywhere in the prompt
+  // therefore becomes [whole request, "/name trailing text"] so the CLI runs
+  // it natively and the model still reads the full request. See ClaudeSkillDispatch.
+  const dispatch = planClaudeSkillDispatch(text, dependencies.skills);
   if (dispatch?.leadingText !== undefined) {
     sdkContent.push({ type: "text", text: dispatch.leadingText });
   }
@@ -6123,10 +6123,10 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       attachmentsDir: serverConfig.attachmentsDir,
       boundInstanceId,
       modelCatalog,
-      skillNames: new Set(
+      skills: new Map(
         skills
           .filter((skill) => skill.enabled && skill.userInvocable !== false)
-          .map((skill) => skill.name),
+          .map((skill) => [skill.name, skill]),
       ),
     });
 
