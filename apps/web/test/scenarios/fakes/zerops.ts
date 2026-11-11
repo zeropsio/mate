@@ -1,11 +1,11 @@
 import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import { scenarioWorld, type ScenarioWorld } from "./zeropsWorld.ts";
 import { ZeropsWrites } from "./zeropsWrites.ts";
-import { ZeropsDeviceLogin } from "./zeropsDeviceLogin.ts";
 import { FakeClock } from "./fakeClock.ts";
 // Zerops' published import schema, as the platform serves it to whoever validates an import (HQ
 // checks every group recipe tier against it before a recipe change merges).
 import importSchema from "./import-project-yml-json-schema.json" with { type: "json" };
+import type { TestHq } from "@zerops/session/testing/test-hq";
 import * as NodeEvents from "node:events";
 import { WebSocket } from "ws";
 import type { FakeWorld } from "../harness/fakeWorld.ts";
@@ -15,6 +15,7 @@ import {
   type WireRequest,
   type WireResponse,
 } from "../harness/http.ts";
+import { fromTestHq, toTestHq } from "../harness/testHqWire.ts";
 
 export type EntityRow = Record<string, unknown> & { id: string; _version: number };
 export interface SearchTerm {
@@ -61,8 +62,12 @@ export class ZeropsFake {
   }
   origin = "";
   readonly writes: ZeropsWrites;
-  /** Device login, its consent page, and the sessions it issues. */
-  readonly deviceLogin: ZeropsDeviceLogin;
+  /**
+   * Zerops HQ, in a scenario of the `zerops-hq` build: its sessions act as their person, and the
+   * API's `/auth/*` are its own.
+   */
+  hq: TestHq | undefined;
+  private heldStarts: Promise<void> | undefined;
   private token = 0;
   socketTokenTtl = 60_000;
   private socketSerial = 0;
@@ -79,7 +84,27 @@ export class ZeropsFake {
   constructor(world: FakeWorld & Partial<ScenarioWorld>) {
     this.world = scenarioWorld(world);
     this.writes = new ZeropsWrites(this);
-    this.deviceLogin = new ZeropsDeviceLogin(this.world, () => this.clock.currentTimeMillis());
+  }
+
+  /**
+   * New device logins are answered only once released: a test gets the Zerops window ready (its
+   * routing) before the client points it at the consent page.
+   */
+  holdDeviceLoginStarts(): () => void {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    this.heldStarts = promise;
+    return () => {
+      if (this.heldStarts === promise) this.heldStarts = undefined;
+      resolve();
+    };
+  }
+
+  /** The person an HQ session acts as, by their credential; undefined for any other token. */
+  private hqPerson(token: string | undefined) {
+    const userId = token === undefined ? undefined : this.hq?.whoIs(token)?.userId;
+    if (userId === undefined) return undefined;
+    for (const [credential, name] of this.world.people) if (name === userId) return credential;
+    throw new Error(`HQ signed in ${userId}, whom the scenario never defined`);
   }
 
   matches(row: EntityRow, search: SearchTerm[]) {
@@ -462,23 +487,23 @@ export class ZeropsFake {
     if (request.method === "OPTIONS") return { body: {} };
     if (request.method === "GET" && path === "/settings/import-project-yml-json-schema.json")
       return { body: importSchema };
-    const device = await this.deviceLogin.handle(request, path);
-    if (device) return device;
-    // A device-login session acts as its person; one refused (expired, rotated, ended) is refused.
+    if (this.hq && path.startsWith("/auth/")) {
+      if (/^\/auth\/device-login(?:\/sudo)?$/u.test(path)) await this.heldStarts;
+      return fromTestHq(this.hq.auth(toTestHq(request)));
+    }
+    // An HQ session acts as its person. If HQ refuses the token (expired, rotated, ended), it reads as unknown here.
     const sessionToken = request.headers.authorization?.replace(/^Bearer /u, "");
-    const person = this.deviceLogin.credential(sessionToken);
-    if (person === null) return this.error(401, "notAuthorized", "Not authorized");
+    const person = this.hqPerson(sessionToken);
     if (person !== undefined) {
       if (
         /^\/(?:project-env|user-data)\/[^/]+\/reveal$/u.test(path) &&
-        !this.deviceLogin.inSudo(sessionToken!)
+        !this.hq!.whoIs(sessionToken!)!.inSudo
       )
         return this.error(403, "notInSudoMode", "Not in sudo mode");
       request = { ...request, headers: { ...request.headers, authorization: `Bearer ${person}` } };
     }
     if (path === "/web-socket/login") {
-      const socketPerson = this.deviceLogin.credential(String(request.body.token));
-      if (socketPerson === null) return this.error(401, "notAuthorized", "Not authorized");
+      const socketPerson = this.hqPerson(String(request.body.token));
       if (socketPerson !== undefined)
         request = { ...request, body: { ...request.body, token: socketPerson } };
     }

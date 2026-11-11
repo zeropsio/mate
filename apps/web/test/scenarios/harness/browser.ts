@@ -115,10 +115,15 @@ const contentTypes: Record<string, string> = {
   ".wasm": "application/wasm",
 };
 
+/**
+ * `publicOrigin` serves the build at that address too, as production's origin: the `zerops-hq`
+ * build shares Zerops HQ's session only there, same-site with HQ.
+ */
 export async function openBrowser(
   dist: string,
   routes: Record<string, string>,
   wallClock?: ScenarioWallClock,
+  publicOrigin?: string,
 ) {
   const web = await serve(async ({ url }) => {
     const path = NodePath.resolve(dist, `.${decodeURIComponent(url.pathname)}`);
@@ -138,6 +143,8 @@ export async function openBrowser(
       };
     }
   });
+  if (publicOrigin !== undefined) routes[publicOrigin] = web.origin;
+  const origin = publicOrigin ?? web.origin;
   const browser = await (workerBrowser ??= puppeteer.connect({
     browserWSEndpoint: inject("scenarioBrowserEndpoint"),
   }));
@@ -252,7 +259,7 @@ export async function openBrowser(
           if (!["localhost", "127.0.0.1"].includes(local.hostname))
             throw new Error("Fake route is not loopback");
           const headers = { ...request.headers() };
-          if (url.pathname === "/authorize-app" || url.pathname === "/authorize-login")
+          if (url.pathname === "/authorize-app")
             headers["x-scenario-person"] = identities.get(page) ?? "personal";
           delete headers.host;
           delete headers["content-length"];
@@ -383,12 +390,12 @@ export async function openBrowser(
           if (location.origin === origin && localStorage.getItem(key) === null)
             localStorage.setItem(key, JSON.stringify({ accessToken }));
         },
-        web.origin,
+        origin,
         ZEROPS_SESSION_STORAGE_KEY,
         token,
       );
       try {
-        await page.goto(`${web.origin}/zerops`);
+        await page.goto(`${origin}/zerops`);
       } finally {
         await page.removeScriptToEvaluateOnNewDocument(script.identifier);
       }
@@ -396,7 +403,7 @@ export async function openBrowser(
     setRoutes: async () => {
       for (const update of routeSetters.values()) await update();
     },
-    origin: web.origin,
+    origin,
     errors,
     pageErrors,
     blocked,

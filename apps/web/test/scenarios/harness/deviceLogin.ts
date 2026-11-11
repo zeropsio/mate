@@ -13,7 +13,7 @@ export async function openZeropsWindow(
   page: Page,
   button: string,
 ) {
-  const release = zerops.deviceLogin.holdStarts();
+  const release = zerops.holdDeviceLoginStarts();
   try {
     return await web.popup(page, () => page.locator(`::-p-aria(${button})`).click());
   } finally {

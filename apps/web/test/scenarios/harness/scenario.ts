@@ -31,6 +31,8 @@ import {
 import { DataConsoleSpawn } from "../../../../server/src/zerops/ZeropsDataConsole.ts";
 import { transportGate } from "./transportGate.ts";
 import { answerInZerops, openZeropsWindow } from "./deviceLogin.ts";
+import { ZEROPS_HQ_ORIGIN } from "./build.ts";
+import { MATE_ORIGIN, signedInAtHq, startZeropsHq } from "./zeropsHq.ts";
 import { personDoor } from "./mateAccess.ts";
 import { openScenarioNavigation, startScenarioCore, type ScenarioCore } from "./hqCore.ts";
 import {
@@ -85,11 +87,13 @@ export interface ScenarioDrivers {
 
 export interface ScenarioOptions {
   /**
-   * Restore an account by default; UI sign-in cases explicitly retain the OAuth journey, and
-   * `device-login` signs in through the Zerops window, on the build in `dist`.
+   * Restore an account by default, and UI sign-in cases explicitly retain the OAuth journey.
+   * The other two take the `zerops-hq` build in `dist`. `zerops-hq` serves it at Mate's hosted origin, where it shares Zerops HQ's session.
+   * `device-login` serves it at an origin that HQ's bridge refuses, so it signs in through the Zerops window.
+   * Their `given.signedIn` signs the person in at Zerops HQ first.
    */
-  signIn?: "injected" | "ui" | "device-login";
-  /** A build to serve instead of the shipped one (`deviceLoginDist`). */
+  signIn?: "injected" | "ui" | "zerops-hq" | "device-login";
+  /** A build to serve instead of the shipped one (`zeropsHqDist`). */
   dist?: string;
   /** `real` starts the real Mate server and engine for each Mate project; the fake stays default. */
   mate?: "fake" | "real";
@@ -182,6 +186,15 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     "https://app.zerops.io": api.origin,
     "https://hqzone.prg1-zerops.zone": hq.origin,
   };
+  const zeropsHq =
+    options.signIn === "zerops-hq" || options.signIn === "device-login"
+      ? yield* Effect.promise(() => startZeropsHq(() => zerops.clock.currentTimeMillis()))
+      : undefined;
+  if (zeropsHq !== undefined) {
+    cleanup.push(zeropsHq.server.close);
+    zerops.hq = zeropsHq.hq;
+    routes[ZEROPS_HQ_ORIGIN] = zeropsHq.server.origin;
+  }
   const linkMate = Effect.fn("scenarios.linkMate")(function* (name: string, credential?: string) {
     const link = yield* core.socket("/api/mate/link");
     yield* link.send({
@@ -202,6 +215,13 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
   ];
   const drivers = {
     hq,
+    /** Zerops HQ's stand-in, in a scenario of the `zerops-hq` build. */
+    zeropsHq: zeropsHq?.hq,
+    /** The next answer on that HQ's consent page, once HQ has taken it. */
+    zeropsHqAnswered: () => {
+      if (zeropsHq === undefined) throw new Error("This scenario has no Zerops HQ");
+      return zeropsHq.answered();
+    },
     linkMate,
     mateAuthorization,
     mateClone,
@@ -484,7 +504,14 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
   });
 
   const dist = options.dist ?? inject("scenarioDist");
-  const web = yield* Effect.promise(() => openBrowser(dist, routes, zerops.clock));
+  const web = yield* Effect.promise(() =>
+    openBrowser(
+      dist,
+      routes,
+      zerops.clock,
+      options.signIn === "zerops-hq" ? MATE_ORIGIN : undefined,
+    ),
+  );
   cleanup.push(web.close);
   const actor = (page: Page, initialPerson = "owner") => {
     let selectedPerson = initialPerson;
@@ -509,6 +536,8 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
         web.setPerson(page, token);
         await web.setRoutes();
         const signIn = options.signIn ?? "injected";
+        if (zeropsHq !== undefined)
+          await signedInAtHq(zeropsHq.hq, page, zerops.people.get(token) ?? token);
         if (signIn === "injected") await web.gotoWithSession(page, token);
         else await page.goto(web.origin);
         try {

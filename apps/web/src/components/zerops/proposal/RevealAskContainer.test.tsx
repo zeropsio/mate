@@ -92,7 +92,7 @@ vi.mock("~/zerops/sessionContext", () => ({
   useZeropsSessionOptional: () => ({
     user: { id: "u-ales" },
     client: { baseUrl: "https://api.zerops.example" },
-    sudoBearer: "",
+    zeropsHq: { sudo: async () => "cancelled" },
   }),
 }));
 vi.mock("~/hooks/useSettings", () => ({
