@@ -124,6 +124,7 @@ const unitTestProject = {
     ...unitTestOptions,
     name: "unit",
     isolate: false,
+    setupFiles: ["./test/sharedWorkerSetup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
     exclude: moduleMockingTestFiles,
   },
