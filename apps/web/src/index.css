@@ -8209,6 +8209,23 @@ a.ov-chip-who:focus-visible {
   --ov-rule: color-mix(in oklab, var(--foreground) 8%, transparent);
 }
 
+/* In the light theme a lifted surface carries its own accent, a step under its ground: the app's
+   accent is a hair lighter than the lift there, so a quiet button's hover on it showed nothing
+   (the owner, 2026-11-11, of a Mate card's Sites and Vault: "why does the buttons have no
+   hover?"). In the dark theme the app's accent already stands above the lift. */
+:root:not(.dark)
+  :is(
+    .ov-mate[data-lift],
+    .ov-chip,
+    .tm-card,
+    .tm-role-card,
+    .tm-advanced,
+    .tm-invite-card,
+    .tm-invite-projects
+  ) {
+  --accent: color-mix(in oklab, var(--foreground) 6%, var(--ov-lift));
+}
+
 .dark .tm-team,
 .dark .tm-page,
 .dark .tm-cards,
