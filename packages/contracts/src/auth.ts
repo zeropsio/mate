@@ -45,7 +45,6 @@ export type ServerAuthPolicy = typeof ServerAuthPolicy.Type;
  * values describe the non-Zerops credential protocol.
  */
 export const ServerAuthBootstrapMethod = Schema.Literals([
-  "desktop-bootstrap",
   "one-time-token",
   "zerops-throwaway",
   "ticket",
