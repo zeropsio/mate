@@ -37,13 +37,15 @@ export function makeObserveCredential(options: {
       if (held !== undefined) held.count++;
       else {
         const request = () => readsOfState(store.state()).fact("hqObserveCredentialRequest", id);
-        let seen = request();
+        const first = request();
+        // The answer last acted on, by its own identity: a read is a new object on every call.
+        let seen = first.kind === "known" ? first.value.requestId : null;
         const stop = store.subscribe(() => {
           const next = request();
-          if (next === seen) return;
-          seen = next;
+          if (next.kind !== "known" || next.value.requestId === seen) return;
+          seen = next.value.requestId;
           // HQ answered our establishment with the status after it: that answer is the status.
-          if (next.kind === "known") reads.answered(setting, next.value.answer);
+          reads.answered(setting, next.value.answer);
         });
         following.set(id, { count: 1, stop });
       }

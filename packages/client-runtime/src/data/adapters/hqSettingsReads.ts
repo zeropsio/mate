@@ -17,6 +17,7 @@ import * as Result from "effect/Result";
 import { HqError } from "../../zerops/hq/client.ts";
 import { SETTING_UNSUPPORTED } from "../families/hqAutomation.ts";
 import type { Family, FamilyValues, LinkKey, ScopeKey } from "../model.ts";
+import { sameValue } from "../projections/equal.ts";
 import { streamOf } from "../reducer.ts";
 import type { AccountStore } from "../store.ts";
 import type { StreamEvent, StreamFault } from "../streamMachine.ts";
@@ -216,11 +217,20 @@ export function makeSettingsReads(store: AccountStore) {
       readings.get(keyOf(spec))?.started ?? committed(spec),
     /**
      * Our own write answered with the setting as it stands now: that answer is its value,
-     * numbered after every read started, so none of them landing later replaces it.
+     * numbered after every read started, so none of them landing later replaces it. An answer
+     * that repeats the value held, with no read left to land over it, says nothing new.
      */
     answered: <F extends Family>(spec: SettingRead<F>, value: FamilyValues[F]) => {
       if (closed) return;
       const entry = readings.get(keyOf(spec));
+      const held = factOf(spec);
+      if (
+        held?.access === "allowed" &&
+        held.content.kind === "value" &&
+        sameValue(held.content.value, value) &&
+        (entry?.started ?? 0) <= committed(spec)
+      )
+        return;
       const number = Math.max(entry?.started ?? 0, committed(spec)) + 1;
       if (entry !== undefined) entry.started = number;
       store.dispatch({
