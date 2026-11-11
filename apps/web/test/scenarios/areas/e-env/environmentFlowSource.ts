@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off -- fixture code makes Git records on the local HQ.
+// @effect-diagnostics nodeBuiltinImport:off globalJsonInEffect:off -- fixture code makes Git records on the local HQ.
 import * as Effect from "effect/Effect";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";

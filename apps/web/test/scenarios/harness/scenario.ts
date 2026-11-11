@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off globalFetch:off globalFetchInEffect:off preferSchemaOverJson:off -- localhost wire drivers and failure diagnostics.
+// @effect-diagnostics nodeBuiltinImport:off globalFetch:off globalFetchInEffect:off globalJsonInEffect:off -- localhost wire drivers and failure diagnostics.
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import type * as Scope from "effect/Scope";

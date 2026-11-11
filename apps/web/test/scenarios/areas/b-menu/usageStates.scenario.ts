@@ -1,4 +1,4 @@
-// @effect-diagnostics preferSchemaOverJson:off -- controlled report inputs on the existing scenario wire.
+// @effect-diagnostics globalJsonInEffect:off -- controlled report inputs on the existing scenario wire.
 import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";

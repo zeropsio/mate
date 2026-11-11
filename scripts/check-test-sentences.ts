@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// @effect-diagnostics nodeBuiltinImport:off globalConsole:off preferSchemaOverJson:off -- host Git guard.
+// @effect-diagnostics nodeBuiltinImport:off globalConsole:off globalJsonInEffect:off -- host Git guard.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";

@@ -36,7 +36,6 @@ catalog:
   "@effect/platform-node-shared": 4.1.2
   "@effect/sql-pg": 4.1.2
   "@effect/sql-sqlite-bun": 4.1.2
-  "@effect/tsgo": 0.46.1
   "@effect/vitest": 4.1.2
   "@legendapp/list": 3.3.5
   "@noble/curves": 1.9.1
@@ -45,7 +44,6 @@ catalog:
   "@types/node": 24.12.4
   effect: 4.1.2
   jose: 6.2.2
-  typescript: 7.0.2
   undici: 8.12.4
   vite: npm:@voidzero-dev/vite-plus-core@1.0.0
   vite-plus: 1.0.0
@@ -67,6 +65,14 @@ minimumReleaseAgeExclude:
   - "@effect/sql-sqlite-bun@4.1.2"
   - "@effect/vitest@4.1.2"
   - effect@4.1.2
+  - "@effect/tsgo-darwin-arm64@0.67.1"
+  - "@effect/tsgo-darwin-x64@0.67.1"
+  - "@effect/tsgo-linux-arm64@0.67.1"
+  - "@effect/tsgo-linux-arm@0.67.1"
+  - "@effect/tsgo-linux-x64@0.67.1"
+  - "@effect/tsgo-win32-arm64@0.67.1"
+  - "@effect/tsgo-win32-x64@0.67.1"
+  - "@effect/tsgo@0.67.1"
   - "@legendapp/list@3.3.5"
   - electron@44.4.2
   - "@anthropic-ai/claude-agent-sdk@0.3.276"

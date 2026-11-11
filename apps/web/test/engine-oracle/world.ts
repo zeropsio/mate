@@ -1,4 +1,4 @@
-// @effect-diagnostics globalTimers:off preferSchemaOverJson:off - a real macrotask lets the client's own fibers run between steps; the socket's JSON is what a frame crosses.
+// @effect-diagnostics globalTimers:off globalJsonInEffect:off - a real macrotask lets the client's own fibers run between steps; the socket's JSON is what a frame crosses.
 /**
  * One conversation end to end: the running engine (`makeEngineWorld`: the live layer over a
  * scripted Claude provider, a SQLite file, the test clock) behind its wire (`makeEngineWire`), and

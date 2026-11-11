@@ -1,4 +1,4 @@
-// @effect-diagnostics preferSchemaOverJson:off -- fake HTTP request diagnostics.
+// @effect-diagnostics globalJsonInEffect:off -- fake HTTP request diagnostics.
 import * as Effect from "effect/Effect";
 import { expect } from "@effect/vitest";
 import type { createScenario } from "../../harness/scenario.ts";

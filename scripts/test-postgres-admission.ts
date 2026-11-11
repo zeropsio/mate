@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off -- host-only test PostgreSQL admission.
+// @effect-diagnostics nodeBuiltinImport:off globalJsonInEffect:off -- host-only test PostgreSQL admission.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeNet from "node:net";

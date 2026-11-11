@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off -- git fixtures use temporary directories only; refusal bodies in failure messages.
+// @effect-diagnostics nodeBuiltinImport:off globalJsonInEffect:off -- git fixtures use temporary directories only; refusal bodies in failure messages.
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as Effect from "effect/Effect";

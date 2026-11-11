@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off unsafeEffectTypeAssertion:off - a test harness: a database file, rows read back plainly, one context per life.
+// @effect-diagnostics nodeBuiltinImport:off globalJsonInEffect:off unsafeEffectTypeAssertion:off - a test harness: a database file, rows read back plainly, one context per life.
 /**
  * The engine world for the crew's journeys (`crewWorld.ts`): the crew as an owner of the Mate
  * engine, over the engine's live layer on a SQLite file, a scripted provider for the crewmates'

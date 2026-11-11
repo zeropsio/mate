@@ -136,14 +136,15 @@ export const chatGateStages = [
       ...["apps/server", "packages/contracts", "packages/client-runtime", "apps/web"].map(
         (cwd) => ({
           cwd,
-          args: ["exec", "tsc", "--noEmit", "--incremental"],
+          args: ["exec", "effect-tsgo", "tsrs", "--noEmit", "--incremental"],
         }),
       ),
       {
         cwd: ".",
         args: [
           "exec",
-          "tsc",
+          "effect-tsgo",
+          "tsrs",
           "--noEmit",
           "--incremental",
           "-p",
@@ -154,7 +155,8 @@ export const chatGateStages = [
         cwd: ".",
         args: [
           "exec",
-          "tsc",
+          "effect-tsgo",
+          "tsrs",
           "--noEmit",
           "--incremental",
           "-p",

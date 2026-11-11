@@ -1,4 +1,4 @@
-// @effect-diagnostics preferSchemaOverJson:off -- human-readable failure diagnostics.
+// @effect-diagnostics globalJsonInEffect:off -- human-readable failure diagnostics.
 import type { KeyInput } from "puppeteer-core";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { HqNavigationProject } from "@t3tools/shared/hqStream";
