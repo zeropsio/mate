@@ -1499,9 +1499,10 @@ it.layer(
       // DECRQSS and XTGETTCAP query/reply traffic in 7-bit DCS form.
       process.emitData("\u001bP$q m\u001b\\\u001bP1$r0m\u001b\\");
       process.emitData("\u001bP+q544e\u001b\\\u001bP1+r544e=1b\u001b\\");
-      // The same DCS traffic in 8-bit form.
-      process.emitData("\u0090$q m\u009c\u00901$r0m\u009c");
-      process.emitData("\u0090+q544e\u009c\u00901+r544e=1b\u009c");
+      // C1 characters are text to the terminal the client renders with, so the
+      // same traffic written with them is not a sequence and stays as shown.
+      const c1Text = "\u0090$q m\u009c\u00901$r0m\u009c\u009b?31u";
+      process.emitData(c1Text);
       // Setters and cursor movement share final bytes with query families but
       // have visible terminal-state value and must survive replay.
       process.emitData('\u001b[!p\u001b["p\u001b[4 q\u001b[u');
@@ -1510,7 +1511,7 @@ it.layer(
       yield* manager.close({ threadId: "thread-1" });
 
       const reopened = yield* manager.open(openInput());
-      assert.equal(reopened.history, 'prompt \u001b[!p\u001b["p\u001b[4 q\u001b[udone\n');
+      assert.equal(reopened.history, `prompt ${c1Text}\u001b[!p\u001b["p\u001b[4 q\u001b[udone\n`);
     }),
   );
 
@@ -1528,10 +1529,10 @@ it.layer(
       process.emitData("\u001bP$q ");
       process.emitData("m\u001b");
       process.emitData("\\after ");
-      process.emitData("\u009b?3");
+      process.emitData("\u001b[?3");
       process.emitData("1uafter ");
-      process.emitData("\u0090+q544e");
-      process.emitData("\u009cafter\n");
+      process.emitData("\u001bP+q544e");
+      process.emitData("\u001b\\after\n");
 
       yield* manager.close({ threadId: "thread-1" });
 

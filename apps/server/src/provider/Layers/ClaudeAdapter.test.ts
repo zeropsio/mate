@@ -1694,7 +1694,8 @@ describe("ClaudeAdapterLive", () => {
 
   it.effect("dispatches a $skill mention as a trailing slash command block", () => {
     // Claude Code only runs `/name` from the message's last text block, so a
-    // chip picked mid-prompt is moved there and the surrounding prose kept.
+    // chip picked mid-prompt is repeated there; the whole request leads, so the
+    // model still reads the words before the chip.
     const homeDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "claude-skills-home-"));
     NodeFS.mkdirSync(NodePath.join(homeDir, "skills", "implement"), { recursive: true });
     NodeFS.writeFileSync(
@@ -1723,7 +1724,7 @@ describe("ClaudeAdapterLive", () => {
         readFirstPromptMessage(harness.getLastCreateQueryInput()),
       );
       assert.deepEqual(promptMessage?.message.content, [
-        { type: "text", text: "ok, now" },
+        { type: "text", text: "ok, now /implement all the tickets\nstart with auth" },
         { type: "text", text: "/implement all the tickets\nstart with auth" },
       ]);
     }).pipe(
