@@ -24,7 +24,6 @@
 import {
   createRef,
   memo,
-  startTransition,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -52,6 +51,7 @@ import {
   warmingTimeline,
   type KeptTimeline,
 } from "./keptTimelines.logic";
+import { HELD_READ_EVERY_MS } from "./heldRead";
 import { useWarmTimeline, type WarmTimelineProps } from "./useWarmTimeline";
 import { rememberedTimelineInset } from "./timelineInsets";
 import { ConversationOpeningLayer } from "./ConversationOpeningStage";
@@ -282,23 +282,19 @@ const TimelineSlot = memo(function TimelineSlot({
   if (changedNow && !changedAway) setChangedAway(true);
   if (mode === "open" && changedAway) setChangedAway(false);
   const opened = mode === "open" || mode === "remembered" || mode === "settling";
-  // Just left, it is read anew once the frame that shows the other conversation has painted: its
-  // reader derives the whole conversation it showed a frame ago, for nobody to see.
+  // Just left, it stands as the pane last drew it and is read anew a beat later (the pace a held
+  // list reads at): its reader derives the whole conversation again — and again for each read of
+  // its project that arrives after a switch — for nobody to see, in the moments the conversation
+  // just opened is being drawn. Resting on its row reads it at once.
   const [reads, setReads] = useState(mode === "warm");
   if (opened && reads) setReads(false);
   useEffect(() => {
     if (opened || reads) return;
-    const frame = requestAnimationFrame(() => {
-      timer = window.setTimeout(() => setReads(true), 0);
-    });
-    let timer: number | undefined;
-    return () => {
-      cancelAnimationFrame(frame);
-      if (timer !== undefined) window.clearTimeout(timer);
-    };
+    const timer = window.setTimeout(() => setReads(true), HELD_READ_EVERY_MS);
+    return () => window.clearTimeout(timer);
   }, [opened, reads]);
   // Opening, it is drawn once more with what it read out of sight — the rows already placed —
-  // and takes the pane's own reading of the same conversation after that frame has painted:
+  // and takes the pane's own reading of the same conversation once that frame has painted:
   // the pane derives every row again from its own copy, 9 ms of the frame the switch draws in.
   const [carried, setCarried] = useState<WarmTimelineProps | null>(null);
   if (opened && warmed !== null) {
@@ -308,9 +304,16 @@ const TimelineSlot = memo(function TimelineSlot({
   if (!opened && carried !== null) setCarried(null);
   useEffect(() => {
     if (carried === null) return;
-    startTransition(() => {
-      setCarried(null);
+    // Once, after the frame has painted — not in a transition: every read that arrives after a
+    // switch draws the pane again, and each of those started the transition's derive over.
+    let timer: number | undefined;
+    const frame = requestAnimationFrame(() => {
+      timer = window.setTimeout(() => setCarried(null), 0);
     });
+    return () => {
+      cancelAnimationFrame(frame);
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
   }, [carried]);
   const shown = mode === "open" || (mode === "remembered" && !changedAway);
   // Kept out of sight, gone quiet: not laid out until it shows.
@@ -353,7 +356,7 @@ const TimelineSlot = memo(function TimelineSlot({
             </CrewTimelineContext>
           </KeptTimelineContext>
         )}
-        {!opened && (reads || mode === "warm") ? (
+        {!opened && (reads || readsLive || mode === "warm") ? (
           <Reader
             key="reader"
             hold={mode === "hidden" && !readsLive}
