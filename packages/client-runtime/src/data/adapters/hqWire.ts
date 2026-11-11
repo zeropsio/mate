@@ -16,6 +16,7 @@ import * as Stream from "effect/Stream";
 
 import { HqError, type HqApi } from "../../zerops/hq/client.ts";
 import type { StreamFault } from "../streamMachine.ts";
+import { accessEnded, SESSION_REFUSED_WORDS } from "./accessEnded.ts";
 import { classifyHqClose, type HqWire } from "./hq.ts";
 
 const encodeRequest = Schema.encodeSync(Schema.fromJsonString(HqStreamRequest));
@@ -38,10 +39,7 @@ export function classifyHqCall(cause: unknown): StreamFault {
     };
   return {
     outcome: "definitive-refusal",
-    message:
-      cause.code === "session_required"
-        ? "HQ refused the renewed session. Try again, or sign in to Zerops again."
-        : message,
+    message: accessEnded(cause) === "session-ended" ? SESSION_REFUSED_WORDS : message,
     code: cause.code,
     ...(cause.problems === undefined ? {} : { problems: cause.problems }),
   };
