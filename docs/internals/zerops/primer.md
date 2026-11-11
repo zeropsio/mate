@@ -4,6 +4,8 @@
 - A **Zerops project** groups services on the platform. It is distinct from an application.
 - **HQ** is the shared authority for applications, repositories, changes and deployments, one
   service for every organization (mate-hq).
+- **Zerops HQ** is Zerops's own sign-in service, shared by every Zerops app (hq.zerops.io); it is
+  not HQ. A build that signs in through it shares its session and never holds the refresh token.
 - An **application** groups related repositories and environments in HQ.
 - An **environment** is a place an application's code runs. A Mate is for development, **stage**
   follows merged work, and **production** runs a release. A Mate's **preview** is its development
