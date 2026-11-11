@@ -1,7 +1,9 @@
 import { isMacPlatform } from "../../lib/utils";
 import { collectWrappedTerminalLinkLine, extractTerminalLinks } from "../../terminal-links";
 import {
+  GHOSTTY_CELL_WIDE,
   GhosttyTerminalCore,
+  type GhosttyCell,
   type GhosttyScrollbar,
   type GhosttySnapshot,
   type GhosttyTheme,
@@ -235,15 +237,23 @@ export function terminalGridCellAt(options: {
   };
 }
 
+function terminalCellText(cell: GhosttyCell): string {
+  if (cell.wide === GHOSTTY_CELL_WIDE.spacerTail || cell.wide === GHOSTTY_CELL_WIDE.spacerHead) {
+    return "";
+  }
+  return cell.text || " ";
+}
+
 function terminalRowText(row: GhosttySnapshot["rowData"][number], trimRight: boolean): string {
-  const text = row.cells.map((cell) => cell.text || " ").join("");
+  const text = row.cells.map(terminalCellText).join("");
   return trimRight ? text.trimEnd() : text;
 }
 
 function terminalColumnOffset(row: GhosttySnapshot["rowData"][number], column: number): number {
   let offset = 0;
   for (let cellIndex = 0; cellIndex < column; cellIndex += 1) {
-    offset += row.cells[cellIndex]?.text.length || 1;
+    const cell = row.cells[cellIndex];
+    offset += cell ? terminalCellText(cell).length : 1;
   }
   return offset;
 }
@@ -302,7 +312,8 @@ export function terminalLinkAtPositionWithRange(
   // Ghostty's soft-wrap flag is authoritative: when the last collected row
   // still wraps onward, its continuation is outside the viewport.
   const continuesBelowViewport = lastRow !== undefined && lastRow.wrapsToNext;
-  const offset = segment.startIndex + terminalColumnOffset(row, column);
+  const hitColumn = row.cells[column]?.wide === GHOSTTY_CELL_WIDE.spacerTail ? column - 1 : column;
+  const offset = segment.startIndex + terminalColumnOffset(row, hitColumn);
   for (const match of extractTerminalLinks(wrappedLine.text)) {
     if (offset >= match.start && offset < match.end) {
       // A truncated tail must not activate as a complete link.
@@ -316,6 +327,7 @@ export function terminalLinkAtPositionWithRange(
       const startRow = startSegment ? rows[startSegment.bufferLineNumber - 1] : undefined;
       const endRow = endSegment ? rows[endSegment.bufferLineNumber - 1] : undefined;
       if (!startSegment || !endSegment || !startRow || !endRow) return null;
+      const endColumn = terminalColumnAtOffset(endRow, match.end - 1 - endSegment.startIndex);
       return {
         text: match.text,
         range: {
@@ -324,7 +336,10 @@ export function terminalLinkAtPositionWithRange(
             y: startSegment.bufferLineNumber - 1,
           },
           end: {
-            x: terminalColumnAtOffset(endRow, match.end - 1 - endSegment.startIndex),
+            x:
+              endRow.cells[endColumn + 1]?.wide === GHOSTTY_CELL_WIDE.spacerTail
+                ? endColumn + 1
+                : endColumn,
             y: endSegment.bufferLineNumber - 1,
           },
         },
