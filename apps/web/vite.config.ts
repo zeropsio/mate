@@ -266,6 +266,8 @@ function bundleCompositionPlugin(): Plugin {
     name: "mate:bundle-composition",
     apply: "build",
     generateBundle(_options, bundle) {
+      const relative = (id: string) =>
+        id.replace(`${import.meta.dirname.replace(/\/apps\/web$/u, "")}/`, "");
       this.emitFile({
         type: "asset",
         fileName: "bundle-composition.json",
@@ -281,8 +283,12 @@ function bundleCompositionPlugin(): Plugin {
                         dynamicImports: chunk.dynamicImports,
                         modules: Object.fromEntries(
                           Object.entries(chunk.modules).map(([id, module]) => [
-                            id.replace(`${import.meta.dirname.replace(/\/apps\/web$/u, "")}/`, ""),
-                            { renderedLength: module.renderedLength },
+                            relative(id),
+                            {
+                              renderedLength: module.renderedLength,
+                              // What it imports statically: the graph a lazy boundary is chosen from.
+                              imports: (this.getModuleInfo(id)?.importedIds ?? []).map(relative),
+                            },
                           ]),
                         ),
                       },
