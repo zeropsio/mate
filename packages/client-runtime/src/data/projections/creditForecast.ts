@@ -37,6 +37,15 @@ const answeredSince = (read: ProjectionReads, scope: ScopeKey, openedAt: number)
   );
 };
 
+/**
+ * The balance is current: Zerops keeps it live and pushes every change, so a live stream with its
+ * listing read says it as it stands; otherwise only an answer since the dialog opened does.
+ */
+const balanceCurrent = (read: ProjectionReads, scope: ScopeKey, openedAt: number): boolean =>
+  read.stream(scope).phase === "live"
+    ? read.coverage(scope) === "complete"
+    : answeredSince(read, scope, openedAt);
+
 export const creditForecast: Projection<CreditForecastKey, boolean> = {
   name: "creditForecast",
   keyOf: ({ orgId, openedAt, balanceOpenedAt }) =>
@@ -44,7 +53,7 @@ export const creditForecast: Projection<CreditForecastKey, boolean> = {
   equals: (left, right) => left === right,
   derive: (read, { orgId, openedAt, balanceOpenedAt }) => {
     if (!answeredSince(read, creditScope(orgId), openedAt)) return false;
-    if (!answeredSince(read, balanceScope(orgId), balanceOpenedAt)) return false;
+    if (!balanceCurrent(read, balanceScope(orgId), balanceOpenedAt)) return false;
     const credit = read.fact("organizationCredit", orgId);
     if (credit.kind !== "known" || credit.value.verified) return false;
     const balance = read.fact("organizationBalance", orgId);

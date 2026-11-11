@@ -35,6 +35,13 @@ import { projectUsage, type ProjectUsage } from "./projections/usage.ts";
 import { publicAccess, type PublicAccess } from "./projections/publicAccess.ts";
 import { PROJECT_ROUTINGS_LISTING } from "./families/publicRouting.ts";
 import { creditForecast } from "./projections/creditForecast.ts";
+import {
+  balanceLive,
+  organizationBilling,
+  projectCredit,
+  type OrganizationBilling,
+  type ProjectCredit,
+} from "./projections/billing.ts";
 import { pipelineRead, type PipelineRead } from "./projections/pipeline.ts";
 import type { PipelineConfigValue } from "./families/pipelineConfig.ts";
 import { balanceScope } from "./families/organizationBalance.ts";
@@ -252,6 +259,49 @@ export const balanceReadGenerationAtom = Atom.family((orgId: string) =>
     if (account === null || account.orgId !== orgId) return 0;
     return get(account.data.stream(balanceScope(orgId))).generation;
   }).pipe(Atom.withLabel(`data:balance-read-generation:${orgId}`)),
+);
+
+/**
+ * Whether the organization's balance is live and listed: Zerops pushes every change of it, so it
+ * says the balance as it stands without a read of its own; `false` without the mounted account's
+ * organization.
+ */
+export const balanceLiveAtom = Atom.family((orgId: string) =>
+  Atom.make((get): boolean => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId !== orgId) return false;
+    return get(account.data.project(balanceLive, orgId));
+  }).pipe(Atom.withLabel(`data:balance-live:${orgId}`)),
+);
+
+const BILLING_READING: OrganizationBilling = {
+  kind: "reading",
+  balance: null,
+  total: null,
+  cost: { kind: "reading" },
+  daysLeft: null,
+  soonest: null,
+  tone: "quiet",
+};
+
+/** The organization's money as the mounted account observes it (`organizationBilling`). */
+export const organizationBillingAtom = Atom.family((orgId: string) =>
+  Atom.make((get): OrganizationBilling => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId !== orgId) return BILLING_READING;
+    return get(account.data.project(organizationBilling, orgId));
+  }).pipe(Atom.withLabel(`data:organization-billing:${orgId}`)),
+);
+
+const NO_PROJECT_CREDIT: ProjectCredit = { hoursLeft: null, tone: "quiet" };
+
+/** Whether Zerops will stop one project soon for insufficient funds (`projectCredit`). */
+export const projectCreditAtom = Atom.family((projectId: string) =>
+  Atom.make((get): ProjectCredit => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId === null) return NO_PROJECT_CREDIT;
+    return get(account.data.project(projectCredit, { orgId: account.orgId, projectId }));
+  }).pipe(Atom.withLabel(`data:project-credit:${projectId}`)),
 );
 
 const creditForecastFamily = Atom.family((key: string) =>
