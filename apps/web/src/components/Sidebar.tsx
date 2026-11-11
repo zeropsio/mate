@@ -1235,8 +1235,8 @@ const MENU_WAITS_PATIENCE_MS = 800;
 /** How long a press stands for the Mate it opens before its route must have arrived. */
 const MENU_PRESS_BOUND_MS = 6_000;
 
-const listedMateKey = (candidate: { readonly project: { readonly id: string } }): string =>
-  candidate.project.id;
+/** A listed Mate by its list key: a project can hold several containers, each a row of its own. */
+const listedMateKey = (candidate: { readonly key: string }): string => candidate.key;
 
 /** Two readings of plain data say the same (`shareEqual`). */
 const sameAsRead = <T,>(previous: T, next: T): boolean => shareEqual(previous, next) === previous;
