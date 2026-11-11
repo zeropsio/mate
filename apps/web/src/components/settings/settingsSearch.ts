@@ -10,6 +10,7 @@ export type SettingsPath =
   | "/settings/zerops"
   | "/settings/automation"
   | "/settings/team"
+  | "/settings/billing"
   | "/settings/personas"
   | "/settings/archived";
 
@@ -36,6 +37,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/archived": "Archive",
   "/settings/zerops": "Zerops",
   "/settings/team": "Team",
+  "/settings/billing": "Billing",
   "/settings/automation": "Automation",
   "/settings/personas": "Personas",
   "/settings/providers": "Providers",
@@ -62,7 +64,13 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
   },
   {
     label: "Organization",
-    sections: ["/settings/zerops", "/settings/team", "/settings/automation", "/settings/personas"],
+    sections: [
+      "/settings/zerops",
+      "/settings/team",
+      "/settings/billing",
+      "/settings/automation",
+      "/settings/personas",
+    ],
   },
   {
     label: "Mates and code",
@@ -70,9 +78,13 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
   },
 ];
 
-/** The team and the persona templates are an organization's: offered only signed in with one. */
+/**
+ * The team, its billing and the persona templates are an organization's: offered only signed in
+ * with one.
+ */
 export const ORGANIZATION_PAGES: ReadonlySet<SettingsPath> = new Set([
   "/settings/team",
+  "/settings/billing",
   "/settings/personas",
 ]);
 

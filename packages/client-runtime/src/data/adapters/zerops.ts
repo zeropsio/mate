@@ -1288,7 +1288,8 @@ export function zeropsNavigationLink(options: {
             generations.set(scope, streamOf(store.state(), scope).generation);
             yield* signal(scope, { kind: "handshake" });
             store.dispatch({ kind: "baseline-begin", scope, generation: generationOf(scope) });
-            const refusedAlone = scopeSpec(scope).zerops?.refusedAlone === true;
+            const alone = scopeSpec(scope).zerops?.refusedAlone;
+            const refusedAlone = alone === true || alone === "any-refusal";
             for (const registration of registrations.filter((entry) => entry.scope === scope)) {
               const subscriptionName = options.makeId();
               subscriptions.set(subscriptionName, {
@@ -1310,7 +1311,8 @@ export function zeropsNavigationLink(options: {
                     (fault) =>
                       refusedAlone &&
                       (fault.outcome === "recoverable-session" ||
-                        fault.outcome === "authoritative-denial"),
+                        fault.outcome === "authoritative-denial" ||
+                        (alone === "any-refusal" && fault.outcome === "definitive-refusal")),
                     (fault) => Effect.succeed<RefusedAlone>({ refusedAlone: fault }),
                   ),
                 );

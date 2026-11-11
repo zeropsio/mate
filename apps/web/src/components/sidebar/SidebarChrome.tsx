@@ -9,6 +9,7 @@ import {
   PlusIcon,
   SettingsIcon,
   UsersIcon,
+  WalletIcon,
 } from "lucide-react";
 import type { SidebarAccountDestination } from "../zerops/SidebarZeropsAccount.logic";
 import { SidebarZeropsAccountRow } from "../zerops/SidebarZeropsAccount";
@@ -351,6 +352,8 @@ export function sidebarAccountDestinationIcon(id: SidebarAccountDestination["id"
       return <ChartNoAxesColumnIcon />;
     case "team":
       return <UsersIcon />;
+    case "billing":
+      return <WalletIcon />;
     case "settings":
       return <SettingsIcon />;
   }

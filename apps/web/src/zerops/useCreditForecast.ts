@@ -1,6 +1,7 @@
 /** Whether a create dialog forecasts the credit wall, read through the account's data layer. */
 import { useAtomValue } from "@effect/atom-react";
 import {
+  balanceLiveAtom,
   balanceReadGenerationAtom,
   creditForecastAtom,
   creditReadGenerationAtom,
@@ -12,6 +13,7 @@ import { useDetailDemand } from "./accountData";
 
 const NO_FORECAST = Atom.make(false);
 const NO_READ = Atom.make(0);
+const NO_LIVE = Atom.make(false);
 
 /** The credit forecast as a dialog holds it: what it says, and whether its reads have answered. */
 export interface CreditForecastRead {
@@ -34,12 +36,15 @@ export function useCreditForecast(organizationId: string | null): boolean {
 /** The forecast and whether it has settled, for a dialog that opens once it has (`settled`). */
 export function useCreditForecastRead(organizationId: string | null): CreditForecastRead {
   useDetailDemand("organizationCredit", undefined, organizationId);
-  useDetailDemand("organizationBalance", undefined, organizationId);
   const creditRead = useAtomValue(
     organizationId === null ? NO_READ : creditReadGenerationAtom(organizationId),
   );
   const balanceRead = useAtomValue(
     organizationId === null ? NO_READ : balanceReadGenerationAtom(organizationId),
+  );
+  // The balance is live where Zerops lets this account see it: current without a read of its own.
+  const balanceLive = useAtomValue(
+    organizationId === null ? NO_LIVE : balanceLiveAtom(organizationId),
   );
   const [opened, setOpened] = useState({ organizationId, creditRead, balanceRead });
   if (opened.organizationId !== organizationId) {
@@ -55,6 +60,6 @@ export function useCreditForecastRead(organizationId: string | null): CreditFore
     settled:
       organizationId === null ||
       forecast ||
-      (creditRead > opened.creditRead && balanceRead > opened.balanceRead),
+      (creditRead > opened.creditRead && (balanceLive || balanceRead > opened.balanceRead)),
   };
 }
