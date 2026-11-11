@@ -929,6 +929,7 @@ const buildAppUnderTest = (options?: {
           Layer.mock(ExternalLauncher.ExternalLauncher)({
             resolveAvailableEditors: () => Effect.succeed([]),
             resolveFileManagerRevealKind: () => Effect.undefined,
+            rediscoverEditors: () => Effect.void,
             ...options?.layers?.externalLauncher,
           }),
           Layer.mock(RemoteOpenTargets.RemoteOpenTargets)({
