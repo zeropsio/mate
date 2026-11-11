@@ -67,16 +67,19 @@ export class ServerCommandReadiness extends Context.Service<
 }
 
 /**
+ * One more unit of boot work is done, wherever it is: a step whose duration depends on this
+ * Mate's stored data reports each bounded unit of it, so zcp sees the boot move however large the
+ * state is. Outside a server, nothing.
+ */
+export const advanceBoot: Effect.Effect<void> = Effect.serviceOption(ServerCommandReadiness).pipe(
+  Effect.flatMap((readiness) => (Option.isSome(readiness) ? readiness.value.advance : Effect.void)),
+);
+
+/**
  * One schema migration about to run is one unit of boot work: a release that migrates a large
  * Mate's database keeps its receipt moving from one migration to the next. A single migration
- * reports nothing while it runs (its statements hold the event loop). Outside a server, nothing.
+ * reports nothing while it runs (its statements hold the event loop).
  */
 export const withMigrationProgress = <E, R>(
   migration: Effect.Effect<void, E, R>,
-): Effect.Effect<void, E, R> =>
-  Effect.serviceOption(ServerCommandReadiness).pipe(
-    Effect.flatMap((readiness) =>
-      Option.isSome(readiness) ? readiness.value.advance : Effect.void,
-    ),
-    Effect.andThen(migration),
-  );
+): Effect.Effect<void, E, R> => advanceBoot.pipe(Effect.andThen(migration));
