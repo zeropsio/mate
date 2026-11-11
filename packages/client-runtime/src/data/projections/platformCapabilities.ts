@@ -138,12 +138,13 @@ export function creditOffers(
 
 /**
  * What a project's own surfaces offer by the viewer's role there: its addresses to manage — a
- * domain of its own, its public access — only where the role operates it (Basic user or Full);
- * Read access shows the addresses and offers no door that a write would refuse. While the project's
- * access is not read, its doors stay drawn.
+ * domain of its own, its public access — and a running build to cancel, only where the role
+ * operates it (Basic user or Full); Read access shows them and offers no door that a write would
+ * refuse. While the project's access is not read, its doors stay drawn.
  */
 export function projectRoleOffers(
   capabilities: Pick<PlatformCapabilities, "projectAccessKnown" | "operate">,
-): { readonly manageAddresses: boolean } {
-  return { manageAddresses: !capabilities.projectAccessKnown || capabilities.operate };
+): { readonly manageAddresses: boolean; readonly cancelBuild: boolean } {
+  const operates = !capabilities.projectAccessKnown || capabilities.operate;
+  return { manageAddresses: operates, cancelBuild: operates };
 }

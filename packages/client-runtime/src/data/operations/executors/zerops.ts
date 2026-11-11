@@ -47,6 +47,7 @@ import {
   startServiceExecutor,
   stopServiceExecutor,
 } from "./serviceWrites.ts";
+import { cancelBuildExecutor } from "./pipelineWrites.ts";
 import { addressWritesExecutor } from "./addressWrites.ts";
 import { appAccessExecutor } from "./appAccess.ts";
 import { teamExecutor } from "./team.ts";
@@ -78,6 +79,7 @@ type ZeropsOperationsClient = Pick<
   | "deployMate"
   | "restartService"
   | "stopService"
+  | "cancelBuild"
   | "startService"
   | "deleteService"
   | "deleteProject"
@@ -236,6 +238,9 @@ export function makeZeropsExecutor(input: {
     const startOne = startServiceExecutor({
       startService: (serviceId) => client.startService(serviceId),
     });
+    const cancel = cancelBuildExecutor({
+      cancelBuild: (appVersionId) => client.cancelBuild(appVersionId),
+    });
     const stopOne = stopServiceExecutor({
       stopService: (serviceId) => client.stopService(serviceId),
     });
@@ -358,6 +363,8 @@ export function makeZeropsExecutor(input: {
               return startOne(requestId, intent);
             case "stop-service":
               return stopOne(requestId, intent);
+            case "cancel-build":
+              return cancel(requestId, intent);
             case "delete-service":
               return deleteOne(requestId, intent);
             case "start-project":
@@ -491,6 +498,7 @@ export function makeZeropsExecutor(input: {
         deployMate: (id, signal) => source.deployMate(id, signal, check),
         restartService: (id, signal) => source.restartService(id, signal, check),
         stopService: (id) => source.stopService(id, check),
+        cancelBuild: (id) => source.cancelBuild(id, check),
         startService: (id) => source.startService(id, check),
         deleteService: (id) => source.deleteService(id, check),
         deleteProject: (id, signal) => source.deleteProject(id, signal, check),
