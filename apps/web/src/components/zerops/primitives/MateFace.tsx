@@ -20,6 +20,7 @@ import {
 } from "react";
 import type * as React from "react";
 
+import { watchIntersections } from "~/lib/restingIntersections";
 import { cn } from "~/lib/utils";
 
 import { MateMark } from "../../MateMark";
@@ -136,11 +137,16 @@ function prefersStill(): boolean {
 const BROWSER_GAZE: GazeHost = {
   reducedMotion: prefersStill,
   observeVisible: (element, onChange) => {
-    if (typeof IntersectionObserver === "undefined") return () => {};
-    // A busy page gets several reports in one call, oldest first: the last says where it is now.
-    const observer = new IntersectionObserver((entries) =>
-      onChange(entries.at(-1)?.isIntersecting === true),
-    );
+    let told: boolean | undefined;
+    const observer = watchIntersections((entries) => {
+      // A busy page gets several reports in one call, oldest first: the last says where it is
+      // now. Observed anew it is told again with nothing changed, which is no change to pass on.
+      const visible = entries.at(-1)?.isIntersecting === true;
+      if (visible === told) return;
+      told = visible;
+      onChange(visible);
+    });
+    if (observer === undefined) return () => {};
     observer.observe(element);
     return () => observer.disconnect();
   },

@@ -790,10 +790,12 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 }
 
 /* A skeleton's sweep runs only while it is in view (`ui/skeleton.tsx` marks it `data-seen`): a
-   stand-in out of sight keeps its box and moves nothing. Outside the layers, so it outranks the
-   utility that starts the sweep. */
+   stand-in out of sight keeps its box and moves nothing. Until then it has no band at all — with
+   the sweep merely stopped, the band stood across its middle for the first frame — and the sweep
+   starts with the band, from its edge. Outside the layers, so it outranks the utility that draws
+   the band. */
 [data-slot="skeleton"]:not([data-seen])::after {
-  animation: none;
+  content: none;
 }
 
 @layer base {
