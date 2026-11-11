@@ -91,8 +91,9 @@ zerops:
   # (KRLS project `mate-hq-staging`), so web and Mate changes can be tried
   # without touching the shared production HQ. `prod` with that HQ named by
   # the build (`VITE_HQ_ORIGIN`, `zerops/accountHq.ts` `configuredHq`); Mates
-  # born from this web pin `T3CODE_ZEROPS_HQ_ORIGIN` to it. Sign-in stays
-  # Zerops device login through Zerops' own consent page.
+  # born from this web pin `T3CODE_ZEROPS_HQ_ORIGIN` to it. Sign-in is `prod`'s:
+  # Zerops HQ's shared session, or a device login where its bridge refuses
+  # this origin (`zerops/zeropsHq.ts`).
   - setup: staging
     build:
       base: ubuntu/nodejs@24
