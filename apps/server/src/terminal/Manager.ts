@@ -1056,6 +1056,10 @@ function isCsiFinalByte(codePoint: number): boolean {
   return codePoint >= 0x40 && codePoint <= 0x7e;
 }
 
+function isControlSequenceCancel(codePoint: number): boolean {
+  return codePoint === 0x18 || codePoint === 0x1a;
+}
+
 function shouldStripCsiSequence(body: string, finalByte: string): boolean {
   if (finalByte === "n") {
     return true;
@@ -1109,11 +1113,13 @@ function stripStringTerminator(value: string): string {
 function findStringTerminatorIndex(input: string, start: number): number | null {
   for (let index = start; index < input.length; index += 1) {
     const codePoint = input.charCodeAt(index);
-    if (codePoint === 0x07 || codePoint === 0x9c) {
+    if (codePoint === 0x07 || codePoint === 0x9c || isControlSequenceCancel(codePoint)) {
       return index + 1;
     }
-    if (codePoint === 0x1b && input.charCodeAt(index + 1) === 0x5c) {
-      return index + 2;
+    // Like xterm.js, an ESC that does not start ST ends the string and begins the next sequence.
+    if (codePoint === 0x1b) {
+      if (index + 1 >= input.length) return null;
+      return input.charCodeAt(index + 1) === 0x5c ? index + 2 : index;
     }
   }
   return null;
@@ -1135,11 +1141,16 @@ function findEscapeSequenceEndIndex(input: string, start: number): number | null
   if (cursor >= input.length) {
     return null;
   }
+  // A second ESC restarts the sequence, so leave it for the next pass.
+  if (input.charCodeAt(cursor) === 0x1b) {
+    return cursor;
+  }
   return isEscapeFinalByte(input.charCodeAt(cursor)) ? cursor + 1 : start + 1;
 }
 
+// libghostty prints UTF-8 C1 code points (U+0080-U+009F) as text, so only ESC starts a sequence.
 // eslint-disable-next-line no-control-regex -- Terminal sequence introducers must reach the parser.
-const HISTORY_SEQUENCE_START = /[\u001b\u0090\u009b\u009d\u009e\u009f]/;
+const HISTORY_SEQUENCE_START = /\u001b/;
 
 function sanitizeTerminalHistoryChunk(
   pendingControlSequence: string,
@@ -1171,10 +1182,11 @@ function sanitizeTerminalHistoryChunk(
       if (nextCodePoint === 0x5b) {
         let cursor = index + 2;
         while (cursor < input.length) {
-          if (isCsiFinalByte(input.charCodeAt(cursor))) {
+          const cancelled = isControlSequenceCancel(input.charCodeAt(cursor));
+          if (cancelled || isCsiFinalByte(input.charCodeAt(cursor))) {
             const sequence = input.slice(index, cursor + 1);
             const body = input.slice(index + 2, cursor);
-            if (!shouldStripCsiSequence(body, input[cursor] ?? "")) {
+            if (cancelled || !shouldStripCsiSequence(body, input[cursor] ?? "")) {
               append(sequence);
             }
             index = cursor + 1;
@@ -1216,43 +1228,6 @@ function sanitizeTerminalHistoryChunk(
       }
       append(input.slice(index, escapeSequenceEndIndex));
       index = escapeSequenceEndIndex;
-      continue;
-    }
-
-    if (codePoint === 0x9b) {
-      let cursor = index + 1;
-      while (cursor < input.length) {
-        if (isCsiFinalByte(input.charCodeAt(cursor))) {
-          const sequence = input.slice(index, cursor + 1);
-          const body = input.slice(index + 1, cursor);
-          if (!shouldStripCsiSequence(body, input[cursor] ?? "")) {
-            append(sequence);
-          }
-          index = cursor + 1;
-          break;
-        }
-        cursor += 1;
-      }
-      if (cursor >= input.length) {
-        return { visibleText, pendingControlSequence: input.slice(index) };
-      }
-      continue;
-    }
-
-    if (codePoint === 0x9d || codePoint === 0x90 || codePoint === 0x9e || codePoint === 0x9f) {
-      const terminatorIndex = findStringTerminatorIndex(input, index + 1);
-      if (terminatorIndex === null) {
-        return { visibleText, pendingControlSequence: input.slice(index) };
-      }
-      const sequence = input.slice(index, terminatorIndex);
-      const content = stripStringTerminator(input.slice(index + 1, terminatorIndex));
-      const strip =
-        (codePoint === 0x9d && shouldStripOscSequence(content)) ||
-        (codePoint === 0x90 && shouldStripDcsSequence(content));
-      if (!strip) {
-        append(sequence);
-      }
-      index = terminatorIndex;
       continue;
     }
 
