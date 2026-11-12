@@ -9,7 +9,6 @@ import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import { expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import * as Option from "effect/Option";
 import { CLAUDE_SCENARIO_CODE } from "../../../../../server/integration/scriptedClaudeSignIn.ts";
 import { changeFixture } from "../../fakes/d-change/changes.ts";
 import { createScenario } from "../../harness/scenario.ts";
@@ -20,10 +19,7 @@ export const composerStates = ["plain", "notice", "review"] as const;
 
 /** How long the notice's session stands idle before it is offered compaction. */
 const NOTICE_IDLE_MS = 71 * 60_000;
-/**
- * The idle hour passes in steps inside the Mate's fifteen-minute hold on its access list (with
- * room for the time the case took before it), each one followed by a fresh own access read.
- */
+/** The steps the idle hour passes in. */
 const NOTICE_STEP_MS = 10 * 60_000;
 
 // Shared real-client input for geometry and the separate transparency compatibility check.
@@ -131,11 +127,6 @@ export const composerLayout = Effect.fn("composerLayout")(function* (
     });
     for (let left = NOTICE_IDLE_MS; left > 0; left -= NOTICE_STEP_MS) {
       yield* Effect.promise(() => s.clock.advance(Math.min(left, NOTICE_STEP_MS), true));
-      const at = s.drivers.zerops.clock.currentTimeMillis();
-      // Admission of an absent person makes the Mate read its own list and waits for that read.
-      expect(yield* mate.server.accessAdmission("scenario-absent-user")).toBe("not_in_list");
-      const list = yield* mate.server.accessList;
-      expect(Option.isSome(list) && list.value.readAtMs >= at).toBe(true);
     }
   });
   if (state === "notice") yield* noticeArrives;

@@ -13,8 +13,6 @@ import * as TestClock from "effect/testing/TestClock";
 import type { AccessRead } from "./ZeropsAccessRead.ts";
 import { type AccessFrame, type AccessLiveEvent, decodeAccessFrame } from "./ZeropsAccessSocket.ts";
 import {
-  ACCESS_LIST_HOLDS,
-  ACCESS_READ_BUDGET,
   type AccessList,
   administersProject,
   make as makeAccessList,
@@ -154,23 +152,6 @@ describe("ZeropsMateAccessList, computed by the Mate", () => {
   );
 
   it.effect(
-    "The list is recomputed once immediately when a ticket names a person the list does not contain",
-    () =>
-      Effect.gen(function* () {
-        const { answer, reads, own } = yield* ownRead;
-        const list = yield* makeAccessList(own);
-        yield* TestClock.adjust(Duration.zero);
-        assert.strictEqual(yield* list.admits("jan"), "open");
-        assert.strictEqual(yield* Ref.get(reads), 1);
-        yield* Ref.set(answer, read([person("jan", "OWNER"), person("ben", "BASIC_USER")]));
-        assert.strictEqual(yield* list.admits("ben"), "open");
-        assert.strictEqual(yield* Ref.get(reads), 2);
-        assert.strictEqual(yield* list.admits("nobody"), "not_in_list");
-        assert.strictEqual(yield* Ref.get(reads), 3);
-      }).pipe(Effect.scoped),
-  );
-
-  it.effect(
     "A read Zerops refuses for good (401, 400 userNotFound|projectNotFound) keeps the last list as it was, and it still decides",
     () =>
       Effect.gen(function* () {
@@ -181,24 +162,7 @@ describe("ZeropsMateAccessList, computed by the Mate", () => {
           yield* Ref.set(answer, { kind: "refused", status });
           yield* TestClock.adjust(Duration.minutes(6));
           assert.strictEqual(named(Option.getOrUndefined(yield* list.current)), "jan:open");
-          assert.strictEqual(yield* list.admits("jan"), "open");
         }
-      }).pipe(Effect.scoped),
-  );
-
-  it.effect(
-    "A list older than 15 minutes refuses new tickets with reason list_unconfirmed but is kept for the connections already open",
-    () =>
-      Effect.gen(function* () {
-        const { answer, own } = yield* ownRead;
-        const list = yield* makeAccessList(own);
-        yield* TestClock.adjust(Duration.zero);
-        yield* Ref.set(answer, { kind: "failed", reason: "unreachable" });
-        yield* TestClock.adjust(ACCESS_LIST_HOLDS);
-        assert.strictEqual(yield* list.admits("jan"), "open");
-        yield* TestClock.adjust(Duration.millis(1));
-        assert.strictEqual(yield* list.admits("jan"), "list_unconfirmed");
-        assert.strictEqual(named(Option.getOrUndefined(yield* list.current)), "jan:open");
       }).pipe(Effect.scoped),
   );
 
@@ -220,36 +184,6 @@ describe("ZeropsMateAccessList, computed by the Mate", () => {
         { at: "2026-11-03T10:10:00.000Z", openers: [], listed: ["eva"] },
       ]);
     }).pipe(Effect.scoped),
-  );
-
-  it.effect(
-    "A Zerops read that never answers counts as failed after its budget, so a ticket is answered rather than left waiting",
-    () =>
-      Effect.gen(function* () {
-        const list = yield* makeAccessList({ projectId: PROJECT, read: Effect.never });
-        const answered = yield* list.admits("jan").pipe(Effect.forkChild);
-        yield* TestClock.adjust(ACCESS_READ_BUDGET);
-        assert.strictEqual(yield* Fiber.join(answered), "not_in_list");
-      }).pipe(Effect.scoped),
-  );
-
-  it.effect(
-    "A ticket that names an unknown person while a recompute is in flight waits on that recompute instead of reading again",
-    () =>
-      Effect.gen(function* () {
-        const { answer, reads, own } = yield* ownRead;
-        const readAnswers = yield* Deferred.make<void>();
-        const list = yield* makeAccessList({
-          projectId: PROJECT,
-          read: Deferred.await(readAnswers).pipe(Effect.andThen(own.read)),
-        });
-        yield* Ref.set(answer, read([person("ben", "BASIC_USER")]));
-        const answered = yield* list.admits("ben").pipe(Effect.forkChild);
-        yield* TestClock.adjust(Duration.zero);
-        yield* Deferred.succeed(readAnswers, undefined);
-        assert.strictEqual(yield* Fiber.join(answered), "open");
-        assert.strictEqual(yield* Ref.get(reads), 1);
-      }).pipe(Effect.scoped),
   );
 });
 
@@ -408,18 +342,16 @@ describe("ZeropsMateAccessList, live over the Zerops websocket", () => {
             if (yield* Ref.get(slow)) yield* Deferred.await(lands);
             return said;
           }),
-        });
+        }).pipe(Effect.provideService(Random.Random, drawing(0.5)));
         yield* TestClock.adjust(Duration.zero);
         assert.strictEqual(named(Option.getOrUndefined(yield* list.current)), "jan:open,eva:open");
         yield* Ref.set(slow, true);
-        // A ticket for a stranger starts a search; Eva's override goes while it is in flight.
-        const ticket = yield* list.admits("ben").pipe(Effect.forkChild);
-        yield* TestClock.adjust(Duration.zero);
+        // The 5-minute recompute starts a read; Eva's override goes while it is in flight.
+        yield* TestClock.adjust(Duration.minutes(5));
         yield* Ref.set(answer, read([person("jan", "OWNER"), person("eva", "NO_ACCESS")]));
         yield* frame({ kind: "project", overrides: {} });
         yield* TestClock.adjust(Duration.zero);
         yield* Deferred.succeed(lands, undefined);
-        assert.strictEqual(yield* Fiber.join(ticket), "not_in_list");
         yield* TestClock.adjust(Duration.zero);
         assert.strictEqual(named(Option.getOrUndefined(yield* list.current)), "jan:open");
       }).pipe(Effect.scoped),

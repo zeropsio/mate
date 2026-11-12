@@ -120,23 +120,21 @@ describe("ZeropsConnections", () => {
     }).pipe(Effect.scoped),
   );
 
-  it.effect(
-    "A ticket answered after its session's close-session is never kept, though its verdict waited on a Zerops read",
-    () =>
-      Effect.gen(function* () {
-        const readAnswers = yield* Deferred.make<void>();
-        const { connections } = yield* setupWith({
-          projectId: "P_MATE",
-          read: Deferred.await(readAnswers).pipe(Effect.as(sceneRead({ jan: "OWNER" }))),
-        });
-        const answer = yield* connections.ticket(ticket("before-close", "jan"), live);
-        const verdict = yield* Effect.forkChild(answer);
-        yield* connections.end({ session: "session-1" });
-        yield* Deferred.succeed(readAnswers, undefined);
-        assert.strictEqual(yield* Fiber.join(verdict), "open");
-        assert.isTrue(
-          Option.isNone(yield* connections.admit({ ticket: "before-close" }, Effect.void)),
-        );
-      }).pipe(Effect.scoped),
+  it.effect("A ticket answered after its session's close-session is never kept", () =>
+    Effect.gen(function* () {
+      const readAnswers = yield* Deferred.make<void>();
+      const { connections } = yield* setupWith({
+        projectId: "P_MATE",
+        read: Deferred.await(readAnswers).pipe(Effect.as(sceneRead({ jan: "OWNER" }))),
+      });
+      const answer = yield* connections.ticket(ticket("before-close", "jan"), live);
+      const verdict = yield* Effect.forkChild(answer);
+      yield* connections.end({ session: "session-1" });
+      yield* Deferred.succeed(readAnswers, undefined);
+      assert.strictEqual(yield* Fiber.join(verdict), "open");
+      assert.isTrue(
+        Option.isNone(yield* connections.admit({ ticket: "before-close" }, Effect.void)),
+      );
+    }).pipe(Effect.scoped),
   );
 });

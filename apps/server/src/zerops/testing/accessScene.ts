@@ -1,16 +1,19 @@
 /**
  * A Zerops organisation a test holds, as the Mate's own access list reads it: each person active at
  * the org role given, with no override on the project. The list is the real one
- * (`ZeropsMateAccessList.make`) over that read, so a test admits from Zerops alone.
+ * (`ZeropsMateAccessList.make`) over that read and a Zerops websocket the scene drives.
  *
  * @module accessScene
  */
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
+import * as Stream from "effect/Stream";
 
 import type { AccessRead } from "../ZeropsAccessRead.ts";
+import type { AccessLiveEvent } from "../ZeropsAccessSocket.ts";
 import { make, ZeropsMateAccessList } from "../ZeropsMateAccessList.ts";
 
 /** Each person's org role, by Zerops user id. */
@@ -29,19 +32,27 @@ export const sceneRead = (roles: SceneRoles, tagList: ReadonlyArray<string> = []
   })),
 });
 
-/** Nobody the scene names: a ticket for them makes the list read Zerops again. */
-const NOBODY = "nobody-in-the-organisation";
-
 /**
  * The Mate's own list over an organisation holding `roles`. `set` changes what Zerops holds and
- * returns once the list has read it, as a ticket for somebody the list does not open for makes it.
+ * returns once the list has read it, as a websocket reconnect makes it: the socket's next event,
+ * an empty process frame, reaches the list's process waiters only after that read.
  */
 export const makeAccessScene = (roles: SceneRoles) =>
   Effect.gen(function* () {
     const held = yield* Ref.make(roles);
-    const list = yield* make({ projectId: "P_MATE", read: Effect.map(Ref.get(held), sceneRead) });
+    const socket = yield* Queue.unbounded<AccessLiveEvent>();
+    const list = yield* make({
+      projectId: "P_MATE",
+      read: Effect.map(Ref.get(held), sceneRead),
+      live: () => Stream.fromQueue(socket),
+    });
     const set = (next: SceneRoles) =>
-      Ref.set(held, next).pipe(Effect.andThen(list.admits(NOBODY)), Effect.asVoid);
+      Effect.gen(function* () {
+        yield* Ref.set(held, next);
+        const heard = yield* list.processes;
+        yield* Queue.offerAll(socket, [{ _tag: "connected" }, { _tag: "process", processes: [] }]);
+        yield* Stream.runHead(Stream.filter(heard, (event) => event._tag === "process"));
+      }).pipe(Effect.scoped);
     return { list, set };
   });
 
