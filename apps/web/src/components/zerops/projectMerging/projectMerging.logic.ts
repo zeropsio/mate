@@ -8,14 +8,77 @@
 import { sameMergers } from "@t3tools/client-runtime/data";
 import { zeropsRoleWords, type ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import { isTokenMember, mateMemberName } from "@t3tools/client-runtime/zerops/mateAccess";
+import type { HqRepoGovernance, RepoListEntry } from "@t3tools/shared/hqChanges";
 import { HQ_MERGERS_MAX } from "@t3tools/shared/hqMergers";
 import { roleAtLeast, ZEROPS_ACTIVE_MEMBER_STATUS } from "@t3tools/shared/zeropsRoles";
+
+import { githubName } from "../gitMirror.logic";
 
 /** What the section is called, above its card and as its choice's name. */
 export const MERGING_TITLE = "Who can merge";
 
 /** The people a project names beside the Owner and Admins; `null`: it limits nothing. */
 export type MergersPeople = ReadonlyArray<string> | null;
+
+/**
+ * A connected repository whose `main`, on GitHub, takes a push or a merge nobody merged in Mate: a
+ * limit on who merges holds in Mate, and a Mate's own access to GitHub still reaches such a `main`.
+ */
+export interface OpenMain {
+  /** `owner/name` on GitHub. */
+  readonly repository: string;
+  /** What closes it, in one sentence. */
+  readonly fix: string;
+  /** Its rulesets on GitHub, where that is done; absent where the step is not a ruleset's. */
+  readonly rulesUrl: string | undefined;
+}
+
+/** The check a ruleset requires, and from whom: the app's id where HQ names it. */
+const gateFrom = (appId: number | null | undefined) =>
+  `the check mate/gate from ${appId == null ? "Mate's GitHub app" : `app ID ${String(appId)}`}`;
+
+/** What closes a `main` GitHub leaves open, by the first step missing (`HqRepoGovernance`). */
+const OPEN_MAIN_FIX: Readonly<
+  Record<Exclude<HqRepoGovernance, "governed">, (appId: number | null | undefined) => string>
+> = {
+  permission_not_approved: () =>
+    "Mate's GitHub app can't approve merges there yet. On GitHub, its owner adds Commit statuses: write to its permissions, then an organization owner approves them.",
+  no_ruleset: (appId) =>
+    `Add a ruleset on main there that requires a pull request and ${gateFrom(appId)}.`,
+  gate_not_required: (appId) => `Its ruleset on main has to require ${gateFrom(appId)}.`,
+  gate_not_pinned: (appId) =>
+    `Its ruleset on main has to require ${gateFrom(appId)}, not from any source.`,
+};
+
+/**
+ * The project's repositories whose `main` is open on GitHub: connected through the organization's
+ * app, and GitHub's rules, as HQ last read them, let something into `main` past Mate. None for a
+ * repository connected with a token, one HQ no longer reaches, or one whose rules it has not read.
+ */
+export function openMains(
+  repos: ReadonlyArray<Pick<RepoListEntry, "remote">> | undefined,
+): ReadonlyArray<OpenMain> {
+  return (repos ?? []).flatMap(({ remote }): ReadonlyArray<OpenMain> => {
+    if (remote?.via !== "app" || remote.invalidSince !== null) return [];
+    const { governance } = remote;
+    if (governance === undefined || governance === "governed") return [];
+    const repository = githubName(remote.url);
+    if (repository === null) return [];
+    return [
+      {
+        repository,
+        fix: OPEN_MAIN_FIX[governance](remote.githubAppId),
+        rulesUrl:
+          governance === "permission_not_approved"
+            ? undefined
+            : `https://github.com/${repository}/settings/rules`,
+      },
+    ];
+  });
+}
+
+/** What the Merging row adds under its line where a limit stands and GitHub's `main` is open. */
+export const OPEN_MAIN_LINE = "GitHub's main is still open";
 
 /** The Merging row's line: where the setting stands. */
 export function mergingLine(people: MergersPeople): string {
