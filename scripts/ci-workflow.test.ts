@@ -480,14 +480,14 @@ fi
   }
 });
 
-it("Decision: supersede pending main runs; never cancel a running deploy", () => {
+it("Decision: every main push finishes its own CI run; never cancel a running deploy", () => {
   const workflow = parse(
     NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
   ) as { concurrency: { group: string; "cancel-in-progress": string; queue?: string } };
   expect(
     workflow.concurrency.group,
-    "ASSERTION: main pushes must share one CI concurrency group to replace older pending runs",
-  ).toBe("ci-${{ github.ref }}");
+    "ASSERTION: each main push owns its CI concurrency group so no newer push replaces its run",
+  ).toBe("ci-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}");
   expect(
     workflow.concurrency["cancel-in-progress"],
     "ASSERTION: main retains its verdict while kh-next, PRs and diagnostics supersede older runs",
@@ -2303,8 +2303,8 @@ it("Decision: a diag ref never costs more than one live CI run", () => {
   );
   expect(
     workflow.concurrency.group,
-    "ASSERTION: every workflow/ref owns one cancellation group",
-  ).toBe("ci-${{ github.ref }}");
+    "ASSERTION: every non-main ref owns one cancellation group",
+  ).toBe("ci-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}");
   const expression = workflow.concurrency["cancel-in-progress"].slice(3, -2);
   for (const [ref, event, cancels] of [
     ["refs/heads/main", "push", false],

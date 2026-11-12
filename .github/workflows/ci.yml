@@ -33,8 +33,10 @@ env:
   PNPM_CONFIG_FETCH_RETRY_MAXTIMEOUT: "30000"
 
 concurrency:
-  group: ci-${{ github.ref }}
-  # Main verdicts must finish; kh-next, diagnostics and PRs keep only their newest run.
+  # Every main push is its own group: a group holds one pending run, so a shared main group lets a
+  # newer push cancel the pending run a release waits for. kh-next, diagnostics and PRs keep only
+  # their newest run.
+  group: ci-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.ref == 'refs/heads/kh-next' || github.event_name == 'pull_request' || startsWith(github.ref, 'refs/heads/kh-bisect/') }}
 
 jobs:
