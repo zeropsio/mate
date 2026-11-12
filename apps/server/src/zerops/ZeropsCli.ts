@@ -29,7 +29,7 @@ import { zcpVersionText } from "./zcpVersion.ts";
 
 /** The binary `zcp init` installs on every Zerops container. */
 const ZCP_COMMAND = "zcp";
-/** `mate status` only reads a cached manifest (spec-mate.md §2.1c). */
+/** `mate status` reads the release source once; `--local` answers without a network call. */
 const MATE_STATUS_TIMEOUT = Duration.seconds(15);
 const MATE_STATUS_MAX_OUTPUT_BYTES = 64 * 1024;
 /** `mate update` downloads a release and runs npm install — MD-13's staged-then-activated path. */
@@ -158,12 +158,9 @@ export class ZeropsCli extends Context.Service<
      */
     readonly mateStatus: (options?: {
       /**
-       * Appends `--refresh` to re-read the release manifest now instead of
-       * serving the hourly cache (spec-mate.md §2.9 step 2, "on demand").
-       * `zcp mate status` ignores unknown flags (`slices.Contains`), so no
-       * capability probe is needed before sending it.
+       * Appends `--local`: answers from zcp's last read of the release source
+       * without a network call. Without it every status reads the source.
        */
-      readonly refresh?: boolean;
       readonly local?: boolean;
     }) => Effect.Effect<MateStatusResult, ZeropsCliError>;
     /**
@@ -212,20 +209,12 @@ export const make = (options: ZeropsCliOptions) =>
     const { command, baseArgs, cwd } = options;
 
     const mateStatus = (options?: {
-      readonly refresh?: boolean;
       readonly local?: boolean;
     }): Effect.Effect<MateStatusResult, ZeropsCliError> =>
       processRunner
         .run({
           command,
-          args: [
-            ...baseArgs,
-            "mate",
-            "status",
-            "--json",
-            ...(options?.refresh ? ["--refresh"] : []),
-            ...(options?.local ? ["--local"] : []),
-          ],
+          args: [...baseArgs, "mate", "status", "--json", ...(options?.local ? ["--local"] : [])],
           cwd,
           timeout: MATE_STATUS_TIMEOUT,
           maxOutputBytes: MATE_STATUS_MAX_OUTPUT_BYTES,
