@@ -10,6 +10,7 @@ import { showProjectParts } from "~/zerops/projectPartsShown";
 import { environmentDoorLabel } from "~/zerops/putLive.logic";
 import { useAddressesSheet } from "~/zerops/addressesSheet";
 import { readMenuRowsMemory, writeMenuRowsMemory } from "~/zerops/mateIdentityMemory";
+import { useHeldFor } from "~/zerops/useHeldFor";
 import { hqNavigationAtom } from "~/state/zerops";
 import { fadeFillOver } from "~/lib/loadFills";
 import { mateAdmissionSummary, type AgentAdmissionAttention } from "@t3tools/client-runtime/data";
@@ -969,8 +970,11 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       return next;
     });
   };
-  // Option held: each Mate row's time slot shows its number, and ⌥1–9 opens it.
+  // Option held alone, outside a field: each Mate row's time slot shows its number, and ⌥1–9 opens
+  // it. The numbers wait a moment, so Option pressed for a shortcut or a word jump never blinks
+  // every time in the menu.
   const [altHeld, setAltHeld] = useState(false);
+  const numbersShown = useHeldFor(altHeld, OPTION_NUMBERS_MS);
   // A surface's ask to show something (`sidebarReveal.ts`): the header's
   // waiting faces a Mate, the jump box a Mate, a project, a stop or a change.
   // Its project opens — and the quiet Mates or the list of changes it is
@@ -1092,9 +1096,11 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   useEffect(() => {
     const onDown = (event: KeyboardEvent) => {
       if (event.key === "Alt") {
-        setAltHeld(true);
+        if (!typedIntoField(event.target)) setAltHeld(true);
         return;
       }
+      // Option with another key is that key's shortcut, not a look at the numbers.
+      if (event.altKey) setAltHeld(false);
       if (
         event.defaultPrevented ||
         event.metaKey ||
@@ -1878,7 +1884,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             keys={mateKeys}
             kid={at === "kid"}
             number={number !== undefined && number <= 9 ? number : undefined}
-            numbers={altHeld}
+            numbers={numbersShown}
             onDragStart={at === "solo" && dragOf !== undefined ? refs.drag : undefined}
             onOut={at === "kid" ? refs.out : undefined}
             onSelect={onSelect}
@@ -2676,6 +2682,9 @@ export function MenuSkeleton({ className }: { readonly className?: string | unde
 }
 
 /** A Mate's row and the gap under it, and what stands above and below the list (sidebarGeometry.css). */
+/** How long Option is held alone before the Mate rows' times give way to their numbers. */
+const OPTION_NUMBERS_MS = 300;
+
 const MENU_ROW_PITCH_PX = 72;
 const MENU_CHROME_PX = 151;
 
