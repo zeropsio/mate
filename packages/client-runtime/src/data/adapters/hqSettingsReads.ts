@@ -14,7 +14,7 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Queue from "effect/Queue";
 import * as Result from "effect/Result";
-import { HqError } from "../../zerops/hq/client.ts";
+import { HqError, hqRouteMissing } from "../../zerops/hq/client.ts";
 import { SETTING_UNSUPPORTED } from "../families/hqAutomation.ts";
 import type { Family, FamilyValues, LinkKey, ScopeKey } from "../model.ts";
 import { sameValue } from "../projections/equal.ts";
@@ -23,16 +23,6 @@ import type { AccountStore } from "../store.ts";
 import type { StreamEvent, StreamFault } from "../streamMachine.ts";
 import { superviseLink, type LinkSupervisor } from "../supervisor.ts";
 import { credentialFailure } from "./hqGitCredentialReads.ts";
-
-/**
- * HQ has no such address: a `404` that names no reason of its own. One that does — an application
- * gone (`app_not_found`) — is HQ's answer about the thing, never about its age.
- */
-const routeMissing = (cause: unknown): boolean =>
-  cause instanceof HqError &&
-  cause.status === 404 &&
-  cause.reason === undefined &&
-  (cause.code === "http_404" || cause.code === "not_found");
 
 export interface SettingRead<F extends Family> {
   readonly family: F;
@@ -117,7 +107,7 @@ export function makeSettingsReads(store: AccountStore) {
                         Effect.tryPromise({
                           try: () => spec.read() ?? Promise.reject(unsupported),
                           catch: (cause) =>
-                            cause === unsupported || routeMissing(cause)
+                            cause === unsupported || hqRouteMissing(cause)
                               ? ({
                                   outcome: "definitive-refusal",
                                   message: spec.unsupported,
