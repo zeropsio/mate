@@ -394,7 +394,8 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
   };
   const readyOthers = others(ready.map((change) => change.pull));
   const releaseCaption = (): ReadonlyArray<LineWord> => {
-    if (outside) return [{ text: FOLLOWS_MAIN.toLocaleLowerCase(), tone: "dim" }];
+    // Said of the way from `main` to production, as a stage's "deploys by itself" is.
+    if (outside) return [{ text: "goes live outside Mate", tone: "dim" }];
     if (absent)
       return ready.length === 0
         ? []
