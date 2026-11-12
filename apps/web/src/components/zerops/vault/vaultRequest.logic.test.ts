@@ -554,11 +554,11 @@ describe("vaultAskView — the ask's card, read off the engine's record and the 
     {
       name: "every app",
       ask: asked(),
-      want: { where: "This Mate · every app", title: "Add NEW_STRIPE_KEY to Fen's vault" },
+      want: { where: "This Mate · every app", title: "Add Stripe secret key to Fen's vault" },
     },
     {
       name: "an app's own",
-      ask: asked({ key: "MAIL_FROM", scope: { kind: "service", hostname: "appdev" } }),
+      ask: asked({ key: "MAIL_FROM", label: null, scope: { kind: "service", hostname: "appdev" } }),
       want: { where: "This Mate · appdev", title: "Add MAIL_FROM to appdev's vault" },
     },
   ])("the chip and the title name where the value goes: $name", ({ ask, want }) => {

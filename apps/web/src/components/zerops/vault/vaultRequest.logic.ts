@@ -302,7 +302,8 @@ export function vaultAskView(source: VaultAskSource): VaultAskView {
   const vaultName = `${host ?? mateName}'s vault`;
   const frame = {
     where: { scope: "mate", detail: host ?? "every app" },
-    title: `Add ${ask.key} to ${vaultName}`,
+    // In people's words ("Add Stripe secret key to Milo's vault"), never its variable's name.
+    title: `Add ${vaultAskLabel(ask)} to ${vaultName}`,
     why: ask.reason,
     warning: vaultAskWarning(ask, mateName),
   } as const;

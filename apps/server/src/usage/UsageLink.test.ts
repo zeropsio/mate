@@ -14,7 +14,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import { ServerConfig } from "../config.ts";
 import * as Sqlite from "../persistence/NodeSqliteClient.ts";
 import { ProviderRuntimeEventBusTest } from "../spi/ProviderRuntimeEventBus.ts";
-import { ZeropsMateAccessList } from "../zerops/ZeropsMateAccessList.ts";
+import { ZeropsProjectFeed } from "../zerops/ZeropsProjectFeed.ts";
 import { resolveZeropsEnvironment } from "../zerops/ZeropsEnvironment.ts";
 import { makeUsageLink } from "./UsageLink.ts";
 import { makeUsageOutbox } from "./UsageOutbox.ts";
@@ -67,9 +67,9 @@ const config = ServerConfig.of({
     apiToken: undefined,
   }),
 } as ServerConfig["Service"]);
-const org = ZeropsMateAccessList.of({
+const org = ZeropsProjectFeed.of({
   ownProject: Effect.succeed(Option.some({ clientId: "org", overrides: {} })),
-} as unknown as ZeropsMateAccessList["Service"]);
+} as unknown as ZeropsProjectFeed["Service"]);
 
 describe("Mate usage on the existing HQ link", () => {
   it.effect.each(
@@ -158,7 +158,7 @@ describe("Mate usage on the existing HQ link", () => {
     }).pipe(
       Effect.provide(Sqlite.layer({ filename: ":memory:" })),
       Effect.provideService(ServerConfig, config),
-      Effect.provideService(ZeropsMateAccessList, org),
+      Effect.provideService(ZeropsProjectFeed, org),
     ),
   );
   it.effect("a rejected conflicting fact does not stop the later 130-token turn", () =>
@@ -207,7 +207,7 @@ describe("Mate usage on the existing HQ link", () => {
     }).pipe(
       Effect.provide(Sqlite.layer({ filename: ":memory:" })),
       Effect.provideService(ServerConfig, config),
-      Effect.provideService(ZeropsMateAccessList, org),
+      Effect.provideService(ZeropsProjectFeed, org),
     ),
   );
   it.effect("an ACK delete failure retains both turns and recovers on the same lane", () =>
@@ -283,7 +283,7 @@ describe("Mate usage on the existing HQ link", () => {
     }).pipe(
       Effect.provide(Sqlite.layer({ filename: ":memory:" })),
       Effect.provideService(ServerConfig, config),
-      Effect.provideService(ZeropsMateAccessList, org),
+      Effect.provideService(ZeropsProjectFeed, org),
     ),
   );
   it.effect(
@@ -327,7 +327,7 @@ describe("Mate usage on the existing HQ link", () => {
       }).pipe(
         Effect.provide(Sqlite.layer({ filename: ":memory:" })),
         Effect.provideService(ServerConfig, config),
-        Effect.provideService(ZeropsMateAccessList, org),
+        Effect.provideService(ZeropsProjectFeed, org),
       ),
   );
 });

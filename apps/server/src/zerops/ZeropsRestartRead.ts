@@ -9,7 +9,7 @@ import * as Option from "effect/Option";
 import * as HttpClient from "effect/http/HttpClient";
 
 import * as ServerConfig from "../config.ts";
-import { ZeropsMateAccessList } from "./ZeropsMateAccessList.ts";
+import { ZeropsProjectFeed } from "./ZeropsProjectFeed.ts";
 import { ZeropsMateKey } from "./ZeropsMateKey.ts";
 import {
   readJson,
@@ -56,7 +56,7 @@ export const make = Effect.fnUntraced(function* (input: {
   readonly serviceId: string | undefined;
 }) {
   const config = yield* ServerConfig.ServerConfig;
-  const access = yield* ZeropsMateAccessList;
+  const feed = yield* ZeropsProjectFeed;
   const key = yield* ZeropsMateKey;
   const httpClient = yield* HttpClient.HttpClient;
   const fs = yield* FileSystem.FileSystem;
@@ -85,8 +85,8 @@ export const make = Effect.fnUntraced(function* (input: {
     const processes = record(body)?.["list"];
     if (!Array.isArray(processes))
       return yield* Effect.fail(unavailable("Zerops returned an unreadable process list."));
-    // The project document is the access list's: the Mate reads it nowhere else.
-    const name = Option.match(yield* access.ownProject, {
+    // The project document is the project feed's: the Mate reads it nowhere else.
+    const name = Option.match(yield* feed.ownProject, {
       onNone: () => "Mate",
       onSome: (project) => project.name ?? "Mate",
     });

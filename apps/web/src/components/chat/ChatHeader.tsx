@@ -390,8 +390,8 @@ export const ChatHeader = memo(function ChatHeader({
   // no rename, no archive, no new session, no commit from here.
   const crewOrigin = activeThreadShell?.crew ?? null;
   const mateReadOnly = useMateReadOnly(activeThreadEnvironmentId);
-  // A Mate that waits on its person leads to what it waits on: its status names the key or the
-  // question, and a press goes to the ask. Someone reading along is told who is asked instead.
+  // A Mate that waits on its person leads to what it waits on: its status names the value or the
+  // question, and a press goes to the ask. Someone reading along is told who is asked, and for what.
   const waitsOnAnswer = status?.kind === "answer" ? status : undefined;
   const vaultAsk = useOpenVaultAskDoor(
     waitsOnAnswer?.key === true && isServerThread ? activeThreadRef : null,
@@ -400,9 +400,10 @@ export const ChatHeader = memo(function ChatHeader({
   const statusAsk: MateStatusAsk | undefined =
     waitsOnAnswer === undefined
       ? undefined
-      : mateReadOnly
-        ? { askedOf: mateOwner?.called }
-        : { asked: waitsOnAnswer.key === true ? vaultAsk?.name : mateActivity?.question };
+      : {
+          asked: waitsOnAnswer.key === true ? vaultAsk?.name : mateActivity?.question,
+          askedOf: mateReadOnly ? mateOwner?.called : undefined,
+        };
   const openStatusAsk =
     waitsOnAnswer === undefined || mateReadOnly
       ? undefined
