@@ -471,6 +471,7 @@ export {
 } from "./changeConversation.ts";
 export {
   REVIEW_LABEL,
+  MERGE_CHECK_LATE_MS,
   RELEASE_ESTIMATE_MS,
   RELEASE_READING,
   RELEASE_READING_LATE,
@@ -485,6 +486,8 @@ export {
   reviewAge,
   rollbackReview,
   type ChangeReviewInput,
+  type MergeCheckRefusal,
+  type ReviewGithubChecks,
   type CrewTaskReviewInput,
   type ReleaseOutcome,
   type ReleaseReplaces,
