@@ -446,31 +446,43 @@ export function batchServiceRows(
 ): ReadonlyArray<BatchServiceRow> | undefined {
   if (operation.kind !== "deploy" || operation.batch !== true) return undefined;
   return operation.steps.map((step): BatchServiceRow => {
-    const name = step.label;
-    const serviceId = topology?.services.find((one) => one.hostname === name)?.serviceId;
-    const observed =
-      serviceId === undefined
-        ? undefined
-        : services?.find((one) => one.serviceIds.includes(serviceId));
-    const read =
-      observed?.pipeline === undefined ? undefined : versionRow(name, observed.pipeline, nowMs);
-    // The call's answer is the verdict: a service it said deployed reads deployed.
-    if (read !== undefined)
-      return operation.phase !== "running" &&
-        step.state === "done" &&
-        (read.state === "running" || read.state === "waiting")
-        ? landedRow(read)
-        : read;
-    if (observed?.outcome !== undefined)
-      return { name, ...OUTCOME_ROW[observed.outcome], steps: [] };
-    if (operation.phase === "running") return { name, ...ROW_STATE.waiting, steps: [] };
-    return {
-      name,
-      state: step.state === "queued" ? "waiting" : step.state,
-      stateLabel: step.stateLabel,
-      steps: [],
-    };
+    const row = serviceRow(operation, step, services, topology, nowMs);
+    // Why it failed, as the call's own entry for it says.
+    return row.state === "failed" && step.note !== undefined ? { ...row, reason: step.note } : row;
   });
+}
+
+/** One of a batch's services, as its row stands: see `batchServiceRows`. */
+function serviceRow(
+  operation: ZeropsOperation,
+  step: ZeropsOperation["steps"][number],
+  services: ReadonlyArray<ObservedService> | undefined,
+  topology: ZeropsTopologyView | undefined,
+  nowMs: number,
+): BatchServiceRow {
+  const name = step.label;
+  const serviceId = topology?.services.find((one) => one.hostname === name)?.serviceId;
+  const observed =
+    serviceId === undefined
+      ? undefined
+      : services?.find((one) => one.serviceIds.includes(serviceId));
+  const read =
+    observed?.pipeline === undefined ? undefined : versionRow(name, observed.pipeline, nowMs);
+  // The call's answer is the verdict: a service it said deployed reads deployed.
+  if (read !== undefined)
+    return operation.phase !== "running" &&
+      step.state === "done" &&
+      (read.state === "running" || read.state === "waiting")
+      ? landedRow(read)
+      : read;
+  if (observed?.outcome !== undefined) return { name, ...OUTCOME_ROW[observed.outcome], steps: [] };
+  if (operation.phase === "running") return { name, ...ROW_STATE.waiting, steps: [] };
+  return {
+    name,
+    state: step.state === "queued" ? "waiting" : step.state,
+    stateLabel: step.stateLabel,
+    steps: [],
+  };
 }
 
 /**
