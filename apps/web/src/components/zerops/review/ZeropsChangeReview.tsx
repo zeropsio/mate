@@ -496,6 +496,7 @@ function ChangeReviewData({
       project={project}
       appId={target.groupId}
       stages={flow === undefined ? NO_STAGES : mainStagesOf(flow).map((entry) => entry.name)}
+      followsMain={flow?.outsideProduction !== undefined}
       release={offerStale ? undefined : flow?.release.gate}
       mate={
         mate === undefined
@@ -668,6 +669,11 @@ export interface ChangeReviewViewProps {
   readonly appId?: string | undefined;
   /** The stages that deploy what merges into `main`, by name (`mainStagesOf`). */
   readonly stages?: ReadonlyArray<string>;
+  /**
+   * Somebody said the project's production is deployed outside Mate and follows `main`
+   * (`ZeropsProjectFlow.outsideProduction`); read only while it has no production here.
+   */
+  readonly followsMain?: boolean | undefined;
   /** The Mate's previews, each pair's stage half by its service: "Try it". */
   readonly previews?: ReadonlyArray<ReviewPreview> | undefined;
   readonly now: number;
@@ -743,9 +749,13 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
   const history = useReviewFold();
   // A stage picks a merge up only where it deploys merges from `main` (`mainStagesOf`): one that
   // never deployed from it is promised nothing (Larkspur, 2026-10-28).
+  const production = props.environments.some((entry) => entry.tier === "production");
+  // A production of its own wins over what somebody said of one deployed outside Mate.
+  const followsMain = !production && props.followsMain === true;
   const downstream = {
-    production: props.environments.some((entry) => entry.tier === "production"),
+    production,
     stage: (props.stages ?? NO_STAGES).length > 0,
+    followsMain,
   };
   const model = changeReview({
     // How it merges, and whether `main` moved on under it, are the flow's until HQ's record of it
@@ -907,6 +917,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
                 live: props.live,
                 warning: receipt?.warning,
                 recipe: pull.kind === "recipe",
+                followsMain,
               })
       }
       consequenceRoom={
@@ -919,6 +930,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
               live: props.live,
               warning: receipt?.warning,
               recipe: pull.kind === "recipe",
+              followsMain,
             })
       }
       // Beside the one button the quiet way out stands where a release's Cancel does, and leaves

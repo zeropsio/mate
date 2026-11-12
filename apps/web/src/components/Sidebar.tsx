@@ -1386,6 +1386,7 @@ export default function Sidebar() {
         releaseSummary: flow.release.summary,
         releaseUntold: flow.release.untold,
         mateTier: flow.mateTier,
+        outsideProduction: flow.outsideProduction,
         // Until HQ answers the releases, production's chip says only what the platform says.
         releasesKnown: flow.releasesKnown,
         // The release that did not go through, which turns the chip amber.

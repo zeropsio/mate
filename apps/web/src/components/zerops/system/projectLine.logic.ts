@@ -22,7 +22,13 @@
  * (`placeLines`), its changes (`pageChanges`), what waits on the viewer (`useViewerWaits`) and its
  * next release (`nextReleaseView`). Pure: no React, no clock.
  */
-import { REVIEW_LABEL, type FlowPullRequest, type GroupFlow } from "@t3tools/client-runtime/zerops";
+import {
+  FOLLOWS_MAIN,
+  PRODUCTION_FOLLOWS_MAIN,
+  REVIEW_LABEL,
+  type FlowPullRequest,
+  type GroupFlow,
+} from "@t3tools/client-runtime/zerops";
 import type { MateTintId } from "@t3tools/shared/brand";
 
 import {
@@ -152,6 +158,8 @@ const notLive = (change: CardChange): boolean =>
   change.pull.kind === "code" &&
   change.where !== undefined &&
   change.where.kind !== "setup" &&
+  // Where production follows `main`, what is on `main` waits for nothing.
+  change.where.kind !== "live-with-main" &&
   (change.where.kind !== "released" || !change.where.live);
 
 /**
@@ -224,6 +232,8 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
   // Stations: the project's setup, and nothing else.
   const { stop: stageStop, line: stageLine } = lineStage(input);
   const absent = flow.production.kind === "absent";
+  // Deployed outside Mate: production follows `main` by itself, and nothing waits before it.
+  const outside = flow.production.kind === "outside";
   const stageName = stageLine === undefined ? undefined : placeLabel(stageLine);
   const stations: ReadonlyArray<LineStation> = [
     {
@@ -357,7 +367,7 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
   const { view } = input.release;
   const readyMates = new Set(ready.map((change) => change.pull.mateProjectId)).size;
   const counted = input.release.ready;
-  const offered = !absent && view.kind !== "none";
+  const offered = !absent && !outside && view.kind !== "none";
   // Every change the release counts, the ones the page lists no row for too.
   const all = Math.max(
     ready.length,
@@ -384,6 +394,7 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
   };
   const readyOthers = others(ready.map((change) => change.pull));
   const releaseCaption = (): ReadonlyArray<LineWord> => {
+    if (outside) return [{ text: FOLLOWS_MAIN.toLocaleLowerCase(), tone: "dim" }];
     if (absent)
       return ready.length === 0
         ? []
@@ -409,11 +420,13 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
     key: "release",
     track: absent
       ? "none"
-      : view.kind === "failed"
-        ? "failed"
-        : view.kind === "none"
-          ? "solid"
-          : "ready",
+      : outside
+        ? "auto"
+        : view.kind === "failed"
+          ? "failed"
+          : view.kind === "none"
+            ? "solid"
+            : "ready",
     beads: input.changesKnown ? beadsOf(ready) : [],
     // The release counts changes the page lists no row for: they stand as a count.
     more: input.changesKnown ? all - ready.length : 0,
@@ -434,9 +447,11 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
               },
             ],
     group: mine === undefined && ready.length > 0 ? "ready" : undefined,
-    label: absent
-      ? `${count(ready.length, "change", "changes")} on main`
-      : `${count(ready.length, "change", "changes")} ready for production`,
+    label: outside
+      ? PRODUCTION_FOLLOWS_MAIN
+      : absent
+        ? `${count(ready.length, "change", "changes")} on main`
+        : `${count(ready.length, "change", "changes")} ready for production`,
     held: !input.changesKnown,
   };
 
@@ -567,6 +582,7 @@ export function projectLineFull(
   const { line: stageLine } = lineStage(input);
   const productionLine = input.places.find((line) => line.kind === "production");
   const absent = flow.production.kind === "absent";
+  const outside = flow.production.kind === "outside" ? flow.production : undefined;
   const plain = {
     tone: "neutral",
     tints: [],
@@ -577,7 +593,7 @@ export function projectLineFull(
     const place =
       station.kind === "stage"
         ? stageLine
-        : station.kind === "production" && !absent
+        : station.kind === "production" && !absent && outside === undefined
           ? productionLine
           : undefined;
     if (place !== undefined) {
@@ -635,7 +651,15 @@ export function projectLineFull(
           kind: station.kind,
           name: station.name,
           node: station.node,
-          lines: absent && station.kind === "production" ? [[{ text: "Not live yet" }]] : [],
+          lines:
+            station.kind !== "production"
+              ? []
+              : absent
+                ? [[{ text: "Not live yet" }]]
+                : outside === undefined
+                  ? []
+                  : // Its address is its row's, in Places: the line holds none.
+                    [[{ text: FOLLOWS_MAIN }]],
         };
     }
   });
@@ -665,6 +689,9 @@ export function projectLineFull(
         return { ...segment, caption: said ? [] : segment.caption, verb: undefined };
       }
       case "release": {
+        // Nothing to release, and no production to make. Its station says it follows `main`:
+        // said once, the segment under it says nothing.
+        if (outside !== undefined) return { ...segment, caption: [], verb: undefined };
         if (absent)
           return {
             ...segment,

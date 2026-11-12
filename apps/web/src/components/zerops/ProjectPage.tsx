@@ -28,6 +28,7 @@ import { useAddEnvironment, useApplicationEnvironmentFacts } from "~/zerops/useA
 import { useOpenPutLive } from "~/zerops/putLive";
 import { useEnvironmentSetup } from "~/zerops/useEnvironmentSetup";
 import { useAppMergers } from "~/zerops/useAppMergers";
+import { useAppOutsideProduction } from "~/zerops/useAppOutsideProduction";
 import { useNowMs } from "~/zerops/useNowMs";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { Button } from "../ui/button";
@@ -155,6 +156,8 @@ function ProjectPage<T>({
   const facts = {
     ...useProjectPageFacts(groupId, flow, recipeFailure, entry.flow),
     fixOf: usePlaceFix(groupId, flow, props.cardPlaces?.(entry)),
+    // Whether its production is deployed outside Mate: the press that says so, on Going live.
+    outside: useAppOutsideProduction(groupId),
   };
   const groupName = useGroupName(groupId);
   const spendIds = useMemo(() => spendProjectIds(entry.flow), [entry.flow]);

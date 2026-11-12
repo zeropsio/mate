@@ -27,7 +27,7 @@ import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "../
 import { Skeleton } from "../../ui/skeleton";
 import { EmptyState } from "../../ui/empty";
 import { GitDeliveryStatus } from "../GitDeliveryStatus";
-import { ENVIRONMENT_NOT_ADDED } from "@t3tools/client-runtime/zerops";
+import { ENVIRONMENT_NOT_ADDED, PRODUCTION_FOLLOWS_MAIN } from "@t3tools/client-runtime/zerops";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { ComingMateFace, drawn, matesOf, type FlowMateEntry } from "../projects/flowSteps";
 import {
@@ -87,6 +87,12 @@ import {
   type ChangeGroup,
 } from "./projectPage.logic";
 import { SetupCard } from "./SetupCard";
+import {
+  ALREADY_LIVE_ELSEWHERE,
+  FollowsMain,
+  OutsideProductionForm,
+  type OutsideControl,
+} from "./OutsideProduction";
 import { MERGING_TITLE } from "../projectMerging/projectMerging.logic";
 import { spendProjectIds } from "../projects/projectSpend.logic";
 import { ProjectCreditLine } from "../projects/ProjectCreditLine";
@@ -133,6 +139,11 @@ export interface ProjectPageFacts {
   readonly declared: boolean;
   /** "Ask <Mate> to fix it" on a place that is not well, where the person has a Mate to ask. */
   readonly fixOf?: ((line: PlaceLineData) => PlaceFix | undefined) | undefined;
+  /**
+   * Saying its production is deployed outside Mate and follows `main`, changing its address or
+   * taking it back (`useAppOutsideProduction`): who may, and the press. Absent outside an account.
+   */
+  readonly outside?: OutsideControl | undefined;
 }
 
 /** The one verb on a place that is not well: the person's Mate, asked with the problem written. */
@@ -207,6 +218,10 @@ export function ProjectPageBody<T>({
           flow.production.kind === "absent" ? (
             <span className="pp-state" data-zerops-project-state="">
               Not live yet
+            </span>
+          ) : flow.production.kind === "outside" ? (
+            <span className="pp-state" data-zerops-project-state="">
+              {PRODUCTION_FOLLOWS_MAIN}
             </span>
           ) : undefined
         }
@@ -656,9 +671,11 @@ function ProjectPlaces<T>({
         <GoingLive
           name={entry.group.name}
           onAdd={facts.onAdd}
+          outside={facts.outside}
           production={productionSlot}
           run={props.renderProductionRun?.(entry)}
           stage={stageSlot?.kind === "slot" ? stageSlot : undefined}
+          followsMain={entry.flow.production.kind === "outside" ? entry.flow.production : undefined}
         />
       ) : null}
       {facts.declared && placeSlots.length === 0 ? null : (
@@ -701,8 +718,11 @@ function ProjectPlaces<T>({
 }
 
 /**
- * A project not live yet: what putting it live gives, and its one verb; under it, quiet and
- * optional, a stage to try a change on first. A Put it live run stands in the card while it goes.
+ * A project with no production here. Not live yet: what putting it live gives, and its one verb;
+ * a Put it live run stands in the card while it goes. Once somebody said its production is
+ * deployed outside Mate (`followsMain`), the same card is production's quiet row (`FollowsMain`).
+ * Whoever may say so does from the section's own action, as a side row's *Manage*: *Already live
+ * elsewhere*, then *Change*. Under either, quiet and optional, a stage to try a change on first.
  */
 function GoingLive({
   name,
@@ -710,12 +730,17 @@ function GoingLive({
   stage,
   run,
   onAdd,
+  outside,
+  followsMain,
 }: {
   readonly name: string;
   readonly production: Extract<EnvironmentSlotRow, { kind: "slot" }>;
   readonly stage: Extract<EnvironmentSlotRow, { kind: "slot" }> | undefined;
   readonly run: ReactNode;
   readonly onAdd: ProjectPageFacts["onAdd"];
+  readonly outside: OutsideControl | undefined;
+  /** Its production is deployed outside Mate, at this address where one was given. */
+  readonly followsMain: { readonly address: string | null } | undefined;
 }) {
   return (
     <section
@@ -723,30 +748,45 @@ function GoingLive({
       className="pp-group"
       data-zerops-surface="project-going-live"
     >
-      <SectionLabel id="pp-golive">Going live</SectionLabel>
+      <SectionLabel
+        action={
+          outside?.editable === true ? (
+            <OutsideProductionForm control={outside} current={followsMain ?? null} name={name}>
+              {followsMain === undefined ? ALREADY_LIVE_ELSEWHERE : "Change"}
+            </OutsideProductionForm>
+          ) : undefined
+        }
+        id="pp-golive"
+      >
+        {followsMain === undefined ? "Going live" : "Production"}
+      </SectionLabel>
       <div className="pp-card pp-golive" data-zerops-place="production">
-        <div className="pp-golive-hero">
-          <span aria-hidden="true" className="pp-golive-icon">
-            <GlobeIcon className="size-5" />
-          </span>
-          <div className="pp-golive-text">
-            <p className="pp-golive-title">{name} isn’t live yet</p>
-            <p className="pp-golive-why">
-              Putting it live gives {name} a production of its own: its own address, and every
-              release after it.
-              {production.line === ENVIRONMENT_NOT_ADDED ? null : ` ${production.line}.`}
-            </p>
+        {followsMain === undefined ? (
+          <div className="pp-golive-hero">
+            <span aria-hidden="true" className="pp-golive-icon">
+              <GlobeIcon className="size-5" />
+            </span>
+            <div className="pp-golive-text">
+              <p className="pp-golive-title">{name} isn’t live yet</p>
+              <p className="pp-golive-why">
+                Putting it live gives {name} a production of its own: its own address, and every
+                release after it.
+                {production.line === ENVIRONMENT_NOT_ADDED ? null : ` ${production.line}.`}
+              </p>
+            </div>
+            {production.add ? (
+              <Button
+                onClick={() => {
+                  onAdd("production");
+                }}
+              >
+                {environmentDoorLabel("production", production.name)}
+              </Button>
+            ) : null}
           </div>
-          {production.add ? (
-            <Button
-              onClick={() => {
-                onAdd("production");
-              }}
-            >
-              {environmentDoorLabel("production", production.name)}
-            </Button>
-          ) : null}
-        </div>
+        ) : (
+          <FollowsMain address={followsMain.address} />
+        )}
         {drawn(run) ? <div className="pp-golive-run">{run}</div> : null}
         {stage === undefined ? null : (
           <div className="pp-golive-stage" data-zerops-place="stage">

@@ -1,4 +1,4 @@
-import type { GitDelivery } from "@t3tools/client-runtime/zerops";
+import { FOLLOWS_MAIN, type GitDelivery } from "@t3tools/client-runtime/zerops";
 import type { HqEnvironmentTarget } from "@t3tools/shared/hqEnvironment";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 /**
@@ -255,7 +255,9 @@ export function productionChip(input: {
 }): ChipView {
   const { production } = input;
   if (production.kind === "creating") return chipOf("prod", "creating");
-  if (production.kind === "absent" || production.kind === "unread") return NONE;
+  // A production deployed outside Mate has no state anyone here read: no chip says one.
+  if (production.kind === "absent" || production.kind === "unread" || production.kind === "outside")
+    return NONE;
   if (production.stop.git !== undefined)
     return { kind: "chip", chip: gitChip("prod", production.stop.git) };
   const served =
@@ -901,6 +903,36 @@ export function productionMenu(input: {
         fix: fixProblemOf(input),
         routes: input.routes,
         ...(chip.state === "empty" ? { empty: true as const } : {}),
+      },
+    ],
+  };
+}
+
+/**
+ * Production's menu where it is deployed outside Mate, at an address somebody gave: production's
+ * row saying it follows `main`, and that address its one link. No state, version or Zerops
+ * project: nobody here read one, and nothing of it is managed here.
+ */
+export function outsideProductionMenu(address: string): ChipMenuModel {
+  return {
+    stops: [
+      {
+        projectId: undefined,
+        name: "production",
+        version: undefined,
+        dot: "off",
+        word: FOLLOWS_MAIN,
+        tone: "muted",
+        note: undefined,
+        fix: undefined,
+        routes: [
+          {
+            service: "main",
+            port: /^http:/iu.test(address) ? 80 : 443,
+            url: address,
+            host: address.replace(/^https?:\/\//iu, "").replace(/\/$/u, ""),
+          },
+        ],
       },
     ],
   };
