@@ -14,6 +14,7 @@ import { ChevronDownIcon, CreditCardIcon, XIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { Button } from "../../ui/button";
+import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../../ui/collapsible";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
 import { Section } from "../../ui/section";
 import { Spinner } from "../../ui/spinner";
@@ -137,26 +138,85 @@ export function AddressesSheetBody(props: AddressesSheetBodyProps) {
               setMode={setMode}
             />
             <AddressesZerops ctx={ctx} mode={web} place={props.place} setMode={setMode} />
-            <AddressesDirect
-              ctx={ctx}
-              mode={direct}
-              othersWaiting={props.othersWaiting.ports}
-              place={props.place}
-              setMode={setMode}
-            />
-            <IpSection
-              ctx={ctx}
-              ipv4={props.ipv4}
-              mode={mode}
-              place={props.place}
-              setMode={setMode}
-              unsure={props.unsure.has("request-ipv4")}
-              zeropsUrl={props.zeropsUrl}
-            />
+            <MoreAddresses
+              // What is there, asked for or gone wrong is never folded away.
+              shown={
+                props.place.ports.length > 0 ||
+                props.place.ips.ownV4 !== undefined ||
+                props.othersWaiting.ports.length > 0 ||
+                isDirect(mode) ||
+                mode.kind === "ipv4" ||
+                props.busy.has("request-ipv4") ||
+                props.unsure.has("request-ipv4") ||
+                props.trouble.has("request-ipv4") ||
+                props.trouble.has("open-port") ||
+                (props.ipv4.state !== "reading" && props.ipv4.enabled === true)
+              }
+            >
+              <AddressesDirect
+                ctx={ctx}
+                mode={direct}
+                othersWaiting={props.othersWaiting.ports}
+                place={props.place}
+                setMode={setMode}
+              />
+              <IpSection
+                ctx={ctx}
+                ipv4={props.ipv4}
+                mode={mode}
+                place={props.place}
+                setMode={setMode}
+                unsure={props.unsure.has("request-ipv4")}
+                zeropsUrl={props.zeropsUrl}
+              />
+            </MoreAddresses>
           </div>
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * What few people need of a place's addresses: its open ports and the numbers behind it all. One
+ * line at the sheet's foot until asked for; in the open as soon as it holds something (a port, an
+ * IPv4 of the place's own, a change under way), which is never folded away.
+ */
+function MoreAddresses({
+  shown,
+  children,
+}: {
+  readonly shown: boolean;
+  readonly children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  if (shown) return <>{children}</>;
+  return (
+    <Collapsible onOpenChange={setOpen} open={open}>
+      {/* A press, not a title: it says what it shows or hides, on the edge the sections' titles
+          share, so the sections it opens keep their own names without saying one twice. */}
+      <CollapsibleTrigger
+        className="group flex min-h-7 w-full min-w-0 items-center gap-2 rounded-lg text-left text-muted-foreground outline-none transition-colors duration-150 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+        data-addresses-more=""
+      >
+        <span className="shrink-0 font-medium text-sm">
+          {open ? "Hide" : "Show"} direct connections and IP addresses
+        </span>
+        <ChevronDownIcon
+          aria-hidden="true"
+          className="size-4 shrink-0 transition-transform duration-150 group-data-panel-open:rotate-180"
+        />
+        {/* A phone has room for the press alone, which says it. */}
+        {open ? null : (
+          <span className="min-w-0 flex-1 truncate text-end text-xs max-sm:invisible">
+            For database tools and DNS records
+          </span>
+        )}
+      </CollapsibleTrigger>
+      <CollapsiblePanel>
+        <div className="grid gap-8 pt-6">{children}</div>
+      </CollapsiblePanel>
+    </Collapsible>
   );
 }
 
@@ -255,10 +315,6 @@ function IpSection({
   const confirming = asking && ips.ownV4 === undefined && !assigning && !maybe;
   return (
     <Section data-addresses-part="ip" level={3} title="IP addresses">
-      <p className="-mt-1.5 max-w-xl text-muted-foreground text-xs">
-        The numbers behind these addresses. You need them only for DNS records and direct
-        connections.
-      </p>
       {/* The IPv6 is the long one: its tile takes the room it needs to read whole. */}
       <div className="grid gap-2 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)]">
         {ips.v6 === undefined ? null : (

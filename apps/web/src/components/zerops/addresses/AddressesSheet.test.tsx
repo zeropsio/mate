@@ -380,8 +380,12 @@ describe("the addresses sheet", () => {
         places: [{ projectId: "p1", kind, label: placeName, name: placeName }],
         place: { ...ADDRESSES_FIXTURE, nothingDeployed: true, domains: [], ports: [] },
       });
+      expect(text(container).includes(`Nothing runs in ${placeName} yet.`)).toBe(alone);
+      // What a running place offers sits behind the sheet's last line until asked for.
+      const more = container.querySelector("[data-addresses-more]");
+      expect(more !== null).toBe(!alone);
+      if (more !== null) await press(more);
       const said = text(container);
-      expect(said.includes(`Nothing runs in ${placeName} yet.`)).toBe(alone);
       expect(said.includes("Get one")).toBe(!alone);
       expect(said.includes("Open a port")).toBe(!alone);
     },
@@ -599,5 +603,19 @@ describe("the addresses sheet", () => {
       ["AAAA", "www.blog.com", "2001:db8:4a7:1d::1"],
     ]);
     expect(() => button(container, "Try again")).toThrow();
+  });
+
+  // witness: apps/web/src/components/zerops/addresses/AddressesSheet.tsx | props.place.ports.length > 0 || →
+  it("open ports and IP addresses are one line until asked for, and in the open once a port is", async () => {
+    const quiet = await mount({ place: { ...ADDRESSES_FIXTURE, ports: [] } });
+    expect(quiet.container.querySelector('[data-addresses-part="direct"]')).toBeNull();
+    expect(text(quiet.container)).toContain("Show direct connections and IP addresses");
+    await press(quiet.container.querySelector("[data-addresses-more]")!);
+    expect(text(part(quiet.container, "ip"))).toContain("2001:db8:4a7:1d::1");
+    await act(async () => root?.unmount());
+
+    const open = await mount();
+    expect(open.container.querySelector("[data-addresses-more]")).toBeNull();
+    expect(text(part(open.container, "direct"))).toContain("Only 2 addresses");
   });
 });

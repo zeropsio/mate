@@ -13,10 +13,17 @@ import type {
   ServicePortChoice,
   WaitingChange,
 } from "@t3tools/client-runtime/data";
-import { ArrowUpRightIcon, ChevronRightIcon, EllipsisIcon, PlusIcon } from "lucide-react";
+import {
+  ArrowUpRightIcon,
+  ChevronRightIcon,
+  EllipsisIcon,
+  GlobeIcon,
+  PlusIcon,
+  TriangleAlertIcon,
+} from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 
-import { useMediaQuery } from "~/hooks/useMediaQuery";
+import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { Button } from "../../ui/button";
 import { Card } from "../../ui/card";
 import { Checkbox } from "../../ui/checkbox";
@@ -24,6 +31,7 @@ import { EmptyState } from "../../ui/empty";
 import { Input } from "../../ui/input";
 import { Label } from "../../ui/label";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
+import { Row } from "../../ui/row";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../../ui/select";
 import { Spinner } from "../../ui/spinner";
 import {
@@ -44,15 +52,12 @@ import {
 } from "./addresses.logic";
 import {
   Confirm,
-  Face,
   GroupBody,
   guardPress,
   guardTitle,
   Journey,
   OthersList,
-  RowMeta,
   SheetGroup,
-  SheetRow,
   SheetSection,
   Stage,
   Trouble,
@@ -134,14 +139,15 @@ export function AddressesDomains({
             disabled={ctx.hold}
             onClick={() => setMode({ kind: "add-domain" })}
             size="sm"
-            variant="ghost"
+            variant="secondary"
           >
             <PlusIcon />
             {none ? "Put it on your domain" : "Add a domain"}
           </Button>
         )
       }
-      caption="Addresses you own, like yourshop.com. Each gets free https."
+      apart
+      {...(none ? { caption: "Addresses you own, like yourshop.com. Each gets free https." } : {})}
       lead={
         adding ? (
           <AddDomainForm
@@ -297,76 +303,77 @@ function DomainRow({
   const own = domain.routingId.startsWith("own:");
   const target = domain.targets[0];
   const trouble = ctx.trouble.get(key);
-  // A phone's row has no room for where a domain leads beside it: said under it, both read whole.
-  const phone = useMediaQuery("max-sm");
-  const leads =
-    target === undefined ? null : (
-      <RowMeta>
-        → <span className="real-name">{targetLabel(target, targets)}</span>
-      </RowMeta>
-    );
+  const live = domain.face === "live";
+  const leads = target === undefined ? null : targetLabel(target, targets);
   return (
     <>
-      <SheetRow
-        data={domain.domainName}
-        end={asking ? <Face tone="warn" word="Removing?" /> : <Face {...face} />}
-        more={
-          own || domain.face === "removing" ? (
-            // The seat the other rows' menu fills, so every row's state ends on one edge.
-            <span aria-hidden="true" className="size-7" />
-          ) : (
-            <Menu>
-              <MenuTrigger
-                render={
-                  <Button
-                    aria-label={`More for ${domain.domainName}`}
-                    size="icon-sm"
-                    variant="ghost"
-                  />
-                }
-              >
-                <EllipsisIcon />
-              </MenuTrigger>
-              <MenuPopup align="end">
-                {domain.face === "live" ? (
-                  <MenuItem render={<a href={domain.url} rel="noreferrer" target="_blank" />}>
-                    Open {domain.domainName}
-                  </MenuItem>
-                ) : null}
-                {waitsFor === null ? (
-                  <MenuItem
-                    disabled={ctx.hold}
-                    onClick={() => setMode({ kind: "remove", domainName: domain.domainName })}
-                    variant="destructive"
-                  >
-                    Remove {domain.domainName}
-                  </MenuItem>
-                ) : (
-                  <MenuItem disabled>Wait until {waitsFor} is removed</MenuItem>
-                )}
-              </MenuPopup>
-            </Menu>
-          )
-        }
-        name={
+      {/* The app's own row for a thing with a face: the mark carries the domain's state, its
+          words stand right under its name, and what can be done with it ends the row. */}
+      <Row
+        control={
           <>
-            {domain.face === "live" ? (
-              <a
-                className="inline-flex min-w-0 items-center gap-1 hover:underline"
-                href={domain.url}
-                rel="noreferrer"
-                target="_blank"
+            {live ? (
+              <Button
+                render={<a href={domain.url} rel="noreferrer" target="_blank" />}
+                size="sm"
+                variant="secondary"
               >
-                <span className="truncate">{domain.domainName}</span>
-                <ArrowUpRightIcon aria-hidden="true" className="size-3.25 shrink-0 opacity-60" />
-              </a>
+                Open
+                <ArrowUpRightIcon />
+              </Button>
+            ) : null}
+            {own || domain.face === "removing" ? (
+              // The seat the other rows' menu fills, so every row ends on one edge.
+              <span aria-hidden="true" className="size-7" />
             ) : (
-              <span className="truncate">{domain.domainName}</span>
+              <Menu>
+                <MenuTrigger
+                  render={
+                    <Button
+                      aria-label={`More for ${domain.domainName}`}
+                      size="icon-sm"
+                      variant="ghost"
+                    />
+                  }
+                >
+                  <EllipsisIcon />
+                </MenuTrigger>
+                <MenuPopup align="end">
+                  <MenuItem onClick={() => void writeTextToClipboard(domain.domainName)}>
+                    Copy {domain.domainName}
+                  </MenuItem>
+                  {waitsFor === null ? (
+                    <MenuItem
+                      disabled={ctx.hold}
+                      onClick={() => setMode({ kind: "remove", domainName: domain.domainName })}
+                      variant="destructive"
+                    >
+                      Remove {domain.domainName}
+                    </MenuItem>
+                  ) : (
+                    <MenuItem disabled>Wait until {waitsFor} is removed</MenuItem>
+                  )}
+                </MenuPopup>
+              </Menu>
             )}
-            {phone ? null : leads}
           </>
         }
-        sub={phone ? leads : undefined}
+        data-addresses-row={domain.domainName}
+        lead={<DomainMark face={domain.face} />}
+        line={
+          <span data-face={face.tone}>
+            {asking ? "Removing?" : domainStateWords(domain)}
+            {leads === null ? null : (
+              <>
+                {" · "}
+                {live ? "opens" : "will open"} <span className="real-name">{leads}</span>
+              </>
+            )}
+          </span>
+        }
+        size="lg"
+        strong
+        title={domain.domainName}
       />
       {trouble === undefined && !asking ? null : (
         <GroupBody>
@@ -409,6 +416,42 @@ function DomainRow({
     </>
   );
 }
+
+/** A domain's state in a few words, under its name: "Live with https", "Waiting for your DNS". */
+function domainStateWords(domain: AddressDomain): string {
+  const { word } = domainFaceWords(domain.face);
+  return domain.face === "live" && domain.sslEnabled ? `${word} with https` : word;
+}
+
+/**
+ * A domain's mark, in the seat a Mate's face has in its row: a globe on its state's tint, a
+ * spinner while Zerops works on it. The words under the name say the state; the mark lets a list
+ * of domains be read at a glance.
+ */
+function DomainMark({ face }: { readonly face: AddressDomain["face"] }) {
+  const { tone } = domainFaceWords(face);
+  return (
+    <span
+      aria-hidden="true"
+      className={`flex size-9 items-center justify-center rounded-full ${MARK_TONE[tone]}`}
+    >
+      {tone === "busy" ? (
+        <Spinner size="sm" />
+      ) : tone === "fail" ? (
+        <TriangleAlertIcon className="size-4" />
+      ) : (
+        <GlobeIcon className="size-4" />
+      )}
+    </span>
+  );
+}
+
+const MARK_TONE = {
+  ok: "bg-status-ok-surface text-status-ok-text",
+  warn: "bg-status-attention-surface text-status-attention-text",
+  busy: "bg-status-busy-surface text-status-busy-text",
+  fail: "bg-status-failed-surface text-status-failed-text",
+} as const;
 
 /** How long the platform's own look counts as the answer still: older, and the sheet asks again. */
 const CHECK_FRESH_MS = 10 * 60_000;
