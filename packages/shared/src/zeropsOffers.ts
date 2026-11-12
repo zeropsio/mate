@@ -21,6 +21,7 @@ import {
   releasePermission,
   structurePermission,
   type Decision,
+  type MergeLimit,
   type PermissionFacts,
   type ReleaseProduction,
 } from "./zeropsPermissions.ts";
@@ -43,6 +44,8 @@ export interface ApplicationFacts {
   readonly production: ReleaseProduction;
   /** Its placement rows, each by its kind there. */
   readonly placements: ReadonlyArray<{ readonly projectId: string; readonly kind: string }>;
+  /** Who merges its changes, where it limits that; absent: whoever may push. */
+  readonly mergers?: MergeLimit | null | undefined;
 }
 
 /** Whether a tier's place is taken: by a project Zerops lists, or a production delivered to Git. */
@@ -86,10 +89,10 @@ export function applicationOffers(facts: PermissionFacts, app: ApplicationFacts)
     replace_remote_token: structure,
     update_remote_address: structure,
     disconnect_remote: structure,
-    release: releasePermission(facts, app.projectIds, app.production),
+    release: releasePermission(facts, app.projectIds, app.production, app.mergers),
     read_change: changePermission(facts, "read_change", app.projectIds),
     comment_change: changePermission(facts, "comment_change", app.projectIds),
-    merge_change: changePermission(facts, "merge_change", app.projectIds),
+    merge_change: changePermission(facts, "merge_change", app.projectIds, app.mergers),
     close_change: changePermission(facts, "close_change", app.projectIds),
     add_stage: newEnvironmentOffer(facts, "stage", app),
     add_production: newEnvironmentOffer(facts, "production", app),

@@ -60,6 +60,7 @@ import {
 } from "@t3tools/shared/hqRelease";
 import type { HqOffers } from "@t3tools/shared/hqOffers";
 import type { HqNavigationIntake, HqNavigationMateTask } from "@t3tools/shared/hqStream";
+import type { HqMergers } from "@t3tools/shared/hqMergers";
 import {
   HqAiKeyView,
   HqChannelView,
@@ -245,6 +246,11 @@ export interface HqStructure {
      * nowhere; absent from an older HQ.
      */
     readonly intake?: HqNavigationIntake | null;
+    /**
+     * Who merges its changes, where it limits that: the organization's Owner and Admins, and the
+     * people it names. Absent: whoever may push merges.
+     */
+    readonly mergers?: HqMergers;
   }>;
 }
 

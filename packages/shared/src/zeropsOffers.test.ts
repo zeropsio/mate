@@ -20,6 +20,24 @@ const facts = (
     Object.hasOwn(overrides, projectId) ? { override: overrides[projectId] } : undefined,
 });
 
+/** The same person, known by their Zerops user id: what an application's merge limit names. */
+const person = (
+  userId: string,
+  orgRole: string,
+  overrides: Readonly<Record<string, string | undefined>> = {},
+): PermissionFacts => ({
+  ...facts(orgRole, overrides),
+  member: { userId, roleCode: orgRole, status: "ACTIVE", canCreateProjects: false },
+});
+
+/** An application of one Mate project that releases to Git, limiting who merges to `people`. */
+const limited = (people: ReadonlyArray<string> | undefined) => ({
+  projectIds: ["mate"],
+  production: { kind: "git" } as const,
+  placements: [{ projectId: "mate", kind: "mate" }],
+  ...(people === undefined ? {} : { mergers: { people } }),
+});
+
 const ALLOW = { allow: true };
 const refused = (reason: string) => ({ allow: false, reason });
 
@@ -84,6 +102,62 @@ describe("zeropsOffers", () => {
       keep_deploy_token: refused("not_active_member"),
       redeploy: refused("not_active_member"),
     });
+  });
+
+  // witness: packages/shared/src/zeropsOffers.ts | changePermission(facts, "merge_change", app.projectIds, app.mergers) → changePermission(facts, "merge_change", app.projectIds)
+  it("Where a project limits who merges, a person who can push but is not named does not merge", () => {
+    const offers = applicationOffers(
+      person("u-kim", "BASIC_USER", { mate: undefined }),
+      limited(["u-ada", "u-sam"]),
+    );
+    expect(offers.merge_change).toEqual(refused("not_app_merger"));
+    expect(offers.comment_change).toEqual(ALLOW);
+    expect(offers.close_change).toEqual(ALLOW);
+  });
+
+  // witness: packages/shared/src/zeropsPermissions.ts | limit.people.includes(member.userId) → false
+  it("A person the project names merges", () => {
+    const offers = applicationOffers(
+      person("u-ada", "BASIC_USER", { mate: undefined }),
+      limited(["u-ada", "u-sam"]),
+    );
+    expect(offers.merge_change).toEqual(ALLOW);
+  });
+
+  // witness: packages/shared/src/zeropsPermissions.ts | writer(member) || (member.userId !== undefined → (member.userId !== undefined
+  it.each(["OWNER", "ADMIN"])(
+    "The organization's owners and admins merge with nobody named: %s",
+    (orgRole) => {
+      const offers = applicationOffers(person("u-kim", orgRole, { mate: undefined }), limited([]));
+      expect(offers.merge_change).toEqual(ALLOW);
+    },
+  );
+
+  // witness: packages/shared/src/zeropsPermissions.ts | !mergesWithin(member, mergers) → !mergesWithin({ ...member, roleCode: roleOn(facts, member, projectIds[0]!) }, mergers)
+  it("Admin on one of the project's Zerops projects is not the organization's: a person raised there still does not merge", () => {
+    const offers = applicationOffers(
+      person("u-kim", "BASIC_USER", { mate: "ADMIN" }),
+      limited(["u-ada"]),
+    );
+    expect(offers.merge_change).toEqual(refused("not_app_merger"));
+  });
+
+  // witness: packages/shared/src/zeropsPermissions.ts | if (!developsIn(facts, member, projectIds)) return refuse("not_app_developer"); →
+  it("A person who cannot push is told that first, whoever the project names", () => {
+    const offers = applicationOffers(
+      person("u-kim", "READ_ONLY", { mate: undefined }),
+      limited(["u-ada"]),
+    );
+    expect(offers.merge_change).toEqual(refused("not_app_developer"));
+  });
+
+  // witness: packages/shared/src/zeropsPermissions.ts | changePermission(facts, "merge_change", projectIds, mergers); → changePermission(facts, "merge_change", projectIds);
+  it("Releasing to a Git production is held for whoever the merge limit holds", () => {
+    const outside = person("u-kim", "BASIC_USER", { mate: undefined });
+    expect(applicationOffers(outside, limited(["u-ada"])).release).toEqual(
+      refused("not_app_merger"),
+    );
+    expect(applicationOffers(outside, limited(undefined)).release).toEqual(ALLOW);
   });
 
   it("A Git environment keeps no deploy token and its other verbs are the structure's", () => {
