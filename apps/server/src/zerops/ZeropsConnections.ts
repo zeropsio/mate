@@ -69,6 +69,14 @@ export class ZeropsConnections extends Context.Service<
     ) => Effect.Effect<Option.Option<ConnectionIdentity>>;
     readonly current: (id: string) => Effect.Effect<Option.Option<ConnectionIdentity>>;
     /**
+     * Presents a fresh ticket on the open connection `connectionId`: the seconds it may now stay
+     * open, or none. Granted only when the ticket is held, unused and unexpired (the attempt
+     * spends it whatever the outcome), names the connection's own person and HQ session, came
+     * under a still-live admission, and carries `grantSeconds`. The same session, not only the
+     * same person: a session's end closes its connections, and another's ticket would outlive it.
+     */
+    readonly extend: (connectionId: string, ticket: string) => Effect.Effect<Option.Option<number>>;
+    /**
      * Every HQ session the Mate holds now, each once: one with a live connection or a kept ticket
      * still unused and unexpired. Read under the lock a ticket moves into its connection under, so
      * a session in that move is held on one side of it.
@@ -197,6 +205,34 @@ export const make = Effect.gen(function* () {
         return Option.some({ ticket: id, connectionId, userId, sessionId, role: member.role });
       }).pipe(lock.withPermits(1)),
     current,
+    extend: (connectionId, ticket) =>
+      Effect.gen(function* () {
+        const connection = Array.from(connections.values()).find(
+          (input) => input.connectionId === connectionId,
+        );
+        const consumed = Option.getOrUndefined(yield* tickets.consume({ ticket }));
+        const grantSeconds = consumed?.grantSeconds;
+        const refused =
+          connection === undefined
+            ? "connection not registered"
+            : consumed === undefined
+              ? "ticket unknown, used or expired"
+              : consumed.identity.userId !== connection.userId
+                ? "ticket of another person"
+                : consumed.identity.sessionId !== connection.sessionId
+                  ? "ticket of another HQ session"
+                  : !consumed.live()
+                    ? "admission no longer live"
+                    : grantSeconds === undefined
+                      ? "ticket carries no grantSeconds"
+                      : undefined;
+        if (refused !== undefined || grantSeconds === undefined) {
+          yield* Effect.logInfo("connection extension refused", { connectionId, refused });
+          return Option.none<number>();
+        }
+        yield* Effect.logInfo("connection extended", { connectionId, grantSeconds });
+        return Option.some(grantSeconds);
+      }).pipe(lock.withPermits(1)),
     heldSessions: Effect.gen(function* () {
       const now = yield* Clock.currentTimeMillis;
       return yield* lock.withPermits(1)(

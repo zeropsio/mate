@@ -1073,6 +1073,21 @@ export class ZeropsMateUpdateError extends Schema.TaggedError<ZeropsMateUpdateEr
   },
 ) {}
 
+/** How long the connection that presented a fresh HQ ticket may now stay open, in seconds. */
+export const ZeropsGrantExtension = Schema.Struct({
+  grantSeconds: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
+});
+export type ZeropsGrantExtension = typeof ZeropsGrantExtension.Type;
+
+/**
+ * `zerops.grant.extend` refused the ticket. One error whatever the cause: the caller's only move
+ * is to reconnect with a new ticket.
+ */
+export class ZeropsGrantExtensionError extends Schema.TaggedError<ZeropsGrantExtensionError>()(
+  "ZeropsGrantExtensionError",
+  { message: Schema.String },
+) {}
+
 // ---------------------------------------------------------------------------
 // Data Console surface — read-only slice 1 (spec-dataconsole.md §4.3)
 // ---------------------------------------------------------------------------
