@@ -1490,6 +1490,19 @@ describe("rowAgentActivity — an engine Mate's menu state off its own row", () 
     );
   });
 
+  // witness: apps/web/src/zerops/agentActivity.ts | ? (laterOf(row.askedAt, endedAt) ?? row.at) → ? (row.askedAt ?? endedAt ?? row.at)
+  it("dates a Mate that still waits by its last run's end, where it ran again after it asked", () => {
+    const waiting = row({
+      state: { kind: "waiting", on: "vault", words: "The client id?" },
+      latestRun: { id: "run-2", end: { kind: "completed" }, endedAt: ENDED },
+      askedAt: STARTED - 3_600_000,
+      at: RESTARTED,
+    });
+    expect(rowAgentActivity(waiting, ENV, undefined, STARTED).at).toBe(
+      new Date(ENDED).toISOString(),
+    );
+  });
+
   it("names the conversation it reads, under the key its draft is kept by", () => {
     const read = rowAgentActivity(row(), ENV, undefined, STARTED);
     expect([read.threadId, read.threadKey]).toEqual([

@@ -54,13 +54,22 @@ const environmentOfProjectAtom = Atom.family((projectId: string) =>
   ),
 );
 
+/** How far a row's time may run behind its source's: under the minute its label counts in. */
+const TIME_SLACK_MS = 60_000;
+
+/** A time that moved by what a row's label would show; a time that came or went counts too. */
+const timeMoved = (a: string, b: string) =>
+  a !== b && !(Math.abs(Date.parse(a) - Date.parse(b)) < TIME_SLACK_MS);
+
 export function sameActivity(
   a: ZeropsAgentActivity | undefined,
   b: ZeropsAgentActivity | undefined,
 ): boolean {
   if (a === b) return true;
   if (a === undefined || b === undefined) return false;
-  // A timestamp-only delivery has no new menu fact. Real words/state still carry their source date.
+  // A delivery that only nudges the time is no new menu fact; one that moves it by what the row's
+  // label shows is, or the row would say "19h" of a Mate last seen six hours ago.
+  if (timeMoved(a.at, b.at)) return false;
   const before = { ...a, at: "" };
   return shareEqual(before, { ...b, at: "" }) === before;
 }

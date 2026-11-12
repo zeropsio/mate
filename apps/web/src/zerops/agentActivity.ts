@@ -719,6 +719,10 @@ export function activityOfNow(
  */
 const isoOf = (millis: number) => new Date(millis).toISOString();
 
+/** The later of two instants, either of which may not have happened. */
+const laterOf = (a: number | null, b: number | null) =>
+  a === null ? b : b === null ? a : Math.max(a, b);
+
 /** The kind a row's state is, before the person's visit: what the engine says it is on. */
 function kindOf(state: ConversationRow["state"]): ThreadStatusKind {
   switch (state.kind) {
@@ -781,14 +785,15 @@ export function rowAgentActivity(
     status: threadStatusPill({ kind, toneId: toneIdForKind(kind) }),
     face: mateMarkStateForThread(kind, usageLimited),
     subject: agentActivitySubject(words, kind),
-    // Its run's start while on it, the question's while one waits, else its last run's end: the
-    // row's own `at` moves with anything the engine records — a restart included — so it dates
-    // only a conversation that never ran.
+    // Its run's start while on it; while one waits, the question's or its last run's end,
+    // whichever came later — a wait outlives the runs that go on under it; else its last run's
+    // end. The row's own `at` moves with anything the engine records — a restart included — so
+    // it dates only a conversation that never ran.
     at: isoOf(
       state.kind === "working" || state.kind === "queued"
         ? state.since
         : state.kind === "waiting"
-          ? (row.askedAt ?? endedAt ?? row.at)
+          ? (laterOf(row.askedAt, endedAt) ?? row.at)
           : (endedAt ?? row.at),
     ),
     ...(row.latestRun !== null || row.subject !== null ? { hasWork: true as const } : {}),
