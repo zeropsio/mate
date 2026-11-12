@@ -555,6 +555,7 @@ export type {
 export { makeGitCredentials } from "./adapters/hqGitCredentials.ts";
 export { makeAutomationSettings, type AutomationSettings } from "./adapters/hqAutomation.ts";
 export { aiKeysId, intakeId, type AiKeysKey, type IntakeKey } from "./families/hqAutomation.ts";
+export { MERGERS_UNSUPPORTED, sameMergers } from "./operations/hqMergers.ts";
 export {
   appIntake,
   orgAiKeys,

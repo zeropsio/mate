@@ -18,6 +18,7 @@ import {
  * @module hq/refusals
  */
 import type { MERGE_REFUSALS } from "@t3tools/shared/hqChanges";
+import { HQ_MERGERS_MAX } from "@t3tools/shared/hqMergers";
 import { fileSize } from "../gitBrowse/blob.ts";
 import type { HqOfferState } from "@t3tools/shared/hqOffers";
 import type { ReleaseRefusal } from "@t3tools/shared/hqRelease";
@@ -53,6 +54,7 @@ const PERMISSION_WORDS: { readonly [R in Reason]: string } = {
     "This project has one of this kind already. Only an owner or admin of the organization replaces it.",
   not_app_developer:
     "You need more than Read access to one of this project's Zerops projects to do this.",
+  not_app_merger: "Only the organization's Owner and Admins, and the people they pick, merge here.",
   not_recipe_repo: "Only the project's recipe lands by itself.",
   author_not_in_app: "Only a Mate of this project proposes its recipe.",
   recipe_empty: "This change changes nothing, so it was closed.",
@@ -465,6 +467,57 @@ export function hqRefusalWords(refusal: {
   return `HQ refused this (${reason ?? refusal.code}).`;
 }
 
+/** How many of the people an application names are said by name before "and N more". */
+const MERGERS_NAMED = 3;
+
+/** Who merges wherever an application limits it, whoever else it names. */
+const OWNER_AND_ADMINS = "the organization's Owner and Admins";
+
+/**
+ * Who merges where an application limits it (`not_app_merger`), as the held press says it: the
+ * people it names, as the member list calls them, and the organization's Owner and Admins. The
+ * first three by name, the rest counted; somebody the list does not name is counted too.
+ */
+export function mergeLimitWords(
+  people: ReadonlyArray<string>,
+  nameOf: (userId: string) => string | undefined,
+): string {
+  if (people.length === 0) return `Only ${OWNER_AND_ADMINS} merge here.`;
+  const named = people.flatMap((userId) => nameOf(userId) ?? []).slice(0, MERGERS_NAMED);
+  const more = people.length - named.length;
+  if (named.length === 0)
+    return `Only ${String(more)} ${more === 1 ? "person" : "people"} and ${OWNER_AND_ADMINS} merge here.`;
+  const rest = more === 0 ? "" : ` and ${String(more)} more,`;
+  return `Only ${named.join(", ")}${rest} and ${OWNER_AND_ADMINS} merge here.`;
+}
+
+/** What the setting of who merges says where HQ is older than it. */
+export const MERGERS_NEED_UPDATE = hqNeedsUpdate("limit who merges");
+
+/** Who changes who merges, as the setting says it to anyone else. */
+export const MERGERS_WRITERS = "Owners and Admins change this.";
+
+/**
+ * HQ's refusal of who merges (`PUT /api/apps/:appId/mergers`) in words: a list it does not take,
+ * a person who is no Owner or Admin, a named person Zerops no longer lists as an active member, an
+ * application gone. `undefined`: HQ's own words stand.
+ */
+export function mergersRefusalWords(refusal: {
+  readonly code: string;
+  readonly reason: string | undefined;
+}): string | undefined {
+  const { code, reason } = refusal;
+  if (code === "invalid")
+    return `HQ didn't take this list. Pick at most ${String(HQ_MERGERS_MAX)} people.`;
+  // Beside `conflict` it is a person named, never the one asking (`forbidden`).
+  if (code === "conflict" && reason === "not_active_member")
+    return "Someone you picked is no longer an active member of this organization. Uncheck them and save again.";
+  if (reason === "not_structure_writer") return MERGERS_WRITERS;
+  if (code === "app_not_found" || reason === "app_not_found")
+    return "This project is gone from HQ.";
+  return undefined;
+}
+
 /**
  * What a control says beside a verb not offered (`hqOffer`): the refusal the person's Zerops roles
  * decide, or that it is not decided yet. Nothing for an offered one.
@@ -480,6 +533,20 @@ export function hqOfferWords(state: HqOfferState): string | undefined {
     case "unknown":
       return "HQ has not said yet.";
   }
+}
+
+/**
+ * `hqOfferWords` for a verb the application's merge limit holds — a merge, a release to a Git
+ * production: who merges there, by name (`mergeLimitWords`), in place of the bare refusal.
+ */
+export function hqMergeOfferWords(
+  state: HqOfferState,
+  mergers: { readonly people: ReadonlyArray<string> } | null | undefined,
+  nameOf: (userId: string) => string | undefined,
+): string | undefined {
+  return state.kind === "refused" && state.reason === "not_app_merger"
+    ? mergeLimitWords(mergers?.people ?? [], nameOf)
+    : hqOfferWords(state);
 }
 
 /** Why HQ will not use the deploy key it keeps for an environment. */

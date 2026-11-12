@@ -326,3 +326,150 @@ export async function settledEnd(page: Page) {
   await waitForStillFrames(page);
   return page.evaluate(readEnd);
 }
+
+/** One change of what a reloading conversation's page draws, read each frame the app has drawn. */
+export interface ReloadFrame {
+  /** Each part of the frame as painted (`left,top,width,height`), or null while it is not. */
+  readonly parts: Readonly<Record<string, string | null>>;
+  /** What stands inside the frame's boxes, as painted: each row, each control, each line. */
+  readonly inner: Readonly<Record<string, string | null>>;
+  /** What the menu says of the person and of each row, as painted; "" while it says nothing. */
+  readonly words: Readonly<Record<string, string>>;
+  /** The menu's loading rows and its Mates' rows. */
+  readonly loadingRows: number;
+  readonly rows: number;
+  /** The conversation is shown (placed, its opening over), not its stage. */
+  readonly shown: boolean;
+}
+
+// Runs in every new document: each change of what a reload draws, from the first frame the app
+// draws until the conversation has stood shown, the menu filled, for 60. The frame: the menu's top
+// row, its list's room and its foot; the conversation's header, its controls and the composer's
+// box. Inside it: each of the menu's rows, the foot's two lines, each header control, the header's
+// name and subject. Painted means seen: a part held at opacity 0 is not.
+export function recordReload() {
+  const frames: ReloadFrame[] = [];
+  (window as unknown as { reloadFrames: ReloadFrame[] }).reloadFrames = frames;
+  let settledFor = 0;
+  const menu = '[data-zerops-surface="sidebar-menu"]';
+  const account = `${menu} [data-zerops-surface="sidebar-account"]`;
+  const parts: Readonly<Record<string, string>> = {
+    menuTop: `${menu} :is([data-zerops-surface="sidebar-chief-row"], [data-zerops-surface="sidebar-chief-place"] a)`,
+    menuActions: `${menu} [data-zerops-surface="sidebar-top-actions"]`,
+    menuList: `${menu} [data-slot="scroll-area-viewport"]`,
+    menuFoot: account,
+    header: "main [data-chat-header]",
+    controls: "main [data-chat-header] [data-panel-layout-controls]",
+  };
+  const inner: Readonly<Record<string, string>> = {
+    composer: 'main [data-slot="composer-shell"]',
+    footName: `${account} > span:nth-of-type(2) > span:first-child`,
+    footRole: `${account} [data-zerops-surface="sidebar-account-role"] > span:first-child`,
+    headerName: "main [data-chat-header] [data-conversation-mate-press] [data-opening-header] > *",
+    headerSubject: "main [data-chat-header] [data-conversation-subject]",
+  };
+  const seen = (element: Element | null | undefined): element is Element =>
+    element != null && element.checkVisibility({ visibilityProperty: true, opacityProperty: true });
+  const painted = (element: Element | null | undefined) => {
+    if (!seen(element)) return null;
+    const box = element.getBoundingClientRect();
+    if (box.width === 0 || box.height === 0) return null;
+    return [box.left, box.top, box.width, box.height].map(Math.round).join(",");
+  };
+  const said = (element: Element | null | undefined) =>
+    seen(element) ? (element.textContent ?? "").replace(/\s+/gu, " ").trim() : "";
+  const sample = () => {
+    if (document.querySelector('[data-slot="sidebar-wrapper"]') !== null) {
+      const opening = document.querySelector("[data-conversation-opening]");
+      const rows = [
+        ...document.querySelectorAll(`${menu} [data-zerops-surface="sidebar-mate-row"]`),
+      ];
+      const toggles = [
+        ...document.querySelectorAll("main [data-chat-header] [data-panel-layout-controls] button"),
+      ];
+      const frame: ReloadFrame = {
+        parts: Object.fromEntries(
+          Object.entries(parts).map(([name, selector]) => [
+            name,
+            painted(document.querySelector(selector)),
+          ]),
+        ),
+        inner: {
+          ...Object.fromEntries(
+            Object.entries(inner).map(([name, selector]) => [
+              name,
+              painted(document.querySelector(selector)),
+            ]),
+          ),
+          ...Object.fromEntries(rows.map((row, at) => [`row${String(at)}`, painted(row)])),
+          ...Object.fromEntries(
+            toggles.map((toggle, at) => [`control${String(at)}`, painted(toggle)]),
+          ),
+        },
+        words: {
+          footName: said(document.querySelector(inner["footName"]!)),
+          footRole: said(document.querySelector(inner["footRole"]!)),
+          ...Object.fromEntries(
+            rows.map((row, at) => [
+              `row${String(at)}`,
+              said(row.querySelector('[data-zerops-surface="sidebar-mate-name"]')),
+            ]),
+          ),
+        },
+        loadingRows: document.querySelectorAll(
+          `${menu} [data-zerops-surface="sidebar-environments-skeleton"] > div`,
+        ).length,
+        rows: rows.length,
+        shown:
+          document.querySelector("main [data-timeline-thread]:not([data-timeline-placing])") !==
+            null &&
+          (opening === null || opening.getAttribute("data-conversation-opening") === "complete"),
+      };
+      if (JSON.stringify(frames.at(-1)) !== JSON.stringify(frame)) frames.push(frame);
+      settledFor = frame.shown && frame.rows > 0 ? settledFor + 1 : 0;
+    }
+    if (settledFor < 60) requestAnimationFrame(sample);
+  };
+  requestAnimationFrame(sample);
+}
+
+/** One change of what a switch between conversations draws, read each frame. */
+export interface SwitchFrame {
+  /** The header's bar, its controls and the composer's box as painted, or null while not. */
+  readonly header: string | null;
+  readonly controls: string | null;
+  readonly composer: string | null;
+  /** A conversation is shown (placed, its opening over), not a stage. */
+  readonly shown: boolean;
+}
+
+// Each change of what the page draws around a conversation, every frame until `switchFrames.stop`
+// is set: the header's bar, its controls, the composer's box. Painted means seen: a part held at
+// opacity 0 or hidden is not.
+export function recordSwitch() {
+  const frames: SwitchFrame[] & { stop?: boolean } = [];
+  (window as unknown as { switchFrames: typeof frames }).switchFrames = frames;
+  const painted = (selector: string) => {
+    const element = document.querySelector(selector);
+    if (element === null) return null;
+    if (!element.checkVisibility({ visibilityProperty: true, opacityProperty: true })) return null;
+    const box = element.getBoundingClientRect();
+    if (box.width === 0 || box.height === 0) return null;
+    return [box.left, box.top, box.width, box.height].map(Math.round).join(",");
+  };
+  const sample = () => {
+    const opening = document.querySelector("[data-conversation-opening]");
+    const frame: SwitchFrame = {
+      header: painted("main [data-chat-header]"),
+      controls: painted("main [data-chat-header] [data-panel-layout-controls]"),
+      composer: painted('main [data-slot="composer-shell"]'),
+      shown:
+        document.querySelector("main [data-timeline-thread]:not([data-timeline-placing])") !==
+          null &&
+        (opening === null || opening.getAttribute("data-conversation-opening") === "complete"),
+    };
+    if (JSON.stringify(frames.at(-1)) !== JSON.stringify(frame)) frames.push(frame);
+    if (frames.stop !== true) requestAnimationFrame(sample);
+  };
+  sample();
+}

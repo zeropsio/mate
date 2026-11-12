@@ -24,7 +24,6 @@ const STATUS_RESULT: MateStatusResult = {
 
 const stubCli = (
   mateStatus: (options?: {
-    readonly refresh?: boolean;
     readonly local?: boolean;
   }) => Effect.Effect<MateStatusResult, ZeropsCliNotFound | ZeropsCliFailed>,
 ) => ({
@@ -105,31 +104,6 @@ describe("ZeropsMateUpdate (MU-3: absent, never fabricated)", () => {
         available: true,
         checkedAt: "2026-09-09T00:00:00Z",
       });
-    }),
-  );
-
-  it.effect("check re-reads the manifest with --refresh, updates and returns the new value", () =>
-    Effect.gen(function* () {
-      let installed = "0.8.0";
-      let sawRefresh = false;
-      const service = yield* Effect.scoped(
-        make({
-          cli: stubCli((options) => {
-            sawRefresh = options?.refresh === true;
-            return Effect.succeed({
-              ...STATUS_RESULT,
-              installed,
-              updateAvailable: installed !== "0.8.1",
-            });
-          }),
-          isZeropsEnvironment: true,
-        }),
-      );
-      installed = "0.8.1";
-      const result = yield* service.check;
-      expect(sawRefresh).toBe(true);
-      expect(result?.available).toBe(false);
-      expect((yield* service.current)?.available).toBe(false);
     }),
   );
 

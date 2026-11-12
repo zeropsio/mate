@@ -4,6 +4,7 @@ import {
   addressPlaces,
   addressTrouble,
   checkedWords,
+  dnsProvider,
   domainFaceWords,
   domainProblem,
   domainsToAdd,
@@ -16,6 +17,8 @@ import {
   portFaceWords,
   portProblem,
   priceWords,
+  recordHost,
+  recordsFound,
   recordsOf,
   removeWaitsFor,
   removeWrite,
@@ -175,13 +178,13 @@ describe("a refused write says why in a sentence", () => {
 
 describe("how far an address is", () => {
   it.each([
-    ["going-live", "Going live", "busy"],
+    ["going-live", "Adding", "busy"],
     ["changing", "Changing", "busy"],
     ["removing", "Removing", "busy"],
     ["dns", "Waiting for your DNS", "warn"],
     ["elsewhere", "Points elsewhere", "warn"],
     ["certificate", "Getting a certificate", "busy"],
-    ["certificate-failed", "Couldn't get a certificate", "warn"],
+    ["certificate-failed", "Couldn't get a certificate", "fail"],
     ["live", "Live", "ok"],
   ] as const)("a domain %s says %j", (face, word, tone) => {
     expect(domainFaceWords(face)).toEqual({ word, tone });
@@ -507,5 +510,72 @@ describe("the project's places", () => {
       { projectId: "rhea", kind: "mate", label: "Rhea", name: "Rhea", owner: "Karlos" },
       { projectId: "juno", kind: "mate", label: "Juno", name: "Juno" },
     ]);
+  });
+});
+
+describe("a record as a DNS provider's form takes it", () => {
+  // witness: apps/web/src/components/zerops/addresses/addresses.logic.ts | if (zone === null) return name; → if (zone === null) return "@";
+  it.each([
+    ["shop.com", "@"],
+    ["www.shop.com", "www"],
+    ["app.shop.com", "app"],
+    ["*.shop.com", "*"],
+    ["_acme-challenge.shop.com", "_acme-challenge"],
+    ["shop.co.uk", "@"],
+    ["www.shop.co.uk", "www"],
+    // "www" before two labels is a subdomain whatever the two are.
+    ["www.go.io", "www"],
+    // A registered domain or a part of one: the shape cannot tell, so the name stands in full.
+    ["shop.me.uk", "shop.me.uk"],
+    ["app.company.it", "app.company.it"],
+    ["shop.eu.com", "shop.eu.com"],
+  ] as const)("the name field of %s takes %j", (name, host) => {
+    expect(recordHost(name)).toBe(host);
+  });
+
+  // witness: apps/web/src/components/zerops/addresses/addresses.logic.ts | if (others.has(`www.${own}`)) return own; →
+  it("a domain added with its www twin is the registered one, whatever it ends in", () => {
+    const beside = ["shop.me.uk", "www.shop.me.uk"];
+    expect(recordHost("shop.me.uk", beside)).toBe("@");
+    expect(recordHost("www.shop.me.uk", beside)).toBe("www");
+  });
+});
+
+describe("where a domain's DNS is kept", () => {
+  // witness: apps/web/src/components/zerops/addresses/addresses.logic.ts | return REGISTRY.test(first) ? { kind: "registry" } : { kind: "other", host: first }; → return { kind: "other", host: first };
+  it("a domain only its registry answers for has no DNS provider yet", () => {
+    expect(dnsProvider(["l.gtld-servers.net"])).toEqual({ kind: "registry" });
+    expect(dnsProvider(["a.ns.nic.cz"])).toEqual({ kind: "registry" });
+  });
+
+  // witness: apps/web/src/components/zerops/addresses/addresses.logic.ts | [/\.ns\.cloudflare\.com$/u, "Cloudflare", "https://dash.cloudflare.com"], →
+  it("names the provider its name servers belong to, and says the server where it knows none", () => {
+    expect(dnsProvider(["dana.ns.cloudflare.com", "rob.ns.cloudflare.com"])).toEqual({
+      kind: "known",
+      name: "Cloudflare",
+      url: "https://dash.cloudflare.com",
+    });
+    expect(dnsProvider(["ns1.dns-provider.example"])).toEqual({
+      kind: "other",
+      host: "ns1.dns-provider.example",
+    });
+    expect(dnsProvider([])).toEqual({ kind: "unread" });
+    // A DNS host under a registry-like name keeps customers' records: never "no provider yet".
+    expect(dnsProvider(["ns3-l2.nic.ru"])).toEqual({ kind: "other", host: "ns3-l2.nic.ru" });
+  });
+});
+
+describe("the records a look-up found", () => {
+  // witness: apps/web/src/components/zerops/addresses/addresses.logic.ts | if (answered.some((ip) => comparableIp(ip) === comparableIp(record.value))) → if (answered.some((ip) => ip === record.value))
+  it("an IPv6 record is found however the look-up spells its address", () => {
+    const records = [
+      { type: "A", name: "shop.com", value: "93.185.106.128" },
+      { type: "AAAA", name: "shop.com", value: "2001:db8:4a7::160:0:1d" },
+    ] as const;
+    const found = recordsFound(
+      [{ domainName: "shop.com", resolvedIps: ["2001:0DB8:04A7:0:0:160:0:001D"] }],
+      records,
+    );
+    expect([...found]).toEqual(["AAAA:shop.com"]);
   });
 });

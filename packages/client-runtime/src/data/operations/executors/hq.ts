@@ -32,8 +32,13 @@ import * as Effect from "effect/Effect";
 
 import type { ZeropsApiClient } from "../../../zerops/api.ts";
 import { deployTokenMint } from "../../../zerops/deployToken.ts";
-import { HqError, type HqApi } from "../../../zerops/hq/client.ts";
-import { HQ_NOT_OPEN, hqNeedsUpdate } from "../../../zerops/hq/refusals.ts";
+import { HqError, hqRouteMissing, type HqApi } from "../../../zerops/hq/client.ts";
+import {
+  HQ_NOT_OPEN,
+  hqNeedsUpdate,
+  MERGERS_NEED_UPDATE,
+  mergersRefusalWords,
+} from "../../../zerops/hq/refusals.ts";
 import { discussionId } from "../../families/hqDiscussion.ts";
 import { observeCredentialId, observeRequestScope } from "../../families/hqObserveCredential.ts";
 import { commitOwn } from "../../adapters/hqSettingsReads.ts";
@@ -42,6 +47,7 @@ import type { StreamFault } from "../../streamMachine.ts";
 import type { OperationExecutor, SubmissionFault, UncertainAcceptance } from "../coordinator.ts";
 import { REVEAL_UNRECORDABLE, PROPOSAL_DECIDED_ELSEWHERE, type HqChiefIntent } from "../hqChief.ts";
 import { keptDeployToken, type HqWriteIntent } from "../hqWrites.ts";
+import { MERGERS_UNSUPPORTED } from "../hqMergers.ts";
 
 import {
   changeHandle,
@@ -98,6 +104,8 @@ export type HqWrites = Pick<
   | "keepDeployToken"
   | "handOver"
   | "setChief"
+  | "keepChiefToken"
+  | "forgetChiefToken"
   | "decideProposal"
 > &
   Partial<Pick<HqApi, "recordReveal">> &
@@ -109,6 +117,7 @@ export type HqWrites = Pick<
       | "unfollowRepoUpstream"
       | "deleteRepo"
       | "setRepoCap"
+      | "setMergers"
     >
   > &
   FlowWrites &
@@ -259,6 +268,22 @@ function faultOf(cause: unknown, keepCode = false): StreamFault | UncertainAccep
       ...(keepCode ? { code: cause.reason ?? cause.code } : {}),
     };
   return { outcome: "transient", message };
+}
+
+/** An HQ older than the setting of who merges: said as needing an update, never as an error. */
+const MERGERS_OLDER_HQ: StreamFault = {
+  outcome: "definitive-refusal",
+  message: MERGERS_NEED_UPDATE,
+  code: MERGERS_UNSUPPORTED,
+};
+
+/** HQ's answer to who merges as a fault: an HQ without the route, or its refusal in plain words. */
+function mergersFault(cause: unknown): StreamFault | UncertainAcceptance {
+  if (hqRouteMissing(cause)) return MERGERS_OLDER_HQ;
+  const fault = faultOf(cause, true);
+  const words =
+    cause instanceof HqError && cause.kind === "refused" ? mergersRefusalWords(cause) : undefined;
+  return words === undefined ? fault : { ...fault, message: words };
 }
 
 /** An HQ from before reveals were recorded: a retry never records one. */
@@ -494,7 +519,7 @@ export function makeHqExecutor(ports: {
       if (previous?.id !== minted.id) yield* retireToken(intent.orgId, previous);
     });
 
-  /** A Chief's registration and a proposal's decision: HQ's answer is their end. */
+  /** A Chief's registration, its token and a proposal's decision: HQ's answer is their end. */
   const chiefWrite = (requestId: string, api: HqWrites, intent: HqChiefIntent) => {
     switch (intent.kind) {
       case "set-chief":
@@ -506,6 +531,16 @@ export function makeHqExecutor(ports: {
         return Effect.map(
           Effect.tryPromise({ try: () => api.registerBirthChief(intent.birthId), catch: faultOf }),
           ({ projectId }) => answered(requestId, projectId, { projectId }),
+        );
+      case "keep-chief-token":
+        return Effect.map(
+          Effect.tryPromise({ try: () => api.keepChiefToken(), catch: faultOf }),
+          () => answered(requestId, intent.projectId, {}),
+        );
+      case "forget-chief-token":
+        return Effect.map(
+          Effect.tryPromise({ try: () => api.forgetChiefToken(), catch: faultOf }),
+          () => answered(requestId, intent.projectId, {}),
         );
       case "decide-proposal":
         return Effect.map(
@@ -1047,6 +1082,24 @@ export function makeHqExecutor(ports: {
           });
           return answered(requestId, intent.appId, { storage });
         }
+        if (intent.kind === "set-mergers") {
+          const api = ports.apiOf(intent.orgId);
+          if (api === null)
+            return yield* Effect.fail<StreamFault>({
+              outcome: "definitive-refusal",
+              message: HQ_NOT_OPEN,
+            });
+          if (api.setMergers === undefined) return yield* Effect.fail(MERGERS_OLDER_HQ);
+          // HQ's `409 conflict` here is a refusal it names (`not_active_member`), never a lost write.
+          const mergers = yield* Effect.tryPromise({
+            try: () => api.setMergers!(intent.appId, intent.people),
+            catch: mergersFault,
+          });
+          return {
+            ...answered(requestId, intent.appId, { mergers }),
+            affected: [{ family: "hqApp", id: intent.appId }],
+          };
+        }
         if (!("orgId" in intent))
           return yield* Effect.die(new Error(`HQ executes no ${intent.kind}.`));
         const api = ports.apiOf(intent.orgId);
@@ -1059,6 +1112,8 @@ export function makeHqExecutor(ports: {
         if (
           intent.kind === "set-chief" ||
           intent.kind === "register-birth-chief" ||
+          intent.kind === "keep-chief-token" ||
+          intent.kind === "forget-chief-token" ||
           intent.kind === "decide-proposal" ||
           intent.kind === "record-reveal"
         )

@@ -65,6 +65,10 @@ One word for each thing:
 - **No access** — a project HQ does not list for this person, explained under it as **Deleted or access removed**.
   HQ never says which of the two it was, so no surface does.
 - **Read access**, **Full access** — sentence case, each explained once where it is chosen.
+- **your access** — the personal token HQ makes with the person's sign-in and keeps for their Chief to read with;
+  never "token" or "personal token" in copy. Its states: **Chief reads with your access**, **Your access was
+  refused**, **Chief has no access yet**; its presses **Add access**, **Replace**, **Forget**. Wherever it is
+  offered it says that Chief reads with the person's own access.
 - **Owner**, **Admin**, **Developer**, **Guest** — the roles, as the invite names them; the menu's foot says
   "{organization} · {role}" for every role. A Zerops role no preset names reads by what it reaches (**Works on every
   project**, **Sees every project**); a Zerops role code appears only where a Zerops role itself is chosen.

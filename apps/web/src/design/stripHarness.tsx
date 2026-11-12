@@ -518,7 +518,7 @@ const STATES: ReadonlyArray<HeadState> = [
   },
   {
     id: "needs-key",
-    title: "Fen waits on a key from you — its status is a press that goes to the ask",
+    title: "Fen waits on a value from you — its status is a press that goes to the ask",
     chats: [{ title: FEN_TASK, activity: "needs" }],
     crew: [],
     on: 0,
@@ -526,11 +526,11 @@ const STATES: ReadonlyArray<HeadState> = [
   },
   {
     id: "needs-key-reads",
-    title: "The same to someone reading along — words, and who is asked on hover",
+    title: "The same to someone reading along — who is asked, and for what on hover",
     chats: [{ title: FEN_TASK, activity: "needs" }],
     crew: [],
     on: 0,
-    needsKey: { ask: { askedOf: "Dana" }, mine: false },
+    needsKey: { ask: { asked: "Stripe secret key", askedOf: "Dana" }, mine: false },
   },
   {
     id: "link-held",

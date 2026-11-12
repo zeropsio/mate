@@ -8,6 +8,9 @@ import { useNewMateGate } from "../../zerops/useNewMateGates";
 import { showProjectParts } from "~/zerops/projectPartsShown";
 import { environmentDoorLabel } from "~/zerops/putLive.logic";
 import { useAddressesSheet } from "~/zerops/addressesSheet";
+import { readMenuRowsMemory, writeMenuRowsMemory } from "~/zerops/mateIdentityMemory";
+import { hqNavigationAtom } from "~/state/zerops";
+import { fadeFillOver } from "~/lib/loadFills";
 import { mateAdmissionSummary, type AgentAdmissionAttention } from "@t3tools/client-runtime/data";
 import { useAccountOrgId, useProjection } from "../../zerops/ZeropsAccountData";
 import { mateStatus } from "../../zerops/mateStatus.logic";
@@ -751,6 +754,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     [getBirth, placedBirths],
   );
   const structureView = useAtomValue(shownCanonicalHqListNavigationAtom);
+  const rowsOrgId = useAtomValue(hqNavigationAtom, (navigation) => navigation.orgId);
   const identities = useAtomValue(shownHqMateIdentitiesAtom);
   const accountOrgId = useAccountOrgId();
   // Whose each Mate is, as HQ says it (invariant 11).
@@ -879,6 +883,14 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   const orgOffer = useOrgOffers();
   const addMateGate = useNewMateGate();
   const treeRef = useRef<HTMLElement>(null);
+  // The menu's fill: rows that take the loading rows' place fade in where they stand, once
+  // (`fadeFillOver`). Rows drawn by the first commit, or put back, are simply there.
+  const stoodIn = useRef(false);
+  useLayoutEffect(() => {
+    const list = treeRef.current;
+    if (list !== null && stoodIn.current) fadeFillOver(list);
+    stoodIn.current = list === null;
+  });
   const reorder = useProjectReorder(treeRef);
   // The open Mate stands in view in the menu: its row scrolled to the nearest
   // edge once it is drawn (a new Mate's row comes a moment after its view, so
@@ -2338,6 +2350,13 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     projectLatest.delete(id);
     projectRefs.delete(id);
   }
+  // What the next load's loading rows stand in for, once the list is whole.
+  // Under the organization whose rows these are (HQ's own word of it, `structureView`).
+  if (complete && rowsOrgId !== null)
+    rememberMenuRows(
+      rowsOrgId,
+      plans.filter((entry) => entry.plan !== null).length + (ungroupedPlan?.drawn.length ?? 0),
+    );
   const groupSections = plans.map(({ group, plan }) => (
     <section
       className={cn(
@@ -2617,23 +2636,51 @@ export function SidebarHqStatus({
 }
 
 /**
- * Rows the menu does not know yet, standing in the first row's room: a face and its line, once —
- * how many there are is not known until they are read, and a row the menu paints is never taken
- * back. The boot frame (index.html) paints the same row in the same place.
+ * Rows the menu does not know yet, each in a Mate's row geometry: as many as the last visit drew
+ * (`readMenuRowsMemory`), no more than a screen holds, so the rows that replace them take their
+ * places; one where nothing is remembered. They do not move: a stand-in that sweeps would run for
+ * as long as HQ is slow. The boot frame (index.html) paints the same rows in the same place.
  */
 export function MenuSkeleton({ className }: { readonly className?: string | undefined }) {
+  const orgId = useZeropsSessionOptional()?.activeOrganization?.id;
+  const [rows] = useState(() => loadingMenuRows(orgId));
   return (
     <div
       aria-hidden="true"
       className={className}
       data-zerops-surface="sidebar-environments-skeleton"
     >
-      <div>
-        <span className="bg-sidebar-row-hover" />
-        <span className="bg-sidebar-row-hover" />
-      </div>
+      {Array.from({ length: rows }, (_, at) => (
+        <div key={at}>
+          <span className="bg-sidebar-row-hover" />
+          <span className="bg-sidebar-row-hover" />
+          <span className="bg-sidebar-row-hover" />
+        </div>
+      ))}
     </div>
   );
+}
+
+/** A Mate's row and the gap under it, and what stands above and below the list (sidebarGeometry.css). */
+const MENU_ROW_PITCH_PX = 72;
+const MENU_CHROME_PX = 151;
+
+function loadingMenuRows(orgId: string | undefined): number {
+  const remembered = (orgId === undefined ? null : readMenuRowsMemory(orgId)) ?? 1;
+  if (typeof window === "undefined") return remembered;
+  return Math.min(
+    remembered,
+    Math.max(1, Math.ceil((window.innerHeight - MENU_CHROME_PX) / MENU_ROW_PITCH_PX)),
+  );
+}
+
+/** The rows drawn last, by organization, so a render that draws the same writes nothing. */
+const menuRowsRemembered = new Map<string, number>();
+
+function rememberMenuRows(orgId: string, count: number): void {
+  if (menuRowsRemembered.get(orgId) === count) return;
+  menuRowsRemembered.set(orgId, count);
+  writeMenuRowsMemory(orgId, count);
 }
 
 function ListingNotice({
@@ -2777,7 +2824,14 @@ function GroupRowWords<T extends RosterCandidate>({
         </span>
       }
       line={
-        state.second.kind === "none" && crewNeed === undefined ? undefined : (
+        state.second.kind === "none" && crewNeed === undefined ? (
+          // Its lead's conversations still being read: the line's place held, as a Mate's own row
+          // holds it (`mateRowHeldLines`), so the rows under a project never move when it is read
+          // (a row with no line is 63 px, with one 66).
+          state.heldLines === 0 ? undefined : (
+            <span aria-hidden="true" className="menu-line2 h-5.5" />
+          )
+        ) : (
           <span className="menu-line2 flex min-w-0" data-zerops-surface="sidebar-project-line">
             <span
               className={cn(
@@ -4292,7 +4346,9 @@ function MateRowView<T extends RosterCandidate>({
                 with answer"), else what was asked of it while it has no words yet — or what its
                 crew needs of the viewer, where it asks them nothing itself. */}
             {heldLines === 0 || crewLine !== undefined ? null : (
-              <span aria-hidden="true" className="menu-line2 h-5" />
+              // As tall as the line it holds the place of (14/22): two pixels short, every row
+              // below grew by them when its Mate's words were read, a moment after the menu filled.
+              <span aria-hidden="true" className="menu-line2 h-5.5" />
             )}
             {crewLine === undefined ? (
               <MateSecondLine

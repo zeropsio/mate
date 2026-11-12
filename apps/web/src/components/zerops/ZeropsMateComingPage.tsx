@@ -60,7 +60,9 @@ import { useProjectCapabilities, useRoleOffers } from "~/zerops/usePlatformCapab
 import { useOrgOffers } from "~/zerops/useHqOffers";
 import { HQ_UNFOLLOWED, useAccountOperationsOptional } from "~/zerops/accountOperations";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
+import { askChiefAccess } from "~/zerops/chiefAccess";
 import { useOwnChief } from "~/zerops/ownChief";
+import { ChiefAccessButton } from "./chief/ChiefAccessButton";
 import { ChiefOverviewButton } from "./chief/ChiefOverviewButton";
 import { MateFaceAsMark } from "./primitives";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -642,6 +644,8 @@ function ExistingMateComingPage({
         { orgId, unobserved: HQ_UNFOLLOWED },
       );
       if (!current()) return;
+      // As every registration does: a failure stands in the Chief's header (`ChiefAccessButton`).
+      void askChiefAccess({ ask: "keep", operations, orgId, projectId });
       account?.retryDetail({ family: "hqMate", ownerId: projectId });
       readAgain();
       const key = link.key ?? candidate?.key;
@@ -1222,7 +1226,10 @@ export function MateComingHeader({
         )}
         {mate.chief === true ? (
           // A Chief's way out is its organization, as its conversation's header offers it.
-          <ChiefOverviewButton threadRef={null} />
+          <>
+            <ChiefAccessButton />
+            <ChiefOverviewButton threadRef={null} />
+          </>
         ) : arriving || mate.projectUrl === undefined ? null : (
           // It waits with the chat header's for the opening conversation (`index.css`).
           <ConversationOpeningWaits className="contents">
@@ -1230,25 +1237,34 @@ export function MateComingHeader({
           </ConversationOpeningWaits>
         )}
       </div>
-      {standsIn === null || besidePanel ? null : (
-        <div
-          className="absolute top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] z-50 mr-px flex h-[var(--workspace-topbar-height)] items-center gap-1 [-webkit-app-region:no-drag]"
-          data-workspace-titlebar-controls
-          inert
-        >
-          <PanelLayoutControls
-            liveAgentCount={0}
-            onToggleRightPanel={nothing}
-            onToggleTerminal={nothing}
-            rightPanelAvailable
-            rightPanelOpen={false}
-            rightPanelShortcutLabel={null}
-            terminalAvailable
-            terminalOpen={false}
-            terminalShortcutLabel={null}
-          />
-        </div>
-      )}
+      {standsIn === null || besidePanel ? null : <HeaderControlsStandIn />}
+    </div>
+  );
+}
+
+/**
+ * A conversation header's own controls, the terminal's and the panel's toggles, where the
+ * conversation's header draws them, inert: the header's bar holds them from the first frame of a
+ * load, and the conversation's own take their place without anything moving.
+ */
+export function HeaderControlsStandIn() {
+  return (
+    <div
+      className="absolute top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] z-50 mr-px flex h-[var(--workspace-topbar-height)] items-center gap-1 [-webkit-app-region:no-drag]"
+      data-workspace-titlebar-controls
+      inert
+    >
+      <PanelLayoutControls
+        liveAgentCount={0}
+        onToggleRightPanel={nothing}
+        onToggleTerminal={nothing}
+        rightPanelAvailable
+        rightPanelOpen={false}
+        rightPanelShortcutLabel={null}
+        terminalAvailable
+        terminalOpen={false}
+        terminalShortcutLabel={null}
+      />
     </div>
   );
 }

@@ -1167,6 +1167,258 @@ describe("makeHqApi — the structure socket", () => {
     expect(kept).toBe("session-2");
   });
 
+  describe("a stream the page opened before the client existed", () => {
+    /** The name the page gave its socket for this load: the stream ahead's, and the client's. */
+    const TAB = "the-tabs-socket";
+    /** The stream opened ahead with `session`: what was asked of it, and the socket it hands over. */
+    const openedAhead = (session: string, socketName = TAB) => {
+      const takes: Array<string> = [];
+      const sent: Array<string> = [];
+      let heard: Parameters<OpenHqSocket>[1] | null = null;
+      let closed = false;
+      let released = false;
+      return {
+        takes,
+        sent,
+        heard: () => heard!,
+        closed: () => closed,
+        released: () => released,
+        port: {
+          socketName,
+          release: () => {
+            released = true;
+          },
+          take: async (holding: string, on: Parameters<OpenHqSocket>[1]) => {
+            takes.push(holding);
+            if (holding !== session) return null;
+            heard = on;
+            return {
+              send: (data: string) => void sent.push(data),
+              close: () => {
+                closed = true;
+              },
+            };
+          },
+        },
+      };
+    };
+    const keeping = (held: string | null) => {
+      let token = held;
+      return {
+        token: () => token,
+        port: {
+          read: () => (token === null ? null : { token, expiresAtMs: FAR }),
+          keep: (session: { readonly token: string }) => {
+            token = session.token;
+          },
+          forget: (forgotten: string) => {
+            if (token === forgotten) token = null;
+          },
+        },
+      };
+    };
+
+    // witness: packages/client-runtime/src/zerops/hq/client.ts | if (taken !== null) return taken; →
+    it("is taken in place of a ticket and a socket when it was opened with the session the client keeps, and heard as its own", async () => {
+      const hq = ticketing();
+      const sockets = fakeSockets();
+      const ahead = openedAhead("kept-session");
+      const kept = keeping("kept-session");
+      const api = makeHqApi({
+        address: ADDRESS,
+        fetch: hq.fetch,
+        accessToken: doors().accessToken,
+        orgId: ORG,
+        openSocket: sockets.openSocket,
+        kept: kept.port,
+        socketName: TAB,
+        openedAhead: ahead.port,
+      });
+      const opened = opening(api);
+      const socket = await opened.socket;
+      expect(ahead.takes).toEqual(["kept-session"]);
+      expect(hq.seen).toEqual([]);
+      socket.send("subscribe");
+      expect(ahead.sent).toEqual(["subscribe"]);
+      ahead.heard().message('{"type":"ping"}');
+      // HQ ending the session over it is heard as over the client's own socket.
+      ahead.heard().close(4401);
+      expect(opened.messages).toEqual(['{"type":"ping"}']);
+      expect(opened.closes).toEqual([4401]);
+      expect(kept.token()).toBeNull();
+    });
+
+    // witness: packages/client-runtime/src/zerops/hq/client.ts | openedAhead = undefined; →
+    it("is asked for once: opened with another session it hands nothing over, and every socket from then on is the client's own, under the same name", async () => {
+      const hq = ticketing();
+      const sockets = fakeSockets();
+      const ahead = openedAhead("another-session");
+      const api = makeHqApi({
+        address: ADDRESS,
+        fetch: hq.fetch,
+        accessToken: doors().accessToken,
+        orgId: ORG,
+        openSocket: sockets.openSocket,
+        kept: keeping("kept-session").port,
+        socketName: TAB,
+        openedAhead: ahead.port,
+      });
+      opening(api);
+      const first = await sockets.next();
+      opening(api);
+      const second = await sockets.next();
+      expect(ahead.takes).toEqual(["kept-session"]);
+      expect(hq.seen.map(({ path, authorization }) => `${path} ${String(authorization)}`)).toEqual([
+        "/api/stream-ticket Bearer kept-session",
+        "/api/stream-ticket Bearer kept-session",
+      ]);
+      expect([first, second].map(({ url }) => new URL(url).searchParams.get("socket"))).toEqual([
+        TAB,
+        TAB,
+      ]);
+    });
+
+    // witness: packages/client-runtime/src/zerops/hq/client.ts | if (taken !== null && signal.aborted) taken.close(); →
+    it("is closed, not kept, when the open was given up while it was being taken", async () => {
+      const hq = ticketing();
+      const ahead = openedAhead("kept-session");
+      const abort = new AbortController();
+      const api = makeHqApi({
+        address: ADDRESS,
+        fetch: hq.fetch,
+        accessToken: doors().accessToken,
+        orgId: ORG,
+        openSocket: fakeSockets().openSocket,
+        kept: keeping("kept-session").port,
+        socketName: TAB,
+        openedAhead: ahead.port,
+      });
+      const opened = opening(api, abort.signal);
+      abort.abort();
+      await expect(opened.socket).rejects.toBeDefined();
+      expect(ahead.closed()).toBe(true);
+      expect(hq.seen).toEqual([]);
+    });
+
+    // witness: packages/client-runtime/src/zerops/hq/client.ts | if (taken === null) ahead.release(); →
+    it.each([
+      {
+        when: "keeps no session: its door comes first",
+        kept: () => keeping(null).port,
+        ends: async (opened: ReturnType<typeof opening>, hq: ReturnType<typeof ticketing>) => {
+          await opened.socket;
+          expect(hq.seen.at(-1)).toMatchObject({
+            path: "/api/stream-ticket",
+            authorization: "Bearer session-1",
+          });
+        },
+      },
+      {
+        when: "finds its account changed: the open ends as it did without it",
+        kept: () => ({
+          ...keeping("kept-session").port,
+          read: () => {
+            throw new HqError({ kind: "refused", code: "account_changed", message: "Changed." });
+          },
+        }),
+        ends: async (opened: ReturnType<typeof opening>, hq: ReturnType<typeof ticketing>) => {
+          await expect(opened.socket).rejects.toMatchObject({ code: "account_changed" });
+          expect(hq.seen).toEqual([]);
+        },
+      },
+    ])("is closed at once by a client that $when", async ({ kept, ends }) => {
+      const hq = ticketing();
+      const ahead = openedAhead("kept-session");
+      const api = makeHqApi({
+        address: ADDRESS,
+        fetch: hq.fetch,
+        accessToken: doors().accessToken,
+        orgId: ORG,
+        openSocket: fakeSockets().openSocket,
+        kept: kept(),
+        socketName: TAB,
+        openedAhead: ahead.port,
+      });
+      const opened = opening(api);
+      expect(ahead.released()).toBe(true);
+      await ends(opened, hq);
+      expect(ahead.takes).toEqual([]);
+    });
+
+    // witness: packages/client-runtime/src/zerops/hq/client.ts | if (taken === null) ahead.release(); →
+    it("is closed when the door the client is at fails, and the open fails as that door did", async () => {
+      const hq = fakeHq((seen) =>
+        seen.path === "/api/door" ? json(403, { code: "forbidden" }) : undefined,
+      );
+      const ahead = openedAhead("kept-session");
+      const api = makeHqApi({
+        address: ADDRESS,
+        fetch: hq.fetch,
+        accessToken: doors().accessToken,
+        orgId: ORG,
+        openSocket: fakeSockets().openSocket,
+        kept: keeping(null).port,
+        socketName: TAB,
+        openedAhead: ahead.port,
+      });
+      // A read is at the door when the stream opens: the open waits at that door, as without it.
+      const read = api.structure();
+      const opened = opening(api);
+      await expect(read).rejects.toMatchObject({ code: "forbidden" });
+      await expect(opened.socket).rejects.toMatchObject({ code: "forbidden" });
+      expect(ahead.released()).toBe(true);
+      expect(ahead.takes).toEqual([]);
+      expect(hq.seen.map(({ path }) => path)).toEqual(["/api/door"]);
+    });
+
+    // witness: packages/client-runtime/src/zerops/hq/client.ts | ahead.socketName === socketName && kept !== null → kept !== null
+    it("is not taken when it was opened under another name than the client's: it is closed at once, and the client's own socket carries the client's name", async () => {
+      const hq = ticketing();
+      const sockets = fakeSockets();
+      const ahead = openedAhead("kept-session", "another-name");
+      const api = makeHqApi({
+        address: ADDRESS,
+        fetch: hq.fetch,
+        accessToken: doors().accessToken,
+        orgId: ORG,
+        openSocket: sockets.openSocket,
+        kept: keeping("kept-session").port,
+        socketName: TAB,
+        openedAhead: ahead.port,
+      });
+      await opening(api).socket;
+      expect(ahead.takes).toEqual([]);
+      expect(ahead.released()).toBe(true);
+      const own = await sockets.next();
+      expect(new URL(own.url).searchParams.get("socket")).toBe(TAB);
+    });
+
+    // witness: packages/client-runtime/src/zerops/hq/client.ts | const socketName = input.socketName ?? freshHqSocketName(); → const socketName = freshHqSocketName();
+    it("a press is held under the name of the stream taken over: the one name its owner gave both", async () => {
+      const presses: Array<unknown> = [];
+      const hq = fakeHq((seen) => {
+        if (!seen.path.startsWith("/api/presses/")) return undefined;
+        presses.push((seen.body as { readonly socket?: unknown }).socket);
+        return json(200, {});
+      });
+      const ahead = openedAhead("kept-session");
+      const api = makeHqApi({
+        address: ADDRESS,
+        fetch: hq.fetch,
+        accessToken: doors().accessToken,
+        orgId: ORG,
+        openSocket: fakeSockets().openSocket,
+        kept: keeping("kept-session").port,
+        socketName: TAB,
+        openedAhead: ahead.port,
+      });
+      await opening(api).socket;
+      await api.holdPress("p1", { owner: "tab-1", kind: "mate", appId: "app-1" });
+      expect(ahead.takes).toEqual(["kept-session"]);
+      expect(presses).toEqual([ahead.port.socketName]);
+    });
+  });
+
   it("writes a Mate's name and face to HQ", async () => {
     const hq = fakeHq();
     const api = makeHqApi({

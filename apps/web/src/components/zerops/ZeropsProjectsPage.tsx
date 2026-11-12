@@ -250,6 +250,8 @@ import {
 } from "./projects/projectsView.logic";
 import { OverviewFilterEmpty, OverviewFilters } from "./projects/OverviewFilters";
 import { OverviewCardsStandIn, OverviewStandInBody } from "./projects/OverviewStandIn";
+import { MENU_HOLDS_FOR_HQ_MS, useLoadFill } from "~/lib/loadFills";
+
 import { applicationContents, groupIsEmpty } from "./projects/emptyApps.logic";
 import { projectDeleteActions } from "./projects/projectDelete";
 import {
@@ -2723,6 +2725,7 @@ export function ZeropsProjectsContent({
           show={search.show}
           // The things that wait on the viewer, the menu's badge's number at the same moment.
           waiting={waiting.items.length}
+          withCards={painted && keptGroups.length > 0}
         />
       ) : null}
       {project === undefined && search.show !== undefined && keptGroups.length === 0 ? (
@@ -3074,7 +3077,7 @@ export function ZeropsProjectsPage({ inPanel = false }: { readonly inPanel?: boo
   // menu and the overview land together. Content stays mounted under the wait: its reads go on.
   const sourcesSettled = useMenuRows(NO_ROWS).settled;
   const [standing, latchPainted] = usePaintStanding(activeOrganization?.id);
-  const paints =
+  const settled =
     !scoped ||
     overviewPaints({
       listing,
@@ -3083,6 +3086,11 @@ export function ZeropsProjectsPage({ inPanel = false }: { readonly inPanel?: boo
       drawn: standing.drawn,
       troubled: error !== null,
     });
+  // Its head and filters stand with the menu's fill (`loadFills`): settled before the menu, on the
+  // menu's own rule, the page holds for it as long as the menu itself would hold its rows, so the
+  // page's words and the menu's rows come in one frame; its cards are then its own fill.
+  // Beside a conversation (a Chief's panel) it is no page of the load: the conversation is.
+  const paints = useLoadFill(inPanel ? null : "page", settled, { patience: MENU_HOLDS_FOR_HQ_MS });
   latchPainted(scoped && paints);
   // First run owns the page: an account with nothing in it gets the
   // invitation and no title row over it — a "Projects" heading with a reload

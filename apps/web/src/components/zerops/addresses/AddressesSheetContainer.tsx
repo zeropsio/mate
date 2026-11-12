@@ -107,9 +107,15 @@ function useAddressWriter(place: PlaceKey) {
   const operations = useAccountOperations();
   const held = useAddressFlights((state) => state.byPlace[placeKeyOf(place)] ?? NO_PLACE_FLIGHTS);
   const write = useCallback(
-    async (write: AddressWrite): Promise<boolean> => {
+    async (write: AddressWrite, how?: { readonly quiet: boolean }): Promise<boolean> => {
       // A sign-out mid-flight must not write state back onto the next account.
-      const { taken } = await runAddressWrite(operations, place, write, captureAccountLifetime());
+      const { taken } = await runAddressWrite(
+        operations,
+        place,
+        write,
+        captureAccountLifetime(),
+        how?.quiet === true,
+      );
       return taken;
     },
     [operations, place],

@@ -177,3 +177,117 @@ export function writeOverviewCardsMemory(
     /* A storage policy can make this visit forget. */
   }
 }
+
+const MENU_ROWS_KEY = "mate:menu-rows:v2";
+const CALLED_KEY = "mate:called:v1";
+
+/**
+ * How many rows the last visit's menu drew in the organization `orgId`: what its loading rows
+ * stand in for on the next load's first frame (the boot frame reads the same key, `index.html`).
+ * `null` when nothing is remembered of that organization.
+ */
+export function readMenuRowsMemory(
+  orgId: string,
+  storage: Pick<Storage, "getItem"> | undefined = accountStorage(),
+): number | null {
+  const count = readRecord(MENU_ROWS_KEY, storage)[orgId];
+  return typeof count === "number" && Number.isInteger(count) && count >= 0 ? count : null;
+}
+
+export function writeMenuRowsMemory(
+  orgId: string,
+  count: number,
+  storage: Pick<Storage, "getItem" | "setItem"> | undefined = accountStorage(),
+): void {
+  try {
+    const held = readRecord(MENU_ROWS_KEY, storage);
+    if (held[orgId] === count) return;
+    storage?.setItem(MENU_ROWS_KEY, JSON.stringify({ ...held, [orgId]: count }));
+  } catch {
+    /* A storage policy can make this visit forget. */
+  }
+}
+
+/**
+ * What a load remembers for its first frame beside the Mates' names (`mateIdentityMemory`), and
+ * `footers`, which an earlier build kept and none reads.
+ */
+const LOAD_MEMORY =
+  /^mate:account:[^:]+:mate:(?:identities|overview-cards|menu-rows|called|chief|footers|boot-page):v\d+$/u;
+
+/**
+ * Forgets what every account's loads remembered on this device: at sign-out, when whoever opens
+ * the app next must not see the last person's rows, name, Chief or conversation feet.
+ */
+export function forgetLoadMemory(storage: Storage | undefined = globalStorage()): void {
+  try {
+    if (storage === undefined) return;
+    const keys = Array.from({ length: storage.length }, (_, index) => storage.key(index));
+    for (const key of keys) if (key !== null && LOAD_MEMORY.test(key)) storage.removeItem(key);
+  } catch {
+    /* Storage refused: there is nothing it kept either. */
+  }
+}
+
+/**
+ * Forgets what the open account's loads remembered of the organization `orgId`: when HQ refuses
+ * it, what was remembered there names nothing the person may still see.
+ */
+export function forgetOrganizationMemory(
+  orgId: string,
+  storage: Pick<Storage, "getItem" | "setItem"> | undefined = accountStorage(),
+): void {
+  try {
+    for (const key of [MENU_ROWS_KEY, CALLED_KEY, CHIEF_KEY]) {
+      const held = readRecord(key, storage);
+      if (!Object.hasOwn(held, orgId)) continue;
+      const { [orgId]: _forgotten, ...kept } = held;
+      storage?.setItem(key, JSON.stringify(kept));
+    }
+  } catch {
+    /* A storage policy can make this visit forget on its own. */
+  }
+}
+
+const globalStorage = (): Storage | undefined =>
+  typeof window === "undefined" ? undefined : window.localStorage;
+
+function readRecord(
+  key: string,
+  storage: Pick<Storage, "getItem"> | undefined,
+): Record<string, unknown> {
+  try {
+    const raw = storage?.getItem(key);
+    const parsed: unknown = raw == null ? null : JSON.parse(raw);
+    return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * What the organization's member list called the person looking, as the last visit read it: the
+ * menu's foot and the Chief's row say it on a reload's first frame, in the form the list's answer
+ * leaves them. `undefined` when nothing is remembered.
+ */
+export function readCalledMemory(
+  orgId: string,
+  storage: Pick<Storage, "getItem"> | undefined = accountStorage(),
+): string | undefined {
+  const called = readRecord(CALLED_KEY, storage)[orgId];
+  return typeof called === "string" && called.length > 0 ? called : undefined;
+}
+
+export function writeCalledMemory(
+  orgId: string,
+  called: string,
+  storage: Pick<Storage, "getItem" | "setItem"> | undefined = accountStorage(),
+): void {
+  try {
+    const held = readRecord(CALLED_KEY, storage);
+    if (held[orgId] === called) return;
+    storage?.setItem(CALLED_KEY, JSON.stringify({ ...held, [orgId]: called }));
+  } catch {
+    /* A storage policy can make this visit forget. */
+  }
+}

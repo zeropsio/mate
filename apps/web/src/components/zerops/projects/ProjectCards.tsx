@@ -20,6 +20,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 
@@ -30,6 +31,8 @@ import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { rememberOverviewCards } from "~/zerops/overviewCardCount";
 import { useNowMs } from "~/zerops/useNowMs";
 import { watchIntersections } from "~/lib/restingIntersections";
+import { fadeFillOver } from "~/lib/loadFills";
+import { makeRowFill } from "./cardRowFill";
 import { StopReadAgain } from "../StopReadAgain";
 import { heldLine } from "./emptyApps.logic";
 import { ProjectCardStandIn } from "./OverviewStandIn";
@@ -87,6 +90,42 @@ const BELOW_KEPT_PX = 64;
  */
 const CardRowRoot = createContext<HTMLElement | null>(null);
 
+/**
+ * The row's first fill (`loadFills`: the overview's cards are its page's fill): the cards in sight
+ * when the row is first read stand in until each has its answer — HQ's, or its own patience's end
+ * — and then take their stand-ins' places in one frame, never one by one as HQ answers. After
+ * that a card answers for itself: one scrolled into sight is the person's own doing.
+ */
+const CardRowFill = createContext<{
+  readonly filled: boolean;
+  readonly report: (groupId: string, state: "waiting" | "answered" | null) => void;
+} | null>(null);
+
+function useCardRowFill() {
+  // The row's word and the document's (`cardRowFill`), told in one pass: the page's filters come
+  // in with its cards, never a frame ahead of them.
+  const [fill] = useState(makeRowFill);
+  const filled = useSyncExternalStore(fill.subscribe, fill.filled, fill.filled);
+  const cards = useRef(new Map<string, "waiting" | "answered">());
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const report = useCallback(
+    (groupId: string, state: "waiting" | "answered" | null) => {
+      if (state === null) cards.current.delete(groupId);
+      else cards.current.set(groupId, state);
+      const states = [...cards.current.values()];
+      if (states.length > 0 && states.every((answer) => answer === "answered")) fill.fill();
+      // One slow answer does not hold the others long: they fill, and it fades in alone.
+      else if (state === "answered") timer.current ??= setTimeout(fill.fill, CARD_ROW_WAITS_MS);
+    },
+    [fill],
+  );
+  useEffect(() => () => clearTimeout(timer.current), []);
+  return useMemo(() => ({ filled, report }), [filled, report]);
+}
+
+/** How long the row's first cards, some answered, wait for the rest before they fill without them. */
+const CARD_ROW_WAITS_MS = 300;
+
 /** The nearest ancestor that scrolls down: the page's own scroll, or a panel's. */
 function scrollingParent(element: HTMLElement): HTMLElement | null {
   for (let at = element.parentElement; at !== null; at = at.parentElement) {
@@ -110,6 +149,7 @@ function CardRow({
   readonly contentsKey: string;
 }) {
   const row = useRef<HTMLDivElement>(null);
+  const rowFill = useCardRowFill();
   const [rowElement, setRowElement] = useState<HTMLDivElement | null>(null);
   const rowRef = useCallback((element: HTMLDivElement | null) => {
     row.current = element;
@@ -184,7 +224,9 @@ function CardRow({
         ref={rowRef}
         role="list"
       >
-        <CardRowRoot value={rowElement}>{children}</CardRowRoot>
+        <CardRowRoot value={rowElement}>
+          <CardRowFill value={rowFill}>{children}</CardRowFill>
+        </CardRowRoot>
       </div>
       <button
         aria-label="Back"
@@ -272,7 +314,32 @@ function useDetailWhileSeen(groupId: string) {
     };
   }, [element, root, seen]);
   useHqAppDetailHold(seen ? [groupId] : NO_GROUPS);
-  return { ref, answered };
+  // The row's first fill: in sight, it reports where it stands, and paints with its neighbours.
+  const row = useContext(CardRowFill);
+  const report = row?.report;
+  useEffect(() => {
+    if (report === undefined || !seen) return;
+    report(groupId, answered ? "answered" : "waiting");
+  }, [report, groupId, seen, answered]);
+  useEffect(() => {
+    if (report === undefined) return;
+    return () => report(groupId, null);
+  }, [report, groupId]);
+  // Shown once, a card stays shown; until the row's first fill it stands in with its neighbours.
+  const [stood, setStood] = useState(false);
+  // Outside an account there is no detail to wait for, and out of sight no fill to stand with.
+  const shown = stood || (answered && (row === null || row.filled || orgId === null || !seen));
+  if (shown && !stood) setStood(true);
+  // A card that takes its stand-in's place fades in where it stands (`fadeFillOver`).
+  const stoodIn = useRef(false);
+  useLayoutEffect(() => {
+    if (!shown) stoodIn.current = true;
+    else if (stoodIn.current && element !== null) {
+      stoodIn.current = false;
+      fadeFillOver(element);
+    }
+  }, [shown, element]);
+  return { ref, answered: shown };
 }
 
 const NO_GROUPS: ReadonlyArray<string> = [];

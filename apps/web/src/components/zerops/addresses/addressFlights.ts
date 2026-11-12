@@ -74,6 +74,11 @@ export async function runAddressWrite(
   write: AddressWrite,
   /** Whether the account that asked is still the one signed in. */
   isCurrent: () => boolean = () => true,
+  /**
+   * The sheet asked by itself, not the person: a refusal or a failure is kept from the control,
+   * since nobody pressed it. A press of theirs says why as ever.
+   */
+  quiet = false,
 ): Promise<{ readonly taken: boolean; readonly ended: Promise<void> }> {
   const key = placeKeyOf(place);
   const control = writeKey(write);
@@ -88,7 +93,9 @@ export async function runAddressWrite(
     change(key, (held) => ({
       flights: without(held.flights, control),
       trouble:
-        trouble === null || !isCurrent() ? held.trouble : { ...held.trouble, [control]: trouble },
+        trouble === null || quiet || !isCurrent()
+          ? held.trouble
+          : { ...held.trouble, [control]: trouble },
       unsure: unsure ? { ...held.unsure, [control]: true } : held.unsure,
     }));
   };

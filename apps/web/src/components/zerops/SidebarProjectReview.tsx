@@ -159,6 +159,15 @@ export function HeaderReviewDoor({
 }
 
 /**
+ * The door's seat while the menu that draws it is still being read: as wide as the door stood on
+ * this page at the last visit (`doorSeatStood`), empty, so the door comes into it and what the
+ * chat is about never moves over for it.
+ */
+export function HeaderReviewSeat({ width }: { readonly width: number }): ReactNode {
+  return <span aria-hidden="true" className="chat-header-review" data-seat="" style={{ width }} />;
+}
+
+/**
  * The menu's word on what waits in a project (the owner, 2026-10-12: "in the left menu, just add
  * some clear indication without the ability to merge … after the name, one for merge one for
  * release … with small number when there are more"): a mark for the changes waiting on a review

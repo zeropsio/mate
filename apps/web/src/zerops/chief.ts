@@ -1,10 +1,10 @@
 /**
  * The Chief: a person's own Mate for the whole organization rather than one project, the way the
  * owner works with a coding agent that reaches every project. Its project carries
- * {@link CHIEF_TAG}, and HQ says whose it is (`GET /api/chief`): the viewer's own is the menu's top
- * row, apart from the projects, once it exists or is being set up; before that the account menu
- * offers it (`chiefOffered`), and its empty conversation asks about the organization. Another
- * person's Chief appears nowhere.
+ * {@link CHIEF_TAG}, and HQ's person facts say whose it is (`chief`): the viewer's own is the
+ * menu's top row, apart from the projects, once it exists or is being set up; before that the
+ * account menu offers it (`chiefOffered`), and its empty conversation asks about the organization.
+ * Another person's Chief appears nowhere.
  */
 export const CHIEF_TAG = "chief";
 

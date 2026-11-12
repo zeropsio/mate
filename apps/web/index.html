@@ -563,7 +563,10 @@
           width: var(--boot-menu-width, 304px);
           /* The menu's edge: its text at 10 % (8 % dark), as [data-app-sidebar] draws it. */
           border-right: 1px solid
-            color-mix(in srgb, var(--boot-foreground, currentColor) 10%, transparent);
+            var(
+              --boot-edge,
+              color-mix(in srgb, var(--boot-foreground, currentColor) 10%, transparent)
+            );
           background-color: var(--boot-sidebar, transparent);
           background-clip: padding-box;
           background-image: var(--surface-grain, none);
@@ -571,10 +574,9 @@
         }
 
         html.dark[data-boot-frame="app"] #boot-shell-menu {
-          border-right-color: color-mix(
-            in srgb,
-            var(--boot-foreground, currentColor) 8%,
-            transparent
+          border-right-color: var(
+            --boot-edge,
+            color-mix(in srgb, var(--boot-foreground, currentColor) 8%, transparent)
           );
         }
 
@@ -587,15 +589,38 @@
           position: absolute;
           top: var(--sidebar-menu-header-height);
           right: var(--sidebar-content-inset);
+          /* The list's room ends where the menu's foot begins: its 72 px and the 8 px above it. */
+          bottom: 80px;
           left: calc(var(--sidebar-content-inset) + 1px);
+          overflow: hidden;
+          /* The list fades out over its last 8 px, as the menu's scroll area fades it. */
+          mask-image: linear-gradient(to bottom, #000 calc(100% - 8px), transparent);
         }
 
+        /* The app's own tone for them where the last visit left it (`--boot-row`). */
         #boot-shell-menu-loading span {
-          background: color-mix(in srgb, var(--boot-sidebar, #fafafa) 50%, #fff);
+          background: var(--boot-row, color-mix(in srgb, var(--boot-sidebar, #fafafa) 50%, #fff));
         }
 
         html.dark #boot-shell-menu-loading span {
-          background: color-mix(in srgb, var(--boot-foreground, #f5f5f5) 8%, transparent);
+          background: var(
+            --boot-row,
+            color-mix(in srgb, var(--boot-foreground, #f5f5f5) 8%, transparent)
+          );
+        }
+
+        /* The menu's top band and its and the header's controls, where the page was left with
+           them. */
+        #boot-shell-frame > * {
+          position: absolute;
+          box-sizing: border-box;
+        }
+
+        #boot-shell-frame svg {
+          fill: none;
+          stroke: currentColor;
+          stroke-linecap: round;
+          stroke-linejoin: round;
         }
 
         html[data-boot-frame="app"] #boot-shell-page {
@@ -693,6 +718,65 @@
           root.dataset.bootMenu = "rail";
           root.style.setProperty("--boot-menu-width", "88px");
         }
+        // As many loading rows as the menu drew last time in the organization this browser has
+        // open (`mate:menu-rows:v2` by organization, as `MenuSkeleton` reads it), no more than a
+        // screen holds: the app's first frame draws the same rows.
+        let rows = 1;
+        try {
+          const owner = JSON.parse(
+            window.localStorage.getItem("zerops-mate.zerops-session-owner.v1") ?? "null",
+          );
+          if (owner !== null && typeof owner.userId === "string") {
+            const user = encodeURIComponent(owner.userId);
+            const organization = JSON.parse(
+              window.localStorage.getItem(`zerops-mate.zerops-selection.v1:${user}`) ?? "null",
+            )?.clientId;
+            const count = JSON.parse(
+              window.localStorage.getItem(`mate:account:${user}:mate:menu-rows:v2`) ?? "null",
+            )?.[organization];
+            if (Number.isInteger(count) && count >= 0) rows = count;
+          }
+        } catch {
+          rows = 1;
+        }
+        root.dataset.bootMenuRows = String(
+          Math.min(rows, Math.max(1, Math.ceil((window.innerHeight - 151) / 72))),
+        );
+        // The page as it stood when it was left (`bootPageMemory.ts`): the loading rows' tone for
+        // the same appearance, and for the same address and window the header's controls, which
+        // the body's script draws where the app's first frame draws them.
+        try {
+          const owner = JSON.parse(
+            window.localStorage.getItem("zerops-mate.zerops-session-owner.v1") ?? "null",
+          );
+          const page =
+            owner !== null && typeof owner.userId === "string"
+              ? JSON.parse(
+                  window.localStorage.getItem(
+                    `mate:account:${encodeURIComponent(owner.userId)}:mate:boot-page:v1`,
+                  ) ?? "null",
+                )
+              : null;
+          // What storage holds is not trusted: a colour is a colour's characters and nothing that
+          // fetches (`url(`), and the frame is built only at the widths its rules place it.
+          const tone = (value) =>
+            typeof value === "string" &&
+            /^[\w\s#%.,()/+-]{1,200}$/.test(value) &&
+            !/url|image|expression/i.test(value);
+          if (page !== null && page.dark === root.classList.contains("dark")) {
+            if (tone(page.row)) root.style.setProperty("--boot-row", page.row);
+            if (tone(page.edge)) root.style.setProperty("--boot-edge", page.edge);
+            if (
+              !closed &&
+              page.vw === window.innerWidth &&
+              page.vh === window.innerHeight &&
+              window.matchMedia("(min-width: 768px)").matches
+            )
+              window.__bootPage = page;
+          }
+        } catch {
+          // Storage refused or unreadable: the menu alone, as before.
+        }
       })();
     </script>
     <title>Zerops Mate (Alpha)</title>
@@ -705,9 +789,85 @@
           data-zerops-surface="sidebar-environments-skeleton"
           aria-hidden="true"
         >
-          <div><span></span><span></span></div>
+          <div><span></span><span></span><span></span></div>
         </div>
       </div>
+      <script>
+        // The loading rows the head's script counted (`data-boot-menu-rows`), before the first frame.
+        (() => {
+          const list = document.getElementById("boot-shell-menu-loading");
+          const row = list?.firstElementChild;
+          const rows = Number(document.documentElement.dataset.bootMenuRows ?? "1");
+          if (!list || !row) return;
+          if (rows === 0) row.remove();
+          for (let at = 1; at < rows; at += 1) list.append(row.cloneNode(true));
+        })();
+      </script>
+      <script>
+        // The remembered frame (`window.__bootPage`, set by the head's script): numbers place it,
+        // colours paint it, shapes are built one by one, and nothing of it is markup.
+        (() => {
+          const page = window.__bootPage;
+          const shell = document.getElementById("boot-shell");
+          if (!page || !shell) return;
+          const here = page.path === window.location.pathname;
+          // What storage holds is not trusted: a colour is a colour's characters, never an address.
+          const tone = (value) => {
+            const text = String(value);
+            return /^[\w\s#%.,()/+-]{1,200}$/.test(text) && !/url|image|expression/i.test(text)
+              ? text
+              : "";
+          };
+          const frame = document.createElement("div");
+          frame.id = "boot-shell-frame";
+          frame.setAttribute("aria-hidden", "true");
+          const place = (node, at) => {
+            const [x, y, width, height] = at.map(Number);
+            if (![x, y, width, height].every(Number.isFinite)) return false;
+            Object.assign(node.style, {
+              left: `${x}px`,
+              top: `${y}px`,
+              width: `${width}px`,
+              height: `${height}px`,
+            });
+            return frame.appendChild(node) === node;
+          };
+          try {
+            if (page.top && Array.isArray(page.top.at)) {
+              const top = document.createElement("div");
+              top.style.backgroundColor = tone(page.top.surface);
+              top.style.borderRadius = tone(page.top.radius);
+              place(top, page.top.at);
+            }
+            const ns = "http://www.w3.org/2000/svg";
+            const drawn = /^(path|circle|rect|line|polyline|ellipse)$/;
+            // A closed list, as the writer's is: a shape's numbers and nothing else — never a
+            // handler, an address or markup, whatever storage holds.
+            const allowed = /^(?:d|points|c[xy]|r[xy]?|x[12]?|y[12]?|width|height)$/;
+            const plain = /^[\dA-Za-z\s,.+-]{0,4000}$/;
+            for (const icon of Array.isArray(page.icons) ? page.icons : []) {
+              if ((icon.page && !here) || !Array.isArray(icon.at)) continue;
+              const svg = document.createElementNS(ns, "svg");
+              svg.setAttribute("viewBox", "0 0 24 24");
+              svg.setAttribute("stroke-width", String(Number(icon.stroke) || 2));
+              svg.style.color = tone(icon.color);
+              svg.style.opacity = String(Number(icon.opacity));
+              for (const [tag, held] of icon.shapes) {
+                if (!drawn.test(tag)) continue;
+                const shape = document.createElementNS(ns, tag);
+                for (const [name, value] of Object.entries(held))
+                  if (allowed.test(name) && plain.test(String(value)))
+                    shape.setAttribute(name, String(value));
+                svg.append(shape);
+              }
+              place(svg, icon.at);
+            }
+            shell.append(frame);
+          } catch {
+            // A memory this build does not read: the menu alone.
+          }
+        })();
+      </script>
       <div id="boot-shell-page" role="status" aria-live="polite"></div>
       <div id="boot-shell-card" aria-label="Zerops Mate splash screen">
         <!-- generated:boot-mark start -->

@@ -64,26 +64,31 @@ export function mateStatus(
 export interface MateStatusAsk {
   /** What it asks for: a key in people's words ("Stripe secret key"), a question's first line. */
   readonly asked?: string | undefined;
-  /** Its person, to someone who only reads along: they are asked, not the reader. */
+  /** Its person, to someone who only reads along: they are asked, not the reader ("Waiting on Dana"). */
   readonly askedOf?: string | undefined;
 }
 
-/** A waiting Mate's cause: who is asked, to someone reading along; else what is asked, where known. */
+/**
+ * A waiting Mate's cause: what is asked, where known, and of whom to someone reading along. A
+ * value is never a "key": that word is the Mate's own key at HQ, so "Needs a key" read as the Mate
+ * missing a setting of its own.
+ */
 function answerCause(
   status: Extract<MateStatus, { readonly kind: "answer" }>,
   mateName: string,
   label: string,
   ask: MateStatusAsk,
 ): string {
-  if (ask.askedOf !== undefined) {
-    return status.key === true
-      ? `${mateName} asked ${ask.askedOf} for a key`
-      : `${mateName} waits on ${ask.askedOf}'s answer`;
-  }
   const asked = ask.asked
     ?.split("\n")
     .map((line) => line.trim())
     .find((line) => line.length > 0);
+  if (ask.askedOf !== undefined) {
+    if (status.key === true) return `${mateName} needs ${asked ?? "a value"} from ${ask.askedOf}`;
+    return asked === undefined
+      ? `${mateName} waits on ${ask.askedOf}'s answer`
+      : `${mateName} asked ${ask.askedOf}: ${asked}`;
+  }
   return asked === undefined ? `${mateName}: ${label}` : `${label}: ${asked}`;
 }
 
@@ -102,9 +107,11 @@ export function mateStatusWords(
         : status.kind === "sign-in"
           ? (status.admission?.summary ?? "Sign in")
           : status.kind === "answer"
-            ? status.key === true
-              ? "Needs a key"
-              : "Needs an answer"
+            ? ask.askedOf !== undefined
+              ? `Waiting on ${ask.askedOf}`
+              : status.key === true
+                ? "Needs a value"
+                : "Needs an answer"
             : "Needs attention";
   const cause =
     status.kind === "limit"

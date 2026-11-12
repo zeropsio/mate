@@ -25,13 +25,20 @@ export function livePermissionFacts(
   orgId: string,
 ): LivePermissionFacts | undefined {
   const viewer = platformMembership.derive(read, orgId).viewer;
+  // Who they are in Zerops, from the same read their membership comes from (`organizationUser`).
+  const user = read.fact("organizationUser", orgId);
   const roster = read.members(projectsScope(orgId));
-  if (viewer === undefined || roster.coverage !== "complete") return undefined;
+  if (viewer === undefined || user.kind !== "known" || roster.coverage !== "complete")
+    return undefined;
   const listed = new Set(roster.ids);
   const fact = (projectId: string) =>
     listed.has(projectId) ? read.fact("project", projectId) : undefined;
   return {
-    member: { roleCode: viewer.roleCode, canCreateProjects: viewer.canCreateProjects },
+    member: {
+      userId: user.value.id,
+      roleCode: viewer.roleCode,
+      canCreateProjects: viewer.canCreateProjects,
+    },
     project: (projectId) => {
       const project = fact(projectId);
       return project?.kind === "known"
@@ -67,16 +74,18 @@ export function decided<T>(
 
 /**
  * An application as the offers read it (`ApplicationFacts`): the projects HQ holds in it, each by
- * its kind there, and where it releases to — its production's project, a Git production, or none.
+ * its kind there, where it releases to — its production's project, a Git production, or none — and
+ * who merges its changes where it limits that.
  */
 export function applicationFacts(
-  app: Pick<HqAppValue, "environments">,
+  app: Pick<HqAppValue, "environments" | "mergers">,
   placements: ReadonlyArray<{ readonly projectId: string; readonly kind: string }>,
 ): ApplicationFacts {
   const production = app.environments?.find((environment) => environment.tier === "production");
   return {
     projectIds: placements.map((row) => row.projectId),
     placements,
+    ...(app.mergers == null ? {} : { mergers: app.mergers }),
     production:
       production === undefined
         ? null

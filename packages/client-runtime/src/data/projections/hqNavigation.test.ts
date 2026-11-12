@@ -698,6 +698,64 @@ describe("placeable projects", () => {
   });
 });
 
+describe("who merges", () => {
+  /** The shop limiting who merges to `people`, read by a Basic user whose Zerops user id is `user`. */
+  const shop = (people: ReadonlyArray<string> | undefined) => {
+    const app = hqAppFamily.hq!.decode(
+      {
+        id: "shop",
+        name: "Shop",
+        contents: { empty: false, deletingProjectIds: [] },
+        environments: [],
+        changes: [],
+        releaseOffer: null,
+        projectIds: ["ada", "stage"],
+        births: [],
+        ...(people === undefined
+          ? {}
+          : { mergers: { people, setBy: "owner", setAt: "2026-11-12T09:00:00.000Z" } }),
+      },
+      "app:shop",
+    )!;
+    return navigation(
+      apply(read, [
+        ...liveProjects(ORG, [{ id: "ada" }, { id: "stage" }, { id: "lone" }]),
+        ...membershipInputs("BASIC_USER"),
+        {
+          kind: "delivery",
+          via: "hq-stream",
+          scopes: generations,
+          reset: false,
+          rows: [
+            { family: "hqApp", id: "shop", value: app, revision: { ...revision, revision: 2 } },
+          ],
+          removals: [],
+        },
+      ]),
+    ).structure?.apps[0];
+  };
+
+  // witness: packages/client-runtime/src/data/projections/permissionFacts.ts | ...(app.mergers == null ? {} : { mergers: app.mergers }), →
+  it("A project that limits who merges holds Merge for a person it does not name", () => {
+    expect(shop(["ada-k", "sam-r"])?.can?.merge_change).toEqual({
+      allow: false,
+      reason: "not_app_merger",
+    });
+    expect(shop(undefined)?.can?.merge_change).toEqual({ allow: true });
+  });
+
+  // witness: packages/client-runtime/src/data/projections/permissionFacts.ts | userId: user.value.id, →
+  it("The person a project names among those who merge is offered Merge", () => {
+    expect(shop(["ada-k", "user"])?.can?.merge_change).toEqual({ allow: true });
+  });
+
+  // witness: packages/client-runtime/src/data/projections/hqNavigation.ts | ...(app.mergers == null ? {} : { mergers: app.mergers }), →
+  it("The people a project names reach its surfaces as HQ's navigation holds them", () => {
+    expect(shop(["ada-k", "sam-r"])?.mergers?.people).toEqual(["ada-k", "sam-r"]);
+    expect(shop(undefined)?.mergers).toBeUndefined();
+  });
+});
+
 describe("hqMates", () => {
   const presence = { online: true, since: "2026-10-06T00:00:00Z", overview: "live" } as const;
   const withMate = apply(read, [

@@ -20,7 +20,12 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { NO_ANSWER_IN_TIME } from "@t3tools/client-runtime/data";
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
-import { type HqJob, MERGE_TOO_LARGE, mergeTooLargeWords } from "@t3tools/client-runtime/zerops/hq";
+import {
+  type HqJob,
+  MERGE_TOO_LARGE,
+  mergeLimitWords,
+  mergeTooLargeWords,
+} from "@t3tools/client-runtime/zerops/hq";
 import type { CrewTask } from "@t3tools/contracts";
 import type {
   ChangeCommit,
@@ -367,6 +372,23 @@ const DEVELOPS: ZeropsChangeOffers = {
   why: {},
   readRefused: false,
 };
+/** The people the project's merge limit names, as the member list calls them. */
+const MERGER_NAMES: Readonly<Record<string, string>> = {
+  "u-ada": "Ada K.",
+  "u-sam": "Sam R.",
+  "u-lee": "Lee P.",
+  "u-noor": "Noor T.",
+  "u-kim": "Kim L.",
+};
+/** Who merges, as the held press says it of the first `named` of them. */
+const mergersOnly = (named: number) =>
+  mergeLimitWords(Object.keys(MERGER_NAMES).slice(0, named), (userId) => MERGER_NAMES[userId]);
+/** Merge held by the project's merge limit: comment and Close stay, Merge says who merges. */
+const mergeHeld = (named: number): ZeropsChangeOffers => ({
+  ...DEVELOPS,
+  merge: false,
+  why: { merge: mergersOnly(named) },
+});
 /** Merged a minute ago: the review says what happened, and offers the release's review. */
 const MERGED_NOW: Partial<FlowPullRequest> = {
   state: "closed",
@@ -1227,6 +1249,16 @@ export const RELEASE_SHEETS: ReadonlyArray<ReleaseSheet> = [
     },
   },
   {
+    id: "release-merge-limited",
+    label: "Release · to Git, held by the project's merge limit: who merges, by name",
+    props: {
+      over: {
+        gate: { allowed: false, reason: mergersOnly(2), refusedBy: "hq" },
+        permission: { allowed: false, reason: mergersOnly(2), refusedBy: "hq" },
+      },
+    },
+  },
+  {
     id: "release-nothing",
     label: "Release · nothing merged to release",
     props: { over: { gate: { allowed: false, reason: RELEASE_NOTHING_MERGED }, rows: [] } },
@@ -1984,6 +2016,21 @@ export const REVIEW_STATES: ReadonlyArray<{
     id: "not-offered",
     label: "Ready, to a person HQ's rule offers neither Merge nor Close",
     node: <Change offers={{ ...DEVELOPS, merge: false, close: false }} />,
+  },
+  {
+    id: "merge-limited",
+    label: "Ready, to a person the project's merge limit holds: who merges, by name",
+    node: <Change offers={mergeHeld(2)} />,
+  },
+  {
+    id: "merge-limited-many",
+    label: "Merge held by the limit, five people named: the first three and how many more",
+    node: <Change offers={mergeHeld(5)} />,
+  },
+  {
+    id: "merge-limited-nobody",
+    label: "Merge held by the limit, nobody named: the organization's Owner and Admins",
+    node: <Change offers={mergeHeld(0)} />,
   },
   { id: "merging", label: "Merging", node: <Change press={{ kind: "running" }} /> },
   {

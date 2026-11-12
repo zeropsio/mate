@@ -17,7 +17,7 @@ import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import { ServerConfig } from "../config.ts";
 import { ProviderRuntimeEventBusTest } from "../spi/ProviderRuntimeEventBus.ts";
-import { ZeropsMateAccessList } from "../zerops/ZeropsMateAccessList.ts";
+import { ZeropsProjectFeed } from "../zerops/ZeropsProjectFeed.ts";
 import { resolveZeropsEnvironment } from "../zerops/ZeropsEnvironment.ts";
 import { makeUsageCapture } from "./UsageCapture.ts";
 
@@ -68,9 +68,9 @@ const config = ServerConfig.of({
     apiToken: undefined,
   }),
 } as ServerConfig["Service"]);
-const org = ZeropsMateAccessList.of({
+const org = ZeropsProjectFeed.of({
   ownProject: Effect.succeed(Option.some({ clientId: "org", overrides: {} })),
-} as unknown as ZeropsMateAccessList["Service"]);
+} as unknown as ZeropsProjectFeed["Service"]);
 
 describe("usage capture admission", () => {
   it.effect.each(
@@ -136,7 +136,7 @@ describe("usage capture admission", () => {
     }).pipe(
       Effect.provide(NodeServices.layer),
       Effect.provideService(ServerConfig, config),
-      Effect.provideService(ZeropsMateAccessList, org),
+      Effect.provideService(ZeropsProjectFeed, org),
     ),
   );
 });

@@ -435,7 +435,11 @@ import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline, type TimelinePersonInput } from "./chat/MessagesTimeline";
 import { KeptTimelines } from "./chat/KeptTimelines";
 import { useStableHandlers } from "../hooks/useStableHandlers";
-import { ConversationOpeningWaits } from "./chat/ConversationOpeningStage";
+import {
+  ConversationOpeningArrival,
+  ConversationOpeningWaits,
+} from "./chat/ConversationOpeningStage";
+import { useFillFact } from "~/lib/loadFills";
 import { useWarmTimelineAsk } from "./chat/warmTimeline";
 import { shouldTypeToFocusComposer } from "./chat/typeToFocus";
 import { rememberTimelineInset, rememberedTimelineInset } from "./chat/timelineInsets";
@@ -1866,9 +1870,24 @@ function ConversationView(props: ChatViewProps) {
         setComposerAskingHeight(nextHeight);
         return;
       }
-      setComposerAskingHeight(0);
+      // What stands above the composer's own room (`data-over-conversation`: a notice, a lead's
+      // plan, why Send waits) arrives after the conversation is read, so it takes the same seat:
+      // over the conversation's end, the inset the composer's alone. It pushed the list by its own
+      // height the moment it came, a beat after the conversation appeared. Measured as the room
+      // it takes in the footer (a notice tucks under the composer, so its box says more).
+      let over = 0;
+      const composer = composerOverlayElement.querySelector("[data-footer-composer]");
+      if (composer !== null && composerOverlayElement.dataset["chatComposerHero"] !== "true") {
+        const padding = Number.parseFloat(getComputedStyle(composerOverlayElement).paddingTop);
+        over = composer.getBoundingClientRect().top - overlay.top - (padding || 0);
+        for (const part of composer.querySelectorAll("[data-over-conversation]"))
+          over += part.getBoundingClientRect().height;
+        over = over < 1 ? 0 : Math.round(over);
+      }
+      const inset = Math.max(1, nextHeight - over);
+      setComposerAskingHeight(over > 0 ? nextHeight : 0);
       setComposerElementHeight((currentHeight) =>
-        currentHeight === nextHeight ? currentHeight : nextHeight,
+        currentHeight === inset ? currentHeight : inset,
       );
     };
 
@@ -4451,6 +4470,10 @@ function ConversationView(props: ChatViewProps) {
     zeropsSignInDialog,
   ]);
   const zeropsFooter = admission.footer;
+  // Who writes here is read after the messages: the conversation's fill holds a moment for it,
+  // so the composer comes in with the conversation (`useFillFact`). No box stands ahead of it:
+  // an empty one stood for as long as a slow Mate took to open, and went before the composer came.
+  useFillFact("page", zeropsFooter !== "held");
   const admissionPlacement = useAgentAdmissionPlacement(admission.attention);
   const zeropsHeldDraft = useComposerDraftStore((store) =>
     zeropsFooter === "held" ? (store.getComposerDraft(composerDraftTarget)?.prompt ?? "") : "",
@@ -6128,7 +6151,11 @@ function ConversationView(props: ChatViewProps) {
         !shortcutContext.modelPickerOpen &&
         shouldTypeToFocusComposer(event)
       ) {
-        if (composerRef.current?.insertTextAtEnd(event.key)) {
+        // Under the stage the composer is a stand-in: no key is written anywhere.
+        if (
+          document.querySelector("[data-conversation-footer][inert]") === null &&
+          composerRef.current?.insertTextAtEnd(event.key)
+        ) {
           event.preventDefault();
           event.stopPropagation();
           return;
@@ -8367,8 +8394,7 @@ function ConversationView(props: ChatViewProps) {
     />
   );
   const panelLayoutControls = (
-    <ConversationOpeningWaits
-      as="div"
+    <div
       className={cn(
         // One inset in both states: the controls move between containers when
         // the right panel opens, and a different right offset made them jump
@@ -8376,7 +8402,8 @@ function ConversationView(props: ChatViewProps) {
         "absolute top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] z-50 mr-px flex h-[var(--workspace-topbar-height)] items-center gap-1 [-webkit-app-region:no-drag]",
       )}
       data-workspace-titlebar-controls
-      // The panel toggles arrive with the conversation, as the header's actions do.
+      // The header's own controls stand from the first frame of a load (`HeaderControlsStandIn`
+      // before this view draws): the opening never takes them away to bring them back.
     >
       {rightPanelOpen && !shouldUseRightPanelSheet ? (
         <RightPanelMaximizeControl
@@ -8385,7 +8412,7 @@ function ConversationView(props: ChatViewProps) {
         />
       ) : null}
       {panelToggleControls}
-    </ConversationOpeningWaits>
+    </div>
   );
   // A Chief's overview opens wide enough for two of its cards side by side, as its opening's
   // panel stood (`conversationPanelWidth`).
@@ -8902,7 +8929,7 @@ function ConversationView(props: ChatViewProps) {
             {/* Input bar — centered hero while a draft has no messages, docked at the bottom otherwise */}
             <ConversationOpeningWaits
               as="div"
-              whole
+              foot
               ref={setComposerOverlayElement}
               data-conversation-footer=""
               data-chat-composer-overlay="true"
@@ -8917,7 +8944,8 @@ function ConversationView(props: ChatViewProps) {
                 ref={attachDraftHeroTransitionGroupRef}
                 className="w-full ps-(--workspace-gutter-start) pe-(--workspace-gutter-end)"
               >
-                <div className="pointer-events-auto relative z-10">
+                <ConversationOpeningArrival onArrive={scheduleComposerFocus} />
+                <div className="pointer-events-auto relative z-10" data-footer-parts="">
                   {isDraftHeroState ? (
                     <div className="absolute inset-x-0 bottom-full z-0">
                       <div
@@ -8945,12 +8973,18 @@ function ConversationView(props: ChatViewProps) {
                           <NoticesOverComposer notices={conversationNotices} />
                         </div>
                       ) : null}
-                      <ComposerBannerStack className="relative z-0" items={composerBannerItems} />
+                      {/* What stands above the composer is read after the conversation (a notice of
+                          the Mate's health or link, a lead's plan): it stands over the
+                          conversation's end, as an ask does, and never moves it
+                          (`data-over-conversation`, read where the footer is measured). */}
+                      <div data-over-conversation="">
+                        <ComposerBannerStack className="relative z-0" items={composerBannerItems} />
+                      </div>
                       {/* The lead's plan waits above its composer, where its
                           answer ends (PRD §4.6). */}
                       {activeCrewmate?.crewmate.kind === "lead" &&
                       activeCrewmate.crewmate.currentThreadId === threadId ? (
-                        <div className="mx-auto w-full max-w-3xl pb-2">
+                        <div className="mx-auto w-full max-w-3xl pb-2" data-over-conversation="">
                           <CrewLeadPlan environmentId={environmentId} />
                         </div>
                       ) : null}
@@ -8965,6 +8999,7 @@ function ConversationView(props: ChatViewProps) {
                     // stand-up) but is neither seen nor reached, and fades back once it has gone.
                     aria-hidden={zeropsArrivalHoldsComposer ? true : undefined}
                     className="relative"
+                    data-footer-composer=""
                     data-standup-holds-composer={zeropsArrivalHoldsComposer ? "" : undefined}
                     inert={zeropsArrivalHoldsComposer}
                     style={
@@ -8986,10 +9021,12 @@ function ConversationView(props: ChatViewProps) {
                     >
                       <div className="chat-composer-glass-host relative z-10 w-full">
                         <div ref={attachDraftHeroComposerAnchorRef} className="relative z-10">
-                          <AgentAdmissionExplanation
-                            attention={admissionPlacement.composer}
-                            onAction={openAgentAuthDialog}
-                          />
+                          <div data-over-conversation="">
+                            <AgentAdmissionExplanation
+                              attention={admissionPlacement.composer}
+                              onAction={openAgentAuthDialog}
+                            />
+                          </div>
                           {zeropsFooter === "held" ? (
                             <ComposerRoomHeld
                               draft={zeropsHeldDraft}

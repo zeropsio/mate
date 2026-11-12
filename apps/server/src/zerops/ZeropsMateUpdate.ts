@@ -5,11 +5,12 @@
  * relays its answer through {@link ZeropsCli}, holds the last good result, and exposes it as the
  * descriptor's `update` field.
  *
- * Reads it once at start (cache-served, `--local`) and again whenever the screen asks
- * (`zerops.mate.checkUpdate`, `--refresh`) or a person's Update ran — never fabricating a value:
- * outside a Zerops project, or when `zcp` is not on PATH (MU-3), the held value is always absent.
- * A transient `mate status` failure elsewhere (network, a malformed answer) is logged and the
- * previous good value kept, so one flaky check does not blank the card.
+ * Reads it once at start (`--local`, from zcp's last read without a network call) and again from
+ * the release source whenever the screen asks (`zerops.mate.checkUpdate`) or a person's Update
+ * ran — never fabricating a value: outside a Zerops project, or when `zcp` is not on PATH (MU-3),
+ * the held value is always absent. A transient `mate status` failure elsewhere (network, a
+ * malformed answer) is logged and the previous good value kept, so one flaky check does not blank
+ * the card.
  */
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -32,7 +33,7 @@ export class ZeropsMateUpdate extends Context.Service<
     /** {@link current} now, then every time it changes: the Mate's link to HQ follows it. */
     readonly changes: Stream.Stream<ExecutionEnvironmentUpdate | undefined>;
     /**
-     * `zerops.mate.checkUpdate`'s implementation: runs `zcp mate status --refresh` now, updates
+     * `zerops.mate.checkUpdate`'s implementation: runs `zcp mate status` now, updates
      * {@link current}, and returns the new value — the descriptor's `update` field re-read on
      * demand (MU-1: never a version comparison done here or by the client). A failed check keeps
      * the previous held value and returns it unchanged.
@@ -99,7 +100,7 @@ export const make = (options: ZeropsMateUpdateOptions) =>
       );
 
     const check: Effect.Effect<ExecutionEnvironmentUpdate | undefined> = options.isZeropsEnvironment
-      ? Effect.suspend(() => options.cli.mateStatus({ refresh: true })).pipe(
+      ? Effect.suspend(() => options.cli.mateStatus()).pipe(
           Effect.flatMap(setReading),
           Effect.andThen(SubscriptionRef.get(state)),
           Effect.catchTags({
