@@ -1,6 +1,6 @@
 import * as Schema from "effect/Schema";
 
-/** HQ's policy for its organization. Absence never grants automatic-update permission. */
+/** HQ's policy for its organization. Only a held policy that says off refuses an automatic update. */
 export const HqAutoUpdatePolicy = Schema.Struct({
   orgId: Schema.String,
   enabled: Schema.Boolean,

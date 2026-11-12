@@ -131,9 +131,11 @@ export const makeMateUpdateDrain = Effect.gen(function* () {
             Effect.provideService(TerminalManager, terminals),
           );
           return yield* drainMateUpdate({
+            // An automatic ask is refused only by a held policy that says off: holding none is no
+            // organisation's word, and a Mate that never heard one is the one that must update itself.
             allowed: input.automatic
               ? (policy?.verify ?? Effect.succeedNone).pipe(
-                  Effect.map((value) => Option.isSome(value) && value.value.enabled),
+                  Effect.map((value) => Option.isNone(value) || value.value.enabled),
                 )
               : Effect.succeed(true),
             begin: (rpcAdmission?.begin ?? Effect.void).pipe(

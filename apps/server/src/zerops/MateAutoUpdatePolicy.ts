@@ -69,8 +69,8 @@ const samePolicy = (
 
 /**
  * The file at `at`, replaced whole in one rename, for the HQ at `hqOrigin`. A missing or unreadable
- * file, or one another HQ stated, holds nothing, so it never grants; a write that fails is logged
- * and leaves the last file as it was.
+ * file, or one another HQ stated, holds nothing; a write that fails is logged and leaves the last
+ * file as it was.
  */
 export const makeHeardAutoUpdatePolicyFile = (at: string, hqOrigin: string) =>
   Effect.gen(function* () {
