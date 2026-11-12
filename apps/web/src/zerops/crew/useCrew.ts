@@ -33,9 +33,8 @@ import { useMemo } from "react";
 import { shareEqual } from "@t3tools/shared/structuralSharing";
 
 import { useThreadShells } from "../../state/entities";
+import { sameValue } from "../../lib/sameValue";
 import { zeropsFeeds } from "../../state/zerops";
-
-const NO_CREW_ATOM = Atom.make(undefined).pipe(Atom.withLabel("zerops:crew-empty"));
 
 export interface CrewRead {
   readonly status: CrewStatus | null;
@@ -59,13 +58,38 @@ export function readCrewThread(
   };
 }
 
-export function useCrew(environmentId: EnvironmentId | null): CrewRead {
-  const read = useAtomValue(
-    environmentId === null ? NO_CREW_ATOM : zeropsFeeds.crew({ environmentId, input: {} }),
+const NO_CREW_VALUE_ATOM = Atom.make<Pick<CrewRead, "status" | "snapshot">>({
+  status: null,
+  snapshot: null,
+}).pipe(Atom.withLabel("zerops:crew-value-empty"));
+const NOT_CURRENT_ATOM = Atom.make(false).pipe(Atom.withLabel("zerops:crew-current-empty"));
+
+/**
+ * The crew feed's status and snapshot, the same object while they say the same. The feed is read
+ * again on every return to its Mate and answers the crew it held with a new freshness, twice:
+ * whoever reads the crew and not how fresh it is was drawn again both times.
+ */
+const crewValueAtom = Atom.family((environmentId: EnvironmentId) =>
+  Atom.make((get): Pick<CrewRead, "status" | "snapshot"> => {
+    const { status, snapshot } = crewFeedRead(get(zeropsFeeds.crew({ environmentId, input: {} })));
+    return { status, snapshot };
+  }).pipe(Atom.withEquality(sameValue), Atom.withLabel("zerops:crew-value")),
+);
+
+/** Whether the crew feed's answer is current (`crewFeedRead`): what it says of freshness. */
+const crewCurrentAtom = Atom.family((environmentId: EnvironmentId) =>
+  Atom.make(
+    (get) => crewFeedRead(get(zeropsFeeds.crew({ environmentId, input: {} }))).current,
+  ).pipe(Atom.withLabel("zerops:crew-current")),
+);
+
+/** The crew without its freshness, for a reader that shows the crew and never how fresh it is. */
+export function useCrewValue(environmentId: EnvironmentId | null): Omit<CrewRead, "current"> {
+  const { status, snapshot } = useAtomValue(
+    environmentId === null ? NO_CREW_VALUE_ATOM : crewValueAtom(environmentId),
   );
   const shells = useThreadShells();
   const activities = useAtomValue(environmentActivitiesAtom(environmentId));
-  const { status, snapshot, current } = useMemo(() => crewFeedRead(read), [read]);
   const view = useMemo(
     () =>
       snapshot === null
@@ -77,7 +101,15 @@ export function useCrew(environmentId: EnvironmentId | null): CrewRead {
           ),
     [environmentId, shells, snapshot, activities],
   );
-  return { status, snapshot, view, current };
+  return { status, snapshot, view };
+}
+
+export function useCrew(environmentId: EnvironmentId | null): CrewRead {
+  const value = useCrewValue(environmentId);
+  const current = useAtomValue(
+    environmentId === null ? NOT_CURRENT_ATOM : crewCurrentAtom(environmentId),
+  );
+  return { ...value, current };
 }
 
 /** Whether the environment has a crew surface: a crew applied, or none yet to set up. */
