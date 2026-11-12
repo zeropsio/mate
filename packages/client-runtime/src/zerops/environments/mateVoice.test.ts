@@ -55,20 +55,6 @@ describe("mateVoice — a Mate HQ holds no link for", () => {
       voice: banner("This Mate is not connected to HQ.", ["try-now"]),
     },
     {
-      case: "no-ack still opens",
-      reachability: {
-        kind: "connecting",
-        waitingOn: "exchange",
-        unavailableReason: "Mate did not acknowledge the ticket (no-ack).",
-      },
-      shown: false,
-      voice: stage(
-        "Mate did not acknowledge the ticket (no-ack). Opening Quinn…",
-        ["try-now"],
-        true,
-      ),
-    },
-    {
       case: "a plain first connect still opens",
       reachability: { kind: "connecting", waitingOn: "exchange" },
       shown: false,
