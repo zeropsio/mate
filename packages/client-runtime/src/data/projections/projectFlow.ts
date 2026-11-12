@@ -283,6 +283,9 @@ export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFl
             },
       declarations: stops?.declarations ?? [],
       environmentInputs: stops?.environments ?? [],
+      ...(app.outsideProduction == null
+        ? {}
+        : { outsideProduction: { address: app.outsideProduction.address } }),
       codeRepos:
         recipe === undefined || detail.repos === undefined
           ? undefined
