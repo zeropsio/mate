@@ -51,6 +51,8 @@ const ALLOWED_MODULES: ReadonlySet<string> = new Set([
   "apps/web/src/zerops/tabHqSocketName.ts",
   // The first frame follows whether this browser holds a session, never what a source said.
   "apps/web/src/zerops/bootFrame.ts",
+  // The page's boot entry reads the kept sign-in to open HQ's stream with it (`hqStreamAhead.ts`).
+  "apps/web/src/boot.ts",
   // The first frame names the account's Mates as its last visit had HQ name them, until HQ's
   // answer replaces them: a reload paints nothing it takes back (the owner's rule).
   "apps/web/src/zerops/mateIdentityMemory.ts",

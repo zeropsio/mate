@@ -1179,6 +1179,59 @@ describe("Protected HQ scopes are asked with the person's token", () => {
       }),
   );
 
+  // witness: packages/client-runtime/src/data/adapters/hq.ts | for (const registered of registrations) yield* register(registered); → store.gather()(); for (const registered of registrations) yield* register(registered);
+  it.effect.each([
+    [
+      "a scope HQ wants asked again with the person's token",
+      [
+        {
+          type: "scope-error",
+          scope: attentionScope,
+          code: "token_required",
+          reason: "token_required",
+          disposition: "transient",
+        },
+        navigation("scope-values", 4, [{ key: "app:shop", value: app("shop", "Four", ["ada"]) }]),
+        navigation("scope-values", 5, [{ key: "app:shop", value: app("shop", "Five", ["ada"]) }]),
+      ],
+    ],
+    [
+      "a delta that does not follow, asked whole",
+      [
+        navigation("scope-values", 9, [{ key: "app:shop", value: app("shop", "Gap", ["ada"]) }]),
+        {
+          type: "scope-reset",
+          scope: attentionScope,
+          incarnation: "p1",
+          revision: 1,
+          values: [{ key: "ada", value: mateValue }],
+          removals: [],
+        },
+        { type: "scope-ready", scope: attentionScope, incarnation: "p1", revision: 1 },
+      ],
+    ],
+  ] as const)("What HQ sends in one turn is shown in one step, also behind %s", ([, turn]) =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = hqFixtureWire();
+      const { fiber } = yield* live(store, fixture);
+      const before = fixture.sent.length;
+      let published = 0;
+      const stop = store.subscribe(() => {
+        published += 1;
+      });
+      for (const message of turn) yield* fixture.send(message);
+      yield* settle;
+      stop();
+      // The scope was asked again, and what followed it in the turn arrived.
+      expect(
+        fixture.sent.slice(before).filter(({ request }) => request.type === "subscribe"),
+      ).toHaveLength(1);
+      expect(published).toBe(1);
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
   it.effect(
     "A role change asks the protected scopes again once with the token, and HQ admits them on that one fresh read",
     () =>
