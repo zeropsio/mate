@@ -185,9 +185,11 @@ const hello = (key: string) => ({
   heldSessionIds: [],
 });
 
-/** HQ admits the key: its first state on the link. */
-const admit = (socket: FakeSocket, mate: LinkedMate = STATE) =>
+/** HQ admits the key: its first state on the link, then the signers it kept (none). */
+const admit = (socket: FakeSocket, mate: LinkedMate = STATE) => {
   socket.hear({ type: "state", mate: { ...mate, repos: [] }, admission: ADMISSION });
+  socket.hear({ type: "signers", signers: {} });
+};
 
 /**
  * A link over a fake HQ, a socket per connect, the project's key `zk-1` unless a test takes it. It

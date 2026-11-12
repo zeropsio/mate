@@ -655,6 +655,9 @@ export const makeZeropsHqLink = (
       // HQ counts nothing the Mate says before it admitted the key with its first state.
       const onceAnswered = <A, E>(effect: Effect.Effect<A, E>) =>
         Deferred.await(answered).pipe(Effect.andThen(effect));
+      // HQ seeds the sign-in store with the signers it kept right after its first state, and takes
+      // the overview's signers as the truth: none goes out before that seed is applied.
+      const seeded = yield* Deferred.make<void>();
       // The tasks' reports, from HQ's first state on, on a link whose HQ does automated Mates.
       const reporting =
         tasks === undefined
@@ -759,7 +762,9 @@ export const makeZeropsHqLink = (
               Effect.flatMap((ok) => send({ type: "observe-credential-ack", id: frame.id, ok })),
             );
           case "signers":
-            return options.signers?.(frame.signers) ?? Effect.void;
+            return (options.signers?.(frame.signers) ?? Effect.void).pipe(
+              Effect.andThen(Deferred.succeed(seeded, undefined)),
+            );
           case "provider-keys":
             return options.automation?.keysHeard(frame.keys, frame.model) ?? Effect.void;
           case "task":
@@ -865,7 +870,7 @@ export const makeZeropsHqLink = (
           Effect.raceFirst(Effect.raceFirst(relay, silence), Deferred.await(ending)),
           Effect.all(
             [
-              onceAnswered(overviews),
+              onceAnswered(Deferred.await(seeded).pipe(Effect.andThen(overviews))),
               heard,
               onceAnswered(attention),
               onceAnswered(health),
