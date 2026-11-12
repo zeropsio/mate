@@ -532,9 +532,12 @@ function Change({
   hand,
   landedTitle,
   productionOutside = false,
+  mergeCheck,
 }: {
   /** The project's production is deployed outside Mate. */
   readonly productionOutside?: boolean;
+  /** HQ's answer that it cannot judge whether the change merges. */
+  readonly mergeCheck?: ChangeReviewViewProps["mergeCheck"];
   readonly over?: Partial<FlowPullRequest>;
   /** The merged change HQ brought main in after, by its title. */
   readonly landedTitle?: string;
@@ -591,11 +594,36 @@ function Change({
       press={press}
       pull={value}
       readout={readout}
+      mergeCheck={mergeCheck}
       waitingForProduction={0}
       release={{ allowed: true }}
     />
   );
 }
+
+/** A Mate's change mirrored to GitHub, its checks there as GitHub reports them on its head. */
+const WREN = { name: "Wren", tint: "sky", mine: true } as const;
+function onGithub(
+  checks: "pending" | "passing" | "failing",
+  over: Partial<FlowPullRequest> = {},
+): Partial<FlowPullRequest> {
+  return {
+    number: 3,
+    branch: "realign-github",
+    title: "Realign the shop with its GitHub repository",
+    pullRequest: {
+      number: 358,
+      url: "https://github.com/acme/tea-shop/pull/358",
+      state: "open",
+      checks,
+    },
+    ...over,
+  };
+}
+/** HQ's record of it before HQ has said whether it merges. */
+const UNJUDGED = detail({ mergeability: "unknown" });
+/** Pushed ten seconds ago: HQ's merge check is still within its usual time. */
+const JUST_PUSHED = () => new Date(NOW - 10_000).toISOString();
 
 /** The Mate's preview, its pair's stage half: what "Try it" opens. */
 const PREVIEWS = [
@@ -2015,6 +2043,55 @@ export const REVIEW_STATES: ReadonlyArray<{
     id: "empty",
     label: "Nothing in it main does not have",
     node: <Change readout={detail({ mergeability: "empty" })} />,
+  },
+  {
+    id: "checking-github-failing",
+    label: "On GitHub, its checks there failed, HQ still checking whether it merges cleanly",
+    node: (
+      <Change
+        mate={WREN}
+        over={onGithub("failing", { mergeability: "checking", updatedAt: JUST_PUSHED() })}
+        readout={UNJUDGED}
+      />
+    ),
+  },
+  {
+    id: "checking-late",
+    label: "On GitHub, HQ's merge check taking longer than usual",
+    node: (
+      <Change
+        mate={WREN}
+        over={onGithub("failing", { mergeability: "checking", updatedAt: minutesAgo(4) })}
+        readout={UNJUDGED}
+      />
+    ),
+  },
+  {
+    id: "repo-too-large",
+    label: "On GitHub, its repository too large for HQ to check whether it merges",
+    node: (
+      <Change
+        mate={WREN}
+        mergeCheck="repo_unavailable"
+        over={onGithub("failing", { mergeability: "checking", updatedAt: minutesAgo(4) })}
+        readout={UNJUDGED}
+      />
+    ),
+  },
+  {
+    id: "github-failing",
+    label: "On GitHub, its checks there failed, it merges cleanly",
+    node: <Change mate={WREN} over={onGithub("failing")} />,
+  },
+  {
+    id: "github-passing",
+    label: "On GitHub, its checks there passed",
+    node: <Change mate={WREN} over={onGithub("passing")} />,
+  },
+  {
+    id: "github-pending",
+    label: "On GitHub, its checks there still running",
+    node: <Change mate={WREN} over={onGithub("pending")} />,
   },
   {
     id: "not-offered",

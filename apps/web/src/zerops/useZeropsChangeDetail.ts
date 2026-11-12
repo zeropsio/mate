@@ -6,6 +6,7 @@ import {
   changeReadoutOfRecord,
   type ChangeReadout,
   type FlowPullRequest,
+  type MergeCheckRefusal,
 } from "@t3tools/client-runtime/zerops";
 import {
   changeReadOwner,
@@ -47,6 +48,11 @@ export interface ZeropsChangeDetail {
    * person's press. Absent where there is nothing to show.
    */
   readonly showFiles: (() => void) | undefined;
+  /**
+   * HQ's answer that it cannot judge whether the change merges, where its judgement was asked:
+   * its repository is too large for HQ now, or the change is. Absent while HQ judges or may still.
+   */
+  readonly mergeCheck: MergeCheckRefusal | undefined;
 }
 
 const READING = { kind: "reading" } as const;
@@ -100,6 +106,12 @@ export function useZeropsChangeDetail(
     UNJUDGED,
   );
   const judged = judgement.kind === "read" ? judgement.detail.mergeability : undefined;
+  const mergeCheck =
+    judgedAt !== null &&
+    (judgement.kind === "refused" || judgement.kind === "unavailable") &&
+    (judgement.code === "repo_unavailable" || judgement.code === "too_large")
+      ? judgement.code
+      : undefined;
   const filesAsked = owner !== null && shownFor === owner;
   const compareWanted = review?.files === null && filesAsked;
   // HQ's `main` is the base when the flow has not told one yet: the compare answers the commit it named.
@@ -163,6 +175,7 @@ export function useZeropsChangeDetail(
     readout: shown,
     retry,
     showFiles: review !== undefined && review.files === null && !filesAsked ? showFiles : undefined,
+    mergeCheck,
   };
 }
 
