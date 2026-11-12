@@ -71,6 +71,7 @@ import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { ZeropsLogins, type MateLogin } from "./ZeropsLogins.ts";
 import { ZEROPS_SUBJECT_PREFIX } from "@t3tools/contracts";
 import { isTurnStartingCommand, ZeropsProjectSigners } from "./ZeropsProjectSigners.ts";
+import { ZeropsSignerStanding } from "./ZeropsSignerStanding.ts";
 
 /**
  * Whom a turn is for.
@@ -218,6 +219,7 @@ export const make = Effect.gen(function* () {
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
   const agentAuth = yield* ZeropsAgentAuth.ZeropsAgentAuth;
   const projectSigners = yield* ZeropsProjectSigners;
+  const signerStanding = yield* ZeropsSignerStanding;
   // The server-driven logins, as this server holds them: the agent-auth feed's rows carry none
   // (only the clients' stream is joined with them), and the gate waits on a login just made.
   const agentLogins = yield* ZeropsAgentLogin;
@@ -275,18 +277,22 @@ export const make = Effect.gen(function* () {
 
   /**
    * A crew turn or a stand-up runs for somebody who is not at the keyboard, so
-   * it asks what a session of theirs is kept by: whether this project still
-   * opens for them (X3). A person's own session needs no such check: the
-   * membership watch ends a session this project no longer opens for.
+   * it asks HQ whether that person may still run turns here: their signer
+   * standing (`ZeropsSignerStanding`, X3). A person's own session needs no such
+   * check: the membership watch ends a session this project no longer opens for.
+   * Only `may` admits; a person who lost the project is signed out by offboarding,
+   * one HQ no longer holds a token for is refused until they open Mate once.
    */
   const refuseWithoutAccess = Effect.fnUntraced(function* (startedBy: string) {
-    const access = yield* projectSigners.hasProjectAccess(startedBy);
-    if (access === true) return;
+    const standing = yield* signerStanding.standing(startedBy);
+    if (standing === "may") return;
     return yield* new OrchestrationDispatchCommandError({
       message:
-        access === false
+        standing === "no_access" || standing === "left"
           ? "The person this turn runs for no longer has access to this project."
-          : "Could not confirm that the person this turn runs for still has access to this project. Try again in a moment.",
+          : standing === "sign_in_needed"
+            ? "The person this turn runs for needs to open Mate once so HQ can confirm their access."
+            : "Could not confirm that the person this turn runs for still has access to this project. Try again in a moment.",
     });
   });
 

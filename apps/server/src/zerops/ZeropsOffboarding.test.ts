@@ -1,19 +1,13 @@
 import { assert, describe, it } from "@effect/vitest";
-import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
-import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 
 import * as ServerConfig from "../config.ts";
-import type { AccessRead } from "./ZeropsAccessRead.ts";
-import type { AccessLiveEvent } from "./ZeropsAccessSocket.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import type { MateLogin } from "./ZeropsLogins.ts";
 import {
@@ -21,23 +15,16 @@ import {
   make as makeOffboarding,
   ZeropsOffboarding,
 } from "./ZeropsOffboarding.ts";
-import { make as makeAccessList, ZeropsMateAccessList } from "./ZeropsMateAccessList.ts";
 import * as ZeropsMateOwnerModule from "./ZeropsMateOwner.ts";
 import type { MateOwner } from "./ZeropsMateOwner.ts";
-import { make as makeProjectSigners, ZeropsProjectSigners } from "./ZeropsProjectSigners.ts";
+import { ZeropsProjectSigners } from "./ZeropsProjectSigners.ts";
+import { type SignerStandings, ZeropsSignerStanding } from "./ZeropsSignerStanding.ts";
 import {
   make as makeSignOut,
   type SignOutTarget,
   stopSessionsOnEngine,
   ZeropsSignOut,
 } from "./ZeropsSignOut.ts";
-import { sceneRead } from "./testing/accessScene.ts";
-import {
-  memorySignInStore,
-  ZeropsSignIns,
-  type SignInRecords,
-  type SignInStore,
-} from "./zeropsSignIns.ts";
 
 const EVA = "eva-user-id";
 const JAN = "jan-user-id";
@@ -51,10 +38,19 @@ const WORK: MateLogin = {
   keyStored: false,
 };
 
+/** Each person's signer standing as HQ worded it: `true` is `may`, `false` is `no_access`. */
+const standingsOf = (access: Readonly<Record<string, boolean | undefined>>): SignerStandings =>
+  Object.fromEntries(
+    Object.entries(access).flatMap(([userId, opens]) =>
+      opens === undefined ? [] : [[userId, opens ? "may" : "no_access"] as const],
+    ),
+  );
+
 /**
  * Offboarding over the real sign-out: Eva signed in Claude Code's own login and the `work` login,
- * Jan Codex; a live session runs on each of Eva's. `access` is what `hasProjectAccess` answers,
- * `owner` whom HQ names the Mate's owner.
+ * Jan Codex; a live session runs on each of Eva's. `access` is the signer standing HQ was heard
+ * answering (`true` is `may`, `false` is `no_access`, absent is no verdict), `owner` whom HQ names
+ * the Mate's owner.
  */
 const offboarding = (
   access: Readonly<Record<string, boolean | undefined>>,
@@ -89,9 +85,9 @@ const offboarding = (
     });
     const service = yield* makeOffboarding({
       signers: Effect.succeed({ "claude-code": EVA, [WORK.id]: EVA, codex: JAN }),
-      hasProjectAccess: (userId) => Effect.succeed(access[userId]),
       owner,
       signOut: signOut.signOut,
+      takeHeard: Effect.succeed(standingsOf(access)),
     });
     return { service, stopped, steps };
   });
@@ -179,10 +175,13 @@ describe("ZeropsOffboarding, when the Mate changes hands", () => {
   );
 });
 
-// HQ sending a different access list signs a person who lost access out now, not at the next
-// role recheck.
+// HQ answering a different signer standing signs a person who lost access out now, not at the
+// next role recheck.
 describe("ZeropsOffboarding's loop", () => {
-  /** The layer's loop over Eva's Claude Code login: `access` answers for her, both feeds fire. */
+  /**
+   * The layer's loop over Eva's Claude Code login: `access` is her signer standing as HQ answers
+   * it, heard when HQ relays it and when a sign-in has the loop ask; both feeds fire.
+   */
   const loop = <A>(
     body: (feeds: {
       readonly access: Ref.Ref<boolean>;
@@ -196,6 +195,8 @@ describe("ZeropsOffboarding's loop", () => {
       const signedOut = yield* Ref.make<ReadonlyArray<unknown>>([]);
       const relays = yield* PubSub.unbounded<void>();
       const signIns = yield* PubSub.unbounded<void>();
+      const heard = yield* PubSub.unbounded<SignerStandings>();
+      const answer = Effect.map(Ref.get(access), (opens) => standingsOf({ [EVA]: opens }));
       const environment = resolveZeropsEnvironment({
         projectId: "P",
         apiHost: undefined,
@@ -213,8 +214,21 @@ describe("ZeropsOffboarding's loop", () => {
                   ZeropsProjectSigners.of({
                     signers: Effect.succeed({ "claude-code": EVA }),
                     changes: Stream.fromPubSub(signIns),
-                    hasProjectAccess: () => Ref.get(access),
                   } as unknown as ZeropsProjectSigners["Service"]),
+                ),
+                Layer.succeed(
+                  ZeropsSignerStanding,
+                  ZeropsSignerStanding.of({
+                    standing: (userId) =>
+                      answer.pipe(
+                        Effect.tap((standings) => PubSub.publish(heard, standings)),
+                        Effect.map((standings) => standings[userId]),
+                      ),
+                    heard: Stream.merge(
+                      Stream.fromPubSub(relays).pipe(Stream.mapEffect(() => answer)),
+                      Stream.fromPubSub(heard),
+                    ),
+                  }),
                 ),
                 Layer.succeed(
                   ZeropsSignOut,
@@ -222,19 +236,6 @@ describe("ZeropsOffboarding's loop", () => {
                     signOut: (target: SignOutTarget) =>
                       Ref.update(signedOut, (all) => [...all, target]),
                   } as unknown as ZeropsSignOut["Service"]),
-                ),
-                Layer.succeed(
-                  ZeropsMateAccessList,
-                  ZeropsMateAccessList.of({
-                    current: Effect.succeed(Option.none()),
-                    reports: Stream.fromPubSub(relays).pipe(
-                      Stream.map(() => ({
-                        at: "2026-01-01T00:00:00.000Z",
-                        openers: [],
-                        listed: [],
-                      })),
-                    ),
-                  } as unknown as ZeropsMateAccessList["Service"]),
                 ),
               ),
             ),
@@ -271,183 +272,5 @@ describe("ZeropsOffboarding's loop", () => {
           assert.deepStrictEqual(yield* Ref.get(signedOut), [{ agentId: "claude-code" }]);
         }),
       ),
-  );
-});
-
-describe("ZeropsOffboarding after the access list goes stale", () => {
-  const rig = <A>(
-    initial: SignInRecords,
-    body: (scene: {
-      readonly answer: Ref.Ref<AccessRead>;
-      readonly events: Queue.Queue<AccessLiveEvent>;
-      readonly list: ZeropsMateAccessList["Service"];
-      readonly signers: ZeropsProjectSigners["Service"];
-      readonly signIns: SignInStore;
-      readonly signedOut: Ref.Ref<ReadonlyArray<SignOutTarget>>;
-    }) => Effect.Effect<A, never, ZeropsOffboarding>,
-    beforeSignOut: (target: SignOutTarget) => Effect.Effect<void> = () => Effect.void,
-  ) =>
-    Effect.gen(function* () {
-      const answer = yield* Ref.make<AccessRead>(
-        sceneRead({ [EVA]: "BASIC_USER", [JAN]: "OWNER" }),
-      );
-      const events = yield* Queue.unbounded<AccessLiveEvent>();
-      const list = yield* makeAccessList({
-        projectId: "P",
-        read: Ref.get(answer),
-        live: () => Stream.fromQueue(events),
-      });
-      const signIns = yield* memorySignInStore(initial);
-      const signedOut = yield* Ref.make<ReadonlyArray<SignOutTarget>>([]);
-      const environment = resolveZeropsEnvironment({
-        projectId: "P",
-        apiHost: undefined,
-        apiToken: "key",
-      })!;
-      const config = ServerConfig.layer({
-        zerops: environment,
-      } as ServerConfig.ServerConfig["Service"]);
-      const signers = yield* makeProjectSigners.pipe(
-        Effect.provide(
-          Layer.mergeAll(
-            config,
-            Layer.succeed(ZeropsMateAccessList, list),
-            Layer.succeed(ZeropsSignIns, signIns),
-          ),
-        ),
-      );
-      return yield* body({ answer, events, list, signers, signIns, signedOut }).pipe(
-        Effect.provide(
-          offboardingLayer.pipe(
-            Layer.provide(
-              Layer.mergeAll(
-                config,
-                ZeropsMateOwnerModule.layer,
-                Layer.succeed(ZeropsMateAccessList, list),
-                Layer.succeed(ZeropsProjectSigners, signers),
-                Layer.succeed(
-                  ZeropsSignOut,
-                  ZeropsSignOut.of({
-                    signOut: (target: SignOutTarget) =>
-                      Ref.update(signedOut, (all) => [...all, target]).pipe(
-                        Effect.andThen(beforeSignOut(target)),
-                        Effect.andThen(
-                          signIns.clear("agentId" in target ? target.agentId : target.loginId),
-                        ),
-                      ),
-                    remove: () => Effect.void,
-                  }),
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-    }).pipe(Effect.scoped);
-
-  it.effect(
-    "A person a Zerops frame removed is signed out even when the list's last read is older than its hold",
-    () =>
-      rig({ "claude-code": { by: EVA }, codex: { by: JAN } }, (scene) =>
-        Effect.gen(function* () {
-          yield* ZeropsOffboarding;
-          yield* TestClock.adjust(Duration.zero);
-          assert.isTrue(yield* scene.signers.hasProjectAccess(EVA));
-          yield* Ref.set(scene.answer, { kind: "failed", reason: "unreachable" });
-          yield* TestClock.adjust(Duration.minutes(16));
-          assert.isUndefined(yield* scene.signers.hasProjectAccess(EVA));
-          yield* scene.signIns.save("other-login", { by: "never-listed" });
-          yield* TestClock.adjust(Duration.zero);
-          assert.deepStrictEqual(yield* Ref.get(scene.signedOut), []);
-
-          yield* Queue.offer(scene.events, {
-            _tag: "frame",
-            frame: { kind: "members", remove: [`cu-${EVA}`], upsert: [] },
-          });
-          yield* TestClock.adjust(Duration.zero);
-          assert.deepStrictEqual(yield* Ref.get(scene.signedOut), [{ agentId: "claude-code" }]);
-          assert.deepStrictEqual(yield* scene.signers.signers, {
-            codex: JAN,
-            "other-login": "never-listed",
-          });
-        }),
-      ),
-  );
-
-  it.effect("The first successful read after a stale list runs an offboarding pass", () =>
-    rig({}, (scene) =>
-      Effect.gen(function* () {
-        yield* ZeropsOffboarding;
-        yield* TestClock.adjust(Duration.zero);
-        yield* Ref.set(scene.answer, { kind: "failed", reason: "unreachable" });
-        yield* TestClock.adjust(Duration.minutes(16));
-        yield* Queue.offer(scene.events, {
-          _tag: "frame",
-          frame: { kind: "members", remove: [`cu-${EVA}`], upsert: [] },
-        });
-        yield* TestClock.adjust(Duration.zero);
-        const before = Option.getOrThrow(yield* scene.list.current);
-        yield* scene.signIns.save("claude-code", { by: EVA });
-        yield* TestClock.adjust(Duration.zero);
-        assert.isUndefined(yield* scene.signers.hasProjectAccess(EVA));
-        assert.deepStrictEqual(yield* Ref.get(scene.signedOut), []);
-
-        yield* Ref.set(scene.answer, sceneRead({ [JAN]: "OWNER" }));
-        yield* Queue.offer(scene.events, { _tag: "connected" });
-        yield* TestClock.adjust(Duration.zero);
-        const after = Option.getOrThrow(yield* scene.list.current);
-        assert.deepStrictEqual(after.members, before.members);
-        assert.isAbove(after.readAtMs, before.readAtMs);
-        assert.isFalse(yield* scene.signers.hasProjectAccess(EVA));
-        assert.deepStrictEqual(yield* Ref.get(scene.signedOut), [{ agentId: "claude-code" }]);
-      }),
-    ),
-  );
-
-  it.effect(
-    "A later grant is not undone by an earlier removal while another sign-out is in progress",
-    () =>
-      Effect.gen(function* () {
-        const entered = yield* Deferred.make<void>();
-        const release = yield* Deferred.make<void>();
-        yield* rig(
-          { "claude-code": { by: EVA }, codex: { by: JAN } },
-          (scene) =>
-            Effect.gen(function* () {
-              yield* ZeropsOffboarding;
-              yield* TestClock.adjust(Duration.zero);
-              yield* Ref.set(scene.answer, { kind: "failed", reason: "unreachable" });
-              yield* TestClock.adjust(Duration.minutes(16));
-              yield* Queue.offer(scene.events, {
-                _tag: "frame",
-                frame: { kind: "members", remove: [`cu-${EVA}`, `cu-${JAN}`], upsert: [] },
-              });
-              yield* Deferred.await(entered);
-              const report = yield* Stream.runHead(scene.list.reports.pipe(Stream.drop(1))).pipe(
-                Effect.forkChild,
-              );
-              yield* TestClock.adjust(Duration.zero);
-              yield* Queue.offer(scene.events, {
-                _tag: "frame",
-                frame: {
-                  kind: "members",
-                  remove: [],
-                  upsert: [
-                    { clientUserId: `cu-${JAN}`, userId: JAN, orgRole: "OWNER", status: "ACTIVE" },
-                  ],
-                },
-              });
-              yield* Fiber.join(report);
-              yield* Deferred.succeed(release, undefined);
-              yield* TestClock.adjust(Duration.zero);
-              assert.deepStrictEqual(yield* Ref.get(scene.signedOut), [{ agentId: "claude-code" }]);
-              assert.deepStrictEqual(yield* scene.signers.signers, { codex: JAN });
-            }),
-          (target) =>
-            "agentId" in target && target.agentId === "claude-code"
-              ? Deferred.succeed(entered, undefined).pipe(Effect.andThen(Deferred.await(release)))
-              : Effect.void,
-        );
-      }),
   );
 });

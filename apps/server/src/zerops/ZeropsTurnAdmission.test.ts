@@ -33,6 +33,7 @@ import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsLoginsModule from "./ZeropsLogins.ts";
 import { ZEROPS_SUBJECT_PREFIX } from "@t3tools/contracts";
 import * as ZeropsProjectSignersModule from "./ZeropsProjectSigners.ts";
+import { ZeropsSignerStanding } from "./ZeropsSignerStanding.ts";
 import { make as makeAdmission, type TurnPrincipal } from "./ZeropsTurnAdmission.ts";
 
 const JAN = "jan-user-id";
@@ -82,7 +83,10 @@ interface World {
   /** The answered question's latest activity; absent means none was found. */
   readonly question?: Pick<OrchestrationThreadActivity, "kind" | "payload"> | "unreadable";
   /** User → whether the org lists them ACTIVE; `undefined` is an unreadable list. */
-  /** Whether this project opens for each person, as `hasProjectAccess` answers. */
+  /**
+   * Whether each person may still run turns here, as HQ's signer standing answers: `true` is
+   * `may`, `false` is `no_access`, absent is HQ unable to say.
+   */
   readonly access?: Readonly<Record<string, boolean | undefined>>;
   /** Configured instance → driver kind; the two default instances when absent. */
   readonly drivers?: Readonly<Record<string, string>>;
@@ -228,7 +232,14 @@ const admission = (world: World) =>
                 }),
               ),
             ),
-          hasProjectAccess: (userId) => Effect.succeed(world.access?.[userId]),
+        }),
+        Layer.mock(ZeropsSignerStanding)({
+          standing: (userId) => {
+            const access = world.access?.[userId];
+            return Effect.succeed(
+              access === undefined ? undefined : access ? ("may" as const) : ("no_access" as const),
+            );
+          },
         }),
         world.crewThread === undefined || world.crewThread.profile === "no-registry"
           ? Layer.empty

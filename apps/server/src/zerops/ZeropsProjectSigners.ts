@@ -25,11 +25,10 @@
  *
  * ## Who may still use it
  *
- * `hasProjectAccess` is the one answer to whether a person may use this Mate
- * at all — the one that keeps their session open — for a turn no session of
- * theirs stands behind (X3), and for offboarding, which signs every login of a
- * person it says no for out (`ZeropsOffboarding`, X4). It reads the access list the Mate
- * computes from its own read of Zerops (`ZeropsMateAccessList`): an opener, not a mere member.
+ * Whether a signer may still run turns here is not this record's: HQ answers it as that person
+ * (`ZeropsSignerStanding`), for a turn no session of theirs stands behind (X3) and for
+ * offboarding, which signs every login of a person it hears has lost the project out
+ * (`ZeropsOffboarding`, X4).
  *
  * @module ZeropsProjectSigners
  */
@@ -46,16 +45,12 @@ import {
   type TurnRefusal,
   type ZeropsAgentAuthFields,
 } from "@t3tools/shared/zeropsAgentAuth";
-import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 
-import * as ServerConfig from "../config.ts";
-import { ZeropsMateAccessList } from "./ZeropsMateAccessList.ts";
 import { subscribeChanges } from "./zeropsChanges.ts";
 import { ZeropsSignIns, type SignInRecords } from "./zeropsSignIns.ts";
 
@@ -143,36 +138,11 @@ export class ZeropsProjectSigners extends Context.Service<
       /** That login as it stands now, read again at each change while the turn waits on it. */
       readonly currentLogin?: CurrentLogin | undefined;
     }) => Effect.Effect<TurnRefusal | undefined>;
-    /**
-     * Whether `userId` is an opener of this project, as the Mate's access list says — the
-     * answer that keeps a connection open (`ZeropsConnections`). What admits a turn no session
-     * stands behind: the crew's, the stand-up's (X3). The list holds at most 15 min from the read
-     * that brought it (`ACCESS_LIST_HOLDS`); past that, or with none yet, `undefined`: nobody is
-     * vouched for, and nobody's logins are taken on a guess.
-     */
-    readonly hasProjectAccess: (userId: string) => Effect.Effect<boolean | undefined>;
   }
 >()("t3/zerops/ZeropsProjectSigners") {}
 
 export const make = Effect.gen(function* () {
-  const config = yield* ServerConfig.ServerConfig;
-  const environment = config.zerops;
   const signIns = yield* ZeropsSignIns;
-  // Who the project lets in, one list for the door, the watch and this — provided by the layer
-  // this service's own layer composes above (`zeropsFeedsLayer.ts`).
-  const accessList = yield* ZeropsMateAccessList;
-
-  const hasProjectAccess: ZeropsProjectSigners["Service"]["hasProjectAccess"] = (userId) =>
-    environment === undefined
-      ? Effect.succeed(undefined)
-      : Effect.gen(function* () {
-          const list = Option.getOrUndefined(yield* accessList.current);
-          const now = yield* Clock.currentTimeMillis;
-          if (list === undefined || now > list.expiresAtMs) return undefined;
-          return list.members.some(
-            (member) => member.userId === userId && member.visibility === "open",
-          );
-        });
 
   const signers: ZeropsProjectSigners["Service"]["signers"] = signIns.load.pipe(
     Effect.map(signersOf),
@@ -262,7 +232,6 @@ export const make = Effect.gen(function* () {
     changes: signIns.changes,
     turnRefusal: gateTurn,
     loginRefusal: gateLogin,
-    hasProjectAccess,
   });
 });
 
