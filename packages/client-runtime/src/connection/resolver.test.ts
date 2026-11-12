@@ -148,6 +148,7 @@ const makeDependencies = Effect.fn("TestConnectionResolver.makeDependencies")((o
       : [
           Layer.succeed(ClientCapabilities.MateTicketIssuer, {
             issue: options.issueMateTicket,
+            extend: options.issueMateTicket,
           }),
         ]),
   );
@@ -510,6 +511,7 @@ describe("ConnectionResolver", () => {
               Effect.map((all) => ({
                 ticket: `ticket-${all.length}`,
                 origin: "https://zcp-ada-8080.prg1.zerops.app",
+                grantSeconds: 900,
               })),
             ),
         });

@@ -72,6 +72,8 @@ export interface IssuedMateTicket {
   readonly ticket: string;
   /** The Mate's container origin. */
   readonly origin: string;
+  /** How long a connection opened or extended with this ticket may stay open. */
+  readonly grantSeconds: number;
 }
 
 const NO_MATE_TICKETS = "This client opens no Mate through HQ.";
@@ -85,6 +87,14 @@ export interface MateTicketIssuerService {
     readonly orgId: string;
     readonly projectId: string;
   }) => Effect.Effect<IssuedMateTicket, ConnectionAttemptError>;
+  /**
+   * A ticket that extends an open connection to the Mate (`extend: true`), never one minted ahead.
+   * Blocked when HQ refused it; transient when it may be asked again.
+   */
+  readonly extend: (mate: {
+    readonly orgId: string;
+    readonly projectId: string;
+  }) => Effect.Effect<IssuedMateTicket, ConnectionAttemptError>;
 }
 
 export class MateTicketIssuer extends Context.Reference<MateTicketIssuerService>(
@@ -92,6 +102,8 @@ export class MateTicketIssuer extends Context.Reference<MateTicketIssuerService>
   {
     defaultValue: () => ({
       issue: () =>
+        Effect.fail(new ConnectionBlockedError({ reason: "unsupported", detail: NO_MATE_TICKETS })),
+      extend: () =>
         Effect.fail(new ConnectionBlockedError({ reason: "unsupported", detail: NO_MATE_TICKETS })),
     }),
   },

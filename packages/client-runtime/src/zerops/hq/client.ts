@@ -372,11 +372,16 @@ export interface Asked<T> {
   readonly deploys: HqDeployAnswer | undefined;
 }
 
-/** What HQ hands for a Mate's socket: the ticket, its life in seconds and the origin to open. */
+/**
+ * What HQ hands for a Mate's socket: the ticket, its life in seconds, the origin to open and
+ * `grantSeconds`, how long a connection opened or extended with it may stay open (a positive
+ * integer).
+ */
 export interface HqMateTicket {
   readonly ticket: string;
   readonly expiresIn: number;
   readonly origin: string;
+  readonly grantSeconds: number;
 }
 
 export interface HqApi {
@@ -419,9 +424,14 @@ export interface HqApi {
   /**
    * A ticket to open the Mate of `projectId`'s socket with (`POST /api/mates/:projectId/ticket`):
    * the connection's first frame is `{ticket}`, sent to `origin`. A Mate's connection is one per
-   * tab, and every reconnect asks again.
+   * tab, and every reconnect asks again. With `extend` the ticket extends an open connection
+   * instead (body `{"extend":true}`), presented through the Mate's `zerops.grant.extend`.
    */
-  readonly mateTicket: (projectId: string, signal?: AbortSignal) => Promise<HqMateTicket>;
+  readonly mateTicket: (
+    projectId: string,
+    signal?: AbortSignal,
+    options?: { readonly extend: true },
+  ) => Promise<HqMateTicket>;
   /**
    * One segment of HQ's scope stream (`@t3tools/shared/hqStream`): a socket opened with a fresh
    * ticket for the session, telling `on` once it is open, of every text message and of its close
@@ -1503,11 +1513,12 @@ export function makeHqApi(input: {
     ...makeChiefCalls({ authorized, decoded, withAccess }),
     withAccess,
     structure: structureOf,
-    mateTicket: async (projectId, signal) =>
+    mateTicket: async (projectId, signal, options) =>
       json<HqMateTicket>(
         await authorized(`/api/mates/${encodeURIComponent(projectId)}/ticket`, {
           method: "POST",
           ...(signal === undefined ? {} : { signal }),
+          ...(options?.extend === true ? { body: JSON.stringify({ extend: true }) } : {}),
         }),
       ),
     openScopeSocket: async (on, signal) => {

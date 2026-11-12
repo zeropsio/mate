@@ -324,7 +324,12 @@ describe("EnvironmentSupervisor", () => {
                   reason: "no-link",
                   message: "mate_not_connected",
                 });
-              return { ticket: "recovered", expiresIn: 60, origin: "https://mate.example.test" };
+              return {
+                ticket: "recovered",
+                expiresIn: 60,
+                origin: "https://mate.example.test",
+                grantSeconds: 900,
+              };
             },
           }));
           const harness = yield* makeHarness({

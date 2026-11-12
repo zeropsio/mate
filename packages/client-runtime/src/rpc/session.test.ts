@@ -452,7 +452,13 @@ describe("RpcSessionFactory", () => {
               Effect.sync(() => {
                 const ticket = `ticket-${issued.length + 1}`;
                 issued.push(ticket);
-                return { ticket, origin: "https://environment.example.test" };
+                return { ticket, origin: "https://environment.example.test", grantSeconds: 900 };
+              }),
+            extend: () =>
+              Effect.succeed({
+                ticket: "extension",
+                origin: "https://environment.example.test",
+                grantSeconds: 900,
               }),
           }),
         );
