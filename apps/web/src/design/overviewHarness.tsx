@@ -1472,14 +1472,14 @@ function HarnessPage() {
                   options.review === undefined ||
                   options.quiet === true ||
                   reading.lift !== undefined ? null : (
-                    <button
-                      className="ov-review"
+                    <Button
                       data-zerops-surface="card-mate-review"
                       onClick={() => acted.push(`review:${entry.id}`)}
-                      type="button"
+                      size="xs"
+                      variant="secondary"
                     >
                       Review
-                    </button>
+                    </Button>
                   );
                 const lifted =
                   reading.lift === undefined ? null : (

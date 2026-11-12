@@ -4158,35 +4158,14 @@ code {
     white-space: nowrap;
   }
 
-  /* Review, the verb said: solid ink where the review waits on the viewer, a hairline where it is
-     a colleague's, whose face is paler too. */
-  .menu-tagpop-verb {
-    display: inline-grid;
-    height: 26px;
-    place-items: center;
-    padding: 0 10px;
-    border-radius: 7px;
-    background-color: var(--foreground);
-    color: var(--background);
-    font-size: 12px;
-    font-weight: 500;
-    line-height: 16px;
-    transition: scale 150ms var(--ease-out-strong);
-  }
-
-  .menu-tagpop-item:not([data-mine]) .menu-tagpop-verb {
-    background-color: transparent;
-    box-shadow: inset 0 0 0 1px var(--border);
-    color: var(--muted-foreground);
-  }
-
+  /* A colleague's review: its face paler. */
   .menu-tagpop-item:not([data-mine]) [data-mate-face-body] path {
     fill-opacity: 0.55;
   }
 
   @media (prefers-reduced-motion: no-preference) {
     .menu-tag:active,
-    .menu-tagpop-item:active .menu-tagpop-verb {
+    .menu-tagpop-item:active [data-menu-tagpop-verb] {
       scale: 0.96;
     }
 
@@ -7654,49 +7633,10 @@ a.ov-card-site:hover {
   flex: none;
 }
 
-.ov-mate-change .ov-review {
-  height: 20px;
+/* The line keeps its height: the Review button stands in it, a little over its edges. */
+.ov-mate-change > [data-slot="button"] {
   flex: none;
-}
-
-.ov-review {
-  display: inline-flex;
-  height: 22px;
-  align-items: center;
-  padding: 0 10px;
-  border-radius: 999px;
-  background-color: var(--background);
-  box-shadow:
-    0 0 0 1px color-mix(in oklab, var(--foreground) 8%, transparent),
-    0 1px 2px color-mix(in oklab, var(--color-black) 8%, transparent);
-  color: var(--foreground);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 16px;
-  cursor: pointer;
-  outline: none;
-  transition:
-    background-color 150ms var(--ease-out-strong),
-    box-shadow 150ms var(--ease-out-strong),
-    transform 160ms var(--ease-out-strong);
-}
-
-.ov-review:hover {
-  background-color: color-mix(in oklab, var(--foreground) 4%, var(--background));
-}
-
-.ov-review:active {
-  transform: scale(0.97);
-}
-
-.ov-review:focus-visible {
-  box-shadow: 0 0 0 2px var(--ring);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .ov-review:active {
-    transform: none;
-  }
+  margin-block: -2px;
 }
 
 .ov-mate-time {
@@ -9536,10 +9476,6 @@ button.ov-change {
 .ov-change[data-open] .ov-change-when,
 .ov-change[data-open] .ov-change-act {
   align-self: center;
-}
-
-.ov-change:hover .ov-review {
-  background-color: color-mix(in oklab, var(--foreground) 4%, var(--background));
 }
 
 .ov-change[data-open] .ov-change-icon {
