@@ -108,6 +108,9 @@ import {
 import { accessEnded } from "../../data/adapters/accessEnded.ts";
 import { hqStructureOf } from "./structure.ts";
 import { makeChiefCalls, type HqChiefCalls } from "./chief.ts";
+import { freshHqSocketName } from "./socketName.ts";
+
+export { freshHqSocketName };
 
 /** An organization's HQ: its project, and the address its anchor names. */
 export interface HqEndpoint {
@@ -1161,12 +1164,6 @@ const browsePathOrRefuse = <R extends GitBrowseRead>(
   return path;
 };
 
-/** A new name for an HQ stream socket: 16 random bytes in hex. */
-export const freshHqSocketName = (): string =>
-  Array.from(globalThis.crypto.getRandomValues(new Uint8Array(16)), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
-
 export function makeHqApi(input: {
   /** HQ's origin, as its anchor or the build's configuration names it. */
   readonly address: string;
@@ -1188,6 +1185,17 @@ export function makeHqApi(input: {
   /** The instant, for the renewal of a session; the wall clock where absent. */
   readonly now?: () => number;
   readonly openSocket: OpenHqSocket;
+  /**
+   * A stream the page opened for this organization's HQ before this client existed (a reload's
+   * boot entry): the first `openScopeSocket` takes it in place of a ticket and a socket, if it
+   * was opened under this client's `socketName` and with the session this client holds.
+   */
+  readonly openedAhead?: {
+    readonly socketName: string;
+    readonly take: (session: string, on: Parameters<OpenHqSocket>[1]) => Promise<HqSocket | null>;
+    /** Closes it untaken; nothing once it was asked for. */
+    readonly release: () => void;
+  };
   /** Captured account and HQ; checked immediately before each protected fetch. */
   readonly isCurrent?: () => boolean;
   /** HQ's session as the account keeps it for this organization and HQ across loads. */
@@ -1200,6 +1208,8 @@ export function makeHqApi(input: {
 }): HqApi {
   const origin = input.address.replace(/\/+$/u, "");
   const socketName = input.socketName ?? freshHqSocketName();
+  /** The stream opened ahead, until the first open has asked for it. */
+  let openedAhead = input.openedAhead;
   /** The session HQ issued, or the door exchange under way that will issue it. */
   let session: Promise<string> | null = null;
 
@@ -1440,6 +1450,36 @@ export function makeHqApi(input: {
         }),
       ),
     openScopeSocket: async (on, signal) => {
+      /** A socket's events, for the session its ticket was minted for. */
+      const heard = (held: Promise<string> | null, token: string | null) => ({
+        open: on.open,
+        message: on.message,
+        close: (code: number) => {
+          if (code === HQ_SESSION_ENDED_CLOSE && held !== null && token !== null) drop(held, token);
+          on.close(code);
+        },
+      });
+      const ahead = openedAhead;
+      openedAhead = undefined;
+      if (ahead !== undefined) {
+        let taken: HqSocket | null = null;
+        try {
+          const kept = session ?? restore();
+          const token = kept === null ? null : await kept;
+          // Opened under this client's name with this very session before the client existed:
+          // its ticket is spent and its socket open or opening. Another name (a press is held
+          // under the client's), another session, or one that came to nothing, and this open asks.
+          if (ahead.socketName === socketName && kept !== null && token !== null)
+            taken = await ahead.take(token, heard(kept, token));
+        } finally {
+          // Nobody else asks for it: with no session kept, the account changed or the door
+          // failing, it is closed now, not left signed in and unowned until it gives up.
+          if (taken === null) ahead.release();
+        }
+        if (taken !== null && signal.aborted) taken.close();
+        signal.throwIfAborted();
+        if (taken !== null) return taken;
+      }
       const { ticket } = await json<{ readonly ticket: string }>(
         await authorized("/api/stream-ticket", { method: "POST", signal }),
       );
@@ -1448,14 +1488,7 @@ export function makeHqApi(input: {
       const token = held === null ? null : await held;
       signal.throwIfAborted();
       const url = `${origin.replace(/^http/u, "ws")}/api/structure/ws?ticket=${encodeURIComponent(ticket)}&socket=${encodeURIComponent(socketName)}`;
-      return input.openSocket(url, {
-        open: on.open,
-        message: on.message,
-        close: (code) => {
-          if (code === HQ_SESSION_ENDED_CLOSE && held !== null && token !== null) drop(held, token);
-          on.close(code);
-        },
-      });
+      return input.openSocket(url, heard(held, token));
     },
     // An application has no name of HQ's to ask for before it is made: the one by this name is
     // taken for it.

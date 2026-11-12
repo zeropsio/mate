@@ -385,6 +385,64 @@ function appShellFilesPlugin(): Plugin {
   };
 }
 
+/**
+ * The page's boot entry (`src/boot.ts`) as a classic script inlined in the page's head, ahead of
+ * the stylesheet: it runs while the bundle and the stylesheet still download. Its own build, as the
+ * worker's: an entry of the app's build joins the startup chunk it is meant to run ahead of. A dev
+ * server serves it as a module of its own.
+ */
+function bootEntryPlugin(): Plugin {
+  let serving = false;
+  return {
+    name: "mate:boot-entry",
+    configResolved(config) {
+      serving = config.command === "serve";
+    },
+    async transformIndexHtml(html) {
+      if (serving)
+        return [
+          {
+            tag: "script",
+            attrs: { type: "module", src: `${base}src/boot.ts` },
+            injectTo: "head" as const,
+          },
+        ];
+      const built = await viteBuild({
+        configFile: false,
+        logLevel: "warn",
+        root: import.meta.dirname,
+        resolve: { tsconfigPaths: true },
+        build: {
+          write: false,
+          emptyOutDir: false,
+          minify: true,
+          sourcemap: false,
+          lib: {
+            entry: "src/boot.ts",
+            formats: ["iife"],
+            name: "mateBoot",
+            fileName: () => "boot.js",
+          },
+        },
+      });
+      const outputs = Array.isArray(built) ? built : [built];
+      const chunk = outputs
+        .flatMap((output) => ("output" in output ? output.output : []))
+        .find((file) => file.type === "chunk");
+      if (chunk === undefined || chunk.type !== "chunk") {
+        throw new Error("The boot entry build produced no script");
+      }
+      // An inline script waits for every stylesheet linked before it. Ahead of the first, it runs
+      // as the head is read, also on a load whose stylesheet is not cached yet (the first after a
+      // release); and after the head's `<meta charset>`, which must stay in the page's first
+      // 1024 bytes. It depends on nothing else in the page.
+      const stylesheet = html.search(/<link\b[^>]*\brel="stylesheet"/u);
+      if (stylesheet < 0) throw new Error("The boot entry found no stylesheet link to run before");
+      return `${html.slice(0, stylesheet)}<script>${chunk.code}</script>\n    ${html.slice(stylesheet)}`;
+    },
+  };
+}
+
 const configuredAppShellWorker = process.env.VITE_APP_SHELL_WORKER?.trim().toLowerCase() || "";
 
 // Vite rejects requests whose Host header isn't localhost, which blocks sharing
@@ -417,6 +475,8 @@ export default defineConfig(({ command }) => {
       ...(base === "/" && ["app-shell", "retire"].includes(configuredAppShellWorker)
         ? [appShellWorkerPlugin(configuredAppShellWorker), appShellFilesPlugin()]
         : []),
+      // An origin root's page alone: a Mate's `/mate/` bundle opens its stream as it always did.
+      ...(base === "/" ? [bootEntryPlugin()] : []),
       tanstackRouter({ autoCodeSplitting: true }),
       react(),
       babel({
