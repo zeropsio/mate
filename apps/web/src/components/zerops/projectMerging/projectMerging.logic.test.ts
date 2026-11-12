@@ -11,6 +11,7 @@ import {
   mergingLine,
   mergingPeople,
   mergingSave,
+  openMains,
   shownMergers,
 } from "./projectMerging.logic";
 
@@ -113,5 +114,42 @@ describe("what the page shows after its own save", () => {
     expect(shownMergers(null, answer)).toEqual(["u-ada"]);
     expect(shownMergers(["u-sam"], answer)).toEqual(["u-sam"]);
     expect(shownMergers(null, null)).toBeNull();
+  });
+});
+
+describe("what a limit on who merges does not hold: GitHub's main", () => {
+  const remote = {
+    url: "https://github.com/acme/tea-shop.git",
+    repositoryId: "7",
+    keptAt: "2026-10-17T09:00:00Z",
+    keptBy: "Mira Osei",
+    expiresAt: null,
+    invalidSince: null,
+    via: "app",
+    githubAppId: 123456,
+  } as const;
+
+  // witness: apps/web/src/components/zerops/projectMerging/projectMerging.logic.ts | if (governance === undefined || governance === "governed") return []; → if (governance === undefined) return [];
+  it("A repository whose main on GitHub only Mate's approval reaches is not named", () => {
+    expect(openMains([{ remote: { ...remote, governance: "governed" } }])).toEqual([]);
+  });
+
+  // witness: apps/web/src/components/zerops/projectMerging/projectMerging.logic.ts | fix: OPEN_MAIN_FIX[governance](remote.githubAppId), → fix: "",
+  it("A repository whose main on GitHub has no ruleset is named with the ruleset that closes it", () => {
+    expect(openMains([{ remote: { ...remote, governance: "no_ruleset" } }])).toEqual([
+      {
+        repository: "acme/tea-shop",
+        fix: "Add a ruleset on main there that requires a pull request and the check mate/gate from app ID 123456.",
+        rulesUrl: "https://github.com/acme/tea-shop/settings/rules",
+      },
+    ]);
+  });
+
+  // witness: apps/web/src/components/zerops/projectMerging/projectMerging.logic.ts | if (remote?.via !== "app" || remote.invalidSince !== null) return []; → if (remote == null) return [];
+  it("A repository connected with a person's token is not named: HQ reads no rules through it", () => {
+    expect(openMains([{ remote: { ...remote, via: "token", governance: "no_ruleset" } }])).toEqual(
+      [],
+    );
+    expect(openMains([{ remote: null }, {}])).toEqual([]);
   });
 });
