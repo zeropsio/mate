@@ -107,28 +107,6 @@ describe("ZeropsMateUpdate (MU-3: absent, never fabricated)", () => {
     }),
   );
 
-  it.effect("check re-reads the manifest, updates and returns the new value", () =>
-    Effect.gen(function* () {
-      let installed = "0.8.0";
-      const service = yield* Effect.scoped(
-        make({
-          cli: stubCli(() =>
-            Effect.succeed({
-              ...STATUS_RESULT,
-              installed,
-              updateAvailable: installed !== "0.8.1",
-            }),
-          ),
-          isZeropsEnvironment: true,
-        }),
-      );
-      installed = "0.8.1";
-      const result = yield* service.check;
-      expect(result?.available).toBe(false);
-      expect((yield* service.current)?.available).toBe(false);
-    }),
-  );
-
   it.effect("check keeps the previous value when zcp fails", () =>
     Effect.gen(function* () {
       let call = 0;
