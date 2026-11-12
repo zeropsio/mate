@@ -11171,6 +11171,12 @@ button.run-bar:focus-visible {
 .run-later-feed:not(:empty) {
   margin-top: 10px;
 }
+/* Its own box, as while it eases open or shut clipped: the scroll's edge
+   margins stay inside it, so the height it eases to is the height it keeps (4 px
+   taken back as Show work's ease ended, 2026-11-12). */
+.run-later-feed {
+  display: flow-root;
+}
 /* Its 24 px of ground stand in the line's 20, so the words keep their
    centre. */
 .run-now-fold {
