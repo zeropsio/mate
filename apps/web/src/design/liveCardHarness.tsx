@@ -126,6 +126,8 @@ const STEPS = Math.max(2, Number(params.get("steps") ?? 300));
 const JOINS = Math.max(0, Number(params.get("joins") ?? 0));
 /** `?leaves=<n>`: the `deep` run's first lines, that many, leave its log 17.5 s in. */
 const LEAVES = Math.max(0, Number(params.get("leaves") ?? 0));
+/** `?services=3|7`: the `batch` run deploys that many services instead of its two. */
+const BATCH_SIZE = Number(params.get("services") ?? 2);
 const ENVIRONMENT = EnvironmentId.make("environment-harness");
 const TURN = TurnId.make("live-turn");
 const COMPOSER_HEIGHT = 132;
@@ -190,10 +192,7 @@ type Item =
       /** A deploy's pipeline as its card reads it of the platform: each step, from when to when. */
       readonly pipeline?: ReadonlyArray<readonly [PipelineStepId, number, number]>;
       /** A batch deploy's services, each with the pipeline its own version runs. */
-      readonly services?: ReadonlyArray<{
-        readonly name: string;
-        readonly pipeline: ReadonlyArray<readonly [PipelineStepId, number, number]>;
-      }>;
+      readonly services?: ReadonlyArray<BatchService>;
       /** Where what it deployed answers, once it is out. */
       readonly address?: string;
     }
@@ -204,6 +203,14 @@ type Item =
       readonly end: number;
       readonly page: string;
     };
+
+/** A batch deploy's service: the pipeline its own version runs, and where it broke if it did. */
+interface BatchService {
+  readonly name: string;
+  readonly pipeline: ReadonlyArray<readonly [PipelineStepId, number, number]>;
+  /** Its last listed step fails as it ends, saying this. */
+  readonly fails?: string;
+}
 
 interface Run {
   readonly ask: string;
@@ -452,46 +459,153 @@ const DEPLOY: Run = {
   answer: "The fix is on stage and the smoke tests pass.",
 };
 
+const TWO_SERVICES: ReadonlyArray<BatchService> = [
+  {
+    name: "shoppool",
+    pipeline: [
+      ["INIT_BUILD_CONTAINER", 9, 20],
+      ["RUN_BUILD_COMMANDS", 20, 26],
+      ["INIT_PREPARE_CONTAINER", 26, 55],
+      ["RUN_PREPARE_COMMANDS", 55, 82],
+      ["DEPLOY", 82, 112],
+    ],
+  },
+  {
+    name: "shopstage",
+    pipeline: [
+      ["INIT_BUILD_CONTAINER", 10, 22],
+      ["RUN_BUILD_COMMANDS", 22, 66],
+      ["DEPLOY", 66, 120],
+    ],
+  },
+];
+
+/**
+ * Seven services, made up: at `at=4` all wait; at `at=40` geopool is out, apipool deploys,
+ * edgepool builds, embedderpool prepares its runtime, runnerpool deploys, sitepool's build broke
+ * at 31 s, and webpool waits until 56 s (zerops.yml read until 60 s); at `at=130` all but sitepool
+ * are out.
+ */
+const SEVEN_SERVICES: ReadonlyArray<BatchService> = [
+  {
+    name: "apipool",
+    pipeline: [
+      ["INIT_BUILD_CONTAINER", 9, 20],
+      ["RUN_BUILD_COMMANDS", 20, 34],
+      ["DEPLOY", 34, 48],
+    ],
+  },
+  {
+    name: "edgepool",
+    pipeline: [
+      ["INIT_BUILD_CONTAINER", 10, 22],
+      ["RUN_BUILD_COMMANDS", 22, 66],
+      ["DEPLOY", 66, 90],
+    ],
+  },
+  {
+    name: "embedderpool",
+    pipeline: [
+      ["INIT_BUILD_CONTAINER", 8, 14],
+      ["RUN_BUILD_COMMANDS", 14, 24],
+      ["INIT_PREPARE_CONTAINER", 24, 30],
+      ["RUN_PREPARE_COMMANDS", 30, 55],
+      ["DEPLOY", 55, 80],
+    ],
+  },
+  {
+    name: "geopool",
+    pipeline: [
+      ["INIT_BUILD_CONTAINER", 9, 15],
+      ["RUN_BUILD_COMMANDS", 15, 22],
+      ["DEPLOY", 22, 33],
+    ],
+  },
+  {
+    name: "webpool",
+    pipeline: [
+      ["INIT_BUILD_CONTAINER", 60, 70],
+      ["RUN_BUILD_COMMANDS", 70, 96],
+      ["DEPLOY", 96, 118],
+    ],
+  },
+  {
+    name: "sitepool",
+    pipeline: [
+      ["INIT_BUILD_CONTAINER", 9, 18],
+      ["RUN_BUILD_COMMANDS", 18, 31],
+    ],
+    fails:
+      "npm run build exited with code 1: cannot find module './uptime' in src/routes/status.ts.",
+  },
+  {
+    name: "runnerpool",
+    pipeline: [
+      ["INIT_BUILD_CONTAINER", 9, 14],
+      ["RUN_BUILD_COMMANDS", 14, 25],
+      ["DEPLOY", 25, 60],
+    ],
+  },
+];
+
+/**
+ * Three services, one with a long name: at `at=40` webstage deploys, apistage builds and the
+ * long-named worker waits.
+ */
+const THREE_SERVICES: ReadonlyArray<BatchService> = [
+  {
+    name: "webstage",
+    pipeline: [
+      ["INIT_BUILD_CONTAINER", 9, 20],
+      ["RUN_BUILD_COMMANDS", 20, 34],
+      ["DEPLOY", 34, 48],
+    ],
+  },
+  {
+    name: "apistage",
+    pipeline: [
+      ["INIT_BUILD_CONTAINER", 10, 22],
+      ["RUN_BUILD_COMMANDS", 22, 66],
+      ["DEPLOY", 66, 90],
+    ],
+  },
+  {
+    name: "notificationsworkerstagereplica",
+    pipeline: [
+      ["INIT_BUILD_CONTAINER", 60, 70],
+      ["RUN_BUILD_COMMANDS", 70, 96],
+      ["DEPLOY", 96, 118],
+    ],
+  },
+];
+
+/** `?services=`: two (the default), three or seven. */
+const BATCH_SERVICES =
+  BATCH_SIZE === 7 ? SEVEN_SERVICES : BATCH_SIZE === 3 ? THREE_SERVICES : TWO_SERVICES;
+const BATCH_SUBJECT = BATCH_SERVICES.map((service) => service.name).join(", ");
+
 /**
  * One call deploying two services, each at its own pace and with its own steps: `at=4` both wait,
  * `at=7` the platform reads their zerops.yml, `at=30` and `at=70` they are at different steps (one
- * pipeline has no prepare steps), `at=130` both are out.
+ * pipeline has no prepare steps), `at=130` both are out. `?services=3|7` deploys more
+ * (`SEVEN_SERVICES` says when each stands where).
  */
 const BATCH: Run = {
   ask: "Put the fix on the pool and on stage.",
   items: [
-    { id: "n1", kind: "note", start: 1, text: "Deploying the fix to shoppool and shopstage now." },
+    { id: "n1", kind: "note", start: 1, text: `Deploying the fix to ${BATCH_SUBJECT} now.` },
     {
       id: "d1",
       kind: "deploy",
       start: 2,
       returns: 120,
       end: 120,
-      subject: "shoppool, shopstage",
+      subject: BATCH_SUBJECT,
       stages: [
         ["Building", 2, 80],
         ["Deploying", 80, 120],
       ],
-      services: [
-        {
-          name: "shoppool",
-          pipeline: [
-            ["INIT_BUILD_CONTAINER", 9, 20],
-            ["RUN_BUILD_COMMANDS", 20, 26],
-            ["INIT_PREPARE_CONTAINER", 26, 55],
-            ["RUN_PREPARE_COMMANDS", 55, 82],
-            ["DEPLOY", 82, 112],
-          ],
-        },
-        {
-          name: "shopstage",
-          pipeline: [
-            ["INIT_BUILD_CONTAINER", 10, 22],
-            ["RUN_BUILD_COMMANDS", 22, 66],
-            ["DEPLOY", 66, 120],
-          ],
-        },
-      ],
+      services: BATCH_SERVICES,
     },
     {
       id: "c1",
@@ -1292,9 +1406,14 @@ function handedOperationCard(operation: ZeropsOperation): OperationCardRegions |
   const item = RUN.items.find((candidate) => `op:${candidate.id}` === operation.key);
   if (item === undefined || item.kind !== "deploy") return undefined;
   const t = drawnAt;
-  const read = (pipeline: ReadonlyArray<readonly [PipelineStepId, number, number]>) =>
-    pipeline.map(([id, from, to]) => {
-      const state = t >= to ? "finished" : t >= from ? "running" : "waiting";
+  const read = (
+    pipeline: ReadonlyArray<readonly [PipelineStepId, number, number]>,
+    fails = false,
+  ) =>
+    pipeline.map(([id, from, to], index) => {
+      const ended =
+        t >= to ? (fails && index === pipeline.length - 1 ? "failed" : "finished") : null;
+      const state = ended ?? (t >= from ? "running" : "waiting");
       return {
         id,
         label: PIPELINE_LABEL[id],
@@ -1325,15 +1444,18 @@ function handedOperationCard(operation: ZeropsOperation): OperationCardRegions |
               steps: [],
               calculating: true,
             };
-          const steps = read(service.pipeline);
+          const steps = read(service.pipeline, service.fails !== undefined);
           const built = steps.some(
             (step) => step.id === "RUN_BUILD_COMMANDS" && step.state !== "waiting",
           );
+          const failed = t >= last && service.fails !== undefined;
           return {
             name: service.name,
-            ...(t >= last
-              ? { state: "done" as const, stateLabel: "Deployed" }
-              : { state: "running" as const, stateLabel: "Deploying" }),
+            ...(failed
+              ? { state: "failed" as const, stateLabel: "Failed", reason: service.fails }
+              : t >= last
+                ? { state: "done" as const, stateLabel: "Deployed" }
+                : { state: "running" as const, stateLabel: "Deploying" }),
             steps,
             ...(built ? { log: <HandedBuildLog running={t < last} subject={service.name} /> } : {}),
           };
@@ -1379,11 +1501,12 @@ function operationEntry(
         }));
   const subject = item.kind === "browser" ? item.page : item.subject;
   const services = item.kind === "deploy" ? item.services : undefined;
+  const broke = settled && services?.some((service) => service.fails !== undefined) === true;
   const operation: ZeropsOperation = {
     key: `op:${item.id}`,
     kind: item.kind,
     // A stand-up's call settles it as its report said, its builds running on.
-    phase: settled || (item.kind === "standup" && returned) ? "done" : "running",
+    phase: broke ? "failed" : settled || (item.kind === "standup" && returned) ? "done" : "running",
     anchorAt: iso(item.start),
     anchorActivityId: `activity-${item.id}`,
     ...(settled ? { settledAt: iso(item.end) } : {}),
@@ -1398,22 +1521,34 @@ function operationEntry(
           ? `Standing ${subject} up`
           : `Checking ${subject}`,
     voiceSource: "mate",
-    statusWord: settled
-      ? item.kind === "deploy"
-        ? "Deployed"
-        : item.kind === "standup"
-          ? "Stood up"
-          : "Checked"
-      : "Working",
+    statusWord: broke
+      ? "Failed"
+      : settled
+        ? item.kind === "deploy"
+          ? "Deployed"
+          : item.kind === "standup"
+            ? "Stood up"
+            : "Checked"
+        : "Working",
     steps:
       services === undefined
         ? steps
-        : services.map((service) => ({
-            id: service.name,
-            label: service.name,
-            state: settled ? ("done" as const) : ("running" as const),
-            stateLabel: settled ? "Deployed" : "Running",
-          })),
+        : services.map((service) =>
+            settled && service.fails !== undefined
+              ? {
+                  id: service.name,
+                  label: service.name,
+                  state: "failed" as const,
+                  stateLabel: "Failed",
+                  note: service.fails,
+                }
+              : {
+                  id: service.name,
+                  label: service.name,
+                  state: settled ? ("done" as const) : ("running" as const),
+                  stateLabel: settled ? "Deployed" : "Running",
+                },
+          ),
     ...(services === undefined ? {} : { batch: true }),
     links:
       item.kind === "deploy" && settled && item.address !== undefined

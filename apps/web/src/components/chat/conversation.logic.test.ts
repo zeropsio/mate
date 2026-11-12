@@ -3555,6 +3555,48 @@ describe("operationLineWords", () => {
     expect(operationLineWords(op({ subject: "app", ...fields }))).toBe(words);
   });
 
+  // witness: apps/web/src/components/chat/conversation.logic.ts | const NAMED_BATCH_SERVICES = 3; → const NAMED_BATCH_SERVICES = 9;
+  it.each([
+    { hosts: ["web", "hq", "box"], phase: "running", words: "Deploying web, hq, box" },
+    {
+      hosts: [
+        "apipool",
+        "edgepool",
+        "embedderpool",
+        "geopool",
+        "webpool",
+        "sitepool",
+        "runnerpool",
+      ],
+      phase: "running",
+      words: "Deploying 7 services",
+    },
+    {
+      hosts: ["apipool", "edgepool", "embedderpool", "geopool"],
+      phase: "failed",
+      words: "Deploy to 4 services failed",
+    },
+  ] as const)(
+    "a batch deploy's line names its services only while that reads at a glance: $words",
+    ({ hosts, phase, words }) => {
+      const batch = op({
+        kind: "deploy",
+        batch: true,
+        phase,
+        subject: hosts.join(", "),
+        voice: `Deploying ${hosts.join(", ")}.`,
+        statusWord: phase === "running" ? "Deploying" : "Failed",
+        steps: hosts.map((host) => ({
+          id: host,
+          label: host,
+          state: "running",
+          stateLabel: "Running",
+        })),
+      });
+      expect(operationLineWords(batch)).toBe(words);
+    },
+  );
+
   // "all services is healthy" (the owner, 2026-09-30): a check of every
   // service says how many, in English.
   const check = (id: string, state: "done" | "failed" | "queued") => ({

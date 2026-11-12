@@ -1239,6 +1239,31 @@ describe("batchServiceRows — a batch deploy's card, one named row per service"
     ).toEqual([["apipool", "failed", []]]);
   });
 
+  // witness: apps/web/src/zerops/activity/useOperationCard.ts | row.state === "failed" && step.note !== undefined ? { ...row, reason: step.note } : row → row
+  it("a failed service carries why, as the call's own entry for it says; no other service does", () => {
+    const op = operation({
+      batch: true,
+      phase: "failed",
+      subject: "apipool, geopool",
+      steps: [
+        { id: "apipool", label: "apipool", state: "done", stateLabel: "Deployed", note: "ok" },
+        {
+          id: "geopool",
+          label: "geopool",
+          state: "failed",
+          stateLabel: "Failed",
+          note: "npm run build exited with code 1",
+        },
+      ],
+    });
+    expect(batchServiceRows(op, SERVICES, view, NOW)?.map((row) => [row.name, row.reason])).toEqual(
+      [
+        ["apipool", undefined],
+        ["geopool", "npm run build exited with code 1"],
+      ],
+    );
+  });
+
   it("a deploy of one service has no service rows", () => {
     expect(batchServiceRows(operation(), SERVICES, view, NOW)).toBeUndefined();
   });
