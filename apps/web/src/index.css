@@ -5893,8 +5893,8 @@ code {
   white-space: nowrap;
 }
 
-/* A Mate's service with nothing to open: its hostname, muted, with no host and no ↗ — its tooltip
-   saying why. */
+/* A Mate's service with nothing to open: its hostname, muted, with why in its host's place and no
+   ↗; its tooltip says the whole reason where the popover cuts it. */
 .zerops-sites-off {
   cursor: default;
 }

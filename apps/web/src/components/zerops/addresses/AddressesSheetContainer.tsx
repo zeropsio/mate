@@ -187,8 +187,10 @@ export function AddressesSheetContainer({
   return (
     <DialogPopup
       aria-label={`${projectName}'s addresses`}
-      // As tall as what it holds, up to the window: the sheet ends where its content does.
-      className="max-h-[min(55.5rem,100%)] max-w-[48.75rem]"
+      // As tall as what it holds, up to the window, and in the window's middle with even margins:
+      // top-anchored, a tall one ran to the window's bottom edge.
+      className="max-h-[min(55.5rem,calc(100dvh-3rem))] max-w-[48.75rem]"
+      placement="center"
       data-zerops-surface="addresses-sheet"
       showCloseButton={false}
     >
