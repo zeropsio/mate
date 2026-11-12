@@ -8,8 +8,8 @@ import {
   slackChannelForm,
   sourceRowPress,
   sourceRows,
-  stopWords,
   type SourceReads,
+  type SourceRow,
 } from "./projectAutomation.logic";
 
 const known = <T>(held: T) => ({ state: "known" as const, held, stale: false });
@@ -71,12 +71,17 @@ describe("a project's pool of automated Mates", () => {
 });
 
 describe("a project's sources of tasks", () => {
+  /** A row as it reads: what it is, its label where it has one, where or when, what waits. */
+  const said = (row: SourceRow) =>
+    [row.title, row.kind === "github" ? row.label : null, row.detail, row.meta]
+      .filter((part) => part !== null)
+      .join(" · ");
   it.each([
     ["none set reads as no rows", NONE, []],
     [
       "GitHub issues by their label and repository, with the tasks waiting",
       { ...NONE, intake: { repo: "acme/tea-shop", label: "mate", waiting: 2 } },
-      ["GitHub issues labelled “mate” · acme/tea-shop · 2 tasks waiting"],
+      ["GitHub issues labelled · mate · acme/tea-shop · 2 waiting"],
     ],
     [
       "a channel on Slack and one on Discord",
@@ -85,7 +90,7 @@ describe("a project's sources of tasks", () => {
         slack: known({ channel: { appId: "a", channelId: "C1", channel: "support" } }),
         discord: known({ channel: { appId: "a", channelId: "D1", channel: "bugs" } }),
       },
-      ["#support on Slack", "#bugs on Discord"],
+      ["#support · Slack", "#bugs · Discord"],
     ],
     [
       "webhooks by their count",
@@ -96,7 +101,7 @@ describe("a project's sources of tasks", () => {
     [
       "each schedule by when it runs and its name",
       { ...NONE, schedules: known([schedule]) },
-      ["Every Monday 09:00 · Update dependencies"],
+      ["Update dependencies · Every Monday 09:00"],
     ],
     [
       "a source refused to the reader has no row",
@@ -104,7 +109,7 @@ describe("a project's sources of tasks", () => {
       [],
     ],
   ] as const)("%s", (_case, reads, words) => {
-    expect(sourceRows(reads).rows.map((row) => row.words)).toEqual(words);
+    expect(sourceRows(reads).rows.map(said)).toEqual(words);
   });
 
   it("says a channel's organization connection is missing on its row", () => {
@@ -114,7 +119,14 @@ describe("a project's sources of tasks", () => {
       slackConnected: false,
     });
     expect(rows).toEqual([
-      { key: "slack", kind: "slack", words: "#support on Slack", disconnected: true },
+      {
+        key: "slack",
+        kind: "slack",
+        title: "#support",
+        detail: "Slack",
+        meta: null,
+        disconnected: true,
+      },
     ]);
   });
 
@@ -234,17 +246,6 @@ describe("Stop and Remove on a source's row", () => {
     ],
   ] as const)("%s", (_case, input, press) => {
     expect(sourceRowPress({ key: "slack", ...input })).toEqual(press);
-  });
-
-  it.each([
-    ["github", { ask: "Stop taking GitHub issues?", verb: "Stop", working: "Stopping…" }],
-    ["slack", { ask: "Stop taking tasks from this channel?", verb: "Stop", working: "Stopping…" }],
-    [
-      "schedule",
-      { ask: "Remove this schedule and its brief?", verb: "Remove", working: "Removing…" },
-    ],
-  ] as const)("a %s row asks and works in its own words", (kind, words) => {
-    expect(stopWords(kind)).toEqual(words);
   });
 });
 

@@ -239,6 +239,7 @@ export function ProjectPageBody<T>({
           ) : null}
           {open.automation ? (
             <DetailSection
+              flush
               label="Automation"
               onClose={() => {
                 setOpen((now) => ({ ...now, automation: false }));
@@ -1338,14 +1339,19 @@ function useMarksItsChange(root: RefObject<HTMLElement | null>) {
   }, [root]);
 }
 
-/** A section opened at the main column's foot from a side row: brought into view, closed by its own word. */
+/**
+ * A section opened at the main column's foot from a side row: brought into view, closed by its own
+ * word. `flush`: what it holds runs to the card's edges (a masthead's hairline, a ledger's rows).
+ */
 function DetailSection({
   label,
   onClose,
+  flush = false,
   children,
 }: {
   readonly label: string;
   readonly onClose: () => void;
+  readonly flush?: boolean;
   readonly children: ReactNode;
 }) {
   const ref = useRef<HTMLElement>(null);
@@ -1358,7 +1364,9 @@ function DetailSection({
       <SectionLabel action={<SectionAction onClick={onClose}>Close</SectionAction>}>
         {label}
       </SectionLabel>
-      <div className="pp-card pp-detail">{children}</div>
+      <div className="pp-card pp-detail" data-flush={flush ? "" : undefined}>
+        {children}
+      </div>
     </section>
   );
 }
