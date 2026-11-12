@@ -404,7 +404,7 @@ describe("a Mate's parts", () => {
         leases: undefined,
         poolPairs: [{ pool: "webpool", stages: [{ hostname: "webstage" }] }],
       },
-      rows: ["webpool (It runs while Kara works on it.)", "webstage webstage.example.app"],
+      rows: ["webpool (Only while Kara works on it.)", "webstage webstage.example.app"],
     },
     {
       title: "a workspace whose server is not running, beside a stage with no address",
@@ -462,7 +462,7 @@ describe("a Mate's parts", () => {
       poolPairs: [{ pool: "webpool", stages: [{ hostname: "webstage" }] }],
     });
     expect(rowsOf(kara), "no workspace, no dev to open").toEqual([
-      "webpool (Not running now. It runs while Kara works on it.)",
+      "webpool (Only while Kara works on it.)",
       "webstage webstage.example.app",
     ]);
     expect(JSON.stringify(mateLinks(kara))).not.toContain("webpool-300");

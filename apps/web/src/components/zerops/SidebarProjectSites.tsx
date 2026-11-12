@@ -1070,8 +1070,8 @@ function CopyButton({
 
 /**
  * A Mate's services, one row each as a place's addresses are: its hostname, its host, ↗ — opening
- * in a new tab, its other ports' hosts in its tooltip, copying on `c` or ⌘C. A service with nothing to open is its hostname alone, muted,
- * its tooltip saying why.
+ * in a new tab, its other ports' hosts in its tooltip, copying on `c` or ⌘C. A service with
+ * nothing to open is its hostname, muted, with why in its host's place: never only on a hover.
  */
 function SitesServices({
   services,
@@ -1092,9 +1092,13 @@ function SitesServices({
           data-zerops-surface="sidebar-project-sites-service"
           key={row.key}
         >
+          {/* The whole reason on a hover too, where a narrow popover cuts it. */}
           <Tooltip>
             <TooltipTrigger render={<span className="zerops-sites-link zerops-sites-off" />}>
               {name}
+              <span className="zerops-sites-host" data-sites-why="">
+                {row.why?.replace(/\.$/u, "")}
+              </span>
             </TooltipTrigger>
             <TooltipPopup side="top">{row.why}</TooltipPopup>
           </Tooltip>
