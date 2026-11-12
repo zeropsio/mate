@@ -1,6 +1,6 @@
 /**
  * Who merges a project's changes, on the project's page: the Merging row of its side column, whose
- * line says where the setting stands, and the section its *Manage* opens — everyone working on it,
+ * line says where the setting stands, and the dialog its *Manage* opens — everyone working on it,
  * or only the organization's Owner and Admins and the people picked. An Owner or Admin changes it
  * with one Save; anyone else reads who merges, by name: whom to ask. HQ enforces it at the merge
  * (`not_app_merger`).
@@ -152,7 +152,7 @@ export function ProjectMerging({
 
 /** The section on an HQ older than the setting: what it needs, and nothing to press. */
 export function MergingNeedsUpdate() {
-  return <p className="px-1 text-sm text-muted-foreground">{MERGERS_NEED_UPDATE}</p>;
+  return <p className="text-sm text-muted-foreground">{MERGERS_NEED_UPDATE}</p>;
 }
 
 /** What merging is, and when limiting it helps. */
@@ -187,7 +187,7 @@ export function ProjectMergingView({
   const { enabled, tooMany } = mergingSave(current, draft);
   const picked = new Set(draft.people);
   return (
-    <div className="flex flex-col gap-4 p-1" data-zerops-surface="project-merging">
+    <div className="flex flex-col gap-4" data-zerops-surface="project-merging">
       <p className="text-sm text-muted-foreground">{MERGING_IS}</p>
       <RadioGroup
         aria-label={MERGING_TITLE}
@@ -301,7 +301,7 @@ function MergingRead({
   readonly choices: MergingPeopleView;
 }) {
   return (
-    <div className="flex flex-col gap-3 p-1" data-zerops-surface="project-merging">
+    <div className="flex flex-col gap-3" data-zerops-surface="project-merging">
       <p className="text-sm text-foreground">
         {current === null
           ? "Everyone working on this project can merge."
