@@ -52,6 +52,7 @@ import { canonicalEnvironmentRow, type CanonicalEnvironmentRow } from "../../zer
 import type { CanonicalGroupEnvironmentRowInput } from "../../zerops/groupDeploys.ts";
 import type { Release, HqReleaseTarget } from "@t3tools/shared/hqRelease";
 import type { GitReleaseReviewFacts } from "../../zerops/release.ts";
+import type { OutsideProduction } from "../operations/hqOutsideProduction.ts";
 
 type ComparedCommits = MovedCommits & { readonly again?: (() => void) | undefined };
 
@@ -149,6 +150,11 @@ export interface ZeropsProjectFlow {
    */
   readonly repos: ReadonlyArray<RepoListEntry> | undefined;
   readonly release: ZeropsReleaseOffer;
+  /**
+   * Its production is deployed outside Mate and follows `main`, as somebody said in HQ; absent
+   * where nobody did. `groupFlow` reads it only while the project has no production of its own.
+   */
+  readonly outsideProduction?: OutsideProduction | undefined;
 }
 
 /** One group's changes as its flow shows them: the open ones a push reached, and the landed. */
