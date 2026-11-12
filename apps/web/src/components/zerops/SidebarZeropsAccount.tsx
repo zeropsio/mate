@@ -451,7 +451,7 @@ export function SidebarZeropsAccountMenu({
         render={<a href={zeropsHqOrigin()} rel="noreferrer" target="_blank" />}
       >
         <Building2Icon />
-        <span className="min-w-0 flex-1 truncate">HQ</span>
+        <span className="min-w-0 flex-1 truncate">Zerops HQ</span>
         <ArrowUpRightIcon className="size-3.5 text-muted-foreground" />
       </MenuItem>
 
