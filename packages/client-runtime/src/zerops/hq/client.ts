@@ -1,4 +1,5 @@
 import { ObserveCredential } from "./observeCredential.ts";
+import { ReadAccessRequest, ReadAccessRequests, type ReadAccessOutcome } from "./readAccess.ts";
 import { type HqProblem, HqRefusal } from "@t3tools/shared/hqProblems";
 import {
   HqRepoStorage,
@@ -706,6 +707,12 @@ export interface HqApi {
   /** The person's active Git password metadata; passwords are returned only on issue. */
   /** Reads metadata only; provisioning records authority separately. */
   readonly observeCredential?: (projectId: string) => Promise<ObserveCredential>;
+  /** The organization's open read access requests: every one to an Admin or Owner, else their own. */
+  readonly readAccessRequests?: () => Promise<ReadonlyArray<ReadAccessRequest>>;
+  /** Asks for read access to an environment; asking again answers the request still open. */
+  readonly askReadAccess?: (projectId: string) => Promise<ReadAccessRequest>;
+  /** An Admin or Owner closes an open request; HQ writes nothing at Zerops. */
+  readonly closeReadAccess?: (id: string, outcome: ReadAccessOutcome) => Promise<void>;
   /**
    * Binds the verified person establishing the native ZCP key; no hash reconnects an existing Mate.
    * HQ answers the observe metadata as it stands after it (mate-hq spec/protocol.md §S16c).
@@ -2268,6 +2275,31 @@ export function makeHqApi(input: {
         ObserveCredential,
         "observe authorization",
       )(await authorized(`/api/mates/${encodeURIComponent(projectId)}/observe-credential`)),
+    readAccessRequests: async () =>
+      (
+        await decoded(
+          ReadAccessRequests,
+          "read access requests",
+        )(await authorized("/api/read-access-requests"))
+      ).requests,
+    askReadAccess: async (projectId) =>
+      decoded(
+        ReadAccessRequest,
+        "read access request",
+      )(
+        await authorized(
+          "/api/read-access-requests",
+          { method: "POST", body: JSON.stringify({ projectId }) },
+          true,
+        ),
+      ),
+    closeReadAccess: async (id, outcome) => {
+      await authorized(
+        `/api/read-access-requests/${encodeURIComponent(id)}/close`,
+        { method: "POST", body: JSON.stringify({ outcome }) },
+        true,
+      );
+    },
     establishZcpAuthorization: async (projectId, context) =>
       decoded(
         ObserveCredential,

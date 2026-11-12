@@ -1,4 +1,5 @@
 export { sharedHq } from "./anchor.ts";
+export type { ReadAccessOutcome, ReadAccessRequest } from "./readAccess.ts";
 export {
   HQ_WRITE_UNCERTAIN,
   HqError,

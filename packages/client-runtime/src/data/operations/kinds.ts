@@ -26,6 +26,7 @@ import { enableZeropsMate } from "./enableZeropsMate.ts";
 import { hardenProject } from "./hardenProject.ts";
 import { HQ_CHIEF_KINDS } from "./hqChief.ts";
 import { authorizeObserve } from "./hqObserveAuthorization.ts";
+import { askReadAccess, closeReadAccess } from "./hqReadAccess.ts";
 import { HQ_WRITE_KINDS } from "./hqWrites.ts";
 import { PERSONA_TEMPLATE_KINDS } from "./hqPersonaTemplates.ts";
 import { importContainer, prepareTierVariables } from "./importContainer.ts";
@@ -111,6 +112,8 @@ export const OPERATION_KINDS = defineOperationKinds([
   ...PERSONA_TEMPLATE_KINDS,
   ...HQ_CHIEF_KINDS,
   authorizeObserve,
+  askReadAccess,
+  closeReadAccess,
   changeComment,
   renameApp,
   deleteApp,

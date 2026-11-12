@@ -21,6 +21,7 @@ import { mateVcsFamily } from "./mateVcs.ts";
 import { hqGitCredentialsFamily, hqGitCredentialRequestFamily } from "./hqGitCredentials.ts";
 import { hqAiKeyRequestFamily, hqAiKeysFamily, hqIntakeRevealFamily } from "./hqAutomation.ts";
 import { hqTakeOverFamily, hqTakeOverRequestFamily } from "./hqTakeOver.ts";
+import { hqReadAccessRequestsFamily } from "./hqReadAccess.ts";
 import {
   hqAppDiscordFamily,
   hqAppSchedulesFamily,
@@ -158,6 +159,7 @@ export const FAMILIES = defineFamilies([
   hqTakeOverFamily,
   hqTakeOverRequestFamily,
   hqIntakeRevealFamily,
+  hqReadAccessRequestsFamily,
   hqSlackFamily,
   hqSlackManifestFamily,
   hqSlackChannelsFamily,

@@ -11,7 +11,8 @@
  * An organization owner or admin changes access from a person's ⋮ and adds people already in the
  * organization from *Add access*. Each change is the account's operation (`set-project-access`); a
  * chip says it is saving until Zerops answered and the people were read again, and a refusal is
- * said under the chips.
+ * said under the chips. Under the table, read access is asked for a place Zerops does not show the
+ * viewer, and an owner or admin grants or declines it (`ReadAccessRequests`).
  */
 import { useAtomValue } from "@effect/atom-react";
 import { Link, useRouterState } from "@tanstack/react-router";
@@ -63,6 +64,7 @@ import {
   type AccessChoice,
   type AccessPick,
 } from "./ProjectAccessChips";
+import { ReadAccessRequests } from "./ReadAccessRequests";
 import {
   accessChanges,
   appProjectsOf,
@@ -392,15 +394,18 @@ export function ProjectPeople({ groupId }: { groupId: string }) {
   const onAdd = useAddPeople(projects, base.owners, clientId, write);
 
   return (
-    <ProjectAccessTable
-      adding={saving.has(ADD_TROUBLE)}
-      focus={focus}
-      saving={saving}
-      troubles={troubles}
-      view={view}
-      {...(view.kind === "table" && view.invite ? { personPage: LINKED } : {})}
-      {...(writable && clientId !== null ? { onCell, onEverywhere, onWithdraw, onAdd } : {})}
-    />
+    <>
+      <ProjectAccessTable
+        adding={saving.has(ADD_TROUBLE)}
+        focus={focus}
+        saving={saving}
+        troubles={troubles}
+        view={view}
+        {...(view.kind === "table" && view.invite ? { personPage: LINKED } : {})}
+        {...(writable && clientId !== null ? { onCell, onEverywhere, onWithdraw, onAdd } : {})}
+      />
+      <ReadAccessRequests orgId={clientId} view={view} />
+    </>
   );
 }
 
