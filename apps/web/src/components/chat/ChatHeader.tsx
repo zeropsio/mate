@@ -42,6 +42,7 @@ import GitActionsControl from "../GitActionsControl";
 import { isTrailingDoubleClick } from "../Sidebar.logic";
 import { type DraftId } from "~/composerDraftStore";
 import { Button } from "../ui/button";
+import { ChiefAccessButton } from "../zerops/chief/ChiefAccessButton";
 import { ChiefOverviewButton } from "../zerops/chief/ChiefOverviewButton";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
@@ -947,7 +948,10 @@ export const ChatHeader = memo(function ChatHeader({
             >
               {mate.chief === true ? (
                 // A Chief's way out is its organization: the overview's cards beside it.
-                <ChiefOverviewButton threadRef={activeThreadRef} />
+                <>
+                  <ChiefAccessButton />
+                  <ChiefOverviewButton threadRef={activeThreadRef} />
+                </>
               ) : projectPage?.kind === "none" ? (
                 // Only a Mate in no project: a project's page and its Sites carry the way there.
                 <ZeropsProjectLink projectUrl={mate.projectUrl} />

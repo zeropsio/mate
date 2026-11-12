@@ -392,6 +392,10 @@ export interface HqApi {
   ) => Promise<HqGitOperationReceipt | null>;
   /** The reader's Chief registered for, or moved to, `projectId` (`chief.ts`). */
   readonly setChief: HqChiefCalls["setChief"];
+  /** HQ makes and keeps the person's token for their Chief, replacing any it kept (`chief.ts`). */
+  readonly keepChiefToken: HqChiefCalls["keepChiefToken"];
+  /** HQ keeps no token for the person's Chief any more (`chief.ts`). */
+  readonly forgetChiefToken: HqChiefCalls["forgetChiefToken"];
   /** Every decision HQ holds of the proposals named (`chief.ts`). */
   readonly proposalDecisions: HqChiefCalls["proposalDecisions"];
   /** One proposal's decision, then once how an approval ended (`chief.ts`). */

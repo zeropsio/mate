@@ -1,6 +1,7 @@
 /**
  * Setting up the person's Chief, as this tab runs it (`chiefSetup.logic.ts`): the New project that
- * makes its project and container, and HQ's registration of it. The Chief page shows it and presses
+ * makes its project and container, and HQ's registration of it — then, as every registration does,
+ * the ask that HQ keep the person's access for it (`askChiefAccess`). The Chief page shows it and presses
  * it (`ChiefPage`); the runner is mounted once, above every view (`ChiefSetupHost`), so its steps
  * run on wherever the person goes.
  *
@@ -25,6 +26,7 @@ import {
 import { configuredHq } from "./accountHq";
 import { onAccountLifetimeClose } from "./accountLifetime";
 import { HQ_UNFOLLOWED, useAccountOperationsOptional } from "./accountOperations";
+import { askChiefAccess } from "./chiefAccess";
 import { chiefNames, chiefOffered, chiefSetupEntry, chiefSetupLine, othersChiefs } from "./chief";
 import { beginCreation, tryCreationAgain, useCreation } from "./creations";
 import { useMatePresses } from "./matePress";
@@ -115,7 +117,8 @@ const CHIEF_FACE = { tint: "slate", shape: MATE_SHAPE_OF_TINT.slate } as const;
 
 /**
  * Runs the setup: *Set up Chief* starts its New project; once its container is added, HQ registers
- * it as the person's Chief; *Try again* resumes the step that stopped. Mounted once, above every
+ * it as the person's Chief and asks HQ to keep the person's access for it; *Try again* resumes the
+ * step that stopped. Mounted once, above every
  * view: its presses reach the page through `startChiefSetup` and `tryChiefSetupAgain`.
  */
 export function useChiefSetupRunner(): {
@@ -178,7 +181,8 @@ export function useChiefSetupRunner(): {
     else if (progress.kind === "failed") dispatch({ type: "failed", reason: progress.reason });
   }, [awaitingProject, progress]);
 
-  // HQ's mark on its project, once at a time.
+  // HQ's mark on its project, once at a time; once HQ holds it, the ask to keep the person's access,
+  // which never holds the Chief back: a failure stands in its header (`ChiefAccessButton`).
   const finishing = useRef(false);
   const chiefProject = setup.phase === "running" && setup.step === "hq" ? setup.projectId : null;
   useEffect(() => {
@@ -187,11 +191,14 @@ export function useChiefSetupRunner(): {
     finishing.current = true;
     void finishChiefSetup({
       projectId: chiefProject,
-      setChief: () =>
-        operations.run(
+      setChief: async () => {
+        const registered = await operations.run(
           { kind: "register-birth-chief", orgId, birthId },
           { orgId, unobserved: HQ_UNFOLLOWED },
-        ),
+        );
+        void askChiefAccess({ ask: "keep", operations, orgId, projectId: chiefProject });
+        return registered;
+      },
       dispatch,
     }).finally(() => {
       finishing.current = false;

@@ -142,6 +142,12 @@ export const KIT_OMISSIONS: readonly KitOmission[] = [
       "Home-made action: it opens the Chief's overview through the router and the right panel's store.",
   },
   {
+    name: "ChiefAccessButton",
+    source: "apps/web/src/components/zerops/chief/ChiefAccessButton.tsx",
+    reason:
+      "Home-made action: its state is the person's own Chief's, read from HQ's navigation, and its presses are HQ writes.",
+  },
+  {
     name: "Row-wide buttons (about 20 raw <button>)",
     source:
       "apps/web/src/components/sidebar/SidebarProjectTree.tsx, zerops/ZeropsDataTree.tsx, chat/RunChat.tsx, chat/DetailRow.tsx",
