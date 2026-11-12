@@ -910,6 +910,19 @@ describe("changeState", () => {
     },
   );
 
+  // witness: packages/client-runtime/src/zerops/projectFlow.ts | if (pull.pullRequest?.state === "merged") return { word: "Merged on GitHub", tone: "off" }; →
+  it("names a change GitHub merged as merged there, before main has taken it", () => {
+    expect(
+      changeState({
+        ...CODE,
+        number: 1,
+        mergeability: "mergeable",
+        ready: true,
+        pullRequest: { state: "merged" },
+      }),
+    ).toEqual({ word: "Merged on GitHub", tone: "off" });
+  });
+
   it("carries the tone that means the word", () => {
     expect(changeState({ ...CODE, number: 4, mergeability: "conflicting" })?.tone).toBe(
       "attention",
