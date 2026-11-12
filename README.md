@@ -59,6 +59,8 @@ imported, ported, owned, or deleted, and why — is `docs/internals/zerops/fork.
 
 ## Where to read next
 
+- [`docs/engineering-rules.md`](docs/engineering-rules.md) — the rules every change follows, shared
+  with zcp and HQ.
 - [`AGENTS.md`](AGENTS.md) — the knowledge map: where design, rules, measured facts, and tests
   each live.
 - [`docs/internals/zerops/fork.md`](docs/internals/zerops/fork.md) — the fork rules: the hard-fork

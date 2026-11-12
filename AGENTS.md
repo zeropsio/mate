@@ -4,6 +4,10 @@ Zerops Mate is a hard fork of T3 Code: a control surface for coding agents in Ze
 containers. A Node WebSocket server in each container drives provider CLIs; zcp installs it from
 this repo's stable GitHub release. The web client is hosted separately.
 
+**Shared rules.** Every change follows [`docs/engineering-rules.md`](docs/engineering-rules.md),
+the rules this repository shares with zcp and HQ: read it before the first edit. This file adds only
+this repository's map, commands and traps.
+
 **Upstream.** Never `git merge` or rebase onto `upstream/main`. Before importing, porting or editing
 imported/ported zones, read and follow [`docs/internals/zerops/fork.md`](docs/internals/zerops/fork.md).
 
@@ -22,8 +26,8 @@ delivery. Local-only: never commit it or its credentials.
   the printed localhost origin; server integration runs in a disposable Zerops container.
 - **Performance without compromise.** Watch websocket payload growth, needless list rerenders and
   continuously repainting effects, especially on high-refresh displays.
-- **mate and zcp are one product.** Crossing the container seam means a two-repo change. Unknown
-  `mate serve` flags kill every unit boot: new settings use the launch environment, never a new flag.
+- **zcp starts this server.** Unknown `mate serve` flags kill every unit boot: new settings use the
+  launch environment, never a new flag (`zeropsio/zcp:docs/spec-mate.md` §2.2).
 
 ## Size the work, then verify
 
@@ -108,8 +112,9 @@ Before calling frontend work done, decide which apply:
 This file is a map, never a cache of facts from code, tests or other documents.
 To answer a question, go to the home:
 
-- Conceptual architecture → private `zeropsio/mate-hq`, `docs/architecture/README.md`; public
-  product contracts here and in the zcp spec remain self-contained.
+- Conceptual architecture (concepts, owners of facts and decisions, trust boundaries) → private
+  `zeropsio/mate-hq:docs/architecture/README.md`; public product contracts here and in the zcp spec
+  remain self-contained.
 - The zcp↔mate seam → `../zcp/docs/spec-mate.md` §2.8 (sibling repo zeropsio/zcp).
 - Domain terms (Mate, HQ, application, environments, release, crew) → `docs/internals/zerops/primer.md`.
 - Runtime terms (thread, turn, decider, projector, reactor) → `docs/internals/glossary.md`.
@@ -123,10 +128,10 @@ To answer a question, go to the home:
 
 - `docs/` lines must hold for something not yet existing: cross-surface rule, term, zcp↔mate seam,
   platform fact. One surface/flow/component belongs in tests (title is the product sentence; one-line
-  why when the owner decided against the obvious) or code. Reasons/reversals belong in the commit message.
-- Test admission and removal: OWNER.md Testing. `scripts/check-test-sentences.ts` enforces
-  witness lines and `Drops-test`/`Drops-test-file` trailers when tests run (gate `--tests`, manual CI); `scripts/witness-replay.ts <file>`
-  replays a file's witnesses.
+  why when the owner decided against the obvious) or code.
+- Test admission and removal: `docs/engineering-rules.md` §4. `scripts/check-test-sentences.ts`
+  enforces witness lines and `Drops-test`/`Drops-test-file` trailers when tests run (gate `--tests`,
+  manual CI); `scripts/witness-replay.ts <file>` replays a file's witnesses.
 - Wire-shaped test input: `recorded(<schema>, <name>, edit?)` from `packages/test-recordings` (HQ
   from mate-hq conformance; written only by `scripts/sync-recordings.ts`, which keeps only the
   schemas z3 consumes). Casts and annotations to contract types in tests only decrease
@@ -135,7 +140,7 @@ To answer a question, go to the home:
   data sources turns it red.
 - Paragraph-sized doc entries are list items, never table rows.
 - `verified.md` has one writer, the lead; helpers report facts as text, never edit it.
-- Never commit plans, research notes or scratch files; `.plans/` is gitignored as a safety net.
+- Scratch files go in the gitignored `.plans/`.
 
 ## Where code lives
 
@@ -161,10 +166,8 @@ To answer a question, go to the home:
 - Important invariants get deterministic checks with an exception ledger that may only shrink.
 - Any part (HQ, a Mate's container, the Zerops platform, a provider) can fail: bounded waits, honest
   user state, recovery on return; no machinery for failures not yet seen.
-- Delete, don't disable: no commented-out code or compatibility shims.
 - Never `any`; prefer inferred types. Comments explain use and move with code.
 - Security matters; do not over-index for dev-mode or maintainer-only features.
-- If a rule fights the task, state the conflict and get a maintainer's sign-off before breaking it.
 
 ## When something that is not your code fails
 
@@ -183,23 +186,22 @@ different result, except class B.
 - **D — park:** stop only dependent steps, finish every independent one, end with
   `BLOCKED: <step> — <exact error> — <class> — tried: <hypotheses> — need: <one concrete question>`.
 
-Never a workaround, always D: another identity/authority (account, credential, organization, token,
-permission), a target the task does not name, `--no-verify` / `--force`, disabled check,
-substitute infrastructure.
+Never a workaround, always D: whatever `docs/engineering-rules.md` §5 forbids, and substitute
+infrastructure.
 
-## Context and commits
+## Context and pull requests
 
 - Every step re-sends the conversation: keep context small. Parallel helpers/worktrees are for a
   pass's independent part or long read-only search, never a tweak or one-surface change.
 - Hot files (`ChatView.tsx`, `index.css`, `SidebarZeropsTree.tsx`, `MessagesTimeline*`, `RunChat.tsx`)
   and reference files run up to ~15k lines: grep the symbol, read the range.
 - Output: failures only (`… 2>&1 | tail -40`). Screenshots: crop to surface, one per question.
-- Atomic English commits, conventional plain-language title; never a `Co-Authored-By` trailer.
 - PRs only when asked: one concern; body problem and fix, ending with model/harness used. UI changes
   need before/after images, motion a short video.
 
 ## Maintaining this file
 
-Only cross-cutting traps or disciplines not test-/spec-shaped earn a line; otherwise follow "Where
-knowledge lives". Delete lines already stated at their home. `CLAUDE.md` imports
-this file and holds only Claude Code-specific instructions.
+Only this repository's cross-cutting traps or disciplines that are not test-/spec-shaped earn a
+line; a rule that also holds for zcp and HQ belongs in `docs/engineering-rules.md`; otherwise follow
+"Where knowledge lives". Delete lines already stated at their home. `CLAUDE.md` imports this file and
+holds only Claude Code-specific instructions.

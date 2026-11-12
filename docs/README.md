@@ -2,6 +2,7 @@
 
 ## Canonical homes
 
+- [Engineering rules](engineering-rules.md): the rules every change follows, shared with zcp and HQ.
 - Conceptual architecture: private `zeropsio/mate-hq`, `docs/architecture/README.md`. Public
   product contracts here and in the zcp spec remain self-contained.
 - [Fork boundaries](internals/zerops/fork.md)
