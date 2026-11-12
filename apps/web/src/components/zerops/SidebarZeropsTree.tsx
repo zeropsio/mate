@@ -268,6 +268,7 @@ import {
   chipDot,
   chipFace,
   drawnChip,
+  outsideProductionMenu,
   productionMenu,
   projectChips,
   stageMenu,
@@ -399,6 +400,7 @@ function groupFlowReadsOf(flow: SidebarProjectFlow): GroupFlowReads {
     environments: [...flow.environments.values()],
     pullRequests: flow.pullRequests,
     merged: flow.merged ?? [],
+    outsideProduction: flow.outsideProduction,
     release: {
       gate: flow.releaseOffered ? { allowed: true } : { allowed: false, reason: "" },
       suggestion: flow.releaseTag ?? "",
@@ -453,6 +455,8 @@ export interface SidebarProjectFlow {
   readonly releaseContents?: ReadonlyArray<Moved> | undefined;
   /** The Mate tier as `main` holds it, which pairs each Mate's previews (`servicePairs`). */
   readonly mateTier?: string | undefined;
+  /** Somebody said its production is deployed outside Mate (`ZeropsProjectFlow.outsideProduction`). */
+  readonly outsideProduction?: { readonly address: string | null } | undefined;
   /** Production's services whose commit cannot be told: nothing is said to wait on them. */
   readonly releaseUntold?: ReadonlyArray<string> | undefined;
   /**
@@ -699,6 +703,8 @@ interface ProjectShared {
         readonly stageChip: ProductionChip | undefined;
         readonly line: HeadingLineInput | undefined;
         readonly production: boolean;
+        /** Production's address where it is deployed outside Mate and one was given. */
+        readonly outsideAddress: string | null;
         readonly stages: boolean;
       }
     | undefined;
@@ -1495,7 +1501,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         ? undefined
         : {
             production:
-              projectFlow.production.kind === "absent"
+              projectFlow.production.kind === "absent" || projectFlow.production.kind === "outside"
                 ? undefined
                 : {
                     projectId: productionStop?.projectId,
@@ -1691,9 +1697,14 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         item,
       })),
     );
+    // Deployed outside Mate, at an address somebody gave: that address is production's.
+    const outsideAddress =
+      projectFlow.production.kind === "outside" ? projectFlow.production.address : null;
     const production =
       prodChip === undefined
-        ? undefined
+        ? outsideAddress === null
+          ? undefined
+          : () => outsideProductionMenu(outsideAddress)
         : (nowMs: number) =>
             productionMenu({
               chip: prodChip,
@@ -1811,6 +1822,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             stageChip: stageChipDrawn,
             line,
             production: production !== undefined,
+            outsideAddress,
             stages: stagesMenu !== undefined,
           });
     const sites: ProjectSitesInput | undefined =

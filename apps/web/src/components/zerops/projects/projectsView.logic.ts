@@ -557,6 +557,8 @@ export interface GroupFlowReads {
     /** Production's services whose commit cannot be told. */
     readonly untold: ReadonlyArray<string>;
   };
+  /** Somebody said its production is deployed outside Mate (`ZeropsProjectFlow.outsideProduction`). */
+  readonly outsideProduction?: { readonly address: string | null } | undefined;
 }
 
 /**
@@ -700,6 +702,7 @@ export function groupFlowInputOf(input: {
     mainHead: undefined,
     pending: input.pending,
     unread: flow?.unreadEnvironments ?? [],
+    outsideProduction: flow?.outsideProduction,
   };
 }
 

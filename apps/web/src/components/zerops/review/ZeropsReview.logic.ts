@@ -19,6 +19,7 @@ import {
   type ReviewVerdict,
   type ReleaseReplaces,
   type ZeropsPublicRoute,
+  MERGE_GOES_LIVE,
 } from "@t3tools/client-runtime/zerops";
 import { crewPossessive } from "@t3tools/client-runtime/zerops/crew/phrases";
 import { mateParts } from "@t3tools/client-runtime/zerops/mateParts";
@@ -614,10 +615,19 @@ export function mergeFoot(input: {
   readonly warning?: string | undefined;
   /** A recipe change: what its merge does is the review's to say. */
   readonly recipe?: boolean | undefined;
+  /**
+   * Production is deployed outside Mate and follows `main` (`downstream.followsMain`): the merge
+   * goes live, with nothing to release.
+   */
+  readonly followsMain?: boolean | undefined;
 }): string {
   if (!CHECKS_SAID.has(input.state) || input.recipe === true) return input.consequence;
   const keeps =
-    input.live === undefined ? "" : ` Production keeps ${input.live} until you release.`;
+    input.live !== undefined
+      ? ` Production keeps ${input.live} until you release.`
+      : input.followsMain === true
+        ? ` ${MERGE_GOES_LIVE}`
+        : "";
   // Each by its title, as its row reads it: "demo-app-stage" is Stage.
   const stages = input.stages.map((name) => environmentTitle("stage", name));
   const foot =

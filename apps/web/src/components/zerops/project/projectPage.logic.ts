@@ -47,7 +47,8 @@ export function pageChanges(input: {
       flow.stages.length === 0
         ? undefined
         : (applicationStage(read)?.stage ?? { runs: [], deploying: [], mainHeads: new Map() }),
-    production: flow.production.kind !== "absent",
+    production: flow.production.kind !== "absent" && flow.production.kind !== "outside",
+    followsMain: flow.production.kind === "outside",
     limit: CHANGES_HELD,
   });
 }
@@ -75,7 +76,7 @@ export function changeGroups(changes: ReadonlyArray<CardChange>): {
   const groups = new Map<string, { live: boolean; group: ChangeGroup }>();
   for (const change of changes) {
     if (change.open || change.pull.kind === "recipe") continue;
-    const label = groupLabel(change.words);
+    const label = groupLabel(change);
     const took = change.where?.kind === "released" ? change.where : undefined;
     const held = groups.get(label);
     groups.set(label, {
@@ -100,12 +101,16 @@ export function changeGroups(changes: ReadonlyArray<CardChange>): {
 const ON_MAIN_NOT_LIVE = "On main, not live yet";
 const ON_STAGE_READY = "On stage, ready for production";
 const ON_MAIN_READY = "On main, ready for production";
+/** Where production follows `main`: beside "Live in v0.1.3", what is live with no release of its own. */
+export const LIVE_WITH_MAIN = "Live with main";
 
 /**
  * A merged change's place as its group's label, in the line's words: on the stage or on `main`,
- * ready for production; on `main` alone where the project is not live yet.
+ * ready for production; on `main` alone where the project is not live yet; live with `main` where
+ * production follows it.
  */
-function groupLabel(words: string): string {
+function groupLabel({ words, where }: Pick<CardChange, "words" | "where">): string {
+  if (where?.kind === "live-with-main") return LIVE_WITH_MAIN;
   if (words === mergedChangeWords({ kind: "merged" })) return ON_MAIN_NOT_LIVE;
   if (words === mergedChangeWords({ kind: "waits-for-production" })) return ON_MAIN_READY;
   if (words === mergedChangeWords({ kind: "on-stage" })) return ON_STAGE_READY;
