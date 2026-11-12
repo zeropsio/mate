@@ -200,6 +200,8 @@ describe("an unreachable Mate's last-known state", () => {
         mateNoticeVoice({
           reachability: { kind: "not-answering", overdue: false },
           conversationShown,
+          // witness: apps/web/src/zerops/mateNoticeVoice.ts | if (reachability === null) return { surface: "none" }; → if (surface === "banner" && input.linkHeld !== true && settlesQuietly(reachability))
+          linkHeld: true,
           nowMs: 0,
           mateName: "Skákala",
           lastKnown: "Last known 14:20: Skákala hit the Claude limit.",

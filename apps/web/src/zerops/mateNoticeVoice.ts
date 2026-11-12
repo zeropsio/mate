@@ -136,6 +136,7 @@ import {
   reachabilityRefusalWords,
   type MateVoice,
   type MateVoiceInput,
+  type Reachability,
 } from "@t3tools/client-runtime/zerops/environments";
 
 type SpokenVoice = Exclude<MateVoice, { readonly surface: "none" }> & {
@@ -167,6 +168,18 @@ export type WebMateVoice =
   | SpokenVoice
   | (Omit<SpokenVoice, "surface"> & { readonly surface: "header" });
 
+/**
+ * A link not up yet that may come up within a blip: its first probe unanswered, its container still
+ * coming up, or HQ not holding its link yet. Over a shown conversation it waits `linkHeld` to speak.
+ */
+export function settlesQuietly(reachability: Reachability): boolean {
+  return (
+    reachability.kind === "not-answering" ||
+    reachability.kind === "container" ||
+    (reachability.kind === "connecting" && reachability.waitingOn === "mate-link")
+  );
+}
+
 /** Web copy and pose follow source evidence. Native clients keep their current presentation. */
 export function mateNoticeVoice(
   input: Omit<MateVoiceInput, "heldMs"> & {
@@ -181,7 +194,10 @@ export function mateNoticeVoice(
     readonly lastKnown?: string | undefined;
     readonly offlineSince?: string | undefined;
     readonly timestampFormat?: TimestampFormat;
-    /** A lost link over a shown conversation has lasted past `MATE_VOICE_QUIET_MS`: no blip. */
+    /**
+     * A lost link, or one not up yet (`settlesQuietly`), over a shown conversation has lasted past
+     * `MATE_VOICE_QUIET_MS`: no blip.
+     */
     readonly linkHeld?: boolean;
     /** A lost link over a shown conversation has lasted past `MATE_VOICE_SLOW_MS`. */
     readonly linkSlow?: boolean;
@@ -269,6 +285,11 @@ export function mateNoticeVoice(
     };
   }
   if (reachability === null) return { surface: "none" };
+  // Over a shown conversation a link not up yet says nothing for a blip, as a lost one does
+  // (`linkHeld`): opened after a while away, a Mate whose first probe goes unanswered for a moment
+  // never flashes its verbs over the composer.
+  if (surface === "banner" && input.linkHeld !== true && settlesQuietly(reachability))
+    return { surface: "none" };
   const phrase = reachabilityPhrase(reachability, { ...input, mateName: name });
   const actions = decision.actions;
   switch (reachability.kind) {
