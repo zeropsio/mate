@@ -1589,19 +1589,90 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     let opener: HTMLElement | null = null;
     // Opened at the conversation's end, the end stays in sight: what opens grows upward, the last
     // row held where it stands (recheck on 0.15.45: an opened card pushed its answer under the
-    // composer). Opened farther up, the opener stands where it was clicked.
+    // composer) — never past its own row's top reaching the view's, from where it grows down.
+    // Opened farther up, the opener stands where it was clicked.
     let keepsEnd = false;
     // Held as it lays out, before it paints: a step a frame late let the end dip 81 px.
     let holdsEnd: ResizeObserver | null = null;
+    let heldRow: HTMLElement | null = null;
     const keepEnd = () => {
       const viewport = listRef.current?.getScrollableNode();
-      if (!viewport || !keepsEnd || performance.now() > until) return;
+      if (!viewport || performance.now() > until) return;
+      if (!keepsEnd) {
+        shrinkWith(viewport);
+        return;
+      }
       const end = viewport.scrollHeight - viewport.clientHeight - followRoomRef.current;
-      if (Math.abs(end - viewport.scrollTop) > 0.5) scrollOwn(viewport, end);
+      // Its row seen whole is what the list keeps in place as rows grow; once past the top, the
+      // list kept the rows under it in place too, and with the end kept here the view went twice
+      // as far and fell back (Show work at the end, 2026-11-12: the opener 600 px up and gone,
+      // 325 px past the end, then back in one frame).
+      const room =
+        heldRow === null
+          ? Number.POSITIVE_INFINITY
+          : heldRow.getBoundingClientRect().top - viewport.getBoundingClientRect().top;
+      const to = Math.min(end, viewport.scrollTop + Math.max(0, room));
+      if (Math.abs(to - viewport.scrollTop) > 0.5) scrollOwn(viewport, to);
+    };
+    // What it shut moves the rest in the frame it shrinks, as the list will once it has heard
+    // the row — the list hears it every other frame: the rows under it come up with its edge,
+    // and at the conversation's end the view comes down with it. Left to the list, the rows under
+    // it trailed its edge by a frame's shrink, and the view the browser clamped to the list's end
+    // came down at half its pace.
+    let carried: HTMLElement[] = [];
+    let settling = 0;
+    const uncarry = () => {
+      for (const row of carried) row.style.translate = "";
+      carried = [];
+    };
+    // How much of its shrink the list has not heard yet, and what to carry by it.
+    const unheardOf = () => {
+      const root = heldRow?.closest<HTMLElement>("[data-timeline-root]");
+      const holder = root?.parentElement;
+      const state = listRef.current?.getState();
+      const key = root?.dataset.timelineRoot;
+      const index = key === undefined ? undefined : state?.indexByKey(key);
+      if (holder == null || state === undefined || index === undefined) return null;
+      const unheard = Math.min(0, holder.getBoundingClientRect().height - state.sizeAtIndex(index));
+      return { unheard, holder, index, state };
+    };
+    // Once the list has heard the last step, the rows it moved go without their carry.
+    const settle = () => {
+      settling = 0;
+      if (carried.length === 0) return;
+      const read = unheardOf();
+      if (read === null || read.unheard > -0.5 || performance.now() > until + REVEAL_FOR_MS)
+        uncarry();
+      else settling = requestAnimationFrame(settle);
+    };
+    const shrinkWith = (viewport: HTMLElement) => {
+      // A fold places the rows itself.
+      if (outerFoldsRef.current.size > 0) return;
+      const read = unheardOf();
+      uncarry();
+      if (read === null) return;
+      const { unheard, holder, index, state } = read;
+      if (unheard < -0.5) {
+        for (const row of holder.parentElement?.children ?? []) {
+          const under = row.querySelector<HTMLElement>(":scope > [data-timeline-root]");
+          const at = under?.dataset.timelineRoot;
+          if (!(row instanceof HTMLElement) || at === undefined) continue;
+          if ((state.indexByKey(at) ?? -1) <= index) continue;
+          row.style.translate = `0 ${unheard}px`;
+          carried.push(row);
+        }
+        if (settling === 0) settling = requestAnimationFrame(settle);
+      }
+      const end = viewport.scrollHeight - viewport.clientHeight + unheard;
+      if (viewport.scrollTop - end > 0.5) scrollOwn(viewport, end);
     };
     const stop = () => {
       holdsEnd?.disconnect();
       holdsEnd = null;
+      heldRow = null;
+      uncarry();
+      cancelAnimationFrame(settling);
+      settling = 0;
       cancelAnimationFrame(frame);
       frame = 0;
       opener = null;
@@ -1657,13 +1728,24 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         event.target instanceof Element
           ? event.target.closest<HTMLElement>("[aria-expanded]")
           : null;
-      if (button === null || button.getAttribute("aria-expanded") === "true") return;
+      if (button === null) return;
+      if (button.getAttribute("aria-expanded") === "true") {
+        stop();
+        heldRow = button.closest<HTMLElement>("[data-timeline-row-id]");
+        if (heldRow === null || typeof ResizeObserver === "undefined") return;
+        keepsEnd = false;
+        until = performance.now() + REVEAL_FOR_MS;
+        holdsEnd = new ResizeObserver(keepEnd);
+        holdsEnd.observe(heldRow);
+        return;
+      }
       opener = button;
       keepsEnd = followingEndRef.current;
       until = performance.now() + REVEAL_FOR_MS;
       holdsEnd?.disconnect();
       holdsEnd = null;
       const row = button.closest<HTMLElement>("[data-timeline-row-id]");
+      heldRow = row;
       if (keepsEnd && row !== null && typeof ResizeObserver !== "undefined") {
         holdsEnd = new ResizeObserver(keepEnd);
         holdsEnd.observe(row);

@@ -4867,8 +4867,8 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
             .map((part) => ({ item: part, pairs: false }));
         });
   const feedRef = useRef<HTMLDivElement>(null);
-  const fromHeightRef = useRef<number | null>(null);
-  // A toggle leaves the height the work stood at: once the new fold is laid
+  const fromHeightRef = useRef<FeedRoom | null>(null);
+  // A toggle leaves the room the work stood in: once the new fold is laid
   // out, the room eases from it to its own.
   useLayoutEffect(() => {
     const from = fromHeightRef.current;
@@ -4877,6 +4877,10 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     if (from === null || feed === null) return;
     easeFeedHeight(feed, from);
   });
+  // "Hide work": the work eases shut still drawn, and folds once it is shut — its line says so at
+  // once. Folded at the press, its rows went in one frame and an empty room eased shut.
+  const [shutting, setShutting] = useState(false);
+  const shutRef = useRef<Animation | null>(null);
   // What joins the history enters one after another (`usePace`): a line
   // landing from the slot at once, what rode along with it after.
   const historyKeys = useMemo(() => history.map(({ item }) => item.key), [history]);
@@ -4928,14 +4932,33 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     );
   const settledOutcome = settled ? row.outcome : null;
   const toggleWork = () => {
-    hold(folded);
+    hold(folded || shutting);
     // Watched to its end and still open over its line: it
     // folds into the line as a run settling does.
     if (fold === "watched") {
       foldNow();
       return;
     }
-    fromHeightRef.current = feedRef.current?.getBoundingClientRect().height ?? null;
+    const feed = feedRef.current;
+    const room = feed === null ? null : roomOf(feed);
+    // Pressed again as it shuts: it eases open again from where it stood.
+    if (shutting) {
+      shutRef.current?.cancel();
+      shutRef.current = null;
+      fromHeightRef.current = room;
+      setShutting(false);
+      return;
+    }
+    if (!folded && feed !== null && room !== null && !prefersReducedMotion()) {
+      setShutting(true);
+      shutRef.current = shutFeed(feed, room, () => {
+        shutRef.current = null;
+        setRunFold(ctx.routeThreadKey, row.turnKey, "folded");
+        setShutting(false);
+      });
+      return;
+    }
+    fromHeightRef.current = room;
     setRunFold(ctx.routeThreadKey, row.turnKey, folded ? "shown" : "folded");
   };
   // "Show work" pressed before its lines were read: it opens once their first page is held, or
@@ -4972,7 +4995,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
             },
           }
         : {
-            open: !folded,
+            open: !folded && !shutting,
             onToggle: () => {
               if (folded && pages !== null && paging !== null && !paging.holdsLines) {
                 if (openingRef.current !== null) return;
@@ -5313,23 +5336,54 @@ function prefersReducedMotion(): boolean {
 const FOLD_EASE_MS = 220;
 const FOLD_EASING = "cubic-bezier(0.23, 1, 0.32, 1)";
 
+/** The room a run's work stands in under its line: its height and the gap over it. */
+interface FeedRoom {
+  readonly height: number;
+  readonly gap: number;
+}
+
+function roomOf(feed: HTMLElement): FeedRoom {
+  return {
+    height: feed.getBoundingClientRect().height,
+    gap: parseFloat(getComputedStyle(feed).marginTop) || 0,
+  };
+}
+
+function feedFrame({ height, gap }: FeedRoom): Keyframe {
+  return { height: `${height}px`, marginTop: `${gap}px`, overflow: "hidden" };
+}
+
 /**
- * Eases a run's work from the height it stood at before the person asked, to
+ * Eases a run's work from the room it stood in before the person asked, to
  * its own: only what is under the line they clicked moves. Reduced motion
  * shows it at once.
  */
-function easeFeedHeight(feed: HTMLElement, from: number): void {
-  const to = feed.getBoundingClientRect().height;
-  if (Math.abs(to - from) < 1 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+function easeFeedHeight(feed: HTMLElement, from: FeedRoom): void {
+  const to = roomOf(feed);
+  if (
+    Math.abs(to.height + to.gap - from.height - from.gap) < 1 ||
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  ) {
     return;
   }
-  feed.animate(
-    [
-      { height: `${from}px`, overflow: "hidden" },
-      { height: `${to}px`, overflow: "hidden" },
-    ],
-    { duration: FOLD_EASE_MS, easing: FOLD_EASING },
-  );
+  feed.animate([feedFrame(from), feedFrame(to)], { duration: FOLD_EASE_MS, easing: FOLD_EASING });
+}
+
+/**
+ * Eases a run's work shut from `from`, drawn as it goes, and folds it (`done`, drawn at once, so
+ * no frame shows it open again) once it is shut.
+ */
+function shutFeed(feed: HTMLElement, from: FeedRoom, done: () => void): Animation {
+  const shut = feed.animate([feedFrame(from), feedFrame({ height: 0, gap: 0 })], {
+    duration: FOLD_EASE_MS,
+    easing: FOLD_EASING,
+    fill: "forwards",
+  });
+  shut.onfinish = () => {
+    flushSync(done);
+    shut.cancel();
+  };
+  return shut;
 }
 
 /**
