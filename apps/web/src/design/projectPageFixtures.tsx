@@ -160,6 +160,9 @@ const MATES: Readonly<Record<string, { readonly name: string; readonly tint: Mat
   "odo-s": { name: "Odo", tint: "slate" },
   "tess-s": { name: "Tess", tint: "rose" },
   "juno-n": { name: "Juno", tint: "sky" },
+  "wren-f": { name: "Wren", tint: "amber" },
+  "odo-f": { name: "Odo", tint: "slate" },
+  "ines-p": { name: "Ines", tint: "olive" },
   "wren-b": { name: "Wren", tint: "amber" },
   "fen-b": { name: "Fen", tint: "coral" },
   "kara-l": { name: "Kara", tint: "coral" },
@@ -547,6 +550,29 @@ const LINE_INPUTS: Readonly<Record<string, LineInput>> = {
     merged: [onMain(4, "A lab to try a swarm of agents in", "kara-l", 3 * DAY)],
     repos: [lineRepo("lab", "acme/swarm-lab", IN_SYNC)],
   },
+  ...Object.fromEntries(
+    ["follows-before", "follows-main"].map((id) => [
+      id,
+      {
+        releases: [],
+        merged: [
+          onMain(11, "Totals by tea, not by order", "wren-f", 50),
+          onMain(9, "Refunds as their own rows", "odo-f", 26 * 60),
+          onMain(8, "A ledger of every sale, newest first", "wren-f", 3 * DAY),
+        ],
+        repos: [lineRepo("ledger", "acme/tea-ledger", IN_SYNC)],
+      },
+    ]),
+  ),
+  "follows-bare": {
+    releases: [],
+    merged: [
+      onMain(6, "Proofs open beside the page they mark", "ines-p", 4 * 60),
+      onMain(4, "A press run's pages in print order", "ines-p", 2 * DAY),
+    ],
+    stage: stageRuns(HEAD),
+    repos: [codeRepo("press")],
+  },
   "line-nostage": {
     releases: [
       shipped("v1.2.0", 4 * DAY, { standing: "live", by: "dana" }),
@@ -885,7 +911,14 @@ function harnessFacts(groupId: string, flow: GroupFlow): ProjectPageFacts {
   ];
   const slots: ReadonlyArray<EnvironmentSlotRow> = [
     production === undefined
-      ? { kind: "slot", tier: "production", name: "Production", line: "Not added", add: true }
+      ? {
+          kind: "slot",
+          tier: "production",
+          name: "Production",
+          line: "Not added",
+          // A production deployed outside Mate is never offered a second one here.
+          add: flow.production.kind !== "outside",
+        }
       : { kind: "environment", tier: "production", id: production.projectId, note: undefined },
     ...(flow.stages.length === 0
       ? [{ kind: "slot", tier: "stage", name: "Stage", line: "Not added", add: true } as const]
@@ -902,6 +935,7 @@ function harnessFacts(groupId: string, flow: GroupFlow): ProjectPageFacts {
       releases: input?.releases ?? [],
       stage: line?.stage,
       production: production !== undefined,
+      followsMain: flow.production.kind === "outside",
       limit: CHANGES_HELD,
     }),
     // `?reading`: its changes are not read yet; the line holds their room.
@@ -925,8 +959,30 @@ function harnessFacts(groupId: string, flow: GroupFlow): ProjectPageFacts {
     declared: !PAGE_PARAMS.has("undeclared"),
     fixOf: () =>
       flow.mates[0] === undefined ? undefined : { name: flow.mates[0].name, onAsk: nothing },
+    outside: OUTSIDE,
   };
 }
+
+/**
+ * Saying production is deployed outside Mate, as pressed: an Owner or Admin with nothing asked
+ * yet; `?outside=reader` anyone else; `saving` and `stopping` while HQ is asked; `refused` HQ's
+ * words; `older` an HQ from before it.
+ */
+const OUTSIDE: NonNullable<ProjectPageFacts["outside"]> = (() => {
+  const state = PAGE_PARAMS.get("outside");
+  return {
+    older: state === "older",
+    editable: state !== "reader",
+    press:
+      state === "saving" || state === "stopping"
+        ? { kind: "saving", lifting: state === "stopping" }
+        : state === "refused"
+          ? { kind: "refused", words: "Owners and Admins change this." }
+          : { kind: "idle" },
+    save: nothing,
+    reset: nothing,
+  };
+})();
 
 /**
  * What waits on the person in a harness project: Juno's question on Acme Store, then each Mate's
