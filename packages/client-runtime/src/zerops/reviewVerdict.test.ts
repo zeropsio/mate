@@ -220,7 +220,7 @@ describe("changeReview: the verdict comes first (R2)", () => {
         state: "checking",
         tone: "busy",
         title: "Checking whether it merges cleanly",
-        why: "HQ works it out after every push",
+        why: "Merge waits until it's checked",
         fix: undefined,
       },
     ],
@@ -356,7 +356,7 @@ describe("changeReview: the button says what will happen (R5)", () => {
     [
       "HQ not having said yet whether it merges",
       { pull: pull({ mergeability: "checking" }) },
-      "Merging waits until HQ knows it merges cleanly.",
+      "Checking whether it merges cleanly…",
       { enabled: false, safe: false },
     ],
     [
@@ -1275,6 +1275,67 @@ describe("changeReview: Close without merging, the review its one confirmation (
       expect(review.primary).toBeUndefined();
       expect(review.secondary).toBeUndefined();
     }
+  });
+
+  // The owner, 2026-11-12: a review held "Checking whether it merges cleanly" for good, its wait said
+  // only in the header, while HQ's judgement never came.
+  // witness: packages/client-runtime/src/zerops/reviewVerdict.ts | input.now - input.checkingSince >= MERGE_CHECK_LATE_MS; → false;
+  it("says a merge check past a minute is taking longer than usual, and what the person can do", () => {
+    const checking = pull({ mergeability: "checking" });
+    const within = changeReview(change({ pull: checking, checkingSince: NOW - 30_000 }));
+    expect(within.consequence).toBe("Checking whether it merges cleanly…");
+    expect(within.consequenceWaits).toBe("under-way");
+    const late = changeReview(change({ pull: checking, checkingSince: NOW - 60_000 }));
+    expect(late.consequence).toBe(
+      "Still checking whether it merges cleanly. This is taking longer than usual: ask Nova to push again, or reload the page.",
+    );
+    expect(late.consequenceWaits).toBe("late");
+    expect(late.primary?.enabled).toBe(false);
+  });
+
+  // The owner's case, 2026-11-12: HQ answered `503 repo_unavailable` for the judgement, and the review
+  // said it was still checking.
+  // witness: packages/client-runtime/src/zerops/reviewVerdict.ts | if (pull.mergeability === "checking" && input.mergeCheck !== undefined) { → if (false) {
+  it("says HQ can't check whether a change merges where HQ said so, never that it is checking", () => {
+    const review = changeReview(
+      change({ pull: pull({ mergeability: "checking" }), mergeCheck: "repo_unavailable" }),
+    );
+    expect(review.verdict).toMatchObject({
+      state: "merge-unchecked",
+      tone: "attention",
+      title: "HQ can't check whether it merges cleanly",
+      why: "Its repository is too large for HQ to check right now",
+    });
+    expect(review.consequence).toBe("Merging waits until HQ can check it.");
+    expect(review.consequenceWaits).toBeUndefined();
+    expect(review.primary?.enabled).toBe(false);
+  });
+
+  // The owner, 2026-11-12: "when github checks fail, there is no way to know in mate".
+  // witness: packages/client-runtime/src/zerops/reviewVerdict.ts | githubChecks: githubChecksOf(input), → githubChecks: undefined,
+  it("says GitHub's checks on an open change's latest push where HQ holds none of its own, failed ones handed to its Mate", () => {
+    const url = "https://github.com/acme/tea-shop/pull/358";
+    const failing = changeReview(
+      change({ pull: pull({ pullRequest: { state: "open", url, checks: "failing" } }) }),
+    );
+    expect(failing.githubChecks).toMatchObject({
+      state: "failing",
+      words: "GitHub's checks failed on its latest push",
+      url: `${url}/checks`,
+      fix: { verb: "fix them" },
+    });
+    // Failing checks the repository does not require hold no merge.
+    expect(failing.primary?.enabled).toBe(true);
+    expect(
+      changeReview(
+        change({ pull: pull({ pullRequest: { state: "open", url, checks: "pending" } }) }),
+      ).githubChecks?.words,
+    ).toBe("GitHub's checks are running on its latest push");
+    expect(
+      changeReview(
+        change({ pull: pull({ pullRequest: { state: "open", url, checks: "passing" } }) }),
+      ).githubChecks?.words,
+    ).toBe("GitHub's checks passed on its latest push");
   });
 
   // mono-live 2026-10-22 H5: a change opened before its branch was pushed read "has no change #2".

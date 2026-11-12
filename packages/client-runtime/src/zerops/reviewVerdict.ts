@@ -67,6 +67,7 @@ export type ReviewState =
   | "checks-running"
   | "checks-failed"
   | "checks-unknown"
+  | "merge-unchecked"
   | "merging"
   | "merge-refused"
   | "merged"
@@ -179,6 +180,11 @@ export interface ReviewQuestion {
 
 export interface ReviewModel {
   readonly problems?: ReadonlyArray<HqProblem> | undefined;
+  /**
+   * The foot's note is a wait still under way, said beside the busy mark: `late` once it has
+   * taken longer than usual.
+   */
+  readonly consequenceWaits?: "under-way" | "late" | undefined;
   readonly pipeline?:
     | {
         readonly checks: ChangePipeline["checks"];
@@ -298,10 +304,29 @@ export interface ChangeReviewInput {
     readonly landedWith?: number | undefined;
     /**
      * Its pull request on GitHub, where its repository is there: `merged` while the change is still
-     * open means GitHub merged it and HQ's `main` has not taken the merge yet.
+     * open means GitHub merged it and HQ's `main` has not taken the merge yet. `checks` are GitHub's
+     * on its head (`HqPullRequest.checks`), absent while GitHub reported none.
      */
-    readonly pullRequest?: { readonly state: string } | undefined;
+    readonly pullRequest?:
+      | {
+          readonly state: string;
+          readonly url?: string | undefined;
+          readonly checks?: "pending" | "passing" | "failing" | undefined;
+        }
+      | undefined;
   };
+  /**
+   * HQ answered that it cannot judge whether the change merges (`503 repo_unavailable`: its
+   * repository is too large for HQ now; `413 too_large`: the change is): never said as a check
+   * still under way.
+   */
+  readonly mergeCheck?: MergeCheckRefusal | undefined;
+  /**
+   * Since when (wall ms) HQ has not said whether it merges: the earlier of the change's last update
+   * and when this review first saw it unjudged. Past {@link MERGE_CHECK_LATE_MS} the wait says it is
+   * taking longer than usual.
+   */
+  readonly checkingSince?: number | undefined;
   /** The name of the Mate that wrote it: only Mates open changes (SPEC §5.4). */
   readonly mateName: string;
   /**
@@ -369,6 +394,26 @@ export interface ChangeReviewInput {
   readonly now: number;
 }
 
+/** Why HQ said it cannot judge whether a change merges, by HQ's code. */
+export type MergeCheckRefusal = "repo_unavailable" | "too_large";
+
+/** A wait for HQ's merge check past which the review says it is taking longer than usual. */
+export const MERGE_CHECK_LATE_MS = 60_000;
+
+/**
+ * GitHub's checks on the head of the pull request a change is mirrored to, said where HQ holds no
+ * checks of its own for that head: the person sees them before pressing Merge. Failing checks
+ * hold no merge here unless the repository requires them, which HQ's own checks say.
+ */
+export interface ReviewGithubChecks {
+  readonly state: "pending" | "passing" | "failing";
+  readonly words: string;
+  /** Its checks' page on GitHub. */
+  readonly url: string;
+  /** For failing checks, handing them to the Mate that pushed it. */
+  readonly fix: ReviewFix | undefined;
+}
+
 /** Handing a change whose Mate is gone to another Mate, as the caller holds it. */
 export type ReviewHand =
   | { readonly kind: "idle" }
@@ -388,6 +433,7 @@ export interface ReviewOrphan {
 
 export interface ChangeReviewModel extends ReviewModel {
   readonly orphan?: ReviewOrphan | undefined;
+  readonly githubChecks?: ReviewGithubChecks | undefined;
 }
 
 /** What merging takes, said where Merge would stand for a person HQ would refuse it to. */
@@ -648,7 +694,7 @@ function changePipelineOf(pull: ChangeReviewInput["pull"]): NonNullable<ReviewMo
  */
 export function changeMergeVerdict(
   input: Pick<ChangeReviewInput, "pull" | "mateName" | "conflict" | "commits"> &
-    Partial<Pick<ChangeReviewInput, "now">>,
+    Partial<Pick<ChangeReviewInput, "now" | "mergeCheck">>,
 ): {
   readonly verdict: ReviewVerdict;
   readonly enabled: boolean;
@@ -749,6 +795,22 @@ export function changeMergeVerdict(
     };
   }
 
+  if (pull.mergeability === "checking" && input.mergeCheck !== undefined) {
+    return {
+      enabled: false,
+      verdict: {
+        state: "merge-unchecked",
+        tone: "attention",
+        title: "HQ can't check whether it merges cleanly",
+        why:
+          input.mergeCheck === "too_large"
+            ? "This change is too large for HQ to check"
+            : "Its repository is too large for HQ to check right now",
+        fix: undefined,
+      },
+    };
+  }
+
   if (pull.mergeability === "checking") {
     return {
       enabled: false,
@@ -756,7 +818,7 @@ export function changeMergeVerdict(
         state: "checking",
         tone: "busy",
         title: "Checking whether it merges cleanly",
-        why: "HQ works it out after every push",
+        why: "Merge waits until it's checked",
         fix: undefined,
       },
     };
@@ -1030,10 +1092,21 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
     mergeSentence(pull, verdict.state === "behind-clean", input.readout === "failed"),
     afterMain(input),
   );
+  // HQ's merge check, still to come: its own wait, said once it is past the usual.
+  const mergeWait = verdict.state === "checking" && pull.mergeability === "checking";
+  const late =
+    mergeWait &&
+    input.checkingSince !== undefined &&
+    input.now - input.checkingSince >= MERGE_CHECK_LATE_MS;
   const waits: Partial<Record<ReviewState, string>> = {
     behind: "Merging waits until the conflict is resolved.",
     conflict: "Merging waits until the conflict is resolved.",
-    checking: "Merging waits until HQ knows it merges cleanly.",
+    checking: !mergeWait
+      ? "Merging waits until HQ has validated the recipe."
+      : late
+        ? `Still checking whether it merges cleanly. This is taking longer than usual: ask ${input.mateName} to push again, or reload the page.`
+        : "Checking whether it merges cleanly…",
+    "merge-unchecked": "Merging waits until HQ can check it.",
     "checks-running": "Merging waits for the repository's required checks to finish.",
     "checks-failed": "Merging waits until the Mate fixes the required checks and pushes again.",
     "checks-unknown": "Merging waits for evidence of the repository's required checks.",
@@ -1090,6 +1163,9 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
   return {
     verdict,
     consequence: held,
+    ...(verdict.state === "checking"
+      ? { consequenceWaits: late ? ("late" as const) : ("under-way" as const) }
+      : {}),
     ...(verdictOf.enabled && input.readout === "reading"
       ? {
           consequenceRoom:
@@ -1148,10 +1224,53 @@ function orphanOf(input: ChangeReviewInput): ReviewOrphan | undefined {
   return { text, options };
 }
 
+/**
+ * GitHub's checks on an open change's pull request, where GitHub reported them and HQ holds no
+ * checks of its own for its head: HQ's, where it has them, already say what the repository asks.
+ */
+function githubChecksOf(input: ChangeReviewInput): ReviewGithubChecks | undefined {
+  const { pull } = input;
+  const pullRequest = pull.pullRequest;
+  if (pull.merged || pull.state === "closed" || pullRequest?.state !== "open") return undefined;
+  if (pullRequest.checks === undefined || pullRequest.url === undefined) return undefined;
+  if (changePipelineOf(pull).checks.length > 0) return undefined;
+  const url = `${pullRequest.url.replace(/\/+$/u, "")}/checks`;
+  switch (pullRequest.checks) {
+    case "failing":
+      return {
+        state: "failing",
+        words: "GitHub's checks failed on its latest push",
+        url,
+        fix: {
+          verb: "fix them",
+          problem: {
+            what: `GitHub's checks failed on the latest push of change #${String(pull.number)} (${url})`,
+            ask: "Look at the failed checks on GitHub, fix what they found, and push again.",
+          },
+        },
+      };
+    case "pending":
+      return {
+        state: "pending",
+        words: "GitHub's checks are running on its latest push",
+        url,
+        fix: undefined,
+      };
+    case "passing":
+      return {
+        state: "passing",
+        words: "GitHub's checks passed on its latest push",
+        url,
+        fix: undefined,
+      };
+  }
+}
+
 /** One review policy for every client; absent pipeline evidence stays visibly unknown. */
 export function changeReview(input: ChangeReviewInput): ChangeReviewModel {
   return {
     ...changeReviewModel(input),
+    githubChecks: githubChecksOf(input),
     problems:
       input.press?.kind === "refused" && input.press.problems !== undefined
         ? input.press.problems
