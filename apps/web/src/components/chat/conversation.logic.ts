@@ -1735,9 +1735,31 @@ export function operationUnreturnedWords(operation: ZeropsOperation): string {
  * healthy", "Workflow failed" — never its status word before its name
  * ("Failed Workflow", 2026-09-27).
  */
+/** Names that read at a glance: a batch line names its services while they stay this short. */
+const NAMED_BATCH_SERVICES = 3;
+const NAMED_BATCH_CHARACTERS = 32;
+
+/**
+ * A batch deploy's services on its line: by name while that reads at a glance, else counted — its
+ * rows name them (the owner, 2026-11-12, of seven names spelled out in a line: "so painfully bad").
+ */
+function batchSubject(operation: ZeropsOperation): string {
+  const names = operation.steps.map((step) => step.label).join(", ");
+  return operation.steps.length <= NAMED_BATCH_SERVICES && names.length <= NAMED_BATCH_CHARACTERS
+    ? names || operation.subject
+    : `${operation.steps.length} services`;
+}
+
 export function operationLineWords(operation: ZeropsOperation): string {
   const voice = operation.voice.replace(/\.$/, "");
   const { subject, statusWord } = operation;
+  if (operation.kind === "deploy" && operation.batch === true) {
+    const services = batchSubject(operation);
+    if (operation.phase === "running") return `Deploying ${services}`;
+    return operation.phase === "failed"
+      ? `Deploy to ${services} failed`
+      : `${statusWord} ${services}`;
+  }
   if (operation.kind === "error" || operation.phase === "running") return voice;
   const failed = operation.phase === "failed";
   switch (operation.kind) {

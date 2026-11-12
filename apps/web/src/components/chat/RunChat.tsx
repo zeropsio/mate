@@ -198,6 +198,7 @@ import { ImportDetail } from "./ImportDetail";
 import { useStandupReading } from "../../zerops/activity/useStandupReading";
 import {
   detailLines,
+  batchProgressWord,
   liveOperationBar,
   observedLinesOf,
   settledOperationBar,
@@ -2264,23 +2265,28 @@ function OperationLine({
   const failed = operation.phase === "failed";
   const failure: Failure | null = !failed ? null : undone ? "undone" : "broken";
   const running = noResult === undefined && operation.phase === "running";
-  // Live in the slot, its pipeline as it goes and the step it is on.
-  // A batch's bar keeps a segment per service; a deploy's follows its pipeline.
+  // Live in the slot, its pipeline as it goes and the step it is on. A batch's rows carry each
+  // service's state: its line says how many are out, and its words' sweep is its one running mark.
+  const batch = operation.kind === "deploy" && operation.batch === true;
   const live =
     running && inSlot
-      ? standing !== undefined
-        ? {
-            segments: standing.segments,
-            word:
-              standing.figure === null ? standing.words : `${standing.words} · ${standing.figure}`,
-          }
-        : liveOperationBar(
-            operation,
-            operation.batch === true ? undefined : regions?.observed?.pipeline,
-          )
+      ? batch
+        ? { segments: [], word: batchProgressWord(regions?.observed?.services) }
+        : standing !== undefined
+          ? {
+              segments: standing.segments,
+              word:
+                standing.figure === null
+                  ? standing.words
+                  : `${standing.words} · ${standing.figure}`,
+            }
+          : liveOperationBar(
+              operation,
+              operation.batch === true ? undefined : regions?.observed?.pipeline,
+            )
       : null;
   // Settled, a bar only where it says what the line does not (`settledOperationBar`).
-  const settled = settledOperationBar(operation, undone, inSlot ? "slot" : "log");
+  const settled = batch ? [] : settledOperationBar(operation, undone, inSlot ? "slot" : "log");
   const words =
     noResult === undefined ? operationLineWords(operation) : operationUnreturnedWords(operation);
   // A deploy's steps are its progress, under its name: the line holds its
@@ -2320,7 +2326,9 @@ function OperationLine({
         </RunShimmer>
         {stepped ? null : live !== null ? (
           <>
-            <StatusBar className="w-12" segments={live.segments} />
+            {live.segments.length === 0 ? null : (
+              <StatusBar className="w-12" segments={live.segments} />
+            )}
             {live.word === null ? null : <span className="text-muted-foreground">{live.word}</span>}
           </>
         ) : running || noResult !== undefined || settled.length === 0 ? null : (

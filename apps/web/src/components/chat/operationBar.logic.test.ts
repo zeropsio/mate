@@ -13,6 +13,7 @@ import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  batchProgressWord,
   importLines,
   lineSegments,
   detailLines,
@@ -567,6 +568,15 @@ describe("detailLines — what the card read of the platform counts", () => {
   ])("$name", ({ op, observed, lines }) => {
     expect(detailLines(op, null, observedLinesOf(observed))).toBe(lines);
   });
+});
+
+// witness: apps/web/src/components/chat/operationBar.logic.ts | return deployed === 0 ? null : `${deployed} of ${services.length} deployed`; → return null;
+it("a running batch says how many of its services are out once some are, never before", () => {
+  const rows = (...states: ReadonlyArray<string>) => states.map((state) => ({ state }));
+  expect([
+    batchProgressWord(rows("waiting", "running", "waiting")),
+    batchProgressWord(rows("done", "running", "failed", "done", "waiting", "waiting", "waiting")),
+  ]).toEqual([null, "2 of 7 deployed"]);
 });
 
 describe("liveOperationBar — a running deploy's bar reads its pipeline", () => {
