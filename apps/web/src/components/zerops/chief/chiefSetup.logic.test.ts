@@ -8,11 +8,12 @@ import {
   finishChiefSetup,
   type ChiefSetup,
   type ChiefSetupEvent,
+  type ChiefSetupStep,
 } from "./chiefSetup.logic";
 
-const running = (step: "project" | "hq", projectId: string | null = "p-chief") =>
+const running = (step: ChiefSetupStep, projectId: string | null = "p-chief") =>
   ({ phase: "running", step, birthId: "b1", projectId }) as const satisfies ChiefSetup;
-const failed = (step: "project" | "hq", projectId: string | null = "p-chief") =>
+const failed = (step: ChiefSetupStep, projectId: string | null = "p-chief") =>
   ({
     phase: "failed",
     step,
@@ -36,9 +37,15 @@ describe("chiefSetupAfter", () => {
       running("hq"),
     ],
     [
-      "HQ's registration answered, the Chief is set up",
+      "HQ's registration answered, HQ is asked to keep the person's access",
       running("hq"),
       { type: "registered" },
+      running("access"),
+    ],
+    [
+      "HQ keeps the person's access, the Chief is set up",
+      running("access"),
+      { type: "access-kept" },
       { phase: "done", birthId: "b1", projectId: "p-chief" },
     ],
     [
@@ -97,10 +104,10 @@ describe("chiefSetupAfter", () => {
 
 describe("chiefSetupSteps", () => {
   it.each<[string, ChiefSetup, ReadonlyArray<string>]>([
-    ["before it starts, every step waits", CHIEF_SETUP_IDLE, ["waiting", "waiting"]],
-    ["the project runs first", running("project", null), ["active", "waiting"]],
-    ["HQ runs once the project is made", running("hq"), ["done", "active"]],
-    ["all done", { phase: "done", birthId: "b1", projectId: "p-chief" }, ["done", "done"]],
+    ["before it starts, every step waits", CHIEF_SETUP_IDLE, ["waiting", "waiting", "waiting"]],
+    ["the project runs first", running("project", null), ["active", "waiting", "waiting"]],
+    ["HQ runs once the project is made", running("hq"), ["done", "active", "waiting"]],
+    ["all done", { phase: "done", birthId: "b1", projectId: "p-chief" }, ["done", "done", "done"]],
   ])("%s", (_title, setup, states) => {
     expect(chiefSetupSteps(setup).map((step) => step.state)).toEqual(states);
   });
@@ -174,17 +181,20 @@ describe("finishChiefSetup", () => {
 
   it("registers its project as my Chief at HQ, and the setup is done", async () => {
     const events: ChiefSetupEvent[] = [];
-    const registered: string[] = [];
+    const asked: string[] = [];
     await finishChiefSetup({
-      projectId: "p-chief",
-      setChief: async (projectId) => {
-        registered.push(projectId);
+      step: "hq",
+      setChief: async () => {
+        asked.push("register");
         return answer;
+      },
+      keepAccess: async () => {
+        asked.push("keep access");
       },
       dispatch: (event) => events.push(event),
     });
-    expect(registered).toEqual(["p-chief"]);
-    expect(events).toEqual([{ type: "registered" }]);
+    expect(asked).toEqual(["register", "keep access"]);
+    expect(events).toEqual([{ type: "registered" }, { type: "access-kept" }]);
   });
 
   it.each<[string, string]>([["HQ refusing stops before anything is written", "HQ said no."]])(
@@ -192,10 +202,11 @@ describe("finishChiefSetup", () => {
     async (_title, words) => {
       const events: ChiefSetupEvent[] = [];
       await finishChiefSetup({
-        projectId: "p-chief",
+        step: "hq",
         setChief: async () => {
           throw new Error(words);
         },
+        keepAccess: async () => undefined,
         dispatch: (event) => events.push(event),
       });
       expect(events).toEqual([{ type: "failed", reason: words }]);
@@ -208,12 +219,13 @@ describe("finishChiefSetup", () => {
     const asked: string[] = [];
     const run = () =>
       finishChiefSetup({
-        projectId: "p-chief",
-        setChief: async (projectId) => {
-          asked.push(projectId);
+        step: "hq",
+        setChief: async () => {
+          asked.push("p-chief");
           if (refusals-- > 0) throw new Error("HQ is not answering right now.");
           return answer;
         },
+        keepAccess: async () => undefined,
         dispatch: (event) => {
           setup = chiefSetupAfter(setup, event);
         },

@@ -1,6 +1,7 @@
 /**
  * Setting up the person's Chief, as this tab runs it (`chiefSetup.logic.ts`): the New project that
- * makes its project and container, and HQ's registration of it. The Chief page shows it and presses
+ * makes its project and container, HQ's registration of it and the person's token HQ keeps for it.
+ * The Chief page shows it and presses
  * it (`ChiefPage`); the runner is mounted once, above every view (`ChiefSetupHost`), so its steps
  * run on wherever the person goes.
  *
@@ -115,7 +116,8 @@ const CHIEF_FACE = { tint: "slate", shape: MATE_SHAPE_OF_TINT.slate } as const;
 
 /**
  * Runs the setup: *Set up Chief* starts its New project; once its container is added, HQ registers
- * it as the person's Chief; *Try again* resumes the step that stopped. Mounted once, above every
+ * it as the person's Chief and keeps the person's token for it; *Try again* resumes the step that
+ * stopped. Mounted once, above every
  * view: its presses reach the page through `startChiefSetup` and `tryChiefSetupAgain`.
  */
 export function useChiefSetupRunner(): {
@@ -178,25 +180,36 @@ export function useChiefSetupRunner(): {
     else if (progress.kind === "failed") dispatch({ type: "failed", reason: progress.reason });
   }, [awaitingProject, progress]);
 
-  // HQ's mark on its project, once at a time.
+  // HQ's mark on its project, then the person's token it keeps for it, once at a time.
   const finishing = useRef(false);
-  const chiefProject = setup.phase === "running" && setup.step === "hq" ? setup.projectId : null;
+  const hqStep =
+    setup.phase === "running" && setup.step !== "project" && setup.projectId !== null
+      ? { step: setup.step, projectId: setup.projectId }
+      : null;
+  const chiefStep = hqStep?.step ?? null;
+  const chiefProject = hqStep?.projectId ?? null;
   useEffect(() => {
-    if (chiefProject === null || operations === null || orgId === null || birthId === null) return;
+    if (chiefStep === null || chiefProject === null) return;
+    if (operations === null || orgId === null || birthId === null) return;
     if (finishing.current) return;
     finishing.current = true;
     void finishChiefSetup({
-      projectId: chiefProject,
+      step: chiefStep,
       setChief: () =>
         operations.run(
           { kind: "register-birth-chief", orgId, birthId },
+          { orgId, unobserved: HQ_UNFOLLOWED },
+        ),
+      keepAccess: () =>
+        operations.run(
+          { kind: "keep-chief-token", orgId, projectId: chiefProject },
           { orgId, unobserved: HQ_UNFOLLOWED },
         ),
       dispatch,
     }).finally(() => {
       finishing.current = false;
     });
-  }, [birthId, chiefProject, operations, orgId]);
+  }, [birthId, chiefProject, chiefStep, operations, orgId]);
 
   useEffect(() => {
     if (orgId === activeOrganization?.id && setup.phase === "done" && own === setup.projectId) {

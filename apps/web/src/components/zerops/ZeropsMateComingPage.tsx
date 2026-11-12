@@ -61,6 +61,7 @@ import { useOrgOffers } from "~/zerops/useHqOffers";
 import { HQ_UNFOLLOWED, useAccountOperationsOptional } from "~/zerops/accountOperations";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
 import { useOwnChief } from "~/zerops/ownChief";
+import { ChiefAccessButton } from "./chief/ChiefAccessButton";
 import { ChiefOverviewButton } from "./chief/ChiefOverviewButton";
 import { MateFaceAsMark } from "./primitives";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -1222,7 +1223,10 @@ export function MateComingHeader({
         )}
         {mate.chief === true ? (
           // A Chief's way out is its organization, as its conversation's header offers it.
-          <ChiefOverviewButton threadRef={null} />
+          <>
+            <ChiefAccessButton />
+            <ChiefOverviewButton threadRef={null} />
+          </>
         ) : arriving || mate.projectUrl === undefined ? null : (
           // It waits with the chat header's for the opening conversation (`index.css`).
           <ConversationOpeningWaits className="contents">
