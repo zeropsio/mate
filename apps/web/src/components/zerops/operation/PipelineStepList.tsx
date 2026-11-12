@@ -8,8 +8,9 @@
  * be visible … without a premade space for logs and … long
  * texts"): a name never changes with the state, and nothing under a step
  * holds room for what may come. The step that is running or failed reads in
- * the ink, a finished one muted with its mark (three green rings under a line
- * that already says "Deployed" said nothing more), one still to come fainter. Before the
+ * the ink, a finished one's name muted beside its mark in the success green
+ * (the owner, 2026-11-12, of grey checks: "why is 'done' in these grey and not
+ * green?"), one still to come fainter. Before the
  * platform has worked the steps out of zerops.yml, one row says so. A batch deploy draws one such
  * list per service (`BatchServiceRows`).
  *
@@ -86,11 +87,7 @@ function Row({
       data-zerops-pipeline-state={state}
     >
       <span className="flex h-5 shrink-0 items-center" data-zerops-pipeline-glyph={state}>
-        {/* A step that went through is the list's quiet: only the one running and one that broke wear a colour. */}
-        <StepGlyph
-          state={GLYPH_STATE[state]}
-          {...(state === "finished" ? { className: "text-muted-foreground" } : {})}
-        />
+        <StepGlyph state={GLYPH_STATE[state]} />
       </span>
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 items-center gap-2.5">
