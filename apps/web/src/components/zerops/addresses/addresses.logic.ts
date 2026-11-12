@@ -269,10 +269,7 @@ export function recordsOf(
   };
 }
 
-/**
- * Labels registries sell names under, beside a country's two letters (`shop.co.uk`): the name a
- * person registered is then three labels long.
- */
+/** Labels registries sell names under, beside a country's two letters (`shop.co.uk`). */
 const SECOND_LEVEL = new Set([
   "ac",
   "co",
@@ -289,25 +286,90 @@ const SECOND_LEVEL = new Set([
   "org",
 ]);
 
+/** Country domains sold only right under their two letters: `shop.cz`, never `shop.co.cz`. */
+const FLAT_COUNTRIES = new Set(["ch", "cz", "de", "dk", "eu", "fi", "li", "lu", "nl", "si", "sk"]);
+
+/** Two letters and the like that are sold as a registry of their own under .com, .net or .org. */
+const SOLD_UNDER_GENERIC = new Set([
+  "ae",
+  "africa",
+  "ar",
+  "br",
+  "cn",
+  "co",
+  "de",
+  "eu",
+  "gb",
+  "gr",
+  "hu",
+  "in",
+  "jp",
+  "jpn",
+  "kr",
+  "mex",
+  "no",
+  "qc",
+  "ru",
+  "sa",
+  "se",
+  "uk",
+  "us",
+  "uy",
+  "za",
+]);
+
+/** `*.shop.com` is shop.com's; a name is compared without its wildcard. */
+const bare = (name: string) => name.replace(/^\*\./u, "");
+
+/** What a name's own shape says of where its records are kept; `null` where it does not say. */
+function zoneByShape(name: string): string | null {
+  const labels = bare(name).split(".");
+  const lastTwo = labels.slice(-2).join(".");
+  if (labels.length < 2) return null;
+  if (labels.length === 2) return lastTwo;
+  // Nobody registers a domain called www: what follows it is the domain.
+  if (labels.length === 3 && labels[0] === "www") return lastTwo;
+  const country = labels.at(-1)!;
+  const second = labels.at(-2)!;
+  if (country.length > 2)
+    return country.startsWith("xn--") || SOLD_UNDER_GENERIC.has(second) ? null : lastTwo;
+  if (FLAT_COUNTRIES.has(country)) return SECOND_LEVEL.has(second) ? null : lastTwo;
+  return SECOND_LEVEL.has(second) ? labels.slice(-3).join(".") : null;
+}
+
 /**
- * The domain a person registered, where its DNS records are kept: `shop.com` of `www.shop.com`,
- * of `*.shop.com` and of itself. Read from the name's shape, without the registries' own list.
+ * The domain a person registered, where a name's DNS records are kept: `shop.com` of
+ * `www.shop.com`, of `*.shop.com` and of itself. Read from the name's shape and from the names
+ * `beside` it (a domain with its www twin there is the registered one), never from the
+ * registries' own list: `null` where that cannot tell (`shop.me.uk` may be a registered domain or
+ * a part of one), so nothing is said that could be wrong.
  */
-export function registeredDomain(name: string): string {
-  const labels = name.replace(/^\*\./u, "").split(".");
-  const country = (labels.at(-1) ?? "").length === 2;
-  const take = labels.length > 2 && country && SECOND_LEVEL.has(labels.at(-2) ?? "") ? 3 : 2;
-  return labels.slice(-take).join(".");
+export function dnsZone(name: string, beside: ReadonlyArray<string> = []): string | null {
+  const own = bare(name);
+  const others = new Set(beside.map(bare));
+  if (others.has(`www.${own}`)) return own;
+  const twinned = [...others].find(
+    (other) => own.endsWith(`.${other}`) && others.has(`www.${other}`),
+  );
+  return twinned ?? zoneByShape(own);
+}
+
+/** The registered domain as sentences name it; a name whose own cannot be told stands for itself. */
+export function registeredDomain(name: string, beside: ReadonlyArray<string> = []): string {
+  return dnsZone(name, beside) ?? bare(name).replace(/^www\./u, "");
 }
 
 /**
  * A record's name as a DNS provider's *Name* field takes it: `@` for the registered domain
- * itself, else what stands before it (`www`, `*`, `_acme-challenge`).
+ * itself, else what stands before it (`www`, `*`, `_acme-challenge`). Where the registered domain
+ * cannot be told, the name in full: right at providers that take full names, and never a part
+ * that would point somewhere else.
  */
-export function recordHost(name: string): string {
-  const apex = registeredDomain(name);
-  if (name === apex) return "@";
-  return name.endsWith(`.${apex}`) ? name.slice(0, -apex.length - 1) : name;
+export function recordHost(name: string, beside: ReadonlyArray<string> = []): string {
+  const zone = dnsZone(name, beside);
+  if (zone === null) return name;
+  if (bare(name) === zone) return name.startsWith("*.") ? "*" : "@";
+  return name.endsWith(`.${zone}`) ? name.slice(0, -zone.length - 1) : name;
 }
 
 /** Where a domain's DNS records are kept, as its name servers tell. */
@@ -344,8 +406,12 @@ const PROVIDERS: ReadonlyArray<readonly [servers: RegExp, name: string, url: str
   [/\.azure-dns\.(?:com|net|org|info)$/u, "Azure DNS", "https://portal.azure.com"],
 ];
 
-/** Servers of the registries themselves: they answer for a name nobody keeps records for. */
-const REGISTRY = /(?:^|\.)(?:gtld-servers\.net|root-servers\.net|nstld\.com|nic\.[a-z]{2,})$/u;
+/**
+ * Servers of the registries themselves: they answer for a name nobody keeps records for. Only
+ * ones known to host no customer's records: many DNS hosts sit under a `nic.` name too.
+ */
+const REGISTRY =
+  /(?:^|\.)(?:gtld-servers\.net|root-servers\.net|nstld\.com|afilias-nst\.(?:info|org)|ns\.nic\.cz)$/u;
 
 /** Who keeps a domain's DNS records, from the name servers its last look-up found. */
 export function dnsProvider(nameServers: ReadonlyArray<string>): DnsProvider {

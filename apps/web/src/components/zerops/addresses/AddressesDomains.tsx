@@ -60,7 +60,7 @@ import {
   WaitingNotice,
   type SheetContext,
 } from "./AddressesSheetBits";
-import { DnsRecords, RecordTable } from "./DnsRecords";
+import { DnsRecords } from "./DnsRecords";
 
 export type WebMode =
   | { readonly kind: "list" }
@@ -119,7 +119,9 @@ export function AddressesDomains({
     ctx.busy.has("publish-domains") ||
     [...ctx.busy].some((key) => key.startsWith("remove:"));
   const asked = mode.kind === "add-domain";
-  const none = place.domains.length === 0;
+  // Our own add under way is drawn as a domain at once, and goes again where Zerops refuses it:
+  // the place has a domain only once one is there, so the form it was typed into stays as it is.
+  const none = place.domains.every((domain) => domain.routingId.startsWith("own:"));
   const serves = place.webTargets.length > 0;
   // Where a domain is what the place is for, one with none yet shows the field at once.
   const first = none && inviting;
@@ -189,11 +191,13 @@ export function AddressesDomains({
           targets={place.webTargets}
         />
       ))}
-      {none && !adding ? (
+      {place.domains.length === 0 && !adding ? (
         <EmptyState size="row">
-          {serves
-            ? `No domain yet. ${ctx.placeName} answers at its Zerops addresses.`
-            : `Nothing in ${ctx.placeName} serves web pages yet.`}
+          {!serves
+            ? `Nothing in ${ctx.placeName} serves web pages yet.`
+            : place.zerops.some((address) => address.on)
+              ? `No domain yet. ${ctx.placeName} answers at its Zerops addresses.`
+              : "No domain yet."}
         </EmptyState>
       ) : null}
     </SheetSection>
@@ -434,7 +438,8 @@ function DomainJourney({
   readonly ips: PlaceAddresses["ips"];
   readonly onOwnIpv4: (() => void) | undefined;
 }) {
-  const onWay = waiting.length > 0 ? waiting : failed === undefined ? certificate : [failed];
+  // Every domain of the setup that does not answer yet: the last stage is theirs together.
+  const onWay = [...waiting, ...certificate, ...(failed === undefined ? [] : [failed])];
   const names = namesWords(onWay.map((domain) => domain.domainName));
   const one = onWay.length === 1;
   const cloudflare = atCloudflare(dnsProvider((failed ?? first).nameServers));
@@ -445,11 +450,16 @@ function DomainJourney({
       ) : (
         <Stage state="done" title="DNS records found" />
       )}
-      {failed !== undefined && waiting.length === 0 ? (
+      {failed !== undefined ? (
         <Stage
-          action={<CheckNow ctx={ctx} domain={first} label="Try again" variant="secondary" />}
+          action={
+            // While records are still asked for, their own check is the one press.
+            waiting.length > 0 ? null : (
+              <CheckNow ctx={ctx} domain={first} label="Try again" variant="secondary" />
+            )
+          }
           state="failed"
-          title="Zerops couldn't get its https certificate"
+          title={`Zerops couldn't get ${failed.domainName} its https certificate`}
         >
           {failed.sslError === undefined ? null : (
             <p className="text-muted-foreground text-xs">{failed.sslError}</p>
@@ -460,7 +470,9 @@ function DomainJourney({
               (strict).
             </p>
           ) : null}
-          <Trouble text={ctx.trouble.get(`check:${first.routingId}`)} />
+          {waiting.length > 0 ? null : (
+            <Trouble text={ctx.trouble.get(`check:${first.routingId}`)} />
+          )}
         </Stage>
       ) : waiting.length === 0 ? (
         <Stage state="busy" title="Zerops is getting its free https certificate">
@@ -497,33 +509,31 @@ function RecordsStage({
   readonly ips: PlaceAddresses["ips"];
   readonly onOwnIpv4: (() => void) | undefined;
 }) {
-  const [ways, setWays] = useState(false);
   const { records, bothRequired, cnames, certificates } = recordsOf(domains, ips);
   const first = domains[0]!;
   const own = first.routingId.startsWith("own:");
-  const root = namesWords([
-    ...new Set(domains.map((domain) => registeredDomain(domain.domainName))),
-  ]);
+  const beside = domains.map((domain) => domain.domainName);
+  const root = namesWords([...new Set(beside.map((name) => registeredDomain(name, beside)))]);
   const provider = dnsProvider(first.nameServers);
   const elsewhere = domains.filter((domain) => domain.face === "elsewhere");
-  // A CNAME that leaves IPv4 visitors out is no way to offer.
-  const oneRecord = cnames.filter((cname) => cname.ipv4);
   const count = records.length + certificates.length;
   const found = recordsFound(domains, records);
   const busy = ctx.busy.has(`check:${first.routingId}`);
   const checked = checkedWords(first.checkedAt, ctx.nowMs);
 
   // One look of the platform's per shown setup, where its last is old: the person who added the
-  // records and came back sees the answer without pressing.
+  // records and came back sees the answer without pressing. Never for a setup not looked up yet:
+  // its first look is the platform's own, right after it is put in place. Asked quietly: nobody
+  // pressed, so a refusal (a role that only reads) is not said under the control.
   const asked = useRef(false);
   const at = first.checkedAt === undefined ? Number.NaN : Date.parse(first.checkedAt);
-  const stale = Number.isNaN(at) || ctx.nowMs - at > CHECK_FRESH_MS;
+  const stale = !Number.isNaN(at) && ctx.nowMs - at > CHECK_FRESH_MS;
   const { hold, onWrite, projectId } = ctx;
   const routingId = first.routingId;
   useEffect(() => {
     if (own || hold || !stale || asked.current) return;
     asked.current = true;
-    void onWrite({ kind: "check-domain-dns", projectId, routingId });
+    void onWrite({ kind: "check-domain-dns", projectId, routingId }, { quiet: true });
   }, [hold, onWrite, own, projectId, routingId, stale]);
 
   return (
@@ -572,7 +582,7 @@ function RecordsStage({
           {ctx.placeName}. Replace the records it has with these.
         </p>
       ))}
-      {count === 0 ? (
+      {records.length === 0 ? (
         <p className="text-muted-foreground text-xs">
           {ctx.placeName}'s IP addresses aren't read yet.
         </p>
@@ -581,51 +591,12 @@ function RecordsStage({
           bothRequired={bothRequired}
           certificates={certificates}
           cloudflare={atCloudflare(provider)}
+          cnames={cnames}
           found={found}
           records={records}
+          {...(ips.ownV4 === undefined ? { ownIpv4: { onGet: onOwnIpv4 } } : {})}
         />
       )}
-      <div>
-        <div className="-ms-2">
-          <Button
-            aria-expanded={ways}
-            onClick={() => setWays((was) => !was)}
-            size="sm"
-            variant="ghost"
-          >
-            <ChevronRightIcon className={ways ? "rotate-90" : undefined} />
-            Other ways
-          </Button>
-        </div>
-        {ways ? (
-          <div className="grid gap-2.5 pt-1.5 text-muted-foreground text-xs">
-            {oneRecord.length === 0 ? null : (
-              <div className="grid gap-1.5" data-dns-way="cname">
-                <p>
-                  <b className="font-medium text-foreground">One CNAME instead:</b> for www and
-                  other subdomains, or a whole domain where your provider flattens CNAMEs.
-                </p>
-                <RecordTable records={oneRecord} />
-              </div>
-            )}
-            <p>
-              <b className="font-medium text-foreground">Behind Cloudflare's proxy:</b> add only the
-              AAAA, proxied, and set SSL/TLS to Full (strict).
-            </p>
-            {ips.ownV4 === undefined ? (
-              <p>
-                <b className="font-medium text-foreground">With your own IPv4</b> the A record alone
-                is enough.{" "}
-                {onOwnIpv4 === undefined ? null : (
-                  <Button onClick={onOwnIpv4} size="sm" variant="link">
-                    Get your own IPv4
-                  </Button>
-                )}
-              </p>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
       {own ? null : (
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-border/60 pt-3">
           <div className="grid min-w-0 flex-1 basis-64 gap-0.5 text-xs">
@@ -636,7 +607,8 @@ function RecordsStage({
                   ? "Not looked up yet."
                   : found.size === 0
                     ? `${checked}: not found yet.`
-                    : `${checked}: ${found.size} of ${records.length} found.`}
+                    : // A wildcard's certificate record points at a name: no look-up tells it.
+                      `${checked}: ${found.size} of ${records.length}${certificates.length === 0 ? "" : " A and AAAA"} found.`}
             </p>
             <p className="text-muted-foreground">
               New records usually show within 10 minutes, sometimes up to a day.
@@ -716,15 +688,18 @@ function AddDomainForm({
   const id = useId();
   const [typed, setTyped] = useState("");
   const [twin, setTwin] = useState(true);
-  // One service to open, and it is the one; of several the person says which, never the first
-  // by name: a domain put on the wrong service shows the wrong pages to everyone.
-  const [target, setTarget] = useState(() => (targets.length === 1 ? targetValue(targets[0]) : ""));
+  // What the person chose among several services; nothing until they do.
+  const [target, setTarget] = useState("");
   const [guarding, setGuarding] = useState(false);
   const name = normalizeDomain(typed);
   const problem = domainProblem(name, existing, ctx.placeName);
   const offered = wwwTwin(name);
   const domains = domainsToAdd(name, twin, existing);
-  const chosen = targets.find((each) => targetValue(each) === target);
+  // One service to open, and it is the one; of several the person says which, never the first
+  // by name: a domain put on the wrong service shows the wrong pages to everyone. Read from the
+  // services as they are now, so one that left is no longer chosen and a lone one always is.
+  const chosen =
+    targets.length === 1 ? targets[0] : targets.find((each) => targetValue(each) === target);
   const busy = ctx.busy.has("add-domain");
   const ready = name !== "" && problem === null && chosen !== undefined;
   const add = () => {
@@ -743,7 +718,10 @@ function AddDomainForm({
       })
       .then((taken) => {
         setGuarding(false);
-        if (taken) onTaken();
+        if (!taken) return;
+        // Where the form stays, it is ready for the next domain.
+        setTyped("");
+        onTaken();
       });
   };
   const named = domains.join(" and ");
@@ -783,7 +761,7 @@ function AddDomainForm({
       <div
         className={
           targets.length > 1
-            ? "grid grid-cols-[minmax(0,1fr)_minmax(0,0.6fr)] gap-3"
+            ? "grid grid-cols-[minmax(0,1fr)_minmax(0,0.6fr)] gap-3 max-sm:grid-cols-1"
             : "grid max-w-md gap-3"
         }
       >
@@ -814,7 +792,7 @@ function AddDomainForm({
               onValueChange={(value) => {
                 if (typeof value === "string") setTarget(value);
               }}
-              value={target === "" ? null : target}
+              value={chosen === undefined ? null : targetValue(chosen)}
             >
               <SelectTrigger aria-label="Opens">
                 <SelectValue placeholder="Choose a service" />

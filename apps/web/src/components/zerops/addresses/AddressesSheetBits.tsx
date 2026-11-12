@@ -30,8 +30,11 @@ export interface SheetContext {
   readonly busy: ReadonlySet<string>;
   /** Why the last write of a key failed, by `writeKey`. */
   readonly trouble: ReadonlyMap<string, string>;
-  /** Resolves `true` once Zerops took the write, `false` where it did not (the trouble says why). */
-  readonly onWrite: (write: AddressWrite) => Promise<boolean>;
+  /**
+   * Resolves `true` once Zerops took the write, `false` where it did not (the trouble says why,
+   * unless the sheet asked by itself: `quiet`).
+   */
+  readonly onWrite: (write: AddressWrite, how?: { readonly quiet: boolean }) => Promise<boolean>;
   /**
    * Ends the change a write was asked from, once Zerops took it — only while that change is
    * still the one shown: an answer never closes what the person opened meanwhile.
@@ -176,6 +179,7 @@ export function Stage({
   const ahead = state === "next" || state === "done";
   return (
     <li
+      aria-current={ahead ? undefined : "step"}
       className="relative grid grid-cols-[1.25rem_minmax(0,1fr)] gap-x-2.5 pb-4 before:absolute before:top-6 before:bottom-1 before:left-2.5 before:w-px before:-translate-x-1/2 before:bg-border last:pb-0 last:before:hidden"
       data-addresses-stage={state}
     >
@@ -185,10 +189,12 @@ export function Stage({
           <span
             className={
               ahead
-                ? "min-w-0 flex-1 text-muted-foreground text-sm leading-5"
-                : "min-w-0 flex-1 font-medium text-foreground text-sm leading-5"
+                ? "min-w-0 flex-1 basis-56 text-muted-foreground text-sm leading-5"
+                : "min-w-0 flex-1 basis-56 font-medium text-foreground text-sm leading-5"
             }
           >
+            {/* The bead says the stage's state to the eye only. */}
+            <span className="sr-only">{STAGE_SAID[state]} </span>
             {title}
           </span>
           {action === undefined || action === null ? null : (
@@ -200,6 +206,14 @@ export function Stage({
     </li>
   );
 }
+
+const STAGE_SAID: Readonly<Record<StageState, string>> = {
+  done: "Done:",
+  you: "Your step:",
+  busy: "Under way:",
+  failed: "Failed:",
+  next: "Later:",
+};
 
 function StageBead({ state }: { readonly state: StageState }) {
   const seat = "flex size-5 items-center justify-center rounded-full";

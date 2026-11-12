@@ -67,7 +67,8 @@ export interface AddressesSheetBodyProps {
   readonly startAdding: boolean;
   /** The place in Zerops, where what Mate cannot do here is done. */
   readonly zeropsUrl: string;
-  readonly onWrite: (write: AddressWrite) => Promise<boolean>;
+  /** `quiet`: asked by the sheet itself, so a refusal is not said under the control. */
+  readonly onWrite: (write: AddressWrite, how?: { readonly quiet: boolean }) => Promise<boolean>;
   readonly onClose: () => void;
   readonly nowMs: number;
 }

@@ -514,16 +514,30 @@ describe("the project's places", () => {
 });
 
 describe("a record as a DNS provider's form takes it", () => {
-  // witness: apps/web/src/components/zerops/addresses/addresses.logic.ts | if (name === apex) return "@"; → if (name === apex) return name;
+  // witness: apps/web/src/components/zerops/addresses/addresses.logic.ts | if (zone === null) return name; → if (zone === null) return "@";
   it.each([
     ["shop.com", "@"],
     ["www.shop.com", "www"],
+    ["app.shop.com", "app"],
     ["*.shop.com", "*"],
     ["_acme-challenge.shop.com", "_acme-challenge"],
     ["shop.co.uk", "@"],
     ["www.shop.co.uk", "www"],
+    // "www" before two labels is a subdomain whatever the two are.
+    ["www.go.io", "www"],
+    // A registered domain or a part of one: the shape cannot tell, so the name stands in full.
+    ["shop.me.uk", "shop.me.uk"],
+    ["app.company.it", "app.company.it"],
+    ["shop.eu.com", "shop.eu.com"],
   ] as const)("the name field of %s takes %j", (name, host) => {
     expect(recordHost(name)).toBe(host);
+  });
+
+  // witness: apps/web/src/components/zerops/addresses/addresses.logic.ts | if (others.has(`www.${own}`)) return own; →
+  it("a domain added with its www twin is the registered one, whatever it ends in", () => {
+    const beside = ["shop.me.uk", "www.shop.me.uk"];
+    expect(recordHost("shop.me.uk", beside)).toBe("@");
+    expect(recordHost("www.shop.me.uk", beside)).toBe("www");
   });
 });
 
@@ -546,6 +560,8 @@ describe("where a domain's DNS is kept", () => {
       host: "ns1.dns-provider.example",
     });
     expect(dnsProvider([])).toEqual({ kind: "unread" });
+    // A DNS host under a registry-like name keeps customers' records: never "no provider yet".
+    expect(dnsProvider(["ns3-l2.nic.ru"])).toEqual({ kind: "other", host: "ns3-l2.nic.ru" });
   });
 });
 

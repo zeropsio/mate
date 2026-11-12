@@ -494,7 +494,7 @@ describe("the addresses sheet", () => {
     expect(button(container, "Get one").disabled).toBe(true);
   });
 
-  // witness: apps/web/src/components/zerops/addresses/AddressesDomains.tsx | targets.length === 1 ? targetValue(targets[0]) : "" → targetValue(targets[0])
+  // witness: apps/web/src/components/zerops/addresses/AddressesDomains.tsx | targets.length === 1 ? targets[0] : targets.find((each) => targetValue(each) === target); → targets[0];
   it("a domain is not added until the person says which of several services it opens", async () => {
     const { container, writes } = await mount({ startAdding: true });
     const form = container.querySelector('[data-addresses-form="add-domain"]')!;
@@ -548,5 +548,56 @@ describe("the addresses sheet", () => {
     expect(text(records.querySelector("[data-addresses-checked]"))).toBe(
       "Checked 2 minutes ago: 1 of 4 found.",
     );
+  });
+
+  // witness: apps/web/src/components/zerops/addresses/AddressesDomains.tsx | place.domains.every((domain) => domain.routingId.startsWith("own:")) → place.domains.length === 0
+  it("production's first domain form stays, with what was typed, while its own add is under way", async () => {
+    const none: PlaceAddresses = { ...ONE_SERVICE, domains: [] };
+    const places = [
+      { projectId: "p1", kind: "production", label: "Production", name: "Production" },
+    ] as const;
+    const { container, rerender } = await mount({ place: none, places });
+    const input = () =>
+      container.querySelector<HTMLInputElement>('[data-addresses-form="add-domain"] input');
+    await type(input()!, "new.com");
+    // The add under way is drawn as a domain of the place at once; a refusal takes it back.
+    const underWay: PlaceAddresses = {
+      ...none,
+      domains: [
+        {
+          ...ADDRESSES_FIXTURE.domains[0]!,
+          routingId: "own:new.com",
+          domainName: "new.com",
+          routingDomains: ["new.com"],
+          face: "going-live",
+        },
+      ],
+    };
+    await rerender({ place: underWay, places, busy: new Set(["add-domain"]) });
+    expect(input()?.value).toBe("new.com");
+    await rerender({ place: none, places, trouble: new Map([["add-domain", "Refused."]]) });
+    expect(input()?.value).toBe("new.com");
+  });
+
+  // witness: apps/web/src/components/zerops/addresses/AddressesDomains.tsx | {failed !== undefined ? ( → {failed !== undefined && waiting.length === 0 ? (
+  it("a refused certificate says why even while another domain of its setup waits for records", async () => {
+    const place: PlaceAddresses = {
+      ...ADDRESSES_FIXTURE,
+      domains: ADDRESSES_FIXTURE.domains.map((domain) =>
+        domain.domainName === "blog.com"
+          ? { ...domain, face: "certificate-failed", sslError: "The challenge answered 403." }
+          : domain,
+      ),
+    };
+    const { container } = await mount({ place });
+    const said = text(part(container, "domains"));
+    expect(said).toContain("Zerops couldn't get blog.com its https certificate");
+    expect(said).toContain("The challenge answered 403.");
+    // The waiting sibling's records are still asked for, with their one check.
+    expect(recordRows(container.querySelector('[data-addresses-records="rt-blog"]')!)).toEqual([
+      ["A", "www.blog.com", "93.185.106.128"],
+      ["AAAA", "www.blog.com", "2001:db8:4a7:1d::1"],
+    ]);
+    expect(() => button(container, "Try again")).toThrow();
   });
 });
