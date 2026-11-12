@@ -24,6 +24,7 @@ import { usePutLiveRun } from "~/zerops/putLive";
 import { putLiveMark } from "~/zerops/putLive.logic";
 import { useOpenReview } from "~/zerops/review";
 import { gatedPortal } from "../ui/portal-gate";
+import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MateOwnerMark } from "./MateOwnerMark";
@@ -620,9 +621,15 @@ function ReviewListItem({
           {reviewItemByline(item)}
         </span>
       </span>
-      <span aria-hidden="true" className="menu-tagpop-verb">
+      {/* The row is the press; its verb wears the one Review look. */}
+      <Button
+        data-menu-tagpop-verb=""
+        render={<span aria-hidden="true" />}
+        size="xs"
+        variant="secondary"
+      >
         Review
-      </span>
+      </Button>
     </button>
   );
 }
