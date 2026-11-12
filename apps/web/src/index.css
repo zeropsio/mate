@@ -4531,6 +4531,13 @@ code {
     container: menu-row / inline-size;
   }
 
+  /* A row's line is never what a press lands on. Its words are replaced as they change (a new
+     element, so they rise in), and an element replaced between press and release leaves no click:
+     the row did not open. The press is the row's own, whatever its line is or becomes. */
+  [data-zerops-row] [data-slot="row-line"] {
+    pointer-events: none;
+  }
+
   .menu-tag-icon {
     display: none;
     flex: none;
