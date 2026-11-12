@@ -286,22 +286,17 @@ export function mateLinks(mate: SitesMateFacts): SitesMateAddresses | undefined 
 }
 
 /**
- * A part's dev with nothing to open: a pool's (or a holder's) runs only while the Mate works on
- * it; a dev service's has no public address.
+ * A part's dev with nothing to open: a pool's (or a holder's) workspace exists only while the Mate
+ * works on it, so it has an address only then; a dev service's has no public address.
  */
 function devPlaceholder(mate: SitesMateFacts, part: MatePart): SitesService {
-  const runs = `It runs while ${mate.name} works on it.`;
   return {
     key: `dev:${part.devService}`,
     service: part.devService,
     url: undefined,
     host: undefined,
     more: [],
-    why: !part.pooled
-      ? "No web address."
-      : mate.leases === undefined
-        ? runs
-        : `Not running now. ${runs}`,
+    why: part.pooled ? `Only while ${mate.name} works on it.` : "No web address.",
   };
 }
 

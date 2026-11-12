@@ -132,7 +132,11 @@ function Harness() {
   };
   return (
     <Dialog onOpenChange={() => {}} open>
-      <DialogPopup className="max-h-[min(55.5rem,100%)] max-w-[48.75rem]" showCloseButton={false}>
+      <DialogPopup
+        className="max-h-[min(55.5rem,calc(100dvh-3rem))] max-w-[48.75rem]"
+        placement="center"
+        showCloseButton={false}
+      >
         <AddressesSheetBody
           busy={new Set(own.map(writeKey))}
           ipv4={{ state: "known", price: 3, enabled: false }}
