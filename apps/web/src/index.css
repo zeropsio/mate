@@ -6553,14 +6553,6 @@ code {
     min-width: 0;
   }
 
-  /* With credit to show the lines are two columns: who, then what the organization has left, its
-     figure on the name's baseline and its caption on the role's. */
-  .menu-foot-lines[data-credit] {
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: baseline;
-    column-gap: 12px;
-  }
-
   .menu-foot-name {
     min-width: 0;
     overflow: hidden;
@@ -6581,41 +6573,47 @@ code {
     white-space: nowrap;
   }
 
-  .menu-foot-name,
-  .menu-foot-role {
-    grid-column: 1;
-  }
-
-  /* The figure is a value, quieter than the name it shares a line with; its caption is the role
-     line's twin. Both end on one edge, and take the tone when credit needs the person. */
-  .menu-foot-credit-amount,
-  .menu-foot-credit-label {
-    grid-column: 2;
-    justify-self: end;
-    white-space: nowrap;
-  }
-
-  .menu-foot-credit-amount {
-    grid-row: 1;
+  /* The organization's credit, the foot's one readout: Billing's mark and the figure, on the
+     centre line the dots and the collapse button stand on. A value, so quieter than the name;
+     its mark and its currency sign step back so the digits are what is read. */
+  .menu-foot-credit {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 6px;
     font-size: 13px;
-    /* 18 px, so its baseline meets the name's inside the name's own 20 px line. */
-    line-height: 18px;
+    line-height: 20px;
     font-weight: 500;
     font-variant-numeric: tabular-nums;
     color: var(--sidebar-foreground);
+    white-space: nowrap;
   }
 
-  .menu-foot-credit-label {
-    grid-row: 2;
-    font-size: 12px;
-    line-height: 16px;
+  .menu-foot-credit > svg {
+    width: 14px;
+    height: 14px;
+    flex: none;
+  }
+
+  .menu-foot-credit > svg,
+  .menu-foot-credit-sign {
     color: var(--sidebar-muted-foreground);
+  }
+
+  /* When credit needs the person the whole readout takes the tone. */
+  .menu-foot-credit[data-tone="low"],
+  .menu-foot-credit[data-tone="low"] :is(svg, .menu-foot-credit-sign) {
+    color: var(--zerops-status-attention-text);
+  }
+
+  .menu-foot-credit[data-tone="out"],
+  .menu-foot-credit[data-tone="out"] :is(svg, .menu-foot-credit-sign) {
+    color: var(--zerops-status-failed-text);
   }
 
   /* The balance is read after the name: it comes in, and changes tone, without a cut. */
   @media (prefers-reduced-motion: no-preference) {
-    .menu-foot-credit-amount,
-    .menu-foot-credit-label {
+    .menu-foot-credit {
       transition:
         opacity 200ms var(--ease-out-strong),
         color 150ms var(--ease-out-strong);
@@ -6624,14 +6622,6 @@ code {
         opacity: 0;
       }
     }
-  }
-
-  .menu-foot-lines[data-credit="low"] > :is(.menu-foot-credit-amount, .menu-foot-credit-label) {
-    color: var(--zerops-status-attention-text);
-  }
-
-  .menu-foot-lines[data-credit="out"] > :is(.menu-foot-credit-amount, .menu-foot-credit-label) {
-    color: var(--zerops-status-failed-text);
   }
 
   .menu-foot-button {

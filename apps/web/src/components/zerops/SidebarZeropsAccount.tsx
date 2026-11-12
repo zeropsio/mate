@@ -22,7 +22,13 @@ import {
 import { Atom } from "effect/reactivity";
 import { formatUsd } from "@t3tools/shared/usageFormat";
 import { useLocation, useNavigate, useRouter } from "@tanstack/react-router";
-import { ArrowUpRightIcon, Building2Icon, EllipsisIcon, LogOutIcon } from "lucide-react";
+import {
+  ArrowUpRightIcon,
+  Building2Icon,
+  EllipsisIcon,
+  LogOutIcon,
+  WalletIcon,
+} from "lucide-react";
 import { zeropsHqOrigin } from "~/zerops/signInMode";
 import {
   createContext,
@@ -236,21 +242,9 @@ export function SidebarZeropsAccount({
           picture={account.avatarUrl}
           size={32}
         />
-        {/* Who on the leading edge, what the organization has left on the trailing one: two lines
-            each, on shared baselines. */}
-        <span className="menu-foot-lines" data-credit={credit === null ? undefined : credit.tone}>
+        <span className="menu-foot-lines">
           {/* A first visit: the seat, a line tall, until the name it will keep is known. */}
           <span className="menu-foot-name">{nameHeld ? "\u00a0" : lines.name}</span>
-          {credit === null ? null : (
-            <span
-              aria-hidden="true"
-              className="menu-foot-credit-amount"
-              data-zerops-surface="sidebar-account-credit"
-              ref={fadeFillIn}
-            >
-              {credit.amount}
-            </span>
-          )}
           {/* An organization still being resolved is absent, never a placeholder: the foot must
               paint nothing it takes back. */}
           {role === null ? null : (
@@ -260,12 +254,8 @@ export function SidebarZeropsAccount({
               {role.after}
             </span>
           )}
-          {credit === null ? null : (
-            <span aria-hidden="true" className="menu-foot-credit-label" ref={fadeFillIn}>
-              {credit.label}
-            </span>
-          )}
         </span>
+        {credit === null ? null : <AccountCredit credit={credit} />}
         <span aria-hidden="true" className="menu-foot-button">
           <EllipsisIcon className="size-4" />
         </span>
@@ -590,8 +580,6 @@ interface AccountCreditFigure {
   readonly tone: BillingTone;
   /** How it stands, for a reader who does not see the colour; `null` while all is well. */
   readonly words: string | null;
-  /** What the figure is, under it: its name while all is well, else how it stands. */
-  readonly label: string;
 }
 
 const NO_BILLING = Atom.make<OrganizationBilling | null>(null);
@@ -621,15 +609,31 @@ function useAccountCredit(orgId: string | null): AccountCreditFigure | null {
       : billing.tone === "low"
         ? "credit running low"
         : null;
-  const label =
-    billing.tone === "out"
-      ? billing.total < 0
-        ? "Below zero"
-        : "Nearly out"
-      : billing.tone === "low"
-        ? "Running low"
-        : "Credit";
-  return { amount: compactUsd(billing.total), tone: billing.tone, words, label };
+  return { amount: compactUsd(billing.total), tone: billing.tone, words };
+}
+
+/**
+ * The balance as the foot's one readout, on the row's centre line with its dots: Billing's own
+ * mark, then the figure with its currency sign stepped back. Its colour is how it stands; the
+ * button's name says it in words.
+ */
+function AccountCredit({ credit }: { readonly credit: AccountCreditFigure }) {
+  const sign = credit.amount.indexOf("$") + 1;
+  return (
+    <span
+      aria-hidden="true"
+      className="menu-foot-credit"
+      data-tone={credit.tone}
+      data-zerops-surface="sidebar-account-credit"
+      ref={fadeFillIn}
+    >
+      <WalletIcon />
+      <span>
+        <span className="menu-foot-credit-sign">{credit.amount.slice(0, sign)}</span>
+        {credit.amount.slice(sign)}
+      </span>
+    </span>
+  );
 }
 
 const WHOLE_USD = new Intl.NumberFormat("en-US", {
