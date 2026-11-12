@@ -72,6 +72,18 @@ export function useProjectSitesOfGroup(groupId: string | undefined): ProjectSite
   );
 }
 
+/**
+ * Whether the menu has drawn this Mate's project: until then what the conversation's header gains
+ * from it (its Review, its Sites) may still come. A Mate with no project waits for nothing.
+ */
+export function useProjectPartsDrawn(mateProjectId: string | undefined): boolean {
+  return useSyncExternalStore(
+    subscribe,
+    () => mateProjectId === undefined || byMate.has(mateProjectId),
+    () => true,
+  );
+}
+
 export function useProjectReviewOf(
   mateProjectId: string | undefined,
 ): ProjectReviewInput | undefined {

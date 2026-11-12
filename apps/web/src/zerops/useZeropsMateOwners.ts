@@ -18,7 +18,7 @@ import {
 } from "@t3tools/client-runtime/data";
 import { Atom } from "effect/reactivity";
 import { shareEqual } from "@t3tools/shared/structuralSharing";
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 
 import {
   zeropsAccountDisplay,
@@ -26,6 +26,7 @@ import {
 } from "~/components/zerops/landing/ZeropsAccountControl.logic";
 
 import { hqNavigationAtom, hqPeopleAtom } from "../state/zerops";
+import { readCalledMemory, writeCalledMemory } from "./mateIdentityMemory";
 
 type ZeropsAccountSource = Parameters<typeof zeropsAccountDisplay>[0] & object;
 import { useZeropsSessionOptional } from "./sessionContext";
@@ -76,12 +77,54 @@ export function personNameOf(
 
 /**
  * What every surface calls the person looking (`ZeropsPerson.called`), as the member list of the
- * organization in view holds them; `undefined` while it does not.
+ * organization in view holds them; while it is unread, as the last visit's did; else `undefined`.
  */
 export function useViewerCalled(): string | undefined {
-  const viewerId = useZeropsSessionOptional()?.user?.id;
+  return useViewerNamed().called;
+}
+
+/**
+ * What the member list calls the person looking, and whether it has said: `said` once the list of
+ * the organization in view holds them. A list that is read but does not hold them yet has said
+ * nothing of them: the last visit's name stands until it does, never dropped for the account's
+ * full name and put back a moment later.
+ */
+function useViewerNamed(): { readonly called: string | undefined; readonly said: boolean } {
+  const session = useZeropsSessionOptional();
+  const viewerId = session?.user?.id;
+  const shown = session?.activeOrganization?.id;
+  // The list and the organization it is of, read from the one data account in one render: on a
+  // switch the session moves a commit before the data, and the last organization's name must not
+  // be kept under the new one.
   const people = useAtomValue(hqPeopleAtom);
-  return viewerId === undefined ? undefined : people?.[viewerId]?.called;
+  const answered = useAtomValue(hqNavigationAtom, (navigation) => navigation.orgId);
+  const person = viewerId === undefined ? undefined : people?.[viewerId];
+  const called = person?.called;
+  useEffect(() => {
+    if (answered !== null && called !== undefined) writeCalledMemory(answered, called);
+  }, [answered, called]);
+  if (viewerId === undefined || shown === undefined) return { called, said: person !== undefined };
+  // This organization's list holds them: its word.
+  if (answered === shown && person !== undefined) return { called, said: true };
+  // Before that, what it called them last visit (`readCalledMemory`): the foot and the Chief's
+  // row name the person on a reload's first frame as they will once it is read.
+  return { called: readCalledMemory(shown), said: false };
+}
+
+/**
+ * Whether what the person looking is called is still to come: the member list has not named them,
+ * nothing is remembered of it. The menu's foot holds the name's seat empty meanwhile and names
+ * them with its fill, rather than paint the account's full name and replace it a moment later.
+ */
+export function useViewerCalledPending(): boolean {
+  const session = useZeropsSessionOptional();
+  const named = useViewerNamed();
+  return (
+    session?.user?.id !== undefined &&
+    session.activeOrganization?.id !== undefined &&
+    named.called === undefined &&
+    !named.said
+  );
 }
 
 /** `personNameOf` for the organization `clientId`, as a surface names who answered its ask. */

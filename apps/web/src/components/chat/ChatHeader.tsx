@@ -64,8 +64,14 @@ import { mateProjectPage, type ZeropsMateAt } from "~/zerops/mateIdentities";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { ZeropsProjectLink } from "../zerops/ZeropsProjectLink";
 import { ConversationOpeningWaits } from "./ConversationOpeningStage";
-import { useProjectReviewOf, useProjectSitesOf } from "~/zerops/projectPartsShown";
-import { HeaderReviewDoor } from "../zerops/SidebarProjectReview";
+import {
+  useProjectPartsDrawn,
+  useProjectReviewOf,
+  useProjectSitesOf,
+} from "~/zerops/projectPartsShown";
+import { useLoadFillComes } from "~/lib/loadFills";
+import { HeaderReviewDoor, HeaderReviewSeat } from "../zerops/SidebarProjectReview";
+import { doorSeatStood } from "~/zerops/bootFrame";
 import { headerReviewItems } from "../zerops/SidebarProjectReview.logic";
 import { useHeldBehindReview } from "~/zerops/heldBehindReview";
 import { useRightPanelStore } from "~/rightPanelStore";
@@ -321,6 +327,20 @@ export const ChatHeader = memo(function ChatHeader({
   // What waits on a review in its project, the same Review its row's tag opened (the owner,
   // 2026-10-12: "add it somewhere to the app bar in detail which would trigger the same pop").
   const headerReview = useProjectReviewOf(mate?.chief === true ? undefined : mate?.projectId);
+  // The Review is the menu's to draw (`projectPartsShown`). Until the menu has drawn this project,
+  // or filled without it, the door may still come: where one stood on this page at the last visit
+  // (`doorSeatStood`) its seat is held, so what the chat is about comes with the conversation and
+  // the door comes into its seat. It waited unseen for the menu before, for seconds on a slow HQ.
+  const menuFillComes = useLoadFillComes("menu");
+  const reviewComes =
+    !useProjectPartsDrawn(mate?.chief === true ? undefined : mate?.projectId) && menuFillComes;
+  // Read for the conversation on screen: the seat is this address's, never another's.
+  // Only while the door may still come: a switch between open conversations reads nothing.
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- the address follows the conversation
+  const doorSeat = useMemo(
+    () => (reviewComes ? doorSeatStood() : undefined),
+    [activeThreadId, reviewComes],
+  );
   // Held while a review stands open: a merge pressed there never slides the goal under the sheet.
   // The conversation's own word that its Mate works, which holds the composer's strip too.
   const conversation = { mateWorks: useMateWorks(activeThreadEnvironmentId) };
@@ -735,7 +755,11 @@ export const ChatHeader = memo(function ChatHeader({
                     task={activeThreadTask.source}
                     taskId={activeThreadTask.taskId}
                   />
-                ) : reviewTags.value === null ? null : (
+                ) : reviewTags.value === null ? (
+                  reviewComes && doorSeat !== undefined ? (
+                    <HeaderReviewSeat width={doorSeat} />
+                  ) : null
+                ) : (
                   <HeaderReviewDoor
                     held={reviewTags.held}
                     review={{ ...reviewTags.value, items: headerChanges }}
@@ -755,13 +779,17 @@ export const ChatHeader = memo(function ChatHeader({
                 words={linkVoice.text ?? "Reconnecting…"}
               />
             ) : status === null ? null : (
-              <MateStatusMarker
-                ask={statusAsk}
-                mateName={mate?.name}
-                onOpen={openStatusAsk}
-                status={status}
-                timestampFormat={settings.timestampFormat}
-              />
+              // What the Mate waits on is the conversation's own fact: it arrives with it, never
+              // alone in the header while the stage still opens it.
+              <ConversationOpeningWaits className="contents">
+                <MateStatusMarker
+                  ask={statusAsk}
+                  mateName={mate?.name}
+                  onOpen={openStatusAsk}
+                  status={status}
+                  timestampFormat={settings.timestampFormat}
+                />
+              </ConversationOpeningWaits>
             )}
           </>
         ) : (

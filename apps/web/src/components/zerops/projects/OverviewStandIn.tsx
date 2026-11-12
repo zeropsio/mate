@@ -91,17 +91,24 @@ export function OverviewCardsStandIn({ count }: { readonly count?: number }) {
   );
 }
 
+/** The filters' seats: where the page's filters stand once its cards do (`OverviewFilters`). */
+export function OverviewFiltersStandIn() {
+  return (
+    <div className="ov-filters" aria-hidden="true">
+      <Skeleton className="h-7 w-12" shape="pill" />
+      <Skeleton className="h-7 w-32" shape="pill" />
+      <Skeleton className="h-7 w-16" shape="pill" />
+    </div>
+  );
+}
+
 /** The page's body under its frame: what `ZeropsProjectsPage` draws until it paints. */
 export function OverviewStandInBody() {
   return (
     <>
       <TitleRow />
       <div className="space-y-6 pb-12">
-        <div className="ov-filters" aria-hidden="true">
-          <Skeleton className="h-7.5 w-12" shape="pill" />
-          <Skeleton className="h-7.5 w-32" shape="pill" />
-          <Skeleton className="h-7.5 w-16" shape="pill" />
-        </div>
+        <OverviewFiltersStandIn />
         <div className="flex flex-col gap-4">
           <OverviewCardsStandIn />
         </div>

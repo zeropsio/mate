@@ -25,6 +25,10 @@ const mate = {
   project: "Ahmad Tea",
   connected: true,
 } as const;
+// The stage's own face, wherever it stands: on the stage, then in the header's slot. While the
+// conversation arrives the header fades its own in beside the leaving stage (inert, unsaid).
+const STAGE_FACE = "[data-opening-face] [data-mate-face-state]";
+const STAGE_LEFT_EYE = '[data-opening-face] [data-mate-face-eye="left"]';
 const hosts: HTMLDivElement[] = [];
 afterEach(() => {
   hosts.splice(0).forEach((host) => host.remove());
@@ -88,7 +92,7 @@ it("holds one waiting face until the conversation is ready, then opens its eyes 
   const view = await opening();
   try {
     const stage = view.host.querySelector("[data-conversation-opening]");
-    const face = view.host.querySelector("[data-mate-face-state]");
+    const face = view.host.querySelector(STAGE_FACE);
     expect(face?.getAttribute("data-mate-face-state")).toBe("waking");
     expect(view.host.textContent).toContain("Sage is opening the conversation.");
     await end(face, "conversation-wake");
@@ -96,11 +100,11 @@ it("holds one waiting face until the conversation is ready, then opens its eyes 
     await view.show(true);
     expect(phase(view.host)).toBe("wake");
     expect(view.host.querySelector("[data-conversation-opening]")).toBe(stage);
-    expect(view.host.querySelector("[data-mate-face-state]")).toBe(face);
+    expect(view.host.querySelector(STAGE_FACE)).toBe(face);
     expect(face?.getAttribute("data-mate-face-state")).toBe("idle");
     await end(stage, "unrelated-animation");
     expect(phase(view.host)).toBe("wake");
-    await end(view.host.querySelector('[data-mate-face-eye="left"]'), "conversation-eye-open");
+    await end(view.host.querySelector(STAGE_LEFT_EYE), "conversation-eye-open");
     expect(phase(view.host)).toBe("hand-off");
     await end(stage, "conversation-handoff");
     expect(phase(view.host)).toBe("complete");
@@ -128,11 +132,11 @@ it("an immediately ready conversation shows no opening stage or animation", asyn
 it("keeps the same waiting stage and face when the link route hands over to an already placed conversation", async () => {
   const view = await opening();
   try {
-    const face = view.host.querySelector("[data-mate-face-state]");
+    const face = view.host.querySelector(STAGE_FACE);
     const stage = view.host.querySelector("[data-conversation-opening]");
     await view.show(true, "conversation");
     expect(view.host.querySelector("[data-conversation-opening]")).toBe(stage);
-    expect(view.host.querySelector("[data-mate-face-state]")).toBe(face);
+    expect(view.host.querySelector(STAGE_FACE)).toBe(face);
     expect(phase(view.host)).toBe("wake");
   } finally {
     await view.close();
@@ -164,7 +168,7 @@ for (const input of ["pointerdown", "keydown", "wheel", "touchmove"]) {
     try {
       await view.show(true);
       if (during === "hand-off")
-        await end(view.host.querySelector('[data-mate-face-eye="left"]'), "conversation-eye-open");
+        await end(view.host.querySelector(STAGE_LEFT_EYE), "conversation-eye-open");
       await act(() => document.dispatchEvent(new Event(input, { bubbles: true })));
       expect(phase(view.host)).toBe("complete");
       expect(
@@ -183,9 +187,7 @@ it("reduced motion waits for real readiness, then shows open eyes and the conver
     expect(phase(view.host)).toBe("waiting");
     await view.show(true);
     expect(phase(view.host)).toBe("complete");
-    expect(
-      view.host.querySelector("[data-mate-face-state]")?.getAttribute("data-mate-face-state"),
-    ).toBe("idle");
+    expect(view.host.querySelector(STAGE_FACE)?.getAttribute("data-mate-face-state")).toBe("idle");
   } finally {
     await view.close();
   }
@@ -307,9 +309,9 @@ it("the stage owns the wake without replaying opening cues on landing, and the a
   const view = await opening(false, header);
   try {
     await view.show(true);
-    await end(view.host.querySelector('[data-mate-face-eye="left"]'), "conversation-eye-open");
+    await end(view.host.querySelector(STAGE_LEFT_EYE), "conversation-eye-open");
     await end(view.host.querySelector("[data-conversation-opening]"), "conversation-handoff");
-    const face = view.host.querySelector("[data-mate-face-state]");
+    const face = view.host.querySelector(STAGE_FACE);
     expect(face?.hasAttribute("data-mate-face-moment")).toBe(false);
     header.cues = [{ moment: "dance", key: "later-success" }];
     await view.show(true);
@@ -329,7 +331,7 @@ it("placement, live-follow and hidden-pane scrolls cannot cancel the wake or han
         view.host.dispatchEvent(new Event("scroll", { bubbles: true }));
       });
       expect(phase(view.host)).toBe(during);
-      await end(view.host.querySelector('[data-mate-face-eye="left"]'), "conversation-eye-open");
+      await end(view.host.querySelector(STAGE_LEFT_EYE), "conversation-eye-open");
     }
   } finally {
     await view.close();
@@ -379,7 +381,7 @@ it.each(
         unknown={null}
       />,
     );
-    const face = view.host.querySelector("[data-mate-face-state]");
+    const face = view.host.querySelector(STAGE_FACE);
     const lead = view.host.querySelector("[data-mate-empty-lead]");
     expect(view.host.querySelectorAll("[data-mate-face-state]")).toHaveLength(1);
     expect(view.host.textContent).toContain(restarting ? "Restarting Sage" : "Sage is standing up");
@@ -388,8 +390,8 @@ it.each(
     expect(view.host.textContent).toContain(restarting ? "Restarting Sage" : "Sage is standing up");
     expect(view.host.textContent).toContain("Inspect progress");
     expect(view.host.querySelector("[data-mate-empty-lead]")).toBe(lead);
-    expect(view.host.querySelector("[data-mate-face-state]")).toBe(face);
-    await end(view.host.querySelector('[data-mate-face-eye="left"]'), "conversation-eye-open");
+    expect(view.host.querySelector(STAGE_FACE)).toBe(face);
+    await end(view.host.querySelector(STAGE_LEFT_EYE), "conversation-eye-open");
     await end(view.host.querySelector("[data-conversation-opening]"), "conversation-handoff");
     expect(view.host.querySelector("[data-conversation-avatar] [data-mate-face-state]")).toBe(face);
   } finally {
@@ -460,13 +462,13 @@ it.each(
 )("$title", async ({ renamed }) => {
   const view = await opening();
   try {
-    const face = view.host.querySelector("[data-mate-face-state]");
+    const face = view.host.querySelector(STAGE_FACE);
     await view.show(true, "conversation", true, "main", true, undefined, renamed);
     expect(phase(view.host)).toBe("wake");
     expect(view.host.textContent).toContain("Sage is opening the conversation.");
     expect(view.host.textContent).not.toContain(`${renamed} is opening`);
-    expect(view.host.querySelector("[data-mate-face-state]")).toBe(face);
-    await end(view.host.querySelector('[data-mate-face-eye="left"]'), "conversation-eye-open");
+    expect(view.host.querySelector(STAGE_FACE)).toBe(face);
+    await end(view.host.querySelector(STAGE_LEFT_EYE), "conversation-eye-open");
     expect(phase(view.host)).toBe("hand-off");
     await end(view.host.querySelector("[data-conversation-opening]"), "conversation-handoff");
     expect(view.host.querySelector("[data-conversation-avatar] [data-mate-face-state]")).toBe(face);
@@ -502,14 +504,14 @@ it("keeps the opening face visible and interactive outside a withheld settling p
     );
   try {
     await show(true);
-    const face = host.querySelector("[data-mate-face-state]");
+    const face = host.querySelector(STAGE_FACE);
     expect(face).not.toBeNull();
     expect(face?.closest("[inert], .invisible")).toBeNull();
     expect(
       host.querySelector("[data-conversation-opening]")?.closest("[data-settling-pane]"),
     ).toBeNull();
     await show(false);
-    expect(host.querySelector("[data-mate-face-state]")).toBe(face);
+    expect(host.querySelector(STAGE_FACE)).toBe(face);
   } finally {
     await act(() => root.unmount());
   }
@@ -533,7 +535,7 @@ it("a prolonged restart keeps its native face cycle and advances recovery copy b
         unknown={null}
       />,
     );
-    const face = view.host.querySelector("[data-mate-face-state]");
+    const face = view.host.querySelector(STAGE_FACE);
     const line = () =>
       view.host.querySelector('[data-arrival-sentence] [data-swap-layer="shown"]')?.textContent;
     const before = line();
@@ -548,14 +550,14 @@ it("a prolonged restart keeps its native face cycle and advances recovery copy b
     );
     expect(line()).not.toBe(before);
     expect(phase(view.host)).toBe("waiting");
-    expect(view.host.querySelector("[data-mate-face-state]")).toBe(face);
+    expect(view.host.querySelector(STAGE_FACE)).toBe(face);
     await view.show(false, "restart");
-    expect(view.host.querySelector("[data-mate-face-state]")).toBe(face);
+    expect(view.host.querySelector(STAGE_FACE)).toBe(face);
     expect(view.host.textContent).toContain("Sage is opening the conversation.");
     await view.show(true, "conversation");
     expect(face?.hasAttribute("data-mate-face-restarting")).toBe(false);
     expect(phase(view.host)).toBe("wake");
-    expect(view.host.querySelector("[data-mate-face-state]")).toBe(face);
+    expect(view.host.querySelector(STAGE_FACE)).toBe(face);
   } finally {
     await view.close();
   }
@@ -575,12 +577,12 @@ it("finishes existing source acting when readiness hands the face to the short w
   );
   try {
     await view.show(false, "source", true, "main", true, source("working"));
-    const face = view.host.querySelector("[data-mate-face-state]");
+    const face = view.host.querySelector(STAGE_FACE);
     await view.show(false, "source", true, "main", true, source("done"));
     expect(face?.getAttribute("data-mate-face-moment")).toBe("dance");
     await view.show(true, "conversation");
     expect(phase(view.host)).toBe("wake");
-    expect(view.host.querySelector("[data-mate-face-state]")).toBe(face);
+    expect(view.host.querySelector(STAGE_FACE)).toBe(face);
     expect(face?.getAttribute("data-mate-face-moment")).toBeNull();
   } finally {
     await view.close();
@@ -784,7 +786,7 @@ it("while the opening stage names the Mate, the header holds its name unsaid, an
     await show(true);
     expect(phase(host)).toBe("wake");
     expect(header()).toEqual({ unseen: "yields", unsaid: "true" });
-    await end(host.querySelector('[data-mate-face-eye="left"]'), "conversation-eye-open");
+    await end(host.querySelector(STAGE_LEFT_EYE), "conversation-eye-open");
     expect(phase(host)).toBe("hand-off");
     expect(header()).toEqual({ unseen: "says", unsaid: null });
   } finally {
