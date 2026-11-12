@@ -1589,19 +1589,31 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     let opener: HTMLElement | null = null;
     // Opened at the conversation's end, the end stays in sight: what opens grows upward, the last
     // row held where it stands (recheck on 0.15.45: an opened card pushed its answer under the
-    // composer). Opened farther up, the opener stands where it was clicked.
+    // composer) — never past its own row's top reaching the view's, from where it grows down.
+    // Opened farther up, the opener stands where it was clicked.
     let keepsEnd = false;
     // Held as it lays out, before it paints: a step a frame late let the end dip 81 px.
     let holdsEnd: ResizeObserver | null = null;
+    let heldRow: HTMLElement | null = null;
     const keepEnd = () => {
       const viewport = listRef.current?.getScrollableNode();
       if (!viewport || !keepsEnd || performance.now() > until) return;
       const end = viewport.scrollHeight - viewport.clientHeight - followRoomRef.current;
-      if (Math.abs(end - viewport.scrollTop) > 0.5) scrollOwn(viewport, end);
+      // Its row seen whole is what the list keeps in place as rows grow; once past the top, the
+      // list kept the rows under it in place too, and with the end kept here the view went twice
+      // as far and fell back (Show work at the end, 2026-11-12: the opener 600 px up and gone,
+      // 325 px past the end, then back in one frame).
+      const room =
+        heldRow === null
+          ? Number.POSITIVE_INFINITY
+          : heldRow.getBoundingClientRect().top - viewport.getBoundingClientRect().top;
+      const to = Math.min(end, viewport.scrollTop + Math.max(0, room));
+      if (Math.abs(to - viewport.scrollTop) > 0.5) scrollOwn(viewport, to);
     };
     const stop = () => {
       holdsEnd?.disconnect();
       holdsEnd = null;
+      heldRow = null;
       cancelAnimationFrame(frame);
       frame = 0;
       opener = null;
@@ -1664,6 +1676,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       holdsEnd?.disconnect();
       holdsEnd = null;
       const row = button.closest<HTMLElement>("[data-timeline-row-id]");
+      heldRow = row;
       if (keepsEnd && row !== null && typeof ResizeObserver !== "undefined") {
         holdsEnd = new ResizeObserver(keepEnd);
         holdsEnd.observe(row);
