@@ -27,6 +27,7 @@ import { AssetImage } from "~/assets/AssetImage";
 import { cn } from "~/lib/utils";
 import { useRightPanelStore } from "../../rightPanelStore";
 import { useMateBrowserCallFrame } from "../../zerops/browserStreamLinks";
+import { Skeleton } from "../ui/skeleton";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   browserCheckCaption,
@@ -604,7 +605,10 @@ export function BrowserTakes({
 /**
  * The take being taken now: the page as the browser streams it, in the frame
  * its picture will stand in, so the row keeps its height when the picture
- * comes. Busy, never failure: the blue dot the stage's Live wears.
+ * comes. Until the browser's first frame it is a browser opening a page
+ * (`TakeOpening`), never an empty box (the owner, 2026-11-12: "if its really
+ * browser, like show mini browser mock and some loading inside"). Busy, never
+ * failure: the blue dot the stage's Live wears.
  */
 function LiveTake({
   take,
@@ -635,12 +639,14 @@ function LiveTake({
       data-report-take-live
       role="img"
     >
-      {frame === null ? null : (
+      {frame === null ? (
+        <TakeOpening device={device} />
+      ) : (
         <img
           loading="eager"
           decoding="async"
           alt=""
-          className="block size-full object-cover object-top"
+          className="block size-full animate-run-fade object-cover object-top motion-reduce:animate-none"
           src={frameImageSrc(frame)}
         />
       )}
@@ -648,6 +654,35 @@ function LiveTake({
         aria-hidden="true"
         className="absolute end-1.5 bottom-1.5 size-1.5 animate-status-pulse rounded-full bg-status-busy motion-reduce:animate-none"
       />
+    </span>
+  );
+}
+
+/**
+ * A browser opening a page, in a take's frame: its bar — a window's three dots
+ * where the frame is a desktop's, the address it is going to — and the page
+ * still coming under it, in the product's own stand-ins. Drawn, never read:
+ * the frame says what is being checked.
+ */
+function TakeOpening({ device }: { readonly device: BrowserDevice }) {
+  return (
+    <span aria-hidden="true" className="absolute inset-0 flex flex-col" data-report-take-opening>
+      <span className="flex h-3.5 shrink-0 items-center gap-0.5 border-b border-border bg-muted/60 px-1.5">
+        {device === "desktop" ? (
+          <>
+            <span className="size-1 shrink-0 rounded-full bg-muted-foreground/35" />
+            <span className="size-1 shrink-0 rounded-full bg-muted-foreground/35" />
+            <span className="size-1 shrink-0 rounded-full bg-muted-foreground/35" />
+          </>
+        ) : null}
+        <span className="ms-0.5 h-1.5 min-w-0 flex-1 rounded-full bg-muted-foreground/15" />
+      </span>
+      <span className="flex min-h-0 flex-1 flex-col gap-1 p-1.5">
+        <Skeleton className="h-1.5 w-2/5 shrink-0" surface="card" />
+        <Skeleton className="h-1 w-4/5 shrink-0" surface="card" />
+        <Skeleton className="h-1 w-3/5 shrink-0" surface="card" />
+        <Skeleton className="mt-0.5 min-h-0 w-full flex-1" surface="card" />
+      </span>
     </span>
   );
 }
