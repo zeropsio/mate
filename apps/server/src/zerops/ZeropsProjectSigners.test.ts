@@ -1,8 +1,10 @@
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as TestClock from "effect/testing/TestClock";
@@ -10,12 +12,15 @@ import * as TestClock from "effect/testing/TestClock";
 import type { ZeropsAgentLoginState } from "@t3tools/contracts";
 import { loginTurnRefusal, turnRefusal } from "@t3tools/shared/zeropsAgentAuth";
 
+import * as ServerConfig from "../config.ts";
 import {
   memorySignInStore,
   ZeropsSignIns,
   type SignInRecords,
   type SignInStore,
 } from "./zeropsSignIns.ts";
+import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
+import * as ZeropsMateAccessListModule from "./ZeropsMateAccessList.ts";
 import {
   isTurnStartingCommand,
   make as makeProjectSigners,
@@ -236,6 +241,12 @@ describe("isTurnStartingCommand", () => {
   });
 });
 
+const environment = resolveZeropsEnvironment({
+  projectId: "TEST000000000000000023",
+  apiHost: undefined,
+  apiToken: "the-mates-own-zerops-key",
+})!;
+
 describe("the turn gate", () => {
   const signedIn = {
     state: "authorized",
@@ -244,10 +255,19 @@ describe("the turn gate", () => {
     flagToken: false,
   } as const;
 
-  /** The service over the sign-ins this server saw. */
+  /** The service over the sign-ins this server saw, beside an access list that reads nothing. */
   const gateOver = (signIns: SignInStore) =>
     Effect.gen(function* () {
-      const signers = yield* makeProjectSigners.pipe(Effect.provideService(ZeropsSignIns, signIns));
+      const signers = yield* makeProjectSigners.pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            ZeropsMateAccessListModule.emptyLayer,
+            ServerConfig.layer({ zerops: environment } as ServerConfig.ServerConfig["Service"]),
+            NodeServices.layer,
+            Layer.succeed(ZeropsSignIns, signIns),
+          ),
+        ),
+      );
       yield* TestClock.adjust(Duration.zero);
       return { signers, signIns };
     });

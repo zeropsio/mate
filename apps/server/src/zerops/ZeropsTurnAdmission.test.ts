@@ -82,10 +82,10 @@ interface World {
   readonly threadInstanceId?: string;
   /** The answered question's latest activity; absent means none was found. */
   readonly question?: Pick<OrchestrationThreadActivity, "kind" | "payload"> | "unreadable";
-  /** User → whether the org lists them ACTIVE; `undefined` is an unreadable list. */
   /**
-   * Whether each person may still run turns here, as HQ's signer standing answers: `true` is
-   * `may`, `false` is `no_access`, absent is HQ unable to say.
+   * Whether each person may still run turns here, as HQ's signer standing answers on a login they
+   * signed and the access list (`hasProjectAccess`) on one nobody signed: `true` is `may`, `false`
+   * is `no_access`, absent is neither able to say.
    */
   readonly access?: Readonly<Record<string, boolean | undefined>>;
   /** Configured instance → driver kind; the two default instances when absent. */
@@ -232,6 +232,7 @@ const admission = (world: World) =>
                 }),
               ),
             ),
+          hasProjectAccess: (userId) => Effect.succeed(world.access?.[userId]),
         }),
         Layer.mock(ZeropsSignerStanding)({
           standing: (userId) => {
