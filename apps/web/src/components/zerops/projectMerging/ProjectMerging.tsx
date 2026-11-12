@@ -257,8 +257,9 @@ export function ProjectMergingView({
 }
 
 /**
- * What a limit does not hold: a repository's `main` on GitHub, which a Mate working in the project
- * can still push to. Says so, what closes it, and leads to where that is done.
+ * What a limit does not hold: a repository's `main` on GitHub, which anyone who can write to the
+ * repository there can still push to (a Mate cannot: HQ alone pushes to GitHub). Says so, what
+ * closes it, and leads to where that is done.
  */
 function OpenMainNote({ main }: { readonly main: OpenMain }) {
   return (
@@ -267,8 +268,9 @@ function OpenMainNote({ main }: { readonly main: OpenMain }) {
       <AlertTitle>GitHub's main is still open</AlertTitle>
       <AlertDescription>
         <p>
-          This limit holds Merge in Mate. On GitHub, a Mate working here can still push to main of{" "}
-          <span className="font-mono text-foreground">{main.repository}</span>.
+          This limit holds Merge in Mate. On GitHub, anyone who can write to{" "}
+          <span className="font-mono text-foreground">{main.repository}</span> can still push to its
+          main.
         </p>
         <p>{main.fix}</p>
       </AlertDescription>
