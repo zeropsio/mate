@@ -15,11 +15,7 @@ import type { HqNavigationIntake } from "@t3tools/shared/hqStream";
 import type { AutomatedKeyState } from "~/zerops/automatedMate.logic";
 
 import { slackChannelChoices } from "../../settings/taskSourcesSettings.logic";
-import {
-  mateAutomatedLine,
-  tasksWaitingWords,
-  type MateAutomationLine,
-} from "../SidebarMateRow.logic";
+import { mateAutomatedLine, type MateAutomationLine } from "../SidebarMateRow.logic";
 
 /** What an automated Mate of the pool is on, as its row in the menu says it. */
 export function poolMateLine(automation: MateAutomationLine, working: boolean): string {
@@ -29,7 +25,7 @@ export function poolMateLine(automation: MateAutomationLine, working: boolean): 
 /** A kind of source a project takes tasks from. */
 export type SourceKind = "github" | "slack" | "discord" | "webhook" | "schedule";
 
-/** The source kinds *Take tasks from…* offers, in its menu's words. */
+/** The source kinds a project can take tasks from, in the words *Add* offers them in. */
 export const SOURCE_KINDS: ReadonlyArray<{ readonly kind: SourceKind; readonly label: string }> = [
   { kind: "github", label: "GitHub issues" },
   { kind: "slack", label: "Slack channel" },
@@ -38,33 +34,36 @@ export const SOURCE_KINDS: ReadonlyArray<{ readonly kind: SourceKind; readonly l
   { kind: "schedule", label: "Schedule" },
 ];
 
-/** One source's row: what it is in words, the form its Edit opens, and what its Stop does. */
+/** What every source's row says. */
+interface SourceWords {
+  readonly key: string;
+  /** What it is: "GitHub issues labelled", "#support", "2 webhooks", a schedule's name. */
+  readonly title: string;
+  /** Where or when: its repository, "Slack", "Every Monday 09:00"; `null` where its title says all. */
+  readonly detail: string | null;
+  /** How many of its tasks wait for a Mate ("1 waiting"); `null` where none do, or it does not say. */
+  readonly meta: string | null;
+}
+
+/** One source's row: what it is, where or when, and the form its press opens. */
 export type SourceRow =
-  | {
-      readonly key: string;
-      readonly kind: "github" | "webhook";
-      readonly words: string;
-    }
-  | {
-      readonly key: string;
+  | (SourceWords & {
+      readonly kind: "github";
+      /** The label its issues carry: a real name, said after its title. */
+      readonly label: string;
+    })
+  | (SourceWords & { readonly kind: "webhook" })
+  | (SourceWords & {
       readonly kind: "slack" | "discord";
-      readonly words: string;
       /** The organization's connection to it is missing: it takes no tasks until connected. */
       readonly disconnected: boolean;
-    }
-  | {
-      readonly key: string;
-      readonly kind: "schedule";
-      readonly id: string;
-      readonly words: string;
-    }
-  /** A source whose read failed: HQ's words, and *Try again*. */
-  | {
-      readonly key: string;
+    })
+  | (SourceWords & { readonly kind: "schedule"; readonly id: string })
+  /** A source whose read failed: HQ's words as its title, and *Try again*. */
+  | (SourceWords & {
       readonly kind: "failed";
       readonly source: Exclude<SourceKind, "github">;
-      readonly words: string;
-    };
+    });
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -105,16 +104,15 @@ export function sourceRows(reads: SourceReads): {
 } {
   const rows: Array<SourceRow> = [];
   const { intake } = reads;
-  if (intake != null) {
-    const waiting = tasksWaitingWords(intake.waiting);
+  if (intake != null)
     rows.push({
       key: "github",
       kind: "github",
-      words: [`GitHub issues labelled “${intake.label}”`, intake.repo, waiting]
-        .filter((part) => part !== undefined)
-        .join(" · "),
+      title: "GitHub issues labelled",
+      label: intake.label,
+      detail: intake.repo,
+      meta: intake.waiting > 0 ? `${String(intake.waiting)} waiting` : null,
     });
-  }
   const channel = (
     kind: "slack" | "discord",
     setting: SourceReads["slack"],
@@ -125,13 +123,17 @@ export function sourceRows(reads: SourceReads): {
         key: `failed:${kind}`,
         kind: "failed",
         source: kind,
-        words: couldntRead(`its ${kind === "slack" ? "Slack" : "Discord"} channel`, setting.words),
+        title: couldntRead(`its ${kind === "slack" ? "Slack" : "Discord"} channel`, setting.words),
+        detail: null,
+        meta: null,
       });
     if (setting.state !== "known" || setting.held.channel === null) return;
     rows.push({
       key: kind,
       kind,
-      words: `#${setting.held.channel.channel} on ${kind === "slack" ? "Slack" : "Discord"}`,
+      title: `#${setting.held.channel.channel}`,
+      detail: kind === "slack" ? "Slack" : "Discord",
+      meta: null,
       disconnected: connected === false,
     });
   };
@@ -142,14 +144,18 @@ export function sourceRows(reads: SourceReads): {
       key: "failed:webhook",
       kind: "failed",
       source: "webhook",
-      words: couldntRead("its webhooks", reads.webhooks.words),
+      title: couldntRead("its webhooks", reads.webhooks.words),
+      detail: null,
+      meta: null,
     });
   if (reads.webhooks.state === "known" && reads.webhooks.held.length > 0) {
     const count = reads.webhooks.held.length;
     rows.push({
       key: "webhook",
       kind: "webhook",
-      words: count === 1 ? "1 webhook" : `${String(count)} webhooks`,
+      title: count === 1 ? "1 webhook" : `${String(count)} webhooks`,
+      detail: null,
+      meta: null,
     });
   }
   if (reads.schedules.state === "failed")
@@ -157,7 +163,9 @@ export function sourceRows(reads: SourceReads): {
       key: "failed:schedule",
       kind: "failed",
       source: "schedule",
-      words: couldntRead("its schedules", reads.schedules.words),
+      title: couldntRead("its schedules", reads.schedules.words),
+      detail: null,
+      meta: null,
     });
   if (reads.schedules.state === "known")
     for (const schedule of reads.schedules.held)
@@ -165,7 +173,9 @@ export function sourceRows(reads: SourceReads): {
         key: `schedule:${schedule.id}`,
         kind: "schedule",
         id: schedule.id,
-        words: `${scheduleWhen(schedule.rule)} · ${schedule.name}`,
+        title: schedule.name,
+        detail: scheduleWhen(schedule.rule),
+        meta: null,
       });
   const reading =
     intake === undefined ||
@@ -211,8 +221,8 @@ export function automationSection(input: {
 }
 
 /**
- * Where a source row's Stop (or a schedule's Remove) stands: at rest; asking whether to, on the
- * row; under way; or refused, in HQ's words, on the row it was pressed on.
+ * Where a task's Stop stands on its row: at rest; asking whether to, in the row; under way; or
+ * refused, in HQ's words, on the row it was pressed on.
  */
 export type RowPress =
   | { readonly kind: "idle" }
@@ -226,7 +236,7 @@ export function sourceRowPress(input: {
   readonly asking: string | null;
   /** The row whose Stop was confirmed last; `null`: none. */
   readonly pressed: string | null;
-  /** Where the write of that row's source stands. */
+  /** Where that row's stop stands at HQ. */
   readonly action:
     | { readonly kind: "idle" | "working" | "done" }
     | { readonly kind: "failed" | "unresolved"; readonly words: string };
@@ -238,19 +248,6 @@ export function sourceRowPress(input: {
   if (action.kind === "failed" || action.kind === "unresolved")
     return { kind: "refused", words: action.words };
   return { kind: "idle" };
-}
-
-/** What a row's Stop asks, says on its press, and says while it works. */
-export function stopWords(kind: "github" | "slack" | "discord" | "schedule"): {
-  readonly ask: string;
-  readonly verb: string;
-  readonly working: string;
-} {
-  if (kind === "schedule")
-    return { ask: "Remove this schedule and its brief?", verb: "Remove", working: "Removing…" };
-  if (kind === "github")
-    return { ask: "Stop taking GitHub issues?", verb: "Stop", working: "Stopping…" };
-  return { ask: "Stop taking tasks from this channel?", verb: "Stop", working: "Stopping…" };
 }
 
 /**

@@ -1,10 +1,10 @@
 /**
  * A project's task board, in words: what its automated Mates are on (at work), what waits for
- * them by its place (queued), and what ended (recent) — each row's status in the one vocabulary
- * every surface says it in (`taskStatus`), how long a live task worked and what it cost (from
- * HQ's navigation, which says each report, where it names the task), and when an ended one ended;
- * and where each opens. Above it, the pool as one line and the organization's spend this month
- * against its budget.
+ * them by its place (queued), and what ended (recent, the board's Finished) — each row's status
+ * in the one vocabulary every surface says it in (`taskStatus`), how long a live task worked and
+ * what it cost (from HQ's navigation, which says each report, where it names the task), and when
+ * an ended one ended; and where each opens. Above it, the pool as one line and the organization's
+ * spend this month against its budget.
  */
 import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
 import { changeRoutePath } from "@t3tools/shared/hqChanges";
@@ -21,11 +21,12 @@ import {
   endedWords,
   isLiveStatus,
   recordStatus,
+  TASK_STATUS_WORDS,
   workedWords,
   type TaskStatus,
 } from "~/zerops/taskStatus";
 
-/** How many ended tasks the board shows; HQ answers more. */
+/** How many ended tasks the board shows until the rest are asked for; HQ answers more. */
 export const RECENT_SHOWN = 5;
 
 export interface AtWorkRow {
@@ -56,6 +57,8 @@ export interface RecentRow {
   readonly outcome: TaskStatus;
   readonly title: string;
   readonly mate: string | null;
+  /** Its Mate's project, by which the pool knows its colour; `null` where no Mate had it. */
+  readonly mateId: string | null;
   /** When it ended (`endedWords`): "3h ago"; "—" where not known. */
   readonly when: string;
   readonly cost: string;
@@ -66,7 +69,7 @@ export interface RecentRow {
     readonly external: boolean;
   } | null;
   readonly route: string | null;
-  /** Why it failed or stopped, for its tooltip. */
+  /** Why it failed or stopped, said under its title. */
   readonly detail: string | null;
 }
 
@@ -77,12 +80,6 @@ export interface BlockedMate {
   readonly change: NonNullable<RecentRow["change"]>;
 }
 
-/** A free Mate whose finished tasks' changes wait for review: how many. */
-export interface ReviewingMate {
-  readonly projectId: string;
-  readonly count: number;
-}
-
 export interface Board {
   readonly atWork: ReadonlyArray<AtWorkRow>;
   /**
@@ -90,12 +87,9 @@ export interface Board {
    * until it is merged or closed.
    */
   readonly blocked: ReadonlyArray<BlockedMate>;
-  /** Its Mates HQ does not hold whose changes wait for review: free, each with how many. */
-  readonly reviewing: ReadonlyArray<ReviewingMate>;
   readonly queued: ReadonlyArray<QueuedRow>;
+  /** Every ended task HQ answered, the latest first: the board shows the first few. */
   readonly recent: ReadonlyArray<RecentRow>;
-  /** How many more ended than `recent` shows. */
-  readonly recentMore: number;
 }
 
 /** "4m", "3h", "2d": an age as the board's numbers column shows it. */
@@ -174,7 +168,6 @@ export function boardOf(
 ): Board {
   const atWork: Array<AtWorkRow> = [];
   const blocked: Array<BlockedMate> = [];
-  const reviewing = new Map<string, number>();
   const queued: Array<QueuedRow> = [];
   const ended: Array<RecentRow> = [];
   for (const task of tasks) {
@@ -203,18 +196,18 @@ export function boardOf(
       });
     } else {
       // Done with its change open: a Mate HQ holds waits for it while navigation still names it;
-      // any other is free, its change counted among those waiting for review.
+      // any other is free.
       const change = changeLink(task, appId);
       if (status === "review" && task.mate !== null && change !== null) {
         const { projectId } = task.mate;
-        if (!held(projectId)) reviewing.set(projectId, (reviewing.get(projectId) ?? 0) + 1);
-        else if (now !== undefined) blocked.push({ projectId, change });
+        if (held(projectId) && now !== undefined) blocked.push({ projectId, change });
       }
       ended.push({
         id: task.id,
         outcome: status,
         title: task.title,
         mate: task.mate?.name ?? null,
+        mateId: task.mate?.projectId ?? null,
         when: endedWords(task.endedAt, nowMs) ?? "—",
         cost: costWords(now?.spentUsd ?? task.spentUsd),
         change,
@@ -227,19 +220,16 @@ export function boardOf(
   return {
     atWork,
     blocked,
-    reviewing: [...reviewing].map(([projectId, count]) => ({ projectId, count })),
     queued,
-    recent: ended.slice(0, RECENT_SHOWN),
-    recentMore: Math.max(0, ended.length - RECENT_SHOWN),
+    recent: ended,
   };
 }
 
 /**
- * How many rows each block will hold, from HQ's navigation while the board reads, so it keeps its
- * height when the read lands: At work, a row per Mate on a live task and a line per Mate waiting
- * on its change (its pull request open), plus one line for those that wait for a task; Queued, its
- * waiting tasks or the line saying none; Recent, the tasks navigation says ended, up to what it
- * shows, or the line saying none.
+ * How many rows each group will hold, from HQ's navigation while the board reads, so it keeps its
+ * height when the read lands: At work, a row per Mate on a live task; Queued, its waiting tasks;
+ * Finished, the tasks navigation says ended, up to what it shows. A group that will hold none is
+ * not drawn, so it predicts none.
  */
 export function predictedBoard(
   tasks: ReadonlyArray<HqNavigationMateTask | null | undefined>,
@@ -247,21 +237,61 @@ export function predictedBoard(
 ): { readonly atWork: number; readonly queued: number; readonly recent: number } {
   const known = tasks.filter((task) => task != null);
   const live = known.filter((task) => task.ended === undefined).length;
-  const free = tasks.length - live;
   return {
-    atWork: Math.max(1, live + (free > 0 ? 1 : 0)),
-    queued: Math.max(1, waiting),
-    recent: Math.min(RECENT_SHOWN, Math.max(1, known.length - live)),
+    atWork: live,
+    queued: Math.max(0, waiting),
+    recent: Math.min(RECENT_SHOWN, known.length - live),
   };
 }
 
-/** The pool as one line: its Mates by name (three at most), and how many. */
-export function poolLine(names: ReadonlyArray<string>): string {
-  if (names.length === 0) return "No automated Mates yet";
-  const shown = names.slice(0, 3).join(", ");
-  const more = names.length > 3 ? ` +${String(names.length - 3)}` : "";
-  const count = `${String(names.length)} automated Mate${names.length === 1 ? "" : "s"}`;
-  return `${shown}${more} · ${count}`;
+/**
+ * What a task at work says after its title: nothing while its Mate works on it — its face says
+ * so — that it asks the person, or its status in the one vocabulary.
+ */
+export function atWorkWords(status: TaskStatus): string | null {
+  if (status === "working") return null;
+  return status === "waiting" ? "Asks you" : TASK_STATUS_WORDS[status];
+}
+
+const counted = (count: number, one: string, many: string) =>
+  `${String(count)} ${count === 1 ? one : many}`;
+
+/**
+ * The pool in one line, for the section's masthead: how many automated Mates, then what they are
+ * doing — at work, asking the person, held by HQ on a change that waits for review (`held`, by
+ * project) — or that they are free.
+ */
+export function poolSummary(
+  pool: ReadonlyArray<{
+    readonly projectId: string;
+    readonly automation: {
+      readonly task: {
+        readonly waiting?: true | undefined;
+        readonly done?: true | undefined;
+      } | null;
+    };
+  }>,
+  held: ReadonlySet<string> = new Set(),
+): string {
+  if (pool.length === 0) return "No automated Mates yet";
+  let atWork = 0;
+  let asking = 0;
+  let waiting = 0;
+  for (const { projectId, automation } of pool) {
+    if (held.has(projectId)) waiting += 1;
+    else if (automation.task?.waiting === true) asking += 1;
+    else if (automation.task != null && automation.task.done !== true) atWork += 1;
+  }
+  const doing = [
+    ...(atWork > 0 ? [`${String(atWork)} at work`] : []),
+    ...(asking > 0 ? [counted(asking, "asks you", "ask you")] : []),
+    ...(waiting > 0 ? [counted(waiting, "waits for review", "wait for review")] : []),
+  ];
+  const free = pool.length === 1 ? "free" : pool.length === 2 ? "both free" : "all free";
+  return [
+    counted(pool.length, "automated Mate", "automated Mates"),
+    ...(doing.length > 0 ? doing : [free]),
+  ].join(" · ");
 }
 
 /**

@@ -1,7 +1,7 @@
 /**
  * A project's Automation section, from what is read: its pool of automated Mates with what each
- * is on, and its sources of tasks, one row each — with Edit and Stop for an Owner or Admin, read
- * alone by anyone else.
+ * is on, its tasks in one ledger, and its sources of tasks, one row each — a row opening its form
+ * for an Owner or Admin, read alone by anyone else.
  */
 import { act, type ReactElement } from "react";
 import { create, type ReactTestInstance } from "react-test-renderer";
@@ -16,7 +16,7 @@ import {
   type PoolMate,
 } from "./ProjectAutomation";
 import type { SourceRow } from "./projectAutomation.logic";
-import { boardOf } from "./taskBoard.logic";
+import { boardOf, RECENT_SHOWN } from "./taskBoard.logic";
 
 const NOVA: PoolMate = {
   projectId: "p-nova",
@@ -39,14 +39,30 @@ const JUNO: PoolMate = {
   automation: { task: null },
 };
 const ROWS: ReadonlyArray<SourceRow> = [
-  { key: "github", kind: "github", words: "GitHub issues labelled “mate” · acme/tea-shop" },
-  { key: "slack", kind: "slack", words: "#support on Slack", disconnected: true },
-  { key: "webhook", kind: "webhook", words: "2 webhooks" },
+  {
+    key: "github",
+    kind: "github",
+    title: "GitHub issues labelled",
+    label: "mate",
+    detail: "acme/tea-shop",
+    meta: null,
+  },
+  {
+    key: "slack",
+    kind: "slack",
+    title: "#support",
+    detail: "Slack",
+    meta: null,
+    disconnected: true,
+  },
+  { key: "webhook", kind: "webhook", title: "2 webhooks", detail: null, meta: null },
   {
     key: "schedule:s1",
     kind: "schedule",
     id: "s1",
-    words: "Every Monday 09:00 · Update dependencies",
+    title: "Update dependencies",
+    detail: "Every Monday 09:00",
+    meta: null,
   },
 ];
 
@@ -106,17 +122,11 @@ function boardView(patch: Partial<BoardView> = {}): BoardView {
   };
 }
 
-function controls(
-  press: AutomationControls["pressOf"] = () => ({ kind: "idle" }),
-): AutomationControls & Record<string, ReturnType<typeof vi.fn>> {
+function controls(): AutomationControls & Record<string, ReturnType<typeof vi.fn>> {
   return {
     onAddMate: vi.fn(),
     onTakeFrom: vi.fn(),
     onEdit: vi.fn(),
-    onAskStop: vi.fn(),
-    onKeep: vi.fn(),
-    pressOf: press as never,
-    onStop: vi.fn(),
     onReadAgain: vi.fn(),
     onOpenSettings: vi.fn(),
   };
@@ -144,6 +154,17 @@ const buttons = (root: ReactTestInstance, label: string) =>
 const sourceRow = (root: ReactTestInstance, kind: string) =>
   root.find((node) => node.type === "li" && node.props["data-zerops-source"] === kind);
 
+const taskRow = (root: ReactTestInstance, id: string) =>
+  root.find((node) => node.type === "li" && node.props["data-zerops-task"] === id);
+
+const pool = (root: ReactTestInstance) =>
+  root.find((node) => node.props["data-zerops-surface"] === "project-automation-pool");
+
+const groups = (root: ReactTestInstance) =>
+  root
+    .findAll((node) => typeof node.props["data-zerops-board"] === "string")
+    .map((node) => node.props["data-zerops-board"] as string);
+
 describe("a project's Automation section", () => {
   it("lists its automated Mates, each with what it is on, and the way to add one", () => {
     const admin = controls();
@@ -158,9 +179,8 @@ describe("a project's Automation section", () => {
       />,
     );
     const text = words(root);
-    expect(text).toContain("Nova, Juno · 2 automated Mates");
-    expect(text).toContain("Nova Add a search box Working Worked 10m $0.42");
-    expect(text).toContain("Juno waits for a task.");
+    expect(text).toContain("2 automated Mates · 1 at work");
+    expect(text).toContain("Add a search box Nova · worked 10m $0.42");
     // Each face says what its Mate is on.
     expect(
       root
@@ -168,7 +188,7 @@ describe("a project's Automation section", () => {
         .map((node) => node.props["aria-label"] as string),
     ).toContain("Nova: #1 Add a search box · PR #2 open");
     act(() => {
-      buttons(root, "Add")[0]?.props.onClick();
+      buttons(root, "+ Add a Mate")[0]?.props.onClick();
     });
     expect(admin.onAddMate).toHaveBeenCalledOnce();
   });
@@ -205,11 +225,11 @@ describe("a project's Automation section", () => {
         workingOf={() => false}
       />,
     );
-    expect(words(root)).toContain("No automated Mates yet.");
-    expect(words(root)).toContain("Nowhere yet.");
+    expect(words(pool(root))).toContain("No automated Mates yet");
   });
 
-  it("names each source on its own row, with its own Edit and Stop", () => {
+  // witness: apps/web/src/components/zerops/projectAutomation/ProjectAutomation.tsx | admin.onEdit(row); → admin.onTakeFrom("github");
+  it("names each source on its own row, which opens its form: its Stop and its Delete are there", () => {
     const admin = controls();
     const root = rendered(
       <ProjectAutomationView
@@ -220,66 +240,17 @@ describe("a project's Automation section", () => {
         workingOf={() => false}
       />,
     );
-    for (const row of ROWS) expect(words(root)).toContain(row.words);
-    const github = sourceRow(root, "github");
+    expect(words(sourceRow(root, "github"))).toBe("GitHub issues labelled mate acme/tea-shop");
+    expect(words(sourceRow(root, "webhook"))).toBe("2 webhooks");
+    expect(words(sourceRow(root, "schedule"))).toBe("Update dependencies Every Monday 09:00");
     act(() => {
-      buttons(github, "Edit")[0]?.props.onClick();
-      buttons(github, "Stop")[0]?.props.onClick();
+      sourceRow(root, "schedule")
+        .find((node) => node.type === "button")
+        .props.onClick();
     });
-    expect(admin.onEdit).toHaveBeenCalledWith(ROWS[0]);
-    // Stop asks before it stops.
-    expect(admin.onAskStop).toHaveBeenCalledWith(ROWS[0]);
-    expect(admin.onStop).not.toHaveBeenCalled();
-    // A schedule is removed; webhooks are each deleted in their form, never all at once.
-    expect(buttons(sourceRow(root, "schedule"), "Remove")).toHaveLength(1);
-    expect(buttons(sourceRow(root, "webhook"), "Stop")).toHaveLength(0);
-  });
-
-  it("asks on the row before it stops a source, and stops it only once confirmed", () => {
-    const admin = controls((row) =>
-      row.key === "schedule:s1" ? { kind: "asking" } : { kind: "idle" },
-    );
-    const root = rendered(
-      <ProjectAutomationView
-        admin={admin}
-        onOpenMate={vi.fn()}
-        pool={[]}
-        sources={{ rows: ROWS, reading: false, withheld: false }}
-        workingOf={() => false}
-      />,
-    );
-    const schedule = sourceRow(root, "schedule");
-    expect(words(schedule)).toContain("Remove this schedule and its brief?");
-    act(() => {
-      buttons(schedule, "Keep")[0]?.props.onClick();
-    });
-    expect(admin.onKeep).toHaveBeenCalledOnce();
-    act(() => {
-      buttons(schedule, "Remove")[0]?.props.onClick();
-    });
-    expect(admin.onStop).toHaveBeenCalledWith(ROWS[3]);
-  });
-
-  it("shows a stop under way on its row, and HQ's refusal there", () => {
-    const root = rendered(
-      <ProjectAutomationView
-        admin={controls((row) =>
-          row.key === "github"
-            ? { kind: "working" }
-            : row.key === "slack"
-              ? { kind: "refused", words: "HQ refused it." }
-              : { kind: "idle" },
-        )}
-        onOpenMate={vi.fn()}
-        pool={[]}
-        sources={{ rows: ROWS, reading: false, withheld: false }}
-        workingOf={() => false}
-      />,
-    );
-    const stopping = buttons(sourceRow(root, "github"), "Stopping…");
-    expect(stopping).toHaveLength(1);
-    expect(stopping[0]?.props.disabled).toBe(true);
-    expect(words(sourceRow(root, "slack"))).toContain("HQ refused it.");
+    expect(admin.onEdit).toHaveBeenCalledWith(ROWS[3]);
+    for (const label of ["Edit", "Stop", "Remove", "Delete"])
+      expect(buttons(root, label)).toHaveLength(0);
   });
 
   it("says a channel takes no tasks while its app isn't connected, with the way to connect it", () => {
@@ -294,24 +265,37 @@ describe("a project's Automation section", () => {
       />,
     );
     const slack = sourceRow(root, "slack");
-    expect(words(slack)).toContain("Slack isn't connected: no tasks come in.");
+    expect(words(slack)).toContain("Not connected");
     act(() => {
       buttons(slack, "Connect")[0]?.props.onClick();
     });
     expect(admin.onOpenSettings).toHaveBeenCalledOnce();
   });
 
-  it("offers each kind of source from Take tasks from…", () => {
+  // witness: apps/web/src/components/zerops/projectAutomation/ProjectAutomation.tsx | ) : admin === undefined ? null : ( → ) : admin !== undefined ? null : (
+  it("offers each kind of source where the project takes tasks from none yet", () => {
+    const admin = controls();
     const root = rendered(
       <ProjectAutomationView
-        admin={controls()}
+        admin={admin}
         onOpenMate={vi.fn()}
         pool={[]}
         sources={{ rows: [], reading: false, withheld: false }}
         workingOf={() => false}
       />,
     );
-    expect(words(root)).toContain("Take tasks from…");
+    for (const label of [
+      "GitHub issues",
+      "Slack channel",
+      "Discord channel",
+      "Webhook",
+      "Schedule",
+    ])
+      expect(buttons(root, label)).toHaveLength(1);
+    act(() => {
+      buttons(root, "Schedule")[0]?.props.onClick();
+    });
+    expect(admin.onTakeFrom).toHaveBeenCalledWith("schedule");
   });
 
   it("is read alone by anyone but an Owner or Admin: no Add, Edit, Stop or Take tasks from…", () => {
@@ -325,10 +309,11 @@ describe("a project's Automation section", () => {
       />,
     );
     const text = words(root);
-    expect(text).toContain("Nova Add a search box Working");
-    for (const label of ["Add", "Add an automated Mate", "Edit", "Stop", "Remove", "Connect"])
+    expect(text).toContain("Add a search box Nova · worked 10m");
+    for (const label of ["+ Add a Mate", "+ Add", "Edit", "Stop", "Remove", "Connect"])
       expect(buttons(root, label)).toHaveLength(0);
-    expect(text).not.toContain("Take tasks from…");
+    // A source's row opens nothing for the reader.
+    expect(sourceRow(root, "github").findAll((node) => node.type === "button")).toHaveLength(0);
   });
 
   it("never says a project takes tasks from nowhere while some of its sources are refused to the reader", () => {
@@ -353,7 +338,7 @@ describe("a project's Automation section", () => {
         workingOf={() => false}
       />,
     );
-    expect(words(root)).toContain("GitHub issues labelled “mate” · acme/tea-shop");
+    expect(words(root)).toContain("GitHub issues labelled mate acme/tea-shop");
     expect(words(root)).toContain("Owners and admins see every source.");
   });
 
@@ -369,8 +354,8 @@ describe("a project's Automation section", () => {
       />,
     );
     expect(words(root)).toContain("HQ needs an update to set up automated Mates.");
-    expect(words(root)).not.toContain("Take tasks from…");
-    expect(words(root)).not.toContain("Add an automated Mate");
+    expect(words(root)).not.toContain("Takes tasks from");
+    expect(buttons(root, "+ Add a Mate")).toHaveLength(0);
   });
 
   it("says it reads its sources until they are read", () => {
@@ -399,12 +384,12 @@ describe("a project's Automation section", () => {
     const block = (name: string) =>
       words(root.find((node) => node.props["data-zerops-board"] === name));
     expect(block("Queued")).toContain("1 Show prices in euros acme/tea-shop#3 Waited 4m");
-    expect(block("Recent")).toContain("Merged List six teas Nova Ended 4h ago $0.31 PR #2");
+    expect(block("Finished")).toContain("List six teas Merged Ended Nova · 4h ago $0.31 PR #2");
     expect(words(root)).toContain("$6.44 of $50 this month");
-    // A task's title opens its conversation inside Mate.
+    // A task's row opens its conversation inside Mate.
     act(() => {
-      root
-        .find((node) => node.type === "a" && words(node) === "Add a search box")
+      taskRow(root, "t1")
+        .find((node) => node.type === "a")
         .props.onClick({ button: 0, preventDefault: vi.fn() });
     });
     expect(board.onOpen).toHaveBeenCalledWith("/env-1/conversation-1");
@@ -434,7 +419,7 @@ describe("a project's Automation section", () => {
     expect(stop.onAsk).toHaveBeenCalledWith("t1");
     expect(stop.onStop).not.toHaveBeenCalled();
     const asking = view("asking");
-    expect(words(asking)).toContain("Stop this task? Its Mate stops where it got to.");
+    expect(words(asking)).toContain("Stop this task? Nova stops where it got to.");
     act(() => {
       buttons(asking, "Stop")[0]?.props.onClick();
     });
@@ -492,7 +477,8 @@ describe("a project's Automation section", () => {
     expect(buttons(row, "Stop")).toHaveLength(0);
   });
 
-  it("says a Mate whose change waits for review waits for it to be merged or closed, the change linked", () => {
+  // witness: apps/web/src/components/zerops/projectAutomation/ProjectAutomation.tsx | board?.read.state === "known" ? board.read.board.blocked.map((line) => line.projectId) : [], → [],
+  it("says a Mate HQ holds on its change waits for review, never that it is free, and opens the change from Review", () => {
     const done = [
       {
         ...TASK,
@@ -501,25 +487,28 @@ describe("a project's Automation section", () => {
         change: { repo: "web", number: 3 },
       },
     ];
-    const live = new Map([["t1", { id: "t1", title: TASK.title, url: null }]]);
+    const live = new Map([["t1", { id: "t1", title: TASK.title, url: null, done: true as const }]]);
+    const board = boardView({
+      // Nova runs a Mate older than HQ's change per task: HQ holds it on its change.
+      read: { state: "known", board: boardOf(done, NOW, "tea-shop", live, () => true) },
+    });
     const root = rendered(
       <ProjectAutomationView
-        board={boardView({
-          // Nova runs a Mate older than HQ's change per task: HQ holds it on its change.
-          read: { state: "known", board: boardOf(done, NOW, "tea-shop", live, () => true) },
-        })}
+        board={board}
         onOpenMate={vi.fn()}
-        pool={[NOVA, JUNO]}
+        pool={[{ ...NOVA, automation: { task: { title: TASK.title, done: true } } }, JUNO]}
         sources={{ rows: [], reading: false, withheld: false }}
         workingOf={() => false}
       />,
     );
-    const atWork = words(root.find((node) => node.props["data-zerops-board"] === "At work"));
-    expect(atWork).toContain("Nova waits for change #3 to be merged or closed.");
-    expect(atWork).toContain("Juno waits for a task.");
-    expect(atWork).not.toContain("Nova and Juno");
-    const link = root.find((node) => node.type === "a" && words(node) === "change #3");
-    expect(link.props.href).toBe("/change/tea-shop/web/3");
+    expect(words(pool(root))).toContain("2 automated Mates · 1 waits for review");
+    expect(words(taskRow(root, "t1"))).toContain("Up for review");
+    act(() => {
+      taskRow(root, "t1")
+        .find((node) => node.type === "a" && words(node) === "Review")
+        .props.onClick({ button: 0, preventDefault: vi.fn() });
+    });
+    expect(board.onOpen).toHaveBeenCalledWith("/change/tea-shop/web/3");
   });
 
   // Live: "Raya waits for change #12 to be merged or closed" while Raya took #12 holding #8's change.
@@ -549,10 +538,10 @@ describe("a project's Automation section", () => {
         workingOf={() => false}
       />,
     );
-    const atWork = words(root.find((node) => node.props["data-zerops-board"] === "At work"));
-    expect(atWork).toContain("Nova waits for a task · 2 changes in review.");
-    expect(atWork).toContain("Juno waits for a task.");
-    expect(atWork).not.toContain("merged or closed");
+    // Its changes wait in Finished; the pool never says it waits for one of them.
+    expect(words(pool(root))).not.toContain("waits for review");
+    expect(words(taskRow(root, "t1"))).toContain("Up for review");
+    expect(words(taskRow(root, "t2"))).toContain("Up for review");
   });
 
   it("offers no Stop of a task to anyone but an Owner or Admin", () => {
@@ -584,8 +573,89 @@ describe("a project's Automation section", () => {
       root
         .find((node) => node.props["data-zerops-board"] === name)
         .findAll((node) => node.type === "li").length;
-    expect([placeholders("At work"), placeholders("Queued"), placeholders("Recent")]).toEqual([
+    expect([placeholders("At work"), placeholders("Queued"), placeholders("Finished")]).toEqual([
       2, 3, 1,
     ]);
+  });
+
+  // witness: apps/web/src/components/zerops/projectAutomation/ProjectAutomation.tsx | {queued.length === 0 ? null : ( → {queued.length < 0 ? null : (
+  it("draws no group that holds no task: an idle board is its pool, what finished and its sources", () => {
+    const root = rendered(
+      <ProjectAutomationView
+        admin={controls()}
+        board={boardView({
+          read: { state: "known", board: boardOf(TASKS.slice(2), NOW, "tea-shop") },
+        })}
+        onOpenMate={vi.fn()}
+        pool={[JUNO]}
+        sources={{ rows: ROWS, reading: false, withheld: false }}
+        workingOf={() => false}
+      />,
+    );
+    expect(groups(root)).toEqual(["Finished", "Takes tasks from"]);
+    expect(words(pool(root))).toContain("1 automated Mate · free");
+  });
+
+  // witness: apps/web/src/components/zerops/projectAutomation/ProjectAutomation.tsx | const finished = all ? recent : recent.slice(0, RECENT_SHOWN); → const finished = recent;
+  it(`lists the latest ${String(RECENT_SHOWN)} that ended, and says how many more there are`, () => {
+    const ended = Array.from({ length: RECENT_SHOWN + 3 }, (_, at) => ({
+      ...TASK,
+      id: `e${String(at)}`,
+      state: "merged" as const,
+      endedAt: "2026-10-18T10:00:00.000Z",
+    }));
+    const root = rendered(
+      <ProjectAutomationView
+        board={boardView({ read: { state: "known", board: boardOf(ended, NOW, "tea-shop") } })}
+        onOpenMate={vi.fn()}
+        pool={[NOVA]}
+        sources={{ rows: [], reading: false, withheld: false }}
+        workingOf={() => false}
+      />,
+    );
+    const finished = () =>
+      root
+        .find((node) => node.props["data-zerops-board"] === "Finished")
+        .findAll((node) => node.type === "li").length;
+    expect(finished()).toBe(RECENT_SHOWN);
+    // The rest open in place.
+    act(() => {
+      buttons(root, "+ 3 more")[0]?.props.onClick({ currentTarget: null });
+    });
+    expect(finished()).toBe(RECENT_SHOWN + 3);
+    expect(buttons(root, "Show fewer")).toHaveLength(1);
+  });
+
+  // witness: apps/web/src/components/zerops/projectAutomation/ProjectAutomation.tsx | why={row.detail} → why={null}
+  it("says why a task failed, and who stopped one, under its title", () => {
+    const ended = [
+      {
+        ...TASK,
+        id: "f1",
+        state: "failed" as const,
+        endedAt: "2026-10-18T10:00:00.000Z",
+        detail: "The catalogue file was not in the repository.",
+      },
+      {
+        ...TASK,
+        id: "s1",
+        state: "stopped" as const,
+        endedAt: "2026-10-18T09:00:00.000Z",
+        detail: "Mara stopped it.",
+      },
+    ];
+    const root = rendered(
+      <ProjectAutomationView
+        board={boardView({ read: { state: "known", board: boardOf(ended, NOW, "tea-shop") } })}
+        onOpenMate={vi.fn()}
+        pool={[NOVA]}
+        sources={{ rows: [], reading: false, withheld: false }}
+        workingOf={() => false}
+      />,
+    );
+    expect(words(taskRow(root, "f1"))).toContain(
+      "Add a search box The catalogue file was not in the repository. Failed",
+    );
+    expect(words(taskRow(root, "s1"))).toContain("Add a search box Mara stopped it. Stopped");
   });
 });

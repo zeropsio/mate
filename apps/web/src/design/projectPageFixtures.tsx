@@ -608,16 +608,26 @@ const ADMIN: AutomationControls = {
   onAddMate: nothing,
   onTakeFrom: nothing,
   onEdit: nothing,
-  onAskStop: nothing,
-  onKeep: nothing,
-  pressOf: () => ({ kind: "idle" }),
-  onStop: nothing,
   onReadAgain: nothing,
   onOpenSettings: nothing,
 };
 const SOURCES: ReadonlyArray<SourceRow> = [
-  { key: "github", kind: "github", words: "GitHub issues labelled “mate”" },
-  { key: "slack", kind: "slack", words: "Slack #store-asks", disconnected: false },
+  {
+    key: "github",
+    kind: "github",
+    title: "GitHub issues labelled",
+    label: "mate",
+    detail: "acme/store",
+    meta: null,
+  },
+  {
+    key: "slack",
+    kind: "slack",
+    title: "#store-asks",
+    detail: "Slack",
+    meta: null,
+    disconnected: false,
+  },
 ];
 const TASK: HqAppTask = {
   id: "t42",
@@ -635,7 +645,7 @@ const TASK: HqAppTask = {
   detail: null,
   change: null,
   pullRequest: null,
-  link: null,
+  link: "https://mate.zerops.io/odo-s/conversation-42",
 };
 const TASKS: ReadonlyArray<HqAppTask> = [
   TASK,
