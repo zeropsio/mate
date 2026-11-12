@@ -713,6 +713,31 @@ export function cloneComposerImageForRetry(
   }
 }
 
+/** A prompt's own words: what is left of it once its attachments' places are taken out. */
+export function composerSendableWords(prompt: string): string {
+  return stripInlineFilePlaceholders(
+    stripInlinePicturePlaceholders(stripInlineTerminalContextPlaceholders(prompt)),
+  ).trim();
+}
+
+/**
+ * Whether a composer holds anything to send, from whether it holds words rather than the words:
+ * the composer's send control reads this, and typing a second word changes nothing it shows.
+ */
+export function composerHasSendableContent(options: {
+  hasWords: boolean;
+  imageCount: number;
+  sendableTerminalContextCount: number;
+  elementContextCount?: number;
+}): boolean {
+  return (
+    options.hasWords ||
+    options.imageCount > 0 ||
+    options.sendableTerminalContextCount > 0 ||
+    (options.elementContextCount ?? 0) > 0
+  );
+}
+
 export function deriveComposerSendState(options: {
   prompt: string;
   imageCount: number;
@@ -729,22 +754,22 @@ export function deriveComposerSendState(options: {
   expiredTerminalContextCount: number;
   hasSendableContent: boolean;
 } {
-  const trimmedPrompt = stripInlineFilePlaceholders(
-    stripInlinePicturePlaceholders(stripInlineTerminalContextPlaceholders(options.prompt)),
-  ).trim();
+  const trimmedPrompt = composerSendableWords(options.prompt);
   const sendableTerminalContexts = filterTerminalContextsWithText(options.terminalContexts);
   const expiredTerminalContextCount =
     options.terminalContexts.length - sendableTerminalContexts.length;
-  const elementContextCount = options.elementContextCount ?? 0;
   return {
     trimmedPrompt,
     sendableTerminalContexts,
     expiredTerminalContextCount,
-    hasSendableContent:
-      trimmedPrompt.length > 0 ||
-      options.imageCount > 0 ||
-      sendableTerminalContexts.length > 0 ||
-      elementContextCount > 0,
+    hasSendableContent: composerHasSendableContent({
+      hasWords: trimmedPrompt.length > 0,
+      imageCount: options.imageCount,
+      sendableTerminalContextCount: sendableTerminalContexts.length,
+      ...(options.elementContextCount === undefined
+        ? {}
+        : { elementContextCount: options.elementContextCount }),
+    }),
   };
 }
 

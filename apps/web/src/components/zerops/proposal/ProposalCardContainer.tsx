@@ -10,7 +10,7 @@
  * Approve twice; an approval is carried out only once HQ kept it. A reveal is its own card
  * (`RevealAskContainer`), as are the two asks about production (`ProductionAskContainers`).
  */
-import { useTimelineRowReading } from "~/components/chat/timelineRowReads";
+import { useTimelineRowReading, useTimelineRowSettling } from "~/components/chat/timelineRowReads";
 import {
   NOT_READ_PROJECTS,
   NOT_READ_VAULT,
@@ -71,6 +71,7 @@ import {
   proposalRecipient,
   proposalStage,
   accessAskLines,
+  accessPlanReading,
   accessProposalPlan,
   approveAuthority,
   type ProposalDecision,
@@ -96,7 +97,17 @@ const UNREAD_PROJECTS = Atom.make(NOT_READ_PROJECTS);
 
 const UNREAD_GRANTS = Atom.make<Readonly<Record<string, ProjectGrantsRead>>>({});
 
-const UNREAD_PLACEMENTS = Atom.make({ complete: false, live: false, reconnecting: false });
+type PlacementsRead = ReturnType<typeof inventoryPlacementStatus.derive>;
+
+const UNREAD_PLACEMENTS = Atom.make<PlacementsRead>({
+  complete: false,
+  live: false,
+  reconnecting: false,
+});
+
+/** A scope's read can still answer: neither lost nor refused. */
+const scopeAnswers = (scope: Pick<PlacementsRead, "downSince" | "unavailableReason">) =>
+  scope.downSince === undefined && scope.unavailableReason === undefined;
 
 const UNREAD_ADDRESSES = Atom.make<PlaceAddresses>({
   state: "reading",
@@ -320,6 +331,17 @@ function Proposal({
             grants,
           }),
     [grants, members, placements.complete, projectPeople, proposal, roster],
+  );
+  // Its lines come with what it reads of the organization: a conversation opening waits for them,
+  // briefly, while its card offers it and the read it is held for is under way. A card decided
+  // reads nothing, and held every open of its conversation for the whole wait.
+  useTimelineRowSettling(
+    accessOrg !== null &&
+      accessPlanReading(accessPlan, {
+        members: members.status === "loading",
+        projects: roster.read === "reading" && scopeAnswers(roster),
+        owners: !placements.complete && scopeAnswers(placements),
+      }),
   );
   const askMate = useAskMate();
   const openMate = useOpenMate();

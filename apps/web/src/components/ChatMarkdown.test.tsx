@@ -879,15 +879,15 @@ describe("ChatMarkdown heading levels", () => {
       />,
     );
 
-    expect(html).toContain('<h1 aria-level="4">Top</h1>');
-    expect(html).toContain('<h2 aria-level="5">Section</h2>');
-    expect(html).toContain('<h6 aria-level="6">Fine print</h6>');
+    expect(html).toMatch(/<h1[^>]* aria-level="4">Top<\/h1>/);
+    expect(html).toMatch(/<h2[^>]* aria-level="5">Section<\/h2>/);
+    expect(html).toMatch(/<h6[^>]* aria-level="6">Fine print<\/h6>/);
   });
 
   it("leaves heading levels alone when the markdown is not nested", () => {
     const html = renderToStaticMarkup(<ChatMarkdown cwd="/tmp/project" text="# Top" />);
 
-    expect(html).toContain("<h1>Top</h1>");
+    expect(html).toMatch(/<h1(?![^>]*aria-level)[^>]*>Top<\/h1>/);
   });
 });
 

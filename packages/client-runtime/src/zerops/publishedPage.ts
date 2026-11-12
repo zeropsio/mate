@@ -95,7 +95,10 @@ export function themeRule(theme: PageTheme): string {
 /**
  * What runs in the page before the page does: it says the page's height, and the viewport it was
  * laid out in, whenever either changes — even one alone, so a frame asking whether the page grows
- * with its viewport always hears back (`pageFitHeard`) — and
+ * with its viewport always hears back (`pageFitHeard`) — never before it has a viewport: a frame
+ * its wrapper has not laid out yet is no viewport tall, and the page said a height of nothing
+ * there, which took its frame down to a line from the height it stood at (2,014 px to 48, the
+ * owner 2026-11-11) — and
  * hands a link the person clicked (http and https only) to the conversation, and takes the
  * conversation's colours when they change. Every function it needs is captured first, and its
  * messages are JSON strings of literals: a page's own script can neither replace what it calls nor
@@ -104,7 +107,7 @@ export function themeRule(theme: PageTheme): string {
 const PAGE_BOOTSTRAP = `(function(){
 var host=window.parent,send=host.postMessage.bind(host),stringify=JSON.stringify,parse=JSON.parse;
 var root=document.documentElement,last=-1,lastView=-1;
-var measure=function(){var b=document.body,v=innerHeight;
+var measure=function(){var b=document.body,v=innerHeight;if(!v)return;
 var h=Math.ceil(Math.max(root.getBoundingClientRect().height,b?b.scrollHeight:0));
 if(h!==last||v!==lastView){last=h;lastView=v;send(stringify({mate:"page",kind:"height",height:h,viewport:v}),"*");}};
 var ro=new ResizeObserver(measure);ro.observe(root);addEventListener("resize",measure);

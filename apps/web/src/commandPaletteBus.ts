@@ -24,9 +24,14 @@ export function onOpenCommandPalette(
   return () => window.removeEventListener(COMMAND_PALETTE_OPEN_EVENT, handler);
 }
 
+/**
+ * The open palette's popup carries this id. Every key pressed anywhere asks whether a palette is
+ * open, several times over (each window key handler asks for itself): by id that is one lookup,
+ * where a selector searched the whole page each time.
+ */
+export const COMMAND_PALETTE_ID = "command-palette";
+
 /** Read at event time so consumers do not subscribe to transient dialog state. */
 export function isCommandPaletteOpen(): boolean {
-  return (
-    typeof document !== "undefined" && document.querySelector("[data-command-palette]") !== null
-  );
+  return typeof document !== "undefined" && document.getElementById(COMMAND_PALETTE_ID) !== null;
 }

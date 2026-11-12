@@ -273,6 +273,14 @@ export const TIMELINE_PLACING_DEADLINE_MS = 400;
 export const TIMELINE_ROW_READ_DEADLINE_MS = 1_000;
 
 /**
+ * How long a conversation stays hidden while one of its rows is about to stand at a height of its
+ * own saying (a page heard from its frame, a few frames after it mounts; an access proposal's
+ * lines, read as its card mounts). Past it, it shows as it stands: a page slow to speak, or a
+ * read that never answers, does not hold its conversation back for long.
+ */
+export const TIMELINE_ROW_SETTLE_DEADLINE_MS = 300;
+
+/**
  * One frame of placing a conversation: wait for the list and the row it
  * lands on, put back a place more than a pixel off, call it placed after two
  * frames standing where it stays — a place just put back stays hidden while the
@@ -291,11 +299,16 @@ export function judgeTimelinePlacing(
     readonly elapsedMs: number;
     /** A row still reads what it shows (`useTimelineRowReading`). */
     readonly rowsReading: boolean;
+    /** A row is about to stand at a height of its own saying (`useTimelineRowSettling`). */
+    readonly rowsSettling?: boolean;
   },
   stableFrames: number,
 ): { readonly verdict: "wait" | "correct" | "settle" | "placed"; readonly stableFrames: number } {
   if (!frame.listReady || frame.offBy === null) return { verdict: "wait", stableFrames: 0 };
-  if (frame.rowsReading && frame.elapsedMs < TIMELINE_ROW_READ_DEADLINE_MS)
+  if (
+    (frame.rowsReading && frame.elapsedMs < TIMELINE_ROW_READ_DEADLINE_MS) ||
+    (frame.rowsSettling === true && frame.elapsedMs < TIMELINE_ROW_SETTLE_DEADLINE_MS)
+  )
     return { verdict: Math.abs(frame.offBy) > 1 ? "correct" : "wait", stableFrames: 0 };
   if (Math.abs(frame.offBy) > 1)
     return {

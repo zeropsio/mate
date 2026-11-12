@@ -8957,7 +8957,10 @@ function ConversationView(props: ChatViewProps) {
                             onAction={openAgentAuthDialog}
                           />
                           {zeropsFooter === "held" ? (
-                            <ComposerRoomHeld draft={zeropsHeldDraft} />
+                            <ComposerRoomHeld
+                              draft={zeropsHeldDraft}
+                              top={threadDetailLoading ? null : (cloneTop ?? composerTop)}
+                            />
                           ) : colleagueReadOnly !== null ? (
                             <ZeropsReadOnlyConversationFooter
                               change={threadDetailLoading ? null : composerTop}

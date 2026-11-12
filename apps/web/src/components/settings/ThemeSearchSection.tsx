@@ -66,10 +66,13 @@ function ThemeExtensionIcon({ extension }: { extension: OpenVsxThemeExtension })
   return (
     <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted text-muted-foreground">
       {extension.iconUrl && !failed ? (
+        // Loaded at once: a search draws sixteen themes at most, all within the distance at which
+        // the browser's lazy loading asks anyway, and a picture left waiting on `loading="lazy"`
+        // costs every animation on the page a frame per tick (`restingIntersections.ts`).
         <img
           alt=""
           className="size-full object-cover"
-          loading="lazy"
+          loading="eager"
           referrerPolicy="no-referrer"
           src={extension.iconUrl}
           onError={() => setFailed(true)}

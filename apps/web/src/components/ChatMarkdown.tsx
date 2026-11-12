@@ -1271,7 +1271,18 @@ const CHAT_MARKDOWN_IMAGE_SIZE_CLASS_NAME =
  * from nothing one by one and everything under the pointer jumped with them
  * (Juno, 2026-09-29). Known, a picture holds its room from its first frame.
  */
-const knownImageSizes = new Map<string, { readonly width: number; readonly height: number }>();
+const knownImageSizes = new Map<
+  string,
+  {
+    readonly width: number;
+    readonly height: number;
+    /**
+     * It was fitted to the room it held when first seen: every later mount draws that same box. A
+     * row drawn again from its size alone stood 480 px wide where it had stood 432, 30 px taller.
+     */
+    readonly roomed: boolean;
+  }
+>();
 const KNOWN_IMAGE_SIZES_MAX = 256;
 
 /**
@@ -1290,19 +1301,24 @@ function useImageRoom(
   /** Its size as its Mate read it from the file's header: its box before its bytes. */
   given?: { readonly width: number; readonly height: number },
 ) {
-  const fresh = () => ({
-    key,
-    size: knownImageSizes.get(key),
-    loaded: false,
-  });
+  const givenSize = given !== undefined && given.width > 0 && given.height > 0 ? given : undefined;
+  const fresh = () => {
+    const known = knownImageSizes.get(key);
+    return {
+      key,
+      size: known === undefined ? undefined : { width: known.width, height: known.height },
+      loaded: false,
+      // First drawn with no size known, it holds the 16:9 room: the picture that comes is fitted
+      // to that room, never past it, and stays fitted to it wherever it is drawn again.
+      roomed: holdsPlace && (known === undefined ? givenSize === undefined : known.roomed),
+    };
+  };
   const [room, setRoom] = useState(fresh);
   // Another picture in the same place starts from what is known of it.
   const current = room.key === key ? room : fresh();
   if (current !== room) setRoom(current);
   const { loaded } = current;
-  const size =
-    current.size ??
-    (given !== undefined && given.width > 0 && given.height > 0 ? given : undefined);
+  const size = current.size ?? givenSize;
   const placeholder = holdsPlace && size === undefined && !loaded;
   return {
     width: size?.width,
@@ -1310,25 +1326,51 @@ function useImageRoom(
     style:
       size === undefined
         ? undefined
-        : { width: `min(${size.width}px, 30rem, calc(30rem * ${size.width / size.height}))` },
+        : {
+            width: current.roomed
+              ? // Within the room it stood in before its size was known, at its own shape: bytes
+                // read for a dense screen came twice the room's size, and a picture drawn at
+                // their size stood 480 px wide and 300 px tall in a 270 px room: its row grew
+                // by 31 px as it loaded.
+                `min(100%, 30rem, ${size.width}px, calc(min(100%, 30rem) * ${(9 / 16) * (size.width / size.height)}))`
+              : `min(${size.width}px, 30rem, calc(30rem * ${size.width / size.height}))`,
+            // Its box is its size's, to the pixel, whatever its bytes say of their own shape: a
+            // picture fitted to its room came 432 px wide and 270.75 px tall, and its row grew
+            // by 0.75 px as it loaded.
+            aspectRatio: `${size.width} / ${size.height}`,
+          },
     className: cn(
       // Its room stands at its size while its bytes come, nothing painted in it.
       placeholder && "aspect-video w-full rounded-lg",
     ),
-    openerClassName: placeholder ? "w-full max-w-[30rem]" : undefined,
+    // The room's own width stays its opener's while the picture stands in it: the picture's width
+    // is a share of it, and a button that shrinks to its content gives a share nothing to be of
+    // (a picture came 390 px wide where 432 fitted, its row 26 px shorter).
+    openerClassName: placeholder || current.roomed ? "w-full max-w-[30rem]" : undefined,
     onLoad: (event: React.SyntheticEvent<HTMLImageElement>) => {
       const { naturalWidth: width, naturalHeight: height } = event.currentTarget;
-      if (width > 0 && height > 0) {
+      const natural = width > 0 && height > 0 ? { width, height } : undefined;
+      if (natural !== undefined) {
         if (!knownImageSizes.has(key) && knownImageSizes.size >= KNOWN_IMAGE_SIZES_MAX) {
           const oldest = knownImageSizes.keys().next();
           if (!oldest.done) knownImageSizes.delete(oldest.value);
         }
-        knownImageSizes.set(key, { width, height });
+        knownImageSizes.set(key, {
+          ...natural,
+          roomed: current.roomed || knownImageSizes.get(key)?.roomed === true,
+        });
       }
+      // The size it stands at stays the one it was drawn with while its bytes have that shape:
+      // other bytes at the same place (a file written again) are another picture's.
+      const same =
+        size !== undefined &&
+        natural !== undefined &&
+        Math.abs(size.width / size.height - width / height) <= 0.01 * (width / height);
       setRoom({
         key,
-        size: width > 0 && height > 0 ? { width, height } : current.size,
+        size: same || natural === undefined ? size : natural,
         loaded: true,
+        roomed: current.roomed,
       });
     },
   };
@@ -1465,14 +1507,20 @@ const ChatMarkdownWorkspaceImage = memo(function ChatMarkdownWorkspaceImage(prop
     true,
     assetUrl._tag === "Success" ? assetUrl.imageDimensions : undefined,
   );
-  if (assetUrl._tag === "Failure")
+  // A room drawn while its picture was read stays when the read fails, the words that say so in
+  // it. Taken down to the words' line after the conversation had shown, two rooms took 236 px
+  // off their row, and the list, sizing its rows anew for it, stood the rows under a page
+  // 2,786 px lower and glided back for 1.9 s. A read already failed when first drawn holds none.
+  const [roomDrawn, setRoomDrawn] = useState(false);
+  const reading = assetUrl._tag !== "Success" && assetUrl._tag !== "Failure";
+  if (reading && !roomDrawn) setRoomDrawn(true);
+  if (assetUrl._tag === "Failure" && !roomDrawn)
     return <ChatMarkdownImageFallback alt={props.alt} reason={assetUrl.reason} />;
   if (assetUrl._tag !== "Success") {
     // Reserve the size already observed for this conversation occurrence.
     return (
       <span
-        role="status"
-        aria-label="Loading image"
+        {...(reading ? { role: "status", "aria-label": "Loading image" } : {})}
         className={cn(
           "my-1 block max-w-full rounded-lg",
           room.width === undefined && "aspect-video w-full max-w-[30rem]",
@@ -1482,7 +1530,11 @@ const ChatMarkdownWorkspaceImage = memo(function ChatMarkdownWorkspaceImage(prop
             ? undefined
             : { ...room.style, aspectRatio: `${room.width} / ${room.height}` }
         }
-      />
+      >
+        {assetUrl._tag === "Failure" ? (
+          <ChatMarkdownImageFallback alt={props.alt} reason={assetUrl.reason} />
+        ) : null}
+      </span>
     );
   }
   return (
@@ -2305,7 +2357,8 @@ const ChatMarkdownRendererContext = React.createContext<
 
 // Screen readers take a heading's level from its tag, which would let a `#` in a
 // message outrank the heading placed above it. Override only the exposed level:
-// the tag keeps driving the stylesheet and copy-as-markdown.
+// the tag keeps driving the stylesheet and copy-as-markdown. `data-md-heading` is what the
+// stylesheet's "block after a heading" rule keys on (index.css, "Why no rule in this sheet…").
 function markdownHeadingRenderer(level: 1 | 2 | 3 | 4 | 5 | 6) {
   const Tag = `h${level}` as const;
   return function MarkdownHeading({
@@ -2316,6 +2369,7 @@ function markdownHeadingRenderer(level: 1 | 2 | 3 | 4 | 5 | 6) {
     return (
       <Tag
         {...props}
+        data-md-heading=""
         aria-level={headingLevelOffset > 0 ? Math.min(level + headingLevelOffset, 6) : undefined}
       />
     );
@@ -2378,7 +2432,8 @@ const CHAT_MARKDOWN_COMPONENTS = {
     const markerOffset =
       typeof listItemStart === "number" ? findTaskListMarkerOffset(text, listItemStart) : null;
     return (
-      <li {...props} data-task-marker-offset={markerOffset ?? undefined}>
+      // `data-md-li` is what the stylesheet's "item after an item" rules key on (index.css).
+      <li {...props} data-md-li="" data-task-marker-offset={markerOffset ?? undefined}>
         {renderSkillInlineMarkdownChildren(renderBareChangeNumbers(children, threadRef), skills)}
       </li>
     );

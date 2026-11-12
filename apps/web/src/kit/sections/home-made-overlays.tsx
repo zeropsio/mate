@@ -28,6 +28,7 @@ import type { ComposerPicture } from "~/lib/composerPictures";
 
 import { CensusSpecimen, KitViewer } from "../census";
 import { KIT_MENU_MATES, kitMateActions } from "../fixtures/menuTree";
+import { COMMAND_PALETTE_ID } from "~/commandPaletteBus";
 import { defineKitSection } from "../kitSection";
 import { Specimen, SpecimenBlock, SpecimenGrid } from "../Specimen";
 
@@ -184,7 +185,11 @@ function JumpBoxOpener() {
         Jump to…
       </Button>
       <CommandDialog onOpenChange={setOpen} open={open}>
-        <CommandDialogPopup aria-label="Jump to" data-command-palette="true">
+        <CommandDialogPopup
+          aria-label="Jump to"
+          data-command-palette="true"
+          id={COMMAND_PALETTE_ID}
+        >
           <JumpBox onClose={() => setOpen(false)} />
         </CommandDialogPopup>
       </CommandDialog>

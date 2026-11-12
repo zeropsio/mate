@@ -867,6 +867,106 @@ it.layer(NodeServices.layer)("environment identity ratchet", (it) => {
   );
 });
 
+describe("frame-per-tick ratchet", () => {
+  // witness: scripts/check-guard-exceptions.ts | guardHeldAt(cwd, revision, ruleName) ? [] : firstLedger(cwd, ruleName), → [],
+  // witness: scripts/check-guard-exceptions.ts | guardHeldAt(cwd, revision, ruleName) ? [] : firstLedger(cwd, ruleName), → firstLedger(cwd, ruleName),
+  it.effect(
+    "The frame-per-tick guard is born with its findings, and from the next base on cannot gain one.",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "frame-guard-baseline-" });
+          const directory = `${cwd}/oxlint-plugin-t3code/exceptions`;
+          const rule = "no-frame-per-tick";
+          const git = (...args: string[]) =>
+            Effect.scoped(
+              Effect.gen(function* () {
+                const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+                const child = yield* spawner.spawn(
+                  ChildProcess.make(
+                    "git",
+                    [
+                      "-c",
+                      "user.name=Guard Test",
+                      "-c",
+                      "user.email=guard@example.invalid",
+                      ...args,
+                    ],
+                    { cwd },
+                  ),
+                );
+                const collect = <E>(stream: Stream.Stream<Uint8Array, E>) =>
+                  stream.pipe(
+                    Stream.decodeText(),
+                    Stream.runCollect,
+                    Effect.map((parts) => parts.join("")),
+                  );
+                const [stdout, stderr, exitCode] = yield* Effect.all(
+                  [collect(child.stdout), collect(child.stderr), child.exitCode],
+                  { concurrency: "unbounded" },
+                );
+                assert.equal(Number(exitCode), 0, stderr);
+                return stdout.trim();
+              }),
+            );
+          yield* fs.makeDirectory(directory, { recursive: true });
+          // The last main commit before this guard: no ledger of it.
+          for (const name of RATCHET_RULES.filter((name) => name !== rule))
+            yield* fs.writeFileString(`${directory}/${name}.json`, "[]");
+          yield* git("init", "-q");
+          yield* git("add", ".");
+          yield* git("commit", "-qm", "pre-guard main");
+          const before = yield* git("rev-parse", "HEAD");
+          const lazy = {
+            ...entry("apps/web/src/Picture.tsx"),
+            kind: "JSXAttribute",
+            fingerprint: 'loading="lazy"',
+            expires: "never",
+          };
+          const observer = {
+            ...entry("apps/web/src/Row.tsx"),
+            kind: "NewExpression",
+            fingerprint: "new IntersectionObserver(seen)",
+            expires: "never",
+          };
+          yield* fs.writeFileString(`${directory}/${rule}.json`, encodeUnknownJson([lazy]));
+          // Against a base from before the guard, its first ledger is its own baseline.
+          const born = loadRatchetBaseline(cwd, before).get(rule)!;
+          assert.deepStrictEqual(
+            born.map((found) => found.fingerprint),
+            [lazy.fingerprint],
+          );
+          assert.deepStrictEqual(ratchetAdditions([lazy], born), []);
+          yield* fs.makeDirectory(`${cwd}/oxlint-plugin-t3code/rules`, { recursive: true });
+          yield* fs.writeFileString(`${cwd}/oxlint-plugin-t3code/rules/${rule}.ts`, "export {};\n");
+          yield* git("add", ".");
+          yield* git("commit", "-qm", "the guard and its first ledger");
+          const enrolled = yield* git("rev-parse", "HEAD");
+          // Against a base that holds the ledger, an exception more is an addition.
+          yield* fs.writeFileString(
+            `${directory}/${rule}.json`,
+            encodeUnknownJson([lazy, observer]),
+          );
+          const baseline = loadRatchetBaseline(cwd, enrolled).get(rule)!;
+          assert.equal(ratchetAdditions([lazy, observer], baseline).length, 1);
+          assert.equal(ratchetAdditions([lazy, lazy], baseline).length, 1);
+          assert.deepStrictEqual(ratchetAdditions([], baseline), []);
+          // A base that holds the guard and no ledger of it holds an empty one: an emptied ledger
+          // that was deleted cannot come back with findings.
+          yield* fs.remove(`${directory}/${rule}.json`);
+          yield* git("add", "-A");
+          yield* git("commit", "-qm", "the emptied ledger is deleted");
+          const emptied = yield* git("rev-parse", "HEAD");
+          yield* fs.writeFileString(`${directory}/${rule}.json`, encodeUnknownJson([observer]));
+          const afterDeletion = loadRatchetBaseline(cwd, emptied).get(rule)!;
+          assert.deepStrictEqual(afterDeletion, []);
+          assert.equal(ratchetAdditions([observer], afterDeletion).length, 1);
+        }),
+      ).pipe(Effect.provide(NodeServices.layer)),
+  );
+});
+
 describe("githubRatchetRevision", () => {
   it.each([
     {
