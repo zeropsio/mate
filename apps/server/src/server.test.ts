@@ -124,6 +124,7 @@ import * as ZeropsAgentAuth from "./zerops/ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./zerops/ZeropsAgentLogin.ts";
 import * as ZeropsLoginsModule from "./zerops/ZeropsLogins.ts";
 import * as ZeropsProjectSignersModule from "./zerops/ZeropsProjectSigners.ts";
+import * as ZeropsSignerStandingModule from "./zerops/ZeropsSignerStanding.ts";
 import * as ZeropsSetupModule from "./zerops/ZeropsSetup.ts";
 import * as ZeropsSignOutModule from "./zerops/ZeropsSignOut.ts";
 import { ZeropsAutomation } from "./zerops/ZeropsAutomation.ts";
@@ -1167,6 +1168,10 @@ const buildAppUnderTest = (options?: {
                     subject,
                   }),
                 ),
+            }),
+            // No HQ to ask whether a signer may still run turns: it cannot say.
+            Layer.mock(ZeropsSignerStandingModule.ZeropsSignerStanding)({
+              standing: () => Effect.succeed(undefined),
             }),
             // A test machine has no agent-browser daemon — mocked to
             // `no-browser` so the suite never opens a real socket or reads

@@ -63,6 +63,7 @@ import * as ZeropsOffboardingModule from "./ZeropsOffboarding.ts";
 import * as ZeropsRestartReadModule from "./ZeropsRestartRead.ts";
 import * as ZeropsProjectSignersModule from "./ZeropsProjectSigners.ts";
 import * as ZeropsSetupModule from "./ZeropsSetup.ts";
+import * as ZeropsSignerStandingModule from "./ZeropsSignerStanding.ts";
 import * as ZeropsSignInsModule from "./zeropsSignIns.ts";
 import * as ZeropsSignOutModule from "./ZeropsSignOut.ts";
 import * as ZeropsStandUpRelayModule from "./ZeropsStandUpRelay.ts";
@@ -143,13 +144,15 @@ const ZeropsLoginsLive = ZeropsLoginsModule.layer.pipe(Layer.provide(providerIns
 /**
  * D6's one gate, over the same agent-auth and signers instances the branches
  * below build (memoized by reference): ws.ts and the HTTP dispatch route
- * admit every turn through it, and so does the crew engine.
+ * admit every turn through it, and so does the crew engine. It asks HQ the
+ * signer standing through the same instance offboarding hears it from.
  */
 const ZeropsTurnAdmissionLive = ZeropsTurnAdmissionModule.layer.pipe(
   Layer.provide(ZeropsAgentLoginModule.layer),
   Layer.provide(ZeropsAgentAuthLive),
   Layer.provide(ZeropsLoginsLive),
   Layer.provide(ZeropsProjectSignersModule.layer),
+  Layer.provide(ZeropsSignerStandingModule.layer),
   Layer.provide(providerInstancesLayer),
 );
 
@@ -341,7 +344,8 @@ const liveLayer = Layer.mergeAll(
   // context and never see each other's output, which is what leaked
   // `ZeropsAgentLogin` as an unmet requirement all the way up to `server.ts`
   // the first time this was tried. Offboarding signs a person this project no
-  // longer opens for out of every login, by that same sign-out.
+  // longer opens for out of every login, by that same sign-out, on what the
+  // one signer-standing instance the gate asks hears from HQ.
   ZeropsOffboardingModule.layer.pipe(
     Layer.provideMerge(
       ZeropsSignOutModule.layer.pipe(
@@ -354,6 +358,7 @@ const liveLayer = Layer.mergeAll(
       ),
     ),
     Layer.provide(ZeropsProjectSignersModule.layer),
+    Layer.provide(ZeropsSignerStandingModule.layer),
   ),
   ZeropsTurnAdmissionLive,
   ZeropsCrewLive,

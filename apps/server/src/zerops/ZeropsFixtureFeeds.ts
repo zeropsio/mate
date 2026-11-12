@@ -50,6 +50,7 @@ import {
   zeropsRunAdmission,
 } from "./engineAdapters.ts";
 import * as ZeropsProjectSigners from "./ZeropsProjectSigners.ts";
+import * as ZeropsSignerStanding from "./ZeropsSignerStanding.ts";
 import * as ZeropsCrewProposals from "./ZeropsCrewProposals.ts";
 import { AUTOMATED_MODEL_SELECTION, ZeropsAutomation } from "./ZeropsAutomation.ts";
 import * as ZeropsTurnAdmission from "./ZeropsTurnAdmission.ts";
@@ -529,8 +530,7 @@ const dataConsoleLayer = () =>
     }),
   ).pipe(Layer.provide(FetchHttpClient.layer));
 
-// A fixture scene saw nobody sign anything in, has no member list to confirm
-// anybody's membership by, and signs nothing out.
+// A fixture scene saw nobody sign anything in and signs nothing out.
 const fixtureSignersLayer = Layer.succeed(
   ZeropsProjectSigners.ZeropsProjectSigners,
   ZeropsProjectSigners.ZeropsProjectSigners.of({
@@ -540,7 +540,15 @@ const fixtureSignersLayer = Layer.succeed(
       Effect.succeed(turnRefusal({ agent, signer: undefined, subject })),
     loginRefusal: ({ state, token, subject }) =>
       Effect.succeed(loginTurnRefusal({ state, token, signer: undefined, subject })),
-    hasProjectAccess: () => Effect.succeed(undefined),
+  }),
+);
+
+// A fixture scene has no HQ to ask whether a signer may still run turns: it cannot say.
+const fixtureSignerStandingLayer = Layer.succeed(
+  ZeropsSignerStanding.ZeropsSignerStanding,
+  ZeropsSignerStanding.ZeropsSignerStanding.of({
+    standing: () => Effect.succeed(undefined),
+    heard: Stream.empty,
   }),
 );
 
@@ -596,6 +604,7 @@ export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
     Layer.provide(auth),
     Layer.provide(loginsFixtureLayer),
     Layer.provide(fixtureSignersLayer),
+    Layer.provide(fixtureSignerStandingLayer),
     Layer.provide(providerInstancesLayer),
   );
   return Layer.mergeAll(

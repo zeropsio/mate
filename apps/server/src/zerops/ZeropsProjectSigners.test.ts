@@ -1,11 +1,8 @@
-import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
-import * as Layer from "effect/Layer";
-import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as TestClock from "effect/testing/TestClock";
@@ -13,17 +10,12 @@ import * as TestClock from "effect/testing/TestClock";
 import type { ZeropsAgentLoginState } from "@t3tools/contracts";
 import { loginTurnRefusal, turnRefusal } from "@t3tools/shared/zeropsAgentAuth";
 
-import * as ServerConfig from "../config.ts";
 import {
   memorySignInStore,
   ZeropsSignIns,
   type SignInRecords,
   type SignInStore,
 } from "./zeropsSignIns.ts";
-import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
-import type { AccessRead } from "./ZeropsAccessRead.ts";
-import * as ZeropsMateAccessListModule from "./ZeropsMateAccessList.ts";
-import { makeAccessScene } from "./testing/accessScene.ts";
 import {
   isTurnStartingCommand,
   make as makeProjectSigners,
@@ -244,12 +236,6 @@ describe("isTurnStartingCommand", () => {
   });
 });
 
-const environment = resolveZeropsEnvironment({
-  projectId: "TEST000000000000000023",
-  apiHost: undefined,
-  apiToken: "the-mates-own-zerops-key",
-})!;
-
 describe("the turn gate", () => {
   const signedIn = {
     state: "authorized",
@@ -258,22 +244,10 @@ describe("the turn gate", () => {
     flagToken: false,
   } as const;
 
-  /**
-   * The service over the sign-ins this server saw. Its access list reads nothing, so the leave
-   * check never signs anybody out.
-   */
+  /** The service over the sign-ins this server saw. */
   const gateOver = (signIns: SignInStore) =>
     Effect.gen(function* () {
-      const signers = yield* makeProjectSigners.pipe(
-        Effect.provide(
-          Layer.mergeAll(
-            ZeropsMateAccessListModule.emptyLayer,
-            ServerConfig.layer({ zerops: environment } as ServerConfig.ServerConfig["Service"]),
-            NodeServices.layer,
-            Layer.succeed(ZeropsSignIns, signIns),
-          ),
-        ),
-      );
+      const signers = yield* makeProjectSigners.pipe(Effect.provideService(ZeropsSignIns, signIns));
       yield* TestClock.adjust(Duration.zero);
       return { signers, signIns };
     });
@@ -595,116 +569,5 @@ describe("the turn gate", () => {
         { kind: "not-signed-in", auth: "not-authorized" },
       );
     }),
-  );
-});
-
-// X3, D7: a turn no live session stands behind — the crew's, the stand-up's — is admitted by the
-// same answer that keeps a session open: the Mate's access list, by the person's entry in it.
-describe("hasProjectAccess", () => {
-  /** The service over the Mate's own access list `list`. */
-  const signersOver = (list: ZeropsMateAccessListModule.ZeropsMateAccessList["Service"]) =>
-    Effect.gen(function* () {
-      const signIns = yield* memorySignInStore();
-      return yield* makeProjectSigners.pipe(
-        Effect.provideService(ZeropsMateAccessListModule.ZeropsMateAccessList, list),
-        Effect.provide(
-          Layer.mergeAll(
-            ServerConfig.layer({ zerops: environment } as ServerConfig.ServerConfig["Service"]),
-            NodeServices.layer,
-            Layer.succeed(ZeropsSignIns, signIns),
-          ),
-        ),
-      );
-    });
-  /** The service over the Mate's own list of an organisation the test sets. */
-  const access = Effect.gen(function* () {
-    const scene = yield* makeAccessScene({});
-    return { signers: yield* signersOver(scene.list), set: scene.set };
-  });
-
-  it.effect.each(
-    Array.from(
-      [
-        ["an org member who builds", { [JAN]: "BASIC_USER" }, true],
-        // Kept in the org, taken out of this project: their crew stops with their session (X3).
-        ["an org member this project shuts out", {}, false],
-        ["a member let in here alone", { [JAN]: "BASIC_USER" }, true],
-        ["a read-only member", { [JAN]: "READ_ONLY" }, false],
-        ["an admin who is not active", {}, false],
-      ] as const,
-      ([name, roles, expected]) => ({
-        title: `answers by this project's door: ${name}, ${String(expected)}`,
-        roles,
-        expected,
-      }),
-    ),
-  )("$title", ({ roles, expected }) =>
-    Effect.gen(function* () {
-      const { signers, set } = yield* access;
-      yield* set({ ...roles, [EVA]: "OWNER" });
-      assert.strictEqual(yield* signers.hasProjectAccess(JAN), expected);
-    }).pipe(Effect.scoped),
-  );
-
-  it.effect("answers no for somebody the org does not list", () =>
-    Effect.gen(function* () {
-      const { signers, set } = yield* access;
-      yield* set({ [EVA]: "OWNER" });
-      assert.isFalse(yield* signers.hasProjectAccess(JAN));
-    }).pipe(Effect.scoped),
-  );
-
-  it.effect("answers nothing when nothing could be read", () =>
-    Effect.gen(function* () {
-      const list = yield* ZeropsMateAccessListModule.make({
-        projectId: "P_MATE",
-        read: Effect.succeed({ kind: "failed", reason: "unreachable" }),
-      });
-      const signers = yield* signersOver(list);
-      yield* TestClock.adjust(Duration.zero);
-      assert.isUndefined(yield* signers.hasProjectAccess(JAN));
-    }).pipe(Effect.scoped),
-  );
-
-  it.effect(
-    "The signer check for unattended work uses is-an-opener on the Mate's own list, and vouches for nobody once that list is older than 15 minutes",
-    () =>
-      Effect.gen(function* () {
-        const member = (userId: string, orgRole: string) => ({
-          clientUserId: `cu-${userId}`,
-          userId,
-          orgRole,
-          status: "ACTIVE",
-          canCreateProjects: false,
-        });
-        const answer = yield* Ref.make<AccessRead>({
-          kind: "read",
-          project: { clientId: "org", overrides: { [`cu-${EVA}`]: "READ_ONLY" }, tagList: [] },
-          members: [member(JAN, "BASIC_USER"), member(EVA, "OWNER")],
-        });
-        const list = yield* ZeropsMateAccessListModule.make({
-          projectId: "P_MATE",
-          read: Ref.get(answer),
-        });
-        yield* TestClock.adjust(Duration.zero);
-        const signIns = yield* memorySignInStore();
-        const signers = yield* makeProjectSigners.pipe(
-          Effect.provideService(ZeropsMateAccessListModule.ZeropsMateAccessList, list),
-          Effect.provide(
-            Layer.mergeAll(
-              ServerConfig.layer({ zerops: environment } as ServerConfig.ServerConfig["Service"]),
-              NodeServices.layer,
-              Layer.succeed(ZeropsSignIns, signIns),
-            ),
-          ),
-        );
-        assert.isTrue(yield* signers.hasProjectAccess(JAN));
-        // An org owner this project lowers to Read only is a member, and no opener.
-        assert.isFalse(yield* signers.hasProjectAccess(EVA));
-        assert.isFalse(yield* signers.hasProjectAccess("someone-else"));
-        yield* Ref.set(answer, { kind: "failed", reason: "unreachable" });
-        yield* TestClock.adjust(Duration.minutes(16));
-        assert.isUndefined(yield* signers.hasProjectAccess(JAN));
-      }).pipe(Effect.scoped),
   );
 });
