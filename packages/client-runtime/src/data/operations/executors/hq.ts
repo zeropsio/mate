@@ -1169,10 +1169,11 @@ export function makeHqExecutor(ports: {
           return answered(requestId, intent.projectId);
         }
         if (intent.kind === "ask-read-access" || intent.kind === "close-read-access") {
+          const { askReadAccess: ask, closeReadAccess: close } = api;
           const call =
             intent.kind === "ask-read-access"
-              ? api.askReadAccess && (() => api.askReadAccess!(intent.projectId).then(() => {}))
-              : api.closeReadAccess && (() => api.closeReadAccess!(intent.id, intent.outcome));
+              ? ask && (() => ask(intent.projectId).then(() => {}))
+              : close && (() => close(intent.id, intent.outcome));
           if (call === undefined)
             return yield* Effect.fail<StreamFault>({
               outcome: "definitive-refusal",

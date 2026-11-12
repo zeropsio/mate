@@ -3,6 +3,7 @@
  * each place Zerops does not show them, *Ask for read access*, then that they asked. An organization
  * owner or admin sees each open request for a place here: *Grant read access* gives that person read
  * on that one place at Zerops (`set-project-access`) and then closes the request; *Decline* closes it.
+ * Once the person reaches the place already, *Close as granted* closes it as granted instead.
  * HQ only records and lists requests; it grants nothing.
  */
 import { useReadAccessRequests } from "~/zerops/useReadAccessRequests";
@@ -28,17 +29,38 @@ export function ReadAccessRequests({
     ? open.flatMap((request) => {
         const place = places.find(({ projectId }) => projectId === request.projectId);
         if (place === undefined) return [];
+        // A member who reaches none of the app is a candidate, not a row: still in the organization.
         const row = view.rows.find(({ userId }) => userId === request.userId);
-        const level = row?.cells.find(({ projectId }) => projectId === place.projectId)?.level;
+        const candidate = view.candidates.find(({ userId }) => userId === request.userId);
+        const person =
+          row !== undefined
+            ? { name: row.name, clientUserId: row.key, memberRole: row.roleCode }
+            : candidate !== undefined
+              ? {
+                  name: candidate.name,
+                  clientUserId: candidate.clientUserId,
+                  memberRole: undefined,
+                }
+              : undefined;
+        const level =
+          row !== undefined
+            ? row.cells.find(({ projectId }) => projectId === place.projectId)?.level
+            : candidate !== undefined
+              ? place.unread
+                ? "unknown"
+                : "none"
+              : undefined;
+        // Read or more already (given here before the close failed, or from the table): the ask is met.
+        const met = level === "read" || level === "basic" || level === "full" || level === "owner";
         const busy = asks.busy.has(request.id);
         return [
           <li className="flex flex-wrap items-center gap-2" key={request.id}>
             <span className="text-sm text-foreground">
-              {row?.name ?? "Someone no longer in the organization"} asks for read access to{" "}
+              {person?.name ?? "Someone no longer in the organization"} asks for read access to{" "}
               {place.label}
               {level === undefined || level === "none" ? "." : ` (has ${CELL_WORDS[level]} now).`}
             </span>
-            {row !== undefined && level === "none" ? (
+            {person !== undefined && level === "none" ? (
               <Button
                 disabled={busy}
                 onClick={() =>
@@ -47,8 +69,8 @@ export function ReadAccessRequests({
                     orgId,
                     changes: [
                       cellChange({
-                        clientUserId: row.key,
-                        memberRole: row.roleCode,
+                        clientUserId: person.clientUserId,
+                        memberRole: person.memberRole,
                         projectId: place.projectId,
                         choice: "read",
                       }),
@@ -60,14 +82,25 @@ export function ReadAccessRequests({
                 Grant read access
               </Button>
             ) : null}
-            <Button
-              disabled={busy}
-              onClick={() => asks.decline(request)}
-              size="sm"
-              variant="secondary"
-            >
-              Decline
-            </Button>
+            {met ? (
+              <Button
+                disabled={busy}
+                onClick={() => asks.closeGranted(request)}
+                size="sm"
+                variant="secondary"
+              >
+                Close as granted
+              </Button>
+            ) : (
+              <Button
+                disabled={busy}
+                onClick={() => asks.decline(request)}
+                size="sm"
+                variant="secondary"
+              >
+                Decline
+              </Button>
+            )}
           </li>,
         ];
       })

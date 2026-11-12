@@ -63,7 +63,10 @@ export function useReadAccessRequests(shown: boolean) {
   const [busy, setBusy] = useState<ReadonlySet<string>>(() => new Set());
   const [troubles, setTroubles] = useState<Readonly<Record<string, string>>>({});
 
-  /** Each step in turn, stopping at the first one refused; the list is read again after. */
+  /**
+   * Each step in turn, stopping at the first one refused; the list is read again after, and `at`
+   * stays busy until that read lands, so nothing asks or closes twice.
+   */
   const run = useCallback(
     (at: string, steps: ReadonlyArray<Intent>) => {
       if (operations === null || host === null || key === null) return;
@@ -90,9 +93,9 @@ export function useReadAccessRequests(shown: boolean) {
             if (isCurrent()) said(zeropsErrorMessage(cause));
           },
         )
+        .then(() => host.again(key))
         .finally(() => {
           if (!isCurrent()) return;
-          host.again(key);
           setBusy((held) => {
             const left = new Set(held);
             left.delete(at);
@@ -124,6 +127,13 @@ export function useReadAccessRequests(shown: boolean) {
       if (key !== null)
         run(request.id, [
           { kind: "close-read-access", orgId: key.orgId, id: request.id, outcome: "declined" },
+        ]);
+    },
+    /** The person reaches the place already (given before a close that failed, or from the table). */
+    closeGranted: (request: ReadAccessRequest) => {
+      if (key !== null)
+        run(request.id, [
+          { kind: "close-read-access", orgId: key.orgId, id: request.id, outcome: "granted" },
         ]);
     },
   };
