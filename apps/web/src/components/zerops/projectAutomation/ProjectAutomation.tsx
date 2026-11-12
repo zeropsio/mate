@@ -1,19 +1,24 @@
 /**
  * A project's Automation section, on its page's column: the pool of its automated Mates as one
- * line (their faces and names, *Add*, and the organization's spend this month against its
- * budget); its task board — what they are on (at work), what waits by its place (each with Stop
- * for an Owner or Admin), and what ended — read from HQ, and read again by the data layer as HQ's
- * navigation says their tasks moved (`hqTaskBoardRefresh`); then the sources
- * its tasks come from — GitHub issues by label, a Slack or Discord channel, webhooks, schedules —
- * one row each with its own Edit and Stop, and *Take tasks from…* to add one. Configured where the
- * project is: Settings keeps only what is the organization's (its key, its GitHub apps, its Slack
- * and Discord, its limits and budget).
+ * line (their faces, how many and what they are doing, *Add a Mate*, and the organization's spend
+ * this month against its budget); its task board — what they are on (at work), what waits by its
+ * place (each with Stop for an Owner or Admin), and what ended — read from HQ, and read again by
+ * the data layer as HQ's navigation says their tasks moved (`hqTaskBoardRefresh`); then the
+ * sources its tasks come from — GitHub issues by label, a Slack or Discord channel, webhooks,
+ * schedules — one row each, which opens its form, and *Add* to take tasks from one more.
+ * Configured where the project is: Settings keeps only what is the organization's (its key, its
+ * GitHub apps, its Slack and Discord, its limits and budget).
  *
  * An Owner or Admin sets it up here; anyone else reads the pool, the board and the GitHub source,
  * and sees the section only once it holds something.
  */
 import { couldntRead, hqNeedsUpdate } from "@t3tools/client-runtime/zerops/hq";
-import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
+import {
+  MOTION,
+  type MateMarkState,
+  type MateShapeId,
+  type MateTintId,
+} from "@t3tools/shared/brand";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import type { HqNavigationMateTask } from "@t3tools/shared/hqStream";
 import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
@@ -24,8 +29,15 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useNavigate } from "@tanstack/react-router";
-import { ArrowUpRightIcon, ChevronDownIcon, PlusIcon, TimerIcon } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import {
+  ArrowUpRightIcon,
+  CalendarClockIcon,
+  ChevronRightIcon,
+  HashIcon,
+  MessagesSquareIcon,
+  WebhookIcon,
+} from "lucide-react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { automatedKeyState } from "~/zerops/automatedMate.logic";
 import { useAppIntake, useAutomatedKey, useOrgAiKeys } from "~/zerops/useAutomationSettings";
@@ -35,7 +47,7 @@ import {
   useGithubApp,
   useOrgTaskSource,
 } from "~/zerops/useTaskSourceSettings";
-import { TASK_STATUS_WORDS, taskStatusDot, type TaskStatus } from "~/zerops/taskStatus";
+import { TASK_STATUS_WORDS } from "~/zerops/taskStatus";
 import { useNewMateDialog } from "~/zerops/newMate";
 import { useAddMateOffer } from "~/zerops/useHqOffers";
 import { useOpenMate } from "~/zerops/useOpenMate";
@@ -46,6 +58,7 @@ import { hqMateVersionsAtom } from "~/state/zerops";
 import { useNowMs } from "~/zerops/useNowMs";
 import { useAtomValue } from "@effect/atom-react";
 
+import { GitHubIcon } from "../../Icons";
 import { Button } from "../../ui/button";
 import { WaitLine } from "../WaitLine";
 import {
@@ -58,14 +71,13 @@ import {
 } from "../../ui/dialog";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
 import { Skeleton } from "../../ui/skeleton";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { intakeRepoChoices } from "../../settings/automatedMatesSettings.logic";
 import { appName, appReaching } from "../../settings/automationSettings.logic";
 import { MateFace } from "../primitives";
 import { SetupRow } from "../project/SetupCard";
 import { automationSummary } from "../project/projectSetup.logic";
-import { SectionAction } from "../system";
-import { changesInReview, mateAutomation, type MateAutomationLine } from "../SidebarMateRow.logic";
+import { CutText, GrowsInPlace, SectionAction, SectionLabel } from "../system";
+import { mateAutomation, type MateAutomationLine } from "../SidebarMateRow.logic";
 import {
   automationSection,
   connectionMissing,
@@ -73,20 +85,20 @@ import {
   SOURCE_KINDS,
   sourceRowPress,
   sourceRows,
-  stopWords,
   type RowPress,
   type SourceKind,
   type SourceRow,
 } from "./projectAutomation.logic";
 import { AppChannelView, AppIntakeView, AppSchedulesView, AppWebhooksView } from "./sourceForms";
 import {
+  atWorkWords,
   boardOf,
   heldOnItsChange,
-  poolLine,
+  poolSummary,
   predictedBoard,
+  RECENT_SHOWN,
   spendLine,
   type Board,
-  type BlockedMate,
 } from "./taskBoard.logic";
 
 /** Where the organization's connections are set: Settings › Automation. */
@@ -321,25 +333,25 @@ function usePool(groupId: string): {
   return { pool, live, tasks };
 }
 
-/** How many rows each block will hold while the board reads (`predictedBoard`). */
+/** How many rows each group will hold while the board reads (`predictedBoard`); none, no group. */
 interface Predicted {
   readonly atWork: number;
   readonly queued: number;
   readonly recent: number;
-  /** The line saying how many more ended earlier. */
+  /** The line that opens the ones that ended earlier. */
   readonly recentMore?: boolean | undefined;
 }
 
 /**
- * How Recent last landed, per application, while this page lives: navigation names only each
- * Mate's latest task, so the next read's placeholders take Recent's size from the last answer.
+ * How Finished last landed, per application, while this page lives: navigation names only each
+ * Mate's latest task, so the next read's placeholders take Finished's size from the last answer.
  */
 const landed = new Map<string, { readonly recent: number; readonly recentMore: boolean }>();
 
 /**
  * The application's task board: HQ's tasks of it, read while the section is drawn (and again by
  * the data layer as navigation says its tasks moved), live rows moving with navigation; the
- * organization's spend this month; and an Owner's or Admin's Stop of a task, asked on its row,
+ * organization's spend this month; and an Owner's or Admin's Stop of a task, asked in its row,
  * each task's stop its own record (`appTaskStops`), the one its conversation's band reads too.
  */
 function useTaskBoard(
@@ -363,7 +375,10 @@ function useTaskBoard(
     const made = boardOf(held, nowMs, groupId, live, (projectId) =>
       heldOnItsChange(versions[projectId]),
     );
-    landed.set(groupId, { recent: made.recent.length, recentMore: made.recentMore > 0 });
+    landed.set(groupId, {
+      recent: Math.min(made.recent.length, RECENT_SHOWN),
+      recentMore: made.recent.length > RECENT_SHOWN,
+    });
     return made;
   }, [held, nowMs, groupId, live, versions]);
   const stoppable = board === null ? [] : [...board.atWork, ...board.queued].map((row) => row.id);
@@ -458,19 +473,6 @@ function AdminAutomation({
       orgSlack.read.setting.state === "known" &&
       orgSlack.read.setting.held.connected,
   );
-  // The row whose Stop asks now, and the one whose Stop was confirmed last.
-  const [asking, setAsking] = useState<string | null>(null);
-  const [pressed, setPressed] = useState<string | null>(null);
-  const actionOf = (row: SourceRow) =>
-    row.kind === "github"
-      ? intake.read.action
-      : row.kind === "slack"
-        ? slack.read.action
-        : row.kind === "discord"
-          ? discord.read.action
-          : row.kind === "schedule"
-            ? schedules.read.action
-            : { kind: "idle" as const };
   const connected = {
     slack:
       orgSlack.read.setting.state === "known" ? orgSlack.read.setting.held.connected : undefined,
@@ -500,27 +502,7 @@ function AdminAutomation({
           onAddMate: addMate,
           onTakeFrom: setOpen,
           onEdit: (row) => {
-            setAsking(null);
-            setPressed(null);
             setOpen(row.kind === "failed" ? row.source : row.kind);
-          },
-          onAskStop: (row) => {
-            setAsking(row.key);
-          },
-          onKeep: () => {
-            setAsking(null);
-          },
-          pressOf: (row) =>
-            sourceRowPress({ key: row.key, asking, pressed, action: actionOf(row) }),
-          onStop: (row) => {
-            setAsking(null);
-            setPressed(row.key);
-            if (row.kind === "github") intake.stop();
-            else if (row.kind === "slack") slack.write({ kind: "channel-stop", source: "slack" });
-            else if (row.kind === "discord")
-              discord.write({ kind: "channel-stop", source: "discord" });
-            else if (row.kind === "schedule")
-              schedules.write({ kind: "schedule-delete", scheduleId: row.id });
           },
           onReadAgain: (source) => {
             if (source === "slack") slack.again();
@@ -641,16 +623,20 @@ export function SourceDialog({
   );
 }
 
-/** A pool Mate's face in its line: awake while it works, asking while its task waits on a person. */
+/** A pool Mate's face in the masthead: awake while it works, asking while its task waits on a person. */
 function PoolFace({
   mate,
   onOpen,
+  size,
 }: {
   readonly mate: PoolMate;
   readonly onOpen: (projectId: string) => void;
+  readonly size?: 20 | 24;
 }) {
   const activity = useAtomValue(mateActivityAtom(mate.projectId));
-  return <PoolFaceView mate={mate} onOpen={onOpen} working={activity?.kind === "working"} />;
+  return (
+    <PoolFaceView mate={mate} onOpen={onOpen} size={size} working={activity?.kind === "working"} />
+  );
 }
 
 /** Its face opens it; its name and what it is on are its tooltip. */
@@ -658,10 +644,13 @@ export function PoolFaceView({
   mate,
   working,
   onOpen,
+  size = 20,
 }: {
   readonly mate: PoolMate;
   readonly working: boolean;
   readonly onOpen: (projectId: string) => void;
+  /** 24 in the section's masthead, where the faces lead; 20 in the side row's line. */
+  readonly size?: 20 | 24 | undefined;
 }) {
   return (
     <button
@@ -673,7 +662,12 @@ export function PoolFaceView({
       }}
       type="button"
     >
-      <MateFace shape={mate.shape} size={20} state={poolMateFace(mate, working)} tint={mate.tint} />
+      <MateFace
+        shape={mate.shape}
+        size={size}
+        state={poolMateFace(mate, working)}
+        tint={mate.tint}
+      />
     </button>
   );
 }
@@ -681,23 +675,17 @@ export function PoolFaceView({
 /** What an Owner or Admin may do in the section; absent for anyone else, who reads it. */
 export interface AutomationControls {
   readonly onAddMate: (() => void) | undefined;
+  /** A kind of source chosen from *Add*: its form. */
   readonly onTakeFrom: (kind: SourceKind) => void;
+  /** A source's row, pressed: its form, where its Stop and its Delete are. */
   readonly onEdit: (row: SourceRow) => void;
-  /** Stop (or a schedule's Remove), pressed: the row asks before anything stops. */
-  readonly onAskStop: (row: SourceRow) => void;
-  /** *Keep*, answered on a row that asks. */
-  readonly onKeep: () => void;
-  /** Stop, confirmed on its row. */
-  readonly onStop: (row: SourceRow) => void;
-  /** Where a row's Stop stands (`sourceRowPress`). */
-  readonly pressOf: (row: SourceRow) => RowPress;
   readonly onReadAgain: (source: Exclude<SourceKind, "github">) => void;
   readonly onOpenSettings: () => void;
 }
 
 /**
  * The task board as the section draws it: what HQ answered, or how its read stands (`reading`,
- * with how many rows navigation says each block will hold, so the board keeps its height when they
+ * with how many rows navigation says each group will hold, so the board keeps its height when they
  * land; `none` where the reader may not read it or HQ predates it).
  */
 export interface BoardView {
@@ -714,7 +702,7 @@ export interface BoardView {
   readonly onReadAgain: () => void;
   /** Opens a task's conversation or its change, by its in-app path. */
   readonly onOpen: (route: string) => void;
-  /** An Owner's or Admin's Stop of a live task, asked on its row; absent for anyone else. */
+  /** An Owner's or Admin's Stop of a live task, asked in its row; absent for anyone else. */
   readonly stop?:
     | {
         readonly pressOf: (taskId: string) => RowPress;
@@ -728,6 +716,10 @@ export interface BoardView {
 /**
  * The section drawn — every read already done and handed in — so a test and the harness can look
  * at it with no account behind it. `workingOf` says which pool Mates work (a harness hands it).
+ *
+ * The Changes card's anatomy, for tasks: a one-line masthead for the pool, then one ledger whose
+ * marks, titles and facts stand in the same columns down every group — At work, Queued, Finished —
+ * and the sources its tasks come from as rows of the same list. A group stands while it has a row.
  */
 export function ProjectAutomationView({
   pool,
@@ -754,15 +746,11 @@ export function ProjectAutomationView({
   readonly workingOf?: ((projectId: string) => boolean) | undefined;
 }) {
   return (
-    <section
-      aria-label="Automation"
-      className="flex flex-col gap-1"
-      data-zerops-surface="project-automation"
-    >
+    <section aria-label="Automation" className="pa" data-zerops-surface="project-automation">
       {update ? (
-        <p className="px-2 text-sm text-muted-foreground">
-          {hqNeedsUpdate("set up automated Mates")}
-        </p>
+        <div className="pa-body">
+          <p className="pa-words">{hqNeedsUpdate("set up automated Mates")}</p>
+        </div>
       ) : (
         <AutomationBody
           admin={admin}
@@ -785,191 +773,101 @@ function AutomationBody({
   onOpenMate,
   workingOf,
 }: Omit<Parameters<typeof ProjectAutomationView>[0], "update">) {
+  // The Mates HQ holds on a change that waits for review: the masthead says so, never that they are free.
+  const held = new Set(
+    board?.read.state === "known" ? board.read.board.blocked.map((line) => line.projectId) : [],
+  );
+  // Nothing set to take a task from, as far as the reader may see.
+  const nowhere = sources.rows.length === 0 && !sources.reading && !sources.withheld;
+  // Finished shows its first few; *+ N more* opens the rest in place. Held here, so what grows
+  // eases open (`GrowsInPlace`) and the sources go down with it.
+  const [all, setAll] = useState(false);
   return (
     <>
-      {pool.length === 0 ? (
-        <>
-          <p className="px-2 text-sm text-muted-foreground">
-            No automated Mates yet. They take tasks from the sources below and open a change for
-            each.
-          </p>
-          {admin?.onAddMate === undefined ? null : (
-            <div className="px-2">
-              <Button onClick={admin.onAddMate} size="sm" variant="secondary">
-                <PlusIcon aria-hidden="true" />
-                Add an automated Mate
-              </Button>
-            </div>
-          )}
-        </>
-      ) : (
-        <div
-          className="flex min-h-7 min-w-0 items-center gap-2 px-2"
-          data-zerops-surface="project-automation-pool"
-        >
-          <span className="flex shrink-0 items-center">
+      <div className="pa-head" data-zerops-surface="project-automation-pool">
+        {pool.length === 0 ? null : (
+          <span className="pa-faces">
             {pool.map((mate) =>
               workingOf === undefined ? (
-                <PoolFace key={mate.projectId} mate={mate} onOpen={onOpenMate} />
+                <PoolFace key={mate.projectId} mate={mate} onOpen={onOpenMate} size={24} />
               ) : (
                 <PoolFaceView
                   key={mate.projectId}
                   mate={mate}
                   onOpen={onOpenMate}
+                  size={24}
                   working={workingOf(mate.projectId)}
                 />
               ),
             )}
           </span>
-          <span className="min-w-0 truncate text-sm text-foreground">
-            {poolLine(pool.map((mate) => mate.name))}
-          </span>
-          {admin?.onAddMate === undefined ? null : (
-            <>
-              <span aria-hidden="true" className="text-sm text-muted-foreground">
-                ·
+        )}
+        <span className="pa-head-words text-sm">{poolSummary(pool, held)}</span>
+        {admin?.onAddMate === undefined ? null : (
+          <span className="pa-head-add">
+            <Button aria-label="Add a Mate" onClick={admin.onAddMate} size="sm" variant="link">
+              <span>
+                + Add<span className="pa-wide">&nbsp;a Mate</span>
               </span>
-              <Button
-                aria-label="Add an automated Mate"
-                onClick={admin.onAddMate}
-                size="sm"
-                variant="ghost"
-              >
-                Add
-              </Button>
-            </>
+            </Button>
+          </span>
+        )}
+        {/* The organization's money, in a project's section: it says whose it is. */}
+        {board?.spend == null ? null : (
+          <span className="pa-spend">
+            <span className="pa-wide">All automated Mates · </span>
+            {board.spend}
+          </span>
+        )}
+      </div>
+      <GrowsInPlace>
+        <div className="pa-body">
+          {board === undefined ? null : (
+            <TaskBoardView
+              all={all}
+              board={board}
+              onAll={setAll}
+              pool={pool}
+              waitsFor={nowhere && pool.length > 0 ? pool.map((mate) => mate.name) : undefined}
+            />
           )}
-          {board?.spend == null ? null : (
-            <span className="ms-auto shrink-0 text-xs text-muted-foreground tabular-nums">
-              {board.spend}
-            </span>
-          )}
+          <SourcesView admin={admin} sources={sources} />
         </div>
-      )}
-      {board === undefined || board.read.state === "none" ? null : (
-        <TaskBoardView board={board} pool={pool} />
-      )}
-      <h3 className="px-2 pt-2 text-xs font-medium text-muted-foreground">Takes tasks from</h3>
-      {sources.rows.length > 0 ? (
-        <ul className="grid" data-zerops-surface="project-automation-sources">
-          {sources.rows.map((row) => (
-            <SourceRowView admin={admin} key={row.key} row={row} />
-          ))}
-        </ul>
-      ) : sources.reading ? (
-        <div className="px-2">
-          <WaitLine text="Reading…" />
-        </div>
-      ) : sources.withheld ? null : (
-        <p className="px-2 text-sm text-muted-foreground">Nowhere yet.</p>
-      )}
-      {sources.withheld ? (
-        <p className="px-2 text-xs text-muted-foreground">Owners and admins see every source.</p>
-      ) : null}
-      {admin === undefined ? null : (
-        <div className="px-2">
-          <Menu>
-            <MenuTrigger render={<Button size="sm" variant="secondary" />}>
-              Take tasks from…
-              <ChevronDownIcon aria-hidden="true" />
-            </MenuTrigger>
-            <MenuPopup align="start">
-              {SOURCE_KINDS.map((entry) => (
-                <MenuItem
-                  key={entry.kind}
-                  onClick={() => {
-                    admin.onTakeFrom(entry.kind);
-                  }}
-                >
-                  {entry.label}
-                </MenuItem>
-              ))}
-            </MenuPopup>
-          </Menu>
-        </div>
-      )}
+      </GrowsInPlace>
     </>
   );
 }
 
-function StatusWord({ status, why }: { readonly status: TaskStatus; readonly why?: string }) {
-  const word = (
-    <>
-      <span
-        aria-hidden="true"
-        className={`size-1.5 shrink-0 rounded-full ${taskStatusDot(status)}`}
-      />
-      <span className="truncate">{TASK_STATUS_WORDS[status]}</span>
-    </>
-  );
-  if (why === undefined) return <span className="flex min-w-0 items-center gap-1.5">{word}</span>;
-  // Why it failed or stopped, on hover or focus.
-  return (
-    <Tooltip>
-      <TooltipTrigger render={<span className="flex min-w-0 items-center gap-1.5" tabIndex={0} />}>
-        {word}
-      </TooltipTrigger>
-      <TooltipPopup>{why}</TooltipPopup>
-    </Tooltip>
-  );
-}
-
-/** A row's title, opening its conversation where it has one. */
-function TaskTitle({
-  title,
-  route,
-  onOpen,
-}: {
-  readonly title: string;
-  readonly route: string | null;
-  readonly onOpen: (route: string) => void;
-}) {
-  if (route === null) return <span className="min-w-0 flex-1 truncate">{title}</span>;
-  return (
-    <a
-      className="min-w-0 flex-1 truncate text-foreground underline-offset-2 hover:underline"
-      href={route}
-      onClick={(event) => {
-        if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
-        event.preventDefault();
-        onOpen(route);
-      }}
-    >
-      {title}
-    </a>
-  );
-}
-
-/** A block of the board: its heading, then its rows, its placeholders at their size, or its words. */
-function BoardBlock({
+/** A group of the ledger: the page's label over its rows, in the ledger's own columns. */
+function LedgerGroup({
   name,
   count,
+  action,
   children,
 }: {
   readonly name: string;
   readonly count?: number | undefined;
+  readonly action?: ReactNode;
   readonly children: ReactNode;
 }) {
   return (
-    <div className="grid" data-zerops-board={name}>
-      <h3 className="flex h-6 items-center gap-1.5 px-2 text-xs font-medium text-muted-foreground">
+    <div className="pa-group" data-zerops-board={name}>
+      <SectionLabel action={action} count={count} level={3}>
         {name}
-        {count === undefined || count === 0 ? null : <span className="tabular-nums">{count}</span>}
-      </h3>
+      </SectionLabel>
       {children}
     </div>
   );
 }
 
-const ROW = "flex h-8 min-w-0 items-center gap-3 px-2 text-sm";
-const NUMBER = "shrink-0 text-end text-muted-foreground tabular-nums";
-
 function Placeholders({ count }: { readonly count: number }) {
   return (
-    <ul aria-hidden="true" className="grid">
+    <ul aria-hidden="true" className="pa-rows">
       {Array.from({ length: count }, (_, at) => (
-        <li className={ROW} key={at}>
-          <Skeleton className="h-3.5 flex-1" />
+        <li className="ov-change-row pa-row" key={at}>
+          <div className="ov-change" data-plain="">
+            <Skeleton className="col-span-full h-3.5" surface="card" />
+          </div>
         </li>
       ))}
     </ul>
@@ -977,48 +875,78 @@ function Placeholders({ count }: { readonly count: number }) {
 }
 
 /**
- * A live task's Stop on its row, for an Owner or Admin: it asks under the row first, then says it
- * stops while HQ answers, and HQ's refusal there. None while the task is stopping already.
+ * What a row opens across its columns: a task's conversation, by its in-app path. A row with
+ * nowhere to lead stays still under the pointer.
+ */
+function RowPress({
+  route,
+  onOpen,
+  children,
+}: {
+  readonly route: string | null;
+  readonly onOpen: (route: string) => void;
+  readonly children: ReactNode;
+}) {
+  if (route === null)
+    return (
+      <div className="ov-change" data-plain="">
+        {children}
+      </div>
+    );
+  return (
+    <a
+      className="ov-change"
+      href={route}
+      onClick={(event) => {
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+        event.preventDefault();
+        onOpen(route);
+      }}
+    >
+      {children}
+    </a>
+  );
+}
+
+const RESTS: RowPress = { kind: "idle" };
+
+/**
+ * A live task's Stop, for an Owner or Admin: in its row's seat while the row is pointed at or
+ * focused (always where nothing hovers); pressed, it asks in the row, over its facts, so no column
+ * moves. The press moves with it: to *Keep* as it asks, back to *Stop* once kept.
  */
 function TaskStop({
   board,
   taskId,
-  status,
+  question,
 }: {
   readonly board: BoardView;
   readonly taskId: string;
-  readonly status: TaskStatus;
+  readonly question: string;
 }) {
-  const press = board.stop?.pressOf(taskId) ?? { kind: "idle" as const };
-  if (board.stop === undefined || status === "stopping" || press.kind === "asking") return null;
-  return (
-    <Button
-      disabled={press.kind === "working"}
-      onClick={() => {
-        board.stop?.onAsk(taskId);
-      }}
-      size="sm"
-      variant="ghost"
-    >
-      {press.kind === "working" ? "Stopping…" : "Stop"}
-    </Button>
-  );
-}
-
-/** What a live task's Stop says under its row: the ask, or HQ's refusal. */
-function TaskStopAsk({ board, taskId }: { readonly board: BoardView; readonly taskId: string }) {
-  const press = board.stop?.pressOf(taskId) ?? { kind: "idle" as const };
-  if (press.kind === "asking")
+  const asking = (board.stop?.pressOf(taskId) ?? RESTS).kind === "asking";
+  const pressed = useRef(false);
+  const keep = useRef<HTMLButtonElement | null>(null);
+  const stop = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (!pressed.current) return;
+    if (asking) keep.current?.focus();
+    else {
+      pressed.current = false;
+      stop.current?.focus();
+    }
+  }, [asking]);
+  if (board.stop === undefined) return null;
+  if (asking)
     return (
-      <div className="flex h-8 items-center justify-end gap-1 px-2">
-        <span className="text-xs text-muted-foreground">
-          Stop this task? Its Mate stops where it got to.
-        </span>
-        <Button onClick={board.stop?.onKeep} size="sm" variant="ghost">
+      <span className="pa-ask">
+        <span className="pa-ask-words">{question}</span>
+        <Button onClick={board.stop.onKeep} ref={keep} size="sm" variant="ghost">
           Keep
         </Button>
         <Button
           onClick={() => {
+            pressed.current = false;
             board.stop?.onStop(taskId);
           }}
           size="sm"
@@ -1026,88 +954,108 @@ function TaskStopAsk({ board, taskId }: { readonly board: BoardView; readonly ta
         >
           Stop
         </Button>
-      </div>
-    );
-  if (press.kind === "refused")
-    return (
-      <p className="px-2 text-xs text-destructive-foreground" role="alert">
-        {press.words}
-      </p>
-    );
-  return null;
-}
-
-/** "Juno waits for change #3 to be merged or closed.", the change linked. */
-function BlockedLine({
-  mate,
-  blocked,
-  onOpen,
-}: {
-  readonly mate: string;
-  readonly blocked: BlockedMate;
-  readonly onOpen: (route: string) => void;
-}) {
-  const label = blocked.change.label.replace(/^Change/u, "change");
-  return (
-    <p
-      className="flex h-8 min-w-0 items-center gap-1 px-2 text-sm text-muted-foreground"
-      data-zerops-board-line="blocked"
-    >
-      <span className="truncate">
-        {mate} waits for{" "}
-        {blocked.change.external ? (
-          <a
-            className="text-info-foreground underline-offset-2 hover:underline"
-            href={blocked.change.href}
-            rel="noreferrer"
-            target="_blank"
-          >
-            {label}
-          </a>
-        ) : (
-          <a
-            className="text-info-foreground underline-offset-2 hover:underline"
-            href={blocked.change.href}
-            onClick={(event) => {
-              if (event.metaKey || event.ctrlKey || event.button !== 0) return;
-              event.preventDefault();
-              onOpen(blocked.change.href);
-            }}
-          >
-            {label}
-          </a>
-        )}{" "}
-        to be merged or closed.
       </span>
-    </p>
+    );
+  return (
+    <span className="pa-stop">
+      <Button
+        onClick={() => {
+          pressed.current = true;
+          board.stop?.onAsk(taskId);
+        }}
+        ref={stop}
+        size="sm"
+        variant="ghost"
+      >
+        Stop
+      </Button>
+    </span>
   );
 }
 
-/** "Juno waits for a task." / "Raya and Ines wait for a task." */
-function idleWords(names: ReadonlyArray<string>): string | null {
-  if (names.length === 0) return null;
-  if (names.length === 1) return `${names[0]!} waits for a task.`;
-  return `${names.slice(0, -1).join(", ")} and ${names.at(-1)!} wait for a task.`;
+/** A row's title and, under it, its one line: why it failed, who stopped it, HQ's refusal. */
+function RowText({
+  title,
+  why,
+  failed = false,
+}: {
+  readonly title: string;
+  readonly why?: string | null | undefined;
+  readonly failed?: boolean;
+}) {
+  return (
+    <span className="pa-text">
+      <CutText className="ov-change-title" text={title} />
+      {why == null ? null : (
+        <span
+          className="pa-why"
+          data-tone={failed ? "failed" : undefined}
+          role={failed ? "alert" : undefined}
+        >
+          {why}
+        </span>
+      )}
+    </span>
+  );
 }
 
-/** "Raya waits for a task · 2 changes in review.": free, its changes in its row's words. */
-function reviewingWords(name: string, count: number): string {
-  return `${name} waits for a task · ${count > 1 ? changesInReview(count) : "1 change in review"}.`;
+/** "Sol · 12m": whose, and how long or when; either alone where the other is not known. */
+const whoWords = (mate: string | null, time: string): string =>
+  [mate, time === "—" ? null : time].filter((part) => part !== null).join(" · ");
+
+/**
+ * A task slides to its new place when it changes group: each row's place in the ledger is read
+ * after every render, and one that stood elsewhere eases from there. A row that arrives is placed.
+ * Reduced motion cuts.
+ */
+function useSlidingRows() {
+  const ledger = useRef<HTMLDivElement | null>(null);
+  const stood = useRef<ReadonlyMap<string, number>>(new Map());
+  useLayoutEffect(() => {
+    const node = ledger.current;
+    if (node === null) return;
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const now = new Map<string, number>();
+    for (const row of node.querySelectorAll<HTMLElement>("[data-zerops-task]")) {
+      const id = row.dataset.zeropsTask ?? "";
+      const before = stood.current.get(id);
+      now.set(id, row.offsetTop);
+      if (still || before === undefined || Math.abs(before - row.offsetTop) < 1) continue;
+      row.animate(
+        [{ transform: `translateY(${String(before - row.offsetTop)}px)` }, { transform: "none" }],
+        { duration: MOTION.duration.base, easing: MOTION.easing.out },
+      );
+    }
+    stood.current = now;
+  });
+  return ledger;
 }
 
 export function TaskBoardView({
   board,
   pool,
+  waitsFor,
+  all,
+  onAll,
 }: {
   readonly board: BoardView;
   readonly pool: ReadonlyArray<PoolMate>;
+  /** Whether Finished shows every task that ended, or its first few; and the press that says. */
+  readonly all: boolean;
+  readonly onAll: (all: boolean) => void;
+  /**
+   * The pool's Mates by name, where the project takes tasks from nowhere yet: a board with no
+   * task says what they wait for.
+   */
+  readonly waitsFor?: ReadonlyArray<string> | undefined;
 }) {
   const { read } = board;
+  const ledger = useSlidingRows();
   if (read.state === "none") return null;
   if (read.state === "failed")
     return (
-      <div className="flex min-h-8 items-center gap-2 px-2">
-        <span className="min-w-0 flex-1 text-sm text-destructive-foreground" role="alert">
+      <div className="pa-line">
+        <span className="pa-line-words" role="alert">
           {read.words}
         </span>
         <Button onClick={board.onReadAgain} size="sm" variant="ghost">
@@ -1115,196 +1063,357 @@ export function TaskBoardView({
         </Button>
       </div>
     );
-  if (read.state === "reading")
+  if (read.state === "reading") {
+    const { atWork, queued, recent, recentMore } = read.predicted;
+    if (atWork + queued + recent === 0) return null;
     return (
-      <div className="grid gap-1" data-zerops-surface="project-automation-board">
-        <BoardBlock name="At work">
-          <Placeholders count={read.predicted.atWork} />
-        </BoardBlock>
-        <BoardBlock name="Queued">
-          <Placeholders count={Math.max(1, read.predicted.queued)} />
-        </BoardBlock>
-        <BoardBlock name="Recent">
-          <Placeholders count={Math.max(1, read.predicted.recent)} />
-          {read.predicted.recentMore === true ? <div aria-hidden="true" className="h-6" /> : null}
-        </BoardBlock>
+      <div className="pa-ledger" data-zerops-surface="project-automation-board">
+        {atWork === 0 ? null : (
+          <LedgerGroup name="At work">
+            <Placeholders count={atWork} />
+          </LedgerGroup>
+        )}
+        {queued === 0 ? null : (
+          <LedgerGroup name="Queued">
+            <Placeholders count={queued} />
+          </LedgerGroup>
+        )}
+        {recent === 0 ? null : (
+          <LedgerGroup name="Finished">
+            <Placeholders count={recent} />
+            {recentMore === true ? <div aria-hidden="true" className="pa-more" /> : null}
+          </LedgerGroup>
+        )}
       </div>
     );
-  const { atWork, blocked, reviewing, queued, recent, recentMore } = read.board;
+  }
+  const { atWork, queued, recent } = read.board;
+  if (atWork.length + queued.length + recent.length === 0)
+    return waitsFor === undefined ? null : (
+      <p className="pa-words">
+        No tasks yet. {waitsFor.length === 1 ? `${waitsFor[0] ?? "It"} takes` : "They take"} one as
+        soon as there is somewhere to take it from.
+      </p>
+    );
   const faces = new Map(pool.map((mate) => [mate.projectId, mate]));
-  const busy = new Set([
-    ...atWork.flatMap((row) => (row.mate === null ? [] : [row.mate.projectId])),
-    ...blocked.map((line) => line.projectId),
-  ]);
-  const holding = new Map(reviewing.map((entry) => [entry.projectId, entry.count]));
-  const free = pool.filter((mate) => !busy.has(mate.projectId));
-  const idle = idleWords(
-    free.filter((mate) => !holding.has(mate.projectId)).map((mate) => mate.name),
-  );
+  const finished = all ? recent : recent.slice(0, RECENT_SHOWN);
   return (
-    <div className="grid gap-1" data-zerops-surface="project-automation-board">
-      <BoardBlock count={atWork.length} name="At work">
-        {atWork.length === 0 ? null : (
-          <ul className="grid">
+    <div className="pa-ledger" data-zerops-surface="project-automation-board" ref={ledger}>
+      {atWork.length === 0 ? null : (
+        <LedgerGroup count={atWork.length} name="At work">
+          <ul className="pa-rows">
             {atWork.map((row) => {
               const mate = row.mate === null ? undefined : faces.get(row.mate.projectId);
+              const name = mate?.name ?? row.mate?.name ?? null;
+              const press = board.stop?.pressOf(row.id) ?? RESTS;
+              // HQ has its stop, or takes it now: the row says so and offers nothing more.
+              const stopping = row.status === "stopping" || press.kind === "working";
+              const asks = row.status === "waiting" && !stopping;
+              const words = atWorkWords(stopping ? "stopping" : row.status);
+              // A task that asks holds its seat for Answer; its conversation keeps its Stop.
+              const stoppable = board.stop !== undefined && !stopping && !asks;
               return (
-                <li className="grid" data-zerops-task={row.id} key={row.id}>
-                  <div className={ROW}>
-                    <span className="flex w-24 shrink-0 items-center gap-1.5">
+                <li
+                  className="ov-change-row pa-row"
+                  data-asking={press.kind === "asking" ? "" : undefined}
+                  data-stop={stoppable ? "" : undefined}
+                  data-zerops-task={row.id}
+                  key={row.id}
+                >
+                  <RowPress onOpen={board.onOpen} route={row.route}>
+                    <span className="pa-lead">
                       {mate === undefined ? null : (
                         <MateFace
                           shape={mate.shape}
-                          size={16}
-                          state={row.status === "waiting" ? "needs" : "working"}
+                          size={20}
+                          state={asks ? "needs" : stopping ? "idle" : "working"}
                           tint={mate.tint}
                         />
                       )}
-                      <span className="truncate font-medium">
-                        {mate?.name ?? row.mate?.name ?? "Mate"}
+                    </span>
+                    <RowText
+                      failed
+                      title={row.title}
+                      why={press.kind === "refused" ? press.words : null}
+                    />
+                    <span className="pa-facts">
+                      {words === null ? null : (
+                        <span className="pa-state" data-tone={asks ? "attention" : undefined}>
+                          {words}
+                        </span>
+                      )}
+                      <span className="pa-who">
+                        {name}
+                        {name === null || row.worked === "—" ? null : " · "}
+                        {row.worked === "—" ? null : (
+                          <>
+                            <span className="sr-only">worked </span>
+                            {row.worked}
+                          </>
+                        )}
                       </span>
+                      <span className="pa-cost">{row.cost}</span>
                     </span>
-                    <TaskTitle onOpen={board.onOpen} route={row.route} title={row.title} />
-                    <span className="w-32 shrink-0 text-muted-foreground">
-                      <StatusWord status={row.status} />
+                    <span className="pa-act">
+                      {row.route === null || stopping ? null : asks ? (
+                        <span className="ov-review">Answer</span>
+                      ) : (
+                        <ChevronRightIcon aria-hidden="true" className="ov-go" />
+                      )}
                     </span>
-                    <span className={`flex w-16 items-center justify-end gap-1 ${NUMBER}`}>
-                      <TimerIcon aria-hidden="true" className="size-3.5" />
-                      <span className="sr-only">Worked </span>
-                      {row.worked}
-                    </span>
-                    <span className={`w-14 ${NUMBER}`}>{row.cost}</span>
-                    <TaskStop board={board} status={row.status} taskId={row.id} />
-                  </div>
-                  <TaskStopAsk board={board} taskId={row.id} />
+                  </RowPress>
+                  {stoppable ? (
+                    <TaskStop
+                      board={board}
+                      question={`Stop this task? ${name ?? "Its Mate"} stops where it got to.`}
+                      taskId={row.id}
+                    />
+                  ) : null}
                 </li>
               );
             })}
           </ul>
-        )}
-        {blocked.map((line) => (
-          <BlockedLine
-            blocked={line}
-            key={line.projectId}
-            mate={faces.get(line.projectId)?.name ?? "A Mate"}
-            onOpen={board.onOpen}
-          />
-        ))}
-        {free.flatMap((mate) => {
-          const count = holding.get(mate.projectId);
-          return count === undefined
-            ? []
-            : [
-                <p
-                  className="flex h-8 items-center px-2 text-sm text-muted-foreground"
-                  data-zerops-board-line="reviewing"
-                  key={mate.projectId}
+        </LedgerGroup>
+      )}
+      {queued.length === 0 ? null : (
+        <LedgerGroup count={queued.length} name="Queued">
+          <ul className="pa-rows">
+            {queued.map((row) => {
+              const press = board.stop?.pressOf(row.id) ?? RESTS;
+              const stopping = press.kind === "working";
+              const stoppable = board.stop !== undefined && !stopping;
+              return (
+                <li
+                  className="ov-change-row pa-row"
+                  data-asking={press.kind === "asking" ? "" : undefined}
+                  data-stop={stoppable ? "" : undefined}
+                  data-zerops-task={row.id}
+                  key={row.id}
                 >
-                  <span className="truncate">{reviewingWords(mate.name, count)}</span>
-                </p>,
-              ];
-        })}
-        {idle === null ? null : (
-          <p className="flex h-8 items-center px-2 text-sm text-muted-foreground">{idle}</p>
-        )}
-      </BoardBlock>
-      <BoardBlock count={queued.length} name="Queued">
-        {queued.length === 0 ? (
-          <p className="flex h-8 items-center px-2 text-sm text-muted-foreground">
-            Nothing waiting.
-          </p>
-        ) : (
-          <ul className="grid">
-            {queued.map((row) => (
-              <li className="grid" data-zerops-task={row.id} key={row.id}>
-                <div className={ROW}>
-                  <span className={`w-5 ${NUMBER}`}>{row.position}</span>
-                  <span className="min-w-0 flex-1 truncate">{row.title}</span>
-                  {row.url === null ? (
-                    <span className="max-w-44 shrink-0 truncate text-muted-foreground">
-                      {row.source}
+                  <div className="ov-change" data-plain="">
+                    {/* Its place stands where a face will. */}
+                    <span className="pa-lead pa-place">{row.position}</span>
+                    <RowText
+                      failed
+                      title={row.title}
+                      why={press.kind === "refused" ? press.words : null}
+                    />
+                    <span className="pa-facts">
+                      {stopping ? (
+                        <span className="pa-state">{atWorkWords("stopping")}</span>
+                      ) : row.url === null ? (
+                        <span className="pa-state">{row.source}</span>
+                      ) : (
+                        <a
+                          className="pa-state pa-from"
+                          href={row.url}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          <span className="real-name">{row.source}</span>
+                          <ArrowUpRightIcon aria-hidden="true" className="pa-out" />
+                        </a>
+                      )}
+                      <span className="pa-who">
+                        <span className="sr-only">Waited </span>
+                        {row.waited}
+                      </span>
                     </span>
-                  ) : (
-                    <a
-                      className="max-w-44 shrink-0 truncate text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                      href={row.url}
-                      rel="noreferrer"
-                      target="_blank"
-                    >
-                      {row.source}
-                    </a>
-                  )}
-                  <span className={`w-9 ${NUMBER}`}>
-                    <span className="sr-only">Waited </span>
-                    {row.waited}
-                  </span>
-                  <TaskStop board={board} status="queued" taskId={row.id} />
-                </div>
-                <TaskStopAsk board={board} taskId={row.id} />
-              </li>
-            ))}
+                    <span className="pa-act" />
+                  </div>
+                  {stoppable ? (
+                    <TaskStop
+                      board={board}
+                      question="Stop this task? No Mate has taken it yet."
+                      taskId={row.id}
+                    />
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
-        )}
-      </BoardBlock>
-      <BoardBlock name="Recent">
-        {recent.length === 0 ? (
-          <p className="flex h-8 items-center px-2 text-sm text-muted-foreground">
-            Nothing finished yet.
-          </p>
-        ) : (
-          <ul className="grid">
-            {recent.map((row) => (
-              <li className={ROW} data-zerops-task={row.id} key={row.id}>
-                <span className="w-32 shrink-0 text-muted-foreground">
-                  <StatusWord
-                    status={row.outcome}
-                    {...(row.detail === null ? {} : { why: row.detail })}
-                  />
-                </span>
-                <TaskTitle onOpen={board.onOpen} route={row.route} title={row.title} />
-                <span className="w-16 shrink-0 truncate text-muted-foreground">
-                  {row.mate ?? ""}
-                </span>
-                <span className={`w-16 ${NUMBER}`}>
-                  <span className="sr-only">Ended </span>
-                  {row.when}
-                </span>
-                <span className={`w-14 ${NUMBER}`}>{row.cost}</span>
-                <span className="w-20 shrink-0 text-end">
-                  {row.change === null ? null : row.change.external ? (
+        </LedgerGroup>
+      )}
+      {recent.length === 0 ? null : (
+        <LedgerGroup count={recent.length} name="Finished">
+          <ul className="pa-rows">
+            {finished.map((row) => {
+              const mate = row.mateId === null ? undefined : faces.get(row.mateId);
+              const review = row.outcome === "review" ? row.change : null;
+              return (
+                <li className="ov-change-row pa-row" data-zerops-task={row.id} key={row.id}>
+                  <RowPress onOpen={board.onOpen} route={row.route}>
+                    <span className="pa-lead">
+                      <i
+                        aria-hidden="true"
+                        className="ln-bead ov-change-bead"
+                        data-tint={mate?.tint}
+                      />
+                    </span>
+                    <RowText failed={row.outcome === "failed"} title={row.title} why={row.detail} />
+                    <span className="pa-facts">
+                      <span
+                        className="pa-state"
+                        data-tone={
+                          row.outcome === "failed"
+                            ? "failed"
+                            : row.outcome === "review"
+                              ? "attention"
+                              : undefined
+                        }
+                      >
+                        {TASK_STATUS_WORDS[row.outcome]}
+                      </span>
+                      <span className="pa-who">
+                        {row.when === "—" ? null : <span className="sr-only">Ended </span>}
+                        {whoWords(row.mate, row.when)}
+                      </span>
+                      <span className="pa-cost">{row.cost}</span>
+                    </span>
+                    <span className="pa-act">
+                      {row.route === null || review !== null ? null : (
+                        <ChevronRightIcon aria-hidden="true" className="ov-go" />
+                      )}
+                    </span>
+                  </RowPress>
+                  {/* Its pull request on GitHub, where it has one. */}
+                  {row.change?.external === true ? (
+                    <a className="pa-pr" href={row.change.href} rel="noreferrer" target="_blank">
+                      {row.change.label}
+                      <ArrowUpRightIcon aria-hidden="true" className="pa-out" />
+                    </a>
+                  ) : null}
+                  {/* The Changes card's Review: it opens the change, the row its conversation. */}
+                  {review === null ? null : review.external ? (
                     <a
-                      className="inline-flex items-center gap-0.5 text-info-foreground underline-offset-2 hover:underline"
-                      href={row.change.href}
+                      className="ov-review pa-verb"
+                      href={review.href}
                       rel="noreferrer"
                       target="_blank"
                     >
-                      {row.change.label}
-                      <ArrowUpRightIcon aria-hidden="true" className="size-3" />
+                      Review
                     </a>
                   ) : (
                     <a
-                      className="text-info-foreground underline-offset-2 hover:underline"
-                      href={row.change.href}
+                      className="ov-review pa-verb"
+                      href={review.href}
                       onClick={(event) => {
-                        if (event.metaKey || event.ctrlKey || event.button !== 0) return;
+                        if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0)
+                          return;
                         event.preventDefault();
-                        board.onOpen(row.change!.href);
+                        board.onOpen(review.href);
                       }}
                     >
-                      {row.change.label}
+                      Review
                     </a>
                   )}
-                </span>
-              </li>
+                </li>
+              );
+            })}
+          </ul>
+          {recent.length > RECENT_SHOWN ? (
+            <div className="pa-more">
+              <SectionAction
+                onClick={() => {
+                  onAll(!all);
+                }}
+              >
+                {all ? "Show fewer" : `+ ${String(recent.length - RECENT_SHOWN)} more`}
+              </SectionAction>
+            </div>
+          ) : null}
+        </LedgerGroup>
+      )}
+    </div>
+  );
+}
+
+/** A source's mark: GitHub's, a channel's, a webhook, a schedule, as a task's card has them. */
+function SourceMark({ kind }: { readonly kind: SourceKind }) {
+  const Icon =
+    kind === "github"
+      ? GitHubIcon
+      : kind === "slack"
+        ? HashIcon
+        : kind === "discord"
+          ? MessagesSquareIcon
+          : kind === "webhook"
+            ? WebhookIcon
+            : CalendarClockIcon;
+  return <Icon aria-hidden="true" className="size-4" />;
+}
+
+/**
+ * Where the project takes tasks from, as rows of the ledger: each source its mark, what it is,
+ * where or when, and how many of its tasks wait. For an Owner or Admin a row opens its form —
+ * its Stop and its Delete live there — and *Add* offers every kind; with none set yet, the kinds
+ * stand in the group that will hold them.
+ */
+function SourcesView({
+  sources,
+  admin,
+}: {
+  readonly sources: Parameters<typeof ProjectAutomationView>[0]["sources"];
+  readonly admin: AutomationControls | undefined;
+}) {
+  const { rows } = sources;
+  const none = rows.length === 0;
+  // Nothing to read and nothing the reader could add: the group is not drawn.
+  if (none && !sources.reading && !sources.withheld && admin === undefined) return null;
+  const count = rows.filter((row) => row.kind !== "failed").length;
+  return (
+    <div className="pa-ledger pa-sources" data-zerops-surface="project-automation-sources">
+      <LedgerGroup
+        action={
+          admin === undefined || none ? undefined : (
+            <Menu>
+              <MenuTrigger render={<Button size="sm" variant="link" />}>+ Add</MenuTrigger>
+              <MenuPopup align="end">
+                {SOURCE_KINDS.map((entry) => (
+                  <MenuItem
+                    key={entry.kind}
+                    onClick={() => {
+                      admin.onTakeFrom(entry.kind);
+                    }}
+                  >
+                    {entry.label}
+                  </MenuItem>
+                ))}
+              </MenuPopup>
+            </Menu>
+          )
+        }
+        count={count === 0 ? undefined : count}
+        name="Takes tasks from"
+      >
+        {!none ? (
+          <ul className="pa-rows">
+            {rows.map((row) => (
+              <SourceRowView admin={admin} key={row.key} row={row} />
             ))}
           </ul>
+        ) : sources.reading ? (
+          <div className="pa-wait">
+            <WaitLine text="Reading…" />
+          </div>
+        ) : admin === undefined ? null : (
+          <div className="pa-kinds">
+            {SOURCE_KINDS.map((entry) => (
+              <Button
+                key={entry.kind}
+                onClick={() => {
+                  admin.onTakeFrom(entry.kind);
+                }}
+                size="sm"
+                variant="secondary"
+              >
+                {entry.label}
+              </Button>
+            ))}
+          </div>
         )}
-        {recentMore === 0 ? null : (
-          <p className="flex h-6 items-center px-2 text-xs text-muted-foreground">
-            {recentMore} more ended earlier.
-          </p>
-        )}
-      </BoardBlock>
+        {sources.withheld ? <p className="pa-note">Owners and admins see every source.</p> : null}
+      </LedgerGroup>
     </div>
   );
 }
@@ -1316,111 +1425,83 @@ function SourceRowView({
   readonly row: SourceRow;
   readonly admin: AutomationControls | undefined;
 }) {
+  const failed = row.kind === "failed";
   const disconnected = (row.kind === "slack" || row.kind === "discord") && row.disconnected;
-  const press: RowPress = admin === undefined ? { kind: "idle" } : admin.pressOf(row);
-  return (
-    <li
-      className="flex min-h-8 min-w-0 items-center gap-1 px-2 py-0.5"
-      data-zerops-source={row.kind}
-    >
-      <span className="grid min-w-0 flex-1">
-        <span
-          className={
-            row.kind === "failed"
-              ? "truncate text-sm text-destructive-foreground"
-              : "truncate text-sm text-foreground"
-          }
-          role={row.kind === "failed" ? "alert" : undefined}
-        >
-          {row.words}
-        </span>
-        {disconnected ? (
-          <span className="truncate text-xs text-muted-foreground">
-            {row.kind === "slack" ? "Slack" : "Discord"} isn't connected: no tasks come in.
-          </span>
-        ) : null}
-        {press.kind === "refused" ? (
-          <span className="text-xs text-destructive-foreground" role="alert">
-            {press.words}
-          </span>
-        ) : null}
+  const cells = (
+    <>
+      <span className="pa-lead">
+        <SourceMark kind={failed ? row.source : row.kind} />
       </span>
-      {admin === undefined ? null : row.kind === "failed" ? (
-        <Button
-          onClick={() => {
-            admin.onReadAgain(row.source);
-          }}
-          size="sm"
-          variant="ghost"
+      <span className="pa-text">
+        <span
+          className="ov-change-title"
+          data-tone={failed ? "failed" : undefined}
+          role={failed ? "alert" : undefined}
         >
-          Try again
-        </Button>
-      ) : (
-        <>
-          {disconnected ? (
-            <Button onClick={admin.onOpenSettings} size="sm" variant="ghost">
-              Connect
-            </Button>
+          {row.title}
+          {row.kind === "github" ? (
+            <>
+              {" "}
+              <span className="real-name">{row.label}</span>
+            </>
           ) : null}
+        </span>
+      </span>
+      <span className="pa-facts">
+        {disconnected ? (
+          <span className="pa-state" data-tone="attention">
+            Not connected
+          </span>
+        ) : null}
+        {row.detail === null && row.meta === null ? null : (
+          <span className="pa-who">
+            {row.kind === "github" ? <span className="real-name">{row.detail}</span> : row.detail}
+            {row.detail === null || row.meta === null ? null : " · "}
+            {row.meta}
+          </span>
+        )}
+      </span>
+      <span className="pa-act">
+        {admin === undefined || failed || disconnected ? null : (
+          <ChevronRightIcon aria-hidden="true" className="ov-go" />
+        )}
+      </span>
+    </>
+  );
+  return (
+    <li className="ov-change-row pa-row" data-zerops-source={row.kind}>
+      {admin === undefined ? (
+        <div className="ov-change" data-plain="">
+          {cells}
+        </div>
+      ) : (
+        <button
+          className="ov-change"
+          onClick={() => {
+            admin.onEdit(row);
+          }}
+          type="button"
+        >
+          {cells}
+        </button>
+      )}
+      {admin === undefined ? null : failed ? (
+        <span className="pa-verb">
           <Button
             onClick={() => {
-              admin.onEdit(row);
+              admin.onReadAgain(row.source);
             }}
             size="sm"
             variant="ghost"
           >
-            Edit
+            Try again
           </Button>
-          {row.kind === "webhook" ? null : <StopControl admin={admin} kind={row.kind} row={row} />}
-        </>
-      )}
+        </span>
+      ) : disconnected ? (
+        <button className="ov-review pa-verb" onClick={admin.onOpenSettings} type="button">
+          Connect
+        </button>
+      ) : null}
     </li>
-  );
-}
-
-/**
- * A row's Stop, or a schedule's Remove: it asks on the row first — stopping a source ends its
- * tasks coming in, removing a schedule deletes its brief — then says it works, held while it does.
- */
-function StopControl({
-  row,
-  kind,
-  admin,
-}: {
-  readonly row: SourceRow;
-  readonly kind: "github" | "slack" | "discord" | "schedule";
-  readonly admin: AutomationControls;
-}) {
-  const words = stopWords(kind);
-  const press = admin.pressOf(row);
-  if (press.kind === "asking")
-    return (
-      <span className="flex items-center gap-1">
-        <span className="text-xs text-muted-foreground">{words.ask}</span>
-        <Button onClick={admin.onKeep} size="sm" variant="ghost">
-          Keep
-        </Button>
-        <Button
-          onClick={() => {
-            admin.onStop(row);
-          }}
-          size="sm"
-          variant="destructive"
-        >
-          {words.verb}
-        </Button>
-      </span>
-    );
-  return (
-    <Button
-      disabled={press.kind === "working"}
-      onClick={() => {
-        admin.onAskStop(row);
-      }}
-      size="sm"
-      variant="ghost"
-    >
-      {press.kind === "working" ? words.working : words.verb}
-    </Button>
   );
 }

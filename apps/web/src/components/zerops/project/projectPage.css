@@ -584,6 +584,497 @@ button.pp-hist-head:hover {
   padding: 12px;
 }
 
+.pp-detail[data-flush] {
+  padding: 0;
+}
+
+/* ---- Automation ---- */
+
+/* The Automation section, opened on the page: the Changes card's anatomy, for tasks. A one-line
+   masthead says the pool; under its hairline one ledger — a mark, a title, then facts in columns
+   that run down every group — and the sources its tasks come from as rows of the same list. Its
+   rows are the Changes ledger's own (`.ov-change-row`, `.ov-change`, `.ov-change-title`), 40 px
+   here, with a cost column. */
+.pa {
+  --ln-ground: transparent;
+  --ln-track: color-mix(in oklab, var(--foreground) 30%, transparent);
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  container: automation / inline-size;
+}
+
+/* The masthead: the pool in one line, the month's money at its end. */
+.pa-head {
+  display: flex;
+  min-width: 0;
+  min-height: 52px;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px;
+}
+
+.pa-faces {
+  display: flex;
+  flex: none;
+  gap: 4px;
+}
+
+.pa-head-words {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Its words stand 6 px after the pool's: the press's own inset is the rest of the gap. */
+.pa-head-add {
+  display: flex;
+  flex: none;
+  margin-inline-start: -5px;
+}
+
+.pa-spend {
+  flex: none;
+  margin-inline-start: auto;
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pa-body {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  padding: 6px 8px 8px;
+}
+
+.pa-head + * > .pa-body {
+  border-top: 1px solid var(--ov-rule);
+}
+
+/* One grid for the tasks, its facts in columns that run down every group: a mark, the title, the
+   state, the pull request, whose and when, the cost, the seat of the row's one press. */
+.pa-ledger {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto auto auto;
+}
+
+/* The sources: their own facts, on the same left edge. */
+.pa-sources {
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  margin-top: 12px;
+}
+
+/* A group: the page's label 15 px over its first row's words, 32 px under the last group's. */
+.pa-group {
+  display: grid;
+  min-width: 0;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  padding-top: 6px;
+}
+
+.pa-group + .pa-group {
+  margin-top: 12px;
+}
+
+.pa-group > * {
+  grid-column: 1 / -1;
+}
+
+.pa-group > [data-zerops-section-label] {
+  padding-inline: 10px;
+}
+
+.pa-rows {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: subgrid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pa .pa-row {
+  --ov-change-pad-y: 6px;
+  --ov-change-pad-x: 10px;
+  position: relative;
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--ov-rule);
+}
+
+.pa-row:first-child {
+  border-top-color: transparent;
+}
+
+.pa-row > .ov-change {
+  min-height: 40px;
+  align-items: center;
+}
+
+/* The row holds its ground while any of it is pointed at: its Stop and its Review stand over it. */
+.pa-row:hover > .ov-change:not([data-plain]) {
+  background: var(--ov-hover);
+}
+
+/* A row's mark: a Mate's face, a queued task's place, a finished one's bead, a source's icon. */
+.pa-lead {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  grid-column: 1;
+  margin-inline-end: 12px;
+  place-items: center;
+  color: var(--muted-foreground);
+}
+
+.pa-lead > .ov-change-bead {
+  margin: 0;
+}
+
+.pa-place {
+  font-size: var(--text-caption);
+  line-height: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The title and, under it, its one line: why it failed, who stopped it. */
+.pa-text {
+  display: grid;
+  min-width: 0;
+  grid-column: 2;
+}
+
+.pa-why {
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pa-why[data-tone="failed"],
+.pa .ov-change-title[data-tone="failed"],
+.pa-line-words {
+  color: var(--zerops-status-failed-text);
+}
+
+/* A row's facts stand in the ledger's columns: the wrapper is theirs only where the section is
+   too narrow for columns, and they go under the title as one line. */
+.pa-facts {
+  display: contents;
+}
+
+/* Where a queued task came from, linked where it has an address. */
+.pa-from {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.pa-from:hover,
+.pa-pr:hover {
+  color: var(--foreground);
+}
+
+.pa-out {
+  width: 11px;
+  height: 11px;
+  flex: none;
+}
+
+.pa-state,
+.pa-pr,
+.pa-who,
+.pa-cost {
+  margin-inline-start: 16px;
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* A state said in words, only where there is one: Asks you, Failed, Up for review. */
+.pa-state {
+  max-width: 330px;
+  grid-column: 3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pa-state[data-tone="attention"] {
+  color: var(--zerops-status-attention-text);
+}
+
+.pa-state[data-tone="failed"] {
+  color: var(--zerops-status-failed-text);
+}
+
+/* Its pull request on GitHub: beside the row's press, in its own column. */
+.pa-pr {
+  z-index: 1;
+  display: inline-flex;
+  grid-row: 1;
+  grid-column: 4;
+  align-items: center;
+  gap: 3px;
+}
+
+.pa-who {
+  grid-column: 5;
+  text-align: end;
+}
+
+.pa-cost {
+  min-width: 38px;
+  grid-column: 6;
+  text-align: end;
+}
+
+/* The seat of a row's one press, held in every row: a chevron ends where Answer and Review do. */
+.pa-act {
+  display: flex;
+  min-width: 58px;
+  min-height: 28px;
+  grid-column: 7;
+  align-items: center;
+  justify-content: flex-end;
+  margin-inline-start: 12px;
+}
+
+.pa-sources .pa-who {
+  grid-column: 4;
+}
+
+.pa-sources .pa-act,
+.pa-sources .pa-verb {
+  grid-column: 5;
+}
+
+.pa .ov-change:not(:hover, :focus-visible) .ov-go {
+  opacity: 0.55;
+}
+
+/* A press of its own in the row's seat, beside the press that opens the row: Review, Connect,
+   a task's Stop. */
+.pa-verb,
+.pa-stop {
+  z-index: 1;
+  grid-row: 1;
+  grid-column: 7;
+  justify-self: end;
+  margin-inline: 12px 10px;
+}
+
+/* Stop stands only on the row pointed at or focused, in the chevron's place; always where
+   nothing hovers. */
+.pa-stop {
+  display: flex;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--duration-quick) var(--ease-out-strong);
+}
+
+.pa-row:hover > .pa-stop,
+.pa-row:focus-within > .pa-stop {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.pa-row[data-stop]:hover .ov-go,
+.pa-row[data-stop]:focus-within .ov-go {
+  opacity: 0;
+}
+
+@media (hover: none) {
+  .pa-stop {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .pa-row[data-stop] .ov-go {
+    opacity: 0;
+  }
+}
+
+/* Stop asks in the row, over its facts, which keep their columns under it. */
+.pa-facts > *,
+.pa-act {
+  transition: opacity var(--duration-quick) var(--ease-out-strong);
+}
+
+.pa-row[data-asking] .pa-facts > *,
+.pa-row[data-asking] .pa-act {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.pa-ask {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  min-width: 0;
+  grid-column: 3 / -1;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  inset-block: 0;
+  inset-inline: 16px 10px;
+}
+
+.pa-ask-words {
+  min-width: 0;
+  margin-inline-end: 4px;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes pa-arrive {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .pa-ask {
+    animation: pa-arrive var(--duration-quick) var(--ease-out-strong);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pa-stop,
+  .pa-facts > *,
+  .pa-act {
+    transition: none;
+  }
+}
+
+/* Finished past its first few: opened in place, on the titles' edge. */
+.pa-more {
+  display: flex;
+  min-height: 30px;
+  align-items: center;
+  padding: 2px 10px 0 32px;
+}
+
+/* A line of words in the card: no task yet, what HQ needs. */
+.pa-words {
+  margin: 0;
+  padding: 8px 10px 6px;
+  color: var(--muted-foreground);
+  font-size: var(--text-body);
+  line-height: 20px;
+}
+
+.pa-note {
+  margin: 0;
+  padding: 6px 10px 2px;
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  line-height: 18px;
+}
+
+/* The board's read failed: HQ's words, and the way to read again. */
+.pa-line,
+.pa-wait {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+}
+
+.pa-line-words {
+  min-width: 0;
+  flex: 1;
+  font-size: var(--text-body);
+  line-height: 20px;
+}
+
+/* No source yet: the kinds stand in the group that will hold them. */
+.pa-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 4px 10px 8px;
+}
+
+@container automation (max-width: 760px) {
+  .pa-wide,
+  .pa-pr {
+    display: none;
+  }
+
+  .pa-state {
+    max-width: 170px;
+  }
+}
+
+/* Too narrow for columns (a phone): a row's facts are one line under its title, its seat beside
+   both; the masthead's money takes a line of its own. */
+@container automation (max-width: 520px) {
+  .pa-head {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  .pa-head-words {
+    flex: 1;
+    white-space: normal;
+  }
+
+  .pa-spend {
+    flex-basis: 100%;
+    margin-inline-start: 0;
+  }
+
+  .pa-ledger {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .pa-ledger .pa-facts {
+    display: flex;
+    min-width: 0;
+    grid-row: 2;
+    grid-column: 2;
+    overflow: hidden;
+  }
+
+  .pa-facts > * {
+    min-width: 0;
+    margin-inline-start: 0;
+  }
+
+  .pa-facts > * + *::before {
+    margin-inline: 6px;
+    content: "·";
+  }
+
+  .pa-ledger .pa-act,
+  .pa-ledger .pa-verb,
+  .pa-ledger .pa-stop {
+    grid-row: 1 / span 2;
+    grid-column: 3;
+  }
+
+  .pa-ask {
+    grid-column: 2 / -1;
+    background: var(--ov-ground);
+    inset-inline-start: 0;
+  }
+}
+
 /* Who has access, opened here: the table's own section stands on this card, named by its label. */
 .pp-detail > .ov-sec {
   margin-top: 0;

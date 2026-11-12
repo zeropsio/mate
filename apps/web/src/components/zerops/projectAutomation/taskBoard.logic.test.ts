@@ -6,7 +6,7 @@ import {
   boardOf,
   costWords,
   heldOnItsChange,
-  poolLine,
+  poolSummary,
   predictedBoard,
   spendLine,
   taskRoute,
@@ -140,7 +140,8 @@ describe("an application's task board", () => {
   });
 
   // Live: "Raya waits for change #12 to be merged or closed" while Raya took #12 holding #8's change.
-  it("says a Mate HQ does not hold on its changes is free, with how many of them wait for review", () => {
+  // witness: apps/web/src/components/zerops/projectAutomation/taskBoard.logic.ts | if (held(projectId) && now !== undefined) blocked.push({ projectId, change }); → if (now !== undefined) blocked.push({ projectId, change });
+  it("says a Mate HQ does not hold on its changes is free", () => {
     const done = (id: string, number: number) =>
       task({
         id,
@@ -151,7 +152,6 @@ describe("an application's task board", () => {
     const live = new Map([["1", { id: "1", title: "Task 1", url: null }]]);
     const board = boardOf([done("1", 3), done("2", 4)], NOW, "app-1", live);
     expect(board.blocked).toEqual([]);
-    expect(board.reviewing).toEqual([{ projectId: "P_JUNO", count: 2 }]);
   });
 
   it("names a held Mate's change by its pull request on GitHub where it has one", () => {
@@ -217,15 +217,6 @@ describe("an application's task board", () => {
     expect(board.recent[1]?.outcome).toBe("review");
   });
 
-  it(`lists the latest ${String(RECENT_SHOWN)} that ended, and says how many more there are`, () => {
-    const ended = Array.from({ length: RECENT_SHOWN + 3 }, (_, at) =>
-      task({ id: String(at), state: "done", endedAt: "2026-10-18T10:00:00.000Z" }),
-    );
-    const board = boardOf(ended, NOW);
-    expect(board.recent).toHaveLength(RECENT_SHOWN);
-    expect(board.recentMore).toBe(3);
-  });
-
   it.each([
     [null, "—"],
     [0, "$0.00"],
@@ -246,24 +237,60 @@ describe("an application's task board", () => {
 });
 
 describe("the board's rows while it reads", () => {
-  it("holds a row per Mate on a live task, one line for those free, the queue, and what ended", () => {
+  // witness: apps/web/src/components/zerops/projectAutomation/taskBoard.logic.ts | atWork: live, → atWork: live + 1,
+  it("holds a row per Mate on a live task, the queue, and what ended, and none for a group that will hold none", () => {
     const on = { id: "1", title: "Task 1", url: null };
     const over = { id: "2", title: "Task 2", url: null, ended: "merged" as const };
-    expect(predictedBoard([on, on, over, null], 3)).toEqual({ atWork: 3, queued: 3, recent: 1 });
-    expect(predictedBoard([], 0)).toEqual({ atWork: 1, queued: 1, recent: 1 });
+    expect(predictedBoard([on, on, over, null], 3)).toEqual({ atWork: 2, queued: 3, recent: 1 });
+    expect(predictedBoard([], 0)).toEqual({ atWork: 0, queued: 0, recent: 0 });
     const many = Array.from({ length: 8 }, () => over);
     expect(predictedBoard(many, 0).recent).toBe(RECENT_SHOWN);
   });
 });
 
 describe("the pool's line", () => {
+  const free = (projectId: string) => ({ projectId, automation: { task: null } });
+  const at = (projectId: string, task: { waiting?: true; done?: true }) => ({
+    projectId,
+    automation: { task },
+  });
+  // witness: apps/web/src/components/zerops/projectAutomation/taskBoard.logic.ts | if (held.has(projectId)) waiting += 1; → if (held.has(projectId)) atWork += 1;
   it.each([
-    [[], "No automated Mates yet"],
-    [["Juno"], "Juno · 1 automated Mate"],
-    [["Raya", "Ines"], "Raya, Ines · 2 automated Mates"],
-    [["Raya", "Ines", "Juno", "Nova"], "Raya, Ines, Juno +1 · 4 automated Mates"],
-  ] as const)("names %j as %s", (names, words) => {
-    expect(poolLine(names)).toBe(words);
+    ["no Mate", [], [], "No automated Mates yet"],
+    ["one Mate with no task", [free("a")], [], "1 automated Mate · free"],
+    ["two with no task", [free("a"), free("b")], [], "2 automated Mates · both free"],
+    [
+      "more than two with no task",
+      [free("a"), free("b"), free("c")],
+      [],
+      "3 automated Mates · all free",
+    ],
+    [
+      "one at a task and one asking the person",
+      [at("a", {}), at("b", { waiting: true }), free("c")],
+      [],
+      "3 automated Mates · 1 at work · 1 asks you",
+    ],
+    [
+      "two asking the person",
+      [at("a", { waiting: true }), at("b", { waiting: true })],
+      [],
+      "2 automated Mates · 2 ask you",
+    ],
+    [
+      "one whose change waits for review, not held by it",
+      [at("a", { done: true }), free("b")],
+      [],
+      "2 automated Mates · both free",
+    ],
+    [
+      "one HQ holds on its change",
+      [at("a", { done: true }), free("b")],
+      ["a"],
+      "2 automated Mates · 1 waits for review",
+    ],
+  ])("a pool of %s reads %s", (_case, pool, held, words) => {
+    expect(poolSummary(pool, new Set(held))).toBe(words);
   });
 
   it.each([
