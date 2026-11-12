@@ -20,7 +20,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { NO_ANSWER_IN_TIME } from "@t3tools/client-runtime/data";
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
-import type { HqJob } from "@t3tools/client-runtime/zerops/hq";
+import { type HqJob, MERGE_TOO_LARGE, mergeTooLargeWords } from "@t3tools/client-runtime/zerops/hq";
 import type { CrewTask } from "@t3tools/contracts";
 import type {
   ChangeCommit,
@@ -1994,6 +1994,19 @@ export const REVIEW_STATES: ReadonlyArray<{
         press={{
           kind: "refused",
           reason: "Its Mate pushed to it since you opened it. Review it again.",
+        }}
+      />
+    ),
+  },
+  {
+    id: "refused-too-large",
+    label: "Not merged: a file above HQ's merge limit, said for the person's Mate",
+    node: (
+      <Change
+        press={{
+          kind: "refused",
+          reason: mergeTooLargeWords(16 * 1024 * 1024, 24 * 1024 * 1024),
+          code: MERGE_TOO_LARGE,
         }}
       />
     ),

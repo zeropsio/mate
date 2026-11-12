@@ -89,6 +89,8 @@ export {
   hqNeedsUpdate,
   hqOfferWords,
   hqRefusalWords,
+  MERGE_TOO_LARGE,
+  mergeTooLargeWords,
   NO_HQ_WORDS,
 } from "./refusals.ts";
 export {

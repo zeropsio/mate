@@ -218,7 +218,7 @@ describe("useFlowVerbs", () => {
     await act(async () => {
       outcome = await verbs.release(FLOW, "v1.0.0");
     });
-    expect(outcome).toEqual({ ok: false, reason: "That name is taken." });
+    expect(outcome).toEqual({ ok: false, reason: "That name is taken.", code: "conflict" });
     expect(verbs.trouble).toBe("That name is taken.");
     expect(verbs.pending.size).toBe(0);
   });
