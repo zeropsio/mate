@@ -1073,7 +1073,10 @@ export class ZeropsMateUpdateError extends Schema.TaggedError<ZeropsMateUpdateEr
   },
 ) {}
 
-/** How long the connection that presented a fresh HQ ticket may now stay open, in seconds. */
+/**
+ * How long the connection that presented a fresh HQ ticket may now stay open: the seconds left of
+ * the grant, counted from when the Mate heard the ticket.
+ */
 export const ZeropsGrantExtension = Schema.Struct({
   grantSeconds: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
 });
