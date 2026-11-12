@@ -595,14 +595,7 @@ function CardWaits({
 /** The stops whose read failed, by name and what they say, beside their one attempt. */
 function StopReads<T>({ entry }: { readonly entry: ProjectsFlowGroup<T> }) {
   const { production, stages } = entry.flow;
-  const stops = [
-    ...(production.kind === "absent" ||
-    production.kind === "unread" ||
-    production.kind === "creating"
-      ? []
-      : [production.stop]),
-    ...stages,
-  ];
+  const stops = [...("stop" in production ? [production.stop] : []), ...stages];
   // Every stop is held here, so each keeps the demand that reads what it runs.
   return (
     <div className="ov-reads">

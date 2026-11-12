@@ -15,6 +15,7 @@ import {
   changeInMateReview,
   changeState,
   ENVIRONMENT_NOT_ADDED,
+  OUTSIDE_MATE,
   PRODUCTION_DEPLOYING,
   pullRequestBlocked,
   type FlowPullRequest,
@@ -317,7 +318,7 @@ type PlaceLineSaid = Pick<PlaceLine, "dot" | "words" | "trouble" | "nothingDeplo
 
 /** What production's line says from the flow alone, where no chip was read. */
 function flowLine(
-  production: Exclude<GroupFlowProduction, { readonly kind: "absent" | "unread" }>,
+  production: Exclude<GroupFlowProduction, { readonly kind: "absent" | "unread" | "outside" }>,
   since: string | undefined,
   rollsBackTo: string | undefined,
 ): PlaceLineSaid {
@@ -528,6 +529,21 @@ export function placeLines(input: {
         words: [ENVIRONMENT_NOT_ADDED],
         trouble: false,
         nothingDeployed: true,
+      },
+    ];
+  // Deployed outside Mate: what somebody said of it, and its address where one was given. No
+  // state, version or since-when: nobody here read one.
+  if (production.kind === "outside")
+    return [
+      ...staged,
+      {
+        ...prod,
+        projectId: undefined,
+        addresses:
+          production.address === null ? [] : [{ service: "main", url: production.address }],
+        dot: "none",
+        words: [OUTSIDE_MATE],
+        trouble: false,
       },
     ];
   const stop = production.kind === "creating" ? undefined : production.stop;
@@ -876,7 +892,7 @@ const newestFirst = (left: string | undefined, right: string | undefined) =>
   (right ?? "").localeCompare(left ?? "");
 
 /**
- * What the stage that follows `main` runs, as HQ's deploys say it (`stageStandings`): the commits
+ * What the stage runs, as HQ's deploys say it (`stageStandings`): the commits
  * its services run and the ones being deployed there, whole; and each repository's `main` head.
  */
 export interface CardStage {
@@ -960,6 +976,11 @@ export function cardChanges(input: {
   readonly stage: CardStage | undefined;
   /** The project has a production, where a merged change is released. */
   readonly production: boolean;
+  /**
+   * Its production is deployed outside Mate: a merged change no release took
+   * waits for none, wherever a stage stands.
+   */
+  readonly productionOutside?: boolean | undefined;
   readonly limit: number;
   /**
    * Only what no release put live yet: on the project's page its History says the released ones,
@@ -1006,13 +1027,15 @@ export function cardChanges(input: {
                 live: releaseIsLive(took.tag, input.releases),
                 at: took.taggedAt,
               }
-            : on(stage?.runs)
-              ? { kind: "on-stage" }
-              : on(stage?.deploying)
-                ? { kind: "deploying-to-stage" }
-                : input.production && input.releases.length > 0
-                  ? { kind: "waits-for-production" }
-                  : { kind: "merged" };
+            : input.productionOutside === true
+              ? { kind: "on-main" }
+              : on(stage?.runs)
+                ? { kind: "on-stage" }
+                : on(stage?.deploying)
+                  ? { kind: "deploying-to-stage" }
+                  : input.production && input.releases.length > 0
+                    ? { kind: "waits-for-production" }
+                    : { kind: "merged" };
       return {
         pull,
         open: false,

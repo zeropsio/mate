@@ -31,6 +31,8 @@ export function questionFactsOf(input: {
    * account made as a tier (a Mate that is also the stage is a stage), creations under way.
    */
   readonly held: ReadonlyArray<HeldEnvironment>;
+  /** Production is said to be deployed outside Mate: the question offers none here. */
+  readonly productionOutside?: boolean | undefined;
 }): {
   /** A tier held in any state — held, half-made, being made — is not addable. */
   readonly addable: { readonly stage: boolean; readonly production: boolean };
@@ -45,7 +47,12 @@ export function questionFactsOf(input: {
       gitOffered: input.offered.git === true,
       held,
     });
-  return { addable: { stage: ask("stage"), production: ask("production") } };
+  return {
+    addable: {
+      stage: ask("stage"),
+      production: input.productionOutside !== true && ask("production"),
+    },
+  };
 }
 
 /**

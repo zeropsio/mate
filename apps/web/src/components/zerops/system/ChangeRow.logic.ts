@@ -2,7 +2,8 @@
  * A change's state in words, the same on every page and panel that draws a `ChangeRow`: an open
  * change by what stops it ("Ready to merge", "Draft", "Needs a rebase", "Mate gone"); a merged one
  * by where it went — live in the release that took it, on stage, deploying to stage, waiting for
- * production, or merged where there is no production to wait for.
+ * production, or merged where there is no production to wait for, or where production follows
+ * `main` and nothing waits.
  *
  * Pure: no React.
  */
@@ -48,7 +49,12 @@ export type MergedChangeWhere =
   /** Production runs a release, and none took it yet. */
   | { readonly kind: "waits-for-production" }
   /** Nowhere to wait: no production, or production runs no release yet (its own line says so). */
-  | { readonly kind: "merged" };
+  | { readonly kind: "merged" }
+  /**
+   * Production is deployed outside Mate (`GroupFlowProduction`'s `outside`): on
+   * `main` it waits for no release here. Said as merged: nobody here knows whether it is live.
+   */
+  | { readonly kind: "on-main" };
 
 /** "Live in v0.1.3", "On stage", "Merged · waits for production", "Merged". */
 export function mergedChangeWords(where: MergedChangeWhere): string {
@@ -64,6 +70,7 @@ export function mergedChangeWords(where: MergedChangeWhere): string {
     case "waits-for-production":
       return "Merged · waits for production";
     case "merged":
+    case "on-main":
       return "Merged";
   }
 }

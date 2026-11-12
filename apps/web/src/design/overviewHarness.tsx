@@ -581,6 +581,11 @@ const PROJECTS: ReadonlyArray<Project> = [
   ...(params.get("page")?.startsWith("once-") === true ? onceProjects() : []),
   // The Mates section's states stand on their own pages too (`?page=mates-seven`).
   ...(params.get("page")?.startsWith("mates-") === true ? matesProjects() : []),
+  // A production deployed outside Mate (`?page=outside-set`, `outside-bare`), and the same
+  // project before anybody said so (`outside-before`); `?outsideCards` stands them among the cards.
+  ...(params.get("page")?.startsWith("outside-") === true || params.has("outsideCards")
+    ? outsideProductionProjects()
+    : []),
 ];
 
 /** A change waiting for the viewer's review, as the flow lists it. */
@@ -819,6 +824,43 @@ function matesProjects(): ReadonlyArray<Project> {
  * (nostage) live without a stage; for the line in full (`&picture=full`), (three) three Mates and a
  * release waiting, and (crowd) sixty changes from twelve Mates. `line-mine` draws the busy one compact, for one Mate.
  */
+/**
+ * Production deployed outside Mate: with the address somebody gave and a
+ * change to review; with no address, beside a stage; and the first of them before anybody said so.
+ */
+function outsideProductionProjects(): ReadonlyArray<Project> {
+  const ledger = {
+    name: "Tea Ledger",
+    mates: [mate("wren-f", "Wren", "amber"), mate("odo-f", "Odo", "slate")],
+    pullRequests: [toReview(12, "A month of sales as one sheet", "wren-f")],
+  };
+  return [
+    project({
+      ...ledger,
+      id: "outside-before",
+      production: { kind: "absent" },
+      notLive: 3,
+      canPutLive: true,
+    }),
+    project({
+      ...ledger,
+      id: "outside-set",
+      production: { kind: "outside", address: "https://ledger.tea-shop.example" },
+    }),
+    project({
+      id: "outside-bare",
+      name: "Acme Press",
+      mates: [mate("ines-p", "Ines", "olive")],
+      production: { kind: "outside", address: null },
+      stages: [
+        stop("press-stage", "stage", {
+          addresses: [{ service: "app", url: "https://app-press-7c2e.prg1.zerops.app" }],
+        }),
+      ],
+    }),
+  ];
+}
+
 function lineProjects(): ReadonlyArray<Project> {
   const busy = project({
     id: "line-busy",
@@ -1141,6 +1183,7 @@ for (const { entry } of PROJECTS) {
       })),
     ],
     sitesMates,
+    production.kind === "outside" ? production.address : null,
   );
 }
 const mineOf = (entry: Mate) => entry.owner === NOVA;

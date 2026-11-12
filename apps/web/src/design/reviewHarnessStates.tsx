@@ -531,7 +531,10 @@ function Change({
   heirs,
   hand,
   landedTitle,
+  productionOutside = false,
 }: {
+  /** The project's production is deployed outside Mate. */
+  readonly productionOutside?: boolean;
   readonly over?: Partial<FlowPullRequest>;
   /** The merged change HQ brought main in after, by its title. */
   readonly landedTitle?: string;
@@ -563,7 +566,8 @@ function Change({
       frame={frame}
       hqAddress={HARNESS_HQ}
       initiallyOpen={open}
-      live="v0.1.0"
+      productionOutside={productionOutside}
+      live={productionOutside ? undefined : "v0.1.0"}
       mate={mate}
       heirs={heirs}
       hand={hand}
@@ -2077,6 +2081,26 @@ export const REVIEW_STATES: ReadonlyArray<{
   },
   { id: "merged-now", label: "After Merge", node: <Change press={{ kind: "done" }} /> },
   { id: "merged", label: "Merged", node: <Change over={MERGED_NOW} /> },
+  {
+    id: "ready-no-production",
+    label: "Ready, in a project with no production",
+    node: <Change environments={NO_ENVIRONMENTS} />,
+  },
+  {
+    id: "outside-set",
+    label: "Ready, where production is deployed outside Mate: nothing to release here",
+    node: <Change environments={NO_ENVIRONMENTS} productionOutside />,
+  },
+  {
+    id: "outside-stage",
+    label: "Ready, production outside Mate and a stage that deploys merges",
+    node: <Change environments={[{ tier: "stage" }]} productionOutside />,
+  },
+  {
+    id: "outside-merged",
+    label: "Merged, where production is outside Mate: no release waits here",
+    node: <Change environments={NO_ENVIRONMENTS} productionOutside over={MERGED_NOW} />,
+  },
   {
     id: "merged-outside",
     label: "Merged outside Mate",

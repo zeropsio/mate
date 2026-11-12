@@ -5,7 +5,10 @@
  *
  * Fixtures only. Nothing here ships.
  */
-import type { ChipMenuStop } from "~/components/zerops/SidebarProductionChip.logic";
+import {
+  outsideProductionMenu,
+  type ChipMenuStop,
+} from "~/components/zerops/SidebarProductionChip.logic";
 import type { ProjectSitesInput, SitesMate } from "~/components/zerops/SidebarProjectSites";
 import { showProjectParts } from "~/zerops/projectPartsShown";
 import { MATE_SHAPE_OF_TINT, type MateTintId } from "@t3tools/shared/brand";
@@ -82,6 +85,8 @@ export function showHarnessPlaces(
   projectName: string,
   places: ReadonlyArray<HarnessPlace>,
   mates: ReadonlyArray<HarnessSitesMate> = [],
+  /** Production deployed outside Mate, at the address somebody gave (`outsideProductionMenu`). */
+  outsideAddress: string | null = null,
 ): void {
   const of = (kind: HarnessPlace["kind"]) => {
     const stops = places.filter((place) => place.kind === kind).map(stopOf);
@@ -90,7 +95,9 @@ export function showHarnessPlaces(
   drawn.set(groupId, {
     groupId,
     projectName,
-    production: of("production"),
+    production:
+      of("production") ??
+      (outsideAddress === null ? undefined : () => outsideProductionMenu(outsideAddress)),
     stages: of("stage"),
     mates: mates.map((mate) => mateOf(groupId, mate)),
     prodChip: undefined,

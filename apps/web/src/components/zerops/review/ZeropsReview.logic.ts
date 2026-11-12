@@ -19,6 +19,7 @@ import {
   type ReviewVerdict,
   type ReleaseReplaces,
   type ZeropsPublicRoute,
+  PRODUCTION_DEPLOYED_OUTSIDE,
 } from "@t3tools/client-runtime/zerops";
 import { crewPossessive } from "@t3tools/client-runtime/zerops/crew/phrases";
 import { mateParts } from "@t3tools/client-runtime/zerops/mateParts";
@@ -409,7 +410,7 @@ export function sizeWords(size: {
   };
 }
 
-/** Where a change a release carries stands on the stage that follows `main` (`stageMarks`). */
+/** Where a change a release carries stands on the stage (`stageMarks`). */
 export type ReleaseStageMark = "on-stage" | "deploying-on-stage" | "failed-on-stage" | "none";
 
 export interface ReleaseChangeRow {
@@ -614,10 +615,19 @@ export function mergeFoot(input: {
   readonly warning?: string | undefined;
   /** A recipe change: what its merge does is the review's to say. */
   readonly recipe?: boolean | undefined;
+  /**
+   * Production is deployed outside Mate (`downstream.productionOutside`): the merge
+   * offers nothing to release, and says only that production is elsewhere.
+   */
+  readonly productionOutside?: boolean | undefined;
 }): string {
   if (!CHECKS_SAID.has(input.state) || input.recipe === true) return input.consequence;
   const keeps =
-    input.live === undefined ? "" : ` Production keeps ${input.live} until you release.`;
+    input.live !== undefined
+      ? ` Production keeps ${input.live} until you release.`
+      : input.productionOutside === true
+        ? ` ${PRODUCTION_DEPLOYED_OUTSIDE}`
+        : "";
   // Each by its title, as its row reads it: "demo-app-stage" is Stage.
   const stages = input.stages.map((name) => environmentTitle("stage", name));
   const foot =
@@ -630,7 +640,7 @@ export function mergeFoot(input: {
 /**
  * Whether a stage deploys what merges into `main`, so the merge foot may say so: it follows
  * `main`, and it has deployed from it — it runs a commit, or HQ took a deploy of it live. A stage
- * that follows `main` and never deployed (Larkspur's, 2026-10-28: its stage tier waited in a
+ * and never deployed (Larkspur's, 2026-10-28: its stage tier waited in a
  * setup change) is promised nothing.
  */
 export function stageDeploysMerges(row: {

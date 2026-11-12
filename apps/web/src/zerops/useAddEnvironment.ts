@@ -87,6 +87,7 @@ export function useApplicationEnvironmentFacts(): (
   reads: ApplicationEnvironmentReads | undefined,
 ) => ApplicationEnvironmentFacts {
   const offers = useEnvironmentOffers();
+  const navigation = useAtomValue(hqNavigationAtom);
   const inventory = useZeropsInventory();
   const kept = useContext(HeldInventoryContext);
   const projects = kept?.projects ?? inventory.projects;
@@ -101,8 +102,11 @@ export function useApplicationEnvironmentFacts(): (
       offered: offers(groupId),
       merged: reads?.merged ?? [],
       pullRequests: reads?.pullRequests ?? [],
+      productionOutside:
+        navigation.structure?.apps.find((app) => app.id === groupId)?.outsideProduction !==
+        undefined,
     }),
-    [offers, pending, projects],
+    [navigation, offers, pending, projects],
   );
 }
 
@@ -153,6 +157,7 @@ export function useEnvironmentQuestionFacts(
       recipeRead: facts.recipeRead,
       recipeTiers: facts.recipeTiers,
       held: applicationEnvironments(facts).held,
+      productionOutside: facts.productionOutside,
     });
   }, [factsOf, flow, groupId]);
 }

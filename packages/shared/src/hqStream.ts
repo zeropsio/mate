@@ -8,6 +8,7 @@ import { AgentUsageScope, AGENT_USAGE_REPORT_PROTOCOL } from "@t3tools/contracts
 import { usageCanonical } from "./agentUsage.ts";
 import { MatePresence } from "./hqMates.ts";
 import { HqMergers } from "./hqMergers.ts";
+import { HqOutsideProduction } from "./hqOutsideProduction.ts";
 import { MateOverview } from "./mateLink.ts";
 import { RecipeTierResponse } from "./hqRecipe.ts";
 import { HqDecision } from "./hqOffers.ts";
@@ -549,6 +550,12 @@ export const HqNavigationApp = Schema.Struct({
    * sends it.
    */
   mergers: Schema.optionalKey(Schema.NullOr(HqMergers)),
+  /**
+   * Its production is deployed outside Mate (`HqOutsideProduction`), where
+   * somebody said so. Absent, or null: nobody did. It matters only while the application has no
+   * production of its own. An older HQ never sends it.
+   */
+  outsideProduction: Schema.optionalKey(Schema.NullOr(HqOutsideProduction)),
   /**
    * Its recent rollouts, newest first, to whoever reads its environments. Absent from an older HQ,
    * and a rollout not listed: not known, never planned.

@@ -1212,6 +1212,16 @@ describe("changeReview: Merge, offered by HQ's rule (T8a)", () => {
     );
   });
 
+  // witness: packages/client-runtime/src/zerops/reviewVerdict.ts | if (input.downstream.productionOutside === true) return PRODUCTION_DEPLOYED_OUTSIDE; →
+  it("says production is deployed outside Mate in place of a release, where it is", () => {
+    const review = changeReview(
+      change({ downstream: { production: false, stage: false, productionOutside: true } }),
+    );
+    expect(review.consequence).toBe(
+      "Adds this change to main. Production is deployed outside Mate.",
+    );
+  });
+
   // Its facts not held yet — HQ has not placed the projects: Merge stands where it will, unpressed.
   it("holds Merge back while HQ's rule has not been asked", () => {
     const review = changeReview(change({ offered: undefined }));

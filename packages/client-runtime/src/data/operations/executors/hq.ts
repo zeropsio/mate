@@ -38,6 +38,8 @@ import {
   hqNeedsUpdate,
   MERGERS_NEED_UPDATE,
   mergersRefusalWords,
+  OUTSIDE_NEEDS_UPDATE,
+  outsideProductionRefusalWords,
 } from "../../../zerops/hq/refusals.ts";
 import { discussionId } from "../../families/hqDiscussion.ts";
 import { observeCredentialId, observeRequestScope } from "../../families/hqObserveCredential.ts";
@@ -48,6 +50,7 @@ import type { OperationExecutor, SubmissionFault, UncertainAcceptance } from "..
 import { REVEAL_UNRECORDABLE, PROPOSAL_DECIDED_ELSEWHERE, type HqChiefIntent } from "../hqChief.ts";
 import { keptDeployToken, type HqWriteIntent } from "../hqWrites.ts";
 import { MERGERS_UNSUPPORTED } from "../hqMergers.ts";
+import { OUTSIDE_PRODUCTION_UNSUPPORTED } from "../hqOutsideProduction.ts";
 
 import {
   changeHandle,
@@ -118,6 +121,7 @@ export type HqWrites = Pick<
       | "deleteRepo"
       | "setRepoCap"
       | "setMergers"
+      | "setOutsideProduction"
     >
   > &
   FlowWrites &
@@ -284,6 +288,22 @@ function mergersFault(cause: unknown): StreamFault | UncertainAcceptance {
   const words =
     cause instanceof HqError && cause.kind === "refused" ? mergersRefusalWords(cause) : undefined;
   return words === undefined ? fault : { ...fault, message: words };
+}
+
+/** An HQ older than a production deployed outside Mate: said as needing an update. */
+const OUTSIDE_OLDER_HQ: StreamFault = {
+  outcome: "definitive-refusal",
+  message: OUTSIDE_NEEDS_UPDATE,
+  code: OUTSIDE_PRODUCTION_UNSUPPORTED,
+};
+
+/** HQ's answer to the statement as a fault: an HQ without the route, or its refusal in plain words. */
+function outsideProductionFault(cause: unknown): StreamFault | UncertainAcceptance {
+  if (hqRouteMissing(cause)) return OUTSIDE_OLDER_HQ;
+  const fault = faultOf(cause, true);
+  if (!(cause instanceof HqError) || cause.kind !== "refused") return fault;
+  const said = outsideProductionRefusalWords(cause);
+  return said === undefined ? fault : { ...fault, message: said };
 }
 
 /** An HQ from before reveals were recorded: a retry never records one. */
@@ -1097,6 +1117,25 @@ export function makeHqExecutor(ports: {
           });
           return {
             ...answered(requestId, intent.appId, { mergers }),
+            affected: [{ family: "hqApp", id: intent.appId }],
+          };
+        }
+        if (intent.kind === "set-outside-production") {
+          const api = ports.apiOf(intent.orgId);
+          if (api === null)
+            return yield* Effect.fail<StreamFault>({
+              outcome: "definitive-refusal",
+              message: HQ_NOT_OPEN,
+            });
+          if (api.setOutsideProduction === undefined) return yield* Effect.fail(OUTSIDE_OLDER_HQ);
+          const said = yield* Effect.tryPromise({
+            try: () => api.setOutsideProduction!(intent.appId, intent.outside),
+            catch: outsideProductionFault,
+          });
+          return {
+            ...answered(requestId, intent.appId, {
+              outside: said === null ? null : { address: said.address },
+            }),
             affected: [{ family: "hqApp", id: intent.appId }],
           };
         }

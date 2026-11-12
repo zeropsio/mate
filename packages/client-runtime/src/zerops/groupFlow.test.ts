@@ -313,6 +313,18 @@ describe("groupFlow", () => {
     expect(merged.nextStep.kind).toBe("none");
   });
 
+  // witness: packages/client-runtime/src/zerops/groupFlow.ts | return input.outsideProduction == null → return input.outsideProduction !== null
+  it("A project with no production here, whose production is deployed outside Mate, waits for no release", () => {
+    const flow = groupFlow({
+      ...SM_FIXTURE,
+      pullRequests: [],
+      merged: [pull({ merged: true })],
+      outsideProduction: { address: "https://tea-shop.example" },
+    });
+    expect(flow.production).toEqual({ kind: "outside", address: "https://tea-shop.example" });
+    expect(flow.nextStep.kind).toBe("none");
+  });
+
   it("says nothing of production while main is empty (testzcp)", () => {
     const flow = groupFlow(TESTZCP);
     expect(flow.production).toEqual({ kind: "absent" });
