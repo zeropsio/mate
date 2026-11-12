@@ -40,6 +40,7 @@ import {
 } from "./hqGithubRemote.ts";
 import { setRepoCap } from "./hqRepoStorage.ts";
 import { setMergers } from "./hqMergers.ts";
+import { setOutsideProduction } from "./hqOutsideProduction.ts";
 import { FLOW_WRITE_KINDS } from "./flowWrites.ts";
 import type { RegisteredOperationKind } from "./kind.ts";
 import { mateDeploy } from "./mateDeploy.ts";
@@ -118,6 +119,7 @@ export const OPERATION_KINDS = defineOperationKinds([
   deleteRepository,
   setRepoCap,
   setMergers,
+  setOutsideProduction,
   vaultWrite,
   serviceRestart,
   ...FLOW_WRITE_KINDS,

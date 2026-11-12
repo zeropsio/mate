@@ -557,6 +557,11 @@ export { makeAutomationSettings, type AutomationSettings } from "./adapters/hqAu
 export { aiKeysId, intakeId, type AiKeysKey, type IntakeKey } from "./families/hqAutomation.ts";
 export { MERGERS_UNSUPPORTED, sameMergers } from "./operations/hqMergers.ts";
 export {
+  OUTSIDE_PRODUCTION_UNSUPPORTED,
+  sameOutsideProduction,
+  type OutsideProduction,
+} from "./operations/hqOutsideProduction.ts";
+export {
   appIntake,
   orgAiKeys,
   type AppIntakeRead,
