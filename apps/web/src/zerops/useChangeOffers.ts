@@ -4,11 +4,14 @@
  * key. Drawn here, never decided; HQ decides the write again at the press, and answers at once
  * while it is away (`hqAwayAnswer`). Before the roles are read, none is known.
  */
-import { hqOfferWords } from "@t3tools/client-runtime/zerops/hq";
+import { useAtomValue } from "@effect/atom-react";
+import { hqMergeOfferWords, hqOfferWords } from "@t3tools/client-runtime/zerops/hq";
 import { hqOffer, type HqOfferState } from "@t3tools/shared/hqOffers";
 import { useCallback } from "react";
 
+import { zeropsSessionAtom } from "../state/zerops";
 import { useHqStructure } from "./useHqOffers";
+import { usePersonNames } from "./useZeropsMateOwners";
 
 type ChangeVerb = "read" | "comment" | "merge" | "close";
 
@@ -22,6 +25,7 @@ const VERBS: { readonly [V in ChangeVerb]: string } = {
 /**
  * An application's change verbs: whether each is offered, in words why one is not — HQ's refusal,
  * that it has not said, or since when it does not answer — and whether HQ refused reading them.
+ * A merge the application's limit holds says who merges there, by name.
  */
 export type ZeropsChangeOffers = { readonly [V in ChangeVerb]: boolean } & {
   readonly why: { readonly [V in ChangeVerb]?: string };
@@ -33,6 +37,9 @@ export type ZeropsChangeOffersOf = (appId: string) => ZeropsChangeOffers | undef
 
 export function useChangeOffers(): ZeropsChangeOffersOf {
   const structure = useHqStructure();
+  const nameOf = usePersonNames(
+    useAtomValue(zeropsSessionAtom)?.activeOrganization?.organizationId,
+  );
   return useCallback(
     (appId) => {
       const app = structure?.apps.find((candidate) => candidate.id === appId);
@@ -42,7 +49,10 @@ export function useChangeOffers(): ZeropsChangeOffersOf {
       ) as { readonly [V in ChangeVerb]: HqOfferState };
       const why: { [V in ChangeVerb]?: string } = {};
       for (const verb of Object.keys(VERBS) as ReadonlyArray<ChangeVerb>) {
-        const reason = hqOfferWords(states[verb]);
+        const reason =
+          verb === "merge"
+            ? hqMergeOfferWords(states.merge, app.mergers, nameOf)
+            : hqOfferWords(states[verb]);
         if (reason !== undefined) why[verb] = reason;
       }
       return {
@@ -54,7 +64,7 @@ export function useChangeOffers(): ZeropsChangeOffersOf {
         readRefused: states.read.kind === "refused",
       };
     },
-    [structure],
+    [nameOf, structure],
   );
 }
 

@@ -214,6 +214,26 @@ describe("useChangeOffers", () => {
     expect(answerOf(hq, useChangeOffers)(appId)).toBeUndefined();
   });
 
+  // witness: apps/web/src/zerops/useChangeOffers.ts | ? hqMergeOfferWords(states.merge, app.mergers, nameOf) → ? hqOfferWords(states.merge)
+  it("A project that limits who merges holds Merge for a person it does not name, and says who merges", () => {
+    const limited = {
+      ...SHOP,
+      mergers: { people: ["u-ada"], setBy: "u-owner", setAt: "2026-11-12T09:00:00.000Z" },
+    };
+    const shop = answerOf(
+      {
+        structure: { ungrouped: [], apps: [limited] },
+        roles: { org: "BASIC_USER", projects: { "p-stage": undefined } },
+      },
+      useChangeOffers,
+    )("app-shop");
+    expect([shop?.merge, shop?.comment]).toEqual([false, true]);
+    // Nobody is named until the member list is read: counted, never an id.
+    expect(shop?.why.merge).toBe(
+      "Only 1 person and the organization's Owner and Admins merge here.",
+    );
+  });
+
   // The web review, 2026-10-05: verbs not decided yet are drawn not pressable, saying so, never
   // read as refused.
   it("offers nothing before the person's Zerops roles are read, and says so", () => {
