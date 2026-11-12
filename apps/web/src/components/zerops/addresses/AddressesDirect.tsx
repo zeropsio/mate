@@ -1,7 +1,8 @@
 /**
- * The sheet's *Direct access*: the ports a place opens straight to the internet, for connections
- * that aren't web pages, each with who may connect in plain words; *Open a port* and *Change who
- * can connect* as one inline form, closing one asking first. Who may connect is checked before
+ * The sheet's *Direct connections*: the ports a place opens straight to the internet, for
+ * connections that aren't web pages, each with the service it reaches, where a client connects
+ * and who may, in plain words; *Open a port* and *Change who can connect* as one inline form,
+ * closing one asking first. Who may connect is checked before
  * anything is sent: an IPv6 port takes only IPv6 ranges, a bare address is that address alone.
  */
 import type {
@@ -13,7 +14,9 @@ import type {
 import { EllipsisIcon, PlusIcon, ShieldIcon, XIcon } from "lucide-react";
 import { useId, useState } from "react";
 
+import { useMediaQuery } from "~/hooks/useMediaQuery";
 import { Button } from "../../ui/button";
+import { Card } from "../../ui/card";
 import { EmptyState } from "../../ui/empty";
 import { Failure } from "../../ui/failure";
 import { Input } from "../../ui/input";
@@ -32,18 +35,22 @@ import {
 } from "./addresses.logic";
 import {
   Confirm,
+  CopyButton,
   Face,
+  GroupBody,
   guardPress,
   guardTitle,
   OthersList,
+  RealName,
   RowMeta,
+  SheetGroup,
   SheetRow,
   SheetSection,
   Trouble,
   useRevealed,
+  WaitingNotice,
   type SheetContext,
 } from "./AddressesSheetBits";
-import { WaitingNotice } from "./AddressesWeb";
 
 export type DirectMode =
   | { readonly kind: "list" }
@@ -92,7 +99,8 @@ export function AddressesDirect({
           </Button>
         )
       }
-      after={
+      caption="For database tools and other apps that connect straight to a service, not through a web address."
+      lead={
         opening ? (
           <PortForm
             ctx={ctx}
@@ -126,7 +134,7 @@ export function AddressesDirect({
         ) : null
       }
       part="direct"
-      title="Direct access"
+      title="Direct connections"
     >
       {place.portsState === "failed" ? (
         <Failure cause={`You can't see ${ctx.placeName}'s open ports.`} />
@@ -136,17 +144,20 @@ export function AddressesDirect({
         <>
           {place.ports.map((port) =>
             changing?.id === port.id ? (
-              <PortForm
-                ctx={ctx}
-                key={port.id}
-                onDone={() => setMode({ kind: "list" })}
-                onTaken={() => ctx.settle(mode)}
-                othersWaiting={othersWaiting}
-                ownV4={place.ips.ownV4 !== undefined}
-                port={port}
-                ports={place.ports}
-                targets={place.portTargets}
-              />
+              <SheetGroup key={port.id}>
+                <div className="p-3">
+                  <PortForm
+                    ctx={ctx}
+                    onDone={() => setMode({ kind: "list" })}
+                    onTaken={() => ctx.settle(mode)}
+                    othersWaiting={othersWaiting}
+                    ownV4={place.ips.ownV4 !== undefined}
+                    port={port}
+                    ports={place.ports}
+                    targets={place.portTargets}
+                  />
+                </div>
+              </SheetGroup>
             ) : (
               <PortRow
                 ctx={ctx}
@@ -162,7 +173,7 @@ export function AddressesDirect({
             <EmptyState size="row">
               {place.portTargets.length === 0
                 ? `None of ${ctx.placeName}'s services can open a port directly.`
-                : "No open ports. Open one to let a database client connect."}
+                : "No open ports. Open one to connect a database tool from your computer."}
             </EmptyState>
           )}
         </>
@@ -189,8 +200,26 @@ function PortRow({
   const own = port.id.startsWith("own:");
   const face = portFaceWords(port.face);
   const udp = port.internalProtocol === "udp" ? " · UDP" : "";
+  const trouble = ctx.trouble.get(key);
+  // A phone's row has no room for a service and where a client connects side by side: the address
+  // goes under the name, where it reads whole.
+  const phone = useMediaQuery("max-sm");
+  const where = (
+    <span className="inline-flex min-w-0 items-center gap-1.5 font-normal text-muted-foreground">
+      <span className="truncate font-mono text-xs">
+        {port.address ?? `port ${port.publicPort}`}
+      </span>
+      {port.address === undefined ? null : <CopyButton value={port.address} />}
+      {port.internalPort === port.publicPort && udp === "" ? null : (
+        <RowMeta>
+          {port.internalPort === port.publicPort ? "" : `→ port ${port.internalPort}`}
+          {udp}
+        </RowMeta>
+      )}
+    </span>
+  );
   return (
-    <>
+    <SheetGroup data={`port:${port.publicPort}`}>
       <SheetRow
         data={`port:${port.publicPort}`}
         end={
@@ -237,47 +266,49 @@ function PortRow({
         }
         name={
           <>
-            <span className="truncate font-mono">{port.address ?? `port ${port.publicPort}`}</span>
-            <RowMeta>
-              → {port.serviceName} · port {port.internalPort}
-              {udp}
-            </RowMeta>
+            <RealName>{port.serviceName}</RealName>
+            {phone ? null : where}
           </>
         }
+        sub={phone ? where : undefined}
       />
-      <Trouble text={ctx.trouble.get(key)} />
-      {asking ? (
-        <Confirm
-          busy={ctx.busy.has(key)}
-          disabled={ctx.hold}
-          cancel="Keep it open"
-          confirm={
-            othersWaiting.length === 0
-              ? `Close port ${port.publicPort}`
-              : guardPress("Close", othersWaiting.length)
-          }
-          destructive
-          onCancel={() => setMode({ kind: "list" })}
-          onConfirm={() => {
-            void ctx
-              .onWrite({ kind: "close-port", projectId: ctx.projectId, portRoutingId: port.id })
-              .then((taken) => {
-                if (taken) ctx.settle(mode);
-              });
-          }}
-          title={
-            othersWaiting.length === 0
-              ? `Close port ${port.publicPort}?`
-              : guardTitle(`Closing port ${port.publicPort}`, othersWaiting.length)
-          }
-        >
-          <p>Anything connecting through it gets nothing from now on.</p>
-          {othersWaiting.length === 0 ? null : (
-            <OthersList kind="port" others={othersWaiting} placeName={ctx.placeName} />
-          )}
-        </Confirm>
-      ) : null}
-    </>
+      {trouble === undefined && !asking ? null : (
+        <GroupBody>
+          <Trouble text={trouble} />
+          {asking ? (
+            <Confirm
+              busy={ctx.busy.has(key)}
+              disabled={ctx.hold}
+              cancel="Keep it open"
+              confirm={
+                othersWaiting.length === 0
+                  ? `Close port ${port.publicPort}`
+                  : guardPress("Close", othersWaiting.length)
+              }
+              destructive
+              onCancel={() => setMode({ kind: "list" })}
+              onConfirm={() => {
+                void ctx
+                  .onWrite({ kind: "close-port", projectId: ctx.projectId, portRoutingId: port.id })
+                  .then((taken) => {
+                    if (taken) ctx.settle(mode);
+                  });
+              }}
+              title={
+                othersWaiting.length === 0
+                  ? `Close port ${port.publicPort}?`
+                  : guardTitle(`Closing port ${port.publicPort}`, othersWaiting.length)
+              }
+            >
+              <p>Anything connecting through it gets nothing from now on.</p>
+              {othersWaiting.length === 0 ? null : (
+                <OthersList kind="port" others={othersWaiting} placeName={ctx.placeName} />
+              )}
+            </Confirm>
+          ) : null}
+        </GroupBody>
+      )}
+    </SheetGroup>
   );
 }
 
@@ -422,20 +453,21 @@ function PortForm({
   const number = publicPort.trim() === "" ? "" : ` ${publicPort.trim()}`;
   const press = port === undefined ? `Open port${number}` : "Save";
   return (
-    <form
-      className={
-        port === undefined
-          ? "grid gap-3 rounded-xl border border-border/70 bg-card px-3.5 py-3 text-sm"
-          : "grid gap-3 border-t border-border/60 py-3 text-sm first:border-t-0"
-      }
+    <Card
       data-addresses-form={port === undefined ? "open-port" : "change-port"}
-      ref={revealed}
-      onSubmit={(event) => {
-        event.preventDefault();
-        submit();
-      }}
+      render={
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            submit();
+          }}
+          ref={revealed}
+        />
+      }
+      size="md"
+      variant={port === undefined ? "flat" : "inset"}
     >
-      <div className="font-medium">
+      <div className="font-medium text-sm">
         {port === undefined ? "Open a port" : `Who can connect to port ${port.publicPort}`}
       </div>
       {port === undefined ? (
@@ -572,6 +604,6 @@ function PortForm({
           </Button>
         </div>
       )}
-    </form>
+    </Card>
   );
 }
