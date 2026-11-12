@@ -66,7 +66,7 @@ describe("Mate status across menu and conversation", () => {
     expect(mateStatus(activity(patch))).toMatchObject({ kind, severity });
   });
   it.each([
-    [{ kind: "input", asksFor: "key" }, "Needs a key"],
+    [{ kind: "input", asksFor: "key" }, "Needs a value"],
     [{ kind: "input" }, "Needs an answer"],
     [{ kind: "approval" }, "Needs an answer"],
   ] as const)("the pill says what the Mate waits for: %j reads %s", (patch, label) => {
