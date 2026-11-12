@@ -551,7 +551,7 @@ const LINE_INPUTS: Readonly<Record<string, LineInput>> = {
     repos: [lineRepo("lab", "acme/swarm-lab", IN_SYNC)],
   },
   ...Object.fromEntries(
-    ["follows-before", "follows-main"].map((id) => [
+    ["outside-before", "outside-set"].map((id) => [
       id,
       {
         releases: [],
@@ -564,7 +564,7 @@ const LINE_INPUTS: Readonly<Record<string, LineInput>> = {
       },
     ]),
   ),
-  "follows-bare": {
+  "outside-bare": {
     releases: [],
     merged: [
       onMain(6, "Proofs open beside the page they mark", "ines-p", 4 * 60),
@@ -935,7 +935,7 @@ function harnessFacts(groupId: string, flow: GroupFlow): ProjectPageFacts {
       releases: input?.releases ?? [],
       stage: line?.stage,
       production: production !== undefined,
-      followsMain: flow.production.kind === "outside",
+      productionOutside: flow.production.kind === "outside",
       limit: CHANGES_HELD,
     }),
     // `?reading`: its changes are not read yet; the line holds their room.
@@ -965,7 +965,7 @@ function harnessFacts(groupId: string, flow: GroupFlow): ProjectPageFacts {
 
 /**
  * Saying production is deployed outside Mate, as pressed: an Owner or Admin with nothing asked
- * yet; `?outside=reader` anyone else; `saving` and `stopping` while HQ is asked; `refused` HQ's
+ * yet; `?outside=reader` anyone else; `saving` and `removing` while HQ is asked; `refused` HQ's
  * words; `older` an HQ from before it.
  */
 const OUTSIDE: NonNullable<ProjectPageFacts["outside"]> = (() => {
@@ -974,8 +974,8 @@ const OUTSIDE: NonNullable<ProjectPageFacts["outside"]> = (() => {
     older: state === "older",
     editable: state !== "reader",
     press:
-      state === "saving" || state === "stopping"
-        ? { kind: "saving", lifting: state === "stopping" }
+      state === "saving" || state === "removing"
+        ? { kind: "saving", lifting: state === "removing" }
         : state === "refused"
           ? { kind: "refused", words: "Owners and Admins change this." }
           : { kind: "idle" },

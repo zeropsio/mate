@@ -11,7 +11,7 @@ import { hqAppsScope } from "../families/hqNavigation.ts";
 import type { ProjectionReads } from "../store.ts";
 import type { OperationKind } from "./kind.ts";
 
-/** Production as somebody said it follows `main`: where it answers, where an address was given. */
+/** Production as somebody said it is deployed outside Mate: where it answers, where an address was given. */
 export interface OutsideProduction {
   readonly address: string | null;
 }
@@ -21,7 +21,7 @@ declare module "../model.ts" {
     readonly "set-outside-production": {
       readonly orgId: string;
       readonly appId: string;
-      /** `null` lifts it: production is no longer said to follow `main`. */
+      /** `null` lifts it: production is no longer said to be deployed outside Mate. */
       readonly outside: OutsideProduction | null;
     };
   }

@@ -530,7 +530,7 @@ export function mergersRefusalWords(refusal: {
   return undefined;
 }
 
-/** What the statement that production follows `main` says where HQ is older than it. */
+/** What the statement that production is deployed outside Mate says where HQ is older than it. */
 export const OUTSIDE_NEEDS_UPDATE = hqNeedsUpdate("keep a production deployed outside Mate");
 
 /**

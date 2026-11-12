@@ -179,7 +179,7 @@ export interface GroupFlowInput {
   /** Environments HQ sent that this build cannot read; none where nothing was unreadable. */
   readonly unread?: ReadonlyArray<UnreadEnvironment>;
   /**
-   * Somebody said its production is deployed outside Mate and follows `main`, at this address
+   * Somebody said its production is deployed outside Mate, at this address
    * where one was given (HQ's `outsideProduction`). Read only while it has no production here.
    */
   readonly outsideProduction?: { readonly address: string | null } | undefined;
@@ -239,8 +239,8 @@ export type GroupFlowProduction =
   /** No production: nothing is said of it, and nothing waits on it. */
   | { readonly kind: "absent" }
   /**
-   * No production here: somebody said it is deployed outside Mate and follows `main`, so a merge
-   * goes live and nothing waits for a release. A statement, never a deploy anyone here saw.
+   * No production here: somebody said it is deployed outside Mate, so a merge
+   * releases nothing and nothing waits for a release. A statement, never a deploy anyone here saw.
    */
   | { readonly kind: "outside"; readonly address: string | null }
   /** HQ sent a production this build cannot read: it is there, and its standing is not told. */
@@ -317,13 +317,15 @@ export interface GroupFlow {
 }
 
 /**
- * A production deployed outside Mate, as every surface names it and says its state: somebody said
- * it follows `main`. Never that it was deployed, or runs: nobody here saw that.
+ * A production deployed outside Mate, as every surface names it: somebody said something else
+ * deploys it. Never when, by what or from which branch — a merge, a tag, a pipeline of theirs —
+ * and never that it was deployed or runs: nobody here knows.
  */
-export const PRODUCTION_FOLLOWS_MAIN = "Production follows main";
-export const FOLLOWS_MAIN = "Follows main";
-/** What following `main` means, in the one sentence its row says. */
-export const FOLLOWS_MAIN_MEANS = "Every merge to main goes live, deployed outside Mate.";
+export const PRODUCTION_OUTSIDE_MATE = "Production outside Mate";
+/** The same after the word Production, on a row that already names it. */
+export const OUTSIDE_MATE = "Outside Mate";
+/** What it means for the person here, in the one sentence its row says. */
+export const OUTSIDE_MATE_MEANS = "Something else deploys it, so Mate offers no release.";
 
 /** Production's line while its creation is under way. */
 export const PRODUCTION_SETTING_UP = "Setting up production…";

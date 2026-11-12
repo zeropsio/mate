@@ -151,7 +151,7 @@ export interface ZeropsProjectFlow {
   readonly repos: ReadonlyArray<RepoListEntry> | undefined;
   readonly release: ZeropsReleaseOffer;
   /**
-   * Its production is deployed outside Mate and follows `main`, as somebody said in HQ; absent
+   * Its production is deployed outside Mate, as somebody said in HQ; absent
    * where nobody did. `groupFlow` reads it only while the project has no production of its own.
    */
   readonly outsideProduction?: OutsideProduction | undefined;

@@ -51,10 +51,10 @@ export type MergedChangeWhere =
   /** Nowhere to wait: no production, or production runs no release yet (its own line says so). */
   | { readonly kind: "merged" }
   /**
-   * Production is deployed outside Mate and follows `main` (`GroupFlowProduction`'s `outside`): on
-   * `main` it waits for no release. Said as merged: nobody here saw it go live.
+   * Production is deployed outside Mate (`GroupFlowProduction`'s `outside`): on
+   * `main` it waits for no release here. Said as merged: nobody here knows whether it is live.
    */
-  | { readonly kind: "live-with-main" };
+  | { readonly kind: "on-main" };
 
 /** "Live in v0.1.3", "On stage", "Merged · waits for production", "Merged". */
 export function mergedChangeWords(where: MergedChangeWhere): string {
@@ -70,7 +70,7 @@ export function mergedChangeWords(where: MergedChangeWhere): string {
     case "waits-for-production":
       return "Merged · waits for production";
     case "merged":
-    case "live-with-main":
+    case "on-main":
       return "Merged";
   }
 }

@@ -1,13 +1,13 @@
 /**
  * A production deployed outside Mate, on the project's page: the row that says so in the place of
- * the Going live card (`FollowsMain`), and the short form that says it, changes its address or
+ * the Going live card (`ProductionOutside`), and the short form that says it, changes its address or
  * takes it back (`OutsideProductionForm`), a dialog opened from the section's own action:
  * *Already live elsewhere* over Going live, *Change* over the row. An Owner or Admin presses;
  * anyone else reads the row.
  *
  * It is what somebody said, never something Mate saw: no word here says a deploy ran.
  */
-import { FOLLOWS_MAIN_MEANS, PRODUCTION_FOLLOWS_MAIN } from "@t3tools/client-runtime/zerops";
+import { OUTSIDE_MATE_MEANS, PRODUCTION_OUTSIDE_MATE } from "@t3tools/client-runtime/zerops";
 import { OUTSIDE_NEEDS_UPDATE } from "@t3tools/client-runtime/zerops/hq";
 import { ArrowUpRightIcon, GlobeIcon } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
@@ -39,13 +39,13 @@ export type OutsideControl = Pick<
   "older" | "editable" | "press" | "save" | "reset"
 >;
 
-/** What the form's first line calls it, on a project that does not follow `main` yet. */
+/** What the form's first line calls it, on a project not said to be deployed outside Mate yet. */
 export const ALREADY_LIVE_ELSEWHERE = "Already live elsewhere";
 
 /**
  * The form, a dialog its own word opens (`children`: the action of the section's label, as *Manage*
  * is a side row's, so the card under it is the same card whoever reads it): one sentence on what
- * it means, an optional Address, Save; where it stands already, *Stop following main*. It stays
+ * it means, an optional Address, Save; where it stands already, *No longer true*. It stays
  * open while HQ is asked and until the page under it says what HQ took; HQ's refusal is said in it.
  */
 export function OutsideProductionForm({
@@ -56,7 +56,7 @@ export function OutsideProductionForm({
 }: {
   /** The project's name. */
   readonly name: string;
-  /** How it stands: `null` where production does not follow `main`. */
+  /** How it stands: `null` where nobody said production is deployed outside Mate. */
   readonly current: { readonly address: string | null } | null;
   readonly control: OutsideControl;
   readonly children: ReactNode;
@@ -102,10 +102,11 @@ export function OutsideProductionForm({
           >
             <DialogHeader>
               <DialogTitle>
-                {current === null ? ALREADY_LIVE_ELSEWHERE : PRODUCTION_FOLLOWS_MAIN}
+                {current === null ? ALREADY_LIVE_ELSEWHERE : PRODUCTION_OUTSIDE_MATE}
               </DialogTitle>
               <DialogDescription>
-                Use this when merging to main already puts {name} live, deployed outside Mate.
+                Use this when something outside Mate deploys {name}'s production. Mate then offers
+                no release for it.
               </DialogDescription>
             </DialogHeader>
             <DialogPanel>
@@ -155,7 +156,7 @@ export function OutsideProductionForm({
                     size="sm"
                     variant="destructive-ghost"
                   >
-                    {saving && press.lifting ? "Stopping…" : "Stop following main"}
+                    {saving && press.lifting ? "Removing…" : "No longer true"}
                   </Button>
                 </span>
               )}
@@ -181,20 +182,20 @@ export function OutsideProductionForm({
 }
 
 /**
- * Production's row where it follows `main`, in the Going live card's place and frame: what that
+ * Production's row where it is deployed outside Mate, in the Going live card's place and frame: what that
  * means in one line, and its address where one was given. Nothing on it is pressed: *Change* is
  * its section's.
  */
-export function FollowsMain({ address }: { readonly address: string | null }) {
+export function ProductionOutside({ address }: { readonly address: string | null }) {
   return (
     <div className="pp-golive-hero" data-zerops-outside-production="">
       <span aria-hidden="true" className="pp-golive-icon" data-quiet="">
         <GlobeIcon className="size-5" />
       </span>
       <div className="pp-golive-text">
-        <p className="pp-golive-title">{PRODUCTION_FOLLOWS_MAIN}</p>
+        <p className="pp-golive-title">{PRODUCTION_OUTSIDE_MATE}</p>
         <p className="pp-golive-why">
-          {FOLLOWS_MAIN_MEANS}
+          {OUTSIDE_MATE_MEANS}
           {address === null ? null : (
             <>
               {" "}

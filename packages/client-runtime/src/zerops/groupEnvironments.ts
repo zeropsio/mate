@@ -227,10 +227,10 @@ export interface ApplicationEnvironmentFacts {
   /** Its changes open, which *Put it live*'s one press merges. */
   readonly pullRequests: ReadonlyArray<Pick<FlowPullRequest, "kind">>;
   /**
-   * Somebody said its production is deployed outside Mate and follows `main` (HQ's
+   * Somebody said its production is deployed outside Mate (HQ's
    * `outsideProduction`): no door offers a production here, which would be a second one.
    */
-  readonly followsMain?: boolean | undefined;
+  readonly productionOutside?: boolean | undefined;
 }
 
 /**
@@ -250,7 +250,7 @@ export interface ApplicationEnvironments {
   /**
    * Which tier may be added. Production is added by *Put it live*, so every door offers it only
    * where there is a change to put live (`putLiveHasChange`), and never where production is said
-   * to be deployed outside Mate (`followsMain`).
+   * to be deployed outside Mate (`productionOutside`).
    */
   readonly addable: { readonly stage: boolean; readonly production: boolean };
   /** What an absent tier's slot says: not added, or waiting for the recipe to hold it. */
@@ -322,7 +322,8 @@ export function applicationEnvironments(
     held,
     addable: {
       stage: addable("stage"),
-      production: facts.followsMain !== true && addable("production") && putLiveHasChange(facts),
+      production:
+        facts.productionOutside !== true && addable("production") && putLiveHasChange(facts),
     },
     absentLine: { stage: absentLine("stage"), production: absentLine("production") },
     devstages: facts.devstages.map(({ id, name }) => ({

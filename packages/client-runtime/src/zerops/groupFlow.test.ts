@@ -314,7 +314,7 @@ describe("groupFlow", () => {
   });
 
   // witness: packages/client-runtime/src/zerops/groupFlow.ts | return input.outsideProduction == null → return input.outsideProduction !== null
-  it("A project with no production here, whose production is deployed outside Mate, follows main and waits for no release", () => {
+  it("A project with no production here, whose production is deployed outside Mate, waits for no release", () => {
     const flow = groupFlow({
       ...SM_FIXTURE,
       pullRequests: [],

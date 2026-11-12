@@ -102,7 +102,7 @@ export function useApplicationEnvironmentFacts(): (
       offered: offers(groupId),
       merged: reads?.merged ?? [],
       pullRequests: reads?.pullRequests ?? [],
-      followsMain:
+      productionOutside:
         navigation.structure?.apps.find((app) => app.id === groupId)?.outsideProduction !==
         undefined,
     }),
@@ -157,7 +157,7 @@ export function useEnvironmentQuestionFacts(
       recipeRead: facts.recipeRead,
       recipeTiers: facts.recipeTiers,
       held: applicationEnvironments(facts).held,
-      followsMain: facts.followsMain,
+      productionOutside: facts.productionOutside,
     });
   }, [factsOf, flow, groupId]);
 }

@@ -83,7 +83,7 @@ describe("a production deployed outside Mate, said in HQ", () => {
 
 describe("sameOutsideProduction", () => {
   // witness: packages/client-runtime/src/data/operations/hqOutsideProduction.ts | return a.address === b.address; → return true;
-  it("Another address is a change; following main with no address is not the same as not following it", () => {
+  it("Another address is a change; saying it with no address is not the same as not saying it", () => {
     expect(sameOutsideProduction({ address }, { address })).toBe(true);
     expect(sameOutsideProduction({ address }, { address: null })).toBe(false);
     expect(sameOutsideProduction(null, { address: null })).toBe(false);

@@ -1,5 +1,5 @@
 /**
- * The form that says a project's production is deployed outside Mate and follows `main`: what its
+ * The form that says a project's production is deployed outside Mate: what its
  * optional Address field sends, and what it says of one HQ would not take.
  *
  * Pure: no React.
