@@ -133,6 +133,7 @@ import { restartLine, RESTART_LINES } from "./restartLine";
 
 import {
   reachabilityPhrase,
+  reachabilityRefusalWords,
   type MateVoice,
   type MateVoiceInput,
 } from "@t3tools/client-runtime/zerops/environments";
@@ -143,6 +144,11 @@ type SpokenVoice = Exclude<MateVoice, { readonly surface: "none" }> & {
   readonly headline?: string;
   /** The source is still opening the conversation; its waiting pose follows readiness. */
   readonly opening?: true;
+  /**
+   * HQ's words on the last refused attempt to enter the Mate, while it still opens: the opening
+   * stage says them in place of its own line (`ConversationOpeningStage`).
+   */
+  readonly refusal?: string;
   readonly secondary?: string;
   readonly details?: string;
   /** Its container is restarting: its face plays the restart for as long as it lasts. */
@@ -253,11 +259,15 @@ export function mateNoticeVoice(
     return say(words.headline, words.secondary, "idle");
   }
   if (decision.phase === "none") return { surface: "none" };
-  if (decision.phase === "opening")
+  if (decision.phase === "opening") {
+    // HQ's words where it refused the last attempt to enter the Mate, verbatim, while it tries.
+    const refusal = reachabilityRefusalWords(reachability);
     return {
-      ...say(`${name} is opening the conversation.`, "Picking up where it left off."),
+      ...say(`${name} is opening the conversation.`, refusal ?? "Picking up where it left off."),
       opening: true,
+      ...(refusal === undefined ? {} : { refusal }),
     };
+  }
   if (reachability === null) return { surface: "none" };
   const phrase = reachabilityPhrase(reachability, { ...input, mateName: name });
   const actions = decision.actions;

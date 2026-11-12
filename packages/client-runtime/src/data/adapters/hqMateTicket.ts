@@ -64,15 +64,14 @@ function attemptErrorOf(cause: unknown): ConnectionAttemptError {
       detail: "Mate has no connection to HQ (no-link).",
     });
   }
-  return new ConnectionTransientError({
-    reason: "remote-unavailable",
-    detail:
-      cause.code === "mate_not_connected"
-        ? notConnected(cause.reason)
-        : accessEnded(cause) === "session-ended"
-          ? SESSION_REFUSED_WORDS
-          : cause.message,
-  });
+  if (cause.code === "mate_not_connected") {
+    return new ConnectionTransientError({
+      reason: "remote-unavailable",
+      detail: notConnected(cause.reason),
+    });
+  }
+  const detail = accessEnded(cause) === "session-ended" ? SESSION_REFUSED_WORDS : cause.message;
+  return new ConnectionTransientError({ reason: "remote-unavailable", detail, hqWords: detail });
 }
 
 const NO_HQ = new HqError({
