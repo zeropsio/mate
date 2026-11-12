@@ -27,10 +27,14 @@ export function useThreadModelSelection(input: {
   const { threadRef, threadSelection, write, capabilitiesFor } = input;
   const clearModelSelection = useComposerDraftStore((store) => store.clearModelSelection);
   // Only the draft's picks: read whole, the draft made the conversation's view render for every
-  // key typed into its composer.
-  const modelSelectionByProvider = useComposerDraftStore((store) =>
-    threadRef ? store.getComposerDraft(threadRef)?.modelSelectionByProvider : undefined,
-  );
+  // key typed into its composer. A draft with no pick reads as no draft: the first key of a draft
+  // makes one, and the view rendered to learn that nothing was picked.
+  const modelSelectionByProvider = useComposerDraftStore((store) => {
+    const picks = threadRef
+      ? store.getComposerDraft(threadRef)?.modelSelectionByProvider
+      : undefined;
+    return picks !== undefined && Object.keys(picks).length > 0 ? picks : undefined;
+  });
   const activeProvider = useComposerDraftStore((store) =>
     threadRef ? (store.getComposerDraft(threadRef)?.activeProvider ?? null) : null,
   );

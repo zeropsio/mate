@@ -159,15 +159,19 @@ import {
   deriveTimelineEntriesWithState,
   deriveActiveWorkStartedAt,
   deriveActivePlanState,
-  deriveTurnPlans,
   findLatestProposedPlan,
-  deriveWorkLogEntries,
   hasActionableProposedPlan,
   selectHandoffImageResources,
   type TimelineEntriesProjection,
   type TimelineFlowEvent,
 } from "../session-logic";
-import { deriveZeropsThreadModel } from "../state/zerops";
+import {
+  keepTimelineProjection,
+  projectKeptTimeline,
+  keptTurnPlans,
+  keptWorkLogEntries,
+  keptZeropsThreadModel,
+} from "./chat/conversationDerivations";
 import { isLatestTurnSettled } from "@t3tools/shared/orchestrationTiming";
 import { type LegendListRef } from "@legendapp/list/react";
 import {
@@ -223,7 +227,7 @@ import { RightPanelTabs } from "./RightPanelTabs";
 import { conversationPanelWidth } from "./chat/conversationPanelStandIn.logic";
 import { ServiceBrowserPanels } from "./ServiceBrowserPanel";
 import { useMateAddresses } from "../zerops/useMateAddresses";
-import { useCrew } from "../zerops/crew/useCrew";
+import { useCrewValue } from "../zerops/crew/useCrew";
 import { useCrewAccess } from "../zerops/crew/useCrewAccess";
 import { useOpenZeropsChange } from "../zerops/useOpenZeropsChange";
 import { useEditPictureInExpress, useOpenExpressDesign } from "./express/useOpenExpressDesign";
@@ -1681,9 +1685,6 @@ function ConversationView(props: ChatViewProps) {
   const composerActiveProvider = useComposerDraftStore(
     (store) => store.getComposerDraft(composerDraftTarget)?.activeProvider ?? null,
   );
-  const composerHasUnsentContent = useComposerDraftStore((store) =>
-    composerDraftHasUserContent(store.getComposerDraft(composerDraftTarget)),
-  );
   // Anything beyond the prompt text: attachments, terminal contexts, annotations.
   const composerHasNonPromptContent = useComposerDraftStore((store) => {
     const draft = store.getComposerDraft(composerDraftTarget);
@@ -2734,17 +2735,21 @@ function ConversationView(props: ChatViewProps) {
   );
   const activeZeropsLifecycle = useZeropsLifecycle(activeThreadEnvironmentId, activeThreadId);
   const zeropsBuilds = useDeployBuilds(activeZeropsLifecycle);
+  // Kept with the conversation's activities (`conversationDerivations.ts`): a return to a
+  // conversation reads what it read before it was left, where nothing it reads from changed.
   const zeropsThreadModel = useMemo(
     () =>
-      deriveZeropsThreadModel({
-        activities: threadActivities,
-        lifecycle: activeZeropsLifecycle,
-        runningTurnId: activeRunningTurnId,
-        builds: zeropsBuilds.builds,
-        restarts: zeropsBuilds.restarts,
-      }),
+      keptZeropsThreadModel(
+        threadActivities,
+        activeThreadKey,
+        activeZeropsLifecycle,
+        activeRunningTurnId,
+        zeropsBuilds.builds,
+        zeropsBuilds.restarts,
+      ),
     [
       threadActivities,
+      activeThreadKey,
       activeZeropsLifecycle,
       activeRunningTurnId,
       zeropsBuilds.builds,
@@ -2763,10 +2768,14 @@ function ConversationView(props: ChatViewProps) {
     [zeropsThreadModel.entries],
   );
   const workLogEntries = useMemo(
-    () => deriveWorkLogEntries(threadActivities, { exclude: zeropsThreadModel.zeropsActivityIds }),
-    [threadActivities, zeropsThreadModel.zeropsActivityIds],
+    () =>
+      keptWorkLogEntries(threadActivities, activeThreadKey, zeropsThreadModel.zeropsActivityIds),
+    [threadActivities, activeThreadKey, zeropsThreadModel.zeropsActivityIds],
   );
-  const turnPlans = useMemo(() => deriveTurnPlans(threadActivities), [threadActivities]);
+  const turnPlans = useMemo(
+    () => keptTurnPlans(threadActivities, activeThreadKey),
+    [threadActivities, activeThreadKey],
+  );
   const backgroundTasks = useMemo(() => foldBackgroundTasks(threadActivities), [threadActivities]);
   // Native subagent fold: memoized by activity-list identity, shared by the
   // Agents surface, live strip, and workflow cards. v2Projection is null
@@ -3287,16 +3296,25 @@ function ConversationView(props: ChatViewProps) {
   const timelineEntries = useMemo(() => {
     const started = mateDiagnostics.enabled ? performance.now() : 0;
     const previous = timelineProjectionRef.current;
-    const projection = deriveTimelineEntriesWithState(
-      timelineMessages,
-      activeThread?.proposedPlans ?? [],
-      workLogEntries,
-      previous?.threadKey === activeThreadKey ? previous.projection : null,
-      turnPlans,
-      zeropsThreadModel.entries,
-      conversationFlowEvents,
-    );
+    const project = (before: TimelineEntriesProjection | null) =>
+      deriveTimelineEntriesWithState(
+        timelineMessages,
+        activeThread?.proposedPlans ?? [],
+        workLogEntries,
+        before,
+        turnPlans,
+        zeropsThreadModel.entries,
+        conversationFlowEvents,
+      );
+    // Its own last projection while it stays open; a conversation returned to reads the entries
+    // kept with its activities (`projectKeptTimeline`), so its list keeps its rows.
+    const projection =
+      previous?.threadKey === activeThreadKey
+        ? project(previous.projection)
+        : projectKeptTimeline(threadActivities, activeThreadKey, project);
     timelineProjectionRef.current = { threadKey: activeThreadKey, projection };
+    if (previous?.threadKey === activeThreadKey)
+      keepTimelineProjection(threadActivities, activeThreadKey, projection);
     mateDiagnostics.record({
       kind: "history-stage",
       environmentId,
@@ -3309,6 +3327,7 @@ function ConversationView(props: ChatViewProps) {
     timelineProjectionRef,
     activeThreadKey,
     activeThread?.proposedPlans,
+    threadActivities,
     timelineMessages,
     turnPlans,
     workLogEntries,
@@ -3531,9 +3550,9 @@ function ConversationView(props: ChatViewProps) {
         : 0,
     readAlong: colleagueReadOnly !== null,
   });
-  useLayoutEffect(() => {
-    if (readAlongRoom !== readAlongRoomState) setReadAlongRoom(readAlongRoom);
-  }, [readAlongRoom, readAlongRoomState]);
+  // Kept as it is derived, in the render that derived it: kept after the commit, every switch drew
+  // the conversation a second time in its first frame to store a room nobody had asked for.
+  if (readAlongRoom !== readAlongRoomState) setReadAlongRoom(readAlongRoom);
   const warmTimelineAsk = useWarmTimelineAsk();
   const rememberedInset = rememberedTimelineInset(routeThreadKey);
   const timelineInsetMeasured = composerOverlaySettledFor === routeThreadKey;
@@ -4399,7 +4418,8 @@ function ConversationView(props: ChatViewProps) {
   // The Mate's crew: the board's tab exists only while its status says a crew
   // is, or could be, set up; its view gives the strip its crew group and a
   // crew thread its crewmate.
-  const crew = useCrew(activeThreadEnvironmentId);
+  // The crew, not how fresh it is: nothing here shows or acts on its freshness.
+  const crew = useCrewValue(activeThreadEnvironmentId);
   // What this viewer may change on the crew: the answer the server's door reaches (D6).
   const crewDoor = useCrewAccess(activeThreadEnvironmentId, crew.snapshot);
   const openAgentAuthDialog = useCallback(() => {
@@ -5299,7 +5319,8 @@ function ConversationView(props: ChatViewProps) {
       for (const message of existing) {
         revokeUserMessagePreviewUrls(message);
       }
-      return [];
+      // None to drop is no change: a new empty list rendered the view again after every switch.
+      return existing.length === 0 ? existing : [];
     });
     resetLocalDispatch();
     setExpandedImage(null);
@@ -5363,10 +5384,17 @@ function ConversationView(props: ChatViewProps) {
   const nowMinute = useNowMinute();
   const [isRestoringThreadBranch, setIsRestoringThreadBranch] = useState(false);
   const [branchRestoreConfirmOpen, setBranchRestoreConfirmOpen] = useState(false);
+  // Whether the composer holds anything is read only where it is asked: read plain, a draft's
+  // first key rendered this whole view to tell two readers that almost never look.
+  const branchAdviceComposerHasContent = useComposerDraftStore(
+    (store) =>
+      localCheckoutBranchMismatch !== null &&
+      composerDraftHasUserContent(store.getComposerDraft(composerDraftTarget)),
+  );
   const branchAdvice = useBranchAdvice({
     threadKey: activeThread ? routeThreadKey : null,
     mismatch: localCheckoutBranchMismatch,
-    composerHasContent: composerHasUnsentContent,
+    composerHasContent: branchAdviceComposerHasContent,
   });
   const activeBranchMismatchKey = branchAdvice.key;
   const showBranchMismatchBanner = branchAdvice.visible;
@@ -5615,11 +5643,17 @@ function ConversationView(props: ChatViewProps) {
   // Typing here while the Mate works in another of its chats, Send's hover says so
   // (`ConversationStrip.tsx`). A crewmate works on its own copy of the code, so another chat's
   // work is no warning there.
-  const alsoWorkingHint = useAlsoWorkingHint({
+  const alsoWorkingWhileTyping = useAlsoWorkingHint({
     environmentId,
     currentThreadId: isServerThread ? threadId : null,
-    typing: composerHasUnsentContent && activeThreadShell?.crew == null,
+    typing: activeThreadShell?.crew == null,
   });
+  const alsoWorkingHint = useComposerDraftStore((store) =>
+    alsoWorkingWhileTyping !== null &&
+    composerDraftHasUserContent(store.getComposerDraft(composerDraftTarget))
+      ? alsoWorkingWhileTyping
+      : null,
+  );
   const activeCrewOrigin = activeThreadShell?.crew ?? null;
   // An empty crewmate chat opens on its own empty state: a save's seam from
   // before its first message is not drawn (`crewChatSeams.ts`).
