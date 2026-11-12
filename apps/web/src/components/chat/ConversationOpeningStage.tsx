@@ -121,6 +121,7 @@ export function ConversationOpeningProvider({ children }: { readonly children: R
           current.stage.activity === next.activity &&
           current.stage.timestampFormat === next.timestampFormat &&
           current.stage.notice === next.notice &&
+          current.stage.refusal === next.refusal &&
           current.stage.readPending === next.readPending &&
           current.stage.children === next.children &&
           current.stage.name === next.name &&
