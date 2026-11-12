@@ -195,6 +195,8 @@ export function buildZcpServiceImportYaml(input: {
     enableSubdomainAccess: true
     verticalAutoscaling:
       minRam: 2
+      minFreeRamGB: 0.5
+      minFreeRamPercent: 10
     envSecrets:
       VSCODE_PASSWORD: "${input.vscodePassword}"
       ZCP_VSCODE_AUTH_ENABLED: "true"
