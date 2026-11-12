@@ -180,7 +180,6 @@ export function writeOverviewCardsMemory(
 
 const MENU_ROWS_KEY = "mate:menu-rows:v2";
 const CALLED_KEY = "mate:called:v1";
-const FOOTERS_KEY = "mate:footers:v1";
 
 /**
  * How many rows the last visit's menu drew in the organization `orgId`: what its loading rows
@@ -209,7 +208,10 @@ export function writeMenuRowsMemory(
   }
 }
 
-/** What a load remembers for its first frame beside the Mates' names (`mateIdentityMemory`). */
+/**
+ * What a load remembers for its first frame beside the Mates' names (`mateIdentityMemory`), and
+ * `footers`, which an earlier build kept and none reads.
+ */
 const LOAD_MEMORY =
   /^mate:account:[^:]+:mate:(?:identities|overview-cards|menu-rows|called|chief|footers|boot-page):v\d+$/u;
 
@@ -285,72 +287,6 @@ export function writeCalledMemory(
     const held = readRecord(CALLED_KEY, storage);
     if (held[orgId] === called) return;
     storage?.setItem(CALLED_KEY, JSON.stringify({ ...held, [orgId]: called }));
-  } catch {
-    /* A storage policy can make this visit forget. */
-  }
-}
-
-/** A conversation's foot as its last visit drew it: the composer, or someone else's strip. */
-export type RememberedFooter = "composer" | "read-only";
-
-/** As many conversations' feet as a person plausibly comes back to; the oldest are forgotten. */
-const MOST_FOOTERS = 48;
-
-/**
- * What stood at the foot of the conversation `threadKey` last time: its opening draws the
- * composer's box from its first frame only where a composer stood. `undefined` when nothing is
- * remembered, and the room is held unseen.
- */
-export function readFooterMemory(
-  threadKey: string,
-  storage: Pick<Storage, "getItem"> | undefined = accountStorage(),
-): RememberedFooter | undefined {
-  return footerOf(readRecord(FOOTERS_KEY, storage)[threadKey])?.footer;
-}
-
-/**
- * How tall the composer's box stood there, in px: taller than the composer alone while something
- * stands in it over the field (a question waiting for its answer). The opening draws its box that
- * tall from the first frame, so the composer takes its place without the box growing under the
- * eye. `undefined` where no height is remembered, and the box is the composer's own.
- */
-export function readFooterBoxMemory(
-  threadKey: string,
-  storage: Pick<Storage, "getItem"> | undefined = accountStorage(),
-): number | undefined {
-  return footerOf(readRecord(FOOTERS_KEY, storage)[threadKey])?.box;
-}
-
-/** A remembered foot as it is kept: `composer`, `composer:207`, `read-only`. */
-const FOOTER = /^(composer|read-only)(?::(\d{2,3}))?$/;
-
-function footerOf(
-  kept: unknown,
-): { readonly footer: RememberedFooter; readonly box: number | undefined } | undefined {
-  const match = typeof kept === "string" ? FOOTER.exec(kept) : null;
-  if (match === null) return undefined;
-  const footer = match[1] === "composer" ? "composer" : "read-only";
-  return { footer, box: footer === "composer" && match[2] ? Number(match[2]) : undefined };
-}
-
-export function writeFooterMemory(
-  threadKey: string,
-  footer: RememberedFooter,
-  /** The composer's box as it stands now, in px; nothing where it is not measured. */
-  box?: number,
-  storage: Pick<Storage, "getItem" | "setItem"> | undefined = accountStorage(),
-): void {
-  try {
-    const held = readRecord(FOOTERS_KEY, storage);
-    const next =
-      footer === "composer" && box !== undefined && box >= 10 && box < 1000
-        ? `composer:${Math.round(box)}`
-        : footer;
-    if (held[threadKey] === next) return;
-    const kept = Object.entries(held)
-      .filter(([key]) => key !== threadKey)
-      .slice(-(MOST_FOOTERS - 1));
-    storage?.setItem(FOOTERS_KEY, JSON.stringify(Object.fromEntries([...kept, [threadKey, next]])));
   } catch {
     /* A storage policy can make this visit forget. */
   }

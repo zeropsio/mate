@@ -128,7 +128,6 @@ import {
   useEffectEvent,
   useRef,
   useState,
-  type CSSProperties,
   type Dispatch,
   type SetStateAction,
 } from "react";
@@ -440,8 +439,6 @@ import {
   ConversationOpeningArrival,
   ConversationOpeningWaits,
 } from "./chat/ConversationOpeningStage";
-import { footStanding, footStands } from "./chat/footStanding";
-import { readFooterMemory, writeFooterMemory } from "~/zerops/mateIdentityMemory";
 import { useFillFact } from "~/lib/loadFills";
 import { useWarmTimelineAsk } from "./chat/warmTimeline";
 import { shouldTypeToFocusComposer } from "./chat/typeToFocus";
@@ -1801,8 +1798,6 @@ function ConversationView(props: ChatViewProps) {
   const [composerElementHeight, setComposerElementHeight] = useState(0);
   // The whole overlay while the agent asks (a question or an approval over the composer), 0 else.
   const [composerAskingHeight, setComposerAskingHeight] = useState(0);
-  // The composer's own box as it stands, remembered for the next opening (`writeFooterMemory`).
-  const [composerBoxHeight, setComposerBoxHeight] = useState(0);
   // What the composer covers of the list, as each conversation last had it
   // (`timelineInsets.ts`): a list shown in the press frame took the
   // conversation left's inset for that frame, and moved.
@@ -1844,32 +1839,9 @@ function ConversationView(props: ChatViewProps) {
   useLayoutEffect(() => {
     if (!composerOverlayElement) return;
 
-    // What the composer's box holds, watched too: under the stage the box is held at a height
-    // that is not its own, so only this says what the real foot will take.
-    let watched: Element | null = null;
-    const observer =
-      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => updateHeight());
     const updateHeight = () => {
       const overlay = composerOverlayElement.getBoundingClientRect();
-      // A remembered height decides the box the stage shows, never the list's room: under the
-      // stage the room is the real foot's, what the composer takes the moment it is seen, so the
-      // list is placed for it before it shows and nothing follows the box's change. Placed for
-      // the held height, a view at the end glided 16 to 24 px as the conversation appeared.
-      const held = composerOverlayElement.getAttribute("data-opening-waits-foot") === "held";
-      const host = composerOverlayElement.querySelector<HTMLElement>(
-        '[data-slot="composer-shell"] > .chat-composer-glass-host',
-      );
-      const inner = host?.firstElementChild ?? null;
-      if (inner !== watched) {
-        if (watched !== null) observer?.unobserve(watched);
-        if (inner !== null) observer?.observe(inner);
-        watched = inner;
-      }
-      const real =
-        held && host != null && inner !== null
-          ? inner.getBoundingClientRect().height - host.getBoundingClientRect().height
-          : 0;
-      const nextHeight = Math.ceil(overlay.height + real);
+      const nextHeight = Math.ceil(overlay.height);
       if (nextHeight <= 0) return;
       // The conversation thins out beside the floating composer over the composer's own height,
       // from its top edge down (`conversation-scroll-fade`): written where the list reads it,
@@ -1885,18 +1857,6 @@ function ConversationView(props: ChatViewProps) {
       footing?.setProperty(
         "--composer-fade",
         `${card === null ? 0 : Math.max(0, Math.ceil(overlay.bottom - card.top))}px`,
-      );
-      // Its own foot only: under the stage the box is held at the height that stood before it
-      // (the previous conversation's on a switch), which is not this conversation's to remember.
-      if (!held) setComposerBoxHeight(card === null ? 0 : Math.round(card.height));
-      // The box as it is seen now, for the view entered next (`footStanding`).
-      footStands(
-        composerOverlayElement,
-        card !== null &&
-          (!held || composerOverlayElement.hasAttribute("data-box-stands")) &&
-          composerOverlayElement.querySelector("[data-standup-holds-composer]") === null
-          ? card.height
-          : null,
       );
       // Under the card nothing shows: the fade ends where the card does.
       footing?.setProperty(
@@ -1932,20 +1892,11 @@ function ConversationView(props: ChatViewProps) {
     };
 
     updateHeight();
-    if (observer === null) return;
+    if (typeof ResizeObserver === "undefined") return;
 
+    const observer = new ResizeObserver(updateHeight);
     observer.observe(composerOverlayElement);
-    // The stage's hand-over changes no size where the held box was the composer's own: read again.
-    const opening = new MutationObserver(updateHeight);
-    opening.observe(composerOverlayElement, {
-      attributes: true,
-      attributeFilter: ["data-opening-waits-foot"],
-    });
-    return () => {
-      observer.disconnect();
-      opening.disconnect();
-      footStands(composerOverlayElement, null);
-    };
+    return () => observer.disconnect();
   }, [composerOverlayElement]);
 
   const terminalUiState = useTerminalUiStateStore((state) =>
@@ -4518,29 +4469,10 @@ function ConversationView(props: ChatViewProps) {
     openProviderSetup,
     zeropsSignInDialog,
   ]);
-  // What stood at this conversation's foot, remembered for its next opening's first frame
-  // (`readFooterMemory`): its composer's box stands from then on, and is never hidden again.
-  // The foot holds the box that stands as this view is entered (`footStanding`): the one its
-  // opening drew from the device's memory on a reload, the one the person was looking at on a
-  // switch. As tall as it stands, while the stage waits; the composer takes its own height in the
-  // frame the conversation arrives. With no box standing (a Mate's own page made its link first)
-  // none appears ahead of the conversation, and where the device remembers that someone else
-  // writes here, memory decides.
-  const composerFoot = useMemo(() => {
-    const standing = footStanding();
-    const stands = standing !== undefined && readFooterMemory(routeThreadKey) !== "read-only";
-    return { stands, stood: stands ? standing : undefined };
-  }, [routeThreadKey]);
-  const composerBoxStands = composerFoot.stands;
-  const composerBoxStood = composerFoot.stood;
-  // Where a composer was shown here at the last visit it is drawn while who writes is read again
-  // (`composerBoxStands`), as HQ's word draws it before the Mate's own: it takes typing from the
-  // conversation's first frame and its line comes with the conversation, while sending waits for
-  // the answer (`admission.canSend`), which replaces it if someone else writes here now.
-  const zeropsFooter =
-    admission.footer === "held" && composerBoxStands ? "composer" : admission.footer;
+  const zeropsFooter = admission.footer;
   // Who writes here is read after the messages: the conversation's fill holds a moment for it,
-  // so the composer comes in with the conversation (`useFillFact`).
+  // so the composer comes in with the conversation (`useFillFact`). No box stands ahead of it:
+  // an empty one stood for as long as a slow Mate took to open, and went before the composer came.
   useFillFact("page", zeropsFooter !== "held");
   const admissionPlacement = useAgentAdmissionPlacement(admission.attention);
   const zeropsHeldDraft = useComposerDraftStore((store) =>
@@ -4549,16 +4481,6 @@ function ConversationView(props: ChatViewProps) {
   // A started conversation keeps its login; its admission item explains why Send waits.
   const zeropsSendBlockReason = admission.sendBlockReason;
   const zeropsArrivalHoldsComposer = admission.holdsComposer || mateSignIn;
-  // What was actually shown: a composer hidden while its Mate waits for a sign-in or a stand-up
-  // is no box to draw next time, and one drawn then would be taken back.
-  useEffect(() => {
-    if (admission.footer === "held") return;
-    writeFooterMemory(
-      routeThreadKey,
-      admission.footer === "composer" && !zeropsArrivalHoldsComposer ? "composer" : "read-only",
-      composerBoxHeight > 0 ? composerBoxHeight : undefined,
-    );
-  }, [admission.footer, composerBoxHeight, routeThreadKey, zeropsArrivalHoldsComposer]);
   const activeProjectDisplayName = zeropsChrome.projectName ?? activeProject?.title;
   const chromeLogicalProjectEnvironments = useMemo(
     () =>
@@ -9009,7 +8931,6 @@ function ConversationView(props: ChatViewProps) {
               as="div"
               foot
               ref={setComposerOverlayElement}
-              data-box-stands={composerBoxStands ? "" : undefined}
               data-conversation-footer=""
               data-chat-composer-overlay="true"
               data-chat-composer-hero={isDraftHeroState ? "true" : undefined}
@@ -9090,11 +9011,6 @@ function ConversationView(props: ChatViewProps) {
                     <div
                       data-room-held={zeropsFooter === "held" ? "" : undefined}
                       data-slot="composer-shell"
-                      style={
-                        composerBoxStood === undefined
-                          ? undefined
-                          : ({ "--box-stood": `${composerBoxStood}px` } as CSSProperties)
-                      }
                       className={cn(
                         "chat-composer-glass-shell relative mx-auto w-full max-w-3xl",
                         externalComposerDrawerAttached && "chat-composer-glass-shell-attached",
@@ -9177,9 +9093,7 @@ function ConversationView(props: ChatViewProps) {
                               sendDisabledReason={
                                 feedbackUploading
                                   ? "Sending feedback"
-                                  : // A composer drawn while who writes is still read cannot
-                                    // send yet either: the conversation is still loading.
-                                    threadDetailLoading || admission.footer === "held"
+                                  : threadDetailLoading
                                     ? "Messages loading"
                                     : // Out of reach, the send says why in the Mate's own words.
                                       (mateAwayWords ?? cloneSendBlockReason(cloneShown))

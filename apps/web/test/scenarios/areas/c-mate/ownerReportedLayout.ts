@@ -360,9 +360,9 @@ export function recordReload() {
     menuFoot: account,
     header: "main [data-chat-header]",
     controls: "main [data-chat-header] [data-panel-layout-controls]",
-    composer: 'main [data-slot="composer-shell"]',
   };
   const inner: Readonly<Record<string, string>> = {
+    composer: 'main [data-slot="composer-shell"]',
     footName: `${account} > span:nth-of-type(2) > span:first-child`,
     footRole: `${account} [data-zerops-surface="sidebar-account-role"] > span:first-child`,
     headerName: "main [data-chat-header] [data-conversation-mate-press] [data-opening-header] > *",
