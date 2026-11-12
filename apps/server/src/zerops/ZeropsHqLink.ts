@@ -14,7 +14,8 @@ import type { AdmissionLive, TicketFrame } from "./ZeropsTicketDoor.ts";
  *   the server was started with (`ZeropsEnvironment.hqOrigin`). While the container holds no key,
  *   nothing is dialled and the link waits as after a failed one.
  * - **Up:** once HQ answered the hello with its first state, the Mate's overview
- *   (`zeropsHqOverview.ts`): the whole of it first on every link, then only the sections that
+ *   (`zeropsHqOverview.ts`), held until the signers HQ kept, sent right after that state, are
+ *   applied: the whole of it first on every link, then only the sections that
  *   changed, at most once per `MATE_OVERVIEW_EVERY_MS`, looked at again when something it is made
  *   of moves — a domain event, the crew's snapshot, a login, the update line — and never on a
  *   timer; beside it the Mate's attention (`ZeropsMateAttention`), whole on every link and again at
@@ -512,8 +513,9 @@ export const makeZeropsHqLink = (
 
     /**
      * One link, opened with the project's key in its first frame, then relayed in the scope's
-     * lifetime until it closes: the overview up once HQ answered, pongs and HQ's frames down.
-     * Fails with why when there is no key or public origin, or the socket never opened.
+     * lifetime until it closes: the overview up once HQ answered and the signers it kept are
+     * applied, pongs and HQ's frames down. Fails with why when there is no key or public origin,
+     * or the socket never opened.
      */
     const openLink = Effect.fnUntraced(function* (handshake: HandshakeSignals) {
       const key = yield* options.readKey;
@@ -655,6 +657,9 @@ export const makeZeropsHqLink = (
       // HQ counts nothing the Mate says before it admitted the key with its first state.
       const onceAnswered = <A, E>(effect: Effect.Effect<A, E>) =>
         Deferred.await(answered).pipe(Effect.andThen(effect));
+      // HQ seeds the sign-in store with the signers it kept right after its first state, and takes
+      // the overview's signers as the truth: none goes out before that seed is applied.
+      const seeded = yield* Deferred.make<void>();
       // The tasks' reports, from HQ's first state on, on a link whose HQ does automated Mates.
       const reporting =
         tasks === undefined
@@ -759,7 +764,9 @@ export const makeZeropsHqLink = (
               Effect.flatMap((ok) => send({ type: "observe-credential-ack", id: frame.id, ok })),
             );
           case "signers":
-            return options.signers?.(frame.signers) ?? Effect.void;
+            return (options.signers?.(frame.signers) ?? Effect.void).pipe(
+              Effect.andThen(Deferred.succeed(seeded, undefined)),
+            );
           case "provider-keys":
             return options.automation?.keysHeard(frame.keys, frame.model) ?? Effect.void;
           case "task":
@@ -865,7 +872,7 @@ export const makeZeropsHqLink = (
           Effect.raceFirst(Effect.raceFirst(relay, silence), Deferred.await(ending)),
           Effect.all(
             [
-              onceAnswered(overviews),
+              onceAnswered(Deferred.await(seeded).pipe(Effect.andThen(overviews))),
               heard,
               onceAnswered(attention),
               onceAnswered(health),
