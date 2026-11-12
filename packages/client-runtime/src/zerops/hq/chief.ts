@@ -5,11 +5,6 @@
  * - `PUT /api/chief {projectId}` → HQ registers the project as the reader's own Chief, or moves
  *   their Chief there, and answers the registration it holds. It carries no key, so a set-up that
  *   lost its answer simply asks again.
- * - `PUT /api/chief/token` → HQ makes a personal token with the person's own access, keeps it for
- *   their Chief in place of any it kept and answers `204`; the token never leaves HQ, and the body
- *   names none. `DELETE /api/chief/token` → HQ keeps none; their Chief stays registered. Both delete
- *   the token they let go of in Zerops. Its state reaches the client only as the Chief's person
- *   facts (`chiefToken`), never as these answers.
  * - `GET /api/proposals?ids=…` → the decisions HQ holds of those proposals, at most
  *   {@link PROPOSAL_IDS_PER_READ} per call.
  * - `PUT /api/proposals/:id` → one decision, then once how an approval ended: `decision` is
@@ -70,10 +65,6 @@ export const PROPOSAL_IDS_PER_READ = 100;
 
 export interface HqChiefCalls {
   readonly setChief: (projectId: string) => Promise<HqChiefRegistration>;
-  /** HQ makes and keeps the person's token for their Chief, replacing any it kept. */
-  readonly keepChiefToken: () => Promise<void>;
-  /** HQ keeps no token for the person's Chief any more. */
-  readonly forgetChiefToken: () => Promise<void>;
   /** Every decision HQ holds of `ids`, read {@link PROPOSAL_IDS_PER_READ} at a time. */
   readonly proposalDecisions: (
     ids: ReadonlyArray<string>,
@@ -117,20 +108,6 @@ export function makeChiefCalls({
           true,
         ),
       ),
-    keepChiefToken: async () => {
-      await authorized(
-        "/api/chief/token",
-        { method: "PUT", body: JSON.stringify(await withAccess({})) },
-        true,
-      );
-    },
-    forgetChiefToken: async () => {
-      await authorized(
-        "/api/chief/token",
-        { method: "DELETE", body: JSON.stringify(await withAccess({})) },
-        true,
-      );
-    },
     proposalDecisions: async (ids, signal) => {
       const unique = [...new Set(ids)];
       const batches: string[][] = [];
