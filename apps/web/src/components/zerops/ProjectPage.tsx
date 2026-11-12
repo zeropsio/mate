@@ -54,6 +54,7 @@ import { spendProjectIds } from "./projects/projectSpend.logic";
 import { groupRepository } from "./projects/projectHistory.logic";
 import { ProjectAutomation, ProjectAutomationRow } from "./projectAutomation/ProjectAutomation";
 import { ProjectMerging, ProjectMergingRow } from "./projectMerging/ProjectMerging";
+import { openMains } from "./projectMerging/projectMerging.logic";
 import { useReleaseOffer } from "./ZeropsReleaseVerb";
 import { fixProblemOf, type ProductionChip } from "./SidebarProductionChip.logic";
 import { placeLabel } from "./projects/projectCard.logic";
@@ -156,6 +157,7 @@ function ProjectPage<T>({
   const repos = flow?.codeRepos ?? flow?.repos;
   // Who merges: one read and one write for the row and the section it opens.
   const merging = useAppMergers(groupId);
+  const openOnGithub = useMemo(() => openMains(repos), [repos]);
   const setup: ProjectPageSetup = {
     rows: (open) => (
       <>
@@ -172,13 +174,13 @@ function ProjectPage<T>({
         )}
         <ProjectAutomationRow groupId={groupId} onManage={open.automation} />
         <ProjectPeopleRow groupId={groupId} onManage={open.access} />
-        <ProjectMergingRow merging={merging} onManage={open.merging} />
+        <ProjectMergingRow merging={merging} onManage={open.merging} open={openOnGithub} />
         <ProjectSpendRow appId={groupId} projectIds={spendIds} />
       </>
     ),
     access: <ProjectPeople groupId={groupId} />,
     automation: <ProjectAutomation groupId={groupId} name={groupName} repos={repos} />,
-    merging: <ProjectMerging merging={merging} />,
+    merging: <ProjectMerging merging={merging} open={openOnGithub} />,
   };
   return (
     <ProjectPageBody

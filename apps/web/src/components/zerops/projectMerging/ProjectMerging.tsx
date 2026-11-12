@@ -4,13 +4,19 @@
  * or only the organization's Owner and Admins and the people picked. An Owner or Admin changes it
  * with one Save; anyone else reads who merges, by name: whom to ask. HQ enforces it at the merge
  * (`not_app_merger`).
+ *
+ * The limit holds in Mate. Where the project's code is on GitHub and `main` there takes a push past
+ * Mate (`openMains`), whoever sets the limit is told so, with what closes it: on the row under its
+ * line, and in the section while a limit is chosen.
  */
 import { MERGERS_NEED_UPDATE, MERGERS_WRITERS } from "@t3tools/client-runtime/zerops/hq";
 import type { MembersRead } from "@t3tools/client-runtime/data";
+import { TriangleAlertIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { useMergingMembers, type AppMergers, type MergingPress } from "~/zerops/useAppMergers";
 
+import { Alert, AlertAction, AlertDescription, AlertTitle } from "../../ui/alert";
 import { Button } from "../../ui/button";
 import { Checkbox } from "../../ui/checkbox";
 import { Label } from "../../ui/label";
@@ -27,10 +33,14 @@ import {
   mergingNow,
   mergingPeople,
   mergingSave,
+  OPEN_MAIN_LINE,
   type MergersPeople,
   type MergingDraft,
   type MergingPerson,
+  type OpenMain,
 } from "./projectMerging.logic";
+
+const NONE_OPEN: ReadonlyArray<OpenMain> = [];
 
 /**
  * The Merging row of a project page's side column: where the setting stands in one line, and
@@ -39,12 +49,17 @@ import {
  */
 export function ProjectMergingRow({
   merging,
+  open = NONE_OPEN,
   onManage,
 }: {
   readonly merging: Pick<AppMergers, "people" | "older" | "editable">;
+  /** The project's repositories whose `main` is open on GitHub (`openMains`). */
+  readonly open?: ReadonlyArray<OpenMain> | undefined;
   readonly onManage: (from: HTMLElement) => void;
 }) {
   const { people, older, editable } = merging;
+  // Said to whoever can close it, and only where a limit stands for it to undo.
+  const stillOpen = editable === true && people != null && open.length > 0;
   return (
     <SetupRow
       action={
@@ -57,7 +72,7 @@ export function ProjectMergingRow({
       label="Merging"
       surface="project-merging-row"
     >
-      <div className="flex min-h-7 min-w-0 items-center">
+      <div className="flex min-h-7 min-w-0 flex-col justify-center">
         {older ? (
           <span className="text-line text-muted-foreground">{MERGERS_NEED_UPDATE}</span>
         ) : people === undefined ? (
@@ -65,6 +80,11 @@ export function ProjectMergingRow({
         ) : (
           <span className="text-sm text-foreground">{mergingLine(people)}</span>
         )}
+        {stillOpen ? (
+          <span className="text-line text-warning-foreground" data-zerops-merging-open-main="">
+            {OPEN_MAIN_LINE}
+          </span>
+        ) : null}
       </div>
     </SetupRow>
   );
@@ -91,7 +111,14 @@ export function mergingPeopleView(
 }
 
 /** The section over the account: the organization's members, and the draft being edited. */
-export function ProjectMerging({ merging }: { readonly merging: AppMergers }) {
+export function ProjectMerging({
+  merging,
+  open = NONE_OPEN,
+}: {
+  readonly merging: AppMergers;
+  /** The project's repositories whose `main` is open on GitHub (`openMains`). */
+  readonly open?: ReadonlyArray<OpenMain> | undefined;
+}) {
   const members = useMergingMembers();
   // `null`: nothing edited, so the choice follows what stands.
   const [edited, setEdited] = useState<MergingDraft | null>(null);
@@ -112,6 +139,7 @@ export function ProjectMerging({ merging }: { readonly merging: AppMergers }) {
       draft={draft}
       editable={save === undefined ? undefined : merging.editable}
       onDraft={setEdited}
+      open={open}
       onSave={() => {
         save?.(draftSends(draft), () => {
           setEdited(null);
@@ -137,6 +165,7 @@ export function ProjectMergingView({
   choices,
   editable,
   press,
+  open = NONE_OPEN,
   onDraft,
   onSave,
 }: {
@@ -147,6 +176,8 @@ export function ProjectMergingView({
   /** An Owner or Admin changes it; `false` reads it; `undefined` while their role is not read. */
   readonly editable: boolean | undefined;
   readonly press: MergingPress;
+  /** The project's repositories whose `main` is open on GitHub (`openMains`). */
+  readonly open?: ReadonlyArray<OpenMain> | undefined;
   readonly onDraft: (draft: MergingDraft) => void;
   readonly onSave: () => void;
 }) {
@@ -204,6 +235,9 @@ export function ProjectMergingView({
           ))}
         </ul>
       )}
+      {editable === true && draft.limited
+        ? open.map((main) => <OpenMainNote key={main.repository} main={main} />)
+        : null}
       {editable === true ? (
         <div className="flex min-h-7 items-center gap-3">
           <Button disabled={!enabled || saving} onClick={onSave} size="sm" variant="primary">
@@ -219,6 +253,37 @@ export function ProjectMergingView({
         </div>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * What a limit does not hold: a repository's `main` on GitHub, which a Mate working in the project
+ * can still push to. Says so, what closes it, and leads to where that is done.
+ */
+function OpenMainNote({ main }: { readonly main: OpenMain }) {
+  return (
+    <Alert controlAlignment="first-line" data-zerops-merging-open-main="" variant="warning">
+      <TriangleAlertIcon aria-hidden="true" />
+      <AlertTitle>GitHub's main is still open</AlertTitle>
+      <AlertDescription>
+        <p>
+          This limit holds Merge in Mate. On GitHub, a Mate working here can still push to main of{" "}
+          <span className="font-mono text-foreground">{main.repository}</span>.
+        </p>
+        <p>{main.fix}</p>
+      </AlertDescription>
+      {main.rulesUrl === undefined ? null : (
+        <AlertAction>
+          <Button
+            render={<a href={main.rulesUrl} rel="noreferrer" target="_blank" />}
+            size="sm"
+            variant="secondary"
+          >
+            Open its rules on GitHub
+          </Button>
+        </AlertAction>
+      )}
+    </Alert>
   );
 }
 

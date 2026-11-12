@@ -4,7 +4,8 @@
  * (`/design-overview.html?page=tea`). Made-up people only.
  *
  * `?merging=` takes `all` (every state, one under another) or one of `everyone`, `limited`,
- * `saving`, `refused`, `member`, `member-everyone`, `member-unseen`, `older`, `reading`, `left`. A state an Owner or Admin can edit is
+ * `saving`, `refused`, `member`, `member-everyone`, `member-unseen`, `older`, `reading`, `left`,
+ * `open-main`, `open-main-permission`. A state an Owner or Admin can edit is
  * live: the choice and the picks change, and Save rests where it would.
  *
  * Fixtures only. Nothing here ships.
@@ -22,8 +23,10 @@ import {
   MERGING_TITLE,
   mergingDraft,
   mergingPeople,
+  openMains,
   type MergersPeople,
   type MergingDraft,
+  type OpenMain,
 } from "~/components/zerops/projectMerging/projectMerging.logic";
 import { SectionAction, SectionLabel } from "~/components/zerops/system";
 import type { MergingPress } from "~/zerops/useAppMergers";
@@ -49,6 +52,24 @@ const MEMBERS = [
 
 const TWO_NAMED: MergersPeople = ["u-ada", "u-sam"];
 
+/** A repository on GitHub through the organization's app, as GitHub's rules on its main stand. */
+const onGithub = (governance: "no_ruleset" | "permission_not_approved") =>
+  openMains([
+    {
+      remote: {
+        url: "https://github.com/acme/tea-shop.git",
+        repositoryId: "7",
+        keptAt: "2026-10-17T09:00:00Z",
+        keptBy: "Mira Osei",
+        expiresAt: null,
+        invalidSince: null,
+        via: "app",
+        githubAppId: 123456,
+        governance,
+      },
+    },
+  ]);
+
 interface MergingState {
   readonly title: string;
   /** Who merges as HQ holds it. */
@@ -61,6 +82,8 @@ interface MergingState {
   readonly reading?: boolean;
   /** Zerops does not let this person read the organization's people (a guest). */
   readonly unseen?: boolean;
+  /** The project's repositories whose main is open on GitHub. */
+  readonly open?: ReadonlyArray<OpenMain>;
 }
 
 export const MERGING_STATES = {
@@ -125,6 +148,18 @@ export const MERGING_STATES = {
     current: ["u-ada", "u-ines"],
     editable: true,
   },
+  "open-main": {
+    title: "Limited, and GitHub's main has no ruleset: a Mate can still push to it",
+    current: TWO_NAMED,
+    editable: true,
+    open: onGithub("no_ruleset"),
+  },
+  "open-main-permission": {
+    title: "Limited, and Mate's GitHub app cannot approve merges yet",
+    current: TWO_NAMED,
+    editable: true,
+    open: onGithub("permission_not_approved"),
+  },
 } satisfies Readonly<Record<string, MergingState>>;
 
 export type MergingStateName = keyof typeof MERGING_STATES;
@@ -165,6 +200,7 @@ export function MergingBody({ state }: { readonly state: MergingState }) {
       editable={state.editable}
       onDraft={setDraft}
       onSave={nothing}
+      open={state.open}
       press={state.press ?? { kind: "idle" }}
     />
   );
@@ -182,6 +218,7 @@ export function MergingRow({
     <ProjectMergingRow
       merging={{ people: state.current, older: state.older === true, editable: state.editable }}
       onManage={onManage}
+      open={state.open}
     />
   );
 }
