@@ -393,7 +393,7 @@ describe("ZeropsOffboarding after the access list goes stale", () => {
         assert.deepStrictEqual(yield* Ref.get(scene.signedOut), []);
 
         yield* Ref.set(scene.answer, sceneRead({ [JAN]: "OWNER" }));
-        yield* scene.list.admits("nobody");
+        yield* Queue.offer(scene.events, { _tag: "connected" });
         yield* TestClock.adjust(Duration.zero);
         const after = Option.getOrThrow(yield* scene.list.current);
         assert.deepStrictEqual(after.members, before.members);

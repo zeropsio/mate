@@ -9,6 +9,7 @@ import { ZeropsSetup } from "./zerops/ZeropsSetup.ts";
 import { actingIn, hqKeyOf, ZeropsHqLink } from "./zerops/ZeropsHqLink.ts";
 import { ZeropsMateOwner } from "./zerops/ZeropsMateOwner.ts";
 import { administersProject, ZeropsMateAccessList } from "./zerops/ZeropsMateAccessList.ts";
+import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import { ThreadFileWrites } from "./zerops/ThreadFileWrites.ts";
 import {
   sameUsageLimitCommandCoverage,
@@ -395,11 +396,12 @@ const makeWsRpcLayer = (
   currentSession: EnvironmentAuth.AuthenticatedSession,
   /** The connection's own scope: it closes when the socket ends. */
   connectionScope: Scope.Scope,
+  /** The registry that admitted this socket on HQ's ticket; none where no ticket did. */
+  zeropsConnections: ZeropsConnections["Service"] | undefined,
 ) =>
   WsRpcGroup.toLayer(
     Effect.gen(function* () {
       const currentSessionId = currentSession.sessionId;
-      const zeropsConnections = yield* Effect.serviceOption(ZeropsConnections);
       const projectionSnapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
       const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
       const keybindings = yield* Keybindings.Keybindings;
@@ -1361,11 +1363,7 @@ const makeWsRpcLayer = (
           zeropsCrewProposals,
           subject: currentSession.subject,
           connection: { id: currentSessionId, scope: connectionScope },
-          // Only where connections enter through HQ's tickets, as the upgrade route decides.
-          zeropsConnections:
-            config.zerops !== undefined && config.zeropsFixtures === undefined
-              ? Option.getOrUndefined(zeropsConnections)
-              : undefined,
+          zeropsConnections,
           admit,
         }),
         ...registerCrewRpc({
@@ -2153,12 +2151,21 @@ export const websocketRpcRouteLayer = HttpRouter.add(
             hqLink.standing,
             (owner, standing) => actingIn(owner, standing, session.subject),
           );
-    // An admin of the Mate's project keeps someone else's Mate current: asked per call too.
+    // An admin of the Mate's project keeps someone else's Mate current: asked per call too, of
+    // the role the connection's last ticket gave it where one admitted the socket.
     const accessList = Option.getOrUndefined(yield* Effect.serviceOption(ZeropsMateAccessList));
     const administers =
-      accessList === undefined
-        ? Effect.succeed(false)
-        : Effect.map(accessList.current, (list) => administersProject(list, session.subject));
+      handle !== undefined && Option.isSome(connections)
+        ? connections.value
+            .current(handle)
+            .pipe(
+              Effect.map(
+                (current) => Option.isSome(current) && roleAtLeast(current.value.role, "ADMIN"),
+              ),
+            )
+        : accessList === undefined
+          ? Effect.succeed(false)
+          : Effect.map(accessList.current, (list) => administersProject(list, session.subject));
     const rpcWebSocketHttpEffect = yield* Effect.gen(function* () {
       const { protocol, httpEffect } = yield* RpcServer.makeProtocolWithHttpEffectWebsocket;
       // Terminal output streams run ahead of the client's acks inside a small
@@ -2177,7 +2184,11 @@ export const websocketRpcRouteLayer = HttpRouter.add(
       return httpEffect;
     }).pipe(
       Effect.provide(
-        makeWsRpcLayer(session, connectionScope).pipe(
+        makeWsRpcLayer(
+          session,
+          connectionScope,
+          handle !== undefined ? Option.getOrUndefined(connections) : undefined,
+        ).pipe(
           Layer.provideMerge(RpcSerialization.layerJson),
           // Request fibers run in the handlers' context, so this reporter sees
           // their defects, not the rest of the server's.

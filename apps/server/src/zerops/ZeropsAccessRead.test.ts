@@ -4,7 +4,7 @@ import * as Layer from "effect/Layer";
 import { HttpClient, HttpClientResponse } from "effect/http";
 
 import * as ZeropsAccessReadModule from "./ZeropsAccessRead.ts";
-import { ownAccessList, ticketVerdict } from "./ZeropsMateAccessList.ts";
+import { ownAccessList } from "./ZeropsMateAccessList.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 
 const PROJECT_ID = "P_MATE";
@@ -96,10 +96,6 @@ describe("ZeropsAccessRead", () => {
         assert.deepStrictEqual(list.members, [
           { userId: "owner", role: "OWNER", visibility: "open" },
         ]);
-        assert.strictEqual(ticketVerdict(list, "owner", 0), "open");
-        for (const userId of ["admin", "org-owner", "basic", "reader"]) {
-          assert.strictEqual(ticketVerdict(list, userId, 0), "not_in_list");
-        }
       }).pipe(Effect.provide(zerops.layer));
     },
   );

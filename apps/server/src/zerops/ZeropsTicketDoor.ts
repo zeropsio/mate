@@ -1,5 +1,8 @@
-/** One-use HQ tickets admit a connection; they never carry a role or become a session. */
-import type { KeyLinkDown } from "@t3tools/shared/mateLink";
+/**
+ * One-use HQ tickets admit a connection at the role HQ read for its person, or extend one already
+ * open; a ticket never becomes a session.
+ */
+import type { KeyLinkDown, MateTicketRole } from "@t3tools/shared/mateLink";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -24,6 +27,8 @@ export interface ConsumedTicket {
   readonly live: AdmissionLive;
   /** How long a connection opened or extended with it may stay open, where HQ said. */
   readonly grantSeconds?: number;
+  /** The role HQ read for its person at issue; none where Zerops did not answer HQ. */
+  readonly role?: MateTicketRole;
 }
 
 export class ZeropsTicketDoor extends Context.Service<
@@ -45,6 +50,7 @@ interface HeldTicket {
   readonly expiresAtMs: number;
   readonly live: AdmissionLive;
   readonly grantSeconds: number | undefined;
+  readonly role: MateTicketRole | undefined;
   used: boolean;
 }
 
@@ -68,6 +74,7 @@ export const make = Effect.sync(() => {
           expiresAtMs: now + Math.min(frame.expiresIn, 60) * 1000,
           live,
           grantSeconds: frame.grantSeconds,
+          role: frame.role,
           used: false,
         });
     }),
@@ -83,6 +90,7 @@ export const make = Effect.sync(() => {
         identity: held.identity,
         live: held.live,
         ...(held.grantSeconds === undefined ? {} : { grantSeconds: held.grantSeconds }),
+        ...(held.role === undefined ? {} : { role: held.role }),
       });
     }),
     heldSessions: (now) =>

@@ -82,10 +82,7 @@ it("HTTP readiness does not claim a socket frame; transport counts bytes in both
   }
 });
 
-it.each([
-  { title: "a refused Mate link ends the open with HQ's reason", kind: "link" as const },
-  { title: "a refused ticket ends the open with the Mate's reason", kind: "ticket" as const },
-])("$title", async ({ kind }) => {
+it("a refused Mate link ends the open with HQ's reason", async () => {
   const accepted = Promise.withResolvers<WebSocket>();
   const upstream = await serve(
     () => ({ body: {} }),
@@ -105,16 +102,8 @@ it.each([
       if (socket.readyState === WebSocket.OPEN) resolve();
       else socket.once("open", resolve);
     });
-    if (kind === "link") peer.close(4403, "key_too_wide");
-    else
-      socket.send(
-        JSON.stringify({ type: "ticket_refused", ticket: "fixture", reason: "not_in_list" }),
-      );
-    await expect(waiting).rejects.toThrow(
-      kind === "link"
-        ? "Mate Ada link refused: 4403 key_too_wide"
-        : "Mate Ada ticket refused: not_in_list",
-    );
+    peer.close(4403, "key_too_wide");
+    await expect(waiting).rejects.toThrow("Mate Ada link refused: 4403 key_too_wide");
   } finally {
     socket.terminate();
     await proxy.close();

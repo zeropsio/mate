@@ -487,11 +487,11 @@ export type MateLinkDown = typeof MateLinkDown.Type;
 /*
  * The keys model's link (mate-hq `spec/protocol.md`, "Mate link"): the Mate dials
  * HQ with nothing in the URL and proves itself with its project key in the first frame; HQ sends
- * its state. The Mate admits tickets through its own Zerops access list, further restricted by
- * HQ's known Chief opener (`ticket_refused` otherwise); it tells HQ nothing of that list but
- * whose raw membership or role may have changed (`person-changed`), and HQ sends none, and an
- * older HQ's `access` frame is no frame of this union. Today's frames of tasks, usage and
- * the update policy ride on it unchanged.
+ * its state. HQ's ticket names the person's role on the Mate's project as HQ read it at Zerops
+ * (`role`), and the Mate admits on that role; it keeps every ticket heard under a live admission
+ * and answers it `ticket-ack`. It tells HQ only whose raw membership or role may have changed
+ * (`person-changed`), and an older HQ's `access` frame is no frame of this union. Today's frames
+ * of tasks, usage and the update policy ride on it unchanged.
  * Today's `MateLinkUp`, `MateLinkDown` and `MateState` above stay for the HQ and clients that
  * still read them.
  */
@@ -522,6 +522,12 @@ export const LinkedMate = Schema.Struct({
 export type LinkedMate = typeof LinkedMate.Type;
 
 const Ticket = Schema.String.check(Schema.isMinLength(1));
+/**
+ * A person's effective role on the Mate's project as HQ read it at Zerops when it issued their
+ * ticket: the project's override, else the organisation role. HQ issues no ticket below Basic user.
+ */
+export const MateTicketRole = Schema.Literals(["BASIC_USER", "ADMIN", "OWNER"]);
+export type MateTicketRole = typeof MateTicketRole.Type;
 /**
  * The UUID of the admission of the project key a link runs under (`state.admission`), not a secret:
  * one that differs from the one the Mate last heard is a new admission, even of the same key.
@@ -598,15 +604,6 @@ export const KeyLinkUp = Schema.Union([
   ...LinkCommandResultUp.members,
   Schema.Struct({ type: Schema.Literal("key-refused") }),
   /**
-   * A ticket the Mate's own list does not admit, sent instead of `ticket-ack`: definitive.
-   * `list_unconfirmed`: Zerops has not confirmed the list within its hold, so the Mate cannot say.
-   */
-  Schema.Struct({
-    type: Schema.Literal("ticket_refused"),
-    ticket: Ticket,
-    reason: Schema.Literals(["not_in_list", "read_only", "list_unconfirmed"]),
-  }),
-  /**
    * A hint that the org membership or own-project role of the person `userId` may have changed,
    * as the Mate's own list saw its raw rows move; never a role or a verdict, which HQ reads from
    * Zerops itself. Sent once HQ admitted the link, and lost if the link is down: never told again.
@@ -617,8 +614,20 @@ export const KeyLinkUp = Schema.Union([
   }),
 ]);
 export type KeyLinkUp = typeof KeyLinkUp.Type;
-/** Why the Mate refused a ticket (`ticket_refused`). */
-export type TicketRefusal = Extract<KeyLinkUp, { readonly type: "ticket_refused" }>["reason"];
+
+/** HQ's ticket: a one-use admission of one person's HQ session to the Mate, or an extension. */
+export const TicketDown = Schema.Struct({
+  type: Schema.Literal("ticket"),
+  ticket: Ticket,
+  userId: Schema.String,
+  sessionId: Schema.String,
+  expiresIn: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
+  // How long a connection opened or extended with this ticket may stay open.
+  grantSeconds: Schema.optionalKey(Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0))),
+  // The role the person enters at; absent only where Zerops did not answer HQ, and then the
+  // ticket only extends a connection already open.
+  role: Schema.optionalKey(MateTicketRole),
+});
 
 export const KeyLinkDown = Schema.Union([
   AutoUpdatePolicyDown,
@@ -630,15 +639,7 @@ export const KeyLinkDown = Schema.Union([
     admission: Admission,
     ...StateExtras,
   }),
-  Schema.Struct({
-    type: Schema.Literal("ticket"),
-    ticket: Ticket,
-    userId: Schema.String,
-    sessionId: Schema.String,
-    expiresIn: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
-    // How long a connection opened or extended with this ticket may stay open.
-    grantSeconds: Schema.optionalKey(Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0))),
-  }),
+  TicketDown,
   Schema.Struct({ type: Schema.Literal("close-session"), sessionId: Schema.String }),
   Schema.Struct({
     type: Schema.Literal("git-credential"),

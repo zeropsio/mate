@@ -25,7 +25,6 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
-import type * as Option from "effect/Option";
 import * as Scope from "effect/Scope";
 import { FetchHttpClient, HttpServer } from "effect/http";
 
@@ -37,7 +36,6 @@ import { ServerRuntimeStartup } from "../src/serverRuntimeStartup.ts";
 import { MateEngine, type MateEngineService } from "../src/engine/MateEngine.ts";
 import { ZeropsMateAttention } from "../src/zerops/ZeropsMateAttention.ts";
 import { ZeropsOffboarding } from "../src/zerops/ZeropsOffboarding.ts";
-import { type AccessList, ZeropsMateAccessList } from "../src/zerops/ZeropsMateAccessList.ts";
 import { ZeropsBrowserStream } from "../src/zerops/ZeropsBrowserStream.ts";
 import {
   ProviderInstances,
@@ -85,10 +83,6 @@ export interface ScenarioMate {
   readonly providers: ProviderInstances["Service"];
   /** Runs the production signer check after a platform membership input. */
   readonly offboarding: ZeropsOffboarding["Service"];
-  /** The Mate's own access list as it holds it now, on its own clock. */
-  readonly accessList: Effect.Effect<Option.Option<AccessList>>;
-  /** Runs the Mate's admission, including its own read for an absent person. */
-  readonly accessAdmission: ZeropsMateAccessList["Service"]["admits"];
   readonly root: string;
   readonly homeDir: string;
   readonly stateDir: string;
@@ -171,10 +165,6 @@ export async function startScenarioMate(options: ScenarioMateOptions): Promise<S
         checkNow: offboardingService.checkNow.pipe(Effect.provideService(Clock.Clock, clock)),
       };
       const attention = yield* ZeropsMateAttention.pipe(Effect.provide(context));
-      const access = yield* ZeropsMateAccessList.pipe(Effect.provide(context));
-      const accessList = access.current.pipe(Effect.provideService(Clock.Clock, clock));
-      const accessAdmission: ScenarioMate["accessAdmission"] = (userId) =>
-        access.admits(userId).pipe(Effect.provideService(Clock.Clock, clock));
       const browser = yield* ZeropsBrowserStream.pipe(Effect.provide(context));
       const providers = yield* ProviderInstances.pipe(
         Effect.provide(ProviderInstancesLayer),
@@ -184,8 +174,6 @@ export async function startScenarioMate(options: ScenarioMateOptions): Promise<S
         port: address.port,
         engine,
         attention,
-        accessList,
-        accessAdmission,
         browser,
         providers,
         offboarding,
@@ -256,14 +244,6 @@ export async function startScenarioMate(options: ScenarioMateOptions): Promise<S
     get offboarding() {
       if (!running) throw new Error("Scenario Mate is stopped");
       return running.offboarding;
-    },
-    get accessList() {
-      if (!running) throw new Error("Scenario Mate is stopped");
-      return running.accessList;
-    },
-    get accessAdmission() {
-      if (!running) throw new Error("Scenario Mate is stopped");
-      return running.accessAdmission;
     },
     get attention() {
       if (!running) throw new Error("Scenario Mate is stopped");

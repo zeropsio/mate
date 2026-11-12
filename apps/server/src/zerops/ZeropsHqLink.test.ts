@@ -818,70 +818,6 @@ describe("ZeropsHqLink", () => {
   );
 
   it.effect(
-    "Decision: The Mate's admission list is computed from its own Zerops stream and REST pair only; the relayed `access` frame, its `heard` state, its merge into the list, its contract field and its tests are deleted (Drops-test trailers). Decision: What must NOT happen: no new frame; no polling; no second list.",
-    () =>
-      Effect.gen(function* () {
-        // Zerops names Jan alone; the older HQ's list opens the project for Bob.
-        const scene = yield* makeAccessScene({ jan: "OWNER" });
-        const tickets = yield* Tickets.make;
-        const connections = yield* Connections.make.pipe(
-          Effect.provideService(Access.ZeropsMateAccessList, scene.list),
-          Effect.provideService(Tickets.ZeropsTicketDoor, tickets),
-          Effect.provide(NodeCrypto.layer),
-        );
-        const sockets: Array<FakeSocket> = [];
-        const answers = yield* Queue.unbounded<unknown>();
-        yield* makeZeropsHqLink({
-          hqOrigin: "https://hq.test",
-          serviceId: "svc-mate",
-          publicOrigin: "https://mate.example",
-          readKey: Effect.succeed("project-key"),
-          connect: (url) => {
-            const socket = new FakeSocket(url);
-            socket.onSent = (message) => {
-              if (message.type === "ticket-ack" || message.type === "ticket_refused")
-                Queue.offerUnsafe(answers, message);
-            };
-            sockets.push(socket);
-            return socket;
-          },
-          overview: Effect.succeed(Option.none()),
-          changes: Stream.never,
-          attention: Stream.never,
-          ticket: connections.ticket,
-          end: connections.end,
-          heldSessions: connections.heldSessions,
-          gitCredential: () => Effect.void,
-          gitFingerprint: Effect.succeed(Option.none()),
-        });
-        const socket = yield* linked(sockets, 0);
-        const ticket = (userId: string) => ({
-          type: "ticket",
-          ticket: `t-${userId}`,
-          userId,
-          sessionId: "hq-session",
-          expiresIn: 60,
-        });
-        socket.hear(olderAccess[0]);
-        socket.hear(ticket("bob"));
-        assert.deepStrictEqual(yield* Queue.take(answers), {
-          type: "ticket_refused",
-          ticket: "t-bob",
-          reason: "not_in_list",
-        });
-        socket.hear(ticket("jan"));
-        assert.deepStrictEqual(yield* Queue.take(answers), {
-          type: "ticket-ack",
-          ticket: "t-jan",
-        });
-        assert.deepStrictEqual(
-          socket.sent.map((message) => message.type),
-          ["hello", "ticket_refused", "ticket-ack"],
-        );
-      }).pipe(Effect.scoped),
-  );
-
-  it.effect(
     "TC-6 and TC-8 the HQ link holds tickets before acknowledging and forwards sign-out to live connections",
     () =>
       Effect.gen(function* () {
@@ -940,6 +876,7 @@ describe("ZeropsHqLink", () => {
           userId: "jan",
           sessionId: "hq-session",
           expiresIn: 60,
+          role: "OWNER",
         });
         yield* Queue.take(acks);
         assert.deepEqual(heldAtAcknowledgement, [true]);
@@ -960,46 +897,6 @@ describe("ZeropsHqLink", () => {
         assert.deepEqual(closed, ["browser"]);
         assert.isTrue(Option.isNone(yield* connections.current("browser-ticket")));
       }).pipe(Effect.scoped),
-  );
-
-  it.effect(
-    "answers a ticket the Mate's own list does not open for with ticket_refused and its reason, instead of ticket-ack",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const verdicts = { jan: "open", eva: "read_only" } as const;
-          const { sockets } = yield* rig({
-            ticket: (frame) =>
-              Effect.succeed(
-                Effect.succeed(
-                  frame.userId in verdicts
-                    ? verdicts[frame.userId as keyof typeof verdicts]
-                    : "not_in_list",
-                ),
-              ),
-          });
-          const socket = yield* linked(sockets, 0);
-          for (const userId of ["jan", "eva", "token"])
-            socket.hear({
-              type: "ticket",
-              ticket: `t-${userId}`,
-              userId,
-              sessionId: "s",
-              expiresIn: 60,
-            });
-          yield* TestClock.adjust(Duration.zero);
-          assert.deepStrictEqual(
-            socket.sent.filter(
-              (message) => message.type === "ticket-ack" || message.type === "ticket_refused",
-            ),
-            [
-              { type: "ticket-ack", ticket: "t-jan" },
-              { type: "ticket_refused", ticket: "t-eva", reason: "read_only" },
-              { type: "ticket_refused", ticket: "t-token", reason: "not_in_list" },
-            ],
-          );
-        }),
-      ),
   );
 
   it.effect(

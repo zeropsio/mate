@@ -6,9 +6,16 @@ const bytesOf = (data: RawData) =>
   Buffer.isBuffer(data) ? data : Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data);
 
 export interface MateRefusal {
-  readonly kind: "link" | "ticket";
+  readonly kind: "link";
   readonly reason: string;
 }
+
+/**
+ * HQ's ticket as the Mate hears it: one Core sent without a role gets the one HQ reads at Zerops,
+ * `OWNER` for the Mate's owner (its last `state`) and `BASIC_USER` for anyone else.
+ */
+const withTicketRole = (message: object & { readonly userId?: unknown }, owner: unknown) =>
+  JSON.stringify({ ...message, role: message.userId === owner ? "OWNER" : "BASIC_USER" });
 
 /** A controllable, endpoint-agnostic network in front of REAL Core. */
 export async function hqConnection(coreOrigin: string, host: "127.0.0.1" | "::1" = "127.0.0.1") {
@@ -20,6 +27,7 @@ export async function hqConnection(coreOrigin: string, host: "127.0.0.1" | "::1"
   const events = new NodeEvents.EventEmitter();
   const mateRefusals: MateRefusal[] = [];
   let linkRefusal: MateRefusal | undefined;
+  let mateOwner: unknown;
   const refused = (receipt: MateRefusal) => {
     if (receipt.kind === "link") linkRefusal = receipt;
     mateRefusals.push(receipt);
@@ -83,22 +91,6 @@ export async function hqConnection(coreOrigin: string, host: "127.0.0.1" | "::1"
       const queued: { bytes: Buffer; binary: boolean }[] = [];
       client.on("message", (data, isBinary) => {
         const frame = bytesOf(data);
-        if (url.pathname === "/api/mate/link" && !isBinary) {
-          try {
-            const message: unknown = JSON.parse(frame.toString());
-            if (
-              typeof message === "object" &&
-              message !== null &&
-              "type" in message &&
-              message.type === "ticket_refused" &&
-              "reason" in message &&
-              typeof message.reason === "string"
-            )
-              refused({ kind: "ticket", reason: message.reason });
-          } catch {
-            // The proxy forwards bytes unchanged, including frames it does not understand.
-          }
-        }
         counters.wsUpFrames++;
         counters.wsUpBytes += frame.length;
         if (upstream.readyState === WebSocket.OPEN) upstream.send(frame, { binary: isBinary });
@@ -109,17 +101,19 @@ export async function hqConnection(coreOrigin: string, host: "127.0.0.1" | "::1"
         for (const frame of queued) upstream.send(frame.bytes, { binary: frame.binary });
       });
       upstream.on("message", (data, isBinary) => {
-        const frame = isBinary ? bytesOf(data) : Buffer.from(mapFrame(bytesOf(data).toString()));
+        let frame = isBinary ? bytesOf(data) : Buffer.from(mapFrame(bytesOf(data).toString()));
         if (url.pathname === "/api/mate/link" && !isBinary) {
           try {
             const message: unknown = JSON.parse(frame.toString());
-            if (
-              typeof message === "object" &&
-              message !== null &&
-              "type" in message &&
-              message.type === "state"
-            )
-              linkRefusal = undefined;
+            if (typeof message === "object" && message !== null && "type" in message) {
+              if (message.type === "state") {
+                linkRefusal = undefined;
+                if ("mate" in message && typeof message.mate === "object" && message.mate !== null)
+                  mateOwner = "ownerUserId" in message.mate ? message.mate.ownerUserId : undefined;
+              }
+              if (message.type === "ticket" && !("role" in message))
+                frame = Buffer.from(withTicketRole(message, mateOwner));
+            }
           } catch {
             // This proxy does not interpret other frames.
           }

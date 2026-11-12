@@ -7,10 +7,8 @@
  * effective role (their override here, else their org role) is Basic user or above is opened for,
  * one at Read only is listed, anyone else is absent. A project tagged `chief` opens only for the
  * person HQ lets open it (`ZeropsChiefOpener`), and for nobody while HQ names none; it recomputes
- * when HQ names another. It recomputes every
- * {@link ACCESS_RECOMPUTE_EVERY} give or take {@link ACCESS_RECOMPUTE_JITTER}, and at once when a
- * ticket names a person the list does not open for. A read that fails, Zerops refusing the key
- * included, keeps the last list as it is. Between reads the Zerops websocket keeps it live
+ * when HQ names another. It recomputes every {@link ACCESS_RECOMPUTE_EVERY} give or take
+ * {@link ACCESS_RECOMPUTE_JITTER}. A read that fails, Zerops refusing the key included, keeps the last list as it is. Between reads the Zerops websocket keeps it live
  * (`ZeropsAccessSocket`): each frame applies over the rows the last read and frames left, and the
  * list is recomputed from them; a frame that changes no row changes nothing. Every (re)connect
  * reads again, for what the socket missed. After every read, and every frame that changed a row,
@@ -26,9 +24,7 @@
  * with each `connected`, to whoever waits on a process (`processes`), and reads none itself.
  *
  * A list holds {@link ACCESS_LIST_HOLDS} from the read that brought it; a frame applied over it
- * does not extend that. Past that it refuses new tickets as unconfirmed (`list_unconfirmed`) and
- * keeps the connections already open (GAP-RIGHTS-6: open connections keep the last list while
- * Zerops does not answer; see docs/architecture/identity-and-access.md#gap-rights in mate-hq).
+ * does not extend that.
  *
  * @module ZeropsMateAccessList
  */
@@ -37,7 +33,6 @@ import {
   projectAccess,
   type ZeropsOrgMember,
 } from "@t3tools/shared/mateAccess";
-import type { TicketRefusal } from "@t3tools/shared/mateLink";
 import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -72,7 +67,7 @@ import { ZEROPS_SUBJECT_PREFIX, zeropsUserIdOf } from "@t3tools/contracts";
 
 /**
  * How long a list holds from the read that brought it: the cap a person stays at their last known
- * role while no fresh read arrives, and past which no new ticket is admitted.
+ * role while no fresh read arrives.
  */
 export const ACCESS_LIST_HOLDS = Duration.minutes(15);
 
@@ -94,7 +89,7 @@ export interface AccessList {
   readonly members: ReadonlyArray<MateAccessMember>;
   /** When the read it builds on landed (the Mate's own clock, ms). */
   readonly readAtMs: number;
-  /** Past this no new ticket is admitted ({@link ACCESS_LIST_HOLDS}). */
+  /** Past this the list vouches for nobody ({@link ACCESS_LIST_HOLDS}). */
   readonly expiresAtMs: number;
 }
 
@@ -224,22 +219,6 @@ const changedPeople = (before: OwnRows, after: OwnRows): ReadonlyArray<string> =
   return [...changed];
 };
 
-/**
- * What a new ticket for `userId` gets from `list` at `nowMs`: admitted, or why not. With no list,
- * or one past its hold, Zerops has not confirmed whom it names, so the answer is that it cannot
- * say (`list_unconfirmed`), never that the person is absent.
- */
-export const ticketVerdict = (
-  list: AccessList | undefined,
-  userId: string,
-  nowMs: number,
-): "open" | TicketRefusal => {
-  if (list === undefined || nowMs > list.expiresAtMs) return "list_unconfirmed";
-  const member = list.members.find((candidate) => candidate.userId === userId);
-  if (member === undefined) return "not_in_list";
-  return member.visibility === "open" ? "open" : "read_only";
-};
-
 /** Whom the Mate's own list opens its project for and only lists, as of `at` (ISO 8601). */
 export interface AccessReport {
   readonly at: string;
@@ -277,13 +256,8 @@ export const administersProject = (list: Option.Option<AccessList>, subject: str
 export class ZeropsMateAccessList extends Context.Service<
   ZeropsMateAccessList,
   {
-    /** The Mate's own list, whatever its age: what keeps open connections. */
+    /** The Mate's own list, whatever its age. */
     readonly current: Effect.Effect<Option.Option<AccessList>>;
-    /**
-     * A new ticket's verdict for `userId`, recomputing once first (or joining the recompute in
-     * flight) if the list does not open for them or is unconfirmed.
-     */
-    readonly admits: (userId: string) => Effect.Effect<"open" | TicketRefusal>;
     /** Whom the own list names, latest first, then after each change (`ZeropsOffboarding`). */
     readonly reports: Stream.Stream<AccessReport>;
     /**
@@ -334,7 +308,7 @@ export const make = (own?: {
     const processes = yield* PubSub.unbounded<ProcessLiveEvent>();
     const reports = yield* SubscriptionRef.make(Option.none<AccessReport>());
     const scope = yield* Effect.scope;
-    /** The recompute in flight: a ticket joins it rather than queueing a read of its own. */
+    /** The recompute in flight: whoever asks joins it rather than queueing a read of its own. */
     const inFlight = yield* Ref.make<Deferred.Deferred<void> | undefined>(undefined);
     /** The organisation the first read named: what the websocket subscribes to. */
     const organisation = yield* Deferred.make<string>();
@@ -457,12 +431,6 @@ export const make = (own?: {
             return yield* Deferred.await(fresh);
           });
 
-    const verdict = (userId: string) =>
-      Effect.gen(function* () {
-        const now = yield* Clock.currentTimeMillis;
-        return ticketVerdict((yield* Ref.get(held)).own, userId, now);
-      });
-
     if (own?.live !== undefined) {
       const { live } = own;
       // The socket is scoped to the organisation the first read names.
@@ -507,13 +475,6 @@ export const make = (own?: {
 
     return ZeropsMateAccessList.of({
       current: Effect.map(Ref.get(held), (current) => Option.fromUndefinedOr(current.own)),
-      admits: (userId) =>
-        Effect.gen(function* () {
-          const first = yield* verdict(userId);
-          if (first === "open" || first === "read_only" || own === undefined) return first;
-          yield* recompute;
-          return yield* verdict(userId);
-        }),
       reports: SubscriptionRef.changes(reports).pipe(
         Stream.filter(Option.isSome),
         Stream.map((report) => report.value),
