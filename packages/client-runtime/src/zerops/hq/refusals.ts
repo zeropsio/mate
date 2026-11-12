@@ -530,6 +530,31 @@ export function mergersRefusalWords(refusal: {
   return undefined;
 }
 
+/** What the statement that production follows `main` says where HQ is older than it. */
+export const OUTSIDE_NEEDS_UPDATE = hqNeedsUpdate("keep a production deployed outside Mate");
+
+/**
+ * HQ's refusal of the statement (`PUT /api/apps/:appId/outside-production`) in words: an address
+ * it does not take (`invalid`, `address`), a person who is no Owner or Admin (`forbidden`,
+ * `not_structure_writer`), an application gone. `undefined`: HQ's own words stand.
+ */
+export function outsideProductionRefusalWords(refusal: {
+  readonly code: string;
+  readonly reason: string | undefined;
+}): string | undefined {
+  const { code, reason } = refusal;
+  if (code === "invalid" && reason === "address")
+    return "HQ didn't take this address. Give one that starts with https:// or http://.";
+  switch (reason ?? code) {
+    case "not_structure_writer":
+      return MERGERS_WRITERS;
+    case "app_not_found":
+      return "This project is gone from HQ.";
+    default:
+      return undefined;
+  }
+}
+
 /**
  * What a control says beside a verb not offered (`hqOffer`): the refusal the person's Zerops roles
  * decide, or that it is not decided yet. Nothing for an offered one.

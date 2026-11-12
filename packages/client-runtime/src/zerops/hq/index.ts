@@ -97,6 +97,8 @@ export {
   MERGERS_WRITERS,
   mergeTooLargeWords,
   NO_HQ_WORDS,
+  OUTSIDE_NEEDS_UPDATE,
+  outsideProductionRefusalWords,
 } from "./refusals.ts";
 export {
   EMPTY_REGISTRY,

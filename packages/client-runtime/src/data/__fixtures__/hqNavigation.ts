@@ -184,6 +184,9 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
           births: app.births ?? [],
           ...(app.intake === undefined ? {} : { intake: app.intake }),
           ...(app.mergers === undefined ? {} : { mergers: app.mergers }),
+          ...(app.outsideProduction === undefined
+            ? {}
+            : { outsideProduction: app.outsideProduction }),
           environments: canonicalEnvironmentsOf(
             app.environments ?? [],
           ) as HqAppValue["environments"],
