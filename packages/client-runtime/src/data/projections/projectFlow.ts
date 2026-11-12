@@ -158,7 +158,7 @@ export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFl
         tier?.state === "present" ? [tier.importYaml] : [],
       ),
     );
-    const { environments, unread, rollouts } = canonicalAppEnvironments.derive(read, key);
+    const { environments, unread, rollouts, outside } = canonicalAppEnvironments.derive(read, key);
     const projectIds = [
       ...new Set(
         (environments ?? []).flatMap((environment) =>
@@ -283,9 +283,7 @@ export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFl
             },
       declarations: stops?.declarations ?? [],
       environmentInputs: stops?.environments ?? [],
-      ...(app.outsideProduction == null
-        ? {}
-        : { outsideProduction: { address: app.outsideProduction.address } }),
+      ...(outside === undefined ? {} : { outside }),
       codeRepos:
         recipe === undefined || detail.repos === undefined
           ? undefined

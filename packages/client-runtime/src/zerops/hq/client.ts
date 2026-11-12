@@ -63,9 +63,9 @@ import type { HqNavigationIntake, HqNavigationMateTask } from "@t3tools/shared/h
 import { HqMergersAnswer, type HqMergers, type HqMergersRequest } from "@t3tools/shared/hqMergers";
 import {
   HqOutsideProductionAnswer,
-  type HqOutsideProduction,
   type HqOutsideProductionRequest,
 } from "@t3tools/shared/hqOutsideProduction";
+import type { HqOutsideTarget } from "@t3tools/shared/hqEnvironment";
 import {
   HqAiKeyView,
   HqChannelView,
@@ -259,11 +259,6 @@ export interface HqStructure {
      * people it names. Absent: whoever may push merges.
      */
     readonly mergers?: HqMergers;
-    /**
-     * Its production is deployed outside Mate, where somebody said so; it
-     * matters only while the application has no production of its own. Absent: nobody did.
-     */
-    readonly outsideProduction?: HqOutsideProduction;
   }>;
 }
 
@@ -677,12 +672,12 @@ export interface HqApi {
   /**
    * Says the application's production is deployed outside Mate
    * (`PUT /api/apps/:appId/outside-production`), at `address` or at none given; `null` lifts it.
-   * HQ's answer is the statement as it stands after; `null` where nobody says so.
+   * HQ's answer is the outside production's environment target after; `null` where none stands.
    */
   readonly setOutsideProduction?: (
     appId: string,
     outside: { readonly address: string | null } | null,
-  ) => Promise<HqOutsideProduction | null>;
+  ) => Promise<HqOutsideTarget | null>;
   /** The person's active Git password metadata; passwords are returned only on issue. */
   /** Reads metadata only; provisioning records authority separately. */
   readonly observeCredential?: (projectId: string) => Promise<ObserveCredential>;
@@ -2220,7 +2215,7 @@ export function makeHqApi(input: {
       // HQ took it: an answer this build cannot read leaves how production stands unknown.
       try {
         return (await decoded(HqOutsideProductionAnswer, "where production is deployed")(response))
-          .outsideProduction;
+          .outside;
       } catch {
         throw uncertain();
       }

@@ -536,7 +536,8 @@ export const OUTSIDE_NEEDS_UPDATE = hqNeedsUpdate("keep a production deployed ou
 /**
  * HQ's refusal of the statement (`PUT /api/apps/:appId/outside-production`) in words: an address
  * it does not take (`invalid`, `address`), a person who is no Owner or Admin (`forbidden`,
- * `not_structure_writer`), an application gone. `undefined`: HQ's own words stand.
+ * `not_structure_writer`), an application gone, or one that holds a production of its own
+ * (`conflict`, `production_attached`). `undefined`: HQ's own words stand.
  */
 export function outsideProductionRefusalWords(refusal: {
   readonly code: string;
@@ -550,6 +551,8 @@ export function outsideProductionRefusalWords(refusal: {
       return MERGERS_WRITERS;
     case "app_not_found":
       return "This project is gone from HQ.";
+    case "production_attached":
+      return "This project already has a production in Mate. Remove it first to say production is deployed elsewhere.";
     default:
       return undefined;
   }

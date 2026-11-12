@@ -92,7 +92,8 @@ function gitSettled(
   const environments = app.value.environments;
   if (environments === undefined) return null;
   const environment = environments.find(
-    (entry) => entry.id === intent.environmentId && entry.target.kind === "git",
+    (entry): entry is Extract<typeof entry, { readonly target: { readonly kind: "git" } }> =>
+      entry.id === intent.environmentId && entry.target.kind === "git",
   );
   if (environment === undefined || result.jobs.length === 0) return null;
   const jobs = result.jobs.map((original) =>

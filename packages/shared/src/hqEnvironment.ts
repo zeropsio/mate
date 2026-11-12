@@ -49,6 +49,34 @@ export const HqEnvironmentTarget = Schema.Union([
 ]);
 export type HqEnvironmentTarget = typeof HqEnvironmentTarget.Type;
 
+/**
+ * An outside production's target: deployed by something HQ does not run or see, with no project,
+ * branch or delivery. It is what a person said (`PUT /api/apps/:appId/outside-production`), never a
+ * deploy HQ saw, so it is no release target (`HqEnvironmentTarget`).
+ */
+export const HqOutsideTarget = Schema.Struct({
+  kind: Schema.Literal("outside"),
+  /** Where production answers, an absolute `http(s)` URL with a host; `null` where none was given. */
+  address: Schema.NullOr(Schema.String),
+  /** The Zerops user id of whoever said so. */
+  setBy: Schema.String,
+  /** ISO 8601. */
+  setAt: Schema.String,
+});
+export type HqOutsideTarget = typeof HqOutsideTarget.Type;
+
+/**
+ * An application's outside production as its environment list carries it: its one production, with
+ * no sources, jobs, release or deploy key, listed after its Git environments.
+ */
+export const HqOutsideEnvironment = Schema.Struct({
+  id: HqEnvironmentId,
+  tier: Schema.Literal("production"),
+  name: Schema.String,
+  target: HqOutsideTarget,
+});
+export type HqOutsideEnvironment = typeof HqOutsideEnvironment.Type;
+
 /** Destination captured at acceptance; absence on old history remains unknown. */
 export const HqEnvironmentAttachment = Schema.Struct({
   environmentId: HqEnvironmentId,

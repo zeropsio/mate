@@ -7,6 +7,7 @@
  * @module data/projections/appEnvironments
  */
 import type { HqEnvironmentId } from "@t3tools/contracts";
+import type { HqOutsideEnvironment } from "@t3tools/shared/hqEnvironment";
 import type { HqNavigationRollout } from "@t3tools/shared/hqStream";
 import {
   readDeliveryEnvironments,
@@ -30,6 +31,8 @@ export interface AppEnvironmentsRead {
 
 export interface CanonicalAppEnvironmentsRead extends Omit<AppEnvironmentsRead, "environments"> {
   readonly environments: ReadonlyArray<HqDeliveryEnvironment> | undefined;
+  /** Its production where it is deployed outside Mate; absent where none stands, or while untold. */
+  readonly outside?: HqOutsideEnvironment;
 }
 
 const UNTOLD: CanonicalAppEnvironmentsRead = {
@@ -44,8 +47,9 @@ function environmentsRead(read: ProjectionReads, appId: string): CanonicalAppEnv
   if (environments === undefined) return UNTOLD;
   const sent = readDeliveryEnvironments(environments);
   return {
-    environments: sent?.environments,
-    unread: sent?.unread ?? [],
+    environments: sent.environments,
+    unread: sent.unread,
+    ...(sent.outside === undefined ? {} : { outside: sent.outside }),
     ...(rollouts === undefined ? {} : { rollouts }),
   };
 }
@@ -60,7 +64,10 @@ export const canonicalAppEnvironments: Projection<
   equals: sameValue,
 };
 
-const compatibilityRead = (answer: CanonicalAppEnvironmentsRead): AppEnvironmentsRead => ({
+const compatibilityRead = ({
+  outside: _outside,
+  ...answer
+}: CanonicalAppEnvironmentsRead): AppEnvironmentsRead => ({
   ...answer,
   environments:
     answer.environments === undefined

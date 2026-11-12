@@ -61,7 +61,7 @@ import { pullRequestBlocked, type PullRequestBlocked } from "./gitTab.ts";
 import type { GroupEnvironmentTier } from "./groupEnvironments.ts";
 import type { ZeropsMateFace } from "./groups.ts";
 import type { DeployedVersion, EnvironmentRow, GroupRowTone } from "./groupRows.ts";
-import type { HqEnvironmentIdentity } from "@t3tools/shared/hqEnvironment";
+import type { HqEnvironmentIdentity, HqOutsideEnvironment } from "@t3tools/shared/hqEnvironment";
 import { UNREAD_ENVIRONMENT_LINE, type HqJob, type UnreadEnvironment } from "./hq/environments.ts";
 import type { Shown } from "./knowledge/known.ts";
 import {
@@ -179,10 +179,11 @@ export interface GroupFlowInput {
   /** Environments HQ sent that this build cannot read; none where nothing was unreadable. */
   readonly unread?: ReadonlyArray<UnreadEnvironment>;
   /**
-   * Somebody said its production is deployed outside Mate, at this address
-   * where one was given (HQ's `outsideProduction`). Read only while it has no production here.
+   * Its production environment of the `outside` kind (`ZeropsProjectFlow.outside`): somebody said
+   * its production is deployed outside Mate, at the target's address where one was given. HQ holds
+   * at most one production, so it stands only while there is no production here.
    */
-  readonly outsideProduction?: { readonly address: string | null } | undefined;
+  readonly outside?: Pick<HqOutsideEnvironment, "target"> | undefined;
 }
 
 /** An open pull request, with what is stopping it and the one word for where it stands. */
@@ -521,9 +522,9 @@ function productionOf(stop: GroupFlowStop | undefined, input: GroupFlowInput): G
   if (stop === undefined) {
     if (unreadPlaces(input).production) return { kind: "unread", line: UNREAD_ENVIRONMENT_LINE };
     // A production of its own, held, unread or being made, wins over what somebody said.
-    return input.outsideProduction == null
+    return input.outside == null
       ? { kind: "absent" }
-      : { kind: "outside", address: input.outsideProduction.address };
+      : { kind: "outside", address: input.outside.target.address };
   }
   if (stop.git !== undefined)
     return {

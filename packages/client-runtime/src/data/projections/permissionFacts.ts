@@ -81,7 +81,10 @@ export function applicationFacts(
   app: Pick<HqAppValue, "environments" | "mergers">,
   placements: ReadonlyArray<{ readonly projectId: string; readonly kind: string }>,
 ): ApplicationFacts {
-  const production = app.environments?.find((environment) => environment.tier === "production");
+  // An outside production is released to by nothing HQ runs: no offer reads it.
+  const production = app.environments?.find(
+    (environment) => environment.tier === "production" && environment.target.kind !== "outside",
+  );
   return {
     projectIds: placements.map((row) => row.projectId),
     placements,
