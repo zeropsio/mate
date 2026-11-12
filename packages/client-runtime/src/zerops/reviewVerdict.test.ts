@@ -1250,6 +1250,23 @@ describe("changeReview: Close without merging, the review its one confirmation (
     expect(changeReview(change(over)).secondary).toEqual(secondary);
   });
 
+  // The owner, 2026-11-12: the dialog held "Merging…" for half a minute after its pull request read
+  // merged, until HQ's main had taken the merge.
+  // witness: packages/client-runtime/src/zerops/reviewVerdict.ts | if (pull.pullRequest?.state === "merged") { → if (false) {
+  it("says a change GitHub merged is arriving on main and leaves nothing to press, while its press still runs", () => {
+    const merged = pull({ pullRequest: { state: "merged" } });
+    for (const press of [{ kind: "running" }, { kind: "idle" }] as const) {
+      const review = changeReview(change({ pull: merged, press }));
+      expect(review.verdict).toMatchObject({
+        state: "merging",
+        tone: "busy",
+        title: "Arriving on main",
+      });
+      expect(review.primary).toBeUndefined();
+      expect(review.secondary).toBeUndefined();
+    }
+  });
+
   // mono-live 2026-10-22 H5: a change opened before its branch was pushed read "has no change #2".
   it("shows a change opened before its branch was pushed, merges nothing of it, and closes it", () => {
     const review = changeReview(change({ pull: pull({ unpushed: true }), commits: 0 }));

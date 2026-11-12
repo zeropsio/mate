@@ -818,8 +818,12 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     model.verdict.state === "close-confirm" ||
     model.verdict.state === "closing" ||
     model.verdict.state === "close-refused";
-  // Merged or closed: nothing more to ask of it here.
-  const over = model.verdict.state === "merged" || model.verdict.state === "closed";
+  // Merged or closed — or merged on GitHub, with main about to take it: nothing more to ask of it
+  // here.
+  const over =
+    model.verdict.state === "merged" ||
+    model.verdict.state === "closed" ||
+    pull.pullRequest?.state === "merged";
   // Read from the release or roll back that lists it: merged already, and that is the next review.
   const fromRelease = props.back !== undefined;
   const primary = fromRelease ? undefined : model.primary;

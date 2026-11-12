@@ -2034,6 +2034,23 @@ export const REVIEW_STATES: ReadonlyArray<{
   },
   { id: "merging", label: "Merging", node: <Change press={{ kind: "running" }} /> },
   {
+    id: "merged-on-github",
+    label: "Merged on GitHub, main not there yet (Merge still being answered)",
+    node: (
+      <Change
+        over={{
+          pullRequest: {
+            number: 14,
+            url: "https://github.com/acme/tea-shop/pull/14",
+            state: "merged",
+            checks: "passing",
+          },
+        }}
+        press={{ kind: "running" }}
+      />
+    ),
+  },
+  {
     id: "refused",
     label: "Not merged: HQ refused it",
     node: (

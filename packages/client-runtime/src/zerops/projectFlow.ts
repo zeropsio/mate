@@ -708,7 +708,10 @@ export function changeState(pull: {
   readonly mateGone?: true | undefined;
   readonly kind: FlowPullRequestKind;
   readonly title: string;
+  readonly pullRequest?: { readonly state: string } | undefined;
 }): ChangeState | undefined {
+  // GitHub merged its pull request; HQ's main takes the merge next. Nothing is left to do with it.
+  if (pull.pullRequest?.state === "merged") return { word: "Merged on GitHub", tone: "off" };
   // Nobody carries it on until a person closes it or hands it to another Mate.
   if (pull.mateGone === true) return { word: "Mate gone", tone: "attention" };
   const blocked = pullRequestBlocked(pull);
