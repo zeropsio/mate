@@ -391,7 +391,7 @@ describe("a flow's writes, executed by HQ", () => {
         status: 409,
         message: "That name is taken.",
       }),
-      expected: { stage: "refused", reason: "That name is taken." },
+      expected: { stage: "refused", reason: "That name is taken.", code: "tag_taken" },
     },
     {
       name: "HQ cannot be reached",

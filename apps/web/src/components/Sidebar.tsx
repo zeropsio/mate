@@ -252,6 +252,7 @@ import {
   type ComposerThreadDraftState,
   type DraftSessionState,
 } from "../composerDraftStore";
+import { useShallow } from "zustand/react/shallow";
 import { Kbd } from "./ui/kbd";
 
 function threadTimeLabel(thread: SidebarThreadSummary): string {
@@ -522,7 +523,18 @@ const SidebarDraftBlock = memo(function SidebarDraftBlock(props: {
   onNavigateToDraft: (draftId: DraftId) => void;
 }) {
   const draftThreadsByThreadKey = useComposerDraftStore((store) => store.draftThreadsByThreadKey);
-  const draftsByThreadKey = useComposerDraftStore((store) => store.draftsByThreadKey);
+  // What the drafts with a row of their own hold, the open one's aside (its row is frozen, below):
+  // a key typed into the open conversation changes none of it, and draws nothing here.
+  const routeDraftId = props.routeDraftId;
+  const draftsByThreadKey = useComposerDraftStore(
+    useShallow((store) => {
+      const drafts: Record<string, ComposerThreadDraftState | undefined> = {};
+      for (const draftKey of Object.keys(store.draftThreadsByThreadKey)) {
+        if (draftKey !== routeDraftId) drafts[draftKey] = store.draftsByThreadKey[draftKey];
+      }
+      return drafts;
+    }),
+  );
   const clearDraftThread = useComposerDraftStore((store) => store.clearDraftThread);
   // The open draft's row is FROZEN at the moment the draft became the route:
   // it stays visible (like a thread row) but never repaints while the user

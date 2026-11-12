@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 
 import { useActiveProjectTarget, type ActiveProjectTarget } from "~/hooks/useActiveProjectTarget";
 import { useTheme } from "~/hooks/useTheme";
+import { watchCrossings } from "~/lib/restingIntersections";
 import { cn } from "~/lib/utils";
 import { useRightPanelStore } from "~/rightPanelStore";
 import { useProjectContentSearch } from "~/state/queries";
@@ -142,13 +143,13 @@ function OpenContentSearchDialog(props: {
 
   const observeLoadMoreSentinel = useCallback((sentinel: HTMLElement | null) => {
     if (!sentinel) return;
-    const observer = new IntersectionObserver((entries) => {
+    const observer = watchCrossings((entries) => {
       if (entries.some((entry) => entry.isIntersecting)) {
         setVisibleCount((current) => current + VISIBLE_MATCH_WINDOW);
       }
     });
-    observer.observe(sentinel);
-    return () => observer.disconnect();
+    observer?.observe(sentinel);
+    return () => observer?.disconnect();
   }, []);
 
   const openMatch = (match: ProjectContentMatch) => {

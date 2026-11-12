@@ -2330,7 +2330,7 @@ code {
   list-style: none;
 }
 
-.chat-markdown .chat-markdown-island li + li {
+.chat-markdown .chat-markdown-island li:where([data-md-li]) + li {
   margin-top: 0;
 }
 
@@ -2370,8 +2370,22 @@ code {
   color: var(--contrast-muted-foreground);
 }
 
-/* A heading owns the gap under it; the block that follows adds none. */
-.chat-markdown :is(h1, h2, h3, h4, h5, h6) + * {
+/* A heading owns the gap under it; the block that follows adds none.
+
+   Why no rule in this sheet puts `+` or `~` after a bare tag or `*`: the browser keys a sibling
+   rule by the class, id or attribute of the element before the combinator, and a rule with none
+   of them is asked about every element added or removed anywhere. Where its subject is also bare
+   (`* + *`, `h2 + *`, `tr + tr > *`), the answer was to restyle everything under the parent: one
+   row scrolling into a conversation restyled all of its rows, about 400 elements for 30 new ones.
+   So a heading carries `data-md-heading` and a list item `data-md-li` (`ChatMarkdown`,
+   `RepoMarkdown`, and the one list a card draws inside an answer, `AskSteps`), and elsewhere
+   "not the first" is said by position: `:where()` and a repeated tag keep each rule's weight. */
+.chat-markdown h1:where([data-md-heading]) + *,
+.chat-markdown h2:where([data-md-heading]) + *,
+.chat-markdown h3:where([data-md-heading]) + *,
+.chat-markdown h4:where([data-md-heading]) + *,
+.chat-markdown h5:where([data-md-heading]) + *,
+.chat-markdown h6:where([data-md-heading]) + * {
   margin-top: 0;
 }
 
@@ -2413,7 +2427,7 @@ code {
 }
 
 /* 6 px between items at a 15 px body. */
-.chat-markdown li + li {
+.chat-markdown li:where([data-md-li]) + li {
   margin-top: calc(6em / 15);
 }
 
@@ -2586,7 +2600,7 @@ code {
   margin: 0;
 }
 
-.chat-markdown section[data-footnotes] li + li {
+.chat-markdown section[data-footnotes] li:where([data-md-li]) + li {
   margin-top: 0.35rem;
 }
 
@@ -4515,6 +4529,13 @@ code {
      go, so a project's name keeps its room — the places' tag and Release first, Review last. */
   .menu-row-box {
     container: menu-row / inline-size;
+  }
+
+  /* A row's line is never what a press lands on. Its words are replaced as they change (a new
+     element, so they rise in), and an element replaced between press and release leaves no click:
+     the row did not open. The press is the row's own, whatever its line is or becomes. */
+  [data-zerops-row] [data-slot="row-line"] {
+    pointer-events: none;
   }
 
   .menu-tag-icon {
@@ -6532,6 +6553,14 @@ code {
     min-width: 0;
   }
 
+  /* With credit to show the lines are two columns: who, then what the organization has left, its
+     figure on the name's baseline and its caption on the role's. */
+  .menu-foot-lines[data-credit] {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: baseline;
+    column-gap: 12px;
+  }
+
   .menu-foot-name {
     min-width: 0;
     overflow: hidden;
@@ -6552,17 +6581,57 @@ code {
     white-space: nowrap;
   }
 
-  /* The name gives way first; the balance pill after it stays whole. */
-  .menu-foot-name-line {
-    display: flex;
-    min-width: 0;
-    align-items: center;
-    gap: 8px;
+  .menu-foot-name,
+  .menu-foot-role {
+    grid-column: 1;
   }
 
-  .menu-foot-credit {
-    display: flex;
-    flex: none;
+  /* The figure is a value, quieter than the name it shares a line with; its caption is the role
+     line's twin. Both end on one edge, and take the tone when credit needs the person. */
+  .menu-foot-credit-amount,
+  .menu-foot-credit-label {
+    grid-column: 2;
+    justify-self: end;
+    white-space: nowrap;
+  }
+
+  .menu-foot-credit-amount {
+    grid-row: 1;
+    font-size: 13px;
+    /* 18 px, so its baseline meets the name's inside the name's own 20 px line. */
+    line-height: 18px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    color: var(--sidebar-foreground);
+  }
+
+  .menu-foot-credit-label {
+    grid-row: 2;
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--sidebar-muted-foreground);
+  }
+
+  /* The balance is read after the name: it comes in, and changes tone, without a cut. */
+  @media (prefers-reduced-motion: no-preference) {
+    .menu-foot-credit-amount,
+    .menu-foot-credit-label {
+      transition:
+        opacity 200ms var(--ease-out-strong),
+        color 150ms var(--ease-out-strong);
+
+      @starting-style {
+        opacity: 0;
+      }
+    }
+  }
+
+  .menu-foot-lines[data-credit="low"] > :is(.menu-foot-credit-amount, .menu-foot-credit-label) {
+    color: var(--zerops-status-attention-text);
+  }
+
+  .menu-foot-lines[data-credit="out"] > :is(.menu-foot-credit-amount, .menu-foot-credit-label) {
+    color: var(--zerops-status-failed-text);
   }
 
   .menu-foot-button {
@@ -7899,7 +7968,7 @@ a.ov-card-site:hover {
   border-bottom: 1px solid var(--ov-rule);
 }
 
-.ov-acc tbody tr + tr > * {
+.ov-acc tbody tr:is(tr):where(:not(:first-child)) > * {
   border-top: 1px solid var(--ov-rule);
 }
 
@@ -10562,6 +10631,16 @@ button.ov-change {
 /* A time in a list that may stand under such a line: it holds that seat where there is one. */
 .line-time {
   padding-inline-end: var(--run-line-seat, 0px);
+}
+
+/* A batch deploy's services, a column each: as wide as a step list needs, no wider than its
+   times stay near their names, and under each other where the card is narrow. A column's times
+   end at its own edge, not at the seat a log line keeps for its fold. */
+.batch-services {
+  --run-line-seat: 0px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 17rem));
+  gap: 0.75rem 2.5rem;
 }
 /* Nothing standing in it: a row as an item's — its mark in the Mate's column,
    its words on the items' text edge, so what comes next takes its place where
@@ -13433,7 +13512,7 @@ a.message-file:focus-visible {
 .rv-file:hover {
   background: color-mix(in oklab, var(--foreground) 4%, transparent);
 }
-.rv-files > * + * {
+.rv-files > :where(:not(:first-child)) {
   border-top: 1px solid color-mix(in oklab, var(--foreground) 12%, transparent);
 }
 .rv-file-name {
@@ -16188,7 +16267,7 @@ a.message-file:focus-visible {
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 6%, transparent);
 }
 
-.vault-rows > * + * {
+.vault-rows > :where(:not(:first-child)) {
   border-top: 1px solid var(--vault-hairline);
 }
 

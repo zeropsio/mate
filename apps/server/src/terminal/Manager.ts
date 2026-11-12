@@ -35,7 +35,6 @@ import {
   type TerminalSummary,
   type TerminalWriteInput,
 } from "@t3tools/contracts";
-import { MateUpdateBootFence } from "../mateUpdateBoot.ts";
 import { makeKeyedCoalescingWorker } from "@t3tools/shared/KeyedCoalescingWorker";
 import * as KeyedLock from "@t3tools/shared/KeyedLock";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
@@ -1369,8 +1368,6 @@ interface TerminalManagerOptions {
   logsDir: string;
   /** `ServerConfig.homeDir`: where `~` in a runtime `CODEX_HOME`/`CLAUDE_CONFIG_DIR` points. */
   homeDir: string;
-  /** A boot under an uncommitted update switch: new terminals are fenced until it is lifted. */
-  updateBootFenced?: boolean;
   historyLineLimit?: number;
   historyByteLimit?: number;
   ptyAdapter: PtyAdapter.PtyAdapter["Service"];
@@ -1388,7 +1385,6 @@ export const make = Effect.fn("TerminalManager.make")(function* () {
   return yield* makeWithOptions({
     logsDir: terminalLogsDir,
     homeDir,
-    updateBootFenced: (yield* MateUpdateBootFence).pending,
     ptyAdapter,
   });
 });
@@ -3136,7 +3132,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
       return closed.filter(Boolean).length;
     });
 
-  let updateFenced = options.updateBootFenced ?? false;
+  let updateFenced = false;
   let admissions = 0;
   const guardUpdate = <A, E>(
     input: { readonly threadId: string; readonly terminalId?: string },

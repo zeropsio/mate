@@ -322,7 +322,7 @@ const READ_IMPORTS: Readonly<Record<string, ReadonlyArray<string>>> = {
   "apps/web/src/state/queries": ["usePaginatedBranches"],
   "apps/web/src/state/query": ["useEnvironmentQuery"],
   "apps/web/src/hooks/useSettings": ["useEnvironmentSettings", "usePrimarySettings"],
-  "apps/web/src/zerops/crew/useCrew": ["useCrew", "useMateCrew"],
+  "apps/web/src/zerops/crew/useCrew": ["useCrew", "useCrewValue", "useMateCrew"],
   "apps/web/src/zerops/useZeropsFeeds": [
     "useEnvironmentTopology",
     "useZeropsTopology",

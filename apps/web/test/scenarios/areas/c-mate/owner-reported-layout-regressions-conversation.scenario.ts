@@ -9,6 +9,7 @@ import {
   CommandId,
   ConversationId,
   MATE_ENGINE_PROTOCOLS,
+  WS_METHODS,
   type EngineConversationFrame,
 } from "@t3tools/contracts";
 import * as NodeFSP from "node:fs/promises";
@@ -22,6 +23,7 @@ import { mateChat } from "./dsl.ts";
 import { installArea } from "./fake.ts";
 import { journey, sampled } from "./pageJourney.ts";
 import { ownerMenu, quoted } from "./ownerReportedLayout.ts";
+import { changeFixture } from "../../fakes/d-change/changes.ts";
 
 describe("owner-reported layout regressions", () => {
   scenarioSuite((it) => {
@@ -608,6 +610,254 @@ describe("owner-reported layout regressions", () => {
               ).toBeLessThanOrEqual(1);
               yield* s.then.noExternalNetwork;
             }),
+        );
+
+        // The owner, 2026-11-11: "I load a mate and then it scrolls, like a small shift, 50px or
+        // so ... there is absolutely no stability whatsoever". What reaches a conversation after it
+        // stands, each in turn: who writes in it (its composer comes, a change waiting for review
+        // at its top), a row placed by its time before the tail (as a landing or a release HQ's
+        // flow names; here a seam its engine recorded earlier), and a picture's bytes, seen for
+        // the first time and of another shape than the room it held.
+        // witness: apps/web/src/components/chat/ComposerStandIn.tsx | {top === null || top === undefined ? null : ( → {top !== undefined ? null : (
+        // witness: apps/web/src/components/chat/MessagesTimeline.tsx | if (joined > 0) followEnd(joined); → if (joined < 0) followEnd(joined);
+        // witness: apps/web/src/components/ChatMarkdown.tsx | width: current.roomed → width: !current.roomed
+        it.effect("an opened conversation does not move after it appears", () =>
+          Effect.gen(function* () {
+            const s = yield* createScenario([installArea]);
+            yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+            // The picture's bytes wait for the journey.
+            let answerPicture = () => {};
+            const pictureHeld = new Promise<void>((resolve) => {
+              answerPicture = resolve;
+            });
+            yield* Effect.addFinalizer(() => Effect.sync(() => answerPicture()));
+            s.drivers.onMate.push((mate) => {
+              const handle = mate.handle;
+              mate.handle = async (request) => {
+                if (request.method === "GET" && request.url.pathname.endsWith("/week.png"))
+                  await pictureHeld;
+                return handle(request);
+              };
+            });
+            // Ada's change waits for review: her composer carries it at its top.
+            yield* changeFixture(s);
+            const chat = mateChat(s);
+            const ada = chat.fixture();
+            const mate = ada.mate;
+            for (let index = 0; index < 12; index++)
+              ada.exchange(
+                `Question ${index}`,
+                "An answer long enough to fill the column.\n\n".repeat(6),
+              );
+            ada.exchange("Show me this week's chart", "![This week](week.png)\n\nThat is it.");
+            // Narrower than the 16:9 room a picture not seen before holds, and larger than it.
+            ada.assets.set("week.png", {
+              bytes: Buffer.from(
+                yield* Effect.promise(() =>
+                  s.page.evaluate(() => {
+                    const canvas = document.createElement("canvas");
+                    canvas.width = 1728;
+                    canvas.height = 1083;
+                    return canvas.toDataURL("image/png").split(",")[1]!;
+                  }),
+                ),
+                "base64",
+              ),
+              mimeType: "image/png",
+            });
+            // Who writes is not known until the Mate says which of its agents are signed in.
+            let whoWrites = false;
+            mate.rpcHandlers.unshift((request, socket) => {
+              if (whoWrites || request.tag !== WS_METHODS.subscribeZeropsAgentAuth) return false;
+              mate.subscriptions.get(socket)!.set(request.id, request);
+              return true;
+            });
+            yield* s.given.signedIn;
+            yield* chat.when.openReadOnly();
+            yield* Effect.promise(() =>
+              s.page.waitForFunction(
+                () => {
+                  // The conversation's own list, never one kept for another conversation.
+                  const list = [
+                    ...document.querySelectorAll<HTMLElement>(".timeline-legend-list"),
+                  ].find((each) => each.closest("[data-kept-timeline]") === null);
+                  const thread = list?.closest("[data-timeline-thread]");
+                  return (
+                    list !== undefined &&
+                    thread !== null &&
+                    thread !== undefined &&
+                    !thread.hasAttribute("data-timeline-placing") &&
+                    list.checkVisibility({ opacityProperty: true, visibilityProperty: true }) &&
+                    document.querySelector("[data-composer-room-held]") !== null &&
+                    // Its application's changes are read: what its composer carries is known.
+                    document.querySelector(
+                      '.chat-header-review [data-zerops-surface="sidebar-project-review"]',
+                    ) !== null
+                  );
+                },
+                { polling: "raf" },
+              ),
+            );
+            yield* Effect.promise(() => waitForStillFrames(s.page, { stillFrames: 30 }));
+            // Every painted frame of the conversation's own list: where each row it draws stands,
+            // which of them are in sight, and how far the last row's foot stands from the foot of
+            // the list's view.
+            type Frame = { rows: Record<string, number>; seen: string[]; end: number };
+            yield* Effect.promise(() =>
+              s.page.evaluate(() => {
+                const frames: Frame[] = [];
+                (window as unknown as { openedFrames: Frame[] }).openedFrames = frames;
+                const sample = () =>
+                  setTimeout(() => {
+                    const list = [
+                      ...document.querySelectorAll<HTMLElement>(".timeline-legend-list"),
+                    ].find((each) => each.closest("[data-kept-timeline]") === null);
+                    if (list !== undefined) {
+                      const view = list.getBoundingClientRect();
+                      const rows: Record<string, number> = {};
+                      const seen: string[] = [];
+                      let foot = Number.NEGATIVE_INFINITY;
+                      for (const row of list.querySelectorAll<HTMLElement>(
+                        "[data-timeline-row-id]",
+                      )) {
+                        const box = row.getBoundingClientRect();
+                        if (box.height === 0) continue;
+                        const id = row.dataset.timelineRowId ?? "";
+                        foot = Math.max(foot, box.bottom);
+                        rows[id] = box.top;
+                        if (box.bottom > view.top && box.top < view.bottom) seen.push(id);
+                      }
+                      frames.push({ rows, seen, end: view.bottom - foot });
+                    }
+                    requestAnimationFrame(sample);
+                  }, 0);
+                requestAnimationFrame(sample);
+              }),
+            );
+            const framesMore = (more: number) =>
+              Effect.promise(async () => {
+                const count = await s.page.evaluate(
+                  () => (window as unknown as { openedFrames: Frame[] }).openedFrames.length,
+                );
+                await s.page.waitForFunction(
+                  (count) =>
+                    (window as unknown as { openedFrames: Frame[] }).openedFrames.length >= count,
+                  { polling: "raf" },
+                  count + more,
+                );
+                return count;
+              });
+            /**
+             * The last frame before `cause` reached the conversation at rest is the baseline. In
+             * every frame from it to ninety frames after the cause's receipt (`arrived`), each row
+             * in sight at the baseline stands at its baseline top while the list draws it, and the
+             * last row's foot keeps its baseline distance to the view's foot. A new row may come.
+             */
+            const unmovedBy = (cause: string, reach: () => void, arrived: () => Promise<unknown>) =>
+              Effect.gen(function* () {
+                const before = yield* framesMore(1);
+                reach();
+                yield* Effect.promise(arrived);
+                yield* framesMore(90);
+                const [baseline, ...frames] = yield* Effect.promise(() =>
+                  s.page.evaluate(
+                    (before) =>
+                      (window as unknown as { openedFrames: Frame[] }).openedFrames.slice(before),
+                    before,
+                  ),
+                );
+                // The furthest each stood from its baseline, where that is over the bound.
+                const moved = new Map<string, number>();
+                const move = (what: string, by: number) => {
+                  if (Math.abs(by) > Math.abs(moved.get(what) ?? 0.5)) moved.set(what, by);
+                };
+                for (const frame of frames) {
+                  for (const id of baseline!.seen) {
+                    const top = frame.rows[id];
+                    if (top !== undefined) move(id, top - baseline!.rows[id]!);
+                  }
+                  move("the last row's foot to the view's", frame.end - baseline!.end);
+                }
+                expect(
+                  baseline!.seen.length,
+                  `ASSERTION: ${cause}: the conversation stands in sight`,
+                ).toBeGreaterThan(1);
+                expect
+                  .soft(
+                    [...moved].map(([what, by]) => `${what}: ${by.toFixed(2)} px`),
+                    `ASSERTION: ${cause} moves nothing in sight from where it stood: ${quoted(Object.fromEntries(moved))}`,
+                  )
+                  .toEqual([]);
+                return { before: baseline!, after: frames.at(-1)! };
+              });
+
+            yield* unmovedBy(
+              "the composer taking its held room",
+              () => {
+                whoWrites = true;
+                ada.publishAuth();
+              },
+              () =>
+                s.page.waitForFunction(
+                  () =>
+                    document.querySelector("[data-composer-room-held]") === null &&
+                    [...document.querySelectorAll('[data-composer-top="review"]')].some(
+                      (top) => top.getBoundingClientRect().height > 0,
+                    ),
+                  { polling: "raf" },
+                ),
+            );
+
+            const height = yield* Effect.promise(() =>
+              s.page.evaluate(
+                () => document.querySelector(".timeline-legend-list")?.scrollHeight ?? 0,
+              ),
+            );
+            const first = [...ada.engine.items.values()].find((item) => item.kind === "note")!;
+            const joined = yield* unmovedBy(
+              "a row joining the history above the view",
+              () =>
+                void ada.engine.loose({
+                  kind: "marker",
+                  marker: {
+                    kind: "crew.seam",
+                    reason: "Ada's job changed — from its next message",
+                    seam: { seam: "saved", apply: "nextTurn" },
+                  },
+                  // Recorded as the first exchange ended: placed there, twelve exchanges up.
+                  at: first.at + 1,
+                }),
+              () =>
+                s.page.waitForFunction(
+                  (height) =>
+                    (document.querySelector(".timeline-legend-list")?.scrollHeight ?? 0) > height,
+                  { polling: "raf" },
+                  height,
+                ),
+            );
+            expect(
+              joined.after.seen,
+              "ASSERTION: the joined row stands above the view, never drawn",
+            ).toEqual(joined.before.seen);
+
+            expect(
+              yield* Effect.promise(() =>
+                s.page.evaluate(() => document.querySelectorAll("[data-image-pending]").length),
+              ),
+              "ASSERTION: the picture's room waits for its bytes",
+            ).toBe(1);
+            yield* unmovedBy("a picture's bytes read into the room it held", answerPicture, () =>
+              s.page.waitForFunction(
+                () =>
+                  document.querySelector("[data-image-pending]") === null &&
+                  [...document.querySelectorAll("img")].some(
+                    (image) => image.alt === "This week" && image.naturalWidth === 1728,
+                  ),
+                { polling: "raf" },
+              ),
+            );
+            yield* s.then.noExternalNetwork;
+          }),
         );
       });
     });

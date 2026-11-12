@@ -76,12 +76,13 @@ export const makeLinkCommands = Effect.gen(function* () {
   const heard = new Set<string>();
   return (frame: LinkCommandDown): Effect.Effect<LinkCommandResultUp> =>
     Effect.suspend(() => {
-      const ran: Effect.Effect<LinkCommandResultUp> = heard.has(frame.id)
+      const ran: Effect.Effect<{
+        readonly answer: LinkCommandResultUp;
+        readonly detail: string | undefined;
+      }> = heard.has(frame.id)
         ? Effect.succeed({
-            type: "command-result",
-            id: frame.id,
-            ran: false,
-            reason: "duplicate",
+            answer: { type: "command-result", id: frame.id, ran: false, reason: "duplicate" },
+            detail: undefined,
           })
         : Effect.sync(() => heard.add(frame.id)).pipe(
             Effect.andThen(
@@ -92,28 +93,38 @@ export const makeLinkCommands = Effect.gen(function* () {
                 ...(frame.timeoutMs === undefined ? {} : { timeoutMs: frame.timeoutMs }),
               }),
             ),
-            Effect.map((result) => fitCommandResult(frame.id, result)),
+            Effect.map((run) => ({
+              answer: fitCommandResult(frame.id, run.result),
+              detail: run.detail,
+            })),
             Effect.catchTags({
               ExecError: (error) =>
                 Effect.succeed({
-                  type: "command-result",
-                  id: frame.id,
-                  ran: false,
-                  reason: error.reason,
-                } as const),
+                  answer: {
+                    type: "command-result",
+                    id: frame.id,
+                    ran: false,
+                    reason: error.reason,
+                  } as const,
+                  detail: error.detail,
+                }),
             }),
             Effect.provideService(ServerConfig.ServerConfig, config),
             Effect.provideService(ProcessRunner.ProcessRunner, runner),
           );
-      return Effect.tap(ran, (result) =>
-        Effect.logInfo("zerops hq link: operator command", {
-          id: frame.id,
-          command: frame.command,
-          argCount: frame.args.length,
-          ...(result.ran
-            ? { exitCode: result.exitCode, timedOut: result.timedOut }
-            : { reason: result.reason }),
-        }),
+      return ran.pipe(
+        Effect.tap(({ answer, detail }) =>
+          Effect.logInfo("zerops hq link: operator command", {
+            id: frame.id,
+            command: frame.command,
+            argCount: frame.args.length,
+            ...(answer.ran
+              ? { exitCode: answer.exitCode, timedOut: answer.timedOut }
+              : { reason: answer.reason }),
+            ...(detail === undefined ? {} : { detail }),
+          }),
+        ),
+        Effect.map(({ answer }) => answer),
       );
     });
 });

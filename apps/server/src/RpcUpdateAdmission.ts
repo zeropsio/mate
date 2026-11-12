@@ -3,10 +3,9 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
-import { MateUpdateBootFence } from "./mateUpdateBoot.ts";
 
-export const makeRpcUpdateAdmission = Effect.fnUntraced(function* (closedAtBoot: boolean) {
-  let closed = closedAtBoot;
+export const makeRpcUpdateAdmission = Effect.fnUntraced(function* () {
+  let closed = false;
   let active = 0;
   const changes = yield* PubSub.sliding<void>(1);
   const changed = PubSub.publish(changes, undefined).pipe(Effect.asVoid);
@@ -47,9 +46,4 @@ export class RpcUpdateAdmission extends Context.Service<
   RpcUpdateAdmission,
   Effect.Success<ReturnType<typeof makeRpcUpdateAdmission>>
 >()("t3/RpcUpdateAdmission") {}
-export const rpcUpdateAdmissionLayer = Layer.effect(
-  RpcUpdateAdmission,
-  Effect.gen(function* () {
-    return yield* makeRpcUpdateAdmission((yield* MateUpdateBootFence).pending);
-  }),
-);
+export const rpcUpdateAdmissionLayer = Layer.effect(RpcUpdateAdmission, makeRpcUpdateAdmission());

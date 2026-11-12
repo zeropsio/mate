@@ -351,10 +351,10 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          # An upload can fail after GitHub creates the release record. A retry completes it.
+          # A failed attempt can leave the release record as a draft. A retry completes and publishes it.
           if gh release view "$RELEASE_TAG" --json tagName > /dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" release-assets/* --clobber
-            gh release edit "$RELEASE_TAG" --latest
+            gh release edit "$RELEASE_TAG" --draft=false --latest
           else
             gh release create "$RELEASE_TAG" release-assets/* --generate-notes --verify-tag --latest
           fi

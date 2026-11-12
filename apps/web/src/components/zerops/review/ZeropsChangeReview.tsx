@@ -322,7 +322,12 @@ function ChangeReviewData({
     setPress(
       outcome.ok
         ? { kind: "done", deploys: outcome.deploys, rollout: outcome.rollout }
-        : { kind: "refused", reason: outcome.reason, problems: outcome.problems },
+        : {
+            kind: "refused",
+            reason: outcome.reason,
+            problems: outcome.problems,
+            code: outcome.code,
+          },
     );
   };
   const close = async () => {

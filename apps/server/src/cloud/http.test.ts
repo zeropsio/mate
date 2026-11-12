@@ -665,7 +665,6 @@ describe("makeCloudLinkProof — Zerops project binding", () => {
           serviceId: undefined,
           hostname: undefined,
           statusFile: undefined,
-          mateUpdateStateFile: undefined,
           envStorePath: "/etc/zerops-zembed/env.json",
         }),
         proofRequest,

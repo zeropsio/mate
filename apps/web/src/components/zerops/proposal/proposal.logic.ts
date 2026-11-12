@@ -544,6 +544,27 @@ export type AccessProposalPlan =
     }
   | { readonly kind: "held"; readonly words: string };
 
+const ACCESS_READS_MEMBERS = "Reading your organization's members…";
+const ACCESS_READS_PROJECTS = "Reading your organization's projects…";
+const ACCESS_READS_OWNERS = "Reading who owns these Mates…";
+
+/**
+ * Held for a read that is under way now: its lines come with the answer, and its card grows by
+ * them. A read that failed, was refused or was never asked for is no wait: nothing is coming.
+ */
+export function accessPlanReading(
+  plan: AccessProposalPlan | null,
+  /** Which of its reads is under way. */
+  underWay: { readonly members: boolean; readonly projects: boolean; readonly owners: boolean },
+): boolean {
+  if (plan?.kind !== "held") return false;
+  return (
+    (plan.words === ACCESS_READS_MEMBERS && underWay.members) ||
+    (plan.words === ACCESS_READS_PROJECTS && underWay.projects) ||
+    (plan.words === ACCESS_READS_OWNERS && underWay.owners)
+  );
+}
+
 const folded = (text: string | undefined) => text?.trim().replace(/\s+/gu, " ").toLowerCase();
 
 /**
@@ -624,10 +645,9 @@ export function accessProposalPlan(input: {
   /** Each project's own grants as far as read: what each person reaches there today. */
   readonly grants: Readonly<Record<string, ProjectGrantsRead | undefined>>;
 }): AccessProposalPlan {
-  if (!input.members.known) return { kind: "held", words: "Reading your organization's members…" };
+  if (!input.members.known) return { kind: "held", words: ACCESS_READS_MEMBERS };
   const inventory = input.projects;
-  if (inventory === undefined)
-    return { kind: "held", words: "Reading your organization's projects…" };
+  if (inventory === undefined) return { kind: "held", words: ACCESS_READS_PROJECTS };
   const dropped: Array<string> = [];
   const projectIds = input.proposal.params.projects.flatMap(({ id, name }) => {
     if (!inventory.has(id)) {
@@ -639,7 +659,7 @@ export function accessProposalPlan(input: {
   if (projectIds.length === 0)
     return { kind: "held", words: "None of these projects can be given from here." };
   if (projectIds.some((id) => input.owners[id] === undefined))
-    return { kind: "held", words: "Reading who owns these Mates…" };
+    return { kind: "held", words: ACCESS_READS_OWNERS };
   const changes: Array<ProjectAccessChange> = [];
   const lines: Array<string> = [];
   for (const { person, level } of input.proposal.params.people) {

@@ -28,23 +28,13 @@ import {
 const stubMateUpdate = (result: Effect.Effect<any, ZeropsCliNotFound | ZeropsCliFailed>) => ({
   mateStatus: () => Effect.die("not used"),
   mateUpdate: () => result,
-  version: Effect.die("not used"),
   leaseRelease: () => Effect.die("not used"),
-  selfRestart: Effect.die("not used"),
 });
 
-const stubMateUpdateService = (
-  refresh: Effect.Effect<void> = Effect.void,
-  check: Effect.Effect<any> = Effect.die("not used"),
-  current: Effect.Effect<any> = Effect.succeed(undefined),
-  restart: Effect.Effect<any> = Effect.die("not used"),
-) => ({
-  current,
+const stubMateUpdateService = (check: Effect.Effect<any> = Effect.die("not used")) => ({
+  current: Effect.succeed(undefined),
   changes: Stream.make(undefined),
-  reread: Effect.void,
-  refresh,
   check,
-  restart,
 });
 
 describe("runZeropsMateUpdate", () => {
@@ -199,79 +189,12 @@ describe("the answer to Update names the server that gave it", () => {
   );
 });
 
-describe("Update on a Mate that only a restart gets current", () => {
-  const NEEDS_RESTART = {
-    installed: "0.15.200",
-    latest: "0.15.200",
-    available: false,
-    checkedAt: "2026-10-27T00:00:00Z",
-    zcp: { installed: "9.225.0", latest: "9.226.0", behind: true },
-    restart: { needed: true, why: "zcp 9.226.0 is out" },
-  };
-
-  it.effect.each([
-    {
-      name: "starts the restart instead of a mate update",
-      restart: {
-        started: true,
-        attempt: "restart-1",
-        target: { zcp: "9.226.0" },
-        startedAt: "2026-10-27T10:00:00.000Z",
-      },
-      expected: {
-        action: "none",
-        restarted: false,
-        started: true,
-        restartAttempt: "restart-1",
-        restartTarget: { zcp: "9.226.0" },
-        restartStartedAt: "2026-10-27T10:00:00.000Z",
-        bootId: "boot-1",
-        serverVersion: "0.15.200",
-      },
-    },
-    {
-      name: "answers why a restart cannot start",
-      restart: { started: false, reason: "this Zerops Control Plane can't restart its Mate yet" },
-      expected: {
-        action: "none",
-        restarted: false,
-        error: "this Zerops Control Plane can't restart its Mate yet",
-        bootId: "boot-1",
-        serverVersion: "0.15.200",
-      },
-    },
-  ])("$name", ({ restart, expected }) =>
-    Effect.gen(function* () {
-      let mateUpdates = 0;
-      const result = yield* runZeropsMateUpdate({
-        zeropsCli: stubMateUpdate(
-          Effect.sync(() => {
-            mateUpdates += 1;
-            return { action: "none", restarted: false };
-          }),
-        ),
-        zeropsMateUpdate: stubMateUpdateService(
-          Effect.void,
-          Effect.die("not used"),
-          Effect.succeed(NEEDS_RESTART),
-          Effect.succeed(restart),
-        ),
-        isZeropsEnvironment: true,
-        serverVersion: "0.15.200",
-        bootId: "boot-1",
-      });
-      expect(result).toEqual(expected);
-      expect(mateUpdates).toBe(0);
-    }),
-  );
-});
-
 describe("runZeropsMateCheckUpdate", () => {
   it.effect("fails with EnvironmentAuthorizationError outside a Zerops project", () =>
     Effect.gen(function* () {
       const error = yield* Effect.flip(
         runZeropsMateCheckUpdate({
-          zeropsMateUpdate: stubMateUpdateService(Effect.void, Effect.die("not used")),
+          zeropsMateUpdate: stubMateUpdateService(Effect.die("not used")),
           isZeropsEnvironment: false,
         }),
       );
@@ -283,7 +206,6 @@ describe("runZeropsMateCheckUpdate", () => {
     Effect.gen(function* () {
       const result = yield* runZeropsMateCheckUpdate({
         zeropsMateUpdate: stubMateUpdateService(
-          Effect.void,
           Effect.succeed({
             installed: "0.8.0",
             latest: "0.8.1",
@@ -305,7 +227,7 @@ describe("runZeropsMateCheckUpdate", () => {
   it.effect("maps an undefined check result to null", () =>
     Effect.gen(function* () {
       const result = yield* runZeropsMateCheckUpdate({
-        zeropsMateUpdate: stubMateUpdateService(Effect.void, Effect.succeed(undefined)),
+        zeropsMateUpdate: stubMateUpdateService(Effect.succeed(undefined)),
         isZeropsEnvironment: true,
       });
       expect(result).toBeNull();

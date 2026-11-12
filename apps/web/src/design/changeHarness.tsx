@@ -14,10 +14,17 @@
  * Fixtures only. Nothing here ships in the app bundle — `design-change.html` is not
  * `index.html`, and no route imports this module.
  */
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+  RouterProvider,
+} from "@tanstack/react-router";
 import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
 
+import type { AppRouter } from "~/router";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsDataContext";
@@ -115,18 +122,26 @@ const appearance = new URLSearchParams(location.search).get("theme") === "dark" 
 document.documentElement.classList.toggle("dark", appearance === "dark");
 applyThemePalette(ZEROPS_THEME_ID, appearance);
 
-const host = document.getElementById("design");
-if (host) {
-  createRoot(host).render(
-    <StrictMode>
-      {/* The panes stand in the hosted frame, which outside the app shell
-          draws its lockup as a router link; inside a sidebar it draws none,
-          so the harness needs no router. */}
+// The review dialog reads the location (a pipeline opened over it), so the harness stands in a
+// router of its own.
+const router = createRouter({
+  routeTree: createRootRoute({
+    component: () => (
       <SidebarProvider className="block">
         <Standins>
           <Harness />
         </Standins>
       </SidebarProvider>
+    ),
+  }),
+  history: createMemoryHistory({ initialEntries: ["/"] }),
+}) as unknown as AppRouter;
+
+const host = document.getElementById("design");
+if (host) {
+  createRoot(host).render(
+    <StrictMode>
+      <RouterProvider router={router} />
     </StrictMode>,
   );
 }

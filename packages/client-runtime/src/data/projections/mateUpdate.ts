@@ -55,9 +55,8 @@ export const mateUpdate: Projection<string, MateUpdateRead> = {
                       "The update did not take."),
               },
             };
-          // What the server said its restart installs, else what the press's own check read.
-          const restart =
-            operationResult(record, "mate-update")?.restartTarget ?? record.intent.restart;
+          // What the press's own check read a restart installs.
+          const restart = record.intent.restart;
           if (restart !== undefined)
             return {
               checked: undefined,

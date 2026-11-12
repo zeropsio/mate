@@ -12,7 +12,6 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import { ServerConfig } from "../config.ts";
-import { MateUpdateBootFence } from "../mateUpdateBoot.ts";
 import { isLeaseRepository, ZeropsRepositorySource } from "../zerops/ZeropsRepositorySource.ts";
 import { VcsProcess } from "./VcsProcess.ts";
 
@@ -73,9 +72,4 @@ export const sweepCheckpointRefs = Effect.gen(function* () {
   );
 });
 
-export const layer = Layer.effectDiscard(
-  Effect.gen(function* () {
-    const fence = yield* MateUpdateBootFence;
-    yield* Effect.forkScoped(fence.lifted.pipe(Effect.andThen(sweepCheckpointRefs)));
-  }),
-);
+export const layer = Layer.effectDiscard(Effect.forkScoped(sweepCheckpointRefs));

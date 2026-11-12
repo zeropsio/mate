@@ -37,7 +37,7 @@ import * as Effect from "effect/Effect";
 import { DeepMutable } from "effect/Types";
 import { createModelSelection, normalizeModelSlug } from "@t3tools/shared/model";
 import { selectionWithoutEffort } from "@t3tools/shared/zeropsEffort";
-import { useMemo } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef } from "react";
 import { resolveAppModelSelection, resolveAppModelSelectionForInstance } from "./modelSelection";
 import { DEFAULT_INTERACTION_MODE, DEFAULT_RUNTIME_MODE, type ChatImageAttachment } from "./types";
 import {
@@ -798,6 +798,15 @@ const EMPTY_THREAD_DRAFT = Object.freeze<ComposerThreadDraftState>({
   runtimeMode: null,
   interactionMode: null,
 });
+
+const { prompt: _noWords, ...EMPTY_DRAFT_BESIDE_WORDS } = EMPTY_THREAD_DRAFT;
+
+/** A draft's model picks, or the one "none" a draft not made yet reads as: no pick is no change. */
+function modelSelectionsOrNone(
+  selections: ComposerThreadDraftState["modelSelectionByProvider"],
+): ComposerThreadDraftState["modelSelectionByProvider"] {
+  return Object.keys(selections).length === 0 ? EMPTY_MODEL_SELECTION_BY_PROVIDER : selections;
+}
 
 /**
  * Canonical factory for a blank `ComposerThreadDraftState`. Exported so tests
@@ -3982,6 +3991,97 @@ export function useComposerThreadDraft(threadRef: ComposerThreadTarget): Compose
   });
 }
 
+/**
+ * A draft beside its words: what stands around a composer's text. A key typed changes the words
+ * and none of this, so whoever reads it is not drawn again for the key.
+ */
+export function useComposerThreadDraftBesideWords(
+  threadRef: ComposerThreadTarget,
+): Omit<ComposerThreadDraftState, "prompt"> {
+  return useComposerDraftStore(
+    useShallow((state) => {
+      const draft = getComposerDraftState(state, threadRef);
+      if (!draft) return EMPTY_DRAFT_BESIDE_WORDS;
+      // The first key makes the draft, with lists of its own that hold nothing: the same nothing
+      // as before it, so that key draws its reader once (for the words there now are), not again
+      // for each list.
+      return {
+        images: draft.images.length === 0 ? EMPTY_IMAGES : draft.images,
+        nonPersistedImageIds:
+          draft.nonPersistedImageIds.length === 0 ? EMPTY_IDS : draft.nonPersistedImageIds,
+        persistedAttachments:
+          draft.persistedAttachments.length === 0
+            ? EMPTY_PERSISTED_ATTACHMENTS
+            : draft.persistedAttachments,
+        files: draft.files.length === 0 ? EMPTY_FILES : draft.files,
+        terminalContexts:
+          draft.terminalContexts.length === 0 ? EMPTY_TERMINAL_CONTEXTS : draft.terminalContexts,
+        reviewComments:
+          draft.reviewComments.length === 0 ? EMPTY_REVIEW_COMMENTS : draft.reviewComments,
+        modelSelectionByProvider: modelSelectionsOrNone(draft.modelSelectionByProvider),
+        activeProvider: draft.activeProvider,
+        runtimeMode: draft.runtimeMode,
+        interactionMode: draft.interactionMode,
+      };
+    }),
+  );
+}
+
+/** A draft's words: none where nothing is drafted. */
+export function composerDraftWords(
+  state: Pick<ComposerDraftStoreState, "draftsByThreadKey" | "draftThreadsByThreadKey">,
+  threadRef: ComposerThreadTarget,
+): string {
+  return getComposerDraftState(state, threadRef)?.prompt ?? "";
+}
+
+/** A draft's words as they are now, for a moment that acts on them and shows none. */
+export function readComposerDraftWords(threadRef: ComposerThreadTarget): string {
+  return composerDraftWords(useComposerDraftStore.getState(), threadRef);
+}
+
+/**
+ * Tells `onChange` when a composer's words change while `active`: by a key, by anything else that
+ * writes them, or by the composer turning to a conversation whose words differ. For what answers
+ * such a change and shows no words (a refusal to take back, a menu to shut): watched here, only
+ * while that is on screen, its owner is not drawn again for every key.
+ */
+export function useComposerDraftWordsChange(
+  threadRef: ComposerThreadTarget,
+  active: boolean,
+  onChange: (words: string) => void,
+): void {
+  const seen = useRef<string | null>(null);
+  const changed = useEffectEvent(onChange);
+  useEffect(() => {
+    if (!active) {
+      seen.current = null;
+      return;
+    }
+    const see = (words: string) => {
+      const before = seen.current;
+      seen.current = words;
+      if (before !== null && before !== words) changed(words);
+    };
+    see(readComposerDraftWords(threadRef));
+    return watchComposerDraftWords(threadRef, see);
+  }, [active, threadRef]);
+}
+
+/** Tells `onWords` each time a draft's words change, whoever writes them. */
+export function watchComposerDraftWords(
+  threadRef: ComposerThreadTarget,
+  onWords: (words: string) => void,
+): () => void {
+  let last = readComposerDraftWords(threadRef);
+  return useComposerDraftStore.subscribe((state) => {
+    const words = composerDraftWords(state, threadRef);
+    if (words === last) return;
+    last = words;
+    onWords(words);
+  });
+}
+
 function useComposerDraftModelState(threadRef: ComposerThreadTarget): ComposerDraftModelState {
   return useComposerDraftStore(
     useShallow((state) => {
@@ -3989,7 +4089,7 @@ function useComposerDraftModelState(threadRef: ComposerThreadTarget): ComposerDr
       return draft
         ? {
             activeProvider: draft.activeProvider,
-            modelSelectionByProvider: draft.modelSelectionByProvider,
+            modelSelectionByProvider: modelSelectionsOrNone(draft.modelSelectionByProvider),
           }
         : EMPTY_COMPOSER_DRAFT_MODEL_STATE;
     }),

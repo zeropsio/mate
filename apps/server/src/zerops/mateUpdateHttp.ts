@@ -1,11 +1,12 @@
 import * as Effect from "effect/Effect";
+import * as FiberHandle from "effect/FiberHandle";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
-import { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
 import { ServerEnvironment } from "../environment/ServerEnvironment.ts";
 import { ServerCommandReadiness } from "../spi/serverCommandReadiness.ts";
+import { MATE_UPDATE_DRAIN_DEADLINE } from "./mateUpdateDrain.ts";
 import {
   makeMateUpdateDrain,
   readMateUpdateIdleFacts,
@@ -35,23 +36,45 @@ const local = Effect.gen(function* () {
   return isLocalUpdateRequest(Option.getOrUndefined(request.remoteAddress), request.headers);
 });
 const refused = HttpServerResponse.empty({ status: 403 });
-const drainRoute = HttpRouter.add(
-  "POST",
-  "/api/mate/update/drain",
-  Effect.gen(function* () {
-    if (!(yield* local)) return refused;
-    const request = yield* HttpServerRequest.HttpServerRequest;
-    const input = yield* request.json.pipe(
-      Effect.flatMap(Schema.decodeUnknownEffect(DrainInput)),
-      Effect.option,
-    );
-    if (Option.isNone(input)) return HttpServerResponse.empty({ status: 400 });
-    const { bootId } = yield* (yield* ServerEnvironment).getDescriptor;
-    const drain = yield* makeMateUpdateDrain;
-    const drained = yield* drain({ automatic: input.value.automatic });
-    return HttpServerResponse.jsonUnsafe({ protocol: 1, drained, bootId });
-  }),
-);
+
+/**
+ * A drain's yes keeps admission closed for the restart zcp then makes. When no restart follows
+ * (zcp died, or its restart never came) admission opens again by itself once the drain's own
+ * deadline has passed on this server's clock: longer than any wait zcp keeps between a yes and its
+ * restart, so it never opens under a restart still coming. zcp's cancel, or its next drain, ends
+ * that wait first.
+ */
+const MATE_UPDATE_REOPEN_AFTER_YES = MATE_UPDATE_DRAIN_DEADLINE;
+
+const drainRoute = (reopenAfterYes: FiberHandle.FiberHandle<void, never>) =>
+  HttpRouter.add(
+    "POST",
+    "/api/mate/update/drain",
+    Effect.gen(function* () {
+      if (!(yield* local)) return refused;
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      const input = yield* request.json.pipe(
+        Effect.flatMap(Schema.decodeUnknownEffect(DrainInput)),
+        Effect.option,
+      );
+      if (Option.isNone(input)) return HttpServerResponse.empty({ status: 400 });
+      const { bootId } = yield* (yield* ServerEnvironment).getDescriptor;
+      yield* FiberHandle.clear(reopenAfterYes);
+      const drain = yield* makeMateUpdateDrain;
+      const drained = yield* drain({ automatic: input.value.automatic });
+      if (drained)
+        yield* FiberHandle.run(
+          reopenAfterYes,
+          Effect.sleep(MATE_UPDATE_REOPEN_AFTER_YES).pipe(
+            Effect.andThen(
+              Effect.logWarning("mate update: no restart followed the drain; reopening"),
+            ),
+            Effect.andThen(reopenMateUpdateAdmission),
+          ),
+        );
+      return HttpServerResponse.jsonUnsafe({ protocol: 1, drained, bootId });
+    }),
+  );
 const readinessRoute = HttpRouter.add(
   "GET",
   "/api/mate/update/readiness",
@@ -71,26 +94,20 @@ const readinessRoute = HttpRouter.add(
     });
   }),
 );
-/**
- * zcp sends commit and cancel once, with a fixed budget: the answer comes once the signal is taken,
- * never after the engine's opening the boot fence held nor after the reread of zcp's status that a
- * commit starts (a spawned `zcp mate status`). Admission stays closed until the engine is open
- * (`MateUpdateBootFence.lift`).
- */
-const releaseRoute = (path: `/${string}`) =>
+/** zcp's call that no restart follows the drain it asked for: admission opens again now. */
+const cancelRoute = (reopenAfterYes: FiberHandle.FiberHandle<void, never>) =>
   HttpRouter.add(
     "POST",
-    path,
+    "/api/mate/update/cancel",
     Effect.gen(function* () {
       if (!(yield* local)) return refused;
-      yield* yield* reopenMateUpdateAdmission;
-      if (path === "/api/mate/update/commit") yield* (yield* ZeropsMateUpdate).reread;
+      yield* FiberHandle.clear(reopenAfterYes);
+      yield* reopenMateUpdateAdmission;
       return HttpServerResponse.jsonUnsafe({ protocol: 1, reopened: true });
     }),
   );
-export const mateUpdateRouteLayer = Layer.mergeAll(
-  drainRoute,
-  readinessRoute,
-  releaseRoute("/api/mate/update/cancel"),
-  releaseRoute("/api/mate/update/commit"),
+export const mateUpdateRouteLayer = Layer.unwrap(
+  Effect.map(FiberHandle.make<void, never>(), (reopenAfterYes) =>
+    Layer.mergeAll(drainRoute(reopenAfterYes), readinessRoute, cancelRoute(reopenAfterYes)),
+  ),
 );

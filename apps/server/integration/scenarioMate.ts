@@ -216,7 +216,6 @@ export async function startScenarioMate(options: ScenarioMateOptions): Promise<S
           serviceId: options.serviceId,
           hostname: options.hostname,
           statusFile: NodePath.join(root, "zcp", "status.json"),
-          mateUpdateStateFile: NodePath.join(root, "zcp", "update.json"),
           envStorePath: NodePath.join(root, "zembed", "env.json"),
         },
       })),

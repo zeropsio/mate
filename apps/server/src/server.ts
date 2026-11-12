@@ -1,6 +1,5 @@
 import { providerUpdateSafetyLayer } from "./spi/ProviderUpdateSafety.ts";
 import { rpcUpdateAdmissionLayer } from "./RpcUpdateAdmission.ts";
-import { MateUpdateBootFence } from "./mateUpdateBoot.ts";
 import {
   EnvironmentHttpApi,
   ProviderDriverKind,
@@ -8,7 +7,6 @@ import {
 } from "@t3tools/contracts";
 import * as Duration from "effect/Duration";
 import * as Deferred from "effect/Deferred";
-import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
@@ -813,8 +811,6 @@ export const makeServerLayer = (options: ServerLayerOptions) =>
             rpcUpdateAdmissionLayer,
           ),
         ),
-        // Read once from zcp's update record; everything above holds its outward roots on it.
-        Layer.provideMerge(MateUpdateBootFence.layer),
         // Inside a Zerops container every git spawn above this line is rewritten
         // into `ssh <service> git -C /var/www …`; everything else reaches the
         // platform spawner below unchanged. The repository source reads the
@@ -835,11 +831,5 @@ export const makeServerLayer = (options: ServerLayerOptions) =>
   );
 
 // The CLI supplies configuration. A boot that fails fails the build (`abort`): every step that can
-// fail, the engine's boot included, comes before activation. Afterwards only an update's refused
-// boot fence ends the server, the same way (`MateUpdateBootFence.ended`).
-export const runServer = Effect.scoped(
-  Effect.flatMap(
-    Layer.build(makeServerLayer({ drivers: BUILT_IN_DRIVERS })),
-    (context) => Context.get(context, MateUpdateBootFence).ended,
-  ),
-);
+// fail, the engine's boot included, comes before activation.
+export const runServer = Layer.launch(makeServerLayer({ drivers: BUILT_IN_DRIVERS }));

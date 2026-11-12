@@ -804,7 +804,7 @@ describe("a receiver slow to open", () => {
   const gone = { ...PROBE_PROJECT, id: "gone", name: "gone", _version: 1 };
   /** Over REST the project as it was; the receiver's registration answers it renamed. */
   const platform =
-    (restHeld?: Deferred.Deferred<void>) =>
+    (restHeld?: Deferred.Deferred<void>, stopped: Array<string> = []) =>
     (request: WireRequest): Effect.Effect<unknown, StreamFault> => {
       if (request.rest !== true)
         return answers(
@@ -814,7 +814,12 @@ describe("a receiver slow to open", () => {
       const answer = Effect.succeed({
         items: request.path === PROJECT_SEARCH ? [PROBE_PROJECT, gone] : [],
       });
-      return restHeld === undefined ? answer : Effect.andThen(Deferred.await(restHeld), answer);
+      return restHeld === undefined
+        ? answer
+        : // A read the adapter stops before its answer came says so: its request was aborted.
+          Effect.onInterrupt(Effect.andThen(Deferred.await(restHeld), answer), () =>
+            Effect.sync(() => void stopped.push(request.path)),
+          );
     };
   const projectName = (store: ReturnType<typeof makeAccountStore>) => {
     const content = factOf(store.state(), "project", PROBE_PROJECT_ID)?.content;
@@ -869,29 +874,34 @@ describe("a receiver slow to open", () => {
     }),
   );
 
-  it.effect("a REST answer landing after the receiver's baseline never replaces it", () =>
-    Effect.gen(function* () {
-      const store = makeAccountStore(AtomRegistry.make());
-      const gate = yield* Deferred.make<void>();
-      const restHeld = yield* Deferred.make<void>();
-      const fixture = fixtureWire(platform(restHeld), {
-        rest: true,
-        opening: Deferred.await(gate),
-      });
-      const { fiber } = yield* runLink(store, fixture);
-      yield* TestClock.adjust(SLOW_RECEIVER_MS);
-      yield* settle;
-      expect(restReads(fixture).length).toBeGreaterThan(0);
-      yield* Deferred.succeed(gate, undefined);
-      yield* settle;
-      expect(projectName(store)).toBe("mate-rig-renamed");
-      yield* Deferred.succeed(restHeld, undefined);
-      yield* settle;
-      expect(projectName(store)).toBe("mate-rig-renamed");
-      expect(store.state().memberships.get(projects)?.members.get("gone")).toBeUndefined();
-      expect(store.state().memberships.get(projects)?.coverage).toBe("complete");
-      yield* Fiber.interrupt(fiber);
-    }),
+  // witness: packages/client-runtime/src/data/adapters/zerops.ts | yield* Effect.forkIn(Fiber.interrupt(first.fiber), attemptScope); → yield* Effect.void;
+  it.effect(
+    "a listing read over REST that the receiver overtook is stopped, not left downloading beside the receiver's answer",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const gate = yield* Deferred.make<void>();
+        const restHeld = yield* Deferred.make<void>();
+        const stopped: Array<string> = [];
+        const fixture = fixtureWire(platform(restHeld, stopped), {
+          rest: true,
+          opening: Deferred.await(gate),
+        });
+        const { fiber } = yield* runLink(store, fixture);
+        yield* TestClock.adjust(SLOW_RECEIVER_MS);
+        yield* settle;
+        const underWay = restReads(fixture).map((request) => request.path);
+        expect(underWay).toContain(PROJECT_SEARCH);
+        expect(stopped).toEqual([]);
+        // The receiver opens while every REST read still waits for its answer.
+        yield* Deferred.succeed(gate, undefined);
+        yield* settle;
+        expect(stopped.toSorted()).toEqual(underWay.toSorted());
+        expect(projectName(store)).toBe("mate-rig-renamed");
+        expect(store.state().memberships.get(projects)?.members.get("gone")).toBeUndefined();
+        expect(store.state().memberships.get(projects)?.coverage).toBe("complete");
+        yield* Fiber.interrupt(fiber);
+      }),
   );
 });
 

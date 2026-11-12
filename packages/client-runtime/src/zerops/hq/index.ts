@@ -2,6 +2,7 @@ export { sharedHq } from "./anchor.ts";
 export {
   HQ_WRITE_UNCERTAIN,
   HqError,
+  freshHqSocketName,
   makeHqApi,
   readHqParts,
   type Asked,
@@ -88,6 +89,8 @@ export {
   hqNeedsUpdate,
   hqOfferWords,
   hqRefusalWords,
+  MERGE_TOO_LARGE,
+  mergeTooLargeWords,
   NO_HQ_WORDS,
 } from "./refusals.ts";
 export {

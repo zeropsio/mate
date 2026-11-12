@@ -100,6 +100,8 @@ import type { HqEnvironment, CanonicalHqEnvironment } from "./environments.ts";
 import {
   hqDisagreesOn,
   hqRefusalWords,
+  MERGE_TOO_LARGE,
+  mergeTooLargeWords,
   ZEROPS_NO_CREDENTIAL,
   ZEROPS_UNANSWERED,
 } from "./refusals.ts";
@@ -790,7 +792,23 @@ const WROTE_NOTHING_ZEROPS = "zerops_unanswered";
 const isRemoteRefusal = Schema.is(HqRemoteRefusal);
 const decodeRefusal = Schema.decodeUnknownOption(HqRefusal);
 
-async function errorOf(response: Response, gitSetup = false): Promise<HqError> {
+/** What a call asked, where HQ's refusal of it has words of its own. */
+interface CallAsk {
+  /** A Git target's setup (`/api/git-targets/…`). */
+  readonly gitSetup: boolean;
+  /** A change's merge (`POST …/changes/:repo/:n/merge`). */
+  readonly merge: boolean;
+}
+
+const askOf = (url: string, init: RequestInit): CallAsk => {
+  const path = new URL(url).pathname;
+  return {
+    gitSetup: path.startsWith("/api/git-targets/"),
+    merge: init.method === "POST" && /\/changes\/[^/]+\/[^/]+\/merge$/u.test(path),
+  };
+};
+
+async function errorOf(response: Response, { gitSetup, merge }: CallAsk): Promise<HqError> {
   const { refusal, body } = said(await response.text());
   const problems = refusal?.problems;
   const code = refusal?.code ?? `http_${response.status}`;
@@ -825,6 +843,11 @@ async function errorOf(response: Response, gitSetup = false): Promise<HqError> {
     refusal.message.trim().length > 0
       ? `GitHub refused: ${refusal.message.trim()}`
       : undefined;
+  // A merge HQ refused for a file above its limit: one sentence the person hands to their Mate.
+  const tooLarge =
+    merge && code === MERGE_TOO_LARGE
+      ? mergeTooLargeWords(refusal?.limit, refusal?.size)
+      : undefined;
   return new HqError({
     kind: "refused",
     code,
@@ -834,6 +857,7 @@ async function errorOf(response: Response, gitSetup = false): Promise<HqError> {
     message:
       probeMessage ??
       githubSaid ??
+      tooLarge ??
       hqRefusalWords({
         code,
         reason,
@@ -848,9 +872,9 @@ async function errorOf(response: Response, gitSetup = false): Promise<HqError> {
  * HQ's answer as the call's outcome. A write HQ failed on its way (`5xx`) may have landed — but
  * a `503` writes nothing (mate-hq spec/protocol.md), so HQ is simply not answering right now.
  */
-async function answered(response: Response, write: boolean, gitSetup = false): Promise<Response> {
+async function answered(response: Response, write: boolean, ask: CallAsk): Promise<Response> {
   if (response.ok) return response;
-  const error = await errorOf(response, gitSetup);
+  const error = await errorOf(response, ask);
   if (write && response.status >= 500 && response.status !== 503) {
     throw uncertain();
   }
@@ -884,7 +908,7 @@ async function send(
       message: late ? HQ_TAKING_LONG : "HQ could not be reached.",
     });
   }
-  return answered(response, write, new URL(url).pathname.startsWith("/api/git-targets/"));
+  return answered(response, write, askOf(url, init));
 }
 
 const json = async <T>(response: Response): Promise<T> => (await response.json()) as T;
@@ -1137,9 +1161,20 @@ const browsePathOrRefuse = <R extends GitBrowseRead>(
   return path;
 };
 
+/** A new name for an HQ stream socket: 16 random bytes in hex. */
+export const freshHqSocketName = (): string =>
+  Array.from(globalThis.crypto.getRandomValues(new Uint8Array(16)), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+
 export function makeHqApi(input: {
   /** HQ's origin, as its anchor or the build's configuration names it. */
   readonly address: string;
+  /**
+   * The name of this client's stream socket, which HQ ties a press to, including across stream
+   * reconnects. A client with no longer-lived owner of the name (the web's tab) takes a fresh one.
+   */
+  readonly socketName?: string;
   readonly fetch: FetchImplementation;
   /**
    * The person's Zerops access token and its expiry; `refused`, the token HQ answered `401
@@ -1164,10 +1199,7 @@ export function makeHqApi(input: {
   };
 }): HqApi {
   const origin = input.address.replace(/\/+$/u, "");
-  // HQ ties a press to this client's stream, including across stream reconnects.
-  const socketName = Array.from(globalThis.crypto.getRandomValues(new Uint8Array(16)), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
+  const socketName = input.socketName ?? freshHqSocketName();
   /** The session HQ issued, or the door exchange under way that will issue it. */
   let session: Promise<string> | null = null;
 

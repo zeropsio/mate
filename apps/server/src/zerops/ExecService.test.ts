@@ -37,7 +37,7 @@ const makeLayer = (overrides?: Partial<ServerConfig.ServerConfig["Service"]>) =>
 it.layer(NodeServices.layer)("runExecCommand", (it) => {
   it.effect("runs a command and reports its output and exit code", () =>
     Effect.gen(function* () {
-      const result = yield* runExecCommand({
+      const { result } = yield* runExecCommand({
         command: "node",
         args: ["-e", "process.stdout.write('hello from the container')"],
       });
@@ -51,7 +51,7 @@ it.layer(NodeServices.layer)("runExecCommand", (it) => {
 
   it.effect("reports a non-zero exit and stderr rather than failing", () =>
     Effect.gen(function* () {
-      const result = yield* runExecCommand({
+      const { result } = yield* runExecCommand({
         command: "node",
         args: ["-e", "process.stderr.write('it went wrong'); process.exit(3)"],
       });
@@ -66,7 +66,7 @@ it.layer(NodeServices.layer)("runExecCommand", (it) => {
   it.effect("passes arguments as a list, so nothing is ever shell-interpreted", () =>
     Effect.gen(function* () {
       const injection = "; echo pwned | tee /dev/null";
-      const result = yield* runExecCommand({
+      const { result } = yield* runExecCommand({
         command: "node",
         args: ["-e", "process.stdout.write(process.argv[1] ?? 'none')", injection],
       });
@@ -80,7 +80,7 @@ it.layer(NodeServices.layer)("runExecCommand", (it) => {
   it.effect("defaults the working directory to the workspace root", () =>
     Effect.gen(function* () {
       const config = yield* ServerConfig.ServerConfig;
-      const result = yield* runExecCommand({
+      const { result } = yield* runExecCommand({
         command: "node",
         args: ["-e", "process.stdout.write(process.cwd())"],
       });
@@ -126,7 +126,7 @@ it.layer(NodeServices.layer)("runExecCommand", (it) => {
 
   it.effect("truncates rather than returning an unbounded body", () =>
     Effect.gen(function* () {
-      const result = yield* runExecCommand({
+      const { result } = yield* runExecCommand({
         command: "node",
         args: ["-e", "process.stdout.write('x'.repeat(4 * 1024 * 1024))"],
       });
@@ -158,7 +158,7 @@ it.effect("kills a command that outlives its deadline", () =>
     );
     yield* Deferred.await(started);
     yield* TestClock.adjust(250);
-    const result = yield* Fiber.join(running);
+    const { result } = yield* Fiber.join(running);
 
     assert.isTrue(result.timedOut);
     assert.isNull(result.exitCode);

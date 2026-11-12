@@ -14,7 +14,8 @@ import type { AdmissionLive, TicketFrame } from "./ZeropsTicketDoor.ts";
  *   the server was started with (`ZeropsEnvironment.hqOrigin`). While the container holds no key,
  *   nothing is dialled and the link waits as after a failed one.
  * - **Up:** once HQ answered the hello with its first state, the Mate's overview
- *   (`zeropsHqOverview.ts`): the whole of it first on every link, then only the sections that
+ *   (`zeropsHqOverview.ts`), held until the signers HQ kept, sent right after that state, are
+ *   applied: the whole of it first on every link, then only the sections that
  *   changed, at most once per `MATE_OVERVIEW_EVERY_MS`, looked at again when something it is made
  *   of moves — a domain event, the crew's snapshot, a login, the update line — and never on a
  *   timer; beside it the Mate's attention (`ZeropsMateAttention`), whole on every link and again at
@@ -60,7 +61,6 @@ import type { AdmissionLive, TicketFrame } from "./ZeropsTicketDoor.ts";
  * @module ZeropsHqLink
  */
 import { mateRunsWithoutSignIn } from "@t3tools/shared/zeropsAgentAuth";
-import type { HqAutoUpdatePolicy } from "@t3tools/shared/mateAutoUpdatePolicy";
 import { ProviderInstances } from "../spi/providerInstances.ts";
 import * as NodeDns from "node:dns";
 import * as NodeNet from "node:net";
@@ -146,7 +146,6 @@ import { ZEROPS_SUBJECT_PREFIX, zeropsUserIdOf } from "@t3tools/contracts";
 import { MateAutoUpdatePolicy } from "./MateAutoUpdatePolicy.ts";
 import type { UsageLink } from "../usage/UsageLink.ts";
 import { makeUsageCapture } from "../usage/UsageCapture.ts";
-import { MateUpdateBootFence } from "../mateUpdateBoot.ts";
 
 /** The part of a WebSocket the link uses; the global `WebSocket` is one. */
 export interface LinkSocket {
@@ -514,8 +513,9 @@ export const makeZeropsHqLink = (
 
     /**
      * One link, opened with the project's key in its first frame, then relayed in the scope's
-     * lifetime until it closes: the overview up once HQ answered, pongs and HQ's frames down.
-     * Fails with why when there is no key or public origin, or the socket never opened.
+     * lifetime until it closes: the overview up once HQ answered and the signers it kept are
+     * applied, pongs and HQ's frames down. Fails with why when there is no key or public origin,
+     * or the socket never opened.
      */
     const openLink = Effect.fnUntraced(function* (handshake: HandshakeSignals) {
       const key = yield* options.readKey;
@@ -634,31 +634,32 @@ export const makeZeropsHqLink = (
         );
       const tasks = options.tasks ? yield* options.tasks.open(reportTask) : undefined;
       let requestSerial = 0;
-      const policyRequests = new Map<
-        string,
-        Deferred.Deferred<Option.Option<HqAutoUpdatePolicy>>
-      >();
-      const verifyPolicy = Effect.gen(function* () {
+      const policyRequests = new Map<string, Deferred.Deferred<void>>();
+      // The answer reaches the holder in frame order, beside the state frames, so the later one wins.
+      const askPolicy = Effect.gen(function* () {
         const requestId = String(++requestSerial);
-        const answer = yield* Deferred.make<Option.Option<HqAutoUpdatePolicy>>();
+        const answer = yield* Deferred.make<void>();
         policyRequests.set(requestId, answer);
         return yield* send({ type: "auto-update-policy", requestId }).pipe(
           Effect.andThen(Deferred.await(answer)),
           Effect.timeoutOrElse({
             duration: HQ_AUTO_UPDATE_VERIFY_BUDGET,
-            orElse: () => Effect.succeedNone,
+            orElse: () => Effect.void,
           }),
           Effect.ensuring(Effect.sync(() => policyRequests.delete(requestId))),
         );
       });
       const autoUpdatePolicy = options.autoUpdatePolicy
-        ? yield* options.autoUpdatePolicy.open(verifyPolicy)
+        ? yield* options.autoUpdatePolicy.open(askPolicy)
         : undefined;
 
       const answered = yield* Deferred.make<void>();
       // HQ counts nothing the Mate says before it admitted the key with its first state.
       const onceAnswered = <A, E>(effect: Effect.Effect<A, E>) =>
         Deferred.await(answered).pipe(Effect.andThen(effect));
+      // HQ seeds the sign-in store with the signers it kept right after its first state, and takes
+      // the overview's signers as the truth: none goes out before that seed is applied.
+      const seeded = yield* Deferred.make<void>();
       // The tasks' reports, from HQ's first state on, on a link whose HQ does automated Mates.
       const reporting =
         tasks === undefined
@@ -727,7 +728,9 @@ export const makeZeropsHqLink = (
             const answer = policyRequests.get(frame.requestId);
             return answer === undefined
               ? Effect.void
-              : Deferred.succeed(answer, Option.some(frame.policy));
+              : (autoUpdatePolicy?.receive(Option.some(frame.policy)) ?? Effect.void).pipe(
+                  Effect.andThen(Deferred.succeed(answer, undefined)),
+                );
           }
           case "ping":
             return send({ type: "pong" }).pipe(Effect.andThen(usage?.ping ?? Effect.void));
@@ -761,7 +764,9 @@ export const makeZeropsHqLink = (
               Effect.flatMap((ok) => send({ type: "observe-credential-ack", id: frame.id, ok })),
             );
           case "signers":
-            return options.signers?.(frame.signers) ?? Effect.void;
+            return (options.signers?.(frame.signers) ?? Effect.void).pipe(
+              Effect.andThen(Deferred.succeed(seeded, undefined)),
+            );
           case "provider-keys":
             return options.automation?.keysHeard(frame.keys, frame.model) ?? Effect.void;
           case "task":
@@ -867,7 +872,7 @@ export const makeZeropsHqLink = (
           Effect.raceFirst(Effect.raceFirst(relay, silence), Deferred.await(ending)),
           Effect.all(
             [
-              onceAnswered(overviews),
+              onceAnswered(Deferred.await(seeded).pipe(Effect.andThen(overviews))),
               heard,
               onceAnswered(attention),
               onceAnswered(health),
@@ -916,11 +921,8 @@ export const makeZeropsHqLink = (
       }),
     );
 
-    const fence = yield* MateUpdateBootFence;
     yield* Effect.forkScoped(
       Effect.gen(function* () {
-        // A boot under an uncommitted update says nothing to HQ: no hello, overview, usage or report.
-        yield* fence.lifted;
         let attempt = 0;
         // The close HQ was last logged for while the Mate has not linked since, so a refused hello
         // retried forever writes one line, not one per retry.

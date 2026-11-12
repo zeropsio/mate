@@ -148,6 +148,7 @@ export const RATCHET_RULES = [
   "no-remote-io-outside-data-layer",
   "no-retired-mechanism",
   "no-failure-to-empty",
+  "no-frame-per-tick",
   "no-remote-data-in-browser-storage",
   "no-infinite-motion",
   "no-legacy-vocabulary",
@@ -157,6 +158,26 @@ export const RATCHET_RULES = [
   "no-arbitrary-values",
   "no-theme-escape-hatches",
 ] as const;
+
+/**
+ * Guards born with findings already in the code. A base from before such a guard holds neither the
+ * guard nor a ledger of it, so its first ledger is its own baseline there. A base that holds the
+ * guard is past that: its ledger only shrinks, and a ledger it no longer holds is an empty one, so
+ * deleting an emptied ledger never opens the door again.
+ */
+const BORN_WITH_FINDINGS: ReadonlySet<string> = new Set(["no-frame-per-tick"]);
+
+/** The ledger a guard born with findings holds in the working tree. */
+const firstLedger = (cwd: string, ruleName: string): ReadonlyArray<ExceptionEntry> =>
+  loadExceptionLedger(ruleName, NodePath.join(cwd, "oxlint-plugin-t3code/exceptions")).entries;
+
+/** Whether a revision already holds the guard itself. */
+const guardHeldAt = (cwd: string, revision: string, ruleName: string): boolean =>
+  NodeChildProcess.spawnSync(
+    "git",
+    ["cat-file", "-e", `${revision}:oxlint-plugin-t3code/rules/${ruleName}.ts`],
+    { cwd, stdio: "ignore" },
+  ).status === 0;
 
 export const ADMISSION_POLICY_BOOTSTRAP: ReadonlyArray<ExceptionEntry> = [
   {
@@ -266,6 +287,7 @@ export const loadRatchetBaseline = (
     if (header === `${revision}:${ledgerPath} missing`) {
       offset = headerEnd + 1;
       if (ledgerPath.endsWith("/no-legacy-notice-policy.json")) continue;
+      if (BORN_WITH_FINDINGS.has(NodePath.basename(ledgerPath, ".json"))) continue;
       if (
         ledgerPath.endsWith("/no-environment-as-project.json") &&
         git(["ls-tree", "--name-only", revision, "--", ledgerPath]) === ""
@@ -297,6 +319,11 @@ export const loadRatchetBaseline = (
         if (content === undefined) {
           if (ruleName === "no-environment-as-project") return [ruleName, []];
           if (ruleName === "no-legacy-notice-policy") return [ruleName, ADMISSION_POLICY_BOOTSTRAP];
+          if (BORN_WITH_FINDINGS.has(ruleName))
+            return [
+              ruleName,
+              guardHeldAt(cwd, revision, ruleName) ? [] : firstLedger(cwd, ruleName),
+            ];
           throw new Error(`Missing Git ledger ${revision}:${ledgerPath}`);
         }
         NodeFS.writeFileSync(NodePath.join(directory, `${ruleName}.json`), content);

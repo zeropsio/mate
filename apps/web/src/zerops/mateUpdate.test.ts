@@ -253,30 +253,6 @@ describe("a Mate that only a restart gets current", () => {
     expect(mateUpdateLine(update, "0.15.200")).toEqual(expected);
   });
 
-  it.each([
-    ["draining", undefined, "Update ready; waiting for your work to finish"],
-    [
-      "restarting",
-      undefined,
-      "Restarting to update Zerops Control Plane — your conversations are safe",
-    ],
-    [
-      "postponed",
-      "this Zerops Control Plane can't restart its Mate yet",
-      "Update postponed; this Zerops Control Plane can't restart its Mate yet",
-    ],
-  ] as const)("a restart %s says so on the line", (phase, reason, text) => {
-    expect(
-      mateUpdateLine(
-        {
-          ...base,
-          restart: { ...base.restart, phase, ...(reason === undefined ? {} : { reason }) },
-        },
-        "0.15.200",
-      ),
-    ).toEqual({ text, tone: "default" });
-  });
-
   it("the question names zcp, and says the container restarts once the work is done", () => {
     expect(mateUpdateQuestion("Nova", null, { zcp: "9.226.0" })).toBe(
       "Update Nova to Zerops Control Plane 9.226.0?\nNova finishes the work it's doing first, its helpers' too, then its container restarts to install it, which takes a few minutes. Its conversations stay. If that work isn't done within 10 minutes, Nova doesn't update and keeps working.",
@@ -297,24 +273,5 @@ describe("a Mate that only a restart gets current", () => {
     },
   ])("a finished restart says what moved: $text", ({ state, text }) => {
     expect(mateUpdateStatus(state)?.text).toBe(text);
-  });
-
-  it("a postponed restart gives way to the Mate's own update draining after it", () => {
-    expect(
-      mateUpdateLine(
-        {
-          ...base,
-          latest: "0.15.201",
-          available: true,
-          automatic: {
-            protocol: 1,
-            phase: "draining",
-            runningVersion: "0.15.200",
-          },
-          restart: { needed: true, phase: "postponed", reason: "not inside a container" },
-        },
-        "0.15.200",
-      ),
-    ).toEqual({ text: "Update ready; waiting for your work to finish", tone: "default" });
   });
 });

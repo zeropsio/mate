@@ -5,11 +5,14 @@
  * package versions, commits `chore(release): mate X.Y.Z` naming what was merged since the last
  * release, pushes only that tag, then waits for CI and bundle verification before
  * `releases/latest/download/stable.json` serves the new version with the checksum the release's
- * `SHA256SUMS` lists.
+ * `SHA256SUMS` lists. A source that changed no input of the server artifact since the last release
+ * prints `nothing to release` and cuts nothing.
  *
  *   node scripts/release-mate.ts --from-sha S  release a green source commit
  *   node scripts/release-mate.ts --minor    the client's compatibility floor rises
  *   node scripts/release-mate.ts --dry-run  print the plan, change nothing
+ *   node scripts/release-mate.ts --from-sha S --would-release  last stdout line `release` or
+ *     `no-release`: the decision alone, no CI wait, tag, push or worktree
  */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
@@ -17,6 +20,7 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as Effect from "effect/Effect";
 import { readReleaseSource, VERSIONED_RELEASE_PACKAGES } from "@t3tools/shared/releaseSource";
+import { serverArtifactInputs } from "./lib/server-artifact-inputs.ts";
 
 /** The release workflow checks server == desktop and tag == server; web moves with them. */
 export const VERSIONED_PACKAGES = VERSIONED_RELEASE_PACKAGES;
@@ -132,6 +136,49 @@ const sourceOf = (repo: string, ref: string) => {
   return source;
 };
 
+/** The changed paths that are server artifact inputs; an input is a file or a directory. */
+export function serverInputChanges(
+  changed: ReadonlyArray<string>,
+  inputs: ReadonlyArray<string>,
+): ReadonlyArray<string> {
+  return changed.filter((path) =>
+    inputs.some((input) => path === input || path.startsWith(`${input}/`)),
+  );
+}
+
+// A versioned package compares without its version, which alone never makes a release.
+const withoutVersion = (repo: string, ref: string, path: string) =>
+  git(repo, "show", `${ref}:${path}`).replace(/"version": "[^"]*"/, "");
+
+/**
+ * The server artifact inputs that changed from `from` to `to`, where `from` is the source of the
+ * published release `tag`: what that artifact was built from is read from its own sourcemaps.
+ */
+const serverChangesSince = (repo: string, tag: string, from: string, to: string) => {
+  const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-release-inputs-"));
+  try {
+    const { asset } = JSON.parse(releaseAsset(repo, tag, "stable.json")) as Manifest;
+    if (asset === undefined) throw new Error(`${tag}'s stable.json names no asset`);
+    NodeChildProcess.execFileSync(
+      GH,
+      ["release", "download", tag, "-R", REPOSITORY, "-p", asset, "-D", dir],
+      { cwd: repo, stdio: ["ignore", "pipe", "pipe"] },
+    );
+    NodeChildProcess.execFileSync("tar", ["-xzf", NodePath.join(dir, asset), "-C", dir]);
+    const inputs = serverArtifactInputs(NodePath.join(dir, "package", "dist"));
+    const changed = git(repo, "diff", "--name-only", "--no-renames", from, to)
+      .split("\n")
+      .filter((path) => path !== "");
+    return serverInputChanges(changed, inputs).filter(
+      (path) =>
+        !VERSIONED_PACKAGES.includes(path) ||
+        withoutVersion(repo, from, path) !== withoutVersion(repo, to, path),
+    );
+  } finally {
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  }
+};
+
 interface WorkflowRun {
   readonly head_sha: string;
   readonly head_branch: string;
@@ -241,12 +288,15 @@ async function main(args: ReadonlySet<string>): Promise<void> {
   if (source === undefined || !/^[0-9a-f]{40}$/.test(source))
     throw new Error("--from-sha requires a full commit SHA");
   git(repo, "merge-base", "--is-ancestor", source, mainHead);
-  const runs = github<{ workflow_runs: WorkflowRun[] }>(
-    repo,
-    `repos/${REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${source}&branch=main&per_page=10`,
-  );
-  if (!greenSource(runs.workflow_runs, source))
-    throw new Error(`source ${source} has no green main CI`);
+  const query = args.has("--would-release");
+  if (!query) {
+    const runs = github<{ workflow_runs: WorkflowRun[] }>(
+      repo,
+      `repos/${REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${source}&branch=main&per_page=10`,
+    );
+    if (!greenSource(runs.workflow_runs, source))
+      throw new Error(`source ${source} has no green main CI`);
+  }
   const releases: PublishedRelease[] = [];
   for (let page = 1; ; page++) {
     const batch = github<PublishedRelease[]>(
@@ -268,6 +318,11 @@ async function main(args: ReadonlySet<string>): Promise<void> {
     .at(-1);
   const lastSource = lastTag === undefined ? undefined : sourceOf(repo, lastTag);
   if (lastSource === source) {
+    if (query) {
+      console.log(`already released: ${lastTag} includes source ${source}`);
+      console.log("no-release");
+      return;
+    }
     if (!args.has("--dry-run"))
       await waitForManifest(
         repo,
@@ -278,6 +333,25 @@ async function main(args: ReadonlySet<string>): Promise<void> {
     return;
   }
   if (lastSource !== undefined) git(repo, "merge-base", "--is-ancestor", lastSource, source);
+  // Every release restarts every Mate; one whose artifact carries nothing new is not cut. A
+  // minor release changes what the artifact declares, so it is cut whatever else changed.
+  if (lastTag !== undefined && lastSource !== undefined && !args.has("--minor")) {
+    const changes = serverChangesSince(repo, lastTag, lastSource, source);
+    if (changes.length === 0) {
+      console.log(
+        `nothing to release: no server artifact input changed since ${lastTag} (source ${lastSource})`,
+      );
+      if (query) console.log("no-release");
+      return;
+    }
+    console.log(
+      `server artifact inputs changed since ${lastTag}: ${changes.length} (${changes.slice(0, 5).join(", ")}${changes.length > 5 ? ", …" : ""})`,
+    );
+  }
+  if (query) {
+    console.log("release");
+    return;
+  }
   // A throwaway tree: the release never touches a checkout someone is working in.
   const tree = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-release-"));
   git(repo, "worktree", "add", "--quiet", "--detach", tree, source);

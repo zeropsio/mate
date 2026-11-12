@@ -1195,14 +1195,11 @@ const buildAppUnderTest = (options?: {
             Layer.mock(ZeropsCliModule.ZeropsCli)({
               mateStatus: () => Effect.die("ZeropsCli mock: mateStatus is unreachable"),
               mateUpdate: () => Effect.die("ZeropsCli mock: mateUpdate is unreachable"),
-              version: Effect.die("ZeropsCli mock: version is unreachable"),
               leaseRelease: () => Effect.die("ZeropsCli mock: leaseRelease is unreachable"),
-              selfRestart: Effect.die("ZeropsCli mock: selfRestart is unreachable"),
               ...options?.layers?.zeropsCli,
             }),
             Layer.mock(ZeropsMateUpdateModule.ZeropsMateUpdate)({
               current: Effect.succeed(undefined),
-              refresh: Effect.void,
               ...options?.layers?.zeropsMateUpdate,
             }),
             // A test machine has no `zcp` data console engine to spawn —

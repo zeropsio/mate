@@ -861,8 +861,9 @@ export function makeHqExecutor(ports: {
               outcome: "definitive-refusal",
               message: HQ_NOT_OPEN,
             });
+          // A refusal keeps HQ's code: the review hands a merge's `too_large` on as it is.
           return yield* flowWrite(requestId, api, flow, (call) =>
-            Effect.tryPromise({ try: call, catch: faultOf }),
+            Effect.tryPromise({ try: call, catch: (cause) => faultOf(cause, true) }),
           );
         }
         if (intent.kind === "answer-kept-git") {

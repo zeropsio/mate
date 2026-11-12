@@ -19,7 +19,6 @@ import { ProjectionTurnRepositoryLive } from "./persistence/Layers/ProjectionTur
 import { ProjectionThreadActivityRepositoryLive } from "./persistence/Layers/ProjectionThreadActivities.ts";
 import { ProjectionPendingApprovalRepositoryLive } from "./persistence/Layers/ProjectionPendingApprovals.ts";
 import * as ServerConfig from "./config.ts";
-import { MateUpdateBootFence } from "./mateUpdateBoot.ts";
 import { MateEngine, type EngineStoreError, type MateEngineService } from "./engine/MateEngine.ts";
 import * as Keybindings from "./keybindings.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
@@ -203,33 +202,17 @@ const runStartupPhase = <A, E, R>(phase: string, effect: Effect.Effect<A, E, R>)
 /**
  * The conversation's roots: the engine in `reactorScope`. Its boot reads every record and
  * reconciles the restart before startup goes on, so a boot that cannot read this Mate's state fails
- * before command readiness; under an update's boot fence that boot is strict, and zcp rolls the
- * update back. The engine's opening acts outward and cannot fail: under the fence its admission
- * closes first and the opening is held, in its own fiber, until zcp commits or cancels or its
- * record settles on this version (the fence then reopens admission only after it).
+ * before command readiness. The engine's opening acts outward and cannot fail.
  */
 export const startConversationRoots = (input: {
-  readonly engine: Pick<MateEngineService, "boot" | "updateDrain">;
+  readonly engine: Pick<MateEngineService, "boot">;
   readonly reactorScope: Scope.Scope;
 }): Effect.Effect<void, EngineStoreError> =>
   runStartupPhase(
     "engine.start",
     Effect.gen(function* () {
-      const fence = yield* MateUpdateBootFence;
-      if (fence.pending) {
-        if (input.engine.updateDrain === undefined)
-          return yield* Effect.die(new Error("This Mate cannot fence an automatic update boot."));
-        yield* input.engine.updateDrain.begin;
-      }
-      const open = yield* input.engine
-        .boot({ strict: fence.pending })
-        .pipe(Scope.provide(input.reactorScope));
-      yield* fence.pending
-        ? Effect.forkIn(
-            fence.holdOpen(open.pipe(Scope.provide(input.reactorScope))),
-            input.reactorScope,
-          )
-        : open.pipe(Scope.provide(input.reactorScope));
+      const open = yield* input.engine.boot().pipe(Scope.provide(input.reactorScope));
+      yield* open.pipe(Scope.provide(input.reactorScope));
     }),
   );
 

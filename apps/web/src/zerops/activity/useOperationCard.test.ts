@@ -1125,35 +1125,34 @@ describe("batchServiceRows — a batch deploy's card, one named row per service"
     { serviceIds: ["svc-webpool"] },
   ];
 
-  /** A row as the card draws it: its name, its state, each slot's word (`null`: a stage it has not). */
+  /** A row as the card draws it: its name, its state, and its steps' states — or that they are still worked out. */
   const read = (row: BatchServiceRow) => [
     row.name,
     row.state,
-    row.steps.map((step) => (step === null ? null : step.stateLabel)),
+    row.calculating === true ? "calculating" : row.steps.map((step) => step.state),
   ];
-  const WAITING = ["Waiting", "Waiting", "Waiting", "Waiting", "Waiting"];
 
   it.each([
     {
       name: "running: each service by name, its own steps and state",
       operation: batch("running"),
       rows: [
-        ["apipool", "running", ["Done", "Running", null, null, "Waiting"]],
-        ["edgepool", "running", ["Done", "Done", null, null, "Running"]],
-        ["embedderpool", "done", ["Done", "Done", null, null, "Done"]],
-        ["geopool", "failed", ["Done", "Failed", null, null, "Cancelled"]],
-        ["webpool", "waiting", WAITING],
-        ["sitepool", "waiting", WAITING],
+        ["apipool", "running", ["finished", "running", "waiting"]],
+        ["edgepool", "running", ["finished", "finished", "running"]],
+        ["embedderpool", "done", ["finished", "finished", "finished"]],
+        ["geopool", "failed", ["finished", "failed", "cancelled"]],
+        ["webpool", "waiting", []],
+        ["sitepool", "waiting", []],
       ],
     },
     {
       name: "settled with nothing read of a service: its row says how its call ended",
       operation: batch("done", "done"),
       rows: [
-        ["apipool", "running", ["Done", "Running", null, null, "Waiting"]],
-        ["edgepool", "running", ["Done", "Done", null, null, "Running"]],
-        ["embedderpool", "done", ["Done", "Done", null, null, "Done"]],
-        ["geopool", "failed", ["Done", "Failed", null, null, "Cancelled"]],
+        ["apipool", "done", ["finished", "finished", "finished"]],
+        ["edgepool", "done", ["finished", "finished", "finished"]],
+        ["embedderpool", "done", ["finished", "finished", "finished"]],
+        ["geopool", "failed", ["finished", "failed", "cancelled"]],
         ["webpool", "done", []],
         ["sitepool", "done", []],
       ],
@@ -1162,10 +1161,28 @@ describe("batchServiceRows — a batch deploy's card, one named row per service"
     expect(batchServiceRows(op, SERVICES, view, NOW)?.map(read)).toEqual(rows);
   });
 
+  // witness: apps/web/src/zerops/activity/useOperationCard.ts | (read.state === "running" || read.state === "waiting") → false
+  it("a service the call said deployed reads deployed, whatever the store still holds of its pipeline", () => {
+    const rows = batchServiceRows(batch("done", "done"), SERVICES, view, NOW);
+    expect(rows?.find((row) => row.name === "edgepool")).toMatchObject({
+      state: "done",
+      stateLabel: "Deployed",
+      steps: [{ state: "finished" }, { state: "finished" }, { state: "finished" }],
+    });
+    // What the store read as failed stays failed: its reading is not the call's to overrule.
+    expect(rows?.find((row) => row.name === "geopool")?.state).toBe("failed");
+  });
+
   // A service's row reads its version the way a single deploy's card does
   // (`readPipeline`): a version refused or cancelled says so, never "Waiting".
   it.each([
-    { status: "WAITING_TO_BUILD", when: "", build: undefined, state: "waiting", steps: WAITING },
+    {
+      status: "WAITING_TO_BUILD",
+      when: "",
+      build: undefined,
+      state: "waiting",
+      steps: "calculating",
+    },
     {
       status: "BUILD_VALIDATION_FAILED",
       when: "",
@@ -1178,7 +1195,7 @@ describe("batchServiceRows — a batch deploy's card, one named row per service"
       when: "before its build",
       build: { pipelineStart: T(1), pipelineFailed: T(2) },
       state: "cancelled",
-      steps: ["Cancelled", "Cancelled", null, null, "Cancelled"],
+      steps: ["cancelled", "cancelled", "cancelled"],
     },
     {
       status: "CANCELLED",
@@ -1192,7 +1209,7 @@ describe("batchServiceRows — a batch deploy's card, one named row per service"
       when: "in its build container",
       build: { pipelineStart: T(1), pipelineFailed: T(2) },
       state: "failed",
-      steps: ["Failed", "Cancelled", null, null, "Cancelled"],
+      steps: ["failed", "cancelled", "cancelled"],
     },
   ])("a service whose version is $status $when reads $state", ({ status, build, state, steps }) => {
     const one = operation({
@@ -1260,14 +1277,8 @@ describe("useOperationCard — a batch's rows stand from its call's start (hook)
       regions.observed?.services?.map((row) => [
         row.name,
         row.state,
-        row.steps.map((step) => step?.stateLabel ?? null),
+        row.steps.map((step) => step.state),
       ]),
-    ).toEqual(
-      ["api", "web"].map((host) => [
-        host,
-        "waiting",
-        ["Waiting", "Waiting", "Waiting", "Waiting", "Waiting"],
-      ]),
-    );
+    ).toEqual(["api", "web"].map((host) => [host, "waiting", []]));
   });
 });

@@ -26,6 +26,7 @@ import {
   type Projection,
   type ProjectKey,
 } from "@t3tools/client-runtime/data";
+import { keptWith } from "../../lib/keptWith";
 import { sameValue } from "../../lib/sameValue";
 import { useAccountOrgId, useProjection } from "../ZeropsAccountData";
 
@@ -96,6 +97,25 @@ const UNREAD_BUILDS = Atom.make<DeployBuildsInput["snapshot"]>({
   processHistory: NOT_READ_PROCESSES.history,
 });
 
+// The lookups are kept with the evidence they read (`keptWith`): a conversation returned to is
+// handed the lookups it had while its project's evidence is the same, so what is derived through
+// them (the thread's model) is not derived again.
+const keptThreadProject = keptWith((lifecycle: Known<ZeropsLifecycle>) =>
+  threadProjectOf(lifecycle),
+);
+const keptRestarts = keptWith(
+  (evidence: Parameters<typeof readRestart>[0]) => (source: RestartProcess) =>
+    readRestart(evidence, source),
+);
+const keptBuilds = keptWith(
+  (
+    snapshot: DeployBuildsInput["snapshot"],
+    signedIn: DeployBuildsInput["signedIn"],
+    thread: DeployBuildsInput["thread"],
+    project: DeployBuildsInput["project"],
+  ) => deployBuildLookup({ signedIn, thread, project, snapshot }),
+);
+
 /** The thread's builds lookup, and the project it reads. */
 export function useDeployBuilds(lifecycle: Known<ZeropsLifecycle> | undefined): {
   readonly builds: (appVersionId: string) => DeployBuildRead;
@@ -104,7 +124,10 @@ export function useDeployBuilds(lifecycle: Known<ZeropsLifecycle> | undefined): 
 } {
   const session = useZeropsSessionOptional();
   const inventory = useZeropsInventory();
-  const thread = useMemo(() => threadProjectOf(lifecycle), [lifecycle]);
+  const thread = useMemo(
+    () => (lifecycle === undefined ? threadProjectOf(lifecycle) : keptThreadProject(lifecycle)),
+    [lifecycle],
+  );
   const projectId = typeof thread === "string" ? null : thread.projectId;
   const orgId = useAccountOrgId();
   const snapshot = useProjection(
@@ -117,10 +140,7 @@ export function useDeployBuilds(lifecycle: Known<ZeropsLifecycle> | undefined): 
     orgId === null || projectId === null ? null : { orgId, projectId },
     UNREAD_RESTARTS,
   );
-  const restarts = useMemo(
-    () => (source: RestartProcess) => readRestart(restartEvidence, source),
-    [restartEvidence],
-  );
+  const restarts = useMemo(() => keptRestarts(restartEvidence), [restartEvidence]);
   const signedIn = session !== null && session.status === "signed-in";
   const project =
     projectId === null ||
@@ -135,7 +155,7 @@ export function useDeployBuilds(lifecycle: Known<ZeropsLifecycle> | undefined): 
   // An outage leaves what was read standing and what was not unread: it catches up, it never
   // turns unobservable on a timer.
   const builds = useMemo(
-    () => deployBuildLookup({ signedIn, thread, project, snapshot }),
+    () => keptBuilds(snapshot, signedIn, thread, project),
     [signedIn, thread, project, snapshot],
   );
   return { builds, projectId, restarts };

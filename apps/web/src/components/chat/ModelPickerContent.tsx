@@ -37,6 +37,7 @@ import {
 } from "../ui/combobox";
 import { ModelEsque } from "./providerIconUtils";
 import { isCommandPaletteOpen } from "../../commandPaletteBus";
+import { MODEL_PICKER_CONTENT_ID } from "../../modelPickerVisibility";
 import { primaryServerKeybindingsAtom } from "../../state/server";
 import {
   modelPickerJumpCommandForIndex,
@@ -896,6 +897,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
         // Hold the height from when the search started; results scroll instead of resizing.
         style={isSearching ? { height: searchHeight } : undefined}
         data-model-picker-content="true"
+        id={MODEL_PICKER_CONTENT_ID}
       >
         {/* Sidebar */}
         {showSidebar && (

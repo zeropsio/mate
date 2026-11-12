@@ -2,12 +2,18 @@
  * Connects one code repository to GitHub: the GitHub accounts the organization's apps are
  * installed on (yours first, a teammate's labelled with who added it), an account's repositories
  * with the one named like the code suggested and the ones another code repository uses visible but
- * not pickable, the explainer before leaving for GitHub to add an account, a token tab for GitLab
- * or another host, and the connect's own steps as HQ's record tells them. The trip to GitHub never
- * starts with another person's own app (`openingApp`): where the organization has no app of its
- * own, the step says so and leads to making one. The connect dialog and the Mate's ask card both
- * hold it: a dialog's footer ends in its main press, a card's starts with it, as every ask's does,
- * and ends in what the card adds (`footerEnd`: its *Not now*).
+ * not pickable, the steps before leaving for GitHub to add an account, a token tab for GitLab or
+ * another host, and the connect's own steps as HQ's record tells them.
+ *
+ * Adding an account is one press, *Continue on GitHub*, and the picker decides what the trip does
+ * (`githubTrip`): it installs the organization's app, or — where the organization has none this
+ * person may be sent to, and they are an Owner or Admin — makes it first, in the same trip. No
+ * step asks which app, says whose one is, or sends anyone to Settings; another person's own app is
+ * never named. With no account to pick from, those steps are where the picker opens.
+ *
+ * The connect dialog and the Mate's ask card both hold it: a dialog's footer ends in its main
+ * press, a card's starts with it, as every ask's does, and ends in what the card adds
+ * (`footerEnd`: its *Not now*).
  */
 import { useAtomValue } from "@effect/atom-react";
 import { shownCanonicalHqListNavigationAtom } from "@t3tools/client-runtime/data";
@@ -16,7 +22,7 @@ import { HqError } from "@t3tools/client-runtime/zerops/hq";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import { HQ_REMOTE_WRITE_VERB, hqOffer } from "@t3tools/shared/hqOffers";
 import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
-import { useNavigate, useRouter } from "@tanstack/react-router";
+import { useRouter } from "@tanstack/react-router";
 import { CheckIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -39,18 +45,18 @@ import {
 import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
 import { usePersonNames } from "~/zerops/useZeropsMateOwners";
 import { OutLink } from "../../settings/automationParts";
+import { appOwner } from "../../settings/automationSettings.logic";
+import { KeyField } from "../../settings/ConnectFlow";
 import { hostWords, mirrorAuthorityLine, mirrorGateLine, remoteSyncedAt } from "../gitMirror.logic";
 import {
   connectProgress,
-  explainerWords,
   freshNames,
+  type GithubTrip,
+  githubTrip,
   heldRepository,
   installWay,
   newRepositoryUrl,
-  noOwnAppWords,
   openingAccount,
-  openingApp,
-  ownApps,
   type PickerAccount,
   pickerAccounts,
   pickerRepositories,
@@ -118,7 +124,6 @@ export function GithubConnectPicker({
   const git = useGitTargetOperations(project);
   const mirror = useGitMirrorApps(true);
   const press = useRepoPress(orgId, project, repo, entry);
-  const navigate = useNavigate();
   const router = useRouter();
   // Back from GitHub, what came back is told apart from what was there before the person left.
   const [before, setBefore] = useState(() => {
@@ -141,6 +146,19 @@ export function GithubConnectPicker({
   };
   const send = git.send;
   const connect = git.actions?.connect;
+  // Back from GitHub, the project's page opens this dialog again.
+  const back = () =>
+    returnWithSeen(
+      returnTo ??
+        router.buildLocation({
+          to: "/group/$groupId/flow",
+          params: { groupId: project },
+          search: { mirror: project, repo },
+        }).publicHref,
+      project,
+      repo,
+      apps,
+    );
   return (
     <GithubConnectPickerView
       actions={{
@@ -193,27 +211,16 @@ export function GithubConnectPicker({
             }),
         install: async (appId) => {
           leave();
-          // Back from GitHub's install page, the project's page opens this dialog again.
-          const back = returnWithSeen(
-            returnTo ??
-              router.buildLocation({
-                to: "/group/$groupId/flow",
-                params: { groupId: project },
-                search: { mirror: project, repo },
-              }).publicHref,
-            project,
-            repo,
-            apps,
-          );
-          return mirror.install(appId, back);
+          return mirror.install(appId, back());
+        },
+        make: async (owner, name) => {
+          leave();
+          return mirror.make(owner, name, back());
         },
         again,
         leaving: leave,
         dismiss: () => {
           if (press.kind !== "none") dropPress(orgId, project, repo, press.press);
-        },
-        openSettings: () => {
-          void navigate({ to: "/settings/automation" });
         },
         ...(onConnected === undefined ? {} : { onConnected }),
       }}
@@ -239,6 +246,28 @@ export function GithubConnectPicker({
   );
 }
 
+/**
+ * The picker while the organization's GitHub is still read, in an ask card: the card's one footer
+ * row as it will stand — the main press's place held by what is going on, then what the card adds
+ * (`footerEnd`: its *Not now*, pressable all along).
+ */
+export function GithubConnectReading({ footerEnd }: { readonly footerEnd?: React.ReactNode }) {
+  return (
+    <div
+      aria-busy="true"
+      className="flex flex-wrap items-center gap-2"
+      data-github-connect=""
+      data-github-connect-foot=""
+    >
+      <Button disabled size="md">
+        <Spinner size="xs" />
+        Reading GitHub…
+      </Button>
+      {footerEnd}
+    </div>
+  );
+}
+
 export interface GithubConnectActions {
   /**
    * Sends a connect through the org app; the press follows it through its operation's record.
@@ -249,13 +278,18 @@ export interface GithubConnectActions {
   readonly connectToken?: (url: string, token: string) => Promise<string | null>;
   /** Leaves through HQ's install trip for `appId`; resolves `false` where HQ refused. */
   readonly install: (appId: number) => Promise<boolean>;
+  /**
+   * Leaves for GitHub to make the organization's app, named `name`, on the person's own account
+   * (`owner` `null`) or a GitHub organization, and to install it; resolves `false` where HQ
+   * refused. Absent: this picker makes none.
+   */
+  readonly make?: (owner: string | null, name: string) => Promise<boolean>;
   /** Asks HQ again what the organization's apps reach. */
   readonly again: () => void;
   /** The person opens GitHub in another tab: what is there now is remembered. */
   readonly leaving: () => void;
   /** Lets a refused or unconfirmed press go. */
   readonly dismiss: () => void;
-  readonly openSettings?: () => void;
   readonly onConnected?: () => void;
 }
 
@@ -274,6 +308,10 @@ interface StepParts {
 /** A step's own title: a dialog's stands out; in an ask card it stays under the card's title. */
 const stepTitle = (density: "full" | "compact") =>
   density === "compact" ? "text-sm font-medium" : "text-base font-medium";
+
+/** A step's running words: a dialog's are its own size; in an ask card they are the card's body. */
+const stepWords = (density: "full" | "compact") =>
+  density === "compact" ? "text-body" : "text-sm";
 
 /** A footer press's size: a dialog's are small, an ask card's the size of every ask's. */
 const pressSize = (density: "full" | "compact") => (density === "compact" ? "md" : "sm");
@@ -318,7 +356,6 @@ export interface GithubConnectPickerViewProps {
     readonly account?: string;
     readonly picked?: string;
     readonly sent?: Sent;
-    readonly explainApp?: number;
   };
 }
 
@@ -333,14 +370,15 @@ export function GithubConnectPickerView(props: GithubConnectPickerViewProps) {
   const [step, setStep] = useState<Step>(initial?.step ?? "pick");
   const [chosenAccount, setAccount] = useState<string | null>(initial?.account ?? null);
   const [chosenRepository, setPicked] = useState<string | null>(initial?.picked ?? null);
-  const [explainApp, setExplainApp] = useState<number | null>(initial?.explainApp ?? null);
+  // The GitHub organization typed to own the app the trip makes; `null`: not asked, its own account.
+  const [makeOwner, setMakeOwner] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [sent, setSent] = useState<Sent | null>(initial?.sent ?? null);
   const [refusal, setRefusal] = useState<string | null>(null);
   const [url, setUrl] = useState("");
   const [token, setToken] = useState("");
-  // The install trip pressed and not refused: one press leaves once.
-  const [leavingFor, setLeavingFor] = useState<number | null>(null);
+  // The trip pressed and not refused: one press leaves once.
+  const [leaving, setLeaving] = useState(false);
   const [tried, setTried] = useState(false);
   const [pageOpened, setPageOpened] = useState(false);
   const account =
@@ -435,30 +473,49 @@ export function GithubConnectPickerView(props: GithubConnectPickerViewProps) {
     }
   };
 
+  const trip = githubTrip({
+    apps: ready?.apps ?? [],
+    viewerId,
+    used: usedApps,
+    makes: props.admin && actions.make !== undefined,
+    organization: props.orgName,
+  });
+  // No account with a repository this code could go to, and GitHub answered about every one: the
+  // steps to add an account are where the picker opens.
+  const opens =
+    ready !== null && unansweredCount(ready) === 0 && !accounts.some(pickable(props.project, repo));
+  const leave = (trip: Promise<boolean>) => {
+    if (leaving) return;
+    setLeaving(true);
+    setTried(true);
+    void trip.then((left) => {
+      if (!left) setLeaving(false);
+    });
+  };
+
   let body: React.ReactNode;
   let foot: React.ReactNode;
   let card: React.ReactNode;
   const size = pressSize(density);
   if (target !== null && progress !== null) {
     ({ body, foot, card } = progressStep({ ...props, sent: target, progress }));
-  } else if (step === "explain") {
+  } else if (step === "explain" || (step === "pick" && opens)) {
     ({ body, foot, card } = explainStep({
       ...props,
-      explainApp,
-      setExplainApp,
-      onBack: () => setStep("pick"),
-      pending: leavingFor !== null || props.installing.kind === "working",
-      installRefusal:
-        tried && leavingFor === null && props.installing.kind === "refused"
-          ? props.installing.words
-          : null,
+      trip,
+      onBack: step === "explain" && !opens ? () => setStep("pick") : null,
+      onToken: () => setStep("token"),
+      pending: leaving || props.installing.kind === "working",
+      refusal:
+        tried && !leaving && props.installing.kind === "refused" ? props.installing.words : null,
       onTrip: (app) => {
-        if (leavingFor !== null) return;
-        setLeavingFor(app.appId);
-        setTried(true);
-        void actions.install(app.appId).then((left) => {
-          if (!left) setLeavingFor(null);
-        });
+        if (!leaving) leave(actions.install(app.appId));
+      },
+      makeOwner,
+      setMakeOwner,
+      onMake: (name) => {
+        if (!leaving && actions.make !== undefined)
+          leave(actions.make(makeOwner === null ? null : appOwner(makeOwner), name));
       },
       pageOpened,
       onPage: () => {
@@ -474,7 +531,9 @@ export function GithubConnectPickerView(props: GithubConnectPickerViewProps) {
       tokenAddressReady(url, props.projectName);
     body = (
       <>
-        <ConnectWay onChange={(next) => setStep(next)} value="token" />
+        {density === "compact" ? null : (
+          <ConnectWay onChange={(next) => setStep(next)} value="token" />
+        )}
         <GithubTokenFields
           onToken={setToken}
           onUrl={setUrl}
@@ -564,6 +623,18 @@ export function GithubConnectPickerView(props: GithubConnectPickerViewProps) {
   );
 }
 
+/**
+ * Whether an account has something for this code repository: the person's own account, or one
+ * with a repository no other code repository uses.
+ */
+const pickable = (project: string, repo: string) => (account: PickerAccount) =>
+  account.mine ||
+  account.reach.some(
+    ({ repository }) =>
+      repository.usedBy === null ||
+      (repository.usedBy.application === project && repository.usedBy.repo === repo),
+  );
+
 /** HQ's refusal of a connect, in its words; a lost answer says to check before trying again. */
 function refusalWords(cause: unknown): string {
   if (cause instanceof OperationStopped) return cause.message;
@@ -597,7 +668,7 @@ function ConnectWay({
         value={[value]}
         variant="segmented"
       >
-        <ToggleGroupItem value="pick">GitHub app</ToggleGroupItem>
+        <ToggleGroupItem value="pick">GitHub account</ToggleGroupItem>
         <ToggleGroupItem value="token">Use a token</ToggleGroupItem>
       </ToggleGroup>
     </div>
@@ -643,8 +714,9 @@ function pickStep(
     readonly onConnect: () => void;
   },
 ): StepParts {
-  const { apps, accounts, account, rows, picked, repo, admin, orgName, nameOf, actions } = input;
+  const { apps, accounts, account, rows, picked, repo, orgName, nameOf, actions } = input;
   const size = pressSize(input.density);
+  const words = stepWords(input.density);
   const tokenLink = (
     <div className="me-auto self-center text-sm">
       <InlineButton onClick={input.onToken}>
@@ -658,31 +730,32 @@ function pickStep(
       Use a token
     </Button>
   );
+  const tryNow = (
+    <Button onClick={actions.again} size={size}>
+      Try again
+    </Button>
+  );
   if (apps.kind === "unknown")
     return {
       body: (
-        <p className="text-sm text-muted-foreground">
-          HQ didn't say which GitHub accounts {orgName ?? "the organization"} has added.{" "}
-          {input.density === "compact"
-            ? "Try again in a moment, or connect with a token."
-            : "Close this and open it again in a moment, or connect with a token."}
+        <p className={cn(words, "text-muted-foreground")}>
+          HQ didn't say which GitHub accounts Mate works in for {orgName ?? "your organization"}.
+          Try again, or connect with a token.
         </p>
       ),
-      foot: tokenLink,
-      card: tokenPress,
-    };
-  const addLabel = admin
-    ? "Add a GitHub account"
-    : "Add your account (waits for an Owner or Admin's OK)";
-  const pickable = accounts.some(
-    (each) =>
-      each.mine ||
-      each.reach.some(
-        ({ repository }) =>
-          repository.usedBy === null ||
-          (repository.usedBy.application === input.project && repository.usedBy.repo === repo),
+      foot: (
+        <>
+          {tokenLink}
+          {tryNow}
+        </>
       ),
-  );
+      card: (
+        <>
+          {tryNow}
+          {tokenPress}
+        </>
+      ),
+    };
   const waiting = waitingAccounts(apps);
   const unanswered = unansweredCount(apps);
   // GitHub's silence is a read to run again; what the person changes on GitHub is checked again.
@@ -696,48 +769,30 @@ function pickStep(
       Check again
     </InlineButton>
   );
-  const returnedNote =
-    input.returned === null ? null : (
-      <p className="rounded-md bg-status-busy-surface px-3 py-2 text-sm text-status-busy-text">
-        {input.returned === "requested"
-          ? "GitHub asked an owner of the account to approve the app. Its repositories show here once they do."
-          : "What you added on GitHub waits for an Owner or Admin's OK in Settings › GitHub."}
-      </p>
-    );
+  const returnedNote = <ReturnedNote returned={input.returned} />;
+  const several = unanswered === 1 ? "one account" : `${String(unanswered)} accounts`;
   const notes = (
     <>
       {unanswered === 0 ? null : (
         <p className="text-xs text-muted-foreground">
-          GitHub didn't answer about{" "}
-          {unanswered === 1 ? "one account" : `${String(unanswered)} accounts`} the organization's
-          apps are installed on, so {unanswered === 1 ? "its" : "their"} repositories aren't listed.{" "}
-          {tryAgain}
+          GitHub didn't answer about {several}, so {unanswered === 1 ? "its" : "their"} repositories
+          aren't listed. {tryAgain}
         </p>
       )}
-      {waiting.length === 0 ? null : (
-        <p className="text-xs text-muted-foreground">
-          {waiting.join(", ")} {waiting.length === 1 ? "waits" : "wait"} for an Owner or Admin's OK
-          in Settings › GitHub.
-        </p>
-      )}
+      <WaitingAccounts accounts={waiting} />
     </>
   );
-  if (!pickable) {
-    // GitHub not answering about an account is not the account missing: try again first.
-    const silent = unanswered > 0;
-    const tryNow = silent ? (
-      <Button onClick={actions.again} size={size}>
-        Try again
-      </Button>
-    ) : null;
+  if (!accounts.some(pickable(input.project, repo))) {
+    // GitHub not answering about an account is not the account missing: try again first. (With
+    // every account answered, the picker opens on the steps that add one instead.)
     const add = (
       <Button
         disabled={input.authority !== null}
         onClick={input.onAdd}
         size={size}
-        variant={silent ? "secondary" : "primary"}
+        variant="secondary"
       >
-        {addLabel}
+        Add a GitHub account
       </Button>
     );
     // Accounts teammates added whose every repository another project uses are not listed: there
@@ -746,17 +801,10 @@ function pickStep(
       body: (
         <>
           {returnedNote}
-          <p className="text-sm">
-            {silent
-              ? `GitHub didn't answer about ${unanswered === 1 ? "one account" : `${String(unanswered)} accounts`} the organization's apps are installed on. Yours may be among them.`
-              : `None of your GitHub accounts is added yet. Add the one that owns ${repo}'s repository, or the one where you'll create it.`}
+          <p className={words}>
+            GitHub didn't answer about {several} Mate works in. Yours may be among them.
           </p>
-          {waiting.length === 0 ? null : (
-            <p className="text-xs text-muted-foreground">
-              {waiting.join(", ")} {waiting.length === 1 ? "waits" : "wait"} for an Owner or Admin's
-              OK in Settings › GitHub.
-            </p>
-          )}
+          <WaitingAccounts accounts={waiting} />
           <Refusal words={input.authority ?? input.refusal} />
         </>
       ),
@@ -853,7 +901,7 @@ function pickStep(
             ) : null}
             {rows.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                {account.app.name} reaches no repository on {account.account} yet.
+                Mate may not use any repository on {account.account} yet.
               </p>
             ) : (
               <RepositoryList
@@ -867,7 +915,7 @@ function pickStep(
               Not listed?{" "}
               <span onClickCapture={actions.leaving}>
                 <OutLink href={account.installation.manageUrl}>
-                  Give {account.app.name} access on {account.account}
+                  Choose more of {account.account}'s repositories
                 </OutLink>
               </span>{" "}
               ·{" "}
@@ -904,6 +952,26 @@ function pickStep(
       </>
     ),
   };
+}
+
+/** What GitHub said on the way back from its page, where the account is not usable yet. */
+function ReturnedNote({ returned }: { readonly returned: "requested" | "waiting" | null }) {
+  return returned === null ? null : (
+    <p className="rounded-md bg-status-busy-surface px-3 py-2 text-sm text-status-busy-text">
+      {returned === "requested"
+        ? "GitHub asked an owner of the account to approve Mate. Its repositories show here once they do."
+        : "What you added on GitHub waits for an Owner or Admin's OK in Settings › GitHub."}
+    </p>
+  );
+}
+
+function WaitingAccounts({ accounts }: { readonly accounts: ReadonlyArray<string> }) {
+  return accounts.length === 0 ? null : (
+    <p className="text-xs text-muted-foreground">
+      {accounts.join(", ")} {accounts.length === 1 ? "waits" : "wait"} for an Owner or Admin's OK in
+      Settings › GitHub.
+    </p>
+  );
 }
 
 /**
@@ -1012,120 +1080,98 @@ function RepositoryList({
   );
 }
 
+/**
+ * Before leaving for GitHub: what its pages will ask, as numbered steps, and the one press that
+ * goes there. What the trip does is decided (`GithubTrip`), never asked.
+ */
 function explainStep(
   input: GithubConnectPickerViewProps & {
-    readonly explainApp: number | null;
-    readonly setExplainApp: (appId: number) => void;
-    readonly onBack: () => void;
+    readonly trip: GithubTrip;
+    /** Back to the accounts; `null` where the picker opens here, with none to go back to. */
+    readonly onBack: (() => void) | null;
+    readonly onToken: () => void;
     /** The trip is asked for: the press waits. */
     readonly pending: boolean;
     /** HQ refused the trip, in its words. */
-    readonly installRefusal: string | null;
+    readonly refusal: string | null;
     readonly onTrip: (app: GitMirrorAppEntry) => void;
+    /** The GitHub organization typed to own the app; `null`: not asked for. */
+    readonly makeOwner: string | null;
+    readonly setMakeOwner: (owner: string | null) => void;
+    readonly onMake: (name: string) => void;
     /** GitHub's own install page was opened in another tab. */
     readonly pageOpened: boolean;
     readonly onPage: () => void;
   },
 ): StepParts {
-  const { apps, admin, orgName, nameOf, actions, repo, viewerId, usedApps } = input;
+  const { apps, orgName, actions, repo, viewerId, trip } = input;
   const size = pressSize(input.density);
-  const backPress = (
-    <Button onClick={input.onBack} size={size} variant="ghost">
-      Back
+  const words = stepWords(input.density);
+  const org = orgName ?? "your organization";
+  const opens = input.onBack === null;
+  const held = input.authority !== null;
+  const backPress =
+    input.onBack === null ? null : (
+      <Button onClick={input.onBack} size={size} variant="ghost">
+        Back
+      </Button>
+    );
+  // Where the picker opens here, the other way in stands where Back would.
+  const tokenPress = (
+    <Button onClick={input.onToken} size={size} variant="secondary">
+      Use a token
     </Button>
   );
-  const back = <div className="me-auto">{backPress}</div>;
-  const list = apps.kind === "ready" ? apps.apps : [];
-  const org = orgName ?? "The organization";
-  const settings =
-    admin && actions.openSettings !== undefined ? (
-      <Button onClick={actions.openSettings} size={size}>
-        Open Settings › GitHub
-      </Button>
-    ) : null;
-  if (list.length === 0)
+  const start = opens ? (
+    <div className="me-auto self-center text-sm">
+      <InlineButton onClick={input.onToken}>
+        GitLab or another host? Connect with a token
+      </InlineButton>
+    </div>
+  ) : (
+    <div className="me-auto">{backPress}</div>
+  );
+  const newRepository = (
+    <span onClickCapture={actions.leaving}>
+      <OutLink href={newRepositoryUrl(viewerAccount(apps, viewerId) ?? "", repo)}>
+        New repository on GitHub
+      </OutLink>
+    </span>
+  );
+  const notes = (
+    <>
+      <ReturnedNote returned={input.returned} />
+      {apps.kind === "ready" ? <WaitingAccounts accounts={waitingAccounts(apps)} /> : null}
+    </>
+  );
+  if (trip.kind === "ask")
     return {
       body: (
-        <div className="grid gap-2">
-          <p className={stepTitle(input.density)}>Set up a GitHub app first</p>
-          <p className="text-sm text-muted-foreground">
-            {org} has no GitHub app yet. Mate connects repositories through one, set up once for the
-            organization.{" "}
-            {admin
-              ? "You can set it up in Settings › GitHub."
-              : `An Owner or Admin of ${org} sets it up in Settings › GitHub.`}
+        <>
+          {notes}
+          <p className={words} data-github-connect-trip="ask">
+            Mate isn't set up on GitHub for {org} yet. An Owner or Admin does that once. Until then
+            you can connect {repo} with a token.
           </p>
-        </div>
-      ),
-      foot: (
-        <>
-          {back}
-          {settings}
         </>
       ),
-      card: (
-        <>
-          {settings}
-          {backPress}
-        </>
-      ),
+      foot: start,
+      card: opens ? tokenPress : backPress,
     };
-  // Every app the organization has is another person's own: nobody is sent to install one
-  // unasked. The step says whose they are and leads to making the organization's own; one of
-  // them is installed only by choosing it here.
-  const theirs = list.filter((app) => app.setUpBy !== null);
-  if (input.explainApp === null && ownApps(list, viewerId).length === 0 && theirs.length > 0) {
-    const [first] = theirs;
-    const anyway =
-      first === undefined ? null : (
-        <Button
-          onClick={() => {
-            input.setExplainApp(first.appId);
-          }}
-          size={size}
-          variant="ghost"
-        >
-          {theirs.length === 1 ? `Install ${first.name} anyway` : "Install one of them anyway"}
-        </Button>
-      );
-    return {
-      body: (
-        <div className="grid gap-2" data-github-connect-own-app="">
-          <p className={stepTitle(input.density)}>{org} has no GitHub app of its own</p>
-          <p className="text-sm text-muted-foreground">{noOwnAppWords(theirs, nameOf, org)}</p>
-          <p className="text-sm text-muted-foreground">
-            {admin
-              ? `Make one for ${org} in Settings › GitHub: Add a GitHub app, name it after ${org} and put it on your GitHub organization. GitHub then adds your account, and its repositories are listed here.`
-              : `An Owner or Admin of ${org} makes one in Settings › GitHub.`}
-          </p>
-        </div>
-      ),
-      foot: (
-        <>
-          {back}
-          {anyway}
-          {settings}
-        </>
-      ),
-      card: (
-        <>
-          {settings}
-          {backPress}
-          {anyway}
-        </>
-      ),
-    };
-  }
-  const chosenId = input.explainApp ?? openingApp(list, viewerId, usedApps);
-  const chosen = list.find((app) => app.appId === chosenId) ?? null;
-  const words = chosen === null ? null : explainerWords(chosen, nameOf, viewerId);
-  const way = chosen === null ? null : installWay(chosen);
+  const way = trip.kind === "install" ? installWay(trip.app) : null;
   const go =
-    chosen === null || way === null || chosen.setUpBy === null ? (
-      <Button disabled size={size}>
-        Continue on GitHub
+    held || way === null || way.kind === "trip" ? (
+      <Button
+        disabled={held || input.pending}
+        onClick={() => {
+          if (trip.kind === "install") input.onTrip(trip.app);
+          else input.onMake(trip.name);
+        }}
+        size={size}
+      >
+        {input.pending ? "Opening GitHub…" : "Continue on GitHub"}
       </Button>
-    ) : way.kind === "page" ? (
+    ) : (
       <Button
         onClick={input.onPage}
         render={<a href={way.url} rel="noreferrer" target="_blank" />}
@@ -1133,127 +1179,83 @@ function explainStep(
       >
         Continue on GitHub ↗
       </Button>
-    ) : (
-      <Button disabled={input.pending} onClick={() => input.onTrip(chosen)} size={size}>
-        {input.pending ? "Opening GitHub…" : "Continue on GitHub"}
-      </Button>
     );
+  const bold = "font-medium text-foreground";
   return {
     body: (
       <>
-        {list.length > 1 ? (
-          <div className="grid gap-2">
-            <p className="text-sm text-muted-foreground">
-              {org} has {String(list.length)} GitHub apps. Which one goes on the account?
-            </p>
-            <div aria-label="GitHub app" className="grid rounded-lg border" role="radiogroup">
-              {list.map((app) => {
-                const checked = app.appId === chosenId;
-                const disabled = app.setUpBy === null;
-                return (
-                  <button
-                    aria-checked={checked}
-                    aria-disabled={disabled}
-                    className={cn(
-                      "grid grid-cols-[1rem_minmax(0,1fr)] items-center gap-2.5 border-t px-3 py-2.5 text-left outline-none transition-colors duration-150 ease-out first:border-t-0 focus-visible:bg-accent",
-                      disabled ? "cursor-default" : "hover:bg-accent/60",
-                    )}
-                    key={app.appId}
-                    onClick={() => {
-                      if (!disabled) input.setExplainApp(app.appId);
-                    }}
-                    onKeyDown={radioKeys}
-                    role="radio"
-                    tabIndex={
-                      !disabled &&
-                      (checked ||
-                        (chosenId === null && list.find((one) => one.setUpBy !== null) === app))
-                        ? 0
-                        : -1
-                    }
-                    type="button"
-                  >
-                    <span
-                      aria-hidden="true"
-                      className={cn(
-                        "flex size-4 items-center justify-center rounded-full border",
-                        checked ? "border-primary" : "border-input",
-                      )}
-                    >
-                      {checked ? <span className="size-2 rounded-full bg-primary" /> : null}
-                    </span>
-                    <span className="grid min-w-0 gap-px">
-                      <span
-                        className={cn(
-                          "text-sm",
-                          disabled ? "text-muted-foreground/70" : "text-foreground",
-                        )}
-                      >
-                        {app.name}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {disabled
-                          ? "Waits for an Owner or Admin to remake it in Settings › GitHub"
-                          : `Owned by ${app.owner} · set up by ${app.setUpBy === viewerId ? "you" : (nameOf(app.setUpBy ?? "") ?? "a teammate")}`}
-                      </span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ) : null}
-        {chosen === null || words === null ? null : (
-          <>
-            <div className="grid gap-1 rounded-lg bg-muted px-3.5 py-3 text-sm">
-              <span className="font-medium">GitHub asks you to install {chosen.name}</span>
-              <span className="text-muted-foreground">
-                {words.install} {words.about}
-              </span>
-            </div>
-            <ol className="grid gap-2.5 text-sm">
-              <ExplainStep n={1}>Pick the account that owns {repo}'s repository.</ExplainStep>
-              <ExplainStep n={2}>
-                Choose <span className="font-medium">Only select repositories</span> and pick it. No
-                repository yet?{" "}
-                <OutLink href={newRepositoryUrl(viewerAccount(apps, viewerId) ?? "", repo)}>
-                  New repository on GitHub
-                </OutLink>{" "}
-                first.
+        {notes}
+        <div className="grid gap-2.5" data-github-connect-trip={trip.kind}>
+          <p className={words}>
+            {trip.kind === "make"
+              ? `Mate isn't set up on GitHub for ${org} yet. GitHub walks you through it:`
+              : opens
+                ? "Mate isn't on a GitHub account of yours yet. GitHub asks where it may work:"
+                : "GitHub asks where Mate may work:"}
+          </p>
+          <ol className={cn("grid gap-2 text-muted-foreground", words)}>
+            {trip.kind === "make" ? (
+              <ExplainStep n={1}>
+                Press <span className={bold}>Create GitHub App</span>. That makes Mate's bot there,
+                named {trip.name}.
               </ExplainStep>
-              <ExplainStep n={3}>GitHub brings you back here.</ExplainStep>
-            </ol>
-            {way?.kind === "page" ? (
-              <p className="text-xs text-muted-foreground">
-                What you add waits for an Owner or Admin's OK in Settings › GitHub.
-                {input.pageOpened ? (
-                  <>
-                    {" "}
-                    Back from GitHub?{" "}
-                    <InlineButton onClick={actions.again} tone="muted">
-                      Check again
-                    </InlineButton>
-                  </>
-                ) : null}
-              </p>
             ) : null}
-            <Refusal
-              words={chosen.setUpBy === null ? unsealedWords(chosen) : input.installRefusal}
+            <ExplainStep n={trip.kind === "make" ? 2 : 1}>
+              Pick the account that has {repo}'s code.
+            </ExplainStep>
+            <ExplainStep n={trip.kind === "make" ? 3 : 2}>
+              Choose <span className={bold}>Only select repositories</span> and pick it.
+            </ExplainStep>
+            <ExplainStep n={trip.kind === "make" ? 4 : 3}>GitHub brings you back here.</ExplainStep>
+          </ol>
+          {trip.kind === "make" && input.makeOwner !== null ? (
+            <KeyField
+              autoFocus
+              hint="Its name on GitHub (github.com/name), where you are an owner. Empty: the bot is made on your own account."
+              label="GitHub organization the bot belongs to"
+              onChange={input.setMakeOwner}
+              placeholder="Your own account"
+              value={input.makeOwner}
             />
-          </>
-        )}
+          ) : null}
+          <p className="text-xs text-muted-foreground">
+            {trip.kind === "install" ? `GitHub's page calls Mate “${trip.app.name}”. ` : null}
+            No repository yet? {newRepository} first.
+            {trip.kind === "make" && input.makeOwner === null ? (
+              <>
+                {" "}
+                The bot is made on your own GitHub account;{" "}
+                <InlineButton onClick={() => input.setMakeOwner("")} tone="muted">
+                  use a GitHub organization instead
+                </InlineButton>
+                .
+              </>
+            ) : null}
+            {way?.kind === "page" ? " What you add waits for an Owner or Admin's OK." : null}
+            {way?.kind === "page" && input.pageOpened ? (
+              <>
+                {" "}
+                Back from GitHub?{" "}
+                <InlineButton onClick={actions.again} tone="muted">
+                  Check again
+                </InlineButton>
+              </>
+            ) : null}
+          </p>
+        </div>
+        <Refusal words={input.authority ?? input.refusal} />
       </>
     ),
     foot: (
       <>
-        {back}
+        {start}
         {go}
       </>
     ),
     card: (
       <>
         {go}
-        {backPress}
+        {opens ? tokenPress : backPress}
       </>
     ),
   };
@@ -1289,6 +1291,53 @@ function progressStep(
   const size = pressSize(input.density);
   const href = sent.app === null ? sent.target : `https://github.com/${sent.target}`;
   const shownAs = sent.app === null ? sent.target.replace(/^https:\/\//u, "") : sent.target;
+  if (progress === "paused") {
+    const open = (
+      <Button
+        render={<a href={href} rel="noreferrer" target="_blank" />}
+        size={size}
+        variant="secondary"
+      >
+        {sent.app === null ? `Open on ${hostWords(sent.target)}` : "Open on GitHub"}
+      </Button>
+    );
+    const done =
+      actions.onConnected === undefined ? null : (
+        <Button onClick={actions.onConnected} size={size}>
+          Done
+        </Button>
+      );
+    return {
+      body: (
+        <div className="grid justify-items-start gap-2.5 pt-3" data-github-connect-paused="">
+          <p className="text-sm">
+            <Badge dot tone="warning">
+              Paused
+            </Badge>
+          </p>
+          <p className="text-lg font-medium">{repo} is connected, and the two mains differ</p>
+          <p className="text-sm text-muted-foreground">
+            <span className="font-mono text-foreground">{shownAs}</span> and {repo} each have
+            commits the other doesn't, so Mate moves neither and overwrites nothing. Ask this
+            project's Mate to bring them back in step: it opens one change that holds both. Merge it
+            in Mate and pushing starts.
+          </p>
+        </div>
+      ),
+      foot: (
+        <>
+          {open}
+          {done}
+        </>
+      ),
+      card: (
+        <>
+          {done}
+          {open}
+        </>
+      ),
+    };
+  }
   if (progress === "done") {
     const gate = mirrorGateLine(
       entry?.remote,
@@ -1342,10 +1391,7 @@ function progressStep(
     };
   }
   const steps: ReadonlyArray<readonly [ConnectStepName, string]> = [
-    [
-      "connect",
-      sent.app === null ? "Connecting with the token" : `Connecting through ${sent.app.name}`,
-    ],
+    ["connect", sent.app === null ? "Connecting with the token" : "Connecting to GitHub"],
     ["push", "Pushing main"],
     ...(sent.app === null ? [] : ([["rules", "Checking GitHub's rules on main"]] as const)),
   ];

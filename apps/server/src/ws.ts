@@ -1081,7 +1081,11 @@ const makeWsRpcLayer = (
                 }),
             ),
           ),
-        [WS_METHODS.execRun]: (input) => admit(WS_METHODS.execRun, runExecCommand(input)),
+        [WS_METHODS.execRun]: (input) =>
+          admit(
+            WS_METHODS.execRun,
+            Effect.map(runExecCommand(input), (run) => run.result),
+          ),
         [WS_METHODS.serverProbe]: (_input) => Effect.succeed({}),
         [WS_METHODS.serverGetConfig]: (_input) => loadServerConfig({ usageLimitsCommand: false }),
         [WS_METHODS.serverRefreshProviders]: (input) =>
