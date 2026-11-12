@@ -215,16 +215,16 @@ export function addressTrouble(code: string | undefined, write?: AddressWrite): 
   return code === undefined ? undefined : TROUBLE[code];
 }
 
-export type FaceTone = "ok" | "warn" | "busy";
+export type FaceTone = "ok" | "warn" | "busy" | "fail";
 
 const DOMAIN_FACE: Readonly<Record<DomainFace, { word: string; tone: FaceTone }>> = {
-  "going-live": { word: "Going live", tone: "busy" },
+  "going-live": { word: "Adding", tone: "busy" },
   changing: { word: "Changing", tone: "busy" },
   removing: { word: "Removing", tone: "busy" },
   dns: { word: "Waiting for your DNS", tone: "warn" },
   elsewhere: { word: "Points elsewhere", tone: "warn" },
   certificate: { word: "Getting a certificate", tone: "busy" },
-  "certificate-failed": { word: "Couldn't get a certificate", tone: "warn" },
+  "certificate-failed": { word: "Couldn't get a certificate", tone: "fail" },
   live: { word: "Live", tone: "ok" },
 };
 
@@ -267,6 +267,141 @@ export function recordsOf(
       each.certificate === undefined ? [] : [each.certificate],
     ),
   };
+}
+
+/**
+ * Labels registries sell names under, beside a country's two letters (`shop.co.uk`): the name a
+ * person registered is then three labels long.
+ */
+const SECOND_LEVEL = new Set([
+  "ac",
+  "co",
+  "com",
+  "edu",
+  "go",
+  "gob",
+  "gov",
+  "mil",
+  "ne",
+  "net",
+  "nom",
+  "or",
+  "org",
+]);
+
+/**
+ * The domain a person registered, where its DNS records are kept: `shop.com` of `www.shop.com`,
+ * of `*.shop.com` and of itself. Read from the name's shape, without the registries' own list.
+ */
+export function registeredDomain(name: string): string {
+  const labels = name.replace(/^\*\./u, "").split(".");
+  const country = (labels.at(-1) ?? "").length === 2;
+  const take = labels.length > 2 && country && SECOND_LEVEL.has(labels.at(-2) ?? "") ? 3 : 2;
+  return labels.slice(-take).join(".");
+}
+
+/**
+ * A record's name as a DNS provider's *Name* field takes it: `@` for the registered domain
+ * itself, else what stands before it (`www`, `*`, `_acme-challenge`).
+ */
+export function recordHost(name: string): string {
+  const apex = registeredDomain(name);
+  if (name === apex) return "@";
+  return name.endsWith(`.${apex}`) ? name.slice(0, -apex.length - 1) : name;
+}
+
+/** Where a domain's DNS records are kept, as its name servers tell. */
+export type DnsProvider =
+  | { readonly kind: "known"; readonly name: string; readonly url: string }
+  /** A provider this build does not know by name: its name server says it. */
+  | { readonly kind: "other"; readonly host: string }
+  /** Only the registry answers for it: not registered, or with no DNS provider yet. */
+  | { readonly kind: "registry" }
+  /** Not looked up yet. */
+  | { readonly kind: "unread" };
+
+/** DNS providers by the names their servers carry, each with where a person signs in. */
+const PROVIDERS: ReadonlyArray<readonly [servers: RegExp, name: string, url: string]> = [
+  [/\.ns\.cloudflare\.com$/u, "Cloudflare", "https://dash.cloudflare.com"],
+  [/\.domaincontrol\.com$/u, "GoDaddy", "https://dcc.godaddy.com"],
+  [/\.registrar-servers\.com$/u, "Namecheap", "https://www.namecheap.com"],
+  [/\.awsdns-\d+\.[a-z.]+$/u, "Amazon Route 53", "https://console.aws.amazon.com/route53"],
+  [/\.vercel-dns\.com$/u, "Vercel", "https://vercel.com"],
+  [/\.digitalocean\.com$/u, "DigitalOcean", "https://cloud.digitalocean.com"],
+  [/\.hetzner\.(?:com|de)$/u, "Hetzner", "https://www.hetzner.com"],
+  [/\.wedos\.(?:net|com|cz|eu)$/u, "WEDOS", "https://client.wedos.com"],
+  [/\.forpsi\.(?:net|cz|sk|pl|hu|it)$/u, "Forpsi", "https://www.forpsi.com"],
+  [/\.active24\.(?:cz|sk|com)$/u, "Active24", "https://www.active24.com"],
+  [/\.websupport\.(?:sk|cz|eu)$/u, "Websupport", "https://www.websupport.sk"],
+  [/\.dns-parking\.com$/u, "Hostinger", "https://hpanel.hostinger.com"],
+  [/\.wixdns\.net$/u, "Wix", "https://manage.wix.com"],
+  [/\.porkbun\.com$/u, "Porkbun", "https://porkbun.com"],
+  [/\.gandi\.net$/u, "Gandi", "https://admin.gandi.net"],
+  [/\.ovh\.(?:net|com|ca)$/u, "OVHcloud", "https://www.ovhcloud.com"],
+  [/\.ui-dns\.(?:com|de|org|biz)$/u, "IONOS", "https://my.ionos.com"],
+  [/\.name\.com$/u, "Name.com", "https://www.name.com"],
+  [/\.linode\.com$/u, "Linode", "https://cloud.linode.com"],
+  [/\.azure-dns\.(?:com|net|org|info)$/u, "Azure DNS", "https://portal.azure.com"],
+];
+
+/** Servers of the registries themselves: they answer for a name nobody keeps records for. */
+const REGISTRY = /(?:^|\.)(?:gtld-servers\.net|root-servers\.net|nstld\.com|nic\.[a-z]{2,})$/u;
+
+/** Who keeps a domain's DNS records, from the name servers its last look-up found. */
+export function dnsProvider(nameServers: ReadonlyArray<string>): DnsProvider {
+  const first = nameServers[0]?.toLowerCase();
+  if (first === undefined) return { kind: "unread" };
+  for (const server of nameServers) {
+    const known = PROVIDERS.find(([servers]) => servers.test(server.toLowerCase()));
+    if (known !== undefined) return { kind: "known", name: known[1], url: known[2] };
+  }
+  return REGISTRY.test(first) ? { kind: "registry" } : { kind: "other", host: first };
+}
+
+/** Whether the records are kept at Cloudflare, whose proxy stands in front unless turned off. */
+export const atCloudflare = (provider: DnsProvider) =>
+  provider.kind === "known" && provider.name === "Cloudflare";
+
+/** An address as compared: an IPv6 one written out in full, so two spellings of one are equal. */
+function comparableIp(address: string): string {
+  const text = address.trim().toLowerCase();
+  if (!text.includes(":")) return text;
+  const [head = "", tail] = text.split("::");
+  const left = head === "" ? [] : head.split(":");
+  const right = tail === undefined || tail === "" ? [] : tail.split(":");
+  const gap = tail === undefined ? 0 : Math.max(0, 8 - left.length - right.length);
+  return [...left, ...Array.from({ length: gap }, () => "0"), ...right]
+    .map((group) => group.replace(/^0+(?=.)/u, ""))
+    .join(":");
+}
+
+/** How the sheet names one record of a table. */
+export const recordKey = (record: Pick<DnsRecord, "type" | "name">) =>
+  `${record.type}:${record.name}`;
+
+/**
+ * The records the platform's last look-up found in place, by `recordKey`: an A or AAAA whose
+ * address its domain answered with. A record that points at a name (a CNAME) is never counted:
+ * the look-up tells addresses only.
+ */
+export function recordsFound(
+  domains: ReadonlyArray<Pick<AddressDomain, "domainName" | "resolvedIps">>,
+  records: ReadonlyArray<DnsRecord>,
+): ReadonlySet<string> {
+  const found = new Set<string>();
+  for (const record of records) {
+    if (record.type === "CNAME") continue;
+    const answered = domains.find((domain) => domain.domainName === record.name)?.resolvedIps ?? [];
+    if (answered.some((ip) => comparableIp(ip) === comparableIp(record.value)))
+      found.add(recordKey(record));
+  }
+  return found;
+}
+
+/** "blog.com", "blog.com and www.blog.com", "a.com, b.com and c.com". */
+export function namesWords(names: ReadonlyArray<string>): string {
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
 }
 
 /** The live domains that lead to a service: what keeps answering when its zerops.app closes. */

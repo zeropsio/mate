@@ -443,7 +443,8 @@
         "apps/web/src/components/zerops/addresses/AddressesSheet.tsx",
         "apps/web/src/components/zerops/addresses/AddressesSheetBits.tsx",
         "apps/web/src/components/zerops/addresses/AddressesSheetContainer.tsx",
-        "apps/web/src/components/zerops/addresses/AddressesWeb.tsx",
+        "apps/web/src/components/zerops/addresses/AddressesDomains.tsx",
+        "apps/web/src/components/zerops/addresses/AddressesZerops.tsx",
         "apps/web/src/components/zerops/addresses/AddressesDirect.tsx",
         "apps/web/src/components/zerops/addresses/DnsRecords.tsx"
       ],
