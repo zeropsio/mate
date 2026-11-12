@@ -56,7 +56,6 @@ const WAITING = params.get("waiting") !== "0";
 const REASONS: Readonly<Record<ChiefSetupStep, string>> = {
   project: "Zerops refused the project: the organization has no room for another one.",
   hq: "HQ is not answering right now.",
-  access: "HQ is not answering right now.",
 };
 
 function setupOf(name: string): ChiefSetup {

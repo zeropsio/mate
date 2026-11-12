@@ -1,24 +1,21 @@
 /**
- * Setting up a person's Chief, as three steps:
+ * Setting up a person's Chief, as two steps:
  *
  * 1. **project** — its project and zcp container, made by the new-project path (a New project
  *    tagged `chief`);
  * 2. **hq** — HQ registers it as the person's Chief (`PUT /api/chief`). The registration carries no
  *    key: its zcp reads its Chief from its Mate state and enters org mode itself (spec-mate §2.11,
  *    §3.11).
- * 3. **access** — HQ makes a personal token with the person's own access and keeps it for their
- *    Chief to read with (`PUT /api/chief/token`); the token never reaches this client. Where it
- *    stops, the Chief stays registered and its header offers the same ask (`ChiefAccessButton`).
  *
  * A step that stops says why, and *Try again* resumes there: the project's creation resumes on the
- * same project, never a second; past it, HQ is asked again — a second registration answers the
- * same one, a second token replaces the first.
+ * same project, never a second; past it, HQ is asked again — a second ask answers the same
+ * registration.
  */
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
 import type { BirthLineStep } from "../ZeropsBirthProgress.logic";
 
-export type ChiefSetupStep = "project" | "hq" | "access";
+export type ChiefSetupStep = "project" | "hq";
 
 export type ChiefSetup =
   | { readonly phase: "idle" }
@@ -46,8 +43,6 @@ export type ChiefSetupEvent =
   | { readonly type: "project-made"; readonly projectId: string }
   /** HQ holds its project as the person's Chief. */
   | { readonly type: "registered" }
-  /** HQ keeps a token of the person's for it to read with. */
-  | { readonly type: "access-kept" }
   /** HQ now supplies the completed Chief; setup no longer owns its existence. */
   | { readonly type: "observed"; readonly projectId: string }
   /** The running step stopped. */
@@ -68,11 +63,7 @@ export function chiefSetupAfter(setup: ChiefSetup, event: ChiefSetupEvent): Chie
         ? { ...setup, step: "hq", projectId: event.projectId }
         : setup;
     case "registered":
-      return setup.phase === "running" && setup.step === "hq"
-        ? { ...setup, step: "access" }
-        : setup;
-    case "access-kept":
-      return setup.phase === "running" && setup.step === "access" && setup.projectId !== null
+      return setup.phase === "running" && setup.step === "hq" && setup.projectId !== null
         ? { phase: "done", birthId: setup.birthId, projectId: setup.projectId }
         : setup;
     case "observed":
@@ -101,7 +92,6 @@ const STEPS: ReadonlyArray<{
 }> = [
   { id: "project", label: "Its workspace", doing: "Making its workspace" },
   { id: "hq", label: "Named your Chief", doing: "Registering it as your Chief" },
-  { id: "access", label: "Given your access", doing: "Giving it your access" },
 ];
 
 /** Each step's words while it runs, in order: the progress row's steps. */
@@ -173,24 +163,19 @@ export function chiefProjectProgress(
 }
 
 /**
- * Steps 2 and 3, HQ's: step 2 registers the made project as the person's Chief, step 3 has HQ make
- * and keep the person's token for it. A failure says why; a registration it made stays.
+ * Step 2 on a made project: HQ registers it as the person's Chief. A failure says why and keeps
+ * nothing.
  */
 export async function finishChiefSetup(input: {
-  readonly step: Exclude<ChiefSetupStep, "project">;
-  readonly setChief: () => Promise<unknown>;
-  readonly keepAccess: () => Promise<unknown>;
+  readonly projectId: string;
+  readonly setChief: (projectId: string) => Promise<unknown>;
   readonly dispatch: (event: ChiefSetupEvent) => void;
 }): Promise<void> {
   try {
-    if (input.step === "hq") {
-      await input.setChief();
-      input.dispatch({ type: "registered" });
-    }
-    await input.keepAccess();
+    await input.setChief(input.projectId);
   } catch (cause) {
     input.dispatch({ type: "failed", reason: zeropsErrorMessage(cause) });
     return;
   }
-  input.dispatch({ type: "access-kept" });
+  input.dispatch({ type: "registered" });
 }

@@ -60,6 +60,7 @@ import { useProjectCapabilities, useRoleOffers } from "~/zerops/usePlatformCapab
 import { useOrgOffers } from "~/zerops/useHqOffers";
 import { HQ_UNFOLLOWED, useAccountOperationsOptional } from "~/zerops/accountOperations";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
+import { askChiefAccess } from "~/zerops/chiefAccess";
 import { useOwnChief } from "~/zerops/ownChief";
 import { ChiefAccessButton } from "./chief/ChiefAccessButton";
 import { ChiefOverviewButton } from "./chief/ChiefOverviewButton";
@@ -643,6 +644,8 @@ function ExistingMateComingPage({
         { orgId, unobserved: HQ_UNFOLLOWED },
       );
       if (!current()) return;
+      // As every registration does: a failure stands in the Chief's header (`ChiefAccessButton`).
+      void askChiefAccess({ ask: "keep", operations, orgId, projectId });
       account?.retryDetail({ family: "hqMate", ownerId: projectId });
       readAgain();
       const key = link.key ?? candidate?.key;
