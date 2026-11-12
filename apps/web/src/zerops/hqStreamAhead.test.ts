@@ -30,11 +30,10 @@ async function signedIn(
     readonly session?: string;
     readonly endsInMs?: number;
     readonly address?: string;
-    /** The instant it was kept at: the wall clock's, where the app itself reads it back. */
-    readonly now?: number;
   } = {},
 ) {
-  const { userId = "person-1", orgId = "org-1", session = "hq-session-1", now = NOW } = options;
+  const { userId = "person-1", orgId = "org-1", session = "hq-session-1" } = options;
+  const now = NOW;
   const held = new Map<string, string>();
   const storage = {
     getItem: (key: string) => held.get(key) ?? null,
@@ -331,6 +330,7 @@ describe("The page's boot entry and the app use one socket name, the tab's", () 
   const FRESH = /^[0-9a-f]{32}$/u;
 
   afterEach(() => {
+    vi.useRealTimers();
     closeAccountLifetime();
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
@@ -352,7 +352,10 @@ describe("The page's boot entry and the app use one socket name, the tab's", () 
       tab.held === null ? [] : [[SOCKET_NAME_KEY, tab.held]],
     );
     const named: Array<string> = [];
-    const localStorage = await signedIn({ now: Date.now() });
+    // The app reads the kept session's age off the wall clock: the load stands at the instant
+    // the session was kept.
+    vi.useFakeTimers({ toFake: ["Date"], now: NOW });
+    const localStorage = await signedIn();
     vi.stubGlobal("window", {
       localStorage,
       get sessionStorage() {
