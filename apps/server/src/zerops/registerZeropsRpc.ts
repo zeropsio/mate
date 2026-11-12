@@ -10,15 +10,18 @@
  */
 import {
   AuthExecOperateScope,
+  AuthOrchestrationReadScope,
   WS_METHODS,
   EnvironmentAuthorizationError,
   ZeropsAgentLoginError,
+  ZeropsGrantExtensionError,
   ZeropsMateUpdateError,
   type CrewProposalInput,
   type WsRpcGroup,
   type ZeropsAgentId,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import type * as Rpc from "effect/rpc/Rpc";
 import type * as RpcGroup from "effect/rpc/RpcGroup";
@@ -29,6 +32,7 @@ import type { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
 import * as ZeropsBrowserStreamModule from "./ZeropsBrowserStream.ts";
+import type * as ZeropsConnectionsModule from "./ZeropsConnections.ts";
 import * as ZeropsMacStreamModule from "./ZeropsMacStream.ts";
 import { zeropsUserIdOf } from "@t3tools/contracts";
 import * as ZeropsDataConsoleModule from "./ZeropsDataConsole.ts";
@@ -59,6 +63,7 @@ type ZeropsRpcTag =
   | typeof WS_METHODS.zeropsMacForget
   | typeof WS_METHODS.zeropsMateUpdate
   | typeof WS_METHODS.zeropsMateCheckUpdate
+  | typeof WS_METHODS.zeropsExtendGrant
   | typeof WS_METHODS.zeropsDataConsoleCall
   | typeof WS_METHODS.zeropsGitProbeRemote
   | typeof WS_METHODS.zeropsCrewPropose
@@ -111,6 +116,8 @@ export interface RegisterZeropsRpcDeps {
    * started on it ends with it.
    */
   readonly connection: ZeropsAgentLoginModule.LoginConnection;
+  /** The live connections a fresh ticket extends; absent outside a Zerops project and in fixtures. */
+  readonly zeropsConnections?: ZeropsConnectionsModule.ZeropsConnections["Service"] | undefined;
   /**
    * `ws.ts`'s update admission: while a Mate update waits, a call that changes something is
    * refused (or, for a continuation, let through) so the update starts once work is done.
@@ -193,6 +200,31 @@ export const runZeropsMateCheckUpdate = (
     }
     const result = yield* deps.zeropsMateUpdate.check;
     return result ?? null;
+  });
+
+/**
+ * `zerops.grant.extend`'s handler: the fresh ticket extends the connection the call arrives on
+ * (`deps.connection.id`, never input), as {@link ZeropsConnectionsModule.ZeropsConnections}'s
+ * `extend` decides. Without a registry the RPC is not offered here.
+ */
+export const runZeropsExtendGrant = (
+  deps: Pick<RegisterZeropsRpcDeps, "zeropsConnections" | "connection">,
+  input: { readonly ticket: string },
+) =>
+  Effect.gen(function* () {
+    if (deps.zeropsConnections === undefined) {
+      return yield* new EnvironmentAuthorizationError({
+        message: "zerops.grant.extend is only available inside a Zerops project.",
+        requiredScope: AuthOrchestrationReadScope,
+      });
+    }
+    const granted = yield* deps.zeropsConnections.extend(deps.connection.id, input.ticket);
+    if (Option.isNone(granted)) {
+      return yield* new ZeropsGrantExtensionError({
+        message: "The ticket does not extend this connection; reconnect with a new ticket.",
+      });
+    }
+    return { grantSeconds: granted.value };
   });
 
 /**
@@ -485,6 +517,7 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
     [WS_METHODS.zeropsMateUpdate]: (_input) =>
       admit(WS_METHODS.zeropsMateUpdate, runZeropsMateUpdate(deps)),
     [WS_METHODS.zeropsMateCheckUpdate]: (_input) => runZeropsMateCheckUpdate(deps),
+    [WS_METHODS.zeropsExtendGrant]: (input) => runZeropsExtendGrant(deps, input),
     [WS_METHODS.zeropsDataConsoleCall]: (input) => zeropsDataConsole.call(input),
     [WS_METHODS.zeropsGitProbeRemote]: (input) => zeropsGitRemoteProbe.probe(input),
     [WS_METHODS.zeropsCrewPropose]: (input) => runCrewPropose(deps, input),

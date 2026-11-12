@@ -22,6 +22,8 @@ export type AdmissionLive = () => boolean;
 export interface ConsumedTicket {
   readonly identity: TicketIdentity;
   readonly live: AdmissionLive;
+  /** How long a connection opened or extended with it may stay open, where HQ said. */
+  readonly grantSeconds?: number;
 }
 
 export class ZeropsTicketDoor extends Context.Service<
@@ -42,6 +44,7 @@ interface HeldTicket {
   readonly identity: TicketIdentity;
   readonly expiresAtMs: number;
   readonly live: AdmissionLive;
+  readonly grantSeconds: number | undefined;
   used: boolean;
 }
 
@@ -64,6 +67,7 @@ export const make = Effect.sync(() => {
           identity: { ticket: frame.ticket, userId: frame.userId, sessionId: frame.sessionId },
           expiresAtMs: now + Math.min(frame.expiresIn, 60) * 1000,
           live,
+          grantSeconds: frame.grantSeconds,
           used: false,
         });
     }),
@@ -75,7 +79,11 @@ export const make = Effect.sync(() => {
       const held = tickets.get(decoded.value.ticket);
       if (held === undefined || held.used) return Option.none();
       held.used = true;
-      return Option.some({ identity: held.identity, live: held.live });
+      return Option.some({
+        identity: held.identity,
+        live: held.live,
+        ...(held.grantSeconds === undefined ? {} : { grantSeconds: held.grantSeconds }),
+      });
     }),
     heldSessions: (now) =>
       Effect.sync(() =>

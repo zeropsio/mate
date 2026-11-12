@@ -399,6 +399,7 @@ const makeWsRpcLayer = (
   WsRpcGroup.toLayer(
     Effect.gen(function* () {
       const currentSessionId = currentSession.sessionId;
+      const zeropsConnections = yield* Effect.serviceOption(ZeropsConnections);
       const projectionSnapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
       const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
       const keybindings = yield* Keybindings.Keybindings;
@@ -1360,6 +1361,11 @@ const makeWsRpcLayer = (
           zeropsCrewProposals,
           subject: currentSession.subject,
           connection: { id: currentSessionId, scope: connectionScope },
+          // Only where connections enter through HQ's tickets, as the upgrade route decides.
+          zeropsConnections:
+            config.zerops !== undefined && config.zeropsFixtures === undefined
+              ? Option.getOrUndefined(zeropsConnections)
+              : undefined,
           admit,
         }),
         ...registerCrewRpc({
