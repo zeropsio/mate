@@ -210,3 +210,59 @@ zerops:
             values:
               Cache-Control: "'public, max-age=31536000, immutable' always"
               X-Content-Type-Options: "'nosniff' always"
+
+  # The web client's development in a Mate: its dev pool, one leased container
+  # per branch. The image bakes the web client's dependencies into /var/www,
+  # installed from the manifests and lockfile alone (`build.addToRunPrepare`),
+  # so a lease only checks its branch out over them. The Vite dev server runs
+  # under zcp's dev-server supervisor as `.zcp/dev-servers.json` declares it,
+  # and each lease answers on its own preview port (`previewPortBase` + the
+  # container's number), against the shared Mate HQ like the hosted client.
+  - setup: webpool
+    build:
+      base: ubuntu/nodejs@24
+      buildCommands:
+        # Every file the install reads, keeping its path: each workspace
+        # member's manifest, the workspace, the lockfile and its patches.
+        - mkdir -p pooldeps
+        - find . \( -name node_modules -o -name .repos -o -name pooldeps \) -prune -o -name package.json -print | xargs cp --parents -t pooldeps
+        - cp --parents -r pnpm-lock.yaml pnpm-workspace.yaml patches pooldeps
+      addToRunPrepare:
+        - pooldeps
+      # A lease checks its branch out over /var/www; this tracked file is only
+      # what the deploy ships, the same as the checkout's.
+      deployFiles:
+        - package.json
+    run:
+      base: ubuntu/nodejs@24
+      # One preview port per container: previewPortBase (5740) + 1 … + 3.
+      ports:
+        - port: 5741
+          httpSupport: true
+        - port: 5742
+          httpSupport: true
+        - port: 5743
+          httpSupport: true
+      envVariables:
+        # The hosted client against the shared HQ, signing in through Zerops HQ
+        # as `prod` builds it (a device login, since HQ's bridge refuses the
+        # pool's origin); served from the subdomain, not localhost.
+        VITE_HOSTED_APP_CHANNEL: latest
+        VITE_HQ_ORIGIN: https://mate-hq.zerops.io
+        VITE_ZEROPS_SIGN_IN: zerops-hq
+        VITE_ZEROPS_HQ_ORIGIN: https://hq.zerops.io
+        # Single-origin dev, so a `.env` cannot bake a backend URL back in.
+        T3CODE_SINGLE_ORIGIN_DEV: "1"
+        # Vite answers only the hosts it knows: the pool's subdomain.
+        T3CODE_DEV_ALLOWED_HOSTS: .zerops.app
+        COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+        ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+        PUPPETEER_SKIP_DOWNLOAD: "1"
+      prepareCommands:
+        - sudo sh -c 'u=https://github.com/zeropsio/zcp/releases/download/v9.221.0/zcp-devsup-linux-amd64; f=/usr/local/bin/zcp-devsup; if command -v curl >/dev/null; then curl -fsSL "$u" -o "$f"; else wget -qO "$f" "$u"; fi && chmod 0755 "$f"'
+        # The web client's closure only, as `prod` installs it: the dev server
+        # calls its tools by path, since pnpm's pre-run check would read a
+        # filtered tree as stale and install the whole workspace.
+        - cp -a /home/zerops/pooldeps/. /var/www/
+        - cd /var/www && CI=true COREPACK_ENABLE_DOWNLOAD_PROMPT=0 pnpm install --frozen-lockfile --filter "@t3tools/web..." </dev/null
+      start: zcp-devsup run
