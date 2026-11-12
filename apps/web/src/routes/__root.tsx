@@ -99,7 +99,7 @@ import {
   useRouteConversation,
   useRouteGateInputs,
 } from "./-environmentTargets";
-import { mateNoticeVoice } from "../zerops/mateNoticeVoice";
+import { mateNoticeVoice, settlesQuietly } from "../zerops/mateNoticeVoice";
 import { MateLinkStage } from "../components/zerops/MateLinkStage";
 import { RouteStandIn } from "../components/zerops/RouteStandIn";
 import { resolveThreadRouteRef } from "../threadRoutes";
@@ -251,7 +251,16 @@ function SignedInRootRouteView() {
     conversationShown &&
     tabShown &&
     (linkReachability?.kind === "reconnecting" || linkReachability?.kind === "retrying");
-  const linkHeld = useHeldFor(linkLost, MATE_VOICE_QUIET_MS);
+  // A link not up yet is as quiet as a lost one: a Mate opened after a while away whose first probe
+  // goes unanswered, or whose HQ link is not held yet, paints no notice it takes back a moment later.
+  const linkSettling =
+    linkLost ||
+    (conversationShown &&
+      tabShown &&
+      linkReachability !== null &&
+      linkReachability !== undefined &&
+      settlesQuietly(linkReachability));
+  const linkHeld = useHeldFor(linkSettling, MATE_VOICE_QUIET_MS);
   const linkSlow = useHeldFor(linkLost, MATE_VOICE_SLOW_MS);
   const voice =
     speaksFor !== null &&

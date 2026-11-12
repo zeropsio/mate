@@ -18,6 +18,7 @@ import { pullRequestLinkWords, pullRequestName } from "~/zerops/automatedMate.lo
 import { useNowMs } from "~/zerops/useNowMs";
 
 import { compactSidebarTimeLabel } from "../../Sidebar.logic";
+import { Button } from "../../ui/button";
 import type { CardChange } from "../projects/projectCard.logic";
 import { changeTitle } from "../projects/projectHistory.logic";
 import { changeReviewable } from "./ChangeRow.logic";
@@ -173,9 +174,15 @@ export function ChangeRow(props: ChangeRowProps) {
     );
   const act = review ? (
     <span className="ov-change-act">
-      <span className="ov-review" data-zerops-surface="card-change-review">
+      {/* The row is the press; its verb wears the one Review look. */}
+      <Button
+        data-zerops-surface="card-change-review"
+        render={<span />}
+        size="xs"
+        variant="secondary"
+      >
         Review
-      </span>
+      </Button>
     </span>
   ) : goes ? (
     <span className="ov-change-act">

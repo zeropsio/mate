@@ -17,6 +17,7 @@ const VARIANTS = variantsOf<ButtonVariant>({
 });
 
 const SIZES = variantsOf<ButtonSize>({
+  xs: true,
   sm: true,
   md: true,
   lg: true,

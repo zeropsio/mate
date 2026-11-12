@@ -232,8 +232,8 @@ export function ZeropsNextStepStrip({
                 if (line.fix === undefined) onReview(line.target, event.currentTarget);
                 else onFix?.(line.fix);
               }}
-              size="sm"
-              variant="link"
+              size="xs"
+              variant="secondary"
             >
               {line.fix === undefined ? "Review" : line.fix.label}
             </Button>
@@ -276,6 +276,8 @@ export function ZeropsNextStepStrip({
         onClick={(event) => {
           onReview(strip.target, event.currentTarget);
         }}
+        size="xs"
+        variant="secondary"
       >
         Review
       </Button>

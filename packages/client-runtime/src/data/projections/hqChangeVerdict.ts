@@ -8,7 +8,12 @@ export type HqChangeVerdict =
   | { readonly kind: "reading" }
   | { readonly kind: "read"; readonly detail: ChangeDetailResponse }
   | { readonly kind: "gone" }
-  | { readonly kind: "refused" | "unavailable"; readonly reason: string };
+  | {
+      readonly kind: "refused" | "unavailable";
+      readonly reason: string;
+      /** HQ's code for it, where it named one (`repo_unavailable`, `too_large`). */
+      readonly code?: string;
+    };
 export const hqChangeVerdict: Projection<
   { readonly orgId: string; readonly owner: string },
   HqChangeVerdict
@@ -28,6 +33,7 @@ export const hqChangeVerdict: Projection<
           ? "refused"
           : "unavailable",
       reason: fault.message,
+      ...(fault.code === undefined ? {} : { code: fault.code }),
     };
   },
   equals: sameValue,

@@ -146,6 +146,11 @@ export interface ZeropsReviewSurfaceProps {
   readonly verdictInLine?: boolean | undefined;
   /** Whether the verdict's why is said under the line (`whySaid`). */
   readonly whySaid?: boolean | undefined;
+  /**
+   * A fact said under the line, before the verdict's why: one the person acts on before pressing
+   * (a change's checks on GitHub).
+   */
+  readonly notice?: ReactNode;
   /** "Ask Nova to resolve it": the fix, where there is a Mate of the person's to ask. */
   readonly fix?: ReviewButton | undefined;
   /** The sections, in reading order. */
@@ -156,6 +161,8 @@ export interface ZeropsReviewSurfaceProps {
   readonly consequenceRoom?: string | undefined;
   /** The note's tone where it says why the button is held, or what stopped. */
   readonly consequenceTone?: "attention" | "failed" | undefined;
+  /** The note is a wait under way: said beside the busy mark. */
+  readonly consequenceBusy?: boolean | undefined;
   /** A press in the note: "Review again", "Roll back to v0.1.3…". */
   readonly noteAction?: ReviewButton | undefined;
   /** The quiet way out, at the row's start: "Cancel" before a press, "Close" or "Done" after. */
@@ -206,11 +213,13 @@ export function ZeropsReviewSurface({
   verdict,
   verdictInLine = true,
   whySaid = true,
+  notice,
   fix,
   children,
   consequence,
   consequenceRoom,
   consequenceTone,
+  consequenceBusy = false,
   noteAction,
   dismiss,
   ask,
@@ -315,6 +324,7 @@ export function ZeropsReviewSurface({
             {subtitle}
           </p>
         )}
+        {subtitle === undefined ? notice : null}
         {subtitle === undefined && (whySaid || fix !== undefined) ? (
           <div className="rv-why" data-tone={verdict.tone}>
             {whySaid ? <span>{verdict.why}</span> : null}
@@ -403,11 +413,18 @@ export function ZeropsReviewSurface({
           noteAction === undefined &&
           consequenceRoom === undefined ? null : (
             <p
+              aria-live={consequenceBusy ? "polite" : undefined}
               className="rv-conseq"
               data-room={consequenceRoom === undefined ? undefined : ""}
               data-tone={consequenceTone}
             >
-              {consequence === "" ? null : <span>{consequence}</span>}
+              {consequence === "" ? null : consequenceBusy ? (
+                <Badge dot tone="info" wrap>
+                  {consequence}
+                </Badge>
+              ) : (
+                <span>{consequence}</span>
+              )}
               {consequenceRoom === undefined ? null : (
                 <span aria-hidden="true" className="rv-conseq-room">
                   {consequenceRoom}

@@ -23,10 +23,13 @@ import {
   changeHandedPrompt,
   changeRemarks,
   changeReview,
+  MERGE_CHECK_LATE_MS,
   recipeReach,
   waitingForProduction,
   type ChangeReadout,
   type ChangeReviewInput,
+  type MergeCheckRefusal,
+  type ReviewGithubChecks,
   type ReviewClose,
   type ReviewHand,
   type ReviewPress,
@@ -42,6 +45,7 @@ import { useRouter } from "@tanstack/react-router";
 import { ArrowUpRightIcon, CheckIcon } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { Badge } from "~/components/ui/badge";
 import { Button, InlineButton } from "~/components/ui/button";
 import { buildThreadRouteParams } from "~/threadRoutes";
 import { useAskMateToFix, type FixProblem } from "~/zerops/fixRequest";
@@ -67,7 +71,7 @@ import { useZeropsChangeCommits } from "~/zerops/useZeropsChangeCommits";
 import { useZeropsChangeFileDiffs } from "~/zerops/useZeropsChangeFileDiffs";
 import { useHqPictureSource, type ChangePictureSource } from "~/zerops/useProjectedHqPicture";
 import { useLinkedChange } from "~/zerops/useLinkedChange";
-import { useNowMs } from "~/zerops/useNowMs";
+import { useNowMs, useSecondsNowMs, useWakeAt } from "~/zerops/useNowMs";
 import { useFixMates } from "~/zerops/fixMates";
 import { useZeropsReviewMates } from "~/zerops/useZeropsReviewMates";
 import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
@@ -115,6 +119,27 @@ import {
 } from "./ZeropsReviewSurface";
 
 const NO_STAGES: ReadonlyArray<string> = [];
+/** No wait to wake for. */
+const NO_DEADLINES: ReadonlyArray<number> = [];
+
+/**
+ * Since when (wall ms) the change has waited for HQ's merge check, while it does: the earlier of
+ * its last update — a push leaves it unjudged — and when this review first saw it so.
+ */
+function useCheckingSince(checking: boolean, updatedAt: string | undefined): number | undefined {
+  const [seen, setSeen] = useState<number | undefined>(undefined);
+  // The clock followed only until it is seen: no tick while it waits.
+  const clock = useSecondsNowMs(checking && seen === undefined);
+  // Seen anew each time it goes unjudged; let go once HQ has said.
+  if (checking && seen === undefined) setSeen(clock);
+  if (!checking && seen !== undefined) setSeen(undefined);
+  if (!checking) return undefined;
+  const updated = updatedAt === undefined ? Number.NaN : Date.parse(updatedAt);
+  const known = [seen, Number.isNaN(updated) ? undefined : updated].filter(
+    (at): at is number => at !== undefined,
+  );
+  return known.length === 0 ? undefined : Math.min(...known);
+}
 
 const KIND: ReviewKind = "change";
 
@@ -595,6 +620,7 @@ function ChangeReviewData({
       pictures={pictures}
       pull={pull}
       readout={readout}
+      mergeCheck={detail.mergeCheck}
       titleId={titleId}
       waitingForProduction={waitingForProduction({
         summary: flow?.release.summary,
@@ -627,6 +653,8 @@ export interface ChangeReviewViewProps {
   };
   /** What HQ recorded of it: its files and their sizes, its commits, how it merges. */
   readonly readout: ReadoutPart<ChangeReadout>;
+  /** HQ's answer that it cannot judge whether it merges (`useZeropsChangeDetail`'s). */
+  readonly mergeCheck?: MergeCheckRefusal | undefined;
   /** What was said on it, and the way to say something back. */
   readonly comments: ChangeDiscussion;
   readonly remarks: ReadonlyArray<ChangeRemark>;
@@ -725,6 +753,52 @@ export interface ChangeReviewViewProps {
   readonly onClose: () => void;
 }
 
+/**
+ * GitHub's checks on the change's latest push, under the title: failed ones as trouble with the
+ * way to them and the ask to its Mate, running ones with the busy mark, passed ones ticked.
+ */
+function GithubChecksLine({
+  checks,
+  fix,
+}: {
+  readonly checks: ReviewGithubChecks;
+  readonly fix: ReviewButton | undefined;
+}) {
+  return (
+    <div
+      className="rv-why"
+      data-tone={checks.state === "failing" ? "failed" : undefined}
+      data-zerops-surface="change-github-checks-line"
+    >
+      {checks.state === "pending" ? (
+        <Badge dot tone="info">
+          {checks.words}
+        </Badge>
+      ) : checks.state === "passing" ? (
+        <span className="rv-checks" data-mark="passed">
+          <CheckIcon aria-hidden="true" />
+          {checks.words}
+        </span>
+      ) : (
+        <span>{checks.words}</span>
+      )}
+      <Button
+        render={<a href={checks.url} rel="noreferrer" target="_blank" />}
+        size="sm"
+        variant="link"
+      >
+        See them on GitHub
+        <ArrowUpRightIcon aria-hidden="true" />
+      </Button>
+      {fix === undefined ? null : (
+        <Button onClick={fix.onPress} size="sm" variant="link">
+          {fix.label}
+        </Button>
+      )}
+    </div>
+  );
+}
+
 /** Where a change merges: every change here merges into `main`. */
 const MERGES_INTO = { words: "main" } as const;
 
@@ -757,6 +831,14 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     stage: (props.stages ?? NO_STAGES).length > 0,
     productionOutside,
   };
+  // HQ's merge check still to come, said as a wait and, once past the usual, as late — on time.
+  const checkingSince = useCheckingSince(
+    (read?.mergeability ?? pull.mergeability) === "checking" && props.mergeCheck === undefined,
+    pull.updatedAt,
+  );
+  const lateAt = useWakeAt(
+    checkingSince === undefined ? NO_DEADLINES : [checkingSince + MERGE_CHECK_LATE_MS],
+  );
   const model = changeReview({
     // How it merges, and whether `main` moved on under it, are the flow's until HQ's record of it
     // is read, and the record's after.
@@ -802,7 +884,9 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     close: closing,
     heirs: props.heirs,
     hand: props.hand,
-    now: props.now,
+    mergeCheck: props.mergeCheck,
+    checkingSince,
+    now: Math.max(props.now, lateAt),
   });
   // Files HQ has not recorded are not known, never none: no size is said of them.
   const size = sizeWords({
@@ -865,6 +949,10 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     checks: model.pipeline?.checks ?? [],
   });
   const pipeline = model.pipeline;
+  const github = model.githubChecks;
+  // HQ's merge check still to come is the foot's wait, beside the Merge it holds: the line under
+  // the title keeps to the facts.
+  const checking = model.verdict.state === "checking";
   const receipt = changeReceipt({ receipt: pull.receipt, head: pull.headSha });
   const repo: GitRepoAt | undefined =
     props.appId === undefined ? undefined : { appId: props.appId, repo: pull.repository };
@@ -875,6 +963,11 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
   // own words only restate its title.
   const onLine = model.verdict.state === "merging" || model.verdict.state === "merged";
   const question = model.question === undefined || questionClosed ? undefined : model.question;
+  // Why Merge is not this person's, in HQ's rule's words, where it says.
+  const notOffered =
+    !over && !asked && props.offers?.merge === false ? props.offers.why.merge : undefined;
+  const wait =
+    question === undefined && notOffered === undefined ? model.consequenceWaits : undefined;
   // A Mate's several changes in one repository read apart by their branches.
   const branch = reviewBranch(pull);
   const others = props.others ?? NO_OTHERS;
@@ -908,8 +1001,8 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       consequence={
         question !== undefined
           ? [question.text, ...question.options.map((option) => option.hint)].join(" ")
-          : !over && !asked && props.offers?.merge === false && props.offers.why.merge !== undefined
-            ? props.offers.why.merge
+          : notOffered !== undefined
+            ? notOffered
             : mergeFoot({
                 state: model.verdict.state,
                 consequence: model.consequence,
@@ -920,6 +1013,8 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
                 productionOutside,
               })
       }
+      consequenceBusy={wait !== undefined}
+      consequenceTone={wait === "late" ? "attention" : undefined}
       consequenceRoom={
         question !== undefined || model.consequenceRoom === undefined
           ? undefined
@@ -972,7 +1067,12 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
             data-zerops-surface="change-pull-request"
             render={<a href={pull.pullRequest.url} rel="noreferrer" target="_blank" />}
           >
-            {pullRequestLinkWords(pull.pullRequest)}
+            {/* GitHub's checks, said under the title, are not said again in the link. */}
+            {pullRequestLinkWords(
+              github === undefined
+                ? pull.pullRequest
+                : { number: pull.pullRequest.number, state: pull.pullRequest.state },
+            )}
             <ArrowUpRightIcon aria-hidden="true" className="ms-0.5 inline size-3" />
           </InlineButton>
         )
@@ -1049,11 +1149,29 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
           <span>{model.verdict.why}</span>
         ) : undefined
       }
+      notice={
+        github === undefined ? undefined : (
+          <GithubChecksLine
+            checks={github}
+            fix={
+              github.fix === undefined || mine === undefined || over
+                ? undefined
+                : {
+                    label: `Ask ${mine.name} to ${github.fix.verb}`,
+                    onPress: () => {
+                      if (github.fix !== undefined) props.onFix(github.fix.problem);
+                    },
+                  }
+            }
+          />
+        )
+      }
       title={pull.title}
       titleId={props.titleId}
       verdict={model.verdict}
+      verdictInLine={!checking}
       where={MERGES_INTO}
-      whySaid={!onLine && whySaid(model.verdict, pull.ready === false)}
+      whySaid={!onLine && !checking && whySaid(model.verdict, pull.ready === false)}
     >
       <HqProblems problems={model.problems} />
       {readout.kind === "failed" ? (
@@ -1162,13 +1280,39 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
         />
       </ReviewSection>
       {pipeline === undefined ||
-      (pipeline.checks.length === 0 && pipeline.why === undefined) ? null : (
+      (pipeline.checks.length === 0 &&
+        pipeline.why === undefined &&
+        github === undefined) ? null : (
         <ReviewSection
-          aside={pipeline.checks.length === 0 ? undefined : String(pipeline.checks.length)}
+          aside={
+            pipeline.checks.length > 0
+              ? String(pipeline.checks.length)
+              : github === undefined
+                ? undefined
+                : "1"
+          }
           fold={checks}
           title="Checks"
         >
           {pipeline.why === undefined ? null : <p className="rv-words">{pipeline.why}</p>}
+          {/* HQ holds none of its own for this head: GitHub's, as one row. */}
+          {github === undefined ? null : (
+            <ul className="rv-check-list" data-zerops-surface="change-github-checks">
+              <li>
+                GitHub&apos;s checks ·{" "}
+                {github.state === "failing"
+                  ? "Failed"
+                  : github.state === "pending"
+                    ? "Running"
+                    : "Passed"}{" "}
+                ·{" "}
+                <InlineButton render={<a href={github.url} rel="noreferrer" target="_blank" />}>
+                  See them on GitHub
+                  <ArrowUpRightIcon aria-hidden="true" className="ms-0.5 inline size-3" />
+                </InlineButton>
+              </li>
+            </ul>
+          )}
           {pipeline.checks.length === 0 ? null : (
             <ul className="rv-check-list">
               {pipeline.checks.map((check) => (

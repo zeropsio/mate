@@ -11,7 +11,8 @@ import { cn } from "~/lib/utils";
  * The one action. `primary` is the single next step on a surface (blue acts), `secondary` sits
  * beside it, `ghost` is a quiet tool, `destructive` only deletes, stops or acts on Production,
  * `link` reads as a word.
- * Sizes: `md` by default, `sm` in dense rows, `lg` only for a page's one hero action; `icon-sm` and
+ * Sizes: `md` by default, `sm` in dense rows, `xs` for a row's verb within its line (a change's
+ * Review, everywhere it stands), `lg` only for a page's one hero action; `icon-sm` and
  * `icon-md` are the square forms of `sm` and `md`. A button is a rectangle on the control radius;
  * a label is a Badge pill, so an action never reads as a tag.
  */
@@ -24,6 +25,7 @@ const buttonVariants = cva(
     },
     variants: {
       size: {
+        xs: "h-fit min-h-6 gap-1 px-[calc(--spacing(2)-1px)] py-0 text-line [&_svg:not([class*='size-'])]:size-3",
         sm: "h-fit min-h-7 gap-1.5 px-[calc(--spacing(2.5)-1px)] py-[calc(--spacing(1)-1px)] text-body [&_svg:not([class*='size-'])]:size-3.5",
         md: "h-fit min-h-8 gap-1.5 px-[calc(--spacing(3)-1px)] py-[calc(--spacing(1)-1px)] text-body",
         lg: "h-fit min-h-10 gap-2 px-[calc(--spacing(4)-1px)] py-[calc(--spacing(1)-1px)] text-body",

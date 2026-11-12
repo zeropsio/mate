@@ -119,11 +119,17 @@ export function makeHqWire(
           verdict: (request: import("../families/hqChangeRead.ts").ChangeReadRequest) =>
             Effect.tryPromise({
               try: (signal) => api.changeVerdict!(request.link, signal, request.snapshot),
+              // HQ's word that it cannot judge the change — its repository too large for it now
+              // (`503 repo_unavailable`, read again on the retry), or the change too large
+              // (`413 too_large`) — keeps its code: the review says it, never a check under way.
               catch: (cause) => ({
                 ...classifyHqCall(cause),
                 ...(cause instanceof HqError && cause.code === "change_not_found"
                   ? { code: "not_found" }
-                  : {}),
+                  : cause instanceof HqError &&
+                      (cause.code === "repo_unavailable" || cause.code === "too_large")
+                    ? { code: cause.code }
+                    : {}),
               }),
             }),
         }),
