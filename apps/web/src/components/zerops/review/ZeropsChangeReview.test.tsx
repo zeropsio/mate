@@ -907,12 +907,39 @@ describe("ChangeReviewView: an open change", () => {
       )?.[1] ?? null;
 
     it.each([
-      [{ state: "open", checks: "passing" }, "PR #14 on GitHub · open · checks passing"],
+      [{ state: "open", checks: "passing" }, "PR #14 on GitHub · open"],
       [{ state: "open" }, "PR #14 on GitHub · open"],
     ] as const)("links its pull request by its title: %o", (state, words) => {
       const html = render({ ...open, pullRequest: { ...pullRequest, ...state } }, files);
       const link = prLink(html);
       expect(link === null ? null : textOf(link)).toBe(words);
+    });
+
+    // The owner, 2026-11-12: failed checks on GitHub showed only as two words inside the link.
+    // witness: apps/web/src/components/zerops/review/ZeropsReviewSurface.tsx | {subtitle === undefined ? notice : null} → {null}
+    it("says GitHub's failed checks under the title with the way to them, before HQ's merge check", () => {
+      const html = render(
+        {
+          ...open,
+          mergeability: "checking",
+          pullRequest: { ...pullRequest, state: "open", checks: "failing" },
+        },
+        files,
+        {
+          readout: {
+            kind: "read",
+            value: changeReadoutOfRecord(
+              { mergeability: "unknown", behind: false, body: "" } as HqChange,
+              review({ files }),
+            ),
+          },
+        },
+      );
+      const head = textOf(html.slice(0, html.indexOf("</header>")));
+      expect(head).toContain("GitHub's checks failed on its latest push See them on GitHub");
+      expect(head).not.toContain("Checking whether it merges cleanly");
+      expect(html).toContain('href="https://github.com/acme/tea-shop/pull/14/checks"');
+      expect(textOf(footOf(html))).toContain("Checking whether it merges cleanly…");
     });
 
     it("says its Merge merges it on GitHub", () => {
