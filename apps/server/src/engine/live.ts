@@ -107,15 +107,15 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
       | SqlClient.SqlClient
     >();
 
-    const boot: MateEngineService["boot"] = (bootOptions = {}) =>
+    const boot: MateEngineService["boot"] = () =>
       Effect.gen(function* () {
         const bootId = BootId.make(
           `boot-${yield* Clock.currentTimeMillis}-${yield* Random.nextIntBetween(0, 1_000_000)}`,
         );
-        const booted = yield* bootEngine(bootId, {
-          ...(options.worker === undefined ? {} : { worker: options.worker }),
-          ...(bootOptions.strict === undefined ? {} : { strict: bootOptions.strict }),
-        });
+        const booted = yield* bootEngine(
+          bootId,
+          options.worker === undefined ? {} : { worker: options.worker },
+        );
         yield* Effect.logInfo("Mate engine: booted", booted.report);
         const open = Effect.gen(function* () {
           yield* booted.open;

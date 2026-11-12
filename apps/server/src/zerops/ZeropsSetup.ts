@@ -77,7 +77,6 @@ import { ZeropsStandUpReceipt } from "./ZeropsStandUpReceipt.ts";
 import { hasSetupMarker, readServiceVariableKeys } from "./zeropsSetupMarker.ts";
 import { isTaskConversation } from "./ZeropsTasks.ts";
 import { subscribeChanges } from "./zeropsChanges.ts";
-import { MateUpdateBootFence } from "../mateUpdateBoot.ts";
 import {
   STAND_UP_MESSAGE,
   parseZcpStatus,
@@ -259,7 +258,6 @@ export const makeZeropsSetup = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const projection = yield* ProjectionSnapshotQuery;
   const readiness = yield* ServerCommandReadiness;
-  const fence = yield* MateUpdateBootFence;
   const crypto = yield* SecureRandom.SecureRandom;
   const engine = yield* MateEngine;
   // The stand-up is a wake on the Mate engine.
@@ -811,8 +809,6 @@ export const makeZeropsSetup = Effect.gen(function* () {
     const variables = yield* reads.serviceVariables;
     const marked = variables !== undefined && hasSetupMarker(variables);
     yield* readiness.await;
-    // The stand-up acts through the engine, which takes nothing before an update commits.
-    yield* fence.lifted;
     // A flipped Mate's main conversation moves first, so a stand-up still due goes into it
     // rather than into a new one.
     yield* adoptAtFlip;
@@ -838,9 +834,7 @@ export const makeZeropsSetup = Effect.gen(function* () {
     // No stand-up outside Zerops; a flipped main conversation still moves, once the agents
     // are known.
     yield* receipt.settle;
-    const worker = yield* Effect.forkScoped(
-      readiness.await.pipe(Effect.andThen(fence.lifted), Effect.andThen(adoptAtFlip)),
-    );
+    const worker = yield* Effect.forkScoped(readiness.await.pipe(Effect.andThen(adoptAtFlip)));
     finished = Fiber.join(worker);
   }
 

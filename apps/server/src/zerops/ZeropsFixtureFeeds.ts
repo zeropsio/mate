@@ -486,14 +486,9 @@ const zeropsCliFixtureLayer = () =>
       mateUpdate: () => {
         throw new Error("ZeropsCli fixture: mateUpdate is unreachable");
       },
-      version: Effect.succeed(undefined),
       // A fixture scene's pools are pictures: nothing is released.
       leaseRelease: () =>
         Effect.succeed({ outcome: "failed", reason: "a fixture scene releases nothing" }),
-      selfRestart: Effect.succeed({
-        outcome: "refused",
-        reason: "a fixture scene restarts nothing",
-      }),
     }),
   );
 
@@ -503,10 +498,7 @@ const zeropsMateUpdateFixtureLayer = () =>
     ZeropsMateUpdateModule.ZeropsMateUpdate.of({
       current: Effect.succeed(undefined),
       changes: Stream.make(undefined),
-      refresh: Effect.void,
-      reread: Effect.void,
       check: Effect.succeed(undefined),
-      restart: Effect.succeed({ started: false, reason: "a fixture scene restarts nothing" }),
     }),
   );
 

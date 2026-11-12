@@ -174,7 +174,7 @@ export function makeMateUpdates(options: {
             unconfirmed.delete(record.requestId);
             const now = store.state().operations.get(record.requestId);
             if (now?.receipt !== null && now?.receipt.outcome.kind !== "pending") return;
-            settle(record.requestId, server!.serverVersion, answer?.target, {
+            settle(record.requestId, server!.serverVersion, {
               kind: "failed",
               reason: "This Mate came back, but couldn't confirm the update.",
             });
@@ -184,19 +184,9 @@ export function makeMateUpdates(options: {
     }
     unconfirmed.get(record.requestId)?.();
     unconfirmed.delete(record.requestId);
-    settle(
-      record.requestId,
-      server!.serverVersion,
-      answer?.target ?? record.intent.restart,
-      verdict,
-    );
+    settle(record.requestId, server!.serverVersion, verdict);
   };
-  const settle = (
-    requestId: string,
-    version: string,
-    target: MateRestartTarget | undefined,
-    end: Settlement,
-  ) =>
+  const settle = (requestId: string, version: string, end: Settlement) =>
     store.dispatch({
       kind: "operation-receipt",
       receipt: {
@@ -207,11 +197,7 @@ export function makeMateUpdates(options: {
         handles: [],
         acceptance: {
           kind: "accepted",
-          result: {
-            alreadyCurrent: false,
-            version,
-            ...(target === undefined ? {} : { restartTarget: target }),
-          },
+          result: { alreadyCurrent: false, version },
         },
         outcome:
           end.kind === "failed"
@@ -257,17 +243,6 @@ export function makeMateUpdates(options: {
           return;
       }
       if (checks.has(environmentId)) return;
-      // The restart seen at the press: the later of the live line's and the store's reading of
-      // the Mate, since a lost answer is judged against either.
-      const seenRestart = [
-        server.update?.restart?.startedAt,
-        updateServer(readsOfState(store.state()), environmentId)?.update?.restart?.startedAt,
-      ]
-        .filter((startedAt): startedAt is string => startedAt !== undefined)
-        .reduce<string | undefined>(
-          (later, startedAt) => (later === undefined || startedAt > later ? startedAt : later),
-          undefined,
-        );
       const requestId = options.makeId();
       publish(updateRequestScope(environmentId), {
         family: "mateUpdateRequest",
@@ -286,7 +261,6 @@ export function makeMateUpdates(options: {
             bootId: server.bootId,
             to,
             ...(restart === undefined ? {} : { restart }),
-            ...(seenRestart === undefined ? {} : { seenRestart }),
           },
           requestId,
         ),

@@ -9,18 +9,11 @@ import { ProviderUpdateSafety } from "../spi/ProviderUpdateSafety.ts";
 import { TerminalManager } from "../terminal/Manager.ts";
 import { CrewEngine } from "./crew/CrewEngine.ts";
 import { MateAutoUpdatePolicy } from "./MateAutoUpdatePolicy.ts";
-import { MateUpdateBootFence } from "../mateUpdateBoot.ts";
 import { drainMateUpdate, joinUpdateIdleFacts } from "./mateUpdateDrain.ts";
 import { ZeropsAgentLogin } from "./ZeropsAgentLogin.ts";
 
-/**
- * The drain and its loopback readiness report read the same actual owners. While an update's boot
- * fence holds the engine's opening there is no work to read: the server has started none, and what
- * its boot's recovery left for the opening is not in flight (`MateUpdateBootFence`), so the report
- * is the boot's alone. Once the lift begins, the owners answer as on any running server.
- */
+/** The drain and its loopback readiness report read the same actual owners. */
 export const readMateUpdateIdleFacts = Effect.gen(function* () {
-  if (yield* (yield* MateUpdateBootFence).held) return joinUpdateIdleFacts();
   const engine = yield* MateEngine;
   const terminals = yield* TerminalManager;
   const engineDrain = engine.updateDrain;
@@ -54,9 +47,8 @@ export const readMateUpdateIdleFacts = Effect.gen(function* () {
 });
 
 /**
- * The one update drain over the Mate's actual owners: zcp's loopback `drain` route runs it for
- * `mate update`, and the Mate's own restart runs it before `zcp self restart`. Built where the
- * owners are provided; each run reads them from there.
+ * The one update drain over the Mate's actual owners: zcp's loopback `drain` route runs it before
+ * zcp restarts the Mate. Built where the owners are provided; each run reads them from there.
  */
 export const makeMateUpdateDrain = Effect.gen(function* () {
   const owners = yield* Effect.context<MateEngine | TerminalManager>();
@@ -174,23 +166,12 @@ export const makeMateUpdateDrain = Effect.gen(function* () {
     }).pipe(Effect.provideContext(owners));
 });
 
-/**
- * Opens admission an update drain closed (the engine's, the terminals' and the clients'). On a boot
- * under an update it is the boot fence's lift: the held engine opening first, then this, then the
- * outward roots.
- */
-export const reopenMateUpdateAdmission = Effect.map(
-  Effect.all([
-    MateEngine,
-    TerminalManager,
-    Effect.serviceOption(RpcUpdateAdmission),
-    MateUpdateBootFence,
-  ]),
-  ([engine, terminals, rpcAdmission, fence]) =>
-    fence.lift(
-      (engine.updateDrain?.cancel ?? Effect.void).pipe(
-        Effect.andThen(terminals.updateDrain?.cancel ?? Effect.void),
-        Effect.andThen(Option.isSome(rpcAdmission) ? rpcAdmission.value.cancel : Effect.void),
-      ),
+/** Opens admission an update drain closed (the engine's, the terminals' and the clients'). */
+export const reopenMateUpdateAdmission = Effect.flatMap(
+  Effect.all([MateEngine, TerminalManager, Effect.serviceOption(RpcUpdateAdmission)]),
+  ([engine, terminals, rpcAdmission]) =>
+    (engine.updateDrain?.cancel ?? Effect.void).pipe(
+      Effect.andThen(terminals.updateDrain?.cancel ?? Effect.void),
+      Effect.andThen(Option.isSome(rpcAdmission) ? rpcAdmission.value.cancel : Effect.void),
     ),
 );

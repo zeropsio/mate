@@ -214,21 +214,13 @@ export const ExecutionEnvironmentUpdate = Schema.Struct({
   zcp: Schema.optionalKey(ExecutionEnvironmentZcp),
   /**
    * Only a container restart gets this Mate current (zcp behind, or a mate without updater
-   * protocol 1): its Update restarts the container once the Mate is idle. `phase` is that
-   * restart's progress, recorded by the server; absent while none was asked for.
+   * protocol 1): its Update asks zcp, which restarts the container once the Mate is idle.
    */
   restart: Schema.optionalKey(
     Schema.Struct({
       needed: Schema.Boolean,
       /** zcp's one line saying why. */
       why: Schema.optionalKey(Schema.String),
-      phase: Schema.optionalKey(Schema.Literals(["draining", "restarting", "postponed"])),
-      /** Why a postponed restart did not happen, in zcp's words or the server's. */
-      reason: Schema.optionalKey(Schema.String),
-      /** Which restart the phase is about: a press settles on its own attempt, never an older one. */
-      attempt: Schema.optionalKey(Schema.String),
-      /** When that restart was asked for, by the server's clock (ISO 8601). */
-      startedAt: Schema.optionalKey(Schema.String),
     }),
   ),
 });

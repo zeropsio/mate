@@ -198,10 +198,6 @@ const EnvServerConfig = Config.all({
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  zcpMateUpdateStateFile: Config.String("ZCP_MATE_UPDATE_STATE_FILE").pipe(
-    Config.option,
-    Config.map(Option.getOrUndefined),
-  ),
   zcpMateBootFile: Config.String("ZCP_MATE_BOOT_FILE").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
@@ -442,7 +438,6 @@ export const resolveServerConfig = (
             serviceId: env.zeropsServiceId,
             hostname: env.zeropsHostname,
             statusFile: env.zcpStatusFile,
-            mateUpdateStateFile: env.zcpMateUpdateStateFile,
             mateBootFile: env.zcpMateBootFile,
             mateStateFile: env.zcpMateStateFile,
           })
