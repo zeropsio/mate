@@ -714,8 +714,6 @@ function mount(
           closeChange: unused,
           handChange: unused,
           setChief: unused,
-          keepChiefToken: unused,
-          forgetChiefToken: unused,
           decideProposal: unused,
           handOver: unused,
         }),
