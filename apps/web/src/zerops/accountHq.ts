@@ -1,4 +1,5 @@
 import { captureAccountLifetime, onAccountLifetimeClose } from "./accountLifetime";
+import { tabHqSocketName } from "./tabHqSocketName";
 /**
  * The HQ this build names, as this tab reaches it (ADR 0001, SPEC §3.3, §4).
  *
@@ -72,6 +73,7 @@ export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEn
     });
   const api = makeBrowserHqApi({
     address: hq.address,
+    socketName: tabHqSocketName(),
     kept: {
       read: () => {
         if (!isCurrent()) throw accountChanged();
