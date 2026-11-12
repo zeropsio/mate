@@ -142,7 +142,7 @@ export function RouteGateWords({
       headline={
         "headline" in phrase ? phrase.headline : (phrase.text ?? "The conversation is unavailable.")
       }
-      secondary={"secondary" in phrase ? phrase.secondary : ""}
+      secondary={phrase.secondary ?? ""}
       severity={tone === "error" ? "danger" : tone === "warning" ? "attention" : "info"}
       actions={
         <div className="flex flex-wrap items-center justify-center gap-2">

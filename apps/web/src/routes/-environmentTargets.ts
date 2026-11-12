@@ -439,9 +439,10 @@ export function useEnvironmentLinks(): EnvironmentLinks {
 }
 
 /**
- * The link's verdict for an environment the route does not name — a draft's, whose route carries
- * only the draft — for the one voice over its conversation (`mateVoice`); null while no target
- * names it. It demands nothing: the draft's own view connects its environment.
+ * The link's verdict for an environment, read where the route gate's own verdict does not reach:
+ * a draft's, whose route carries only the draft, for the one voice over its conversation
+ * (`mateVoice`), and a thread route's, for the words under its opening's end; null while no
+ * target names it. It demands nothing: the route's own view connects its environment.
  */
 export function useEnvironmentReachability(
   environmentId: EnvironmentId | null,

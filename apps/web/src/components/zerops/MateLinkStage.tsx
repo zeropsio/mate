@@ -168,6 +168,7 @@ function MateLinkStageOf({
           name={known?.name}
           mate={mate}
           activity={activity}
+          refusal={voice.refusal}
           timestampFormat={timestampFormat}
           threadKey={threadKey}
           readPending={readPending}
