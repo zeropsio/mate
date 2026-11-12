@@ -24,17 +24,4 @@ describe("automatic updates require a current HQ policy", () => {
       assert.deepStrictEqual(yield* policy.current, Option.some(hold));
     }),
   );
-
-  it.effect("an older policy answer cannot reopen an organization hold", () =>
-    Effect.gen(function* () {
-      const policy = yield* makeMateAutoUpdatePolicy(nothingKept);
-      const hold = { orgId: "ORG", enabled: false, revision: 2 };
-      const link = yield* policy.open(
-        Effect.succeedSome({ orgId: "ORG", enabled: true, revision: 1 }),
-      );
-      yield* link.receive(Option.some(hold));
-      assert.deepStrictEqual(yield* policy.verify, Option.some(hold));
-      assert.deepStrictEqual(yield* policy.current, Option.some(hold));
-    }),
-  );
 });

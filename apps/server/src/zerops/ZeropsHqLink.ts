@@ -60,7 +60,6 @@ import type { AdmissionLive, TicketFrame } from "./ZeropsTicketDoor.ts";
  * @module ZeropsHqLink
  */
 import { mateRunsWithoutSignIn } from "@t3tools/shared/zeropsAgentAuth";
-import type { HqAutoUpdatePolicy } from "@t3tools/shared/mateAutoUpdatePolicy";
 import { ProviderInstances } from "../spi/providerInstances.ts";
 import * as NodeDns from "node:dns";
 import * as NodeNet from "node:net";
@@ -633,25 +632,23 @@ export const makeZeropsHqLink = (
         );
       const tasks = options.tasks ? yield* options.tasks.open(reportTask) : undefined;
       let requestSerial = 0;
-      const policyRequests = new Map<
-        string,
-        Deferred.Deferred<Option.Option<HqAutoUpdatePolicy>>
-      >();
-      const verifyPolicy = Effect.gen(function* () {
+      const policyRequests = new Map<string, Deferred.Deferred<void>>();
+      // The answer reaches the holder in frame order, beside the state frames, so the later one wins.
+      const askPolicy = Effect.gen(function* () {
         const requestId = String(++requestSerial);
-        const answer = yield* Deferred.make<Option.Option<HqAutoUpdatePolicy>>();
+        const answer = yield* Deferred.make<void>();
         policyRequests.set(requestId, answer);
         return yield* send({ type: "auto-update-policy", requestId }).pipe(
           Effect.andThen(Deferred.await(answer)),
           Effect.timeoutOrElse({
             duration: HQ_AUTO_UPDATE_VERIFY_BUDGET,
-            orElse: () => Effect.succeedNone,
+            orElse: () => Effect.void,
           }),
           Effect.ensuring(Effect.sync(() => policyRequests.delete(requestId))),
         );
       });
       const autoUpdatePolicy = options.autoUpdatePolicy
-        ? yield* options.autoUpdatePolicy.open(verifyPolicy)
+        ? yield* options.autoUpdatePolicy.open(askPolicy)
         : undefined;
 
       const answered = yield* Deferred.make<void>();
@@ -726,7 +723,9 @@ export const makeZeropsHqLink = (
             const answer = policyRequests.get(frame.requestId);
             return answer === undefined
               ? Effect.void
-              : Deferred.succeed(answer, Option.some(frame.policy));
+              : (autoUpdatePolicy?.receive(Option.some(frame.policy)) ?? Effect.void).pipe(
+                  Effect.andThen(Deferred.succeed(answer, undefined)),
+                );
           }
           case "ping":
             return send({ type: "pong" }).pipe(Effect.andThen(usage?.ping ?? Effect.void));
