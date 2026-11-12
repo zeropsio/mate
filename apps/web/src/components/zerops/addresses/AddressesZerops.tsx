@@ -99,20 +99,9 @@ function ZeropsRow({
           </>
         }
         name={
-          on ? (
-            <span className="flex min-w-0 flex-wrap gap-x-3 font-normal">
-              {address.hosts.map((host) => (
-                <a
-                  className="inline-flex min-w-0 items-center gap-1 hover:underline"
-                  href={host.url}
-                  key={host.url}
-                  rel="noreferrer"
-                  target="_blank"
-                >
-                  <HostName host={host.host} service={address.serviceName} />
-                  <ArrowUpRightIcon aria-hidden="true" className="size-3.25 shrink-0 opacity-60" />
-                </a>
-              ))}
+          on && first !== undefined ? (
+            <span className="font-normal">
+              <HostLink host={first} service={address.serviceName} />
             </span>
           ) : (
             <>
@@ -122,6 +111,17 @@ function ZeropsRow({
               </span>
             </>
           )
+        }
+        // A service that serves the web on several ports has an address for each: the others
+        // stand under the first, in the row's own line.
+        sub={
+          on && address.hosts.length > 1 ? (
+            <span className="grid gap-1.5 pt-1.5 text-foreground">
+              {address.hosts.slice(1).map((host) => (
+                <HostLink host={host} key={host.url} service={address.serviceName} />
+              ))}
+            </span>
+          ) : undefined
         }
       />
       {trouble === undefined && !asking ? null : (
@@ -172,16 +172,35 @@ function ZeropsRow({
 }
 
 /**
- * A service's zerops.app address with the service's own name in ink at its head, where the
+ * A service's zerops.app address as a link, the service's own name in ink at its head, where the
  * platform puts it, and the rest quieter: the row names its service without saying it twice. On
  * a phone the address reads whole a size down.
  */
-function HostName({ host, service }: { readonly host: string; readonly service: string }) {
-  const named = host.startsWith(`${service}-`) || host.startsWith(`${service}.`);
+function HostLink({
+  host,
+  service,
+}: {
+  readonly host: ZeropsAddress["hosts"][number];
+  readonly service: string;
+}) {
+  const named = host.host.startsWith(`${service}-`) || host.host.startsWith(`${service}.`);
   return (
-    <span className="real-name min-w-0 truncate max-sm:text-xs">
-      <span className="font-medium">{named ? service : host}</span>
-      {named ? <span className="text-muted-foreground">{host.slice(service.length)}</span> : null}
-    </span>
+    <a
+      className="inline-flex min-w-0 max-w-full items-center gap-1 hover:underline"
+      href={host.url}
+      rel="noreferrer"
+      target="_blank"
+    >
+      {/* Its size is set here, around the mono face's own: every address of a service is one size. */}
+      <span className="min-w-0 truncate text-sm max-sm:text-xs">
+        <span className="real-name">
+          <span className="font-medium">{named ? service : host.host}</span>
+          {named ? (
+            <span className="text-muted-foreground">{host.host.slice(service.length)}</span>
+          ) : null}
+        </span>
+      </span>
+      <ArrowUpRightIcon aria-hidden="true" className="size-3.25 shrink-0 opacity-60" />
+    </a>
   );
 }

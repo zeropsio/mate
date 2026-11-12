@@ -1,7 +1,8 @@
 /**
  * The addresses sheet over the window at the owner's size, from the board's sample world
  * (`addressesFixture.ts`): `?task=` opens it on a flow — `add` (Put it on your domain), `others`
- * (someone else's change waits), `own` (the project has its own IPv4), `fresh` (no domain yet, one
+ * (someone else's change waits), `own` (the project has its own IPv4), `settled` (one live domain,
+ * a service on two web ports, no open port), `fresh` (no domain yet, one
  * Zerops address off), `faces` (a domain in each state short of live: its DNS at Cloudflare, at
  * nobody, pointing elsewhere, a wildcard, a certificate on its way, one refused, and a name whose
  * registered domain cannot be told). Writes are
@@ -78,6 +79,26 @@ const PLACE: PlaceAddresses = {
   // `?task=empty`: production set up with nothing deployed there.
   nothingDeployed: TASK === "empty",
   ...(TASK === "faces" ? { domains: FACES } : {}),
+  ...(TASK === "settled"
+    ? {
+        domains: [waiting("rt-s", "shop.example", "live", { nameServers: [] })],
+        ports: [],
+        zerops: [
+          ADDRESSES_FIXTURE.zerops[0]!,
+          {
+            ...ADDRESSES_FIXTURE.zerops[1]!,
+            hosts: [
+              ...ADDRESSES_FIXTURE.zerops[1]!.hosts,
+              {
+                port: 8081,
+                url: "https://api-4c1e-8081.prg1.zerops.app",
+                host: "api-4c1e-8081.prg1.zerops.app",
+              },
+            ],
+          },
+        ],
+      }
+    : {}),
   ...(TASK === "fresh"
     ? {
         domains: [],
@@ -111,7 +132,7 @@ function Harness() {
   };
   return (
     <Dialog onOpenChange={() => {}} open>
-      <DialogPopup className="h-[min(55.5rem,100%)] max-w-[48.75rem]" showCloseButton={false}>
+      <DialogPopup className="max-h-[min(55.5rem,100%)] max-w-[48.75rem]" showCloseButton={false}>
         <AddressesSheetBody
           busy={new Set(own.map(writeKey))}
           ipv4={{ state: "known", price: 3, enabled: false }}

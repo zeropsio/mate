@@ -145,10 +145,15 @@ function RecordName({
   const zone = dnsZone(name, beside);
   const rest = host === "@" ? (rooted ? ` ${zone ?? ""}` : "") : name.slice(host.length);
   return (
-    // A long name wraps: it is read whole, never cut.
-    <span className="block break-all font-mono">
-      {host}
-      <span className="text-muted-foreground/70">{rest}</span>
+    // What is typed is never cut: it wraps where it is long. The rest of the domain after it is
+    // there to be recognised, and gives way first.
+    <span className="flex min-w-0 items-baseline font-mono">
+      <span className="min-w-0 break-all">{host}</span>
+      {rest === "" ? null : (
+        <span className="min-w-0 flex-1 truncate whitespace-pre text-muted-foreground/70">
+          {rest}
+        </span>
+      )}
     </span>
   );
 }

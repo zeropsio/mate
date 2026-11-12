@@ -296,6 +296,11 @@ export interface ChangeReviewInput {
     readonly closedByMate?: true | undefined;
     /** HQ's word that it closed it because this change's landing carried all of it (`landedWith`). */
     readonly landedWith?: number | undefined;
+    /**
+     * Its pull request on GitHub, where its repository is there: `merged` while the change is still
+     * open means GitHub merged it and HQ's `main` has not taken the merge yet.
+     */
+    readonly pullRequest?: { readonly state: string } | undefined;
   };
   /** The name of the Mate that wrote it: only Mates open changes (SPEC §5.4). */
   readonly mateName: string;
@@ -941,6 +946,25 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
       // 2026-10-05). The one question after a first merge is all it may still ask.
       primary: undefined,
       question: recipe ? undefined : whereShouldItRun(input),
+    };
+  }
+
+  // GitHub merged its pull request and HQ's `main` has not taken the merge yet: the change still
+  // reads open, since a mirrored change is merged once `main` holds the merge. For the person it
+  // is merged: nothing is left to press, whether their own press is still being answered or
+  // somebody else pressed.
+  if (pull.pullRequest?.state === "merged") {
+    return {
+      verdict: {
+        state: "merging",
+        tone: "busy",
+        // Its line already says the pull request is merged; this says what is still on its way.
+        title: `Arriving on ${base}`,
+        why: `GitHub merged it; ${base} takes the merge in a moment`,
+        fix: undefined,
+      },
+      consequence: "",
+      primary: undefined,
     };
   }
 
