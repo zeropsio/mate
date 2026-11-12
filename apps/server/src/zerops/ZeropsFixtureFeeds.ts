@@ -39,7 +39,6 @@ import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
 import * as ZeropsGitRemoteProbe from "./ZeropsGitRemoteProbe.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import * as ZeropsMateAccessListModule from "./ZeropsMateAccessList.ts";
-import * as ZeropsProjectFeedModule from "./ZeropsProjectFeed.ts";
 import { crewLayerInert } from "./crew/crewLayer.ts";
 import { macPairCommands, macRemoveCommands } from "./mac/MacHost.ts";
 import { engineLayer } from "../engine/layer.ts";
@@ -658,8 +657,7 @@ export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
       ZeropsMateKeyModule.ZeropsMateKey,
       ZeropsMateKeyModule.snapshotOnlyReader(undefined),
     ),
-    // A fixture scene has no Zerops to read: the list stays empty, the feed has no project.
+    // A fixture scene has no Zerops to read: the list stays empty.
     ZeropsMateAccessListModule.emptyLayer,
-    ZeropsProjectFeedModule.emptyLayer,
   );
 };
