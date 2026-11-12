@@ -1,7 +1,7 @@
 # Zerops integration
 
 Shared rules, domain terms and relied-on platform assumptions. Product behaviour lives in tests;
-appearance lives in code. The zcp↔mate seam lives in `../../../../zcp/docs/spec-mate.md` §2.8.
+appearance lives in code. The zcp↔mate seam lives in `zeropsio/zcp:docs/spec-mate.md` §2.8.
 
 - [Domain terms](primer.md)
 - [Conversation engine terms and rules](engine.md)
@@ -11,4 +11,6 @@ appearance lives in code. The zcp↔mate seam lives in `../../../../zcp/docs/spe
 - [Design guide](design-system.md)
 - [Verified platform assumptions](verified.md)
 - [Fork rules](fork.md)
+- [Upstream intake](intake.md)
+- [Platform editing rules](platform-data-architecture.md)
 - [Provider runtime SPI](spi.md)

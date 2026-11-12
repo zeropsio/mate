@@ -115,7 +115,7 @@ To answer a question, go to the home:
 - Conceptual architecture (concepts, owners of facts and decisions, trust boundaries) → private
   `zeropsio/mate-hq:docs/architecture/README.md`; public product contracts here and in the zcp spec
   remain self-contained.
-- The zcp↔mate seam → `../zcp/docs/spec-mate.md` §2.8 (sibling repo zeropsio/zcp).
+- The zcp↔mate seam → `zeropsio/zcp:docs/spec-mate.md` §2.8.
 - Domain terms (Mate, HQ, application, environments, release, crew) → `docs/internals/zerops/primer.md`.
 - Runtime terms (thread, turn, decider, projector, reactor) → `docs/internals/glossary.md`.
 - Fork rules (zones, freeze, product constraints, upstream) → `docs/internals/zerops/fork.md`.
@@ -134,7 +134,7 @@ To answer a question, go to the home:
   manual CI); `scripts/witness-replay.ts <file>` replays a file's witnesses.
 - Wire-shaped test input: `recorded(<schema>, <name>, edit?)` from `packages/test-recordings` (HQ
   from mate-hq conformance; written only by `scripts/sync-recordings.ts`, which keeps only the
-  schemas z3 consumes). Casts and annotations to contract types in tests only decrease
+  schemas this repository consumes). Casts and annotations to contract types in tests only decrease
   (`scripts/check-test-inputs.ts`).
 - Test visible behaviour against the surface's input (record it reads → what it shows), so swapping
   data sources turns it red.

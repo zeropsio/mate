@@ -65,7 +65,7 @@ describe("registry-free server releases", () => {
   it("documents the GitHub release and zcp pin path without registry instructions", () => {
     const docs = read("docs/README.md");
     expect(docs).toContain("https://github.com/zeropsio/mate/releases");
-    expect(docs).toContain("zcp/docs/spec-mate.md");
+    expect(docs).toContain("zeropsio/zcp:docs/spec-mate.md");
 
     const workflow = read(".github/workflows/release.yml");
     expect(workflow).not.toContain("VITE_BASE_PATH");

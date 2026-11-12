@@ -11,7 +11,7 @@ our interface. Everything else is ours.
 The upstream baseline is `f94a0d646ed78a4788e4af6417f74202a628a5e9`, tagged
 `upstream-base-2026-08-28`. Never merge `upstream/*` or rebase onto `upstream/main`.
 Versioning belongs to this fork. The executable is `mate`; the release package is `zerops-mate`.
-The zcp↔mate release and environment contract belongs to `../zcp/docs/spec-mate.md` §2.8.
+The zcp↔mate release and environment contract belongs to `zeropsio/zcp:docs/spec-mate.md` §2.8.
 
 ## 3. Zones
 
