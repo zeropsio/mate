@@ -1170,57 +1170,115 @@ describe("ZeropsOperationCard — a verb and a subject, never a sentence with th
 });
 
 describe("ZeropsOperationCard — a batch deploy names every service it deploys", () => {
-  it("each service is a row of its own: its name, its own steps", () => {
+  // witness: apps/web/src/components/zerops/operation/BatchServiceRows.tsx | return now === undefined ? service.stateLabel : stepName(now); → return service.stateLabel;
+  // witness: apps/web/src/components/zerops/operation/BatchServiceRows.tsx | {service.state !== "failed" || → {service.state === "waiting" ||
+  it("a batch is one row per service in its call's order, each saying what it does now; a running one lists no steps", () => {
     const operation = operationFor(
       zeropsCall({
         id: "batch-rows",
         startedAt: "2026-09-01T00:00:00.000Z",
         turnId: "t1",
         toolName: "zerops_deploy_batch",
-        input: { targets: ["api", "web"].map((targetService) => ({ targetService })) },
+        input: { targets: ["web", "api", "docs"].map((targetService) => ({ targetService })) },
         status: "inProgress",
       }),
     );
-    const step = (id: PipelineStepRow["id"], state: "finished" | "running" | "waiting") => ({
-      id,
-      sentence: id,
-      state,
-    });
+    const step = (
+      id: PipelineStepRow["id"],
+      state: "finished" | "running" | "waiting",
+      durationMs?: number,
+    ) => ({ id, sentence: id, state, ...(durationMs === undefined ? {} : { durationMs }) });
     const observed: ObservedRegion = {
       steps: [],
       chips: [],
       provenance: "",
       services: [
+        { name: "web", state: "waiting", stateLabel: "Waiting", steps: [] },
         {
           name: "api",
           state: "running",
-          stateLabel: "Running",
-          steps: [step("INIT_BUILD_CONTAINER", "finished"), step("RUN_BUILD_COMMANDS", "running")],
+          stateLabel: "Deploying",
+          steps: [
+            step("INIT_BUILD_CONTAINER", "finished", 12_000),
+            step("RUN_BUILD_COMMANDS", "running", 18_000),
+            step("DEPLOY", "waiting"),
+          ],
         },
         {
-          name: "web",
-          state: "waiting",
-          stateLabel: "Waiting",
-          steps: [step("INIT_BUILD_CONTAINER", "waiting"), step("RUN_BUILD_COMMANDS", "waiting")],
+          name: "docs",
+          state: "done",
+          stateLabel: "Deployed",
+          steps: [
+            step("INIT_BUILD_CONTAINER", "finished", 6_000),
+            step("RUN_BUILD_COMMANDS", "finished", 7_000),
+            step("DEPLOY", "finished", 11_000),
+          ],
         },
       ],
     };
     const html = renderToStaticMarkup(
       <ZeropsOperationCard headless observed={observed} operation={operation} />,
     );
-    const rows = [...html.matchAll(/data-zerops-batch-service="([^"]+)"/g)].map((m) => m[1]);
-    expect(rows).toEqual(["api", "web"]);
-    const states = (name: string) =>
-      [
-        ...(html
-          .split(`data-zerops-batch-service="${name}"`)[1]
-          ?.split("data-zerops-batch-service=")[0]
-          ?.matchAll(/data-zerops-pipeline-state="([^"]+)"/g) ?? []),
-      ].map((m) => m[1]);
-    expect({ api: states("api"), web: states("web") }).toEqual({
-      api: ["finished", "running"],
-      web: ["waiting", "waiting"],
+    const row = (name: string) =>
+      html
+        .split(`data-zerops-batch-service="${name}"`)[1]
+        ?.split("data-zerops-batch-service=")[0] ?? "";
+    const words = (name: string) =>
+      row(name)
+        .replace(/<span class="sr-only">[^<]*<\/span>/g, "")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    expect([...html.matchAll(/data-zerops-batch-service="([^"]+)"/g)].map((m) => m[1])).toEqual([
+      "web",
+      "api",
+      "docs",
+    ]);
+    expect({ web: words("web"), api: words("api"), docs: words("docs") }).toEqual({
+      web: "web Waiting",
+      api: "api Build 2 of 3 18s",
+      docs: "docs Deployed 24s",
     });
+    expect(html).not.toContain("data-zerops-pipeline-step=");
+  });
+
+  // witness: apps/web/src/components/zerops/operation/BatchServiceRows.tsx | broke === undefined || reason === undefined ? undefined : { [broke.id]: reason } → undefined
+  it("a failed service opens under its row into its steps, why under the one that broke", () => {
+    const operation = operationFor(
+      zeropsCall({
+        id: "batch-failed",
+        startedAt: "2026-09-01T00:00:00.000Z",
+        turnId: "t1",
+        toolName: "zerops_deploy_batch",
+        input: { targets: [{ targetService: "docs" }] },
+        status: "inProgress",
+      }),
+    );
+    const observed: ObservedRegion = {
+      steps: [],
+      chips: [],
+      provenance: "",
+      services: [
+        {
+          name: "docs",
+          state: "failed",
+          stateLabel: "Failed",
+          reason: "npm run build exited with code 1",
+          steps: [
+            { id: "INIT_BUILD_CONTAINER", sentence: "", state: "finished", durationMs: 9_000 },
+            { id: "RUN_BUILD_COMMANDS", sentence: "", state: "failed", durationMs: 13_000 },
+          ],
+        },
+      ],
+    };
+    const html = renderToStaticMarkup(
+      <ZeropsOperationCard headless observed={observed} operation={operation} />,
+    );
+    expect(html).toMatch(/data-zerops-batch-service-state="failed"[\s\S]*Failed at Build/);
+    const broke = html.split('data-zerops-pipeline-step="RUN_BUILD_COMMANDS"')[1] ?? "";
+    expect(broke).toMatch(
+      /data-zerops-batch-service-reason[^>]*>npm run build exited with code 1</,
+    );
   });
 
   // witness: apps/web/src/components/zerops/operation/BatchServiceRows.tsx | steps={service.steps} → steps={service.steps.slice(1)}
@@ -1235,7 +1293,13 @@ describe("ZeropsOperationCard — a batch deploy names every service it deploys"
         status: "inProgress",
       }),
     );
-    const done = (id: PipelineStepRow["id"]) => ({ id, sentence: id, state: "finished" as const });
+    // Only a failed service lists its steps: each the ones its pipeline has, the last one broke.
+    const ran = (ids: ReadonlyArray<PipelineStepRow["id"]>) =>
+      ids.map((id, index) => ({
+        id,
+        sentence: id,
+        state: index === ids.length - 1 ? ("failed" as const) : ("finished" as const),
+      }));
     const observed: ObservedRegion = {
       steps: [],
       chips: [],
@@ -1243,23 +1307,21 @@ describe("ZeropsOperationCard — a batch deploy names every service it deploys"
       services: [
         {
           name: "api",
-          state: "done",
-          stateLabel: "Deployed",
-          steps: (
-            [
-              "INIT_BUILD_CONTAINER",
-              "RUN_BUILD_COMMANDS",
-              "INIT_PREPARE_CONTAINER",
-              "RUN_PREPARE_COMMANDS",
-              "DEPLOY",
-            ] as const
-          ).map(done),
+          state: "failed",
+          stateLabel: "Failed",
+          steps: ran([
+            "INIT_BUILD_CONTAINER",
+            "RUN_BUILD_COMMANDS",
+            "INIT_PREPARE_CONTAINER",
+            "RUN_PREPARE_COMMANDS",
+            "DEPLOY",
+          ]),
         },
         {
           name: "web",
-          state: "done",
-          stateLabel: "Deployed",
-          steps: (["INIT_BUILD_CONTAINER", "RUN_BUILD_COMMANDS", "DEPLOY"] as const).map(done),
+          state: "failed",
+          stateLabel: "Failed",
+          steps: ran(["INIT_BUILD_CONTAINER", "RUN_BUILD_COMMANDS", "DEPLOY"]),
         },
       ],
     };
