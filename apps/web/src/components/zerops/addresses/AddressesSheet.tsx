@@ -1,8 +1,9 @@
 /**
- * One place's addresses (board "Mate Addresses Sheet", layout (a) "By kind", the owner,
- * 2026-10-14): every way the internet reaches one Zerops project — production, a stage or a
- * Mate's own — in three sections, *Web addresses*, *IP addresses* and *Direct access*, each change
- * asked or filled in inline. The switch at its top moves between the application's places.
+ * One place's addresses: every way the internet reaches one Zerops project — production, a stage
+ * or a Mate's own — by what a person wants from it. *Your domains* and *Zerops addresses* are
+ * where its pages open; *Direct connections* is for what is not a web page; *IP addresses* holds
+ * the numbers behind them all. Each change is asked or filled in inline. The switch at its top
+ * moves between the application's places.
  *
  * Presentational: the place as the `addresses` projection reads it, with our writes in flight
  * already shown on it (`withOwnWrites`), and one callback that writes. The container holds the
@@ -12,9 +13,9 @@ import type { PlaceAddresses, WaitingChange } from "@t3tools/client-runtime/data
 import { ChevronDownIcon, CreditCardIcon, XIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
-import { useMediaQuery } from "~/hooks/useMediaQuery";
 import { Button } from "../../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
+import { Section } from "../../ui/section";
 import { Spinner } from "../../ui/spinner";
 import { ZeropsMark } from "../../ZeropsMark";
 import {
@@ -24,19 +25,9 @@ import {
   type PlaceChoice,
 } from "./addresses.logic";
 import { AddressesDirect, type DirectMode } from "./AddressesDirect";
-import {
-  Confirm,
-  CopyButton,
-  Face,
-  RowKind,
-  RowMeta,
-  RowUnder,
-  SheetRow,
-  SheetSection,
-  Trouble,
-  type SheetContext,
-} from "./AddressesSheetBits";
-import { AddressesWeb, type WebMode } from "./AddressesWeb";
+import { AddressesDomains, type WebMode } from "./AddressesDomains";
+import { Confirm, CopyButton, Face, Tile, Trouble, type SheetContext } from "./AddressesSheetBits";
+import { AddressesZerops } from "./AddressesZerops";
 
 /** The project's own IPv4 as billing offers it. */
 export type OwnIpv4Offer =
@@ -76,7 +67,8 @@ export interface AddressesSheetBodyProps {
   readonly startAdding: boolean;
   /** The place in Zerops, where what Mate cannot do here is done. */
   readonly zeropsUrl: string;
-  readonly onWrite: (write: AddressWrite) => Promise<boolean>;
+  /** `quiet`: asked by the sheet itself, so a refusal is not said under the control. */
+  readonly onWrite: (write: AddressWrite, how?: { readonly quiet: boolean }) => Promise<boolean>;
   readonly onClose: () => void;
   readonly nowMs: number;
 }
@@ -125,20 +117,30 @@ export function AddressesSheetBody(props: AddressesSheetBodyProps) {
             Reading {props.placeName}'s addresses…
           </p>
         ) : (
-          <div className="grid gap-7">
+          <div className="grid gap-8">
             {ctx.hold ? (
               <p className="flex items-center gap-2 text-muted-foreground text-sm">
                 <Spinner aria-hidden="true" size="sm" tone="muted" />
                 Still reading {props.placeName}'s addresses. Changes wait until it's read.
               </p>
             ) : null}
-            <AddressesWeb
+            <AddressesDomains
               ctx={ctx}
+              // Production is what a domain is for; a stage or a Mate's own workspace only offers it.
+              inviting={kind === undefined || kind === "production"}
               mode={web}
               onOwnIpv4={
                 props.place.ips.ownV4 === undefined ? () => setMode({ kind: "ipv4" }) : undefined
               }
               othersWaiting={props.othersWaiting.domains}
+              place={props.place}
+              setMode={setMode}
+            />
+            <AddressesZerops ctx={ctx} mode={web} place={props.place} setMode={setMode} />
+            <AddressesDirect
+              ctx={ctx}
+              mode={direct}
+              othersWaiting={props.othersWaiting.ports}
               place={props.place}
               setMode={setMode}
             />
@@ -150,13 +152,6 @@ export function AddressesSheetBody(props: AddressesSheetBodyProps) {
               setMode={setMode}
               unsure={props.unsure.has("request-ipv4")}
               zeropsUrl={props.zeropsUrl}
-            />
-            <AddressesDirect
-              ctx={ctx}
-              mode={direct}
-              othersWaiting={props.othersWaiting.ports}
-              place={props.place}
-              setMode={setMode}
             />
           </div>
         )}
@@ -250,98 +245,57 @@ function IpSection({
     ips.ownV4 === undefined &&
     (ctx.busy.has("request-ipv4") || (ipv4.state !== "reading" && ipv4.enabled === true));
   const maybe = ips.ownV4 === undefined && !assigning && unsure;
-  // A phone's row has no room for an address and what is said of it side by side — the address
-  // was cut to "93.185…" — so there it is said under the address, which reads whole.
-  const phone = useMediaQuery("max-sm");
   const own = `Yours${perPeriod}${paidUntil(ipv4.state === "known" ? ipv4.validTill : undefined)}`;
   const getOne = assigning
     ? `On its way${perPeriod}`
     : maybe
       ? "It may be on its way: Zerops's answer was lost."
-      : "For direct IPv4 access";
+      : "For direct connections over IPv4";
+  const trouble = ctx.trouble.get("request-ipv4");
+  const confirming = asking && ips.ownV4 === undefined && !assigning && !maybe;
   return (
-    <SheetSection
-      after={
-        <>
-          {ips.ownV4 === undefined ? null : (
-            <p className="flex flex-wrap items-center gap-x-2 text-muted-foreground text-xs">
-              Your own IPv4 renews on its own; turn it off in Zerops to stop it.
-              <OpenInZerops url={zeropsUrl} />
-            </p>
-          )}
-        </>
-      }
-      part="ip"
-      title="IP addresses"
-    >
-      {ips.v6 === undefined ? null : (
-        <SheetRow
-          data="ipv6"
-          end={
-            <>
-              {phone ? null : <RowMeta>Free</RowMeta>}
-              <CopyButton value={ips.v6} />
-            </>
-          }
-          name={
-            <>
-              <RowKind>IPv6</RowKind>
-              {/* Its 26 characters read whole on a phone only a size down. */}
-              <span className="truncate font-mono max-sm:text-xs">{ips.v6}</span>
-            </>
-          }
-          sub={phone ? <RowUnder>Free</RowUnder> : undefined}
-        />
-      )}
-      {ips.ownV4 === undefined ? null : (
-        <SheetRow
-          data="own-ipv4"
-          end={
-            <>
-              {phone ? null : <RowMeta>{own}</RowMeta>}
-              <CopyButton value={ips.ownV4} />
-            </>
-          }
-          name={
-            <>
-              <RowKind>IPv4</RowKind>
-              <span className="truncate font-mono">{ips.ownV4}</span>
-            </>
-          }
-          sub={phone ? <RowUnder>{own}</RowUnder> : undefined}
-        />
-      )}
-      {ips.sharedV4 === undefined ? null : (
-        <SheetRow
-          data="shared-ipv4"
-          end={
-            <>
-              {phone ? null : <RowMeta>Shared across Zerops · web only</RowMeta>}
-              <CopyButton value={ips.sharedV4} />
-            </>
-          }
-          name={
-            <>
-              <RowKind>IPv4</RowKind>
-              <span className="truncate font-mono">{ips.sharedV4}</span>
-            </>
-          }
-          sub={phone ? <RowUnder>Shared across Zerops · web only</RowUnder> : undefined}
-        />
-      )}
-      {ips.ownV4 !== undefined ? null : (
-        <SheetRow
-          data="get-ipv4"
-          end={
-            assigning ? (
-              <Face tone="busy" word="Assigning" />
-            ) : maybe ? (
-              <OpenInZerops url={zeropsUrl} />
-            ) : asking ? (
-              <Face tone="warn" word="Confirm below" />
-            ) : (
-              <>
-                {price === undefined ? null : <RowMeta>{`${price} / 30 days`}</RowMeta>}
+    <Section data-addresses-part="ip" level={3} title="IP addresses">
+      <p className="-mt-1.5 max-w-xl text-muted-foreground text-xs">
+        The numbers behind these addresses. You need them only for DNS records and direct
+        connections.
+      </p>
+      {/* The IPv6 is the long one: its tile takes the room it needs to read whole. */}
+      <div className="grid gap-2 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)]">
+        {ips.v6 === undefined ? null : (
+          <Tile
+            action={<CopyButton value={ips.v6} />}
+            caption="Yours, included"
+            data="ipv6"
+            label="IPv6"
+            value={<span className="font-mono">{ips.v6}</span>}
+          />
+        )}
+        {ips.ownV4 === undefined ? null : (
+          <Tile
+            action={<CopyButton value={ips.ownV4} />}
+            caption={own}
+            data="own-ipv4"
+            label="Your own IPv4"
+            value={<span className="font-mono">{ips.ownV4}</span>}
+          />
+        )}
+        {ips.sharedV4 === undefined ? null : (
+          <Tile
+            action={<CopyButton value={ips.sharedV4} />}
+            caption={SHARED_WORDS}
+            data="shared-ipv4"
+            label="Shared IPv4"
+            value={<span className="font-mono">{ips.sharedV4}</span>}
+          />
+        )}
+        {ips.ownV4 !== undefined ? null : (
+          <Tile
+            action={
+              assigning ? (
+                <Face tone="busy" word="Assigning" />
+              ) : maybe ? (
+                <OpenInZerops url={zeropsUrl} />
+              ) : asking ? null : (
                 <Button
                   disabled={ctx.hold}
                   onClick={() => setMode({ kind: "ipv4" })}
@@ -350,21 +304,23 @@ function IpSection({
                 >
                   Get one
                 </Button>
-              </>
-            )
-          }
-          name={
-            <>
-              <RowKind>IPv4</RowKind>
-              <span className="truncate">Your own</span>
-              {phone ? null : <RowMeta>{getOne}</RowMeta>}
-            </>
-          }
-          sub={phone ? <RowUnder>{getOne}</RowUnder> : undefined}
-        />
-      )}
-      <Trouble text={ctx.trouble.get("request-ipv4")} />
-      {asking && ips.ownV4 === undefined && !assigning && !maybe ? (
+              )
+            }
+            caption={getOne}
+            data="get-ipv4"
+            label="Your own IPv4"
+            value={
+              assigning || maybe || price === undefined ? (
+                <span className="text-muted-foreground">Not yet</span>
+              ) : (
+                `${price} / 30 days`
+              )
+            }
+          />
+        )}
+      </div>
+      <Trouble text={trouble} />
+      {confirming ? (
         <Confirm
           busy={ctx.busy.has("request-ipv4")}
           cancel="Cancel"
@@ -396,9 +352,18 @@ function IpSection({
           <p className="text-xs">Only admins can buy it.</p>
         </Confirm>
       ) : null}
-    </SheetSection>
+      {ips.ownV4 === undefined ? null : (
+        <p className="flex flex-wrap items-center gap-x-2 text-muted-foreground text-xs">
+          Your own IPv4 renews on its own; turn it off in Zerops to stop it.
+          <OpenInZerops url={zeropsUrl} />
+        </p>
+      )}
+    </Section>
   );
 }
+
+/** What the region's shared IPv4 is, said of its row. */
+const SHARED_WORDS = "Shared, for websites only";
 
 const paidUntil = (validTill: string | undefined) => {
   if (validTill === undefined) return "";

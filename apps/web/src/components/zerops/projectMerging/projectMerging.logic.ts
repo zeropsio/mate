@@ -22,7 +22,8 @@ export type MergersPeople = ReadonlyArray<string> | null;
 
 /**
  * A connected repository whose `main`, on GitHub, takes a push or a merge nobody merged in Mate: a
- * limit on who merges holds in Mate, and a Mate's own access to GitHub still reaches such a `main`.
+ * limit on who merges holds in Mate, and whoever can write to the repository on GitHub still
+ * reaches such a `main` there.
  */
 export interface OpenMain {
   /** `owner/name` on GitHub. */
