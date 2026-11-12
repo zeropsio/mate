@@ -1165,7 +1165,9 @@ export function TaskBoardView({
                     </span>
                     <span className="pa-act">
                       {row.route === null || stopping ? null : asks ? (
-                        <span className="ov-review">Answer</span>
+                        <Button render={<span />} size="xs" variant="secondary">
+                          Answer
+                        </Button>
                       ) : (
                         <ChevronRightIcon aria-hidden="true" className="ov-go" />
                       )}
@@ -1293,28 +1295,37 @@ export function TaskBoardView({
                     </a>
                   ) : null}
                   {/* The Changes card's Review: it opens the change, the row its conversation. */}
-                  {review === null ? null : review.external ? (
-                    <a
-                      className="ov-review pa-verb"
-                      href={review.href}
-                      rel="noreferrer"
-                      target="_blank"
-                    >
-                      Review
-                    </a>
-                  ) : (
-                    <a
-                      className="ov-review pa-verb"
-                      href={review.href}
-                      onClick={(event) => {
-                        if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0)
-                          return;
-                        event.preventDefault();
-                        board.onOpen(review.href);
-                      }}
-                    >
-                      Review
-                    </a>
+                  {review === null ? null : (
+                    <span className="pa-verb">
+                      {review.external ? (
+                        <Button
+                          render={<a href={review.href} rel="noreferrer" target="_blank" />}
+                          size="xs"
+                          variant="secondary"
+                        >
+                          Review
+                        </Button>
+                      ) : (
+                        <Button
+                          onClick={(event) => {
+                            if (
+                              event.metaKey ||
+                              event.ctrlKey ||
+                              event.shiftKey ||
+                              event.button !== 0
+                            )
+                              return;
+                            event.preventDefault();
+                            board.onOpen(review.href);
+                          }}
+                          render={<a href={review.href} />}
+                          size="xs"
+                          variant="secondary"
+                        >
+                          Review
+                        </Button>
+                      )}
+                    </span>
                   )}
                 </li>
               );
@@ -1507,9 +1518,11 @@ function SourceRowView({
           </Button>
         </span>
       ) : disconnected ? (
-        <button className="ov-review pa-verb" onClick={admin.onOpenSettings} type="button">
-          Connect
-        </button>
+        <span className="pa-verb">
+          <Button onClick={admin.onOpenSettings} size="xs" variant="secondary">
+            Connect
+          </Button>
+        </span>
       ) : null}
     </li>
   );

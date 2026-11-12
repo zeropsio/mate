@@ -70,6 +70,7 @@ import {
   ownerBadge,
 } from "../SidebarMateRow.logic";
 import { CardMateSlot, CardMateWrite } from "./overviewSlots";
+import { Button } from "../../ui/button";
 import { PlaceDoors } from "../place/PlaceDoors";
 import { MateCard } from "../system/MateCard";
 import { MateRow, MateRowTime } from "../system/MateRow";
@@ -329,16 +330,16 @@ export function OverviewCardMate({
     view.coming === undefined && (second.kind === "change" || reading.lift?.kind === "review");
   const reviewButton =
     review === undefined || reading.lift?.kind === "review" ? null : (
-      <button
-        className="ov-review"
+      <Button
         data-zerops-surface="card-mate-review"
         onClick={(event) => {
           openChange(event.currentTarget);
         }}
-        type="button"
+        size="xs"
+        variant="secondary"
       >
         Review
-      </button>
+      </Button>
     );
   const write =
     reading.lift === undefined ? null : (

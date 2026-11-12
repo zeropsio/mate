@@ -112,8 +112,8 @@ function RowEnd({ row, mate }: { readonly row: ResultRow; readonly mate: MateOfR
       {review === null ? null : (
         <Button
           aria-label={`Review ${row.title}`}
-          size="sm"
-          variant="link"
+          size="xs"
+          variant="secondary"
           onClick={(event) => openReview(review, { from: event.currentTarget })}
         >
           Review
