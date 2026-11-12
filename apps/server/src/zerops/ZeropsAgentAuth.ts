@@ -324,7 +324,10 @@ interface FeedState {
   readonly pendingCredentialCheck: Readonly<Record<ZeropsAgentId, boolean>>;
   readonly verification: Readonly<Partial<Record<ZeropsAgentId, ZeropsAuthVerification>>>;
   readonly registration: Readonly<Partial<Record<ZeropsAgentId, ZeropsAuthRegistration>>>;
+  /** Bumped by `requestProviderCheck` on every new external fact (credential event, token or flag appearing, operator request); a check or flag write captured under an older generation is stale. */
   readonly generation: Readonly<Record<ZeropsAgentId, number>>;
+  /** True while `markOAuthOnce` writes this agent's flag row: the env store then showing that row is the server's own write coming back, not an external fact, so it does not bump `generation`. */
+  readonly markingOAuth: Readonly<Record<ZeropsAgentId, boolean>>;
   /** Bumped by `invalidatePendingMark` (sign-out); a `checkProviderAuth` in flight when this changes must not mark the flag it captured — see that method's own doc comment. */
   readonly signOutEpoch: Readonly<Record<ZeropsAgentId, number>>;
   readonly env: ZembedEnv | undefined;
@@ -436,6 +439,7 @@ export const make = (options: ZeropsAgentAuthOptions) =>
       verification: {},
       registration: {},
       generation: { "claude-code": 0, codex: 0 },
+      markingOAuth: { "claude-code": false, codex: false },
       signOutEpoch: { "claude-code": 0, codex: 0 },
       env: undefined,
       lastPublished: undefined,
@@ -476,6 +480,7 @@ export const make = (options: ZeropsAgentAuthOptions) =>
       Effect.gen(function* () {
         yield* Ref.update(state, (current) => ({
           ...current,
+          markingOAuth: { ...current.markingOAuth, [agentId]: true },
           registration: { ...current.registration, [agentId]: { status: "pending" } },
         }));
         const outcome = yield* Effect.result(
@@ -518,7 +523,14 @@ export const make = (options: ZeropsAgentAuthOptions) =>
                   },
           },
         }));
-      });
+      }).pipe(
+        Effect.ensuring(
+          Ref.update(state, (current) => ({
+            ...current,
+            markingOAuth: { ...current.markingOAuth, [agentId]: false },
+          })),
+        ),
+      );
 
     /**
      * The coalesced provider check (plan correction D2): reads the fresh,
@@ -700,9 +712,11 @@ export const make = (options: ZeropsAgentAuthOptions) =>
             },
           }));
         }
-        const oauthAppeared = !wasOAuth && isOAuth;
+        // The flag row appearing while this server writes it is its own write echoed back.
+        const oauthAppearedExternally =
+          !wasOAuth && isOAuth && !(yield* Ref.get(state)).markingOAuth[agentId];
         const tokenAppeared = !before?.[tokenKey] && !!after?.[tokenKey];
-        if (oauthAppeared || tokenAppeared) {
+        if (oauthAppearedExternally || tokenAppeared) {
           yield* requestProviderCheck(agentId, { fromCredential: false });
         }
         // S7 follow-up F2: the platform flag can disappear without this
