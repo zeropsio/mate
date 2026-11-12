@@ -1137,9 +1137,20 @@ const browsePathOrRefuse = <R extends GitBrowseRead>(
   return path;
 };
 
+/** A new name for an HQ stream socket: 16 random bytes in hex. */
+export const freshHqSocketName = (): string =>
+  Array.from(globalThis.crypto.getRandomValues(new Uint8Array(16)), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+
 export function makeHqApi(input: {
   /** HQ's origin, as its anchor or the build's configuration names it. */
   readonly address: string;
+  /**
+   * The name of this client's stream socket, which HQ ties a press to, including across stream
+   * reconnects. A client with no longer-lived owner of the name (the web's tab) takes a fresh one.
+   */
+  readonly socketName?: string;
   readonly fetch: FetchImplementation;
   /**
    * The person's Zerops access token and its expiry; `refused`, the token HQ answered `401
@@ -1164,10 +1175,7 @@ export function makeHqApi(input: {
   };
 }): HqApi {
   const origin = input.address.replace(/\/+$/u, "");
-  // HQ ties a press to this client's stream, including across stream reconnects.
-  const socketName = Array.from(globalThis.crypto.getRandomValues(new Uint8Array(16)), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
+  const socketName = input.socketName ?? freshHqSocketName();
   /** The session HQ issued, or the door exchange under way that will issue it. */
   let session: Promise<string> | null = null;
 

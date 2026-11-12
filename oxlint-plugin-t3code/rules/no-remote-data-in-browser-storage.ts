@@ -47,6 +47,8 @@ const ALLOWED_MODULES: ReadonlySet<string> = new Set([
   "apps/web/src/zerops/navigationStorage.ts",
   "apps/web/src/zerops/reauth.ts",
   "apps/web/src/zerops/keptSessions.ts",
+  // The name this tab gives its HQ stream socket, made here, never answered by a source.
+  "apps/web/src/zerops/tabHqSocketName.ts",
   // The first frame follows whether this browser holds a session, never what a source said.
   "apps/web/src/zerops/bootFrame.ts",
   // The first frame names the account's Mates as its last visit had HQ name them, until HQ's

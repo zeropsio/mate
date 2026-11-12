@@ -2,6 +2,7 @@ export { sharedHq } from "./anchor.ts";
 export {
   HQ_WRITE_UNCERTAIN,
   HqError,
+  freshHqSocketName,
   makeHqApi,
   readHqParts,
   type Asked,
