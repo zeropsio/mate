@@ -93,10 +93,15 @@ export const MERGE_TOO_LARGE = "too_large";
 
 /**
  * A merge HQ refused for a file above its limit (`413 too_large`), as one sentence the person hands
- * to their Mate as it is. HQ names no file: the Mate finds it itself.
+ * to their Mate as it is. HQ names no file: the Mate finds it itself. Every merge `too_large` gets
+ * it, as the review's Copy beside it keys on the code alone; the sizes are said where HQ gave them.
  */
-export const mergeTooLargeWords = (limit: number, size: number) =>
-  `Automatic merge refused: a file of ${fileSize(size)} changed on both main and this branch, above the ${fileSize(limit)} merge limit. Merge main into the branch, resolve the file, and push.`;
+export const mergeTooLargeWords = (limit: number | undefined, size: number | undefined) =>
+  `Automatic merge refused: ${
+    limit === undefined || size === undefined
+      ? "a file changed on both main and this branch is above the merge limit"
+      : `a file of ${fileSize(size)} changed on both main and this branch, above the ${fileSize(limit)} merge limit`
+  }. Merge main into the branch, resolve the file, and push.`;
 
 /** HQ's code for a call Zerops refused HQ outright (`mate-hq apps/hq/src/api.ts`): never retried. */
 const ZEROPS_REFUSED = "zerops_refused";

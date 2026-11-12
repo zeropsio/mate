@@ -845,8 +845,8 @@ async function errorOf(response: Response, { gitSetup, merge }: CallAsk): Promis
       : undefined;
   // A merge HQ refused for a file above its limit: one sentence the person hands to their Mate.
   const tooLarge =
-    merge && code === MERGE_TOO_LARGE && refusal?.limit !== undefined && refusal.size !== undefined
-      ? mergeTooLargeWords(refusal.limit, refusal.size)
+    merge && code === MERGE_TOO_LARGE
+      ? mergeTooLargeWords(refusal?.limit, refusal?.size)
       : undefined;
   return new HqError({
     kind: "refused",
