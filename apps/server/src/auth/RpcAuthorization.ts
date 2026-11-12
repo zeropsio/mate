@@ -138,6 +138,8 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.zeropsMateUpdate]: AuthExecOperateScope,
   // A check reads the manifest; it does not operate.
   [WS_METHODS.zeropsMateCheckUpdate]: AuthOrchestrationReadScope,
+  // Every connected person keeps their own connection open with a fresh ticket.
+  [WS_METHODS.zeropsExtendGrant]: AuthOrchestrationReadScope,
   // Every Data Console request in this slice is a read (no write token ever
   // passed to the console); slice 2 splits mutating request kinds onto
   // AuthOrchestrationOperateScope.

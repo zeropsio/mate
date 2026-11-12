@@ -109,6 +109,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.zeropsMacForget]: "zerops",
   [WS_METHODS.zeropsMateUpdate]: "zerops",
   [WS_METHODS.zeropsMateCheckUpdate]: "zerops",
+  [WS_METHODS.zeropsExtendGrant]: "zerops",
   [WS_METHODS.zeropsDataConsoleCall]: "zerops",
   [WS_METHODS.subscribeZeropsDataConsole]: "zerops",
   [WS_METHODS.subscribeZeropsCrew]: "zerops",

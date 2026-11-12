@@ -208,6 +208,8 @@ import {
   ZeropsLifecycle,
   ZeropsLifecycleGetInput,
   ZeropsMateUpdateError,
+  ZeropsGrantExtension,
+  ZeropsGrantExtensionError,
   ZeropsMateUpdateResult,
 } from "./zerops.ts";
 import { MateAttention } from "./zeropsAttention.ts";
@@ -397,6 +399,7 @@ export const WS_METHODS = {
   zeropsMacForget: "zerops.mac.forget",
   zeropsMateUpdate: "zerops.mate.update",
   zeropsMateCheckUpdate: "zerops.mate.checkUpdate",
+  zeropsExtendGrant: "zerops.grant.extend",
   zeropsDataConsoleCall: "zerops.dataConsole.call",
   zeropsGitProbeRemote: "zerops.git.probeRemote",
   zeropsCrewFilesGet: "zerops.crew.files.get",
@@ -1248,6 +1251,18 @@ const WsZeropsMateCheckUpdateRpc = Rpc.make(WS_METHODS.zeropsMateCheckUpdate, {
 });
 
 /**
+ * Presents a fresh HQ ticket on the open connection it arrives on: answered with how long that
+ * connection may now stay open. Only a ticket for the connection's own person and HQ session,
+ * under a still-live admission, extends it; anything else is {@link ZeropsGrantExtensionError}.
+ * {@link EnvironmentAuthorizationError}: no connection registry here (outside a Zerops project).
+ */
+const WsZeropsExtendGrantRpc = Rpc.make(WS_METHODS.zeropsExtendGrant, {
+  payload: Schema.Struct({ ticket: Schema.String }),
+  success: ZeropsGrantExtension,
+  error: Schema.Union([ZeropsGrantExtensionError, EnvironmentAuthorizationError]),
+});
+
+/**
  * One allowlisted Data Console request/response, brokered by the mate server
  * to the container-local `zcp studio console serve` process — spawned on
  * first use, never talked to directly by the client (spec-dataconsole.md
@@ -1589,6 +1604,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsZeropsMacForgetRpc,
   WsZeropsMateUpdateRpc,
   WsZeropsMateCheckUpdateRpc,
+  WsZeropsExtendGrantRpc,
   WsZeropsDataConsoleCallRpc,
   WsZeropsGitProbeRemoteRpc,
   WsThreadsFileWritesRpc,
