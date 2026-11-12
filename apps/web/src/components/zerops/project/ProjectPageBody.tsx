@@ -27,7 +27,7 @@ import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "../
 import { Skeleton } from "../../ui/skeleton";
 import { EmptyState } from "../../ui/empty";
 import { GitDeliveryStatus } from "../GitDeliveryStatus";
-import { ENVIRONMENT_NOT_ADDED, PRODUCTION_FOLLOWS_MAIN } from "@t3tools/client-runtime/zerops";
+import { ENVIRONMENT_NOT_ADDED, PRODUCTION_OUTSIDE_MATE } from "@t3tools/client-runtime/zerops";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { ComingMateFace, drawn, matesOf, type FlowMateEntry } from "../projects/flowSteps";
 import {
@@ -89,7 +89,7 @@ import {
 import { SetupCard } from "./SetupCard";
 import {
   ALREADY_LIVE_ELSEWHERE,
-  FollowsMain,
+  ProductionOutside,
   OutsideProductionForm,
   type OutsideControl,
 } from "./OutsideProduction";
@@ -140,7 +140,7 @@ export interface ProjectPageFacts {
   /** "Ask <Mate> to fix it" on a place that is not well, where the person has a Mate to ask. */
   readonly fixOf?: ((line: PlaceLineData) => PlaceFix | undefined) | undefined;
   /**
-   * Saying its production is deployed outside Mate and follows `main`, changing its address or
+   * Saying its production is deployed outside Mate, changing its address or
    * taking it back (`useAppOutsideProduction`): who may, and the press. Absent outside an account.
    */
   readonly outside?: OutsideControl | undefined;
@@ -221,7 +221,7 @@ export function ProjectPageBody<T>({
             </span>
           ) : flow.production.kind === "outside" ? (
             <span className="pp-state" data-zerops-project-state="">
-              {PRODUCTION_FOLLOWS_MAIN}
+              {PRODUCTION_OUTSIDE_MATE}
             </span>
           ) : undefined
         }
@@ -675,7 +675,9 @@ function ProjectPlaces<T>({
           production={productionSlot}
           run={props.renderProductionRun?.(entry)}
           stage={stageSlot?.kind === "slot" ? stageSlot : undefined}
-          followsMain={entry.flow.production.kind === "outside" ? entry.flow.production : undefined}
+          productionOutside={
+            entry.flow.production.kind === "outside" ? entry.flow.production : undefined
+          }
         />
       ) : null}
       {facts.declared && placeSlots.length === 0 ? null : (
@@ -720,7 +722,7 @@ function ProjectPlaces<T>({
 /**
  * A project with no production here. Not live yet: what putting it live gives, and its one verb;
  * a Put it live run stands in the card while it goes. Once somebody said its production is
- * deployed outside Mate (`followsMain`), the same card is production's quiet row (`FollowsMain`).
+ * deployed outside Mate (`productionOutside`), the same card is production's quiet row (`ProductionOutside`).
  * Whoever may say so does from the section's own action, as a side row's *Manage*: *Already live
  * elsewhere*, then *Change*. Under either, quiet and optional, a stage to try a change on first.
  */
@@ -731,7 +733,7 @@ function GoingLive({
   run,
   onAdd,
   outside,
-  followsMain,
+  productionOutside,
 }: {
   readonly name: string;
   readonly production: Extract<EnvironmentSlotRow, { kind: "slot" }>;
@@ -740,7 +742,7 @@ function GoingLive({
   readonly onAdd: ProjectPageFacts["onAdd"];
   readonly outside: OutsideControl | undefined;
   /** Its production is deployed outside Mate, at this address where one was given. */
-  readonly followsMain: { readonly address: string | null } | undefined;
+  readonly productionOutside: { readonly address: string | null } | undefined;
 }) {
   return (
     <section
@@ -751,17 +753,21 @@ function GoingLive({
       <SectionLabel
         action={
           outside?.editable === true ? (
-            <OutsideProductionForm control={outside} current={followsMain ?? null} name={name}>
-              {followsMain === undefined ? ALREADY_LIVE_ELSEWHERE : "Change"}
+            <OutsideProductionForm
+              control={outside}
+              current={productionOutside ?? null}
+              name={name}
+            >
+              {productionOutside === undefined ? ALREADY_LIVE_ELSEWHERE : "Change"}
             </OutsideProductionForm>
           ) : undefined
         }
         id="pp-golive"
       >
-        {followsMain === undefined ? "Going live" : "Production"}
+        {productionOutside === undefined ? "Going live" : "Production"}
       </SectionLabel>
       <div className="pp-card pp-golive" data-zerops-place="production">
-        {followsMain === undefined ? (
+        {productionOutside === undefined ? (
           <div className="pp-golive-hero">
             <span aria-hidden="true" className="pp-golive-icon">
               <GlobeIcon className="size-5" />
@@ -785,7 +791,7 @@ function GoingLive({
             ) : null}
           </div>
         ) : (
-          <FollowsMain address={followsMain.address} />
+          <ProductionOutside address={productionOutside.address} />
         )}
         {drawn(run) ? <div className="pp-golive-run">{run}</div> : null}
         {stage === undefined ? null : (

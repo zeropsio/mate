@@ -260,7 +260,7 @@ export interface HqStructure {
      */
     readonly mergers?: HqMergers;
     /**
-     * Its production is deployed outside Mate and follows `main`, where somebody said so; it
+     * Its production is deployed outside Mate, where somebody said so; it
      * matters only while the application has no production of its own. Absent: nobody did.
      */
     readonly outsideProduction?: HqOutsideProduction;
@@ -679,7 +679,7 @@ export interface HqApi {
     people: ReadonlyArray<string> | null,
   ) => Promise<HqMergers | null>;
   /**
-   * Says the application's production is deployed outside Mate and follows `main`
+   * Says the application's production is deployed outside Mate
    * (`PUT /api/apps/:appId/outside-production`), at `address` or at none given; `null` lifts it.
    * HQ's answer is the statement as it stands after; `null` where nobody says so.
    */

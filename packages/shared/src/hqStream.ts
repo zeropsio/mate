@@ -551,7 +551,7 @@ export const HqNavigationApp = Schema.Struct({
    */
   mergers: Schema.optionalKey(Schema.NullOr(HqMergers)),
   /**
-   * Its production is deployed outside Mate and follows `main` (`HqOutsideProduction`), where
+   * Its production is deployed outside Mate (`HqOutsideProduction`), where
    * somebody said so. Absent, or null: nobody did. It matters only while the application has no
    * production of its own. An older HQ never sends it.
    */

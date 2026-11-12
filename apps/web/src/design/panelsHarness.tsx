@@ -114,9 +114,9 @@ const NO_PRODUCTION: PlaceLine = {
   nothingDeployed: true,
 };
 /** Production deployed outside Mate, as the pages' own lines say it (`placeLines`). */
-const FOLLOWS_MAIN_AT = "https://ledger.tea-shop.example";
-const FOLLOWS_MAIN_PLACES = placeLines({
-  flow: { production: { kind: "outside", address: FOLLOWS_MAIN_AT }, stages: [] },
+const OUTSIDE_AT = "https://ledger.tea-shop.example";
+const OUTSIDE_PLACES = placeLines({
+  flow: { production: { kind: "outside", address: OUTSIDE_AT }, stages: [] },
   nowMs: 0,
 });
 const STAGE: PlaceLine = {
@@ -403,8 +403,8 @@ interface Scenario {
   readonly lineChanges?: ReadonlyArray<CardChange>;
   /** Dana's changes in review wait on the viewer. */
   readonly waits?: boolean;
-  /** The project's production is deployed outside Mate and follows `main`. */
-  readonly followsMain?: boolean;
+  /** The project's production is deployed outside Mate. */
+  readonly productionOutside?: boolean;
 }
 
 // ---------------------------------------------------------------- the line
@@ -478,8 +478,8 @@ function harnessLine(scenario: Scenario): ProjectLineView | undefined {
       .map((entry) => ({ pull: entry.pull, blocked: null, state: undefined, review: true })),
     production: live
       ? { kind: "live" }
-      : scenario.followsMain === true
-        ? { kind: "outside", address: FOLLOWS_MAIN_AT }
+      : scenario.productionOutside === true
+        ? { kind: "outside", address: OUTSIDE_AT }
         : { kind: "absent" },
     stages: places
       .filter((line) => line.kind === "stage" && line.projectId !== undefined)
@@ -664,11 +664,11 @@ const SCENARIOS: ReadonlyArray<Scenario> = [
     ],
   },
   {
-    id: "follows-main",
+    id: "outside-set",
     changes: "no-code",
-    title: "Production deployed outside Mate · follows main",
-    project: project("Tea Ledger", FOLLOWS_MAIN_PLACES),
-    followsMain: true,
+    title: "Production deployed outside Mate",
+    project: project("Tea Ledger", OUTSIDE_PLACES),
+    productionOutside: true,
     repositories: [
       repository({
         checkout: checkout({ repository: "ledgerdev", isRepo: false, headRef: null }),

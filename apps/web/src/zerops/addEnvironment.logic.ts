@@ -32,7 +32,7 @@ export function questionFactsOf(input: {
    */
   readonly held: ReadonlyArray<HeldEnvironment>;
   /** Production is said to be deployed outside Mate: the question offers none here. */
-  readonly followsMain?: boolean | undefined;
+  readonly productionOutside?: boolean | undefined;
 }): {
   /** A tier held in any state — held, half-made, being made — is not addable. */
   readonly addable: { readonly stage: boolean; readonly production: boolean };
@@ -50,7 +50,7 @@ export function questionFactsOf(input: {
   return {
     addable: {
       stage: ask("stage"),
-      production: input.followsMain !== true && ask("production"),
+      production: input.productionOutside !== true && ask("production"),
     },
   };
 }

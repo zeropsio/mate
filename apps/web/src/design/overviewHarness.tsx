@@ -581,10 +581,10 @@ const PROJECTS: ReadonlyArray<Project> = [
   ...(params.get("page")?.startsWith("once-") === true ? onceProjects() : []),
   // The Mates section's states stand on their own pages too (`?page=mates-seven`).
   ...(params.get("page")?.startsWith("mates-") === true ? matesProjects() : []),
-  // A production deployed outside Mate (`?page=follows-main`, `follows-bare`), and the same
-  // project before anybody said so (`follows-before`); `?follows` stands them among the cards.
-  ...(params.get("page")?.startsWith("follows-") === true || params.has("follows")
-    ? followsProjects()
+  // A production deployed outside Mate (`?page=outside-set`, `outside-bare`), and the same
+  // project before anybody said so (`outside-before`); `?outsideCards` stands them among the cards.
+  ...(params.get("page")?.startsWith("outside-") === true || params.has("outsideCards")
+    ? outsideProductionProjects()
     : []),
 ];
 
@@ -825,10 +825,10 @@ function matesProjects(): ReadonlyArray<Project> {
  * release waiting, and (crowd) sixty changes from twelve Mates. `line-mine` draws the busy one compact, for one Mate.
  */
 /**
- * Production deployed outside Mate, which follows `main`: with the address somebody gave and a
+ * Production deployed outside Mate: with the address somebody gave and a
  * change to review; with no address, beside a stage; and the first of them before anybody said so.
  */
-function followsProjects(): ReadonlyArray<Project> {
+function outsideProductionProjects(): ReadonlyArray<Project> {
   const ledger = {
     name: "Tea Ledger",
     mates: [mate("wren-f", "Wren", "amber"), mate("odo-f", "Odo", "slate")],
@@ -837,18 +837,18 @@ function followsProjects(): ReadonlyArray<Project> {
   return [
     project({
       ...ledger,
-      id: "follows-before",
+      id: "outside-before",
       production: { kind: "absent" },
       notLive: 3,
       canPutLive: true,
     }),
     project({
       ...ledger,
-      id: "follows-main",
+      id: "outside-set",
       production: { kind: "outside", address: "https://ledger.tea-shop.example" },
     }),
     project({
-      id: "follows-bare",
+      id: "outside-bare",
       name: "Acme Press",
       mates: [mate("ines-p", "Ines", "olive")],
       production: { kind: "outside", address: null },

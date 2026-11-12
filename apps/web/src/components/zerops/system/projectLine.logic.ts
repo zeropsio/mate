@@ -23,8 +23,8 @@
  * next release (`nextReleaseView`). Pure: no React, no clock.
  */
 import {
-  FOLLOWS_MAIN,
-  PRODUCTION_FOLLOWS_MAIN,
+  OUTSIDE_MATE,
+  PRODUCTION_OUTSIDE_MATE,
   REVIEW_LABEL,
   type FlowPullRequest,
   type GroupFlow,
@@ -158,8 +158,8 @@ const notLive = (change: CardChange): boolean =>
   change.pull.kind === "code" &&
   change.where !== undefined &&
   change.where.kind !== "setup" &&
-  // Where production follows `main`, what is on `main` waits for nothing.
-  change.where.kind !== "live-with-main" &&
+  // Where production is deployed outside Mate, what is on `main` waits for nothing here.
+  change.where.kind !== "on-main" &&
   (change.where.kind !== "released" || !change.where.live);
 
 /**
@@ -232,7 +232,7 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
   // Stations: the project's setup, and nothing else.
   const { stop: stageStop, line: stageLine } = lineStage(input);
   const absent = flow.production.kind === "absent";
-  // Deployed outside Mate: production follows `main` by itself, and nothing waits before it.
+  // Deployed outside Mate: nothing here releases it, and nothing waits before it.
   const outside = flow.production.kind === "outside";
   const stageName = stageLine === undefined ? undefined : placeLabel(stageLine);
   const stations: ReadonlyArray<LineStation> = [
@@ -394,8 +394,9 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
   };
   const readyOthers = others(ready.map((change) => change.pull));
   const releaseCaption = (): ReadonlyArray<LineWord> => {
-    // Said of the way from `main` to production, as a stage's "deploys by itself" is.
-    if (outside) return [{ text: "goes live outside Mate", tone: "dim" }];
+    // Said of the way from `main` to production, as a stage's "deploys by itself" is: only where
+    // it is released, never when.
+    if (outside) return [{ text: "released outside Mate", tone: "dim" }];
     if (absent)
       return ready.length === 0
         ? []
@@ -449,7 +450,7 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
             ],
     group: mine === undefined && ready.length > 0 ? "ready" : undefined,
     label: outside
-      ? PRODUCTION_FOLLOWS_MAIN
+      ? PRODUCTION_OUTSIDE_MATE
       : absent
         ? `${count(ready.length, "change", "changes")} on main`
         : `${count(ready.length, "change", "changes")} ready for production`,
@@ -660,7 +661,7 @@ export function projectLineFull(
                 : outside === undefined
                   ? []
                   : // Its address is its row's, in Places: the line holds none.
-                    [[{ text: FOLLOWS_MAIN }]],
+                    [[{ text: OUTSIDE_MATE }]],
         };
     }
   });
@@ -690,7 +691,7 @@ export function projectLineFull(
         return { ...segment, caption: said ? [] : segment.caption, verb: undefined };
       }
       case "release": {
-        // Nothing to release, and no production to make. Its station says it follows `main`:
+        // Nothing to release, and no production to make. Its station says it is outside Mate:
         // said once, the segment under it says nothing.
         if (outside !== undefined) return { ...segment, caption: [], verb: undefined };
         if (absent)

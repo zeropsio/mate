@@ -1,4 +1,4 @@
-import { FOLLOWS_MAIN, type GitDelivery } from "@t3tools/client-runtime/zerops";
+import { OUTSIDE_MATE, type GitDelivery } from "@t3tools/client-runtime/zerops";
 import type { HqEnvironmentTarget } from "@t3tools/shared/hqEnvironment";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 /**
@@ -910,7 +910,7 @@ export function productionMenu(input: {
 
 /**
  * Production's menu where it is deployed outside Mate, at an address somebody gave: production's
- * row saying it follows `main`, and that address its one link. No state, version or Zerops
+ * row saying it is outside Mate, and that address its one link. No state, version or Zerops
  * project: nobody here read one, and nothing of it is managed here.
  */
 export function outsideProductionMenu(address: string): ChipMenuModel {
@@ -921,13 +921,13 @@ export function outsideProductionMenu(address: string): ChipMenuModel {
         name: "production",
         version: undefined,
         dot: "off",
-        word: FOLLOWS_MAIN,
+        word: OUTSIDE_MATE,
         tone: "muted",
         note: undefined,
         fix: undefined,
         routes: [
           {
-            service: "main",
+            service: "site",
             port: /^http:/iu.test(address) ? 80 : 443,
             url: address,
             host: address.replace(/^https?:\/\//iu, "").replace(/\/$/u, ""),

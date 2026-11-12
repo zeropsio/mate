@@ -15,7 +15,7 @@ import {
   changeInMateReview,
   changeState,
   ENVIRONMENT_NOT_ADDED,
-  FOLLOWS_MAIN,
+  OUTSIDE_MATE,
   PRODUCTION_DEPLOYING,
   pullRequestBlocked,
   type FlowPullRequest,
@@ -542,7 +542,7 @@ export function placeLines(input: {
         addresses:
           production.address === null ? [] : [{ service: "main", url: production.address }],
         dot: "none",
-        words: [FOLLOWS_MAIN],
+        words: [OUTSIDE_MATE],
         trouble: false,
       },
     ];
@@ -892,7 +892,7 @@ const newestFirst = (left: string | undefined, right: string | undefined) =>
   (right ?? "").localeCompare(left ?? "");
 
 /**
- * What the stage that follows `main` runs, as HQ's deploys say it (`stageStandings`): the commits
+ * What the stage runs, as HQ's deploys say it (`stageStandings`): the commits
  * its services run and the ones being deployed there, whole; and each repository's `main` head.
  */
 export interface CardStage {
@@ -977,10 +977,10 @@ export function cardChanges(input: {
   /** The project has a production, where a merged change is released. */
   readonly production: boolean;
   /**
-   * Its production is deployed outside Mate and follows `main`: a merged change no release took
+   * Its production is deployed outside Mate: a merged change no release took
    * waits for none, wherever a stage stands.
    */
-  readonly followsMain?: boolean | undefined;
+  readonly productionOutside?: boolean | undefined;
   readonly limit: number;
   /**
    * Only what no release put live yet: on the project's page its History says the released ones,
@@ -1027,8 +1027,8 @@ export function cardChanges(input: {
                 live: releaseIsLive(took.tag, input.releases),
                 at: took.taggedAt,
               }
-            : input.followsMain === true
-              ? { kind: "live-with-main" }
+            : input.productionOutside === true
+              ? { kind: "on-main" }
               : on(stage?.runs)
                 ? { kind: "on-stage" }
                 : on(stage?.deploying)

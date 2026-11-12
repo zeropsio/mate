@@ -325,13 +325,13 @@ export interface ChangeReviewInput {
     | undefined;
   /**
    * Where `main` goes next: a production a release puts it in front of, a stage that follows it —
-   * or, with no production here, one deployed outside Mate that follows `main` (`followsMain`,
-   * `GroupFlowProduction`'s `outside`), where the merge itself goes live.
+   * or, with no production here, one deployed outside Mate (`productionOutside`,
+   * `GroupFlowProduction`'s `outside`), where nothing here releases it.
    */
   readonly downstream: {
     readonly production: boolean;
     readonly stage: boolean;
-    readonly followsMain?: boolean | undefined;
+    readonly productionOutside?: boolean | undefined;
   };
   /**
    * The environments this person may add now: those the recipe on `main` holds, the application
@@ -594,19 +594,17 @@ function recipeNext(reach: RecipeReach | undefined, base: string): string {
 }
 
 /**
- * What merging does where production is deployed outside Mate and follows `main`: said before the
- * merge, in place of "until you release". Nobody here sees that deploy: it says what follows from
- * what somebody said, never that it happened.
+ * Where production is deployed outside Mate, what a merge's foot says of it, before and after the
+ * merge, in place of "until you release": only that it is elsewhere. Whether and when a merge
+ * reaches it is that deploy's own business, which nobody here knows.
  */
-export const MERGE_GOES_LIVE = "Merging puts this live: production follows main.";
-/** The same once merged: where it went, never that it arrived. */
-const MERGED_GOES_LIVE = "Production follows main: this goes live with it.";
+export const PRODUCTION_DEPLOYED_OUTSIDE = "Production is deployed outside Mate.";
 
 /** What happens once `main` has it, as far as anything downstream goes. */
 function afterMain(input: ChangeReviewInput): string | undefined {
   if (input.pull.kind === "recipe") return recipeSentence(input.recipe);
   if (input.downstream.production) return "Production isn't touched until you release.";
-  if (input.downstream.followsMain === true) return MERGE_GOES_LIVE;
+  if (input.downstream.productionOutside === true) return PRODUCTION_DEPLOYED_OUTSIDE;
   if (input.downstream.stage) return `The stage picks it up from ${input.pull.baseBranch}.`;
   return undefined;
 }
@@ -901,8 +899,8 @@ function whereShouldItRun(input: ChangeReviewInput): ReviewQuestion | undefined 
   return {
     text: input.downstream.stage
       ? `The stage picks it up; ${input.mateName}'s preview is only for trying it out.`
-      : input.downstream.followsMain === true
-        ? `Production follows main; ${input.mateName}'s preview is only for trying it out.`
+      : input.downstream.productionOutside === true
+        ? `Production is deployed outside Mate; ${input.mateName}'s preview is only for trying it out.`
         : `Only ${input.mateName}'s preview runs it, for trying it out.`,
     options,
     dismiss: "Not now",
@@ -948,8 +946,8 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
           (live === undefined
             ? "Production isn't touched until you release."
             : `Production still serves ${live} until you release.`))
-        : input.downstream.followsMain === true
-          ? MERGED_GOES_LIVE
+        : input.downstream.productionOutside === true
+          ? PRODUCTION_DEPLOYED_OUTSIDE
           : input.downstream.stage
             ? `The stage picks it up from ${base}.`
             : // Its title says where it went; nothing more follows from it.
@@ -1214,7 +1212,7 @@ export interface ReleaseReviewInput {
   readonly permission: ReleaseGate | undefined;
   /** How many changes go out; `undefined` while HQ has not said — never a count of none. */
   readonly changes: number | undefined;
-  /** How many of them the stage that follows `main` runs; `undefined` with no such stage. */
+  /** How many of them the stage runs; `undefined` with no such stage. */
   readonly onStage: { readonly total: number; readonly running: number } | undefined;
   /** The production services that redeploy. */
   readonly services: ReadonlyArray<string>;

@@ -248,7 +248,7 @@
   color: var(--primary);
 }
 
-/* Production that follows main says a fact: its mark is quiet, nothing on it acts. */
+/* Production outside Mate says a fact: its mark is quiet, nothing on it acts. */
 .pp-golive-icon[data-quiet] {
   background: color-mix(in oklab, var(--foreground) 7%, transparent);
   color: var(--muted-foreground);

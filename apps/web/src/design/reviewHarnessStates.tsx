@@ -531,10 +531,10 @@ function Change({
   heirs,
   hand,
   landedTitle,
-  followsMain = false,
+  productionOutside = false,
 }: {
-  /** The project's production is deployed outside Mate and follows `main`. */
-  readonly followsMain?: boolean;
+  /** The project's production is deployed outside Mate. */
+  readonly productionOutside?: boolean;
   readonly over?: Partial<FlowPullRequest>;
   /** The merged change HQ brought main in after, by its title. */
   readonly landedTitle?: string;
@@ -566,8 +566,8 @@ function Change({
       frame={frame}
       hqAddress={HARNESS_HQ}
       initiallyOpen={open}
-      followsMain={followsMain}
-      live={followsMain ? undefined : "v0.1.0"}
+      productionOutside={productionOutside}
+      live={productionOutside ? undefined : "v0.1.0"}
       mate={mate}
       heirs={heirs}
       hand={hand}
@@ -2087,19 +2087,19 @@ export const REVIEW_STATES: ReadonlyArray<{
     node: <Change environments={NO_ENVIRONMENTS} />,
   },
   {
-    id: "follows-main",
-    label: "Ready, where production is deployed outside Mate and follows main: merging goes live",
-    node: <Change environments={NO_ENVIRONMENTS} followsMain />,
+    id: "outside-set",
+    label: "Ready, where production is deployed outside Mate: nothing to release here",
+    node: <Change environments={NO_ENVIRONMENTS} productionOutside />,
   },
   {
-    id: "follows-main-stage",
-    label: "Ready, production follows main and a stage deploys merges",
-    node: <Change environments={[{ tier: "stage" }]} followsMain />,
+    id: "outside-stage",
+    label: "Ready, production outside Mate and a stage that deploys merges",
+    node: <Change environments={[{ tier: "stage" }]} productionOutside />,
   },
   {
-    id: "follows-main-merged",
-    label: "Merged, where production follows main: nothing waits for a release",
-    node: <Change environments={NO_ENVIRONMENTS} followsMain over={MERGED_NOW} />,
+    id: "outside-merged",
+    label: "Merged, where production is outside Mate: no release waits here",
+    node: <Change environments={NO_ENVIRONMENTS} productionOutside over={MERGED_NOW} />,
   },
   {
     id: "merged-outside",

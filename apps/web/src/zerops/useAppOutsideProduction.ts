@@ -1,5 +1,5 @@
 /**
- * Whether a project's production is deployed outside Mate and follows `main`, as somebody said in
+ * Whether a project's production is deployed outside Mate, as somebody said in
  * HQ: who may say so (whoever HQ's structure verb lets: an Owner or Admin), and the one write that
  * says it, changes its address or takes it back (`set-outside-production`). What the page draws of
  * it comes from the project's flow (`GroupFlowProduction`'s `outside`); this holds only the press.
@@ -18,7 +18,7 @@ import { useAccountOrgId } from "./accountData";
 import { useAccountOperationsOptional } from "./accountOperations";
 import { useHqStructure } from "./useHqOffers";
 
-/** Save or Stop following main, as pressed: under way, or refused in plain words. */
+/** Save or No longer true, as pressed: under way, or refused in plain words. */
 export type OutsidePress =
   | { readonly kind: "idle" }
   | { readonly kind: "saving"; readonly lifting: boolean }
@@ -31,7 +31,7 @@ export interface AppOutsideProduction {
   readonly editable: boolean | undefined;
   readonly press: OutsidePress;
   /**
-   * Says production follows `main` at `outside.address`, or — `null` — takes it back; `onSaved`
+   * Says production is deployed outside Mate, at `outside.address`, or — `null` — takes it back; `onSaved`
    * once HQ took it. Absent outside an account.
    */
   readonly save: ((outside: OutsideProduction | null, onSaved: () => void) => void) | undefined;
