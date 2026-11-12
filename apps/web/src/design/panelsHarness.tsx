@@ -61,10 +61,11 @@ import { MatePanelColumn, type MatePanelProject } from "~/components/zerops/Mate
 import { gitWorkRows, lineWork, mateLineInput } from "~/components/zerops/matePanels.logic";
 import { projectLine, type ProjectLineView } from "~/components/zerops/system";
 import { MateFace } from "~/components/zerops/primitives";
-import type {
-  CardChange,
-  CardReady,
-  PlaceLine,
+import {
+  placeLines,
+  type CardChange,
+  type CardReady,
+  type PlaceLine,
 } from "~/components/zerops/projects/projectCard.logic";
 import { ZeropsGitPanel, type ZeropsGitRepository } from "~/components/zerops/ZeropsGitPanel";
 import { ZeropsServiceMap } from "~/components/zerops/ZeropsServiceMap";
@@ -112,6 +113,12 @@ const NO_PRODUCTION: PlaceLine = {
   addresses: [],
   nothingDeployed: true,
 };
+/** Production deployed outside Mate, as the pages' own lines say it (`placeLines`). */
+const FOLLOWS_MAIN_AT = "https://ledger.tea-shop.example";
+const FOLLOWS_MAIN_PLACES = placeLines({
+  flow: { production: { kind: "outside", address: FOLLOWS_MAIN_AT }, stages: [] },
+  nowMs: 0,
+});
 const STAGE: PlaceLine = {
   kind: "stage",
   name: "stage",
@@ -396,6 +403,8 @@ interface Scenario {
   readonly lineChanges?: ReadonlyArray<CardChange>;
   /** Dana's changes in review wait on the viewer. */
   readonly waits?: boolean;
+  /** The project's production is deployed outside Mate and follows `main`. */
+  readonly followsMain?: boolean;
 }
 
 // ---------------------------------------------------------------- the line
@@ -467,7 +476,11 @@ function harnessLine(scenario: Scenario): ProjectLineView | undefined {
     pullRequests: changes
       .filter((entry) => entry.open)
       .map((entry) => ({ pull: entry.pull, blocked: null, state: undefined, review: true })),
-    production: live ? { kind: "live" } : { kind: "absent" },
+    production: live
+      ? { kind: "live" }
+      : scenario.followsMain === true
+        ? { kind: "outside", address: FOLLOWS_MAIN_AT }
+        : { kind: "absent" },
     stages: places
       .filter((line) => line.kind === "stage" && line.projectId !== undefined)
       .map((line) => ({
@@ -646,6 +659,19 @@ const SCENARIOS: ReadonlyArray<Scenario> = [
     repositories: [
       repository({
         checkout: checkout({ repository: "notesdev", isRepo: false, headRef: null }),
+        github: NOT_ON_GITHUB,
+      }),
+    ],
+  },
+  {
+    id: "follows-main",
+    changes: "no-code",
+    title: "Production deployed outside Mate · follows main",
+    project: project("Tea Ledger", FOLLOWS_MAIN_PLACES),
+    followsMain: true,
+    repositories: [
+      repository({
+        checkout: checkout({ repository: "ledgerdev", isRepo: false, headRef: null }),
         github: NOT_ON_GITHUB,
       }),
     ],
