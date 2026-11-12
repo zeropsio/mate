@@ -4057,9 +4057,18 @@ function writeStyle(element: HTMLElement, name: string, value: string | null): v
   else element.style.setProperty(name, value);
 }
 
+/** An element's padding above and below its content, in pixels. */
+function verticalPadding(element: HTMLElement): number {
+  const style = getComputedStyle(element);
+  return Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom);
+}
+
 /**
- * Says the room the live slot takes, its gap above it included: on a short
- * page the card holds it whole once the history has none left to give.
+ * Says the room the card needs with its history given back: the slot, its gap
+ * above it, the card's head and the history's own edges. On a short page the card
+ * holds them whole once the history has none left to give. Measured from the
+ * history's bottom, the head was left out, and a slot past the cap (a batch
+ * deploy's rows) ran out of the card's frame by the head's height.
  */
 function placeSlot(list: HTMLOListElement | null): void {
   // Drawn outside a page (a test's renderer), it has no layout to read.
@@ -4070,12 +4079,15 @@ function placeSlot(list: HTMLOListElement | null): void {
   // Every box read before anything is written: a write between two reads
   // restyled the card, and the second read laid it out again.
   const slotRect = slotBox.getBoundingClientRect();
-  const above = slotBox.previousElementSibling ?? null;
-  const from =
-    above === null ? chat.getBoundingClientRect().top : above.getBoundingClientRect().bottom;
+  // What the history gives back is its scroll's room: its own edges and the gaps around it stay.
+  const scroll =
+    slotBox.previousElementSibling?.querySelector<HTMLElement>(":scope > .run-scroll") ?? null;
+  const given =
+    scroll === null ? 0 : scroll.getBoundingClientRect().height - verticalPadding(scroll);
+  const from = chat.getBoundingClientRect().top;
   // Said on the card for its own cap (`@property --run-slot-room`): nothing
   // under it inherits it, so a change of it restyles the card's box alone.
-  writeStyle(chat, "--run-slot-room", `${Math.ceil(slotRect.bottom - from)}px`);
+  writeStyle(chat, "--run-slot-room", `${Math.ceil(slotRect.bottom - from - given)}px`);
 }
 
 /**
