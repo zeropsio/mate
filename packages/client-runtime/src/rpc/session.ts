@@ -23,6 +23,7 @@ import * as RpcClientError from "effect/rpc/RpcClientError";
 import * as RpcSerialization from "effect/rpc/RpcSerialization";
 import * as Socket from "effect/socket/Socket";
 
+import { extendGrant } from "./grantExtension.ts";
 import { makeWsRpcProtocolClient, type WsRpcProtocolClient } from "./protocol.ts";
 import type {
   ConnectionAttemptError,
@@ -328,6 +329,16 @@ export const make = Effect.fn("RpcSessionFactory.make")(function* (
       }),
     );
     yield* serverConfigSource.pipe(Effect.forkScoped);
+    // A Mate connection's grant is extended from its open on, for as long as the socket lives.
+    const grant = connection.grant;
+    if (grant !== undefined) {
+      yield* Deferred.await(connected).pipe(
+        Effect.andThen(
+          extendGrant({ environmentId: connection.environmentId, grant, client: protocolClient }),
+        ),
+        Effect.forkScoped,
+      );
+    }
     const initialConfig = Effect.raceFirst(
       Deferred.await(initialConfigDeferred),
       Deferred.await(serverConfigExit).pipe(
