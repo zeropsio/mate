@@ -3,11 +3,14 @@
  * composer's dock as `ChatView` draws it, holding the composer's room (`ComposerRoomHeld`), so the
  * conversation's own footer takes its place in the same frame, in the same place.
  */
-import type { ReactNode } from "react";
+import { useLayoutEffect, useRef, type ReactNode } from "react";
+
+import { footStands } from "./footStanding";
 
 import { cn } from "~/lib/utils";
 import { COMPOSER_PROMPT_TYPE_CLASS_NAME } from "./composerTypography";
 import { heldDraftRuns } from "./ComposerRoom.logic";
+import { rememberStandInBox } from "~/zerops/bootPageMemory";
 
 /**
  * Where the composer stands while its conversation opens, drawn as `ChatView` draws the composer's
@@ -16,11 +19,22 @@ import { heldDraftRuns } from "./ComposerRoom.logic";
 export function ComposerStandInDock({
   children,
   held = false,
+  box,
 }: {
   readonly children: ReactNode;
   /** The room held unseen (`ComposerRoomHeld`). */
   readonly held?: boolean;
+  /** How tall the box stands: as the one the person was looking at, or as at the last visit. */
+  readonly box?: number | undefined;
 }) {
+  // Drawn, it is the box the view entered next holds (`footStanding`).
+  const host = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const node = host.current;
+    if (held || node === null) return;
+    footStands(node, node.getBoundingClientRect().height);
+    return () => footStands(node, null);
+  }, [held, box]);
   return (
     <div
       className="pointer-events-none absolute inset-x-0 bottom-0 z-20 pt-6 sm:pt-7"
@@ -32,9 +46,16 @@ export function ComposerStandInDock({
             <div
               data-room-held={held ? "" : undefined}
               data-slot="composer-shell"
+              // Drawn, it is the box the next load's first frame draws (`rememberStandInBox`).
+              ref={held ? undefined : rememberStandInBox}
               className="chat-composer-glass-shell relative mx-auto w-full max-w-3xl"
             >
-              <div className="chat-composer-glass-host relative z-10 w-full">
+              <div
+                className="chat-composer-glass-host relative z-10 w-full"
+                ref={host}
+                // The host wears the ring and the shadow: it is the box that stands that tall.
+                style={held || box === undefined ? undefined : { height: box, overflow: "hidden" }}
+              >
                 <div className="relative z-10">{children}</div>
               </div>
             </div>

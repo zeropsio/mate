@@ -50,6 +50,7 @@ beforeEach(() => {
     </main>
   ));
   vi.spyOn(comingPage, "MateComingHeader").mockImplementation(({ mate }) => <h1>{mate.name}</h1>);
+  vi.spyOn(comingPage, "HeaderControlsStandIn").mockImplementation(() => <i data-controls="" />);
   vi.spyOn(link, "MateLinkLine").mockImplementation((props) => (
     <div data-line={props.voice.text} data-project-url={props.projectUrl ?? ""}>
       {props.onTryNow === undefined ? null : <button>Try now</button>}
@@ -77,11 +78,12 @@ import { MateOpeningView, MateLinkStage } from "./MateLinkStage";
 const ref = scopeThreadRef(EnvironmentId.make("env-quill"), ThreadId.make("thread-ivy"));
 
 describe("MateOpeningView: a conversation's page lands when its Mate is known, never on a guess", () => {
+  // witness: apps/web/src/components/zerops/MateLinkStage.tsx | {panel === null && opens ? <HeaderControlsStandIn /> : null} → {null}
   it.each([
     [
-      "who lives here unknown: the header's place held empty, the line unnamed, the composer in",
+      "who lives here unknown: the header holds its controls alone, the line unnamed, the composer in",
       { kind: "unknown" },
-      ["<header></header>", "Opening the conversation.", "data-stand-in"],
+      ['<header><i data-controls=""></i></header>', "Opening the conversation.", "data-stand-in"],
       ["Quill", "The Mate"],
     ],
     [

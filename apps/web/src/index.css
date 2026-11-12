@@ -14513,7 +14513,7 @@ a.message-file:focus-visible {
 
 /* Opening is one story, and its end holds nothing back: the moment the conversation is placed,
    the stage's words and face fade where they stand — its eyes opening as they go — while the
-   conversation fades in under them, whole 200 ms later. The stage hands over in place — no face
+   conversation fades in under them, whole 150 ms later. The stage hands over in place — no face
    flying to the header (the owner, 2026-10-12: "the way this transitions to the mate avatar at
    the chat top bar is absolute shit effect, need to be removed"), and nothing that moves, so
    nothing overflows the column for a frame and narrows it by a scrollbar. */
@@ -14521,12 +14521,13 @@ a.message-file:focus-visible {
   --duration-conversation-wake: 150ms; /* The eyes blink open as the stage goes. */
   --duration-conversation-exit: 150ms; /* The stage's words and face fade where they stand. */
   --duration-conversation-rise: 150ms; /* The conversation fades in under them. */
-  /* The conversation starts in a third of the way through the stage's exit. */
-  --delay-conversation-rise: calc(var(--duration-conversation-exit) / 3);
+  /* The conversation comes in as the stage goes: one fade, in place (`loadFills`: whatever it
+     holds for the menu's fill is held before this starts). */
+  --delay-conversation-rise: 0ms;
   /* What is left of the conversation's rise once the eyes have opened. */
   --duration-conversation-handoff: calc(
     var(--delay-conversation-rise) + var(--duration-conversation-rise) -
-      var(--duration-conversation-wake)
+      var(--duration-conversation-wake) + 1ms
   );
 }
 
@@ -14580,6 +14581,52 @@ a.message-file:focus-visible {
     var(--delay-conversation-rise) backwards;
 }
 
+/* The conversation's foot (`ConversationOpeningWaits foot`). While the stage waits all of it is
+   unseen but the composer's box where one stood here at the last visit (`data-box-stands`): its
+   surface and ring, empty, in the place the opening's first frame drew them. From the moment the
+   conversation is placed, what the box holds and what stands around it arrive with it; the box
+   itself was never away. With no box standing the whole foot arrives, as the timeline does. */
+[data-opening-waits-foot="held"]:not([data-box-stands]),
+[data-opening-waits-foot="held"][data-box-stands]
+  [data-footer-parts]
+  > :not([data-footer-composer]),
+[data-opening-waits-foot="held"][data-box-stands]
+  [data-slot="composer-shell"]
+  > .chat-composer-glass-host
+  > * {
+  /* Unseen, and taking no keys (the foot is inert under the stage): the composer takes the caret
+     in the frame the conversation arrives (`ConversationOpeningArrival`). */
+  opacity: 0;
+  transition: none;
+}
+
+[data-opening-waits-foot="arrives"]:not([data-box-stands]),
+[data-opening-waits-foot="arrives"][data-box-stands]
+  [data-footer-parts]
+  > :not([data-footer-composer]),
+[data-opening-waits-foot="arrives"][data-box-stands]
+  [data-slot="composer-shell"]
+  > .chat-composer-glass-host
+  > * {
+  animation: conversation-arrive var(--duration-conversation-rise) var(--ease-out-strong)
+    var(--delay-conversation-rise) backwards;
+}
+
+/* Held, the box is exactly as tall as it stood (`--box-stood`: the box the person was looking at
+   on a switch, the last visit's on a reload): the opening's first frame drew it so, and the
+   composer takes its own height, more or less, in the frame the conversation arrives. */
+[data-opening-waits-foot="held"][data-box-stands]
+  [data-slot="composer-shell"]
+  > .chat-composer-glass-host {
+  height: var(--box-stood);
+  overflow: hidden;
+}
+
+/* The room's own layout of the draft is never read: it only holds the box's height. */
+[data-composer-room-held] {
+  visibility: hidden;
+}
+
 /* The header's way out to Zerops waits for the conversation it is the way out of, and arrives
    with it — wherever the opening stands while the route changes. Each part carries the
    opening's state itself (`ConversationOpeningWaits`): a `:has()` on an ancestor restyles
@@ -14596,6 +14643,7 @@ a.message-file:focus-visible {
   pointer-events: none;
 }
 
+[data-conversation-avatar][data-opening-arrives]:not([data-opening-arrives="held"]) > *,
 [data-opening-header][data-opening-arrives]:not([data-opening-header=""]) > *,
 [data-opening-waits="arrives"]:not([data-opening-waits="held"]):not([data-opening-waits=""]) > * {
   animation: conversation-arrive var(--duration-conversation-rise) var(--ease-out-strong)
@@ -14643,7 +14691,10 @@ a.message-file:focus-visible {
   [data-conversation-opening],
   [data-opening-actor],
   [data-opening-actor] [data-mate-face-eye],
-  [data-conversation-footer] {
+  [data-conversation-avatar][data-opening-arrives] > *,
+  [data-conversation-footer],
+  [data-opening-waits-foot="arrives"] [data-footer-parts] > *,
+  [data-opening-waits-foot="arrives"] [data-slot="composer-shell"] > .chat-composer-glass-host > * {
     animation: none !important;
     transition: none;
   }

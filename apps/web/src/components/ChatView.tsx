@@ -128,6 +128,7 @@ import {
   useEffectEvent,
   useRef,
   useState,
+  type CSSProperties,
   type Dispatch,
   type SetStateAction,
 } from "react";
@@ -435,7 +436,13 @@ import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline, type TimelinePersonInput } from "./chat/MessagesTimeline";
 import { KeptTimelines } from "./chat/KeptTimelines";
 import { useStableHandlers } from "../hooks/useStableHandlers";
-import { ConversationOpeningWaits } from "./chat/ConversationOpeningStage";
+import {
+  ConversationOpeningArrival,
+  ConversationOpeningWaits,
+} from "./chat/ConversationOpeningStage";
+import { footStanding, footStands } from "./chat/footStanding";
+import { readFooterMemory, writeFooterMemory } from "~/zerops/mateIdentityMemory";
+import { useFillFact } from "~/lib/loadFills";
 import { useWarmTimelineAsk } from "./chat/warmTimeline";
 import { shouldTypeToFocusComposer } from "./chat/typeToFocus";
 import { rememberTimelineInset, rememberedTimelineInset } from "./chat/timelineInsets";
@@ -1794,6 +1801,8 @@ function ConversationView(props: ChatViewProps) {
   const [composerElementHeight, setComposerElementHeight] = useState(0);
   // The whole overlay while the agent asks (a question or an approval over the composer), 0 else.
   const [composerAskingHeight, setComposerAskingHeight] = useState(0);
+  // The composer's own box as it stands, remembered for the next opening (`writeFooterMemory`).
+  const [composerBoxHeight, setComposerBoxHeight] = useState(0);
   // What the composer covers of the list, as each conversation last had it
   // (`timelineInsets.ts`): a list shown in the press frame took the
   // conversation left's inset for that frame, and moved.
@@ -1835,9 +1844,32 @@ function ConversationView(props: ChatViewProps) {
   useLayoutEffect(() => {
     if (!composerOverlayElement) return;
 
+    // What the composer's box holds, watched too: under the stage the box is held at a height
+    // that is not its own, so only this says what the real foot will take.
+    let watched: Element | null = null;
+    const observer =
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => updateHeight());
     const updateHeight = () => {
       const overlay = composerOverlayElement.getBoundingClientRect();
-      const nextHeight = Math.ceil(overlay.height);
+      // A remembered height decides the box the stage shows, never the list's room: under the
+      // stage the room is the real foot's, what the composer takes the moment it is seen, so the
+      // list is placed for it before it shows and nothing follows the box's change. Placed for
+      // the held height, a view at the end glided 16 to 24 px as the conversation appeared.
+      const held = composerOverlayElement.getAttribute("data-opening-waits-foot") === "held";
+      const host = composerOverlayElement.querySelector<HTMLElement>(
+        '[data-slot="composer-shell"] > .chat-composer-glass-host',
+      );
+      const inner = host?.firstElementChild ?? null;
+      if (inner !== watched) {
+        if (watched !== null) observer?.unobserve(watched);
+        if (inner !== null) observer?.observe(inner);
+        watched = inner;
+      }
+      const real =
+        held && host != null && inner !== null
+          ? inner.getBoundingClientRect().height - host.getBoundingClientRect().height
+          : 0;
+      const nextHeight = Math.ceil(overlay.height + real);
       if (nextHeight <= 0) return;
       // The conversation thins out beside the floating composer over the composer's own height,
       // from its top edge down (`conversation-scroll-fade`): written where the list reads it,
@@ -1854,6 +1886,18 @@ function ConversationView(props: ChatViewProps) {
         "--composer-fade",
         `${card === null ? 0 : Math.max(0, Math.ceil(overlay.bottom - card.top))}px`,
       );
+      // Its own foot only: under the stage the box is held at the height that stood before it
+      // (the previous conversation's on a switch), which is not this conversation's to remember.
+      if (!held) setComposerBoxHeight(card === null ? 0 : Math.round(card.height));
+      // The box as it is seen now, for the view entered next (`footStanding`).
+      footStands(
+        composerOverlayElement,
+        card !== null &&
+          (!held || composerOverlayElement.hasAttribute("data-box-stands")) &&
+          composerOverlayElement.querySelector("[data-standup-holds-composer]") === null
+          ? card.height
+          : null,
+      );
       // Under the card nothing shows: the fade ends where the card does.
       footing?.setProperty(
         "--composer-foot",
@@ -1866,18 +1910,42 @@ function ConversationView(props: ChatViewProps) {
         setComposerAskingHeight(nextHeight);
         return;
       }
-      setComposerAskingHeight(0);
+      // What stands above the composer's own room (`data-over-conversation`: a notice, a lead's
+      // plan, why Send waits) arrives after the conversation is read, so it takes the same seat:
+      // over the conversation's end, the inset the composer's alone. It pushed the list by its own
+      // height the moment it came, a beat after the conversation appeared. Measured as the room
+      // it takes in the footer (a notice tucks under the composer, so its box says more).
+      let over = 0;
+      const composer = composerOverlayElement.querySelector("[data-footer-composer]");
+      if (composer !== null && composerOverlayElement.dataset["chatComposerHero"] !== "true") {
+        const padding = Number.parseFloat(getComputedStyle(composerOverlayElement).paddingTop);
+        over = composer.getBoundingClientRect().top - overlay.top - (padding || 0);
+        for (const part of composer.querySelectorAll("[data-over-conversation]"))
+          over += part.getBoundingClientRect().height;
+        over = over < 1 ? 0 : Math.round(over);
+      }
+      const inset = Math.max(1, nextHeight - over);
+      setComposerAskingHeight(over > 0 ? nextHeight : 0);
       setComposerElementHeight((currentHeight) =>
-        currentHeight === nextHeight ? currentHeight : nextHeight,
+        currentHeight === inset ? currentHeight : inset,
       );
     };
 
     updateHeight();
-    if (typeof ResizeObserver === "undefined") return;
+    if (observer === null) return;
 
-    const observer = new ResizeObserver(updateHeight);
     observer.observe(composerOverlayElement);
-    return () => observer.disconnect();
+    // The stage's hand-over changes no size where the held box was the composer's own: read again.
+    const opening = new MutationObserver(updateHeight);
+    opening.observe(composerOverlayElement, {
+      attributes: true,
+      attributeFilter: ["data-opening-waits-foot"],
+    });
+    return () => {
+      observer.disconnect();
+      opening.disconnect();
+      footStands(composerOverlayElement, null);
+    };
   }, [composerOverlayElement]);
 
   const terminalUiState = useTerminalUiStateStore((state) =>
@@ -4450,7 +4518,30 @@ function ConversationView(props: ChatViewProps) {
     openProviderSetup,
     zeropsSignInDialog,
   ]);
-  const zeropsFooter = admission.footer;
+  // What stood at this conversation's foot, remembered for its next opening's first frame
+  // (`readFooterMemory`): its composer's box stands from then on, and is never hidden again.
+  // The foot holds the box that stands as this view is entered (`footStanding`): the one its
+  // opening drew from the device's memory on a reload, the one the person was looking at on a
+  // switch. As tall as it stands, while the stage waits; the composer takes its own height in the
+  // frame the conversation arrives. With no box standing (a Mate's own page made its link first)
+  // none appears ahead of the conversation, and where the device remembers that someone else
+  // writes here, memory decides.
+  const composerFoot = useMemo(() => {
+    const standing = footStanding();
+    const stands = standing !== undefined && readFooterMemory(routeThreadKey) !== "read-only";
+    return { stands, stood: stands ? standing : undefined };
+  }, [routeThreadKey]);
+  const composerBoxStands = composerFoot.stands;
+  const composerBoxStood = composerFoot.stood;
+  // Where a composer was shown here at the last visit it is drawn while who writes is read again
+  // (`composerBoxStands`), as HQ's word draws it before the Mate's own: it takes typing from the
+  // conversation's first frame and its line comes with the conversation, while sending waits for
+  // the answer (`admission.canSend`), which replaces it if someone else writes here now.
+  const zeropsFooter =
+    admission.footer === "held" && composerBoxStands ? "composer" : admission.footer;
+  // Who writes here is read after the messages: the conversation's fill holds a moment for it,
+  // so the composer comes in with the conversation (`useFillFact`).
+  useFillFact("page", zeropsFooter !== "held");
   const admissionPlacement = useAgentAdmissionPlacement(admission.attention);
   const zeropsHeldDraft = useComposerDraftStore((store) =>
     zeropsFooter === "held" ? (store.getComposerDraft(composerDraftTarget)?.prompt ?? "") : "",
@@ -4458,6 +4549,16 @@ function ConversationView(props: ChatViewProps) {
   // A started conversation keeps its login; its admission item explains why Send waits.
   const zeropsSendBlockReason = admission.sendBlockReason;
   const zeropsArrivalHoldsComposer = admission.holdsComposer || mateSignIn;
+  // What was actually shown: a composer hidden while its Mate waits for a sign-in or a stand-up
+  // is no box to draw next time, and one drawn then would be taken back.
+  useEffect(() => {
+    if (admission.footer === "held") return;
+    writeFooterMemory(
+      routeThreadKey,
+      admission.footer === "composer" && !zeropsArrivalHoldsComposer ? "composer" : "read-only",
+      composerBoxHeight > 0 ? composerBoxHeight : undefined,
+    );
+  }, [admission.footer, composerBoxHeight, routeThreadKey, zeropsArrivalHoldsComposer]);
   const activeProjectDisplayName = zeropsChrome.projectName ?? activeProject?.title;
   const chromeLogicalProjectEnvironments = useMemo(
     () =>
@@ -6128,7 +6229,11 @@ function ConversationView(props: ChatViewProps) {
         !shortcutContext.modelPickerOpen &&
         shouldTypeToFocusComposer(event)
       ) {
-        if (composerRef.current?.insertTextAtEnd(event.key)) {
+        // Under the stage the composer is a stand-in: no key is written anywhere.
+        if (
+          document.querySelector("[data-conversation-footer][inert]") === null &&
+          composerRef.current?.insertTextAtEnd(event.key)
+        ) {
           event.preventDefault();
           event.stopPropagation();
           return;
@@ -8367,8 +8472,7 @@ function ConversationView(props: ChatViewProps) {
     />
   );
   const panelLayoutControls = (
-    <ConversationOpeningWaits
-      as="div"
+    <div
       className={cn(
         // One inset in both states: the controls move between containers when
         // the right panel opens, and a different right offset made them jump
@@ -8376,7 +8480,8 @@ function ConversationView(props: ChatViewProps) {
         "absolute top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] z-50 mr-px flex h-[var(--workspace-topbar-height)] items-center gap-1 [-webkit-app-region:no-drag]",
       )}
       data-workspace-titlebar-controls
-      // The panel toggles arrive with the conversation, as the header's actions do.
+      // The header's own controls stand from the first frame of a load (`HeaderControlsStandIn`
+      // before this view draws): the opening never takes them away to bring them back.
     >
       {rightPanelOpen && !shouldUseRightPanelSheet ? (
         <RightPanelMaximizeControl
@@ -8385,7 +8490,7 @@ function ConversationView(props: ChatViewProps) {
         />
       ) : null}
       {panelToggleControls}
-    </ConversationOpeningWaits>
+    </div>
   );
   // A Chief's overview opens wide enough for two of its cards side by side, as its opening's
   // panel stood (`conversationPanelWidth`).
@@ -8902,8 +9007,9 @@ function ConversationView(props: ChatViewProps) {
             {/* Input bar — centered hero while a draft has no messages, docked at the bottom otherwise */}
             <ConversationOpeningWaits
               as="div"
-              whole
+              foot
               ref={setComposerOverlayElement}
+              data-box-stands={composerBoxStands ? "" : undefined}
               data-conversation-footer=""
               data-chat-composer-overlay="true"
               data-chat-composer-hero={isDraftHeroState ? "true" : undefined}
@@ -8917,7 +9023,8 @@ function ConversationView(props: ChatViewProps) {
                 ref={attachDraftHeroTransitionGroupRef}
                 className="w-full ps-(--workspace-gutter-start) pe-(--workspace-gutter-end)"
               >
-                <div className="pointer-events-auto relative z-10">
+                <ConversationOpeningArrival onArrive={scheduleComposerFocus} />
+                <div className="pointer-events-auto relative z-10" data-footer-parts="">
                   {isDraftHeroState ? (
                     <div className="absolute inset-x-0 bottom-full z-0">
                       <div
@@ -8945,12 +9052,18 @@ function ConversationView(props: ChatViewProps) {
                           <NoticesOverComposer notices={conversationNotices} />
                         </div>
                       ) : null}
-                      <ComposerBannerStack className="relative z-0" items={composerBannerItems} />
+                      {/* What stands above the composer is read after the conversation (a notice of
+                          the Mate's health or link, a lead's plan): it stands over the
+                          conversation's end, as an ask does, and never moves it
+                          (`data-over-conversation`, read where the footer is measured). */}
+                      <div data-over-conversation="">
+                        <ComposerBannerStack className="relative z-0" items={composerBannerItems} />
+                      </div>
                       {/* The lead's plan waits above its composer, where its
                           answer ends (PRD §4.6). */}
                       {activeCrewmate?.crewmate.kind === "lead" &&
                       activeCrewmate.crewmate.currentThreadId === threadId ? (
-                        <div className="mx-auto w-full max-w-3xl pb-2">
+                        <div className="mx-auto w-full max-w-3xl pb-2" data-over-conversation="">
                           <CrewLeadPlan environmentId={environmentId} />
                         </div>
                       ) : null}
@@ -8965,6 +9078,7 @@ function ConversationView(props: ChatViewProps) {
                     // stand-up) but is neither seen nor reached, and fades back once it has gone.
                     aria-hidden={zeropsArrivalHoldsComposer ? true : undefined}
                     className="relative"
+                    data-footer-composer=""
                     data-standup-holds-composer={zeropsArrivalHoldsComposer ? "" : undefined}
                     inert={zeropsArrivalHoldsComposer}
                     style={
@@ -8976,6 +9090,11 @@ function ConversationView(props: ChatViewProps) {
                     <div
                       data-room-held={zeropsFooter === "held" ? "" : undefined}
                       data-slot="composer-shell"
+                      style={
+                        composerBoxStood === undefined
+                          ? undefined
+                          : ({ "--box-stood": `${composerBoxStood}px` } as CSSProperties)
+                      }
                       className={cn(
                         "chat-composer-glass-shell relative mx-auto w-full max-w-3xl",
                         externalComposerDrawerAttached && "chat-composer-glass-shell-attached",
@@ -8986,10 +9105,12 @@ function ConversationView(props: ChatViewProps) {
                     >
                       <div className="chat-composer-glass-host relative z-10 w-full">
                         <div ref={attachDraftHeroComposerAnchorRef} className="relative z-10">
-                          <AgentAdmissionExplanation
-                            attention={admissionPlacement.composer}
-                            onAction={openAgentAuthDialog}
-                          />
+                          <div data-over-conversation="">
+                            <AgentAdmissionExplanation
+                              attention={admissionPlacement.composer}
+                              onAction={openAgentAuthDialog}
+                            />
+                          </div>
                           {zeropsFooter === "held" ? (
                             <ComposerRoomHeld
                               draft={zeropsHeldDraft}
@@ -9056,7 +9177,9 @@ function ConversationView(props: ChatViewProps) {
                               sendDisabledReason={
                                 feedbackUploading
                                   ? "Sending feedback"
-                                  : threadDetailLoading
+                                  : // A composer drawn while who writes is still read cannot
+                                    // send yet either: the conversation is still loading.
+                                    threadDetailLoading || admission.footer === "held"
                                     ? "Messages loading"
                                     : // Out of reach, the send says why in the Mate's own words.
                                       (mateAwayWords ?? cloneSendBlockReason(cloneShown))

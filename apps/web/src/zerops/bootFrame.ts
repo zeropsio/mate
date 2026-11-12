@@ -7,6 +7,9 @@
  * logo, then it turns into a little different smaller logo").
  */
 import { writeBrowserStorage } from "../lib/storage";
+import { accountLocalStorage } from "./accountLifetime";
+import { bootPage } from "./bootPageMemory";
+import { forgetLoadMemory } from "./mateIdentityMemory";
 import * as Schema from "effect/Schema";
 
 import { isElectron } from "~/env";
@@ -35,11 +38,23 @@ export function keepBootFrame(root: HTMLElement): void {
   const sync = () => {
     const next = bootFrameSync({ rootChildren: root.childElementCount, drawn });
     drawn = next.drawn;
+    // The remembered frame (index.html's `#boot-shell-frame`, its tones) is the first paint of a
+    // load for the account it was remembered for: once the app has drawn it is gone, and a later
+    // wait (another account, a data restart) shows the plain shell, nobody's header or composer.
+    if (drawn) dropRememberedFrame();
     if (next.repaint) repaintFromApp();
     shell.hidden = !next.shown;
   };
   new MutationObserver(sync).observe(root, { childList: true });
   sync();
+}
+
+function dropRememberedFrame(): void {
+  const frame = document.getElementById("boot-shell-frame");
+  if (frame === null) return;
+  frame.remove();
+  document.documentElement.style.removeProperty("--boot-row");
+  document.documentElement.style.removeProperty("--boot-edge");
 }
 
 /** The app's colours and menu width as they are now, for a frame shown again after it drew. */
@@ -92,10 +107,50 @@ export function rememberBootFrame(status: ZeropsSessionStatus): void {
       );
     } else {
       window.localStorage.removeItem(BOOT_FRAME_STORAGE_KEY);
+      // Nor does the next person's first frame draw this one's rows, name, Chief or page.
+      forgetLoadMemory();
       // Signed out, a frame shown again is the sign-in's.
       delete document.documentElement.dataset.bootFrame;
     }
   } catch {
     // Storage refused: the next load paints the sign-in's mark, and the app takes over from it.
   }
+}
+
+const BOOT_PAGE_KEY = "mate:boot-page:v1";
+
+/**
+ * Remembers the page's frame each time it is left, from now on (`bootPage`): places, sizes and
+ * colours the next load's first frame draws before the app can. Called once, at start.
+ */
+export function rememberBootPageOnLeave(): void {
+  window.addEventListener("pagehide", () => {
+    try {
+      accountLocalStorage.setItem(BOOT_PAGE_KEY, JSON.stringify(bootPage()));
+    } catch {
+      /* A storage policy, or a page half torn down: the next load draws its menu alone. */
+    }
+  });
+}
+
+/**
+ * How wide the header's Review door stood on this page when it was last left, in px; `undefined`
+ * where none stood, the page is another, or the window or the theme changed since (the boot
+ * script hands the page over only then). A reload's header holds that seat until the menu's fill
+ * brings the door, so the door moves nothing as it comes.
+ */
+export function doorSeatStood(): number | undefined {
+  // The boot script hands the page over only for the same window and appearance; the door's
+  // width depends on neither, so the memory itself answers where it did not.
+  let page = (window as { __bootPage?: { path?: unknown; door?: unknown } }).__bootPage;
+  if (page === undefined) {
+    try {
+      const kept: unknown = JSON.parse(accountLocalStorage.getItem(BOOT_PAGE_KEY) ?? "null");
+      if (typeof kept === "object" && kept !== null) page = kept;
+    } catch {
+      /* Unreadable: no seat. */
+    }
+  }
+  if (page === undefined || page.path !== window.location.pathname) return undefined;
+  return typeof page.door === "number" && page.door > 0 && page.door < 400 ? page.door : undefined;
 }
