@@ -1319,12 +1319,12 @@ export function makeHqApi(input: {
   let renewal: Promise<void> | null = null;
 
   /**
-   * Renews a session close to its end, silently: the same request with a current access token and
-   * the session as its bearer, which keeps the session's id. A renewal that fails leaves the
-   * session as it was; its own end is met by the call that finds it ended.
+   * Renews the session silently: the same request with a current access token and the session as
+   * its bearer, which keeps the session's id and has HQ make the person's access again where it
+   * keeps none. A renewal that fails leaves the session as it was; its own end is met by the call
+   * that finds it ended.
    */
-  const renewIfDue = async (token: string): Promise<void> => {
-    if (expiresAtMs === null || now() < expiresAtMs - RENEW_BEFORE_MS) return;
+  const renew = async (token: string): Promise<void> => {
     renewal ??= enterDoor(token)
       .then(remember, () => undefined)
       .finally(() => {
@@ -1333,11 +1333,20 @@ export function makeHqApi(input: {
     await renewal;
   };
 
+  /** Renews a session close to its end. */
+  const renewIfDue = async (token: string): Promise<void> => {
+    if (expiresAtMs === null || now() < expiresAtMs - RENEW_BEFORE_MS) return;
+    await renew(token);
+  };
+
   /**
    * A call as the session's holder. A session HQ no longer takes is forgotten and renewed once —
    * another tab's kept one, else through the door — and the call made again; HQ refusing the
    * renewal too, or a session from its door it never took, ends the call with that refusal. A call
-   * HQ refused for its session wrote nothing, so a write is made again as safely as a read.
+   * HQ answers `credential_required` (it keeps no access of the person's it can use) re-enters the
+   * door once with the session as bearer and is made again; a second such answer, or one to a
+   * session from its door it never took, ends the call. A call HQ refused for its session or its
+   * access wrote nothing, so a write is made again as safely as a read.
    */
   const authorized = async (
     path: string,
@@ -1346,6 +1355,7 @@ export function makeHqApi(input: {
     browse = false,
   ): Promise<Response> => {
     let renewed = false;
+    let reentered = false;
     for (;;) {
       const held = session ?? restore() ?? enter();
       const token = await held;
@@ -1378,6 +1388,17 @@ export function makeHqApi(input: {
         unproven.delete(held);
         return response;
       } catch (cause) {
+        if (
+          cause instanceof HqError &&
+          cause.kind === "refused" &&
+          cause.status === 409 &&
+          cause.code === "credential_required"
+        ) {
+          if (reentered || unproven.has(held)) throw cause;
+          reentered = true;
+          await renew(token);
+          continue;
+        }
         if (!(cause instanceof HqError && accessEnded(cause) === "session-ended")) throw cause;
         drop(held, token);
         if (renewed || unproven.has(held)) throw cause;
