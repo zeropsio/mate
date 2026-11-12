@@ -3,7 +3,8 @@
  * (`addressesFixture.ts`): `?task=` opens it on a flow — `add` (Put it on your domain), `others`
  * (someone else's change waits), `own` (the project has its own IPv4), `fresh` (no domain yet, one
  * Zerops address off), `faces` (a domain in each state short of live: its DNS at Cloudflare, at
- * nobody, pointing elsewhere, a wildcard, a certificate on its way and one refused). Writes are
+ * nobody, pointing elsewhere, a wildcard, a certificate on its way, one refused, and a name whose
+ * registered domain cannot be told). Writes are
  * taken after 600 ms and shown under way for 3 s; `?fail=1` refuses each. `?theme=dark` for dark.
  *
  * Served by the dev server at `/design-addresses.html`. Fixtures only: nothing here ships, and no
@@ -62,6 +63,8 @@ const FACES: ReadonlyArray<AddressDomain> = [
   waiting("rt-c", "cedar-shop.com", "elsewhere", { resolvedIps: ["203.0.113.9"] }),
   waiting("rt-d", "*.dune-shop.com", "dns", { nameServers: [] }),
   waiting("rt-e", "ember-shop.com", "certificate"),
+  // A name whose registered domain its shape cannot tell: its records stand in full.
+  waiting("rt-g", "garnet.me.uk", "dns", { nameServers: ["ns3-l2.nic.ru"] }),
   waiting("rt-f", "fjord-shop.com", "certificate-failed", {
     sslError: "the challenge at /.well-known/acme-challenge/ answered 403",
     nameServers: ["dana.ns.cloudflare.com"],
