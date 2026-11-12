@@ -25,6 +25,7 @@
 import { ExecError, type ExecRunInput, type ExecRunResult } from "@t3tools/contracts";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as PlatformError from "effect/PlatformError";
 
 import * as ServerConfig from "../config.ts";
 import * as ProcessRunner from "../processRunner.ts";
@@ -43,6 +44,26 @@ export const EXEC_MAX_TIMEOUT_MS = 600_000;
  */
 export const EXEC_MAX_OUTPUT_BYTES = 1024 * 1024;
 
+/**
+ * A command's result and, when it ended without an exit code, why (it names the signal), for the
+ * caller's log only: the wire carries just `result`.
+ */
+export interface ExecRun {
+  readonly result: ExecRunResult;
+  readonly detail: string | undefined;
+}
+
+/**
+ * The read failure and the platform's own error (for a signal, "Process interrupted due to receipt
+ * of signal: 'SIGTERM'"), never the platform's message, which carries the command line and its args.
+ */
+const readFailureDetail = (error: ProcessRunner.ProcessReadError): string => {
+  const reason = PlatformError.isPlatformError(error.cause) ? error.cause.reason : undefined;
+  const why =
+    reason?.description ?? (reason?.cause instanceof Error ? reason.cause.message : undefined);
+  return why === undefined ? error.message : `${error.message}: ${why}`;
+};
+
 export const runExecCommand = Effect.fn("Zerops.exec.run")(function* (input: ExecRunInput) {
   const config = yield* ServerConfig.ServerConfig;
   if (!isZeropsEnvironment(config)) {
@@ -60,7 +81,7 @@ export const runExecCommand = Effect.fn("Zerops.exec.run")(function* (input: Exe
   }
 
   const runner = yield* ProcessRunner.ProcessRunner;
-  const output = yield* runner
+  return yield* runner
     .run({
       command: input.command,
       args: input.args ?? [],
@@ -71,21 +92,38 @@ export const runExecCommand = Effect.fn("Zerops.exec.run")(function* (input: Exe
       outputMode: "truncate",
     })
     .pipe(
-      Effect.mapError(
-        (cause) =>
-          new ExecError({
-            reason: "spawn_failed",
-            detail: cause.message,
+      Effect.map((output): ExecRun => ({
+        result: {
+          exitCode: output.code,
+          stdout: output.stdout,
+          stderr: output.stderr,
+          timedOut: output.timedOut,
+          stdoutTruncated: output.stdoutTruncated,
+          stderrTruncated: output.stderrTruncated,
+        },
+        detail: undefined,
+      })),
+      Effect.catchTags({
+        ProcessSpawnError: (cause) =>
+          Effect.fail(new ExecError({ reason: "spawn_failed", detail: cause.message })),
+        // The child started and ended without an exit code: a signal ended it, or it was stopped
+        // when its output could not be read. Its output is not carried on the failure.
+        ProcessReadError: (cause) =>
+          Effect.succeed<ExecRun>({
+            result: {
+              exitCode: null,
+              stdout: "",
+              stderr: "",
+              timedOut: false,
+              stdoutTruncated: false,
+              stderrTruncated: false,
+            },
+            detail: readFailureDetail(cause),
           }),
-      ),
+        // Excluded by the options above: no stdin, "truncate" output, "timedOutResult" deadline.
+        ProcessStdinError: Effect.die,
+        ProcessOutputLimitError: Effect.die,
+        ProcessTimeoutError: Effect.die,
+      }),
     );
-
-  return {
-    exitCode: output.code,
-    stdout: output.stdout,
-    stderr: output.stderr,
-    timedOut: output.timedOut,
-    stdoutTruncated: output.stdoutTruncated,
-    stderrTruncated: output.stderrTruncated,
-  } satisfies ExecRunResult;
 });
