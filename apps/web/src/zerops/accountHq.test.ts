@@ -154,6 +154,8 @@ describe("accountHqApi — HQ's session, kept as the Mates' sessions are", () =>
     expect(new URL(sockets[1]!).searchParams.get("socket")).toBe(socket);
     expect(presses.map((press) => press.socket)).toEqual([socket, socket]);
     expect(presses[1]?.importProcessId).toBe("import-1");
+    // Another tab is another page of this browser: a window of its own over the same storage.
+    vi.stubGlobal("window", { localStorage: window.localStorage });
     const secondTab = load();
     const other = accountHqApi(secondTab.client, "org-1", HQ);
     await other.openScopeSocket(handlers, signal);
