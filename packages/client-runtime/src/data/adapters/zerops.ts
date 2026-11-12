@@ -394,12 +394,13 @@ export function zeropsNavigationLink(options: {
    * generation it had before the receiver registered anything: the receiver's own registration
    * moves the scope to a new generation first, so this answer, arriving after it, is fenced out,
    * and the registration's answer replaces it as a fresh baseline would. It never makes a scope
-   * live, and a failure says nothing: the registration is the scope's authority.
+   * live, and a failure says nothing: the registration is the scope's authority. `null` for a
+   * scope that needs no such read; else the read, and the generation its answer commits under.
    */
   const readFirstBaseline = (
     rest: Pick<ZeropsLink, "post">,
     scope: ScopeKey,
-  ): Effect.Effect<void> => {
+  ): { readonly generation: number; readonly read: Effect.Effect<void> } | null => {
     const registration = registrations.find(
       (entry) => entry.scope === scope && entry.role === "membership",
     );
@@ -409,8 +410,8 @@ export function zeropsNavigationLink(options: {
       phase === "refused" ||
       (store.state().memberships.get(scope)?.coverage ?? "unknown") !== "unknown"
     )
-      return Effect.void;
-    return rest
+      return null;
+    const read = rest
       .post(registration.path, {
         search: registration.search,
         sort: [],
@@ -434,6 +435,7 @@ export function zeropsNavigationLink(options: {
         }),
         Effect.ignore,
       );
+    return { generation, read };
   };
 
   const attempt = (): Effect.Effect<never, StreamFault, Scope.Scope> =>
@@ -441,18 +443,31 @@ export function zeropsNavigationLink(options: {
       const attemptScope = yield* Effect.scope;
       let opened = false;
       const rest = options.wire.rest;
+      /** Each first baseline read over REST this attempt began, by the scope it reads. */
+      const firstReads = new Map<
+        ScopeKey,
+        { readonly generation: number; readonly fiber: Fiber.Fiber<void> }
+      >();
       if (rest !== undefined)
         yield* Effect.sleep(SLOW_RECEIVER_MS).pipe(
           // Each read takes its scope's generation as it is built, in the same step as this
           // check: once the receiver opened, its registrations own every scope.
           Effect.andThen(
             Effect.suspend(() =>
-              opened
-                ? Effect.void
-                : Effect.all(
-                    scopes.map((scope) => readFirstBaseline(rest, scope)),
-                    { concurrency: "unbounded", discard: true },
+              Effect.forEach(
+                opened
+                  ? []
+                  : scopes.flatMap((scope) => {
+                      const first = readFirstBaseline(rest, scope);
+                      return first === null ? [] : [{ scope, ...first }];
+                    }),
+                ({ scope, generation, read }) =>
+                  Effect.map(
+                    Effect.forkIn(read, attemptScope),
+                    (fiber) => void firstReads.set(scope, { generation, fiber }),
                   ),
+                { discard: true },
+              ),
             ),
           ),
           Effect.forkIn(attemptScope),
@@ -1280,6 +1295,15 @@ export function zeropsNavigationLink(options: {
         (scope) =>
           Effect.gen(function* () {
             yield* signal(scope, { kind: "attempt" });
+            // Its first read over REST, still under way, reads for a generation the scope has
+            // left: its answer could only be fenced out, so it is stopped rather than left to
+            // share the line with the registration's own answer to the same search.
+            const first = firstReads.get(scope);
+            if (
+              first !== undefined &&
+              first.generation !== streamOf(store.state(), scope).generation
+            )
+              yield* Effect.forkIn(Fiber.interrupt(first.fiber), attemptScope);
             // A scope refused alone stays so until the person tries again: nothing registers it.
             if (streamOf(store.state(), scope).phase === "refused") {
               wake();
