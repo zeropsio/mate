@@ -4,17 +4,16 @@
  *
  * Usage (`UsageLink`), the restart read (`ZeropsRestartRead`), agent sign-in (`ZeropsAgentFlag`)
  * and the crew's platform processes read this, never the source behind it. Today the source is
- * the Mate's access list ({@link derivedLayer}), also in dev, where that list is empty; fixture
- * scenes answer {@link emptyLayer}.
+ * the Mate's access list ({@link derivedLayer}), also in dev, where that list is empty.
  *
  * @module ZeropsProjectFeed
  */
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
+import type * as Option from "effect/Option";
 import type * as Scope from "effect/Scope";
-import * as Stream from "effect/Stream";
+import type * as Stream from "effect/Stream";
 
 import type { OwnProject } from "./ZeropsAccessRead.ts";
 import type { ProcessLiveEvent } from "./ZeropsAccessSocket.ts";
@@ -43,17 +42,5 @@ export const derivedLayer = Layer.effect(
   Effect.gen(function* () {
     const { ownProject, processes } = yield* ZeropsMateAccessList;
     return ZeropsProjectFeed.of({ ownProject, processes });
-  }),
-);
-
-/**
- * No project and no process frames, the subscription staying open as an empty list's does: fixture
- * scenes, which have no platform to read.
- */
-export const emptyLayer = Layer.succeed(
-  ZeropsProjectFeed,
-  ZeropsProjectFeed.of({
-    ownProject: Effect.succeed(Option.none()),
-    processes: Effect.succeed(Stream.never),
   }),
 );
