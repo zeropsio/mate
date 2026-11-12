@@ -301,6 +301,11 @@ export interface ZeropsHqLinkOptions {
   /** Ends a session HQ closed, or everyone's once the key is dead (`ZeropsConnections.end`). */
   readonly end?: (subject: ConnectionSubject) => Effect.Effect<void>;
   /**
+   * Hands on whether the link is up: from its first state to its end (`ZeropsConnections.linked`,
+   * where connections end for their grant only while it is up).
+   */
+  readonly linked?: (up: boolean) => Effect.Effect<void>;
+  /**
    * Every HQ session the Mate holds now, each once, read for every hello: HQ closes each of them
    * it no longer holds live (`ZeropsConnections.heldSessions`).
    */
@@ -765,6 +770,7 @@ export const makeZeropsHqLink = (
               Effect.flatMap((dead) => (dead ? send({ type: "key-refused" }) : Effect.void)),
               Effect.andThen(options.chiefOpener?.(frame.mate.chiefOpenerUserId) ?? Effect.void),
               Effect.andThen(SubscriptionRef.set(state, Option.some(frame.mate))),
+              Effect.andThen(options.linked?.(true) ?? Effect.void),
               Effect.andThen(options.owner?.(frame.mate.ownerUserId ?? null) ?? Effect.void),
               Effect.andThen(SubscriptionRef.set(keyVerdict, undefined)),
               Effect.andThen(Ref.set(automatedHere, frame.mate.automated === true)),
@@ -961,6 +967,7 @@ export const makeZeropsHqLink = (
           const close = "close" in ran ? ran.close : undefined;
           const heard = verdictOf(close);
           yield* SubscriptionRef.set(state, Option.none());
+          yield* options.linked?.(false) ?? Effect.void;
           if (keyRefused(close)) yield* fenceAdmission(admitted?.admission);
           const ended = "ended" in ran ? ran.ended : undefined;
           yield* options.mateState?.notLinked(linkEndOf(ended, heard)) ?? Effect.void;
@@ -1240,6 +1247,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
         connect: connectLinkSocket,
         ticket: connections.ticket,
         end: connections.end,
+        linked: connections.linked,
         heldSessions: connections.heldSessions,
         // HQ's state is where the Mate learns who may open its Chief: the one source behind the
         // access list's Chief filter, which the tickets and connections follow.
