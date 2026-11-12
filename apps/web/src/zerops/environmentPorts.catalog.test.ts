@@ -187,7 +187,6 @@ const recover = Effect.gen(function* () {
     {
       phase: "backoff",
       retryAtMs: failed.retryAt,
-      unavailableReason: "Mate has no connection to HQ (no-link).",
       noLink: true,
     },
   ]);
