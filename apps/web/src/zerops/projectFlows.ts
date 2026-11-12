@@ -66,6 +66,7 @@ import { useHqAppDetailHold, useHqAppRecipes, useHqAppReleases } from "./useHqAp
 import { useReleaseComparisons } from "./useReleaseComparisons";
 import { useProjection, useProjectsServices } from "./ZeropsAccountData";
 import { useZeropsSession } from "./ZeropsSessionProvider";
+import { usePersonNames } from "./useZeropsMateOwners";
 
 export type {
   CanonicalProjectFlow as ZeropsProjectFlow,
@@ -472,16 +473,18 @@ export function useProjectFlows(
 
   // A Mate's changes, linked at the organization's official address: the flows stand on them
   // wherever HQ answers.
-  // HQ's rule for this person releasing each group, in its words.
+  // HQ's rule for this person releasing each group, in its words; who merges, by name, where a
+  // release to Git is held by the group's merge limit.
+  const nameOf = usePersonNames(clientId);
   const permissions = useMemo(
     () =>
       new Map(
-        appIds.map((groupId) => [
-          groupId,
-          releaseGateOf(told?.find(({ id }) => id === groupId)?.can),
-        ]),
+        appIds.map((groupId) => {
+          const app = told?.find(({ id }) => id === groupId);
+          return [groupId, releaseGateOf(app?.can, { mergers: app?.mergers, nameOf })];
+        }),
       ),
-    [appIds, told],
+    [appIds, nameOf, told],
   );
   const gitLive = useMemo(() => {
     const values = new Map<

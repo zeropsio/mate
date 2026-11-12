@@ -7,8 +7,11 @@ import { REASONS } from "@t3tools/shared/zeropsPermissions";
 import {
   AUTOMATION_REFUSALS,
   enrollmentRefusalWords,
+  hqMergeOfferWords,
   hqOfferWords,
   hqRefusalWords,
+  mergeLimitWords,
+  mergersRefusalWords,
 } from "./refusals.ts";
 
 describe("hqRefusalWords — HQ's refusal, in the person's words", () => {
@@ -269,5 +272,85 @@ describe("hqRefusalWords — a repository HQ will not delete", () => {
     expect(words).toContain(holder);
     expect(words).not.toContain(reason);
     expect(words).toMatch(/^[A-Z].*\.$/u);
+  });
+});
+
+describe("who merges where a project limits it", () => {
+  const NAMES: Readonly<Record<string, string>> = {
+    "u-ada": "Ada K.",
+    "u-sam": "Sam R.",
+    "u-lee": "Lee P.",
+    "u-noor": "Noor T.",
+  };
+  const nameOf = (userId: string) => NAMES[userId];
+
+  // witness: packages/client-runtime/src/zerops/hq/refusals.ts | `Only ${named.join(", ")}${rest} and → `Only ${named.join(" and ")}${rest} and
+  it("The held press names the people who merge, then the organization's Owner and Admins", () => {
+    expect(mergeLimitWords(["u-ada", "u-sam"], nameOf)).toBe(
+      "Only Ada K., Sam R. and the organization's Owner and Admins merge here.",
+    );
+  });
+
+  // witness: packages/client-runtime/src/zerops/hq/refusals.ts | if (people.length === 0) return `Only ${OWNER_AND_ADMINS} merge here.`; →
+  it("With nobody named, only the organization's Owner and Admins merge", () => {
+    expect(mergeLimitWords([], nameOf)).toBe(
+      "Only the organization's Owner and Admins merge here.",
+    );
+  });
+
+  // witness: packages/client-runtime/src/zerops/hq/refusals.ts | const MERGERS_NAMED = 3; → const MERGERS_NAMED = 4;
+  it("More than three people are the first three by name and how many more", () => {
+    expect(mergeLimitWords(["u-ada", "u-sam", "u-lee", "u-noor", "u-gone"], nameOf)).toBe(
+      "Only Ada K., Sam R., Lee P. and 2 more, and the organization's Owner and Admins merge here.",
+    );
+  });
+
+  // witness: packages/client-runtime/src/zerops/hq/refusals.ts | nameOf(userId) ?? [] → nameOf(userId) ?? userId
+  it("People the member list does not name are counted, never shown as ids", () => {
+    expect(mergeLimitWords(["u-gone", "u-left"], nameOf)).toBe(
+      "Only 2 people and the organization's Owner and Admins merge here.",
+    );
+  });
+
+  // witness: packages/client-runtime/src/zerops/hq/refusals.ts | state.kind === "refused" && state.reason === "not_app_merger" → false
+  it("A press the merge limit holds says who merges; any other refusal keeps its own words", () => {
+    const mergers = { people: ["u-ada"] };
+    expect(hqMergeOfferWords({ kind: "refused", reason: "not_app_merger" }, mergers, nameOf)).toBe(
+      "Only Ada K. and the organization's Owner and Admins merge here.",
+    );
+    expect(
+      hqMergeOfferWords({ kind: "refused", reason: "not_app_developer" }, mergers, nameOf),
+    ).toBe("You need more than Read access to one of this project's Zerops projects to do this.");
+  });
+});
+
+describe("HQ's refusal of who merges", () => {
+  // witness: packages/client-runtime/src/zerops/hq/refusals.ts | if (code === "conflict" && reason === "not_active_member") → if (code === "forbidden" && reason === "not_active_member")
+  it("A named person Zerops no longer lists is theirs to uncheck, never the asker's own membership", () => {
+    expect(mergersRefusalWords({ code: "conflict", reason: "not_active_member" })).toBe(
+      "Someone you picked is no longer an active member of this organization. Uncheck them and save again.",
+    );
+    expect(mergersRefusalWords({ code: "forbidden", reason: "not_active_member" })).toBeUndefined();
+  });
+
+  // witness: packages/client-runtime/src/zerops/hq/refusals.ts | if (reason === "not_structure_writer") return MERGERS_WRITERS; →
+  it("Someone who is no Owner or Admin is told who changes it", () => {
+    expect(mergersRefusalWords({ code: "forbidden", reason: "not_structure_writer" })).toBe(
+      "Owners and Admins change this.",
+    );
+  });
+
+  // witness: packages/client-runtime/src/zerops/hq/refusals.ts | return `HQ didn't take this list. Pick at most ${String(HQ_MERGERS_MAX)} people.`; → return undefined;
+  it("A list HQ does not take says how many people it holds", () => {
+    expect(mergersRefusalWords({ code: "invalid", reason: "people" })).toBe(
+      "HQ didn't take this list. Pick at most 50 people.",
+    );
+  });
+
+  // witness: packages/client-runtime/src/zerops/hq/refusals.ts | if (code === "app_not_found" || reason === "app_not_found") → if (reason === "app_not_found")
+  it("A project gone from HQ is said so, by HQ's code alone", () => {
+    expect(mergersRefusalWords({ code: "app_not_found", reason: undefined })).toBe(
+      "This project is gone from HQ.",
+    );
   });
 });
