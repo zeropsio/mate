@@ -636,6 +636,8 @@ export const KeyLinkDown = Schema.Union([
     userId: Schema.String,
     sessionId: Schema.String,
     expiresIn: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
+    // How long a connection opened or extended with this ticket may stay open.
+    grantSeconds: Schema.optionalKey(Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0))),
   }),
   Schema.Struct({ type: Schema.Literal("close-session"), sessionId: Schema.String }),
   Schema.Struct({
