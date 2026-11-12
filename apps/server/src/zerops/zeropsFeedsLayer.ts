@@ -50,6 +50,7 @@ import * as ZeropsGitCredentialFileModule from "./ZeropsGitCredentialFile.ts";
 import * as ZeropsObserveCredentialFileModule from "./ZeropsObserveCredentialFile.ts";
 import * as ZeropsAccessReadModule from "./ZeropsAccessRead.ts";
 import * as ZeropsMateAccessListModule from "./ZeropsMateAccessList.ts";
+import * as ZeropsProjectFeedModule from "./ZeropsProjectFeed.ts";
 import * as ZeropsMateOwnerModule from "./ZeropsMateOwner.ts";
 import * as ZeropsChiefOpenerModule from "./ZeropsChiefOpener.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
@@ -99,6 +100,8 @@ export const ZeropsMateAccessListLive = Layer.unwrap(
 /** One connection registry shared by the HQ link, WebSocket and HTTP transports. */
 export const ZeropsConnectionsLive = ZeropsConnectionsModule.layer.pipe(
   Layer.provideMerge(ZeropsTicketDoorModule.layer),
+  // The project feed over the same list instance: its own project and process frames.
+  Layer.provideMerge(ZeropsProjectFeedModule.derivedLayer),
   Layer.provideMerge(ZeropsMateAccessListLive),
 );
 
@@ -164,13 +167,13 @@ const CrewPlatformProcessesLive = Layer.effect(
   CrewPlatformProcesses,
   Effect.gen(function* () {
     const reader = yield* ZeropsRestartReadModule.ZeropsRestartRead;
-    const access = yield* ZeropsMateAccessListModule.ZeropsMateAccessList;
+    const feed = yield* ZeropsProjectFeedModule.ZeropsProjectFeed;
     return CrewPlatformProcesses.of({
       read: reader.read.pipe(
         Effect.map((evidence) => evidence.processes),
         Effect.orElseSucceed(() => undefined),
       ),
-      moved: Effect.map(access.processes, Stream.as(undefined)),
+      moved: Effect.map(feed.processes, Stream.as(undefined)),
     });
   }),
 ).pipe(Layer.provide(ZeropsRestartReadModule.layer));
