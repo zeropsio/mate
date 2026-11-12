@@ -191,7 +191,7 @@ export interface ZeropsAgentActivity {
    * nothing waits, or where it relays none (the row keeps its last words).
    */
   readonly question?: string | undefined;
-  /** It waits on a value its agent asked the person for, not on a question: "Needs a key". */
+  /** It waits on a value its agent asked the person for, not on a question: "Needs a value". */
   readonly asksFor?: "key";
   /** The first line of the error the Mate stopped on: a failed row's third line. */
   readonly errorLine?: string | undefined;

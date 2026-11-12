@@ -131,7 +131,7 @@ describe("the Mate asks for a value on the ask card", () => {
   it("names where the value goes and the Mate's why, behind a masked field, Keep hidden on, Save to vault and Not now", async () => {
     const { container } = await mount(ask());
     const card = container.querySelector('[data-ask-kind="vault"]');
-    expect(card?.getAttribute("aria-label")).toBe("Add NEW_STRIPE_KEY to Milo's vault");
+    expect(card?.getAttribute("aria-label")).toBe("Add Stripe secret key to Milo's vault");
     expect(container.textContent).toContain("This Mate · every app");
     expect(container.querySelector("[data-ask-why]")?.textContent).toBe(
       "Milo: for the questionnaire API",
@@ -244,7 +244,7 @@ describe("the Mate asks for a value on the ask card", () => {
 
   it("an app's own value says it goes to that app's vault", async () => {
     const { container } = await mount(
-      ask({ key: "MAIL_FROM", scope: { kind: "service", hostname: "appdev" } }),
+      ask({ key: "MAIL_FROM", label: null, scope: { kind: "service", hostname: "appdev" } }),
     );
     expect(container.querySelector("[data-ask-id]")?.getAttribute("aria-label")).toBe(
       "Add MAIL_FROM to appdev's vault",
