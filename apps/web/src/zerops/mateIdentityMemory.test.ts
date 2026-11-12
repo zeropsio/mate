@@ -4,7 +4,10 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   readChiefMemory,
+  readFooterBoxMemory,
+  readFooterMemory,
   readMateMemory,
+  writeFooterMemory,
   writeChiefMemory,
   rememberMates,
   seededIdentities,
@@ -187,5 +190,24 @@ describe("whose Chief a reload remembers", () => {
     held.setItem("mate:chief:v1", "{not json");
     expect(readChiefMemory("org-1", held)).toBeUndefined();
     expect(readChiefMemory("org-1", undefined)).toBeUndefined();
+  });
+});
+
+describe("the composer's box a reload remembers", () => {
+  // witness: apps/web/src/zerops/mateIdentityMemory.ts | ? `composer:${Math.round(box)}` → ? footer
+  it("draws the composer's box as tall as it stood with a question waiting over its field", () => {
+    const held = storage();
+    writeFooterMemory("thread", "composer", 207, held);
+    expect(readFooterMemory("thread", held)).toBe("composer");
+    expect(readFooterBoxMemory("thread", held)).toBe(207);
+  });
+
+  // witness: apps/web/src/zerops/mateIdentityMemory.ts | footer === "composer" && box !== undefined → box !== undefined
+  it("remembers no height for a foot where someone else writes", () => {
+    const held = storage();
+    writeFooterMemory("thread", "composer", 207, held);
+    writeFooterMemory("thread", "read-only", 207, held);
+    expect(readFooterMemory("thread", held)).toBe("read-only");
+    expect(readFooterBoxMemory("thread", held)).toBeUndefined();
   });
 });

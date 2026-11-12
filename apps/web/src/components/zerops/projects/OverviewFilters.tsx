@@ -4,6 +4,11 @@
  * viewer's own — each a link, so the menu and a shared address can open the overview on one.
  */
 import { Link } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+
+import { fadeFillOver } from "~/lib/loadFills";
+import { useCardRowFirstFilled } from "./cardRowFill";
+import { OverviewFiltersStandIn } from "./OverviewStandIn";
 
 import { Tab } from "../../ui/tab-strip";
 import { Button } from "../../ui/button";
@@ -11,12 +16,16 @@ import { EmptyState } from "../../ui/empty";
 import { MateFace } from "../primitives";
 import { overviewFilterTabs, type OverviewShow } from "./projectsView.logic";
 
+/** How long the filters keep their seats for the cards' first fill before they stand alone. */
+const FILTERS_WAIT_FOR_CARDS_MS = 1_500;
+
 export function OverviewFilters({
   show,
   waiting,
   mine,
   ownsMates,
   onShow,
+  withCards,
 }: {
   readonly show: OverviewShow | undefined;
   /** How many projects something waits on the viewer in. */
@@ -27,11 +36,37 @@ export function OverviewFilters({
   readonly ownsMates: boolean;
   /** In a conversation's panel the filter stays where it is: no address to go to. */
   readonly onShow?: ((show: OverviewShow | undefined) => void) | undefined;
+  /**
+   * Cards stand under the filters and the page shows them now: on a load the filters keep their
+   * seats until the cards' first fill (`cardRowFill`), so the page fills once. They came 180 to
+   * 400 ms ahead of the cards, a moment of their own.
+   */
+  readonly withCards?: boolean | undefined;
 }) {
+  const filled = useCardRowFirstFilled();
+  const waits = withCards === true && !filled;
+  // No card answering holds the page's own words for long.
+  const [waitedOut, setWaitedOut] = useState(false);
+  useEffect(() => {
+    if (!waits) return;
+    const timer = setTimeout(() => setWaitedOut(true), FILTERS_WAIT_FOR_CARDS_MS);
+    return () => clearTimeout(timer);
+  }, [waits]);
+  const held = waits && !waitedOut;
+  // Held at any time (the page mounts hidden, and holds only once it shows), they fade in.
+  const [stoodIn, setStoodIn] = useState(held);
+  if (held && !stoodIn) setStoodIn(true);
   const tabs = overviewFilterTabs({ waiting, mine, ownsMates, show });
   if (tabs.length === 0) return null;
+  if (held) return <OverviewFiltersStandIn />;
   return (
-    <nav aria-label="Show projects" className="ov-filters" data-zerops-surface="overview-filters">
+    <nav
+      aria-label="Show projects"
+      className="ov-filters"
+      data-zerops-surface="overview-filters"
+      // Taking their seats' place, they fade in where they stand, as the cards do.
+      ref={stoodIn ? fadeFillOver : undefined}
+    >
       {tabs.map((filter) => {
         const current = filter.show === show;
         const words = (

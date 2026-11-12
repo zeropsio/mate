@@ -25,10 +25,25 @@ import { useThreadDetail } from "~/state/entities";
 import { useToldActivity } from "~/zerops/useMenuMateReadings";
 import { MateLinkLine, type Spoken } from "./MateLinkLine";
 import { RouteStandIn } from "./RouteStandIn";
-import { MateComingFrame, MateComingHeader } from "./ZeropsMateComingPage";
+import { HeaderControlsStandIn, MateComingFrame, MateComingHeader } from "./ZeropsMateComingPage";
 import { MateEmptyStateView } from "./ZeropsMateEmptyState";
 
 const SILENT_STAGE: Spoken = { surface: "stage", text: null, actions: [], processes: false };
+
+/**
+ * Whether the stage only opens the conversation: nothing to say but that it is on its way. A
+ * stage with words of its own (a Mate down or restarting, a conversation gone, a wait past its
+ * bound) is no opening: no hand-over is coming, so it holds none of the conversation's frame.
+ */
+export function stageOpens(voice: Spoken): boolean {
+  return (
+    voice.opening === true ||
+    (voice.text === null &&
+      !voice.processes &&
+      voice.actions.length === 0 &&
+      voice.restarting !== true)
+  );
+}
 
 /**
  * The route's page while its conversation cannot show. A route whose environment holds no Mate it
@@ -130,8 +145,15 @@ function MateLinkStageOf({
   const askAgain = askAgainLabel(voice.actions);
   const onTryNow = askAgain === null ? undefined : () => tryAgain(environmentId);
   const mate = known === null ? null : { ...known, connected: false };
-  const header =
-    mate === null ? null : <MateComingHeader besidePanel={panel !== null} mate={mate} />;
+  // The header's bar holds its own controls from the first frame, whoever lives here; an open
+  // panel's stand-in carries them itself (`useConversationPanelStandIn`).
+  const opens = failure === null && stageOpens(voice);
+  const header = (
+    <>
+      {mate === null ? null : <MateComingHeader besidePanel={panel !== null} mate={mate} />}
+      {panel === null && opens ? <HeaderControlsStandIn /> : null}
+    </>
+  );
   if (failure !== null)
     return (
       <MateComingFrame composer={composer} header={header} panel={panel}>
@@ -140,11 +162,7 @@ function MateLinkStageOf({
     );
   return (
     <MateComingFrame composer={composer} header={header} panel={panel}>
-      {voice.opening === true ||
-      (voice.text === null &&
-        !voice.processes &&
-        voice.actions.length === 0 &&
-        voice.restarting !== true) ? (
+      {stageOpens(voice) ? (
         <ConversationOpeningStage
           ready={false}
           name={known?.name}
@@ -209,14 +227,21 @@ function MateLinkStageOf({
 export function MateOpeningView({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
   const voice = useMateVoice();
   const held = useThreadDetail(threadRef, (detail) => detail !== null);
+  const spoken: Spoken = voice.surface === "none" ? SILENT_STAGE : { ...voice, surface: "stage" };
   return (
     <MateLinkStage
       threadKey={scopedThreadKey(threadRef)}
       readPending={!held}
-      composer={<RouteStandIn threadRef={threadRef} />}
+      composer={
+        <RouteStandIn
+          key={scopedThreadKey(threadRef)}
+          opens={stageOpens(spoken)}
+          threadRef={threadRef}
+        />
+      }
       environmentId={threadRef.environmentId}
       projectId={null}
-      voice={voice.surface === "none" ? SILENT_STAGE : { ...voice, surface: "stage" }}
+      voice={spoken}
     />
   );
 }
