@@ -227,8 +227,8 @@ export interface ApplicationEnvironmentFacts {
   /** Its changes open, which *Put it live*'s one press merges. */
   readonly pullRequests: ReadonlyArray<Pick<FlowPullRequest, "kind">>;
   /**
-   * Somebody said its production is deployed outside Mate (HQ's
-   * `outsideProduction`): no door offers a production here, which would be a second one.
+   * Its production is deployed outside Mate (its environment of the `outside` kind): no door offers
+   * a production here, which would be a second one.
    */
   readonly productionOutside?: boolean | undefined;
 }

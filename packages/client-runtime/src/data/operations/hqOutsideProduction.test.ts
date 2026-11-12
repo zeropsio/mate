@@ -41,7 +41,12 @@ describe("a production deployed outside Mate, said in HQ", () => {
       const sent: unknown[] = [];
       const { store, operations } = operationsOver(async (...args) => {
         sent.push(args);
-        return { address, setBy: "u-owner", setAt: "2026-11-12T09:00:00.000Z" };
+        return {
+          kind: "outside" as const,
+          address,
+          setBy: "u-owner",
+          setAt: "2026-11-12T09:00:00.000Z",
+        };
       });
       yield* operations.submit({
         kind: "set-outside-production",

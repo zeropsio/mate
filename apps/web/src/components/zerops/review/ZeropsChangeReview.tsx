@@ -496,7 +496,7 @@ function ChangeReviewData({
       project={project}
       appId={target.groupId}
       stages={flow === undefined ? NO_STAGES : mainStagesOf(flow).map((entry) => entry.name)}
-      productionOutside={flow?.outsideProduction !== undefined}
+      productionOutside={flow?.outside !== undefined}
       release={offerStale ? undefined : flow?.release.gate}
       mate={
         mate === undefined
@@ -671,7 +671,7 @@ export interface ChangeReviewViewProps {
   readonly stages?: ReadonlyArray<string>;
   /**
    * Somebody said the project's production is deployed outside Mate
-   * (`ZeropsProjectFlow.outsideProduction`); read only while it has no production here.
+   * (`ZeropsProjectFlow.outside`); read only while it has no production here.
    */
   readonly productionOutside?: boolean | undefined;
   /** The Mate's previews, each pair's stage half by its service: "Try it". */
