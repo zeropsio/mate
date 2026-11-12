@@ -39,7 +39,7 @@ import {
   AppSchedulesView,
   AppWebhooksView,
 } from "~/components/zerops/projectAutomation/sourceForms";
-import { SectionAction, SectionLabel } from "~/components/zerops/system";
+import { SectionLabel } from "~/components/zerops/system";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import type { TaskSession } from "~/zerops/taskSession.logic";
 import { MergingHarness } from "./projectMergingFixtures";
@@ -732,13 +732,11 @@ function DialogFor({ kind }: { readonly kind: SourceKind }) {
   );
 }
 
-/** The section as the project page opens it: under its label, flush on the page's card. */
+/** The section as the project page holds it: under its label, flush on the page's card. */
 function OnPage({ children }: { readonly children: ReactNode }) {
   return (
     <div className="pp-group">
-      <SectionLabel action={<SectionAction onClick={nothing}>Close</SectionAction>}>
-        Automation
-      </SectionLabel>
+      <SectionLabel>Automation</SectionLabel>
       <div className="pp-card pp-detail" data-flush="">
         {children}
       </div>
