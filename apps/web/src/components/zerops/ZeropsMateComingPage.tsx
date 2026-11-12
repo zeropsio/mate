@@ -1105,6 +1105,7 @@ function ExistingMateComingPage({
               name={named.name}
               mate={named}
               activity={liveActivity ?? toldActivity}
+              refusal={linkVoice.surface === "none" ? undefined : linkVoice.refusal}
               timestampFormat={timestampFormat}
             />
           ) : view === null ? null : (

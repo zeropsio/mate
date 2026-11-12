@@ -96,12 +96,12 @@ const isConnectionBlockedError = Schema.is(ConnectionBlockedError);
 
 /** Region L as the supervisor publishes it; null for a block that names no reason. */
 export function linkPhaseOf(state: SupervisorConnectionState): LinkPhase | null {
-  const unavailable =
-    state.lastFailure?.reason === "remote-unavailable"
-      ? { unavailableReason: state.lastFailure.detail }
-      : state.lastFailure?.reason === "mate-not-linked"
-        ? { unavailableReason: state.lastFailure.detail, noLink: true as const }
-        : {};
+  const hqWords =
+    state.lastFailure?._tag === "ConnectionTransientError" ? state.lastFailure.hqWords : undefined;
+  const unavailable = {
+    ...(hqWords === undefined ? {} : { unavailableReason: hqWords }),
+    ...(state.lastFailure?.reason === "mate-not-linked" ? { noLink: true as const } : {}),
+  };
   switch (state.phase) {
     case "available":
       return { phase: "idle" };

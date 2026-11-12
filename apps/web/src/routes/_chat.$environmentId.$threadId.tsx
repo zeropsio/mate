@@ -1,7 +1,10 @@
 import { useAtomValue } from "@effect/atom-react";
 import { shownHqMenuNavigationAtom } from "@t3tools/client-runtime/data";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
-import { openingEndPhrase } from "@t3tools/client-runtime/zerops/environments";
+import {
+  openingEndPhrase,
+  reachabilityRefusalWords,
+} from "@t3tools/client-runtime/zerops/environments";
 import { STILL_READING_PATIENCE_MS } from "@t3tools/client-runtime/zerops/projections";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
@@ -30,6 +33,7 @@ import { useEnvironmentQuery } from "../state/query";
 import { environmentShell } from "../state/shell";
 import { useEnvironmentThread } from "../state/threads";
 import { RouteGateWords } from "./-routeGate";
+import { useEnvironmentReachability } from "./-environmentTargets";
 
 function ChatThreadRoutePending() {
   const threadRef = Route.useParams({ select: (params) => resolveThreadRouteRef(params) });
@@ -77,6 +81,10 @@ function ChatThreadRouteView() {
   });
   const serverThreadStarted = threadHasStarted(serverThreadDetail);
   const routeMate = useZeropsMate(threadRef?.environmentId ?? NO_ENVIRONMENT);
+  // HQ's words where it refused the last attempt to enter the Mate, said under an opening's end.
+  const refusal = reachabilityRefusalWords(
+    useEnvironmentReachability(threadRef?.environmentId ?? null),
+  );
   const [conversationShown, setConversationShown] = useState(false);
   // Its messages' read failed, or the list has named the thread for a while without them.
   const readFailed = Option.isSome(
@@ -165,7 +173,7 @@ function ChatThreadRouteView() {
         />
       ) : stage === "quiet" ? null : (
         <RouteGateWords
-          phrase={openingEndPhrase(stage)}
+          phrase={openingEndPhrase(stage, refusal)}
           projectId={null}
           environmentId={threadRef.environmentId}
         />

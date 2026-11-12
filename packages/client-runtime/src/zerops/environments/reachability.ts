@@ -106,6 +106,15 @@ export const opensQuietly = (verdict: Reachability): boolean =>
     verdict.waitingOn !== "visible" &&
     verdict.waitingOn !== "mate-link");
 
+/**
+ * HQ's words on the last attempt to enter the Mate, where HQ refused it with words (its link's
+ * `unavailableReason`); a successful attempt clears them.
+ */
+export const reachabilityRefusalWords = (verdict: Reachability | null): string | undefined =>
+  verdict?.kind === "connecting" || verdict?.kind === "reconnecting"
+    ? verdict.unavailableReason
+    : undefined;
+
 /** Whether a link to this target is still worth offering: everything but gone and replaced. */
 export const environmentLinkable = (verdict: Reachability): boolean =>
   verdict.kind !== "gone" && verdict.kind !== "replaced";

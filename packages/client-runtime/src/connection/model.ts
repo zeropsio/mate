@@ -113,6 +113,8 @@ export class ConnectionTransientError extends Schema.TaggedError<ConnectionTrans
   {
     reason: ConnectionTransientReason,
     detail: Schema.String,
+    /** The part of `detail` HQ itself sent, where HQ refused with words; the web's own fallbacks are only `detail`. */
+    hqWords: Schema.optionalKey(Schema.String),
     traceId: Schema.optionalKey(Schema.String),
   },
 ) {
