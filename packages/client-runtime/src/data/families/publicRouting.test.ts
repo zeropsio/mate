@@ -115,6 +115,22 @@ function run(inputs: ReadonlyArray<AccountInput>): {
   return { state, directives };
 }
 
+// witness: packages/client-runtime/src/data/families/publicRouting.ts | isSynced: isSynced ?? inPlace(sslEnabled, domains), → isSynced: isSynced ?? false,
+it.each([
+  { name: "its certificate active", patch: {}, inPlace: true },
+  {
+    name: "its certificate still being installed",
+    patch: { domains: [{ ...RECORDED.domains[0], sslStatus: "BEING_INSTALLED" }] },
+    inPlace: false,
+  },
+])(
+  "keeps a routing whose listing leaves out whether it is in place, in place by its domains: $name",
+  ({ patch, inPlace }) => {
+    const { isSynced: _said, deleteOnSync: _delete, lastSync: _sync, ...unsaid } = RECORDED;
+    expect(decode({ ...unsaid, ...patch })?.value.isSynced).toBe(inPlace);
+  },
+);
+
 describe("the organization's routings, frame by frame (recorded 2026-10-06)", () => {
   it("a subdomain turned off: the listing's delete alone takes its address off the project", () => {
     const result = run([...live(routing("r1")), listed([], ["r1"])]);
