@@ -87,6 +87,7 @@ import {
   type HqSlackConnectRequest,
   type HqWebhookRequest,
 } from "@t3tools/shared/hqIntake";
+import { HqTakeOverList, HqTakeOverReplaced } from "@t3tools/shared/hqTakeOver";
 import type { OverviewLogins } from "@t3tools/shared/mateLink";
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 import * as Option from "effect/Option";
@@ -566,6 +567,20 @@ export interface HqApi {
   readonly setAiKey?: (provider: string, value: string) => Promise<HqAiKeyView>;
   /** Forgets the organization's key for a provider (`DELETE /api/org/ai-keys/:provider`). */
   readonly removeAiKey?: (provider: string) => Promise<void>;
+  /**
+   * The integration tokens a member minted that keep Zerops refusing their removal, as HQ offers
+   * them to an Owner or Admin (`GET /api/members/:userId/take-over`).
+   */
+  readonly takeOverList?: (userId: string) => Promise<HqTakeOverList>;
+  /**
+   * Replaces one of them with a token minted with the person's own access token, then deletes it
+   * (`POST /api/members/:userId/take-over/:tokenId`); a Mate's key goes to `ownerUserId` when given.
+   */
+  readonly takeOver?: (
+    userId: string,
+    tokenId: string,
+    ownerUserId: string | undefined,
+  ) => Promise<HqTakeOverReplaced>;
   /** Whether the organization's Slack app is connected, and to which workspace (`GET /api/org/slack`). */
   readonly slack?: () => Promise<HqSlackView>;
   /** The manifest the organization's Slack app is made from (`GET /api/org/slack/manifest`). */
@@ -1022,6 +1037,8 @@ const readChangeVerdict = decoded(ChangeDetailResponse, "a change's review");
 const readIntakeView = decoded(HqIntakeView, "GitHub issues as tasks");
 const readAiKeys = decoded(Schema.Array(HqAiKeyView), "the organization's AI keys");
 const readAiKey = decoded(HqAiKeyView, "an AI key");
+const readTakeOverList = decoded(HqTakeOverList, "a member's tokens to take over");
+const readTakeOverReplaced = decoded(HqTakeOverReplaced, "a token's take-over");
 const readSlack = decoded(HqSlackView, "the Slack app");
 const readSlackChannels = decoded(HqSlackChannels, "the Slack app's channels");
 const readDiscord = decoded(HqDiscordView, "the Discord application");
@@ -1981,6 +1998,21 @@ export function makeHqApi(input: {
         true,
       );
     },
+    takeOverList: async (userId) =>
+      readTakeOverList(await authorized(`/api/members/${encodeURIComponent(userId)}/take-over`)),
+    takeOver: async (userId, tokenId, ownerUserId) =>
+      readTakeOverReplaced(
+        await authorized(
+          `/api/members/${encodeURIComponent(userId)}/take-over/${encodeURIComponent(tokenId)}`,
+          {
+            method: "POST",
+            body: JSON.stringify(
+              await withAccess(ownerUserId === undefined ? {} : { ownerUserId }),
+            ),
+          },
+          true,
+        ),
+      ),
     slack: async () => readSlack(await authorized("/api/org/slack")),
     slackManifest: async () =>
       bodyOf(await authorized("/api/org/slack/manifest"), "the Slack app's manifest"),

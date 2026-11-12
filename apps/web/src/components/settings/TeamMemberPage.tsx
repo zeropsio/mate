@@ -13,7 +13,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import type { OrgMembership } from "@t3tools/client-runtime/zerops/teamRoles";
 import { mayChangeAccess } from "@t3tools/client-runtime/zerops/projectAccess";
 import { Trash2Icon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import {
   AlertDialog,
@@ -46,6 +46,8 @@ import type { TeamPerson } from "./teamSettings.logic";
 import { Failure } from "../ui/failure";
 import { Loading } from "../ui/loading";
 import { useTeam } from "./useTeam";
+import { MemberTakeOverView } from "./MemberTakeOver";
+import { useMemberTakeOver } from "../../zerops/useMemberTakeOver";
 
 /** What the page asks Zerops to do; each rejects with what to tell the person. */
 export interface TeamMemberActions {
@@ -82,6 +84,7 @@ export function TeamMemberView({
   organizationName,
   actions,
   onRemoved,
+  takeOver,
 }: {
   readonly person: TeamPerson;
   readonly viewerRole: string | undefined;
@@ -96,6 +99,8 @@ export function TeamMemberView({
   /** Absent: nothing is changed from here. */
   readonly actions?: TeamMemberActions;
   readonly onRemoved?: () => void;
+  /** What the member made that keeps Zerops refusing their removal, shown above the Danger zone. */
+  readonly takeOver?: ReactNode;
 }) {
   const roleEditable = actions !== undefined && person.change !== null;
   const memberRole = person.membership.roleCode;
@@ -231,6 +236,12 @@ export function TeamMemberView({
 
       {roleEditable ? (
         <>
+          {end === "remove" && takeOver !== undefined ? (
+            <>
+              <div aria-hidden="true" className="tm-rule" />
+              {takeOver}
+            </>
+          ) : null}
           <div aria-hidden="true" className="tm-rule" />
           <section aria-label="Danger zone" className="tm-section">
             <div className="tm-block-head">
@@ -337,6 +348,22 @@ export function TeamMemberPage({ clientUserId }: { readonly clientUserId: string
         : read.status === "failed"
           ? "Couldn't read their project access from Zerops."
           : undefined;
+  // Only an Owner or Admin takes over what a member made, and never their own.
+  const takesOver =
+    (team.viewerRole === "OWNER" || team.viewerRole === "ADMIN") &&
+    person != null &&
+    !person.you &&
+    !person.pending;
+  const takeOver = useMemberTakeOver(takesOver ? person?.userId : undefined);
+  const people = useMemo(
+    () =>
+      view.kind === "people"
+        ? view.people.flatMap(({ userId, name, pending }) =>
+            userId === undefined || pending ? [] : [{ userId, name }],
+          )
+        : [],
+    [view],
+  );
   const actions = useMemo((): TeamMemberActions | undefined => {
     if (!team.writable || clientId === null) return undefined;
     return {
@@ -376,6 +403,20 @@ export function TeamMemberPage({ clientUserId }: { readonly clientUserId: string
           organizationName={team.organizationName}
           person={person}
           projects={team.projects}
+          {...(takesOver && person.userId !== undefined
+            ? {
+                takeOver: (
+                  <MemberTakeOverView
+                    member={person.userId}
+                    memberName={person.name}
+                    onAgain={takeOver.again}
+                    onReplace={takeOver.replace}
+                    people={people}
+                    read={takeOver.read}
+                  />
+                ),
+              }
+            : {})}
           viewerRole={team.viewerRole}
         />
       )}
