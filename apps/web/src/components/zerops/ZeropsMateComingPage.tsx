@@ -1245,8 +1245,9 @@ export function MateComingHeader({
 
 /**
  * A conversation header's own controls, the terminal's and the panel's toggles, where the
- * conversation's header draws them, inert: the header's bar holds them from the first frame of a
- * load, and the conversation's own take their place without anything moving.
+ * conversation's header draws them, inert. While an opening stage waits they wait with the rest of
+ * the header (`ConversationOpeningWaits`) and arrive with the conversation: alone in an empty bar
+ * they flashed as two stray buttons on every Mate opened (the owner, 2026-11-12).
  */
 export function HeaderControlsStandIn() {
   return (
@@ -1255,17 +1256,19 @@ export function HeaderControlsStandIn() {
       data-workspace-titlebar-controls
       inert
     >
-      <PanelLayoutControls
-        liveAgentCount={0}
-        onToggleRightPanel={nothing}
-        onToggleTerminal={nothing}
-        rightPanelAvailable
-        rightPanelOpen={false}
-        rightPanelShortcutLabel={null}
-        terminalAvailable
-        terminalOpen={false}
-        terminalShortcutLabel={null}
-      />
+      <ConversationOpeningWaits className="contents">
+        <PanelLayoutControls
+          liveAgentCount={0}
+          onToggleRightPanel={nothing}
+          onToggleTerminal={nothing}
+          rightPanelAvailable
+          rightPanelOpen={false}
+          rightPanelShortcutLabel={null}
+          terminalAvailable
+          terminalOpen={false}
+          terminalShortcutLabel={null}
+        />
+      </ConversationOpeningWaits>
     </div>
   );
 }

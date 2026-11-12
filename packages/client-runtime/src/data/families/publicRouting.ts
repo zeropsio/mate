@@ -77,7 +77,7 @@ const Said = <S extends Schema.Top>(schema: S) =>
 const Row = Schema.Struct({
   id: Schema.String,
   projectId: Schema.optionalKey(Schema.String),
-  isSynced: Schema.Boolean,
+  isSynced: Said(Schema.Boolean),
   isEditable: Said(Schema.Boolean),
   deleteOnSync: Said(Schema.Boolean),
   lastSync: Said(Schema.String),
@@ -104,6 +104,21 @@ const Row = Schema.Struct({
   _version: Schema.optionalKey(Schema.Union([Schema.Finite, Schema.Null])),
 });
 const decodeRow = Schema.decodeUnknownOption(Row);
+
+/**
+ * Whether a routing that does not say if it is in place is: its domains say — each certificate
+ * active, or for a routing without SSL each domain's DNS checked. Some organizations' listings
+ * leave the flag out of a routing that serves; dropping the row made its address read as being
+ * turned on for ever, and the place as coming up.
+ */
+function inPlace(sslEnabled: boolean, domains: (typeof Row.Type)["domains"]): boolean {
+  return (
+    domains.length > 0 &&
+    domains.every((domain) =>
+      sslEnabled ? domain.sslStatus === "ACTIVE" : domain.dnsCheckStatus === "OK",
+    )
+  );
+}
 
 /** A domain as its row says it, each unsaid part left out. */
 function domainOf(domain: (typeof Row.Type)["domains"][number]): PublicRoutingDomain {
@@ -165,7 +180,7 @@ export const publicRoutingFamily: FamilySpec<"publicRouting"> = {
           version: _version ?? null,
           value: {
             ...(projectId === undefined ? {} : { projectId }),
-            isSynced,
+            isSynced: isSynced ?? inPlace(sslEnabled, domains),
             ...(isEditable == null ? {} : { isEditable }),
             ...(deleteOnSync == null ? {} : { deleteOnSync }),
             ...(lastSync === undefined ? {} : { everSynced: lastSync !== null && lastSync !== "" }),
