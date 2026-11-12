@@ -264,9 +264,8 @@ export function ConversationOpeningWaits({
 ) & {
   readonly whole?: boolean;
   /**
-   * The conversation's foot: while the stage waits, all of it is unseen but the composer's box
-   * where one stood at the last visit (`data-box-stands`), which holds its place from the first
-   * frame; what the box holds, and what stands around it, arrive with the conversation.
+   * The conversation's foot: unseen and taking no keys while the stage waits, it arrives with the
+   * conversation.
    */
   readonly foot?: boolean;
 }) {

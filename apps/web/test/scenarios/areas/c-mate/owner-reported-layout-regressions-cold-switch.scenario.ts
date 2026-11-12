@@ -11,10 +11,12 @@ describe("owner-reported layout regressions", () => {
   describe("Decision: geometry relations only; no style pins.", () => {
     scenarioSuite((it) => {
       // The owner, 2026-11-12: "it's not just reload, similar problems have even switching between
-      // cold mates". The foot holds what stood there until the new conversation's foot is known.
-      // witness: apps/web/src/components/zerops/RouteStandIn.tsx | (remembered === undefined && standing !== undefined) → false
+      // cold mates", and of the empty box that then stood through the switch: "why is the composer
+      // getting stuck when switching between mates? and then disappears before the actual convo
+      // loads". The header's bar stays; the composer comes with its conversation.
+      // witness: apps/web/src/components/chat/ConversationOpeningStage.tsx | "data-opening-waits-foot": wait === "" ? undefined : wait, → "data-opening-waits-foot": undefined,
       it.effect(
-        "a switch to a Mate not opened here keeps the header's bar and the composer's box standing",
+        "a switch to a Mate not opened here keeps the header's bar, and no composer stands before its conversation",
         () =>
           Effect.gen(function* () {
             const s = yield* createScenario([installArea]);
@@ -61,13 +63,16 @@ describe("owner-reported layout regressions", () => {
               ).toEqual(new Set([first[part]]));
             expect(first.composer, `ASSERTION: a composer stood:\n${trace}`).not.toBeNull();
             expect(
-              frames.filter((frame) => frame.composer === null).length,
-              `ASSERTION: the composer's box never leaves:\n${trace}`,
+              frames.filter((frame) => !frame.shown && frame.composer !== null).length,
+              `ASSERTION: under the stage no composer stands, empty or not:\n${trace}`,
             ).toBe(0);
             expect(
-              new Set(frames.filter((frame) => !frame.shown).map((frame) => frame.composer)),
-              `ASSERTION: under the stage the box is the one that stood:\n${trace}`,
-            ).toEqual(new Set([first.composer]));
+              frames.filter(
+                (frame, at) =>
+                  at > 0 && (frame.composer === null) !== (frames[at - 1]!.composer === null),
+              ).length,
+              `ASSERTION: the composer leaves once and comes once, with the conversation:\n${trace}`,
+            ).toBe(2);
           }),
       );
     });

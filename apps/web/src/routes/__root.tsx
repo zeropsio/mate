@@ -100,7 +100,7 @@ import {
   useRouteGateInputs,
 } from "./-environmentTargets";
 import { mateNoticeVoice } from "../zerops/mateNoticeVoice";
-import { MateLinkStage, stageOpens } from "../components/zerops/MateLinkStage";
+import { MateLinkStage } from "../components/zerops/MateLinkStage";
 import { RouteStandIn } from "../components/zerops/RouteStandIn";
 import { resolveThreadRouteRef } from "../threadRoutes";
 import { RouteGateView } from "./-routeGate";
@@ -334,13 +334,7 @@ function SignedInRootRouteView() {
                         routeThreadRef === null ? undefined : scopedThreadKey(routeThreadRef)
                       }
                       composer={
-                        routeThreadRef === null ? null : (
-                          <RouteStandIn
-                            key={scopedThreadKey(routeThreadRef)}
-                            opens={stageOpens(voice.surface === "none" ? SILENT_STAGE : voice)}
-                            threadRef={routeThreadRef}
-                          />
-                        )
+                        routeThreadRef === null ? null : <RouteStandIn threadRef={routeThreadRef} />
                       }
                       environmentId={routeEnvironment}
                       projectId={gateInputs.projectId}

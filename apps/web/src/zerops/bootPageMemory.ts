@@ -1,7 +1,7 @@
 /**
  * What index.html's first frame draws of the page beside the menu, as this page stood when it was
- * left: the loading rows' tone, the menu's edge and top band, the menu's and the header's own
- * controls and the composer's box, each where the app's first frame will draw it, so the two
+ * left: the loading rows' tone, the menu's edge and top band, and the menu's and the header's own
+ * controls, each where the app's first frame will draw it, so the two
  * frames are one picture and the app's adds only what needs the app: the stage, the names and the
  * person's picture. Written as the page is left
  * (a reload leaves it, `bootFrame.ts`), read by index.html's inline script, and used only for
@@ -20,31 +20,6 @@ const PAGE_ICONS = "main [data-chat-header] [data-panel-layout-controls] svg";
 /** What an icon is drawn from: plain shapes and their numbers, never markup. */
 const SHAPES = new Set(["path", "circle", "rect", "line", "polyline", "ellipse"]);
 const NUMBERS = /^(?:d|points|c[xy]|r[xy]?|x[12]?|y[12]?|width|height)$/u;
-
-/** The composer's box as drawn: where it stands, its surface, its ring and its shadow. */
-function boxOf(shell: HTMLElement): Record<string, unknown> | undefined {
-  const host = shell.querySelector<HTMLElement>(":scope > .chat-composer-glass-host");
-  if (host === null) return undefined;
-  return {
-    at: box(shell),
-    surface: getComputedStyle(shell, "::before").backgroundColor,
-    ring: getComputedStyle(host, "::after").borderTopColor,
-    shadow: getComputedStyle(host).boxShadow,
-  };
-}
-
-let standInBox: { readonly path: string; readonly box: Record<string, unknown> } | null = null;
-
-/**
- * The composer's box where an opening drew it (`ComposerStandInDock`, a ref callback): the box the
- * app's first frame draws at this address, which is the one the boot frame must draw too. The
- * composer that takes its place may stand taller for what is read with the conversation (an ask).
- */
-export function rememberStandInBox(shell: HTMLElement | null): void {
-  if (shell === null) return;
-  const drawn = boxOf(shell);
-  if (drawn !== undefined) standInBox = { path: window.location.pathname, box: drawn };
-}
 
 const painted = (element: Element) =>
   element.checkVisibility({ visibilityProperty: true, opacityProperty: true });
@@ -109,18 +84,5 @@ export function bootPage(): Record<string, unknown> {
   // To the hundredth: a seat a pixel wider than its door moved the subject by that pixel.
   if (door !== null && painted(door))
     page.door = Math.round(door.getBoundingClientRect().width * 100) / 100;
-  // The composer's box as it stands, which is what the next opening holds (`readFooterBoxMemory`);
-  // left before the composer stood, the box its opening drew (`rememberStandInBox`).
-  const stoodIn = standInBox?.path === window.location.pathname ? standInBox.box : undefined;
-  const shell = document.querySelector<HTMLElement>(
-    'main [data-slot="composer-shell"]:not([data-room-held])',
-  );
-  const own =
-    shell != null &&
-    shell.querySelector('[data-testid="composer-editor"]') !== null &&
-    painted(shell)
-      ? boxOf(shell)
-      : undefined;
-  if ((own ?? stoodIn) !== undefined) page.box = own ?? stoodIn;
   return page;
 }
