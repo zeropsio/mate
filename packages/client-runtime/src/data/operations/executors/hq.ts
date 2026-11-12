@@ -104,6 +104,8 @@ export type HqWrites = Pick<
   | "attachProject"
   | "createMate"
   | "establishZcpAuthorization"
+  | "askReadAccess"
+  | "closeReadAccess"
   | "keepDeployToken"
   | "handOver"
   | "setChief"
@@ -1165,6 +1167,22 @@ export function makeHqExecutor(ports: {
               { requestId, answer },
             );
           return answered(requestId, intent.projectId);
+        }
+        if (intent.kind === "ask-read-access" || intent.kind === "close-read-access") {
+          const call =
+            intent.kind === "ask-read-access"
+              ? api.askReadAccess && (() => api.askReadAccess!(intent.projectId).then(() => {}))
+              : api.closeReadAccess && (() => api.closeReadAccess!(intent.id, intent.outcome));
+          if (call === undefined)
+            return yield* Effect.fail<StreamFault>({
+              outcome: "definitive-refusal",
+              message: hqNeedsUpdate("ask for read access"),
+            });
+          yield* Effect.tryPromise({ try: call, catch: faultOf });
+          return answered(
+            requestId,
+            intent.kind === "ask-read-access" ? intent.projectId : intent.id,
+          );
         }
         if (intent.kind === "change-comment") {
           const said = yield* Effect.tryPromise({
