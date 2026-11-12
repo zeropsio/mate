@@ -87,7 +87,9 @@ import { ZeropsSignerStanding } from "./ZeropsSignerStanding.ts";
  *   HQ's id: it runs for nobody, on the organization's key only.
  *
  * Neither `crew` nor `standup` has a session the membership watch would end:
- * each is admitted only while this project opens for its person (X3).
+ * each is admitted only while its person may still run turns here (X3): as HQ
+ * says, on a login that person signed; as the Mate's access list says, on a
+ * login nobody signed.
  */
 export type TurnPrincipal =
   | { readonly kind: "session"; readonly subject: string }
@@ -172,6 +174,16 @@ const LOGIN_HOLDS_CREDENTIAL: Readonly<Record<ZeropsLoginState, boolean>> = {
   reconnect: false,
   "not-authorized": false,
 };
+
+/**
+ * D6's verdict on the login a turn would run on: `refusal` when this principal
+ * may not run it; else `signed` when it runs on a login whose recorded signer is
+ * this principal — not a project token, not an agent Mate signs nobody in to.
+ */
+interface LoginVerdict {
+  readonly signed: boolean;
+  readonly refusal?: OrchestrationDispatchCommandError;
+}
 
 export class ZeropsTurnAdmission extends Context.Service<
   ZeropsTurnAdmission,
@@ -277,14 +289,29 @@ export const make = Effect.gen(function* () {
 
   /**
    * A crew turn or a stand-up runs for somebody who is not at the keyboard, so
-   * it asks HQ whether that person may still run turns here: their signer
-   * standing (`ZeropsSignerStanding`, X3). A person's own session needs no such
-   * check: the membership watch ends a session this project no longer opens for.
-   * Only `may` admits; a person who lost the project is signed out by offboarding,
-   * one HQ no longer holds a token for is refused until they open Mate once.
+   * it asks whether that person may still run turns here (X3). On a login they
+   * signed, HQ answers: their signer standing (`ZeropsSignerStanding`). HQ answers
+   * only for the signers it records, so on a login nobody signed (a project
+   * token, an agent with no sign-in) the Mate's access list answers, as a session
+   * of theirs is kept by (`hasProjectAccess`). A person's own session needs no
+   * such check: the membership watch ends a session this project no longer opens
+   * for. Only `may` admits; a person who lost the project is signed out by
+   * offboarding, one HQ no longer holds a token for is refused until they open
+   * Mate once.
    */
-  const refuseWithoutAccess = Effect.fnUntraced(function* (startedBy: string) {
-    const standing = yield* signerStanding.standing(startedBy);
+  const refuseWithoutAccess = Effect.fnUntraced(function* (
+    startedBy: string,
+    signedByThem: boolean,
+  ) {
+    const standing = signedByThem
+      ? yield* signerStanding.standing(startedBy)
+      : yield* projectSigners
+          .hasProjectAccess(startedBy)
+          .pipe(
+            Effect.map((access) =>
+              access === undefined ? undefined : access ? ("may" as const) : ("no_access" as const),
+            ),
+          );
     if (standing === "may") return;
     return yield* new OrchestrationDispatchCommandError({
       message:
@@ -301,10 +328,10 @@ export const make = Effect.gen(function* () {
    * in, and its own signer must be this principal. A login the feed has not
    * listed yet is not signed in — unknown refuses.
    */
-  const refuseSomeoneElsesLogin = Effect.fnUntraced(function* (
+  const judgeLogin = Effect.fnUntraced(function* (
     login: MateLogin,
     principal: TurnPrincipal,
-  ) {
+  ): Effect.fn.Return<LoginVerdict> {
     const row = (yield* zeropsLogins.latest).find((entry) => entry.id === login.id);
     const refusal = yield* projectSigners.loginRefusal({
       key: login.id,
@@ -317,33 +344,40 @@ export const make = Effect.gen(function* () {
         changes: agentLogins.changes,
       },
     });
-    if (refusal === undefined) return;
-    return yield* new OrchestrationDispatchCommandError({
-      message: loginRefusalMessage(login, refusal),
-      agentAdmission: {
-        loginId: login.id,
-        reason:
-          refusal.kind !== "not-signed-in"
-            ? "not-permitted"
-            : refusal.auth === "needs-reauth" || refusal.auth === "reconnect"
-              ? "expired-login"
-              : "missing-sign-in",
-      },
-    });
+    // Admitted with no token: its recorded signer is this principal.
+    if (refusal === undefined) return { signed: true };
+    return {
+      signed: false,
+      refusal: new OrchestrationDispatchCommandError({
+        message: loginRefusalMessage(login, refusal),
+        agentAdmission: {
+          loginId: login.id,
+          reason:
+            refusal.kind !== "not-signed-in"
+              ? "not-permitted"
+              : refusal.auth === "needs-reauth" || refusal.auth === "reconnect"
+                ? "expired-login"
+                : "missing-sign-in",
+        },
+      }),
+    };
   });
 
-  /** D6 itself: the agent must be signed in, and signed in by this principal. */
-  const refuseSomeoneElsesAgent = Effect.fnUntraced(function* (
+  /**
+   * D6 itself: the agent must be signed in, and signed in by this principal.
+   * An agent Mate signs nobody in to, and a login no row lists, pass unsigned.
+   */
+  const judgeAgent = Effect.fnUntraced(function* (
     instanceId: string | undefined,
     principal: TurnPrincipal,
-  ) {
+  ): Effect.fn.Return<LoginVerdict> {
     const login = instanceId === undefined ? undefined : yield* zeropsLogins.resolve(instanceId);
-    if (login !== undefined) return yield* refuseSomeoneElsesLogin(login, principal);
+    if (login !== undefined) return yield* judgeLogin(login, principal);
     const agentId = yield* agentIdOf(instanceId);
-    if (agentId === undefined) return;
+    if (agentId === undefined) return { signed: false };
     const snapshot = yield* agentAuth.latest;
     const agent = snapshot.agents.find((entry) => entry.agentId === agentId);
-    if (agent === undefined) return;
+    if (agent === undefined) return { signed: false };
     const refusal = yield* projectSigners.turnRefusal({
       agentId,
       agent,
@@ -354,19 +388,23 @@ export const make = Effect.gen(function* () {
         changes: agentLogins.changes,
       },
     });
-    if (refusal === undefined) return;
-    return yield* new OrchestrationDispatchCommandError({
-      message: turnRefusalMessage(agentId, refusal),
-      agentAdmission: {
-        loginId: agentId,
-        reason:
-          refusal.kind !== "not-signed-in"
-            ? "not-permitted"
-            : refusal.auth === "needs-reauth" || refusal.auth === "reconnect"
-              ? "expired-login"
-              : "missing-sign-in",
-      },
-    });
+    // Admitted on a project token: nobody signed it. Otherwise its recorded signer is this principal.
+    if (refusal === undefined) return { signed: !agent.flagToken };
+    return {
+      signed: false,
+      refusal: new OrchestrationDispatchCommandError({
+        message: turnRefusalMessage(agentId, refusal),
+        agentAdmission: {
+          loginId: agentId,
+          reason:
+            refusal.kind !== "not-signed-in"
+              ? "not-permitted"
+              : refusal.auth === "needs-reauth" || refusal.auth === "reconnect"
+                ? "expired-login"
+                : "missing-sign-in",
+        },
+      }),
+    };
   });
 
   const refuse = (message: string) => new OrchestrationDispatchCommandError({ message });
@@ -394,6 +432,24 @@ export const make = Effect.gen(function* () {
     principal: TurnPrincipal,
   ): principal is Extract<TurnPrincipal, { readonly startedBy: string }> =>
     principal.kind === "crew" || principal.kind === "standup";
+
+  /**
+   * The checks every turn passes, in order: a person away may still run turns
+   * here, on the login this turn runs on (`refuseWithoutAccess`); the
+   * organization's key only where that is the rule; D6. D6 is judged first, as
+   * whether that login is one its person signed decides who is asked.
+   */
+  const refuseOnLogin = Effect.fnUntraced(function* (
+    instanceId: string | undefined,
+    principal: TurnPrincipal,
+  ) {
+    const verdict = yield* judgeAgent(instanceId, principal);
+    if (forSomeoneAway(principal)) {
+      yield* refuseWithoutAccess(principal.startedBy, verdict.signed);
+    }
+    yield* refuseSubscription(instanceId, principal);
+    if (verdict.refusal !== undefined) return yield* verdict.refusal;
+  });
 
   /**
    * The checks, in order. Archiving, restoring and deleting start no turn
@@ -436,9 +492,7 @@ export const make = Effect.gen(function* () {
         return yield* refuse(CREW_THREAD_REFUSALS.ungated(agent?.displayName ?? instanceId));
       }
     }
-    if (forSomeoneAway(principal)) yield* refuseWithoutAccess(principal.startedBy);
-    yield* refuseSubscription(instanceIdOf(command, thread), principal);
-    yield* refuseSomeoneElsesAgent(instanceIdOf(command, thread), principal);
+    yield* refuseOnLogin(instanceIdOf(command, thread), principal);
   });
 
   /**
@@ -452,16 +506,15 @@ export const make = Effect.gen(function* () {
     principal,
   }) {
     if (!isZeropsEnvironment(config)) return;
-    if (forSomeoneAway(principal)) yield* refuseWithoutAccess(principal.startedBy);
-    yield* refuseSubscription(instanceId, principal);
-    yield* refuseSomeoneElsesAgent(instanceId, principal);
+    yield* refuseOnLogin(instanceId, principal);
   });
 
   const admitGeneration: ZeropsTurnAdmission["Service"]["admitGeneration"] = Effect.fnUntraced(
     function* ({ instanceId, subject }) {
       if (!isZeropsEnvironment(config)) return;
       yield* refuseSubscription(instanceId, { kind: "session", subject });
-      yield* refuseSomeoneElsesAgent(instanceId, { kind: "session", subject });
+      const verdict = yield* judgeAgent(instanceId, { kind: "session", subject });
+      if (verdict.refusal !== undefined) return yield* verdict.refusal;
     },
   );
 

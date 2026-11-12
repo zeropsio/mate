@@ -4,9 +4,9 @@
  *
  * HQ answers it as each person, with the token it keeps for them, for every person it records as
  * a signer of this Mate (the link's `signers` frame): `GET {hqOrigin}/api/mate/signers/standing`
- * under the Mate's own key. Each turn start that runs for somebody away from the keyboard asks it
- * once (`ZeropsTurnAdmission`); nothing asks on a timer and nothing retries inside a turn start —
- * the next turn start asks again. Offboarding signs out whoever it hears has lost the project
+ * under the Mate's own key. Each turn start that runs for somebody away from the keyboard on a login
+ * that person signed asks it once (`ZeropsTurnAdmission`); nothing asks on a timer and nothing
+ * retries inside a turn start — the next turn start asks again. Offboarding signs out whoever it hears has lost the project
  * (`ZeropsOffboarding`), from {@link ZeropsSignerStanding.heard}.
  *
  * HQ silent for a person — no key, no answer within {@link STANDING_WAIT}, anything but a `200`,
