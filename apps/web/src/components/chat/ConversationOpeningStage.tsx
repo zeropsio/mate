@@ -31,6 +31,11 @@ type OpeningProps = {
   readonly activity?: ZeropsAgentActivity | undefined;
   readonly timestampFormat?: TimestampFormat | undefined;
   readonly notice?: ReactNode;
+  /**
+   * HQ's words on the last attempt to enter the Mate, where HQ refused it with words: said
+   * verbatim in place of the opening's own line while it still tries (`mateNoticeVoice`).
+   */
+  readonly refusal?: string | undefined;
   readonly threadKey?: string | undefined;
   readonly ready: boolean;
   /** A held source skips the waiting pose; placement still owns `ready`. */
@@ -116,6 +121,7 @@ export function ConversationOpeningProvider({ children }: { readonly children: R
           current.stage.activity === next.activity &&
           current.stage.timestampFormat === next.timestampFormat &&
           current.stage.notice === next.notice &&
+          current.stage.refusal === next.refusal &&
           current.stage.readPending === next.readPending &&
           current.stage.children === next.children &&
           current.stage.name === next.name &&
@@ -347,6 +353,7 @@ function OpeningStage({
   readPending,
   children,
   notice,
+  refusal,
 }: OpeningProps) {
   const opening = use(Opening);
   const layer = use(OpeningLayer);
@@ -371,6 +378,7 @@ function OpeningStage({
         readPending,
         children,
         notice,
+        refusal,
         node: ref.current,
       });
   }, [
@@ -383,6 +391,7 @@ function OpeningStage({
     readPending,
     children,
     notice,
+    refusal,
     setStage,
   ]);
   const content =
@@ -395,6 +404,7 @@ function OpeningStage({
         mate={mate}
         readPending={readPending}
         notice={notice}
+        refusal={refusal}
         avatar={null}
       >
         {children}
@@ -412,6 +422,7 @@ function OpeningSequence({
   name,
   mate,
   notice,
+  refusal,
   avatar,
   onPhase,
   readPending = true,
@@ -433,13 +444,32 @@ function OpeningSequence({
     name,
     mate,
     notice,
+    refusal,
     activity,
     timestampFormat,
   });
   if (phase === "complete" && scene.content !== undefined) {
-    setScene({ node, content: undefined, name, mate, notice, activity, timestampFormat });
+    setScene({
+      node,
+      content: undefined,
+      name,
+      mate,
+      notice,
+      refusal,
+      activity,
+      timestampFormat,
+    });
   } else if (phase === "skipped" && !ready && children !== undefined) {
-    setScene({ node, content: children, name, mate, notice, activity, timestampFormat });
+    setScene({
+      node,
+      content: children,
+      name,
+      mate,
+      notice,
+      refusal,
+      activity,
+      timestampFormat,
+    });
     setPhase("waiting");
   } else if (
     phase === "waiting" &&
@@ -449,13 +479,27 @@ function OpeningSequence({
       scene.name !== name ||
       scene.mate !== mate ||
       scene.notice !== notice ||
+      scene.refusal !== refusal ||
       scene.activity !== activity ||
       scene.timestampFormat !== timestampFormat)
   ) {
-    setScene({ node, content: children, name, mate, notice, activity, timestampFormat });
-  } else if (phase === "waiting" && scene.activity === undefined && activity !== undefined) {
-    // What the Mate was last on fills a composition that had none to say, whichever stage read it.
-    setScene({ ...scene, activity });
+    setScene({
+      node,
+      content: children,
+      name,
+      mate,
+      notice,
+      refusal,
+      activity,
+      timestampFormat,
+    });
+  } else if (
+    phase === "waiting" &&
+    ((scene.activity === undefined && activity !== undefined) || scene.refusal !== refusal)
+  ) {
+    // What the Mate was last on fills a composition that had none to say, and HQ's words on a
+    // refused attempt to enter it follow the link as they come and go, whichever stage read them.
+    setScene({ ...scene, activity: scene.activity ?? activity, refusal });
   }
   useLayoutEffect(() => {
     onPhase?.(phase === "skipped" ? "complete" : phase);
@@ -618,6 +662,7 @@ function OpeningSequence({
                 : "Opening the conversation."
             }
             secondary={
+              scene.refusal ??
               openingLimitWords(scene.activity, scene.name || "The Mate", scene.timestampFormat) ??
               "Picking up where it left off."
             }

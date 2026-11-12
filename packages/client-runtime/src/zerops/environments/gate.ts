@@ -18,6 +18,7 @@ import {
   isTerminalReachability,
   opensQuietly,
   reachabilityPhrase,
+  reachabilityRefusalWords,
   type Reachability,
   type ReachabilityAction,
 } from "./reachability.ts";
@@ -71,8 +72,11 @@ export type RouteTarget =
       readonly reachability: Reachability;
       readonly content: RouteContent;
     }
-  /** The route's deadline passed on a wait with no words of its own (`routeTargetPastDeadline`). */
-  | { readonly kind: "overdue"; readonly end: OpeningEnd };
+  /**
+   * The route's deadline passed on a wait with no words of its own (`routeTargetPastDeadline`);
+   * `refusal`: HQ's words on the last attempt to enter its Mate (`reachabilityRefusalWords`).
+   */
+  | { readonly kind: "overdue"; readonly end: OpeningEnd; readonly refusal?: string };
 
 /**
  * Whether the route's deadline runs for this target: while it would wait for its environment to
@@ -93,9 +97,11 @@ export function routeDeadlineRuns(target: RouteTarget | null): boolean {
 export function routeTargetPastDeadline(target: RouteTarget): RouteTarget {
   if (target.kind === "unresolved")
     return target.discovery === "pending" ? { kind: "overdue", end: "not-found" } : target;
-  return target.kind === "resolved" && routeDeadlineRuns(target)
+  if (target.kind !== "resolved" || !routeDeadlineRuns(target)) return target;
+  const refusal = reachabilityRefusalWords(target.reachability);
+  return refusal === undefined
     ? { kind: "overdue", end: "not-answering" }
-    : target;
+    : { kind: "overdue", end: "not-answering", refusal };
 }
 
 export type RouteGate =
@@ -117,7 +123,7 @@ export type RouteGate =
   /** A5: nothing named the environment, and no organization is chosen yet. */
   | { readonly kind: "choose-organization" }
   /** The route's opening ended without its conversation, saying why (`openingEndPhrase`). */
-  | { readonly kind: "ended"; readonly end: OpeningEnd }
+  | { readonly kind: "ended"; readonly end: OpeningEnd; readonly refusal?: string }
   /** RG3 when no project holds the environment (null), RG4–RG6 with the terminal verdict. */
   | { readonly kind: "unavailable"; readonly reachability: Reachability | null };
 
@@ -126,7 +132,10 @@ const OUTLET: RouteGate = { kind: "outlet", banner: null, composer: "enabled" };
 /** DESIGN §4.8's rows for the route's target; null when the route targets no environment (RG1). */
 export function selectRouteGate(target: RouteTarget | null): RouteGate {
   if (target === null) return OUTLET;
-  if (target.kind === "overdue") return { kind: "ended", end: target.end };
+  if (target.kind === "overdue")
+    return target.refusal === undefined
+      ? { kind: "ended", end: target.end }
+      : { kind: "ended", end: target.end, refusal: target.refusal };
   if (target.kind === "unresolved") {
     switch (target.discovery) {
       case "pending":
@@ -159,6 +168,8 @@ export type RouteGateAction = ReachabilityAction | "choose-organization";
 export interface RouteGatePhrase {
   /** The cause only; null when the gate needs no words. */
   readonly text: string | null;
+  /** HQ's words under the cause, verbatim, where HQ refused the last attempt with them. */
+  readonly secondary?: string;
   readonly actions: ReadonlyArray<RouteGateAction>;
 }
 
@@ -201,7 +212,7 @@ export function routeGatePhrase(
         actions: ["choose-organization"],
       };
     case "ended":
-      return openingEndPhrase(gate.end);
+      return openingEndPhrase(gate.end, gate.refusal);
     case "unavailable":
       return gate.reachability === null
         ? { text: "This conversation isn't in your Zerops projects.", actions: ["go-to-projects"] }
@@ -212,12 +223,16 @@ export function routeGatePhrase(
 /**
  * What an opening that ended without its conversation says, wherever it ended — the route gate or
  * the thread route: its cause, the way back to the projects, and asking again where the
- * conversation may still come.
+ * conversation may still come. A Mate HQ refused to open says HQ's words under its cause.
  */
-export function openingEndPhrase(end: OpeningEnd): RouteGatePhrase {
+export function openingEndPhrase(end: OpeningEnd, refusal?: string): RouteGatePhrase {
   switch (end) {
     case "not-answering":
-      return { text: "This Mate isn't answering.", actions: ["try-again", "go-to-projects"] };
+      return {
+        text: "This Mate isn't answering.",
+        ...(refusal === undefined ? {} : { secondary: refusal }),
+        actions: ["try-again", "go-to-projects"],
+      };
     case "not-found":
       return {
         text: "This conversation hasn't been found yet.",
