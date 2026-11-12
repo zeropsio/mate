@@ -1075,14 +1075,36 @@ button.pp-hist-head:hover {
   }
 }
 
-/* Who has access, opened here: the table's own section stands on this card, named by its label. */
-.pp-detail > .ov-sec {
+/* What a side row's Manage opens, in its dialog: it takes the focus as the dialog opens, and shows
+   no ring for it. Flush, it runs to the dialog's edges under a hairline and scrolls by itself. */
+.pp-dialog {
+  outline: none;
+}
+
+.pp-dialog[data-flush] {
+  min-height: 0;
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 calc(var(--radius-2xl) - 1px) calc(var(--radius-2xl) - 1px);
+}
+
+/* The Automation ledger there starts on the title's edge. */
+.pp-dialog[data-flush] .pa-head {
+  padding-inline: 24px;
+}
+
+.pp-dialog[data-flush] .pa-body {
+  padding-inline: 14px;
+}
+
+/* Who has access, opened there: the table's own section stands in the dialog, named by its title. */
+.pp-dialog > .ov-sec {
   margin-top: 0;
   padding-top: 0;
   border-top: 0;
 }
 
-.pp-detail > .ov-sec > .ov-sec-name {
+.pp-dialog > .ov-sec > .ov-sec-name {
   display: none;
 }
 
