@@ -127,6 +127,10 @@
       "types": "./src/hqIntake.ts",
       "import": "./src/hqIntake.ts"
     },
+    "./hqTakeOver": {
+      "types": "./src/hqTakeOver.ts",
+      "import": "./src/hqTakeOver.ts"
+    },
     "./hqMergers": {
       "types": "./src/hqMergers.ts",
       "import": "./src/hqMergers.ts"
