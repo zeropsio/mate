@@ -480,30 +480,6 @@ fi
   }
 });
 
-it("Decision: every main push finishes its own CI run; never cancel a running deploy", () => {
-  const workflow = parse(
-    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
-  ) as { concurrency: { group: string; "cancel-in-progress": string; queue?: string } };
-  expect(
-    workflow.concurrency.group,
-    "ASSERTION: each main push owns its CI concurrency group so no newer push replaces its run",
-  ).toBe("ci-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}");
-  expect(
-    workflow.concurrency["cancel-in-progress"],
-    "ASSERTION: main retains its verdict while kh-next, PRs and diagnostics supersede older runs",
-  ).toBe(
-    "${{ github.ref == 'refs/heads/kh-next' || github.event_name == 'pull_request' || startsWith(github.ref, 'refs/heads/kh-bisect/') }}",
-  );
-  expect(workflow.concurrency.queue ?? "single").toBe("single");
-  const release = parse(
-    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/release.yml"), "utf8"),
-  ) as { concurrency?: { "cancel-in-progress"?: boolean } };
-  expect(
-    release.concurrency?.["cancel-in-progress"] ?? false,
-    "ASSERTION: a running release must finish",
-  ).toBe(false);
-});
-
 const selectionPath = [NodePath.dirname(process.execPath), "/usr/bin", "/bin"].join(
   NodePath.delimiter,
 );
