@@ -2330,7 +2330,7 @@ code {
   list-style: none;
 }
 
-.chat-markdown .chat-markdown-island li + li {
+.chat-markdown .chat-markdown-island li:where([data-md-li]) + li {
   margin-top: 0;
 }
 
@@ -2370,8 +2370,22 @@ code {
   color: var(--contrast-muted-foreground);
 }
 
-/* A heading owns the gap under it; the block that follows adds none. */
-.chat-markdown :is(h1, h2, h3, h4, h5, h6) + * {
+/* A heading owns the gap under it; the block that follows adds none.
+
+   Why no rule in this sheet puts `+` or `~` after a bare tag or `*`: the browser keys a sibling
+   rule by the class, id or attribute of the element before the combinator, and a rule with none
+   of them is asked about every element added or removed anywhere. Where its subject is also bare
+   (`* + *`, `h2 + *`, `tr + tr > *`), the answer was to restyle everything under the parent: one
+   row scrolling into a conversation restyled all of its rows, about 400 elements for 30 new ones.
+   So a heading carries `data-md-heading` and a list item `data-md-li` (`ChatMarkdown`,
+   `RepoMarkdown`, and the one list a card draws inside an answer, `AskSteps`), and elsewhere
+   "not the first" is said by position: `:where()` and a repeated tag keep each rule's weight. */
+.chat-markdown h1:where([data-md-heading]) + *,
+.chat-markdown h2:where([data-md-heading]) + *,
+.chat-markdown h3:where([data-md-heading]) + *,
+.chat-markdown h4:where([data-md-heading]) + *,
+.chat-markdown h5:where([data-md-heading]) + *,
+.chat-markdown h6:where([data-md-heading]) + * {
   margin-top: 0;
 }
 
@@ -2413,7 +2427,7 @@ code {
 }
 
 /* 6 px between items at a 15 px body. */
-.chat-markdown li + li {
+.chat-markdown li:where([data-md-li]) + li {
   margin-top: calc(6em / 15);
 }
 
@@ -2586,7 +2600,7 @@ code {
   margin: 0;
 }
 
-.chat-markdown section[data-footnotes] li + li {
+.chat-markdown section[data-footnotes] li:where([data-md-li]) + li {
   margin-top: 0.35rem;
 }
 
@@ -7947,7 +7961,7 @@ a.ov-card-site:hover {
   border-bottom: 1px solid var(--ov-rule);
 }
 
-.ov-acc tbody tr + tr > * {
+.ov-acc tbody tr:is(tr):where(:not(:first-child)) > * {
   border-top: 1px solid var(--ov-rule);
 }
 
@@ -13491,7 +13505,7 @@ a.message-file:focus-visible {
 .rv-file:hover {
   background: color-mix(in oklab, var(--foreground) 4%, transparent);
 }
-.rv-files > * + * {
+.rv-files > :where(:not(:first-child)) {
   border-top: 1px solid color-mix(in oklab, var(--foreground) 12%, transparent);
 }
 .rv-file-name {
@@ -16246,7 +16260,7 @@ a.message-file:focus-visible {
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 6%, transparent);
 }
 
-.vault-rows > * + * {
+.vault-rows > :where(:not(:first-child)) {
   border-top: 1px solid var(--vault-hairline);
 }
 

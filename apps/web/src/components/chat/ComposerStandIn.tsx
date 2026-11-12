@@ -5,6 +5,7 @@
  */
 import type { ReactNode } from "react";
 
+import { cn } from "~/lib/utils";
 import { COMPOSER_PROMPT_TYPE_CLASS_NAME } from "./composerTypography";
 import { heldDraftRuns } from "./ComposerRoom.logic";
 
@@ -53,14 +54,36 @@ export function ComposerStandInDock({
  * (`conversationFooter`): the card at the composer's size with nothing in it — no field, no
  * caret, no buttons — its shell unseen (`data-room-held`), so whichever comes, the
  * composer or someone else's strip, takes its place without the page moving or anything taken
- * back.
+ * back. What the composer will carry at its top (`top`: a change waiting for review, or the room
+ * kept for one) stands in the room too, unseen: the composer came 61 px taller than its room, and
+ * the conversation over it jumped by that as it appeared.
  */
-export function ComposerRoomHeld({ draft = "" }: { readonly draft?: string }) {
+export function ComposerRoomHeld({
+  draft = "",
+  top = null,
+}: {
+  readonly draft?: string;
+  readonly top?: ReactNode;
+}) {
   return (
     <div aria-hidden className="mx-auto w-full min-w-0 max-w-3xl" data-composer-room-held="">
       <div className="relative">
         <div className="group relative z-10 p-px">
-          <div className="relative px-3 pt-3.5 pb-2 sm:px-4 sm:pt-4">
+          {top === null || top === undefined ? null : (
+            <div className="invisible" inert>
+              {top}
+            </div>
+          )}
+          {/* At a phone's width the composer comes folded to one line: its room is that line's,
+              where the open composer's room stood 98 px taller and the conversation dropped by
+              that as the composer came. */}
+          <div className="flex items-center justify-between gap-2 px-3 py-2 sm:hidden">
+            <span className={cn("min-w-0 flex-1 truncate", COMPOSER_PROMPT_TYPE_CLASS_NAME)}>
+              &nbsp;
+            </span>
+            <span className="size-8 shrink-0" />
+          </div>
+          <div className="relative px-3 pt-3.5 pb-2 max-sm:hidden sm:px-4 sm:pt-4">
             <div className={COMPOSER_PROMPT_TYPE_CLASS_NAME}>
               {/* The draft laid out as the editor will lay it out (`heldDraftRuns`), unseen. */}
               <div className="block max-h-50 min-h-17.5 w-full overflow-hidden whitespace-pre-wrap wrap-break-word leading-relaxed">
@@ -80,7 +103,7 @@ export function ComposerRoomHeld({ draft = "" }: { readonly draft?: string }) {
               </div>
             </div>
           </div>
-          <div className="flex min-w-0 flex-nowrap items-center justify-end gap-2 pt-1.5 pe-3 pb-3 ps-3.5">
+          <div className="flex min-w-0 flex-nowrap items-center justify-end gap-2 pt-1.5 pe-3 pb-3 ps-3.5 max-sm:hidden">
             <span className="size-9 shrink-0 sm:size-8" />
           </div>
         </div>

@@ -33,7 +33,10 @@
   border-radius: 9999px;
 }
 
-[data-zerops-surface="sidebar-environments-skeleton"] > div > span + span {
+/* The second span, said by position: see "Why no rule in this sheet puts `+`…" in index.css. */
+[data-zerops-surface="sidebar-environments-skeleton"]
+  > div
+  > span:is(span):where(:not(:first-child)) {
   flex-shrink: 1;
   width: 66.6667%;
   height: 8px;

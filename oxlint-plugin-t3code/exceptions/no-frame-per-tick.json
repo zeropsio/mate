@@ -1,0 +1,146 @@
+[
+  {
+    "path": "apps/web/src/components/ChatMarkdown.tsx",
+    "kind": "JSXAttribute",
+    "fingerprint": "loading=\"lazy\"",
+    "owner": "maintainers",
+    "reason": "A picture in a Mate's words; its row holds its room (useImageRoom), so it waits only while its row is drawn out of view; load it eagerly or through useNearViewport.",
+    "expires": "never",
+    "class": "review"
+  },
+  {
+    "path": "apps/web/src/components/ChatMarkdown.tsx",
+    "kind": "JSXAttribute",
+    "fingerprint": "loading=\"lazy\"",
+    "owner": "maintainers",
+    "reason": "A picture in a Mate's words; its row holds its room (useImageRoom), so it waits only while its row is drawn out of view; load it eagerly or through useNearViewport.",
+    "expires": "never",
+    "class": "review"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"list-none py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_96px]\"",
+    "owner": "maintainers",
+    "reason": "The thread row of the imported sidebar list skips drawing while out of view; give the list rows that cost nothing to watch, or draw them all.",
+    "expires": "never",
+    "class": "review"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerPicture.tsx",
+    "kind": "JSXAttribute",
+    "fingerprint": "loading=\"lazy\"",
+    "owner": "maintainers",
+    "reason": "A picture in the composer, in view whenever it is drawn; load it eagerly or through useNearViewport.",
+    "expires": "never",
+    "class": "review"
+  },
+  {
+    "path": "apps/web/src/components/chat/ExpandedImageDialog.tsx",
+    "kind": "JSXAttribute",
+    "fingerprint": "loading=\"lazy\"",
+    "owner": "maintainers",
+    "reason": "The picture of an open dialog, in view whenever it is drawn; load it eagerly or through useNearViewport.",
+    "expires": "never",
+    "class": "review"
+  },
+  {
+    "path": "apps/web/src/components/chat/MessagePictures.tsx",
+    "kind": "JSXAttribute",
+    "fingerprint": "loading=\"lazy\"",
+    "owner": "maintainers",
+    "reason": "A picture in the person's message; it waits only while its row is drawn out of view; load it eagerly or through useNearViewport.",
+    "expires": "never",
+    "class": "review"
+  },
+  {
+    "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
+    "kind": "JSXAttribute",
+    "fingerprint": "loading=\"lazy\"",
+    "owner": "maintainers",
+    "reason": "A picture attached to a message; it waits only while its row is drawn out of view; load it eagerly or through useNearViewport.",
+    "expires": "never",
+    "class": "review"
+  },
+  {
+    "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
+    "kind": "JSXAttribute",
+    "fingerprint": "loading=\"lazy\"",
+    "owner": "maintainers",
+    "reason": "A picture attached to a message; it waits only while its row is drawn out of view; load it eagerly or through useNearViewport.",
+    "expires": "never",
+    "class": "review"
+  },
+  {
+    "path": "apps/web/src/components/chat/RunChat.tsx",
+    "kind": "JSXAttribute",
+    "fingerprint": "loading=\"lazy\"",
+    "owner": "maintainers",
+    "reason": "A picture in a run card; it waits only while its row is drawn out of view; load it eagerly or through useNearViewport.",
+    "expires": "never",
+    "class": "review"
+  },
+  {
+    "path": "apps/web/src/components/chat/RunChat.tsx",
+    "kind": "JSXAttribute",
+    "fingerprint": "loading=\"lazy\"",
+    "owner": "maintainers",
+    "reason": "A picture in a run card; it waits only while its row is drawn out of view; load it eagerly or through useNearViewport.",
+    "expires": "never",
+    "class": "review"
+  },
+  {
+    "path": "apps/web/src/components/chat/ZoomableImage.tsx",
+    "kind": "JSXAttribute",
+    "fingerprint": "loading=\"lazy\"",
+    "owner": "maintainers",
+    "reason": "The picture of an open viewer, in view whenever it is drawn; load it eagerly or through useNearViewport.",
+    "expires": "never",
+    "class": "review"
+  },
+  {
+    "path": "apps/web/src/components/files/FilePreviewPanel.tsx",
+    "kind": "JSXAttribute",
+    "fingerprint": "loading=\"lazy\"",
+    "owner": "maintainers",
+    "reason": "The one picture of the file preview, in view whenever it is drawn; load it eagerly or through useNearViewport.",
+    "expires": "never",
+    "class": "review"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsOperationCard.tsx",
+    "kind": "JSXAttribute",
+    "fingerprint": "loading=\"lazy\"",
+    "owner": "maintainers",
+    "reason": "A screenshot on an operation card; it waits only while its row is drawn out of view; load it eagerly or through useNearViewport.",
+    "expires": "never",
+    "class": "review"
+  },
+  {
+    "path": "apps/web/src/components/zerops/review/ReviewDescription.tsx",
+    "kind": "JSXAttribute",
+    "fingerprint": "loading=\"lazy\"",
+    "owner": "maintainers",
+    "reason": "A picture in a review's description or its open viewer; it waits only while scrolled out of the dialog; load it eagerly or through useNearViewport.",
+    "expires": "never",
+    "class": "review"
+  },
+  {
+    "path": "apps/web/src/components/zerops/review/ReviewDescription.tsx",
+    "kind": "JSXAttribute",
+    "fingerprint": "loading=\"lazy\"",
+    "owner": "maintainers",
+    "reason": "A picture in a review's description or its open viewer; it waits only while scrolled out of the dialog; load it eagerly or through useNearViewport.",
+    "expires": "never",
+    "class": "review"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": ".ultrathink-frame::before{animation:ultrathink-rainbow 10s linear infinite}",
+    "owner": "maintainers",
+    "reason": "The imported ultrathink frame slides its gradient by background-position; no surface of Mate's draws it. Slide a wider layer by transform, or delete it with its feature.",
+    "expires": "never",
+    "class": "review"
+  }
+]

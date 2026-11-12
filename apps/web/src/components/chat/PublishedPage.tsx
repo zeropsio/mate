@@ -10,6 +10,7 @@ import { watchIntersections } from "~/lib/restingIntersections";
 import { Button } from "../ui/button";
 import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "../ui/dialog";
 import { keepFrameOnMove } from "./keepFrameOnMove";
+import { useTimelineRowSettling } from "./timelineRowReads";
 import {
   knownPageHeights,
   pageHeightToRecord,
@@ -88,10 +89,13 @@ function scrollParentOf(element: HTMLElement): HTMLElement | null {
  * Whether the element is near the view of the list it scrolls in: a page's frame runs only there,
  * so pages far off-screen — a spinning one among them — never hold the conversation, and the list's
  * own clipping never unmounts one in sight. A page spinning in view holds the browser as any page
- * would: a browser's limit, not this frame's. Without an observer (a server render), it always is.
+ * would: a browser's limit, not this frame's. Without an observer (a server render), it always is;
+ * null until the observer first says.
  */
-function useNearView(ref: React.RefObject<HTMLElement | null>): boolean {
-  const [near, setNear] = useState(() => typeof IntersectionObserver === "undefined");
+function useNearView(ref: React.RefObject<HTMLElement | null>): boolean | null {
+  const [near, setNear] = useState<boolean | null>(() =>
+    typeof IntersectionObserver === "undefined" ? true : null,
+  );
   useEffect(() => {
     const element = ref.current;
     if (element === null) return;
@@ -152,14 +156,29 @@ export function PublishedPageFrame(props: PublishedPageFrameProps) {
   const [screen, setScreen] = useState(() =>
     pageScreenHeight(typeof window === "undefined" ? 0 : window.innerHeight),
   );
+  // Where it stands at a width before it has heard its page: the height recorded nearest it.
+  /** Mounted into a conversation already shown, or outside one: what it does is watched. */
+  const [live, setLive] = useState(false);
+  const standsAt = useEffectEvent((at: number, tall: number) =>
+    full ? null : pageFitStand({ fit: PAGE_FIT_START, heights, width: at, screen: tall }),
+  );
   useLayoutEffect(() => {
     const box = boxRef.current;
     if (box === null) return;
     const read = () => {
-      setWidth(Math.round(box.getBoundingClientRect().width));
-      setScreen(pageScreenHeight(scrollParentOf(box)?.clientHeight ?? window.innerHeight));
+      const at = Math.round(box.getBoundingClientRect().width);
+      const tall = pageScreenHeight(scrollParentOf(box)?.clientHeight ?? window.innerHeight);
+      setWidth(at);
+      setScreen(tall);
+      return [at, tall] as const;
     };
-    read();
+    // The list measures a row in the commit that mounts it, before the width read here draws the
+    // frame again: it stands at its width's height in that commit already. Drawn first at the
+    // height last recorded, at another width, the list kept that one, and the rows under a page
+    // stood over it until it measured again (2,786 px, then a glide of 1.9 s, the owner 2026-11-11).
+    const stands = standsAt(...read());
+    if (stands !== null) box.style.height = `${stands}px`;
+    setLive(box.closest("[data-timeline-thread]")?.hasAttribute("data-timeline-placing") !== true);
     const observer = new ResizeObserver(read);
     observer.observe(box);
     return () => observer.disconnect();
@@ -227,14 +246,26 @@ export function PublishedPageFrame(props: PublishedPageFrameProps) {
     frameRef.current?.contentWindow?.postMessage(themeMessage(theme), "*");
   }, [theme, opened]);
 
-  // It glides only once it stood: its first height is placed, never eased into from a default.
+  // It glides only once it stood at a height of the page's own saying, or on its very first
+  // landing, from its first box: the page's first word against a height recorded at another width
+  // is placed, never eased into (a reload moved the conversation 20 px after it showed).
+  const said = fit.content !== null || fit.sizedBy === "viewport";
+  // Its first landing is one a person watches: the page arriving in a conversation that stands.
+  // Mounted while its conversation is still being placed (a reload, an open), nothing was seen
+  // of its first box, and its height is placed.
+  const landing = heights.length === 0 && live;
   const [glides, setGlides] = useState(false);
   useEffect(() => {
-    if (height === null || glides) return;
+    if (height === null || glides || !(said || landing)) return;
     const frame = requestAnimationFrame(() => setGlides(true));
     return () => cancelAnimationFrame(frame);
-  }, [height, glides]);
-  const shown = document_ !== null && !left && near;
+  }, [height, glides, said, landing]);
+  const shown = document_ !== null && !left && near === true;
+  // A page about to say its height keeps its conversation out of sight while it is placed, so the
+  // frame stands at the page's own height in the first frame shown: briefly, since a page speaks
+  // a few frames after its frame mounts. Whatever was recorded for it, at this width or another:
+  // a page its viewport sizes was recorded a screen tall, and a screen is this window's.
+  useTimelineRowSettling(!full && document_ !== null && !left && !said && near !== false);
   return (
     <div
       ref={boxRef}

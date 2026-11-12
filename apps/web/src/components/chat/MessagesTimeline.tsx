@@ -861,6 +861,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   useLayoutEffect(() => {
     previousRowOrderRef.current = rowOrder;
   }, [rowOrder]);
+  // The history whose room the view was last taken along for: once per rows joining.
+  const joinedHistoryRef = useRef(insertedHistory);
   const livePause = useMemo(() => livePauseId(rows), [rows]);
   // Only the server's own pause with nothing after it fills the conversation; the engine's pause
   // is a notice card where its run ended (Milo's run 4 drew it a viewport tall, blank below).
@@ -1300,6 +1302,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   }, []);
   // Rows arriving, and the viewport resizing, move the end too.
   useLayoutEffect(() => {
+    const joining = joinedHistoryRef.current !== insertedHistory && insertedHistory.size > 0;
+    joinedHistoryRef.current = insertedHistory;
     if (!followingEnd || rows.length === 0) return;
     // A commit can clamp the native range before later row measurements grow it again.
     endFollowRef.current?.observe();
@@ -1311,9 +1315,39 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         );
     }
     if (!listPlaced) return;
+    // History joining before the tail — a landing or a release its application's flow names once
+    // the conversation stands — moves the end by its room in the commit that brings it, and the
+    // view goes with it before that frame paints. A row not drawn is never measured, so nothing
+    // carried it: every row in sight stood its room lower for a frame, and a glide brought them
+    // back (90 px a row, the owner 2026-11-11).
+    if (joining)
+      // After the list has laid the commit out, as a measured row's growth is carried.
+      queueMicrotask(() => {
+        const state = listRef.current?.getState();
+        if (state === undefined) return;
+        // The room the list gives each: its estimate until it is drawn, between its place and
+        // the next row's (history joins before the tail, so there is one).
+        let joined = 0;
+        for (const id of insertedHistory) {
+          const index = state.indexByKey(id);
+          if (index === undefined) continue;
+          const room = state.positionAtIndex(index + 1) - state.positionAtIndex(index);
+          if (room > 0) joined += room;
+        }
+        if (joined > 0) followEnd(joined);
+      });
     const frame = requestAnimationFrame(() => followEnd());
     return () => cancelAnimationFrame(frame);
-  }, [askRoom, contentInsetEndAdjustment, followEnd, followingEnd, listPlaced, rows]);
+  }, [
+    askRoom,
+    contentInsetEndAdjustment,
+    followEnd,
+    followingEnd,
+    insertedHistory,
+    listPlaced,
+    listRef,
+    rows,
+  ]);
   useEffect(() => {
     const viewport = timelineViewportElement;
     if (viewport === null || typeof ResizeObserver === "undefined") return;
@@ -1873,6 +1907,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // parsed again.
   const threadRef = useMemo(() => parseScopedThreadKey(routeThreadKey), [routeThreadKey]);
   const openingActivity = useZeropsThreadActivity(threadRef);
+  // The room a pause's stage takes, where one stands. With none, what the composer covers is no
+  // row's to know: a draft wrapping to a new line changes the list's end and draws no row again.
+  const pauseStageHeight =
+    pauseStageId === null || pauseViewportHeight === undefined
+      ? undefined
+      : Math.max(0, pauseViewportHeight - contentInsetEndAdjustment);
   const sharedState = useMemo<TimelineRowSharedState>(
     () => ({
       timestampFormat,
@@ -1891,14 +1931,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       standUpAsk,
       livePauseId: livePause,
       usagePause,
-      pauseStage: {
-        id: pauseStageId,
-        mate: mate ?? null,
-        height:
-          pauseViewportHeight === undefined
-            ? undefined
-            : Math.max(0, pauseViewportHeight - contentInsetEndAdjustment),
-      },
+      pauseStage: { id: pauseStageId, mate: mate ?? null, height: pauseStageHeight },
       limit,
       interruption,
       onRestartContinue,
@@ -1938,8 +1971,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       pauseStageId,
       usagePause,
       mate,
-      pauseViewportHeight,
-      contentInsetEndAdjustment,
+      pauseStageHeight,
       limit,
       interruption,
       onRestartContinue,
@@ -2186,6 +2218,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           offBy: target === null ? null : viewport.scrollTop - target,
           elapsedMs: performance.now() - placingSince,
           rowsReading: rowReads.reading(),
+          rowsSettling: rowReads.settling(),
         },
         stableFrames,
       );

@@ -262,8 +262,13 @@ export interface TraitsMenuContentProps {
   instanceId?: ProviderInstanceId;
   models: ReadonlyArray<ServerProviderModel>;
   model: string | null | undefined;
+  /**
+   * The prompt as far as it sets the effort: its words while they say "ultrathink", and anything
+   * that does not say it otherwise (the composer hands none, so a key typed draws no control again).
+   */
   prompt: string;
-  onPromptChange: (prompt: string) => void;
+  /** Rewrites the prompt as it stands when a choice is made, never as it stood when this was drawn. */
+  onPromptChange: (rewrite: (prompt: string) => string) => void;
   modelOptions?: ProviderOptions | null | undefined;
   allowPromptInjectedEffort?: boolean;
   planModeEnabled: boolean;
@@ -340,17 +345,16 @@ export function useTraitsControls({
   ) => {
     if (!value) return;
     if (descriptor.promptInjectedValues?.includes(value)) {
-      const nextPrompt =
-        prompt.trim().length === 0
+      onPromptChange((current) =>
+        current.trim().length === 0
           ? ULTRATHINK_PROMPT_PREFIX
-          : applyClaudePromptEffortPrefix(prompt, "ultrathink");
-      onPromptChange(nextPrompt);
+          : applyClaudePromptEffortPrefix(current, "ultrathink"),
+      );
       return;
     }
     if (isLocked(descriptor)) return;
     if (ultrathinkPromptControlled && descriptor.id === primarySelectDescriptor?.id) {
-      const stripped = prompt.replace(/^Ultrathink:\s*/i, "");
-      onPromptChange(stripped);
+      onPromptChange((current) => current.replace(/^Ultrathink:\s*/i, ""));
     }
     updateDescriptors(replaceDescriptorCurrentValue(descriptors, descriptor.id, value));
   };

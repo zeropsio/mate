@@ -20,6 +20,7 @@ import { StrictMode, useEffect, type CSSProperties } from "react";
 import { createRoot } from "react-dom/client";
 
 import { SettingsSidebarNav } from "~/components/settings/SettingsSidebarNav";
+import { COMMAND_PALETTE_ID } from "~/commandPaletteBus";
 import { CommandDialog, CommandDialogPopup } from "~/components/ui/command";
 import { Sidebar, SidebarProvider } from "~/components/ui/sidebar";
 import {
@@ -103,7 +104,7 @@ function HarnessJump({ text }: { readonly text: string }) {
   };
   return (
     <CommandDialog open>
-      <CommandDialogPopup aria-label="Jump to" data-command-palette="true">
+      <CommandDialogPopup aria-label="Jump to" data-command-palette="true" id={COMMAND_PALETTE_ID}>
         <JumpBoxView
           model={model}
           onChoose={(item) => {

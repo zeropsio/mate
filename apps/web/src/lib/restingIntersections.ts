@@ -249,3 +249,35 @@ export function watchIntersections(
     },
   };
 }
+
+/**
+ * `watchIntersections` for a callback that acts on a crossing: told of a target only when it
+ * went into view or out of it since it was last told, as a plain observer tells it. A target
+ * observed again after being let go is told where it stands once more.
+ */
+export function watchCrossings(
+  callback: (entries: ReadonlyArray<IntersectionObserverEntry>) => void,
+  options?: IntersectionObserverInit,
+): RestingIntersections | undefined {
+  let stood = new WeakMap<Element, boolean>();
+  const watching = watchIntersections((entries) => {
+    const crossed = entries.filter((entry) => {
+      const was = stood.get(entry.target);
+      stood.set(entry.target, entry.isIntersecting);
+      return was !== entry.isIntersecting;
+    });
+    if (crossed.length > 0) callback(crossed);
+  }, options);
+  if (watching === undefined) return undefined;
+  return {
+    observe: watching.observe,
+    unobserve(target) {
+      stood.delete(target);
+      watching.unobserve(target);
+    },
+    disconnect() {
+      stood = new WeakMap();
+      watching.disconnect();
+    },
+  };
+}

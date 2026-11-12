@@ -10,6 +10,7 @@
  */
 import { type RefObject, useCallback, useLayoutEffect } from "react";
 
+import { watchCrossings } from "../../lib/restingIntersections";
 import type { RunScrollFollow, RunScrollPosition } from "./runCard.logic";
 import { resettledTop } from "./runScrollResettle.logic";
 
@@ -39,8 +40,9 @@ export function useRunScrollResettle(input: {
     const root = scrollRef.current;
     const start = startRef.current;
     const end = endRef.current;
-    if (root === null || typeof IntersectionObserver !== "function") return;
-    const observer = new IntersectionObserver(resettle, { root });
+    if (root === null) return;
+    const observer = watchCrossings(resettle, { root });
+    if (observer === undefined) return;
     if (start !== null) observer.observe(start);
     if (end !== null) observer.observe(end);
     return () => observer.disconnect();

@@ -21,6 +21,17 @@ import * as NodeURL from "node:url";
 import { collectCssSources, isGeneratedCssSource, type CssSource } from "./cssSources.ts";
 
 const RULE_NAME = "no-infinite-motion";
+const FRAME_RULE_NAME = "no-frame-per-tick";
+/** What the compositor animates alone; an animation of anything else ticks on the main thread. */
+const COMPOSITED_PROPERTIES = new Set([
+  "transform",
+  "translate",
+  "rotate",
+  "scale",
+  "opacity",
+  "filter",
+  "backdrop-filter",
+]);
 const INFINITE_TOKEN_PATTERN = /(?:^|[^-_a-z0-9])infinite(?=$|[^-_a-z0-9])/iu;
 const TARGET_PROPERTIES = new Set(["animation", "animation-name", "animation-iteration-count"]);
 const CSS_KEYWORDS = new Set([
@@ -68,6 +79,8 @@ interface KeyframeStop {
 
 interface ParsedKeyframes {
   readonly stops: ReadonlyArray<KeyframeStop>;
+  /** Every property a stop sets, its own timing aside. */
+  readonly properties: ReadonlySet<string>;
 }
 
 interface AnimationUse {
@@ -241,7 +254,14 @@ const keyframesFrom = (blocks: ReadonlyArray<CssBlock>): ReadonlyMap<string, Par
       ...authoredStops,
       ...(positions.has(100) ? [] : [{ position: 100, timing: undefined }]),
     ].toSorted((left, right) => left.position - right.position);
-    keyframes.set(match[1]!, { stops });
+    const properties = new Set(
+      block.children.flatMap((stop) =>
+        stop.declarations
+          .map((declaration) => declaration.property)
+          .filter((property) => property !== "animation-timing-function"),
+      ),
+    );
+    keyframes.set(match[1]!, { stops, properties });
   }
   return keyframes;
 };
@@ -295,6 +315,9 @@ const listItem = (value: string | undefined, index: number): string | undefined 
   return items.length === 0 ? undefined : items[index % items.length];
 };
 
+/** Whether one animation of a declaration's list never ends. */
+const runsForever = (value: string): boolean => INFINITE_TOKEN_PATTERN.test(value);
+
 const animationUsesFrom = (
   declaration: CssDeclaration,
   block: CssBlock,
@@ -304,7 +327,7 @@ const animationUsesFrom = (
   const timings = declarationValue(block, "animation-timing-function");
   if (declaration.property === "animation" || declaration.property.startsWith("--animate-")) {
     return values.flatMap((value, index) => {
-      if (!INFINITE_TOKEN_PATTERN.test(value)) return [];
+      if (!runsForever(value)) return [];
       return [
         {
           name: animationNameFrom(value, keyframes),
@@ -318,7 +341,7 @@ const animationUsesFrom = (
   const names = declarationValue(block, "animation-name");
   const durations = declarationValue(block, "animation-duration");
   return values.flatMap((value, index) => {
-    if (!INFINITE_TOKEN_PATTERN.test(value)) return [];
+    if (!runsForever(value)) return [];
     const nameValue = declaration.property === "animation-name" ? value : listItem(names, index);
     return [
       {
@@ -407,6 +430,68 @@ export const scanCssMotion = (path: string, source: string): ReadonlyArray<CssMo
   return findings;
 };
 
+/**
+ * Scans one authored CSS source for what costs the main thread a frame on every animation tick
+ * while a page is at rest (`t3code/no-frame-per-tick` holds the same guard for scripts): a box with
+ * `content-visibility: auto`, which the browser watches as an observer would, and an infinite
+ * animation of a property the compositor cannot run, which ticks on the main thread and takes
+ * every other animation on the page with it.
+ */
+export const scanCssFramePerTick = (
+  path: string,
+  source: string,
+): ReadonlyArray<CssMotionFinding> => {
+  // Generated CSS is its generator's to change.
+  const blocks = isGeneratedCssSource(source) ? [] : walkBlocks(parseCssBlocks(source));
+  const keyframes = keyframesFrom(blocks);
+  const findings: Array<CssMotionFinding> = [];
+  for (const block of blocks) {
+    if (insideKeyframes(block)) continue;
+    for (const declaration of block.declarations) {
+      const finding = (detail: string) => {
+        findings.push({
+          path,
+          kind: CSS_KIND,
+          fingerprint: cssDeclarationFingerprint({
+            selector: block.header,
+            property: declaration.property,
+            value: declaration.value,
+          }),
+          detail,
+        });
+      };
+      if (
+        declaration.property === "content-visibility" &&
+        /^auto(?:\s*!important)?$/iu.test(declaration.value)
+      ) {
+        finding(
+          "content-visibility: auto makes every animation on the page cost the main thread a frame per tick.",
+        );
+        continue;
+      }
+      const isAnimation =
+        TARGET_PROPERTIES.has(declaration.property) ||
+        declaration.property.startsWith("--animate-");
+      if (!isAnimation) continue;
+
+      // Only the infinite ones of a declaration's animations come back.
+      for (const animation of animationUsesFrom(declaration, block, keyframes)) {
+        const resolved = animation.name === undefined ? undefined : keyframes.get(animation.name);
+        // An animation with no keyframes to read is the motion guard's finding, not this one's.
+        if (resolved === undefined) continue;
+        const uncomposited = [...resolved.properties]
+          .filter((property) => !COMPOSITED_PROPERTIES.has(property))
+          .toSorted();
+        if (uncomposited.length === 0) continue;
+        finding(
+          `Infinite animation "${animation.name}" animates ${uncomposited.join(", ")}: the compositor runs only transform, translate, rotate, scale, opacity, filter and backdrop-filter, so it ticks on the main thread.`,
+        );
+      }
+    }
+  }
+  return findings;
+};
+
 /** Reconciles scanner output against the CSS portion of the R6 exception ledger. */
 export const checkCssMotion = Effect.fn("checkCssMotion")(function* ({
   directory,
@@ -415,33 +500,43 @@ export const checkCssMotion = Effect.fn("checkCssMotion")(function* ({
   readonly directory: string;
   readonly sources: ReadonlyArray<CssSource>;
 }) {
-  const { ledger, completedPhases } = yield* Effect.try({
-    try: () => ({
-      ledger: loadExceptionLedger(RULE_NAME, directory),
-      completedPhases: loadCompletedPhases(directory),
-    }),
+  const completedPhases = yield* Effect.try({
+    try: () => loadCompletedPhases(directory),
     catch: (cause) => new CssMotionCheckError({ operation: "loading the ledger", cause }),
   });
-  const findings = sources.flatMap(({ path, source }) =>
-    scanCssMotion(path, source).map((finding) => ({
-      ...finding,
-      ledgered: ledger.has(finding),
-    })),
-  );
-  const result = reconcileExceptions({
-    entries: ledger.entries,
-    findings,
-    completedPhases,
-    scope: "css",
-  });
-  const problemCount =
-    result.unlisted.length + result.dead.length + result.changed.length + result.expired.length;
-  const details = findings
-    .filter((finding) => !finding.ledgered)
-    .map((finding) => `${finding.path}: ${finding.detail}`);
-  const reconciliation = formatReconcileReport({ ruleName: RULE_NAME, result });
+  const reports: Array<string> = [];
+  let problemCount = 0;
+  for (const [ruleName, scan] of [
+    [RULE_NAME, scanCssMotion],
+    [FRAME_RULE_NAME, scanCssFramePerTick],
+  ] as const) {
+    const ledger = yield* Effect.try({
+      try: () => loadExceptionLedger(ruleName, directory),
+      catch: (cause) => new CssMotionCheckError({ operation: "loading the ledger", cause }),
+    });
+    const findings = sources.flatMap(({ path, source }) =>
+      scan(path, source).map((finding) => ({
+        ...finding,
+        ledgered: ledger.has(finding),
+      })),
+    );
+    const result = reconcileExceptions({
+      entries: ledger.entries,
+      findings,
+      completedPhases,
+      scope: "css",
+    });
+    problemCount +=
+      result.unlisted.length + result.dead.length + result.changed.length + result.expired.length;
+    reports.push(
+      ...findings
+        .filter((finding) => !finding.ledgered)
+        .map((finding) => `${finding.path}: ${finding.detail}`),
+      formatReconcileReport({ ruleName, result }),
+    );
+  }
   return {
-    report: [...details, reconciliation].join("\n"),
+    report: reports.join("\n"),
     problemCount,
     exitCode: problemCount > 0 ? 1 : 0,
   } satisfies CssMotionCheckResult;
@@ -464,7 +559,7 @@ const runCssMotionCheck = Effect.fn("runCssMotionCheck")(function* () {
 
 export const checkCssMotionCommand = Command.make("check-css-motion", {}, runCssMotionCheck).pipe(
   Command.withDescription(
-    "Require infinite CSS animation uses to resolve to slow, capped stepped keyframes.",
+    "Require infinite CSS animation uses to resolve to slow, capped stepped keyframes, and reject what costs a page at rest a frame per animation tick.",
   ),
 );
 

@@ -124,7 +124,7 @@ import {
   isUnsupportedWindowsProjectPath,
   resolveProjectPathForDispatch,
 } from "../lib/projectPaths";
-import { onOpenCommandPalette } from "../commandPaletteBus";
+import { COMMAND_PALETTE_ID, onOpenCommandPalette } from "../commandPaletteBus";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { getLatestThreadForProject, sortThreads } from "../lib/threadSort";
 import { cn, isMacPlatform, isWindowsPlatform, newProjectId } from "../lib/utils";
@@ -651,6 +651,7 @@ function CommandPaletteDialog(props: {
       }
       className={cn("overflow-hidden", props.mode === "content" && "h-105")}
       data-command-palette="true"
+      id={COMMAND_PALETTE_ID}
       data-palette-mode={props.mode}
       data-testid="command-palette"
       finalFocus={() => {
