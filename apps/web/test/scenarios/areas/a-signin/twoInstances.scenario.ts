@@ -9,7 +9,7 @@ import { installSignIn } from "./fake.ts";
 
 describe("A: sign-in against every HQ instance", () => {
   scenarioSuite((it) => {
-    // witness: apps/web/src/components/zerops/SidebarZeropsAccount.tsx | <span className="menu-foot-name">{lines.name}</span> → <span className="menu-foot-name">{null}</span>
+    // witness: apps/web/src/components/zerops/SidebarZeropsAccount.tsx | <span className="menu-foot-name">{nameHeld ? "\u00a0" : lines.name}</span> → <span className="menu-foot-name">{null}</span>
     it.effect("a person signs in through either HQ instance and gets their account's menu", () =>
       Effect.gen(function* () {
         const s = yield* createScenario([installSignIn], { signIn: "ui" });

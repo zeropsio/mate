@@ -5,7 +5,11 @@ import {
   shownCanonicalHqListNavigationAtom,
 } from "@t3tools/client-runtime/data";
 import { useAtomValue } from "@effect/atom-react";
-import { shownHqPersonFactsAtom, mateLimitAtom } from "@t3tools/client-runtime/data";
+import {
+  shownHqMenuNavigationAtom,
+  shownHqPersonFactsAtom,
+  mateLimitAtom,
+} from "@t3tools/client-runtime/data";
 import {
   threadSearchMatchKey,
   type EnvironmentThreadSearchMatch,
@@ -227,7 +231,8 @@ import { useOpenMate } from "../zerops/useOpenMate";
 import { overviewProjectsOf, useMenuProjects, useOverviewKey } from "./zerops/SidebarOverview";
 import { overviewHeadline } from "./zerops/SidebarOverview.logic";
 import { useChiefSetupLine } from "~/zerops/chiefSetup";
-import { useOwnChief } from "~/zerops/ownChief";
+import { usePaintedOwnChief } from "~/zerops/ownChief";
+import { MENU_HOLDS_FOR_HQ_MS, useLoadFill } from "~/lib/loadFills";
 import { chiefTopShown } from "./zerops/chief/chiefTop.logic";
 import { SidebarChiefPlace } from "./zerops/chief/SidebarChiefRow";
 import { SidebarChiefTop } from "./zerops/chief/SidebarChiefTop";
@@ -2023,7 +2028,9 @@ export default function Sidebar() {
   );
   const zeropsListedActions = useStandingGetter(zeropsActionsOf, zeropsListed, listedMateKey);
   const chiefSetupLine = useChiefSetupLine();
-  const ownChief = useOwnChief();
+  // What the top row paints before HQ says: the Chief the last visit had (it grants nothing).
+  const paintedChief = usePaintedOwnChief();
+  const [chiefStoodAtFirst] = useState(() => typeof paintedChief === "string");
   const onZeropsSelect = useCallback(
     (candidate: (typeof zeropsCandidates)[number]) => {
       if (isMobile) {
@@ -2091,21 +2098,44 @@ export default function Sidebar() {
     reading: zeropsSession.organizationStatus === "selected" && !zeropsMenuComplete,
     notice: zeropsNotice,
   });
+  // HQ's directory names and groups the rows: read, refused, or told it cannot say.
+  const zeropsDirectoryAnswered = useAtomValue(
+    shownHqMenuNavigationAtom,
+    (navigation) =>
+      navigation.read === "read" ||
+      navigation.refusal !== null ||
+      navigation.capped ||
+      navigation.updateRequired,
+  );
   const zeropsListReady = !zeropsHqReading && !zeropsListLoading;
   const [zeropsListStood, setZeropsListStood] = useState(zeropsListReady);
   useEffect(() => {
     if (zeropsListReady) setZeropsListStood(true);
   }, [zeropsListReady]);
+  // Its patience for what waits on the viewer runs from the moment its rows could stand, as ever;
+  // only where HQ's directory is still unread by then (the rows would stand ungrouped, and be
+  // regrouped) does it hold on, until the directory is read or `MENU_HOLDS_FOR_HQ_MS` is spent.
+  const [zeropsListWaited, setZeropsListWaited] = useState<"no" | "short" | "long">("no");
   useEffect(() => {
     if (zeropsListStood || zeropsListLoading || !zeropsHqReading) return;
-    const timer = window.setTimeout(() => {
-      setZeropsListStood(true);
+    const short = window.setTimeout(() => {
+      setZeropsListWaited((waited) => (waited === "no" ? "short" : waited));
     }, MENU_WAITS_PATIENCE_MS);
+    const long = window.setTimeout(() => {
+      setZeropsListWaited("long");
+    }, MENU_HOLDS_FOR_HQ_MS);
     return () => {
-      window.clearTimeout(timer);
+      window.clearTimeout(short);
+      window.clearTimeout(long);
     };
   }, [zeropsHqReading, zeropsListLoading, zeropsListStood]);
-  const zeropsListHeld = !zeropsListStood && !zeropsListReady;
+  useEffect(() => {
+    if (zeropsListWaited === "long" || (zeropsListWaited === "short" && zeropsDirectoryAnswered))
+      setZeropsListStood(true);
+  }, [zeropsDirectoryAnswered, zeropsListWaited]);
+  // The menu's fill (`loadFills`): its rows, the top row's count and the foot's balance stand in
+  // one frame, and in the page's own where the two are ready together.
+  const zeropsListHeld = !useLoadFill("menu", zeropsListStood || zeropsListReady);
   // What the Waiting on you list asks of the menu: a Mate's conversation, and its fix request.
   const zeropsWaitingVerbs = useMemo(
     () => ({
@@ -2773,7 +2803,14 @@ export default function Sidebar() {
   const zeropsChiefShown =
     zeropsSignedIn &&
     chiefTopShown({
-      own: zeropsChief === undefined ? ownChief : zeropsChief.project.id,
+      // With no Chief remembered (a first visit) its row comes with the menu's fill, not alone
+      // in the moment HQ's directory names it.
+      own:
+        zeropsListHeld && !chiefStoodAtFirst
+          ? undefined
+          : zeropsChief === undefined
+            ? paintedChief
+            : zeropsChief.project.id,
       setup: chiefSetupLine,
     });
   const zeropsChiefTop = (tile: boolean) =>
