@@ -2,7 +2,8 @@
 
 ## Canonical homes
 
-- Conceptual architecture: private `zeropsio/mate-hq`, `docs/architecture/README.md`. Public
+- [Engineering rules](engineering-rules.md): the rules every change follows, shared with zcp and HQ.
+- Conceptual architecture: private `zeropsio/mate-hq:docs/architecture/README.md`. Public
   product contracts here and in the zcp spec remain self-contained.
 - [Fork boundaries](internals/zerops/fork.md)
 - [Domain terms](internals/zerops/primer.md)
@@ -10,7 +11,7 @@
 - [Design guide](internals/zerops/design-system.md)
 - [Provider runtime contract](internals/zerops/spi.md)
 - [Verified platform assumptions](internals/zerops/verified.md)
-- zcp↔mate seam: `../../zcp/docs/spec-mate.md` §2.8.
+- zcp↔mate seam: `zeropsio/zcp:docs/spec-mate.md` §2.8.
 - [Shared runtime terms](internals/glossary.md)
 - [Execution boundaries](internals/overview.md)
 - [Service rules](internals/effect-services.md)

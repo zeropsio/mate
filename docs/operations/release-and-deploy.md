@@ -5,9 +5,9 @@ How mate reaches users. Each step names the file that owns its detail.
 - **Hosted web client.** `main` deploys https://mate.zerops.io through `zerops.yml`'s `prod` setup.
   Keep `main` releasable; one hard line: never break signing in with a Zerops account.
 - **Staging web.** `zerops.yml`'s `staging` setup builds the alfa test web against alfa's HQ
-  (`VITE_HQ_ORIGIN`); Mates born from it pin `T3CODE_ZEROPS_HQ_ORIGIN` to that HQ. It runs at
-  https://web-31d9.prg1.zerops.app, the `web` service of `mate-hq-staging`; deploy it from a
-  checkout with `zcli push -P <project id> -S <web id> --setup staging`.
+  (`VITE_HQ_ORIGIN`); Mates born from it pin `T3CODE_ZEROPS_HQ_ORIGIN` to that HQ. It runs at the
+  setup's `VITE_HOSTED_APP_URL`; deploy it from a checkout with
+  `zcli push -P <project id> -S <web id> --setup staging`.
 - **Dev environments' web.** `zerops.yml`'s `dev` setup serves `https://mate.<host>` of each dev
   environment, one service per environment, named after it. Deploy a branch with the manual
   **Deploy dev Mate** workflow (`.github/workflows/deploy-dev.yml`).
@@ -34,6 +34,7 @@ How mate reaches users. Each step names the file that owns its detail.
   that release through download → SHA-256 → install and waits for `mate serve` to be ready. Red
   means the release does not install or its `serve` rejects the launch argv or environment: do not
   promote it. The release stays installed on that container either way.
-- **Unreleased server build in a running container.** `../zcp/eval/scripts/mate-dev-push.sh
-  {zcp|mate|all}` (public zeropsio/zcp). It needs the project VPN and an explicit `EVAL_REMOTE_HOST`.
+- **Unreleased server build in a running container.** `eval/scripts/mate-dev-push.sh {zcp|mate|all}`
+  in a `zeropsio/zcp` checkout; `MATE_REPO` names this checkout when it is not at the script's
+  default. It needs the project VPN and an explicit `EVAL_REMOTE_HOST`.
   It is not a release: a unit restart keeps the dev build, a container restart pulls the release back.

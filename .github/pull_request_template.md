@@ -27,6 +27,7 @@ we may close it without merging it, or never review it.
 
 ## Checklist
 
+- [ ] This PR follows [docs/engineering-rules.md](https://github.com/zeropsio/mate/blob/main/docs/engineering-rules.md)
 - [ ] This PR is small and focused
 - [ ] I explained what changed and why
 - [ ] I included before/after screenshots for any UI changes

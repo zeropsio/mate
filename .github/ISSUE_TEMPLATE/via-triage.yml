@@ -1,5 +1,5 @@
 name: Triage report
-description: Filed with `mate triage` from an installed Zerops Mate release. For hand-written reports use the bug report template instead.
+description: Filed with `mate triage` from an installed Zerops Mate release.
 labels:
   - via-triage
 body:

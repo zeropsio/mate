@@ -87,9 +87,9 @@ zerops:
               Cache-Control: "'public, max-age=31536000, immutable' always"
               X-Content-Type-Options: "'nosniff' always"
 
-  # The alfa test environment: the same web client against alfa's own HQ
-  # (KRLS project `mate-hq-staging`), so web and Mate changes can be tried
-  # without touching the shared production HQ. `prod` with that HQ named by
+  # The alfa test environment: the same web client against alfa's own HQ,
+  # so web and Mate changes can be tried without touching the shared
+  # production HQ. `prod` with that HQ named by
   # the build (`VITE_HQ_ORIGIN`, `zerops/accountHq.ts` `configuredHq`); Mates
   # born from this web pin `T3CODE_ZEROPS_HQ_ORIGIN` to it. Sign-in is `prod`'s:
   # Zerops HQ's shared session, or a device login where its bridge refuses
@@ -133,8 +133,8 @@ zerops:
               X-Content-Type-Options: "'nosniff' always"
 
   # The alpha experiment: the same web client against the Zerops alpha platform,
-  # with its own HQ beside it (KRLS project `mate-alpha`, HQ_ZEROPS_API on
-  # alpha). The client's Zerops calls go to
+  # with its own HQ beside it (HQ_ZEROPS_API on alpha). The client's Zerops
+  # calls go to
   # alpha's API (`VITE_ZEROPS_API_URL`); Mates born from it name that API to
   # their container (`ZCP_API_HOST`). Alpha has no device login and no GUI of
   # its own, so the build keeps the hand-over and its Zerops links stay on

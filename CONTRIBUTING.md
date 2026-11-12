@@ -10,6 +10,12 @@ Feature requests and proposals belong in [Ideas discussions](https://github.com/
 
 If that sounds annoying, that is because it is. This project is still early and we are trying to keep scope, quality, and direction under control.
 
+## Rules For Every Change
+
+Every change, ours included, follows [`docs/engineering-rules.md`](docs/engineering-rules.md): the
+rules this repository shares with `zeropsio/zcp` and HQ. [`AGENTS.md`](AGENTS.md) is the repository
+map for coding agents.
+
 ## What We Are Most Likely To Accept
 
 Small, focused bug fixes.

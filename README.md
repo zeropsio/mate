@@ -31,20 +31,18 @@ to the code — file operations are local, work survives closing your laptop —
 
 - **Sign-in is a Zerops identity, not a pairing code.** The door checks project membership and
   mints a session; there is no code to copy and no secret shared out of band. Design:
-  `../zcp/docs/spec-mate.md` §3.
+  [`zeropsio/zcp:docs/spec-mate.md`](https://github.com/zeropsio/zcp/blob/main/docs/spec-mate.md) §3.
 - **zcp tracks the latest stable GitHub release**, checks compatibility before installation, and
   supervises the server as `zerops@mate`. Nginx proxies the server API and WebSocket at `/mate/`; the web client is hosted
-  separately at https://mate.zerops.io. Delivery:
-  `../zcp/docs/spec-mate.md` §2.
+  separately at https://mate.zerops.io. Delivery: `zeropsio/zcp:docs/spec-mate.md` §2.
 - **The agent's leverage is the `zerops_*` MCP toolset** already wired into the container. That
   toolset lives in `zcp`, not here — Zerops Mate is the client and the harness around it.
 
 ## Releases
 
-Releases are published on [GitHub](https://github.com/zeropsio/mate/releases). The first release is
-[`v0.1.0`](https://github.com/zeropsio/mate/releases/tag/v0.1.0), with the server tarball
-`zerops-mate-0.1.0.tgz` and `SHA256SUMS`. Installing the tarball links the executable as `mate`; it
-reports `mate v0.1.0`.
+Releases are published on [GitHub](https://github.com/zeropsio/mate/releases). Each carries the
+`zerops-mate` server tarball and its `SHA256SUMS`. Installing the tarball links the executable as
+`mate`.
 
 Nothing is published to npm under the `zerops-mate` name. Zerops users do not install the tarball
 themselves because zcp owns the installation. The fork does not currently publish desktop
@@ -59,19 +57,20 @@ imported, ported, owned, or deleted, and why — is `docs/internals/zerops/fork.
 
 ## Where to read next
 
+- [`docs/engineering-rules.md`](docs/engineering-rules.md) — the rules every change follows, shared
+  with zcp and HQ.
 - [`AGENTS.md`](AGENTS.md) — the knowledge map: where design, rules, measured facts, and tests
   each live.
 - [`docs/internals/zerops/fork.md`](docs/internals/zerops/fork.md) — the fork rules: the hard-fork
   decision, the zones, what was kept and what was deleted, how work gets done, upstream intake.
-- `../zcp/docs/spec-mate.md` — the design spec: the envelope on the wire, delivery, the door, client
-  flow, the Zerops-aware client, git.
+- `zeropsio/zcp:docs/spec-mate.md` — the design spec: the envelope on the wire, delivery, the door,
+  client flow, the Zerops-aware client, git.
 - [`docs/internals/zerops/verified.md`](docs/internals/zerops/verified.md) — measured platform
   assumptions; [`intake.md`](docs/internals/zerops/intake.md) covers upstream intake.
-- Private `zeropsio/mate-hq`, `docs/architecture/README.md` — conceptual architecture. Public
+- Private `zeropsio/mate-hq:docs/architecture/README.md` — conceptual architecture. Public
   product contracts in this repository and the zcp spec remain self-contained.
 
 ## Delivering a dev build
 
-Not a release — the push loop in the sibling `zcp` repo builds and installs a dev build onto a
-running container: `../zcp/eval/scripts/mate-dev-push.sh mate`. A container restart wipes a dev
-build; push again after.
+Not a release: [`docs/operations/release-and-deploy.md`](docs/operations/release-and-deploy.md),
+"Unreleased server build in a running container".
