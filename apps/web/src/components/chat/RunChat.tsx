@@ -198,6 +198,7 @@ import { ImportDetail } from "./ImportDetail";
 import { useStandupReading } from "../../zerops/activity/useStandupReading";
 import {
   detailLines,
+  batchProgressWord,
   liveOperationBar,
   observedLinesOf,
   settledOperationBar,
@@ -2264,23 +2265,28 @@ function OperationLine({
   const failed = operation.phase === "failed";
   const failure: Failure | null = !failed ? null : undone ? "undone" : "broken";
   const running = noResult === undefined && operation.phase === "running";
-  // Live in the slot, its pipeline as it goes and the step it is on.
-  // A batch's bar keeps a segment per service; a deploy's follows its pipeline.
+  // Live in the slot, its pipeline as it goes and the step it is on. A batch's rows carry each
+  // service's state: its line says how many are out, and its words' sweep is its one running mark.
+  const batch = operation.kind === "deploy" && operation.batch === true;
   const live =
     running && inSlot
-      ? standing !== undefined
-        ? {
-            segments: standing.segments,
-            word:
-              standing.figure === null ? standing.words : `${standing.words} · ${standing.figure}`,
-          }
-        : liveOperationBar(
-            operation,
-            operation.batch === true ? undefined : regions?.observed?.pipeline,
-          )
+      ? batch
+        ? { segments: [], word: batchProgressWord(regions?.observed?.services) }
+        : standing !== undefined
+          ? {
+              segments: standing.segments,
+              word:
+                standing.figure === null
+                  ? standing.words
+                  : `${standing.words} · ${standing.figure}`,
+            }
+          : liveOperationBar(
+              operation,
+              operation.batch === true ? undefined : regions?.observed?.pipeline,
+            )
       : null;
   // Settled, a bar only where it says what the line does not (`settledOperationBar`).
-  const settled = settledOperationBar(operation, undone, inSlot ? "slot" : "log");
+  const settled = batch ? [] : settledOperationBar(operation, undone, inSlot ? "slot" : "log");
   const words =
     noResult === undefined ? operationLineWords(operation) : operationUnreturnedWords(operation);
   // A deploy's steps are its progress, under its name: the line holds its
@@ -2320,7 +2326,9 @@ function OperationLine({
         </RunShimmer>
         {stepped ? null : live !== null ? (
           <>
-            <StatusBar className="w-12" segments={live.segments} />
+            {live.segments.length === 0 ? null : (
+              <StatusBar className="w-12" segments={live.segments} />
+            )}
             {live.word === null ? null : <span className="text-muted-foreground">{live.word}</span>}
           </>
         ) : running || noResult !== undefined || settled.length === 0 ? null : (
@@ -4057,9 +4065,18 @@ function writeStyle(element: HTMLElement, name: string, value: string | null): v
   else element.style.setProperty(name, value);
 }
 
+/** An element's padding above and below its content, in pixels. */
+function verticalPadding(element: HTMLElement): number {
+  const style = getComputedStyle(element);
+  return Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom);
+}
+
 /**
- * Says the room the live slot takes, its gap above it included: on a short
- * page the card holds it whole once the history has none left to give.
+ * Says the room the card needs with its history given back: the slot, its gap
+ * above it, the card's head and the history's own edges. On a short page the card
+ * holds them whole once the history has none left to give. Measured from the
+ * history's bottom, the head was left out, and a slot past the cap (a batch
+ * deploy's rows) ran out of the card's frame by the head's height.
  */
 function placeSlot(list: HTMLOListElement | null): void {
   // Drawn outside a page (a test's renderer), it has no layout to read.
@@ -4070,12 +4087,15 @@ function placeSlot(list: HTMLOListElement | null): void {
   // Every box read before anything is written: a write between two reads
   // restyled the card, and the second read laid it out again.
   const slotRect = slotBox.getBoundingClientRect();
-  const above = slotBox.previousElementSibling ?? null;
-  const from =
-    above === null ? chat.getBoundingClientRect().top : above.getBoundingClientRect().bottom;
+  // What the history gives back is its scroll's room: its own edges and the gaps around it stay.
+  const scroll =
+    slotBox.previousElementSibling?.querySelector<HTMLElement>(":scope > .run-scroll") ?? null;
+  const given =
+    scroll === null ? 0 : scroll.getBoundingClientRect().height - verticalPadding(scroll);
+  const from = chat.getBoundingClientRect().top;
   // Said on the card for its own cap (`@property --run-slot-room`): nothing
   // under it inherits it, so a change of it restyles the card's box alone.
-  writeStyle(chat, "--run-slot-room", `${Math.ceil(slotRect.bottom - from)}px`);
+  writeStyle(chat, "--run-slot-room", `${Math.ceil(slotRect.bottom - from - given)}px`);
 }
 
 /**

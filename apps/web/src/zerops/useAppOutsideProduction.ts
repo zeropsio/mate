@@ -2,19 +2,22 @@
  * Whether a project's production is deployed outside Mate, as somebody said in
  * HQ: who may say so (whoever HQ's structure verb lets: an Owner or Admin), and the one write that
  * says it, changes its address or takes it back (`set-outside-production`). What the page draws of
- * it comes from the project's flow (`GroupFlowProduction`'s `outside`); this holds only the press.
+ * it comes from the project's flow (`GroupFlowProduction`'s `outside`); this holds only the press,
+ * and what the application's environment list holds, to tell when HQ's navigation says it.
  * An HQ older than the statement is learned from that write alone.
  */
 import {
   OUTSIDE_PRODUCTION_UNSUPPORTED,
   OperationStopped,
+  appOutsideProduction,
   sameOutsideProduction,
   type OutsideProduction,
 } from "@t3tools/client-runtime/data";
 import { hqOffer } from "@t3tools/shared/hqOffers";
+import { Atom } from "effect/reactivity";
 import { useEffect, useState } from "react";
 
-import { useAccountOrgId } from "./accountData";
+import { useAccountOrgId, useProjection } from "./accountData";
 import { useAccountOperationsOptional } from "./accountOperations";
 import { useHqStructure } from "./useHqOffers";
 
@@ -46,6 +49,8 @@ const SHOWN_WITHIN_MS = 8_000;
 
 type Held = OutsideProduction | null;
 
+const UNREAD = Atom.make<Held | undefined>(undefined);
+
 export function useAppOutsideProduction(appId: string): AppOutsideProduction {
   const app = useHqStructure()?.apps.find((candidate) => candidate.id === appId);
   const offer = hqOffer(app?.can, "structure");
@@ -60,12 +65,12 @@ export function useAppOutsideProduction(appId: string): AppOutsideProduction {
     readonly now: Held;
     readonly onSaved: () => void;
   } | null>(null);
-  const held: Held | undefined =
-    app === undefined
-      ? undefined
-      : app.outsideProduction === undefined
-        ? null
-        : { address: app.outsideProduction.address };
+  // The outside production as the application's environment list holds it.
+  const held = useProjection(
+    appOutsideProduction,
+    orgId === null ? null : { orgId, appId },
+    UNREAD,
+  );
   const shown =
     taken !== null &&
     held !== undefined &&

@@ -74,6 +74,24 @@ function attemptErrorOf(cause: unknown): ConnectionAttemptError {
   return new ConnectionTransientError({ reason: "remote-unavailable", detail, hqWords: detail });
 }
 
+/**
+ * An extension's refusal ends its connection's extending: past `attemptErrorOf`'s blocks, any answer
+ * of HQ's that says no (`403`, or a `409 credential_required` the door re-entry did not heal), but
+ * not `mate_not_connected`, which a next ask may find linked again.
+ */
+function extensionErrorOf(cause: unknown): ConnectionAttemptError {
+  const verdict = attemptErrorOf(cause);
+  if (
+    verdict._tag === "ConnectionTransientError" &&
+    cause instanceof HqError &&
+    cause.kind === "refused" &&
+    cause.code !== "mate_not_connected"
+  ) {
+    return new ConnectionBlockedError({ reason: "permission", detail: cause.message });
+  }
+  return verdict;
+}
+
 const NO_HQ = new HqError({
   kind: "unavailable",
   code: "no_session",
@@ -99,6 +117,12 @@ export interface MateTicketPrimer extends MateTicketIssuerService {
    */
   readonly prime: (mate: { readonly orgId: string; readonly projectId: string }) => void;
 }
+
+const issuedOf = (issued: HqMateTicket): IssuedMateTicket => ({
+  ticket: issued.ticket,
+  origin: issued.origin,
+  grantSeconds: issued.grantSeconds,
+});
 
 /**
  * The connection runtime's ticket issuer over HQ's `mateTicket`, in the Mate's organisation: `hqOf`
@@ -155,12 +179,16 @@ export function mateTicketIssuer(
           }
         },
         catch: attemptErrorOf,
-      }).pipe(
-        Effect.map((issued): IssuedMateTicket => ({
-          ticket: issued.ticket,
-          origin: issued.origin,
-        })),
-      ),
+      }).pipe(Effect.map(issuedOf)),
+    extend: ({ orgId, projectId }) =>
+      Effect.tryPromise({
+        try: (signal) => {
+          const hq = hqOf(orgId);
+          if (hq === null) throw NO_HQ;
+          return hq.mateTicket(projectId, signal, { extend: true });
+        },
+        catch: extensionErrorOf,
+      }).pipe(Effect.map(issuedOf)),
     prime: ({ orgId, projectId }) => {
       const hq = hqOf(orgId);
       const key = keyOf(orgId, projectId);

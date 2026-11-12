@@ -60,9 +60,7 @@ import { useProjectCapabilities, useRoleOffers } from "~/zerops/usePlatformCapab
 import { useOrgOffers } from "~/zerops/useHqOffers";
 import { HQ_UNFOLLOWED, useAccountOperationsOptional } from "~/zerops/accountOperations";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
-import { askChiefAccess } from "~/zerops/chiefAccess";
 import { useOwnChief } from "~/zerops/ownChief";
-import { ChiefAccessButton } from "./chief/ChiefAccessButton";
 import { ChiefOverviewButton } from "./chief/ChiefOverviewButton";
 import { MateFaceAsMark } from "./primitives";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -206,7 +204,10 @@ const EMPTY_SHELL_STATUS =
 export function ZeropsMateComingPage({ projectId }: { readonly projectId: string }) {
   const { open, readyProjectIds } = useSharedBirthState();
   const birth = open.find((entry) => entry.projectId === projectId);
-  return birth === undefined ? (
+  // A setup under way shows its progress, step by step, whoever runs it; only one that stopped is
+  // the birth's own card, with what it needs (the owner, 2026-11-12: "it used to have like a nice
+  // progress screen").
+  return birth === undefined || !sharedBirthPresentation(birth).attention ? (
     <ExistingMateComingPage
       projectId={projectId}
       birthReady={readyProjectIds.includes(projectId)}
@@ -644,8 +645,6 @@ function ExistingMateComingPage({
         { orgId, unobserved: HQ_UNFOLLOWED },
       );
       if (!current()) return;
-      // As every registration does: a failure stands in the Chief's header (`ChiefAccessButton`).
-      void askChiefAccess({ ask: "keep", operations, orgId, projectId });
       account?.retryDetail({ family: "hqMate", ownerId: projectId });
       readAgain();
       const key = link.key ?? candidate?.key;
@@ -1227,10 +1226,7 @@ export function MateComingHeader({
         )}
         {mate.chief === true ? (
           // A Chief's way out is its organization, as its conversation's header offers it.
-          <>
-            <ChiefAccessButton />
-            <ChiefOverviewButton threadRef={null} />
-          </>
+          <ChiefOverviewButton threadRef={null} />
         ) : arriving || mate.projectUrl === undefined ? null : (
           // It waits with the chat header's for the opening conversation (`index.css`).
           <ConversationOpeningWaits className="contents">

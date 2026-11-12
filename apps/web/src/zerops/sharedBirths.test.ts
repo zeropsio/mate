@@ -88,8 +88,23 @@ describe("shared births in the group tree", () => {
       }),
     ).toMatchObject({
       line: "Container starting · Waiting for the Mate to link",
-      actions: ["continue", "delete"],
+      attention: false,
+      actions: ["delete"],
     });
+    // witness: apps/web/src/zerops/sharedBirths.ts | ...(birth.canContinue && attention ? ["continue" as const] : []), → ...(birth.canContinue ? ["continue" as const] : []),
+    // Its setup's session ended (the window closed) before the Mate linked: stopped, so Continue.
+    expect(
+      sharedBirthPresentation({
+        ...birth,
+        progress: {
+          phase: "container-starting",
+          next: { kind: "wait", for: "hello", attach: false },
+          reason: null,
+          sessionEnded: true,
+        },
+        canContinue: true,
+      }),
+    ).toMatchObject({ attention: true, actions: ["continue", "delete"] });
   });
 
   it("a stopped birth tells a person without Continue who can finish its remaining steps", () => {

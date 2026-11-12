@@ -1,3 +1,4 @@
+import type { HqOutsideEnvironment } from "@t3tools/shared/hqEnvironment";
 import { KeptGitQuestions } from "./KeptGitQuestions";
 import { shownCanonicalHqListNavigationAtom } from "@t3tools/client-runtime/data";
 import { useAutomatedKey } from "~/zerops/useAutomationSettings";
@@ -400,7 +401,7 @@ function groupFlowReadsOf(flow: SidebarProjectFlow): GroupFlowReads {
     environments: [...flow.environments.values()],
     pullRequests: flow.pullRequests,
     merged: flow.merged ?? [],
-    outsideProduction: flow.outsideProduction,
+    outside: flow.outside,
     release: {
       gate: flow.releaseOffered ? { allowed: true } : { allowed: false, reason: "" },
       suggestion: flow.releaseTag ?? "",
@@ -455,8 +456,8 @@ export interface SidebarProjectFlow {
   readonly releaseContents?: ReadonlyArray<Moved> | undefined;
   /** The Mate tier as `main` holds it, which pairs each Mate's previews (`servicePairs`). */
   readonly mateTier?: string | undefined;
-  /** Somebody said its production is deployed outside Mate (`ZeropsProjectFlow.outsideProduction`). */
-  readonly outsideProduction?: { readonly address: string | null } | undefined;
+  /** Its production deployed outside Mate, from its environment list (`ZeropsProjectFlow.outside`). */
+  readonly outside?: HqOutsideEnvironment | undefined;
   /** Production's services whose commit cannot be told: nothing is said to wait on them. */
   readonly releaseUntold?: ReadonlyArray<string> | undefined;
   /**
@@ -2208,6 +2209,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
               recipeTiers: flow.recipeTiers ?? [],
               merged: flow.merged ?? [],
               pullRequests: flow.pullRequests,
+              outside: flow.outside,
             },
       ),
     );

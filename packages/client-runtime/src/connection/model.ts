@@ -1,4 +1,5 @@
 import { EnvironmentId } from "@t3tools/contracts";
+import type * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
 const ConnectionTargetBase = {
@@ -160,6 +161,18 @@ export type PreparedHttpAuthorization =
       readonly expiresAtEpochMs: number;
     };
 
+/**
+ * How long a Mate connection may stay open (`grantSeconds`, wire-grant), and how to ask HQ for the
+ * ticket that extends it (`extend: true`), presented on the open connection.
+ */
+export interface ConnectionGrant {
+  readonly seconds: number;
+  readonly ask: Effect.Effect<
+    { readonly ticket: string; readonly grantSeconds: number },
+    ConnectionAttemptError
+  >;
+}
+
 export interface PreparedConnection {
   readonly contentAddressedImages?: boolean;
   /** The engine conversation protocol the Mate serves (`capabilities.mateEngine`); absent on V1. */
@@ -170,6 +183,8 @@ export interface PreparedConnection {
   readonly socketUrl: string;
   /** Sent as the socket's first frame: a Mate connection's ticket (`{"ticket": …}`). */
   readonly firstFrame?: string;
+  /** A Mate connection's grant: the browser extends it before it ends. */
+  readonly grant?: ConnectionGrant;
   readonly httpAuthorization: PreparedHttpAuthorization | null;
   readonly target: ConnectionTarget;
 }

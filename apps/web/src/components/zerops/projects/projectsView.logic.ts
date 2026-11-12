@@ -4,6 +4,7 @@
  * is the person's (`projectOrderPreference.ts`), and nothing reorders them.
  */
 
+import type { HqOutsideEnvironment } from "@t3tools/shared/hqEnvironment";
 import type { UnreadEnvironment } from "@t3tools/client-runtime/zerops/hq";
 import { mateParts, type MatePart } from "@t3tools/client-runtime/zerops/mateParts";
 import {
@@ -557,8 +558,8 @@ export interface GroupFlowReads {
     /** Production's services whose commit cannot be told. */
     readonly untold: ReadonlyArray<string>;
   };
-  /** Somebody said its production is deployed outside Mate (`ZeropsProjectFlow.outsideProduction`). */
-  readonly outsideProduction?: { readonly address: string | null } | undefined;
+  /** Its production deployed outside Mate, from its environment list (`ZeropsProjectFlow.outside`). */
+  readonly outside?: HqOutsideEnvironment | undefined;
 }
 
 /**
@@ -702,7 +703,7 @@ export function groupFlowInputOf(input: {
     mainHead: undefined,
     pending: input.pending,
     unread: flow?.unreadEnvironments ?? [],
-    outsideProduction: flow?.outsideProduction,
+    outside: flow?.outside,
   };
 }
 

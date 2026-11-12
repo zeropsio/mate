@@ -662,6 +662,9 @@ function StepsBody({
   readonly steps: ReadonlyArray<ProcessStep>;
 }) {
   const saysWhyOnStep = headless && readsPipeline(operation);
+  const saysWhyOnService =
+    observed?.services?.some((service) => service.reason === operation.explanation?.reason) ===
+    true;
   const failedChecks =
     operation.kind === "verify" ? steps.filter((step) => step.state === "failed") : [];
   return (
@@ -700,8 +703,8 @@ function StepsBody({
           {observed.provenance}
         </p>
       ) : null}
-      {/* A deploy says why under the step that broke; any other card here. */}
-      {operation.explanation !== undefined && !saysWhyOnStep ? (
+      {/* A deploy says why under the step that broke, a batch under the service that did; any other card here. */}
+      {operation.explanation !== undefined && !saysWhyOnStep && !saysWhyOnService ? (
         <ExplanationBlock explanation={operation.explanation} />
       ) : null}
     </>

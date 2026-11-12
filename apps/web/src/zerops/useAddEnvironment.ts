@@ -70,11 +70,15 @@ function usePendingEnvironments(): ReadonlyMap<string, ReadonlyArray<HeldEnviron
   );
 }
 
-/** What HQ's flow of an application tells its environments' facts. */
+/**
+ * What HQ's flow of an application tells its environments' facts, with its outside production
+ * (`ZeropsProjectFlow.outside`), which leaves no production to add.
+ */
 export type ApplicationEnvironmentReads = Pick<
   ApplicationEnvironmentFacts,
   "environments" | "recipeRead" | "recipeTiers" | "merged" | "pullRequests"
->;
+> &
+  Pick<ZeropsProjectFlow, "outside">;
 
 /**
  * Every fact an application's environments are told from (`applicationEnvironments`), gathered
@@ -87,7 +91,6 @@ export function useApplicationEnvironmentFacts(): (
   reads: ApplicationEnvironmentReads | undefined,
 ) => ApplicationEnvironmentFacts {
   const offers = useEnvironmentOffers();
-  const navigation = useAtomValue(hqNavigationAtom);
   const inventory = useZeropsInventory();
   const kept = useContext(HeldInventoryContext);
   const projects = kept?.projects ?? inventory.projects;
@@ -102,11 +105,9 @@ export function useApplicationEnvironmentFacts(): (
       offered: offers(groupId),
       merged: reads?.merged ?? [],
       pullRequests: reads?.pullRequests ?? [],
-      productionOutside:
-        navigation.structure?.apps.find((app) => app.id === groupId)?.outsideProduction !==
-        undefined,
+      productionOutside: reads?.outside !== undefined,
     }),
-    [navigation, offers, pending, projects],
+    [offers, pending, projects],
   );
 }
 
@@ -134,7 +135,7 @@ export function useEnvironmentQuestionFacts(
   flow:
     | Pick<
         ZeropsProjectFlow,
-        "recipeRead" | "recipeTiers" | "environmentInputs" | "merged" | "pullRequests"
+        "recipeRead" | "recipeTiers" | "environmentInputs" | "merged" | "pullRequests" | "outside"
       >
     | undefined,
 ): ReturnType<typeof questionFactsOf> {
@@ -150,6 +151,7 @@ export function useEnvironmentQuestionFacts(
             recipeTiers: flow.recipeTiers,
             merged: flow.merged,
             pullRequests: flow.pullRequests,
+            outside: flow.outside,
           },
     );
     return questionFactsOf({

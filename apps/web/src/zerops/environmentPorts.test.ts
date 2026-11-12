@@ -288,7 +288,7 @@ describe("the route's exchange at its Mate's door", () => {
     const reset = setMateTicketHq(() => ({
       mateTicket: async (projectId) => {
         events.push(`ticket ${projectId}`);
-        return { ticket: "T1", expiresIn: 60, origin: ORIGIN };
+        return { ticket: "T1", expiresIn: 60, origin: ORIGIN, grantSeconds: 900 };
       },
     }));
     vi.stubGlobal("window", { location: { origin: "https://mate.example.test" } });

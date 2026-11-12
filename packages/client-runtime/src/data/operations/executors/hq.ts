@@ -107,8 +107,6 @@ export type HqWrites = Pick<
   | "keepDeployToken"
   | "handOver"
   | "setChief"
-  | "keepChiefToken"
-  | "forgetChiefToken"
   | "decideProposal"
 > &
   Partial<Pick<HqApi, "recordReveal">> &
@@ -551,16 +549,6 @@ export function makeHqExecutor(ports: {
         return Effect.map(
           Effect.tryPromise({ try: () => api.registerBirthChief(intent.birthId), catch: faultOf }),
           ({ projectId }) => answered(requestId, projectId, { projectId }),
-        );
-      case "keep-chief-token":
-        return Effect.map(
-          Effect.tryPromise({ try: () => api.keepChiefToken(), catch: faultOf }),
-          () => answered(requestId, intent.projectId, {}),
-        );
-      case "forget-chief-token":
-        return Effect.map(
-          Effect.tryPromise({ try: () => api.forgetChiefToken(), catch: faultOf }),
-          () => answered(requestId, intent.projectId, {}),
         );
       case "decide-proposal":
         return Effect.map(
@@ -1151,8 +1139,6 @@ export function makeHqExecutor(ports: {
         if (
           intent.kind === "set-chief" ||
           intent.kind === "register-birth-chief" ||
-          intent.kind === "keep-chief-token" ||
-          intent.kind === "forget-chief-token" ||
           intent.kind === "decide-proposal" ||
           intent.kind === "record-reveal"
         )

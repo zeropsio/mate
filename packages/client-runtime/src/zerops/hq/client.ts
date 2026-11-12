@@ -63,9 +63,9 @@ import type { HqNavigationIntake, HqNavigationMateTask } from "@t3tools/shared/h
 import { HqMergersAnswer, type HqMergers, type HqMergersRequest } from "@t3tools/shared/hqMergers";
 import {
   HqOutsideProductionAnswer,
-  type HqOutsideProduction,
   type HqOutsideProductionRequest,
 } from "@t3tools/shared/hqOutsideProduction";
+import type { HqOutsideTarget } from "@t3tools/shared/hqEnvironment";
 import {
   HqAiKeyView,
   HqChannelView,
@@ -259,11 +259,6 @@ export interface HqStructure {
      * people it names. Absent: whoever may push merges.
      */
     readonly mergers?: HqMergers;
-    /**
-     * Its production is deployed outside Mate, where somebody said so; it
-     * matters only while the application has no production of its own. Absent: nobody did.
-     */
-    readonly outsideProduction?: HqOutsideProduction;
   }>;
 }
 
@@ -377,11 +372,16 @@ export interface Asked<T> {
   readonly deploys: HqDeployAnswer | undefined;
 }
 
-/** What HQ hands for a Mate's socket: the ticket, its life in seconds and the origin to open. */
+/**
+ * What HQ hands for a Mate's socket: the ticket, its life in seconds, the origin to open and
+ * `grantSeconds`, how long a connection opened or extended with it may stay open (a positive
+ * integer).
+ */
 export interface HqMateTicket {
   readonly ticket: string;
   readonly expiresIn: number;
   readonly origin: string;
+  readonly grantSeconds: number;
 }
 
 export interface HqApi {
@@ -402,10 +402,6 @@ export interface HqApi {
   ) => Promise<HqGitOperationReceipt | null>;
   /** The reader's Chief registered for, or moved to, `projectId` (`chief.ts`). */
   readonly setChief: HqChiefCalls["setChief"];
-  /** HQ makes and keeps the person's token for their Chief, replacing any it kept (`chief.ts`). */
-  readonly keepChiefToken: HqChiefCalls["keepChiefToken"];
-  /** HQ keeps no token for the person's Chief any more (`chief.ts`). */
-  readonly forgetChiefToken: HqChiefCalls["forgetChiefToken"];
   /** Every decision HQ holds of the proposals named (`chief.ts`). */
   readonly proposalDecisions: HqChiefCalls["proposalDecisions"];
   /** One proposal's decision, then once how an approval ended (`chief.ts`). */
@@ -428,9 +424,14 @@ export interface HqApi {
   /**
    * A ticket to open the Mate of `projectId`'s socket with (`POST /api/mates/:projectId/ticket`):
    * the connection's first frame is `{ticket}`, sent to `origin`. A Mate's connection is one per
-   * tab, and every reconnect asks again.
+   * tab, and every reconnect asks again. With `extend` the ticket extends an open connection
+   * instead (body `{"extend":true}`), presented through the Mate's `zerops.grant.extend`.
    */
-  readonly mateTicket: (projectId: string, signal?: AbortSignal) => Promise<HqMateTicket>;
+  readonly mateTicket: (
+    projectId: string,
+    signal?: AbortSignal,
+    options?: { readonly extend: true },
+  ) => Promise<HqMateTicket>;
   /**
    * One segment of HQ's scope stream (`@t3tools/shared/hqStream`): a socket opened with a fresh
    * ticket for the session, telling `on` once it is open, of every text message and of its close
@@ -681,12 +682,12 @@ export interface HqApi {
   /**
    * Says the application's production is deployed outside Mate
    * (`PUT /api/apps/:appId/outside-production`), at `address` or at none given; `null` lifts it.
-   * HQ's answer is the statement as it stands after; `null` where nobody says so.
+   * HQ's answer is the outside production's environment target after; `null` where none stands.
    */
   readonly setOutsideProduction?: (
     appId: string,
     outside: { readonly address: string | null } | null,
-  ) => Promise<HqOutsideProduction | null>;
+  ) => Promise<HqOutsideTarget | null>;
   /** The person's active Git password metadata; passwords are returned only on issue. */
   /** Reads metadata only; provisioning records authority separately. */
   readonly observeCredential?: (projectId: string) => Promise<ObserveCredential>;
@@ -1512,11 +1513,12 @@ export function makeHqApi(input: {
     ...makeChiefCalls({ authorized, decoded, withAccess }),
     withAccess,
     structure: structureOf,
-    mateTicket: async (projectId, signal) =>
+    mateTicket: async (projectId, signal, options) =>
       json<HqMateTicket>(
         await authorized(`/api/mates/${encodeURIComponent(projectId)}/ticket`, {
           method: "POST",
           ...(signal === undefined ? {} : { signal }),
+          ...(options?.extend === true ? { body: JSON.stringify({ extend: true }) } : {}),
         }),
       ),
     openScopeSocket: async (on, signal) => {
@@ -2224,7 +2226,7 @@ export function makeHqApi(input: {
       // HQ took it: an answer this build cannot read leaves how production stands unknown.
       try {
         return (await decoded(HqOutsideProductionAnswer, "where production is deployed")(response))
-          .outsideProduction;
+          .outside;
       } catch {
         throw uncertain();
       }

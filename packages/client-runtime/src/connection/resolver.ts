@@ -261,7 +261,8 @@ const makeZeropsMateBroker = Effect.fn("clientRuntime.connection.broker.makeZero
     return Effect.fn("clientRuntime.connection.broker.zeropsMate")(function* (
       target: ZeropsMateConnectionTarget,
     ) {
-      const issued = yield* issuer.issue({ orgId: target.orgId, projectId: target.projectId });
+      const mate = { orgId: target.orgId, projectId: target.projectId };
+      const issued = yield* issuer.issue(mate);
       const httpBaseUrl = zeropsMateBaseUrl(issued.origin);
       const url = socketUrlFromWsBaseUrl(httpBaseUrl.replace(/^http/u, "ws"));
       appendClientConnectionParams(url, presentation.metadata, "direct");
@@ -271,6 +272,7 @@ const makeZeropsMateBroker = Effect.fn("clientRuntime.connection.broker.makeZero
         httpBaseUrl,
         socketUrl: url.toString(),
         firstFrame: encodeTicketFrame({ ticket: issued.ticket }),
+        grant: { seconds: issued.grantSeconds, ask: issuer.extend(mate) },
         httpAuthorization: { _tag: "Bearer", token: issued.ticket },
         target,
       } satisfies PreparedConnection;

@@ -111,41 +111,43 @@ export function sharedBirthPresentation(birth: SharedBirth): {
               hello: "Waiting for the Mate to link",
             }[next.for]
           : null);
-  const step = !birth.canContinue
-    ? null
-    : next.kind === "create"
-      ? "Continue will create the project, attach the Mate, and submit the import."
-      : next.kind === "register-chief"
-        ? "Continue will register the Chief."
-        : next.kind === "bind"
-          ? "Continue will bind the project and check the next step."
-          : next.kind === "import" && birth.projectId !== null
-            ? birth.placement === "unplaced"
-              ? "Continue will attach the Mate and submit the import."
-              : birth.placement === "plain"
-                ? "Continue will register the Mate and submit the import."
-                : birth.placement === "attached"
-                  ? "Continue will submit the import."
-                  : null
-            : next.kind === "record-import"
-              ? birth.placement === "unplaced"
-                ? "Continue will attach the Mate and record the accepted import."
-                : birth.placement === "plain"
-                  ? "Continue will register the Mate and record the accepted import."
-                  : birth.placement === "attached"
-                    ? "Continue will record the accepted import."
-                    : null
-              : next.kind === "wait" && next.attach
-                ? birth.placement === "plain"
-                  ? "Continue will register the Mate."
-                  : "Continue will attach the Mate."
-                : null;
   const attention =
     reason !== null ||
     next.kind === "unknown" ||
     next.kind === "blocked" ||
     (next.kind === "wait" && next.for === "several-services") ||
     birth.progress.sessionEnded === true;
+  // What Continue would do, said only where it is offered: on a setup that stopped.
+  const step =
+    !birth.canContinue || !attention
+      ? null
+      : next.kind === "create"
+        ? "Continue will create the project, attach the Mate, and submit the import."
+        : next.kind === "register-chief"
+          ? "Continue will register the Chief."
+          : next.kind === "bind"
+            ? "Continue will bind the project and check the next step."
+            : next.kind === "import" && birth.projectId !== null
+              ? birth.placement === "unplaced"
+                ? "Continue will attach the Mate and submit the import."
+                : birth.placement === "plain"
+                  ? "Continue will register the Mate and submit the import."
+                  : birth.placement === "attached"
+                    ? "Continue will submit the import."
+                    : null
+              : next.kind === "record-import"
+                ? birth.placement === "unplaced"
+                  ? "Continue will attach the Mate and record the accepted import."
+                  : birth.placement === "plain"
+                    ? "Continue will register the Mate and record the accepted import."
+                    : birth.placement === "attached"
+                      ? "Continue will record the accepted import."
+                      : null
+                : next.kind === "wait" && next.attach
+                  ? birth.placement === "plain"
+                    ? "Continue will register the Mate."
+                    : "Continue will attach the Mate."
+                  : null;
   return {
     row: (attention ? ROW_STOPPED : ROW_GOING)[phase],
     line: [
@@ -167,7 +169,7 @@ export function sharedBirthPresentation(birth: SharedBirth): {
       .join(" · "),
     attention,
     actions: [
-      ...(birth.canContinue ? ["continue" as const] : []),
+      ...(birth.canContinue && attention ? ["continue" as const] : []),
       ...(birth.canDelete ? ["delete" as const] : []),
     ],
   };

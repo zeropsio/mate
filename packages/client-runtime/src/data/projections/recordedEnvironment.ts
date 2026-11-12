@@ -6,6 +6,7 @@
  *
  * @module data/projections/recordedEnvironment
  */
+import type { HqOutsideEnvironment } from "@t3tools/shared/hqEnvironment";
 import { environmentKeyed } from "../../zerops/deployToken.ts";
 import { linkKeys } from "../model.ts";
 import type { Projection } from "../store.ts";
@@ -28,7 +29,8 @@ export const recordedEnvironment: Projection<
     const app = read.fact("hqApp", appId);
     const environments = app.kind === "known" ? app.value.environments : undefined;
     const environment = environments?.find(
-      (entry) => entry.target.kind === "zerops" && entry.target.projectId === projectId,
+      (entry): entry is Exclude<typeof entry, HqOutsideEnvironment> =>
+        entry.target.kind === "zerops" && entry.target.projectId === projectId,
     );
     if (environment !== undefined)
       return { kind: "recorded", name: environment.name, keyed: environmentKeyed(environment) };

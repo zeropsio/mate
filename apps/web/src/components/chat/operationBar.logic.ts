@@ -205,6 +205,18 @@ export function settledOperationBar(
   return segments.every((segment) => segment.tone === "done") ? [] : segments;
 }
 
+/**
+ * How far a running batch deploy is, said once some of its services are out: "2 of 7 deployed".
+ * Its rows carry each service's state, so its line wears no bead per service.
+ */
+export function batchProgressWord(
+  services: ReadonlyArray<{ readonly state: string }> | undefined,
+): string | null {
+  if (services === undefined || services.length === 0) return null;
+  const deployed = services.filter((service) => service.state === "done").length;
+  return deployed === 0 ? null : `${deployed} of ${services.length} deployed`;
+}
+
 /** Whether an operation's steps are its services: a batch, an import, a mount, a stand-up, a check of every service. */
 function segmentsAreServices(operation: ZeropsOperation): boolean {
   switch (operation.kind) {

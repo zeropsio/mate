@@ -627,7 +627,12 @@ function LiveTake({
     threadRef?.threadId ?? null,
     take.turnId,
   );
-  const frame = read.freshness === "live" ? read.frame : null;
+  const live = read.freshness === "live" ? read.frame : null;
+  // Once the page has a frame the take keeps one: a read going stale between frames never brings
+  // the opening browser back, nor fades the page in again.
+  const [held, setHeld] = useState(live);
+  if (live !== null && live !== held) setHeld(live);
+  const frame = live ?? held;
   return (
     <span
       aria-label={`Checking ${browserCheckCaption(take)}`}

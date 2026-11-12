@@ -630,9 +630,10 @@ function releaseEnded(state: AccountState, appId: string, tag: string): boolean 
   const fact = state.facts.get(factKey("hqApp", appId)) as Fact<FamilyValues["hqApp"]> | undefined;
   const environments = fact?.content.kind === "value" ? fact.content.value.environments : undefined;
   if (environments === undefined) return false;
-  const rollouts = environments
-    .filter((environment) => environment.tier === "production")
-    .map((environment) => environment.release);
+  // An outside production has no rollout: nothing HQ releases goes there.
+  const rollouts = environments.flatMap((environment) =>
+    environment.tier === "production" && "release" in environment ? [environment.release] : [],
+  );
   return (
     rollouts.some((rollout) => rollout?.tag === tag) &&
     releaseInFlight({ newest: { tag, verdict: "approved" }, rollouts }) === undefined

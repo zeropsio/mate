@@ -160,7 +160,7 @@ import { HQ_HANDOVER_UNFINISHED } from "@t3tools/client-runtime/zerops/hq";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 import { sharedBirthsAtom, type SharedBirth } from "@t3tools/client-runtime/data";
 import { useBirthActions } from "./useBirthActions";
-import { useSharedBirths } from "./sharedBirths";
+import { sharedBirthPresentation, useSharedBirths } from "./sharedBirths";
 
 /** Which Mate a dialog is about, and which dialog it is. */
 type MateDialog =
@@ -1183,7 +1183,9 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
         candidates.find((candidate) => candidate.project.id === birth.projectId)?.key ??
         `birth:${birth.projectId ?? birth.id}`;
       return [
-        ...(birth.canContinue
+        // Only a setup that stopped: one under way is its maker's session's, and a second
+        // Continue would race it.
+        ...(birth.canContinue && sharedBirthPresentation(birth).attention
           ? [
               {
                 id: "continue",

@@ -3,7 +3,7 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 
-import { HqError, makeHqApi } from "../../zerops/hq/client.ts";
+import { HqError, type HqMateTicket, makeHqApi } from "../../zerops/hq/client.ts";
 import { mateTicketIssuer, PRIMED_TICKET_MS } from "./hqMateTicket.ts";
 
 const refusal = (kind: HqError["kind"], code: string, reason?: string) =>
@@ -51,7 +51,12 @@ describe("mateTicketIssuer", () => {
       const issuer = mateTicketIssuer((orgId) => ({
         mateTicket: async (projectId) => {
           asked.push(`${orgId}/${projectId}`);
-          return { ticket: "T1", expiresIn: 60, origin: "https://zcp-ada-8080.prg1.zerops.app" };
+          return {
+            ticket: "T1",
+            expiresIn: 60,
+            origin: "https://zcp-ada-8080.prg1.zerops.app",
+            grantSeconds: 900,
+          };
         },
       }));
 
@@ -178,7 +183,7 @@ describe("a ticket minted ahead of its attempt", () => {
       mateTicket: async (projectId: string) => {
         minted += 1;
         asked.push(`${name} ${projectId} T${minted}`);
-        return { ticket: `${name}-T${minted}`, expiresIn: 60, origin: ORIGIN };
+        return { ticket: `${name}-T${minted}`, expiresIn: 60, origin: ORIGIN, grantSeconds: 900 };
       },
     };
   };
@@ -259,7 +264,7 @@ describe("a ticket minted ahead of its attempt", () => {
         mateTicket: async () => {
           asks += 1;
           if (asks === 1) throw refusal("refused", "mate_not_connected", "no-ack");
-          return { ticket: "T2", expiresIn: 60, origin: ORIGIN };
+          return { ticket: "T2", expiresIn: 60, origin: ORIGIN, grantSeconds: 900 };
         },
       }));
 
@@ -274,8 +279,7 @@ describe("a ticket minted ahead of its attempt", () => {
     Effect.gen(function* () {
       const asked: Array<string> = [];
       const started = yield* Deferred.make<void>();
-      let answer: (ticket: { ticket: string; expiresIn: number; origin: string }) => void = () =>
-        undefined;
+      let answer: (ticket: HqMateTicket) => void = () => undefined;
       const issuer = mateTicketIssuer(() => ({
         mateTicket: (projectId) => {
           asked.push(projectId);
@@ -291,7 +295,7 @@ describe("a ticket minted ahead of its attempt", () => {
       yield* Deferred.await(started);
 
       issuer.prime({ orgId: "O1", projectId: "P1" });
-      answer({ ticket: "T1", expiresIn: 60, origin: ORIGIN });
+      answer({ ticket: "T1", expiresIn: 60, origin: ORIGIN, grantSeconds: 900 });
 
       expect((yield* Fiber.join(attempt)).ticket).toBe("T1");
       expect(asked).toEqual(["P1"]);

@@ -197,6 +197,7 @@ export const makeMateRecoveryHarness = Effect.fn("test.makeMateRecoveryHarness")
                 ticket: `ticket-${attempts}`,
                 expiresIn: 60,
                 origin: "https://environment.example.test",
+                grantSeconds: 900,
               },
         ),
         { status: attempts === 1 ? 409 : 200 },
