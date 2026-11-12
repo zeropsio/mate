@@ -132,47 +132,7 @@ zerops:
               Cache-Control: "'public, max-age=31536000, immutable' always"
               X-Content-Type-Options: "'nosniff' always"
 
-  # The alpha experiment: the same web client against the Zerops alpha platform,
-  # with its own HQ beside it (HQ_ZEROPS_API on alpha). The client's Zerops
-  # calls go to
-  # alpha's API (`VITE_ZEROPS_API_URL`); Mates born from it name that API to
-  # their container (`ZCP_API_HOST`). Alpha has no device login and no GUI of
-  # its own, so the build keeps the hand-over and its Zerops links stay on
-  # app.zerops.io until alpha serves one.
-  - setup: alpha
-    build:
-      base: ubuntu/nodejs@24
-      buildCommands:
-        - npm install -g --prefix "$HOME/.local" pnpm@11.10.0
-        - $HOME/.local/bin/pnpm install --frozen-lockfile --filter "@t3tools/web..."
-        - $HOME/.local/bin/pnpm --filter @t3tools/web build
-      deployFiles:
-        - apps/web/~dist
-      envVariables:
-        VITE_HOSTED_APP_CHANNEL: latest
-        VITE_HOSTED_APP_URL: https://web-3082.prg1.zerops.app
-        VITE_HQ_ORIGIN: https://hq-3082-8080.prg1.zerops.app
-        VITE_ZEROPS_API_URL: https://api.app-alpha.zerops.dev
-        VITE_ZEROPS_SIGN_IN: handover
-        ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
-        PUPPETEER_SKIP_DOWNLOAD: "1"
-        CI: "1"
-        # VITE_BASE_PATH, VITE_HTTP_URL and VITE_WS_URL stay unset, as in prod.
-    run:
-      base: alpine/static@1.0
-      routing:
-        root: dist
-        headers:
-          - for: "/*"
-            values:
-              Cache-Control: "'no-cache' always"
-              X-Content-Type-Options: "'nosniff' always"
-          - for: "/assets/*"
-            values:
-              Cache-Control: "'public, max-age=31536000, immutable' always"
-              X-Content-Type-Options: "'nosniff' always"
-
-  # A dev environment: the client against that platform's API, Platform and Zerops HQ, and a Mate HQ
+  # A dev environment: the client against its platform's API, Platform and Zerops HQ, and a Mate HQ
   # of its own. The service names both in its variables: `DEV_ENV_HOST` (the environment's host)
   # and `MATE_HQ_URL` (that Mate HQ's origin). The client is served at `https://mate.<host>`, the
   # origin that environment's Zerops HQ shares its session with.
