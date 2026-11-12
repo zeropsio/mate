@@ -86,6 +86,7 @@ import {
 import { flushSync } from "react-dom";
 
 import { afterLayout } from "~/lib/afterLayout";
+import { watchCrossings } from "~/lib/restingIntersections";
 import { cn } from "~/lib/utils";
 import { MessageFilesAbove, useMessageFileUrls } from "./MessageFiles";
 import { useMateBrowserCallFrames } from "../../zerops/browserStreamLinks";
@@ -903,13 +904,13 @@ function SlotBox({
     }
     // A node the list puts back stands at its head, saying nothing — no
     // scroll, no resize: its end leaving view is the one sign of it.
-    if (typeof IntersectionObserver === "function") {
-      const seen = new IntersectionObserver(
-        (entries) => {
-          if (!entries.every((entry) => entry.isIntersecting)) settle();
-        },
-        { root: box },
-      );
+    const seen = watchCrossings(
+      (entries) => {
+        if (!entries.every((entry) => entry.isIntersecting)) settle();
+      },
+      { root: box },
+    );
+    if (seen !== undefined) {
       seen.observe(end);
       observers.push(seen);
     }

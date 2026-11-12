@@ -169,6 +169,7 @@ export default defineConfig({
       "eslint/no-restricted-imports": ["error", { paths: RESTRICTED_IMPORT_PATHS }],
       "t3code/no-environment-as-project": "error",
       "t3code/no-failure-to-empty": "error",
+      "t3code/no-frame-per-tick": "error",
       "t3code/no-global-process-runtime": "error",
       "t3code/no-infinite-motion": "error",
       "t3code/no-inline-schema-compile": "warn",

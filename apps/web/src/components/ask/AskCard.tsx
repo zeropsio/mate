@@ -390,6 +390,9 @@ export function AskSteps({ steps }: { readonly steps: ReadonlyArray<AskStep> }) 
           <li
             className="grid min-w-0 grid-cols-[20px_minmax(0,1fr)_auto] items-center gap-2.5 px-3 py-2.5 text-body"
             data-ask-step={step.state}
+            // A picture ask draws these inside an answer's words (`chat-markdown-island`): the mark
+            // is what the stylesheet's "item after an item" rules key on there (index.css).
+            data-md-li=""
             key={step.id}
           >
             <span

@@ -710,8 +710,16 @@ function withoutLastKnown(
 export type MateRowAskLine =
   /** Led by whose words they are (`mateAsker`): nobody's while HQ has not named its owner. */
   | { readonly kind: "ask"; readonly text: string; readonly by?: string | undefined }
-  /** Unsent, led by *Draft*: the ask it stands over is kept under it, so clearing it is still. */
-  | { readonly kind: "draft"; readonly text: string; readonly ask: string | undefined }
+  /**
+   * Unsent, led by *Draft*: the ask it stands over is kept under it, so clearing it is still. Its
+   * words where the reader handed them; none where its line reads them itself as they are typed
+   * (`drafting`), so that no words stand here that a key has since changed.
+   */
+  | {
+      readonly kind: "draft";
+      readonly text: string | undefined;
+      readonly ask: string | undefined;
+    }
   | { readonly kind: "sign-in"; readonly text: string; readonly waitsOnViewer: boolean }
   /** Its conversation read, and nobody has asked it anything: the fact, quietly. */
   | { readonly kind: "nothing-asked" }
@@ -747,6 +755,11 @@ export function mateRowAskLine(input: {
   readonly signIn: { readonly text: string; readonly waitsOnViewer: boolean } | undefined;
   /** Its unsent message (`mateRowDraft`). */
   readonly draft: string | undefined;
+  /**
+   * An unsent message stands (`mateRowDraftQuote`) whose words the line reads itself: the line is
+   * the draft's, with no words in it.
+   */
+  readonly drafting?: boolean | undefined;
   /** What this browser just sent it, its conversation not caught up yet (`mateRowSentAsk`). */
   readonly sent: string | undefined;
   readonly deleting: boolean;
@@ -761,6 +774,7 @@ export function mateRowAskLine(input: {
     return view.ask === undefined ? undefined : { kind: "ask", text: view.ask, by: input.asker };
   }
   if (input.signIn !== undefined) return { kind: "sign-in", ...input.signIn };
+  if (input.drafting === true) return { kind: "draft", text: undefined, ask: view.ask };
   // The person's words as the row quotes every message: plain words (Milo's stress run 6 kept a
   // just-sent message's raw backticks in the row).
   const draft = input.draft === undefined ? null : messagePreviewText(input.draft);
@@ -805,6 +819,38 @@ export interface MateDraftSource {
   >;
 }
 
+/** Whose draft: the Mate's environment and, once it has one, its conversation. */
+export interface MateDraftOf {
+  readonly environmentId?: string | undefined;
+  readonly threadId?: string | undefined;
+  readonly threadKey?: string | undefined;
+}
+
+/**
+ * A Mate's unsent message as its row quotes it (`mateRowAskLine`): plain words, cut to a row's
+ * length; nothing where it holds no words to quote. A row's draft line reads this as the words
+ * are typed, so a key draws that line again and not its row.
+ */
+export function mateRowDraftQuote(source: MateDraftSource, mate: MateDraftOf): string | undefined {
+  const draft = mateRowDraft(source, mate);
+  if (draft === undefined) return undefined;
+  const at = quotedDrafts.findIndex((quoted) => quoted.draft === draft);
+  if (at >= 0) return quotedDrafts[at]!.quote;
+  const quote = messagePreviewText(draft) ?? undefined;
+  quotedDrafts.unshift({ draft, quote });
+  if (quotedDrafts.length > QUOTED_DRAFTS_HELD) quotedDrafts.pop();
+  return quote;
+}
+
+/**
+ * The drafts last quoted, newest first. Every row holding a draft is asked for its quote on every
+ * change of any draft, and its line again: reading a draft down to its quote goes over all of it
+ * (a 20 KB log left unsent on one Mate cost each key typed into another two such readings), so a
+ * draft is read once, when its words change, and the answer kept while they stand.
+ */
+const quotedDrafts: Array<{ readonly draft: string; readonly quote: string | undefined }> = [];
+const QUOTED_DRAFTS_HELD = 8;
+
 /**
  * A Mate's unsent message, where its composer keeps it: under its conversation's key, or under
  * the draft its conversation was made from; with no conversation yet, the newest new one's in its
@@ -812,14 +858,7 @@ export interface MateDraftSource {
  * this browser alone: a socket down or reconnecting, a Mate stopped, still shows its draft —
  * a reload paints it with the row, never after.
  */
-export function mateRowDraft(
-  source: MateDraftSource,
-  mate: {
-    readonly environmentId?: string | undefined;
-    readonly threadId?: string | undefined;
-    readonly threadKey?: string | undefined;
-  },
-): string | undefined {
+export function mateRowDraft(source: MateDraftSource, mate: MateDraftOf): string | undefined {
   const words = (key: string) => {
     const prompt = source.draftsByThreadKey[key]?.prompt.trim() ?? "";
     return prompt.length > 0 ? prompt : undefined;

@@ -7,7 +7,7 @@ import * as Schema from "effect/Schema";
 
 import { CSS_KIND, cssDeclarationFingerprint } from "@t3tools/oxlint-plugin-t3code/exceptions";
 
-import { checkCssMotion, scanCssMotion } from "./check-css-motion.ts";
+import { checkCssMotion, scanCssFramePerTick, scanCssMotion } from "./check-css-motion.ts";
 
 const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 
@@ -203,7 +203,183 @@ describe("CSS motion scanner", () => {
   });
 });
 
+describe("CSS frame-per-tick scanner", () => {
+  const scan = (source: string) => scanCssFramePerTick("apps/web/src/fixture.css", source);
+
+  // witness: scripts/check-css-motion.ts | declaration.property === "content-visibility" && → declaration.property === "contain" &&
+  it("reports a box with content-visibility: auto", () => {
+    const findings = scan(".row { content-visibility: auto; contain-intrinsic-size: auto 96px; }");
+    assert.equal(findings.length, 1);
+    assert.equal(
+      findings[0]!.fingerprint,
+      cssDeclarationFingerprint({
+        selector: ".row",
+        property: "content-visibility",
+        value: "auto",
+      }),
+    );
+  });
+
+  // witness: scripts/check-css-motion.ts | /^auto(?:\s*!important)?$/iu.test(declaration.value) → /^(?:auto|hidden)(?:\s*!important)?$/iu.test(declaration.value)
+  it("allows content-visibility: hidden and visible", () => {
+    assert.deepStrictEqual(
+      scan(".kept { content-visibility: hidden; } .shown { content-visibility: visible; }"),
+      [],
+    );
+  });
+
+  // witness: scripts/check-css-motion.ts | "backdrop-filter", → "backdrop-filter", "background-position",
+  it("reports an infinite animation of a property the compositor cannot run", () => {
+    const findings = scan(`
+      .frame { animation: slide 10s linear infinite; }
+      @keyframes slide {
+        0% { background-position: 0% 50%; }
+        100% { background-position: 200% 50%; }
+      }
+    `);
+    assert.equal(findings.length, 1);
+    assert.match(findings[0]!.detail, /"slide" animates background-position/u);
+  });
+
+  // witness: scripts/check-css-motion.ts | .toSorted(); → ;
+  it("names every such property of an animation that also moves a composited one", () => {
+    const findings = scan(`
+      .bar { animation-name: grow; animation-duration: 2s; animation-iteration-count: infinite; }
+      @keyframes grow {
+        from { transform: scaleX(0); width: 0; }
+        to { transform: scaleX(1); width: 100%; color: red; }
+      }
+    `);
+    assert.equal(findings.length, 1);
+    assert.match(findings[0]!.detail, /animates color, width:/u);
+  });
+
+  // witness: scripts/check-css-motion.ts | if (!isAnimation) continue; → if (!TARGET_PROPERTIES.has(declaration.property)) continue;
+  it("reports an infinite theme animation of a custom property", () => {
+    const findings = scan(`
+      @theme inline { --animate-glow: glow 3s infinite; }
+      @keyframes glow {
+        0% { --glow: 0; }
+        100% { --glow: 1; }
+      }
+    `);
+    assert.equal(findings.length, 1);
+    assert.match(findings[0]!.detail, /--glow/u);
+  });
+
+  // witness: scripts/check-css-motion.ts | "filter", →
+  it("allows an infinite animation the compositor runs alone", () => {
+    assert.deepStrictEqual(
+      scan(`
+        .spinner { animation: turn 1s linear infinite; }
+        .pulse { animation: breathe 2s ease-in-out infinite; }
+        .drift { animation: drift 4s linear infinite; }
+        @keyframes turn { to { transform: rotate(360deg); } }
+        @keyframes breathe {
+          0% { opacity: 1; animation-timing-function: ease-in; }
+          50% { opacity: 0.4; filter: blur(1px); }
+        }
+        @keyframes drift { to { translate: 10px 0; rotate: 4deg; scale: 1.1; } }
+      `),
+      [],
+    );
+  });
+
+  // witness: scripts/check-css-motion.ts | const runsForever = (value: string): boolean => INFINITE_TOKEN_PATTERN.test(value); → const runsForever = (value: string): boolean => value.length > 0;
+  it("allows an animation that ends, whatever it animates", () => {
+    assert.deepStrictEqual(
+      scan(`
+        .open { animation: unfold 200ms ease-out; }
+        .thrice { animation: unfold 200ms 3; }
+        @keyframes unfold { from { height: 0; } to { height: 40px; } }
+      `),
+      [],
+    );
+  });
+
+  // witness: scripts/check-css-motion.ts | const runsForever = (value: string): boolean => INFINITE_TOKEN_PATTERN.test(value); → const runsForever = (value: string): boolean => value.length > 0;
+  it("checks only the infinite animation of a comma-separated shorthand", () => {
+    const findings = scan(`
+      .mixed { animation: unfold 200ms 1, sweep 2s infinite; }
+      @keyframes unfold { from { height: 0; } to { height: 40px; } }
+      @keyframes sweep { to { left: 100%; } }
+    `);
+    assert.equal(findings.length, 1);
+    assert.match(findings[0]!.detail, /"sweep" animates left/u);
+  });
+
+  // witness: scripts/check-css-motion.ts | if (resolved === undefined) continue; → if (resolved === undefined) { finding("no keyframes"); continue; }
+  it("leaves an animation with no keyframes to the motion scanner", () => {
+    assert.deepStrictEqual(scan(".indicator { animation: missing 2s infinite; }"), []);
+  });
+
+  // witness: scripts/check-css-motion.ts | const blocks = isGeneratedCssSource(source) ? [] : walkBlocks(parseCssBlocks(source)); → const blocks = walkBlocks(parseCssBlocks(source));
+  it("skips generated CSS headers", () => {
+    assert.deepStrictEqual(
+      scanCssFramePerTick(
+        "apps/mobile/generated-fixture.css",
+        `
+          /* Generated by scripts/fixture.ts. Do not edit manually. */
+          .row { content-visibility: auto; }
+        `,
+      ),
+      [],
+    );
+  });
+});
+
 it.layer(NodeServices.layer)("CSS motion ledger reconciliation", (it) => {
+  // witness: scripts/check-css-motion.ts | [FRAME_RULE_NAME, scanCssFramePerTick], →
+  it.effect("fails for an unlisted frame-per-tick finding while accepting a ledgered one", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const directory = yield* fs.makeTempDirectoryScoped({ prefix: "css-frame-ledger-" });
+        const ledgeredPath = "apps/web/src/ledgered.css";
+        const source = ".row { content-visibility: auto; }";
+        yield* fs.writeFileString(
+          path.join(directory, "no-frame-per-tick.json"),
+          `${encodeUnknownJson([
+            {
+              path: ledgeredPath,
+              kind: CSS_KIND,
+              fingerprint: cssDeclarationFingerprint({
+                selector: ".row",
+                property: "content-visibility",
+                value: "auto",
+              }),
+              owner: "fixture-owner",
+              reason: "Fixture exception",
+              expires: "never",
+            },
+          ])}\n`,
+        );
+
+        const accepted = yield* checkCssMotion({
+          directory,
+          sources: [{ path: ledgeredPath, source }],
+        });
+        assert.equal(accepted.exitCode, 0);
+        assert.match(accepted.report, /no-frame-per-tick: ledger reconciled \(1 entries\)/u);
+
+        const result = yield* checkCssMotion({
+          directory,
+          sources: [
+            { path: ledgeredPath, source },
+            { path: "apps/web/src/unlisted.css", source },
+          ],
+        });
+        assert.equal(result.exitCode, 1);
+        assert.equal(result.problemCount, 1);
+        assert.match(
+          result.report,
+          /no-frame-per-tick: unlisted apps\/web\/src\/unlisted\.css:css-declaration/u,
+        );
+      }),
+    ),
+  );
+
   it.effect("fails for one unlisted finding while accepting one ledgered finding", () =>
     Effect.scoped(
       Effect.gen(function* () {

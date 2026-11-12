@@ -289,7 +289,8 @@ import {
   mateNotYours,
   mateOwnerView,
   mateRowAskLine,
-  mateRowDraft,
+  type MateDraftOf,
+  mateRowDraftQuote,
   mateRowPropsEqual,
   mateRowReading,
   mateRowHeldLines,
@@ -2792,6 +2793,7 @@ function GroupRowWords<T extends RosterCandidate>({
                 <MateSecondLine
                   askChanged={state.askChanged}
                   askLine={state.askLine}
+                  draftOf={state.draftOf}
                   known={state.known}
                   second={state.second}
                   view={state.view}
@@ -3386,7 +3388,7 @@ export function MenuMateLine<T extends RosterCandidate>({
   const viewer = useZeropsSessionOptional()?.user?.id;
   const linked = useMateLinkedInHq(candidate.project.id);
   const hqMates = useMatesLinkedInHq();
-  const { view, second, askLine, askChanged, known } = useMateRowState({
+  const { view, second, askLine, draftOf, askChanged, known } = useMateRowState({
     candidate,
     activity,
     up: mateAwake(candidate, hqMates) || linked,
@@ -3405,6 +3407,7 @@ export function MenuMateLine<T extends RosterCandidate>({
       <MateSecondLine
         askChanged={askChanged}
         askLine={askLine}
+        draftOf={draftOf}
         known={known}
         second={second}
         view={view}
@@ -3569,12 +3572,18 @@ function useMateRowState<T extends RosterCandidate>({
   const { known } = face;
   // What the person is about to send it, waiting in its composer: the row's second line says it,
   // read from this browser whether or not its socket is open (`mateRowDraft`).
-  const draft = useComposerDraftStore((state) =>
-    mateRowDraft(state, {
+  const draftOf = useMemo<MateDraftOf>(
+    () => ({
       environmentId: candidate.environmentId,
       threadId: activity?.threadId,
       threadKey: activity?.threadKey,
     }),
+    [activity?.threadId, activity?.threadKey, candidate.environmentId],
+  );
+  // The row is drawn again when a draft starts or ends. Its words, a key at a time, are its draft
+  // line's own to read (`MateDraftWords`): typing into the open Mate draws that line and no row.
+  const drafting = useComposerDraftStore(
+    (state) => mateRowDraftQuote(state, draftOf) !== undefined,
   );
   // What this browser just sent it, until its conversation says it (`mateRowSentAsk`).
   const sentAsk = usePendingSentAsk(candidate.environmentId);
@@ -3583,7 +3592,8 @@ function useMateRowState<T extends RosterCandidate>({
     view,
     signIn:
       signIn === undefined ? undefined : { text: signIn, waitsOnViewer: seated.waitsOnViewer },
-    draft,
+    draft: undefined,
+    drafting,
     sent:
       sentAsk !== undefined && (activity === undefined || activity.threadId === sentAsk.threadId)
         ? sentAsk.text
@@ -3643,6 +3653,7 @@ function useMateRowState<T extends RosterCandidate>({
     face,
     known,
     askLine,
+    draftOf,
     second,
     time,
     heldLines,
@@ -3919,6 +3930,7 @@ function MateRowView<T extends RosterCandidate>({
     face,
     known,
     askLine,
+    draftOf,
     second,
     time,
     heldLines,
@@ -4286,6 +4298,7 @@ function MateRowView<T extends RosterCandidate>({
               <MateSecondLine
                 askChanged={askChanged}
                 askLine={askLine}
+                draftOf={draftOf}
                 known={known}
                 second={second}
                 view={view}
@@ -4540,12 +4553,15 @@ function MateSecondLine({
   second,
   view,
   askLine,
+  draftOf,
   askChanged,
   known,
 }: {
   readonly second: MateRowSecond;
   readonly view: MateRowReading;
   readonly askLine: MateRowAskLine;
+  /** Whose draft the line quotes while it says one. */
+  readonly draftOf: MateDraftOf;
   readonly askChanged: boolean;
   readonly known: boolean;
 }) {
@@ -4623,11 +4639,11 @@ function MateSecondLine({
       if (second.pending && askLine.kind === "ask")
         return (
           <span className="flex min-w-0 items-center gap-2">
-            <MateAskLine line={askLine} rises={askChanged} />
+            <MateAskLine draftOf={draftOf} line={askLine} rises={askChanged} />
             <MateReplyPending />
           </span>
         );
-      return <MateAskLine line={askLine} rises={askChanged} />;
+      return <MateAskLine draftOf={draftOf} line={askLine} rises={askChanged} />;
     case "none":
       return null;
   }
@@ -4748,9 +4764,11 @@ const REPLY_TONE_CLASS: Record<"muted" | "ink-2" | "ink" | "failed" | "attention
  */
 function MateAskLine({
   line,
+  draftOf,
   rises,
 }: {
   readonly line: Exclude<MateRowAskLine, { readonly kind: "sign-in" } | undefined>;
+  readonly draftOf: MateDraftOf;
   /** The ask is new since the row was shown: it rises in. */
   readonly rises: boolean;
 }) {
@@ -4792,11 +4810,17 @@ function MateAskLine({
           className="col-start-1 row-start-1 truncate menu-ink-3"
           data-zerops-surface="sidebar-mate-draft"
         >
-          <span className="font-medium text-sidebar-foreground">Draft:</span> {line.text}
+          <span className="font-medium text-sidebar-foreground">Draft:</span>{" "}
+          <MateDraftWords of={draftOf} />
         </span>
       ) : null}
     </span>
   );
+}
+
+/** A draft's words in its Mate's row, read as they are typed: a key draws these and nothing around them. */
+function MateDraftWords({ of }: { readonly of: MateDraftOf }) {
+  return useComposerDraftStore((state) => mateRowDraftQuote(state, of)) ?? null;
 }
 
 const NOTHING_ASKED_YET = "Nothing asked yet";

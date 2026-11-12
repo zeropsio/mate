@@ -71,7 +71,7 @@ import { changeUrl } from "@t3tools/shared/hqChanges";
 import type { MateThreadKind } from "@t3tools/shared/mateLink";
 import { EllipsisIcon, PanelLeftCloseIcon, PanelLeftOpenIcon } from "lucide-react";
 
-import { onOpenCommandPalette } from "~/commandPaletteBus";
+import { COMMAND_PALETTE_ID, onOpenCommandPalette } from "~/commandPaletteBus";
 import { ConversationStripView } from "~/components/chat/ConversationStrip";
 import type { LineCrewmate } from "~/components/chat/ConversationStrip.logic";
 import { PanelLayoutControls } from "~/components/chat/PanelLayoutControls";
@@ -1915,6 +1915,7 @@ function Harness() {
           <CommandDialogPopup
             aria-label="Jump to"
             data-command-palette="true"
+            id={COMMAND_PALETTE_ID}
             onBackdropPointerDown={() => {
               setJumping(false);
             }}

@@ -200,7 +200,33 @@ function RepoImage({ node: _node, ...props }: ComponentProps<"img"> & { readonly
     </a>
   );
 }
-const COMPONENTS = { a: ReadmeAnchor, img: RepoImage };
+/** A heading, marked for the stylesheet's "block after a heading" rule (index.css). */
+function readmeHeading(Tag: "h1" | "h2" | "h3" | "h4" | "h5" | "h6") {
+  return function ReadmeHeading({
+    node: _node,
+    ...props
+  }: ComponentProps<typeof Tag> & { readonly node?: unknown }) {
+    return <Tag {...props} data-md-heading="" />;
+  };
+}
+/** A list item, marked for the stylesheet's "item after an item" rules (index.css). */
+function ReadmeListItem({
+  node: _node,
+  ...props
+}: ComponentProps<"li"> & { readonly node?: unknown }) {
+  return <li {...props} data-md-li="" />;
+}
+const COMPONENTS = {
+  a: ReadmeAnchor,
+  img: RepoImage,
+  li: ReadmeListItem,
+  h1: readmeHeading("h1"),
+  h2: readmeHeading("h2"),
+  h3: readmeHeading("h3"),
+  h4: readmeHeading("h4"),
+  h5: readmeHeading("h5"),
+  h6: readmeHeading("h6"),
+};
 
 export function RepoMarkdown({
   content,

@@ -67,3 +67,32 @@ index a7b9ae4473d9913a5045d7c37ca4638f4eeec276..a344eb2b7ca38505d5c3b3604369335a
      awaitingResponse = true;
      return writePing;
    }).pipe(Effect.delay(interval), Effect.ignore, Effect.forever, Effect.interruptible, Effect.forkScoped);
+diff --git a/dist/reactivity/Atom.js b/dist/reactivity/Atom.js
+--- a/dist/reactivity/Atom.js
++++ b/dist/reactivity/Atom.js
+@@ -21,7 +21,6 @@
+ import * as Fiber from "../Fiber.js";
+ import { constant, constTrue, constVoid, dual, pipe } from "../Function.js";
+ import { PipeInspectableProto } from "../internal/core.js";
+-import { getStackTraceLimit } from "../internal/stackTraceLimit.js";
+ import * as Layer from "../Layer.js";
+ import * as MutableHashMap from "../MutableHashMap.js";
+ import * as Option from "../Option.js";
+@@ -815,7 +814,7 @@
+  */
+ export const withLabel = /*#__PURE__*/dual(2, (self, name) => Object.assign(Object.create(Object.getPrototypeOf(self)), {
+   ...self,
+-  label: [name, getStackTraceLimit() === 0 ? "" : new Error().stack?.split("\n")[5] ?? ""]
++  label: [name, ""]
+ }));
+ /**
+  * Pairs an atom with an initial value for registry initialization.
+@@ -1512,7 +1511,7 @@
+   const codecJson = Schema.toCodecJson(options.schema);
+   return Object.assign(Object.create(Object.getPrototypeOf(self)), {
+     ...self,
+-    label: self.label ?? [options.key, getStackTraceLimit() === 0 ? "" : new Error().stack?.split("\n")[5] ?? ""],
++    label: self.label ?? [options.key, ""],
+     [SerializableTypeId]: {
+       key: options.key,
+       encode: Schema.encodeSync(codecJson),

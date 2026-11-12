@@ -14,10 +14,15 @@ import * as Queue from "effect/Queue";
 import * as Random from "effect/Random";
 import type * as Scope from "effect/Scope";
 
-import type { LinkKey, ScopeKey } from "./model.ts";
+import type { AccountState, LinkKey, ScopeKey } from "./model.ts";
 import { streamOf, type RuntimeDirective } from "./reducer.ts";
 import type { AccountStore } from "./store.ts";
-import { NO_ANSWER_IN_TIME, type StreamEvent, type StreamFault } from "./streamMachine.ts";
+import {
+  NO_ANSWER_IN_TIME,
+  type StreamEvent,
+  type StreamFault,
+  type StreamState,
+} from "./streamMachine.ts";
 
 export type LinkSignal = "manual-retry" | "input-changed" | "resume";
 
@@ -48,6 +53,10 @@ export interface LinkOptions {
   readonly attempt: (generation: number) => Effect.Effect<never, StreamFault, Scope.Scope>;
   readonly repairSession: Effect.Effect<void, StreamFault>;
 }
+
+/** Whether a deadline a loop sleeps towards has passed by `clock`: one never named has not. */
+const passed = (clock: Clock.Clock, deadlineAt: number): boolean =>
+  deadlineAt !== Number.POSITIVE_INFINITY && clock.currentTimeMillisUnsafe() >= deadlineAt;
 
 /** A named deadline passed: the stream that named it. */
 interface Deadline {
@@ -101,18 +110,33 @@ export const superviseLink = (options: LinkOptions): Effect.Effect<LinkSuperviso
     ): Effect.Effect<never, Deadline> =>
       Effect.scoped(
         Effect.gen(function* () {
+          const clock = yield* Clock.Clock;
           const changes = yield* Queue.sliding<void>(1);
-          const stop = store.subscribe(() => Queue.offerUnsafe(changes, undefined));
+          // The loop below decides by its own stream and the clock alone, so it is woken only by
+          // what can change its mind: its stream differing from the one it read, or its deadline
+          // passed. Woken by every change to the account, each watched stream took a task of its
+          // own to decide the same again (2026-11-11, an account of 36 Mates: 520 zero-delay
+          // timers after each publication).
+          let read: StreamState | undefined;
+          let deadlineAt = Number.POSITIVE_INFINITY;
+          const stop = store.subscribe(() => {
+            if (store.state().streams.get(target) !== read || passed(clock, deadlineAt))
+              Queue.offerUnsafe(changes, undefined);
+          });
           yield* Effect.addFinalizer(() => Effect.sync(stop));
           while (true) {
+            read = store.state().streams.get(target);
             const { next, generation: current } = streamOf(store.state(), target);
             const waiting = next.kind === "await-handshake" || next.kind === "await-baseline";
             // The link ends its initial wait once connected. A scope can baseline again on the
             // next segment, so keep watching its named deadlines until the attempt ends.
-            if (generation !== null && (current !== generation || !waiting))
+            if (generation !== null && (current !== generation || !waiting)) {
+              stop();
               return yield* Effect.never;
+            }
             const now = yield* Clock.currentTimeMillis;
             if (waiting && now >= next.deadlineAt) return yield* Effect.fail({ deadline: target });
+            deadlineAt = waiting ? next.deadlineAt : Number.POSITIVE_INFINITY;
             yield* waiting
               ? Effect.raceFirst(Queue.take(changes), Effect.sleep(next.deadlineAt - now))
               : Queue.take(changes);
@@ -124,28 +148,43 @@ export const superviseLink = (options: LinkOptions): Effect.Effect<LinkSuperviso
      * by a store change — a detail's read names its deadline in the store. A detail's read that
      * passes its deadline is that detail's to retry alone; the link's attempt goes on.
      */
-    const watchDetails: Effect.Effect<never> = Effect.scoped(
-      Effect.gen(function* () {
-        const changes = yield* Queue.sliding<void>(1);
-        const stop = store.subscribe(() => Queue.offerUnsafe(changes, undefined));
-        yield* Effect.addFinalizer(() => Effect.sync(stop));
-        while (true) {
-          const now = yield* Clock.currentTimeMillis;
-          let wake = Number.POSITIVE_INFINITY;
-          for (const scope of options.details?.() ?? []) {
-            const { next } = streamOf(store.state(), scope);
-            if (next.kind !== "await-handshake" && next.kind !== "await-baseline") continue;
-            if (now >= next.deadlineAt) {
-              yield* dispatch({ kind: "deadline" }, scope);
-              options.childMoved?.();
-            } else wake = Math.min(wake, next.deadlineAt);
-          }
-          yield* wake === Number.POSITIVE_INFINITY
-            ? Queue.take(changes)
-            : Effect.raceFirst(Queue.take(changes), Effect.sleep(wake - now));
-        }
-      }),
-    );
+    const details = options.details;
+    // A link that holds no details has none to watch. One that does reads which are demanded and
+    // each one's stream: a demand moves its scope's stream, so the loop is woken only by a
+    // publication that moved a stream, or once its earliest deadline has passed.
+    const watchDetails: Effect.Effect<never> =
+      details === undefined
+        ? Effect.never
+        : Effect.scoped(
+            Effect.gen(function* () {
+              const clock = yield* Clock.Clock;
+              const changes = yield* Queue.sliding<void>(1);
+              let read: AccountState["streams"] | undefined;
+              let wakeAt = Number.POSITIVE_INFINITY;
+              const stop = store.subscribe(() => {
+                if (store.state().streams !== read || passed(clock, wakeAt))
+                  Queue.offerUnsafe(changes, undefined);
+              });
+              yield* Effect.addFinalizer(() => Effect.sync(stop));
+              while (true) {
+                read = store.state().streams;
+                const now = yield* Clock.currentTimeMillis;
+                let wake = Number.POSITIVE_INFINITY;
+                for (const scope of details()) {
+                  const { next } = streamOf(store.state(), scope);
+                  if (next.kind !== "await-handshake" && next.kind !== "await-baseline") continue;
+                  if (now >= next.deadlineAt) {
+                    yield* dispatch({ kind: "deadline" }, scope);
+                    options.childMoved?.();
+                  } else wake = Math.min(wake, next.deadlineAt);
+                }
+                wakeAt = wake;
+                yield* wake === Number.POSITIVE_INFINITY
+                  ? Queue.take(changes)
+                  : Effect.raceFirst(Queue.take(changes), Effect.sleep(wake - now));
+              }
+            }),
+          );
     const deadlines = (generation: number): Effect.Effect<never, Deadline> =>
       Effect.raceAllFirst([
         watch(key, generation),

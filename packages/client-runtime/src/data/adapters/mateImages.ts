@@ -322,6 +322,14 @@ export function makeMateImages(options: {
     }
   >();
   const withheld = new Map<EnvironmentId, StreamFault>();
+  const gathered = <A>(moves: () => A): A => {
+    const settle = options.store.gather();
+    try {
+      return moves();
+    } finally {
+      settle();
+    }
+  };
   const withhold = (environmentId: EnvironmentId, fault: StreamFault, notify = true) => {
     withheld.set(environmentId, fault);
     options.onWithhold?.(environmentId);
@@ -466,11 +474,14 @@ export function makeMateImages(options: {
             ),
         }),
       );
-      const fiber = Effect.runFork(supervisor.run);
+      // A look's opening moves land in one turn — its link and scope demanded and tried and, for
+      // bytes kept from an earlier look, read — and so do its closing ones: one publication each,
+      // not one a move (a conversation scrolled past its pictures opens and closes several a frame).
+      const fiber = gathered(() => Effect.runFork(supervisor.run));
       entry = {
         holders: 0,
         stop: () => {
-          Effect.runSync(supervisor.release);
+          gathered(() => Effect.runSync(supervisor.release));
           Effect.runFork(Fiber.interrupt(fiber));
         },
         retry: () => {
