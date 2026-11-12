@@ -130,6 +130,8 @@ export const effectiveRole = (
 
 /** A membership as the session or the member list gives it; active unless it says otherwise. */
 export interface MembershipFacts {
+  /** Their Zerops user id — what a record names a person by (a Mate's owner, a named merger). */
+  readonly userId?: string | undefined;
   readonly roleCode?: string | undefined;
   readonly status?: ZeropsMemberStatus | undefined;
   readonly canCreateProjects?: boolean | undefined;

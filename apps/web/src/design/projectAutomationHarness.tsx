@@ -5,7 +5,8 @@
  * it moves through.
  *
  * Served by the dev server at `/design-project-automation.html` (`?theme=dark`;
- * `?dialog=github|slack|discord|webhook|schedule` opens that source's form). Open it at the
+ * `?dialog=github|slack|discord|webhook|schedule` opens that source's form; `?merging=all`, or
+ * one state's name, draws who can merge instead: `projectMergingFixtures.tsx`). Open it at the
  * owner's 1786 × 1000. The change's page with its pull request is `/design-change.html?review=page-pr`.
  *
  * Fixtures only. Nothing here ships — `design-project-automation.html` is not `index.html`, and no
@@ -39,11 +40,13 @@ import {
 } from "~/components/zerops/projectAutomation/sourceForms";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import type { TaskSession } from "~/zerops/taskSession.logic";
+import { MergingHarness } from "./projectMergingFixtures";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
 const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const DIALOG = params.get("dialog") as SourceKind | null;
+const MERGING = params.get("merging");
 const nothing = () => {};
 
 const known = <T,>(held: T) => ({ state: "known", held, stale: false }) as const;
@@ -547,8 +550,6 @@ applyThemePalette(ZEROPS_THEME_ID, appearance);
 const host = document.getElementById("design");
 if (host) {
   createRoot(host).render(
-    <StrictMode>
-      <Harness />
-    </StrictMode>,
+    <StrictMode>{MERGING === null ? <Harness /> : <MergingHarness show={MERGING} />}</StrictMode>,
   );
 }

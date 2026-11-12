@@ -86,6 +86,7 @@ import {
   type ChangeGroup,
 } from "./projectPage.logic";
 import { SetupCard } from "./SetupCard";
+import { MERGING_TITLE } from "../projectMerging/projectMerging.logic";
 import { spendProjectIds } from "../projects/projectSpend.logic";
 import { ProjectCreditLine } from "../projects/ProjectCreditLine";
 
@@ -141,15 +142,18 @@ export interface PlaceFix {
 
 /** The side column's rows, and the sections their *Manage* opens. */
 export interface ProjectPageSetup {
-  /** Code, Automation, Who has access and Spend, in that order; each given its *Manage*. */
+  /** Code, Automation, Who has access, Merging and Spend, in that order; each given its *Manage*. */
   readonly rows: (open: {
     readonly access: () => void;
     readonly automation: () => void;
+    readonly merging: () => void;
   }) => ReactNode;
   /** Who has access where: opened from People, or by a place's link to its column. */
   readonly access: ReactNode;
   /** The whole Automation section: opened from its row. */
   readonly automation: ReactNode;
+  /** Who can merge: opened from the Merging row. */
+  readonly merging: ReactNode;
 }
 
 export function ProjectPageBody<T>({
@@ -243,6 +247,16 @@ export function ProjectPageBody<T>({
               {setup.automation}
             </DetailSection>
           ) : null}
+          {open.merging ? (
+            <DetailSection
+              label={MERGING_TITLE}
+              onClose={() => {
+                setOpen((now) => ({ ...now, merging: false }));
+              }}
+            >
+              {setup.merging}
+            </DetailSection>
+          ) : null}
         </div>
         <div className="pp-side">
           <SetupCard>
@@ -252,6 +266,9 @@ export function ProjectPageBody<T>({
               },
               automation: () => {
                 setOpen((now) => ({ ...now, automation: true }));
+              },
+              merging: () => {
+                setOpen((now) => ({ ...now, merging: true }));
               },
             })}
           </SetupCard>
@@ -267,7 +284,11 @@ export function ProjectPageBody<T>({
  */
 function useOpenDetails() {
   const hash = useRouterState({ select: (state) => state.location.hash });
-  return useState(() => ({ access: hash.startsWith("access-"), automation: false }));
+  return useState(() => ({
+    access: hash.startsWith("access-"),
+    automation: false,
+    merging: false,
+  }));
 }
 
 const changeKey = lineChangeKey;

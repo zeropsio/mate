@@ -308,10 +308,13 @@ export function hqNavigationLink(options: {
   const holdPlacedMates = () => {
     if (holding) return;
     holding = true;
+    // Every Mate a navigation places is held in one publication, not one each.
+    const settle = store.gather();
     try {
       followPlacedMates();
     } finally {
       holding = false;
+      settle();
     }
   };
   const followPlacedMates = () => {
@@ -799,7 +802,11 @@ export function hqNavigationLink(options: {
           )
             fresh.push(registered);
         }
-        yield* again(fresh);
+        // Registered in one publication, however many: the ask leaves that much sooner. Gathered
+        // here, never in `again`: one asked again inside a turn of HQ's answers belongs to that
+        // turn's publication, which a gathering of its own would end.
+        const settle = store.gather();
+        yield* again(fresh).pipe(Effect.ensuring(Effect.sync(settle)));
         const asking = new Set(fresh.map(({ wire }) => hqScopeKey(wire)));
         const rereads = [...reread].flatMap(([scopeKey, scope]) =>
           asked.has(scopeKey) && !asking.has(scopeKey) ? [scope] : [],

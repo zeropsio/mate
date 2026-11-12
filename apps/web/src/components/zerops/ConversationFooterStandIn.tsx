@@ -8,12 +8,18 @@ import { ComposerRoomHeld, ComposerStandInDock } from "../chat/ComposerStandIn";
 
 export function ConversationFooterStandIn({
   draft = "",
+  boxStands = false,
+  box,
 }: {
   /** The conversation's draft, which the held room lays out at the composer's height. */
   readonly draft?: string;
+  /** The composer's box drawn, empty: a composer stood here at the last visit. */
+  readonly boxStands?: boolean;
+  /** How tall that box stood, in px (`readFooterBoxMemory`). */
+  readonly box?: number | undefined;
 }) {
   return (
-    <ComposerStandInDock held>
+    <ComposerStandInDock box={box} held={!boxStands}>
       <ComposerRoomHeld draft={draft} />
     </ComposerStandInDock>
   );

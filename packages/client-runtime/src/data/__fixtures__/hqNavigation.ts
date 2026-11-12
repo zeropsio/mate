@@ -183,6 +183,7 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
           projectIds: app.projects.map(({ projectId }) => projectId),
           births: app.births ?? [],
           ...(app.intake === undefined ? {} : { intake: app.intake }),
+          ...(app.mergers === undefined ? {} : { mergers: app.mergers }),
           environments: canonicalEnvironmentsOf(
             app.environments ?? [],
           ) as HqAppValue["environments"],

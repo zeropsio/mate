@@ -24,6 +24,7 @@ import { makeBrowserHqApi, zeropsAccessToken } from "@t3tools/client-runtime/dat
 import type { ZeropsApiClient } from "@t3tools/client-runtime/zerops";
 import { useMemo } from "react";
 
+import { hqStreamAhead } from "@t3tools/client-runtime/data/hqStreamAhead";
 import { endHqSession, keptHqSessions } from "./keptSessions";
 import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
 
@@ -41,7 +42,8 @@ export function configuredHq(): HqEndpoint {
 }
 
 /** Where the account keeps HQ's session for the organization `clientId` and `hq`. */
-const keptHqKey = (clientId: string, hq: HqEndpoint) => `${clientId}:${hq.projectId}:${hq.address}`;
+export const keptHqKey = (clientId: string, hq: HqEndpoint) =>
+  `${clientId}:${hq.projectId}:${hq.address}`;
 
 // A press and its stream must use the same HQ session and socket identity.
 let accountHqClients = new WeakMap<
@@ -71,6 +73,7 @@ export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEn
       code: "account_changed",
       message: "This Zerops sign-in or its HQ has changed.",
     });
+  const ahead = hqStreamAhead(hq.address, clientId);
   const api = makeBrowserHqApi({
     address: hq.address,
     socketName: tabHqSocketName(),
@@ -104,6 +107,8 @@ export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEn
     isCurrent,
     accessToken,
     orgId: clientId,
+    // A reload's boot entry may have begun this HQ's opening already (`boot.ts`).
+    ...(ahead === null ? {} : { openedAhead: ahead }),
   });
   if (clients === undefined) {
     clients = new Map();

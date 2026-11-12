@@ -8,6 +8,7 @@
  * The rail's count opens the same list, beside the rail (`SidebarWaitingPopover`).
  */
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
+import { fadeFillIn } from "~/lib/loadFills";
 import { EnvironmentId, ThreadId, type ProviderApprovalDecision } from "@t3tools/contracts";
 import { isAtomCommandInterrupted } from "@t3tools/client-runtime/state/runtime";
 import {
@@ -193,6 +194,9 @@ export function SidebarWaitingCount({
           className={className}
           data-waiting-trigger=""
           data-zerops-surface="sidebar-waiting"
+          // It stands with the menu's fill, or arrives later into its own seat: either way it
+          // fades in where it stands (`fadeFillIn`).
+          ref={fadeFillIn}
           type="button"
         />
       }

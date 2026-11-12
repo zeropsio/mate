@@ -41,6 +41,7 @@ export const REASONS = [
   "changes_not_seen",
   "slot_taken",
   "not_app_developer",
+  "not_app_merger",
   "not_recipe_repo",
   "author_not_in_app",
   "recipe_empty",
@@ -205,11 +206,28 @@ export function attachPermission(facts: PermissionFacts, target: AttachTarget): 
   return target.slotTaken ? refuse("slot_taken") : ALLOW;
 }
 
-/** An application's change verbs over its projects; a comment where it has none, by push rights. */
+/**
+ * Who merges an application's changes, where it limits that (`HqMergers`): the organization's
+ * owners and admins, and the people it names by Zerops user id. `undefined`: whoever may push.
+ */
+export interface MergeLimit {
+  readonly people: ReadonlyArray<string>;
+}
+
+/** Inside an application's merge limit: an owner or admin of the organization, or a named person. */
+const mergesWithin = (member: Member, limit: MergeLimit) =>
+  writer(member) || (member.userId !== undefined && limit.people.includes(member.userId));
+
+/**
+ * An application's change verbs over its projects; a comment where it has none, by push rights. A
+ * merge where the application limits who merges (`mergers`) also takes the organization role or a
+ * place among the people it names: a grant on one of its projects is not enough.
+ */
 export function changePermission(
   facts: PermissionFacts,
   verb: "read_change" | "comment_change" | "merge_change" | "close_change",
   projectIds: ReadonlyArray<string>,
+  mergers?: MergeLimit | null,
 ): Decision {
   const read = appPermission(facts, "read_app", projectIds);
   if (!read.allow || verb === "read_change") return read;
@@ -217,7 +235,10 @@ export function changePermission(
     return appPermission(facts, "push_repo", projectIds);
   const member = facts.member!;
   if (verb === "close_change" && writer(member)) return ALLOW;
-  return developsIn(facts, member, projectIds) ? ALLOW : refuse("not_app_developer");
+  if (!developsIn(facts, member, projectIds)) return refuse("not_app_developer");
+  return verb === "merge_change" && mergers != null && !mergesWithin(member, mergers)
+    ? refuse("not_app_merger")
+    : ALLOW;
 }
 
 /**
@@ -249,14 +270,18 @@ export type ReleaseProduction =
   | { readonly kind: "git" }
   | null;
 
-/** Releasing: to Git by whoever merges; to Zerops by Basic user or above on the production. */
+/**
+ * Releasing: to Git by whoever merges, the application's merge limit (`mergers`) included; to
+ * Zerops by Basic user or above on the production.
+ */
 export function releasePermission(
   facts: PermissionFacts,
   projectIds: ReadonlyArray<string>,
   production: ReleaseProduction,
+  mergers?: MergeLimit | null,
 ): Decision {
   if (production?.kind === "git") {
-    const merge = changePermission(facts, "merge_change", projectIds);
+    const merge = changePermission(facts, "merge_change", projectIds, mergers);
     return merge.allow || merge.reason !== "not_app_developer" ? merge : refuse("not_releaser");
   }
   const seen = appPermission(

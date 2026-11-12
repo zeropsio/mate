@@ -1237,25 +1237,34 @@ export function MateComingHeader({
           </ConversationOpeningWaits>
         )}
       </div>
-      {standsIn === null || besidePanel ? null : (
-        <div
-          className="absolute top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] z-50 mr-px flex h-[var(--workspace-topbar-height)] items-center gap-1 [-webkit-app-region:no-drag]"
-          data-workspace-titlebar-controls
-          inert
-        >
-          <PanelLayoutControls
-            liveAgentCount={0}
-            onToggleRightPanel={nothing}
-            onToggleTerminal={nothing}
-            rightPanelAvailable
-            rightPanelOpen={false}
-            rightPanelShortcutLabel={null}
-            terminalAvailable
-            terminalOpen={false}
-            terminalShortcutLabel={null}
-          />
-        </div>
-      )}
+      {standsIn === null || besidePanel ? null : <HeaderControlsStandIn />}
+    </div>
+  );
+}
+
+/**
+ * A conversation header's own controls, the terminal's and the panel's toggles, where the
+ * conversation's header draws them, inert: the header's bar holds them from the first frame of a
+ * load, and the conversation's own take their place without anything moving.
+ */
+export function HeaderControlsStandIn() {
+  return (
+    <div
+      className="absolute top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] z-50 mr-px flex h-[var(--workspace-topbar-height)] items-center gap-1 [-webkit-app-region:no-drag]"
+      data-workspace-titlebar-controls
+      inert
+    >
+      <PanelLayoutControls
+        liveAgentCount={0}
+        onToggleRightPanel={nothing}
+        onToggleTerminal={nothing}
+        rightPanelAvailable
+        rightPanelOpen={false}
+        rightPanelShortcutLabel={null}
+        terminalAvailable
+        terminalOpen={false}
+        terminalShortcutLabel={null}
+      />
     </div>
   );
 }

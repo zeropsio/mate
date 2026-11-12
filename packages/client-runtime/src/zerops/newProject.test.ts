@@ -14,9 +14,7 @@ import {
  * config the pool claim uses: one zcp, VS Code on, public access on, no agents,
  * no sshfs hostnames. Byte-for-byte, including the absent trailing newline —
  * plus `ZCP_MATE_ENABLED`, the one key this client adds to that document so the
- * container it creates comes up serving Zerops Mate, and the free-RAM reserve
- * (`minFreeRamGB`, `minFreeRamPercent`) that keeps a Mate's memory.high clear of
- * zcp@1's 2 GB default.
+ * container it creates comes up serving Zerops Mate.
  */
 const GOLDEN = `services:
   - hostname: zcp
@@ -25,8 +23,6 @@ const GOLDEN = `services:
     enableSubdomainAccess: true
     verticalAutoscaling:
       minRam: 2
-      minFreeRamGB: 0.5
-      minFreeRamPercent: 10
     envSecrets:
       VSCODE_PASSWORD: "PASSWORD0PASSWORD"
       ZCP_VSCODE_AUTH_ENABLED: "true"
@@ -64,8 +60,6 @@ const GOLDEN_TWO_AGENTS = `services:
     enableSubdomainAccess: true
     verticalAutoscaling:
       minRam: 2
-      minFreeRamGB: 0.5
-      minFreeRamPercent: 10
     envSecrets:
       VSCODE_PASSWORD: "PASSWORD0PASSWORD"
       ZCP_VSCODE_AUTH_ENABLED: "true"

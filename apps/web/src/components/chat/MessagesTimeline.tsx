@@ -202,6 +202,13 @@ import type { LiveJobs } from "./liveJobs.logic";
 import { backgroundLineOf, backgroundRowItems } from "./backgroundLine.logic";
 import { KeptTimelineContext } from "./keptTimelineContext";
 import { ConversationOpeningStage, ConversationOpeningWaits } from "./ConversationOpeningStage";
+import { useLoadFill } from "~/lib/loadFills";
+
+/**
+ * Two frames of the 50 ms the conversation's fade once started with, now spent holding for the
+ * menu's fill; the rest pays for the pass that takes the hold's end to the stage.
+ */
+const PAGE_HOLDS_FOR_MENU_MS = 32;
 import { useZeropsThreadActivity } from "../../zerops/useZeropsAgentActivity";
 import type { CarriedRow } from "./stepHeight";
 import {
@@ -2058,6 +2065,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   useLayoutEffect(() => {
     onStanding?.(routeThreadKey, standing);
   }, [onStanding, routeThreadKey, standing]);
+  // The page's fill of a load (`loadFills`): placed while the menu is still being read, the
+  // conversation holds for it as long as its fade's start used to be delayed, and both come in
+  // one frame where the menu is ready by then; its rows being placed tell the menu it is close.
+  // After the load's first fill nothing holds: a switch opens as fast as it is placed.
+  const filled = useLoadFill(kept?.shown === false ? null : "page", standing, {
+    soon: showsList,
+    patience: PAGE_HOLDS_FOR_MENU_MS,
+  });
   const paintedThread = useRef<string | null>(null);
   useEffect(() => {
     if (
@@ -2432,7 +2447,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       <AsPainted of={rows} />
       {kept?.shown === false || pauseStageId !== null || keepsDraftMessage ? null : (
         <ConversationOpeningStage
-          ready={standing}
+          ready={filled}
           readPending={onItsWay}
           name={openingName}
           mate={mate ?? null}

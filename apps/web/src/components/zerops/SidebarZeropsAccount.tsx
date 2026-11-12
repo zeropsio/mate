@@ -22,9 +22,23 @@ import {
 import { Atom } from "effect/reactivity";
 import { formatUsd } from "@t3tools/shared/usageFormat";
 import { useLocation, useNavigate, useRouter } from "@tanstack/react-router";
-import { ArrowUpRightIcon, Building2Icon, EllipsisIcon, LogOutIcon } from "lucide-react";
+import {
+  ArrowUpRightIcon,
+  Building2Icon,
+  EllipsisIcon,
+  LogOutIcon,
+  WalletIcon,
+} from "lucide-react";
 import { zeropsHqOrigin } from "~/zerops/signInMode";
-import { createContext, useContext, useId, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useId,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 
 import {
   zeropsInvitationsFromUser,
@@ -41,7 +55,8 @@ import {
 import { MATE_SCOPE_CHOICES, useMateScope } from "~/zerops/mateScope";
 import { useChiefOffer } from "~/zerops/chiefSetup";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
-import { useViewerCalled } from "~/zerops/useZeropsMateOwners";
+import { useViewerCalled, useViewerCalledPending } from "~/zerops/useZeropsMateOwners";
+import { fadeFillIn, MENU_HOLDS_FOR_HQ_MS, useLoadFilled } from "~/lib/loadFills";
 import { useSidebar } from "../ui/sidebar";
 import {
   Menu,
@@ -102,6 +117,11 @@ export interface SidebarZeropsAccountProps {
   /** The rail: the picture alone, with the name only in the tooltip's place. */
   readonly collapsed?: boolean;
   /**
+   * What the member list calls the person is still to come, and nothing is remembered of it
+   * (`useViewerCalledPending`): the name's seat is held empty until it is known, or the menu fills.
+   */
+  readonly namePending?: boolean;
+  /**
    * *Set up Chief*, where the account menu offers it (`chiefOffered`): its icon, the caller's, and
    * what a press opens.
    */
@@ -121,6 +141,7 @@ export function SidebarZeropsAccount({
   signingOut = false,
   signOutError = null,
   collapsed = false,
+  namePending = false,
   chief,
 }: SidebarZeropsAccountProps) {
   const accountMenu = useContext(AccountMenuContext);
@@ -139,6 +160,19 @@ export function SidebarZeropsAccount({
       : null,
   );
   const role = sidebarAccountRoleParts(activeOrganization);
+  // Not known when the foot first drew: its name comes with the menu's fill, not alone in the
+  // moment the list is read.
+  const menuFilled = useLoadFilled("menu");
+  const [heldAtFirst] = useState(namePending);
+  // Bounded as the menu's own hold is: with Zerops' listing unread the menu never fills, and the
+  // foot then names the person by their account, as it always did.
+  const [waitedOut, setWaitedOut] = useState(false);
+  useEffect(() => {
+    if (!heldAtFirst || menuFilled) return;
+    const timer = setTimeout(() => setWaitedOut(true), MENU_HOLDS_FOR_HQ_MS);
+    return () => clearTimeout(timer);
+  }, [heldAtFirst, menuFilled]);
+  const nameHeld = heldAtFirst && !menuFilled && !waitedOut;
   const menu = (
     <MenuPopup align={collapsed ? "start" : "end"} className="w-72" side="top">
       <SidebarZeropsAccountMenu
@@ -208,19 +242,9 @@ export function SidebarZeropsAccount({
           picture={account.avatarUrl}
           size={32}
         />
-        {/* Who on the leading edge, what the organization has left on the trailing one: two lines
-            each, on shared baselines. */}
-        <span className="menu-foot-lines" data-credit={credit === null ? undefined : credit.tone}>
-          <span className="menu-foot-name">{lines.name}</span>
-          {credit === null ? null : (
-            <span
-              aria-hidden="true"
-              className="menu-foot-credit-amount"
-              data-zerops-surface="sidebar-account-credit"
-            >
-              {credit.amount}
-            </span>
-          )}
+        <span className="menu-foot-lines">
+          {/* A first visit: the seat, a line tall, until the name it will keep is known. */}
+          <span className="menu-foot-name">{nameHeld ? "\u00a0" : lines.name}</span>
           {/* An organization still being resolved is absent, never a placeholder: the foot must
               paint nothing it takes back. */}
           {role === null ? null : (
@@ -230,12 +254,8 @@ export function SidebarZeropsAccount({
               {role.after}
             </span>
           )}
-          {credit === null ? null : (
-            <span aria-hidden="true" className="menu-foot-credit-label">
-              {credit.label}
-            </span>
-          )}
         </span>
+        {credit === null ? null : <AccountCredit credit={credit} />}
         <span aria-hidden="true" className="menu-foot-button">
           <EllipsisIcon className="size-4" />
         </span>
@@ -473,6 +493,7 @@ export function SidebarZeropsAccountRow({
   // account row. Signed out, there is no account to name either way.
   const session = useZeropsSessionOptional();
   const called = useViewerCalled();
+  const calledPending = useViewerCalledPending();
   const navigate = useNavigate();
   const router = useRouter();
   const { isMobile, setOpenMobile } = useSidebar();
@@ -499,6 +520,7 @@ export function SidebarZeropsAccountRow({
     <SidebarZeropsAccount
       account={zeropsAccountDisplay(user, called)}
       activeOrganization={activeOrganization}
+      namePending={calledPending}
       collapsed={!isMobile && collapsed}
       destination={destination}
       destinationIcon={destinationIcon}
@@ -558,8 +580,6 @@ interface AccountCreditFigure {
   readonly tone: BillingTone;
   /** How it stands, for a reader who does not see the colour; `null` while all is well. */
   readonly words: string | null;
-  /** What the figure is, under it: its name while all is well, else how it stands. */
-  readonly label: string;
 }
 
 const NO_BILLING = Atom.make<OrganizationBilling | null>(null);
@@ -567,7 +587,20 @@ const NO_BILLING = Atom.make<OrganizationBilling | null>(null);
 /** The organization's balance where Zerops shows this account its finances; else `null`. */
 function useAccountCredit(orgId: string | null): AccountCreditFigure | null {
   const billing = useAtomValue(orgId === null ? NO_BILLING : organizationBillingAtom(orgId));
-  if (billing === null || billing.kind !== "known" || billing.total === null) return null;
+  // A live fact of the menu's: it stands with the menu's fill, in the seat the line's end holds
+  // for it, or fades into that seat alone when Zerops answers later (`loadFills`).
+  const menuFilled = useLoadFilled("menu");
+  // The balance comes with the menu's fill, and never waits for it longer than the menu's own
+  // longest hold: with HQ slow it stands alone rather than seconds late.
+  const [waitedOut, setWaitedOut] = useState(false);
+  useEffect(() => {
+    if (menuFilled) return;
+    const timer = setTimeout(() => setWaitedOut(true), MENU_HOLDS_FOR_HQ_MS);
+    return () => clearTimeout(timer);
+  }, [menuFilled]);
+  const filled = menuFilled || waitedOut;
+  if (!filled || billing === null || billing.kind !== "known" || billing.total === null)
+    return null;
   const words =
     billing.tone === "out"
       ? billing.total < 0
@@ -576,15 +609,31 @@ function useAccountCredit(orgId: string | null): AccountCreditFigure | null {
       : billing.tone === "low"
         ? "credit running low"
         : null;
-  const label =
-    billing.tone === "out"
-      ? billing.total < 0
-        ? "Below zero"
-        : "Nearly out"
-      : billing.tone === "low"
-        ? "Running low"
-        : "Credit";
-  return { amount: compactUsd(billing.total), tone: billing.tone, words, label };
+  return { amount: compactUsd(billing.total), tone: billing.tone, words };
+}
+
+/**
+ * The balance as the foot's one readout, on the row's centre line with its dots: Billing's own
+ * mark, then the figure with its currency sign stepped back. Its colour is how it stands; the
+ * button's name says it in words.
+ */
+function AccountCredit({ credit }: { readonly credit: AccountCreditFigure }) {
+  const sign = credit.amount.indexOf("$") + 1;
+  return (
+    <span
+      aria-hidden="true"
+      className="menu-foot-credit"
+      data-tone={credit.tone}
+      data-zerops-surface="sidebar-account-credit"
+      ref={fadeFillIn}
+    >
+      <WalletIcon />
+      <span>
+        <span className="menu-foot-credit-sign">{credit.amount.slice(0, sign)}</span>
+        {credit.amount.slice(sign)}
+      </span>
+    </span>
+  );
 }
 
 const WHOLE_USD = new Intl.NumberFormat("en-US", {

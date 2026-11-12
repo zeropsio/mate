@@ -7,6 +7,7 @@ import {
   createElement,
   cloneElement,
   use,
+  useEffect,
   useCallback,
   useLayoutEffect,
   useMemo,
@@ -217,6 +218,33 @@ export function useConversationOpeningArrives(): boolean {
   return use(OpeningWaitContext) === "arrives";
 }
 
+/** Whether the conversation's surface is seen: no stage holds it unseen. */
+export function useConversationOpeningShown(): boolean {
+  return use(OpeningWaitContext) !== "held";
+}
+
+/**
+ * Calls `onArrive` once an opening stops holding the conversation unseen: the composer takes the
+ * caret then, where the page holds it nowhere else. Nothing is rendered.
+ */
+export function ConversationOpeningArrival({ onArrive }: { readonly onArrive: () => void }) {
+  // From held to seen, whichever way: with reduced motion the opening goes from waiting to
+  // complete and never arrives, and the caret was left on the page.
+  const shown = useConversationOpeningShown();
+  const wasHeld = useRef(!shown);
+  useEffect(() => {
+    if (!shown) {
+      wasHeld.current = true;
+      return;
+    }
+    if (!wasHeld.current) return;
+    wasHeld.current = false;
+    const focused = document.activeElement;
+    if (focused === null || focused === document.body) onArrive();
+  }, [shown, onArrive]);
+  return null;
+}
+
 /**
  * A part of the conversation's surface that waits for the opening: its children — or, `whole`,
  * the element itself — are unseen while the stage waits, and arrive with the conversation from
@@ -228,17 +256,33 @@ export function useConversationOpeningArrives(): boolean {
 export function ConversationOpeningWaits({
   as = "span",
   whole = false,
+  foot = false,
   ...props
 }: (
   | ({ readonly as: "div" } & ComponentProps<"div">)
   | ({ readonly as?: "span" } & ComponentProps<"span">)
-) & { readonly whole?: boolean }) {
+) & {
+  readonly whole?: boolean;
+  /**
+   * The conversation's foot: while the stage waits, all of it is unseen but the composer's box
+   * where one stood at the last visit (`data-box-stands`), which holds its place from the first
+   * frame; what the box holds, and what stands around it, arrive with the conversation.
+   */
+  readonly foot?: boolean;
+}) {
   const wait = use(OpeningWaitContext);
   return createElement(
     as,
-    whole
-      ? { ...props, "data-opening-waits-whole": wait === "" ? undefined : wait }
-      : { ...props, "data-opening-waits": wait },
+    foot
+      ? {
+          ...props,
+          "data-opening-waits-foot": wait === "" ? undefined : wait,
+          // Under the stage the foot takes no keys: nothing typed is ever unseen.
+          inert: wait === "held" ? true : props.inert,
+        }
+      : whole
+        ? { ...props, "data-opening-waits-whole": wait === "" ? undefined : wait }
+        : { ...props, "data-opening-waits": wait },
   );
 }
 
@@ -252,9 +296,19 @@ function OpeningAvatar({ children }: { readonly children: ReactElement<MateFaceP
   useLayoutEffect(() => {
     if (ref.current !== null) setAvatar?.({ node: ref.current, face: children });
   }, [children, setAvatar]);
+  // While the conversation arrives, the header's own face fades in here with its name: the stage,
+  // fading where it stands, is leaving (inert, unsaid) and no longer the one that says the Mate.
+  // The stage's face then takes this slot in the commit the copy leaves it, so nothing lands
+  // after the fill, and nothing travels.
+  const arrives = use(OpeningWaitContext) === "arrives";
   return (
-    <span className="relative block size-6 shrink-0" data-conversation-avatar="" ref={ref}>
-      {opening?.stage?.mate == null ? children : null}
+    <span
+      className="relative block size-6 shrink-0"
+      data-conversation-avatar=""
+      data-opening-arrives={arrives ? "" : undefined}
+      ref={ref}
+    >
+      {opening?.stage?.mate == null || arrives ? children : null}
     </span>
   );
 }
@@ -459,6 +513,7 @@ function OpeningSequence({
       else faceHost.remove();
       return;
     }
+
     // Until it lands the face stays on the stage, and hands over fading with it where it stands.
     source.current?.appendChild(faceHost);
   }, [phase, avatar?.node, faceHost]);
@@ -525,7 +580,10 @@ function OpeningSequence({
     <>
       {renderFace()}
       <div
-        aria-hidden={phase === "complete" || phase === "skipped" ? true : undefined}
+        // Leaving from the moment the conversation is placed: it fades where it stands, says
+        // nothing more to assistive technology and takes no press; the header says the Mate now.
+        aria-hidden={phase === "waiting" ? undefined : true}
+        inert={phase === "wake" || phase === "hand-off"}
         className={
           phase === "skipped"
             ? "invisible pointer-events-none absolute inset-0 z-10"

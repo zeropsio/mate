@@ -12,32 +12,45 @@
   padding-inline: calc(var(--sidebar-content-inset) + 1px) var(--sidebar-content-inset);
 }
 
+/* The menu's loading rows, in a Mate's row geometry: a 66 px row, 6 px to the next, the list's
+   16 px above the first; a 36 px face 10 px in, and a line where the name and where what it said
+   stand. As many as the last visit drew (`MenuSkeleton`, and index.html's frame). */
 [data-zerops-surface="sidebar-environments-skeleton"] {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 8px 10px;
+  gap: 6px;
+  padding-top: 16px;
 }
 
 [data-zerops-surface="sidebar-environments-skeleton"] > div {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  height: 28px;
+  position: relative;
+  flex-shrink: 0;
+  height: 66px;
 }
 
 [data-zerops-surface="sidebar-environments-skeleton"] > div > span {
-  flex-shrink: 0;
-  width: 20px;
-  height: 20px;
+  position: absolute;
+  top: 11px;
+  left: 10px;
+  width: 36px;
+  height: 36px;
   border-radius: 9999px;
 }
 
-/* The second span, said by position: see "Why no rule in this sheet puts `+`…" in index.css. */
+/* The second span and those after it, said by position: see "Why no rule in this sheet puts `+`…"
+   in index.css. */
 [data-zerops-surface="sidebar-environments-skeleton"]
   > div
   > span:is(span):where(:not(:first-child)) {
-  flex-shrink: 1;
-  width: 66.6667%;
+  top: 18px;
+  left: 58px;
+  width: 34%;
   height: 8px;
+}
+
+[data-zerops-surface="sidebar-environments-skeleton"]
+  > div
+  > span:is(span):is(span):where(:nth-child(n + 3)) {
+  top: 40px;
+  width: 58%;
 }

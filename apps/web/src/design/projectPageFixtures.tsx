@@ -41,6 +41,7 @@ import {
   type CardStage,
 } from "~/components/zerops/projects/projectCard.logic";
 import { ProjectPeopleRowView } from "~/components/zerops/projects/ProjectPeople";
+import { MERGING_STATES, MergingBody, MergingRow } from "./projectMergingFixtures";
 import { Button } from "~/components/ui/button";
 import { MateFace } from "~/components/zerops/primitives";
 import { ProjectSpendRowView } from "~/components/zerops/projects/ProjectSpend";
@@ -1126,11 +1127,18 @@ export function harnessProjectPage(
                 onManage={open.access}
                 view={groupId === "juno-notes" ? MANY_PEOPLE_VIEW : PEOPLE_VIEW}
               />
+              <MergingRow
+                onManage={open.merging}
+                state={running ? MERGING_STATES.limited : MERGING_STATES.everyone}
+              />
               <ProjectSpendRowView state={running ? SPEND : SPEND_TODAY} />
             </>
           ),
           access: <PageAccess />,
           automation: <PageAutomation groupId={groupId} />,
+          merging: (
+            <MergingBody state={running ? MERGING_STATES.limited : MERGING_STATES.everyone} />
+          ),
         }}
       />
     </Standins>

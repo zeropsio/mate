@@ -243,6 +243,10 @@
       "types": "./src/zerops/hq/index.ts",
       "default": "./src/zerops/hq/index.ts"
     },
+    "./zerops/hq/socketName": {
+      "types": "./src/zerops/hq/socketName.ts",
+      "default": "./src/zerops/hq/socketName.ts"
+    },
     "./zerops/activityResult": {
       "types": "./src/zerops/activityResult.ts",
       "default": "./src/zerops/activityResult.ts"
@@ -330,6 +334,10 @@
     "./data/fixtures": {
       "types": "./src/data/__fixtures__/index.ts",
       "default": "./src/data/__fixtures__/index.ts"
+    },
+    "./data/hqStreamAhead": {
+      "types": "./src/data/adapters/hqStreamAhead.ts",
+      "default": "./src/data/adapters/hqStreamAhead.ts"
     },
     "./data/mateImage": {
       "types": "./src/data/families/mateImage.ts",

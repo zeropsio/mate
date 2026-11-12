@@ -6,6 +6,23 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { releaseGateOf } from "./appOffers";
 
+describe("a release the merge limit holds", () => {
+  // witness: apps/web/src/zerops/appOffers.ts | reason: hqMergeOfferWords(offer, mergers, nameOf) ?? "", → reason: "",
+  it("A release to Git held by the project's merge limit says who merges, as the held Merge does", () => {
+    const names: Readonly<Record<string, string>> = { "u-ada": "Ada K.", "u-sam": "Sam R." };
+    expect(
+      releaseGateOf(
+        { release: { allow: false, reason: "not_app_merger" } },
+        { mergers: { people: ["u-ada", "u-sam"] }, nameOf: (userId) => names[userId] },
+      ),
+    ).toEqual({
+      allowed: false,
+      reason: "Only Ada K., Sam R. and the organization's Owner and Admins merge here.",
+      refusedBy: "hq",
+    });
+  });
+});
+
 describe("releaseGateOf", () => {
   it.each([
     { name: "an application HQ never named", can: undefined, gate: undefined },
