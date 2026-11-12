@@ -21,15 +21,15 @@ import type { AdmissionLive, TicketFrame } from "./ZeropsTicketDoor.ts";
  *   timer; beside it the Mate's attention (`ZeropsMateAttention`), whole on every link and again at
  *   each new revision; `person-changed` for each known person the access list's raw rows move
  *   while the link runs (`ZeropsMateAccessList.personChanged`), a hint never told again; `pong` to
- *   each of HQ's pings. The Mate's own access list stays in the Mate.
+ *   each of HQ's pings.
  * - **Down:** the Mate's state as HQ holds it, kept here for whoever asks and handed on to
  *   `ZeropsAutomation` (whether the Mate is automated) and to `ZeropsChiefRestart`, which rotates
  *   every session on a moved Chief mark (`chief`), and to `ZeropsMateOwner`, whom it names the
  *   Mate's owner (`ownerUserId`), and to `ZeropsChiefOpener`, whom it lets open a Chief
  *   (`chiefOpenerUserId`); the raw `mate` of every state, decoded or not, is kept by
- *   `ZeropsMateStateFile` where zcp reads it; tickets (`ticket`), each answered `ticket-ack`, or
- *   `ticket_refused` when the access list does not admit its person, or not at all when the key
- *   it came under was refused, which closes the link and leaves HQ to answer it; the
+ *   `ZeropsMateStateFile` where zcp reads it; tickets (`ticket`), each with the role HQ read for
+ *   its person at Zerops, kept and answered `ticket-ack`, or not at all when the key it came
+ *   under was refused, which closes the link and leaves HQ to answer it; the
  *   Mate's Git credential (`git-credential`), handed on to
  *   `ZeropsGitCredentialFile`, never logged; an automated Mate's keys (`provider-keys`), handed on
  *   to `ZeropsAutomation`, never logged; and the tasks HQ hands an automated Mate (`task`), the
@@ -39,8 +39,8 @@ import type { AdmissionLive, TicketFrame } from "./ZeropsTicketDoor.ts";
  *   before HQ's first state on a link is held until it comes ({@link HQ_TASK_HOLD}). The
  *   operator's command (`command`) is run aside (`zeropsLinkCommand.ts`) and its `command-result`
  *   goes up the link stated when it ends, or nowhere. An older
- *   HQ's `access` frame is read past like any frame this build cannot decode: the Mate's own list
- *   is the only one (`ZeropsMateAccessList`).
+ *   HQ's `access` frame is read past like any frame this build cannot decode, and a ticket that
+ *   does not decode is logged by the path that failed, never by a value.
  * - **Closed:** the Mate is not linked until HQ's first state on the next link. HQ names why
  *   (`MateLinkClosed`). A refused key (`4401`) or one HQ does not admit
  *   (`4403`, its code the reason) is the Mate's standing until HQ next sends its state, and so is
@@ -91,6 +91,7 @@ import {
   type MateOverview,
   type MateOverviewSections,
   type OverviewIdentity,
+  TicketDown,
 } from "@t3tools/shared/mateLink";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -106,6 +107,7 @@ import * as Random from "effect/Random";
 import * as Ref from "effect/Ref";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
+import * as SchemaIssue from "effect/SchemaIssue";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
@@ -290,8 +292,7 @@ export interface ZeropsHqLinkOptions {
   readonly personChanged?: Stream.Stream<string>;
   /**
    * Takes HQ's ticket, with whether the admission it came under is still live, and gives what
-   * admits it or says why not, answered `ticket-ack` or `ticket_refused`, or not at all
-   * (`ZeropsConnections.ticket`).
+   * answers it: `ticket-ack`, or not at all (`ZeropsConnections.ticket`).
    */
   readonly ticket?: (
     frame: TicketFrame,
@@ -405,6 +406,24 @@ const decodeNamedTask = Schema.decodeUnknownOption(
     }),
   ),
 );
+/** A frame that names itself a ticket, read past whatever else of it fails. */
+const decodeTicketType = Schema.decodeUnknownOption(
+  Schema.fromJsonString(Schema.Struct({ type: Schema.Literal("ticket") })),
+);
+const decodeTicket = Schema.decodeUnknownResult(Schema.fromJsonString(TicketDown));
+const formatIssue = SchemaIssue.makeFormatterStandardSchemaV1();
+/**
+ * Where a ticket that does not decode fails, by schema path alone: a ticket's members are HQ's
+ * secret and its person, so neither the frame nor any value of it is logged.
+ */
+const ticketFailurePaths = (raw: string): ReadonlyArray<string> => {
+  const decoded = decodeTicket(raw);
+  return Result.isFailure(decoded)
+    ? formatIssue(decoded.failure.issue).issues.map((issue) =>
+        (issue.path ?? []).map((key) => String(typeof key === "object" ? key.key : key)).join("."),
+      )
+    : [];
+};
 /** What HQ hears of a task the Mate could not read, and passes on to where it came from. */
 const UNREAD_TASK = "This Mate could not read the task as HQ sent it.";
 
@@ -780,9 +799,10 @@ export const makeZeropsHqLink = (
               ? Effect.void
               : onceStated(tasks.stop(frame.taskId, frame.reason, frame.requeued === true));
           case "ticket":
-            // Taken here, in the order heard; answered aside, since a verdict may wait on a
-            // Zerops read that must not hold back pings, close-session or the frames after it.
-            // One under a dead key is not answered: the link ends, and HQ answers it not-connected.
+            // Taken here, in the order heard; answered aside, since the answer waits on the
+            // registry's lock, which must not hold back pings, close-session or the frames after
+            // it. One under a dead key is not answered: the link ends, and HQ answers it
+            // not-connected.
             return options.ticket === undefined
               ? Effect.void
               : options.ticket(frame, liveness()).pipe(
@@ -791,11 +811,7 @@ export const makeZeropsHqLink = (
                       Effect.flatMap((verdict) =>
                         verdict === "fenced"
                           ? Deferred.succeed(ending, {})
-                          : send(
-                              verdict === "open"
-                                ? { type: "ticket-ack", ticket: frame.ticket }
-                                : { type: "ticket_refused", ticket: frame.ticket, reason: verdict },
-                            ),
+                          : send({ type: "ticket-ack", ticket: frame.ticket }),
                       ),
                       Effect.forkChild,
                     ),
@@ -819,9 +835,15 @@ export const makeZeropsHqLink = (
       };
       /**
        * A frame the Mate cannot decode: one of a newer HQ's it reads past, but a task's is logged
-       * with why and answered `failed`, so HQ and the task's source hear it was not worked.
+       * with why and answered `failed`, so HQ and the task's source hear it was not worked, and a
+       * ticket's is logged by the schema paths that failed.
        */
       const undecoded = (raw: string, error: Schema.SchemaError): Effect.Effect<void> => {
+        if (Option.isSome(decodeTicketType(raw)))
+          return Effect.logWarning("zerops hq link: could not read a ticket HQ sent", {
+            type: "ticket",
+            paths: ticketFailurePaths(raw),
+          });
         const named = decodeNamedTask(raw);
         if (Option.isNone(named)) return Effect.void;
         const taskId = named.value.task.id;

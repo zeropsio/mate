@@ -37,7 +37,6 @@ import {
   projectAccess,
   type ZeropsOrgMember,
 } from "@t3tools/shared/mateAccess";
-import type { TicketRefusal } from "@t3tools/shared/mateLink";
 import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -233,7 +232,7 @@ export const ticketVerdict = (
   list: AccessList | undefined,
   userId: string,
   nowMs: number,
-): "open" | TicketRefusal => {
+): "open" | "not_in_list" | "read_only" | "list_unconfirmed" => {
   if (list === undefined || nowMs > list.expiresAtMs) return "list_unconfirmed";
   const member = list.members.find((candidate) => candidate.userId === userId);
   if (member === undefined) return "not_in_list";
@@ -283,7 +282,7 @@ export class ZeropsMateAccessList extends Context.Service<
      * A new ticket's verdict for `userId`, recomputing once first (or joining the recompute in
      * flight) if the list does not open for them or is unconfirmed.
      */
-    readonly admits: (userId: string) => Effect.Effect<"open" | TicketRefusal>;
+    readonly admits: (userId: string) => Effect.Effect<ReturnType<typeof ticketVerdict>>;
     /** Whom the own list names, latest first, then after each change (`ZeropsOffboarding`). */
     readonly reports: Stream.Stream<AccessReport>;
     /**

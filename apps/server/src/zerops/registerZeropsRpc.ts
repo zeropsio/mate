@@ -116,7 +116,7 @@ export interface RegisterZeropsRpcDeps {
    * started on it ends with it.
    */
   readonly connection: ZeropsAgentLoginModule.LoginConnection;
-  /** The live connections a fresh ticket extends; absent outside a Zerops project and in fixtures. */
+  /** The registry that admitted this connection on HQ's ticket, which a fresh one extends; none where no ticket did. */
   readonly zeropsConnections?: ZeropsConnectionsModule.ZeropsConnections["Service"] | undefined;
   /**
    * `ws.ts`'s update admission: while a Mate update waits, a call that changes something is
@@ -207,7 +207,7 @@ export const runZeropsMateCheckUpdate = (
  * (`deps.connection.id`, never input), as {@link ZeropsConnectionsModule.ZeropsConnections}'s
  * `extend` decides. Without a registry the RPC is not offered here.
  */
-export const runZeropsExtendGrant = (
+const runZeropsExtendGrant = (
   deps: Pick<RegisterZeropsRpcDeps, "zeropsConnections" | "connection">,
   input: { readonly ticket: string },
 ) =>
