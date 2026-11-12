@@ -313,13 +313,20 @@ describe("groupFlow", () => {
     expect(merged.nextStep.kind).toBe("none");
   });
 
-  // witness: packages/client-runtime/src/zerops/groupFlow.ts | return input.outsideProduction == null → return input.outsideProduction !== null
+  // witness: packages/client-runtime/src/zerops/groupFlow.ts | return input.outside == null → return input.outside !== null
   it("A project with no production here, whose production is deployed outside Mate, waits for no release", () => {
     const flow = groupFlow({
       ...SM_FIXTURE,
       pullRequests: [],
       merged: [pull({ merged: true })],
-      outsideProduction: { address: "https://tea-shop.example" },
+      outside: {
+        target: {
+          kind: "outside",
+          address: "https://tea-shop.example",
+          setBy: "user-owner",
+          setAt: "2026-11-12T19:45:00Z",
+        },
+      },
     });
     expect(flow.production).toEqual({ kind: "outside", address: "https://tea-shop.example" });
     expect(flow.nextStep.kind).toBe("none");

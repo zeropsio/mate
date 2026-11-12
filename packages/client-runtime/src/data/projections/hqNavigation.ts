@@ -182,8 +182,11 @@ function environmentsOfApp(
   offers: (projectId: string, tier: "stage" | "production") => HqOffers | undefined,
 ): Pick<CanonicalHqStructure["apps"][number], "environments"> {
   if (environments === undefined) return {};
-  // Legacy Zerops rows still go through their existing normalizer; Git has no outward project DTO.
-  const read = canonicalEnvironmentsOf(environments.filter((row) => row.target?.kind !== "git"));
+  // Legacy Zerops rows still go through their existing normalizer; Git and an outside production
+  // have no outward project DTO.
+  const read = canonicalEnvironmentsOf(
+    environments.filter((row) => row.target?.kind !== "git" && row.target?.kind !== "outside"),
+  );
   return read === undefined
     ? {}
     : {
@@ -257,7 +260,6 @@ function structureOf(
         ...(app.births === undefined ? {} : { births: app.births }),
         ...(app.intake === undefined ? {} : { intake: app.intake }),
         ...(app.mergers == null ? {} : { mergers: app.mergers }),
-        ...(app.outsideProduction == null ? {} : { outsideProduction: app.outsideProduction }),
         ...environmentsOfApp(app.environments, (projectId, tier) =>
           decided(facts, [projectId, ...appFacts.projectIds], (live) =>
             environmentOffers(live, { projectId, tier }, appFacts),

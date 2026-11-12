@@ -141,9 +141,9 @@ const changeOf = (read: ProjectionReads, link: ChangeLink): HqChange | undefined
 const jobsOf = (read: ProjectionReads, appId: string, projectId: ProjectId) => {
   const app = read.fact("hqApp", appId);
   if (app.kind !== "known" || app.value.environments === undefined) return undefined;
-  return canonicalEnvironmentsOf(app.value.environments)?.find(
-    (entry) => entry.target.kind === "zerops" && entry.target.projectId === projectId,
-  );
+  return canonicalEnvironmentsOf(
+    app.value.environments.filter((entry) => entry.target.kind !== "outside"),
+  )?.find((entry) => entry.target.kind === "zerops" && entry.target.projectId === projectId);
 };
 
 /** What a release says while the recipe has nothing on `main` to tag: HQ's own words for it. */

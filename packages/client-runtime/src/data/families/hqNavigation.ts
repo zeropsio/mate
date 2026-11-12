@@ -18,6 +18,7 @@ import {
   HqPersonFacts as HqPersonFactsSchema,
   HqNavigationMate,
 } from "@t3tools/shared/hqStream";
+import { HqOutsideEnvironment } from "@t3tools/shared/hqEnvironment";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
@@ -72,10 +73,12 @@ const Birth = Schema.Struct({
   projectId: Schema.optionalKey(Schema.NullOr(Schema.String)),
   importProcessId: Schema.optionalKey(Schema.String),
 });
-// The old outward reader remains Zerops-only; the account admits each target's own job contract.
+// The old outward reader remains Zerops-only; the account admits each target's own job contract,
+// and the outside production, which has none.
 const DeliveryEnvironments = Schema.Array(
   Schema.Union([
     HqGitNavigationEnvironment,
+    HqOutsideEnvironment,
     CanonicalHqNavigationEnvironment.check(
       Schema.makeFilter((row) =>
         row.target.kind === "zerops" ? undefined : "Expected Zerops deploy jobs",

@@ -14,7 +14,7 @@ import { HqGitNavigationEnvironment } from "@t3tools/shared/hqStream";
  *
  * @module hq/environments
  */
-import { hqEnvironmentCodec } from "@t3tools/shared/hqEnvironment";
+import { HqOutsideEnvironment, hqEnvironmentCodec } from "@t3tools/shared/hqEnvironment";
 import { EnvironmentBirth, HqDeployEvidence, HqDeployOutcome } from "@t3tools/shared/hqDeploys";
 import { ReleaseRollout, TierStop } from "@t3tools/shared/hqRelease";
 import * as Option from "effect/Option";
@@ -185,6 +185,8 @@ const readDeliveryEnvironment = Schema.decodeUnknownOption(
   ]),
 );
 
+const readOutsideEnvironment = Schema.decodeUnknownOption(HqOutsideEnvironment);
+
 /** An environment HQ sent that this build cannot read: what is still legible of it, to name it. */
 export interface UnreadEnvironment {
   readonly id: string | null;
@@ -209,27 +211,36 @@ const legible = (record: unknown, key: string): string | null => {
 
 /**
  * Each environment is read on its own: one this build cannot read is listed as unread beside the
- * ones it can, never taking them down. `undefined` where HQ sent no list at all.
+ * ones it can, never taking them down. The application's outside production is its production with
+ * nothing to deploy, read apart from the ones it delivers to (`outside`; absent where none stands).
  */
 export function readDeliveryEnvironments(value: unknown): {
   readonly environments: ReadonlyArray<HqDeliveryEnvironment>;
   readonly unread: ReadonlyArray<UnreadEnvironment>;
+  readonly outside?: HqOutsideEnvironment;
 } {
   const environments: HqDeliveryEnvironment[] = [];
   const unread: UnreadEnvironment[] = [];
+  let outside: HqOutsideEnvironment | undefined;
   for (const sent of Array.isArray(value) ? value : []) {
     const read = readDeliveryEnvironment(sent);
-    if (Option.isSome(read)) environments.push(read.value);
-    else {
-      const tier = legible(sent, "tier");
-      unread.push({
-        id: legible(sent, "id"),
-        name: legible(sent, "name"),
-        tier: tier === "stage" || tier === "production" ? tier : null,
-      });
+    if (Option.isSome(read)) {
+      environments.push(read.value);
+      continue;
     }
+    const said = readOutsideEnvironment(sent);
+    if (Option.isSome(said)) {
+      outside = said.value;
+      continue;
+    }
+    const tier = legible(sent, "tier");
+    unread.push({
+      id: legible(sent, "id"),
+      name: legible(sent, "name"),
+      tier: tier === "stage" || tier === "production" ? tier : null,
+    });
   }
-  return { environments, unread };
+  return { environments, unread, ...(outside === undefined ? {} : { outside }) };
 }
 
 export function deliveryEnvironmentsOf(

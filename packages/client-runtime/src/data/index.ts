@@ -558,6 +558,7 @@ export { aiKeysId, intakeId, type AiKeysKey, type IntakeKey } from "./families/h
 export { MERGERS_UNSUPPORTED, sameMergers } from "./operations/hqMergers.ts";
 export {
   OUTSIDE_PRODUCTION_UNSUPPORTED,
+  appOutsideProduction,
   sameOutsideProduction,
   type OutsideProduction,
 } from "./operations/hqOutsideProduction.ts";
