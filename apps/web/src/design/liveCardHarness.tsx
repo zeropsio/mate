@@ -34,7 +34,7 @@
  *   conversation left mid-read before, which opens not following its end —
  *   at a row since gone, or at `?leftrow=<row id>`; `?crew` for a crew
  *   thread's send, whose message and card the engine writes a moment after
- *   it; `?long=<n>` for that many turns above, the list long and virtual);
+ *   it); `?long=<n>` for that many turns above any script's run, the list long and virtual;
  * - `?speed=<x>` plays faster or slower, `?at=<s>` starts that far in;
  * - `?theme=dark`; `?provider=claudeAgent` reads no call stale by timing.
  *
@@ -1682,7 +1682,10 @@ function runBefore(t: number): ReadonlyArray<TimelineEntry> {
 /** The run's timeline at `t` seconds in. */
 function entriesAt(t: number): TimelineEntry[] {
   if (RUN.entries !== undefined) return RUN.entries(t);
-  const entries: TimelineEntry[] = SHORT ? [] : [...EARLIER];
+  // `?long` puts its turns long before the earlier ones, for any run; `send`'s come after them.
+  const entries: TimelineEntry[] = SHORT
+    ? []
+    : [...(RUN.sendAt === undefined ? turnsBefore() : []), ...EARLIER];
   if (RUN.sendAt !== undefined) entries.push(...turnsBefore(), ...runBefore(t));
   if (t >= (RUN.sendAt ?? 0)) entries.push(message("ask", "user", RUN.sendAt ?? 0, RUN.ask));
   for (const item of RUN.items) {
