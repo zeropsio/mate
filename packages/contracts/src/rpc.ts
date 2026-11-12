@@ -1236,7 +1236,7 @@ const WsZeropsMateUpdateRpc = Rpc.make(WS_METHODS.zeropsMateUpdate, {
 
 /**
  * Re-reads the release manifest now (spec-mate.md §2.9 step 2, "on demand")
- * instead of waiting for the server's hourly `zcp mate status` cycle. The
+ * through `zcp mate status`, which reads the release source on every call. The
  * descriptor's `update` field, delivered on request — MU-1 still holds: the
  * client never compares versions, it only reads what this returns. `null`
  * means the check ran and found nothing to report (MU-3), never fabricated.
