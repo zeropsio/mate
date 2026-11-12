@@ -231,6 +231,15 @@ export function ProjectAutomationRow({
   );
 }
 
+/**
+ * Whether a project's Automation stands on its page as a section of its own: it does once the
+ * project has an automated Mate. Until then its side row offers the first one, and opens the
+ * section in a dialog.
+ */
+export function useAutomationStanding(groupId: string): boolean {
+  return usePool(groupId).pool.length > 0;
+}
+
 /** What an automated Mate is for, where the project has none. */
 const AUTOMATION_IS_FOR =
   "A Mate that takes tasks from GitHub issues, Slack, Discord or a schedule.";

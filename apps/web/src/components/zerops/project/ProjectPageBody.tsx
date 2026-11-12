@@ -23,6 +23,7 @@ import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 import { useUiStateStore } from "~/uiStateStore";
 
 import { Button } from "../../ui/button";
+import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "../../ui/dialog";
 import { Skeleton } from "../../ui/skeleton";
 import { EmptyState } from "../../ui/empty";
 import { GitDeliveryStatus } from "../GitDeliveryStatus";
@@ -140,7 +141,7 @@ export interface PlaceFix {
   readonly onAsk: () => void;
 }
 
-/** The side column's rows, and the sections their *Manage* opens. */
+/** The side column's rows, and what their *Manage* opens: each a dialog over the page. */
 export interface ProjectPageSetup {
   /** Code, Automation, Who has access, Merging and Spend, in that order; each given its *Manage*. */
   readonly rows: (open: {
@@ -150,8 +151,13 @@ export interface ProjectPageSetup {
   }) => ReactNode;
   /** Who has access where: opened from People, or by a place's link to its column. */
   readonly access: ReactNode;
-  /** The whole Automation section: opened from its row. */
+  /** The whole Automation section: on the page while it stands, else opened from its row. */
   readonly automation: ReactNode;
+  /**
+   * The project has automated Mates, so Automation is a section of the page's main column, after
+   * its changes, with nothing to open or close.
+   */
+  readonly automationStanding: boolean;
   /** Who can merge: opened from the Merging row. */
   readonly merging: ReactNode;
 }
@@ -227,36 +233,13 @@ export function ProjectPageBody<T>({
             props={props}
             waiting={waitingChangeKeys(entry, waits)}
           />
-          {open.access ? (
-            <DetailSection
-              label="Who has access"
-              onClose={() => {
-                setOpen((now) => ({ ...now, access: false }));
-              }}
-            >
-              {setup.access}
-            </DetailSection>
-          ) : null}
-          {open.automation ? (
-            <DetailSection
-              flush
-              label="Automation"
-              onClose={() => {
-                setOpen((now) => ({ ...now, automation: false }));
-              }}
-            >
-              {setup.automation}
-            </DetailSection>
-          ) : null}
-          {open.merging ? (
-            <DetailSection
-              label={MERGING_TITLE}
-              onClose={() => {
-                setOpen((now) => ({ ...now, merging: false }));
-              }}
-            >
-              {setup.merging}
-            </DetailSection>
+          {setup.automationStanding ? (
+            <section aria-label="Automation" className="pp-group" data-zerops-project-automation="">
+              <SectionLabel>Automation</SectionLabel>
+              <div className="pp-card pp-detail" data-flush="">
+                {setup.automation}
+              </div>
+            </section>
           ) : null}
         </div>
         <div className="pp-side">
@@ -275,13 +258,43 @@ export function ProjectPageBody<T>({
           </SetupCard>
         </div>
       </div>
+      <SetupDialog
+        label="Who has access"
+        onClose={() => {
+          setOpen((now) => ({ ...now, access: false }));
+        }}
+        open={open.access}
+        wide
+      >
+        {setup.access}
+      </SetupDialog>
+      <SetupDialog
+        flush
+        label="Automation"
+        onClose={() => {
+          setOpen((now) => ({ ...now, automation: false }));
+        }}
+        open={open.automation && !setup.automationStanding}
+        wide
+      >
+        {setup.automation}
+      </SetupDialog>
+      <SetupDialog
+        label={MERGING_TITLE}
+        onClose={() => {
+          setOpen((now) => ({ ...now, merging: false }));
+        }}
+        open={open.merging}
+      >
+        {setup.merging}
+      </SetupDialog>
     </div>
   );
 }
 
 /**
- * Which of the main column's foot sections stand open. A place's page links to its column of who
- * has access (`#access-<projectId>`): that opens it.
+ * Which of the side rows' dialogs stand open. A place's page links to its column of who has
+ * access (`#access-<projectId>`): that opens it.
  */
 function useOpenDetails() {
   const hash = useRouterState({ select: (state) => state.location.hash });
@@ -1340,33 +1353,51 @@ function useMarksItsChange(root: RefObject<HTMLElement | null>) {
 }
 
 /**
- * A section opened at the main column's foot from a side row: brought into view, closed by its own
- * word. `flush`: what it holds runs to the card's edges (a masthead's hairline, a ledger's rows).
+ * What a side row's *Manage* opens: a dialog over the page, named as its row is, whose content
+ * scrolls inside it. `wide`: a table or a ledger; `flush`: what it holds runs to the dialog's
+ * edges (a masthead's hairline, a ledger's rows).
  */
-function DetailSection({
+function SetupDialog({
   label,
+  open,
   onClose,
+  wide = false,
   flush = false,
   children,
 }: {
   readonly label: string;
+  readonly open: boolean;
   readonly onClose: () => void;
+  readonly wide?: boolean;
   readonly flush?: boolean;
   readonly children: ReactNode;
 }) {
-  const ref = useRef<HTMLElement>(null);
-  useEffect(() => {
-    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    ref.current?.scrollIntoView({ behavior: still ? "auto" : "smooth", block: "nearest" });
-  }, []);
+  // Focus lands on what the dialog holds, not on its first row: a row focused unasked says its
+  // tooltip, and the arrow keys scroll what is focused.
+  const body = useRef<HTMLDivElement>(null);
   return (
-    <section aria-label={label} className="pp-group" ref={ref}>
-      <SectionLabel action={<SectionAction onClick={onClose}>Close</SectionAction>}>
-        {label}
-      </SectionLabel>
-      <div className="pp-card pp-detail" data-flush={flush ? "" : undefined}>
-        {children}
-      </div>
-    </section>
+    <Dialog
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      open={open}
+    >
+      <DialogPopup className={wide ? "max-w-3xl" : "max-w-lg"} initialFocus={body}>
+        <DialogHeader>
+          <DialogTitle>{label}</DialogTitle>
+        </DialogHeader>
+        {flush ? (
+          <div className="pp-dialog" data-flush="" ref={body} tabIndex={-1}>
+            {children}
+          </div>
+        ) : (
+          <DialogPanel>
+            <div className="pp-dialog" ref={body} tabIndex={-1}>
+              {children}
+            </div>
+          </DialogPanel>
+        )}
+      </DialogPopup>
+    </Dialog>
   );
 }

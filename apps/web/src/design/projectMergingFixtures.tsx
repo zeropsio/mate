@@ -28,7 +28,7 @@ import {
   type MergingDraft,
   type OpenMain,
 } from "~/components/zerops/projectMerging/projectMerging.logic";
-import { SectionAction, SectionLabel } from "~/components/zerops/system";
+import { SectionLabel } from "~/components/zerops/system";
 import type { MergingPress } from "~/zerops/useAppMergers";
 
 const nothing = () => {};
@@ -167,13 +167,11 @@ export type MergingStateName = keyof typeof MERGING_STATES;
 export const isMergingState = (name: string): name is MergingStateName =>
   Object.hasOwn(MERGING_STATES, name);
 
-/** The section as the project page frames it: its label, *Close*, then its card. */
+/** The dialog's body, framed for the harness: its title, then what the dialog holds. */
 function Section({ children }: { readonly children: ReactNode }) {
   return (
     <section aria-label={MERGING_TITLE} className="pp-group">
-      <SectionLabel action={<SectionAction onClick={nothing}>Close</SectionAction>}>
-        {MERGING_TITLE}
-      </SectionLabel>
+      <SectionLabel>{MERGING_TITLE}</SectionLabel>
       <div className="pp-card pp-detail">{children}</div>
     </section>
   );
