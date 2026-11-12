@@ -60,9 +60,12 @@ export function SheetSection({
   lead,
   children,
   after,
+  apart = false,
 }: {
   readonly title: string;
   readonly caption?: string;
+  /** Each group is a thing of its own: a card each, instead of one container's lines. */
+  readonly apart?: boolean;
   readonly action?: ReactNode;
   readonly part: string;
   readonly notice?: ReactNode;
@@ -79,7 +82,17 @@ export function SheetSection({
       )}
       {notice}
       {lead}
-      {groups.length === 0 ? null : (
+      {groups.length === 0 ? null : apart ? (
+        <div className="grid gap-2">
+          {groups.map((group, index) => (
+            // The groups are the section's own children, in their order.
+            // oxlint-disable-next-line react/no-array-index-key
+            <Card key={index} variant="flat">
+              {group}
+            </Card>
+          ))}
+        </div>
+      ) : (
         <Card variant="flat">
           <div className="divide-y divide-border/60">{groups}</div>
         </Card>
@@ -161,7 +174,8 @@ export type StageState = "done" | "you" | "busy" | "failed" | "next";
  * listed, so the whole way is read before it is walked.
  */
 export function Journey({ children }: { readonly children: ReactNode }) {
-  return <ol className="m-0 grid list-none p-0">{children}</ol>;
+  // In from the group's edge so each bead stands under the row's mark, centre on centre.
+  return <ol className="m-0 grid list-none p-0 ps-1.5">{children}</ol>;
 }
 
 export function Stage({
@@ -180,7 +194,7 @@ export function Stage({
   return (
     <li
       aria-current={ahead ? undefined : "step"}
-      className="relative grid grid-cols-[1.25rem_minmax(0,1fr)] gap-x-2.5 pb-4 before:absolute before:top-6 before:bottom-1 before:left-2.5 before:w-px before:-translate-x-1/2 before:bg-border last:pb-0 last:before:hidden"
+      className="relative grid grid-cols-[1.25rem_minmax(0,1fr)] gap-x-5 pb-4 before:absolute before:top-6 before:bottom-1 before:left-2.5 before:w-px before:-translate-x-1/2 before:bg-border last:pb-0 last:before:hidden"
       data-addresses-stage={state}
     >
       <StageBead state={state} />
