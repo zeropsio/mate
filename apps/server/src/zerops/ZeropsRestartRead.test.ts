@@ -10,6 +10,7 @@ import * as ServerConfig from "../config.ts";
 import * as ZeropsAccessReadModule from "./ZeropsAccessRead.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsMateAccessList from "./ZeropsMateAccessList.ts";
+import { ZeropsProjectFeed } from "./ZeropsProjectFeed.ts";
 import { snapshotOnlyReader, ZeropsMateKey } from "./ZeropsMateKey.ts";
 import { make, containerStartedAt } from "./ZeropsRestartRead.ts";
 
@@ -76,12 +77,12 @@ it.effect.each(
       zerops: environment,
     } as ServerConfig.ServerConfig["Service"]),
     Effect.provideService(
-      ZeropsMateAccessList.ZeropsMateAccessList,
-      ZeropsMateAccessList.ZeropsMateAccessList.of({
+      ZeropsProjectFeed,
+      ZeropsProjectFeed.of({
         ownProject: Effect.succeed(
           Option.some({ name: "Fen", clientId: "org", overrides: {}, tagList: [] }),
         ),
-      } as unknown as ZeropsMateAccessList.ZeropsMateAccessList["Service"]),
+      } as unknown as ZeropsProjectFeed["Service"]),
     ),
     Effect.provide(NodeServices.layer),
   ),
@@ -112,7 +113,10 @@ it.effect(
       // The list's own read has landed: its report is the receipt.
       yield* access.reports.pipe(Stream.take(1), Stream.runDrain);
       const restart = yield* make({ serviceId: "own-zcp" }).pipe(
-        Effect.provideService(ZeropsMateAccessList.ZeropsMateAccessList, access),
+        Effect.provideService(
+          ZeropsProjectFeed,
+          ZeropsProjectFeed.of({ ownProject: access.ownProject, processes: access.processes }),
+        ),
       );
       assert.equal((yield* restart.read).name, "Fen");
       assert.deepStrictEqual(

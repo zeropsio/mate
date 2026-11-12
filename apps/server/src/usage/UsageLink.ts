@@ -10,7 +10,7 @@ import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import { ServerConfig } from "../config.ts";
 import { ProviderRuntimeEventBus } from "../spi/ProviderRuntimeEventBus.ts";
-import { ZeropsMateAccessList } from "../zerops/ZeropsMateAccessList.ts";
+import { ZeropsProjectFeed } from "../zerops/ZeropsProjectFeed.ts";
 import { makeUsageOutbox } from "./UsageOutbox.ts";
 
 export interface UsageLane {
@@ -30,7 +30,7 @@ export const makeUsageLink = Effect.gen(function* () {
   const outbox = yield* makeUsageOutbox;
   const bus = yield* ProviderRuntimeEventBus;
   const config = yield* ServerConfig;
-  const access = yield* ZeropsMateAccessList;
+  const feed = yield* ZeropsProjectFeed;
   let wake: (() => void) | undefined;
   // Acquire the SPI subscription before this layer returns and command admission can open.
   yield* Effect.forkScoped(
@@ -95,7 +95,7 @@ export const makeUsageLink = Effect.gen(function* () {
           )
             return;
           if (message.mate.projectId !== config.zerops.projectId) return;
-          const project = yield* access.ownProject;
+          const project = yield* feed.ownProject;
           if (Option.isNone(project)) return;
           yield* outbox.bind({
             orgId: project.value.clientId,

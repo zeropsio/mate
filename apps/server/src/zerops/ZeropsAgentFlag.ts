@@ -43,7 +43,7 @@ import * as HttpClient from "effect/http/HttpClient";
 import * as ServerConfig from "../config.ts";
 import type { ProcessLiveEvent } from "./ZeropsAccessSocket.ts";
 import type { ZeropsEnvironment } from "./ZeropsEnvironment.ts";
-import { ZeropsMateAccessList } from "./ZeropsMateAccessList.ts";
+import { ZeropsProjectFeed } from "./ZeropsProjectFeed.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import { requestWithMateKey } from "./ZeropsMateKey.ts";
 import { readJson, zeropsGet } from "./zeropsApiRead.ts";
@@ -150,7 +150,7 @@ export interface RegistrationProcess {
   readonly reason?: string;
 }
 
-/** The Mate's process frames, subscribed when this runs (`ZeropsMateAccessList.processes`). */
+/** The Mate's process frames, subscribed when this runs (`ZeropsProjectFeed.processes`). */
 export type ProcessEvents = Effect.Effect<Stream.Stream<ProcessLiveEvent>, never, Scope.Scope>;
 
 export interface MarkSignedInResult {
@@ -471,7 +471,7 @@ export const make = (options: {
   Effect.gen(function* () {
     const httpClient = yield* HttpClient.HttpClient;
     const mateKey = yield* ZeropsMateKeyModule.ZeropsMateKey;
-    const { processes } = yield* ZeropsMateAccessList;
+    const { processes } = yield* ZeropsProjectFeed;
     const withHttp = <A, E>(
       effect: Effect.Effect<A, E, HttpClient.HttpClient | ZeropsMateKeyModule.ZeropsMateKey>,
     ) =>
