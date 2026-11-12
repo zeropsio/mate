@@ -35,7 +35,7 @@ const SILENT_STAGE: Spoken = { surface: "stage", text: null, actions: [], proces
  * stage with words of its own (a Mate down or restarting, a conversation gone, a wait past its
  * bound) is no opening: no hand-over is coming, so it holds none of the conversation's frame.
  */
-export function stageOpens(voice: Spoken): boolean {
+function stageOpens(voice: Spoken): boolean {
   return (
     voice.opening === true ||
     (voice.text === null &&
@@ -232,13 +232,7 @@ export function MateOpeningView({ threadRef }: { readonly threadRef: ScopedThrea
     <MateLinkStage
       threadKey={scopedThreadKey(threadRef)}
       readPending={!held}
-      composer={
-        <RouteStandIn
-          key={scopedThreadKey(threadRef)}
-          opens={stageOpens(spoken)}
-          threadRef={threadRef}
-        />
-      }
+      composer={<RouteStandIn threadRef={threadRef} />}
       environmentId={threadRef.environmentId}
       projectId={null}
       voice={spoken}

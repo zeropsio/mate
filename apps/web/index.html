@@ -609,8 +609,8 @@
           );
         }
 
-        /* The menu's top band, its and the header's controls, and the composer's box, where the
-           page was left with them. */
+        /* The menu's top band and its and the header's controls, where the page was left with
+           them. */
         #boot-shell-frame > * {
           position: absolute;
           box-sizing: border-box;
@@ -621,11 +621,6 @@
           stroke: currentColor;
           stroke-linecap: round;
           stroke-linejoin: round;
-        }
-
-        #boot-shell-frame > [data-box] {
-          border: 1px solid transparent;
-          border-radius: 20px;
         }
 
         html[data-boot-frame="app"] #boot-shell-page {
@@ -748,8 +743,8 @@
           Math.min(rows, Math.max(1, Math.ceil((window.innerHeight - 151) / 72))),
         );
         // The page as it stood when it was left (`bootPageMemory.ts`): the loading rows' tone for
-        // the same appearance, and for the same address and window the header's controls and the
-        // composer's box, which the body's script draws where the app's first frame draws them.
+        // the same appearance, and for the same address and window the header's controls, which
+        // the body's script draws where the app's first frame draws them.
         try {
           const owner = JSON.parse(
             window.localStorage.getItem("zerops-mate.zerops-session-owner.v1") ?? "null",
@@ -866,16 +861,6 @@
                 svg.append(shape);
               }
               place(svg, icon.at);
-            }
-            if (here && page.box && Array.isArray(page.box.at)) {
-              const box = document.createElement("div");
-              box.dataset.box = "";
-              Object.assign(box.style, {
-                backgroundColor: tone(page.box.surface),
-                borderColor: tone(page.box.ring),
-                boxShadow: tone(page.box.shadow),
-              });
-              place(box, page.box.at);
             }
             shell.append(frame);
           } catch {

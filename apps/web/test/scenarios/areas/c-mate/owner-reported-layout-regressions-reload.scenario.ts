@@ -90,6 +90,12 @@ describe("owner-reported layout regressions", () => {
             frames.filter((frame, at) => at > 0 && frame.shown !== frames[at - 1]!.shown).length,
             `ASSERTION: the conversation comes once, and is not taken back:\n${trace}`,
           ).toBeLessThanOrEqual(1);
+          // The composer comes with its conversation: no box stands for it before.
+          expect(
+            frames.filter((frame) => !frame.shown && (frame.inner["composer"] ?? null) !== null)
+              .length,
+            `ASSERTION: no composer stands before the conversation, empty or not:\n${trace}`,
+          ).toBe(0);
         }),
       );
     });
