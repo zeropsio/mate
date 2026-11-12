@@ -13,6 +13,7 @@ import { useContext, useEffect, useRef, useState } from "react";
 import { useAccountDataOptional, type AccountData } from "./accountData";
 import { useAccountOperations } from "./accountOperations";
 import { currentAccountEpoch } from "./accountLifetime";
+import { sameValue } from "~/lib/sameValue";
 import { randomUUID } from "~/lib/utils";
 import { intendContainer, readContainerInitAt } from "./zeropsContainers";
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -35,6 +36,7 @@ const originKey = (kind: RecoveryOrigin, orgId: string | null, projectId: string
   `${kind}:${orgId}/${projectId}`;
 function makeOwner(data: AccountData["data"] | undefined) {
   const presentation = makeOutcomePresentation<Invocation>();
+  // Who shows them moves with every switch of project: the same items are no news to a reader.
   const placements = Atom.make((get) =>
     data === undefined
       ? []
@@ -47,7 +49,7 @@ function makeOwner(data: AccountData["data"] | undefined) {
           get(presentation.origins),
           get(presentation.dismissed),
         ),
-  );
+  ).pipe(Atom.withEquality(sameValue));
   return { ...presentation, placements };
 }
 const owners = new WeakMap<AccountData["data"], ReturnType<typeof makeOwner>>();

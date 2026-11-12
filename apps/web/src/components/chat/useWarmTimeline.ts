@@ -24,8 +24,6 @@ import {
   deriveActiveWorkStartedAt,
   derivePhase,
   deriveTimelineEntriesWithState,
-  deriveTurnPlans,
-  deriveWorkLogEntries,
   selectHandoffImageResources,
 } from "../../session-logic";
 import type { EnvironmentThread } from "@t3tools/client-runtime/state/models";
@@ -33,7 +31,12 @@ import type { EnvironmentThread } from "@t3tools/client-runtime/state/models";
 import { HELD_READ_EVERY_MS, useHeld } from "./heldRead";
 import { useThread, useThreadDetail, useThreadShell, useThreadStatus } from "../../state/entities";
 import { useEnvironmentThread } from "../../state/threads";
-import { deriveZeropsThreadModel } from "../../state/zerops";
+import {
+  keptTurnPlans,
+  keptWorkLogEntries,
+  keptZeropsThreadModel,
+  projectKeptTimeline,
+} from "./conversationDerivations";
 import { resolveThreadSyncPhase } from "../../threadSync";
 import {
   useZeropsChangeLandedEvents,
@@ -157,18 +160,21 @@ export function useWarmTimeline(
     warmReadBeat(liveThread),
     HELD_READ_EVERY_MS,
   );
+  // Derived with the conversation's activities and kept with them (`conversationDerivations.ts`):
+  // the view derived these from the same data while the conversation was open, and derives them
+  // again when it returns.
   const zerops = useMemo(
-    () => deriveZeropsThreadModel({ activities, lifecycle, runningTurnId, builds, restarts }),
-    [activities, lifecycle, runningTurnId, builds, restarts],
+    () => keptZeropsThreadModel(activities, threadKey, lifecycle, runningTurnId, builds, restarts),
+    [activities, threadKey, lifecycle, runningTurnId, builds, restarts],
   );
   useRunningBuildDemand(projectId, zerops.running);
   const zeropsActivityIds = zerops.zeropsActivityIds;
   const zeropsEntries = zerops.entries;
   const workLog = useMemo(
-    () => deriveWorkLogEntries(activities, { exclude: zeropsActivityIds }),
-    [activities, zeropsActivityIds],
+    () => keptWorkLogEntries(activities, threadKey, zeropsActivityIds),
+    [activities, threadKey, zeropsActivityIds],
   );
-  const turnPlans = useMemo(() => deriveTurnPlans(activities), [activities]);
+  const turnPlans = useMemo(() => keptTurnPlans(activities, threadKey), [activities, threadKey]);
   // Its pictures as the open conversation shows them.
   const serverMessages = thread?.messages;
   const [project] = useState(createMessageAttachmentPreviewProjector);
@@ -194,16 +200,18 @@ export function useWarmTimeline(
   const proposedPlans = thread?.proposedPlans;
   const entries = useMemo(
     () =>
-      deriveTimelineEntriesWithState(
-        messages,
-        proposedPlans ?? [],
-        workLog,
-        null,
-        turnPlans,
-        zeropsEntries,
-        landings,
+      projectKeptTimeline(activities, threadKey, (before) =>
+        deriveTimelineEntriesWithState(
+          messages,
+          proposedPlans ?? [],
+          workLog,
+          before,
+          turnPlans,
+          zeropsEntries,
+          landings,
+        ),
       ).entries,
-    [landings, messages, proposedPlans, turnPlans, workLog, zeropsEntries],
+    [activities, threadKey, landings, messages, proposedPlans, turnPlans, workLog, zeropsEntries],
   );
   const phase = derivePhase(session);
   const isWorking = phase === "running" || phase === "connecting";

@@ -12,7 +12,7 @@ import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
 import { ZeropsOrganizationScope } from "../components/zerops/ZeropsOrganizationScope";
-import { MateVoiceContext } from "../zerops/mateVoiceContext";
+import { MateVoiceContext, useStandingVoice } from "../zerops/mateVoiceContext";
 import { Button } from "../components/ui/button";
 import type { RecoveryNotice } from "@t3tools/client-runtime/data";
 import { MateConnectionState } from "../components/zerops/ZeropsMateEmptyState";
@@ -57,6 +57,7 @@ export function RouteGateView({
   /** The route's outlet. */
   readonly children: ReactNode;
 }) {
+  const heard = useStandingVoice(voice);
   switch (gate.kind) {
     case "outlet": {
       const suppressed = conversation.kind === "suppressed";
@@ -71,7 +72,7 @@ export function RouteGateView({
               className={suppressed ? "hidden" : "contents"}
             >
               {/* The link's words go to the one banner over the composer (`mateVoice`). */}
-              <MateVoiceContext value={voice}>{children}</MateVoiceContext>
+              <MateVoiceContext value={heard}>{children}</MateVoiceContext>
             </div>
           </PortalGate>
           {cause.text === null ? null : (

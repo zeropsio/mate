@@ -15,9 +15,11 @@ import {
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { AsyncResult, Atom } from "effect/reactivity";
+import { useAtomValue } from "@effect/atom-react";
 import { useMemo } from "react";
 
-import { formatEnvironmentQueryError, useEnvironmentQuery } from "./query";
+import { sameValue } from "../lib/sameValue";
+import { formatEnvironmentQueryError } from "./query";
 import { terminalEnvironment } from "./terminal";
 
 const EMPTY_KNOWN_TERMINAL_SESSIONS = Object.freeze<ReadonlyArray<KnownTerminalSession>>([]);
@@ -175,21 +177,36 @@ export function attachedTerminalSessionAtom(
   return attachedTerminalSessionFamily(JSON.stringify([environmentId, terminal]));
 }
 
+const NO_TERMINALS_ATOM = Atom.make<ReadonlyArray<TerminalSummary> | null>(null).pipe(
+  Atom.withLabel("terminal-metadata-value:empty"),
+);
+
+/**
+ * An environment's terminals, the list alone and the same list while it holds the same. Its read
+ * is taken again on every return to its Mate and answers the list it held with a new freshness,
+ * twice: whoever lists the terminals, and reads nothing of how fresh the list is, was drawn again
+ * both times.
+ */
+const terminalMetadataValueAtom = Atom.family((environmentId: EnvironmentId) =>
+  Atom.make((get): ReadonlyArray<TerminalSummary> | null =>
+    Option.getOrNull(
+      AsyncResult.value(get(terminalEnvironment.metadata({ environmentId, input: null }))),
+    ),
+  ).pipe(Atom.withEquality(sameValue), Atom.withLabel("terminal-metadata-value")),
+);
+
 export function useKnownTerminalSessions(input: {
   readonly environmentId: EnvironmentId | null;
   readonly threadId: ThreadId | null;
 }): ReadonlyArray<KnownTerminalSession> {
-  const metadata = useEnvironmentQuery(
+  const metadata = useAtomValue(
     input.environmentId === null
-      ? null
-      : terminalEnvironment.metadata({
-          environmentId: input.environmentId,
-          input: null,
-        }),
+      ? NO_TERMINALS_ATOM
+      : terminalMetadataValueAtom(input.environmentId),
   );
   return useMemo(
-    () => selectKnownTerminalSessions(metadata.data, input.environmentId, input.threadId),
-    [input.environmentId, input.threadId, metadata.data],
+    () => selectKnownTerminalSessions(metadata, input.environmentId, input.threadId),
+    [input.environmentId, input.threadId, metadata],
   );
 }
 
