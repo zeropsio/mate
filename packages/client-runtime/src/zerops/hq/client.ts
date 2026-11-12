@@ -60,7 +60,7 @@ import {
 } from "@t3tools/shared/hqRelease";
 import type { HqOffers } from "@t3tools/shared/hqOffers";
 import type { HqNavigationIntake, HqNavigationMateTask } from "@t3tools/shared/hqStream";
-import type { HqMergers } from "@t3tools/shared/hqMergers";
+import { HqMergersAnswer, type HqMergers, type HqMergersRequest } from "@t3tools/shared/hqMergers";
 import {
   HqAiKeyView,
   HqChannelView,
@@ -342,6 +342,17 @@ export class HqError extends Error {
     this.problems = input.problems;
   }
 }
+
+/**
+ * HQ has no such address: a `404` that names no reason of its own, as an HQ older than the route
+ * answers. One that does — an application gone (`app_not_found`) — is HQ's answer about the
+ * thing, never about its age.
+ */
+export const hqRouteMissing = (cause: unknown): boolean =>
+  cause instanceof HqError &&
+  cause.status === 404 &&
+  cause.reason === undefined &&
+  (cause.code === "http_404" || cause.code === "not_found");
 
 /**
  * A write that asked for deploys, and where HQ answered they stand (`@t3tools/shared/hqDeploys`);
@@ -641,6 +652,15 @@ export interface HqApi {
    * HQ's answer is its storage as it stands after.
    */
   readonly setRepoCap?: (appId: string, repo: string, capGiB: number) => Promise<HqRepoStorage>;
+  /**
+   * Who merges the application's changes (`PUT /api/apps/:appId/mergers`): the organization's Owner
+   * and Admins and these people, or — `null` — whoever may push. HQ's answer is the limit as it
+   * stands after; `null` where there is none.
+   */
+  readonly setMergers?: (
+    appId: string,
+    people: ReadonlyArray<string> | null,
+  ) => Promise<HqMergers | null>;
   /** The person's active Git password metadata; passwords are returned only on issue. */
   /** Reads metadata only; provisioning records authority separately. */
   readonly observeCredential?: (projectId: string) => Promise<ObserveCredential>;
@@ -2096,6 +2116,22 @@ export function makeHqApi(input: {
       // HQ took it: an answer this build cannot read leaves where the cap stands unknown.
       try {
         return await decoded(HqRepoStorage, "a repository's storage")(response);
+      } catch {
+        throw uncertain();
+      }
+    },
+    setMergers: async (appId, people) => {
+      const response = await authorized(
+        `/api/apps/${encodeURIComponent(appId)}/mergers`,
+        {
+          method: "PUT",
+          body: JSON.stringify(await withAccess({ people } satisfies HqMergersRequest)),
+        },
+        true,
+      );
+      // HQ took it: an answer this build cannot read leaves who merges unknown.
+      try {
+        return (await decoded(HqMergersAnswer, "who can merge")(response)).mergers;
       } catch {
         throw uncertain();
       }
