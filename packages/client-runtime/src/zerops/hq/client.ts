@@ -100,6 +100,8 @@ import type { HqEnvironment, CanonicalHqEnvironment } from "./environments.ts";
 import {
   hqDisagreesOn,
   hqRefusalWords,
+  MERGE_TOO_LARGE,
+  mergeTooLargeWords,
   ZEROPS_NO_CREDENTIAL,
   ZEROPS_UNANSWERED,
 } from "./refusals.ts";
@@ -790,7 +792,23 @@ const WROTE_NOTHING_ZEROPS = "zerops_unanswered";
 const isRemoteRefusal = Schema.is(HqRemoteRefusal);
 const decodeRefusal = Schema.decodeUnknownOption(HqRefusal);
 
-async function errorOf(response: Response, gitSetup = false): Promise<HqError> {
+/** What a call asked, where HQ's refusal of it has words of its own. */
+interface CallAsk {
+  /** A Git target's setup (`/api/git-targets/…`). */
+  readonly gitSetup: boolean;
+  /** A change's merge (`POST …/changes/:repo/:n/merge`). */
+  readonly merge: boolean;
+}
+
+const askOf = (url: string, init: RequestInit): CallAsk => {
+  const path = new URL(url).pathname;
+  return {
+    gitSetup: path.startsWith("/api/git-targets/"),
+    merge: init.method === "POST" && /\/changes\/[^/]+\/[^/]+\/merge$/u.test(path),
+  };
+};
+
+async function errorOf(response: Response, { gitSetup, merge }: CallAsk): Promise<HqError> {
   const { refusal, body } = said(await response.text());
   const problems = refusal?.problems;
   const code = refusal?.code ?? `http_${response.status}`;
@@ -825,6 +843,11 @@ async function errorOf(response: Response, gitSetup = false): Promise<HqError> {
     refusal.message.trim().length > 0
       ? `GitHub refused: ${refusal.message.trim()}`
       : undefined;
+  // A merge HQ refused for a file above its limit: one sentence the person hands to their Mate.
+  const tooLarge =
+    merge && code === MERGE_TOO_LARGE && refusal?.limit !== undefined && refusal.size !== undefined
+      ? mergeTooLargeWords(refusal.limit, refusal.size)
+      : undefined;
   return new HqError({
     kind: "refused",
     code,
@@ -834,6 +857,7 @@ async function errorOf(response: Response, gitSetup = false): Promise<HqError> {
     message:
       probeMessage ??
       githubSaid ??
+      tooLarge ??
       hqRefusalWords({
         code,
         reason,
@@ -848,9 +872,9 @@ async function errorOf(response: Response, gitSetup = false): Promise<HqError> {
  * HQ's answer as the call's outcome. A write HQ failed on its way (`5xx`) may have landed — but
  * a `503` writes nothing (mate-hq spec/protocol.md), so HQ is simply not answering right now.
  */
-async function answered(response: Response, write: boolean, gitSetup = false): Promise<Response> {
+async function answered(response: Response, write: boolean, ask: CallAsk): Promise<Response> {
   if (response.ok) return response;
-  const error = await errorOf(response, gitSetup);
+  const error = await errorOf(response, ask);
   if (write && response.status >= 500 && response.status !== 503) {
     throw uncertain();
   }
@@ -884,7 +908,7 @@ async function send(
       message: late ? HQ_TAKING_LONG : "HQ could not be reached.",
     });
   }
-  return answered(response, write, new URL(url).pathname.startsWith("/api/git-targets/"));
+  return answered(response, write, askOf(url, init));
 }
 
 const json = async <T>(response: Response): Promise<T> => (await response.json()) as T;

@@ -57,6 +57,9 @@ export const HqRefusal = Schema.Struct({
   /** A counterpart's own words (`git_probe_refused`, GitHub's refusal behind `github_unavailable`). */
   message: added(Schema.String),
   problems: added(Schema.Array(HqProblem)),
+  /** A merge's file limit in bytes and the largest file above it (`too_large`). */
+  limit: added(Schema.Number),
+  size: added(Schema.Number),
 });
 export type HqRefusal = typeof HqRefusal.Type;
 

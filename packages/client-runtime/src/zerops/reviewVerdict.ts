@@ -29,7 +29,7 @@ import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 import type { AppDeployRollout } from "./hq/deployHandover.logic.ts";
 import type { MergeabilityKind } from "./changeMergeability.ts";
 import type { GroupEnvironmentTier } from "./groupEnvironments.ts";
-import { hqRefusalWords } from "./hq/refusals.ts";
+import { hqRefusalWords, MERGE_TOO_LARGE } from "./hq/refusals.ts";
 import type { FlowPullRequestKind } from "./projectFlow.ts";
 import type { RecipeReach } from "./recipeReach.ts";
 import type { RecipeTier } from "./recipeTier.ts";
@@ -132,6 +132,8 @@ export interface ReviewVerdict {
   readonly why: string;
   /** Where handing it to a Mate is what moves it. */
   readonly fix: ReviewFix | undefined;
+  /** `why` is one sentence the person copies as it is and gives to their Mate. */
+  readonly copyWhy?: true;
 }
 
 /** The review's one button. */
@@ -206,6 +208,8 @@ export type ReviewPress =
       readonly kind: "refused";
       readonly reason: string;
       readonly problems?: ReadonlyArray<HqProblem> | undefined;
+      /** HQ's code for it (`too_large`), where its operation kept one. */
+      readonly code?: string | undefined;
     }
   /**
    * Done: where HQ answered the deploys it asked for stand, where it answered (`hqDeploys`), and
@@ -1021,6 +1025,8 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
         title: "Not merged",
         why: press.reason,
         fix: problemsFix(press.problems ?? []) ?? verdict.fix,
+        // A file above HQ's merge limit: the Mate merges main into the change by hand.
+        ...(press.code === MERGE_TOO_LARGE ? { copyWhy: true as const } : {}),
       },
       consequence: enabled ? squash : held,
       // A second try is the person's deliberate press, never ⌘↵'s.

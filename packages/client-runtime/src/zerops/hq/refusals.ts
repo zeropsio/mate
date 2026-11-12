@@ -18,6 +18,7 @@ import {
  * @module hq/refusals
  */
 import type { MERGE_REFUSALS } from "@t3tools/shared/hqChanges";
+import { fileSize } from "../gitBrowse/blob.ts";
 import type { HqOfferState } from "@t3tools/shared/hqOffers";
 import type { ReleaseRefusal } from "@t3tools/shared/hqRelease";
 import type { Reason } from "@t3tools/shared/zeropsPermissions";
@@ -86,6 +87,16 @@ const MERGE_WORDS: { readonly [R in (typeof MERGE_REFUSALS)[number]]: string } =
   github_wrong_base:
     "Its pull request on GitHub now merges into another branch, not the repository's default one, so Mate won't merge it. See the pull request on GitHub.",
 };
+
+/** HQ's code for a merge it refused before Git merged anything: a file in it is above its limit. */
+export const MERGE_TOO_LARGE = "too_large";
+
+/**
+ * A merge HQ refused for a file above its limit (`413 too_large`), as one sentence the person hands
+ * to their Mate as it is. HQ names no file: the Mate finds it itself.
+ */
+export const mergeTooLargeWords = (limit: number, size: number) =>
+  `Automatic merge refused: a file of ${fileSize(size)} changed on both main and this branch, above the ${fileSize(limit)} merge limit. Merge main into the branch, resolve the file, and push.`;
 
 /** HQ's code for a call Zerops refused HQ outright (`mate-hq apps/hq/src/api.ts`): never retried. */
 const ZEROPS_REFUSED = "zerops_refused";

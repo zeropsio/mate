@@ -47,6 +47,7 @@ import {
 
 import { Badge } from "~/components/ui/badge";
 import { Button, InlineButton } from "~/components/ui/button";
+import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "~/components/ui/menu";
 import { Spinner } from "~/components/ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
@@ -225,6 +226,7 @@ export function ZeropsReviewSurface({
   const Title = frame === "page" ? "h1" : "h2";
   const buttonsRow = useRef<HTMLDivElement | null>(null);
   const pressed = useHeldButtons(held, buttonsRow);
+  const { copyToClipboard, isCopied } = useCopyToClipboard({ target: "the refusal" });
   const line: Array<{ readonly key: string; readonly node: ReactNode }> = [];
   if (meta !== undefined && meta !== null) line.push({ key: "meta", node: meta });
   if (elsewhere !== undefined && elsewhere !== null)
@@ -316,6 +318,11 @@ export function ZeropsReviewSurface({
         {subtitle === undefined && (whySaid || fix !== undefined) ? (
           <div className="rv-why" data-tone={verdict.tone}>
             {whySaid ? <span>{verdict.why}</span> : null}
+            {whySaid && verdict.copyWhy === true ? (
+              <Button onClick={() => copyToClipboard(verdict.why)} size="sm" variant="link">
+                {isCopied ? "Copied" : "Copy"}
+              </Button>
+            ) : null}
             {fix === undefined ? null : (
               <Button onClick={fix.onPress} size="sm" variant="link">
                 {fix.label}

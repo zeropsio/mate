@@ -42,7 +42,13 @@ export type FlowVerbOutcome =
       /** The rollout its deploys are of: what an answer that handed planning over follows. */
       readonly rollout?: AppDeployRollout | undefined;
     }
-  | { readonly ok: false; readonly reason: string; readonly problems?: ReadonlyArray<HqProblem> };
+  | {
+      readonly ok: false;
+      readonly reason: string;
+      readonly problems?: ReadonlyArray<HqProblem>;
+      /** HQ's code for it, where the verb's operation keeps one (a merge's `too_large`). */
+      readonly code?: string;
+    };
 
 export interface FlowVerbs {
   /** The verbs on their way, by `flowVerbKey`: a row shows its own and takes no second press. */
@@ -193,6 +199,9 @@ export function useFlowVerbs(): FlowVerbs {
           reason,
           ...(progress.stage === "refused" && progress.problems !== undefined
             ? { problems: progress.problems }
+            : {}),
+          ...(progress.stage === "refused" && progress.code !== undefined
+            ? { code: progress.code }
             : {}),
         };
       }
