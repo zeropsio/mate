@@ -63,9 +63,14 @@ import {
 import type { MateViewKind } from "../../zerops/mateComing";
 import type { ZeropsMateIdentity } from "../../zerops/mateIdentities";
 import {
+  MATE_STAND_UP_RETRY_LABEL,
+  mateSetupRetryState,
   mateStandUpPhase,
   mateStandUpSignedIn,
+  type MateSetupPress,
+  type MateSetupRetryState,
   type MateStandUpPhase,
+  type MateStandUpStopped,
 } from "../../zerops/mateStandUp";
 import { useZeropsEnvironmentProject } from "../../zerops/useZeropsEnvironmentProject";
 import { useProjectServices } from "../../zerops/ZeropsAccountData";
@@ -87,14 +92,17 @@ export function ZeropsMateEmptyState({
   environmentId,
   mate,
   threadRef,
+  standUpStopped = null,
   bottomInset = 0,
 }: {
   readonly environmentId: EnvironmentId;
   readonly mate: ZeropsMateIdentity;
   readonly threadRef: ScopedThreadRef | null;
+  /** The conversation holds only its setup that never started (`mateStandUpStopped`). */
+  readonly standUpStopped?: MateStandUpStopped | null;
   readonly bottomInset?: number;
 }) {
-  const state = useMateEmptyState({ environmentId, mate, threadRef });
+  const state = useMateEmptyState({ environmentId, mate, threadRef, standUpStopped });
   return (
     <MateEmptyStateView
       // An empty conversation has already handed its one Mate face to the header.
@@ -113,11 +121,22 @@ export function ZeropsMateEmptyState({
   );
 }
 
+/**
+ * A setup that never started, as its arrival draws it: its person's Try again and where it
+ * stands, or — for anybody else — who added the Mate, by name where it is known (null where not).
+ */
+export interface MateStandUpFailure {
+  readonly state: MateSetupRetryState;
+  /** Its person's press; absent for anybody else. */
+  readonly retry?: (() => void) | undefined;
+  readonly addedBy?: string | null | undefined;
+}
+
 /** What an empty conversation with a Mate says. */
 export interface MateEmptyState {
   /** The stand-up's phase for this viewer, or `null` where it is not theirs. */
   readonly phase: MateStandUpPhase | null;
-  readonly standUpFailure?: { readonly retrying: boolean; readonly retry: () => void } | undefined;
+  readonly standUpFailure?: MateStandUpFailure | undefined;
   /** The sign-in, once the agents' sign-in is known; null before. */
   readonly signIn: ReactNode | null;
   readonly signInRequired: boolean;
@@ -151,12 +170,15 @@ export function useMateEmptyState({
   mate,
   threadRef,
   projectId,
+  standUpStopped = null,
 }: {
   readonly environmentId: EnvironmentId | null;
   readonly mate: ZeropsMateIdentity;
   readonly threadRef: ScopedThreadRef | null;
   /** Its project, where the caller knows it before its environment's record says it. */
   readonly projectId?: string | undefined;
+  /** The conversation holds only its setup that never started (`mateStandUpStopped`). */
+  readonly standUpStopped?: MateStandUpStopped | null;
 }): MateEmptyState {
   const agentAuthRead = useZeropsAgentAuth(environmentId);
   const { snapshot: agentAuth, unknown: agentAuthUnknown } = zeropsAgentAuthView(agentAuthRead);
@@ -208,17 +230,35 @@ export function useMateEmptyState({
     [listed],
   );
   const nameOf = useHqPersonNames(project?.orgId);
+  // A setup that never started: the conversation's runs name whose it is; an empty conversation's
+  // failed send is its asker's (`useMateStandUp`).
+  const stoppedBy = standUpStopped?.by ?? (standUp.sendFailed ? viewerSubject : undefined);
+  const ownStop = stoppedBy !== undefined && stoppedBy === viewerSubject;
+  const failures = standUpStopped?.failures ?? 0;
+  const waiting = standUpStopped?.waiting ?? false;
+  const [press, setPress] = useState<MateSetupPress | null>(null);
+  const sendRetry = standUp.retry;
+  const retry = useCallback(() => {
+    setPress({ answer: "sending", failures });
+    void sendRetry().then((answer) => {
+      if (answer !== null) setPress({ answer, failures });
+    });
+  }, [failures, sendRetry]);
+  const retryState = mateSetupRetryState({
+    press,
+    failures,
+    waiting,
+    settling: standUp.retrying,
+  });
 
   return {
     phase,
-    standUpFailure: standUp.sendFailed
-      ? {
-          retrying: standUp.retrying,
-          retry: () => {
-            void standUp.retry();
-          },
-        }
-      : undefined,
+    standUpFailure:
+      stoppedBy === undefined
+        ? undefined
+        : ownStop
+          ? { state: retryState, retry }
+          : { state: waiting ? "starting" : "ready", addedBy: nameOf(stoppedBy) ?? null },
     signIn:
       agentAuth === null || mate.automated === true ? null : (
         <ZeropsAgentSignIn
@@ -297,8 +337,14 @@ export function mateArrivalKind(input: {
   readonly phase: MateStandUpPhase | null;
   readonly signInRequired: boolean;
   readonly addedBy: string | null | undefined;
+  /** Its setup never started: that says it, whatever else is on its way. */
+  readonly stopped?: MateStandUpFailure | undefined;
 }): ArrivalKind {
-  const { coming, phase } = input;
+  const { coming, phase, stopped } = input;
+  if (stopped !== undefined) {
+    if (stopped.state === "starting") return "standing-up";
+    return stopped.retry === undefined ? "setup-stopped-plain" : "setup-stopped";
+  }
   if (coming !== null && coming.over !== true) {
     return coming.kind === "failed" ? "coming-failed" : coming.kind;
   }
@@ -327,7 +373,7 @@ export function MateEmptyStateView({
   signIn,
   signInRequired,
   unknown,
-  coming = null,
+  coming: comingInput = null,
   addedBy,
   agentReady = false,
   runtimes,
@@ -340,7 +386,8 @@ export function MateEmptyStateView({
   /** Null while the directory has not named the Mate: its places held, empty. */
   readonly mate: DrawnMate | null;
   readonly phase: MateStandUpPhase | null;
-  readonly standUpFailure?: { readonly retrying: boolean; readonly retry: () => void } | undefined;
+  /** Its setup never started: that is what the stage says, whatever else is on its way. */
+  readonly standUpFailure?: MateStandUpFailure | undefined;
   /** The sign-in, once the agents' sign-in is known; null before. */
   readonly signIn: ReactNode | null;
   /** No agent is signed in: nothing typed here could be acted on. */
@@ -364,6 +411,7 @@ export function MateEmptyStateView({
   readonly notice?: ReactNode;
 }) {
   const mate = named ?? UNNAMED;
+  const coming = standUpFailure === undefined ? comingInput : null;
   const headline = useRef<HTMLHeadingElement>(null);
   const arrived = useRef(false);
   useEffect(() => {
@@ -375,9 +423,10 @@ export function MateEmptyStateView({
   }, [focusOnArrival]);
   const kind = mateArrivalKind({
     coming,
-    phase: standUpFailure === undefined ? phase : null,
+    phase,
     signInRequired,
     addedBy,
+    stopped: standUpFailure,
   });
   // The minute clock its pose reads: it wakes only while it arrives (`mateArriving`).
   const nowMs = useNowMs();
@@ -397,26 +446,15 @@ export function MateEmptyStateView({
       ? coming.sentence
       : opening
         ? "Picking up where it left off."
-        : arrivalSentence(mate, kind, { addedBy: addedBy ?? undefined, agentReady });
+        : arrivalSentence(mate, kind, {
+            addedBy: (standUpFailure === undefined ? addedBy : standUpFailure.addedBy) ?? undefined,
+            agentReady,
+            retry: standUpFailure?.state,
+          });
   const slot =
-    standUpFailure === undefined
-      ? arrivalSlot({ kind, coming, signIn, unknown, runtimes })
-      : {
-          id: "stand-up-failed",
-          node: (
-            <div className="flex flex-col items-center gap-3" role="status">
-              <p>The message to {mate.name} didn't go through.</p>
-              <Button
-                variant="primary"
-                size="md"
-                disabled={standUpFailure.retrying}
-                onClick={standUpFailure.retry}
-              >
-                {standUpFailure.retrying ? "Trying again…" : "Try again"}
-              </Button>
-            </div>
-          ),
-        };
+    kind === "setup-stopped" && standUpFailure?.retry !== undefined
+      ? setupRetrySlot(standUpFailure.state, standUpFailure.retry)
+      : arrivalSlot({ kind, coming, signIn, unknown, runtimes });
 
   // A press's words change while its steps run, stop and go again: on a narrow screen each holds
   // two lines' room, so none of it moves the rows under them.
@@ -439,9 +477,29 @@ export function MateEmptyStateView({
       state={
         coming?.face ?? arrivalFace(kind, mate.connected, mateArriving(mate.arrivingUntil, nowMs))
       }
-      status={opening}
+      status={opening || standUpFailure !== undefined}
     />
   );
+}
+
+/**
+ * Its person's Try again under a setup that never started: one press, held while it is sent; gone
+ * once the Mate says there is nothing of theirs to start, where the sentence says what to do.
+ */
+function setupRetrySlot(
+  state: MateSetupRetryState,
+  retry: () => void,
+): { readonly id: string; readonly node: ReactNode } {
+  if (state === "refused") return { id: "none", node: null };
+  const sending = state === "sending";
+  return {
+    id: "stand-up-failed",
+    node: (
+      <Button variant="primary" size="md" disabled={sending} onClick={retry}>
+        {sending ? "Trying again…" : MATE_STAND_UP_RETRY_LABEL}
+      </Button>
+    ),
+  };
 }
 
 export type MateFaceSlot = ReactNode | ((face: ReactElement<MateFaceProps>) => ReactNode);

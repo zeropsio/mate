@@ -176,7 +176,11 @@ import { cn } from "~/lib/utils";
 import { useUiStateStore } from "~/uiStateStore";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
-import { isMateStandUpAsk } from "~/zerops/mateStandUp";
+import {
+  isMateStandUpAsk,
+  mateStandUpStopped,
+  type MateStandUpStopped,
+} from "~/zerops/mateStandUp";
 import { useMateStandUpAskLine } from "~/zerops/useMateStandUp";
 import { useEngineLiveMessage, useEngineLiveStructure } from "~/zerops/useEngineLiveMessage";
 import { useEngineCardSnapshots, useEngineRunCards } from "~/zerops/useEngineCardPaging";
@@ -2112,15 +2116,27 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     [],
   );
 
+  // A setup that never started is not a conversation yet: the Mate's arrival says it, and its
+  // attempt waiting to start keeps it there until the Mate begins.
+  const standUpStopped = useMemo(
+    () =>
+      crew !== null || runCards === null || queuedMessages.length > 0
+        ? null
+        : mateStandUpStopped(
+            Object.values(runCards).flatMap((card) => card.runs),
+            rows.some((row) => row.kind === "message" && row.message.role === "user"),
+          ),
+    [crew, queuedMessages.length, rows, runCards],
+  );
   const empty =
     crew === null
-      ? rows.length === 0
+      ? rows.length === 0 || standUpStopped !== null
       : rows.every((row) => row.kind === "seam" || row.kind === "crew-seam");
   // A working Mate's conversation still on its way shows its pane, never a
   // run made up from its status alone: the conversation replaced it a moment
   // later, 1,480 px away.
   const onItsWay = loading && timelineEntries.length === 0;
-  const showsList = !onItsWay && (!empty || isWorking);
+  const showsList = !onItsWay && (!empty || (isWorking && standUpStopped === null));
   const lastDraftMessage =
     keepsDraftMessage && !listPlaced
       ? rows.findLastIndex((row) => row.kind === "message" && row.message.role === "user")
@@ -2386,6 +2402,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         environmentId={activeThreadEnvironmentId}
         threadKey={routeThreadKey}
         bottomInset={contentInsetEndAdjustment}
+        standUpStopped={standUpStopped}
       />
     ) : (
       <CrewmateEmptyState
@@ -5088,17 +5105,19 @@ function QuestionAnswerHistory({
 
 /**
  * Nothing said yet. In a Mate's conversation that is the Mate's own opening —
- * its mark, its question, and the sign-in when no agent could act
- * (`ZeropsMateEmptyState`); elsewhere upstream's one line.
+ * its mark, its question, and the sign-in when no agent could act, or its
+ * setup that never started (`ZeropsMateEmptyState`); elsewhere upstream's one line.
  */
 function TimelineEmptyState({
   environmentId,
   threadKey,
   bottomInset,
+  standUpStopped,
 }: {
   readonly environmentId: EnvironmentId;
   readonly threadKey: string;
   readonly bottomInset: number;
+  readonly standUpStopped: MateStandUpStopped | null;
 }) {
   const whoLivesHere = useZeropsMate(environmentId);
   // Neither opening while that is not known: the region stays, empty.
@@ -5115,6 +5134,7 @@ function TimelineEmptyState({
       bottomInset={bottomInset}
       environmentId={environmentId}
       mate={whoLivesHere.mate}
+      standUpStopped={standUpStopped}
       threadRef={parseScopedThreadKey(threadKey)}
     />
   );

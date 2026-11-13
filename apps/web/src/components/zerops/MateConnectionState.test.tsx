@@ -201,6 +201,7 @@ it("keeps a restarting Mate and its words still with reduced motion", async () =
   }
 });
 
+// witness: apps/web/src/zerops/mateArrival.ts | return [`${keptWhole(mate.name)}'s setup didn't start.`]; → return [`${keptWhole(mate.name)} is standing up development.`];
 it("a stand-up message that failed plays no success dance", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const host = document.createElement("div");
@@ -213,13 +214,13 @@ it("a stand-up message that failed plays no success dance", async () => {
         signIn={null}
         signInRequired={false}
         unknown={null}
-        standUpFailure={failed ? { retrying: false, retry: () => undefined } : undefined}
+        standUpFailure={failed ? { state: "ready", retry: () => undefined } : undefined}
       />,
     );
   try {
     await act(() => show(false));
     await act(() => show(true));
-    expect(host.textContent).toContain("The message to Rosa didn't go through.");
+    expect(host.textContent).toContain("Rosa's setup didn't start.");
     expect(host.querySelector('[data-mate-face-moment="dance"]')).toBeNull();
   } finally {
     await act(() => root.unmount());

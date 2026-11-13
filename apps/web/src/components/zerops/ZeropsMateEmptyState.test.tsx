@@ -496,6 +496,7 @@ describe("MateEmptyStateView — a Mate coming up", () => {
   });
 });
 
+// witness: apps/web/src/components/zerops/ZeropsMateEmptyState.tsx | kind === "setup-stopped" && standUpFailure?.retry !== undefined → false
 it("a failed stand-up send says what failed and offers a manual Try again", () => {
   const html = renderToStaticMarkup(
     <MateEmptyStateView
@@ -504,10 +505,10 @@ it("a failed stand-up send says what failed and offers a manual Try again", () =
       signIn={null}
       signInRequired={false}
       unknown={null}
-      standUpFailure={{ retrying: false, retry: () => undefined }}
+      standUpFailure={{ state: "ready", retry: () => undefined }}
     />,
   );
-  expect(html).toContain("The message to Fen didn&#x27;t go through.");
+  expect(html).toContain("Fen&#x27;s setup didn&#x27;t start.");
   expect(html).toContain("Try again");
   expect(html).not.toContain("Fen is standing up development");
 });
