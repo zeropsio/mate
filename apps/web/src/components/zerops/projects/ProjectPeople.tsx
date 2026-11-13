@@ -35,7 +35,6 @@ import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 import { Atom } from "effect/reactivity";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
-import { hqNavigationAtom } from "~/state/zerops";
 import {
   useAccountDataOptional,
   useAccountOrgId,
@@ -65,7 +64,7 @@ import {
   type AccessChoice,
   type AccessPick,
 } from "./ProjectAccessChips";
-import { ReadAccessRequests } from "./ReadAccessRequests";
+import { ReadAccessRequests, useHiddenEnvironments } from "./ReadAccessRequests";
 import {
   accessChanges,
   appProjectsOf,
@@ -201,9 +200,7 @@ function useGroupProjects(groupId: string | null): AccessProjects {
  * HQ names them (`hiddenEnvironments`): columns they can ask read access for, never read.
  */
 function useHiddenPlaces(groupId: string): AccessProjects {
-  const hidden = useAtomValue(hqNavigationAtom).structure?.apps.find(
-    ({ id }) => id === groupId,
-  )?.hiddenEnvironments;
+  const hidden = useHiddenEnvironments(groupId);
   // HQ leaves the list out where the viewer reaches every place: none is hidden.
   return useMemo(
     () =>

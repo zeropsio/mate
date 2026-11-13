@@ -4,11 +4,18 @@
  * owner or admin sees each open request for a place here: *Grant read access* gives that person read
  * on that one place at Zerops (`set-project-access`) and then closes the request; *Decline* closes it.
  * Once the person reaches the place already, *Close as granted* closes it as granted instead.
- * HQ only records and lists requests; it grants nothing.
+ * HQ only records and lists requests; it grants nothing. A person who reaches none of the project
+ * sees the same asks on its page (`HiddenEnvironmentAsks`).
  */
+import { useAtomValue } from "@effect/atom-react";
+import type { ReadAccessRequest } from "@t3tools/client-runtime/zerops/hq";
+import type { ReactNode } from "react";
+
+import { hqNavigationAtom } from "~/state/zerops";
 import { useReadAccessRequests } from "~/zerops/useReadAccessRequests";
 
 import { Button } from "../../ui/button";
+import { environmentTitle } from "../place/place.logic";
 import { CELL_WORDS, cellChange, type AccessTableView } from "./accessTable.logic";
 
 export function ReadAccessRequests({
@@ -104,31 +111,81 @@ export function ReadAccessRequests({
           </li>,
         ];
       })
-    : places
-        .filter(({ unread }) => unread)
-        .map((place) => {
-          const asked = open.some(({ projectId }) => projectId === place.projectId);
-          return (
-            <li className="flex flex-wrap items-center gap-2" key={place.projectId}>
-              <span className="text-sm text-foreground">
-                {place.label}: Zerops doesn’t show you this place.
-              </span>
-              {asked ? (
-                <span className="text-sm text-muted-foreground">Read access asked</span>
-              ) : (
-                <Button
-                  disabled={asks.busy.has(place.projectId)}
-                  onClick={() => asks.ask(place.projectId)}
-                  size="sm"
-                  variant="secondary"
-                >
-                  Ask for read access
-                </Button>
-              )}
-            </li>
-          );
-        });
+    : askLines(
+        places.filter(({ unread }) => unread),
+        open,
+        asks,
+      );
 
+  return <ReadAccessSection lines={lines} said={said} />;
+}
+
+/**
+ * The same asks on the page of a person who reaches none of the project (`UndrawnGroupDetail`):
+ * its people are not drawn there, and its hidden environments are all HQ names of it.
+ */
+export function HiddenEnvironmentAsks({ groupId }: { readonly groupId: string }) {
+  const hidden = useHiddenEnvironments(groupId);
+  const asks = useReadAccessRequests(hidden !== undefined);
+  if (hidden === undefined || !asks.available || asks.read.state !== "known") return null;
+  return (
+    <ReadAccessSection
+      lines={askLines(
+        hidden.map(({ id, tier }) => ({ projectId: id, label: environmentTitle(tier, "") })),
+        asks.read.requests,
+        asks,
+      )}
+      said={Object.values(asks.troubles)}
+    />
+  );
+}
+
+/**
+ * The group's stages and productions Zerops does not list to the viewer, by id and tier alone as
+ * HQ names them (`hiddenEnvironments`); `undefined` where the viewer reaches every place.
+ */
+export function useHiddenEnvironments(groupId: string) {
+  return useAtomValue(hqNavigationAtom).structure?.apps.find(({ id }) => id === groupId)
+    ?.hiddenEnvironments;
+}
+
+/** One line per place Zerops does not show the viewer: *Ask for read access*, then that they asked. */
+function askLines(
+  places: ReadonlyArray<{ readonly projectId: string; readonly label: string }>,
+  open: ReadonlyArray<ReadAccessRequest>,
+  asks: Pick<ReturnType<typeof useReadAccessRequests>, "ask" | "busy">,
+): ReadonlyArray<ReactNode> {
+  return places.map((place) => {
+    const asked = open.some(({ projectId }) => projectId === place.projectId);
+    return (
+      <li className="flex flex-wrap items-center gap-2" key={place.projectId}>
+        <span className="text-sm text-foreground">
+          {place.label}: Zerops doesn’t show you this place.
+        </span>
+        {asked ? (
+          <span className="text-sm text-muted-foreground">Read access asked</span>
+        ) : (
+          <Button
+            disabled={asks.busy.has(place.projectId)}
+            onClick={() => asks.ask(place.projectId)}
+            size="sm"
+            variant="secondary"
+          >
+            Ask for read access
+          </Button>
+        )}
+      </li>
+    );
+  });
+}
+
+function ReadAccessSection({
+  lines,
+  said,
+}: {
+  readonly lines: ReadonlyArray<ReactNode>;
+  readonly said: ReadonlyArray<string>;
+}) {
   if (lines.length === 0 && said.length === 0) return null;
   return (
     <section aria-label="Read access" className="ov-sec" data-zerops-surface="read-access">

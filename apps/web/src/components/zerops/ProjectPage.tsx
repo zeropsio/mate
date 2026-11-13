@@ -63,6 +63,7 @@ import { openMains } from "./projectMerging/projectMerging.logic";
 import { useReleaseOffer } from "./ZeropsReleaseVerb";
 import { fixProblemOf, type ProductionChip } from "./SidebarProductionChip.logic";
 import { placeLabel } from "./projects/projectCard.logic";
+import { HiddenEnvironmentAsks } from "./projects/ReadAccessRequests";
 import { ZeropsProjectsContent } from "./ZeropsProjectsPage";
 import { PageHeader, usePageTrail } from "./system";
 import {
@@ -431,7 +432,8 @@ function UnreadGroupDetail({
 
 /**
  * A project HQ knows that the tree draws nothing of: it says why, with the way to its repositories
- * where it has some. HQ unanswered says so first: what it last told may be out of date. Untold
+ * where it has some and the ask for read access to each environment Zerops hides from the person
+ * (`HiddenEnvironmentAsks`). HQ unanswered says so first: what it last told may be out of date. Untold
  * environments are not an empty list, so they never read as "no environment".
  */
 function UndrawnGroupDetail({ groupId }: { readonly groupId: string }) {
@@ -456,6 +458,7 @@ function UndrawnGroupDetail({ groupId }: { readonly groupId: string }) {
             ? `${name}'s environments could not be read. Reload to update them.`
             : `${name} has no environment of yours yet.`)}
       </Note>
+      <HiddenEnvironmentAsks groupId={groupId} />
       {repos !== undefined && repos.length > 0 ? (
         <Button
           onClick={() => {
