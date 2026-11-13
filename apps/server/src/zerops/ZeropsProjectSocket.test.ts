@@ -7,14 +7,14 @@ import * as TestClock from "effect/testing/TestClock";
 import { HttpClient, HttpClientResponse } from "effect/http";
 
 import {
-  ACCESS_SOCKET_GREETING_BUDGET,
-  type AccessLiveEvent,
-  type AccessSocket,
-  accessEvents,
-} from "./ZeropsAccessSocket.ts";
+  PROJECT_SOCKET_GREETING_BUDGET,
+  type ProcessLiveEvent,
+  type ProjectSocket,
+  processEvents,
+} from "./ZeropsProjectSocket.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 
-interface FakeSocket extends AccessSocket {
+interface FakeSocket extends ProjectSocket {
   readonly url: string;
   readonly sent: Array<string>;
 }
@@ -23,7 +23,7 @@ interface FakeSocket extends AccessSocket {
 const platform = Effect.gen(function* () {
   const requests: Array<{ line: string; authorization: string | undefined; body: unknown }> = [];
   const sockets: Array<FakeSocket> = [];
-  const events = yield* Queue.unbounded<AccessLiveEvent>();
+  const events = yield* Queue.unbounded<ProcessLiveEvent>();
   const opened = yield* Queue.unbounded<FakeSocket>();
   const http = HttpClient.make((request) =>
     Effect.sync(() => {
@@ -40,10 +40,10 @@ const platform = Effect.gen(function* () {
       return HttpClientResponse.fromWeb(request, new Response(JSON.stringify(body)));
     }),
   );
-  yield* accessEvents({
+  yield* processEvents({
     apiBaseUrl: "https://zerops.test",
     projectId: "P_MATE",
-    clientId: "ORG",
+    organisation: Effect.succeed("ORG"),
     mateKey: ZeropsMateKeyModule.snapshotOnlyReader("project-key"),
     connect: (url) => {
       const socket: FakeSocket = {
@@ -82,85 +82,7 @@ const platform = Effect.gen(function* () {
   return { requests, sockets, events, say, close, nextSocket, logins };
 });
 
-describe("ZeropsAccessSocket", () => {
-  it.effect(
-    "The Mate subscribes with its project key to its own project's userRoles and its organisation's members, and pings every 15 s",
-    () =>
-      Effect.gen(function* () {
-        const { requests, sockets, events, say } = yield* platform;
-        assert.deepStrictEqual(requests, [
-          {
-            line: "POST /web-socket/login",
-            authorization: "Bearer project-key",
-            body: { token: "project-key" },
-          },
-        ]);
-        const [, receiverId, token] =
-          /^wss:\/\/zerops\.test\/web-socket\/([0-9a-f-]{36})\/(.+)$/u.exec(sockets[0]!.url) ?? [];
-        assert.strictEqual(token, "ws-token");
-        yield* say({ type: "SocketSuccess" });
-        assert.deepStrictEqual(yield* Queue.take(events), { _tag: "connected" });
-        const subscription = (subscriptionName: string, wsOutputType: string) => ({
-          sort: [],
-          limit: 200,
-          receiverId,
-          subscriptionName,
-          wsOutputType,
-          disableOutput: true,
-        });
-        const inOrg = { name: "clientId", operator: "eq", value: "ORG" };
-        assert.deepStrictEqual(requests.slice(1, 4), [
-          {
-            line: "POST /project/search",
-            authorization: "Bearer project-key",
-            body: {
-              search: [inOrg, { name: "id", operator: "in", value: ["P_MATE"] }],
-              ...subscription("mate-access-project", "updateStream"),
-            },
-          },
-          {
-            line: "POST /client-user/search",
-            authorization: "Bearer project-key",
-            body: { search: [inOrg], ...subscription("mate-access-members", "updateStream") },
-          },
-          {
-            line: "POST /client-user/search",
-            authorization: "Bearer project-key",
-            body: { search: [inOrg], ...subscription("mate-access-membership", "listStream") },
-          },
-        ]);
-        // ZEROPS-070's frame, with a field the list does not read.
-        yield* say({
-          type: "search",
-          subscriptionName: "mate-access-members",
-          data: {
-            update: [
-              {
-                id: "cu-eva",
-                roleCode: "NO_ACCESS",
-                status: "ACTIVE",
-                userId: "eva",
-                clientId: "ORG",
-                email: "eva@example.com",
-              },
-            ],
-          },
-        });
-        assert.deepStrictEqual(yield* Queue.take(events), {
-          _tag: "frame",
-          frame: {
-            kind: "members",
-            upsert: [
-              { clientUserId: "cu-eva", userId: "eva", orgRole: "NO_ACCESS", status: "ACTIVE" },
-            ],
-            remove: [],
-          },
-        });
-        yield* TestClock.adjust(Duration.seconds(15));
-        assert.deepStrictEqual(sockets[0]!.sent, [JSON.stringify({ type: "ping" })]);
-      }).pipe(Effect.scoped),
-  );
-
+describe("ZeropsProjectSocket", () => {
   it.effect(
     "The same socket subscribes to its organisation's processes by clientId and hands on only its own project's",
     () =>
@@ -171,7 +93,7 @@ describe("ZeropsAccessSocket", () => {
         const [, receiverId] =
           /^wss:\/\/zerops\.test\/web-socket\/([0-9a-f-]{36})\//u.exec(sockets[0]!.url) ?? [];
         // ZEROPS-078: a `projectId` filter answers 400; the organisation's is the one there is.
-        assert.deepStrictEqual(requests.slice(4), [
+        assert.deepStrictEqual(requests.slice(1), [
           {
             line: "POST /process/search",
             authorization: "Bearer project-key",
@@ -180,7 +102,7 @@ describe("ZeropsAccessSocket", () => {
               sort: [],
               limit: 200,
               receiverId,
-              subscriptionName: "mate-access-process",
+              subscriptionName: "mate-project-process",
               wsOutputType: "updateStream",
               disableOutput: true,
             },
@@ -190,12 +112,12 @@ describe("ZeropsAccessSocket", () => {
         const other = { id: "proc-2", status: "RUNNING", projectId: "P_OTHER" };
         yield* say({
           type: "search",
-          subscriptionName: "mate-access-process",
+          subscriptionName: "mate-project-process",
           data: { update: [other] },
         });
         yield* say({
           type: "search",
-          subscriptionName: "mate-access-process",
+          subscriptionName: "mate-project-process",
           data: { update: [other, own] },
         });
         assert.deepStrictEqual(yield* Queue.take(events), {
@@ -246,7 +168,7 @@ describe("ZeropsAccessSocket", () => {
           else connecting.onerror();
         };
         // It never greets: past its budget the connection is torn down while still connecting.
-        yield* TestClock.adjust(ACCESS_SOCKET_GREETING_BUDGET);
+        yield* TestClock.adjust(PROJECT_SOCKET_GREETING_BUDGET);
         assert.deepStrictEqual(unhandled, []);
         yield* TestClock.adjust(Duration.seconds(1));
         assert.strictEqual(logins(), 2);

@@ -6,7 +6,7 @@
  * none: not from its project's Zerops `OWNER` override, nor from who signed a login in. HQ sends it
  * in each `state` frame (`ownerUserId`, absent when HQ knows none); the link hands it here
  * (`named`), and everything else in the Mate that asks whose it is reads `owner`: the hand-over
- * sign-out (`ZeropsOffboarding`). Who may open a Chief is HQ's other answer (`ZeropsChiefOpener`).
+ * sign-out (`ZeropsOffboarding`).
  * The act gate (`ZeropsHqLink.actingIn`) reads it too, so the owner it names holds across link
  * loss and a refused key.
  *

@@ -111,10 +111,6 @@
       "types": "./src/zeropsOffers.ts",
       "import": "./src/zeropsOffers.ts"
     },
-    "./mateAccess": {
-      "types": "./src/mateAccess.ts",
-      "import": "./src/mateAccess.ts"
-    },
     "./mateLink": {
       "types": "./src/mateLink.ts",
       "import": "./src/mateLink.ts"

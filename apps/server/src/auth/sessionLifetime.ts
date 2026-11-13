@@ -13,7 +13,7 @@ export type SessionEndReason = "expired" | "revoked";
  * Completes when the session behind a live connection stops being valid.
  *
  * Outside Zerops, a stored session's revocation or expiry ends its open sockets.
- * Zerops connections use the HQ access list and close-session frames instead.
+ * Zerops connections end on HQ's close-session frames and their grant instead.
  *
  * A session with no stored deadline is left alone rather than closed on a
  * guess; a pairing session legitimately has none.

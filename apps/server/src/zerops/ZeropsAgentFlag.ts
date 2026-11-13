@@ -41,7 +41,7 @@ import * as Stream from "effect/Stream";
 import * as HttpClient from "effect/http/HttpClient";
 
 import * as ServerConfig from "../config.ts";
-import type { ProcessLiveEvent } from "./ZeropsAccessSocket.ts";
+import type { ProcessLiveEvent } from "./ZeropsProjectSocket.ts";
 import type { ZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { ZeropsProjectFeed } from "./ZeropsProjectFeed.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";

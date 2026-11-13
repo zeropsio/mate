@@ -84,8 +84,7 @@ interface World {
   readonly question?: Pick<OrchestrationThreadActivity, "kind" | "payload"> | "unreadable";
   /**
    * Whether each person may still run turns here, as HQ's signer standing answers on a login they
-   * signed and the access list (`hasProjectAccess`) on one nobody signed: `true` is `may`, `false`
-   * is `no_access`, absent is neither able to say.
+   * signed: `true` is `may`, `false` is `no_access`, absent is HQ unable to say.
    */
   readonly access?: Readonly<Record<string, boolean | undefined>>;
   /** Configured instance → driver kind; the two default instances when absent. */
@@ -232,7 +231,6 @@ const admission = (world: World) =>
                 }),
               ),
             ),
-          hasProjectAccess: (userId) => Effect.succeed(world.access?.[userId]),
         }),
         Layer.mock(ZeropsSignerStanding)({
           standing: (userId) => {
@@ -585,20 +583,13 @@ describe("ZeropsTurnAdmission", () => {
           { kind: "crew", startedBy: EVA },
           SOMEONE_ELSE,
         ],
-        // X3: a turn no session stands behind follows project access, as a session does.
+        // X3: a turn no session stands behind, on a login its person signed, follows HQ's standing.
         [
           "refuses a crew turn whose starter this project no longer opens for",
           { ...janSignedClaude, access: { [JAN]: false } },
           turnStart("claudeAgent"),
           { kind: "crew", startedBy: JAN },
           NO_ACCESS,
-        ],
-        [
-          "refuses a crew turn whose starter's access cannot be confirmed",
-          { ...janSignedClaude, access: {} },
-          turnStart("opencode"),
-          { kind: "crew", startedBy: JAN },
-          ACCESS_UNCONFIRMED,
         ],
         [
           "admits a stand-up its starter signed the agent in for and may still use",

@@ -38,7 +38,6 @@ import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
 import * as ZeropsGitRemoteProbe from "./ZeropsGitRemoteProbe.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
-import * as ZeropsMateAccessListModule from "./ZeropsMateAccessList.ts";
 import { crewLayerInert } from "./crew/crewLayer.ts";
 import { macPairCommands, macRemoveCommands } from "./mac/MacHost.ts";
 import { engineLayer } from "../engine/layer.ts";
@@ -530,8 +529,7 @@ const dataConsoleLayer = () =>
     }),
   ).pipe(Layer.provide(FetchHttpClient.layer));
 
-// A fixture scene saw nobody sign anything in, has no member list to confirm
-// anybody's membership by, and signs nothing out.
+// A fixture scene saw nobody sign anything in, and signs nothing out.
 const fixtureSignersLayer = Layer.succeed(
   ZeropsProjectSigners.ZeropsProjectSigners,
   ZeropsProjectSigners.ZeropsProjectSigners.of({
@@ -541,7 +539,6 @@ const fixtureSignersLayer = Layer.succeed(
       Effect.succeed(turnRefusal({ agent, signer: undefined, subject })),
     loginRefusal: ({ state, token, subject }) =>
       Effect.succeed(loginTurnRefusal({ state, token, signer: undefined, subject })),
-    hasProjectAccess: () => Effect.succeed(undefined),
   }),
 );
 
@@ -668,7 +665,5 @@ export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
       ZeropsMateKeyModule.ZeropsMateKey,
       ZeropsMateKeyModule.snapshotOnlyReader(undefined),
     ),
-    // A fixture scene has no Zerops to read: the list stays empty.
-    ZeropsMateAccessListModule.emptyLayer,
   );
 };

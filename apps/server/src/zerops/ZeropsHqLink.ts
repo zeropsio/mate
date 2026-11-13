@@ -19,14 +19,11 @@ import type { AdmissionLive, TicketFrame } from "./ZeropsTicketDoor.ts";
  *   changed, at most once per `MATE_OVERVIEW_EVERY_MS`, looked at again when something it is made
  *   of moves — a domain event, the crew's snapshot, a login, the update line — and never on a
  *   timer; beside it the Mate's attention (`ZeropsMateAttention`), whole on every link and again at
- *   each new revision; `person-changed` for each known person the access list's raw rows move
- *   while the link runs (`ZeropsMateAccessList.personChanged`), a hint never told again; `pong` to
- *   each of HQ's pings.
+ *   each new revision; `pong` to each of HQ's pings.
  * - **Down:** the Mate's state as HQ holds it, kept here for whoever asks and handed on to
  *   `ZeropsAutomation` (whether the Mate is automated) and to `ZeropsChiefRestart`, which rotates
  *   every session on a moved Chief mark (`chief`), and to `ZeropsMateOwner`, whom it names the
- *   Mate's owner (`ownerUserId`), and to `ZeropsChiefOpener`, whom it lets open a Chief
- *   (`chiefOpenerUserId`); the raw `mate` of every state, decoded or not, is kept by
+ *   Mate's owner (`ownerUserId`); the raw `mate` of every state, decoded or not, is kept by
  *   `ZeropsMateStateFile` where zcp reads it; tickets (`ticket`), each with the role HQ read for
  *   its person at Zerops, kept and answered `ticket-ack`, or not at all when the key it came
  *   under was refused, which closes the link and leaves HQ to answer it; the
@@ -120,14 +117,12 @@ import type { ProjectionRepositoryError } from "../persistence/Errors.ts";
 import { ZeropsAgentAuth } from "./ZeropsAgentAuth.ts";
 import { combineAgentAuth, ZeropsAgentLogin } from "./ZeropsAgentLogin.ts";
 import { ZeropsSignIns } from "./zeropsSignIns.ts";
-import { ZeropsChiefOpener } from "./ZeropsChiefOpener.ts";
 import { type MateOwner, ZeropsMateOwner } from "./ZeropsMateOwner.ts";
 import { mateOverviewOf } from "./zeropsHqOverview.ts";
 import { hasSetupMarker, readServiceVariableKeys } from "./zeropsSetupMarker.ts";
 import { MateEngine } from "../engine/MateEngine.ts";
 import { chatsSource } from "./engineOverview.ts";
 import { ZeropsLogins } from "./ZeropsLogins.ts";
-import { ZeropsMateAccessList } from "./ZeropsMateAccessList.ts";
 import { ZeropsMateAttention } from "./ZeropsMateAttention.ts";
 import { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
 import { makeChiefRestart } from "./ZeropsChiefRestart.ts";
@@ -286,11 +281,6 @@ export interface ZeropsHqLinkOptions {
   /** The Mate's attention now, then each new revision (`ZeropsMateAttention.changes`). */
   readonly attention: Stream.Stream<MateAttention>;
   /**
-   * The user ID of each known person the access list's raw rows move, from when a link runs it
-   * (`ZeropsMateAccessList.personChanged`); none: the Mate hints nobody.
-   */
-  readonly personChanged?: Stream.Stream<string>;
-  /**
    * Takes HQ's ticket, with whether the admission it came under is still live, and gives what
    * answers it: `ticket-ack`, or not at all (`ZeropsConnections.ticket`).
    */
@@ -310,8 +300,6 @@ export interface ZeropsHqLinkOptions {
    * it no longer holds live (`ZeropsConnections.heldSessions`).
    */
   readonly heldSessions: Effect.Effect<ReadonlyArray<string>>;
-  /** Hands on whom each state lets open a Chief, if it names one (`ZeropsChiefOpener.named`). */
-  readonly chiefOpener?: (userId: string | null | undefined) => Effect.Effect<void>;
   /** Hands on whom each state names the Mate's owner, `null` for none (`ZeropsMateOwner.named`). */
   readonly owner?: (userId: string | null) => Effect.Effect<void>;
   /** Hands on the Mate's Git credential, or HQ's revocation of it (`ZeropsGitCredentialFile`). */
@@ -724,14 +712,6 @@ export const makeZeropsHqLink = (
       const attention = Stream.runForEach(options.attention, (value) =>
         send({ type: "attention", attention: value }),
       );
-      // Heard only while this link runs it, from HQ's first state on: a move before it, or while
-      // no link is up, is never told.
-      const personChanged =
-        options.personChanged === undefined
-          ? Effect.never
-          : Stream.runForEach(options.personChanged, (userId) =>
-              send({ type: "person-changed", userId }),
-            );
       /**
        * A task's frame (`task`, `task-message`, `task-stop`), held beside the frames that follow,
        * for as long as the link lives, until HQ's first state; HQ tells it again if that never
@@ -768,7 +748,6 @@ export const makeZeropsHqLink = (
               return fenced !== undefined;
             }).pipe(
               Effect.flatMap((dead) => (dead ? send({ type: "key-refused" }) : Effect.void)),
-              Effect.andThen(options.chiefOpener?.(frame.mate.chiefOpenerUserId) ?? Effect.void),
               Effect.andThen(SubscriptionRef.set(state, Option.some(frame.mate))),
               Effect.andThen(options.linked?.(true) ?? Effect.void),
               Effect.andThen(options.owner?.(frame.mate.ownerUserId ?? null) ?? Effect.void),
@@ -904,7 +883,6 @@ export const makeZeropsHqLink = (
               heard,
               onceAnswered(attention),
               onceAnswered(health),
-              onceAnswered(personChanged),
               ...(usage ? [onceAnswered(usage.run)] : []),
               reporting,
               keyRefusals,
@@ -1199,7 +1177,6 @@ export const layer = (crew: OverviewSources["crew"]) =>
       const observeCredential = yield* ZeropsObserveCredentialFile;
       const signIns = yield* ZeropsSignIns;
       const owner = yield* ZeropsMateOwner;
-      const chiefOpener = yield* ZeropsChiefOpener;
       // The engine's conversations are the chats: V1's projections (a thread left running at the
       // flip among them) are never read.
       const attention = yield* ZeropsMateAttention;
@@ -1249,9 +1226,6 @@ export const layer = (crew: OverviewSources["crew"]) =>
         end: connections.end,
         linked: connections.linked,
         heldSessions: connections.heldSessions,
-        // HQ's state is where the Mate learns who may open its Chief: the one source behind the
-        // access list's Chief filter, which the tickets and connections follow.
-        chiefOpener: chiefOpener.named,
         // HQ's state is where the Mate learns whose it is: the one source behind `ZeropsMateOwner`.
         owner: owner.named,
         gitCredential: credential.write,
@@ -1275,7 +1249,6 @@ export const layer = (crew: OverviewSources["crew"]) =>
         autoUpdatePolicy: yield* MateAutoUpdatePolicy,
         attention: attention.changes,
         health: attention.healthChanges,
-        personChanged: (yield* ZeropsMateAccessList).personChanged,
         usage,
         ...feed,
       });

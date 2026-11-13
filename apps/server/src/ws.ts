@@ -8,7 +8,6 @@ import { RpcUpdateAdmission } from "./RpcUpdateAdmission.ts";
 import { ZeropsSetup } from "./zerops/ZeropsSetup.ts";
 import { actingIn, hqKeyOf, ZeropsHqLink } from "./zerops/ZeropsHqLink.ts";
 import { ZeropsMateOwner } from "./zerops/ZeropsMateOwner.ts";
-import { administersProject, ZeropsMateAccessList } from "./zerops/ZeropsMateAccessList.ts";
 import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import { ThreadFileWrites } from "./zerops/ThreadFileWrites.ts";
 import {
@@ -2152,8 +2151,7 @@ export const websocketRpcRouteLayer = HttpRouter.add(
             (owner, standing) => actingIn(owner, standing, session.subject),
           );
     // An admin of the Mate's project keeps someone else's Mate current: asked per call too, of
-    // the role the connection's last ticket gave it where one admitted the socket.
-    const accessList = Option.getOrUndefined(yield* Effect.serviceOption(ZeropsMateAccessList));
+    // the role the connection's last ticket gave it; nobody administers without a ticket.
     const administers =
       handle !== undefined && Option.isSome(connections)
         ? connections.value
@@ -2163,9 +2161,7 @@ export const websocketRpcRouteLayer = HttpRouter.add(
                 (current) => Option.isSome(current) && roleAtLeast(current.value.role, "ADMIN"),
               ),
             )
-        : accessList === undefined
-          ? Effect.succeed(false)
-          : Effect.map(accessList.current, (list) => administersProject(list, session.subject));
+        : Effect.succeed(false);
     const rpcWebSocketHttpEffect = yield* Effect.gen(function* () {
       const { protocol, httpEffect } = yield* RpcServer.makeProtocolWithHttpEffectWebsocket;
       // Terminal output streams run ahead of the client's acks inside a small

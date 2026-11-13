@@ -20,7 +20,6 @@ import {
   type SignInStore,
 } from "./zeropsSignIns.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
-import * as ZeropsMateAccessListModule from "./ZeropsMateAccessList.ts";
 import {
   isTurnStartingCommand,
   make as makeProjectSigners,
@@ -255,13 +254,12 @@ describe("the turn gate", () => {
     flagToken: false,
   } as const;
 
-  /** The service over the sign-ins this server saw, beside an access list that reads nothing. */
+  /** The service over the sign-ins this server saw. */
   const gateOver = (signIns: SignInStore) =>
     Effect.gen(function* () {
       const signers = yield* makeProjectSigners.pipe(
         Effect.provide(
           Layer.mergeAll(
-            ZeropsMateAccessListModule.emptyLayer,
             ServerConfig.layer({ zerops: environment } as ServerConfig.ServerConfig["Service"]),
             NodeServices.layer,
             Layer.succeed(ZeropsSignIns, signIns),

@@ -8,7 +8,7 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { HttpClient, HttpClientResponse } from "effect/http";
 
-import type { ProcessLiveEvent } from "./ZeropsAccessSocket.ts";
+import type { ProcessLiveEvent } from "./ZeropsProjectSocket.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import {

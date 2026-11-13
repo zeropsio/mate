@@ -13,7 +13,6 @@ import { HttpClient, HttpClientResponse } from "effect/http";
 
 import { makeZeropsHqLink, type LinkSocket } from "./ZeropsHqLink.ts";
 import { make, requestWithMateKey, ZeropsMateKey } from "./ZeropsMateKey.ts";
-import * as ZeropsAccessRead from "./ZeropsAccessRead.ts";
 
 const decode = Schema.decodeSync(Schema.fromJsonString(Schema.Unknown));
 /** The admission HQ names for the key, and a later one: a new admission, even of the same key. */
@@ -119,22 +118,6 @@ it.effect("An unchanged key refused by Zerops is reported to HQ in one key-refus
     const { reader, sockets } = yield* rig();
     sockets[0]!.hearState(ADMISSION_A);
     yield* TestClock.adjust(Duration.zero);
-    const own = yield* ZeropsAccessRead.ZeropsAccessRead.pipe(
-      Effect.provide(
-        ZeropsAccessRead.layer({ apiBaseUrl: "https://zerops.test", projectId: "own-project" }),
-      ),
-      Effect.provideService(ZeropsMateKey, reader),
-      Effect.provideService(
-        HttpClient.HttpClient,
-        HttpClient.make((request) => {
-          assert.equal(request.headers["authorization"], "Bearer old-key");
-          return Effect.succeed(
-            HttpClientResponse.fromWeb(request, new Response(null, { status: 401 })),
-          );
-        }),
-      ),
-    );
-    assert.deepStrictEqual(yield* own.read, { kind: "refused", status: 401 });
     yield* requestWithMateKey(reader, () => Effect.succeed({ status: 401 }));
     yield* TestClock.adjust(Duration.zero);
     assert.deepStrictEqual(sockets[0]!.sent, [

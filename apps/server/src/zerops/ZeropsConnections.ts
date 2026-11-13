@@ -42,11 +42,8 @@ interface ConnectionInput {
   deadlineMs: number;
   readonly close: Effect.Effect<void>;
 }
-/** Whose connections end: one HQ session's, all of one person's, or everyone's where the key was refused. */
-export type ConnectionSubject =
-  | { readonly session: string }
-  | { readonly person: string }
-  | { readonly everyone: true };
+/** Whose connections end: one HQ session's, or everyone's where the key was refused. */
+export type ConnectionSubject = { readonly session: string } | { readonly everyone: true };
 /**
  * What answers HQ's ticket: `ticket-ack`, or nothing at all where the key it came under was
  * refused (`fenced`): the link then closes and HQ answers it not-connected.
@@ -105,8 +102,7 @@ export class ZeropsConnections extends Context.Service<
     readonly linked: (up: boolean) => Effect.Effect<void>;
     /**
      * The only way a connection ends for a reason of authority. A session's end also drops its
-     * tickets; a person's touches none; everyone's, where the key was refused, drops every
-     * ticket, held or waiting.
+     * tickets; everyone's, where the key was refused, drops every ticket, held or waiting.
      *
      * GAP-RIGHTS-4: a connection never sees its person's token revoked; it ends at sign-out, HQ
      * closing its session or a refusal of the Mate's key; see
@@ -151,7 +147,6 @@ export const make = Effect.gen(function* () {
   ) {
     for (const [id, connection] of connections) if (matches(connection)) yield* remove(id);
   });
-  const endPerson = (person: string) => removeWhere((connection) => connection.userId === person);
   const endSession = Effect.fn("ZeropsConnections.endSession")(function* (session: string) {
     yield* tickets.end({ session });
     for (const frame of pending) if (frame.sessionId === session) pending.delete(frame);
@@ -309,12 +304,7 @@ export const make = Effect.gen(function* () {
         yield* rearm;
       }).pipe(lock.withPermits(1)),
     end: (subject) =>
-      ("session" in subject
-        ? endSession(subject.session)
-        : "person" in subject
-          ? endPerson(subject.person)
-          : endEveryone
-      ).pipe(lock.withPermits(1)),
+      ("session" in subject ? endSession(subject.session) : endEveryone).pipe(lock.withPermits(1)),
   });
 });
 export const layer = Layer.effect(ZeropsConnections, make);

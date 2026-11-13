@@ -43,8 +43,8 @@ export interface ZeropsEnvironment {
    * `BASIC_USER`.
    *
    * HQ verifies it when this Mate links. Project reads use the same key, the
-   * Mate's own access list among them (`ZeropsMateAccessList`); people enter
-   * with HQ tickets that list admits.
+   * Mate's own project feed among them (`ZeropsProjectFeed`); people enter
+   * with HQ tickets at the role HQ read for them.
    */
   readonly apiToken: string | undefined;
   /**

@@ -39,11 +39,7 @@ import * as ExternalLauncher from "./process/externalLauncher.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "./persistence/Layers/Sqlite.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import { mateUpdateRouteLayer } from "./zerops/mateUpdateHttp.ts";
-import {
-  ZeropsLayerLive,
-  ZeropsSessionAdmissionLive,
-  ZeropsConnectionsLive,
-} from "./zerops/zeropsFeedsLayer.ts";
+import { ZeropsLayerLive, ZeropsConnectionsLive } from "./zerops/zeropsFeedsLayer.ts";
 import { McpServersLayerLive } from "./zerops/mcp/McpServers.ts";
 import * as ThreadFileWrites from "./zerops/ThreadFileWrites.ts";
 import * as MacCommandShim from "./zerops/mac/MacCommandShim.ts";
@@ -430,7 +426,6 @@ const ProjectFaviconResolverLayerLive = ProjectFaviconResolver.layer.pipe(
 );
 
 const StoredAuthLayerLive = EnvironmentAuth.layer.pipe(
-  Layer.provide(ZeropsSessionAdmissionLive),
   Layer.provideMerge(PersistenceLayerLive),
   Layer.provide(ServerSecretStore.layer),
 );

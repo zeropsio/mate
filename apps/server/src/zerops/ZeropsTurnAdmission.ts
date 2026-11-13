@@ -86,10 +86,9 @@ import { ZeropsSignerStanding } from "./ZeropsSignerStanding.ts";
  * - `task`: a task from outside an automated Mate took (`ZeropsTasks`), by
  *   HQ's id: it runs for nobody, on the organization's key only.
  *
- * Neither `crew` nor `standup` has a session the membership watch would end:
- * each is admitted only while its person may still run turns here (X3): as HQ
- * says, on a login that person signed; as the Mate's access list says, on a
- * login nobody signed.
+ * Neither `crew` nor `standup` has a session HQ would end: on a login its
+ * person signed, each is admitted only while HQ says that person may still run
+ * turns here (X3); on a login nobody signed it runs while its project exists.
  */
 export type TurnPrincipal =
   | { readonly kind: "session"; readonly subject: string }
@@ -289,29 +288,16 @@ export const make = Effect.gen(function* () {
 
   /**
    * A crew turn or a stand-up runs for somebody who is not at the keyboard, so
-   * it asks whether that person may still run turns here (X3). On a login they
-   * signed, HQ answers: their signer standing (`ZeropsSignerStanding`). HQ answers
-   * only for the signers it records, so on a login nobody signed (a project
-   * token, an agent with no sign-in) the Mate's access list answers, as a session
-   * of theirs is kept by (`hasProjectAccess`). A person's own session needs no
-   * such check: the membership watch ends a session this project no longer opens
-   * for. Only `may` admits; a person who lost the project is signed out by
-   * offboarding, one HQ no longer holds a token for is refused until they open
-   * Mate once.
+   * on a login they signed it asks whether that person may still run turns
+   * here (X3): HQ answers, their signer standing (`ZeropsSignerStanding`). A
+   * login nobody signed (a project token, an agent with no sign-in) asks nobody:
+   * its turn runs while its project exists. A person's own
+   * session needs no such check: HQ ends a session whose standing changed. Only
+   * `may` admits; a person who lost the project is signed out by offboarding,
+   * one HQ no longer holds a token for is refused until they open Mate once.
    */
-  const refuseWithoutAccess = Effect.fnUntraced(function* (
-    startedBy: string,
-    signedByThem: boolean,
-  ) {
-    const standing = signedByThem
-      ? yield* signerStanding.standing(startedBy)
-      : yield* projectSigners
-          .hasProjectAccess(startedBy)
-          .pipe(
-            Effect.map((access) =>
-              access === undefined ? undefined : access ? ("may" as const) : ("no_access" as const),
-            ),
-          );
+  const refuseWithoutStanding = Effect.fnUntraced(function* (startedBy: string) {
+    const standing = yield* signerStanding.standing(startedBy);
     if (standing === "may") return;
     return yield* new OrchestrationDispatchCommandError({
       message:
@@ -435,7 +421,7 @@ export const make = Effect.gen(function* () {
 
   /**
    * The checks every turn passes, in order: a person away may still run turns
-   * here, on the login this turn runs on (`refuseWithoutAccess`); the
+   * here, on a login they signed (`refuseWithoutStanding`); the
    * organization's key only where that is the rule; D6. D6 is judged first, as
    * whether that login is one its person signed decides who is asked.
    */
@@ -444,8 +430,8 @@ export const make = Effect.gen(function* () {
     principal: TurnPrincipal,
   ) {
     const verdict = yield* judgeAgent(instanceId, principal);
-    if (forSomeoneAway(principal)) {
-      yield* refuseWithoutAccess(principal.startedBy, verdict.signed);
+    if (forSomeoneAway(principal) && verdict.signed) {
+      yield* refuseWithoutStanding(principal.startedBy);
     }
     yield* refuseSubscription(instanceId, principal);
     if (verdict.refusal !== undefined) return yield* verdict.refusal;
