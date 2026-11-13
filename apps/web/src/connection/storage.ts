@@ -14,7 +14,7 @@ import {
 import { TokenStore } from "@t3tools/client-runtime/authorization";
 import {
   ConnectionTransientError,
-  CredentialRenewal,
+  CredentialExpiry,
   CredentialStore,
   ProfileStore,
 } from "@t3tools/client-runtime/connection";
@@ -143,7 +143,7 @@ export function accountCloseLogouts(
     const credential = document.credentials.find(
       (entry) => entry.connectionId === profile.connectionId,
     )?.credential;
-    if (!credential || CredentialRenewal.credentialExpired(credential, nowEpochMs)) return [];
+    if (!credential || CredentialExpiry.credentialExpired(credential, nowEpochMs)) return [];
     return [
       {
         url: `${profile.httpBaseUrl.replace(/\/+$/, "")}/api/auth/logout`,

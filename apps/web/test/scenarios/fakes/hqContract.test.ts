@@ -1,10 +1,8 @@
 // @effect-diagnostics nodeBuiltinImport:off -- the scenario harness speaks to disposable loopback services.
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { HqStreamRequest } from "@t3tools/shared/hqStream";
-import * as Schema from "effect/Schema";
 import { makeHttpCall } from "../harness/httpCall.ts";
-import { openScenarioNavigation, type ScenarioCore } from "../harness/hqCore.ts";
+import { type ScenarioCore } from "../harness/hqCore.ts";
 import { serve, type WireRequest } from "../harness/http.ts";
 import { personDoor } from "../harness/mateAccess.ts";
 
@@ -43,41 +41,5 @@ it.effect(
         { name: "Other", accessToken: "personal-reader" },
         { title: "Change" },
       ]);
-    }).pipe(Effect.scoped),
-);
-
-it.effect(
-  "Decision: Protected stream scopes the scenarios subscribe to carry the token the same way the client does (hqStream.ts:80); no scenario pins a `token_required` that the product would not show.",
-  () =>
-    Effect.gen(function* () {
-      const requests: unknown[] = [];
-      const scope = { kind: "attention", projectId: "Ada" } as const;
-      const server = yield* Effect.acquireRelease(
-        Effect.promise(() =>
-          serve(
-            () => undefined,
-            (socket) => {
-              socket.on("message", (frame) => {
-                requests.push(
-                  Schema.decodeUnknownSync(Schema.fromJsonString(HqStreamRequest))(
-                    frame.toString(),
-                  ),
-                );
-                socket.send(
-                  JSON.stringify({ type: "scope-ready", scope, incarnation: "core", revision: 1 }),
-                );
-              });
-            },
-          ),
-        ),
-        (server) => Effect.promise(server.close),
-      );
-      yield* openScenarioNavigation(
-        server.origin,
-        { ticket: "ticket" },
-        (message) => message.type === "scope-ready" && message.scope.kind === "attention",
-        scope,
-      );
-      expect(requests).toEqual([{ type: "subscribe", scopes: [{ scope }] }]);
     }).pipe(Effect.scoped),
 );

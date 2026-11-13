@@ -1,10 +1,8 @@
 import { EnvironmentId } from "@t3tools/contracts";
-import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Equal from "effect/Equal";
 import * as Exit from "effect/Exit";
-import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
@@ -25,7 +23,6 @@ import {
   connectionRegistrationCatalogEntry,
 } from "./catalog.ts";
 import * as ConnectionCredentialStore from "./credentialStore.ts";
-import * as CredentialRenewal from "./credentialRenewal.ts";
 import * as ConnectionProfileStore from "./profileStore.ts";
 import * as Connectivity from "./connectivity.ts";
 import {
@@ -97,8 +94,8 @@ export class EnvironmentRegistry extends Context.Service<
     readonly retryNow: (environmentId: EnvironmentId) => Effect.Effect<void>;
     /**
      * Ends the environment's socket and keeps everything else: its registration, its stored
-     * credential, its cached data and its supervisor. Nothing connects it again, nor renews its
-     * credential, until it is unparked.
+     * credential, its cached data and its supervisor. Nothing connects it again until it is
+     * unparked.
      */
     readonly park: (environmentId: EnvironmentId) => Effect.Effect<void>;
     /** Connects a parked environment again, on the credential it kept. */
@@ -146,8 +143,6 @@ interface EnvironmentServiceScope {
   // Held while a rotated credential is written, so no attempt starts, and no
   // block is judged, between the store write and the generation bump.
   readonly credentialWrite: Semaphore.Semaphore;
-  // The credential renewal keeping it ahead of its deadline: none while it is parked.
-  readonly renewal: Ref.Ref<Fiber.Fiber<void> | null>;
 }
 
 /** @public Service construction is part of the canonical Effect module API. */
@@ -163,10 +158,6 @@ export const make = Effect.gen(function* () {
   const driver = yield* ConnectionDriver.ConnectionDriver;
   const wakeups = yield* ConnectionWakeups.ConnectionWakeups;
   const ssh = yield* ClientCapabilities.SshEnvironmentGateway;
-  // Optional: clients that do not provide one keep the reactive path.
-  const credentialRenewer = yield* Effect.serviceOption(
-    CredentialRenewal.ConnectionCredentialRenewer,
-  );
   const persistedTargets = yield* storage.list;
   const initialEntries = new Map(
     yield* Effect.forEach(
@@ -299,123 +290,6 @@ export const make = Effect.gen(function* () {
     yield* Scope.close(lease.scope, Exit.void);
   });
 
-  /**
-   * Keeps one environment's bearer ahead of its own deadline.
-   *
-   * Writes through the credential STORE and never through `register`: the
-   * socket is authorised at upgrade time only, so `resolver.prepare` picks the
-   * rotated token up on the next attempt with no teardown. Re-registering
-   * instead would rebuild the supervisor and drop a live socket mid-turn every
-   * window.
-   */
-  const runCredentialRenewal = Effect.fnUntraced(function* (
-    entry: ConnectionCatalogEntry,
-    supervisor: EnvironmentSupervisor.EnvironmentSupervisor["Service"],
-  ) {
-    if (Option.isNone(credentialRenewer) || entry.target._tag !== "BearerConnectionTarget") {
-      return;
-    }
-    const renewer = credentialRenewer.value;
-    const { environmentId, connectionId } = entry.target;
-    const httpBaseUrl =
-      Option.isSome(entry.profile) && entry.profile.value._tag === "BearerConnectionProfile"
-        ? entry.profile.value.httpBaseUrl
-        : undefined;
-    const storedBearer = Effect.gen(function* () {
-      const stored = yield* credentials.get(connectionId).pipe(Effect.orElseSucceed(Option.none));
-      return Option.isSome(stored) && stored.value._tag === "BearerConnectionCredential"
-        ? Option.some(stored.value)
-        : Option.none<BearerConnectionCredential>();
-    });
-    const stillStored = (credential: BearerConnectionCredential) =>
-      storedBearer.pipe(
-        Effect.map((stored) => Option.isSome(stored) && Equal.equals(stored.value, credential)),
-      );
-    let previousRenewAtEpochMs = Number.NEGATIVE_INFINITY;
-
-    for (;;) {
-      const stored = yield* storedBearer;
-      if (Option.isNone(stored)) {
-        return;
-      }
-      const credential = stored.value;
-      const renewAtEpochMs = CredentialRenewal.credentialRenewAtEpochMs(credential);
-      if (renewAtEpochMs === null) {
-        // No deadline on the record — nothing to be proactive about.
-        return;
-      }
-      // A renewer that hands back a credential no fresher than the one it
-      // replaced would otherwise spin this loop.
-      if (renewAtEpochMs <= previousRenewAtEpochMs) {
-        yield* Effect.logWarning("Credential renewal did not advance its deadline; stopping.", {
-          environmentId,
-        });
-        return;
-      }
-      previousRenewAtEpochMs = renewAtEpochMs;
-
-      const delayMs = renewAtEpochMs - (yield* Clock.currentTimeMillis);
-      if (delayMs > 0) {
-        yield* Effect.sleep(delayMs);
-      }
-      // `rotateCredential` replaced the credential this schedule was built on.
-      // Start over on the stored one's own deadline.
-      if (!(yield* stillStored(credential))) {
-        previousRenewAtEpochMs = Number.NEGATIVE_INFINITY;
-        continue;
-      }
-
-      const renewed = yield* renewer
-        .renew({ environmentId, connectionId, httpBaseUrl, credential })
-        .pipe(
-          Effect.tapError((error) =>
-            Effect.logWarning("Could not renew the environment credential.", {
-              environmentId,
-              error,
-            }),
-          ),
-          Effect.option,
-          Effect.map(Option.flatten),
-        );
-      if (Option.isNone(renewed)) {
-        // Either this renewer does not own the credential, or the attempt
-        // failed. Either way the reactive path still covers it.
-        return;
-      }
-      // Checked and written under the lease `rotateCredential` holds, so a
-      // renewal of the replaced credential never overwrites the rotated one.
-      const replaced = yield* withLeaseLock(
-        environmentId,
-        Effect.gen(function* () {
-          if (!(yield* stillStored(credential))) {
-            return true;
-          }
-          yield* credentials.put(connectionId, renewed.value).pipe(
-            Effect.tapError((error) =>
-              Effect.logWarning("Could not store the renewed environment credential.", {
-                environmentId,
-                error,
-              }),
-            ),
-            Effect.ignore,
-          );
-          return false;
-        }),
-      );
-      if (replaced) {
-        previousRenewAtEpochMs = Number.NEGATIVE_INFINITY;
-        continue;
-      }
-      // A healthy socket is deliberately left alone — it stays authorised for
-      // its lifetime and picks the new token up at its next upgrade. Only a
-      // connection already parked on an auth failure needs prodding.
-      const state = yield* SubscriptionRef.get(supervisor.state);
-      if (state.phase === "blocked") {
-        yield* supervisor.retryNow;
-      }
-    }
-  });
-
   /** Whether the environment is parked: as `park` or `unpark` last set it, else whether it is a Mate. */
   const parked = Effect.fn("EnvironmentRegistry.parked")(function* (entry: ConnectionCatalogEntry) {
     const set = (yield* Ref.get(parking)).get(entry.target.environmentId);
@@ -449,14 +323,7 @@ export const make = Effect.gen(function* () {
             Scope.provide(scope),
             Effect.onError(() => Scope.close(scope, Exit.void)),
           );
-          const renewal = yield* Ref.make<Fiber.Fiber<void> | null>(null);
-          if (!(yield* parked(entry))) {
-            yield* supervisor.connect;
-            yield* Ref.set(
-              renewal,
-              yield* runCredentialRenewal(entry, supervisor).pipe(Effect.forkIn(scope)),
-            );
-          }
+          if (!(yield* parked(entry))) yield* supervisor.connect;
           yield* SubscriptionRef.update(serviceScopes, (current) => {
             const next = new Map(current);
             next.set(environmentId, {
@@ -465,7 +332,6 @@ export const make = Effect.gen(function* () {
               scope,
               credentialGeneration,
               credentialWrite,
-              renewal,
             });
             return next;
           });
@@ -868,8 +734,6 @@ export const make = Effect.gen(function* () {
         yield* setParking(environmentId, true);
         const lease = (yield* SubscriptionRef.get(serviceScopes)).get(environmentId);
         if (lease === undefined) return;
-        const renewal = yield* Ref.getAndSet(lease.renewal, null);
-        if (renewal !== null) yield* Fiber.interrupt(renewal);
         yield* lease.supervisor.disconnect;
       }),
     ).pipe(Effect.withSpan("EnvironmentRegistry.park"));
@@ -886,14 +750,6 @@ export const make = Effect.gen(function* () {
           return;
         }
         yield* lease.supervisor.connect;
-        if ((yield* Ref.get(lease.renewal)) === null) {
-          yield* Ref.set(
-            lease.renewal,
-            yield* runCredentialRenewal(lease.entry, lease.supervisor).pipe(
-              Effect.forkIn(lease.scope),
-            ),
-          );
-        }
       }),
     ).pipe(
       Effect.catchTags({ EnvironmentNotRegisteredError: () => Effect.void }),
@@ -910,8 +766,8 @@ export const make = Effect.gen(function* () {
    * Hands a live environment a new bearer — the Zerops door's re-exchange after
    * the old one was revoked.
    *
-   * Like `runCredentialRenewal` it writes through the credential STORE, never
-   * through `register`: re-registering rebuilds the supervisor, which moves the
+   * It writes through the credential STORE, never through `register`:
+   * re-registering rebuilds the supervisor, which moves the
    * install generation and rebinds every `followStream` consumer, the shell
    * among them. Here the supervisor, its install generation and the catalog
    * entry stay as they are. A live socket is closed and reopened with the new

@@ -95,11 +95,8 @@ const bearerCredentialLifetime = Effect.fn(
   if (expiresInSeconds === undefined || !Number.isFinite(expiresInSeconds)) {
     return {};
   }
-  const issuedAtEpochMs = yield* Clock.currentTimeMillis;
-  return {
-    issuedAtEpochMs,
-    expiresAtEpochMs: issuedAtEpochMs + Math.round(expiresInSeconds * 1000),
-  };
+  const now = yield* Clock.currentTimeMillis;
+  return { expiresAtEpochMs: now + Math.round(expiresInSeconds * 1000) };
 });
 
 export const preparePairingRegistration = Effect.fn(

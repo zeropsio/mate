@@ -8,7 +8,7 @@ export {
 export { connectedArrivals } from "./arrivals.ts";
 export * from "./catalog.ts";
 export * as Connectivity from "./connectivity.ts";
-export * as CredentialRenewal from "./credentialRenewal.ts";
+export * as CredentialExpiry from "./credentialExpiry.ts";
 export * as CredentialStore from "./credentialStore.ts";
 export { type ConnectionDriverProgress, type EnvironmentConnectionLease } from "./driver.ts";
 export * from "./errors.ts";
