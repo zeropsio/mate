@@ -18,6 +18,7 @@ import { staleChunkRecovery } from "./lib/staleChunk";
 import { warmAppChunksAfterSettling } from "./lib/appChunks";
 import { pressesInFlight } from "./zerops/matePress";
 import { appBasePath } from "./basePath";
+import { keepChatLinkCode } from "./zerops/chatLinkCode";
 import { preloadChatView } from "./components/ChatViewBoundary";
 import { addressOpensConversation } from "./routes/-environmentRoute";
 import { appShellWorkerMode, startAppShellWorker } from "./appShell/appShellClient";
@@ -25,6 +26,11 @@ import { isHostedStaticApp } from "./hostedPairing";
 
 // Every Zerops link and the sign-in hand-over go to this build's Zerops app.
 configureZeropsGui(import.meta.env.VITE_ZEROPS_APP_URL);
+
+// A chat account link's code leaves the address before anything reads it: signed out, no route runs
+// until a sign-in returns to `/chat-link`, which it does without the fragment (`chatLinkCode.ts`).
+if (!isElectron && window.location.pathname.replace(/\/+$/u, "") === `${appBasePath()}/chat-link`)
+  keepChatLinkCode();
 
 // Electron loads the app from a file-backed shell, so hash history avoids path resolution issues.
 const history = isElectron ? createHashHistory() : createBrowserHistory();

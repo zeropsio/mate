@@ -1,7 +1,8 @@
 /**
  * The code of a chat account link HQ said (`<Mate web>/chat-link#<code>`), carried across sign-in:
- * the fragment leaves the address for this tab's session storage the moment the route loads, signed
- * in or not, because a sign-in returns to a path but never to its fragment (`navigationStorage.ts`).
+ * the fragment leaves the address for this tab's session storage as the page boots (`main.tsx`),
+ * signed in or not: signed out no route runs, and a sign-in returns to a path but never to its
+ * fragment (`navigationStorage.ts`).
  * The page reads it once and removes it: the code is a one-time credential, and a reload does not
  * send it again.
  */
