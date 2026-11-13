@@ -75,16 +75,6 @@ export const HqScope = Schema.Union([
   }),
 ]);
 export type HqScope = typeof HqScope.Type;
-/**
- * The scopes HQ admits only on a fresh read of the person's Zerops role, with the access token
- * their `subscribe` frame carries; asked without it, HQ answers `token_required`.
- */
-export const HQ_PROTECTED_SCOPE_KINDS: ReadonlySet<HqScope["kind"]> = new Set([
-  "app-detail",
-  "change",
-  "discussion",
-  "attention",
-]);
 export const HqCursor = Schema.Struct({
   incarnation: Schema.String,
   revision: Schema.Int.check(
@@ -125,18 +115,10 @@ export const HqStreamRequest = Schema.Union([
     scopes: Schema.optionalKey(
       Schema.Array(HqScope).check(Schema.isMaxLength(HQ_STREAM_FRAME_SCOPES)),
     ),
-    /** The person's current Zerops access token: HQ reads the scopes again with it. */
-    accessToken: Schema.optionalKey(Schema.String),
   }),
   Schema.Struct({
     type: Schema.Literal("subscribe"),
     scopes: Schema.Array(HqSubscription).check(Schema.isMaxLength(HQ_STREAM_FRAME_SCOPES)),
-    /**
-     * The person's current Zerops access token: HQ admits a
-     * {@link HQ_PROTECTED_SCOPE_KINDS protected scope} on one read with it, and reads with it what
-     * any scope shows of Zerops (owners, "mine", usage owners).
-     */
-    accessToken: Schema.optionalKey(Schema.String),
   }),
   Schema.Struct({
     type: Schema.Literal("unsubscribe"),
@@ -146,14 +128,11 @@ export const HqStreamRequest = Schema.Union([
     type: Schema.Literal("seen"),
     projectId: Schema.String,
     resultIds: Schema.Array(Schema.String).check(Schema.isMaxLength(50)),
-    accessToken: Schema.String,
   }),
   Schema.Struct({
     type: Schema.Literal("move-offers"),
     requestId: Schema.String,
     projectId: Schema.String,
-    /** The person's current Zerops access token: HQ decides the offers on a fresh read of their role. */
-    accessToken: Schema.String,
   }),
   Schema.Struct({
     type: Schema.Literal("compare"),
@@ -161,7 +140,6 @@ export const HqStreamRequest = Schema.Union([
     appId: Schema.String,
     repo: RepoName,
     ...CompareQuery.fields,
-    accessToken: Schema.String,
   }),
   Schema.Struct({ type: Schema.Literal("pong") }),
 ]);

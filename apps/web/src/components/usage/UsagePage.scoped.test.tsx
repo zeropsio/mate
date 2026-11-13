@@ -188,7 +188,6 @@ it.effect("A developer sees only their own Usage, even when a bookmark names ano
     observation.showHq({
       orgId: "org",
       wire: {
-        withAccess: (frame) => Effect.succeed({ ...frame, accessToken: "person-access" }),
         open: () => Effect.succeed({ messages: Stream.fromQueue(messages), send }),
       },
     });

@@ -18,6 +18,9 @@ export type ReadinessStep =
   | HealthStage;
 export const READINESS_HEADER = "x-hq-readiness-id";
 
+/** The calls that carry the person's access token beside the session: hand-over, take-over replace. */
+const CARRYING_ACCESS = /^\/api\/(mates\/[^/]+\/hand-over|members\/[^/]+\/take-over\/[^/]+)$/u;
+
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 const decodeJson = Schema.decodeSync(Schema.fromJsonString(Schema.Unknown));
 
@@ -41,10 +44,15 @@ export const makeHttpCall = (
     } = {},
   ) =>
     Effect.promise(async () => {
-      const token = options.session === undefined ? undefined : access.get(options.session);
+      // As the product client: the person's access token rides only on the two calls in which HQ
+      // makes a Zerops write for them, the hand-over and the take-over replace.
+      const token =
+        options.session === undefined || !CARRYING_ACCESS.test(path)
+          ? undefined
+          : access.get(options.session);
       const input = options.body;
       const body =
-        token === undefined || method === "GET" || method === "HEAD" || input instanceof Uint8Array
+        token === undefined || input instanceof Uint8Array
           ? input
           : input === undefined
             ? { accessToken: token }
@@ -71,11 +79,6 @@ export const makeHttpCall = (
                 ...(options.session === undefined
                   ? {}
                   : { authorization: `Bearer ${options.session}` }),
-                // A read has no body: the person's token rides beside the session, as the product
-                // client sends it, and HQ shows only the projects Zerops lists to that token.
-                ...(token !== undefined && (method === "GET" || method === "HEAD")
-                  ? { "x-zerops-access-token": token }
-                  : {}),
                 ...options.headers,
                 ...(id === undefined ? {} : { [READINESS_HEADER]: id }),
               },
@@ -131,13 +134,7 @@ export const makeHttpCall = (
         if (id !== undefined) observers.delete(id);
       }
     });
-  return Object.assign(call, {
-    accessOf: (session: string) => {
-      const token = access.get(session);
-      if (token === undefined) throw new Error("No person access token for the HQ session");
-      return token;
-    },
-  });
+  return call;
 };
 
 export type Call = ReturnType<typeof makeHttpCall>;
