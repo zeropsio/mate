@@ -42,7 +42,9 @@
  *
  * - a dev half starts empty (`startWithoutCode: true`) — running, the clone target;
  * - a stage half waits at `READY_TO_DEPLOY` for its first deploy: no build and
- *   no `startWithoutCode`;
+ *   no `startWithoutCode` — but the stage of a part whose dev half is a dev pool (`apipool` beside
+ *   `apistage`) starts empty too: it is the part's one container that can hold a checkout, from
+ *   which the stand-up gives the pool its first image (a pool takes no lease before it has one);
  * - a utility keeps `buildFromGit` and `zeropsSetup` verbatim, and the platform
  *   builds it;
  * - every service keeps its `priority`, and an `envIsolation` it states itself.
@@ -71,7 +73,7 @@
 import { fromYaml } from "@t3tools/shared/schemaYaml";
 import * as Schema from "effect/Schema";
 
-import { isPoolOrSandboxServiceType } from "./infrastructureType.ts";
+import { isPoolOrSandboxServiceType, isPoolServiceType } from "./infrastructureType.ts";
 
 /** The tier directories, spelled as an application's recipe repository spells them in HQ. */
 export { RECIPE_TIER_PATHS, type RecipeTier } from "@t3tools/shared/hqRecipe";
@@ -313,6 +315,29 @@ function isPublicRepository(repository: string): boolean {
   );
 }
 
+/** The part a stage half belongs to, by zcp's names: `api` of `apistage`. */
+function partOfStage(hostname: string): string {
+  return hostname.slice(0, -"stage".length);
+}
+
+/**
+ * The parts whose dev half is a dev pool, by zcp's names: a pool (`swarm@1`) named like its
+ * part's stage (`apipool` beside `apistage`) gives `api`.
+ */
+function pooledParts(items: ReadonlyArray<TierItem>): ReadonlySet<string> {
+  return new Set(
+    items.flatMap((item) => {
+      const type = ownScalar(item, "type");
+      return item.hostname !== undefined &&
+        item.hostname.endsWith("pool") &&
+        type !== undefined &&
+        isPoolServiceType(type)
+        ? [item.hostname.slice(0, -"pool".length)]
+        : [];
+    }),
+  );
+}
+
 /** A pair's stage half by name: `…stage`, the literal `stage` included. The one answer every site reads. */
 export function isStageHostname(hostname: string): boolean {
   return hostname.endsWith("stage");
@@ -375,12 +400,18 @@ function rewritten(
 }
 
 /** A runtime as a Mate's birth brings it up (the module's header). */
-function asMateRuntime(item: TierItem, role: RecipeRuntimeRole): ReadonlyArray<string> {
+function asMateRuntime(
+  item: TierItem,
+  role: RecipeRuntimeRole,
+  pooled: ReadonlySet<string>,
+): ReadonlyArray<string> {
   switch (role) {
     case "dev":
       return rewritten(item, CODE_KEYS, START_EMPTY);
     case "stage":
-      return rewritten(item, CODE_KEYS);
+      return item.hostname !== undefined && pooled.has(partOfStage(item.hostname))
+        ? rewritten(item, CODE_KEYS, START_EMPTY)
+        : rewritten(item, CODE_KEYS);
     case "utility":
       return item.lines;
   }
@@ -416,6 +447,7 @@ export function mateTier(yaml: string): MateTier | undefined {
   if (tier === undefined) return undefined;
   const managed: Array<string> = [];
   const runtimes: Array<RecipeRuntime> = [];
+  const pooled = pooledParts(tier.items);
   const items = tier.items.map((item) => {
     const role = roleOf(item);
     if (role === "managed") {
@@ -423,7 +455,7 @@ export function mateTier(yaml: string): MateTier | undefined {
       return item.lines;
     }
     if (item.hostname !== undefined) runtimes.push({ hostname: item.hostname, role });
-    return asMateRuntime(item, role);
+    return asMateRuntime(item, role, pooled);
   });
   const projectVariables = tierProjectVariables(yaml);
   return {
