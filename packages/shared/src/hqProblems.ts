@@ -54,6 +54,8 @@ export const HqRefusal = Schema.Struct({
   reason: added(Schema.String),
   /** Where a hand-over stopped (`handover_unfinished`). */
   phase: added(Schema.String),
+  /** The least organization role that finishes a stopped hand-over (`handover_unfinished`), HQ's verdict. */
+  finishRole: added(Schema.Literals(["OWNER", "ADMIN"])),
   /** A counterpart's own words (`git_probe_refused`, GitHub's refusal behind `github_unavailable`). */
   message: added(Schema.String),
   problems: added(Schema.Array(HqProblem)),

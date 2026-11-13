@@ -5,6 +5,7 @@
  */
 import type { AutomationAction, SettingValue, TaskSourceWrite } from "@t3tools/client-runtime/data";
 import type { AutomatedModel } from "@t3tools/shared/openCodeKeyProviders";
+import { hqRefusalWords } from "@t3tools/client-runtime/zerops/hq";
 import type {
   HqScheduleRule,
   HqSlackChannels,
@@ -184,7 +185,7 @@ export function modelPriceWords(offer: AutomatedModel): string {
 }
 
 const BUDGET_MAX = 1_000_000;
-const BUDGET_WORDS = "A budget is an amount above $0 and at most $1,000,000, or empty for none.";
+const BUDGET_WORDS = hqRefusalWords({ code: "invalid", reason: "budget" });
 
 /** The monthly budget as typed: an amount up to $1,000,000, or none. */
 export function readBudget(

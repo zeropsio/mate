@@ -959,6 +959,7 @@ async function errorOf(response: Response, { gitSetup, merge }: CallAsk): Promis
         code,
         reason,
         ...(refusal?.phase !== undefined ? { phase: refusal.phase } : {}),
+        ...(refusal?.finishRole !== undefined ? { finishRole: refusal.finishRole } : {}),
         gitSetup,
         ...(isRemoteRefusal(body) ? { remote: body } : {}),
       }),
