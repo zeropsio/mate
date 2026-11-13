@@ -11,6 +11,8 @@ import {
   mateStandUpHoldsComposer,
   mateStandUpPhase,
   mateStandUpSignedIn,
+  mateSetupRetryState,
+  mateStandUpStopped,
 } from "./mateStandUp";
 
 /** A provider instance as the server sends it: signed in, models listed, unless said otherwise. */
@@ -280,4 +282,117 @@ describe("a failed stand-up no longer holds a person in an empty conversation", 
       ).toBe(false);
     },
   );
+});
+
+/** A run of the Mate's main conversation, as its record reads: the stand-up's, ended failed. */
+const standUpRun = (
+  edit: {
+    readonly principal?:
+      | { readonly kind: "standup"; readonly startedBy: string }
+      | {
+          readonly kind: "person";
+          readonly subject: string;
+        };
+    readonly end?:
+      | { readonly kind: "failed"; readonly reason: string; readonly next: null }
+      | {
+          readonly kind: "completed";
+        }
+      | null;
+    readonly state?: "queued" | "running" | "ended";
+    readonly items?: number;
+  } = {},
+) => ({
+  principal: edit.principal ?? { kind: "standup" as const, startedBy: ADA },
+  end:
+    edit.end === undefined
+      ? { kind: "failed" as const, reason: "Could not confirm access.", next: null }
+      : edit.end,
+  state: edit.state ?? ("ended" as const),
+  summary: { items: edit.items ?? 0, calls: {}, answerItemId: null, lastItemSeq: null },
+});
+
+describe("a setup that never started is the Mate's arrival, not a conversation", () => {
+  // witness: apps/web/src/zerops/mateStandUp.ts | if (run.principal.kind !== "standup" || run.summary.items > 0) return null; → if (run.principal.kind !== "standup") return null;
+  it("reads a conversation holding only its stand-up's runs that ended before their first step", () => {
+    expect(mateStandUpStopped([standUpRun()], false)).toEqual({
+      by: ADA,
+      failures: 1,
+      waiting: false,
+    });
+    expect(mateStandUpStopped([standUpRun({ items: 3 })], false)).toBeNull();
+  });
+
+  // witness: apps/web/src/zerops/mateStandUp.ts | if (personWrote) return null; → if (false) return null;
+  it("is a conversation again once its person writes, or anything else ran in it", () => {
+    expect(mateStandUpStopped([standUpRun()], true)).toBeNull();
+    expect(
+      mateStandUpStopped(
+        [standUpRun(), standUpRun({ principal: { kind: "person", subject: "zerops-user:u-ada" } })],
+        false,
+      ),
+    ).toBeNull();
+    expect(
+      mateStandUpStopped([standUpRun(), standUpRun({ end: null, state: "running" })], false),
+    ).toBeNull();
+  });
+
+  // witness: apps/web/src/zerops/mateStandUp.ts | return by === undefined || failures === 0 ? null : { by, failures, waiting }; → return by === undefined ? null : { by, failures, waiting };
+  it("leaves a first stand-up on its way to the conversation, and holds a retried one until it begins", () => {
+    expect(mateStandUpStopped([standUpRun({ end: null, state: "queued" })], false)).toBeNull();
+    expect(
+      mateStandUpStopped([standUpRun(), standUpRun({ end: null, state: "queued" })], false),
+    ).toEqual({ by: ADA, failures: 1, waiting: true });
+  });
+});
+
+describe("Try again on a setup that never started never answers with silence", () => {
+  const pressed = (answer: "sending" | "went" | "refused" | "unreachable") => ({
+    answer,
+    failures: 1,
+  });
+
+  // witness: apps/web/src/zerops/mateStandUp.ts | return "refused"; → return "ready";
+  it.each([
+    { name: "unpressed", press: null, failures: 1, settling: false, state: "ready" },
+    { name: "sent", press: pressed("sending"), failures: 1, settling: true, state: "sending" },
+    {
+      name: "taken by the Mate",
+      press: pressed("went"),
+      failures: 1,
+      settling: true,
+      state: "starting",
+    },
+    { name: "stopped again", press: pressed("went"), failures: 2, settling: false, state: "again" },
+    {
+      name: "refused by the Mate",
+      press: pressed("refused"),
+      failures: 1,
+      settling: false,
+      state: "refused",
+    },
+    {
+      name: "not reaching the Mate",
+      press: pressed("unreachable"),
+      failures: 1,
+      settling: false,
+      state: "unreachable",
+    },
+    {
+      name: "a second failure after a reload",
+      press: null,
+      failures: 2,
+      settling: false,
+      state: "again",
+    },
+  ] as const)("$name: $state", ({ press, failures, settling, state }) => {
+    expect(mateSetupRetryState({ press, failures, waiting: false, settling })).toBe(state);
+  });
+
+  // witness: apps/web/src/zerops/mateStandUp.ts | if (input.waiting) return "starting"; → if (false) return "starting";
+  it("shows the Mate starting while a retried attempt waits to begin, whoever pressed", () => {
+    expect(mateSetupRetryState({ press: null, failures: 1, waiting: true, settling: false })).toBe(
+      "starting",
+    );
+  });
 });

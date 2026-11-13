@@ -437,7 +437,8 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
     [WS_METHODS.zeropsStandUpRetry]: () =>
       admit(
         WS_METHODS.zeropsStandUpRetry,
-        deps.zeropsSetup?.retry(subject) ?? Effect.succeed(false),
+        // The record names its asker as HQ does, by bare Zerops user id; the session, prefixed.
+        deps.zeropsSetup?.retry(zeropsUserIdOf(subject)) ?? Effect.succeed(false),
       ),
     [WS_METHODS.zeropsLifecycleGet]: (input) => zeropsLifecycle.get(input.threadId),
     [WS_METHODS.zeropsAgentAuthCheck]: (input) =>

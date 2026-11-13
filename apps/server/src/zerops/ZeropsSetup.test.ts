@@ -624,10 +624,10 @@ describe("ZeropsSetup: the stand-up", () => {
           Effect.gen(function* () {
             yield* setup.awaitStandUp;
             assert.strictEqual((yield* turnsOf(world)).length, 1);
-            assert.isFalse(yield* setup.retry("zerops-user:someone-else"));
-            assert.isTrue(yield* setup.retry("zerops-user:user-a"));
+            assert.isFalse(yield* setup.retry("someone-else"));
+            assert.isTrue(yield* setup.retry("user-a"));
             assert.strictEqual((yield* turnsOf(world)).length, 2);
-            assert.isFalse(yield* setup.retry("zerops-user:user-a"));
+            assert.isFalse(yield* setup.retry("user-a"));
           }),
         );
       }),
@@ -648,7 +648,7 @@ describe("ZeropsSetup: the stand-up", () => {
               (yield* setup.document).steps.find((step) => step.id === "standup")?.state,
               "failed",
             );
-            assert.isTrue(yield* setup.retry("zerops-user:user-a"));
+            assert.isTrue(yield* setup.retry("user-a"));
             assert.strictEqual((yield* Ref.get(world.admitted)).length, 2);
             assert.strictEqual(
               (yield* setup.document).steps.find((step) => step.id === "standup")?.state,
@@ -661,7 +661,7 @@ describe("ZeropsSetup: the stand-up", () => {
           Effect.gen(function* () {
             yield* setup.awaitStandUp;
             assert.strictEqual((yield* turnsOf(world)).length, 0);
-            assert.isTrue(yield* setup.retry("zerops-user:user-a"));
+            assert.isTrue(yield* setup.retry("user-a"));
             assert.strictEqual((yield* turnsOf(world)).length, 1);
           }),
         );
@@ -1856,8 +1856,8 @@ describe("ZeropsSetup: the stand-up on the Mate engine", () => {
               (document) => document.steps.find((one) => one.id === "standup")?.state,
             );
             assert.strictEqual(yield* step, "failed");
-            assert.isFalse(yield* setup.retry("zerops-user:user-b"));
-            assert.isTrue(yield* setup.retry("zerops-user:user-a"));
+            assert.isFalse(yield* setup.retry("user-b"));
+            assert.isTrue(yield* setup.retry("user-a"));
           }),
         );
         const keys = (yield* Ref.get(world.wakes)).map((wake) => wake.key);
@@ -1889,7 +1889,7 @@ describe("ZeropsSetup: the stand-up on the Mate engine", () => {
                 reached: "unknown",
               },
             });
-            assert.isFalse(yield* setup.retry("zerops-user:user-a"));
+            assert.isFalse(yield* setup.retry("user-a"));
           }),
         );
         assert.strictEqual((yield* Ref.get(world.wakes)).length, 1);
@@ -1918,7 +1918,7 @@ describe("ZeropsSetup: the stand-up on the Mate engine", () => {
             );
             assert.strictEqual(yield* step, "failed");
             yield* change(world, world.signers, SIGNED);
-            assert.isTrue(yield* setup.retry("zerops-user:user-a"));
+            assert.isTrue(yield* setup.retry("user-a"));
           }),
         );
         assert.deepStrictEqual(
@@ -1942,7 +1942,7 @@ describe("ZeropsSetup: the stand-up on the Mate engine", () => {
             (document) => document.steps.find((one) => one.id === "standup")?.state,
           );
           assert.strictEqual(yield* step, "done");
-          assert.isFalse(yield* setup.retry("zerops-user:user-a"));
+          assert.isFalse(yield* setup.retry("user-a"));
         }),
       );
     }),

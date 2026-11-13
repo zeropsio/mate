@@ -39,7 +39,6 @@ import {
   type ZeropsAgentId,
   type ConversationAgent,
   wakeId as standUpWakeIdOf,
-  zeropsUserIdOf,
 } from "@t3tools/contracts";
 import type { LinkedMate } from "@t3tools/shared/mateLink";
 import { resolvePrimaryConversation } from "@t3tools/shared/primaryConversation";
@@ -163,9 +162,13 @@ export class ZeropsSetup extends Context.Service<
     /** Receipt: the initial wait ended as sent, failed, skipped or not asked. */
     readonly awaitStandUp: Effect.Effect<void>;
     /**
-     * One manual attempt, only for the recorded asker (their session's subject) after a failed send.
+     * One manual attempt after a failed send, only for its recorded asker, by bare Zerops user id
+     * (`zeropsUserIdOf`), as the record names them. True once an attempt went, whether it then
+     * starts or ends failed again (the setup document says which); false where there is no failed
+     * send of theirs to try again — none recorded, not failed, someone else's, or another attempt
+     * took it first. A failure to read or write the record is an error, never a false.
      */
-    readonly retry: (subject: string) => Effect.Effect<boolean, OrchestrationDispatchCommandError>;
+    readonly retry: (userId: string) => Effect.Effect<boolean, OrchestrationDispatchCommandError>;
   }
 >()("t3/zerops/ZeropsSetup") {}
 
@@ -839,18 +842,13 @@ export const makeZeropsSetup = Effect.gen(function* () {
     finished = Fiber.join(worker);
   }
 
-  const retry = (subject: string) =>
+  const retry = (userId: string) =>
     attempts
       .withPermit(
         Effect.gen(function* () {
           const stored = yield* recordOf;
           const held = yield* seenOnEngine(stored);
-          // The record names its asker by their Zerops user id; the session, by its subject.
-          if (
-            stored === undefined ||
-            held?.source !== "server:failed" ||
-            held.userId !== zeropsUserIdOf(subject)
-          )
+          if (stored === undefined || held?.source !== "server:failed" || held.userId !== userId)
             return false;
           const id = `mate-standup-${held.threadId}-${yield* crypto.uuidV4()}`;
           const changed = yield* sql`UPDATE zerops_stand_ups
@@ -864,7 +862,15 @@ export const makeZeropsSetup = Effect.gen(function* () {
           return true;
         }),
       )
-      .pipe(Effect.catch(() => Effect.succeed(false)));
+      .pipe(
+        Effect.mapError(
+          (cause) =>
+            new OrchestrationDispatchCommandError({
+              message: "The setup could not be started again.",
+              cause,
+            }),
+        ),
+      );
 
   return ZeropsSetup.of({
     document,
