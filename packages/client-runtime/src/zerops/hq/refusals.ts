@@ -23,6 +23,7 @@ import { HQ_MERGERS_MAX } from "@t3tools/shared/hqMergers";
 import { fileSize } from "../gitBrowse/blob.ts";
 import type { HqOfferState } from "@t3tools/shared/hqOffers";
 import type { ReleaseRefusal } from "@t3tools/shared/hqRelease";
+import type { HqRefusal } from "@t3tools/shared/hqProblems";
 import type { Reason } from "@t3tools/shared/zeropsPermissions";
 
 /** Every permission's refusal, in words: a reason left out does not compile. */
@@ -219,9 +220,10 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
   environment_not_found: "HQ has no such environment.",
   deploy_token_refused: "Zerops did not accept this deploy key.",
   deploy_token_scope: "This deploy key reaches more than its own project.",
-  // HQ keeps a deploy key only sealed under its own key (`mate-hq spec/protocol.md` § Health, `keys`).
+  // HQ keeps every secret it is given (a deploy key, an AI key, a webhook's, an intake's, Slack's,
+  // Discord's) only sealed under its own key (`mate-hq spec/protocol.md` § Health, `keys`).
   no_key_secret:
-    "HQ has no key to keep deploy keys with yet. Whoever runs this HQ sets its HQ_KEY_SECRET.",
+    "HQ has no key to keep secrets with yet. Whoever runs this HQ sets its HQ_KEY_SECRET.",
   // A deploy asked again ("Run again", `mate-hq spec/protocol.md` § Structure, lifecycle, deploys, recipes
   // and Mate observation).
   deploy_not_found: "HQ has no such deploy.",
@@ -244,8 +246,6 @@ const AUTOMATION_WORDS = {
   repo_not_connected: "Connect this repository to the project in HQ first.",
   repo: "That is no GitHub repository. Name it as owner/name.",
   label: "A label has 1 to 50 characters.",
-  hq_address_unknown:
-    "HQ does not know its own public address yet. Give HQ's service a public address, then try again.",
   repository_changed:
     "The repository on GitHub is no longer the one connected. Connect it again under Repositories.",
   // The organization's GitHub app (`mate-hq spec/protocol.md` § GitHub).
@@ -253,7 +253,7 @@ const AUTOMATION_WORDS = {
   needs_owner_seal:
     "Nobody is recorded to have set this GitHub app up, so Mate uses it for nothing. An Owner or Admin makes it again.",
   // Slack.
-  slack_unavailable: "HQ could not set Slack up just now. Try again.",
+  slack_workspace_taken: "Another organization takes tasks from this Slack workspace already.",
   bot_token: "That is not a bot token. Copy it again from the app's settings.",
   bot_token_refused: "Slack refused that bot token. Install the app again and copy its new token.",
   signing_secret: "That is not a signing secret. Copy it again from Basic Information.",
@@ -266,6 +266,7 @@ const AUTOMATION_WORDS = {
     "There is no such channel the bot can see. Copy the ID from the channel's details, and add the bot first.",
   channel_taken: "Another project takes tasks from that channel already.",
   // Discord.
+  discord_application_taken: "Another organization uses this Discord application already.",
   discord_unreachable: "HQ could not reach Discord. Try again in a moment.",
   application_id:
     "That application ID does not match the bot token. Copy both again from the Developer Portal.",
@@ -273,7 +274,6 @@ const AUTOMATION_WORDS = {
     "That public key does not match the application. Copy it again from General Information.",
   commands_refused:
     "Discord refused Mate's /mate command. Check the bot token and the application, then connect again.",
-  user_ids: "A Discord user ID is a number of up to 20 digits, and the list holds at most 500.",
   channel_id: "That is not a Discord channel ID. Copy it with Developer Mode on.",
   not_connected: "Connect Discord first.",
   channel_kind: "Mate opens threads only in a text or forum channel. Choose one of those.",
@@ -284,11 +284,18 @@ const AUTOMATION_WORDS = {
   brief: "A brief has at most 16,000 characters.",
   day: "Choose the day of the week it runs on.",
   time_zone: "HQ does not know that time zone. Use one like Europe/Prague.",
-  rule: "HQ could not work out when this runs. Check the time and the time zone.",
   schedule_not_found: "That schedule is gone already.",
   // The limits on each task.
   minutes: "Minutes are a whole number from 1 to 1,440.",
   cost: "Cost is an amount above $0 and at most $10,000, or empty for none.",
+  budget: "A budget is an amount above $0 and at most $1,000,000, or empty for none.",
+  model: "HQ offers no such model. Choose one from the list.",
+  // The organization's AI keys.
+  key_value:
+    "That is not a key: a key is up to 1,024 characters with no spaces. Copy it again from the provider.",
+  unknown_provider: "HQ keeps no keys for that provider.",
+  // A held organization: HQ opens none of its saved keys or tokens.
+  held: "This organization is on hold in HQ, so HQ opens none of its saved keys or tokens. Whoever runs this HQ lifts the hold.",
 } as const;
 
 /** Every reason of automated Mates' sources this build has words for. */
@@ -403,23 +410,26 @@ export const HQ_HANDOVER_UNFINISHED = "handover_unfinished";
 
 /** Where a hand-over stopped (`409 handover_unfinished`'s `phase`), as what it was doing. */
 const HANDOVER_PHASE_WORDS: Readonly<Record<string, string>> = {
-  override: "moving its owner",
+  owner: "moving its owner",
   mint: "making its new key",
   secret: "writing its new key to its container",
   install: "installing its new key",
   revoke: "revoking the key it replaced",
 };
 
-/** A hand-over HQ stopped part way: where, Zerops' own code for why, and who finishes it. */
-function handoverUnfinishedWords(phase: string | undefined, reason: string | undefined): string {
+/** A hand-over HQ stopped part way: where, Zerops' own code for why, and who finishes it (HQ's `finishRole`). */
+function handoverUnfinishedWords(
+  phase: string | undefined,
+  reason: string | undefined,
+  finishRole: HqRefusal["finishRole"],
+): string {
   const doing = phase === undefined ? undefined : HANDOVER_PHASE_WORDS[phase];
   const where =
     doing === undefined
       ? `The hand-over stopped part way${phase === undefined ? "" : ` (${phase})`}`
       : `The hand-over stopped while ${doing}`;
-  // An admin may not revoke an owner's key: Zerops' `ownerRoleRequired`, finished by an owner.
   const finish =
-    reason === "ownerRoleRequired"
+    finishRole === "OWNER"
       ? "An owner of the organization must hand it over again to finish."
       : "Hand it over again to finish.";
   return `${where}${reason === undefined ? "" : ` (${reason})`}. ${finish}`;
@@ -457,12 +467,14 @@ export function hqRefusalWords(refusal: {
   readonly reason: string | undefined;
   /** A hand-over's phase, where HQ named one. */
   readonly phase?: string | undefined;
+  /** Who finishes a stopped hand-over, where HQ named it. */
+  readonly finishRole?: HqRefusal["finishRole"];
   readonly remote?: HqRemoteRefusal;
   readonly gitSetup?: boolean;
 }): string {
   const { reason } = refusal;
   if (refusal.code === HQ_HANDOVER_UNFINISHED)
-    return handoverUnfinishedWords(refusal.phase, reason);
+    return handoverUnfinishedWords(refusal.phase, reason, refusal.finishRole);
   if (refusal.code === "remote_refused") {
     return isRemoteRefusal(reason)
       ? remoteRefusalWords(refusal.remote ?? { reason })

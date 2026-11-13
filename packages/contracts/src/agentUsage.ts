@@ -258,6 +258,7 @@ export const UsageReport = Schema.Struct({
   ).check(Schema.isMaxLength(200)),
   groupsMore: Schema.Boolean,
   detail: Schema.Array(Schema.Union([UsageFact, UsageDailyDetail])).check(Schema.isMaxLength(200)),
+  /** HQ reads one detail page and hands out no continuation. */
   next: Schema.Null,
 });
 export type UsageReport = typeof UsageReport.Type;
