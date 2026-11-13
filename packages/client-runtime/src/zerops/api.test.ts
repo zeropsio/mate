@@ -1670,8 +1670,7 @@ describe("ZeropsApiClient project reads", () => {
  * Which key a list comes back under is the platform's to say, and it is not one
  * key. Measured against the live API on 2026-09-18, as the org's owner: a
  * project's services and an org's members each answered under a name this
- * client did not read, so both came back empty and said nothing about it. The
- * server half already knew (`ZeropsThrowawayIdentity.ts`).
+ * client did not read, so both came back empty and said nothing about it.
  */
 describe("the key a list answers under", () => {
   const SERVICE = { id: "svc-api", name: "api", status: "ACTIVE" };
