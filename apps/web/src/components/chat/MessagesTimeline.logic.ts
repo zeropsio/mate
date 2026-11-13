@@ -3631,7 +3631,17 @@ export function deriveMessagesTimelineRows(input: {
       (lastTurn.interrupted &&
         !lastTurn.byMessage &&
         lastTurn.interruption?.continuation !== "manual"));
-  if (input.endNotice != null && !(input.endNotice.stop === true && cardSaysStopped)) {
+  // A failure the last card already says under its line is said once, there.
+  const cardSaysFailure =
+    input.endNotice != null &&
+    lastTurn?.brokeOff != null &&
+    lastTurn.brokeOff.quiet !== true &&
+    input.endNotice.words.includes(lastTurn.brokeOff.reason);
+  if (
+    input.endNotice != null &&
+    !(input.endNotice.stop === true && cardSaysStopped) &&
+    !cardSaysFailure
+  ) {
     const at = rows.at(-1)?.createdAt ?? "";
     rows.push({
       kind: "error",
