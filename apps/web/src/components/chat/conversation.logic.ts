@@ -753,6 +753,8 @@ export interface BrokeOff {
   readonly next: string | null;
   /** A refused attempt (`isRefusedAttempt`): a quiet record of it, never an alarm. */
   readonly quiet?: true;
+  /** Its run holds nothing: it ended before it began (its admission refused), never "stopped". */
+  readonly beforeStart?: true;
 }
 
 /**
@@ -1101,6 +1103,7 @@ export function deriveConversationStructure(given: {
                   entryId: null,
                   reason: run.end.reason,
                   next: run.end.kind === "failed" && isLatestTurn ? run.end.next : null,
+                  ...(run.summary.items === 0 ? { beforeStart: true as const } : {}),
                 }
               : null
           : brokeOffOn({

@@ -675,9 +675,13 @@ export function runClockMs(status: RunStatus, now: number): number {
 
 /**
  * A run that is over, in a line: "Nova worked 1m 20s", "Nova thought 12s",
- * "Nova stopped after 45s".
+ * "Nova stopped after 45s", "Nova didn't start".
  */
 export function workedWords(speaker: string, status: RunStatus): string {
+  // Ended before it began: nothing ran to have stopped, and no time to name.
+  if (status.face === "brokeOff" && status.brokeOff?.beforeStart === true) {
+    return `${speaker} didn't start`;
+  }
   const took = formatWorkDuration(workedMs(status));
   // Stopped by the person, or broken off: the run's card says why under it.
   if (status.face === "stopped" || status.face === "brokeOff") {
