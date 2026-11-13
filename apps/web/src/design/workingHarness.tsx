@@ -1159,7 +1159,7 @@ function Harness() {
                 status: status({
                   startedAt: ago(8),
                   worked: false,
-                  ran: { ms: 0, since: null, personMs: 0 },
+                  ran: { ms: 0, since: null, admittedAt: null, personMs: 0 },
                 }),
               })}
             />

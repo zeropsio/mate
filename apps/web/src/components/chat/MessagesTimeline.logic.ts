@@ -528,9 +528,15 @@ export interface RunStatus {
   readonly workedMs?: number;
   /**
    * Live, its runs as its engine records them, which its clock counts so it says what `workedMs`
-   * will: the time the runs over ran, the start of the one on, and the person's answers so far.
+   * will: the time the runs over ran, the start of the one on, the latest run's admission from
+   * its queue, and the person's answers so far.
    */
-  readonly ran?: { readonly ms: number; readonly since: number | null; readonly personMs: number };
+  readonly ran?: {
+    readonly ms: number;
+    readonly since: number | null;
+    readonly admittedAt: number | null;
+    readonly personMs: number;
+  };
   /** Live, when the wait still open began: the clock stands still until the person answers. */
   readonly waitingSince: string | null;
   /** The open wait is on its helpers, after its turn: never a wait on the person. */
@@ -1390,10 +1396,14 @@ function waitedOn(turn: ConversationTurn): {
  * jobs between the runs are not work (V1 already leaves a wait on helpers out, review of pass 42);
  * Milo's stress run read "worked 1m 34s" with 22 s queued and 24 s waiting on a job in it.
  */
-/** Live, an engine card's runs so far: the time the runs over ran, and the start of the one on. */
+/**
+ * Live, an engine card's runs so far: the time the runs over ran, the start of the one on, and
+ * when the latest left its queue.
+ */
 function engineRanSoFar(runs: ReadonlyArray<RunRecord>): {
   readonly ms: number;
   readonly since: number | null;
+  readonly admittedAt: number | null;
 } {
   let ms = 0;
   let since: number | null = null;
@@ -1402,7 +1412,7 @@ function engineRanSoFar(runs: ReadonlyArray<RunRecord>): {
     if (run.endedAt === null) since = run.startedAt;
     else ms += Math.max(0, run.endedAt - run.startedAt);
   }
-  return { ms, since };
+  return { ms, since, admittedAt: runs.at(-1)?.admittedAt ?? null };
 }
 
 function engineWorkedMs(runs: ReadonlyArray<RunRecord>, personMs: number): number | undefined {
