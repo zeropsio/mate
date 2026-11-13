@@ -392,6 +392,10 @@ export function hqNavigationLink(options: {
 
       /** The scopes the open segment was asked for: what HQ may be sending. */
       const asked = new Set<string>();
+      /** The scopes of the open segment's `retry` HQ has not answered yet (`scope-ready` or `scope-error`). */
+      const answering = new Set<string>();
+      /** The scopes HQ said changed, or the person's access moving left to read again, not asked again yet. */
+      const changed = new Map<string, HqScope>();
       /** Whether a socket of this attempt said anything yet. */
       let said = false;
       // Each new segment negotiates usage before any consumption scope is sent.
@@ -444,6 +448,25 @@ export function hqNavigationLink(options: {
             withToken({ type: "subscribe" as const, scopes }),
           );
           for (const registered of registrations) asked.add(hqScopeKey(registered.wire));
+        });
+      /**
+       * Asks HQ to read every changed scope still asked again, in one `retry`, once HQ answered the
+       * last one: a scope that changes while HQ reads the person for it waits for that answer, so a
+       * socket has one `retry` in flight, never one a change, and a busy organisation's changes cost
+       * one read of the person each answer, not each change.
+       */
+      const askChanged = (segment: HqSegment) =>
+        Effect.gen(function* () {
+          for (const scopeKey of answering) if (!asked.has(scopeKey)) answering.delete(scopeKey);
+          if (answering.size > 0) return;
+          const scopes = [...changed].flatMap(([scopeKey, scope]) =>
+            asked.has(scopeKey) ? [scope] : [],
+          );
+          changed.clear();
+          for (const scope of scopes) answering.add(hqScopeKey(scope));
+          yield* sendScopes(segment, scopes, (part) =>
+            withToken({ type: "retry" as const, scopes: part }),
+          );
         });
       /** The scopes asked once more after HQ answered `token_required`, until one is admitted. */
       const tokenReasked = new Set<string>();
@@ -569,11 +592,8 @@ export function hqNavigationLink(options: {
         });
       const resubscribe = (registered: Registered) => again([registered]);
 
-      /** Reads one message; a change it reports joins `changed`, answered by {@link onMessages}. */
-      const onMessage = (
-        encoded: string,
-        changed: Map<string, HqScope>,
-      ): Effect.Effect<void, StreamFault> =>
+      /** Reads one message; a change it reports joins `changed`, asked again by {@link askChanged}. */
+      const onMessage = (encoded: string): Effect.Effect<void, StreamFault> =>
         Effect.gen(function* () {
           if (stopped) return;
           heardAt = yield* Clock.currentTimeMillis;
@@ -598,6 +618,7 @@ export function hqNavigationLink(options: {
             case "scope-ready": {
               const scopeKey = hqScopeKey(message.scope);
               const entry = subscribed.get(scopeKey);
+              answering.delete(scopeKey);
               if (entry === undefined) return;
               tokenReasked.delete(scopeKey);
               cursors.set(scopeKey, {
@@ -657,6 +678,7 @@ export function hqNavigationLink(options: {
             }
             case "scope-error": {
               const scopeKey = hqScopeKey(message.scope);
+              answering.delete(scopeKey);
               const entry = subscribed.get(scopeKey);
               if (entry === undefined) return;
               // Asked without the person's token: this client's own fault, never HQ's outage.
@@ -716,25 +738,20 @@ export function hqNavigationLink(options: {
 
       /**
        * Reads one drain of the segment's queue: every frame HQ sent before this reader's turn,
-       * in order. The changes among them are answered together, by one `retry` naming each scope
-       * still asked (split only at the frame cap), so HQ reads the person's role and projects once
+       * in order. The changes among them, and those heard while HQ answered the last `retry`, are
+       * asked again together ({@link askChanged}), so HQ reads the person's role and projects once
        * for all of them, never once a scope.
        */
       const onMessages = (messages: ReadonlyArray<string>) =>
         Effect.gen(function* () {
-          const changed = new Map<string, HqScope>();
           // HQ answers many scopes in one turn (every placed Mate's, on a load): one publication.
           const settle = store.gather();
-          yield* Effect.forEach(messages, (encoded) => onMessage(encoded, changed), {
-            discard: true,
-          }).pipe(Effect.ensuring(Effect.sync(settle)));
+          yield* Effect.forEach(messages, onMessage, { discard: true }).pipe(
+            Effect.ensuring(Effect.sync(settle)),
+          );
           const segment = open;
           if (stopped || segment === null) return;
-          yield* sendScopes(
-            segment,
-            [...changed].flatMap(([scopeKey, scope]) => (asked.has(scopeKey) ? [scope] : [])),
-            (scopes) => withToken({ type: "retry" as const, scopes }),
-          );
+          yield* askChanged(segment);
         });
 
       /**
@@ -808,14 +825,11 @@ export function hqNavigationLink(options: {
         const settle = store.gather();
         yield* again(fresh).pipe(Effect.ensuring(Effect.sync(settle)));
         const asking = new Set(fresh.map(({ wire }) => hqScopeKey(wire)));
-        const rereads = [...reread].flatMap(([scopeKey, scope]) =>
-          asked.has(scopeKey) && !asking.has(scopeKey) ? [scope] : [],
-        );
+        for (const [scopeKey, scope] of reread) changed.set(scopeKey, scope);
         reread.clear();
-        if (open !== null)
-          yield* sendScopes(open, rereads, (scopes) =>
-            withToken({ type: "retry" as const, scopes }),
-          );
+        // A scope asked on a new registration is read by that ask.
+        for (const scopeKey of asking) changed.delete(scopeKey);
+        if (open !== null) yield* askChanged(open);
         return wakeAt;
       });
 
@@ -910,6 +924,8 @@ export function hqNavigationLink(options: {
               });
             asked.clear();
             // This segment's subscriptions read every scope anew.
+            answering.clear();
+            changed.clear();
             reread.clear();
             if (resumed.length > 0) {
               for (const registered of resumed) yield* register(registered);
