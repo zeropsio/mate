@@ -12,7 +12,7 @@ import { useProjection } from "./ZeropsAccountData";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 import { useZeropsData } from "./zeropsDataContext";
 
-const EMPTY = Atom.make({ groups: [], ungrouped: [], tools: [], empty: true, undrawn: [] });
+const EMPTY = Atom.make({ groups: [], ungrouped: [], empty: true, undrawn: [] });
 export function useProjectsInventory(
   candidates: ReadonlyArray<ZeropsCandidatePresentation>,
   order: ProjectOrderOptions,
@@ -50,10 +50,6 @@ export function useProjectsInventory(
           return candidate === undefined ? [] : [candidate];
         })
         .sort((a, b) => rankZeropsCandidateForListing(a) - rankZeropsCandidateForListing(b)),
-      tools: tree.tools.flatMap(({ kind, item }) => {
-        const candidate = byId.get(item.project.id);
-        return candidate === undefined ? [] : [{ kind, item: candidate }];
-      }),
     };
   }, [tree, candidates]);
 }

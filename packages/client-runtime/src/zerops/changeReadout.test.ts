@@ -19,6 +19,8 @@ const change: HqChange = {
   repo: "appdev",
   number: 2,
   mateProjectId: "p-nova",
+  branch: "change",
+  receipt: null,
   title: "Add a /status page",
   body: "",
   state: "open",

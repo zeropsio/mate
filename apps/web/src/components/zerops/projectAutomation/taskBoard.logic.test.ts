@@ -93,7 +93,6 @@ describe("an application's task board", () => {
     ["closed", "closed"],
     ["failed", "failed"],
     ["stopped", "stopped"],
-    ["declined", "declined"],
   ] as const)("a task that ended %s says so, and when it ended", (state, status) => {
     const ended = task({ id: "1", state, endedAt: "2026-10-18T11:00:00.000Z" });
     expect(boardOf([ended], NOW).recent[0]).toMatchObject({ outcome: status, when: "1h ago" });

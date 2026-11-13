@@ -162,12 +162,6 @@ export {
   preferredMateTint,
 } from "./mateTints.ts";
 export {
-  partitionZeropsToolProjects,
-  readZeropsToolKind,
-  type ZeropsToolKind,
-  type ZeropsToolProject,
-} from "./tools.ts";
-export {
   resolvePrimaryConversation,
   type ZeropsConversationCandidate,
   type ZeropsPrimaryConversation,
@@ -211,7 +205,6 @@ export {
   type BuildZeropsGroupTreeOptions,
   type ZeropsGroupTreeEnvironment,
   type ZeropsGroupTreeGroup,
-  type ZeropsGroupTreeTool,
   type ZeropsGroupTreeView,
   type ZeropsProjectCarrier,
 } from "./groupTree.ts";

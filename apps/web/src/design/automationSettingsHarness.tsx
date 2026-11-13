@@ -17,7 +17,7 @@
 import type { OrgAiKeysRead, TaskSourceSettingValue } from "@t3tools/client-runtime/data";
 import type { HqGithubView } from "@t3tools/shared/hqGithub";
 import { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
-import type { HqTaskLimitsView } from "@t3tools/shared/hqIntake";
+import type { HqTaskLimitsRequest, HqTaskLimitsView } from "@t3tools/shared/hqIntake";
 import { StrictMode, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -44,7 +44,7 @@ const nothing = () => {};
 const KEY_SET: OrgAiKeysRead = {
   keys: {
     state: "known",
-    keys: [{ provider: "nebius", set: true, setAt: "2026-10-17T09:00:00.000Z" }],
+    keys: [{ provider: "nebius", set: true, setAt: "2026-10-17T09:00:00.000Z", setBy: null }],
     stale: false,
   },
   action: { kind: "idle" },
@@ -216,7 +216,7 @@ function LimitsRows() {
   const [action, setAction] = useState<unknown>({ kind: "idle" });
   const limits = {
     read: { setting: known(held), action, revealed: null } as TaskSourceSettingValue<never>,
-    write: (change: { readonly kind: string; readonly limits?: HqTaskLimitsView }) => {
+    write: (change: { readonly kind: string; readonly limits?: HqTaskLimitsRequest }) => {
       const next = change.limits!;
       setAction({ kind: "working", verb: "task-limits" });
       setTimeout(() => {

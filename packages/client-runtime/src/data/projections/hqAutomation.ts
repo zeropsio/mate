@@ -94,7 +94,7 @@ function answered(
   const { intent } = record;
   const view: HqAiKeyView | undefined =
     intent.kind === "remove-ai-key"
-      ? { provider: intent.provider, set: false, setAt: null }
+      ? { provider: intent.provider, set: false, setAt: null, setBy: null }
       : operationResult(record, "set-ai-key");
   if (view === undefined) return keys;
   return {

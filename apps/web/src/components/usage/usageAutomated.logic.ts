@@ -119,8 +119,8 @@ export interface AutomatedBudget {
 
 /** The month's automated spend against the budget; null while none is set. */
 export function automatedBudget(limits: HqTaskLimitsView | null): AutomatedBudget | null {
-  const budget = limits?.monthlyBudgetUsd;
-  if (budget == null || limits?.spentThisMonthUsd === undefined) return null;
+  const budget = limits?.monthlyBudgetUsd ?? null;
+  if (limits === null || budget === null) return null;
   const spent = limits.spentThisMonthUsd;
   return {
     spent: formatUsd(spent),

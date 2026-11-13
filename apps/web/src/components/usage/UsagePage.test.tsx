@@ -137,9 +137,21 @@ it("The Usage range preserves exact minutes and the Hour table names its date an
 
 it("The month's automated spend shows against the organization's budget at the top of Usage", () => {
   expect(renderPage()).not.toContain("Automated Mates spent");
-  testState.limits = { minutes: 30, costUsd: 5, monthlyBudgetUsd: null, spentThisMonthUsd: 6.44 };
+  testState.limits = {
+    minutes: 30,
+    costUsd: 5,
+    monthlyBudgetUsd: null,
+    spentThisMonthUsd: 6.44,
+    model: "m",
+  };
   expect(renderPage()).not.toContain("Automated Mates spent");
-  testState.limits = { minutes: 30, costUsd: 5, monthlyBudgetUsd: 50, spentThisMonthUsd: 6.44 };
+  testState.limits = {
+    minutes: 30,
+    costUsd: 5,
+    monthlyBudgetUsd: 50,
+    spentThisMonthUsd: 6.44,
+    model: "m",
+  };
   const line = renderPage()
     .replaceAll(/<[^>]+>/g, "")
     .replaceAll("&#x27;", "'");

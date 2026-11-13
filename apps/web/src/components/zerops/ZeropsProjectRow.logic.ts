@@ -32,7 +32,6 @@ import {
   hasMate,
   isGenericPlatformError,
   newMateTint,
-  readZeropsToolKind,
   readZeropsMembership,
   type ZeropsEnvironmentRole,
   type ZeropsEnvironmentServices,
@@ -314,10 +313,6 @@ function isConnectionInFlight(candidate: ZeropsRowCandidate): boolean {
   return phase === "available" || phase === "connecting" || phase === "reconnecting";
 }
 
-export function isZeropsToolCandidate(candidate: ZeropsCandidate): boolean {
-  return readZeropsToolKind(candidate.project) !== undefined;
-}
-
 /**
  * The bucket's reason, phrased for a person. `candidates.ts` writes reasons
  * for the log — "container is STOPPED", "container is starting (ACTIVE)" — and
@@ -398,12 +393,11 @@ export function plainEvidenceOf(input: {
 }
 
 /**
- * Every project HQ's structure holds any record of: placed in an application or none, a tool, a
+ * Every project HQ's structure holds any record of: placed in an application or none, a
  * birth bound to it, an environment, or one whose removal HQ has not finished.
  */
 export function hqRecordedProjects(structure: CanonicalHqStructure): ReadonlySet<string> {
   const recorded = new Set<string>();
-  for (const tool of structure.tools ?? []) recorded.add(tool.projectId);
   for (const mate of structure.ungrouped) recorded.add(mate.projectId);
   for (const app of structure.apps) {
     for (const project of app.projects) recorded.add(project.projectId);
@@ -496,7 +490,7 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
     // nothing runs it — and the verb beside it sets it up again; an
     // environment's row never shows this word at all, because for stage and
     // production a missing container is the default and not a fault.
-    if (candidate.missingContainer === true && !isZeropsToolCandidate(candidate)) {
+    if (candidate.missingContainer === true) {
       return {
         status: { label: "No container", tone: "off" },
         detail: "This Mate has no container yet.",
@@ -635,7 +629,6 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
  */
 export function deriveZeropsRestartAction(input: ZeropsRowInput): ZeropsRowAction {
   const { candidate, can } = input;
-  if (isZeropsToolCandidate(candidate)) return { kind: "none" };
   if (input.visibility === "listed") return { kind: "none" };
   return can.restart &&
     candidate.project.status === "ACTIVE" &&
@@ -648,7 +641,6 @@ export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
   const { candidate, health, can } = input;
   const role = input.role ?? readZeropsMembership(candidate.project).role;
   if (input.outsideHq && !awaitsEnable(input)) return { kind: "not-in-hq" };
-  if (isZeropsToolCandidate(candidate)) return { kind: "none" };
   // A verb the door would refuse is not offered (D5). The row says why in
   // place of it.
   if (input.visibility === "listed") return { kind: "none" };

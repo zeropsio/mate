@@ -18,6 +18,8 @@ const remote = (url: string) => ({
   keptBy: "u1",
   expiresAt: null,
   invalidSince: null,
+  via: "token" as const,
+  githubAppId: null,
 });
 
 describe("where an application's tasks come from", () => {
@@ -71,6 +73,7 @@ describe("where an application's tasks come from", () => {
         appId: "shop",
         repo: "acme/tea-shop",
         label: "mate",
+        public: false,
         webhookUrl: "https://hq.example/hook",
         hook,
       }),
@@ -97,6 +100,7 @@ describe("where an application's tasks come from", () => {
             appId: "shop",
             repo: "acme/tea-shop",
             label: "mate",
+            public: false,
             webhookUrl: "https://hq.example/hook",
             hook: { kind: "app" },
           },
@@ -111,15 +115,19 @@ describe("the organization's API key", () => {
   const day = (iso: string) => iso.slice(0, 10);
   it.each([
     ["never set", undefined, "Not set"],
-    ["removed", { set: false, setAt: null }, "Not set"],
-    ["set, with its day", { set: true, setAt: "2026-10-17T09:00:00.000Z" }, "Set on 2026-10-17"],
-    ["set, its day unknown", { set: true, setAt: null }, "Set"],
+    ["removed", { set: false, setAt: null, setBy: null }, "Not set"],
+    [
+      "set, with its day",
+      { set: true, setAt: "2026-10-17T09:00:00.000Z", setBy: null },
+      "Set on 2026-10-17",
+    ],
+    ["set, its day unknown", { set: true, setAt: null, setBy: null }, "Set"],
   ] as const)("says it is %s, never its value", (_case, view, line) => {
     expect(aiKeyLine(view, day, () => undefined)).toBe(line);
   });
 });
 
-// witness: apps/web/src/components/settings/automatedMatesSettings.logic.ts | return `Set${sealedWords(view.setBy, view.setAt, nameOf, day)}`; → return `Set${sealedWords(undefined, view.setAt, nameOf, day)}`;
+// witness: apps/web/src/components/settings/automatedMatesSettings.logic.ts | return `Set${sealedWords(view.setBy, view.setAt, nameOf, day)}`; → return `Set${sealedWords(null, view.setAt, nameOf, day)}`;
 it("the organization's model key names the Owner or Admin who set it, as the member list names them", () => {
   const view = decodeAiKey({
     provider: "nebius",

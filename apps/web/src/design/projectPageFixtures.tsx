@@ -345,6 +345,8 @@ const lineRepo = (
     keptBy: "Nova Dev",
     expiresAt: null,
     invalidSince: null,
+    via: "token" as const,
+    githubAppId: null,
   },
 });
 const IN_SYNC = { syncedAt: ago(20 * 60), divergedSince: null };
@@ -721,6 +723,8 @@ const REPOS = [
       keptBy: "Nova Dev",
       expiresAt: null,
       invalidSince: null,
+      via: "token" as const,
+      githubAppId: null,
     },
   },
 ];

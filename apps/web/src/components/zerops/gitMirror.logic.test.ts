@@ -9,6 +9,8 @@ const remote = {
   keptBy: "Nova",
   expiresAt: null,
   invalidSince: null,
+  via: "token" as const,
+  githubAppId: null,
 } as const;
 const app = { kind: "connected", name: "Acme Mate", repositories: [], installUrl: "" } as const;
 

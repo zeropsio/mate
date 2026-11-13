@@ -29,14 +29,13 @@
  *
  * **A person's side**, `Authorization: Bearer <session>`, wherever they may read the application:
  *
- * - `GET /api/apps/:appId/repos` → {@link RepoListResponse};
+ * - `GET /api/apps/:appId/repos` → `{repos}`, each a {@link RepoListEntry};
  * - `PUT /api/apps/:appId/repos/:repo/upstream` {@link FollowRepoUpstreamRequest} → `204`, by a
  *   structure writer: HQ keeps the repository's code, made if new, and follows the GitHub
  *   repository at `url` — fetched by the application's Mates (`MateRepo.origin`, `follow`), never
  *   pushed to, no token kept; `DELETE` there, by a structure writer → `204`: no longer followed;
  * - HQ socket `compare` (`appId`, `repo`, {@link CompareQuery}) → {@link CompareResponse}: the
  *   commits between two of a repository's commits, each with the change that landed it;
- * - `GET /api/apps/:appId/changes` → {@link ChangeListResponse};
  * - `GET /api/apps/:appId/changes/:repo/:n/metadata` → {@link ChangeMetadataResponse}; `GET …/commits`
  *   {@link ChangeDetailQuery} → {@link ChangeCommitsResponse}; `GET …/:n` {@link ChangeDetailQuery}
  *   → {@link ChangeDetailResponse};
@@ -146,21 +145,6 @@ export const ChangeBranchName = Schema.String.check(Schema.isMinLength(1), Schem
  * last pushed to, none until the first push lands. Once merged, `mergedSha` is the
  * squash on `main` and `landedHead` the head it squashed.
  */
-/** Requirements and results supplied by the repository owner for one exact head. */
-export const ChangePipeline = Schema.Struct({
-  head: Sha,
-  requirements: Schema.Literals(["known", "unknown"]),
-  checks: Schema.Array(
-    Schema.Struct({
-      id: Schema.String,
-      name: Schema.String,
-      requirement: Schema.Literals(["required", "advisory", "unknown"]),
-      state: Schema.Literals(["running", "passed", "failed", "unknown"]),
-    }),
-  ),
-});
-export type ChangePipeline = typeof ChangePipeline.Type;
-
 /**
  * One part's preview as zcp last left it in the Mate's work session (spec-mate §2.8a.6): its
  * stage service, its last deploy and whether a verify passed after it. `deployedCommit` is the dev
@@ -214,7 +198,6 @@ export type HqDraftReason = typeof HqDraftReason.Type;
 export const HqChange = Schema.Struct({
   recipeValidation: Schema.optionalKey(HqRecipeValidation),
   problems: Schema.optionalKey(Schema.Array(HqProblem)),
-  pipeline: Schema.optionalKey(ChangePipeline),
   appId: Schema.String,
   repo: RepoName,
   /** Grows within the repository, from 1. */
@@ -224,11 +207,11 @@ export const HqChange = Schema.Struct({
   /**
    * On an open change: its Mate is no longer one of the application's — its project deleted, or
    * taken out of it. A person may close it or hand it to another of the application's Mates
-   * ({@link HandChangeRequest}). Absent otherwise, and from an older HQ.
+   * ({@link HandChangeRequest}). Absent otherwise.
    */
   mateGone: Schema.optionalKey(Schema.Literal(true)),
-  /** The branch it is on. Absent from an older HQ, whose changes are all on their default. */
-  branch: Schema.optionalKey(ChangeBranchName),
+  /** The branch it is on. */
+  branch: ChangeBranchName,
   title: ChangeTitle,
   /** Markdown; empty until the Mate describes the change. */
   body: ChangeBody,
@@ -241,15 +224,14 @@ export const HqChange = Schema.Struct({
   closedAt: Schema.NullOr(Instant),
   /**
    * On a change closed without merging: its own Mate closed it, work it gave up — a Mate closes no
-   * other's. Absent where a person or HQ closed it, and from an older HQ.
+   * other's. Absent where a person or HQ closed it.
    */
   closedByMate: Schema.optionalKey(Schema.Literal(true)),
   /**
    * On a closed change: another change of its repository was built on it and landed first, so
    * that landing's squash carried every commit of this one onto `main`, and HQ closed it by
    * itself. The number of that change. Nothing of it was given up: it has no squash of its own
-   * (`mergedSha` stays `null`) and its work is on `main`. Absent on every other change, and from an
-   * older HQ, which leaves such a change open.
+   * (`mergedSha` stays `null`) and its work is on `main`. Absent on every other change.
    */
   landedWith: Schema.optionalKey(ChangeNumber),
   /** Its last push, edit of its words, or comment. */
@@ -269,15 +251,15 @@ export const HqChange = Schema.Struct({
   firstCodeMerge: Schema.optionalKey(Schema.Boolean),
   /**
    * On a merged change: whether GitHub merged a head no person merged in Mate — merged outside
-   * Mate. Absent for a change not merged, and from an older HQ.
+   * Mate. Absent for a change not merged.
    */
   landedOutside: Schema.optionalKey(Schema.Boolean),
   /**
    * Whether it asks for review: the Mate described it at its head. A draft — before its first
    * description, and again after a push the description has not caught up with — stays readable
-   * and never asks. Added after the rest: an older HQ's change, which knows no drafts, is ready.
+   * and never asks.
    */
-  ready: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(true))),
+  ready: Schema.Boolean,
   /** HQ's latest own push on its branch ({@link HqCorePush}); absent where HQ never moved it. */
   corePush: Schema.optionalKey(HqCorePush),
   /**
@@ -287,11 +269,9 @@ export const HqChange = Schema.Struct({
   draftReason: Schema.optionalKey(HqDraftReason),
   /**
    * How many comments were said on it: the room its review's conversation holds while it reads
-   * them. Added after the rest: an older HQ's change counts none.
+   * them.
    */
-  comments: Schema.NullOr(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))).pipe(
-    Schema.withDecodingDefaultKey(Effect.succeed(null)),
-  ),
+  comments: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
   /**
    * The pull request it is mirrored to on GitHub, through the organization's GitHub app; absent
    * where its repository mirrors through no app.
@@ -302,11 +282,8 @@ export const HqChange = Schema.Struct({
    * GitHub's does not: nothing is pushed there until either side moves. Absent while they follow.
    */
   mirrorDivergedSince: Schema.optionalKey(HqTargetTimestamp),
-  /**
-   * The last receipt zcp wrote on it, whole; `null` for a single-part application's change. Added
-   * after the rest: an older HQ's change has no key.
-   */
-  receipt: Schema.optionalKey(Schema.NullOr(ChangeReceipt)),
+  /** The last receipt zcp wrote on it, whole; `null` for a single-part application's change. */
+  receipt: Schema.NullOr(ChangeReceipt),
 });
 export type HqChange = typeof HqChange.Type;
 
@@ -372,16 +349,13 @@ export const HqRepoRemote = Schema.Struct({
   keptBy: Schema.String,
   expiresAt: Schema.NullOr(HqTargetTimestamp),
   invalidSince: Schema.NullOr(HqTargetTimestamp),
-  /**
-   * How HQ reaches it: one of the organization's GitHub apps (no token kept) or a person's token.
-   * Absent from an older HQ: a token.
-   */
-  via: Schema.optionalKey(Schema.Literals(["app", "token"])),
+  /** How HQ reaches it: one of the organization's GitHub apps (no token kept) or a person's token. */
+  via: Schema.Literals(["app", "token"]),
   /**
    * The organization's GitHub app it goes through (`HqGithubApp.appId`); `null` through a token or
-   * an app HQ no longer holds. Absent from an older HQ.
+   * an app HQ no longer holds.
    */
-  githubAppId: Schema.optionalKey(Schema.NullOr(Schema.Number)),
+  githubAppId: Schema.NullOr(Schema.Number),
   /**
    * Since when HQ's `main` and the default branch there hold histories neither contains, so the
    * mirror moves neither (`githubMirror.ts`); absent while they follow each other.
@@ -522,10 +496,6 @@ export const RepoListEntry = Schema.Struct({
   ),
 });
 export type RepoListEntry = typeof RepoListEntry.Type;
-
-/** `GET /api/apps/:appId/repos`: the application's repositories, its recipe's too, by name. */
-export const RepoListResponse = Schema.Struct({ repos: Schema.Array(RepoListEntry) });
-export type RepoListResponse = typeof RepoListResponse.Type;
 
 /**
  * One repository of the Mate's application as the Mate reads it: the address of the origin its
@@ -689,17 +659,6 @@ export const MateChanges = Schema.Struct({
 });
 export type MateChanges = typeof MateChanges.Type;
 
-/** How many merged or closed changes of an application its list carries beside the open ones. */
-export const CHANGE_LIST_SETTLED = 20;
-
-/**
- * `GET /api/apps/:appId/changes`: the application's open changes and its latest
- * {@link CHANGE_LIST_SETTLED} merged or closed ones, newest first — the same window its stream
- * carries.
- */
-export const ChangeListResponse = Schema.Struct({ changes: Schema.Array(HqChange) });
-export type ChangeListResponse = typeof ChangeListResponse.Type;
-
 /** A commit on the change and not on `main`. */
 export const ChangeCommit = Schema.Struct({
   sha: Sha,
@@ -848,15 +807,8 @@ export const HqChangeComment = Schema.Struct({
   id: Schema.String,
   /** The Zerops user who wrote it; none for a Mate's. */
   authorUserId: Schema.NullOr(Schema.String),
-  /** The Mate's project, for a Mate's. Added after `authorUserId`: an older HQ's comment, without it, is a person's. */
-  authorMateProjectId: Schema.NullOr(Schema.String).pipe(
-    Schema.withDecodingDefaultKey(Effect.succeed(null)),
-  ),
-  /**
-   * The GitHub login of one said on the change's pull request on GitHub, for one said there; then
-   * neither of the others is set.
-   */
-  authorGithubLogin: Schema.optionalKey(Schema.String),
+  /** The Mate's project, for a Mate's. */
+  authorMateProjectId: Schema.NullOr(Schema.String),
   body: CommentBody,
   createdAt: Instant,
 });
@@ -937,8 +889,8 @@ export function mergeSubject(title: string, number: number): string {
 
 /**
  * The structure socket's snapshot (`/api/structure/ws`) carries this beside its applications, under
- * `changes`: by application id, each application's changes the reader may read (`read_change`), in
- * the window of {@link ChangeListResponse}.
+ * `changes`: by application id, each application's changes the reader may read (`read_change`): its
+ * open ones and its latest 20 merged or closed ones, newest first.
  */
 export const ChangesSnapshot = Schema.Record(Schema.String, Schema.Array(HqChange));
 export type ChangesSnapshot = typeof ChangesSnapshot.Type;

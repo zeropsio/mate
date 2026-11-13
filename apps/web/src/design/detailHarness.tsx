@@ -1465,6 +1465,8 @@ const GIT_REPOS = [
       keptBy: "wren",
       expiresAt: null,
       invalidSince: null,
+      via: "token" as const,
+      githubAppId: null,
     },
   },
 ];

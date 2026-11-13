@@ -22,7 +22,7 @@ import type { Known } from "../knowledge/known.ts";
 import type { HqMate, HqStructure } from "./client.ts";
 
 /** Mate placement readers use app projects/births, independently of environment targets. */
-export type MatePlacementStructure = Pick<HqStructure, "ungrouped" | "tools" | "placeable"> & {
+export type MatePlacementStructure = Pick<HqStructure, "ungrouped" | "placeable"> & {
   readonly apps: ReadonlyArray<Omit<HqStructure["apps"][number], "environments">>;
 };
 import type { HqPressHold } from "./pressElsewhere.ts";
@@ -43,10 +43,8 @@ export type HqPlacement =
   /** A Mate HQ holds in no application (`HqStructure.ungrouped`). */
   | { readonly appId: null; readonly appName: null; readonly kind: "mate"; readonly mate: HqMate };
 
-/** HQ facts joined by project id: placement and account tool classification. */
-export type HqPlacements = ReadonlyMap<string, HqPlacement> & {
-  readonly tools?: ReadonlyMap<string, "gitea">;
-};
+/** HQ facts joined by project id: where HQ places each project. */
+export type HqPlacements = ReadonlyMap<string, HqPlacement>;
 
 /** Every project role this build reads; plain Git placement carries no role. */
 const PROJECT_KINDS: Readonly<Record<RoleProjectKind, true>> = {
@@ -139,9 +137,7 @@ export function placementsOf(
       unregistered: true,
     });
   }
-  return Object.assign(placements, {
-    tools: new Map((structure.tools ?? []).map((tool) => [tool.projectId, tool.kind] as const)),
-  });
+  return placements;
 }
 
 /**
@@ -161,24 +157,21 @@ export function heldOf(project: {
  * The project with where HQ places it now: a project it does not place carries no placement — one
  * it placed before and no longer does loses its. The same object where nothing changes.
  */
-export function placeProject<
-  P extends { readonly id: string; readonly hq?: HqPlacement; readonly hqTool?: "gitea" },
->(project: P, placements: HqPlacements): P {
+export function placeProject<P extends { readonly id: string; readonly hq?: HqPlacement }>(
+  project: P,
+  placements: HqPlacements,
+): P {
   const placement = placements.get(project.id);
-  const tool = placements.tools?.get(project.id);
-  if (project.hq === placement && project.hqTool === tool) return project;
-  const { hq: _placement, hqTool: _tool, ...rest } = project;
-  return {
-    ...rest,
-    ...(placement === undefined ? {} : { hq: placement }),
-    ...(tool === undefined ? {} : { hqTool: tool }),
-  } as P;
+  if (project.hq === placement) return project;
+  const { hq: _placement, ...rest } = project;
+  return { ...rest, ...(placement === undefined ? {} : { hq: placement }) } as P;
 }
 
 /** The projects, each with where HQ places it now (`placeProject`). */
-export function placeProjects<
-  P extends { readonly id: string; readonly hq?: HqPlacement; readonly hqTool?: "gitea" },
->(projects: ReadonlyArray<P>, placements: HqPlacements): ReadonlyArray<P> {
+export function placeProjects<P extends { readonly id: string; readonly hq?: HqPlacement }>(
+  projects: ReadonlyArray<P>,
+  placements: HqPlacements,
+): ReadonlyArray<P> {
   return projects.map((project) => placeProject(project, placements));
 }
 
@@ -188,7 +181,7 @@ export function placeProjects<
  */
 export function placeListing<
   R extends {
-    readonly project: { readonly id: string; readonly hq?: HqPlacement; readonly hqTool?: "gitea" };
+    readonly project: { readonly id: string; readonly hq?: HqPlacement };
   },
 >(listing: Known<ReadonlyArray<R>>, placements: HqPlacements): Known<ReadonlyArray<R>> {
   if (listing.state !== "known") return listing;

@@ -411,7 +411,7 @@ describe("who an organization-wide credential is held as", () => {
   });
 
   // witness: apps/web/src/components/settings/automationSettings.logic.ts | const tail = sealedWords(view.connectedBy, view.connectedAt, nameOf, day); → const tail = "";
-  it("Slack and Discord name who connected them and when; an older HQ's say neither", () => {
+  it("Slack and Discord name who connected them and when; one HQ names nobody for says neither", () => {
     const slack = decodeSlack({
       connected: true,
       workspace: "Acme",
@@ -428,13 +428,15 @@ describe("who an organization-wide credential is held as", () => {
       connectedBy: "u-gone",
       connectedAt: "2026-11-06T09:00:00.000Z",
     });
-    const older = decodeDiscord({
+    const nobody = decodeDiscord({
       connected: true,
       interactionsUrl: "https://hq.example/api/intake/discord/pub-2",
       inviteUrl: null,
+      connectedBy: null,
+      connectedAt: null,
     });
     expect(connectedByLine(slack, nameOf, day)).toBe("Connected by Ada Lovelace on 2026-11-07.");
     expect(connectedByLine(discord, nameOf, day)).toBe("Connected on 2026-11-06.");
-    expect(connectedByLine(older, nameOf, day)).toBeNull();
+    expect(connectedByLine(nobody, nameOf, day)).toBeNull();
   });
 });

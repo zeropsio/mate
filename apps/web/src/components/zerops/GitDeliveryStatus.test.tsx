@@ -39,6 +39,8 @@ const remote = {
   keptBy: "custodian",
   expiresAt: null,
   invalidSince: null,
+  via: "token" as const,
+  githubAppId: null,
 };
 const target = { kind: "git", branch: "main", delivery: "direct" } as const;
 const attachment = { environmentId: HqEnvironmentId.make("git-prod"), createdAt: AT, target };

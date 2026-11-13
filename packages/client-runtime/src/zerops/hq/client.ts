@@ -83,6 +83,7 @@ import {
   HqAppTasksView,
   HqSlackChannels,
   HqSlackView,
+  type HqTaskLimitsRequest,
   HqTaskLimitsView,
   HqWebhookView,
   type HqAppTask,
@@ -227,7 +228,6 @@ export interface HqStructure {
    * are read. The client derives it; HQ sends none. Absent until both are read.
    */
   readonly placeable?: Readonly<Record<string, HqOffers>>;
-  readonly tools?: ReadonlyArray<{ readonly projectId: string; readonly kind: "gitea" }>;
   /** The Mates HQ holds in no application: their project's name in Zerops, and their record. */
   readonly ungrouped: ReadonlyArray<
     {
@@ -325,6 +325,10 @@ export interface HqBirth {
     readonly import?: HqBirthAttempt;
   };
 }
+
+/** HQ's answer to `POST /api/births`: the birth intent it recorded, by id, and its face. */
+const HqRecordedBirth = Schema.Struct({ id: Schema.String, face: Schema.String });
+export type HqRecordedBirth = typeof HqRecordedBirth.Type;
 
 export interface HqBirthAttempt {
   readonly by: string;
@@ -486,7 +490,7 @@ export interface HqApi {
       readonly intent?: Readonly<Record<string, unknown>>;
       readonly chief?: true;
     } & HqNewMate,
-  ) => Promise<HqBirth>;
+  ) => Promise<HqRecordedBirth>;
   /**
    * Holds a press for this browser's press `owner` (`PUT /api/presses/{projectId}`): what it
    * makes and into which application, with its container import's Zerops process once Zerops
@@ -634,7 +638,7 @@ export interface HqApi {
   readonly stopAppTask?: (appId: string, taskId: string) => Promise<void>;
   /** The organization's limits on each task (`GET /api/org/task-limits`). */
   readonly taskLimits?: () => Promise<HqTaskLimitsView>;
-  readonly setTaskLimits?: (limits: HqTaskLimitsView) => Promise<HqTaskLimitsView>;
+  readonly setTaskLimits?: (limits: HqTaskLimitsRequest) => Promise<HqTaskLimitsView>;
   /** The organization's GitHub apps, never their keys (`GET /api/org/github`). */
   readonly github?: () => Promise<HqGithubView>;
   /**
@@ -1080,6 +1084,7 @@ const readSchedules = decoded(
 );
 const readAppTasks = decoded(HqAppTasksView, "a project's tasks");
 const readTaskLimits = decoded(HqTaskLimitsView, "the limits per task");
+const readRecordedBirth = decoded(HqRecordedBirth, "a Mate's birth");
 const readGithub = decoded(HqGithubView, "the organization's GitHub apps");
 const readGithubManifest = decoded(HqGithubManifestView, "a GitHub app's manifest");
 const readGithubInstall = decoded(HqGithubInstallView, "a GitHub app's install link");
@@ -1615,7 +1620,7 @@ export function makeHqApi(input: {
     // An application has no name of HQ's to ask for before it is made: the one by this name is
     // taken for it.
     recordBirth: async (birth) =>
-      json<HqBirth>(
+      readRecordedBirth(
         await authorized("/api/births", { method: "POST", body: JSON.stringify(birth) }, true),
       ),
     holdPress: async (projectId, press) => {
@@ -2135,7 +2140,7 @@ export function makeHqApi(input: {
           "/api/org/task-limits",
           {
             method: "PUT",
-            body: JSON.stringify(limits satisfies HqTaskLimitsView),
+            body: JSON.stringify(limits satisfies HqTaskLimitsRequest),
           },
           true,
         ),

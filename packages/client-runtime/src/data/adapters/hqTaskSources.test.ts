@@ -71,6 +71,10 @@ const notConnected: HqSlackView = {
   connected: false,
   workspace: null,
   eventsUrl: "https://hq.example/api/intake/slack/acme",
+  eventsRefusedAt: null,
+  eventsAcceptedAt: null,
+  connectedBy: null,
+  connectedAt: null,
 };
 const connected: HqSlackView = { ...notConnected, connected: true, workspace: "Acme" };
 
@@ -389,12 +393,18 @@ describe("an application HQ no longer holds", () => {
 
 describe("the limits on each task", () => {
   it("saves the minutes and the cost, and reads what HQ holds after", async () => {
-    let held: HqTaskLimitsView = { minutes: 60, costUsd: null };
+    let held: HqTaskLimitsView = {
+      minutes: 60,
+      costUsd: null,
+      monthlyBudgetUsd: null,
+      spentThisMonthUsd: 0,
+      model: "nebius/zai-org/GLM-5.3",
+    };
     const r = rig({
       taskLimits: async () => held,
       setTaskLimits: async (limits) => {
-        held = limits;
-        return limits;
+        held = { ...held, ...limits };
+        return held;
       },
     });
     const release = r.host.demandOrg("hqTaskLimits", ORG);
@@ -913,7 +923,13 @@ describe("a task's stop and the board's reads", () => {
     const r = rig({
       taskLimits: async () => {
         reads++;
-        return { minutes: 60, costUsd: null, spentThisMonthUsd: reads };
+        return {
+          minutes: 60,
+          costUsd: null,
+          monthlyBudgetUsd: null,
+          spentThisMonthUsd: reads,
+          model: "nebius/zai-org/GLM-5.3",
+        };
       },
     });
     place(r, { id: "1", title: "Task 1", url: null });

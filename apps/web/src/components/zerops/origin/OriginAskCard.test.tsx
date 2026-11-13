@@ -28,6 +28,7 @@ const mounted: ReadonlyArray<RepoListEntry> = [
       invalidSince: null,
       via: "app",
       governance: "permission_not_approved",
+      githubAppId: null,
     },
   },
 ];

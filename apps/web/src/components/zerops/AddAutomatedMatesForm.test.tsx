@@ -29,7 +29,13 @@ function form(props: Partial<Props> = {}): ReactElement {
         admin
         groupName="Tea Shop"
         keyState="set"
-        limits={{ minutes: 60, costUsd: 3 }}
+        limits={{
+          minutes: 60,
+          costUsd: 3,
+          monthlyBudgetUsd: null,
+          spentThisMonthUsd: 0,
+          model: "nebius/zai-org/GLM-5.3",
+        }}
         onCancel={() => {}}
         onCreate={() => {}}
         people={{ kind: "ready", userRoles: PEOPLE }}

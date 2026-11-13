@@ -19,19 +19,6 @@ type HqUngrouped = HqStructure["ungrouped"];
 /** Each Mate HQ relays to the reader, by its project: its presence, and its overview's sections. */
 export type HqMates = ReadonlyMap<string, MateLiveView>;
 
-/**
- * The account's tools HQ lists (the old Gitea project), each read through its shape: one this build
- * cannot read is left out; none where HQ sent no list.
- */
-function toolsOf(value: unknown): HqStructure["tools"] {
-  if (!Array.isArray(value)) return undefined;
-  return value.flatMap((entry: unknown) => {
-    if (typeof entry !== "object" || entry === null) return [];
-    const { projectId, kind } = entry as { readonly projectId?: unknown; readonly kind?: unknown };
-    return typeof projectId === "string" && kind === "gitea" ? [{ projectId, kind }] : [];
-  });
-}
-
 const isApp = (value: unknown): value is HqApp =>
   typeof value === "object" &&
   value !== null &&
@@ -76,13 +63,11 @@ const isContents = (value: unknown): value is HqAppContents => {
  */
 function appOf(value: HqApp): HqApp {
   const {
-    can: _hint,
     environments: sent,
     births: told,
     contents: held,
     ...app
   } = value as HqApp & {
-    readonly can?: unknown;
     readonly environments?: unknown;
     readonly births?: unknown;
     readonly contents?: unknown;
@@ -90,15 +75,12 @@ function appOf(value: HqApp): HqApp {
   const environments = sent === undefined ? undefined : canonicalEnvironmentsOf(sent);
   return {
     ...app,
-    projects: app.projects.map(unhinted),
+    projects: app.projects,
     ...(environments === undefined ? {} : { environments }),
     ...(Array.isArray(told) ? { births: told.filter(isBirth) } : {}),
     ...(isContents(held) ? { contents: held } : {}),
   };
 }
-
-/** An entry without a verdict an older HQ streamed beside it: the client decides its own. */
-const unhinted = <E extends { readonly can?: unknown }>({ can: _hint, ...entry }: E) => entry;
 
 /**
  * The structure as HQ answers it (`GET /api/structure`, a snapshot): each part read through its
@@ -106,23 +88,9 @@ const unhinted = <E extends { readonly can?: unknown }>({ can: _hint, ...entry }
  */
 export function canonicalHqStructureOf(value: unknown): CanonicalHqStructure | undefined {
   if (typeof value !== "object" || value === null) return undefined;
-  const {
-    apps,
-    ungrouped = [],
-    tools: listed,
-  } = value as {
-    readonly apps?: unknown;
-    readonly ungrouped?: unknown;
-    readonly tools?: unknown;
-  };
-  // An HQ from before the Mates in no application names none of them.
+  const { apps, ungrouped } = value as { readonly apps?: unknown; readonly ungrouped?: unknown };
   if (!(Array.isArray(apps) && apps.every(isApp) && isUngrouped(ungrouped))) return undefined;
-  const tools = toolsOf(listed);
-  return {
-    ...(tools === undefined ? {} : { tools }),
-    ungrouped: ungrouped.map(unhinted),
-    apps: apps.map(appOf),
-  };
+  return { ungrouped, apps: apps.map(appOf) };
 }
 
 export function zeropsStructure(structure: CanonicalHqStructure): HqStructure {

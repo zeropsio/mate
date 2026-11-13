@@ -9,8 +9,7 @@
  * this module knowing any of them — and so the tree is built once, not once
  * per client.
  *
- * Ordering, naming and the tools/groups split are entirely
- * `deriveZeropsGroups` and `partitionZeropsToolProjects`; nothing is decided
+ * Ordering and naming are entirely `deriveZeropsGroups`; nothing is decided
  * twice here.
  *
  * @module groupTree
@@ -32,7 +31,6 @@ import {
   type ZeropsEnvironmentRole,
   type ZeropsGroup,
 } from "./groups.ts";
-import { partitionZeropsToolProjects, type ZeropsToolKind } from "./tools.ts";
 
 /** Anything the client holds that knows which project it is about. */
 export interface ZeropsProjectCarrier {
@@ -60,17 +58,10 @@ export interface ZeropsGroupTreeGroup<T> {
   readonly environments: ReadonlyArray<ZeropsGroupTreeEnvironment<T>>;
 }
 
-export interface ZeropsGroupTreeTool<T> {
-  readonly kind: ZeropsToolKind;
-  readonly item: T;
-}
-
 export interface ZeropsGroupTreeView<T> {
   readonly groups: ReadonlyArray<ZeropsGroupTreeGroup<T>>;
   /** Projects with no group tag — every project that predates this feature. */
   readonly ungrouped: ReadonlyArray<T>;
-  /** Account-level tools, kept out of every group (`tools.ts`). */
-  readonly tools: ReadonlyArray<ZeropsGroupTreeTool<T>>;
   /** True when there is nothing but ungrouped projects — the "make your first group" state. */
   readonly empty: boolean;
 }
@@ -130,10 +121,10 @@ export function buildCanonicalGroupTree<T extends ZeropsProjectCarrier>(
 
   // Derive from the deduplicated set, not from `items`: two carriers for one
   // project would otherwise become two environments in the same group.
-  const { tools, rest } = partitionZeropsToolProjects(
+  const tree = deriveCanonicalGroups(
     [...byProjectId.values()].map((item) => item.project),
+    options,
   );
-  const tree = deriveCanonicalGroups(rest, options);
 
   const groups = tree.groups.map((group) => ({
     group,
@@ -159,17 +150,7 @@ export function buildCanonicalGroupTree<T extends ZeropsProjectCarrier>(
       ? ungroupedItems
       : [...ungroupedItems].sort((left, right) => options.rank!(left) - options.rank!(right));
 
-  const toolItems = tools.flatMap((tool) => {
-    const item = byProjectId.get(tool.project.id);
-    return item === undefined ? [] : [{ kind: tool.kind, item }];
-  });
-
-  return {
-    groups,
-    ungrouped,
-    tools: toolItems,
-    empty: groups.length === 0 && toolItems.length === 0,
-  };
+  return { groups, ungrouped, empty: groups.length === 0 };
 }
 
 /** @deprecated Project-carrier DTO for unmigrated clients. */

@@ -7,7 +7,6 @@ import {
   CHANGE_TITLE_MAX,
   COMMENT_BODY_MAX,
   AttachmentResponse,
-  ChangeListResponse,
   ChangeMetadataResponse,
   ChangesMessage,
   ChangesSnapshot,
@@ -17,14 +16,13 @@ import {
   EditChangeRequest,
   EnsureRepoRequest,
   HqChange,
-  ChangePipeline,
   CloseChangeRequest,
   MergeChangeRequest,
   MateChanges,
   OpenChangeRequest,
   OpenChangeResponse,
   PostCommentRequest,
-  RepoListResponse,
+  RepoListEntry,
   attachmentPath,
   changeRoutePath,
   changeUrl,
@@ -37,8 +35,9 @@ import {
 
 const HQ = "https://hqzone.prg1-zerops.zone";
 const APP = "0b7c4c1e-9f1d-4a43-8f43-6d2b8a1c2e10";
-const decodeComments = Schema.decodeUnknownSync(CommentListResponse);
 const decodeChange = Schema.decodeUnknownSync(HqChange);
+/** An application's repositories, each as HQ lists it. */
+const Repos = Schema.Struct({ repos: Schema.Array(RepoListEntry) });
 
 describe("hqChanges — the change link", () => {
   it("names a change at HQ's address, reads it back, and routes it in the client", () => {
@@ -181,6 +180,10 @@ const change = (patch: Record<string, unknown> = {}) => ({
   updatedAt: "2026-10-02T10:05:00.000Z",
   mergeability: "clean",
   behind: false,
+  branch: "login-page",
+  ready: true,
+  comments: 0,
+  receipt: null,
   ...patch,
 });
 
@@ -253,7 +256,7 @@ describe("hqChanges — the wire", () => {
   });
 
   it("a repository listing keeps HQ's offer to delete it and its reason for not offering", () => {
-    const listed = Schema.decodeUnknownSync(RepoListResponse)({
+    const listed = Schema.decodeUnknownSync(Repos)({
       repos: [
         {
           name: "appdev",
@@ -278,7 +281,7 @@ describe("hqChanges — the wire", () => {
   it.each([
     [
       "an application's repositories",
-      RepoListResponse,
+      Repos,
       {
         repos: [
           { name: "appdev", mainHead: SHA, updatedAt: "2026-10-02T10:00:00.000Z" },
@@ -287,10 +290,10 @@ describe("hqChanges — the wire", () => {
       },
       "Success",
     ],
-    ["an application with none", RepoListResponse, { repos: [] }, "Success"],
+    ["an application with none", Repos, { repos: [] }, "Success"],
     [
       "a repository with a short head",
-      RepoListResponse,
+      Repos,
       { repos: [{ name: "appdev", mainHead: "abc1234", updatedAt: "2026-10-02T10:00:00.000Z" }] },
       "Failure",
     ],
@@ -408,17 +411,12 @@ describe("hqChanges — the wire", () => {
   const comment = (body: string) => ({
     id: "c1",
     authorUserId: "owner",
+    authorMateProjectId: null,
     body,
     createdAt: "2026-10-02T10:05:00Z",
   });
 
   it.each([
-    [
-      "an application's changes",
-      ChangeListResponse,
-      { changes: [change(), change({ number: 6 })] },
-      "Success",
-    ],
     ["a change's comments", CommentListResponse, { comments: [comment("Looks good")] }, "Success"],
     [
       "a Mate's comment, brought over from Gitea",
@@ -472,12 +470,7 @@ describe("hqChanges — the wire", () => {
     expect(read(schema as Schema.Codec<unknown, unknown>, value)).toBe(expected);
   });
 
-  it("reads a change from an HQ that counted no comments as uncounted", () => {
-    expect(decodeChange(change()).comments).toBeNull();
-  });
-
   it.each([
-    ["an HQ that knows no drafts", {}, true],
     ["a draft", { ready: false }, false],
     ["a change described at its head", { ready: true }, true],
   ])("reads whether a change asks for review from %s", (_name, patch, ready) => {
@@ -525,11 +518,6 @@ describe("hqChanges — the wire", () => {
     ).toBe(reason);
   });
 
-  it("reads a comment from an HQ that kept only people's as a person's", () => {
-    const [said] = decodeComments({ comments: [comment("Looks good")] }).comments;
-    expect([said?.authorUserId, said?.authorMateProjectId]).toEqual(["owner", null]);
-  });
-
   it.each([
     [
       "a snapshot's changes, by application",
@@ -558,7 +546,7 @@ describe("hqChanges — the wire", () => {
 describe("hqChanges — a repository", () => {
   it("A repository's HQ address survives the read", () => {
     const url = "https://hq.example/git/org-1/app-1/code.git";
-    const { repos } = Schema.decodeUnknownSync(RepoListResponse)({
+    const { repos } = Schema.decodeUnknownSync(Repos)({
       repos: [{ name: "code", mainHead: null, updatedAt: "2026-10-01T00:00:00.000Z", url }],
     });
     expect(repos[0]?.url).toBe(url);
@@ -579,17 +567,6 @@ describe("hqChanges — a merge", () => {
 });
 
 describe("head-scoped review evidence", () => {
-  it.each(["required", "advisory", "unknown"] as const)(
-    "retains %s check evidence for its exact head",
-    (requirement) => {
-      const pipeline = {
-        head: "a".repeat(40),
-        requirements: "unknown",
-        checks: [{ id: "build", name: "Build", requirement, state: "running" }],
-      };
-      expect(Schema.decodeUnknownSync(ChangePipeline)(pipeline)).toEqual(pipeline);
-    },
-  );
   it.each([null, "a".repeat(40)])(
     "carries the reviewed head even before a first push (%s)",
     (expectedHead) => {
@@ -609,17 +586,17 @@ it("Repository metadata serializes the verified remote and never its token.", ()
     keptBy: "person",
     expiresAt: null,
     invalidSince: null,
+    via: "token",
+    githubAppId: null,
   };
   const value = { name: "App_Code-2", mainHead: "a".repeat(40), updatedAt: remote.keptAt, remote };
-  expect(Schema.decodeUnknownSync(RepoListResponse)({ repos: [value] })).toEqual({
+  expect(Schema.decodeUnknownSync(Repos)({ repos: [value] })).toEqual({
     repos: [value],
   });
-  const decoded = Schema.decodeUnknownSync(RepoListResponse)({
+  const decoded = Schema.decodeUnknownSync(Repos)({
     repos: [{ ...value, remote: { ...remote, token: "TOKEN_MARKER" } }],
   });
-  expect(JSON.stringify(Schema.encodeSync(RepoListResponse)(decoded))).not.toContain(
-    "TOKEN_MARKER",
-  );
+  expect(JSON.stringify(Schema.encodeSync(Repos)(decoded))).not.toContain("TOKEN_MARKER");
 });
 
 it("Only mutating remote inputs carry a token and unsafe remote URLs refuse.", () => {

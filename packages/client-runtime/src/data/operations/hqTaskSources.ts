@@ -10,7 +10,7 @@
  *
  * @module data/operations/hqTaskSources
  */
-import type { HqScheduleRequest, HqTaskLimitsView } from "@t3tools/shared/hqIntake";
+import type { HqScheduleRequest, HqTaskLimitsRequest } from "@t3tools/shared/hqIntake";
 import type { TaskSourceSetting } from "../families/hqTaskSources.ts";
 import type { OperationKind } from "./kind.ts";
 
@@ -32,7 +32,7 @@ export type TaskSourceWrite =
   | { readonly kind: "webhook-delete"; readonly webhookId: string }
   | { readonly kind: "schedule-make"; readonly request: HqScheduleRequest }
   | { readonly kind: "schedule-delete"; readonly scheduleId: string }
-  | { readonly kind: "task-limits"; readonly limits: HqTaskLimitsView }
+  | { readonly kind: "task-limits"; readonly limits: HqTaskLimitsRequest }
   /** One of an application's tasks stopped from its board. */
   | { readonly kind: "task-stop"; readonly taskId: string }
   /** HQ's manifest for the app goes to the screen that asked, never into the record. */

@@ -26,7 +26,6 @@ import {
   outsideCommitsWords,
   rollbackListNote,
   sizeWords,
-  changeChecks,
   changeReceipt,
   mergeFoot,
   stageDeploysMerges,
@@ -585,20 +584,6 @@ describe("changeReadVerdict: a change the flow does not hold, until it is read",
 });
 
 describe("the sheet's line under a change's title", () => {
-  const check = (state: "passed" | "failed" | "running" | "unknown") => ({ state });
-  it.each([
-    ["every check passed", "ready", [check("passed"), check("passed")], "checks passed"],
-    ["one still runs", "ready", [check("passed"), check("running")], "checks running"],
-    ["one failed, advisory", "ready", [check("failed"), check("passed")], "checks failed"],
-    ["behind main, its checks passed", "behind-clean", [check("passed")], "checks passed"],
-    ["no checks at all", "ready", [], undefined],
-    ["checks nobody read for this head", "ready", [check("unknown")], undefined],
-    ["merged: its checks are history", "merged", [check("passed")], undefined],
-    ["refused: the refusal is the news", "merge-refused", [check("passed")], undefined],
-  ] as const)("says %s", (_case, state, checks, words) => {
-    expect(changeChecks({ state, checks })?.words).toBe(words);
-  });
-
   it.each([
     ["a change ready to merge says no more than that", "ready", false, false],
     ["a draft says why", "ready", true, true],
@@ -871,11 +856,7 @@ describe("a change's branch and its Mate's other open changes", () => {
       change({ branch: "mate/p-wren/6" }),
       undefined,
     ],
-    [
-      "no branch of an older HQ's change, which names none",
-      change({ branch: undefined }),
-      undefined,
-    ],
+    ["no branch named", change({ branch: undefined }), undefined],
   ] as const)("names %s", (_case, pull, named) => {
     expect(reviewBranch(pull)).toBe(named);
   });

@@ -294,12 +294,8 @@ export function poolSummary(
   ].join(" · ");
 }
 
-/**
- * What the organization's automated Mates spent this month, against its budget where it set one;
- * `null` where HQ does not say (an older HQ).
- */
-export function spendLine(limits: HqTaskLimitsView): string | null {
-  if (limits.spentThisMonthUsd === undefined) return null;
+/** What the organization's automated Mates spent this month, against its budget where it set one. */
+export function spendLine(limits: HqTaskLimitsView): string {
   const spent = costWords(limits.spentThisMonthUsd);
   const budget = limits.monthlyBudgetUsd;
   if (budget == null) return `${spent} this month`;

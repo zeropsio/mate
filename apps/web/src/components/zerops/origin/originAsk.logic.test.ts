@@ -18,7 +18,7 @@ import {
 } from "./originAsk.logic";
 
 const ask = { url: "https://github.com/krls2020/eval2", repo: "appdev" };
-const repo = (name: string, url: string | null, via?: "app" | "token"): RepoListEntry => ({
+const repo = (name: string, url: string | null, via: "app" | "token" = "app"): RepoListEntry => ({
   name,
   mainHead: "a".repeat(40),
   updatedAt: "2026-10-18T08:33:20Z",
@@ -32,7 +32,8 @@ const repo = (name: string, url: string | null, via?: "app" | "token"): RepoList
           keptBy: "viewer",
           expiresAt: null,
           invalidSince: null,
-          ...(via === undefined ? {} : { via }),
+          via,
+          githubAppId: null,
         },
       }),
 });
@@ -52,11 +53,6 @@ describe("an origin HQ already delivers to", () => {
     {
       case: "HQ reaches the asked address with a person's token",
       repos: [repo("appdev", "https://github.com/krls2020/eval2.git", "token")],
-      connected: false,
-    },
-    {
-      case: "an older HQ says no way it reaches the asked address",
-      repos: [repo("appdev", "https://github.com/krls2020/eval2.git")],
       connected: false,
     },
     {

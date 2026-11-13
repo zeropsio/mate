@@ -149,7 +149,7 @@ export function TaskSourcesUnsupported() {
 
 // ── the parts every section shares ──────────────────────────────────────────────────────────
 
-/** Who connected it and when, as HQ holds it; nothing from an older HQ. */
+/** Who connected it and when, as HQ holds it; nothing where HQ names nobody. */
 function ConnectedBy({ line }: { readonly line: string | null }) {
   return line === null ? null : <p className="text-xs text-muted-foreground">{line}</p>;
 }
@@ -1030,7 +1030,6 @@ export function MonthlyBudgetView({ controls }: { readonly controls: Controls<"h
   }
   const sent = save.sent;
   const fieldId = useId();
-  if (held !== null && held.spentThisMonthUsd === undefined) return null;
   const shown = typed ?? (held?.monthlyBudgetUsd == null ? "" : String(held.monthlyBudgetUsd));
   return (
     <IntegrationSetting
@@ -1129,8 +1128,6 @@ export function AutomatedModelView({
     setPicked(null);
   }
   const groupId = useId();
-  // An HQ that predates the choice keeps none: nothing to pick.
-  if (held !== null && held.model === undefined) return null;
   const current = held === null ? null : automatedModelOf(held.model);
   const shown = picked ?? current;
   const offerOf = (slug: string | null) =>

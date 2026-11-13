@@ -80,7 +80,6 @@ describe("an automated Mate's tasks in Usage", () => {
     ["waiting", "Waiting for you"],
     ["stopping", "Stopping"],
     ["closed", "Closed"],
-    ["declined", "Not taken"],
   ] as const)("says a task %s in the words every surface uses: %s", (state, words) => {
     const [row] = usageMateTasks({
       ...window,
@@ -171,21 +170,21 @@ describe("following a task from Usage", () => {
 });
 
 describe("the month's automated spend against its budget", () => {
+  const M = "nebius/zai-org/GLM-5.3";
   it.each([
-    { name: "no budget set says nothing", limits: { minutes: 30, costUsd: null }, line: null },
     {
-      name: "an older HQ without a budget says nothing",
-      limits: { minutes: 30, costUsd: 5, monthlyBudgetUsd: null, spentThisMonthUsd: 2 },
+      name: "no budget set says nothing",
+      limits: { minutes: 30, costUsd: 5, monthlyBudgetUsd: null, spentThisMonthUsd: 2, model: M },
       line: null,
     },
     {
       name: "a budget shows this month's spend against it",
-      limits: { minutes: 30, costUsd: 5, monthlyBudgetUsd: 50, spentThisMonthUsd: 6.44 },
+      limits: { minutes: 30, costUsd: 5, monthlyBudgetUsd: 50, spentThisMonthUsd: 6.44, model: M },
       line: { spent: "$6.44", budget: "$50.00", share: 0.1288, reached: false },
     },
     {
       name: "a spent budget says so",
-      limits: { minutes: 30, costUsd: 5, monthlyBudgetUsd: 50, spentThisMonthUsd: 52 },
+      limits: { minutes: 30, costUsd: 5, monthlyBudgetUsd: 50, spentThisMonthUsd: 52, model: M },
       line: { spent: "$52.00", budget: "$50.00", share: 1, reached: true },
     },
   ])("$name", ({ limits, line }) => expect(automatedBudget(limits)).toEqual(line));

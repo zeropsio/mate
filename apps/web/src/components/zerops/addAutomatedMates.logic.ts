@@ -230,7 +230,7 @@ export function automatedWhatTheyDo(input: {
   );
   if (limits?.monthlyBudgetUsd != null)
     sentences.push(
-      `${dollars(limits.spentThisMonthUsd ?? 0)} of ${dollars(limits.monthlyBudgetUsd)} spent this month.`,
+      `${dollars(limits.spentThisMonthUsd)} of ${dollars(limits.monthlyBudgetUsd)} spent this month.`,
     );
   return sentences;
 }

@@ -110,17 +110,16 @@ describe("the words a task source's settings say", () => {
 
 describe("the organization's monthly budget", () => {
   it.each([
-    [{ minutes: 60, costUsd: null }, null],
     [
-      { minutes: 60, costUsd: null, monthlyBudgetUsd: null, spentThisMonthUsd: 6.44 },
+      { minutes: 60, costUsd: null, monthlyBudgetUsd: null, spentThisMonthUsd: 6.44, model: "m" },
       "No monthly budget. $6.44 spent this month.",
     ],
     [
-      { minutes: 60, costUsd: null, monthlyBudgetUsd: 50, spentThisMonthUsd: 6.44 },
+      { minutes: 60, costUsd: null, monthlyBudgetUsd: 50, spentThisMonthUsd: 6.44, model: "m" },
       "$6.44 of $50 spent this month.",
     ],
     [
-      { minutes: 60, costUsd: null, monthlyBudgetUsd: 50, spentThisMonthUsd: 51.2 },
+      { minutes: 60, costUsd: null, monthlyBudgetUsd: 50, spentThisMonthUsd: 51.2, model: "m" },
       "$51.20 of $50 spent this month: no task starts until next month or a higher budget.",
     ],
   ] as const)("limits %o say “%s” of the month", (limits, line) => {
@@ -230,18 +229,15 @@ describe("Slack's refused signatures", () => {
     { case: "refused, never accepted", refused: at(1), accepted: null, says: true },
     { case: "refused after the last accepted", refused: at(5), accepted: at(1), says: true },
     { case: "accepted after the last refused", refused: at(1), accepted: at(5), says: false },
-    { case: "an HQ that does not say", refused: undefined, accepted: undefined, says: false },
   ])("the Slack card says the signing secret does not match: $case → $says", (row) => {
-    const view = {
-      connected: true,
-      ...(row.refused === undefined ? {} : { eventsRefusedAt: row.refused }),
-      ...(row.accepted === undefined ? {} : { eventsAcceptedAt: row.accepted }),
-    };
+    const view = { connected: true, eventsRefusedAt: row.refused, eventsAcceptedAt: row.accepted };
     expect(slackSignatureRefused(view)).toBe(row.says);
   });
 
   it("says nothing of signatures while Slack is not connected", () => {
-    expect(slackSignatureRefused({ connected: false, eventsRefusedAt: at(1) })).toBe(false);
+    expect(
+      slackSignatureRefused({ connected: false, eventsRefusedAt: at(1), eventsAcceptedAt: null }),
+    ).toBe(false);
   });
 });
 
