@@ -62,7 +62,11 @@ import {
   type RollbackRequest,
 } from "@t3tools/shared/hqRelease";
 import type { HqOffers } from "@t3tools/shared/hqOffers";
-import type { HqNavigationIntake, HqNavigationMateTask } from "@t3tools/shared/hqStream";
+import type {
+  HqHiddenEnvironment,
+  HqNavigationIntake,
+  HqNavigationMateTask,
+} from "@t3tools/shared/hqStream";
 import { HqMergersAnswer, type HqMergers, type HqMergersRequest } from "@t3tools/shared/hqMergers";
 import {
   HqOutsideProductionAnswer,
@@ -263,6 +267,8 @@ export interface HqStructure {
      * people it names. Absent: whoever may push merges.
      */
     readonly mergers?: HqMergers;
+    /** Its stages and productions Zerops does not list to the person, to ask read access to. */
+    readonly hiddenEnvironments?: ReadonlyArray<HqHiddenEnvironment>;
   }>;
 }
 

@@ -197,7 +197,8 @@ export function accessTable(input: ProjectPeopleInput): AccessTableView {
       ? { kind: "unreadable", line: UNREADABLE.failed }
       : { kind: "reading" };
   // Every column's people are read at once: a table half drawn would take cells back.
-  for (const { projectId } of input.projects) {
+  for (const { projectId, hidden } of input.projects) {
+    if (hidden === true) continue;
     const read = input.grants[projectId];
     if (read?.grants === undefined && read?.status !== "failed") return { kind: "reading" };
   }
@@ -209,7 +210,7 @@ export function accessTable(input: ProjectPeopleInput): AccessTableView {
     return owner == null || found === undefined ? null : memberFace(found, input.pictures);
   };
   const columns: ReadonlyArray<AccessColumn> = input.projects
-    .map(({ projectId, kind, name }, index) => {
+    .map(({ projectId, kind, name, hidden }, index) => {
       const mate = isMateKind(kind);
       const column: AccessColumn = {
         projectId,
@@ -218,7 +219,7 @@ export function accessTable(input: ProjectPeopleInput): AccessTableView {
           ? (name ?? "Mate")
           : environmentTitle(kind === "production" ? "production" : "stage", name ?? ""),
         owner: mate ? ownerFace(projectId) : null,
-        unread: input.grants[projectId]?.grants === undefined,
+        unread: hidden === true || input.grants[projectId]?.grants === undefined,
       };
       return { column, index };
     })
