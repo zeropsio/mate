@@ -598,12 +598,14 @@ describe("ZeropsTurnAdmission", () => {
           { kind: "standup", startedBy: JAN },
           undefined,
         ],
+        // Adding a Mate sets it up with no condition: its stand-up asks HQ nothing.
+        // witness: apps/server/src/zerops/ZeropsTurnAdmission.ts | principal.kind === "crew" || principal.kind === "standup"; → principal.kind === "crew";
         [
-          "refuses a stand-up whose starter this project no longer opens for",
+          "admits a stand-up whatever HQ says of its starter's access",
           { ...janSignedClaude, access: { [JAN]: false } },
           turnStart("claudeAgent"),
           { kind: "standup", startedBy: JAN },
-          NO_ACCESS,
+          undefined,
         ],
         [
           "refuses a stand-up on an agent somebody else signed in",
@@ -991,7 +993,7 @@ describe("ZeropsTurnAdmission.admitRun", () => {
           "refuses a wake for somebody this project no longer opens for",
           { ...janSignedClaude, access: { [JAN]: false } },
           "claudeAgent",
-          { kind: "standup", startedBy: JAN },
+          { kind: "crew", startedBy: JAN },
           NO_ACCESS,
         ],
         [
