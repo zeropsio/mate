@@ -284,7 +284,6 @@ const AUTOMATION_WORDS = {
   brief: "A brief has at most 16,000 characters.",
   day: "Choose the day of the week it runs on.",
   time_zone: "HQ does not know that time zone. Use one like Europe/Prague.",
-  rule: "HQ could not work out when this runs. Check the time and the time zone.",
   schedule_not_found: "That schedule is gone already.",
   // The limits on each task.
   minutes: "Minutes are a whole number from 1 to 1,440.",
