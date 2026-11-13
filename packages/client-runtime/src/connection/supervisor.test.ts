@@ -38,7 +38,7 @@ import * as RpcSession from "../rpc/session.ts";
 import { connectionBannerCopy, presentConnectionState } from "./presentation.ts";
 import * as EnvironmentSupervisor from "./supervisor.ts";
 import * as ConnectionWakeups from "./wakeups.ts";
-import { hqFixtureWire } from "../data/__fixtures__/hqWire.ts";
+import { HQ_CORE, hqFixtureWire } from "../data/__fixtures__/hqWire.ts";
 import { settle } from "../data/__fixtures__/zeropsWire.ts";
 import { classifyHqClose, hqNavigationLink } from "../data/adapters/hq.ts";
 import { mateTicketIssuer } from "../data/adapters/hqMateTicket.ts";
@@ -382,6 +382,7 @@ describe("EnvironmentSupervisor", () => {
                       Effect.andThen(
                         fixture.send({
                           type: "scope-ready",
+                          core: HQ_CORE,
                           scope: { kind: "navigation" },
                           incarnation,
                           revision: 1,

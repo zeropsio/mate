@@ -5,14 +5,11 @@ import * as Schema from "effect/Schema";
 const readMessage = Schema.decodeUnknownOption(Schema.fromJsonString(HqStreamMessage));
 const readRecord = Schema.decodeUnknownOption(Schema.Record(Schema.String, Schema.Unknown));
 
-/** A Core before navigation release offers and protocol declarations were published. */
+/** A Core before navigation release offers, declaring the navigation protocol before them. */
 export function olderNavigation(encoded: string): string {
   const message = Option.getOrUndefined(readMessage(encoded));
   if (message === undefined) return encoded;
-  if (message.type === "scope-ready")
-    return JSON.stringify(
-      Object.fromEntries(Object.entries(message).filter(([key]) => key !== "core")),
-    );
+  if (message.type === "scope-ready") return JSON.stringify({ ...message, core: { protocol: 0 } });
   if (
     (message.type !== "scope-reset" && message.type !== "scope-values") ||
     message.scope.kind !== "navigation"

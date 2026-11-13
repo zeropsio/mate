@@ -51,14 +51,7 @@ import { FAMILIES, forgottenOnRelease, scopeSpec } from "../families/index.ts";
 import { hqMateFamily } from "../families/hqMate.ts";
 import { placementsScope, type PlacementValue } from "../families/hqNavigation.ts";
 import { scopeOf, type AnyFamilySpec, type ScopeOwner } from "../families/spec.ts";
-import {
-  factKey,
-  linkKeys,
-  type FamilyValues,
-  type LinkKey,
-  type Revision,
-  type ScopeKey,
-} from "../model.ts";
+import { factKey, linkKeys, type LinkKey, type Revision, type ScopeKey } from "../model.ts";
 import { streamOf, type DeliveryScope, type RemovalInput, type Row } from "../reducer.ts";
 import { readsOfState, type AccountStore } from "../store.ts";
 import type { StreamEvent, StreamFault } from "../streamMachine.ts";
@@ -357,8 +350,6 @@ export function hqNavigationLink(options: {
   let wakeAttempt: (() => void) | null = null;
   /** The scopes HQ refused, by key: asked again with `retry`, by the person or an access change. */
   const refused = new Set<string>();
-  /** HQ refused the whole socket (`4403`): the next one opens with the person's `retry`. */
-  let refusedWhole = false;
   /** The scopes to read again on the open segment, by key: the person's access moved. */
   const reread = new Map<string, HqScope>();
 
@@ -604,10 +595,7 @@ export function hqNavigationLink(options: {
               });
               if (message.scope.kind === "navigation") {
                 const scope = hqProtocolScope(orgId);
-                const core: FamilyValues["hqProtocol"] = Option.getOrElse(
-                  decodeHqProtocol(message.core),
-                  () => ({}),
-                );
+                const core = decodeHqProtocol(message.core);
                 usageSupported = core.agentUsage === AGENT_USAGE_REPORT_PROTOCOL;
                 if (usageSupported)
                   for (const demanded of demands.scopes()) {
@@ -875,10 +863,6 @@ export function hqNavigationLink(options: {
                   yield* signal(scope, { kind: "parent-lost" });
             }
             if (first) yield* signal(key, ON_THE_SOCKET);
-            if (refusedWhole) {
-              refusedWhole = false;
-              yield* opened.send({ type: "retry" });
-            }
             const reading = yield* Effect.forkScoped(
               Stream.runForEachArray(opened.messages, onMessages),
             );
@@ -922,7 +906,6 @@ export function hqNavigationLink(options: {
         Effect.andThen(Effect.forever(segment(false))),
         Effect.tapError((fault) =>
           Effect.sync(() => {
-            if (fault.outcome === "definitive-refusal") refusedWhole = true;
             if (accessEnded(fault) !== null) deny([...scopes, ...demands.scopes().flatMap(fedBy)]);
           }),
         ),

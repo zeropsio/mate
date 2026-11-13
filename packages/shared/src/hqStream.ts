@@ -51,12 +51,6 @@ export const HqScope = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("navigation") }),
   Schema.Struct({ kind: Schema.Literal("app-detail"), appId: Schema.String }),
   Schema.Struct({
-    kind: Schema.Literal("change"),
-    appId: Schema.String,
-    repo: Schema.String,
-    number: Schema.Int,
-  }),
-  Schema.Struct({
     kind: Schema.Literal("discussion"),
     appId: Schema.String,
     repo: Schema.String,
@@ -111,7 +105,7 @@ export const HQ_STREAM_FRAME_SCOPES = 128;
 export const HqStreamRequest = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("retry"),
-    /** Omitted scopes retry this person's refused journals, including before subscribing. */
+    /** Omitted scopes retry every scope this socket holds. */
     scopes: Schema.optionalKey(
       Schema.Array(HqScope).check(Schema.isMaxLength(HQ_STREAM_FRAME_SCOPES)),
     ),
@@ -159,7 +153,7 @@ export const HqScopeFailure = Schema.Struct({
   scope: HqScope,
   code: Schema.String,
   reason: Schema.NullOr(Schema.String),
-  disposition: Schema.Literals(["refused", "transient", "corrupt"]),
+  disposition: Schema.Literals(["refused", "transient"]),
 });
 export type HqScopeFailure = typeof HqScopeFailure.Type;
 /**
@@ -182,8 +176,12 @@ export const HqCoreProtocol = Schema.Struct({
 export type HqCoreProtocol = typeof HqCoreProtocol.Type;
 
 export const HqScopeReady = Schema.Struct({
-  /** Absent from a Core predating protocol negotiation; support remains unknown. */
-  core: Schema.optionalKey(Schema.Unknown),
+  /**
+   * The Core's protocol and capability declarations ({@link HqCoreProtocol}), on every `scope-ready`.
+   * The client reads each declaration on its own, so one it does not know reads as unsupported
+   * rather than refusing the frame.
+   */
+  core: Schema.Record(Schema.String, Schema.Unknown),
   type: Schema.Literal("scope-ready"),
   scope: HqScope,
   ...HqCursor.fields,
@@ -243,7 +241,6 @@ export const hqScopeKey = (scope: HqScope): string => {
       return usageCanonical([scope.kind, scope.query, scope.detail ?? null]);
     case "app-detail":
       return JSON.stringify([scope.kind, scope.appId]);
-    case "change":
     case "discussion":
       return JSON.stringify([scope.kind, scope.appId, scope.repo, scope.number]);
     case "attention":

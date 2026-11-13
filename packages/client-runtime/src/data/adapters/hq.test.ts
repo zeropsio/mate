@@ -23,6 +23,7 @@ import { projectsScope } from "../families/project.ts";
 import { accountReadsAtom } from "../reads.ts";
 import { followAccessChanges } from "../../zerops/account/accessChanges.ts";
 import {
+  HQ_CORE,
   hqFixtureWire,
   gitEnvironment,
   gitRemote,
@@ -100,6 +101,7 @@ const ready = (
   incarnation = "i1",
 ): Extract<HqStreamMessage, { type: "scope-ready" }> => ({
   type: "scope-ready",
+  core: HQ_CORE,
   scope: NAVIGATION,
   incarnation,
   revision,
@@ -242,7 +244,13 @@ describe("hqNavigationLink", () => {
           ],
           removals: [],
         });
-        yield* fixture.send({ type: "scope-ready", scope, incarnation: "detail", revision: 2 });
+        yield* fixture.send({
+          type: "scope-ready",
+          core: HQ_CORE,
+          scope,
+          incarnation: "detail",
+          revision: 2,
+        });
         yield* settle;
         const read = () =>
           hqAppGitTargets.derive(readsOfState(store.state()), { orgId: ORG, appId: "shop" });
@@ -342,7 +350,13 @@ describe("hqNavigationLink", () => {
             values: [{ key: "preflight:web", value: gitPreflight }],
             removals: [],
           });
-          yield* fixture.send({ type: "scope-ready", scope, incarnation: "detail", revision: 4 });
+          yield* fixture.send({
+            type: "scope-ready",
+            core: HQ_CORE,
+            scope,
+            incarnation: "detail",
+            revision: 4,
+          });
           yield* settle;
           expect(read().records).toEqual({
             "preflight:web": { kind: "preflight", repo: "web", value: gitPreflight },
@@ -394,7 +408,13 @@ describe("hqNavigationLink", () => {
           values: [{ key: "web:7", value: said }],
           removals: [],
         });
-        yield* fixture.send({ type: "scope-ready", scope, incarnation: "discussion", revision: 2 });
+        yield* fixture.send({
+          type: "scope-ready",
+          core: HQ_CORE,
+          scope,
+          incarnation: "discussion",
+          revision: 2,
+        });
         yield* settle;
         const read = () =>
           changeDiscussion.derive(readsOfState(store.state()), { orgId: ORG, link: change });
@@ -414,7 +434,13 @@ describe("hqNavigationLink", () => {
           values: [{ key: "web:7", value: said }],
           removals: [],
         });
-        yield* fixture.send({ type: "scope-ready", scope, incarnation: "discussion", revision: 2 });
+        yield* fixture.send({
+          type: "scope-ready",
+          core: HQ_CORE,
+          scope,
+          incarnation: "discussion",
+          revision: 2,
+        });
         yield* settle;
         expect(read()).toEqual({ kind: "read", comments: said.comments });
         again();
@@ -551,7 +577,7 @@ describe("hqNavigationLink", () => {
   it.effect.each(
     Array.from(
       [
-        { name: "undeclared", core: undefined, updateRequired: true },
+        { name: "undeclared", core: {}, updateRequired: true },
         { name: "unreadable", core: { protocol: "bad" }, updateRequired: true },
         { name: "older", core: { protocol: 0, build: "old" }, updateRequired: true },
         { name: "supported", core: { protocol: 1, build: "current" }, updateRequired: false },
@@ -792,7 +818,13 @@ describe("hqNavigationLink", () => {
           ],
           removals: [],
         });
-        yield* fixture.send({ type: "scope-ready", scope, incarnation: "a1", revision: 1 });
+        yield* fixture.send({
+          type: "scope-ready",
+          core: HQ_CORE,
+          scope,
+          incarnation: "a1",
+          revision: 1,
+        });
         yield* settle;
         expect(publicRead(factOf(store.state(), "hqMate", "ada")).kind).toBe("known");
         yield* fixture.send({
@@ -992,6 +1024,7 @@ describe("hqNavigationLink", () => {
       });
       yield* fixture.send({
         type: "scope-ready",
+        core: HQ_CORE,
         scope: attention,
         incarnation: "a1",
         revision: 1,
@@ -1088,7 +1121,13 @@ describe("Protected HQ scopes", () => {
           values,
           removals: [],
         });
-        yield* fixture.send({ type: "scope-ready", scope, incarnation: "p1", revision });
+        yield* fixture.send({
+          type: "scope-ready",
+          core: HQ_CORE,
+          scope,
+          incarnation: "p1",
+          revision,
+        });
       }
       yield* settle;
     });
@@ -1148,7 +1187,13 @@ describe("Protected HQ scopes", () => {
           values: [{ key: "ada", value: mateValue }],
           removals: [],
         },
-        { type: "scope-ready", scope: attentionScope, incarnation: "p1", revision: 1 },
+        {
+          type: "scope-ready",
+          core: HQ_CORE,
+          scope: attentionScope,
+          incarnation: "p1",
+          revision: 1,
+        },
       ],
     ],
   ] as const)("What HQ sends in one turn is shown in one step, also behind %s", ([, turn]) =>
@@ -1381,6 +1426,7 @@ describe("a Mate's attention, relayed", () => {
       yield* fixture.send(relay("scope-reset", 1, attention("m1", 4, 1)));
       yield* fixture.send({
         type: "scope-ready",
+        core: HQ_CORE,
         scope: ATTENTION,
         incarnation: "a1",
         revision: 1,
@@ -1954,7 +2000,13 @@ it.effect(
         values: [{ key: "ada", value: { ...record, health: sample(1), healthState: "live" } }],
         removals: [],
       });
-      yield* fixture.send({ type: "scope-ready", scope: older, incarnation: "hq1", revision: 1 });
+      yield* fixture.send({
+        type: "scope-ready",
+        core: HQ_CORE,
+        scope: older,
+        incarnation: "hq1",
+        revision: 1,
+      });
       yield* settle;
       expect(health()).toBe(1);
       // A newer HQ sends the record without it, and each sample as its own value.
@@ -2046,7 +2098,13 @@ it.effect("relays health without an overview or attention and keeps it when HQ g
       ],
       removals: [],
     });
-    yield* fixture.send({ type: "scope-ready", scope, incarnation: "hq1", revision: 1 });
+    yield* fixture.send({
+      type: "scope-ready",
+      core: HQ_CORE,
+      scope,
+      incarnation: "hq1",
+      revision: 1,
+    });
     yield* settle;
     expect(publicRead(factOf(store.state(), "mateHealth", "ada"))).toMatchObject({
       kind: "known",
@@ -2269,7 +2327,13 @@ describe("outage scenarios at the HQ input", () => {
             },
           ],
         });
-        yield* fixture.send({ type: "scope-ready", scope, incarnation: "m1", revision: 1 });
+        yield* fixture.send({
+          type: "scope-ready",
+          core: HQ_CORE,
+          scope,
+          incarnation: "m1",
+          revision: 1,
+        });
       }
       yield* settle;
       const task = (projectId: string) =>
@@ -2338,7 +2402,13 @@ describe("outage scenarios at the HQ input", () => {
           },
         ],
       });
-      yield* fixture.send({ type: "scope-ready", scope, incarnation: "m1", revision: 1 });
+      yield* fixture.send({
+        type: "scope-ready",
+        core: HQ_CORE,
+        scope,
+        incarnation: "m1",
+        revision: 1,
+      });
       yield* settle;
       const heldQuestion = () =>
         hqMateOverview.derive(readsOfState(store.state()), { orgId: ORG, projectId: "ada" })?.main

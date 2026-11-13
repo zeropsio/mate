@@ -1,7 +1,7 @@
 import { expect, it } from "vite-plus/test";
 import { olderNavigation } from "./olderNavigation.ts";
 
-it("omits only the newer app offer and Core declaration", () => {
+it("omits only the newer app offer and declares the older protocol", () => {
   expect(
     JSON.parse(
       olderNavigation(
@@ -30,15 +30,17 @@ it("omits only the newer app offer and Core declaration", () => {
     ],
   });
   expect(
-    olderNavigation(
-      JSON.stringify({
-        type: "scope-ready",
-        scope: { kind: "navigation" },
-        incarnation: "i",
-        revision: 1,
-        core: { protocol: 1, build: "build" },
-      }),
-    ),
-  ).not.toContain("core");
+    JSON.parse(
+      olderNavigation(
+        JSON.stringify({
+          type: "scope-ready",
+          scope: { kind: "navigation" },
+          incarnation: "i",
+          revision: 1,
+          core: { protocol: 1, build: "build" },
+        }),
+      ),
+    ).core,
+  ).toEqual({ protocol: 0 });
   expect(olderNavigation("binary-or-other-frame")).toBe("binary-or-other-frame");
 });

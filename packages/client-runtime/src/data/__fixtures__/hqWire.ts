@@ -14,6 +14,8 @@ import type { HqWire } from "../adapters/hq.ts";
 import type { StreamFault } from "../streamMachine.ts";
 
 const encodeMessage = Schema.encodeSync(Schema.fromJsonString(HqStreamMessage));
+/** The `core` HQ sends on every `scope-ready` (its `protocol` and `build`), declaring no capability. */
+export const HQ_CORE = { protocol: 1, build: "test" };
 
 /** Credential-free source facts shared by the Git wire/consumer witnesses. */
 export const gitRemote = {
