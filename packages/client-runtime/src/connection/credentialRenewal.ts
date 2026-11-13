@@ -14,15 +14,8 @@ import type { ConnectionAttemptError } from "./model.ts";
  * credential that expires unnoticed surfaces as "Connection failed. The
  * environment credential is invalid."
  *
- * **Nothing renews a Zerops session any more, and that is the point.** The
- * Zerops door used to cap a session at one membership window because the
- * server could not re-check membership on its own, so the client re-minted
- * every fifteen minutes — which meant a person's own Zerops token arriving at
- * a container four times an hour, forever. The server now re-reads roles
- * itself (`ZeropsMembershipWatch`) and ends the sessions whose answer changed;
- * the client re-sends nothing in between and opens a new one with a fresh
- * throwaway when it has to (guide 3.5). This contract stays for a door that
- * has something to re-present; no client supplies one today.
+ * No client supplies a renewer today: a Zerops session is never renewed, and
+ * when it ends the door opens a new one.
  */
 
 /** Long enough for a slow round trip on a bad connection. */
