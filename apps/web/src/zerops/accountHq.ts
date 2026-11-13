@@ -5,9 +5,9 @@ import { tabHqSocketName } from "./tabHqSocketName";
  *
  * - **Which HQ:** the one this build names (`VITE_HQ_ORIGIN`, {@link configuredHq}), shared by every
  *   organization: no member list is read for it and no HQ is born.
- * - **Through its door:** HQ's API answers a session HQ issued for a throwaway named
- *   `mate-door:hq:<nonce>`, deleted once the door takes it — one a try was not served with is
- *   presented again on the next, while young, and mints nothing. One API per account, org and HQ
+ * - **Through its door:** HQ's API answers a session HQ issued at its door for the person's Zerops
+ *   access token, which goes to the door, the hand-over and the take-over replace alone
+ *   ({@link zeropsAccessToken}). One API per account, org and HQ
  *   for the account's lifetime; its session is kept across loads as the Mates' are
  *   (`keptSessions.ts`, audit K7), so a load with a live one passes no door.
  * - **Whether it answers:** its structure stream (`hqStructure.ts`): healthy while it serves. An HQ
