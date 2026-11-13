@@ -553,6 +553,7 @@ describe("nextRuntimesLine", () => {
 });
 
 describe("the stage's words", () => {
+  // witness: apps/web/src/zerops/mateArrival.ts | : `It stopped before its first step, so nothing changed on ${mate.project}.`; → : `The message to ${name} didn't go through.`;
   it.each<{ kind: ArrivalKind; headline: string; sentence: string; face: string }>([
     {
       kind: "coming",
@@ -588,6 +589,18 @@ describe("the stage's words", () => {
       kind: "question",
       headline: "What should Wren do on Beviro?",
       sentence: "",
+      face: "idle",
+    },
+    {
+      kind: "setup-stopped",
+      headline: "Wren's setup didn't start.",
+      sentence: "It stopped before its first step, so nothing changed on Beviro.",
+      face: "needs",
+    },
+    {
+      kind: "setup-stopped-plain",
+      headline: "Wren's setup didn't start.",
+      sentence: "The person who added Wren can start it again.",
       face: "idle",
     },
   ])("$kind: $headline", ({ kind, headline, sentence, face }) => {

@@ -14,7 +14,7 @@
  * Pure: the words, and what the conversation shows while the stand-up is its
  * person's.
  */
-import type { ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
+import type { RunRecord, ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
 import {
   zeropsOtherAgentReady,
   type OtherAgentFields,
@@ -170,3 +170,96 @@ export function mateStandUpAskLine(
 
 /** Whether a message of the Mate's main conversation is the stand-up's ask: its exact words. */
 export const isMateStandUpAsk = (text: string): boolean => text.trim() === MATE_STAND_UP_MESSAGE;
+
+/**
+ * A setup that never started: the Mate's main conversation holds nothing but its stand-up's runs,
+ * each ended failed before its first step (its record holds no items, as `BrokeOff.beforeStart`
+ * reads one) — an admission that refused it, a session that never opened. Not a conversation
+ * yet: its view is the Mate's arrival, not the timeline.
+ */
+export interface MateStandUpStopped {
+  /** Who it runs for, by bare Zerops user id: the person who added the Mate. */
+  readonly by: string;
+  /** Its attempts that ended before their first step. */
+  readonly failures: number;
+  /** A later attempt waits to start: the Mate is standing up. */
+  readonly waiting: boolean;
+}
+
+const WAITING_RUN_STATES: ReadonlySet<string> = new Set(["queued", "admitted", "sending"]);
+
+/**
+ * The conversation's never-started setup, from its runs; null once anything else is in it — the
+ * person's words, a run that began, a stand-up that has not failed yet (a first one still on its
+ * way stays the timeline's).
+ */
+export function mateStandUpStopped(
+  runs: ReadonlyArray<Pick<RunRecord, "principal" | "end" | "state" | "summary">>,
+  personWrote: boolean,
+): MateStandUpStopped | null {
+  if (personWrote) return null;
+  let by: string | undefined;
+  let failures = 0;
+  let waiting = false;
+  for (const run of runs) {
+    if (run.principal.kind !== "standup" || run.summary.items > 0) return null;
+    by = run.principal.startedBy;
+    if (run.end === null) {
+      if (!WAITING_RUN_STATES.has(run.state)) return null;
+      waiting = true;
+    } else if (run.end.kind === "failed") {
+      failures += 1;
+    } else {
+      return null;
+    }
+  }
+  return by === undefined || failures === 0 ? null : { by, failures, waiting };
+}
+
+/**
+ * Where its person's Try again stands: ready; sending; the Mate starting it (an attempt went, or
+ * one waits to start); stopped again before its first step; refused, the Mate holding no failed
+ * setup of theirs to start; or not reaching the Mate at all.
+ */
+export type MateSetupRetryState =
+  | "ready"
+  | "sending"
+  | "starting"
+  | "again"
+  | "refused"
+  | "unreachable";
+
+/** A press of Try again in this view: its answer, and how many attempts had failed at it. */
+export interface MateSetupPress {
+  readonly answer: "sending" | "went" | "refused" | "unreachable";
+  readonly failures: number;
+}
+
+/**
+ * The Try again as drawn, from the last press in this view and the conversation: an attempt that
+ * went shows the Mate starting until its run fails before its first step (another failure
+ * counted) or the Mate settles the attempt without one; one waiting to start is starting, whoever
+ * pressed, and more than one failure reads as stopped again.
+ */
+export function mateSetupRetryState(input: {
+  readonly press: MateSetupPress | null;
+  readonly failures: number;
+  readonly waiting: boolean;
+  /** A Try again of this Mate's is still in flight or unsettled (`mateActions`). */
+  readonly settling: boolean;
+}): MateSetupRetryState {
+  if (input.waiting) return "starting";
+  const { press } = input;
+  // Unpressed here, it still says a second failure as one (a reload, another tab's press).
+  if (press === null) return input.settling ? "sending" : input.failures > 1 ? "again" : "ready";
+  switch (press.answer) {
+    case "sending":
+      return "sending";
+    case "refused":
+      return "refused";
+    case "unreachable":
+      return "unreachable";
+    case "went":
+      return input.failures > press.failures || !input.settling ? "again" : "starting";
+  }
+}

@@ -3487,7 +3487,6 @@ function ConversationView(props: ChatViewProps) {
     // Held while it is read again (a reload): a conversation with messages gives the composer back
     // at once, and its room with it, rather than when the read settles and the end moves.
     live: threadSyncPhase === null,
-    personWrote: activeThread?.messages.some((message) => message.role === "user"),
   });
   // Whose Mate it is, as HQ records it: a colleague's is read along, never written to.
   const admissionMate = zeropsMateAt(zeropsMates, environmentId);
@@ -5988,40 +5987,8 @@ function ConversationView(props: ChatViewProps) {
     const urgentSystemItems = systemComposerBannerItems.filter(isUrgentSystemItem);
     if (colleagueReadOnly !== null) return urgentSystemItems;
     const calmSystemItems = systemComposerBannerItems.filter((item) => !isUrgentSystemItem(item));
-    // A new Mate whose setup never started: its person sets it going again from here, the
-    // conversation holding only the run that failed.
-    const standUpItems: ComposerBannerStackItem[] = mateStandUp.sendFailed
-      ? [
-          {
-            id: "mate-standup-failed",
-            variant: "warning",
-            icon: null,
-            layout: "centered",
-            title: `${pageMateName ?? "This Mate"}'s setup didn't start.`,
-            actions: (
-              <Button
-                disabled={mateStandUp.retrying}
-                onClick={() => {
-                  void mateStandUp.retry();
-                }}
-                size="md"
-                variant="primary"
-              >
-                {mateStandUp.retrying ? "Trying again…" : "Try again"}
-              </Button>
-            ),
-          },
-        ]
-      : [];
-    return [...urgentSystemItems, ...standUpItems, ...calmSystemItems];
-  }, [
-    colleagueReadOnly,
-    mateStandUp.retry,
-    mateStandUp.retrying,
-    mateStandUp.sendFailed,
-    pageMateName,
-    systemComposerBannerItems,
-  ]);
+    return [...urgentSystemItems, ...calmSystemItems];
+  }, [colleagueReadOnly, systemComposerBannerItems]);
   // What happened that the person may still act on: quiet rows at the conversation's end, in the
   // order they come (S6). A colleague's conversation is read, not run, and says none of them.
   const crewNextNotice = useMemo(() => crewNextConversationNotice(crewNotices), [crewNotices]);
