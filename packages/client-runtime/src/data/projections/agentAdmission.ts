@@ -307,6 +307,7 @@ export function admissionExplainsRefusal(
     attention !== null &&
     source !== undefined &&
     source.reason !== "not-permitted" &&
+    source.reason !== "unrecorded" &&
     source.loginId === attention.loginKey
   );
 }

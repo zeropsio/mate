@@ -44,13 +44,13 @@ import {
   agentIdForDriverKind,
   agentIdForProviderInstance,
   OrchestrationDispatchCommandError,
+  type AgentAdmissionRefusal,
   type OrchestrationCommand,
   type OrchestrationThreadShell,
   type ZeropsAgentId,
   type ZeropsLoginState,
 } from "@t3tools/contracts";
 import {
-  type TurnRefusal,
   zeropsAgentUnavailableReason,
   zeropsLoginTitle,
   zeropsLoginUnavailableReason,
@@ -70,7 +70,11 @@ import { AUTOMATED_MATE_SIGNS_NOBODY_IN, ZeropsAutomation } from "./ZeropsAutoma
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { ZeropsLogins, type MateLogin } from "./ZeropsLogins.ts";
 import { ZEROPS_SUBJECT_PREFIX } from "@t3tools/contracts";
-import { isTurnStartingCommand, ZeropsProjectSigners } from "./ZeropsProjectSigners.ts";
+import {
+  isTurnStartingCommand,
+  ZeropsProjectSigners,
+  type GateRefusal,
+} from "./ZeropsProjectSigners.ts";
 import { ZeropsSignerStanding } from "./ZeropsSignerStanding.ts";
 
 /**
@@ -105,6 +109,21 @@ export type TurnPrincipal =
 export const ACCESS_UNCONFIRMED =
   "Could not confirm that the person this turn runs for still has access to this project. Try again in a moment.";
 
+/**
+ * A turn on a login with no signer on record, asked before HQ's map of signers was heard in this
+ * process (`ZeropsProjectSigners`, `SIGNERS_WAIT`): whose the login is cannot be said yet, so the
+ * engine asks again, as for {@link ACCESS_UNCONFIRMED}.
+ */
+export const SIGNERS_UNHEARD =
+  "Zerops Mate has not heard from HQ yet who signed this agent in, so it cannot tell whose turn this is. Try again in a moment.";
+
+/**
+ * Whether a refusal is the door unable to say now rather than a verdict: the engine asks such a
+ * run again before failing it (`RunRefused.undetermined`).
+ */
+export const isUndetermined = (refusal: OrchestrationDispatchCommandError): boolean =>
+  refusal.message === ACCESS_UNCONFIRMED || refusal.message === SIGNERS_UNHEARD;
+
 /** The Zerops user a principal stands for, or `undefined` when it names none. */
 export function principalUserId(principal: TurnPrincipal): string | undefined {
   if (principal.kind === "task") return undefined;
@@ -115,8 +134,10 @@ export function principalUserId(principal: TurnPrincipal): string | undefined {
 }
 
 /** The sentence a refused turn reports. */
-export function turnRefusalMessage(agentId: ZeropsAgentId, refusal: TurnRefusal): string {
+export function turnRefusalMessage(agentId: ZeropsAgentId, refusal: GateRefusal): string {
   switch (refusal.kind) {
+    case "signers-unheard":
+      return SIGNERS_UNHEARD;
     case "not-signed-in":
       return zeropsAgentUnavailableReason(agentId, refusal.auth);
     case "unrecorded":
@@ -129,10 +150,12 @@ export function turnRefusalMessage(agentId: ZeropsAgentId, refusal: TurnRefusal)
 /** The sentence a refused turn on a login beyond the defaults reports. */
 export function loginRefusalMessage(
   login: Pick<MateLogin, "agent" | "kind" | "label">,
-  refusal: TurnRefusal,
+  refusal: GateRefusal,
 ): string {
   const title = zeropsLoginTitle(login);
   switch (refusal.kind) {
+    case "signers-unheard":
+      return SIGNERS_UNHEARD;
     case "not-signed-in":
       return zeropsLoginUnavailableReason({ ...login, default: false }, refusal.auth);
     case "unrecorded":
@@ -141,6 +164,32 @@ export function loginRefusalMessage(
       return `${title} was signed in by another project member — only they can run it.`;
   }
 }
+
+/**
+ * The login a refusal is about and why, as clients and the engine's run ends carry it; none for a
+ * refusal that is no verdict on a login (`signers-unheard`).
+ */
+const admissionRefusalOf = (
+  loginId: string,
+  refusal: GateRefusal,
+): AgentAdmissionRefusal | undefined => {
+  switch (refusal.kind) {
+    case "signers-unheard":
+      return undefined;
+    case "unrecorded":
+      return { loginId, reason: "unrecorded" };
+    case "someone-else":
+      return { loginId, reason: "not-permitted" };
+    case "not-signed-in":
+      return {
+        loginId,
+        reason:
+          refusal.auth === "needs-reauth" || refusal.auth === "reconnect"
+            ? "expired-login"
+            : "missing-sign-in",
+      };
+  }
+};
 
 /** The refusals of a crewmate's conversation (seam 13). */
 export const CREW_THREAD_REFUSALS = {
@@ -345,15 +394,7 @@ export const make = Effect.gen(function* () {
       signed: false,
       refusal: new OrchestrationDispatchCommandError({
         message: loginRefusalMessage(login, refusal),
-        agentAdmission: {
-          loginId: login.id,
-          reason:
-            refusal.kind !== "not-signed-in"
-              ? "not-permitted"
-              : refusal.auth === "needs-reauth" || refusal.auth === "reconnect"
-                ? "expired-login"
-                : "missing-sign-in",
-        },
+        agentAdmission: admissionRefusalOf(login.id, refusal),
       }),
     };
   });
@@ -389,15 +430,7 @@ export const make = Effect.gen(function* () {
       signed: false,
       refusal: new OrchestrationDispatchCommandError({
         message: turnRefusalMessage(agentId, refusal),
-        agentAdmission: {
-          loginId: agentId,
-          reason:
-            refusal.kind !== "not-signed-in"
-              ? "not-permitted"
-              : refusal.auth === "needs-reauth" || refusal.auth === "reconnect"
-                ? "expired-login"
-                : "missing-sign-in",
-        },
+        agentAdmission: admissionRefusalOf(agentId, refusal),
       }),
     };
   });

@@ -2021,9 +2021,14 @@ export class OrchestrationGetSnapshotError extends Schema.TaggedError<Orchestrat
   },
 ) {}
 
+/**
+ * The login a turn was refused on, and why: nobody signed in (`missing-sign-in`), its sign-in no
+ * longer works (`expired-login`), somebody else signed it in (`not-permitted`), or it holds a
+ * credential nobody is on record for (`unrecorded`).
+ */
 export const AgentAdmissionRefusal = Schema.Struct({
   loginId: Schema.String,
-  reason: Schema.Literals(["missing-sign-in", "expired-login", "not-permitted"]),
+  reason: Schema.Literals(["missing-sign-in", "expired-login", "not-permitted", "unrecorded"]),
 });
 export type AgentAdmissionRefusal = typeof AgentAdmissionRefusal.Type;
 

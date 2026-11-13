@@ -766,6 +766,15 @@ export interface BrokeOff {
 const NOT_THE_SENDERS_LOGIN =
   "This message did not run: only the person signed in to this agent can run it.";
 
+/**
+ * A refused attempt's quiet line. A login nobody is on record for is no one's to run, which the
+ * engine's own words say to every reader alike; somebody else's login gets the sentence above.
+ */
+const refusedAttemptWords = (end: Parameters<typeof isRefusedAttempt>[0]): string =>
+  end?.kind === "failed" && end.admission?.reason === "unrecorded"
+    ? end.reason
+    : NOT_THE_SENDERS_LOGIN;
+
 function brokeOffOn(input: {
   readonly entries: ReadonlyArray<TimelineEntry>;
   readonly latest: boolean;
@@ -1097,7 +1106,12 @@ export function deriveConversationStructure(given: {
         ? null
         : typed
           ? isRefusedAttempt(run?.end)
-            ? { entryId: null, reason: NOT_THE_SENDERS_LOGIN, next: null, quiet: true as const }
+            ? {
+                entryId: null,
+                reason: refusedAttemptWords(run?.end),
+                next: null,
+                quiet: true as const,
+              }
             : run?.end?.kind === "failed" || run?.end?.kind === "crashed"
               ? {
                   entryId: null,

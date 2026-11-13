@@ -47,6 +47,7 @@ import {
   type TurnRefusal,
   type ZeropsAgentAuthFields,
 } from "@t3tools/shared/zeropsAgentAuth";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -102,6 +103,21 @@ export function isTurnStartingCommand(
  */
 export const SIGN_IN_CHECK_WAIT = Duration.seconds(30);
 
+/**
+ * How long a turn waits for HQ's map of signers when the login it would spend has none on record
+ * and no map was heard since this process started: a restarted server knows nobody's sign-in until
+ * the link's first map (`zeropsSignIns`), which follows HQ's first state at once, and a run it
+ * continues is asked about before that (Dov, 2026-11-13: refused 400 ms after its link opened).
+ */
+export const SIGNERS_WAIT = Duration.seconds(10);
+
+/**
+ * What the gate answers a turn it does not admit: {@link TurnRefusal}, or that HQ's map was not
+ * heard within {@link SIGNERS_WAIT}, so whose the login is cannot be said yet. That one is no
+ * verdict on the login or the person: whoever asked asks again.
+ */
+export type GateRefusal = TurnRefusal | { readonly kind: "signers-unheard" };
+
 /** A login as it stands now, and when it may have changed (`ZeropsAgentLogin`'s pair). */
 export interface CurrentLogin {
   readonly latest: Effect.Effect<ZeropsAgentLoginState | undefined>;
@@ -117,8 +133,10 @@ export class ZeropsProjectSigners extends Context.Service<
     readonly changes: Stream.Stream<void>;
     /**
      * {@link turnRefusal} for this session on `agentId`, against who this server saw sign it in.
-     * While a code is being checked on it whose outcome decides this turn, the turn waits up to
-     * {@link SIGN_IN_CHECK_WAIT} for the check to settle, then goes by the sign-in it left.
+     * A login with no signer is nobody's only once HQ's map was heard: before that the turn waits
+     * up to {@link SIGNERS_WAIT} for it. While a code is being checked on it whose outcome decides
+     * this turn, the turn waits up to {@link SIGN_IN_CHECK_WAIT} for the check to settle, then
+     * goes by the sign-in it left.
      */
     readonly turnRefusal: (input: {
       readonly agentId: ZeropsAgentId;
@@ -128,7 +146,7 @@ export class ZeropsProjectSigners extends Context.Service<
       readonly login?: ZeropsAgentLoginState | undefined;
       /** That login as it stands now, read again at each change while the turn waits on it. */
       readonly currentLogin?: CurrentLogin | undefined;
-    }) => Effect.Effect<TurnRefusal | undefined>;
+    }) => Effect.Effect<GateRefusal | undefined>;
     /** {@link loginTurnRefusal} for this session on the login keyed `key`, as `turnRefusal`. */
     readonly loginRefusal: (input: {
       readonly key: string;
@@ -139,7 +157,7 @@ export class ZeropsProjectSigners extends Context.Service<
       readonly login?: ZeropsAgentLoginState | undefined;
       /** That login as it stands now, read again at each change while the turn waits on it. */
       readonly currentLogin?: CurrentLogin | undefined;
-    }) => Effect.Effect<TurnRefusal | undefined>;
+    }) => Effect.Effect<GateRefusal | undefined>;
   }
 >()("t3/zerops/ZeropsProjectSigners") {}
 
@@ -157,6 +175,9 @@ export const make = Effect.gen(function* () {
    * the turn waits for the check to settle, re-reading the login and the signer at each change of
    * either, up to {@link SIGN_IN_CHECK_WAIT}. A check still deciding then refuses. A login at
    * its menu, its page or its code prompt has written nothing, and holds no turn.
+   *
+   * Before any of it, a login that would be refused as nobody's while HQ's map is still unheard
+   * waits for that map, or for a sign-in here that names its signer, up to {@link SIGNERS_WAIT}.
    */
   const gateSignedIn = (
     key: string,
@@ -178,7 +199,32 @@ export const make = Effect.gen(function* () {
         (login.startedBy === person) !== (signer === person);
       let login = input.login;
       let signer = (yield* signers)[key];
-      const refusal = base(signer);
+      // The mark is read first: once it is set, the map's signers are already in the store.
+      const awaitsMap = Effect.gen(function* () {
+        const heard = yield* signIns.mapHeard;
+        signer = (yield* signers)[key];
+        return !heard && base(signer)?.kind === "unrecorded";
+      });
+      if (yield* awaitsMap) {
+        const askedAt = yield* Clock.currentTimeMillis;
+        yield* Effect.scoped(
+          Effect.gen(function* () {
+            // Subscribed before the look, so no change after it goes unheard.
+            const moved = yield* subscribeChanges([signIns.changes]);
+            while (yield* awaitsMap) yield* moved;
+          }),
+        ).pipe(Effect.timeoutOrElse({ duration: SIGNERS_WAIT, orElse: () => Effect.void }));
+        const unheard = yield* awaitsMap;
+        yield* Effect.logInfo("zerops sign-ins: a turn waited for HQ's signers", {
+          login: key,
+          settled: !unheard,
+          waitedMs: (yield* Clock.currentTimeMillis) - askedAt,
+        });
+        if (unheard) return { kind: "signers-unheard" } satisfies GateRefusal;
+        // A sign-in may have started on this login meanwhile: the code check below goes by it.
+        if (input.currentLogin !== undefined) login = yield* input.currentLogin.latest;
+      }
+      const refusal: GateRefusal | undefined = base(signer);
       if (refusal?.kind === "not-signed-in" || !decides(login, signer)) return refusal;
       const look = Effect.gen(function* () {
         if (input.currentLogin !== undefined) login = yield* input.currentLogin.latest;

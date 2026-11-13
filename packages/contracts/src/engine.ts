@@ -256,12 +256,13 @@ export type RunEnd = typeof RunEnd.Type;
 export type RunEndKind = RunEnd["kind"];
 
 /**
- * A run admission refused because its sender is not the person signed in to its agent: a fact
- * about that one attempt and its sender, never a failure of the conversation — no reader's row,
- * status or notice turns on it.
+ * A run admission refused over whose agent login it is — its sender is not the person signed in
+ * to it (`not-permitted`), or nobody is on record for it (`unrecorded`): a fact about that one
+ * attempt, never a failure of the conversation — no reader's row, status or notice turns on it.
  */
 export const isRefusedAttempt = (end: RunEnd | null | undefined): boolean =>
-  end?.kind === "failed" && end.admission?.reason === "not-permitted";
+  end?.kind === "failed" &&
+  (end.admission?.reason === "not-permitted" || end.admission?.reason === "unrecorded");
 
 /**
  * Who says a turn ended, as the bridge reports it:
