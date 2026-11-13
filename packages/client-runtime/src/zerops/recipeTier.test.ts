@@ -232,6 +232,15 @@ services:
   });
 });
 
+// witness: packages/client-runtime/src/zerops/recipeTier.ts | pooled.has(partOfStage(item.hostname)) → false
+it("starts the stage of a part whose dev half is a dev pool empty, for its pool's first image", () => {
+  const yaml =
+    "services:\n  - hostname: apipool\n    type: swarm@1\n    maxContainers: 3\n  - hostname: apistage\n    buildFromGit: https://hq.test/git/acme/api.git\n    zeropsSetup: apistage\n    type: nodejs@22\n  - hostname: webstage\n    buildFromGit: https://hq.test/git/acme/web.git\n    zeropsSetup: webstage\n    type: nodejs@22\n";
+  expect(mateTier(yaml)?.yaml).toBe(
+    "services:\n  - hostname: apipool\n    type: swarm@1\n    maxContainers: 3\n  - hostname: apistage\n    startWithoutCode: true\n    type: nodejs@22\n  - hostname: webstage\n    type: nodejs@22\n",
+  );
+});
+
 describe("mateTier on zcp's own tiers", () => {
   // Four-space items, keys sorted, so `buildFromGit` opens every runtime's item (Dara's tier,
   // 2026-09-17, and yaml.v3's order in zcp's `BuildGroupRecipe`).
