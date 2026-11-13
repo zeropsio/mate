@@ -24,7 +24,6 @@ import { accountReadsAtom } from "../reads.ts";
 import { followAccessChanges } from "../../zerops/account/accessChanges.ts";
 import {
   hqFixtureWire,
-  HQ_FIXTURE_ACCESS_TOKEN,
   gitEnvironment,
   gitRemote,
   gitPreflight,
@@ -607,7 +606,6 @@ describe("hqNavigationLink", () => {
         {
           type: "subscribe",
           scopes: [{ scope: NAVIGATION, knownKeys: [] }],
-          accessToken: HQ_FIXTURE_ACCESS_TOKEN,
         },
       ]);
       expect(phase(store, hqAppsScope(ORG))).toBe("baselining");
@@ -640,7 +638,7 @@ describe("hqNavigationLink", () => {
         yield* fixture.send({ type: "scope-changed", scope: NAVIGATION });
         yield* settle;
         expect(fixture.sent.slice(before).map(({ request }) => request)).toEqual([
-          { type: "retry", scopes: [NAVIGATION], accessToken: HQ_FIXTURE_ACCESS_TOKEN },
+          { type: "retry", scopes: [NAVIGATION] },
         ]);
         yield* fixture.send(
           navigation("scope-values", 4, [
@@ -675,7 +673,6 @@ describe("hqNavigationLink", () => {
               // The Mate HQ places is observed with the navigation, across segments too.
               { scope: { kind: "attention", projectId: "ada", health: "apart" }, knownKeys: [] },
             ],
-            accessToken: HQ_FIXTURE_ACCESS_TOKEN,
           },
         ]);
         // An unchanged scope answers only that it is ready: nothing moves, nothing waits.
@@ -756,7 +753,6 @@ describe("hqNavigationLink", () => {
         {
           type: "subscribe",
           scopes: [{ scope: NAVIGATION, knownKeys: ["app:shop", "project:ada"] }],
-          accessToken: HQ_FIXTURE_ACCESS_TOKEN,
         },
       ]);
       yield* Fiber.interrupt(fiber);
@@ -854,13 +850,12 @@ describe("hqNavigationLink", () => {
               knownKeys: ["app:shop", "project:ada"],
             },
           ],
-          accessToken: HQ_FIXTURE_ACCESS_TOKEN,
         },
       ]);
       expect(fixture.sent.filter(({ request }) => request.type === "retry")).toEqual([
         {
           segment: 2,
-          request: { type: "retry", scopes: [NAVIGATION], accessToken: HQ_FIXTURE_ACCESS_TOKEN },
+          request: { type: "retry", scopes: [NAVIGATION] },
         },
       ]);
       expect(phase(store, hqAppsScope(ORG))).toBe("baselining");
@@ -980,7 +975,6 @@ describe("hqNavigationLink", () => {
       expect(fixture.sent.at(-1)?.request).toEqual({
         type: "subscribe",
         scopes: [{ scope: attention, knownKeys: [] }],
-        accessToken: HQ_FIXTURE_ACCESS_TOKEN,
       });
       const value = {
         presence: { online: true, since: "2026-10-06T00:00:00Z", overview: "live" },
@@ -1051,7 +1045,6 @@ describe("The move picker asks HQ with the person's token", () => {
         type: "move-offers",
         requestId: expect.any(String),
         projectId: "ada",
-        accessToken: HQ_FIXTURE_ACCESS_TOKEN,
       });
       yield* Fiber.interrupt(fiber);
     }),
@@ -1133,8 +1126,7 @@ describe("Protected HQ scopes are asked with the person's token", () => {
           );
         expect(kinds(0)).toEqual(protectedKinds);
         expect(kinds(before)).toEqual(protectedKinds);
-        for (const request of subscribesOf(fixture))
-          expect(request.accessToken).toBe(HQ_FIXTURE_ACCESS_TOKEN);
+        for (const request of subscribesOf(fixture)) expect("accessToken" in request).toBe(false);
         yield* admit(fixture, 1);
         admitted(store);
         yield* Fiber.interrupt(fiber);
@@ -1162,7 +1154,6 @@ describe("Protected HQ scopes are asked with the person's token", () => {
           {
             type: "subscribe",
             scopes: [{ scope: attentionScope, knownKeys: [] }],
-            accessToken: HQ_FIXTURE_ACCESS_TOKEN,
           },
         ]);
         expect(phase(store, hqMateScope(ORG, "ada"))).not.toBe("refused");
@@ -1259,7 +1250,7 @@ describe("Protected HQ scopes are asked with the person's token", () => {
         expect(
           reasked.flatMap(({ scopes }) => scopes.map(({ scope }) => hqScopeKey(scope))).toSorted(),
         ).toEqual([attentionScope, detailScope].map(hqScopeKey).toSorted());
-        for (const request of reasked) expect(request.accessToken).toBe(HQ_FIXTURE_ACCESS_TOKEN);
+        for (const request of reasked) expect("accessToken" in request).toBe(false);
         yield* admit(fixture, 2);
         admitted(store);
         expect(subscribesOf(fixture, before)).toEqual(reasked);
@@ -1294,7 +1285,6 @@ describe("asking HQ on the open socket", () => {
           repo: "api",
           base: "a".repeat(40),
           head,
-          accessToken: HQ_FIXTURE_ACCESS_TOKEN,
         });
         expect(JSON.parse(encodeHqRequest(request))).toEqual(request);
         const answer = { base: "a".repeat(40), head, commits: [], truncated: false, total: 0 };
@@ -1802,7 +1792,6 @@ describe("an HQ outage", () => {
             },
             { scope: { kind: "attention", projectId: "ada", health: "apart" }, knownKeys: [] },
           ],
-          accessToken: HQ_FIXTURE_ACCESS_TOKEN,
         },
       ]);
       yield* fixture.send(ready(3));
@@ -1962,16 +1951,14 @@ describe("an HQ outage", () => {
           type: "seen",
           projectId: "ada",
           resultIds: ["r1", "r2"],
-          accessToken: HQ_FIXTURE_ACCESS_TOKEN,
         },
-        { type: "seen", projectId: "bea", resultIds: ["r3"], accessToken: HQ_FIXTURE_ACCESS_TOKEN },
+        { type: "seen", projectId: "bea", resultIds: ["r3"] },
       ]);
       yield* link.seen("ada", ["r4"]);
       expect(seen(2).at(-1)).toEqual({
         type: "seen",
         projectId: "ada",
         resultIds: ["r4"],
-        accessToken: HQ_FIXTURE_ACCESS_TOKEN,
       });
       yield* fixture.drop({ outcome: "transient", message: "HQ's stream broke." });
       yield* TestClock.adjust(2_000);
@@ -2036,7 +2023,6 @@ describe("an HQ session", () => {
       expect(fixture.opens()).toBe(2);
       expect(fixture.sent.find(({ segment }) => segment === 2)?.request).toEqual({
         type: "retry",
-        accessToken: HQ_FIXTURE_ACCESS_TOKEN,
       });
       yield* Fiber.interrupt(fiber);
     }),

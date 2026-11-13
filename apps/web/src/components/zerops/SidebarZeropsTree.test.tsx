@@ -5512,7 +5512,6 @@ describe("A: sign-in, session and organizations", () => {
         repairSession: Effect.void,
       });
       const hq = (orgId: string): HqWire => ({
-        withAccess: (request) => Effect.succeed({ ...request, accessToken: "access" }),
         open: () =>
           Effect.gen(function* () {
             const messages = yield* Queue.unbounded<string, Cause.Done>();
@@ -5716,7 +5715,6 @@ describe("B: navigation protocol", () => {
       const newMessages = yield* Queue.unbounded<string, Cause.Done>();
       const orgId = "org";
       const wire = (messages: typeof oldMessages, older: boolean): HqWire => ({
-        withAccess: (request) => Effect.succeed({ ...request, accessToken: "access" }),
         open: () =>
           Effect.succeed({
             messages: Stream.fromQueue(messages),

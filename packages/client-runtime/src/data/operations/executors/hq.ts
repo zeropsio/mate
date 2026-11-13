@@ -888,7 +888,7 @@ export function makeHqExecutor(ports: {
               outcome: "definitive-refusal",
               message: HQ_NOT_OPEN,
             });
-          // HQ's 409 `project_present` or 401 `token_required` ends it, refused: never sent again.
+          // HQ's 409 `project_present` ends it, refused: never sent again.
           yield* Effect.tryPromise({
             try: () => api.completeProjectDeletion(intent.projectId),
             catch: (cause) => faultOf(cause, true),

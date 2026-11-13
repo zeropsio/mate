@@ -92,11 +92,10 @@ export const seedCoreWorld = (now: number, anchored: boolean, orgId: string): Fa
 };
 
 /** A one-use ticket for `session`'s socket. */
-/** The stream door of a signed-in person's session: its ticket and the person's access token. */
+/** The stream door of a signed-in person's session: its ticket. */
 export const ticketFor = (call: Call, session: string) =>
   Effect.map(call("POST", "/api/stream-ticket", { session }), (response) => ({
     ticket: (response.body as { readonly ticket: string }).ticket,
-    accessToken: call.accessOf(session),
   }));
 
 /** What zcp does: the challenge, written into the project's env, presented back; the credential. */

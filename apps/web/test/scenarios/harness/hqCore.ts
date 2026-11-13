@@ -3,7 +3,6 @@ import {
   hqScopeKey,
   HqStreamMessage,
   HqStreamRequest,
-  HQ_PROTECTED_SCOPE_KINDS,
   type HqScope,
 } from "@t3tools/shared/hqStream";
 import * as Effect from "effect/Effect";
@@ -23,27 +22,20 @@ import { startExternalCore, type GithubAddress } from "./externalCore.ts";
 const readMessage = Schema.decodeUnknownOption(Schema.fromJsonString(HqStreamMessage));
 const encodeRequest = Schema.encodeSync(Schema.fromJsonString(HqStreamRequest));
 
-/**
- * What a person's tab opens HQ's stream with: a ticket of their session and, as the product client
- * sends on every `subscribe` and `retry`, their own Zerops access token, with which HQ reads what the
- * scope shows of Zerops.
- */
+/** What a person's tab opens HQ's stream with: a ticket of their session. */
 export interface ScenarioStreamDoor {
   readonly ticket: string;
-  readonly accessToken?: string;
 }
 
 /** Real Core navigation, through its baseline or a caller's source receipt. */
 export const openScenarioNavigation = (
   origin: string,
-  { ticket, accessToken }: ScenarioStreamDoor,
+  { ticket }: ScenarioStreamDoor,
   ready: (message: HqStreamMessage) => boolean = (message) =>
     message.type === "scope-ready" && message.scope.kind === "navigation",
   scope: HqScope = { kind: "navigation" },
 ) =>
   Effect.gen(function* () {
-    if (HQ_PROTECTED_SCOPE_KINDS.has(scope.kind) && accessToken === undefined)
-      return yield* Effect.die(new Error("A protected HQ scope needs its person's access token"));
     const socket = yield* Effect.acquireRelease(
       Effect.sync(
         () => new WebSocket(`${origin.replace("http:", "ws:")}/api/structure/ws?ticket=${ticket}`),
@@ -56,13 +48,7 @@ export const openScenarioNavigation = (
           socket.once("error", reject);
           socket.once("close", (code) => reject(new Error(`Core navigation closed (${code})`)));
           socket.once("open", () =>
-            socket.send(
-              encodeRequest({
-                type: "subscribe",
-                scopes: [{ scope }],
-                ...(accessToken === undefined ? {} : { accessToken }),
-              }),
-            ),
+            socket.send(encodeRequest({ type: "subscribe", scopes: [{ scope }] })),
           );
           socket.on("message", (frame) => {
             const parsed = readMessage(frame.toString());
@@ -77,13 +63,7 @@ export const openScenarioNavigation = (
               hqScopeKey(message.scope) === hqScopeKey(scope)
             ) {
               // HQ pushes no values of a change: asking the scope again is the read that answers it.
-              socket.send(
-                encodeRequest({
-                  type: "retry",
-                  scopes: [scope],
-                  ...(accessToken === undefined ? {} : { accessToken }),
-                }),
-              );
+              socket.send(encodeRequest({ type: "retry", scopes: [scope] }));
               return;
             }
             if (message.type === "scope-error" && hqScopeKey(message.scope) === hqScopeKey(scope)) {

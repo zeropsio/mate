@@ -3553,7 +3553,6 @@ describe("Every HQ verb that decides on the person's role carries their current 
     "gitBrowseBytes",
     "mateRecipe",
     "proposalDecisions",
-    "withAccess",
   ];
 
   const asking = () => {

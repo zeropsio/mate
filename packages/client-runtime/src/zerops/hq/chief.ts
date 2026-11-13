@@ -78,24 +78,16 @@ export interface HqChiefCalls {
   readonly recordReveal: (reveal: HqRevealRecord) => Promise<void>;
 }
 
-/**
- * The client's session call (`makeHqApi`'s `authorized`), its schema read (`decoded`) and the body
- * carrying the person's access token (`withAccess`).
- */
+/** The client's session call (`makeHqApi`'s `authorized`) and its schema read (`decoded`). */
 export interface HqChiefTransport {
   readonly authorized: (path: string, init?: RequestInit, write?: boolean) => Promise<Response>;
-  readonly withAccess: HqApi["withAccess"];
   readonly decoded: <S extends Schema.Decoder<unknown>>(
     schema: S,
     what: string,
   ) => (response: Response) => Promise<S["Type"]>;
 }
 
-export function makeChiefCalls({
-  authorized,
-  decoded,
-  withAccess,
-}: HqChiefTransport): HqChiefCalls {
+export function makeChiefCalls({ authorized, decoded }: HqChiefTransport): HqChiefCalls {
   const readRegistration = decoded(HqChiefRegistration, "Chief's registration");
   const readDecisions = decoded(DecisionsAnswer, "Chief's decisions");
   const readDecision = decoded(HqProposalDecision, "a decision on a proposal");
@@ -104,7 +96,7 @@ export function makeChiefCalls({
       readRegistration(
         await authorized(
           "/api/chief",
-          { method: "PUT", body: JSON.stringify(await withAccess({ projectId })) },
+          { method: "PUT", body: JSON.stringify({ projectId }) },
           true,
         ),
       ),
@@ -129,16 +121,12 @@ export function makeChiefCalls({
       readDecision(
         await authorized(
           `/api/proposals/${encodeURIComponent(id)}`,
-          { method: "PUT", body: JSON.stringify(await withAccess(write)) },
+          { method: "PUT", body: JSON.stringify(write) },
           true,
         ),
       ),
     recordReveal: async (reveal) => {
-      await authorized(
-        "/api/reveals",
-        { method: "POST", body: JSON.stringify(await withAccess(reveal)) },
-        true,
-      );
+      await authorized("/api/reveals", { method: "POST", body: JSON.stringify(reveal) }, true);
     },
   };
 }
