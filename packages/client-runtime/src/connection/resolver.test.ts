@@ -296,23 +296,23 @@ describe("ConnectionResolver", () => {
       wsBaseUrl: ENDPOINT.wsBaseUrl,
     });
     const entry = catalogEntry(target, Option.some(profile));
-    const bearer = (lifetime: { readonly issuedAtEpochMs?: number; expiresAtEpochMs?: number }) =>
+    const bearer = (lifetime: { readonly expiresAtEpochMs?: number }) =>
       new BearerConnectionCredential({ token: ["bearer", "one"].join("-"), ...lifetime });
 
     it.effect.each([
       {
         case: "a session past its deadline",
-        credential: bearer({ issuedAtEpochMs: NOW - 86_400_000, expiresAtEpochMs: NOW - 1 }),
+        credential: bearer({ expiresAtEpochMs: NOW - 1 }),
         presented: false,
       },
       {
         case: "a session inside one round trip of its deadline",
-        credential: bearer({ issuedAtEpochMs: NOW - 86_390_000, expiresAtEpochMs: NOW + 10_000 }),
+        credential: bearer({ expiresAtEpochMs: NOW + 10_000 }),
         presented: false,
       },
       {
         case: "a live session",
-        credential: bearer({ issuedAtEpochMs: NOW, expiresAtEpochMs: NOW + 86_400_000 }),
+        credential: bearer({ expiresAtEpochMs: NOW + 86_400_000 }),
         presented: true,
       },
       {

@@ -18,7 +18,7 @@ import {
   type ConnectionCatalogEntry,
   SshConnectionProfile,
 } from "./catalog.ts";
-import { credentialExpired } from "./credentialRenewal.ts";
+import { credentialExpired } from "./credentialExpiry.ts";
 import * as ConnectionCredentialStore from "./credentialStore.ts";
 import {
   credentialMissingError,

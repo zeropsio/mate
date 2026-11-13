@@ -163,10 +163,7 @@ describe("a project HQ still places that the person's own read proves gone", () 
     }),
   );
 
-  it.effect.each([
-    { name: "project_present", status: 409, code: "conflict" },
-    { name: "token_required", status: 401, code: "token_required" },
-  ])(
+  it.effect.each([{ name: "project_present", status: 409, code: "conflict" }])(
     "HQ refusing the finish ends the attempt for the session and the project stays placed: $name",
     ({ name, status, code }) =>
       Effect.gen(function* () {

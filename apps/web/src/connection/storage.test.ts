@@ -86,10 +86,7 @@ describe("accountCloseLogouts", () => {
       httpBaseUrl: `https://${name}.example.test/mate/`,
       wsBaseUrl: `wss://${name}.example.test/mate/`,
     });
-  const stored = (
-    name: string,
-    lifetime: { issuedAtEpochMs?: number; expiresAtEpochMs?: number },
-  ) => ({
+  const stored = (name: string, lifetime: { expiresAtEpochMs?: number }) => ({
     connectionId: `bearer:${name}`,
     credential: new BearerConnectionCredential({ token: `token-of-${name}`, ...lifetime }),
   });
@@ -101,8 +98,8 @@ describe("accountCloseLogouts", () => {
       ...emptyCatalog,
       profiles: [mate("live"), mate("ended"), mate("undated"), mate("uncredentialed")],
       credentials: [
-        stored("live", { issuedAtEpochMs: NOW - 60_000, expiresAtEpochMs: NOW + DAY_MS }),
-        stored("ended", { issuedAtEpochMs: NOW - 2 * DAY_MS, expiresAtEpochMs: NOW - DAY_MS }),
+        stored("live", { expiresAtEpochMs: NOW + DAY_MS }),
+        stored("ended", { expiresAtEpochMs: NOW - DAY_MS }),
         stored("undated", {}),
       ],
     };

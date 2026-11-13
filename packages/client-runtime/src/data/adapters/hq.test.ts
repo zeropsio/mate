@@ -626,9 +626,9 @@ describe("hqNavigationLink", () => {
     }),
   );
 
-  // witness: packages/client-runtime/src/data/adapters/hq.ts | (asked.has(scopeKey) ? [scope] : []) → []
+  // witness: packages/client-runtime/src/data/adapters/hq.ts | asked.has(scopeKey) ? [scope] : [], → [],
   it.effect(
-    "HQ saying a scope changed is answered by asking that scope again with the person's token, and what that read sends is shown",
+    "HQ saying a scope changed is answered by asking that scope again, and what that read sends is shown",
     () =>
       Effect.gen(function* () {
         const store = makeAccountStore(AtomRegistry.make());
@@ -1033,8 +1033,9 @@ describe("hqNavigationLink", () => {
   );
 });
 
-describe("The move picker asks HQ with the person's token", () => {
-  it.effect("The move picker's frame carries the person's current Zerops access token", () =>
+describe("The move picker", () => {
+  // witness: packages/client-runtime/src/data/adapters/hq.ts | type: "move-offers" as const, → type: "compare" as const,
+  it.effect("The move picker asks HQ for one project's offers on the stream", () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());
       const fixture = hqFixtureWire();
@@ -1051,9 +1052,9 @@ describe("The move picker asks HQ with the person's token", () => {
   );
 });
 
-// Brief W23 (rev7b, 2026-11-05): HQ admits a protected scope on one read with the token the
-// subscribe frame carries; without it every attention and application detail was `token_required`.
-describe("Protected HQ scopes are asked with the person's token", () => {
+// The Mate's attention and an application's detail are protected: HQ reads the person's access
+// to them on each ask.
+describe("Protected HQ scopes", () => {
   const attentionScope = { kind: "attention", projectId: "ada", health: "apart" } as const;
   const detailScope = { kind: "app-detail", appId: "shop" } as const;
   const protectedKinds = new Set(["attention", "app-detail"]);
@@ -1103,8 +1104,9 @@ describe("Protected HQ scopes are asked with the person's token", () => {
     expect(phase(store, hqAppDetailScope(ORG, "shop"))).toBe("live");
   };
 
+  // witness: packages/client-runtime/src/data/adapters/hq.ts | if (registered.wire.kind === "agentUsage") return false; → if (registered.wire.kind !== "navigation") return false;
   it.effect(
-    "Every subscribe to a protected scope, the first and each re-ask, carries the person's current Zerops access token",
+    "Every new segment asks the Mate's attention and a demanded application detail again, and HQ admits them again",
     () =>
       Effect.gen(function* () {
         const store = makeAccountStore(AtomRegistry.make());
@@ -1114,7 +1116,7 @@ describe("Protected HQ scopes are asked with the person's token", () => {
         yield* settle;
         yield* admit(fixture, 1);
         admitted(store);
-        // HQ ends the segment: the next one resumes both scopes, asked with the token again.
+        // HQ ends the segment: the next one resumes both scopes.
         const before = fixture.sent.length;
         yield* fixture.endSegment;
         yield* settle;
@@ -1126,66 +1128,14 @@ describe("Protected HQ scopes are asked with the person's token", () => {
           );
         expect(kinds(0)).toEqual(protectedKinds);
         expect(kinds(before)).toEqual(protectedKinds);
-        for (const request of subscribesOf(fixture)) expect("accessToken" in request).toBe(false);
         yield* admit(fixture, 1);
         admitted(store);
         yield* Fiber.interrupt(fiber);
       }),
   );
 
-  it.effect(
-    "A token_required answer is asked again once with the token, then shown as the scope's error and never retried as transient",
-    () =>
-      Effect.gen(function* () {
-        const store = makeAccountStore(AtomRegistry.make());
-        const fixture = hqFixtureWire();
-        const { fiber } = yield* live(store, fixture);
-        const tokenRequired = {
-          type: "scope-error",
-          scope: attentionScope,
-          code: "token_required",
-          reason: "token_required",
-          disposition: "transient",
-        } as const;
-        const before = fixture.sent.length;
-        yield* fixture.send(tokenRequired);
-        yield* settle;
-        expect(subscribesOf(fixture, before)).toEqual([
-          {
-            type: "subscribe",
-            scopes: [{ scope: attentionScope, knownKeys: [] }],
-          },
-        ]);
-        expect(phase(store, hqMateScope(ORG, "ada"))).not.toBe("refused");
-        yield* fixture.send(tokenRequired);
-        yield* settle;
-        expect(phase(store, hqMateScope(ORG, "ada"))).toBe("refused");
-        expect(store.state().streams.get(hqMateScope(ORG, "ada"))?.fault?.code).toBe(
-          "token_required",
-        );
-        yield* TestClock.adjust("10 minutes");
-        yield* settle;
-        expect(subscribesOf(fixture, before)).toHaveLength(1);
-        yield* Fiber.interrupt(fiber);
-      }),
-  );
-
   // witness: packages/client-runtime/src/data/adapters/hq.ts | for (const registered of registrations) yield* register(registered); → store.gather()(); for (const registered of registrations) yield* register(registered);
   it.effect.each([
-    [
-      "a scope HQ wants asked again with the person's token",
-      [
-        {
-          type: "scope-error",
-          scope: attentionScope,
-          code: "token_required",
-          reason: "token_required",
-          disposition: "transient",
-        },
-        navigation("scope-values", 4, [{ key: "app:shop", value: app("shop", "Four", ["ada"]) }]),
-        navigation("scope-values", 5, [{ key: "app:shop", value: app("shop", "Five", ["ada"]) }]),
-      ],
-    ],
     [
       "a delta that does not follow, asked whole",
       [
@@ -1223,8 +1173,9 @@ describe("Protected HQ scopes are asked with the person's token", () => {
     }),
   );
 
+  // witness: packages/client-runtime/src/data/adapters/hq.ts | const moved = new Set(projects); → const moved = new Set<string>();
   it.effect(
-    "A role change asks the protected scopes again once with the token, and HQ admits them on that one fresh read",
+    "A role change asks the refused protected scopes again once, and HQ admits them on that one fresh read",
     () =>
       Effect.gen(function* () {
         const store = makeAccountStore(AtomRegistry.make());
@@ -1250,7 +1201,6 @@ describe("Protected HQ scopes are asked with the person's token", () => {
         expect(
           reasked.flatMap(({ scopes }) => scopes.map(({ scope }) => hqScopeKey(scope))).toSorted(),
         ).toEqual([attentionScope, detailScope].map(hqScopeKey).toSorted());
-        for (const request of reasked) expect("accessToken" in request).toBe(false);
         yield* admit(fixture, 2);
         admitted(store);
         expect(subscribesOf(fixture, before)).toEqual(reasked);
@@ -1797,135 +1747,6 @@ describe("an HQ outage", () => {
       yield* fixture.send(ready(3));
       yield* settle;
       expect(phase(store, hqAppsScope(ORG))).toBe("live");
-      yield* Fiber.interrupt(fiber);
-    }),
-  );
-
-  it.effect(
-    "a seen acknowledgement carries the person's access token, live and after a reconnect",
-    () =>
-      Effect.gen(function* () {
-        const store = makeAccountStore(AtomRegistry.make());
-        const fixture = hqFixtureWire();
-        let token = "person-token-1";
-        const wire = {
-          ...fixture.wire,
-          withAccess: <T extends object>(frame: T) =>
-            Effect.succeed({ ...frame, accessToken: token }),
-        };
-        const { fiber, link } = yield* live(store, { ...fixture, wire });
-
-        yield* link.seen("ada", ["r1"]);
-        yield* fixture.drop({ outcome: "transient", message: "HQ's stream broke." });
-        yield* settle;
-        yield* link.seen("ada", ["r2"]);
-        token = "person-token-2";
-        yield* TestClock.adjust(1_000);
-        yield* settle;
-
-        const seen = fixture.sent.filter(({ request }) => request.type === "seen");
-        const expected = [
-          {
-            segment: 1,
-            request: {
-              type: "seen",
-              projectId: "ada",
-              resultIds: ["r1"],
-              accessToken: "person-token-1",
-            },
-          },
-          {
-            segment: 2,
-            request: {
-              type: "seen",
-              projectId: "ada",
-              resultIds: ["r2"],
-              accessToken: "person-token-2",
-            },
-          },
-        ];
-        expect(seen).toEqual(expected);
-        expect(seen.map(({ request }) => JSON.parse(encodeHqRequest(request)))).toEqual(
-          expected.map(({ request }) => request),
-        );
-        yield* Fiber.interrupt(fiber);
-      }),
-  );
-
-  it.effect("a viewed result waiting for its access token follows a reconnect", () =>
-    Effect.gen(function* () {
-      const store = makeAccountStore(AtomRegistry.make());
-      const fixture = hqFixtureWire();
-      const token = Deferred.makeUnsafe<string>();
-      const wire = {
-        ...fixture.wire,
-        withAccess: <T extends object>(frame: T) =>
-          "type" in frame && frame.type === "seen"
-            ? Deferred.await(token).pipe(Effect.map((accessToken) => ({ ...frame, accessToken })))
-            : Effect.succeed({ ...frame, accessToken: "person-token" }),
-      };
-      const { fiber, link } = yield* live(store, { ...fixture, wire });
-      const acknowledging = yield* Effect.forkChild(link.seen("ada", ["r1"]));
-      const acknowledgingAgain = yield* Effect.forkChild(link.seen("ada", ["r2"]));
-      yield* settle;
-      yield* fixture.drop({ outcome: "transient", message: "HQ's stream broke." });
-      yield* settle;
-      yield* TestClock.adjust(1_000);
-      yield* settle;
-      yield* Deferred.succeed(token, "person-token");
-      yield* Fiber.join(acknowledging);
-      yield* Fiber.join(acknowledgingAgain);
-      yield* settle;
-
-      expect(fixture.sent.filter(({ request }) => request.type === "seen")).toEqual([
-        {
-          segment: 2,
-          request: {
-            type: "seen",
-            projectId: "ada",
-            resultIds: ["r1", "r2"],
-            accessToken: "person-token",
-          },
-        },
-      ]);
-      yield* Fiber.interrupt(fiber);
-    }),
-  );
-
-  it.effect("a viewed result survives a failed access-token lookup until reconnect", () =>
-    Effect.gen(function* () {
-      const store = makeAccountStore(AtomRegistry.make());
-      const fixture = hqFixtureWire();
-      let failSeen = true;
-      const wire = {
-        ...fixture.wire,
-        withAccess: <T extends object>(frame: T) => {
-          if ("type" in frame && frame.type === "seen" && failSeen) {
-            failSeen = false;
-            return Effect.fail({ outcome: "transient" as const, message: "Token unavailable." });
-          }
-          return Effect.succeed({ ...frame, accessToken: "person-token" });
-        },
-      };
-      const { fiber, link } = yield* live(store, { ...fixture, wire });
-      yield* link.seen("ada", ["r1"]);
-      expect(fixture.sent.filter(({ request }) => request.type === "seen")).toEqual([]);
-      yield* fixture.drop({ outcome: "transient", message: "HQ's stream broke." });
-      yield* settle;
-      yield* TestClock.adjust(1_000);
-      yield* settle;
-
-      expect(fixture.sent.filter(({ request }) => request.type === "seen")).toEqual([
-        {
-          segment: 2,
-          request: {
-            type: "seen",
-            projectId: "ada",
-            resultIds: ["r1"],
-            accessToken: "person-token",
-          },
-        },
-      ]);
       yield* Fiber.interrupt(fiber);
     }),
   );
