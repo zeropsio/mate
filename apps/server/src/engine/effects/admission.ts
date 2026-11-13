@@ -16,6 +16,8 @@ import { wordsOf } from "./shared.ts";
 export interface AdmitRefusal {
   readonly words: string;
   readonly admission?: RunAdmissionRefusal;
+  /** The door could not say now (`RunRefused.undetermined`): ask again before refusing. */
+  readonly undetermined?: true;
 }
 
 /** Asks the door; the refusal, or `null` when admitted. */
@@ -40,6 +42,7 @@ export const makeAdmit = Effect.map(
               Effect.succeed({
                 words: refusal.message,
                 ...(refusal.admission === undefined ? {} : { admission: refusal.admission }),
+                ...(refusal.undetermined === true ? { undetermined: true as const } : {}),
               }),
           }),
           // An admission that broke admits nothing: its words are the refusal's.
