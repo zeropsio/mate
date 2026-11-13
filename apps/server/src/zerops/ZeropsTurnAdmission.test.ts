@@ -599,7 +599,7 @@ describe("ZeropsTurnAdmission", () => {
           undefined,
         ],
         // Adding a Mate sets it up with no condition: its stand-up asks HQ nothing.
-        // witness: apps/server/src/zerops/ZeropsTurnAdmission.ts | principal.kind === "crew" || principal.kind === "standup"; → principal.kind === "crew";
+        // witness: apps/server/src/zerops/ZeropsTurnAdmission.ts | principal.kind === "crew"; → principal.kind === "crew" || principal.kind === "standup";
         [
           "admits a stand-up whatever HQ says of its starter's access",
           { ...janSignedClaude, access: { [JAN]: false } },
