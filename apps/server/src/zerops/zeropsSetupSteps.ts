@@ -12,7 +12,7 @@
  *
  * @module zeropsSetupSteps
  */
-import type { ZeropsAgentAuth, ZeropsAgentId } from "@t3tools/contracts";
+import type { ZeropsAgentAuth, ZeropsAgentId, ZeropsUserId } from "@t3tools/contracts";
 import { turnRefusal } from "@t3tools/shared/zeropsAgentAuth";
 
 import type { ProjectSigners } from "./ZeropsProjectSigners.ts";
@@ -44,21 +44,21 @@ const AGENT_ORDER: ReadonlyArray<ZeropsAgentId> = ["claude-code", "codex"];
 export const standUpAgents = (
   agents: ReadonlyArray<ZeropsAgentAuth>,
   signers: ProjectSigners,
-  userId: string,
+  userId: ZeropsUserId,
 ): ReadonlyArray<ZeropsAgentId> =>
   AGENT_ORDER.filter((agentId) => {
     const agent = agents.find((row) => row.agentId === agentId);
     return (
       agent !== undefined &&
-      turnRefusal({ agent, signer: signers[agentId], subject: userId }) === undefined
+      turnRefusal({ agent, signer: signers[agentId], person: userId }) === undefined
     );
   });
 
 export type StandUpDecision =
   /** On an agent the asker may run (`standUpAgents`). */
-  | { readonly kind: "start"; readonly userId: string; readonly agentId: ZeropsAgentId }
+  | { readonly kind: "start"; readonly userId: ZeropsUserId; readonly agentId: ZeropsAgentId }
   /** On an agent Mate signs nobody in to, ready: it runs for the asker as for anybody. */
-  | { readonly kind: "start"; readonly userId: string; readonly instanceId: string }
+  | { readonly kind: "start"; readonly userId: ZeropsUserId; readonly instanceId: string }
   /** Nobody asked yet, or the asker has no agent to run. */
   | { readonly kind: "wait" }
   /** This server has a record of one: started here or by a browser. */
@@ -74,7 +74,7 @@ export type StandUpDecision =
  */
 export const standUpDecision = (input: {
   readonly recorded: boolean;
-  readonly requestedBy: string | undefined;
+  readonly requestedBy: ZeropsUserId | undefined;
   /** The agents the asker may run (`standUpAgents`). */
   readonly agents: ReadonlyArray<ZeropsAgentId>;
   /** The instance of a ready agent outside the sign-in (`pickReadyAgentWithoutSignIn`). */

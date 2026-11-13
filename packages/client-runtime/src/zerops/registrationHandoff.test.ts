@@ -1,3 +1,4 @@
+import { ZeropsUserId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsRegistrationResponse, ZeropsUser } from "./api.ts";
@@ -5,7 +6,7 @@ import { deriveProvisioningStart } from "./registrationHandoff.ts";
 
 function user(overrides: Partial<ZeropsUser> = {}): ZeropsUser {
   return {
-    id: "user-1",
+    id: ZeropsUserId.make("user-1"),
     email: "new@example.com",
     clientUserList: [
       { id: "membership-1", clientId: "org-1", status: "ACTIVE", client: { accountName: "Acme" } },

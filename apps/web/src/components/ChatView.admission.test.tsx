@@ -31,8 +31,9 @@ import {
   ConversationHeader,
   DEFAULT_SERVER_SETTINGS,
   RunId,
-  ServerProvider,
   type ServerConfig,
+  ServerProvider,
+  ZeropsUserId,
 } from "@t3tools/contracts";
 import {
   engineRow,
@@ -858,7 +859,7 @@ const admissionScenario = (
                 flagToken: false,
                 providerAuth: "authenticated",
                 state: "authorized",
-                authorizedBy: { subject: "owner" },
+                authorizedBy: { subject: ZeropsUserId.make("owner") },
               },
             ],
           };

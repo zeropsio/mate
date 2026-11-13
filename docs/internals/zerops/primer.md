@@ -16,6 +16,11 @@
 - A **release** names a fixed selection of application code and configuration for production.
   A **rollback** is a release selecting earlier work.
 - A **login** is a coding agent's account access; its **signer** is the person who signed in with it.
+- A person is named by their **Zerops user id** (`ZeropsUserId`): what HQ sends, what a signer, an
+  owner and a stand-up's requester are recorded as, and what every "is this the same person" question
+  compares. A browser session's **session subject** (`SessionSubject`) is that id behind the
+  `zerops-user:` prefix, or a non-Zerops session's own name; it is turned into a Zerops user id
+  before it is compared with one, never compared as text.
 - A Mate's **owner** is the person HQ records on it: its maker, then whoever signs its agent in, or
   the person a hand-over names; a registered Chief's is its registered person. Only HQ keeps it. The
   Mate and the web read it from HQ (`ownerUserId`), never from the Zerops `OWNER` override or a

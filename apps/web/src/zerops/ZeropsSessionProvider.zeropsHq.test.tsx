@@ -1,3 +1,4 @@
+import { ZeropsUserId } from "@t3tools/contracts";
 import { ZEROPS_SESSION_STORAGE_KEY, type ZeropsUser } from "@t3tools/client-runtime/zerops";
 import { makeAccountHarness } from "@t3tools/client-runtime/zerops/testing";
 import type { ZeropsSessionClient } from "@zerops/session/session.client";
@@ -61,13 +62,13 @@ vi.mock("./zeropsHq", async (original) => {
 });
 
 const person: ZeropsUser = {
-  id: "user-1",
+  id: ZeropsUserId.make("user-1"),
   email: "person@example.test",
   clientUserList: [{ id: "cu-1", clientId: "org-1", roleCode: "OWNER" }],
 };
 
 const other: ZeropsUser = {
-  id: "user-2",
+  id: ZeropsUserId.make("user-2"),
   email: "other@example.test",
   clientUserList: [{ id: "cu-2", clientId: "org-2", roleCode: "OWNER" }],
 };

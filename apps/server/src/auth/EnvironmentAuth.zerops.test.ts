@@ -1,6 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
-import { AuthZeropsClientScopes } from "@t3tools/contracts";
+import { AuthZeropsClientScopes, ZeropsUserId } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -46,7 +46,7 @@ const setup = Effect.gen(function* () {
       {
         type: "ticket",
         ticket: "opaque-ticket",
-        userId: "jan",
+        userId: ZeropsUserId.make("jan"),
         sessionId: "hq-session",
         expiresIn: 60,
       },

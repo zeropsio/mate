@@ -1,5 +1,5 @@
 import { agentAdmission, projectMateLimit } from "@t3tools/client-runtime/data";
-import { ThreadId, TurnId } from "@t3tools/contracts";
+import { ThreadId, TurnId, ZeropsUserId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 import type { ZeropsAgentActivity } from "./agentActivity";
 import { mateStatus, mateStatusWords } from "./mateStatus.logic";
@@ -8,7 +8,7 @@ const admission = agentAdmission({
   owner: null,
   environmentId: "rig",
   instanceId: "claudeAgent",
-  viewerSubject: "owner",
+  viewerSubject: ZeropsUserId.make("owner"),
   read: {
     state: "known",
     asOf: { ordinal: 1, atMs: 0 },

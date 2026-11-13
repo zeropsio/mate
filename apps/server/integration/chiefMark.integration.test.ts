@@ -4,8 +4,9 @@ import * as NodeWS from "@effect/platform-node/NodeWS";
 import {
   CommandId,
   ConversationId,
-  MATE_ENGINE_PROTOCOLS,
   type EngineConversationFrame,
+  MATE_ENGINE_PROTOCOLS,
+  ZeropsUserId,
 } from "@t3tools/contracts";
 import type { LinkedMate } from "@t3tools/shared/mateLink";
 import * as Deferred from "effect/Deferred";
@@ -24,7 +25,7 @@ const mateState = (chief: LinkedMate["chief"]): LinkedMate => ({
   projectId: "P_MATE",
   name: "Ada",
   face: "face-1",
-  standupRequestedBy: "owner",
+  standupRequestedBy: ZeropsUserId.make("owner"),
   appId: null,
   appName: null,
   changes: [],

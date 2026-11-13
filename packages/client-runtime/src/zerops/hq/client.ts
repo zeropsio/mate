@@ -6,6 +6,7 @@ import {
   type HqRepoCapRequest,
   type KeptGitAnswer,
   type MatePersona,
+  type ZeropsUserId,
 } from "@t3tools/contracts";
 import { HqRemoteRefusal } from "@t3tools/shared/hqGitTargets";
 import { HqGitOperationReceipt, type HqGitTargetIntent } from "@t3tools/shared/hqGitTargets";
@@ -175,7 +176,7 @@ export interface HqMate extends Partial<HqMateRecord> {
   readonly birthId?: string | null;
   /** The accepted setup import, retained after its browser press ends. */
   readonly importProcessId?: string | undefined;
-  readonly signers?: Readonly<Record<string, string>>;
+  readonly signers?: Readonly<Record<string, ZeropsUserId>>;
   /**
    * Who made it — whoever set its record up: a Mate recorded before HQ kept it is null; an older
    * HQ says nothing.

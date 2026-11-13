@@ -1,3 +1,4 @@
+import { ZeropsUserId } from "@t3tools/contracts";
 import type { OtherAgentFields } from "@t3tools/client-runtime/zerops/agentLogin";
 import type { ZeropsAgentAuth, ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
@@ -26,8 +27,8 @@ const agentInstance = (driver: string, status = "ready"): OtherAgentFields =>
     models: [{ slug: "m" }],
   }) as unknown as OtherAgentFields;
 
-const ADA = "u-ada";
-const FEN = "u-fen";
+const ADA = ZeropsUserId.make("u-ada");
+const FEN = ZeropsUserId.make("u-fen");
 
 describe("the stand-up's words", () => {
   it("are the owner's, word for word", () => {

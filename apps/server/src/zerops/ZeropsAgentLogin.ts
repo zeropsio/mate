@@ -80,7 +80,6 @@ import type {
   ZeropsAgentLoginState,
   ZeropsLogin,
 } from "@t3tools/contracts";
-import { ZEROPS_AGENT_LOGIN_COMMANDS, ZeropsAgentLoginError } from "@t3tools/contracts";
 import { latestSucceededSignIn } from "@t3tools/shared/zeropsAgentAuth";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
@@ -101,7 +100,13 @@ import { subscribeBeforeSnapshot } from "../utils/subscribeBeforeSnapshot.ts";
 import { ZeropsAgentAuth } from "./ZeropsAgentAuth.ts";
 import { withLogins, ZeropsLogins } from "./ZeropsLogins.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
-import { zeropsUserIdOf } from "@t3tools/contracts";
+import {
+  type SessionSubject,
+  ZEROPS_AGENT_LOGIN_COMMANDS,
+  ZeropsAgentLoginError,
+  type ZeropsUserId,
+  zeropsUserIdOf,
+} from "@t3tools/contracts";
 import { ZEROPS_AGENT_LOGIN_HANDLERS } from "./zeropsAgentLoginHandlers.ts";
 import { stallLoginAction, stepLoginOutput } from "./zeropsAgentLoginWalker.ts";
 import { makeLoginHomes, type LoginHomes, type LoginHomeTarget } from "./zeropsLoginHomes.ts";
@@ -254,10 +259,11 @@ export class ZeropsAgentLogin extends Context.Service<
       /**
        * The subject of the session driving this login, taken from the
        * authenticated session — never from the client's input, which could
-       * name anyone. Published as the login's `startedBy`, so that person's
-       * client records the signer once it succeeds.
+       * name anyone. Its person (`zeropsUserIdOf`) is published as the login's
+       * `startedBy` and kept as the signer once it succeeds; a session that is
+       * no Zerops person publishes and keeps none.
        */
-      subject: string,
+      subject: SessionSubject,
       /** The connection the sign-in is started on: it ends with that connection. */
       connection: LoginConnection,
       /** Absent: the agent's default login. */
@@ -330,7 +336,7 @@ interface ActiveSession {
   readonly stallQueue: Queue.Queue<void>;
   readonly unsubscribeOutput: () => void;
   /** The Zerops user id of whoever started this login — see `ZeropsAgentLoginState.startedBy`. */
-  readonly startedBy: string;
+  readonly startedBy: ZeropsUserId | undefined;
   /** The login its scratch home is for. */
   readonly home: LoginHomeTarget;
 }
@@ -546,8 +552,11 @@ export const make = (options: ZeropsAgentLoginOptions) =>
         const credentialCommitted = result.nextPhase === "succeeded";
         if (credentialCommitted && signIns !== undefined) {
           // Kept before anything else hears of the success: the gate, the rows and the Mate's
-          // overview go by it, and the overview carries it to HQ (`zeropsSignIns`).
-          yield* signIns.save(key, { by: session.startedBy });
+          // overview go by it, and the overview carries it to HQ (`zeropsSignIns`). A session that
+          // is no Zerops person leaves no signer, never the one before it.
+          yield* session.startedBy === undefined
+            ? signIns.clear(key)
+            : signIns.save(key, { by: session.startedBy });
         }
 
         if (credentialCommitted) {
@@ -633,7 +642,7 @@ export const make = (options: ZeropsAgentLoginOptions) =>
     const start = (
       agentId: ZeropsAgentId,
       threadId: string,
-      subject: string,
+      subject: SessionSubject,
       connection: LoginConnection,
       login?: LoginTarget,
     ): Effect.Effect<{ readonly terminalId: string }, TerminalError | ZeropsAgentLoginError> =>

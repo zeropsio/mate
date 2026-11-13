@@ -1,3 +1,4 @@
+import { ZeropsUserId } from "@t3tools/contracts";
 import type { ZeropsAgentAuth, ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -46,7 +47,7 @@ const input = (fields: Partial<ConversationWriterInput>): ConversationWriterInpu
   feed: known(snapshot([claude()])),
   instanceId: "claudeAgent",
   providers: PROVIDERS,
-  viewerSubject: "viewer-1",
+  viewerSubject: ZeropsUserId.make("viewer-1"),
   ownership: "mine",
   ...fields,
 });
@@ -152,7 +153,10 @@ describe("resolveConversationWriter", () => {
 });
 
 describe("hqConversationWriter", () => {
-  const SIGNERS = { "claude-code": "u-ada", codex: "u-bob" } as const;
+  const SIGNERS = {
+    "claude-code": ZeropsUserId.make("u-ada"),
+    codex: ZeropsUserId.make("u-bob"),
+  } as const;
   it.each<{
     readonly name: string;
     readonly input: Parameters<typeof hqConversationWriter>[0];
@@ -164,7 +168,7 @@ describe("hqConversationWriter", () => {
         instanceId: "claudeAgent",
         providers: PROVIDERS,
         signers: SIGNERS,
-        viewerSubject: "u-ada",
+        viewerSubject: ZeropsUserId.make("u-ada"),
       },
       expected: "you",
     },
@@ -174,7 +178,7 @@ describe("hqConversationWriter", () => {
         instanceId: "codex",
         providers: PROVIDERS,
         signers: SIGNERS,
-        viewerSubject: "u-ada",
+        viewerSubject: ZeropsUserId.make("u-ada"),
       },
       expected: "someone",
     },
@@ -183,8 +187,8 @@ describe("hqConversationWriter", () => {
       input: {
         instanceId: "codex",
         providers: PROVIDERS,
-        signers: { "claude-code": "u-ada" },
-        viewerSubject: "u-ada",
+        signers: { "claude-code": ZeropsUserId.make("u-ada") },
+        viewerSubject: ZeropsUserId.make("u-ada"),
       },
       expected: "nobody-yet",
     },
@@ -194,7 +198,7 @@ describe("hqConversationWriter", () => {
         instanceId: "claudeAgent",
         providers: PROVIDERS,
         signers: undefined,
-        viewerSubject: "u-ada",
+        viewerSubject: ZeropsUserId.make("u-ada"),
       },
       expected: "unknown",
     },
@@ -204,7 +208,7 @@ describe("hqConversationWriter", () => {
         instanceId: undefined,
         providers: PROVIDERS,
         signers: SIGNERS,
-        viewerSubject: "u-ada",
+        viewerSubject: ZeropsUserId.make("u-ada"),
       },
       expected: "unknown",
     },
@@ -225,7 +229,7 @@ describe("hqConversationWriter", () => {
         instanceId: "claudeAgent_work",
         providers: [...PROVIDERS, { instanceId: "claudeAgent_work", driver: "claudeAgent" }],
         signers: SIGNERS,
-        viewerSubject: "u-ada",
+        viewerSubject: ZeropsUserId.make("u-ada"),
       },
       expected: "unknown",
     },
@@ -246,7 +250,7 @@ describe("hqConversationWriter", () => {
         instanceId: "opencode",
         providers: [],
         signers: SIGNERS,
-        viewerSubject: "u-ada",
+        viewerSubject: ZeropsUserId.make("u-ada"),
       },
       expected: "unknown",
     },

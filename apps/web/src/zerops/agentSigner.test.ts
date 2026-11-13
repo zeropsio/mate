@@ -1,3 +1,4 @@
+import { ZeropsUserId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { resolveAgentAuthorizer } from "@t3tools/client-runtime/zerops/agentOwnership";
@@ -5,13 +6,16 @@ import { resolveAgentAuthorizer } from "@t3tools/client-runtime/zerops/agentOwne
 describe("resolveAgentAuthorizer", () => {
   const login = (phase: "verifying-code" | "succeeded" | "failed" | "cancelled", by?: string) => ({
     phase,
-    ...(by === undefined ? {} : { startedBy: by }),
+    ...(by === undefined ? {} : { startedBy: ZeropsUserId.make(by) }),
   });
 
   it.each([
     {
       name: "the server's record names whose the agent is",
-      agent: { authorizedBy: { subject: "user-b" }, login: login("verifying-code", "user-a") },
+      agent: {
+        authorizedBy: { subject: ZeropsUserId.make("user-b") },
+        login: login("verifying-code", "user-a"),
+      },
       expected: { subject: "user-b" },
     },
     {
@@ -42,6 +46,6 @@ describe("resolveAgentAuthorizer", () => {
     },
     { name: "neither means nobody", agent: {}, expected: undefined },
   ])("$name", ({ agent, expected }) => {
-    expect(resolveAgentAuthorizer(agent, "user-a")).toEqual(expected);
+    expect(resolveAgentAuthorizer(agent, ZeropsUserId.make("user-a"))).toEqual(expected);
   });
 });

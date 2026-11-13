@@ -1,3 +1,4 @@
+import { ZeropsUserId } from "@t3tools/contracts";
 import { makeFakeZeropsRest } from "@t3tools/client-runtime/zerops/testing";
 import type { ZeropsUser } from "@t3tools/client-runtime/zerops";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -6,7 +7,11 @@ import { signInAs, type SignInPage } from "../../test/signInAs";
 
 const API = "https://api.example.test";
 
-const person: ZeropsUser = { id: "user-1", email: "person@example.test", clientUserList: [] };
+const person: ZeropsUser = {
+  id: ZeropsUserId.make("user-1"),
+  email: "person@example.test",
+  clientUserList: [],
+};
 
 /** A platform with the account the env lists, and the env listing it. */
 function platform() {

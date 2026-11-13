@@ -12,6 +12,7 @@
  * persisted server-side.
  */
 
+import { ZeropsUserId } from "@t3tools/contracts";
 import {
   buildZeropsContainerUrl,
   isZcpService,
@@ -97,7 +98,7 @@ export interface ZeropsUserAvatar {
 }
 
 export interface ZeropsUser {
-  readonly id: string;
+  readonly id: ZeropsUserId;
   readonly email: string;
   readonly fullName?: string;
   readonly firstName?: string;

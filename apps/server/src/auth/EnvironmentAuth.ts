@@ -1,21 +1,3 @@
-import {
-  AuthAccessTokenType,
-  AuthZeropsClientScopes,
-  AuthSessionId,
-  AuthAccessWriteScope,
-  AuthAdministrativeScopes,
-  AuthStandardClientScopes,
-  type AuthAccessTokenResult,
-  type AuthClientMetadata,
-  type AuthClientSession,
-  type AuthEnvironmentScope,
-  type AuthPairingLink,
-  type AuthSessionState,
-  type ServerAuthBootstrapMethod,
-  type ServerAuthDescriptor,
-  type ServerAuthSessionMethod,
-  type AuthWebSocketTicketResult,
-} from "@t3tools/contracts";
 import { encodeOAuthScope } from "@t3tools/shared/oauthScope";
 import * as Context from "effect/Context";
 import * as Digest from "effect/crypto/Digest";
@@ -28,7 +10,27 @@ import * as Schema from "effect/Schema";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 
 import { ZeropsConnections } from "../zerops/ZeropsConnections.ts";
-import { ZEROPS_SUBJECT_PREFIX } from "@t3tools/contracts";
+import {
+  type AuthAccessTokenResult,
+  AuthAccessTokenType,
+  AuthAccessWriteScope,
+  AuthAdministrativeScopes,
+  type AuthClientMetadata,
+  type AuthClientSession,
+  type AuthEnvironmentScope,
+  type AuthPairingLink,
+  AuthSessionId,
+  type AuthSessionState,
+  AuthStandardClientScopes,
+  type AuthWebSocketTicketResult,
+  AuthZeropsClientScopes,
+  type ServerAuthBootstrapMethod,
+  type ServerAuthDescriptor,
+  type ServerAuthSessionMethod,
+  SessionSubject,
+  zeropsSubjectOf,
+  zeropsUserIdOf,
+} from "@t3tools/contracts";
 import * as EnvironmentAuthPolicy from "./EnvironmentAuthPolicy.ts";
 import * as PairingGrantStore from "./PairingGrantStore.ts";
 import * as ServerSecretStore from "./ServerSecretStore.ts";
@@ -627,7 +629,7 @@ export const make = Effect.gen(function* () {
     }
     return authenticateToken(credential).pipe(
       Effect.flatMap((session) => {
-        if (!session.subject.startsWith("zerops-user:")) {
+        if (zeropsUserIdOf(SessionSubject.make(session.subject)) === undefined) {
           return Effect.fail(
             new ServerAuthInvalidCredentialError({
               diagnostic: "This session predates Zerops account access. Sign in again.",
@@ -905,7 +907,7 @@ export const make = Effect.gen(function* () {
           return yield* sessions.verifyWebSocketToken(websocketTicket).pipe(
             mapSessionVerificationErrors,
             Effect.flatMap((session) =>
-              !session.subject.startsWith("zerops-user:")
+              zeropsUserIdOf(SessionSubject.make(session.subject)) === undefined
                 ? Effect.fail(
                     new ServerAuthInvalidCredentialError({
                       diagnostic: "Sign in with Zerops to access Mate.",
@@ -974,7 +976,7 @@ export const zeropsLayer = Layer.effect(
       if (Option.isNone(current)) return yield* new ServerAuthInvalidCredentialError({});
       return {
         sessionId: AuthSessionId.make(current.value.connectionId),
-        subject: `${ZEROPS_SUBJECT_PREFIX}${current.value.userId}`,
+        subject: zeropsSubjectOf(current.value.userId),
         method: "bearer-access-token" as const,
         scopes: AuthZeropsClientScopes,
       };

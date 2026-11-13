@@ -29,7 +29,12 @@ import {
 } from "@t3tools/client-runtime/zerops/birthProgress";
 import type { KnownMessage } from "@t3tools/client-runtime/zerops/knowledge";
 import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
-import { EnvironmentId, type ZeropsAgentId, type ZeropsAgentLoginState } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  type ZeropsAgentId,
+  type ZeropsAgentLoginState,
+  ZeropsUserId,
+} from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import { StrictMode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -670,7 +675,7 @@ function useFixtureSignIn(initial: Logins, onSignedIn: () => void, fail: boolean
 }
 
 /** The colleague whose sign-in a dialog's agent holds. */
-const HOLDER = "u-holder";
+const HOLDER = ZeropsUserId.make("u-holder");
 
 function FixtureSignIn({
   state,
@@ -715,7 +720,7 @@ function FixtureSignIn({
         </pre>
       )}
       usual={state.id === "colleague" ? null : "claude-code"}
-      viewerSubject="u-harness"
+      viewerSubject={ZeropsUserId.make("u-harness")}
       watching={state.watching === true}
     />
   );

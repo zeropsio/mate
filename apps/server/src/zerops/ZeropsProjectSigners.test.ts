@@ -1,3 +1,4 @@
+import { ZeropsUserId } from "@t3tools/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
@@ -26,8 +27,8 @@ import {
   SIGN_IN_CHECK_WAIT,
 } from "./ZeropsProjectSigners.ts";
 
-const JAN = "jan-user-id";
-const EVA = "eva-user-id";
+const JAN = ZeropsUserId.make("jan-user-id");
+const EVA = ZeropsUserId.make("eva-user-id");
 
 describe("turnRefusal", () => {
   const signedIn = {
@@ -47,38 +48,38 @@ describe("turnRefusal", () => {
   it.each(
     Array.from(
       [
-        ["my own agent", { agent: signedIn, signer: JAN, subject: JAN }, undefined],
+        ["my own agent", { agent: signedIn, signer: JAN, person: JAN }, undefined],
         [
           "an agent somebody else signed in",
-          { agent: signedIn, signer: EVA, subject: JAN },
+          { agent: signedIn, signer: EVA, person: JAN },
           { kind: "someone-else" },
         ],
         // D6 keeps no backward compatibility: an older login, a terminal login or
         // a copied credential file runs for nobody until someone signs in here.
         [
           "an agent nobody's sign-in was recorded for",
-          { agent: signedIn, signer: undefined, subject: JAN },
+          { agent: signedIn, signer: undefined, person: JAN },
           { kind: "unrecorded" },
         ],
         [
           "an agent whose recorded signer is blank",
-          { agent: signedIn, signer: "", subject: JAN },
+          { agent: signedIn, signer: ZeropsUserId.make(""), person: JAN },
           { kind: "unrecorded" },
         ],
         [
           "a caller the session could not name",
-          { agent: signedIn, signer: JAN, subject: undefined },
+          { agent: signedIn, signer: JAN, person: undefined },
           { kind: "someone-else" },
         ],
         // An API key belongs to the project, not to a person.
         [
           "a token-authorized agent somebody else signed in",
-          { agent: tokenAgent, signer: EVA, subject: JAN },
+          { agent: tokenAgent, signer: EVA, person: JAN },
           undefined,
         ],
         [
           "a token-authorized agent with no record at all",
-          { agent: tokenAgent, signer: undefined, subject: JAN },
+          { agent: tokenAgent, signer: undefined, person: JAN },
           undefined,
         ],
         // Signed in inside the container, the project flag seconds away: the CLI
@@ -88,7 +89,7 @@ describe("turnRefusal", () => {
           {
             agent: { ...signedIn, state: "local-only" },
             signer: JAN,
-            subject: JAN,
+            person: JAN,
           },
           undefined,
         ],
@@ -104,7 +105,7 @@ describe("turnRefusal", () => {
               flagToken: false,
             },
             signer: undefined,
-            subject: JAN,
+            person: JAN,
           },
           { kind: "not-signed-in", auth: "not-authorized" },
         ],
@@ -113,7 +114,7 @@ describe("turnRefusal", () => {
           {
             agent: { ...signedIn, credPresent: false, state: "reconnect" },
             signer: JAN,
-            subject: JAN,
+            person: JAN,
           },
           { kind: "not-signed-in", auth: "reconnect" },
         ],
@@ -122,7 +123,7 @@ describe("turnRefusal", () => {
           {
             agent: { ...signedIn, providerAuth: "unauthenticated" },
             signer: JAN,
-            subject: JAN,
+            person: JAN,
           },
           { kind: "not-signed-in", auth: "needs-reauth" },
         ],
@@ -146,32 +147,32 @@ describe("loginTurnRefusal", () => {
       [
         [
           "my own login",
-          { state: "authorized", token: false, signer: JAN, subject: JAN },
+          { state: "authorized", token: false, signer: JAN, person: JAN },
           undefined,
         ],
         [
           "a login a teammate signed in",
-          { state: "authorized", token: false, signer: EVA, subject: JAN },
+          { state: "authorized", token: false, signer: EVA, person: JAN },
           { kind: "someone-else" },
         ],
         [
           "a login nobody's sign-in was recorded for",
-          { state: "authorized", token: false, signer: undefined, subject: JAN },
+          { state: "authorized", token: false, signer: undefined, person: JAN },
           { kind: "unrecorded" },
         ],
         [
           "my login its own check has not answered for yet",
-          { state: "registering", token: false, signer: JAN, subject: JAN },
+          { state: "registering", token: false, signer: JAN, person: JAN },
           undefined,
         ],
         [
           "a login nobody signed in",
-          { state: "not-authorized", token: false, signer: JAN, subject: JAN },
+          { state: "not-authorized", token: false, signer: JAN, person: JAN },
           { kind: "not-signed-in", auth: "not-authorized" },
         ],
         [
           "a project token somebody else set",
-          { state: "authorized", token: true, signer: EVA, subject: JAN },
+          { state: "authorized", token: true, signer: EVA, person: JAN },
           undefined,
         ],
       ] as const,
@@ -275,9 +276,9 @@ describe("the turn gate", () => {
       Effect.tap((store) => store.heard({})),
       Effect.flatMap(gateOver),
     );
-  const by = (userId: string) => ({ by: userId });
+  const by = (userId: ZeropsUserId) => ({ by: userId });
   /** A login whose code is being checked, started by `startedBy`. */
-  const checking = (startedBy: string) =>
+  const checking = (startedBy: ZeropsUserId) =>
     Effect.gen(function* () {
       const now = yield* DateTime.now;
       return yield* SubscriptionRef.make<ZeropsAgentLoginState>({
@@ -301,8 +302,8 @@ describe("the turn gate", () => {
   it.effect("goes by who this server saw sign the login in, and nobody else", () =>
     Effect.gen(function* () {
       const { signers } = yield* gate({ "claude-code": by(JAN) });
-      const on = (agentId: "claude-code" | "codex", subject: string) =>
-        signers.turnRefusal({ agentId, agent: signedIn, subject });
+      const on = (agentId: "claude-code" | "codex", person: ZeropsUserId) =>
+        signers.turnRefusal({ agentId, agent: signedIn, person });
 
       assert.isUndefined(yield* on("claude-code", JAN));
       assert.deepStrictEqual(yield* on("claude-code", EVA), { kind: "someone-else" });
@@ -315,12 +316,12 @@ describe("the turn gate", () => {
   it.effect("another login is gated on its own signer, never its agent's", () =>
     Effect.gen(function* () {
       const { signers } = yield* gate({ "claude-code": by(JAN), "claudeAgent-work": by(EVA) });
-      const onWork = (subject: string) =>
+      const onWork = (person: ZeropsUserId) =>
         signers.loginRefusal({
           key: "claudeAgent-work",
           state: "authorized",
           token: false,
-          subject,
+          person,
         });
 
       assert.deepStrictEqual(yield* onWork(JAN), { kind: "someone-else" });
@@ -350,7 +351,7 @@ describe("the turn gate", () => {
         .turnRefusal({
           agentId: "claude-code",
           agent: signedIn,
-          subject: EVA,
+          person: EVA,
           login: yield* SubscriptionRef.get(login),
           currentLogin: watching(login),
         })
@@ -380,7 +381,7 @@ describe("the turn gate", () => {
         .turnRefusal({
           agentId: "claude-code",
           agent: { ...signedIn, state: "local-only", providerAuth: "unknown" },
-          subject: JAN,
+          person: JAN,
           login: yield* SubscriptionRef.get(login),
           currentLogin: watching(login),
         })
@@ -418,7 +419,7 @@ describe("the turn gate", () => {
         .turnRefusal({
           agentId: "claude-code",
           agent: signedIn,
-          subject: EVA,
+          person: EVA,
           login: yield* SubscriptionRef.get(login),
           currentLogin: watching(login),
         })
@@ -441,7 +442,13 @@ describe("the turn gate", () => {
     Array.from(
       [
         ["the signer's own re-sign-in", JAN, JAN, signedIn, undefined],
-        ["a third person's turn", EVA, "ida-user-id", signedIn, { kind: "someone-else" }],
+        [
+          "a third person's turn",
+          EVA,
+          ZeropsUserId.make("ida-user-id"),
+          signedIn,
+          { kind: "someone-else" },
+        ],
         [
           "a turn nobody could be named for",
           undefined,
@@ -464,15 +471,15 @@ describe("the turn gate", () => {
           { kind: "not-signed-in", auth: "not-authorized" },
         ],
       ] as const,
-      ([name, kept, subject, agent, expected]) => ({
+      ([name, kept, person, agent, expected]) => ({
         title: `a code being checked holds no turn it cannot decide — ${name}`,
         kept,
-        subject,
+        person,
         agent,
         expected,
       }),
     ),
-  )("$title", ({ kept, subject, agent, expected }) =>
+  )("$title", ({ kept, person, agent, expected }) =>
     Effect.gen(function* () {
       const { signers } = yield* gate(kept === undefined ? {} : { "claude-code": by(kept) });
       const login = yield* SubscriptionRef.get(yield* checking(JAN));
@@ -480,7 +487,7 @@ describe("the turn gate", () => {
         .turnRefusal({
           agentId: "claude-code",
           agent,
-          subject,
+          person,
           login,
           currentLogin: still(login),
         })
@@ -507,7 +514,7 @@ describe("the turn gate", () => {
         .turnRefusal({
           agentId: "claude-code",
           agent: signedIn,
-          subject: JAN,
+          person: JAN,
           login,
           currentLogin: still(login),
         })
@@ -527,12 +534,12 @@ describe("the turn gate", () => {
         ["the signer's", EVA],
         ["the checked person's", JAN],
       ] as const,
-      ([name, subject]) => ({
+      ([name, person]) => ({
         title: `a check that never settles refuses ${name} turn once the wait is over`,
-        subject,
+        person,
       }),
     ),
-  )("$title", ({ subject }) =>
+  )("$title", ({ person }) =>
     Effect.gen(function* () {
       const { signers } = yield* gate({ "claude-code": by(EVA) });
       const login = yield* SubscriptionRef.get(yield* checking(JAN));
@@ -540,7 +547,7 @@ describe("the turn gate", () => {
         .turnRefusal({
           agentId: "claude-code",
           agent: signedIn,
-          subject,
+          person,
           login,
           currentLogin: still(login),
         })
@@ -561,8 +568,8 @@ describe("the turn gate", () => {
       const after = yield* memorySignInStore();
       const { signers } = yield* gateOver(after);
       yield* after.heard(rememberedByHq);
-      const on = (subject: string) =>
-        signers.turnRefusal({ agentId: "claude-code", agent: signedIn, subject });
+      const on = (person: ZeropsUserId) =>
+        signers.turnRefusal({ agentId: "claude-code", agent: signedIn, person });
       assert.isUndefined(yield* on(EVA));
       assert.deepStrictEqual(yield* on(JAN), { kind: "someone-else" });
     }).pipe(Effect.scoped),
@@ -587,7 +594,7 @@ describe("the turn gate", () => {
             flagToken: false,
           },
           signer: (yield* after.load)["claude-code"]?.by,
-          subject: EVA,
+          person: EVA,
         }),
         { kind: "not-signed-in", auth: "not-authorized" },
       );

@@ -1,19 +1,4 @@
 import { assert, describe, it } from "@effect/vitest";
-import {
-  ApprovalRequestId,
-  OrchestrationDispatchCommandError,
-  CommandId,
-  MessageId,
-  type OrchestrationCommand,
-  type OrchestrationThreadActivity,
-  type OrchestrationThreadShell,
-  ProviderDriverKind,
-  ProviderInstanceId,
-  ThreadId,
-  type ZeropsAgentAuth,
-  type ZeropsAgentId,
-  type ZeropsLoginState,
-} from "@t3tools/contracts";
 import { loginTurnRefusal, turnRefusal } from "@t3tools/shared/zeropsAgentAuth";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -31,13 +16,30 @@ import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
 import { ZeropsAutomation } from "./ZeropsAutomation.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsLoginsModule from "./ZeropsLogins.ts";
-import { ZEROPS_SUBJECT_PREFIX } from "@t3tools/contracts";
+import {
+  ApprovalRequestId,
+  CommandId,
+  MessageId,
+  type OrchestrationCommand,
+  OrchestrationDispatchCommandError,
+  type OrchestrationThreadActivity,
+  type OrchestrationThreadShell,
+  ProviderDriverKind,
+  ProviderInstanceId,
+  SessionSubject,
+  ThreadId,
+  ZEROPS_SUBJECT_PREFIX,
+  type ZeropsAgentAuth,
+  type ZeropsAgentId,
+  type ZeropsLoginState,
+  ZeropsUserId,
+} from "@t3tools/contracts";
 import * as ZeropsProjectSignersModule from "./ZeropsProjectSigners.ts";
 import { ZeropsSignerStanding } from "./ZeropsSignerStanding.ts";
 import { make as makeAdmission, type TurnPrincipal } from "./ZeropsTurnAdmission.ts";
 
-const JAN = "jan-user-id";
-const EVA = "eva-user-id";
+const JAN = ZeropsUserId.make("jan-user-id");
+const EVA = ZeropsUserId.make("eva-user-id");
 const THREAD = ThreadId.make("thread-1");
 const CREATED_AT = "2026-09-27T10:00:00.000Z";
 
@@ -58,7 +60,7 @@ const signedIn = (agentId: ZeropsAgentId, flagToken = false): ZeropsAgentAuth =>
 
 const session = (userId: string): TurnPrincipal => ({
   kind: "session",
-  subject: `${ZEROPS_SUBJECT_PREFIX}${userId}`,
+  subject: SessionSubject.make(`${ZEROPS_SUBJECT_PREFIX}${userId}`),
 });
 
 const turnStart = (instanceId?: string): OrchestrationCommand => ({
@@ -210,24 +212,24 @@ const admission = (world: World) =>
           latest: Effect.succeed(world.agentLogins ?? {}),
         }),
         Layer.mock(ZeropsProjectSignersModule.ZeropsProjectSigners)({
-          turnRefusal: ({ agentId, agent, subject, login }) =>
+          turnRefusal: ({ agentId, agent, person, login }) =>
             Effect.sync(() => world.gateCalls?.push({ agentId, login })).pipe(
               Effect.as(
                 turnRefusal({
                   agent,
                   signer: world.signers?.[agentId],
-                  subject,
+                  person,
                 }),
               ),
             ),
-          loginRefusal: ({ key, state, token, subject, login }) =>
+          loginRefusal: ({ key, state, token, person, login }) =>
             Effect.sync(() => world.gateCalls?.push({ agentId: key, login })).pipe(
               Effect.as(
                 loginTurnRefusal({
                   state,
                   token,
                   signer: world.signers?.[key],
-                  subject,
+                  person,
                 }),
               ),
             ),
@@ -559,7 +561,7 @@ describe("ZeropsTurnAdmission", () => {
           "refuses a session that names no Zerops user",
           janSignedClaude,
           turnStart("claudeAgent"),
-          { kind: "session", subject: "cloud-connect" },
+          { kind: "session", subject: SessionSubject.make("cloud-connect") },
           SOMEONE_ELSE,
         ],
         [
@@ -862,7 +864,7 @@ describe("ZeropsTurnAdmission.admitOperator", () => {
           "refuses a session that names no Zerops user",
           janSignedClaude,
           ["claudeAgent"],
-          { kind: "session", subject: "cloud-connect" },
+          { kind: "session", subject: SessionSubject.make("cloud-connect") },
           SOMEONE_ELSE,
         ],
         [
@@ -914,7 +916,10 @@ const generationAdmitted = (
 ): Effect.Effect<string | undefined> =>
   admission(world).pipe(
     Effect.flatMap((service) =>
-      service.admitGeneration({ instanceId, subject: `${ZEROPS_SUBJECT_PREFIX}${subject}` }),
+      service.admitGeneration({
+        instanceId,
+        subject: SessionSubject.make(`${ZEROPS_SUBJECT_PREFIX}${subject}`),
+      }),
     ),
     Effect.match({ onFailure: (error) => error.message, onSuccess: () => undefined }),
   );

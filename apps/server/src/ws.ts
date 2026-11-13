@@ -3,7 +3,6 @@ import * as Socket from "effect/socket/Socket";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import { ZeropsConnections } from "./zerops/ZeropsConnections.ts";
 import { isAllowedWebSocketOrigin } from "./auth/origin.ts";
-import { ZEROPS_SUBJECT_PREFIX } from "@t3tools/contracts";
 import { RpcUpdateAdmission } from "./RpcUpdateAdmission.ts";
 import { ZeropsSetup } from "./zerops/ZeropsSetup.ts";
 import { actingIn, hqKeyOf, ZeropsHqLink } from "./zerops/ZeropsHqLink.ts";
@@ -24,54 +23,56 @@ import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import {
-  DEFAULT_AUTOMATIC_GIT_FETCH_INTERVAL,
+  AssetImageAccessError,
+  AssetWorkspaceContextNotFoundError,
+  AssetWorkspaceContextResolutionError,
   AuthAccessStreamError,
   type AuthAccessStreamEvent,
   AuthSessionId,
   AuthZeropsClientScopes,
   ClientSurface,
+  DEFAULT_AUTOMATIC_GIT_FETCH_INTERVAL,
   type EditorId,
+  EnvironmentAuthorizationError,
   type FileManagerRevealKind,
-  type OrchestrationClientOrigin,
+  FilesystemBrowseError,
+  type FilesystemBrowseFailure,
   type GitActionProgressEvent,
   type GitManagerServiceError,
+  McpServersError,
+  ORCHESTRATION_WS_METHODS,
+  type OrchestrationClientOrigin,
   OrchestrationDispatchCommandError,
   type OrchestrationEvent,
-  type OrchestrationShellStreamEvent,
-  type OrchestrationShellStreamItem,
   OrchestrationGetSnapshotError,
   OrchestrationSearchThreadsError,
-  ORCHESTRATION_WS_METHODS,
-  ProjectId,
+  type OrchestrationShellStreamEvent,
+  type OrchestrationShellStreamItem,
   type ProjectEntriesFailure,
   type ProjectFileFailure,
   type ProjectFileOperation,
+  ProjectId,
   ProjectListEntriesError,
   ProjectReadFileError,
-  ThreadFileWritesError,
   ProjectSearchContentsError,
   ProjectSearchEntriesError,
   ProjectWriteFileError,
-  McpServersError,
-  ProviderUploadFeedbackError,
   ProviderSetupError,
+  ProviderUploadFeedbackError,
   RelayClientInstallFailedError,
   type RelayClientInstallProgressEvent,
-  ServerSelfUpdateError,
-  type FilesystemBrowseFailure,
-  FilesystemBrowseError,
-  AssetWorkspaceContextNotFoundError,
-  AssetWorkspaceContextResolutionError,
-  AssetImageAccessError,
   RpcClientId,
-  EnvironmentAuthorizationError,
-  ThreadId,
   type ServerConfigProvidersChangedPayload,
   type ServerConfigStreamEvent,
   type ServerProvider,
+  ServerSelfUpdateError,
+  SessionSubject,
   type TerminalMetadataStreamEvent,
+  ThreadFileWritesError,
+  ThreadId,
   WS_METHODS,
   WsRpcGroup,
+  zeropsSubjectOf,
 } from "@t3tools/contracts";
 import { resolveServerBackgroundActivitySettings } from "@t3tools/shared/backgroundActivitySettings";
 import { HttpRouter, HttpServerRequest, HttpServerRespondable } from "effect/http";
@@ -1360,14 +1361,14 @@ const makeWsRpcLayer = (
           zeropsDataConsole,
           zeropsGitRemoteProbe,
           zeropsCrewProposals,
-          subject: currentSession.subject,
+          subject: SessionSubject.make(currentSession.subject),
           connection: { id: currentSessionId, scope: connectionScope },
           zeropsConnections,
           admit,
         }),
         ...registerCrewRpc({
           crew,
-          subject: currentSession.subject,
+          subject: SessionSubject.make(currentSession.subject),
           admit,
         }),
         ...registerEngineRpc({
@@ -2099,7 +2100,7 @@ export const websocketRpcRouteLayer = HttpRouter.add(
       handle = admitted.value.ticket;
       session = {
         sessionId: AuthSessionId.make(admitted.value.connectionId),
-        subject: `${ZEROPS_SUBJECT_PREFIX}${admitted.value.userId}`,
+        subject: zeropsSubjectOf(admitted.value.userId),
         method: "bearer-access-token",
         scopes: AuthZeropsClientScopes,
       };
@@ -2148,7 +2149,7 @@ export const websocketRpcRouteLayer = HttpRouter.add(
         : Effect.zipWith(
             mateOwner?.owner ?? Effect.succeed(undefined),
             hqLink.standing,
-            (owner, standing) => actingIn(owner, standing, session.subject),
+            (owner, standing) => actingIn(owner, standing, SessionSubject.make(session.subject)),
           );
     // An admin of the Mate's project keeps someone else's Mate current: asked per call too, of
     // the role the connection's last ticket gave it; nobody administers without a ticket.

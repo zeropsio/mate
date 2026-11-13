@@ -1,10 +1,12 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
 import {
+  type CrewProposalInput,
   OrchestrationDispatchCommandError,
   ProviderInstanceId,
   TextGenerationError,
-  type CrewProposalInput,
+  zeropsSubjectOf,
+  ZeropsUserId,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -66,7 +68,7 @@ const layerWith = (generate: Generate, refusal?: string) =>
 
 const propose = Effect.gen(function* () {
   const proposals = yield* CrewProposals.ZeropsCrewProposals;
-  return yield* Effect.exit(proposals.propose(input, "user-1"));
+  return yield* Effect.exit(proposals.propose(input, zeropsSubjectOf(ZeropsUserId.make("user-1"))));
 });
 
 const failureOf = <A, E>(exit: Exit.Exit<A, E>) =>

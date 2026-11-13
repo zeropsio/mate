@@ -17,7 +17,7 @@
 import type { ZeropsPlacedBirth } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { HqMate, HqPlacement } from "@t3tools/client-runtime/zerops/hq";
-import { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { EnvironmentId, ThreadId, ZeropsUserId } from "@t3tools/contracts";
 import { MateLiveView } from "@t3tools/shared/hqMates";
 import * as Schema from "effect/Schema";
 
@@ -49,7 +49,9 @@ const acme = (face: string, record: Partial<HqMate>): HqPlacement => ({
 });
 /** Signed in by the harness's person, as HQ's overview of the Mate names them. */
 const SIGNED: Partial<HqMate> = {
-  logins: { "claude-code": { signedInBy: "u-harness", present: true, token: false } },
+  logins: {
+    "claude-code": { signedInBy: ZeropsUserId.make("u-harness"), present: true, token: false },
+  },
 };
 
 function mate(

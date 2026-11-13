@@ -71,12 +71,13 @@ import { afterEach, beforeEach, describe, expect, vi } from "vite-plus/test";
 
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
-  HqEnvironmentId,
+  type CrewSnapshot,
   EnvironmentId,
+  HqEnvironmentId,
+  type MateAttention,
   ProjectId,
   ThreadId,
-  type CrewSnapshot,
-  type MateAttention,
+  ZeropsUserId,
 } from "@t3tools/contracts";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
 import type { CrewDigest } from "@t3tools/shared/mateLink";
@@ -322,7 +323,7 @@ function recorded(placed: HqPlacement, over: Partial<HqMate>): HqPlacement {
 
 /** A Mate's logins as HQ's overview says them, naming `signer` as who signed Claude in. */
 const signedBy = (signer: string): Partial<HqMate> => ({
-  logins: { "claude-code": { signedInBy: signer, present: true, token: false } },
+  logins: { "claude-code": { signedInBy: ZeropsUserId.make(signer), present: true, token: false } },
 });
 
 /** A Mate signed in by `u-ada` — the viewer's own, where a test makes her the viewer. */
@@ -2380,7 +2381,9 @@ describe("a Mate and its crew, one unit in the menu", () => {
             : [],
         readyTasks: input.ready === true ? [{ id: "task-13", owner: "frontend" }] : [],
       },
-      logins: { "claude-code": { signedInBy: "ada", present: true, token: false } },
+      logins: {
+        "claude-code": { signedInBy: ZeropsUserId.make("ada"), present: true, token: false },
+      },
       environmentId: EnvironmentId.make("env-crew"),
     } satisfies SidebarCrewRead;
   };

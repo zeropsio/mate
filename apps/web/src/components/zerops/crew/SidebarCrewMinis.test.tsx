@@ -1,4 +1,4 @@
-import { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { EnvironmentId, ThreadId, ZeropsUserId } from "@t3tools/contracts";
 import type { CrewDigest, MateThreadKind, OverviewLogins } from "@t3tools/shared/mateLink";
 import { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -24,7 +24,7 @@ const ENVIRONMENT = EnvironmentId.make("env-minis");
 const NAMES = ["Ada", "Bo", "Cy", "Dee", "Eve", "Fay", "Gus"] as const;
 const TINTS = ["violet", "sky", "coral", "rose", "olive", "amber", "sand"] as const;
 const LOGINS: OverviewLogins = {
-  "claude-code": { signedInBy: "ada", present: true, token: false },
+  "claude-code": { signedInBy: ZeropsUserId.make("ada"), present: true, token: false },
 };
 
 /** A crew of `size`, Ada leading, each crewmate's chat in the kind `kinds` gives, idle else. */
@@ -139,7 +139,7 @@ describe("SidebarCrewMinis", () => {
 
   it("offers no Review where the task's crewmate is not the viewer's to run (D6)", () => {
     const read = handed(digest({ ready: ["Cy"] }), {
-      "claude-code": { signedInBy: "bo", present: true, token: false },
+      "claude-code": { signedInBy: ZeropsUserId.make("bo"), present: true, token: false },
     });
     const reviews: unknown[] = [];
     function Probe() {

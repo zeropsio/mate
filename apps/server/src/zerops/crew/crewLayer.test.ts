@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { ThreadId } from "@t3tools/contracts";
+import { SessionSubject, ThreadId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
@@ -30,7 +30,10 @@ describe("crewLayer", () => {
         const directory = yield* CrewThreadDirectory;
         const frames = yield* Stream.runCollect(engine.snapshot);
         const refused = yield* Effect.flip(
-          engine.command({ _tag: "apply" }, { kind: "session", subject: "anyone" }),
+          engine.command(
+            { _tag: "apply" },
+            { kind: "session", subject: SessionSubject.make("anyone") },
+          ),
         );
         assert.deepStrictEqual(
           {

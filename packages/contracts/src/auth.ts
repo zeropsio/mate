@@ -392,11 +392,41 @@ export const AuthSessionState = Schema.Struct({
 export type AuthSessionState = typeof AuthSessionState.Type;
 
 /**
- * A Zerops person's connection subject, and the subject a person's answer is recorded under
- * (`Principal` `person`): the prefix, then their Zerops user id.
+ * A person's id, the only one: their Zerops user id, as Zerops and HQ name them. Every record, map
+ * key and wire field of the Mate that names a person holds it. Nominal: nothing is checked at
+ * decode, so a stored row or a frame is never refused over it.
  */
+export const ZeropsUserId = Schema.String.pipe(Schema.brand("ZeropsUserId"));
+export type ZeropsUserId = typeof ZeropsUserId.Type;
+
+/**
+ * What an authenticated session is called: not a person's id. A Zerops person's is the prefix, then
+ * their Zerops user id ({@link zeropsSubjectOf}); the engine records a person's own act under it
+ * (`Principal` `person`).
+ */
+export const SessionSubject = Schema.String.pipe(Schema.brand("SessionSubject"));
+export type SessionSubject = typeof SessionSubject.Type;
+
 export const ZEROPS_SUBJECT_PREFIX = "zerops-user:";
 
-/** The Zerops user behind a connection; unrelated subjects remain distinct. */
-export const zeropsUserIdOf = (subject: string): string =>
-  subject.startsWith(ZEROPS_SUBJECT_PREFIX) ? subject.slice(ZEROPS_SUBJECT_PREFIX.length) : subject;
+/** The subject of a Zerops person's session: its only mint. */
+export const zeropsSubjectOf = (userId: ZeropsUserId): SessionSubject =>
+  SessionSubject.make(`${ZEROPS_SUBJECT_PREFIX}${userId}`);
+
+/** The person behind a session; a subject that names no Zerops person is nobody, never an id. */
+export const zeropsUserIdOf = (subject: SessionSubject): ZeropsUserId | undefined =>
+  subject.startsWith(ZEROPS_SUBJECT_PREFIX) && subject.length > ZEROPS_SUBJECT_PREFIX.length
+    ? ZeropsUserId.make(subject.slice(ZEROPS_SUBJECT_PREFIX.length))
+    : undefined;
+
+/**
+ * The person a stored record names, where the record holds either shape: the engine's `Principal`
+ * and crew state keep a person's own act under their session subject and everything else under
+ * their id.
+ */
+export const recordedPersonId = (recorded: string): ZeropsUserId =>
+  ZeropsUserId.make(
+    recorded.startsWith(ZEROPS_SUBJECT_PREFIX)
+      ? recorded.slice(ZEROPS_SUBJECT_PREFIX.length)
+      : recorded,
+  );

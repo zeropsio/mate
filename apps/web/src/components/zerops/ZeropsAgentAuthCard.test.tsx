@@ -6,6 +6,7 @@ import {
   type ZeropsAgentAuthSnapshot,
   type ZeropsAgentId,
   type ZeropsAgentLoginState,
+  ZeropsUserId,
 } from "@t3tools/contracts";
 import { agentAdmission } from "@t3tools/client-runtime/data";
 
@@ -37,7 +38,7 @@ const demanded = (feed: ZeropsAgentAuthSnapshot, instance: string): boolean =>
     owner: null,
     environmentId: "env",
     instanceId: ProviderInstanceId.make(instance),
-    viewerSubject: "viewer",
+    viewerSubject: ZeropsUserId.make("viewer"),
     read: {
       state: "known",
       value: feed,
@@ -295,10 +296,10 @@ describe("ZeropsAgentAuthCard", () => {
             state: "authorized",
             credPresent: true,
             providerAuth: "authenticated",
-            authorizedBy: { subject: "user-a" },
+            authorizedBy: { subject: ZeropsUserId.make("user-a") },
           }),
         ])}
-        viewerSubject="user-a"
+        viewerSubject={ZeropsUserId.make("user-a")}
         onSignIn={noop}
         onCancel={noop}
       />,
@@ -408,7 +409,7 @@ const loginState = (
 ): ZeropsAgentLoginState => ({
   terminalId: "agent-login-claude-code",
   startedAt: new Date("2026-08-29T12:00:00.000Z") as unknown as ZeropsAgentLoginState["startedAt"],
-  startedBy: "user-a",
+  startedBy: ZeropsUserId.make("user-a"),
   ...overrides,
 });
 
@@ -631,8 +632,8 @@ describe("ZeropsAgentAuthCard — cancel (S7 fix2 finding 4)", () => {
 describe("whose agent it is (D6)", () => {
   const card = (input: {
     readonly credPresent: boolean;
-    readonly authorizedBy?: { readonly subject: string };
-    readonly viewerSubject?: string;
+    readonly authorizedBy?: { readonly subject: ZeropsUserId };
+    readonly viewerSubject?: ZeropsUserId;
   }) =>
     renderToStaticMarkup(
       <ZeropsAgentAuthCard
@@ -658,8 +659,8 @@ describe("whose agent it is (D6)", () => {
   it("says quietly that the viewer's own agent is theirs", () => {
     const html = card({
       credPresent: true,
-      authorizedBy: { subject: "user-a" },
-      viewerSubject: "user-a",
+      authorizedBy: { subject: ZeropsUserId.make("user-a") },
+      viewerSubject: ZeropsUserId.make("user-a"),
     });
     expect(html).toContain('data-agent-id="claude-code"');
     expect(html).toContain('data-zerops-agent-ownership="mine"');
@@ -667,7 +668,7 @@ describe("whose agent it is (D6)", () => {
   });
 
   it("says nothing when there is no credential to own", () => {
-    expect(card({ credPresent: false, viewerSubject: "user-a" })).not.toContain(
+    expect(card({ credPresent: false, viewerSubject: ZeropsUserId.make("user-a") })).not.toContain(
       "data-zerops-agent-ownership",
     );
   });
@@ -675,8 +676,8 @@ describe("whose agent it is (D6)", () => {
   it("says only the signer runs an agent somebody else signed in", () => {
     const html = card({
       credPresent: true,
-      authorizedBy: { subject: "user-b" },
-      viewerSubject: "user-a",
+      authorizedBy: { subject: ZeropsUserId.make("user-b") },
+      viewerSubject: ZeropsUserId.make("user-a"),
     });
     expect(html).toContain('data-zerops-agent-ownership="someone-else"');
     expect(html).toContain("only they can run this agent");
@@ -684,7 +685,7 @@ describe("whose agent it is (D6)", () => {
   });
 
   it("states the fact, without accusing, when nothing was recorded", () => {
-    const html = card({ credPresent: true, viewerSubject: "user-a" });
+    const html = card({ credPresent: true, viewerSubject: ZeropsUserId.make("user-a") });
     expect(html).toContain('data-zerops-agent-ownership="unrecorded"');
     expect(html).toContain("was not recorded by Zerops Mate");
   });
@@ -692,7 +693,10 @@ describe("whose agent it is (D6)", () => {
   // A viewer the client cannot identify is not evidence that the agent
   // belongs to somebody else: say the honest thing rather than the wrong one.
   it("never accuses a colleague when the viewer is unknown", () => {
-    const html = card({ credPresent: true, authorizedBy: { subject: "user-b" } });
+    const html = card({
+      credPresent: true,
+      authorizedBy: { subject: ZeropsUserId.make("user-b") },
+    });
     expect(html).toContain('data-zerops-agent-ownership="unrecorded"');
   });
 });
@@ -700,8 +704,8 @@ describe("whose agent it is (D6)", () => {
 describe("account actions once authorized (D6 round 5)", () => {
   const authorizedCard = (
     input: {
-      readonly viewerSubject?: string;
-      readonly authorizedBy?: { readonly subject: string };
+      readonly viewerSubject?: ZeropsUserId;
+      readonly authorizedBy?: { readonly subject: ZeropsUserId };
       readonly token?: boolean;
       readonly signOutSupported?: boolean;
       readonly onSignOut?: (agentId: ZeropsAgentId) => void;
@@ -732,8 +736,8 @@ describe("account actions once authorized (D6 round 5)", () => {
 
   it("offers Switch account and Sign out for the viewer's own login", () => {
     const html = authorizedCard({
-      viewerSubject: "user-a",
-      authorizedBy: { subject: "user-a" },
+      viewerSubject: ZeropsUserId.make("user-a"),
+      authorizedBy: { subject: ZeropsUserId.make("user-a") },
       signOutSupported: true,
       onSignOut: noop,
     });
@@ -745,8 +749,8 @@ describe("account actions once authorized (D6 round 5)", () => {
 
   it("offers Use my account and Sign out for someone else's login", () => {
     const html = authorizedCard({
-      viewerSubject: "user-a",
-      authorizedBy: { subject: "user-b" },
+      viewerSubject: ZeropsUserId.make("user-a"),
+      authorizedBy: { subject: ZeropsUserId.make("user-b") },
       signOutSupported: true,
       onSignOut: noop,
     });
@@ -758,7 +762,7 @@ describe("account actions once authorized (D6 round 5)", () => {
 
   it("offers Use my account and Sign out for an unrecorded login", () => {
     const html = authorizedCard({
-      viewerSubject: "user-a",
+      viewerSubject: ZeropsUserId.make("user-a"),
       signOutSupported: true,
       onSignOut: noop,
     });
@@ -769,8 +773,8 @@ describe("account actions once authorized (D6 round 5)", () => {
 
   it("hides Sign out where the environment does not advertise the capability", () => {
     const html = authorizedCard({
-      viewerSubject: "user-a",
-      authorizedBy: { subject: "user-a" },
+      viewerSubject: ZeropsUserId.make("user-a"),
+      authorizedBy: { subject: ZeropsUserId.make("user-a") },
       signOutSupported: false,
     });
 
@@ -779,7 +783,10 @@ describe("account actions once authorized (D6 round 5)", () => {
   });
 
   it("hides Sign out by default when the prop is not passed", () => {
-    const html = authorizedCard({ viewerSubject: "user-a", authorizedBy: { subject: "user-a" } });
+    const html = authorizedCard({
+      viewerSubject: ZeropsUserId.make("user-a"),
+      authorizedBy: { subject: ZeropsUserId.make("user-a") },
+    });
 
     expect(html).not.toContain(">Sign out<");
   });
@@ -795,8 +802,8 @@ describe("account actions once authorized (D6 round 5)", () => {
 
   it("shows Sign out pending inline", () => {
     const html = authorizedCard({
-      viewerSubject: "user-a",
-      authorizedBy: { subject: "user-a" },
+      viewerSubject: ZeropsUserId.make("user-a"),
+      authorizedBy: { subject: ZeropsUserId.make("user-a") },
       signOutSupported: true,
       onSignOut: noop,
       signOutPending: new Set(["claude-code"]),
@@ -808,8 +815,8 @@ describe("account actions once authorized (D6 round 5)", () => {
 
   it("shows the Sign out error detail inline", () => {
     const html = authorizedCard({
-      viewerSubject: "user-a",
-      authorizedBy: { subject: "user-a" },
+      viewerSubject: ZeropsUserId.make("user-a"),
+      authorizedBy: { subject: ZeropsUserId.make("user-a") },
       signOutSupported: true,
       signOutError: new Map([["claude-code", "The container could not be reached."]]),
     });
@@ -823,7 +830,7 @@ describe("account actions once authorized (D6 round 5)", () => {
 // agents — each agent's further logins under it, whose each one is, the
 // crewmates that run on it, and *Add another login* under each agent.
 describe("logins", () => {
-  const VIEWER = "user-a";
+  const VIEWER = ZeropsUserId.make("user-a");
   const row = (overrides: Partial<MateLoginRow> & Pick<MateLoginRow, "id">): MateLoginRow => ({
     agent: "claude-code",
     label: "",
@@ -871,7 +878,7 @@ describe("logins", () => {
       id: "claudeAgent-cleo",
       label: "cleo",
       title: "Claude Code · cleo",
-      signedInBy: "user-cleo",
+      signedInBy: ZeropsUserId.make("user-cleo"),
     }),
     row({ id: "codex", agent: "codex", default: true, state: "not-authorized", title: "Codex" }),
     row({
@@ -944,7 +951,9 @@ describe("logins", () => {
 
   it("Replacing another member's expired named sign-in remains a secondary offer", () => {
     const html = card({
-      logins: [row({ id: "claudeAgent-ann", signedInBy: "ann", state: "needs-reauth" })],
+      logins: [
+        row({ id: "claudeAgent-ann", signedInBy: ZeropsUserId.make("ann"), state: "needs-reauth" }),
+      ],
       onSignInLogin: noop,
     });
     expect(rowOf(html, "claudeAgent-ann")).toContain("Use my own account instead…");
@@ -983,7 +992,7 @@ describe("ended auth outcomes", () => {
         onSignIn={noop}
         onCancel={noop}
         onRecheck={noop}
-        viewerSubject="operator"
+        viewerSubject={ZeropsUserId.make("operator")}
         snapshot={snapshot([
           agent({
             agentId: "codex",

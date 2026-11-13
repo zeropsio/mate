@@ -22,6 +22,7 @@ import type {
   ThreadLiveStep,
   ZeropsAgentAuthSnapshot,
   ZeropsLoginState,
+  ZeropsUserId,
 } from "@t3tools/contracts";
 import {
   MATE_CREW_BOUNDS,
@@ -58,7 +59,7 @@ export interface MateOverviewInput {
   /** The agent-auth snapshot the client reads, combined (`combineAgentAuth`). */
   readonly auth: ZeropsAgentAuthSnapshot;
   /** Display history from the server, separate from current credential authority. */
-  readonly lastSigners?: Readonly<Record<string, string>>;
+  readonly lastSigners?: Readonly<Record<string, ZeropsUserId>>;
   /** When each last signer signed their login in, where the server watched it (`signedAt`). */
   readonly signedAt?: Readonly<Record<string, string>>;
   /** The crew engine's snapshot; none before its first. */
@@ -362,7 +363,7 @@ const LOGIN_PRESENT: Readonly<Record<ZeropsLoginState, boolean>> = {
  */
 function lastSignInOf(
   key: string,
-  lastSigners: Readonly<Record<string, string>> | undefined,
+  lastSigners: Readonly<Record<string, ZeropsUserId>> | undefined,
   signedAt: Readonly<Record<string, string>> | undefined,
 ): Pick<LoginDigest, "lastSignedInBy" | "lastSignedInAt"> {
   if (lastSigners === undefined) return {};
@@ -379,7 +380,7 @@ function lastSignInOf(
  */
 function loginsOf(
   auth: ZeropsAgentAuthSnapshot,
-  lastSigners?: Readonly<Record<string, string>>,
+  lastSigners?: Readonly<Record<string, ZeropsUserId>>,
   signedAt?: Readonly<Record<string, string>>,
 ): OverviewLogins {
   const agents = auth.agents.map(

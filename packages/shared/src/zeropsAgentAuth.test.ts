@@ -1,3 +1,4 @@
+import { ZeropsUserId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -132,12 +133,12 @@ describe("latestSucceededSignIn", () => {
     { name: "no login", login: undefined, expected: undefined },
     {
       name: "a login that succeeded",
-      login: { phase: "succeeded", startedAt: at, startedBy: "eva" },
-      expected: { startedAt: at, startedBy: "eva" },
+      login: { phase: "succeeded", startedAt: at, startedBy: ZeropsUserId.make("eva") },
+      expected: { startedAt: at, startedBy: ZeropsUserId.make("eva") },
     },
     {
       name: "one under way, nothing succeeded before it",
-      login: { phase: "menu", startedAt: at, startedBy: "jan" },
+      login: { phase: "menu", startedAt: at, startedBy: ZeropsUserId.make("jan") },
       expected: undefined,
     },
     {
@@ -145,10 +146,10 @@ describe("latestSucceededSignIn", () => {
       login: {
         phase: "cancelled",
         startedAt: "2026-09-30T21:38:20.000Z",
-        startedBy: "jan",
-        lastSucceeded: { startedAt: at, startedBy: "eva" },
+        startedBy: ZeropsUserId.make("jan"),
+        lastSucceeded: { startedAt: at, startedBy: ZeropsUserId.make("eva") },
       },
-      expected: { startedAt: at, startedBy: "eva" },
+      expected: { startedAt: at, startedBy: ZeropsUserId.make("eva") },
     },
   ] as const)("$name", ({ login, expected }) => {
     expect(latestSucceededSignIn(login)).toEqual(expected);

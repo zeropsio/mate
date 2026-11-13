@@ -17,6 +17,7 @@ import {
   CrewProposal,
   CrewProposalError,
   type CrewProposalInput,
+  type SessionSubject,
   type TextGenerationError,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
@@ -67,7 +68,7 @@ export class ZeropsCrewProposals extends Context.Service<
     /** A crew for `input.goal`, proposed by the agent `input.modelSelection` names, for `subject`. */
     readonly propose: (
       input: CrewProposalInput,
-      subject: string,
+      subject: SessionSubject,
     ) => Effect.Effect<CrewProposal, CrewProposalError>;
   }
 >()("t3/zerops/ZeropsCrewProposals") {}
@@ -101,7 +102,7 @@ const make = Effect.gen(function* () {
 
   const propose = Effect.fn("ZeropsCrewProposals.propose")(function* (
     input: CrewProposalInput,
-    subject: string,
+    subject: SessionSubject,
   ) {
     yield* admission.admitGeneration({ instanceId: input.modelSelection.instanceId, subject }).pipe(
       Effect.catchTags({

@@ -16,6 +16,7 @@
  * Read from HQ (`mateCrewAtom`, the source `useMateCrew` reads), one subscription per Mate,
  * or a crew handed in instead (a harness).
  */
+import type { ZeropsUserId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { crewFaceWord } from "@t3tools/client-runtime/zerops/crew/phrases";
 import { Atom } from "effect/reactivity";
@@ -67,7 +68,7 @@ const FACTS = new WeakMap<object, Map<string, CrewRowFacts | undefined>>();
 function factsOf(
   source: MateCrewRead | SidebarCrewRead,
   mine: boolean,
-  viewerSubject: string | undefined,
+  viewerSubject: ZeropsUserId | undefined,
 ): CrewRowFacts | undefined {
   const key = `${String(mine)}\n${viewerSubject ?? ""}`;
   let held = FACTS.get(source);

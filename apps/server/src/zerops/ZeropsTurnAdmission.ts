@@ -47,8 +47,11 @@ import {
   type AgentAdmissionRefusal,
   type OrchestrationCommand,
   type OrchestrationThreadShell,
+  type SessionSubject,
   type ZeropsAgentId,
   type ZeropsLoginState,
+  type ZeropsUserId,
+  zeropsUserIdOf,
 } from "@t3tools/contracts";
 import {
   zeropsAgentUnavailableReason,
@@ -69,7 +72,6 @@ import { ZeropsAgentLogin } from "./ZeropsAgentLogin.ts";
 import { AUTOMATED_MATE_SIGNS_NOBODY_IN, ZeropsAutomation } from "./ZeropsAutomation.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { ZeropsLogins, type MateLogin } from "./ZeropsLogins.ts";
-import { ZEROPS_SUBJECT_PREFIX } from "@t3tools/contracts";
 import {
   isTurnStartingCommand,
   ZeropsProjectSigners,
@@ -97,9 +99,9 @@ import { ZeropsSignerStanding } from "./ZeropsSignerStanding.ts";
  * a Mate sets it up with no condition of its own.
  */
 export type TurnPrincipal =
-  | { readonly kind: "session"; readonly subject: string }
-  | { readonly kind: "crew"; readonly startedBy: string }
-  | { readonly kind: "standup"; readonly startedBy: string }
+  | { readonly kind: "session"; readonly subject: SessionSubject }
+  | { readonly kind: "crew"; readonly startedBy: ZeropsUserId }
+  | { readonly kind: "standup"; readonly startedBy: ZeropsUserId }
   | { readonly kind: "task"; readonly taskId: string };
 
 /**
@@ -125,12 +127,9 @@ export const isUndetermined = (refusal: OrchestrationDispatchCommandError): bool
   refusal.message === ACCESS_UNCONFIRMED || refusal.message === SIGNERS_UNHEARD;
 
 /** The Zerops user a principal stands for, or `undefined` when it names none. */
-export function principalUserId(principal: TurnPrincipal): string | undefined {
+export function principalUserId(principal: TurnPrincipal): ZeropsUserId | undefined {
   if (principal.kind === "task") return undefined;
-  if (principal.kind !== "session") return principal.startedBy;
-  return principal.subject.startsWith(ZEROPS_SUBJECT_PREFIX)
-    ? principal.subject.slice(ZEROPS_SUBJECT_PREFIX.length)
-    : undefined;
+  return principal.kind === "session" ? zeropsUserIdOf(principal.subject) : principal.startedBy;
 }
 
 /** The sentence a refused turn reports. */
@@ -278,7 +277,7 @@ export class ZeropsTurnAdmission extends Context.Service<
      */
     readonly admitGeneration: (input: {
       readonly instanceId: string;
-      readonly subject: string;
+      readonly subject: SessionSubject;
     }) => Effect.Effect<void, OrchestrationDispatchCommandError>;
   }
 >()("t3/zerops/ZeropsTurnAdmission") {}
@@ -354,7 +353,7 @@ export const make = Effect.gen(function* () {
    * `may` admits; a person who lost the project is signed out by offboarding,
    * one HQ no longer holds a token for is refused until they open Mate once.
    */
-  const refuseWithoutStanding = Effect.fnUntraced(function* (startedBy: string) {
+  const refuseWithoutStanding = Effect.fnUntraced(function* (startedBy: ZeropsUserId) {
     const standing = yield* signerStanding.standing(startedBy);
     if (standing === "may") return;
     return yield* new OrchestrationDispatchCommandError({
@@ -381,7 +380,7 @@ export const make = Effect.gen(function* () {
       key: login.id,
       state: row?.state ?? "not-authorized",
       token: false,
-      subject: principalUserId(principal),
+      person: principalUserId(principal),
       login: (yield* agentLogins.latest)[login.id],
       currentLogin: {
         latest: agentLogins.latest.pipe(Effect.map((logins) => logins[login.id])),
@@ -417,7 +416,7 @@ export const make = Effect.gen(function* () {
     const refusal = yield* projectSigners.turnRefusal({
       agentId,
       agent,
-      subject: principalUserId(principal),
+      person: principalUserId(principal),
       login: (yield* agentLogins.latest)[agentId],
       currentLogin: {
         latest: agentLogins.latest.pipe(Effect.map((logins) => logins[agentId])),
@@ -559,7 +558,7 @@ export const make = Effect.gen(function* () {
     instanceId: string,
     principal: TurnPrincipal,
   ) {
-    const subject = principalUserId(principal);
+    const person = principalUserId(principal);
     const login = yield* zeropsLogins.resolve(instanceId);
     if (login !== undefined) {
       const row = (yield* zeropsLogins.latest).find((entry) => entry.id === login.id);
@@ -569,7 +568,7 @@ export const make = Effect.gen(function* () {
           ? "authorized"
           : "not-authorized",
         token: false,
-        subject,
+        person,
       });
       return refusal === undefined || refusal.kind === "not-signed-in"
         ? undefined
@@ -583,7 +582,7 @@ export const make = Effect.gen(function* () {
       key: agentId,
       state: agent.credPresent ? "authorized" : "not-authorized",
       token: agent.flagToken,
-      subject,
+      person,
     });
     return refusal === undefined || refusal.kind === "not-signed-in"
       ? undefined

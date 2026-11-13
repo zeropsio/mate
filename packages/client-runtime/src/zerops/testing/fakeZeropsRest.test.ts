@@ -1,3 +1,4 @@
+import { ZeropsUserId } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 
 import { ZeropsApiClient, ZeropsApiError, type ZeropsUser } from "../api.ts";
@@ -5,7 +6,7 @@ import { makeHarnessBrowser } from "./browserTabs.ts";
 import { makeFakeZeropsRest } from "./fakeZeropsRest.ts";
 
 const person: ZeropsUser = {
-  id: "user-1",
+  id: ZeropsUserId.make("user-1"),
   email: "person@example.test",
   clientUserList: [{ id: "cu-1", clientId: "org-1", roleCode: "OWNER" }],
 };
@@ -104,7 +105,7 @@ describe("FakeZeropsRest", () => {
   it("answers a NO_ACCESS member as Zerops does: refused the list, searched to their grants", async () => {
     const rest = platform();
     const developer: ZeropsUser = {
-      id: "user-dev",
+      id: ZeropsUserId.make("user-dev"),
       email: "developer@example.test",
       clientUserList: [{ id: "cu-dev", clientId: "org-1", roleCode: "NO_ACCESS" }],
     };

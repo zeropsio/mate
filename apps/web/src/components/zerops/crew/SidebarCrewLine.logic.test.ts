@@ -1,5 +1,5 @@
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
-import { ThreadId, type CrewSnapshot } from "@t3tools/contracts";
+import { ThreadId, ZeropsUserId, type CrewSnapshot } from "@t3tools/contracts";
 import type { CrewDigest, LoginDigest, MateThreadKind } from "@t3tools/shared/mateLink";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -152,26 +152,46 @@ describe("crewTaskReviewable — Review only where the task's crewmate is the vi
   const crew = digest({ snapshot: { board: { tasks: readyTasks(["task-13"]) } } });
   // Frontend owns task 13 and runs on Claude Code's login.
   const login = (patch: Partial<LoginDigest>): Record<string, LoginDigest> => ({
-    "claude-code": { signedInBy: "ada", present: true, token: false, ...patch },
+    "claude-code": { signedInBy: ZeropsUserId.make("ada"), present: true, token: false, ...patch },
   });
 
   it.each([
-    { case: "signed in by the viewer", logins: login({}), viewer: "ada", reviews: true },
-    { case: "signed in by somebody else", logins: login({}), viewer: "bo", reviews: false },
+    {
+      case: "signed in by the viewer",
+      logins: login({}),
+      viewer: ZeropsUserId.make("ada"),
+      reviews: true,
+    },
+    {
+      case: "signed in by somebody else",
+      logins: login({}),
+      viewer: ZeropsUserId.make("bo"),
+      reviews: false,
+    },
     {
       case: "a project token's, anybody's",
       logins: login({ token: true }),
-      viewer: "bo",
+      viewer: ZeropsUserId.make("bo"),
       reviews: true,
     },
     {
       case: "signed in by nobody on record",
       logins: login({ signedInBy: null }),
-      viewer: "ada",
+      viewer: ZeropsUserId.make("ada"),
       reviews: false,
     },
-    { case: "no credential yet", logins: login({ present: false }), viewer: "bo", reviews: true },
-    { case: "a login the overview names nothing of", logins: {}, viewer: "bo", reviews: true },
+    {
+      case: "no credential yet",
+      logins: login({ present: false }),
+      viewer: ZeropsUserId.make("bo"),
+      reviews: true,
+    },
+    {
+      case: "a login the overview names nothing of",
+      logins: {},
+      viewer: ZeropsUserId.make("bo"),
+      reviews: true,
+    },
     { case: "a viewer not known yet", logins: login({}), viewer: undefined, reviews: false },
   ])(
     "offers Review only for a ready task the viewer may land: $case",

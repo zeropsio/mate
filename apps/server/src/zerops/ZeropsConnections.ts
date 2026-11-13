@@ -12,6 +12,7 @@
  * down nothing ends for its grant; when the link returns, a grant that ran out meanwhile or runs out
  * within a minute gets that minute to be extended.
  */
+import type { ZeropsUserId } from "@t3tools/contracts";
 import type { MateTicketRole } from "@t3tools/shared/mateLink";
 import * as Clock from "effect/Clock";
 import * as SecureRandom from "effect/crypto/SecureRandom";
@@ -27,14 +28,14 @@ import { type AdmissionLive, type TicketFrame, ZeropsTicketDoor } from "./Zerops
 export interface ConnectionIdentity {
   readonly ticket: string;
   readonly connectionId: string;
-  readonly userId: string;
+  readonly userId: ZeropsUserId;
   readonly sessionId: string;
   readonly role: MateTicketRole;
 }
 interface ConnectionInput {
   readonly connectionId: string;
   readonly id: string;
-  readonly userId: string;
+  readonly userId: ZeropsUserId;
   readonly sessionId: string;
   /** The role the last ticket that named one gave it: what authorization reads. */
   role: MateTicketRole;

@@ -24,21 +24,22 @@
  * @module ZeropsSetup
  */
 import {
+  agentIdForProviderInstance,
+  type ConversationAgent,
   ConversationId,
   DEFAULT_MODEL,
   DEFAULT_MODEL_BY_PROVIDER,
-  ProviderDriverKind,
-  ProviderInstanceId,
-  agentIdForProviderInstance,
   type MatePersona,
   type ModelSelection,
   OrchestrationDispatchCommandError,
   type OrchestrationThreadShell,
+  ProviderDriverKind,
+  ProviderInstanceId,
   type ServerProvider,
+  wakeId as standUpWakeIdOf,
   type ZeropsAgentAuthSnapshot,
   type ZeropsAgentId,
-  type ConversationAgent,
-  wakeId as standUpWakeIdOf,
+  ZeropsUserId,
 } from "@t3tools/contracts";
 import type { LinkedMate } from "@t3tools/shared/mateLink";
 import { resolvePrimaryConversation } from "@t3tools/shared/primaryConversation";
@@ -162,13 +163,15 @@ export class ZeropsSetup extends Context.Service<
     /** Receipt: the initial wait ended as sent, failed, skipped or not asked. */
     readonly awaitStandUp: Effect.Effect<void>;
     /**
-     * One manual attempt after a failed send, only for its recorded asker, by bare Zerops user id
-     * (`zeropsUserIdOf`), as the record names them. True once an attempt went, whether it then
+     * One manual attempt after a failed send, only for its recorded asker, by Zerops user id,
+     * as the record names them. True once an attempt went, whether it then
      * starts or ends failed again (the setup document says which); false where there is no failed
      * send of theirs to try again — none recorded, not failed, someone else's, or another attempt
      * took it first. A failure to read or write the record is an error, never a false.
      */
-    readonly retry: (userId: string) => Effect.Effect<boolean, OrchestrationDispatchCommandError>;
+    readonly retry: (
+      userId: ZeropsUserId,
+    ) => Effect.Effect<boolean, OrchestrationDispatchCommandError>;
   }
 >()("t3/zerops/ZeropsSetup") {}
 
@@ -178,7 +181,7 @@ interface StandUpRow {
   readonly startedAt: string;
   /** `RAN` and `TERMINAL` below name its sources. */
   readonly source: string;
-  readonly userId: string;
+  readonly userId: ZeropsUserId;
 }
 
 const AGENT_INSTANCE: Readonly<Record<ZeropsAgentId, string>> = {
@@ -287,7 +290,7 @@ export const makeZeropsSetup = Effect.gen(function* () {
     readonly commandId: string;
     readonly startedAt: string;
     readonly source: string;
-    readonly userId: string;
+    readonly userId: ZeropsUserId;
   }>`
     SELECT thread_id AS "threadId", command_id AS "commandId", started_at AS "startedAt",
       source, user_id AS "userId"
@@ -493,11 +496,14 @@ export const makeZeropsSetup = Effect.gen(function* () {
 
   /* ---------------------------------------------------------- the stand-up */
 
+  /** A stand-up settled as never due is nobody's. */
+  const NOBODY = ZeropsUserId.make("");
+
   /** Settles the stand-up as never due; whether there is nothing left to do. */
   const settle = (source: "none" | "skipped") =>
     Effect.gen(function* () {
       const at = yield* nowIso;
-      yield* claim({ threadId: "", commandId: source, userId: "", source, startedAt: at });
+      yield* claim({ threadId: "", commandId: source, userId: NOBODY, source, startedAt: at });
       return true;
     });
 
@@ -610,7 +616,7 @@ export const makeZeropsSetup = Effect.gen(function* () {
         resuming === undefined
           ? asker
           : [resuming.userId, asker].find(
-              (userId): userId is string =>
+              (userId): userId is ZeropsUserId =>
                 userId !== undefined &&
                 userId !== "" &&
                 (standUpAgents(agents, signers, userId).length > 0 || ready !== undefined),
@@ -842,7 +848,7 @@ export const makeZeropsSetup = Effect.gen(function* () {
     finished = Fiber.join(worker);
   }
 
-  const retry = (userId: string) =>
+  const retry = (userId: ZeropsUserId) =>
     attempts
       .withPermit(
         Effect.gen(function* () {

@@ -1,3 +1,4 @@
+import { ZeropsUserId } from "@t3tools/contracts";
 import type { ZeropsAgentAuthSnapshot, ZeropsLogin } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -12,8 +13,8 @@ import {
   resolveSpentLogin,
 } from "./logins.ts";
 
-const EVA = "u-eva";
-const JAN = "u-jan";
+const EVA = ZeropsUserId.make("u-eva");
+const JAN = ZeropsUserId.make("u-jan");
 
 const login = (patch: Partial<ZeropsLogin> & Pick<ZeropsLogin, "id">): ZeropsLogin => ({
   agent: "claude-code",
@@ -90,7 +91,10 @@ describe("mateLoginSignerLine", () => {
   it.each([
     [login({ id: "claudeAgent", default: true, signedInBy: EVA }), "Signed in by you"],
     [login({ id: "claudeAgent-cleo", signedInBy: JAN }), "Signed in by Jan"],
-    [login({ id: "claudeAgent-x", signedInBy: "u-left" }), "Signed in by another member"],
+    [
+      login({ id: "claudeAgent-x", signedInBy: ZeropsUserId.make("u-left") }),
+      "Signed in by another member",
+    ],
     [login({ id: "codex-home", agent: "codex", state: "not-authorized" }), "Not signed in"],
     [login({ id: "claudeAgent-y" }), "Sign-in not recorded"],
     [login({ id: "claudeAgent-key", kind: "apiKey", signedInBy: EVA }), "Added by you"],

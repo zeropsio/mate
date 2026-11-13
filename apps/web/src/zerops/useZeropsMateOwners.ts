@@ -8,7 +8,7 @@
  */
 
 import { useAtomValue } from "@effect/atom-react";
-import { zeropsUserIdOf } from "@t3tools/contracts";
+import { recordedPersonId } from "@t3tools/contracts";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
   shownHqProjectPeopleAtom,
@@ -71,7 +71,7 @@ export function personNameOf(
   viewer: (ZeropsAccountSource & { readonly id?: string }) | null | undefined,
   people: (userId: string) => string | undefined,
 ): string | undefined {
-  const userId = zeropsUserIdOf(subject);
+  const userId = recordedPersonId(subject);
   return people(userId) ?? (viewer?.id === userId ? zeropsAccountDisplay(viewer).name : undefined);
 }
 

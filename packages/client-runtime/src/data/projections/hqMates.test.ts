@@ -1,5 +1,5 @@
 import { Atom, AtomRegistry } from "effect/reactivity";
-import { EnvironmentId } from "@t3tools/contracts";
+import { EnvironmentId, ZeropsUserId } from "@t3tools/contracts";
 import type { MateOverview } from "@t3tools/shared/mateLink";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
 import { describe, expect, it } from "vite-plus/test";
@@ -285,7 +285,12 @@ describe("keyed HQ Mate readers", () => {
       {
         ...changed,
         logins: {
-          codex: { present: true, token: true, signedInBy: "user", lastSignedInBy: "user" },
+          codex: {
+            present: true,
+            token: true,
+            signedInBy: ZeropsUserId.make("user"),
+            lastSignedInBy: ZeropsUserId.make("user"),
+          },
         },
       },
       10002,

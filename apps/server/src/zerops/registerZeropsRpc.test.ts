@@ -6,8 +6,10 @@
 import { describe, expect, it } from "@effect/vitest";
 import {
   ProviderInstanceId,
+  SessionSubject,
   type TerminalError,
   type ZeropsAgentLoginError,
+  ZeropsUserId,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -251,7 +253,7 @@ describe("manual auth check", () => {
                 flagToken: false,
                 providerAuth: "unknown" as const,
                 state: "local-only" as const,
-                authorizedBy: { subject: "owner" },
+                authorizedBy: { subject: ZeropsUserId.make("owner") },
               },
             ],
           }),
@@ -265,12 +267,15 @@ describe("manual auth check", () => {
           resolve: () => Effect.succeed(undefined),
           recheckNow: () => Effect.void,
         },
-        subject: "zerops-user:owner",
+        subject: SessionSubject.make("zerops-user:owner"),
       };
       yield* runAgentAuthCheck(deps, { agentId: "codex" });
       expect(calls).toEqual(["codex"]);
       const refused = yield* Effect.flip(
-        runAgentAuthCheck({ ...deps, subject: "zerops-user:someone-else" }, { agentId: "codex" }),
+        runAgentAuthCheck(
+          { ...deps, subject: SessionSubject.make("zerops-user:someone-else") },
+          { agentId: "codex" },
+        ),
       );
       expect(refused.reason).toBe("invalid-login");
       expect(calls).toEqual(["codex"]);
@@ -280,7 +285,7 @@ describe("manual auth check", () => {
 
 describe("a personal login acts for its person alone", () => {
   /** Jan signed codex in and runs a sign-in on `claude-code:work`; `claude-code` has a project token. */
-  const loginDeps = (subject: string, ran: string[]) => ({
+  const loginDeps = (subject: SessionSubject, ran: string[]) => ({
     subject,
     zeropsAgentAuth: {
       latest: Effect.succeed({
@@ -293,7 +298,7 @@ describe("a personal login acts for its person alone", () => {
             flagToken: false,
             providerAuth: "unknown" as const,
             state: "authorized" as const,
-            authorizedBy: { subject: "jan" },
+            authorizedBy: { subject: ZeropsUserId.make("jan") },
           },
           {
             agentId: "claude-code" as const,
@@ -316,7 +321,7 @@ describe("a personal login acts for its person alone", () => {
           default: false,
           state: "authorized" as const,
           token: false,
-          signedInBy: "jan",
+          signedInBy: ZeropsUserId.make("jan"),
         },
       ]),
     },
@@ -328,7 +333,7 @@ describe("a personal login acts for its person alone", () => {
           phase: "awaiting-code" as const,
           terminalId: "t",
           startedAt: DateTime.makeUnsafe(0),
-          startedBy: "jan",
+          startedBy: ZeropsUserId.make("jan"),
         },
       }),
       cancel: (agentId: string, loginId?: string) =>
@@ -386,10 +391,12 @@ describe("a personal login acts for its person alone", () => {
   ])("only its person may do it: %s", ([, run, action]) =>
     Effect.gen(function* () {
       const ran: string[] = [];
-      const refused = yield* Effect.result(run(loginDeps("zerops-user:eva", ran)));
+      const refused = yield* Effect.result(
+        run(loginDeps(SessionSubject.make("zerops-user:eva"), ran)),
+      );
       expect(ran).toEqual([]);
       expect(refused).toMatchObject({ failure: { reason: "invalid-login" } });
-      yield* run(loginDeps("zerops-user:jan", ran));
+      yield* run(loginDeps(SessionSubject.make("zerops-user:jan"), ran));
       expect(ran).toEqual([action]);
     }),
   );
@@ -397,8 +404,12 @@ describe("a personal login acts for its person alone", () => {
   it.effect("a project-token login is nobody's: any member may still ask to sign it out", () =>
     Effect.gen(function* () {
       const ran: string[] = [];
-      yield* runAgentLoginSignOut(loginDeps("zerops-user:eva", ran), { agentId: "claude-code" });
-      yield* runAgentLoginCancel(loginDeps("zerops-user:eva", ran), { agentId: "codex" });
+      yield* runAgentLoginSignOut(loginDeps(SessionSubject.make("zerops-user:eva"), ran), {
+        agentId: "claude-code",
+      });
+      yield* runAgentLoginCancel(loginDeps(SessionSubject.make("zerops-user:eva"), ran), {
+        agentId: "codex",
+      });
       expect(ran).toEqual(["sign out claude-code", "cancel codex"]);
     }),
   );
@@ -419,7 +430,7 @@ describe("crew proposals", () => {
               });
             },
           },
-          subject: "zerops-user:owner",
+          subject: SessionSubject.make("zerops-user:owner"),
           admit: (_method, effect) => effect,
         },
         {

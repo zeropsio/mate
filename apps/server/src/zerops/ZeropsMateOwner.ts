@@ -14,6 +14,7 @@
  *
  * @module ZeropsMateOwner
  */
+import type { ZeropsUserId } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -25,7 +26,7 @@ import * as Stream from "effect/Stream";
  * Whom HQ names the Mate's owner: a Zerops user id; `null` while HQ names none; `undefined` until
  * HQ's first state since this server started.
  */
-export type MateOwner = string | null | undefined;
+export type MateOwner = ZeropsUserId | null | undefined;
 
 export class ZeropsMateOwner extends Context.Service<
   ZeropsMateOwner,
@@ -35,7 +36,7 @@ export class ZeropsMateOwner extends Context.Service<
     /** Fires each time HQ names a different owner than it last did. */
     readonly changes: Stream.Stream<void>;
     /** The link's write: the owner a `state` frame names (`null` when it names none). */
-    readonly named: (owner: string | null) => Effect.Effect<void>;
+    readonly named: (owner: ZeropsUserId | null) => Effect.Effect<void>;
   }
 >()("t3/zerops/ZeropsMateOwner") {}
 

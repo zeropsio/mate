@@ -1,4 +1,4 @@
-import { MateHealth } from "@t3tools/contracts";
+import { MateHealth, ZeropsUserId } from "@t3tools/contracts";
 import { MateAttention as HqAttentionValue } from "@t3tools/contracts";
 import { HqProblem } from "./hqProblems.ts";
 import * as Schema from "effect/Schema";
@@ -554,9 +554,9 @@ export const HqNavigationProject = Schema.Struct({
   mate: Schema.NullOr(HqNavigationMate),
   person: HqPersonFacts,
   /** Login ID to current person; only credentials present and not API tokens. */
-  signedInNow: Schema.Record(Schema.String, Schema.String),
+  signedInNow: Schema.Record(Schema.String, ZeropsUserId),
   /** Login ID to its latest known person, including saved history after sign-out. */
-  everSignedIn: Schema.Record(Schema.String, Schema.String),
+  everSignedIn: Schema.Record(Schema.String, ZeropsUserId),
 });
 export type HqNavigationProject = typeof HqNavigationProject.Type;
 /** Independent app-detail record values keyed by the fields below. */

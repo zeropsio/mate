@@ -29,6 +29,7 @@ import type {
   ZeropsAgentId,
   ZeropsLoginAddInput,
   ZeropsLoginKind,
+  ZeropsUserId,
 } from "@t3tools/contracts";
 import {
   agentOwnershipNeedsAttention,
@@ -109,7 +110,7 @@ export function ZeropsAgentAuthCard({
    */
   readonly conversationAgentId?: ZeropsAgentId | undefined;
   /** The signed-in Zerops user id, so a row can say whose login it is (D6). */
-  readonly viewerSubject?: string | undefined;
+  readonly viewerSubject?: ZeropsUserId | undefined;
   readonly onSignIn: (agentId: ZeropsAgentId) => void;
   readonly onCancel: (agentId: ZeropsAgentId) => void;
   /** Whether the environment advertises `capabilities.agentSignOut`; absent or false hides Sign out (older servers). */
@@ -198,7 +199,7 @@ function CompactAgents({
   readonly loginStatus: ((loginId: string) => ZeropsLoginActionStatus) | undefined;
   readonly addLoginError: string | undefined;
   readonly signOutError: ReadonlyMap<ZeropsAgentId, string> | undefined;
-  readonly viewerSubject: string | undefined;
+  readonly viewerSubject: ZeropsUserId | undefined;
   readonly onSignIn: (agentId: ZeropsAgentId) => void;
   readonly rows: ReactNode;
   readonly otherAgents: ReactNode;
@@ -379,7 +380,7 @@ export function ZeropsAgentAuthRows({
   readonly snapshot: ZeropsAgentAuthSnapshot;
   /** The conversation's agent is signed in: another agent's bare sign-in is a quiet line, not a row. */
   readonly quietOffers?: boolean | undefined;
-  readonly viewerSubject?: string | undefined;
+  readonly viewerSubject?: ZeropsUserId | undefined;
   readonly onSignIn: (agentId: ZeropsAgentId) => void;
   readonly onCancel: (agentId: ZeropsAgentId) => void;
   readonly signOutSupported?: boolean | undefined;
@@ -475,7 +476,7 @@ function ZeropsAgentAuthRow({
   readonly agent: ZeropsAgentAuth;
   /** This agent's own login, for the crewmates that run on it. */
   readonly runsOn?: Pick<MateLoginRow, "crewmates" | "lead"> | undefined;
-  readonly viewerSubject?: string | undefined;
+  readonly viewerSubject?: ZeropsUserId | undefined;
   /** Another agent is signed in, so this one's sign-in is an offer. */
   readonly onRecheck?: ((agentId: ZeropsAgentId, loginId?: string) => void) | undefined;
   readonly quiet: boolean;
@@ -657,7 +658,7 @@ function ZeropsLoginRow({
   onRemove,
 }: {
   readonly login: MateLoginRow;
-  readonly viewerSubject?: string | undefined;
+  readonly viewerSubject?: ZeropsUserId | undefined;
   readonly nameOf?: ((userId: string) => string | undefined) | undefined;
   readonly onRecheck?: ((agentId: ZeropsAgentId, loginId?: string) => void) | undefined;
   readonly status?: ZeropsLoginActionStatus | undefined;

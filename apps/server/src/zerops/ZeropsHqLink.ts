@@ -72,7 +72,6 @@ import type {
   OrchestrationThreadShell,
   ServerProvider,
 } from "@t3tools/contracts";
-import { type MateTaskReport, TrimmedNonEmptyString } from "@t3tools/contracts";
 import {
   KeyLinkDown,
   KeyLinkUp,
@@ -139,7 +138,13 @@ import type { ZeropsKeyRefusal } from "./ZeropsKeyRefusal.ts";
 import { ZeropsAutomation } from "./ZeropsAutomation.ts";
 import { ZeropsTasks } from "./ZeropsTasks.ts";
 import { makeLinkCommands } from "./zeropsLinkCommand.ts";
-import { ZEROPS_SUBJECT_PREFIX, zeropsUserIdOf } from "@t3tools/contracts";
+import {
+  type MateTaskReport,
+  type SessionSubject,
+  TrimmedNonEmptyString,
+  type ZeropsUserId,
+  zeropsUserIdOf,
+} from "@t3tools/contracts";
 import { MateAutoUpdatePolicy } from "./MateAutoUpdatePolicy.ts";
 import type { UsageLink } from "../usage/UsageLink.ts";
 import { makeUsageCapture } from "../usage/UsageCapture.ts";
@@ -245,10 +250,15 @@ export type MateActing = "acts" | "reads-along" | KeyUnsafe;
  * Everyone acts while HQ has named no owner since the server started, as the client opens its
  * composer then.
  */
-export const actingIn = (owner: MateOwner, standing: HqStanding, subject: string): MateActing => {
-  if (!subject.startsWith(ZEROPS_SUBJECT_PREFIX)) return "acts";
+export const actingIn = (
+  owner: MateOwner,
+  standing: HqStanding,
+  subject: SessionSubject,
+): MateActing => {
+  const person = zeropsUserIdOf(subject);
+  if (person === undefined) return "acts";
   if (standing.kind === "not-linked" && keyUnsafe(standing.refusal)) return standing.refusal;
-  return typeof owner === "string" && zeropsUserIdOf(subject) !== owner ? "reads-along" : "acts";
+  return typeof owner === "string" && person !== owner ? "reads-along" : "acts";
 };
 
 /** What the people in the Mate are told of HQ's word on its key (`ServerConfig.hqKey`); none while none stands. */
@@ -301,13 +311,13 @@ export interface ZeropsHqLinkOptions {
    */
   readonly heldSessions: Effect.Effect<ReadonlyArray<string>>;
   /** Hands on whom each state names the Mate's owner, `null` for none (`ZeropsMateOwner.named`). */
-  readonly owner?: (userId: string | null) => Effect.Effect<void>;
+  readonly owner?: (userId: ZeropsUserId | null) => Effect.Effect<void>;
   /** Hands on the Mate's Git credential, or HQ's revocation of it (`ZeropsGitCredentialFile`). */
   readonly gitCredential: (credential: string | null) => Effect.Effect<void>;
   /** Writes or removes the explicit personal Observe credential, returning its durable receipt. */
   readonly observeCredential?: (credential: string | null) => Effect.Effect<boolean>;
   /** Applies HQ's map of each login's last signer (`signers`) to whose a login is (`ZeropsSignIns.heard`). */
-  readonly signers?: (signers: Readonly<Record<string, string>>) => Effect.Effect<void>;
+  readonly signers?: (signers: Readonly<Record<string, ZeropsUserId>>) => Effect.Effect<void>;
   /** The fingerprint of the Git credential held now, read afresh for every dial; HQ keeps a live one it names. */
   readonly gitFingerprint: Effect.Effect<Option.Option<string>>;
   /** The fingerprint of the Observe credential held now, read afresh for every dial; HQ mints none while it names a live one. */
@@ -1047,7 +1057,7 @@ const HQ_AUTO_UPDATE_VERIFY_BUDGET = Duration.seconds(5);
 
 /** Where a Mate's overview is read from: the services the link's layer finds, by what it reads. */
 export interface OverviewSources {
-  readonly lastSigners?: Effect.Effect<Readonly<Record<string, string>>>;
+  readonly lastSigners?: Effect.Effect<Readonly<Record<string, ZeropsUserId>>>;
   readonly signedAt?: Effect.Effect<Readonly<Record<string, string>>>;
   readonly environmentId: OverviewIdentity["environmentId"];
   readonly serverVersion: string;

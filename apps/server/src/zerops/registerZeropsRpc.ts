@@ -8,18 +8,6 @@
  * `auth/RpcAuthorization.ts` still owns the scope table, unchanged. S8b adds
  * its stream and input RPC here when it lands.
  */
-import {
-  AuthExecOperateScope,
-  AuthOrchestrationReadScope,
-  WS_METHODS,
-  EnvironmentAuthorizationError,
-  ZeropsAgentLoginError,
-  ZeropsGrantExtensionError,
-  ZeropsMateUpdateError,
-  type CrewProposalInput,
-  type WsRpcGroup,
-  type ZeropsAgentId,
-} from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
@@ -34,7 +22,21 @@ import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
 import * as ZeropsBrowserStreamModule from "./ZeropsBrowserStream.ts";
 import type * as ZeropsConnectionsModule from "./ZeropsConnections.ts";
 import * as ZeropsMacStreamModule from "./ZeropsMacStream.ts";
-import { zeropsUserIdOf } from "@t3tools/contracts";
+import {
+  AuthExecOperateScope,
+  AuthOrchestrationReadScope,
+  type CrewProposalInput,
+  EnvironmentAuthorizationError,
+  type SessionSubject,
+  WS_METHODS,
+  type WsRpcGroup,
+  type ZeropsAgentId,
+  ZeropsAgentLoginError,
+  ZeropsGrantExtensionError,
+  ZeropsMateUpdateError,
+  type ZeropsUserId,
+  zeropsUserIdOf,
+} from "@t3tools/contracts";
 import * as ZeropsDataConsoleModule from "./ZeropsDataConsole.ts";
 import type * as ZeropsCrewProposalsModule from "./ZeropsCrewProposals.ts";
 import type * as ZeropsGitRemoteProbeModule from "./ZeropsGitRemoteProbe.ts";
@@ -110,7 +112,7 @@ export interface RegisterZeropsRpcDeps {
    * grant. Taken from the authenticated session in `ws.ts`, never from RPC
    * input: a client that could name its own subject could claim to be anyone.
    */
-  readonly subject: string;
+  readonly subject: SessionSubject;
   /**
    * The connection these calls arrive on, from `ws.ts`, never from RPC input: an agent sign-in
    * started on it ends with it.
@@ -260,7 +262,7 @@ export const resolveLoginTarget = (
  * who started a sign-in still running on it alone cancels it or enters its code. A login nobody
  * signed in through Mate — a project token, no record — names nobody, and stays every member's.
  */
-const refuseOthers = (subject: string, person: string | undefined, detail: string) =>
+const refuseOthers = (subject: SessionSubject, person: ZeropsUserId | undefined, detail: string) =>
   person !== undefined && person !== zeropsUserIdOf(subject)
     ? Effect.fail(new ZeropsAgentLoginError({ reason: "invalid-login", detail }))
     : Effect.void;
@@ -276,12 +278,12 @@ export const runAgentAuthCheck = (
       ZeropsLoginsModule.ZeropsLogins["Service"],
       "latest" | "resolve" | "recheckNow"
     >;
-    readonly subject: string;
+    readonly subject: SessionSubject;
   },
   input: { readonly agentId: ZeropsAgentId; readonly loginId?: string | undefined },
 ) =>
   Effect.gen(function* () {
-    let signer: string | undefined;
+    let signer: ZeropsUserId | undefined;
     if (input.loginId === undefined) {
       const snapshot = yield* deps.zeropsAgentAuth.latest;
       const agent = snapshot.agents.find((row) => row.agentId === input.agentId);
@@ -309,7 +311,7 @@ export const runAgentAuthCheck = (
   });
 
 type LoginActionDeps = {
-  readonly subject: string;
+  readonly subject: SessionSubject;
   readonly zeropsAgentAuth: Pick<ZeropsAgentAuth.ZeropsAgentAuth["Service"], "latest">;
   readonly zeropsLogins: Pick<ZeropsLoginsModule.ZeropsLogins["Service"], "latest">;
   readonly zeropsAgentLogin: Pick<
@@ -434,12 +436,17 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
   } = deps;
 
   return {
-    [WS_METHODS.zeropsStandUpRetry]: () =>
-      admit(
+    [WS_METHODS.zeropsStandUpRetry]: () => {
+      // The record names its asker as HQ does, by Zerops user id; a session that carries none
+      // (a non-Zerops session) has no setup of its own to start again.
+      const person = zeropsUserIdOf(subject);
+      return admit(
         WS_METHODS.zeropsStandUpRetry,
-        // The record names its asker as HQ does, by bare Zerops user id; the session, prefixed.
-        deps.zeropsSetup?.retry(zeropsUserIdOf(subject)) ?? Effect.succeed(false),
-      ),
+        person === undefined || deps.zeropsSetup === undefined
+          ? Effect.succeed(false)
+          : deps.zeropsSetup.retry(person),
+      );
+    },
     [WS_METHODS.zeropsLifecycleGet]: (input) => zeropsLifecycle.get(input.threadId),
     [WS_METHODS.zeropsAgentAuthCheck]: (input) =>
       admit(WS_METHODS.zeropsAgentAuthCheck, runAgentAuthCheck(deps, input)),

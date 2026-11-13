@@ -8,6 +8,7 @@
  * Fixtures only. Nothing here ships — `design-panels.html` is not `index.html`, and no route
  * imports this module.
  */
+import { ZeropsUserId } from "@t3tools/contracts";
 import {
   gitBlock,
   type FlowPullRequest,
@@ -947,7 +948,7 @@ const AGENTS_ATTENTION: ZeropsAgentAuthSnapshot = {
       flagToken: false,
       state: "authorized",
       providerAuth: "unknown",
-      authorizedBy: { subject: "u-juno" },
+      authorizedBy: { subject: ZeropsUserId.make("u-juno") },
     },
     {
       agentId: "codex",
@@ -956,7 +957,7 @@ const AGENTS_ATTENTION: ZeropsAgentAuthSnapshot = {
       flagToken: false,
       state: "authorized",
       providerAuth: "unknown",
-      authorizedBy: { subject: "u-me" },
+      authorizedBy: { subject: ZeropsUserId.make("u-me") },
     },
   ],
 } as ZeropsAgentAuthSnapshot;
@@ -968,7 +969,7 @@ const agentsAttention = (
     onCancel={() => {}}
     onSignIn={() => {}}
     snapshot={AGENTS_ATTENTION}
-    viewerSubject="u-me"
+    viewerSubject={ZeropsUserId.make("u-me")}
   />
 );
 

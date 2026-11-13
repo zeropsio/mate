@@ -1,3 +1,4 @@
+import { ZeropsUserId } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 
 import { ZeropsApiClient, type ZeropsUser } from "../api.ts";
@@ -5,7 +6,7 @@ import { loadZeropsSession } from "../session.ts";
 import { makeAccountHarness } from "./accountHarness.ts";
 
 const person: ZeropsUser = {
-  id: "user-1",
+  id: ZeropsUserId.make("user-1"),
   email: "person@example.test",
   clientUserList: [{ id: "cu-1", clientId: "org-1", roleCode: "OWNER" }],
 };

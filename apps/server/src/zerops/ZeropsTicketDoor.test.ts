@@ -1,3 +1,4 @@
+import { ZeropsUserId } from "@t3tools/contracts";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -9,7 +10,7 @@ const live = () => true;
 const ticket: TicketFrame = {
   type: "ticket",
   ticket: "hq-ticket",
-  userId: "jan",
+  userId: ZeropsUserId.make("jan"),
   sessionId: "hq-session",
   expiresIn: 60,
 };

@@ -1,3 +1,4 @@
+import { ZeropsUserId } from "@t3tools/contracts";
 import { describe, expect, it, vi } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 
@@ -119,7 +120,7 @@ describe("servicePortOrigin", () => {
 describe("zeropsClientsFromUser", () => {
   it("reads every active org in clientUserList, not only the first", () => {
     const clients = zeropsClientsFromUser({
-      id: "user-1",
+      id: ZeropsUserId.make("user-1"),
       email: "a@b.c",
       clientUserList: [
         {

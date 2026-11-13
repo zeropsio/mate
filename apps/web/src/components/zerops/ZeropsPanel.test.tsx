@@ -1,8 +1,9 @@
 import {
   EnvironmentId,
-  ThreadId,
   type ScopedThreadRef,
+  ThreadId,
   type ZeropsAgentAuthSnapshot,
+  ZeropsUserId,
 } from "@t3tools/contracts";
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
 import { deriveCrewView } from "@t3tools/client-runtime/zerops/projections/crew";
@@ -234,7 +235,7 @@ const LOGIN_IN_PROGRESS: ZeropsAgentAuthSnapshot = {
         phase: "menu",
         terminalId: "agent-login-codex",
         startedAt: DateTime.makeUnsafe("2026-08-30T12:00:00.000Z"),
-        startedBy: "user-a",
+        startedBy: ZeropsUserId.make("user-a"),
       },
     },
   ],
@@ -249,7 +250,7 @@ const CANCELLED: ZeropsAgentAuthSnapshot = {
         phase: "cancelled",
         terminalId: "agent-login-codex",
         startedAt: DateTime.makeUnsafe("2026-08-30T12:00:00.000Z"),
-        startedBy: "user-a",
+        startedBy: ZeropsUserId.make("user-a"),
       },
     },
   ],
