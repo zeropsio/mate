@@ -167,7 +167,13 @@ it.effect("A developer sees only their own Usage, even when a bookmark names ano
             );
             yield* Queue.offer(
               messages,
-              JSON.stringify({ type: "scope-ready", scope, incarnation: "usage", revision: 1 }),
+              JSON.stringify({
+                type: "scope-ready",
+                scope,
+                incarnation: "usage",
+                revision: 1,
+                core: { protocol: 1, build: "test" },
+              }),
             );
           }
         }

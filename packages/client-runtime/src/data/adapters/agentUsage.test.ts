@@ -9,7 +9,7 @@ import {
   type UsageReport,
 } from "@t3tools/contracts";
 import { graceOver } from "../__fixtures__/account.ts";
-import { hqFixtureWire } from "../__fixtures__/hqWire.ts";
+import { HQ_CORE, hqFixtureWire } from "../__fixtures__/hqWire.ts";
 import { settle } from "../__fixtures__/zeropsWire.ts";
 import { makeAccountStore, readsOfState } from "../store.ts";
 import { superviseLink } from "../supervisor.ts";
@@ -129,7 +129,13 @@ it.effect("an HQ report for another query cannot replace the authorized usage an
       values: [{ key: "report", value: report }],
       removals: [],
     });
-    yield* fixture.send({ type: "scope-ready", scope, incarnation: "usage", revision: 1 });
+    yield* fixture.send({
+      type: "scope-ready",
+      core: HQ_CORE,
+      scope,
+      incarnation: "usage",
+      revision: 1,
+    });
     yield* settle;
     let revision = 1;
     for (const wrong of [
@@ -217,7 +223,13 @@ it.effect.each(
       values: [{ key: "report", value: report }],
       removals: [],
     });
-    yield* fixture.send({ type: "scope-ready", scope, incarnation: "usage", revision: 1 });
+    yield* fixture.send({
+      type: "scope-ready",
+      core: HQ_CORE,
+      scope,
+      incarnation: "usage",
+      revision: 1,
+    });
     yield* settle;
     expect(agentUsage.derive(readsOfState(store.state()), { orgId: "org", owner })).toMatchObject({
       kind: "read",
@@ -253,7 +265,13 @@ it.effect.each(
       core: { protocol: 1, agentUsage: AGENT_USAGE_REPORT_PROTOCOL },
     });
     yield* settle;
-    yield* fixture.send({ type: "scope-ready", scope, incarnation: "usage", revision: 1 });
+    yield* fixture.send({
+      type: "scope-ready",
+      core: HQ_CORE,
+      scope,
+      incarnation: "usage",
+      revision: 1,
+    });
     yield* settle;
     yield* fixture.endSegment;
     yield* settle;

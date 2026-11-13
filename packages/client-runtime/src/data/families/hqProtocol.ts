@@ -1,4 +1,4 @@
-/** The Core's declared navigation protocol, including an older Core that declares none. */
+/** The Core's declared protocols, each read on its own: one this client does not know reads as absent. */
 import { HqCoreProtocol } from "@t3tools/shared/hqStream";
 import * as Schema from "effect/Schema";
 import { navigationRecord } from "./navigationRecord.ts";
@@ -6,7 +6,7 @@ import type { ScopeKey } from "../model.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
 
 const Core = navigationRecord(HqCoreProtocol.fields);
-export const decodeHqProtocol = Schema.decodeUnknownOption(Core);
+export const decodeHqProtocol = Schema.decodeUnknownSync(Core);
 
 declare module "../model.ts" {
   interface FamilyValues {

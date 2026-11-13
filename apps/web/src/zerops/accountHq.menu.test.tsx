@@ -418,7 +418,13 @@ async function mountMenu(
           );
           this.emit(
             "message",
-            JSON.stringify({ type: "scope-ready", scope, incarnation: "hq", revision: 1 }),
+            JSON.stringify({
+              type: "scope-ready",
+              scope,
+              incarnation: "hq",
+              revision: 1,
+              core: { protocol: 1, build: "test" },
+            }),
           );
         });
       }

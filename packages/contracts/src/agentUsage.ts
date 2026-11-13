@@ -170,17 +170,12 @@ export const UsageReportGeneration = Schema.Struct({
   access: UsageDigest,
   pricing: UsageIdentity,
 });
-export const UsageDetailCursor = Schema.Struct({
-  generation: UsageReportGeneration,
-  after: Schema.String.check(Schema.isMaxLength(1024)),
-});
 export const AgentUsageScope = Schema.Struct({
   kind: Schema.Literal("agentUsage"),
   query: UsageReportQuery,
   detail: Schema.optionalKey(
     Schema.Struct({
       tier: Schema.Literals(["exact", "daily"]),
-      cursor: Schema.optionalKey(UsageDetailCursor),
     }),
   ),
 });
@@ -263,6 +258,6 @@ export const UsageReport = Schema.Struct({
   ).check(Schema.isMaxLength(200)),
   groupsMore: Schema.Boolean,
   detail: Schema.Array(Schema.Union([UsageFact, UsageDailyDetail])).check(Schema.isMaxLength(200)),
-  next: Schema.NullOr(UsageDetailCursor),
+  next: Schema.Null,
 });
 export type UsageReport = typeof UsageReport.Type;
