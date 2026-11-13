@@ -96,6 +96,13 @@ export type TurnPrincipal =
   | { readonly kind: "standup"; readonly startedBy: string }
   | { readonly kind: "task"; readonly taskId: string };
 
+/**
+ * A run for somebody away refused because HQ could not say their standing now: the engine asks
+ * again, patiently, before the run fails with these words (`RunRefused.undetermined`).
+ */
+export const ACCESS_UNCONFIRMED =
+  "Could not confirm that the person this turn runs for still has access to this project. Try again in a moment.";
+
 /** The Zerops user a principal stands for, or `undefined` when it names none. */
 export function principalUserId(principal: TurnPrincipal): string | undefined {
   if (principal.kind === "task") return undefined;
@@ -305,7 +312,7 @@ export const make = Effect.gen(function* () {
           ? "The person this turn runs for no longer has access to this project."
           : standing === "sign_in_needed"
             ? "The person this turn runs for needs to open Mate once so HQ can confirm their access."
-            : "Could not confirm that the person this turn runs for still has access to this project. Try again in a moment.",
+            : ACCESS_UNCONFIRMED,
     });
   });
 
