@@ -40,7 +40,7 @@ import { ProviderInstances, layer as providerInstancesLayer } from "../spi/provi
 import { CrewWorkspaceDirectory } from "./crew/engine/CrewWorkspaceDirectory.ts";
 import { ZeropsCli } from "./ZeropsCli.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
-import { ZEROPS_SUBJECT_PREFIX } from "@t3tools/contracts";
+import { recordedPersonId, SessionSubject } from "@t3tools/contracts";
 import { restartCause, ZeropsRestartRead } from "./ZeropsRestartRead.ts";
 import { isUndetermined, ZeropsTurnAdmission, type TurnPrincipal } from "./ZeropsTurnAdmission.ts";
 
@@ -54,17 +54,14 @@ export const turnPrincipalOf = (
 ): TurnPrincipal | null => {
   switch (principal.kind) {
     case "person":
-      if (trigger.kind === "person") return { kind: "session", subject: principal.subject };
-      return {
-        kind: "standup",
-        startedBy: principal.subject.startsWith(ZEROPS_SUBJECT_PREFIX)
-          ? principal.subject.slice(ZEROPS_SUBJECT_PREFIX.length)
-          : principal.subject,
-      };
+      if (trigger.kind === "person") {
+        return { kind: "session", subject: SessionSubject.make(principal.subject) };
+      }
+      return { kind: "standup", startedBy: recordedPersonId(principal.subject) };
     case "crew":
-      return { kind: "crew", startedBy: principal.startedBy };
+      return { kind: "crew", startedBy: recordedPersonId(principal.startedBy) };
     case "standup":
-      return { kind: "standup", startedBy: principal.startedBy };
+      return { kind: "standup", startedBy: recordedPersonId(principal.startedBy) };
     case "task":
       return { kind: "task", taskId: principal.taskId };
     default:

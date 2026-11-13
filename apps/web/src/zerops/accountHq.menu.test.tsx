@@ -1,3 +1,4 @@
+import { ZeropsUserId } from "@t3tools/contracts";
 import { makeAccountHarness } from "@t3tools/client-runtime/zerops/testing";
 import { STREAM_POLICY } from "@t3tools/client-runtime/data";
 import { ZEROPS_SESSION_STORAGE_KEY, type ZeropsUser } from "@t3tools/client-runtime/zerops";
@@ -41,7 +42,7 @@ function menuText(): string {
 }
 
 const person: ZeropsUser = {
-  id: "owner",
+  id: ZeropsUserId.make("owner"),
   email: "owner@example.test",
   clientUserList: [
     {

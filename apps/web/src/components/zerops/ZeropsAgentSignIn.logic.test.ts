@@ -1,3 +1,4 @@
+import { ZeropsUserId } from "@t3tools/contracts";
 import type { ZeropsAgentAuth, ZeropsAgentLoginState } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
@@ -48,7 +49,7 @@ const signedIn = (agentId: ZeropsAgentAuth["agentId"]) =>
     flagOAuth: true,
     providerAuth: "authenticated",
     state: "authorized",
-    authorizedBy: { subject: "u-other" },
+    authorizedBy: { subject: ZeropsUserId.make("u-other") },
   });
 
 describe("usualAgentOf", () => {
@@ -330,7 +331,12 @@ describe("replacedSignInLine: whose sign-in a login replaces, said before the pr
     ],
   ] as const)("%s", (_case, authorizedBy, line) => {
     expect(
-      replacedSignInLine({ agentId: "codex", authorizedBy, viewerSubject: "u-bo", nameOf }),
+      replacedSignInLine({
+        agentId: "codex",
+        authorizedBy,
+        viewerSubject: ZeropsUserId.make("u-bo"),
+        nameOf,
+      }),
     ).toBe(line);
   });
 });

@@ -58,6 +58,7 @@ import type {
   ZeropsAgentAuthSnapshot,
   ZeropsAgentId,
   ZeropsAgentLoginPhase,
+  ZeropsUserId,
 } from "@t3tools/contracts";
 
 import type { ZeropsAgentAuthorizer } from "./agentOwnership.ts";
@@ -174,7 +175,7 @@ export function zeropsLoginAuthReads(
 export interface ZeropsAgentAvailabilityInput {
   readonly agent: ZeropsAgentAuthRead;
   /** The signed-in Zerops user's id, or `undefined` when nobody is signed in. */
-  readonly viewerSubject: string | undefined;
+  readonly viewerSubject: ZeropsUserId | undefined;
 }
 
 export function resolveZeropsAgentAvailability(

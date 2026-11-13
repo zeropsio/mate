@@ -18,6 +18,7 @@
  *
  * @module ZeropsSignerStanding
  */
+import type { ZeropsUserId } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -66,7 +67,7 @@ export class ZeropsSignerStanding extends Context.Service<
      * `userId`'s signer standing: HQ asked now, or while it is silent the last answer heard for
      * them at most {@link LAST_STANDING_HOLDS} ago; `undefined` when neither can say.
      */
-    readonly standing: (userId: string) => Effect.Effect<SignerStanding | undefined>;
+    readonly standing: (userId: ZeropsUserId) => Effect.Effect<SignerStanding | undefined>;
     /** Every answer HQ gives, as it is heard. */
     readonly heard: Stream.Stream<SignerStandings>;
   }

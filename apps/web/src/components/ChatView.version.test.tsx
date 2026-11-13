@@ -8,7 +8,12 @@ import {
   mateFeedReadsAtom,
   NOT_READ_INVENTORY,
 } from "@t3tools/client-runtime/data";
-import { DEFAULT_SERVER_SETTINGS, ServerProvider, type ServerConfig } from "@t3tools/contracts";
+import {
+  DEFAULT_SERVER_SETTINGS,
+  type ServerConfig,
+  ServerProvider,
+  ZeropsUserId,
+} from "@t3tools/contracts";
 import { seedHqNavigation } from "@t3tools/client-runtime/data/fixtures";
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import * as Schema from "effect/Schema";
@@ -247,7 +252,7 @@ describe("C: opening a Mate and chat", () => {
                                 flagToken: false,
                                 providerAuth: "authenticated",
                                 state: "authorized",
-                                authorizedBy: { subject: "owner" },
+                                authorizedBy: { subject: ZeropsUserId.make("owner") },
                               },
                             ],
                           },

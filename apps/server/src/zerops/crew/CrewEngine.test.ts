@@ -4,7 +4,7 @@ import * as NodePath from "node:path";
 import * as NodeUtil from "node:util";
 
 import { assert, describe, it } from "@effect/vitest";
-import { type CrewCommand, type CrewCommandError } from "@t3tools/contracts";
+import { type CrewCommand, type CrewCommandError, ZeropsUserId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -268,7 +268,7 @@ describe("CrewEngine", () => {
         yield* world.snapshotWhere((snapshot) => snapshot.board.tasks[1]?.state === "working");
         assert.deepStrictEqual(yield* lastAdmitted(world), {
           kind: "crew",
-          startedBy: "user-karel",
+          startedBy: ZeropsUserId.make("user-karel"),
         });
       }),
     ),

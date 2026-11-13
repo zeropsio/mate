@@ -1,3 +1,4 @@
+import { ZeropsUserId } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 
@@ -11,7 +12,11 @@ import {
 } from "./zeropsSession.ts";
 
 const BASE_URL = "https://api.example.test";
-const person: ZeropsUser = { id: "user-1", email: "person@example.test", clientUserList: [] };
+const person: ZeropsUser = {
+  id: ZeropsUserId.make("user-1"),
+  email: "person@example.test",
+  clientUserList: [],
+};
 const stored: ZeropsSession = { accessToken: "access-1", refreshToken: "refresh-1" };
 const next: ZeropsSession = { accessToken: "access-2", refreshToken: "refresh-2" };
 const user = (u: ZeropsUser): ZeropsPrincipalVerdict => ({ kind: "user", user: u });

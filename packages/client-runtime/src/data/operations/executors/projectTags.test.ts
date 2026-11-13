@@ -1,3 +1,4 @@
+import { ZeropsUserId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { ZeropsApiClient, type ZeropsProject } from "../../../zerops/api.ts";
@@ -98,7 +99,7 @@ describe("updateProjectTags' writer", () => {
     const rest = makeFakeZeropsRest();
     rest.addUser({
       user: {
-        id: "user-1",
+        id: ZeropsUserId.make("user-1"),
         email: "person@example.test",
         clientUserList: [{ id: "cu-1", clientId: "org-1", roleCode: "OWNER" }],
       },

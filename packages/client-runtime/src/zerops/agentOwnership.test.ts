@@ -1,3 +1,4 @@
+import { ZeropsUserId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -19,42 +20,42 @@ describe("resolveAgentOwnership", () => {
     {
       name: "no credential is nobody's",
       credPresent: false,
-      authorizedBy: { subject: "user-a", at: AT },
-      viewerSubject: "user-a",
+      authorizedBy: { subject: ZeropsUserId.make("user-a"), at: AT },
+      viewerSubject: ZeropsUserId.make("user-a"),
       expected: "none",
     },
     {
       name: "mine when the viewer authorized it",
       credPresent: true,
-      authorizedBy: { subject: "user-a", at: AT },
-      viewerSubject: "user-a",
+      authorizedBy: { subject: ZeropsUserId.make("user-a"), at: AT },
+      viewerSubject: ZeropsUserId.make("user-a"),
       expected: "mine",
     },
     {
       name: "someone else's when a different member authorized it",
       credPresent: true,
-      authorizedBy: { subject: "user-b", at: AT },
-      viewerSubject: "user-a",
+      authorizedBy: { subject: ZeropsUserId.make("user-b"), at: AT },
+      viewerSubject: ZeropsUserId.make("user-a"),
       expected: "someone-else",
     },
     {
       name: "unrecorded when nothing was recorded",
       credPresent: true,
       authorizedBy: undefined,
-      viewerSubject: "user-a",
+      viewerSubject: ZeropsUserId.make("user-a"),
       expected: "unrecorded",
     },
     {
       name: "unrecorded rather than an accusation when the subject is blank",
       credPresent: true,
-      authorizedBy: { subject: "", at: AT },
-      viewerSubject: "user-a",
+      authorizedBy: { subject: ZeropsUserId.make(""), at: AT },
+      viewerSubject: ZeropsUserId.make("user-a"),
       expected: "unrecorded",
     },
     {
       name: "unrecorded when we cannot identify the viewer",
       credPresent: true,
-      authorizedBy: { subject: "user-b", at: AT },
+      authorizedBy: { subject: ZeropsUserId.make("user-b"), at: AT },
       viewerSubject: undefined,
       expected: "unrecorded",
     },
@@ -72,11 +73,11 @@ describe("resolveAgentOwnership", () => {
     // The failure this guards against is accusing a colleague on missing data.
     const withoutRecord = resolveAgentOwnership({
       credPresent: true,
-      viewerSubject: "user-a",
+      viewerSubject: ZeropsUserId.make("user-a"),
     });
     const withoutViewer = resolveAgentOwnership({
       credPresent: true,
-      authorizedBy: { subject: "user-b", at: AT },
+      authorizedBy: { subject: ZeropsUserId.make("user-b"), at: AT },
       viewerSubject: undefined,
     });
 

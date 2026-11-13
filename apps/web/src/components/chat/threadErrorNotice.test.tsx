@@ -1,6 +1,11 @@
 // @vitest-environment happy-dom
 import { agentAdmission, admissionExplainsRefusal } from "@t3tools/client-runtime/data";
-import { ProviderInstanceId, ProviderDriverKind, type ServerProvider } from "@t3tools/contracts";
+import {
+  ProviderDriverKind,
+  ProviderInstanceId,
+  type ServerProvider,
+  ZeropsUserId,
+} from "@t3tools/contracts";
 import { AgentAdmissionExplanation } from "./AgentAdmissionExplanation";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -49,7 +54,7 @@ const attention = agentAdmission({
   owner: null,
   environmentId: "rig",
   instanceId: provider.instanceId,
-  viewerSubject: "owner",
+  viewerSubject: ZeropsUserId.make("owner"),
   read: {
     state: "known",
     value: snapshot,

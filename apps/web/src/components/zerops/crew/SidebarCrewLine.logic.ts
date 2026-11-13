@@ -13,7 +13,7 @@ import {
   resolveAgentOwnership,
 } from "@t3tools/client-runtime/zerops/agentOwnership";
 import { crewLineNeedsWord, crewLineReadyWord } from "@t3tools/client-runtime/zerops/crew/phrases";
-import type { ThreadId } from "@t3tools/contracts";
+import type { ThreadId, ZeropsUserId } from "@t3tools/contracts";
 import { MATE_TINT_IDS, type MateMarkState, type MateTintId } from "@t3tools/shared/brand";
 import type { CrewDigest, OverviewLogins } from "@t3tools/shared/mateLink";
 import { mateMarkStateForThreadStatus } from "@t3tools/shared/threadStatus";
@@ -110,7 +110,7 @@ export function crewLine(
 export function crewTaskReviewable(
   crew: Pick<CrewDigest, "crewmates" | "readyTasks">,
   logins: OverviewLogins,
-  viewerSubject: string | undefined,
+  viewerSubject: ZeropsUserId | undefined,
 ): (taskId: string) => boolean {
   return (taskId) => {
     const owner = crew.readyTasks.find((task) => task.id === taskId)?.owner;

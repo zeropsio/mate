@@ -3,14 +3,16 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import {
   ConversationRow,
+  type CrewSnapshot,
+  type ExecutionEnvironmentUpdate,
+  type MateAttention,
   MateHealth,
   ProviderDriverKind,
   ProviderInstanceId,
   type ServerProvider,
-  type CrewSnapshot,
-  type ExecutionEnvironmentUpdate,
-  type MateAttention,
+  SessionSubject,
   type ZeropsAgentAuthSnapshot,
+  ZeropsUserId,
 } from "@t3tools/contracts";
 import {
   KeyLinkUp,
@@ -158,7 +160,7 @@ const STATE: LinkedMate = {
   projectId: "P_MATE",
   name: "Ada",
   face: "face-1",
-  standupRequestedBy: "owner",
+  standupRequestedBy: ZeropsUserId.make("owner"),
   appId: null,
   appName: null,
   changes: [],
@@ -953,7 +955,7 @@ describe("ZeropsHqLink", () => {
         socket.hear({ type: "signers", signers: { codex: 42 } });
         socket.hear({ type: "signers", signers: { codex: "U-eva" } });
         yield* Fiber.join(moved);
-        assert.deepStrictEqual(yield* signIns.load, { codex: { by: "U-eva" } });
+        assert.deepStrictEqual(yield* signIns.load, { codex: { by: ZeropsUserId.make("U-eva") } });
       }),
     ),
   );
@@ -969,8 +971,8 @@ describe("ZeropsHqLink", () => {
         socket.hear({ type: "signers", signers: { "claude-code": "U-eva", codex: "U-jan" } });
         yield* Fiber.join(moved);
         assert.deepStrictEqual(yield* signIns.load, {
-          "claude-code": { by: "U-eva" },
-          codex: { by: "U-jan" },
+          "claude-code": { by: ZeropsUserId.make("U-eva") },
+          codex: { by: ZeropsUserId.make("U-jan") },
         });
       }),
     ),
@@ -1296,13 +1298,16 @@ describe("ZeropsHqLink", () => {
     Effect.scoped(
       Effect.gen(function* () {
         const { link, sockets, until } = yield* rig({ everyMs: 10 });
-        const actingOf = (standing: HqStanding, subject: string) =>
+        const actingOf = (standing: HqStanding, subject: SessionSubject) =>
           actingIn(
             standing.kind === "linked" ? (standing.mate.ownerUserId ?? null) : undefined,
             standing,
             subject,
           );
-        assert.strictEqual(actingOf(yield* link.standing, "zerops-user:colleague"), "acts");
+        assert.strictEqual(
+          actingOf(yield* link.standing, SessionSubject.make("zerops-user:colleague")),
+          "acts",
+        );
         const socket = yield* until(() => sockets[0]);
         socket.emit("open");
         const ownerNamed = (ownerUserId: string | undefined) =>
@@ -1322,13 +1327,16 @@ describe("ZeropsHqLink", () => {
         const named = yield* ownerNamed("owner-1");
         assert.deepStrictEqual(
           ["zerops-user:colleague", "zerops-user:owner-1", "local-owner"].map((subject) =>
-            actingOf(named, subject),
+            actingOf(named, SessionSubject.make(subject)),
           ),
           ["reads-along", "acts", "acts"],
         );
         // HQ that knows no owner names none.
         socket.hear({ type: "state", mate: STATE, admission: ADMISSION });
-        assert.strictEqual(actingOf(yield* ownerNamed(undefined), "zerops-user:colleague"), "acts");
+        assert.strictEqual(
+          actingOf(yield* ownerNamed(undefined), SessionSubject.make("zerops-user:colleague")),
+          "acts",
+        );
       }),
     ),
   );
@@ -1926,7 +1934,7 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
         const { socket, auth, sent } = yield* feedRig;
         yield* SubscriptionRef.set(auth, {
           available: true,
-          agents: [{ ...CLAUDE, authorizedBy: { subject: "user-ada" } }],
+          agents: [{ ...CLAUDE, authorizedBy: { subject: ZeropsUserId.make("user-ada") } }],
         });
         yield* sent;
         assert.deepStrictEqual(sectionsSent(socket), [

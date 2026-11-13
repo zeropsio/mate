@@ -12,7 +12,12 @@
  * says for where the login stands.
  */
 import { agentAuthAction } from "@t3tools/client-runtime/zerops/agentLogin";
-import type { ZeropsAgentAuth, ZeropsAgentId, ZeropsAgentLoginState } from "@t3tools/contracts";
+import type {
+  ZeropsAgentAuth,
+  ZeropsAgentId,
+  ZeropsAgentLoginState,
+  ZeropsUserId,
+} from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
 export const ZEROPS_AGENT_NAMES = {
@@ -165,7 +170,7 @@ export const REPLACE_SIGN_IN_PRESS = "Sign in with your account";
 export function replacedSignInLine(input: {
   readonly agentId: ZeropsAgentId;
   readonly authorizedBy: { readonly subject: string } | undefined;
-  readonly viewerSubject: string | undefined;
+  readonly viewerSubject: ZeropsUserId | undefined;
   /** A member's name by their user id. */
   readonly nameOf: (subject: string) => string | undefined;
 }): string {

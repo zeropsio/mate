@@ -21,6 +21,7 @@
  *
  * @module zeropsSignIns
  */
+import { ZeropsUserId } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -37,7 +38,7 @@ import { ServerConfig } from "../config.ts";
 
 /** One login's latest signer. */
 export interface SignInRecord {
-  readonly by: string;
+  readonly by: ZeropsUserId;
   /** Display history only after logout; never credential authority. */
   readonly credentialCleared?: true;
 }
@@ -48,7 +49,7 @@ export interface SignInStore {
   /** Current credential authority, by signer key; excludes logout history. */
   readonly load: Effect.Effect<SignInRecords>;
   /** The last recorded signer, including logins whose credentials are gone. */
-  readonly lastSigners: Effect.Effect<Readonly<Record<string, string>>>;
+  readonly lastSigners: Effect.Effect<Readonly<Record<string, ZeropsUserId>>>;
   /**
    * When the last recorded signer signed each login in (ISO 8601), for the sign-ins this server
    * watched, before a restart too; a login whose signer another sign-in than the watched one
@@ -59,7 +60,7 @@ export interface SignInStore {
   readonly save: (key: string, record: SignInRecord) => Effect.Effect<void>;
   readonly clear: (key: string) => Effect.Effect<void>;
   /** Fill logins without a signer from HQ's `signers` frame; the map is heard from then on. */
-  readonly heard: (signers: Readonly<Record<string, string>>) => Effect.Effect<void>;
+  readonly heard: (signers: Readonly<Record<string, ZeropsUserId>>) => Effect.Effect<void>;
   /** Whether HQ's map was heard since this process started: before it, no signer says nothing. */
   readonly mapHeard: Effect.Effect<boolean>;
   /**
@@ -72,7 +73,7 @@ export interface SignInStore {
 /** Current authority excludes display history left by a credential that went. */
 const activeRecords = (records: SignInRecords): SignInRecords =>
   Object.fromEntries(Object.entries(records).filter(([, record]) => !record.credentialCleared));
-const lastSignersOf = (records: SignInRecords): Readonly<Record<string, string>> =>
+const lastSignersOf = (records: SignInRecords): Readonly<Record<string, ZeropsUserId>> =>
   Object.fromEntries(Object.entries(records).map(([key, record]) => [key, record.by]));
 
 /**
@@ -81,7 +82,7 @@ const lastSignersOf = (records: SignInRecords): Readonly<Record<string, string>>
  */
 const applySigners = (
   current: SignInRecords,
-  signers: Readonly<Record<string, string>>,
+  signers: Readonly<Record<string, ZeropsUserId>>,
 ): SignInRecords | undefined => {
   const moved: Record<string, SignInRecord> = {};
   for (const [key, by] of Object.entries(signers)) {
@@ -92,7 +93,7 @@ const applySigners = (
 };
 
 /** A sign-in watched here: who signed the login in, and when (ISO 8601), by this server's clock. */
-const SignedAt = Schema.Struct({ by: Schema.String, at: Schema.String });
+const SignedAt = Schema.Struct({ by: ZeropsUserId, at: Schema.String });
 const SignedAtMap = Schema.Record(Schema.String, SignedAt);
 type SignedAtMap = typeof SignedAtMap.Type;
 const decodeSignedAt = Schema.decodeUnknownEffect(Schema.fromJsonString(SignedAtMap));

@@ -31,6 +31,7 @@ import {
   ThreadId,
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
+import { ZeropsUserId } from "./auth.ts";
 import { LeaseAlias } from "./orchestration.ts";
 import { ServerProviderAuthStatus } from "./server.ts";
 
@@ -579,7 +580,7 @@ export const ZeropsAgentLoginState = Schema.Struct({
    * servers — a Mate keeps its own version while the hosted client moves on —
    * where the client records on a success it watched happen instead.
    */
-  startedBy: Schema.optional(Schema.String),
+  startedBy: Schema.optional(ZeropsUserId),
   /**
    * The latest attempt before this one that succeeded, where this one has not: an attempt
    * started, cancelled or failed after a sign-in leaves who signed in known, to the turn gate
@@ -588,7 +589,7 @@ export const ZeropsAgentLoginState = Schema.Struct({
   lastSucceeded: Schema.optional(
     Schema.Struct({
       startedAt: Schema.DateTimeUtc,
-      startedBy: Schema.optional(Schema.String),
+      startedBy: Schema.optional(ZeropsUserId),
     }),
   ),
 });
@@ -659,7 +660,8 @@ export const ZeropsAgentAuth = Schema.Struct({
    */
   authorizedBy: Schema.optional(
     Schema.Struct({
-      subject: Schema.String,
+      /** The signer's Zerops user id (the wire name predates the type). */
+      subject: ZeropsUserId,
       /** When the sign-in happened, if anything recorded it: the fact the product needs is whose login it is. */
       at: Schema.optional(Schema.DateTimeUtc),
     }),
@@ -723,7 +725,7 @@ export const ZeropsLogin = Schema.Struct({
   /** A project token authorizes it (a default only): it is nobody's login, and D6 does not apply. */
   token: Schema.Boolean,
   /** The Zerops user id of whoever signed it in (or stored its key), as the Mate's server saw them. */
-  signedInBy: Schema.optional(Schema.String),
+  signedInBy: Schema.optional(ZeropsUserId),
   /** Its server-driven login, while one runs or just finished. */
   login: Schema.optional(ZeropsAgentLoginState),
 });

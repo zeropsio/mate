@@ -1,3 +1,4 @@
+import { ZeropsUserId } from "@t3tools/contracts";
 import { assert, describe, it } from "@effect/vitest";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -26,8 +27,8 @@ import {
   ZeropsSignOut,
 } from "./ZeropsSignOut.ts";
 
-const EVA = "eva-user-id";
-const JAN = "jan-user-id";
+const EVA = ZeropsUserId.make("eva-user-id");
+const JAN = ZeropsUserId.make("jan-user-id");
 
 const WORK: MateLogin = {
   id: "claudeAgent-work",

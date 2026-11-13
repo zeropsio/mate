@@ -17,7 +17,7 @@ import {
   crewMiniDoingWord,
   crewRowWords,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
-import type { CrewStatus, EnvironmentId } from "@t3tools/contracts";
+import type { CrewStatus, EnvironmentId, ZeropsUserId } from "@t3tools/contracts";
 import { MATE_SHAPE_OF_TINT, type MateShapeId, type MateTintId } from "@t3tools/shared/brand";
 import type { CrewDigest, OverviewLogins } from "@t3tools/shared/mateLink";
 
@@ -46,7 +46,7 @@ export interface CrewRowRead {
   /** Its Mate is the viewer's own (HQ's `waitsOnViewer`): only then does the crew need them. */
   readonly mine: boolean;
   /** Who is looking, for whose a crewmate's login is. */
-  readonly viewerSubject: string | undefined;
+  readonly viewerSubject: ZeropsUserId | undefined;
 }
 
 export interface CrewMini {

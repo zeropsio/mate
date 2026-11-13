@@ -1,3 +1,4 @@
+import { ZeropsUserId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import type {
@@ -262,7 +263,7 @@ describe("withLogins", () => {
       flagToken: false,
       providerAuth: "authenticated",
       state: "authorized",
-      authorizedBy: { subject: "u-eva" },
+      authorizedBy: { subject: ZeropsUserId.make("u-eva") },
     },
     {
       agentId: "codex",
@@ -281,7 +282,7 @@ describe("withLogins", () => {
     default: false,
     state: "authorized",
     token: false,
-    signedInBy: "u-jan",
+    signedInBy: ZeropsUserId.make("u-jan"),
   };
 
   it("lists the defaults from their agent rows and leaves the agents as they are", () => {
@@ -334,7 +335,7 @@ describe("mateLoginRow", () => {
 
   it("carries its own signer, and nobody's without a credential", () => {
     const facts = { credPresent: true, providerAuth: "authenticated" } as const;
-    expect(mateLoginRow(login, facts, "u-jan")).toEqual({
+    expect(mateLoginRow(login, facts, ZeropsUserId.make("u-jan"))).toEqual({
       id: "claudeAgent-work",
       agent: "claude-code",
       label: "work",
@@ -345,7 +346,11 @@ describe("mateLoginRow", () => {
       signedInBy: "u-jan",
     });
     expect(
-      mateLoginRow(login, { credPresent: false, providerAuth: "unknown" }, "u-jan").signedInBy,
+      mateLoginRow(
+        login,
+        { credPresent: false, providerAuth: "unknown" },
+        ZeropsUserId.make("u-jan"),
+      ).signedInBy,
     ).toBeUndefined();
   });
 });

@@ -19,27 +19,27 @@
  * @module crew/engine/decide
  */
 import {
-  crewCommandReach,
-  crewReachLogins,
-  effectId as deriveEffectId,
-  wakeId as deriveWakeId,
   type ChatAttachment,
   type CrewCommand,
+  crewCommandReach,
   type CrewCommandReach,
+  crewReachLogins,
   type CrewRefusalReason,
   type CrewRunOptions,
   type CrewRunReason,
   type CrewSessionReason,
   type EffectId,
+  effectId as deriveEffectId,
   type KnownEngineEvent,
   type Principal,
+  recordedPersonId,
   type RunId,
   type WakeId,
+  wakeId as deriveWakeId,
 } from "@t3tools/contracts";
 import type { CrewDefinition, CrewMemberSpec } from "@t3tools/shared/crewHome";
 
 import { AGENT_STOPPED_ITSELF } from "../../../engine/MateEngine.ts";
-import { principalUserId } from "../../ZeropsTurnAdmission.ts";
 import { crewHomeChange } from "../crewAccess.ts";
 import { savedSeamWords, stintReasonWords } from "../crewCards.ts";
 import { assignCrewPorts } from "../crewPorts.ts";
@@ -393,7 +393,7 @@ const userOf = (principal: Principal): string =>
 /** The engine acting for a person outside their session: named by their user id, never a subject. */
 const crewAs = (startedBy: string): Principal => ({
   kind: "crew",
-  startedBy: principalUserId({ kind: "session", subject: startedBy }) ?? startedBy,
+  startedBy: recordedPersonId(startedBy),
 });
 
 /**

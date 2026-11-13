@@ -1,6 +1,5 @@
 import { markupDom } from "../../../test/markupDom";
 import type { OtherAgentFields } from "@t3tools/client-runtime/zerops/agentLogin";
-import { EnvironmentId, type ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -63,7 +62,12 @@ vi.mock("./ZeropsAgentSignIn", () => ({
 }));
 
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { ThreadId } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  ThreadId,
+  type ZeropsAgentAuthSnapshot,
+  ZeropsUserId,
+} from "@t3tools/contracts";
 
 import type { ZeropsMateIdentity } from "../../zerops/mateIdentities";
 import { MateEmptyStateView, ZeropsMateEmptyState } from "./ZeropsMateEmptyState";
@@ -71,7 +75,7 @@ import { MateEmptyStateView, ZeropsMateEmptyState } from "./ZeropsMateEmptyState
 const ENVIRONMENT_ID = EnvironmentId.make("environment-1");
 const MAIN = scopeThreadRef(ENVIRONMENT_ID, ThreadId.make("thread-main"));
 const SECOND = scopeThreadRef(ENVIRONMENT_ID, ThreadId.make("thread-second"));
-const ADA = "u-ada";
+const ADA = ZeropsUserId.make("u-ada");
 
 const MATE: ZeropsMateIdentity = {
   name: "Fen",

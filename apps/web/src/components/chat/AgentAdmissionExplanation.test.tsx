@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { ZeropsUserId } from "@t3tools/contracts";
 import { agentAdmission } from "@t3tools/client-runtime/data";
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 import type { ZeropsAgentAuthSnapshot, ZeropsAgentLoginState } from "@t3tools/contracts";
@@ -52,7 +53,7 @@ const derive = (read = feed.read) =>
     owner: null,
     environmentId: "env-Ada",
     instanceId: "claudeAgent",
-    viewerSubject: "viewer",
+    viewerSubject: ZeropsUserId.make("viewer"),
     read,
     providers: [],
     mateName: "Ada",
@@ -128,7 +129,7 @@ describe("the admission explanation's auth input", () => {
         phase: "awaiting-browser",
         terminalId: "login",
         startedAt: DateTime.makeUnsafe(Date.now()),
-        startedBy: "viewer",
+        startedBy: ZeropsUserId.make("viewer"),
         url: "https://claude.ai/fixture-authorization",
       }),
     );
@@ -153,7 +154,7 @@ describe("the admission explanation's auth input", () => {
         credPresent: true,
         flagOAuth: true,
         providerAuth: "authenticated",
-        authorizedBy: { subject: "viewer" },
+        authorizedBy: { subject: ZeropsUserId.make("viewer") },
       })),
     });
     await act(close);
@@ -168,7 +169,7 @@ describe("the admission explanation's auth input", () => {
         phase: "awaiting-browser",
         terminalId: "login",
         startedAt: DateTime.makeUnsafe(Date.now()),
-        startedBy: "colleague",
+        startedBy: ZeropsUserId.make("colleague"),
         url: "https://claude.ai/fixture-authorization",
       }),
     );

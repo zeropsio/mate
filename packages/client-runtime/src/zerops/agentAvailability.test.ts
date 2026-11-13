@@ -1,3 +1,4 @@
+import { ZeropsUserId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 import type { ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
 
@@ -12,8 +13,8 @@ import {
 } from "./agentAvailability.ts";
 import type { FailureReason, Freshness, Known } from "./knowledge/index.ts";
 
-const JAN = "jan-user-id";
-const EVA = "eva-user-id";
+const JAN = ZeropsUserId.make("jan-user-id");
+const EVA = ZeropsUserId.make("eva-user-id");
 
 const signedIn = {
   state: "authorized",
@@ -42,7 +43,11 @@ const known = (
   freshness,
 });
 
-function input(agent: AgentRow, signer: string | undefined, subject: string | undefined) {
+function input(
+  agent: AgentRow,
+  signer: ZeropsUserId | undefined,
+  subject: ZeropsUserId | undefined,
+) {
   return {
     agent: known({
       ...agent,
@@ -73,7 +78,13 @@ describe("resolveZeropsAgentAvailability — agrees with turnRefusal", () => {
       JAN,
       { kind: "unrecorded" },
     ],
-    ["an agent whose recorded signer is blank", signedIn, "", JAN, { kind: "unrecorded" }],
+    [
+      "an agent whose recorded signer is blank",
+      signedIn,
+      ZeropsUserId.make(""),
+      JAN,
+      { kind: "unrecorded" },
+    ],
     [
       "a caller the session could not name",
       signedIn,
@@ -133,7 +144,7 @@ describe("resolveZeropsAgentAvailability — agrees with turnRefusal", () => {
       { kind: "needs-sign-in", signInKind: "needs-reauth" },
     ],
   ] satisfies ReadonlyArray<
-    [string, AgentRow, string | undefined, string | undefined, ZeropsAgentAvailability]
+    [string, AgentRow, ZeropsUserId | undefined, ZeropsUserId | undefined, ZeropsAgentAvailability]
   >)("%s", (_name, agent, signer, subject, expected) => {
     expect(resolveZeropsAgentAvailability(input(agent, signer, subject))).toEqual(expected);
   });

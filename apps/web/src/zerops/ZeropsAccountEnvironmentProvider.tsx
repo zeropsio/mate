@@ -39,7 +39,9 @@ export function ZeropsAccountEnvironmentProvider({
   const { client, status, user, activeOrganization, signOut } = useZeropsSession();
   const registry = useContext(RegistryContext);
   const store = useAccountStoreForAdapters();
-  const accountId = status === "signed-in" ? (user?.id ?? null) : null;
+  // The data layer keys an account by the person's Zerops user id, as its own `ZeropsAccountId`.
+  const accountId =
+    status === "signed-in" && user?.id !== undefined ? ZeropsAccountId.make(user.id) : null;
   const [opened, setOpened] = useState<{
     readonly scope: AccountScope;
     readonly account: AccountRuntime;
@@ -56,7 +58,7 @@ export function ZeropsAccountEnvironmentProvider({
     const scope: AccountScope = {
       account: {
         apiOrigin: makeZeropsApiOrigin(client.baseUrl),
-        accountId: ZeropsAccountId.make(accountId),
+        accountId,
       },
       epoch: AccountEpoch.make(currentAccountEpoch()),
     };

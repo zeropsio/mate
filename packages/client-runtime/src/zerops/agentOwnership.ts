@@ -1,4 +1,4 @@
-import type { ZeropsAgentLoginPhase } from "@t3tools/contracts";
+import type { ZeropsAgentLoginPhase, ZeropsUserId } from "@t3tools/contracts";
 /**
  * Whose agent identity is signed into this environment — and, since D6,
  * who may run it.
@@ -70,7 +70,7 @@ export interface ZeropsAgentOwnershipInput {
   readonly credPresent: boolean;
   readonly authorizedBy?: ZeropsAgentAuthorizer | undefined;
   /** The signed-in Zerops user's id, or `undefined` when nobody is signed in. */
-  readonly viewerSubject: string | undefined;
+  readonly viewerSubject: ZeropsUserId | undefined;
 }
 
 /**

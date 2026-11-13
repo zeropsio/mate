@@ -19,6 +19,7 @@ import {
   agentIdForProviderInstance,
   type ZeropsAgentAuthSnapshot,
   type ZeropsAgentId,
+  type ZeropsUserId,
 } from "@t3tools/contracts";
 
 import { resolveOwnedAgentId, type ZeropsAgentOwnership } from "./agentOwnership.ts";
@@ -43,7 +44,7 @@ export interface ConversationWriterInput {
   /** The configured instances, to name the agent by the instance's driver. */
   readonly providers: ReadonlyArray<{ readonly instanceId: string; readonly driver: string }>;
   /** The signed-in Zerops user's id; `undefined` while the session is not read. */
-  readonly viewerSubject: string | undefined;
+  readonly viewerSubject: ZeropsUserId | undefined;
   /** The known answer over the spent login (`resolveAgentOwnership`), read only once it rests on what is known. */
   readonly ownership: ZeropsAgentOwnership;
 }
@@ -120,7 +121,7 @@ export function hqConversationWriter(input: {
   /** Who HQ records signed each agent's own login in; `undefined` while HQ has not said. */
   readonly signers: Readonly<Partial<Record<ZeropsAgentId, string>>> | undefined;
   /** The signed-in Zerops user's id; `undefined` while the session is not read. */
-  readonly viewerSubject: string | undefined;
+  readonly viewerSubject: ZeropsUserId | undefined;
 }): ConversationWriter {
   if (input.instanceId === undefined || !agentTold(input.instanceId, input.providers)) {
     return UNKNOWN;

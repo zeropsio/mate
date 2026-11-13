@@ -1,3 +1,4 @@
+import { ZeropsUserId } from "@t3tools/contracts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, describe, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
@@ -11,7 +12,7 @@ import * as Tickets from "./ZeropsTicketDoor.ts";
 const AT = Date.parse("2026-10-24T10:00:00.000Z");
 /** The admission a ticket came under stands. */
 const live = () => true;
-const ticket = (id: string, userId: string) =>
+const ticket = (id: string, userId: ZeropsUserId) =>
   ({ type: "ticket", ticket: id, userId, sessionId: "session-1", expiresIn: 60 }) as const;
 const setup = Effect.gen(function* () {
   yield* TestClock.setTime(AT);
@@ -22,7 +23,7 @@ const setup = Effect.gen(function* () {
   );
   const closed: Array<string> = [];
   const closeReceipt = yield* Deferred.make<void>();
-  const open = (id: string, userId: string, sessionId = "session-1") =>
+  const open = (id: string, userId: ZeropsUserId, sessionId = "session-1") =>
     Effect.gen(function* () {
       yield* tickets.heard(
         { type: "ticket", ticket: id, userId, sessionId, expiresIn: 60, role: "OWNER" },
@@ -43,15 +44,15 @@ describe("ZeropsConnections", () => {
     () =>
       Effect.gen(function* () {
         const { connections, tickets, closed, open } = yield* setup;
-        yield* open("before-renewal", "jan", "stable-session");
-        yield* open("after-renewal", "jan", "stable-session");
-        yield* open("other-session", "jan", "other");
-        yield* open("other-person", "eva", "eva-session");
+        yield* open("before-renewal", ZeropsUserId.make("jan"), "stable-session");
+        yield* open("after-renewal", ZeropsUserId.make("jan"), "stable-session");
+        yield* open("other-session", ZeropsUserId.make("jan"), "other");
+        yield* open("other-person", ZeropsUserId.make("eva"), "eva-session");
         yield* tickets.heard(
           {
             type: "ticket",
             ticket: "pending",
-            userId: "jan",
+            userId: ZeropsUserId.make("jan"),
             sessionId: "stable-session",
             expiresIn: 60,
           },
@@ -68,7 +69,7 @@ describe("ZeropsConnections", () => {
   it.effect("Closing a socket removes its connection handle immediately", () =>
     Effect.gen(function* () {
       const { connections, closed, open } = yield* setup;
-      yield* open("jan", "jan");
+      yield* open("jan", ZeropsUserId.make("jan"));
       yield* connections.close("jan");
       assert.isTrue(Option.isNone(yield* connections.current("jan")));
       assert.deepEqual(closed, []);
@@ -81,7 +82,7 @@ describe("ZeropsConnections", () => {
         {
           type: "ticket",
           ticket: "racing",
-          userId: "jan",
+          userId: ZeropsUserId.make("jan"),
           sessionId: "ending",
           expiresIn: 60,
           role: "OWNER",
@@ -103,7 +104,10 @@ describe("ZeropsConnections", () => {
   it.effect("A ticket answered after its session's close-session is never kept", () =>
     Effect.gen(function* () {
       const { connections } = yield* setup;
-      const answer = yield* connections.ticket(ticket("before-close", "jan"), live);
+      const answer = yield* connections.ticket(
+        ticket("before-close", ZeropsUserId.make("jan")),
+        live,
+      );
       const verdict = yield* Effect.forkChild(answer);
       yield* connections.end({ session: "session-1" });
       assert.strictEqual(yield* Fiber.join(verdict), "open");

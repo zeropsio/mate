@@ -2,17 +2,18 @@
  * The crew RPCs over the engine: inert where crew mode is off, live
  * otherwise, and a command always runs as the connecting session.
  */
-import {
-  WS_METHODS,
-  AuthOrchestrationOperateScope,
-  EnvironmentAuthorizationError,
-} from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 
-import { ZEROPS_SUBJECT_PREFIX } from "@t3tools/contracts";
+import {
+  AuthOrchestrationOperateScope,
+  EnvironmentAuthorizationError,
+  SessionSubject,
+  WS_METHODS,
+  ZEROPS_SUBJECT_PREFIX,
+} from "@t3tools/contracts";
 import { inertCrewEngine } from "./CrewEngine.ts";
 import { registerCrewRpc } from "./registerCrewRpc.ts";
 import { eventually } from "./testing/crewEngineFixture.ts";
@@ -23,7 +24,7 @@ const passThrough = {
   admit: <A, E, R>(_method: string, effect: Effect.Effect<A, E, R>) => effect,
 };
 
-const SUBJECT = `${ZEROPS_SUBJECT_PREFIX}user-karel`;
+const SUBJECT = SessionSubject.make(`${ZEROPS_SUBJECT_PREFIX}user-karel`);
 
 describe("registerCrewRpc", () => {
   const inert = registerCrewRpc({ crew: inertCrewEngine, subject: SUBJECT, ...passThrough });

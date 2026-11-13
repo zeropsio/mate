@@ -1,3 +1,4 @@
+import { ZeropsUserId } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 
 import type { HqStructure } from "./client.ts";
@@ -70,7 +71,9 @@ const STRUCTURE = {
 
 describe("placementsOf", () => {
   it("joins each Mate's logins, as HQ's overview of it says them, onto its record", () => {
-    const logins = { "claude-code": { signedInBy: "u-jan", present: true, token: false } };
+    const logins = {
+      "claude-code": { signedInBy: ZeropsUserId.make("u-jan"), present: true, token: false },
+    };
     const placed = placementsOf(STRUCTURE, new Map([["p-vera", logins]]));
     expect(placed.get("p-vera")?.mate).toEqual({ face: "rose:seal", logins });
     // HQ holds no overview of Ada: its record alone.

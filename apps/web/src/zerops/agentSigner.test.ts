@@ -1,3 +1,4 @@
+import { ZeropsUserId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { resolveAgentAuthorizer } from "@t3tools/client-runtime/zerops/agentOwnership";
@@ -11,7 +12,10 @@ describe("resolveAgentAuthorizer", () => {
   it.each([
     {
       name: "the server's record names whose the agent is",
-      agent: { authorizedBy: { subject: "user-b" }, login: login("verifying-code", "user-a") },
+      agent: {
+        authorizedBy: { subject: ZeropsUserId.make("user-b") },
+        login: login("verifying-code", "user-a"),
+      },
       expected: { subject: "user-b" },
     },
     {

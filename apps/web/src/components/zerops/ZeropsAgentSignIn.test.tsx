@@ -4,6 +4,7 @@
  * needs, the usual one first; the chosen card opens in place into its two steps and starts its
  * login; Claude's code signs in on paste; Codex shows its code; a dialog opens on one agent.
  */
+import { ZeropsUserId } from "@t3tools/contracts";
 import type { ZeropsAgentId, ZeropsAgentLoginState } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import { act, type ComponentProps } from "react";
@@ -276,11 +277,11 @@ describe("the sign-in in a dialog", () => {
           agentId: "codex",
           login: undefined,
           credPresent: true,
-          authorizedBy: { subject: "u-ann" },
+          authorizedBy: { subject: ZeropsUserId.make("u-ann") },
         },
       ],
       fixed: true,
-      viewerSubject: "u-bo",
+      viewerSubject: ZeropsUserId.make("u-bo"),
       nameOf: (subject) => (subject === "u-ann" ? "Ann" : undefined),
     });
     expect(calls.start).toEqual([]);
@@ -295,10 +296,15 @@ it("Decision: Aleš's direction; behaviour of admission unchanged. Replacing a m
   const dismiss = vi.fn();
   draw({
     agents: [
-      { agentId: "codex", login: undefined, credPresent: true, authorizedBy: { subject: "u-ann" } },
+      {
+        agentId: "codex",
+        login: undefined,
+        credPresent: true,
+        authorizedBy: { subject: ZeropsUserId.make("u-ann") },
+      },
     ],
     fixed: true,
-    viewerSubject: "u-bo",
+    viewerSubject: ZeropsUserId.make("u-bo"),
     nameOf: () => "Ann",
     onDismiss: dismiss,
   });

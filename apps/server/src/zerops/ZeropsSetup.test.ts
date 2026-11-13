@@ -6,18 +6,19 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, describe, it } from "@effect/vitest";
 import {
+  ConversationId,
+  DEFAULT_MODEL_BY_PROVIDER,
+  type OrchestrationProject,
+  type OrchestrationThreadShell,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
-  ThreadId,
-  type OrchestrationProject,
-  type OrchestrationThreadShell,
-  type ServerProvider,
-  type ZeropsAgentAuth,
-  ConversationId,
-  DEFAULT_MODEL_BY_PROVIDER,
   runId,
+  type ServerProvider,
+  ThreadId,
   wakeId,
+  type ZeropsAgentAuth,
+  ZeropsUserId,
 } from "@t3tools/contracts";
 import { selectionWithPreferredEffort } from "@t3tools/shared/zeropsEffort";
 import * as Deferred from "effect/Deferred";
@@ -106,7 +107,9 @@ const mainThread = (overrides: Partial<OrchestrationThreadShell> = {}): Orchestr
  * The Mate as its HQ sends it, `standupRequestedBy` naming who asked for its stand-up — from the
  * write that made its record (audit B3).
  */
-const linked = (standupRequestedBy: string | null): Extract<HqStanding, { kind: "linked" }> => ({
+const linked = (
+  standupRequestedBy: ZeropsUserId | null,
+): Extract<HqStanding, { kind: "linked" }> => ({
   kind: "linked",
   mate: {
     projectId: "project-mate",
@@ -141,10 +144,10 @@ const CLAUDE_SIGNED_IN = [instance("claudeAgent"), instance("codex", "error")];
 const NOTHING_TO_RUN = [instance("claudeAgent", "error"), instance("codex", "error")];
 const CURSOR_READY = [...NOTHING_TO_RUN, instance("cursor")];
 
-const ASKED = linked("user-a");
+const ASKED = linked(ZeropsUserId.make("user-a"));
 const NOBODY_ASKED = linked(null);
 /** The asker signed Claude in here. */
-const SIGNED: ProjectSigners = { "claude-code": "user-a" };
+const SIGNED: ProjectSigners = { "claude-code": ZeropsUserId.make("user-a") };
 
 /** An agent as the agent-auth feed says it: nobody signed in, unless said otherwise. */
 const agentAuth = (
@@ -558,7 +561,7 @@ describe("ZeropsSetup: the stand-up", () => {
           assert.strictEqual(turn!.modelSelection?.instanceId, "claudeAgent");
           assert.deepStrictEqual((yield* Ref.get(world.admitted)).at(-1), {
             kind: "standup",
-            startedBy: "user-a",
+            startedBy: ZeropsUserId.make("user-a"),
           });
         }),
       );
@@ -581,7 +584,7 @@ describe("ZeropsSetup: the stand-up", () => {
           assert.strictEqual(turn!.modelSelection?.instanceId, "claudeAgent");
           assert.deepStrictEqual((yield* Ref.get(world.admitted)).at(-1), {
             kind: "standup",
-            startedBy: "user-a",
+            startedBy: ZeropsUserId.make("user-a"),
           });
           const steps = (yield* setup.document).steps;
           assert.strictEqual(steps.find((step) => step.id === "signin")?.state, "done");
@@ -624,10 +627,10 @@ describe("ZeropsSetup: the stand-up", () => {
           Effect.gen(function* () {
             yield* setup.awaitStandUp;
             assert.strictEqual((yield* turnsOf(world)).length, 1);
-            assert.isFalse(yield* setup.retry("someone-else"));
-            assert.isTrue(yield* setup.retry("user-a"));
+            assert.isFalse(yield* setup.retry(ZeropsUserId.make("someone-else")));
+            assert.isTrue(yield* setup.retry(ZeropsUserId.make("user-a")));
             assert.strictEqual((yield* turnsOf(world)).length, 2);
-            assert.isFalse(yield* setup.retry("user-a"));
+            assert.isFalse(yield* setup.retry(ZeropsUserId.make("user-a")));
           }),
         );
       }),
@@ -648,7 +651,7 @@ describe("ZeropsSetup: the stand-up", () => {
               (yield* setup.document).steps.find((step) => step.id === "standup")?.state,
               "failed",
             );
-            assert.isTrue(yield* setup.retry("user-a"));
+            assert.isTrue(yield* setup.retry(ZeropsUserId.make("user-a")));
             assert.strictEqual((yield* Ref.get(world.admitted)).length, 2);
             assert.strictEqual(
               (yield* setup.document).steps.find((step) => step.id === "standup")?.state,
@@ -661,7 +664,7 @@ describe("ZeropsSetup: the stand-up", () => {
           Effect.gen(function* () {
             yield* setup.awaitStandUp;
             assert.strictEqual((yield* turnsOf(world)).length, 0);
-            assert.isTrue(yield* setup.retry("user-a"));
+            assert.isTrue(yield* setup.retry(ZeropsUserId.make("user-a")));
             assert.strictEqual((yield* turnsOf(world)).length, 1);
           }),
         );
@@ -714,7 +717,7 @@ describe("ZeropsSetup: the stand-up", () => {
           );
           assert.deepStrictEqual((yield* Ref.get(world.admitted)).at(-1), {
             kind: "standup",
-            startedBy: "user-a",
+            startedBy: ZeropsUserId.make("user-a"),
           });
         }),
       );
@@ -1037,8 +1040,8 @@ describe("ZeropsSetup: the stand-up", () => {
       Effect.gen(function* () {
         const world = yield* makeWorld;
         const database = freshDatabase();
-        yield* change(world, world.hq, linked("user-b"));
-        yield* change(world, world.signers, { "claude-code": "user-b" });
+        yield* change(world, world.hq, linked(ZeropsUserId.make("user-b")));
+        yield* change(world, world.signers, { "claude-code": ZeropsUserId.make("user-b") });
         yield* Ref.set(world.dispatchHangs, true);
         yield* withServer(world, database, () =>
           Deferred.await(world.dispatchHeld).pipe(Effect.orDie),
@@ -1049,7 +1052,7 @@ describe("ZeropsSetup: the stand-up", () => {
         yield* withServer(world, database, () => turnsWhenWoken(world));
         assert.deepStrictEqual((yield* Ref.get(world.admitted)).at(-1), {
           kind: "standup",
-          startedBy: "user-a",
+          startedBy: ZeropsUserId.make("user-a"),
         });
       }),
   );
@@ -1065,7 +1068,7 @@ describe("ZeropsSetup: the stand-up", () => {
       );
       yield* Ref.set(world.dispatchHangs, false);
       // Someone else entirely holds the agent now.
-      yield* change(world, world.signers, { "claude-code": "user-c" });
+      yield* change(world, world.signers, { "claude-code": ZeropsUserId.make("user-c") });
       yield* withServer(world, database, (setup) => setup.finished.pipe(Effect.orDie));
       assert.deepStrictEqual(yield* turnsOf(world), []);
       assert.isFalse(yield* withServer(world, database, () => stillLooking(world)));
@@ -1238,7 +1241,7 @@ describe("ZeropsSetup: a stand-up says only what ran", () => {
           assert.deepStrictEqual(yield* states, ["waiting", "none"]);
           yield* ticks;
           assert.deepStrictEqual(yield* states, ["waiting", "none"]);
-          yield* change(world, world.signers, { "claude-code": "user-b" });
+          yield* change(world, world.signers, { "claude-code": ZeropsUserId.make("user-b") });
           assert.deepStrictEqual(yield* states, ["done", "none"]);
           yield* ticks;
           assert.deepStrictEqual(yield* states, ["done", "none"]);
@@ -1856,8 +1859,8 @@ describe("ZeropsSetup: the stand-up on the Mate engine", () => {
               (document) => document.steps.find((one) => one.id === "standup")?.state,
             );
             assert.strictEqual(yield* step, "failed");
-            assert.isFalse(yield* setup.retry("user-b"));
-            assert.isTrue(yield* setup.retry("user-a"));
+            assert.isFalse(yield* setup.retry(ZeropsUserId.make("user-b")));
+            assert.isTrue(yield* setup.retry(ZeropsUserId.make("user-a")));
           }),
         );
         const keys = (yield* Ref.get(world.wakes)).map((wake) => wake.key);
@@ -1889,7 +1892,7 @@ describe("ZeropsSetup: the stand-up on the Mate engine", () => {
                 reached: "unknown",
               },
             });
-            assert.isFalse(yield* setup.retry("user-a"));
+            assert.isFalse(yield* setup.retry(ZeropsUserId.make("user-a")));
           }),
         );
         assert.strictEqual((yield* Ref.get(world.wakes)).length, 1);
@@ -1918,7 +1921,7 @@ describe("ZeropsSetup: the stand-up on the Mate engine", () => {
             );
             assert.strictEqual(yield* step, "failed");
             yield* change(world, world.signers, SIGNED);
-            assert.isTrue(yield* setup.retry("user-a"));
+            assert.isTrue(yield* setup.retry(ZeropsUserId.make("user-a")));
           }),
         );
         assert.deepStrictEqual(
@@ -1942,7 +1945,7 @@ describe("ZeropsSetup: the stand-up on the Mate engine", () => {
             (document) => document.steps.find((one) => one.id === "standup")?.state,
           );
           assert.strictEqual(yield* step, "done");
-          assert.isFalse(yield* setup.retry("user-a"));
+          assert.isFalse(yield* setup.retry(ZeropsUserId.make("user-a")));
         }),
       );
     }),

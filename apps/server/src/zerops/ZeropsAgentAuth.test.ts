@@ -1,3 +1,4 @@
+import { ZeropsUserId } from "@t3tools/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it as itEffect } from "@effect/vitest";
 import type { ZeropsAgentAuthSnapshot, ZeropsAgentId } from "@t3tools/contracts";
@@ -137,7 +138,7 @@ describe("buildSnapshot provenance", () => {
       { ZCP_AGENT_OAUTH_CLAUDE_CODE: "true" },
       { "claude-code": true, codex: false },
       providerAuth,
-      { "claude-code": { subject: "zerops-user-a", at } },
+      { "claude-code": { subject: ZeropsUserId.make("zerops-user-a"), at } },
     );
 
     const claude = snapshot.agents.find((agent) => agent.agentId === "claude-code");
@@ -149,7 +150,7 @@ describe("buildSnapshot provenance", () => {
       undefined,
       { "claude-code": false, codex: false },
       providerAuth,
-      { "claude-code": { subject: "zerops-user-a", at } },
+      { "claude-code": { subject: ZeropsUserId.make("zerops-user-a"), at } },
     );
 
     expect(snapshot.agents.find((agent) => agent.agentId === "claude-code")?.authorizedBy).toBe(
@@ -194,7 +195,7 @@ describe("the signer", () => {
    */
   const makeFeed = (
     initial: Readonly<Partial<Record<ZeropsAgentId, string>>>,
-    duringFirstSignerRead?: string,
+    duringFirstSignerRead?: ZeropsUserId,
   ) =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
@@ -205,7 +206,9 @@ describe("the signer", () => {
       yield* fs.writeFileString(credential, "{}");
 
       const signIns = yield* memorySignInStore(
-        Object.fromEntries(Object.entries(initial).map(([key, by]) => [key, { by }])),
+        Object.fromEntries(
+          Object.entries(initial).map(([key, by]) => [key, { by: ZeropsUserId.make(by) }]),
+        ),
       );
       const projectSigners = yield* ZeropsProjectSigners.make.pipe(
         Effect.provide(
@@ -315,7 +318,7 @@ describe("the signer", () => {
     it.effect("a signer map arriving during the first snapshot is not lost", () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const { subscription, projectSigners } = yield* makeFeed({}, "user-b");
+          const { subscription, projectSigners } = yield* makeFeed({}, ZeropsUserId.make("user-b"));
           assert.equal((yield* projectSigners.signers)["claude-code"], "user-b");
           assert.equal(
             agentState(subscription.latest, "claude-code")?.authorizedBy?.subject,
@@ -334,7 +337,7 @@ describe("the signer", () => {
             "user-b",
           );
 
-          yield* signIns.save("claude-code", { by: "user-a" });
+          yield* signIns.save("claude-code", { by: ZeropsUserId.make("user-a") });
           yield* feed.recheckNow("claude-code");
           const published = yield* changeWhere(
             subscription,
@@ -369,7 +372,7 @@ describe("the signer", () => {
                 Effect.forkScoped({ startImmediately: true }),
               );
             const heard = yield* next("user-b");
-            yield* signIns.heard({ "claude-code": "user-b" });
+            yield* signIns.heard({ "claude-code": ZeropsUserId.make("user-b") });
             yield* TestClock.adjust("1 second");
             const published = yield* Fiber.join(heard);
             assert.isTrue(Option.isSome(published));
@@ -384,7 +387,7 @@ describe("the signer", () => {
             );
 
             const changed = yield* next("user-a");
-            yield* signIns.save("claude-code", { by: "user-a" });
+            yield* signIns.save("claude-code", { by: ZeropsUserId.make("user-a") });
             yield* TestClock.adjust("1 second");
             assert.isTrue(Option.isSome(yield* Fiber.join(changed)));
             assert.equal((yield* projectSigners.signers)["claude-code"], "user-a");

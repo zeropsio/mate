@@ -1,4 +1,4 @@
-import { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { EnvironmentId, ThreadId, ZeropsUserId } from "@t3tools/contracts";
 import type { CrewDigest, MateThreadKind, OverviewLogins } from "@t3tools/shared/mateLink";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -49,7 +49,9 @@ function digest(
 }
 
 /** Every crewmate on Claude Code's login, the viewer's (Ada's account, "ada"). */
-const MINE: OverviewLogins = { "claude-code": { signedInBy: "ada", present: true, token: false } };
+const MINE: OverviewLogins = {
+  "claude-code": { signedInBy: ZeropsUserId.make("ada"), present: true, token: false },
+};
 
 function facts(
   crew: CrewDigest | null,
@@ -60,7 +62,7 @@ function facts(
     logins: MINE,
     current: true,
     environmentId: ENVIRONMENT,
-    viewerSubject: "ada",
+    viewerSubject: ZeropsUserId.make("ada"),
     mine: true,
     ...input,
   });
@@ -233,7 +235,9 @@ describe("crewRowFacts — the crew as mini faces after its Mate's name", () => 
       case: "its crewmate signed in by somebody else (D6)",
       crew: digest({ ready: ["Cy"] }),
       input: {
-        logins: { "claude-code": { signedInBy: "bo", present: true, token: false } },
+        logins: {
+          "claude-code": { signedInBy: ZeropsUserId.make("bo"), present: true, token: false },
+        },
       },
       reviews: [],
     },

@@ -1,3 +1,4 @@
+import { ZeropsUserId } from "@t3tools/contracts";
 import type { ZeropsUser } from "@t3tools/client-runtime/zerops";
 import { makeAccountHarness } from "@t3tools/client-runtime/zerops/testing";
 import type { ComponentType, ReactNode } from "react";
@@ -48,7 +49,7 @@ vi.mock("../components/zerops/landing/ZeropsLandingShell", () => ({
 vi.mock("./ZeropsAccountEnvironmentProvider", seams.dataProvider);
 
 const person: ZeropsUser = {
-  id: "user-1",
+  id: ZeropsUserId.make("user-1"),
   email: "person@example.test",
   clientUserList: [{ id: "cu-1", clientId: "org-1", roleCode: "OWNER" }],
 };

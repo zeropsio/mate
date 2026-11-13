@@ -1,13 +1,4 @@
 import { assert, it } from "@effect/vitest";
-import {
-  AuthSessionId,
-  CommandId,
-  ItemId,
-  MessageId,
-  ProviderInstanceId,
-  ThreadId,
-  ZeropsAgentLoginError,
-} from "@t3tools/contracts";
 import { loadShowcaseScene, type ShowcaseScene } from "@t3tools/shared/showcaseScenes";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -26,7 +17,19 @@ import * as ZeropsAgentLogin from "./ZeropsAgentLogin.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { makeFixtureZeropsLayer } from "./ZeropsFixtureFeeds.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
-import { ZEROPS_SUBJECT_PREFIX } from "@t3tools/contracts";
+import {
+  AuthSessionId,
+  CommandId,
+  ItemId,
+  MessageId,
+  ProviderInstanceId,
+  SessionSubject,
+  ThreadId,
+  ZEROPS_SUBJECT_PREFIX,
+  ZeropsAgentLoginError,
+  zeropsSubjectOf,
+  ZeropsUserId,
+} from "@t3tools/contracts";
 import { ZeropsTurnAdmission } from "./ZeropsTurnAdmission.ts";
 import { RunAdmission } from "../engine/ports.ts";
 import { engineHostDoubles } from "../engine/testing/hostDoubles.ts";
@@ -46,7 +49,7 @@ const terminalLoginStepScene: ShowcaseScene = {
           phase: "succeeded",
           terminalId: "scripted-login-codex",
           startedAt: scriptedLoginStartedAt,
-          startedBy: "showcase-user",
+          startedBy: ZeropsUserId.make("showcase-user"),
         },
       },
     },
@@ -63,7 +66,7 @@ const activeLoginStepScene: ShowcaseScene = {
           phase: "awaiting-browser",
           terminalId: "scripted-login-codex",
           startedAt: scriptedLoginStartedAt,
-          startedBy: "showcase-user",
+          startedBy: ZeropsUserId.make("showcase-user"),
           url: "https://auth.openai.com/device",
           code: "SCRIPTED-CODE",
         },
@@ -79,7 +82,7 @@ const absoluteLoginStepScene: ShowcaseScene = {
       phase: "awaiting-browser",
       terminalId: "scripted-login-claude-code",
       startedAt: scriptedLoginStartedAt,
-      startedBy: "showcase-user",
+      startedBy: ZeropsUserId.make("showcase-user"),
       url: "https://claude.ai/login",
     },
   },
@@ -91,7 +94,7 @@ const absoluteLoginStepScene: ShowcaseScene = {
           phase: "awaiting-code",
           terminalId: "scripted-login-codex",
           startedAt: scriptedLoginStartedAt,
-          startedBy: "showcase-user",
+          startedBy: ZeropsUserId.make("showcase-user"),
           code: "SCRIPTED-CODE",
         },
       },
@@ -169,7 +172,12 @@ it.effect("login follows the clock and rechecks auth when it succeeds", () =>
       );
 
       const started = yield* agentLogin
-        .start("codex", serviceMapScene.lifecycle.threadId, "user-test", yield* connection)
+        .start(
+          "codex",
+          serviceMapScene.lifecycle.threadId,
+          zeropsSubjectOf(ZeropsUserId.make("user-test")),
+          yield* connection,
+        )
         .pipe(Effect.orDie);
       assert.equal(started.terminalId, "agent-login-codex");
       assert.equal((yield* agentLogin.latest).codex?.phase, "starting");
@@ -191,7 +199,12 @@ it.effect("cancel leaves the scripted login cancelled", () =>
   withFixtureFeeds(serviceMapScene, ({ agentLogin }) =>
     Effect.gen(function* () {
       yield* agentLogin
-        .start("claude-code", serviceMapScene.lifecycle.threadId, "user-test", yield* connection)
+        .start(
+          "claude-code",
+          serviceMapScene.lifecycle.threadId,
+          zeropsSubjectOf(ZeropsUserId.make("user-test")),
+          yield* connection,
+        )
         .pipe(Effect.orDie);
       yield* agentLogin.cancel("claude-code").pipe(Effect.orDie);
       assert.equal((yield* agentLogin.latest)["claude-code"]?.phase, "cancelled");
@@ -206,7 +219,12 @@ it.effect("rejects login start when the fixture scene is unavailable", () =>
   withFixtureFeeds(noZeropsScene, ({ agentLogin }) =>
     Effect.gen(function* () {
       const error = yield* agentLogin
-        .start("codex", noZeropsScene.lifecycle.threadId, "user-test", yield* connection)
+        .start(
+          "codex",
+          noZeropsScene.lifecycle.threadId,
+          zeropsSubjectOf(ZeropsUserId.make("user-test")),
+          yield* connection,
+        )
         .pipe(Effect.flip, Effect.orDie);
 
       assert.instanceOf(error, ZeropsAgentLoginError);
@@ -243,7 +261,12 @@ it.effect("reattaches to a scene-provided active login", () =>
     Effect.gen(function* () {
       const before = (yield* agentLogin.latest).codex;
       const result = yield* agentLogin
-        .start("codex", agentAuthAttentionScene.lifecycle.threadId, "user-test", yield* connection)
+        .start(
+          "codex",
+          agentAuthAttentionScene.lifecycle.threadId,
+          zeropsSubjectOf(ZeropsUserId.make("user-test")),
+          yield* connection,
+        )
         .pipe(Effect.orDie);
 
       assert.equal(result.terminalId, before?.terminalId);
@@ -271,7 +294,12 @@ it.effect("a terminal login step lets start create a fresh session", () =>
       yield* advanceTestClock(100);
 
       const result = yield* agentLogin
-        .start("codex", terminalLoginStepScene.lifecycle.threadId, "user-test", yield* connection)
+        .start(
+          "codex",
+          terminalLoginStepScene.lifecycle.threadId,
+          zeropsSubjectOf(ZeropsUserId.make("user-test")),
+          yield* connection,
+        )
         .pipe(Effect.orDie);
 
       assert.equal(result.terminalId, "agent-login-codex");
@@ -304,7 +332,7 @@ it.effect("agent login steps replace the whole login snapshot", () =>
         .start(
           "claude-code",
           absoluteLoginStepScene.lifecycle.threadId,
-          "user-test",
+          zeropsSubjectOf(ZeropsUserId.make("user-test")),
           yield* connection,
         )
         .pipe(Effect.orDie);
@@ -318,7 +346,7 @@ it.effect("agent login steps replace the whole login snapshot", () =>
         .start(
           "claude-code",
           absoluteLoginStepScene.lifecycle.threadId,
-          "user-test",
+          zeropsSubjectOf(ZeropsUserId.make("user-test")),
           yield* connection,
         )
         .pipe(Effect.orDie);
@@ -364,7 +392,10 @@ it.effect("admits turns through the live gate, over a scene where nobody recorde
           interactionMode: "default",
           createdAt: "2026-09-27T10:00:00.000Z",
         },
-        principal: { kind: "session", subject: `${ZEROPS_SUBJECT_PREFIX}jan-user-id` },
+        principal: {
+          kind: "session",
+          subject: SessionSubject.make(`${ZEROPS_SUBJECT_PREFIX}jan-user-id`),
+        },
       })
       .pipe(Effect.flip);
     assert.equal(

@@ -6,7 +6,13 @@ import type {
   ZeropsAgentLoginState,
   ZeropsLifecycle as ZeropsLifecycleSnapshot,
 } from "@t3tools/contracts";
-import { EnvironmentId, ZeropsAgentLoginError } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  type SessionSubject,
+  ZeropsAgentLoginError,
+  type ZeropsUserId,
+  zeropsUserIdOf,
+} from "@t3tools/contracts";
 import {
   loadShowcaseScene,
   SHOWCASE_SCENE_IDS,
@@ -312,7 +318,7 @@ const makeAgentLogin = (scene: ShowcaseScene) =>
       agentId: ZeropsAgentId,
       token: symbol,
       startedAt: DateTime.Utc,
-      startedBy: string,
+      startedBy: ZeropsUserId | undefined,
     ) =>
       Effect.gen(function* () {
         yield* Effect.sleep(Duration.millis(500));
@@ -340,7 +346,7 @@ const makeAgentLogin = (scene: ShowcaseScene) =>
         });
       });
 
-    const start = (agentId: ZeropsAgentId, _threadId: string, subject: string) =>
+    const start = (agentId: ZeropsAgentId, _threadId: string, subject: SessionSubject) =>
       Effect.gen(function* () {
         if (!scene.agentAuth.available) {
           return yield* unavailable;
@@ -353,9 +359,15 @@ const makeAgentLogin = (scene: ShowcaseScene) =>
 
         const token = Symbol(agentId);
         const startedAt = yield* DateTime.now;
+        const startedBy = zeropsUserIdOf(subject);
         yield* Ref.update(activeTokens, (tokens) => new Map(tokens).set(agentId, token));
-        yield* setLogin(agentId, { phase: "starting", terminalId, startedAt, startedBy: subject });
-        yield* finishLogin(agentId, token, startedAt, subject).pipe(
+        yield* setLogin(agentId, {
+          phase: "starting",
+          terminalId,
+          startedAt,
+          ...(startedBy === undefined ? {} : { startedBy }),
+        });
+        yield* finishLogin(agentId, token, startedAt, startedBy).pipe(
           Effect.forkIn(serviceScope),
           Effect.asVoid,
         );
@@ -377,7 +389,7 @@ const makeAgentLogin = (scene: ShowcaseScene) =>
           phase: "cancelled",
           terminalId: current?.terminalId ?? ZeropsAgentLoginModule.loginTerminalId(agentId),
           startedAt: current?.startedAt ?? (yield* DateTime.now),
-          startedBy: current?.startedBy ?? "",
+          ...(current?.startedBy === undefined ? {} : { startedBy: current.startedBy }),
         });
       });
 
@@ -535,10 +547,10 @@ const fixtureSignersLayer = Layer.succeed(
   ZeropsProjectSigners.ZeropsProjectSigners.of({
     signers: Effect.succeed({}),
     changes: Stream.empty,
-    turnRefusal: ({ agent, subject }) =>
-      Effect.succeed(turnRefusal({ agent, signer: undefined, subject })),
-    loginRefusal: ({ state, token, subject }) =>
-      Effect.succeed(loginTurnRefusal({ state, token, signer: undefined, subject })),
+    turnRefusal: ({ agent, person }) =>
+      Effect.succeed(turnRefusal({ agent, signer: undefined, person })),
+    loginRefusal: ({ state, token, person }) =>
+      Effect.succeed(loginTurnRefusal({ state, token, signer: undefined, person })),
   }),
 );
 

@@ -22,14 +22,15 @@
  * @module crewAccess
  */
 import {
-  crewCommandReach,
-  crewReachLogins,
   type CrewCommand,
+  crewCommandReach,
   type CrewCommandReach,
   type CrewLoginRoster,
+  crewReachLogins,
   type CrewSnapshot,
   type ZeropsAgentAuth,
   type ZeropsAgentId,
+  type ZeropsUserId,
 } from "@t3tools/contracts";
 
 import {
@@ -77,7 +78,7 @@ export interface CrewLoginFacts {
 export function crewLoginLock(
   login: string,
   facts: CrewLoginFacts | undefined,
-  viewerSubject: string | undefined,
+  viewerSubject: ZeropsUserId | undefined,
 ): CrewLoginLock | null {
   if (facts === undefined || facts.agent.flagToken) return null;
   const ownership = resolveAgentOwnership({

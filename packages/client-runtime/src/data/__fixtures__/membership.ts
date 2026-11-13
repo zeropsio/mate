@@ -1,3 +1,4 @@
+import { ZeropsUserId } from "@t3tools/contracts";
 import type { AccountInput } from "../reducer.ts";
 export const membershipInputs = (
   roleCode: string,
@@ -23,7 +24,7 @@ export const membershipInputs = (
           id: orgId,
           revision: { kind: "zerops", version: null },
           value: {
-            id: "user",
+            id: ZeropsUserId.make("user"),
             email: "test@example.test",
             clientUserList: [
               { id: "member", clientId: orgId, status: "ACTIVE", roleCode, canCreateProjects },

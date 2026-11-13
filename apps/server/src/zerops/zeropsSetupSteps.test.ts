@@ -1,3 +1,4 @@
+import { ZeropsUserId } from "@t3tools/contracts";
 import { assert, describe, it } from "@effect/vitest";
 import type { ZeropsAgentAuth } from "@t3tools/contracts";
 
@@ -208,9 +209,9 @@ describe("procStartTime", () => {
 
 describe("standUpSigners", () => {
   const signers = {
-    "claude-code": "user-a",
-    codex: "user-b",
-    "claudeAgent-work": "user-a",
+    "claude-code": ZeropsUserId.make("user-a"),
+    codex: ZeropsUserId.make("user-b"),
+    "claudeAgent-work": ZeropsUserId.make("user-a"),
   };
   const agent = (
     agentId: ZeropsAgentAuth["agentId"],
@@ -227,9 +228,11 @@ describe("standUpSigners", () => {
 
   it("lists the agents a person signed in, never another login or person", () => {
     const agents = [agent("claude-code"), agent("codex")];
-    assert.deepStrictEqual(standUpAgents(agents, signers, "user-a"), ["claude-code"]);
-    assert.deepStrictEqual(standUpAgents(agents, signers, "user-b"), ["codex"]);
-    assert.deepStrictEqual(standUpAgents(agents, signers, "user-c"), []);
+    assert.deepStrictEqual(standUpAgents(agents, signers, ZeropsUserId.make("user-a")), [
+      "claude-code",
+    ]);
+    assert.deepStrictEqual(standUpAgents(agents, signers, ZeropsUserId.make("user-b")), ["codex"]);
+    assert.deepStrictEqual(standUpAgents(agents, signers, ZeropsUserId.make("user-c")), []);
   });
 
   it("lists an agent on a token the project holds for anybody, nobody having signed it in", () => {
@@ -242,12 +245,12 @@ describe("standUpSigners", () => {
       }),
       agent("codex", { credPresent: false, flagOAuth: false, state: "not-authorized" }),
     ];
-    assert.deepStrictEqual(standUpAgents(agents, {}, "user-c"), ["claude-code"]);
+    assert.deepStrictEqual(standUpAgents(agents, {}, ZeropsUserId.make("user-c")), ["claude-code"]);
   });
 
   it("lists no agent whose login no longer works, whoever signed it in", () => {
     const agents = [agent("claude-code", { providerAuth: "unauthenticated" })];
-    assert.deepStrictEqual(standUpAgents(agents, signers, "user-a"), []);
+    assert.deepStrictEqual(standUpAgents(agents, signers, ZeropsUserId.make("user-a")), []);
   });
 });
 
@@ -265,12 +268,17 @@ describe("standUpDecision", () => {
   const cases: ReadonlyArray<[string, Parameters<typeof standUpDecision>[0], string]> = [
     [
       "starts once the asker signed an agent in",
-      { recorded: false, requestedBy: "user-a", agents: ["claude-code"], spoken: false },
+      {
+        recorded: false,
+        requestedBy: ZeropsUserId.make("user-a"),
+        agents: ["claude-code"],
+        spoken: false,
+      },
       "start",
     ],
     [
       "waits for the asker's sign-in",
-      { recorded: false, requestedBy: "user-a", agents: [], spoken: false },
+      { recorded: false, requestedBy: ZeropsUserId.make("user-a"), agents: [], spoken: false },
       "wait",
     ],
     [
@@ -280,19 +288,35 @@ describe("standUpDecision", () => {
     ],
     [
       "never starts twice",
-      { recorded: true, requestedBy: "user-a", agents: ["claude-code"], spoken: false },
+      {
+        recorded: true,
+        requestedBy: ZeropsUserId.make("user-a"),
+        agents: ["claude-code"],
+        spoken: false,
+      },
       "done",
     ],
     [
       "a conversation already spoken in had its stand-up",
-      { recorded: false, requestedBy: "user-a", agents: ["claude-code"], spoken: true },
+      {
+        recorded: false,
+        requestedBy: ZeropsUserId.make("user-a"),
+        agents: ["claude-code"],
+        spoken: true,
+      },
       "spoken",
     ],
     // Mate signs people in to Claude Code and Codex only; an agent outside that sign-in which is
     // ready runs for anybody, the asker included.
     [
       "starts on an agent that needs no sign-in once it is ready",
-      { recorded: false, requestedBy: "user-a", agents: [], ready: "cursor", spoken: false },
+      {
+        recorded: false,
+        requestedBy: ZeropsUserId.make("user-a"),
+        agents: [],
+        ready: "cursor",
+        spoken: false,
+      },
       "start",
     ],
     [
@@ -302,7 +326,13 @@ describe("standUpDecision", () => {
     ],
     [
       "a conversation spoken in on a ready agent had its stand-up",
-      { recorded: false, requestedBy: "user-a", agents: [], ready: "opencode", spoken: true },
+      {
+        recorded: false,
+        requestedBy: ZeropsUserId.make("user-a"),
+        agents: [],
+        ready: "opencode",
+        spoken: true,
+      },
       "spoken",
     ],
   ];
@@ -314,33 +344,45 @@ describe("standUpDecision", () => {
   it("starts on the agent the asker signed in, Claude first", () => {
     const decision = standUpDecision({
       recorded: false,
-      requestedBy: "user-a",
+      requestedBy: ZeropsUserId.make("user-a"),
       agents: ["codex", "claude-code"],
       spoken: false,
     });
-    assert.deepStrictEqual(decision, { kind: "start", userId: "user-a", agentId: "claude-code" });
+    assert.deepStrictEqual(decision, {
+      kind: "start",
+      userId: ZeropsUserId.make("user-a"),
+      agentId: "claude-code",
+    });
   });
 
   it("prefers the asker's own sign-in to an agent that needs none", () => {
     const decision = standUpDecision({
       recorded: false,
-      requestedBy: "user-a",
+      requestedBy: ZeropsUserId.make("user-a"),
       agents: ["codex"],
       ready: "cursor",
       spoken: false,
     });
-    assert.deepStrictEqual(decision, { kind: "start", userId: "user-a", agentId: "codex" });
+    assert.deepStrictEqual(decision, {
+      kind: "start",
+      userId: ZeropsUserId.make("user-a"),
+      agentId: "codex",
+    });
   });
 
   it("starts as the asker on the ready instance when they signed nothing in", () => {
     const decision = standUpDecision({
       recorded: false,
-      requestedBy: "user-a",
+      requestedBy: ZeropsUserId.make("user-a"),
       agents: [],
       ready: "cursor",
       spoken: false,
     });
-    assert.deepStrictEqual(decision, { kind: "start", userId: "user-a", instanceId: "cursor" });
+    assert.deepStrictEqual(decision, {
+      kind: "start",
+      userId: ZeropsUserId.make("user-a"),
+      instanceId: "cursor",
+    });
   });
 });
 

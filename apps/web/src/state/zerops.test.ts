@@ -1,3 +1,4 @@
+import { ZeropsUserId } from "@t3tools/contracts";
 import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
 import { mateListingsAtom } from "@t3tools/client-runtime/zerops/environments";
 import type { HqStructure } from "@t3tools/client-runtime/zerops/hq";
@@ -111,7 +112,9 @@ describe("the candidate rows", () => {
 
     // Who signed Ada's agent in, as HQ's overview of her says it: on her row, which stays the
     // same row while what she does moves and her logins do not.
-    const logins = { "claude-code": { signedInBy: "u-jan", present: true, token: false } };
+    const logins = {
+      "claude-code": { signedInBy: ZeropsUserId.make("u-jan"), present: true, token: false },
+    };
     const told = (moved: boolean) =>
       mateLiveView({
         presence: { online: true, since: "2026-10-03T10:00:00.000Z", overview: "live" },

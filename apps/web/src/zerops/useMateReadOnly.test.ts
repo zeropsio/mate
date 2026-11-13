@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { EnvironmentId } from "@t3tools/contracts";
+import { EnvironmentId, ZeropsUserId } from "@t3tools/contracts";
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 import { useMateReadOnly } from "./useMateReadOnly";
 import * as owners from "./useZeropsMateOwners";
@@ -75,21 +75,25 @@ const snapshot = (...agents: ReadonlyArray<ZeropsAgentAuth>): ZeropsAgentAuthSna
 
 describe("mateReadOnly — whether the viewer only reads a Mate's conversation (D6)", () => {
   const base = {
-    snapshot: snapshot(claude({ authorizedBy: { subject: "petra" } })),
-    viewerSubject: "ada",
+    snapshot: snapshot(claude({ authorizedBy: { subject: ZeropsUserId.make("petra") } })),
+    viewerSubject: ZeropsUserId.make("ada"),
   } as const;
 
   it.each([
     { case: "an agent another member signed in", input: {}, readOnly: false },
     {
       case: "an agent the viewer signed in",
-      input: { snapshot: snapshot(claude({ authorizedBy: { subject: "ada" } })) },
+      input: {
+        snapshot: snapshot(claude({ authorizedBy: { subject: ZeropsUserId.make("ada") } })),
+      },
       readOnly: false,
     },
     {
       case: "an agent the project's token signed in",
       input: {
-        snapshot: snapshot(claude({ flagToken: true, authorizedBy: { subject: "petra" } })),
+        snapshot: snapshot(
+          claude({ flagToken: true, authorizedBy: { subject: ZeropsUserId.make("petra") } }),
+        ),
       },
       readOnly: false,
     },
@@ -112,8 +116,8 @@ describe("mateReadOnly — whether the viewer only reads a Mate's conversation (
 // The sidebar quick-send reads this verdict: it must agree with the chat's read-along footer.
 describe("a colleague's Mate is read along from the quick-send as in its chat", () => {
   const base = {
-    snapshot: snapshot(claude({ authorizedBy: { subject: "ada" } })),
-    viewerSubject: "ada",
+    snapshot: snapshot(claude({ authorizedBy: { subject: ZeropsUserId.make("ada") } })),
+    viewerSubject: ZeropsUserId.make("ada"),
   } as const;
   it.each([
     { case: "HQ records a colleague as its owner", owner: "petra", readOnly: true },

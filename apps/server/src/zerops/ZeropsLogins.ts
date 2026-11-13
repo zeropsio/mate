@@ -25,21 +25,6 @@
  * @module ZeropsLogins
  */
 
-import {
-  defaultInstanceIdForDriver,
-  ProviderDriverKind,
-  ZeropsAgentLoginError,
-  type ProviderInstanceConfig,
-  type ServerProviderAuthStatus,
-  type ServerSettingsError,
-  type ZeropsAgentAuthSnapshot,
-  type ZeropsAgentId,
-  type ZeropsLogin,
-  type ZeropsLoginAddInput,
-  type ZeropsLoginKind,
-  type ZeropsLoginState,
-  type ZeropsAuthVerification,
-} from "@t3tools/contracts";
 import { classifyZeropsAgentAuth, zeropsLoginTitle } from "@t3tools/shared/zeropsAgentAuth";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -69,7 +54,24 @@ import {
 } from "./ZeropsAgentAuthVerify.ts";
 import { watchWithFallback, type WatcherHandle } from "./ZeropsAgentAuthWatcher.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
-import { zeropsUserIdOf } from "@t3tools/contracts";
+import {
+  defaultInstanceIdForDriver,
+  ProviderDriverKind,
+  type ProviderInstanceConfig,
+  type ServerProviderAuthStatus,
+  type ServerSettingsError,
+  type SessionSubject,
+  type ZeropsAgentAuthSnapshot,
+  type ZeropsAgentId,
+  ZeropsAgentLoginError,
+  type ZeropsAuthVerification,
+  type ZeropsLogin,
+  type ZeropsLoginAddInput,
+  type ZeropsLoginKind,
+  type ZeropsLoginState,
+  type ZeropsUserId,
+  zeropsUserIdOf,
+} from "@t3tools/contracts";
 import { ZeropsProjectSigners, type ProjectSigners } from "./ZeropsProjectSigners.ts";
 import { extraLoginAgent, LOGIN_DRIVER_KIND, makeExtraLoginId } from "./zeropsLoginIds.ts";
 import { ZeropsSignIns, type SignInStore } from "./zeropsSignIns.ts";
@@ -211,7 +213,7 @@ export interface MateLoginFacts {
 export function mateLoginRow(
   login: MateLogin,
   facts: MateLoginFacts,
-  signer: string | undefined,
+  signer: ZeropsUserId | undefined,
 ): ZeropsLogin {
   const held = login.kind === "apiKey" ? login.keyStored : facts.credPresent;
   return {
@@ -356,7 +358,7 @@ export class ZeropsLogins extends Context.Service<
      */
     readonly add: (
       input: ZeropsLoginAddInput,
-      subject: string,
+      subject: SessionSubject,
     ) => Effect.Effect<{ readonly id: string }, ZeropsAgentLoginError>;
     /** Drops the login's instance (and with it its key) and its home. Signing it out first is the caller's. */
     readonly forget: (id: string) => Effect.Effect<void, ZeropsAgentLoginError>;
@@ -709,11 +711,12 @@ export const make = (options: ZeropsLoginsOptions) =>
             return [{ ...current, [id]: instance }, { id }] as const;
           }),
         ).pipe(
-          Effect.tap(({ id }) =>
-            input.kind !== "apiKey" || signIns === undefined
+          Effect.tap(({ id }) => {
+            const by = zeropsUserIdOf(subject);
+            return input.kind !== "apiKey" || signIns === undefined || by === undefined
               ? Effect.void
-              : signIns.save(id, { by: zeropsUserIdOf(subject) }).pipe(Effect.andThen(publish)),
-          ),
+              : signIns.save(id, { by }).pipe(Effect.andThen(publish));
+          }),
         );
       });
 

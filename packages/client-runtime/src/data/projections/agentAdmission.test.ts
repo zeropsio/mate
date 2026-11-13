@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vite-plus/test";
+import type { Known } from "../../zerops/knowledge/index.ts";
+import { AtomRegistry } from "effect/reactivity";
 import {
-  ProviderInstanceId,
+  EnvironmentId,
   ProviderDriverKind,
+  ProviderInstanceId,
   type ServerProvider,
   type ZeropsAgentAuthSnapshot,
   type ZeropsLogin,
+  ZeropsUserId,
 } from "@t3tools/contracts";
-import type { Known } from "../../zerops/knowledge/index.ts";
-import { AtomRegistry } from "effect/reactivity";
-import { EnvironmentId } from "@t3tools/contracts";
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
 import { makeAccountStore, readsOfState } from "../store.ts";
 import {
@@ -32,7 +33,7 @@ it.each(["unknown", "authenticated", "unauthenticated"] as const)(
           flagToken: false,
           state: "authorized",
           providerAuth,
-          authorizedBy: { subject: "viewer" },
+          authorizedBy: { subject: ZeropsUserId.make("viewer") },
         },
       ],
     } as const;
@@ -42,7 +43,7 @@ it.each(["unknown", "authenticated", "unauthenticated"] as const)(
         owner: null,
         environmentId: "rig",
         instanceId,
-        viewerSubject: "viewer",
+        viewerSubject: ZeropsUserId.make("viewer"),
         read: {
           state: "known",
           value: snapshot,
@@ -284,7 +285,7 @@ it.each(["unsupported", "broken"] as const)(
       owner: null,
       environmentId: "env",
       instanceId: provider.instanceId,
-      viewerSubject: "viewer",
+      viewerSubject: ZeropsUserId.make("viewer"),
       read: undefined,
       providers: [provider],
       mateName: "Ada",
@@ -302,7 +303,7 @@ describe("one admission answer for composer, Send and Continue", () => {
   const base = {
     environmentId: "rig",
     instanceId: "codex",
-    viewerSubject: "viewer",
+    viewerSubject: ZeropsUserId.make("viewer"),
     providers: [],
     mateName: "Wren",
   } as const;
@@ -342,7 +343,7 @@ describe("mateArrivalHoldsComposer", () => {
           ...input,
           environmentId: "rig",
           instanceId: "codex",
-          viewerSubject: "viewer",
+          viewerSubject: ZeropsUserId.make("viewer"),
           providers: [],
           mateName: "Fen",
           read: {
@@ -442,7 +443,7 @@ describe("a colleague's Mate, as HQ records whose it is", () => {
       const admission = agentAdmission({
         environmentId: "rig",
         instanceId: ProviderInstanceId.make("claudeAgent"),
-        viewerSubject: "viewer",
+        viewerSubject: ZeropsUserId.make("viewer"),
         read: signedOut,
         providers: [],
         mateName: "Wren",
@@ -537,20 +538,20 @@ describe("admission on the conversation's auth input", () => {
   });
   const derive = (
     read: Known<ZeropsAgentAuthSnapshot>,
-    hqSigners?: Readonly<Record<string, string>>,
+    hqSigners?: Readonly<Record<string, ZeropsUserId>>,
   ) =>
     agentAdmission({
       owner: null,
       environmentId: "env-Ada",
       instanceId: provider.instanceId,
-      viewerSubject: "viewer",
+      viewerSubject: ZeropsUserId.make("viewer"),
       read,
       hqSigners,
       providers: [provider],
       mateName: "Ada",
     });
 
-  const signedInBy = (subject: string, token = false): ZeropsAgentAuthSnapshot => ({
+  const signedInBy = (subject: ZeropsUserId, token = false): ZeropsAgentAuthSnapshot => ({
     ...ready,
     agents: ready.agents.map((agent) => ({
       ...agent,
@@ -561,7 +562,7 @@ describe("admission on the conversation's auth input", () => {
   });
   const composer = (
     snapshot: ZeropsAgentAuthSnapshot,
-    hqSigners?: Readonly<Record<string, string>>,
+    hqSigners?: Readonly<Record<string, ZeropsUserId>>,
   ) => {
     const { footer, canSend, sendBlockReason } = derive(known(snapshot), hqSigners);
     return { footer, canSend, sendBlockReason };
@@ -574,26 +575,28 @@ describe("admission on the conversation's auth input", () => {
   const usableComposer = { footer: "composer", canSend: true, sendBlockReason: null };
 
   it("an agent another member signed in replaces the composer with whose sign-in it is", () => {
-    expect(composer(signedInBy("colleague"))).toEqual(anotherMembersSignIn);
+    expect(composer(signedInBy(ZeropsUserId.make("colleague")))).toEqual(anotherMembersSignIn);
   });
 
   it("the member's own agent restores the composer", () => {
-    expect([composer(signedInBy("colleague")), composer(signedInBy("viewer"))]).toEqual([
-      anotherMembersSignIn,
-      usableComposer,
-    ]);
+    expect([
+      composer(signedInBy(ZeropsUserId.make("colleague"))),
+      composer(signedInBy(ZeropsUserId.make("viewer"))),
+    ]).toEqual([anotherMembersSignIn, usableComposer]);
   });
 
   it("HQ's signer fills an absent Mate signer, and the Mate's signer takes precedence", () => {
     expect([
-      composer(ready, { "claude-code": "colleague" }),
-      composer(ready, { "claude-code": "viewer" }),
-      composer(signedInBy("viewer"), { "claude-code": "colleague" }),
+      composer(ready, { "claude-code": ZeropsUserId.make("colleague") }),
+      composer(ready, { "claude-code": ZeropsUserId.make("viewer") }),
+      composer(signedInBy(ZeropsUserId.make("viewer")), {
+        "claude-code": ZeropsUserId.make("colleague"),
+      }),
     ]).toEqual([anotherMembersSignIn, usableComposer, usableComposer]);
   });
 
   it("an unrecorded sign-in reads along without claiming another member's login", () => {
-    expect([composer(signedInBy("colleague")), composer(ready)]).toEqual([
+    expect([composer(signedInBy(ZeropsUserId.make("colleague"))), composer(ready)]).toEqual([
       anotherMembersSignIn,
       {
         footer: "read-only",
@@ -605,10 +608,10 @@ describe("admission on the conversation's auth input", () => {
   });
 
   it("a project token restores the composer when another member last signed in", () => {
-    expect([composer(signedInBy("colleague")), composer(signedInBy("colleague", true))]).toEqual([
-      anotherMembersSignIn,
-      usableComposer,
-    ]);
+    expect([
+      composer(signedInBy(ZeropsUserId.make("colleague"))),
+      composer(signedInBy(ZeropsUserId.make("colleague"), true)),
+    ]).toEqual([anotherMembersSignIn, usableComposer]);
   });
 
   it("A cold auth read holds sending without flashing stale sign-in guidance", () => {
@@ -616,7 +619,7 @@ describe("admission on the conversation's auth input", () => {
       { state: "unread", waitingFor: null },
       { state: "reading", sinceMs: 0, attempt: 1 },
       { state: "reading", sinceMs: 0, attempt: 2 },
-      known(signedInBy("viewer")),
+      known(signedInBy(ZeropsUserId.make("viewer"))),
     ];
     // Every observed cold state holds input and Send; the first authoritative answer releases both.
     expect(
@@ -674,7 +677,7 @@ describe("admission on the conversation's auth input", () => {
   it("Decision: refusals correlate by login identity (id), never by label or message text.", () => {
     const input = {
       environmentId: "env-Ada",
-      viewerSubject: "viewer",
+      viewerSubject: ZeropsUserId.make("viewer"),
       mateName: "Ada",
       providers: [
         {
@@ -753,7 +756,7 @@ it.each([
     const admission = agentAdmission({
       environmentId: "rig",
       instanceId: "codex",
-      viewerSubject: "viewer",
+      viewerSubject: ZeropsUserId.make("viewer"),
       mateName: "Cyd",
       providers: [],
       owner,
@@ -769,7 +772,7 @@ it.each([
               credPresent: true,
               flagOAuth: true,
               flagToken: false,
-              authorizedBy: { subject: "viewer" },
+              authorizedBy: { subject: ZeropsUserId.make("viewer") },
             },
           ],
         },
@@ -791,7 +794,7 @@ it("a native project downgrade closes the composer even while its owner stays si
   const input = {
     environmentId: "mate",
     instanceId: undefined,
-    viewerSubject: "viewer",
+    viewerSubject: ZeropsUserId.make("viewer"),
     owner: { mine: true },
     read: {
       state: "known",
@@ -850,7 +853,7 @@ describe("the menu's sign-in summary", () => {
     const summary = mateAdmissionSummary.derive(readsOfState(store.state()), {
       orgId: "org",
       projectId: "nova",
-      viewerSubject: "viewer",
+      viewerSubject: ZeropsUserId.make("viewer"),
       mateName: "Nova",
     });
     expect(summary?.actionLabel ?? null).toBe(action);
@@ -883,7 +886,7 @@ describe("an automated Mate's composer", () => {
       environmentId: "rig",
       // The thread's model, a subscription agent: nobody may sign it in here.
       instanceId: "claudeAgent",
-      viewerSubject: "viewer",
+      viewerSubject: ZeropsUserId.make("viewer"),
       providers,
       mateName: "Nova",
       read: {
@@ -941,7 +944,7 @@ describe("a sent message never silently stays in the composer", () => {
       flagToken: false,
       providerAuth: signedIn ? "authenticated" : "unauthenticated",
       state: signedIn ? "authorized" : "not-authorized",
-      authorizedBy: signedIn ? { subject: "viewer" } : undefined,
+      authorizedBy: signedIn ? { subject: ZeropsUserId.make("viewer") } : undefined,
     }) as const;
   const opencode = {
     instanceId: "opencode",
@@ -961,7 +964,7 @@ describe("a sent message never silently stays in the composer", () => {
       owner: { mine: true },
       environmentId: "rig",
       instanceId: input.automated === true ? "opencode" : "codex",
-      viewerSubject: "viewer",
+      viewerSubject: ZeropsUserId.make("viewer"),
       providers: input.automated === true ? [opencode] : [],
       mateName: "Lumo",
       standUpHolds: input.standUpHolds === true,

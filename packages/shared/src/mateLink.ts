@@ -27,6 +27,7 @@
  * @module mateLink
  */
 import {
+  ZeropsUserId,
   ConversationRow,
   CrewAttention,
   MateInterruption,
@@ -95,12 +96,12 @@ export const MateState = Schema.Struct({
   name: Schema.String,
   face: Schema.String,
   /** The person who asked for the Mate's stand-up, or none yet. */
-  standupRequestedBy: Schema.NullOr(Schema.String),
+  standupRequestedBy: Schema.NullOr(ZeropsUserId),
   /**
    * The Zerops user HQ records as the Mate's owner (`mateOwner`), or none named: everyone else
    * reads along. Absent from an HQ older than it, and where HQ could not read its org yet.
    */
-  ownerUserId: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  ownerUserId: Schema.optionalKey(Schema.NullOr(ZeropsUserId)),
   /**
    * An automated Mate: it takes tasks from outside (`MateTask`) and runs only on the
    * organization's API keys, never on a person's subscription. Absent from an older HQ: not one.
@@ -490,7 +491,7 @@ export const MateSelf = Schema.Struct({
   projectId: Schema.String,
   name: Schema.String,
   face: Schema.String,
-  standupRequestedBy: Schema.NullOr(Schema.String),
+  standupRequestedBy: Schema.NullOr(ZeropsUserId),
   /**
    * The persona chosen when it was made, kept with its stand-up ask: its server takes it at its
    * stand-up when it holds none. Absent from an older HQ and where none was chosen.
@@ -505,7 +506,7 @@ export type MateSelf = typeof MateSelf.Type;
 /** The Mate as a `state` frame brings it: its self read and known owner. */
 export const LinkedMate = Schema.Struct({
   ...MateSelf.fields,
-  ownerUserId: Schema.optionalKey(Schema.String),
+  ownerUserId: Schema.optionalKey(ZeropsUserId),
 });
 export type LinkedMate = typeof LinkedMate.Type;
 
@@ -598,7 +599,7 @@ export type KeyLinkUp = typeof KeyLinkUp.Type;
 export const TicketDown = Schema.Struct({
   type: Schema.Literal("ticket"),
   ticket: Ticket,
-  userId: Schema.String,
+  userId: ZeropsUserId,
   sessionId: Schema.String,
   expiresIn: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
   // How long a connection opened or extended with this ticket may stay open.
@@ -635,7 +636,7 @@ export const KeyLinkDown = Schema.Union([
    */
   Schema.Struct({
     type: Schema.Literal("signers"),
-    signers: Schema.Record(Schema.String, Schema.String),
+    signers: Schema.Record(Schema.String, ZeropsUserId),
   }),
   TaskDown,
   TaskMessageDown,

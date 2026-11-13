@@ -3,13 +3,14 @@ import type { MateProjectKey } from "./mateAttention.ts";
 import { hqMateOverview } from "./hqMates.ts";
 import { sameValue } from "./equal.ts";
 import type {
+  AgentAdmissionRefusal,
   ProviderInstanceId,
-  ZeropsAgentId,
+  RunEnd,
   ServerProvider,
   ZeropsAgentAuthSnapshot,
-  AgentAdmissionRefusal,
-  RunEnd,
+  ZeropsAgentId,
   ZeropsLoginState,
+  ZeropsUserId,
 } from "@t3tools/contracts";
 import { agentIdForDriverKind, agentIdForProviderInstance } from "@t3tools/contracts";
 import type { Known } from "../../zerops/knowledge/index.ts";
@@ -88,7 +89,7 @@ export function readsAlong(input: {
 export function agentAdmission(input: {
   readonly environmentId: string;
   readonly instanceId: string | undefined;
-  readonly viewerSubject: string | undefined;
+  readonly viewerSubject: ZeropsUserId | undefined;
   readonly read: Known<ZeropsAgentAuthSnapshot> | undefined;
   readonly providers: ReadonlyArray<ServerProvider>;
   readonly mateName: string;
@@ -372,7 +373,7 @@ function admissionAttention(input: {
  * signer; a Mate older than the digest's `state` says only whether a credential is there.
  */
 export const mateAdmissionSummary: Projection<
-  MateProjectKey & { readonly viewerSubject: string | undefined; readonly mateName: string },
+  MateProjectKey & { readonly viewerSubject: ZeropsUserId | undefined; readonly mateName: string },
   AgentAdmissionAttention | null
 > = {
   name: "mateAdmissionSummary",

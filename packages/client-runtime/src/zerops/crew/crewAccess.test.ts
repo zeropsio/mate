@@ -1,11 +1,12 @@
+import { ZeropsUserId } from "@t3tools/contracts";
 import type { CrewCommand, CrewSnapshot, ZeropsAgentAuth } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { crewAccess, crewLoginLock, type CrewLock, type CrewLoginFacts } from "./crewAccess.ts";
 import { crewSnapshotFixture } from "./testing/fixtures.ts";
 
-const JAN = "user-jan";
-const EVA = "user-eva";
+const JAN = ZeropsUserId.make("user-jan");
+const EVA = ZeropsUserId.make("user-eva");
 
 const agent = (fields: Partial<ZeropsAgentAuth> = {}): CrewLoginFacts["agent"] => ({
   agentId: "claude-code",
@@ -50,7 +51,7 @@ describe("crewLoginLock — a login read as its conversation reads it", () => {
     ],
     ["open on a login Mate signs nobody in to", undefined, EVA, null],
   ] as const satisfies ReadonlyArray<
-    readonly [string, CrewLoginFacts | undefined, string | undefined, CrewLock | null]
+    readonly [string, CrewLoginFacts | undefined, ZeropsUserId | undefined, CrewLock | null]
   >)("%s", (_name, loginFacts, viewer, lock) => {
     expect(crewLoginLock("claudeAgent", loginFacts, viewer)).toEqual(lock);
   });

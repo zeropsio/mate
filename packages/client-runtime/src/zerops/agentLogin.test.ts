@@ -1,3 +1,4 @@
+import { ZeropsUserId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 import type {
   ServerProvider,
@@ -64,7 +65,7 @@ const loginState = (
 ): ZeropsAgentLoginState => ({
   terminalId: "agent-login-claude-code",
   startedAt: "2026-08-29T12:00:00.000Z" as unknown as ZeropsAgentLoginState["startedAt"],
-  startedBy: "user-a",
+  startedBy: ZeropsUserId.make("user-a"),
   ...overrides,
 });
 

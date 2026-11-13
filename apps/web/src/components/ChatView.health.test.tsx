@@ -16,10 +16,11 @@ import {
 } from "@t3tools/client-runtime/data";
 import {
   DEFAULT_SERVER_SETTINGS,
-  ServerProvider,
-  type ServerConfig,
   type MateHealth,
   type MateResourceHealth,
+  type ServerConfig,
+  ServerProvider,
+  ZeropsUserId,
 } from "@t3tools/contracts";
 import { engineRun, personItem, seedHqNavigation } from "@t3tools/client-runtime/data/fixtures";
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
@@ -356,7 +357,7 @@ describe("Approved Mate health placement", () => {
                                 flagToken: false,
                                 providerAuth: "authenticated",
                                 state: "authorized",
-                                authorizedBy: { subject: "owner" },
+                                authorizedBy: { subject: ZeropsUserId.make("owner") },
                               },
                             ],
                           },

@@ -1,3 +1,4 @@
+import { ZeropsUserId } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 
 import { ZeropsApiError, type ZeropsUser } from "../api.ts";
@@ -17,8 +18,16 @@ import {
   type ZeropsSessionState,
 } from "./session.ts";
 
-const person: ZeropsUser = { id: "user-1", email: "person@example.test", clientUserList: [] };
-const other: ZeropsUser = { id: "user-2", email: "other@example.test", clientUserList: [] };
+const person: ZeropsUser = {
+  id: ZeropsUserId.make("user-1"),
+  email: "person@example.test",
+  clientUserList: [],
+};
+const other: ZeropsUser = {
+  id: ZeropsUserId.make("user-2"),
+  email: "other@example.test",
+  clientUserList: [],
+};
 const stored: ZeropsSession = { accessToken: "access-1", refreshToken: "refresh-1" };
 const next: ZeropsSession = { accessToken: "access-2", refreshToken: "refresh-2" };
 const owner: ZeropsSessionOwner = { userId: "user-1", loginGeneration: "g1" };

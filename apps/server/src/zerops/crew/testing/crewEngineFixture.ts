@@ -11,13 +11,6 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import {
-  OrchestrationDispatchCommandError,
-  ProviderDriverKind,
-  type ServerProvider,
-  type ZeropsAgentAuthSnapshot,
-  type ZeropsLogin,
-} from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -34,7 +27,16 @@ import { ThreadToolPolicyRegistry } from "../../../spi/threadToolPolicy.ts";
 import { localSshProcessRunnerLayer } from "../../testing/localSsh.ts";
 import { resolveZeropsEnvironment } from "../../ZeropsEnvironment.ts";
 import { ZeropsAgentAuth } from "../../ZeropsAgentAuth.ts";
-import { ZEROPS_SUBJECT_PREFIX } from "@t3tools/contracts";
+import {
+  OrchestrationDispatchCommandError,
+  ProviderDriverKind,
+  type ServerProvider,
+  SessionSubject,
+  ZEROPS_SUBJECT_PREFIX,
+  type ZeropsAgentAuthSnapshot,
+  type ZeropsLogin,
+  ZeropsUserId,
+} from "@t3tools/contracts";
 import { ZeropsLogins, type MateLogin } from "../../ZeropsLogins.ts";
 import { ZeropsRepositorySource, type ZeropsRepository } from "../../ZeropsRepositorySource.ts";
 import { ZeropsTurnAdmission, type TurnPrincipal } from "../../ZeropsTurnAdmission.ts";
@@ -45,13 +47,13 @@ import { serviceRepository, TEST_IDENTITY } from "./crewGitFixture.ts";
 /** The person who presses: Alex, in his own session. */
 export const KAREL: TurnPrincipal = {
   kind: "session",
-  subject: `${ZEROPS_SUBJECT_PREFIX}user-karel`,
+  subject: SessionSubject.make(`${ZEROPS_SUBJECT_PREFIX}user-karel`),
 };
 
 /** The engine acting for the person outside their session: a run's or a task's later turns. */
 export const AS_CREW: TurnPrincipal = {
   kind: "crew",
-  startedBy: "user-karel",
+  startedBy: ZeropsUserId.make("user-karel"),
 };
 
 export const ZEROPS = resolveZeropsEnvironment({
@@ -77,7 +79,7 @@ export interface CrewWorld {
     }>
   >;
   /** Logins the person may not run, with the words admission refuses them in. */
-  readonly notTheirs: Ref.Ref<ReadonlyMap<string, string>>;
+  readonly notTheirs: Ref.Ref<ReadonlyMap<string, ZeropsUserId>>;
   readonly installs: Ref.Ref<number>;
   /** ssh sessions the crew opened. */
   readonly sshCalls: Ref.Ref<number>;
@@ -174,7 +176,7 @@ export const repositoryLayers = (root: string) =>
   );
 
 /** The agent-auth feed's snapshot: both default agents signed in, each by its last signer. */
-const agentSnapshot = (signers: ReadonlyMap<string, string>): ZeropsAgentAuthSnapshot => ({
+const agentSnapshot = (signers: ReadonlyMap<string, ZeropsUserId>): ZeropsAgentAuthSnapshot => ({
   available: true,
   agents: (["claude-code", "codex"] as const).map((agentId) => ({
     agentId,
@@ -183,7 +185,7 @@ const agentSnapshot = (signers: ReadonlyMap<string, string>): ZeropsAgentAuthSna
     flagToken: false,
     providerAuth: "authenticated" as const,
     state: "authorized" as const,
-    authorizedBy: { subject: signers.get(agentId) ?? "user-karel" },
+    authorizedBy: { subject: signers.get(agentId) ?? ZeropsUserId.make("user-karel") },
   })),
 });
 
@@ -206,7 +208,7 @@ export const platformFakes = (
   world: CrewFixtureWorld,
   signIns: PubSub.PubSub<SignIn>,
   /** Each default agent's signer as the agent-auth feed last told it. */
-  agentSigners = new Map<string, string>(),
+  agentSigners = new Map<string, ZeropsUserId>(),
 ) =>
   Layer.mergeAll(
     repositoryLayers(world.root),
@@ -234,7 +236,7 @@ export const platformFakes = (
                   default: false,
                   state: "authorized",
                   token: false,
-                  signedInBy: `user-${index}`,
+                  signedInBy: ZeropsUserId.make(`user-${index}`),
                 } satisfies ZeropsLogin,
               ])
             : Result.failVoid,
@@ -248,7 +250,7 @@ export const platformFakes = (
         Stream.zipWithIndex,
         Stream.filterMap(([signIn, index]) => {
           if (signIn._tag !== "agent") return Result.failVoid;
-          agentSigners.set(signIn.agent, `user-${index}`);
+          agentSigners.set(signIn.agent, ZeropsUserId.make(`user-${index}`));
           return Result.succeed(agentSnapshot(agentSigners));
         }),
       ),
@@ -394,7 +396,7 @@ export const makeFixtureWorld = (root: string, workspace: string) =>
           readonly principal: TurnPrincipal;
         }>
       >([]),
-      notTheirs: yield* Ref.make<ReadonlyMap<string, string>>(new Map()),
+      notTheirs: yield* Ref.make<ReadonlyMap<string, ZeropsUserId>>(new Map()),
       installs: yield* Ref.make(0),
       sshCalls: yield* Ref.make(0),
       logins: yield* Ref.make<ReadonlyMap<string, MateLogin>>(new Map()),

@@ -27,6 +27,7 @@ import type {
   ZeropsAgentLoginState,
   ZeropsLogin,
   ZeropsLoginState,
+  ZeropsUserId,
 } from "@t3tools/contracts";
 
 export type ZeropsAgentAuthFields = Pick<ZeropsAgentAuth, "credPresent" | "providerAuth" | "state">;
@@ -80,7 +81,7 @@ export type TurnRefusal =
  * - a **token**-authorized agent is nobody's personal login, so it is
  *   unaffected by D6: `flagToken` means the container was given an API key,
  *   and an API key belongs to the project;
- * - an agent whose recorded signer **is** this session's subject: yes;
+ * - an agent whose recorded signer **is** this session's person: yes;
  * - anything else — someone else's, or no record at all — no. D6 keeps no
  *   backward compatibility here: a login with no recorded signer (an older
  *   one, a terminal login, a copied file) cannot run until somebody signs in
@@ -89,14 +90,15 @@ export type TurnRefusal =
  */
 export function turnRefusal(input: {
   readonly agent: ZeropsAgentAuthFields & Pick<ZeropsAgentAuth, "flagToken">;
-  readonly signer: string | undefined;
-  readonly subject: string | undefined;
+  readonly signer: ZeropsUserId | undefined;
+  /** The person the turn is for; `undefined` when it names nobody. */
+  readonly person: ZeropsUserId | undefined;
 }): TurnRefusal | undefined {
   return loginTurnRefusal({
     state: classifyZeropsAgentAuth(input.agent).kind,
     token: input.agent.flagToken,
     signer: input.signer,
-    subject: input.subject,
+    person: input.person,
   });
 }
 
@@ -108,15 +110,16 @@ export function turnRefusal(input: {
 export function loginTurnRefusal(input: {
   readonly state: ZeropsLoginState;
   readonly token: boolean;
-  readonly signer: string | undefined;
-  readonly subject: string | undefined;
+  readonly signer: ZeropsUserId | undefined;
+  /** The person the turn is for; `undefined` when it names nobody. */
+  readonly person: ZeropsUserId | undefined;
 }): TurnRefusal | undefined {
   if (input.state !== "authorized" && input.state !== "registering") {
     return { kind: "not-signed-in", auth: input.state };
   }
   if (input.token) return undefined;
   if (input.signer === undefined || input.signer.length === 0) return { kind: "unrecorded" };
-  return input.subject === input.signer ? undefined : { kind: "someone-else" };
+  return input.person === input.signer ? undefined : { kind: "someone-else" };
 }
 
 const AGENT_NAMES: Readonly<Record<ZeropsAgentId, string>> = {
@@ -194,11 +197,11 @@ export function latestSucceededSignIn<At>(
     | (Pick<ZeropsAgentLoginState, "phase" | "startedBy"> & {
         readonly startedAt: At;
         readonly lastSucceeded?:
-          | { readonly startedAt: At; readonly startedBy?: string | undefined }
+          | { readonly startedAt: At; readonly startedBy?: ZeropsUserId | undefined }
           | undefined;
       })
     | undefined,
-): { readonly startedAt: At; readonly startedBy?: string | undefined } | undefined {
+): { readonly startedAt: At; readonly startedBy?: ZeropsUserId | undefined } | undefined {
   if (login === undefined) return undefined;
   if (login.phase === "succeeded") {
     return login.startedBy === undefined

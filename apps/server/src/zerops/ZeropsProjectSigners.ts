@@ -40,6 +40,7 @@ import type {
   ZeropsAgentId,
   ZeropsAgentLoginState,
   ZeropsLoginState,
+  ZeropsUserId,
 } from "@t3tools/contracts";
 import {
   loginTurnRefusal,
@@ -62,7 +63,7 @@ import { ZeropsSignIns, type SignInRecords } from "./zeropsSignIns.ts";
  * in. The keys are the agent ids for the two default logins and the login's
  * own id for every other one (`zeropsLoginIds.ts`).
  */
-export type ProjectSigners = Readonly<Record<string, string>>;
+export type ProjectSigners = Readonly<Record<string, ZeropsUserId>>;
 
 /** The signers out of the sign-ins this server kept. */
 const signersOf = (records: SignInRecords): ProjectSigners =>
@@ -141,7 +142,8 @@ export class ZeropsProjectSigners extends Context.Service<
     readonly turnRefusal: (input: {
       readonly agentId: ZeropsAgentId;
       readonly agent: ZeropsAgentAuthFields & Pick<ZeropsAgentAuth, "flagToken">;
-      readonly subject: string | undefined;
+      /** The person the turn is for (`principalUserId`). */
+      readonly person: ZeropsUserId | undefined;
       /** The agent's server-driven login as this server holds it (`ZeropsAgentLogin`). */
       readonly login?: ZeropsAgentLoginState | undefined;
       /** That login as it stands now, read again at each change while the turn waits on it. */
@@ -152,7 +154,8 @@ export class ZeropsProjectSigners extends Context.Service<
       readonly key: string;
       readonly state: ZeropsLoginState;
       readonly token: boolean;
-      readonly subject: string | undefined;
+      /** The person the turn is for (`principalUserId`). */
+      readonly person: ZeropsUserId | undefined;
       /** That login's server-driven sign-in as this server holds it (`ZeropsAgentLogin`). */
       readonly login?: ZeropsAgentLoginState | undefined;
       /** That login as it stands now, read again at each change while the turn waits on it. */
@@ -181,18 +184,22 @@ export const make = Effect.gen(function* () {
    */
   const gateSignedIn = (
     key: string,
-    base: (signer: string | undefined) => TurnRefusal | undefined,
+    base: (signer: ZeropsUserId | undefined) => TurnRefusal | undefined,
     input: {
       readonly token: boolean;
-      readonly subject: string | undefined;
+      /** The person the turn is for (`principalUserId`). */
+      readonly person: ZeropsUserId | undefined;
       readonly login: ZeropsAgentLoginState | undefined;
       readonly currentLogin?: CurrentLogin | undefined;
     },
   ) =>
     Effect.gen(function* () {
       const person =
-        input.subject !== undefined && input.subject.length > 0 ? input.subject : undefined;
-      const decides = (login: ZeropsAgentLoginState | undefined, signer: string | undefined) =>
+        input.person !== undefined && input.person.length > 0 ? input.person : undefined;
+      const decides = (
+        login: ZeropsAgentLoginState | undefined,
+        signer: ZeropsUserId | undefined,
+      ) =>
         !input.token &&
         person !== undefined &&
         login?.phase === "verifying-code" &&
@@ -249,13 +256,13 @@ export const make = Effect.gen(function* () {
   const gateTurn: ZeropsProjectSigners["Service"]["turnRefusal"] = ({
     agentId,
     agent,
-    subject,
+    person,
     login,
     currentLogin,
   }) =>
-    gateSignedIn(agentId, (signer) => turnRefusal({ agent, signer, subject }), {
+    gateSignedIn(agentId, (signer) => turnRefusal({ agent, signer, person }), {
       token: agent.flagToken,
-      subject,
+      person,
       login,
       currentLogin,
     });
@@ -264,13 +271,13 @@ export const make = Effect.gen(function* () {
     key,
     state,
     token,
-    subject,
+    person,
     login,
     currentLogin,
   }) =>
-    gateSignedIn(key, (signer) => loginTurnRefusal({ state, token, signer, subject }), {
+    gateSignedIn(key, (signer) => loginTurnRefusal({ state, token, signer, person }), {
       token,
-      subject,
+      person,
       login,
       currentLogin,
     });

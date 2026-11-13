@@ -1,3 +1,4 @@
+import { ZeropsUserId } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import { placedMenuRows, placedNames, placementsOf } from "./placement.ts";
 import type { HqStructure } from "./client.ts";
@@ -76,11 +77,22 @@ describe("HQ menu rows", () => {
     {
       case: "a Mate somebody has just signed in: HQ's live logins name its signer",
       logins: new Map([
-        ["mate", { "claude-code": { signedInBy: "u-maker", present: true, token: false } }],
+        [
+          "mate",
+          {
+            "claude-code": {
+              signedInBy: ZeropsUserId.make("u-maker"),
+              present: true,
+              token: false,
+            },
+          },
+        ],
       ]),
       readyAgents: new Map<string, boolean>(),
       expected: {
-        logins: { "claude-code": { signedInBy: "u-maker", present: true, token: false } },
+        logins: {
+          "claude-code": { signedInBy: ZeropsUserId.make("u-maker"), present: true, token: false },
+        },
       },
     },
     {

@@ -2,6 +2,7 @@
  * One-use HQ tickets admit a connection at the role HQ read for its person, or extend one already
  * open; a ticket never becomes a session.
  */
+import type { ZeropsUserId } from "@t3tools/contracts";
 import type { KeyLinkDown, MateTicketRole } from "@t3tools/shared/mateLink";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -13,7 +14,7 @@ import * as Schema from "effect/Schema";
 export type TicketFrame = Extract<KeyLinkDown, { readonly type: "ticket" }>;
 export interface TicketIdentity {
   readonly ticket: string;
-  readonly userId: string;
+  readonly userId: ZeropsUserId;
   readonly sessionId: string;
 }
 /**

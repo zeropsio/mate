@@ -21,6 +21,7 @@ import type {
   ZeropsAgentAuth,
   ZeropsAgentId,
   ZeropsAgentLoginState,
+  ZeropsUserId,
 } from "@t3tools/contracts";
 import { ArrowUpRightIcon, CheckIcon, CopyIcon, RotateCcwIcon } from "lucide-react";
 import {
@@ -128,7 +129,7 @@ export interface AgentSignInViewProps {
   /** Opens with what the login prints already shown. */
   readonly watching?: boolean;
   /** Who is signing in: a sign-in of their own is said as theirs. */
-  readonly viewerSubject?: string | undefined;
+  readonly viewerSubject?: ZeropsUserId | undefined;
   /** A member's name by their user id, for whose sign-in a login replaces. */
   readonly nameOf?: ((subject: string) => string | undefined) | undefined;
 }

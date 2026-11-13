@@ -14,7 +14,7 @@
  * Pure: the words, and what the conversation shows while the stand-up is its
  * person's.
  */
-import type { RunRecord, ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
+import type { RunRecord, ZeropsAgentAuthSnapshot, ZeropsUserId } from "@t3tools/contracts";
 import {
   zeropsOtherAgentReady,
   type OtherAgentFields,
@@ -121,13 +121,13 @@ export function mateStandUpHoldsComposer(input: {
  */
 export function mateStandUpSignedIn(
   snapshot: ZeropsAgentAuthSnapshot,
-  viewer: string,
+  viewer: ZeropsUserId,
   providers?: ReadonlyArray<OtherAgentFields>,
 ): boolean {
   if (zeropsOtherAgentReady(providers)) return true;
   return snapshot.agents.some(
     (agent) =>
-      turnRefusal({ agent, signer: agent.authorizedBy?.subject, subject: viewer }) === undefined,
+      turnRefusal({ agent, signer: agent.authorizedBy?.subject, person: viewer }) === undefined,
   );
 }
 

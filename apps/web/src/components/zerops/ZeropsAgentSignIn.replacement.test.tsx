@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { ZeropsUserId } from "@t3tools/contracts";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
@@ -10,9 +11,21 @@ vi.mock("~/zerops/useZeropsFeeds", () => ({
     state: "known",
     freshness: { kind: "live" },
     value: {
-      agents: [{ agentId: "codex", credPresent: true, authorizedBy: { subject: "ann" } }],
+      agents: [
+        {
+          agentId: "codex",
+          credPresent: true,
+          authorizedBy: { subject: ZeropsUserId.make("ann") },
+        },
+      ],
       logins: [
-        { id: "codex-work", agent: "codex", state: "authorized", token: false, signedInBy: "ann" },
+        {
+          id: "codex-work",
+          agent: "codex",
+          state: "authorized",
+          token: false,
+          signedInBy: ZeropsUserId.make("ann"),
+        },
       ],
     },
   }),

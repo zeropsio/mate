@@ -1,3 +1,4 @@
+import { ZeropsUserId } from "@t3tools/contracts";
 import type { MateMarkState } from "@t3tools/shared/brand";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -100,7 +101,9 @@ describe("mateArriving", () => {
       mate: {
         name: "Kai",
         face: "rose:seal",
-        logins: { "claude-code": { signedInBy: "u-eva", present: true, token: false } },
+        logins: {
+          "claude-code": { signedInBy: ZeropsUserId.make("u-eva"), present: true, token: false },
+        },
       },
     },
     created,
@@ -121,7 +124,7 @@ describe("mateArriving", () => {
     "claude-code": { signedInBy: null, lastSignedInBy: "u-eva", present: false, token: false },
   });
   const signedInOnOpenCode = withLogins({
-    opencode: { signedInBy: "u-eva", present: true, token: false },
+    opencode: { signedInBy: ZeropsUserId.make("u-eva"), present: true, token: false },
   });
   const signedOutOfOpenCode = withLogins({
     opencode: { signedInBy: null, lastSignedInBy: "u-eva", present: false, token: false },

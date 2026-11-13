@@ -9,40 +9,41 @@ import { loadShowcaseScene } from "@t3tools/shared/showcaseScenes";
 import {
   AuthAccessTokenType,
   AuthAdministrativeScopes,
+  AuthEnvironmentBootstrapTokenType,
   type AuthEnvironmentScope,
   AuthStandardClientScopes,
-  AuthEnvironmentBootstrapTokenType,
   AuthTokenExchangeGrantType,
   CommandId,
   DEFAULT_SERVER_SETTINGS,
+  EditorId,
   EnvironmentId,
   EventId,
+  ExternalLauncherCommandNotFoundError,
   GitCommandError,
   KeybindingRule,
-  MessageId,
   MATE_ENGINE_PROTOCOLS,
-  ExternalLauncherCommandNotFoundError,
+  MessageId,
+  ORCHESTRATION_WS_METHODS,
+  type OrchestrationEvent,
   type OrchestrationShellStreamItem,
   type OrchestrationThreadActivity,
   type OrchestrationThreadShell,
-  TerminalNotRunningError,
-  type OrchestrationEvent,
-  ORCHESTRATION_WS_METHODS,
   ProjectId,
   type ProviderAuthState,
   ProviderDriverKind,
-  ProviderInstanceId,
   type ProviderInstallState,
+  ProviderInstanceId,
   ProviderSetupError,
   ResolvedKeybindingRule,
+  TerminalNotRunningError,
   ThreadId,
   TurnId,
   UsageLimitSourceId,
   WS_METHODS,
   WsRpcGroup,
-  EditorId,
   ZeropsAgentLoginError,
   ZeropsDataConsoleError,
+  ZeropsUserId,
 } from "@t3tools/contracts";
 import {
   computeDpopAccessTokenHash,
@@ -1153,15 +1154,15 @@ const buildAppUnderTest = (options?: {
             // A test machine saw nobody sign anything in, and signs nothing out.
             Layer.mock(ZeropsProjectSignersModule.ZeropsProjectSigners)({
               signers: Effect.succeed({}),
-              turnRefusal: ({ agent, subject }) =>
-                Effect.succeed(turnRefusal({ agent, signer: undefined, subject })),
-              loginRefusal: ({ state, token, subject }) =>
+              turnRefusal: ({ agent, person }) =>
+                Effect.succeed(turnRefusal({ agent, signer: undefined, person })),
+              loginRefusal: ({ state, token, person }) =>
                 Effect.succeed(
                   loginTurnRefusal({
                     state,
                     token,
                     signer: undefined,
-                    subject,
+                    person,
                   }),
                 ),
             }),
@@ -1889,7 +1890,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCryptoLayer.layer))("server rout
             {
               type: "ticket",
               ticket,
-              userId: "owner",
+              userId: ZeropsUserId.make("owner"),
               sessionId: "hq-owner",
               expiresIn: 60,
             },
@@ -5091,7 +5092,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCryptoLayer.layer))("server rout
           {
             type: "ticket",
             ticket: session.token,
-            userId: "owner",
+            userId: ZeropsUserId.make("owner"),
             sessionId: "hq-owner",
             expiresIn: 60,
           },
