@@ -86,9 +86,11 @@ import { ZeropsSignerStanding } from "./ZeropsSignerStanding.ts";
  * - `task`: a task from outside an automated Mate took (`ZeropsTasks`), by
  *   HQ's id: it runs for nobody, on the organization's key only.
  *
- * Neither `crew` nor `standup` has a session HQ would end: on a login its
- * person signed, each is admitted only while HQ says that person may still run
- * turns here (X3); on a login nobody signed it runs while its project exists.
+ * `crew` has no session HQ would end: on a login its person signed, it is
+ * admitted only while HQ says that person may still run turns here (X3); on a
+ * login nobody signed it runs while its project exists. `standup` asks HQ
+ * nothing: adding the Mate is its person's own act, moments before, and adding
+ * a Mate sets it up with no condition of its own.
  */
 export type TurnPrincipal =
   | { readonly kind: "session"; readonly subject: string }
@@ -294,7 +296,7 @@ export const make = Effect.gen(function* () {
       : Effect.succeed(isTurnStartingCommand(command));
 
   /**
-   * A crew turn or a stand-up runs for somebody who is not at the keyboard, so
+   * A crew turn runs for somebody who is not at the keyboard, so
    * on a login they signed it asks whether that person may still run turns
    * here (X3): HQ answers, their signer standing (`ZeropsSignerStanding`). A
    * login nobody signed (a project token, an agent with no sign-in) asks nobody:
@@ -420,11 +422,13 @@ export const make = Effect.gen(function* () {
     if (subscription) return yield* refuse(AUTOMATED_MATE_SIGNS_NOBODY_IN);
   });
 
-  /** Whether the principal runs for a person outside their session, whose access is asked. */
+  /**
+   * Whether the principal runs for a person outside their session, whose access is asked: the
+   * crew's. A stand-up is its person's own act of adding the Mate, never asked again.
+   */
   const forSomeoneAway = (
     principal: TurnPrincipal,
-  ): principal is Extract<TurnPrincipal, { readonly startedBy: string }> =>
-    principal.kind === "crew" || principal.kind === "standup";
+  ): principal is Extract<TurnPrincipal, { readonly kind: "crew" }> => principal.kind === "crew";
 
   /**
    * The checks every turn passes, in order: a person away may still run turns
