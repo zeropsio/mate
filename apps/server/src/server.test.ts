@@ -147,8 +147,7 @@ import * as ZeropsLifecycle from "./zerops/ZeropsLifecycle.ts";
 import * as ZeropsMateKeyModule from "./zerops/ZeropsMateKey.ts";
 import * as ZeropsConnectionsModule from "./zerops/ZeropsConnections.ts";
 import * as ZeropsTicketDoorModule from "./zerops/ZeropsTicketDoor.ts";
-import * as ZeropsMateAccessListModule from "./zerops/ZeropsMateAccessList.ts";
-import { accessSceneLayer } from "./zerops/testing/accessScene.ts";
+import * as ZeropsProjectFeedModule from "./zerops/ZeropsProjectFeed.ts";
 import * as ZeropsMateUpdateModule from "./zerops/ZeropsMateUpdate.ts";
 import { FIXTURE_ATTENTION, makeFixtureZeropsLayer } from "./zerops/ZeropsFixtureFeeds.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
@@ -393,10 +392,7 @@ const testTicketState = Effect.gen(function* () {
 });
 const ticketAuthTestLayer = EnvironmentAuth.zeropsLayer.pipe(
   Layer.provideMerge(
-    ZeropsConnectionsModule.layer.pipe(
-      Layer.provideMerge(ZeropsTicketDoorModule.layer),
-      Layer.provideMerge(accessSceneLayer({ owner: "OWNER" })),
-    ),
+    ZeropsConnectionsModule.layer.pipe(Layer.provideMerge(ZeropsTicketDoorModule.layer)),
   ),
 );
 
@@ -1067,9 +1063,9 @@ const buildAppUnderTest = (options?: {
           // the fixture/feeds bundle the next `Layer.provide` supplies: a
           // test machine has no live env store either, so the reader
           // answers the boot snapshot (`undefined`, same as `config.zerops`
-          // being unset), the member list has no key to be read with, the
-          // access list names nobody, and the status starts `"unknown"`.
-          ZeropsMateAccessListModule.emptyLayer.pipe(
+          // being unset), the project feed has no key to be read with and
+          // knows no project, and the status starts `"unknown"`.
+          ZeropsProjectFeedModule.emptyLayer.pipe(
             Layer.provideMerge(
               Layer.succeed(
                 ZeropsMateKeyModule.ZeropsMateKey,

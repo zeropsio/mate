@@ -35,11 +35,8 @@ import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as TestClock from "effect/testing/TestClock";
 
-import * as Access from "./ZeropsMateAccessList.ts";
 import * as Tickets from "./ZeropsTicketDoor.ts";
 import * as Connections from "./ZeropsConnections.ts";
-import { makeAccessScene, sceneRead } from "./testing/accessScene.ts";
-import * as ChiefOpener from "./ZeropsChiefOpener.ts";
 import { makeMateStateFile } from "./ZeropsMateStateFile.ts";
 import { CREW_OFF_SNAPSHOT } from "./crew/crewSnapshot.ts";
 import { makeMateAutoUpdatePolicy } from "./MateAutoUpdatePolicy.ts";
@@ -213,7 +210,6 @@ const rig = (
     /** The Mate's own verdict on each ticket HQ sends; no tickets unless a test says. */
     readonly ticket?: ZeropsHqLinkOptions["ticket"];
     readonly end?: ZeropsHqLinkOptions["end"];
-    readonly chiefOpener?: ZeropsHqLinkOptions["chiefOpener"];
     readonly mateState?: ZeropsHqLinkOptions["mateState"];
   } = {},
 ) =>
@@ -266,7 +262,6 @@ const rig = (
       ...(options.health === undefined ? {} : { health: options.health }),
       ...(options.ticket === undefined ? {} : { ticket: options.ticket }),
       ...(options.end === undefined ? {} : { end: options.end }),
-      ...(options.chiefOpener === undefined ? {} : { chiefOpener: options.chiefOpener }),
       ...(options.mateState === undefined ? {} : { mateState: options.mateState }),
       gitCredential: (credential) =>
         Effect.uninterruptible(
@@ -373,97 +368,6 @@ const stateFile = Effect.gen(function* () {
 });
 
 describe("ZeropsHqLink", () => {
-  it.effect(
-    "HQ state applies the Chief opener again on reconnect and omission retains the last verdict",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const opener = yield* ChiefOpener.make;
-          const list = yield* Access.make({
-            projectId: "P_MATE",
-            read: Effect.succeed(sceneRead({ jan: "OWNER", eva: "BASIC_USER" }, ["chief"])),
-            opener,
-          });
-          const tickets = yield* Tickets.make;
-          const connections = yield* Connections.make.pipe(
-            Effect.provideService(Access.ZeropsMateAccessList, list),
-            Effect.provideService(Tickets.ZeropsTicketDoor, tickets),
-            Effect.provide(NodeCrypto.layer),
-          );
-          const { sockets } = yield* rig({ chiefOpener: opener.named });
-          const first = yield* linked(sockets, 0);
-          admit(first, { ...STATE, chiefOpenerUserId: "eva" });
-          yield* TestClock.adjust(Duration.zero);
-          assert.strictEqual(
-            yield* Effect.flatten(
-              connections.ticket(
-                {
-                  type: "ticket",
-                  ticket: "t1",
-                  userId: "jan",
-                  sessionId: "s",
-                  expiresIn: 60,
-                },
-                live,
-              ),
-            ),
-            "not_in_list",
-          );
-          first.closeWith(1006);
-          yield* TestClock.adjust(Duration.millis(30));
-          const next = yield* linked(sockets, 1);
-          assert.strictEqual(
-            yield* Effect.flatten(
-              connections.ticket(
-                {
-                  type: "ticket",
-                  ticket: "t2",
-                  userId: "jan",
-                  sessionId: "s",
-                  expiresIn: 60,
-                },
-                live,
-              ),
-            ),
-            "not_in_list",
-          );
-          admit(next, { ...STATE, chiefOpenerUserId: "jan" });
-          yield* TestClock.adjust(Duration.zero);
-          assert.strictEqual(
-            yield* Effect.flatten(
-              connections.ticket(
-                {
-                  type: "ticket",
-                  ticket: "t-new",
-                  userId: "jan",
-                  sessionId: "s",
-                  expiresIn: 60,
-                },
-                live,
-              ),
-            ),
-            "open",
-          );
-          admit(next, { ...STATE, chiefOpenerUserId: null });
-          yield* TestClock.adjust(Duration.zero);
-          assert.strictEqual(
-            yield* Effect.flatten(
-              connections.ticket(
-                {
-                  type: "ticket",
-                  ticket: "t3",
-                  userId: "eva",
-                  sessionId: "s",
-                  expiresIn: 60,
-                },
-                live,
-              ),
-            ),
-            "not_in_list",
-          );
-        }),
-      ),
-  );
   it.effect(
     "A link whose HQ sends no state within the handshake budget closes and reconnects",
     () =>
@@ -821,10 +725,8 @@ describe("ZeropsHqLink", () => {
     "TC-6 and TC-8 the HQ link holds tickets before acknowledging and forwards sign-out to live connections",
     () =>
       Effect.gen(function* () {
-        const scene = yield* makeAccessScene({ jan: "OWNER" });
         const tickets = yield* Tickets.make;
         const connections = yield* Connections.make.pipe(
-          Effect.provideService(Access.ZeropsMateAccessList, scene.list),
           Effect.provideService(Tickets.ZeropsTicketDoor, tickets),
           Effect.provide(NodeCrypto.layer),
         );

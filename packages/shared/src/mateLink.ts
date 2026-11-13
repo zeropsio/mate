@@ -18,9 +18,7 @@
  *   `@t3tools/contracts`): one value with its own revision, whole on every link and again at each
  *   new revision. An older HQ passes it by as a type it does not know.
  * - **Down**, the Mate's own state in HQ: its record, who asked for its stand-up,
- *   and its changes with their outcome (`hqChanges.ts`); and
- *   its access (`access`): who its project opens for and whom it lists, by the door's own rule over
- *   the org's view HQ reads (`mateAccess.ts`), whole after every view, with how old that view is.
+ *   and its changes with their outcome (`hqChanges.ts`).
  *
  * HQ pings every 20 s and the Mate answers; either side reconnects or closes on silence. A frame
  * whose type this build does not know is passed by (`readLinkUp`), so a newer side never closes an
@@ -60,7 +58,6 @@ import * as Schema from "effect/Schema";
 import { UsageLinkUp, UsageLinkDown } from "./agentUsage.ts";
 import { MateChanges, MateRepo } from "./hqChanges.ts";
 import { MateGitPush } from "./hqDeploys.ts";
-import { ChiefMateOwner, MateAccessMember } from "./mateAccess.ts";
 import { HqAutoUpdatePolicy } from "./mateAutoUpdatePolicy.ts";
 
 export const MATE_LINK_TEXT_MAX = 280;
@@ -469,14 +466,6 @@ export const MateLinkDown = Schema.Union([
   ...UsageLinkDown.members,
   Schema.Struct({ type: Schema.Literal("ping") }),
   Schema.Struct({ type: Schema.Literal("state"), mate: MateState, ...StateExtras }),
-  Schema.Struct({
-    type: Schema.Literal("access"),
-    /** How long before it was sent Zerops answered the view it was computed from. */
-    ageMs: Count,
-    members: Schema.Array(MateAccessMember),
-    /** Explicitly null for an ordinary Mate; absent only on older HQs. */
-    chief: Schema.optionalKey(Schema.NullOr(ChiefMateOwner)),
-  }),
   TaskDown,
   TaskMessageDown,
   TaskStopDown,
@@ -489,8 +478,8 @@ export type MateLinkDown = typeof MateLinkDown.Type;
  * HQ with nothing in the URL and proves itself with its project key in the first frame; HQ sends
  * its state. HQ's ticket names the person's role on the Mate's project as HQ read it at Zerops
  * (`role`), and the Mate admits on that role; it keeps every ticket heard under a live admission
- * and answers it `ticket-ack`. It tells HQ only whose raw membership or role may have changed
- * (`person-changed`), and an older HQ's `access` frame is no frame of this union. Today's frames
+ * and answers it `ticket-ack`. It tells HQ nothing of the organisation's members, and an older
+ * HQ's `access` frame is no frame of this union. Today's frames
  * of tasks, usage and the update policy ride on it unchanged.
  * Today's `MateLinkUp`, `MateLinkDown` and `MateState` above stay for the HQ and clients that
  * still read them.
@@ -513,11 +502,10 @@ export const MateSelf = Schema.Struct({
 });
 export type MateSelf = typeof MateSelf.Type;
 
-/** The Mate as a `state` frame brings it: its self read, known owner and Chief opener verdict. */
+/** The Mate as a `state` frame brings it: its self read and known owner. */
 export const LinkedMate = Schema.Struct({
   ...MateSelf.fields,
   ownerUserId: Schema.optionalKey(Schema.String),
-  chiefOpenerUserId: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 export type LinkedMate = typeof LinkedMate.Type;
 
@@ -603,15 +591,6 @@ export const KeyLinkUp = Schema.Union([
   }),
   ...LinkCommandResultUp.members,
   Schema.Struct({ type: Schema.Literal("key-refused") }),
-  /**
-   * A hint that the org membership or own-project role of the person `userId` may have changed,
-   * as the Mate's own list saw its raw rows move; never a role or a verdict, which HQ reads from
-   * Zerops itself. Sent once HQ admitted the link, and lost if the link is down: never told again.
-   */
-  Schema.Struct({
-    type: Schema.Literal("person-changed"),
-    userId: Schema.String.check(Schema.isMinLength(1)),
-  }),
 ]);
 export type KeyLinkUp = typeof KeyLinkUp.Type;
 

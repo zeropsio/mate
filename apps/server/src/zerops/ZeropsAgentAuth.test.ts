@@ -20,7 +20,6 @@ import * as ServerConfig from "../config.ts";
 import { buildSnapshot, computeAgentAuthState, make, toZembedEnv } from "./ZeropsAgentAuth.ts";
 import type { WatcherHandle } from "./ZeropsAgentAuthWatcher.ts";
 import { ZeropsAgentFlagError } from "./ZeropsAgentFlag.ts";
-import * as ZeropsMateAccessList from "./ZeropsMateAccessList.ts";
 import * as ZeropsProjectSigners from "./ZeropsProjectSigners.ts";
 import { memorySignInStore, ZeropsSignIns } from "./zeropsSignIns.ts";
 
@@ -211,7 +210,6 @@ describe("the signer", () => {
       const projectSigners = yield* ZeropsProjectSigners.make.pipe(
         Effect.provide(
           Layer.mergeAll(
-            ZeropsMateAccessList.emptyLayer,
             ServerConfig.layer({} as ServerConfig.ServerConfig["Service"]),
             Layer.succeed(ZeropsSignIns, signIns),
           ),

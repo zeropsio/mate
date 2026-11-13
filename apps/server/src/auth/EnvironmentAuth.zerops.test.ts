@@ -8,8 +8,6 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as ServerConfig from "../config.ts";
-import * as Access from "../zerops/ZeropsMateAccessList.ts";
-import { makeAccessScene } from "../zerops/testing/accessScene.ts";
 import * as Tickets from "../zerops/ZeropsTicketDoor.ts";
 import * as Connections from "../zerops/ZeropsConnections.ts";
 import { resolveZeropsEnvironment } from "../zerops/ZeropsEnvironment.ts";
@@ -31,10 +29,8 @@ const request = (headers: Record<string, string> = {}, query = "") =>
   HttpServerRequest.fromWeb(new Request(`https://mate.example/api/shell${query}`, { headers }));
 
 const setup = Effect.gen(function* () {
-  const scene = yield* makeAccessScene({ jan: "OWNER" });
   const tickets = yield* Tickets.make;
   const connections = yield* Connections.make.pipe(
-    Effect.provideService(Access.ZeropsMateAccessList, scene.list),
     Effect.provideService(Tickets.ZeropsTicketDoor, tickets),
   );
   const auth = yield* Auth.EnvironmentAuth.pipe(
@@ -57,7 +53,7 @@ const setup = Effect.gen(function* () {
       () => true,
     ),
   );
-  return { auth, connections, set: scene.set };
+  return { auth, connections };
 });
 
 it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))(
@@ -130,11 +126,11 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))(
         Effect.gen(function* () {
           for (const cause of ["sign-out", "refusal"] as const) {
             yield* Effect.gen(function* () {
-              const { auth, connections, set } = yield* setup;
+              const { auth, connections } = yield* setup;
               yield* connections.admit({ ticket: "opaque-ticket" }, Effect.void);
               if (cause === "sign-out") yield* connections.end({ session: "hq-session" });
-              // Zerops no longer lets Jan in: the list refuses him.
-              else yield* set({ jan: "NO_ACCESS" });
+              // HQ refused the Mate's key: every connection ends.
+              else yield* connections.end({ everyone: true });
               assert.isTrue(
                 Exit.isFailure(
                   yield* Effect.exit(

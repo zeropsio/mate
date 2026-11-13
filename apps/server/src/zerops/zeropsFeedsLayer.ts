@@ -14,12 +14,10 @@
  */
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import { CommandId, ConversationId, ThreadId } from "@t3tools/contracts";
 
 import { ServerConfig } from "../config.ts";
-import { SessionAdmission } from "../auth/EnvironmentAuthPolicy.ts";
 import * as ZeropsThreadLifecycle from "../persistence/ZeropsThreadLifecycle.ts";
 import { layer as providerInstancesLayer } from "../spi/providerInstances.ts";
 import * as ProcessRunner from "../processRunner.ts";
@@ -48,15 +46,11 @@ import * as ZeropsLoginsModule from "./ZeropsLogins.ts";
 import * as ZeropsMateAttentionModule from "./ZeropsMateAttention.ts";
 import * as ZeropsGitCredentialFileModule from "./ZeropsGitCredentialFile.ts";
 import * as ZeropsObserveCredentialFileModule from "./ZeropsObserveCredentialFile.ts";
-import * as ZeropsAccessReadModule from "./ZeropsAccessRead.ts";
-import * as ZeropsMateAccessListModule from "./ZeropsMateAccessList.ts";
 import * as ZeropsProjectFeedModule from "./ZeropsProjectFeed.ts";
 import * as ZeropsMateOwnerModule from "./ZeropsMateOwner.ts";
-import * as ZeropsChiefOpenerModule from "./ZeropsChiefOpener.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import { mateAutoUpdatePolicyLayer } from "./MateAutoUpdatePolicy.ts";
 import * as ZeropsMateUpdateModule from "./ZeropsMateUpdate.ts";
-import { zeropsUserIdOf } from "@t3tools/contracts";
 import * as ZeropsConnectionsModule from "./ZeropsConnections.ts";
 import * as ZeropsTicketDoorModule from "./ZeropsTicketDoor.ts";
 import * as ZeropsOffboardingModule from "./ZeropsOffboarding.ts";
@@ -76,58 +70,27 @@ import * as ZeropsTurnAdmissionModule from "./ZeropsTurnAdmission.ts";
 import * as ZeropsCrewProposalsModule from "./ZeropsCrewProposals.ts";
 
 /**
- * One access list for the auth boundary, the door, the watch and the link to HQ, with the own-key
- * reader it reads Zerops with: computed by the Mate in a Zerops container, empty elsewhere. It
- * carries the one `ZeropsMateOwner` and the one `ZeropsChiefOpener` out with it: the link writes
- * HQ's owner and Chief opener there; offboarding reads the owner, the list's Chief filter the
- * opener.
+ * The Mate's own project feed, with the project key it reads Zerops with: read by the Mate in a
+ * Zerops container, empty elsewhere. It carries the one `ZeropsMateOwner` out with it: the link
+ * writes HQ's owner there, offboarding reads it.
  */
-export const ZeropsMateAccessListLive = Layer.unwrap(
+export const ZeropsProjectFeedLive = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* ServerConfig;
     const zerops = config.zeropsFixtures === undefined ? config.zerops : undefined;
     return zerops === undefined
-      ? ZeropsMateAccessListModule.emptyLayer
-      : ZeropsMateAccessListModule.layer(zerops).pipe(
-          Layer.provide(ZeropsAccessReadModule.layer(zerops)),
-        );
+      ? ZeropsProjectFeedModule.emptyLayer
+      : ZeropsProjectFeedModule.layer(zerops);
   }),
 ).pipe(
   Layer.provideMerge(ZeropsMateKeyModule.layer),
   Layer.provideMerge(ZeropsMateOwnerModule.layer),
-  Layer.provideMerge(ZeropsChiefOpenerModule.layer),
 );
 
 /** One connection registry shared by the HQ link, WebSocket and HTTP transports. */
 export const ZeropsConnectionsLive = ZeropsConnectionsModule.layer.pipe(
   Layer.provideMerge(ZeropsTicketDoorModule.layer),
-  // The project feed over the same list instance: its own project and process frames.
-  Layer.provideMerge(ZeropsProjectFeedModule.derivedLayer),
-  Layer.provideMerge(ZeropsMateAccessListLive),
-);
-
-/** Existing credentials must still belong here before they expose any protected response. */
-export const ZeropsSessionAdmissionLive = Layer.effect(
-  SessionAdmission,
-  Effect.gen(function* () {
-    const config = yield* ServerConfig;
-    const access = yield* ZeropsMateAccessListModule.ZeropsMateAccessList;
-    return (subject: string) =>
-      config.zerops === undefined || config.zeropsFixtures !== undefined
-        ? Effect.succeed(true)
-        : access.current.pipe(
-            Effect.map((current) =>
-              Option.match(current, {
-                onNone: () => false,
-                onSome: (list) =>
-                  list.members.some(
-                    (member) =>
-                      member.userId === zeropsUserIdOf(subject) && member.visibility === "open",
-                  ),
-              }),
-            ),
-          );
-  }),
+  Layer.provideMerge(ZeropsProjectFeedLive),
 );
 
 /**
