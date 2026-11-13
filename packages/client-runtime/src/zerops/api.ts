@@ -2192,8 +2192,7 @@ export class ZeropsApiClient {
     clientId: string,
     signal?: AbortSignal,
   ): Promise<ReadonlyArray<ZeropsOrganizationMember>> {
-    // `clientUserList`, not `items` — the member list is its own shape
-    // (measured 2026-09-18; `ZeropsThrowawayIdentity.ts` says the same).
+    // `clientUserList`, not `items` — the member list is its own shape (measured 2026-09-18).
     const body = await this.#request<{
       readonly clientUserList?: ReadonlyArray<ZeropsOrganizationMember>;
       readonly items?: ReadonlyArray<ZeropsOrganizationMember>;
