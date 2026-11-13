@@ -269,7 +269,12 @@ describe("the turn gate", () => {
       yield* TestClock.adjust(Duration.zero);
       return { signers, signIns };
     });
-  const gate = (kept: SignInRecords = {}) => memorySignInStore(kept).pipe(Effect.flatMap(gateOver));
+  // A server whose link already brought HQ's map: a login with no signer is nobody's at once.
+  const gate = (kept: SignInRecords = {}) =>
+    memorySignInStore(kept).pipe(
+      Effect.tap((store) => store.heard({})),
+      Effect.flatMap(gateOver),
+    );
   const by = (userId: string) => ({ by: userId });
   /** A login whose code is being checked, started by `startedBy`. */
   const checking = (startedBy: string) =>

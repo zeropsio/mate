@@ -4,9 +4,10 @@
  * The turn gate (`ZeropsProjectSigners`), the logins' rows and the Mate's overview to its HQ all
  * go by it. Two writers: the person this server watched sign a login in — the subject of the door
  * session that started it — and HQ, which keeps each login's last signer the Mate reported
- * (`lastSignedInBy`) and sends the map on the link (`signers`) after every `hello` and again when
- * an HQ write moves it. That is how whose a login is outlives a restart, or a container that
- * boots with nothing: the server keeps no file of who may act.
+ * (`lastSignedInBy`) and sends the map on the link (`signers`) once per link, after its first state.
+ * That is how whose a login is outlives a restart, or a container that boots with nothing: the
+ * server keeps no file of who may act. Until that map is heard once in this process (`mapHeard`), a
+ * login without a signer is not known to be nobody's: the gate waits for it before saying so.
  *
  * A sign-in watched here is kept with when it happened, by this server's clock (`signedAt`), in the
  * server's state directory (`sign-ins.json`, `{ [key]: { by, at } }`), because HQ's map names no
@@ -57,9 +58,14 @@ export interface SignInStore {
   /** Records that `record.by` signed the login `key` in now, stamped with this server's clock. */
   readonly save: (key: string, record: SignInRecord) => Effect.Effect<void>;
   readonly clear: (key: string) => Effect.Effect<void>;
-  /** Fill logins without a signer from HQ's `signers` frame. */
+  /** Fill logins without a signer from HQ's `signers` frame; the map is heard from then on. */
   readonly heard: (signers: Readonly<Record<string, string>>) => Effect.Effect<void>;
-  /** Fires after each save, clear or map that moved a record: whose a login is may have moved. */
+  /** Whether HQ's map was heard since this process started: before it, no signer says nothing. */
+  readonly mapHeard: Effect.Effect<boolean>;
+  /**
+   * Fires after each save, clear or map that moved a record, and after the first map: whose a
+   * login is may have moved.
+   */
   readonly changes: Stream.Stream<void>;
 }
 
@@ -144,6 +150,7 @@ export const signedAtFile = (at: string) =>
 export const memorySignInStore = (initial: SignInRecords = {}, keep: SignedAtKeep = keptNowhere) =>
   Effect.gen(function* () {
     const records = yield* Ref.make(initial);
+    const mapHeard = yield* Ref.make(false);
     const signedAt = yield* Ref.make<SignedAtMap>(yield* keep.read);
     // One write at a time, in the order the sign-ins were kept.
     const stamps = yield* Semaphore.make(1);
@@ -186,10 +193,15 @@ export const memorySignInStore = (initial: SignInRecords = {}, keep: SignedAtKee
             : [true, { ...current, [key]: { ...record, credentialCleared: true as const } }];
         }).pipe(Effect.flatMap((cleared) => (cleared ? told : Effect.void))),
       heard: (signers) =>
-        Ref.modify(records, (current) => {
-          const next = applySigners(current, signers);
-          return next === undefined ? [false, current] : [true, next];
-        }).pipe(Effect.flatMap((changed) => (changed ? told : Effect.void))),
+        Effect.gen(function* () {
+          const changed = yield* Ref.modify(records, (current) => {
+            const next = applySigners(current, signers);
+            return next === undefined ? [false, current] : [true, next];
+          });
+          const heardBefore = yield* Ref.getAndSet(mapHeard, true);
+          if (changed || !heardBefore) yield* told;
+        }),
+      mapHeard: Ref.get(mapHeard),
       changes: Stream.fromPubSub(moved),
     } satisfies SignInStore;
   });
