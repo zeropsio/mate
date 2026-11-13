@@ -168,7 +168,8 @@ describe("what the settings' forms take", () => {
 });
 
 describe("making the organization's Slack app from HQ's manifest", () => {
-  // As HQ makes it (`mate-hq apps/hq/src/slack.ts`): its events sent to HQ's own address.
+  // As HQ makes it (`mate-hq spec/protocol.md` § Slack, Discord and the GitHub webhook): its events sent to
+  // HQ's own address.
   const EVENTS = "https://hq-acme.zerops.app/api/intake/slack/acme";
   const manifest = {
     display_information: { name: "Mate" },

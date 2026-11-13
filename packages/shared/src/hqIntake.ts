@@ -139,9 +139,9 @@ export type HqChannelView = typeof HqChannelView.Type;
 /**
  * Discord (`/api/org/discord`, Owner/Admin): the organization connects a Discord application by its
  * id, public key and bot token (sealed). HQ registers `/mate` and answers Discord's interactions at
- * `interactionsUrl`; `inviteUrl` adds the bot to a server. Only Discord users on the allowlist
- * (`PUT /api/org/discord/allow`) may start or steer a task. An application takes tasks from one
- * channel (`PUT /api/apps/:appId/discord`).
+ * `interactionsUrl`; `inviteUrl` adds the bot to a server. Only a Discord user who linked their account to a
+ * person (`/mate link`) may start or steer a task (`mate-hq spec/protocol.md` § Slack, Discord and the GitHub
+ * webhook). An application takes tasks from one channel (`PUT /api/apps/:appId/discord`).
  */
 export const HqDiscordConnectRequest = Schema.Struct({
   applicationId: TrimmedNonEmptyString,
@@ -263,7 +263,13 @@ export const HqAppTask = Schema.Struct({
   mate: Schema.NullOr(Schema.Struct({ projectId: Schema.String, name: Schema.String })),
   /** Its place in the queue while queued (1 = next). */
   position: Schema.optionalKey(Schema.Int),
-  /** Who asked, in the source's words (a GitHub login, a Slack name). */
+  /**
+   * Who asked, as HQ names them (HQ stores no third-party name): for a Slack or Discord task the Zerops
+   * name of the person who linked the asking account, as the reader's own kept personal token lists the
+   * organisation's people, `null` where none linked, it lists none or the reader has no such token; for a
+   * webhook task its caller's `author`; `null` for a GitHub-intake or schedule task
+   * (`mate-hq spec/protocol.md` § Automation and issue intake).
+   */
   requestedBy: Schema.NullOr(Schema.String),
   createdAt: Schema.String,
   startedAt: Schema.NullOr(Schema.String),

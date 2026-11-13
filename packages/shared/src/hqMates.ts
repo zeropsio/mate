@@ -1,7 +1,7 @@
 /**
- * The Mates as HQ hands them to a reader on its structure socket (`mate-hq apps/hq/src/stream.ts`), apart
- * from the structure itself: each Mate the reader may observe (`observe_mate`) by its project, and
- * the people the reader's view names.
+ * The Mates as HQ hands them to a reader on its structure socket (`mate-hq spec/protocol.md` § Live updates),
+ * apart from the structure itself: each Mate the reader may observe (`observe_mate`) by its project, and the
+ * people the reader's view names.
  *
  * - The snapshot carries {@link HqMatesSnapshot} beside the structure: every such Mate, whole.
  * - `{ type: "mate", projectId, value }` carries only what changed of one Mate — its presence or

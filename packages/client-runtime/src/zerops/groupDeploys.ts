@@ -69,7 +69,8 @@ function creationReason(reason: string | null | undefined): string | undefined {
 /**
  * A release that had to create a service in a production before deploying to it, and did not: the
  * release's `delta` job there ended without going live. HQ then refuses every deploy of that
- * release (`mate-hq apps/hq/src/deploys.ts` `moveOn`), so nothing of it runs.
+ * release (`mate-hq spec/protocol.md` § Structure, lifecycle, deploys, recipes and Mate observation), so
+ * nothing of it runs.
  */
 export interface ReleaseCreationFailure {
   readonly tag: string;

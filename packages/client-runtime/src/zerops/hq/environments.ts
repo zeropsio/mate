@@ -8,9 +8,9 @@ import { HqGitNavigationEnvironment } from "@t3tools/shared/hqStream";
  * sends them to whoever may read the application's changes (`read_change`); one who only sees the
  * application gets none.
  *
- * Decoded here against `mate-hq apps/hq/src/structure.ts`'s `EnvironmentView` until the contract moves to
- * `@t3tools/shared`; a set this build cannot read is not known, and never takes the structure
- * beside it down.
+ * Decoded here against `mate-hq spec/protocol.md` § Git remotes, environments and delivery until the contract
+ * moves to `@t3tools/shared`; a set this build cannot read is not known, and never takes the structure beside
+ * it down.
  *
  * @module hq/environments
  */
