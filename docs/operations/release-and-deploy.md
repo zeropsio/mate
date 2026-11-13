@@ -4,10 +4,11 @@ How mate reaches users. Each step names the file that owns its detail.
 
 - **Hosted web client.** `main` deploys https://mate.zerops.io through `zerops.yml`'s `prod` setup.
   Keep `main` releasable; one hard line: never break signing in with a Zerops account.
-- **Staging web.** `zerops.yml`'s `staging` setup builds the alfa test web against alfa's HQ
-  (`VITE_HQ_ORIGIN`); Mates born from it pin `T3CODE_ZEROPS_HQ_ORIGIN` to that HQ. It runs at the
-  setup's `VITE_HOSTED_APP_URL`; deploy it from a checkout with
-  `zcli push -P <project id> -S <web id> --setup staging`.
+- **Staging web.** `zerops.yml`'s `staging` setup builds a test target's web (alfa, the standing
+  test environments `env-N`) against that target's HQ, named by the web service's variable
+  `MATE_HQ_URL` (`VITE_HQ_ORIGIN`); Mates born from it pin `T3CODE_ZEROPS_HQ_ORIGIN` to that HQ. It
+  runs at its service's `zeropsSubdomain`; the build refuses a service without either. Deploy it
+  from a checkout with `zcli push -P <project id> -S <web id> --setup staging`.
 - **Dev environments' web.** `zerops.yml`'s `dev` setup serves `https://mate.<host>` of each dev
   environment, one service per environment, named after it. Deploy a branch with the manual
   **Deploy dev Mate** workflow (`.github/workflows/deploy-dev.yml`).
