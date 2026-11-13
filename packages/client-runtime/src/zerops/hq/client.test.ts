@@ -786,10 +786,7 @@ describe("Git token refusals", () => {
       "This repository is no longer in the application. Choose a repository from its current list.",
     not_structure_writer:
       "Your role cannot change repository connections. Ask an organization owner or admin to do this.",
-    membership_unknown:
-      "Mate could not verify your organization membership. Try again when Zerops is available.",
-    custodian_removed:
-      "The person who supplied this token has left the organization. Replace the token.",
+    held: "This organization is on hold in HQ, so HQ opens none of its saved tokens. Whoever runs this HQ lifts the hold.",
     credential_invalid:
       "The saved token was refused. Replace it with a token that can write to this repository.",
     disconnect_required:
@@ -1926,7 +1923,12 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
     const hq = fakeHq((seen) =>
       seen.path === "/api/door"
         ? undefined
-        : json(409, { code: "handover_unfinished", phase: "revoke", reason: "ownerRoleRequired" }),
+        : json(409, {
+            code: "handover_unfinished",
+            phase: "revoke",
+            reason: "ownerRoleRequired",
+            finishRole: "OWNER",
+          }),
     );
     const hqApi = makeHqApi({
       address: ADDRESS,
