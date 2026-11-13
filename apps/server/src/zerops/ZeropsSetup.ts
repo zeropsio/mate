@@ -39,6 +39,7 @@ import {
   type ZeropsAgentId,
   type ConversationAgent,
   wakeId as standUpWakeIdOf,
+  zeropsUserIdOf,
 } from "@t3tools/contracts";
 import type { LinkedMate } from "@t3tools/shared/mateLink";
 import { resolvePrimaryConversation } from "@t3tools/shared/primaryConversation";
@@ -162,7 +163,7 @@ export class ZeropsSetup extends Context.Service<
     /** Receipt: the initial wait ended as sent, failed, skipped or not asked. */
     readonly awaitStandUp: Effect.Effect<void>;
     /**
-     * One manual attempt, only for the recorded asker after a failed send.
+     * One manual attempt, only for the recorded asker (their session's subject) after a failed send.
      */
     readonly retry: (subject: string) => Effect.Effect<boolean, OrchestrationDispatchCommandError>;
   }
@@ -844,7 +845,12 @@ export const makeZeropsSetup = Effect.gen(function* () {
         Effect.gen(function* () {
           const stored = yield* recordOf;
           const held = yield* seenOnEngine(stored);
-          if (stored === undefined || held?.source !== "server:failed" || held.userId !== subject)
+          // The record names its asker by their Zerops user id; the session, by its subject.
+          if (
+            stored === undefined ||
+            held?.source !== "server:failed" ||
+            held.userId !== zeropsUserIdOf(subject)
+          )
             return false;
           const id = `mate-standup-${held.threadId}-${yield* crypto.uuidV4()}`;
           const changed = yield* sql`UPDATE zerops_stand_ups
