@@ -34,6 +34,7 @@ import type { ZeropsApiClient } from "../../../zerops/api.ts";
 import { deployTokenMint } from "../../../zerops/deployToken.ts";
 import { HqError, hqRouteMissing, type HqApi } from "../../../zerops/hq/client.ts";
 import {
+  chatLinkRefusalWords,
   HQ_NOT_OPEN,
   hqNeedsUpdate,
   MERGERS_NEED_UPDATE,
@@ -104,6 +105,7 @@ export type HqWrites = Pick<
   | "attachProject"
   | "createMate"
   | "establishZcpAuthorization"
+  | "takeChatLink"
   | "askReadAccess"
   | "closeReadAccess"
   | "keepDeployToken"
@@ -159,6 +161,13 @@ export interface HqExecutor extends OperationExecutor {
   ) => Effect.Effect<string>;
   readonly cancelGitCandidate: (requestId: string) => void;
   readonly hasGitCandidate: (requestId: string) => boolean;
+  /** Takes a chat account link: its one-time code goes beside the intent, never into it. */
+  readonly submitChatLink: (
+    operations: Operations,
+    requestId: string,
+    intent: Extract<OperationIntent, { readonly kind: "take-chat-link" }>,
+    code: string,
+  ) => Effect.Effect<string>;
 }
 
 type Write = <A>(call: () => Promise<A>) => Effect.Effect<A, StreamFault | UncertainAcceptance>;
@@ -306,6 +315,17 @@ function outsideProductionFault(cause: unknown): StreamFault | UncertainAcceptan
   return said === undefined ? fault : { ...fault, message: said };
 }
 
+/** A take whose code this executor no longer holds: the account changed, or it was sent once already. */
+const CHAT_LINK_CODE_GONE = "Open the link Mate sent you again.";
+
+/** HQ's refusal of a chat account link in its own words, where the route has them. */
+function chatLinkFault(cause: unknown): StreamFault | UncertainAcceptance {
+  const fault = faultOf(cause);
+  if (!(cause instanceof HqError) || cause.kind !== "refused") return fault;
+  const said = chatLinkRefusalWords(cause);
+  return said === undefined ? fault : { ...fault, message: said };
+}
+
 /** An HQ from before reveals were recorded: a retry never records one. */
 const HQ_RECORDS_NO_REVEALS = hqNeedsUpdate("record reveals");
 /** An HQ that will not record a reveal by this person: someone HQ lets record it reveals it. */
@@ -376,6 +396,8 @@ export function makeHqExecutor(ports: {
   readonly store?: AccountStore;
 }): HqExecutor {
   const candidates = new Map<string, { readonly intent: HqGitCandidateIntent; token: string }>();
+  /** Each chat-link take's code by its request id, until its one send takes it out. */
+  const chatLinkCodes = new Map<string, string>();
   let gitClosed = false;
   const cancelGitCandidate = (id: string) => {
     const held = candidates.get(id);
@@ -718,6 +740,13 @@ export function makeHqExecutor(ports: {
   return {
     cancelGitCandidate,
     hasGitCandidate: (id) => candidates.has(id),
+    submitChatLink: (operations, id, intent, code) => {
+      if (chatLinkCodes.has(id)) throw new Error("This chat link is being taken already.");
+      chatLinkCodes.set(id, code);
+      return operations
+        .submit(intent, id)
+        .pipe(Effect.ensuring(Effect.sync(() => chatLinkCodes.delete(id))));
+    },
     submitGitCandidate: (operations, id, intent, token) => {
       if (candidates.has(id)) throw new Error("This Git operation already has a candidate.");
       const candidate = { intent, token };
@@ -1145,6 +1174,23 @@ export function makeHqExecutor(ports: {
           intent.kind === "record-reveal"
         )
           return yield* chiefWrite(requestId, api, intent);
+        if (intent.kind === "take-chat-link") {
+          const code = chatLinkCodes.get(requestId);
+          chatLinkCodes.delete(requestId);
+          if (code === undefined)
+            return yield* Effect.fail<StreamFault>({
+              outcome: "definitive-refusal",
+              message: CHAT_LINK_CODE_GONE,
+            });
+          const take = api.takeChatLink;
+          if (take === undefined)
+            return yield* Effect.fail<StreamFault>({
+              outcome: "definitive-refusal",
+              message: hqNeedsUpdate("link chat accounts"),
+            });
+          const link = yield* Effect.tryPromise({ try: () => take(code), catch: chatLinkFault });
+          return answered(requestId, intent.orgId, link);
+        }
         if (intent.kind === "authorize-observe") {
           const establish = api.establishZcpAuthorization;
           if (establish === undefined)

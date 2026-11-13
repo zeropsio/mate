@@ -116,6 +116,7 @@ function fixture(mode: "lost" | "accepted" | "refused" = "lost", form: boolean |
     },
     readProgress: (id) => operationProgress.derive(readsOfState(store.state()), id),
     untilEnd: unused,
+    takeChatLink: unused,
     run: unused,
     untilMoveRemainder: unused,
     untilEnvironment: unused,

@@ -1,4 +1,5 @@
 import type { HqRemoteProbe } from "@t3tools/shared/hqChanges";
+import type { HqChatLink } from "@t3tools/shared/hqChatLinks";
 import { captureAccountLifetime } from "./accountLifetime";
 import { platformMembership, readsOfState } from "@t3tools/client-runtime/data";
 /**
@@ -21,6 +22,7 @@ import {
   type RunToEnd,
   operationEnd,
   operationProgress,
+  operationResult,
   type AccountStore,
   type CreationRead,
   type DetailDemand,
@@ -66,6 +68,15 @@ export interface AccountOperations {
     intent: HqGitCandidateIntent,
     token: string,
   ) => Promise<HqRemoteProbe>;
+  /**
+   * Takes a chat account link in the organization: its one-time code goes to the executor beside
+   * the intent, never into the recorded intent. Resolves once HQ has answered: where it stands, and
+   * the link HQ made where it did.
+   */
+  readonly takeChatLink: (
+    orgId: string,
+    code: string,
+  ) => Promise<{ readonly progress: OperationProgress; readonly link: HqChatLink | undefined }>;
   readonly readProgress: (requestId: string) => OperationProgress;
   readonly untilMoveRemainder: (
     key: Parameters<typeof recordedMoveRemainder.derive>[1],
@@ -238,6 +249,17 @@ export function accountOperations(
         unobserved: HQ_UNFOLLOWED,
       });
       return result.probe;
+    },
+    takeChatLink: async (orgId, code) => {
+      const requestId = randomUUID();
+      await Effect.runPromise(
+        hqExecutor.submitChatLink(operations, requestId, { kind: "take-chat-link", orgId }, code),
+      );
+      const state = store.state();
+      return {
+        progress: operationProgress.derive(readsOfState(state), requestId),
+        link: operationResult(state.operations.get(requestId), "take-chat-link"),
+      };
     },
     askAgain: (requestId) => Effect.runPromise(operations.retry(requestId)),
     submit: async (intent, named) => {

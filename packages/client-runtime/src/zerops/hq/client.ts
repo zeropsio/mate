@@ -96,6 +96,7 @@ import {
   type HqWebhookRequest,
 } from "@t3tools/shared/hqIntake";
 import { HqTakeOverList, HqTakeOverReplaced } from "@t3tools/shared/hqTakeOver";
+import { HqChatLink } from "@t3tools/shared/hqChatLinks";
 import type { OverviewLogins } from "@t3tools/shared/mateLink";
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 import * as Option from "effect/Option";
@@ -589,6 +590,11 @@ export interface HqApi {
     tokenId: string,
     ownerUserId: string | undefined,
   ) => Promise<HqTakeOverReplaced>;
+  /**
+   * Takes a chat account link HQ said to the person's Slack or Discord account: that account is
+   * theirs in the organization from now on (`POST /api/chat-links`).
+   */
+  readonly takeChatLink?: (code: string) => Promise<HqChatLink>;
   /** Whether the organization's Slack app is connected, and to which workspace (`GET /api/org/slack`). */
   readonly slack?: () => Promise<HqSlackView>;
   /** The manifest the organization's Slack app is made from (`GET /api/org/slack/manifest`). */
@@ -1066,6 +1072,7 @@ const readAiKeys = decoded(Schema.Array(HqAiKeyView), "the organization's AI key
 const readAiKey = decoded(HqAiKeyView, "an AI key");
 const readTakeOverList = decoded(HqTakeOverList, "a member's tokens to take over");
 const readTakeOverReplaced = decoded(HqTakeOverReplaced, "a token's take-over");
+const readChatLink = decoded(HqChatLink, "a chat account link");
 const readSlack = decoded(HqSlackView, "the Slack app");
 const readSlackChannels = decoded(HqSlackChannels, "the Slack app's channels");
 const readDiscord = decoded(HqDiscordView, "the Discord application");
@@ -2029,6 +2036,21 @@ export function makeHqApi(input: {
           true,
         ),
       ),
+    takeChatLink: async (code) => {
+      try {
+        return readChatLink(
+          await authorized(
+            "/api/chat-links",
+            { method: "POST", body: JSON.stringify({ code }) },
+            true,
+          ),
+        );
+      } catch (cause) {
+        // An answer this version cannot read still followed a link HQ made.
+        if (cause instanceof HqError && cause.code === "unreadable") throw uncertain();
+        throw cause;
+      }
+    },
     slack: async () => readSlack(await authorized("/api/org/slack")),
     slackManifest: async () =>
       bodyOf(await authorized("/api/org/slack/manifest"), "the Slack app's manifest"),

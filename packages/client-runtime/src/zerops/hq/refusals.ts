@@ -19,6 +19,7 @@ import {
  * @module hq/refusals
  */
 import type { MERGE_REFUSALS } from "@t3tools/shared/hqChanges";
+import { CHAT_LINK_NOT_FOUND } from "@t3tools/shared/hqChatLinks";
 import { HQ_MERGERS_MAX } from "@t3tools/shared/hqMergers";
 import { fileSize } from "../gitBrowse/blob.ts";
 import type { HqOfferState } from "@t3tools/shared/hqOffers";
@@ -508,6 +509,22 @@ export function hqRefusalWords(refusal: {
   if (refusal.gitSetup)
     return "Mate could not complete Git setup. Review the settings and try again.";
   return `HQ refused this (${reason ?? refusal.code}).`;
+}
+
+/**
+ * Why HQ did not link a chat account (`POST /api/chat-links`), where its words are this route's own:
+ * a code it holds no open link of in the organization, or one cut short. Every other refusal is said
+ * as `hqRefusalWords` says it.
+ */
+export function chatLinkRefusalWords(refusal: {
+  readonly code: string;
+  readonly reason: string | undefined;
+}): string | undefined {
+  if (refusal.reason === CHAT_LINK_NOT_FOUND)
+    return "This link has been used, has expired, or is for another organization. Switch organizations and try again, or ask Mate for a new link.";
+  if (refusal.code === "invalid")
+    return "This link is incomplete. Open the whole link Mate sent you.";
+  return undefined;
 }
 
 /** How many of the people an application names are said by name before "and N more". */
