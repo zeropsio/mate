@@ -1,3 +1,4 @@
+import { ZeropsUserId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -127,7 +128,11 @@ const placedWith = (signers: Readonly<Record<string, string>>): HqPlacement => (
     logins: Object.fromEntries(
       Object.entries(signers).map(([key, userId]) => [
         key,
-        { signedInBy: userId === "" ? null : userId, present: true, token: false },
+        {
+          signedInBy: userId === "" ? null : ZeropsUserId.make(userId),
+          present: true,
+          token: false,
+        },
       ]),
     ),
   },

@@ -169,7 +169,7 @@ export const REPLACE_SIGN_IN_PRESS = "Sign in with your account";
  */
 export function replacedSignInLine(input: {
   readonly agentId: ZeropsAgentId;
-  readonly authorizedBy: { readonly subject: string } | undefined;
+  readonly authorizedBy: { readonly subject: ZeropsUserId } | undefined;
   readonly viewerSubject: ZeropsUserId | undefined;
   /** A member's name by their user id. */
   readonly nameOf: (subject: string) => string | undefined;

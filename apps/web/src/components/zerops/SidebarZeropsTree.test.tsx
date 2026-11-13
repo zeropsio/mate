@@ -323,7 +323,7 @@ function recorded(placed: HqPlacement, over: Partial<HqMate>): HqPlacement {
 
 /** A Mate's logins as HQ's overview says them, naming `signer` as who signed Claude in. */
 const signedBy = (signer: string): Partial<HqMate> => ({
-  logins: { "claude-code": { signedInBy: signer, present: true, token: false } },
+  logins: { "claude-code": { signedInBy: ZeropsUserId.make(signer), present: true, token: false } },
 });
 
 /** A Mate signed in by `u-ada` — the viewer's own, where a test makes her the viewer. */

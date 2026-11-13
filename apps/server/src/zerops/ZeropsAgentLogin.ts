@@ -259,8 +259,9 @@ export class ZeropsAgentLogin extends Context.Service<
       /**
        * The subject of the session driving this login, taken from the
        * authenticated session — never from the client's input, which could
-       * name anyone. Published as the login's `startedBy`, so that person's
-       * client records the signer once it succeeds.
+       * name anyone. Its person (`zeropsUserIdOf`) is published as the login's
+       * `startedBy` and kept as the signer once it succeeds; a session that is
+       * no Zerops person publishes and keeps none.
        */
       subject: SessionSubject,
       /** The connection the sign-in is started on: it ends with that connection. */
@@ -549,10 +550,13 @@ export const make = (options: ZeropsAgentLoginOptions) =>
         }
 
         const credentialCommitted = result.nextPhase === "succeeded";
-        if (credentialCommitted && signIns !== undefined && session.startedBy !== undefined) {
+        if (credentialCommitted && signIns !== undefined) {
           // Kept before anything else hears of the success: the gate, the rows and the Mate's
-          // overview go by it, and the overview carries it to HQ (`zeropsSignIns`).
-          yield* signIns.save(key, { by: session.startedBy });
+          // overview go by it, and the overview carries it to HQ (`zeropsSignIns`). A session that
+          // is no Zerops person leaves no signer, never the one before it.
+          yield* session.startedBy === undefined
+            ? signIns.clear(key)
+            : signIns.save(key, { by: session.startedBy });
         }
 
         if (credentialCommitted) {

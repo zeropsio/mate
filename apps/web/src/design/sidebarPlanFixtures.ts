@@ -1,4 +1,4 @@
-import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
+import { HqEnvironmentId, ProjectId, ZeropsUserId } from "@t3tools/contracts";
 /**
  * The pass 16 plan's menu, as fixtures: projects standing in every state its
  * mock draws, so the harness (`design.html?set=plan`) can be put side by side
@@ -75,7 +75,13 @@ function mate(
           ...(signer === null
             ? {}
             : {
-                logins: { "claude-code": { signedInBy: signer, present: true, token: false } },
+                logins: {
+                  "claude-code": {
+                    signedInBy: ZeropsUserId.make(signer),
+                    present: true,
+                    token: false,
+                  },
+                },
               }),
         },
       } satisfies HqPlacement,

@@ -1057,7 +1057,7 @@ const HQ_AUTO_UPDATE_VERIFY_BUDGET = Duration.seconds(5);
 
 /** Where a Mate's overview is read from: the services the link's layer finds, by what it reads. */
 export interface OverviewSources {
-  readonly lastSigners?: Effect.Effect<Readonly<Record<string, string>>>;
+  readonly lastSigners?: Effect.Effect<Readonly<Record<string, ZeropsUserId>>>;
   readonly signedAt?: Effect.Effect<Readonly<Record<string, string>>>;
   readonly environmentId: OverviewIdentity["environmentId"];
   readonly serverVersion: string;

@@ -80,7 +80,7 @@ export type ZeropsAgentAvailability = (
   | { readonly kind: "signing-in" }
   | { readonly kind: "needs-sign-in"; readonly signInKind: ZeropsAgentSignInKind }
   /** Someone else signed this agent in — or the viewer could not be identified (turnRefusal treats both alike). */
-  | { readonly kind: "someone-else"; readonly signerId: string | undefined }
+  | { readonly kind: "someone-else"; readonly signerId: ZeropsUserId | undefined }
   /** Signed in on the project, but no signer was recorded for it. */
   | { readonly kind: "unrecorded" }
   /** The agent's row is not known yet, or its read failed: the read says which. */

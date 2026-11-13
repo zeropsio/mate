@@ -3,6 +3,7 @@ import {
   CrewSnapshot,
   OrchestrationThreadShell,
   ZeropsAgentAuthSnapshot,
+  ZeropsUserId,
 } from "@t3tools/contracts";
 import { linkFrameBytes, MateOverview, type OverviewIdentity } from "@t3tools/shared/mateLink";
 import { maskSecrets } from "@t3tools/shared/messagePreview";
@@ -552,7 +553,7 @@ it("relays the last signer for display while a signed-out login vouches for nobo
       threads: [],
       auth,
       crew: CREW_OFF_SNAPSHOT,
-      lastSigners: { "claude-code": "user-ada" },
+      lastSigners: { "claude-code": ZeropsUserId.make("user-ada") },
     }),
   );
   expect(overview.logins["claude-code"]).toEqual({

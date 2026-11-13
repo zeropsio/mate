@@ -1,5 +1,6 @@
 import { canonicalProjectFlow } from "./projectFlow.ts";
 import { hqProjectPeople } from "./hqProjectPeople.ts";
+import { ZeropsUserId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { hqMateScope } from "../families/hqMate.ts";
@@ -842,7 +843,7 @@ describe("HQ-computed Mate owners", () => {
               mate,
               person: { ...person, ownerUserId },
               signedInNow: {},
-              everSignedIn: { codex: "other" },
+              everSignedIn: { codex: ZeropsUserId.make("other") },
             },
           },
         ],

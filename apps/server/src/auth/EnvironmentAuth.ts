@@ -27,8 +27,9 @@ import {
   type ServerAuthBootstrapMethod,
   type ServerAuthDescriptor,
   type ServerAuthSessionMethod,
-  ZEROPS_SUBJECT_PREFIX,
+  SessionSubject,
   zeropsSubjectOf,
+  zeropsUserIdOf,
 } from "@t3tools/contracts";
 import * as EnvironmentAuthPolicy from "./EnvironmentAuthPolicy.ts";
 import * as PairingGrantStore from "./PairingGrantStore.ts";
@@ -628,7 +629,7 @@ export const make = Effect.gen(function* () {
     }
     return authenticateToken(credential).pipe(
       Effect.flatMap((session) => {
-        if (!session.subject.startsWith(ZEROPS_SUBJECT_PREFIX)) {
+        if (zeropsUserIdOf(SessionSubject.make(session.subject)) === undefined) {
           return Effect.fail(
             new ServerAuthInvalidCredentialError({
               diagnostic: "This session predates Zerops account access. Sign in again.",
@@ -906,7 +907,7 @@ export const make = Effect.gen(function* () {
           return yield* sessions.verifyWebSocketToken(websocketTicket).pipe(
             mapSessionVerificationErrors,
             Effect.flatMap((session) =>
-              !session.subject.startsWith(ZEROPS_SUBJECT_PREFIX)
+              zeropsUserIdOf(SessionSubject.make(session.subject)) === undefined
                 ? Effect.fail(
                     new ServerAuthInvalidCredentialError({
                       diagnostic: "Sign in with Zerops to access Mate.",

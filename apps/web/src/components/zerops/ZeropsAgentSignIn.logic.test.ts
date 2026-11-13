@@ -318,15 +318,19 @@ describe("replacedSignInLine: whose sign-in a login replaces, said before the pr
   const nameOf = (subject: string) => (subject === "u-ann" ? "Ann" : undefined);
   it.each([
     ["nobody recorded", undefined, "Signing in replaces the sign-in Codex has now."],
-    ["the person's own", { subject: "u-bo" }, "Signing in replaces your own sign-in."],
+    [
+      "the person's own",
+      { subject: ZeropsUserId.make("u-bo") },
+      "Signing in replaces your own sign-in.",
+    ],
     [
       "a colleague, by name",
-      { subject: "u-ann" },
+      { subject: ZeropsUserId.make("u-ann") },
       "This replaces Ann's sign-in for this agent on this Mate.",
     ],
     [
       "a colleague not named",
-      { subject: "u-cy" },
+      { subject: ZeropsUserId.make("u-cy") },
       "This replaces another project member's sign-in for this agent on this Mate.",
     ],
   ] as const)("%s", (_case, authorizedBy, line) => {

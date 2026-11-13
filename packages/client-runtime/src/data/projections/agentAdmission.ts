@@ -112,7 +112,7 @@ export function agentAdmission(input: {
    */
   readonly automated?: boolean | undefined;
   /** Who HQ records signed each login in (its project's `everSignedIn`), by login key. */
-  readonly hqSigners?: Readonly<Record<string, string>> | undefined;
+  readonly hqSigners?: Readonly<Record<string, ZeropsUserId>> | undefined;
 }) {
   if (input.automated === true) return automatedAdmission(input);
   const snapshot = input.read?.state === "known" ? input.read.value : null;

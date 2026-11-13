@@ -1,6 +1,8 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
+import { ZeropsUserId } from "@t3tools/contracts";
+
 import { ZeropsAgentPickerPanel } from "./ZeropsAgentPickerPanel";
 
 const noop = () => {};
@@ -60,7 +62,7 @@ describe("ZeropsAgentPickerPanel", () => {
     const html = renderToStaticMarkup(
       <ZeropsAgentPickerPanel
         agentId="claude-code"
-        availability={{ kind: "someone-else", signerId: "user-b" }}
+        availability={{ kind: "someone-else", signerId: ZeropsUserId.make("user-b") }}
         onCancel={noop}
         onOpenDialog={noop}
         requestClosePicker={noop}

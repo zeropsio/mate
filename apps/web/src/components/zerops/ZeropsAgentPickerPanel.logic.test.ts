@@ -7,6 +7,7 @@ import {
   type ZeropsAgentPickerPanelView,
 } from "./ZeropsAgentPickerPanel.logic";
 import type { ZeropsAgentAvailability } from "@t3tools/client-runtime/zerops/agentAvailability";
+import { ZeropsUserId } from "@t3tools/contracts";
 
 describe("resolveZeropsAgentPickerPanelView", () => {
   it.each([
@@ -68,7 +69,7 @@ describe("resolveZeropsAgentPickerPanelView", () => {
     {
       name: "someone-else with a known signer name",
       agentId: "claude-code",
-      availability: { kind: "someone-else", signerId: "user-b" },
+      availability: { kind: "someone-else", signerId: ZeropsUserId.make("user-b") },
       signerName: "Jan",
       expected: {
         agentName: "Claude Code",
@@ -201,7 +202,7 @@ describe("resolveZeropsAgentPickerPanelView — session lock notice", () => {
     expect(
       resolveZeropsAgentPickerPanelView({
         agentId: "claude-code",
-        availability: { kind: "someone-else", signerId: "user-b" },
+        availability: { kind: "someone-else", signerId: ZeropsUserId.make("user-b") },
         lockedToAgentName: "Codex",
       }).sessionLockNotice,
     ).toBe("This session runs on Codex. Claude Code is used after Archive and start fresh.");

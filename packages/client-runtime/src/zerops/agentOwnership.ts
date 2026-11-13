@@ -50,7 +50,7 @@ import {
 /** The recorded authorizer, as it arrives on `ZeropsAgentAuth.authorizedBy`. */
 export interface ZeropsAgentAuthorizer {
   /** The Zerops user id the door put on the session that drove the login. */
-  readonly subject: string;
+  readonly subject: ZeropsUserId;
   /** When, if anything recorded it: the fact the product needs is whose login it is. */
   readonly at?: string | Date | undefined;
 }
@@ -161,11 +161,11 @@ export function agentOwnershipComposerNotice(
 
 /** The login a signer comes from, as a snapshot row carries it. */
 export interface AgentSignerFacts {
-  readonly authorizedBy?: { readonly subject: string } | undefined;
+  readonly authorizedBy?: { readonly subject: ZeropsUserId } | undefined;
   readonly login?:
     | {
         readonly phase: ZeropsAgentLoginPhase;
-        readonly startedBy?: string | undefined;
+        readonly startedBy?: ZeropsUserId | undefined;
       }
     | undefined;
 }
@@ -187,8 +187,8 @@ const LOGIN_ENDED: ReadonlySet<ZeropsAgentLoginPhase> = new Set([
  */
 export function resolveAgentAuthorizer(
   agent: AgentSignerFacts,
-  viewer: string | undefined,
-): { readonly subject: string } | undefined {
+  viewer: ZeropsUserId | undefined,
+): ZeropsAgentAuthorizer | undefined {
   if (agent.authorizedBy !== undefined) return { subject: agent.authorizedBy.subject };
   const login = agent.login;
   if (

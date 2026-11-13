@@ -1,4 +1,4 @@
-import { HqEnvironmentId } from "@t3tools/contracts";
+import { HqEnvironmentId, ZeropsUserId } from "@t3tools/contracts";
 /**
  * The sidebar, in every state it has, at the width it really gets — the thing
  * a string assertion cannot show you.
@@ -179,7 +179,7 @@ function candidate(
   // Every Mate here has its agent signed in (D6), as HQ's overview of it names them — by the
   // viewer, or by a colleague where its owner is not the viewer; the plan set's Hollin holds the
   // ones nobody has.
-  const signer = COLLEAGUES_MATES.has(id) ? "u-colleague" : "u-harness";
+  const signer = ZeropsUserId.make(COLLEAGUES_MATES.has(id) ? "u-colleague" : "u-harness");
   const signed: HqPlacement =
     hq.kind !== "mate" || hq.mate === null
       ? hq

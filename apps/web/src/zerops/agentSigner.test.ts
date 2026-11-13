@@ -6,7 +6,7 @@ import { resolveAgentAuthorizer } from "@t3tools/client-runtime/zerops/agentOwne
 describe("resolveAgentAuthorizer", () => {
   const login = (phase: "verifying-code" | "succeeded" | "failed" | "cancelled", by?: string) => ({
     phase,
-    ...(by === undefined ? {} : { startedBy: by }),
+    ...(by === undefined ? {} : { startedBy: ZeropsUserId.make(by) }),
   });
 
   it.each([
@@ -46,6 +46,6 @@ describe("resolveAgentAuthorizer", () => {
     },
     { name: "neither means nobody", agent: {}, expected: undefined },
   ])("$name", ({ agent, expected }) => {
-    expect(resolveAgentAuthorizer(agent, "user-a")).toEqual(expected);
+    expect(resolveAgentAuthorizer(agent, ZeropsUserId.make("user-a"))).toEqual(expected);
   });
 });

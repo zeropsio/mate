@@ -289,7 +289,7 @@ describe("keyed HQ Mate readers", () => {
             present: true,
             token: true,
             signedInBy: ZeropsUserId.make("user"),
-            lastSignedInBy: "user",
+            lastSignedInBy: ZeropsUserId.make("user"),
           },
         },
       },

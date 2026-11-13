@@ -153,7 +153,10 @@ describe("resolveConversationWriter", () => {
 });
 
 describe("hqConversationWriter", () => {
-  const SIGNERS = { "claude-code": "u-ada", codex: "u-bob" } as const;
+  const SIGNERS = {
+    "claude-code": ZeropsUserId.make("u-ada"),
+    codex: ZeropsUserId.make("u-bob"),
+  } as const;
   it.each<{
     readonly name: string;
     readonly input: Parameters<typeof hqConversationWriter>[0];
@@ -184,7 +187,7 @@ describe("hqConversationWriter", () => {
       input: {
         instanceId: "codex",
         providers: PROVIDERS,
-        signers: { "claude-code": "u-ada" },
+        signers: { "claude-code": ZeropsUserId.make("u-ada") },
         viewerSubject: ZeropsUserId.make("u-ada"),
       },
       expected: "nobody-yet",

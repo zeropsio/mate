@@ -119,7 +119,7 @@ export function hqConversationWriter(input: {
   readonly instanceId: string | undefined;
   readonly providers: ReadonlyArray<{ readonly instanceId: string; readonly driver: string }>;
   /** Who HQ records signed each agent's own login in; `undefined` while HQ has not said. */
-  readonly signers: Readonly<Partial<Record<ZeropsAgentId, string>>> | undefined;
+  readonly signers: Readonly<Partial<Record<ZeropsAgentId, ZeropsUserId>>> | undefined;
   /** The signed-in Zerops user's id; `undefined` while the session is not read. */
   readonly viewerSubject: ZeropsUserId | undefined;
 }): ConversationWriter {
