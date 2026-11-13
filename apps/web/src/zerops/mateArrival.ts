@@ -13,6 +13,8 @@
  * - Standing up: at work, while the ask the sign-in sends is on its way; the conversation then
  *   takes over, the ask drawn as a quiet line (`mateStandUpAskLine`).
  * - Stopped, before the model exists: what stopped in plain words, with the one way on.
+ * - Its setup never started (`mateStandUpStopped`): asking, "Wren's setup didn't start.", that
+ *   nothing changed, and Try again for its person; anybody else reads who can start it again.
  *
  * Pure: the words, the face and the steps; the views draw them.
  */
@@ -39,6 +41,7 @@ import {
 
 import { mateFaceFor } from "./agentActivity";
 import { mateComingHeadlineClauses } from "./mateComing";
+import type { MateSetupRetryState } from "./mateStandUp";
 import { mateQuestion, type ZeropsMateIdentity } from "./mateIdentities";
 
 type Named = Pick<ZeropsMateIdentity, "name" | "project">;
@@ -65,6 +68,10 @@ export type ArrivalKind =
   | "sign-in-colleague"
   /** Signed in, the ask on its way. */
   | "standing-up"
+  /** Its setup never started (`mateStandUpStopped`): its person starts it again. */
+  | "setup-stopped"
+  /** Its setup never started, and it is somebody else's to start again. */
+  | "setup-stopped-plain"
   /** Ready: the question the composer answers. */
   | "question";
 
@@ -86,6 +93,9 @@ export function arrivalHeadlineClauses(mate: Named, kind: ArrivalKind): Readonly
       return mate.project === undefined
         ? [`${keptWhole(mate.name)} is standing up development.`]
         : [`${keptWhole(mate.name)} is standing up development on ${keptWhole(mate.project)}.`];
+    case "setup-stopped":
+    case "setup-stopped-plain":
+      return [`${keptWhole(mate.name)}'s setup didn't start.`];
     case "question":
       return [mateQuestion(mate)];
   }
@@ -109,6 +119,8 @@ export interface ArrivalSentenceContext {
    * viewer's is what made it ready: the stand-up's words say its agent is ready, not signed in.
    */
   readonly agentReady?: boolean | undefined;
+  /** Its setup never started: where its person's Try again stands (`mateSetupRetryState`). */
+  readonly retry?: MateSetupRetryState | undefined;
 }
 
 /**
@@ -148,9 +160,27 @@ export function arrivalSentence(
         ? `Nobody has signed ${name} in yet. Sign it in with your own account and it's yours.`
         : `${context.addedBy} added ${name} but hasn't signed it in. Sign it in with your own account and it's yours.`;
     case "standing-up":
+      if (context.retry === "starting") return "It starts in a moment.";
       return context.agentReady === true
         ? "Its agent is ready. It starts in a moment."
         : "Signed in. It starts in a moment.";
+    case "setup-stopped":
+      switch (context.retry) {
+        case "again":
+          return "It stopped before its first step again. Give it a minute, then try again.";
+        case "refused":
+          return `${name} has no setup of yours waiting to start. Write to ${name} below instead.`;
+        case "unreachable":
+          return `That didn't reach ${name}. Try again in a moment.`;
+        default:
+          return mate.project === undefined
+            ? "It stopped before its first step, so nothing changed."
+            : `It stopped before its first step, so nothing changed on ${mate.project}.`;
+      }
+    case "setup-stopped-plain":
+      return context.addedBy === undefined
+        ? `The person who added ${name} can start it again.`
+        : `${context.addedBy} added ${name} and can start it again.`;
     case "reaching":
     case "unreachable":
     case "question":
@@ -176,9 +206,12 @@ export function arrivalFace(
     case "unreachable":
       return "sleep";
     case "coming-failed":
+    case "setup-stopped":
       return "needs";
     case "standing-up":
       return "working";
+    case "setup-stopped-plain":
+      return mateFaceFor(connected, undefined, { arriving: false });
     case "sign-in":
     case "sign-in-plain":
     case "sign-in-colleague":

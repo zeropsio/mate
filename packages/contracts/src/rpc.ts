@@ -1079,8 +1079,9 @@ const WsSubscribeResourceTelemetryRpc = Rpc.make(WS_METHODS.subscribeResourceTel
 });
 
 /**
- * One explicit retry of a failed stand-up send, authorized as the authenticated asker. Refused
- * (`OrchestrationDispatchCommandError`) while the Mate engine owns the conversation.
+ * One explicit retry of a failed stand-up send, by its asker: true once an attempt went (it starts,
+ * or ends failed again), false where the caller has no failed send to try again, and
+ * `OrchestrationDispatchCommandError` where the Mate could not read or write its record.
  */
 const WsZeropsStandUpRetryRpc = Rpc.make(WS_METHODS.zeropsStandUpRetry, {
   payload: Schema.Struct({}),

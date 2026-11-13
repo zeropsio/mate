@@ -8,6 +8,7 @@ import { mateActionsForEnvironmentAtom } from "@t3tools/client-runtime/data";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
+import { AsyncResult } from "effect/reactivity";
 import { useCallback, useMemo, useState } from "react";
 import { useAtomCommand } from "../state/use-atom-command";
 import { zeropsCommands } from "../state/zeropsCommands";
@@ -56,22 +57,22 @@ export function useMateStandUp(input: {
   readonly messageCount: number;
   /** It is read live from its Mate, not a copy being read again (`mateStandUpConversation`). */
   readonly live: boolean;
-  /**
-   * The person has written in it themselves; `undefined` where that is not read. A stand-up that
-   * failed leaves the conversation holding its run, not the person's words: it still offers its
-   * retry until they write.
-   */
-  readonly personWrote?: boolean | undefined;
 }): {
   /** The stand-up waits in this conversation (`mateStandUpAwaitedIn`). */
   readonly awaited: boolean;
   readonly holdsComposer: boolean;
   readonly sendFailed: boolean;
   readonly failed: boolean;
+  /** A Try again is in flight, or its attempt not settled yet. */
   readonly retrying: boolean;
-  readonly retry: () => Promise<void>;
+  /**
+   * One Try again, answered as the Mate answered it: it went, it was refused (no failed setup of
+   * the caller's to start), or it never reached the Mate; null while another is in flight. The
+   * Mate decides whose setup it is: the caller offers it only to the person it runs for.
+   */
+  readonly retry: () => Promise<"went" | "refused" | "unreachable" | null>;
 } {
-  const { environmentId, threadRef, messageCount, live, personWrote } = input;
+  const { environmentId, threadRef, messageCount, live } = input;
   const directory = useZeropsMateDirectory();
   const whoLivesHere = environmentId === null ? null : zeropsMateAt(directory, environmentId);
   const marker = whoLivesHere?.kind === "mate" ? whoLivesHere.mate.standUp : undefined;
@@ -108,35 +109,27 @@ export function useMateStandUp(input: {
   });
   const origin = useMateOfEnvironment(environmentId)?.origin ?? undefined;
   const own = marker !== undefined && marker.by === viewer;
-  const unwritten = conversation !== "started" || personWrote === false;
-  const { setup } = useMateSetup(
-    own && awaitedHere && (messageCount === 0 || personWrote === false) ? origin : undefined,
-  );
-  const failed = own && awaitedHere && setup?.standup === "failed" && unwritten;
+  const { setup } = useMateSetup(own && awaitedHere && messageCount === 0 ? origin : undefined);
+  const failed = own && awaitedHere && setup?.standup === "failed" && conversation !== "started";
   const sendFailed = failed && setup?.standupFailure === "send_failed";
   const [submitting, setRetrying] = useState(false);
   const actions = useAtomValue(mateActionsForEnvironmentAtom(environmentId ?? ""));
   const retrying =
     submitting || actions.some((action) => action.action === "standUpRetry" && action.pending);
   const sendAgain = useAtomCommand(zeropsCommands.standUpRetry, "stand-up retry");
-  // One function while what it sends stays: the banner offering it is rebuilt only with it.
   const retry = useCallback(async () => {
-    if (
-      !sendFailed ||
-      environmentId === null ||
-      retrying ||
-      origin === undefined ||
-      orgId === undefined
-    )
-      return;
+    if (retrying) return null;
+    if (environmentId === null || origin === undefined || orgId === undefined) return "unreachable";
     setRetrying(true);
     try {
-      await sendAgain({ environmentId, input: { orgId, origin } });
-      if (origin !== undefined) refreshMateSetup(origin);
+      const answer = await sendAgain({ environmentId, input: { orgId, origin } });
+      refreshMateSetup(origin);
+      if (!AsyncResult.isSuccess(answer)) return "unreachable";
+      return answer.value ? "went" : "refused";
     } finally {
       setRetrying(false);
     }
-  }, [environmentId, orgId, origin, retrying, sendAgain, sendFailed]);
+  }, [environmentId, orgId, origin, retrying]);
   return {
     awaited: awaitedHere,
     holdsComposer: mateStandUpHoldsComposer({

@@ -61,7 +61,11 @@ import { type ArrivalService, type ArrivalStepInput } from "~/zerops/mateArrival
 import { askAgainLabel } from "@t3tools/client-runtime/zerops/environments";
 import type { MateComing } from "@t3tools/client-runtime/data";
 import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
-import { mateStandUpAskLine, type MateStandUpPhase } from "~/zerops/mateStandUp";
+import {
+  mateStandUpAskLine,
+  type MateSetupRetryState,
+  type MateStandUpPhase,
+} from "~/zerops/mateStandUp";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
@@ -210,8 +214,10 @@ interface HarnessState {
   readonly crew?: boolean;
   readonly unnamed?: boolean;
   readonly agentReady?: boolean;
-  readonly standUpFailure?: boolean;
-  readonly retryingStandUp?: boolean;
+  /** Its setup never started: where its Try again stands. */
+  readonly setupStopped?: MateSetupRetryState;
+  /** A colleague's view of it: who added the Mate, null where unnamed; absent for its person. */
+  readonly setupAddedBy?: string | null;
   readonly watching?: boolean;
 }
 
@@ -369,14 +375,24 @@ const STATES: ReadonlyArray<HarnessState> = [
     coming: "not-created",
   },
   { id: "limit", label: "Provider usage limit (production stage)", mate: WREN, phase: null },
-  ...[false, true].map((retryingStandUp) => ({
-    id: retryingStandUp ? "stand-up-retrying" : "stand-up-failed",
-    label: "Stand-up send failure",
-    mate: WREN,
-    phase: null,
-    standUpFailure: true,
-    retryingStandUp,
-  })),
+  ...(
+    [
+      ["stand-up-failed", "ready", "Setup didn't start · Try again"],
+      ["stand-up-retrying", "sending", "Setup didn't start · trying again"],
+      ["stand-up-starting", "starting", "Setup didn't start · the Mate took it"],
+      ["stand-up-again", "again", "Setup didn't start · stopped again"],
+      ["stand-up-refused", "refused", "Setup didn't start · nothing to start"],
+      ["stand-up-unreachable", "unreachable", "Setup didn't start · didn't reach it"],
+    ] as const
+  ).map(([id, setupStopped, label]) => ({ id, label, mate: WREN, phase: null, setupStopped })),
+  ...[
+    { id: "stand-up-colleague", label: "Setup didn't start · a colleague", setupAddedBy: "Mira" },
+    {
+      id: "stand-up-colleague-unnamed",
+      label: "Setup didn't start · a colleague, adder unnamed",
+      setupAddedBy: null,
+    },
+  ].map((state) => ({ ...state, mate: WREN, phase: null, setupStopped: "ready" as const })),
   {
     id: "auth-checking",
     label: "Auth checking",
@@ -932,6 +948,11 @@ function Pane({ state, go }: { readonly state: HarnessState; readonly go: (id: s
     go("standing-up");
     window.setTimeout(() => go("conversation"), 1400);
   }, [go]);
+  // Try again as the Mate answers it: sent, then taken, then the Mate starting it.
+  const onRetry = useCallback(() => {
+    go("stand-up-retrying");
+    window.setTimeout(() => go("stand-up-starting"), 1200);
+  }, [go]);
   const signingIn = state.logins !== undefined;
 
   const stage = (
@@ -941,9 +962,11 @@ function Pane({ state, go }: { readonly state: HarnessState; readonly go: (id: s
       coming={comingOf(state, nowMs)}
       // Waiting for its first sign-in, it is still arriving (`mateArrivingUntil`).
       standUpFailure={
-        state.standUpFailure
-          ? { retrying: state.retryingStandUp === true, retry: () => undefined }
-          : undefined
+        state.setupStopped === undefined
+          ? undefined
+          : state.setupAddedBy !== undefined
+            ? { state: state.setupStopped, addedBy: state.setupAddedBy }
+            : { state: state.setupStopped, retry: onRetry }
       }
       mate={
         state.unnamed
