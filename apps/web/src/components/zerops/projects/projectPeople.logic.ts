@@ -47,6 +47,8 @@ export interface ProjectPeopleInput {
     readonly kind: RoleProjectKind;
     /** The project's own name, for a kind the group has several of. */
     readonly name?: string;
+    /** Zerops does not list it to the viewer (HQ's `hiddenEnvironments`): its people are not read. */
+    readonly hidden?: boolean;
   }>;
   /** Each place's grants, by project id. */
   readonly grants: Readonly<Record<string, ProjectGrantsRead>>;

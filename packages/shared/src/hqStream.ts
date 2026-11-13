@@ -495,6 +495,17 @@ export const HqNavigationRollout = Schema.Struct({
 });
 export type HqNavigationRollout = typeof HqNavigationRollout.Type;
 
+/**
+ * A stage or production of an application whose project Zerops does not list to the person, by its
+ * project id and tier alone: the place they ask for read access to (spec/protocol.md,
+ * `hiddenEnvironments`).
+ */
+export const HqHiddenEnvironment = Schema.Struct({
+  id: Schema.String,
+  tier: Schema.Literals(["stage", "production"]),
+});
+export type HqHiddenEnvironment = typeof HqHiddenEnvironment.Type;
+
 /** @deprecated Use CanonicalHqNavigationApp at the HQ read boundary. */
 export const HqNavigationApp = Schema.Struct({
   problems: Schema.optionalKey(Schema.Array(HqProblem)),
@@ -525,6 +536,8 @@ export const HqNavigationApp = Schema.Struct({
    * and a rollout not listed: not known, never planned.
    */
   rollouts: Schema.optionalKey(Schema.Array(HqNavigationRollout)),
+  /** Its stages and productions the person's token does not reach; absent: none. */
+  hiddenEnvironments: Schema.optionalKey(Schema.Array(HqHiddenEnvironment)),
 });
 export type HqNavigationApp = typeof HqNavigationApp.Type;
 /** Additive canonical reader; the legacy app DTO remains usable until consumers migrate. */

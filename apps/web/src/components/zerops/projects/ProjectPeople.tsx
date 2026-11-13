@@ -35,6 +35,7 @@ import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 import { Atom } from "effect/reactivity";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
+import { hqNavigationAtom } from "~/state/zerops";
 import {
   useAccountDataOptional,
   useAccountOrgId,
@@ -195,6 +196,27 @@ function useGroupProjects(groupId: string | null): AccessProjects {
   );
 }
 
+/**
+ * The group's stages and productions Zerops does not list to the viewer, by id and tier alone as
+ * HQ names them (`hiddenEnvironments`): columns they can ask read access for, never read.
+ */
+function useHiddenPlaces(groupId: string): AccessProjects {
+  const hidden = useAtomValue(hqNavigationAtom).structure?.apps.find(
+    ({ id }) => id === groupId,
+  )?.hiddenEnvironments;
+  // HQ leaves the list out where the viewer reaches every place: none is hidden.
+  return useMemo(
+    () =>
+      hidden === undefined
+        ? NO_HIDDEN_PLACES
+        : hidden.map(({ id, tier }) => ({ projectId: id, kind: tier, hidden: true })),
+    [hidden],
+  );
+}
+
+/** No hidden place: one list, so a render changes nothing. */
+const NO_HIDDEN_PLACES: AccessProjects = [];
+
 type WriteIntent = Parameters<
   NonNullable<ReturnType<typeof useAccountOperationsOptional>>["submit"]
 >[0];
@@ -343,8 +365,12 @@ function useFocusedColumn(): string | undefined {
  */
 export function ProjectPeople({ groupId }: { groupId: string }) {
   const projects = useGroupProjects(groupId);
+  const hidden = useHiddenPlaces(groupId);
   const { base, clientId } = useAccessReads(projects);
-  const view = useMemo(() => accessTable({ ...base, projects }), [base, projects]);
+  const view = useMemo(
+    () => accessTable({ ...base, projects: [...projects, ...hidden] }),
+    [base, hidden, projects],
+  );
   const { write, saving, troubles, writable } = useAccessWrites();
   const focus = useFocusedColumn();
 

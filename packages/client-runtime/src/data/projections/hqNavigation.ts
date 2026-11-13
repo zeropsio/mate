@@ -260,6 +260,9 @@ function structureOf(
         ...(app.births === undefined ? {} : { births: app.births }),
         ...(app.intake === undefined ? {} : { intake: app.intake }),
         ...(app.mergers == null ? {} : { mergers: app.mergers }),
+        ...(app.hiddenEnvironments === undefined
+          ? {}
+          : { hiddenEnvironments: app.hiddenEnvironments }),
         ...environmentsOfApp(app.environments, (projectId, tier) =>
           decided(facts, [projectId, ...appFacts.projectIds], (live) =>
             environmentOffers(live, { projectId, tier }, appFacts),
