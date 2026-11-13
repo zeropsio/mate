@@ -116,6 +116,7 @@ import {
   hqRefusalWords,
   MERGE_TOO_LARGE,
   mergeTooLargeWords,
+  SIGN_IN_CANNOT_MINT,
   ZEROPS_NO_CREDENTIAL,
   ZEROPS_UNANSWERED,
 } from "./refusals.ts";
@@ -838,9 +839,27 @@ const WRITE_TIMEOUT_MS = 45_000;
 /** A session is renewed once it is this close to its end. */
 const RENEW_BEFORE_MS = 15 * 60_000;
 
+/**
+ * HQ's `409 credential_required` to a person whose sign-in's token cannot mint (the door's
+ * `cannotMint`), under the client's own reason: its words say which sign-in has HQ keep their access.
+ */
+const signInCannotMint = () =>
+  new HqError({
+    kind: "refused",
+    status: 409,
+    code: "credential_required",
+    reason: SIGN_IN_CANNOT_MINT,
+    message: hqRefusalWords({ code: "credential_required", reason: SIGN_IN_CANNOT_MINT }),
+  });
+
 interface DoorAnswer {
   readonly session: string;
   readonly expiresAt: string;
+  /**
+   * True where the person keeps no working personal token at HQ because the access token of this
+   * sign-in cannot mint one (a personal token, as a hand-over carries); absent otherwise.
+   */
+  readonly cannotMint?: boolean;
 }
 
 /**
@@ -1291,6 +1310,12 @@ export function makeHqApi(input: {
 
   /** When the session in hand ends; null where it is not known. */
   let expiresAtMs: number | null = null;
+  /**
+   * Whether the door's last answer for the session in hand said this sign-in's token cannot mint
+   * (`cannotMint`): coming back to the door then changes nothing. False where the door has not
+   * been asked for it here (a session the account kept across loads).
+   */
+  let doorCannotMint = false;
   const now = input.now ?? Date.now;
 
   /** The session the account kept, presented before any sign-in; null when it keeps none. */
@@ -1307,6 +1332,7 @@ export function makeHqApi(input: {
     if (session === held) {
       session = null;
       expiresAtMs = null;
+      doorCannotMint = false;
     }
     input.kept?.forget(token);
   };
@@ -1344,6 +1370,7 @@ export function makeHqApi(input: {
   const remember = (answer: DoorAnswer) => {
     const ends = Date.parse(answer.expiresAt);
     expiresAtMs = Number.isFinite(ends) ? ends : null;
+    doorCannotMint = answer.cannotMint === true;
     input.kept?.keep({ token: answer.session, expiresAt: answer.expiresAt });
   };
 
@@ -1391,8 +1418,10 @@ export function makeHqApi(input: {
    * renewal too, or a session from its door it never took, ends the call with that refusal. A call
    * HQ answers `credential_required` (it keeps no access of the person's it can use) re-enters the
    * door once with the session as bearer and is made again; a second such answer, or one to a
-   * session from its door it never took, ends the call. A call HQ refused for its session or its
-   * access wrote nothing, so a write is made again as safely as a read.
+   * session from its door it never took, ends the call. Where the door's answer says the sign-in's
+   * token cannot mint (`cannotMint`), no re-entry heals it: the call ends at once as
+   * `signInCannotMint`, without the door while that answer stands. A call HQ refused for its
+   * session or its access wrote nothing, so a write is made again as safely as a read.
    */
   const authorized = async (
     path: string,
@@ -1432,9 +1461,11 @@ export function makeHqApi(input: {
           cause.status === 409 &&
           cause.code === "credential_required"
         ) {
+          if (doorCannotMint) throw signInCannotMint();
           if (reentered || unproven.has(held)) throw cause;
           reentered = true;
           await renew(token);
+          if (doorCannotMint) throw signInCannotMint();
           continue;
         }
         if (!(cause instanceof HqError && accessEnded(cause) === "session-ended")) throw cause;
