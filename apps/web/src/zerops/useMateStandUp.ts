@@ -8,7 +8,7 @@ import { mateActionsForEnvironmentAtom } from "@t3tools/client-runtime/data";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useAtomCommand } from "../state/use-atom-command";
 import { zeropsCommands } from "../state/zeropsCommands";
 import { useMateOfEnvironment } from "./accountEnvironments";
@@ -56,6 +56,12 @@ export function useMateStandUp(input: {
   readonly messageCount: number;
   /** It is read live from its Mate, not a copy being read again (`mateStandUpConversation`). */
   readonly live: boolean;
+  /**
+   * The person has written in it themselves; `undefined` where that is not read. A stand-up that
+   * failed leaves the conversation holding its run, not the person's words: it still offers its
+   * retry until they write.
+   */
+  readonly personWrote?: boolean | undefined;
 }): {
   /** The stand-up waits in this conversation (`mateStandUpAwaitedIn`). */
   readonly awaited: boolean;
@@ -65,7 +71,7 @@ export function useMateStandUp(input: {
   readonly retrying: boolean;
   readonly retry: () => Promise<void>;
 } {
-  const { environmentId, threadRef, messageCount, live } = input;
+  const { environmentId, threadRef, messageCount, live, personWrote } = input;
   const directory = useZeropsMateDirectory();
   const whoLivesHere = environmentId === null ? null : zeropsMateAt(directory, environmentId);
   const marker = whoLivesHere?.kind === "mate" ? whoLivesHere.mate.standUp : undefined;
@@ -102,15 +108,19 @@ export function useMateStandUp(input: {
   });
   const origin = useMateOfEnvironment(environmentId)?.origin ?? undefined;
   const own = marker !== undefined && marker.by === viewer;
-  const { setup } = useMateSetup(own && awaitedHere && messageCount === 0 ? origin : undefined);
-  const failed = own && awaitedHere && setup?.standup === "failed" && conversation !== "started";
+  const unwritten = conversation !== "started" || personWrote === false;
+  const { setup } = useMateSetup(
+    own && awaitedHere && (messageCount === 0 || personWrote === false) ? origin : undefined,
+  );
+  const failed = own && awaitedHere && setup?.standup === "failed" && unwritten;
   const sendFailed = failed && setup?.standupFailure === "send_failed";
   const [submitting, setRetrying] = useState(false);
   const actions = useAtomValue(mateActionsForEnvironmentAtom(environmentId ?? ""));
   const retrying =
     submitting || actions.some((action) => action.action === "standUpRetry" && action.pending);
   const sendAgain = useAtomCommand(zeropsCommands.standUpRetry, "stand-up retry");
-  const retry = async () => {
+  // One function while what it sends stays: the banner offering it is rebuilt only with it.
+  const retry = useCallback(async () => {
     if (
       !sendFailed ||
       environmentId === null ||
@@ -126,7 +136,7 @@ export function useMateStandUp(input: {
     } finally {
       setRetrying(false);
     }
-  };
+  }, [environmentId, orgId, origin, retrying, sendAgain, sendFailed]);
   return {
     awaited: awaitedHere,
     holdsComposer: mateStandUpHoldsComposer({
