@@ -44,17 +44,9 @@ export type GitRefItem = typeof GitRefItem.Type;
 
 const Count = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 
-export const GitRefs = Schema.Union([
-  Schema.Struct({
-    items: Schema.Array(GitRefItem),
-    next: Schema.NullOr(Schema.String),
-    total: Count,
-  }),
-  Schema.Struct({
-    items: Schema.Array(GitRefItem),
-    next: Schema.NullOr(Schema.String),
-    /** More refs than one answer reads: at least this many match. */
-    totalAtLeast: Count,
-  }),
-]);
+export const GitRefs = Schema.Struct({
+  items: Schema.Array(GitRefItem),
+  next: Schema.NullOr(Schema.String),
+  total: Count,
+});
 export type GitRefs = typeof GitRefs.Type;
