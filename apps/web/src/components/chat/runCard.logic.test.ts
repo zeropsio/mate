@@ -274,20 +274,22 @@ describe("runClockMs", () => {
     },
     {
       name: "the runs before and the run on, less the person's answers",
-      status: status({ ran: { ms: 12_000, since: Date.parse(at(30)), personMs: 2_000 } }),
+      status: status({
+        ran: { ms: 12_000, since: Date.parse(at(30)), admittedAt: null, personMs: 2_000 },
+      }),
       ms: 20_000,
     },
     {
       name: "standing while it waits on the person",
       status: status({
         waitingSince: at(35),
-        ran: { ms: 0, since: Date.parse(at(30)), personMs: 0 },
+        ran: { ms: 0, since: Date.parse(at(30)), admittedAt: null, personMs: 0 },
       }),
       ms: 5_000,
     },
     {
       name: "standing between its runs",
-      status: status({ ran: { ms: 9_000, since: null, personMs: 0 } }),
+      status: status({ ran: { ms: 9_000, since: null, admittedAt: null, personMs: 0 } }),
       ms: 9_000,
     },
   ])("a live run's clock counts $name", ({ status: given, ms }) => {

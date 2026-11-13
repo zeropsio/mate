@@ -662,14 +662,22 @@ function workedMs(status: RunStatus): number {
  * last one ended — else the span since the send, less waits; it stands where a wait on the person
  * or on its helpers began. Before its engine says its first run started it counts from the send:
  * it stood at 0:00 for 6.5 s while the Mate's session opened (2026-11-10), and the start, once
- * heard, never steps it back (`calmClockMs`).
+ * heard, never steps it back (`calmClockMs`). A run admitted long after its send (queued behind
+ * the usage limit) counts from its admission instead: the queue is not its work (Theo's run read
+ * "Working · 4:14:20" from its start on, 2026-11-13).
  */
 export function runClockMs(status: RunStatus, now: number): number {
   const at = status.waitingSince === null ? now : Date.parse(status.waitingSince);
   const sinceSent = at - Date.parse(status.startedAt) - status.waitedMs;
   if (status.ran === undefined) return sinceSent;
-  const { ms, since, personMs } = status.ran;
-  if (since === null && ms === 0) return Number.isFinite(sinceSent) ? Math.max(0, sinceSent) : 0;
+  const { ms, since, admittedAt, personMs } = status.ran;
+  if (since === null && ms === 0) {
+    const before =
+      admittedAt === null || admittedAt <= Date.parse(status.startedAt)
+        ? sinceSent
+        : at - admittedAt;
+    return Number.isFinite(before) ? Math.max(0, before) : 0;
+  }
   return ms + (since === null ? 0 : Math.max(0, at - since)) - personMs;
 }
 
