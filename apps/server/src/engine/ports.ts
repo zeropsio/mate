@@ -43,6 +43,11 @@ export type WakeKind =
 export class RunRefused extends Data.TaggedError("RunRefused")<{
   readonly message: string;
   readonly admission?: RunAdmissionRefusal;
+  /**
+   * The door could not say now — HQ silent on whether the person may still run here — so the run
+   * is asked again over minutes, as a wait on something outside the engine, before it fails.
+   */
+  readonly undetermined?: boolean;
 }> {}
 
 /**
