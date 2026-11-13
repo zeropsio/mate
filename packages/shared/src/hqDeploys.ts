@@ -1,9 +1,9 @@
 /**
  * What an event that asks for deploys is answered with (the deploy-jobs design,
- * `mate-hq apps/hq/src/deploys.ts`): HQ submits each of its environments' jobs in the request that asked —
- * a merge, a release, a Run again, an Add service, an environment attached, a deploy key kept — and
- * answers where each stands once it did. A deploy that did not go through never undoes the event:
- * the merge stays merged, the release made.
+ * `mate-hq spec/protocol.md` § Structure, lifecycle, deploys, recipes and Mate observation): HQ submits each
+ * of its environments' jobs in the request that asked — a merge, a release, a Run again, an Add service, an
+ * environment attached, a deploy key kept — and answers where each stands once it did. A deploy that did not
+ * go through never undoes the event: the merge stays merged, the release made.
  *
  * @module hqDeploys
  */
@@ -120,14 +120,15 @@ export const HqPushCiFailure = Schema.Struct({
 export type HqPushCiFailure = typeof HqPushCiFailure.Type;
 
 /**
- * What the origin's CI reported for the pushed commit, as HQ last read it (`mate-hq apps/hq/src/gitCi.ts`):
- * `none` (no check reported), `running` (`done` of `total` counted checks complete), `passed`,
- * `failed` (`failed` names each counted check that did not pass) or `unreadable` (`reason` says
- * why). `required` lists the branch rules' required checks, which alone count; null counts every
- * check. `missing` names the required checks a release's gate saw no run of. `watch` is `watching` until every counted check completed (`finished`) or HQ stopped
- * reading before that (`stopped`, `reason` says why); `until` is when watching stops at the latest
- * and `readAt` when HQ first read what the record now says (HQ writes only what changed).
- * Absent where HQ does not read CI: before the hand-over is confirmed or on a host other than GitHub.
+ * What the origin's CI reported for the pushed commit, as HQ last read it (`mate-hq spec/protocol.md` § Git
+ * remotes, environments and delivery, `HqPushCi`): `none` (no check reported), `running` (`done` of `total`
+ * counted checks complete), `passed`, `failed` (`failed` names each counted check that did not pass) or
+ * `unreadable` (`reason` says why). `required` lists the branch rules' required checks, which alone count;
+ * null counts every check. `missing` names the required checks a release's gate saw no run of. `watch` is
+ * `watching` until every counted check completed (`finished`) or HQ stopped reading before that (`stopped`,
+ * `reason` says why); `until` is when watching stops at the latest and `readAt` when HQ first read what the
+ * record now says (HQ writes only what changed). Absent where HQ does not read CI: before the hand-over is
+ * confirmed or on a host other than GitHub.
  */
 export const HqPushCi = Schema.Struct({
   sha: Sha,
@@ -265,11 +266,12 @@ export type WithDeploys = typeof WithDeploys.Type;
 
 /**
  * Whether an environment HQ brought up is up as far as HQ takes it, as its structure streams it
- * beside the environment (`mate-hq apps/hq/src/births.ts`), never stored: from the rollout its attach asked
- * for (`env_added`) to its first deploy that ran, with every deploy key kept and Run again between.
- * Ended once those rollouts were planned and their jobs ended — a first deploy HQ makes ends live
- * only after its subdomain, where one was intended, came on or said why not — and a deploy ran, or
- * the environment holds a working key. An environment HQ did not bring up has none.
+ * beside the environment (`mate-hq spec/protocol.md` § Structure, lifecycle, deploys, recipes and Mate
+ * observation), never stored: from the rollout its attach asked for (`env_added`) to its first deploy that
+ * ran, with every deploy key kept and Run again between. Ended once those rollouts were planned and their
+ * jobs ended — a first deploy HQ makes ends live only after its subdomain, where one was intended, came on or
+ * said why not — and a deploy ran, or the environment holds a working key. An environment HQ did not bring up
+ * has none.
  */
 export const EnvironmentBirth = Schema.Struct({ ended: Schema.Boolean });
 export type EnvironmentBirth = typeof EnvironmentBirth.Type;

@@ -9,9 +9,10 @@ import {
 } from "@t3tools/shared/hqGitTargets";
 /**
  * HQ's refusals in the person's words. HQ answers a refusal with a code and, for its structure, a
- * reason (`mate-hq apps/hq/src/api.ts`): a permission's (`@t3tools/shared/zeropsPermissions`'s `REASONS`,
- * every one of which has words here, or the type fails) or one of the structure's own. The words are
- * the client's; a reason this build has none for is named by itself.
+ * reason (`mate-hq spec/protocol.md` § Refusals and retries): a permission's
+ * (`@t3tools/shared/zeropsPermissions`'s `REASONS`, every one of which has words here, or the type fails) or
+ * one of the structure's own. The words are the client's; a reason this build has none for is named by
+ * itself.
  *
  * Pure (rule R1).
  *
@@ -105,7 +106,10 @@ export const mergeTooLargeWords = (limit: number | undefined, size: number | und
       : `a file of ${fileSize(size)} changed on both main and this branch, above the ${fileSize(limit)} merge limit`
   }. Merge main into the branch, resolve the file, and push.`;
 
-/** HQ's code for a call Zerops refused HQ outright (`mate-hq apps/hq/src/api.ts`): never retried. */
+/**
+ * HQ's code for a call Zerops refused HQ outright (`mate-hq spec/protocol.md` § Refusals and retries):
+ * never retried.
+ */
 const ZEROPS_REFUSED = "zerops_refused";
 
 type ZeropsRefusal = "unauthorized" | "forbidden" | "not_found" | "invalid";
@@ -145,8 +149,8 @@ const RELEASE_WORDS: { readonly [R in ReleaseRefusal]: string } = {
 };
 
 /**
- * HQ's own refusals — its structure's (`StructureRefused` in `mate-hq apps/hq/src/structure.ts`) and its
- * changes' (`ChangeRefused` in `mate-hq apps/hq/src/changes.ts`) — in words.
+ * HQ's own refusals — its structure's (`mate-hq spec/protocol.md` § Structure, lifecycle, deploys, recipes
+ * and Mate observation) and its changes' (`mate-hq spec/protocol.md` § Changes) — in words.
  */
 const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
   name_length: "A name has 1 to 100 characters.",
@@ -203,7 +207,8 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
   mate_has_change: "That Mate has an open change of its own in this repository.",
   // An application's recipe (`@t3tools/shared/hqRecipe`).
   recipe_too_large: "This project's recipe is too large to read here.",
-  // An application's environments and their deploy keys (`mate-hq apps/hq/src/environments.ts`).
+  // An application's environments and their deploy keys (`mate-hq spec/protocol.md` § Git remotes,
+  // environments and delivery).
   environment_with_kind: "Only a stage or a production is an environment.",
   environment_name_missing: "An environment needs a name.",
   environment_name_long: "An environment's name has at most 63 characters.",
@@ -214,15 +219,16 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
   environment_not_found: "HQ has no such environment.",
   deploy_token_refused: "Zerops did not accept this deploy key.",
   deploy_token_scope: "This deploy key reaches more than its own project.",
-  // HQ keeps a deploy key only sealed under its own key (`mate-hq apps/hq/src/deployKeys.ts`).
+  // HQ keeps a deploy key only sealed under its own key (`mate-hq spec/protocol.md` § Health, `keys`).
   no_key_secret:
     "HQ has no key to keep deploy keys with yet. Whoever runs this HQ sets its HQ_KEY_SECRET.",
-  // A deploy asked again ("Run again", `mate-hq apps/hq/src/deploys.ts`).
+  // A deploy asked again ("Run again", `mate-hq spec/protocol.md` § Structure, lifecycle, deploys, recipes
+  // and Mate observation).
   deploy_not_found: "HQ has no such deploy.",
   deploy_superseded: "A newer deploy took this one's place.",
   deploy_running: "HQ is deploying it now.",
   service_not_declared: "The recipe declares no such service here.",
-  // A release rolled back to (`mate-hq apps/hq/src/releases.ts`).
+  // A release rolled back to (`mate-hq spec/protocol.md` § Releases).
   release_not_found: "HQ has no such release.",
 };
 
@@ -230,7 +236,7 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
  * Why HQ refused a setting of automated Mates' sources — an intake, the organization's Slack app or
  * Discord application, its GitHub app, an application's channel, webhooks and schedules, the limits
  * on each task (`AutomationRefused` in
- * `mate-hq apps/hq/src/{intake,githubApp,slack,discord,webhooks,schedules,taskLimits}.ts`) —
+ * `mate-hq spec/protocol.md` § Automation and issue intake, Slack, Discord and the GitHub webhook, GitHub) —
  * in words: what is wrong, and what the person does.
  */
 const AUTOMATION_WORDS = {
@@ -242,7 +248,7 @@ const AUTOMATION_WORDS = {
     "HQ does not know its own public address yet. Give HQ's service a public address, then try again.",
   repository_changed:
     "The repository on GitHub is no longer the one connected. Connect it again under Repositories.",
-  // The organization's GitHub app (`mate-hq apps/hq/src/githubApp.ts`).
+  // The organization's GitHub app (`mate-hq spec/protocol.md` § GitHub).
   github_unavailable: "HQ could not set the GitHub app up just now. Try again.",
   needs_owner_seal:
     "Nobody is recorded to have set this GitHub app up, so Mate uses it for nothing. An Owner or Admin makes it again.",
@@ -293,9 +299,9 @@ const isAutomationRefusal = (reason: string): reason is keyof typeof AUTOMATION_
   Object.hasOwn(AUTOMATION_WORDS, reason);
 
 /**
- * Why HQ did not enroll a Mate (`MateRefused` in `mate-hq apps/hq/src/mateCredentials.ts`; zcp's
- * `~/.zcp/hq/outcome.json`), in words: what stands, and what the person can do — or that zcp tries
- * again on its own, which it does for every refusal but `not_this_projects_mate`.
+ * Why HQ did not enroll a Mate (zcp's `~/.zcp/hq/outcome.json`), in words: what stands, and what the
+ * person can do — or that zcp tries again on its own, which it does for every refusal but
+ * `not_this_projects_mate`.
  */
 const ENROLLMENT_WORDS: Readonly<Record<string, string>> = {
   not_a_mate: "HQ has no record of this Mate yet.",

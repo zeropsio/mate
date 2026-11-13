@@ -185,7 +185,7 @@ const DISCORD_ON = {
   interactionsUrl: "https://hq-acme.zerops.app/api/intake/discord/acme",
   inviteUrl: "https://discord.com/oauth2/authorize?client_id=1",
 };
-// As HQ makes it (`mate-hq apps/hq/src/slack.ts`).
+// As HQ makes it (`mate-hq spec/protocol.md` § Slack, Discord and the GitHub webhook).
 const SLACK_MANIFEST = JSON.stringify({
   display_information: { name: "Mate" },
   features: { bot_user: { display_name: "Mate", always_online: true } },

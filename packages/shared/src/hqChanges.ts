@@ -7,8 +7,8 @@
  * repository; on a task, the task's one change. HQ checks every body it reads with these schemas;
  * zcp reads this file as the spec.
  *
- * **The Mate's side**, `Authorization: Mate <credential>` (`mate-hq apps/hq/src/mateCredentials.ts`), always
- * within the application HQ holds the Mate in (`mate` or `devstage`):
+ * **The Mate's side**, `Authorization: Project <ZCP_API_KEY>` (`mate-hq spec/protocol.md` § Credentials),
+ * always within the application HQ holds the Mate in (`mate` or `devstage`):
  *
  * - `POST /api/mate/repos` {@link EnsureRepoRequest} → {@link HqRepo};
  * - `POST /api/mate/changes` {@link OpenChangeRequest} → {@link OpenChangeResponse};

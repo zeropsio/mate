@@ -272,8 +272,8 @@ export function makeTaskSourceSettings(options: {
           });
         reads.readAfterWrite(spec);
         // HQ renames or drops applications' Slack channels as Slack connects again — to another
-        // workspace, all of them (`mate-hq apps/hq/src/slack.ts`) — and the bot it connects is in
-        // channels of its own; Discord keeps its channels.
+        // workspace, all of them (`mate-hq spec/protocol.md` § Slack, Discord and the GitHub webhook) — and
+        // the bot it connects is in channels of its own; Discord keeps its channels.
         if (change.kind === "slack-connect" || change.kind === "slack-disconnect") {
           const ofOrg = (held: string) => (JSON.parse(held) as [string])[0] === key.orgId;
           reads.againEvery("hqAppSlack", ofOrg);
