@@ -333,6 +333,17 @@ export const ZEROPS_UNANSWERED = "Zerops is not answering, so HQ did nothing. Tr
 export const CREDENTIAL_REQUIRED_WORDS = "HQ could not read your access. Sign in to Zerops again.";
 
 /**
+ * The client's own reason beside `credential_required` where the door answered that this sign-in's
+ * token cannot mint (`cannotMint`): a personal token, as a hand-over sign-in carries. HQ keeps no
+ * access of the person's and no sign-in with that token makes it keep one.
+ */
+export const SIGN_IN_CANNOT_MINT = "sign_in_cannot_mint";
+
+/** What such a call says: the one sign-in that has HQ keep the person's access. */
+export const SIGN_IN_CANNOT_MINT_WORDS =
+  "HQ keeps no access of yours yet, and this sign-in cannot create it. Sign in once where Mate signs you in with your Zerops account (mate.zerops.io), then try again.";
+
+/**
  * What a call says where HQ holds no credential that reads what it needs of the project
  * (`503 zerops_unavailable`, reason `no_credential`): no presented key, environment deploy token
  * or Mate key covers it, so HQ decided nothing. Trying again changes nothing until one does.
@@ -461,6 +472,8 @@ export function hqRefusalWords(refusal: {
   if (refusal.code === ZEROPS_REFUSED && reason !== undefined && isZeropsRefusal(reason)) {
     return ZEROPS_REFUSAL_WORDS[reason];
   }
+  if (refusal.code === "credential_required" && reason === SIGN_IN_CANNOT_MINT)
+    return SIGN_IN_CANNOT_MINT_WORDS;
   if (
     refusal.code === "credential_required" &&
     (reason === "personal_token_missing" || reason === "personal_token_refused")
