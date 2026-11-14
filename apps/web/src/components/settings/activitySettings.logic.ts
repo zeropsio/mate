@@ -16,8 +16,8 @@ export interface ActivityLine {
   readonly at: string;
   readonly who: string;
   readonly what: string;
-  /** What it was done to; `code` when it is a command to show as typed. */
-  readonly subject: { readonly text: string; readonly code: boolean } | null;
+  /** What it was done to. */
+  readonly subject: string | null;
   /** How it ended, when not as asked: `null` for an act that took effect. */
   readonly outcome: string | null;
 }
@@ -26,6 +26,13 @@ const READS: Readonly<Record<string, string>> = {
   "chief.projects": "the organization's projects",
   "chief.services": "the services",
   "chief.members": "the organization's members",
+};
+
+/** What an operator's Mate command did, by the kind HQ records as its label (never the command). */
+const COMMAND_KINDS: Readonly<Record<string, (mate: string) => string>> = {
+  restart: (mate) => `restarted ${mate}`,
+  update: (mate) => `updated ${mate}`,
+  diagnostics: (mate) => `ran diagnostics on ${mate}`,
 };
 
 const OUTCOMES: Readonly<Record<HqActivityEntry["outcome"], string | null>> = {
@@ -84,10 +91,11 @@ function activityWhat(entry: HqActivityEntry, names: ActivityNames): string {
       const read = (entry.subjectLabel !== null && READS[entry.subjectLabel]) || "the organization";
       return `read ${read} with a person's rights`;
     }
-    case "mate_command_run":
-      return entry.subjectId === null
-        ? "ran a command on a Mate"
-        : `ran a command on ${projectName(names, entry.subjectId)}`;
+    case "mate_command_run": {
+      const mate = entry.subjectId === null ? "a Mate" : projectName(names, entry.subjectId);
+      const kind = entry.subjectLabel === null ? undefined : COMMAND_KINDS[entry.subjectLabel];
+      return kind === undefined ? `ran a command on ${mate}` : kind(mate);
+    }
     default:
       return entry.action.replaceAll("_", " ");
   }
@@ -102,20 +110,18 @@ function activitySubject(entry: HqActivityEntry, names: ActivityNames): Activity
       const where = entry.repo ?? "";
       const title = entry.subjectLabel ?? "";
       const text = [where, title].filter((part) => part.length > 0).join(": ");
-      return text.length > 0 ? { text, code: false } : null;
+      return text.length > 0 ? text : null;
     }
     case "mate_command_run":
-      return entry.subjectLabel === null ? null : { text: entry.subjectLabel, code: true };
+      return null;
     case "escalated_read":
     case "mate_git_credential_issued":
     case "mate_git_credential_revoked":
     case "project_key_revoked":
     case "value_revealed":
-      return entry.subjectId === null
-        ? null
-        : { text: projectName(names, entry.subjectId), code: false };
+      return entry.subjectId === null ? null : projectName(names, entry.subjectId);
     default:
-      return entry.subjectLabel === null ? null : { text: entry.subjectLabel, code: false };
+      return entry.subjectLabel;
   }
 }
 

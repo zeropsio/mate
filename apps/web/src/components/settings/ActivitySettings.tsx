@@ -122,15 +122,7 @@ function ActivityPage({
               </time>
             </div>
             {line.subject !== null ? (
-              <span
-                className={
-                  line.subject.code
-                    ? "truncate font-mono text-xs text-muted-foreground"
-                    : "truncate text-xs text-muted-foreground"
-                }
-              >
-                {line.subject.text}
-              </span>
+              <span className="truncate text-xs text-muted-foreground">{line.subject}</span>
             ) : null}
           </li>
         ))}
