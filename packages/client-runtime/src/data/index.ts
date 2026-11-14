@@ -556,6 +556,9 @@ export type {
 export { makeGitCredentials } from "./adapters/hqGitCredentials.ts";
 export { makeAutomationSettings, type AutomationSettings } from "./adapters/hqAutomation.ts";
 export { aiKeysId, intakeId, type AiKeysKey, type IntakeKey } from "./families/hqAutomation.ts";
+export { makeActivity, type Activity } from "./adapters/hqActivity.ts";
+export { activityId, type ActivityKey } from "./families/hqActivity.ts";
+export { activityPage, type ActivityPageRead } from "./projections/hqActivity.ts";
 export { makeTakeOver, type TakeOver } from "./adapters/hqTakeOver.ts";
 export { takeOverId, type TakeOverKey } from "./families/hqTakeOver.ts";
 export { memberTakeOver, type MemberTakeOverRead } from "./projections/hqTakeOver.ts";

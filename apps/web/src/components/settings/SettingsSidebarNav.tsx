@@ -48,7 +48,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
   const organization = useZeropsSessionOptional()?.activeOrganization ?? null;
   const navGroups = shownNavGroups({
     withOrganization: organization !== null,
-    readsBilling: mayReadBilling(organization?.roleCode),
+    administers: mayReadBilling(organization?.roleCode),
   });
   const currentHash = useLocation({ select: (location) => location.hash });
   const { isMobile, setOpenMobile, open, setOpen } = useSidebar();

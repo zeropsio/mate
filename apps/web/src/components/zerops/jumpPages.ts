@@ -43,7 +43,7 @@ const APP_PAGES: ReadonlyArray<JumpPage> = [
  */
 export function findJumpPages(
   text: string,
-  viewer: { readonly withOrganization: boolean; readonly readsBilling: boolean },
+  viewer: { readonly withOrganization: boolean; readonly administers: boolean },
 ): ReadonlyArray<JumpPage> {
   const query = fold(text.trim());
   if (query.length === 0) return [];

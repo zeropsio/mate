@@ -20,6 +20,7 @@ import { mateArchiveFamily } from "./mateArchive.ts";
 import { mateVcsFamily } from "./mateVcs.ts";
 import { hqGitCredentialsFamily, hqGitCredentialRequestFamily } from "./hqGitCredentials.ts";
 import { hqAiKeyRequestFamily, hqAiKeysFamily, hqIntakeRevealFamily } from "./hqAutomation.ts";
+import { hqActivityFamily } from "./hqActivity.ts";
 import { hqTakeOverFamily, hqTakeOverRequestFamily } from "./hqTakeOver.ts";
 import { hqReadAccessRequestsFamily } from "./hqReadAccess.ts";
 import {
@@ -156,6 +157,7 @@ export const FAMILIES = defineFamilies([
   hqGitCredentialRequestFamily,
   hqAiKeysFamily,
   hqAiKeyRequestFamily,
+  hqActivityFamily,
   hqTakeOverFamily,
   hqTakeOverRequestFamily,
   hqIntakeRevealFamily,
