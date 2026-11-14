@@ -25,7 +25,6 @@ export function recordedReport(change: Partial<UsageReport> = {}): UsageReport {
       groupBy: "mate",
     },
     generation: { accounting: "1", access: "0".repeat(64), pricing: "prices" },
-    provenance: "live-responses",
     exactSince: "2026-09-08T00:00:00.000Z",
     recordedSince: "2026-10-01T00:00:00.000Z",
     basis: "recorded-provider-usage-current-owner-and-app",

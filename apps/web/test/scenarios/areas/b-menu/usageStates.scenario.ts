@@ -33,7 +33,6 @@ describe("B: Usage read states", () => {
             const query = message.scope.query;
             const report = recordedReport({
               query,
-              provenance: query.provenance ?? "live-responses",
               nativeCosts: { '["USD","provider-reported-estimate",7]': "8265478" },
               groups: [
                 {

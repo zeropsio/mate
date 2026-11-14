@@ -74,16 +74,8 @@ const window: UsageSummaryInput = {
   timeZone: "UTC",
   resolution: "day",
 };
-function Harness({
-  enabled = true,
-  provenance = "live-responses",
-  person,
-}: {
-  enabled?: boolean;
-  provenance?: NonNullable<UsageReportQuery["provenance"]>;
-  person?: string;
-}) {
-  const view = useAgentUsage(window, { person }, enabled, provenance);
+function Harness({ enabled = true, person }: { enabled?: boolean; person?: string }) {
+  const view = useAgentUsage(window, { person }, enabled);
   return (
     <span data-models={JSON.stringify(view.merged.models)}>
       {view.merged.providers.length} provider rows; {view.merged.daily.length} recorded periods;
@@ -126,19 +118,10 @@ describe("usage observation ownership", () => {
     renderToStaticMarkup(<Harness />);
     expect(state.demands).toHaveLength(5);
     expect(new Set(state.demands.map((demand) => demand.family))).toEqual(new Set(["agentUsage"]));
-    expect(
-      state.demands.every((demand) => JSON.parse(demand.owner!).provenance === "live-responses"),
-    ).toBe(true);
   });
   it("Limits holds no consumption report demand", () => {
     renderToStaticMarkup(<Harness enabled={false} />);
     expect(state.demands.every((demand) => demand.owner === null)).toBe(true);
-  });
-  it("earlier history remains a separate HQ report and is never added to live turns", () => {
-    renderToStaticMarkup(<Harness provenance="legacy-scanner" />);
-    expect(
-      state.demands.every((demand) => JSON.parse(demand.owner!).provenance === "legacy-scanner"),
-    ).toBe(true);
   });
   it("a newer group report cannot silently mix with an older accounting total", () => {
     expect(renderToStaticMarkup(<Harness />)).toContain("native-model");

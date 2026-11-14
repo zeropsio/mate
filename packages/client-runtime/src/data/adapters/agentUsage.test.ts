@@ -28,7 +28,6 @@ const query: UsageReportQuery = {
   provider: null,
   model: null,
   groupBy: "mate",
-  provenance: "live-responses",
 };
 const owner = agentUsageOwner(query);
 const scope: AgentUsageScope = { kind: "agentUsage", query };
@@ -44,9 +43,8 @@ const totals = {
 };
 const report: UsageReport = {
   query,
-  provenance: "live-responses",
   generation: { accounting: "1", access: "0".repeat(64), pricing: "prices" },
-  exactSince: null,
+  exactSince: "2026-09-08T00:00:00.000Z",
   recordedSince: "2026-10-01T00:00:00.000Z",
   basis: "recorded-provider-usage-current-owner-and-app",
   state: "partial",
@@ -141,7 +139,6 @@ it.effect("an HQ report for another query cannot replace the authorized usage an
     for (const wrong of [
       { mateId: "other" },
       { groupBy: "model" },
-      { provenance: "legacy-scanner" },
       { since: "2026-09-01T00:00:00.000Z" },
     ]) {
       yield* fixture.send({

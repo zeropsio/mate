@@ -29,7 +29,6 @@ function render(shownModel = model) {
           resolution: "day",
         }}
         scope={{}}
-        provenance="live-responses"
         metric="cost"
         chartWindow={{
           days: ["2026-10-01"],

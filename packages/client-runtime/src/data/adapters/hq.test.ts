@@ -2473,7 +2473,6 @@ describe("the usage reports a period holds", () => {
         provider: null,
         model: null,
         groupBy,
-        provenance: "live-responses",
       } satisfies UsageReportQuery),
     );
 
