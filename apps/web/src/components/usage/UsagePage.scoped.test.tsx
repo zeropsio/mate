@@ -130,7 +130,6 @@ it.effect("A developer sees only their own Usage, even when a bookmark names ano
             const count = selected.length;
             const report = recordedReport({
               query,
-              provenance: query.provenance ?? "live-responses",
               totals: statistics(String(count * 1000), String(count)),
               pricing: {
                 ...recordedReport().pricing,

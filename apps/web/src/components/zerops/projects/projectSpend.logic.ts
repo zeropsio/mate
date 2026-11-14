@@ -56,7 +56,6 @@ export function tokenSpendQuery(
   timeZone: string,
 ): UsageReportQuery {
   return {
-    provenance: "live-responses",
     since: `${addDays(today, -29)}T00:00:00.000Z`,
     until: `${addDays(today, 1)}T00:00:00.000Z`,
     mode: "utc-days",

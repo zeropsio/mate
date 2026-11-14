@@ -28,7 +28,6 @@ const testState = vi.hoisted(() => ({
   providers: null as UsageReport | null,
   read: null as AgentUsageRead | null,
   stale: false,
-  provenance: "live-responses" as "live-responses" | "legacy-scanner",
   sectionReads: {} as Partial<Record<string, AgentUsageRead>>,
   limits: null as HqTaskLimitsView | null,
 }));
@@ -75,12 +74,6 @@ function renderPage(scope: UsageScope = {}) {
         </RouterContextProvider>,
       );
     });
-    if (testState.provenance === "legacy-scanner") {
-      const history = tree!.root.findAll(
-        (node) => typeof node.type === "string" && node.props["aria-label"] === "Usage history",
-      )[0];
-      if (history) act(() => history.props.onValueChange(["legacy-scanner"]));
-    }
     if (testState.breakdown !== "auto") {
       const breakdown = tree!.root.findAll(
         (node) =>
@@ -325,7 +318,6 @@ beforeEach(() => {
   );
   vi.spyOn(chart, "UsageProviderChart").mockImplementation(() => <div />);
   testState.limits = null;
-  testState.provenance = "live-responses";
   testState.sectionReads = {};
   testState.metric = "cost";
   testState.hourly = true;
@@ -767,22 +759,6 @@ it("A fully priced zero Usage record remains a known zero amount", () => {
   expect(renderPage()).toContain("$0.00");
 });
 
-it("Earlier history explains its own source once and names an empty historical period", () => {
-  testState.provenance = "legacy-scanner";
-  testState.hourly = false;
-  testState.report = recordedReport({
-    provenance: "legacy-scanner",
-    recordedSince: null,
-    totals: statistics("0", "0"),
-    coverage: [],
-  });
-  const html = renderPage();
-  expect(html).toContain("No earlier history is recorded for this period.");
-  expect(html.match(/may include activity outside Mate/g)).toHaveLength(1);
-  expect(html).not.toContain("agents and subagents running in Mate");
-  expect(html).not.toContain("No recorded Mate usage yet");
-  expect(html).not.toContain("No recorded usage yet");
-});
 it("Agent-reported amounts use readable currency and explain their separate estimate", () => {
   testState.report = recordedReport({
     nativeCosts: { '["USD","provider-reported-estimate",7]': "8265478" },

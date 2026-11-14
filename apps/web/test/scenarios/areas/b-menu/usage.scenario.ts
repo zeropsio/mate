@@ -47,7 +47,6 @@ describe("B: Usage report presentation", () => {
               const count = empty ? 0 : selected.length;
               const report = recordedReport({
                 query,
-                provenance: query.provenance ?? "live-responses",
                 totals: statistics(String(count * 1000), String(count)),
                 pricing: {
                   ...recordedReport().pricing,

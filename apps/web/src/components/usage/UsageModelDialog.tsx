@@ -9,7 +9,7 @@ import { useMemo } from "react";
 
 import { useAgentUsage } from "../../state/usage";
 import { usageCostsHidden } from "../../state/usage.logic";
-import type { UsageReportQuery, UsageSummaryInput } from "@t3tools/contracts";
+import type { UsageSummaryInput } from "@t3tools/contracts";
 import type { UsageScope } from "./usageDimensions";
 import {
   Dialog,
@@ -48,7 +48,6 @@ export function UsageModelDialog({
   model,
   input,
   scope,
-  provenance,
   metric,
   chartWindow,
   onClose,
@@ -56,7 +55,6 @@ export function UsageModelDialog({
   readonly model: ModelTotals;
   readonly input: UsageSummaryInput;
   readonly scope: UsageScope;
-  readonly provenance: NonNullable<UsageReportQuery["provenance"]>;
   readonly metric: UsageChartMetric;
   readonly chartWindow: UsageChartWindow;
   readonly onClose: () => void;
@@ -67,7 +65,7 @@ export function UsageModelDialog({
     read,
     sections,
     refresh,
-  } = useAgentUsage(input, scope, true, provenance, model);
+  } = useAgentUsage(input, scope, true, model);
   const componentsKnown = report !== null && report.totals.unknownComponents === "0";
   const providers = useMemo(() => [model.provider], [model.provider]);
   const presentation = PROVIDER_PRESENTATION[model.provider];

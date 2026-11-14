@@ -1,7 +1,11 @@
 import { useNowMs } from "../../zerops/useNowMs";
 import { useZeropsSessionOptional } from "../../zerops/ZeropsSessionProvider";
 import { useAtomValue } from "@effect/atom-react";
-import { type EnvironmentId, type UsageProviderKind } from "@t3tools/contracts";
+import {
+  type EnvironmentId,
+  type UsageProviderKind,
+  type UsageSummaryInput,
+} from "@t3tools/contracts";
 import { RefreshCwIcon, XIcon } from "lucide-react";
 import { useCallback, useEffect, useEffectEvent, useMemo, useState } from "react";
 
@@ -23,12 +27,7 @@ import { shortcutLabelForCommand } from "../../keybindings";
 import { useEscapeToGoBack } from "../../hooks/useNavigateBack";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useAgentUsage } from "../../state/usage";
-import {
-  usageChartDays,
-  usageCostsHidden,
-  usageNativeCosts,
-  type UsageWindow,
-} from "../../state/usage.logic";
+import { usageCostsHidden, usageNativeCosts } from "../../state/usage.logic";
 import { useAtomCommand } from "../../state/use-atom-command";
 import {
   isAutomatedMatesOwner,
@@ -37,6 +36,7 @@ import {
 } from "../../zerops/usageEnvironmentIdentities";
 import { useUsageEnvironmentIdentities } from "../../zerops/useUsageEnvironmentIdentities";
 import {
+  enumerateDays,
   enumerateHourStarts,
   formatCount,
   formatDateTimeShort,
@@ -68,7 +68,7 @@ import {
 } from "./usageDimensions";
 import { UsageAutomatedBudget } from "./UsageAutomated";
 import { UsageDimensionTable, UsagePeopleSplit } from "./UsageDimensionViews";
-import { createUsageIdentityIndex, undatedHistoryLine, usagePageState } from "./usagePage.logic";
+import { createUsageIdentityIndex, usagePageState } from "./usagePage.logic";
 import { UsageReadStatus } from "./UsageReadStatus";
 import { UsageCoverage } from "./UsageCoverage";
 import { UsageLimitsSection } from "./UsageLimits";
@@ -104,9 +104,6 @@ const DIMENSION_OPTIONS = [
   { value: "mate", label: "Mate" },
 ] as const satisfies readonly { value: UsageDimension; label: string }[];
 const ALL = "all";
-/** Earlier history alone offers the window that counts history recorded without a day. */
-const ALL_HISTORY_VALUE = "all-history";
-const ALL_HISTORY_LABEL = "All";
 
 function scopeOwner(
   identities: UsageEnvironmentIdentities,
@@ -143,7 +140,7 @@ export function UsagePage({
     shortcutLabelForCommand(keybindings, option.command, { context: { usagePageOpen: true } });
   const [windowSelection, setWindowSelection] = useState<{
     readonly days: UsagePagePreferences["windowDays"];
-    readonly window: UsageWindow;
+    readonly window: UsageSummaryInput;
   }>(() => ({
     days: preferences.windowDays,
     window: makeWindow(
@@ -152,13 +149,9 @@ export function UsagePage({
       preferences.windowDays === 1 ? "hour" : "day",
     ),
   }));
-  const [provenance, setProvenance] = useState<"live-responses" | "legacy-scanner">(
-    "live-responses",
-  );
   const [breakdownChoice, setBreakdown] = useState<UsageBreakdown | "auto">("auto");
   const { days: windowDays, window } = windowSelection;
-  const allHistory = window.allTime === true;
-  const isPast24Hours = windowDays === 1 && !allHistory;
+  const isPast24Hours = windowDays === 1;
   const identityRead = useUsageEnvironmentIdentities();
   const { listed, baseline, projects } = identityRead;
   const permitted = useMemo(
@@ -175,7 +168,7 @@ export function UsagePage({
     refresh,
     scope,
     canSeeOtherPeople,
-  } = useAgentUsage(window, requestedScope, preferences.metric !== "limits", provenance);
+  } = useAgentUsage(window, requestedScope, preferences.metric !== "limits");
   // Costs HQ hides from this reader are not offered: Cost then shows tokens, and no cost reads $0.
   const costsHidden = usageCostsHidden(report);
   const metric = costsHidden && preferences.metric === "cost" ? "tokens" : preferences.metric;
@@ -254,11 +247,12 @@ export function UsagePage({
   const settling = state.kind === "reading";
   const noTotals =
     state.kind === "unavailable" || state.kind === "invalid" || state.kind === "empty";
-  const sessionsLabel = `${formatCount(merged.records)} ${provenance === "legacy-scanner" ? "records" : merged.records === 1 ? "turn" : "turns"}`;
+  const sessionsLabel = `${formatCount(merged.records)} ${merged.records === 1 ? "turn" : "turns"}`;
 
-  const days = useMemo(() => usageChartDays(window, merged.daily), [window, merged.daily]);
-  const periodsReport = sections.periods.kind === "read" ? sections.periods.report : null;
-  const undatedLine = allHistory ? undatedHistoryLine(periodsReport) : null;
+  const days = useMemo(
+    () => enumerateDays(window.sinceDay, window.untilDay),
+    [window.sinceDay, window.untilDay],
+  );
   const hours = useMemo(
     () =>
       window.sinceTime === undefined || window.untilTime === undefined
@@ -284,19 +278,12 @@ export function UsagePage({
   const timeValueColumnWidth = `${60 / (activeProviders.length + 2)}%`;
 
   const limitsNow = useNowMs();
-  const windowValue = allHistory ? ALL_HISTORY_VALUE : String(windowDays);
+  const windowValue = String(windowDays);
   const selectPeriod = (value: string | null) => {
-    if (value === null) return;
-    if (value === ALL_HISTORY_VALUE) selectAllHistory();
-    else selectWindow(Number(value));
+    if (value !== null) selectWindow(Number(value));
   };
-  const selectAllHistory = () =>
-    setWindowSelection({
-      days: windowDays,
-      window: { ...makeWindow(windowDays, undefined, "day"), allTime: true },
-    });
   const selectWindow = (days: number) => {
-    if (!isUsageWindowDays(days) || (provenance === "legacy-scanner" && days === 1)) return;
+    if (!isUsageWindowDays(days)) return;
     const nextPreferences = { metric: preferences.metric, windowDays: days };
     setPreferences(nextPreferences);
     saveUsagePagePreferences(nextPreferences);
@@ -348,10 +335,7 @@ export function UsagePage({
       void Promise.allSettled(refreshes);
       return;
     }
-    const nextWindow: UsageWindow = {
-      ...makeWindow(windowDays, undefined, isPast24Hours ? "hour" : "day"),
-      ...(allHistory ? { allTime: true as const } : {}),
-    };
+    const nextWindow = makeWindow(windowDays, undefined, isPast24Hours ? "hour" : "day");
     if (
       nextWindow.sinceDay === window.sinceDay &&
       nextWindow.untilDay === window.untilDay &&
@@ -363,9 +347,8 @@ export function UsagePage({
       setWindowSelection({ days: windowDays, window: nextWindow });
     }
   };
-  const windowLabel = allHistory
-    ? "All recorded history"
-    : isPast24Hours && window.sinceTime !== undefined && window.untilTime !== undefined
+  const windowLabel =
+    isPast24Hours && window.sinceTime !== undefined && window.untilTime !== undefined
       ? `${formatDateTimeShort(window.sinceTime, window.timeZone)} to ${formatDateTimeShort(window.untilTime, window.timeZone)}`
       : `${formatDayShort(window.sinceDay)} to ${formatDayShort(window.untilDay)} · UTC days`;
   const topbarContent = (
@@ -433,17 +416,9 @@ export function UsagePage({
         >
           {WINDOW_OPTIONS.map((option) => (
             <ShortcutHint key={option.days} shortcut={shortcutOf(option)}>
-              <Toggle
-                value={String(option.days)}
-                disabled={provenance === "legacy-scanner" && option.days === 1}
-              >
-                {option.label}
-              </Toggle>
+              <Toggle value={String(option.days)}>{option.label}</Toggle>
             </ShortcutHint>
           ))}
-          {provenance === "legacy-scanner" ? (
-            <Toggle value={ALL_HISTORY_VALUE}>{ALL_HISTORY_LABEL}</Toggle>
-          ) : null}
         </ToggleGroup>
         <Button
           onClick={refreshWindow}
@@ -491,24 +466,15 @@ export function UsagePage({
             className="w-auto min-w-0"
           >
             <SelectValue>
-              {allHistory
-                ? ALL_HISTORY_LABEL
-                : WINDOW_OPTIONS.find((option) => option.days === windowDays)?.label}
+              {WINDOW_OPTIONS.find((option) => option.days === windowDays)?.label}
             </SelectValue>
           </SelectTrigger>
           <SelectPopup align="end" alignItemWithTrigger={false}>
             {WINDOW_OPTIONS.map((option) => (
-              <SelectItem
-                key={option.days}
-                value={String(option.days)}
-                disabled={provenance === "legacy-scanner" && option.days === 1}
-              >
+              <SelectItem key={option.days} value={String(option.days)}>
                 {option.label}
               </SelectItem>
             ))}
-            {provenance === "legacy-scanner" ? (
-              <SelectItem value={ALL_HISTORY_VALUE}>{ALL_HISTORY_LABEL}</SelectItem>
-            ) : null}
           </SelectPopup>
         </Select>
         <Button
@@ -545,29 +511,10 @@ export function UsagePage({
                 </div>
               </div>
             )}
-            {showingLimits ? null : (
-              <ToggleGroup
-                aria-label="Usage history"
-                variant="segmented"
-                value={[provenance]}
-                onValueChange={(values) => {
-                  const next = values[0];
-                  if (next !== "live-responses" && next !== "legacy-scanner") return;
-                  if (next === "legacy-scanner" && windowDays === 1) selectWindow(7);
-                  if (next === "live-responses" && allHistory) selectWindow(windowDays);
-                  setProvenance(next);
-                }}
-              >
-                <Toggle value="live-responses">Mate turns</Toggle>
-                <Toggle value="legacy-scanner">Earlier history</Toggle>
-              </ToggleGroup>
-            )}
             <p className="text-xs text-muted-foreground">
               {showingLimits
                 ? "Limits are account-wide subscription quotas, shared across projects and Mates. Project and owner filters do not apply."
-                : provenance === "legacy-scanner"
-                  ? "Earlier history uses the previous collection method and may include activity outside Mate. It is separate from Mate turns. Cost is an API-equivalent estimate; attribution uses the current Mate owner."
-                  : "Recorded consumption by agents and subagents running in Mate. Cost is an API-equivalent estimate; attribution uses the current Mate owner."}
+                : "Recorded consumption by agents and subagents running in Mate. Cost is an API-equivalent estimate; attribution uses the current Mate owner."}
             </p>
             {showingLimits ? (
               baseline === "unavailable" ? (
@@ -668,7 +615,7 @@ export function UsagePage({
                         const share =
                           metric === "cost" ? (totals?.costShare ?? 0) : (totals?.tokenShare ?? 0);
                         const providerSessions = totals?.sessions ?? 0;
-                        const sessionLabel = `${formatCount(providerSessions)} ${provenance === "legacy-scanner" ? "records" : providerSessions === 1 ? "turn" : "turns"}`;
+                        const sessionLabel = `${formatCount(providerSessions)} ${providerSessions === 1 ? "turn" : "turns"}`;
                         return (
                           <div key={provider} className="flex flex-col gap-1">
                             <div className="flex items-baseline justify-between gap-4">
@@ -745,15 +692,6 @@ export function UsagePage({
                         timeZone={window.timeZone}
                       />
                     )}
-                    {undatedLine === null ? null : (
-                      <p className="text-xs text-muted-foreground">{undatedLine}</p>
-                    )}
-                    {allHistory && periodsReport?.groupsMore === true ? (
-                      <p className="text-xs text-muted-foreground">
-                        The chart shows only the earliest days HQ returned; the totals count all of
-                        it.
-                      </p>
-                    ) : null}
                   </div>
                 </section>
 
@@ -831,7 +769,7 @@ export function UsagePage({
                   !(read.kind === "read" && read.stale && sections.models.kind === "read") ? (
                     <UsageReadStatus read={sections.models} label="model usage" onRetry={refresh} />
                   ) : null}
-                  {!settling && breakdown === "model" && provenance === "live-responses" ? (
+                  {!settling && breakdown === "model" ? (
                     <p className="text-xs text-muted-foreground">
                       A turn can use several models. Each model row shows its own consumption.
                     </p>
@@ -1003,7 +941,6 @@ export function UsagePage({
           model={openModel}
           input={window}
           scope={scope}
-          provenance={provenance}
           metric={dimensionMetric}
           chartWindow={{
             days,

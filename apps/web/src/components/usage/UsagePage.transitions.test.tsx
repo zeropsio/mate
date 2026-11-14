@@ -90,16 +90,7 @@ beforeEach(() => {
     ) : null) as unknown as typeof chart.UsageProviderChart);
   vi.spyOn(usage, "useAgentUsage").mockImplementation((...args) => {
     state.usageScopes.push(args[1]?.mate);
-    const report =
-      state.report && args[3] === "legacy-scanner"
-        ? recordedReport({
-            provenance: "legacy-scanner",
-            recordedSince: null,
-            totals: statistics("0", "0"),
-            coverage: [],
-            groups: [],
-          })
-        : (state.report ?? (state.answered ? recordedReport() : null));
+    const report = state.report ?? (state.answered ? recordedReport() : null);
     const read = state.failedNeighbor
       ? { kind: "unavailable", reason: "HQ usage unavailable. Reconnect or retry HQ access." }
       : state.pending || state.baseline !== "resolved" || !state.answered
@@ -343,17 +334,6 @@ it("an empty answer beside a terminal failure names the next action without clai
   act(() => tree.unmount());
 });
 
-it("Earlier history cannot select Past 24h through the page shortcut", () => {
-  const tree = mount(<UsagePage scope={{}} onScopeChange={vi.fn()} />);
-  const history = tree.root.findAllByProps({ "aria-label": "Usage history" })[0]!;
-  act(() => history.props.onValueChange(["legacy-scanner"]));
-  act(() => window.dispatchEvent(new Event("keydown")));
-  expect(tree.root.findAllByProps({ "aria-label": "Usage period" })[0]!.props.value).not.toBe([
-    "1",
-  ]);
-  expect(text(tree)).not.toContain('"value":["1"]');
-  act(() => tree.unmount());
-});
 it("Limits receives the current shared clock while Usage stays open", () => {
   state.baseline = "resolved";
   vi.spyOn(Date, "now").mockImplementation(() => state.now);
@@ -506,18 +486,6 @@ it("Usage distinguishes coverage from failed reads and recovers the named sectio
   expect(state.retry).toHaveBeenCalledTimes(1);
   expect(text(tree)).not.toContain("Showing last known");
   expect(tree.root.findAllByProps({ "aria-label": "Daily cost by coding agent" })).toHaveLength(1);
-  const history = tree.root
-    .findAllByType("button")
-    .find((button) => button.children.includes("Earlier history"));
-  expect(history).toBeDefined();
-  let historyGroup = history!.parent;
-  while (historyGroup !== null && typeof historyGroup.props.onValueChange !== "function") {
-    historyGroup = historyGroup.parent;
-  }
-  expect(historyGroup).not.toBeNull();
-  act(() => historyGroup!.props.onValueChange(["legacy-scanner"]));
-  expect(text(tree)).toContain("No earlier history is recorded for this period.");
-  expect(text(tree)).not.toContain("agents and subagents running in Mate");
   act(() => tree.unmount());
 });
 

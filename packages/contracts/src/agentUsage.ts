@@ -120,7 +120,6 @@ export const UsageOrigin = Schema.Struct({
 });
 export type UsageOrigin = typeof UsageOrigin.Type;
 export const UsageReportQuery = Schema.Struct({
-  provenance: Schema.optionalKey(Schema.Literals(["live-responses", "legacy-scanner"])),
   since: Schema.NullOr(Instant),
   until: Instant,
   mode: Schema.Literals(["exact", "utc-days"]),
@@ -209,10 +208,9 @@ export const UsageDailyDetail = Schema.Struct({
 });
 export type UsageDailyDetail = typeof UsageDailyDetail.Type;
 export const UsageReport = Schema.Struct({
-  provenance: Schema.Literals(["live-responses", "legacy-scanner"]),
   query: UsageReportQuery,
   generation: UsageReportGeneration,
-  exactSince: Schema.NullOr(Instant),
+  exactSince: Instant,
   basis: Schema.Literal("recorded-provider-usage-current-owner-and-app"),
   state: Schema.Literals(["unknown", "partial", "complete", "unsupported-exact-boundary"]),
   coverage: Schema.Array(
