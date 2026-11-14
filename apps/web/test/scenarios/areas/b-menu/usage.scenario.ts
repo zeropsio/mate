@@ -21,12 +21,6 @@ describe("B: Usage report presentation", () => {
             s.given.person("dev", { role: "Developer", grants: { Bea: "OWNER" } });
             yield* s.given.project("Ada", { mate: true, app: "Shop" });
             yield* s.given.project("Bea", { mate: true, app: "Lab" });
-            for (const name of ["Ada", "Bea"]) {
-              const registration = yield* s.drivers.core.call("GET", "/api/mate/self", {
-                headers: { authorization: `Project mate-key-${name}` },
-              });
-              expect(registration.status).toBe(200);
-            }
             const inactive = yield* s.given.app("Archive");
             s.drivers.hq.mapFrames((frame) => {
               const message = JSON.parse(frame) as HqStreamMessage;

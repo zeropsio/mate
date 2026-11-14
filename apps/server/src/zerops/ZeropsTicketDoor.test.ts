@@ -13,6 +13,7 @@ const ticket: TicketFrame = {
   userId: ZeropsUserId.make("jan"),
   sessionId: "hq-session",
   expiresIn: 60,
+  grantSeconds: 900,
 };
 
 describe("ZeropsTicketDoor", () => {

@@ -13,7 +13,14 @@ const AT = Date.parse("2026-10-24T10:00:00.000Z");
 /** The admission a ticket came under stands. */
 const live = () => true;
 const ticket = (id: string, userId: ZeropsUserId) =>
-  ({ type: "ticket", ticket: id, userId, sessionId: "session-1", expiresIn: 60 }) as const;
+  ({
+    type: "ticket",
+    ticket: id,
+    userId,
+    sessionId: "session-1",
+    expiresIn: 60,
+    grantSeconds: 900,
+  }) as const;
 const setup = Effect.gen(function* () {
   yield* TestClock.setTime(AT);
   const tickets = yield* Tickets.make;
@@ -26,7 +33,15 @@ const setup = Effect.gen(function* () {
   const open = (id: string, userId: ZeropsUserId, sessionId = "session-1") =>
     Effect.gen(function* () {
       yield* tickets.heard(
-        { type: "ticket", ticket: id, userId, sessionId, expiresIn: 60, role: "OWNER" },
+        {
+          type: "ticket",
+          ticket: id,
+          userId,
+          sessionId,
+          expiresIn: 60,
+          grantSeconds: 900,
+          role: "OWNER",
+        },
         live,
       );
       return yield* connections.admit(
@@ -55,6 +70,7 @@ describe("ZeropsConnections", () => {
             userId: ZeropsUserId.make("jan"),
             sessionId: "stable-session",
             expiresIn: 60,
+            grantSeconds: 900,
           },
           live,
         );
@@ -85,6 +101,7 @@ describe("ZeropsConnections", () => {
           userId: ZeropsUserId.make("jan"),
           sessionId: "ending",
           expiresIn: 60,
+          grantSeconds: 900,
           role: "OWNER",
         },
         live,

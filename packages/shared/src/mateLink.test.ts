@@ -8,8 +8,7 @@ import {
   MATE_LINK_FRAME_MAX,
   MateLinkClosed,
   MATE_LINK_TEXT_MAX,
-  MateLinkDown,
-  MateSelf,
+  LinkedMate,
   LoginDigest,
   MateLinkUp,
   linkFrameBytes,
@@ -17,7 +16,7 @@ import {
 } from "./mateLink.ts";
 
 const decodeUp = Schema.decodeUnknownExit(Schema.fromJsonString(MateLinkUp));
-const decodeDown = Schema.decodeUnknownExit(Schema.fromJsonString(MateLinkDown));
+const decodeDown = Schema.decodeUnknownExit(Schema.fromJsonString(KeyLinkDown));
 
 /** The summary a Mate from before the overview sent. */
 const summary = (lastRequest: string) =>
@@ -365,6 +364,7 @@ describe("mateLink", () => {
           name: "Ada",
           face: "face-1",
           standupRequestedBy: null,
+          chief: null,
           appId: "A1",
           changes: [
             {
@@ -378,6 +378,7 @@ describe("mateLink", () => {
           ],
           ...extra,
         },
+        admission: "admission",
       });
     expect(decodeDown(state({}))._tag).toBe("Success");
     // A field this build does not know is passed by, so an older Mate reads a newer HQ.
@@ -462,7 +463,7 @@ describe("the keys model's link", () => {
       repos: [],
     };
     const frame = { type: "state", mate, admission, pingIntervalMs: 20_000 };
-    expect(Schema.decodeUnknownExit(MateSelf)(mate)._tag).toBe("Success");
+    expect(Schema.decodeUnknownExit(LinkedMate)(mate)._tag).toBe("Success");
     const decoded = decodeKeyDown(JSON.stringify(frame));
     expect(decoded._tag).toBe("Success");
     const withRetiredFields = decodeKeyDown(
@@ -514,7 +515,14 @@ describe("the keys model's link", () => {
         admission,
         autoUpdate: { orgId: "O", enabled: true, revision: 1 },
       },
-      { type: "ticket", ticket: "tk-1", userId: "U1", sessionId: "hs-1", expiresIn: 60 },
+      {
+        type: "ticket",
+        ticket: "tk-1",
+        userId: "U1",
+        sessionId: "hs-1",
+        expiresIn: 60,
+        grantSeconds: 900,
+      },
       { type: "close-session", sessionId: "hs-1" },
       { type: "git-credential", credential: "gc-1" },
       { type: "git-credential", credential: null },

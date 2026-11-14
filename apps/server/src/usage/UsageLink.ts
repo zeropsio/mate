@@ -1,6 +1,6 @@
 /** Live Mate turns are captured independently of HQ connectivity and browser demand. */
 import { AGENT_USAGE_CAPTURE_PROTOCOL, UsageProviderKind } from "@t3tools/contracts";
-import { type MateLinkDown, type MateLinkUp } from "@t3tools/shared/mateLink";
+import { type KeyLinkDown, type MateLinkUp } from "@t3tools/shared/mateLink";
 import { type UsageLinkUp, type UsageLinkDown } from "@t3tools/shared/agentUsage";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -15,8 +15,8 @@ import { makeUsageOutbox } from "./UsageOutbox.ts";
 
 export interface UsageLane {
   readonly ping: Effect.Effect<void>;
-  readonly state: (message: Extract<MateLinkDown, { type: "state" }>) => Effect.Effect<void>;
-  readonly receive: (message: MateLinkDown) => Effect.Effect<void>;
+  readonly state: (message: Extract<KeyLinkDown, { type: "state" }>) => Effect.Effect<void>;
+  readonly receive: (message: KeyLinkDown) => Effect.Effect<void>;
   readonly run: Effect.Effect<never>;
 }
 export interface UsageLink {
@@ -59,14 +59,14 @@ export const makeUsageLink = Effect.gen(function* () {
       Effect.gen(function* () {
         const lane = {};
         type Work =
-          | { readonly type: "state"; readonly message: Extract<MateLinkDown, { type: "state" }> }
-          | { readonly type: "receipt"; readonly message: MateLinkDown }
+          | { readonly type: "state"; readonly message: Extract<KeyLinkDown, { type: "state" }> }
+          | { readonly type: "receipt"; readonly message: KeyLinkDown }
           | { readonly type: "ping" }
           | { readonly type: "changed" };
         const changed = yield* Queue.unbounded<Work>();
         let negotiated = false;
         let flight: UsageLinkUp | undefined;
-        let lastState: Extract<MateLinkDown, { type: "state" }> | undefined;
+        let lastState: Extract<KeyLinkDown, { type: "state" }> | undefined;
         const safe = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
           effect.pipe(
             Effect.catchCause((cause) =>
@@ -85,7 +85,7 @@ export const makeUsageLink = Effect.gen(function* () {
             if (flight) yield* send(flight);
           });
         const negotiate = Effect.fnUntraced(function* (
-          message: Extract<MateLinkDown, { type: "state" }>,
+          message: Extract<KeyLinkDown, { type: "state" }>,
         ) {
           lastState = message;
           if (
@@ -115,7 +115,7 @@ export const makeUsageLink = Effect.gen(function* () {
             }
           }),
         );
-        const receive = Effect.fnUntraced(function* (message: MateLinkDown) {
+        const receive = Effect.fnUntraced(function* (message: KeyLinkDown) {
           if (!negotiated || active !== lane || !flight || !message.type.startsWith("usage-"))
             return;
           const receipt = message as UsageLinkDown;

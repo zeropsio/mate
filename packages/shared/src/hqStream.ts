@@ -309,7 +309,7 @@ export const HqNavigationMate = Schema.Struct({
   birthId: Schema.optionalKey(Schema.String),
   /** The accepted setup import, retained after its browser press ends. */
   importProcessId: Schema.optionalKey(Schema.String),
-  /** An automated Mate (`MateState.automated`); absent from an older HQ: not one. */
+  /** An automated Mate (`LinkedMate.automated`); absent from an older HQ: not one. */
   automated: Schema.optionalKey(Schema.Boolean),
   /**
    * Zerops refused the Mate's key and HQ has admitted none since: it cannot connect until somebody

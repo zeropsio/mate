@@ -28,8 +28,8 @@ export interface ConsumedTicket {
   readonly live: AdmissionLive;
   /** When the Mate heard it from HQ: the moment its grant counts from. */
   readonly heardAtMs: number;
-  /** How long a connection opened or extended with it may stay open, where HQ said. */
-  readonly grantSeconds?: number;
+  /** How long a connection opened or extended with it may stay open. */
+  readonly grantSeconds: number;
   /** The role HQ read for its person at issue; none where Zerops did not answer HQ. */
   readonly role?: MateTicketRole;
 }
@@ -53,7 +53,7 @@ interface HeldTicket {
   readonly expiresAtMs: number;
   readonly heardAtMs: number;
   readonly live: AdmissionLive;
-  readonly grantSeconds: number | undefined;
+  readonly grantSeconds: number;
   readonly role: MateTicketRole | undefined;
   used: boolean;
 }
@@ -95,7 +95,7 @@ export const make = Effect.sync(() => {
         identity: held.identity,
         live: held.live,
         heardAtMs: held.heardAtMs,
-        ...(held.grantSeconds === undefined ? {} : { grantSeconds: held.grantSeconds }),
+        grantSeconds: held.grantSeconds,
         ...(held.role === undefined ? {} : { role: held.role }),
       });
     }),

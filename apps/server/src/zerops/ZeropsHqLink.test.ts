@@ -780,6 +780,7 @@ describe("ZeropsHqLink", () => {
           userId: "jan",
           sessionId: "hq-session",
           expiresIn: 60,
+          grantSeconds: 900,
           role: "OWNER",
         });
         yield* Queue.take(acks);
@@ -825,6 +826,7 @@ describe("ZeropsHqLink", () => {
             userId: "jan",
             sessionId: "s",
             expiresIn: 60,
+            grantSeconds: 900,
           });
           socket.hear({ type: "close-session", sessionId: "other" });
           socket.hear({ type: "ping" });

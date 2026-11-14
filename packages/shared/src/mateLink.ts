@@ -57,8 +57,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import { UsageLinkUp, UsageLinkDown } from "./agentUsage.ts";
-import { MateChanges, MateRepo } from "./hqChanges.ts";
-import { MateGitPush } from "./hqDeploys.ts";
+import { MateChanges } from "./hqChanges.ts";
 import { HqAutoUpdatePolicy } from "./mateAutoUpdatePolicy.ts";
 
 export const MATE_LINK_TEXT_MAX = 280;
@@ -86,46 +85,6 @@ const Count = Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(
 const Title = TrimmedNonEmptyString.check(Schema.isMaxLength(MATE_TITLE_MAX));
 const Line = TrimmedNonEmptyString.check(Schema.isMaxLength(MATE_LINK_TEXT_MAX));
 const atMost = (max: number) => Schema.isMaxLength(max);
-
-/**
- * The Mate as HQ holds it: its record, its birth, and the application it is in with its changes
- * there. A field this build does not know is passed by, so an older Mate reads a newer HQ.
- */
-export const MateState = Schema.Struct({
-  projectId: Schema.String,
-  name: Schema.String,
-  face: Schema.String,
-  /** The person who asked for the Mate's stand-up, or none yet. */
-  standupRequestedBy: Schema.NullOr(ZeropsUserId),
-  /**
-   * The Zerops user HQ records as the Mate's owner (`mateOwner`), or none named: everyone else
-   * reads along. Absent from an HQ older than it, and where HQ could not read its org yet.
-   */
-  ownerUserId: Schema.optionalKey(Schema.NullOr(ZeropsUserId)),
-  /**
-   * An automated Mate: it takes tasks from outside (`MateTask`) and runs only on the
-   * organization's API keys, never on a person's subscription. Absent from an older HQ: not one.
-   */
-  automated: Schema.optionalKey(Schema.Boolean),
-  ...MateChanges.fields,
-  /**
-   * Each Git environment of its application, its latest confirmed push per repository with the
-   * origin's CI, in the application's environment order. Only `GET /api/mate/self` answers it:
-   * absent from the link's state and from an older HQ.
-   */
-  gitPushes: Schema.optionalKey(Schema.Array(MateGitPush)),
-  /**
-   * Whether its application has a production, of any target, released or not. Only `GET
-   * /api/mate/self` answers it: absent from the link's state and from an older HQ.
-   */
-  production: Schema.optionalKey(Schema.Boolean),
-  /**
-   * Each repository of its application by name, with its connected origin's address. Only `GET
-   * /api/mate/self` answers it: absent from the link's state and from an older HQ.
-   */
-  repos: Schema.optionalKey(Schema.Array(MateRepo)),
-});
-export type MateState = typeof MateState.Type;
 
 /**
  * A thread's kind as its Mate resolves it, without a visit: `resolveThreadStatus`'s kinds but
@@ -462,50 +421,40 @@ const ProviderKeysDown = Schema.Struct({
   model: Schema.optionalKey(TrimmedNonEmptyString),
 });
 
-export const MateLinkDown = Schema.Union([
-  AutoUpdatePolicyDown,
-  ...UsageLinkDown.members,
-  Schema.Struct({ type: Schema.Literal("ping") }),
-  Schema.Struct({ type: Schema.Literal("state"), mate: MateState, ...StateExtras }),
-  TaskDown,
-  TaskMessageDown,
-  TaskStopDown,
-  ProviderKeysDown,
-]);
-export type MateLinkDown = typeof MateLinkDown.Type;
-
 /*
  * The keys model's link (mate-hq `spec/protocol.md`, "Mate link"): the Mate dials
  * HQ with nothing in the URL and proves itself with its project key in the first frame; HQ sends
  * its state. HQ's ticket names the person's role on the Mate's project as HQ read it at Zerops
  * (`role`), and the Mate admits on that role; it keeps every ticket heard under a live admission
  * and answers it `ticket-ack`. It tells HQ nothing of the organisation's members, and an older
- * HQ's `access` frame is no frame of this union. Today's frames
- * of tasks, usage and the update policy ride on it unchanged.
- * Today's `MateLinkUp`, `MateLinkDown` and `MateState` above stay for the HQ and clients that
- * still read them.
+ * HQ's `access` frame is no frame of this union. The frames of tasks, usage and the update policy
+ * ride on it.
  */
 
-/** `GET /api/mate/self`, and the `mate` of a `state` frame: `chief` names the mark's project. */
-export const MateSelf = Schema.Struct({
+/**
+ * The Mate as a `state` frame brings it: its record, its stand-up ask, its owner where HQ records
+ * one, and the application it is in with its changes there; `chief` names the mark's project. A
+ * field this build does not read (the frame's `rev`, `repos`) is passed by.
+ */
+export const LinkedMate = Schema.Struct({
   projectId: Schema.String,
   name: Schema.String,
   face: Schema.String,
+  /** The person who asked for the Mate's stand-up, or none yet. */
   standupRequestedBy: Schema.NullOr(ZeropsUserId),
   /**
    * The persona chosen when it was made, kept with its stand-up ask: its server takes it at its
-   * stand-up when it holds none. Absent from an older HQ and where none was chosen.
+   * stand-up when it holds none. Absent where none was chosen.
    */
   standupPersona: Schema.optionalKey(MatePersona),
+  /**
+   * An automated Mate: it takes tasks from outside (`MateTask`) and runs only on the
+   * organization's API keys, never on a person's subscription. Absent: not one.
+   */
   automated: Schema.optionalKey(Schema.Boolean),
   ...MateChanges.fields,
   chief: Schema.NullOr(Schema.Struct({ projectId: Schema.String })),
-});
-export type MateSelf = typeof MateSelf.Type;
-
-/** The Mate as a `state` frame brings it: its self read and known owner. */
-export const LinkedMate = Schema.Struct({
-  ...MateSelf.fields,
+  /** The Zerops user HQ records as the Mate's owner (`mateOwner`); absent while it has none. */
   ownerUserId: Schema.optionalKey(ZeropsUserId),
 });
 export type LinkedMate = typeof LinkedMate.Type;
@@ -603,7 +552,7 @@ export const TicketDown = Schema.Struct({
   sessionId: Schema.String,
   expiresIn: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
   // How long a connection opened or extended with this ticket may stay open.
-  grantSeconds: Schema.optionalKey(Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0))),
+  grantSeconds: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
   // The role the person enters at; absent only where Zerops did not answer HQ, and then the
   // ticket only extends a connection already open.
   role: Schema.optionalKey(MateTicketRole),
@@ -647,12 +596,7 @@ export const KeyLinkDown = Schema.Union([
 export type KeyLinkDown = typeof KeyLinkDown.Type;
 
 /** A key HQ does not admit: the close reason of `4403`, and the code of the same refusal on a call. */
-export const KeyNotAdmitted = Schema.Literals([
-  "key_too_wide",
-  "key_not_sensitive",
-  "not_a_mate",
-  "org_not_started",
-]);
+export const KeyNotAdmitted = Schema.Literals(["key_too_wide", "key_not_sensitive", "not_a_mate"]);
 export type KeyNotAdmitted = typeof KeyNotAdmitted.Type;
 
 /**

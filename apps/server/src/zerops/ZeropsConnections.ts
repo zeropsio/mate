@@ -81,7 +81,7 @@ export class ZeropsConnections extends Context.Service<
      * Presents a fresh ticket on the open connection `connectionId`: the whole seconds it may now
      * stay open, or none. Granted only when the ticket is held, unused and unexpired (the attempt
      * spends it whatever the outcome), names the connection's own person and HQ session, came
-     * under a still-live admission, and carries `grantSeconds` of which at least a second is left:
+     * under a still-live admission, and leaves at least a second of its `grantSeconds`:
      * the connection's deadline becomes `grantSeconds` after the Mate heard the ticket, and the
      * answer counts from now to it. The same session, not only the same person: a session's end
      * closes its connections, and another's ticket would outlive it. A ticket that names a role
@@ -213,10 +213,8 @@ export const make = Effect.gen(function* () {
         if (Option.isNone(ticket)) return Option.none<ConnectionIdentity>();
         const { ticket: id, userId, sessionId } = ticket.value.identity;
         const { role, grantSeconds, heardAtMs } = ticket.value;
-        // HQ names no role only where Zerops did not answer it: such a ticket extends, never opens;
-        // nor does one without a grant, whose connection nothing would end.
-        if (role === undefined || grantSeconds === undefined || connections.has(id))
-          return Option.none<ConnectionIdentity>();
+        // HQ names no role only where Zerops did not answer it: such a ticket extends, never opens.
+        if (role === undefined || connections.has(id)) return Option.none<ConnectionIdentity>();
         const connectionId = yield* crypto.uuidV4().pipe(Effect.orDie);
         // Read after the last wait, with no yield before it is registered: a key refused by now
         // ends everyone, whose end waits on this lock and then finds nothing of it to close.
@@ -241,12 +239,9 @@ export const make = Effect.gen(function* () {
           (input) => input.connectionId === connectionId,
         );
         const consumed = Option.getOrUndefined(yield* tickets.consume({ ticket }));
-        const grantSeconds = consumed?.grantSeconds;
         const now = yield* Clock.currentTimeMillis;
         const deadlineMs =
-          consumed === undefined || grantSeconds === undefined
-            ? undefined
-            : consumed.heardAtMs + grantSeconds * 1000;
+          consumed === undefined ? undefined : consumed.heardAtMs + consumed.grantSeconds * 1000;
         // Whole seconds from now to the new deadline: what the browser schedules its next by.
         const secondsLeft = deadlineMs === undefined ? 0 : Math.floor((deadlineMs - now) / 1000);
         const refused =
@@ -260,21 +255,24 @@ export const make = Effect.gen(function* () {
                   ? "ticket of another HQ session"
                   : !consumed.live()
                     ? "admission no longer live"
-                    : deadlineMs === undefined
-                      ? "ticket carries no grantSeconds"
-                      : secondsLeft < 1
-                        ? "ticket heard too long ago"
-                        : undefined;
-        if (refused !== undefined || connection === undefined || deadlineMs === undefined) {
+                    : secondsLeft < 1
+                      ? "ticket heard too long ago"
+                      : undefined;
+        if (
+          refused !== undefined ||
+          connection === undefined ||
+          consumed === undefined ||
+          deadlineMs === undefined
+        ) {
           yield* Effect.logInfo("connection extension refused", { connectionId, refused });
           return Option.none<number>();
         }
-        if (consumed?.role !== undefined) connection.role = consumed.role;
+        if (consumed.role !== undefined) connection.role = consumed.role;
         connection.deadlineMs = deadlineMs;
         yield* rearm;
         yield* Effect.logInfo("connection extended", {
           connectionId,
-          grantSeconds,
+          grantSeconds: consumed.grantSeconds,
           role: connection.role,
         });
         return Option.some(secondsLeft);
