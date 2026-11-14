@@ -3,8 +3,8 @@
  * the fragment leaves the address for this tab's session storage as the page boots (`main.tsx`),
  * signed in or not: signed out no route runs, and a sign-in returns to a path but never to its
  * fragment (`navigationStorage.ts`).
- * The page reads it once and removes it: the code is a one-time credential, and a reload does not
- * send it again.
+ * The page reads it once and removes it, and drops it once HQ took it or may have: the code is a
+ * one-time credential, and neither a reload nor the page opened again sends it again.
  */
 const KEPT = "mate:chat-link-code:v1";
 
@@ -35,4 +35,9 @@ export function takeChatLinkCode(): string | null {
     read = null;
   }
   return read;
+}
+
+/** Drops the code once HQ took it, or may have: nothing sends it again. */
+export function spendChatLinkCode(): void {
+  read = null;
 }

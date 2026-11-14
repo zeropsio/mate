@@ -521,7 +521,7 @@ export function chatLinkRefusalWords(refusal: {
   readonly reason: string | undefined;
 }): string | undefined {
   if (refusal.reason === CHAT_LINK_NOT_FOUND)
-    return "This link has been used, has expired, or is for another organization. Switch organizations and try again, or ask Mate for a new link.";
+    return "This link has been used, has expired, or is for another organization. Ask Mate for a new link, or switch to the link's organization and open the link again.";
   if (refusal.code === "invalid")
     return "This link is incomplete. Open the whole link Mate sent you.";
   return undefined;
