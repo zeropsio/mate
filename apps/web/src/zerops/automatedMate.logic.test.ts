@@ -97,7 +97,7 @@ describe("a task's conversation", () => {
 });
 
 describe("the organization's key for automated Mates", () => {
-  const nebius = (set: boolean) => ({ provider: "nebius", set, setAt: null });
+  const nebius = (set: boolean) => ({ provider: "nebius", set, setAt: null, setBy: null });
   it.each([
     { case: "not read yet", keys: { state: "unread" }, key: "unknown" },
     { case: "being read", keys: { state: "reading" }, key: "unknown" },

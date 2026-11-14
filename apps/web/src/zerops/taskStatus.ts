@@ -18,8 +18,7 @@ export type TaskStatus =
   | "closed"
   | "done"
   | "failed"
-  | "stopped"
-  | "declined";
+  | "stopped";
 
 /** Each status in a word or two, as every surface says it beside its dot. */
 export const TASK_STATUS_WORDS: Readonly<Record<TaskStatus, string>> = {
@@ -34,7 +33,6 @@ export const TASK_STATUS_WORDS: Readonly<Record<TaskStatus, string>> = {
   done: "Done",
   failed: "Failed",
   stopped: "Stopped",
-  declined: "Not taken",
 };
 
 /** What a status's dot means: its Mate at work, a person needed, a change to look at, a failure, or quiet. */
@@ -52,7 +50,6 @@ export const TASK_STATUS_TONE: Readonly<Record<TaskStatus, TaskTone>> = {
   done: "finished",
   failed: "failed",
   stopped: "quiet",
-  declined: "quiet",
 };
 
 /** The dot's colour, by its tone. */

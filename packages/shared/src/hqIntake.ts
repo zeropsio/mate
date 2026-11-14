@@ -40,15 +40,15 @@ export const HqIntakeView = Schema.Struct({
   appId: Schema.String,
   repo: Schema.String,
   label: Schema.String,
-  /** It takes a public repository's issues (`HqIntakeRequest.public`); absent from an older HQ. */
-  public: Schema.optionalKey(Schema.Boolean),
+  /** It takes a public repository's issues (`HqIntakeRequest.public`). */
+  public: Schema.Boolean,
   webhookUrl: Schema.String,
   hook: Schema.Union([
     /** HQ made the webhook on the repository with its token. */
     Schema.Struct({ kind: Schema.Literal("made") }),
     /**
      * The organization's GitHub app reaches the repository: its own webhook delivers the issues,
-     * and the repository has none of HQ's. Absent from an older HQ.
+     * and the repository has none of HQ's.
      */
     Schema.Struct({ kind: Schema.Literal("app") }),
     /** The person makes it: the secret is shown this once. */
@@ -64,8 +64,8 @@ export const HqAiKeyView = Schema.Struct({
   provider: Schema.String,
   set: Schema.Boolean,
   setAt: Schema.NullOr(Schema.String),
-  /** The Zerops user id of the Owner or Admin who set it; absent from an older HQ. */
-  setBy: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  /** The Zerops user id of the Owner or Admin who set it. */
+  setBy: Schema.NullOr(Schema.String),
 });
 export type HqAiKeyView = typeof HqAiKeyView.Type;
 
@@ -102,15 +102,15 @@ export const HqSlackView = Schema.Struct({
   /**
    * The last time an event's signature did not hold (`401` at `eventsUrl`), and the last time one
    * did; `null` for never. While the refusal is the later, the signing secret is not the app's.
-   * Absent from an HQ that predates them.
    */
-  eventsRefusedAt: Schema.optionalKey(Schema.NullOr(Schema.String)),
-  eventsAcceptedAt: Schema.optionalKey(Schema.NullOr(Schema.String)) /**
+  eventsRefusedAt: Schema.NullOr(Schema.String),
+  eventsAcceptedAt: Schema.NullOr(Schema.String),
+  /**
    * The Zerops user id of the Owner or Admin who sealed its bot token, and when (ISO); both `null`
-   * while not connected. Absent from an older HQ.
-   */,
-  connectedBy: Schema.optionalKey(Schema.NullOr(Schema.String)),
-  connectedAt: Schema.optionalKey(Schema.NullOr(Schema.String)),
+   * while not connected.
+   */
+  connectedBy: Schema.NullOr(Schema.String),
+  connectedAt: Schema.NullOr(Schema.String),
 });
 export type HqSlackView = typeof HqSlackView.Type;
 
@@ -156,10 +156,10 @@ export const HqDiscordView = Schema.Struct({
   inviteUrl: Schema.NullOr(Schema.String),
   /**
    * The Zerops user id of the Owner or Admin who sealed its bot token, and when (ISO); both `null`
-   * while not connected. Absent from an older HQ.
+   * while not connected.
    */
-  connectedBy: Schema.optionalKey(Schema.NullOr(Schema.String)),
-  connectedAt: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  connectedBy: Schema.NullOr(Schema.String),
+  connectedAt: Schema.NullOr(Schema.String),
 });
 export type HqDiscordView = typeof HqDiscordView.Type;
 
@@ -221,19 +221,30 @@ export const HqTaskLimitsView = Schema.Struct({
   /**
    * What the organization's automated Mates may spend in a calendar month (UTC), all tasks
    * together; `null`: no budget. Reached, HQ hands out no more tasks until the next month or a
-   * higher budget. Absent from an older HQ.
+   * higher budget.
    */
-  monthlyBudgetUsd: Schema.optionalKey(Schema.NullOr(Schema.Number)),
+  monthlyBudgetUsd: Schema.NullOr(Schema.Number),
   /** What they spent this month so far, as their Mates reported it. Read only. */
-  spentThisMonthUsd: Schema.optionalKey(Schema.Number),
+  spentThisMonthUsd: Schema.Number,
   /**
    * The model the organization's automated Mates run each new task on, as an OpenCode slug (one
-   * of `automatedModels`): the default until one is picked. Left out of a write, kept as it is.
-   * Absent from an older HQ, which picks none.
+   * of `automatedModels`): the default until one is picked.
    */
-  model: Schema.optionalKey(Schema.String),
+  model: Schema.String,
 });
 export type HqTaskLimitsView = typeof HqTaskLimitsView.Type;
+
+/**
+ * A write of the organization's limits on each task (`PUT /api/org/task-limits`): the budget and
+ * the model, left out, are kept as they are. HQ answers {@link HqTaskLimitsView}.
+ */
+export const HqTaskLimitsRequest = Schema.Struct({
+  minutes: Schema.Int,
+  costUsd: Schema.NullOr(Schema.Number),
+  monthlyBudgetUsd: Schema.optionalKey(Schema.NullOr(Schema.Number)),
+  model: Schema.optionalKey(Schema.String),
+});
+export type HqTaskLimitsRequest = typeof HqTaskLimitsRequest.Type;
 
 /** One task of an application, as its Automation board lists it. */
 export const HqAppTask = Schema.Struct({
@@ -257,7 +268,6 @@ export const HqAppTask = Schema.Struct({
     "closed",
     "failed",
     "stopped",
-    "declined",
   ]),
   /** The automated Mate on it or that had it: its project id and name. */
   mate: Schema.NullOr(Schema.Struct({ projectId: Schema.String, name: Schema.String })),
@@ -277,7 +287,7 @@ export const HqAppTask = Schema.Struct({
   spentUsd: Schema.NullOr(Schema.Number),
   workedMs: Schema.NullOr(Schema.Number),
   /**
-   * Why it failed, stopped or was declined; the question while waiting; done, where its Mate left
+   * Why it failed or stopped; the question while waiting; done, where its Mate left
    * its work undelivered.
    */
   detail: Schema.NullOr(Schema.String),

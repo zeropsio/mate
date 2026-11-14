@@ -20,6 +20,8 @@ const RECORD: ChangeMetadataResponse = {
     repo: "repo",
     number: 1,
     mateProjectId: "mate",
+    branch: "change",
+    receipt: null,
     title: "Change",
     body: "Review body",
     state: "open",

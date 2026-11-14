@@ -29,6 +29,8 @@ const repos = [
       keptBy: "ada",
       expiresAt: null,
       invalidSince: null,
+      via: "token" as const,
+      githubAppId: null,
     },
   },
 ];

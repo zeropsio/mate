@@ -265,7 +265,7 @@ describe("changeReview: the verdict comes first (R2)", () => {
   it.each([
     ["GitHub merged a head no person merged in Mate", { landedOutside: true }, true],
     ["a person merged it in Mate", { landedOutside: false }, false],
-    ["an older HQ says nothing", {}, false],
+    ["HQ leaves it out, as it does when false", {}, false],
   ] as const)(
     "a merged change says when it was merged outside Mate: %s",
     (_name, over, outside) => {
@@ -288,6 +288,8 @@ describe("changeReview: the verdict comes first (R2)", () => {
         behind: false,
         ready: true,
         comments: 0,
+        branch: "search-box",
+        receipt: null,
         ...over,
       };
       const review = changeReview(
@@ -1728,72 +1730,6 @@ describe("changeReview: where should it run (the one question)", () => {
   });
 });
 
-describe("changeReview: repository pipeline evidence", () => {
-  const head = "a".repeat(40);
-  const pipeline = (
-    requirement: "required" | "advisory" | "unknown",
-    state: "running" | "failed" | "passed" | "unknown",
-  ) => ({
-    head,
-    requirements: "known" as const,
-    checks: [{ id: "unit", name: "Unit tests", requirement, state }],
-  });
-  it.each([
-    ["required", "running", false, "checks-running"],
-    ["required", "failed", false, "checks-failed"],
-    ["required", "unknown", false, "checks-unknown"],
-    ["required", "passed", true, "ready"],
-    ["advisory", "running", true, "ready"],
-    ["advisory", "failed", true, "ready"],
-    ["unknown", "failed", true, "ready"],
-  ] as const)(
-    "%s %s checks only hold Merge when the repository requires them",
-    (requirement, state, enabled, verdict) => {
-      const review = changeReview(
-        change({ pull: pull({ headSha: head, pipeline: pipeline(requirement, state) }) }),
-      );
-      expect(review.verdict.state).toBe(verdict);
-      expect(review.primary?.enabled).toBe(enabled);
-      expect(review.pipeline?.checks).toEqual(pipeline(requirement, state).checks);
-      if (!enabled) {
-        expect(review.verdict.why).toContain("Unit tests");
-        expect(review.primary?.safe).toBe(false);
-      }
-    },
-  );
-  it("does not infer known requirements or passed checks from a ready clean change", () => {
-    const review = changeReview(change({ pull: pull({ ready: true }) }));
-    expect(review.pipeline?.why).toBe("Repository check requirements are unknown.");
-    expect(review.pipeline?.checks).toEqual([]);
-    expect(review.primary?.enabled).toBe(true);
-  });
-  it("distinguishes a repository with no checks from unknown requirements", () => {
-    const review = changeReview(
-      change({
-        pull: pull({ headSha: head, pipeline: { head, requirements: "known", checks: [] } }),
-      }),
-    );
-    expect(review.pipeline?.why).toBe("No pipeline checks.");
-    expect(review.primary?.enabled).toBe(true);
-  });
-
-  it.each(["passed", "failed", "running"] as const)(
-    "does not apply %s checks from a different head",
-    (state) => {
-      const review = changeReview(
-        change({ pull: pull({ headSha: "b".repeat(40), pipeline: pipeline("required", state) }) }),
-      );
-      expect(review.pipeline?.why).toBe("Pipeline checks have not been read for this head.");
-      expect(review.pipeline?.checks[0]).toMatchObject({
-        name: "Unit tests",
-        requirement: "unknown",
-        state: "unknown",
-      });
-      expect(review.primary?.enabled).toBe(true);
-    },
-  );
-});
-
 describe("changeReview: competing terminal outcomes and permissions", () => {
   it.each([
     [
@@ -1849,6 +1785,8 @@ describe("Git release review evidence", () => {
     keptBy: "Zerops custodian, not Git host owner",
     expiresAt: null,
     invalidSince: null,
+    via: "token" as const,
+    githubAppId: null,
   };
   const sha = "a".repeat(40);
   function facts(expiresAt: string | null = null) {

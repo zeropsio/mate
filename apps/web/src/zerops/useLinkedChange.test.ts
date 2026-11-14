@@ -40,6 +40,8 @@ const CHANGE: HqChange = {
   behind: false,
   ready: true,
   comments: 0,
+  branch: "link-previews",
+  receipt: null,
 };
 
 const refusal = (status: number, code: string, message: string) =>

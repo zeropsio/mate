@@ -141,6 +141,8 @@ const remote = (url: string, extra: Partial<NonNullable<RepoListEntry["remote"]>
   keptBy: "Ales R.",
   expiresAt: null,
   invalidSince: null,
+  via: "token" as const,
+  githubAppId: null,
   ...extra,
 });
 

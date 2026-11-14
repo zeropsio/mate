@@ -119,13 +119,13 @@ function githubSeal(app: HqGithubApp): GithubSeal {
  * 7 Nov 2026"): the member list names them, and somebody it does not hold goes unnamed.
  */
 export function sealedWords(
-  by: string | null | undefined,
-  at: string | null | undefined,
+  by: string | null,
+  at: string | null,
   nameOf: NameOf,
   day: (iso: string) => string,
 ): string {
-  const name = by === null || by === undefined ? undefined : nameOf(by);
-  return `${name === undefined ? "" : ` by ${name}`}${at === null || at === undefined ? "" : ` on ${day(at)}`}`;
+  const name = by === null ? undefined : nameOf(by);
+  return `${name === undefined ? "" : ` by ${name}`}${at === null ? "" : ` on ${day(at)}`}`;
 }
 
 /** A member's name by Zerops user id; where no member list is read, nobody is named. */
@@ -134,10 +134,10 @@ export const NOBODY_NAMED: NameOf = () => undefined;
 
 /**
  * Who connected a Slack app or Discord application and when ("Connected by Ada Lovelace on 7 Nov
- * 2026."); `null` from an older HQ, which says neither.
+ * 2026."); `null` where neither is known.
  */
 export function connectedByLine(
-  view: { readonly connectedBy?: string | null; readonly connectedAt?: string | null },
+  view: { readonly connectedBy: string | null; readonly connectedAt: string | null },
   nameOf: NameOf,
   day: (iso: string) => string,
 ): string | null {

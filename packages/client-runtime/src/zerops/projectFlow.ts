@@ -45,7 +45,6 @@ export type FlowPullRequestKind = "code" | "recipe";
 
 /** One open pull request of the project, as every surface shows it. */
 export interface FlowPullRequest {
-  readonly pipeline?: HqChange["pipeline"] | undefined;
   readonly recipeValidation?: HqChange["recipeValidation"] | undefined;
   readonly problems?: HqChange["problems"] | undefined;
   /** The repository's name in the group's org. */
@@ -67,7 +66,7 @@ export interface FlowPullRequest {
    * person to close it or hand it to another Mate. Absent otherwise.
    */
   readonly mateGone?: true | undefined;
-  /** The branch it is on (`HqChange.branch`), where HQ's record of it says. */
+  /** The branch it is on (`HqChange.branch`). */
   readonly branch?: string | undefined;
   readonly url: string | undefined;
   /** HQ's word on whether it merges (`changeMergeability.ts`), never the app's. */
@@ -128,12 +127,12 @@ export interface FlowPullRequest {
   readonly description?: string | undefined;
   /**
    * How many comments were said on it, as HQ counts them: the room its review's conversation
-   * holds while it reads them. `undefined` where HQ counts none.
+   * holds while it reads them (`HqChange.comments`).
    */
   readonly commentCount?: number | undefined;
   /**
    * Whether it asks for review: its Mate described it at its head. A draft (`false`) is listed and
-   * reachable, and asks nothing. Absent reads as ready, as every change did before drafts.
+   * reachable, and asks nothing (`HqChange.ready`).
    */
   readonly ready?: boolean | undefined;
   /**
@@ -227,7 +226,6 @@ const FALLBACK_BASE = "main";
 export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest {
   const merged = change.state === "merged";
   return {
-    pipeline: change.pipeline,
     ...(change.recipeValidation === undefined ? {} : { recipeValidation: change.recipeValidation }),
     ...(change.problems === undefined ? {} : { problems: change.problems }),
     repository: change.repo,
@@ -237,7 +235,7 @@ export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest
     kind: change.repo === RECIPE_REPO ? "recipe" : "code",
     mateProjectId: change.mateProjectId,
     ...(change.mateGone === true ? { mateGone: true } : {}),
-    ...(change.branch === undefined ? {} : { branch: change.branch }),
+    branch: change.branch,
     url: changeUrl(hqAddress, change.appId, change.repo, change.number),
     mergeability: mergeabilityKindOf(change.mergeability),
     behind: change.behind,
@@ -262,11 +260,11 @@ export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest
         : `${change.repo} #${String(change.number)}`,
     updatedAt: change.updatedAt,
     description: change.body.trim().length === 0 ? undefined : change.body,
-    commentCount: change.comments ?? undefined,
+    commentCount: change.comments,
     ready: change.ready,
     ...(change.draftReason === undefined ? {} : { draftReason: change.draftReason }),
     ...(change.corePush === undefined ? {} : { corePush: change.corePush }),
-    ...(change.receipt === undefined || change.receipt === null ? {} : { receipt: change.receipt }),
+    ...(change.receipt === null ? {} : { receipt: change.receipt }),
     ...(change.pullRequest === undefined ? {} : { pullRequest: change.pullRequest }),
   };
 }

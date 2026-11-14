@@ -179,7 +179,13 @@ function Harness() {
               admin={AUTOMATION.admin}
               groupName="Acme Docs"
               keyState={AUTOMATION.key}
-              limits={{ minutes: 60, costUsd: 3, monthlyBudgetUsd: 50, spentThisMonthUsd: 6 }}
+              limits={{
+                minutes: 60,
+                costUsd: 3,
+                monthlyBudgetUsd: 50,
+                spentThisMonthUsd: 6,
+                model: "nebius/zai-org/GLM-5.3",
+              }}
               onCancel={() => setOpen(false)}
               onCreate={(choice) => {
                 created.push(choice);

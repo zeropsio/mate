@@ -31,6 +31,8 @@ const REMOTE = {
   keptBy: "Zerops custodian",
   expiresAt: null,
   invalidSince: null,
+  via: "token" as const,
+  githubAppId: null,
 };
 const READY: HqGitReleasePreflight = {
   repo: "api",

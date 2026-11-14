@@ -29,6 +29,8 @@ const gitRemote = {
   keptBy: "custodian",
   expiresAt: null,
   invalidSince: "2026-10-13T10:01:00Z",
+  via: "token" as const,
+  githubAppId: null,
 };
 const ORG = "org";
 const SHA = "a".repeat(40);

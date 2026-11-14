@@ -13103,9 +13103,6 @@ a.message-file:focus-visible {
 .rv-checks[data-mark="passed"] {
   color: var(--foreground);
 }
-.rv-checks[data-mark="failed"] {
-  color: var(--zerops-status-failed-text);
-}
 .rv-why {
   display: flex;
   flex-wrap: wrap;

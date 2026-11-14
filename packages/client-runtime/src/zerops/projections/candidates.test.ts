@@ -533,24 +533,17 @@ describe("candidatesNotice for a region that says nothing while it reads", () =>
 });
 
 describe("listsNoProject", () => {
-  const isProject = (row: ZeropsCandidate) => !row.project.tagList?.includes("tool");
-
   it.each<{
     readonly name: string;
     readonly listing: Known<ReadonlyArray<ZeropsCandidate>>;
     readonly none: boolean;
   }>([
     { name: "known and complete, with no row", listing: known([]), none: true },
-    {
-      name: "known and complete, with no row it counts",
-      listing: known([candidate("gitea", ["tool"])]),
-      none: true,
-    },
     { name: "known and complete, with a project", listing: known([candidate("a")]), none: false },
     { name: "known in part, with no row", listing: known([], "partial"), none: false },
     ...notHeld.map(({ name, listing }) => ({ name, listing, none: false })),
   ])("says none of a listing that is $name: $none", ({ listing, none }) => {
-    expect(listsNoProject(listing, isProject)).toBe(none);
+    expect(listsNoProject(listing)).toBe(none);
   });
 });
 
@@ -604,7 +597,7 @@ describe("a withheld listing", () => {
       names: [],
       complete: false,
     });
-    expect(listsNoProject(withheld, () => true)).toBe(false);
+    expect(listsNoProject(withheld)).toBe(false);
     expect(presentCandidates(withheld, (entry: CandidateRow) => entry.key)).toBe(withheld);
   });
 

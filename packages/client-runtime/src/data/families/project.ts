@@ -25,7 +25,7 @@ import { scopeOf, type FamilySpec } from "./spec.ts";
  * A project as its row says it; where HQ places it is HQ's, never part of it. `viewerRoleCode` is
  * the viewer's own grant a listing row names without saying whose grants it lists.
  */
-export type ProjectValue = Omit<ZeropsProject, "hq" | "hqTool"> & {
+export type ProjectValue = Omit<ZeropsProject, "hq"> & {
   readonly lastUpdate?: string;
   readonly viewerRoleCode?: string;
   /** Whether the listing named grants; own-row answers never change this demand input. */

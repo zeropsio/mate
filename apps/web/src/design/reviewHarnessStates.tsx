@@ -252,6 +252,8 @@ const CHANGE: HqChange = {
   behind: false,
   ready: true,
   comments: 0,
+  branch: "status-page",
+  receipt: null,
 };
 
 /** What HQ recorded of the change, `over` it, as its review reads it (`changeReadoutOfRecord`). */
@@ -2541,14 +2543,6 @@ export function ReviewDialogTry({
             press={IDLE}
             pull={pull({
               description: harnessDescription({ after: TRY_READ_MS }),
-              pipeline: {
-                head: HEAD,
-                requirements: "known",
-                checks: [
-                  { id: "unit", name: "Unit tests", requirement: "required", state: "passed" },
-                  { id: "lint", name: "Lint", requirement: "advisory", state: "passed" },
-                ],
-              },
             })}
             readout={read ? READ : READING}
             titleId="review-try-title"

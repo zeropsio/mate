@@ -132,8 +132,6 @@ export const Release = Schema.Struct({
   rollbackOf: Schema.NullOr(ReleaseTag),
   /** Older releases have no recorded membership; absence does not trigger a Git read. */
   history: Schema.optionalKey(ReleaseHistory),
-  /** Saved before production existed; the press requested no deployment. */
-  snapshot: Schema.optionalKey(Schema.Boolean),
 }).check(Schema.makeFilter(releaseTargetMatches));
 export type Release = typeof Release.Type;
 

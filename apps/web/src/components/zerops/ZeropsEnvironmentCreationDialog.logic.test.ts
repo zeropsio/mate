@@ -884,6 +884,8 @@ describe("the recipe's proposal, as HQ holds it", () => {
     repo: RECIPE_REPO,
     number: 11,
     mateProjectId: "cleo-project",
+    branch: "change",
+    receipt: null,
     title: RECIPE_PROPOSAL_TITLE,
     body: "",
     state: "open",

@@ -42,8 +42,13 @@ function rig(api: Parameters<typeof makeAutomationSettings>[0]["api"]) {
   };
 }
 
-const unset: HqAiKeyView = { provider: "nebius", set: false, setAt: null };
-const set: HqAiKeyView = { provider: "nebius", set: true, setAt: "2026-10-17T09:00:00.000Z" };
+const unset: HqAiKeyView = { provider: "nebius", set: false, setAt: null, setBy: null };
+const set: HqAiKeyView = {
+  provider: "nebius",
+  set: true,
+  setAt: "2026-10-17T09:00:00.000Z",
+  setBy: null,
+};
 
 describe("the organization's API keys", () => {
   it("reads whether each key is set while a screen shows them, and keeps a key's value out of every record", async () => {
@@ -117,7 +122,7 @@ describe("the organization's API keys", () => {
     // The list read again confirms it, and says what HQ holds from then on.
     await reread;
     expect(r.keys().keys).toMatchObject({ state: "known", keys: [after] });
-    const later = { provider: "nebius", set: true, setAt: "2026-10-18T09:00:00.000Z" };
+    const later = { provider: "nebius", set: true, setAt: "2026-10-18T09:00:00.000Z", setBy: null };
     const settled = waitFor(r.store, () => JSON.stringify(r.keys().keys).includes("10-18"));
     answerReread([later]);
     await settled;
@@ -179,6 +184,7 @@ describe("an application's intake", () => {
     appId: "shop",
     repo: "acme/tea-shop",
     label: "mate",
+    public: false,
     webhookUrl: "https://hq.example/api/github/webhook",
     hook: { kind: "paste", secret: SECRET, why: "The repository's token may not make webhooks." },
   };

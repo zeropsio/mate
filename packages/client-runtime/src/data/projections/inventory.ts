@@ -64,12 +64,7 @@ export const inventoryPlacements: Projection<string, HqPlacements | null> = {
       navigation.presses,
     );
   },
-  equals: (a, b) =>
-    a === b ||
-    (a !== null &&
-      b !== null &&
-      sameValue([...a], [...b]) &&
-      sameValue([...(a.tools ?? [])], [...(b.tools ?? [])])),
+  equals: (a, b) => a === b || (a !== null && b !== null && sameValue([...a], [...b])),
 };
 
 export const inventory: Projection<InventoryKey, InventoryRead> = {

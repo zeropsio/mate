@@ -79,7 +79,6 @@ import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 
 import { useReviewDeploys } from "../ZeropsDeployAnswer";
 import {
-  changeChecks,
   changeCode,
   changeReceipt,
   changeReadVerdict,
@@ -944,11 +943,6 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     box?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [asking]);
   const canAsk = mine !== undefined && props.offers?.comment === true && !over && !fromRelease;
-  const checksSaid = changeChecks({
-    state: model.verdict.state,
-    checks: model.pipeline?.checks ?? [],
-  });
-  const pipeline = model.pipeline;
   const github = model.githubChecks;
   // HQ's merge check still to come is the foot's wait, beside the Merge it holds: the line under
   // the title keeps to the facts.
@@ -1139,16 +1133,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
             }
       }
       settled={fromRelease ? "Merged" : undefined}
-      status={
-        checksSaid !== undefined ? (
-          <span className="rv-checks" data-mark={checksSaid.mark}>
-            {checksSaid.mark === "passed" ? <CheckIcon aria-hidden="true" /> : null}
-            {checksSaid.words}
-          </span>
-        ) : model.verdict.state === "merged" ? (
-          <span>{model.verdict.why}</span>
-        ) : undefined
-      }
+      status={model.verdict.state === "merged" ? <span>{model.verdict.why}</span> : undefined}
       notice={
         github === undefined ? undefined : (
           <GithubChecksLine
@@ -1279,62 +1264,23 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
           onRetry={props.onRetry}
         />
       </ReviewSection>
-      {pipeline === undefined ||
-      (pipeline.checks.length === 0 &&
-        pipeline.why === undefined &&
-        github === undefined) ? null : (
-        <ReviewSection
-          aside={
-            pipeline.checks.length > 0
-              ? String(pipeline.checks.length)
-              : github === undefined
-                ? undefined
-                : "1"
-          }
-          fold={checks}
-          title="Checks"
-        >
-          {pipeline.why === undefined ? null : <p className="rv-words">{pipeline.why}</p>}
-          {/* HQ holds none of its own for this head: GitHub's, as one row. */}
-          {github === undefined ? null : (
-            <ul className="rv-check-list" data-zerops-surface="change-github-checks">
-              <li>
-                GitHub&apos;s checks ·{" "}
-                {github.state === "failing"
-                  ? "Failed"
-                  : github.state === "pending"
-                    ? "Running"
-                    : "Passed"}{" "}
-                ·{" "}
-                <InlineButton render={<a href={github.url} rel="noreferrer" target="_blank" />}>
-                  See them on GitHub
-                  <ArrowUpRightIcon aria-hidden="true" className="ms-0.5 inline size-3" />
-                </InlineButton>
-              </li>
-            </ul>
-          )}
-          {pipeline.checks.length === 0 ? null : (
-            <ul className="rv-check-list">
-              {pipeline.checks.map((check) => (
-                <li key={check.id}>
-                  {check.name} ·{" "}
-                  {check.requirement === "required"
-                    ? "Required by repository"
-                    : check.requirement === "advisory"
-                      ? "Advisory"
-                      : "Requirement unknown"}{" "}
-                  ·{" "}
-                  {check.state === "passed"
-                    ? "Passed"
-                    : check.state === "failed"
-                      ? "Failed"
-                      : check.state === "running"
-                        ? "Running"
-                        : "Status unknown"}
-                </li>
-              ))}
-            </ul>
-          )}
+      {github === undefined ? null : (
+        <ReviewSection aside="1" fold={checks} title="Checks">
+          <ul className="rv-check-list" data-zerops-surface="change-github-checks">
+            <li>
+              GitHub&apos;s checks ·{" "}
+              {github.state === "failing"
+                ? "Failed"
+                : github.state === "pending"
+                  ? "Running"
+                  : "Passed"}{" "}
+              ·{" "}
+              <InlineButton render={<a href={github.url} rel="noreferrer" target="_blank" />}>
+                See them on GitHub
+                <ArrowUpRightIcon aria-hidden="true" className="ms-0.5 inline size-3" />
+              </InlineButton>
+            </li>
+          </ul>
         </ReviewSection>
       )}
       <div className="contents" ref={talkAt}>

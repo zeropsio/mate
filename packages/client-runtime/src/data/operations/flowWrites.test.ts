@@ -36,6 +36,8 @@ const change = (state: HqChange["state"]): HqChange => ({
   repo: "web",
   number: 7,
   mateProjectId: "ada",
+  branch: "change",
+  receipt: null,
   title: "Add a page",
   body: "",
   state,
@@ -49,7 +51,7 @@ const change = (state: HqChange["state"]): HqChange => ({
   mergeability: "clean",
   behind: false,
   ready: true,
-  comments: null,
+  comments: 0,
 });
 const job = (id: string, over: Record<string, unknown> = {}) => ({
   id,

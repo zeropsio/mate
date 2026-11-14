@@ -25,6 +25,8 @@ export const gitRemote = {
   keptBy: "zerops-custodian",
   expiresAt: null,
   invalidSince: null,
+  via: "token",
+  githubAppId: null,
 } as const;
 export const gitPreflight = {
   repo: "web",

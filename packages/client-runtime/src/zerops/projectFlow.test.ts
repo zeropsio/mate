@@ -73,6 +73,8 @@ describe("a Mate's changes in HQ, as the flow shows them", () => {
     repo: "appdev",
     number: 3,
     mateProjectId: VERA,
+    branch: "change",
+    receipt: null,
     title: "Add a due date to each todo",
     body: "",
     state: "open",
@@ -105,19 +107,6 @@ describe("a Mate's changes in HQ, as the flow shows them", () => {
     expect(pull.problems).toEqual([problem]);
     expect(flowChange(change(), HQ).recipeValidation).toBeUndefined();
   });
-
-  it.each(["required", "advisory", "unknown"] as const)(
-    "carries exact-head %s pipeline evidence into review",
-    (requirement) => {
-      const pipeline = {
-        head: SHA,
-        requirements: "known",
-        checks: [{ id: "build", name: "Build", requirement, state: "running" }],
-      } as const;
-      expect(flowChange(change({ pipeline }), HQ).pipeline).toEqual(pipeline);
-      expect(flowChange(change(), HQ).pipeline).toBeUndefined();
-    },
-  );
 
   it.each([
     ["a change HQ never pushed to, described at its head", {}, {}],
@@ -213,12 +202,12 @@ describe("a Mate's changes in HQ, as the flow shows them", () => {
     ]);
   });
 
-  it.each([
-    ["as HQ counted them", 3, 3],
-    ["none, from an HQ that counts none", null, undefined],
-  ] as const)("carries how many comments were said on it: %s", (_case, comments, count) => {
-    expect(flow([change({ comments })]).pullRequests[0]?.commentCount).toBe(count);
-  });
+  it.each([["as HQ counted them", 3, 3]] as const)(
+    "carries how many comments were said on it: %s",
+    (_case, comments, count) => {
+      expect(flow([change({ comments })]).pullRequests[0]?.commentCount).toBe(count);
+    },
+  );
 
   it.each([
     ["clean", "mergeable"],
@@ -361,6 +350,8 @@ describe("an application's changes: the menu's rows, and its detail while a surf
         repo: "appdev",
         number: 3,
         mateProjectId: VERA,
+        branch: "change",
+        receipt: null,
         title: "Add a due date to each todo",
         body: "Adds the field.",
         state: "open",
@@ -381,6 +372,8 @@ describe("an application's changes: the menu's rows, and its detail while a surf
         repo: "appdev",
         number: 1,
         mateProjectId: VERA,
+        branch: "change",
+        receipt: null,
         title: "First page",
         body: "",
         state: "merged",
@@ -422,6 +415,8 @@ describe("the one merge that was an application's first code", () => {
     repo: "appdev",
     number: 3,
     mateProjectId: VERA,
+    branch: "change",
+    receipt: null,
     title: "First",
     body: "",
     state: "merged",
@@ -454,6 +449,8 @@ describe("a change closed without merging", () => {
     repo: "appdev",
     number: 6,
     mateProjectId: VERA,
+    branch: "change",
+    receipt: null,
     title: "Given up",
     body: "",
     state: "closed",

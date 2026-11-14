@@ -21,12 +21,9 @@
  *   environment's.
  *
  * It is not "is tagged into a group": a group tag is grouping, not membership.
- * And it is never a **tool**: Gitea is a project the account shares, not
- * somewhere anyone works.
  */
 import type { ZeropsCandidate } from "./candidates.ts";
 import { readZeropsMembership } from "./groups.ts";
-import { readZeropsToolKind } from "./tools.ts";
 
 /**
  * Best-first, so a project running two containers shows the one a click can
@@ -44,21 +41,8 @@ export function hasMateContainer(candidate: ZeropsCandidate): boolean {
   return candidate.service !== undefined;
 }
 
-/**
- * A tool is not an environment: it is a singleton the whole account shares,
- * with no dev/stage/prod axis and nothing to put a Mate in (`tools.ts`).
- * Excluded here as well as from the group tree, because "does this account
- * have anywhere to work?" is a question about environments — an account whose
- * only project is Gitea has nowhere, and saying otherwise offers to put a
- * coding agent in the account's git host.
- */
-function isTool(candidate: ZeropsCandidate): boolean {
-  return readZeropsToolKind(candidate.project) !== undefined;
-}
-
 /** A Mate lives here — see the module doc for the rule. */
 export function hasMate(candidate: ZeropsCandidate): boolean {
-  if (isTool(candidate)) return false;
   const membership = readZeropsMembership(candidate.project);
   if (membership.role === "stage" || membership.role === "prod") return false;
   return membership.mate || hasMateContainer(candidate);
@@ -104,5 +88,5 @@ export function mateEnvironmentsEmptyReason(
   candidates: ReadonlyArray<ZeropsCandidate>,
 ): "no-projects" | "no-mate" | undefined {
   if (candidates.some(hasMate)) return undefined;
-  return candidates.every(isTool) ? "no-projects" : "no-mate";
+  return candidates.length === 0 ? "no-projects" : "no-mate";
 }

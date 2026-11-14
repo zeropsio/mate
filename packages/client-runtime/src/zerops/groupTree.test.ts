@@ -18,7 +18,6 @@ function candidate(
   name: string,
   where: {
     readonly hq?: HqPlacement;
-    readonly hqTool?: ZeropsProject["hqTool"];
     readonly tagList?: ReadonlyArray<string>;
   } = {},
   connected = false,
@@ -31,7 +30,6 @@ function candidate(
       status: "ACTIVE",
       tagList: where.tagList ?? [],
       ...(where.hq === undefined ? {} : { hq: where.hq }),
-      ...(where.hqTool === undefined ? {} : { hqTool: where.hqTool }),
       ...(created === undefined ? {} : { created }),
     },
     connected,
@@ -42,11 +40,10 @@ const CRM_DEV = candidate("crm-dev", { hq: placed("aaa", "mate", "Beviro CRM") }
 const CRM_PROD = candidate("crm-prod", { hq: placed("aaa", "production", "Beviro CRM") });
 const SHOP_DEV = candidate("shop-dev", { hq: placed("bbb") });
 const LOOSE = candidate("loose");
-const GITEA = candidate("mate-gitea", { hqTool: "gitea" });
 
 describe("buildZeropsGroupTree", () => {
   it("hangs each carrier on its place in the tree", () => {
-    const view = buildZeropsGroupTree([CRM_DEV, CRM_PROD, SHOP_DEV, LOOSE, GITEA], {
+    const view = buildZeropsGroupTree([CRM_DEV, CRM_PROD, SHOP_DEV, LOOSE], {
       order: "name",
     });
 
@@ -59,7 +56,6 @@ describe("buildZeropsGroupTree", () => {
       "crm-prod",
     ]);
     expect(view.ungrouped.map((item) => item.project.name)).toEqual(["loose"]);
-    expect(view.tools.map((tool) => tool.kind)).toEqual(["gitea"]);
   });
 
   it("keeps whatever the carrier knew — that is the point of being generic", () => {
@@ -73,25 +69,10 @@ describe("buildZeropsGroupTree", () => {
     expect(view.groups[0]?.environments.map((entry) => entry.role)).toEqual(["dev", "prod"]);
   });
 
-  it("keeps a tool out of the groups even when HQ places it in one", () => {
-    const confused = candidate("confused", { hq: placed("aaa"), hqTool: "gitea" });
-    const view = buildZeropsGroupTree([CRM_DEV, confused], { order: "name" });
-
-    expect(view.tools).toHaveLength(1);
-    expect(view.groups[0]?.environments.map((entry) => entry.item.project.name)).toEqual([
-      "crm-dev",
-    ]);
-  });
-
   it("is empty when the account has only ungrouped projects", () => {
     const view = buildZeropsGroupTree([LOOSE], { order: "name" });
     expect(view.empty).toBe(true);
     expect(view.ungrouped).toHaveLength(1);
-  });
-
-  it("is not empty when the account has only a tool", () => {
-    // A Gitea with no application yet is still something to show.
-    expect(buildZeropsGroupTree([GITEA], { order: "name" }).empty).toBe(false);
   });
 
   it("is empty for no projects at all", () => {

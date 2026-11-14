@@ -141,13 +141,17 @@ const ONE_CONVERSATION: ReadonlyArray<{
 ];
 
 const KEY_UNSET: OrgAiKeysRead = {
-  keys: { state: "known", keys: [{ provider: "nebius", set: false, setAt: null }], stale: false },
+  keys: {
+    state: "known",
+    keys: [{ provider: "nebius", set: false, setAt: null, setBy: null }],
+    stale: false,
+  },
   action: { kind: "idle" },
 };
 const KEY_SET: OrgAiKeysRead = {
   keys: {
     state: "known",
-    keys: [{ provider: "nebius", set: true, setAt: "2026-10-17T09:00:00.000Z" }],
+    keys: [{ provider: "nebius", set: true, setAt: "2026-10-17T09:00:00.000Z", setBy: null }],
     stale: false,
   },
   action: { kind: "idle" },
@@ -164,6 +168,7 @@ const PASTE: AppIntakeRead = {
     appId: "tea-shop",
     repo: "acme/tea-shop",
     label: "mate",
+    public: false,
     webhookUrl: "https://hq-acme.zerops.app/api/github/webhook",
     hook: {
       kind: "paste",
@@ -493,7 +498,17 @@ function Harness() {
                 />
               )}
             </SchedulesSettingsView>
-            <TaskLimitsView controls={controls(known({ minutes: 60, costUsd: 5 }))} />
+            <TaskLimitsView
+              controls={controls(
+                known({
+                  minutes: 60,
+                  costUsd: 5,
+                  monthlyBudgetUsd: null,
+                  spentThisMonthUsd: 0,
+                  model: "nebius/zai-org/GLM-5.3",
+                }),
+              )}
+            />
           </SettingsSection>
         </Panel>
         <Panel title="Tasks from elsewhere — reading, and an older HQ">

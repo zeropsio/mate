@@ -557,29 +557,8 @@ export function isField(target: EventTarget | null): boolean {
 // The sheet: the line under the title and the footnote under the buttons
 // ---------------------------------------------------------------------------
 
-/** States where a change still waits on its press: its checks are the line's last word. */
-const CHECKS_SAID: ReadonlySet<ReviewState> = new Set(["ready", "behind-clean"]);
-
-/**
- * `✓ checks passed`, `checks running` or `checks failed` at the end of a change's line — only
- * while it waits on its press, and only from checks read for its head.
- */
-export function changeChecks(input: {
-  readonly state: ReviewState;
-  readonly checks: ReadonlyArray<{ readonly state: string }>;
-}): { readonly words: string; readonly mark: "passed" | "running" | "failed" } | undefined {
-  if (!CHECKS_SAID.has(input.state) || input.checks.length === 0) return undefined;
-  if (input.checks.some((check) => check.state === "failed")) {
-    return { words: "checks failed", mark: "failed" };
-  }
-  if (input.checks.some((check) => check.state === "running")) {
-    return { words: "checks running", mark: "running" };
-  }
-  if (input.checks.every((check) => check.state === "passed")) {
-    return { words: "checks passed", mark: "passed" };
-  }
-  return undefined;
-}
+/** States where a change still waits on its press. */
+const WAITING_ON_PRESS: ReadonlySet<ReviewState> = new Set(["ready", "behind-clean"]);
 
 /**
  * Whether the verdict's why is said under the line: not for a change ready to merge nor a
@@ -621,7 +600,7 @@ export function mergeFoot(input: {
    */
   readonly productionOutside?: boolean | undefined;
 }): string {
-  if (!CHECKS_SAID.has(input.state) || input.recipe === true) return input.consequence;
+  if (!WAITING_ON_PRESS.has(input.state) || input.recipe === true) return input.consequence;
   const keeps =
     input.live !== undefined
       ? ` Production keeps ${input.live} until you release.`

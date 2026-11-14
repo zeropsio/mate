@@ -671,6 +671,8 @@ const GIT_REMOTE = {
   keptBy: "Zerops custodian",
   expiresAt: null,
   invalidSince: null,
+  via: "token" as const,
+  githubAppId: null,
 };
 const GIT_REPOS = [
   { name: "API_v2", mainHead: GIT_SHA, updatedAt: GIT_AT, remote: GIT_REMOTE },

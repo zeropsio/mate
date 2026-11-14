@@ -16,7 +16,13 @@ const TIER = {
   tier: "mate" as const,
   yaml: "services: []\n",
 };
-const LIMITS = { minutes: 60, costUsd: 3 };
+const LIMITS = {
+  minutes: 60,
+  costUsd: 3,
+  monthlyBudgetUsd: null,
+  spentThisMonthUsd: 0,
+  model: "nebius/zai-org/GLM-5.3",
+};
 
 describe("how many automated Mates one Add makes, and who they are", () => {
   const propose = (taken: ReadonlyArray<string>) => ["Ada", "Otto", "Milo"][taken.length]!;
@@ -118,7 +124,13 @@ describe("what automated Mates do, in one paragraph", () => {
         count: 3,
         sources: { kind: "reading" as const },
         key: "set" as const,
-        limits: { minutes: 30, costUsd: null, monthlyBudgetUsd: 50, spentThisMonthUsd: 6 },
+        limits: {
+          minutes: 30,
+          costUsd: null,
+          monthlyBudgetUsd: 50,
+          spentThisMonthUsd: 6,
+          model: "nebius/zai-org/GLM-5.3",
+        },
       },
       words: [
         "They run on the organization's key (Nebius · GLM-5.3), at most 30 minutes per task.",
@@ -131,7 +143,13 @@ describe("what automated Mates do, in one paragraph", () => {
         count: 2,
         sources: { kind: "reading" as const },
         key: "set" as const,
-        limits: { minutes: 30, costUsd: null, model: "nebius/zai-org/GLM-5.3-Flash" },
+        limits: {
+          minutes: 30,
+          costUsd: null,
+          monthlyBudgetUsd: null,
+          spentThisMonthUsd: 0,
+          model: "nebius/zai-org/GLM-5.3-Flash",
+        },
       },
       words: [
         "They run on the organization's key (Nebius · GLM-5.3 Flash), at most 30 minutes per task.",

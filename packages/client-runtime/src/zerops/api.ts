@@ -190,7 +190,6 @@ export interface ZeropsProject {
    * or places no such project.
    */
   readonly hq?: HqPlacement;
-  readonly hqTool?: "gitea";
   /** Round-tripped by every project write, which must not blank it. */
   readonly description?: string;
   /**

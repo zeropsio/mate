@@ -10,6 +10,7 @@ import type {
   HqScheduleRule,
   HqSlackChannels,
   HqSlackView,
+  HqTaskLimitsRequest,
   HqTaskLimitsView,
 } from "@t3tools/shared/hqIntake";
 
@@ -57,9 +58,9 @@ export const SLACK_SIGNATURE_REFUSED =
 export function slackSignatureRefused(
   view: Pick<HqSlackView, "connected" | "eventsRefusedAt" | "eventsAcceptedAt">,
 ): boolean {
-  const refused = view.eventsRefusedAt ?? null;
+  const refused = view.eventsRefusedAt;
   if (!view.connected || refused === null) return false;
-  const accepted = view.eventsAcceptedAt ?? null;
+  const accepted = view.eventsAcceptedAt;
   return accepted === null || refused > accepted;
 }
 
@@ -121,7 +122,7 @@ export function scheduleNextLine(nextAt: string | null, moment: (iso: string) =>
 const dollars = (amount: number) =>
   Number.isInteger(amount) ? `$${String(amount)}` : `$${amount.toFixed(2)}`;
 
-export function limitsLine(limits: HqTaskLimitsView): string {
+export function limitsLine(limits: Pick<HqTaskLimitsView, "minutes" | "costUsd">): string {
   const minutes = `${String(limits.minutes)} ${limits.minutes === 1 ? "minute" : "minutes"} of work`;
   return limits.costUsd === null
     ? `A task stops after ${minutes}.`
@@ -163,13 +164,9 @@ export function workingWords(verb: TaskSourceWrite["kind"]): string {
   }
 }
 
-/**
- * What the organization's automated Mates spent this month, against its monthly budget; `null`
- * where HQ does not say (an older HQ).
- */
-export function budgetLine(limits: HqTaskLimitsView): string | null {
+/** What the organization's automated Mates spent this month, against its monthly budget. */
+export function budgetLine(limits: HqTaskLimitsView): string {
   const spent = limits.spentThisMonthUsd;
-  if (spent === undefined) return null;
   const said = `$${spent.toFixed(2)}`;
   const budget = limits.monthlyBudgetUsd;
   if (budget == null) return `No monthly budget. ${said} spent this month.`;
@@ -217,7 +214,7 @@ const COST_WORDS = "Cost is an amount above $0 and at most $10,000, or empty for
 export function readLimits(
   minutes: string,
   cost: string,
-): { readonly limits: HqTaskLimitsView } | { readonly error: string } {
+): { readonly limits: HqTaskLimitsRequest } | { readonly error: string } {
   const typedMinutes = minutes.trim();
   const whole = Number(typedMinutes);
   if (!/^\d+$/u.test(typedMinutes) || whole < 1 || whole > MINUTES_MAX)

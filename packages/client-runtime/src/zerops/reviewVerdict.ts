@@ -21,7 +21,6 @@
  */
 
 import { tokenExpiryLabel, type HqRepoRemote } from "@t3tools/shared/hqChanges";
-import type { ChangePipeline } from "@t3tools/shared/hqChanges";
 import type { HqProblem, HqRecipeValidation } from "@t3tools/shared/hqProblems";
 import { problemPresentation, problemsFix } from "./hq/problems.ts";
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
@@ -64,7 +63,6 @@ export type ReviewState =
   | "conflict"
   | "empty"
   | "checking"
-  | "checks-running"
   | "checks-failed"
   | "checks-unknown"
   | "merge-unchecked"
@@ -185,12 +183,6 @@ export interface ReviewModel {
    * taken longer than usual.
    */
   readonly consequenceWaits?: "under-way" | "late" | undefined;
-  readonly pipeline?:
-    | {
-        readonly checks: ChangePipeline["checks"];
-        readonly why: string | undefined;
-      }
-    | undefined;
   readonly verdict: ReviewVerdict;
   /** What pressing does, said beside the button — or, once it is over, where things stand. */
   readonly consequence: string;
@@ -278,7 +270,6 @@ export interface ChangeReviewInput {
     readonly problems?: ReadonlyArray<HqProblem> | undefined;
     /** Open with nothing pushed yet (`FlowPullRequest.unpushed`). */
     readonly unpushed?: true | undefined;
-    readonly pipeline?: ChangePipeline | undefined;
     readonly kind: FlowPullRequestKind;
     readonly baseBranch: string;
     readonly mergeability: MergeabilityKind;
@@ -659,33 +650,6 @@ function sentences(...parts: ReadonlyArray<string | undefined>): string {
   return parts.filter((part) => part !== undefined && part.length > 0).join(" ");
 }
 
-function changePipelineOf(pull: ChangeReviewInput["pull"]): NonNullable<ReviewModel["pipeline"]> {
-  const pipeline = pull.pipeline;
-  if (pipeline === undefined) {
-    return { checks: [], why: "Repository check requirements are unknown." };
-  }
-  if (pull.headSha === undefined || pipeline.head !== pull.headSha) {
-    return {
-      checks: pipeline.checks.map((check) => ({
-        ...check,
-        requirement: "unknown",
-        state: "unknown",
-      })),
-      why: "Pipeline checks have not been read for this head.",
-    };
-  }
-  return {
-    checks: pipeline.checks,
-    why:
-      pipeline.requirements === "unknown" ||
-      pipeline.checks.some((check) => check.requirement === "unknown")
-        ? "Repository check requirements are unknown."
-        : pipeline.checks.length === 0
-          ? "No pipeline checks."
-          : undefined,
-  };
-}
-
 /**
  * The change's own verdict, before anything was pressed: whether it can merge now, and why not. Every
  * door that merges a change asks it first — the review's Merge and *Put it live* alike — and the
@@ -820,37 +784,6 @@ export function changeMergeVerdict(
         title: "Checking whether it merges cleanly",
         why: "Merge waits until it's checked",
         fix: undefined,
-      },
-    };
-  }
-
-  const required = changePipelineOf(pull).checks.filter(
-    (check) => check.requirement === "required" && check.state !== "passed",
-  );
-  if (required.length > 0) {
-    const failed = required.some((check) => check.state === "failed");
-    const unknown = required.some((check) => check.state === "unknown");
-    const names = listed(required.map((check) => check.name));
-    return {
-      enabled: false,
-      verdict: {
-        state: failed ? "checks-failed" : unknown ? "checks-unknown" : "checks-running",
-        tone: failed ? "failed" : unknown ? "quiet" : "busy",
-        title: failed
-          ? "Required checks failed"
-          : unknown
-            ? "Required checks unknown"
-            : "Required checks running",
-        why: `${names}: required by the repository. ${failed ? "Ask the Mate to fix the failed checks and push again." : unknown ? "Wait for current check evidence." : "Wait for the checks to finish."}`,
-        fix: failed
-          ? {
-              verb: "fix it",
-              problem: {
-                what: `Required pipeline checks failed for change #${String(pull.number)}: ${names}`,
-                ask: "Fix the failed checks and deliver the change again.",
-              },
-            }
-          : undefined,
       },
     };
   }
@@ -1107,7 +1040,6 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
         ? `Still checking whether it merges cleanly. This is taking longer than usual: ask ${input.mateName} to push again, or reload the page.`
         : "Checking whether it merges cleanly…",
     "merge-unchecked": "Merging waits until HQ can check it.",
-    "checks-running": "Merging waits for the repository's required checks to finish.",
     "checks-failed": "Merging waits until the Mate fixes the required checks and pushes again.",
     "checks-unknown": "Merging waits for evidence of the repository's required checks.",
   };
@@ -1224,16 +1156,12 @@ function orphanOf(input: ChangeReviewInput): ReviewOrphan | undefined {
   return { text, options };
 }
 
-/**
- * GitHub's checks on an open change's pull request, where GitHub reported them and HQ holds no
- * checks of its own for its head: HQ's, where it has them, already say what the repository asks.
- */
+/** GitHub's checks on an open change's pull request, where GitHub reported them. */
 function githubChecksOf(input: ChangeReviewInput): ReviewGithubChecks | undefined {
   const { pull } = input;
   const pullRequest = pull.pullRequest;
   if (pull.merged || pull.state === "closed" || pullRequest?.state !== "open") return undefined;
   if (pullRequest.checks === undefined || pullRequest.url === undefined) return undefined;
-  if (changePipelineOf(pull).checks.length > 0) return undefined;
   const url = `${pullRequest.url.replace(/\/+$/u, "")}/checks`;
   switch (pullRequest.checks) {
     case "failing":
@@ -1266,7 +1194,7 @@ function githubChecksOf(input: ChangeReviewInput): ReviewGithubChecks | undefine
   }
 }
 
-/** One review policy for every client; absent pipeline evidence stays visibly unknown. */
+/** One review policy for every client. */
 export function changeReview(input: ChangeReviewInput): ChangeReviewModel {
   return {
     ...changeReviewModel(input),
@@ -1279,7 +1207,6 @@ export function changeReview(input: ChangeReviewInput): ChangeReviewModel {
           : input.pull.recipeValidation === undefined
             ? input.pull.problems
             : undefined,
-    pipeline: changePipelineOf(input.pull),
     orphan: orphanOf(input),
   };
 }

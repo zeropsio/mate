@@ -552,6 +552,8 @@ describe("ChangeReviewView: a change as HQ's record of it says", () => {
     repo: "appdev",
     number: 7,
     mateProjectId: "p-wren",
+    branch: "change",
+    receipt: null,
     title: "Search the orders",
     body: "",
     state: "open",
@@ -1059,6 +1061,8 @@ const API_CHANGE: HqChange = {
   repo: "apidev",
   number: 1,
   mateProjectId: "p-wren",
+  branch: "change",
+  receipt: null,
   title: "Rebuild the full API on the new schema",
   body: "",
   state: "open",
@@ -1570,46 +1574,8 @@ describe("the one question after the first merge", () => {
   });
 });
 
-describe("ChangeReviewView: current pipeline evidence and terminal facts", () => {
+describe("ChangeReviewView: terminal facts", () => {
   const open = merged({ merged: false, state: "open" });
-  it.each([
-    ["required", "running", "Required checks running", false],
-    ["required", "failed", "Required checks failed", false],
-    ["advisory", "failed", "Ready to merge", true],
-    ["unknown", "failed", "Ready to merge", true],
-  ] as const)(
-    "shows %s %s checks with their identity and holds only required checks",
-    (requirement, state, title, enabled) => {
-      const html = render(
-        {
-          ...open,
-          pipeline: {
-            head: open.headSha!,
-            requirements: "known",
-            checks: [{ id: "unit", name: "Unit tests", requirement, state }],
-          },
-        },
-        [],
-      );
-      const document = new Window().document;
-      document.body.innerHTML = html;
-      expect(document.body.textContent).toContain(title);
-      expect(document.body.textContent).toContain("Unit tests");
-      expect(document.body.textContent).toContain(
-        requirement === "required"
-          ? "Required by repository"
-          : requirement === "advisory"
-            ? "Advisory"
-            : "Requirement unknown",
-      );
-      const button = document.querySelector('[data-zerops-primary-action="Merge"]');
-      expect(button).not.toBeNull();
-      expect(button?.hasAttribute("disabled")).toBe(!enabled);
-    },
-  );
-  it("shows unknown repository requirements for a ready clean change", () => {
-    expect(textOf(render(open, []))).toContain("Repository check requirements are unknown.");
-  });
   it("keeps an authoritative terminal outcome when an old local press and lost offers remain", () => {
     const html = render(merged({ merged: false, state: "closed" }), [], {
       press: { kind: "done" },

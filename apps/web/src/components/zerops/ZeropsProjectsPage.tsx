@@ -144,7 +144,6 @@ import {
   mateShapeOf,
   newMateTint,
   deployWord,
-  readZeropsToolKind,
   defaultAgentForRole,
   hasMate,
   type FlowPullRequest,
@@ -264,7 +263,6 @@ import {
   deriveZeropsRowPresentation,
   environmentSummaryLine,
   groupAddsOffered,
-  isZeropsToolCandidate,
   mateRowCan,
   plainEvidenceOf,
 } from "./ZeropsProjectRow.logic";
@@ -418,8 +416,7 @@ export function showsZeropsBirthLine(input: {
  * Whether this account has no project to show — the state the projects screen
  * answers with an invitation rather than a list.
  *
- * A tool is not a project (`tools.ts`), so an account holding nothing but
- * Gitea has still not started. Two readers ask: the header, which drops its
+ * Two readers ask: the header, which drops its
  * create button so the invitation is not said twice, and the flow views, which
  * carries the invitation. Both must agree, and neither may answer from a list
  * that is not known and complete (DESIGN M5) — an invitation that paints for a
@@ -436,11 +433,7 @@ export function hasNoZeropsProject(input: {
   readonly creationPending?: boolean;
 }): boolean {
   if (input.creationPending === true) return false;
-  // A tool is not a project: the tree lists it apart (`partitionZeropsToolProjects`).
-  return listsNoProject(
-    input.listing,
-    (candidate) => readZeropsToolKind(candidate.project) === undefined,
-  );
+  return listsNoProject(input.listing);
 }
 
 const PROJECTS_SURFACE: KnownSurface<ReadonlyArray<ZeropsCandidate>> = {
@@ -1291,7 +1284,6 @@ export function ZeropsProjectsContent({
     mate: boolean,
     updateMenuActions?: ReadonlyArray<ZeropsMenuAction>,
   ): React.ReactNode => {
-    if (isZeropsToolCandidate(candidate)) return undefined;
     const birth = mate ? mateActions.birthForProject(candidate.project.id) : undefined;
     return (
       <ZeropsProjectMenu

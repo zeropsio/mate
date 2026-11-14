@@ -20,6 +20,8 @@ export const remote = {
   keptBy: "viewer",
   expiresAt: null,
   invalidSince: null,
+  via: "token" as const,
+  githubAppId: null,
 };
 export const repos: ReadonlyArray<RepoListEntry> = [
   { name: "app", mainHead: "a".repeat(40), updatedAt: "2026-10-13T10:00:00Z", remote },

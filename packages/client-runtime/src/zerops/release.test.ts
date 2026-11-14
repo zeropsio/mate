@@ -163,25 +163,6 @@ describe("a release as HQ records it", () => {
     });
   });
 
-  it("lists a release an older HQ recorded as a snapshot like any other: read-only history", () => {
-    const row = releaseRow(
-      flowReleaseOf({
-        tag: "v0.1.0",
-        sha: OLD,
-        entries: [{ service: "api", sha: API }],
-        by: "u1",
-        at: "2026-10-02T10:00:00.000Z",
-        state: "approved",
-        reason: null,
-        rollbackOf: null,
-        snapshot: true,
-      }),
-      1,
-      { production: new Map(), failed: [], live: false },
-    );
-    expect([row.word, row.standing]).toEqual(["Approved", undefined]);
-  });
-
   it("carries the release a roll back goes back to, so every surface can say it rolls back", () => {
     expect(
       flowReleaseOf({
@@ -884,6 +865,8 @@ describe("Git release candidates", () => {
       keptBy: "custodian",
       expiresAt: null,
       invalidSince: null,
+      via: "token" as const,
+      githubAppId: null,
     };
     const read = releaseCandidate({
       target: { kind: "git", branch: "production", delivery: "direct" },
