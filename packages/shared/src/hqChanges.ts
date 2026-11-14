@@ -19,7 +19,7 @@
  *   `unknown_change`, one no longer open `409 conflict` `change_not_open`, a task's `409 conflict`
  *   `change_on_task` (decided with its task, closed by a person);
  * - `POST /api/mate/changes/:repo/:n/attachments`, a raster picture → {@link AttachmentResponse};
- * - the link's `state` → its state (`mateLink.ts` `MateState`), {@link MateChanges} included;
+ * - the link's `state` → its state (`mateLink.ts` `LinkedMate`), {@link MateChanges} included;
  * - git over HTTPS at `/git/<appId>/<repo>.git`, Basic auth with the user `mate` and the credential
  *   as the password. A Mate fetches its application's repositories and pushes any branch but
  *   `main`, only forward: never a branch another Mate's open change is on (`not_your_ref`), nor one
@@ -32,7 +32,7 @@
  * - `GET /api/apps/:appId/repos` → `{repos}`, each a {@link RepoListEntry};
  * - `PUT /api/apps/:appId/repos/:repo/upstream` {@link FollowRepoUpstreamRequest} → `204`, by a
  *   structure writer: HQ keeps the repository's code, made if new, and follows the GitHub
- *   repository at `url` — fetched by the application's Mates (`MateRepo.origin`, `follow`), never
+ *   repository at `url` — fetched by the application's Mates (the link state's `repos`, `follow`), never
  *   pushed to, no token kept; `DELETE` there, by a structure writer → `204`: no longer followed;
  * - HQ socket `compare` (`appId`, `repo`, {@link CompareQuery}) → {@link CompareResponse}: the
  *   commits between two of a repository's commits, each with the change that landed it;
@@ -497,24 +497,6 @@ export const RepoListEntry = Schema.Struct({
 });
 export type RepoListEntry = typeof RepoListEntry.Type;
 
-/**
- * One repository of the Mate's application as the Mate reads it: the address of the origin its
- * person connected, never the token HQ keeps for it; none before one is connected — HQ alone keeps
- * the code. `mode` says whose the code is: `github`, mounted through the organization's GitHub app,
- * is GitHub's — HQ follows it; `follow`, connected with a person's token, is HQ's, the origin an
- * upstream to fetch from. Absent from an older HQ.
- */
-export const MateRepo = Schema.Struct({
-  name: RepoName,
-  origin: Schema.optionalKey(
-    Schema.Struct({
-      url: HqRemoteUrl,
-      mode: Schema.optionalKey(Schema.Literals(["github", "follow"])),
-    }),
-  ),
-});
-export type MateRepo = typeof MateRepo.Type;
-
 /** `POST /api/mate/repos`: the repository of this name in the Mate's application, made if new. */
 export const EnsureRepoRequest = Schema.Struct({ name: RepoName });
 
@@ -639,7 +621,7 @@ export type MateChange = typeof MateChange.Type;
 
 /**
  * What a Mate's own state carries of its changes, beside its record (`@t3tools/shared/mateLink`
- * `MateState`, which the link's `state` brings down). The application HQ holds the Mate
+ * `LinkedMate`, which the link's `state` brings down). The application HQ holds the Mate
  * in, by id and by its name now, none for a Mate in no application; and in each of that application's repositories, every
  * open change of the Mate's and its latest {@link MATE_CHANGES_PER_REPO} merged or closed ones,
  * newest first. A change missing from it is merged or closed. An automated Mate holds one open per

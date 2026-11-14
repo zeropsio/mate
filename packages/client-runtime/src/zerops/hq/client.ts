@@ -152,7 +152,7 @@ export interface HqMateRecord {
 export interface HqNewMate extends HqMateRecord {
   readonly standUp?: boolean;
   /**
-   * It is made automated (`MateState.automated`): it takes tasks from outside and runs on the
+   * It is made automated (`LinkedMate.automated`): it takes tasks from outside and runs on the
    * organization's API key. Set at its making, never changed; an older HQ ignores it.
    */
   readonly automated?: true;

@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { ProviderRuntimeEvent, type SpiEvent } from "@t3tools/contracts";
-import { MateLinkDown, type MateLinkUp } from "@t3tools/shared/mateLink";
+import { KeyLinkDown, type MateLinkUp } from "@t3tools/shared/mateLink";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -47,7 +47,7 @@ const event = decodeEvent({
     parentId: null,
   },
 });
-const state = Schema.decodeUnknownSync(MateLinkDown)({
+const state = Schema.decodeUnknownSync(KeyLinkDown)({
   type: "state",
   mate: {
     projectId: "project",
@@ -57,7 +57,9 @@ const state = Schema.decodeUnknownSync(MateLinkDown)({
     appId: null,
     appName: null,
     changes: [],
+    chief: null,
   },
+  admission: "admission",
   usage: { capture: 2, report: 1, mateId: "mate" },
 });
 const config = ServerConfig.of({

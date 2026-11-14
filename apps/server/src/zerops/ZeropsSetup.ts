@@ -127,7 +127,7 @@ export class ZeropsSetupReads extends Context.Service<
     /** What an automated Mate's agents start on: its organization's model (`ZeropsAutomation`). */
     readonly automatedModel: Effect.Effect<ModelSelection>;
     /**
-     * Gives the Mate the persona chosen when it was made (`MateSelf.standupPersona`), unless it
+     * Gives the Mate the persona chosen when it was made (`LinkedMate.standupPersona`), unless it
      * holds one: a persona its person set since is theirs to keep.
      */
     readonly takePersona: (persona: MatePersona) => Effect.Effect<void>;

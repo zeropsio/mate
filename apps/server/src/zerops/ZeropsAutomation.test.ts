@@ -4,7 +4,7 @@ import {
   defaultOpenCodeInstance,
   OPENCODE_KEY_PROVIDERS,
 } from "@t3tools/shared/openCodeKeyProviders";
-import type { MateState } from "@t3tools/shared/mateLink";
+import type { LinkedMate } from "@t3tools/shared/mateLink";
 import * as Cause from "effect/Cause";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
@@ -23,12 +23,12 @@ const nebius = OPENCODE_KEY_PROVIDERS[0]!;
 const KEY = ["nb", "acme", "fixture", "0042"].join("-");
 const keys = [{ env: nebius.variable, value: KEY }];
 
-const mate = (automated: boolean | undefined): MateState =>
+const mate = (automated: boolean | undefined): LinkedMate =>
   ({
     mateId: "mate-nova",
     name: "Nova",
     ...(automated === undefined ? {} : { automated }),
-  }) as unknown as MateState;
+  }) as unknown as LinkedMate;
 
 const nebiusKey = (settings: ServerSettings) =>
   defaultOpenCodeInstance(settings).environment?.find(

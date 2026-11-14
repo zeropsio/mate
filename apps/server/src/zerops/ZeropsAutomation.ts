@@ -1,7 +1,7 @@
 /**
  * Whether this Mate is automated, and the organization's keys its agents run on.
  *
- * An automated Mate (`MateState.automated`, decisions 1 and 8) takes tasks from outside and runs
+ * An automated Mate (`LinkedMate.automated`, decisions 1 and 8) takes tasks from outside and runs
  * only on the organization's API keys, never on a person's subscription. HQ says which it is in
  * its `state` frame and hands an automated Mate the keys in a `provider-keys` frame; the link
  * passes both here (`heard`, `keysHeard`). The keys go to the default OpenCode instance as
@@ -37,7 +37,7 @@ import {
   withOpenCodeKey,
   withoutOpenCodeKey,
 } from "@t3tools/shared/openCodeKeyProviders";
-import type { MateLinkDown, MateState } from "@t3tools/shared/mateLink";
+import type { KeyLinkDown, LinkedMate } from "@t3tools/shared/mateLink";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -71,7 +71,7 @@ export const AUTOMATED_MODEL_SELECTION: ModelSelection = {
 };
 
 /** The keys HQ hands an automated Mate, by the variable each provider reads. */
-export type ProviderKeys = Extract<MateLinkDown, { readonly type: "provider-keys" }>["keys"];
+export type ProviderKeys = Extract<KeyLinkDown, { readonly type: "provider-keys" }>["keys"];
 
 export class ZeropsAutomation extends Context.Service<
   ZeropsAutomation,
@@ -81,7 +81,7 @@ export class ZeropsAutomation extends Context.Service<
     /** Whether the organization's key is set on OpenCode for the provider an automated Mate uses. */
     readonly keySet: Effect.Effect<boolean>;
     /** HQ's word on the Mate (its `state` frame). */
-    readonly heard: (mate: MateState) => Effect.Effect<void>;
+    readonly heard: (mate: LinkedMate) => Effect.Effect<void>;
     /**
      * HQ's keys and the organization's model (its `provider-keys` frame): the keys set on an
      * automated Mate, ignored on another; the model kept for the runs that start next.

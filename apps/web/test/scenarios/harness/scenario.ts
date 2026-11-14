@@ -336,17 +336,6 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     const key = seedProjectKey(name);
     putMateService(name);
     const credential = options.registered === false ? undefined : yield* enroll(name, options.app);
-    if (credential) {
-      const registration = yield* core.call("GET", "/api/mate/self", {
-        headers: { authorization: `Project ${key}` },
-      });
-      if (registration.status !== 200)
-        return yield* Effect.die(
-          new Error(
-            `Mate project key refused: ${registration.status} ${JSON.stringify(registration.body)}`,
-          ),
-        );
-    }
     const link = yield* Effect.promise(() => hqConnection(core.origin, "::1"));
     cleanup.push(link.close);
     const provider = yield* makeScriptedProvider(options.provider);
