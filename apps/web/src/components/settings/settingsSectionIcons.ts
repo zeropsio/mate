@@ -5,6 +5,7 @@ import {
   CloudIcon,
   DramaIcon,
   GitBranchIcon,
+  HistoryIcon,
   KeyboardIcon,
   Link2Icon,
   PaletteIcon,
@@ -30,6 +31,7 @@ export const SETTINGS_SECTION_ICONS: Readonly<
   "/settings/automation": WorkflowIcon,
   "/settings/team": UsersIcon,
   "/settings/billing": WalletIcon,
+  "/settings/activity": HistoryIcon,
   "/settings/personas": DramaIcon,
   "/settings/archived": ArchiveIcon,
 };

@@ -115,6 +115,10 @@
       "types": "./src/hqGithub.ts",
       "import": "./src/hqGithub.ts"
     },
+    "./hqActivity": {
+      "types": "./src/hqActivity.ts",
+      "import": "./src/hqActivity.ts"
+    },
     "./hqIntake": {
       "types": "./src/hqIntake.ts",
       "import": "./src/hqIntake.ts"

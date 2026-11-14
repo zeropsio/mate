@@ -12,6 +12,7 @@ import { HqRemoteRefusal } from "@t3tools/shared/hqGitTargets";
 import { HqGitOperationReceipt, type HqGitTargetIntent } from "@t3tools/shared/hqGitTargets";
 import { HqAutoUpdatePolicy } from "@t3tools/shared/mateAutoUpdatePolicy";
 import { PersonaTemplate, type SavePersonaTemplate } from "@t3tools/shared/personaTemplates";
+import { HqActivityPage } from "@t3tools/shared/hqActivity";
 import {
   HqGithubInstallView,
   HqGithubManifestView,
@@ -572,6 +573,8 @@ export interface HqApi {
   readonly stopIntake?: (appId: string) => Promise<void>;
   /** The organization's API keys, by provider, as set or not, never their values. */
   readonly aiKeys?: () => Promise<ReadonlyArray<HqAiKeyView>>;
+  /** A page of the organization's activity, newest first, before the entry `before` names (`GET /api/activity`). */
+  readonly activity?: (before: string | null) => Promise<HqActivityPage>;
   /** Keeps the organization's key for a provider, sealed (`PUT /api/org/ai-keys/:provider`). */
   readonly setAiKey?: (provider: string, value: string) => Promise<HqAiKeyView>;
   /** Forgets the organization's key for a provider (`DELETE /api/org/ai-keys/:provider`). */
@@ -1069,6 +1072,7 @@ const readChangeCommits = decoded(ChangeCommitsResponse, "a change's commits");
 const readChangeVerdict = decoded(ChangeDetailResponse, "a change's review");
 const readIntakeView = decoded(HqIntakeView, "GitHub issues as tasks");
 const readAiKeys = decoded(Schema.Array(HqAiKeyView), "the organization's AI keys");
+const readActivity = decoded(HqActivityPage, "the organization's activity");
 const readAiKey = decoded(HqAiKeyView, "an AI key");
 const readTakeOverList = decoded(HqTakeOverList, "a member's tokens to take over");
 const readTakeOverReplaced = decoded(HqTakeOverReplaced, "a token's take-over");
@@ -2003,6 +2007,12 @@ export function makeHqApi(input: {
       );
     },
     aiKeys: async () => readAiKeys(await authorized("/api/org/ai-keys")),
+    activity: async (before) =>
+      readActivity(
+        await authorized(
+          before === null ? "/api/activity" : `/api/activity?before=${encodeURIComponent(before)}`,
+        ),
+      ),
     setAiKey: async (provider, value) =>
       readAiKey(
         await authorized(

@@ -123,15 +123,15 @@ export function useJumpBoxModel(
   // The team and persona templates are found where the settings nav offers them: in an organization.
   const organization = useZeropsSessionOptional()?.activeOrganization ?? null;
   const withOrganization = organization !== null;
-  const readsBilling = mayReadBilling(organization?.roleCode);
+  const administers = mayReadBilling(organization?.roleCode);
   const groups = useMemo(
     () =>
       target === undefined
         ? jumpGroups(index, value, hits, readOnly, newProject, (text) =>
-            findJumpPages(text, { withOrganization, readsBilling }),
+            findJumpPages(text, { withOrganization, administers }),
           )
         : [],
-    [hits, index, newProject, readOnly, readsBilling, target, value, withOrganization],
+    [hits, index, newProject, readOnly, administers, target, value, withOrganization],
   );
   const items = groups.flatMap((group) => group.items);
   const highlighted = items.find((item) => item.value === highlightedValue) ?? items[0];

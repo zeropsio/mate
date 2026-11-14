@@ -11,6 +11,7 @@ export type SettingsPath =
   | "/settings/automation"
   | "/settings/team"
   | "/settings/billing"
+  | "/settings/activity"
   | "/settings/personas"
   | "/settings/archived";
 
@@ -38,6 +39,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/zerops": "Zerops",
   "/settings/team": "Team",
   "/settings/billing": "Billing",
+  "/settings/activity": "Activity",
   "/settings/automation": "Automation",
   "/settings/personas": "Personas",
   "/settings/providers": "Providers",
@@ -68,6 +70,7 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
       "/settings/zerops",
       "/settings/team",
       "/settings/billing",
+      "/settings/activity",
       "/settings/automation",
       "/settings/personas",
     ],
@@ -79,25 +82,29 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
 ];
 
 /**
- * The team, its billing and the persona templates are an organization's: offered only signed in
- * with one.
+ * The team, its billing, its activity and the persona templates are an organization's: offered
+ * only signed in with one.
  */
 export const ORGANIZATION_PAGES: ReadonlySet<SettingsPath> = new Set([
   "/settings/team",
   "/settings/billing",
+  "/settings/activity",
   "/settings/personas",
 ]);
 
-/** Billing is its owners' and admins' alone (`mayReadBilling`): nobody else is offered it. */
-export const ADMIN_PAGES: ReadonlySet<SettingsPath> = new Set(["/settings/billing"]);
+/** Billing and activity are its owners' and admins' alone: nobody else is offered them. */
+export const ADMIN_PAGES: ReadonlySet<SettingsPath> = new Set([
+  "/settings/billing",
+  "/settings/activity",
+]);
 
 /** Whether a settings page is offered to this viewer: in an organization, and as its admin. */
 export function settingsPageOffered(
   to: SettingsPath,
-  viewer: { readonly withOrganization: boolean; readonly readsBilling: boolean },
+  viewer: { readonly withOrganization: boolean; readonly administers: boolean },
 ): boolean {
   if (ORGANIZATION_PAGES.has(to) && !viewer.withOrganization) return false;
-  return !ADMIN_PAGES.has(to) || viewer.readsBilling;
+  return !ADMIN_PAGES.has(to) || viewer.administers;
 }
 
 /**
@@ -373,6 +380,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Persona templates",
     to: "/settings/personas",
     searchTerms: ["personas organization"],
+  },
+  {
+    id: "activity",
+    title: "Activity",
+    to: "/settings/activity",
+    searchTerms: ["audit log history who did what organization"],
   },
   {
     id: "archive",

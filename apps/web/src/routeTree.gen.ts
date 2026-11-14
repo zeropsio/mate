@@ -33,6 +33,7 @@ import { Route as SettingsBillingRouteImport } from './routes/settings.billing'
 import { Route as SettingsAutomationRouteImport } from './routes/settings.automation'
 import { Route as SettingsArchivedRouteImport } from './routes/settings.archived'
 import { Route as SettingsAppearanceRouteImport } from './routes/settings.appearance'
+import { Route as SettingsActivityRouteImport } from './routes/settings.activity'
 import { Route as ProjectsProjectKeyRouteImport } from './routes/projects.$projectKey'
 import { Route as ChatChiefRouteImport } from './routes/_chat.chief'
 import { Route as SettingsTeamInviteRouteImport } from './routes/settings.team_.invite'
@@ -165,6 +166,11 @@ const SettingsAppearanceRoute = SettingsAppearanceRouteImport.update({
   path: '/appearance',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsActivityRoute = SettingsActivityRouteImport.update({
+  id: '/activity',
+  path: '/activity',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const ProjectsProjectKeyRoute = ProjectsProjectKeyRouteImport.update({
   id: '/projects/$projectKey',
   path: '/projects/$projectKey',
@@ -242,6 +248,7 @@ export interface FileRoutesByFullPath {
   '/zerops': typeof ZeropsRoute
   '/chief': typeof ChatChiefRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
+  '/settings/activity': typeof SettingsActivityRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/automation': typeof SettingsAutomationRoute
@@ -278,6 +285,7 @@ export interface FileRoutesByTo {
   '/zerops': typeof ZeropsRoute
   '/chief': typeof ChatChiefRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
+  '/settings/activity': typeof SettingsActivityRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/automation': typeof SettingsAutomationRoute
@@ -317,6 +325,7 @@ export interface FileRoutesById {
   '/zerops': typeof ZeropsRoute
   '/_chat/chief': typeof ChatChiefRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
+  '/settings/activity': typeof SettingsActivityRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/automation': typeof SettingsAutomationRoute
@@ -357,6 +366,7 @@ export interface FileRouteTypes {
     | '/zerops'
     | '/chief'
     | '/projects/$projectKey'
+    | '/settings/activity'
     | '/settings/appearance'
     | '/settings/archived'
     | '/settings/automation'
@@ -393,6 +403,7 @@ export interface FileRouteTypes {
     | '/zerops'
     | '/chief'
     | '/projects/$projectKey'
+    | '/settings/activity'
     | '/settings/appearance'
     | '/settings/archived'
     | '/settings/automation'
@@ -431,6 +442,7 @@ export interface FileRouteTypes {
     | '/zerops'
     | '/_chat/chief'
     | '/projects/$projectKey'
+    | '/settings/activity'
     | '/settings/appearance'
     | '/settings/archived'
     | '/settings/automation'
@@ -644,6 +656,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsAppearanceRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/activity': {
+      id: '/settings/activity'
+      path: '/activity'
+      fullPath: '/settings/activity'
+      preLoaderRoute: typeof SettingsActivityRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/projects/$projectKey': {
       id: '/projects/$projectKey'
       path: '/projects/$projectKey'
@@ -759,6 +778,7 @@ const ChatRouteChildren: ChatRouteChildren = {
 const ChatRouteWithChildren = ChatRoute._addFileChildren(ChatRouteChildren)
 
 interface SettingsRouteChildren {
+  SettingsActivityRoute: typeof SettingsActivityRoute
   SettingsAppearanceRoute: typeof SettingsAppearanceRoute
   SettingsArchivedRoute: typeof SettingsArchivedRoute
   SettingsAutomationRoute: typeof SettingsAutomationRoute
@@ -777,6 +797,7 @@ interface SettingsRouteChildren {
 }
 
 const SettingsRouteChildren: SettingsRouteChildren = {
+  SettingsActivityRoute: SettingsActivityRoute,
   SettingsAppearanceRoute: SettingsAppearanceRoute,
   SettingsArchivedRoute: SettingsArchivedRoute,
   SettingsAutomationRoute: SettingsAutomationRoute,
