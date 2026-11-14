@@ -119,11 +119,36 @@ export const makeUsageLink = Effect.gen(function* () {
           if (!negotiated || active !== lane || !flight || !message.type.startsWith("usage-"))
             return;
           const receipt = message as UsageLinkDown;
-          if (receipt.batchId !== flight.batchId) return;
           if (receipt.type === "usage-error") {
-            yield* Effect.logWarning("HQ did not acknowledge usage; outbox retained", receipt);
+            // HQ names a frame it cannot decode `unknown`: it cannot read this Mate's frames, whichever batch it was.
+            const undecodable = receipt.batchId === "unknown";
+            if (receipt.batchId !== flight.batchId && !undecodable) return;
+            if (receipt.disposition === "transient") {
+              yield* Effect.logWarning("HQ did not acknowledge usage; batch resent", receipt);
+              return;
+            }
+            if (receipt.disposition === "refused" && !undecodable) {
+              yield* Effect.logWarning("HQ refused usage; batch parked", {
+                ...receipt,
+                facts: flight.facts.length,
+              });
+              yield* outbox.park(flight);
+              flight = undefined;
+              yield* next();
+              return;
+            }
+            // Fenced, unsupported or undecodable: this lane sends nothing until a fresh `state` negotiates again.
+            yield* Effect.logWarning("HQ closed the usage lane; outbox retained", receipt);
+            flight = undefined;
+            negotiated = false;
+            lastState = undefined;
+            if (active === lane) {
+              active = undefined;
+              wake = undefined;
+            }
             return;
           }
+          if (receipt.batchId !== flight.batchId) return;
           yield* outbox.acknowledge(flight, receipt.accepted);
           flight = undefined;
           yield* next();

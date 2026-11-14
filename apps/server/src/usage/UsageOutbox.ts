@@ -62,6 +62,7 @@ const semantic = ({ at: _at, ...turn }: CompletedUsage) => ({
 });
 const keyOf = (response: CompletedUsage) =>
   usageDigest([response.provider, response.nativeThreadId, response.nativeTurnId]);
+const identityOf = (fact: UsageFact) => usageDigest([fact.provider, fact.sessionId, fact.nativeId]);
 const bodyOf = ({ batchId: _id, ...frame }: UsageLinkUp) => frame;
 const bytes = (value: unknown) => new TextEncoder().encode(usageCanonical(value)).byteLength;
 
@@ -91,6 +92,12 @@ export const makeUsageOutbox = Effect.gen(function* () {
       yield* sql`CREATE TABLE IF NOT EXISTS usage_binding (id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL)`;
       yield* sql`CREATE TABLE IF NOT EXISTS usage_outbox (identity TEXT PRIMARY KEY, value TEXT NOT NULL)`;
       yield* sql`CREATE TABLE IF NOT EXISTS usage_recorded_since (provider TEXT PRIMARY KEY, at TEXT NOT NULL)`;
+      // Turns of a batch HQ refused wait here, never resent. Once HQ's cause is fixed a person re-queues them by hand
+      // (a batch needs each provider's since row, which `bind` rebuilds from the outbox alone):
+      // INSERT OR IGNORE INTO usage_recorded_since SELECT json_extract(value,'$.provider'), min(json_extract(value,'$.at'))
+      //   FROM usage_parked GROUP BY 1;
+      // INSERT OR IGNORE INTO usage_outbox SELECT identity, value FROM usage_parked; DELETE FROM usage_parked;
+      yield* sql`CREATE TABLE IF NOT EXISTS usage_parked (identity TEXT PRIMARY KEY, value TEXT NOT NULL)`;
     }),
   );
   const binding = Effect.gen(function* () {
@@ -213,7 +220,13 @@ export const makeUsageOutbox = Effect.gen(function* () {
       const fact = frame.facts.find(
         (row) => row.originId === key.originId && row.factId === key.factId,
       )!;
-      const identity = usageDigest([fact.provider, fact.sessionId, fact.nativeId]);
+      yield* sql`DELETE FROM usage_outbox WHERE identity=${identityOf(fact)}`;
+    }
+  });
+  const park = Effect.fnUntraced(function* (frame: UsageLinkUp) {
+    for (const fact of frame.facts) {
+      const identity = identityOf(fact);
+      yield* sql`INSERT OR REPLACE INTO usage_parked SELECT identity, value FROM usage_outbox WHERE identity=${identity}`;
       yield* sql`DELETE FROM usage_outbox WHERE identity=${identity}`;
     }
   });
@@ -225,6 +238,7 @@ export const makeUsageOutbox = Effect.gen(function* () {
       frame: UsageLinkUp,
       accepted: Extract<UsageLinkDown, { type: "usage-ack" }>["accepted"],
     ) => retryUsageStorage(sql.withTransaction(acknowledge(frame, accepted))),
+    park: (frame: UsageLinkUp) => retryUsageStorage(sql.withTransaction(park(frame))),
   };
 });
 export type UsageOutbox = Effect.Success<typeof makeUsageOutbox>;
