@@ -15,6 +15,7 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as PairRouteImport } from './routes/pair'
 import { Route as KitRouteImport } from './routes/kit'
 import { Route as GitRouteImport } from './routes/git'
+import { Route as ChatLinkRouteImport } from './routes/chat-link'
 import { Route as ChatRouteImport } from './routes/_chat'
 import { Route as ChatIndexRouteImport } from './routes/_chat.index'
 import { Route as ZeropsNewRouteImport } from './routes/zerops_.new'
@@ -73,6 +74,11 @@ const KitRoute = KitRouteImport.update({
 const GitRoute = GitRouteImport.update({
   id: '/git',
   path: '/git',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChatLinkRoute = ChatLinkRouteImport.update({
+  id: '/chat-link',
+  path: '/chat-link',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChatRoute = ChatRouteImport.update({
@@ -227,6 +233,7 @@ const ChatChangeGroupIdRepositoryNumberRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof ChatIndexRoute
+  '/chat-link': typeof ChatLinkRoute
   '/git': typeof GitRoute
   '/kit': typeof KitRoute
   '/pair': typeof PairRoute
@@ -262,6 +269,7 @@ export interface FileRoutesByFullPath {
   '/change/$groupId/$repository/$number': typeof ChatChangeGroupIdRepositoryNumberRoute
 }
 export interface FileRoutesByTo {
+  '/chat-link': typeof ChatLinkRoute
   '/git': typeof GitRoute
   '/kit': typeof KitRoute
   '/pair': typeof PairRoute
@@ -300,6 +308,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_chat': typeof ChatRouteWithChildren
+  '/chat-link': typeof ChatLinkRoute
   '/git': typeof GitRoute
   '/kit': typeof KitRoute
   '/pair': typeof PairRoute
@@ -339,6 +348,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/chat-link'
     | '/git'
     | '/kit'
     | '/pair'
@@ -374,6 +384,7 @@ export interface FileRouteTypes {
     | '/change/$groupId/$repository/$number'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/chat-link'
     | '/git'
     | '/kit'
     | '/pair'
@@ -411,6 +422,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_chat'
+    | '/chat-link'
     | '/git'
     | '/kit'
     | '/pair'
@@ -449,6 +461,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   ChatRoute: typeof ChatRouteWithChildren
+  ChatLinkRoute: typeof ChatLinkRoute
   GitRoute: typeof GitRoute
   KitRoute: typeof KitRoute
   PairRoute: typeof PairRoute
@@ -503,6 +516,13 @@ declare module '@tanstack/react-router' {
       path: '/git'
       fullPath: '/git'
       preLoaderRoute: typeof GitRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/chat-link': {
+      id: '/chat-link'
+      path: '/chat-link'
+      fullPath: '/chat-link'
+      preLoaderRoute: typeof ChatLinkRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_chat': {
@@ -780,6 +800,7 @@ const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   ChatRoute: ChatRouteWithChildren,
+  ChatLinkRoute: ChatLinkRoute,
   GitRoute: GitRoute,
   KitRoute: KitRoute,
   PairRoute: PairRoute,

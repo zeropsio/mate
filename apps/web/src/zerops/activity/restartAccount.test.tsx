@@ -132,6 +132,7 @@ function fixture(responseMode: "lost" | "refused" | "accepted" = "lost") {
     },
     readProgress: () => ({ stage: "uncertain", next: "ask-owner-again" }),
     untilEnd: unused,
+    takeChatLink: unused,
     run: unused,
     untilMoveRemainder: unused,
     untilEnvironment: unused,
