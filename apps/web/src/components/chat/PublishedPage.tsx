@@ -212,9 +212,15 @@ export function PublishedPageFrame(props: PublishedPageFrameProps) {
     : width === null
       ? pageFirstDrawHeight(heights)
       : pageFitStand({ fit, heights, width, screen });
-  const heard = useEffectEvent((said: { height: number; viewport: number | null }) => {
-    if (height !== null) setFit((held) => pageFitHeard(held, said, height));
-  });
+  // The page spoke: its frame's height is decided for now, its own or the one recorded for it,
+  // which it keeps until the page has loaded (`pageFitHeard`).
+  const [spoke, setSpoke] = useState(false);
+  const heard = useEffectEvent(
+    (said: { height: number; viewport: number | null; loaded: boolean }) => {
+      setSpoke(true);
+      if (height !== null) setFit((held) => pageFitHeard(held, said, height, heights.length > 0));
+    },
+  );
 
   useEffect(() => {
     const listen = (event: MessageEvent) => {
@@ -265,7 +271,7 @@ export function PublishedPageFrame(props: PublishedPageFrameProps) {
   // frame stands at the page's own height in the first frame shown: briefly, since a page speaks
   // a few frames after its frame mounts. Whatever was recorded for it, at this width or another:
   // a page its viewport sizes was recorded a screen tall, and a screen is this window's.
-  useTimelineRowSettling(!full && document_ !== null && !left && !said && near !== false);
+  useTimelineRowSettling(!full && document_ !== null && !left && !said && !spoke && near !== false);
   return (
     <div
       ref={boxRef}
