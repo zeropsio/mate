@@ -93,12 +93,19 @@ export function themeRule(theme: PageTheme): string {
 }
 
 /**
+ * The longest a page is waited for to load before what it says is taken as its height: a picture
+ * that never arrives holds its load for good.
+ */
+export const PAGE_LOAD_BOUND_MS = 8000;
+
+/**
  * What runs in the page before the page does: it says the page's height, and the viewport it was
  * laid out in, whenever either changes — even one alone, so a frame asking whether the page grows
  * with its viewport always hears back (`pageFitHeard`) — never before it has a viewport: a frame
  * its wrapper has not laid out yet is no viewport tall, and the page said a height of nothing
  * there, which took its frame down to a line from the height it stood at (2,014 px to 48, the
- * owner 2026-11-11) — and
+ * owner 2026-11-11) — and whether the page has loaded: its pictures and fonts in, or
+ * `PAGE_LOAD_BOUND_MS` gone by without that (`pageFitHeard`) — and
  * hands a link the person clicked (http and https only) to the conversation, and takes the
  * conversation's colours when they change. Every function it needs is captured first, and its
  * messages are JSON strings of literals: a page's own script can neither replace what it calls nor
@@ -106,13 +113,14 @@ export function themeRule(theme: PageTheme): string {
  */
 const PAGE_BOOTSTRAP = `(function(){
 var host=window.parent,send=host.postMessage.bind(host),stringify=JSON.stringify,parse=JSON.parse;
-var root=document.documentElement,last=-1,lastView=-1;
+var root=document.documentElement,last=-1,lastView=-1,loaded=false;
 var measure=function(){var b=document.body,v=innerHeight;if(!v)return;
 var h=Math.ceil(Math.max(root.getBoundingClientRect().height,b?b.scrollHeight:0));
-if(h!==last||v!==lastView){last=h;lastView=v;send(stringify({mate:"page",kind:"height",height:h,viewport:v}),"*");}};
+if(h!==last||v!==lastView){last=h;lastView=v;send(stringify({mate:"page",kind:"height",height:h,viewport:v,loaded:loaded}),"*");}};
+var done=function(){if(loaded)return;loaded=true;last=-1;measure();};
 var ro=new ResizeObserver(measure);ro.observe(root);addEventListener("resize",measure);
 document.addEventListener("DOMContentLoaded",function(){if(document.body)ro.observe(document.body);measure();});
-addEventListener("load",measure);
+addEventListener("load",done);setTimeout(done,${PAGE_LOAD_BOUND_MS});
 document.addEventListener("click",function(e){if(!e.isTrusted||e.defaultPrevented)return;
 var a=e.target&&e.target.closest?e.target.closest("a[href]"):null;if(!a)return;
 var u;try{u=new URL(a.getAttribute("href"),document.baseURI)}catch(_){return}
@@ -198,7 +206,7 @@ if(fromHost(e)){if(d.mate==="page-theme"&&typeof d.rule==="string"&&!gone&&frame
 if(d.scheme==="light"||d.scheme==="dark")document.documentElement.style.colorScheme=d.scheme;
 frame.contentWindow.postMessage(stringify({mate:"page-theme",rule:d.rule}),"*");}return;}
 if(gone||e.source!==frame.contentWindow||d.mate!=="page")return;
-if(d.kind==="height"&&typeof d.height==="number")send({mate:"page",kind:"height",height:d.height,viewport:typeof d.viewport==="number"?d.viewport:null});
+if(d.kind==="height"&&typeof d.height==="number")send({mate:"page",kind:"height",height:d.height,viewport:typeof d.viewport==="number"?d.viewport:null,loaded:d.loaded===true});
 else if(d.kind==="open"&&typeof d.url==="string")send({mate:"page",kind:"open",url:d.url});},true);
 })();`;
 }
@@ -232,11 +240,16 @@ export function innerDocumentOf(document: string): string | null {
 }
 
 /**
- * What a page said to the conversation: its height and the viewport it was laid out in (null from
- * a page that says none), a link the person clicked, its leaving.
+ * What a page said to the conversation: its height, the viewport it was laid out in (null from a
+ * page that says none) and whether it has loaded; a link the person clicked; its leaving.
  */
 export type PageMessage =
-  | { readonly kind: "height"; readonly height: number; readonly viewport: number | null }
+  | {
+      readonly kind: "height";
+      readonly height: number;
+      readonly viewport: number | null;
+      readonly loaded: boolean;
+    }
   | { readonly kind: "open"; readonly url: string }
   | { readonly kind: "left" };
 
@@ -256,6 +269,7 @@ export function readPageMessage(
     kind?: unknown;
     height?: unknown;
     viewport?: unknown;
+    loaded?: unknown;
     url?: unknown;
     token?: unknown;
   };
@@ -277,6 +291,7 @@ export function readPageMessage(
             typeof message.viewport === "number" && Number.isFinite(message.viewport)
               ? Math.max(0, Math.round(message.viewport))
               : null,
+          loaded: message.loaded === true,
         }
       : null;
   if (message.kind === "open" && typeof message.url === "string") {
@@ -355,13 +370,22 @@ export const PAGE_FIT_START: PageFit = { content: null, sizedBy: null, asking: n
  * asked first: its viewport reaches `PAGE_PROBE` past the frame, which stands still, and the page
  * that grows by half of that or more grows with its viewport. One that grows less settles where
  * its frame meets it, as any page does.
+ *
+ * Until its page has loaded, a frame standing at a height known for the page — recorded for it
+ * (`recorded`), or said by it before — keeps that height, and the page's height once loaded is
+ * taken: loading, a page says a height short of its pictures and grows as each arrives, and the
+ * frame went down to the first word and back up under the person's eye (5,138 px down, then the
+ * conversation crawling after it for seconds, the owner 2026-11-15).
  */
 export function pageFitHeard(
   fit: PageFit,
-  said: { readonly height: number; readonly viewport: number | null },
+  said: { readonly height: number; readonly viewport: number | null; readonly loaded?: boolean },
   standing: number,
+  recorded = false,
 ): PageFit {
   if (fit.sizedBy === "viewport") return fit;
+  if (said.loaded === false && fit.asking === null && (recorded || fit.content !== null))
+    return fit;
   if (fit.asking !== null) {
     // A height said before the viewport reached past the frame answers nothing yet.
     if (said.viewport === null || Math.abs(said.viewport - (standing + PAGE_PROBE)) > 1) return fit;

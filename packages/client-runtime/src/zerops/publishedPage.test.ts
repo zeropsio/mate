@@ -116,13 +116,13 @@ describe("what a published page says to the conversation", () => {
   it.each([
     {
       title: "its height",
-      data: { mate: "page", kind: "height", height: 812.4, viewport: 600 },
-      want: { kind: "height", height: 813, viewport: 600 },
+      data: { mate: "page", kind: "height", height: 812.4, viewport: 600, loaded: true },
+      want: { kind: "height", height: 813, viewport: 600, loaded: true },
     },
     {
       title: "its height, from a page that says no viewport",
       data: { mate: "page", kind: "height", height: 812.4 },
-      want: { kind: "height", height: 813, viewport: null },
+      want: { kind: "height", height: 813, viewport: null, loaded: false },
     },
     {
       title: "a link to open",
@@ -236,7 +236,7 @@ describe("a published page in a phone's web view", () => {
   ])("reads a message only when it carries $title", ({ token, reads }) => {
     const data = JSON.stringify({ mate: "page", kind: "height", height: 120, viewport: 80, token });
     expect(readPageMessage(data, "null", native.token)).toEqual(
-      reads ? { kind: "height", height: 120, viewport: 80 } : null,
+      reads ? { kind: "height", height: 120, viewport: 80, loaded: false } : null,
     );
   });
 
@@ -381,6 +381,24 @@ describe("how a published page is fitted to its frame", () => {
   it("a page measured once stands at its height on a later view without asking", () => {
     const { stood } = fitted({ layout: () => 900, heights: [[728, 900]] });
     expect(stood).toEqual([900]);
+  });
+
+  // witness: packages/client-runtime/src/zerops/publishedPage.ts | said.loaded === false && fit.asking === null → false && fit.asking === null
+  it("a page measured once keeps its height while its pictures arrive, and takes its own once loaded", () => {
+    const heights = [[728, 6304]] as const;
+    let fit: PageFit = PAGE_FIT_START;
+    const stand = () => pageFitStand({ fit, heights, width: 728, screen: 720 });
+    const stood = [stand()];
+    for (const [height, loaded] of [
+      [1166, false],
+      [3690, false],
+      [6304, false],
+      [6290, true],
+    ] as const) {
+      fit = pageFitHeard(fit, { height, viewport: stand(), loaded }, stand(), true);
+      stood.push(stand());
+    }
+    expect(stood).toEqual([6304, 6304, 6304, 6304, 6290]);
   });
 
   it("a page its viewport sizes, measured once a screen tall, stands there on a later view", () => {
