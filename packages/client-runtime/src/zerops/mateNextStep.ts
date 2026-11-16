@@ -37,10 +37,12 @@
  * @module mateNextStep
  */
 
+import type { ChangeStanding, ChangeStandingRead } from "./changeStanding.ts";
 import {
   byNewest,
   changeShowsReview,
   changeState,
+  READY_TO_MERGE,
   sidebarChangeLabel,
   type FlowPullRequest,
 } from "./projectFlow.ts";
@@ -66,7 +68,21 @@ export interface MateNextStepLine {
   readonly label: string;
   /** Where it does not merge as it stands; absent on a change that merges. */
   readonly verdict?: MateNextStepVerdict | undefined;
+  /** {@link MateNextStepStanding} of a change that merges; absent where it is theirs to review. */
+  readonly standing?: MateNextStepStanding | undefined;
+  /**
+   * What a change that merges says of its standing after its name (`standingWord`): "Dana L. asks
+   * to merge", "Ready", "Waiting for Ada K. or Sam R."; absent on today's words.
+   */
+  readonly says?: string | undefined;
 }
+
+/**
+ * Where a change that merges stands for the person looking where its application limits who
+ * merges (`changeStanding`), past theirs to review: its press says *Ask to merge*, a plain *View*
+ * where it only waits on the people who merge, or stays *Review* where somebody asked them.
+ */
+export type MateNextStepStanding = Exclude<ChangeStanding["kind"], "to-merge">;
 
 export type MateNextStep =
   | {
@@ -92,8 +108,18 @@ export type MateNextStep =
       readonly lines: ReadonlyArray<MateNextStepLine>;
       /** How many more are listed past the lines. */
       readonly more: number;
-      /** How many of them wait on the person: HQ said they merge. The rest wait on the Mate or HQ. */
+      /**
+       * How many of them wait on the person: HQ said they merge, and the person has not already
+       * asked the people who merge. The rest wait on the Mate, on HQ, or on those people.
+       */
       readonly waiting: number;
+      /** The leading change's {@link MateNextStepStanding}, where it merges. */
+      readonly standing?: MateNextStepStanding | undefined;
+      /**
+       * Nothing listed asks the person: every change merges and waits on the people who merge. The
+       * strip says so quietly, with no press of its own.
+       */
+      readonly quiet?: true | undefined;
     }
   | { readonly kind: "none" };
 
@@ -118,6 +144,11 @@ export function mateNextStep(input: {
    * to one: its change leads.
    */
   readonly boundBranch?: string | undefined;
+  /**
+   * Where each change stands for the person looking (`changeStandingOf`, by the Mate's
+   * application); absent, every change is theirs to review, as without a limit on who merges.
+   */
+  readonly standingOf?: ((pull: FlowPullRequest) => ChangeStandingRead) | undefined;
 }): MateNextStep {
   const { pullRequests, mateProjectId } = input;
   if (pullRequests === undefined || mateProjectId === undefined) return NONE;
@@ -126,13 +157,15 @@ export function mateNextStep(input: {
   // before those that do not; within each, the newest by its last move where a Mate has two — its
   // number is per repository, so two repositories' #1s would tie — and by number after that, so
   // the strip is stable.
+  // Among those that merge: what somebody asked the person to merge first, and what they asked
+  // for themselves — it waits on the people who merge, not on them — last.
   const merges = (entry: FlowPullRequest) => entry.mergeability === "mergeable";
-  const rank = (entry: FlowPullRequest) =>
-    input.boundBranch !== undefined && entry.branch === input.boundBranch
-      ? 0
-      : merges(entry)
-        ? 1
-        : 2;
+  const rank = (entry: FlowPullRequest) => {
+    if (input.boundBranch !== undefined && entry.branch === input.boundBranch) return 0;
+    if (!merges(entry)) return 4;
+    const kind = input.standingOf?.(entry).standing.kind;
+    return kind === "asked-of-me" ? 1 : kind === "waiting" ? 3 : 2;
+  };
   const listed = pullRequests
     .filter(
       (entry) =>
@@ -144,34 +177,105 @@ export function mateNextStep(input: {
     .sort((left, right) => rank(left) - rank(right) || byNewest(left, right));
   const [pull] = listed;
   if (pull === undefined) return NONE;
-  const waiting = listed.filter(merges).length;
-  const who = `${input.mateName ?? "This Mate"} is waiting for ${
-    input.yours === false ? "a" : "your"
-  } review`;
+  const name = input.mateName ?? "This Mate";
+  const reads = new Map(listed.map((entry) => [entry, input.standingOf?.(entry)]));
+  // A change that merges, by whose press it waits for; one that does not waits on its Mate or HQ.
+  const standingOf = (entry: FlowPullRequest): MateNextStepStanding | undefined => {
+    const kind = merges(entry) ? reads.get(entry)?.standing.kind : undefined;
+    return kind === "to-merge" ? undefined : kind;
+  };
+  // A comment its person has not read hands a change they asked for back to them.
+  const commentOf = (entry: FlowPullRequest) =>
+    merges(entry) ? reads.get(entry)?.comment : undefined;
+  const asked = listed.filter(
+    (entry) => standingOf(entry) === "waiting" && commentOf(entry) === undefined,
+  );
+  const ready = listed.filter((entry) => standingOf(entry) === "to-ask");
+  const waiting = listed.filter(merges).length - asked.length;
+  // The person cannot merge here (`ViewerMerges` "held"), whatever stops each change.
+  const held = listed.some((entry) => {
+    const kind = reads.get(entry)?.standing.kind;
+    return kind === "to-ask" || kind === "waiting";
+  });
+  const count = (several: number) => `${String(several)} changes`;
+  const who = held
+    ? heldTitle({
+        name,
+        ready: ready.length,
+        asked: asked.length,
+        listed: listed.length,
+        mergers: reads.get(asked[0] ?? pull)?.who ?? "an Owner or Admin",
+      })
+    : `${name} is waiting for ${input.yours === false ? "a" : "your"} review`;
+  const lead = standingOf(pull);
+  const standing = {
+    ...(lead === undefined ? {} : { standing: lead }),
+    ...(asked.length === listed.length ? { quiet: true as const } : {}),
+  };
   if (listed.length === 1 && merges(pull)) {
     // The change goes by its title, on the line under this one.
     return {
       kind: "review",
       pull,
-      title: who,
+      title:
+        commentOf(pull) !== undefined
+          ? `${commentOf(pull) ?? ""} on ${name}'s change`
+          : lead === "asked-of-me"
+            ? `${reads.get(pull)?.asker ?? "Someone"} asks you to merge ${name}'s change`
+            : who,
       detail: pull.title,
       lines: [],
       more: 0,
       waiting,
+      ...standing,
     };
   }
   return {
     kind: "review",
     pull,
-    title: listed.length === 1 ? who : `${who} of ${String(listed.length)} changes`,
+    title: held || listed.length === 1 ? who : `${who} of ${count(listed.length)}`,
     detail: pull.title,
     lines: listed.slice(0, MATE_NEXT_STEP_LINES).map((entry) => {
       const line = { pull: entry, label: sidebarChangeLabel(entry, pullRequests) };
-      return merges(entry) ? line : { ...line, verdict: notMerging(entry, input) };
+      if (!merges(entry)) return { ...line, verdict: notMerging(entry, input) };
+      const kind = standingOf(entry);
+      const says = commentOf(entry) ?? reads.get(entry)?.word;
+      return {
+        ...line,
+        ...(kind === undefined ? {} : { standing: kind }),
+        // Where every line waits on the same people, the title has said so once.
+        ...(says === undefined || says === READY_TO_MERGE || standing.quiet === true
+          ? {}
+          : { says }),
+      };
     }),
     more: Math.max(0, listed.length - MATE_NEXT_STEP_LINES),
     waiting,
+    ...standing,
   };
+}
+
+/**
+ * The strip's title for a person who cannot merge in the Mate's application: what is ready for
+ * their ask — "Nova's change is ready", "Nova has 2 changes ready" — else, once they asked, whom
+ * it waits for — "Waiting for Ada K. or Sam R. to merge it", "2 changes are waiting for Ada K. or
+ * Sam R." — else that nothing of it is ready yet. Never a review: that is not theirs to give.
+ */
+function heldTitle(input: {
+  readonly name: string;
+  readonly ready: number;
+  readonly asked: number;
+  readonly listed: number;
+  readonly mergers: string;
+}): string {
+  const { name, ready, asked, listed } = input;
+  if (ready === 1) return `${name}'s change is ready`;
+  if (ready > 1) return `${name} has ${String(ready)} changes ready`;
+  if (asked === 1) return `Waiting for ${input.mergers} to merge it`;
+  if (asked > 1) return `${String(asked)} changes are waiting for ${input.mergers}`;
+  return listed === 1
+    ? `${name}'s change is not ready yet`
+    : `${name} has ${String(listed)} changes not ready yet`;
 }
 
 /**

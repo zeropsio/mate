@@ -1,25 +1,50 @@
 /**
  * A change's state in words, the same on every page and panel that draws a `ChangeRow`: an open
- * change by what stops it ("Ready to merge", "Draft", "Needs a rebase", "Mate gone"); a merged one
- * by where it went — live in the release that took it, on stage, deploying to stage, waiting for
- * production, or merged where there is no production to wait for, or where production follows
- * `main` and nothing waits.
+ * change by what stops it ("Ready to merge", "Draft", "Conflicts with main", "Behind main", "Mate
+ * gone"); a merged one by where it went — live in the release that took it, on stage, deploying to
+ * stage, not on stage because its deploy there failed, waiting for production, or merged where
+ * there is no production to wait for, or where production follows `main` and nothing waits.
  *
  * Pure: no React.
  */
 import {
   changeAsksForReview,
-  changeState,
+  changeStateFor,
   pullRequestBlocked,
+  type changeState,
+  type ChangeStanding,
+  type ChangeStandingRead,
 } from "@t3tools/client-runtime/zerops";
 
-/** An open change's words and their tone, by what stops it (`changeState`). */
-export function openChangeWords(pull: Parameters<typeof changeState>[0]): {
+/** A ready change's standing past theirs to review, as a row's press and words read it. */
+export type RowStanding = Exclude<ChangeStanding["kind"], "to-merge">;
+
+/**
+ * An open change's words and their tone, by what stops it (`changeState`) — and, where nothing
+ * does, by where it stands for the person looking (`standing`, `changeStateFor`): "Ready",
+ * "Waiting for Ada K. or Sam R.", "Dana L. asks to merge" in place of "Ready to merge".
+ */
+export function openChangeWords(
+  pull: Parameters<typeof changeState>[0],
+  standing?: ChangeStandingRead,
+): {
   readonly words: string;
   readonly tone: NonNullable<ReturnType<typeof changeState>>["tone"];
 } {
-  const state = changeState(pull);
+  const state = changeStateFor(pull, standing);
   return { words: state?.word ?? "Open", tone: state?.tone ?? "off" };
+}
+
+/**
+ * A reviewable change's standing as its row carries it: absent where it is the person's to review
+ * (as without a limit on who merges), and on a change something stops, which waits on its Mate.
+ */
+export function rowStanding(
+  pull: Parameters<typeof changeState>[0],
+  standing: ChangeStandingRead | undefined,
+): RowStanding | undefined {
+  const kind = standing?.standing.kind;
+  return kind === undefined || kind === "to-merge" || !changeReviewable(pull) ? undefined : kind;
 }
 
 /**
@@ -46,6 +71,8 @@ export type MergedChangeWhere =
     }
   | { readonly kind: "on-stage" }
   | { readonly kind: "deploying-to-stage" }
+  /** The stage's deploy of it failed: it is merged, and the stage does not run it. */
+  | { readonly kind: "failed-on-stage" }
   /** Production runs a release, and none took it yet. */
   | { readonly kind: "waits-for-production" }
   /** Nowhere to wait: no production, or production runs no release yet (its own line says so). */
@@ -67,6 +94,8 @@ export function mergedChangeWords(where: MergedChangeWhere): string {
       return "On stage";
     case "deploying-to-stage":
       return "Deploying to stage…";
+    case "failed-on-stage":
+      return "Didn't reach Stage";
     case "waits-for-production":
       return "Merged · waits for production";
     case "merged":

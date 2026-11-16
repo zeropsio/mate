@@ -39,6 +39,7 @@ import {
   NO_REPOSITORY_LINE,
   threadCheckoutHostnames,
   type CheckoutLease,
+  type ChangeStandingRead,
   type FlowPullRequest,
   type GitBlock,
   type GitChangedFile,
@@ -213,6 +214,8 @@ export interface ZeropsGitTabProps {
    * production"); `undefined` where they cannot say.
    */
   readonly landedWords?: ((change: FlowPullRequest) => string | undefined) | undefined;
+  /** Where an open change stands for the person looking (`useChangeStandingOf`, by the application). */
+  readonly standingOf?: ((change: FlowPullRequest) => ChangeStandingRead) | undefined;
   /** Each repository's state on GitHub, by its name at HQ, where HQ lists it. */
   readonly github?: ((repository: string) => RepoState | undefined) | undefined;
   /** Opens the dialog that connects a repository to GitHub, where this person may. */
@@ -317,7 +320,7 @@ function KnownGitTab({
     generation,
   });
 
-  const { github, landedWords } = props;
+  const { github, landedWords, standingOf } = props;
   const rows = useMemo(
     () =>
       repositories.map((repository) => {
@@ -359,6 +362,7 @@ function KnownGitTab({
               : {
                   pull: change,
                   landedWords: change.merged ? landedWords?.(change) : undefined,
+                  standing: change.merged ? undefined : standingOf?.(change),
                 },
           ),
           github: github?.(block.hqRepository),
@@ -371,6 +375,7 @@ function KnownGitTab({
       props.changes,
       github,
       landedWords,
+      standingOf,
       props.declarations,
       props.mateName,
       props.mateProjectId,

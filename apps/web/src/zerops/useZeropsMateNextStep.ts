@@ -29,6 +29,7 @@ import { useAppsChanges, useMateNames } from "./projectFlows";
 import { useMateOfEnvironment } from "./accountEnvironments";
 import type { ReviewTarget } from "./review";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
+import { useChangeStandingOf } from "./useChangeStandingOf";
 import { useZeropsMateDirectory } from "./useZeropsMates";
 
 export type ZeropsMateNextStep =
@@ -87,6 +88,8 @@ export function useZeropsMateNextStep(
     useMemo(() => (groupId === undefined ? [] : [groupId]), [groupId]),
   );
   const appChanges = groupId === undefined ? undefined : changes.get(groupId);
+  // Whose press each change waits for where the application limits who merges.
+  const standingOf = useChangeStandingOf();
 
   if (threadRef === null) return NOTHING;
   const before = nextStepBeforeChanges(project, appChanges !== undefined);
@@ -98,6 +101,7 @@ export function useZeropsMateNextStep(
     mateName: projectId === undefined ? undefined : mateNames.get(projectId),
     yours,
     boundBranch,
+    standingOf: (pull) => standingOf(groupId, pull),
   });
   if (step.kind === "none") return NOTHING;
   const mate = zeropsMateAt(mates, threadRef.environmentId);

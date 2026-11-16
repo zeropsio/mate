@@ -1,5 +1,5 @@
 /**
- * Who can merge, in every state its row and its section have: for the project automation harness
+ * Who can merge and release, in every state its row and its section have: for the project automation harness
  * (`/design-project-automation.html?merging=<state>`) and the harness's project page
  * (`/design-overview.html?page=tea`). Made-up people only.
  *
@@ -88,7 +88,7 @@ interface MergingState {
 
 export const MERGING_STATES = {
   everyone: {
-    title: "Everyone working here can merge — an Owner or Admin",
+    title: "Everyone working here can merge and release — an Owner or Admin",
     current: null,
     editable: true,
   },
@@ -214,6 +214,7 @@ export function MergingRow({
 }) {
   return (
     <ProjectMergingRow
+      builders={state.current === null ? 16 : undefined}
       merging={{ people: state.current, older: state.older === true, editable: state.editable }}
       onManage={onManage}
       open={state.open}

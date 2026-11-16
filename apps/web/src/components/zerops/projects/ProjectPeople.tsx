@@ -74,6 +74,7 @@ import {
 } from "./projectPeople.logic";
 import {
   accessTable,
+  buildersCount,
   cellChange,
   columnPeople,
   everywhereChanges,
@@ -449,6 +450,13 @@ export function ProjectPeopleRow({
   return <ProjectPeopleRowView onManage={onManage} view={view} />;
 }
 
+/** How many people work in a project (`buildersCount`), for the rows beside the People row. */
+export function useProjectBuilders(groupId: string): number | null {
+  const projects = useGroupProjects(groupId);
+  const { base } = useAccessReads(projects);
+  return useMemo(() => buildersCount(accessTable({ ...base, projects })), [base, projects]);
+}
+
 export function ProjectPeopleRowView({
   view,
   onManage,
@@ -461,7 +469,13 @@ export function ProjectPeopleRowView({
   const more = people.length - FACES_SHOWN;
   return (
     <SetupRow
-      action={<SectionAction onClick={onManage}>Manage</SectionAction>}
+      action={
+        // Whoever cannot change it reads it, as Merging's row offers: *View*, never a *Manage*
+        // that opens on a table they may not touch.
+        <SectionAction onClick={onManage}>
+          {view.kind === "table" && !view.editable ? "View" : "Manage"}
+        </SectionAction>
+      }
       busy={view.kind === "reading"}
       label="Who has access"
       surface="project-people"

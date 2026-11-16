@@ -24,6 +24,12 @@
  * the strip from here and hands it to the composer as its top.
  */
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import {
+  REVIEW_LABEL,
+  standingPressLabel,
+  standingWaits,
+  type ChangeStanding,
+} from "@t3tools/client-runtime/zerops";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { useNavigate } from "@tanstack/react-router";
@@ -79,7 +85,14 @@ export interface ZeropsNextStepLine {
   readonly verdict?: string | undefined;
   /** Where its review offers a fix: that fix, in place of Review. */
   readonly fix?: ZeropsNextStepFix | undefined;
+  /** Whose press it waits for where it merges (`changeStanding`); absent: the person's review. */
+  readonly standing?: StripStanding | undefined;
+  /** Its standing after its name: "Dana L. asks to merge", "Waiting for Ada K. or Sam R.". */
+  readonly says?: string | undefined;
 }
+
+/** A change's standing past theirs to review, as the strip's press reads it (`standingPressLabel`). */
+type StripStanding = Exclude<ChangeStanding["kind"], "to-merge">;
 
 export interface ZeropsNextStepStripModel {
   /** `Nova is waiting for your review`, or `… of 2 changes` */
@@ -94,6 +107,10 @@ export interface ZeropsNextStepStripModel {
   /** The shape its person picked; its tint's own when absent. */
   readonly shape?: MateShapeId | undefined;
   readonly target: Extract<ReviewTarget, { kind: "change" }>;
+  /** The leading change's standing: its press says *Ask to merge*, or a plain *View*. */
+  readonly standing?: StripStanding | undefined;
+  /** Every change listed waits on the people who merge: said quietly, its face at rest. */
+  readonly quiet?: true | undefined;
 }
 
 interface ZeropsComposerTop {
@@ -111,16 +128,27 @@ function composerReviewId(target: ZeropsNextStepStripModel["target"]): string {
  * brings it back. A strip of one change is that change's (`composerReviewId`).
  */
 export function composerStripKey(
-  strip: Pick<ZeropsNextStepStripModel, "target" | "lines">,
+  strip: Pick<ZeropsNextStepStripModel, "target" | "lines" | "standing">,
 ): string {
   const lines = strip.lines ?? [];
-  if (lines.length === 0) return composerReviewId(strip.target);
   const { groupId, repository, number } = strip.target;
+  if (lines.length === 0) {
+    // A change somebody then asks the person to merge, or one they then ask for, is news: a strip
+    // put away before that comes back for it.
+    return strip.standing === undefined
+      ? composerReviewId(strip.target)
+      : JSON.stringify([groupId, repository, number, strip.standing]);
+  }
   return JSON.stringify([
     groupId,
     repository,
     number,
-    lines.map((line) => [line.target.repository, line.target.number, line.verdict ?? null]),
+    lines.map((line) => [
+      line.target.repository,
+      line.target.number,
+      line.verdict ?? null,
+      ...(line.standing === undefined ? [] : [line.standing]),
+    ]),
   ]);
 }
 
@@ -149,6 +177,8 @@ function composerStrip(
     tint: nextStep.tint ?? "slate",
     shape: nextStep.shape,
     target: nextStep.target,
+    ...(nextStep.step.standing === undefined ? {} : { standing: nextStep.step.standing }),
+    ...(nextStep.step.quiet === true ? { quiet: true as const } : {}),
     ...(nextStep.step.lines.length === 0
       ? {}
       : {
@@ -163,6 +193,8 @@ function composerStrip(
                 number: line.pull.number,
               },
               ...(line.verdict === undefined ? {} : { verdict: line.verdict.title }),
+              ...(line.standing === undefined ? {} : { standing: line.standing }),
+              ...(line.says === undefined ? {} : { says: line.says }),
               ...(fix === undefined
                 ? {}
                 : {
@@ -200,6 +232,14 @@ export function ZeropsNextStepStrip({
   readonly onDismiss?: (target: ZeropsNextStepStripModel["target"], from: HTMLElement) => void;
 }) {
   const lines = strip.lines ?? [];
+  // Nothing on it asks the person — every change waits on the people who merge: its Mate's face
+  // at rest and its line in the quiet ink, in the same room, so the strip never moves between
+  // what it says.
+  const face = strip.quiet === true ? "idle" : "needs";
+  const titleLook =
+    strip.quiet === true
+      ? "truncate text-muted-foreground text-line leading-4.5"
+      : "truncate font-medium text-foreground text-line leading-4.5";
   if (lines.length > 0) {
     // Several waiting: the count on the face's line, then one line per change with its own
     // Review, newest first — in blue words, as the menu's change rows have it, so no line
@@ -211,11 +251,9 @@ export function ZeropsNextStepStrip({
         className="grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 border-foreground/8 border-b pt-3 pe-2.5 pb-2.5 ps-4"
         data-composer-top="review"
       >
-        <MateFace shape={strip.shape} size={24} state="needs" tint={strip.tint} />
+        <MateFace shape={strip.shape} size={24} state={face} tint={strip.tint} />
         {/* On a phone it wraps: cut, it ended mid-word ("a review of 3 chan…"). */}
-        <p className="truncate font-medium text-foreground text-line leading-4.5 max-sm:whitespace-normal">
-          {strip.title}
-        </p>
+        <p className={`${titleLook} max-sm:whitespace-normal`}>{strip.title}</p>
         {dismissButton(strip.target, onDismiss, "-my-1 justify-self-end")}
         {lines.map((line) => (
           <div
@@ -226,6 +264,7 @@ export function ZeropsNextStepStrip({
             <p className="truncate text-muted-foreground text-line leading-4.5">
               {line.label}
               {line.verdict === undefined ? null : <span> · {line.verdict}</span>}
+              {line.says === undefined ? null : <span> · {line.says}</span>}
             </p>
             <Button
               onClick={(event) => {
@@ -233,9 +272,11 @@ export function ZeropsNextStepStrip({
                 else onFix?.(line.fix);
               }}
               size="xs"
-              variant="secondary"
+              variant={standingWaits(line.standing) ? "ghost" : "secondary"}
             >
-              {line.fix === undefined ? "Review" : line.fix.label}
+              {line.fix === undefined
+                ? standingPressLabel(line.standing, REVIEW_LABEL)
+                : line.fix.label}
             </Button>
           </div>
         ))}
@@ -261,12 +302,10 @@ export function ZeropsNextStepStrip({
       className="grid grid-cols-[28px_minmax(0,1fr)_auto_auto] items-center gap-x-3 border-foreground/8 border-b pt-3 pe-2 pb-3 ps-4"
       data-composer-top="review"
     >
-      <MateFace shape={strip.shape} size={24} state="needs" tint={strip.tint} />
+      <MateFace shape={strip.shape} size={24} state={face} tint={strip.tint} />
       <div className="min-w-0">
         {/* On a phone it wraps: cut, it ended mid-word ("a review of 3 chan…"). */}
-        <p className="truncate font-medium text-foreground text-line leading-4.5 max-sm:whitespace-normal">
-          {strip.title}
-        </p>
+        <p className={`${titleLook} max-sm:whitespace-normal`}>{strip.title}</p>
         <p className="truncate text-muted-foreground text-line leading-4.5">{strip.detail}</p>
       </div>
       {/* A change's one door is its review, where it is merged: never *Put it live*, which makes
@@ -277,9 +316,10 @@ export function ZeropsNextStepStrip({
           onReview(strip.target, event.currentTarget);
         }}
         size="xs"
-        variant="secondary"
+        // Quiet only where nothing on the strip asks the person: a comment to read is not that.
+        variant={strip.quiet === true ? "ghost" : "secondary"}
       >
-        Review
+        {standingPressLabel(strip.standing, REVIEW_LABEL)}
       </Button>
       {dismissButton(strip.target, onDismiss)}
     </section>

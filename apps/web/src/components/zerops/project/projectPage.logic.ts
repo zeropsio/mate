@@ -2,10 +2,12 @@
  * What a project's page says, from the reads its overview card already takes: its recent changes,
  * what the live release brought and its code's copies elsewhere. Pure: no React.
  */
-import type {
-  EnvironmentSlotRow,
-  FlowPullRequest,
-  GroupFlow,
+import {
+  standingWaits,
+  type ChangeStandingRead,
+  type EnvironmentSlotRow,
+  type FlowPullRequest,
+  type GroupFlow,
 } from "@t3tools/client-runtime/zerops";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 
@@ -36,9 +38,12 @@ export const CHANGES_HELD = 40;
 export function pageChanges(input: {
   readonly flow: Pick<GroupFlow, "pullRequests" | "stages" | "production">;
   readonly read: ZeropsProjectFlow | undefined;
+  /** Where each open change stands for the person looking (`useChangeStandingOf`). */
+  readonly standingOf?: Parameters<typeof cardChanges>[0]["standingOf"];
 }): ReadonlyArray<CardChange> {
   const { flow, read } = input;
   return cardChanges({
+    standingOf: input.standingOf,
     open: flow.pullRequests.map((change) => change.pull),
     merged: read?.merged ?? [],
     releases: read?.releasesKnown === true ? read.releases : [],
@@ -172,12 +177,21 @@ export function liveBrought(read: ZeropsProjectFlow | undefined): ReadonlyArray<
   return broughtBy(read.merged, read.releases);
 }
 
-/** A Mate's changes that wait for the person's review, newest first, as its wait counts them. */
+/**
+ * A Mate's changes that wait for the person's review, newest first, as its wait counts them: none
+ * the person already asked the people who merge for (`standingOf`, `changeStanding` `waiting`) —
+ * those wait on them.
+ */
 export function waitingChanges(
   flow: Pick<GroupFlow, "pullRequests">,
   mateProjectId: string,
+  standingOf?: (pull: FlowPullRequest) => ChangeStandingRead,
 ): ReadonlyArray<FlowPullRequest> {
-  return mateChangesForReview(flow, mateProjectId);
+  return mateChangesForReview(flow, mateProjectId).filter((pull) => {
+    const read = standingOf?.(pull);
+    // One somebody commented on since is theirs to read again.
+    return !standingWaits(read?.standing) || read?.comment !== undefined;
+  });
 }
 
 /** Production's slot, then every stage's — the order the project's card says them in. */

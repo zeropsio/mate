@@ -3499,6 +3499,20 @@ code {
     box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 30%, transparent);
   }
 
+  /* Every change in it waits on the people who merge (`reviewTagOf`): it asks the person nothing,
+     and says so in the quiet ink its mark wears while a Mate still works. */
+  .menu-tag-review[data-quiet] {
+    color: var(--sidebar-muted-foreground);
+  }
+
+  /* A release that is somebody else's to make (`releaseWaitsOnViewer`): a door still, on the
+     Review tag's quiet ground, never the row's one loud word. */
+  .menu-tag-release[data-quiet] {
+    background-color: var(--card);
+    box-shadow: inset 0 0 0 1px var(--border);
+    color: var(--sidebar-muted-foreground);
+  }
+
   /* Release: the solid primary — what waits for production is the row's one loud word. */
   .menu-tag-release {
     background-color: var(--primary);
@@ -3510,8 +3524,12 @@ code {
       box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 30%, transparent);
     }
 
-    .menu-tag-release:hover {
+    .menu-tag-release:not([data-quiet]):hover {
       background-color: color-mix(in oklab, var(--primary) 88%, var(--color-black));
+    }
+
+    .menu-tag-release[data-quiet]:hover {
+      box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 30%, transparent);
     }
   }
 
@@ -3884,6 +3902,11 @@ code {
     background: color-mix(in oklab, currentColor 20%, transparent);
   }
 
+  /* Somebody else's release: there, as quiet as a change its Mate still works on. */
+  .menu-mark-release[data-quiet] {
+    color: var(--sidebar-muted-foreground);
+  }
+
   /* This tab's run on its project's row: under way in the busy ink, stopped in the failed one. */
   .menu-mark-release[data-run="releasing"] {
     color: var(--zerops-status-busy-text);
@@ -3965,6 +3988,18 @@ code {
 
   .chat-header-review .menu-tag[data-popup-open] {
     background: color-mix(in oklab, var(--color-black) 14%, transparent);
+  }
+
+  /* Only changes that wait on the people who merge stand behind it: the door asks nothing, so it
+     drops the blue for the Review tag's own quiet ground — the card's, in a hairline. */
+  .chat-header-review .menu-tags:has(> .menu-tag[data-quiet]:only-child) {
+    background: var(--card);
+    box-shadow: inset 0 0 0 1px var(--border);
+    color: var(--muted-foreground);
+  }
+
+  .chat-header-review .menu-tag[data-quiet]:only-child .menu-tag-count {
+    background: color-mix(in oklab, currentColor 12%, transparent);
   }
 
   @media (hover: hover) and (pointer: fine) {
@@ -4378,6 +4413,10 @@ code {
 
   .menu-row-tags .menu-tag-release {
     font-weight: 600;
+  }
+
+  .menu-row-tags .menu-tag[data-quiet] {
+    color: var(--sidebar-muted-foreground);
   }
 
   .menu-row-tags .menu-tag-count {
@@ -7431,6 +7470,12 @@ a.ov-card-site:hover {
   --ov-wait-ground: color-mix(in oklab, var(--zerops-status-attention-text) 9%, var(--ov-ground));
 }
 
+/* A release that is somebody else's to make ("Ready for production"): the same strip on a plain
+   ground — the amber is what waits on the viewer, and this asks them nothing. */
+.ov-waits[data-zerops-surface="card-ready"] {
+  --ov-wait-ground: color-mix(in oklab, var(--foreground) 5%, var(--ov-ground));
+}
+
 .ov-wait {
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr) auto;
@@ -10034,6 +10079,13 @@ button.ov-change {
   color: var(--muted-foreground);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* What the pills open, where it is more than this change: quiet, under them. */
+.rv-try-note {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--muted-foreground);
 }
 /* One pill per part: whose preview, then the part. */
 .rv-tries {
@@ -13130,6 +13182,10 @@ a.message-file:focus-visible {
 .rv-why > [data-slot="button"] {
   margin: -3px 0 -3px -8px;
 }
+/* Whose move the fix is, where the press is not the reader's: quiet beside the reason. */
+.rv-why-whose {
+  color: var(--muted-foreground);
+}
 
 /* The review as a page: the same column, flush with the page's own edges; the foot's card stands
    8 out from the text, and stays in view. */
@@ -13868,6 +13924,13 @@ a.message-file:focus-visible {
   line-height: 18px;
   color: var(--zerops-status-failed-text);
 }
+/* Whom a comment reaches, or why there is no box to write one in: quiet, under the conversation. */
+.rv-say-note {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--muted-foreground);
+}
 
 /* The commits: one line each, what it did, then its age and hash on the column's right edge. */
 .rv-commits {
@@ -14140,6 +14203,11 @@ a.message-file:focus-visible {
   height: 15px;
   color: var(--zerops-status-ok);
 }
+/* Standing where a button stood a moment ago ("Asked", after Ask to merge): the button's own
+   height, so the row keeps its own. */
+.rv-settled[data-in-place] {
+  height: 32px;
+}
 /* One row per service: its name, its state, and its deploy's door at the row's end. */
 .rv-where {
   display: grid;
@@ -14230,6 +14298,29 @@ a.message-file:focus-visible {
 }
 .rv-conseq[data-tone="failed"] {
   color: var(--zerops-status-failed-text);
+}
+/* Who asked the person to press the one button, over the note of what pressing does: one fact in
+   the text's own colour, hugging the note it belongs with. */
+.rv-asked {
+  margin: 0 0 -8px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+}
+/* A standing that moved while the review stays open (a merge asked for, the ask taken back): the
+   words that come ease in where the old ones stood, and nothing in the foot moves. */
+@media (prefers-reduced-motion: no-preference) {
+  .rv-conseq > [data-swap],
+  .rv-settled[data-swap],
+  .rv-vt[data-swap] {
+    animation: rv-swap-in 200ms var(--ease-out-strong);
+  }
+}
+@keyframes rv-swap-in {
+  from {
+    opacity: 0;
+  }
 }
 
 /* What happens in production: one card, the steps in HQ's order — a mark, a title and one line

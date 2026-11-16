@@ -616,7 +616,7 @@ const reviewTagLabelOf = (html: string) =>
 
 /**
  * What waits in a project's Review, each as its popover lists it: its title, then who made it,
- * whose Mate that is, its number, and "in review" where it waits on somebody else.
+ * whose Mate that is, its number, and "open" where it is a colleague's to merge or to ask for.
  */
 function reviewsOf(tree: ReactTestRenderer): ReadonlyArray<string> {
   return tree.root
@@ -2220,25 +2220,6 @@ describe("the project's flow under it", () => {
       getActivity: () => restingActivity(atWork),
     });
     expect(reviewTagLabelOf(rested)).toBe("Review Change 4");
-  });
-
-  // The owner, 2026-10-12: "I still don't understand why rosa has a different looking merge
-  // request" — a Review solid only on their own Mate's change, nothing saying why.
-  it("says a colleague's open change is in review, its Review the same as on the viewer's own", () => {
-    const karlos = { name: "Karlos Lee", initials: "KL", avatarUrl: null, isViewer: false };
-    expect(
-      reviewing([mine(CRM_DEV_CONNECTED, "u-karlos"), CRM_STAGE], flow(), {
-        getOwner: () => karlos,
-      }),
-    ).toEqual(["Change 4 — crm-dev · Karlos's · #4 · in review"]);
-    const theirs = render([mine(CRM_DEV_CONNECTED, "u-karlos"), CRM_STAGE], {
-      getFlow: () => flow(),
-      getOwner: () => karlos,
-    });
-    const ours = withFlow([own(), CRM_STAGE]);
-    // Its Review as drawn, attributes and all.
-    expect(reviewTagOf(theirs)).toBeDefined();
-    expect(reviewTagOf(theirs)).toEqual(reviewTagOf(ours));
   });
 
   it("offers to set up a stop the recipe has, in the project's menu rather than as a row", () => {

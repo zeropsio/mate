@@ -19,7 +19,7 @@ import {
   type ReviewVerdict,
   type ReleaseReplaces,
   type ZeropsPublicRoute,
-  PRODUCTION_DEPLOYED_OUTSIDE,
+  PRODUCTION_OUTSIDE_DECIDES,
 } from "@t3tools/client-runtime/zerops";
 import { crewPossessive } from "@t3tools/client-runtime/zerops/crew/phrases";
 import { mateParts } from "@t3tools/client-runtime/zerops/mateParts";
@@ -577,9 +577,10 @@ const listed = (names: ReadonlyArray<string>): string =>
 const placeName = (name: string): string => `${name.charAt(0).toUpperCase()}${name.slice(1)}`;
 
 /**
- * What merging does, said under the buttons: a merge lands on `main`, each stage that deploys
- * merges from it deploys it (`stageDeploysMerges`) — no other is promised one — and production
- * keeps its release — after the receipt's warning, while the change waits on its press. Where no
+ * What merging does, said under the buttons: a merge is added to `main`, each stage that deploys
+ * merges from it runs it (`stageDeploysMerges`) — no other is promised one — and production
+ * keeps its release until the person releases, or — where HQ's rule refused them the release —
+ * until it is released — after the receipt's warning, while the change waits on its press. Where no
  * stage deploys it, and for a setup change, which deploys nothing, the review's own words say what
  * merging does: they also say where merging is not offered, or its files were never shown.
  */
@@ -599,20 +600,22 @@ export function mergeFoot(input: {
    * offers nothing to release, and says only that production is elsewhere.
    */
   readonly productionOutside?: boolean | undefined;
+  /** `false` where HQ's rule refused the person the release: nothing then says "you release". */
+  readonly mayRelease?: boolean | undefined;
 }): string {
   if (!WAITING_ON_PRESS.has(input.state) || input.recipe === true) return input.consequence;
   const keeps =
     input.live !== undefined
-      ? ` Production keeps ${input.live} until you release.`
+      ? ` Production keeps ${input.live} until ${input.mayRelease === false ? "it is released" : "you release"}.`
       : input.productionOutside === true
-        ? ` ${PRODUCTION_DEPLOYED_OUTSIDE}`
+        ? ` ${PRODUCTION_OUTSIDE_DECIDES}`
         : "";
   // Each by its title, as its row reads it: "demo-app-stage" is Stage.
   const stages = input.stages.map((name) => environmentTitle("stage", name));
   const foot =
     stages.length === 0
       ? input.consequence
-      : `Lands on main; ${listed(stages)} ${stages.length === 1 ? "deploys" : "deploy"} it.${keeps}`;
+      : `Adds it to main; ${listed(stages)} ${stages.length === 1 ? "runs" : "run"} it.${keeps}`;
   return input.warning === undefined ? foot : `${input.warning} ${foot}`;
 }
 
@@ -645,6 +648,13 @@ export function tryItWords(
 ): { readonly preview: string; readonly part: string } {
   return { preview: `${placeName(crewPossessive(mateName))} preview`, part };
 }
+
+/**
+ * What "Try it" says under its pills where its Mate holds more than one open change: its preview
+ * runs all of its work, never this change alone.
+ */
+export const tryItEverything = (mateName: string): string =>
+  `Shows everything ${mateName} is working on`;
 
 /**
  * "Try it"'s previews: a Mate's parts (`mateParts`, the reader every surface shows them from), each

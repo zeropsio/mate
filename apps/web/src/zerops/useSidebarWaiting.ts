@@ -5,7 +5,8 @@
  *
  * Waiting is the one resolver's word (R5): a Mate of theirs whose face says it needs them, or
  * stopped on an error, or whose agent waits for the sign-in only they can make; and every project
- * whose release is offered (`releaseOffered`). It is always the viewer's: Mine / Everyone chooses
+ * whose release is offered (`releaseOffered`) and theirs to make (`useReleaseOnViewer`: being
+ * allowed to release a colleague's project is not being asked to). It is always the viewer's: Mine / Everyone chooses
  * which Mates the menu lists, never what waits on them. The order is the menu's own
  * (`sidebarReveal.ts`'s `mateOrder`), so "the next one" is the next one down the list the viewer
  * is looking at.
@@ -53,6 +54,8 @@ import { useMenuRows } from "./useMenuRows";
 import { useMateRowActivity } from "./useMenuMateReadings";
 import { useMatesActivity } from "./useZeropsAgentActivity";
 import { useZeropsCandidates } from "./useZeropsCandidates";
+import { useChangeStandingOf } from "./useChangeStandingOf";
+import { useReleaseOnViewer } from "./useReleaseOnViewer";
 import { useWaitsOnViewer } from "./useZeropsMateOwners";
 
 /**
@@ -213,15 +216,19 @@ export function useWaitsOf<T extends ZeropsCandidate>(input: {
   const { changes } = useAppsChanges(useEveryAppId());
   const waitsOnViewer = useWaitsOnViewer();
   const signInOf = useSignInWaits(candidates);
+  // Whose press each change waits for where its application limits who merges: one the person
+  // already asked for waits on the people who merge, and is no wait of theirs.
+  const standingOf = useChangeStandingOf();
   const reviewCount = useCallback(
     (candidate: T) => {
       const groupId = readZeropsMembership(candidate.project).groupId;
       return mateReviewCount(
         groupId === undefined ? undefined : changes.get(groupId),
         candidate.project.id,
+        (pull) => standingOf(groupId, pull),
       );
     },
-    [changes],
+    [changes, standingOf],
   );
   // The change the review opens: the newest of its own waiting, as the composer's top reads it.
   const changeOf = useCallback(
@@ -232,17 +239,23 @@ export function useWaitsOf<T extends ZeropsCandidate>(input: {
         pullRequests: changes.get(groupId)?.pullRequests,
         mateProjectId: candidate.project.id,
         mateName: undefined,
+        standingOf: (pull) => standingOf(groupId, pull),
       });
-      return step.kind === "review"
-        ? {
-            groupId,
-            repository: step.pull.repository,
-            number: step.pull.number,
-            title: step.detail,
-          }
-        : undefined;
+      if (step.kind !== "review") return undefined;
+      // What waits on the person first: one somebody asked them to merge, one theirs to ask for —
+      // never one they already asked for, which the list is not about.
+      const waits =
+        step.lines.find((line) => line.verdict === undefined && line.standing !== "waiting")
+          ?.pull ?? step.pull;
+      return {
+        groupId,
+        repository: waits.repository,
+        number: waits.number,
+        title: waits.title,
+        ...(standingOf(groupId, waits).standing.kind === "to-ask" ? { ask: true as const } : {}),
+      };
     },
-    [changes],
+    [changes, standingOf],
   );
   const mates = useMemo(
     () =>
@@ -262,8 +275,11 @@ export function useWaitsOf<T extends ZeropsCandidate>(input: {
   return { mates, items };
 }
 
-/** Every project of the organization whose next release is offered, by the one gate. */
-function useWaitingReleases(): ReadonlyArray<WaitingRelease> {
+/**
+ * Every project of the organization whose next release is offered to the person, by the one gate:
+ * what its card says is ready for production, whoever's move the release is.
+ */
+export function useOfferedReleases(): ReadonlyArray<WaitingRelease> {
   const projects = useMenuProjects();
   const flows = useProjectFlows("every").flows;
   const putLiveRuns = usePutLive((state) => state.runs);
@@ -289,6 +305,17 @@ function useWaitingReleases(): ReadonlyArray<WaitingRelease> {
       }),
     [flows, projects, putLiveRuns],
   );
+}
+
+/**
+ * The offered releases that wait on the person (`useReleaseOnViewer`): in a project that is
+ * theirs, or that names them, or that nobody else can release. An Owner is offered every
+ * project's release; the others are their people's to make, and count for nothing here.
+ */
+function useWaitingReleases(): ReadonlyArray<WaitingRelease> {
+  const offered = useOfferedReleases();
+  const onViewer = useReleaseOnViewer();
+  return useMemo(() => offered.filter((release) => onViewer(release.groupId)), [offered, onViewer]);
 }
 
 /**

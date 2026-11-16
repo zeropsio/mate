@@ -188,6 +188,8 @@ const offers = vi.hoisted(() => {
       close: true,
       why: {},
       readRefused: false,
+      ask: true,
+      merges: "yes",
     },
   };
   return { held, of: () => held.current };
@@ -263,6 +265,8 @@ const DEVELOPS: ZeropsChangeOffers = {
   close: true,
   why: {},
   readRefused: false,
+  ask: true,
+  merges: "yes",
 };
 
 /** The review of `pull` in a project with a stage and a production two changes behind `main`. */
@@ -804,6 +808,8 @@ describe("ChangeReviewView: an open change", () => {
         close: false,
         why: { merge: "HQ unavailable since 10:00." },
         readRefused: false,
+        ask: false,
+        merges: "no",
       },
     });
     expect(textOf(html)).toContain("HQ unavailable since 10:00.");
@@ -964,12 +970,13 @@ describe("ChangeReviewView: an open change", () => {
       expect(textOf(prLink(mirrored) ?? "")).toBe("PR #14 on GitHub · merged");
     });
 
+    // witness: apps/web/src/components/zerops/review/ZeropsReview.logic.ts | const stages = input.stages.map((name) => environmentTitle("stage", name)); → const stages = input.stages;
     it("a change mirrored to no pull request names none, and merges as ever", () => {
       const html = render(open, files, { stages: ["appstage"] });
       expect(prLink(html)).toBeNull();
       expect(textOf(footOf(html))).toContain("Merge");
       expect(textOf(footOf(html))).not.toContain("Merge to");
-      expect(textOf(footOf(html))).toContain("Lands on main; Appstage deploys it.");
+      expect(textOf(footOf(html))).toContain("Adds it to main; Appstage runs it.");
     });
   });
 

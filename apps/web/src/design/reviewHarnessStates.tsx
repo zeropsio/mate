@@ -353,8 +353,18 @@ function remarksOf(conversation: ChangeDiscussion) {
 }
 
 const TALKING = comments({ kind: "read", comments: TALK });
+/** A colleague commented two minutes ago, after the Mate's newest commit. */
+const TALKING_SINCE_PUSH = comments({
+  kind: "read",
+  comments: [
+    ...TALK,
+    said(3, "u-wren", "The cards overlap on a narrow phone. Can they stack under 400 px?", 2),
+  ],
+});
 
 const NOVA = { name: "Nova", tint: "slate", mine: true } as const;
+/** The same Mate as a colleague's: nothing of it is the reader's to ask. */
+const DANAS_NOVA = { name: "Nova", tint: "slate", mine: false, owner: "Dana L." } as const;
 /** A Mate deleted since it opened the change: no face, nobody's own. */
 const GONE = { name: "the Mate", tint: undefined, mine: false } as const;
 const HEIRS = [
@@ -373,6 +383,8 @@ const DEVELOPS: ZeropsChangeOffers = {
   close: true,
   why: {},
   readRefused: false,
+  ask: true,
+  merges: "yes",
 };
 /** The people the project's merge limit names, as the member list calls them. */
 const MERGER_NAMES: Readonly<Record<string, string>> = {
@@ -382,14 +394,46 @@ const MERGER_NAMES: Readonly<Record<string, string>> = {
   "u-noor": "Noor T.",
   "u-kim": "Kim L.",
 };
+/** The person looking, and a colleague the limit holds too: neither merges here. */
+const ME = "u-you";
+const DANA = "u-dana";
+/** What the member list calls everyone a review names. */
+const personName = (userId: string): string | undefined =>
+  userId === DANA ? "Dana L." : MERGER_NAMES[userId];
+/** Asked two hours ago, by `by`. */
+const askedBy = (by: string): Partial<FlowPullRequest> => ({
+  mergeAsk: { by, at: minutesAgo(120) },
+});
+/** A change built on #11, which is still open. */
+const BUILT_ON_11: Partial<FlowPullRequest> = {
+  number: 12,
+  branch: "cart-coupons",
+  title: "Take a coupon code in the cart",
+  buildsOn: [11],
+};
+const UNDER_11 = { number: 11, title: "Fix the cart total" } as const;
 /** Who merges, as the held press says it of the first `named` of them. */
 const mergersOnly = (named: number) =>
   mergeLimitWords(Object.keys(MERGER_NAMES).slice(0, named), (userId) => MERGER_NAMES[userId]);
+/** A person who merges where the project limits it to the first `named` people. */
+const merges = (named: number): ZeropsChangeOffers => ({
+  ...DEVELOPS,
+  mergers: { people: Object.keys(MERGER_NAMES).slice(0, named) },
+});
+/** Who releases, as a held release says it of the same people. */
+const releasersOnly = (named: number) =>
+  mergeLimitWords(
+    Object.keys(MERGER_NAMES).slice(0, named),
+    (userId) => MERGER_NAMES[userId],
+    "release",
+  );
 /** Merge held by the project's merge limit: comment and Close stay, Merge says who merges. */
 const mergeHeld = (named: number): ZeropsChangeOffers => ({
   ...DEVELOPS,
   merge: false,
   why: { merge: mergersOnly(named) },
+  merges: "held",
+  mergers: { people: Object.keys(MERGER_NAMES).slice(0, named) },
 });
 /** Merged a minute ago: the review says what happened, and offers the release's review. */
 const MERGED_NOW: Partial<FlowPullRequest> = {
@@ -535,7 +579,22 @@ function Change({
   landedTitle,
   productionOutside = false,
   mergeCheck,
+  asking,
+  under,
+  nothingLive,
+  mayRelease,
+  mateOpenChanges,
 }: {
+  /** HQ has told the project's environments and it has none. */
+  readonly nothingLive?: boolean;
+  /** `false`: HQ's rule refused the person the release. */
+  readonly mayRelease?: boolean;
+  /** How many open changes its Mate holds. */
+  readonly mateOpenChanges?: number;
+  /** Asking for the merge, or taking the ask back, as pressed. */
+  readonly asking?: ChangeReviewViewProps["asking"];
+  /** The open change it merges after. */
+  readonly under?: ChangeReviewViewProps["under"];
   /** The project's production is deployed outside Mate. */
   readonly productionOutside?: boolean;
   /** HQ's answer that it cannot judge whether the change merges. */
@@ -572,7 +631,11 @@ function Change({
       hqAddress={HARNESS_HQ}
       initiallyOpen={open}
       productionOutside={productionOutside}
-      live={productionOutside ? undefined : "v0.1.0"}
+      live={
+        productionOutside || !environments.some((entry) => entry.tier === "production")
+          ? undefined
+          : "v0.1.0"
+      }
       mate={mate}
       heirs={heirs}
       hand={hand}
@@ -591,6 +654,14 @@ function Change({
       onClosing={noop}
       onMerge={noop}
       onOpenRun={value.description === undefined ? undefined : noop}
+      asking={asking}
+      mateOpenChanges={mateOpenChanges}
+      mayRelease={mayRelease}
+      me={ME}
+      nameOf={personName}
+      nothingLive={nothingLive}
+      onReviewRelease={noop}
+      under={under}
       offers={offers}
       pictures={HARNESS_PICTURES}
       press={press}
@@ -1283,12 +1354,12 @@ export const RELEASE_SHEETS: ReadonlyArray<ReleaseSheet> = [
     },
   },
   {
-    id: "release-merge-limited",
-    label: "Release · to Git, held by the project's merge limit: who merges, by name",
+    id: "release-limited-zerops",
+    label: "Release · held where the project limits who merges and releases: who releases, by name",
     props: {
       over: {
-        gate: { allowed: false, reason: mergersOnly(2), refusedBy: "hq" },
-        permission: { allowed: false, reason: mergersOnly(2), refusedBy: "hq" },
+        gate: { allowed: false, reason: releasersOnly(2), refusedBy: "hq" },
+        permission: { allowed: false, reason: releasersOnly(2), refusedBy: "hq" },
       },
     },
   },
@@ -2038,7 +2109,7 @@ export const REVIEW_STATES: ReadonlyArray<{
   },
   {
     id: "behind",
-    label: "Behind main, no longer merges",
+    label: "Conflicts with main, its files not read",
     node: <Change readout={detail({ behind: true, mergeability: "conflict" })} />,
   },
   {
@@ -2098,22 +2169,118 @@ export const REVIEW_STATES: ReadonlyArray<{
   {
     id: "not-offered",
     label: "Ready, to a person HQ's rule offers neither Merge nor Close",
-    node: <Change offers={{ ...DEVELOPS, merge: false, close: false }} />,
+    node: <Change offers={{ ...DEVELOPS, merge: false, close: false, ask: false, merges: "no" }} />,
   },
   {
-    id: "merge-limited",
-    label: "Ready, to a person the project's merge limit holds: who merges, by name",
+    id: "ask-to-merge",
+    label: "Ready, to a person who doesn't merge here: Ask to merge, and who merges",
     node: <Change offers={mergeHeld(2)} />,
   },
   {
-    id: "merge-limited-many",
-    label: "Merge held by the limit, five people named: the first three and how many more",
+    id: "ask-to-merge-many",
+    label: "Ask to merge, five people merge: the first two and others",
     node: <Change offers={mergeHeld(5)} />,
   },
   {
-    id: "merge-limited-nobody",
-    label: "Merge held by the limit, nobody named: the organization's Owner and Admins",
+    id: "ask-to-merge-nobody",
+    label: "Ask to merge, nobody named: the organization's Owner and Admins",
     node: <Change offers={mergeHeld(0)} />,
+  },
+  {
+    id: "ask-pending",
+    label: "Asking: the press is on its way",
+    node: <Change asking={{ kind: "running", verb: "ask" }} offers={mergeHeld(2)} />,
+  },
+  {
+    id: "ask-refused",
+    label: "Not asked: HQ refused the ask",
+    node: (
+      <Change
+        asking={{
+          kind: "refused",
+          verb: "ask",
+          reason: "This change is merged or closed already.",
+        }}
+        offers={mergeHeld(2)}
+      />
+    ),
+  },
+  {
+    id: "waiting-mine",
+    label: "Asked by this person: who it waits for, and Take back",
+    node: <Change offers={mergeHeld(2)} over={askedBy(ME)} />,
+  },
+  {
+    id: "waiting-many",
+    label: "Asked by this person, five people merge: two named or another",
+    node: <Change offers={mergeHeld(5)} over={askedBy(ME)} />,
+  },
+  {
+    id: "waiting-other",
+    label: "Asked by a colleague: who asked, who it waits for, nothing to press",
+    node: <Change offers={mergeHeld(2)} over={askedBy(DANA)} />,
+  },
+  {
+    id: "take-back-pending",
+    label: "Taking the ask back: the press is on its way",
+    node: (
+      <Change
+        asking={{ kind: "running", verb: "take-back" }}
+        offers={mergeHeld(2)}
+        over={askedBy(ME)}
+      />
+    ),
+  },
+  {
+    id: "take-back-refused",
+    label: "Not taken back: HQ refused it",
+    node: (
+      <Change
+        asking={{
+          kind: "refused",
+          verb: "take-back",
+          reason: "This change is merged or closed already.",
+        }}
+        offers={mergeHeld(2)}
+        over={askedBy(ME)}
+      />
+    ),
+  },
+  {
+    id: "asked-of-me",
+    label: "Ready, to a person who merges: a colleague asked them to",
+    node: <Change offers={merges(2)} over={askedBy(DANA)} />,
+  },
+  {
+    id: "builds-on",
+    label: "Built on an open change, to a person who merges: its merge carries that one too",
+    node: <Change offers={merges(2)} over={BUILT_ON_11} under={UNDER_11} />,
+  },
+  {
+    id: "builds-on-ask",
+    label: "Built on an open change, to a person who doesn't merge: Ask to merge",
+    node: <Change offers={mergeHeld(2)} over={BUILT_ON_11} under={UNDER_11} />,
+  },
+  {
+    id: "merge-refused-limited",
+    label: "Not merged: the project's limit met at the press, who merges by name",
+    node: (
+      <Change
+        offers={merges(2)}
+        press={{
+          kind: "refused",
+          reason: "Only the organization's Owner and Admins, and the people they pick, merge here.",
+          code: "not_app_merger",
+        }}
+      />
+    ),
+  },
+  {
+    id: "builds-on-two",
+    label: "Built on two open changes: its merge carries both",
+    node: (
+      <Change offers={merges(2)} over={{ ...BUILT_ON_11, buildsOn: [11, 10] }} under={UNDER_11} />
+    ),
   },
   { id: "merging", label: "Merging", node: <Change press={{ kind: "running" }} /> },
   {
@@ -2162,8 +2329,88 @@ export const REVIEW_STATES: ReadonlyArray<{
   { id: "merged", label: "Merged", node: <Change over={MERGED_NOW} /> },
   {
     id: "ready-no-production",
-    label: "Ready, in a project with no production",
+    label: "Ready, the project's environments not told yet: only what merging does",
     node: <Change environments={NO_ENVIRONMENTS} />,
+  },
+  {
+    id: "merge-nothing-live",
+    label: "What Merge does · nothing live and no stage",
+    node: <Change environments={NO_ENVIRONMENTS} nothingLive />,
+  },
+  {
+    id: "merge-stage-only",
+    label: "What Merge does · a stage, no production",
+    node: <Change environments={[{ tier: "stage" }]} />,
+  },
+  {
+    id: "merge-production",
+    label: "What Merge does · a stage and a production, to a person who may release",
+    node: <Change />,
+  },
+  {
+    id: "merge-production-not-releaser",
+    label: "What Merge does · a production, to a person who merges but may not release",
+    node: <Change mayRelease={false} />,
+  },
+  {
+    id: "merged-not-releaser",
+    label: "Merged, to a person the project's limit holds: who releases, no press",
+    node: <Change mayRelease={false} offers={mergeHeld(2)} over={MERGED_NOW} />,
+  },
+  {
+    id: "comment-colleague",
+    label: "A colleague's change: the comment box says whom it reaches",
+    node: <Change mate={DANAS_NOVA} open={NONE_OPEN} />,
+  },
+  {
+    id: "comments-to-answer",
+    label: "The reader's own Mate, a colleague commented since its last push: one press",
+    node: <Change conversation={TALKING_SINCE_PUSH} />,
+  },
+  {
+    id: "comment-read-only",
+    label: "A person with Read access: no box, and why",
+    node: (
+      <Change
+        mate={DANAS_NOVA}
+        offers={{
+          ...DEVELOPS,
+          comment: false,
+          merge: false,
+          close: false,
+          ask: false,
+          merges: "no",
+          why: {
+            merge:
+              "You need more than Read access to one of this project's Zerops projects to do this.",
+          },
+        }}
+      />
+    ),
+  },
+  {
+    id: "colleague-conflict",
+    label: "A colleague's change that conflicts: whose move the fix is",
+    node: (
+      <Change
+        mate={DANAS_NOVA}
+        readout={detail({
+          behind: true,
+          mergeability: "conflict",
+          conflictPaths: ["src/server/index.ts"],
+        })}
+      />
+    ),
+  },
+  {
+    id: "colleague-draft",
+    label: "A colleague's draft: whose move it is",
+    node: <Change mate={DANAS_NOVA} over={{ ready: false }} />,
+  },
+  {
+    id: "try-it-everything",
+    label: "Try it, where its Mate holds two open changes: what the preview shows",
+    node: <Change mateOpenChanges={2} />,
   },
   {
     id: "outside-set",

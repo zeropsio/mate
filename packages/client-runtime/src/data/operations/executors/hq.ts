@@ -37,6 +37,7 @@ import {
   chatLinkRefusalWords,
   HQ_NOT_OPEN,
   hqNeedsUpdate,
+  MERGE_ASK_NEEDS_UPDATE,
   MERGERS_NEED_UPDATE,
   mergersRefusalWords,
   OUTSIDE_NEEDS_UPDATE,
@@ -81,11 +82,12 @@ function matchingProductionRemoval(intent: OperationIntent, record: HqLifecycleR
 type FlowWrites = Pick<
   HqApi,
   "rollback" | "redeploy" | "addService" | "mergeChange" | "closeChange" | "handChange"
-> & {
-  readonly release: (
-    ...input: Parameters<HqApi["release"]>
-  ) => Promise<Awaited<ReturnType<HqApi["release"]>> & { readonly delivery?: HqDeliveryAnswer }>;
-};
+> &
+  Partial<Pick<HqApi, "askMerge" | "takeBackMergeAsk">> & {
+    readonly release: (
+      ...input: Parameters<HqApi["release"]>
+    ) => Promise<Awaited<ReturnType<HqApi["release"]>> & { readonly delivery?: HqDeliveryAnswer }>;
+  };
 
 /** The writes HQ executes, as its client sends them. */
 export type HqWrites = Pick<
@@ -188,6 +190,16 @@ const receipt = (
 });
 const PENDING: OperationReceipt["outcome"] = { kind: "pending" };
 
+/** An HQ older than asking for a merge: said as needing an update, never as a broken press. */
+const MERGE_ASK_OLDER_HQ: StreamFault = {
+  outcome: "definitive-refusal",
+  message: MERGE_ASK_NEEDS_UPDATE,
+};
+
+/** HQ's answer to an ask to merge as a fault: an HQ without the route, or its refusal. */
+const mergeAskFault = (cause: unknown): StreamFault | UncertainAcceptance =>
+  hqRouteMissing(cause) ? MERGE_ASK_OLDER_HQ : faultOf(cause, true);
+
 function flowWrite(
   requestId: string,
   api: FlowWrites,
@@ -264,6 +276,21 @@ function flowWrite(
         write(() => api.handChange(intent.link, intent.mateProjectId)),
         () => receipt(requestId, changeHandle(intent.link), undefined, PENDING),
       );
+    case "ask-merge":
+    case "take-back-merge-ask": {
+      const call = intent.kind === "ask-merge" ? api.askMerge : api.takeBackMergeAsk;
+      if (call === undefined) return Effect.fail(MERGE_ASK_OLDER_HQ);
+      return Effect.map(
+        Effect.tryPromise({ try: () => call(intent.link), catch: mergeAskFault }),
+        (change) =>
+          receipt(
+            requestId,
+            changeHandle(intent.link),
+            { mergeAsk: change.mergeAsk ?? null },
+            { kind: "succeeded", evidence: "HQ answered the write." },
+          ),
+      );
+    }
   }
 }
 

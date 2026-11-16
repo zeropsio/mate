@@ -133,7 +133,7 @@ describe("zeropsOffers", () => {
     },
   );
 
-  // witness: packages/shared/src/zeropsPermissions.ts | !mergesWithin(member, mergers) → !mergesWithin({ ...member, roleCode: roleOn(facts, member, projectIds[0]!) }, mergers)
+  // witness: packages/shared/src/zeropsPermissions.ts | verb === "merge_change" && mergers != null && !mergesWithin(member, mergers) → verb === "merge_change" && mergers != null && !mergesWithin({ ...member, roleCode: roleOn(facts, member, projectIds[0]!) }, mergers)
   it("Admin on one of the project's Zerops projects is not the organization's: a person raised there still does not merge", () => {
     const offers = applicationOffers(
       person("u-kim", "BASIC_USER", { mate: "ADMIN" }),

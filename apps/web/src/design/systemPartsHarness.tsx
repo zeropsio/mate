@@ -26,6 +26,7 @@ import type {
   PlaceLine as PlaceLineData,
 } from "~/components/zerops/projects/projectCard.logic";
 import { placeServiceRows } from "~/components/zerops/place/place.logic";
+import { mergedChangeWords } from "~/components/zerops/system/ChangeRow.logic";
 import {
   ChangeList,
   ChangeRow,
@@ -34,6 +35,7 @@ import {
   MateRowTime,
   NextBlock,
   NextRelease,
+  openChangeWords,
   PageHeader,
   PlaceLine,
   SectionAction,
@@ -408,6 +410,25 @@ function Harness() {
               onOpen={() => acted.push("review:32")}
               open
               pull={OPEN}
+            />
+            {/* `main` moved on and it still merges: its row says so, as its review does. */}
+            <ChangeRow
+              at={OPEN.updatedAt}
+              face={face("sky")}
+              line={changeRowLine("Wren", openChangeWords({ ...OPEN, behind: true }).words)}
+              onOpen={() => acted.push("review:33")}
+              open
+              pull={{ ...OPEN, number: 33, title: "Sort the tea list by harvest", behind: true }}
+              tone={openChangeWords({ ...OPEN, behind: true }).tone}
+            />
+            {/* Merged, and the stage's deploy of it failed: the one merged row that is not calm. */}
+            <ChangeRow
+              at={MERGED.mergedAt}
+              face={face("rose")}
+              line={changeRowLine("Juno", mergedChangeWords({ kind: "failed-on-stage" }))}
+              onOpen={() => acted.push("review:34")}
+              pull={{ ...MERGED, number: 34, title: "Gift wrapping at checkout" }}
+              tone="failed"
             />
             <ChangeRow
               at={MERGED.mergedAt}

@@ -186,6 +186,7 @@ import {
 import { newMateView, useAddAutomatedMates, useAddMate } from "../zerops/newMate";
 import { useAutomatedKey } from "../zerops/useAutomationSettings";
 import { useAddMateOffer } from "../zerops/useHqOffers";
+import { useAddMateDoor } from "../zerops/addMateDoor";
 import { useOpenPutLive, usePutLive } from "../zerops/putLive";
 import { releaseOffered } from "./zerops/SidebarWaiting.logic";
 import { useSetUpEnvironment } from "../zerops/setUpEnvironment";
@@ -1845,6 +1846,11 @@ export default function Sidebar() {
     () => zeropsMenuProjects.filter((project) => addMateOffer(project.id).kind === "allowed"),
     [addMateOffer, zeropsMenuProjects],
   );
+  // No project takes a Mate from this person, who works with one: the + says whom to ask.
+  const addMateDoor = useAddMateDoor();
+  const zeropsAddMateWhy = zeropsMenuProjects
+    .map((project) => addMateDoor(project.id))
+    .find((door) => door.kind === "off")?.why;
   const onZeropsNewMate = useCallback(
     (groupId: string) => {
       if (isMobile) setOpenMobile(false);
@@ -2850,6 +2856,7 @@ export default function Sidebar() {
         onNewAutomatedMates={automatedOffered ? onZeropsNewAutomatedMates : undefined}
         onNewProject={roleOffered.newProject ? openNewZeropsProject : undefined}
         projects={zeropsMateProjects}
+        why={zeropsAddMateWhy}
       />
     ) : null;
   // The closed menu on a desktop; the open one stays drawn under it (`SidebarStage`).

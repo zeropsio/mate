@@ -1,8 +1,9 @@
 /**
- * Who merges a project's changes, on the project's page: the Merging row of its side column, whose
- * line says where the setting stands, and the dialog its *Manage* opens — everyone working on it,
- * or only the organization's Owner and Admins and the people picked. An Owner or Admin changes it
- * with one Save; anyone else reads who merges, by name: whom to ask. HQ enforces it at the merge
+ * Who merges a project's changes and releases it, on the project's page: the Merging row of its
+ * side column, whose line says where the setting stands, and the dialog its *Manage* opens —
+ * everyone working on it, or only the organization's Owner and Admins and the people picked. An
+ * Owner or Admin changes it with one Save; anyone else reads who merges and releases, by name:
+ * whom to ask. HQ enforces it at the merge, the release and a production's deploy asked again
  * (`not_app_merger`).
  *
  * The limit holds in Mate. Where the project's code is on GitHub and `main` there takes a push past
@@ -29,6 +30,7 @@ import {
   draftSends,
   MERGING_TITLE,
   mergingDraft,
+  everyoneLine,
   mergingLine,
   mergingNow,
   mergingPeople,
@@ -50,14 +52,18 @@ const NONE_OPEN: ReadonlyArray<OpenMain> = [];
 export function ProjectMergingRow({
   merging,
   open = NONE_OPEN,
+  builders,
   onManage,
 }: {
   readonly merging: Pick<AppMergers, "people" | "older" | "editable">;
   /** The project's repositories whose `main` is open on GitHub (`openMains`). */
   readonly open?: ReadonlyArray<OpenMain> | undefined;
+  /** How many people work in the project (`buildersCount`); none while it is not read. */
+  readonly builders?: number | null | undefined;
   readonly onManage: (from: HTMLElement) => void;
 }) {
   const { people, older, editable } = merging;
+  const everyone = everyoneLine(people, builders);
   // Said to whoever can close it, and only where a limit stands for it to undo.
   const stillOpen = editable === true && people != null && open.length > 0;
   return (
@@ -79,6 +85,11 @@ export function ProjectMergingRow({
           <Skeleton className="h-5 w-48" />
         ) : (
           <span className="text-sm text-foreground">{mergingLine(people)}</span>
+        )}
+        {everyone === undefined ? null : (
+          <span className="text-line text-muted-foreground" data-zerops-merging-everyone="">
+            {everyone}
+          </span>
         )}
         {stillOpen ? (
           <span className="text-line text-warning-foreground" data-zerops-merging-open-main="">
@@ -155,9 +166,9 @@ export function MergingNeedsUpdate() {
   return <p className="text-sm text-muted-foreground">{MERGERS_NEED_UPDATE}</p>;
 }
 
-/** What merging is, and when limiting it helps. */
+/** What merging and releasing do, and when limiting them helps. */
 const MERGING_IS =
-  "Merging puts a change on main. Limit it when not everyone working here should decide what lands there.";
+  "Merging adds a change to the project, and releasing puts it live. Limit this when not everyone working here should decide what goes live.";
 
 export function ProjectMergingView({
   current,
@@ -215,7 +226,10 @@ export function ProjectMergingView({
       ) : choices.kind === "unreadable" ? (
         <p className="ps-6 text-sm text-muted-foreground">{choices.line}</p>
       ) : (
-        <ul aria-label="People who merge" className="flex max-h-80 flex-col overflow-y-auto ps-6">
+        <ul
+          aria-label="People who merge and release"
+          className="flex max-h-80 flex-col overflow-y-auto ps-6"
+        >
           {choices.people.map((person) => (
             <li className="flex min-h-8 min-w-0 items-center gap-2" key={person.userId}>
               <Label>
@@ -290,8 +304,8 @@ function OpenMainNote({ main }: { readonly main: OpenMain }) {
 }
 
 /**
- * The section as anyone but an Owner or Admin reads it: who merges here, by name, and who changes
- * that. Nothing to press.
+ * The section as anyone but an Owner or Admin reads it: who merges and releases here, by name, and
+ * who changes that. Nothing to press.
  */
 function MergingRead({
   current,
@@ -304,10 +318,10 @@ function MergingRead({
     <div className="flex flex-col gap-3" data-zerops-surface="project-merging">
       <p className="text-sm text-foreground">
         {current === null
-          ? "Everyone working on this project can merge."
+          ? "Everyone working on this project can merge and release."
           : choices.kind === "unreadable"
             ? `${mergingLine(current)}.`
-            : "Only these people merge here."}
+            : "Only these people merge and release here."}
       </p>
       {current === null ? null : choices.kind === "reading" ? (
         <div aria-busy="true" className="flex flex-col gap-2">
@@ -317,7 +331,10 @@ function MergingRead({
       ) : choices.kind === "unreadable" ? (
         <p className="text-sm text-muted-foreground">{choices.line}</p>
       ) : (
-        <ul aria-label="People who merge" className="flex max-h-80 flex-col overflow-y-auto">
+        <ul
+          aria-label="People who merge and release"
+          className="flex max-h-80 flex-col overflow-y-auto"
+        >
           {mergingNow(choices.people, current).map((person) => (
             <li className="flex min-h-7 min-w-0 items-center gap-2" key={person.userId}>
               <span className="text-sm font-medium text-foreground">{person.name}</span>

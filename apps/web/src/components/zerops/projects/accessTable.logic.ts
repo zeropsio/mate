@@ -104,6 +104,21 @@ export type AccessTableView =
       readonly candidates: ReadonlyArray<AccessCandidate>;
     };
 
+/**
+ * How many people work in the project: those who joined and hold more than Read access on one of
+ * its places, so the ones who merge and release where nothing limits it. `null` until it is read.
+ */
+export function buildersCount(view: AccessTableView): number | null {
+  if (view.kind !== "table") return null;
+  return view.rows.filter(
+    (row) =>
+      !row.pending &&
+      row.cells.some(
+        (cell) => cell.level === "owner" || cell.level === "full" || cell.level === "basic",
+      ),
+  ).length;
+}
+
 /** A cell's word: the chips' levels, *None* and *Owner*. */
 export const CELL_WORDS: Readonly<Record<CellLevel, string>> = {
   full: BADGE_WORDS.full,

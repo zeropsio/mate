@@ -29,6 +29,8 @@ import { useOpenPutLive } from "~/zerops/putLive";
 import { useEnvironmentSetup } from "~/zerops/useEnvironmentSetup";
 import { useAppMergers } from "~/zerops/useAppMergers";
 import { useAppOutsideProduction } from "~/zerops/useAppOutsideProduction";
+import { useAddMateDoor } from "~/zerops/addMateDoor";
+import { useChangeStandingOf } from "~/zerops/useChangeStandingOf";
 import { useNowMs } from "~/zerops/useNowMs";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { Button } from "../ui/button";
@@ -37,7 +39,7 @@ import { Skeleton } from "../ui/skeleton";
 import { GitMirrorDialog } from "./GitMirrorDialog";
 import { ProjectRepositories } from "./github/GithubRepoRows";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
-import { ProjectPeople, ProjectPeopleRow } from "./projects/ProjectPeople";
+import { ProjectPeople, ProjectPeopleRow, useProjectBuilders } from "./projects/ProjectPeople";
 import {
   ProjectPageBody,
   type ProjectPageFacts,
@@ -152,6 +154,8 @@ function ProjectPage<T>({
   readonly onAddMate: () => void;
 }) {
   const recipeFailure = useHqAppFailure(groupId);
+  // A person who only reads here is offered no Mate to add (`addMateDoor`).
+  const addMateDoor = useAddMateDoor();
   const { flows } = useProjectFlows(useMemo(() => [groupId], [groupId]));
   const flow = flows.get(groupId);
   const facts = {
@@ -165,6 +169,7 @@ function ProjectPage<T>({
   const repos = flow?.codeRepos ?? flow?.repos;
   // Who merges: one read and one write for the row and the section it opens.
   const merging = useAppMergers(groupId);
+  const builders = useProjectBuilders(groupId);
   const openOnGithub = useMemo(() => openMains(repos), [repos]);
   const automationStanding = useAutomationStanding(groupId);
   const setup: ProjectPageSetup = {
@@ -186,7 +191,12 @@ function ProjectPage<T>({
           <ProjectAutomationRow groupId={groupId} onManage={open.automation} />
         )}
         <ProjectPeopleRow groupId={groupId} onManage={open.access} />
-        <ProjectMergingRow merging={merging} onManage={open.merging} open={openOnGithub} />
+        <ProjectMergingRow
+          builders={builders}
+          merging={merging}
+          onManage={open.merging}
+          open={openOnGithub}
+        />
         <ProjectSpendRow appId={groupId} projectIds={spendIds} />
       </>
     ),
@@ -197,6 +207,7 @@ function ProjectPage<T>({
   };
   return (
     <ProjectPageBody
+      addMateHidden={addMateDoor(groupId).kind === "none"}
       addMateWhy={addMateWhy}
       entry={entry}
       facts={facts}
@@ -274,6 +285,8 @@ function useProjectPageFacts(
   const { withheldNotice } = useWithheldStops(environments);
   const orgName = useZeropsSessionOptional()?.activeOrganization?.name;
   const nowMs = useNowMs();
+  // Whose press each open change waits for where the application limits who merges.
+  const standingOf = useChangeStandingOf();
   // Why the last release did not go live, as production's own page says it, where HQ names the
   // services it could not create. Read from the flow alone: what Zerops lists there is the place
   // page's own read.
@@ -347,7 +360,11 @@ function useProjectPageFacts(
         });
   return {
     brought: liveBrought(flow),
-    changes: pageChanges({ flow: groupFlow, read: flow }),
+    changes: pageChanges({
+      flow: groupFlow,
+      read: flow,
+      standingOf: (pull) => standingOf(groupId, pull),
+    }),
     changesUnknown:
       flow === undefined || !flow.changesKnown
         ? (flow?.changesFailure ?? "Reading its changes…")

@@ -26,6 +26,8 @@ export interface ChangeRemark {
   readonly mine: boolean;
   readonly body: string;
   readonly at: string;
+  /** Its speaker is a Mate, its words brought over from HQ: nobody's to answer. */
+  readonly mate?: true | undefined;
 }
 
 /** The conversation as a surface shows it: oldest first, as HQ keeps it. */
@@ -49,7 +51,53 @@ export function changeRemarks(input: {
     mine: comment.authorUserId === input.me,
     body: comment.body,
     at: comment.createdAt,
+    ...(comment.authorUserId === null && comment.authorMateProjectId !== null
+      ? { mate: true as const }
+      : {}),
   }));
+}
+
+/**
+ * The comments a change's Mate has not answered with a push, for its owner to hand it: what
+ * people other than the reader said after its newest commit (`pushedAt`, that commit's time — the
+ * review holds no time of the push itself). None while its commits are not read: nothing then
+ * tells an answered comment from a new one.
+ */
+export function commentsToAnswer(input: {
+  readonly remarks: ReadonlyArray<ChangeRemark>;
+  readonly pushedAt: string | undefined;
+}): ReadonlyArray<ChangeRemark> {
+  const pushed = input.pushedAt === undefined ? Number.NaN : Date.parse(input.pushedAt);
+  if (Number.isNaN(pushed)) return [];
+  return input.remarks.filter(
+    (remark) => !remark.mine && remark.mate !== true && Date.parse(remark.at) > pushed,
+  );
+}
+
+/** The press that hands those comments to the change's Mate. */
+export const answerCommentsLabel = (mateName: string): string =>
+  `Ask ${mateName} to answer the comments`;
+
+/**
+ * What the Mate's composer is opened with for them: the change, each comment as it was written
+ * under its speaker's name, and what to do. The person reads it and sends it.
+ */
+export function answerCommentsRequest(input: {
+  readonly number: number;
+  readonly remarks: ReadonlyArray<ChangeRemark>;
+}): {
+  readonly what: string;
+  readonly logName: string;
+  readonly logLines: ReadonlyArray<string>;
+  readonly ask: string;
+} {
+  const one = input.remarks.length === 1;
+  return {
+    what: `Change #${String(input.number)} has ${one ? "a comment" : "comments"} you have not answered`,
+    logName: one ? "The comment" : "The comments",
+    logLines: input.remarks.flatMap((remark) => `${remark.speaker}: ${remark.body}`.split("\n")),
+    ask: `Answer ${one ? "it" : "them"}: make the changes ${one ? "it asks" : "they ask"} for, or say on the change why not, and deliver it again.`,
+  };
 }
 
 /** `Nothing said yet` / `1 comment` / `4 comments` — the section's own count. */

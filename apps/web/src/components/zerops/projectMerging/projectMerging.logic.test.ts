@@ -31,20 +31,20 @@ const MEMBERS = [
 ];
 
 describe("the Merging row's line", () => {
-  // witness: apps/web/src/components/zerops/projectMerging/projectMerging.logic.ts | if (people === null) return "Everyone working here can merge"; →
+  // witness: apps/web/src/components/zerops/projectMerging/projectMerging.logic.ts | if (people === null) return "Everyone working here can merge and release"; →
   it("A project that limits nothing says everyone working there can merge", () => {
-    expect(mergingLine(null)).toBe("Everyone working here can merge");
+    expect(mergingLine(null)).toBe("Everyone working here can merge and release");
   });
 
   // witness: apps/web/src/components/zerops/projectMerging/projectMerging.logic.ts | people.length === 1 ? "person" : "people" → "people"
   it("A project that limits it says how many people merge beside the Owner and Admins", () => {
-    expect(mergingLine(["u-ada", "u-sam"])).toBe("Owner, Admins and 2 people merge");
-    expect(mergingLine(["u-ada"])).toBe("Owner, Admins and 1 person merge");
+    expect(mergingLine(["u-ada", "u-sam"])).toBe("Owner, Admins and 2 people merge and release");
+    expect(mergingLine(["u-ada"])).toBe("Owner, Admins and 1 person merge and release");
   });
 
-  // witness: apps/web/src/components/zerops/projectMerging/projectMerging.logic.ts | if (people.length === 0) return "Only the Owner and Admins merge"; →
+  // witness: apps/web/src/components/zerops/projectMerging/projectMerging.logic.ts | if (people.length === 0) return "Only the Owner and Admins merge and release"; →
   it("With nobody named it says only the Owner and Admins merge", () => {
-    expect(mergingLine([])).toBe("Only the Owner and Admins merge");
+    expect(mergingLine([])).toBe("Only the Owner and Admins merge and release");
   });
 });
 

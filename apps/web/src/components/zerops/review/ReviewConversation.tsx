@@ -14,6 +14,10 @@
  * conversation holds it, and says so while HQ reconnects. A press made before the conversation is
  * read says it waits for that read; words whose answer was lost stay a draft until HQ shows them. While the conversation is read it holds the room of the comments the change has; one
  * that cannot be read says so, with *Try again*, and the box still takes words. Only people comment on a change (SPEC §3.2a): each remark wears its speaker's initial.
+ *
+ * A hand-off is visible to both sides: on a colleague's change the box says whom the words reach
+ * (`reaches`), its Mate's owner gets one press that hands the Mate what others said since its last
+ * push (`answer`), and a person who may only read reads so where the box would be (`readOnly`).
  */
 import {
   changeAskLabel,
@@ -50,6 +54,9 @@ export function ReviewConversation({
   count,
   asker,
   commentable,
+  readOnly = false,
+  reaches,
+  answer,
   now,
   onAsk,
   fold,
@@ -68,6 +75,12 @@ export function ReviewConversation({
    * is not offered — Ask keeps the words on the change too.
    */
   readonly commentable: boolean;
+  /** HQ's rule lets the person read the change and nothing more: said where the box would be. */
+  readonly readOnly?: boolean | undefined;
+  /** On a colleague's change: its Mate's owner, whom a comment reaches. */
+  readonly reaches?: string | undefined;
+  /** For the Mate's owner: hands it the comments others left since its last push. */
+  readonly answer?: { readonly label: string; readonly onPress: () => void } | undefined;
   readonly now: number;
   /** Keeps the words on the change and hands them to the Mate. */
   readonly onAsk: (said: string) => Promise<void>;
@@ -92,8 +105,23 @@ export function ReviewConversation({
       ) : (
         <Remarks frame={frame} now={now} remarks={remarks} />
       )}
+      {answer === undefined || state.kind !== "read" ? null : (
+        <Button
+          data-zerops-surface="change-answer-comments"
+          onClick={answer.onPress}
+          size="sm"
+          variant="link"
+        >
+          {answer.label}
+        </Button>
+      )}
       {commentable ? (
         <SayBox asker={asker} comments={comments} draftKey={draftKey} onAsk={onAsk} />
+      ) : readOnly ? (
+        <p className="rv-say-note">You have Read access, so you can read this conversation.</p>
+      ) : null}
+      {commentable && asker === undefined && reaches !== undefined ? (
+        <p className="rv-say-note">{reaches} sees this on the change.</p>
       ) : null}
     </ReviewSection>
   );

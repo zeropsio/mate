@@ -177,10 +177,16 @@ export interface ZeropsProjectsFlowProps<T> {
   /** An environment's row — a `ZeropsEnvironmentRow`. */
   readonly renderEnvironment: (item: T, role: ZeropsEnvironmentRole | undefined) => ReactNode;
   /**
-   * The release's door on a card (*Review release*), drawn only where the one list says the
-   * release waits on the viewer (`projectReleaseWait`).
+   * The release's door on a card (*Review release*), drawn only where the release is offered to
+   * the viewer (`releaseOffered`).
    */
   readonly renderReleaseVerb?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
+  /**
+   * Whether that release waits on the viewer, as the one list says it (`projectReleaseWait`): it
+   * stands among what waits on them. Where it does not — the project is somebody else's — the
+   * same strip stands under "Ready for production", asking them nothing. Absent: it waits.
+   */
+  readonly releaseOnViewer?: ((entry: ProjectsFlowGroup<T>) => boolean) | undefined;
   /** The row's ··· menu: the project's quiet verbs, and its Mates' previews (`flow.mates`). */
   readonly renderGroupMenu: (
     entry: ProjectsFlowGroup<T>,

@@ -29,6 +29,8 @@ import {
   changeUrl,
   type HqChange,
   type HqCorePush,
+  type HqLastComment,
+  type HqMergeAsk,
   repoUrl,
 } from "@t3tools/shared/hqChanges";
 import type { HqPullRequest } from "@t3tools/shared/hqGithub";
@@ -36,6 +38,7 @@ import type { HqNavigationChange } from "@t3tools/shared/hqStream";
 import { RECIPE_PROPOSAL_TITLE, RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { isSlashCommand } from "@t3tools/shared/userAsk";
 
+import { ASK_TO_MERGE, TAKE_ASK_BACK } from "./changeStanding.ts";
 import { pullRequestBlocked } from "./gitTab.ts";
 import { productionProjectOf, type EnvironmentPlace } from "./groupRows.ts";
 import { mergeabilityKindOf, type MergeabilityKind } from "./changeMergeability.ts";
@@ -149,6 +152,15 @@ export interface FlowPullRequest {
   readonly receipt?: ChangeReceipt | undefined;
   /** The pull request it is mirrored to on GitHub (`HqChange.pullRequest`); absent where none. */
   readonly pullRequest?: HqPullRequest | undefined;
+  /** Somebody asked for it to be merged (`HqChange.mergeAsk`); absent where nobody did. */
+  readonly mergeAsk?: HqMergeAsk | undefined;
+  /** The newest comment a person left on it (`HqChange.lastComment`); absent while it has none. */
+  readonly lastComment?: HqLastComment | undefined;
+  /**
+   * The other open changes of its repository it merges after, nearest first
+   * (`HqChange.buildsOn`); absent where it builds on none.
+   */
+  readonly buildsOn?: ReadonlyArray<number> | undefined;
 }
 
 /**
@@ -266,6 +278,21 @@ export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest
     ...(change.corePush === undefined ? {} : { corePush: change.corePush }),
     ...(change.receipt === null ? {} : { receipt: change.receipt }),
     ...(change.pullRequest === undefined ? {} : { pullRequest: change.pullRequest }),
+    ...standingFacts(change),
+  };
+}
+
+/** What only an open change carries of who waits on whom: its ask to merge, what it builds on. */
+function standingFacts(
+  change: Pick<HqChange, "state" | "mergeAsk" | "buildsOn" | "lastComment">,
+): Pick<FlowPullRequest, "mergeAsk" | "buildsOn" | "lastComment"> {
+  if (change.state !== "open") return {};
+  return {
+    ...(change.lastComment === undefined ? {} : { lastComment: change.lastComment }),
+    ...(change.mergeAsk === undefined ? {} : { mergeAsk: change.mergeAsk }),
+    ...(change.buildsOn === undefined || change.buildsOn.length === 0
+      ? {}
+      : { buildsOn: change.buildsOn }),
   };
 }
 
@@ -320,6 +347,7 @@ function menuChange(appId: string, change: HqNavigationChange, hqAddress: string
     updatedAt: change.updatedAt,
     ready: change.ready,
     ...(change.pullRequest === undefined ? {} : { pullRequest: change.pullRequest }),
+    ...standingFacts(change),
   };
 }
 
@@ -689,6 +717,9 @@ export interface ChangeState {
   readonly tone: ServiceStatusToneId;
 }
 
+/** `changeState`'s word for an open change nothing stops, said where nobody in particular looks. */
+export const READY_TO_MERGE = "Ready to merge";
+
 /**
  * Where a change stands, in one vocabulary: what is stopping it, because it is
  * the thing somebody has to act on, or that nothing is. Saying nothing at all
@@ -704,6 +735,9 @@ export function changeState(pull: {
   readonly kind: FlowPullRequestKind;
   readonly title: string;
   readonly pullRequest?: { readonly state: string } | undefined;
+  /** `main` moved on past the commit it was cut from, and it still merges (`FlowPullRequest.behind`). */
+  readonly behind?: boolean | undefined;
+  readonly baseBranch?: string | undefined;
 }): ChangeState | undefined {
   // GitHub merged its pull request; HQ's main takes the merge next. Nothing is left to do with it.
   if (pull.pullRequest?.state === "merged") return { word: "Merged on GitHub", tone: "off" };
@@ -719,7 +753,29 @@ export function changeState(pull: {
   }
   // Its Mate has not described it as it is: nothing asks for its merge yet.
   if (!changeAsksForReview(pull)) return { word: "Draft", tone: "off" };
-  return { word: "Ready to merge", tone: "off" };
+  // It still merges, on top of changes it was not checked with: its review says the same, in the
+  // same amber (`changeMergeVerdict`'s `behind-clean`) — a row never read "Ready to merge" over it.
+  if (pull.behind === true) {
+    return { word: `Behind ${pull.baseBranch ?? FALLBACK_BASE}`, tone: "attention" };
+  }
+  return { word: READY_TO_MERGE, tone: "off" };
+}
+
+/**
+ * `changeState` for the person looking: a change nothing stops says where it stands for them
+ * (`standingWord` — "Ready", "Waiting for Ada K. or Sam R.", "Dana L. asks to merge")
+ * in place of "Ready to merge", which a person who cannot merge is never told. Anything that stops
+ * it keeps its own word, whoever looks.
+ */
+export function changeStateFor(
+  pull: Parameters<typeof changeState>[0],
+  standing: { readonly word: string; readonly comment?: string | undefined } | undefined,
+): ChangeState | undefined {
+  const state = changeState(pull);
+  // A comment its person has not read is the news of a change nothing stops: it is theirs again.
+  return standing === undefined || state?.word !== READY_TO_MERGE
+    ? state
+    : { word: standing.comment ?? standing.word, tone: state.tone };
 }
 
 /** How a change merges, in merge's own terms: whether it can land, and what it is waiting on. */
@@ -849,11 +905,12 @@ export function releaseContentsSentence(summary: ReleaseContentsSummary): string
 /** A verb the person runs on the flow, as the surfaces key its progress. */
 export type FlowVerb =
   /**
-   * A change of the application `groupId`, merged or closed without merging in HQ, or one whose
-   * Mate is gone handed to another of its Mates.
+   * A change of the application `groupId`, merged or closed without merging in HQ, one whose
+   * Mate is gone handed to another of its Mates, or its merge asked of the people who merge
+   * (`ask-merge`) and that ask taken back.
    */
   | {
-      readonly kind: "merge" | "close" | "hand";
+      readonly kind: "merge" | "close" | "hand" | "ask-merge" | "take-back-ask";
       readonly groupId: string;
       readonly repository: string;
       readonly number: number;
@@ -881,6 +938,8 @@ export function flowVerbKey(verb: FlowVerb): string {
     case "merge":
     case "close":
     case "hand":
+    case "ask-merge":
+    case "take-back-ask":
       return `${verb.kind} ${verb.groupId}/${verb.repository}#${verb.number}`;
     case "release":
       return `release ${verb.groupId}`;
@@ -911,5 +970,9 @@ export function flowVerbLabel(
       return running ? "Redeploying…" : "Run again";
     case "add-service":
       return running ? "Adding…" : "Add";
+    case "ask-merge":
+      return running ? "Asking…" : ASK_TO_MERGE;
+    case "take-back-ask":
+      return running ? "Taking back…" : TAKE_ASK_BACK;
   }
 }

@@ -57,15 +57,15 @@ const PERMISSION_WORDS: { readonly [R in Reason]: string } = {
     "This project has one of this kind already. Only an owner or admin of the organization replaces it.",
   not_app_developer:
     "You need more than Read access to one of this project's Zerops projects to do this.",
-  not_app_merger: "Only the organization's Owner and Admins, and the people they pick, merge here.",
+  not_app_merger:
+    "Only the organization's Owner and Admins, and the people they pick, merge and release here.",
   not_recipe_repo: "Only the project's recipe lands by itself.",
   author_not_in_app: "Only a Mate of this project proposes its recipe.",
   recipe_empty: "This change changes nothing, so it was closed.",
   recipe_changes_files:
     "This change edits the project's recipe, so it waits for someone who develops the project to merge it.",
   no_production: "This project has no production yet.",
-  not_releaser:
-    "To release, this project needs a Zerops project, and you need more than Read access to its production.",
+  not_releaser: "You need more than Read access to production to release.",
 };
 
 /**
@@ -82,8 +82,8 @@ const MERGE_WORDS: { readonly [R in (typeof MERGE_REFUSALS)[number]]: string } =
   main_moved: "Other changes kept landing on main meanwhile. Try again.",
   change_not_open: "This change is merged or closed already.",
   github_blocked:
-    "GitHub won't merge its PR yet: the repository's rules or required checks hold it back. See its PR on GitHub.",
-  github_refused: "GitHub refused to merge its PR. See its PR on GitHub.",
+    "GitHub won't merge its pull request yet: the repository's rules or required checks hold it back. See its pull request on GitHub.",
+  github_refused: "GitHub refused to merge its pull request. See its pull request on GitHub.",
   github_unreachable: "GitHub did not answer, so nothing was merged. Try again.",
   github_no_pull: "Its pull request on GitHub isn't open yet. Try again in a minute.",
   github_closed: "Its pull request was closed on GitHub.",
@@ -533,23 +533,31 @@ const MERGERS_NAMED = 3;
 /** Who merges wherever an application limits it, whoever else it names. */
 const OWNER_AND_ADMINS = "the organization's Owner and Admins";
 
+/** What an application's limit on who merges holds: a merge, or — by the same people — a release. */
+export type LimitedVerb = "merge" | "release";
+
 /**
  * Who merges where an application limits it (`not_app_merger`), as the held press says it: the
  * people it names, as the member list calls them, and the organization's Owner and Admins. The
- * first three by name, the rest counted; somebody the list does not name is counted too.
+ * first three by name, the rest counted; somebody the list does not name is counted too. The same
+ * people release, and a held release says so (`verb`).
  */
 export function mergeLimitWords(
   people: ReadonlyArray<string>,
   nameOf: (userId: string) => string | undefined,
+  verb: LimitedVerb = "merge",
 ): string {
-  if (people.length === 0) return `Only ${OWNER_AND_ADMINS} merge here.`;
+  if (people.length === 0) return `Only ${OWNER_AND_ADMINS} ${verb} here.`;
   const named = people.flatMap((userId) => nameOf(userId) ?? []).slice(0, MERGERS_NAMED);
   const more = people.length - named.length;
   if (named.length === 0)
-    return `Only ${String(more)} ${more === 1 ? "person" : "people"} and ${OWNER_AND_ADMINS} merge here.`;
+    return `Only ${String(more)} ${more === 1 ? "person" : "people"} and ${OWNER_AND_ADMINS} ${verb} here.`;
   const rest = more === 0 ? "" : ` and ${String(more)} more,`;
-  return `Only ${named.join(", ")}${rest} and ${OWNER_AND_ADMINS} merge here.`;
+  return `Only ${named.join(", ")}${rest} and ${OWNER_AND_ADMINS} ${verb} here.`;
 }
+
+/** What asking for a merge, or taking the ask back, says where HQ is older than it. */
+export const MERGE_ASK_NEEDS_UPDATE = hqNeedsUpdate("ask for a merge");
 
 /** What the setting of who merges says where HQ is older than it. */
 export const MERGERS_NEED_UPDATE = hqNeedsUpdate("limit who merges");
@@ -624,16 +632,18 @@ export function hqOfferWords(state: HqOfferState): string | undefined {
 }
 
 /**
- * `hqOfferWords` for a verb the application's merge limit holds — a merge, a release to a Git
- * production: who merges there, by name (`mergeLimitWords`), in place of the bare refusal.
+ * `hqOfferWords` for a verb the application's merge limit holds — a merge, a release, a
+ * production's deploy asked again: who merges or releases there, by name (`mergeLimitWords`), in
+ * place of the bare refusal.
  */
 export function hqMergeOfferWords(
   state: HqOfferState,
   mergers: { readonly people: ReadonlyArray<string> } | null | undefined,
   nameOf: (userId: string) => string | undefined,
+  verb: LimitedVerb = "merge",
 ): string | undefined {
   return state.kind === "refused" && state.reason === "not_app_merger"
-    ? mergeLimitWords(mergers?.people ?? [], nameOf)
+    ? mergeLimitWords(mergers?.people ?? [], nameOf, verb)
     : hqOfferWords(state);
 }
 

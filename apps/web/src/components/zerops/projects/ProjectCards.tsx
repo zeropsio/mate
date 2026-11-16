@@ -24,7 +24,7 @@ import {
   type ReactNode,
 } from "react";
 
-import { REVIEW_LABEL } from "@t3tools/client-runtime/zerops";
+import { REVIEW_LABEL, standingPressLabel } from "@t3tools/client-runtime/zerops";
 import { Link } from "@tanstack/react-router";
 import { useHqAppDetailHold, useHqAppDetails } from "~/zerops/useHqAppDetail";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
@@ -549,6 +549,10 @@ function MoreLink({
 /** At most this many waits stand on a card; the rest are on the project's page. */
 const CARD_WAITS = 2;
 
+const WAITING_ON_YOU = "Waiting on you";
+/** A release the viewer may make in a project that is not theirs: ready, and asking nothing. */
+const READY_FOR_PRODUCTION = "Ready for production";
+
 /**
  * What waits on the viewer in a project, lifted: its Mates' asks, its release, its changes to
  * review — at most two, each in a sentence with its one verb, and "+ N more" to the project's page.
@@ -557,9 +561,15 @@ function CardWaits({
   groupId,
   project,
   waits,
+  heading = WAITING_ON_YOU,
 }: {
   readonly groupId: string;
   readonly project: string;
+  /**
+   * What the strip is of: what waits on the viewer, or — a release that is somebody else's to
+   * make — only that it is ready for production.
+   */
+  readonly heading?: string;
   readonly waits: ReadonlyArray<{
     readonly key: string;
     readonly face: ReactNode;
@@ -570,8 +580,12 @@ function CardWaits({
   if (waits.length === 0) return null;
   const more = waits.length - CARD_WAITS;
   return (
-    <section aria-label="Waiting on you" className="ov-waits" data-zerops-surface="card-waits">
-      <SectionLabel level={3}>Waiting on you</SectionLabel>
+    <section
+      aria-label={heading}
+      className="ov-waits"
+      data-zerops-surface={heading === WAITING_ON_YOU ? "card-waits" : "card-ready"}
+    >
+      <SectionLabel level={3}>{heading}</SectionLabel>
       {waits.slice(0, CARD_WAITS).map((wait) => (
         <div className="ov-wait" data-zerops-wait={wait.key} key={wait.key}>
           <span aria-hidden="true" className="ov-wait-face">
@@ -641,6 +655,9 @@ function ProjectCard<T>({
   // card says what the flow says.
   const releaseShown =
     props.renderReleaseVerb === undefined ? ready !== undefined : drawn(releaseDoor);
+  // Being allowed to release is not being asked to: where the project is somebody else's, its
+  // release stands on the card as ready, outside what waits on the viewer.
+  const releaseTheirs = releaseShown && props.releaseOnViewer?.(entry) === false;
   // A stage being added says how far it has got on its own line, where the stage stands.
   const settingUp = props.stageSettingUp?.(entry);
   const placeFacts = props.cardPlaces?.(entry);
@@ -694,6 +711,13 @@ function ProjectCard<T>({
       wait.onVerb,
     ),
   }));
+  const releaseWait = {
+    key: "release",
+    face: <PackageIcon className="size-4" />,
+    // The card is the project: its release says what it carries, not the project's name.
+    text: nextReleaseTitle(ready),
+    verb: drawn(releaseDoor) ? releaseDoor : null,
+  };
   const waits = [
     ...(fix === undefined || fixWords === undefined
       ? []
@@ -706,17 +730,7 @@ function ProjectCard<T>({
           },
         ]),
     ...mateWaits.filter((wait) => wait.kind === "ask"),
-    ...(!releaseShown
-      ? []
-      : [
-          {
-            key: "release",
-            face: <PackageIcon className="size-4" />,
-            // The card is the project: its release says what it carries, not the project's name.
-            text: nextReleaseTitle(ready),
-            verb: drawn(releaseDoor) ? releaseDoor : null,
-          },
-        ]),
+    ...(releaseShown && !releaseTheirs ? [releaseWait] : []),
     ...mateWaits.filter((wait) => wait.kind === "review"),
   ];
   if (!detail.answered)
@@ -817,6 +831,14 @@ function ProjectCard<T>({
       </div>
       <CardBody>
         <CardWaits groupId={group.groupId} project={group.name} waits={waits} />
+        {releaseTheirs ? (
+          <CardWaits
+            groupId={group.groupId}
+            heading={READY_FOR_PRODUCTION}
+            project={group.name}
+            waits={[releaseWait]}
+          />
+        ) : null}
         <CardMates
           addWhy={addMate?.why ?? null}
           entry={entry}
@@ -1081,6 +1103,10 @@ export function CardMateLiftActions({
     case "fix":
       return <Button onClick={onFix}>Ask {name} to fix it</Button>;
     case "review":
-      return <Button onClick={(event) => onReview(event.currentTarget)}>{REVIEW_LABEL}</Button>;
+      return (
+        <Button onClick={(event) => onReview(event.currentTarget)}>
+          {standingPressLabel(lift.standing, REVIEW_LABEL)}
+        </Button>
+      );
   }
 }

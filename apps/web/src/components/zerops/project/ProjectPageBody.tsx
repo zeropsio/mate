@@ -14,9 +14,11 @@ import type { CanonicalEnvironmentRow as EnvironmentRow } from "@t3tools/client-
 import type {
   EnvironmentSlotRow,
   FirstDeploy,
+  ChangeStandingRead,
   FlowPullRequest,
 } from "@t3tools/client-runtime/zerops";
 import { environmentDoorLabel } from "~/zerops/putLive.logic";
+import { useChangeStandingOf } from "~/zerops/useChangeStandingOf";
 import { useNowMs } from "~/zerops/useNowMs";
 import { useOpenReview } from "~/zerops/review";
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
@@ -27,7 +29,11 @@ import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "../
 import { Skeleton } from "../../ui/skeleton";
 import { EmptyState } from "../../ui/empty";
 import { GitDeliveryStatus } from "../GitDeliveryStatus";
-import { ENVIRONMENT_NOT_ADDED, PRODUCTION_OUTSIDE_MATE } from "@t3tools/client-runtime/zerops";
+import {
+  ENVIRONMENT_NOT_ADDED,
+  PRODUCTION_OUTSIDE_MATE,
+  READY_TO_MERGE,
+} from "@t3tools/client-runtime/zerops";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { ComingMateFace, drawn, matesOf, type FlowMateEntry } from "../projects/flowSteps";
 import {
@@ -51,7 +57,6 @@ import type {
 import {
   ChangeList,
   ChangeRow,
-  changeReviewable,
   changeRowLine,
   lineChangeKey,
   lineMarkOf,
@@ -177,6 +182,7 @@ export function ProjectPageBody<T>({
   entry,
   props,
   addMateWhy,
+  addMateHidden = false,
   onAddMate,
   facts,
   setup,
@@ -185,6 +191,8 @@ export function ProjectPageBody<T>({
   readonly props: ZeropsProjectsFlowProps<T>;
   /** Why the project takes no Mate now, known before the press. */
   readonly addMateWhy: string | null;
+  /** The person only reads here: *Add a Mate* is not theirs to want, and is not drawn. */
+  readonly addMateHidden?: boolean;
   readonly onAddMate: () => void;
   readonly facts: ProjectPageFacts;
   readonly setup: ProjectPageSetup;
@@ -196,6 +204,7 @@ export function ProjectPageBody<T>({
   const trail = usePageTrail({ project: { groupId: group.groupId, name: group.name } });
   const [open, setOpen] = useOpenDetails();
   const waits = props.cardWaits?.(entry) ?? NO_WAITS;
+  const standingHere = useStandingHere(group.groupId);
   return (
     <div className="pp" data-zerops-surface="project-page">
       <PageHeader
@@ -232,9 +241,10 @@ export function ProjectPageBody<T>({
         <div className="pp-main">
           {facts.readFailures}
           <ProjectCreditLine projectIds={spendProjectIds(entry.flow)} />
-          <ProjectWaits entry={entry} waits={waits} />
+          <ProjectWaits entry={entry} standingOf={standingHere} waits={waits} />
           <ProjectPlaces entry={entry} facts={facts} lines={lines} props={props} />
           <ProjectMates
+            addMateHidden={addMateHidden}
             addMateWhy={addMateWhy}
             entry={entry}
             onAddMate={onAddMate}
@@ -246,7 +256,7 @@ export function ProjectPageBody<T>({
             facts={facts}
             lines={lines}
             props={props}
-            waiting={waitingChangeKeys(entry, waits)}
+            waiting={waitingChangeKeys(entry, waits, standingHere)}
           />
           {setup.automationStanding ? (
             <section aria-label="Automation" className="pp-group" data-zerops-project-automation="">
@@ -326,12 +336,24 @@ const changeKey = lineChangeKey;
 function waitingChangeKeys<T>(
   entry: ProjectsFlowGroup<T>,
   waits: ReadonlyArray<CardWait>,
+  standingOf: StandingHere,
 ): ReadonlySet<string> {
   return new Set(
     waits.flatMap(({ wait }) =>
-      wait.kind === "review" ? waitingChanges(entry.flow, wait.mate.projectId).map(changeKey) : [],
+      wait.kind === "review"
+        ? waitingChanges(entry.flow, wait.mate.projectId, standingOf).map(changeKey)
+        : [],
     ),
   );
+}
+
+/** Where a change of this project stands for the person looking (`useChangeStandingOf`). */
+type StandingHere = (pull: Pick<FlowPullRequest, "mergeAsk">) => ChangeStandingRead;
+
+/** {@link StandingHere} of one project: whose press each of its open changes waits for. */
+function useStandingHere(groupId: string): StandingHere {
+  const standingOf = useChangeStandingOf();
+  return (pull) => standingOf(groupId, pull);
 }
 
 /** A change's review, from the row it was opened on. */
@@ -358,9 +380,11 @@ const WAITS_SHOWN = 2;
 function ProjectWaits<T>({
   entry,
   waits,
+  standingOf,
 }: {
   readonly entry: ProjectsFlowGroup<T>;
   readonly waits: ReadonlyArray<CardWait>;
+  readonly standingOf: StandingHere;
 }) {
   const [unfolded, setUnfolded] = useState<ReadonlySet<string>>(() => new Set());
   const openChange = useOpenChange();
@@ -394,7 +418,21 @@ function ProjectWaits<T>({
                   }
                 />
               );
-            const changes = waitingChanges(entry.flow, wait.mate.projectId);
+            const changes = waitingChanges(entry.flow, wait.mate.projectId, standingOf);
+            // Whose press it waits for: the person's review, or — where they cannot merge — their
+            // ask, said "Ready" with *Ask to merge*; never a review that is not theirs to give.
+            const stands = (pull: Pick<FlowPullRequest, "mergeAsk">) => {
+              const read = standingOf(pull);
+              return read.standing.kind === "to-merge"
+                ? {
+                    line: changeRowLine(wait.mate.name, read.comment ?? READY_FOR_REVIEW),
+                    standing: undefined,
+                  }
+                : {
+                    line: changeRowLine(wait.mate.name, read.comment ?? read.word),
+                    standing: read.standing.kind,
+                  };
+            };
             const all = unfolded.has(wait.key);
             const shown = all ? changes : changes.slice(0, WAITS_SHOWN);
             const more = changes.length - shown.length;
@@ -403,7 +441,7 @@ function ProjectWaits<T>({
                 <ChangeRow
                   face={face}
                   key={wait.key}
-                  line={changeRowLine(wait.mate.name, READY_FOR_REVIEW)}
+                  {...stands({})}
                   onOpen={onVerb}
                   open
                   title={projectWaitWords(wait).text}
@@ -416,7 +454,7 @@ function ProjectWaits<T>({
                     at={pull.updatedAt}
                     face={face}
                     key={`${pull.repository}#${String(pull.number)}`}
-                    line={changeRowLine(wait.mate.name, READY_FOR_REVIEW)}
+                    {...stands(pull)}
                     onOpen={(from) => {
                       openChange(entry.group.groupId, pull, from);
                     }}
@@ -883,6 +921,7 @@ function ProjectMates<T>({
   props,
   waiting,
   addMateWhy,
+  addMateHidden,
   onAddMate,
 }: {
   readonly entry: ProjectsFlowGroup<T>;
@@ -891,6 +930,7 @@ function ProjectMates<T>({
   readonly waiting: ReadonlySet<string>;
   /** Why the project takes no Mate now, known before the press. */
   readonly addMateWhy: string | null;
+  readonly addMateHidden: boolean;
   readonly onAddMate: () => void;
 }) {
   const mates = matesOf(entry);
@@ -922,12 +962,14 @@ function ProjectMates<T>({
       </SectionLabel>
       <MateCards>
         {mates.map(draw)}
-        <AddMateCard
-          alone={mates.length === 0}
-          line={mates.length === 0 ? NO_MATES_YET : ADD_MATE_GIVES}
-          onAdd={onAddMate}
-          why={addMateWhy}
-        />
+        {addMateHidden ? null : (
+          <AddMateCard
+            alone={mates.length === 0}
+            line={mates.length === 0 ? NO_MATES_YET : ADD_MATE_GIVES}
+            onAdd={onAddMate}
+            why={addMateWhy}
+          />
+        )}
       </MateCards>
     </section>
   );
@@ -1128,7 +1170,9 @@ function ProjectChanges<T>({
   // change that can be reviewed says so by its verb alone); whose, among several Mates.
   const row = (change: CardChange, words?: string) => {
     const setupFile = change.pull.kind === "recipe" && !change.open;
-    const stops = change.open && !changeReviewable(change.pull) ? change.words : undefined;
+    // One the person reviews says so by its verb alone; one that waits for somebody else's
+    // press, or for theirs to ask, says whose in its words.
+    const stops = change.open && change.words !== READY_TO_MERGE ? change.words : undefined;
     return (
       <ChangeRow
         at={change.at}
@@ -1149,6 +1193,7 @@ function ProjectChanges<T>({
         }}
         open={change.open}
         pull={change.pull}
+        standing={change.standing}
         tone={change.tone}
       />
     );

@@ -9,7 +9,11 @@ import { useAutomatedKey } from "~/zerops/useAutomationSettings";
 import {
   mateArrivingUntil,
   matePoseOf,
+  READY_TO_MERGE,
   readZeropsMembership,
+  REVIEW_LABEL,
+  standingPressLabel,
+  standingWaits,
   type FlowPullRequest,
 } from "@t3tools/client-runtime/zerops";
 import type { MatePart } from "@t3tools/client-runtime/zerops/mateParts";
@@ -39,6 +43,7 @@ import { useAskMateToFix } from "~/zerops/fixRequest";
 import { mateFace } from "~/zerops/mateFace.logic";
 import { useOpenReview } from "~/zerops/review";
 import { useAskMate } from "~/zerops/useAskMate";
+import { useChangeStandingOf } from "~/zerops/useChangeStandingOf";
 import { useMateFaceWatch } from "~/zerops/useMateMoments";
 import {
   useMateAwayNow,
@@ -72,7 +77,8 @@ import {
 import { CardMateSlot, CardMateWrite } from "./overviewSlots";
 import { Button } from "../../ui/button";
 import { PlaceDoors } from "../place/PlaceDoors";
-import { MateCard } from "../system/MateCard";
+import { changesReadyLine, MateCard } from "../system/MateCard";
+import { changeReviewable, rowStanding } from "../system/ChangeRow.logic";
 import { MateRow, MateRowTime } from "../system/MateRow";
 import { cardMateReading, cardSecondWords, type CardMateReading } from "./projectCard.logic";
 
@@ -145,9 +151,20 @@ export function OverviewCardMate({
   const nowMs = useNowMs();
   const deleting = mateDeleting(candidate.project, useDeletingMates());
   const pose = matePoseOf(candidate, nowMs, deleting ? "deleting" : "up");
-  const reviewWaits = mateReviewWaits(flow, projectId);
+  // Whose press its change waits for where its application limits who merges (`changeStanding`):
+  // one the viewer already asked for waits on the people who merge, not on them.
+  const standingOf = useChangeStandingOf();
+  const standingHere = (pull: FlowPullRequest) => standingOf(groupId, pull);
+  const stands = change === undefined ? undefined : standingHere(change);
+  // Said, and pressed, only of a change nothing stops: one that conflicts waits on its Mate.
+  const press = change === undefined ? undefined : rowStanding(change, stands);
+  const says =
+    change === undefined || stands === undefined || !changeReviewable(change)
+      ? undefined
+      : (stands.comment ?? (stands.word === READY_TO_MERGE ? undefined : stands.word));
+  const reviewWaits = mateReviewWaits(flow, projectId, standingHere);
   // How many of its changes wait so: an automated Mate holds one per task, several at once.
-  const inReview = mateReviewCount(flow, projectId);
+  const inReview = mateReviewCount(flow, projectId, standingHere);
   const watch = useMateFaceWatch({
     environmentId: candidate.environmentId ?? null,
     projectId,
@@ -279,8 +296,9 @@ export function OverviewCardMate({
         ? undefined
         : {
             title: change.title,
-            mine: people?.waitsOnViewer !== false,
+            mine: people?.waitsOnViewer !== false && !standingWaits(press),
             ...(inReview > 1 ? { count: inReview } : {}),
+            ...(says === undefined ? {} : { says }),
           },
     automated,
   });
@@ -295,6 +313,7 @@ export function OverviewCardMate({
           status: activity?.kind,
           mine,
           review: mine ? change : undefined,
+          standing: stands,
           reviews: inReview,
           read: conversationsRead,
           line: cardSecondWords({
@@ -336,9 +355,9 @@ export function OverviewCardMate({
           openChange(event.currentTarget);
         }}
         size="xs"
-        variant="secondary"
+        variant={standingWaits(press) ? "ghost" : "secondary"}
       >
-        Review
+        {standingPressLabel(press, REVIEW_LABEL)}
       </Button>
     );
   const write =
@@ -418,7 +437,15 @@ export function OverviewCardMate({
         changes={
           review === undefined || marked
             ? undefined
-            : { count: Math.max(1, inReview), mine: review.mine }
+            : {
+                count: Math.max(1, inReview),
+                mine: review.mine && !standingWaits(press),
+                // To a person who cannot merge it, never theirs to review: ready for their ask,
+                // or waiting for the people who merge.
+                ...(press === undefined
+                  ? {}
+                  : { says: press === "to-ask" ? changesReadyLine(Math.max(1, inReview)) : says }),
+              }
         }
         doors={
           standing ? (

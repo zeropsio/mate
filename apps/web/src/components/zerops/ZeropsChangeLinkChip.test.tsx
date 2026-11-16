@@ -102,6 +102,7 @@ afterEach(() => {
  * the flow, or from HQ for one the flow does not carry: never a bare url until a reload.
  */
 describe("ZeropsChangeLinkChip", () => {
+  // witness: apps/web/src/components/zerops/ZeropsChangeLinkChip.tsx | { word: "Merged", tone: "ok" as const, kind: "landed" as const } → { word: "Landed", tone: "ok" as const, kind: "landed" as const }
   it.each<{
     readonly name: string;
     readonly href?: string;
@@ -121,12 +122,12 @@ describe("ZeropsChangeLinkChip", () => {
     {
       name: "a change HQ reads gives the chip its word",
       renders: [{ hqAddress: HQ }, { hqAddress: HQ, answer: { kind: "read", pull: LANDED } }],
-      text: "Cache the link previews, Landed",
+      text: "Cache the link previews, Merged",
     },
     {
       name: "a change the flow carries gives the chip its word",
       renders: [{ hqAddress: HQ, merged: [LANDED] }],
-      text: "Cache the link previews, Landed",
+      text: "Cache the link previews, Merged",
     },
     {
       name: "a change closed without merging says so, never what it last conflicted with",
@@ -228,13 +229,14 @@ describe("ZeropsChangeLinkChip", () => {
     }
   });
 
+  // witness: apps/web/src/components/zerops/ZeropsChangeLinkChip.tsx | { word: "Merged", tone: "ok" as const, kind: "landed" as const } → { word: "Landed", tone: "ok" as const, kind: "landed" as const }
   it.each([
     [
       "landed after the message was written",
       "2026-09-20T10:00:00.000Z",
-      ", Landed, landed since this message",
+      ", Merged, merged since this message",
     ],
-    ["landed before it", "2026-09-20T12:00:00.000Z", ", Landed"],
+    ["landed before it", "2026-09-20T12:00:00.000Z", ", Merged"],
   ])("marks a change that %s", async (_label, writtenAt, tail) => {
     const document = installTestDom();
     const { act } = await import("react");

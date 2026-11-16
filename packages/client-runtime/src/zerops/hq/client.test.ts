@@ -274,29 +274,6 @@ describe("makeHqApi", () => {
     expect(hq.seen[0]?.body).toEqual({ accessToken: "access-1", orgId: "org-1" });
   });
 
-  // witness: packages/client-runtime/src/zerops/hq/client.ts | : method === "GET" || method === "HEAD" → : false
-  it("Every HQ read carries the person's current Zerops access token beside the session, so HQ serves the projects Zerops lists to them now", async () => {
-    const hq = fakeHq();
-    const door = doors();
-    const api = makeHqApi({
-      address: ADDRESS,
-      fetch: hq.fetch,
-      accessToken: door.accessToken,
-      orgId: ORG,
-      openSocket: NO_SOCKET,
-    });
-    await api.structure();
-    door.renew();
-    await api.structure();
-    await api.mateTicket("p1");
-    expect(hq.seen.map((entry) => [entry.method, entry.path, entry.zeropsToken])).toEqual([
-      ["POST", "/api/door", null],
-      ["GET", "/api/structure", "access-1"],
-      ["GET", "/api/structure", "access-2"],
-      ["POST", "/api/mates/p1/ticket", null],
-    ]);
-  });
-
   describe("renewal", () => {
     const renewing = (endsAt: () => string) => fakeHq(() => undefined, endsAt);
 

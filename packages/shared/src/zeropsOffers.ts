@@ -93,6 +93,7 @@ export function applicationOffers(facts: PermissionFacts, app: ApplicationFacts)
     read_change: changePermission(facts, "read_change", app.projectIds),
     comment_change: changePermission(facts, "comment_change", app.projectIds),
     merge_change: changePermission(facts, "merge_change", app.projectIds, app.mergers),
+    ask_merge_change: changePermission(facts, "ask_merge_change", app.projectIds),
     close_change: changePermission(facts, "close_change", app.projectIds),
     add_stage: newEnvironmentOffer(facts, "stage", app),
     add_production: newEnvironmentOffer(facts, "production", app),
@@ -102,16 +103,22 @@ export function applicationOffers(facts: PermissionFacts, app: ApplicationFacts)
 
 /**
  * A Zerops environment's verbs: its deploy token and deploys, and — a production's — its removal,
- * which takes the role that could make its replacement.
+ * which takes the role that could make its replacement. A production's deploy asked again is held
+ * by its application's limit on who merges, as a release is; a stage's never.
  */
 export function environmentOffers(
   facts: PermissionFacts,
   environment: { readonly projectId: string; readonly tier: "stage" | "production" },
-  app: Pick<ApplicationFacts, "projectIds">,
+  app: Pick<ApplicationFacts, "projectIds" | "mergers">,
 ): HqOffers {
   const offers = {
     keep_deploy_token: deployPermission(facts, "keep_deploy_token", environment.projectId),
-    redeploy: deployPermission(facts, "redeploy", environment.projectId),
+    redeploy: deployPermission(
+      facts,
+      "redeploy",
+      environment.projectId,
+      environment.tier === "production" ? app.mergers : undefined,
+    ),
   };
   if (environment.tier !== "production") return offers;
   const creates = createAppPermission(facts);

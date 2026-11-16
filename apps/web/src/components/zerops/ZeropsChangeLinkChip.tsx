@@ -19,7 +19,7 @@
  * application, repository and number are in it — and takes its word from the
  * flow, or from HQ for one the flow does not carry (`useLinkedChange`).
  */
-import { changeState, type FlowPullRequest } from "@t3tools/client-runtime/zerops";
+import { changeStateFor, type FlowPullRequest } from "@t3tools/client-runtime/zerops";
 import { parseChangeUrl } from "@t3tools/shared/hqChanges";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import { GitMergeIcon, GitPullRequestArrow, GitPullRequestClosed } from "lucide-react";
@@ -30,6 +30,7 @@ import { AppLinkContext } from "../ServiceBrowserLink";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useAppsChanges, useHqAddress } from "../../zerops/projectFlows";
+import { useChangeStandingOf } from "../../zerops/useChangeStandingOf";
 import { useLinkedChange } from "../../zerops/useLinkedChange";
 
 /**
@@ -85,6 +86,9 @@ export function ZeropsChangeLinkChip({
   // Only a change the flow does not carry is asked for.
   const landed = useLinkedChange(link === null || held !== undefined ? null : link);
   const pull = held ?? (landed.kind === "read" ? landed.pull : undefined);
+  // An open change nothing stops says whose press it waits for (`changeStanding`): "Ready" and
+  // "Waiting for Ada K." to a person who cannot merge it, never "Ready to merge".
+  const standingOf = useChangeStandingOf();
   const follow = href === undefined ? null : (openInApp?.(href) ?? null);
   // Drawn from the url while HQ is still answering: the repository and the
   // number are in the address, so the chip does not have to arrive as a
@@ -134,12 +138,15 @@ export function ZeropsChangeLinkChip({
   const closed = pull !== undefined && !pull.merged && pull.state === "closed";
   // Closed because another change's landing carried all of it: merged, and it says as part of which.
   const landedWith = closed ? pull.landedWith : undefined;
-  const openState = pull === undefined || pull.merged || closed ? undefined : changeState(pull);
+  const openState =
+    pull === undefined || pull.merged || closed
+      ? undefined
+      : changeStateFor(pull, standingOf(appId, pull));
   const state =
     pull === undefined
       ? undefined
       : pull.merged
-        ? { word: "Landed", tone: "ok" as const, kind: "landed" as const }
+        ? { word: "Merged", tone: "ok" as const, kind: "landed" as const }
         : landedWith !== undefined
           ? {
               word: `Merged as part of #${String(landedWith)}`,
@@ -203,7 +210,7 @@ export function ZeropsChangeLinkChip({
       <span className="font-medium">{words ?? line}</span>
       {state === undefined ? null : (
         <span className="sr-only">
-          {`, ${state.word}${landedSince ? ", landed since this message" : ""}`}
+          {`, ${state.word}${landedSince ? ", merged since this message" : ""}`}
         </span>
       )}
     </a>
