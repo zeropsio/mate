@@ -145,7 +145,6 @@ import * as Cause from "effect/Cause";
 import * as Schema from "effect/Schema";
 import { AsyncResult } from "effect/reactivity";
 import { isElectron } from "../env";
-import { readLocalApi } from "../localApi";
 import { useDiffPanelStore } from "../diffPanelStore";
 import {
   collapseExpandedComposerCursor,
@@ -293,7 +292,6 @@ import {
   agentLastSpokeAt,
   agentNotesFor,
   agentTurnNotes,
-  agentNeedsSignIn,
   productionTurnNotes,
 } from "@t3tools/client-runtime/zerops";
 import { MATE_READ_ACCESS_LINE } from "@t3tools/client-runtime/zerops/mateAccess";
@@ -432,7 +430,7 @@ import { useSendTurnReceipts } from "~/zerops/sentAsk";
 import { useZeropsAgentSignInDialog } from "~/zerops/useZeropsAgentSignInDialog";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
-import { MessagesTimeline, type TimelinePersonInput } from "./chat/MessagesTimeline";
+import { type TimelinePersonInput } from "./chat/MessagesTimeline";
 import { KeptTimelines } from "./chat/KeptTimelines";
 import { useStableHandlers } from "../hooks/useStableHandlers";
 import {
@@ -494,7 +492,6 @@ import {
   buildLocalDraftThread,
   buildLoadingThreadFromShell,
   buildRunningThreadTurnInterruptInput,
-  buildThreadTurnInterruptInput,
   collectUserMessageBlobPreviewUrls,
   createLocalDispatchSnapshot,
   deriveComposerSendState,
@@ -2344,7 +2341,6 @@ function ConversationView(props: ChatViewProps) {
       setReconnectWarningGraceElapsedEnvironmentId(activeReconnectingEnvironmentId),
     );
   }, [activeReconnectingEnvironmentId]);
-  const activeEnvironmentUnavailableLabel = activeEnvironment?.label ?? null;
   const activeEnvironmentUnavailableState = useMemo<EnvironmentUnavailableState | null>(() => {
     if (!activeEnvironmentUnavailable || !activeEnvironment) return null;
     return {
@@ -8588,10 +8584,6 @@ function ConversationView(props: ChatViewProps) {
                   driver={selectedProvider}
                   environmentId={activeThreadRef.environmentId}
                   key={`${activeThreadRef.environmentId}|${activeThreadRef.threadId}`}
-                  mateCanSignIn={
-                    attachmentEnvironmentConfig === null ||
-                    attachmentEnvironmentConfig.environment.capabilities.mcpSignIn === true
-                  }
                   proposals={mcpProposals}
                   run={{
                     phase,

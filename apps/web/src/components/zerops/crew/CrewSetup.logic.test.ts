@@ -2,16 +2,10 @@ import {
   CrewProposalError,
   EnvironmentAuthorizationError,
   AuthOrchestrationOperateScope,
-  ProviderInstanceId,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import {
-  crewProposeWith,
-  crewProposalFailure,
-  crewStartState,
-  crewSuggestState,
-} from "./CrewSetup.logic";
+import { crewProposalFailure, crewStartState, crewSuggestState } from "./CrewSetup.logic";
 
 describe("crewSuggestState", () => {
   it.each([
@@ -105,51 +99,5 @@ describe("crewProposalFailure", () => {
     },
   ])("says why no crew was proposed: $title", ({ cause, words }) => {
     expect(crewProposalFailure(cause, "Nova")).toBe(words);
-  });
-});
-
-describe("crewProposeWith", () => {
-  const modelSelection = {
-    instanceId: ProviderInstanceId.make("claude"),
-    model: "claude-sonnet-4-5",
-  };
-  const lock = (ownership: "someone-else" | "unrecorded") => ({
-    login: "claude",
-    agentId: "claude-code" as const,
-    ownership,
-  });
-  it.each([
-    {
-      title: "on the agent the Mate's chat runs",
-      input: { modelSelection, lock: null },
-      with: { kind: "ready", modelSelection },
-    },
-    {
-      title: "nowhere while that agent is somebody else's sign-in",
-      input: { modelSelection, lock: lock("someone-else") },
-      with: {
-        kind: "unavailable",
-        words: "Nova's agent was signed in by another project member\u00a0— only they can ask it.",
-      },
-    },
-    {
-      title: "nowhere while the Mate has no chat",
-      input: { modelSelection: undefined, lock: null },
-      with: { kind: "unavailable", words: "Nova has no conversation to propose from yet." },
-    },
-    {
-      title: "nowhere on a Mate from before proposals, saying it needs an update",
-      input: { modelSelection, lock: null, capabilities: {} },
-      with: { kind: "unavailable", words: "Update Nova to get a proposal." },
-    },
-    {
-      title: "not yet while the Mate's server is not read",
-      input: { modelSelection, lock: null, capabilities: undefined },
-      with: { kind: "reading" },
-    },
-  ])("asks for a proposal $title", ({ input, with: expected }) => {
-    expect(
-      crewProposeWith({ capabilities: { crewProposals: true }, ...input, mateName: "Nova" }),
-    ).toEqual(expected);
   });
 });

@@ -40,16 +40,13 @@ export type CrewProposeWith =
  */
 export function crewProposeWith(input: {
   /** The Mate's server's capabilities; `undefined` while they are not read. */
-  readonly capabilities: Pick<ExecutionEnvironmentCapabilities, "crewProposals"> | undefined;
+  readonly capabilities: ExecutionEnvironmentCapabilities | undefined;
   /** The Mate's chat's model; `undefined` while it has none. */
   readonly modelSelection: ModelSelection | undefined;
   readonly lock: CrewLock | null;
   readonly mateName: string;
 }): CrewProposeWith {
   if (input.capabilities === undefined) return { kind: "reading" };
-  // A server from before proposals is never asked: it would not know the call.
-  if (input.capabilities.crewProposals !== true)
-    return { kind: "unavailable", words: crewSuggestUnavailableWords(input.mateName, "update") };
   if (input.modelSelection === undefined)
     return { kind: "unavailable", words: crewSuggestUnavailableWords(input.mateName, "no-chat") };
   if (input.lock !== null)

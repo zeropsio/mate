@@ -48,8 +48,6 @@ import {
   mcpAppRedirects,
   mcpRunKey,
   mcpEditSecrets,
-  MCP_NEEDS_UPDATE,
-  MCP_UPDATE_TO_SIGN_IN,
   type McpEditSecrets,
   mcpSecretsFormText,
   openSignInPage,
@@ -154,8 +152,6 @@ export const MCP_WORDS = {
   headers: "Headers",
   headersHint: "Name: value, one a line",
   cancel: "Cancel",
-  needsUpdate: MCP_NEEDS_UPDATE,
-  updateToSignIn: MCP_UPDATE_TO_SIGN_IN,
 } as const;
 
 /** One of the Mate's proposals still waiting on the person, with the card that answers it. */
@@ -175,8 +171,6 @@ export function McpPanel(props: {
   readonly proposals?: ReadonlyArray<McpProposal>;
   /** The conversation's session phase and latest turn: the list is read again as they change. */
   readonly run?: Parameters<typeof mcpRunKey>[0];
-  /** The Mate signs in, signs out and edits tools (`capabilities.mcpSignIn`). */
-  readonly mateCanSignIn?: boolean;
 }) {
   const { state, refresh, act, signIn } = useMcpServers({
     environmentId: props.environmentId,
@@ -212,7 +206,6 @@ export function McpPanel(props: {
       mateName={mateName}
       observe={<ObserveLine environmentId={props.environmentId} />}
       onRetry={refresh}
-      mateCanSignIn={props.mateCanSignIn}
       proposals={proposals}
       signIn={signIn}
       state={state}
@@ -230,11 +223,8 @@ export function McpPanelBody(props: {
   /** Whose Zerops permissions the built-in row observes stage and production with. */
   readonly observe?: ReactNode;
   readonly proposals?: ReadonlyArray<McpProposalRow> | undefined;
-  /** An older Mate can't sign in, sign out or edit: its rows say it needs an update. */
-  readonly mateCanSignIn?: boolean | undefined;
 }) {
   const { state, driver, act } = props;
-  const mateCanSignIn = props.mateCanSignIn ?? true;
   const mate = props.mateName ?? "this Mate";
   const rows = useMemo(
     () => (state.list === null ? [] : buildMcpRows(state.list, driver)),
@@ -302,7 +292,6 @@ export function McpPanelBody(props: {
             agents={state.list.agents}
             existing={state.list.servers.map((entry) => entry.name)}
             mate={mate}
-            mateCanSignIn={mateCanSignIn}
             onClose={() => setAdding(false)}
             onAdded={(name) => {
               setAdding(false);
@@ -339,7 +328,6 @@ export function McpPanelBody(props: {
                 <ToolRow
                   act={act}
                   agents={state.list?.agents ?? []}
-                  mateCanSignIn={mateCanSignIn}
                   key={row.name}
                   observe={row.managed ? props.observe : undefined}
                   onOpenChange={(next) => toggleOpen(row.name, next)}
@@ -504,25 +492,8 @@ function ToolRow(props: {
   readonly onRefresh: () => void;
   readonly agents: ReadonlyArray<ProviderDriverKind>;
   readonly observe?: ReactNode;
-  readonly mateCanSignIn: boolean;
 }) {
-  const { act, mateCanSignIn } = props;
-  // An older Mate has none of sign-in, sign-out or editing: what needs one says it needs an update.
-  const row: McpServerRow = mateCanSignIn
-    ? props.row
-    : {
-        ...props.row,
-        right:
-          props.row.right.kind === "action" && props.row.right.action !== "tryAgain"
-            ? { kind: "state", words: MCP_WORDS.needsUpdate, tone: "attention" }
-            : props.row.right,
-        note:
-          props.row.right.kind === "action" && props.row.right.action !== "tryAgain"
-            ? { kind: "quiet", text: MCP_WORDS.updateToSignIn }
-            : props.row.note,
-        secrets: { ...props.row.secrets, editable: false },
-        actions: { ...props.row.actions, signIn: null, signOut: false },
-      };
+  const { act, row } = props;
   const [pending, setPending] = useState<Pending | null>(null);
   const [armed, setArmed] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -1103,13 +1074,8 @@ function SignInFields(props: {
   /** The edit form: an empty key or client secret keeps the stored one. */
   readonly editing?: boolean;
   readonly error?: string | undefined;
-  /** Offers "Your own app": an older Mate drops the app's settings. */
-  readonly ownApp?: boolean;
 }) {
   const { fields } = props;
-  const choices = SIGN_IN_CHOICES.filter(
-    (option) => option.value !== "oauth-app" || props.ownApp !== false,
-  );
   const set = (patch: Partial<McpSignInFields>) => props.onChange({ ...fields, ...patch });
   const text = (
     label: string,
@@ -1145,7 +1111,7 @@ function SignInFields(props: {
           value={[fields.choice]}
           variant="segmented"
         >
-          {choices.map((option) => (
+          {SIGN_IN_CHOICES.map((option) => (
             <Toggle key={option.value} value={option.value}>
               {option.label}
             </Toggle>
@@ -1213,7 +1179,6 @@ const BLANK_FORM: McpAddForm = {
  * up are named before it is added, from the same table the Mate's list reads.
  */
 function McpAddCard(props: {
-  readonly mateCanSignIn: boolean;
   readonly existing: ReadonlyArray<string>;
   readonly agents: ReadonlyArray<ProviderDriverKind>;
   readonly mate: string;
@@ -1351,7 +1316,6 @@ function McpAddCard(props: {
             error={errors.auth}
             fields={form.signIn}
             onChange={(signIn) => edit({ signIn }, "auth")}
-            ownApp={props.mateCanSignIn}
             redirects={mcpAppRedirects(props.agents)}
           />
         )}
