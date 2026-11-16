@@ -577,6 +577,7 @@ export class ZeropsFake {
           id: person ?? credential.id,
           email: `${person ?? credential.id}@example.test`,
           fullName: person ?? credential.name,
+          createdByApp: "MATE",
           clientUserList,
         },
       };
@@ -621,6 +622,7 @@ export class ZeropsFake {
               fullName: m.name,
               email:
                 m.kind === "token" ? `token-${m.userId}@zerops.io` : `${m.userId}@example.test`,
+              createdByApp: m.kind === "token" ? null : "MATE",
             },
           })),
         },
@@ -749,6 +751,7 @@ export class ZeropsFake {
               firstName: member.name,
               lastName: "",
               fullName: member.name,
+              createdByApp: "MATE",
             },
             _version: 1,
           })),

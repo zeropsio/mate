@@ -8,6 +8,7 @@ import { makeFakeZeropsRest } from "./fakeZeropsRest.ts";
 const person: ZeropsUser = {
   id: ZeropsUserId.make("user-1"),
   email: "person@example.test",
+  createdByApp: null,
   clientUserList: [{ id: "cu-1", clientId: "org-1", roleCode: "OWNER" }],
 };
 
