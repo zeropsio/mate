@@ -308,7 +308,7 @@ export function sentenceComparison(root: string, base?: string): string {
   return comparisonBase(root, ref);
 }
 
-/** The removal classes of docs/engineering-rules.md §4; `reworded` also needs a replacement case with the same witness. */
+/** The removal classes of docs/testing-rules.md; `reworded` also needs a replacement case with the same witness. */
 export const dropClasses = [
   "copy",
   "duplicate",

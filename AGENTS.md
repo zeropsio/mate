@@ -5,8 +5,9 @@ containers. A Node WebSocket server in each container drives provider CLIs; zcp 
 this repo's stable GitHub release. The web client is hosted separately.
 
 **Shared rules.** Every change follows [`docs/engineering-rules.md`](docs/engineering-rules.md),
-the rules this repository shares with zcp and HQ: read it before the first edit. This file adds only
-this repository's map, commands and traps.
+the rules this repository shares with zcp and HQ: Claude Code loads it with this file
+(`CLAUDE.md`); other agents read it before the first edit. This file adds only this repository's
+map, commands and traps.
 
 **Upstream.** Never `git merge` or rebase onto `upstream/main`. Before importing, porting or editing
 imported/ported zones, read and follow [`docs/internals/zerops/fork.md`](docs/internals/zerops/fork.md).
@@ -46,22 +47,18 @@ Tests run only when the owner explicitly asks; normal verification is lint, type
 The loop:
 
 - Prepare a worktree: `cd "$(node scripts/prepare-worktree.ts <name>)"`.
-- Never repo-wide `vp check` or `vp run -r typecheck` in a worktree.
-- On completion run `node scripts/gate-changed.ts` once (`--help` for flags, `--list` previews): lint,
+- In a worktree, check only the changed packages, never repo-wide `vp check` or `vp run -r
+  typecheck`: on completion run `node scripts/gate-changed.ts` once (`--help` for flags, `--list` previews): lint,
   typecheck and build of the changed packages in one blocking command, never detached and polled.
   Re-run it after a fix; it reuses passed stages. `--tests` adds test suites and test machinery only
   when the owner asks for tests.
-- CI runs lint/format, typecheck and build on `main`, `kh-next`, `kh-bisect/**` and pull requests (a
-  newer push cancels older runs except on `main`; `kh-next` is the integration branch that
-  fast-forwards `main`). Test suites and test machinery run only on a manual dispatch of CI or a
-  `kh-bisect/**` manifest naming them; browser scenario shards only on a manual dispatch of the
-  non-blocking `Signal` workflow, where a failure gets one same-commit rerun to tell a flake from a
-  regression.
+- CI runs lint/format, typecheck and build; test suites, test machinery and browser scenarios only on
+  a manual dispatch (which branches and workflows: `docs/operations/release-and-deploy.md`).
 - Markdown tables: `vp fmt` the file before committing; unaligned rows fail CI's Check job.
 - The server is event-sourced; async flows emit typed receipts. Wait on receipts and worker drains,
   never sleeps or polling.
-- Live looks use test browsers (`test-t3-app` web, `test-t3-mobile` mobile). Computer use on the
-  person's own desktop needs their consent.
+- Live looks use the `test-t3-app` test browser. Computer use on the person's own desktop needs
+  their consent.
 
 `main` deploys the hosted web client (mate.zerops.io) through `zerops.yml`'s `prod` setup.
 Release, staging, HQ and container delivery: `docs/operations/release-and-deploy.md`;
@@ -71,16 +68,15 @@ contributors follow `CONTRIBUTING.md`.
 
 Work often runs through mate itself, beside the directing person's processes, data and dev servers.
 
-1. **Killing by pattern.** Never `pkill -f`, `pgrep | kill`, or kill a PID matched by name, path or
-   worktree string: your agent's arguments contain this worktree's path; several dev servers run
-   here. Kill only a PID captured at spawn, or your port's owner after confirming its cwd is this
-   worktree: Linux `ss -H -ltnp` and `/proc/<pid>/cwd`; macOS `lsof -nP -iTCP:<port> -sTCP:LISTEN`
-   and `lsof -a -p <pid> -d cwd`.
-2. **Writing to the live install.** `~/.t3/userdata` is the developer's real, active database. Read/copy
-   it; never start a server against it, open it read-write or clean it up.
-3. **Baking in origins.** Never set `VITE_HTTP_URL` or `VITE_WS_URL` for dev. Dev is single-origin;
-   Vite proxies `/api`, `/ws`, `/oauth`, `/.well-known`. Those variables bake localhost into the bundle,
-   breaking remote browsers.
+1. **Killing by pattern** kills the wrong process: your agent's arguments contain this worktree's
+   path and several dev servers run here. Kill only a PID captured at spawn, or your port's owner
+   after confirming its cwd is this worktree: Linux `ss -H -ltnp` and `/proc/<pid>/cwd`; macOS
+   `lsof -nP -iTCP:<port> -sTCP:LISTEN` and `lsof -a -p <pid> -d cwd`.
+2. **The live install.** `~/.t3/userdata` is the developer's real, active database: read or copy it,
+   never start a server against it, open it read-write or clean it up.
+3. **Baking in origins.** `VITE_HTTP_URL` and `VITE_WS_URL` bake localhost into the bundle and break
+   remote browsers: never set them for dev. Dev is single-origin; Vite proxies `/api`, `/ws`,
+   `/oauth`, `/.well-known`.
 
 ## Dev servers and test data
 
@@ -129,15 +125,8 @@ To answer a question, go to the home:
 - `docs/` lines must hold for something not yet existing: cross-surface rule, term, zcp↔mate seam,
   platform fact. One surface/flow/component belongs in tests (title is the product sentence; one-line
   why when the owner decided against the obvious) or code.
-- Test admission and removal: `docs/engineering-rules.md` §4. `scripts/check-test-sentences.ts`
-  enforces witness lines and `Drops-test`/`Drops-test-file` trailers when tests run (gate `--tests`,
-  manual CI); `scripts/witness-replay.ts <file>` replays a file's witnesses.
-- Wire-shaped test input: `recorded(<schema>, <name>, edit?)` from `packages/test-recordings` (HQ
-  from mate-hq conformance; written only by `scripts/sync-recordings.ts`, which keeps only the
-  schemas this repository consumes). Casts and annotations to contract types in tests only decrease
-  (`scripts/check-test-inputs.ts`).
-- Test visible behaviour against the surface's input (record it reads → what it shows), so swapping
-  data sources turns it red.
+- Test admission and removal: `docs/testing-rules.md`; this repository's checks, test inputs and
+  scenario suites: `docs/internals/testing.md`. Both are read before test work.
 - Paragraph-sized doc entries are list items, never table rows.
 - `verified.md` has one writer, the lead; helpers report facts as text, never edit it.
 - Scratch files go in the gitignored `.plans/`.
@@ -154,16 +143,11 @@ To answer a question, go to the home:
 
 ## Taste
 
-- Prefer the smallest model making correct behaviour unsurprising; no machinery without a concrete
-  constraint. Complexity at the adapter boundary; pure orchestration, dumb UI.
+- Complexity at the adapter boundary; pure orchestration, dumb UI.
 - A `ws.ts` RPC handler, HTTP route or CLI command decodes input, calls one service method, maps errors.
 - `apps/web/src/components/ui` exports own their look: pick a `variant`/`size`, never restyle with
   `className`, never add a `t3code/no-restyle` exception. If none fits, generic looks get a variant;
   feature-specific looks stay in the feature. Layout classes belong on the parent.
-- Browser scenarios run against two test HQ instances behind one origin; per-area caps in
-  `apps/web/test/scenarios/budget.json`, raised only by the owner.
-- Owner-reported visual regressions get a geometry witness in the `owner-reported layout regressions`
-  scenario suite, in the fix's change.
 - Important invariants get deterministic checks with an exception ledger that may only shrink.
 - Any part (HQ, a Mate's container, the Zerops platform, a provider) can fail: bounded waits, honest
   user state, recovery on return; no machinery for failures not yet seen.
@@ -172,30 +156,16 @@ To answer a question, go to the home:
 
 ## When something that is not your code fails
 
-Accounts, APIs, credentials, infrastructure, tools: classify by evidence, then act. Before each
-attempt write "hypothesis: … / test: …" on one line. Never repeat an identical action expecting a
-different result, except class B.
-
-- **A — yours** (something you started, or a wrong path, ID or variable in your command): fix and
-  continue; each attempt changes something.
-- **B — transient** (timeout, 5xx, 429, "at capacity", connection reset, DNS SERVFAIL): same action
-  up to three times, pausing ~10 s, 30 s, 90 s; still failing → D.
-- **C — refused** (401/403, 404, 409, 422, "not found", "permission denied", missing credential): read
-  the whole error body, name the account, credential and target in use (never a secret's value),
-  confirm with one read-only call. Your mistake → A; otherwise → D.
-- **Unknown:** at most three distinct hypotheses, each tested once by the cheapest read-only probe.
-- **D — park:** stop only dependent steps, finish every independent one, end with
-  `BLOCKED: <step> — <exact error> — <class> — tried: <hypotheses> — need: <one concrete question>`.
-
-Never a workaround, always D: whatever `docs/engineering-rules.md` §5 forbids, and substitute
-infrastructure.
+Accounts, APIs, credentials, infrastructure, tools: classify the failure per
+`docs/engineering-rules.md` §5 (classes A–D) before any retry.
 
 ## Context and pull requests
 
-- Every step re-sends the conversation: keep context small. Parallel helpers/worktrees are for a
-  pass's independent part or long read-only search, never a tweak or one-surface change.
+- Every step re-sends the conversation: keep context small.
 - Hot files (`ChatView.tsx`, `index.css`, `SidebarZeropsTree.tsx`, `MessagesTimeline*`, `RunChat.tsx`)
   and reference files run up to ~15k lines: grep the symbol, read the range.
+  `apps/web/src/components/chat/ChatComposer.tsx` holds NUL bytes, so plain `grep`/`rg` skip it as
+  binary: search it with `-a`.
 - Output: failures only (`… 2>&1 | tail -40`). Screenshots: crop to surface, one per question.
 - PRs only when asked: one concern; body problem and fix, ending with model/harness used. UI changes
   need before/after images, motion a short video.
