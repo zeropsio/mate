@@ -81,6 +81,7 @@ const MERGE_WORDS: { readonly [R in (typeof MERGE_REFUSALS)[number]]: string } =
   no_change: "Nothing was pushed to it yet.",
   main_moved: "Other changes kept landing on main meanwhile. Try again.",
   change_not_open: "This change is merged or closed already.",
+  builds_on_open: "It builds on another change that is still open. Merge that one first.",
   github_blocked:
     "GitHub won't merge its PR yet: the repository's rules or required checks hold it back. See its PR on GitHub.",
   github_refused: "GitHub refused to merge its PR. See its PR on GitHub.",
@@ -92,6 +93,9 @@ const MERGE_WORDS: { readonly [R in (typeof MERGE_REFUSALS)[number]]: string } =
   github_wrong_base:
     "Its pull request on GitHub now merges into another branch, not the repository's default one, so Mate won't merge it. See the pull request on GitHub.",
 };
+
+/** HQ's reason for a merge it refused because the change builds on one still open. */
+export const MERGE_BUILDS_ON_OPEN = "builds_on_open";
 
 /** HQ's code for a merge it refused before Git merged anything: a file in it is above its limit. */
 export const MERGE_TOO_LARGE = "too_large";
