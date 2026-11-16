@@ -110,6 +110,37 @@ export interface StandUpService {
   readonly error: string;
 }
 
+/** zcp's class of a failure: whether waiting can change it (`platform.ErrorClass`). */
+export type ZcpErrorClass = "unreachable" | "refused" | "failed";
+/** The pooled stand-up's one word for itself, derived by zcp: "ready" is "ready to work". */
+export type StandUpHeadline = "building" | "ready" | "done" | "failed";
+export type StandUpRowKind = "pool" | "stage";
+export type StandUpRowState = "building" | "done" | "failed";
+
+/** One pooled service's line of the verdict (`mate.StandupRow`). */
+export interface StandUpRow {
+  readonly hostname: string;
+  readonly kind: StandUpRowKind;
+  readonly commit: string;
+  readonly state: StandUpRowState;
+  readonly appVersionId: string;
+  /** The build-and-deploy process; its build log is a failure's evidence. */
+  readonly processId: string;
+  /** Set on a failed row only. */
+  readonly class: ZcpErrorClass | undefined;
+  /** The source's own words, verbatim. */
+  readonly cause: string;
+}
+
+/**
+ * The pooled stand-up's verdict (`standup.verdict`, `mate.StandupVerdict`): shown and woken by as
+ * zcp wrote it, never re-derived here.
+ */
+export interface StandUpVerdict {
+  readonly headline: StandUpHeadline;
+  readonly rows: ReadonlyArray<StandUpRow>;
+}
+
 /**
  * The zcp MCP server running a stand-up: its PID and its start time, which tells it from a later
  * process under the same PID (`/proc/<pid>/stat`'s field 22; empty where zcp could not read it).
@@ -143,6 +174,8 @@ export interface ZcpStatus {
         readonly services: ReadonlyArray<StandUpService>;
         /** Its process; `undefined` from a zcp that names none. */
         readonly process: ZcpProcess | undefined;
+        /** The pooled stand-up's verdict; `undefined` where zcp wrote none (no pooled part). */
+        readonly verdict: StandUpVerdict | undefined;
       }
     | undefined;
 }
@@ -226,6 +259,7 @@ export const parseZcpStatus = (raw: unknown): ZcpStatus | undefined => {
               },
             ),
             process: readProcess(standup["process"]),
+            verdict: undefined,
           },
   };
 };
