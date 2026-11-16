@@ -293,7 +293,7 @@ describe("a Mate on its card", () => {
     const markup = card(pull({ title: "Formbox: drag and drop" }));
     const change = markup.indexOf('data-zerops-surface="card-mate-change"');
     expect(change).toBeGreaterThan(-1);
-    expect(markup.indexOf("Formbox: drag and drop · in review")).toBeGreaterThan(change);
+    expect(markup.indexOf("Formbox: drag and drop · open")).toBeGreaterThan(change);
     expect(markup.indexOf('data-zerops-surface="card-mate-review"')).toBeGreaterThan(change);
     expect(markup).toContain('data-zerops-surface="card-mate-time"');
   });

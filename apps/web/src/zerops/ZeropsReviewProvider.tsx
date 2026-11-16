@@ -30,7 +30,6 @@ import {
   type ReviewTarget,
 } from "./review";
 import { appChunk } from "../lib/appChunks";
-import { changeSeenKey, markChangeSeen } from "./changeSeen";
 
 /**
  * A review's code, fetched by the app's warmer once the page has settled (`appChunks.ts`), so the
@@ -90,10 +89,6 @@ export function ZeropsReviewProvider({ children }: { readonly children: ReactNod
   }, [open]);
 
   const openReview = useCallback<OpenReview>((target, options) => {
-    // What was commented on it is read from here on (`changeSeen`).
-    if (target.kind === "change") {
-      markChangeSeen(changeSeenKey(target.groupId, target.repository, target.number));
-    }
     setShown((current) =>
       current !== null &&
       isOpen.current &&
@@ -120,11 +115,6 @@ export function ZeropsReviewProvider({ children }: { readonly children: ReactNod
         from={shown?.from ?? null}
         labelledBy={titleId}
         onClosed={() => {
-          // A comment that came while it stood open was read there.
-          if (shown?.target.kind === "change") {
-            const { groupId, repository, number } = shown.target;
-            markChangeSeen(changeSeenKey(groupId, repository, number));
-          }
           setShown(null);
         }}
         onOpenChange={setOpen}

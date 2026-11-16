@@ -716,6 +716,7 @@ describe("a Mate on a card", () => {
     ).toBe(text);
   });
 
+  // witness: apps/web/src/components/zerops/SidebarMateRow.logic.ts | return change.mine ? change.title : `${change.title} · open`; → return change.title;
   it.each([
     {
       case: "a colleague's Mate waiting on its person: whom it waits on",
@@ -728,9 +729,9 @@ describe("a Mate on a card", () => {
       expected: { text: "Spring banner", tone: "ink" },
     },
     {
-      case: "a colleague's open change: its title, in review",
+      case: "a colleague's open change: its title, open",
       second: { kind: "change", title: "Spring banner", mine: false },
-      expected: { text: "Spring banner · in review", tone: "muted" },
+      expected: { text: "Spring banner · open", tone: "muted" },
     },
     {
       case: "at its limit: when it picks up",
@@ -831,12 +832,12 @@ describe("a Mate on a card", () => {
         askLine: undefined,
         pausedUntil: () => "1:00 PM",
       }),
-    ).toEqual({ text: "2 changes in review", tone: "ink" });
+    ).toEqual({ text: "2 changes open", tone: "ink" });
     const resting = view({ state: "idle" });
     expect(
       cardMateReading({ view: resting, status: undefined, mine: true, review: pull(), reviews: 2 })
         .text,
-    ).toBe("2 changes in review");
+    ).toBe("2 changes open");
   });
 
   it("finds every change of a Mate's that waits for review, one per task", () => {
