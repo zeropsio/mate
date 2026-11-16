@@ -189,6 +189,7 @@ describe("useChangeOffers", () => {
     );
   });
 
+  // witness: apps/web/src/zerops/useChangeOffers.ts | merge: states.merge.kind === "allowed", → merge: states.merge.kind !== "allowed",
   it("offers what the person's Zerops roles let them do, and says the refusal", () => {
     const offers = answerOf(STREAMED, useChangeOffers);
     expect(offers("app-shop")).toEqual({
@@ -198,6 +199,8 @@ describe("useChangeOffers", () => {
       close: true,
       why: {},
       readRefused: false,
+      ask: true,
+      merges: "yes",
     });
     const gallery = offers("app-gallery");
     expect([gallery?.read, gallery?.merge, gallery?.readRefused]).toEqual([false, false, true]);

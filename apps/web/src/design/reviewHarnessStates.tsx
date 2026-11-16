@@ -373,6 +373,8 @@ const DEVELOPS: ZeropsChangeOffers = {
   close: true,
   why: {},
   readRefused: false,
+  ask: true,
+  merges: "yes",
 };
 /** The people the project's merge limit names, as the member list calls them. */
 const MERGER_NAMES: Readonly<Record<string, string>> = {
@@ -390,6 +392,8 @@ const mergeHeld = (named: number): ZeropsChangeOffers => ({
   ...DEVELOPS,
   merge: false,
   why: { merge: mergersOnly(named) },
+  merges: "held",
+  mergers: { people: Object.keys(MERGER_NAMES).slice(0, named) },
 });
 /** Merged a minute ago: the review says what happened, and offers the release's review. */
 const MERGED_NOW: Partial<FlowPullRequest> = {
@@ -2098,7 +2102,7 @@ export const REVIEW_STATES: ReadonlyArray<{
   {
     id: "not-offered",
     label: "Ready, to a person HQ's rule offers neither Merge nor Close",
-    node: <Change offers={{ ...DEVELOPS, merge: false, close: false }} />,
+    node: <Change offers={{ ...DEVELOPS, merge: false, close: false, ask: false, merges: "no" }} />,
   },
   {
     id: "merge-limited",
