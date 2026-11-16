@@ -441,6 +441,10 @@ export const HqNavigationChange = Schema.Struct({
   ready: Schema.Boolean,
   /** The pull request it is mirrored to on GitHub; absent where none. */
   pullRequest: HqChange.fields.pullRequest,
+  /** Somebody asked for it to be merged; absent where nobody did. */
+  mergeAsk: HqChange.fields.mergeAsk,
+  /** The other open changes of its repository it merges after; absent where none. */
+  buildsOn: HqChange.fields.buildsOn,
 });
 export type HqNavigationChange = typeof HqNavigationChange.Type;
 export const HqNavigationChanges = Schema.Array(HqNavigationChange);
