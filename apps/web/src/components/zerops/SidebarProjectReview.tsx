@@ -11,6 +11,7 @@ import {
   useEffect,
   useId,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type KeyboardEvent,
@@ -19,7 +20,7 @@ import {
   type SyntheticEvent,
 } from "react";
 
-import { REVIEW_LABEL } from "@t3tools/client-runtime/zerops";
+import { REVIEW_LABEL, standingPressLabel, standingWaits } from "@t3tools/client-runtime/zerops";
 import { usePutLiveRun } from "~/zerops/putLive";
 import { putLiveMark } from "~/zerops/putLive.logic";
 import { useOpenReview } from "~/zerops/review";
@@ -37,7 +38,7 @@ import {
   reviewListWithLeaving,
   reviewMarkOf,
   reviewPopoverTitle,
-  reviewTagLabel,
+  reviewTagOf,
   type ProjectReviewItem,
   type ReleaseWaiting,
 } from "./SidebarProjectReview.logic";
@@ -201,7 +202,8 @@ export function ProjectReviewMarks({
         <span
           aria-label={mark.label}
           className="menu-mark menu-mark-merge"
-          // Its Mate still works on every change it stands for: quieter, asking nothing.
+          // Its Mate still works on every change it stands for, or every one waits on the people
+          // who merge: quieter, asking the person nothing.
           data-in-progress={mark.asks ? undefined : ""}
           data-zerops-surface="sidebar-project-review-mark"
           role="img"
@@ -317,8 +319,12 @@ function ReviewTag({
   const leaving = phase === "exit";
   // The last item left: the popover goes with its tag.
   if (open && leaving) setOpen(false);
-  const [only] = items;
-  const many = items.length > 1;
+  // What it says to the person looking (`changeStanding`), and its rows in their order: the list
+  // follows its items by identity, so the order is made once per items.
+  const read = useMemo(() => reviewTagOf(items, projectName), [items, projectName]);
+  const listed = read.listed;
+  const [only] = listed;
+  const many = listed.length > 1;
   return (
     <PopoverPrimitive.Root
       onOpenChange={(next) => {
@@ -338,11 +344,13 @@ function ReviewTag({
             <PopoverPrimitive.Trigger
               render={
                 <button
-                  aria-label={reviewTagLabel(items, projectName)}
+                  aria-label={read.label}
                   className="menu-tag menu-tag-review"
                   // What it holds, as the jump box keys a change (`changeRowKey`): a find lands here.
-                  data-zerops-changes={items.map((item) => item.key).join(" ")}
+                  data-zerops-changes={listed.map((item) => item.key).join(" ")}
                   data-phase={phase}
+                  // Every change in it waits on the people who merge: it asks the person nothing.
+                  data-quiet={read.quiet ? "" : undefined}
                   data-zerops-surface="sidebar-project-review"
                   inert={leaving}
                   ref={tag}
@@ -353,10 +361,14 @@ function ReviewTag({
           }
         >
           <GitMergeIcon aria-hidden="true" className="menu-tag-icon" />
-          <span className="menu-tag-word">{REVIEW_LABEL}</span>
-          <TagCount count={many ? items.length : undefined} />
+          <span className="menu-tag-word">{read.word}</span>
+          <TagCount count={read.count} />
         </TooltipTrigger>
-        {only === undefined ? null : <TooltipPopup side="bottom">{only.title}</TooltipPopup>}
+        {only === undefined ? null : (
+          <TooltipPopup side="bottom">
+            {only.says === undefined ? only.title : `${only.title} · ${only.says}`}
+          </TooltipPopup>
+        )}
       </Tooltip>
       <TagPortal>
         <PopoverPrimitive.Positioner
@@ -388,7 +400,7 @@ function ReviewTag({
             initialFocus={(openType) => (openType === "keyboard" ? true : list.current)}
           >
             <ReviewList
-              items={items}
+              items={listed}
               listRef={list}
               onOpen={(item) => {
                 pressed.current = true;
@@ -584,12 +596,17 @@ function ReviewListItem({
   const bylineId = useId();
   const [truncated, setTruncated] = useState(false);
   const Mark = item.target.kind === "crew-task" ? UsersIcon : GitPullRequestIcon;
+  // Its verb by where it stands for the person: Review, Ask to merge, or — where it waits on the
+  // people who merge — a plain way in, on a row as quiet as a colleague's.
+  const verb = standingPressLabel(item.standing, REVIEW_LABEL);
+  const waits = standingWaits(item.standing);
   return (
     <button
       aria-describedby={bylineId}
-      aria-label={`Review ${item.title}`}
+      aria-label={`${verb} ${item.title}`}
       className="menu-tagpop-item"
-      data-mine={item.mine ? "" : undefined}
+      data-mine={item.mine && !waits ? "" : undefined}
+      data-standing={item.standing}
       data-zerops-change={item.key}
       data-zerops-surface="sidebar-project-change"
       onClick={onOpen}
@@ -621,14 +638,14 @@ function ReviewListItem({
           {reviewItemByline(item)}
         </span>
       </span>
-      {/* The row is the press; its verb wears the one Review look. */}
+      {/* The row is the press; its verb wears the one Review look, or none where nothing is asked. */}
       <Button
         data-menu-tagpop-verb=""
         render={<span aria-hidden="true" />}
         size="xs"
-        variant="secondary"
+        variant={waits ? "ghost" : "secondary"}
       >
-        Review
+        {verb}
       </Button>
     </button>
   );

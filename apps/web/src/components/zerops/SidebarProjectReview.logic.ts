@@ -2,7 +2,14 @@
  * What waits for a review in a project, as its row's tags say it: *Review* (one item, opened at
  * once), *Review N* (a popover of them), *Release* (what waits for production).
  */
-import type { FlowPullRequest } from "@t3tools/client-runtime/zerops";
+import {
+  ASK_TO_MERGE,
+  READY_TO_MERGE,
+  REVIEW_LABEL,
+  type ChangeStanding,
+  type ChangeStandingRead,
+  type FlowPullRequest,
+} from "@t3tools/client-runtime/zerops";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 
@@ -41,6 +48,17 @@ export interface ProjectReviewItem {
    * quieter, so the change is always findable.
    */
   readonly inProgress?: true | undefined;
+  /**
+   * Where a change that asks stands for the person looking (`changeStanding`), where its
+   * application limits who merges: somebody asked them to merge it, it is theirs to ask for, or
+   * it waits on the people who merge. Absent, it is theirs to review, as without a limit.
+   */
+  readonly standing?: Exclude<ChangeStanding["kind"], "to-merge"> | undefined;
+  /**
+   * Its standing in its line (`standingWord`): "Dana L. asks to merge", "Ready", "Waiting for
+   * Ada K. or Sam R.". Absent where it says nothing past today's words.
+   */
+  readonly says?: string | undefined;
 }
 
 /** A change's row, as the menu keys it and the jump box finds it: `repository#number`. */
@@ -60,11 +78,17 @@ export function changeReviewItem(input: {
   readonly groupId: string;
   readonly by: ProjectReviewItem["by"];
   readonly mine: boolean;
+  /** Where it stands for the person looking (`useChangeStandingOf`); absent reads as theirs to review. */
+  readonly standing?: ChangeStandingRead | undefined;
 }): ProjectReviewItem {
   const { pull, among } = input;
   const number = `#${String(pull.number)}`;
   const several = among.some((other) => other.repository !== pull.repository);
+  const kind = input.standing?.standing.kind;
+  const says = input.standing?.word;
   return {
+    ...(kind === undefined || kind === "to-merge" ? {} : { standing: kind }),
+    ...(says === undefined || says === READY_TO_MERGE ? {} : { says }),
     key: changeRowKey(pull),
     target: {
       kind: "change",
@@ -110,7 +134,9 @@ export function reviewItemByline(item: ProjectReviewItem): string {
     if (by.ownerName !== undefined) parts.push(`${by.ownerName}'s`);
   }
   if (item.label.length > 0) parts.push(item.label);
-  if (!item.mine) parts.push("in review");
+  // Its standing says whose press it waits for; without one, a colleague's is "in review".
+  if (item.says !== undefined) parts.push(item.says);
+  else if (!item.mine) parts.push("in review");
   return parts.join(" · ");
 }
 
@@ -158,6 +184,89 @@ export function reviewTagLabel(
   return `${String(items.length)} to review in ${projectName}`;
 }
 
+/** The tag over changes the person asked for, every one: they wait on the people who merge. */
+const WAITING_LABEL = "Waiting";
+
+type StandingItem = Pick<ProjectReviewItem, "title" | "standing">;
+
+/** A project's items by whose press each waits for: the person's review, their ask, or nobody's of theirs. */
+function byStanding<Item extends StandingItem>(items: ReadonlyArray<Item>) {
+  return {
+    reviews: items.filter((item) => item.standing !== "to-ask" && item.standing !== "waiting"),
+    asks: items.filter((item) => item.standing === "to-ask"),
+    waits: items.filter((item) => item.standing === "waiting"),
+  };
+}
+
+/** The tag over a project's items, as the person looking reads it. */
+export interface ReviewTagRead<Item extends StandingItem = ProjectReviewItem> {
+  /** *Review*; *Ask to merge* where they cannot merge; *Waiting* where they asked for every one. */
+  readonly word: string;
+  /** Nothing in it asks the person: it waits on the people who merge, and says so quietly. */
+  readonly quiet: boolean;
+  /** How many it counts, past one: what asks the person, else what waits. */
+  readonly count: number | undefined;
+  /** What it says to somebody who cannot see it. */
+  readonly label: string;
+  /**
+   * Its popover's rows: what somebody asked the person to merge first, then what asks them, in the
+   * flow's order, then what only waits on the people who merge.
+   */
+  readonly listed: ReadonlyArray<Item>;
+}
+
+const countPast = (count: number) => (count > 1 ? count : undefined);
+
+/**
+ * A project's tag for the person looking (`changeStanding`): a person who merges reads *Review*,
+ * what somebody asked of them first; a person who cannot reads *Ask to merge* over the changes
+ * nobody asked for yet, and a quiet *Waiting* once they asked for every one — never *Review*.
+ */
+export function reviewTagOf<Item extends StandingItem>(
+  items: ReadonlyArray<Item>,
+  projectName: string,
+): ReviewTagRead<Item> {
+  const { reviews, asks, waits } = byStanding(items);
+  const [only] = items;
+  if (reviews.length > 0) {
+    const counted = [...reviews, ...asks];
+    return {
+      word: REVIEW_LABEL,
+      quiet: false,
+      count: countPast(counted.length),
+      label: reviewTagLabel(counted, projectName),
+      listed: [
+        ...items.filter((item) => item.standing === "asked-of-me"),
+        ...items.filter((item) => item.standing !== "asked-of-me" && item.standing !== "waiting"),
+        ...waits,
+      ],
+    };
+  }
+  if (asks.length > 0) {
+    const [ask] = asks;
+    return {
+      word: ASK_TO_MERGE,
+      quiet: false,
+      count: countPast(asks.length),
+      label:
+        asks.length === 1 && ask !== undefined
+          ? `${ASK_TO_MERGE} ${ask.title}`
+          : `${String(asks.length)} ready in ${projectName}`,
+      listed: [...asks, ...waits],
+    };
+  }
+  return {
+    word: WAITING_LABEL,
+    quiet: true,
+    count: countPast(waits.length),
+    label:
+      waits.length === 1 && only !== undefined
+        ? `${WAITING_LABEL}: ${only.title}`
+        : `${String(waits.length)} waiting in ${projectName}`,
+    listed: waits,
+  };
+}
+
 /** The mark after a name: what asks for review there, else what its Mate still works on. */
 interface ReviewMark {
   /** Something there asks for the person's review; else every change is still in progress. */
@@ -173,12 +282,19 @@ interface ReviewMark {
  * still works on them — never gone while a change is open (Eli, 2026-10-14).
  */
 export function reviewMarkOf(
-  items: ReadonlyArray<Pick<ProjectReviewItem, "title" | "inProgress">>,
+  items: ReadonlyArray<Pick<ProjectReviewItem, "title" | "inProgress" | "standing">>,
   projectName: string,
 ): ReviewMark {
   const asking = items.filter((item) => item.inProgress !== true);
   if (asking.length > 0) {
-    return { asks: true, count: asking.length, label: reviewTagLabel(asking, projectName) };
+    // What only waits on the people who merge asks the person nothing: its mark is the quiet one.
+    const tag = reviewTagOf(asking, projectName);
+    const { waits } = byStanding(asking);
+    return {
+      asks: !tag.quiet,
+      count: tag.quiet ? waits.length : asking.length - waits.length,
+      label: tag.label,
+    };
   }
   const [only] = items;
   return {
@@ -191,12 +307,23 @@ export function reviewMarkOf(
   };
 }
 
-/** The popover's heading: its changes, or what is to review when crew tasks are among them. */
+/**
+ * The popover's heading: its changes, or what is to review when crew tasks are among them. To a
+ * person who cannot merge there, how many are ready for their ask — "2 ready in Tea" — or, once
+ * they asked for every one, how many wait.
+ */
 export function reviewPopoverTitle(
-  items: ReadonlyArray<Pick<ProjectReviewItem, "target">>,
+  items: ReadonlyArray<Pick<ProjectReviewItem, "target" | "title" | "standing">>,
   projectName: string,
 ): string {
   const count = items.length;
+  const { reviews, asks, waits } = byStanding(items);
+  if (reviews.length === 0 && asks.length > 0) {
+    return `${String(asks.length)} ready in ${projectName}`;
+  }
+  if (reviews.length === 0 && waits.length > 0) {
+    return `${String(waits.length)} waiting in ${projectName}`;
+  }
   if (items.some((item) => item.target.kind !== "change")) {
     return `${String(count)} to review in ${projectName}`;
   }
