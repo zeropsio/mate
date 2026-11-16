@@ -39,6 +39,7 @@ import { PIXEL } from "../testing/bridge/callHeavy.ts";
 import { makeEngineWorld, mate, type EngineWorld } from "../testing/pump/engineWorld.ts";
 import type { ScriptedProvider } from "../testing/pump/scriptedProvider.ts";
 import { makeEngineWire, type EngineWireOptions, type WireCaller } from "./EngineWire.ts";
+import { runItemsRead } from "./records.ts";
 
 /** A send as the RPC decodes it. */
 const decodeSendInput = Schema.decodeUnknownSync(EngineSendInput);
@@ -704,6 +705,45 @@ describe("a client reading more of an engine conversation", () => {
         yield* w.shutdown;
       }),
     ),
+  );
+
+  // Each read of a closed card's results walked every call the conversation ever made to find the
+  // tools that failed: 0.4 to 1 s a run on a long conversation, before its first byte, whatever
+  // the run's own size (the same read without `tools` took 20 ms).
+  // witness: apps/server/src/engine/wire/records.ts | WHERE +failed.conversation_id = → WHERE failed.conversation_id =
+  it.effect(
+    "a closed card's results are read from its own runs' items, never by walking every call of the conversation",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          const reads = yield* w.within(
+            Effect.gen(function* () {
+              const sql = yield* SqlClient.SqlClient;
+              const run = runId(mate, 1);
+              const [text, params] = runItemsRead(
+                sql,
+                mate,
+                run,
+                { afterSeq: 0, only: "outcome", tools: ["zerops_*"], limit: 32 },
+                [run],
+              ).compile();
+              const plan = yield* sql.unsafe<{ readonly detail: string }>(
+                `EXPLAIN QUERY PLAN ${text}`,
+                params,
+              );
+              // The inner read of the tools that failed in the card's runs.
+              return plan
+                .map((step) => step.detail)
+                .filter((detail) => /^(SEARCH|SCAN) failed\b/u.test(detail));
+            }),
+          );
+          assert.deepStrictEqual(reads, [
+            "SEARCH failed USING INDEX engine_item_by_run (run_id=?)",
+          ]);
+          yield* w.shutdown;
+        }),
+      ),
   );
 
   // A window whose opening ran out of its budget read five runs for their closed cards, then six
