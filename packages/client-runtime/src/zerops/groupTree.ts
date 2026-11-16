@@ -119,7 +119,7 @@ export function activityRanking<T extends ZeropsProjectCarrier>(
       if (item !== undefined) note(group.groupId, activeAt(item));
   }
   for (const item of view.ungrouped) note(item.project.id, activeAt(item));
-  return [...moments].toSorted(([, left], [, right]) => right - left).map(([id]) => id);
+  return [...moments].sort(([, left], [, right]) => right - left).map(([id]) => id);
 }
 
 /**
@@ -134,10 +134,10 @@ export function inActivityOrder<
   const placeOf = (id: string) => places.get(id) ?? ranking.length;
   return {
     ...view,
-    groups: view.groups.toSorted(
+    groups: [...view.groups].sort(
       (left, right) => placeOf(left.group.groupId) - placeOf(right.group.groupId),
     ),
-    ungrouped: view.ungrouped.toSorted(
+    ungrouped: [...view.ungrouped].sort(
       (left, right) => placeOf(left.project.id) - placeOf(right.project.id),
     ),
   };
