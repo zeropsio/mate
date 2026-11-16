@@ -241,6 +241,7 @@ function activity(input: {
     subject: input.subject,
     snippet: input.snippet,
     at: hoursAgo(input.hours),
+    hasWork: true,
     unread: input.unread ?? false,
     pausedUntil: input.pausedUntil,
     threadKey: `env-${id}:thread-${id}`,
