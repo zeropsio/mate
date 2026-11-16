@@ -39,6 +39,7 @@ import {
   mateNextStep,
   matePose,
   resolvePrimaryConversation,
+  type ChangeStandingRead,
   type FlowPullRequest,
   type MatePoseFacts,
   type MateRunFacts,
@@ -286,7 +287,9 @@ export function mateBirthFace(failed: boolean): MateMarkState {
  *
  * Own is HQ saying it waits on the viewer, who signed its agent in (`waitsOnViewer`). Another's Mate waits on its
  * owner, not on the viewer: it claims nothing of them here, though its change stays on its row
- * with its Review, for anybody with write on the group to review and merge. At work, the work
+ * with its press, which says whose it is to give (`changeStanding`): Review for a person who merges
+ * in its application, Ask to merge for one who does not. A change its person already asked the
+ * people who merge for waits on them, not on its person (`mateReviewCount`). At work, the work
  * shows; the review still waits under it.
  */
 export function mateFaceAwaitingReview(
@@ -319,14 +322,19 @@ export function mateReviewWaits(
       }
     | undefined,
   mateProjectId: string,
+  standingOf?: MateChangeStandingOf,
 ): boolean {
-  return mateReviewCount(flow, mateProjectId) > 0;
+  return mateReviewCount(flow, mateProjectId, standingOf) > 0;
 }
+
+/** Where a Mate's change stands for the person looking (`useChangeStandingOf`, by its application). */
+export type MateChangeStandingOf = (pull: FlowPullRequest) => ChangeStandingRead;
 
 /**
  * How many of a Mate's own changes wait on the person's review, by the same rule
  * (`mateNextStep`'s `waiting`): an automated Mate holds one per task, several at once; 0 before HQ
- * answered. A change the strip lists that does not merge waits on the Mate or HQ: it counts none.
+ * answered. A change the strip lists that does not merge waits on the Mate or HQ: it counts none,
+ * and neither does one the person already asked the people who merge for (`standingOf`).
  */
 export function mateReviewCount(
   flow:
@@ -337,12 +345,14 @@ export function mateReviewCount(
       }
     | undefined,
   mateProjectId: string,
+  standingOf?: MateChangeStandingOf,
 ): number {
   if (flow === undefined || flow.changesKnown === false) return 0;
   const step = mateNextStep({
     pullRequests: flow.pullRequests,
     mateProjectId,
     mateName: undefined,
+    standingOf,
   });
   return step.kind === "review" ? step.waiting : 0;
 }

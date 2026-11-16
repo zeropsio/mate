@@ -16,6 +16,7 @@ import type { MateFaceFacts } from "./mateFace.logic";
 import { mateIdentityPose, type ZeropsMateIdentity } from "./mateIdentities";
 import { useAppsChanges } from "./projectFlows";
 import { useZeropsInventory } from "./inventoryContext";
+import { useChangeStandingOf } from "./useChangeStandingOf";
 import { useMateFaceWatch } from "./useMateMoments";
 import { useMateLinkedInHq } from "./useMenuMateReadings";
 import { useNowMs } from "./useNowMs";
@@ -40,6 +41,7 @@ export function useMateFaceFacts(
   const { changes } = useAppsChanges(
     useMemo(() => (groupId === undefined ? [] : [groupId]), [groupId]),
   );
+  const standingOf = useChangeStandingOf();
   const deletingIds = useDeletingMates();
   const deleting = project !== undefined && mateDeleting(project, deletingIds);
   const nowMs = useNowMs();
@@ -56,7 +58,12 @@ export function useMateFaceFacts(
     activity,
     reviewWaits:
       projectId !== undefined &&
-      mateReviewWaits(groupId === undefined ? undefined : changes.get(groupId), projectId),
+      mateReviewWaits(
+        groupId === undefined ? undefined : changes.get(groupId),
+        projectId,
+        // A change its person already asked the people who merge for waits on them.
+        (pull) => standingOf(groupId, pull),
+      ),
     mine,
     pose: {
       ...(mate === null ? {} : mateIdentityPose(mate, nowMs)),

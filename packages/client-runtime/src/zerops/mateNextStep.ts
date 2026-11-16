@@ -236,7 +236,10 @@ export function mateNextStep(input: {
       return {
         ...line,
         ...(kind === undefined ? {} : { standing: kind }),
-        ...(says === undefined || says === READY_TO_MERGE ? {} : { says }),
+        // Where every line waits on the same people, the title has said so once.
+        ...(says === undefined || says === READY_TO_MERGE || standing.quiet === true
+          ? {}
+          : { says }),
       };
     }),
     more: Math.max(0, listed.length - MATE_NEXT_STEP_LINES),

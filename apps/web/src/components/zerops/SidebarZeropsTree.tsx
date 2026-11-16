@@ -167,6 +167,7 @@ import type { MateComing } from "@t3tools/client-runtime/data";
 import { mateFace } from "~/zerops/mateFace.logic";
 import { useMateFaceWatch } from "~/zerops/useMateMoments";
 import { useStopDeploymentsShown } from "~/zerops/projectFlows";
+import { useChangeStandingOf } from "~/zerops/useChangeStandingOf";
 import { useStopDeploymentDemand } from "~/zerops/accountForge";
 import { findInventoryProjectRef, InventoryContext } from "~/zerops/inventoryContext";
 import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
@@ -767,6 +768,9 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   const accountOrgId = useAccountOrgId();
   // Whose each Mate is, as HQ says it (invariant 11).
   const personFacts = useAtomValue(menuPersonFactsAtom);
+  // Whose press each open change waits for where its application limits who merges
+  // (`changeStanding`): stable until who merges there, or a name, changes.
+  const standingOf = useChangeStandingOf();
   const placements = useAtomValue(hqPlacementsAtom);
   const appsWithWork =
     placements === null || structureView.structure === null
@@ -1281,7 +1285,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
           owner: getOwner?.(item),
           connected: mateAwake(item, hqMates),
           activity: getActivity?.(item),
-          reviewWaits: mateReviewWaits(input.flow, item.project.id),
+          reviewWaits: mateReviewWaits(input.flow, item.project.id, (pull) => standingOf(id, pull)),
           mine: waitsOnViewer(item.project.id),
           pose: matePoseOf(item, minuteMs, mateLifeOf(getComing?.(item))),
         }),
@@ -1482,9 +1486,10 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     ];
     // Whether a Mate's own change waits on the person's review — the composer's top's own rule
     // (`mateNextStep`), on the flow HQ told: its face wears needs-you for it.
-    const reviewWaits = (item: T) => mateReviewWaits(flow, item.project.id);
+    const standingHere = (pull: FlowPullRequest) => standingOf(id, pull);
+    const reviewWaits = (item: T) => mateReviewWaits(flow, item.project.id, standingHere);
     // How many of its changes wait so: an automated Mate's line says how many where several do.
-    const inReview = (item: T) => mateReviewCount(flow, item.project.id);
+    const inReview = (item: T) => mateReviewCount(flow, item.project.id, standingHere);
     // What its places are doing, as the globe's tag says it (D′): an environment coming up step by
     // step, what landed, a deploy under way — from what the platform says of it (`stopComing`).
     const listedOf = (stop: GroupFlowStop): ListedStop => {
@@ -1670,6 +1675,8 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             by: entry === undefined ? undefined : byOf(entry.item),
             // Whose review it waits on, as the menu's Mine holds it: unknown reads as theirs.
             mine: entry === undefined || entry.mine,
+            // One that asks says whose press it waits for; one in progress asks nobody's yet.
+            standing: inProgress.has(pull) ? undefined : standingHere(pull),
           });
           return inProgress.has(pull) ? { ...change, inProgress: true as const } : change;
         }),
