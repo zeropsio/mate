@@ -159,13 +159,31 @@ const editedOf = (
 };
 
 /**
- * A page of a run's items, as `runPage` reads it; `card` is the runs its card draws together,
- * where a failed call counts for `tools`.
+ * The tools a call failed with in a card's runs (the runs a card draws together): a failure a
+ * card's face says, and the calls that may have recovered from it.
  *
- * Its inner read of the tools that failed is of the card's runs' items: a `+` before its
- * `conversation_id` and `kind` keeps SQLite from answering it off the conversation's index,
- * which walks every call the conversation ever made, once per read (0.4–1 s a run on a long
- * conversation, 20 ms without). The rows read are the same.
+ * It is a read of those runs' items: a `+` before `conversation_id` and `kind` keeps SQLite from
+ * answering it off the conversation's index, which walks every call the conversation ever made
+ * (0.4–1 s a read on a long conversation, 20 ms without). The rows read are the same.
+ */
+export const failedToolsRead = (
+  sql: SqlClient.SqlClient,
+  conversation: ConversationId,
+  card: ReadonlyArray<string>,
+) => sql<{ readonly tool: unknown }>`
+  SELECT json_extract(failed.body_json, '$.result.toolName') AS tool FROM engine_item failed
+  WHERE +failed.conversation_id = ${conversation}
+    AND failed.run_id IN (SELECT value FROM json_each(${encodeNames(card)}))
+    AND +failed.kind = 'call' AND json_extract(failed.body_json, '$.state') = 'failed'
+`;
+
+/**
+ * A page of a run's items, as `runPage` reads it. `failed` says where a failed call counts for
+ * `tools`: the card's runs, read here; or the tools already read from them (`failedToolsRead`),
+ * by a reader of many of a card's runs, which would else read the whole card again for each.
+ *
+ * The read of the calls that started background work is of this run's items, kept off the
+ * conversation's index the same way: that one walks every work item the conversation holds.
  */
 export const runItemsRead = (
   sql: SqlClient.SqlClient,
@@ -178,18 +196,18 @@ export const runItemsRead = (
     readonly tools?: ReadonlyArray<string>;
     readonly limit: number;
   },
-  card: ReadonlyArray<string>,
+  failed: { readonly card: ReadonlyArray<string> } | { readonly tools: ReadonlyArray<unknown> },
 ) => {
   const resulted =
     options.tools === undefined
       ? sql`json_extract(body_json, '$.result') IS NOT NULL`
       : sql`(EXISTS (SELECT 1 FROM json_each(${encodeNames(options.tools)}) AS named
             WHERE json_extract(body_json, '$.result.toolName') GLOB named.value)
-          OR json_extract(body_json, '$.result.toolName') IN (
-            SELECT json_extract(failed.body_json, '$.result.toolName') FROM engine_item failed
-            WHERE +failed.conversation_id = ${conversation}
-              AND failed.run_id IN (SELECT value FROM json_each(${encodeNames(card)}))
-              AND +failed.kind = 'call' AND json_extract(failed.body_json, '$.state') = 'failed'))`;
+          OR json_extract(body_json, '$.result.toolName') IN (${
+            "tools" in failed
+              ? sql`SELECT value FROM json_each(${JSON.stringify(failed.tools)})`
+              : failedToolsRead(sql, conversation, failed.card)
+          }))`;
   return sql<ItemRow>`
     SELECT * FROM engine_item WHERE conversation_id = ${conversation} AND run_id = ${runId}
       ${options.beforeSeq === undefined ? sql`` : sql`AND opened_seq < ${options.beforeSeq}`}
@@ -201,13 +219,18 @@ export const runItemsRead = (
               OR json_extract(body_json, '$.step') = 'look'
               OR item_id IN (
                 SELECT json_extract(body_json, '$.call') FROM engine_item
-                WHERE conversation_id = ${conversation} AND run_id = ${runId}
-                  AND kind = 'work'))))`
+                WHERE +conversation_id = ${conversation} AND +kind = 'work' AND run_id = ${runId}))))`
           : sql``
       }
     ORDER BY opened_seq ${options.afterSeq !== undefined ? sql`ASC` : sql`DESC`} LIMIT ${options.limit + 1}
   `;
 };
+
+/** The runs a run's card draws together, among a conversation's groups; none when it is in none. */
+export const cardOf = (
+  groups: ReadonlyArray<{ readonly runs: ReadonlyArray<string> }>,
+  runId: string,
+): ReadonlyArray<string> | undefined => groups.find((group) => group.runs.includes(runId))?.runs;
 
 export const makeRecords = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -718,19 +741,26 @@ export const makeRecords = Effect.gen(function* () {
         readonly only?: "outcome";
         readonly tools?: ReadonlyArray<string>;
         readonly limit: number;
+        /** With `tools`: the tools that failed in the run's card, when the caller read them. */
+        readonly failedTools?: ReadonlyArray<unknown>;
+        /** `false`: the run's own record is not read (its summary reads every call it made). */
+        readonly runs?: false;
       },
     ) =>
       Effect.gen(function* () {
         const forward = options.afterSeq !== undefined;
         // A card draws the runs of a group together (a continuation, a wake, a message queued
         // behind it), and a failure one of them made is recovered by a call another made.
-        const card =
-          options.tools === undefined
-            ? [runId]
-            : ((yield* groups(conversation)).find((group) => group.runs.includes(runId))?.runs ?? [
-                runId,
-              ]);
-        const rows = yield* runItemsRead(sql, conversation, runId, options, card);
+        const failed =
+          options.failedTools !== undefined
+            ? { tools: options.failedTools }
+            : {
+                card:
+                  options.tools === undefined
+                    ? [runId]
+                    : (cardOf(yield* groups(conversation), runId) ?? [runId]),
+              };
+        const rows = yield* runItemsRead(sql, conversation, runId, options, failed);
         const page = forward
           ? rows.slice(0, options.limit)
           : rows.slice(0, options.limit).toReversed();
@@ -739,12 +769,17 @@ export const makeRecords = Effect.gen(function* () {
           ORDER BY seq
         `;
         return {
-          runs: yield* runsById(conversation, [runId]),
+          runs: options.runs === false ? [] : yield* runsById(conversation, [runId]),
           items: yield* items(page),
           requests: yield* requests(requestRows),
           more: rows.length > options.limit,
         };
       }),
+    /** The tools a call failed with in a card's runs, each once (`failedToolsRead`). */
+    failedTools: (conversation: ConversationId, card: ReadonlyArray<string>) =>
+      Effect.map(failedToolsRead(sql, conversation, card), (rows) => [
+        ...new Set(rows.map((row) => row.tool).filter((tool) => tool !== null)),
+      ]),
     /** An item's whole part, as stored; none when it has no such part. */
     part: (conversation: ConversationId, itemId: ItemId, part: string) =>
       Effect.gen(function* () {
