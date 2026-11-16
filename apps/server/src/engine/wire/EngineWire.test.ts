@@ -726,7 +726,7 @@ describe("a client reading more of an engine conversation", () => {
                 mate,
                 run,
                 { afterSeq: 0, only: "outcome", tools: ["zerops_*"], limit: 32 },
-                [run],
+                { card: [run] },
               ).compile();
               const plan = yield* sql.unsafe<{ readonly detail: string }>(
                 `EXPLAIN QUERY PLAN ${text}`,
@@ -741,6 +741,106 @@ describe("a client reading more of an engine conversation", () => {
           assert.deepStrictEqual(reads, [
             "SEARCH failed USING INDEX engine_item_by_run (run_id=?)",
           ]);
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  // On a conversation of long wake-up chains every run read also walked every background-work
+  // item the conversation held (20 to 35 ms a read, thirty reads an opening).
+  // witness: apps/server/src/engine/wire/records.ts | WHERE +conversation_id = ${conversation} AND +kind = 'work' → WHERE conversation_id = ${conversation} AND kind = 'work'
+  it.effect(
+    "the calls that started a run's background work are read from that run's items, never from every work item of the conversation",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          const reads = yield* w.within(
+            Effect.gen(function* () {
+              const sql = yield* SqlClient.SqlClient;
+              const run = runId(mate, 1);
+              const [text, params] = runItemsRead(
+                sql,
+                mate,
+                run,
+                { afterSeq: 0, only: "outcome", limit: 32 },
+                { card: [run] },
+              ).compile();
+              const plan = yield* sql.unsafe<{ readonly detail: string }>(
+                `EXPLAIN QUERY PLAN ${text}`,
+                params,
+              );
+              // The statement's own read of the run, then the inner one of its work.
+              return plan
+                .map((step) => step.detail)
+                .filter((detail) => /^(SEARCH|SCAN) engine_item\b/u.test(detail));
+            }),
+          );
+          assert.deepStrictEqual(reads, [
+            "SEARCH engine_item USING INDEX engine_item_by_run (run_id=? AND opened_seq>?)",
+            "SEARCH engine_item USING INDEX engine_item_by_run (run_id=?)",
+          ]);
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  // An opening read a card's failed tools again for every run of the card: sixteen runs, sixteen
+  // reads of all sixteen. It reads them once, and each run's results are what a run read gives.
+  // witness: apps/server/src/engine/wire/EngineWire.ts | failedTools, → failedTools: [],
+  it.effect(
+    "an opening brings each closed card the results of every tool a call failed with on that card, as a run read does",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          yield* w.tell({ _tag: "Send", text: "Read the events" });
+          yield* w.agent(failedEvents);
+          yield* w.crash;
+          yield* w.boot;
+          yield* w.agent((agent, thread) =>
+            agent.zerops(thread, "zerops_events", {}, "{}", '{"events":[]}'),
+          );
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          const wire = yield* wireOf(w);
+          const frames = yield* watch(w, wire, { outcomes: { tools: ["zerops_deploy"] } });
+          const opened = frames.flatMap((frame) =>
+            frame.type === "outcome"
+              ? [
+                  [
+                    frame.runId,
+                    frame.items.map((item) =>
+                      item.kind === "call" ? item.result?.toolName : item.kind,
+                    ),
+                  ],
+                ]
+              : [],
+          );
+          const read = (run: ReturnType<typeof runId>) =>
+            Effect.map(
+              wire.readRun({
+                protocol,
+                conversationId: mate,
+                runId: run,
+                afterSeq: 0,
+                only: "outcome",
+                tools: ["zerops_deploy"],
+              }),
+              (page) =>
+                page._tag === "Page"
+                  ? page.items.map((item) =>
+                      item.kind === "call" ? item.result?.toolName : item.kind,
+                    )
+                  : [],
+            );
+          assert.deepStrictEqual(opened, [
+            [runId(mate, 1), yield* read(runId(mate, 1))],
+            [runId(mate, 2), yield* read(runId(mate, 2))],
+          ]);
+          assert.deepStrictEqual(
+            opened.map(([, tools]) => tools),
+            [["zerops_events"], ["zerops_events"]],
+          );
           yield* w.shutdown;
         }),
       ),
