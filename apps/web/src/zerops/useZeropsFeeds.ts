@@ -10,9 +10,8 @@
  * `useProjectTopology`, platform data transport, candidate loading, or `api.ts` — the
  * design-system rule a protected root's whole module graph must satisfy
  * (`scripts/mate-zone-architecture.test.ts` "protected roots render only",
- * and every file in this one is reachable from `ZeropsServiceMap.tsx`,
- * `ZeropsOperationCard.tsx`,
- * `ZeropsQuickActions.tsx`). It reads the project's topology atom, derived from the
+ * and every file in this one is reachable from `ZeropsServiceMap.tsx` and
+ * `ZeropsOperationCard.tsx`). It reads the project's topology atom, derived from the
  * account's runtime (`../state/zerops.ts`'s `projectTopologyAtom`), through the environment's
  * project (`useEnvironmentProjectRef`); `useProjectTopology` is where a non-protected host
  * (`ZeropsPanel.tsx`) demands it, and where a caller that needs liveness or
