@@ -29,6 +29,7 @@ import {
   changeUrl,
   type HqChange,
   type HqCorePush,
+  type HqMergeAsk,
   repoUrl,
 } from "@t3tools/shared/hqChanges";
 import type { HqPullRequest } from "@t3tools/shared/hqGithub";
@@ -149,6 +150,13 @@ export interface FlowPullRequest {
   readonly receipt?: ChangeReceipt | undefined;
   /** The pull request it is mirrored to on GitHub (`HqChange.pullRequest`); absent where none. */
   readonly pullRequest?: HqPullRequest | undefined;
+  /** Somebody asked for it to be merged (`HqChange.mergeAsk`); absent where nobody did. */
+  readonly mergeAsk?: HqMergeAsk | undefined;
+  /**
+   * The other open changes of its repository it merges after, nearest first
+   * (`HqChange.buildsOn`); absent where it builds on none.
+   */
+  readonly buildsOn?: ReadonlyArray<number> | undefined;
 }
 
 /**
@@ -266,6 +274,20 @@ export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest
     ...(change.corePush === undefined ? {} : { corePush: change.corePush }),
     ...(change.receipt === null ? {} : { receipt: change.receipt }),
     ...(change.pullRequest === undefined ? {} : { pullRequest: change.pullRequest }),
+    ...standingFacts(change),
+  };
+}
+
+/** What only an open change carries of who waits on whom: its ask to merge, what it builds on. */
+function standingFacts(
+  change: Pick<HqChange, "state" | "mergeAsk" | "buildsOn">,
+): Pick<FlowPullRequest, "mergeAsk" | "buildsOn"> {
+  if (change.state !== "open") return {};
+  return {
+    ...(change.mergeAsk === undefined ? {} : { mergeAsk: change.mergeAsk }),
+    ...(change.buildsOn === undefined || change.buildsOn.length === 0
+      ? {}
+      : { buildsOn: change.buildsOn }),
   };
 }
 
@@ -320,6 +342,7 @@ function menuChange(appId: string, change: HqNavigationChange, hqAddress: string
     updatedAt: change.updatedAt,
     ready: change.ready,
     ...(change.pullRequest === undefined ? {} : { pullRequest: change.pullRequest }),
+    ...standingFacts(change),
   };
 }
 
