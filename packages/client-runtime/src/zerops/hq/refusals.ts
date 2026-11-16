@@ -551,6 +551,9 @@ export function mergeLimitWords(
   return `Only ${named.join(", ")}${rest} and ${OWNER_AND_ADMINS} merge here.`;
 }
 
+/** What asking for a merge, or taking the ask back, says where HQ is older than it. */
+export const MERGE_ASK_NEEDS_UPDATE = hqNeedsUpdate("ask for a merge");
+
 /** What the setting of who merges says where HQ is older than it. */
 export const MERGERS_NEED_UPDATE = hqNeedsUpdate("limit who merges");
 

@@ -1,7 +1,8 @@
 /**
  * The writes that move an application's flow, each made at the organization's official HQ as the
  * person: a release of what its offer showed, production rolled back to an earlier release, a
- * deploy asked again, a service its tier declares added, a change merged or closed. HQ answers
+ * deploy asked again, a service its tier declares added, a change merged or closed, its merge
+ * asked of the people who merge or the ask taken back. HQ answers
  * each at once; the end is HQ's records showing it — the application's releases listing the tag
  * HQ made, the stage's newer job, the change no longer open — read from the application's detail,
  * held until then, or its navigation. HQ keeps no request id for them: after a lost answer, the
@@ -11,7 +12,7 @@
  * @module data/operations/flowWrites
  */
 import { ProjectId } from "@t3tools/contracts";
-import type { ChangeLink, HqChange } from "@t3tools/shared/hqChanges";
+import type { ChangeLink, HqChange, HqMergeAsk } from "@t3tools/shared/hqChanges";
 import type { HqDeliveryAnswer, HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 import type {
   HqGitReleasePreflight,
@@ -92,6 +93,10 @@ declare module "../model.ts" {
       /** The application's Mate the change whose Mate is gone becomes. */
       readonly mateProjectId: string;
     };
+    /** An open change's merge asked of the people who merge its application. */
+    readonly "ask-merge": { readonly orgId: string; readonly link: ChangeLink };
+    /** That ask taken back. */
+    readonly "take-back-merge-ask": { readonly orgId: string; readonly link: ChangeLink };
   }
   interface OperationResults {
     /** The release HQ made, by its tag, and where its deploys stand as HQ answered. */
@@ -104,7 +109,16 @@ declare module "../model.ts" {
       readonly deploys: HqDeployAnswer | undefined;
       readonly mergedSha: string | null;
     };
+    /** The ask as HQ's answer holds it: the first one kept, whoever asked it. */
+    readonly "ask-merge": MergeAskAnswer;
+    /** `null`: the change stands with nothing asked. */
+    readonly "take-back-merge-ask": MergeAskAnswer;
   }
+}
+
+/** Where a change's ask to merge stands as HQ answered its write; `null` where nobody asks. */
+export interface MergeAskAnswer {
+  readonly mergeAsk: HqMergeAsk | null;
 }
 
 interface FlowAnswer {
@@ -312,6 +326,25 @@ const handChangeWrite: OperationKind<"hand-change"> = {
   effectHandles: (read, intent) => (handed(read, intent) ? [changeHandle(intent.link)] : []),
 };
 
+/**
+ * An ask to merge and its taking back end with HQ's answer, which is the change as it stands
+ * after: nothing waits on its records. Reflected once the application's changes show it.
+ */
+export const askMergeWrite: OperationKind<"ask-merge"> = {
+  kind: "ask-merge",
+  executor: "hq",
+  reflected: (read, intent) => changeOf(read, intent.link)?.mergeAsk !== undefined,
+};
+
+export const takeBackMergeAskWrite: OperationKind<"take-back-merge-ask"> = {
+  kind: "take-back-merge-ask",
+  executor: "hq",
+  reflected: (read, intent) => {
+    const change = changeOf(read, intent.link);
+    return change !== undefined && change.mergeAsk === undefined;
+  },
+};
+
 export const FLOW_WRITE_KINDS = [
   releaseWrite,
   rollBackWrite,
@@ -320,6 +353,8 @@ export const FLOW_WRITE_KINDS = [
   mergeChangeWrite,
   closeChangeWrite,
   handChangeWrite,
+  askMergeWrite,
+  takeBackMergeAskWrite,
 ] as const;
 
 /** A flow write's intent, whichever it is. */
