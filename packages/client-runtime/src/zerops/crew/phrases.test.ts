@@ -85,6 +85,7 @@ import {
   crewProposalFailedWords,
   crewProposingWord,
   crewSuggestLine,
+  crewSuggestUnavailableWords,
 } from "./phrases.ts";
 
 it.each([
@@ -729,6 +730,18 @@ describe("the drafts a crew surface hands the Mate", () => {
       "Fen's agent needs signing in again.",
       "Fen couldn't propose a crew this time.",
       "Fen answered with something that isn't a crew.",
+    ]);
+  });
+
+  it("says why the Mate can't be asked to suggest a crew", () => {
+    expect(
+      (["someone-else", "unrecorded", "no-chat"] as const).map((lock) =>
+        crewSuggestUnavailableWords("Fen", lock),
+      ),
+    ).toEqual([
+      "Fen's agent was signed in by another project member\u00a0— only they can ask it.",
+      "Fen's agent sign-in was not recorded by Zerops Mate, so nobody can ask it.",
+      "Fen has no conversation to propose from yet.",
     ]);
   });
 

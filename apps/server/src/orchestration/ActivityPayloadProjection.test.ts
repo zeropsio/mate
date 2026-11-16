@@ -1039,9 +1039,125 @@ describe("every driver's call reaches the client in one form", () => {
  * by their random ids, so the echo lands before or after the completion — in
  * the live stream and in the stored history alike. Run 12: every browser
  * check's screenshot rode in both, and Sage's thread held 22 pictures twice on
- * reload and 55 live. A reload drops the echo wherever it sorts, the live
- * reducer drops it in whatever order it arrives, and the two agree.
+ * reload and 55 live. A reload drops the echo wherever it sorts.
  */
+describe("a call's echoed update goes on reload", () => {
+  const AT = "2026-10-05T21:54:17.030Z";
+  const PICTURE = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk";
+  /** A zerops_browser call as Claude's adapter writes it: the raw tool_result, screenshot block included. */
+  const payloadOf = (kind: string, output: string) => ({
+    itemType: "mcp_tool_call",
+    toolCallId: "toolu_1",
+    status: kind === "tool.completed" ? "completed" : "inProgress",
+    detail: 'mcp__zerops__zerops_browser: {"url":"https://app.example/"}',
+    data: {
+      toolName: "mcp__zerops__zerops_browser",
+      input: { url: "https://app.example/", screenshot: true },
+      ...(kind === "tool.started"
+        ? {}
+        : {
+            result: {
+              type: "tool_result",
+              tool_use_id: "toolu_1",
+              content: [
+                { type: "text", text: output },
+                {
+                  type: "image",
+                  source: { type: "base64", media_type: "image/png", data: PICTURE },
+                },
+              ],
+            },
+          }),
+    },
+  });
+  type Row = readonly [id: string, kind: string, createdAt?: string, output?: string];
+  const rowOf = ([id, kind, createdAt = AT, output = '{"status":"ok"}']: Row) =>
+    ({
+      id,
+      tone: "tool",
+      kind,
+      summary: "MCP tool call",
+      payload: payloadOf(kind, output),
+      turnId: "turn-1",
+      createdAt,
+    }) as unknown as OrchestrationThreadActivity;
+
+  const pictureOf = (activity: OrchestrationThreadActivity | undefined) =>
+    (activity?.payload as { data?: { zerops?: { images?: Array<{ data: string }> } } } | undefined)
+      ?.data?.zerops?.images?.[0]?.data;
+
+  /**
+   * What a reload shows: each row as stored — a streamed update projected as
+   * it was written, the rest raw — read back projected by the snapshot query
+   * in its order (sequence, instant, id), then projected by the snapshot.
+   */
+  const reloaded = (rows: ReadonlyArray<Row>) =>
+    (
+      projectThreadDetailSnapshot({
+        thread: {
+          messages: [],
+          activities: rows
+            .map(rowOf)
+            .map((row) => (row.kind === "tool.updated" ? projectActivityPayload(row) : row))
+            .map(projectActivityPayload)
+            .toSorted(
+              (left, right) =>
+                (left.sequence ?? -1) - (right.sequence ?? -1) ||
+                left.createdAt.localeCompare(right.createdAt) ||
+                left.id.localeCompare(right.id),
+            ),
+        },
+      } as unknown as OrchestrationThreadDetailSnapshot) as unknown as {
+        thread: { activities: OrchestrationThreadActivity[] };
+      }
+    ).thread.activities;
+  const reload = (rows: ReadonlyArray<Row>) => reloaded(rows).map((activity) => activity.id);
+
+  const START: Row = ["m-start", "tool.started", "2026-10-05T21:54:00.000Z"];
+
+  // witness: apps/server/src/orchestration/ActivityPayloadProjection.ts | if (isEcho(activity)) { → if (false) {
+  it.each([
+    { name: "a started call, its echo sorting before the completion", echo: "b-echo", start: true },
+    { name: "a started call, its echo sorting after the completion", echo: "x-echo", start: true },
+    { name: "a call with no start, its echo sorting before", echo: "b-echo", start: false },
+    { name: "a call with no start, its echo sorting after", echo: "x-echo", start: false },
+  ])("$name", ({ echo, start }) => {
+    const rows: Row[] = [
+      ...(start ? [START] : []),
+      [echo, "tool.updated"],
+      ["c-done", "tool.completed"],
+    ];
+    const expected = start ? ["m-start", "c-done"] : ["c-done"];
+    expect(reload(rows)).toEqual(expected);
+    // The projection read the screenshot out of the raw result: the kept
+    // completion carries it.
+    expect(pictureOf(reloaded(rows).at(-1))).toBe(PICTURE);
+  });
+
+  it.each([
+    {
+      name: "an update with new output after the completion stays (late output)",
+      rows: [
+        START,
+        ["c-done", "tool.completed"],
+        ["u-late", "tool.updated", "2026-10-05T21:54:18.000Z", '{"status":"ok","more":true}'],
+      ] satisfies Row[],
+      kept: ["m-start", "c-done", "u-late"],
+    },
+    {
+      name: "an update with other output at the completion's instant, after it, stays",
+      rows: [
+        START,
+        ["c-done", "tool.completed"],
+        ["x-other", "tool.updated", AT, '{"status":"partial"}'],
+      ] satisfies Row[],
+      kept: ["m-start", "c-done", "x-other"],
+    },
+  ])("$name", ({ rows, kept }) => {
+    expect(reload(rows)).toEqual(kept);
+  });
+});
+
 describe("a call that wrote a file says so, and only then", () => {
   const cases: ReadonlyArray<{
     readonly name: string;
