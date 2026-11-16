@@ -716,6 +716,9 @@ export interface ChangeState {
   readonly tone: ServiceStatusToneId;
 }
 
+/** `changeState`'s word for an open change nothing stops, said where nobody in particular looks. */
+export const READY_TO_MERGE = "Ready to merge";
+
 /**
  * Where a change stands, in one vocabulary: what is stopping it, because it is
  * the thing somebody has to act on, or that nothing is. Saying nothing at all
@@ -746,7 +749,23 @@ export function changeState(pull: {
   }
   // Its Mate has not described it as it is: nothing asks for its merge yet.
   if (!changeAsksForReview(pull)) return { word: "Draft", tone: "off" };
-  return { word: "Ready to merge", tone: "off" };
+  return { word: READY_TO_MERGE, tone: "off" };
+}
+
+/**
+ * `changeState` for the person looking: a change nothing stops says where it stands for them
+ * (`standingWord` — "Ready", "Waiting for Ada K. or Sam R.", "Dana L. asks to merge")
+ * in place of "Ready to merge", which a person who cannot merge is never told. Anything that stops
+ * it keeps its own word, whoever looks.
+ */
+export function changeStateFor(
+  pull: Parameters<typeof changeState>[0],
+  standing: { readonly word: string } | undefined,
+): ChangeState | undefined {
+  const state = changeState(pull);
+  return standing === undefined || state?.word !== READY_TO_MERGE
+    ? state
+    : { word: standing.word, tone: state.tone };
 }
 
 /** How a change merges, in merge's own terms: whether it can land, and what it is waiting on. */
