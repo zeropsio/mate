@@ -191,6 +191,11 @@ const STAND_UP_STATES: ReadonlyArray<StandUpState> = ["idle", "running", "done",
 const SERVICE_STEPS: ReadonlyArray<StandUpServiceStep> = ["build", "deploy", "verify"];
 const SERVICE_STATES: ReadonlyArray<StandUpServiceState> = ["pending", "running", "done", "failed"];
 
+const VERDICT_HEADLINES: ReadonlyArray<StandUpHeadline> = ["building", "ready", "done", "failed"];
+const ROW_KINDS: ReadonlyArray<StandUpRowKind> = ["pool", "stage"];
+const ROW_STATES: ReadonlyArray<StandUpRowState> = ["building", "done", "failed"];
+const ERROR_CLASSES: ReadonlyArray<ZcpErrorClass> = ["unreachable", "refused", "failed"];
+
 const record = (value: unknown): Record<string, unknown> | undefined =>
   typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -214,6 +219,43 @@ const readService = (value: unknown): StandUpService | undefined => {
     processId: text(row["processId"]),
     at: text(row["at"]),
     error: text(row["error"]),
+  };
+};
+
+const readVerdictRow = (value: unknown): StandUpRow | undefined => {
+  const row = record(value);
+  const kind = oneOf(ROW_KINDS, row?.["kind"]);
+  const state = oneOf(ROW_STATES, row?.["state"]);
+  const hostname = text(row?.["hostname"]);
+  if (row === undefined || kind === undefined || state === undefined || hostname === "") {
+    return undefined;
+  }
+  return {
+    hostname,
+    kind,
+    commit: text(row["commit"]),
+    state,
+    appVersionId: text(row["appVersionId"]),
+    processId: text(row["processId"]),
+    class: oneOf(ERROR_CLASSES, row["class"]),
+    cause: text(row["cause"]),
+  };
+};
+
+/**
+ * The verdict as zcp wrote it; `undefined` where it wrote none, or one whose headline this build
+ * does not know — a row this build cannot read is left out, never guessed.
+ */
+const readVerdict = (value: unknown): StandUpVerdict | undefined => {
+  const verdict = record(value);
+  const headline = oneOf(VERDICT_HEADLINES, verdict?.["headline"]);
+  if (verdict === undefined || headline === undefined) return undefined;
+  return {
+    headline,
+    rows: (Array.isArray(verdict["rows"]) ? verdict["rows"] : []).flatMap((row) => {
+      const read = readVerdictRow(row);
+      return read === undefined ? [] : [read];
+    }),
   };
 };
 
@@ -259,7 +301,7 @@ export const parseZcpStatus = (raw: unknown): ZcpStatus | undefined => {
               },
             ),
             process: readProcess(standup["process"]),
-            verdict: undefined,
+            verdict: readVerdict(standup["verdict"]),
           },
   };
 };
