@@ -11,6 +11,7 @@
  * @module engine/registerEngineRpc
  */
 import {
+  ENGINE_WIRE_BUDGETS,
   WS_METHODS,
   type EnvironmentAuthorizationError,
   type WsRpcGroup,
@@ -20,6 +21,7 @@ import * as Stream from "effect/Stream";
 import type * as Rpc from "effect/rpc/Rpc";
 import type * as RpcGroup from "effect/rpc/RpcGroup";
 
+import type { StreamWindows } from "../RpcStreamWindow.ts";
 import type { MateEngineService } from "./MateEngine.ts";
 import type { WireCaller } from "./wire/EngineWire.ts";
 
@@ -65,6 +67,37 @@ export interface RegisterEngineRpcDeps {
   /** The Mate's environment and this start's epoch: the revision every record carries. */
   readonly source: Effect.Effect<{ readonly environmentId: string; readonly epoch: number }>;
 }
+
+/**
+ * A conversation's opening (the reset, each run's `outcome` frames, the window and `synchronized`)
+ * leaves without waiting for the client to acknowledge each message, so it costs the round trips
+ * the link needs for its bytes, never one a message. The messages stay apart: each is a frame the
+ * client decodes on its own, and its arrival is the socket's sign of life.
+ *
+ * The window is as much as a run's page, the largest answer this socket already sends as one
+ * message: a typical opening leaves whole, the largest the budgets allow in three steps, and no
+ * other frame on the socket, a pong among them, waits behind more than it did. A web build older
+ * than 2026-11-11 drops a socket after three unanswered pings, and an opening sent whole (1.25 MB)
+ * would hold its pongs back that long on a slow link. A client that reads nothing is owed at most
+ * this and one message more, of an opening the server holds whole either way. The count is a
+ * second fence, for small messages. The window ends with the message carrying `synchronized`: what is live goes on
+ * as it did, a message once the client has acknowledged every one before it, so a client that
+ * falls behind gets what happened meanwhile joined, never a queue of small messages.
+ */
+export const engineStreamWindows: StreamWindows = {
+  [WS_METHODS.subscribeEngineConversation]: {
+    chunks: 64,
+    bytes: ENGINE_WIRE_BUDGETS.runPageBytes,
+    endsWith: (values) =>
+      values.some(
+        (frame) =>
+          typeof frame === "object" &&
+          frame !== null &&
+          "type" in frame &&
+          frame.type === "synchronized",
+      ),
+  },
+};
 
 export const registerEngineRpc = ({ engine, source, subject, admit }: RegisterEngineRpcDeps) => {
   const wire = engine.wire;
