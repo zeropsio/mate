@@ -1,5 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
-import { mateActionsForEnvironmentAtom } from "@t3tools/client-runtime/data";
+import { mateActionsForEnvironmentAtom, type MateFeedReading } from "@t3tools/client-runtime/data";
 /**
  * What the conversation view shows of a Mate's stand-up (`mateStandUp.ts`): the composer held back
  * while its person waits on it, and the quiet line its ask is drawn as. The Mate's own server
@@ -7,13 +7,14 @@ import { mateActionsForEnvironmentAtom } from "@t3tools/client-runtime/data";
  */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
-import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import { AsyncResult } from "effect/reactivity";
+import type { EnvironmentId, ScopedThreadRef, StandUpVerdictReading } from "@t3tools/contracts";
+import { Atom, AsyncResult } from "effect/reactivity";
 import { useCallback, useMemo, useState } from "react";
 import { useAtomCommand } from "../state/use-atom-command";
 import { zeropsCommands } from "../state/zeropsCommands";
 import { useMateOfEnvironment } from "./accountEnvironments";
 import { useMateSetup, refreshMateSetup } from "./useMateSetup";
+import { zeropsFeeds } from "./feeds";
 
 import { useEnvironmentConversationsRead, useThreadShells } from "../state/entities";
 import { zeropsMateAt } from "./mateIdentities";
@@ -48,6 +49,11 @@ export function useMateStandUpAskLine(threadRef: ScopedThreadRef | null): string
   if (whoLivesHere?.kind !== "mate" || !main) return null;
   return mateStandUpAskLine(whoLivesHere.mate, viewer);
 }
+
+const NO_VERDICT = Atom.make<MateFeedReading<StandUpVerdictReading>>({
+  state: "unread",
+  waitingFor: null,
+});
 
 export function useMateStandUp(input: {
   readonly environmentId: EnvironmentId | null;
@@ -97,7 +103,12 @@ export function useMateStandUp(input: {
   // A ref none of the Mate's conversations holds is a draft's, however it is named.
   const draft =
     threadRef === null || !mateConversations.some((thread) => thread.id === threadRef.threadId);
+  // zcp's own stand-up, where it wrote a verdict: nothing waits on an ask (`SetupStandUp` shows it).
+  const verdict = useAtomValue(
+    environmentId === null ? NO_VERDICT : zeropsFeeds.standUpVerdict(environmentId),
+  );
   const awaitedHere = mateStandUpAwaitedIn({
+    byZcp: verdict.state === "known" && verdict.value.verdict !== null,
     conversation: draft ? "draft" : main ? "main" : "other",
     mateHasConversation: primary !== undefined,
     conversationsRead,

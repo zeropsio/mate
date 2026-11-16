@@ -207,6 +207,7 @@ import {
   ZeropsGitRemoteProbeResult,
   ZeropsLifecycle,
   ZeropsLifecycleGetInput,
+  StandUpVerdictReading,
   ZeropsMateUpdateError,
   ZeropsGrantExtension,
   ZeropsGrantExtensionError,
@@ -438,6 +439,7 @@ export const WS_METHODS = {
   subscribeZeropsLifecycle: "subscribeZeropsLifecycle",
   subscribeZeropsAgentAuth: "subscribeZeropsAgentAuth",
   subscribeZeropsHealth: "subscribeZeropsHealth",
+  subscribeZeropsStandUpVerdict: "subscribeZeropsStandUpVerdict",
   subscribeZeropsAttention: "subscribeZeropsAttention",
   subscribeZeropsBrowserStream: "subscribeZeropsBrowserStream",
   subscribeZeropsMacStream: "subscribeZeropsMacStream",
@@ -1079,9 +1081,11 @@ const WsSubscribeResourceTelemetryRpc = Rpc.make(WS_METHODS.subscribeResourceTel
 });
 
 /**
- * One explicit retry of a failed stand-up send, by its asker: true once an attempt went (it starts,
- * or ends failed again), false where the caller has no failed send to try again, and
- * `OrchestrationDispatchCommandError` where the Mate could not read or write its record.
+ * One explicit retry of a failed stand-up: where zcp's verdict says `failed`, one agent turn
+ * carrying that verdict, started for the caller; else a failed stand-up send tried again by its
+ * asker. True once an attempt went (it starts, or ends failed again), false where there is nothing
+ * of the caller's to try again, and `OrchestrationDispatchCommandError` where the Mate could not
+ * read or write its record.
  */
 const WsZeropsStandUpRetryRpc = Rpc.make(WS_METHODS.zeropsStandUpRetry, {
   payload: Schema.Struct({}),
@@ -1113,6 +1117,14 @@ const WsSubscribeZeropsAgentAuthRpc = Rpc.make(WS_METHODS.subscribeZeropsAgentAu
 const WsSubscribeZeropsHealthRpc = Rpc.make(WS_METHODS.subscribeZeropsHealth, {
   payload: Schema.Struct({}),
   success: MateHealth,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
+/** zcp's stand-up verdict as the Mate reads it now, then at each change of zcp's status file. */
+const WsSubscribeZeropsStandUpVerdictRpc = Rpc.make(WS_METHODS.subscribeZeropsStandUpVerdict, {
+  payload: Schema.Struct({}),
+  success: StandUpVerdictReading,
   error: EnvironmentAuthorizationError,
   stream: true,
 });
@@ -1591,6 +1603,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsSubscribeZeropsLifecycleRpc,
   WsSubscribeZeropsAgentAuthRpc,
   WsSubscribeZeropsHealthRpc,
+  WsSubscribeZeropsStandUpVerdictRpc,
   WsSubscribeZeropsAttentionRpc,
   WsZeropsAgentLoginStartRpc,
   WsZeropsAgentAuthCheckRpc,

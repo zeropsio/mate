@@ -282,6 +282,9 @@ export function makeMateFeedWire(
                     case "mateAgentAuth":
                       values = client[WS_METHODS.subscribeZeropsAgentAuth]({});
                       break;
+                    case "mateStandUpVerdict":
+                      values = client[WS_METHODS.subscribeZeropsStandUpVerdict]({});
+                      break;
                     case "mateCrew":
                       values = client[WS_METHODS.subscribeZeropsCrew]({}).pipe(
                         Stream.mapEffect((frame) =>

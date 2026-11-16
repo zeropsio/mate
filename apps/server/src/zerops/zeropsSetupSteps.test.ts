@@ -273,17 +273,24 @@ describe("standUpDecision", () => {
         requestedBy: ZeropsUserId.make("user-a"),
         agents: ["claude-code"],
         spoken: false,
+        verdict: undefined,
       },
       "start",
     ],
     [
       "waits for the asker's sign-in",
-      { recorded: false, requestedBy: ZeropsUserId.make("user-a"), agents: [], spoken: false },
+      {
+        recorded: false,
+        requestedBy: ZeropsUserId.make("user-a"),
+        agents: [],
+        spoken: false,
+        verdict: undefined,
+      },
       "wait",
     ],
     [
       "waits while nobody asked",
-      { recorded: false, requestedBy: undefined, agents: [], spoken: false },
+      { recorded: false, requestedBy: undefined, agents: [], spoken: false, verdict: undefined },
       "wait",
     ],
     [
@@ -293,6 +300,7 @@ describe("standUpDecision", () => {
         requestedBy: ZeropsUserId.make("user-a"),
         agents: ["claude-code"],
         spoken: false,
+        verdict: undefined,
       },
       "done",
     ],
@@ -303,6 +311,7 @@ describe("standUpDecision", () => {
         requestedBy: ZeropsUserId.make("user-a"),
         agents: ["claude-code"],
         spoken: true,
+        verdict: undefined,
       },
       "spoken",
     ],
@@ -316,12 +325,20 @@ describe("standUpDecision", () => {
         agents: [],
         ready: "cursor",
         spoken: false,
+        verdict: undefined,
       },
       "start",
     ],
     [
       "still waits for somebody to ask, whatever is ready",
-      { recorded: false, requestedBy: undefined, agents: [], ready: "cursor", spoken: false },
+      {
+        recorded: false,
+        requestedBy: undefined,
+        agents: [],
+        ready: "cursor",
+        spoken: false,
+        verdict: undefined,
+      },
       "wait",
     ],
     [
@@ -332,6 +349,7 @@ describe("standUpDecision", () => {
         agents: [],
         ready: "opencode",
         spoken: true,
+        verdict: undefined,
       },
       "spoken",
     ],
@@ -347,6 +365,7 @@ describe("standUpDecision", () => {
       requestedBy: ZeropsUserId.make("user-a"),
       agents: ["codex", "claude-code"],
       spoken: false,
+      verdict: undefined,
     });
     assert.deepStrictEqual(decision, {
       kind: "start",
@@ -362,6 +381,7 @@ describe("standUpDecision", () => {
       agents: ["codex"],
       ready: "cursor",
       spoken: false,
+      verdict: undefined,
     });
     assert.deepStrictEqual(decision, {
       kind: "start",
@@ -377,6 +397,7 @@ describe("standUpDecision", () => {
       agents: [],
       ready: "cursor",
       spoken: false,
+      verdict: undefined,
     });
     assert.deepStrictEqual(decision, {
       kind: "start",
