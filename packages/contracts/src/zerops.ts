@@ -441,6 +441,65 @@ export const ZeropsLifecycle = Schema.Struct({
 export type ZeropsLifecycle = typeof ZeropsLifecycle.Type;
 
 // ---------------------------------------------------------------------------
+// The pooled stand-up's verdict
+// ---------------------------------------------------------------------------
+
+/**
+ * zcp's class of a failure (`platform.ErrorClass`): whether waiting can change it. The Mate's
+ * server reads zcp's status file tolerantly and passes on only the words it knows, so these are
+ * closed vocabularies on this wire.
+ */
+export const ZcpErrorClass = Schema.Literals(["unreachable", "refused", "failed"]);
+export type ZcpErrorClass = typeof ZcpErrorClass.Type;
+
+/** The pooled stand-up's one word for itself, derived by zcp: "ready" is "ready to work". */
+export const StandUpHeadline = Schema.Literals(["building", "ready", "done", "failed"]);
+export type StandUpHeadline = typeof StandUpHeadline.Type;
+
+export const StandUpRowKind = Schema.Literals(["pool", "stage"]);
+export type StandUpRowKind = typeof StandUpRowKind.Type;
+
+export const StandUpRowState = Schema.Literals(["building", "done", "failed"]);
+export type StandUpRowState = typeof StandUpRowState.Type;
+
+/** One pooled service's line of the verdict (zcp `mate.StandupRow`), as zcp wrote it. */
+export const StandUpRow = Schema.Struct({
+  hostname: Schema.String,
+  kind: StandUpRowKind,
+  commit: Schema.String,
+  state: StandUpRowState,
+  appVersionId: Schema.String,
+  /** The build-and-deploy process; its build log is a failure's evidence. */
+  processId: Schema.String,
+  /** Set on a failed row only. */
+  class: Schema.optionalKey(ZcpErrorClass),
+  /** The source's own words, verbatim. */
+  cause: Schema.String,
+  /** What to do about a failed row, in zcp's words, verbatim; empty where zcp names none. */
+  next: Schema.String,
+});
+export type StandUpRow = typeof StandUpRow.Type;
+
+/**
+ * The pooled stand-up's verdict (zcp `mate.StandupVerdict`, the status file's `standup.verdict`):
+ * shown and woken by as zcp wrote it, never re-derived by the Mate or a client.
+ */
+export const StandUpVerdict = Schema.Struct({
+  headline: StandUpHeadline,
+  rows: Schema.Array(StandUpRow),
+});
+export type StandUpVerdict = typeof StandUpVerdict.Type;
+
+/**
+ * The verdict as the Mate's server reads it now (`subscribeZeropsStandUpVerdict`): `null` where
+ * zcp wrote none — a tier without a pooled part, or a zcp from before the verdict.
+ */
+export const StandUpVerdictReading = Schema.Struct({
+  verdict: Schema.NullOr(StandUpVerdict),
+});
+export type StandUpVerdictReading = typeof StandUpVerdictReading.Type;
+
+// ---------------------------------------------------------------------------
 // RPC payloads
 // ---------------------------------------------------------------------------
 

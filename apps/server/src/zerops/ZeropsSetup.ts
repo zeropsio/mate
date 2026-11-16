@@ -36,6 +36,8 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   type ServerProvider,
+  type StandUpVerdict,
+  type StandUpVerdictReading,
   wakeId as standUpWakeIdOf,
   type ZeropsAgentAuthSnapshot,
   type ZeropsAgentId,
@@ -87,6 +89,7 @@ import {
   setupDocument,
   standUpCommandIds,
   standUpDecision,
+  verdictAsk,
   standUpAgents,
   type GitAccess,
   type SetupDocument,
@@ -151,6 +154,12 @@ export class ZeropsSetup extends Context.Service<
     /** A watch on zcp's status file: `status` is read again at its change. */
     readonly statusChanges: WatchFiles;
     /**
+     * zcp's stand-up verdict as the file says it now, then at each change of the file that moves
+     * it (`subscribeZeropsStandUpVerdict`): signed-in readers only — its rows name services and
+     * causes, which the public document never carries.
+     */
+    readonly verdictChanges: Stream.Stream<StandUpVerdictReading>;
+    /**
      * A `zerops_standup` call an agent of this server started (`ZeropsStandUpRelay`): the turn
      * zcp's section waits on is read off the calls (`sectionCall`). Held in memory: every start of
      * the Mate's unit fails a section left running (zcp's `MarkLaunch`), so none outlives them.
@@ -163,7 +172,9 @@ export class ZeropsSetup extends Context.Service<
     /** Receipt: the initial wait ended as sent, failed, skipped or not asked. */
     readonly awaitStandUp: Effect.Effect<void>;
     /**
-     * One manual attempt after a failed send, only for its recorded asker, by Zerops user id,
+     * Where zcp's verdict says its stand-up failed: one agent turn carrying that verdict, started
+     * for the caller, by Zerops user id; true once it went, false where no agent of theirs may run
+     * it. Anywhere else, one manual attempt after a failed send, only for its recorded asker,
      * as the record names them. True once an attempt went, whether it then
      * starts or ends failed again (the setup document says which); false where there is no failed
      * send of theirs to try again — none recorded, not failed, someone else's, or another attempt
@@ -489,7 +500,9 @@ export const makeZeropsSetup = Effect.gen(function* () {
       sectionTurn: yield* sectionStateOf(zcpStatus),
       unknown: [
         ...(signinKnown ? [] : (["signin"] as const)),
-        ...(marked || record !== undefined ? [] : (["standup"] as const)),
+        ...(marked || record !== undefined || zcpStatus?.standup?.verdict !== undefined
+          ? []
+          : (["standup"] as const)),
       ],
     });
   });
@@ -529,6 +542,18 @@ export const makeZeropsSetup = Effect.gen(function* () {
   const unstarted = (view: ConversationView | undefined) =>
     view === undefined ||
     (view.activeRun === null && view.lastEnded === null && view.queued.length === 0);
+
+  /** The model the conversation runs on, where its agent names one. */
+  const selectionOf = (view: ConversationView | undefined) =>
+    view?.agent === null || view?.agent === undefined || view.agent.model === null
+      ? undefined
+      : {
+          modelSelection: {
+            instanceId: ProviderInstanceId.make(view.agent.instanceId),
+            model: view.agent.model,
+            ...(view.agent.options === undefined ? {} : { options: view.agent.options }),
+          },
+        };
 
   /** The conversation's agent: the instance, its driver, the model and its options. */
   const agentOf = (
@@ -637,16 +662,7 @@ export const makeZeropsSetup = Effect.gen(function* () {
         return true;
       }
       if (requestedBy === undefined) return yield* settle("none");
-      const mainSelection =
-        main?.agent === null || main?.agent === undefined || main.agent.model === null
-          ? undefined
-          : {
-              modelSelection: {
-                instanceId: ProviderInstanceId.make(main.agent.instanceId),
-                model: main.agent.model,
-                ...(main.agent.options === undefined ? {} : { options: main.agent.options }),
-              },
-            };
+      const mainSelection = selectionOf(main);
       const readyHere = pickReadyAgentWithoutSignIn(
         providers,
         mainSelection?.modelSelection.instanceId,
@@ -657,7 +673,14 @@ export const makeZeropsSetup = Effect.gen(function* () {
         agents: standUpAgents(agents, signers, requestedBy),
         ready: readyHere?.instanceId,
         spoken: resuming === undefined && spokenIn(main),
+        verdict: (yield* status)?.standup?.verdict,
       });
+      // zcp stands the pooled parts up itself: the server starts none, now or later.
+      if (decision.kind === "zcp") {
+        if (resuming === undefined) return yield* settle("none");
+        yield* settleTaken(resuming.commandId);
+        return true;
+      }
       if (decision.kind === "spoken") {
         yield* takePersona;
         return yield* settle("skipped");
@@ -848,10 +871,65 @@ export const makeZeropsSetup = Effect.gen(function* () {
     finished = Fiber.join(worker);
   }
 
+  /**
+   * zcp's failed verdict handed to an agent: one turn in the Mate's conversation, for `userId`, on
+   * an agent they may run (`standUpAgents`) — else one Mate signs nobody in to that is ready, or
+   * an automated Mate's — carrying every row as zcp wrote it. Admitted like any run (D6).
+   */
+  const sendVerdict = (userId: ZeropsUserId, verdict: StandUpVerdict) =>
+    Effect.gen(function* () {
+      const hq = yield* reads.hq;
+      const automated = hq.kind === "linked" && hq.mate.automated === true;
+      const allProviders = yield* reads.providers;
+      const providers = automated
+        ? allProviders.filter(
+            (provider) => provider.instanceId === AUTOMATED_MODEL_SELECTION.instanceId,
+          )
+        : allProviders;
+      const main = yield* engineConversation();
+      if (main === "unknown") return false;
+      const mainSelection = selectionOf(main);
+      const readyHere = pickReadyAgentWithoutSignIn(
+        providers,
+        mainSelection?.modelSelection.instanceId,
+      );
+      const agentId = automated
+        ? undefined
+        : standUpAgents(yield* reads.agents, yield* reads.signers, userId)[0];
+      let chosen: ModelSelection;
+      if (automated) {
+        chosen = yield* reads.automatedModel;
+      } else if (agentId !== undefined) {
+        chosen = standUpModelSelection(agentId, mainSelection, yield* projectDefault);
+      } else if (readyHere !== undefined) {
+        chosen = standUpModelSelectionOn(readyHere, mainSelection, yield* projectDefault);
+      } else {
+        return false;
+      }
+      const conversationId = main?.conversationId ?? ConversationId.make(yield* crypto.uuidV4());
+      const selection = unstarted(main) ? selectionWithPreferredEffort(providers, chosen) : chosen;
+      if (!(yield* engine.assignAgent(conversationId, agentOf(selection, providers)))) return false;
+      yield* engine.wake({
+        conversationId,
+        kind: "standup",
+        key: `mate-standup-verdict-${yield* crypto.uuidV4()}`,
+        principal: { kind: "standup", startedBy: userId },
+        text: verdictAsk(verdict),
+        dueAt: yield* Clock.currentTimeMillis,
+      });
+      yield* Effect.logInfo("zerops setup: zcp's failed verdict went to the agent", {
+        conversationId,
+      });
+      return true;
+    });
+
   const retry = (userId: ZeropsUserId) =>
     attempts
       .withPermit(
         Effect.gen(function* () {
+          const verdict = (yield* status)?.standup?.verdict;
+          if (verdict !== undefined)
+            return verdict.headline === "failed" ? yield* sendVerdict(userId, verdict) : false;
           const stored = yield* recordOf;
           const held = yield* seenOnEngine(stored);
           if (stored === undefined || held?.source !== "server:failed" || held.userId !== userId)
@@ -878,11 +956,25 @@ export const makeZeropsSetup = Effect.gen(function* () {
         ),
       );
 
+  const verdictReading = Effect.map(status, (read): StandUpVerdictReading => ({
+    verdict: read?.standup?.verdict ?? null,
+  }));
+  // Armed before the first read, so a change between the two is heard.
+  const verdictChanges = Stream.unwrap(
+    Effect.map(reads.statusFileChanges, (watch) =>
+      Stream.concat(
+        Stream.fromEffect(verdictReading),
+        Stream.fromEffectRepeat(Effect.andThen(watch.next, verdictReading)),
+      ),
+    ),
+  ).pipe(Stream.changesWith((a, b) => JSON.stringify(a) === JSON.stringify(b)));
+
   return ZeropsSetup.of({
     document,
     status,
     standUpGone,
     statusChanges: reads.statusFileChanges,
+    verdictChanges,
     noteStandUpCall,
     retry,
     finished,

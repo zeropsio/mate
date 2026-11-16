@@ -12,7 +12,17 @@
  *
  * @module zeropsSetupSteps
  */
-import type { ZeropsAgentAuth, ZeropsAgentId, ZeropsUserId } from "@t3tools/contracts";
+import {
+  StandUpHeadline,
+  StandUpRowKind,
+  StandUpRowState,
+  ZcpErrorClass,
+  type StandUpRow,
+  type StandUpVerdict,
+  type ZeropsAgentAuth,
+  type ZeropsAgentId,
+  type ZeropsUserId,
+} from "@t3tools/contracts";
 import { turnRefusal } from "@t3tools/shared/zeropsAgentAuth";
 
 import type { ProjectSigners } from "./ZeropsProjectSigners.ts";
@@ -63,11 +73,14 @@ export type StandUpDecision =
   | { readonly kind: "wait" }
   /** This server has a record of one: started here or by a browser. */
   | { readonly kind: "done" }
+  /** zcp stood the pooled parts up itself and wrote its verdict: the server starts none. */
+  | { readonly kind: "zcp" }
   /** The main conversation was spoken in before: its stand-up happened elsewhere. */
   | { readonly kind: "spoken" };
 
 /**
- * Whether to start the stand-up now: asked for by someone with an agent to run
+ * Whether to start the stand-up now — never where zcp wrote its verdict, its own stand-up — when
+ * asked for by someone with an agent to run
  * — one they signed in or a token the project holds, else one Mate signs nobody
  * in to that is ready — never twice, and never into a conversation already
  * under way. Their Claude Code or Codex comes first: it is the agent they chose.
@@ -80,8 +93,14 @@ export const standUpDecision = (input: {
   /** The instance of a ready agent outside the sign-in (`pickReadyAgentWithoutSignIn`). */
   readonly ready?: string | undefined;
   readonly spoken: boolean;
+  /**
+   * zcp's verdict on its own stand-up (`ZcpStatus.standup.verdict`): where it wrote one, zcp is
+   * the stand-up's one starter (proposal B-5); a tier without a pooled part has none.
+   */
+  readonly verdict: StandUpVerdict | undefined;
 }): StandUpDecision => {
   if (input.recorded) return { kind: "done" };
+  if (input.verdict !== undefined) return { kind: "zcp" };
   if (input.requestedBy === undefined) return { kind: "wait" };
   const agentId = AGENT_ORDER.find((agent) => input.agents.includes(agent));
   const start: StandUpDecision | undefined =
@@ -108,37 +127,6 @@ export interface StandUpService {
   readonly processId: string;
   readonly at: string;
   readonly error: string;
-}
-
-/** zcp's class of a failure: whether waiting can change it (`platform.ErrorClass`). */
-export type ZcpErrorClass = "unreachable" | "refused" | "failed";
-/** The pooled stand-up's one word for itself, derived by zcp: "ready" is "ready to work". */
-export type StandUpHeadline = "building" | "ready" | "done" | "failed";
-export type StandUpRowKind = "pool" | "stage";
-export type StandUpRowState = "building" | "done" | "failed";
-
-/** One pooled service's line of the verdict (`mate.StandupRow`). */
-export interface StandUpRow {
-  readonly hostname: string;
-  readonly kind: StandUpRowKind;
-  readonly commit: string;
-  readonly state: StandUpRowState;
-  readonly appVersionId: string;
-  /** The build-and-deploy process; its build log is a failure's evidence. */
-  readonly processId: string;
-  /** Set on a failed row only. */
-  readonly class: ZcpErrorClass | undefined;
-  /** The source's own words, verbatim. */
-  readonly cause: string;
-}
-
-/**
- * The pooled stand-up's verdict (`standup.verdict`, `mate.StandupVerdict`): shown and woken by as
- * zcp wrote it, never re-derived here.
- */
-export interface StandUpVerdict {
-  readonly headline: StandUpHeadline;
-  readonly rows: ReadonlyArray<StandUpRow>;
 }
 
 /**
@@ -191,10 +179,10 @@ const STAND_UP_STATES: ReadonlyArray<StandUpState> = ["idle", "running", "done",
 const SERVICE_STEPS: ReadonlyArray<StandUpServiceStep> = ["build", "deploy", "verify"];
 const SERVICE_STATES: ReadonlyArray<StandUpServiceState> = ["pending", "running", "done", "failed"];
 
-const VERDICT_HEADLINES: ReadonlyArray<StandUpHeadline> = ["building", "ready", "done", "failed"];
-const ROW_KINDS: ReadonlyArray<StandUpRowKind> = ["pool", "stage"];
-const ROW_STATES: ReadonlyArray<StandUpRowState> = ["building", "done", "failed"];
-const ERROR_CLASSES: ReadonlyArray<ZcpErrorClass> = ["unreachable", "refused", "failed"];
+const VERDICT_HEADLINES = StandUpHeadline.literals;
+const ROW_KINDS = StandUpRowKind.literals;
+const ROW_STATES = StandUpRowState.literals;
+const ERROR_CLASSES = ZcpErrorClass.literals;
 
 const record = (value: unknown): Record<string, unknown> | undefined =>
   typeof value === "object" && value !== null && !Array.isArray(value)
@@ -230,6 +218,7 @@ const readVerdictRow = (value: unknown): StandUpRow | undefined => {
   if (row === undefined || kind === undefined || state === undefined || hostname === "") {
     return undefined;
   }
+  const errorClass = oneOf(ERROR_CLASSES, row["class"]);
   return {
     hostname,
     kind,
@@ -237,8 +226,9 @@ const readVerdictRow = (value: unknown): StandUpRow | undefined => {
     state,
     appVersionId: text(row["appVersionId"]),
     processId: text(row["processId"]),
-    class: oneOf(ERROR_CLASSES, row["class"]),
+    ...(errorClass === undefined ? {} : { class: errorClass }),
     cause: text(row["cause"]),
+    next: text(row["next"]),
   };
 };
 
@@ -305,6 +295,25 @@ export const parseZcpStatus = (raw: unknown): ZcpStatus | undefined => {
           },
   };
 };
+
+/**
+ * zcp's failed verdict as the ask an agent turn carries: every row as zcp wrote it — a failed
+ * row's class, cause, evidence and next step verbatim — never reworded or re-derived here.
+ */
+export const verdictAsk = (verdict: StandUpVerdict): string =>
+  [
+    "The stand-up zcp ran at this Mate's start failed. Its verdict, as zcp wrote it:",
+    ...verdict.rows.flatMap((row) => [
+      `- ${row.hostname} (${row.kind}${row.commit === "" ? "" : `, commit ${row.commit}`}): ${row.state}${row.class === undefined ? "" : ` [${row.class}]`}${row.cause === "" ? "" : ` — ${row.cause}`}`,
+      ...(row.appVersionId === "" && row.processId === ""
+        ? []
+        : [
+            `  App version ${row.appVersionId || "none"}, build-and-deploy process ${row.processId || "none"} (its build log is the evidence).`,
+          ]),
+      ...(row.next === "" ? [] : [`  Next: ${row.next}`]),
+    ]),
+    "Find the cause of each failed row and fix it as its next step says.",
+  ].join("\n");
 
 /**
  * The process of a stand-up the file says runs: the one whose end, provably gone, is the
@@ -526,8 +535,30 @@ const zcpStep = (zcp: ZcpStandUp, at: string): SetupStep =>
     ? { id: "standup", state: zcp.state, at }
     : { id: "standup", state: zcp.state, at: "", reason: zcp.short };
 
+/**
+ * The public step of zcp's verdict, its headline only: building and "ready to work" run on — the
+ * stages are not built yet — done is done, failed failed. Its rows name services and causes, which
+ * only the signed-in feed carries (`subscribeZeropsStandUpVerdict`).
+ */
+const VERDICT_STEP: Readonly<Record<StandUpHeadline, "running" | "done" | "failed">> = {
+  building: "running",
+  ready: "running",
+  done: "done",
+  failed: "failed",
+};
+
+const verdictStep = (
+  verdict: StandUpVerdict,
+  standup: NonNullable<ZcpStatus["standup"]>,
+): SetupStep => {
+  const state = VERDICT_STEP[verdict.headline];
+  return { id: "standup", state, at: state === "running" ? standup.startedAt : standup.endedAt };
+};
+
 const standUpStep = (facts: SetupFacts): SetupStep | null => {
   const standup = facts.status?.standup;
+  // zcp's own stand-up says itself; the server's record and its turns are not its.
+  if (standup?.verdict !== undefined) return verdictStep(standup.verdict, standup);
   if (facts.record?.failed === true)
     return { id: "standup", state: "failed", at: facts.record.startedAt, reason: "send_failed" };
   const zcp = zcpStandUpState(facts);
