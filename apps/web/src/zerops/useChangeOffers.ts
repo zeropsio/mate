@@ -1,12 +1,16 @@
 /**
  * What the person may do with an application (`can`, `@t3tools/shared/hqOffers`), decided from
- * their live Zerops roles: its changes' verbs, a deploy asked again, and each environment's deploy
- * key. Drawn here, never decided; HQ decides the write again at the press, and answers at once
+ * their live Zerops roles: its changes' verbs, a deploy asked again — or who releases where the
+ * application's limit on who merges holds it — and each environment's deploy key. Drawn here, never decided; HQ decides the write again at the press, and answers at once
  * while it is away (`hqAwayAnswer`). Before the roles are read, none is known.
  */
 import { useAtomValue } from "@effect/atom-react";
 import { viewerMerges, type ViewerMerges } from "@t3tools/client-runtime/zerops";
-import { hqMergeOfferWords, hqOfferWords } from "@t3tools/client-runtime/zerops/hq";
+import {
+  hqMergeOfferWords,
+  hqOfferWords,
+  mergeLimitWords,
+} from "@t3tools/client-runtime/zerops/hq";
 import { hqOffer, type HqOfferState } from "@t3tools/shared/hqOffers";
 import { useCallback } from "react";
 
@@ -111,5 +115,33 @@ export function useEnvironmentDeployOffer(): (projectId: string) => boolean {
       return hqOffer(environment?.can, "redeploy").kind === "allowed";
     },
     [structure],
+  );
+}
+
+/**
+ * Why a production's deploy asked again is held from the person where its application limits who
+ * merges: the same people release, and the line says who, by name. `undefined` where it is
+ * offered, or refused for any other reason (`useEnvironmentDeployOffer` then offers none).
+ */
+export function useEnvironmentDeployHeld(): (projectId: string) => string | undefined {
+  const structure = useHqStructure();
+  const nameOf = usePersonNames(
+    useAtomValue(zeropsSessionAtom)?.activeOrganization?.organizationId,
+  );
+  return useCallback(
+    (projectId) => {
+      for (const app of structure?.apps ?? []) {
+        const environment = (app.environments ?? []).find(
+          (row) => row.target.kind === "zerops" && row.target.projectId === projectId,
+        );
+        if (environment === undefined) continue;
+        const offer = hqOffer(environment.can, "redeploy");
+        return offer.kind === "refused" && offer.reason === "not_app_merger"
+          ? mergeLimitWords(app.mergers?.people ?? [], nameOf, "release")
+          : undefined;
+      }
+      return undefined;
+    },
+    [nameOf, structure],
   );
 }

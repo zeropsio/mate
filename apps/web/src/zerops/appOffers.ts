@@ -17,8 +17,8 @@ const NOBODY_NAMED: ReleaseMergers = { mergers: undefined, nameOf: () => undefin
 
 /**
  * Whether HQ offers releasing the application's production, its refusal — or that it has not
- * said — in words; `undefined` for an application HQ has not named. A release to a Git production
- * its merge limit holds says who merges there, as the held Merge does.
+ * said — in words; `undefined` for an application HQ has not named. A release the application's
+ * limit on who merges holds — to either kind of production — says who releases there, by name.
  */
 export function releaseGateOf(
   can: HqOffers | undefined,
@@ -30,7 +30,7 @@ export function releaseGateOf(
     ? { allowed: true }
     : {
         allowed: false,
-        reason: hqMergeOfferWords(offer, mergers, nameOf) ?? "",
+        reason: hqMergeOfferWords(offer, mergers, nameOf, "release") ?? "",
         ...(offer.kind === "refused" ? { refusedBy: "hq" as const } : {}),
       };
 }

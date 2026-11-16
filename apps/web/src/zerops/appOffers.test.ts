@@ -7,8 +7,8 @@ import { describe, expect, it } from "vite-plus/test";
 import { releaseGateOf } from "./appOffers";
 
 describe("a release the merge limit holds", () => {
-  // witness: apps/web/src/zerops/appOffers.ts | reason: hqMergeOfferWords(offer, mergers, nameOf) ?? "", → reason: "",
-  it("A release to Git held by the project's merge limit says who merges, as the held Merge does", () => {
+  // witness: apps/web/src/zerops/appOffers.ts | reason: hqMergeOfferWords(offer, mergers, nameOf, "release") ?? "", → reason: hqMergeOfferWords(offer, mergers, nameOf) ?? "",
+  it("A release held by the project's merge limit says who releases, by name", () => {
     const names: Readonly<Record<string, string>> = { "u-ada": "Ada K.", "u-sam": "Sam R." };
     expect(
       releaseGateOf(
@@ -17,7 +17,7 @@ describe("a release the merge limit holds", () => {
       ),
     ).toEqual({
       allowed: false,
-      reason: "Only Ada K., Sam R. and the organization's Owner and Admins merge here.",
+      reason: "Only Ada K., Sam R. and the organization's Owner and Admins release here.",
       refusedBy: "hq",
     });
   });
