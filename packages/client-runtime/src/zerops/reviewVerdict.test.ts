@@ -88,6 +88,7 @@ describe("change and release reviews use HQ's release verdict", () => {
 });
 
 describe("changeReview: the verdict comes first (R2)", () => {
+  // witness: packages/client-runtime/src/zerops/reviewVerdict.ts | title: `Conflicts with ${base}`, → title: `Behind ${base}`,
   it.each<[string, Partial<ChangeReviewInput>, Record<string, unknown>]>([
     [
       "ready: grey, not green",
@@ -188,7 +189,7 @@ describe("changeReview: the verdict comes first (R2)", () => {
       {
         state: "behind",
         tone: "attention",
-        title: "Behind main",
+        title: "Conflicts with main",
         why: "It no longer merges cleanly: main moved on since Nova branched",
       },
     ],
@@ -689,6 +690,7 @@ describe("releaseReview", () => {
     expect(review.primary).toEqual({ label: "Release v0.1.57", enabled: true, safe: false });
   });
 
+  // witness: packages/client-runtime/src/zerops/reviewVerdict.ts | roll back to ${replaces.tag} from production's page → roll back to ${replaces.tag} from production's menu
   it.each<[string, Partial<ReleaseReviewInput>, string, boolean | undefined]>([
     [
       "blocked",
@@ -721,7 +723,7 @@ describe("releaseReview", () => {
     [
       "released",
       { outcome: { kind: "released", at: undefined } },
-      "Production runs v0.1.57. If it misbehaves, roll back to v0.1.56 from production's menu.",
+      "Production runs v0.1.57. If it misbehaves, roll back to v0.1.56 from production's page.",
       undefined,
     ],
     [
@@ -736,6 +738,7 @@ describe("releaseReview", () => {
     expect(review.primary?.enabled).toBe(enabled);
   });
 
+  // witness: packages/client-runtime/src/zerops/reviewVerdict.ts | roll back to ${replaces.tag} from production's page → roll back to ${replaces.tag} from production's menu
   it.each<[string, ReleaseReviewInput["replaces"], string, string | undefined, string]>([
     [
       "the first release",
@@ -748,23 +751,23 @@ describe("releaseReview", () => {
       "after a release production runs in full",
       { kind: "release", tag: "v0.1.56" },
       "replaces v0.1.56 · 2 changes",
-      "Roll back to v0.1.56 from production's menu. It gets its own review.",
-      "Production runs v0.1.57. If it misbehaves, roll back to v0.1.56 from production's menu.",
+      "Roll back to v0.1.56 from production's page. It gets its own review.",
+      "Production runs v0.1.57. If it misbehaves, roll back to v0.1.56 from production's page.",
     ],
     [
       "after releases none of which production runs in full",
       { kind: "unnamed" },
       "replaces what production runs · 2 changes",
-      "Roll back from production's menu. It gets its own review.",
-      "Production runs v0.1.57. If it misbehaves, roll back from production's menu.",
+      "Roll back from production's page. It gets its own review.",
+      "Production runs v0.1.57. If it misbehaves, roll back from production's page.",
     ],
     [
       // Read after it landed: production runs the release itself, never a roll back to it.
       "naming itself",
       { kind: "release", tag: "v0.1.57" },
       "replaces v0.1.57 · 2 changes",
-      "Roll back from production's menu. It gets its own review.",
-      "Production runs v0.1.57. If it misbehaves, roll back from production's menu.",
+      "Roll back from production's page. It gets its own review.",
+      "Production runs v0.1.57. If it misbehaves, roll back from production's page.",
     ],
   ])(
     "released, %s: the header, the roll back line and the foot",
@@ -847,6 +850,7 @@ describe("rollbackReview: roll back gets the same review, naming where it goes b
     expect(review.verdict.state).toBe("rolling-back");
   });
 
+  // witness: packages/client-runtime/src/zerops/reviewVerdict.ts | title: "You can't roll back here", → title: "Rolled back",
   it.each<[string, Partial<RollbackReviewInput>, Record<string, unknown>, string]>([
     [
       "rollback",
@@ -865,7 +869,7 @@ describe("rollbackReview: roll back gets the same review, naming where it goes b
       {
         state: "rollback-blocked",
         tone: "attention",
-        title: "Only releasers can roll back",
+        title: "You can't roll back here",
         why: "You need more than Read access to this project's production to release it",
       },
       "Production keeps running v0.1.57.",

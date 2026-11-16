@@ -65,8 +65,7 @@ const PERMISSION_WORDS: { readonly [R in Reason]: string } = {
   recipe_changes_files:
     "This change edits the project's recipe, so it waits for someone who develops the project to merge it.",
   no_production: "This project has no production yet.",
-  not_releaser:
-    "To release, this project needs a Zerops project, and you need more than Read access to its production.",
+  not_releaser: "You need more than Read access to production to release.",
 };
 
 /**
@@ -83,8 +82,8 @@ const MERGE_WORDS: { readonly [R in (typeof MERGE_REFUSALS)[number]]: string } =
   main_moved: "Other changes kept landing on main meanwhile. Try again.",
   change_not_open: "This change is merged or closed already.",
   github_blocked:
-    "GitHub won't merge its PR yet: the repository's rules or required checks hold it back. See its PR on GitHub.",
-  github_refused: "GitHub refused to merge its PR. See its PR on GitHub.",
+    "GitHub won't merge its pull request yet: the repository's rules or required checks hold it back. See its pull request on GitHub.",
+  github_refused: "GitHub refused to merge its pull request. See its pull request on GitHub.",
   github_unreachable: "GitHub did not answer, so nothing was merged. Try again.",
   github_no_pull: "Its pull request on GitHub isn't open yet. Try again in a minute.",
   github_closed: "Its pull request was closed on GitHub.",

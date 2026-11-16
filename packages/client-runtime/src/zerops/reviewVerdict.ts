@@ -779,7 +779,9 @@ export function changeMergeVerdict(
         verdict: {
           state: "behind",
           tone: "attention",
-          title: `Behind ${base}`,
+          // A conflict whose files were not read is still a conflict: "behind" is the word of a
+          // change that merges cleanly.
+          title: `Conflicts with ${base}`,
           why: `It no longer merges cleanly: ${base} moved on since ${who} branched`,
           fix: resolve,
         },
@@ -1532,7 +1534,8 @@ export function releaseReview(input: ReleaseReviewInput): ReleaseReviewModel {
   if (input.git !== undefined) return gitReleaseReview(input, input.git);
   const { tag, replaces } = input;
   // The release a roll back goes to — never the tag itself, which is a release read after it
-  // landed; none for the first release, and production's menu for one no release names.
+  // landed; none for the first release, and production's page — where every release offers its
+  // roll back — for one no release names.
   // Offer no roll back based on an unknown outcome, a superseded release, or a failure that
   // moved nothing.
   const nothingWentOut =
@@ -1543,8 +1546,8 @@ export function releaseReview(input: ReleaseReviewInput): ReleaseReviewModel {
     replaces.kind === "first" || nothingWentOut
       ? undefined
       : replaces.kind === "release" && replaces.tag !== tag
-        ? `roll back to ${replaces.tag} from production's menu`
-        : "roll back from production's menu";
+        ? `roll back to ${replaces.tag} from production's page`
+        : "roll back from production's page";
   const facts = {
     problems: input.outcome.kind === "failed" ? input.outcome.problems : undefined,
     meta: [
@@ -2040,7 +2043,8 @@ function rollbackVerdictOf(input: RollbackReviewInput): ReviewModel {
       verdict: {
         state: "rollback-blocked",
         tone: "attention",
-        title: "Only releasers can roll back",
+        // Whose it is instead is the refusal's own to say: who releases here, by name.
+        title: "You can't roll back here",
         why: permission.reason.replace(/\.$/u, ""),
         fix: undefined,
       },
