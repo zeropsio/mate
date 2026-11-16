@@ -6,7 +6,9 @@ export {
   mergedChangeWords,
   openChangeWords,
   releaseIsLive,
+  rowStanding,
   type MergedChangeWhere,
+  type RowStanding,
 } from "./ChangeRow.logic";
 export { Crumbs, usePageTrail, type Crumb } from "./Crumbs";
 export { pageTrail, type TrailStep, type TrailTarget } from "./Crumbs.logic";

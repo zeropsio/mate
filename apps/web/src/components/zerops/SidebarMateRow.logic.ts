@@ -1080,6 +1080,8 @@ export type MateRowSecond =
       readonly title: string;
       readonly mine: boolean;
       readonly count?: number;
+      /** Whose press it waits for, after its title (`standingWord`): "Waiting for Ada K.". */
+      readonly says?: string | undefined;
     }
   /**
    * An automated Mate's line where it says nothing of its own (`mateAutomatedLine`): the task it is
@@ -1238,6 +1240,7 @@ export function changeLineWords(
   change: Extract<MateRowSecond, { readonly kind: "change" }>,
 ): string {
   if ((change.count ?? 1) > 1) return changesInReview(change.count ?? 1);
+  if (change.says !== undefined) return `${change.title} · ${change.says}`;
   return change.mine ? change.title : `${change.title} · in review`;
 }
 
@@ -1399,7 +1402,13 @@ export function mateRowSecond(input: {
    * where several of its changes wait.
    */
   readonly change:
-    | { readonly title: string; readonly mine: boolean; readonly count?: number }
+    | {
+        readonly title: string;
+        readonly mine: boolean;
+        readonly count?: number;
+        /** Whose press it waits for where its application limits who merges (`standingWord`). */
+        readonly says?: string | undefined;
+      }
     | undefined;
   /**
    * An automated Mate, and the task HQ says it is on: at work, asking, stopped or at its limit it
@@ -1460,7 +1469,10 @@ export function mateRowSecond(input: {
     return { kind: "paused", until: view.slot.until };
   }
   if (automated !== undefined) return automatedRowLine(automated, view.state);
-  const counted = (change?.count ?? 1) > 1 ? { count: change?.count ?? 1 } : {};
+  const counted = {
+    ...((change?.count ?? 1) > 1 ? { count: change?.count ?? 1 } : {}),
+    ...(change?.says === undefined ? {} : { says: change.says }),
+  };
   if (change?.mine === true) return { kind: "change", title: change.title, mine: true, ...counted };
   if (askLine?.kind === "sign-in") return { kind: "sign-in" };
   if (askLine?.kind === "draft") return { kind: "ask", pending: false };

@@ -24,7 +24,7 @@ import {
   type ReactNode,
 } from "react";
 
-import { REVIEW_LABEL } from "@t3tools/client-runtime/zerops";
+import { REVIEW_LABEL, standingPressLabel } from "@t3tools/client-runtime/zerops";
 import { Link } from "@tanstack/react-router";
 import { useHqAppDetailHold, useHqAppDetails } from "~/zerops/useHqAppDetail";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
@@ -1081,6 +1081,10 @@ export function CardMateLiftActions({
     case "fix":
       return <Button onClick={onFix}>Ask {name} to fix it</Button>;
     case "review":
-      return <Button onClick={(event) => onReview(event.currentTarget)}>{REVIEW_LABEL}</Button>;
+      return (
+        <Button onClick={(event) => onReview(event.currentTarget)}>
+          {standingPressLabel(lift.standing, REVIEW_LABEL)}
+        </Button>
+      );
   }
 }

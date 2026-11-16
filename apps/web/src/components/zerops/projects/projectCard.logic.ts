@@ -14,6 +14,8 @@ import {
   changeAsksForReview,
   changeInMateReview,
   changeState,
+  READY_TO_MERGE,
+  type ChangeStandingRead,
   ENVIRONMENT_NOT_ADDED,
   OUTSIDE_MATE,
   PRODUCTION_DEPLOYING,
@@ -47,7 +49,7 @@ import {
 } from "../SidebarMateRow.logic";
 import { NOT_IN_HQ_LINE } from "../ZeropsProjectRow.logic";
 import {
-  WAITING_VERBS,
+  waitingVerb,
   type WaitingChange,
   type WaitingItem,
   type WaitingMate,
@@ -58,7 +60,9 @@ import {
   mergedChangeWords,
   openChangeWords,
   releaseIsLive,
+  rowStanding,
   type MergedChangeWhere,
+  type RowStanding,
 } from "../system/ChangeRow.logic";
 import { releaseOfLanding, type HistoryReleaseInput } from "./projectHistory.logic";
 
@@ -115,7 +119,7 @@ export function projectReleaseWait(
   return undefined;
 }
 
-/** A project wait as the one list's item, for its words (`waitingPhrase`, `WAITING_VERBS`). */
+/** A project wait as the one list's item, for its words (`waitingPhrase`, `waitingVerb`). */
 function waitingItemOf(wait: ProjectWait): WaitingItem {
   return wait.kind === "review"
     ? { kind: "change", key: wait.key, mate: wait.mate }
@@ -125,7 +129,7 @@ function waitingItemOf(wait: ProjectWait): WaitingItem {
 /**
  * A wait in words, beside its verb: what waits, said from the Mate — "Juno asks: …", "Tess has a
  * plan for you to approve". The menu leads with the verb ("Answer Juno") because its rows carry no
- * button; here the button says it (`WAITING_VERBS`, the one table), so the line does not repeat it.
+ * button; here the button says it (`waitingVerb`, the one table), so the line does not repeat it.
  */
 export function projectWaitWords(wait: ProjectWait): {
   readonly text: string;
@@ -133,15 +137,17 @@ export function projectWaitWords(wait: ProjectWait): {
 } {
   const item = waitingItemOf(wait);
   const { name, text } = wait.mate;
-  const verb = WAITING_VERBS[item.kind];
+  const verb = waitingVerb(item);
   if (wait.kind === "review") {
     const count = wait.mate.changes ?? 1;
+    // To a person who cannot merge there it is ready for their ask, never theirs to review.
+    const waits = wait.change?.ask === true ? "ready" : "to review";
     return {
       text:
         count > 1
-          ? `${String(count)} changes from ${name} to review`
+          ? `${String(count)} changes from ${name} ${waits}`
           : wait.change === undefined
-            ? `A change from ${name} to review`
+            ? `A change from ${name} ${waits}`
             : `${name}'s change: ${wait.change.title}`,
       verb,
     };
@@ -162,7 +168,7 @@ export function projectWaitWords(wait: ProjectWait): {
 export function projectWaitLabel(wait: ProjectWait, project: string): string {
   const { name } = wait.mate;
   if (wait.kind === "review")
-    return `Review ${name}'s ${(wait.mate.changes ?? 1) > 1 ? "changes" : "change"} in ${project}`;
+    return `${waitingVerb(waitingItemOf(wait))} ${name}'s ${(wait.mate.changes ?? 1) > 1 ? "changes" : "change"} in ${project}`;
   switch (wait.ask) {
     case "question":
       return `Answer ${name} in ${project}`;
@@ -663,8 +669,12 @@ export type MateLift =
   | { readonly kind: "question" }
   /** Ask <Mate> to fix it */
   | { readonly kind: "fix" }
-  /** Review */
-  | { readonly kind: "review"; readonly pull: FlowPullRequest };
+  /** Review — or Ask to merge, where the viewer cannot merge it (`standing`, `rowStanding`). */
+  | {
+      readonly kind: "review";
+      readonly pull: FlowPullRequest;
+      readonly standing?: RowStanding | undefined;
+    };
 
 /** A Mate nobody has asked anything, its conversations read: the menu row's words for it. */
 export const NOTHING_ASKED_YET = "Nothing asked yet";
@@ -692,6 +702,12 @@ export function cardMateReading(input: {
   readonly review: FlowPullRequest | undefined;
   /** How many of its changes wait for review, where several do: the lift says how many. */
   readonly reviews?: number | undefined;
+  /**
+   * Where that change stands for the viewer (`useChangeStandingOf`): one they already asked the
+   * people who merge for waits on those people and lifts nothing; one that is theirs to ask for
+   * lifts *Ask to merge*.
+   */
+  readonly standing?: ChangeStandingRead | undefined;
   /** Its conversations are read: none asked is then a fact the line says, as the menu's does. */
   readonly read?: boolean | undefined;
   /** The menu row's line 2 for it (`cardSecondWords`): said wherever nothing lifts it. */
@@ -712,10 +728,12 @@ export function cardMateReading(input: {
       ? NOTHING_ASKED_YET
       : said.text;
   const tone = said.tone === "failed" ? "failed" : said.tone === "ink" ? "ink" : "muted";
+  const standing =
+    input.review === undefined ? undefined : rowStanding(input.review, input.standing);
   const lift: MateLift | undefined = !mine
     ? undefined
-    : input.review !== undefined && view.state !== "working"
-      ? { kind: "review", pull: input.review }
+    : input.review !== undefined && standing !== "waiting" && view.state !== "working"
+      ? { kind: "review", pull: input.review, ...(standing === undefined ? {} : { standing }) }
       : view.state === "needs"
         ? input.status === "planReady"
           ? { kind: "plan" }
@@ -727,12 +745,19 @@ export function cardMateReading(input: {
     return { text: input.line.text, tone: input.line.tone, lift };
   // A change lifted for review is named by its title, as its menu row names it: the Mate's last
   // words may be of another moment (a limit it hit).
-  if (lift?.kind === "review")
+  if (lift?.kind === "review") {
+    const says = input.standing?.word;
     return {
-      text: (input.reviews ?? 1) > 1 ? changesInReview(input.reviews ?? 1) : lift.pull.title,
+      text:
+        (input.reviews ?? 1) > 1
+          ? changesInReview(input.reviews ?? 1)
+          : says === undefined || says === READY_TO_MERGE
+            ? lift.pull.title
+            : `${lift.pull.title} · ${says}`,
       tone: "ink",
       lift,
     };
+  }
   return {
     text,
     tone: lift !== undefined && tone === "muted" ? "ink" : tone,
@@ -883,6 +908,11 @@ export interface CardChange {
    * (`setupChangeWords`), its `words` until then.
    */
   readonly setup?: true;
+  /**
+   * Where an open, reviewable one stands for the person looking past theirs to review
+   * (`rowStanding`): its `words` say it, and its row's press is *Ask to merge* or a plain *View*.
+   */
+  readonly standing?: RowStanding | undefined;
 }
 
 const newestFirst = (left: string | undefined, right: string | undefined) =>
@@ -984,18 +1014,27 @@ export function cardChanges(input: {
    * each in its release (`historyReleases`), so the card does not say them twice.
    */
   readonly unreleased?: boolean | undefined;
+  /**
+   * Where each open change stands for the person looking (`useChangeStandingOf`, by the
+   * application); absent, every one reads as theirs to review.
+   */
+  readonly standingOf?: ((pull: FlowPullRequest) => ChangeStandingRead) | undefined;
 }): ReadonlyArray<CardChange> {
   const open = input.open
     .toSorted((left, right) => newestFirst(left.updatedAt, right.updatedAt))
     .map((pull): CardChange => {
-      const state = openChangeWords(pull);
+      const setup = setupChangeWaits(pull);
+      const read = input.standingOf?.(pull);
+      const state = openChangeWords(pull, read);
+      const standing = rowStanding(pull, read);
       return {
         pull,
         open: true,
-        words: setupChangeWaits(pull) ? setupChangeWords(undefined) : state.words,
+        words: setup ? setupChangeWords(undefined) : state.words,
         tone: state.tone,
         at: pull.updatedAt,
-        ...(setupChangeWaits(pull) ? { setup: true as const } : {}),
+        ...(setup ? { setup: true as const } : {}),
+        ...(standing === undefined ? {} : { standing }),
       };
     });
   const merged = input.merged

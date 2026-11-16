@@ -7,12 +7,14 @@
  * here ships.
  */
 import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
-import type {
-  CanonicalEnvironmentRow as EnvironmentRow,
-  EnvironmentSlotRow,
-  FlowPullRequest,
-  FlowReleaseRow,
-  GroupFlow,
+import {
+  changeStandingOf,
+  type CanonicalEnvironmentRow as EnvironmentRow,
+  type ChangeStandingOf,
+  type EnvironmentSlotRow,
+  type FlowPullRequest,
+  type FlowReleaseRow,
+  type GroupFlow,
 } from "@t3tools/client-runtime/zerops";
 import { releaseNotCreatedWords } from "@t3tools/client-runtime/zerops/flow";
 import type { HqAppTask } from "@t3tools/shared/hqIntake";
@@ -72,6 +74,29 @@ import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsD
 
 const NOW = Date.now();
 const PAGE_PARAMS = new URLSearchParams(location.search);
+
+/**
+ * `?viewer=limited` or `?viewer=asked`: Tea Shop limits who merges — Ada K. and Sam R. do.
+ * `limited` looks as Dana L., who cannot merge there: one change ready for her ask, one she asked
+ * for. `asked` looks as Ada K., whom Dana L. asked to merge one. Without it nobody is limited.
+ */
+export const HARNESS_VIEWER = PAGE_PARAMS.get("viewer");
+const HARNESS_MERGERS = { people: ["ada", "sam"] };
+/** Who looks at the harness's pages (`ChangeStandingContext`); `null`: nobody is limited. */
+export const HARNESS_STANDING: ChangeStandingOf | null =
+  HARNESS_VIEWER !== "limited" && HARNESS_VIEWER !== "asked"
+    ? null
+    : changeStandingOf(
+        {
+          apps: {
+            tea: { merges: HARNESS_VIEWER === "limited" ? "held" : "yes", ...HARNESS_MERGERS },
+          },
+          names: { ada: "Ada K.", sam: "Sam R.", dana: "Dana L." },
+        },
+        { userId: HARNESS_VIEWER === "limited" ? "dana" : "ada" },
+      );
+/** Dana L.'s ask to merge, on the change she asked for. */
+export const HARNESS_ASK = { by: "dana", at: new Date(NOW - 25 * 60_000).toISOString() };
 const ago = (minutes: number) => new Date(NOW - minutes * 60_000).toISOString();
 const nothing = () => {};
 const sha = (seed: string) => seed.padEnd(40, "0").slice(0, 40);
@@ -927,6 +952,7 @@ function harnessFacts(groupId: string, flow: GroupFlow): ProjectPageFacts {
   return {
     brought: input === undefined ? [] : broughtBy(input.merged, input.releases),
     changes: cardChanges({
+      standingOf: HARNESS_STANDING === null ? undefined : (pull) => HARNESS_STANDING(groupId, pull),
       open: flow.pullRequests.map((change) => change.pull),
       merged: input?.merged ?? [],
       releases: input?.releases ?? [],

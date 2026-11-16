@@ -8,7 +8,12 @@
  * its bead as the line draws it, its title, then columns — what stops it, where anything does;
  * whose and when; *Review* where a review is due, else the mark of where the row leads.
  */
-import type { FlowPullRequest } from "@t3tools/client-runtime/zerops";
+import {
+  REVIEW_LABEL,
+  standingPressLabel,
+  standingWaits,
+  type FlowPullRequest,
+} from "@t3tools/client-runtime/zerops";
 import { ArrowUpRightIcon, ChevronRightIcon, GitMergeIcon, GitPullRequestIcon } from "lucide-react";
 import { use, useEffect, useRef, useState, type ReactNode } from "react";
 
@@ -21,7 +26,7 @@ import { compactSidebarTimeLabel } from "../../Sidebar.logic";
 import { Button } from "../../ui/button";
 import type { CardChange } from "../projects/projectCard.logic";
 import { changeTitle } from "../projects/projectHistory.logic";
-import { changeReviewable } from "./ChangeRow.logic";
+import { changeReviewable, type RowStanding } from "./ChangeRow.logic";
 import { LedgerRows, PageRows } from "./pageRows";
 import { lineChangeKey, type LineBead } from "./projectLine.logic";
 
@@ -93,6 +98,11 @@ export type ChangeRowSubject =
 export type ChangeRowProps = ChangeRowSubject & {
   /** Still open: *Review* stands at its end, where no other `verb` is given. */
   readonly open?: boolean;
+  /**
+   * Where a reviewable change stands for the person looking (`rowStanding`): its press says *Ask
+   * to merge* where they cannot merge, a plain *View* once they asked. Absent: *Review*.
+   */
+  readonly standing?: RowStanding | undefined;
   /** Whose, and where it stands: `changeRowLine(mate, words)` — "Juno · Ready to merge". */
   readonly line?: string | undefined;
   readonly tone?: CardChange["tone"] | undefined;
@@ -128,7 +138,7 @@ export type ChangeRowProps = ChangeRowSubject & {
  * has no verb ends in a chevron while it is pointed at or focused.
  */
 export function ChangeRow(props: ChangeRowProps) {
-  const { pull, open = false, line, tone, at, by, face, bead, onOpen, verb } = props;
+  const { pull, open = false, standing, line, tone, at, by, face, bead, onOpen, verb } = props;
   // One title for a change on every page: GitHub's squash suffix "(#17)" is never part of it.
   const title = changeTitle(pull?.title ?? props.title ?? "");
   const Icon = open ? GitPullRequestIcon : GitMergeIcon;
@@ -179,9 +189,9 @@ export function ChangeRow(props: ChangeRowProps) {
         data-zerops-surface="card-change-review"
         render={<span />}
         size="xs"
-        variant="secondary"
+        variant={standingWaits(standing) ? "ghost" : "secondary"}
       >
-        Review
+        {standingPressLabel(standing, REVIEW_LABEL)}
       </Button>
     </span>
   ) : goes ? (

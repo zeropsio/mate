@@ -25,6 +25,7 @@
 import {
   OUTSIDE_MATE,
   PRODUCTION_OUTSIDE_MATE,
+  ASK_TO_MERGE,
   REVIEW_LABEL,
   type FlowPullRequest,
   type GroupFlow,
@@ -62,6 +63,11 @@ export interface LineBead {
   readonly line: string;
   /** The change it opens, as its row in the Changes list does; none for work not yet a change. */
   readonly pull: FlowPullRequest | undefined;
+  /**
+   * The person cannot merge it and nobody asked yet (`CardChange.standing` `to-ask`): what it
+   * waits on is their ask to merge, and the segment's verb says so.
+   */
+  readonly asks?: true | undefined;
 }
 
 export interface LineStation {
@@ -220,9 +226,11 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
     title: change.pull.title,
     line: changeRowLine(
       mateName(change.pull.mateProjectId),
-      mark === "waits" ? READY_FOR_REVIEW : change.words,
+      // Its standing where it has one — "Ready", "Dana L. asks to merge" — is its words already.
+      mark === "waits" && change.standing === undefined ? READY_FOR_REVIEW : change.words,
     ),
     pull: change.pull,
+    ...(change.standing === "to-ask" ? { asks: true as const } : {}),
   });
   const others = (changes: ReadonlyArray<{ readonly mateProjectId: string }>) =>
     changes.filter((change) => !owned(change.mateProjectId)).length;
@@ -672,7 +680,8 @@ export function projectLineFull(
       case "work": {
         // The newest that waits on the person stands nearest `main`: it is the next one.
         const waits = segment.beads.filter((bead) => bead.mark === "waits");
-        const pull = waits.at(-1)?.pull;
+        const next = waits.at(-1);
+        const pull = next?.pull;
         return {
           ...segment,
           verb:
@@ -680,7 +689,13 @@ export function projectLineFull(
               ? undefined
               : {
                   kind: "review-change",
-                  label: waits.length === 1 ? REVIEW_LABEL : REVIEW_NEXT_LABEL,
+                  // A person who cannot merge it asks for it, in its review: never *Review*.
+                  label:
+                    next?.asks === true
+                      ? ASK_TO_MERGE
+                      : waits.length === 1
+                        ? REVIEW_LABEL
+                        : REVIEW_NEXT_LABEL,
                   pull,
                 },
         };

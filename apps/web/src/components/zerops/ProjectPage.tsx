@@ -29,6 +29,7 @@ import { useOpenPutLive } from "~/zerops/putLive";
 import { useEnvironmentSetup } from "~/zerops/useEnvironmentSetup";
 import { useAppMergers } from "~/zerops/useAppMergers";
 import { useAppOutsideProduction } from "~/zerops/useAppOutsideProduction";
+import { useChangeStandingOf } from "~/zerops/useChangeStandingOf";
 import { useNowMs } from "~/zerops/useNowMs";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { Button } from "../ui/button";
@@ -274,6 +275,8 @@ function useProjectPageFacts(
   const { withheldNotice } = useWithheldStops(environments);
   const orgName = useZeropsSessionOptional()?.activeOrganization?.name;
   const nowMs = useNowMs();
+  // Whose press each open change waits for where the application limits who merges.
+  const standingOf = useChangeStandingOf();
   // Why the last release did not go live, as production's own page says it, where HQ names the
   // services it could not create. Read from the flow alone: what Zerops lists there is the place
   // page's own read.
@@ -347,7 +350,11 @@ function useProjectPageFacts(
         });
   return {
     brought: liveBrought(flow),
-    changes: pageChanges({ flow: groupFlow, read: flow }),
+    changes: pageChanges({
+      flow: groupFlow,
+      read: flow,
+      standingOf: (pull) => standingOf(groupId, pull),
+    }),
     changesUnknown:
       flow === undefined || !flow.changesKnown
         ? (flow?.changesFailure ?? "Reading its changes…")
