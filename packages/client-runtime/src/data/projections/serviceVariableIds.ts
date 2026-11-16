@@ -10,7 +10,7 @@ import { serviceVariablesScope } from "../families/serviceVariables.ts";
 import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
 
-export interface ServiceVariableIdsKey {
+interface ServiceVariableIdsKey {
   readonly orgId: string;
   readonly projectId: string;
   readonly serviceId: string;

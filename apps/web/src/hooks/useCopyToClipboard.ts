@@ -24,7 +24,7 @@ export class ClipboardWriteError extends Schema.TaggedError<ClipboardWriteError>
   }
 }
 
-export class ClipboardReadUnavailableError extends Schema.TaggedError<ClipboardReadUnavailableError>()(
+class ClipboardReadUnavailableError extends Schema.TaggedError<ClipboardReadUnavailableError>()(
   "ClipboardReadUnavailableError",
   {
     target: Schema.String,
@@ -35,13 +35,10 @@ export class ClipboardReadUnavailableError extends Schema.TaggedError<ClipboardR
   }
 }
 
-export class ClipboardReadError extends Schema.TaggedError<ClipboardReadError>()(
-  "ClipboardReadError",
-  {
-    target: Schema.String,
-    cause: Schema.Defect(),
-  },
-) {
+class ClipboardReadError extends Schema.TaggedError<ClipboardReadError>()("ClipboardReadError", {
+  target: Schema.String,
+  cause: Schema.Defect(),
+}) {
   override get message(): string {
     return `Failed to read ${this.target} from the clipboard.`;
   }

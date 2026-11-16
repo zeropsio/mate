@@ -123,7 +123,7 @@ export function pullRequestStateWords(
 }
 
 /** How a task ended (`HqNavigationMateTask.ended`). */
-export type TaskEnding = NonNullable<HqNavigationMateTask["ended"]>;
+type TaskEnding = NonNullable<HqNavigationMateTask["ended"]>;
 
 /**
  * Where a conversation's task stands now, from the task its Mate is on or last worked (HQ's
@@ -133,7 +133,7 @@ export type TaskEnding = NonNullable<HqNavigationMateTask["ended"]>;
  * (between runs, or done with its change open: the task's record says which); or the pull request
  * its change is on GitHub.
  */
-export type TaskChain =
+type TaskChain =
   | { readonly kind: "unknown" }
   | { readonly kind: "earlier" }
   | {
@@ -219,7 +219,7 @@ export function automatedAgentsLine(name: string, key: AutomatedKeyState): strin
  * who sets it — or, where this HQ turned out older than automated Mates, that it needs updating.
  * Nothing while the key is set or not read.
  */
-export type NewMateKeyNote =
+type NewMateKeyNote =
   | { readonly kind: "missing"; readonly canSet: boolean }
   | { readonly kind: "update" }
   | null;

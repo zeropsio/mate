@@ -135,7 +135,7 @@ export function backgroundBand(background: NonNullable<DockModel["background"]>)
 }
 
 /** A line of what still runs after the Mate's turn, at its card's foot (`afterWorkLines`). */
-export interface AfterWorkLine {
+interface AfterWorkLine {
   readonly key: string;
   readonly title: string;
   /** Whose it is, in words; none on the line that names nothing. */

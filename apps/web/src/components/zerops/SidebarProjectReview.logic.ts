@@ -159,7 +159,7 @@ export function reviewTagLabel(
 }
 
 /** The mark after a name: what asks for review there, else what its Mate still works on. */
-export interface ReviewMark {
+interface ReviewMark {
   /** Something there asks for the person's review; else every change is still in progress. */
   readonly asks: boolean;
   /** How many it stands for: those that ask, else those in progress. */
@@ -234,7 +234,7 @@ export function releaseTagTip(release: ReleaseWaiting): string {
   return `${atLeast ? "At least " : ""}${what} for production`;
 }
 
-export interface ShownReviewItem {
+interface ShownReviewItem {
   readonly item: ProjectReviewItem;
   /** It has left the project's list: it fades where it stood, then goes. */
   readonly leaving: boolean;

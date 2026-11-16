@@ -57,7 +57,7 @@ export const setIntake: OperationKind<"set-intake"> = {
   ),
 };
 
-export const stopIntake: OperationKind<"stop-intake"> = {
+const stopIntake: OperationKind<"stop-intake"> = {
   kind: "stop-intake",
   executor: "hq",
   ...shownInFacts(
@@ -66,13 +66,13 @@ export const stopIntake: OperationKind<"stop-intake"> = {
   ),
 };
 
-export const setAiKey: OperationKind<"set-ai-key"> = {
+const setAiKey: OperationKind<"set-ai-key"> = {
   kind: "set-ai-key",
   executor: "hq",
   reflected: (_read, _intent, receipt) => receipt.outcome.kind === "succeeded",
 };
 
-export const removeAiKey: OperationKind<"remove-ai-key"> = {
+const removeAiKey: OperationKind<"remove-ai-key"> = {
   kind: "remove-ai-key",
   executor: "hq",
   reflected: (_read, _intent, receipt) => receipt.outcome.kind === "succeeded",

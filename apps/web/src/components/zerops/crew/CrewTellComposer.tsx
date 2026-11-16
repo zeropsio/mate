@@ -47,7 +47,7 @@ import {
 /** Reading only the trigger under the caret, before any search. */
 const NO_SEARCH = { environmentId: null, cwd: null, query: null };
 
-export interface CrewComposerLead {
+interface CrewComposerLead {
   readonly name: string;
   readonly tint: Crewmate["tint"];
   readonly face: MateMarkState;

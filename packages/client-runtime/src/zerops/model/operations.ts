@@ -424,7 +424,7 @@ function buildBootstrapOperation(group: BootstrapGroup): ZeropsOperation {
 
 // --- the fold ------------------------------------------------------------------
 
-export interface ZeropsOperationsReduction {
+interface ZeropsOperationsReduction {
   readonly operations: ReadonlyArray<ZeropsOperation>;
   readonly genericCalls: ReadonlyArray<ZeropsCall>;
 }

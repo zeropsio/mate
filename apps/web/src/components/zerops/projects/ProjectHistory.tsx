@@ -30,7 +30,7 @@ import {
 } from "./projectHistory.logic";
 
 /** A change as History opens it: by its repository and number. */
-export type HistoryChangeKey = Pick<FlowPullRequest, "repository" | "number">;
+type HistoryChangeKey = Pick<FlowPullRequest, "repository" | "number">;
 
 /** A project's History from its recorded release membership and domain change rows. */
 export function ProjectHistory({

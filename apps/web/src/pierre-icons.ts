@@ -4,7 +4,7 @@ import {
   type FileTreeIcons,
 } from "@pierre/trees";
 
-export interface PierreIconResolution {
+interface PierreIconResolution {
   name: string;
   token?: string;
 }

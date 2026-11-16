@@ -13,7 +13,7 @@ import * as Schema from "effect/Schema";
 import type { ScopeKey } from "../model.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
 
-export type HqMateValue = HqAttentionScopeValue;
+type HqMateValue = HqAttentionScopeValue;
 
 declare module "../model.ts" {
   interface FamilyValues {

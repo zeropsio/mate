@@ -27,7 +27,7 @@ export interface VariableRow {
   readonly lastUpdate: string | null;
 }
 
-export interface ProjectVariablesValue {
+interface ProjectVariablesValue {
   readonly rows: ReadonlyArray<VariableRow>;
   /** Whether every row was readable: a damaged one is left out, and its absence proves nothing. */
   readonly complete: boolean;

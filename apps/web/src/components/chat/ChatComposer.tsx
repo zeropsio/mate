@@ -156,7 +156,6 @@ import { useDatabaseCatalog, useDatabaseMentionRead } from "../../zerops/useData
 import { useZeropsDataMentions } from "../../zerops/useZeropsDataMentions";
 import { composerModelOptionsFor, isNewConversation } from "../../zerops/newConversationEffort";
 import { getProviderModelCapabilities } from "../../providerModels";
-import { zeropsCommands } from "../../state/zeropsCommands";
 import type { VaultChange } from "@t3tools/client-runtime/data";
 import { ComposerPendingReviewComments } from "./ComposerPendingReviewComments";
 import { ComposerPendingVaultChanges } from "./ComposerPendingVaultChanges";
@@ -527,7 +526,7 @@ export interface ChatComposerHandle {
 // Props
 // --------------------------------------------------------------------------
 
-export interface ChatComposerProps {
+interface ChatComposerProps {
   composerDraftTarget: ScopedThreadRef | DraftId;
   environmentId: EnvironmentId;
   attachmentUploadsCapabilityKnown: boolean;

@@ -4,10 +4,10 @@ import type { ProjectReviewTags } from "~/components/zerops/SidebarProjectReview
 import type { ProjectSitesInput } from "~/components/zerops/SidebarProjectSites";
 
 /** What a project's row hands its Review tag (`ProjectReviewTags`). */
-export type ProjectReviewInput = Parameters<typeof ProjectReviewTags>[0];
+type ProjectReviewInput = Parameters<typeof ProjectReviewTags>[0];
 
 /** One project as the menu drew it: its places, what waits on a review, and its Mates. */
-export interface ProjectParts {
+interface ProjectParts {
   readonly mateIds: ReadonlyArray<string>;
   readonly sites: ProjectSitesInput | undefined;
   readonly review: ProjectReviewInput | undefined;

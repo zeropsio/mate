@@ -26,7 +26,7 @@ import {
 
 export type AskDensity = "full" | "compact";
 
-export interface AskCardProps {
+interface AskCardProps {
   /** The ask's identity: what "Show in conversation" lands on. */
   readonly askId: string;
   /** Which kind of ask it is ("vault"), for what reads the card and the composer's top. */

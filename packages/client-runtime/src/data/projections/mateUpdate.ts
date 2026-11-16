@@ -7,13 +7,13 @@ import { updateServer } from "../operations/mateUpdate.ts";
 import { mateOfEnvironment } from "./mateLinks.ts";
 import { operationProgress } from "./operation.ts";
 
-export type MateUpdateState =
+type MateUpdateState =
   | { readonly phase: "idle" | "checking" | "already-current" }
   | { readonly phase: "updating"; readonly to: string }
   /** `to` null: only zcp moved (`zcp`), the mate stayed on its version. */
   | { readonly phase: "updated"; readonly to: string | null; readonly zcp?: string }
   | { readonly phase: "failed"; readonly message: string };
-export interface MateUpdateRead {
+interface MateUpdateRead {
   readonly state: MateUpdateState;
   readonly checked: ExecutionEnvironmentUpdate | null | undefined;
   readonly notice?: string | undefined;

@@ -26,7 +26,7 @@ const WEB = /^(?:https?|mailto):/iu;
  * Where a README link goes: a repository path, resolved from the README's own folder (a leading
  * `/` from the repository's root); an outside web address; or nowhere this page can open.
  */
-export const readmeLink = (
+const readmeLink = (
   href: string,
   from: string,
 ):
@@ -67,7 +67,7 @@ type HastNode = {
 };
 
 /** Images of the repository a document draws; any further one shows as a link. */
-export const REPO_IMAGES = 20;
+const REPO_IMAGES = 20;
 
 /**
  * The first {@link REPO_IMAGES} images of the repository kept, marked to be drawn from its bytes;

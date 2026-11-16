@@ -16,7 +16,7 @@ import type { ScopeKey } from "../model.ts";
 import { STREAM_POLICY } from "../streamMachine.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
 
-export type ServiceAgentsValue = ReadonlyArray<ZeropsAgentType>;
+type ServiceAgentsValue = ReadonlyArray<ZeropsAgentType>;
 
 declare module "../model.ts" {
   interface FamilyValues {

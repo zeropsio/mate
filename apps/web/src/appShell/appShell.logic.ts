@@ -28,7 +28,7 @@ export const APP_SHELL_CACHE_PREFIX = "mate-app-";
 export const SHELL_CACHE = `${APP_SHELL_CACHE_PREFIX}shell-v1`;
 /** The bundle's content-named files: the kept build's and the one before it ({@link assetsToEvict}). */
 export const ASSET_CACHE = `${APP_SHELL_CACHE_PREFIX}assets-v1`;
-export const KNOWN_CACHES: ReadonlySet<string> = new Set([SHELL_CACHE, ASSET_CACHE]);
+const KNOWN_CACHES: ReadonlySet<string> = new Set([SHELL_CACHE, ASSET_CACHE]);
 
 /** The page is the same document at every app address (the host's SPA fallback): kept once. */
 export const SHELL_CACHE_KEY_PATH = "/";
@@ -50,7 +50,7 @@ export const PRECACHE_CALM_MS = 6_000;
 /** Paths the origin serves itself or that belong to a backend, never the app's page. */
 const NEVER_THE_PAGE_PREFIXES = ["/mate", "/assets", "/fonts"] as const;
 
-export type AppShellRoute = "shell" | "asset" | "pass";
+type AppShellRoute = "shell" | "asset" | "pass";
 
 export interface AppShellRequest {
   readonly method: string;
@@ -190,7 +190,7 @@ export function readShellFiles(html: string): string[] | undefined {
 }
 
 /** A static route the browser applies before waking the worker (the Static Routing API). */
-export interface AppShellStaticRoute {
+interface AppShellStaticRoute {
   readonly condition:
     | { readonly urlPattern: Readonly<Record<string, string>> }
     | { readonly requestMode: "navigate" };

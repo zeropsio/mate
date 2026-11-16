@@ -22,7 +22,7 @@ import type {
   ZeropsTimelineEntry,
 } from "./types.ts";
 
-export interface ZeropsThreadModelInput {
+interface ZeropsThreadModelInput {
   readonly activities: ReadonlyArray<OrchestrationThreadActivity>;
   /**
    * The lifecycle feed; `recentTools` is ignored. Only a known snapshot, stale or not, carries an

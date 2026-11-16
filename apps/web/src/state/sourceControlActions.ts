@@ -29,14 +29,14 @@ import { sourceControlEnvironment } from "./sourceControl";
 import { useAtomCommand } from "./use-atom-command";
 import { vcsActionManager, vcsEnvironment } from "./vcs";
 
-export type SourceControlActionKind =
+type SourceControlActionKind =
   | "init"
   | "pull"
   | "publishRepository"
   | "runStackedAction"
   | "preparePullRequestThread";
 
-export interface SourceControlActionScope {
+interface SourceControlActionScope {
   readonly environmentId: EnvironmentId | null;
   readonly cwd: string | null;
 }
@@ -342,7 +342,7 @@ export function usePreparePullRequestThreadAction(scope: SourceControlActionScop
   });
 }
 
-export interface PullRequestResolutionTarget {
+interface PullRequestResolutionTarget {
   readonly environmentId: EnvironmentId | null;
   readonly cwd: string | null;
   readonly reference: string | null;

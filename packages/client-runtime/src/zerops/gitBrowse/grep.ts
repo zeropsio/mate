@@ -8,7 +8,7 @@ import { GitGrep, GitGrepQuery, type GitGrepMatch } from "@t3tools/shared/hqGitB
 
 export const grepRead = { query: GitGrepQuery, value: GitGrep, moving: false } as const;
 
-export interface GrepFile {
+interface GrepFile {
   readonly path: string;
   readonly matches: ReadonlyArray<GitGrepMatch>;
 }

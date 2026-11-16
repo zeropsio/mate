@@ -12,7 +12,7 @@ import type { AccountStore } from "../store.ts";
 import type { StreamEvent, StreamFault } from "../streamMachine.ts";
 import type { LinkOptions } from "../supervisor.ts";
 
-export type MateSourceEvent<Value> =
+type MateSourceEvent<Value> =
   | { readonly kind: "session" }
   | { readonly kind: "session-lost" }
   | { readonly kind: "value"; readonly value: Value };
@@ -25,7 +25,7 @@ const defectText = (defect: unknown): string =>
   typeof defect === "string" ? defect : defect instanceof Error ? defect.message : String(defect);
 
 /** How the wire's failure classifies: a Mate without the method, a refusal, or a transient. */
-export function classifyMateSourceFailure(
+function classifyMateSourceFailure(
   cause: Cause.Cause<unknown>,
   label: string,
 ): StreamFault | "unsupported" {

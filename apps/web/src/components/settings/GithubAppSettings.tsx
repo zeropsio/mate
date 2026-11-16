@@ -62,7 +62,7 @@ import { IntegrationRow } from "./IntegrationRow";
 import { searchableSetting } from "./settingsSearch";
 import { taskSourceProblem, workingWords } from "./taskSourcesSettings.logic";
 
-export interface GithubAppControls {
+interface GithubAppControls {
   readonly read: TaskSourceSettingValue<"hqGithub">;
   /** Reads the apps again, where HQ's answer failed. */
   readonly again: () => void;
@@ -80,7 +80,7 @@ export interface GithubAppControls {
 }
 
 /** An HQ application's name by its id, as HQ's structure names it. */
-export type ApplicationNameOf = (applicationId: string) => string | undefined;
+type ApplicationNameOf = (applicationId: string) => string | undefined;
 const NO_APPLICATIONS: ApplicationNameOf = () => undefined;
 
 export function GithubAppSettings({

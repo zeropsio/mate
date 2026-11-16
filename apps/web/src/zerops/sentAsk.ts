@@ -1,5 +1,3 @@
-import { EnvironmentId, ThreadId } from "@t3tools/contracts";
-import { environmentThreadDetails } from "../state/threads";
 /** Surface binding for the account's turn receipts; no second copy of sent words. */
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { makeSendTurnReceipts } from "@t3tools/client-runtime/data";
@@ -7,7 +5,6 @@ import { Atom } from "effect/reactivity";
 import { useContext, useMemo } from "react";
 import { useAccountStoreForAdapters } from "./ZeropsAccountData";
 import { onAccountLifetimeClose } from "./accountLifetime";
-export type { SentAsk } from "@t3tools/client-runtime/data";
 
 const holders = new WeakMap<object, ReturnType<typeof makeSendTurnReceipts>>();
 const active = new Set<ReturnType<typeof makeSendTurnReceipts>>();

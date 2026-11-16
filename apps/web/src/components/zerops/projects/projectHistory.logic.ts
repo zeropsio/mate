@@ -7,7 +7,7 @@ import type {
 } from "@t3tools/client-runtime/zerops";
 
 /** How many releases History shows before *Show all*. */
-export const HISTORY_RELEASES = 5;
+const HISTORY_RELEASES = 5;
 
 /** A release as History reads it: newest first, as the flow lists them. */
 export type HistoryReleaseInput = Pick<FlowReleaseRow, "tag" | "taggedAt"> &

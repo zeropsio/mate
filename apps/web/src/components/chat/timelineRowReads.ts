@@ -5,7 +5,7 @@
  */
 import { createContext, use, useLayoutEffect } from "react";
 
-export interface TimelineRowReads {
+interface TimelineRowReads {
   /** A row begins to read; the returned call says it is done. */
   readonly hold: () => () => void;
   /** A row is about to stand at a height of its own saying; the returned call says it does. */

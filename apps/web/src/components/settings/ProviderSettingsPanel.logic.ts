@@ -7,7 +7,7 @@ import {
 
 import type { ZeropsMateAt, ZeropsMateDirectory } from "../../zerops/mateIdentities";
 
-export interface ProviderEnvironmentOptionLike {
+interface ProviderEnvironmentOptionLike {
   readonly environmentId: EnvironmentId;
   readonly label: string;
 }

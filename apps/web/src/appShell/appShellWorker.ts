@@ -25,7 +25,7 @@ import {
   type StepOutcome,
 } from "./appShell.logic";
 
-export interface AppShellWorkerHost {
+interface AppShellWorkerHost {
   readonly caches: CacheStorage;
   readonly fetch: (input: Request | string, init?: RequestInit) => Promise<Response>;
   /** The worker's registration scope (`self.registration.scope`). */
@@ -39,7 +39,7 @@ export interface AppShellWorkerHost {
 }
 
 /** Work that outlives the answer (`event.waitUntil`). */
-export type KeepAlive = (work: Promise<unknown>) => void;
+type KeepAlive = (work: Promise<unknown>) => void;
 
 function factsOf(response: Response): ResponseFacts {
   return {

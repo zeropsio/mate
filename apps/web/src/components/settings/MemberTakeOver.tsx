@@ -13,13 +13,13 @@ import { Failure } from "../ui/failure";
 import { Loading } from "../ui/loading";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 
-export interface TakeOverPerson {
+interface TakeOverPerson {
   readonly userId: string;
   readonly name: string;
 }
 
 /** Whom a Mate's key goes to without a pick: its owner, when an active member other than the leaver. */
-export function keyGoesTo(
+function keyGoesTo(
   item: HqTakeOverItem,
   member: string,
   people: ReadonlyArray<TakeOverPerson>,

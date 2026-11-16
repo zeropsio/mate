@@ -15,7 +15,7 @@ import type { Row } from "../reducer.ts";
 import type { AccountStore } from "../store.ts";
 import type { StreamEvent } from "../streamMachine.ts";
 
-export interface SeededProjectPerson {
+interface SeededProjectPerson {
   /** The row HQ recorded this project's starts from; one nobody is signed in to, unless named. */
   readonly recording?: "navigation-project.signed-in" | "navigation-project.no-signer";
   readonly ownerUserId?: string | null;
@@ -27,7 +27,7 @@ export interface SeededProjectPerson {
   readonly everSignedIn?: HqNavigationProject["everSignedIn"];
 }
 
-export interface SeededProjectPeople {
+interface SeededProjectPeople {
   readonly projects: Readonly<Record<string, SeededProjectPerson>>;
   readonly people?: Readonly<
     Record<

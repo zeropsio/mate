@@ -16,7 +16,7 @@ const NO_READ = Atom.make(0);
 const NO_LIVE = Atom.make(false);
 
 /** The credit forecast as a dialog holds it: what it says, and whether its reads have answered. */
-export interface CreditForecastRead {
+interface CreditForecastRead {
   /** A new project here waits for credit (`creditForecast`). */
   readonly forecast: boolean;
   /** Both reads made since the dialog opened have come back: the forecast says all it will. */

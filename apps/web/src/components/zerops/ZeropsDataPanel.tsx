@@ -79,7 +79,7 @@ import { ZeropsDataTree } from "./ZeropsDataTree";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 import { Badge } from "~/components/ui/badge";
 
-export interface ZeropsDataPanelProps {
+interface ZeropsDataPanelProps {
   readonly threadRef: ScopedThreadRef | null;
   /** Hostname of the service this tab is for; undefined = the picker tab (service list only). */
   readonly service?: string | undefined;

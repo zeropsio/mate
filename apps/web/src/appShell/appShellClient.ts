@@ -11,7 +11,7 @@
 
 import { outcomeOf } from "./appShell.logic";
 
-export type AppShellWorkerMode = "app-shell" | "retire" | "none";
+type AppShellWorkerMode = "app-shell" | "retire" | "none";
 
 export interface AppShellWorkerSite {
   /** `VITE_APP_SHELL_WORKER` as built. */

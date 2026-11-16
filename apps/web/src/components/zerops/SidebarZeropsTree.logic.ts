@@ -43,7 +43,7 @@ export function isQuietMate(
 }
 
 /** What a key does on a Mate's row: j and k move, x stops it, e marks it read or unread. */
-export type SidebarMateKeyAction = "next" | "previous" | "stop" | "unread";
+type SidebarMateKeyAction = "next" | "previous" | "stop" | "unread";
 
 export function sidebarMateKey(input: {
   readonly key: string;

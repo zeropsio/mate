@@ -44,10 +44,10 @@ import {
 import type { LineStationFull, ProjectLineFullView, ProjectLineView } from "./projectLine.logic";
 
 /** The control's words, closed and open. */
-export const SHOW_FULL_PICTURE = "Show the full picture";
+const SHOW_FULL_PICTURE = "Show the full picture";
 const SHOW_LESS = "Show less";
 
-export type ProjectLineFullDoor =
+type ProjectLineFullDoor =
   | ({
       readonly kind: "here";
       /** The line in full (`projectLineFull(…)`), read whether or not it is open. */
@@ -63,7 +63,7 @@ export type ProjectLineFullDoor =
       readonly onOpen: () => void;
     };
 
-export interface ProjectLineProps {
+interface ProjectLineProps {
   readonly view: ProjectLineView | undefined;
   /** The project's reads have not answered: the line's shape alone. */
   readonly held?: boolean | undefined;

@@ -35,7 +35,7 @@ declare module "../model.ts" {
 /** The owner's answer is the end, given once the team was read again. */
 const answered = { executor: "zerops", reflected: () => true } as const;
 
-export const setOrgRole: OperationKind<"set-org-role"> = { kind: "set-org-role", ...answered };
-export const removeMember: OperationKind<"remove-member"> = { kind: "remove-member", ...answered };
+const setOrgRole: OperationKind<"set-org-role"> = { kind: "set-org-role", ...answered };
+const removeMember: OperationKind<"remove-member"> = { kind: "remove-member", ...answered };
 
 export const TEAM_KINDS = [setOrgRole, removeMember] as const;

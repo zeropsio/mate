@@ -151,7 +151,7 @@ export const databasePanel: Projection<
     sameValue(left, right),
 };
 
-export interface DatabaseCatalogRead {
+interface DatabaseCatalogRead {
   readonly status: "loading" | "ready" | "failed";
   readonly entries: ReadonlyArray<DataMentionEntry>;
   readonly coverage: Coverage;

@@ -128,7 +128,7 @@ export type SettledDeployment = Exclude<Deployment, { readonly kind: "deploying"
 export const NOTHING_DEPLOYED = "Nothing deployed yet";
 export const CHECKING_WHAT_RUNS = "Checking what runs here…";
 /** A stop's word for a deploy nobody has reported a build status for. */
-export const RUNNING_WORD = "Deployed";
+const RUNNING_WORD = "Deployed";
 
 /**
  * When the version a stop runs went live: `null` while it runs nothing, builds,

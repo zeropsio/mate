@@ -18,7 +18,7 @@ export interface VaultText {
   readonly sensitive: string;
 }
 
-export interface VaultTextProblem {
+interface VaultTextProblem {
   readonly section: VaultTextSection;
   /** The line's index in its section, from 0. */
   readonly line: number;
@@ -26,9 +26,9 @@ export interface VaultTextProblem {
   readonly message: string;
 }
 
-export type VaultTextMark = "+" | "~" | "!" | null;
+type VaultTextMark = "+" | "~" | "!" | null;
 
-export interface VaultTextDiff {
+interface VaultTextDiff {
   /** Adds, then updates, then removals. */
   readonly writes: ReadonlyArray<VaultWrite>;
   readonly problems: ReadonlyArray<VaultTextProblem>;

@@ -16,13 +16,13 @@ import { useCallback, useContext, useEffect, useRef, useState } from "react";
 
 import { captureAccountLifetime, onAccountLifetimeClose } from "../accountLifetime";
 
-export type CrewProposalState =
+type CrewProposalState =
   | { readonly kind: "idle" }
   | { readonly kind: "proposing" }
   /** `cause` is what the request failed with, for the row's words. */
   | { readonly kind: "failed"; readonly cause: unknown };
 
-export interface UseCrewProposal {
+interface UseCrewProposal {
   readonly state: CrewProposalState;
   /** The proposed crew, or `null` when it failed, was cancelled or one is already on its way. */
   readonly propose: (input: CrewProposalInput) => Promise<CrewProposal | null>;

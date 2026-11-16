@@ -44,7 +44,7 @@ export type InviteeCheck =
  * An invitation: to an app, at one level on all of its projects — or, from the Team page, with a
  * membership and each project's own level.
  */
-export type InviteMemberIntent = {
+type InviteMemberIntent = {
   readonly orgId: string;
   readonly email: string;
   readonly invitee: Invitee;
@@ -140,23 +140,23 @@ declare module "../model.ts" {
 /** The owner's answer is the end, given once the shown people were read again. */
 const answered = { executor: "zerops", reflected: () => true } as const;
 
-export const checkInvitee: OperationKind<"check-invitee"> = { kind: "check-invitee", ...answered };
-export const inviteMember: OperationKind<"invite-member"> = { kind: "invite-member", ...answered };
-export const resendInvitation: OperationKind<"resend-invitation"> = {
+const checkInvitee: OperationKind<"check-invitee"> = { kind: "check-invitee", ...answered };
+const inviteMember: OperationKind<"invite-member"> = { kind: "invite-member", ...answered };
+const resendInvitation: OperationKind<"resend-invitation"> = {
   kind: "resend-invitation",
   ...answered,
 };
-export const setAppAccess: OperationKind<"set-app-access"> = {
+const setAppAccess: OperationKind<"set-app-access"> = {
   kind: "set-app-access",
   ...answered,
 };
 
-export const setProjectAccess: OperationKind<"set-project-access"> = {
+const setProjectAccess: OperationKind<"set-project-access"> = {
   kind: "set-project-access",
   ...answered,
 };
 
-export const grantNewProjectAccess: OperationKind<"grant-new-project-access"> = {
+const grantNewProjectAccess: OperationKind<"grant-new-project-access"> = {
   kind: "grant-new-project-access",
   ...answered,
 };

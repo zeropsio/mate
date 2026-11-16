@@ -20,7 +20,7 @@ import { useHqAppDetails } from "./useHqAppDetail";
 import { heldRecipeState } from "./useZeropsGroupRecipe";
 
 /** A project as the menu and the projects page draw it. */
-export interface NewMateGateEntry {
+interface NewMateGateEntry {
   readonly group: {
     readonly groupId: string;
     readonly name: string;

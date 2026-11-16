@@ -17,7 +17,7 @@
 import { ORG_TOOL_PREFIX, readZeropsProposal } from "./proposal.ts";
 import type { ZeropsCallStatus } from "./types.ts";
 
-export type ZeropsCallClass = "hidden" | "generic" | "card" | "pending-unclassifiable";
+type ZeropsCallClass = "hidden" | "generic" | "card" | "pending-unclassifiable";
 
 /** Tool calls that never contribute a transcript row, on any status. */
 export const TIMELINE_HIDDEN_TOOL_NAMES: ReadonlySet<string> = new Set(["ToolSearch", "Skill"]);

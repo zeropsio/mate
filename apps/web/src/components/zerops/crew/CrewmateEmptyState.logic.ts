@@ -35,7 +35,7 @@ export interface CrewmateWorkRow {
   readonly at: string | null;
 }
 
-export interface CrewmateEmptyModel {
+interface CrewmateEmptyModel {
   /** "Fen's lead · plans and reviews the crew's work". */
   readonly whose: string;
   /** Its job's first line, whole, in the person's words; empty while it has none. */

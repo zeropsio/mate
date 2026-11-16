@@ -21,7 +21,7 @@ import {
 } from "react";
 
 /** A drawn project: what a drag needs to know of it. */
-export interface ReorderableProject {
+interface ReorderableProject {
   readonly groupId: string;
   readonly name: string;
 }
@@ -103,7 +103,7 @@ function drawnSections(tree: HTMLElement, except: string) {
   );
 }
 
-export interface ProjectReorder {
+interface ProjectReorder {
   /** The project being dragged, drawn faded where it still stands. */
   readonly dragging: string | null;
   readonly startDrag: (

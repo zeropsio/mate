@@ -23,7 +23,7 @@ export function isZcpService(service: ZeropsService): boolean {
  * A project's Mate container, one Mate per project (audit D2): its one zcp service, none, or the
  * names of the several a project holds — never one of them picked as its Mate.
  */
-export type MateContainer =
+type MateContainer =
   | { readonly kind: "none" }
   | { readonly kind: "one"; readonly service: ZeropsService }
   | { readonly kind: "several"; readonly names: ReadonlyArray<string> };

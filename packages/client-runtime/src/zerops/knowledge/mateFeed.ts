@@ -37,7 +37,7 @@ interface MateFeedState<T> {
 }
 
 /** Opaque: folded by `foldMateFeed`, read by `mateFeedKnown`. */
-export interface MateFeed<T> {
+interface MateFeed<T> {
   readonly [state]: MateFeedState<T>;
 }
 

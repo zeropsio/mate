@@ -21,7 +21,7 @@ import {
   vaultAskWrite,
 } from "./vaultRequest.logic";
 
-export interface VaultAskProps {
+interface VaultAskProps {
   /** The engine's request: the ask's identity in both homes. */
   readonly askId: string;
   readonly ask: VaultAsk;

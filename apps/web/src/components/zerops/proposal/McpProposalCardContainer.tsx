@@ -41,7 +41,7 @@ import { proposalStage, type ProposalDecision } from "./proposal.logic";
 
 const IDLE: McpSigning = { phase: "idle" };
 
-export interface McpProposalHomeProps {
+interface McpProposalHomeProps {
   readonly proposal: McpProposal;
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId | null;

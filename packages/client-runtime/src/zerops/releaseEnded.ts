@@ -16,7 +16,7 @@ import type { ReleaseFailure } from "./releaseFacts.ts";
  * A release that had to create services in production before deploying, and did not: its `delta`
  * job there ended without going live. HQ then deploys nothing of that release.
  */
-export interface ReleaseCreationFailed {
+interface ReleaseCreationFailed {
   readonly tag: string;
   /** The services it was to create, by hostname; none from an HQ that does not name them. */
   readonly services: ReadonlyArray<string>;
@@ -38,7 +38,7 @@ export function releaseCreationsFailed(
 }
 
 /** "db could not be created", "db and cache could not be created". */
-export function creationFailedWords(services: ReadonlyArray<string>): string {
+function creationFailedWords(services: ReadonlyArray<string>): string {
   return services.length === 0
     ? "a service it needs could not be created"
     : `${serviceNames(services)} could not be created`;

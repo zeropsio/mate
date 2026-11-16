@@ -12,7 +12,7 @@ const plainClick = (event: MouseEvent) =>
   event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
 
 /** Each step of a path, the repository first: every one but the last is a folder. */
-export const pathSteps = (target: RepoPathTarget): ReadonlyArray<RepoPathTarget> => {
+const pathSteps = (target: RepoPathTarget): ReadonlyArray<RepoPathTarget> => {
   const segments = target.path === "" ? [] : target.path.split("/");
   return [
     { path: "", kind: "tree" },

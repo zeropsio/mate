@@ -59,7 +59,7 @@ export interface ZeropsNextStepPending {
 }
 
 /** The fix a change's review offers, offered on its line in place of its Review. */
-export interface ZeropsNextStepFix {
+interface ZeropsNextStepFix {
   /** `Ask Nova to resolve it`. */
   readonly label: string;
   readonly mateProjectId: string;
@@ -96,12 +96,12 @@ export interface ZeropsNextStepStripModel {
   readonly target: Extract<ReviewTarget, { kind: "change" }>;
 }
 
-export interface ZeropsComposerTop {
+interface ZeropsComposerTop {
   readonly strip: ZeropsNextStepStripModel | null;
   readonly reserved: boolean;
 }
 
-export function composerReviewId(target: ZeropsNextStepStripModel["target"]): string {
+function composerReviewId(target: ZeropsNextStepStripModel["target"]): string {
   return JSON.stringify([target.groupId, target.repository, target.number]);
 }
 

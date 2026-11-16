@@ -1,4 +1,4 @@
-export const CODEX_ARTIFACT_TEMPLATE_KINDS = [
+const CODEX_ARTIFACT_TEMPLATE_KINDS = [
   "document",
   "presentation",
   "spreadsheet",
@@ -13,7 +13,7 @@ export const CODEX_ARTIFACT_TEMPLATE_KINDS = [
 
 export type CodexArtifactTemplateKind = (typeof CODEX_ARTIFACT_TEMPLATE_KINDS)[number];
 
-export const CODEX_ARTIFACT_TEMPLATE_GALLERY_KINDS = ["imagegen", "product-design"] as const;
+const CODEX_ARTIFACT_TEMPLATE_GALLERY_KINDS = ["imagegen", "product-design"] as const;
 
 export type CodexArtifactTemplateGalleryKind =
   (typeof CODEX_ARTIFACT_TEMPLATE_GALLERY_KINDS)[number];
@@ -26,7 +26,7 @@ export interface CodexArtifactTemplate {
   readonly skillName: string;
 }
 
-export const CODEX_ARTIFACT_TEMPLATE_LABEL_BY_KIND = {
+const CODEX_ARTIFACT_TEMPLATE_LABEL_BY_KIND = {
   document: "Document template",
   presentation: "Presentation template",
   spreadsheet: "Spreadsheet template",
@@ -39,7 +39,7 @@ export const CODEX_ARTIFACT_TEMPLATE_LABEL_BY_KIND = {
   slack: "Slack template",
 } satisfies Record<CodexArtifactTemplateKind, string>;
 
-export type CodexArtifactTemplateAttributes = Readonly<Record<string, string | null | undefined>>;
+type CodexArtifactTemplateAttributes = Readonly<Record<string, string | null | undefined>>;
 
 const WINDOWS_DRIVE_PATH_REGEX = /^[A-Za-z]:[\\/]/;
 const WINDOWS_UNC_PATH_REGEX = /^(?:\\\\[^\\]+\\[^\\]+|\/\/[^/]+\/[^/]+)/;

@@ -16,7 +16,7 @@ import type { PublicRead, ScopeKey } from "../model.ts";
 import type { ProjectionReads } from "../store.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
 
-export interface ProjectStatusValue {
+interface ProjectStatusValue {
   readonly projectId: string;
   /** Hours until Zerops stops the project for insufficient funds; `null` where Zerops says none. */
   readonly hoursLeft: number | null;

@@ -186,13 +186,13 @@ function youngAt(at: string | undefined, nowMs: number | undefined, graceMs: num
  * How long after this tab pressed a Mate its listing may still lack the container its press went
  * through with: the press's own half minute, then the listing's catch-up (`LISTING_CATCH_UP_MS`).
  */
-export const CONTAINER_CATCH_UP_MS = 3 * 60_000;
+const CONTAINER_CATCH_UP_MS = 3 * 60_000;
 
 /**
  * How long after this tab pressed a Mate the address its press asked for may still be unknown: its
  * setup's two to four minutes, and as long again.
  */
-export const ADDRESS_CATCH_UP_MS = 6 * 60_000;
+const ADDRESS_CATCH_UP_MS = 6 * 60_000;
 
 /** This tab made it within the listing's catch-up: a container not listed yet is on its way. */
 const containerCatchingUp = (input: Pick<MateComingInput, "madeAt" | "nowMs">): boolean =>
@@ -503,7 +503,7 @@ export function mateComingPage(input: {
  * past them, its link's words say it is not answering, with *Try now*, and keep saying so through
  * the attempts between the retries until it connects.
  */
-export const ARRIVAL_FAILURES_HELD = 3;
+const ARRIVAL_FAILURES_HELD = 3;
 
 /** Up, its conversation and its sign-in being read: the last of its coming words. */
 const ARRIVAL_OPENING: MateComing = { kind: "coming", line: ALMOST_THERE_LINE };
@@ -893,7 +893,7 @@ export function mateConversationEnvironment(
 }
 
 /** A candidate whose container waits for its first build, and where its build's process is read. */
-export interface FirstBuildTarget {
+interface FirstBuildTarget {
   readonly key: string;
   readonly projectId: string;
   readonly serviceId: string;

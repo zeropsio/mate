@@ -13,7 +13,7 @@ import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
 import { UNOBSERVED_PHASES } from "./operationEnd.ts";
 
-export type RecordedEnvironment =
+type RecordedEnvironment =
   | { readonly kind: "waiting" }
   | { readonly kind: "recorded"; readonly name: string; readonly keyed: boolean }
   | { readonly kind: "unobserved" };

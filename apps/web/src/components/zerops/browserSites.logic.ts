@@ -8,13 +8,13 @@
  */
 import type { MateAddress, MateAddressRole } from "~/zerops/mateAddresses.logic";
 
-export interface BrowserSiteRow {
+interface BrowserSiteRow {
   readonly address: MateAddress;
   /** The service's name; the group heading says the environment. */
   readonly name: string;
 }
 
-export interface BrowserSiteGroup {
+interface BrowserSiteGroup {
   readonly key: MateAddressRole | "tools";
   readonly title: string;
   readonly rows: ReadonlyArray<BrowserSiteRow>;

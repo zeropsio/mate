@@ -39,7 +39,7 @@ export function releaseFailureIsOver(release: Listed, every: ReadonlyArray<Liste
 }
 
 /** What a release is titled by among the others. */
-export type ReleaseTitle =
+type ReleaseTitle =
   /** It carries exactly the changes of the release before it, which didn't go live. */
   | { readonly kind: "again"; readonly of: string; readonly text: string }
   /** The first change it carries that the last release to go live before it did not. */

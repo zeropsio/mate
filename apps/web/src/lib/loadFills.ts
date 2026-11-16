@@ -11,10 +11,10 @@
 import { MOTION } from "@t3tools/shared/brand";
 import { useLayoutEffect, useState, useSyncExternalStore } from "react";
 
-export type FillRegion = "menu" | "page";
+type FillRegion = "menu" | "page";
 
 /** The menu's patience for a page about to stand: one fade's length. */
-export const MENU_WAITS_FOR_PAGE_MS = 150;
+const MENU_WAITS_FOR_PAGE_MS = 150;
 
 /**
  * How long the menu's rows, listed by Zerops, hold for HQ's directory while HQ is slow but
@@ -29,7 +29,7 @@ export const MENU_HOLDS_FOR_HQ_MS = 1_500;
  * How long a ready region holds for a fact of its own still being read (`useFillFact`): as long
  * as the page holds for the menu anyway, so waiting for it makes no fill later than it was.
  */
-export const FILL_WAITS_FOR_FACT_MS = 32;
+const FILL_WAITS_FOR_FACT_MS = 32;
 
 /** One surface mounted for a region: what it last said of itself. */
 interface Holder {
@@ -247,13 +247,4 @@ function fade(node: Element | null, from: number): void {
     duration: MOTION.duration.quick,
     easing: MOTION.easing.out,
   });
-}
-
-/** A new document's fills, for a test that loads twice. */
-export function resetLoadFills(): void {
-  for (const region of Object.values(regions)) {
-    if (region.timer !== undefined) clearTimeout(region.timer);
-    Object.assign(region, make());
-  }
-  emit();
 }

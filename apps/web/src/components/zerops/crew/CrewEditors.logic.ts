@@ -40,7 +40,7 @@ export function freeTints(
 }
 
 /** A login *Runs on* offers: whether its agent also hosts the crew tools. */
-export interface CrewLoginOption extends CrewLogin {
+interface CrewLoginOption extends CrewLogin {
   readonly tools: boolean;
 }
 

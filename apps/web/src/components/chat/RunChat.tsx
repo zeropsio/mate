@@ -41,10 +41,7 @@ import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { releaseEndedWords } from "@t3tools/client-runtime/zerops";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
-import {
-  isActiveSubagentStatus,
-  type RuntimeSubagent,
-} from "@t3tools/client-runtime/state/subagentRuntime";
+import { type RuntimeSubagent } from "@t3tools/client-runtime/state/subagentRuntime";
 import {
   ActivityIcon,
   AppWindowIcon,
@@ -295,7 +292,7 @@ import { mateFailureWords } from "../../zerops/noticeWords";
 const MESSAGE_HEADING_LEVEL = 3;
 
 /** The dots while the Mate composes what comes next. */
-export function TypingDots({ className }: { readonly className?: string }) {
+function TypingDots({ className }: { readonly className?: string }) {
   return (
     <span aria-hidden="true" className={cn("flex items-center gap-1", className)}>
       <span className="size-1.5 animate-typing-first rounded-full bg-muted-foreground motion-reduce:animate-none" />
@@ -2637,7 +2634,6 @@ const AGENT_STATUS_WORD: Record<RuntimeSubagent["status"], string> = {
  */
 function HelperRow({ agent }: { readonly agent: RuntimeSubagent }) {
   const ctx = use(TimelineRowCtx);
-  const active = isActiveSubagentStatus(agent.status);
   const word = AGENT_STATUS_WORD[agent.status];
   const { since, ranMs } = helperSpan(agent);
   const line = helperRowLine(agent);
@@ -2754,7 +2750,7 @@ function capitalizePhrase(value: string): string {
 }
 
 /** A task in the words it was given. */
-export function taskTitle(entry: WorkLogEntry): string {
+function taskTitle(entry: WorkLogEntry): string {
   return capitalizePhrase(normalizeCompactToolLabel(entry.toolTitle ?? entry.label));
 }
 
@@ -2910,7 +2906,7 @@ function NoticeBubble({
 }
 
 /** Something that happened in a run, in words: what, then a word more. */
-export function recordEventWords(
+function recordEventWords(
   event: ConversationEvent,
   speaker: string,
   timestampFormat: TimestampFormat = "locale",

@@ -9,7 +9,7 @@ import { mateFeed, type MateFeedReading } from "./projections/mateFeeds.ts";
 import type { makeMateFeeds } from "./adapters/mateFeeds.ts";
 import type { MateFeedFamily, MateFeedKey, MateFeedValues } from "./families/mateFeeds.ts";
 import type { FailureReason, StaleReason } from "../zerops/knowledge/index.ts";
-export interface MateFeedReads {
+interface MateFeedReads {
   readonly data: AccountStore["data"];
   readonly hold: ReturnType<typeof makeMateFeeds>["hold"];
   readonly revalidate: ReturnType<typeof makeMateFeeds>["revalidate"];
@@ -71,10 +71,9 @@ export function mateFeedAsyncAtom<F extends MateFeedFamily>(key: MateFeedKey<F>)
   );
 }
 
-export class MateFeedReadFailed extends Schema.TaggedError<MateFeedReadFailed>()(
-  "MateFeedReadFailed",
-  { message: Schema.String },
-) {}
+class MateFeedReadFailed extends Schema.TaggedError<MateFeedReadFailed>()("MateFeedReadFailed", {
+  message: Schema.String,
+}) {}
 function mateFeedFailure(failure: FailureReason | StaleReason): MateFeedReadFailed {
   if (failure.kind === "revalidation-failed") failure = failure.failure;
   if (

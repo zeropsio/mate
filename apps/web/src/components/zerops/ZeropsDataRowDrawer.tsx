@@ -30,7 +30,7 @@ import { ChevronLeftIcon, CopyIcon, MessageSquarePlusIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import { MicroLabel } from "./primitives";
 
-export interface ZeropsDataRowDrawerProps {
+interface ZeropsDataRowDrawerProps {
   readonly columns: ReadonlyArray<ZeropsDataConsoleColumn>;
   readonly row: ReadonlyArray<unknown>;
   readonly layout: "narrow" | "wide";

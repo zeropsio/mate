@@ -175,14 +175,14 @@ export function makeMateBrowserFrameSink({
   };
 }
 
-export type MateBrowserFrameEvent =
+type MateBrowserFrameEvent =
   | { readonly kind: "session" }
   | { readonly kind: "session-lost" }
   | { readonly kind: "event"; readonly event: ZeropsBrowserStreamEvent };
-export class MateBrowserFramesLost extends Data.TaggedError("MateBrowserFramesLost")<{
+class MateBrowserFramesLost extends Data.TaggedError("MateBrowserFramesLost")<{
   readonly message: string;
 }> {}
-export interface MateBrowserFrameWire {
+interface MateBrowserFrameWire {
   readonly open: Stream.Stream<
     MateBrowserFrameEvent,
     EnvironmentAuthorizationError | MateBrowserFramesLost
@@ -190,7 +190,7 @@ export interface MateBrowserFrameWire {
 }
 const isAuthorizationError = Schema.is(EnvironmentAuthorizationError);
 const textOf = (value: unknown): string => (value instanceof Error ? value.message : String(value));
-export function classifyMateBrowserFrameFailure(cause: Cause.Cause<unknown>): StreamFault {
+function classifyMateBrowserFrameFailure(cause: Cause.Cause<unknown>): StreamFault {
   for (const reason of cause.reasons) {
     if (Cause.isFailReason(reason) && isAuthorizationError(reason.error))
       return { outcome: "definitive-refusal", message: reason.error.message };

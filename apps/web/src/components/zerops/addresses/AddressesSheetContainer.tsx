@@ -146,7 +146,7 @@ function useMinuteClock(running: boolean): number {
   return now;
 }
 
-export function AddressesSheetContainer({
+function AddressesSheetContainer({
   target,
   open,
   onClose,

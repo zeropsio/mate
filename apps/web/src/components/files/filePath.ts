@@ -1,4 +1,4 @@
-export interface FileBreadcrumb {
+interface FileBreadcrumb {
   label: string;
   path: string;
   kind: "project" | "directory" | "file";

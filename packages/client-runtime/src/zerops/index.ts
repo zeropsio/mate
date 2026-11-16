@@ -4,95 +4,42 @@ export {
   ZeropsApiError,
   zeropsClientsFromUser,
   zeropsInvitationsFromUser,
-  type ListProjectsOptions,
-  type ZeropsApiClientOptions,
-  type ZeropsApiErrorKind,
-  type ZeropsClientMembership,
-  type ZeropsLoginResponse,
-  type ZeropsLocation,
   type ZeropsOrganization,
   type ZeropsOrganizationInvitation,
   type ZeropsOrganizationMember,
   type ZeropsProject,
   type ZeropsRegistrationResponse,
   type ZeropsService,
-  type ZeropsServicePort,
-  type ZeropsAutoscaling,
-  type ZeropsAutoscalingResource,
-  type ZeropsCurrentStat,
-  type ZeropsStatHistoryItem,
-  type ZeropsStatHistoryWindow,
-  type ZeropsStatPair,
   type ZeropsUser,
 } from "./api.ts";
 
-export {
-  buildZeropsContainerUrl,
-  isZcpService,
-  mateContainerOf,
-  severalMatesLine,
-  type MateContainer,
-  zeropsSubdomainDomainFromPublicZone,
-} from "./containerAddress.ts";
+export { mateContainerOf, severalMatesLine } from "./containerAddress.ts";
 
 export {
-  canCreateProjectsInOrganization,
   resolveActiveZeropsOrganization,
   zeropsOrganizationRoleLabel,
   zeropsRoleWords,
-  type ZeropsOrganizationSelectionInput,
 } from "./accountScope.ts";
 
 export {
-  ZEROPS_SELECTION_STORAGE_KEY,
   ZEROPS_SESSION_STORAGE_KEY,
-  clearZeropsSelection,
   clearZeropsSession,
   loadZeropsSelection,
   loadZeropsSession,
-  isUsableZeropsSession,
-  isZeropsSession,
   parseZeropsSession,
-  requiresZeropsTwoFactor,
   saveZeropsSelection,
   saveZeropsSession,
-  type ZeropsSelection,
   type ZeropsSession,
   type ZeropsStorageAdapter,
 } from "./session.ts";
 
+export { type ZeropsAgentType } from "./newProject.ts";
 export {
-  ZEROPS_CAPTCHA_ERROR_CODE,
-  buildZeropsRegistrationBody,
-  isZeropsCaptchaRejection,
-  type ZeropsRegistrationBody,
-  type ZeropsRegistrationInput,
-} from "./registration.ts";
-
-export {
-  VSCODE_PASSWORD_LENGTH,
-  ZEROPS_AGENT_TYPE_CANONICAL_ORDER,
-  buildCreateProjectBody,
-  buildZcpServiceImportYaml,
-  generateVscodePassword,
-  nextZcpServiceName,
-  type CreateProjectBody,
-  type RandomBytes,
-  type ZeropsAgentType,
-} from "./newProject.ts";
-export {
-  MATE_MARKER_TAG,
-  MATE_TAG_NAMESPACE,
-  ZEROPS_GROUP_ID_LENGTH,
   changedMateFace,
   deriveCanonicalGroups,
   type CanonicalGroup,
-  type CanonicalGroupEnvironment,
-  type CanonicalGroupTree,
   type CanonicalGroupsOptions,
-  deriveZeropsGroups,
   formatMateFace,
-  generateZeropsGroupId,
   heldGroupLabel,
   kindOfRole,
   readMateFace,
@@ -104,43 +51,21 @@ export {
   renamedProjectName,
   withZeropsMateTag,
   type BirthPlacement,
-  type DeriveZeropsGroupsOptions,
   type ZeropsEnvironmentRole,
   type ZeropsGroup,
-  type ZeropsGroupEnvironment,
   type ZeropsGroupPendingMember,
-  type ZeropsGroupTree,
   type ZeropsMembership,
   type ZeropsMateFace,
-  type ZeropsMateFaceTag,
   type ZeropsPlacedBirth,
   type ZeropsProjectOrder,
 } from "./groups.ts";
-export {
-  deployTargetTier,
-  hasProjectBlock,
-  RECIPE_TIER_PATHS,
-  recipeProjectImportYaml,
-  recipeServicesWithout,
-  recipeServicesYaml,
-  recipeTierRepositories,
-  mateBirthImportYaml,
-  mateTier,
-  recipeTierServices,
-  type RecipeRuntime,
-  type RecipeRuntimeRole,
-  type RecipeServiceRole,
-  type RecipeTier,
-  type RecipeTierService,
-  type MateTier,
-} from "./recipeTier.ts";
+export { mateTier, recipeTierServices, type RecipeRuntime, type RecipeTier } from "./recipeTier.ts";
 export { recipeReach, type RecipeReach } from "./recipeReach.ts";
-export { agentsFromOAuthFlags, unionAgents } from "./agentSelection.ts";
+export { unionAgents } from "./agentSelection.ts";
 export {
   isGenericPlatformError,
   projectCreationOutcome,
   type ZeropsProjectCreation,
-  type ZeropsProjectCreationOutcome,
 } from "./projectCreation.ts";
 export {
   derivePublicRouteOffers,
@@ -154,32 +79,15 @@ export {
   type ZeropsEnvironmentServices,
 } from "./environmentSummary.ts";
 export type { BirthIntent } from "./birthIntent.ts";
-export {
-  assignCandidateMateTints,
-  assignMateTints,
-  mateShapeOf,
-  newMateTint,
-  preferredMateTint,
-} from "./mateTints.ts";
+export { assignCandidateMateTints, mateShapeOf, newMateTint } from "./mateTints.ts";
 export {
   resolvePrimaryConversation,
   type ZeropsConversationCandidate,
-  type ZeropsPrimaryConversation,
-  type ZeropsPrimaryConversationReason,
 } from "@t3tools/shared/primaryConversation";
-export {
-  agentOwnershipNeedsAttention,
-  agentOwnershipNotice,
-  resolveAgentOwnership,
-  type ZeropsAgentAuthorizer,
-  type ZeropsAgentOwnership,
-  type ZeropsAgentOwnershipInput,
-} from "./agentOwnership.ts";
 export {
   defaultAgentForRole,
   environmentCreationStepLabel,
   planEnvironmentCreation,
-  type EnvironmentCreationInput,
   type EnvironmentRecipeChoice,
   type EnvironmentCreationPlan,
   type EnvironmentCreationStep,
@@ -193,88 +101,42 @@ export {
   type EnvironmentCreationOutcome,
   type EnvironmentCreationPlatform,
   type EnvironmentCreationStepProgress,
-  type EnvironmentCreationStepState,
-  type RunEnvironmentCreationInput,
   type ServiceDeployment,
 } from "./runEnvironmentCreation.ts";
 export {
   buildCanonicalGroupTree,
   type CanonicalGroupTreeView,
-  type CanonicalGroupTreeEnvironment,
   buildZeropsGroupTree,
-  type BuildZeropsGroupTreeOptions,
-  type ZeropsGroupTreeEnvironment,
-  type ZeropsGroupTreeGroup,
-  type ZeropsGroupTreeView,
-  type ZeropsProjectCarrier,
 } from "./groupTree.ts";
-export { compareZeropsHostnames, rankZeropsCandidateForListing } from "./listingOrder.ts";
+export { rankZeropsCandidateForListing } from "./listingOrder.ts";
 export {
   hasMate,
-  hasMateContainer,
   mateEnvironmentsEmptyReason,
   selectMateEnvironments,
 } from "./mateEnvironments.ts";
-export { generateBotName, ZEROPS_BOT_NAME_POOL } from "./bots.ts";
-export {
-  type ZeropsRegistry,
-  type ZeropsRegistryGroup,
-  type ZeropsRegistryProject,
-} from "./hq/registry.ts";
-export {
-  findHeldMateKey,
-  mateAdminKeys,
-  newestMateKey,
-  MATE_SELF_PROJECT_ROLE,
-  makeTokenWriteLock,
-  planMateKey,
-  tokenWriteLockName,
-  type MateKeyPlan,
-  TOKEN_WRITE_HOLD_MS,
-  type TokenWriteHold,
-  type TokenWriteLocks,
-  type ZeropsIntegrationToken,
-  type ZeropsProjectGrant,
-  type ZeropsProjectRole,
-  type ZeropsTokenDelegation,
-} from "./groupReach.ts";
+export { generateBotName } from "./bots.ts";
+export { makeTokenWriteLock, type TokenWriteHold } from "./groupReach.ts";
 export {
   CODE_IN_POOL_LINE,
   checkoutLabel,
   gitCheckoutHostnames,
   gitEmptyLine,
-  environmentForBranch,
   gitActionAllowed,
   gitBlock,
-  gitCheckoutLine,
   GIT_UNREADABLE_LINE,
-  gitTrouble,
-  gitTroubleDetail,
-  gitVerdict,
   mateChangeIn,
   NO_REPOSITORY_LINE,
   pullRequestBlocked,
   leaseOfRepository,
-  pullRequestBlockedReason,
   threadCheckoutHostnames,
-  threadLeases,
   type CheckoutLease,
   type GitBlock,
-  type GitBlockAction,
-  type GitBlockActionKind,
-  type GitBlockEvidence,
-  type GitBlockState,
   type GitChangedFile,
   type GitCheckoutState,
-  type GitChangeState,
-  type GitVerdict,
-  type PullRequestBlocked,
 } from "./gitTab.ts";
 export { linkedChanges, linksChange } from "./changeLinks.ts";
-export { branchLabel, mateProjectOfBranch, mateProjectOfLogin } from "./mateIdentity.ts";
 export { mateNextStep, type MateNextStep } from "./mateNextStep.ts";
 export {
-  MATE_ARRIVAL_WINDOW_MS,
   mateArriving,
   mateArrivingUntil,
   matePose,
@@ -285,7 +147,6 @@ export {
 export {
   compareForRelease,
   flowReleaseOf,
-  isReleaseTag,
   releaseRunBy,
   nameStopByRelease,
   releaseEntries,
@@ -294,15 +155,12 @@ export {
   releaseLanding,
   RELEASE_CHECKING,
   releaseCandidate,
-  releaseWord,
   RELEASE_NO_PRODUCTION,
   RELEASE_NOTHING_MERGED,
   RELEASE_NOTHING_NEW_ON_MAIN,
-  type ReleaseAttempt,
   type ReleaseComparison,
   type ReleaseEntry,
   type ReleaseGate,
-  type ReleaseVerdict,
   releaseRow,
   releaseStalled,
   type ReleaseStall,
@@ -319,33 +177,17 @@ export {
 } from "./releaseVersion.ts";
 export {
   appRecipeOf,
-  codeRepositoriesOf,
   deployWord,
   canonicalEnvironmentRowInputsOf,
-  canonicalGroupStopsOf,
-  zeropsStops,
-  type CanonicalGroupEnvironmentRowInput,
-  type CanonicalGroupEnvironmentDeclaration,
-  type CanonicalGroupStops,
-  environmentRowInputsOf,
-  groupStopsOf,
   releaseDeploys,
   type AppRecipe,
   type GroupEnvironmentRowInput,
-  type GroupEnvironmentService,
   type GroupStopProject,
   type GroupStops,
   type ReleaseCreation,
   type ReleaseCreationFailure,
   type ReleaseDeployFailure,
-  type ReleaseDeploys,
 } from "./groupDeploys.ts";
-export {
-  agentNeedsSignIn,
-  AGENT_SIGN_IN_MESSAGE,
-  mateErrorWords,
-  signedOutAgent,
-} from "./agentSignIn.ts";
 export {
   groupHistory,
   historyAge,
@@ -359,7 +201,6 @@ export {
   releaseCarriedToggleLabel,
   releaseDescription,
   rolledBackDescription,
-  type ReleaseDescription,
 } from "./releaseCarried.ts";
 export {
   carriedReads,
@@ -382,78 +223,41 @@ export {
   carriedMoved,
   outsideMoved,
   rollbackFromHistories,
-  type CarriedChange,
-  type OutsideCommit,
-  type RecordedSide,
 } from "./releaseRecorded.ts";
 export {
   groupFlow,
-  pairPreviewRoutes,
   placeAddresses,
   OUTSIDE_MATE,
   OUTSIDE_MATE_MEANS,
   PRODUCTION_DEPLOYING,
   PRODUCTION_OUTSIDE_MATE,
-  PRODUCTION_SETTING_UP,
   STAGE_SETTING_UP,
   stageFirstDeploy,
-  stageSettingUp,
   type GroupFlow,
   type GroupFlowComing,
   type GroupFlowInput,
-  type GroupFlowMain,
   type GroupFlowMate,
   type GroupFlowAddress,
   type GroupFlowPreview,
-  type GroupFlowPending,
   type GroupFlowProduction,
-  type GroupFlowPullRequest,
   type GroupFlowStop,
-  type GroupFlowStopInput,
   type GroupFlowStopState,
-  type GroupNextStep,
   type GroupNextStepKind,
-  type GroupNextStepTarget,
 } from "./groupFlow.ts";
 export {
   addressComing,
-  addressOffered,
   comingLine,
-  FIRST_DEPLOY_FAILED,
-  FIRST_DEPLOY_ON_ITS_WAY,
-  firstDeploy,
   firstDeployLine,
   firstDeployTone,
   listedStopComing,
-  stopComing,
-  stopDeployed,
-  stopImport,
   stopServes,
-  type ComingStep,
   type FirstDeploy,
   type PlatformService,
   type ListedStop,
   type StopComing,
 } from "./stopComing.ts";
-export {
-  stageMarks,
-  stageRead,
-  stageStandings,
-  type ServiceChanges,
-  type StageMark,
-  type StageStandings,
-  type StopChange,
-} from "./stageMarks.ts";
-export {
-  cannotTellWhatRuns,
-  changesCountWords,
-  changesNotLive,
-  PROJECT_ALL_CLEAR,
-  projectAttention,
-  serviceNames,
-  type ProjectAttentionItem,
-  type ProjectAttentionKind,
-} from "./projectAttention.ts";
+export { stageMarks, stageRead, stageStandings } from "./stageMarks.ts";
+export { cannotTellWhatRuns, changesCountWords, serviceNames } from "./projectAttention.ts";
 export {
   changeAskLabel,
   changeAskPrompt,
@@ -472,7 +276,6 @@ export {
   RELEASE_TAKES,
   REVIEW_RELEASE_LABEL,
   changeReview,
-  changeMergeVerdict,
   crewTaskReview,
   releaseReview,
   gitRemoteExpiry,
@@ -481,26 +284,16 @@ export {
   type ChangeReviewInput,
   type MergeCheckRefusal,
   type ReviewGithubChecks,
-  type CrewTaskReviewInput,
   type ReleaseOutcome,
   type ReleaseReplaces,
-  type ReleaseReviewInput,
-  type ReleaseReviewModel,
   type ReviewClose,
   type ReviewHand,
-  type ReviewFix,
-  type ReviewFixProblem,
-  type ReviewModel,
   type ReviewPress,
   type ReviewPrimary,
   PRODUCTION_DEPLOYED_OUTSIDE,
   type ReviewQuestion,
-  type ReviewSecondary,
   type ReviewState,
-  type ReviewTone,
   type ReviewVerdict,
-  type RollbackReviewInput,
-  type RollbackReviewModel,
 } from "./reviewVerdict.ts";
 export {
   holdReleaseFacts,
@@ -517,35 +310,18 @@ export {
   type ReleaseFailure,
   type ReleaseFailureReads,
 } from "./releaseFacts.ts";
-export {
-  creationFailedWords,
-  releaseCreationsFailed,
-  releaseEndedEvents,
-  type ReleaseCreationFailed,
-} from "./releaseEnded.ts";
+export { releaseCreationsFailed, releaseEndedEvents } from "./releaseEnded.ts";
 export { formatRunClock } from "./runClock.ts";
 export {
   changeCommitRows,
   changeReadoutJudged,
   changeReadoutOfCompare,
   changeReadoutOfRecord,
-  corePushWords,
   type ChangeReadout,
   type ChangeReadoutCommit,
-  type ChangeReadoutFile,
 } from "./changeReadout.ts";
-export {
-  changeFileParts,
-  parseChangeDiff,
-  type ChangeDiffFile,
-  type ChangeDiffHunk,
-  type ChangeDiffLine,
-} from "./changeDiff.ts";
-export {
-  changeFileDiffState,
-  type ChangeFileDiffState,
-  type ChangeFileDiffView,
-} from "./changeFileDiff.ts";
+export { changeFileParts, parseChangeDiff, type ChangeDiffFile } from "./changeDiff.ts";
+export { changeFileDiffState, type ChangeFileDiffState } from "./changeFileDiff.ts";
 export {
   changeKindTag,
   flowChange,
@@ -555,7 +331,6 @@ export {
   flowVerbLabel,
   isRecipeProposal,
   recipeProposalRedone,
-  pullRequestLineWith,
   pullRequestsByMate,
   agentLastSpokeAt,
   agentNotesFor,
@@ -572,26 +347,13 @@ export {
   changeShowsReview,
   type MateRunFacts,
   changeState,
-  pullRequestMergeLine,
-  pullRequestsFolded,
-  releaseContentsSentence,
-  releaseWaitingLabel,
   type ReleaseContentsSummary,
-  releaseContentsCommits,
   waitingForProduction,
   releaseContentsSummary,
   sidebarChangeLabel,
-  changeNamesRepository,
   type FlowPullRequest,
-  type FlowPullRequestKind,
   type FlowVerb,
 } from "./projectFlow.ts";
-export {
-  deployTokenMint,
-  deployTokenName,
-  environmentKeyed,
-  type DeployTokenMint,
-} from "./deployToken.ts";
 export {
   gitOverview,
   gitOverviewPresentation,
@@ -602,40 +364,26 @@ export {
   type GitOverviewChange,
   type GitOverviewRepository,
 } from "./gitOverview.ts";
+export { resolveAddProjectVerb } from "./groupCreation.ts";
 export {
-  resolveAddProjectVerb,
-  resolveMateRegistration,
-  type GroupVerb,
-  type MateRegistration,
-} from "./groupCreation.ts";
-export {
-  ENVIRONMENT_AWAITS_RECIPE,
   ENVIRONMENT_NOT_ADDED,
-  ENVIRONMENT_UNFINISHED,
   environmentAddable,
   heldTiers,
   type HeldEnvironment,
   environmentSlots,
-  halfMadeGroupEnvironments,
   type EnvironmentSlotRow,
   type HalfMadeGroupEnvironment,
   productionRunsOf,
-  type ProductionNote,
-  type ProductionRuns,
-  environmentTierForRole,
   type GroupEnvironment,
   type GroupEnvironmentTier,
   applicationEnvironments,
   listedEnvironmentsOf,
   putLiveHasChange,
   type ApplicationEnvironmentFacts,
-  type ApplicationEnvironments,
-  type EnvironmentOffers,
 } from "./groupEnvironments.ts";
 export {
   deployedCommit,
   deployedVersion,
-  deployTone,
   canonicalEnvironmentRow,
   type CanonicalEnvironmentRow,
   environmentRow,
@@ -646,22 +394,13 @@ export {
   productionProjectOf,
   zeropsProjectOf,
 } from "./groupRows.ts";
-export {
-  parseVersionName,
-  resolveCommit,
-  sameCommit,
-  SHORT_SHA_LENGTH,
-  type ParsedVersionName,
-} from "./versionName.ts";
+export { sameCommit } from "./versionName.ts";
 
 export {
   gitCiLine,
   gitRequiredChecks,
   gitDeliveryOf,
-  type GitCiLine,
   type GitDelivery,
   type GitDeliveryEnvironment,
-  type GitDeliveryFacts,
   type GitRepositoryDelivery,
-  type GitStanding,
 } from "./gitDelivery.ts";

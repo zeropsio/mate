@@ -182,7 +182,7 @@ export type ContainerEffect =
    */
   | { readonly kind: "probe" };
 
-export interface ContainerContext {
+interface ContainerContext {
   readonly now: Instant;
 }
 

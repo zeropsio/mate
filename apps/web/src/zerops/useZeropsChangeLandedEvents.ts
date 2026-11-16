@@ -261,7 +261,7 @@ export function useZeropsReleaseEnded(
  * each one from the ask up to the first that did not fail — that ended after its first loaded
  * message. A Mate's other conversations stay free of releases that were never theirs.
  */
-export function conversationReleases(input: {
+function conversationReleases(input: {
   readonly events: ReadonlyArray<ReleaseEndedEvent>;
   /** The application's releases, newest first, with the changes each recorded. */
   readonly releases: ReadonlyArray<{

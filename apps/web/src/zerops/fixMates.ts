@@ -20,7 +20,7 @@ import { useUiStateStore } from "../uiStateStore";
 import { fixMateChoice, type FixMate } from "./fixRequest";
 import { useZeropsCandidates } from "./useZeropsCandidates";
 
-export interface FixMateOption extends FixMate {
+interface FixMateOption extends FixMate {
   /** What the person calls it: "Ask Nova to fix it". */
   readonly name: string;
 }

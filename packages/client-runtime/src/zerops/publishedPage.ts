@@ -84,7 +84,7 @@ export const PAGE_THEME_VARS = [
 const SAFE_VALUE = /^[^<>{};\\]*$/;
 
 /** The page's `:root` rule for the theme: its variables and its colour scheme. */
-export function themeRule(theme: PageTheme): string {
+function themeRule(theme: PageTheme): string {
   const declarations = Object.entries(theme.vars)
     .filter(([name, value]) => /^--[\w-]+$/.test(name) && SAFE_VALUE.test(value))
     .map(([name, value]) => `${name}:${value.trim()};`)
@@ -96,7 +96,7 @@ export function themeRule(theme: PageTheme): string {
  * The longest a page is waited for to load before what it says is taken as its height: a picture
  * that never arrives holds its load for good.
  */
-export const PAGE_LOAD_BOUND_MS = 8000;
+const PAGE_LOAD_BOUND_MS = 8000;
 
 /**
  * What runs in the page before the page does: it says the page's height, and the viewport it was
@@ -168,9 +168,7 @@ export const WRAPPER_POLICY = [
  * this wrapper was written with: the page runs in another origin and cannot read the wrapper's
  * script, so it cannot say it. The app's own messages reach the wrapper from no window at all.
  */
-export type PageHost =
-  | { readonly kind: "frame" }
-  | { readonly kind: "native"; readonly token: string };
+type PageHost = { readonly kind: "frame" } | { readonly kind: "native"; readonly token: string };
 
 const FRAME_HOST: PageHost = { kind: "frame" };
 
@@ -243,7 +241,7 @@ export function innerDocumentOf(document: string): string | null {
  * What a page said to the conversation: its height, the viewport it was laid out in (null from a
  * page that says none) and whether it has loaded; a link the person clicked; its leaving.
  */
-export type PageMessage =
+type PageMessage =
   | {
       readonly kind: "height";
       readonly height: number;
@@ -419,7 +417,7 @@ export function pageFitStand(input: {
 }
 
 /** The height recorded at the width nearest `width`; null when none is recorded. */
-export function recordedPageHeight(
+function recordedPageHeight(
   heights: ReadonlyArray<PageHeight> | undefined,
   width: number,
 ): number | null {

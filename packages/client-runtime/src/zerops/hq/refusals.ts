@@ -344,7 +344,7 @@ export const ZEROPS_UNANSWERED = "Zerops is not answering, so HQ did nothing. Tr
  * (`409 credential_required`, reason `personal_token_missing` or `personal_token_refused`), even
  * after the client re-entered the door once to have it made again.
  */
-export const CREDENTIAL_REQUIRED_WORDS = "HQ could not read your access. Sign in to Zerops again.";
+const CREDENTIAL_REQUIRED_WORDS = "HQ could not read your access. Sign in to Zerops again.";
 
 /**
  * The client's own reason beside `credential_required` where the door answered that this sign-in's
@@ -354,7 +354,7 @@ export const CREDENTIAL_REQUIRED_WORDS = "HQ could not read your access. Sign in
 export const SIGN_IN_CANNOT_MINT = "sign_in_cannot_mint";
 
 /** What such a call says: the one sign-in that has HQ keep the person's access. */
-export const SIGN_IN_CANNOT_MINT_WORDS =
+const SIGN_IN_CANNOT_MINT_WORDS =
   "HQ keeps no access of yours yet, and this sign-in cannot create it. Sign in once where Mate signs you in with your Zerops account (mate.zerops.io), then try again.";
 
 /**

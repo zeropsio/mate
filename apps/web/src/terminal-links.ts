@@ -1,8 +1,8 @@
 import { isMacPlatform } from "./lib/utils";
 
-export type TerminalLinkKind = "url" | "path";
+type TerminalLinkKind = "url" | "path";
 
-export interface TerminalLinkMatch {
+interface TerminalLinkMatch {
   kind: TerminalLinkKind;
   text: string;
   start: number;
@@ -14,14 +14,14 @@ export interface TerminalBufferLineLike {
   translateToString(trimRight?: boolean): string;
 }
 
-export interface WrappedTerminalLinkLineSegment {
+interface WrappedTerminalLinkLineSegment {
   bufferLineNumber: number;
   text: string;
   startIndex: number;
   endIndex: number;
 }
 
-export interface WrappedTerminalLinkLine {
+interface WrappedTerminalLinkLine {
   text: string;
   segments: ReadonlyArray<WrappedTerminalLinkLineSegment>;
 }

@@ -159,7 +159,7 @@ export const MCP_WORDS = {
 } as const;
 
 /** One of the Mate's proposals still waiting on the person, with the card that answers it. */
-export interface McpProposalRow {
+interface McpProposalRow {
   readonly id: string;
   readonly name: string;
   readonly reason: string | null;

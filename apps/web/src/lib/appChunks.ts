@@ -27,7 +27,7 @@ export function appChunk<T>(load: () => Promise<T>): () => Promise<T> {
   return load;
 }
 
-export interface ChunkWarmerHost {
+interface ChunkWarmerHost {
   /** The loaders declared so far; read again after each load, which may declare more. */
   readonly loaders: () => Iterable<Load>;
   /** Runs `then` in the page's next idle slice. */

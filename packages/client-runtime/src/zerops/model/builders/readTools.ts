@@ -25,7 +25,6 @@ import { buildErrorFields } from "./errorKind.ts";
 import {
   type BuiltCardFields,
   KIND_LABEL,
-  buildStep,
   decodeCall,
   gatedStatusWord,
   mateVoiceFor,
@@ -109,7 +108,7 @@ function buildReadFields<K extends ReadKind>(
 // --- logs ---------------------------------------------------------------------
 
 /** The most lines a logs card draws; the counts still cover every line. */
-export const LOG_LINE_CAP = 12;
+const LOG_LINE_CAP = 12;
 
 const ERROR_SEVERITY = /^(emerg|alert|crit|err|fatal)/iu;
 const WARNING_SEVERITY = /^warn/iu;
@@ -198,7 +197,7 @@ export function buildLogsFields(call: ZeropsCall): BuiltCardFields {
 // --- events -------------------------------------------------------------------
 
 /** The most events an events card draws; the rest are counted. */
-export const EVENT_ROW_CAP = 8;
+const EVENT_ROW_CAP = 8;
 
 /** An event row's status: the one platform reading's word and tone. */
 function eventStatus(raw: string): ZeropsReadStatus {

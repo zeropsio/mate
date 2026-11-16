@@ -8,9 +8,7 @@ import { connectionAtomRuntime } from "~/connection/runtime";
 export const crewFilesAtom = Atom.family((environmentId: EnvironmentId) =>
   mateFeedAtom({ family: "mateCrewFiles", environmentId, input: {} }),
 );
-export function createCrewCommandAtoms<R, E>(
-  runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
-) {
+function createCrewCommandAtoms<R, E>(runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>) {
   return {
     command: mateActionCommand(runtime, "crewCommand"),
     filesGet: createRuntimeCommand(runtime, {

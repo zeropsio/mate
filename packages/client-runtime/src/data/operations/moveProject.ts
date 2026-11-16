@@ -19,7 +19,7 @@ declare module "../model.ts" {
 }
 
 export type MoveProjectIntent = IntentOf<"move-project">;
-export const changesMateClass = (intent: MoveProjectIntent) =>
+const changesMateClass = (intent: MoveProjectIntent) =>
   isMateKind(intent.from.kind) !== isMateKind(intent.to.kind);
 
 export function moveShown(read: ProjectionReads, intent: MoveProjectIntent): boolean {

@@ -180,4 +180,4 @@ function ProcessSteps({
 }
 
 export { formatStepDuration, ProcessSteps };
-export type { ProcessStep, ProcessStepState, ProcessStepsProps };
+export type { ProcessStep, ProcessStepState };

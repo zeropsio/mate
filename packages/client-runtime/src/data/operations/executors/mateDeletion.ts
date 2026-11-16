@@ -8,7 +8,7 @@ import { verb } from "./write.ts";
 import type { OperationReceipt } from "../../model.ts";
 import type { StreamFault } from "../../streamMachine.ts";
 
-export const retiredMateKeyReceipt = (
+const retiredMateKeyReceipt = (
   requestId: string,
   intent: IntentOf<"retire-mate-key">,
 ): OperationReceipt => ({

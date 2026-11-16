@@ -6,7 +6,7 @@ import type { ReadoutPart, ZeropsChangeDetailRequest } from "./useZeropsChangeDe
 import { useCallback, useMemo } from "react";
 import { useAccountDataOptional, useProjection, useDetailDemand } from "./ZeropsAccountData";
 
-export interface ZeropsChangeCommits {
+interface ZeropsChangeCommits {
   readonly readout: ReadoutPart<{ readonly commits: ReadonlyArray<ChangeReadoutCommit> }>;
   /** Reads a read that failed again. */
   readonly retry: () => void;

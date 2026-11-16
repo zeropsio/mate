@@ -102,7 +102,7 @@ function getTimestampFormatter(
   return formatter;
 }
 
-export function parseTimestampDate(isoDate: string): Date | null {
+function parseTimestampDate(isoDate: string): Date | null {
   const date = new Date(isoDate);
   return Number.isNaN(date.getTime()) ? null : date;
 }
@@ -265,7 +265,7 @@ export function formatTimeRange(
  * so callers can style the numeric portion independently.
  */
 type RelativeTimeParts = { value: string; suffix: string | null };
-export type RelativeTimeState =
+type RelativeTimeState =
   | { status: "missing" }
   | { status: "invalid" }
   | { status: "relative"; value: string; suffix: string | null };

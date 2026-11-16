@@ -67,7 +67,7 @@ export interface MatePart {
 }
 
 /** A public address of the Mate that is no part's: a tool beside the app (mailpit), by its service. */
-export interface MateOtherAddress {
+interface MateOtherAddress {
   readonly key: string;
   readonly service: string;
   /** The port, only where its service answers on a second one. */
@@ -76,7 +76,7 @@ export interface MateOtherAddress {
   readonly url: string;
 }
 
-export interface MateParts {
+interface MateParts {
   /** By their dev service's hostname, then their preview's. */
   readonly parts: ReadonlyArray<MatePart>;
   readonly others: ReadonlyArray<MateOtherAddress>;
@@ -202,7 +202,7 @@ export function poolWorkspaceLink(
  * The chat a lease is for: one bound to its alias, acquired when it was — a pool hands a released
  * container out again under the same alias.
  */
-export const leaseChatTitle = (
+const leaseChatTitle = (
   lease: Pick<ZeropsLease, "alias" | "acquiredAt">,
   chats: ReadonlyArray<MatePartLeaseChat>,
 ): string | undefined =>

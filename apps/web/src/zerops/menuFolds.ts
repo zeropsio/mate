@@ -8,7 +8,7 @@ import { create } from "zustand";
 
 import type { ProjectFolds } from "./collapsedProjects";
 
-export interface MenuFoldsState {
+interface MenuFoldsState {
   readonly folds: ProjectFolds;
   /** The tree's own fold: `open` a group, or fold it. */
   readonly fold: ((groupId: string, open: boolean) => void) | null;

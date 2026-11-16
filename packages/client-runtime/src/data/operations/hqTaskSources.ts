@@ -97,7 +97,7 @@ export function taskSourceWriteSetting(write: TaskSourceWrite): TaskSourceSettin
   }
 }
 
-export const taskSource: OperationKind<"task-source"> = {
+const taskSource: OperationKind<"task-source"> = {
   kind: "task-source",
   executor: "hq",
   reflected: (_read, _intent, receipt) => receipt.outcome.kind === "succeeded",

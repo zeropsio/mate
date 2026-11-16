@@ -7,7 +7,7 @@ import { create } from "zustand";
 
 import type { DeleteApplicationTarget } from "~/components/zerops/ZeropsDeleteApplicationDialog.logic";
 
-export interface DeleteApplicationRequest {
+interface DeleteApplicationRequest {
   readonly target: DeleteApplicationTarget;
   /** The person confirmed it already, in its last Mate's Delete: it starts deleting as it opens. */
   readonly confirmed?: boolean;

@@ -43,4 +43,4 @@ function Textarea({ className, size = "default", unstyled = false, ...props }: T
   );
 }
 
-export { Textarea, type TextareaProps };
+export { Textarea };

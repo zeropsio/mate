@@ -241,5 +241,4 @@ function Tab({ className, render, tabId, active, size, ...props }: TabProps) {
   });
 }
 
-export { Tab, TabStrip, tabVariants, useTabStripCompact };
-export type { TabProps, TabStripItem, TabStripProps };
+export { Tab, TabStrip, useTabStripCompact };

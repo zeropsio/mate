@@ -265,8 +265,6 @@ export function makeSettingsReads(store: AccountStore) {
   };
 }
 
-export type SettingsReads = ReturnType<typeof makeSettingsReads>;
-
 /**
  * One value of a screen's own — a write's request, what HQ answered it — committed whole under its
  * own scope: no read can fail or be refused, so its absence is that nothing was written from here.

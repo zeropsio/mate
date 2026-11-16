@@ -56,14 +56,12 @@ import {
   type OrganizationProjects,
   type ProjectStanding,
 } from "./projections/projects.ts";
-import { mateAttention, matesAttention, attentionProjects } from "./projections/mateAttention.ts";
+import { mateAttention, attentionProjects } from "./projections/mateAttention.ts";
 import {
   hqMateOverview,
   hqMateRefusal,
   hqMateAnswered,
   hqMatePresence,
-  hqMateLogins,
-  hqMateReady,
   hqMates,
   hqMatesAnswered,
   type HqMatesRead,
@@ -544,7 +542,7 @@ export const shownHqStatusAtom = Atom.make((get): HqStatusValue | null => {
   if (account === null || account.orgId === null) return null;
   return get(account.data.project(hqStatus, account.orgId));
 }).pipe(Atom.withLabel("data:shown-hq-status"));
-export const NO_MATE_LINKS: MateLinksRead = {
+const NO_MATE_LINKS: MateLinksRead = {
   targets: new Map(),
   machines: new Map(),
   containers: new Map(),
@@ -652,10 +650,7 @@ export const shownHqAppChangesAtom = Atom.make(
  * Holds one Mate's container's variables from outside React, through whichever account is mounted
  * in `registry`: read now, again each sampled interval while held, let go on release.
  */
-export function holdMateVariables(
-  registry: AtomRegistry.AtomRegistry,
-  serviceId: string,
-): () => void {
+function holdMateVariables(registry: AtomRegistry.AtomRegistry, serviceId: string): () => void {
   let release: (() => void) | null = null;
   const hold = (account: AccountReads | null) => {
     release?.();
@@ -777,8 +772,6 @@ export const hqMateOverviewAtom = projectReader(hqMateOverview, mateKey, null);
 export const hqMateRefusalAtom = projectReader(hqMateRefusal, mateKey, null);
 export const hqMateAnsweredAtom = projectReader(hqMateAnswered, mateKey, false);
 export const hqMatePresenceAtom = projectReader(hqMatePresence, mateKey, null);
-export const hqMateLoginsAtom = projectReader(hqMateLogins, mateKey, undefined);
-export const hqMateReadyAtom = projectReader(hqMateReady, mateKey, undefined);
 export const mateHealthAtom = projectReader(mateHealth, mateKey, {
   health: null,
   live: false,
@@ -796,10 +789,6 @@ export const shownAttentionProjectsAtom = Atom.make((get): ReadonlyArray<string>
     (a: ReadonlyArray<string>, b) => a.length === b.length && a.every((id, i) => id === b[i]),
   ),
 );
-export const shownMatesAttentionAtom = Atom.make((get) => {
-  const account = get(accountReadsAtom);
-  return account?.orgId == null ? {} : get(account.data.project(matesAttention, account.orgId));
-});
 
 export const shownCanonicalHqMenuNavigationAtom = Atom.make(
   (get): CanonicalHqNavigationRead & { readonly orgId: string | null } => {

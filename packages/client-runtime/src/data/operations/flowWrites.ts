@@ -107,7 +107,7 @@ declare module "../model.ts" {
   }
 }
 
-export interface FlowAnswer {
+interface FlowAnswer {
   /** Additive Git hand-over evidence; the existing deploy answer stays Zerops-only. */
   readonly delivery?: HqDeliveryAnswer;
   readonly tag: string;
@@ -208,7 +208,7 @@ function releaseListed(
     : { kind: "failed", reason: listed.reason ?? "HQ refused this release." };
 }
 
-export const releaseWrite: OperationKind<"release"> = {
+const releaseWrite: OperationKind<"release"> = {
   kind: "release",
   executor: "hq",
   reflected: (read, intent, receipt) => releaseListed(read, intent.appId, receipt) !== null,
@@ -219,7 +219,7 @@ export const releaseWrite: OperationKind<"release"> = {
     releasesOf(read, intent.appId).flatMap(({ tag }) => (tag === intent.tag ? [tag] : [])),
 };
 
-export const rollBackWrite: OperationKind<"roll-back"> = {
+const rollBackWrite: OperationKind<"roll-back"> = {
   kind: "roll-back",
   executor: "hq",
   reflected: (read, intent, receipt) => releaseListed(read, intent.appId, receipt) !== null,
@@ -240,7 +240,7 @@ const askedAgain = (read: ProjectionReads, intent: IntentOf<"redeploy">) => {
   return latest !== undefined && latest.id !== intent.after;
 };
 
-export const redeployWrite: OperationKind<"redeploy"> = {
+const redeployWrite: OperationKind<"redeploy"> = {
   kind: "redeploy",
   executor: "hq",
   reflected: (read, intent) => askedAgain(read, intent),
@@ -254,7 +254,7 @@ const added = (read: ProjectionReads, intent: IntentOf<"add-service">) =>
     ({ cause, service }) => cause === "add_service" && service === intent.service,
   ) ?? false;
 
-export const addServiceWrite: OperationKind<"add-service"> = {
+const addServiceWrite: OperationKind<"add-service"> = {
   kind: "add-service",
   executor: "hq",
   reflected: (read, intent) => added(read, intent),
@@ -262,7 +262,7 @@ export const addServiceWrite: OperationKind<"add-service"> = {
   effectHandles: (read, intent) => (added(read, intent) ? [environmentHandle(intent)] : []),
 };
 
-export const mergeChangeWrite: OperationKind<"merge-change"> = {
+const mergeChangeWrite: OperationKind<"merge-change"> = {
   kind: "merge-change",
   executor: "hq",
   reflected: (read, intent) => (changeOf(read, intent.link)?.state ?? "open") !== "open",
@@ -278,7 +278,7 @@ export const mergeChangeWrite: OperationKind<"merge-change"> = {
     changeOf(read, intent.link)?.state === "merged" ? [changeHandle(intent.link)] : [],
 };
 
-export const closeChangeWrite: OperationKind<"close-change"> = {
+const closeChangeWrite: OperationKind<"close-change"> = {
   kind: "close-change",
   executor: "hq",
   reflected: (read, intent) => (changeOf(read, intent.link)?.state ?? "open") !== "open",
@@ -298,7 +298,7 @@ export const closeChangeWrite: OperationKind<"close-change"> = {
 const handed = (read: ProjectionReads, intent: IntentOf<"hand-change">) =>
   changeOf(read, intent.link)?.mateProjectId === intent.mateProjectId;
 
-export const handChangeWrite: OperationKind<"hand-change"> = {
+const handChangeWrite: OperationKind<"hand-change"> = {
   kind: "hand-change",
   executor: "hq",
   reflected: (read, intent) => handed(read, intent),

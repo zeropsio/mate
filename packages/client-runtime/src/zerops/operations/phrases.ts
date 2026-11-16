@@ -96,7 +96,7 @@ export function processActionWord(actionName: string): string {
  * row: the row's state, its dot's tone (the state's own, as `ProcessSteps`
  * draws it) and its word.
  */
-export interface PlatformStatus {
+interface PlatformStatus {
   readonly state: ZeropsOperationStepState;
   readonly tone: ServiceStatusToneId;
   readonly word: string;
@@ -214,7 +214,7 @@ export const OPEN_IN_ZEROPS = "Open in Zerops";
  * dot. Never a raw platform enum.
  */
 /** Kind-independent words for the outcomes no per-kind claim ever applies to. */
-export function settledPhaseWord(
+function settledPhaseWord(
   phase: Extract<
     ZeropsOperationPhase,
     "declined" | "stopped" | "interrupted" | "reset" | "uncertain"
@@ -503,7 +503,7 @@ export function operationVoice(kind: ZeropsOperationKind, subject: string): stri
   }
 }
 
-export interface OperationClosingContext {
+interface OperationClosingContext {
   readonly host?: string | undefined;
   readonly failureCause?: string | undefined;
   readonly errorFirstLine?: string | undefined;
@@ -554,7 +554,7 @@ function browserClosing(context: OperationClosingContext): string {
   return `checked ${target}. ${counts}.`;
 }
 
-export interface BrowserFiguresInput {
+interface BrowserFiguresInput {
   readonly viewport?: { readonly width: number; readonly height: number };
   readonly media?: "dark" | "light";
   readonly stepCount: number;
@@ -685,7 +685,7 @@ export function gitPushVoice(subject: string): string {
   return `Pushing ${subject}.`;
 }
 
-export interface GitPushClosingContext {
+interface GitPushClosingContext {
   readonly branch?: string | undefined;
   /**
    * The HQ change the pushed branch lands through, when zcp opened or found one — zcp's wire still

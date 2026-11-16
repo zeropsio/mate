@@ -82,7 +82,7 @@ const messageOf = (error: unknown): string =>
  * Where a crew frame stands: the engine's revision (the crew owner's gapless seq under the Mate's
  * epoch, then the view of that step it shows), or V1's wall-clock `seq` where the frame carries none.
  */
-export type CrewFrameMark =
+type CrewFrameMark =
   | {
       readonly kind: "revision";
       readonly epoch: number;
@@ -144,7 +144,7 @@ export type MateFeedEvent =
   | { readonly kind: "session-unavailable" }
   | { readonly kind: "session" }
   | { readonly kind: "value"; readonly value: MateFeedValues[keyof MateFeedValues] };
-export interface MateFeedWire {
+interface MateFeedWire {
   readonly open: (key: MateFeedKey) => Stream.Stream<MateFeedEvent, StreamFault>;
   readonly watch?: (
     environmentId: string,

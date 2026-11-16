@@ -25,7 +25,7 @@ import type { Projection } from "../../data/store.ts";
 import { resolveMateProjectRole } from "../mateAccess.ts";
 
 /** What one reading knows of the person's access in one organization. */
-export interface AccessReading {
+interface AccessReading {
   /** What HQ answers their membership by (role and flags); `none` when they hold none there. */
   readonly membership: string;
   /** Each project the roster lists to them, with their effective role; `unknown` until its row is read. */
@@ -34,7 +34,7 @@ export interface AccessReading {
   readonly complete: boolean;
 }
 
-export interface AccessFrame {
+interface AccessFrame {
   /** The organization shown; null without one. */
   readonly orgId: string | null;
   /** Null until their membership there is read. */
@@ -42,7 +42,7 @@ export interface AccessFrame {
 }
 
 /** The person's access as last read in one organization. */
-export interface AccessHeld {
+interface AccessHeld {
   readonly orgId: string;
   readonly membership: string;
   /** Each project's role as last read; `unread` for one listed whose row was never read. */
@@ -65,7 +65,7 @@ const membershipOf = (viewer: {
   ].join("/");
 
 /** The person's access in an organization, from its roster and their own membership. */
-export const personAccess: Projection<string, AccessReading | null> = {
+const personAccess: Projection<string, AccessReading | null> = {
   name: "personAccess",
   keyOf: (orgId) => orgId,
   derive: (read, orgId) => {
@@ -90,7 +90,7 @@ export const personAccess: Projection<string, AccessReading | null> = {
  * One frame against the last reading of the same organization: the projects whose access moved,
  * or null when nothing of the person's did. An empty list is their membership alone moving.
  */
-export function accessStep(
+function accessStep(
   held: AccessHeld | null,
   frame: AccessFrame,
 ): { readonly held: AccessHeld | null; readonly moved: ReadonlyArray<string> | null } {

@@ -53,8 +53,7 @@ export const gitFileLink = (
 });
 
 /** The link's address, as the router writes it, so a new tab opens the same page. */
-export const gitHref = (link: GitSearch): string =>
-  `${appBasePath()}/git${defaultStringifySearch(link)}`;
+const gitHref = (link: GitSearch): string => `${appBasePath()}/git${defaultStringifySearch(link)}`;
 
 /** What a dialog does as one of its links leaves it for the browser: closes itself. */
 export const LeaveForGitContext = createContext<(() => void) | null>(null);

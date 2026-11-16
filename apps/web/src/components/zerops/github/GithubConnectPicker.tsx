@@ -82,7 +82,7 @@ import {
   useRepoPress,
 } from "./repoPress";
 
-export interface GithubConnectPickerProps {
+interface GithubConnectPickerProps {
   /** The HQ application the code repository is in. */
   readonly project: string;
   /** The code repository: `appdev`. */
@@ -304,10 +304,6 @@ interface StepParts {
   readonly foot: React.ReactNode;
   readonly card: React.ReactNode;
 }
-
-/** A step's own title: a dialog's stands out; in an ask card it stays under the card's title. */
-const stepTitle = (density: "full" | "compact") =>
-  density === "compact" ? "text-sm font-medium" : "text-base font-medium";
 
 /** A step's running words: a dialog's are its own size; in an ask card they are the card's body. */
 const stepWords = (density: "full" | "compact") =>

@@ -20,7 +20,7 @@ import {
 import type { AtomCommandResult } from "../../state/runtime.ts";
 
 /** What the door answers one exchange with. */
-export type FakeDoorAnswer =
+type FakeDoorAnswer =
   | "ok"
   /** The Mate's server failed (`EnvironmentInternalError`, reported as `remote-unavailable`). */
   | "500"
@@ -32,17 +32,17 @@ export type FakeDoorAnswer =
   | "hang";
 
 /** A credential the door issued; `generation` counts them per Mate. */
-export interface FakeMateCredential {
+interface FakeMateCredential {
   readonly environmentId: EnvironmentId;
   readonly generation: number;
 }
 
-export interface FakeMateLink {
+interface FakeMateLink {
   readonly phase: "connected" | "blocked";
   readonly reason?: ConnectionBlockedReason;
 }
 
-export interface FakeMate {
+interface FakeMate {
   readonly origin: string;
   readonly projectId: string;
   readonly descriptor: () => ExecutionEnvironmentDescriptor;
@@ -76,7 +76,7 @@ export interface FakeMate {
   readonly blockSockets: (reason: ConnectionBlockedReason | null) => void;
 }
 
-export interface FakeMateOptions {
+interface FakeMateOptions {
   readonly origin: string;
   readonly projectId: string;
   readonly environmentId: EnvironmentId;

@@ -19,7 +19,7 @@ export function modelSelectionKey(selection: ModelSelection | null | undefined):
   return JSON.stringify([selection.instanceId, selection.model, options]);
 }
 
-export interface DraftModelSelection {
+interface DraftModelSelection {
   readonly modelSelectionByProvider?:
     | Partial<Record<ProviderInstanceId, ModelSelection>>
     | undefined;
@@ -27,7 +27,7 @@ export interface DraftModelSelection {
 }
 
 /** The pick a draft holds for the instance it shows, if any. */
-export function draftModelSelection(
+function draftModelSelection(
   draft: DraftModelSelection | null | undefined,
   threadSelection: ModelSelection,
 ): ModelSelection | null {
@@ -57,7 +57,7 @@ export function selectionToWrite(input: {
  * A model picked without options (the model picker) keeps the thread's
  * options the new model takes, so a switch never resets effort and the rest.
  */
-export function withThreadOptions(
+function withThreadOptions(
   pick: ModelSelection,
   threadSelection: ModelSelection,
   capabilitiesFor: ((selection: ModelSelection) => ModelCapabilities | null) | undefined,

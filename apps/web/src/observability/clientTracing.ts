@@ -36,7 +36,7 @@ let activeConfigKey: string | null = null;
 let configurationGeneration = 0;
 let pendingConfiguration = Promise.resolve();
 
-export interface ClientTracingConfig {
+interface ClientTracingConfig {
   readonly exportIntervalMs?: number;
 }
 
@@ -122,7 +122,7 @@ async function disposeTracerRuntime(
   runtime.dispose();
 }
 
-export async function __resetClientTracingForTests() {
+async function __resetClientTracingForTests() {
   configurationGeneration++;
   activeConfigKey = null;
   ClientTracer.setDelegate(null);

@@ -35,7 +35,6 @@ import {
 } from "./serverConfigProjection.ts";
 
 // Exported server state includes this type in its inferred public return type.
-export type { ServerConfigProjection } from "./serverConfigProjection.ts";
 
 const unavailableMobileUsage = Atom.make(
   AsyncResult.fail<UsageReadError, UsageSummary>(
@@ -46,21 +45,13 @@ const unavailableMobileUsage = Atom.make(
   ),
 );
 
-export function projectServerConfig(
-  current: Option.Option<ServerConfigProjection>,
-  event: ServerConfigStreamEvent,
-): readonly [Option.Option<ServerConfigProjection>, ReadonlyArray<ServerConfigProjection>] {
-  const next = applyServerConfigProjection(current, event);
-  return [next, Option.toArray(next)];
-}
-
 const cachedConfigSnapshotEvent = (config: ServerConfig): ServerConfigStreamEvent => ({
   version: 1,
   type: "snapshot",
   config,
 });
 
-export interface ServerConfigSubscriptionOptions {
+interface ServerConfigSubscriptionOptions {
   readonly usageLimitSources?: boolean;
   readonly usageLimitsCommand?: boolean;
 }

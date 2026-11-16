@@ -29,7 +29,7 @@ const AUTH_PREFIX = "/api/rest/public/auth";
 export type ZeropsDeviceLoginKind = "login" | "sudo";
 
 /** The app's Sign up: a signed-out person lands on the consent page's sign-up, not its log-in. */
-export type ZeropsDeviceLoginIntent = "register";
+type ZeropsDeviceLoginIntent = "register";
 
 export interface ZeropsDeviceLoginRequest {
   readonly kind: ZeropsDeviceLoginKind;

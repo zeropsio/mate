@@ -1,12 +1,12 @@
 import type { ContextMenuItem } from "@t3tools/contracts";
 
-export type ExternalLinkContextMenuAction =
+type ExternalLinkContextMenuAction =
   | "open-external"
   | "copy-link"
   | "link-to-thread"
   | "unlink-from-thread";
 
-export type ExternalLinkContextMenuFailureOperation =
+type ExternalLinkContextMenuFailureOperation =
   | "show-link-context-menu"
   | "open-link-external"
   | "copy-link"

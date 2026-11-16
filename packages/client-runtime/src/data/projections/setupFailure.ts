@@ -81,7 +81,7 @@ export function setupFailureLogQuery(
   };
 }
 
-export type SetupFailureCause =
+type SetupFailureCause =
   | "dns"
   | "network"
   | "download"

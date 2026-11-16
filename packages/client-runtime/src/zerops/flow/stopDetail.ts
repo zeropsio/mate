@@ -77,7 +77,7 @@ export interface StopVerdict {
  * of a release whose creation did not go through. Asking a deploy of it again would run the new
  * code without that service, so the way out is a new release.
  */
-export interface ReleaseNotCreated {
+interface ReleaseNotCreated {
   readonly tag: string;
   /** The declared services production still lacks, by hostname (`notInZerops`). */
   readonly missing: ReadonlyArray<string>;
@@ -127,7 +127,7 @@ const plural = (count: number, one: string, many: string): string =>
   `${count} ${count === 1 ? one : many}`;
 
 /** The deploy key a stop's verdict speaks of (`stopVerdict`'s `keyGap`). */
-export type StopKeyGap = NonNullable<Parameters<typeof stopVerdict>[0]["keyGap"]>;
+type StopKeyGap = NonNullable<Parameters<typeof stopVerdict>[0]["keyGap"]>;
 
 /**
  * What a stop's verdict says of its deploy key, as HQ records it (main E07): a key that no longer
@@ -395,9 +395,6 @@ export function stopMetaLine(input: {
 
 /** Said, muted, beside a stage's Deploys: what they are read from. */
 export const DEPLOYS_ASIDE = "on main";
-
-/** A card group with nothing in it. */
-export const NONE_YET = "None yet";
 
 /** A service with no public address and none to offer. */
 export const NOT_PUBLIC_YET = "Not public yet";

@@ -1,6 +1,6 @@
 import { normalizeSecureRelayUrl } from "@t3tools/shared/relayUrl";
 
-export interface CloudPublicConfig {
+interface CloudPublicConfig {
   readonly relayUrl: string | null;
   readonly relayTracing: {
     readonly tracesUrl: string | null;
@@ -9,7 +9,7 @@ export interface CloudPublicConfig {
   };
 }
 
-export function trimNonEmpty(value: string | undefined): string | null {
+function trimNonEmpty(value: string | undefined): string | null {
   return value?.trim() || null;
 }
 

@@ -37,7 +37,6 @@ import {
   type OrchestrationLatestTurn,
   type OrchestrationThreadActivity,
   type OrchestrationProposedPlanId,
-  ProviderDriverKind,
   type ToolLifecycleItemType,
   type ThreadId,
   type TurnId,
@@ -69,43 +68,6 @@ import {
 export type { PendingApproval, PendingUserInput } from "@t3tools/client-runtime/pending-requests";
 
 export { formatDuration } from "@t3tools/shared/orchestrationTiming";
-
-export type ProviderPickerKind = ProviderDriverKind;
-
-export const PROVIDER_OPTIONS: Array<{
-  value: ProviderPickerKind;
-  label: string;
-  available: boolean;
-  /** Shown on the model picker sidebar when relevant */
-  pickerSidebarBadge?: "new" | "soon";
-}> = [
-  { value: ProviderDriverKind.make("codex"), label: "Codex", available: true },
-  { value: ProviderDriverKind.make("claudeAgent"), label: "Claude", available: true },
-  {
-    value: ProviderDriverKind.make("opencode"),
-    label: "OpenCode",
-    available: true,
-    pickerSidebarBadge: "new",
-  },
-  {
-    value: ProviderDriverKind.make("cursor"),
-    label: "Cursor",
-    available: true,
-    pickerSidebarBadge: "new",
-  },
-  {
-    value: ProviderDriverKind.make("grok"),
-    label: "Grok",
-    available: true,
-    pickerSidebarBadge: "new",
-  },
-  {
-    value: ProviderDriverKind.make("antigravity"),
-    label: "Antigravity",
-    available: true,
-    pickerSidebarBadge: "new",
-  },
-];
 
 export type { WorkLogToolLifecycleStatus } from "@t3tools/client-runtime/work-log/activity-normalization";
 
@@ -345,7 +307,7 @@ export interface ActivePlanState {
   }>;
 }
 
-export interface LatestProposedPlanState {
+interface LatestProposedPlanState {
   id: OrchestrationProposedPlanId;
   createdAt: string;
   updatedAt: string;
@@ -2306,7 +2268,7 @@ export function createMessageAttachmentPreviewProjector() {
 }
 
 /** Text and update time do not change a streaming assistant message's timeline structure. */
-export function isStreamingMessageTextUpdate(previous: ChatMessage, next: ChatMessage): boolean {
+function isStreamingMessageTextUpdate(previous: ChatMessage, next: ChatMessage): boolean {
   if (
     previous.role !== "assistant" ||
     next.role !== "assistant" ||

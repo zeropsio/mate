@@ -19,7 +19,7 @@ import { ZeropsChangeLinkChip } from "./ZeropsChangeLinkChip";
 const BARE_CHANGE = /\b[Cc]hange #([1-9][0-9]{0,5})\b/gu;
 
 /** The repository `number` names a change in: the only one whose changes carry it, else the only one. */
-export function repositoryOfChangeNumber(
+function repositoryOfChangeNumber(
   number: number,
   repos: ReadonlyArray<string>,
   changes: ReadonlyArray<{ readonly repo: string; readonly number: number }>,

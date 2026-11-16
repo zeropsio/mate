@@ -7,7 +7,7 @@ import {
 import * as Schema from "effect/Schema";
 const isScriptRunCommand = Schema.is(SCRIPT_RUN_COMMAND_PATTERN);
 
-export interface ProjectScriptInput {
+interface ProjectScriptInput {
   readonly name: ProjectScript["name"];
   readonly command: ProjectScript["command"];
   readonly icon: ProjectScript["icon"];

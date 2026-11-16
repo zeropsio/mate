@@ -67,9 +67,9 @@ export interface BuildLogLease {
   release(): void;
 }
 
-export type BuildLogSessionKey = string & { readonly BuildLogSessionKey: unique symbol };
+type BuildLogSessionKey = string & { readonly BuildLogSessionKey: unique symbol };
 
-export type BuildLogRegistryErrorKind = "access" | "capacity" | "closed";
+type BuildLogRegistryErrorKind = "access" | "capacity" | "closed";
 
 export class BuildLogRegistryError extends Error {
   readonly kind: BuildLogRegistryErrorKind;
@@ -117,7 +117,7 @@ export const BUILD_LOG_POLICY: BuildLogPolicy = {
   logPublicationCoalescingMs: 100,
 };
 
-export interface BuildLogRegistryOptions {
+interface BuildLogRegistryOptions {
   /** Whether the viewer may read a project's logs now, as the account's store holds it. */
   readonly readable: (projectId: string) => boolean;
   readonly transport: BuildLogTransport;
@@ -521,7 +521,7 @@ class BuildLogSession implements SharedBuildLogSession {
 }
 
 /** How long a build's log nobody holds is kept before it is closed. */
-export const LOG_RELEASE_GRACE_MS = 5_000;
+const LOG_RELEASE_GRACE_MS = 5_000;
 
 interface RegistryEntry {
   readonly projectId: string;

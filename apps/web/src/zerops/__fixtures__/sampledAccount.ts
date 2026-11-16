@@ -5,7 +5,6 @@
  * Lives outside `*.test.*` on purpose: it runs the layer's own Effect runtime.
  */
 import { makeAccountStore, observeAccount, type ZeropsWire } from "@t3tools/client-runtime/data";
-import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import type { AtomRegistry } from "effect/reactivity";
@@ -68,29 +67,4 @@ export function makeSampledAccount(input: {
     compare: observation.compare,
     logs: null,
   };
-}
-
-/**
- * The account observing `orgId`, whose member list is what `members` resolves at each read, a
- * rejection the platform refusing it (403); counting its reads.
- */
-export function makeMemberAccount(input: {
-  readonly registry: AtomRegistry.AtomRegistry;
-  readonly orgId: string;
-  readonly members: () => Promise<ReadonlyArray<ZeropsOrganizationMember>>;
-}): { readonly value: AccountData; readonly reads: () => number } {
-  let reads = 0;
-  const value = makeSampledAccount({
-    registry: input.registry,
-    orgId: input.orgId,
-    answer: (path) => {
-      if (!path.includes("/user/list")) return null;
-      reads += 1;
-      return input.members().then(
-        (clientUserList) => ({ status: 200, body: { clientUserList } }),
-        () => ({ status: 403, body: null }),
-      );
-    },
-  });
-  return { value, reads: () => reads };
 }

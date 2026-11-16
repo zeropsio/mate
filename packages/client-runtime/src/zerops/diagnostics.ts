@@ -90,7 +90,7 @@ interface MateDiagnosticSpans {
 export type MateDiagnosticSpanKind = keyof MateDiagnosticSpans;
 export type MateDiagnosticSpanStart<K extends MateDiagnosticSpanKind> =
   MateDiagnosticSpans[K]["start"];
-export type MateDiagnosticSpanEnd<K extends MateDiagnosticSpanKind> = MateDiagnosticSpans[K]["end"];
+type MateDiagnosticSpanEnd<K extends MateDiagnosticSpanKind> = MateDiagnosticSpans[K]["end"];
 
 type SpanEvent<K extends MateDiagnosticSpanKind> =
   | ({ readonly kind: K; readonly phase: "start" } & MateDiagnosticSpanStart<K>)

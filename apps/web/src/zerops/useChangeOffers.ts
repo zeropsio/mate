@@ -33,7 +33,7 @@ export type ZeropsChangeOffers = { readonly [V in ChangeVerb]: boolean } & {
 };
 
 /** An application's offers by its id; `undefined` for one HQ's structure does not hold, or before it. */
-export type ZeropsChangeOffersOf = (appId: string) => ZeropsChangeOffers | undefined;
+type ZeropsChangeOffersOf = (appId: string) => ZeropsChangeOffers | undefined;
 
 export function useChangeOffers(): ZeropsChangeOffersOf {
   const structure = useHqStructure();

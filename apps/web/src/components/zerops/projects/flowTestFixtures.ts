@@ -193,17 +193,6 @@ export function section(html: string, marker: string): string {
 }
 
 export const MERGING = entry([WREN, STAGE], { pullRequests: [pull()], stops: [STAGE_STOP] });
-export const RELEASING = entry([WREN, PROD], {
-  merged: [pull({ number: 4, merged: true })],
-  stops: [PRODUCTION_STOP],
-  release: {
-    gate: { allowed: true },
-    suggestion: "v0.1.0",
-    waiting: 1,
-    waitingAtLeast: false,
-    untold: [],
-  },
-});
 export const FRESH = entry([UMA]);
 
 /** Every slot, drawn as a marker the tests look for. */

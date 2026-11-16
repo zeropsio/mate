@@ -12,7 +12,7 @@
  */
 
 /** What a project is in the menu: one Mate's row, a group of Mates, or a project with none. */
-export type ProjectRowKind = "solo" | "group" | "bare";
+type ProjectRowKind = "solo" | "group" | "bare";
 
 /** `mates`: its Mates the menu lists, those being created included. */
 export function projectRowKind(input: { readonly mates: number }): ProjectRowKind {
@@ -20,7 +20,7 @@ export function projectRowKind(input: { readonly mates: number }): ProjectRowKin
   return input.mates === 1 ? "solo" : "group";
 }
 
-export interface GroupMate {
+interface GroupMate {
   readonly projectId: string;
   /** The viewer's own, as the menu's Mine holds it. */
   readonly mine: boolean;
@@ -90,7 +90,7 @@ export interface LeadReading {
   readonly waitsForTask?: boolean | undefined;
 }
 
-export interface GroupLead {
+interface GroupLead {
   /** Whose face leads the cluster, whose time the row shows and whose words its line says. */
   readonly lead: string | undefined;
   /** The asks the viewer can answer, oldest first: the first leads, the rest are "· N more". */
@@ -133,7 +133,7 @@ export function groupLead(readings: ReadonlyArray<LeadReading>): GroupLead {
 }
 
 /** How many faces a group's avatar holds whole; past them, how many more. */
-export const CLUSTER_ROOM = 3;
+const CLUSTER_ROOM = 3;
 
 /** The faces in a group's avatar: the lead first, then the rest in the group's order. */
 export function clusterFaces(
@@ -175,7 +175,7 @@ export function groupHoldsCurrent(input: {
 }
 
 /** What a key does on a row of the menu. */
-export type ProjectRowKeyAction = "next" | "previous" | "open" | "into" | "fold" | "out";
+type ProjectRowKeyAction = "next" | "previous" | "open" | "into" | "fold" | "out";
 
 /**
  * The list's keys: ↓ or j to the next row, ↑ or k to the one before; on a group, → opens it and,

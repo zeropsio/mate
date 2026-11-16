@@ -35,7 +35,7 @@ export const EMPTY_SHELL_STATE: EnvironmentShellState = {
   error: Option.none(),
 };
 
-export function shellStatusForSnapshot(
+function shellStatusForSnapshot(
   snapshot: Option.Option<OrchestrationShellSnapshot>,
 ): EnvironmentShellStatus {
   return Option.isSome(snapshot) ? "cached" : "empty";

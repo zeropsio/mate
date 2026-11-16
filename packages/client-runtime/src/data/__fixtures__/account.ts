@@ -9,7 +9,6 @@ import { runningScope, type ProcessValue } from "../families/process.ts";
 import { projectsScope, type ProjectValue } from "../families/project.ts";
 import { activeScope, type VersionValue } from "../families/version.ts";
 import { servicesScope, type ServiceValue } from "../families/service.ts";
-import { mateVariablesFamily, mateVariablesScope } from "../families/mateVariables.ts";
 
 export const ORG = "org";
 
@@ -180,46 +179,6 @@ export function liveZerops(input: {
           },
         ]),
   ]);
-}
-
-/**
- * One Mate's container's variables read once: what its search answers of the platform rows
- * (`{ id, serviceStackId, key, content }`) that are this service's.
- */
-export function liveMateVariables(
-  orgId: string,
-  serviceId: string,
-  rows: ReadonlyArray<Readonly<Record<string, unknown>>>,
-): ReadonlyArray<AccountInput> {
-  const scope = mateVariablesScope(orgId, serviceId);
-  const value = mateVariablesFamily.sampled?.decode({
-    items: rows.filter((row) => row.serviceStackId === serviceId),
-  });
-  return [
-    event(scope, { kind: "demand", demanded: true }),
-    event(scope, { kind: "attempt" }),
-    event(scope, { kind: "handshake" }),
-    { kind: "baseline-begin", scope, generation: 1 },
-    {
-      kind: "baseline-commit",
-      scope,
-      generation: 1,
-      via: "zerops-read",
-      members: [serviceId],
-      rows:
-        value === null || value === undefined
-          ? []
-          : [
-              {
-                family: "mateVariables",
-                id: serviceId,
-                value,
-                revision: { kind: "zerops", version: null },
-              },
-            ],
-    },
-    event(scope, { kind: "baseline-committed" }),
-  ];
 }
 
 /** What tells each stream in its grace — held, or first trying — it ran out, as the store's clock would. */

@@ -21,7 +21,7 @@ import type { Projection } from "../store.ts";
 import { platformAccess } from "./platformAccess.ts";
 import { sameValue } from "./equal.ts";
 
-export interface PlatformMembership {
+interface PlatformMembership {
   readonly kind: "known" | "unavailable";
   readonly viewer: ZeropsOrganization | undefined;
 }
@@ -53,12 +53,12 @@ export function platformViewer(input: {
   const lastKnown = input.lastKnown;
   return lastKnown?.id === input.orgId && lastKnown.roleCode !== undefined ? lastKnown : undefined;
 }
-export interface PlatformCapabilitiesKey {
+interface PlatformCapabilitiesKey {
   readonly orgId: string;
   readonly projectId?: string | undefined;
   readonly viewer: ZeropsOrganization | undefined;
 }
-export interface PlatformCapabilities {
+interface PlatformCapabilities {
   readonly membershipKnown: boolean;
   readonly createProject: boolean;
   readonly setUpChief: boolean;

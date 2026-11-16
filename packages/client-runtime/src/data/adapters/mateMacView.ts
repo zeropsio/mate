@@ -106,19 +106,19 @@ export function makeMateMacViewSink({
   };
 }
 
-export type MateMacViewEvent =
+type MateMacViewEvent =
   | { readonly kind: "session" }
   | { readonly kind: "session-lost" }
   | { readonly kind: "event"; readonly event: ZeropsMacStreamEvent };
-export class MateMacViewLost extends Data.TaggedError("MateMacViewLost")<{
+class MateMacViewLost extends Data.TaggedError("MateMacViewLost")<{
   readonly message: string;
 }> {}
-export interface MateMacViewWire {
+interface MateMacViewWire {
   readonly open: Stream.Stream<MateMacViewEvent, EnvironmentAuthorizationError | MateMacViewLost>;
 }
 const isAuthorizationError = Schema.is(EnvironmentAuthorizationError);
 const textOf = (value: unknown): string => (value instanceof Error ? value.message : String(value));
-export function classifyMateMacViewFailure(cause: Cause.Cause<unknown>): StreamFault {
+function classifyMateMacViewFailure(cause: Cause.Cause<unknown>): StreamFault {
   for (const reason of cause.reasons) {
     if (Cause.isFailReason(reason) && isAuthorizationError(reason.error))
       return { outcome: "definitive-refusal", message: reason.error.message };

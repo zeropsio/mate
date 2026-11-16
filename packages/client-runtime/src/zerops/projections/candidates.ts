@@ -311,7 +311,7 @@ export function presentCandidates<Row, Presented>(
  * holds no rows at all (unread, being read, failed, gone, withheld); only `complete` (`candidatesComplete`)
  * says they are all the rows there are.
  */
-export interface HeldCandidates<Row> {
+interface HeldCandidates<Row> {
   readonly rows: ReadonlyArray<Row>;
   readonly complete: boolean;
 }
@@ -347,7 +347,7 @@ export const STILL_READING_HOLD_MS = 1_500;
  */
 export const STILL_READING_PATIENCE_MS = 20_000;
 
-export interface CandidatesNoticeOptions {
+interface CandidatesNoticeOptions {
   /** The listing has been partial for less than `STILL_READING_PATIENCE_MS`. */
   readonly patient?: boolean;
   /**

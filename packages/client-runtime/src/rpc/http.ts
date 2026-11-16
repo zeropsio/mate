@@ -124,17 +124,6 @@ export const makeEnvironmentHttpApiGroupClient = <
     }),
   );
 
-/**
- * Contract-derived request paths for authentication proofs, tracing, and
- * structured errors.
- *
- * The builder is deliberately base-less: it resolves a route against a base URL
- * with `new URL`, where a root-absolute contract path would discard the prefix
- * and leave a DPoP `htu` bound to a URL the request never reaches. Callers join
- * the path onto the environment's base URL with `withBasePath`.
- */
-export const makeEnvironmentHttpApiPathBuilder = () => HttpApiClient.urlBuilder(EnvironmentHttpApi);
-
 const failRemoteRequest = (
   requestUrl: string,
   cause: unknown,

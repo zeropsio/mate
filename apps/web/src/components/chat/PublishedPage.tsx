@@ -111,7 +111,7 @@ function useNearView(ref: React.RefObject<HTMLElement | null>): boolean | null {
   return near;
 }
 
-export interface PublishedPageFrameProps {
+interface PublishedPageFrameProps {
   readonly title: string;
   /** The page's HTML; null while it is read. */
   readonly html: string | null;

@@ -29,7 +29,7 @@ import {
   pictureAsksPassed,
 } from "./pictureAsk.logic";
 
-export interface PictureAskScope {
+interface PictureAskScope {
   /** The steps each ask has had answered (`pictureAnswersOf`). */
   readonly answers: ReadonlyMap<string, ReadonlySet<number>>;
   /** The asks the person moved past (`pictureAsksPassed`). */

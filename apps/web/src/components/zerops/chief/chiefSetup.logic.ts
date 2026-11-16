@@ -119,7 +119,7 @@ export function chiefSetupSteps(setup: ChiefSetup): ReadonlyArray<BirthLineStep>
 }
 
 /** What the new-project path shows of the Chief's project, as the setup reads it. */
-export interface ChiefProjectInput {
+interface ChiefProjectInput {
   readonly creation:
     | {
         readonly projectId: string | null;

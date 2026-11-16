@@ -32,7 +32,7 @@ interface UsageProviderChartProps {
 }
 
 /** Recorded period values shared by the marks and period readout. */
-export interface DayColumn {
+interface DayColumn {
   readonly bands: readonly {
     readonly provider: UsageProviderKind;
     readonly value: number | null;

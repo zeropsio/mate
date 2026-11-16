@@ -41,5 +41,3 @@ export function makeActivity(options: {
     },
   };
 }
-
-export type Activity = ReturnType<typeof makeActivity>;

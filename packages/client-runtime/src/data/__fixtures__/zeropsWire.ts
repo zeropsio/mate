@@ -22,7 +22,7 @@ export const settle = Effect.gen(function* () {
   for (let turn = 0; turn < 10; turn += 1) yield* Effect.yieldNow;
 });
 
-export interface FixtureWire {
+interface FixtureWire {
   readonly wire: ZeropsWire;
   readonly requests: Array<WireRequest>;
   /** The open receiver's subscription for a registration, by its scope and role. */

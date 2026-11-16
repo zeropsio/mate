@@ -68,12 +68,7 @@ export function agentAuthLabel(agent: AgentAuthFields): string {
 }
 
 /** What the row's action slot should render: an enabled sign-in button, a disabled placeholder, or nothing. */
-export type ZeropsAgentAuthAction =
-  | "sign-in"
-  | "registering"
-  | "check-again"
-  | "register-again"
-  | "none";
+type ZeropsAgentAuthAction = "sign-in" | "registering" | "check-again" | "register-again" | "none";
 
 export function agentAuthAction(agent: AgentAuthFields): ZeropsAgentAuthAction {
   if (agent.verification?.status === "checking") return "registering";

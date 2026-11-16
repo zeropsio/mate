@@ -13,7 +13,7 @@ const isFault = (value: unknown): value is StreamFault =>
  * commonest is a Mate server older than the request it was sent, which fails to
  * decode it (Milo 0.15.11 asked for a 0.15.13 summary).
  */
-export const DATABASE_FAILURE_UNEXPLAINED = "Something went wrong.";
+const DATABASE_FAILURE_UNEXPLAINED = "Something went wrong.";
 
 export function classifyDatabaseFailure(error: unknown): StreamFault {
   if (isFault(error)) return error;

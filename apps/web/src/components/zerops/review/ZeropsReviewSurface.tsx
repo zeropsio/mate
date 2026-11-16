@@ -740,7 +740,7 @@ export function ReviewSize({
   );
 }
 
-export interface ReviewFileRow {
+interface ReviewFileRow {
   readonly path: string;
   readonly status: string;
   readonly additions: number;

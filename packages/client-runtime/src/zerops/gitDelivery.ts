@@ -66,7 +66,7 @@ export interface GitDelivery {
 }
 
 /** What the origin's CI reported for a repository's confirmed push: `words`, then `failed` checks, then `notes`. */
-export interface GitCiLine {
+interface GitCiLine {
   readonly words: string;
   readonly failed: ReadonlyArray<HqPushCiFailure>;
   readonly notes: ReadonlyArray<string>;

@@ -50,7 +50,7 @@ export interface ProjectLineFullActs {
   readonly onOpenMates?: ((from: HTMLElement) => void) | undefined;
 }
 
-export interface ProjectLineFullProps extends ProjectLineFullActs {
+interface ProjectLineFullProps extends ProjectLineFullActs {
   /** `undefined` while the project is unread: nothing drawn. */
   readonly view: ProjectLineFullView | undefined;
   readonly groupId: string;

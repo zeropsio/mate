@@ -73,7 +73,7 @@ export interface ListedTarget {
 /** The Zerops project of a `projectId:serviceId` target. */
 export const targetProject = (key: TargetKey): string => key.split(":")[0] ?? key;
 
-export interface ListedTargets {
+interface ListedTargets {
   readonly targets: ReadonlyArray<ListedTarget>;
 }
 
@@ -157,7 +157,7 @@ export function listTargets(input: {
 }
 
 /** One target's container as the listing describes it: where it is reached, and its statuses. */
-export interface ContainerTarget {
+interface ContainerTarget {
   readonly key: TargetKey;
   /** The Mate's public origin; null while the platform gives it none. */
   readonly origin: string | null;

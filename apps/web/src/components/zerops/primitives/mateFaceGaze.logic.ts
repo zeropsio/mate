@@ -63,7 +63,7 @@ export interface GazeHost {
 }
 
 /** Where the tracker writes: the face's look, a blink, a tap's glance that eases back. */
-export interface GazeSink {
+interface GazeSink {
   readonly look: (offset: Point) => void;
   readonly blink: () => void;
   readonly tap: (offset: Point) => void;

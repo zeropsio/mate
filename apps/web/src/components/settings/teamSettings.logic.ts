@@ -307,7 +307,7 @@ export function shownTeam(
 }
 
 /** What the team says on return from sending invitations to `addresses`. */
-export interface SentInvitation {
+interface SentInvitation {
   /**
    * What a screen reader hears, politely. Nothing is drawn: the invite page said it where it was
    * sent, and a line here would push the team down from where it was last seen.

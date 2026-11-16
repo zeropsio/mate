@@ -62,9 +62,9 @@ export const cellKey = (row: Pick<AccessRow, "key">, projectId: string): string 
   `${row.key}:${projectId}`;
 
 /** The id a column's header carries: a place's page links to it (`#access-<projectId>`). */
-export const columnAnchor = (projectId: string): string => `access-${projectId}`;
+const columnAnchor = (projectId: string): string => `access-${projectId}`;
 
-export interface ProjectAccessTableProps {
+interface ProjectAccessTableProps {
   readonly view: AccessTableView;
   readonly label?: string;
   /** Cells (`cellKey`) and rows (their key) being written now. */

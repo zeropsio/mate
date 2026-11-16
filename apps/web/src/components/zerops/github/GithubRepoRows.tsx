@@ -48,7 +48,7 @@ import { GithubTokenFields } from "./GithubTokenFields";
 import { dropPress, holdPress, type HeldPress, useRepoPress } from "./repoPress";
 
 /** What a row's presses do, from the account's operations; absent ones are not offered. */
-export interface RepoRowActions {
+interface RepoRowActions {
   /** Sends a disconnect under `requestId`; the row follows it through its operation's record. */
   readonly sendDisconnect?: (repo: string, requestId: string) => Promise<unknown>;
   readonly replaceToken?: (repo: string, token: string) => Promise<HqRemoteProbe>;
@@ -119,7 +119,7 @@ export function ProjectRepositories({
   );
 }
 
-export interface RepoRowsViewProps {
+interface RepoRowsViewProps {
   /** The account's organization, which a held press belongs to. */
   readonly orgId: string | null;
   readonly project: string;

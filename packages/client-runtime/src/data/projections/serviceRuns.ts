@@ -34,7 +34,7 @@ const text = (value: string | null | undefined): string | null => {
 const variable = (service: ServiceValue, key: string): string | null =>
   text(service.userData?.find((entry) => entry.key === key)?.content);
 
-export function runsOf(service: ServiceValue): ServiceRuns {
+function runsOf(service: ServiceValue): ServiceRuns {
   const version = service.activeAppVersion;
   if (version === undefined) return "unread";
   const activeId = text(version?.id);

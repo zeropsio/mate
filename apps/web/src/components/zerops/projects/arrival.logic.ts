@@ -45,7 +45,7 @@ export interface ArrivalSignIn {
 }
 
 /** How long a first visit lasts: the life of HQ's first session (`sessions.ts`, 12 hours). */
-export const FIRST_VISIT_MS = 12 * 60 * 60 * 1000;
+const FIRST_VISIT_MS = 12 * 60 * 60 * 1000;
 
 /**
  * Whether this is the person's first Mate visit as HQ records it: within their first session's

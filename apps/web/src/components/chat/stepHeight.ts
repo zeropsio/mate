@@ -68,13 +68,6 @@ export interface CarriedRow {
   readonly direction: 1 | -1 | 0;
 }
 
-/**
- * Frames the list takes to lay out what came with a change of its rows (the
- * answer and the result a settle brings): it lays those out at once, and
- * would a step taken meanwhile too.
- */
-export const LIST_LAYS_OUT_FRAMES = 3;
-
 /** Less than a layout unit: nothing for the list to hear. */
 const NOTHING = 1 / 64;
 

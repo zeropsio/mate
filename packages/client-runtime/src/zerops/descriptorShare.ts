@@ -26,12 +26,12 @@ export const DESCRIPTOR_SHARE_MS = 10_000;
 export const DESCRIPTOR_READ_DEADLINE_MS = 8_000;
 
 /** One read of a Mate's descriptor, and when it was sent: a shared one may predate its reader. */
-export interface DescriptorReading {
+interface DescriptorReading {
   readonly reading: MatePathReading;
   readonly sentAt: Instant;
 }
 
-export interface DescriptorShare {
+interface DescriptorShare {
   /** The descriptor document at this Mate base URL, as one read of it answered. */
   readonly read: (
     httpBaseUrl: string,
@@ -46,7 +46,7 @@ export interface DescriptorShare {
   readonly recent: (httpBaseUrl: string) => ExecutionEnvironmentDescriptor | null;
 }
 
-export interface DescriptorSharePorts {
+interface DescriptorSharePorts {
   readonly clock: Pick<ExchangeClock, "now" | "setTimer">;
   readonly fetch: FetchLike;
 }

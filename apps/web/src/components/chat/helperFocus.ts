@@ -6,7 +6,7 @@
  */
 import { useSyncExternalStore } from "react";
 
-export interface HelperFocus {
+interface HelperFocus {
   readonly threadKey: string;
   readonly helperId: string;
   readonly at: number;

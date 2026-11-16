@@ -21,9 +21,9 @@ export function formatEstimate(ms: number): string {
   return `about ${Math.max(1, Math.round(ms / 60_000))} min`;
 }
 
-export const OVERRUN_NOTE = "Taking longer than usual";
+const OVERRUN_NOTE = "Taking longer than usual";
 
-export interface ProgressClock {
+interface ProgressClock {
   /** How long it has run; `null` when its start is unknown. */
   readonly elapsed: string | null;
   /** `usually about 5 min` inside the estimate, the overrun line past it; `null` once ended. */

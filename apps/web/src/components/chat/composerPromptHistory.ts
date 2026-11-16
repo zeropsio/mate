@@ -19,7 +19,7 @@ import { PLAN_IMPLEMENTATION_PROMPT_PREFIX } from "../../proposedPlan";
 const CLAUDE_ULTRATHINK_PREFIX = "Ultrathink:\n";
 const REVIEW_COMMENT_BLOCK_PATTERN = /<review_comment\b[^>]*>[\s\S]*?<\/review_comment>/g;
 
-export interface ComposerPromptHistoryMessage {
+interface ComposerPromptHistoryMessage {
   readonly id: string;
   readonly role: string;
   readonly text: string;
@@ -31,7 +31,7 @@ export interface ComposerPromptHistoryMessage {
   readonly taskMessage?: unknown;
 }
 
-export interface ComposerPromptHistoryEntry {
+interface ComposerPromptHistoryEntry {
   readonly id: string;
   readonly prompt: string;
 }
@@ -62,7 +62,7 @@ function findActive(
   return entries.findLastIndex((entry) => entry.prompt === position.recalled);
 }
 
-export interface ComposerPromptHistoryStep {
+interface ComposerPromptHistoryStep {
   readonly position: ComposerPromptHistoryPosition | null;
   readonly prompt: string;
 }

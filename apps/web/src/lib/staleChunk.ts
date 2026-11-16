@@ -28,13 +28,13 @@ const STALE_CHUNK_MESSAGES = [
   /unable to preload css/i,
 ];
 
-export function isStaleChunkError(error: unknown): boolean {
+function isStaleChunkError(error: unknown): boolean {
   const message =
     error instanceof Error ? error.message : typeof error === "string" ? error : undefined;
   return message !== undefined && STALE_CHUNK_MESSAGES.some((pattern) => pattern.test(message));
 }
 
-export interface StaleChunkHost {
+interface StaleChunkHost {
   readonly storage: () => Pick<Storage, "getItem" | "setItem">;
   readonly now: () => number;
   readonly reload: () => void;

@@ -67,7 +67,7 @@ export function carriedMoved(input: {
 }
 
 /** A commit a release carries that no change landed, as HQ stores it. */
-export interface OutsideCommit {
+interface OutsideCommit {
   readonly repo: string;
   readonly sha: string;
   readonly subject: string;
@@ -119,7 +119,7 @@ export function carriedByRecords(input: {
 }
 
 /** One side of a roll back as HQ's release histories say it. */
-export type RecordedSide =
+type RecordedSide =
   | {
       readonly state: "known";
       readonly changes: ReadonlyArray<CarriedChange>;

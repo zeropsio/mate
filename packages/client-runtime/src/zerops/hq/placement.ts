@@ -22,7 +22,7 @@ import type { Known } from "../knowledge/known.ts";
 import type { HqMate, HqStructure } from "./client.ts";
 
 /** Mate placement readers use app projects/births, independently of environment targets. */
-export type MatePlacementStructure = Pick<HqStructure, "ungrouped" | "placeable"> & {
+type MatePlacementStructure = Pick<HqStructure, "ungrouped" | "placeable"> & {
   readonly apps: ReadonlyArray<Omit<HqStructure["apps"][number], "environments">>;
 };
 import type { HqPressHold } from "./pressElsewhere.ts";
@@ -157,7 +157,7 @@ export function heldOf(project: {
  * The project with where HQ places it now: a project it does not place carries no placement — one
  * it placed before and no longer does loses its. The same object where nothing changes.
  */
-export function placeProject<P extends { readonly id: string; readonly hq?: HqPlacement }>(
+function placeProject<P extends { readonly id: string; readonly hq?: HqPlacement }>(
   project: P,
   placements: HqPlacements,
 ): P {

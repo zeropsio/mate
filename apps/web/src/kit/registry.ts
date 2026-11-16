@@ -1,7 +1,7 @@
 import { KIT_GROUPS, KIT_KINDS, type KitSection } from "./kitSection";
 
 /** Ordered by group, then kind, then title: the order the index and the page show them in. */
-export function orderKitSections(sections: readonly KitSection[]): readonly KitSection[] {
+function orderKitSections(sections: readonly KitSection[]): readonly KitSection[] {
   return sections.toSorted(
     (a, b) =>
       KIT_GROUPS.indexOf(a.group) - KIT_GROUPS.indexOf(b.group) ||

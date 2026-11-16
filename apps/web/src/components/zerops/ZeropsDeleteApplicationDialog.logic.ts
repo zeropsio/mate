@@ -115,7 +115,7 @@ export function lastMateDeletionTarget(
 }
 
 /** What HQ holds of the project: its repositories by name, and how many changes are open. */
-export interface ApplicationHoldings {
+interface ApplicationHoldings {
   readonly repos: ReadonlyArray<string>;
   readonly openChanges: number;
 }

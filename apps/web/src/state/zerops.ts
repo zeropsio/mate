@@ -67,7 +67,7 @@ export { deriveZeropsThreadModel } from "@t3tools/client-runtime/zerops/model";
  * Platform facts are read through data-layer projections in the derivations below.
  */
 /** The Zerops session as the account's product last saw it, and the organization it shows. */
-export interface ZeropsSessionView {
+interface ZeropsSessionView {
   readonly status: ZeropsSessionStatus;
   readonly organizationStatus: ZeropsOrganizationStatus;
   readonly activeOrganization: OrganizationRef | null;

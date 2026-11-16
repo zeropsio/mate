@@ -116,7 +116,7 @@ export function CrewPanel({
   );
 }
 
-export interface CrewPanelBodyProps {
+interface CrewPanelBodyProps {
   readonly environmentId: EnvironmentId;
   /** The crew as its feed reads it (`useCrew`). */
   readonly crew: CrewRead;

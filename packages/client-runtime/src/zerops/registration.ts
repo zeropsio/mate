@@ -32,7 +32,7 @@ export interface ZeropsRegistrationInput {
 /** The platform's code for "the captcha did not check out". */
 export const ZEROPS_CAPTCHA_ERROR_CODE = "cloudflareCaptchaVerificationFailed";
 
-export interface ZeropsRegistrationBody {
+interface ZeropsRegistrationBody {
   readonly email: string;
   readonly password: string;
   readonly name: string;

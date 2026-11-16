@@ -7,7 +7,7 @@ import type { CanonicalHqStructure } from "@t3tools/client-runtime/zerops/hq";
 
 import { hqNavigationAtom } from "../state/zerops";
 
-export type EnvironmentTier = "stage" | "production";
+type EnvironmentTier = "stage" | "production";
 
 /** The tier of the environment `projectId` is; `null` for any other project, or before HQ says. */
 export function environmentTierOf(

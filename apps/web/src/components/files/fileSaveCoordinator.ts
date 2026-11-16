@@ -1,6 +1,6 @@
 import type { AtomCommandResult } from "@t3tools/client-runtime/state/runtime";
 
-export interface FileSaveCoordinatorOptions<A, E> {
+interface FileSaveCoordinatorOptions<A, E> {
   readonly debounceMs: number;
   readonly persist: (contents: string) => Promise<AtomCommandResult<A, E>>;
   readonly onPendingChange: (pending: boolean) => void;

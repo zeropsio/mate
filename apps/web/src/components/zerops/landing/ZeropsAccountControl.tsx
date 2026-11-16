@@ -19,7 +19,7 @@ import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../../ui/
 import { PersonAvatar } from "../primitives";
 import { zeropsAccountDisplay, type ZeropsAccountDisplay } from "./ZeropsAccountControl.logic";
 
-export interface ZeropsAccountControlProps {
+interface ZeropsAccountControlProps {
   readonly account: ZeropsAccountDisplay;
   readonly busy?: boolean;
   readonly error?: string | null;

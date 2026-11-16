@@ -37,11 +37,7 @@ export interface PipelineHeadline {
   readonly word: "Waiting to run" | "Running" | "Finished" | "Failed" | "Cancelled";
 }
 
-export type PipelineOverallLabel =
-  | "Running for"
-  | "Finished in"
-  | "Failed after"
-  | "Cancelled after";
+type PipelineOverallLabel = "Running for" | "Finished in" | "Failed after" | "Cancelled after";
 
 /** "Running for 1m 12s", "Finished in 3m 1s at …". */
 export interface PipelineOverall {
@@ -151,7 +147,7 @@ export function displayVersionName(name: string): string {
 }
 
 /** What a deploy step's sentence names; any of them may not be known. */
-export interface PipelineSentenceNames {
+interface PipelineSentenceNames {
   readonly versionName: string | undefined;
   readonly serviceName: string | undefined;
   readonly serviceType: string | undefined;

@@ -17,7 +17,7 @@ export interface MenuPress {
 }
 
 /** What the route has open now. */
-export interface MenuRouteNow {
+interface MenuRouteNow {
   readonly active: string | null;
   readonly overviewOpen: boolean;
 }

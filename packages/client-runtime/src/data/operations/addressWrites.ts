@@ -380,13 +380,13 @@ export const removeDomain = addressKind("remove-domain");
 export const publishDomains = addressKind("publish-domains");
 export const disableSubdomainAccess = addressKind("disable-subdomain-access");
 export const openPort = addressKind("open-port");
-export const changePort = addressKind("change-port");
+const changePort = addressKind("change-port");
 export const closePort = addressKind("close-port");
 export const publishPorts = addressKind("publish-ports");
 export const requestIpv4 = addressKind("request-ipv4");
 
 /** Looking a domain up again: Zerops's answer is its end; the next check's row is its evidence. */
-export const checkDomainDns: OperationKind<"check-domain-dns"> = {
+const checkDomainDns: OperationKind<"check-domain-dns"> = {
   kind: "check-domain-dns",
   executor: "zerops",
   reflected: () => true,

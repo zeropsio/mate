@@ -10,7 +10,7 @@
  */
 import type { EngineConversationKey } from "./families/mateEngine.ts";
 
-export interface EngineLivePolicy {
+interface EngineLivePolicy {
   /** A `text` or `reasoning` stream's budget: its head is held, the record carries the rest. */
   readonly textChars: number;
   /** An `output` stream's budget: its tail is held. */

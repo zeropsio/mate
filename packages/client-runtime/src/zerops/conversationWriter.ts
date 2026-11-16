@@ -143,7 +143,7 @@ export function hqConversationWriter(input: {
  * paints at once; and while neither has said, the room is held — never a composer that may turn
  * out to be someone else's.
  */
-export type ConversationFooter = "composer" | "read-only" | "held";
+type ConversationFooter = "composer" | "read-only" | "held";
 
 export function conversationFooter(
   mate: ConversationWriter,

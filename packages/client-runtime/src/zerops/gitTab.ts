@@ -187,7 +187,7 @@ export type GitBlockState =
   | "in-review"
   | "merged";
 
-export type GitBlockActionKind = "update-from-main" | "push" | "review";
+type GitBlockActionKind = "update-from-main" | "push" | "review";
 
 export interface GitBlockAction {
   readonly kind: GitBlockActionKind;
@@ -413,7 +413,7 @@ function commits(count: number): { readonly subject: string; readonly verb: stri
  * state that offers no verb says why it offers none — a pull request that
  * looks fine and cannot move is the trap the change's own verdict closes.
  */
-export function gitVerdict(input: {
+function gitVerdict(input: {
   readonly state: GitBlockState;
   readonly checkout: GitCheckoutState;
   readonly pullRequestNumber: number | undefined;
@@ -509,7 +509,7 @@ function inReview(mergeability: MergeabilityKind, baseBranch: string): Omit<GitV
 }
 
 /** What a repository whose remote did not answer says, on its own line above its work. */
-export const GIT_UNREACHABLE_LINE = "Can't reach the repository";
+const GIT_UNREACHABLE_LINE = "Can't reach the repository";
 
 /** What a checkout that could not be read says, in place of its work. */
 export const GIT_UNREADABLE_LINE = "Could not read this repository";

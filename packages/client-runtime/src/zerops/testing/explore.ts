@@ -9,7 +9,7 @@
  * sequence from one checks exactly as it does from the other, e.g. times relative to now and
  * counters relative to the next one.
  */
-export interface Exploration<State, Event, Result extends { readonly state: State }> {
+interface Exploration<State, Event, Result extends { readonly state: State }> {
   readonly roots: ReadonlyArray<State>;
   readonly depth: number;
   /** The events the model may send next; they may depend on the state. */
@@ -20,7 +20,7 @@ export interface Exploration<State, Event, Result extends { readonly state: Stat
   readonly check: (before: State, event: Event, result: Result) => ReadonlyArray<string>;
 }
 
-export interface ExplorationReport {
+interface ExplorationReport {
   readonly transitions: number;
   /** Distinct states whose events were sent, the roots' included. */
   readonly expanded: number;

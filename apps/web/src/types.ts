@@ -7,7 +7,6 @@ import type {
   OrchestrationMessage,
   OrchestrationProposedPlan,
   OrchestrationSession,
-  ProjectScript as ContractProjectScript,
   ProviderInteractionMode,
   RuntimeMode,
 } from "@t3tools/contracts";
@@ -24,7 +23,6 @@ export const DEFAULT_INTERACTION_MODE: ProviderInteractionMode = "default";
 export const DEFAULT_THREAD_TERMINAL_HEIGHT = 280;
 export const DEFAULT_THREAD_TERMINAL_ID = "term-1";
 export const MAX_TERMINALS_PER_GROUP = 4;
-export type ProjectScript = ContractProjectScript;
 
 export interface ThreadTerminalGroup {
   id: string;

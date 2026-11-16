@@ -17,8 +17,6 @@
  */
 import * as Schema from "effect/Schema";
 
-import type { HqApi } from "./client.ts";
-
 /** The reader's own Chief: its project, and since when HQ holds it. */
 export const HqChief = Schema.Struct({ projectId: Schema.NonEmptyString, since: Schema.String });
 export type HqChief = typeof HqChief.Type;
@@ -79,7 +77,7 @@ export interface HqChiefCalls {
 }
 
 /** The client's session call (`makeHqApi`'s `authorized`) and its schema read (`decoded`). */
-export interface HqChiefTransport {
+interface HqChiefTransport {
   readonly authorized: (path: string, init?: RequestInit, write?: boolean) => Promise<Response>;
   readonly decoded: <S extends Schema.Decoder<unknown>>(
     schema: S,

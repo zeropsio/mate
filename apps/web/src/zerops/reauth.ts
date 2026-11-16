@@ -12,7 +12,7 @@
 import { startZeropsHandover } from "./handover";
 import { readZeropsNativeSignInBridge } from "./nativeSignIn";
 
-export interface ZeropsReauthDeps {
+interface ZeropsReauthDeps {
   readonly storage: () => Pick<Storage, "getItem" | "setItem" | "removeItem">;
   /** A desktop build signs in through the system browser: never on its own. */
   readonly native: () => boolean;
@@ -21,7 +21,7 @@ export interface ZeropsReauthDeps {
   readonly start: () => string;
 }
 
-export interface ZeropsReauth {
+interface ZeropsReauth {
   /** The platform refused this tab's session. */
   readonly ask: () => void;
   /** A fresh load verified its stored session. */
@@ -33,7 +33,7 @@ export interface ZeropsReauth {
  * verified the session it brought. Per tab (`sessionStorage`): it guards this
  * tab's round trip, and survives the navigation there and back.
  */
-export const ZEROPS_REAUTH_GUARD_KEY = "zerops-mate.reauth-asked.v1";
+const ZEROPS_REAUTH_GUARD_KEY = "zerops-mate.reauth-asked.v1";
 
 export function makeZeropsReauth(deps: ZeropsReauthDeps): ZeropsReauth {
   return {

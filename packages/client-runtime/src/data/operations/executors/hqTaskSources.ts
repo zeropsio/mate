@@ -39,7 +39,7 @@ export type TypedSecrets = Readonly<Record<string, string>>;
 const UPDATE_HQ = hqNeedsUpdate("take tasks from Slack, Discord, webhooks and schedules");
 const UPDATE_HQ_GITHUB = hqNeedsUpdate("connect GitHub");
 /** What an HQ that predates a task's stop from Mate is asked. */
-export const UPDATE_HQ_TASK_STOP = hqNeedsUpdate("stop tasks from Mate");
+const UPDATE_HQ_TASK_STOP = hqNeedsUpdate("stop tasks from Mate");
 
 /**
  * HQ's refusal of an install link, an Accept or a Suspend in words: an HQ without the
@@ -62,7 +62,7 @@ function installationRefusal(cause: HqError, of: "installation" | "app"): string
  * a person who is no Owner or Admin may not, and a task that ended meanwhile has nothing to stop.
  * `undefined`: HQ's own words stand.
  */
-export function taskStopRefusal(cause: HqError): string | undefined {
+function taskStopRefusal(cause: HqError): string | undefined {
   if (cause.status === 404 && cause.reason === undefined) return UPDATE_HQ_TASK_STOP;
   if (cause.status === 403) return "Only an Owner or Admin can stop a task.";
   if (cause.reason === "task_not_found") return "That task has ended already.";

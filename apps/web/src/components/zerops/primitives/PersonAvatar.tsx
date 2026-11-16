@@ -58,4 +58,3 @@ function PersonAvatar({ className, name, picture, size = 24, ...props }: PersonA
 }
 
 export { PersonAvatar };
-export type { PersonAvatarProps, PersonAvatarSize };

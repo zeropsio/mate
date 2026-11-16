@@ -67,7 +67,7 @@ import { Button } from "~/components/ui/button";
 import { spendProjectIds } from "./projectSpend.logic";
 import { ProjectCreditLine } from "./ProjectCreditLine";
 
-export const cardId = (groupId: string) => `project-${groupId}`;
+const cardId = (groupId: string) => `project-${groupId}`;
 
 /** One card's width and the gap between cards: a step of the back and forward buttons. */
 const CARD_STEP = 380 + 16;
@@ -964,7 +964,7 @@ export function ProjectCards<T>({
 const NO_CHOICES: ReadonlyArray<CardMateChoice> = [];
 
 /** A choice a lifted Mate offers in place: a question's option, an approval's decision. */
-export interface CardMateChoice {
+interface CardMateChoice {
   readonly label: string;
   readonly primary: boolean;
   readonly onPick: () => void;

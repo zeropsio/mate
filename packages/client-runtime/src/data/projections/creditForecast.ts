@@ -16,7 +16,7 @@ import { projectsScope } from "../families/project.ts";
 import type { ScopeKey } from "../model.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 
-export interface CreditForecastKey {
+interface CreditForecastKey {
   readonly orgId: string;
   /** The credit read's generation when the dialog opened: only a read after it answers. */
   readonly openedAt: number;

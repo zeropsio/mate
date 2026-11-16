@@ -18,7 +18,7 @@ import { useAccountData } from "./accountData";
 import { useHeldZeropsDetailCandidates } from "./useZeropsCandidates";
 import { intendContainer } from "./zeropsContainers";
 
-export interface RestartTarget {
+interface RestartTarget {
   /** The Mate's container. */
   readonly key: TargetKey;
   readonly projectId: string;

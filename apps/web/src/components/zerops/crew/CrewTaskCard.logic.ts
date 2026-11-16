@@ -15,7 +15,7 @@
 import { CREW_NEW_STINT_WORD } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { CrewCard, CrewStint, CrewTask, ThreadId } from "@t3tools/contracts";
 
-export interface CrewTaskCardModel {
+interface CrewTaskCardModel {
   readonly heading: string;
   /** The card's words, its `Done when:` line taken out. */
   readonly text: string;

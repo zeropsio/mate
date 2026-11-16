@@ -159,12 +159,12 @@ export type ZeropsSessionEffect =
    */
   | { readonly kind: "reauth-settled" };
 
-export interface ZeropsSessionContext {
+interface ZeropsSessionContext {
   readonly nowMs: number;
   readonly random: () => number;
 }
 
-export interface ZeropsSessionTransition {
+interface ZeropsSessionTransition {
   readonly state: ZeropsSessionState;
   readonly effects: ReadonlyArray<ZeropsSessionEffect>;
 }

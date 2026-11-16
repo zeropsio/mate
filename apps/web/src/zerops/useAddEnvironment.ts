@@ -74,7 +74,7 @@ function usePendingEnvironments(): ReadonlyMap<string, ReadonlyArray<HeldEnviron
  * What HQ's flow of an application tells its environments' facts, with its outside production
  * (`ZeropsProjectFlow.outside`), which leaves no production to add.
  */
-export type ApplicationEnvironmentReads = Pick<
+type ApplicationEnvironmentReads = Pick<
   ApplicationEnvironmentFacts,
   "environments" | "recipeRead" | "recipeTiers" | "merged" | "pullRequests"
 > &

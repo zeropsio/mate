@@ -59,13 +59,13 @@ export interface CommandPaletteOpenIntent {
   readonly environmentId?: EnvironmentId;
 }
 
-export interface CommandPaletteUiState {
+interface CommandPaletteUiState {
   readonly open: boolean;
   readonly mode: SearchOverlayMode;
   readonly openIntent: CommandPaletteOpenIntent | null;
 }
 
-export type CommandPaletteUiAction =
+type CommandPaletteUiAction =
   | { readonly _tag: "SetOpen"; readonly open: boolean }
   | { readonly _tag: "ToggleMode"; readonly mode: SearchOverlayMode }
   | { readonly _tag: "OpenAddProject"; readonly environmentId?: EnvironmentId }
@@ -104,13 +104,13 @@ export function reduceCommandPaletteUiState(
   }
 }
 
-export interface CommandPaletteThreadContentMatch {
+interface CommandPaletteThreadContentMatch {
   readonly source: "user" | "assistant";
   readonly snippet: string;
   readonly query: string;
 }
 
-export interface CommandPaletteItem {
+interface CommandPaletteItem {
   readonly kind: "action" | "submenu";
   readonly value: string;
   readonly searchTerms: ReadonlyArray<string>;
@@ -165,16 +165,16 @@ export function enumerateCommandPaletteItems(
   });
 }
 
-export type CommandPaletteMode = "root" | "root-browse" | "submenu" | "submenu-browse";
+type CommandPaletteMode = "root" | "root-browse" | "submenu" | "submenu-browse";
 
-export function normalizeSearchText(value: string): string {
+function normalizeSearchText(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 // A project as the palette shows it. `displayName` is the grouped label (for
 // example "owner/repo" when projects are merged across machines). Keep `title`
 // as the real project title: the automatic project icon is derived from it, and
 // every other surface uses the real title, so overriding it desyncs the icon.
-export type CommandPaletteProject = Project & { readonly displayName: string };
+type CommandPaletteProject = Project & { readonly displayName: string };
 
 export function buildProjectActionItems(input: {
   projects: ReadonlyArray<CommandPaletteProject>;
@@ -204,7 +204,7 @@ export function buildProjectActionItems(input: {
   }));
 }
 
-export type BuildThreadActionItemsThread = Pick<
+type BuildThreadActionItemsThread = Pick<
   SidebarThreadSummary,
   | "archivedAt"
   | "branch"
@@ -682,7 +682,7 @@ export function getCommandPaletteInputPlaceholder(mode: CommandPaletteMode): str
   }
 }
 
-export interface CommandPaletteListsRead {
+interface CommandPaletteListsRead {
   readonly organizationId: string | null;
   readonly read: boolean;
 }
@@ -717,7 +717,7 @@ export function paletteNoMatchMessage(input: {
 }
 
 /** Why "Restart the coding agent" waits: stopping would end the run. */
-export const RESTART_CODING_AGENT_WHILE_WORKING = "It is working. Stop the run first.";
+const RESTART_CODING_AGENT_WHILE_WORKING = "It is working. Stop the run first.";
 
 /**
  * What "Restart the coding agent" does to a Mate's chat. Stopping the process

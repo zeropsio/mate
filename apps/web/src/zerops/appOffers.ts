@@ -8,7 +8,7 @@ import { hqMergeOfferWords } from "@t3tools/client-runtime/zerops/hq";
 import { hqOffer, type HqOffers } from "@t3tools/shared/hqOffers";
 
 /** Who merges an application's changes where it limits that, and what each of them is called. */
-export interface ReleaseMergers {
+interface ReleaseMergers {
   readonly mergers: { readonly people: ReadonlyArray<string> } | undefined;
   readonly nameOf: (userId: string) => string | undefined;
 }

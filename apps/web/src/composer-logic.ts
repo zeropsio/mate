@@ -267,8 +267,6 @@ export function isCollapsedCursorAdjacentToInlineToken(
   return false;
 }
 
-export const isCollapsedCursorAdjacentToMention = isCollapsedCursorAdjacentToInlineToken;
-
 export interface ComposerTriggerOptions {
   /**
    * What `@` offers. Only *Tell the crew* offers crewmates (PRD §5.3); a chat's

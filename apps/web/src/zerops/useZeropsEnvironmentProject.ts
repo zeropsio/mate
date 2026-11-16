@@ -3,7 +3,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import { useMateOfEnvironment } from "./accountEnvironments";
 
 /** A Mate's project, with the organization that lists it. */
-export interface EnvironmentProject {
+interface EnvironmentProject {
   readonly projectId: string;
   readonly orgId: string;
 }

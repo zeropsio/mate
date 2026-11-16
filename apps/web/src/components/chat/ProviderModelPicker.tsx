@@ -39,7 +39,7 @@ import { AvailabilityDot, AvailabilityNote, availabilityName } from "./AgentAvai
  * effort, "Sonnet 5 · High", and the menu holds `choices` — the effort, the
  * model's other choices and the access — beside the models.
  */
-export interface ProviderModelPickerComposer {
+interface ProviderModelPickerComposer {
   /** The model's options as chosen now, and whether the prompt sets the effort. */
   readonly traits: Pick<
     Parameters<typeof composerModelControlLabel>[0],

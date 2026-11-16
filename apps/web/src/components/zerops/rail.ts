@@ -20,6 +20,3 @@ export const RAIL_LINE = "w-px flex-1 bg-[var(--zerops-rail)]";
 
 /** The same space, unpainted: what an end of the line gives up. */
 export const RAIL_BLANK = "w-px flex-1";
-
-/** The column a node is centred in, wide enough for the widest of them. */
-export const RAIL_COLUMN = "relative flex w-5 shrink-0 flex-col items-center self-stretch";

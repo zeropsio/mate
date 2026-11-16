@@ -8,7 +8,7 @@ import type { GitRefItem } from "@t3tools/shared/hqGitBrowse/refs";
 
 export type GitRefGroupName = "Branches" | "Changes" | "Tags" | "From GitHub";
 
-export interface GitRefGroup {
+interface GitRefGroup {
   readonly name: GitRefGroupName;
   readonly items: ReadonlyArray<GitRefItem>;
 }

@@ -185,7 +185,7 @@ interface CachedPlatformRegistration {
   readonly refreshAtEpochMs?: number;
 }
 
-export type PrimaryEnvironmentTargetRead =
+type PrimaryEnvironmentTargetRead =
   | {
       readonly _tag: "Success";
       readonly target: PrimaryEnvironmentTarget | null;

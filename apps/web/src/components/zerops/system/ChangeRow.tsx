@@ -82,7 +82,7 @@ export function ChangeAge({ at }: { readonly at: string | undefined }) {
 }
 
 /** What a row is about: a change, by its pull request; or work that is no change yet, by its words. */
-export type ChangeRowSubject =
+type ChangeRowSubject =
   | { readonly pull: FlowPullRequest; readonly title?: undefined }
   | {
       readonly pull?: undefined;
@@ -90,7 +90,7 @@ export type ChangeRowSubject =
       readonly title: string;
     };
 
-export type ChangeRowProps = ChangeRowSubject & {
+type ChangeRowProps = ChangeRowSubject & {
   /** Still open: *Review* stands at its end, where no other `verb` is given. */
   readonly open?: boolean;
   /** Whose, and where it stands: `changeRowLine(mate, words)` — "Juno · Ready to merge". */

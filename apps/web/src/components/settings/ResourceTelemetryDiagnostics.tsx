@@ -183,7 +183,7 @@ function sourceStatusTone(status: ResourceTelemetrySourceStatus): "success" | "w
 }
 
 /** A telemetry source's state as a dot Badge: its name, then its state in words. */
-export function SourceStatusBadge({
+function SourceStatusBadge({
   label,
   status,
   presentation,

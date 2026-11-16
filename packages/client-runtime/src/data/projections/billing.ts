@@ -18,9 +18,9 @@ import type { Projection, ProjectionReads } from "../store.ts";
 import { sameValue } from "./equal.ts";
 
 /** A project stopping within this many hours is said, quietly. */
-export const STOP_SOON_HOURS = 72;
+const STOP_SOON_HOURS = 72;
 /** Within this many it is said as a problem: the Zerops GUI's own warning. */
-export const STOP_IMMINENT_HOURS = 8;
+const STOP_IMMINENT_HOURS = 8;
 /** A balance lasting fewer days than this, with nothing to refill it, is running low. */
 const LOW_DAYS = 3;
 

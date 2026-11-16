@@ -136,7 +136,7 @@ function exitUnlessInterrupted<A, E, R>(
   });
 }
 
-export interface EnvironmentSupervisorOptions {
+interface EnvironmentSupervisorOptions {
   readonly initiallyDesired?: boolean;
   /**
    * The generation of the credential the store holds, read only once that

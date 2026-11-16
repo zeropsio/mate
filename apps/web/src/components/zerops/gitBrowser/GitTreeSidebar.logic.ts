@@ -8,7 +8,7 @@ import type { FileTree } from "@pierre/trees";
 import type { RepoPathTarget } from "./RepoMarkdown";
 
 /** A folder in the tree's terms: its path with a trailing slash, as the tree tells folders apart. */
-export const folderRow = (path: string) => `${path}/`;
+const folderRow = (path: string) => `${path}/`;
 /** A tree row's repository path. */
 export const rowPath = (row: string) => row.replace(/\/$/u, "");
 
@@ -32,7 +32,7 @@ export const foldersToAsk = (
     read.has(folder) ? "read" : asked.includes(folder) ? "reading" : "waiting",
   );
 
-export interface TreeShape {
+interface TreeShape {
   readonly rows: ReadonlyArray<string>;
   readonly expanded: ReadonlyArray<string>;
   readonly selected: string | null;

@@ -11,7 +11,7 @@ import { useCreditOffers } from "~/zerops/usePlatformCapabilities";
 
 import { InlineButton } from "../ui/button";
 
-export const CREDIT_FORECAST_LINE =
+const CREDIT_FORECAST_LINE =
   "Zerops needs credit on this organization before it makes another project.";
 
 export function ZeropsCreditForecast({ organizationId }: { readonly organizationId: string }) {

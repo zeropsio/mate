@@ -6,7 +6,7 @@
  */
 import { create } from "zustand";
 
-export interface ThreadSelectionState {
+interface ThreadSelectionState {
   /** Currently selected scoped thread keys. */
   selectedThreadKeys: ReadonlySet<string>;
   /** The scoped thread key that anchors shift-click range selection. */

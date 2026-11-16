@@ -3,7 +3,7 @@ import type { ZeropsBrowserFrame } from "@t3tools/contracts";
 import type { ZeropsBrowserStreamState } from "../../zerops/browserStream.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
 
-export type MateBrowserFrameValue =
+type MateBrowserFrameValue =
   | {
       readonly kind: "call";
       readonly callId: string;

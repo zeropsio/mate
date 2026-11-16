@@ -46,7 +46,7 @@ export function crewFailureSentence(cause: unknown): string {
 }
 
 /** The engine's reason for a refused request; `null` for any other failure. */
-export function crewRefusalOf(cause: unknown): CrewRefusalReason | null {
+function crewRefusalOf(cause: unknown): CrewRefusalReason | null {
   return isCrewCommandError(cause) ? cause.reason : null;
 }
 
@@ -68,7 +68,7 @@ export function crewFailureCauseOf(cause: unknown): CrewFailureCause {
 /** How long a refused press says so. */
 export const CREW_FAILURE_SHOWN_MS = 10_000;
 
-export interface CrewFailure {
+interface CrewFailure {
   readonly sentence: string;
   /** The row or button the press came from; `null` for none. */
   readonly origin: string | null;

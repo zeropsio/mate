@@ -23,7 +23,7 @@ import type { SidebarThreadSummary } from "../types";
 import { formatWorktreePathForDisplay } from "../worktreeCleanup";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
-export interface PrStatusIndicator {
+interface PrStatusIndicator {
   label: string;
   colorClass: string;
   tooltip: string;
@@ -40,7 +40,7 @@ export interface TerminalStatusIndicator {
 
 export type ThreadPr = VcsStatusResult["pr"];
 
-export interface LinkedPullRequestIndicator {
+interface LinkedPullRequestIndicator {
   label: string;
   tooltip: string;
   url: string;
@@ -188,7 +188,7 @@ function sourceControlProvidersEqual(
   return left.kind === right.kind && left.name === right.name && left.baseUrl === right.baseUrl;
 }
 
-export function threadChangeRequestSnapshotsEqual(
+function threadChangeRequestSnapshotsEqual(
   left: ThreadChangeRequestSnapshot,
   right: ThreadChangeRequestSnapshot,
 ): boolean {

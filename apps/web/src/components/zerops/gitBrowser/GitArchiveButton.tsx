@@ -85,7 +85,7 @@ export function useGitArchive(appId: string, repo: string, sha: string | null) {
   };
 }
 
-export type GitArchive = ReturnType<typeof useGitArchive>;
+type GitArchive = ReturnType<typeof useGitArchive>;
 
 export function GitArchiveButton({ archive }: { readonly archive: GitArchive }) {
   const { view, reading, slow, again, ask } = archive;

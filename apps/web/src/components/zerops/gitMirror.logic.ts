@@ -98,13 +98,13 @@ export function githubName(url: string): string | null {
 }
 
 /** A remote's address as people read it: `github.com/acme/tea-shop`. */
-export function remoteLabel(url: string): string {
+function remoteLabel(url: string): string {
   const address = new URL(url);
   return `${address.host}${address.pathname.replace(/\.git\/?$/u, "").replace(/\/$/u, "")}`;
 }
 
 /** Where a remote goes, as a row names it: `acme/tea-shop` on GitHub, else its whole address. */
-export function remoteDestination(url: string): { readonly label: string; readonly href: string } {
+function remoteDestination(url: string): { readonly label: string; readonly href: string } {
   const name = githubName(url);
   const label = name ?? remoteLabel(url);
   return {
@@ -138,11 +138,11 @@ export function hostWords(url: string): string {
 }
 
 /** "Nov 3", in the reader's own calendar. */
-export const shortDay = (iso: string) =>
+const shortDay = (iso: string) =>
   new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
 /** "just now", "4 min ago", "3 hours ago", "yesterday", "on Nov 3". */
-export function agoWords(iso: string, now: number): string {
+function agoWords(iso: string, now: number): string {
   const minutes = Math.max(0, Math.floor((now - Date.parse(iso)) / 60_000));
   if (minutes < 1) return "just now";
   if (minutes < 60) return `${String(minutes)} min ago`;
@@ -309,7 +309,7 @@ export function repoState(
 }
 
 /** The app a repository goes through, as the gate's line names it. */
-export interface GateApp {
+interface GateApp {
   readonly name: string;
   /** Its id on GitHub, which a ruleset pins `mate/gate` to. */
   readonly appId?: number | undefined;

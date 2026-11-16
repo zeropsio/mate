@@ -94,7 +94,7 @@ export const projectSummary: Projection<
   equals: sameValue,
 };
 
-export interface ProjectFlowKey {
+interface ProjectFlowKey {
   readonly orgId: string;
   readonly appId: string;
   readonly hqAddress: string | undefined;

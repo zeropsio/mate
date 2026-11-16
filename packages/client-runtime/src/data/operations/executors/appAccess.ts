@@ -43,7 +43,7 @@ export type AppAccessPlatform = Pick<
  * Reads the organization's member list, these places and these members' own grants again; settles
  * however the reads end.
  */
-export type AppAccessReadBack = (
+type AppAccessReadBack = (
   orgId: string,
   places: ReadonlyArray<string>,
   members?: ReadonlyArray<string>,

@@ -123,11 +123,6 @@ export function mateFeed<F extends MateFeedFamily>(
   }
   return projection as Projection<MateFeedKey<F>, MateFeedReading<MateFeedValues[F]>>;
 }
-export const mateLifecycle = mateFeed("mateLifecycle");
-export const agentLogin = mateFeed("mateAgentAuth");
-export const mateCrew = mateFeed("mateCrew");
-export const crewHomeFiles = mateFeed("mateCrewFiles");
-export const terminalSession = mateFeed("mateTerminal");
 
 /** Editors consume a parsed home; missing evidence never becomes an empty crew. */
 export function crewHome(files: Known<MateFeedValues["mateCrewFiles"]>): {

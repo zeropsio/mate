@@ -8,12 +8,12 @@
  */
 
 /** The waits after each failure in a row, in ms; past its last rung it stays there. */
-export type RetryLadder = ReadonlyArray<number>;
+type RetryLadder = ReadonlyArray<number>;
 
 export const RETRY_RUNGS_MS: RetryLadder = [2_000, 4_000, 8_000, 15_000, 30_000, 60_000];
 
 /** Each delay lands within ±20 % of its rung (`scheduleRetry`), or up to that much sooner. */
-export const RETRY_JITTER = 0.2;
+const RETRY_JITTER = 0.2;
 
 const seconds = (...values: ReadonlyArray<number>): RetryLadder =>
   Object.freeze(values.map((value) => value * 1_000));

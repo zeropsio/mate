@@ -14,7 +14,7 @@ import { DownloadIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import { AskDock } from "../ask/AskCard";
 
-export interface ComposerCloneActions {
+interface ComposerCloneActions {
   readonly cancel: () => void;
   readonly retry: () => void;
   readonly remove: () => void;

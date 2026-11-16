@@ -38,7 +38,7 @@ import { HeaderReviewDoor } from "./SidebarProjectReview";
 import { taskReviewItems } from "./SidebarProjectReview.logic";
 
 /** "acme/tea-shop#12 · opened by nova-dev": where the task came from, and whose it is. */
-export function mateTaskCardSource(task: MateTaskSource): string {
+function mateTaskCardSource(task: MateTaskSource): string {
   const where = mateTaskSourceLabel(task);
   const author = mateTaskSourceAuthor(task);
   return author === null ? where : `${where} · opened by ${author}`;
@@ -72,7 +72,7 @@ function SourceMark({ source }: { readonly source: MateTaskSource }) {
 }
 
 /** The app bar's Review, as a Mate's conversation header holds it (`HeaderReviewDoor`). */
-export type TaskReviewDoor = Parameters<typeof HeaderReviewDoor>[0];
+type TaskReviewDoor = Parameters<typeof HeaderReviewDoor>[0];
 
 /**
  * Where a task stands, beside its Mate in the conversation's header — in sight however far the
@@ -333,7 +333,7 @@ export function MateTaskCardView({
 }
 
 /** Who said a task's follow-up, and where: "ida-ops commented on the issue". */
-export function mateTaskMessageHeading(message: Pick<MateTaskMessage, "from" | "author">): string {
+function mateTaskMessageHeading(message: Pick<MateTaskMessage, "from" | "author">): string {
   const who = message.author ?? "Someone";
   switch (message.from) {
     case "comment":

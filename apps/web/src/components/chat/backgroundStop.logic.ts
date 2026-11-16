@@ -1,5 +1,5 @@
 /** A press of the background work's Stop, and the turn it was pressed under. */
-export interface BackgroundStopPress {
+interface BackgroundStopPress {
   readonly turnId: string | null;
 }
 

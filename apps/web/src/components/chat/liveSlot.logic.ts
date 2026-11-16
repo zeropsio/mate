@@ -54,7 +54,7 @@ export const SLOT_MIN_SHOW_MS = 800;
 export const SLOT_BUSY_SHOW_MS = 250;
 
 /** How many waiting items make the slot hurry. */
-export const SLOT_BUSY_WAITING = 3;
+const SLOT_BUSY_WAITING = 3;
 
 /**
  * How long an item stands, and the least time between two plops, while
@@ -65,7 +65,7 @@ export const SLOT_BUSY_WAITING = 3;
 export const SLOT_RUSH_SHOW_MS = 125;
 
 /** How many waiting items make the slot rush. */
-export const SLOT_RUSH_WAITING = 8;
+const SLOT_RUSH_WAITING = 8;
 
 /**
  * How long an item that ended, the last one standing, holds the slot past its
@@ -76,7 +76,7 @@ export const SLOT_RUSH_WAITING = 8;
 export const SLOT_HOLD_MS = 1200;
 
 /** How many items waiting behind what stands make a burst: "more than two". */
-export const SLOT_BURST_WAITING = 3;
+const SLOT_BURST_WAITING = 3;
 
 /** How many items the slot draws at once; the rest are "+N more running". */
 export const SLOT_MAX_ROWS = 3;
@@ -116,7 +116,7 @@ export interface LiveSlot {
 }
 
 /** What the caller offers: what is live, what the record holds, and whether the run is over. */
-export interface SlotOffer {
+interface SlotOffer {
   readonly live: ReadonlyArray<string>;
   readonly record: ReadonlyArray<string>;
   readonly at: number;

@@ -28,7 +28,7 @@ import type { ReactElement } from "react";
 
 import { cn } from "~/lib/utils";
 
-export interface ZeropsDataTreeProps {
+interface ZeropsDataTreeProps {
   readonly rootPath: ZeropsDataConsolePath;
   readonly tree: DataConsoleTree;
   readonly onToggleNode: (node: ZeropsDataConsoleNode) => void;

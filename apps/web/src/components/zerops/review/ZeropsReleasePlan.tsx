@@ -55,7 +55,7 @@ export interface ReleaseStepLog {
   readonly target: DeployLogTarget;
 }
 
-export interface ReleasePlanProps {
+interface ReleasePlanProps {
   readonly steps: ReadonlyArray<ReleaseSheetStep>;
   /**
    * HQ has not said what happens to each service: a deploy keeps its name, its mark and its

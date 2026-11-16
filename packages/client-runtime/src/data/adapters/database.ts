@@ -48,7 +48,7 @@ import {
 } from "./databaseSession.ts";
 import { STREAM_POLICY, type StreamEvent, type StreamFault } from "../streamMachine.ts";
 
-export interface DatabaseWire {
+interface DatabaseWire {
   readonly session?: DatabaseSessionWire;
   readonly call: (
     environmentId: EnvironmentId,
@@ -112,7 +112,7 @@ export function makeDatabaseWire(registry: EnvironmentRegistry["Service"]): Data
 }
 
 /** A source answer folds into a retained presentation model; cursor pages append only to their own target. */
-export function applyDatabaseAnswer(
+function applyDatabaseAnswer(
   value: DatabasePanelValue,
   intent: DatabaseReadIntent,
   response: ZeropsDataConsoleResponse,

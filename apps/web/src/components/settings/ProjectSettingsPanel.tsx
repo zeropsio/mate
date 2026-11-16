@@ -241,7 +241,7 @@ function ProjectSettingsBreadcrumb({ projectKey }: { projectKey: string }) {
   );
 }
 
-export function ProjectSettingsPanel({ projectKey }: { projectKey: string }) {
+function ProjectSettingsPanel({ projectKey }: { projectKey: string }) {
   const groups = useSettingsProjectGroups();
   const projectsRead = useAllEnvironmentShellsBootstrapped();
   const navigate = useNavigate();

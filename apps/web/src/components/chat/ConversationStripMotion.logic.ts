@@ -10,7 +10,7 @@
  */
 
 /** A value moving with a travel: `from` as it sets off, `to` once it has arrived. */
-export interface Track {
+interface Track {
   readonly from: number;
   readonly to: number;
 }

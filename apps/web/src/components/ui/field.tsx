@@ -53,7 +53,4 @@ function FieldError({ className, ...props }: FieldPrimitive.Error.Props) {
   );
 }
 
-const FieldControl = FieldPrimitive.Control;
-const FieldValidity = FieldPrimitive.Validity;
-
-export { Field, FieldLabel, FieldDescription, FieldError, FieldControl, FieldItem, FieldValidity };
+export { Field, FieldLabel, FieldDescription, FieldError, FieldItem };

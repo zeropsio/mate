@@ -1,11 +1,4 @@
-import type {
-  AuthClientMetadata,
-  AuthEnvironmentScope,
-  ServerAuthDescriptor,
-  ServerAuthSessionMethod,
-  AuthSessionId,
-  AuthSessionState,
-} from "@t3tools/contracts";
+import type { ServerAuthDescriptor, AuthSessionState } from "@t3tools/contracts";
 import { EnvironmentHttpCommonError } from "@t3tools/contracts";
 import type { EnvironmentHttpCommonError as EnvironmentHttpCommonErrorType } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -72,56 +65,7 @@ export class PrimaryEnvironmentRequestError extends Schema.TaggedError<PrimaryEn
 
 const isPrimaryEnvironmentRequestError = Schema.is(PrimaryEnvironmentRequestError);
 
-export class PrimaryEnvironmentPairingCredentialRejectedError extends Schema.TaggedError<PrimaryEnvironmentPairingCredentialRejectedError>()(
-  "PrimaryEnvironmentPairingCredentialRejectedError",
-  {
-    providedLength: Schema.Number,
-    cause: Schema.Defect(),
-  },
-) {
-  override get message(): string {
-    return "Invalid sign-in token. Check the token and try again.";
-  }
-}
-
-export const isPrimaryEnvironmentPairingCredentialRejectedError = Schema.is(
-  PrimaryEnvironmentPairingCredentialRejectedError,
-);
-
-export class PrimaryEnvironmentPairingCredentialRequiredError extends Schema.TaggedError<PrimaryEnvironmentPairingCredentialRequiredError>()(
-  "PrimaryEnvironmentPairingCredentialRequiredError",
-  {
-    providedLength: Schema.Number,
-  },
-) {
-  override get message(): string {
-    return "Enter a sign-in token to continue.";
-  }
-}
-
 const isEnvironmentHttpCommonError = Schema.is(EnvironmentHttpCommonError);
-
-export interface ServerPairingLinkRecord {
-  readonly id: string;
-  readonly scopes: ReadonlyArray<AuthEnvironmentScope>;
-  readonly subject: string;
-  readonly label?: string;
-  readonly createdAt: string;
-  readonly expiresAt: string;
-}
-
-export interface ServerClientSessionRecord {
-  readonly sessionId: AuthSessionId;
-  readonly subject: string;
-  readonly scopes: ReadonlyArray<AuthEnvironmentScope>;
-  readonly method: ServerAuthSessionMethod;
-  readonly client: AuthClientMetadata;
-  readonly issuedAt: string;
-  readonly expiresAt: string;
-  readonly lastConnectedAt: string | null;
-  readonly connected: boolean;
-  readonly current: boolean;
-}
 
 type ServerAuthGateState = Extract<
   AuthGateState,
@@ -132,11 +76,11 @@ let bootstrapPromise: Promise<ServerAuthGateState> | null = null;
 /** Cached until a local credential exchange or reload; pairing in another tab requires a reload. */
 let resolvedServerAuthGateState: ServerAuthGateState | null = null;
 
-export function peekPairingTokenFromUrl(): string | null {
+function peekPairingTokenFromUrl(): string | null {
   return getPairingTokenFromUrl(new URL(window.location.href));
 }
 
-export function stripPairingTokenFromUrl() {
+function stripPairingTokenFromUrl() {
   const url = new URL(window.location.href);
   const next = stripPairingTokenUrl(url);
   if (next.toString() === url.toString()) {
@@ -247,40 +191,6 @@ async function bootstrapServerAuth(): Promise<ServerAuthGateState> {
     status: "requires-auth",
     auth: currentSession.auth,
   };
-}
-
-export async function revokeServerClientSession(sessionId: AuthSessionId): Promise<void> {
-  try {
-    await runPrimaryHttp(
-      PrimaryEnvironmentHttpClient.pipe(
-        Effect.flatMap((client) =>
-          client.auth.revokeClient({ headers: {}, payload: { sessionId } }),
-        ),
-      ),
-    );
-  } catch (error) {
-    throw PrimaryEnvironmentRequestError.fromCause({
-      operation: "revoke-client-session",
-      sessionId,
-      cause: error,
-    });
-  }
-}
-
-export async function revokeOtherServerClientSessions(): Promise<number> {
-  try {
-    const result = await runPrimaryHttp(
-      PrimaryEnvironmentHttpClient.pipe(
-        Effect.flatMap((client) => client.auth.revokeOtherClients({ headers: {} })),
-      ),
-    );
-    return result.revokedCount;
-  } catch (error) {
-    throw PrimaryEnvironmentRequestError.fromCause({
-      operation: "revoke-other-client-sessions",
-      cause: error,
-    });
-  }
 }
 
 export async function resolveInitialServerAuthGateState(): Promise<ServerAuthGateState> {

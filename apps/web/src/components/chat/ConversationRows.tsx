@@ -61,7 +61,7 @@ export interface ConversationSpeaker {
  * which put it outside the column the composer draws — and, inside a card,
  * past the card's own border.
  */
-export function LineMark({
+function LineMark({
   children,
   className,
 }: {
@@ -203,7 +203,7 @@ const DATE_WITH_YEAR = new Intl.DateTimeFormat(undefined, {
 });
 
 /** "Today", "Yesterday", "Wednesday, Sep 24", "Sep 24, 2025". */
-export function dayLabel(iso: string, nowMs: number = Date.now()): string {
+function dayLabel(iso: string, nowMs: number = Date.now()): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
   const now = new Date(nowMs);

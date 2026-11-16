@@ -222,7 +222,7 @@ export function mcpCannot(
 }
 
 /** Why this Mate cannot add the server: none of its installed agents can use it; null where one can. */
-export function mcpUnsupported(
+function mcpUnsupported(
   proposal: McpProposal,
   mateName: string,
   agents: ReadonlyArray<ProviderDriverKind>,

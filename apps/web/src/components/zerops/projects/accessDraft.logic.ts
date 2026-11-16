@@ -33,7 +33,7 @@ import {
 } from "./projectPeople.logic";
 
 /** The project being made, as the draft's one project. */
-export const DRAFT_PROJECT = "new-project";
+const DRAFT_PROJECT = "new-project";
 
 export interface DraftInput {
   readonly members: ProjectPeopleInput["members"];

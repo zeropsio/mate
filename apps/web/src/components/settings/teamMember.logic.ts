@@ -63,7 +63,7 @@ export const PRESET_WORDS: Readonly<
 };
 
 /** What each Zerops role gives by itself, as *Fine-tune permissions* explains it. */
-export const ROLE_CODE_DESCRIPTIONS: Readonly<Record<OrgRoleCode, string>> = {
+const ROLE_CODE_DESCRIPTIONS: Readonly<Record<OrgRoleCode, string>> = {
   OWNER: "Full control over all projects, company settings, billing, and team.",
   ADMIN: "Full control over all projects. Can manage users below Admin. No access to billing.",
   BASIC_USER: "Can deploy and operate all projects, but cannot delete them or manage the team.",
@@ -101,13 +101,13 @@ export function projectAccessIntro(input: {
     : `${who} every project by their role, a project listed here at a different level.`;
 }
 
-export const FLAG_WORDS: Readonly<Record<MembershipFlag, string>> = {
+const FLAG_WORDS: Readonly<Record<MembershipFlag, string>> = {
   canCreateProjects: "Can create projects",
   canViewFinances: "Can view finances",
   canEditFinances: "Can edit finances",
 };
 
-export interface RoleCard {
+interface RoleCard {
   readonly role: TeamRole;
   readonly label: string;
   readonly description: string;
@@ -135,7 +135,7 @@ export function roleCards(
   }));
 }
 
-export interface AdvancedChoices {
+interface AdvancedChoices {
   /** "Custom (Basic user)" where no card is lit: Fine-tune permissions opens by itself on it. */
   readonly custom: string | null;
   readonly roles: ReadonlyArray<{
@@ -382,15 +382,6 @@ export function draftChanges(
   });
 }
 
-/** A new invitation's draft as the invitation sends it: each project's level. */
-export const draftGrants = (
-  draft: AccessDraft,
-): ReadonlyArray<{ readonly projectId: string; readonly roleCode: ProjectAccessRole }> =>
-  Object.entries(draft).map(([projectId, roleCode]) => ({
-    projectId,
-    roleCode: roleCode as ProjectAccessRole,
-  }));
-
 /** Something with one `@` and a dot after it; Zerops judges the rest. */
 const ADDRESS = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
 
@@ -407,7 +398,7 @@ export function nameProblem(first: string, last: string): string | null {
 }
 
 /** "Adding <e-mail>": a new account is named first; someone with an account is not. */
-export interface TeamInviteStep {
+interface TeamInviteStep {
   readonly step: "details";
   readonly email: string;
   readonly existing: string | null;

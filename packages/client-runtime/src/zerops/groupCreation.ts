@@ -23,9 +23,7 @@ import { hqOfferWords } from "./hq/refusals.ts";
 import type { ZeropsRegistry } from "./hq/registry.ts";
 
 /** A verb is either offered, or refused in words that name who can do it. */
-export type GroupVerb =
-  | { readonly offered: true }
-  | { readonly offered: false; readonly reason: string };
+type GroupVerb = { readonly offered: true } | { readonly offered: false; readonly reason: string };
 
 const OFFERED: GroupVerb = { offered: true };
 
@@ -64,7 +62,7 @@ const ONLY_ADMINS_ADD_A_PROJECT = "Only an owner or admin adds a project.";
  * gives a repository only to a Mate it holds in an application), and the row
  * says it rather than showing a Mate that looks finished and cannot deliver.
  */
-export type MateRegistration = "registered" | "unplaced";
+type MateRegistration = "registered" | "unplaced";
 
 export function resolveMateRegistration(input: {
   readonly registry: ZeropsRegistry;

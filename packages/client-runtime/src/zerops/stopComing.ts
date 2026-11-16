@@ -389,10 +389,10 @@ export function firstDeployTone(first: FirstDeploy | undefined): "busy" | "faile
 export const STAGE_SETTING_UP = "Setting up a stage…";
 
 /** A stage whose first deploy failed: its build, as Zerops or HQ ended it, or HQ refusing it. */
-export const FIRST_DEPLOY_FAILED = "First deploy failed";
+const FIRST_DEPLOY_FAILED = "First deploy failed";
 
 /** A stage's first deploy on its way, where its line would say nothing is deployed. */
-export const FIRST_DEPLOY_ON_ITS_WAY = "First deploy on its way";
+const FIRST_DEPLOY_ON_ITS_WAY = "First deploy on its way";
 
 /** A stage's first deploy held: HQ holds no deploy key that works for it — the menu's words. */
 const FIRST_DEPLOY_AWAITS_KEY = awaitsKey("Stage");

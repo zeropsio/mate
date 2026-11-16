@@ -59,18 +59,18 @@ export interface VcsActionTarget {
   readonly cwd: string | null;
 }
 
-export interface ResolvedVcsActionTarget {
+interface ResolvedVcsActionTarget {
   readonly environmentId: EnvironmentIdType;
   readonly cwd: string;
 }
 
-export interface BeginVcsActionInput {
+interface BeginVcsActionInput {
   readonly operation: VcsActionOperation;
   readonly label: string;
   readonly actionId?: string;
 }
 
-export interface RunVcsStackedActionInput {
+interface RunVcsStackedActionInput {
   readonly actionId: string;
   readonly action: GitStackedAction;
   readonly commitMessage?: string;
@@ -137,11 +137,11 @@ export class VcsActionTargetKeyParseError extends Schema.TaggedError<VcsActionTa
   }
 }
 
-export const VcsActionExecutionError = Schema.Union([
+const VcsActionExecutionError = Schema.Union([
   VcsActionRemoteFailureError,
   VcsActionMissingTerminalEventError,
 ]);
-export type VcsActionExecutionError = typeof VcsActionExecutionError.Type;
+type VcsActionExecutionError = typeof VcsActionExecutionError.Type;
 
 export const EMPTY_VCS_ACTION_STATE = Object.freeze<VcsActionState>({
   isRunning: false,

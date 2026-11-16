@@ -48,7 +48,7 @@ function signOutErrorMessage(cause: unknown): string {
   return "Something went wrong.";
 }
 
-export interface UseAgentSignOut {
+interface UseAgentSignOut {
   /** Pending, or the last failure's detail, for one agent's sign-out. */
   readonly statusFor: (agentId: ZeropsAgentId) => {
     readonly pending: boolean;

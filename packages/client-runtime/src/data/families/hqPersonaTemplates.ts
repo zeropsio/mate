@@ -10,7 +10,7 @@ import type { FamilySpec } from "./spec.ts";
  * mistakes a template it could not read for one HQ does not hold; a record it cannot read at all
  * is `"record"`.
  */
-export interface HqPersonaTemplatesRecord {
+interface HqPersonaTemplatesRecord {
   readonly templates: ReadonlyArray<PersonaTemplate>;
   readonly unreadable: "record" | ReadonlyArray<string | null>;
 }

@@ -15,7 +15,7 @@ import type { ChiefSetup } from "./chiefSetup.logic";
 /** Where the Chief's setup stands, as its row says it (`chiefSetupLine`). */
 export type ChiefSetupRowState = "running" | "stopped";
 
-export type ChiefRowLine =
+type ChiefRowLine =
   | { readonly kind: "setup"; readonly state: ChiefSetupRowState }
   /** Its Mate's own line, as the list's row would draw it. */
   | { readonly kind: "mate"; readonly second: MateRowSecond }

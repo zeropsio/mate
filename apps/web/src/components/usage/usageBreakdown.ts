@@ -87,7 +87,7 @@ export function speedCostSegments(cost: SpeedCost): readonly ShareSegment[] {
   ];
 }
 
-export interface UsageTotal {
+interface UsageTotal {
   readonly label: string;
   readonly value: string;
   /** The line under the value, always present so the row keeps one height. */

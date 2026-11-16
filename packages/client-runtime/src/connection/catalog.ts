@@ -43,8 +43,8 @@ export interface ConnectionCatalogEntry {
 }
 
 /** Which door minted a bearer: a Zerops-identity one belongs to a Mate, which starts parked. */
-export const ConnectionCredentialOrigin = Schema.Literals(["zerops-identity", "pairing"]);
-export type ConnectionCredentialOrigin = typeof ConnectionCredentialOrigin.Type;
+const ConnectionCredentialOrigin = Schema.Literals(["zerops-identity", "pairing"]);
+type ConnectionCredentialOrigin = typeof ConnectionCredentialOrigin.Type;
 
 export class BearerConnectionCredential extends Schema.TaggedClass<BearerConnectionCredential>()(
   "BearerConnectionCredential",
@@ -127,12 +127,6 @@ export const PlatformConnectionRegistration = Schema.Union([
   BearerConnectionRegistration,
 ]);
 export type PlatformConnectionRegistration = typeof PlatformConnectionRegistration.Type;
-
-export function connectionRegistrationTarget(
-  registration: ConnectionRegistration | PrimaryConnectionRegistration,
-): ConnectionTarget {
-  return registration.target;
-}
 
 export function connectionRegistrationCatalogEntry(
   registration: ConnectionRegistration | PrimaryConnectionRegistration,

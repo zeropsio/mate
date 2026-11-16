@@ -193,5 +193,3 @@ export function makeAutomationSettings(options: {
     },
   };
 }
-
-export type AutomationSettings = ReturnType<typeof makeAutomationSettings>;

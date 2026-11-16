@@ -9,7 +9,7 @@ import { createContext, useMemo, useState } from "react";
 import type { ChatMessage } from "~/types";
 import { type ExpressHistoryEntry, expressHistoryOf } from "./expressHistory.logic";
 
-export interface ExpressHistoryScope {
+interface ExpressHistoryScope {
   readonly environmentId: EnvironmentId | null;
   readonly history: ReadonlyArray<ExpressHistoryEntry>;
 }

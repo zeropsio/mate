@@ -23,7 +23,7 @@ import { asOrgRole, roleAtLeast } from "@t3tools/shared/zeropsRoles";
 export type TeamRole = "owner" | "admin" | "developer" | "guest";
 
 /** A membership's role and its one right Mate sets. */
-export interface TeamMembership {
+interface TeamMembership {
   readonly roleCode: string;
   readonly canCreateProjects: boolean;
 }
@@ -89,7 +89,7 @@ export const sameMembership = (a: OrgMembership, b: OrgMembership): boolean =>
   a.roleCode === b.roleCode && MEMBERSHIP_FLAGS.every((flag) => a[flag] === b[flag]);
 
 /** Why a role or a flag can't be set; `forced`, the value Zerops holds for it whatever is sent. */
-export interface MembershipLock {
+interface MembershipLock {
   readonly disabled: boolean;
   readonly forced?: boolean;
   readonly reason?: string;

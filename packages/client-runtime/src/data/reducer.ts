@@ -179,7 +179,7 @@ export type RuntimeDirective =
       readonly ids: ReadonlyArray<string>;
     };
 
-export interface Reduction {
+interface Reduction {
   readonly state: AccountState;
   readonly changed: ReadonlySet<ReadKey>;
   readonly directives: ReadonlyArray<RuntimeDirective>;

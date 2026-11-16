@@ -13,7 +13,7 @@ export interface PlacedElement {
 }
 
 /** The scroll the element stands in. */
-export interface PlacedScroller {
+interface PlacedScroller {
   scrollTop: number;
 }
 

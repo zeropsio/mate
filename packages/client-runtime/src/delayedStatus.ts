@@ -11,7 +11,7 @@ export interface ShownStatus<A> {
   readonly value: A;
 }
 
-export interface DelayedStatus<A> {
+interface DelayedStatus<A> {
   /** Reports the real status for `key`. A new key drops the shown status at once. */
   readonly update: (key: string, value: A | null) => void;
   /** Cancels pending timers. A later `update` starts again from the real status. */

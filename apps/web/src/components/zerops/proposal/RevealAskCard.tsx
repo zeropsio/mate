@@ -16,7 +16,7 @@ import { Button } from "../../ui/button";
 import { proposalAskWhere } from "./proposal.logic";
 import { revealPress } from "./reveal.logic";
 
-export interface RevealAskCardProps {
+interface RevealAskCardProps {
   readonly proposal: Extract<ZeropsProposal, { kind: "env.reveal" }>;
   readonly state: AskState;
   /** Stage or Production, where the value's project is one of its application's environments. */

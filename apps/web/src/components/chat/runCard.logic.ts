@@ -154,7 +154,7 @@ export const KEPT_ABOVE_PX = 1200;
 export const SET_ASIDE_PAST_PX = 1200;
 
 /** How tall a stretch of lines set aside is, about: each comes back on its own, in one short draw. */
-export const ASIDE_STRETCH_PX = 600;
+const ASIDE_STRETCH_PX = 600;
 
 /** Lines set aside over the first one drawn: how many, and the room they took, the gap under them included. */
 export interface AsideStretch {
@@ -196,7 +196,7 @@ export function stretchesAside(
  * first drawn row's: the newest set aside, until `EARLIER_REACH_PX` of drawn
  * lines stand over the view again. Newest first, as they come off `aside`.
  */
-export function stretchesBack(
+function stretchesBack(
   aside: ReadonlyArray<AsideStretch>,
   above: number,
 ): ReadonlyArray<AsideStretch> {
@@ -819,7 +819,7 @@ export type SlotFiller =
  * the history as itself — and what the slot says when nothing stands in it.
  * A thought with no words yet is "Thinking", never an empty bubble.
  */
-export interface SlotModel {
+interface SlotModel {
   readonly live: ReadonlyArray<RecordItem>;
   readonly filler: SlotFiller;
 }
@@ -965,7 +965,7 @@ function commandsWords(count: number): string {
  * command it sent to the background — a 17-second wait on a `sleep` read "Waiting for its helpers"
  * while its one helper had long reported (Milo's stress run).
  */
-export function afterWords(on: AfterWait | undefined): string {
+function afterWords(on: AfterWait | undefined): string {
   if (on === undefined || on.commands === 0) return "Waiting for its helpers";
   if (on.helpers === 0) return `Waiting for ${commandsWords(on.commands).replace(/^a /, "its ")}`;
   return `Waiting for its helpers and ${commandsWords(on.commands)}`;
@@ -999,7 +999,7 @@ export function backgroundWorkWords(work: BackgroundWork): string {
 }
 
 /** What a run not started yet waits on, in words: its workspace's snapshot, then its session. */
-export function startingWords(on: EngineStart): string {
+function startingWords(on: EngineStart): string {
   return on === "workspace" ? "Saving a snapshot of the workspace" : "Starting its session";
 }
 

@@ -83,7 +83,7 @@ export function ensureLocalApi(): LocalApi {
   return api;
 }
 
-export async function __resetLocalApiForTests() {
+async function __resetLocalApiForTests() {
   cachedApi = undefined;
   const { __resetClientSettingsPersistenceForTests } = await import("./hooks/useSettings");
   __resetClientSettingsPersistenceForTests();

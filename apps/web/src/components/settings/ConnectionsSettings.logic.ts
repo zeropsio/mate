@@ -7,7 +7,7 @@
  */
 import { environmentTitle } from "../zerops/place/place.logic";
 
-export interface SharedEnvironmentRow {
+interface SharedEnvironmentRow {
   readonly appId: string;
   readonly environmentId: string;
   readonly tier: "production" | "stage";

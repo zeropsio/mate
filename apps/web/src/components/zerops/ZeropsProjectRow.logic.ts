@@ -2,16 +2,9 @@ import {
   COMING_UP_LINE,
   ALMOST_THERE_LINE,
   TAKING_LONGER_LINE,
-  NOT_SET_UP_LINE,
   RESTARTING_SERVICE_STATUSES,
 } from "@t3tools/client-runtime/data";
-export {
-  COMING_UP_LINE,
-  ALMOST_THERE_LINE,
-  TAKING_LONGER_LINE,
-  NOT_SET_UP_LINE,
-  RESTARTING_SERVICE_STATUSES,
-} from "@t3tools/client-runtime/data";
+export { COMING_UP_LINE, NOT_SET_UP_LINE } from "@t3tools/client-runtime/data";
 /**
  * What a row on the projects screen says and offers — the words and the verb,
  * not the pixels.
@@ -41,7 +34,6 @@ import {
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
   type HqMateOfferStates,
-  type HqPresses,
   type CanonicalHqStructure,
 } from "@t3tools/client-runtime/zerops/hq";
 import { RESTARTING_PHRASE } from "@t3tools/client-runtime/zerops/environments";
@@ -358,7 +350,7 @@ export interface PlainProjectEvidence {
  * making. A project's tags and its age decide
  * nothing. Anything nothing can tell apart — HQ's structure not known — is not plain.
  */
-export function plainZeropsProject(
+function plainZeropsProject(
   project: ZeropsCandidate["project"],
   evidence: PlainProjectEvidence | undefined,
 ): boolean {

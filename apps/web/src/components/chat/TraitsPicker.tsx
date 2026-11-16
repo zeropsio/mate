@@ -245,7 +245,7 @@ export function getTraitsSectionVisibility(input: {
   };
 }
 
-export function shouldRenderTraitsControls(input: {
+function shouldRenderTraitsControls(input: {
   provider: ProviderDriverKind;
   models: ReadonlyArray<ServerProviderModel>;
   model: string | null | undefined;
@@ -257,7 +257,7 @@ export function shouldRenderTraitsControls(input: {
   return getTraitsSectionVisibility(input).hasAnyControls;
 }
 
-export interface TraitsMenuContentProps {
+interface TraitsMenuContentProps {
   provider: ProviderDriverKind;
   instanceId?: ProviderInstanceId;
   models: ReadonlyArray<ServerProviderModel>;
@@ -369,7 +369,7 @@ export function useTraitsControls({
   return { ...traits, selectedValue, isLocked, select, toggle };
 }
 
-export const TraitsMenuContent = memo(function TraitsMenuContentImpl(
+const TraitsMenuContent = memo(function TraitsMenuContentImpl(
   props: TraitsMenuContentProps & TraitsPersistence,
 ) {
   const {

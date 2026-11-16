@@ -60,13 +60,13 @@ export interface DeployAnswerJob extends DeployObservation {
 }
 
 /** One environment's jobs of the answer, in the order HQ answered them. */
-export interface DeployAnswerEnvironment {
+interface DeployAnswerEnvironment {
   readonly environment: string;
   readonly jobs: ReadonlyArray<DeployAnswerJob>;
 }
 
 /** An answer said: each environment's jobs, and what HQ left out, in its words. */
-export interface DeployAnswerSaid {
+interface DeployAnswerSaid {
   readonly environments: ReadonlyArray<DeployAnswerEnvironment>;
   readonly note: string | undefined;
 }
@@ -215,7 +215,7 @@ export function deployAnswerFollowing(
 }
 
 /** A hand-over is distinct from a Zerops deploy and keeps its attempted/confirmed evidence. */
-export interface PushAnswerJob {
+interface PushAnswerJob {
   readonly kind: "push";
   readonly jobId: string | null;
   readonly service: string;
@@ -226,7 +226,7 @@ export interface PushAnswerJob {
   readonly line: string;
   readonly text: string;
 }
-export interface DeliveryAnswerSaid {
+interface DeliveryAnswerSaid {
   readonly environments: ReadonlyArray<{
     readonly environment: string;
     readonly jobs: ReadonlyArray<DeployAnswerJob | PushAnswerJob>;

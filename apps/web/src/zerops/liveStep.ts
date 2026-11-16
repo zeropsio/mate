@@ -185,7 +185,7 @@ export type ShownLiveSteps<Key> = ReadonlyMap<Key, ShownLiveStep>;
  */
 export const BETWEEN_STEPS = "between-steps";
 
-export interface LiveStepPacer<Key> {
+interface LiveStepPacer<Key> {
   /**
    * Every row's latest step, absent for a row that is not working, `BETWEEN_STEPS` for one working
    * on with no step this moment.

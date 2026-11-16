@@ -42,7 +42,7 @@ import { commitOwn, makeSettingsReads, type SettingRead } from "./hqSettingsRead
 import { appTasksSignature, orgTasksSignature } from "./hqTaskBoardRefresh.ts";
 import { hqNeedsUpdate } from "../../zerops/hq/refusals.ts";
 
-export type TaskSourceApi = TaskSourceWrites &
+type TaskSourceApi = TaskSourceWrites &
   Pick<
     HqApi,
     | "slack"
@@ -354,5 +354,3 @@ export function makeTaskSourceSettings(options: {
     },
   };
 }
-
-export type TaskSourceSettings = ReturnType<typeof makeTaskSourceSettings>;

@@ -172,7 +172,7 @@ export function ZeropsAccountEnvironmentProvider({
   return <ZeropsDataContext value={value}>{children}</ZeropsDataContext>;
 }
 
-export function ZeropsDataStartupFailure({
+function ZeropsDataStartupFailure({
   message,
   retry,
   signOut,

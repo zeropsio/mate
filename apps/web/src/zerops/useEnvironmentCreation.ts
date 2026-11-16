@@ -66,7 +66,7 @@ import { useZeropsSession } from "./ZeropsSessionProvider";
 import { useZeropsData } from "./zeropsDataContext";
 
 /** One environment to stand up in a group, as the surface that asked for it knows it. */
-export interface EnvironmentCreationRequest {
+interface EnvironmentCreationRequest {
   readonly group: Pick<ZeropsGroup, "groupId" | "name">;
   /** The group's environments, whose agents a new one offers the same of. */
   readonly environments: ReadonlyArray<{ readonly item: ZeropsCandidate }>;
@@ -90,7 +90,7 @@ export interface EnvironmentCreationRequest {
 }
 
 /** How a creation ended, for the surface that started it. */
-export type EnvironmentCreationRun =
+type EnvironmentCreationRun =
   /** Nothing was asked of the platform: no organization, the account closed, or a plan refused. */
   | { readonly kind: "refused"; readonly reason: string | null }
   | {
@@ -141,10 +141,7 @@ function addedMateStandUp(
  * placed Mate or an open birth intent, so it is born as a Mate is. A stage without one is a stage
  * HQ deploys.
  */
-export function addedEnvironmentKind(
-  role: ZeropsEnvironmentRole,
-  withAgent: boolean,
-): RoleProjectKind {
+function addedEnvironmentKind(role: ZeropsEnvironmentRole, withAgent: boolean): RoleProjectKind {
   switch (role) {
     case "prod":
       return "production";

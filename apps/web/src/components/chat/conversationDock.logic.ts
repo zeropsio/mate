@@ -27,7 +27,7 @@ import { jobLost, type LiveJobs } from "./liveJobs.logic";
 import { helperNowWords, helperSpan } from "./helpers.logic";
 
 /** Operations that run long enough to watch: a pipeline, a multi-step setup, a stand-up's builds. */
-export const DOCKED_KINDS: ReadonlySet<ZeropsOperation["kind"]> = new Set([
+const DOCKED_KINDS: ReadonlySet<ZeropsOperation["kind"]> = new Set([
   "deploy",
   "import",
   "bootstrap",

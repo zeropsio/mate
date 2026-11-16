@@ -18,7 +18,7 @@ type RevealProposal = Extract<ZeropsProposal, { kind: "env.reveal" }>;
 type Tier = "stage" | "production" | null;
 
 /** Where the value is in the project's vault, or why it cannot be revealed from there. */
-export type RevealTarget =
+type RevealTarget =
   | { readonly kind: "reading" }
   | { readonly kind: "missing"; readonly words: string }
   | {

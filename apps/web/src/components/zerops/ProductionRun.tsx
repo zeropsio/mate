@@ -40,7 +40,7 @@ import { Spinner } from "../ui/spinner";
  * The run's step: a spinner and its words. Its clock says how long the step has run, so a long
  * wait reads as one; it ticks here alone, never the line.
  */
-export function PutLiveProgress({
+function PutLiveProgress({
   step,
   since,
 }: {

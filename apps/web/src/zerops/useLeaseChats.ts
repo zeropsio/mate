@@ -13,7 +13,7 @@ import { Atom } from "effect/reactivity";
 import { sameValue } from "../lib/sameValue";
 import { environmentThreadShells } from "../state/threads";
 
-export const leaseChatsAtom = Atom.family((environmentId: EnvironmentId) =>
+const leaseChatsAtom = Atom.family((environmentId: EnvironmentId) =>
   Atom.make((get): ReadonlyArray<MatePartLeaseChat> =>
     get(environmentThreadShells.environmentThreadRefsAtom(environmentId)).flatMap(
       (ref): ReadonlyArray<MatePartLeaseChat> => {

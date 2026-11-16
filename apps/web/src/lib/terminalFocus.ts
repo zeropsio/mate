@@ -1,4 +1,4 @@
-export type TerminalFocusOwner = "drawer" | "right-panel";
+type TerminalFocusOwner = "drawer" | "right-panel";
 
 export function getTerminalFocusOwner(): TerminalFocusOwner | null {
   const activeElement = document.activeElement;

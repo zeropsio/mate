@@ -18,7 +18,7 @@ const SANITIZED_HTML_SELECTOR = [
   ...SKIPPED_CLASS_NAMES.map((className) => `.${className}`),
 ].join(", ");
 
-export interface MarkdownClipboardPayload {
+interface MarkdownClipboardPayload {
   text: string;
   html: string;
 }

@@ -16,7 +16,7 @@ import { useDeleteProject } from "./deleteProject";
 import { submitHqAppWrite } from "./hqAppWrite";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
-export type DeleteApplication = (
+type DeleteApplication = (
   target: DeleteApplicationTarget,
   /** Stages this dialog deleted already, by project id; each one deleted joins it. */
   deleted: Set<string>,

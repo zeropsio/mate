@@ -2,7 +2,7 @@ import type { Projection } from "../store.ts";
 import { operationProgress } from "./operation.ts";
 import { sameValue } from "./equal.ts";
 
-export interface FaceAction {
+interface FaceAction {
   readonly pending: boolean;
   readonly error: string | null;
 }

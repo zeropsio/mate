@@ -38,7 +38,7 @@ export interface CrewTry {
 }
 
 /** The project's services as the topology reads them; `undefined` while it is unread. */
-export type CrewTryServices =
+type CrewTryServices =
   | ReadonlyArray<{
       readonly hostname: string;
       readonly routes: ReadonlyArray<{ readonly port: number; readonly url: string }>;
@@ -86,7 +86,7 @@ export function crewTryOf(
  * where nothing can be opened: no address yet, another's work on dev, or —
  * showing on dev being a turn of the crewmate's own — its turn running.
  */
-export type CrewTryPress =
+type CrewTryPress =
   | { readonly kind: "open"; readonly url: string }
   | { readonly kind: "run" }
   | { readonly kind: "show" }

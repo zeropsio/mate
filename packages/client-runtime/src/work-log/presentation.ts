@@ -303,7 +303,7 @@ function workLogEntryIsToolLike(entry: WorkLogPresentationEntry): boolean {
   return entry.itemType !== undefined && isToolLifecycleItemType(entry.itemType);
 }
 
-export function workLogEntryIsLocalCodeSearch(entry: WorkLogPresentationEntry): boolean {
+function workLogEntryIsLocalCodeSearch(entry: WorkLogPresentationEntry): boolean {
   return (
     entry.itemType === "web_search" &&
     /\bgrep\b/i.test(normalizeCompactToolLabel(entry.toolTitle ?? entry.label))
@@ -354,7 +354,7 @@ export function workEntryViewedImagePath(entry: WorkLogPresentationEntry): strin
     : null;
 }
 
-export interface ViewedImageAsset {
+interface ViewedImageAsset {
   readonly resource: Extract<AssetResource, { readonly _tag: "attachment" | "workspace-file" }>;
   readonly alt: string;
   readonly srcFragment: string;

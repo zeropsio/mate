@@ -64,7 +64,7 @@ export function previewKey(version: string | undefined, revision: number): strin
  * and carts fail here. It is said on the way out, *Open in new tab*'s hover, never as a row over
  * the site: the panel is the address row and the site, edge to edge (the owner, 2026-10-18).
  */
-export function ServiceBrowserPanel({
+function ServiceBrowserPanel({
   service,
   url,
   deployedVersion,

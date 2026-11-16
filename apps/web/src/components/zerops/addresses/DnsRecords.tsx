@@ -162,7 +162,7 @@ function RecordName({
  * The records on a deeper tint, so what is copied stands out of the words around it. A phone has
  * no room for a record on one line: there its value stands under its type and name, read whole.
  */
-export function RecordTable({
+function RecordTable({
   records,
   rooted = false,
   found = NONE_FOUND,

@@ -86,13 +86,13 @@ export interface MenuPoint {
 const ROW_ACTION_CLASS = "menu-row-action";
 
 /** The crew's door (`mateCrewItem`): its conversation on the Crew tab, set up or not. */
-export interface MateCrewEntry {
+interface MateCrewEntry {
   readonly label: string;
   readonly onSelect: () => void;
 }
 
 /** What a Mate's menu lists: see the module's own comment for the order. */
-export interface MateMenuItemsProps {
+interface MateMenuItemsProps {
   readonly actions: MateRowActions;
   /** Absent where it is not the viewer's own Mate, or crew mode is not on. */
   readonly crew?: MateCrewEntry | undefined;

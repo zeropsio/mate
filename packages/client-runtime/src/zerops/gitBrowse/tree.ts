@@ -23,7 +23,7 @@ export const foldersAbove = (path: string): ReadonlyArray<string> => {
 };
 
 /** Folder reads a tree keeps in flight at once. */
-export const TREE_READS_IN_FLIGHT = 4;
+const TREE_READS_IN_FLIGHT = 4;
 
 /**
  * The folders a tree reads, in the order they were opened: every one already read or reading,

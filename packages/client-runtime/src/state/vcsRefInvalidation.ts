@@ -6,15 +6,15 @@ import { Atom, type AtomRegistry } from "effect/reactivity";
 import { safeErrorLogAttributes } from "../errors/safeLog.ts";
 import { EnvironmentCacheStore } from "../platform/persistence.ts";
 
-export interface VcsRefsInvalidationTarget {
+interface VcsRefsInvalidationTarget {
   readonly environmentId: EnvironmentId;
 }
 
-export interface CachedVcsRefsInvalidationTarget extends VcsRefsInvalidationTarget {
+interface CachedVcsRefsInvalidationTarget extends VcsRefsInvalidationTarget {
   readonly cwd: string;
 }
 
-export interface VcsRefsCacheState {
+interface VcsRefsCacheState {
   readonly revision: number;
   readonly persistedCacheReadable: boolean;
 }

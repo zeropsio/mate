@@ -16,7 +16,7 @@ import type { ScopeKey } from "../model.ts";
 import { STREAM_POLICY } from "../streamMachine.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
 
-export const MATE_ENABLED = "ZCP_MATE_ENABLED";
+const MATE_ENABLED = "ZCP_MATE_ENABLED";
 const KEYS: ReadonlyArray<string> = [MATE_ENABLED];
 
 /** One container's flag as its search answered: `null` where it has no row. */

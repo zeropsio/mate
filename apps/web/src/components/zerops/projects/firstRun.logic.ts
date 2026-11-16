@@ -5,7 +5,7 @@
  * list there says nothing of the organization: it never reads as an organization with nothing in
  * it, and it never tells someone who may not create a project to start one. Pure.
  */
-export interface FirstRunWords {
+interface FirstRunWords {
   readonly heading: string;
   readonly body: string;
   /** New project is offered: the role creates projects. */

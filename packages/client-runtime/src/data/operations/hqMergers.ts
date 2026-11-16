@@ -32,7 +32,7 @@ export const MERGERS_UNSUPPORTED = "mergers_unsupported";
  * The people an application names as HQ's navigation holds it: `null` where it limits nothing,
  * `undefined` while the application is not read.
  */
-export function navigationMergers(
+function navigationMergers(
   read: ProjectionReads,
   orgId: string,
   appId: string,

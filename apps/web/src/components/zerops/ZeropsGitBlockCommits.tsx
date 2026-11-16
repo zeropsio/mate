@@ -12,7 +12,7 @@ import { cn } from "~/lib/utils";
 import { useNowMs } from "~/zerops/useNowMs";
 import { useZeropsChangeCommits } from "~/zerops/useZeropsChangeCommits";
 
-export interface GitCommit {
+interface GitCommit {
   readonly sha: string;
   readonly subject: string;
   readonly at?: string | undefined;

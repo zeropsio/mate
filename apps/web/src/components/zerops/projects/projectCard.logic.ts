@@ -198,7 +198,7 @@ export function placeFixWords(
 }
 
 /** At most this many Mates stand on a card; past it the quiet ones fold. */
-export const CARD_MATES_SHOWN = 4;
+const CARD_MATES_SHOWN = 4;
 
 /** A place's dot: green running, amber failed, red down, blue releasing, hollow when none. */
 export type PlaceDot = "running" | "failed" | "down" | "releasing" | "none" | "unknown";
@@ -670,7 +670,7 @@ export type MateLift =
   | { readonly kind: "review"; readonly pull: FlowPullRequest };
 
 /** A Mate nobody has asked anything, its conversations read: the menu row's words for it. */
-export const NOTHING_ASKED_YET = "Nothing asked yet";
+const NOTHING_ASKED_YET = "Nothing asked yet";
 
 /** A Mate's two lines on a card: the menu row's words, and what lifts it. */
 export interface CardMateReading {

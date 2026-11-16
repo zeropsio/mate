@@ -93,5 +93,3 @@ export function NumberFieldInput({
     />
   );
 }
-
-export { NumberFieldPrimitive };

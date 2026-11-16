@@ -15,7 +15,7 @@ const NO_ACTION = () => {};
  * stand without it: a stream's own reconnect grace, past which the data layer too calls it down. A
  * first failure is retried within a second, so HQ's or Zerops's next answer lands well inside it.
  */
-export const MENU_SOURCES_PATIENCE_MS = STREAM_POLICY.reconnectGraceMs;
+const MENU_SOURCES_PATIENCE_MS = STREAM_POLICY.reconnectGraceMs;
 
 /**
  * Where a surface's first paint stands for the organization in view — the menu's rows, the

@@ -165,7 +165,7 @@ export function ComingMateRow({
  * A part's chip on a Mate's row: a door to its preview, else to its dev, by that service's real
  * hostname; muted, with why in its title, where it has neither address.
  */
-export function MateRowPart({ mate, part }: { readonly mate: string; readonly part: MatePart }) {
+function MateRowPart({ mate, part }: { readonly mate: string; readonly part: MatePart }) {
   const door =
     part.preview?.url === undefined
       ? part.dev.find((entry) => entry.url !== undefined)

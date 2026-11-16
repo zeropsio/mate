@@ -174,7 +174,7 @@ export function terminalContentOriginY(
   return padding + Math.max(0, slack);
 }
 
-export interface TerminalScrollbarGeometry {
+interface TerminalScrollbarGeometry {
   readonly thumbHeight: number;
   readonly thumbTop: number;
   readonly maxOffset: number;
@@ -258,7 +258,7 @@ function terminalColumnOffset(row: GhosttySnapshot["rowData"][number], column: n
   return offset;
 }
 
-export interface TerminalLinkWithRange {
+interface TerminalLinkWithRange {
   readonly text: string;
   readonly range: GhosttyCellRange;
 }
@@ -499,11 +499,7 @@ export function terminalWheelDeltaRows(
 const SELECTION_AUTOSCROLL_RAMP_PX = 50;
 const SELECTION_AUTOSCROLL_MAX_ROWS = 15;
 
-export function terminalSelectionAutoscrollRows(
-  clientY: number,
-  top: number,
-  bottom: number,
-): number {
+function terminalSelectionAutoscrollRows(clientY: number, top: number, bottom: number): number {
   const distance = clientY < top ? clientY - top : clientY > bottom ? clientY - bottom : 0;
   if (distance === 0) return 0;
   const ramp = Math.max(-1, Math.min(1, distance / SELECTION_AUTOSCROLL_RAMP_PX));
@@ -540,7 +536,7 @@ export function ghosttyMouseButton(button: number): number | null {
   }
 }
 
-export interface TerminalSelectionClickSequence {
+interface TerminalSelectionClickSequence {
   readonly count: number;
   readonly time: number;
   readonly x: number;
@@ -566,7 +562,7 @@ export function advanceTerminalSelectionClickSequence(
   };
 }
 
-export interface GhosttySelectionPosition {
+interface GhosttySelectionPosition {
   readonly start: { readonly x: number; readonly y: number };
   readonly end: { readonly x: number; readonly y: number };
 }

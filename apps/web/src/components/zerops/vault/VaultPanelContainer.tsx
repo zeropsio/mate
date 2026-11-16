@@ -46,7 +46,7 @@ const NO_RESTARTS: ReadonlySet<string> = new Set();
 const UNREAD = Atom.make(NOT_READ_VAULT);
 
 /** Which Zerops project a vault is, with the organization that lists it. */
-export interface VaultProject {
+interface VaultProject {
   readonly orgId: string;
   readonly projectId: string;
 }

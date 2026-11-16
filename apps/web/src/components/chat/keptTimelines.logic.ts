@@ -54,7 +54,7 @@ export interface KeptTimeline {
 }
 
 /** How many lists the pane keeps, the open one included. */
-export const KEPT_TIMELINES_AT_MOST = 4;
+const KEPT_TIMELINES_AT_MOST = 4;
 
 export function keepTimelines(
   kept: ReadonlyArray<KeptTimeline>,

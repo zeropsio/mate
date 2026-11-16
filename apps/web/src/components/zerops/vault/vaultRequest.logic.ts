@@ -184,7 +184,7 @@ export interface VaultAskRestart {
 }
 
 /** What an answered ask still needs, in the run that asked: the apps to restart for its value. */
-export interface VaultAskResultRow {
+interface VaultAskResultRow {
   readonly title: string;
   readonly restart: ReadonlyArray<VaultAskRestart>;
 }

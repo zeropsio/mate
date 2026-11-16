@@ -16,7 +16,7 @@ import {
 } from "../../zerops/activity/buildLog.ts";
 import type { ZeropsApiClient } from "../../zerops/api.ts";
 
-export type BuildLogTransportErrorKind = "closed" | "grant" | "http" | "decode" | "socket";
+type BuildLogTransportErrorKind = "closed" | "grant" | "http" | "decode" | "socket";
 
 /** A deliberately sanitized error: signed URLs and transport causes never cross this boundary. */
 export class BuildLogTransportError extends Error {
@@ -34,7 +34,7 @@ interface MinimalFetchResponse {
   json(): Promise<unknown>;
 }
 
-export type BuildLogFetch = (url: string, signal: AbortSignal) => Promise<MinimalFetchResponse>;
+type BuildLogFetch = (url: string, signal: AbortSignal) => Promise<MinimalFetchResponse>;
 
 export interface BuildLogSocket {
   addEventListener(type: "message", listener: (event: { readonly data: unknown }) => void): void;
@@ -42,7 +42,7 @@ export interface BuildLogSocket {
   close(): void;
 }
 
-export type BuildLogSocketConstructor = new (url: string) => BuildLogSocket;
+type BuildLogSocketConstructor = new (url: string) => BuildLogSocket;
 
 export interface BuildLogPageRequest {
   readonly projectId: string;
@@ -86,7 +86,7 @@ export interface BuildLogTransport {
   diagnostics(): { readonly activeFollowers: number; readonly closed: boolean };
 }
 
-export interface BuildLogTransportOptions {
+interface BuildLogTransportOptions {
   /** Its log grant, `GET /project/{id}/log`: it only proves access to that project's log URL. */
   readonly client: Pick<ZeropsApiClient, "fetchProjectLogAccess">;
   /** The browser's `fetch` and `WebSocket` unless a test gives its own. */

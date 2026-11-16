@@ -1,6 +1,6 @@
 import { accountLocalStorage } from "./accountLifetime";
 
-export interface DraftStorage {
+interface DraftStorage {
   getItem(key: string): string | null;
   /** Whether the value landed. */
   setItem(key: string, value: string): boolean;

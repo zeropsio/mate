@@ -21,7 +21,7 @@ import type {
   mcpProgress,
 } from "./mcpProposal.logic";
 
-export interface McpProposalCardProps {
+interface McpProposalCardProps {
   readonly askId: string;
   readonly density?: AskDensity;
   readonly view: McpProposalView;

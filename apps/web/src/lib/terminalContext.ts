@@ -29,14 +29,14 @@ export interface TerminalContextDraft extends TerminalContextSelection {
   createdAt: string;
 }
 
-export interface ExtractedTerminalContexts {
+interface ExtractedTerminalContexts {
   promptText: string;
   contextCount: number;
   previewTitle: string | null;
   contexts: ParsedTerminalContextEntry[];
 }
 
-export interface DisplayedUserMessageState {
+interface DisplayedUserMessageState {
   visibleText: string;
   copyText: string;
   contextCount: number;

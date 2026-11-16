@@ -70,7 +70,7 @@ export const operationEnd: Projection<
 };
 
 /** What stopped an operation, as its step says it (`operationStop`). */
-export interface OperationStop {
+interface OperationStop {
   /** The owner's or the door's words; `null` where only the step can say it lost sight of it. */
   readonly reason: string | null;
   /** It may have landed: asked again, it could be done twice. */

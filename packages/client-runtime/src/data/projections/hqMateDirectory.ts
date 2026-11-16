@@ -1,7 +1,6 @@
 /** Personal Chiefs have a dedicated record; every general Mate list reads this partition. */
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { ZeropsProject } from "../../zerops/api.ts";
-import { zeropsStructure } from "../../zerops/hq/structure.ts";
 import { placementsScope, type PlacementValue } from "../families/hqNavigation.ts";
 import { SHOWN_MATES } from "../families/mateLink.ts";
 import { projectsScope } from "../families/project.ts";
@@ -138,24 +137,6 @@ export const canonicalHqListNavigation = {
   },
   equals: sameValue,
 } satisfies Projection<string, ReturnType<typeof canonicalHqMenuNavigation.derive>>;
-
-export const hqListNavigation = {
-  name: "hqListNavigation",
-  keyOf: (orgId) => orgId,
-  derive: (read, orgId) => {
-    const navigation = canonicalHqListNavigation.derive(read, orgId);
-    return {
-      ...navigation,
-      structure: navigation.structure === null ? null : zeropsStructure(navigation.structure),
-    };
-  },
-  equals: sameValue,
-} satisfies Projection<
-  string,
-  Omit<ReturnType<typeof canonicalHqListNavigation.derive>, "structure"> & {
-    readonly structure: ReturnType<typeof zeropsStructure> | null;
-  }
->;
 
 export const hqListedMateIdentities: typeof hqMateIdentities = {
   name: "hqListedMateIdentities",

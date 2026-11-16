@@ -58,7 +58,7 @@ export interface ZeropsStorageAdapter {
 export const ZEROPS_SESSION_STORAGE_KEY = "zerops-mate.zerops-session.v1";
 export const ZEROPS_SELECTION_STORAGE_KEY = "zerops-mate.zerops-selection.v1";
 
-export interface ZeropsSelection {
+interface ZeropsSelection {
   readonly userId: string;
   /** Exact `clientUser` membership, matching the platform GUI's active scope. */
   readonly clientUserId: string | null;
@@ -165,8 +165,4 @@ export async function saveZeropsSelection(
     `${ZEROPS_SELECTION_STORAGE_KEY}:${encodeURIComponent(selection.userId)}`,
     JSON.stringify(selection),
   );
-}
-
-export async function clearZeropsSelection(storage: ZeropsStorageAdapter): Promise<void> {
-  await storage.remove(ZEROPS_SELECTION_STORAGE_KEY);
 }

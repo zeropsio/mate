@@ -25,7 +25,7 @@ import { readsOfState, type AccountStore, type ProjectionReads } from "./store.t
 import type { StreamFault } from "./streamMachine.ts";
 import { superviseLink, type LinkSignal } from "./supervisor.ts";
 
-export interface RunningLink {
+interface RunningLink {
   /** The person's "try now", or a changed input a refusal was decided over. */
   readonly signal: (signal: LinkSignal) => void;
   /** A screen's hold on a detail while it is drawn; the release lets it go. */
@@ -81,7 +81,7 @@ export function startZeropsNavigation(options: {
   };
 }
 
-export interface RunningHq extends Omit<RunningLink, "revalidate" | "renew" | "reread"> {
+interface RunningHq extends Omit<RunningLink, "revalidate" | "renew" | "reread"> {
   /** The same organization's HQ reached over a new wire: the next socket opens over it. */
   readonly rewire: (wire: HqWire) => void;
   /** Asks HQ where a Mate may move, as the move opens. */
@@ -102,7 +102,7 @@ export type CompareAsk = { readonly appId: string; readonly repo: string } & Com
  * cursors across segments and attempts. A session HQ ended (`4401`) is forgotten by the wire, so
  * the next attempt's ticket enters HQ's door. Only an actual refusal stops recovery.
  */
-export function startHqNavigation(options: {
+function startHqNavigation(options: {
   readonly orgId: string;
   readonly store: AccountStore;
   readonly wire: HqWire;
@@ -175,14 +175,14 @@ export function startMateHealth(options: {
  * What a running press heard of its hold from its organization's HQ (`keepPress`): nothing yet,
  * held, held and then its stream gone, or — that stream back — HQ holds it no more: it lapsed.
  */
-export type PressWatch = "waiting" | "held" | "dropped" | "lapsed";
+type PressWatch = "waiting" | "held" | "dropped" | "lapsed";
 
 /**
  * The next of {@link PressWatch} as HQ's presses scope reads now. A hold lives with its holder's
  * HQ stream: only a stream that went away and came back without it says it lapsed — HQ ending a
  * stage's hold at its registration, on a stream that stayed, is no lapse.
  */
-export function pressWatch(
+function pressWatch(
   watch: PressWatch,
   read: ProjectionReads,
   orgId: string,

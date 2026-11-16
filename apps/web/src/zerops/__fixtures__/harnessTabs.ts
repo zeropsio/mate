@@ -92,7 +92,7 @@ async function loadTabGraph(): Promise<TabGraph> {
   };
 }
 
-export interface MountedTab {
+interface MountedTab {
   readonly tab: HarnessTab;
   /** The session value the tab's page last rendered. */
   readonly session: () => ZeropsSessionValue;
@@ -125,7 +125,7 @@ export interface MountedTab {
   readonly unmount: () => Promise<void>;
 }
 
-export interface TabNavigation {
+interface TabNavigation {
   readonly via: "assign" | "replace" | "href" | "pushState" | "replaceState";
   readonly url: string;
 }
@@ -134,7 +134,7 @@ export interface TabNavigation {
  * What the tab's page is. Either is built on every open, after the tab's
  * module graph is reset, so it imports what it renders itself.
  */
-export type MountTabOptions = {
+type MountTabOptions = {
   /** The path the page opens at. */
   readonly path?: string;
 } & (

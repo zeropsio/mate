@@ -127,11 +127,8 @@ export type ZeropsHandoverOutcome =
   /** No hand-over in this URL at all — an ordinary visit to the route. */
   | { readonly kind: "absent" };
 
-/** What the platform answers with when the user backs out at the consent step. */
-export const ZEROPS_HANDOVER_DECLINED_CODE = "access_denied";
-
 /** Our own code for a verified response that carried no usable credential. */
-export const ZEROPS_HANDOVER_INVALID_CODE = "invalid_response";
+const ZEROPS_HANDOVER_INVALID_CODE = "invalid_response";
 
 export function readZeropsHandover(
   fragment: string,

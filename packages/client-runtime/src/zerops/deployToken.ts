@@ -26,7 +26,7 @@ export function deployTokenName(environmentName: string, projectId: string): str
 }
 
 /** The token an environment's key is minted as: its name, the org role, the one grant. */
-export interface DeployTokenMint {
+interface DeployTokenMint {
   readonly name: string;
   readonly roleCode: "NO_ACCESS";
   readonly projects: ReadonlyArray<ZeropsProjectGrant>;

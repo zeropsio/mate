@@ -6,7 +6,7 @@ import type { Coverage } from "../model.ts";
 import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
 
-export interface ArchiveKey {
+interface ArchiveKey {
   readonly environmentIds: ReadonlyArray<EnvironmentId>;
   readonly connectedIds: ReadonlyArray<EnvironmentId>;
 }

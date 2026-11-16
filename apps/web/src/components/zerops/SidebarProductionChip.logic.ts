@@ -345,7 +345,7 @@ function stageVersion(stop: GroupFlowStop): string | undefined {
 }
 
 /** One stage as the stage chip reads it: its name under the heading, its stop, how it serves. */
-export interface StageInput {
+interface StageInput {
   readonly name: string;
   readonly stop: GroupFlowStop;
   readonly serving: StopServing;
@@ -495,10 +495,10 @@ export type ChipDot = "ok" | "attention" | "failed" | "off" | "hollow" | "spinne
  * the old one still serves, red while it is down (S3) — and hollow while it
  * is stopped on purpose, which is off rather than wrong.
  */
-export type ChipTone = "neutral" | "off" | "dash" | "amber" | "red";
+type ChipTone = "neutral" | "off" | "dash" | "amber" | "red";
 
 /** The chip as it is drawn: its word, and its tone — its menu says the rest. */
-export interface ChipFace {
+interface ChipFace {
   readonly tone: ChipTone;
   /** The one word on it. */
   readonly label: ChipLabel;
@@ -1122,7 +1122,7 @@ export function fixProblemOf(input: {
 }
 
 /** One part of a fix request's preview: words, or a log's lines in a code box. */
-export type DraftPart =
+type DraftPart =
   | { readonly kind: "words"; readonly text: string }
   | { readonly kind: "code"; readonly text: string };
 

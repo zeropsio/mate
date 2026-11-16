@@ -3,7 +3,7 @@ import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
 import { operationEnd, operationStop } from "./operationEnd.ts";
 
-export interface RegistrationKey {
+interface RegistrationKey {
   readonly orgId: string;
   readonly projectId: string;
 }

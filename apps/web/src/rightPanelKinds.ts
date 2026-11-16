@@ -67,7 +67,7 @@ const CHIEF_PANEL_KINDS: ReadonlySet<RightPanelKind> = new Set([
   "mcp",
 ]);
 
-export interface RightPanelKindMeta {
+interface RightPanelKindMeta {
   readonly launcher: {
     readonly label: string;
     readonly description: string;

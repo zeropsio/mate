@@ -20,7 +20,7 @@ import {
   type StandupServiceRow,
 } from "./standupReading.ts";
 
-export type StandUpProgressStep = "build" | "deploy" | "verify";
+type StandUpProgressStep = "build" | "deploy" | "verify";
 
 export interface StandUpProgressService {
   readonly hostname: string;

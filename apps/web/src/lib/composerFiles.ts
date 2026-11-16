@@ -33,7 +33,7 @@ export interface ComposerFileUpload {
 }
 
 /** How long the server keeps an upload no message claimed (`attachmentStore.ts`). */
-export const COMPOSER_UPLOAD_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const COMPOSER_UPLOAD_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 /** Whether a finished upload is past the day the server keeps it, at `nowMs`. */
 export function composerUploadExpired(upload: ComposerFileUpload, nowMs: number): boolean {
@@ -53,7 +53,7 @@ export interface ComposerFileAttachment {
 }
 
 /** A file as a draft keeps it for a reload: what it is and where its upload went, never its bytes. */
-export interface PersistedComposerFileAttachment {
+interface PersistedComposerFileAttachment {
   readonly id: string;
   readonly name: string;
   readonly mimeType: string;
@@ -169,7 +169,7 @@ const MAX_FILE_MEGABYTES = PROVIDER_SEND_TURN_MAX_FILE_BYTES / (1024 * 1024);
  * Where something pasted or dropped goes: a picture Claude can look at goes
  * to the pictures, anything else that can be sent as a file to the files.
  */
-export type ComposerAttachmentRoute =
+type ComposerAttachmentRoute =
   | { readonly kind: "picture" }
   | { readonly kind: "file" }
   | { readonly kind: "refused"; readonly message: string };

@@ -40,7 +40,7 @@ type DraftTarget = ScopedThreadRef | DraftId;
 
 const draftOf = (target: DraftTarget) => useComposerDraftStore.getState().getComposerDraft(target);
 
-export interface ComposerFilesInput {
+interface ComposerFilesInput {
   readonly draftTarget: DraftTarget;
   readonly environmentId: EnvironmentId;
   readonly files: ReadonlyArray<ComposerFileAttachment>;
@@ -54,7 +54,7 @@ export interface ComposerFilesInput {
   readonly onError: (message: string) => void;
 }
 
-export interface ComposerFiles {
+interface ComposerFiles {
   /** What the text shows of each file, in the order they sit. */
   readonly chips: ReadonlyArray<ComposerFileView>;
   readonly add: (files: ReadonlyArray<File>) => void;

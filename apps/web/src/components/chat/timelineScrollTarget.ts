@@ -38,7 +38,7 @@ export function isTimelineScrollTarget(
  * the list's content, on a control that takes Space, in editable text, or
  * somewhere else that scrolls on its own.
  */
-export type TimelineKeyTarget = "page" | "content" | "control" | "editable" | "elsewhere";
+type TimelineKeyTarget = "page" | "content" | "control" | "editable" | "elsewhere";
 
 export function resolveTimelineKeyTarget(
   target: EventTarget | null,

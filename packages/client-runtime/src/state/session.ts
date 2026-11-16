@@ -26,8 +26,6 @@ function initialConfigOption<E>(
     ),
   );
 }
-
-export { fetchEnvironmentSessionState } from "../data/adapters/mateClientAccess.ts";
 import { fetchEnvironmentSessionState } from "../data/adapters/mateClientAccess.ts";
 
 export function createEnvironmentSessionAtoms<R, E>(

@@ -14,7 +14,7 @@ import { submitHqAppWrite } from "./hqAppWrite";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 /** Deletes the group's application in HQ. */
-export type DeleteGroup = (group: Pick<ZeropsGroup, "groupId">) => Promise<void>;
+type DeleteGroup = (group: Pick<ZeropsGroup, "groupId">) => Promise<void>;
 
 export function useDeleteGroup(): DeleteGroup {
   const { activeOrganization } = useZeropsSession();

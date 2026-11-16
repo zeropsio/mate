@@ -12,7 +12,7 @@
 
 import { zeropsRoleWords, type ZeropsOrganization } from "@t3tools/client-runtime/zerops";
 
-export interface SidebarAccountLines {
+interface SidebarAccountLines {
   /** The person, as the bar already says them elsewhere. */
   readonly name: string;
   /** The organization the rows above belong to; `null` until one is known. */

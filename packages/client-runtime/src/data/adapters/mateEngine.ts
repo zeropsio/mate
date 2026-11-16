@@ -81,7 +81,7 @@ export const ENGINE_KEPT_RELEASED = 6;
  * How many pages of what a finished run's result draws from it reads before its card is drawn. A
  * page is up to the wire's `runPageItems`.
  */
-export const ENGINE_RUN_PAGES = 5;
+const ENGINE_RUN_PAGES = 5;
 
 /** Where a page of a run is read from: before a sequence, after one, or its newest. */
 export interface RunPageAt {
@@ -150,7 +150,7 @@ export interface EngineConversationWire {
 const isAuthorization = Schema.is(EnvironmentAuthorizationError);
 
 /** A failure of the wire's call, classified: the account's rules decide what follows. */
-export function classifyEngineFailure(cause: Cause.Cause<unknown>): StreamFault {
+function classifyEngineFailure(cause: Cause.Cause<unknown>): StreamFault {
   const error = Cause.findErrorOption(cause);
   if (Option.isSome(error)) {
     const value = error.value;
@@ -166,7 +166,7 @@ export function classifyEngineFailure(cause: Cause.Cause<unknown>): StreamFault 
 }
 
 /** The refusal an `unserved` frame is: the update route, or a Mate whose conversation is on V1. */
-export const unservedFault = (unserved: {
+const unservedFault = (unserved: {
   readonly reason: string;
   readonly message: string;
 }): StreamFault => ({

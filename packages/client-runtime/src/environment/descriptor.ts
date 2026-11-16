@@ -22,7 +22,7 @@ export const fetchRemoteEnvironmentDescriptor = Effect.fn(
  * The descriptors this client read moments ago, by base URL: a connect presents the one its door
  * just read instead of reading it again. Holds none unless the application provides a reader.
  */
-export interface RecentEnvironmentDescriptors {
+interface RecentEnvironmentDescriptors {
   readonly recent: (httpBaseUrl: string) => ExecutionEnvironmentDescriptor | null;
 }
 

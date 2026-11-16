@@ -13,7 +13,7 @@ export function claimWorkspaceBasenameLookup(): () => boolean {
   return () => claimed === latestLookupSequence;
 }
 
-export interface WorkspaceEntryCandidate {
+interface WorkspaceEntryCandidate {
   readonly path: string;
   readonly kind: "file" | "directory";
 }

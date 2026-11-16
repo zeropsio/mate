@@ -6,7 +6,7 @@ import { cn } from "../../lib/utils";
 const DOWNLOAD_PROGRESS_RADIUS = 14;
 const DOWNLOAD_PROGRESS_CIRCUMFERENCE = 2 * Math.PI * DOWNLOAD_PROGRESS_RADIUS;
 
-export type DesktopUpdateStatusIconState =
+type DesktopUpdateStatusIconState =
   | "idle"
   | "checking"
   | "available"

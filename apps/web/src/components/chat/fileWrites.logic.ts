@@ -25,7 +25,7 @@ export function stepWriteCalls(step: WorkStep): string[] {
 }
 
 /** Where "Open in Files" takes a written file: the workspace's own tab, or the read-only view outside it. */
-export type FilesTarget =
+type FilesTarget =
   | { readonly kind: "workspace"; readonly path: string }
   | { readonly kind: "outside"; readonly path: string };
 

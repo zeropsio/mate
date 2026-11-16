@@ -11,7 +11,7 @@ import { mayCreateProjects } from "@t3tools/shared/zeropsRoles";
 
 import type { ZeropsOrganization } from "./api.ts";
 
-export interface ZeropsOrganizationSelectionInput {
+interface ZeropsOrganizationSelectionInput {
   /** The organization a registration in this client just made; it wins over stale local state. */
   readonly preferredClientId: string | null;
   /** The exact membership remembered by this client. */

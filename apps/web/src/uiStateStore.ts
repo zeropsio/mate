@@ -35,7 +35,7 @@ export interface PersistedUiState {
   projectLineFullById?: Record<string, boolean>;
 }
 
-export interface UiProjectState {
+interface UiProjectState {
   projectExpandedById: Record<string, boolean>;
   projectOrder: string[];
   // Projects (by their group) whose page shows the line of their changes in
@@ -47,7 +47,7 @@ export interface UiProjectState {
   sidebarProjectScopeKey: string | null;
 }
 
-export interface UiThreadState {
+interface UiThreadState {
   threadLastVisitedAtById: Record<string, string>;
   threadChangedFilesExpandedById: Record<string, Record<string, boolean>>;
 }
@@ -299,7 +299,7 @@ export function setSidebarProjectScopeKey(state: UiState, projectKey: string | n
 }
 
 /** A project's line of changes shown in full, or back as its picture. */
-export function setProjectLineFull(state: UiState, groupId: string, full: boolean): UiState {
+function setProjectLineFull(state: UiState, groupId: string, full: boolean): UiState {
   if ((state.projectLineFullById[groupId] === true) === full) {
     return state;
   }

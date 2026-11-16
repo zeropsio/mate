@@ -88,7 +88,7 @@ const NO_AGENTS = emptyAgentPanelModel();
  * Where a held read takes its conversation anew (`useHeld`): a turn starting,
  * ending or failing, the session changing state.
  */
-export function warmReadBeat(thread: EnvironmentThread | null): string {
+function warmReadBeat(thread: EnvironmentThread | null): string {
   if (thread === null) return "";
   const turn = thread.latestTurn;
   return [

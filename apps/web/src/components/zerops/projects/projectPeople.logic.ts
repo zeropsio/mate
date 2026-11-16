@@ -487,7 +487,7 @@ const RANKS: ReadonlyArray<ZeropsOrgRole> = [
 ];
 const roleRank = (role: ZeropsOrgRole): number => RANKS.indexOf(role);
 
-export type PersonMenuEntry =
+type PersonMenuEntry =
   | {
       readonly kind: "level";
       readonly level: GivenLevel;
@@ -505,7 +505,7 @@ export type PersonMenuEntry =
       readonly label: string;
     };
 
-export const LEVEL_WORDS: Readonly<Record<GivenLevel, string>> = {
+const LEVEL_WORDS: Readonly<Record<GivenLevel, string>> = {
   full: "Give full access",
   read: "Make read only",
   none: "Hide this project",

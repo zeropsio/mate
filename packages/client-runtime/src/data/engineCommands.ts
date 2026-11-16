@@ -368,7 +368,7 @@ const optionValuesOf = (
  * side leaves out is the driver's default for the model, and their order means nothing. Without
  * the model's capabilities only what both sides spell out can be judged the same.
  */
-export function changedModelOptionIds(
+function changedModelOptionIds(
   capabilities: ModelCapabilities | null | undefined,
   current: ReadonlyArray<ProviderOptionSelection> | undefined,
   next: ReadonlyArray<ProviderOptionSelection> | undefined,

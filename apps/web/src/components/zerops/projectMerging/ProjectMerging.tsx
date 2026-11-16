@@ -97,7 +97,7 @@ export type MergingPeopleView =
   | { readonly kind: "known"; readonly people: ReadonlyArray<MergingPerson> };
 
 /** The member list as the checklist reads it; its last answer stands while it is read again. */
-export function mergingPeopleView(
+function mergingPeopleView(
   members: Pick<MembersRead, "fact" | "members" | "status" | "refused">,
   named: ReadonlyArray<string>,
 ): MergingPeopleView {

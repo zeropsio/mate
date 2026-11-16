@@ -75,7 +75,7 @@ import { searchableSetting } from "./settingsSearch";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useAtomCommand } from "../../state/use-atom-command";
 
-export function KeybindingPill({ value }: { value: string }) {
+function KeybindingPill({ value }: { value: string }) {
   const parts = value.split("+");
   return (
     <KbdGroup>

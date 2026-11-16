@@ -63,7 +63,7 @@ import { APP_ACCESS_KINDS } from "./appAccess.ts";
 import { TEAM_KINDS } from "./team.ts";
 
 /** The registry, checked once at startup: each kind once. Its kinds keep their names' types. */
-export function defineOperationKinds<const Kinds extends ReadonlyArray<RegisteredOperationKind>>(
+function defineOperationKinds<const Kinds extends ReadonlyArray<RegisteredOperationKind>>(
   kinds: Kinds,
 ): Kinds {
   const seen = new Set<string>();

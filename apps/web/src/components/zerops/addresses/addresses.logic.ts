@@ -373,7 +373,7 @@ export function recordHost(name: string, beside: ReadonlyArray<string> = []): st
 }
 
 /** Where a domain's DNS records are kept, as its name servers tell. */
-export type DnsProvider =
+type DnsProvider =
   | { readonly kind: "known"; readonly name: string; readonly url: string }
   /** A provider this build does not know by name: its name server says it. */
   | { readonly kind: "other"; readonly host: string }

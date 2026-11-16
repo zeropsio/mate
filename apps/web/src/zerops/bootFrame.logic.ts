@@ -16,7 +16,7 @@ export const BOOT_FRAME_SIGNED_IN = "app";
 /** Signed in to Zerops HQ's session, which keeps nothing in this origin's storage. */
 export const BOOT_FRAME_SHARED = "zerops-hq";
 
-export type BootFrameMode = "app" | "mark";
+type BootFrameMode = "app" | "mark";
 
 const RETURNING = new RegExp(`${ZEROPS_HANDOVER_CALLBACK_PATH}/?$`, "iu");
 

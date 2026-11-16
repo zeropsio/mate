@@ -206,27 +206,12 @@ function CommandFooter({ className, ...props }: React.ComponentProps<"div">) {
   );
 }
 
-function CommandFooterAction({
-  className,
-  ...props
-}: Omit<React.ComponentProps<typeof Button>, "size" | "variant">) {
-  return (
-    <Button
-      {...props}
-      variant="ghost"
-      size="sm"
-      className={cn("h-auto px-2 text-xs hover:bg-transparent", className)}
-    />
-  );
-}
-
 export {
   Command,
   CommandCollection,
   CommandDialog,
   CommandDialogPopup,
   CommandFooter,
-  CommandFooterAction,
   CommandGroup,
   CommandGroupLabel,
   CommandInput,

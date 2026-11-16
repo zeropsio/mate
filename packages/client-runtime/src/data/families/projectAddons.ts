@@ -8,11 +8,9 @@
  */
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import { type FamilySpec } from "./spec.ts";
 
-import type { ScopeKey } from "../model.ts";
-import { scopeOf, type FamilySpec } from "./spec.ts";
-
-export interface ProjectIpv4Addon {
+interface ProjectIpv4Addon {
   readonly projectId: string;
   /** Whether the project's own IPv4 is on. */
   readonly enabled: boolean;
@@ -22,7 +20,7 @@ export interface ProjectIpv4Addon {
   readonly validTill?: string;
 }
 
-export interface ProjectAddonsValue {
+interface ProjectAddonsValue {
   readonly ipv4: ReadonlyArray<ProjectIpv4Addon>;
 }
 
@@ -77,5 +75,3 @@ export const projectAddonsFamily: FamilySpec<"projectAddons"> = {
     freshMs: 0,
   },
 };
-
-export const addonsScope = (orgId: string): ScopeKey => scopeOf(projectAddonsFamily, orgId, orgId);

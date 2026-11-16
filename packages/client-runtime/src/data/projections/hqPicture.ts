@@ -2,7 +2,7 @@
 import { pictureId, pictureScope, type HqPictureKey } from "../families/hqPicture.ts";
 import type { Projection } from "../store.ts";
 
-export type HqPictureRead =
+type HqPictureRead =
   | { readonly kind: "reading" }
   | { readonly kind: "read"; readonly blob: Blob }
   | { readonly kind: "failed"; readonly reason: string };

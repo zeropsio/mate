@@ -7,7 +7,7 @@
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { useCallback } from "react";
 
-export interface PipelineSearch {
+interface PipelineSearch {
   readonly pipeline?: string;
 }
 

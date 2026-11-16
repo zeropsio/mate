@@ -12,7 +12,7 @@ import type { ZeropsLocation } from "../../zerops/api.ts";
 import type { ScopeKey } from "../model.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
 
-export type OrganizationLocationsValue = ReadonlyArray<ZeropsLocation>;
+type OrganizationLocationsValue = ReadonlyArray<ZeropsLocation>;
 
 declare module "../model.ts" {
   interface FamilyValues {

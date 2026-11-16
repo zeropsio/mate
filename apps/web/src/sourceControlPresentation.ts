@@ -5,7 +5,6 @@ export {
   DEFAULT_CHANGE_REQUEST_TERMINOLOGY,
   getChangeRequestTerminology,
   resolveChangeRequestPresentation,
-  type ChangeRequestPresentation,
   type ChangeRequestTerminology,
 } from "@t3tools/shared/sourceControl";
 import {
@@ -21,7 +20,7 @@ import {
   ForgejoIcon,
 } from "./components/Icons";
 
-export interface SourceControlPresentation {
+interface SourceControlPresentation {
   readonly providerName: string;
   readonly terminology: ChangeRequestTerminology;
   readonly Icon: ElementType<{ className?: string }>;

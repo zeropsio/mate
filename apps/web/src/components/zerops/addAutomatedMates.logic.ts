@@ -24,7 +24,6 @@ import { newMateCost } from "./whatHappensNext.logic";
 
 /** How many automated Mates one Add makes: the segmented choice. */
 export const AUTOMATED_COUNTS = [1, 2, 3] as const;
-export type AutomatedCount = (typeof AUTOMATED_COUNTS)[number];
 
 export function addAutomatedTitle(groupName: string): string {
   return `Add automated Mates to ${groupName}`;
@@ -75,7 +74,7 @@ const SAME_NAME = "Two of them have the same name.";
  * every Mate with the project's recipe. Each name is judged as New Mate judges one, the others of
  * this Add counted as taken.
  */
-export type AutomatedSubmit =
+type AutomatedSubmit =
   | { readonly kind: "refuse"; readonly index: number; readonly error: string }
   | { readonly kind: "wait"; readonly on: "names" | "recipe" }
   | { readonly kind: "create"; readonly recipe: EnvironmentRecipeChoice };
@@ -111,7 +110,7 @@ type ChannelRead = SettingValue<{ readonly channel: { readonly channel: string }
 type ListRead = SettingValue<ReadonlyArray<unknown>>;
 
 /** Where a project's tasks come from, as read for the dialog. */
-export interface AutomatedSourceReads {
+interface AutomatedSourceReads {
   /** Its GitHub intake: `undefined` while not read, `null` where none. */
   readonly intake: HqNavigationIntake | null | undefined;
   readonly slack: ChannelRead;
@@ -169,7 +168,7 @@ export function automatedSourcesWords(reads: AutomatedSourceReads): AutomatedSou
  * The paragraph's first sentence: where their tasks come from. While the sources are read, the
  * sentence the dialog holds room for (`withheld`'s, a line long), so the paragraph never grows.
  */
-export function automatedSourcesSentence(count: number, sources: AutomatedSources): string {
+function automatedSourcesSentence(count: number, sources: AutomatedSources): string {
   const they = count === 1 ? "It" : "They";
   const takes = count === 1 ? "takes" : "take";
   switch (sources.kind) {
@@ -189,7 +188,7 @@ const dollars = (amount: number) =>
  * The provider and model automated Mates run on, as a person names them: "Nebius · GLM-5.3" — the
  * organization's pick (`HqTaskLimitsView.model`), else the default.
  */
-export function automatedModelWords(picked?: string): string {
+function automatedModelWords(picked?: string): string {
   const provider = OPENCODE_KEY_PROVIDERS.find((one) => one.id === AUTOMATED_KEY_PROVIDER);
   if (provider === undefined) return "the organization's key";
   const model =

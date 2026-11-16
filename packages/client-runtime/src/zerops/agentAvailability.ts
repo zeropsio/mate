@@ -172,7 +172,7 @@ export function zeropsLoginAuthReads(
   };
 }
 
-export interface ZeropsAgentAvailabilityInput {
+interface ZeropsAgentAvailabilityInput {
   readonly agent: ZeropsAgentAuthRead;
   /** The signed-in Zerops user's id, or `undefined` when nobody is signed in. */
   readonly viewerSubject: ZeropsUserId | undefined;

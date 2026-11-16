@@ -533,7 +533,7 @@ export interface AccessMember {
 }
 
 /** What approving an access proposal writes, or why Approve waits. */
-export type AccessProposalPlan =
+type AccessProposalPlan =
   | {
       readonly kind: "ready";
       readonly changes: ReadonlyArray<ProjectAccessChange>;

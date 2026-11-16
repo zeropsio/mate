@@ -4,7 +4,7 @@ import type { OpeningEnd } from "@t3tools/client-runtime/zerops/environments";
 import type { EnvironmentId, ScopedThreadRef, ThreadId } from "@t3tools/contracts";
 import type { DraftId } from "./composerDraftStore";
 
-export type ThreadRouteTarget =
+type ThreadRouteTarget =
   | {
       kind: "server";
       threadRef: ScopedThreadRef;
@@ -20,7 +20,7 @@ type DraftThreadRouteState = {
   promotedTo?: ScopedThreadRef | null;
 };
 
-export type ThreadRouteRenderState = "loading" | "ready" | "missing";
+type ThreadRouteRenderState = "loading" | "ready" | "missing";
 
 /**
  * The thread gate (DESIGN §4.8): the thread is missing only when its environment's shell is
@@ -64,7 +64,7 @@ export const THREAD_READ_PATIENCE_MS = 3_000;
  * or the opening's end without it — its absence read, or the route's deadline passed with nothing
  * naming it (`openingEndPhrase`).
  */
-export type ThreadRouteStage = "opening" | "conversation" | "quiet" | OpeningEnd;
+type ThreadRouteStage = "opening" | "conversation" | "quiet" | OpeningEnd;
 
 /**
  * The thread route's stage. Arriving (no conversation on screen yet in this pane), it holds the

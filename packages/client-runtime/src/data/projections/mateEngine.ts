@@ -135,7 +135,7 @@ type CardOf = (runId: string | null) => string | null;
  * A message as the engine's record draws it: a crew card carries its typed card, so the timeline
  * draws the card from it and never reads the words the agent got.
  */
-export interface EngineMessage extends OrchestrationMessage {
+interface EngineMessage extends OrchestrationMessage {
   readonly crewCard?: CrewCard;
   /** A task's first message on an automated Mate: the issue it brings, drawn as its card. */
   readonly task?: MateTaskSource;
@@ -945,7 +945,7 @@ export function engineSteerTarget(
 }
 
 /** A held conversation's turn as its own records say it: the live run, on the card it draws on. */
-export interface HeldTurn {
+interface HeldTurn {
   readonly latestTurn: OrchestrationLatestTurn | null;
   readonly status: "running" | "error" | "ready" | "stopped";
   readonly activeTurnId: string | null;
@@ -1702,7 +1702,7 @@ export const engineHeldTurns: Projection<string, Readonly<Record<string, HeldTur
  * A crewmate's conversation as a crew thread's origin: the crewmate its agent's profile names, and
  * the crew and the `n` its id carries (`crew-<crew>-<handle>-<n>`); `null` for any other agent.
  */
-export function engineCrewOrigin(
+function engineCrewOrigin(
   conversationId: string,
   agent: ConversationRow["agent"],
 ): ThreadCrewOrigin | null {

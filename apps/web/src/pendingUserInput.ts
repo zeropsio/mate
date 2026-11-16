@@ -7,7 +7,7 @@ export interface PendingUserInputDraftAnswer {
   attachmentsBlocked?: boolean;
 }
 
-export interface PendingUserInputProgress {
+interface PendingUserInputProgress {
   questionIndex: number;
   activeQuestion: UserInputQuestion | null;
   activeDraft: PendingUserInputDraftAnswer | undefined;

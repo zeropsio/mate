@@ -22,7 +22,7 @@ import type { LinkKey } from "../model.ts";
 import type { StreamFault } from "../streamMachine.ts";
 import { workspaceFailure } from "./mateWorkspace.ts";
 
-export interface ArchiveWire {
+interface ArchiveWire {
   readonly read: (
     environmentId: EnvironmentId,
   ) => Effect.Effect<OrchestrationShellSnapshot, StreamFault>;

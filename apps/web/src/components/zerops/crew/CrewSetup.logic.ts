@@ -22,7 +22,7 @@ import {
 import * as Schema from "effect/Schema";
 
 /** A press as the setup offers it: whether it waits, and the words under it that say why. */
-export interface CrewSetupPress {
+interface CrewSetupPress {
   readonly disabled: boolean;
   readonly reason: string | null;
 }

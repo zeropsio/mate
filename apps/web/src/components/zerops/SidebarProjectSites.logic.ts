@@ -211,7 +211,7 @@ export interface SitesService {
 }
 
 /** A Mate's addresses: its parts' services, then its other addresses. */
-export interface SitesMateAddresses {
+interface SitesMateAddresses {
   readonly services: ReadonlyArray<SitesService>;
   readonly links: ReadonlyArray<SitesLink>;
 }
@@ -305,7 +305,7 @@ function devPlaceholder(mate: SitesMateFacts, part: MatePart): SitesService {
  * kind in the order given: people reach a place at the domain its owner gave it, so that is what
  * a Sites list leads with — in a place, a Mate and the whole project alike.
  */
-export function ownDomainsFirst<Link extends { readonly host: string }>(
+function ownDomainsFirst<Link extends { readonly host: string }>(
   links: ReadonlyArray<Link>,
 ): ReadonlyArray<Link> {
   return [

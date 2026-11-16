@@ -126,7 +126,7 @@ export function crewModePressLock(
   }
 }
 
-export interface CrewGoalTitle {
+interface CrewGoalTitle {
   /** The goal's title, or the question it answers while it has none. */
   readonly title: string;
   readonly placeholder: boolean;

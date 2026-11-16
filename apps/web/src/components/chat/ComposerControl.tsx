@@ -1,13 +1,11 @@
 import { mergeProps } from "@base-ui/react/merge-props";
 import { Select as SelectPrimitive } from "@base-ui/react/select";
 import { useRender } from "@base-ui/react/use-render";
-import type { ComponentProps } from "react";
 import { ChevronDownIcon, type LucideIcon } from "lucide-react";
 
 import { cn } from "~/lib/utils";
-import { Separator } from "../ui/separator";
 
-export type ComposerControlSize = "sm" | "xs" | "quiet";
+type ComposerControlSize = "sm" | "xs" | "quiet";
 
 /**
  * The composer toolbar's control look. `quiet` is the composer's own toolbar (C4): 13 px, muted,
@@ -100,22 +98,6 @@ export function ComposerControlChevron({
       )}
       data-composer-control-chevron
       strokeWidth={2.25}
-    />
-  );
-}
-
-export function ComposerControlSeparator({
-  className,
-  size = "sm",
-  ...props
-}: Omit<ComponentProps<typeof Separator>, "orientation"> & {
-  size?: ComposerControlSize;
-}) {
-  return (
-    <Separator
-      orientation="vertical"
-      className={cn("mx-0.5 hidden sm:block", size === "xs" ? "h-3.5!" : "h-4", className)}
-      {...props}
     />
   );
 }

@@ -22,7 +22,7 @@ export interface ShortcutEventLike {
   altKey: boolean;
 }
 
-export interface ShortcutModifierStateLike {
+interface ShortcutModifierStateLike {
   metaKey: boolean;
   ctrlKey: boolean;
   shiftKey: boolean;

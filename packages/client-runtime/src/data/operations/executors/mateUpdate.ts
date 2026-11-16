@@ -17,7 +17,7 @@ const refused = Schema.is(ZeropsMateUpdateError);
 const unavailable = Schema.is(EnvironmentRpcUnavailableError);
 const unregistered = Schema.is(EnvironmentNotRegisteredError);
 /** Said where the verb stands; the press is free again, since the Mate never received it. */
-export const MATE_UPDATE_UNSENT =
+const MATE_UPDATE_UNSENT =
   "This Mate is not connected, so the update was not sent. Update again once it is.";
 export function makeMateUpdateExecutor<E>(options: {
   readonly call: (environmentId: EnvironmentId) => Effect.Effect<ZeropsMateUpdateResult, E>;

@@ -30,7 +30,7 @@ export type MessagePictureSegment =
       readonly file: ChatAttachment;
     };
 
-export interface PlacedMessagePictures {
+interface PlacedMessagePictures {
   readonly segments: ReadonlyArray<MessagePictureSegment>;
   /** Images the text holds no label for: they stay above the words. */
   readonly unplaced: ReadonlyArray<ChatImageAttachment>;
@@ -104,7 +104,7 @@ export function placeMessagePictures(
 }
 
 /** The person's message as a run's card repeats it: its words in short, and its pictures apart. */
-export interface MessageEcho {
+interface MessageEcho {
   /** The first line of what they wrote: never a picture's label or its notes. */
   readonly line: string;
   /** Its pictures in the order the conversation draws them: those no label places first. */
@@ -225,7 +225,7 @@ export function reservedPictureBox(
   };
 }
 
-export type MessagePictureRow<S> =
+type MessagePictureRow<S> =
   | (S & { readonly kind: "text" })
   | { readonly kind: "row"; readonly items: ReadonlyArray<S> };
 

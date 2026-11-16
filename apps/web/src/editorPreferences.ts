@@ -25,7 +25,7 @@ export class PreferredEditorEnvironmentRequiredError extends Schema.TaggedError<
   }
 }
 
-export class PreferredEditorUnavailableError extends Schema.TaggedError<PreferredEditorUnavailableError>()(
+class PreferredEditorUnavailableError extends Schema.TaggedError<PreferredEditorUnavailableError>()(
   "PreferredEditorUnavailableError",
   {
     environmentId: EnvironmentId,

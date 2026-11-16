@@ -169,7 +169,7 @@ export function crewStartCommand(
 }
 
 /** The limit that stopped a paused run, which *Keep going* asks more of; `null` for any other stop. */
-export type CrewResumeLimit = "budget" | "time" | "usage";
+type CrewResumeLimit = "budget" | "time" | "usage";
 
 export function crewResumeLimit(run: CrewRun | null): CrewResumeLimit | null {
   if (run?.state !== "paused") return null;

@@ -92,7 +92,7 @@ export function countInlinePicturePlaceholders(prompt: string): number {
 }
 
 /** Whether a character of the prompt is the place of a picture or a file: what a row is made of. */
-export function isAttachmentPlaceholder(char: string | undefined): boolean {
+function isAttachmentPlaceholder(char: string | undefined): boolean {
   return char === INLINE_PICTURE_PLACEHOLDER || char === INLINE_FILE_PLACEHOLDER;
 }
 
@@ -385,7 +385,7 @@ export function pictureMarkAt(
 }
 
 /** The picture in the text: 80 px tall, as wide as its crop allows between 48 and 240. */
-export const PICTURE_THUMB_HEIGHT = 80;
+const PICTURE_THUMB_HEIGHT = 80;
 
 export function pictureThumbSize(crop: Pick<PictureRect, "w" | "h">): {
   width: number;

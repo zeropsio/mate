@@ -30,7 +30,7 @@ export const PROJECT_ORDER_STORAGE_KEY = "mate:zerops:project-order";
 export const PROJECT_CUSTOM_ORDER_STORAGE_KEY = "mate:zerops:project-custom-order";
 
 /** Newest first unless the viewer chose otherwise (the owner, 2026-09-24). */
-export const DEFAULT_PROJECT_ORDER: ZeropsProjectOrder = "newest";
+const DEFAULT_PROJECT_ORDER: ZeropsProjectOrder = "newest";
 
 export const ProjectOrderSchema = Schema.Literals(["newest", "name", "custom"]);
 export const ProjectCustomOrderSchema = Schema.Array(Schema.String);
@@ -108,7 +108,7 @@ export function movedBefore(
 }
 
 /** Every reader of the order, and the two ways it changes. */
-export interface ProjectOrderControl extends ProjectOrderOptions {
+interface ProjectOrderControl extends ProjectOrderOptions {
   /**
    * Chooses an order. *Custom* starts from `onScreen` — the order the viewer
    * is looking at — whatever arrangement was kept from before.

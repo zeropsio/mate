@@ -9,7 +9,7 @@
 import { parseChangeDiff, type ChangeDiffFile } from "./changeDiff.ts";
 
 /** The read as the data layer holds it (`GitBrowseView` of `compare-file`). */
-export type ChangeFileDiffView =
+type ChangeFileDiffView =
   | { readonly state: "withheld" }
   | { readonly state: "unread" }
   | { readonly state: "known"; readonly answer: { readonly hunks: string | null } }

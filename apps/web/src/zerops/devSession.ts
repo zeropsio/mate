@@ -17,7 +17,7 @@ export interface MateDevSession {
   readonly refreshToken?: string;
 }
 
-export interface MateDevHooks {
+interface MateDevHooks {
   readonly adoptSession: (session: MateDevSession) => Promise<void>;
 }
 

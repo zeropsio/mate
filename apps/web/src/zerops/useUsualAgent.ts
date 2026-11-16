@@ -30,7 +30,7 @@ const NOT_READ = Atom.make<Readonly<Record<string, SampledRead<ReadonlyArray<Zer
 );
 
 /** The project's other Mates: those sharing its group, each with a container to read. */
-export function otherMatesOf(
+function otherMatesOf(
   rows: ReadonlyArray<ZeropsCandidate>,
   projectId: string | undefined,
 ): ReadonlyArray<ZeropsCandidate> {

@@ -27,7 +27,7 @@ export {
   THEME_COLOR_ROLES,
   ZEROPS_THEME,
 };
-export type { ThemeAppearance, ThemeColorRole, ThemeColors, ThemeDefinition, ThemeVariants };
+export type { ThemeAppearance, ThemeColorRole, ThemeColors, ThemeDefinition };
 
 export const T3_CHAT_THEME_ID = "t3-chat" as const;
 const GROVE_THEME_ID = "grove" as const;
@@ -47,11 +47,11 @@ export const ThemePreference = Schema.String;
 export type ThemePreference = typeof ThemePreference.Type;
 
 const THEME_COLOR_ROLE_SET: ReadonlySet<string> = new Set(THEME_COLOR_ROLES);
-export type ThemeColorOverrides = Readonly<Partial<Record<ThemeColorRole, string>>>;
-export type ThemeVariantOverrides = Readonly<Partial<Record<ThemeAppearance, ThemeColorOverrides>>>;
+type ThemeColorOverrides = Readonly<Partial<Record<ThemeColorRole, string>>>;
+type ThemeVariantOverrides = Readonly<Partial<Record<ThemeAppearance, ThemeColorOverrides>>>;
 export type ThemePreferenceMode = ThemeAppearance | "system";
-export type ThemeCollection = Readonly<{ id: string; label: string }>;
-export type ThemeFile = Readonly<{
+type ThemeCollection = Readonly<{ id: string; label: string }>;
+type ThemeFile = Readonly<{
   version: typeof THEME_FILE_VERSION;
   id: string;
   name: string;
@@ -1069,7 +1069,7 @@ export function themeIdFromName(name: string): string {
   return normalized || "custom-theme";
 }
 
-export class ThemeLibraryStorageError extends Schema.TaggedError<ThemeLibraryStorageError>()(
+class ThemeLibraryStorageError extends Schema.TaggedError<ThemeLibraryStorageError>()(
   "ThemeLibraryStorageError",
   {
     storageKey: Schema.String,
@@ -1083,8 +1083,6 @@ export class ThemeLibraryStorageError extends Schema.TaggedError<ThemeLibrarySto
     return `Failed to ${this.operation} the theme library ${direction} ${this.storageKey}.`;
   }
 }
-
-export const isThemeLibraryStorageError = Schema.is(ThemeLibraryStorageError);
 
 function saveCustomThemes(
   storedThemes: ReadonlyArray<unknown>,
@@ -1434,7 +1432,7 @@ export function getThemeColorVariable(role: ThemeColorRole): string {
 }
 
 /** Marks the document as wearing an unsaved draft rather than a stored theme. */
-export const THEME_PREVIEW_ID = "__preview";
+const THEME_PREVIEW_ID = "__preview";
 
 /**
  * Paint a draft palette onto the live app without installing it, so the editor

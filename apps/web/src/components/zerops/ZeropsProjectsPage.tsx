@@ -444,7 +444,7 @@ const PROJECTS_SURFACE: KnownSurface<ReadonlyArray<ZeropsCandidate>> = {
   negative: null,
 };
 
-export interface ProjectsListingNotice {
+interface ProjectsListingNotice {
   readonly region: KnownPresentation["region"];
   readonly message: KnownMessage;
   readonly affordance: KnownAffordance | null;

@@ -31,7 +31,7 @@ export interface ZeropsProjectCreation {
   readonly error: ZeropsProcessError | null;
 }
 
-export type ZeropsProjectCreationOutcome =
+type ZeropsProjectCreationOutcome =
   /** The process is still on its way, or has not appeared yet. */
   | { readonly kind: "running" }
   | { readonly kind: "finished" }
@@ -46,7 +46,7 @@ export type ZeropsProjectCreationOutcome =
  * The sentence the platform gives when it has nothing to say: an internal
  * error with no cause. A row repeating it says nothing a person can act on.
  */
-export const GENERIC_PLATFORM_ERROR_MESSAGE = "unexpected internal server error";
+const GENERIC_PLATFORM_ERROR_MESSAGE = "unexpected internal server error";
 
 export function isGenericPlatformError(message: string): boolean {
   return message.trim().toLowerCase() === GENERIC_PLATFORM_ERROR_MESSAGE;

@@ -221,6 +221,5 @@ export {
   CardFooter,
   CardHeader,
   CardPanel,
-  CardPanel as CardContent,
   CardTitle,
 };

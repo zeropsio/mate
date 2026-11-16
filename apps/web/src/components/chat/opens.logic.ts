@@ -15,7 +15,7 @@ import { webTarget, type WorkStep } from "./workSteps.logic";
 const CALL_ARGUMENTS = /^[A-Za-z][\w-]*:\s*[{[]/;
 
 /** A block a step opens onto, under its line. */
-export interface StepOutput {
+interface StepOutput {
   readonly key: string;
   readonly label: string | null;
   readonly text: string;

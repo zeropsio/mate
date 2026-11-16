@@ -46,7 +46,7 @@ function heldRead(live: object, key: string, read: string | null): string | null
 }
 
 /** The message with the words streamed so far, while its record is still being written. */
-export function liveMessage(message: ChatMessage, live: string | null): ChatMessage {
+function liveMessage(message: ChatMessage, live: string | null): ChatMessage {
   if (live === null || !message.streaming || live.length < message.text.length) return message;
   return live === message.text ? message : { ...message, text: live };
 }

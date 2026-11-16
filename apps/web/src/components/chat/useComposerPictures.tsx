@@ -71,7 +71,7 @@ const REMAKE_DELAY_MS = 450;
 /** How many pictures taken out of the text are kept, the latest first, for an undo or a paste. */
 const HELD_PICTURES = 12;
 
-export interface ComposerPicturesInput {
+interface ComposerPicturesInput {
   readonly draftTarget: ScopedThreadRef | DraftId;
   readonly environmentId: EnvironmentId;
   readonly images: ReadonlyArray<ComposerImageAttachment>;

@@ -41,7 +41,7 @@ export interface ComposerFilesValue {
   readonly onRetryFile: (id: string) => void;
 }
 
-export const NO_FILES: ComposerFilesValue = {
+const NO_FILES: ComposerFilesValue = {
   files: new Map(),
   onRemoveFile: () => {},
   onRetryFile: () => {},

@@ -19,7 +19,7 @@ import type {
 import { knownPresentation } from "@t3tools/client-runtime/zerops/knowledge";
 import type { ZeropsAgentId } from "@t3tools/contracts";
 
-export type ZeropsAgentPickerPanelPrimaryActionKind = "sign-in" | "continue" | "use-my-account";
+type ZeropsAgentPickerPanelPrimaryActionKind = "sign-in" | "continue" | "use-my-account";
 
 export interface ZeropsAgentPickerPanelPrimaryAction {
   readonly kind: ZeropsAgentPickerPanelPrimaryActionKind;

@@ -226,7 +226,7 @@ export interface AccountEnvironments {
 }
 
 /** What the account runtime drives the stage with, besides its adapter. */
-export interface EnvironmentStage {
+interface EnvironmentStage {
   readonly environments: AccountEnvironments;
   /** The tab (§6.4): retries wait while hidden and fire on a visible wake. */
   readonly hear: (signal: PlatformSignal) => void;
@@ -238,13 +238,13 @@ export interface EnvironmentStage {
   readonly dispose: () => void;
 }
 
-export interface EnvironmentWiring {
+interface EnvironmentWiring {
   readonly adapterPorts: MateAdapterPorts<DoorCredential>;
   /** Starts feeding the Mate adapter the runtime built from these ports. */
   readonly start: (adapter: MateAdapter) => EnvironmentStage;
 }
 
-export interface EnvironmentWiringOptions {
+interface EnvironmentWiringOptions {
   readonly ports: AccountEnvironmentPorts;
   /** The account's store: the Mate adapter writes what it reads of each Mate there. */
   readonly store: AccountStore;

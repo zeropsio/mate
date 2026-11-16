@@ -39,7 +39,7 @@ const isUpdateError = Schema.is(ZeropsMateUpdateError);
  * How long a press waits for its Mate's link before it is not sent: twice the p90 of an open as
  * measured (15 s), the bound every Mate action's lease waits (`MATE_HOLD_WAIT_MS`).
  */
-export const MATE_UPDATE_CONNECT_WAIT_MS = 30_000;
+const MATE_UPDATE_CONNECT_WAIT_MS = 30_000;
 
 /** Waits, bounded, until the held Mate's link is up; a press made outside its view finds it down. */
 const linkUp = (waitMs: number) =>

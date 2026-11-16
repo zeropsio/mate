@@ -37,10 +37,6 @@ export type Words = ReadonlyArray<string | { readonly code: string }>;
 
 const code = (text: string) => ({ code: text });
 
-export function wordsText(words: Words): string {
-  return words.map((word) => (typeof word === "string" ? word : word.code)).join("");
-}
-
 const VERSION = /(v\d+\.\d+\.\d+[\w.+-]*)/u;
 
 /** A sentence with the versions in it set apart: "Release v0.1.6" → "Release ", `v0.1.6`. */
@@ -141,7 +137,7 @@ export interface ReleaseSheetStep {
 
 export type { KeyRenewal };
 
-export interface ReleaseSheetStepsInput {
+interface ReleaseSheetStepsInput {
   readonly tag: string;
   readonly outcome: ReleaseOutcome;
   /** Pressed, HQ not answered yet. */
@@ -751,7 +747,7 @@ export function releaseStepWords(input: {
 }
 
 /** Production's platform work as the release's sheet reads it. */
-export interface ReleaseRunning {
+interface ReleaseRunning {
   /** By step key: the process a busy step of this release is, where the platform runs one. */
   readonly ofStep: ReadonlyMap<string, RunningLine>;
   /** What runs or waits in production and is no step of this release, the furthest along first. */

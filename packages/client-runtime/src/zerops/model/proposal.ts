@@ -21,20 +21,6 @@ export const ORG_TOOL_PREFIX = "zerops_org_";
 /** Every Zerops tool: any of them may answer a proposal. */
 const ZEROPS_TOOL_PREFIX = "zerops_";
 
-export type ZeropsProposalKind =
-  | "service.restart"
-  | "service.start"
-  | "service.stop"
-  | "env.set"
-  | "mate.message"
-  | "chief.message"
-  | "domain.add"
-  | "access.set"
-  | "mcp.add"
-  | "env.reveal"
-  | "service.create"
-  | "release.offer";
-
 interface ProposalHead {
   readonly id: string;
   /** What it does, in one line: the card's title. */
@@ -89,9 +75,9 @@ export interface ZeropsAccessProposalParams {
 }
 
 /** Who an MCP server is proposed for: only `mate` is set up so far. */
-export type ZeropsMcpScope = "mate" | "project" | "org";
+type ZeropsMcpScope = "mate" | "project" | "org";
 
-export type ZeropsMcpTransport =
+type ZeropsMcpTransport =
   | { readonly type: "http" | "sse"; readonly url: string }
   | { readonly type: "stdio"; readonly command: string; readonly args: ReadonlyArray<string> };
 
@@ -99,10 +85,10 @@ export type ZeropsMcpTransport =
  * How a server signs in: `header`, a key the person types, sent in a header; `oauth`, the
  * person signs in on the provider's page; `oauth-app`, OAuth with an app the person registered.
  */
-export type ZeropsMcpAuthKind = "none" | "header" | "oauth" | "oauth-app";
+type ZeropsMcpAuthKind = "none" | "header" | "oauth" | "oauth-app";
 
 /** What a server is, whoever signs in to it. */
-export interface ZeropsMcpServerDefinition {
+interface ZeropsMcpServerDefinition {
   /** Its key in every agent's config. */
   readonly name: string;
   /** Its name for the person. */
@@ -116,7 +102,7 @@ export interface ZeropsMcpServerDefinition {
  * One value the person types on the card, never the agent: a command's environment variable named
  * `key`, or a remote server's header (`headerName`, else `key`) holding `prefix` and the value.
  */
-export interface ZeropsMcpCredentialField {
+interface ZeropsMcpCredentialField {
   readonly key: string;
   readonly label: string;
   readonly placement: "env" | "header";

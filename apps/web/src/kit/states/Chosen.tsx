@@ -25,7 +25,7 @@ const STEPS = [
 ];
 
 /** A block headed "Chosen": the pattern the app draws, before the census of what it replaced. */
-export function Chosen({ children }: { readonly children: ReactNode }) {
+function Chosen({ children }: { readonly children: ReactNode }) {
   return (
     <SpecimenBlock title="Chosen">
       <SpecimenGrid>{children}</SpecimenGrid>

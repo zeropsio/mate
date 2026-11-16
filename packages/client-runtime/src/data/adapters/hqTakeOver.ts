@@ -77,5 +77,3 @@ export function makeTakeOver(options: {
     },
   };
 }
-
-export type TakeOver = ReturnType<typeof makeTakeOver>;

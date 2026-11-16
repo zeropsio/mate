@@ -32,7 +32,7 @@ export interface EngineConversationKey {
  * is, and each running call's latest progress (the stand-up's), by its item. Held while the
  * conversation is, ordered by the order this tab heard it in.
  */
-export interface EngineGaugeValue {
+interface EngineGaugeValue {
   readonly environmentId: string;
   readonly usage: ThreadTokenUsageSnapshot | null;
   readonly progress: Readonly<Record<string, unknown>>;
@@ -57,7 +57,7 @@ export interface EngineSpanValue {
 }
 
 /** The conversation's own facts: its header, and the window of run groups held. */
-export interface EngineConversationValue {
+interface EngineConversationValue {
   readonly environmentId: string;
   readonly header: ConversationHeader;
   readonly window: EngineWindow;
@@ -115,14 +115,11 @@ const engineSpec = <
   },
 });
 
-export const mateEngineConversationFamily = engineSpec(
-  "mateEngineConversation",
-  "engine-conversation",
-);
+const mateEngineConversationFamily = engineSpec("mateEngineConversation", "engine-conversation");
 
-export const mateEngineGaugeFamily = engineSpec("mateEngineGauge", "engine-gauge");
+const mateEngineGaugeFamily = engineSpec("mateEngineGauge", "engine-gauge");
 
-export const mateEngineSpanFamily: FamilySpec<"mateEngineSpan"> = {
+const mateEngineSpanFamily: FamilySpec<"mateEngineSpan"> = {
   ...engineSpec("mateEngineSpan", "engine-span"),
   indexes: [
     {
@@ -132,7 +129,7 @@ export const mateEngineSpanFamily: FamilySpec<"mateEngineSpan"> = {
   ],
 };
 
-export const mateEngineRunFamily: FamilySpec<"mateEngineRun"> = {
+const mateEngineRunFamily: FamilySpec<"mateEngineRun"> = {
   ...engineSpec("mateEngineRun", "engine-run"),
   /**
    * A conversation's older run groups, read when the person asks: they arrive in its own scopes;
@@ -147,7 +144,7 @@ export const mateEngineRunFamily: FamilySpec<"mateEngineRun"> = {
   ],
 };
 
-export const mateEngineItemFamily: FamilySpec<"mateEngineItem"> = {
+const mateEngineItemFamily: FamilySpec<"mateEngineItem"> = {
   ...engineSpec("mateEngineItem", "engine-item"),
   indexes: [
     {
@@ -161,7 +158,7 @@ export const mateEngineItemFamily: FamilySpec<"mateEngineItem"> = {
   ],
 };
 
-export const mateEngineRequestFamily: FamilySpec<"mateEngineRequest"> = {
+const mateEngineRequestFamily: FamilySpec<"mateEngineRequest"> = {
   ...engineSpec("mateEngineRequest", "engine-request"),
   indexes: [
     {
@@ -171,7 +168,7 @@ export const mateEngineRequestFamily: FamilySpec<"mateEngineRequest"> = {
   ],
 };
 
-export const mateEngineRowFamily: FamilySpec<"mateEngineRow"> = {
+const mateEngineRowFamily: FamilySpec<"mateEngineRow"> = {
   ...engineSpec("mateEngineRow", "engine-row"),
   indexes: [{ name: "engineRowsOf", keyOf: (row) => encode([row.environmentId]) }],
 };

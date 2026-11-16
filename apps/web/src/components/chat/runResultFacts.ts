@@ -234,15 +234,6 @@ export function useRunResultFacts(outcome: OutcomeModel | null | undefined): Res
   );
 }
 
-/**
- * The run's effort for its worked line, following the forge: "merged as #2 ·
- * 2 commands · 1 file read" once the person merged the change the run
- * pushed (`runEffortWords` with the facts its result follows).
- */
-export function useRunEffortWords(outcome: OutcomeModel | null | undefined): string | null {
-  return runEffortWords(outcome, useRunResultFacts(outcome));
-}
-
 const NO_EFFORT_FACTS: ReturnType<typeof runEffortFacts> = { facts: [], rest: [] };
 
 /**

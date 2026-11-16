@@ -7,7 +7,7 @@ import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
 import { type PluggableList, unified } from "unified";
 
-export type MarkdownUrlTransform = (url: string, key: string, node: Element) => string;
+type MarkdownUrlTransform = (url: string, key: string, node: Element) => string;
 
 interface MarkdownRendererOptions {
   readonly remarkPlugins: PluggableList;

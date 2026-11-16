@@ -7,7 +7,7 @@ import {
 import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
 import type { selectGitCredentials } from "../../zerops/hq/gitCredentialStore.ts";
-export type GitCredentialsRead = Omit<ReturnType<typeof selectGitCredentials>, "action"> & {
+type GitCredentialsRead = Omit<ReturnType<typeof selectGitCredentials>, "action"> & {
   readonly action: GitCredentialAction | { readonly kind: "unresolved"; readonly words: string };
 };
 export const gitCredentials: Projection<GitCredentialsKey, GitCredentialsRead> = {

@@ -1,7 +1,7 @@
 /** Long enough for a slow round trip on a bad connection. */
 const EXPIRY_MARGIN_MS = 30_000;
 
-export interface CredentialLifetime {
+interface CredentialLifetime {
   readonly expiresAtEpochMs?: number | undefined;
 }
 

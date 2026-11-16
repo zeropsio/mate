@@ -62,7 +62,7 @@ export function withoutOwnChief<T extends { readonly project: { readonly id: str
 }
 
 /** The person a Chief is named after, as Zerops knows them. */
-export interface ChiefPerson {
+interface ChiefPerson {
   readonly firstName?: string | undefined;
   readonly fullName?: string | undefined;
   readonly email?: string | undefined;

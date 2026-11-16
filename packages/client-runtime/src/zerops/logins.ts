@@ -26,11 +26,7 @@ import type {
   ZeropsLogin,
   ZeropsLoginState,
 } from "@t3tools/contracts";
-import {
-  classifyZeropsAgentAuth,
-  zeropsLoginTitle,
-  zeropsLoginUnavailableReason,
-} from "@t3tools/shared/zeropsAgentAuth";
+import { zeropsLoginTitle, zeropsLoginUnavailableReason } from "@t3tools/shared/zeropsAgentAuth";
 
 import { resolveOwnedAgentId } from "./agentOwnership.ts";
 
@@ -86,9 +82,7 @@ export function mateLoginSignerLine(
   return name.length === 0 ? `${verb} by another member` : `${verb} by ${name}`;
 }
 
-export type MateLoginUse =
-  | { readonly usable: true }
-  | { readonly usable: false; readonly reason: string };
+type MateLoginUse = { readonly usable: true } | { readonly usable: false; readonly reason: string };
 
 /** Whether `viewerId`'s crew may run on `login` — the server's admission, row for row. */
 function mateLoginUse(login: ZeropsLogin, viewerId: string | undefined): MateLoginUse {
@@ -154,7 +148,7 @@ export function mateLoginAsAgentRow(login: ZeropsLogin): ZeropsAgentAuth {
 }
 
 /** The login a provider instance spends, and the key its signer record goes by. */
-export interface SpentLogin {
+interface SpentLogin {
   /** The agent id for an agent's own login; the login's id for any other. */
   readonly key: string;
   readonly agent: ZeropsAgentAuth;

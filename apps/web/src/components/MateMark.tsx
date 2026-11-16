@@ -1,6 +1,5 @@
 import {
   MATE_MARK,
-  MATE_MARK_LIDS,
   MATE_MARK_LIVE,
   type MateMarkState,
   type MateTintId,
@@ -274,5 +273,3 @@ const EXTRUSION_LAYERS = 12;
 const U = MATE_MARK_LIVE.eyeUnit;
 const HAPPY_ARC = `M${-U / 2},0 Q0,${-0.85 * U} ${U / 2},0`;
 const SMILE = `M${-0.75 * U},${-0.05 * U} Q0,${1.22 * U} ${0.75 * U},${-0.05 * U}`;
-
-export { MATE_MARK_LIDS };

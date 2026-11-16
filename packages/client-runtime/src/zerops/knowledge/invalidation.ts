@@ -35,8 +35,8 @@ const ProjectRef = Schema.Struct({
 });
 
 /** A Mate's stable identity, `projectId:serviceId` (§1.1, AL-05). */
-export const TargetKey = Schema.TemplateLiteral([Schema.String, ":", Schema.String]);
-export type TargetKey = typeof TargetKey.Type;
+const TargetKey = Schema.TemplateLiteral([Schema.String, ":", Schema.String]);
+type TargetKey = typeof TargetKey.Type;
 
 export const Invalidation = Schema.Union([
   Schema.Struct({
@@ -69,7 +69,7 @@ export const INVALIDATION_COALESCE_MS = 250;
  * A tab hidden this long collects its invalidations instead of delivering them (§6.4). Coming
  * back from it always raises a visible wake, which needs 30 s hidden, so nothing stays collected.
  */
-export const INVALIDATION_HIDDEN_COLLECT_MS = 60_000;
+const INVALIDATION_HIDDEN_COLLECT_MS = 60_000;
 
 /**
  * What the bus hears of the tab (§6.4), from the signals port: the document's visibility, and the
@@ -185,29 +185,29 @@ export const makeInvalidationBus = Effect.fnUntraced(function* (
 // ── Across tabs ──────────────────────────────────────────────────────────────────────────────
 
 /** One login of one person: the cross-tab epoch (§1.1 owner record). */
-export interface AccountLogin {
+interface AccountLogin {
   readonly userId: string;
   readonly loginGeneration: string;
 }
 
-export const CrossTabInvalidation = Schema.Struct({
+const CrossTabInvalidation = Schema.Struct({
   userId: Schema.String,
   loginGeneration: Schema.String,
   invalidation: Invalidation,
 });
-export type CrossTabInvalidation = typeof CrossTabInvalidation.Type;
+type CrossTabInvalidation = typeof CrossTabInvalidation.Type;
 
 const isCrossTabInvalidation = Schema.is(CrossTabInvalidation);
 
 /** The `BroadcastChannel` members the transport uses. */
-export interface InvalidationChannel {
+interface InvalidationChannel {
   postMessage(message: CrossTabInvalidation): void;
   addEventListener(type: "message", listener: (event: { readonly data: unknown }) => void): void;
   /** Stops delivery to this tab. */
   close(): void;
 }
 
-export interface CrossTabInvalidationsOptions {
+interface CrossTabInvalidationsOptions {
   readonly bus: InvalidationBus;
   /** Opens the channel the account's tabs share; the transport closes it with its scope. */
   readonly openChannel: () => InvalidationChannel;
@@ -215,7 +215,7 @@ export interface CrossTabInvalidationsOptions {
   readonly owner: () => AccountLogin | null;
 }
 
-export interface CrossTabInvalidations {
+interface CrossTabInvalidations {
   /** Invalidates here and in the other tabs of this tab's login, after an account-level write. */
   readonly broadcast: (invalidation: Invalidation) => Effect.Effect<void>;
 }

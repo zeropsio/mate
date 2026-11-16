@@ -45,7 +45,7 @@ export interface ZeropsHandoverNonceStore {
  * browser with site data blocked throws on the global itself, and a hand-over
  * that cannot be verified must fail closed rather than take the page down.
  */
-export const sessionHandoverNonceStore: ZeropsHandoverNonceStore = {
+const sessionHandoverNonceStore: ZeropsHandoverNonceStore = {
   remember: (nonce) => {
     try {
       window.sessionStorage.setItem(ZEROPS_HANDOVER_NONCE_KEY, nonce);

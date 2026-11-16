@@ -8,13 +8,13 @@
  */
 
 /** What is left of the column above and below the composer at full screen. */
-export const FULL_COMPOSER_GAP = 16;
+const FULL_COMPOSER_GAP = 16;
 
 /** How long the composer takes to grow or to go back. */
 export const FULL_COMPOSER_MS = 240;
 
 /** The composer's text never gets shorter than at rest (`4.375rem`). */
-export const FULL_COMPOSER_MIN_HEIGHT = 70;
+const FULL_COMPOSER_MIN_HEIGHT = 70;
 
 interface Edges {
   readonly top: number;

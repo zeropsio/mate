@@ -25,7 +25,7 @@ export class EnvironmentRpcUnavailableError extends Schema.TaggedError<Environme
   },
 ) {}
 
-export interface EnvironmentRpcRequestObservation {
+interface EnvironmentRpcRequestObservation {
   readonly environmentId: string;
   readonly method: string;
 }
@@ -89,7 +89,7 @@ export class EnvironmentRpcSubscriptionObserver extends Context.Reference<{
   }),
 }) {}
 
-export const isRpcClientError = Schema.is(RpcClientError.RpcClientError);
+const isRpcClientError = Schema.is(RpcClientError.RpcClientError);
 const isEnvironmentAuthorizationError = Schema.is(EnvironmentAuthorizationError);
 
 /** Ceiling for the doubling delay between same-session expected-failure retries. */

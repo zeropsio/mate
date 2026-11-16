@@ -257,7 +257,7 @@ export interface PersonaDraftErrors {
   readonly instructions?: string;
 }
 
-export type PersonaEditorResult =
+type PersonaEditorResult =
   | { readonly ok: true; readonly persona: MatePersona }
   | { readonly ok: false; readonly errors: PersonaDraftErrors };
 

@@ -7,17 +7,17 @@ interface FileTreeDragTransfer {
   setData(format: string, data: string): void;
 }
 
-export interface FileTreeDragStartEvent {
+interface FileTreeDragStartEvent {
   readonly dataTransfer: FileTreeDragTransfer | null;
   composedPath(): ReadonlyArray<unknown>;
 }
 
-export interface FileTreeDragMentionHost {
+interface FileTreeDragMentionHost {
   /** Drop the tree's gesture-applied selection of the dragged row. */
   deselect(treePath: string): void;
 }
 
-export interface FileTreeDragMentionController {
+interface FileTreeDragMentionController {
   /**
    * True from the moment a row drag starts until it ends. The tree selects
    * the dragged row as part of the gesture; selection changes made while
