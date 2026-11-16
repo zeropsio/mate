@@ -391,8 +391,6 @@ table keeps the decisions.
     - Kiro as an ACP provider.
     - A scheduled message from a person or HQ, through the engine's existing wakes.
     - The React Compiler migration.
-    - The `.repos/effect-smol` reference stays at 4.0.1. The 4.1.2 tree carries six of Effect's
-      own test fixtures that GitGuardian reads as secrets.
     - The screen-reader activity announcer.
   - _Open security candidates:_
     - Antigravity's check-then-write race, which is inherent while the agent has a shell anyway.

@@ -1983,7 +1983,12 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
     console.log("No changed files; no gates to run.");
     return 0;
   }
-  const existing = paths.filter((path) => NodeFS.existsSync(NodePath.join(root, path)));
+  // A path removed from the index can stay on disk as an ignored file: only files still in the
+  // workspace are the lane's to check.
+  const workspace = new Set(lane.inventory);
+  const existing = paths.filter(
+    (path) => workspace.has(path) && NodeFS.existsSync(NodePath.join(root, path)),
+  );
   const meaningful = meaningfulChanges(root, comparison, paths, baseTree);
   const scenarioPaths = meaningful.paths.filter(browserPath);
   const smokeFiles = scenarioPaths.length ? Object.keys(stateOnlySmoke) : [];

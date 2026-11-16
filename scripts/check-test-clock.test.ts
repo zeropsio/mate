@@ -49,7 +49,6 @@ describe("Test clock guard", () => {
     ["apps/web/test/scenarios/harness/clientClock.ts", false],
     ["apps/web/test/scenarios/fakes/fakeClock.ts", false],
     ["apps/web/src/zerops/accountHq.ts", false],
-    [".repos/effect-smol/packages/effect/test/Clock.test.ts", false],
   ])(
     "Only test, scenario and scenario helper files outside the clocks are scanned: %s",
     (path, scanned) => {
