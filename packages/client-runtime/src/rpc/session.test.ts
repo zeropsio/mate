@@ -612,6 +612,38 @@ describe("RpcSessionFactory", () => {
     }),
   );
 
+  // witness: packages/client-runtime/src/rpc/session.ts | if (socket.readyState === SOCKET_OPEN) socket.send(firstFrame); → if (socket.readyState === SOCKET_OPEN) socket.readyState;
+  it.effect(
+    "A Mate connection given the socket dialed ahead for it opens no other, and its ticket is still the first frame, before any request",
+    () =>
+      Effect.gen(function* () {
+        const { factory, sockets } = yield* makeFactory();
+        const dialed = factory.dial!("wss://environment.example.test") as unknown as TestWebSocket;
+        dialed.open();
+        const session = yield* factory.connect(
+          {
+            ...PREPARED,
+            socketUrl: "wss://environment.example.test",
+            firstFrame: JSON.stringify({ ticket: "T-1" }),
+          },
+          dialed as unknown as globalThis.WebSocket,
+        );
+        const readyFiber = yield* Effect.forkChild(session.ready);
+        yield* completeInitialConfig(dialed);
+        yield* Fiber.join(readyFiber);
+
+        expect(sockets).toEqual([dialed]);
+        expect(dialed.sent[0]).toBe(JSON.stringify({ ticket: "T-1" }));
+        expect(
+          dialed.sent
+            .slice(1)
+            .map((message) => decodeJson(message))
+            .filter(isRpcRequest)
+            .map((request) => request.tag),
+        ).toEqual([WS_METHODS.subscribeServerConfig]);
+      }),
+  );
+
   it.effect("owns one scoped websocket attempt and exposes readiness and closure", () =>
     Effect.gen(function* () {
       const { factory, sockets } = yield* makeFactory();
