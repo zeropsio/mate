@@ -9,7 +9,7 @@
  * @module data/operations/hqOutsideProduction
  */
 import { hqAppsScope } from "../families/hqNavigation.ts";
-import { canonicalAppEnvironments } from "../projections/appEnvironments.ts";
+import { appEnvironments } from "../projections/appEnvironments.ts";
 import { sameValue } from "../projections/equal.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import type { OperationKind } from "./kind.ts";
@@ -45,7 +45,7 @@ function navigationOutsideProduction(
   key: { readonly orgId: string; readonly appId: string },
 ): OutsideProduction | null | undefined {
   if (!read.members(hqAppsScope(key.orgId)).ids.includes(key.appId)) return undefined;
-  const { environments, outside } = canonicalAppEnvironments.derive(read, key);
+  const { environments, outside } = appEnvironments.derive(read, key);
   if (environments === undefined) return undefined;
   return outside === undefined ? null : { address: outside.target.address };
 }

@@ -10,10 +10,10 @@
  */
 import type { MateLiveView } from "@t3tools/shared/hqMates";
 
-import type { HqAppContents, HqBirth, HqStructure, CanonicalHqStructure } from "./client.ts";
-import { canonicalEnvironmentsOf, zeropsEnvironments } from "./environments.ts";
+import type { HqAppContents, HqBirth, HqStructure } from "./client.ts";
+import { canonicalEnvironmentsOf } from "./environments.ts";
 
-type HqApp = CanonicalHqStructure["apps"][number];
+type HqApp = HqStructure["apps"][number];
 type HqUngrouped = HqStructure["ungrouped"];
 
 /** Each Mate HQ relays to the reader, by its project: its presence, and its overview's sections. */
@@ -86,24 +86,9 @@ function appOf(value: HqApp): HqApp {
  * The structure as HQ answers it (`GET /api/structure`, a snapshot): each part read through its
  * shape; none where its applications or its Mates in no application cannot be read.
  */
-export function canonicalHqStructureOf(value: unknown): CanonicalHqStructure | undefined {
+export function hqStructureOf(value: unknown): HqStructure | undefined {
   if (typeof value !== "object" || value === null) return undefined;
   const { apps, ungrouped } = value as { readonly apps?: unknown; readonly ungrouped?: unknown };
   if (!(Array.isArray(apps) && apps.every(isApp) && isUngrouped(ungrouped))) return undefined;
   return { ungrouped, apps: apps.map(appOf) };
-}
-
-export function zeropsStructure(structure: CanonicalHqStructure): HqStructure {
-  return {
-    ...structure,
-    apps: structure.apps.map(({ environments, ...app }) => ({
-      ...app,
-      ...(environments === undefined ? {} : { environments: zeropsEnvironments(environments) }),
-    })),
-  };
-}
-/** @deprecated Outward project DTOs for clients that have not adopted canonical selectors. */
-export function hqStructureOf(value: unknown): HqStructure | undefined {
-  const structure = canonicalHqStructureOf(value);
-  return structure === undefined ? undefined : zeropsStructure(structure);
 }

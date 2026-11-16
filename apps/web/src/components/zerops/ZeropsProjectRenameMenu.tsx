@@ -1,4 +1,4 @@
-import { type ZeropsGroup } from "@t3tools/client-runtime/zerops";
+import { type CanonicalGroup } from "@t3tools/client-runtime/zerops";
 import { useState } from "react";
 
 import { useOrgOffers } from "~/zerops/useHqOffers";
@@ -11,7 +11,7 @@ export function ZeropsProjectRenameMenu({
   group,
   actions = [],
 }: {
-  readonly group: Pick<ZeropsGroup, "groupId" | "name" | "nameSource">;
+  readonly group: Pick<CanonicalGroup, "groupId" | "name" | "nameSource">;
   readonly actions?: ReadonlyArray<ZeropsMenuEntry>;
 }) {
   // HQ offers renaming it (`rename_app`); while HQ has not said or does not answer, drawn and not

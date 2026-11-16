@@ -162,7 +162,7 @@ describe("Git standing from the accepted release", () => {
       mainHead: SHA,
       stops: [
         {
-          projectId: "",
+          id: "",
           name: "Production",
           tier: "production",
           row,

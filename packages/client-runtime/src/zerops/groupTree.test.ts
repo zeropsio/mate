@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsProject } from "./api.ts";
-import { buildZeropsGroupTree } from "./groupTree.ts";
+import { buildCanonicalGroupTree } from "./groupTree.ts";
 import type { HqPlacement } from "./hq/placement.ts";
 
 interface Candidate {
@@ -41,9 +41,9 @@ const CRM_PROD = candidate("crm-prod", { hq: placed("aaa", "production", "Beviro
 const SHOP_DEV = candidate("shop-dev", { hq: placed("bbb") });
 const LOOSE = candidate("loose");
 
-describe("buildZeropsGroupTree", () => {
+describe("buildCanonicalGroupTree", () => {
   it("hangs each carrier on its place in the tree", () => {
-    const view = buildZeropsGroupTree([CRM_DEV, CRM_PROD, SHOP_DEV, LOOSE], {
+    const view = buildCanonicalGroupTree([CRM_DEV, CRM_PROD, SHOP_DEV, LOOSE], {
       order: "name",
     });
 
@@ -51,7 +51,7 @@ describe("buildZeropsGroupTree", () => {
     // back to its id `bbb`, which sorts before `Beviro CRM`.
     expect(view.groups.map((entry) => entry.group.name)).toEqual(["bbb", "Beviro CRM"]);
     const crm = view.groups.find((entry) => entry.group.groupId === "aaa");
-    expect(crm?.environments.map((entry) => entry.item.project.name)).toEqual([
+    expect(crm?.environments.map((entry) => entry.item?.project.name)).toEqual([
       "crm-dev",
       "crm-prod",
     ]);
@@ -59,24 +59,24 @@ describe("buildZeropsGroupTree", () => {
   });
 
   it("keeps whatever the carrier knew — that is the point of being generic", () => {
-    const view = buildZeropsGroupTree([CRM_DEV, CRM_PROD], { order: "name" });
-    expect(view.groups[0]?.environments[0]?.item.connected).toBe(true);
-    expect(view.groups[0]?.environments[1]?.item.connected).toBe(false);
+    const view = buildCanonicalGroupTree([CRM_DEV, CRM_PROD], { order: "name" });
+    expect(view.groups[0]?.environments[0]?.item?.connected).toBe(true);
+    expect(view.groups[0]?.environments[1]?.item?.connected).toBe(false);
   });
 
   it("carries each environment's role through", () => {
-    const view = buildZeropsGroupTree([CRM_DEV, CRM_PROD], { order: "name" });
+    const view = buildCanonicalGroupTree([CRM_DEV, CRM_PROD], { order: "name" });
     expect(view.groups[0]?.environments.map((entry) => entry.role)).toEqual(["dev", "prod"]);
   });
 
   it("is empty when the account has only ungrouped projects", () => {
-    const view = buildZeropsGroupTree([LOOSE], { order: "name" });
+    const view = buildCanonicalGroupTree([LOOSE], { order: "name" });
     expect(view.empty).toBe(true);
     expect(view.ungrouped).toHaveLength(1);
   });
 
   it("is empty for no projects at all", () => {
-    const view = buildZeropsGroupTree([], { order: "name" });
+    const view = buildCanonicalGroupTree([], { order: "name" });
     expect(view).toEqual({ groups: [], ungrouped: [], tools: [], empty: true });
   });
 
@@ -84,9 +84,9 @@ describe("buildZeropsGroupTree", () => {
     const stale = candidate("crm-dev", { hq: placed("aaa") }, false);
     const fresh = candidate("crm-dev", { hq: placed("aaa") }, true);
 
-    const view = buildZeropsGroupTree([stale, fresh], { order: "name" });
+    const view = buildCanonicalGroupTree([stale, fresh], { order: "name" });
     expect(view.groups[0]?.environments).toHaveLength(1);
-    expect(view.groups[0]?.environments[0]?.item.connected).toBe(true);
+    expect(view.groups[0]?.environments[0]?.item?.connected).toBe(true);
   });
 
   it("ranks the ungrouped list by `options.rank` ahead of name, leaving groups untouched", () => {
@@ -94,10 +94,13 @@ describe("buildZeropsGroupTree", () => {
     const apple = candidate("apple");
     const rank = (item: Candidate) => (item.project.name === "zebra" ? 0 : 1);
 
-    const view = buildZeropsGroupTree([CRM_DEV, CRM_PROD, zebra, apple], { rank, order: "name" });
+    const view = buildCanonicalGroupTree([CRM_DEV, CRM_PROD, zebra, apple], {
+      rank,
+      order: "name",
+    });
 
     expect(view.ungrouped.map((item) => item.project.name)).toEqual(["zebra", "apple"]);
-    expect(view.groups[0]?.environments.map((entry) => entry.item.project.name)).toEqual([
+    expect(view.groups[0]?.environments.map((entry) => entry.item?.project.name)).toEqual([
       "crm-dev",
       "crm-prod",
     ]);
@@ -105,7 +108,7 @@ describe("buildZeropsGroupTree", () => {
 
   it("keeps name order as the tiebreak within a rank tier", () => {
     const rank = () => 0;
-    const view = buildZeropsGroupTree(
+    const view = buildCanonicalGroupTree(
       [candidate("zebra"), candidate("apple"), candidate("mango")],
       { rank, order: "name" },
     );
@@ -118,14 +121,14 @@ describe("buildZeropsGroupTree", () => {
     const newer = candidate("newer-dev", { hq: placed("bbb") }, false, "2024-06-01T00:00:00Z");
     const undated = candidate("undated");
 
-    const view = buildZeropsGroupTree([older, newer, undated], { order: "newest" });
+    const view = buildCanonicalGroupTree([older, newer, undated], { order: "newest" });
 
     expect(view.groups.map((entry) => entry.group.groupId)).toEqual(["bbb", "aaa"]);
     expect(view.ungrouped.map((item) => item.project.name)).toEqual(["undated"]);
   });
 
   it("draws a group only a creation under way holds, and is not empty for it", () => {
-    const view = buildZeropsGroupTree([LOOSE], {
+    const view = buildCanonicalGroupTree([LOOSE], {
       order: "newest",
       births: [
         {
@@ -148,33 +151,4 @@ describe("buildZeropsGroupTree", () => {
       },
     ]);
   });
-});
-
-it("keeps the current menu's legacy environment DTOs readable at the canonical boundary", () => {
-  const currentMenu = () =>
-    buildZeropsGroupTree([CRM_PROD], {
-      order: "name",
-      apps: [
-        {
-          id: "aaa",
-          name: "Beviro CRM",
-          environments: [
-            {
-              projectId: "crm-prod",
-              tier: "production",
-              name: "Production",
-              sources: ["release"],
-              order: 1,
-              keyHeld: true,
-              keyInvalid: false,
-              jobs: [],
-            },
-          ],
-        },
-      ],
-    });
-  expect(currentMenu).not.toThrow();
-  expect(currentMenu().groups[0]?.environments.map((entry) => entry.item.project.id)).toEqual([
-    "crm-prod",
-  ]);
 });

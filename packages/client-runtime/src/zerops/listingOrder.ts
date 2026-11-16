@@ -34,7 +34,7 @@ const hostnameOrder = new Intl.Collator("en", { sensitivity: "base", numeric: tr
 
 /**
  * The project-picker's tiers, lowest first. A candidate's tier is the
- * primary sort key; `buildZeropsGroupTree`'s `options.rank` applies it to
+ * primary sort key; `buildCanonicalGroupTree`'s `options.rank` applies it to
  * the ungrouped list ahead of the name.
  *
  * - 0 — a Mate is there: `connected` (a live session) or `ready` (one click

@@ -5,7 +5,7 @@ import type { DeploymentServices, ServiceDeployInfo } from "./deployment.ts";
 import type { ServiceValue } from "../../data/families/service.ts";
 import { deployWord } from "../groupDeploys.ts";
 import { groupFlow } from "../groupFlow.ts";
-import { deployedVersion, environmentRow, type EnvironmentRow } from "../groupRows.ts";
+import { deployedVersion, environmentRowDisplay, type EnvironmentRow } from "../groupRows.ts";
 import type { Freshness, Shown, WithheldReason } from "../knowledge/known.ts";
 import { projectTopology } from "../topology.ts";
 import {
@@ -102,7 +102,6 @@ const STATES: ReadonlyArray<{ readonly name: string; readonly shown: Shown<Deplo
 
 const row = (version: EnvironmentRow["version"], tone: EnvironmentRow["tone"]): EnvironmentRow => ({
   kind: "environment",
-  projectId: "stage",
   name: "stage",
   tier: "stage",
   source: "main",
@@ -916,8 +915,7 @@ describe("a deploy of a commit only moves forward", () => {
     });
   /** The deploy half's row: the commit a service runs and HQ's record of its deploy, as read. */
   const read = (sha: string, state: "queued" | "live" | "failed"): EnvironmentRow =>
-    environmentRow({
-      projectId: "p-stage",
+    environmentRowDisplay({
       name: "stage",
       tier: "stage",
       sources: ["main"],
@@ -954,9 +952,7 @@ describe("a deploy of a commit only moves forward", () => {
       mates: [],
       pullRequests: [],
       merged: [],
-      stops: [
-        { projectId: "p-stage", name: "stage", tier: "stage", row, deployment, addresses: [] },
-      ],
+      stops: [{ id: "p-stage", name: "stage", tier: "stage", row, deployment, addresses: [] }],
       release: {
         gate: { allowed: false, reason: "" },
         suggestion: "v0.1.0",

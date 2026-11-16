@@ -172,10 +172,10 @@ export function tooltipDay(day: SpendDay, today: SpendDay): string {
 export function spendProjectIds(
   flow: Pick<GroupFlow, "mates" | "stages" | "production">,
 ): ReadonlyArray<string> {
-  const production = "stop" in flow.production ? [flow.production.stop.projectId] : [];
+  const production = "stop" in flow.production ? [flow.production.stop.id] : [];
   return [
     ...flow.mates.map((mate) => mate.projectId),
-    ...flow.stages.map((stage) => stage.projectId),
+    ...flow.stages.map((stage) => stage.id),
     ...production,
   ];
 }

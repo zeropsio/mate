@@ -6,7 +6,7 @@ import { emptyAccount, type AccountState } from "../model.ts";
 import { reduceAccount, type AccountInput } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
 import { serviceRuns, type ServiceRuns } from "./serviceRuns.ts";
-import { environmentRow } from "../../zerops/groupRows.ts";
+import { environmentRowDisplay } from "../../zerops/groupRows.ts";
 
 const apply = (inputs: ReadonlyArray<AccountInput>): AccountState =>
   inputs.reduce((current, input) => reduceAccount(current, input).state, emptyAccount);
@@ -192,8 +192,7 @@ it("a rollback without a build shows the restored version's commit on the stage"
   expect(runs).toMatchObject({ activeId: "earlier", name: "main aaaaaaa" });
   if (typeof runs === "string") throw new Error("The restored service must name its version");
   expect(
-    environmentRow({
-      projectId: "p1",
+    environmentRowDisplay({
       name: "stage",
       tier: "stage",
       sources: ["main"],

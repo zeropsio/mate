@@ -901,16 +901,9 @@ function harnessFacts(groupId: string, flow: GroupFlow): ProjectPageFacts {
   const environments = [
     ...(production === undefined
       ? []
-      : [
-          environment(
-            production.projectId,
-            "production",
-            "production",
-            production.version?.label ?? "",
-          ),
-        ]),
+      : [environment(production.id, "production", "production", production.version?.label ?? "")]),
     ...flow.stages.map((stage) =>
-      environment(stage.projectId, stage.name, "stage", stage.version?.label ?? ""),
+      environment(stage.id, stage.name, "stage", stage.version?.label ?? ""),
     ),
   ];
   const slots: ReadonlyArray<EnvironmentSlotRow> = [
@@ -923,12 +916,12 @@ function harnessFacts(groupId: string, flow: GroupFlow): ProjectPageFacts {
           // A production deployed outside Mate is never offered a second one here.
           add: flow.production.kind !== "outside",
         }
-      : { kind: "environment", tier: "production", id: production.projectId, note: undefined },
+      : { kind: "environment", tier: "production", id: production.id, note: undefined },
     ...(flow.stages.length === 0
       ? [{ kind: "slot", tier: "stage", name: "Stage", line: "Not added", add: true } as const]
       : flow.stages.map(
           (stage) =>
-            ({ kind: "environment", tier: "stage", id: stage.projectId, note: undefined }) as const,
+            ({ kind: "environment", tier: "stage", id: stage.id, note: undefined }) as const,
         )),
   ];
   return {

@@ -1,11 +1,6 @@
 /** Projects grouping is owner evidence; candidate connections only decorate its members. */
-import {
-  buildCanonicalGroupTree,
-  zeropsGroupTree,
-  type CanonicalGroupTreeView,
-  type ZeropsGroupTreeView,
-} from "../../zerops/groupTree.ts";
-import { canonicalAppEnvironments } from "./appEnvironments.ts";
+import { buildCanonicalGroupTree, type CanonicalGroupTreeView } from "../../zerops/groupTree.ts";
+import { appEnvironments } from "./appEnvironments.ts";
 import type { ZeropsPlacedBirth, ZeropsProjectOrder } from "../../zerops/groups.ts";
 import type { ZeropsProject } from "../../zerops/api.ts";
 import { hqAppsScope } from "../families/hqNavigation.ts";
@@ -30,11 +25,11 @@ export interface InventoryGroupsView<T> extends CanonicalGroupTreeView<T> {
   readonly undrawn: ReadonlyArray<string>;
 }
 
-export const canonicalInventoryGroups: Projection<
+export const inventoryGroups: Projection<
   InventoryGroupsKey,
   InventoryGroupsView<{ readonly project: ZeropsProject }>
 > = {
-  name: "canonicalInventoryGroups",
+  name: "inventoryGroups",
   keyOf: (key) => JSON.stringify(key),
   derive: (read, key) => {
     const projects = inventory
@@ -46,7 +41,7 @@ export const canonicalInventoryGroups: Projection<
       const app = read.fact("hqApp", id);
       if (app.kind !== "known") return [];
       known.push(id);
-      const { environments } = canonicalAppEnvironments.derive(read, {
+      const { environments } = appEnvironments.derive(read, {
         orgId: key.organization.organizationId,
         appId: id,
       });
@@ -71,18 +66,4 @@ export const canonicalInventoryGroups: Projection<
     return { ...tree, undrawn: known.filter((id) => !drawn.has(id)) };
   },
   equals: sameValue,
-};
-
-/** Existing web/mobile carriers remain usable until their canonical selector migration. */
-export const inventoryGroups: Projection<
-  InventoryGroupsKey,
-  ZeropsGroupTreeView<{ readonly project: ZeropsProject }>
-> = {
-  ...canonicalInventoryGroups,
-  equals: sameValue,
-  name: "inventoryGroups",
-  derive: (read, key) => {
-    const tree = canonicalInventoryGroups.derive(read, key);
-    return zeropsGroupTree(tree);
-  },
 };

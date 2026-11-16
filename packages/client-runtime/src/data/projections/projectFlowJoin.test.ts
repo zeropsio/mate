@@ -1,4 +1,4 @@
-import { HqEnvironmentId } from "@t3tools/contracts";
+import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
 import { gitDeliveryOf, type GitDelivery } from "../../zerops/gitDelivery.ts";
 import { releaseReview } from "../../zerops/reviewVerdict.ts";
 import type { HqPushNavigationJob } from "@t3tools/shared/hqStream";
@@ -7,8 +7,8 @@ import {
   RELEASE_CHECKING,
   RELEASE_NO_PRODUCTION,
   type AppRecipe,
+  type CanonicalGroupStops,
   type GroupEnvironmentRowInput,
-  type GroupStops,
   type MovedCommits,
   type ProductionRun,
   type ReleaseGate,
@@ -27,16 +27,27 @@ const GROUPS = [
   { groupId: "g2", slug: "links" },
 ];
 
-const stopsOf = (environments: ReadonlyArray<GroupEnvironmentRowInput> = []): GroupStops => ({
-  unread: [],
-  declarations: environments.map((entry) => ({
-    name: entry.environment,
-    tier: entry.tier,
-    project: entry.projectId,
-    sources: entry.sources,
-  })),
-  environments,
-});
+/** A deployed Zerops environment, addressed by its project. */
+type Input = GroupEnvironmentRowInput & { readonly projectId: string };
+
+const stopsOf = (environments: ReadonlyArray<Input> = []): CanonicalGroupStops => {
+  const identified = environments.map(({ projectId, ...entry }) => ({
+    ...entry,
+    id: HqEnvironmentId.make(projectId),
+    target: { kind: "zerops" as const, projectId: ProjectId.make(projectId) },
+  }));
+  return {
+    unread: [],
+    declarations: identified.map((entry) => ({
+      name: entry.environment,
+      tier: entry.tier,
+      sources: entry.sources,
+      id: entry.id,
+      target: entry.target,
+    })),
+    environments: identified,
+  };
+};
 
 const NOTHING_WITHHELD: ReadonlyMap<string, string> = new Map();
 
@@ -76,7 +87,7 @@ function join(input: {
     | Readonly<Record<string, HqNavigationApp["releaseOffer"] | undefined>>
     | undefined;
   readonly review?: boolean;
-  readonly stops?: ReadonlyMap<string, GroupStops>;
+  readonly stops?: ReadonlyMap<string, CanonicalGroupStops>;
   readonly releases?: ReadonlyMap<string, ReadonlyArray<Release>>;
   readonly repos?: ReadonlyMap<string, ReadonlyArray<RepoListEntry>>;
   readonly recipes?: ReadonlyMap<string, AppRecipe>;
@@ -195,7 +206,7 @@ describe("joinProjectFlows", () => {
   });
 
   it("knows a group's environments once HQ has told them", () => {
-    const stage: GroupEnvironmentRowInput = {
+    const stage: Input = {
       projectId: "stage-1",
       name: "harbor stage",
       tier: "stage",
@@ -208,7 +219,11 @@ describe("joinProjectFlows", () => {
     expect(join({ releases: new Map([["g1", [FIRST]]]) }).get("g1")?.declarationsRead).toBe(false);
     const flow = join({ stops: new Map([["g1", stopsOf([stage])]]) }).get("g1");
     expect(flow?.declarationsRead).toBe(true);
-    expect(flow?.declarations.map(({ project }) => project)).toEqual(["stage-1"]);
+    expect(
+      flow?.declarations.map(({ target }) =>
+        target.kind === "zerops" ? target.projectId : undefined,
+      ),
+    ).toEqual(["stage-1"]);
     expect(flow?.environments.map(({ name }) => name)).toEqual(["harbor stage"]);
   });
 
@@ -231,7 +246,7 @@ describe("joinProjectFlows", () => {
   describe("the release offered", () => {
     const MERGED = "2".repeat(40);
     const GROUP_MAIN = "9".repeat(40);
-    const production: GroupEnvironmentRowInput = {
+    const production: Input = {
       projectId: "prod-1",
       name: "harbor production",
       tier: "production",
@@ -615,7 +630,7 @@ describe("joinProjectFlows", () => {
 
 describe("an application with no production", () => {
   const older = approved("v0.1.1", { app: "2".repeat(40) }, "2026-09-24T10:00:00Z");
-  const flow = (stops: GroupStops | undefined) =>
+  const flow = (stops: CanonicalGroupStops | undefined) =>
     join({
       navigationOffers: stops === undefined ? { g1: null } : undefined,
       stops: stops === undefined ? new Map() : new Map([["g1", stops]]),
@@ -799,7 +814,7 @@ describe("Git release join to review", () => {
       throw new Error("Git demanded Zerops services, recipe or receiver facts");
     };
     const recipes = new Map<string, AppRecipe>();
-    const stops = new Map<string, GroupStops>();
+    const stops = new Map<string, CanonicalGroupStops>();
     recipes.get = (id) => (id === "g1" ? demand() : undefined);
     stops.get = (id) => (id === "g1" ? demand() : undefined);
     const flow = gitJoin({ recipes, stops });

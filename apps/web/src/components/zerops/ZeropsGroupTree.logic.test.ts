@@ -1,4 +1,4 @@
-import { buildZeropsGroupTree, type ZeropsProject } from "@t3tools/client-runtime/zerops";
+import { buildCanonicalGroupTree, type ZeropsProject } from "@t3tools/client-runtime/zerops";
 import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -57,19 +57,21 @@ describe("environmentRoleTag", () => {
 
 describe("groupNameUnread", () => {
   it("is true for a group whose name reads blank: a read problem, HQ holding none blank", () => {
-    const [group] = buildZeropsGroupTree([item("x", "zzz", "", "mate")], { order: "name" }).groups;
+    const [group] = buildCanonicalGroupTree([item("x", "zzz", "", "mate")], {
+      order: "name",
+    }).groups;
     expect(groupNameUnread(group!.group)).toBe(true);
   });
 
   it("is false once HQ names it", () => {
-    const [group] = buildZeropsGroupTree([CRM_DEV], { order: "name" }).groups;
+    const [group] = buildCanonicalGroupTree([CRM_DEV], { order: "name" }).groups;
     expect(groupNameUnread(group!.group)).toBe(false);
   });
 });
 
 describe("creatableRoles", () => {
   it("offers every role to a group that has only a dev", () => {
-    const [group] = buildZeropsGroupTree([CRM_DEV], { order: "name" }).groups;
+    const [group] = buildCanonicalGroupTree([CRM_DEV], { order: "name" }).groups;
     expect(creatableRoles(group!.group)).toEqual(["dev", "stage", "prod"]);
   });
 
@@ -77,22 +79,26 @@ describe("creatableRoles", () => {
   // as the people on it want. Capping dev at one is what left a full group —
   // dev, stage and production — with no way to add anything at all.
   it("keeps offering dev however many Mates a group already has", () => {
-    const [group] = buildZeropsGroupTree([CRM_DEV, CRM_STAGE, CRM_PROD], { order: "name" }).groups;
+    const [group] = buildCanonicalGroupTree([CRM_DEV, CRM_STAGE, CRM_PROD], {
+      order: "name",
+    }).groups;
     expect(creatableRoles(group!.group)).toContain("dev");
   });
 
   it("keeps offering stage, which a group may have more than one of", () => {
-    const [group] = buildZeropsGroupTree([CRM_DEV, CRM_STAGE, CRM_PROD], { order: "name" }).groups;
+    const [group] = buildCanonicalGroupTree([CRM_DEV, CRM_STAGE, CRM_PROD], {
+      order: "name",
+    }).groups;
     expect(creatableRoles(group!.group)).toContain("stage");
   });
 
   // The one cap: production is the thing the pipeline deploys into, and a
   // group with two of them has no answer for which.
   it("offers production only while the group has none", () => {
-    const [without] = buildZeropsGroupTree([CRM_DEV, CRM_STAGE], { order: "name" }).groups;
+    const [without] = buildCanonicalGroupTree([CRM_DEV, CRM_STAGE], { order: "name" }).groups;
     expect(creatableRoles(without!.group)).toContain("prod");
 
-    const [withProd] = buildZeropsGroupTree([CRM_DEV, CRM_STAGE, CRM_PROD], {
+    const [withProd] = buildCanonicalGroupTree([CRM_DEV, CRM_STAGE, CRM_PROD], {
       order: "name",
     }).groups;
     expect(creatableRoles(withProd!.group)).not.toContain("prod");

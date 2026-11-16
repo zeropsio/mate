@@ -11,13 +11,12 @@ import {
   halfMadeGroupEnvironments,
   type HalfMadeGroupEnvironment,
 } from "../../zerops/groupEnvironments.ts";
-import { zeropsStructure } from "../../zerops/hq/structure.ts";
 import { placementsOf } from "../../zerops/hq/placement.ts";
 import { registryFromHq } from "../../zerops/hq/registry.ts";
 import type { Projection } from "../store.ts";
-import { canonicalAppEnvironments } from "./appEnvironments.ts";
+import { appEnvironments } from "./appEnvironments.ts";
 import { sameValue } from "./equal.ts";
-import { canonicalHqNavigation } from "./hqNavigation.ts";
+import { hqNavigation } from "./hqNavigation.ts";
 
 export const environmentSetup: Projection<
   { readonly orgId: string; readonly projectIds: ReadonlyArray<string> },
@@ -27,22 +26,17 @@ export const environmentSetup: Projection<
   keyOf: ({ orgId, projectIds }) => `${orgId}/${projectIds.join(",")}`,
   equals: sameValue,
   derive: (read, { orgId, projectIds }) => {
-    const navigation = canonicalHqNavigation.derive(read, orgId);
+    const navigation = hqNavigation.derive(read, orgId);
     const { structure } = navigation;
     if (structure === null) return [];
-    const placement = placementsOf(
-      zeropsStructure(structure),
-      new Map(),
-      new Map(),
-      navigation.presses,
-    );
+    const placement = placementsOf(structure, new Map(), new Map(), navigation.presses);
     const projects = projectIds.flatMap((projectId) => {
       const project = read.fact("project", projectId);
       return project.kind === "known" ? [{ ...project.value, hq: placement.get(projectId) }] : [];
     });
     const environments = new Map(
       structure.apps.flatMap(({ id }) => {
-        const { environments } = canonicalAppEnvironments.derive(read, { orgId, appId: id });
+        const { environments } = appEnvironments.derive(read, { orgId, appId: id });
         return environments === undefined
           ? []
           : [

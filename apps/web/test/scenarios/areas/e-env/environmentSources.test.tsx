@@ -4,13 +4,13 @@ import { vi } from "vite-plus/test";
 import { RegistryContext } from "@effect/atom-react";
 import {
   accountReadsAtom,
-  canonicalAppEnvironments,
-  canonicalHqNavigation,
+  appEnvironments,
+  hqNavigation,
   makeAccountStore,
   makeHqWire,
   makeZeropsWire,
   observeAccount,
-  type CanonicalAppEnvironmentsRead,
+  type AppEnvironmentsRead,
 } from "@t3tools/client-runtime/data";
 import { ZeropsApiClient } from "@t3tools/client-runtime/zerops";
 import {
@@ -83,9 +83,7 @@ function ReleaseAndRows({ appId }: { readonly appId: string }) {
 
 type Source = Effect.Success<ReturnType<typeof environmentFlowSource>>;
 
-type HqJob = NonNullable<
-  NonNullable<CanonicalAppEnvironmentsRead["environments"]>[number]["jobs"]
->[number];
+type HqJob = NonNullable<NonNullable<AppEnvironmentsRead["environments"]>[number]["jobs"]>[number];
 
 function Stage({ appId }: { readonly appId: string }) {
   useHqAppDetailHold([appId]);
@@ -286,7 +284,7 @@ function openEnvironmentUi(source: Source, view: "release" | "stage" = "release"
           changed.observe(container, { subtree: true, childList: true, characterData: true });
           check();
         });
-      const navigation = store.data.project(canonicalHqNavigation, "ORG");
+      const navigation = store.data.project(hqNavigation, "ORG");
       const waitDeployOffer = (projectId: string) =>
         new Promise<void>((resolve) => {
           const check = () => {
@@ -304,7 +302,7 @@ function openEnvironmentUi(source: Source, view: "release" | "stage" = "release"
           const stop = registry.subscribe(navigation, check);
           check();
         });
-      const environments = store.data.project(canonicalAppEnvironments, {
+      const environments = store.data.project(appEnvironments, {
         orgId: "ORG",
         appId: source.appId,
       });

@@ -2,7 +2,7 @@
  * The dialog that deletes a project holding nothing stays until HQ answers: closed once HQ took
  * it, open with HQ's refusal for another look.
  */
-import type { ZeropsGroup } from "@t3tools/client-runtime/zerops";
+import type { CanonicalGroup } from "@t3tools/client-runtime/zerops";
 import { HqError, type HqAppContents } from "@t3tools/client-runtime/zerops/hq";
 import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
@@ -34,7 +34,7 @@ vi.mock("../../zerops/useDeleteGroup", () => ({
   useDeleteGroup: () => mock.remove,
 }));
 
-const GROUP = { groupId: "app-1", name: "mate-rig-e2e-a" } as unknown as ZeropsGroup;
+const GROUP = { groupId: "app-1", name: "mate-rig-e2e-a" } as unknown as CanonicalGroup;
 
 const mounted: ReactTestRenderer[] = [];
 

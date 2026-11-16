@@ -114,7 +114,7 @@ import { fileSize } from "../gitBrowse/blob.ts";
 import { heldType } from "../gitBrowse/raw.ts";
 
 import { type FetchImplementation, type ZeropsAccess } from "../api.ts";
-import type { HqEnvironment, CanonicalHqEnvironment } from "./environments.ts";
+import type { CanonicalHqEnvironment } from "./environments.ts";
 import {
   hqDisagreesOn,
   hqRefusalWords,
@@ -258,7 +258,7 @@ export interface HqStructure {
      * Its stage and production with their deploys (`hq/environments.ts`); absent where HQ sent none
      * this build can read.
      */
-    readonly environments?: ReadonlyArray<HqEnvironment & HqOffered>;
+    readonly environments?: ReadonlyArray<CanonicalHqEnvironment & HqOffered>;
     /** The Mates on their way into it whose attach has not landed; absent from an older HQ. */
     readonly births?: ReadonlyArray<HqBirth>;
     /**
@@ -275,15 +275,6 @@ export interface HqStructure {
     readonly hiddenEnvironments?: ReadonlyArray<HqHiddenEnvironment>;
   }>;
 }
-
-/** HQ membership retains target identity independently of the Zerops roster. */
-export type CanonicalHqStructure = Omit<HqStructure, "apps"> & {
-  readonly apps: ReadonlyArray<
-    Omit<HqStructure["apps"][number], "environments"> & {
-      readonly environments?: ReadonlyArray<CanonicalHqEnvironment & HqOffered>;
-    }
-  >;
-};
 
 export interface HqAttach {
   readonly projectId: string;

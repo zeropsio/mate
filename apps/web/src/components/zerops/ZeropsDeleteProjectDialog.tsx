@@ -4,7 +4,7 @@
  * refusal — the project is no longer empty — for another look.
  */
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-import type { ZeropsGroup } from "@t3tools/client-runtime/zerops";
+import type { CanonicalGroup } from "@t3tools/client-runtime/zerops";
 import type { HqAppContents } from "@t3tools/client-runtime/zerops/hq";
 import { useEffect, useRef, useState } from "react";
 
@@ -17,7 +17,7 @@ export function ZeropsDeleteProjectDialog({
   contents,
   onClose,
 }: {
-  readonly group: Pick<ZeropsGroup, "groupId" | "name">;
+  readonly group: Pick<CanonicalGroup, "groupId" | "name">;
   readonly contents: HqAppContents | undefined;
   readonly onClose: () => void;
 }) {

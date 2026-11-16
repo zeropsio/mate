@@ -1,8 +1,5 @@
 import { HqEnvironmentId } from "@t3tools/contracts";
-import {
-  type CanonicalHqNavigationRead,
-  type CanonicalAppEnvironmentsRead,
-} from "@t3tools/client-runtime/data";
+import { type HqNavigationRead, type AppEnvironmentsRead } from "@t3tools/client-runtime/data";
 import { Atom } from "effect/reactivity";
 import { RuntimeStopPublicAccess } from "./StopPublicAccess";
 /**
@@ -24,13 +21,13 @@ import { RuntimeStopPublicAccess } from "./StopPublicAccess";
  */
 import { StopReadAgain } from "./StopReadAgain";
 import {
-  buildZeropsGroupTree,
+  buildCanonicalGroupTree,
   heldGroupLabel,
   projectNameInApp,
   readZeropsMembership,
   type CanonicalEnvironmentRow as EnvironmentRow,
   type GroupRowTone,
-  type ZeropsGroup,
+  type CanonicalGroup,
   type ZeropsProject,
   firstDeployLine,
   firstDeployTone,
@@ -75,18 +72,18 @@ const STOP_DOT_TONE: Record<GroupRowTone, ServiceStatusToneId | undefined> = {
 
 /**
  * The group behind a route parameter, from the same derivation the menu names
- * it by (`buildZeropsGroupTree`).
+ * it by (`buildCanonicalGroupTree`).
  *
  * A page titled by its route parameter shows a raw id; a page that wants to
  * *rename* the project needs the group itself, the HQ application its name is
  * kept on.
  */
-function useGroup(groupId: string): ZeropsGroup | undefined {
+function useGroup(groupId: string): CanonicalGroup | undefined {
   const { listing } = useZeropsCandidates();
   return useMemo(
     // Order is irrelevant here — a lookup by groupId, not a listing.
     () =>
-      buildZeropsGroupTree(heldCandidates(listing).rows, { order: "name" }).groups.find(
+      buildCanonicalGroupTree(heldCandidates(listing).rows, { order: "name" }).groups.find(
         (entry) => entry.group.groupId === groupId,
       )?.group,
     [groupId, listing],
@@ -286,11 +283,11 @@ export function ZeropsRuntimeStops({
     </Section>
   );
 }
-export const NO_ROUTE_ENVIRONMENTS = Atom.make<CanonicalAppEnvironmentsRead>({
+export const NO_ROUTE_ENVIRONMENTS = Atom.make<AppEnvironmentsRead>({
   environments: undefined,
   unread: [],
 });
-export const NO_ROUTE_NAVIGATION = Atom.make<CanonicalHqNavigationRead>({
+export const NO_ROUTE_NAVIGATION = Atom.make<HqNavigationRead>({
   structure: null,
   organization: null,
   presses: {},

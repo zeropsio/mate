@@ -8,7 +8,7 @@
  */
 import {
   shownHqListedMateIdentitiesAtom,
-  shownCanonicalHqListNavigationAtom,
+  shownHqListNavigationAtom,
   shownHqMateDirectoryAtom,
   isListedMateProject,
   listedProjectAtom,
@@ -49,7 +49,7 @@ export function menuRowsAtom<Row extends CandidateRow>(
 ): Atom.Atom<MenuRows<Row>> {
   return Atom.make((get): MenuRows<Row> => {
     if (organizationId === undefined) return LOADING;
-    const navigation = get(shownCanonicalHqListNavigationAtom);
+    const navigation = get(shownHqListNavigationAtom);
     const listing = get(shownProjectsAtom);
     if (navigation.orgId !== organizationId || listing.orgId !== organizationId) return LOADING;
     if (

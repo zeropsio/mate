@@ -196,7 +196,7 @@ it.each(["pushed", "refused", "unresolved", "queued", "submitting"] as const)(
       git: delivery,
     });
     const stop = {
-      projectId: env.id,
+      id: env.id,
       name: "Production",
       tier: "production" as const,
       row,

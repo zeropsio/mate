@@ -1,4 +1,4 @@
-import type { ZeropsGroup } from "@t3tools/client-runtime/zerops";
+import type { CanonicalGroup } from "@t3tools/client-runtime/zerops";
 import type { HqOfferState } from "@t3tools/shared/hqOffers";
 import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
@@ -33,7 +33,7 @@ vi.mock("./ZeropsRenameProjectDialog", () => ({
   ),
 }));
 
-const GROUP = { groupId: "app-1", name: "Shop", nameSource: "hq" } as ZeropsGroup;
+const GROUP = { groupId: "app-1", name: "Shop", nameSource: "hq" } as CanonicalGroup;
 let tree: ReactTestRenderer | undefined;
 
 afterEach(() => {

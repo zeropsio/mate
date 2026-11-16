@@ -228,7 +228,7 @@ function said(moment: Moment) {
     merged: moment.merged ?? [pull(1, 642.3)],
     stops: [
       {
-        projectId: STAGE_ID,
+        id: STAGE_ID,
         name: "Abacus - stage",
         tier: "stage",
         row,

@@ -18,7 +18,7 @@
  * Every environment HQ records gets a row whatever else came back. No deploy recorded: no dot with
  * a word beside it. Nothing deployed yet: the branch alone. The row's shape does not depend on
  * which reads landed, which is what keeps the screen from moving under the person as they arrive
- * (`environmentRow`).
+ * (`environmentRowDisplay`).
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  *
@@ -99,8 +99,6 @@ export interface ReleaseCreation {
 /** What one environment's row is built from, before the row itself. */
 export interface GroupEnvironmentRowInput {
   readonly git?: GitDelivery | undefined;
-  /** @deprecated Zerops-only compatibility address; canonical rows carry id and target. */
-  readonly projectId: string;
   readonly name: string;
   readonly tier: GroupEnvironment["tier"];
   readonly sources: GroupEnvironment["sources"];
@@ -130,28 +128,13 @@ export interface GroupEnvironmentRowInput {
   readonly tierStops?: ReadonlyArray<TierStop> | undefined;
 }
 
-export type CanonicalGroupEnvironmentRowInput = Omit<GroupEnvironmentRowInput, "projectId"> &
-  HqEnvironmentIdentity;
-export type CanonicalGroupEnvironmentDeclaration = Omit<GroupEnvironment, "project"> &
-  HqEnvironmentIdentity;
+export type CanonicalGroupEnvironmentRowInput = GroupEnvironmentRowInput & HqEnvironmentIdentity;
+export type CanonicalGroupEnvironmentDeclaration = GroupEnvironment & HqEnvironmentIdentity;
 export interface CanonicalGroupStops {
   readonly declarations: ReadonlyArray<CanonicalGroupEnvironmentDeclaration>;
   readonly environments: ReadonlyArray<CanonicalGroupEnvironmentRowInput>;
   /** Environments HQ sent that this build cannot read. */
   readonly unread: ReadonlyArray<UnreadEnvironment>;
-}
-
-/** Temporary outward address fields exist only for Zerops targets. */
-export function zeropsStops(stops: CanonicalGroupStops): GroupStops {
-  return {
-    declarations: stops.declarations.flatMap(({ id: _id, target, projectId: _legacy, ...entry }) =>
-      target.kind === "zerops" ? [{ ...entry, project: target.projectId }] : [],
-    ),
-    environments: stops.environments.flatMap(({ id: _id, target, projectId: _legacy, ...entry }) =>
-      target.kind === "zerops" ? [{ ...entry, projectId: target.projectId }] : [],
-    ),
-    unread: stops.unread,
-  };
 }
 
 /** What an application's recipe on `main` offers: the tiers a person can add, and where code lives. */
@@ -222,7 +205,7 @@ export function appRecipeOf(files: {
 
 /**
  * Every environment HQ records for an application, in the order they were declared, in the shape
- * `environmentRow` takes: each service the account lists in its project, with what it runs and the
+ * `environmentRowDisplay` takes: each service the account lists in its project, with what it runs and the
  * deploys HQ records for it by its hostname, then each service HQ records a deploy of that the
  * account does not list.
  *
@@ -395,13 +378,6 @@ export interface GroupStopProject {
   readonly services: ReadonlyArray<{ readonly serviceId: string; readonly hostname: string }>;
 }
 
-/** An application's stops: the environments HQ records, their rows' inputs. */
-export interface GroupStops {
-  readonly declarations: ReadonlyArray<GroupEnvironment>;
-  readonly environments: ReadonlyArray<GroupEnvironmentRowInput>;
-  readonly unread: ReadonlyArray<UnreadEnvironment>;
-}
-
 /**
  * An application's stops from HQ's environments and what the account holds: each environment HQ
  * records, and a row that asks for each tier the recipe on `main` offers and no environment and no
@@ -493,7 +469,7 @@ export interface ReleaseDeploys {
  * hand, and a release listing a guess is a release HQ deploys.
  */
 export function releaseDeploys(
-  environments: ReadonlyArray<Omit<GroupEnvironmentRowInput, "projectId">>,
+  environments: ReadonlyArray<GroupEnvironmentRowInput>,
 ): ReleaseDeploys {
   const production = new Map<string, string>();
   const failed: Array<ReleaseDeployFailure> = [];
@@ -557,49 +533,4 @@ export function deployWord(tone: GroupRowTone): string | undefined {
     case "neutral":
       return undefined;
   }
-}
-
-/** @deprecated Use canonicalEnvironmentRowInputsOf after the HQ boundary. */
-export function environmentRowInputsOf(
-  input: Omit<
-    Parameters<typeof canonicalEnvironmentRowInputsOf>[0],
-    "environments" | "projectNames" | "services"
-  > & {
-    readonly environments: ReadonlyArray<HqEnvironment | CanonicalHqEnvironment>;
-    readonly projectNames: ReadonlyMap<string, string>;
-    readonly services: ReadonlyArray<GroupEnvironmentService>;
-  },
-): ReadonlyArray<GroupEnvironmentRowInput> {
-  const environments = canonicalEnvironmentsOf(input.environments);
-  if (environments === undefined) return [];
-  const rows = canonicalEnvironmentRowInputsOf({
-    ...input,
-    environments,
-    projectNames: new Map([...input.projectNames].map(([id, name]) => [ProjectId.make(id), name])),
-    services: input.services.map((entry) => ({
-      ...entry,
-      projectId: ProjectId.make(entry.projectId),
-    })),
-  });
-  return zeropsStops({ declarations: [], environments: rows, unread: [] }).environments;
-}
-/** @deprecated Unmigrated callers keep the Zerops DTO, derived from canonical stops. */
-export function groupStopsOf(
-  input: Omit<Parameters<typeof canonicalGroupStopsOf>[0], "environments" | "projects"> & {
-    readonly environments: ReadonlyArray<HqEnvironment | CanonicalHqEnvironment>;
-    readonly projects: ReadonlyArray<GroupStopProject>;
-  },
-): GroupStops {
-  const environments = canonicalEnvironmentsOf(input.environments);
-  if (environments === undefined) return { declarations: [], environments: [], unread: [] };
-  return zeropsStops(
-    canonicalGroupStopsOf({
-      ...input,
-      environments,
-      projects: input.projects.map((entry) => ({
-        ...entry,
-        projectId: ProjectId.make(entry.projectId),
-      })),
-    }),
-  );
 }

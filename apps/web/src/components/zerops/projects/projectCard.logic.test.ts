@@ -40,7 +40,7 @@ const NOW = Date.parse("2026-10-10T12:00:00Z");
 
 function stop(over: Partial<GroupFlowStop> = {}): GroupFlowStop {
   return {
-    projectId: "prod",
+    id: "prod",
     name: "production",
     state: "deployed",
     version: {
@@ -160,7 +160,7 @@ describe("production's line at a card's foot", () => {
     const { flow } = entry([WREN], {
       stops: [
         {
-          projectId: "",
+          id: "",
           name: "Production",
           tier: "production",
           row: canonicalEnvironmentRow(input!),
@@ -338,7 +338,7 @@ describe("production's line at a card's foot", () => {
       case: "no production, and a stage in trouble: the stage's line, by name",
       flow: {
         production: { kind: "absent" } as const,
-        stages: [stop({ name: "stage", projectId: "stage", state: "failed" })],
+        stages: [stop({ name: "stage", id: "stage", state: "failed" })],
       },
       chip: undefined,
       lines: [
@@ -407,11 +407,11 @@ describe("a card's places", () => {
         production: LIVE,
         stages: [
           stop({
-            projectId: "stage",
+            id: "stage",
             name: "stage",
             addresses: [{ service: "app", url: "https://stage.acme.com/" }],
           }),
-          stop({ projectId: "qa", name: "qa", state: "deploying", addresses: [] }),
+          stop({ id: "qa", name: "qa", state: "deploying", addresses: [] }),
         ],
       },
       stageChips: new Map([["stage", chip({ label: "stage", version: "v2.4.0" })]]),
@@ -492,7 +492,7 @@ describe("a card's places", () => {
           production: { kind: "absent" },
           stages: [
             stop({
-              projectId: "stage",
+              id: "stage",
               name: "stage",
               source: "main",
               addresses: published ? [{ service: "app", url: "https://stage.example.com/" }] : [],
@@ -524,7 +524,7 @@ describe("since when production runs what it runs", () => {
 });
 
 describe("a release ready to go", () => {
-  const stage = stop({ projectId: "stage", name: "stage", source: "main" });
+  const stage = stop({ id: "stage", name: "stage", source: "main" });
 
   it.each([
     {
@@ -960,7 +960,7 @@ describe("a stage's line on a card", () => {
         production: { kind: "absent" },
         stages: [
           stop({
-            projectId: "stage",
+            id: "stage",
             name: "stage",
             source: "main",
             version: {
@@ -1485,7 +1485,7 @@ it.each([
     const [line] = placeLines({
       flow: {
         production: { kind: "absent" },
-        stages: [stop({ name: "stage", projectId: "stage", birth: { ended: true }, addresses })],
+        stages: [stop({ name: "stage", id: "stage", birth: { ended: true }, addresses })],
       },
       addressPending: new Map([["stage", addressPending]]),
       nowMs: NOW,

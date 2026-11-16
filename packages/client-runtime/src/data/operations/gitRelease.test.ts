@@ -8,7 +8,7 @@ import { AtomRegistry } from "effect/reactivity";
 import { mountRoster } from "../../zerops/testing/accountRoster.ts";
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
 import { hqAppDetailScope } from "../families/hqAppDetail.ts";
-import { canonicalProjectFlow } from "../projections/projectFlow.ts";
+import { projectFlow } from "../projections/projectFlow.ts";
 import { readsOfState, type AccountStore } from "../store.ts";
 import { makeOperations } from "./coordinator.ts";
 import { makeHqExecutor, type HqWrites } from "./executors/hq.ts";
@@ -126,7 +126,7 @@ function gitProduction(preflight: ReadonlyArray<HqGitReleasePreflight>) {
       ]),
     ),
   });
-  const flow = canonicalProjectFlow.derive(readsOfState(store.state()), key);
+  const flow = projectFlow.derive(readsOfState(store.state()), key);
   registry.dispose();
   return { store, flow };
 }

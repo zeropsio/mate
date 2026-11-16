@@ -27,14 +27,13 @@ import { mateNextStep } from "./mateNextStep.ts";
 import { changeState, type FlowPullRequest } from "./projectFlow.ts";
 
 const DECLARATIONS: ReadonlyArray<GroupEnvironment> = [
-  { name: "stage", tier: "stage", project: "p1", sources: ["main"] },
+  { name: "stage", tier: "stage", sources: ["main"] },
   {
     name: "stage-client-x",
     tier: "stage",
-    project: "p2",
     sources: ["main", "feature/invoices"],
   },
-  { name: "production", tier: "production", project: "p3", sources: "release" },
+  { name: "production", tier: "production", sources: "release" },
 ];
 
 function checkout(overrides: Partial<GitCheckoutState> = {}): GitCheckoutState {
@@ -108,8 +107,8 @@ describe("which environment picks a branch up", () => {
   // menu said "Stage"; a name only tells several stages apart.
   it("names a project's only stage Stage, as the overview and the menu do", () => {
     const one: ReadonlyArray<GroupEnvironment> = [
-      { name: "tea-shop-stage", tier: "stage", project: "p1", sources: ["main"] },
-      { name: "production", tier: "production", project: "p3", sources: "release" },
+      { name: "tea-shop-stage", tier: "stage", sources: ["main"] },
+      { name: "production", tier: "production", sources: "release" },
     ];
     expect(environmentForBranch(one, "main")).toBe("Stage");
   });

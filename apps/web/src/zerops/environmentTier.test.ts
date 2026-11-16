@@ -1,4 +1,4 @@
-import type { CanonicalHqStructure } from "@t3tools/client-runtime/zerops/hq";
+import type { HqStructure } from "@t3tools/client-runtime/zerops/hq";
 import { describe, expect, it } from "vite-plus/test";
 
 import { environmentTierOf } from "./environmentTier";
@@ -16,7 +16,7 @@ const structure = {
     },
     { id: "app-2", name: "Blog", environments: { refused: "Not yours" } },
   ],
-} as unknown as CanonicalHqStructure;
+} as unknown as HqStructure;
 
 describe("environmentTierOf — whether a project is an application's stage or production", () => {
   it.each([

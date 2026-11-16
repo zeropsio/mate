@@ -144,7 +144,7 @@ function said(moment: Moment) {
     merged: [merged],
     stops: [
       {
-        projectId: STAGE_ID,
+        id: STAGE_ID,
         name: "Brine - stage",
         projectStatus: moment.projectStatus ?? "ACTIVE",
         services: moment.services ?? [app("ACTIVE")],

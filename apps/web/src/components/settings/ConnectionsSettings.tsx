@@ -1,4 +1,4 @@
-import { canonicalHqNavigation } from "@t3tools/client-runtime/data";
+import { hqNavigation } from "@t3tools/client-runtime/data";
 import { Atom } from "effect/reactivity";
 import { useAccountOrgId, useProjection } from "~/zerops/ZeropsAccountData";
 import { ProductionRemoval } from "../zerops/GitStopDetail";
@@ -10,7 +10,7 @@ const NONE = Atom.make(null);
 
 export function ConnectionsSettings() {
   const orgId = useAccountOrgId();
-  const navigation = useProjection(canonicalHqNavigation, orgId, NONE);
+  const navigation = useProjection(hqNavigation, orgId, NONE);
   return (
     <SettingsPageContainer>
       <SettingsSection title="Zerops environments">

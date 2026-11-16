@@ -8,7 +8,6 @@
  */
 import {
   deployedCommit,
-  environmentRow,
   flowAppChanges,
   flowReleaseOf,
   releaseRunBy,
@@ -29,7 +28,6 @@ import {
   type FlowPullRequest,
   type FlowRelease,
   type GroupEnvironmentRowInput,
-  type GroupStops,
   type MovedCommits,
   type ProductionRun,
   type ReleaseGate,
@@ -37,7 +35,6 @@ import {
   type ReleaseComparison,
   type ReleaseEntry,
   type Moved,
-  type GroupEnvironment,
   type GroupEnvironmentTier,
   type FlowReleaseRow,
 } from "../../zerops/index.ts";
@@ -48,8 +45,15 @@ import type {
   HqNavigationChange,
   HqNavigationRollout,
 } from "@t3tools/shared/hqStream";
-import { canonicalEnvironmentRow, type CanonicalEnvironmentRow } from "../../zerops/groupRows.ts";
-import type { CanonicalGroupEnvironmentRowInput } from "../../zerops/groupDeploys.ts";
+import {
+  canonicalEnvironmentRow,
+  zeropsProjectOf,
+  type CanonicalEnvironmentRow,
+} from "../../zerops/groupRows.ts";
+import type {
+  CanonicalGroupEnvironmentRowInput,
+  CanonicalGroupStops,
+} from "../../zerops/groupDeploys.ts";
 import type { Release, HqReleaseTarget } from "@t3tools/shared/hqRelease";
 import type { GitReleaseReviewFacts } from "../../zerops/release.ts";
 import type { HqOutsideEnvironment } from "@t3tools/shared/hqEnvironment";
@@ -106,15 +110,15 @@ export interface ZeropsReleaseOffer {
 /** One project's flow: its environments, what is waiting, what was released. */
 export interface ZeropsProjectFlow {
   readonly groupId: string;
-  readonly declarations: ReadonlyArray<GroupEnvironment>;
+  readonly declarations: CanonicalGroupStops["declarations"];
   /**
    * Whether HQ has told the project's environments: until then `declarations` is empty for want of
    * an answer, not because the project has none.
    */
   readonly declarationsRead: boolean;
   /** Stages first, then the production — the order code travels. */
-  readonly environments: ReadonlyArray<EnvironmentRow>;
-  readonly environmentInputs: ReadonlyArray<GroupEnvironmentRowInput>;
+  readonly environments: ReadonlyArray<CanonicalEnvironmentRow>;
+  readonly environmentInputs: CanonicalGroupStops["environments"];
   /** Environments HQ sent that this build cannot read: present, never an application without them. */
   readonly unreadEnvironments: ReadonlyArray<UnreadEnvironment>;
   /** The tiers the recipe on `main` holds; empty until it is read (`recipeRead`). */
@@ -270,7 +274,7 @@ export function joinProjectFlows(input: {
   /** Accepted release receipts bridge the answer until HQ's rollout says it ended. */
   readonly acceptedReleases?: ReadonlyMap<string, string>;
   /** Each group's stops, by its id, while HQ has told its environments. */
-  readonly stops: ReadonlyMap<string, GroupStops>;
+  readonly stops: ReadonlyMap<string, CanonicalGroupStops>;
   /** HQ's notes on each group's recent rollouts, by its id: what a stalled release says. */
   readonly rolloutNotes?: ReadonlyMap<string, ReadonlyArray<HqNavigationRollout>>;
   /** Each group's releases as HQ records them, newest first, by its id, once HQ answered. */
@@ -298,7 +302,16 @@ export function joinProjectFlows(input: {
     const navigationOffer = input.navigationOffers?.[group.groupId];
     const acceptedRelease = input.acceptedReleases?.get(group.groupId);
     const git = navigationOffer?.releaseTarget?.target.kind === "git";
-    const stops = git ? undefined : input.stops.get(group.groupId);
+    // Releases measure Zerops environments only: an environment HQ delivers to Git runs nothing here.
+    const told = git ? undefined : input.stops.get(group.groupId);
+    const stops =
+      told === undefined
+        ? undefined
+        : {
+            ...told,
+            declarations: told.declarations.filter(({ target }) => target.kind === "zerops"),
+            environments: told.environments.filter(({ target }) => target.kind === "zerops"),
+          };
     const records = input.releases.get(group.groupId);
     const changes = input.changes?.get(group.groupId);
     if (
@@ -308,10 +321,10 @@ export function joinProjectFlows(input: {
       navigationOffer == null
     )
       continue;
-    let byReleases = joinedFlows.get(stops ?? UNREAD_HALF);
+    let byReleases = joinedFlows.get(told ?? UNREAD_HALF);
     if (byReleases === undefined) {
       byReleases = new WeakMap();
-      joinedFlows.set(stops ?? UNREAD_HALF, byReleases);
+      joinedFlows.set(told ?? UNREAD_HALF, byReleases);
     }
     let byChanges = byReleases.get(records ?? UNREAD_HALF);
     if (byChanges === undefined) {
@@ -324,9 +337,10 @@ export function joinProjectFlows(input: {
       byChanges.set(changes ?? UNREAD_HALF, byGroup);
     }
     const withheld = new Map(
-      (stops?.environments ?? []).flatMap(({ projectId }) => {
-        const notice = input.withheld.get(projectId);
-        return notice === undefined ? [] : [[projectId, notice] as const];
+      (stops?.environments ?? []).flatMap((entry) => {
+        const projectId = zeropsProjectOf(entry);
+        const notice = projectId === undefined ? undefined : input.withheld.get(projectId);
+        return notice === undefined ? [] : [[entry.id, notice] as const];
       }),
     );
     const { rollouts, jobs } = git
@@ -429,7 +443,7 @@ export function canonicalStopRow(
 ): CanonicalEnvironmentRow {
   return nameProductionRow(canonicalEnvironmentRow(entry), entry, releases);
 }
-function nameProductionRow<Row extends Omit<EnvironmentRow, "projectId">>(
+function nameProductionRow<Row extends EnvironmentRow>(
   row: Row,
   entry: Pick<GroupEnvironmentRowInput, "tier" | "services">,
   releases: ReadonlyArray<FlowRelease>,
@@ -443,17 +457,10 @@ function nameProductionRow<Row extends Omit<EnvironmentRow, "projectId">>(
   const tag = releaseRunBy(releases, running);
   return tag === undefined ? row : nameStopByRelease(row, tag);
 }
-function stopRow(
-  entry: GroupEnvironmentRowInput,
-  releases: ReadonlyArray<FlowRelease>,
-): EnvironmentRow {
-  return nameProductionRow(environmentRow(entry), entry, releases);
-}
-
 function projectFlow(
   group: { readonly groupId: string },
   halves: {
-    readonly stops: GroupStops | undefined;
+    readonly stops: CanonicalGroupStops | undefined;
     /** Its releases as HQ records them, newest first; `undefined` until HQ answered. */
     readonly records: ReadonlyArray<Release> | undefined;
     readonly changes: GroupChanges | undefined;
@@ -471,7 +478,7 @@ function projectFlow(
   },
   /** The newest release on its way to production, or stalled there (`releaseInFlight`, `releaseStalled`). */
   deploy: { readonly inFlight: string | undefined; readonly stalled: ReleaseStall | undefined },
-  /** Why the grant withholds each of the group's projects it withholds alone. */
+  /** Why the grant withholds each of the group's environments it withholds alone, by environment id. */
   withheld: ReadonlyMap<string, string>,
 ): ZeropsProjectFlow {
   const { stops, records, changes } = halves;
@@ -482,13 +489,13 @@ function projectFlow(
   // A production the grant withholds shows nothing it runs, so
   // nothing is measured against it, and no release is listed.
   const withheldProduction = environmentInputs.find(
-    (entry) => entry.tier === "production" && withheld.has(entry.projectId),
+    (entry) => entry.tier === "production" && withheld.has(entry.id),
   );
   const productionWithheld =
-    withheldProduction === undefined ? undefined : withheld.get(withheldProduction.projectId);
+    withheldProduction === undefined ? undefined : withheld.get(withheldProduction.id);
   const sides = gitTarget
     ? { production: new Map<string, string>(), failed: [] }
-    : releaseDeploys(environmentInputs.filter((entry) => !withheld.has(entry.projectId)));
+    : releaseDeploys(environmentInputs.filter((entry) => !withheld.has(entry.id)));
   const releaseList = (records ?? []).map(flowReleaseOf);
   const liveTag = releaseRunBy(releaseList, sides.production);
   // Known once HQ has told the environments: an application holds a production in whatever state
@@ -572,7 +579,7 @@ function projectFlow(
     groupId: group.groupId,
     declarations: stops?.declarations ?? [],
     declarationsRead: stops !== undefined,
-    environments: environmentInputs.map((entry) => stopRow(entry, releaseList)),
+    environments: environmentInputs.map((entry) => canonicalStopRow(entry, releaseList)),
     environmentInputs,
     unreadEnvironments: stops?.unread ?? [],
     recipeTiers: recipe?.tiers ?? [],
