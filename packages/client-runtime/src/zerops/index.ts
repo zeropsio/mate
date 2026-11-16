@@ -298,6 +298,7 @@ export {
   type ReviewPress,
   type ReviewPrimary,
   PRODUCTION_DEPLOYED_OUTSIDE,
+  PRODUCTION_OUTSIDE_DECIDES,
   type ReviewQuestion,
   type ReviewState,
   type ReviewVerdict,

@@ -970,12 +970,13 @@ describe("ChangeReviewView: an open change", () => {
       expect(textOf(prLink(mirrored) ?? "")).toBe("PR #14 on GitHub · merged");
     });
 
+    // witness: apps/web/src/components/zerops/review/ZeropsReview.logic.ts | const stages = input.stages.map((name) => environmentTitle("stage", name)); → const stages = input.stages;
     it("a change mirrored to no pull request names none, and merges as ever", () => {
       const html = render(open, files, { stages: ["appstage"] });
       expect(prLink(html)).toBeNull();
       expect(textOf(footOf(html))).toContain("Merge");
       expect(textOf(footOf(html))).not.toContain("Merge to");
-      expect(textOf(footOf(html))).toContain("Lands on main; Appstage deploys it.");
+      expect(textOf(footOf(html))).toContain("Adds it to main; Appstage runs it.");
     });
   });
 

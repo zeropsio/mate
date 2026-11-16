@@ -1218,13 +1218,13 @@ describe("changeReview: Merge, offered by HQ's rule (T8a)", () => {
     );
   });
 
-  // witness: packages/client-runtime/src/zerops/reviewVerdict.ts | if (input.downstream.productionOutside === true) return PRODUCTION_DEPLOYED_OUTSIDE; →
+  // witness: packages/client-runtime/src/zerops/reviewVerdict.ts | if (input.downstream.productionOutside === true) return PRODUCTION_OUTSIDE_DECIDES; →
   it("says production is deployed outside Mate in place of a release, where it is", () => {
     const review = changeReview(
       change({ downstream: { production: false, stage: false, productionOutside: true } }),
     );
     expect(review.consequence).toBe(
-      "Adds this change to main. Production is deployed outside Mate.",
+      "Adds this change to main. Production runs outside Mate, so what goes live is decided there.",
     );
   });
 
