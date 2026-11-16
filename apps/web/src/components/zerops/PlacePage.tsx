@@ -1,5 +1,5 @@
 import type { RunningLine } from "@t3tools/client-runtime/zerops/activity/runningNow";
-import { useEnvironmentDeployOffer } from "../../zerops/useChangeOffers";
+import { useEnvironmentDeployHeld, useEnvironmentDeployOffer } from "../../zerops/useChangeOffers";
 import { GitStopDetailPage } from "./GitStopDetail";
 import { HqEnvironmentId, type ProjectId } from "@t3tools/contracts";
 import { unreadEnvironmentsWords } from "@t3tools/client-runtime/zerops/hq";
@@ -495,6 +495,8 @@ function ZeropsProjectStopDetailPage({
       : stopFailedDeploys({ tier: stop.tier, rows: services, releases: flow.releases });
   // *Run again* asks HQ, by its rule for who develops the application.
   const mayRunAgain = useEnvironmentDeployOffer()(projectId);
+  // A production's, where the project limits who merges: held, saying who releases.
+  const runAgainHeld = useEnvironmentDeployHeld()(projectId);
   const mayKeepKey = useKeepDeployKeyOffer();
   // The place's deploy key, renewed from its own sentence: the release sheet's verb, here.
   const renewKey = useRenewDeployKey(
@@ -726,13 +728,14 @@ function ZeropsProjectStopDetailPage({
         stopsUnverified={unverifiedStops(appProblems, projectId)}
         deployAnswer={deployAnswer}
         runAgain={
-          redeploy === undefined || !mayRunAgain
+          redeploy === undefined || (!mayRunAgain && runAgainHeld === undefined)
             ? undefined
             : {
                 running: verbs.pending.has(
                   flowVerbKey({ kind: "redeploy", groupId, projectId, service: redeploy.service }),
                 ),
                 refused: runAgainRefused,
+                held: runAgainHeld,
                 onRunAgain: () => said(verbs.redeploy(flow, projectId, redeploy)),
               }
         }
@@ -793,6 +796,11 @@ interface StopRunAgain {
   readonly running: boolean;
   /** Why HQ refused the last one, until another is pressed. */
   readonly refused: string | null;
+  /**
+   * Why it is not this person's to press, where the project's limit on who merges holds it: who
+   * releases, by name. The button stands, held, with the line under it.
+   */
+  readonly held?: string | undefined;
   readonly onRunAgain: () => void;
 }
 
@@ -1393,7 +1401,7 @@ export function ZeropsStopPane({
             {!down && verb?.kind === "run-again" && runAgain !== undefined ? (
               <Button
                 data-zerops-primary-action="Run again"
-                disabled={runAgain.running}
+                disabled={runAgain.running || runAgain.held !== undefined}
                 onClick={runAgain.onRunAgain}
                 size="sm"
                 variant="secondary"
@@ -1406,6 +1414,9 @@ export function ZeropsStopPane({
           </VerdictPanel>
           {runAgain?.refused === null || runAgain?.refused === undefined ? null : (
             <p className="mt-1.5 px-3 text-sm text-status-failed-text">{runAgain.refused}</p>
+          )}
+          {down || verb?.kind !== "run-again" || runAgain?.held === undefined ? null : (
+            <p className="mt-1.5 px-3 text-sm text-muted-foreground">{runAgain.held}</p>
           )}
           {down || renewing?.kind !== "failed" ? null : (
             <p className="mt-1.5 px-3 text-sm text-status-failed-text">{renewing.words}</p>
