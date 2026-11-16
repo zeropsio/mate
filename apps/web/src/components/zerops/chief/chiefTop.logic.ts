@@ -51,7 +51,7 @@ export function chiefRowLine(input: {
 
 /**
  * Whether the menu's top holds the Chief's row: once it exists, or while its setup runs or stopped.
- * Never before — a Chief is optional, offered from the account menu (`chiefOffered`), never as a
+ * Never before — a Chief is optional, offered from the account menu (`useChiefSetupEntry`), never as a
  * menu row standing for something that does not exist.
  */
 export function chiefTopShown(input: {

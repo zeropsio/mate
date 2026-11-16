@@ -12,7 +12,7 @@ afterEach(() => {
   for (const unmount of unmounts.splice(0)) unmount();
 });
 
-/** The account menu and the overview's header, the Chief offered (`chiefOffered`) or not. */
+/** The account menu and the overview's header, the Chief offered (`useChiefSetupEntry`) or not. */
 async function mount(offer: boolean) {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const container = document.createElement("div");

@@ -2799,7 +2799,7 @@ export default function Sidebar() {
     (projectGroups.length <= 1 ? shortcutLabelForCommand(keybindings, "chat.newLocal") : undefined);
   const newThreadInProjectShortcutLabel = shortcutLabelForCommand(keybindings, "chat.newLocal");
   // The menu's top: the person's Chief, as the open menu's row or the rail's tile — once it exists
-  // or is being set up. Before that the account menu offers it (`chiefOffered`), and its place
+  // or is being set up. Before that the account menu offers it (`useChiefSetupEntry`), and its place
   // holds the mark, with what waits on the person beside it (`SidebarChiefPlace`).
   const zeropsChiefShown =
     zeropsSignedIn &&
