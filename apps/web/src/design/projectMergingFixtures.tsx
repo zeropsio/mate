@@ -214,6 +214,7 @@ export function MergingRow({
 }) {
   return (
     <ProjectMergingRow
+      builders={state.current === null ? 16 : undefined}
       merging={{ people: state.current, older: state.older === true, editable: state.editable }}
       onManage={onManage}
       open={state.open}

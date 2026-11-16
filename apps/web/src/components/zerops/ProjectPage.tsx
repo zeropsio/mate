@@ -39,7 +39,7 @@ import { Skeleton } from "../ui/skeleton";
 import { GitMirrorDialog } from "./GitMirrorDialog";
 import { ProjectRepositories } from "./github/GithubRepoRows";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
-import { ProjectPeople, ProjectPeopleRow } from "./projects/ProjectPeople";
+import { ProjectPeople, ProjectPeopleRow, useProjectBuilders } from "./projects/ProjectPeople";
 import {
   ProjectPageBody,
   type ProjectPageFacts,
@@ -169,6 +169,7 @@ function ProjectPage<T>({
   const repos = flow?.codeRepos ?? flow?.repos;
   // Who merges: one read and one write for the row and the section it opens.
   const merging = useAppMergers(groupId);
+  const builders = useProjectBuilders(groupId);
   const openOnGithub = useMemo(() => openMains(repos), [repos]);
   const automationStanding = useAutomationStanding(groupId);
   const setup: ProjectPageSetup = {
@@ -190,7 +191,12 @@ function ProjectPage<T>({
           <ProjectAutomationRow groupId={groupId} onManage={open.automation} />
         )}
         <ProjectPeopleRow groupId={groupId} onManage={open.access} />
-        <ProjectMergingRow merging={merging} onManage={open.merging} open={openOnGithub} />
+        <ProjectMergingRow
+          builders={builders}
+          merging={merging}
+          onManage={open.merging}
+          open={openOnGithub}
+        />
         <ProjectSpendRow appId={groupId} projectIds={spendIds} />
       </>
     ),
