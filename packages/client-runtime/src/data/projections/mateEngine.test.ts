@@ -2206,7 +2206,7 @@ describe("the crew on an engine conversation's record", () => {
     ["login", "It runs on a different login now"],
     ["budget", "Its budget changed — it carries on"],
     ["task", "It started afresh for unrelated work"],
-    ["unknown", "It started afresh"],
+    ["unknown", "It started a new session — the conversation carries on"],
   ] as const)(
     "draws a session that rotated for %s as the line saying why, in the same conversation",
     (reason, words) => {
