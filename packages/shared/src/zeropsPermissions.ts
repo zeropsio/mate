@@ -221,11 +221,12 @@ const mergesWithin = (member: Member, limit: MergeLimit) =>
 /**
  * An application's change verbs over its projects; a comment where it has none, by push rights. A
  * merge where the application limits who merges (`mergers`) also takes the organization role or a
- * place among the people it names: a grant on one of its projects is not enough.
+ * place among the people it names: a grant on one of its projects is not enough. Asking for a
+ * merge (`ask_merge_change`) is the merge without that limit: whoever it holds may ask.
  */
 export function changePermission(
   facts: PermissionFacts,
-  verb: "read_change" | "comment_change" | "merge_change" | "close_change",
+  verb: "read_change" | "comment_change" | "merge_change" | "ask_merge_change" | "close_change",
   projectIds: ReadonlyArray<string>,
   mergers?: MergeLimit | null,
 ): Decision {
@@ -243,12 +244,15 @@ export function changePermission(
 
 /**
  * An environment's deploys: keeping its deploy token takes Full access on its project or the
- * structure; deploying again, Basic user or above on it.
+ * structure; deploying again, Basic user or above on it — and, on a production whose application
+ * limits who merges (`productionMergers`), a place inside that limit: the same people release.
+ * A stage passes none.
  */
 export function deployPermission(
   facts: PermissionFacts,
   verb: "keep_deploy_token" | "redeploy",
   projectId: string,
+  productionMergers?: MergeLimit | null,
 ): Decision {
   const member = activeMember(facts.member);
   if (member === undefined) return refuse("not_active_member");
@@ -259,9 +263,11 @@ export function deployPermission(
       ? ALLOW
       : refuse("not_project_admin");
   }
-  return listed && roleAtLeast(roleOn(facts, member, projectId), "BASIC_USER")
-    ? ALLOW
-    : refuse("not_app_developer");
+  if (!(listed && roleAtLeast(roleOn(facts, member, projectId), "BASIC_USER")))
+    return refuse("not_app_developer");
+  return productionMergers != null && !mergesWithin(member, productionMergers)
+    ? refuse("not_app_merger")
+    : ALLOW;
 }
 
 /** Where an application releases to: its Zerops production project, a Git production, or none. */
@@ -271,8 +277,9 @@ export type ReleaseProduction =
   | null;
 
 /**
- * Releasing: to Git by whoever merges, the application's merge limit (`mergers`) included; to
- * Zerops by Basic user or above on the production.
+ * Releasing: to Git by whoever merges; to Zerops by Basic user or above on the production. Where
+ * the application limits who merges (`mergers`), the same people release to either: a person the
+ * limit holds is refused `not_app_merger`, after the role that would otherwise release.
  */
 export function releasePermission(
   facts: PermissionFacts,
@@ -294,7 +301,7 @@ export function releasePermission(
   const member = facts.member!;
   const listed = facts.project(production.projectId) !== undefined;
   if (listed && roleAtLeast(roleOn(facts, member, production.projectId), "BASIC_USER"))
-    return ALLOW;
+    return mergers != null && !mergesWithin(member, mergers) ? refuse("not_app_merger") : ALLOW;
   return !listed && writer(member) ? refuse("project_gone") : refuse("not_releaser");
 }
 

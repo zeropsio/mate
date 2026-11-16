@@ -188,6 +188,8 @@ const offers = vi.hoisted(() => {
       close: true,
       why: {},
       readRefused: false,
+      ask: true,
+      merges: "yes",
     },
   };
   return { held, of: () => held.current };
@@ -263,6 +265,8 @@ const DEVELOPS: ZeropsChangeOffers = {
   close: true,
   why: {},
   readRefused: false,
+  ask: true,
+  merges: "yes",
 };
 
 /** The review of `pull` in a project with a stage and a production two changes behind `main`. */
@@ -804,6 +808,8 @@ describe("ChangeReviewView: an open change", () => {
         close: false,
         why: { merge: "HQ unavailable since 10:00." },
         readRefused: false,
+        ask: false,
+        merges: "no",
       },
     });
     expect(textOf(html)).toContain("HQ unavailable since 10:00.");
