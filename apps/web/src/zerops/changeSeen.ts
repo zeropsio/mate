@@ -1,10 +1,12 @@
 /**
- * When the person last opened each change's review on this device: what makes a comment somebody
- * left on their Mate's change news to them ("Sam R. commented") until they have read it.
+ * The newest comment the person has read on each change, by its own time as HQ gave it: what makes
+ * a later comment on their Mate's change news to them ("Sam R. commented") until they read it too.
+ * A comment is read where its change's review shows it.
  *
- * A convenience of this browser, never a fact: kept in memory for the visit and in the account's
- * local storage where that works. Where it does not, a comment's mark shows until the review is
- * opened in this visit, or the change moves.
+ * HQ's time on both sides of the comparison: this device's clock decides nothing, so a wrong one
+ * hides no comment. A convenience of this browser, never a fact: kept in memory for the visit and
+ * in the account's local storage where that works. Where it does not, a comment's mark shows until
+ * the review shows it in this visit.
  */
 import { useSyncExternalStore } from "react";
 
@@ -40,8 +42,10 @@ export function changeSeenKey(appId: string, repository: string, number: number)
   return `${appId}:${repository}#${String(number)}`;
 }
 
-/** The person opened, or closed, this change's review now: what was said on it is read. */
-export function markChangeSeen(key: string, at: string = new Date().toISOString()): void {
+/** The change's review shows the comment HQ timed `at`: it, and every earlier one, is read. */
+export function markChangeSeen(key: string, at: string): void {
+  const read = held()[key];
+  if (read !== undefined && Date.parse(read) >= Date.parse(at)) return;
   const next = Object.entries({ ...held(), [key]: at })
     .toSorted(([, left], [, right]) => right.localeCompare(left))
     .slice(0, KEPT);
@@ -61,7 +65,7 @@ const subscribe = (listener: () => void) => {
   };
 };
 
-/** When each change's review was last opened here, by `changeSeenKey`; follows `markChangeSeen`. */
+/** The newest comment read on each change, by `changeSeenKey`; follows `markChangeSeen`. */
 export function useChangesSeen(): Readonly<Record<string, string>> {
   return useSyncExternalStore(subscribe, held, held);
 }

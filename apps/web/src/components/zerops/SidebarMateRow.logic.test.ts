@@ -1956,6 +1956,7 @@ describe("mateRowSecond — the one line under a Mate's name", () => {
       ...over,
     });
 
+  // witness: apps/web/src/components/zerops/SidebarMateRow.logic.ts | if (change !== undefined) return { kind: "change", title: change.title, mine: false, ...counted }; → if (change !== undefined) return undefined;
   it.each([
     { case: "at rest: its last words, muted", over: {}, line: { kind: "reply", tone: "muted" } },
     {
@@ -2026,7 +2027,7 @@ describe("mateRowSecond — the one line under a Mate's name", () => {
       line: { kind: "change", title: "Cart page", mine: true },
     },
     {
-      case: "a colleague's open change: in review, muted",
+      case: "a colleague's open change: open, muted",
       over: { mine: false, change: { title: "Rate limit the public API", mine: false } },
       line: { kind: "change", title: "Rate limit the public API", mine: false },
     },
@@ -2254,6 +2255,7 @@ describe("mateRowSecond — an automated Mate's line", () => {
       ...over,
     });
 
+  // witness: apps/web/src/components/zerops/SidebarMateRow.logic.ts | return `${String(count)} changes open`; → return `${String(count)} changes`;
   it.each([
     {
       case: "an automated Mate that never had a task says so",
@@ -2301,7 +2303,7 @@ describe("mateRowSecond — an automated Mate's line", () => {
       line: { kind: "task", text: "Prices per 100 g · stopped: budget spent", on: false },
     },
     {
-      case: "an automated Mate holding changes in review says how many, not its last task",
+      case: "an automated Mate holding open changes says how many, not its last task",
       over: {
         automated: {
           task: null,
@@ -2309,7 +2311,7 @@ describe("mateRowSecond — an automated Mate's line", () => {
           last: { title: "Prices per 100 g", ended: "merged" },
         },
       },
-      line: { kind: "task", text: "2 changes in review", on: false },
+      line: { kind: "task", text: "2 changes open", on: false },
     },
     {
       case: "an automated Mate at work says its step, as any Mate",
@@ -2371,7 +2373,7 @@ describe("mateRowSecond — an automated Mate's line", () => {
     {
       case: "an automated Mate at rest whose changes wait for review, one per task, says how many",
       over: { automated: { task: { ...task, done: true }, inReview: 2 } },
-      line: { kind: "task", text: "2 changes in review", on: false },
+      line: { kind: "task", text: "2 changes open", on: false },
     },
     {
       case: "an automated Mate at work on a task names it, whatever else of its waits for review",
@@ -2670,17 +2672,18 @@ describe("a Mate's row says it is updating while its update restarts it", () => 
 });
 
 describe("changeLineWords — the line of a Mate's open changes", () => {
+  // witness: apps/web/src/components/zerops/SidebarMateRow.logic.ts | return change.mine ? change.title : `${change.title} · open`; → return change.title;
   it.each([
     { case: "its own, by title", change: { title: "Cart page", mine: true }, words: "Cart page" },
     {
-      case: "a colleague's, in review",
+      case: "a colleague's, open",
       change: { title: "Cart page", mine: false },
-      words: "Cart page · in review",
+      words: "Cart page · open",
     },
     {
       case: "several, how many",
       change: { title: "Cart page", mine: true, count: 2 },
-      words: "2 changes in review",
+      words: "2 changes open",
     },
   ])("$case", ({ change, words }) => {
     expect(changeLineWords({ kind: "change", ...change })).toBe(words);

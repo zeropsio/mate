@@ -59,6 +59,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { Badge } from "~/components/ui/badge";
 import { Button, InlineButton } from "~/components/ui/button";
 import { buildThreadRouteParams } from "~/threadRoutes";
+import { changeSeenKey, markChangeSeen } from "~/zerops/changeSeen";
 import { useAskMateToFix, type FixProblem } from "~/zerops/fixRequest";
 import { useHqAppDetailHold, useHqAppFailure } from "~/zerops/useHqAppDetail";
 import { useAccountDataOptional } from "~/zerops/ZeropsAccountData";
@@ -439,6 +440,13 @@ function ChangeReviewData({
     // A record read while HQ still checked it is read again once the live change says it judged.
     mergeability: pull.mergeability,
   });
+  // The comment this review shows is read: its own time, as HQ gave it, is what a later comment is
+  // news against (`changeSeen`). One that comes while the review stands open is read here too.
+  const commentAt = pull.lastComment?.at;
+  useEffect(() => {
+    if (commentAt === undefined) return;
+    markChangeSeen(changeSeenKey(target.groupId, pull.repository, pull.number), commentAt);
+  }, [commentAt, pull.number, pull.repository, target.groupId]);
   // A change drawn from the menu's row has no head, so nothing is read for it until the
   // application's detail says one: HQ's reason, or after a while its silence, is said with Try again.
   const appFailure = useHqAppFailure(target.groupId);

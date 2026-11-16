@@ -1348,8 +1348,14 @@ export const RELEASE_SHEETS: ReadonlyArray<ReleaseSheet> = [
     label: "Release · not this person's to press",
     props: {
       over: {
-        gate: { allowed: false, reason: "Ask an owner of Acme to make you a releaser." },
-        permission: { allowed: false, reason: "Ask an owner of Acme to make you a releaser." },
+        gate: {
+          allowed: false,
+          reason: "You need more than Read access to production to release.",
+        },
+        permission: {
+          allowed: false,
+          reason: "You need more than Read access to production to release.",
+        },
       },
     },
   },
