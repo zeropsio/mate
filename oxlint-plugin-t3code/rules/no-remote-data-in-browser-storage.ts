@@ -92,6 +92,9 @@ const ALLOWED_MODULES: ReadonlySet<string> = new Set([
   "apps/web/src/uiStateStore.ts",
   "apps/web/src/zerops/collapsedProjects.ts",
   "apps/web/src/zerops/composerReviewDismissal.ts",
+  // When the person last opened each change's review on this device, so a comment left since
+  // reads as news to them: what they did here, never what a source answered.
+  "apps/web/src/zerops/changeSeen.ts",
   "apps/web/src/zerops/mateScope.ts",
   "apps/web/src/zerops/mutedMates.ts",
   "apps/web/src/zerops/projectOrderPreference.ts",

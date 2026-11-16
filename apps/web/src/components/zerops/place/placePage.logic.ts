@@ -6,14 +6,14 @@
  * Pure: no React.
  */
 import {
-  changeState,
-  READY_TO_MERGE,
   type ChangeStandingRead,
   type FlowPullRequest,
   type FlowReleaseRow,
   type GroupEnvironmentTier,
   type ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
+
+import { changeReviewable } from "../system/ChangeRow.logic";
 import { NOTHING_DEPLOYED, type StopView } from "@t3tools/client-runtime/zerops/flow";
 
 import type { FixProblem } from "~/zerops/fixRequest";
@@ -127,8 +127,12 @@ export function createsFirstLine(missing: ReadonlyArray<string>): string | undef
 /** Where each open change stands for the person looking (`useChangeStandingOf`, by the application). */
 type StandingOfChange = (pull: FlowPullRequest) => ChangeStandingRead;
 
-/** An open change nothing stops (`changeState`): the one a standing is said of. */
-const isReady = (pull: FlowPullRequest) => changeState(pull)?.word === READY_TO_MERGE;
+/**
+ * An open change nothing stops (`changeReviewable`): ready to merge, or only behind `main` and
+ * still merging cleanly — the one a standing is said of.
+ */
+const isReady = (pull: FlowPullRequest) =>
+  changeReviewable(pull) && pull.pullRequest?.state !== "merged";
 
 /**
  * A stage's next: the open changes that merge to it, those ready to merge first — what somebody

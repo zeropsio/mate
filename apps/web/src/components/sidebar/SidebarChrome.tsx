@@ -132,6 +132,7 @@ export function SidebarCreateButton({
   onNewMate,
   onNewAutomatedMates,
   onNewProject,
+  why,
 }: {
   readonly projects: ReadonlyArray<SidebarCreateProject>;
   readonly onNewMate: (projectId: string) => void;
@@ -139,6 +140,11 @@ export function SidebarCreateButton({
   readonly onNewAutomatedMates?: ((projectId: string) => void) | undefined;
   /** New project, where the viewer's role creates projects. */
   readonly onNewProject?: (() => void) | undefined;
+  /**
+   * Why nothing can be made, said to a person who works with a Mate here and may not add one
+   * (`addMateDoor`): the + stands, disabled, with whom to ask. Absent, it is not drawn.
+   */
+  readonly why?: string | undefined;
 }) {
   const [only] = projects;
   const label =
@@ -147,7 +153,27 @@ export function SidebarCreateButton({
       : onNewProject === undefined
         ? "New Mate"
         : "New Mate or project";
-  if (only === undefined && onNewProject === undefined) return null;
+  if (only === undefined && onNewProject === undefined) {
+    if (why === undefined) return null;
+    return (
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              aria-disabled="true"
+              aria-label={`New Mate: ${why}`}
+              className="menu-round-button opacity-50"
+              data-zerops-surface="sidebar-create"
+              type="button"
+            />
+          }
+        >
+          <PlusIcon aria-hidden="true" className="size-4" />
+        </TooltipTrigger>
+        <TooltipPopup side="bottom">{why}</TooltipPopup>
+      </Tooltip>
+    );
+  }
   // New project alone is made at once: a menu holding only what the button is named for is a
   // second press that decides nothing.
   if (only === undefined && onNewProject !== undefined)

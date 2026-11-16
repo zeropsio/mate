@@ -3505,6 +3505,14 @@ code {
     color: var(--sidebar-muted-foreground);
   }
 
+  /* A release that is somebody else's to make (`releaseWaitsOnViewer`): a door still, on the
+     Review tag's quiet ground, never the row's one loud word. */
+  .menu-tag-release[data-quiet] {
+    background-color: var(--card);
+    box-shadow: inset 0 0 0 1px var(--border);
+    color: var(--sidebar-muted-foreground);
+  }
+
   /* Release: the solid primary — what waits for production is the row's one loud word. */
   .menu-tag-release {
     background-color: var(--primary);
@@ -3516,8 +3524,12 @@ code {
       box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 30%, transparent);
     }
 
-    .menu-tag-release:hover {
+    .menu-tag-release:not([data-quiet]):hover {
       background-color: color-mix(in oklab, var(--primary) 88%, var(--color-black));
+    }
+
+    .menu-tag-release[data-quiet]:hover {
+      box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 30%, transparent);
     }
   }
 
@@ -3888,6 +3900,11 @@ code {
 
   .menu-mark-release:hover {
     background: color-mix(in oklab, currentColor 20%, transparent);
+  }
+
+  /* Somebody else's release: there, as quiet as a change its Mate still works on. */
+  .menu-mark-release[data-quiet] {
+    color: var(--sidebar-muted-foreground);
   }
 
   /* This tab's run on its project's row: under way in the busy ink, stopped in the failed one. */
@@ -7451,6 +7468,12 @@ a.ov-card-site:hover {
 
 .ov-card {
   --ov-wait-ground: color-mix(in oklab, var(--zerops-status-attention-text) 9%, var(--ov-ground));
+}
+
+/* A release that is somebody else's to make ("Ready for production"): the same strip on a plain
+   ground — the amber is what waits on the viewer, and this asks them nothing. */
+.ov-waits[data-zerops-surface="card-ready"] {
+  --ov-wait-ground: color-mix(in oklab, var(--foreground) 5%, var(--ov-ground));
 }
 
 .ov-wait {

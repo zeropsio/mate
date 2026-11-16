@@ -29,6 +29,7 @@ import { useOpenPutLive } from "~/zerops/putLive";
 import { useEnvironmentSetup } from "~/zerops/useEnvironmentSetup";
 import { useAppMergers } from "~/zerops/useAppMergers";
 import { useAppOutsideProduction } from "~/zerops/useAppOutsideProduction";
+import { useAddMateDoor } from "~/zerops/addMateDoor";
 import { useChangeStandingOf } from "~/zerops/useChangeStandingOf";
 import { useNowMs } from "~/zerops/useNowMs";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
@@ -153,6 +154,8 @@ function ProjectPage<T>({
   readonly onAddMate: () => void;
 }) {
   const recipeFailure = useHqAppFailure(groupId);
+  // A person who only reads here is offered no Mate to add (`addMateDoor`).
+  const addMateDoor = useAddMateDoor();
   const { flows } = useProjectFlows(useMemo(() => [groupId], [groupId]));
   const flow = flows.get(groupId);
   const facts = {
@@ -198,6 +201,7 @@ function ProjectPage<T>({
   };
   return (
     <ProjectPageBody
+      addMateHidden={addMateDoor(groupId).kind === "none"}
       addMateWhy={addMateWhy}
       entry={entry}
       facts={facts}
