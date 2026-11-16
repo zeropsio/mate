@@ -8,7 +8,8 @@ import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import { Rpc, RpcGroup, RpcMessage, RpcSerialization, RpcServer } from "effect/rpc";
 
-import { withTerminalOutputWindow } from "./OutputProtocol.ts";
+import { withStreamWindows } from "../RpcStreamWindow.ts";
+import { terminalOutputWindows } from "./OutputProtocol.ts";
 
 describe("terminal output window", () => {
   it.effect.each(
@@ -52,7 +53,10 @@ describe("terminal output window", () => {
       );
       yield* RpcServer.make(group).pipe(
         Effect.provide(group.toLayerHandler(tag, () => Stream.fromQueue(output))),
-        Effect.provideService(RpcServer.Protocol, withTerminalOutputWindow(protocol)),
+        Effect.provideService(
+          RpcServer.Protocol,
+          withStreamWindows(protocol, terminalOutputWindows),
+        ),
         Effect.forkScoped,
       );
       const write = yield* Deferred.await(receive);

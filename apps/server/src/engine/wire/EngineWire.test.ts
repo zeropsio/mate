@@ -16,6 +16,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import * as TestClock from "effect/testing/TestClock";
 import {
   CommandId,
+  ENGINE_WIRE_BUDGETS,
   EngineSendInput,
   MATE_ENGINE_PROTOCOLS,
   RequestId,
@@ -703,6 +704,84 @@ describe("a client reading more of an engine conversation", () => {
         yield* w.shutdown;
       }),
     ),
+  );
+
+  // A window whose opening ran out of its budget read five runs for their closed cards, then six
+  // of their results one by one (19 to 26 KB each), before the conversation drew.
+  // witness: apps/server/src/engine/wire/EngineWire.ts | return widen === undefined ? page : widen(page, got.records, budget - bytes); → return page;
+  it.effect(
+    "a run read for its closed card brings a long result whole, with no read of its own",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          const wire = yield* wireOf(w);
+          const deployed = `{"status":"DEPLOYED","buildLogs":"${"ok\\n".repeat(9_000)}"}`;
+          yield* w.tell({ _tag: "Send", text: "Deploy" });
+          yield* w.agent((agent, thread) =>
+            agent.zerops(thread, "zerops_deploy", { targetService: "api" }, "api", deployed),
+          );
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          const page = yield* wire.readRun({
+            protocol,
+            conversationId: mate,
+            runId: runId(mate, 1),
+            afterSeq: 0,
+            only: "outcome",
+            tools: ["zerops_deploy"],
+          });
+          if (page._tag !== "Page") throw new Error(page._tag);
+          assert.deepStrictEqual(
+            page.items.map((item) =>
+              item.kind === "call"
+                ? [item.cut ?? null, item.result?.resultText === deployed]
+                : null,
+            ),
+            [[null, true]],
+          );
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  // witness: apps/server/src/engine/wire/budget.ts | if (more > left) return item; → if (more > left) return whole;
+  it.effect(
+    "a run read for its closed card keeps to a page's budget: the results past it stay cut, read on demand",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          const wire = yield* wireOf(w);
+          // Twelve results of 47 KB (a record keeps one up to 48,000 characters): ten fill the
+          // page's 512 KB, the eleventh would pass it.
+          const checked = `{"status":"healthy","bodyText":"${"x".repeat(47_000)}"}`;
+          yield* w.tell({ _tag: "Send", text: "Check them" });
+          for (let n = 0; n < 12; n++)
+            yield* w.agent((agent, thread) =>
+              agent.zerops(thread, "zerops_verify", { serviceHostname: `s${n}` }, "s", checked),
+            );
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          const page = yield* wire.readRun({
+            protocol,
+            conversationId: mate,
+            runId: runId(mate, 1),
+            afterSeq: 0,
+            only: "outcome",
+            tools: ["zerops_verify"],
+          });
+          if (page._tag !== "Page") throw new Error(page._tag);
+          assert.isAtMost(
+            new TextEncoder().encode(JSON.stringify(page)).length,
+            ENGINE_WIRE_BUDGETS.runPageBytes,
+          );
+          assert.deepStrictEqual(
+            page.items.map((item) => (item.kind === "call" ? (item.cut?.part ?? "whole") : null)),
+            [...Array.from({ length: 10 }, () => "whole"), "result", "result"],
+          );
+          assert.isFalse(page.more);
+          yield* w.shutdown;
+        }),
+      ),
   );
 
   // A zcp Mate's reload read every Zerops result its runs held (434 KB a page, two thirds of it
