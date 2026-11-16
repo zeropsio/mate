@@ -42,10 +42,11 @@ export function zeropsSessionOf(view: SessionView): ZeropsSession {
   };
 }
 
-/** HQ's login, which sends the tab back here. */
+/** HQ's login, which sends the tab back here and names Mate as the app signing in. */
 export function zeropsHqLoginUrl(back: string): string {
   const url = new URL("/login", zeropsHqOrigin());
   url.searchParams.set("redirect", back);
+  url.searchParams.set("app", zeropsLoginAppCode());
   return url.toString();
 }
 

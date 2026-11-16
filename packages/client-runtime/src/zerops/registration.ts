@@ -6,6 +6,8 @@
  * pinned by tests rather than buried in a component.
  */
 
+import { ZEROPS_APP, type ZeropsApp } from "./app.ts";
+
 export interface ZeropsRegistrationInput {
   readonly email: string;
   readonly password: string;
@@ -40,6 +42,8 @@ export interface ZeropsRegistrationBody {
   readonly languageId: string;
   readonly claimZcpPool: boolean;
   readonly token: string;
+  /** Records the account as made in Mate; its verification e-mail links back to Mate's HQ sign-in. */
+  readonly app: ZeropsApp;
 }
 
 export function buildZeropsRegistrationBody(
@@ -55,6 +59,7 @@ export function buildZeropsRegistrationBody(
     languageId: "en",
     claimZcpPool: input.claimZcpPool ?? true,
     token: input.turnstileToken,
+    app: ZEROPS_APP,
   };
 }
 

@@ -20,6 +20,7 @@ import {
   severalMatesLine,
   zeropsSubdomainDomainFromPublicZone,
 } from "./containerAddress.ts";
+import { ZEROPS_APP, type ZeropsApp } from "./app.ts";
 import { creationUserRoles, withProjectGrant, type ProjectGrant } from "./projectAccess.ts";
 import { projectProcessSearchBody, zcpCreationUnderWay } from "./projectCreation.ts";
 import {
@@ -104,6 +105,8 @@ export interface ZeropsUser {
   readonly firstName?: string;
   readonly lastName?: string;
   readonly avatar?: ZeropsUserAvatar | null;
+  /** The app the account was made in, fixed for good; null for accounts made before Zerops kept it. */
+  readonly createdByApp?: ZeropsApp | null;
   readonly clientUserList?: ReadonlyArray<ZeropsClientMembership>;
 }
 
@@ -147,6 +150,7 @@ export interface ZeropsOrganizationMember {
     readonly email?: string;
     /** The same record `GET /user/info` carries; the official app draws members with it. */
     readonly avatar?: ZeropsUserAvatar | null;
+    readonly createdByApp?: ZeropsApp | null;
   };
 }
 
@@ -160,6 +164,11 @@ export interface OrganizationInvite {
   readonly canCreateProjects: boolean;
   readonly canViewFinances: boolean;
   readonly canEditFinances: boolean;
+  /**
+   * The app the invitation e-mail links back to, and a new account is recorded as made in.
+   * Mate's own (`ZEROPS_APP`) when left out.
+   */
+  readonly app?: ZeropsApp;
 }
 
 export interface ZeropsProject {
@@ -1492,7 +1501,7 @@ export class ZeropsApiClient {
   ): Promise<void> {
     await this.#request(
       `/client/${clientId}/user`,
-      { method: "POST", body: JSON.stringify(invite) },
+      { method: "POST", body: JSON.stringify({ app: ZEROPS_APP, ...invite }) },
       {
         operationKind: "project-write",
         ignoreAnswer: true,
@@ -1512,7 +1521,7 @@ export class ZeropsApiClient {
   ): Promise<void> {
     await this.#request(
       `/client/${clientId}/user/connect`,
-      { method: "PUT", body: JSON.stringify(invite) },
+      { method: "PUT", body: JSON.stringify({ app: ZEROPS_APP, ...invite }) },
       {
         operationKind: "project-write",
         ignoreAnswer: true,
@@ -1564,7 +1573,7 @@ export class ZeropsApiClient {
    */
   async updateOrganizationMember(
     clientUserId: string,
-    membership: Omit<OrganizationInvite, "email">,
+    membership: Omit<OrganizationInvite, "email" | "app">,
     beforeWrite?: () => Promise<void>,
   ): Promise<void> {
     await this.#request(
