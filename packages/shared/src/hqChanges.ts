@@ -195,6 +195,17 @@ export type HqCorePush = typeof HqCorePush.Type;
 export const HqDraftReason = Schema.String;
 export type HqDraftReason = typeof HqDraftReason.Type;
 
+/**
+ * A person's ask to have an open change merged, where they may not merge it themselves: who asked
+ * and when. It stays through later pushes and ends with the change, or when it is taken back.
+ */
+export const HqMergeAsk = Schema.Struct({
+  /** The Zerops user id of the person who asked. */
+  by: Schema.String,
+  at: Instant,
+});
+export type HqMergeAsk = typeof HqMergeAsk.Type;
+
 export const HqChange = Schema.Struct({
   recipeValidation: Schema.optionalKey(HqRecipeValidation),
   problems: Schema.optionalKey(Schema.Array(HqProblem)),
@@ -262,6 +273,16 @@ export const HqChange = Schema.Struct({
   ready: Schema.Boolean,
   /** HQ's latest own push on its branch ({@link HqCorePush}); absent where HQ never moved it. */
   corePush: Schema.optionalKey(HqCorePush),
+  /**
+   * On an open change: somebody asked for it to be merged ({@link HqMergeAsk}). Absent where
+   * nobody asked, on a merged or closed change, and from an older HQ.
+   */
+  mergeAsk: Schema.optionalKey(HqMergeAsk),
+  /**
+   * On an open change: the other open changes of its repository its head holds, nearest first, so
+   * it merges after them. Absent where it builds on none, and from an older HQ.
+   */
+  buildsOn: Schema.optionalKey(Schema.Array(ChangeNumber)),
   /**
    * On an open change described before a push: why it is a draft again ({@link HqDraftReason}).
    * Absent otherwise, and gone once it is described again.
@@ -638,6 +659,11 @@ export const MateChanges = Schema.Struct({
    * per Mate and repository off any task, and for a Mate in no application.
    */
   openPerBranch: Schema.optionalKey(Schema.Literal(true)),
+  /**
+   * For a Mate in an application that limits who merges and releases: the person it works for may
+   * be unable to merge. Absent where nothing is limited, and from an older HQ.
+   */
+  mergeLimited: Schema.optionalKey(Schema.Literal(true)),
 });
 export type MateChanges = typeof MateChanges.Type;
 
