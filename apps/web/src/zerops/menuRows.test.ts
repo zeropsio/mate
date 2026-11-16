@@ -4,7 +4,7 @@ import {
   projectsScope,
   type AccountStore,
 } from "@t3tools/client-runtime/data";
-import { buildZeropsGroupTree, type ZeropsProject } from "@t3tools/client-runtime/zerops";
+import { buildCanonicalGroupTree, type ZeropsProject } from "@t3tools/client-runtime/zerops";
 import type { HqStructure } from "@t3tools/client-runtime/zerops/hq";
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import { AtomRegistry } from "effect/reactivity";
@@ -54,8 +54,8 @@ const STRUCTURE: HqStructure = {
 
 /** The projects in the order the menu draws them: its one rule, newest first. */
 const drawnOrder = (frame: MenuRows) =>
-  buildZeropsGroupTree(frame.rows, { order: "newest" }).groups.flatMap(({ environments }) =>
-    environments.map(({ item }) => item.project.id),
+  buildCanonicalGroupTree(frame.rows, { order: "newest" }).groups.flatMap(({ environments }) =>
+    environments.flatMap(({ item }) => (item === undefined ? [] : [item.project.id])),
   );
 
 describe("menuRowsAtom", () => {

@@ -36,7 +36,7 @@ import { faceAction, NO_FACE_ACTION } from "@t3tools/client-runtime/data";
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import {
   assignCandidateMateTints,
-  buildZeropsGroupTree,
+  buildCanonicalGroupTree,
   changedMateFace,
   hasMate,
   kindOfRole,
@@ -367,7 +367,7 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
   // projects page draws it (F29: a birth cut before its Mate was attached leaves its one empty).
   const groupTree = useMemo(
     () =>
-      buildZeropsGroupTree(candidates, {
+      buildCanonicalGroupTree(candidates, {
         rank: rankZeropsCandidateForListing,
         ...projectOrder,
         apps: emptyApplications(hqStructure, activeOrganization?.id),
@@ -404,15 +404,15 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
       const entry = groupTree.groups.find(({ group }) => group.groupId === groupId);
       if (entry === undefined || entry.group.pending.some((member) => member.kind === "mate"))
         return undefined;
-      const mates = entry.environments.filter(({ item }) => hasMate(item));
-      if (mates.length !== 1 || mates[0]!.item.project.id !== candidate.project.id)
-        return undefined;
+      const held = entry.environments.flatMap(({ item }) => (item === undefined ? [] : [item]));
+      const mates = held.filter(hasMate);
+      if (mates.length !== 1 || mates[0]!.project.id !== candidate.project.id) return undefined;
       const app =
         hqStructure.orgId === activeOrganization?.id
           ? hqStructure.structure?.apps.find(({ id }) => id === groupId)
           : undefined;
       return lastMateDeletionTarget(
-        entry.environments.map(({ item }) => item.project),
+        held.map((item) => item.project),
         {
           id: entry.group.groupId,
           name: entry.group.name,
@@ -898,7 +898,7 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
       const siblings = (
         groupTree.groups.find((entry) => entry.group.groupId === groupId)?.environments ?? []
       )
-        .map(({ item }) => item)
+        .flatMap(({ item }) => (item === undefined ? [] : [item]))
         .filter(hasMate);
       const landing = landingAfterDelete({
         deleted: deleted.project.id,

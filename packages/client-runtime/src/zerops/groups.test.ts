@@ -1,14 +1,13 @@
 import * as Schema from "effect/Schema";
 import { HqGitNavigationEnvironment } from "@t3tools/shared/hqStream";
 import { gitEnvironment } from "../data/__fixtures__/hqWire.ts";
-import { deriveCanonicalGroups } from "./groups.ts";
 import { MATE_SHAPE_IDS, MATE_TINT_IDS } from "@t3tools/shared/brand";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsProject } from "./api.ts";
 import {
   changedMateFace,
-  deriveZeropsGroups,
+  deriveCanonicalGroups,
   formatMateFace,
   generateZeropsGroupId,
   appProjectName,
@@ -269,9 +268,9 @@ describe("generateZeropsGroupId", () => {
   });
 });
 
-describe("deriveZeropsGroups", () => {
+describe("deriveCanonicalGroups", () => {
   it("groups environments by where HQ places them and leaves the rest ungrouped", () => {
-    const result = deriveZeropsGroups(
+    const result = deriveCanonicalGroups(
       [
         project("crm-dev", { hq: placed("aaa", "mate") }),
         project("crm-prod", { hq: placed("aaa", "production") }),
@@ -282,7 +281,7 @@ describe("deriveZeropsGroups", () => {
     );
 
     expect(result.groups.map((group) => group.groupId)).toEqual(["aaa", "bbb"]);
-    expect(result.groups[0]?.environments.map((environment) => environment.project.name)).toEqual([
+    expect(result.groups[0]?.environments.map((environment) => environment.project?.name)).toEqual([
       "crm-dev",
       "crm-prod",
     ]);
@@ -290,7 +289,7 @@ describe("deriveZeropsGroups", () => {
   });
 
   it("orders environments Mate → stage → production, then by name", () => {
-    const result = deriveZeropsGroups(
+    const result = deriveCanonicalGroups(
       [
         project("d", { hq: placed("aaa", "production") }),
         project("c", { hq: placed("aaa", "stage") }),
@@ -302,7 +301,7 @@ describe("deriveZeropsGroups", () => {
 
     expect(
       result.groups[0]?.environments.map((environment) => [
-        environment.project.name,
+        environment.project?.name,
         environment.role,
       ]),
     ).toEqual([
@@ -314,7 +313,7 @@ describe("deriveZeropsGroups", () => {
   });
 
   it("orders Mates of an application by the names they go by under it", () => {
-    const result = deriveZeropsGroups(
+    const result = deriveCanonicalGroups(
       [
         project("SPN - Zed", { hq: placed("aaa", "mate", { appName: "SPN" }) }),
         project("Tom", { hq: placed("aaa", "mate", { appName: "SPN" }) }),
@@ -323,7 +322,7 @@ describe("deriveZeropsGroups", () => {
       { order: "name" },
     );
 
-    expect(result.groups[0]?.environments.map((environment) => environment.project.name)).toEqual([
+    expect(result.groups[0]?.environments.map((environment) => environment.project?.name)).toEqual([
       "SPN - Abe",
       "Tom",
       "SPN - Zed",
@@ -331,7 +330,7 @@ describe("deriveZeropsGroups", () => {
   });
 
   it("names a group after its application in HQ, and says so", () => {
-    const result = deriveZeropsGroups(
+    const result = deriveCanonicalGroups(
       [project("crm-dev", { hq: placed("aaa", "mate", { appName: "Beviro CRM" }) })],
       { order: "name" },
     );
@@ -342,7 +341,7 @@ describe("deriveZeropsGroups", () => {
   // `mate-rig-e2e-a`, 2026-10-02: a New project that stopped before its Mate left an application
   // with no project, drawn nowhere — nobody could add the Mate it was made for.
   it("draws an application HQ holds with no project as its group, empty, as HQ names it", () => {
-    const result = deriveZeropsGroups(
+    const result = deriveCanonicalGroups(
       [project("crm-dev", { hq: placed("aaa", "mate", { appName: "Beviro CRM" }) })],
       {
         order: "name",
@@ -369,7 +368,7 @@ describe("deriveZeropsGroups", () => {
 
   // HQ refuses an application without a name: one read blank is a read problem, its id the handle.
   it("says the name is unread when its application's name reads blank, the id as its handle", () => {
-    const result = deriveZeropsGroups([project("crm-dev", { hq: placed("aaa", "mate") })], {
+    const result = deriveCanonicalGroups([project("crm-dev", { hq: placed("aaa", "mate") })], {
       order: "name",
     });
 
@@ -377,7 +376,7 @@ describe("deriveZeropsGroups", () => {
   });
 
   it("orders groups by display name, case-insensitively", () => {
-    const result = deriveZeropsGroups(
+    const result = deriveCanonicalGroups(
       [
         project("one", { hq: placed("aaa", "mate", { appName: "zebra" }) }),
         project("two", { hq: placed("bbb", "mate", { appName: "Apple" }) }),
@@ -390,16 +389,16 @@ describe("deriveZeropsGroups", () => {
   });
 
   it("reports the production environment of a group, and none when there is not exactly one", () => {
-    const [single] = deriveZeropsGroups(
+    const [single] = deriveCanonicalGroups(
       [
         project("p", { hq: placed("aaa", "production") }),
         project("d", { hq: placed("aaa", "mate") }),
       ],
       { order: "name" },
     ).groups;
-    expect(single?.production?.project.name).toBe("p");
+    expect(single?.production?.project?.name).toBe("p");
 
-    const [ambiguous] = deriveZeropsGroups(
+    const [ambiguous] = deriveCanonicalGroups(
       [
         project("p1", { hq: placed("aaa", "production") }),
         project("p2", { hq: placed("aaa", "production") }),
@@ -408,14 +407,14 @@ describe("deriveZeropsGroups", () => {
     ).groups;
     expect(ambiguous?.production).toBeUndefined();
 
-    const [none] = deriveZeropsGroups([project("d", { hq: placed("aaa", "mate") })], {
+    const [none] = deriveCanonicalGroups([project("d", { hq: placed("aaa", "mate") })], {
       order: "name",
     }).groups;
     expect(none?.production).toBeUndefined();
   });
 
   it("orders group names numerically, not lexically: env2 < env10", () => {
-    const result = deriveZeropsGroups(
+    const result = deriveCanonicalGroups(
       [
         project("env10", { hq: placed("aaa", "mate", { appName: "env10" }) }),
         project("env2", { hq: placed("bbb", "mate", { appName: "env2" }) }),
@@ -427,14 +426,14 @@ describe("deriveZeropsGroups", () => {
   });
 
   it("breaks an environment name tie by project id, deterministically", () => {
-    const forward = deriveZeropsGroups(
+    const forward = deriveCanonicalGroups(
       [
         project("dev", { hq: placed("aaa", "mate"), id: "z" }),
         project("dev", { hq: placed("aaa", "mate"), id: "a" }),
       ],
       { order: "name" },
     );
-    const backward = deriveZeropsGroups(
+    const backward = deriveCanonicalGroups(
       [
         project("dev", { hq: placed("aaa", "mate"), id: "a" }),
         project("dev", { hq: placed("aaa", "mate"), id: "z" }),
@@ -442,8 +441,8 @@ describe("deriveZeropsGroups", () => {
       { order: "name" },
     );
 
-    expect(forward.groups[0]?.environments.map((entry) => entry.project.id)).toEqual(["a", "z"]);
-    expect(backward.groups[0]?.environments.map((entry) => entry.project.id)).toEqual(["a", "z"]);
+    expect(forward.groups[0]?.environments.map((entry) => entry.project?.id)).toEqual(["a", "z"]);
+    expect(backward.groups[0]?.environments.map((entry) => entry.project?.id)).toEqual(["a", "z"]);
   });
 
   it("is stable regardless of the order projects arrive in", () => {
@@ -452,14 +451,14 @@ describe("deriveZeropsGroups", () => {
       project("shop-dev", { hq: placed("bbb", "mate") }),
       project("crm-dev", { hq: placed("aaa", "mate") }),
     ];
-    const forward = deriveZeropsGroups(projects, { order: "name" });
-    const backward = deriveZeropsGroups(projects.toReversed(), { order: "name" });
+    const forward = deriveCanonicalGroups(projects, { order: "name" });
+    const backward = deriveCanonicalGroups(projects.toReversed(), { order: "name" });
 
     expect(JSON.stringify(forward)).toBe(JSON.stringify(backward));
   });
 
   it("leaves a project HQ does not place ungrouped, whatever tags it carries, rather than throwing", () => {
-    const result = deriveZeropsGroups(
+    const result = deriveCanonicalGroups(
       [
         project("legacy", { tagList: undefined }),
         project("planted", { tagList: ["mate:g:aaa", "mate:role:dev", "mate:name:Acme"] }),
@@ -472,9 +471,9 @@ describe("deriveZeropsGroups", () => {
   });
 });
 
-describe("deriveZeropsGroups — newest first", () => {
+describe("deriveCanonicalGroups — newest first", () => {
   it("orders groups by their earliest member's created time, newest first", () => {
-    const result = deriveZeropsGroups(
+    const result = deriveCanonicalGroups(
       [
         project("crm-dev", { hq: placed("aaa"), created: "2024-01-01T00:00:00Z" }),
         project("shop-dev", { hq: placed("bbb"), created: "2024-03-01T00:00:00Z" }),
@@ -487,7 +486,7 @@ describe("deriveZeropsGroups — newest first", () => {
   });
 
   it("takes a group's birth from its earliest member — a later stage must not reorder it", () => {
-    const result = deriveZeropsGroups(
+    const result = deriveCanonicalGroups(
       [
         project("crm-dev", { hq: placed("aaa"), created: "2024-01-01T00:00:00Z" }),
         // aaa's prod is added after bbb was born; if the group's birth were
@@ -506,7 +505,7 @@ describe("deriveZeropsGroups — newest first", () => {
   });
 
   it("sorts a group with no created member last, and ties by name then id", () => {
-    const result = deriveZeropsGroups(
+    const result = deriveCanonicalGroups(
       [
         project("zzz", { hq: placed("aaa", "mate", { appName: "Zzz" }) }),
         project("bbb", {
@@ -524,7 +523,7 @@ describe("deriveZeropsGroups — newest first", () => {
   });
 
   it("orders ungrouped projects by their own created time, newest first, missing created last", () => {
-    const result = deriveZeropsGroups(
+    const result = deriveCanonicalGroups(
       [
         project("old", { created: "2024-01-01T00:00:00Z" }),
         project("new", { created: "2024-06-01T00:00:00Z" }),
@@ -537,7 +536,7 @@ describe("deriveZeropsGroups — newest first", () => {
   });
 
   it("breaks an ungrouped created tie by name, then id", () => {
-    const result = deriveZeropsGroups(
+    const result = deriveCanonicalGroups(
       [
         project("b", { id: "z", created: "2024-01-01T00:00:00Z" }),
         project("a", { id: "a", created: "2024-01-01T00:00:00Z" }),
@@ -554,8 +553,8 @@ describe("deriveZeropsGroups — newest first", () => {
       project("shop-dev", { hq: placed("bbb"), created: "2024-03-01T00:00:00Z" }),
       project("loose", { created: "2024-02-01T00:00:00Z" }),
     ];
-    const forward = deriveZeropsGroups(projects, { order: "newest" });
-    const backward = deriveZeropsGroups(projects.toReversed(), { order: "newest" });
+    const forward = deriveCanonicalGroups(projects, { order: "newest" });
+    const backward = deriveCanonicalGroups(projects.toReversed(), { order: "newest" });
 
     expect(JSON.stringify(forward)).toBe(JSON.stringify(backward));
   });
@@ -581,7 +580,7 @@ function birth(
   };
 }
 
-describe("deriveZeropsGroups — a creation awaiting its project", () => {
+describe("deriveCanonicalGroups — a creation awaiting its project", () => {
   // Pressed at 10:00:00; the platform lists the project before its call answers with the id.
   const T0 = Date.parse("2026-10-02T10:00:00.000Z");
   const at = (seconds: string) => `2026-10-02T${seconds}.000Z`;
@@ -590,30 +589,35 @@ describe("deriveZeropsGroups — a creation awaiting its project", () => {
     awaitingProject: true,
     ...over,
   });
-  const drawn = (tree: ReturnType<typeof deriveZeropsGroups>) => ({
+  const drawn = (tree: ReturnType<typeof deriveCanonicalGroups>) => ({
     ungrouped: tree.ungrouped.map((entry) => entry.id),
     pending: tree.groups.flatMap((group) => group.pending.map((member) => member.projectId)),
   });
 
   it("holds back a listed unplaced project while it waits, and is that project once the id matches", () => {
     const projects = [project("p-acme", { created: at("10:00:02") })];
-    expect(drawn(deriveZeropsGroups(projects, { order: "name", births: [awaiting()] }))).toEqual({
-      ungrouped: [],
-      pending: ["c-acme"],
-    });
+    expect(drawn(deriveCanonicalGroups(projects, { order: "name", births: [awaiting()] }))).toEqual(
+      {
+        ungrouped: [],
+        pending: ["c-acme"],
+      },
+    );
     expect(
-      drawn(deriveZeropsGroups(projects, { order: "name", births: [birth("p-acme", "aaa", T0)] })),
+      drawn(
+        deriveCanonicalGroups(projects, { order: "name", births: [birth("p-acme", "aaa", T0)] }),
+      ),
     ).toEqual({ ungrouped: [], pending: ["p-acme"] });
   });
 
   it("draws another person's project made in the same span once the id arrives and is not it", () => {
     const projects = [project("p-other", { created: at("10:00:01") })];
     expect(
-      drawn(deriveZeropsGroups(projects, { order: "name", births: [awaiting()] })).ungrouped,
+      drawn(deriveCanonicalGroups(projects, { order: "name", births: [awaiting()] })).ungrouped,
     ).toEqual([]);
     expect(
-      drawn(deriveZeropsGroups(projects, { order: "name", births: [birth("p-acme", "aaa", T0)] }))
-        .ungrouped,
+      drawn(
+        deriveCanonicalGroups(projects, { order: "name", births: [birth("p-acme", "aaa", T0)] }),
+      ).ungrouped,
     ).toEqual(["p-other"]);
   });
 
@@ -643,13 +647,13 @@ describe("deriveZeropsGroups — a creation awaiting its project", () => {
       ungrouped: [],
     },
   ])("$case", ({ projects, births, ungrouped }) => {
-    expect(drawn(deriveZeropsGroups(projects, { order: "name", births })).ungrouped).toEqual(
+    expect(drawn(deriveCanonicalGroups(projects, { order: "name", births })).ungrouped).toEqual(
       ungrouped,
     );
   });
 });
 
-describe("deriveZeropsGroups — creations under way", () => {
+describe("deriveCanonicalGroups — creations under way", () => {
   it("replaces an uncertain creation with the project bearing its HQ intent, even after a rename", () => {
     const pending = {
       ...birth("local", "aaa", 1),
@@ -662,9 +666,9 @@ describe("deriveZeropsGroups — creations under way", () => {
       tagList: ["mate"],
       hq: placed("aaa", "mate", { mate: { face: "", birthId: "intent-1" } }),
     });
-    const tree = deriveZeropsGroups([listed], { order: "name", births: [pending] });
+    const tree = deriveCanonicalGroups([listed], { order: "name", births: [pending] });
     expect(tree.groups[0]?.pending).toEqual([]);
-    expect(tree.groups[0]?.environments.map((entry) => entry.project.id)).toEqual(["real"]);
+    expect(tree.groups[0]?.environments.map((entry) => entry.project?.id)).toEqual(["real"]);
   });
 
   it("keeps a different intent's creation when two Mates have the same name", () => {
@@ -680,7 +684,7 @@ describe("deriveZeropsGroups — creations under way", () => {
       hq: placed("aaa"),
     });
     expect(
-      deriveZeropsGroups([listed], { order: "name", births: [pending] }).groups[0]?.pending,
+      deriveCanonicalGroups([listed], { order: "name", births: [pending] }).groups[0]?.pending,
     ).toHaveLength(1);
   });
   it.each([
@@ -713,7 +717,7 @@ describe("deriveZeropsGroups — creations under way", () => {
       environments: { new: [] },
     },
   ])("$case", ({ projects, births, pending, environments }) => {
-    const result = deriveZeropsGroups(projects, { order: "name", births });
+    const result = deriveCanonicalGroups(projects, { order: "name", births });
     expect(
       Object.fromEntries(
         result.groups.map((group) => [
@@ -726,7 +730,7 @@ describe("deriveZeropsGroups — creations under way", () => {
       Object.fromEntries(
         result.groups.map((group) => [
           group.groupId,
-          group.environments.map((entry) => entry.project.id),
+          group.environments.map((entry) => entry.project?.id),
         ]),
       ),
     ).toEqual(environments);
@@ -734,7 +738,7 @@ describe("deriveZeropsGroups — creations under way", () => {
   });
 
   it("carries what the creation knew of the pending member", () => {
-    const [group] = deriveZeropsGroups([], {
+    const [group] = deriveCanonicalGroups([], {
       order: "name",
       births: [birth("p-new", "aaa", 7, { kind: "production" })],
     }).groups;
@@ -752,7 +756,7 @@ describe("deriveZeropsGroups — creations under way", () => {
     { case: "on its way", failed: undefined, expected: undefined },
     { case: "stopped before the platform took it", failed: true, expected: true },
   ])("says whether a pending member is $case", ({ failed, expected }) => {
-    const [group] = deriveZeropsGroups([], {
+    const [group] = deriveCanonicalGroups([], {
       order: "name",
       births: [{ ...birth("g-new", "aaa", 1), ...(failed === undefined ? {} : { failed }) }],
     }).groups;
@@ -761,7 +765,7 @@ describe("deriveZeropsGroups — creations under way", () => {
 
   // A pending member is named as a listed one is: by what follows its application's name.
   it("names a pending member by its own name under its application, as a listed one is", () => {
-    const [group] = deriveZeropsGroups([], {
+    const [group] = deriveCanonicalGroups([], {
       order: "name",
       births: [
         birth("p-quinn", "aaa", 1, { displayName: "Quinn" }),
@@ -772,7 +776,7 @@ describe("deriveZeropsGroups — creations under way", () => {
   });
 
   it("wears the face its person picked while it is pending, and none it was not given", () => {
-    const [group] = deriveZeropsGroups([], {
+    const [group] = deriveCanonicalGroups([], {
       order: "name",
       births: [
         birth("p-quinn", "aaa", 1, { face: { tint: "coral", shape: "gem" } }),
@@ -789,7 +793,7 @@ describe("deriveZeropsGroups — creations under way", () => {
     { case: "its application's name in HQ first", appName: "Stored", expected: "Stored" },
     { case: "then the name its creation gave it", appName: "", expected: "Todo" },
   ])("names a group being created from $case", ({ appName, expected }) => {
-    const [group] = deriveZeropsGroups(
+    const [group] = deriveCanonicalGroups(
       [project("crm-dev", { hq: placed("aaa", "mate", { appName }) })],
       {
         order: "name",
@@ -800,7 +804,7 @@ describe("deriveZeropsGroups — creations under way", () => {
   });
 
   it("says a group named by its creation was named that way", () => {
-    const [group] = deriveZeropsGroups([], {
+    const [group] = deriveCanonicalGroups([], {
       order: "name",
       births: [birth("p", "aaa", 1)],
     }).groups;
@@ -808,7 +812,7 @@ describe("deriveZeropsGroups — creations under way", () => {
   });
 
   it("orders a group only its creations date by when they started, newest first", () => {
-    const result = deriveZeropsGroups(
+    const result = deriveCanonicalGroups(
       [
         project("crm-dev", { hq: placed("aaa"), created: "2024-01-01T00:00:00Z" }),
         project("shop-dev", { hq: placed("bbb"), created: "2024-03-01T00:00:00Z" }),
@@ -923,7 +927,7 @@ describe("a Mate's face changed after its birth", () => {
   });
 });
 
-describe("deriveZeropsGroups — the viewer's own order", () => {
+describe("deriveCanonicalGroups — the viewer's own order", () => {
   const PROJECTS = [
     project("crm-dev", {
       hq: placed("aaa", "mate", { appName: "Crm" }),
@@ -968,7 +972,7 @@ describe("deriveZeropsGroups — the viewer's own order", () => {
       groups: ["bbb", "ccc", "aaa"],
     },
   ])("orders the groups as the viewer arranged them: $case", ({ customOrder, groups }) => {
-    const result = deriveZeropsGroups(PROJECTS, {
+    const result = deriveCanonicalGroups(PROJECTS, {
       order: "custom",
       ...(customOrder === undefined ? {} : { customOrder }),
     });
@@ -976,7 +980,7 @@ describe("deriveZeropsGroups — the viewer's own order", () => {
   });
 
   it("keeps the ungrouped projects newest first — only groups are arranged by hand", () => {
-    const result = deriveZeropsGroups(PROJECTS, { order: "custom", customOrder: ["aaa"] });
+    const result = deriveCanonicalGroups(PROJECTS, { order: "custom", customOrder: ["aaa"] });
     expect(result.ungrouped.map((entry) => entry.id)).toEqual(["loose-new", "loose-old"]);
   });
 });

@@ -1,4 +1,4 @@
-import { shownCanonicalHqListNavigationAtom } from "@t3tools/client-runtime/data";
+import { shownHqListNavigationAtom } from "@t3tools/client-runtime/data";
 /**
  * The overview's pieces the menu keeps: the organization's projects as HQ names them, each as the
  * overview's headline weighs it (the closed rail's line), and ⌥0, which opens the overview from
@@ -28,7 +28,7 @@ import { stopServing } from "./SidebarProductionChip.logic";
 /** The organization's projects as HQ's navigation names them, by name. */
 export function useMenuProjects(): ReadonlyArray<SidebarCreateProject> {
   const session = useZeropsSession();
-  const navigation = useAtomValue(shownCanonicalHqListNavigationAtom);
+  const navigation = useAtomValue(shownHqListNavigationAtom);
   const orgId = session.activeOrganization?.id;
   const apps = navigation.orgId === orgId ? navigation.structure?.apps : undefined;
   return useMemo(

@@ -107,7 +107,7 @@ function stageOf(
     projectId: `shop-${name}`,
     name,
     stop: {
-      projectId: `shop-${name}`,
+      id: `shop-${name}`,
       name,
       state: "deployed",
       version: {

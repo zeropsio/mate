@@ -106,7 +106,7 @@ import { zeropsMatesAtom } from "../zerops/useZeropsMates";
 import { useThreadSearch } from "../state/queries";
 import {
   shownHqListedMatesAtom,
-  shownCanonicalHqListNavigationAtom,
+  shownHqListNavigationAtom,
   shownHqMateDirectoryAtom,
   shownMateVisibilitiesAtom,
   isListedMateEnvironment,
@@ -1269,7 +1269,7 @@ export function OpenCommandPaletteDialog(props: {
     shownMateVisibilitiesAtom(Object.keys(hqMates.mates).join(",")),
   );
   const candidateListing = useAtomValue(candidateListingAtom);
-  const hqStructure = useAtomValue(shownCanonicalHqListNavigationAtom);
+  const hqStructure = useAtomValue(shownHqListNavigationAtom);
   const mateNames = useMemo(
     () => hqChatMateNames(heldCandidates(candidateListing).rows, hqStructure?.structure ?? null),
     [candidateListing, hqStructure],

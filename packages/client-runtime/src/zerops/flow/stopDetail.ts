@@ -20,7 +20,7 @@ import type { GitDelivery } from "../gitDelivery.ts";
 import type { ReleaseCreationFailure, ReleaseDeployFailure } from "../groupDeploys.ts";
 import {
   deployedVersion,
-  environmentRow,
+  environmentRowDisplay,
   type DeployedVersion,
   type EnvironmentServiceState,
   type GroupRowTone,
@@ -734,8 +734,7 @@ export function serviceRows(input: {
     const version = settledVersionOf(deployment, settled, read);
     // The service's own row: `stopView` reads only its version and tone, which the one service
     // and HQ's record of its deploys decide; the row's name, tier and source go unread.
-    const row = environmentRow({
-      projectId: "",
+    const row = environmentRowDisplay({
       name: input.environment,
       tier: "stage",
       sources: [],

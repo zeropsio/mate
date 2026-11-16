@@ -391,7 +391,7 @@ function stageLine(
   pending: boolean | undefined,
 ): PlaceLine {
   const base = {
-    projectId: stop.projectId,
+    projectId: stop.id,
     kind: "stage" as const,
     name: stop.name,
     addresses: stop.addresses,
@@ -490,9 +490,9 @@ export function placeLines(input: {
     ...stages.map((stop) =>
       stageLine(
         stop,
-        input.stageChips?.get(stop.projectId),
-        downOf(stop.projectId),
-        input.addressPending?.get(stop.projectId),
+        input.stageChips?.get(stop.id),
+        downOf(stop.id),
+        input.addressPending?.get(stop.id),
       ),
     ),
     ...(input.flow.unreadStages ?? []).map((name): PlaceLine => ({
@@ -552,7 +552,7 @@ export function placeLines(input: {
       ...staged,
       {
         ...prod,
-        projectId: stop.projectId,
+        projectId: stop.id,
         addresses: [],
         git: stop.git,
         dot:
@@ -571,13 +571,10 @@ export function placeLines(input: {
       ? flowLine(production, since, input.rollsBackTo)
       : chipLine(input.chip, {
           since,
-          down: downOf(stop?.projectId),
+          down: downOf(stop?.id),
           rollsBackTo: input.rollsBackTo,
         });
-  return [
-    ...staged,
-    { ...prod, projectId: stop?.projectId, addresses: stop?.addresses ?? [], ...said },
-  ];
+  return [...staged, { ...prod, projectId: stop?.id, addresses: stop?.addresses ?? [], ...said }];
 }
 
 /** What a place is called on its card: production in full, a stage by its own name, capitalised. */

@@ -7,7 +7,7 @@ import { hqAppFamily, hqAppsScope } from "../families/hqNavigation.ts";
 import { hqMateScope } from "../families/hqMate.ts";
 import { hqAppDetailScope } from "../families/hqAppDetail.ts";
 import { inventoryPlacements } from "./inventory.ts";
-import { canonicalHqNavigation } from "./hqNavigation.ts";
+import { hqNavigation } from "./hqNavigation.ts";
 import { environmentSlots } from "../../zerops/groupEnvironments.ts";
 import { linkKeys, type OperationReceipt } from "../model.ts";
 import { makeAccountStore, readsOfState } from "../store.ts";
@@ -19,7 +19,7 @@ import {
   type HqJob,
 } from "../../zerops/hq/environments.ts";
 import { environmentById } from "./appEnvironments.ts";
-import { canonicalProjectFlow, projectFlow } from "./projectFlow.ts";
+import { projectFlow } from "./projectFlow.ts";
 import { productionRelease } from "../../zerops/projectFlow.ts";
 
 const key = {
@@ -65,7 +65,8 @@ function fixture(
             {
               name: "production",
               tier: "production",
-              projectId: "prod",
+              id: HqEnvironmentId.make("prod"),
+              target: { kind: "zerops", projectId: ProjectId.make("prod") },
               sources: ["release"],
               order: 1,
               keyHeld: true,
@@ -116,9 +117,7 @@ describe("Projects compact flow", () => {
       value: { name: "Shop partial" },
     });
     expect(
-      canonicalProjectFlow
-        .derive(read, key)
-        ?.environments.map(({ id, target }) => ({ id, target })),
+      projectFlow.derive(read, key)?.environments.map(({ id, target }) => ({ id, target })),
     ).toEqual([{ id: "prod", target: { kind: "zerops", projectId: "prod" } }]);
     f.registry.dispose();
   });
@@ -154,7 +153,7 @@ describe("Projects compact flow", () => {
         },
       })),
     });
-    const atom = f.store.data.project(canonicalProjectFlow, key);
+    const atom = f.store.data.project(projectFlow, key);
     const changes: Array<{ readonly read: boolean; readonly environments: number }> = [];
     const stop = f.registry.subscribe(
       atom,
@@ -192,7 +191,7 @@ describe("Projects compact flow", () => {
       expect(flow.environments).toEqual([]);
       expect(changes.every((change) => change.read)).toBe(true);
       expect(changes.at(-1)?.environments).toBe(0);
-      const can = canonicalHqNavigation.derive(read, "org").structure?.apps[0]?.can;
+      const can = hqNavigation.derive(read, "org").structure?.apps[0]?.can;
       const rows = environmentSlots({
         environments: flow.environments,
         devstages: [],
@@ -301,7 +300,7 @@ describe("Projects compact flow", () => {
         })),
       });
       try {
-        return canonicalProjectFlow
+        return projectFlow
           .derive(readsOfState(f.store.state()), key)
           ?.codeRepos?.map(({ name }) => name);
       } finally {
@@ -486,7 +485,7 @@ it("An environment's id never opens a Zerops project.", () => {
       return reads.fact(family, id);
     },
   };
-  const flow = canonicalProjectFlow.derive(tracked, key)!;
+  const flow = projectFlow.derive(tracked, key)!;
   expect([...new Set(projectsRead)]).toEqual(["project-stage"]);
   expect(flow.environments.map((row) => ({ id: row.id, target: row.target }))).toEqual([
     { id: "git-id-is-a-real-project", target: { kind: "git", branch: "main", delivery: "direct" } },
@@ -500,15 +499,12 @@ it("An environment's id never opens a Zerops project.", () => {
   expect(
     environmentById.derive(tracked, { ...key, id: HqEnvironmentId.make("project-stage") }),
   ).toBeUndefined();
-  expect(projectFlow.derive(reads, key)?.environments.map((row) => row.projectId)).toEqual([
-    "project-stage",
-  ]);
   registry.dispose();
 });
 it("One repository's two runtime services share one environment identity and retain their own jobs.", () => {
   const registry = AtomRegistry.make();
   const store = makeAccountStore(registry);
-  const read = () => canonicalProjectFlow.derive(readsOfState(store.state()), key);
+  const read = () => projectFlow.derive(readsOfState(store.state()), key);
   expect(read()).toBeUndefined();
   seedRuntime(store, [runtimeEnvironment]);
   expect(read()?.environments.map((row) => row.id)).toEqual(["environment-stage"]);
@@ -560,8 +556,8 @@ describe("the version names the account's store states", () => {
       { id: "s2", activeAppVersion: { id: "v-1", name: null, source: "GIT" } },
       { id: "s3" },
     ]);
-    const services = canonicalProjectFlow.derive(readsOfState(f.store.state()), key)
-      ?.environmentInputs[0]?.services;
+    const services = projectFlow.derive(readsOfState(f.store.state()), key)?.environmentInputs[0]
+      ?.services;
     expect(services?.map(({ serviceId, appVersionName }) => [serviceId, appVersionName])).toEqual([
       ["s1", "main 3f9c1b2"],
       ["s2", undefined],
@@ -576,8 +572,8 @@ describe("the version names the account's store states", () => {
       { id: "s2", activeAppVersion: null },
       { id: "s3" },
     ]);
-    const services = canonicalProjectFlow.derive(readsOfState(f.store.state()), key)
-      ?.environmentInputs[0]?.services;
+    const services = projectFlow.derive(readsOfState(f.store.state()), key)?.environmentInputs[0]
+      ?.services;
     expect(services?.map(({ serviceId, activeVersionId }) => [serviceId, activeVersionId])).toEqual(
       [
         ["s1", "v-1"],
@@ -640,7 +636,7 @@ describe("what a Mate is told of production", () => {
       },
     ]);
     deliverReleases(f.store);
-    const flow = canonicalProjectFlow.derive(readsOfState(f.store.state()), key);
+    const flow = projectFlow.derive(readsOfState(f.store.state()), key);
     expect(productionRelease(flow)).toEqual({
       tag: "v0.2.0",
       taggedAt: "2026-10-16T19:44:40Z",
@@ -658,7 +654,7 @@ it.each(
   "An accepted $kind keeps $target production releasing until HQ publishes its rollout",
   ({ kind, target }) => {
     const f = fixture();
-    const atom = f.store.data.project(canonicalProjectFlow, key);
+    const atom = f.store.data.project(projectFlow, key);
     const read = () => f.registry.get(atom)!.release;
     const intent =
       kind === "release"

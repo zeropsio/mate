@@ -28,7 +28,7 @@ import * as accountForge from "~/zerops/accountForge";
 import * as mateOwners from "~/zerops/useZeropsMateOwners";
 import * as menuReadings from "~/zerops/useMenuMateReadings";
 import {
-  buildZeropsGroupTree,
+  buildCanonicalGroupTree,
   groupFlow,
   type CanonicalEnvironmentRow as EnvironmentRow,
   type FlowPullRequest,
@@ -37,7 +37,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
-  canonicalHqStructureOf,
+  hqStructureOf,
   placementsOf,
   placedMenuRows,
   placedNames,
@@ -879,7 +879,7 @@ describe("SidebarZeropsTree", () => {
   );
 
   it("shows a plain project's HQ application without a Mate before and after inventory arrives", () => {
-    const structure = canonicalHqStructureOf({
+    const structure = hqStructureOf({
       apps: [
         {
           id: "plain-app",
@@ -3645,12 +3645,14 @@ describe("the sidebar and the projects page read one group the same way", () => 
   ];
 
   it.each(cases)("$name", ({ candidates, reads: groupReads, expected }) => {
-    const group = buildZeropsGroupTree(candidates, { order: "name" }).groups[0]!;
+    const group = buildCanonicalGroupTree(candidates, { order: "name" }).groups[0]!;
     const page = groupFlow(
       groupFlowInputOf({
         groupId: group.group.groupId,
         members: groupMemberFactsOf(
-          group.environments,
+          group.environments.flatMap(({ item, role }) =>
+            item === undefined ? [] : [{ item, role }],
+          ),
           () => undefined,
           () => false,
           () => false,
@@ -4791,7 +4793,8 @@ describe("the menu's release offer", () => {
               {
                 name: "stage",
                 tier: "stage",
-                projectId: "crm-stage",
+                id: HqEnvironmentId.make("crm-stage"),
+                target: { kind: "zerops", projectId: ProjectId.make("crm-stage") },
                 sources: ["main"],
                 order: 1,
                 jobs: [],
@@ -4801,7 +4804,8 @@ describe("the menu's release offer", () => {
               {
                 name: "production",
                 tier: "production",
-                projectId: "crm-prod",
+                id: HqEnvironmentId.make("crm-prod"),
+                target: { kind: "zerops", projectId: ProjectId.make("crm-prod") },
                 sources: ["release"],
                 order: 2,
                 jobs: [],

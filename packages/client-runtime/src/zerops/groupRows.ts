@@ -35,8 +35,6 @@ export type GroupRowTone = "neutral" | "pending" | "good" | "bad";
 export interface EnvironmentRow {
   readonly git?: GitDelivery | undefined;
   readonly kind: "environment";
-  /** @deprecated Zerops-only compatibility address; canonical rows carry id and target. */
-  readonly projectId: string;
   readonly name: string;
   readonly tier: GroupEnvironmentTier;
   /** The branch it follows, or `release` for a production. */
@@ -238,7 +236,7 @@ function partException(
  * row that vanished until its first deploy would leave the person wondering
  * whether *Add stage* had worked at all.
  */
-function environmentRowDisplay(input: {
+export function environmentRowDisplay(input: {
   readonly name: string;
   readonly tier: GroupEnvironmentTier;
   readonly sources: ReadonlyArray<string> | "release";
@@ -249,7 +247,7 @@ function environmentRowDisplay(input: {
   readonly birth?: EnvironmentBirth | null | undefined;
   /** A production's newest release rollout: the parts it stopped (`ReleaseRollout.leftOut`). */
   readonly release?: ReleaseRollout | null | undefined;
-}): Omit<EnvironmentRow, "projectId"> {
+}): EnvironmentRow {
   const source = input.sources === "release" ? "release" : input.sources.join(" + ") || "—";
   const stopped = new Map(
     (input.release?.leftOut ?? []).flatMap((left) =>
@@ -317,8 +315,7 @@ function environmentRowDisplay(input: {
  * A row keyed by HQ's environment identity. It carries no `projectId`: a Zerops project is its
  * target's, and an environment delivered to Git has none (`zeropsProjectOf`).
  */
-export type CanonicalEnvironmentRow = Omit<EnvironmentRow, "projectId"> &
-  Omit<HqEnvironmentIdentity, "projectId">;
+export type CanonicalEnvironmentRow = EnvironmentRow & Omit<HqEnvironmentIdentity, "projectId">;
 
 /** What places an environment: its tier, and where HQ delivers it. */
 export type EnvironmentPlace = Pick<HqEnvironmentIdentity, "target"> & {
@@ -365,10 +362,4 @@ export function canonicalEnvironmentRow(
       ...(input.git === undefined ? {} : { git: input.git }),
     };
   return { ...environmentRowDisplay(input), id: input.id, target: input.target };
-}
-/** @deprecated Project-carrier DTO for unmigrated surfaces. */
-export function environmentRow(
-  input: Parameters<typeof environmentRowDisplay>[0] & { readonly projectId: string },
-): EnvironmentRow {
-  return { ...environmentRowDisplay(input), projectId: input.projectId };
 }

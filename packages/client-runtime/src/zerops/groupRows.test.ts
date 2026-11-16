@@ -10,7 +10,7 @@ import {
   deployedCommit,
   deployedVersion,
   deployTone,
-  environmentRow,
+  environmentRowDisplay,
   type EnvironmentServiceState,
 } from "./groupRows.ts";
 import { jobInFlight, type HqJob } from "./hq/environments.ts";
@@ -206,7 +206,7 @@ describe("deployTone", () => {
   });
 });
 
-describe("environmentRow", () => {
+describe("environmentRowDisplay", () => {
   const base = {
     projectId: "p-stage",
     name: "Acme - stage",
@@ -218,7 +218,7 @@ describe("environmentRow", () => {
     // compares its version with that one, so it names the same service whatever the order read.
     const web = "e1e2e3e4e5e6e7e8e9e0e1e2e3e4e5e6e7e8e9e0";
     const api = "a1a2a3a4a5a6a7a8a9a0a1a2a3a4a5a6a7a8a9a0";
-    const row = environmentRow({
+    const row = environmentRowDisplay({
       ...base,
       sources: ["main"],
       services: [
@@ -231,7 +231,7 @@ describe("environmentRow", () => {
   });
 
   it("names its source and nothing else before the first deploy", () => {
-    const row = environmentRow({
+    const row = environmentRowDisplay({
       ...base,
       sources: ["main"],
       services: [service("api", undefined)],
@@ -242,7 +242,7 @@ describe("environmentRow", () => {
   });
 
   it("names the commit it actually runs once something is deployed", () => {
-    const row = environmentRow({
+    const row = environmentRowDisplay({
       ...base,
       sources: ["main"],
       services: [service("api", "live", { version: SHA })],
@@ -254,7 +254,7 @@ describe("environmentRow", () => {
   it("stays on the commit it runs when the last deploy failed", () => {
     // The sha is the version's, not the branch head's: what is running is what
     // is running, whatever the failed attempt was for.
-    const row = environmentRow({
+    const row = environmentRowDisplay({
       ...base,
       sources: ["main"],
       services: [service("api", "failed", { version: SHA })],
@@ -278,7 +278,7 @@ describe("environmentRow", () => {
         },
       ],
     };
-    const row = environmentRow({
+    const row = environmentRowDisplay({
       ...base,
       sources: ["main"],
       services: [
@@ -294,7 +294,7 @@ describe("environmentRow", () => {
   });
 
   it("joins several sources into one line", () => {
-    const row = environmentRow({
+    const row = environmentRowDisplay({
       ...base,
       sources: ["main", "feature/invoices"],
       services: [],
@@ -303,7 +303,7 @@ describe("environmentRow", () => {
   });
 
   it("says release for a production, not a branch", () => {
-    const row = environmentRow({
+    const row = environmentRowDisplay({
       ...base,
       name: "Acme - production",
       tier: "production",
@@ -324,7 +324,7 @@ describe("environmentRow", () => {
   });
 
   it("falls back to the commit where nobody named the deploy", () => {
-    const row = environmentRow({
+    const row = environmentRowDisplay({
       ...base,
       sources: ["main"],
       services: [service("api", "live", { version: SHA })],
@@ -337,14 +337,14 @@ describe("environmentRow", () => {
     // Reading by hostname answered 404 for every stage and production of the
     // owner's 2026-09-17 run (`DeployStatusRead.repo`), so guessing it here
     // would mint a link that goes nowhere — worse than plain text.
-    const guessed = environmentRow({
+    const guessed = environmentRowDisplay({
       ...base,
       sources: ["main"],
       services: [{ hostname: "app", appVersionName: SHA }],
     });
     expect(guessed.versionRepository).toBeUndefined();
 
-    const known = environmentRow({
+    const known = environmentRowDisplay({
       ...base,
       sources: ["main"],
       services: [{ hostname: "app", repository: "appdev", appVersionName: SHA }],
@@ -353,7 +353,7 @@ describe("environmentRow", () => {
   });
 
   it("carries a hand-made deploy's name, which no sha would have told anyone", () => {
-    const row = environmentRow({
+    const row = environmentRowDisplay({
       ...base,
       sources: ["main"],
       services: [service("api", "live", { version: "hotfix" })],
@@ -402,7 +402,7 @@ describe('An environment row reads "<sha> · N parts" and names each part that d
       line: "main · 3f9c1b2",
     },
   ])("$name", ({ services, line }) => {
-    const row = environmentRow({ ...base, sources: ["main"], services });
+    const row = environmentRowDisplay({ ...base, sources: ["main"], services });
     expect(row.line).toBe(line);
   });
 });
@@ -464,7 +464,10 @@ describe("an environment of several parts", () => {
 
   it.each<{
     readonly name: string;
-    readonly input: Omit<Parameters<typeof environmentRow>[0], "projectId" | "name" | "tier">;
+    readonly input: Omit<
+      Parameters<typeof environmentRowDisplay>[0],
+      "projectId" | "name" | "tier"
+    >;
     readonly tier?: "production";
     readonly line: string;
   }>([
@@ -573,7 +576,7 @@ describe("an environment of several parts", () => {
       line: "release · v1.2.0 · 2 parts",
     },
   ])("$name", ({ input, tier, line }) => {
-    const row = environmentRow({ ...(tier === undefined ? stage : production), ...input });
+    const row = environmentRowDisplay({ ...(tier === undefined ? stage : production), ...input });
     expect(row.line).toBe(line);
     // The parts are the row's own field too, which the group page says under the version.
     expect(row.parts).toBe(/\d+ parts.*$/u.exec(line)?.[0]);

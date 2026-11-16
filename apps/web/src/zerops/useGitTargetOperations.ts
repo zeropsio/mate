@@ -1,5 +1,5 @@
 /** Mounted Git controls use the account coordinator and the official HQ's offered verdicts. */
-import { canonicalHqNavigation } from "@t3tools/client-runtime/data";
+import { hqNavigation } from "@t3tools/client-runtime/data";
 import type { HqEnvironmentId } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 import { useAccountOrgId, useProjection } from "./ZeropsAccountData";
@@ -8,7 +8,7 @@ import { hqProjectIdOf } from "./hqWrites";
 const NONE = Atom.make(null);
 export function useGitTargetOperations(appId: string) {
   const orgId = useAccountOrgId();
-  const navigation = useProjection(canonicalHqNavigation, orgId, NONE);
+  const navigation = useProjection(hqNavigation, orgId, NONE);
   const operations = useAccountOperationsOptional();
   const hqProjectId = orgId === null ? null : hqProjectIdOf(orgId);
   const app = navigation?.structure?.apps.find((row) => row.id === appId);

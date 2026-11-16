@@ -12,7 +12,7 @@
  * ## What a stop runs
  *
  * Whether anything runs is the platform's pushed deployment (`stopDeployment`,
- * D6); the deploy half's version name (`environmentRow`) names it and colours
+ * D6); the deploy half's version name (`environmentRowDisplay`) names it and colours
  * it only once the platform confirms that version runs — the precedence `stopView`
  * draws the menu with. An unread or failed runtime answer stands on every surface. The page read the name
  * alone, and a service's `appVersionName` can name a commit the platform does
@@ -129,12 +129,13 @@ export interface GroupFlowPending extends GroupFlowComing {
 export interface GroupFlowStopInput {
   readonly projectStatus?: string | undefined;
   readonly services?: ReadonlyArray<PlatformService> | undefined;
-  readonly projectId: string;
+  /** HQ's id of the environment, or the listed project's while HQ records none for it. */
+  readonly id: string;
   readonly name: string;
   readonly tier: GroupEnvironmentTier;
-  /** Its row, where HQ records the environment and its deploys (`environmentRowInputsOf`). */
+  /** Its row, where HQ records the environment and its deploys (`canonicalEnvironmentRowInputsOf`). */
   readonly row:
-    | (Omit<EnvironmentRow, "projectId"> & Partial<Pick<HqEnvironmentIdentity, "id" | "target">>)
+    | (EnvironmentRow & Partial<Pick<HqEnvironmentIdentity, "id" | "target">>)
     | undefined;
   /** The platform's pushed answer (`ZeropsProjectFlowValue.deployments`); `undefined` unread. */
   readonly deployment: Shown<Deployment> | undefined;
@@ -212,8 +213,8 @@ export type GroupFlowStopState = "checking" | "empty" | "deploying" | "deployed"
 
 export interface GroupFlowStop {
   readonly git?: GitDelivery;
-  /** @deprecated Zerops-only compatibility address; canonical rows carry id and target. */
-  readonly projectId: string;
+  /** Its `GroupFlowStopInput.id`. */
+  readonly id: string;
   readonly name: string;
   readonly state: GroupFlowStopState;
   /** What it runs; `undefined` for nothing, or nothing known yet. */
@@ -357,7 +358,7 @@ function stopOf(input: GroupFlowStopInput): GroupFlowStop {
   const { deployment, row } = input;
   if (row?.target?.kind === "git")
     return {
-      projectId: input.projectId,
+      id: input.id,
       name: input.name,
       state: "checking",
       version: undefined,
@@ -367,7 +368,7 @@ function stopOf(input: GroupFlowStopInput): GroupFlowStop {
       ...(row.git === undefined ? {} : { git: row.git }),
     };
   const base = {
-    projectId: input.projectId,
+    id: input.id,
     name: input.name,
     source: row?.source,
     addresses: input.addresses,
@@ -575,11 +576,11 @@ function nextStepOf(
   // (D28): `production` keeps its candidate whatever a stage does.
   const failedProduction =
     production.kind === "deploy-failed"
-      ? [{ projectId: production.stop.projectId, name: production.stop.name }]
+      ? [{ projectId: production.stop.id, name: production.stop.name }]
       : [];
   const failedStages = stages
     .filter((stage) => stage.state === "failed")
-    .map((stage) => ({ projectId: stage.projectId, name: stage.name }));
+    .map((stage) => ({ projectId: stage.id, name: stage.name }));
   const attention = projectAttention({
     waitingMates: input.mates.filter((mate) => mate.waiting && mate.failed !== true),
     failedMates: input.mates.filter((mate) => mate.failed === true),
@@ -670,7 +671,7 @@ export function groupFlow(input: GroupFlowInput): GroupFlow {
     ...input.mates.map((entry) => entry.projectId),
     ...input.stops.flatMap((entry) =>
       entry.row?.target === undefined
-        ? [entry.projectId]
+        ? [entry.id]
         : entry.row.target.kind === "zerops"
           ? [entry.row.target.projectId]
           : [],

@@ -4,7 +4,7 @@
  * that follows `main`.
  */
 import {
-  buildZeropsGroupTree,
+  buildCanonicalGroupTree,
   placeAddresses,
   type GroupFlowAddress,
   type GroupFlowPreview,
@@ -21,7 +21,7 @@ export function useGroupName(groupId: string): string | undefined {
   const { listing } = useZeropsCandidates();
   return useMemo(
     () =>
-      buildZeropsGroupTree(heldCandidates(listing).rows, { order: "name" }).groups.find(
+      buildCanonicalGroupTree(heldCandidates(listing).rows, { order: "name" }).groups.find(
         (entry) => entry.group.groupId === groupId,
       )?.group.name,
     [groupId, listing],

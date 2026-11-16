@@ -14,7 +14,7 @@ import type {
   FlowPullRequest,
   GroupFlow,
   ZeropsEnvironmentRole,
-  ZeropsGroup,
+  CanonicalGroup,
 } from "@t3tools/client-runtime/zerops";
 import type { HqAppContents } from "@t3tools/client-runtime/zerops/hq";
 import type { MatePart } from "@t3tools/client-runtime/zerops/mateParts";
@@ -44,7 +44,7 @@ export interface StageSettingUp {
 }
 
 export interface ProjectsFlowGroup<T> {
-  readonly group: Omit<ZeropsGroup, "environments" | "production"> & {
+  readonly group: Omit<CanonicalGroup, "environments" | "production"> & {
     readonly environments: ReadonlyArray<{ readonly role: ZeropsEnvironmentRole | undefined }>;
   };
   readonly flow: GroupFlow;

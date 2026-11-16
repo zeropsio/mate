@@ -8,7 +8,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import {
   applicationEnvironments,
-  buildZeropsGroupTree,
+  buildCanonicalGroupTree,
   listedEnvironmentsOf,
   type ApplicationEnvironmentFacts,
   type HeldEnvironment,
@@ -48,7 +48,7 @@ function usePendingEnvironments(): ReadonlyMap<string, ReadonlyArray<HeldEnviron
   return useMemo(
     () =>
       new Map(
-        buildZeropsGroupTree(heldCandidates(listing).rows, {
+        buildCanonicalGroupTree(heldCandidates(listing).rows, {
           order: "name",
           births: placedSharedBirths(
             births,

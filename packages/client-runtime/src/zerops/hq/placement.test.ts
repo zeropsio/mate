@@ -2,7 +2,7 @@ import { ZeropsUserId } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 
 import type { HqStructure } from "./client.ts";
-import { canonicalHqStructureOf } from "./structure.ts";
+import { hqStructureOf } from "./structure.ts";
 import type { Known } from "../knowledge/known.ts";
 import {
   birthFaceOf,
@@ -347,7 +347,7 @@ describe("heldOf — what HQ holds a project as, from where it places it", () =>
 });
 
 it("keeps a plain project in the application HQ sends, without a Mate", () => {
-  const structure = canonicalHqStructureOf({
+  const structure = hqStructureOf({
     apps: [
       {
         id: "app-plain",

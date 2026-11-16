@@ -8,7 +8,7 @@
  * targets again (`useRenameGroup`).
  */
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-import type { ZeropsGroup } from "@t3tools/client-runtime/zerops";
+import type { CanonicalGroup } from "@t3tools/client-runtime/zerops";
 import { useEffect, useRef, useState } from "react";
 
 import {
@@ -24,7 +24,7 @@ export function ZeropsRenameProjectDialog({
   group,
   onClose,
 }: {
-  readonly group: Pick<ZeropsGroup, "groupId" | "name" | "nameSource">;
+  readonly group: Pick<CanonicalGroup, "groupId" | "name" | "nameSource">;
   readonly onClose: () => void;
 }) {
   const { rename, retry } = useRenameGroup();

@@ -1,5 +1,5 @@
 import { ownerAtAdd } from "@t3tools/client-runtime/zerops/projectAccess";
-import { shownCanonicalHqListNavigationAtom } from "@t3tools/client-runtime/data";
+import { shownHqListNavigationAtom } from "@t3tools/client-runtime/data";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { useAddMateOffer } from "../../zerops/useHqOffers";
 import { useNewMateGate } from "../../zerops/useNewMateGates";
@@ -153,7 +153,7 @@ import {
   type CanonicalEnvironmentRow as EnvironmentRow,
   type GroupEnvironmentTier,
   type ZeropsEnvironmentRole,
-  type ZeropsGroup,
+  type CanonicalGroup,
   type ZeropsMembership,
   firstDeployLine,
   type FirstDeploy,
@@ -1013,7 +1013,7 @@ export function ZeropsProjectsContent({
   // listing holds its project, and a New project this tab is making from the
   // press — the same placing the left menu reads.
   // An application HQ holds with no project is drawn too, empty, for a Mate to be added to it.
-  const hqStructure = useAtomValue(shownCanonicalHqListNavigationAtom);
+  const hqStructure = useAtomValue(shownHqListNavigationAtom);
   const placementStatus = useAtomValue(hqPlacementStatusAtom);
   const { open: sharedBirths, readyProjectIds } = useSharedBirthState();
   // Whether HQ's structure is known: only then does a Mate it places nowhere have no record.
@@ -1263,8 +1263,8 @@ export function ZeropsProjectsContent({
     | { readonly kind: "rename-agent"; readonly candidate: ZeropsCandidate }
     | { readonly kind: "move"; readonly candidate: ZeropsCandidate }
     | { readonly kind: "assign"; readonly candidate: ZeropsCandidate }
-    | { readonly kind: "delete-group"; readonly group: Pick<ZeropsGroup, "groupId" | "name"> }
-    | { readonly kind: "mirror-code"; readonly group: Pick<ZeropsGroup, "groupId" | "name"> }
+    | { readonly kind: "delete-group"; readonly group: Pick<CanonicalGroup, "groupId" | "name"> }
+    | { readonly kind: "mirror-code"; readonly group: Pick<CanonicalGroup, "groupId" | "name"> }
     | null
   >(null);
   // The same write an environment's own page uses, so one way to open a
@@ -1661,7 +1661,7 @@ export function ZeropsProjectsContent({
   // This gates another Mate; HQ's own offers decide stage and production.
   const addMateOffer = useAddMateOffer();
   const addsOfferedFor = useCallback(
-    (group: Pick<ZeropsGroup, "groupId">) => {
+    (group: Pick<CanonicalGroup, "groupId">) => {
       const entry = groupTree.groups.find((entry) => entry.group.groupId === group.groupId);
       return (
         entry !== undefined &&
@@ -2488,13 +2488,13 @@ export function ZeropsProjectsContent({
   };
 
   // What each project holds and may be added to, as every surface tells it (`applicationEnvironments`).
-  const environmentsOf = ({ groupId }: Pick<ZeropsGroup, "groupId">) => {
+  const environmentsOf = ({ groupId }: Pick<CanonicalGroup, "groupId">) => {
     const flow = projectFlow.flows.get(groupId);
     return flow === undefined
       ? undefined
       : applicationEnvironments(environmentFacts(groupId, flow));
   };
-  const addableTiers = (group: Pick<ZeropsGroup, "groupId">) => {
+  const addableTiers = (group: Pick<CanonicalGroup, "groupId">) => {
     const environments = environmentsOf(group);
     return (["stage", "production"] as const).filter(
       (tier) => environments?.addable[tier] === true,
@@ -2652,7 +2652,7 @@ export function ZeropsProjectsContent({
   // Where each stage's first deploy stands, as its cell in the flow says it (`groupFlow`): the
   // expanded environment row says the same.
   const firstDeployOf = (projectId: string) =>
-    flowGroups.flatMap(({ flow }) => flow.stages).find((stage) => stage.projectId === projectId)
+    flowGroups.flatMap(({ flow }) => flow.stages).find((stage) => stage.id === projectId)
       ?.firstDeploy;
   // The page's one line of trouble: a refusal of something done here — a
   // merge or a release the project flow refused included — one at a time.
@@ -2826,7 +2826,7 @@ export function ZeropsProjectsContent({
             (candidate) => projectPeople[candidate.project.id]?.waitsOnViewer === true,
           );
           const { production } = entry.flow;
-          const projectId = "stop" in production ? production.stop.projectId : undefined;
+          const projectId = "stop" in production ? production.stop.id : undefined;
           return {
             fixer: fixer === undefined ? undefined : projectNameInApp(fixer.project),
             onVerb: () => {

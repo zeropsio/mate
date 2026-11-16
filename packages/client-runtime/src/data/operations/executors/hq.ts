@@ -1,7 +1,7 @@
 import type { HqLifecycleRecord } from "@t3tools/shared/hqLifecycle";
 import type { HqDeliveryAnswer } from "@t3tools/shared/hqDeploys";
 import { hqOffer } from "@t3tools/shared/hqOffers";
-import { canonicalHqNavigation, hqEnvironmentOffers } from "../../projections/hqNavigation.ts";
+import { hqNavigation, hqEnvironmentOffers } from "../../projections/hqNavigation.ts";
 import { hqAwayAnswer, hqLinkOf } from "../../projections/hqLink.ts";
 import { readsOfState, type AccountStore } from "../../store.ts";
 import { sameValue } from "../../projections/equal.ts";
@@ -437,7 +437,7 @@ export function makeHqExecutor(ports: {
       )
         return yield* Effect.fail(gitFault("Enter the candidate token again."));
       const read = readsOfState(ports.gitStore!.state());
-      const nav = canonicalHqNavigation.derive(read, intent.orgId);
+      const nav = hqNavigation.derive(read, intent.orgId);
       const app = read.fact("hqApp", intent.appId);
       if (app.kind !== "known")
         return yield* Effect.fail(gitFault("HQ has not offered this Git operation."));

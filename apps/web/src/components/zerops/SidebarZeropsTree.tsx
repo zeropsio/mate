@@ -1,6 +1,6 @@
 import type { HqOutsideEnvironment } from "@t3tools/shared/hqEnvironment";
 import { KeptGitQuestions } from "./KeptGitQuestions";
-import { shownCanonicalHqListNavigationAtom } from "@t3tools/client-runtime/data";
+import { shownHqListNavigationAtom } from "@t3tools/client-runtime/data";
 import { useAutomatedKey } from "~/zerops/useAutomationSettings";
 import { useAddMateOffer, useOrgOffers } from "../../zerops/useHqOffers";
 import { useDeleteApplicationDialog } from "../../zerops/deleteApplicationDialog";
@@ -761,7 +761,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       ),
     [getBirth, placedBirths],
   );
-  const structureView = useAtomValue(shownCanonicalHqListNavigationAtom);
+  const structureView = useAtomValue(shownHqListNavigationAtom);
   const rowsOrgId = useAtomValue(hqNavigationAtom, (navigation) => navigation.orgId);
   const identities = useAtomValue(shownHqMateIdentitiesAtom);
   const accountOrgId = useAccountOrgId();
@@ -1389,7 +1389,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         : others.find(({ item }) => item.project.id === targetProjectId(projectId))?.item;
     const productionStop =
       "stop" in projectFlow.production ? projectFlow.production.stop : undefined;
-    const productionItem = stopItem(productionStop?.projectId);
+    const productionItem = stopItem(productionStop?.id);
     const servingOf = (item: T | undefined): StopServing =>
       item === undefined
         ? { kind: "unknown" }
@@ -1405,19 +1405,17 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         ? { kind: "answered", failure: flow.releaseFailure, rollbacks: flow.releaseRollbacks }
         : { kind: "waiting" };
     const stopName = (stop: GroupFlowStop) =>
-      projectNameInApp(stopItem(stop.projectId)?.project) || stop.name;
+      projectNameInApp(stopItem(stop.id)?.project) || stop.name;
     const stages = projectFlow.stages.map((stop) => ({
       name: stopName(stop),
       stop,
-      serving: servingOf(stopItem(stop.projectId)),
+      serving: servingOf(stopItem(stop.id)),
     }));
     const productionServing = servingOf(productionItem);
     const chipsRead = projectChips({
       production: projectFlow.production,
       building:
-        productionStop === undefined
-          ? undefined
-          : buildingOf(stopDeployments(productionStop.projectId)),
+        productionStop === undefined ? undefined : buildingOf(stopDeployments(productionStop.id)),
       waiting: projectFlow.main.notLive,
       waitingAtLeast: projectFlow.main.notLiveAtLeast,
       changeCount: projectFlow.main.changeCount,
@@ -1456,7 +1454,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         : stages.map(({ stop, name }, index) => {
             const own = stageChips[index];
             return {
-              projectId: stop.projectId,
+              projectId: stop.id,
               groupId: id,
               title: environmentTitle("stage", name),
               projectName,
@@ -1472,7 +1470,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         ? []
         : [
             {
-              projectId: productionStop.projectId,
+              projectId: productionStop.id,
               groupId: id,
               title: environmentTitle("production", stopName(productionStop)),
               projectName,
@@ -1490,12 +1488,12 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     // What its places are doing, as the globe's tag says it (D′): an environment coming up step by
     // step, what landed, a deploy under way — from what the platform says of it (`stopComing`).
     const listedOf = (stop: GroupFlowStop): ListedStop => {
-      const item = stopItem(stop.projectId);
+      const item = stopItem(stop.id);
       return {
         stop,
         projectStatus: item?.project.status,
         services: item?.services?.statuses,
-        building: buildingOf(stopDeployments(stop.projectId)) !== undefined,
+        building: buildingOf(stopDeployments(stop.id)) !== undefined,
         routes: item?.routes?.length ?? 0,
         addressPending: item?.addressPending,
       };
@@ -1511,7 +1509,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
               projectFlow.production.kind === "absent" || projectFlow.production.kind === "outside"
                 ? undefined
                 : {
-                    projectId: productionStop?.projectId,
+                    projectId: productionStop?.id,
                     chip: prodChip,
                     git: productionStop?.git,
                     coming:
@@ -1524,16 +1522,16 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
                             : undefined,
                     building:
                       productionStop !== undefined &&
-                      building.has(targetProjectId(productionStop.projectId) ?? ""),
+                      building.has(targetProjectId(productionStop.id) ?? ""),
                   },
             stages: [
               ...stages.map(({ name, stop }) => ({
-                projectId: stop.projectId,
+                projectId: stop.id,
                 name,
                 git: stop.git,
                 coming: stop.git === undefined ? comingOf("stage", stop) : undefined,
                 serves: stopServes(listedOf(stop)),
-                building: building.has(targetProjectId(stop.projectId) ?? ""),
+                building: building.has(targetProjectId(stop.id) ?? ""),
               })),
               ...projectFlow.creatingStages.map((creation) => ({
                 projectId: creation.projectId,
@@ -1619,7 +1617,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
               : undefined,
             addressesPlace({
               production: productionItem?.project.id,
-              stages: stages.map(({ stop }) => targetProjectId(stop.projectId)),
+              stages: stages.map(({ stop }) => targetProjectId(stop.id)),
               mates: ordered.map(({ item }) => item.project.id),
             }),
             kind === "bare",
@@ -1628,8 +1626,8 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       group === undefined
         ? null
         : [
-            ...stages.map(({ stop }) => stop.projectId),
-            ...(productionStop === undefined ? [] : [productionStop.projectId]),
+            ...stages.map(({ stop }) => stop.id),
+            ...(productionStop === undefined ? [] : [productionStop.id]),
           ].map((projectId) => <StopDemand key={projectId} projectId={projectId} />);
     // What waits for the viewer's review, oldest first as the flow lists it: each shown Mate's
     // change that asks, each change of no Mate here that asks, then the work its crews have ready
@@ -1716,14 +1714,14 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             productionMenu({
               chip: prodChip,
               projectId: productionItem?.project.id,
-              environmentId: productionStop?.projectId,
+              environmentId: productionStop?.id,
               git:
                 productionStop?.git === undefined
                   ? undefined
                   : {
                       delivery: productionStop.git,
                       environment: (() => {
-                        const row = flow?.environments.get(productionStop.projectId);
+                        const row = flow?.environments.get(productionStop.id);
                         return row?.target.kind === "git"
                           ? { target: row.target, tier: row.tier }
                           : undefined;
@@ -1741,7 +1739,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         : (nowMs: number) =>
             stageMenu({
               stages: stages.map(({ name, stop, serving }, index) => ({
-                projectId: stop.projectId,
+                projectId: stop.id,
                 name,
                 stop,
                 git:
@@ -1750,7 +1748,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
                     : {
                         delivery: stop.git,
                         environment: (() => {
-                          const row = flow?.environments.get(stop.projectId);
+                          const row = flow?.environments.get(stop.id);
                           return row?.target.kind === "git"
                             ? { target: row.target, tier: row.tier }
                             : undefined;
@@ -1758,9 +1756,9 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
                         repos: flow?.repos,
                       },
                 chip: stageChips[index],
-                deployedAt: stopDeployedAt(stop.projectId),
+                deployedAt: stopDeployedAt(stop.id),
                 down: downOf(serving),
-                routes: stopItem(stop.projectId)?.routes ?? [],
+                routes: stopItem(stop.id)?.routes ?? [],
               })),
               creating: projectFlow.creatingStages.map((creation) => ({
                 projectId: creation.projectId,

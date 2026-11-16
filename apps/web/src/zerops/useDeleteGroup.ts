@@ -6,7 +6,7 @@
  * environment and no change, and refuses it otherwise (`app_not_empty`). The write settles when
  * HQ answers and rejects with HQ's refusal, so the dialog that asked can wait for it and say why.
  */
-import type { ZeropsGroup } from "@t3tools/client-runtime/zerops";
+import type { CanonicalGroup } from "@t3tools/client-runtime/zerops";
 import { useCallback } from "react";
 
 import { useAccountOperations } from "./accountOperations";
@@ -14,14 +14,14 @@ import { submitHqAppWrite } from "./hqAppWrite";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 /** Deletes the group's application in HQ. */
-export type DeleteGroup = (group: Pick<ZeropsGroup, "groupId">) => Promise<void>;
+export type DeleteGroup = (group: Pick<CanonicalGroup, "groupId">) => Promise<void>;
 
 export function useDeleteGroup(): DeleteGroup {
   const { activeOrganization } = useZeropsSession();
   const operations = useAccountOperations();
 
   return useCallback(
-    async (group: Pick<ZeropsGroup, "groupId">) => {
+    async (group: Pick<CanonicalGroup, "groupId">) => {
       if (activeOrganization === null) throw new Error("No organization is open.");
       await submitHqAppWrite(operations, {
         kind: "delete-app",

@@ -1,10 +1,10 @@
 /**
  * The projects page's applications with nothing in them: one HQ holds with no project — what a New
  * project that stopped before its Mate leaves (`mate-rig-e2e-a`, 2026-10-02) — is drawn as its
- * project all the same (`deriveZeropsGroups`'s `apps`), offered *Add a Mate* for the Mate it was
+ * project all the same (`deriveCanonicalGroups`'s `apps`), offered *Add a Mate* for the Mate it was
  * made for.
  */
-import type { ZeropsGroup } from "@t3tools/client-runtime/zerops";
+import type { CanonicalGroup } from "@t3tools/client-runtime/zerops";
 import type { HqAppContents, HqStructure } from "@t3tools/client-runtime/zerops/hq";
 
 import type { HqNavigationView } from "~/state/zerops";
@@ -32,7 +32,7 @@ export function emptyApplications(
 
 /** Whether a group holds nothing, listed or coming: offered *Add a Mate* for its first, and no more. */
 export function groupIsEmpty(
-  group: Pick<ZeropsGroup, "pending"> & { readonly environments: ReadonlyArray<unknown> },
+  group: Pick<CanonicalGroup, "pending"> & { readonly environments: ReadonlyArray<unknown> },
 ): boolean {
   return group.environments.length === 0 && group.pending.length === 0;
 }

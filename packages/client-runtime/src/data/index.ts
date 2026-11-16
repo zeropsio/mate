@@ -27,11 +27,8 @@ export {
   hqAppChanges,
   hqAppGitTargets,
   type HqDeliveryNavigationRead,
-  type CanonicalHqDeliveryNavigationRead,
-  canonicalHqNavigation,
-  canonicalHqMenuNavigation,
-  type CanonicalHqNavigationRead,
   hqEnvironmentOffers,
+  hqMenuNavigation,
   hqNavigation,
   hqPersonFacts,
   hqStatus,
@@ -73,11 +70,8 @@ export {
 export { discussionDemand } from "./families/hqDiscussion.ts";
 export type { ZeropsWire } from "./adapters/zerops.ts";
 export {
-  canonicalAppEnvironments,
-  environmentById,
-  type CanonicalAppEnvironmentsRead,
   appEnvironments,
-  appsEnvironments,
+  environmentById,
   type AppEnvironmentsRead,
 } from "./projections/appEnvironments.ts";
 export {
@@ -347,7 +341,6 @@ export {
   shownHqMatesAnsweredAtom,
   shownHqNavigationAtom,
   shownHqMenuNavigationAtom,
-  shownCanonicalHqMenuNavigationAtom,
   shownHqAppChangesAtom,
   shownHqPersonFactsAtom,
   shownHqStatusAtom,
@@ -739,16 +732,14 @@ export {
 } from "./projections/projectFlowJoin.ts";
 
 export {
-  canonicalProjectFlow,
-  type CanonicalProjectFlow,
   projectFlow,
+  type CanonicalProjectFlow,
   projectApplications,
   projectSummary,
   type ProjectFlowKey,
 } from "./projections/projectFlow.ts";
 
 export {
-  canonicalInventoryGroups,
   inventoryGroups,
   type InventoryGroupsKey,
   type InventoryGroupsView,
@@ -854,7 +845,6 @@ export { deliveryEnvironmentsOf, type HqDeliveryEnvironment } from "../zerops/hq
 
 export {
   hqMateDirectory,
-  canonicalHqListNavigation,
   hqListNavigation,
   hqListedMateIdentities,
   hqListedMates,
@@ -866,7 +856,6 @@ export {
 } from "./projections/hqMateDirectory.ts";
 export {
   shownHqMateDirectoryAtom,
-  shownCanonicalHqListNavigationAtom,
   shownHqListNavigationAtom,
   shownHqListedMateIdentitiesAtom,
   shownHqListedMatesAtom,

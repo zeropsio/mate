@@ -1,4 +1,4 @@
-import { buildZeropsGroupTree } from "@t3tools/client-runtime/zerops";
+import { buildCanonicalGroupTree } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
 
 import { NOT_READ_HQ } from "@t3tools/client-runtime/data";
@@ -77,7 +77,7 @@ describe("the applications a stopped press left, on the projects page", () => {
     const bare = {
       project: { id: "p-a", name: "mate-rig-e2e-a - Ada", status: "ACTIVE", tagList: ["mate"] },
     };
-    const tree = buildZeropsGroupTree([bare], {
+    const tree = buildCanonicalGroupTree([bare], {
       order: "name",
       apps: emptyApplications(given, "org-a"),
     });
@@ -163,7 +163,7 @@ describe("HQ's word on an application's contents", () => {
         },
       ],
     };
-    const tree = buildZeropsGroupTree([], {
+    const tree = buildCanonicalGroupTree([], {
       order: "name",
       apps: emptyApplications({ ...given, structure }, "org-a"),
     });

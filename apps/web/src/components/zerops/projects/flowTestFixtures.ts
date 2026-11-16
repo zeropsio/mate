@@ -5,12 +5,12 @@ import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
  */
 
 import {
-  buildZeropsGroupTree,
+  buildCanonicalGroupTree,
   canonicalEnvironmentRow,
   groupFlow,
   type FlowPullRequest,
   type GroupFlowInput,
-  type ZeropsGroup,
+  type CanonicalGroup,
   type ZeropsProject,
 } from "@t3tools/client-runtime/zerops";
 import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
@@ -67,8 +67,8 @@ export function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
   };
 }
 
-function groupOf(items: ReadonlyArray<Item>): ZeropsGroup {
-  const [group] = buildZeropsGroupTree(items, { order: "name" }).groups;
+function groupOf(items: ReadonlyArray<Item>): CanonicalGroup {
+  const [group] = buildCanonicalGroupTree(items, { order: "name" }).groups;
   return group!.group;
 }
 
@@ -78,7 +78,7 @@ export const PROD = item("fixture-prod", placed("aaa", "sm-fixture", "production
 export const UMA = item("uma-dev", placed("bbb", "hokuspokus"));
 
 export const PRODUCTION_STOP = {
-  projectId: "fixture-prod",
+  id: "fixture-prod",
   name: "production",
   tier: "production" as const,
   row: undefined,
@@ -87,7 +87,7 @@ export const PRODUCTION_STOP = {
 };
 export const STAGE_STOP = {
   ...PRODUCTION_STOP,
-  projectId: "fixture-stage",
+  id: "fixture-stage",
   name: "stage",
   tier: "stage" as const,
 };
@@ -113,7 +113,7 @@ export const VERA_COMING = {
  * placed by the group tree from its birth, beside `members` of other groups.
  */
 export function born(members: ReadonlyArray<Item> = []): ReadonlyArray<ProjectsFlowGroup<Item>> {
-  const tree = buildZeropsGroupTree(members, {
+  const tree = buildCanonicalGroupTree(members, {
     order: "newest",
     births: [
       {
@@ -126,7 +126,7 @@ export function born(members: ReadonlyArray<Item> = []): ReadonlyArray<ProjectsF
   return tree.groups.map(({ group, environments }) =>
     entryOf(
       group,
-      environments.map(({ item: member }) => member),
+      environments.flatMap(({ item: member }) => (member === undefined ? [] : [member])),
       { pending: group.pending },
       group.groupId !== "ccc",
     ),
@@ -134,7 +134,7 @@ export function born(members: ReadonlyArray<Item> = []): ReadonlyArray<ProjectsF
 }
 
 function entryOf(
-  group: ZeropsGroup,
+  group: CanonicalGroup,
   members: ReadonlyArray<Item>,
   over: Partial<GroupFlowInput>,
   read: boolean,

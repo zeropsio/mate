@@ -113,14 +113,14 @@ export function applicationPlaceFacts<T extends PlaceItem>(input: {
   };
   const { production } = entry.flow;
   const prodStop = "stop" in production ? production.stop : undefined;
-  const prodItem = itemOf(prodStop?.projectId);
+  const prodItem = itemOf(prodStop?.id);
   const prodServing = servingOf(prodItem);
   const chip = drawnChip(
     productionChip({
       production,
       building: productionBuilding(
         production.kind,
-        prodStop === undefined ? undefined : buildingOf(deploymentsOf(prodStop.projectId)),
+        prodStop === undefined ? undefined : buildingOf(deploymentsOf(prodStop.id)),
       ),
       waiting: entry.flow.main.notLive,
       waitingAtLeast: entry.flow.main.notLiveAtLeast,
@@ -133,14 +133,14 @@ export function applicationPlaceFacts<T extends PlaceItem>(input: {
   const stageChips = new Map<string, ProductionChip | undefined>();
   const down = new Map<string, ReadonlyArray<string>>();
   const addressPending = new Map<string, boolean>();
-  if (prodStop !== undefined) down.set(prodStop.projectId, downOf(prodServing));
+  if (prodStop !== undefined) down.set(prodStop.id, downOf(prodServing));
   for (const stop of entry.flow.stages) {
-    const item = itemOf(stop.projectId);
+    const item = itemOf(stop.id);
     const serving = servingOf(item);
-    down.set(stop.projectId, downOf(serving));
+    down.set(stop.id, downOf(serving));
     const pending = item?.addressPending;
-    if (pending !== undefined) addressPending.set(stop.projectId, pending);
-    stageChips.set(stop.projectId, drawnChip(stageStopChip({ stop, serving, releases })));
+    if (pending !== undefined) addressPending.set(stop.id, pending);
+    stageChips.set(stop.id, drawnChip(stageStopChip({ stop, serving, releases })));
   }
   // Production runs its release since the newest of its services went live: one service's own
   // deploy can be months older than a release that left it alone.
@@ -148,7 +148,7 @@ export function applicationPlaceFacts<T extends PlaceItem>(input: {
     prodStop === undefined
       ? undefined
       : newestOf(
-          deployActivatedAt(deploymentsOf(prodStop.projectId)) ?? undefined,
+          deployActivatedAt(deploymentsOf(prodStop.id)) ?? undefined,
           prodItem?.services?.deployedAt,
         );
   // The release on its way, where it is a roll back: production's line says what it goes back to.

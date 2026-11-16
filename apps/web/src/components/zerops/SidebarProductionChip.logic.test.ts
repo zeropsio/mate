@@ -38,7 +38,7 @@ const version = (label: string): DeployedVersion =>
     : { name: undefined, commit: label, sha: undefined, taggedBy: undefined, label };
 
 const stop = (over: Partial<GroupFlowStop> = {}): GroupFlowStop => ({
-  projectId: "prod",
+  id: "prod",
   name: "production",
   state: "deployed",
   version: version("v0.1.44"),
@@ -48,7 +48,7 @@ const stop = (over: Partial<GroupFlowStop> = {}): GroupFlowStop => ({
 });
 
 const stage = (over: Partial<GroupFlowStop> = {}): GroupFlowStop =>
-  stop({ projectId: "stage", name: "stage", source: "main", version: version("3f9c1b2"), ...over });
+  stop({ id: "stage", name: "stage", source: "main", version: version("3f9c1b2"), ...over });
 
 const live = (label: string): GroupFlowProduction => ({
   kind: "live",
@@ -85,7 +85,7 @@ const staged = (
   name: string,
   over: Partial<GroupFlowStop> = {},
   serving: StopServing = SERVING,
-) => ({ name, stop: stage({ projectId: name, name, ...over }), serving });
+) => ({ name, stop: stage({ id: name, name, ...over }), serving });
 
 const chip = (view: ChipView): ProductionChip | undefined =>
   view.kind === "chip" ? view.chip : undefined;
@@ -840,7 +840,6 @@ describe("releaseFailureOf — the release that did not go through, newer than w
   });
   const environments: ReadonlyArray<GroupEnvironmentRowInput> = [
     {
-      projectId: "stage",
       name: "stage",
       tier: "stage",
       sources: ["main"],
@@ -850,7 +849,6 @@ describe("releaseFailureOf — the release that did not go through, newer than w
       services: [{ hostname: "app", appVersionName: failedSha }],
     },
     {
-      projectId: "prod",
       name: "production",
       tier: "production",
       sources: "release",
@@ -1209,7 +1207,7 @@ describe("stageMenu — each stage, as production's menu says production", () =>
   ): Parameters<typeof stageMenu>[0]["stages"][number] => ({
     projectId: `shop-${name}`,
     name,
-    stop: stage({ projectId: `shop-${name}`, name }),
+    stop: stage({ id: `shop-${name}`, name }),
     chip: { label: "stage", state: "ok", version: "main" },
     deployedAt: "2026-09-29T10:13:00Z",
     down: [],
@@ -1222,7 +1220,7 @@ describe("stageMenu — each stage, as production's menu says production", () =>
   it("says a stage being set up as the stages being created, whatever runs there is unread", () => {
     for (const state of ["empty", "checking"] as const) {
       const making = {
-        ...stage({ projectId: "shop-stage", state }),
+        ...stage({ id: "shop-stage", state }),
         version: undefined,
         firstDeploy: { kind: "setting-up", step: "app" } as const,
       };
@@ -1250,7 +1248,7 @@ describe("stageMenu — each stage, as production's menu says production", () =>
     },
   ])("says an empty stage's first deploy as its cell does: $case", ({ firstDeploy, word }) => {
     const empty = {
-      ...stage({ projectId: "shop-stage", state: "empty" }),
+      ...stage({ id: "shop-stage", state: "empty" }),
       version: undefined,
       firstDeploy,
     };
@@ -1296,7 +1294,7 @@ describe("stageMenu — each stage, as production's menu says production", () =>
     {
       name: "deploying",
       stage: entry("stage", {
-        stop: stage({ projectId: "shop-stage", state: "deploying" }),
+        stop: stage({ id: "shop-stage", state: "deploying" }),
         chip: { label: "stage", state: "releasing", version: "main" },
       }),
       row: { dot: "spinner", word: "Deploying…", tone: "muted", note: undefined, fix: undefined },
@@ -1304,7 +1302,7 @@ describe("stageMenu — each stage, as production's menu says production", () =>
     {
       name: "its last deploy failed",
       stage: entry("stage", {
-        stop: stage({ projectId: "shop-stage", state: "failed" }),
+        stop: stage({ id: "shop-stage", state: "failed" }),
         chip: { label: "stage", state: "failed", version: "main" },
       }),
       row: {
@@ -1347,7 +1345,7 @@ describe("stageMenu — each stage, as production's menu says production", () =>
     {
       name: "not read yet",
       stage: entry("stage", {
-        stop: stage({ projectId: "shop-stage", state: "checking", version: undefined }),
+        stop: stage({ id: "shop-stage", state: "checking", version: undefined }),
         chip: undefined,
       }),
       row: {
@@ -1367,7 +1365,7 @@ describe("stageMenu — each stage, as production's menu says production", () =>
       stages: [
         entry("stage"),
         entry("qa", {
-          stop: stage({ projectId: "shop-qa", name: "qa", state: "failed" }),
+          stop: stage({ id: "shop-qa", name: "qa", state: "failed" }),
           chip: { label: "stage", state: "failed", version: "main" },
         }),
       ],
