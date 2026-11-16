@@ -877,20 +877,15 @@ export interface ChangeReviewViewProps {
 }
 
 /**
- * GitHub's checks on the change's latest push, under the title: failed ones as trouble with the
- * way to them and the ask to its Mate, running ones with the busy mark, passed ones ticked.
+ * GitHub's checks on the change's latest push, under the title: failed ones in the verdict's own
+ * amber with the way to them, running ones with the busy mark, passed ones ticked. Asking its Mate
+ * to fix failed ones is the verdict's own press.
  */
-function GithubChecksLine({
-  checks,
-  fix,
-}: {
-  readonly checks: ReviewGithubChecks;
-  readonly fix: ReviewButton | undefined;
-}) {
+function GithubChecksLine({ checks }: { readonly checks: ReviewGithubChecks }) {
   return (
     <div
       className="rv-why"
-      data-tone={checks.state === "failing" ? "failed" : undefined}
+      data-tone={checks.state === "failing" ? "attention" : undefined}
       data-zerops-surface="change-github-checks-line"
     >
       {checks.state === "pending" ? (
@@ -913,11 +908,6 @@ function GithubChecksLine({
         See them on GitHub
         <ArrowUpRightIcon aria-hidden="true" />
       </Button>
-      {fix === undefined ? null : (
-        <Button onClick={fix.onPress} size="sm" variant="link">
-          {fix.label}
-        </Button>
-      )}
     </div>
   );
 }
@@ -1371,23 +1361,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       }
       settled={fromRelease ? "Merged" : asked || over ? undefined : standing?.settled}
       status={model.verdict.state === "merged" ? <span>{model.verdict.why}</span> : undefined}
-      notice={
-        github === undefined ? undefined : (
-          <GithubChecksLine
-            checks={github}
-            fix={
-              github.fix === undefined || mine === undefined || over
-                ? undefined
-                : {
-                    label: `Ask ${mine.name} to ${github.fix.verb}`,
-                    onPress: () => {
-                      if (github.fix !== undefined) props.onFix(github.fix.problem);
-                    },
-                  }
-            }
-          />
-        )
-      }
+      notice={github === undefined ? undefined : <GithubChecksLine checks={github} />}
       title={pull.title}
       titleId={props.titleId}
       verdict={model.verdict}
