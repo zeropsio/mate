@@ -41,7 +41,8 @@ import { StopReadAgain } from "./StopReadAgain";
 import { StopTierStops } from "./StopTierStops";
 import {
   cannotTellWhatRuns,
-  changeState,
+  changeStateFor,
+  type ChangeStandingRead,
   type FlowPullRequest,
   flowVerbKey,
   flowVerbLabel,
@@ -91,6 +92,7 @@ import {
   useStopDeploymentsShown,
 } from "~/zerops/projectFlows";
 import { useKeepDeployKeyOffer } from "~/zerops/useChangeOffers";
+import { useChangeStandingOf } from "~/zerops/useChangeStandingOf";
 import { useRenewDeployKey, type RenewDeployKey } from "~/zerops/useRenewDeployKey";
 import { useRunningNow } from "~/zerops/activity/useRunningNow";
 import { useOpenReview } from "~/zerops/review";
@@ -172,6 +174,7 @@ import {
   changeRowLine,
   PlaceLine,
   readyOfFlow,
+  rowStanding,
   RunningNow,
   SectionLabel,
   useApplicationPlaces,
@@ -409,6 +412,9 @@ function ZeropsProjectStopDetailPage({
       : (flow?.repos?.find(({ name }) => name === repo)?.mainHead ?? undefined);
   const tags = useReleaseTags(flow?.releases);
   const openChange = useOpenChange(groupId, repo);
+  // Whose press each open change waits for where the application limits who merges.
+  const standingOf = useChangeStandingOf();
+  const standingHere = (pull: FlowPullRequest) => standingOf(groupId, pull);
   const openCarried = useOpenCarriedChange(groupId);
   const carried = useStopCarried(
     groupId,
@@ -588,7 +594,7 @@ function ZeropsProjectStopDetailPage({
         ? changesWaitingForRelease(flow.merged, flow.releases)
         : NO_CHANGES
       : stop.source === "main"
-        ? changesWaitingForStage(flow.pullRequests)
+        ? changesWaitingForStage(flow.pullRequests, standingHere)
         : NO_CHANGES;
   const onItsWay =
     !production || releasingTag === undefined
@@ -651,6 +657,7 @@ function ZeropsProjectStopDetailPage({
             : undefined
         }
         nextChanges={onItsWay?.carried ?? waitingChanges}
+        standingOf={standingHere}
         laterChanges={onItsWay?.later}
         releasesRead={flow.releasesKnown ? "known" : hqAnswered ? "unanswered" : "reading"}
         servicesRead={platform.state !== "unread" && platform.state !== "reading" && hqAnswered}
@@ -965,6 +972,7 @@ export function ZeropsStopPane({
   deployFailed = false,
   ready,
   nextChanges = NO_CHANGES,
+  standingOf,
   laterChanges = 0,
   releasesNotDeployed,
   releasesRead = "known",
@@ -1067,6 +1075,11 @@ export function ZeropsStopPane({
    * on a stage, the open changes that merge to it.
    */
   readonly nextChanges?: ReadonlyArray<FlowPullRequest> | undefined;
+  /**
+   * Where each open change stands for the person looking (`useChangeStandingOf`, by the place's
+   * application): its row's words and press, and the card's title. Absent: theirs to review.
+   */
+  readonly standingOf?: ((pull: FlowPullRequest) => ChangeStandingRead) | undefined;
   /** While a release is on its way: how many changes merged after it and wait for the next. */
   readonly laterChanges?: number | undefined;
   /** The releases HQ refused before anything of them deployed (`releasesNotDeployed`). */
@@ -1266,9 +1279,11 @@ export function ZeropsStopPane({
     const open = !pull.merged;
     // A merged change waiting for a release is calm: its row says no word. An open one says
     // where it stands.
-    const words = open ? (changeState(pull)?.word ?? "Open") : undefined;
+    const read = open ? standingOf?.(pull) : undefined;
+    const words = open ? (changeStateFor(pull, read)?.word ?? "Open") : undefined;
     return (
       <ChangeRow
+        standing={rowStanding(pull, read)}
         at={open ? pull.updatedAt : pull.mergedAt}
         face={faces?.(pull.mateProjectId)}
         key={`${pull.repository}#${String(pull.number)}`}
@@ -1463,7 +1478,10 @@ export function ZeropsStopPane({
               </PlaceSection>
             ) : (
               <PlaceSection label={<SectionLabel>Next on {head.title}</SectionLabel>}>
-                <PlaceNextCard state="stage" title={stageNextTitle(nextChanges, head.title)}>
+                <PlaceNextCard
+                  state="stage"
+                  title={stageNextTitle(nextChanges, head.title, standingOf)}
+                >
                   {nextRows}
                 </PlaceNextCard>
               </PlaceSection>

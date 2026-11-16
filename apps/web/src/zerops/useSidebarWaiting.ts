@@ -53,6 +53,7 @@ import { useMenuRows } from "./useMenuRows";
 import { useMateRowActivity } from "./useMenuMateReadings";
 import { useMatesActivity } from "./useZeropsAgentActivity";
 import { useZeropsCandidates } from "./useZeropsCandidates";
+import { useChangeStandingOf } from "./useChangeStandingOf";
 import { useWaitsOnViewer } from "./useZeropsMateOwners";
 
 /**
@@ -213,15 +214,19 @@ export function useWaitsOf<T extends ZeropsCandidate>(input: {
   const { changes } = useAppsChanges(useEveryAppId());
   const waitsOnViewer = useWaitsOnViewer();
   const signInOf = useSignInWaits(candidates);
+  // Whose press each change waits for where its application limits who merges: one the person
+  // already asked for waits on the people who merge, and is no wait of theirs.
+  const standingOf = useChangeStandingOf();
   const reviewCount = useCallback(
     (candidate: T) => {
       const groupId = readZeropsMembership(candidate.project).groupId;
       return mateReviewCount(
         groupId === undefined ? undefined : changes.get(groupId),
         candidate.project.id,
+        (pull) => standingOf(groupId, pull),
       );
     },
-    [changes],
+    [changes, standingOf],
   );
   // The change the review opens: the newest of its own waiting, as the composer's top reads it.
   const changeOf = useCallback(
@@ -232,17 +237,23 @@ export function useWaitsOf<T extends ZeropsCandidate>(input: {
         pullRequests: changes.get(groupId)?.pullRequests,
         mateProjectId: candidate.project.id,
         mateName: undefined,
+        standingOf: (pull) => standingOf(groupId, pull),
       });
-      return step.kind === "review"
-        ? {
-            groupId,
-            repository: step.pull.repository,
-            number: step.pull.number,
-            title: step.detail,
-          }
-        : undefined;
+      if (step.kind !== "review") return undefined;
+      // What waits on the person first: one somebody asked them to merge, one theirs to ask for —
+      // never one they already asked for, which the list is not about.
+      const waits =
+        step.lines.find((line) => line.verdict === undefined && line.standing !== "waiting")
+          ?.pull ?? step.pull;
+      return {
+        groupId,
+        repository: waits.repository,
+        number: waits.number,
+        title: waits.title,
+        ...(standingOf(groupId, waits).standing.kind === "to-ask" ? { ask: true as const } : {}),
+      };
     },
-    [changes],
+    [changes, standingOf],
   );
   const mates = useMemo(
     () =>

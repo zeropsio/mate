@@ -9,17 +9,42 @@
  */
 import {
   changeAsksForReview,
-  changeState,
+  changeStateFor,
   pullRequestBlocked,
+  type changeState,
+  type ChangeStanding,
+  type ChangeStandingRead,
 } from "@t3tools/client-runtime/zerops";
 
-/** An open change's words and their tone, by what stops it (`changeState`). */
-export function openChangeWords(pull: Parameters<typeof changeState>[0]): {
+/** A ready change's standing past theirs to review, as a row's press and words read it. */
+export type RowStanding = Exclude<ChangeStanding["kind"], "to-merge">;
+
+/**
+ * An open change's words and their tone, by what stops it (`changeState`) — and, where nothing
+ * does, by where it stands for the person looking (`standing`, `changeStateFor`): "Ready",
+ * "Waiting for Ada K. or Sam R.", "Dana L. asks to merge" in place of "Ready to merge".
+ */
+export function openChangeWords(
+  pull: Parameters<typeof changeState>[0],
+  standing?: ChangeStandingRead,
+): {
   readonly words: string;
   readonly tone: NonNullable<ReturnType<typeof changeState>>["tone"];
 } {
-  const state = changeState(pull);
+  const state = changeStateFor(pull, standing);
   return { words: state?.word ?? "Open", tone: state?.tone ?? "off" };
+}
+
+/**
+ * A reviewable change's standing as its row carries it: absent where it is the person's to review
+ * (as without a limit on who merges), and on a change something stops, which waits on its Mate.
+ */
+export function rowStanding(
+  pull: Parameters<typeof changeState>[0],
+  standing: ChangeStandingRead | undefined,
+): RowStanding | undefined {
+  const kind = standing?.standing.kind;
+  return kind === undefined || kind === "to-merge" || !changeReviewable(pull) ? undefined : kind;
 }
 
 /**

@@ -7,6 +7,8 @@
  */
 import {
   changeState,
+  READY_TO_MERGE,
+  type ChangeStandingRead,
   type FlowPullRequest,
   type FlowReleaseRow,
   type GroupEnvironmentTier,
@@ -122,28 +124,54 @@ export function createsFirstLine(missing: ReadonlyArray<string>): string | undef
   return `creates ${names} in production first`;
 }
 
-/** A stage's next: the open changes that merge to it, those ready to merge first, then newest. */
+/** Where each open change stands for the person looking (`useChangeStandingOf`, by the application). */
+type StandingOfChange = (pull: FlowPullRequest) => ChangeStandingRead;
+
+/** An open change nothing stops (`changeState`): the one a standing is said of. */
+const isReady = (pull: FlowPullRequest) => changeState(pull)?.word === READY_TO_MERGE;
+
+/**
+ * A stage's next: the open changes that merge to it, those ready to merge first — what somebody
+ * asked the person to merge leading them, what the person already asked for after — then newest.
+ */
 export function changesWaitingForStage(
   open: ReadonlyArray<FlowPullRequest>,
+  standingOf?: StandingOfChange,
 ): ReadonlyArray<FlowPullRequest> {
-  const ready = (pull: FlowPullRequest) => changeState(pull)?.word === READY_TO_MERGE;
+  const rank = (pull: FlowPullRequest) => {
+    if (!isReady(pull)) return 3;
+    const kind = standingOf?.(pull).standing.kind;
+    return kind === "asked-of-me" ? 0 : kind === "waiting" ? 2 : 1;
+  };
   return open
     .filter((pull) => pull.kind !== "recipe" && pull.mateGone !== true)
     .toSorted(
-      (left, right) =>
-        Number(ready(right)) - Number(ready(left)) || newestFirst(left.updatedAt, right.updatedAt),
+      (left, right) => rank(left) - rank(right) || newestFirst(left.updatedAt, right.updatedAt),
     );
 }
 
-/** An open change nothing stops, in `changeState`'s words. */
-const READY_TO_MERGE = "Ready to merge";
-
-/** "2 changes to approve for Stage", or how many are open where none asks for approval yet. */
-export function stageNextTitle(open: ReadonlyArray<FlowPullRequest>, stage: string): string {
-  const ready = open.filter((pull) => changeState(pull)?.word === READY_TO_MERGE).length;
-  const count = ready > 0 ? ready : open.length;
-  const changes = `${String(count)} ${count === 1 ? "change" : "changes"}`;
-  return ready > 0 ? `${changes} to approve for ${stage}` : `${changes} open, none ready yet`;
+/**
+ * "2 changes to approve for Stage", or how many are open where none asks for approval yet. To a
+ * person who cannot merge there (`standingOf`), never theirs to approve: "2 changes ready — ask
+ * to merge" while any waits for their ask, then "2 changes waiting for Ada K. or Sam R.".
+ */
+export function stageNextTitle(
+  open: ReadonlyArray<FlowPullRequest>,
+  stage: string,
+  standingOf?: StandingOfChange,
+): string {
+  const ready = open.filter(isReady);
+  const said = (count: number) => `${String(count)} ${count === 1 ? "change" : "changes"}`;
+  if (ready.length === 0) return `${said(open.length)} open, none ready yet`;
+  const reads = ready.map((pull) => standingOf?.(pull));
+  const asks = reads.filter((read) => read?.standing.kind === "to-ask").length;
+  if (asks > 0) return `${said(asks)} ready — ask to merge`;
+  const waits = reads.filter((read) => read?.standing.kind === "waiting");
+  const [first] = waits;
+  if (first !== undefined && waits.length === ready.length) {
+    return `${said(waits.length)} waiting for ${first.who}`;
+  }
+  return `${said(ready.length)} to approve for ${stage}`;
 }
 
 /**

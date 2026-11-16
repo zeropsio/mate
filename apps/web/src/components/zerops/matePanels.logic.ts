@@ -8,6 +8,8 @@
 import {
   ENVIRONMENT_NOT_ADDED,
   GIT_UNREADABLE_LINE,
+  READY_TO_MERGE,
+  type ChangeStandingRead,
   type FlowPullRequest,
   type GitBlock,
   type GroupFlow,
@@ -26,9 +28,11 @@ import {
   lineChangeKey,
   nextReleaseView,
   openChangeWords,
+  rowStanding,
   type LineWork,
   type NextReleaseInput,
   type ProjectLineInput,
+  type RowStanding,
 } from "./system";
 
 /** One row of a repository's work, as a change row draws it. */
@@ -43,6 +47,8 @@ export type GitWorkRow =
       readonly tone: ServiceStatusToneId;
       readonly open: boolean;
       readonly at: string | undefined;
+      /** Where an open, reviewable one stands for the person looking (`rowStanding`). */
+      readonly standing?: RowStanding | undefined;
     }
   /** Work that is no change yet, or a checkout that could not be read: one plain sentence. */
   | { readonly kind: "plain"; readonly title: string; readonly tone: ServiceStatusToneId };
@@ -78,6 +84,8 @@ export function gitWorkRows(
         readonly pull: FlowPullRequest;
         /** Where a landed change went, as the project's change rows say it. */
         readonly landedWords: string | undefined;
+        /** Where it stands for the person looking, while open (`useChangeStandingOf`). */
+        readonly standing?: ChangeStandingRead | undefined;
       }
     | undefined,
 ): ReadonlyArray<GitWorkRow> {
@@ -101,10 +109,7 @@ export function gitWorkRows(
           at: pull.mergedAt ?? pull.updatedAt,
         },
       ];
-    const open = openChangeWords(pull);
-    return [
-      { kind: "change", pull, state: open.words, tone: open.tone, open: true, at: pull.updatedAt },
-    ];
+    return [openRow(pull, change.standing)];
   }
   const uncommitted = block.changed.length;
   const onDisk =
@@ -122,14 +127,22 @@ export function gitWorkRows(
   if (block.state === "in-review") {
     // Fresher news than a calm review: work on disk, then commits the change does not have yet.
     const fresher = verdict.tone === "attention" ? undefined : (onDisk ?? unpushed);
+    // Where nothing stops it, whose press it waits for (`standingWord`), never "Ready to merge"
+    // said to a person who cannot merge.
+    const stands =
+      verdict.text === READY_TO_MERGE && change.standing !== undefined
+        ? change.standing.word
+        : verdict.text;
+    const standing = rowStanding(pull, change.standing);
     return [
       {
         kind: "change",
         pull,
-        state: fresher ?? verdict.text,
+        state: fresher ?? stands,
         tone: fresher === undefined ? verdict.tone : "busy",
         open: true,
         at: pull.updatedAt,
+        ...(standing === undefined ? {} : { standing }),
       },
     ];
   }
@@ -155,10 +168,25 @@ export function gitWorkRows(
     ];
   // Still open, but the checkout says nothing of a review (it is no repository now): the change as
   // HQ tells it — its review is still the way to it.
-  const open = openChangeWords(pull);
-  return [
-    { kind: "change", pull, state: open.words, tone: open.tone, open: true, at: pull.updatedAt },
-  ];
+  return [openRow(pull, change.standing)];
+}
+
+/** An open change as HQ tells it: where it stands, for the person looking where nothing stops it. */
+function openRow(
+  pull: FlowPullRequest,
+  read: ChangeStandingRead | undefined,
+): Extract<GitWorkRow, { readonly kind: "change" }> {
+  const open = openChangeWords(pull, read);
+  const standing = rowStanding(pull, read);
+  return {
+    kind: "change",
+    pull,
+    state: open.words,
+    tone: open.tone,
+    open: true,
+    at: pull.updatedAt,
+    ...(standing === undefined ? {} : { standing }),
+  };
 }
 
 /** "Dana's services", "Acme Notes' page": a name's own thing, as English writes it. */
