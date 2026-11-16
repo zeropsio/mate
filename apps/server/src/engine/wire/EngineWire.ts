@@ -86,7 +86,7 @@ import {
   sliceUtf8,
   wholeOutcomeResults,
 } from "./budget.ts";
-import { makeRecords } from "./records.ts";
+import { cardOf, makeRecords } from "./records.ts";
 import type { MessagePictures } from "../ports.ts";
 
 /** Who calls, and the revision their records carry: the Mate's environment and start epoch. */
@@ -493,6 +493,20 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
           if (item.runId !== null) carried.set(item.runId, (carried.get(item.runId) ?? 0) + 1);
         const frames: Array<Outcome> = [];
         let left: number = ENGINE_WIRE_BUDGETS.outcomesBytes;
+        // The tools that failed in a card, read once for all of its runs: a card of sixteen runs
+        // was read whole for each of them (27 of an opening's 30 reads were of two such cards).
+        let grouped: Effect.Success<ReturnType<typeof records.groups>> | undefined;
+        const failedIn = new Map<ReadonlyArray<string>, ReadonlyArray<unknown>>();
+        const failedToolsOf = (runId: string) =>
+          Effect.gen(function* () {
+            grouped ??= yield* records.groups(conversation);
+            const card = cardOf(grouped, runId) ?? [runId];
+            const known = failedIn.get(card);
+            if (known !== undefined) return known;
+            const read = yield* records.failedTools(conversation, card);
+            failedIn.set(card, read);
+            return read;
+          });
         for (const run of frame.runs) {
           // Too little left for a call's record: the runs after it are the client's to read.
           if (left < ENGINE_WIRE_BUDGETS.itemBytes) break;
@@ -510,12 +524,16 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
             let more = false;
             let afterSeq = 0;
             let limit = OUTCOME_FIRST_READ;
+            const failedTools = yield* failedToolsOf(run.id);
             reading: for (;;) {
+              // The run's record is the snapshot's: its summary is not read again for each page.
               const page = yield* records.runPage(conversation, run.id, {
                 afterSeq,
                 only: "outcome",
                 tools,
                 limit,
+                failedTools,
+                runs: false,
               });
               if (requests === undefined) {
                 requests = page.requests.map(fitRequest);
