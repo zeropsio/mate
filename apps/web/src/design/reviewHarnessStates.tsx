@@ -2163,6 +2163,19 @@ export const REVIEW_STATES: ReadonlyArray<{
     node: <Change mate={WREN} over={onGithub("failing")} />,
   },
   {
+    id: "github-failing-behind",
+    label: "On GitHub, its checks there failed, behind main, production outside Mate",
+    node: (
+      <Change
+        environments={NO_ENVIRONMENTS}
+        mate={WREN}
+        over={onGithub("failing")}
+        productionOutside
+        readout={detail({ behind: true })}
+      />
+    ),
+  },
+  {
     id: "github-passing",
     label: "On GitHub, its checks there passed",
     node: <Change mate={WREN} over={onGithub("passing")} />,
