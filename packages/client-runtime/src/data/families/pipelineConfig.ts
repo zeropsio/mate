@@ -1,15 +1,4 @@
-/**
- * What a pipeline ran, which its read by id leaves out (`GET /app-version/{id}` returns neither
- * its name nor its zerops.yaml; measured 2026-11-11): the organization's version search for that
- * one id (`POST /app-version/search`, `clientId` and `id`), which Zerops answers only within an
- * organization. Neither changes once Zerops has them, but zcli hands the zerops.yaml over only
- * after its upload: read once while the pipeline dialog holds it, and again on the version's
- * pushed status while it has none.
- *
- * @module data/families/pipelineConfig
- */
-import type { ScopeKey } from "../model.ts";
-import { scopeOf, type FamilySpec } from "./spec.ts";
+import { type FamilySpec } from "./spec.ts";
 
 export interface PipelineConfigValue {
   /** The name the deploy was given, e.g. a zcli version name or a Mate's `<repo> <sha>`. */
@@ -30,7 +19,7 @@ const text = (value: unknown): string | null =>
   typeof value === "string" && value.trim().length > 0 ? value : null;
 
 /** The one version the search answers; `null` where it answers none. */
-export function readPipelineConfig(answer: unknown): PipelineConfigValue | null {
+function readPipelineConfig(answer: unknown): PipelineConfigValue | null {
   if (typeof answer !== "object" || answer === null) return null;
   const items = (answer as { readonly items?: unknown }).items;
   const row: unknown = Array.isArray(items) ? items[0] : undefined;
@@ -65,6 +54,3 @@ export const pipelineConfigFamily: FamilySpec<"pipelineConfig"> = {
     },
   },
 };
-
-export const pipelineConfigScope = (orgId: string, versionId: string): ScopeKey =>
-  scopeOf(pipelineConfigFamily, orgId, versionId);

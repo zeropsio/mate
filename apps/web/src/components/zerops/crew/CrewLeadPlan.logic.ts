@@ -21,7 +21,7 @@ import type { MateMarkState } from "@t3tools/shared/brand";
 import { mateMarkStateForThreadStatus } from "@t3tools/shared/threadStatus";
 
 /** A crewmate as a line names it: its face in its tint, wearing its thread's state. */
-export interface CrewmateFace {
+interface CrewmateFace {
   readonly handle: string;
   readonly name: string;
   /** `null` for someone no longer on the crew, who has no face to draw. */
@@ -93,7 +93,7 @@ export function crewPlanCommand(
  * dialog first — to start a first run, or to give a run a limit stopped more
  * — with the plan's accept once it has done its part.
  */
-export type CrewPlanStart =
+type CrewPlanStart =
   | { readonly kind: "send"; readonly commands: ReadonlyArray<CrewCommand> }
   | {
       readonly kind: "dialog";
@@ -123,7 +123,7 @@ export function crewPlanStart(
 }
 
 /** What each of the plan's presses meets for this viewer (D6); `null` where it is offered. */
-export interface CrewPlanLocks {
+interface CrewPlanLocks {
   readonly start: CrewLock | null;
   /** The run's limits: the dialog's start or resume, then the accept. */
   readonly change: CrewLock | null;

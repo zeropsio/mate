@@ -115,9 +115,7 @@ import { usageHistoryFamily } from "./usageHistory.ts";
 import type { AnyFamilySpec, DetailListing } from "./spec.ts";
 
 /** The registry, checked once at startup: a family, a scope name and an index name each once. */
-export function defineFamilies(
-  families: ReadonlyArray<AnyFamilySpec>,
-): ReadonlyArray<AnyFamilySpec> {
+function defineFamilies(families: ReadonlyArray<AnyFamilySpec>): ReadonlyArray<AnyFamilySpec> {
   const seen = new Set<string>();
   const once = (what: string) => {
     if (seen.has(what)) throw new Error(`The data layer registers ${what} twice.`);
@@ -249,7 +247,7 @@ export const FAMILIES = defineFamilies([
 
 const byFamily = new Map<string, AnyFamilySpec>(FAMILIES.map((spec) => [spec.family, spec]));
 /** What a scope lists: its family, what leaving it means, and the detail listing it is, if one. */
-export interface ScopeListing {
+interface ScopeListing {
   readonly spec: AnyFamilySpec;
   readonly leaving: MemberState;
   readonly detail: DetailListing | null;

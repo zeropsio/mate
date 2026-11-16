@@ -18,7 +18,7 @@ import { useHqAddress } from "./projectFlows";
 import { askMateThread } from "./useAskMate";
 import { useZeropsDetailCandidates } from "./useZeropsCandidates";
 
-export interface ZeropsChangeRun {
+interface ZeropsChangeRun {
   /** Where "The run that made it" goes: only where one of its answers links the change. */
   readonly threadRef: ScopedThreadRef | undefined;
 }

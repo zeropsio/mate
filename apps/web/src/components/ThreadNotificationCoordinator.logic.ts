@@ -40,7 +40,7 @@ export type MatesBaseline = ReadonlyMap<
 >;
 
 /** A thread that rings: something it waits on the person for, or a turn it completed. */
-export interface ThreadRing {
+interface ThreadRing {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
   readonly title: string;

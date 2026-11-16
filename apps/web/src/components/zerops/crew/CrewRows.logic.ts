@@ -194,7 +194,7 @@ const labelled = (verb: keyof typeof CREW_ROW_VERBS, mateName: string): Labelled
  * nothing: the review only for a task, *Try it* only for a crewmate with a
  * copy of the app.
  */
-export function crewNeedActions(
+function crewNeedActions(
   row: CrewAttention,
   crew: Pick<CrewSnapshot, "crewmates" | "hosts" | "board" | "revision">,
   mateName: string,

@@ -82,9 +82,9 @@ export { RECIPE_TIER_PATHS, type RecipeTier } from "@t3tools/shared/hqRecipe";
 export type RecipeRuntimeRole = "dev" | "stage" | "utility";
 
 /** What a service of a tier is (the module's header). */
-export type RecipeServiceRole = "managed" | RecipeRuntimeRole;
+type RecipeServiceRole = "managed" | RecipeRuntimeRole;
 
-export interface RecipeTierService {
+interface RecipeTierService {
   readonly hostname: string;
   readonly role: RecipeServiceRole;
 }

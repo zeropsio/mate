@@ -25,7 +25,7 @@ import type { ProjectionReads } from "../store.ts";
 export type SearchTerms = ReadonlyArray<Readonly<Record<string, unknown>>>;
 
 /** A Zerops row as a family reads it; `null` for a row it cannot read. */
-export interface ZeropsRow<Value> {
+interface ZeropsRow<Value> {
   readonly id: string;
   readonly value: Value;
   readonly version: number | null;

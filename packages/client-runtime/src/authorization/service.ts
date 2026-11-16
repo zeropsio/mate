@@ -40,7 +40,7 @@ export interface RelayEnvironmentAuthorization {
   readonly credential: string;
 }
 
-export interface AuthorizedRemoteEnvironment {
+interface AuthorizedRemoteEnvironment {
   readonly environmentId: EnvironmentId;
   readonly label: string;
   readonly httpBaseUrl: string;
@@ -94,7 +94,7 @@ const fetchDescriptor = Effect.fn("clientRuntime.connection.remote.fetchDescript
   );
 });
 
-export const make = Effect.gen(function* () {
+const make = Effect.gen(function* () {
   const signer = yield* ManagedRelay.ManagedRelayDpopSigner;
   const presentation = yield* ClientCapabilities.ClientPresentation;
   const tokenStore = yield* TokenStore.RemoteDpopAccessTokenStore;

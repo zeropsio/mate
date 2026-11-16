@@ -25,7 +25,6 @@ import {
 } from "@t3tools/contracts/settings";
 import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
 import { ensureLocalApi } from "~/localApi";
-import { isHostedStaticApp } from "~/hostedPairing";
 import * as Equal from "effect/Equal";
 import * as Struct from "effect/Struct";
 import { primaryServerSettingsAtom, serverEnvironment } from "~/state/server";
@@ -178,17 +177,6 @@ export function getClientSettings(): ClientSettings {
   return getClientSettingsSnapshot();
 }
 
-/**
- * Resolves once client settings have been read from disk.
- *
- * The pre-hydration snapshot is just the schema defaults, so imperative paths
- * that open a preview must await this or they bake the built-in viewport, zoom
- * and appearance into a tab that never picks up the user's saved values.
- */
-export function ensureClientSettingsHydrated(): Promise<void> {
-  return hydrateClientSettings();
-}
-
 export function useClientSettingsHydrated(): boolean {
   return useSyncExternalStore(
     subscribeClientSettingsHydration,
@@ -265,20 +253,6 @@ export function usePrimarySettings<T = UnifiedSettings>(
   return useMergedSettings(useAtomValue(primaryServerSettingsAtom), selector);
 }
 
-export const PRIMARY_SETTINGS_UNAVAILABLE_MESSAGE =
-  "This setting is saved on a server, and the hosted app is not anchored to one. Change it from the desktop app or from the server's own address.";
-
-/**
- * Whether primary-scoped server settings have a server to live on. The
- * hosted app connects to every environment as a remote, so it has no primary:
- * `usePrimarySettings` reads schema defaults there and writes have nowhere
- * to go. Desktop and server-served web always have one.
- */
-export function usePrimarySettingsAvailable(): boolean {
-  const primaryEnvironment = usePrimaryEnvironment();
-  return primaryEnvironment !== null || !isHostedStaticApp();
-}
-
 /**
  * Returns an updater that routes each key to the correct backing store.
  *
@@ -341,7 +315,7 @@ export function __resetClientSettingsPersistenceForTests(): void {
   clientSettingsHydrationListeners.clear();
 }
 
-export function __setClientSettingsForTests(settings: ClientSettings): void {
+function __setClientSettingsForTests(settings: ClientSettings): void {
   clientSettingsHydrationGeneration += 1;
   clientSettingsSnapshot = settings;
   clientSettingsHydrated = true;

@@ -41,7 +41,7 @@ import {
 const READING_COMPUTE = Atom.make<ComputeSpendRead>({ kind: "reading" });
 const READING_TOKENS = Atom.make<AgentUsageRead>({ kind: "reading" });
 
-export interface ProjectSpendInput {
+interface ProjectSpendInput {
   /** The HQ application: whose automated Mates' tokens count. */
   readonly appId: string;
   /** The Zerops projects it is made of: its Mates' projects, its stage and its production. */
@@ -49,7 +49,7 @@ export interface ProjectSpendInput {
 }
 
 /** The project's spend as the data layer reads it: billing's days joined with HQ's tokens. */
-export function useProjectSpend({ appId, projectIds }: ProjectSpendInput): SpendState {
+function useProjectSpend({ appId, projectIds }: ProjectSpendInput): SpendState {
   const orgId = useAccountOrgId();
   const timeZone = useMemo(() => new Intl.DateTimeFormat().resolvedOptions().timeZone, []);
   // The day the screen opened on: a new day's window comes with the next screen.
@@ -80,7 +80,7 @@ export function useProjectSpend({ appId, projectIds }: ProjectSpendInput): Spend
 const NO_SPEND: SpendState = { kind: "unknown" };
 
 /** "$64" at the figure's size, ".30" smaller and quiet. */
-export function Money({ usd }: { readonly usd: number }) {
+function Money({ usd }: { readonly usd: number }) {
   const { whole, cents } = moneyParts(usd);
   return (
     <span className="text-title font-semibold tabular-nums tracking-tight text-foreground">
@@ -93,7 +93,7 @@ export function Money({ usd }: { readonly usd: number }) {
 const COMPUTE_FILL = "bg-spend-compute";
 const TOKENS_FILL = "bg-spend-tokens";
 
-export interface BarsGeometry {
+interface BarsGeometry {
   /** The plot's height, in pixels. */
   readonly height: number;
   /** A bar's width inside its slot: the slot's leftover is the gap between bars. */

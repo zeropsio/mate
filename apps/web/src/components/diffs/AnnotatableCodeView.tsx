@@ -35,7 +35,7 @@ interface DiffCommentAnnotationGroup {
 }
 
 type DiffCommentLineAnnotation = DiffLineAnnotation<DiffCommentAnnotationGroup>;
-export type AnnotatableCodeViewHandle = CodeViewHandle<DiffCommentAnnotationGroup>;
+type AnnotatableCodeViewHandle = CodeViewHandle<DiffCommentAnnotationGroup>;
 const EMPTY_REVIEW_COMMENTS: ReadonlyArray<ReviewCommentContext> = [];
 
 function annotationSide(range: SelectedLineRange): AnnotationSide {

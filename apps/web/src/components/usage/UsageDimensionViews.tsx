@@ -60,7 +60,7 @@ function share(
   return formatPercent(metric === "cost" ? row.costShare : row.tokenShare);
 }
 
-export function OwnerName({
+function OwnerName({
   owner,
   state = "unknown",
 }: {
@@ -85,7 +85,7 @@ export function OwnerName({
   );
 }
 
-export function OwnerAvatar({
+function OwnerAvatar({
   owner,
   title,
 }: {
@@ -107,7 +107,7 @@ export function OwnerAvatar({
 }
 
 /** The report's period, for an automated Mate's tasks. */
-export interface UsagePeriod {
+interface UsagePeriod {
   readonly since: string | null;
   readonly until: string;
 }

@@ -129,8 +129,6 @@ import { hqStructureOf } from "./structure.ts";
 import { makeChiefCalls, type HqChiefCalls } from "./chief.ts";
 import { freshHqSocketName } from "./socketName.ts";
 
-export { freshHqSocketName };
-
 /** An organization's HQ: its project, and the address its anchor names. */
 export interface HqEndpoint {
   readonly projectId: string;

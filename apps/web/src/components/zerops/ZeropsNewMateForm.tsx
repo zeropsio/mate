@@ -56,7 +56,7 @@ import { WhatHappensNext } from "./WhatHappensNext";
 import { newMateCost, newMateNext, ZEROPS_PRICING_URL } from "./whatHappensNext.logic";
 
 /** What the form hands over: the Mate's own name, which its project's is built from, the recipe and the face. */
-export interface NewMateChoice {
+interface NewMateChoice {
   readonly name: string;
   readonly recipe: EnvironmentRecipeChoice;
   readonly face: ZeropsMateFace;
@@ -66,7 +66,7 @@ export interface NewMateChoice {
   readonly persona?: MatePersona;
 }
 
-export interface ZeropsNewMateFormProps {
+interface ZeropsNewMateFormProps {
   readonly groupName: string;
   /** The name proposed for it, free on the account (`generateBotName`). */
   readonly defaultBotName: string;

@@ -19,7 +19,7 @@ export const APP_NAME_MAX = 34;
 
 export const GITHUB_ONE_LINE =
   "Everything Mate writes on GitHub appears as your organization's bot, never a person.";
-export const GITHUB_OLDER_HQ = hqNeedsUpdate("connect GitHub");
+const GITHUB_OLDER_HQ = hqNeedsUpdate("connect GitHub");
 export const GITHUB_WHO_CAN = "Owners and Admins change this.";
 const WITHHELD = "Only the organization's Owner and Admins see this.";
 
@@ -85,7 +85,7 @@ export interface GithubAppRow {
   } | null;
 }
 
-export type GithubSection =
+type GithubSection =
   | { readonly kind: "reading" }
   | { readonly kind: "older" }
   | { readonly kind: "withheld" }
@@ -209,7 +209,7 @@ export function accountLine(
  * The Mate repositories whose remote goes through this app, once each: what stops when it is
  * removed. One connected through another app or a token is not its.
  */
-export function appUses(app: HqGithubApp): ReadonlyArray<GithubAppUse> {
+function appUses(app: HqGithubApp): ReadonlyArray<GithubAppUse> {
   const seen = new Map<string, GithubAppUse>();
   for (const installation of app.installations) {
     if (installation.state === "unknown") continue;
@@ -228,7 +228,7 @@ export function appUses(app: HqGithubApp): ReadonlyArray<GithubAppUse> {
 }
 
 /** One app's row, from HQ's answer. */
-export function githubAppRow(app: HqGithubApp): GithubAppRow {
+function githubAppRow(app: HqGithubApp): GithubAppRow {
   return {
     appId: app.appId,
     name: appName(app),

@@ -5,7 +5,7 @@ import { sameValue } from "./equal.ts";
 import { moveRemainder } from "./moveRemainder.ts";
 import { operationProgress } from "./operation.ts";
 
-export interface LifecycleRemainders {
+interface LifecycleRemainders {
   readonly renames: ReadonlyMap<
     string,
     {

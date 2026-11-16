@@ -10,7 +10,7 @@ import { ArchiveRestoreIcon, HistoryIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { InlineButton } from "~/components/ui/button";
 
-export interface ComposerPlaceNotice {
+interface ComposerPlaceNotice {
   readonly id: string;
   readonly icon: ReactNode;
   /** What stops the writing, on one line; its key words in `<strong>`. */
@@ -24,7 +24,7 @@ export interface ComposerPlaceNotice {
 }
 
 /** What may stop the writing, as the records say it; the first that holds takes the place. */
-export interface ComposerPlaceRecord {
+interface ComposerPlaceRecord {
   /** The conversation is archived; `restoring` while Restore runs. */
   readonly archived: { readonly restoring: boolean } | null;
   /** A crewmate's earlier conversation: it goes on in `currentThreadId` (`crewChatNotices`). */
@@ -34,7 +34,7 @@ export interface ComposerPlaceRecord {
   } | null;
 }
 
-export interface ComposerPlaceActions {
+interface ComposerPlaceActions {
   readonly restore: () => void;
   readonly openCurrent: () => void;
 }

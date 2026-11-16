@@ -1,4 +1,4 @@
-import { mateSourceLink, classifyMateSourceFailure } from "./mateSource.ts";
+import { mateSourceLink } from "./mateSource.ts";
 /**
  * A Mate's health straight from the Mate the person has open (`subscribeZeropsHealth`): one
  * link per Mate, by its project, observed only while the app holds the Mate open. Each session of
@@ -18,7 +18,6 @@ import {
   type EnvironmentId,
   type MateHealth,
 } from "@t3tools/contracts";
-import * as Cause from "effect/Cause";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -50,9 +49,6 @@ export interface MateHealthWire {
 }
 
 const isAuthorizationError = Schema.is(EnvironmentAuthorizationError);
-
-export const classifyMateHealthFailure = (cause: Cause.Cause<unknown>) =>
-  classifyMateSourceFailure(cause, "health");
 
 export function mateHealthLink(options: {
   readonly projectId: string;

@@ -178,7 +178,7 @@ export function pictureAnswerOf(
 }
 
 /** Where the answer came from, for the words the Mate is sent. */
-export type PictureAnswerSource =
+type PictureAnswerSource =
   | { readonly kind: "express"; readonly prompt: string | undefined }
   | { readonly kind: "upload" };
 

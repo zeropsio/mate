@@ -7,11 +7,7 @@ export {
   seedHqNavigation,
   type SeededHq,
 } from "./hqNavigation.ts";
-export {
-  seedHqProjectPeople,
-  type SeededProjectPeople,
-  type SeededProjectPerson,
-} from "./hqProjectPeople.ts";
+export { seedHqProjectPeople } from "./hqProjectPeople.ts";
 export {
   engineCardPagingOfRecords,
   engineShellOfRecords,
@@ -37,7 +33,6 @@ export {
   projectValue,
   zeropsVersion,
   ORG,
-  pastGrace,
 } from "./account.ts";
 export { membershipInputs } from "./membership.ts";
 export { hqFixtureWire } from "./hqWire.ts";

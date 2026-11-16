@@ -47,14 +47,14 @@ import {
 import { changeMergeVerdict, type ReviewFixProblem } from "./reviewVerdict.ts";
 
 /** How many of its waiting changes the strip lists, each with its own Review. */
-export const MATE_NEXT_STEP_LINES = 3;
+const MATE_NEXT_STEP_LINES = 3;
 
 /**
  * What a change that does not merge as it stands says on its line: the word its row says
  * (`changeState` — `Conflicts with main`, `Checking`), and the fix its review offers
  * (`changeMergeVerdict`), where the Mate is the viewer's and its name is known.
  */
-export interface MateNextStepVerdict {
+interface MateNextStepVerdict {
   readonly title: string;
   /** `Ask Wren to resolve it`, and what goes into the Mate's composer; else its line offers Review. */
   readonly fix?: { readonly label: string; readonly problem: ReviewFixProblem } | undefined;

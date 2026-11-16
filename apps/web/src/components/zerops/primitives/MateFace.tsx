@@ -449,5 +449,5 @@ function MateShapeFace({
 }
 
 export { MateFace, MateFaceAsMark };
-export type { MateFaceCue, MateMoment } from "./mateFaceMoment.logic";
-export type { MateFaceGaze, MateFaceProps, MateFaceSize };
+export type { MateFaceCue } from "./mateFaceMoment.logic";
+export type { MateFaceProps, MateFaceSize };

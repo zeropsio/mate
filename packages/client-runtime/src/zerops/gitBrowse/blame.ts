@@ -16,7 +16,7 @@ import { fileShape } from "./blob.ts";
 export const blameRead = { query: GitBlameQuery, value: GitBlame, moving: false } as const;
 
 /** Why a file has no blame: blame reads text files up to 256 KiB. */
-export type NoBlame = "too-large" | "not-text";
+type NoBlame = "too-large" | "not-text";
 
 export const noBlame = (blob: GitBlob): NoBlame | null => {
   if (blob.size > BLAME_MAX_BYTES) return "too-large";

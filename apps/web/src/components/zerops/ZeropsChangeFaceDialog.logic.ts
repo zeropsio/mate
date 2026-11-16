@@ -13,7 +13,7 @@ import type { MateTintId } from "@t3tools/shared/brand";
 export const CHANGE_FACE_VERB = "Change face…";
 
 /** What the Change face dialog says. */
-export interface ChangeFaceWords {
+interface ChangeFaceWords {
   /** "Change Fen's face" */
   readonly title: string;
   /** That the face is everybody's view of the Mate, not the viewer's own. */

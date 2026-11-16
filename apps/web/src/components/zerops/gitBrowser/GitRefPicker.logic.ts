@@ -31,7 +31,7 @@ export interface PickerRow {
   readonly commit?: { readonly subject: string | null; readonly committedAt: string | null };
 }
 
-export interface PickerSection {
+interface PickerSection {
   readonly name: GitRefGroupName | "Commit";
   readonly rows: ReadonlyArray<PickerRow>;
 }
@@ -39,7 +39,7 @@ export interface PickerSection {
 const COMMIT_ID = /^[0-9a-f]{7,40}$/iu;
 
 /** A typed 7-40 hex string, as the commit it may name. */
-export const typedCommit = (query: string): string | null => {
+const typedCommit = (query: string): string | null => {
   const typed = query.trim();
   return COMMIT_ID.test(typed) ? typed.toLowerCase() : null;
 };

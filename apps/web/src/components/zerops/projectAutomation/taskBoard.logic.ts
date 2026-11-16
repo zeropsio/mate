@@ -93,7 +93,7 @@ export interface Board {
 }
 
 /** "4m", "3h", "2d": an age as the board's numbers column shows it. */
-export function shortAge(fromIso: string | null, nowMs: number): string {
+function shortAge(fromIso: string | null, nowMs: number): string {
   const from = fromIso === null ? Number.NaN : Date.parse(fromIso);
   if (!Number.isFinite(from)) return "—";
   const minutes = Math.max(0, Math.floor((nowMs - from) / 60_000));

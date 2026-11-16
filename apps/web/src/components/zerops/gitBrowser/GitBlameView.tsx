@@ -60,7 +60,7 @@ interface LineMetrics {
 }
 
 /** Why a file has no blame, in the person's words. */
-export const noBlameWords = (blob: GitBlob) => {
+const noBlameWords = (blob: GitBlob) => {
   const why = noBlame(blob);
   if (why === "too-large")
     return `Blame reads files up to 256 KiB. This file is ${fileSize(blob.size)}. Clone the repository to blame it.`;
@@ -69,7 +69,7 @@ export const noBlameWords = (blob: GitBlob) => {
 };
 
 /** One run of lines' commit: its shade, time, subject, change and the blame before it. */
-export function BlameRangeRow({
+function BlameRangeRow({
   range,
   commit,
   age,
@@ -145,7 +145,7 @@ export function BlameRangeRow({
 }
 
 /** The runs of lines whose rows stand within `lines`, by binary search on their order. */
-export const rangesWithin = (
+const rangesWithin = (
   ranges: ReadonlyArray<GitBlameRange>,
   lines: { readonly first: number; readonly last: number },
 ) => {

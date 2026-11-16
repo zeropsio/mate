@@ -32,6 +32,4 @@ export function resetAppAtomRegistry() {
   if (held.length === 0) closing.dispose();
   else void Promise.allSettled(held).then(() => closing.dispose());
 }
-
-export const resetAppAtomRegistryForTests = resetAppAtomRegistry;
 onAccountLifetimeClose(resetAppAtomRegistry);

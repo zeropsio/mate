@@ -372,7 +372,7 @@ export async function putLiveSettle<T>(
 }
 
 /** How production's creation ended, as `useEnvironmentCreation` says it. */
-export type PutLiveCreationRun =
+type PutLiveCreationRun =
   | { readonly kind: "refused"; readonly reason: string | null }
   | { readonly kind: "ran"; readonly outcome: EnvironmentCreationOutcome };
 
@@ -433,7 +433,7 @@ export function putLiveFactsOf(flow: ZeropsProjectFlow): PutLiveFacts {
 }
 
 /** What a run waits for next, read off the flow: nothing yet, a release to make, or its end. */
-export type PutLiveNext =
+type PutLiveNext =
   | { readonly kind: "wait" }
   | { readonly kind: "release" }
   /** Someone else's release of it is on its way, or went live meanwhile: the run ends on that. */
@@ -673,7 +673,7 @@ export interface PutLiveFlowFacts extends PutLiveFacts {
  * - `forget` — that production is gone or another stands: the attempt is no longer the person's.
  * - `reading` — the attempt is known and the flow not yet: the strip holds its room.
  */
-export type PutLiveResumed =
+type PutLiveResumed =
   | { readonly kind: "none" }
   | { readonly kind: "reading" }
   | { readonly kind: "forget" }

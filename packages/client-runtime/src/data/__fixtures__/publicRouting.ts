@@ -3,7 +3,7 @@
  * routing, then the service switch. Domains and locations use the platform's wire shape.
  */
 export const ROUTING_PROJECT = "routing-project";
-export const ROUTING_SERVICE = "routing-service";
+const ROUTING_SERVICE = "routing-service";
 export const REMOVED_ROUTING = "removed-routing";
 export const RECORDED_ROUTING = {
   id: "replacement-routing",

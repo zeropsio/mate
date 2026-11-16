@@ -2,7 +2,7 @@
 import type { ZeropsMacViewState } from "../../zerops/macView.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
 
-export interface MateMacViewValue {
+interface MateMacViewValue {
   readonly state: ZeropsMacViewState;
   /** A frame received in this source session, rather than retained from an earlier one. */
   readonly currentFrame: boolean;

@@ -9,14 +9,14 @@
 import type { PictureMark, PictureRect } from "./composerPictures";
 
 /** The notes' pink: the same in both themes, since it is burnt into the pixels. */
-export const PICTURE_NOTE_COLOR = "#e5267a";
+const PICTURE_NOTE_COLOR = "#e5267a";
 const HALO_COLOR = "rgba(255,255,255,.92)";
 const DISC_SHADOW = "rgba(0,0,0,.35)";
 const MARK_FONT = "Roboto, -apple-system, BlinkMacSystemFont, system-ui, sans-serif";
 
 type Context2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
-export interface PictureMarkMetrics {
+interface PictureMarkMetrics {
   /** The disc's radius. */
   readonly radius: number;
   readonly halo: number;
@@ -38,7 +38,7 @@ function roundedRect(context: Context2D, x: number, y: number, w: number, h: num
   context.roundRect(x, y, w, h, r);
 }
 
-export interface PictureMarksView {
+interface PictureMarksView {
   /** The source pixel at the canvas's origin, and canvas pixels per source pixel. */
   readonly origin: { readonly x: number; readonly y: number };
   readonly scale: number;

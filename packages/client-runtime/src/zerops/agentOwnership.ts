@@ -65,7 +65,7 @@ export type ZeropsAgentOwnership =
   /** A credential exists but no authorizer was recorded. */
   | "unrecorded";
 
-export interface ZeropsAgentOwnershipInput {
+interface ZeropsAgentOwnershipInput {
   /** Whether a credential artifact exists at all (`ZeropsAgentAuth.credPresent`). */
   readonly credPresent: boolean;
   readonly authorizedBy?: ZeropsAgentAuthorizer | undefined;
@@ -160,7 +160,7 @@ export function agentOwnershipComposerNotice(
 }
 
 /** The login a signer comes from, as a snapshot row carries it. */
-export interface AgentSignerFacts {
+interface AgentSignerFacts {
   readonly authorizedBy?: { readonly subject: ZeropsUserId } | undefined;
   readonly login?:
     | {

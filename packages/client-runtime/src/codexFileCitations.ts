@@ -1,11 +1,11 @@
-export interface CodexFileCitationLink {
+interface CodexFileCitationLink {
   readonly path: string;
   readonly href: string;
   readonly label: string;
   readonly lineRangeStart?: number;
 }
 
-export type CodexFileCitationAttributes = Readonly<Record<string, string | null | undefined>>;
+type CodexFileCitationAttributes = Readonly<Record<string, string | null | undefined>>;
 
 function positiveInteger(value: string | null | undefined): number | undefined {
   if (value === null || value === undefined || value.trim().length === 0) return undefined;

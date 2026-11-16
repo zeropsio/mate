@@ -12,7 +12,7 @@ import { useResizeDrag } from "./useResizeDrag";
 
 const WidthSchema = Schema.Finite;
 
-export interface UseResizableWidthOptions {
+interface UseResizableWidthOptions {
   /** localStorage key the persisted width is stored under. */
   readonly storageKey: string;
   readonly defaultWidth: number;

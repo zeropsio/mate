@@ -14,7 +14,7 @@ import type { ZeropsOrganizationMember } from "../../zerops/api.ts";
 import type { ScopeKey } from "../model.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
 
-export type OrganizationMembersValue = ReadonlyArray<ZeropsOrganizationMember>;
+type OrganizationMembersValue = ReadonlyArray<ZeropsOrganizationMember>;
 
 declare module "../model.ts" {
   interface FamilyValues {

@@ -104,4 +104,4 @@ function ScrollBar({
   );
 }
 
-export { getVirtualizedScrollFadeClassName, ScrollArea, ScrollBar };
+export { getVirtualizedScrollFadeClassName, ScrollArea };

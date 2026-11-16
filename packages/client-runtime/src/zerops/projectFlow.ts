@@ -567,10 +567,7 @@ type ChangeLabelOf = Pick<FlowPullRequest, "repository" | "number" | "title" | "
  * Whether a change is named with its repository: when its Mate's changes stand open in more than
  * one repository, `#1` alone is two rows that read the same (`appdev #1`, `apidev #1`).
  */
-export function changeNamesRepository(
-  pull: ChangeLabelOf,
-  among?: ReadonlyArray<ChangeLabelOf>,
-): boolean {
+function changeNamesRepository(pull: ChangeLabelOf, among?: ReadonlyArray<ChangeLabelOf>): boolean {
   if (among === undefined) return false;
   return among.some(
     (entry) => entry.mateProjectId === pull.mateProjectId && entry.repository !== pull.repository,

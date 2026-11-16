@@ -4,7 +4,7 @@ import { useCallback, useState } from "react";
 
 import { useGitBrowseReads } from "./useGitBrowse";
 
-export interface ZeropsChangeFileDiffs {
+interface ZeropsChangeFileDiffs {
   /** A file's diff as it stands; reading until it is asked for and answered. */
   readonly diffOf: (path: string) => ChangeFileDiffState;
   /** Asks for a file's diff: what unfolding it does. */

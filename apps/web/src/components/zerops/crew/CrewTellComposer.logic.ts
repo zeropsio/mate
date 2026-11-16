@@ -18,13 +18,13 @@ import type { ComposerCommandItem } from "../../chat/ComposerCommandMenu";
 
 export type TellMenuItem = Extract<ComposerCommandItem, { type: "path" }>;
 
-export interface TellMenu {
+interface TellMenu {
   readonly trigger: ComposerTrigger;
   readonly items: ReadonlyArray<TellMenuItem>;
 }
 
 /** A file or directory the path search found for the typed query. */
-export interface TellFile {
+interface TellFile {
   readonly path: string;
   readonly kind: "file" | "directory";
 }

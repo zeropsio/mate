@@ -33,7 +33,7 @@ import { useZeropsAgentAuth } from "../useZeropsFeeds";
 import { useZeropsSessionOptional } from "../ZeropsSessionProvider";
 
 /** The login a crewmate runs on when its crew home names none, as the engine reads it. */
-export const DEFAULT_CREW_LOGIN = "claudeAgent";
+const DEFAULT_CREW_LOGIN = "claudeAgent";
 
 const NO_PROJECTS = Atom.make<ReadonlyArray<EnvironmentProject>>([]).pipe(
   Atom.withLabel("crew-access:no-projects"),

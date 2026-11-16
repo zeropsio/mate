@@ -9,7 +9,7 @@ import { useState } from "react";
 
 import { useReviewShown } from "./review";
 
-export interface BehindReview<T> {
+interface BehindReview<T> {
   /** What to draw: the value, or the last one while it is held. */
   readonly value: T | null;
   /** Drawn only to keep its room: what it said is no longer true. */

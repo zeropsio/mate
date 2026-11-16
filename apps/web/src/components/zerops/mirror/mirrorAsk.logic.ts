@@ -83,7 +83,7 @@ export function seenRepo(value: string | null): string | null {
 }
 
 /** What the card reads of an ask, and who answered it when: a person's Zerops user id. */
-export interface MirrorAskRecord {
+interface MirrorAskRecord {
   readonly requestId: string;
   readonly repo: string;
   readonly reason: string | null;
@@ -146,7 +146,7 @@ export function mirrorDiverged(
 export const mirrorAskTitle = (repo: string): string => `Connect ${repo} to GitHub`;
 
 /** A remote as people write it: `acme/shop` on GitHub, else the address without its scheme. */
-export function remoteWords(url: string): string {
+function remoteWords(url: string): string {
   return githubName(url) ?? url.replace(/^https:\/\//iu, "").replace(/\.git\/?$/u, "");
 }
 

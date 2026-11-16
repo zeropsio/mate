@@ -17,7 +17,7 @@ export interface BrowserDpopKey {
   readonly thumbprint: string;
 }
 
-export class BrowserDpopError extends Data.TaggedError("BrowserDpopError")<{
+class BrowserDpopError extends Data.TaggedError("BrowserDpopError")<{
   readonly message: string;
   readonly cause?: unknown;
 }> {}

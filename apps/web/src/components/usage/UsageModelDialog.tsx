@@ -32,7 +32,7 @@ import {
 } from "./usageBreakdown";
 import { PROVIDER_PRESENTATION } from "./usageProviders";
 
-export interface UsageChartWindow {
+interface UsageChartWindow {
   readonly days: readonly string[];
   readonly hours: readonly string[];
   readonly resolution: "day" | "hour";
@@ -178,7 +178,7 @@ export function UsageModelDialog({
 }
 
 /** What fast mode cost above standard rates, beside the speed bar. */
-export function SpeedPremium({ premiumUsd }: { readonly premiumUsd: number }) {
+function SpeedPremium({ premiumUsd }: { readonly premiumUsd: number }) {
   return (
     <span className="text-xs text-muted-foreground">
       Premium <span className="text-foreground tabular-nums">{formatUsd(premiumUsd)}</span>

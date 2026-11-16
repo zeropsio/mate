@@ -48,7 +48,7 @@ export interface MatePanelProject {
 }
 
 /** The project's places, one compact line each. Lines hold their height while they are read. */
-export function MatePlaces({ project }: { readonly project: MatePanelProject }) {
+function MatePlaces({ project }: { readonly project: MatePanelProject }) {
   // Production is always said once read: no line at all is a read still out.
   if (project.places.length === 0)
     return (

@@ -174,7 +174,7 @@ interface ChatMarkdownProps {
   onOpenImage?: ((preview: ExpandedImagePreview) => void) | undefined;
 }
 
-export type ChatMarkdownVariant = "answer" | "person" | "log";
+type ChatMarkdownVariant = "answer" | "person" | "log";
 
 export function canUseMarkdownFileShellActions(
   environmentId: EnvironmentId | null,

@@ -55,7 +55,7 @@ const VALUELESS_OPS: ReadonlySet<DataConsoleFilterOp> = new Set(["isNull", "notN
 const CHIP_SELECT_CLASS =
   "cursor-pointer bg-transparent px-1 py-0.5 text-xs outline-none focus-visible:bg-accent";
 
-export interface ZeropsDataFiltersProps {
+interface ZeropsDataFiltersProps {
   /** Which half to render: the toolbar button group, or the chips and raw input under it. */
   readonly slot: "toolbar" | "rows";
   readonly columns: ReadonlyArray<ZeropsDataConsoleColumn>;

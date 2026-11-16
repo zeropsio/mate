@@ -7,7 +7,6 @@ import { useMemo } from "react";
 import { assetEnvironment } from "~/state/assets";
 import { usePreparedConnection } from "~/state/session";
 import { resolveAssetUrl } from "@t3tools/client-runtime/state/assets";
-export { resolveAssetUrl } from "@t3tools/client-runtime/state/assets";
 
 export type AssetUrlState =
   | { readonly _tag: "Loading" }

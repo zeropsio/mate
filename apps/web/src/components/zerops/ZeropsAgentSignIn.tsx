@@ -101,7 +101,7 @@ const CARDS_LEAVE_MS = 180;
 export type SignInAgent = Pick<ZeropsAgentAuth, "agentId" | "login"> &
   Partial<Omit<ZeropsAgentAuth, "agentId" | "login">>;
 
-export interface AgentSignInViewProps {
+interface AgentSignInViewProps {
   /** The agents offered, in the order offered (`signInAgents`). */
   readonly agents: ReadonlyArray<SignInAgent>;
   /** The project's usual agent, whose card says so. */
@@ -748,7 +748,7 @@ function TypeCodeStep({
 // ── Connected ────────────────────────────────────────────────────────────────────────────────
 
 /** A login beyond the agents' own (crew mode's *Runs on*): its own id and name. */
-export interface SignInLogin {
+interface SignInLogin {
   readonly id: string;
   readonly agentId: ZeropsAgentId;
   readonly title: string;

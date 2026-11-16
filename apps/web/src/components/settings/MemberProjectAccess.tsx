@@ -143,7 +143,7 @@ export function MemberProjectAccess({
 const UNSET = "unset";
 
 /** The search, each project with its levels and *Unset*, and *Add projects*. */
-export function ProjectPicker({
+function ProjectPicker({
   candidates,
   levels,
   onAdd,

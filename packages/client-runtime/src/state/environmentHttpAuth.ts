@@ -6,7 +6,7 @@ import type { PreparedHttpAuthorization } from "../connection/model.ts";
 import type { ManagedRelayDpopSigner } from "../relay/managedRelay.ts";
 import { RemoteEnvironmentAuthFetchError } from "../rpc/http.ts";
 
-export interface EnvironmentHttpAuthHeaders {
+interface EnvironmentHttpAuthHeaders {
   readonly authorization?: string;
   readonly dpop?: string;
 }

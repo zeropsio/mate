@@ -15,7 +15,7 @@
 import { describeCell } from "@t3tools/client-runtime/zerops/dataConsole";
 import { Maximize2Icon } from "lucide-react";
 
-export interface ZeropsDataCellProps {
+interface ZeropsDataCellProps {
   readonly value: unknown;
   readonly onExpand?: (() => void) | undefined;
 }

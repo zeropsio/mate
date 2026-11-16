@@ -3,7 +3,7 @@ import { onAccountLifetimeClose } from "../../zerops/accountLifetime";
 
 export type TimelineScrollMode = "following-end" | "anchoring-new-turn" | "free-scrolling";
 
-export interface TimelineListMeasurementState {
+interface TimelineListMeasurementState {
   readonly data: readonly unknown[];
   readonly scroll: number;
   readonly scrollLength: number;
@@ -11,7 +11,7 @@ export interface TimelineListMeasurementState {
   readonly sizeAtIndex: (index: number) => number | undefined;
 }
 
-export interface AnchoredTurnMetrics {
+interface AnchoredTurnMetrics {
   readonly anchorTop: number;
   readonly lastBottom: number;
   readonly turnHeight: number;
@@ -193,7 +193,7 @@ export function describeTimelineAnchor(
  * (`row`), or a row's top or foot where a conversation's first line sits,
  * clear of the fade under the header (`line`).
  */
-export type TimelineRestoreTarget =
+type TimelineRestoreTarget =
   | { readonly kind: "end" }
   | { readonly kind: "row"; readonly rowId: string; readonly offsetWithinRow: number }
   | { readonly kind: "line"; readonly rowId: string; readonly edge: "top" | "foot" };
@@ -268,7 +268,7 @@ export const TIMELINE_PLACING_DEADLINE_MS = 400;
 /**
  * How long a conversation stays hidden while one of its rows still reads what it shows (an
  * approved domain's records, read once its card is drawn): it would grow under the reader once
- * shown. The opening's own beat (`OPENING_WAIT_LINE_MS`); past it, it shows as it stands.
+ * shown. The opening's own beat (1 s); past it, it shows as it stands.
  */
 export const TIMELINE_ROW_READ_DEADLINE_MS = 1_000;
 
@@ -278,7 +278,7 @@ export const TIMELINE_ROW_READ_DEADLINE_MS = 1_000;
  * lines, read as its card mounts). Past it, it shows as it stands: a page slow to speak, or a
  * read that never answers, does not hold its conversation back for long.
  */
-export const TIMELINE_ROW_SETTLE_DEADLINE_MS = 300;
+const TIMELINE_ROW_SETTLE_DEADLINE_MS = 300;
 
 /**
  * One frame of placing a conversation: wait for the list and the row it

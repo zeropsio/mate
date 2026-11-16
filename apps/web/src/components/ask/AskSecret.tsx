@@ -23,7 +23,7 @@ const NOT_A_PASSWORD = {
   "data-lpignore": "true",
 } as const;
 
-export interface AskSecretFieldProps {
+interface AskSecretFieldProps {
   readonly density: AskDensity;
   /** What the value is, in people's words: the field's name, shown above it in full. */
   readonly label: string;
@@ -121,7 +121,7 @@ export function AskSecretField(props: AskSecretFieldProps) {
 }
 
 /** How long a revealed value stays on screen. */
-export const REVEAL_SECONDS = 30;
+const REVEAL_SECONDS = 30;
 
 /**
  * A value revealed on the person's screen: its words, Copy, and how long until it hides — after

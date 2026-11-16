@@ -178,7 +178,7 @@ function valueOf(state: AccountState, key: ReadKey): unknown {
 }
 
 /** Reads straight from a state: what a projection gets in a test, and inside its atom. */
-export function readsOf(read: <T>(key: ReadKey) => T): ProjectionReads {
+function readsOf(read: <T>(key: ReadKey) => T): ProjectionReads {
   return {
     fact: (family, id) => read(`${family}:${id}`),
     members: (scope) => read(`members:${scope}`),

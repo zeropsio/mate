@@ -1,4 +1,4 @@
-import { mateSourceLink, classifyMateSourceFailure } from "./mateSource.ts";
+import { mateSourceLink } from "./mateSource.ts";
 /**
  * A Mate's attention straight from the Mate the person has open (`subscribeZeropsAttention`): one
  * link per Mate, by its project, observed only while the app holds the Mate open. Each session of
@@ -18,7 +18,6 @@ import {
   type EnvironmentId,
   type MateAttention,
 } from "@t3tools/contracts";
-import * as Cause from "effect/Cause";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -53,9 +52,6 @@ export interface MateAttentionWire {
 }
 
 const isAuthorizationError = Schema.is(EnvironmentAuthorizationError);
-
-export const classifyMateAttentionFailure = (cause: Cause.Cause<unknown>) =>
-  classifyMateSourceFailure(cause, "attention");
 
 export function mateAttentionLink(options: {
   readonly projectId: string;

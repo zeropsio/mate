@@ -28,7 +28,7 @@ export interface MateFeedValues {
   readonly mateCrewFiles: CrewFiles;
   readonly mateTerminal: ReadonlyArray<TerminalSummary>;
 }
-export type MateFeedFacts = {
+type MateFeedFacts = {
   readonly [F in keyof MateFeedValues]: {
     readonly snapshot: MateFeedValues[F];
     readonly observedAtMs: number;

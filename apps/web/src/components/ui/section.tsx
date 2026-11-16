@@ -94,4 +94,3 @@ function Section({
 }
 
 export { Section, SectionHeader };
-export type { SectionHeaderProps, SectionProps };

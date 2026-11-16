@@ -85,7 +85,7 @@ export function connectionStatusText(connection: EnvironmentConnectionPresentati
   }
 }
 
-export interface ConnectionBannerCopy {
+interface ConnectionBannerCopy {
   readonly title: string;
   readonly description: string | null;
   /**

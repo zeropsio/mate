@@ -3,7 +3,7 @@ import type { OverviewMain } from "@t3tools/shared/mateLink";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 
-export interface UsageLimitNotice {
+interface UsageLimitNotice {
   /** When the limit resets, when the notice says. */
   readonly resetsAt: string | null;
 }
@@ -216,7 +216,7 @@ export function projectLimitError(error: string | null | undefined, driver?: str
 }
 
 /** The evidence consumed by both hosted history and admission; no presentation types required. */
-export interface LimitHistoryEntry {
+interface LimitHistoryEntry {
   readonly kind: string;
   readonly createdAt: string;
   readonly message?: {

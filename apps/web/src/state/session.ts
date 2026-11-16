@@ -12,7 +12,7 @@ const prepared = createPreparedConnectionAtoms(connectionAtomRuntime);
 const sessionAtoms = Atom.family((environmentId: EnvironmentId) =>
   mateFeedAsyncAtom({ family: "mateClientSession", environmentId, input: {} }),
 );
-export const environmentSession = { ...prepared, sessionStateAtom: sessionAtoms };
+const environmentSession = { ...prepared, sessionStateAtom: sessionAtoms };
 
 const EMPTY_PREPARED_CONNECTION_ATOM = Atom.make(Option.none()).pipe(
   Atom.withLabel("web-prepared-connection:empty"),

@@ -8,7 +8,7 @@ import type { ScopedThreadRef } from "@t3tools/contracts";
 
 import { onAccountLifetimeClose } from "./accountLifetime";
 
-export type OnMateConversation = (conversation: ScopedThreadRef) => void;
+type OnMateConversation = (conversation: ScopedThreadRef) => void;
 
 const waiting = new Map<string, OnMateConversation>();
 

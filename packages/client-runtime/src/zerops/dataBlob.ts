@@ -45,8 +45,6 @@ export type BlobPreview = BlobPreviewMeta &
     | { readonly kind: "hex"; readonly dump: string; readonly moreBytes?: number }
   );
 
-export type BlobPreviewKind = BlobPreview["kind"];
-
 /** `undefined` on malformed base64 rather than throwing — a pure model function never throws on server input. */
 function decodeBase64(base64: string): Uint8Array | undefined {
   const clean = base64.replace(/[\r\n]/g, "");

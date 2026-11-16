@@ -1,7 +1,7 @@
 import type { MateActionRequest } from "../families/mateActionRequest.ts";
 import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
-export interface MateActionStatus extends MateActionRequest {
+interface MateActionStatus extends MateActionRequest {
   readonly pending: boolean;
   readonly error: string | null;
   readonly terminalId: string | null;

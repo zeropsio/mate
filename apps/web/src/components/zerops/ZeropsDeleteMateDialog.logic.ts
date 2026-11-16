@@ -117,7 +117,7 @@ export function deleteMateOffered(input: {
 export const PROJECT_GOING_STATUSES: ReadonlySet<string> = new Set(["DELETING", "DELETED"]);
 
 /** Where the viewer stands once the platform took the Mate. */
-export type DeleteLanding =
+type DeleteLanding =
   | { readonly kind: "stay" }
   | { readonly kind: "mate"; readonly projectId: string }
   | { readonly kind: "projects" };

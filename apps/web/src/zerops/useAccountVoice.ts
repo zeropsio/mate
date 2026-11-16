@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAccountTrouble } from "./inventoryContext";
 import { TRY_NOW_SETTLE_MS, accountFootLine, type TryNowAttempt } from "./inventoryTrouble.logic";
 
-export interface AccountVoice {
+interface AccountVoice {
   readonly sentence: string;
   /** What isn't answering, named under the sentence; null when nothing is named. */
   readonly title: string | null;

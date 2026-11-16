@@ -24,7 +24,7 @@ import { useSecondsNowMs } from "./useNowMs";
 
 export type UseZeropsBirthProgressInput = Omit<BirthFactsInput, "processes">;
 
-export interface UseZeropsBirthProgressResult {
+interface UseZeropsBirthProgressResult {
   readonly progress: BirthProgress;
   readonly nowMs: number;
 }

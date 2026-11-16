@@ -34,7 +34,7 @@ import {
   type RefWorld,
 } from "./vaultReferences.ts";
 
-export interface VaultKey {
+interface VaultKey {
   /** The organization whose link observes the project. */
   readonly orgId: string;
   readonly projectId: string;

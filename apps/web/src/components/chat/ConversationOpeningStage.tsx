@@ -225,7 +225,7 @@ export function useConversationOpeningArrives(): boolean {
 }
 
 /** Whether the conversation's surface is seen: no stage holds it unseen. */
-export function useConversationOpeningShown(): boolean {
+function useConversationOpeningShown(): boolean {
   return use(OpeningWaitContext) !== "held";
 }
 

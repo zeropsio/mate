@@ -4,7 +4,7 @@
  * "Petra Malá" on a team card are the same mark, on every row and every reload, with nothing
  * stored.
  */
-export interface PersonMark {
+interface PersonMark {
   /** One letter: the first of the name the person goes by. */
   readonly letter: string;
   /** The person's hue, 0–359: one person, one colour, everywhere. */

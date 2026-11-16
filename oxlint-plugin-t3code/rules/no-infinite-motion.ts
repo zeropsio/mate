@@ -33,7 +33,6 @@ const PROTECTED_ROOTS = new Set([
   "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
   "apps/web/src/components/chat/AgentAdmissionExplanation.tsx",
   "apps/web/src/components/zerops/ZeropsOperationCard.tsx",
-  "apps/web/src/components/zerops/ZeropsQuickActions.tsx",
 ]);
 
 // ActivityIndicator is not guarded yet because R6 has no mobile protected roots.

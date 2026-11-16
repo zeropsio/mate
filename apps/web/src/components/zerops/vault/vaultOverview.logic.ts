@@ -43,7 +43,7 @@ export type VaultOverview =
 const count = (n: number, one: string, many: string) => `${String(n)} ${n === 1 ? one : many}`;
 
 /** "6 values · 4 hidden"; the hidden ones said only where there are any. */
-export function valueCounts(values: number, hidden: number): string {
+function valueCounts(values: number, hidden: number): string {
   const all = count(values, "value", "values");
   return hidden === 0 ? all : `${all} · ${String(hidden)} hidden`;
 }

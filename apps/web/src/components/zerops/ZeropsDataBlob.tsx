@@ -15,7 +15,7 @@ import { classifyBlob, canDownloadBlob } from "@t3tools/client-runtime/zerops/da
 import type { BlobPreview } from "@t3tools/client-runtime/zerops/dataBlob";
 import type { ZeropsDataConsoleBlob } from "@t3tools/contracts";
 
-export interface ZeropsDataBlobProps {
+interface ZeropsDataBlobProps {
   readonly blob: ZeropsDataConsoleBlob;
   /** The browsed node's name, used as an image's alt text. */
   readonly name?: string | undefined;

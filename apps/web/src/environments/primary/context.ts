@@ -23,7 +23,7 @@ import { readPrimaryEnvironmentTarget } from "./target";
  * decodes, and the client goes on to drive an environment nobody meant it to
  * reach. The descriptor states the prefix so this can be caught at bootstrap.
  */
-export class PrimaryEnvironmentBasePathMismatchError extends Error {
+class PrimaryEnvironmentBasePathMismatchError extends Error {
   override readonly name = "PrimaryEnvironmentBasePathMismatchError";
   constructor(
     readonly clientBasePath: string,
@@ -34,11 +34,6 @@ export class PrimaryEnvironmentBasePathMismatchError extends Error {
     );
   }
 }
-
-export const isPrimaryEnvironmentBasePathMismatchError = (
-  error: unknown,
-): error is PrimaryEnvironmentBasePathMismatchError =>
-  error instanceof PrimaryEnvironmentBasePathMismatchError;
 
 let primaryEnvironmentDescriptor: ExecutionEnvironmentDescriptor | null = null;
 let primaryEnvironmentDescriptorPromise: Promise<ExecutionEnvironmentDescriptor> | null = null;
@@ -132,12 +127,12 @@ export function resolveInitialPrimaryEnvironmentDescriptor(): Promise<ExecutionE
   });
 }
 
-export function __resetPrimaryEnvironmentBootstrapForTests(): void {
+function __resetPrimaryEnvironmentBootstrapForTests(): void {
   primaryEnvironmentDescriptorPromise = null;
   primaryEnvironmentDescriptor = null;
 }
 
 export const resetPrimaryEnvironmentDescriptorForTests = __resetPrimaryEnvironmentBootstrapForTests;
 
-export const __resetPrimaryEnvironmentDescriptorBootstrapForTests =
+const __resetPrimaryEnvironmentDescriptorBootstrapForTests =
   __resetPrimaryEnvironmentBootstrapForTests;

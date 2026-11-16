@@ -35,14 +35,6 @@
       "types": "./src/codexMarkdownDirectives.ts",
       "default": "./src/codexMarkdownDirectives.ts"
     },
-    "./markdown-links": {
-      "types": "./src/markdownLinks.ts",
-      "default": "./src/markdownLinks.ts"
-    },
-    "./media-reference": {
-      "types": "./src/mediaReference.ts",
-      "default": "./src/mediaReference.ts"
-    },
     "./errors": {
       "types": "./src/errors/index.ts",
       "default": "./src/errors/index.ts"
@@ -118,10 +110,6 @@
     "./state/presentation": {
       "types": "./src/state/presentation.ts",
       "default": "./src/state/presentation.ts"
-    },
-    "./state/preview": {
-      "types": "./src/state/preview.ts",
-      "default": "./src/state/preview.ts"
     },
     "./state/projects": {
       "types": "./src/state/projects.ts",
@@ -267,10 +255,6 @@
       "types": "./src/zerops/logins.ts",
       "default": "./src/zerops/logins.ts"
     },
-    "./zerops/autoEnterProvisioning": {
-      "types": "./src/zerops/autoEnterProvisioning.ts",
-      "default": "./src/zerops/autoEnterProvisioning.ts"
-    },
     "./zerops/mateSetup": {
       "types": "./src/zerops/mateSetup.ts",
       "default": "./src/zerops/mateSetup.ts"
@@ -383,10 +367,6 @@
       "types": "./src/zerops/cards/decode.ts",
       "default": "./src/zerops/cards/decode.ts"
     },
-    "./zerops/cards/liveFixtures": {
-      "types": "./src/zerops/cards/liveFixtures.ts",
-      "default": "./src/zerops/cards/liveFixtures.ts"
-    },
     "./zerops/cards/payloads": {
       "types": "./src/zerops/cards/payloads.ts",
       "default": "./src/zerops/cards/payloads.ts"
@@ -443,10 +423,6 @@
       "types": "./src/zerops/identityExchange.ts",
       "default": "./src/zerops/identityExchange.ts"
     },
-    "./zerops/quickActions": {
-      "types": "./src/zerops/quickActions.ts",
-      "default": "./src/zerops/quickActions.ts"
-    },
     "./zerops/registrationHandoff": {
       "types": "./src/zerops/registrationHandoff.ts",
       "default": "./src/zerops/registrationHandoff.ts"
@@ -470,10 +446,6 @@
     "./zerops/testing": {
       "types": "./src/zerops/testing/accountHarness.ts",
       "default": "./src/zerops/testing/accountHarness.ts"
-    },
-    "./zerops/strip": {
-      "types": "./src/zerops/strip.ts",
-      "default": "./src/zerops/strip.ts"
     },
     "./zerops/statusPresentation": {
       "types": "./src/zerops/statusPresentation.ts",

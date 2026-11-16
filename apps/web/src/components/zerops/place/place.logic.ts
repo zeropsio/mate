@@ -64,7 +64,7 @@ const plural = (count: number, one: string, many: string) =>
   `${String(count)} ${count === 1 ? one : many}`;
 
 /** The one line under a place's title: its state, what runs, how it got there, how many services. */
-export interface PlaceStatus {
+interface PlaceStatus {
   readonly tone: GroupRowTone;
   readonly text: string;
 }

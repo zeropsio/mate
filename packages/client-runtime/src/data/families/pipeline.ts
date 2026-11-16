@@ -92,7 +92,7 @@ function readGit(row: Record<string, unknown>): PipelineGit | null {
 }
 
 /** The pipeline a row states; `null` for a row missing its identity. */
-export function readPipelineRow(raw: unknown): PipelineValue | null {
+function readPipelineRow(raw: unknown): PipelineValue | null {
   if (!isRecord(raw)) return null;
   const id = text(raw.id);
   const organizationId = text(raw.clientId);

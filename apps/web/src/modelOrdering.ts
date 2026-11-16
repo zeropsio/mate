@@ -2,11 +2,11 @@ import type { ProviderInstanceId } from "@t3tools/contracts";
 import * as Arr from "effect/Array";
 import * as Order from "effect/Order";
 
-export interface ModelSlugItem {
+interface ModelSlugItem {
   readonly slug: string;
 }
 
-export interface ProviderModelItem extends ModelSlugItem {
+interface ProviderModelItem extends ModelSlugItem {
   readonly instanceId: ProviderInstanceId;
 }
 

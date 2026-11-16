@@ -20,7 +20,7 @@ export const ServiceBrowserLinkContext = createContext<ServicePreviewResolver | 
  * places: a preview opens the side panel, this opens a page. It wears no
  * indicator for the same reason no other link inside the app does.
  */
-export type AppLinkResolver = (url: string) => (() => void) | null;
+type AppLinkResolver = (url: string) => (() => void) | null;
 export const AppLinkContext = createContext<AppLinkResolver | null>(null);
 
 /**
@@ -65,9 +65,9 @@ export function ServiceBrowserLinkIndicator({ href }: { href: string }) {
 }
 
 /** How a link shows where it goes: a mark after its words, or the words alone to a reader. */
-export type LinkIndicator = "glyph" | "words";
+type LinkIndicator = "glyph" | "words";
 
-export type LinkDestination = "app" | "preview" | "external";
+type LinkDestination = "app" | "preview" | "external";
 
 /**
  * Where a web link goes and what a click on it does: a page of this app, the

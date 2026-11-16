@@ -17,7 +17,7 @@ import {
 } from "./shared.ts";
 import { readString } from "../../cards/decode.ts";
 
-export interface ImportRead {
+interface ImportRead {
   readonly hostnames: string[];
   readonly steps: ZeropsOperationStep[];
   readonly summary?: string | undefined;

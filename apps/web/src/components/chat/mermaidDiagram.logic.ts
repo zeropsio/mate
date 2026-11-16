@@ -7,7 +7,7 @@ export type MermaidRenderResult =
  * state, so streaming, drawing, the diagram and a fallback never move the
  * answer around it.
  */
-export type MermaidFrame = "source" | "drawing" | "diagram" | "fallback";
+type MermaidFrame = "source" | "drawing" | "diagram" | "fallback";
 
 export function mermaidFrame(input: {
   readonly streaming: boolean;

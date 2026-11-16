@@ -4,7 +4,7 @@
  * (`zeropsHq.ts`). `VITE_ZEROPS_HQ_ORIGIN` names that HQ and `VITE_ZEROPS_LOGIN_APP_CODE` the app
  * its device login asks for (`mate`), where HQ's bridge refuses this origin.
  */
-export type ZeropsSignInMode = "handover" | "zerops-hq";
+type ZeropsSignInMode = "handover" | "zerops-hq";
 
 export function zeropsSignInMode(): ZeropsSignInMode {
   return import.meta.env.VITE_ZEROPS_SIGN_IN === "zerops-hq" ? "zerops-hq" : "handover";

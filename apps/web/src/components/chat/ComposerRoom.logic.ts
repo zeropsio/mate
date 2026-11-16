@@ -6,7 +6,7 @@
  */
 import { INLINE_FILE_PLACEHOLDER, INLINE_PICTURE_PLACEHOLDER } from "~/lib/composerPictures";
 
-export type HeldDraftRun =
+type HeldDraftRun =
   | { readonly kind: "text"; readonly text: string }
   | { readonly kind: "picture" }
   | { readonly kind: "file" };

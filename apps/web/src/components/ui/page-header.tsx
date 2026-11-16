@@ -98,4 +98,3 @@ function PageHeader({
 }
 
 export { PageHeader };
-export type { PageHeaderProps };

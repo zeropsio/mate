@@ -20,7 +20,7 @@ import type { ChatMessage } from "../../types";
 import { deriveMessagesTimelineRows, type MessagesTimelineRow } from "./MessagesTimeline.logic";
 import { phraseWords, stepOf } from "./workSteps.logic";
 
-export type HelperRecord = Extract<MessagesTimelineRow, { kind: "record" }>;
+type HelperRecord = Extract<MessagesTimelineRow, { kind: "record" }>;
 
 const STEP_KINDS: ReadonlySet<string> = new Set(["tool.started", "tool.updated", "tool.completed"]);
 
@@ -31,7 +31,7 @@ function payloadOf(activity: OrchestrationThreadActivity): Record<string, unknow
 }
 
 /** The turn a helper's own run is drawn as: its own, never one of the Mate's. */
-export function helperTurnId(helper: Pick<RuntimeSubagent, "id">): TurnId {
+function helperTurnId(helper: Pick<RuntimeSubagent, "id">): TurnId {
   return `helper:${helper.id}` as TurnId;
 }
 
@@ -191,7 +191,7 @@ export function helperRowLine(helper: RuntimeSubagent): string | null {
   return beyondTitle(helper.title, line);
 }
 
-export interface HelperMapRow {
+interface HelperMapRow {
   readonly helper: RuntimeSubagent;
   /** How far down the tree: 0 for a helper the Mate started. */
   readonly depth: number;

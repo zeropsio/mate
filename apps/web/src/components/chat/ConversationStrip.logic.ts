@@ -235,7 +235,7 @@ export interface LineCrewmate {
 }
 
 /** A crew as HQ last told this tab of it (`useMateCrew`): its faces, the lead first. */
-export interface RememberedLineCrew {
+interface RememberedLineCrew {
   readonly faces: ReadonlyArray<{
     readonly handle: string;
     readonly displayName: string;

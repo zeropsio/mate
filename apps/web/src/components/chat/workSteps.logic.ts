@@ -111,7 +111,7 @@ export interface TrackedCommands {
   readonly liveJobs?: LiveJobs | null;
 }
 
-export const NO_TRACKED_COMMANDS: TrackedCommands = {
+const NO_TRACKED_COMMANDS: TrackedCommands = {
   byCommand: new Map(),
   trackers: new Set(),
   jobTitles: new Map(),

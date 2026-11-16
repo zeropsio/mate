@@ -29,7 +29,7 @@ export function frameImageSrc<Frame extends Pick<ZeropsBrowserFrame, "data" | "m
   return src;
 }
 
-export interface CanvasPoint {
+interface CanvasPoint {
   /** CSS pixels: the `<canvas>` element's own displayed size (`getBoundingClientRect()`). */
   readonly canvasWidth: number;
   readonly canvasHeight: number;

@@ -13,7 +13,7 @@ import type { Projection, ProjectionReads } from "../store.ts";
 import { sameValue } from "./equal.ts";
 
 /** The organization whose link observes it, and whose resources (`usageOwnerOf`). */
-export interface UsageKey {
+interface UsageKey {
   readonly orgId: string;
   readonly owner: string;
 }

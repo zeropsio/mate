@@ -38,7 +38,7 @@ export const aiKeyRequestScope = (key: AiKeysKey): ScopeKey =>
   `hq:${key.orgId}:ai-key-request:${aiKeysId(key)}`;
 
 /** The latest intake set from this screen, and HQ's answer to it once given. */
-export interface IntakeReveal {
+interface IntakeReveal {
   readonly requestId: string;
   readonly view: HqIntakeView | null;
 }

@@ -17,7 +17,7 @@ import { organizationProjects } from "./projections/projects.ts";
 import { readsOfState, type AccountStore, type ProjectionReads } from "./store.ts";
 
 /** The projects HQ places as Mates in the organization. */
-export function placedMates(read: ProjectionReads, orgId: string): ReadonlyArray<string> {
+function placedMates(read: ProjectionReads, orgId: string): ReadonlyArray<string> {
   return read.members(placementsScope(orgId)).ids.filter((id) => {
     const fact = read.fact("placement", id);
     return fact.kind === "known" && (fact.value as PlacementValue).mate != null;
@@ -28,7 +28,7 @@ export function placedMates(read: ProjectionReads, orgId: string): ReadonlyArray
  * The Mates HQ places whose own row is wanted: those the roster, once answered, does not name —
  * listed, still leaving, or refused.
  */
-export function placedRowsWanted(read: ProjectionReads, orgId: string): ReadonlyArray<string> {
+function placedRowsWanted(read: ProjectionReads, orgId: string): ReadonlyArray<string> {
   if (organizationProjects.derive(read, orgId).read !== "read") return [];
   const { ids, unverified, excluded } = read.members(projectsScope(orgId));
   const named = new Set([...ids, ...unverified, ...excluded]);

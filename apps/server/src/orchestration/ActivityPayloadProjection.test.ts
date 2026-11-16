@@ -1,14 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 import type {
   OrchestrationEvent,
-  OrchestrationThread,
   OrchestrationThreadActivity,
   OrchestrationThreadDetailSnapshot,
 } from "@t3tools/contracts";
 
-// The live half of the parity check below: the client's own reducer, which a
-// reload's snapshot must agree with.
-import { applyThreadDetailEvent } from "../../../../packages/client-runtime/src/state/threadReducer.ts";
 import {
   projectActivityEvent,
   projectActivityPayload,
@@ -1043,10 +1039,9 @@ describe("every driver's call reaches the client in one form", () => {
  * by their random ids, so the echo lands before or after the completion — in
  * the live stream and in the stored history alike. Run 12: every browser
  * check's screenshot rode in both, and Sage's thread held 22 pictures twice on
- * reload and 55 live. A reload drops the echo wherever it sorts, the live
- * reducer drops it in whatever order it arrives, and the two agree.
+ * reload and 55 live. A reload drops the echo wherever it sorts.
  */
-describe("a call's echoed update goes, live and on reload alike", () => {
+describe("a call's echoed update goes on reload", () => {
   const AT = "2026-10-05T21:54:17.030Z";
   const PICTURE = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk";
   /** A zerops_browser call as Claude's adapter writes it: the raw tool_result, screenshot block included. */
@@ -1118,44 +1113,15 @@ describe("a call's echoed update goes, live and on reload alike", () => {
     ).thread.activities;
   const reload = (rows: ReadonlyArray<Row>) => reloaded(rows).map((activity) => activity.id);
 
-  /** What a live page shows: each row's event as the socket sends it, folded by the client's reducer in the order it arrived. */
-  const lived = (rows: ReadonlyArray<Row>) =>
-    rows.reduce<OrchestrationThread>(
-      (thread, row, index) => {
-        const event = projectActivityEvent({
-          sequence: index + 1,
-          eventId: `event-${index}`,
-          commandId: null,
-          causationEventId: null,
-          correlationId: null,
-          metadata: {},
-          occurredAt: AT,
-          aggregateKind: "thread",
-          aggregateId: "thread-1",
-          type: "thread.activity-appended",
-          payload: { threadId: "thread-1", activity: rowOf(row) },
-        } as unknown as OrchestrationEvent);
-        const result = applyThreadDetailEvent(thread, event);
-        return result.kind === "updated" ? result.thread : thread;
-      },
-      { id: "thread-1", activities: [], messages: [] } as unknown as OrchestrationThread,
-    ).activities;
-  const live = (rows: ReadonlyArray<Row>) => lived(rows).map((activity) => activity.id);
-
   const START: Row = ["m-start", "tool.started", "2026-10-05T21:54:00.000Z"];
-  const permutations = <T>(items: ReadonlyArray<T>): T[][] =>
-    items.length <= 1
-      ? [[...items]]
-      : items.flatMap((item, index) =>
-          permutations(items.filter((_, other) => other !== index)).map((rest) => [item, ...rest]),
-        );
 
+  // witness: apps/server/src/orchestration/ActivityPayloadProjection.ts | if (isEcho(activity)) { → if (false) {
   it.each([
     { name: "a started call, its echo sorting before the completion", echo: "b-echo", start: true },
     { name: "a started call, its echo sorting after the completion", echo: "x-echo", start: true },
     { name: "a call with no start, its echo sorting before", echo: "b-echo", start: false },
     { name: "a call with no start, its echo sorting after", echo: "x-echo", start: false },
-  ])("$name, in every order it arrives", ({ echo, start }) => {
+  ])("$name", ({ echo, start }) => {
     const rows: Row[] = [
       ...(start ? [START] : []),
       [echo, "tool.updated"],
@@ -1164,12 +1130,8 @@ describe("a call's echoed update goes, live and on reload alike", () => {
     const expected = start ? ["m-start", "c-done"] : ["c-done"];
     expect(reload(rows)).toEqual(expected);
     // The projection read the screenshot out of the raw result: the kept
-    // completion carries it, live and on reload.
+    // completion carries it.
     expect(pictureOf(reloaded(rows).at(-1))).toBe(PICTURE);
-    for (const arrival of permutations(rows)) {
-      expect(live(arrival)).toEqual(expected);
-      expect(pictureOf(lived(arrival).at(-1))).toBe(PICTURE);
-    }
   });
 
   it.each([
@@ -1193,7 +1155,6 @@ describe("a call's echoed update goes, live and on reload alike", () => {
     },
   ])("$name", ({ rows, kept }) => {
     expect(reload(rows)).toEqual(kept);
-    expect(live(rows)).toEqual(kept);
   });
 });
 

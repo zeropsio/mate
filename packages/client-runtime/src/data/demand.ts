@@ -41,7 +41,7 @@ export function detailScopeOf(orgId: string, demand: DetailDemand): ScopeKey {
  * The details screens hold now, counted per scope: the first hold demands a scope, the last
  * release lets it go. Listeners hear every change of the demanded set.
  */
-export interface DetailDemands {
+interface DetailDemands {
   readonly hold: (scope: ScopeKey) => () => void;
   readonly scopes: () => ReadonlyArray<ScopeKey>;
   readonly onChange: (listener: () => void) => () => void;

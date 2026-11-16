@@ -99,7 +99,7 @@ export type OpenVsxThemeExtension = {
   license: string;
 };
 
-export type OpenVsxThemeSearchOptions = {
+type OpenVsxThemeSearchOptions = {
   signal?: AbortSignal;
   sortBy?: OpenVsxThemeSort;
 };

@@ -31,7 +31,7 @@ import { cn } from "~/lib/utils";
 import { MateFace } from "./primitives";
 
 /** Where a Mate's change runs before its pull request: its pair's stage, opened in a tab. */
-export function PreviewLink({ url }: { readonly url: string }) {
+function PreviewLink({ url }: { readonly url: string }) {
   return (
     <a
       className="relative z-[1] inline-flex w-fit items-center gap-1 text-xs text-[var(--zerops-status-busy-text)] underline-offset-2 hover:underline"
@@ -190,7 +190,7 @@ const LAYOUT = {
   },
 } as const;
 
-export interface ZeropsMateCardProps {
+interface ZeropsMateCardProps {
   /**
    * `card`, the default: the Mate's own surface. `row`: an entry in a list on
    * another surface, its Preview on the name's line and no quoted last words.

@@ -105,10 +105,6 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
       Absent on older servers, which drop the setting, so clients offer an
       update instead of a persona that would never apply. */
   matePersona: Schema.optionalKey(Schema.Boolean),
-  /** Server signs in to, signs out of and edits MCP servers (`mcp.servers.signIn`,
-      `finishSignIn`, `signOut`, `update`) and takes a server's `auth`. Absent on older
-      servers, where the Tools tab says what needs an update instead of offering them. */
-  mcpSignIn: Schema.optionalKey(Schema.Boolean),
   /** Server understands `zerops.agentLogin.submitCode`, so the sign-in dialog
       takes Claude's code in a field. Absent on older servers, where the code
       is pasted into the login terminal instead. */
@@ -130,10 +126,6 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
       login RPCs. Absent on older servers, so a client offers *Add another
       login* only where it would work. */
   mateLogins: Schema.optionalKey(Schema.Boolean),
-  /** Server understands `zerops.crew.propose`: the crew setup asks the Mate's agent for a crew
-      from the goal. Absent on older servers, so a client says the Mate proposes after its update
-      instead of sending a call it would not know. */
-  crewProposals: Schema.optionalKey(Schema.Boolean),
 });
 export type ExecutionEnvironmentCapabilities = typeof ExecutionEnvironmentCapabilities.Type;
 

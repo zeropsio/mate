@@ -325,7 +325,7 @@ function keepFocus(line: HTMLElement, handle: string | null): void {
     ?.focus({ preventScroll: true });
 }
 
-export interface LineMotionProps {
+interface LineMotionProps {
   /** Where the band stands and the crew in its order, as drawn now. */
   readonly stage: LineStage;
   /** A name left has folded back into its face: it may go. */

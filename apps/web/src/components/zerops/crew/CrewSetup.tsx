@@ -74,7 +74,7 @@ import {
 } from "./CrewSetup.logic";
 import { CrewIssues, CrewTextArea, CrewView, CrewViewFoot } from "./CrewView";
 
-export interface CrewSetupProps {
+interface CrewSetupProps {
   readonly environmentId: EnvironmentId;
   readonly commands: UseCrewCommand;
   /** The crew stands: Start was pressed, and each row says how its copy goes. */

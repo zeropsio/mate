@@ -51,7 +51,7 @@ export type BrowserSignal =
   | { readonly type: "pageshow"; readonly persisted: boolean }
   | ({ readonly type: "storage" } & HarnessStorageChange);
 
-export interface TabState {
+interface TabState {
   readonly visibilityState: "visible" | "hidden";
   readonly frozen: boolean;
   readonly online: boolean;
@@ -79,12 +79,12 @@ export interface FakeSignals {
   readonly storage: (change: HarnessStorageChange) => void;
 }
 
-export interface HarnessLock {
+interface HarnessLock {
   readonly name: string;
   readonly mode: "exclusive";
 }
 
-export interface HarnessLockOptions {
+interface HarnessLockOptions {
   /** Answer `null` at once instead of waiting while another holder has the lock. */
   readonly ifAvailable?: boolean;
 }
@@ -97,7 +97,7 @@ export interface FakeWebLocks {
   request<T>(name: string, options: HarnessLockOptions, callback: LockCallback<T>): Promise<T>;
 }
 
-export interface HarnessMessageEvent {
+interface HarnessMessageEvent {
   readonly data: unknown;
 }
 
@@ -141,7 +141,7 @@ export interface HarnessBrowser {
   readonly delivering: () => boolean;
 }
 
-export interface HarnessBrowserOptions {
+interface HarnessBrowserOptions {
   /**
    * A session stored before the test starts, as an older build left it: the
    * session key alone, with no owner record beside it (DESIGN §4.1 legacy rollout).

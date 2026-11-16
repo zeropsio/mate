@@ -7,8 +7,6 @@ import { gatedPortal } from "~/components/ui/portal-gate";
 
 const PopoverPortal = gatedPortal(PopoverPrimitive.Portal);
 
-const PopoverCreateHandle = PopoverPrimitive.createHandle;
-
 const Popover = PopoverPrimitive.Root;
 
 function PopoverTrigger({ className, children, ...props }: PopoverPrimitive.Trigger.Props) {
@@ -127,7 +125,6 @@ function PopoverTitle({ className, ...props }: PopoverPrimitive.Title.Props) {
 }
 
 export {
-  PopoverCreateHandle,
   Popover,
   PopoverTrigger,
   PopoverPopup,

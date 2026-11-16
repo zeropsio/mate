@@ -77,17 +77,17 @@ export interface ProcessRef {
   readonly processId: ZeropsProcessId;
 }
 
-export type EntityRef = ProjectRef | ServiceRef | ProcessRef;
+type EntityRef = ProjectRef | ServiceRef | ProcessRef;
 
-export const OrganizationKey = Schema.String.pipe(Schema.brand("ZeropsOrganizationKey"));
-export type OrganizationKey = typeof OrganizationKey.Type;
-export const ProjectKey = Schema.String.pipe(Schema.brand("ZeropsProjectKey"));
-export type ProjectKey = typeof ProjectKey.Type;
-export const ServiceKey = Schema.String.pipe(Schema.brand("ZeropsServiceKey"));
-export type ServiceKey = typeof ServiceKey.Type;
-export const ProcessKey = Schema.String.pipe(Schema.brand("ZeropsProcessKey"));
-export type ProcessKey = typeof ProcessKey.Type;
-export type EntityKey = ProjectKey | ServiceKey | ProcessKey;
+const OrganizationKey = Schema.String.pipe(Schema.brand("ZeropsOrganizationKey"));
+type OrganizationKey = typeof OrganizationKey.Type;
+const ProjectKey = Schema.String.pipe(Schema.brand("ZeropsProjectKey"));
+type ProjectKey = typeof ProjectKey.Type;
+const ServiceKey = Schema.String.pipe(Schema.brand("ZeropsServiceKey"));
+type ServiceKey = typeof ServiceKey.Type;
+const ProcessKey = Schema.String.pipe(Schema.brand("ZeropsProcessKey"));
+type ProcessKey = typeof ProcessKey.Type;
+type EntityKey = ProjectKey | ServiceKey | ProcessKey;
 
 const scopedKey = (parts: ReadonlyArray<string>): string => JSON.stringify(parts);
 
@@ -137,7 +137,7 @@ export const serviceKeyOf = (ref: ServiceRef): ServiceKey =>
     ]),
   );
 
-export const processKeyOf = (ref: ProcessRef): ProcessKey =>
+const processKeyOf = (ref: ProcessRef): ProcessKey =>
   ProcessKey.make(
     scopedKey([
       "process",

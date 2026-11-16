@@ -10,7 +10,7 @@ import { create } from "zustand";
 
 import { watchIntersections } from "~/lib/restingIntersections";
 
-export interface AskRevealTarget {
+interface AskRevealTarget {
   readonly askId: string;
   /** Whether a conversation row holds the ask's card; the last row that does is the one shown. */
   readonly holds: (row: { readonly kind: string }) => boolean;
@@ -133,7 +133,7 @@ export function useReportAskOnScreen(askId: string) {
 }
 
 /** An open ask a conversation's card offers to stand above the composer: its compact form. */
-export interface DockedAsk {
+interface DockedAsk {
   readonly askId: string;
   readonly render: () => ReactNode;
 }

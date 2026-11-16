@@ -47,7 +47,7 @@ declare module "../model.ts" {
 }
 
 /** `owner/name` of a GitHub address, lowercased; null for any other. */
-export function githubFullName(url: string): string | null {
+function githubFullName(url: string): string | null {
   let parsed: URL;
   try {
     parsed = new URL(url);

@@ -17,7 +17,7 @@ import type { WsRpcProtocolClient } from "./protocol.ts";
 const EXTEND_AT = 0.8;
 
 /** A grant in force: since when (ms) and for how many seconds. */
-export interface GrantInForce {
+interface GrantInForce {
   readonly since: number;
   readonly seconds: number;
 }
@@ -28,11 +28,7 @@ export interface GrantInForce {
  * each failure. `null` once the next step would come after the grant ends: the connection is left
  * to the Mate.
  */
-export function nextExtensionWaitMs(
-  grant: GrantInForce,
-  failures: number,
-  now: number,
-): number | null {
+function nextExtensionWaitMs(grant: GrantInForce, failures: number, now: number): number | null {
   if (failures === 0) return Math.max(0, grant.since + grant.seconds * 1000 * EXTEND_AT - now);
   const wait = reconnectWaitMs(failures, true);
   return now + wait < grant.since + grant.seconds * 1000 ? wait : null;

@@ -1,6 +1,5 @@
 import { isTransportConnectionErrorMessage } from "@t3tools/client-runtime/errors";
 import { onAccountLifetimeClose } from "../zerops/accountLifetime";
-import { resolveZeropsAgentPickerPanelView } from "./zerops/ZeropsAgentPickerPanel.logic";
 import {
   ANTIGRAVITY_DEFAULT_MODEL,
   type EnvironmentId,
@@ -128,7 +127,7 @@ export function resolveDraftHeroState(input: {
  * the conversation left under the next one's name. Stored at module scope so
  * it outlives the view; the account lifetime clears it.
  */
-export type HeldThreadTimeline<T extends readonly unknown[]> = {
+type HeldThreadTimeline<T extends readonly unknown[]> = {
   threadKey: string | null;
   entries: T;
 };
@@ -1220,7 +1219,7 @@ export type QueuedSendFailure =
   | { readonly kind: "too-long" };
 
 /** What a send does once its uploads (files, pictures, kept originals) have settled. */
-export type SendStepAfterUploads =
+type SendStepAfterUploads =
   | { readonly action: "send" }
   | { readonly action: "abort-queued"; readonly failure: QueuedSendFailure }
   | { readonly action: "thread-error"; readonly message: string };
@@ -1241,12 +1240,12 @@ export function sendStepAfterUploads(input: {
 }
 
 /** What becomes of it: back for the drain to send again, or held with its reason. */
-export type QueuedSendOutcome =
+type QueuedSendOutcome =
   | { readonly action: "requeue" }
   | { readonly action: "hold"; readonly reason: string };
 
 /** How many times a send interrupted goes back before it is held for the person. */
-export const QUEUED_SEND_RETRIES = 3;
+const QUEUED_SEND_RETRIES = 3;
 
 const errorWords = (error: unknown): string | undefined => {
   if (typeof error !== "object" || error === null || !("message" in error)) return undefined;

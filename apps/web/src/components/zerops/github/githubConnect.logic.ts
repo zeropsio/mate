@@ -243,7 +243,7 @@ export const anothersOwnApp = (app: GitMirrorAppEntry, viewerId: string | null):
   app.ownerType === "User" && (viewerId === null || app.setUpBy !== viewerId);
 
 /** The apps a person may be sent to install: in use, and not another person's own. */
-export const ownApps = (
+const ownApps = (
   apps: ReadonlyArray<GitMirrorAppEntry>,
   viewerId: string | null,
 ): ReadonlyArray<GitMirrorAppEntry> =>
@@ -254,7 +254,7 @@ export const ownApps = (
  * other repositories go through, else the oldest — among those the viewer may be sent to
  * (`ownApps`). The person is never asked which.
  */
-export function openingApp(
+function openingApp(
   apps: ReadonlyArray<GitMirrorAppEntry>,
   viewerId: string | null,
   used: ReadonlyArray<number>,
@@ -298,7 +298,7 @@ export function githubTrip(input: {
  * The name the organization's app is made with: the organization's ("Acme Mate"), numbered where
  * one of its apps already has that name. GitHub's own page shows it and lets the person change it.
  */
-export function firstAppName(
+function firstAppName(
   organization: string | undefined,
   apps: ReadonlyArray<GitMirrorAppEntry>,
 ): string {
@@ -318,7 +318,7 @@ export const unsealedWords = (app: GitMirrorAppEntry) =>
   `${app.name} waits for an Owner or Admin to remove it and add it again in Settings › GitHub before Mate uses it.`;
 
 /** The steps a connect shows, each as HQ's record tells it. */
-export type ConnectStep = "connect" | "push" | "rules";
+type ConnectStep = "connect" | "push" | "rules";
 
 /**
  * Where a connect stands, from the press and the repository's record: sent and not shown yet
@@ -349,7 +349,7 @@ export function connectProgress(input: {
  * app's access in another tab). Back from an install trip the page is new: only the installations
  * it carried back in its address are known, so a whole new account reads as new.
  */
-export interface SeenBefore {
+interface SeenBefore {
   readonly installations: ReadonlySet<number>;
   /** Lowercased `owner/name`s; `null` after an install trip. */
   readonly names: ReadonlySet<string> | null;

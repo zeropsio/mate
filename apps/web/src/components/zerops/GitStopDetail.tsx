@@ -247,7 +247,7 @@ export function GitStopDetail({
 }
 
 /** The same confirmation wherever a person removes a Git environment. */
-export function GitEnvironmentRemoval({
+function GitEnvironmentRemoval({
   environment,
   delivery,
   repos,

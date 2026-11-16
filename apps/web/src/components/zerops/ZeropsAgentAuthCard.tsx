@@ -325,7 +325,7 @@ function CompactAgents({
 const NO_LOGINS: ReadonlyArray<MateLoginRow> = [];
 
 /** A login's pending action and its last failure, from `useMateLogins`. */
-export interface ZeropsLoginActionStatus {
+interface ZeropsLoginActionStatus {
   readonly pending: boolean;
   readonly error: string | undefined;
 }
@@ -356,7 +356,7 @@ interface ZeropsLoginsProps {
  * for a surface that already says why they are there (an empty conversation
  * asking for a sign-in) and needs no card header repeating it.
  */
-export function ZeropsAgentAuthRows({
+function ZeropsAgentAuthRows({
   snapshot,
   viewerSubject,
   onSignIn,

@@ -20,7 +20,7 @@ import type { ZeropsSession } from "@t3tools/client-runtime/zerops";
 import { zeropsHqOrigin, zeropsLoginAppCode } from "./signInMode";
 
 /** The device-login session's key, where HQ's bridge refuses this origin. */
-export const ZEROPS_HQ_LOCAL_KEY = "zerops-mate.zerops-hq-session.v1";
+const ZEROPS_HQ_LOCAL_KEY = "zerops-mate.zerops-hq-session.v1";
 
 export function makeZeropsHqClient(apiBase: string): ZeropsSessionClient {
   return createSessionClient({

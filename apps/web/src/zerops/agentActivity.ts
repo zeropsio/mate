@@ -289,7 +289,7 @@ export function mateBirthFace(failed: boolean): MateMarkState {
  * with its Review, for anybody with write on the group to review and merge. At work, the work
  * shows; the review still waits under it.
  */
-export function mateFaceAwaitingReview(
+function mateFaceAwaitingReview(
   face: MateMarkState,
   reviewWaits: boolean,
   /**
@@ -573,7 +573,7 @@ export function threadAgentActivity(
  * helpers live (run 11, D8: the menu read "Working on a reply" while the
  * card said "Waiting for its helpers").
  */
-export function agentActivityWaitsOnHelpers(
+function agentActivityWaitsOnHelpers(
   thread: Pick<AgentActivityThread, "backgroundLiveness" | "session" | "latestTurn">,
   kind: ThreadStatusKind,
 ): boolean {
@@ -590,7 +590,7 @@ export function agentActivityWaitsOnHelpers(
  * works and its server relays one. A server from before it relays none: the
  * row holds its dots.
  */
-export function agentActivityLiveStep(
+function agentActivityLiveStep(
   thread: Pick<AgentActivityThread, "liveStep">,
   kind: ThreadStatusKind,
 ): { readonly liveStep?: LiveStepWords } {
@@ -604,7 +604,7 @@ export function agentActivityLiveStep(
  * waits on — an approval waiting first is no question. Quoted by the server
  * the way a preview is; a server from before it relays none.
  */
-export function agentActivityQuestion(
+function agentActivityQuestion(
   thread: Pick<AgentActivityThread, "pendingQuestion">,
   kind: ThreadStatusKind,
 ): { readonly question?: string } {

@@ -138,18 +138,11 @@ describe("crewProposeWith", () => {
       with: { kind: "unavailable", words: "Nova has no conversation to propose from yet." },
     },
     {
-      title: "nowhere on a Mate from before proposals, saying it needs an update",
-      input: { modelSelection, lock: null, capabilities: {} },
-      with: { kind: "unavailable", words: "Update Nova to get a proposal." },
-    },
-    {
       title: "not yet while the Mate's server is not read",
-      input: { modelSelection, lock: null, capabilities: undefined },
+      input: { modelSelection, lock: null, serverRead: false },
       with: { kind: "reading" },
     },
   ])("asks for a proposal $title", ({ input, with: expected }) => {
-    expect(
-      crewProposeWith({ capabilities: { crewProposals: true }, ...input, mateName: "Nova" }),
-    ).toEqual(expected);
+    expect(crewProposeWith({ serverRead: true, ...input, mateName: "Nova" })).toEqual(expected);
   });
 });

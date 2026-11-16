@@ -1095,7 +1095,6 @@ const PROTECTED_ROOTS = [
   "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
   "apps/web/src/components/chat/AgentAdmissionExplanation.tsx",
   "apps/web/src/components/zerops/ZeropsOperationCard.tsx",
-  "apps/web/src/components/zerops/ZeropsQuickActions.tsx",
 ] as const;
 
 const FORBIDDEN_PROTECTED_MODULES = new Map<string, string>([

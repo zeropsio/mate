@@ -80,7 +80,7 @@ import {
   type PersonaTemplateRow,
 } from "./PersonaPanel.logic";
 
-export const PERSONA_PAGE_WORDS = {
+const PERSONA_PAGE_WORDS = {
   none: "No persona",
   noneLine: (mate: MateName) => `${mateLeads(mate)} works its own way.`,
   edit: "Edit",

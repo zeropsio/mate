@@ -63,7 +63,7 @@ export interface ZeropsGitPanelModel {
   readonly emptyLine?: string;
 }
 
-export interface ZeropsGitPanelProps {
+interface ZeropsGitPanelProps {
   readonly model: ZeropsGitPanelModel;
   /** The Mate's project, once known: its places and the way to its page. */
   readonly project?: MatePanelProject | undefined;

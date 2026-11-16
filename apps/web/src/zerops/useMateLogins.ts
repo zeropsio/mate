@@ -36,12 +36,12 @@ function failureMessage(cause: unknown): string {
   return "Something went wrong.";
 }
 
-export interface MateLoginStatus {
+interface MateLoginStatus {
   readonly pending: boolean;
   readonly error: string | undefined;
 }
 
-export interface UseMateLogins {
+interface UseMateLogins {
   /** Resolves the new login's id, or `undefined` when the server refused it (`addError` says why). */
   readonly add: (input: ZeropsLoginAddInput) => Promise<string | undefined>;
   readonly addError: string | undefined;

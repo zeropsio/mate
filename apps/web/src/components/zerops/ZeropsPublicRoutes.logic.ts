@@ -5,7 +5,7 @@
  */
 import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
 
-export interface ZeropsRouteMenuEntry {
+interface ZeropsRouteMenuEntry {
   readonly key: string;
   readonly service: string;
   /** Written only where one service answers on several ports; one port needs no number. */

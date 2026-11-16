@@ -21,7 +21,7 @@ import type { Projection, ProjectionReads } from "../store.ts";
 import { actionOf, type AutomationAction } from "./hqAutomation.ts";
 import { sameValue } from "./equal.ts";
 
-export interface TaskSourceSettingKey {
+interface TaskSourceSettingKey {
   readonly family: TaskSourceSetting;
   readonly orgId: string;
   /** For an application's setting. */
@@ -117,7 +117,7 @@ export const taskSourceSetting: Projection<
   equals: sameValue,
 };
 
-export interface AppTaskStopsKey {
+interface AppTaskStopsKey {
   readonly orgId: string;
   readonly appId: string;
   /** The tasks a surface shows. */

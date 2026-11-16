@@ -400,17 +400,17 @@ export interface EnvironmentContext {
 }
 
 /** From the moment the capability is allowed: descriptor, mint, door and token exchange (§4.4). */
-export const EXCHANGE_DEADLINE_MS = 20_000;
+const EXCHANGE_DEADLINE_MS = 20_000;
 /** One descriptor probe (§4.5's pool deadline). */
-export const DESCRIPTOR_DEADLINE_MS = 8_000;
+const DESCRIPTOR_DEADLINE_MS = 8_000;
 /** After this many consecutive automatic failures, retries slow to `CAPPED_RETRY_MS`. */
-export const RETRY_CAP = 5;
+const RETRY_CAP = 5;
 export const CAPPED_RETRY_MS = 5 * 60_000;
 /** This many auth rejections inside `AUTH_LOOP_WINDOW_MS` refuse instead of re-exchanging. */
-export const AUTH_LOOP_REJECTIONS = 3;
-export const AUTH_LOOP_WINDOW_MS = 2 * 60_000;
+const AUTH_LOOP_REJECTIONS = 3;
+const AUTH_LOOP_WINDOW_MS = 2 * 60_000;
 /** This many unexplained configuration blocks in a row refuse instead of re-exchanging. */
-export const CONFIGURATION_LOOP_BLOCKS = 3;
+const CONFIGURATION_LOOP_BLOCKS = 3;
 /** Identity `failed` backs off from the 15 s rung (§4.4). */
 const IDENTITY_FAILED_RUNG = 3;
 
@@ -583,7 +583,7 @@ const inputChanged = (
 // ── Failures ──────────────────────────────────────────────────────────────────────────────────
 
 /** The failures that say a Mate's server did not answer at all, as one still starting fails. */
-export const NOT_ANSWERING_CAUSES: ReadonlySet<ExchangeCause["kind"]> = new Set([
+const NOT_ANSWERING_CAUSES: ReadonlySet<ExchangeCause["kind"]> = new Set([
   "network",
   "timeout",
   "descriptor-unreachable",

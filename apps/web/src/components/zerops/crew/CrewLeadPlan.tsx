@@ -46,7 +46,7 @@ import { CREW_ORIGIN } from "./CrewRows.logic";
 import { CrewRunDialog, type CrewRunDialogAsk } from "./CrewRunDialog";
 
 /** The plan's presses; each `null` where the viewer may not press it (D6). */
-export interface CrewPlanPresses {
+interface CrewPlanPresses {
   readonly start: (() => void) | null;
   readonly change: (() => void) | null;
   readonly drop: (() => void) | null;

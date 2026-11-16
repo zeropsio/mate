@@ -178,7 +178,7 @@ function readLine(entry: unknown): BuildLogLine | undefined {
   return { id, at, text, severity: readSeverity(entry.severity) };
 }
 
-export interface BuildLogDecodeResult {
+interface BuildLogDecodeResult {
   readonly lines: ReadonlyArray<BuildLogLine>;
   /** Rows rejected because their required id or timestamp was absent. */
   readonly rejectedItems: number;
@@ -241,12 +241,12 @@ export function mergeBuildLogLines(
   return merged.length > cap ? merged.slice(merged.length - cap) : merged;
 }
 
-export interface BuildLogRetentionBounds {
+interface BuildLogRetentionBounds {
   readonly maxLines: number;
   readonly maxBytes: number;
 }
 
-export interface BuildLogWindow {
+interface BuildLogWindow {
   readonly lines: ReadonlyArray<BuildLogLine>;
   readonly bytes: number;
   readonly droppedLines: number;

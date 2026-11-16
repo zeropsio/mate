@@ -4,7 +4,7 @@ import { resolveMateProjectRole } from "../../zerops/mateAccess.ts";
 import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
 
-export type PlatformAccess =
+type PlatformAccess =
   | { readonly kind: "allowed"; readonly role: string }
   | { readonly kind: "unknown" | "denied" | "deleted" };
 export interface PlatformAccessKey {

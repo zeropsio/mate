@@ -44,7 +44,7 @@ interface DiffReviewLine {
   readonly content: string;
 }
 
-export type ReviewCommentMessageSegment =
+type ReviewCommentMessageSegment =
   | {
       readonly kind: "text";
       readonly id: string;

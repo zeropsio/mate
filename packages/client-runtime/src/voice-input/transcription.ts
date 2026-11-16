@@ -13,7 +13,7 @@ export type VoiceTranscriber = {
   readonly prepare: (options: VoiceTranscriptionOptions) => Promise<PreparedVoiceTranscription>;
 };
 
-export type VoiceTranscriptionErrorCode =
+type VoiceTranscriptionErrorCode =
   | "unavailable"
   | "unsupported-locale"
   | "preparation-failed"

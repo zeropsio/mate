@@ -11,7 +11,7 @@ import type { GroupEnvironmentTier } from "@t3tools/client-runtime/zerops";
 import { create } from "zustand";
 
 /** A stage or a production asked for in a project. */
-export interface SetUpEnvironmentAsk {
+interface SetUpEnvironmentAsk {
   readonly groupId: string;
   readonly role: "stage" | "prod";
 }

@@ -3,7 +3,7 @@
  *
  * @module zerops/gitBrowse/lineRange
  */
-export interface LineRange {
+interface LineRange {
   readonly start: number;
   readonly end: number;
 }

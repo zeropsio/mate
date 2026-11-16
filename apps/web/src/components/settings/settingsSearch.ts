@@ -85,7 +85,7 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
  * The team, its billing, its activity and the persona templates are an organization's: offered
  * only signed in with one.
  */
-export const ORGANIZATION_PAGES: ReadonlySet<SettingsPath> = new Set([
+const ORGANIZATION_PAGES: ReadonlySet<SettingsPath> = new Set([
   "/settings/team",
   "/settings/billing",
   "/settings/activity",
@@ -93,10 +93,7 @@ export const ORGANIZATION_PAGES: ReadonlySet<SettingsPath> = new Set([
 ]);
 
 /** Billing and activity are its owners' and admins' alone: nobody else is offered them. */
-export const ADMIN_PAGES: ReadonlySet<SettingsPath> = new Set([
-  "/settings/billing",
-  "/settings/activity",
-]);
+const ADMIN_PAGES: ReadonlySet<SettingsPath> = new Set(["/settings/billing", "/settings/activity"]);
 
 /** Whether a settings page is offered to this viewer: in an organization, and as its admin. */
 export function settingsPageOffered(
@@ -394,7 +391,7 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
 ] as const satisfies ReadonlyArray<SettingsSearchItem>;
 
-export type SettingsSearchItemId = (typeof SETTINGS_SEARCH_ITEMS)[number]["id"];
+type SettingsSearchItemId = (typeof SETTINGS_SEARCH_ITEMS)[number]["id"];
 
 const SEARCH_ITEMS_BY_ID = Object.fromEntries(
   SETTINGS_SEARCH_ITEMS.map((item) => [item.id, item]),

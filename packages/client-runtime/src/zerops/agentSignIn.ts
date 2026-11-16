@@ -74,10 +74,6 @@ export function agentNeedsSignIn(
 /** The secondary offer for replacing an existing agent sign-in. */
 export const AGENT_OWNERSHIP_RECOVERY_LABEL = "Use my own account instead…";
 
-/** What the banner says in place of a command nobody here can run, where no Mate is named. */
-export const AGENT_SIGN_IN_MESSAGE =
-  "This agent is not signed in yet. Authorize it here and start a new thread.";
-
 /**
  * An error as a Mate's surface says it: a sign-in failure with the Mate as its subject and the
  * agent only what the person signs in to — "Sage is signed out of Claude. Sign in again to

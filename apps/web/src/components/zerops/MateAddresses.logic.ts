@@ -4,7 +4,7 @@
  * gestures — ⌘/ctrl/shift-click, a middle click — open it in a new tab. Any
  * other button (`auxclick` fires for the right one too) opens nothing.
  */
-export type MateAddressOpenTarget = "panel" | "new-tab" | "none";
+type MateAddressOpenTarget = "panel" | "new-tab" | "none";
 
 export function mateAddressOpenTarget(
   event:

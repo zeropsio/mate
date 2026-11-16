@@ -3,7 +3,7 @@ import { flowReleaseOf, type FlowRelease } from "../../zerops/release.ts";
 import type { Projection } from "../store.ts";
 import { hqAppDetail, type HqAppKey } from "./hqAppDetail.ts";
 import { sameValue } from "./equal.ts";
-export type AppReleaseRows =
+type AppReleaseRows =
   | { readonly kind: "unread"; readonly reason: string | null }
   | {
       readonly kind: "known";

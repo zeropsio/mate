@@ -25,13 +25,13 @@ export function MateCards({ children }: { readonly children: ReactNode }) {
 }
 
 /** Changes of a Mate's that wait for review: how many, and whether on the viewer. */
-export interface MateCardChanges {
+interface MateCardChanges {
   readonly count: number;
   readonly mine: boolean;
 }
 
 /** How a card says its changes wait: the page's list names them. */
-export function changesWaitLine(count: number): string {
+function changesWaitLine(count: number): string {
   return count === 1 ? "1 change to review" : `${count} changes to review`;
 }
 

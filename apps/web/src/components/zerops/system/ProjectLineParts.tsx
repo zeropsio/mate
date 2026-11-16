@@ -168,7 +168,7 @@ export function Caption({
  * draws both can mark the one from the other. Work that is not a change yet opens nothing. `tip`: `end` ends its name at the bead, over its own
  * segment, where the next station has words above the track (the line in full); default centred.
  */
-export function Bead({
+function Bead({
   bead,
   onOpenChange,
   tip = "center",

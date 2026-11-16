@@ -31,7 +31,7 @@ const readDraft = (environmentId: EnvironmentId): CrewSetupDraft | null =>
 export const hasCrewSetupDraft = (environmentId: EnvironmentId): boolean =>
   readDraft(environmentId) !== null;
 
-export interface CrewSetupDraftState {
+interface CrewSetupDraftState {
   /** The goal as written here; `null` while nothing was written in this draft. */
   readonly goal: string | null;
   readonly setGoal: (goal: string) => void;

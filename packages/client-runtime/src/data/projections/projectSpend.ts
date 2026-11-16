@@ -10,7 +10,7 @@ import { addDays, projectSpendScope, SPEND_DAYS, type SpendDay } from "../famili
 import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
 
-export interface ComputeSpendKey {
+interface ComputeSpendKey {
   readonly orgId: string;
   readonly projectIds: ReadonlyArray<string>;
 }

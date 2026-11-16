@@ -13,7 +13,7 @@ import type { ProjectGrantEntry } from "../../zerops/appAccess.ts";
 import type { ScopeKey } from "../model.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
 
-export type MemberProjectRolesValue = ReadonlyArray<ProjectGrantEntry>;
+type MemberProjectRolesValue = ReadonlyArray<ProjectGrantEntry>;
 
 declare module "../model.ts" {
   interface FamilyValues {

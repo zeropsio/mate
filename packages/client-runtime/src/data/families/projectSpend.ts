@@ -101,7 +101,7 @@ export function midnightIn(day: SpendDay, timeZone: string): number {
  * that ends today. Billing answers today's partial bucket only for a window that reaches the start
  * of tomorrow (measured live: a `till` of 23:59:59 today answers 29 buckets).
  */
-export function spendWindow(now: number, timeZone: string) {
+function spendWindow(now: number, timeZone: string) {
   const today = dayIn(now, timeZone);
   return {
     from: new Date(midnightIn(addDays(today, 1 - SPEND_DAYS), timeZone)).toISOString(),
@@ -133,7 +133,7 @@ const decodeItem = Schema.decodeUnknownOption(Item);
  * The answer as a screen needs it. A bucket's day is the date its `from` names as Zerops wrote it,
  * in the zone asked (`2026-09-18T00:00:00+02:00` is the 18th), never that instant's UTC date.
  */
-export function decodeProjectSpend(answer: unknown): ProjectSpendValue | null {
+function decodeProjectSpend(answer: unknown): ProjectSpendValue | null {
   return Option.match(decodeAnswer(answer), {
     onNone: () => null,
     onSome: (listing) => {

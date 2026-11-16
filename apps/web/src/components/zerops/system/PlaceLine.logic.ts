@@ -13,9 +13,9 @@ import { placeLabel, type PlaceLine } from "../projects/projectCard.logic";
 import { PLACE_RUNNING_WORD } from "../SidebarProductionChip.logic";
 
 /** A place's dot tone, as a `Badge` tone: running green, under way blue, broken red, else grey. */
-export type PlaceTone = "success" | "info" | "danger" | "neutral";
+type PlaceTone = "success" | "info" | "danger" | "neutral";
 
-export interface PlaceLineView {
+interface PlaceLineView {
   /** "Production"; a stage by its own name, capitalised (`environmentTitle`). */
   readonly title: string;
   readonly tone: PlaceTone;

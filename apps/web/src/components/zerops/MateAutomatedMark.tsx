@@ -6,7 +6,7 @@ import { BotIcon } from "lucide-react";
 
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
-export const MATE_AUTOMATED_WORDS = "Automated — runs on the organization's key";
+const MATE_AUTOMATED_WORDS = "Automated — runs on the organization's key";
 
 export function MateAutomatedMark() {
   return (

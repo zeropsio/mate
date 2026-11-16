@@ -11,7 +11,7 @@ export interface ActivityNames {
   readonly project: (projectId: string) => string | undefined;
 }
 
-export interface ActivityLine {
+interface ActivityLine {
   readonly key: string;
   readonly at: string;
   readonly who: string;
@@ -47,7 +47,7 @@ const personName = (names: ActivityNames, userId: string) =>
 const projectName = (names: ActivityNames, projectId: string) =>
   names.project(projectId) ?? `Project ${projectId}`;
 
-export function activityWho(actor: HqActivityActor, names: ActivityNames): string {
+function activityWho(actor: HqActivityActor, names: ActivityNames): string {
   switch (actor.kind) {
     case "person":
       return personName(names, actor.userId);

@@ -50,7 +50,7 @@ const byServiceThenPort = (left: ZeropsPublicRoute, right: ZeropsPublicRoute) =>
  * `readsProject`: the organization's search is refused to the viewer, so the project's own
  * listing is what a surface demands.
  */
-export type ProjectRoutings = (
+type ProjectRoutings = (
   | {
       readonly kind: "read";
       readonly complete: boolean;

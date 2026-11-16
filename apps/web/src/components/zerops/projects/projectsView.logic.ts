@@ -89,7 +89,7 @@ export function overviewKeeps(input: {
 }
 
 /** What a project's card says needs the person, as the overview orders by it. */
-export interface OverviewUrgency {
+interface OverviewUrgency {
   /** Production is down, or its last release failed. */
   readonly broken: boolean;
   /** A Mate of the viewer's asks: a question, a plan, a run stopped on an error. */
@@ -117,7 +117,7 @@ export function overviewOrder<G>(
 }
 
 /** One of the overview's filters: its words, and how many projects it holds when any. */
-export interface OverviewFilterTab {
+interface OverviewFilterTab {
   readonly show: OverviewShow | undefined;
   readonly label: string;
   readonly count: number | undefined;
@@ -197,7 +197,7 @@ const NEXT_STEP_TONE: Record<GroupNextStepKind, ServiceStatusToneId> = {
   none: "off",
 };
 
-export function nextStepTone(kind: GroupNextStepKind): ServiceStatusToneId {
+function nextStepTone(kind: GroupNextStepKind): ServiceStatusToneId {
   return NEXT_STEP_TONE[kind];
 }
 
@@ -244,7 +244,7 @@ const CONTAINER_STATE_WORD: ReadonlyArray<readonly [ContainerState, string]> = [
   ["other", "need a look"],
 ];
 
-export const CONTAINERS_NOT_IN_A_PROJECT = "Not in a project";
+const CONTAINERS_NOT_IN_A_PROJECT = "Not in a project";
 
 /**
  * The containers no project holds, as one line: how many are in each state,
@@ -346,7 +346,7 @@ export function changesUnknownOf(input: {
 }
 
 /** What a row says where its changes are not known. */
-export const CHANGES_UNKNOWN_LINE: { readonly [U in ChangesUnknown]: string } = {
+const CHANGES_UNKNOWN_LINE: { readonly [U in ChangesUnknown]: string } = {
   failed: "HQ didn’t answer",
   // The refusal (`changes_not_seen`) in Mate's access words: Full gives a project's changes.
   unseen: "Changes show with Full access",
@@ -436,7 +436,7 @@ export function stopLine(stop: GroupFlowStop): {
 }
 
 /** One Zerops project of a group, as the page already holds it. */
-export interface GroupMemberFacts {
+interface GroupMemberFacts {
   readonly projectStatus?: string | undefined;
   readonly services?: ReadonlyArray<PlatformService> | undefined;
   readonly projectId: string;
@@ -471,7 +471,7 @@ export interface GroupMemberFacts {
 }
 
 /** A group member as the group tree carries it: a candidate, with what its container serves. */
-export type GroupMemberCandidate = ZeropsCandidate & {
+type GroupMemberCandidate = ZeropsCandidate & {
   readonly routes?: ReadonlyArray<ZeropsPublicRoute>;
   readonly services?: ZeropsEnvironmentServices;
 };
@@ -724,7 +724,7 @@ export interface RowMateActivity {
  * A project row's second line: the one thing that needs the person, as a full sentence (its verb
  * at the row's end), else the latest meaningful fact — never a word for nothing.
  */
-export type ProjectRowLine =
+type ProjectRowLine =
   | {
       readonly kind: "needs-you";
       readonly text: string;

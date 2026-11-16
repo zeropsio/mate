@@ -13,7 +13,7 @@ import { AskCard, type AskDensity, AskFooter } from "../../ask/AskCard";
 import { Button } from "../../ui/button";
 import { mirrorAskTitle } from "./mirrorAsk.logic";
 
-export interface MirrorAskCardProps {
+interface MirrorAskCardProps {
   /** The ask's request: what "Show in conversation" lands on. */
   readonly askId: string;
   readonly repo: string;

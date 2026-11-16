@@ -115,7 +115,7 @@ export interface PoolMate {
 }
 
 /** A pool Mate's face: at work, asking while its task waits on a person's answer, else at rest. */
-export function poolMateFace(mate: Pick<PoolMate, "automation">, working: boolean): MateMarkState {
+function poolMateFace(mate: Pick<PoolMate, "automation">, working: boolean): MateMarkState {
   if (working) return "working";
   return mate.automation.task?.waiting === true ? "needs" : "idle";
 }
@@ -649,7 +649,7 @@ function PoolFace({
 }
 
 /** Its face opens it; its name and what it is on are its tooltip. */
-export function PoolFaceView({
+function PoolFaceView({
   mate,
   working,
   onOpen,
@@ -1040,7 +1040,7 @@ function useSlidingRows() {
   return ledger;
 }
 
-export function TaskBoardView({
+function TaskBoardView({
   board,
   pool,
   waitsFor,

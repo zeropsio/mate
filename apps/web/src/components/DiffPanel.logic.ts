@@ -126,7 +126,7 @@ export function diffChoices(reads: ReadonlyArray<DiffRepositoryRead>): ReadonlyA
   });
 }
 
-export type DiffShown =
+type DiffShown =
   | { readonly kind: "reading" }
   | { readonly kind: "no-code" }
   | { readonly kind: "nothing-outside-main" }

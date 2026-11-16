@@ -98,7 +98,7 @@ export const mateEngineSend: OperationKind<"mate-engine-send"> = {
   reflected: itemHeld,
 };
 
-export const mateEngineSteer: OperationKind<"mate-engine-steer"> = {
+const mateEngineSteer: OperationKind<"mate-engine-steer"> = {
   kind: "mate-engine-steer",
   executor: "mate",
   reflected: itemHeld,
@@ -195,14 +195,14 @@ export const mateEngineSwitchModel: OperationKind<"mate-engine-switch-model"> = 
 };
 
 /** A Continue shows once no usage limit holds the conversation (a refusal brings one back). */
-export const mateEngineContinue: OperationKind<"mate-engine-continue"> = {
+const mateEngineContinue: OperationKind<"mate-engine-continue"> = {
   kind: "mate-engine-continue",
   executor: "mate",
   reflected: (read, intent) => headerOf(read, intent)?.pausedUntil === null,
 };
 
 /** Archiving or restoring shows once the conversation header agrees. */
-export const mateEngineSetArchived: OperationKind<"mate-engine-set-archived"> = {
+const mateEngineSetArchived: OperationKind<"mate-engine-set-archived"> = {
   kind: "mate-engine-set-archived",
   executor: "mate",
   reflected: (read, intent) => headerOf(read, intent)?.archived === intent.archived,

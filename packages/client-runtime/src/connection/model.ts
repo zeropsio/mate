@@ -73,11 +73,9 @@ export const PersistedConnectionTarget = Schema.Union([
 ]);
 export type PersistedConnectionTarget = typeof PersistedConnectionTarget.Type;
 
-export type ConnectionTargetKind = ConnectionTarget["_tag"];
-
 export type NetworkStatus = "unknown" | "offline" | "online";
 
-export const ConnectionTransientReason = Schema.Literals([
+const ConnectionTransientReason = Schema.Literals([
   "network",
   "timeout",
   "transport",
@@ -91,7 +89,7 @@ export const ConnectionTransientReason = Schema.Literals([
   // HQ decides access, so all this asks for is a new ticket, at once and once.
   "mate-access-ended",
 ]);
-export type ConnectionTransientReason = typeof ConnectionTransientReason.Type;
+type ConnectionTransientReason = typeof ConnectionTransientReason.Type;
 
 export const ConnectionBlockedReason = Schema.Literals([
   "authentication",
@@ -210,7 +208,7 @@ export interface SupervisorConnectionState {
   readonly retryAt: number | null;
 }
 
-export type ConnectionProjectionPhase = "disconnected" | "synchronizing" | "ready";
+type ConnectionProjectionPhase = "disconnected" | "synchronizing" | "ready";
 
 export function connectionProjectionPhase(
   state: SupervisorConnectionState,

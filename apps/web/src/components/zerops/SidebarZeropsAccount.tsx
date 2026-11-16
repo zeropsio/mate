@@ -99,7 +99,7 @@ export function SidebarAccountMenuProvider({ children }: { readonly children: Re
   return <AccountMenuContext value={{ open, setOpen }}>{children}</AccountMenuContext>;
 }
 
-export interface SidebarZeropsAccountProps {
+interface SidebarZeropsAccountProps {
   readonly account: ZeropsAccountDisplay;
   readonly organizations: ReadonlyArray<ZeropsOrganization>;
   /** Organizations that invited the account and wait for it to accept, listed but never chosen. */

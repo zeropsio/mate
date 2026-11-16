@@ -15,7 +15,7 @@ import { shortCommit } from "./release.ts";
 import { movedCount, type Moved } from "./releaseCompare.ts";
 
 /** A release row's two lines: what it carried, over who, when and the shas. */
-export interface ReleaseDescription {
+interface ReleaseDescription {
   readonly primary: string;
   readonly secondary: string;
 }

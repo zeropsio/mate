@@ -33,9 +33,9 @@ export interface ZeropsBuildLogLine {
   readonly severity: number;
 }
 
-export type ZeropsBuildLogStatus = "idle" | "loading" | "live" | "ended" | "error";
+type ZeropsBuildLogStatus = "idle" | "loading" | "live" | "ended" | "error";
 
-export interface ZeropsBuildLogProps {
+interface ZeropsBuildLogProps {
   readonly lines: ReadonlyArray<ZeropsBuildLogLine>;
   readonly status: ZeropsBuildLogStatus;
   /** Whether the whole log's dialog is open. */

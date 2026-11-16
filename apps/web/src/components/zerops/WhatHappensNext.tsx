@@ -14,7 +14,7 @@ import { cn } from "~/lib/utils";
 import { SignInPhrase } from "./ZeropsArrivalSteps";
 import type { WhatHappensNext as Next } from "./whatHappensNext.logic";
 
-export interface WhatHappensNextVersion {
+interface WhatHappensNextVersion {
   readonly key: string;
   readonly next: Next;
   readonly shown: boolean;

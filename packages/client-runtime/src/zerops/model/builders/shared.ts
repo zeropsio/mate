@@ -8,12 +8,7 @@ import type { ZeropsProposal } from "../proposal.ts";
  */
 import type { DeployBuildRead } from "../../activity/deployBuild.ts";
 import { deployFailureWords, readFailureClassification } from "../../operations/failureWords.ts";
-import {
-  readRecord,
-  readString,
-  readZeropsCardSource,
-  type ZeropsCardSource,
-} from "../../cards/decode.ts";
+import { readString, readZeropsCardSource, type ZeropsCardSource } from "../../cards/decode.ts";
 import { decodeZeropsCard, type ZeropsCardPayload } from "../../cards/payloads.ts";
 import {
   neutralStatusWord,
@@ -131,7 +126,7 @@ export function urlHost(url: string): string {
   return url.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").split(/[/?#]/)[0] ?? url;
 }
 
-export function stepState(rawStatus: string): ZeropsOperationStepState {
+function stepState(rawStatus: string): ZeropsOperationStepState {
   switch (statusWord(rawStatus)) {
     case "Done":
     case "Skipped":
@@ -308,7 +303,7 @@ export function mateVoiceFor(
 }
 
 /** How many of a failure's log lines a card carries — the end of the log, where the failure is. */
-export const EXPLANATION_LOG_TAIL_LINES = 12;
+const EXPLANATION_LOG_TAIL_LINES = 12;
 
 /** `{ explanation }` when there is a reason to give, else `{}` — spread directly into the built fields. */
 export function explanationField(
@@ -329,5 +324,3 @@ export function failedCallReason(decoded: DecodedEntry, errorInfo: ErrorInfo): s
     firstLine(errorInfo.message)
   );
 }
-
-export { readRecord };

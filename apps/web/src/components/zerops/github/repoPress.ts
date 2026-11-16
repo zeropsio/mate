@@ -97,7 +97,7 @@ export function pressShown(press: HeldPress, entry: RepoListEntry | undefined): 
 }
 
 /** Two remote addresses name one repository: case, `.git` and a trailing slash aside. */
-export const sameAddress = (a: string, b: string) => {
+const sameAddress = (a: string, b: string) => {
   const plain = (url: string) =>
     url
       .trim()

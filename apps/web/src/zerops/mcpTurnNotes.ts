@@ -31,7 +31,7 @@ export function noteMcp(environmentId: EnvironmentId, event: McpNoteEvent): void
   });
 }
 
-export interface McpTurnNotes {
+interface McpTurnNotes {
   /** What the next message tells. */
   readonly lines: ReadonlyArray<string>;
   /** A message carried these. */

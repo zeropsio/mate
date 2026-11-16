@@ -7,9 +7,9 @@
 import type { RightPanelSurface, ThreadRightPanelState } from "~/rightPanelStore";
 
 /** A Chief's overview opens wide enough for two of its cards side by side (380 + 16 + 380, 24 each side). */
-export const CHIEF_PANEL_WIDTH = 840;
+const CHIEF_PANEL_WIDTH = 840;
 
-export interface ConversationPanelStandIn {
+interface ConversationPanelStandIn {
   readonly surfaces: ReadonlyArray<RightPanelSurface>;
   readonly activeSurfaceId: string | null;
   /** The panel's width before the person resizes it; undefined for the panel's own default. */

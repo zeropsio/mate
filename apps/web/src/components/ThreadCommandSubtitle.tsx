@@ -12,7 +12,7 @@ import { MiddleTruncate } from "./ui/middle-truncate";
  * - favicon-workspace: same without harness
  * - favicon-branch-harness: GitBranch for local, FolderGit2 for worktrees, + harness
  */
-export type ThreadCommandSubtitleVariant =
+type ThreadCommandSubtitleVariant =
   | "favicon-workspace-harness"
   | "favicon-workspace"
   | "favicon-branch-harness";

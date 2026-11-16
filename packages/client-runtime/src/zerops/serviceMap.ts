@@ -62,7 +62,7 @@ import type {
   ZeropsUsageSample,
 } from "./topology.ts";
 
-export type { LeaseChat, PoolWorkspace } from "./poolWorkspaces.logic.ts";
+export type { PoolWorkspace } from "./poolWorkspaces.logic.ts";
 
 /** Reading order: what the user builds, what it stores, what runs it. */
 const GROUP_ORDER: ReadonlyArray<{ group: ZeropsTopologyGroup; title: string }> = [
@@ -117,7 +117,7 @@ export interface ZeropsServiceMetric {
 }
 
 /** One point of a card's graph: the allocation and what was used of it, at an hour. */
-export interface ZeropsTrendPoint {
+interface ZeropsTrendPoint {
   readonly at: string;
   readonly used: number;
   readonly limit: number;
@@ -547,7 +547,7 @@ export function zeropsServiceFacts(
   return facts;
 }
 
-export function parseZeropsProductionLaunch(entry: string): ZeropsProductionLink {
+function parseZeropsProductionLaunch(entry: string): ZeropsProductionLink {
   const match = PRODUCTION_LAUNCH.exec(entry.trim());
   const label = match?.[1]?.trim();
   const projectId = match?.[2];

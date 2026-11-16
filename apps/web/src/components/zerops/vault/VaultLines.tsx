@@ -14,7 +14,7 @@ import { Spinner } from "../../ui/spinner";
 import { RESTART_CONFIRM, type notLiveLine } from "./vault.logic";
 import { unsetTitle, type VaultEntry, type vaultNeeds } from "./vaultGroups.logic";
 
-export interface VaultLinesProps {
+interface VaultLinesProps {
   readonly actor: "mate" | "environment";
   readonly notLive: ReturnType<typeof notLiveLine>;
   readonly needs: ReturnType<typeof vaultNeeds>;

@@ -8,11 +8,11 @@
  */
 
 /** Where a step of the trail leads; `undefined` on the trail's last step, the page itself. */
-export type TrailTarget =
+type TrailTarget =
   | { readonly kind: "overview" }
   | { readonly kind: "project"; readonly groupId: string };
 
-export interface TrailStep {
+interface TrailStep {
   readonly label: string;
   readonly to: TrailTarget | undefined;
 }

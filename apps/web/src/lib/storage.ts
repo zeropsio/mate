@@ -6,7 +6,7 @@ export interface StateStorage<R = unknown> {
   removeItem: (name: string) => R;
 }
 
-export interface DeferredStorage<TValue, TStored = string> {
+interface DeferredStorage<TValue, TStored = string> {
   getItem: (name: string) => TStored | null | Promise<TStored | null>;
   setItem: (name: string, value: TValue) => void;
   removeItem: (name: string) => void;

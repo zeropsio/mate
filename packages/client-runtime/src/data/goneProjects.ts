@@ -27,7 +27,7 @@ interface GoneProjectsKey {
 }
 
 /** The finishes still to tell HQ: none for a project this session has told it of already. */
-export function goneProjectFinishes(
+function goneProjectFinishes(
   read: ProjectionReads,
   key: GoneProjectsKey,
 ): ReadonlyArray<GoneProjectFinish> {

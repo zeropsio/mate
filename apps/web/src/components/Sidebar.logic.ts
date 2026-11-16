@@ -1,10 +1,9 @@
 import * as React from "react";
-import { type AnimateLayoutChanges } from "@dnd-kit/sortable";
 import { statusLabel, statusPulses } from "@t3tools/client-runtime/zerops/statusPresentation";
 import type { CandidateLookup } from "@t3tools/client-runtime/zerops/projections";
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
 import type { ContextMenuItem, EnvironmentId, ThreadId } from "@t3tools/contracts";
-import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from "@t3tools/contracts/settings";
+import type { SidebarProjectSortOrder } from "@t3tools/contracts/settings";
 import type { ThreadStatus, ThreadStatusToneId } from "@t3tools/shared/threadStatus";
 import {
   activeThreadAnchorTimestampMs,
@@ -35,7 +34,7 @@ export function openAddProjectFromSidebar(input: {
   input.openPalette();
 }
 
-export type SidebarThreadSection = "pinned" | "active" | "snoozed" | "settled";
+type SidebarThreadSection = "pinned" | "active" | "snoozed" | "settled";
 
 type UntouchedSidebarThreadInput = Pick<SidebarThreadSummary, "latestTurn" | "latestUserMessageAt">;
 
@@ -107,7 +106,7 @@ type LogicalSidebarProject = SidebarProject & {
   }[];
 };
 
-export type ThreadTraversalDirection = "previous" | "next";
+type ThreadTraversalDirection = "previous" | "next";
 
 export async function archiveSelectedThreadEntries<
   TEntry extends { readonly threadKey: string },
@@ -232,7 +231,7 @@ export interface ThreadStatusPill extends ThreadStatus {
   readonly pulse: boolean;
 }
 
-export interface ThreadStatusRowPresentation {
+interface ThreadStatusRowPresentation {
   readonly label: string;
   readonly icon: "working" | "woke" | "done" | null;
   readonly className: string;
@@ -275,7 +274,7 @@ export function threadStatusRowPresentation(
   };
 }
 
-export interface ThreadJumpHintVisibilityController {
+interface ThreadJumpHintVisibilityController {
   sync: (shouldShow: boolean) => void;
   dispose: () => void;
 }
@@ -492,29 +491,7 @@ export function isContextMenuPointerDown(input: {
   return input.isMac && input.button === 0 && input.ctrlKey;
 }
 
-/** NaN-safe Date.parse for sort comparators: a malformed timestamp must not
-    poison the whole ordering, so it sinks to the epoch instead. */
-export function parseTimestampMs(isoDate: string): number {
-  const parsed = Date.parse(isoDate);
-  return Number.isNaN(parsed) ? 0 : parsed;
-}
-
-/** First VALID timestamp wins: `a ?? b` falls through on null, but a present-
-    yet-malformed string must also fall through to the next candidate rather
-    than sink the row to the epoch. */
-export function firstValidTimestampMs(
-  ...candidates: ReadonlyArray<string | null | undefined>
-): number {
-  for (const candidate of candidates) {
-    if (candidate == null) continue;
-    const parsed = Date.parse(candidate);
-    if (!Number.isNaN(parsed)) return parsed;
-  }
-  return 0;
-}
-
-/** String twin of firstValidTimestampMs for callers that need the ISO string
-    (display labels, tick anchors) rather than epoch ms. */
+/** The first valid ISO timestamp among the candidates, for display labels and tick anchors. */
 function firstValidTimestamp(
   ...candidates: ReadonlyArray<string | null | undefined>
 ): string | null {
@@ -609,7 +586,7 @@ export function formatWorkingDurationLabel(elapsedMs: number): string {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
-export function getProjectSortTimestamp(
+function getProjectSortTimestamp(
   project: SidebarProject,
   projectThreads: readonly ThreadSortInput[],
   sortOrder: Exclude<SidebarProjectSortOrder, "manual">,

@@ -29,17 +29,6 @@ describe("resolveActiveZeropsOrganization", () => {
       resolveActiveZeropsOrganization(organizations, {
         preferredClientId: "org-dev",
         storedClientUserId: "cu-owner",
-        storedClientId: "org-owner",
-      })?.membershipId,
-    ).toBe("cu-dev");
-  });
-
-  it("restores the exact clientUser membership before falling back to clientId", () => {
-    expect(
-      resolveActiveZeropsOrganization(organizations, {
-        preferredClientId: null,
-        storedClientUserId: "cu-dev",
-        storedClientId: "org-owner",
       })?.membershipId,
     ).toBe("cu-dev");
   });
@@ -49,14 +38,12 @@ describe("resolveActiveZeropsOrganization", () => {
       resolveActiveZeropsOrganization([organizations[0]!], {
         preferredClientId: null,
         storedClientUserId: null,
-        storedClientId: null,
       })?.id,
     ).toBe("org-owner");
     expect(
       resolveActiveZeropsOrganization(organizations, {
         preferredClientId: null,
         storedClientUserId: null,
-        storedClientId: null,
       }),
     ).toBeNull();
   });

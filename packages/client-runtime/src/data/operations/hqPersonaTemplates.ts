@@ -52,7 +52,7 @@ export const personaTemplateIn = (
 };
 
 /** The record holds the saved text at a revision past the one its writer saw. */
-export const personaTemplateSaved = (
+const personaTemplateSaved = (
   read: ProjectionReads,
   intent: IntentOf<"save-persona-template">,
 ): boolean => {
@@ -67,7 +67,7 @@ export const personaTemplateSaved = (
 };
 
 /** The complete record holds no template of that id. */
-export const personaTemplateGone = (
+const personaTemplateGone = (
   read: ProjectionReads,
   intent: IntentOf<"delete-persona-template">,
 ): boolean => personaTemplateIn(read, intent.orgId, intent.templateId) === null;

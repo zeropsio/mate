@@ -57,7 +57,7 @@ export interface ProjectAttentionItem {
     | undefined;
 }
 
-export interface ProjectAttentionInput {
+interface ProjectAttentionInput {
   /** Mates that have stopped and are waiting on an answer. */
   readonly waitingMates: ReadonlyArray<{ readonly projectId: string; readonly name: string }>;
   /**

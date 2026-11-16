@@ -7,7 +7,7 @@
  */
 import { create } from "zustand";
 
-export interface ReleasePress {
+interface ReleasePress {
   /** ISO, this browser's clock at the press. */
   readonly pressedAt: string;
   /** ISO, when this tab first saw the release live. */

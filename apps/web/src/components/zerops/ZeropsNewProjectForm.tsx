@@ -59,7 +59,7 @@ export interface NewProjectChoice {
   readonly userRoles?: ReadonlyArray<ProjectGrant>;
 }
 
-export interface ZeropsNewProjectFormProps {
+interface ZeropsNewProjectFormProps {
   /** The platform's locations; only more than one is a choice to offer. */
   readonly locations: ReadonlyArray<{ readonly id: string; readonly name: string }>;
   readonly locationId: string | null;
@@ -91,7 +91,7 @@ export interface ZeropsNewProjectFormProps {
 }
 
 /** What a Create pressed with no project name says, at the name. */
-export const NAME_YOUR_PROJECT = "Name your project.";
+const NAME_YOUR_PROJECT = "Name your project.";
 
 const PROJECT_FIELD = "zerops-new-project";
 const MATE_FIELD = "zerops-new-project-mate";

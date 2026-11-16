@@ -51,13 +51,13 @@ export function useStopPress(threadKey: string | null | undefined): StopPress | 
   );
 }
 
-export type StopAnswer =
+type StopAnswer =
   | { readonly kind: "taken" }
   | { readonly kind: "refused"; readonly reason: string }
   /** It never reached the Mate: nothing was asked, nothing is said. */
   | { readonly kind: "dropped" };
 
-export interface StopTarget {
+interface StopTarget {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
   /** The conversation's latest turn as the control drew it: its Stop's words belong to it. */

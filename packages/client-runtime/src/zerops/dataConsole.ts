@@ -259,7 +259,7 @@ function base64ByteLength(base64: string): number {
 // Service affordances
 // ---------------------------------------------------------------------------
 
-export interface DataConsoleServiceAffordances {
+interface DataConsoleServiceAffordances {
   readonly canBrowse: boolean;
   readonly canQuery: boolean;
   readonly canReadTable: boolean;
@@ -335,7 +335,7 @@ export function joinServicesWithTopology(
  * `service.support`, so a view-only family (clickhouse/qdrant/kafka/nats)
  * still gets its family's own listing shape.
  */
-export type DataConsoleListingKind = "tree" | "objects" | "keys" | "documents" | "streams";
+type DataConsoleListingKind = "tree" | "objects" | "keys" | "documents" | "streams";
 
 /**
  * `node === null` means the service's own root (nothing selected below the
@@ -585,7 +585,7 @@ export interface DataConsoleFilter {
   readonly value?: string;
 }
 
-export type DataConsoleSqlDialect = "postgresql" | "mysql";
+type DataConsoleSqlDialect = "postgresql" | "mysql";
 
 /** Maps a service `type` to the SQL dialect its console query builder should speak. `undefined` for anything not a Postgres/MySQL-family engine — no filtered-table query builder applies there (e.g. object storage, KV, Mongo). */
 export function resolveSqlDialect(serviceType: string): DataConsoleSqlDialect | undefined {
@@ -737,7 +737,7 @@ export function toggleHiddenColumn(hidden: ReadonlySet<string>, name: string): R
 // Cell detail
 // ---------------------------------------------------------------------------
 
-export interface DataConsoleCellDetail {
+interface DataConsoleCellDetail {
   readonly kind: "null" | "boolean" | "number" | "text" | "json" | "binary";
   readonly detail: string;
   readonly oneLine: string;
@@ -982,7 +982,7 @@ export interface DataMentionEntry {
 }
 
 /** The mention token addressing a path: the service name and its segments joined by dots. */
-export function dataMentionToken(path: ZeropsDataConsolePath): string {
+function dataMentionToken(path: ZeropsDataConsolePath): string {
   return [path.service, ...path.segments].join(".");
 }
 

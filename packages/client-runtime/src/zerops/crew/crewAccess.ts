@@ -91,7 +91,7 @@ export function crewLoginLock(
 }
 
 /** The crew as a reach resolves against it, from the snapshot as the engine does from its tables. */
-export function crewSnapshotRoster(
+function crewSnapshotRoster(
   snapshot: Pick<CrewSnapshot, "crewmates" | "board" | "hosts">,
   home?: CrewLoginRoster["home"],
 ): CrewLoginRoster {

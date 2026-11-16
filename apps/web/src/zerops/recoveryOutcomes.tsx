@@ -20,7 +20,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { Button } from "~/components/ui/button";
 import { appRecoveryToasts, type RecoveryToast, type RecoveryToastSink } from "./recoveryToasts";
 
-export type RecoveryOrigin = "recovery" | "restart-confirmation" | "deploy-confirmation";
+type RecoveryOrigin = "recovery" | "restart-confirmation" | "deploy-confirmation";
 interface Invocation {
   readonly requestId: string;
   readonly origin: string;
@@ -68,7 +68,7 @@ function useOwner() {
   return { account, owner: ownerOf(account?.data), registry: useContext(RegistryContext) };
 }
 
-export interface RecoveryTarget {
+interface RecoveryTarget {
   readonly key: TargetKey;
   readonly projectId: string;
   readonly serviceId: string;

@@ -16,14 +16,14 @@ import { threadEnvironment } from "~/state/threads";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { type MirrorAskPending, mirrorAnswerSettled } from "./mirrorAsk.logic";
 
-export interface MirrorAnswer {
+interface MirrorAnswer {
   readonly pending: MirrorAskPending;
   /** The engine's refusal of the last answer, in its words. */
   readonly refusal: string | null;
 }
 
 /** How the person, or HQ's remote, answered: never a token. */
-export type MirrorSaid =
+type MirrorSaid =
   | { readonly outcome: "connected"; readonly url: string }
   | { readonly outcome: "declined" };
 

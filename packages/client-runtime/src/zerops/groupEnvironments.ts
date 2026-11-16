@@ -36,7 +36,7 @@ export type GroupEnvironmentTier = "stage" | "production";
  * The tier a project's role puts it in, as HQ places it (`readZeropsMembership`), or `undefined`
  * for a role that is not an environment of the group — a Mate's own project is `dev`.
  */
-export function environmentTierForRole(
+function environmentTierForRole(
   role: ZeropsEnvironmentRole | undefined,
 ): GroupEnvironmentTier | undefined {
   return role === "stage" ? "stage" : role === "prod" ? "production" : undefined;
@@ -127,7 +127,7 @@ export function halfMadeGroupEnvironments(input: {
  */
 export const ENVIRONMENT_NOT_ADDED = "Not added";
 /** A slot's line where the recipe on `main` does not hold the tier yet: the Mate composes it. */
-export const ENVIRONMENT_AWAITS_RECIPE = "Waiting for the Mate's recipe";
+const ENVIRONMENT_AWAITS_RECIPE = "Waiting for the Mate's recipe";
 
 /** What the production row says beside its state, and whether *Review release* stands with it. */
 export interface ProductionNote {
@@ -242,7 +242,7 @@ export function putLiveHasChange(
 }
 
 /** What an application holds of each tier and what may be added to it: one answer, every surface. */
-export interface ApplicationEnvironments {
+interface ApplicationEnvironments {
   /** Everything it holds, in any state, each once. */
   readonly held: ReadonlyArray<HeldEnvironment>;
   /**
@@ -379,10 +379,10 @@ export type EnvironmentSlotRow =
     };
 
 /** What production runs, as the section reads it. */
-export type ProductionRuns = "unknown" | "empty" | "deploying" | "running";
+type ProductionRuns = "unknown" | "empty" | "deploying" | "running";
 
 /** A half-made environment's line. */
-export const ENVIRONMENT_UNFINISHED = "Setup isn't finished";
+const ENVIRONMENT_UNFINISHED = "Setup isn't finished";
 
 /**
  * The *Environments* section of an application, drawn once HQ's environments are read: its stages

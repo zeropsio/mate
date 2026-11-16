@@ -28,7 +28,7 @@ const NO_BIRTHS: ReadonlyArray<ZeropsPlacedBirth> = [];
 const NO_LINES: ReadonlyMap<string, string | undefined> = new Map();
 const NO_PLACES: ReadonlyArray<PlaceLine> = [];
 
-export interface ApplicationPlaces {
+interface ApplicationPlaces {
   /** The application's name; `undefined` while unread (a crumb waits for it, never its id). */
   readonly groupName: string | undefined;
   /** Production first, then each stage: each a `PlaceLine`'s `line`. Empty while unread. */

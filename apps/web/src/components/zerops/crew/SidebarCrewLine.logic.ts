@@ -18,7 +18,7 @@ import { MATE_TINT_IDS, type MateMarkState, type MateTintId } from "@t3tools/sha
 import type { CrewDigest, OverviewLogins } from "@t3tools/shared/mateLink";
 import { mateMarkStateForThreadStatus } from "@t3tools/shared/threadStatus";
 
-export interface CrewLineFace {
+interface CrewLineFace {
   readonly handle: string;
   readonly displayName: string;
   readonly tint: MateTintId;
@@ -29,7 +29,7 @@ export interface CrewLineFace {
   readonly lead: boolean;
 }
 
-export type CrewLineFact =
+type CrewLineFact =
   /** Crewmates wait on the person: a question, an approval, a plan, a stop to decide. */
   | { readonly kind: "needs"; readonly words: string }
   /** Finished work waits for the person's review; *Review* opens the first. */

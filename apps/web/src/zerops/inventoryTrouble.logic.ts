@@ -20,8 +20,8 @@ export function inventoryTroubleVoice(
 ): InventoryTroubleVoice | null {
   return trouble === null ? null : trouble === "retrying" ? UNANSWERED : REFUSED;
 }
-export type AccountFootAction = "try-now" | "trying";
-export interface AccountFootLine {
+type AccountFootAction = "try-now" | "trying";
+interface AccountFootLine {
   readonly sentence: string;
   readonly actions: ReadonlyArray<AccountFootAction>;
 }

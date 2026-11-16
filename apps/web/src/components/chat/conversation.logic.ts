@@ -46,11 +46,9 @@ import {
 import { versionText } from "../zerops/operation/version";
 
 export type MessageEntry = Extract<TimelineEntry, { kind: "message" }>;
-export type WorkEntry = Extract<TimelineEntry, { kind: "work" }>;
-export type OperationEntry = Extract<TimelineEntry, { kind: "operation" }>;
 type ChangeLandedEntry = Extract<TimelineEntry, { kind: "change-landed" }>;
 
-export interface TimelineLatestTurnLike {
+interface TimelineLatestTurnLike {
   readonly turnId: TurnId;
   readonly state: string;
   readonly startedAt: string | null;
@@ -203,7 +201,7 @@ export function timelineEntryTurnId(entry: TimelineEntry): TurnId | null {
 }
 
 /** A message the person wrote — narrowing only that, so an assistant message stays a message. */
-export type UserMessageEntry = MessageEntry & {
+type UserMessageEntry = MessageEntry & {
   readonly message: ChatMessage & { readonly role: "user" };
 };
 
@@ -212,14 +210,14 @@ export function isUserMessageEntry(entry: TimelineEntry): entry is UserMessageEn
 }
 
 /** A command to the harness the person typed — `/compact` — drawn as an event, never their words. */
-export function isCommandMessage(entry: MessageEntry): boolean {
+function isCommandMessage(entry: MessageEntry): boolean {
   return (
     readSlashCommand(entry.message.text) !== null && (entry.message.attachments?.length ?? 0) === 0
   );
 }
 
 /** The last assistant message of each response: a turn's answer candidate. */
-export function deriveTerminalAssistantMessageIds(
+function deriveTerminalAssistantMessageIds(
   timelineEntries: ReadonlyArray<TimelineEntry>,
 ): ReadonlySet<string> {
   const lastByResponse = new Map<string, string>();
@@ -247,7 +245,7 @@ export function deriveTerminalAssistantMessageIds(
  * the transient working state, so nothing flickers between a send and the
  * server creating the turn.
  */
-export function deriveUnsettledTurnId(
+function deriveUnsettledTurnId(
   latestTurn: TimelineLatestTurnLike | null,
   runningTurnId: TurnId | null,
 ): TurnId | null {
@@ -353,7 +351,7 @@ const INTERRUPTING_MESSAGE_MS = 180_000;
  * the next day's run took the message before it for its opener, and its
  * clock read "Thinking 17:42:08").
  */
-export const ONE_START_MS = 60_000;
+const ONE_START_MS = 60_000;
 
 /**
  * Whether the server said, outside any run, that the messages waiting for
@@ -367,7 +365,7 @@ function endsTheWait(entry: TimelineEntry): boolean {
   );
 }
 
-export function deriveTurnSpans(input: {
+function deriveTurnSpans(input: {
   readonly timelineEntries: ReadonlyArray<TimelineEntry>;
   readonly terminalAssistantMessageIds: ReadonlySet<string>;
   readonly runCards?: Readonly<Record<string, EngineRunCard>>;
@@ -632,7 +630,7 @@ export interface ConversationTurn {
   readonly endMs: number;
 }
 
-export interface ConversationStructure {
+interface ConversationStructure {
   readonly turns: ReadonlyArray<ConversationTurn>;
   /** Timeline indexes no turn owns (a loose message, a landing between turns). */
   readonly looseIndexes: ReadonlySet<number>;
@@ -1566,7 +1564,7 @@ const TOOL_CALL_WORDS: Readonly<Record<string, string>> = {
 };
 
 /** The clock a wake's time is read on: now, and the person's time zone (theirs when not given). */
-export interface WakeClock {
+interface WakeClock {
   readonly now?: number;
   readonly timeZone?: string;
 }
@@ -1899,7 +1897,7 @@ export function unrecoveredFailures(
   });
 }
 
-export function operationTargetKey(operation: ZeropsOperation): string {
+function operationTargetKey(operation: ZeropsOperation): string {
   return operation.target?.hostname ?? operation.subject;
 }
 
@@ -2149,7 +2147,7 @@ export function browserCheckPage(operation: ZeropsOperation): string {
 }
 
 /** A check that did not show what it looked for: failed, or finished with errors. */
-export function browserCheckFailed(operation: ZeropsOperation): boolean {
+function browserCheckFailed(operation: ZeropsOperation): boolean {
   return (
     operation.phase === "failed" ||
     operation.browserSummary?.failedStep !== undefined ||
@@ -2186,7 +2184,7 @@ export function browserCheckFailure(operation: ZeropsOperation): string | null {
  * a wedged browser, or its deadline cut it — and nothing it did read failed:
  * it neither passed nor failed.
  */
-export function browserCheckUnfinished(operation: ZeropsOperation): boolean {
+function browserCheckUnfinished(operation: ZeropsOperation): boolean {
   return (
     operation.phase === "done" &&
     !browserCheckFailed(operation) &&
@@ -2217,7 +2215,7 @@ function settledLater(checks: ReadonlyArray<ZeropsOperation>, index: number): bo
  * not know, or took the page before it was up — never the page's. A later
  * check that did not finish settles nothing.
  */
-export function unrecoveredCheckFailures(
+function unrecoveredCheckFailures(
   checks: ReadonlyArray<ZeropsOperation>,
 ): ReadonlyArray<ZeropsOperation> {
   return checks.filter((check, index) => browserCheckFailed(check) && !settledLater(checks, index));
@@ -2467,7 +2465,7 @@ const AT_REST_WORDS: Readonly<Record<string, string>> = {
 };
 
 /** A service as the platform and zcp state it now: its status, and what zcp holds it for, if anything. */
-export type ServiceStatus = {
+type ServiceStatus = {
   readonly hostname: string;
   readonly status: string;
   readonly standIn?: { readonly for: string };

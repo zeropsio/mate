@@ -14,7 +14,7 @@ import { useState, type ChangeEvent } from "react";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
 
-export interface ZeropsDataQueryProps {
+interface ZeropsDataQueryProps {
   readonly pending?: boolean;
   readonly onSubmit: (stmt: string) => void;
 }

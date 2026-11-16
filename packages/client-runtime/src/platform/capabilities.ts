@@ -11,12 +11,12 @@ import type * as Option from "effect/Option";
 
 import { ConnectionBlockedError, type ConnectionAttemptError } from "../connection/model.ts";
 
-export interface PreparedSshEnvironment {
+interface PreparedSshEnvironment {
   readonly bootstrap: DesktopSshEnvironmentBootstrap;
   readonly bearerToken: string;
 }
 
-export interface ProvisionedSshEnvironment extends PreparedSshEnvironment {
+interface ProvisionedSshEnvironment extends PreparedSshEnvironment {
   readonly environmentId: EnvironmentId;
   readonly label: string;
 }

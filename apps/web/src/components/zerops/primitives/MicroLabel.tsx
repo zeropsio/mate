@@ -20,4 +20,3 @@ function MicroLabel({ className, ...props }: MicroLabelProps) {
 }
 
 export { MicroLabel };
-export type { MicroLabelProps };

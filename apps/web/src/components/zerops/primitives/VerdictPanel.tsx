@@ -111,4 +111,3 @@ function VerdictPanelWaiting({ className, ...props }: React.ComponentProps<"div"
 }
 
 export { VerdictPanel, VerdictPanelWaiting };
-export type { VerdictPanelProps };

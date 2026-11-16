@@ -64,9 +64,6 @@ export const DEFAULT_ZEROPS_API_BASE = "https://api.app-prg1.zerops.io";
 
 const PUBLIC_API_PREFIX = "/api/rest/public";
 
-/** How long an app version's archive may take to upload. */
-const APP_VERSION_UPLOAD_TIMEOUT_MS = 120_000;
-
 /** The person's Zerops access token and, when the platform gave one, its expiry (ISO). */
 export interface ZeropsAccess {
   readonly token: string;
@@ -154,7 +151,7 @@ export interface ZeropsOrganizationMember {
  * A membership an owner or an admin offers: its organization role and rights, as
  * `POST /client/{id}/user` and `PUT /client/{id}/user/connect` take them.
  */
-export interface OrganizationInvite {
+interface OrganizationInvite {
   readonly email: string;
   readonly roleCode: string;
   readonly canCreateProjects: boolean;
@@ -310,16 +307,6 @@ export interface ZeropsStatHistoryItem {
   readonly diskUsed?: number;
 }
 
-/** The dashboard's "Last 24 Hours": hourly buckets, 24 of them. */
-export interface ZeropsStatHistoryWindow {
-  /** `1m`, `1h`, `1d`, `1w` or `1M` — the bucket. */
-  readonly timeGroupBy: string;
-  /** How many buckets back from now. */
-  readonly limit: number;
-  /** An IANA zone; buckets are aligned to it. */
-  readonly timeZone: string;
-}
-
 /**
  * A git integration as the Zerops GUI's own service-stack template reads it
  * (`service-stack-info-chips.component.html`); every captured fixture carries
@@ -358,7 +345,7 @@ export interface ZeropsAppVersion {
 }
 
 /** One corner of the vertical autoscaling envelope; `null` where the platform has no value. */
-export interface ZeropsAutoscalingResource {
+interface ZeropsAutoscalingResource {
   readonly cpuCoreCount?: number | null;
   readonly memoryGBytes?: number | null;
   readonly diskGBytes?: number | null;
@@ -418,7 +405,7 @@ export interface ZeropsVariableWrite {
 }
 
 /** One record from `GET /service-stack/{id}/env` (or `GET /project/{id}/env`). */
-export interface ZeropsServiceEnvVar {
+interface ZeropsServiceEnvVar {
   readonly id: string;
   readonly key: string;
   readonly content: string;
@@ -466,7 +453,7 @@ export interface ZeropsRegistrationResponse {
   readonly zcpClaimed?: boolean;
 }
 
-export interface ZeropsLoginResponse {
+interface ZeropsLoginResponse {
   readonly auth: ZeropsSession;
   /** Null while a second factor is still outstanding. */
   readonly user: ZeropsUser | null;
@@ -478,7 +465,7 @@ export interface ZeropsLoginResponse {
  * `forbidden` means this account may not touch that resource and the session
  * is still good.
  */
-export type ZeropsApiErrorKind =
+type ZeropsApiErrorKind =
   | "network"
   | "uncertain"
   | "expired-session"
@@ -552,7 +539,7 @@ export class ZeropsTargetWriteRefused extends ZeropsApiError {
 }
 
 /** The longest a `Retry-After` holds a read: a header asking for a day is read as ten minutes. */
-export const RETRY_AFTER_CAP_MS = 10 * 60_000;
+const RETRY_AFTER_CAP_MS = 10 * 60_000;
 
 /**
  * A `Retry-After` header as milliseconds from `nowMs`: delta seconds or an HTTP date; `null` when
@@ -765,7 +752,7 @@ export interface ZeropsSessionOwnerPort {
   readonly renew: (stale: ZeropsSession) => Promise<ZeropsSession | null>;
 }
 
-export interface ZeropsDataHttpRequest {
+interface ZeropsDataHttpRequest {
   readonly path: string;
   readonly method?: "GET" | "POST" | "PUT" | "DELETE";
   readonly body?: unknown;
@@ -852,7 +839,7 @@ function waitForPromiseOrAbort<T>(
   });
 }
 
-export interface ListProjectsOptions {
+interface ListProjectsOptions {
   readonly statuses?: ReadonlyArray<string>;
   readonly limit?: number;
   /** Stops every page read of the listing. */

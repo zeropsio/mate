@@ -9,7 +9,7 @@ let filled = false;
 const listeners = new Set<() => void>();
 
 /** A row's first fill has begun: told in the same pass as the row's own cards. */
-export function cardRowFilled(): void {
+function cardRowFilled(): void {
   if (filled) return;
   filled = true;
   for (const listener of listeners) listener();
@@ -50,9 +50,4 @@ export function makeRowFill(): {
       return () => heard.delete(listener);
     },
   };
-}
-
-/** A new document's fill, for a test that loads twice. */
-export function resetCardRowFill(): void {
-  filled = false;
 }

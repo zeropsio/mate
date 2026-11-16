@@ -15,7 +15,7 @@ import { projectsScope } from "../families/project.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import { platformMembership } from "./platformCapabilities.ts";
 
-export interface LivePermissionFacts extends PermissionFacts {
+interface LivePermissionFacts extends PermissionFacts {
   /** Whether each of these projects is read: an offer over one not read yet stays unknown. */
   readonly read: (projectIds: ReadonlyArray<string>) => boolean;
 }

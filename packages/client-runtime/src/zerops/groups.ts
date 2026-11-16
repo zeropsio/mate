@@ -405,8 +405,7 @@ function roleRank(role: ZeropsEnvironmentRole | undefined): number {
 const byName = compareZeropsHostnames;
 
 /**
- * Descending by `created` (an ISO timestamp, lexically sortable — the same
- * assumption `autoEnterProvisioning.ts` makes), missing
+ * Descending by `created` (an ISO timestamp, lexically sortable), missing
  * always last regardless of which side of the comparison it is on.
  */
 function byCreatedNewestFirst(left: string | undefined, right: string | undefined): number {

@@ -52,7 +52,7 @@ const MAX_SEGMENT_TAIL = 16;
  * part; anything else keeps a fixed count. Nothing is split when the tail would be most of
  * the string, since then the head could never show enough to be worth an ellipsis.
  */
-export function splitForMiddleTruncate(
+function splitForMiddleTruncate(
   value: string,
   tail?: number,
 ): { head: string; tail: string } | null {

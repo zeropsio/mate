@@ -561,7 +561,7 @@ export async function runNewProjectBirth(
 }
 
 /** What an Add's press answers once it is over (`useEnvironmentCreation`). */
-export type AddRun =
+type AddRun =
   | { readonly kind: "refused"; readonly reason: string | null }
   | { readonly kind: "ran"; readonly outcome: EnvironmentCreationOutcome };
 

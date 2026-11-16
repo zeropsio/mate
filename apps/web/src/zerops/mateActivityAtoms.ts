@@ -61,7 +61,7 @@ const TIME_SLACK_MS = 60_000;
 const timeMoved = (a: string, b: string) =>
   a !== b && !(Math.abs(Date.parse(a) - Date.parse(b)) < TIME_SLACK_MS);
 
-export function sameActivity(
+function sameActivity(
   a: ZeropsAgentActivity | undefined,
   b: ZeropsAgentActivity | undefined,
 ): boolean {
@@ -102,7 +102,7 @@ export const MATE_RELINK_GRACE_MS = MATE_AWAY_GRACE_MS;
  * keeps the live one until `MATE_RELINK_GRACE_MS` after it was lost (`lostAt`), then gives way;
  * a live one, or one never live here, is itself. `wakeAt` is when the held one gives way.
  */
-export function throughRelink(input: {
+function throughRelink(input: {
   readonly previous: ZeropsAgentActivity | undefined;
   readonly next: ZeropsAgentActivity | undefined;
   readonly lostAt: number | undefined;
@@ -194,7 +194,7 @@ export const mateActivityAtom = Atom.family((projectId: string) => {
 });
 
 /** The tree reads only state, order, quiet membership and counts; row text has its own demand. */
-export const mateMenuActivityAtom = Atom.family((projectId: string) =>
+const mateMenuActivityAtom = Atom.family((projectId: string) =>
   Atom.make((get) => {
     const activity = get(mateActivityAtom(projectId));
     if (activity === undefined) return undefined;

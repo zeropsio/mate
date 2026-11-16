@@ -344,7 +344,7 @@ export function queuedSendAttemptIds(input: {
 }
 
 /** What a queued bubble says, and what its ↑ does. */
-export interface QueuedBubbleState {
+interface QueuedBubbleState {
   /** In the clock's place: a held send's reason, or what it waits for. Null: the clock. */
   readonly line: { readonly text: string; readonly tone: "muted" | "error" } | null;
   /** The clock's tooltip, where the clock shows. */

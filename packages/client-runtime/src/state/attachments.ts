@@ -55,7 +55,7 @@ export function isAssetAttachmentNotFoundFailure(error: unknown): boolean {
   );
 }
 
-export type PersistedAttachmentVerification =
+type PersistedAttachmentVerification =
   | { readonly status: "verified" }
   | { readonly status: "missing" }
   | { readonly status: "failed"; readonly error: unknown };
@@ -110,7 +110,7 @@ type AttachmentRemoveCommand<E> = AtomCommand<
 >;
 
 /** Fire-and-forget delete of a pending upload the client no longer references. */
-export function deletePendingAttachmentUpload<E>(input: {
+function deletePendingAttachmentUpload<E>(input: {
   readonly registry: AtomRegistry.AtomRegistry;
   readonly remove: AttachmentRemoveCommand<E>;
   readonly environmentId: EnvironmentId;
@@ -125,12 +125,12 @@ export function deletePendingAttachmentUpload<E>(input: {
 }
 
 /** A running byte transfer: resolves when the server accepted the bytes. */
-export interface AttachmentByteUpload {
+interface AttachmentByteUpload {
   readonly done: Promise<void>;
   readonly abort: () => void;
 }
 
-export type AttachmentUploadCycleResult =
+type AttachmentUploadCycleResult =
   | { readonly status: "uploaded"; readonly attachmentId: string }
   | { readonly status: "cancelled"; readonly attachmentId: string | null }
   | {

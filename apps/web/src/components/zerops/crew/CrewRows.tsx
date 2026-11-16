@@ -74,7 +74,7 @@ import {
   type CrewRowThread,
 } from "./CrewRows.logic";
 
-export interface CrewRowsProps {
+interface CrewRowsProps {
   readonly environmentId: EnvironmentId;
   readonly snapshot: CrewSnapshot;
   readonly view: CrewView<EnvironmentThreadShell>;

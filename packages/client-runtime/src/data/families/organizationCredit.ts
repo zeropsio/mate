@@ -12,7 +12,7 @@ import * as Schema from "effect/Schema";
 import type { ScopeKey } from "../model.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
 
-export interface OrganizationCreditValue {
+interface OrganizationCreditValue {
   /** A top-up or Zerops verified it: it may make more than its one free project. */
   readonly verified: boolean;
 }

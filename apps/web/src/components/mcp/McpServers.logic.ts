@@ -189,7 +189,7 @@ export function mcpRunsLabel(transport: McpServerTransport): string {
 
 // ── Command lines ─────────────────────────────────────────────────────
 
-export type SplitCommandLine =
+type SplitCommandLine =
   | { readonly ok: true; readonly words: string[] }
   | { readonly ok: false; readonly error: string };
 
@@ -262,7 +262,7 @@ export function formatCommandLine(command: string, args: ReadonlyArray<string>):
 
 // ── Env and header lines ──────────────────────────────────────────────
 
-export type ParsedLines =
+type ParsedLines =
   | { readonly ok: true; readonly value: Record<string, string> }
   | { readonly ok: false; readonly error: string };
 
@@ -812,7 +812,7 @@ export function mcpAppRedirects(
   });
 }
 
-export type ReadMcpAddForm =
+type ReadMcpAddForm =
   | { readonly ok: true; readonly input: McpServerAddInput }
   | { readonly ok: false; readonly errors: McpAddFormErrors };
 
@@ -902,7 +902,7 @@ export function mcpSecretsFormText(kind: "env" | "headers", names: ReadonlyArray
     .join("\n");
 }
 
-export type ReadMcpSecretsForm =
+type ReadMcpSecretsForm =
   | {
       readonly ok: true;
       readonly values: Record<string, string>;
@@ -922,12 +922,6 @@ export function readMcpSecretsForm(kind: "env" | "headers", text: string): ReadM
   }
   return { ok: true, values, keep };
 }
-
-// ── A Mate too old to sign in ─────────────────────────────────────────
-
-/** What waits on a sign-in, a sign-out or an edit a Mate without `capabilities.mcpSignIn` lacks. */
-export const MCP_NEEDS_UPDATE = "Needs an update";
-export const MCP_UPDATE_TO_SIGN_IN = "Update this Mate to sign in and edit tools here.";
 
 // ── Opening a sign-in page ────────────────────────────────────────────
 

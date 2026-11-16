@@ -52,7 +52,7 @@ interface PictureView {
 }
 
 /** The commit a change's files are read at, in its repository. */
-export type ChangeCodeAt = GitRepoAt & { readonly sha: string };
+type ChangeCodeAt = GitRepoAt & { readonly sha: string };
 
 export function ReviewDescription({
   description,

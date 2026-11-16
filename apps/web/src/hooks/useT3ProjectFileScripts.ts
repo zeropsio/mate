@@ -11,7 +11,7 @@ import { useProjectFileQuery } from "~/components/files/projectFilesQueryState";
 
 const NO_SCRIPTS: ReadonlyArray<T3ProjectFileScript> = [];
 
-export interface T3ProjectFileState {
+interface T3ProjectFileState {
   /**
    * - `valid`: t3.json exists and decoded.
    * - `invalid`: t3.json exists but fails to decode (the server then ignores

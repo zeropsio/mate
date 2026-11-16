@@ -16,7 +16,7 @@ import * as Schema from "effect/Schema";
 import type { ScopeKey } from "../model.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
 
-export type MateAttentionValue = MateAttention;
+type MateAttentionValue = MateAttention;
 
 declare module "../model.ts" {
   interface FamilyValues {

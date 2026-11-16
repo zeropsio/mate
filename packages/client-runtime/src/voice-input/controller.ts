@@ -29,7 +29,7 @@ export type VoiceDraftSnapshot = {
   readonly revision: number;
 };
 
-export type VoiceRecorderStatus = {
+type VoiceRecorderStatus = {
   readonly isFinished: boolean;
   readonly hasError: boolean;
   readonly error: string | null;

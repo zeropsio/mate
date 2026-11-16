@@ -37,7 +37,7 @@ import { Button } from "~/components/ui/button";
 import { Skeleton } from "~/components/ui/skeleton";
 
 /** What the rows need to say what each release carried — HQ's comparisons, folded. */
-export interface ZeropsReleasesCarried {
+interface ZeropsReleasesCarried {
   /** `tag → what it carried`, as HQ compared it (`movedCommits` over `carriedReads`). */
   readonly carried: ReadonlyMap<string, ComparedCommits>;
   readonly names: HistoryNames;

@@ -275,7 +275,7 @@ export interface MateRenameInPlace {
 }
 
 /** The two reads a caller already holds, handed over rather than taken again here. */
-export interface MateActionsInput {
+interface MateActionsInput {
   /** `candidate.key → "0.11.25"`, from `useZeropsContainers`. */
   readonly serverVersions: ReadonlyMap<string, string>;
 }

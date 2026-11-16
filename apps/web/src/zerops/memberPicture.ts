@@ -34,7 +34,7 @@ export function memberPicture(input: {
 }
 
 /** Gravatar's picture for an address; a 404 where the address has none, never a pattern. */
-export const gravatarUrl = (email: string, size = 160): string =>
+const gravatarUrl = (email: string, size = 160): string =>
   `https://www.gravatar.com/avatar/${md5(email.trim().toLowerCase())}?s=${size}&d=404`;
 
 const S = [

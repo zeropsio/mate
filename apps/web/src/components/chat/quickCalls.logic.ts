@@ -14,20 +14,20 @@
 import type { StepKind, WorkStep } from "./workSteps.logic";
 
 /** A call that started and ended inside this long is quick. */
-export const QUICK_CALL_MS = 1000;
+const QUICK_CALL_MS = 1000;
 
 /** How many quick calls in a row fold into one row. */
-export const QUICK_CALLS_FOLD = 2;
+const QUICK_CALLS_FOLD = 2;
 
 /** A quick call starting within this long of the one before it ending is the same run of them. */
-export const QUICK_RUN_GAP_MS = 1000;
+const QUICK_RUN_GAP_MS = 1000;
 
 /**
  * Whether a step is a quick call: done inside a second, with nothing of its
  * own to keep in sight — an edit is what the run changed, a look shows its
  * pictures, a failure wears its mark, a job sent to the background runs on.
  */
-export function isQuickCall(step: WorkStep): boolean {
+function isQuickCall(step: WorkStep): boolean {
   if (step.state !== "done" || step.endedAt === null) return false;
   if (step.kind === "edit" || step.kind === "look") return false;
   if (step.noResult !== undefined || step.background !== undefined) return false;
@@ -48,7 +48,7 @@ function joinsRun(before: WorkStep, step: WorkStep): boolean {
 }
 
 /** Quick calls folded into one row, keyed by its first: a call joining it never re-keys it. */
-export interface QuickCalls<Line> {
+interface QuickCalls<Line> {
   readonly key: string;
   readonly quick: ReadonlyArray<Line>;
 }

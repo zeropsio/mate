@@ -65,7 +65,7 @@ function placeWords(parts: ReadonlyArray<VaultWordPart>) {
   });
 }
 
-export function VaultWords({ parts }: { readonly parts: ReadonlyArray<VaultWordPart> }) {
+function VaultWords({ parts }: { readonly parts: ReadonlyArray<VaultWordPart> }) {
   const placed = placeWords(parts);
   return (
     <>
@@ -120,7 +120,7 @@ function CopyReference({ text, label }: { readonly text: string; readonly label?
   );
 }
 
-export interface VaultRowProps {
+interface VaultRowProps {
   readonly view: VaultView;
   readonly scope: VaultScope;
   readonly value: VaultValue;
@@ -235,7 +235,7 @@ function placeParts(parts: Extract<VaultShow, { kind: "text" }>["parts"]) {
 }
 
 /** A closed row's value: the text, its references as quiet chips, dots for what stays hidden. */
-export function VaultShown({ show }: { readonly show: VaultShow }) {
+function VaultShown({ show }: { readonly show: VaultShow }) {
   switch (show.kind) {
     case "unset":
       return <span className="text-muted-foreground/70">Not set</span>;

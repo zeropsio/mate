@@ -13,7 +13,7 @@ import { processActionWord } from "../operations/phrases.ts";
 import type { ActivityProcess } from "./dto.ts";
 import { getPipelineState, type PipelineState, type PipelineStepStatus } from "./pipelineState.ts";
 
-export type RunningTrailLabel = "Build container" | "Build" | "Deploy";
+type RunningTrailLabel = "Build container" | "Build" | "Deploy";
 
 export interface RunningTrailPart {
   readonly label: RunningTrailLabel;

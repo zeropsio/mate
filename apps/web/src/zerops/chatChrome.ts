@@ -14,7 +14,7 @@ import type { KnownMessage } from "@t3tools/client-runtime/zerops/knowledge";
 import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
 import type { ScopedThreadRef, ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
 
-export interface ZeropsChatChrome {
+interface ZeropsChatChrome {
   readonly threadRef: ScopedThreadRef | null;
   /**
    * `"unavailable"` is gone: that was `zcp studio topology`'s `available:

@@ -45,7 +45,7 @@ const isCrewProposalError = Schema.is(CrewProposalError);
 const isLoginError = Schema.is(ZeropsAgentLoginError);
 const isTerminalError = Schema.is(TerminalError);
 /** Values named here identify the action without retaining credentials or editor text. */
-export const mateActionTarget = (input: unknown): Readonly<Record<string, string>> => {
+const mateActionTarget = (input: unknown): Readonly<Record<string, string>> => {
   const result: Record<string, string> = {};
   if (typeof input !== "object" || input === null) return result;
   for (const name of ["agentId", "loginId", "threadId", "terminalId", "id", "_tag"]) {

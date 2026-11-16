@@ -2,7 +2,6 @@ import {
   AccountEpoch,
   ZeropsAccountId,
   ZeropsOrganizationId,
-  ZeropsProcessId,
   ZeropsProjectId,
   ZeropsServiceId,
   makeZeropsApiOrigin,
@@ -10,9 +9,8 @@ import {
   type AccountScope,
   type ProjectRef,
   type ServiceRef,
-  type ProcessRef,
 } from "@t3tools/client-runtime/zerops/data";
-export const account: AccountRef = {
+const account: AccountRef = {
   apiOrigin: makeZeropsApiOrigin("https://api.example.test"),
   accountId: ZeropsAccountId.make("account-1"),
 };
@@ -35,10 +33,4 @@ export const service = (id = "service-1", owner = project()): ServiceRef => ({
   kind: "service",
   project: owner,
   serviceId: ZeropsServiceId.make(id),
-});
-
-export const process = (id = "process-1", owner = project()): ProcessRef => ({
-  kind: "process",
-  project: owner,
-  processId: ZeropsProcessId.make(id),
 });

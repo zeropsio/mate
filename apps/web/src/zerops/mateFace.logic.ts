@@ -39,7 +39,7 @@ export interface MateFaceFacts {
   readonly free?: boolean | undefined;
 }
 
-export interface MateFaceRead {
+interface MateFaceRead {
   readonly state: MateMarkState;
   /** The events it greets, the one that wins first. */
   readonly cues: ReadonlyArray<MateFaceCue>;

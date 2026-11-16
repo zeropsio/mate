@@ -10,7 +10,7 @@ export interface ComposerEditorWords {
 }
 
 /** A composer's caret, held beside the composer so that moving it draws the editor and no more. */
-export interface ComposerCaret {
+interface ComposerCaret {
   readonly read: () => number;
   readonly set: (cursor: number) => void;
   readonly subscribe: (onChange: () => void) => () => void;

@@ -18,18 +18,12 @@ import {
 } from "../operations/commands.ts";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 
-export type {
-  CreateProjectInput,
-  DeleteProjectInput,
-  UpdateProjectInput,
-} from "../operations/commands.ts";
-
-export interface OptimisticProjectFile {
+interface OptimisticProjectFile {
   readonly data: ProjectReadFileResult;
   readonly confirmedAgainst: object | null | undefined;
 }
 
-export interface OptimisticProjectFileTarget {
+interface OptimisticProjectFileTarget {
   readonly environmentId: EnvironmentId;
   readonly cwd: string;
   readonly relativePath: string;

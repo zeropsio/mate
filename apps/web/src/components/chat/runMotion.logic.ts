@@ -58,10 +58,10 @@ export function approach(
  * frame a fifth late — a thought gaining two lines grew its box 40 px in one
  * frame, a command's body 82 (2026-11-10).
  */
-export const TRAVEL_MAX_SPEED_PX_PER_MS = 0.6;
+const TRAVEL_MAX_SPEED_PX_PER_MS = 0.6;
 
 /** How long a travel takes, and how steep it starts (`travelProgress`). */
-export interface TravelTiming {
+interface TravelTiming {
   readonly durationMs: number;
   /** Its speed at the start, as a multiple of its mean: 3 a cubic ease-out, 1 a line. */
   readonly steepness: number;

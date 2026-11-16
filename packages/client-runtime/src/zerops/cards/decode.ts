@@ -74,8 +74,7 @@ export const readNumber = (value: unknown): number | undefined =>
 export const readRecord = (value: unknown): Record<string, unknown> | undefined =>
   isRecord(value) ? value : undefined;
 
-export const readArray = (value: unknown): ReadonlyArray<unknown> =>
-  Array.isArray(value) ? value : [];
+const readArray = (value: unknown): ReadonlyArray<unknown> => (Array.isArray(value) ? value : []);
 
 export const readStringArray = (value: unknown): ReadonlyArray<string> =>
   readArray(value).filter((entry): entry is string => typeof entry === "string");

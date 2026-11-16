@@ -35,7 +35,7 @@ export function RunningClock({
 }
 
 /** A build's three parts in a row: ticked, under way, or to come. */
-export function RunningTrail({ trail }: { readonly trail: NonNullable<Line["trail"]> }) {
+function RunningTrail({ trail }: { readonly trail: NonNullable<Line["trail"]> }) {
   return (
     <span
       className="inline-flex min-w-0 items-center gap-2.5"

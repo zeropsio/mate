@@ -198,12 +198,3 @@ export function usageScopeIncludes(
   if (scope.project !== undefined && identity?.projectId !== scope.project) return false;
   return true;
 }
-
-export function isUsageScopeEmpty(scope: UsageScope): boolean {
-  return (
-    scope.person === undefined &&
-    scope.project === undefined &&
-    scope.legacyProject === undefined &&
-    scope.mate === undefined
-  );
-}

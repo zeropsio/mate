@@ -79,7 +79,7 @@ const visitsOf = (
     : { ...input.lastVisitedAtById, [input.onScreen]: SEEN_ON_SCREEN };
 
 /** The environment a Mate runs in: as its attention, HQ's overview, or this page's socket names it. */
-export function mateEnvironmentOf(
+function mateEnvironmentOf(
   input: Pick<MatesActivityInput, "attention" | "overviews" | "sockets">,
   projectId: string,
 ): EnvironmentId | undefined {
@@ -439,7 +439,7 @@ function legacyActivity(input: {
  * for this person — reads seen: a reload paints nothing it takes back, and a new browser does not
  * light every Mate it has never opened.
  */
-export function mateUnread(input: {
+function mateUnread(input: {
   /** When its latest result ended; null while a run is on, or where none is known. */
   readonly endedAt: string | number | null;
   readonly visitedAt: string | undefined;

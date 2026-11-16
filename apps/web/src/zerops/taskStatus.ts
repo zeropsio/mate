@@ -36,9 +36,9 @@ export const TASK_STATUS_WORDS: Readonly<Record<TaskStatus, string>> = {
 };
 
 /** What a status's dot means: its Mate at work, a person needed, a change to look at, a failure, or quiet. */
-export type TaskTone = "working" | "needs" | "review" | "finished" | "failed" | "quiet";
+type TaskTone = "working" | "needs" | "review" | "finished" | "failed" | "quiet";
 
-export const TASK_STATUS_TONE: Readonly<Record<TaskStatus, TaskTone>> = {
+const TASK_STATUS_TONE: Readonly<Record<TaskStatus, TaskTone>> = {
   queued: "quiet",
   starting: "quiet",
   working: "working",
@@ -53,7 +53,7 @@ export const TASK_STATUS_TONE: Readonly<Record<TaskStatus, TaskTone>> = {
 };
 
 /** The dot's colour, by its tone. */
-export const TASK_TONE_DOT: Readonly<Record<TaskTone, string>> = {
+const TASK_TONE_DOT: Readonly<Record<TaskTone, string>> = {
   working: "bg-success",
   needs: "bg-warning",
   review: "bg-info",

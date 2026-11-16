@@ -16,7 +16,6 @@ import { formatDayAwareTimestamp } from "~/timestampFormat";
 import { usePersonNames } from "~/zerops/useZeropsMateOwners";
 import { useZeropsSessionOptional } from "~/zerops/sessionContext";
 import { useKnownMate } from "~/zerops/useZeropsMates";
-import { useServerConfigs } from "~/state/entities";
 import { useZeropsEnvironmentProject } from "~/zerops/useZeropsEnvironmentProject";
 import { useProposalDecision } from "~/zerops/proposalRecord";
 import { noteMcp } from "~/zerops/mcpTurnNotes";
@@ -41,7 +40,7 @@ import { proposalStage, type ProposalDecision } from "./proposal.logic";
 
 const IDLE: McpSigning = { phase: "idle" };
 
-export interface McpProposalHomeProps {
+interface McpProposalHomeProps {
   readonly proposal: McpProposal;
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId | null;
@@ -122,9 +121,6 @@ function LiveMcpProposal(
   const { proposal, environmentId, handle, stage, mateName } = props;
   const name = proposal.params.server.name;
   const mcp = useMcpServers({ environmentId, threadId: props.threadId ?? undefined });
-  // An older Mate can't sign in or change keys, and drops an own app's sign-in on Add.
-  const config = useServerConfigs().get(environmentId);
-  const mateCanSignIn = config === undefined || config.environment.capabilities.mcpSignIn === true;
   const { list, error } = mcp.state;
   const status = mcpProposalStatus({
     proposal,
@@ -171,7 +167,6 @@ function LiveMcpProposal(
 
   const add = async (values: Readonly<Record<string, string>>) => {
     if (busy || stage !== "open" || approveBlocked !== undefined) return;
-    if (!mateCanSignIn && proposal.params.server.auth.kind === "oauth-app") return;
     const mapped = mcpAddInput(proposal, values, list?.agents ?? []);
     if ("refused" in mapped) {
       setRefusal(mapped.refused);
@@ -245,7 +240,6 @@ function LiveMcpProposal(
     signing,
     approveBlocked,
     agents: list?.agents ?? [],
-    mateCanSignIn,
   });
   const face = mcpAskFace({
     view,
@@ -259,7 +253,6 @@ function LiveMcpProposal(
     keyed: proposal.params.credentials.length > 0,
     by: null,
     at: null,
-    mateCanSignIn,
   });
   // It waits on the person while undecided, or while its agent waits for a sign-in: then it
   // stands above the composer too, once its card is out of view.

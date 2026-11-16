@@ -20,7 +20,7 @@ const ICONS = { file: FileIcon, folder: FolderIcon, symlink: LinkIcon, submodule
 const plainClick = (event: MouseEvent) =>
   event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
 
-export interface GitDirectoryListProps {
+interface GitDirectoryListProps {
   readonly entries: ReadonlyArray<GitTreeEntry>;
   /** HQ stopped listing before the folder's end. */
   readonly truncated: boolean;

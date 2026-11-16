@@ -10,7 +10,7 @@
  */
 import { useEffect, useState } from "react";
 
-export interface CropBox {
+interface CropBox {
   readonly x: number;
   readonly y: number;
   readonly width: number;

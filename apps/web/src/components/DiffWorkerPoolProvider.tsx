@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTheme } from "../hooks/useTheme";
 import { resolveDiffThemeName, type DiffThemeName } from "../lib/diffPresentation";
 
-export class DiffWorkerError extends Schema.TaggedError<DiffWorkerError>()("DiffWorkerError", {
+class DiffWorkerError extends Schema.TaggedError<DiffWorkerError>()("DiffWorkerError", {
   operation: Schema.Literals(["create-worker", "get-render-options", "set-render-options"]),
   themeName: Schema.Literals(["pierre-light", "pierre-dark"]),
   cause: Schema.Defect(),

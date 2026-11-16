@@ -219,13 +219,11 @@ function AutocompleteTrigger({
 export {
   Autocomplete,
   AutocompleteInput,
-  AutocompleteTrigger,
   AutocompletePopup,
   AutocompleteItem,
   AutocompleteGroup,
   AutocompleteGroupLabel,
   AutocompleteEmpty,
   AutocompleteList,
-  AutocompleteClear,
   AutocompleteCollection,
 };

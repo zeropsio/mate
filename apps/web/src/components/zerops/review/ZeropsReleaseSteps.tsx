@@ -33,7 +33,7 @@ function stillMotion(): boolean {
   );
 }
 
-export interface ReleaseSteps {
+interface ReleaseSteps {
   readonly step: ReleaseStep;
   /** The change drawn: it stays while it slides away after back. */
   readonly shown: ReleaseStepChange | undefined;

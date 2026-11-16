@@ -14,7 +14,7 @@ import type { Row } from "../reducer.ts";
 import type { ProjectionReads } from "../store.ts";
 import type { FamilySpec } from "./spec.ts";
 
-export interface ClientUserValue {
+interface ClientUserValue {
   readonly clientId: string;
   readonly userId: string;
   readonly roleCode?: string;

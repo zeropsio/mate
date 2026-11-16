@@ -55,9 +55,9 @@ export interface ObservationTarget {
  * What a settled operation's card has read of it: the project's newest process history is still
  * on its way, read, or refused — then it says so, and nothing reads it again by itself.
  */
-export type SettledRead = "pending" | "read" | "failed";
+type SettledRead = "pending" | "read" | "failed";
 
-export interface OperationObservation {
+interface OperationObservation {
   readonly state: ObservationState;
   readonly buildLog: ReturnType<typeof useBuildLog>;
   /** A settled one's: what was read of it — `failed` says so. */
@@ -100,7 +100,7 @@ export interface DeriveOperationObservationInput {
   readonly ceilingMs?: number;
 }
 
-export interface DeriveOperationObservationResult {
+interface DeriveOperationObservationResult {
   readonly state: ObservationState;
   readonly settledRead: SettledRead;
   /** The build whose log the card shows. */

@@ -118,7 +118,7 @@ export interface ScrollPages {
 }
 
 /** How near its end the scroll reads the next page: before the person reaches it. */
-export const PAGE_REACH_PX = 480;
+const PAGE_REACH_PX = 480;
 
 /**
  * Which page a scroll standing at `scroll` reads next: the later one as its foot nears, the earlier

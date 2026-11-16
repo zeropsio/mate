@@ -4,11 +4,11 @@ import type {
   VcsStatusResult,
 } from "@t3tools/contracts";
 
-export type GitActionIconName = "commit" | "push" | "pr";
+type GitActionIconName = "commit" | "push" | "pr";
 
-export type GitDialogAction = "commit" | "push" | "create_pr";
+type GitDialogAction = "commit" | "push" | "create_pr";
 
-export interface GitActionMenuItem {
+interface GitActionMenuItem {
   id: "commit" | "push" | "pr";
   label: string;
   disabled: boolean;
@@ -17,7 +17,7 @@ export interface GitActionMenuItem {
   dialogAction?: GitDialogAction;
 }
 
-export interface GitQuickAction {
+interface GitQuickAction {
   label: string;
   disabled: boolean;
   kind: "run_action" | "run_pull" | "open_pr" | "show_hint";
@@ -25,17 +25,13 @@ export interface GitQuickAction {
   hint?: string;
 }
 
-export interface DefaultBranchActionDialogCopy {
+interface DefaultBranchActionDialogCopy {
   title: string;
   description: string;
   continueLabel: string;
 }
 
-export type DefaultBranchConfirmableAction =
-  | "push"
-  | "create_pr"
-  | "commit_push"
-  | "commit_push_pr";
+type DefaultBranchConfirmableAction = "push" | "create_pr" | "commit_push" | "commit_push_pr";
 
 export type GitActionRequestInput = Pick<
   GitRunStackedActionInput,

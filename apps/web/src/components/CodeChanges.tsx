@@ -94,7 +94,7 @@ function sourceFiles(
   };
 }
 
-export interface CodeChangesProps {
+interface CodeChangesProps {
   readonly composerDraftTarget: ScopedThreadRef | DraftId;
   /** Where the work is: the project and each repository's change; none outside a Zerops project. */
   readonly top?: ReactNode;

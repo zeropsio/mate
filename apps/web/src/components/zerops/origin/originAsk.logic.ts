@@ -139,7 +139,7 @@ export function originConnected(
  * or none HQ could say; an app that does not reach the repository; or ready to mount it, by the
  * name the app's repositories give it.
  */
-export type OriginMountStep =
+type OriginMountStep =
   | { readonly kind: "reading" }
   | { readonly kind: "mounted"; readonly remote: NonNullable<RepoListEntry["remote"]> }
   | { readonly kind: "taken"; readonly url: string }

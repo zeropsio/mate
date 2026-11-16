@@ -39,7 +39,7 @@ const refusalOf = (words: string | undefined) =>
     </p>
   );
 
-export interface ServiceCreateAskCardProps {
+interface ServiceCreateAskCardProps {
   readonly proposal: Extract<ZeropsProposal, { kind: "service.create" }>;
   readonly view: ServiceCreateView;
   /** Who asked: the why reads as its words. */
@@ -109,7 +109,7 @@ export interface ReleaseOfferChange {
   readonly face?: ReactNode;
 }
 
-export interface ReleaseOfferAskCardProps {
+interface ReleaseOfferAskCardProps {
   readonly proposal: Extract<ZeropsProposal, { kind: "release.offer" }>;
   readonly view: ReleaseOfferView;
   readonly mateName: string;

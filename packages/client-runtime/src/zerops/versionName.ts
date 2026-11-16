@@ -42,7 +42,7 @@ export function isWholeSha(sha: string): boolean {
 }
 
 /** What an app version's name says, where one of ours named it. */
-export interface ParsedVersionName {
+interface ParsedVersionName {
   /** The commit, lower case, whole in an old name and seven hex in a new one. */
   readonly sha: string;
   /** The tag or the branch the name carries; absent from an old stage name. */

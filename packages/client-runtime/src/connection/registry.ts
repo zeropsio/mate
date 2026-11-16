@@ -50,7 +50,7 @@ export class EnvironmentNotRegisteredError extends Schema.TaggedError<Environmen
   }
 }
 
-export class PlatformEnvironmentRemovalError extends Schema.TaggedError<PlatformEnvironmentRemovalError>()(
+class PlatformEnvironmentRemovalError extends Schema.TaggedError<PlatformEnvironmentRemovalError>()(
   "PlatformEnvironmentRemovalError",
   {
     environmentId: EnvironmentId,

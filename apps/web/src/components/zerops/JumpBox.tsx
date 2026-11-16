@@ -86,7 +86,7 @@ export interface JumpBoxModel {
 }
 
 /** What is typed, the Mate it is for, and the row the keys are on. */
-export interface JumpBoxState {
+interface JumpBoxState {
   readonly value: string;
   readonly setRawValue: (value: string) => void;
   readonly targetId: string | null;

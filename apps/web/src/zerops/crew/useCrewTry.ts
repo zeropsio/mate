@@ -34,9 +34,9 @@ import { useCrewAccess } from "./useCrewAccess";
 import { crewFailureSentence } from "./useCrewCommand";
 
 /** How long a press waits for the work to open: the engine's own wait on a Show-on-dev request. */
-export const CREW_TRY_WAIT_MS = 10 * 60_000;
+const CREW_TRY_WAIT_MS = 10 * 60_000;
 
-export interface CrewTryControl {
+interface CrewTryControl {
   readonly tries: CrewTry;
   /** A press does something now; not while one of its presses is on its way. */
   readonly enabled: boolean;

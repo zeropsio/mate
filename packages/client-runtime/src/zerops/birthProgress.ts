@@ -133,7 +133,7 @@ export interface BirthProgress {
   readonly runtimes?: BirthRuntimesProgress;
 }
 
-export interface BirthRuntimeProgress {
+interface BirthRuntimeProgress {
   readonly hostname: string;
   readonly role: RecipeRuntimeRole;
   /** `done` once up: running, or — a stage half — waiting for its first deploy. */
@@ -541,7 +541,7 @@ const IMPORT_BY_SETUP: Readonly<
 };
 
 /** The setup says no more than that it failed: the words are the app's. */
-export const RUNTIMES_IMPORT_FAILED = "The runtimes could not be added.";
+const RUNTIMES_IMPORT_FAILED = "The runtimes could not be added.";
 
 /**
  * The runtimes' facts, from what the Mate's view holds: the runtimes the press planned, where zcp's

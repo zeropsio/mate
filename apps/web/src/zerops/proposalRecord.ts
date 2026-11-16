@@ -33,7 +33,7 @@ import { HQ_UNFOLLOWED, useAccountOperationsOptional } from "./accountOperations
 import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
 
 /** HQ's decisions as the data layer reaches them. */
-export interface ProposalDecisionsAt {
+interface ProposalDecisionsAt {
   /** What HQ holds of `ids`; rejects where HQ did not answer. */
   readonly read: (ids: ReadonlyArray<string>) => Promise<ReadonlyArray<HqProposalDecision>>;
   /**
@@ -44,7 +44,7 @@ export interface ProposalDecisionsAt {
 }
 
 /** One card's record: its decision, whether HQ answered for it, and whether it runs here. */
-export interface ProposalRecordEntry {
+interface ProposalRecordEntry {
   readonly decision: ProposalDecision | undefined;
   /** HQ answered what was decided of it: until then it offers no Approve. */
   readonly known: boolean;
@@ -55,7 +55,7 @@ export interface ProposalRecordEntry {
  * The record as the cards draw it: a new drawing on every change and the same one between them, so
  * a card — memoized on what it drew — draws again once HQ answered.
  */
-export interface ProposalRecordDrawing {
+interface ProposalRecordDrawing {
   /** Counts the account changes that took back what was read: the cards key their reads on it. */
   readonly generation: number;
   readonly entry: (id: string) => ProposalRecordEntry;
@@ -252,7 +252,7 @@ export function useProposalDecisions(
   return drawn.entry;
 }
 
-export interface ProposalDecisionHandle extends ProposalRecordEntry {
+interface ProposalDecisionHandle extends ProposalRecordEntry {
   /** HQ is not open here yet: nothing can be decided. */
   readonly unreachable: boolean;
   /** Records `next`; null once HQ took it, else why not (`makeProposalRecord`'s `record`). */

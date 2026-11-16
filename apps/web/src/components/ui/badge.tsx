@@ -146,4 +146,4 @@ function Badge({
 }
 
 // The *Variants function is for components/ui modules only.
-export { Badge, badgeVariants, type BadgeTone };
+export { Badge, type BadgeTone };

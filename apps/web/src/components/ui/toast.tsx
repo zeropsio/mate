@@ -792,12 +792,5 @@ function AnchoredToasts() {
 }
 
 export { hiddenToastActionProps, stackedThreadToast } from "./toastHelpers";
-export type { StackedThreadToastOptions } from "./toastHelpers";
 
-export {
-  ToastProvider,
-  type ToastPosition,
-  toastManager,
-  AnchoredToastProvider,
-  anchoredToastManager,
-};
+export { ToastProvider, toastManager, AnchoredToastProvider, anchoredToastManager };

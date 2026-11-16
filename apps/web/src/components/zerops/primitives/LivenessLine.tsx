@@ -6,7 +6,6 @@ import { STATUS_BADGE_TONE } from "./statusBadgeTone";
 import { Badge } from "~/components/ui/badge";
 
 type VisibleLivenessState = "live" | "recovering" | "doorbell-down" | "last-read-failed";
-type LivenessState = VisibleLivenessState | "absent";
 
 const TONE: Record<VisibleLivenessState, ServiceStatusToneId> = {
   live: "ok",
@@ -51,4 +50,3 @@ function LivenessLine(props: LivenessLineProps) {
 }
 
 export { LivenessLine };
-export type { LivenessLineProps, LivenessState, VisibleLivenessState };

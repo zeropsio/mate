@@ -51,7 +51,7 @@ const FALLBACK_SCALE_STEPS = [0.75, 0.55] as const;
 const HEIC_IMAGE_MIME_TYPE = /^image\/hei(?:c|f)$/i;
 const HEIC_IMAGE_EXTENSION = /\.(?:heic|heif)$/i;
 
-export interface CompressedStashImage {
+interface CompressedStashImage {
   dataUrl: string;
   mimeType: string;
   sizeBytes: number;
@@ -63,13 +63,13 @@ export interface CompressedStashImage {
  * Why an image could not be compressed. Callers report these differently:
  * "too large" is a budget outcome, "unreadable" is a decode failure.
  */
-export type ImageCompressionFailureReason = "too-large" | "unreadable";
+type ImageCompressionFailureReason = "too-large" | "unreadable";
 
-export type CompressStashImageResult =
+type CompressStashImageResult =
   | { ok: true; image: CompressedStashImage }
   | { ok: false; reason: ImageCompressionFailureReason };
 
-export type CompressImageFileResult =
+type CompressImageFileResult =
   | { ok: true; file: File; recompressed: boolean }
   | { ok: false; reason: ImageCompressionFailureReason };
 
@@ -489,7 +489,7 @@ export async function prepareImageForAttachment(
 // Pictures: the copy the Mate sees
 // ---------------------------------------------------------------------------
 
-export interface PictureEncodeStep {
+interface PictureEncodeStep {
   readonly type: "image/png" | "image/jpeg";
   readonly quality?: number;
 }
@@ -517,14 +517,14 @@ export function pictureEncodeSteps(sourceType: string): PictureEncodeStep[] {
   return sourceType === "image/jpeg" ? jpeg : [{ type: "image/png" }, ...jpeg];
 }
 
-export interface PictureSource {
+interface PictureSource {
   readonly type: string;
   readonly bytes: number;
   readonly width: number;
   readonly height: number;
 }
 
-export type PictureCopy<B> =
+type PictureCopy<B> =
   | { readonly kind: "as-pasted" }
   | {
       readonly kind: "fitted";
@@ -661,7 +661,7 @@ export async function pictureSourceFile(file: File): Promise<PictureSourceFileRe
   return { ok: true, file: source, recompressed: source !== file, size };
 }
 
-export type PictureSourceFileResult =
+type PictureSourceFileResult =
   | {
       readonly ok: true;
       readonly file: File;

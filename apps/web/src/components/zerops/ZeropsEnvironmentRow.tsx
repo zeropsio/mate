@@ -31,7 +31,7 @@ export function ZeropsRoleTag({ label }: { readonly label: string }) {
 }
 
 /** A stage or a production of a group: the stop page's address. */
-export interface ZeropsStopLink {
+interface ZeropsStopLink {
   readonly groupId: string;
   readonly projectId: string;
 }
@@ -54,10 +54,10 @@ export function stopLinkOf(
  * The way into a stop's page from a thing on the projects page that names
  * it: no underline at rest, one on hover, the ring on focus.
  */
-export const STOP_LINK_CLASS =
+const STOP_LINK_CLASS =
   "rounded-sm underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring";
 
-export interface ZeropsEnvironmentRowProps {
+interface ZeropsEnvironmentRowProps {
   /** The Zerops project — what the Zerops GUI calls it. */
   readonly name: string;
   /** The role as its tag reads (`dev`, `stage`, `prod`), or nothing for an environment with no role. */
@@ -88,7 +88,7 @@ export interface ZeropsEnvironmentRowProps {
  * tools line). The end has a floor wide enough for a verb and the menu, so a
  * row without them starts its columns where one with them does.
  */
-export const ENVIRONMENT_ROW_GRID_CLASS =
+const ENVIRONMENT_ROW_GRID_CLASS =
   "grid min-h-10 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-0.5 py-1.5 sm:grid-cols-[minmax(0,5fr)_minmax(0,4fr)_minmax(9.5rem,auto)] sm:py-0";
 
 export function ZeropsEnvironmentRow({

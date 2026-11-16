@@ -29,7 +29,7 @@ import {
   type VaultTextSection,
 } from "./vaultText.logic";
 
-export interface VaultAddCardProps {
+interface VaultAddCardProps {
   /** Where a value can go: every app first, then each app; the first is where it starts. */
   readonly scopes: ReadonlyArray<VaultScope>;
   /** Why the platform refused the last add, if it did. */
@@ -192,7 +192,7 @@ function lineStarts(lines: ReadonlyArray<string>) {
   });
 }
 
-export interface VaultTextEditorProps {
+interface VaultTextEditorProps {
   readonly scope: VaultScope;
   readonly text: VaultText;
   readonly onChange: (text: VaultText) => void;
@@ -279,7 +279,7 @@ export function VaultTextEditor(props: VaultTextEditorProps) {
   );
 }
 
-export interface VaultReviewProps {
+interface VaultReviewProps {
   readonly scope: VaultScope;
   readonly writes: ReadonlyArray<VaultWrite>;
   readonly impactOf: (write: VaultWrite) => VaultImpact;

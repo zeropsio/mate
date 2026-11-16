@@ -30,7 +30,7 @@ export type SidebarRevealTarget =
       readonly mateProjectId: string | undefined;
     };
 
-export interface SidebarRevealState {
+interface SidebarRevealState {
   readonly revealing: { readonly target: SidebarRevealTarget; readonly seq: number } | null;
   /**
    * Every Mate the menu holds, in the order it draws them — collapsed

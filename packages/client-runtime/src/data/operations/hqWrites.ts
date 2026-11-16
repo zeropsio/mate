@@ -138,7 +138,7 @@ function made<Kind extends "create-app" | "record-birth">(
   };
 }
 
-export const createApp = made(
+const createApp = made(
   "create-app",
   (read, intent) => {
     const scope = hqAppsScope(intent.orgId);
@@ -154,7 +154,7 @@ export const createApp = made(
   (appId) => ({ appId }),
 );
 
-export const recordBirth = made(
+const recordBirth = made(
   "record-birth",
   (read, intent) => {
     const app = read.fact("hqApp", intent.appId);
@@ -170,7 +170,7 @@ export const recordBirth = made(
   (birthId) => ({ birthId }),
 );
 
-export const bindBirth = shown(
+const bindBirth = shown(
   "bind-birth",
   (intent) => intent.birthId,
   (read, intent) =>
@@ -180,7 +180,7 @@ export const bindBirth = shown(
 );
 
 /** Absence is evidence only in the live, complete birth list of the known application. */
-export const deleteBirth: OperationKind<"delete-birth"> = {
+const deleteBirth: OperationKind<"delete-birth"> = {
   kind: "delete-birth",
   executor: "hq",
   ...shownInFacts(
@@ -210,19 +210,19 @@ export const deleteBirth: OperationKind<"delete-birth"> = {
 };
 
 /** A lost claim answer cannot be adopted: even the same person may be in another tab. */
-export const claimBirthAttempt: OperationKind<"claim-birth-attempt"> = {
+const claimBirthAttempt: OperationKind<"claim-birth-attempt"> = {
   kind: "claim-birth-attempt",
   executor: "hq",
   reflected: () => false,
 };
 
-export const endBirthAttempt: OperationKind<"end-birth-attempt"> = {
+const endBirthAttempt: OperationKind<"end-birth-attempt"> = {
   kind: "end-birth-attempt",
   executor: "hq",
   reflected: () => false,
 };
 
-export const attachProject = shown(
+const attachProject = shown(
   "attach-project",
   (intent) => intent.attach.projectId,
   (read, intent) => {
@@ -231,14 +231,14 @@ export const attachProject = shown(
   },
 );
 
-export const createMateRecord = shown(
+const createMateRecord = shown(
   "create-mate-record",
   (intent) => intent.mate.projectId,
   (read, intent) => (placementOf(read, intent.mate.projectId)?.mate ?? null) !== null,
 );
 
 /** The environment's key, as HQ's navigation says it: held, and not found broken. */
-export const deployKeyShown = (
+const deployKeyShown = (
   read: ProjectionReads,
   intent: Pick<IntentOf<"keep-deploy-key">, "appId" | "projectId">,
 ): boolean => {
@@ -255,7 +255,7 @@ export const deployKeyShown = (
   );
 };
 
-export const keepDeployKey = shown("keep-deploy-key", (intent) => intent.projectId, deployKeyShown);
+const keepDeployKey = shown("keep-deploy-key", (intent) => intent.projectId, deployKeyShown);
 
 /**
  * The deploy token HQ's navigation says it keeps for the application's environment on `projectId`,
@@ -278,7 +278,7 @@ export const keptDeployToken = (
   return kept === undefined ? undefined : { id: kept.keyId };
 };
 
-export const updateMateFace = shown(
+const updateMateFace = shown(
   "update-mate-face",
   (intent) => intent.projectId,
   (read, intent) => placementOf(read, intent.projectId)?.mate?.face === intent.face,
@@ -295,7 +295,7 @@ const handedOver = (read: ProjectionReads, intent: IntentOf<"hand-over-mate">) =
     placement?.person?.ownerUserId === intent.ownerUserId && placement.mate?.keyRefused !== true
   );
 };
-export const handOverMate: OperationKind<"hand-over-mate"> = {
+const handOverMate: OperationKind<"hand-over-mate"> = {
   kind: "hand-over-mate",
   executor: "hq",
   reflected: (read, intent) => handedOver(read, intent),
@@ -310,7 +310,7 @@ export const handOverMate: OperationKind<"hand-over-mate"> = {
 };
 
 /** Each HQ write's kind. */
-export const setAutoUpdatePolicy: OperationKind<"set-auto-update-policy"> = {
+const setAutoUpdatePolicy: OperationKind<"set-auto-update-policy"> = {
   kind: "set-auto-update-policy",
   executor: "hq",
   reflected: (read, intent, receipt) => {

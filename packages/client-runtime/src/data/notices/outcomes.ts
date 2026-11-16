@@ -1,7 +1,7 @@
 /** Local invocation references and presentation demand; operation owners retain all remote truth. */
 import { Atom } from "effect/reactivity";
 
-export interface OutcomeInvocation {
+interface OutcomeInvocation {
   readonly requestId: string;
   readonly origin: string;
   readonly slot: string;

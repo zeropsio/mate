@@ -1,13 +1,4 @@
-import {
-  EnvironmentId,
-  EventId,
-  MessageId,
-  ProjectId,
-  ProviderInstanceId,
-  ThreadId,
-  type OrchestrationEvent,
-  type OrchestrationThread,
-} from "@t3tools/contracts";
+import { EnvironmentId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import { HttpClient, HttpClientResponse } from "effect/http";
 import { describe, test } from "vite-plus/test";
@@ -16,39 +7,9 @@ import { issueRemoteWebSocketTicket } from "./authorization/remote.ts";
 import { PrimaryConnectionTarget } from "./connection/model.ts";
 import { fetchRemoteEnvironmentDescriptor } from "./environment/descriptor.ts";
 import type { RemoteEnvironmentRequestError } from "./rpc/http.ts";
-import { applyThreadDetailEvent } from "./state/threadReducer.ts";
 
 const timestamp = "2026-09-01T00:00:00.000Z";
 const runOptions = { warmupTime: 1_000, time: 1_500 };
-const thread: OrchestrationThread = {
-  id: ThreadId.make("thread-1"),
-  projectId: ProjectId.make("project-1"),
-  title: "Remote thread",
-  modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
-  runtimeMode: "full-access",
-  interactionMode: "default",
-  branch: null,
-  worktreePath: null,
-  latestTurn: null,
-  createdAt: timestamp,
-  updatedAt: timestamp,
-  archivedAt: null,
-  settledOverride: null,
-  settledAt: null,
-  deletedAt: null,
-  messages: Array.from({ length: 100 }, (_, index) => ({
-    id: MessageId.make(`message-${index}`),
-    role: "assistant",
-    text: "Message text. ".repeat(40),
-    turnId: null,
-    streaming: false,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  })),
-  proposedPlans: [],
-  activities: [],
-  session: null,
-};
 const target = new PrimaryConnectionTarget({
   environmentId: EnvironmentId.make("remote-1"),
   label: "Remote",
@@ -91,55 +52,6 @@ describe("remote HTTP processing with an in-memory transport", () => {
         await Effect.runPromise(
           request.pipe(Effect.provideService(HttpClient.HttpClient, httpClient)),
         );
-      }).run(runOptions);
-    });
-  }
-});
-
-const delta: OrchestrationEvent = {
-  eventId: EventId.make("delta"),
-  sequence: 2,
-  aggregateKind: "thread",
-  aggregateId: thread.id,
-  occurredAt: timestamp,
-  commandId: null,
-  causationEventId: null,
-  correlationId: null,
-  metadata: {},
-  type: "thread.message-sent",
-  payload: {
-    threadId: thread.id,
-    messageId: MessageId.make("message-99"),
-    role: "assistant",
-    text: " next",
-    turnId: null,
-    streaming: true,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  },
-};
-
-describe("remote message replay", () => {
-  for (const count of [100, 1_000]) {
-    const loaded = {
-      ...thread,
-      messages: Array.from({ length: count }, (_, index) => ({
-        ...thread.messages[0]!,
-        id: MessageId.make(`message-${index}`),
-      })),
-    };
-    const event = {
-      ...delta,
-      payload: { ...delta.payload, messageId: loaded.messages.at(-1)!.id },
-    };
-    const name = `apply 200 text deltas to ${count} loaded messages`;
-    test(name, async ({ bench }) => {
-      await bench(name, () => {
-        let current: OrchestrationThread = loaded;
-        for (let index = 0; index < 200; index += 1) {
-          const result = applyThreadDetailEvent(current, event);
-          if (result.kind === "updated") current = result.thread;
-        }
       }).run(runOptions);
     });
   }

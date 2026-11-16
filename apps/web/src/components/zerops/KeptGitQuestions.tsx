@@ -43,7 +43,7 @@ export function KeptGitQuestions() {
   );
 }
 
-export function KeptGitQuestion({
+function KeptGitQuestion({
   view,
   answer,
 }: {

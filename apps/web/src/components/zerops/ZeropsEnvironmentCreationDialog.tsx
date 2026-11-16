@@ -64,7 +64,7 @@ export interface EnvironmentCreationChoice {
   readonly persona?: MatePersona;
 }
 
-export interface ZeropsEnvironmentCreationFormProps {
+interface ZeropsEnvironmentCreationFormProps {
   readonly groupName: string;
   readonly role: ZeropsEnvironmentRole;
   /**

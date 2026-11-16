@@ -23,7 +23,7 @@ const NO_IMPORTS = Atom.make<Readonly<Record<string, string | null>>>({});
 const NO_RESULTS = Atom.make<ReturnType<typeof projectCreations.derive>>({});
 
 /** The projects listing no container whose press named its import: theirs are followed. */
-export function importsToFollow(
+function importsToFollow(
   candidates: ReadonlyArray<Pick<ZeropsCandidate, "project" | "missingContainer">>,
   presses: HqPresses | null,
 ): ReadonlyArray<string> {

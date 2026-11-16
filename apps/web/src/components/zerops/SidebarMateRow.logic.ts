@@ -116,7 +116,7 @@ export type OwnerSeat =
   | { readonly kind: "unnamed" }
   | { readonly kind: "nobody"; readonly label: string };
 
-export interface MateOwnerView {
+interface MateOwnerView {
   readonly seat: OwnerSeat;
   /** The row's second line where it says nothing else: nobody has signed its agent in. */
   readonly signInLine: string | undefined;
@@ -298,7 +298,7 @@ export function mateNotYours(input: {
 }
 
 /** The crew's door in a Mate's own menu, and whether it sets a crew up. */
-export interface MateCrewItem {
+interface MateCrewItem {
   readonly label: string;
   /** *Set up a crew*: the Crew tab opens with its setup sheet. */
   readonly setUp: boolean;
@@ -604,7 +604,7 @@ export function mateDeletingView(view: MateRowView): MateRowView {
 }
 
 /** A Mate's row's one line while its update restarts it (`mateRowReading`). */
-export const MATE_UPDATING_LINE = "Updating to the new version";
+const MATE_UPDATING_LINE = "Updating to the new version";
 
 /**
  * A row's one reading of its Mate: the face and the words both from the activity it draws, so
@@ -804,7 +804,7 @@ export function mateAsker(
 }
 
 /** What `mateRowDraft` reads of the composer's store (`composerDraftStore.ts`). */
-export interface MateDraftSource {
+interface MateDraftSource {
   readonly draftsByThreadKey: Readonly<Record<string, { readonly prompt: string } | undefined>>;
   readonly draftThreadsByThreadKey: Readonly<
     Record<
@@ -1110,7 +1110,7 @@ export function mateRowHeldLines(input: {
 }
 
 /** What an automated Mate's line calls the task it is on (`HqNavigationMateTask`). */
-export function mateTaskLine(task: {
+function mateTaskLine(task: {
   readonly number?: number | undefined;
   readonly title: string;
 }): string {
@@ -1142,7 +1142,7 @@ export interface MateLastTask {
  * A free automated Mate's line: its last task and how it ended — "#4 Prices per 100 g · merged",
  * "… · stopped: budget spent". When it ended stands in the row's time slot (`mateRowTime`).
  */
-export function lastTaskLine(last: MateLastTask): string {
+function lastTaskLine(last: MateLastTask): string {
   const ended = statusWords(last.ended);
   const how = last.why === undefined ? ended : `${ended}: ${STOPPED_WHY[last.why]}`;
   return `${mateTaskLine(last)} · ${how}`;
@@ -1178,7 +1178,7 @@ export interface MateTaskPullRequest {
  * that it waits for review — or that its checks fail, which is its Mate's to fix — merged, or
  * closed. `null` where it has none.
  */
-export function pullRequestWords(
+function pullRequestWords(
   pullRequest: MateTaskPullRequest | undefined,
   working: boolean,
 ): string | null {

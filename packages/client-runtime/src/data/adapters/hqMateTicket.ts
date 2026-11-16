@@ -108,7 +108,7 @@ export const PRIMED_TICKET_MS = 10_000;
 /** A ticket's life, as HQ issues it (`TICKET_SECONDS`) and the Mate holds it at most. */
 const TICKET_LIFE_MS = 60_000;
 
-export interface MateTicketPrimer extends MateTicketIssuerService {
+interface MateTicketPrimer extends MateTicketIssuerService {
   /**
    * Asks HQ now for the ticket the Mate's next connection attempt will present — beside the
    * descriptor read that precedes the attempt, never after it. Only that HQ's next attempt for

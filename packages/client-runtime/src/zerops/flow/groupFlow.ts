@@ -133,9 +133,3 @@ export function stopDeploymentOf(
     failedBuild === undefined ? { kind: "none" } : { kind: "none", failedBuild },
   );
 }
-
-/**
- * How many of the newest releases the flow lists, each with HQ's verdict on it (D5): as many as
- * HQ answers (`@t3tools/shared/hqRelease`).
- */
-export const RELEASES_SHOWN = 10;

@@ -13,7 +13,7 @@ import type { AppDeployRollout } from "../../zerops/hq/deployHandover.logic.ts";
 import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
 
-export interface FlowWriteAnswer {
+interface FlowWriteAnswer {
   /** The release a release or a roll back made. */
   readonly tag?: string;
   readonly deploys: HqDeployAnswer | undefined;

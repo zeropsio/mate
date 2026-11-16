@@ -111,7 +111,7 @@ export interface GhosttySnapshot {
   readonly rowData: readonly GhosttyRow[];
 }
 
-export interface GhosttySelectionRange {
+interface GhosttySelectionRange {
   readonly viewport: {
     readonly start: { readonly x: number; readonly y: number };
     readonly end: { readonly x: number; readonly y: number };
@@ -129,13 +129,13 @@ export interface GhosttyScrollbar {
 }
 
 /** Grid position tagged with its Ghostty coordinate space: 1 viewport, 2 screen. */
-export interface GhosttyPointInput {
+interface GhosttyPointInput {
   readonly x: number;
   readonly y: number;
   readonly tag?: 1 | 2;
 }
 
-export interface GhosttyMouseInput {
+interface GhosttyMouseInput {
   readonly action: "press" | "release" | "motion";
   readonly button: number | null;
   readonly mods: number;

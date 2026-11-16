@@ -516,7 +516,7 @@ export interface LineSide {
 }
 
 /** The work segment's verb where more than one change waits on the person. */
-export const REVIEW_NEXT_LABEL = "Review the next one";
+const REVIEW_NEXT_LABEL = "Review the next one";
 
 export interface ProjectLineFullView {
   readonly stations: ReadonlyArray<LineStationFull>;
@@ -526,7 +526,7 @@ export interface ProjectLineFullView {
 }
 
 /** What the line in full reads beyond its picture. Never one Mate's (`mine`). */
-export interface ProjectLineFullInput extends Omit<ProjectLineInput, "mine" | "work"> {
+interface ProjectLineFullInput extends Omit<ProjectLineInput, "mine" | "work"> {
   /** What a place's page is opened by (its environment); its line's project where not given. */
   readonly placeId?: ((line: PlaceLine) => string | undefined) | undefined;
   /** Its code repositories, by name. */
@@ -781,7 +781,7 @@ export function projectLineFull(
 }
 
 /** A bead's side and the gap to the next, as the track lays them. */
-export const BEAD_PITCH = 17;
+const BEAD_PITCH = 17;
 
 /** The count's chip, as wide as its digits need. */
 export const moreChipWidth = (more: number) => (more < 10 ? 28 : 34);

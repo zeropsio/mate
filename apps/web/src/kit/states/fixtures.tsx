@@ -43,7 +43,7 @@ const AGE_SECONDS: Readonly<Record<BirthAge, number>> = {
 const isoAgo = (nowMs: number, seconds: number) => new Date(nowMs - seconds * 1000).toISOString();
 
 /** The facts a client holds `age` into a Mate's birth, read at `nowMs`. */
-export function birthFacts(age: BirthAge, nowMs: number): BirthFacts {
+function birthFacts(age: BirthAge, nowMs: number): BirthFacts {
   const seconds = AGE_SECONDS[age];
   if (age === "start") {
     return {

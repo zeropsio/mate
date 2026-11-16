@@ -152,7 +152,7 @@ export interface HqGitWrites {
     intent: HqGitTargetIntent,
   ) => Promise<OperationReceipt | null>;
 }
-export interface HqExecutor extends OperationExecutor {
+interface HqExecutor extends OperationExecutor {
   readonly submitGitCandidate: (
     operations: Operations,
     requestId: string,

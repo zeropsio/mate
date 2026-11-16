@@ -16,7 +16,7 @@ import { canonicalEnvironmentsOf } from "./environments.ts";
 import type { HqStructure } from "./client.ts";
 import { isRoleProjectKind } from "./placement.ts";
 
-export interface ZeropsRegistryProject {
+interface ZeropsRegistryProject {
   readonly projectId: string;
   readonly kind: RoleProjectKind;
 }

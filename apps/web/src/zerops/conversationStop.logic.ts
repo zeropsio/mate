@@ -17,7 +17,7 @@ export interface StopPress {
   readonly refused: string | null;
 }
 
-export type ConversationStop =
+type ConversationStop =
   | { readonly kind: "none" }
   | { readonly kind: "stopping" }
   | { readonly kind: "stopped" }

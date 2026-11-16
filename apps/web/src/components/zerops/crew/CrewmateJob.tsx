@@ -76,14 +76,14 @@ import {
 /** The select's value for "the login's own default". */
 const LOGIN_DEFAULT = "default";
 
-export interface CrewmateJobTarget {
+interface CrewmateJobTarget {
   /** The crewmate's handle; `null` adds one. */
   readonly handle: string | null;
   /** Adding the lead. */
   readonly lead: boolean;
 }
 
-export interface CrewmateJobProps {
+interface CrewmateJobProps {
   readonly target: CrewmateJobTarget;
   readonly commands: UseCrewCommand;
   /** Handles the standing crew has: their handle is fixed and a save applies their job. */

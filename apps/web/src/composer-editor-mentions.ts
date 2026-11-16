@@ -10,7 +10,7 @@ import {
   type ComposerInlineToken,
 } from "@t3tools/shared/composerInlineTokens";
 
-export type ComposerPromptSegment =
+type ComposerPromptSegment =
   | {
       type: "text";
       text: string;
@@ -262,14 +262,14 @@ export function splitPromptIntoComposerSegments(
 }
 
 /** A crewmate's `@handle`, drawn as that crewmate where the composer offers crewmates. */
-export interface ComposerCrewmateSegment {
+interface ComposerCrewmateSegment {
   readonly type: "crewmate";
   readonly handle: string;
   readonly tint: MateTintId;
   readonly source: string;
 }
 
-export type ComposerEditorSegment = ComposerPromptSegment | ComposerCrewmateSegment;
+type ComposerEditorSegment = ComposerPromptSegment | ComposerCrewmateSegment;
 
 /**
  * What the editor draws: the prompt's segments, a mention written exactly as

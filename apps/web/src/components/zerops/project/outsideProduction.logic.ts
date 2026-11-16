@@ -7,7 +7,7 @@
 import { HQ_OUTSIDE_ADDRESS_MAX } from "@t3tools/shared/hqOutsideProduction";
 
 /** What the Address field holds, as Save reads it. */
-export type OutsideAddress =
+type OutsideAddress =
   /** Empty is none given: the field is optional. */
   | { readonly kind: "ok"; readonly address: string | null }
   | { readonly kind: "invalid"; readonly why: string };

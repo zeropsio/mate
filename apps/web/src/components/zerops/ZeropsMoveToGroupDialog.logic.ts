@@ -11,7 +11,7 @@ import { kindOfRole, type ZeropsEnvironmentRole } from "@t3tools/client-runtime/
 import type { HqMoveRefusals, HqMoveTo } from "@t3tools/shared/hqOffers";
 
 /** An application, as the person sees it. */
-export interface MoveApp {
+interface MoveApp {
   readonly id: string;
   readonly name: string;
 }
@@ -76,14 +76,14 @@ export function moveChoices(input: {
   };
 }
 
-export interface MoveForm {
+interface MoveForm {
   /** An existing group id, `"new"`, or `"none"`. */
   readonly target: string;
   readonly newGroupName: string;
   readonly role: ZeropsEnvironmentRole | "";
 }
 
-export interface MoveFormErrors {
+interface MoveFormErrors {
   readonly newGroupName?: string;
   readonly role?: string;
 }

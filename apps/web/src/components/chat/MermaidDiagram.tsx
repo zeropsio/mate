@@ -180,7 +180,7 @@ let expandedImageUrl: string | null = null;
  * save and copy actions fetch through. Only one diagram is expanded at a time, so
  * the previous URL is released.
  */
-export function mermaidImageUrl(svg: string): string {
+function mermaidImageUrl(svg: string): string {
   const svgDocument = new DOMParser().parseFromString(svg, "image/svg+xml");
   const element = svgDocument.documentElement;
   const viewBox = element.getAttribute("viewBox")?.trim().split(/\s+/).map(Number);

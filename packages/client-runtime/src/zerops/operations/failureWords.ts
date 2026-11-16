@@ -7,7 +7,7 @@
  * missing module, an exit code — is the log's.
  */
 
-export interface DeployFailureClassification {
+interface DeployFailureClassification {
   readonly category?: string | undefined;
   readonly signals?: ReadonlyArray<string> | undefined;
 }

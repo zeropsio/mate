@@ -20,7 +20,7 @@ import { Button } from "../ui/button";
 import { Progress } from "../ui/progress";
 import type { ProcessStep } from "./primitives";
 
-export interface ZeropsEnvironmentCreationProps {
+interface ZeropsEnvironmentCreationProps {
   /** What is being created, e.g. "Beviro CRM - production". */
   readonly name: string;
   readonly progress: ReadonlyArray<EnvironmentCreationStepProgress>;
@@ -88,7 +88,7 @@ function upNote(
  * one sentence for all three sent the reader to the Zerops dashboard for work
  * that was already on its way (measured 2026-09-20).
  */
-export function undeployedNote(
+function undeployedNote(
   tier: ZeropsEnvironmentCreationProps["tier"],
   undeployed: ReadonlyArray<string>,
 ): string {
@@ -183,7 +183,7 @@ export function creationNow(
 }
 
 /** A first import as measured end to end (about two minutes): what the row promises. */
-export const ENVIRONMENT_CREATION_ESTIMATE_MS = 2 * 60_000;
+const ENVIRONMENT_CREATION_ESTIMATE_MS = 2 * 60_000;
 
 export function ZeropsEnvironmentCreation({
   name,

@@ -193,7 +193,7 @@ export type StreamDirective =
   /** Close the transport; facts stay. */
   | { readonly kind: "disconnect" };
 
-export interface StreamTransition {
+interface StreamTransition {
   readonly state: StreamState;
   readonly directives: ReadonlyArray<StreamDirective>;
 }

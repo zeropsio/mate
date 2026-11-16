@@ -34,10 +34,10 @@ export function joinNames(names: ReadonlyArray<string>): string {
 
 const ref = (name: string) => `\${${name}}`;
 
-export const SHARED_NAME = "Shared vault";
+const SHARED_NAME = "Shared vault";
 
 /** Who a sentence is about: the shared vault, or the service by its hostname. */
-export function scopeName(scope: Pick<VaultScope, "hostname">): string {
+function scopeName(scope: Pick<VaultScope, "hostname">): string {
   return scope.hostname ?? SHARED_NAME;
 }
 
@@ -63,20 +63,20 @@ export function vaultRowKey(scopeId: string, key: string): string {
   return `${scopeId}:${key}`;
 }
 
-export function sameScopeRef(a: VaultScopeRef, b: VaultScopeRef): boolean {
+function sameScopeRef(a: VaultScopeRef, b: VaultScopeRef): boolean {
   return a.kind === "shared"
     ? b.kind === "shared"
     : b.kind === "service" && a.serviceId === b.serviceId;
 }
 
-export function scopeOfRef(view: VaultView, scopeRef: VaultScopeRef): VaultScope | undefined {
+function scopeOfRef(view: VaultView, scopeRef: VaultScopeRef): VaultScope | undefined {
   return view.scopes.find((scope) => sameScopeRef(scope.ref, scopeRef));
 }
 
 // ── keys ────────────────────────────────────────────────────────────────────
 
 /** The words in a name that make a value sensitive by default; the person can still say no. */
-export const SENSITIVE_WORDS = [
+const SENSITIVE_WORDS = [
   "SECRET",
   "TOKEN",
   "PASSWORD",
@@ -171,7 +171,7 @@ export function scopeCount(scope: VaultScope, query: string): number {
   return scope.values.filter((value) => matches(value, query)).length;
 }
 
-export interface VaultSections {
+interface VaultSections {
   readonly plain: ReadonlyArray<VaultValue>;
   readonly sensitive: ReadonlyArray<VaultValue>;
 }
@@ -188,13 +188,13 @@ export function scopeSections(scope: VaultScope, query: string): VaultSections {
 }
 
 /** Whether the view says nothing reads this value yet. */
-export function isUnread(view: VaultView, scope: VaultScope, key: string): boolean {
+function isUnread(view: VaultView, scope: VaultScope, key: string): boolean {
   return view.notLive.some(
     (item) => item.kind === "unread" && item.key === key && sameScopeRef(item.scope, scope.ref),
   );
 }
 
-export type VaultValueLine =
+type VaultValueLine =
   | { readonly kind: "value"; readonly text: string; readonly tail: string | null }
   /** A plain value that is the empty string: said so, never a blank line. */
   | { readonly kind: "empty"; readonly tail: string | null }
@@ -239,7 +239,7 @@ export function readerStateWords(state: VaultReader["state"]): string {
 }
 
 /** A managed service's hostname in a reference: Zerops writes it as it is. */
-export interface VaultReference {
+interface VaultReference {
   /** How its own service, or any service for Shared and managed values, reads it. */
   readonly own: string;
   /** How another service reads a service's own value; null for Shared and managed ones. */
@@ -254,7 +254,7 @@ export function referenceFor(scope: VaultScope, key: string): VaultReference {
 
 // ── what is not live yet ────────────────────────────────────────────────────
 
-export interface VaultTarget {
+interface VaultTarget {
   readonly scopeId: string;
   /** The row to open; null to show the scope (what a service reads is at its foot). */
   readonly valueId: string | null;
@@ -331,7 +331,7 @@ export function impactLine(impact: VaultImpact): string | null {
   return impact.unread ? NOTHING_READS_YET : null;
 }
 
-export interface VaultReviewLine {
+interface VaultReviewLine {
   readonly mark: "+" | "~" | "−";
   readonly key: string;
   readonly consequence: string;

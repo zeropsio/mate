@@ -278,7 +278,6 @@ import {
   STOP_DOT,
   stopServing,
   type ChipMenuModel,
-  type ChipView,
   type ProductionChip,
   type ReleasesAnswer,
   type StopServing,
@@ -2659,7 +2658,7 @@ export function SidebarHqStatus({
  * places; one where nothing is remembered. They do not move: a stand-in that sweeps would run for
  * as long as HQ is slow. The boot frame (index.html) paints the same rows in the same place.
  */
-export function MenuSkeleton({ className }: { readonly className?: string | undefined }) {
+function MenuSkeleton({ className }: { readonly className?: string | undefined }) {
   const orgId = useZeropsSessionOptional()?.activeOrganization?.id;
   const [rows] = useState(() => loadingMenuRows(orgId));
   return (
@@ -3247,7 +3246,7 @@ type MateSlot<T> =
   | { readonly kind: "coming"; readonly member: ZeropsGroupPendingMember };
 
 /** The list's keys a row hands back to the tree: j and k move between the Mates. */
-export interface MateRowKeys {
+interface MateRowKeys {
   readonly move: (from: HTMLElement, direction: 1 | -1) => void;
 }
 

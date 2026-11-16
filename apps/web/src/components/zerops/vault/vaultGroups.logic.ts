@@ -128,7 +128,7 @@ const ADDRESS_ENDS = new Set([
 const SECURITY = new Set(["SECRET", "JWT", "COOKIE", "SESSION", "SALT", "ENCRYPTION", "SIGNING"]);
 
 /** What a group is about, for its icon. */
-export type VaultGroupKind =
+type VaultGroupKind =
   | "admin"
   | "email"
   | "storage"
@@ -291,7 +291,7 @@ export interface VaultEntry {
   readonly group: VaultGroupRef;
 }
 
-export interface VaultGroup extends VaultGroupRef {
+interface VaultGroup extends VaultGroupRef {
   readonly entries: ReadonlyArray<VaultEntry>;
 }
 
@@ -299,7 +299,7 @@ export interface VaultGroup extends VaultGroupRef {
  * Which values a list shows: the environment's (`all`, the main page), one app's own (`app`), or
  * both together (`everything`: a search, and what needs the person).
  */
-export type VaultFilter =
+type VaultFilter =
   | { readonly kind: "all" }
   | { readonly kind: "everything" }
   | { readonly kind: "app"; readonly id: string };
@@ -438,7 +438,7 @@ export function vaultSections(
 
 // ── what needs the person ───────────────────────────────────────────────────
 
-export interface VaultNeeds {
+interface VaultNeeds {
   /** Values that are empty: an app reads nothing there. */
   readonly unset: ReadonlyArray<VaultEntry>;
   /** Values whose name says secret, written readable: anyone with access reads them. */
@@ -474,7 +474,7 @@ export function usedByWords(value: VaultValue): string {
 }
 
 /** A service type for people: `postgresql@17` → postgresql, `valkey:single` → valkey. */
-export function typeWord(serviceType: string | null): string | null {
+function typeWord(serviceType: string | null): string | null {
   return serviceType === null ? null : (serviceType.split(/[@:]/u)[0] ?? null);
 }
 
@@ -552,7 +552,7 @@ const RUNTIME_WORDS: Readonly<Record<string, string>> = {
   ubuntu: "Container",
 };
 
-export type VaultServiceKind = "app" | "database" | "cache" | "search" | "storage" | "messaging";
+type VaultServiceKind = "app" | "database" | "cache" | "search" | "storage" | "messaging";
 
 const MANAGED_WORDS: Readonly<
   Record<string, { readonly kind: VaultServiceKind; readonly words: string }>

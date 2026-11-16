@@ -63,7 +63,7 @@ import { CrewSection, CrewSectionEmpty } from "./CrewSection";
 import { CrewSetup } from "./CrewSetup";
 import type { CrewProposeWith } from "./CrewSetup.logic";
 
-export interface CrewSectionHostProps {
+interface CrewSectionHostProps {
   readonly environmentId: EnvironmentId;
   readonly snapshot: CrewSnapshot;
   /** `null` while no crew stands. */

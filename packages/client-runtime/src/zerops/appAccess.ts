@@ -35,7 +35,7 @@ export interface ProjectGrantEntry {
   readonly roleCode: string;
 }
 
-export interface AppGrantPlan {
+interface AppGrantPlan {
   /** The member's whole list to write: every project outside the app kept, in its place. */
   readonly list: ReadonlyArray<ProjectGrantEntry>;
   /** What each changed project of the app comes to hold for the member; `null` for no grant. */

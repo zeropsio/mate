@@ -10,7 +10,7 @@ import { useStandupReading } from "../../zerops/activity/useStandupReading";
 import { DetailRow, spanOf } from "./DetailRow";
 import { standupRow } from "./standupBar.logic";
 
-export function StandupRows({ reading }: { readonly reading: StandupReading | null }) {
+function StandupRows({ reading }: { readonly reading: StandupReading | null }) {
   if (reading === null) return null;
   return (
     <ul className="grid gap-px">

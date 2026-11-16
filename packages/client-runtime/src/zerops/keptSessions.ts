@@ -32,7 +32,7 @@ export interface KeptSessionStorage {
 }
 
 /** The sessions of one kind kept for the account, by what each was opened for. */
-export interface KeptSessions<T> {
+interface KeptSessions<T> {
   /** The session kept for this key, unless it would end within the lead. */
   readonly read: (key: string) => T | null;
   /** The keys whose sessions `read` would answer. */

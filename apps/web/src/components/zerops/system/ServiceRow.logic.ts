@@ -16,7 +16,7 @@ const TONE: Record<GroupRowTone, "success" | "info" | "danger" | undefined> = {
   neutral: undefined,
 };
 
-export interface ServiceRowState {
+interface ServiceRowState {
   /** "Building", "Stopped". */
   readonly word: string;
   /** What follows it: "7d ago". */
@@ -72,7 +72,7 @@ export function meterReading(metric: ZeropsServiceMetric | undefined): {
 }
 
 /** Where a meter's bar turns amber: nearly all of what the service holds is in use. */
-export const METER_HIGH = 0.85;
+const METER_HIGH = 0.85;
 
 /** How full a meter's bar is, 0–1, and whether it is nearly full; none where use is not known. */
 export function meterFill(

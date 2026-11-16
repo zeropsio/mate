@@ -6,7 +6,7 @@
  * each row here carries a synthesized `_version` that counts that process's observations in arrival
  * order, as the platform's rising `_version` would.
  */
-export type RecordedProcessEvent =
+type RecordedProcessEvent =
   | {
       readonly at: string;
       readonly frame: "membership";

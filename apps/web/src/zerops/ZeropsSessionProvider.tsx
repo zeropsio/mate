@@ -462,7 +462,6 @@ export function ZeropsSessionProvider({
       const selected = resolveActiveZeropsOrganization(organizations, {
         preferredClientId: null,
         storedClientUserId: selection.clientUserId,
-        storedClientId: selection.clientId,
       });
       setSelectedMembershipId(selected?.membershipId ?? null);
       setOrganizationStatus(selected ? "selected" : "needs-selection");

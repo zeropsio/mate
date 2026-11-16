@@ -30,7 +30,7 @@ export const MATE_STAND_UP_MESSAGE = "Stand up development of the project.";
 export const MATE_STAND_UP_RETRY_LABEL = "Try again";
 
 /** Who asked for the stand-up, as HQ's birth record names them (`ZeropsMembership.standUp`). */
-export type MateStandUpMarker = { readonly by: string } | undefined;
+type MateStandUpMarker = { readonly by: string } | undefined;
 
 /**
  * The Mate's main conversation as read live from its Mate: nothing sent in it yet, something
@@ -132,7 +132,7 @@ export function mateStandUpSignedIn(
 }
 
 /** Where the person's sign-in stands, for the empty conversation. */
-export type MateStandUpSignIn = "unknown" | "required" | "signed-in" | "someone-else";
+type MateStandUpSignIn = "unknown" | "required" | "signed-in" | "someone-else";
 
 /** What the empty conversation says while a stand-up is its viewer's to start. */
 export type MateStandUpPhase = "sign-in" | "standing-up";

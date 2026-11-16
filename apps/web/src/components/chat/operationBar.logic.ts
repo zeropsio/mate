@@ -17,10 +17,10 @@ import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import { drawnSteps } from "../zerops/operation/drawnSteps";
 import type { BarTone } from "./StatusBar";
 
-export type OperationLineState = "waits" | "building" | "up" | "failed";
+type OperationLineState = "waits" | "building" | "up" | "failed";
 
 /** A service under an operation: its state and, failed, why — when anything says. */
-export interface OperationLine {
+interface OperationLine {
   readonly host: string;
   readonly state: OperationLineState;
   readonly reason?: string;
@@ -306,7 +306,7 @@ export function liveOperationBar(
  * observed region), counted: its pipeline's steps or its own, the processes
  * beside it, and whether it has a build log. Null while it read nothing.
  */
-export interface ObservedLines {
+interface ObservedLines {
   readonly steps: number;
   readonly chips: number;
   readonly log: boolean;

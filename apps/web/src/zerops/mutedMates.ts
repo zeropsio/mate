@@ -10,8 +10,8 @@ import { useCallback } from "react";
 
 import { useLocalStorage } from "../hooks/useLocalStorage";
 
-export const MUTED_MATES_STORAGE_KEY = "mate:zerops:muted-mates";
-export const MutedMatesSchema = Schema.Array(Schema.String);
+const MUTED_MATES_STORAGE_KEY = "mate:zerops:muted-mates";
+const MutedMatesSchema = Schema.Array(Schema.String);
 
 const NOBODY_MUTED: ReadonlyArray<string> = [];
 

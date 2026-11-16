@@ -36,7 +36,7 @@ export interface ChangeReadoutCommit {
  * HQ's merge of `main` into a change stacked on one that merged, in words: HQ's push, never its
  * Mate's. The merged change by its title where it was read, else by its number.
  */
-export function corePushWords(push: HqCorePush, landedTitle: string | undefined): string {
+function corePushWords(push: HqCorePush, landedTitle: string | undefined): string {
   const landed = landedTitle === undefined ? `#${String(push.landed)}` : `“${landedTitle}”`;
   return `HQ brought main in after ${landed} merged`;
 }

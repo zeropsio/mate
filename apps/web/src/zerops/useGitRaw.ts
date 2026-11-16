@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useGitBrowse } from "./useGitBrowse";
 
 /** A file of a commit whose bytes a page shows or saves. */
-export interface GitRawRequest {
+interface GitRawRequest {
   readonly appId: string;
   readonly repo: string;
   readonly sha: string;

@@ -660,7 +660,7 @@ function sameRoom(left: CrewRoom | null, right: CrewRoom): boolean {
   return true;
 }
 
-export interface ConversationStripViewProps {
+interface ConversationStripViewProps {
   readonly mate: LineMate;
   /** The Mate's chats, while it holds more than one. */
   readonly chats: LineChats | null;
@@ -777,7 +777,7 @@ export function ConversationStripView({
   );
 }
 
-export interface ConversationStripProps {
+interface ConversationStripProps {
   readonly environmentId: EnvironmentId;
   /** The chat on screen; `null` for one being started. */
   readonly currentThreadId: ThreadId | null;

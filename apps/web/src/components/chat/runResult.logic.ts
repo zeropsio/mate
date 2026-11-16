@@ -719,8 +719,8 @@ export function resultRows(outcome: OutcomeModel, facts: ResultFacts = NO_FACTS)
 // ---------------------------------------------------------------------------
 
 /** The narrowest and the widest a tile stands: past them a picture shows its top. */
-export const TILE_RATIO_MIN = 0.45;
-export const TILE_RATIO_MAX = 2.4;
+const TILE_RATIO_MIN = 0.45;
+const TILE_RATIO_MAX = 2.4;
 /** The room a picture takes while its shape is not known: a desktop's. */
 const TILE_RATIO_UNKNOWN = 1.6;
 
@@ -915,7 +915,7 @@ function effortParts(
 }
 
 /** How many facts a finished run's closed line holds beside its time. */
-export const WORKED_LINE_FACTS = 2;
+const WORKED_LINE_FACTS = 2;
 
 /**
  * A finished run's effort as its line shows it (the board, 2026-11-10: five

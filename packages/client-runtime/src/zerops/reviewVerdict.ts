@@ -150,7 +150,7 @@ export interface ReviewPrimary {
 }
 
 /** A quiet word in the foot beside the one button: a change's *Close without merging…*. */
-export interface ReviewSecondary {
+interface ReviewSecondary {
   readonly label: string;
   readonly enabled: boolean;
 }
@@ -176,7 +176,7 @@ export interface ReviewQuestion {
   readonly dismiss: string;
 }
 
-export interface ReviewModel {
+interface ReviewModel {
   readonly problems?: ReadonlyArray<HqProblem> | undefined;
   /**
    * The foot's note is a wait still under way, said beside the busy mark: `late` once it has
@@ -413,7 +413,7 @@ export type ReviewHand =
   | { readonly kind: "done"; readonly to: string };
 
 /** What a change whose Mate is gone says, and the Mates it may be handed to. */
-export interface ReviewOrphan {
+interface ReviewOrphan {
   readonly text: string;
   readonly options: ReadonlyArray<{
     readonly projectId: string;
@@ -422,7 +422,7 @@ export interface ReviewOrphan {
   }>;
 }
 
-export interface ChangeReviewModel extends ReviewModel {
+interface ChangeReviewModel extends ReviewModel {
   readonly orphan?: ReviewOrphan | undefined;
   readonly githubChecks?: ReviewGithubChecks | undefined;
 }
@@ -1287,7 +1287,7 @@ export type ReleaseReplaces =
   | { readonly kind: "unnamed" };
 
 /** A release's review: its verdict and foot, the header's facts, and where to go if it goes wrong. */
-export interface ReleaseReviewModel extends ReviewModel {
+interface ReleaseReviewModel extends ReviewModel {
   readonly repositories?:
     | ReadonlyArray<GitReleaseRepository & { readonly expiry: string | undefined }>
     | undefined;
@@ -1734,7 +1734,7 @@ export interface RollbackReviewInput {
   readonly now: number;
 }
 
-export interface RollbackReviewModel extends ReviewModel {
+interface RollbackReviewModel extends ReviewModel {
   /**
    * Beside the title: what production runs as it goes back — `production runs v0.1.1` — and,
    * once it went back, what it replaced; `undefined` when it went back from a release not read.

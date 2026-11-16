@@ -36,7 +36,7 @@ const SEGMENT_TONE_CLASS: Readonly<Record<ServiceStatusToneId, string>> = {
   off: "bg-[var(--zerops-status-off)]",
 };
 
-export interface ZeropsBirthLineProps {
+interface ZeropsBirthLineProps {
   readonly progress: BirthLineProgress;
   readonly nowMs: number;
   readonly className?: string;
@@ -119,7 +119,7 @@ export function ZeropsBirthLine({ progress, nowMs, className }: ZeropsBirthLineP
   );
 }
 
-export interface ZeropsBirthChecklistProps {
+interface ZeropsBirthChecklistProps {
   readonly progress: BirthLineProgress;
   readonly nowMs: number;
 }

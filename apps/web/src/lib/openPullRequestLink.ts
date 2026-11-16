@@ -48,7 +48,7 @@ export async function openPullRequestLink(
  * The two strings match the project's normalized repository identity: lower case, no port, and
  * the full path below the host. Anything else opens nothing.
  */
-export interface ChangeRequestLink {
+interface ChangeRequestLink {
   readonly host: string;
   readonly repository: string;
   readonly number: number;

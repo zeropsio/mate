@@ -16,7 +16,7 @@ const PAGES_TRAIL = "pages-trail";
 const PAGE_PATHS = [/^\/zerops\/?$/, /^\/group\/[^/]+\/flow\/?$/, /^\/group\/[^/]+\/[^/]+\/?$/];
 
 /** Whether a path is the overview's, a project page's or a place page's. */
-export function isOverviewPagePath(pathname: string): boolean {
+function isOverviewPagePath(pathname: string): boolean {
   return PAGE_PATHS.some((path) => path.test(pathname));
 }
 

@@ -179,7 +179,7 @@ export function lacksOwnDomain(place: PlaceAddresses): boolean {
  * it while `publicIpV4Shared` is on (`dig +short A <zone>`, read 2026-10-14). The platform's rows
  * name it nowhere.
  */
-export const SHARED_IPV4: Readonly<Record<string, string>> = { prg1: "93.185.106.128" };
+const SHARED_IPV4: Readonly<Record<string, string>> = { prg1: "93.185.106.128" };
 
 /** The region a project lives in, from its zone (`<id>.prg1-zerops.zone`) or subdomain host. */
 export function regionOf(project: Pick<ZeropsProject, "publicZone" | "zeropsSubdomainHost">) {
@@ -225,14 +225,14 @@ export function domainFace(
     : "certificate";
 }
 
-export function portFace(port: PublicPortRoutingValue): DirectPort["face"] {
+function portFace(port: PublicPortRoutingValue): DirectPort["face"] {
   if (port.deleteOnSync === true) return "removing";
   if (!port.isSynced) return port.everSynced === true ? "changing" : "going-live";
   return "live";
 }
 
 /** Where a client connects to an open port. */
-export function portAddress(port: PublicPortRoutingValue, ips: PlaceIps): string | undefined {
+function portAddress(port: PublicPortRoutingValue, ips: PlaceIps): string | undefined {
   if (port.publicIpType === "IP_V6")
     return ips.v6 === undefined ? undefined : `[${ips.v6}]:${port.publicPort}`;
   return ips.ownV4 === undefined ? undefined : `${ips.ownV4}:${port.publicPort}`;

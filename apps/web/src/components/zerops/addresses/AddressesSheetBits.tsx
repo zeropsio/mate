@@ -166,7 +166,7 @@ export function RealName({ children }: { readonly children: ReactNode }) {
 }
 
 /** Where a stage of a journey stands: behind, the person's move, Zerops's move, refused, ahead. */
-export type StageState = "done" | "you" | "busy" | "failed" | "next";
+type StageState = "done" | "you" | "busy" | "failed" | "next";
 
 /**
  * An address's way to answering, top to bottom: each stage a bead on one rail with its words

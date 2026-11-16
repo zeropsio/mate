@@ -9,8 +9,6 @@
 
 /** The app's own boot: from the page's load. */
 export const BOOT_WAIT_LINE_MS = 600;
-/** A Mate's conversation on its way: from the Mate's page opening. */
-export const OPENING_WAIT_LINE_MS = 1_000;
 
 export const READING_PROJECTS_LINE = "Reading your projects…";
 

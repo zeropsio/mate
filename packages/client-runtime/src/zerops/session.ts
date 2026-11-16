@@ -58,7 +58,7 @@ export interface ZeropsStorageAdapter {
 export const ZEROPS_SESSION_STORAGE_KEY = "zerops-mate.zerops-session.v1";
 export const ZEROPS_SELECTION_STORAGE_KEY = "zerops-mate.zerops-selection.v1";
 
-export interface ZeropsSelection {
+interface ZeropsSelection {
   readonly userId: string;
   /** Exact `clientUser` membership, matching the platform GUI's active scope. */
   readonly clientUserId: string | null;
@@ -121,19 +121,14 @@ function parseSelection(value: unknown): ZeropsSelection | null {
   if (!value || typeof value !== "object") return null;
   const selection = value as Partial<ZeropsSelection>;
   if (typeof selection.userId !== "string" || !selection.userId) return null;
-  if (
-    selection.clientUserId !== undefined &&
-    selection.clientUserId !== null &&
-    typeof selection.clientUserId !== "string"
-  )
-    return null;
+  if (selection.clientUserId !== null && typeof selection.clientUserId !== "string") return null;
   if (selection.clientId !== null && typeof selection.clientId !== "string") return null;
   if (selection.projectId !== null && typeof selection.projectId !== "string") return null;
   return {
     userId: selection.userId,
-    clientUserId: selection.clientUserId ?? null,
-    clientId: selection.clientId ?? null,
-    projectId: selection.projectId ?? null,
+    clientUserId: selection.clientUserId,
+    clientId: selection.clientId,
+    projectId: selection.projectId,
   };
 }
 
@@ -165,8 +160,4 @@ export async function saveZeropsSelection(
     `${ZEROPS_SELECTION_STORAGE_KEY}:${encodeURIComponent(selection.userId)}`,
     JSON.stringify(selection),
   );
-}
-
-export async function clearZeropsSelection(storage: ZeropsStorageAdapter): Promise<void> {
-  await storage.remove(ZEROPS_SELECTION_STORAGE_KEY);
 }

@@ -7,7 +7,7 @@ import { useEnvironmentQuery, type EnvironmentQueryView } from "../state/query";
 import { serverEnvironment } from "../state/server";
 import { useAtomCommand } from "../state/use-atom-command";
 
-export interface ResourceTelemetryState extends EnvironmentQueryView<ResourceTelemetrySnapshot> {
+interface ResourceTelemetryState extends EnvironmentQueryView<ResourceTelemetrySnapshot> {
   readonly retry: () => Promise<ResourceTelemetrySnapshot>;
 }
 

@@ -28,7 +28,7 @@ export function commentRefusal(progress: OperationProgress): string | null {
   }
 }
 
-export interface SayPorts {
+interface SayPorts {
   /** The conversation's gate once settled: read, or why no send will go — also once let go. */
   readonly untilRead: (signal: AbortSignal) => Promise<DiscussionGate>;
   readonly submit: (
@@ -36,7 +36,7 @@ export interface SayPorts {
   ) => Promise<{ readonly requestId: string; readonly progress: OperationProgress }>;
 }
 
-export type Said =
+type Said =
   | { readonly kind: "accepted"; readonly requestId: string }
   /** Its answer lost: HQ's conversation may still show it, which then ends it (`landedAfterLoss`). */
   | { readonly kind: "uncertain"; readonly requestId: string; readonly reason: string }

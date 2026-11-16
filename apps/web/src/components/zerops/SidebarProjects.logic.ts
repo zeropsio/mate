@@ -54,7 +54,7 @@ export function landingAfterDraw<T>(pending: PendingLanding<T> | null): {
 }
 
 /** A scrolling list as a fold reads it, with the room at its end it keeps (`slack`). */
-export interface ScrollRoom {
+interface ScrollRoom {
   readonly scrollTop: number;
   readonly clientHeight: number;
   readonly scrollHeight: number;
@@ -85,7 +85,7 @@ function roomTheViewNeeds(scroll: ScrollRoom, natural: number): number {
 }
 
 /** A box's vertical edges, in the page's coordinates. */
-export interface Span {
+interface Span {
   readonly top: number;
   readonly bottom: number;
 }

@@ -10,13 +10,13 @@ import { Specimen, SpecimenGrid } from "./Specimen";
  * Where a home-made look is drawn and how much of the app draws it: the census row a specimen
  * stands for. `uses` counts JSX sites outside tests, harnesses and the kit.
  */
-export interface CensusEntry {
+interface CensusEntry {
   readonly source: string;
   readonly uses: number;
   readonly files: number;
 }
 
-export function censusLine({ source, uses, files }: CensusEntry): string {
+function censusLine({ source, uses, files }: CensusEntry): string {
   const sites = `${uses} ${uses === 1 ? "use" : "uses"} in ${files} ${files === 1 ? "file" : "files"}`;
   return `${source} · ${sites}`;
 }

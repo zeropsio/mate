@@ -68,7 +68,7 @@ export function useAuthorizeObserve(projectId: string | null): {
  * Opening one of the person's own Mates while it reads not authorized asks HQ to record them, once
  * a session: the same request creation makes for a new Mate, for the Mate's existing context.
  */
-export function useKeepObserveAuthorized(environmentId: EnvironmentId): void {
+function useKeepObserveAuthorized(environmentId: EnvironmentId): void {
   const project = useEnvironmentProjectRef(environmentId);
   const projectId = project?.projectId ?? null;
   const mine = useHqProjectPerson(projectId ?? "")?.mine;

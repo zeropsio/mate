@@ -8,7 +8,7 @@ import { hqNavigationAtom } from "../state/zerops";
 import { forgetOrganizationMemory, readChiefMemory, writeChiefMemory } from "./mateIdentityMemory";
 import { useZeropsSessionOptional } from "./sessionContext";
 
-export const ownChiefAtom = Atom.make((get): OwnChief => {
+const ownChiefAtom = Atom.make((get): OwnChief => {
   const { myChief } = get(shownHqMateDirectoryAtom);
   return myChief.kind === "present"
     ? myChief.projectId

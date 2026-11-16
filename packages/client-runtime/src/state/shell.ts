@@ -16,7 +16,6 @@ import { engineShellChanges, type EngineShellOverlay } from "../data/engineThrea
 
 import { openShellReplay, EMPTY_SHELL_STATE } from "../data/adapters/mateShellReplay.ts";
 export const makeEnvironmentShellState = openShellReplay;
-export { openShellReplay } from "../data/adapters/mateShellReplay.ts";
 export type {
   EnvironmentShellState,
   EnvironmentShellStatus,

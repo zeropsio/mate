@@ -20,7 +20,7 @@ import { useProjectMateActivity } from "./useZeropsAgentActivity";
 import { useKnownMate } from "./useZeropsMates";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
-export interface TaskSessionView {
+interface TaskSessionView {
   readonly session: TaskSession;
   /** The application the task is of: its change opens there. */
   readonly appId: string | null;

@@ -9,7 +9,7 @@ interface DeletionTarget {
   readonly projectId: string;
 }
 
-export interface PreparedMateDeletion {
+interface PreparedMateDeletion {
   readonly keyTokenId: string | null;
   readonly completion: string;
 }
@@ -45,38 +45,38 @@ declare module "../model.ts" {
   }
 }
 
-export const removeProduction: OperationKind<"remove-production"> = {
+const removeProduction: OperationKind<"remove-production"> = {
   kind: "remove-production",
   executor: "hq",
   // Only the original receipt proves the reviewed target fate and authorizes cleanup.
   reflected: () => false,
 };
 
-export const prepareMateDeletion: OperationKind<"prepare-mate-deletion"> = {
+const prepareMateDeletion: OperationKind<"prepare-mate-deletion"> = {
   kind: "prepare-mate-deletion",
   executor: "hq",
   reflected: () => false,
 };
 
-export const completeMateDeletion: OperationKind<"complete-mate-deletion"> = {
+const completeMateDeletion: OperationKind<"complete-mate-deletion"> = {
   kind: "complete-mate-deletion",
   executor: "hq",
   reflected: (read, intent) => removedForViewer(read.fact("placement", intent.projectId)),
 };
 
-export const completeProjectDeletion: OperationKind<"complete-project-deletion"> = {
+const completeProjectDeletion: OperationKind<"complete-project-deletion"> = {
   kind: "complete-project-deletion",
   executor: "hq",
   reflected: (read, intent) => removedForViewer(read.fact("placement", intent.projectId)),
 };
 
-export const completeKeyRetirement: OperationKind<"complete-key-retirement"> = {
+const completeKeyRetirement: OperationKind<"complete-key-retirement"> = {
   kind: "complete-key-retirement",
   executor: "hq",
   reflected: () => false,
 };
 
-export const retireMateKey: OperationKind<"retire-mate-key"> = {
+const retireMateKey: OperationKind<"retire-mate-key"> = {
   kind: "retire-mate-key",
   executor: "zerops",
   reflected: () => false,

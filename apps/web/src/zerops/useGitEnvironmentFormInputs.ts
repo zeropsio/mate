@@ -15,7 +15,7 @@ import { useHqAppDetail } from "./useHqAppDetail";
 import { hqOfferWords } from "@t3tools/client-runtime/zerops/hq";
 import { HQ_REMOTE_WRITE_VERB, hqOffer } from "@t3tools/shared/hqOffers";
 
-export type GitEnvironmentFormInputs = Pick<
+type GitEnvironmentFormInputs = Pick<
   GitEnvironmentFormProps,
   "takenNames" | "repos" | "offered" | "unavailableReason" | "setup"
 >;

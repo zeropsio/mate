@@ -87,7 +87,7 @@ export function recipeOptions(input: {
  * A stage's or a production's form: one name, its project's in full, whether an agent runs in it or
  * not — its agent goes by what follows the application's name in it.
  */
-export interface CreationForm {
+interface CreationForm {
   readonly name: string;
   readonly withAgent: boolean;
   readonly recipeId: string;
@@ -341,7 +341,7 @@ const NEW_MATE_REFUSALS = {
 } as const;
 
 /** What pressing Add does now: refuse the name, wait on a read, or create the Mate. */
-export type NewMateSubmit =
+type NewMateSubmit =
   | { readonly kind: "refuse"; readonly error: string }
   | { readonly kind: "wait"; readonly on: "names" | "recipe" }
   | { readonly kind: "create"; readonly recipe: EnvironmentRecipeChoice };
@@ -401,16 +401,16 @@ export function newMateWords(input: {
 }
 
 /** Where the recipe on its repository's `main` stands, as HQ answered (`useZeropsGroupRecipe`). */
-export type NewMateRecipeRead = "loading" | "present" | "absent" | "unreadable";
+type NewMateRecipeRead = "loading" | "present" | "absent" | "unreadable";
 
 /** One of the project's Mates, as the door names it. */
-export interface NewMateDoorMate {
+interface NewMateDoorMate {
   readonly projectId: string;
   readonly name: string;
 }
 
 /** The change a Mate proposed the recipe in, still open, and that Mate while the project has it. */
-export interface NewMateRecipeChange {
+interface NewMateRecipeChange {
   readonly number: number;
   readonly mate: string | undefined;
   /** It conflicts with main, and its Mate composes it again from main (`recipeProposalRedone`). */

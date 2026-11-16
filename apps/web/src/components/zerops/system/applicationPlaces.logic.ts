@@ -61,7 +61,7 @@ export interface PlaceItem {
 }
 
 /** The part of an application's row its places are read from. */
-export type PlacesEntry<T extends PlaceItem> = Pick<ProjectsFlowGroup<T>, "flow" | "stops">;
+type PlacesEntry<T extends PlaceItem> = Pick<ProjectsFlowGroup<T>, "flow" | "stops">;
 
 const UNKNOWN: StopServing = { kind: "unknown" };
 const NO_UNTOLD: ReadonlyArray<string> = [];

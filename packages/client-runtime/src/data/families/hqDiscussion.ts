@@ -32,7 +32,7 @@ export const discussionId = (link: ChangeLink): string =>
   JSON.stringify([link.appId, link.repo, link.number]);
 
 /** The change a conversation's id names; `null` for one that names none. */
-export function discussionLink(id: string): ChangeLink | null {
+function discussionLink(id: string): ChangeLink | null {
   const owner = Option.getOrNull(decodeOwner(id));
   return owner === null ? null : { appId: owner[0], repo: owner[1], number: owner[2] };
 }

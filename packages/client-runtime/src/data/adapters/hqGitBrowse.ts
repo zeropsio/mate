@@ -42,7 +42,7 @@ const GIT_BROWSE_BUSY: Partial<Record<GitBrowseRead, string>> = {
  * HQ's no as definitive, its sign-in or access no as a denial; anything else passes, HQ's busy
  * heavy reads said as busy in the read's own words.
  */
-export const gitBrowseFailure =
+const gitBrowseFailure =
   (read: GitBrowseRead) =>
   (cause: unknown): StreamFault => {
     const message = cause instanceof Error ? cause.message : "HQ could not read this repository.";

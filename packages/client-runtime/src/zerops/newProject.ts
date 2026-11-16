@@ -46,7 +46,7 @@ import { creationUserRoles, type ProjectGrant } from "./projectAccess.ts";
 
 const ZCP_SERVICE_NAME_PREFIX = "zcp";
 
-export const VSCODE_PASSWORD_LENGTH = 16;
+const VSCODE_PASSWORD_LENGTH = 16;
 
 const PASSWORD_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
@@ -128,7 +128,7 @@ export function agentTypeToEnvSuffix(agentType: ZeropsAgentType): string {
  * only where it reads it (`zeropsSetupMarker.ts`), so a container made before the press, which
  * carries none, never does.
  */
-export const MATE_SETUP_MARKER = "MATE_SETUP";
+const MATE_SETUP_MARKER = "MATE_SETUP";
 
 /**
  * Where a Mate was born: the HQ that created it and the web it was created from. Its container
@@ -207,7 +207,7 @@ ${buildZcpDeploymentYaml(input.serviceName, zcpRunConfig(input.zcpVersion))
   .join("\n")}`;
 }
 
-export interface CreateProjectBody {
+interface CreateProjectBody {
   readonly name: string;
   readonly description: string;
   readonly tagList: ReadonlyArray<string>;

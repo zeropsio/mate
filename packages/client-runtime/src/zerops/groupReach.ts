@@ -193,7 +193,7 @@ export function newestMateKey(
 }
 
 /** What a harden or a reusing press does with one key of a Mate (`planMateKey`). */
-export type MateKeyPlan =
+type MateKeyPlan =
   /** Write exactly `projects`: the Mate's own project at `MATE_SELF_PROJECT_ROLE`, nothing else. */
   | {
       readonly kind: "write";
@@ -242,13 +242,13 @@ export interface TokenWriteLocks {
   readonly request: <T>(name: string, hold: () => Promise<T>) => Promise<T>;
 }
 
-export const tokenWriteLockName = (tokenId: string): string => `mate:token:${tokenId}`;
+const tokenWriteLockName = (tokenId: string): string => `mate:token:${tokenId}`;
 
 /** Holds one token's read-then-write at a time, until `run` settles. */
 export type TokenWriteHold = <T>(tokenId: string, run: () => Promise<T>) => Promise<T>;
 
 /** How long one token's read-then-write may hold its lock before it is let go and fails. */
-export const TOKEN_WRITE_HOLD_MS = 30_000;
+const TOKEN_WRITE_HOLD_MS = 30_000;
 
 /**
  * One token's read-then-write at a time: in this page by a queue per token, and across the

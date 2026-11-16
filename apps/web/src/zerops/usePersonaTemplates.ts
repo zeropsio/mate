@@ -64,7 +64,7 @@ export interface PersonaTemplateDraft {
   readonly instructions: string;
 }
 
-export interface PersonaTemplateWriter {
+interface PersonaTemplateWriter {
   /** Where the last save or delete stands: `idle` before one, or after `reset`. */
   readonly write: PersonaTemplateWrite;
   readonly save: (draft: PersonaTemplateDraft) => void;

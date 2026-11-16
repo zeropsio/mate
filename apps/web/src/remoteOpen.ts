@@ -22,7 +22,7 @@ import { isLoopbackHostname } from "~/environments/primary/target";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { useEnvironmentPresentation } from "~/state/presentation";
 
-export interface RemoteOpenHost {
+interface RemoteOpenHost {
   readonly kind: "ssh-alias" | RemoteOpenTarget["kind"];
   readonly host: string;
 }
@@ -34,7 +34,7 @@ export type RemoteOpenState =
 
 export type RemoteOpenMode = RemoteOpenState["mode"];
 
-export interface RemoteOpenResolution {
+interface RemoteOpenResolution {
   readonly state: RemoteOpenState;
   readonly isResolved: boolean;
 }
@@ -126,7 +126,7 @@ const REMOTE_FALLBACK_EDITORS: ReadonlyArray<EditorId> = ["vscode"];
 
 let cachedProbedEditors: ReadonlyArray<EditorId> | null = null;
 
-export function __resetRemoteEditorProbeForTests(): void {
+function __resetRemoteEditorProbeForTests(): void {
   cachedProbedEditors = null;
 }
 

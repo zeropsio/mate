@@ -1,7 +1,7 @@
 /** Browser-to-location latency, sampled once per account and endpoint while the picker demands it. */
 import type { ScopeKey } from "../model.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
-export interface LocationLatency {
+interface LocationLatency {
   readonly locationId: string;
   readonly pingUrl: string;
   readonly latencyMs: number;

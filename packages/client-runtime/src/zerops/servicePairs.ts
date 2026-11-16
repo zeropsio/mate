@@ -45,7 +45,7 @@ export { isStageHostname };
  * Where a preview's pairing comes from: the tier on `main`, an open recipe change, zcp's envelope,
  * the stem.
  */
-export type ServicePairSource = "tier" | "recipe" | "envelope" | "stem";
+type ServicePairSource = "tier" | "recipe" | "envelope" | "stem";
 
 export interface ServicePreview {
   readonly hostname: string;
@@ -62,7 +62,7 @@ export interface ServicePair {
   readonly previews: ReadonlyArray<ServicePreview>;
 }
 
-export interface ServicePairing {
+interface ServicePairing {
   /** Every pair, in the project's order of their dev halves. */
   readonly pairs: ReadonlyArray<ServicePair>;
   /** Each preview's dev half, by the preview's hostname. */
@@ -117,7 +117,7 @@ export function poolPairsIn(
   });
 }
 
-export interface ServicePairsInput {
+interface ServicePairsInput {
   /** The project's services, in its order; a service without a group pairs with another without. */
   readonly services: ReadonlyArray<{
     readonly hostname: string;

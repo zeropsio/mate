@@ -279,7 +279,7 @@ export function releaseInFlightReason(tag: string): string {
 export type ReleaseVerdict = Release["state"];
 
 /** The newest release, for {@link releaseInFlight}. */
-export interface ReleaseAttempt {
+interface ReleaseAttempt {
   readonly tag: string;
   readonly verdict: ReleaseVerdict;
 }

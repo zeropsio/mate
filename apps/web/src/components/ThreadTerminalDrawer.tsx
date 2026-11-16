@@ -155,7 +155,7 @@ export function writeTerminalOutputUpdate(
 const MAX_COMPARED_SELECTION_CELLS = 3_000;
 
 /** Writes what changed between two session notifications: new output, then a new error. */
-export function synchronizeTerminalSession(
+function synchronizeTerminalSession(
   terminal: Pick<
     GhosttyTerminalSurface,
     "resetAndWrite" | "write" | "getSelection" | "getSelectionCellCount" | "clearSelection"
@@ -402,10 +402,10 @@ export function terminalSelectionLineRange(position: {
   };
 }
 
-export type TerminalContextMenuAction = "add-to-chat" | "copy" | "paste";
+type TerminalContextMenuAction = "add-to-chat" | "copy" | "paste";
 
 /** Post-selection popup: just the two selection actions, always enabled. */
-export function terminalSelectionMenuItems(): ContextMenuItem<"add-to-chat" | "copy">[] {
+function terminalSelectionMenuItems(): ContextMenuItem<"add-to-chat" | "copy">[] {
   return [
     { id: "add-to-chat", label: "Add to chat" },
     { id: "copy", label: "Copy" },
@@ -418,7 +418,7 @@ export function terminalSelectionMenuItems(): ContextMenuItem<"add-to-chat" | "c
  * (and Electron's default editing menu) can only paste into an editable
  * element, so a canvas terminal never gets a usable entry from them.
  */
-export function terminalContextMenuItems(options: {
+function terminalContextMenuItems(options: {
   hasSelection: boolean;
 }): ContextMenuItem<TerminalContextMenuAction>[] {
   return [
@@ -437,7 +437,7 @@ export function terminalContextMenuItems(options: {
  * menu promise unsettled for a moment; treating it as active would cancel the
  * newer context-menu flow instead.
  */
-export function shouldClearTerminalSelectionAction(options: {
+function shouldClearTerminalSelectionAction(options: {
   timerPending: boolean;
   openMenuRequestId: number | null;
   currentRequestId: number;

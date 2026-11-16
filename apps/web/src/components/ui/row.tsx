@@ -196,5 +196,4 @@ function Row({
   });
 }
 
-export { Row, rowVariants };
-export type { RowProps, RowSize };
+export { Row };

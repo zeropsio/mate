@@ -62,20 +62,20 @@ export interface PlatformSignals {
 }
 
 /** A visibility return or a focus is a wake only after the tab was away at least this long. */
-export const WAKE_AFTER_AWAY_MS = 30_000;
+const WAKE_AFTER_AWAY_MS = 30_000;
 
 /** Wakes of one kind, visible or hidden, are coalesced to at most one per this long. */
-export const WAKE_COALESCE_MS = 10_000;
+const WAKE_COALESCE_MS = 10_000;
 
 /** How often an adapter ticks while it is heard; a throttled hidden tab ticks about once a minute. */
 export const SIGNALS_TICK_MS = 15_000;
 
 /** A sleep: the wall clock ran this much further than the monotonic one between two ticks… */
-export const SLEEP_CLOCK_DRIFT_MS = 5_000;
+const SLEEP_CLOCK_DRIFT_MS = 5_000;
 /** …or two ticks this far apart, beyond the one-minute bucket of hidden-tab throttling. */
-export const SLEEP_TICK_GAP_MS = 5 * 60_000;
+const SLEEP_TICK_GAP_MS = 5 * 60_000;
 
-export interface WakeState {
+interface WakeState {
   readonly hidden: boolean;
   readonly online: boolean;
   /** Since when the document has been hidden; null while it is visible. */
@@ -116,7 +116,7 @@ const slept = (since: SignalClocks, now: SignalClocks): boolean =>
 const awayLongEnough = (since: SignalClocks | null, now: SignalClocks): boolean =>
   since !== null && elapsed(since, now) >= WAKE_AFTER_AWAY_MS;
 
-export interface WakeStep {
+interface WakeStep {
   readonly state: WakeState;
   readonly signals: ReadonlyArray<PlatformSignal>;
 }
@@ -202,7 +202,7 @@ export function wakeStep(state: WakeState, event: PageEvent, now: SignalClocks):
 }
 
 /** One page as a platform adapter reports it: its state now, its clocks, and its raw events. */
-export interface PageSource {
+interface PageSource {
   readonly hidden: () => boolean;
   readonly online: () => boolean;
   readonly now: () => SignalClocks;

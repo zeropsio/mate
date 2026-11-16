@@ -109,7 +109,7 @@ export function usageTaskListCut(input: {
   return since < Math.min(...ended);
 }
 
-export interface AutomatedBudget {
+interface AutomatedBudget {
   readonly spent: string;
   readonly budget: string;
   /** Of the budget, capped at 1. */

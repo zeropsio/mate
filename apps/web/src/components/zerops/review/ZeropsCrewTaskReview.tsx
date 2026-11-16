@@ -132,7 +132,7 @@ function CrewTaskData({
   );
 }
 
-export interface CrewTaskReviewViewProps {
+interface CrewTaskReviewViewProps {
   readonly task: CrewTask;
   /** The crewmate whose work it is. */
   readonly face: {

@@ -41,12 +41,7 @@ import {
   type SidebarCrewRead,
 } from "./SidebarCrewMinis.logic";
 
-export type {
-  CrewMini,
-  CrewReviewItem,
-  CrewRowFacts,
-  SidebarCrewRead,
-} from "./SidebarCrewMinis.logic";
+export type { CrewRowFacts, SidebarCrewRead } from "./SidebarCrewMinis.logic";
 
 /** A listed Mate whose crew the menu draws. */
 export interface CrewRowMate {

@@ -19,7 +19,7 @@ import type {
  * predates it (the one "HQ needs an update" line says so), `withheld` from a viewer HQ refuses, `failed`
  * with HQ's words and *Try again*, or what is `known`.
  */
-export type SectionState = "reading" | "hidden" | "withheld" | "failed" | "known";
+type SectionState = "reading" | "hidden" | "withheld" | "failed" | "known";
 
 export function sectionState(setting: SettingValue<unknown>): SectionState {
   switch (setting.state) {
@@ -270,7 +270,7 @@ export function slackManifestApp(text: string): {
  * A key a connection's form takes, checked as HQ checks it (`mate-hq spec/protocol.md` § Slack, Discord
  * and the GitHub webhook).
  */
-export type ConnectKey =
+type ConnectKey =
   | "slack-bot-token"
   | "slack-signing-secret"
   | "discord-application-id"

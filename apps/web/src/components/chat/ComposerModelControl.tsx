@@ -31,7 +31,7 @@ import { useTraitsControls } from "./TraitsPicker";
 /** What the traits are read from and written to: the model, the prompt, the draft. */
 export type ComposerTraitsInput = Parameters<typeof useTraitsControls>[0];
 
-export const COMPOSER_ACCESS: Record<
+const COMPOSER_ACCESS: Record<
   RuntimeMode,
   { readonly label: string; readonly description: string; readonly icon: LucideIcon }
 > = {

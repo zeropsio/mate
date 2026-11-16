@@ -2,7 +2,7 @@ const DIRECT_IMAGE_SOURCE_PATTERN = /^(?:https?:|data:|blob:|\/\/)/i;
 const URI_SCHEME_PATTERN = /^[A-Za-z][A-Za-z0-9+.-]*:/;
 const WINDOWS_DRIVE_PATH_PATTERN = /^[A-Za-z]:[\\/]/;
 
-export type MarkdownImageSource =
+type MarkdownImageSource =
   | { readonly _tag: "Direct"; readonly uri: string }
   | { readonly _tag: "WorkspaceFile"; readonly path: string }
   | { readonly _tag: "Blocked" };

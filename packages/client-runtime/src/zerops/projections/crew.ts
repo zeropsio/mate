@@ -209,7 +209,7 @@ export function deriveCrewView<S extends CrewShellInput>(
   };
 }
 
-export interface CrewFeedRead {
+interface CrewFeedRead {
   /**
    * `null` while nothing is known yet or the read failed; `off` also for a Mate
    * without the crew feed, and for one whose frames this client cannot read

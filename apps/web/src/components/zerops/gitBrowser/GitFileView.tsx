@@ -34,7 +34,7 @@ import { troubleWords } from "./GitAtCommit";
 import type { GitBrowseSearch, GitView } from "./GitBrowseView";
 import { RepoMarkdown, type RepoPathTarget } from "./RepoMarkdown";
 
-export interface GitFileViewProps {
+interface GitFileViewProps {
   readonly appId: string;
   readonly repo: string;
   /** The commit the page reads at. */

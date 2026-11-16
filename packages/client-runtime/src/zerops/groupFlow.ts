@@ -290,7 +290,7 @@ export type GroupNextStepKind =
   | "first-task"
   | "none";
 
-export type GroupNextStepTarget =
+type GroupNextStepTarget =
   | NonNullable<ProjectAttentionItem["target"]>
   | { readonly kind: "release"; readonly tag: string };
 
@@ -439,7 +439,7 @@ function withFirstDeploy(stop: GroupFlowStop, input: GroupFlowStopInput): GroupF
  * ended failed, or as HQ's records of it say (`firstDeploy`). `undefined` while HQ has none under
  * way, or nothing can be promised.
  */
-export function stageSettingUp(input: {
+function stageSettingUp(input: {
   readonly birth?: EnvironmentBirth | null | undefined;
   readonly projectStatus?: string | undefined;
   readonly services?: ReadonlyArray<PlatformService> | undefined;

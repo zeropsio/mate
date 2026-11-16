@@ -28,7 +28,7 @@ import { CrewHeading, CrewTextButton, CrewTip } from "./CrewParts";
 const SHOWN = 3;
 
 /** The work that went in — a commit, not a task closed with nothing of its own — newest first. */
-export function crewWorkInCode(tasks: ReadonlyArray<CrewTask>): ReadonlyArray<CrewTask> {
+function crewWorkInCode(tasks: ReadonlyArray<CrewTask>): ReadonlyArray<CrewTask> {
   return tasks
     .filter((task) => task.state === "landed" && task.landedCommit !== null)
     .toSorted(

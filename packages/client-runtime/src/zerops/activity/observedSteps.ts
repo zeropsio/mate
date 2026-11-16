@@ -166,7 +166,7 @@ export function failedPipelineSlots(failedAt: keyof PipelineState): ReadonlyArra
 }
 
 /** A secondary process (an observation's chip) as one compact row. */
-export interface ObservedProcessStep {
+interface ObservedProcessStep {
   readonly id: string;
   readonly label: string;
   readonly state: ObservedStep["state"];

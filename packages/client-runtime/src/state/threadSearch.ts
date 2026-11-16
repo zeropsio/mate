@@ -12,7 +12,7 @@ export interface EnvironmentThreadSearchMatch extends OrchestrationThreadSearchM
   readonly environmentId: EnvironmentId;
 }
 
-export interface ThreadSearchResultsState {
+interface ThreadSearchResultsState {
   readonly matches: ReadonlyArray<EnvironmentThreadSearchMatch>;
   readonly isLoading: boolean;
 }

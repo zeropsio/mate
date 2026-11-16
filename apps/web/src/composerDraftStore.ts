@@ -457,7 +457,7 @@ export interface ComposerSendIds {
 }
 
 /** What a surface asked the composer to send: its words, and its ids when it carries some. */
-export interface ComposerSendRequest {
+interface ComposerSendRequest {
   readonly prompt: string;
   readonly ids?: ComposerSendIds | undefined;
 }
@@ -704,7 +704,7 @@ interface ComposerDraftStoreState {
   moveComposerPromptAndImages: (from: ComposerThreadTarget, to: ComposerThreadTarget) => void;
 }
 
-export interface EffectiveComposerModelState {
+interface EffectiveComposerModelState {
   selectedModel: string;
   modelOptions: ProviderOptionSelectionsByProvider | null;
 }
@@ -4164,12 +4164,4 @@ export function finalizePromotedDraftThreadByRef(threadRef: ScopedThreadRef): vo
     }
   }
   clearBackgroundDraftSubmissionByRef(threadRef);
-}
-
-export function finalizePromotedDraftThreadsByRef(
-  serverThreadRefs: Iterable<ScopedThreadRef>,
-): void {
-  for (const threadRef of serverThreadRefs) {
-    finalizePromotedDraftThreadByRef(threadRef);
-  }
 }

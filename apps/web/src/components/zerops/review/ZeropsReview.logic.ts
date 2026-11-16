@@ -112,7 +112,7 @@ export function keyStaysInReview(key: string): boolean {
  * change's record is read, the room its words will take; and where it wrote none, nothing at all —
  * no heading over no words. A run's reply is never borrowed: it may be about other changes.
  */
-export type ReviewDescription =
+type ReviewDescription =
   | { readonly kind: "body"; readonly text: string }
   | { readonly kind: "reading" }
   | { readonly kind: "none" };
@@ -154,13 +154,13 @@ export function descriptionHeads(text: string, label: string): boolean {
  * other addresses among them — stays a plain link, never read with the person's session; one
  * inline or scripted is nothing.
  */
-export type DescriptionPicture =
+type DescriptionPicture =
   | { readonly kind: "hq"; readonly url: string }
   | { readonly kind: "elsewhere"; readonly url: string }
   | { readonly kind: "none" };
 
 /** The tallest a description's picture stands (`.rv-pic img`'s `max-height`). */
-export const REVIEW_PICTURE_MAX_HEIGHT = 560;
+const REVIEW_PICTURE_MAX_HEIGHT = 560;
 
 /** The widest or tallest a picture a description sizes can be; anything past it is no size. */
 const PICTURE_SIZE_MAX = 16384;
@@ -288,7 +288,7 @@ export const REVIEW_DIFF_LINES_SHOWN = 400;
 export const REVIEW_DIFF_LINES_MAX = 2_000;
 
 /** What follows the lines a file's diff shows: the way to the rest, or that it is not here. */
-export type DiffRest =
+type DiffRest =
   | { readonly kind: "show"; readonly label: string }
   | { readonly kind: "cut"; readonly words: string };
 
@@ -678,7 +678,7 @@ export function tryItPreviews(input: {
 }
 
 /** One part's preview in a change's review, as its receipt left it. */
-export interface ReceiptRow {
+interface ReceiptRow {
   readonly setup: string;
   readonly preview: string;
   /** "from a1b2c3d · verified", "from an uncommitted tree", "deploy failed", "not deployed". */

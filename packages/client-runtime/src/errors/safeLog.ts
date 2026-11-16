@@ -3,7 +3,7 @@ const SAFE_ERROR_LABEL =
 const SAFE_TRACE_ID = /^[A-Za-z0-9._:-]{1,128}$/;
 const STACK_FRAME_LIMIT = 32;
 
-export interface SafeErrorLogAttributes {
+interface SafeErrorLogAttributes {
   readonly errorType: "error" | "array" | "null" | "object" | "primitive";
   readonly errorName?: string;
   readonly errorTag?: string;

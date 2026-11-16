@@ -40,25 +40,25 @@ declare module "../model.ts" {
 const answered = (_read: unknown, _intent: unknown, receipt: OperationReceipt) =>
   receipt.outcome.kind === "succeeded";
 
-export const setChief: OperationKind<"set-chief"> = {
+const setChief: OperationKind<"set-chief"> = {
   kind: "set-chief",
   executor: "hq",
   reflected: answered,
 };
 
-export const registerBirthChief: OperationKind<"register-birth-chief"> = {
+const registerBirthChief: OperationKind<"register-birth-chief"> = {
   kind: "register-birth-chief",
   executor: "hq",
   reflected: answered,
 };
 
-export const decideProposal: OperationKind<"decide-proposal"> = {
+const decideProposal: OperationKind<"decide-proposal"> = {
   kind: "decide-proposal",
   executor: "hq",
   reflected: answered,
 };
 
-export const recordReveal: OperationKind<"record-reveal"> = {
+const recordReveal: OperationKind<"record-reveal"> = {
   kind: "record-reveal",
   executor: "hq",
   reflected: answered,

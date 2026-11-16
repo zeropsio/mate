@@ -27,7 +27,7 @@ import {
   withoutOsPrefix,
 } from "./infrastructureType.ts";
 
-export { isPoolOrSandboxServiceType, isPoolServiceType, isSandboxServiceType };
+export { isPoolServiceType, isSandboxServiceType };
 
 export type ZeropsTopologyGroup = "runtimes" | "data" | "infrastructure";
 

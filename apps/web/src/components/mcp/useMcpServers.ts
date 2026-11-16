@@ -56,7 +56,7 @@ export type McpActionResult =
   | { readonly ok: true }
   | { readonly ok: false; readonly message: string };
 
-export interface UseMcpServers {
+interface UseMcpServers {
   readonly state: McpTabState;
   readonly refresh: () => void;
   readonly act: (action: McpAction) => Promise<McpActionResult>;

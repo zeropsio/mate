@@ -6,7 +6,7 @@ import { applyThemePalette, resolveThemeHalf, type ThemeAppearance } from "~/the
 /** How the kit page shows its sections: one appearance, or both side by side. */
 export type KitView = ThemeAppearance | "both";
 
-export interface KitSearch {
+interface KitSearch {
   readonly appearance?: KitView;
   /** Set on the two frames of the "both" view: the sections alone, without the index. */
   readonly pane?: true;

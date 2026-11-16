@@ -11,7 +11,7 @@
 
 import { zeropsClientsFromUser, type ZeropsRegistrationResponse } from "./api.ts";
 
-export interface RegistrationProvisioningStart {
+interface RegistrationProvisioningStart {
   /** The org to poll for the claimed project, or null when the response named none. */
   readonly clientId: string | null;
   readonly zcpClaimed: boolean | undefined;

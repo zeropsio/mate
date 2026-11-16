@@ -38,7 +38,7 @@ export function unavailableVerdict(cause: unknown): ZeropsPrincipalVerdict {
  */
 export const ZEROPS_RENEWAL_MARGIN_MS = 2 * 60 * 60_000;
 
-export interface ZeropsSessionCalls {
+interface ZeropsSessionCalls {
   /** The client the session holds its token in; the app's other readers share it. */
   readonly client: ZeropsApiClient;
   /** `user/info` with the held session. */

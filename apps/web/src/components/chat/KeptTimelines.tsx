@@ -334,7 +334,7 @@ const TimelineSlot = memo(function TimelineSlot({
 });
 
 /** Reads a conversation's own list props for a list out of sight, and tells them. */
-export type TimelineReader = (props: {
+type TimelineReader = (props: {
   readonly threadKey: string;
   /** Out of sight and nobody about to open it: it reads only as a turn starts or ends. */
   readonly hold: boolean;

@@ -3,69 +3,30 @@ export {
   envChangeWords,
   humanizeToolName,
   operationTone,
-  plural,
 } from "../operations/phrases.ts";
-export { normalizedToolName } from "./partition.ts";
-export { compareCallRows, compareAnchors } from "./order.ts";
-export { collectZeropsCalls } from "./calls.ts";
+export { classifyZeropsCall, TIMELINE_HIDDEN_TOOL_NAMES } from "./classify.ts";
 export {
-  classifyZeropsCall,
-  isBootstrapRouteMenuStart,
-  isBootstrapSessionCall,
-  isBootstrapStartWithRoute,
-  TIMELINE_HIDDEN_TOOL_NAMES,
-  type ZeropsCallClass,
-} from "./classify.ts";
-export {
-  CLOSED_CARD_RESULT_TOOLS,
   closedCardReadsResultOf,
   isReadOperationKind,
   reduceZeropsOperations,
-  type ZeropsOperationsReduction,
 } from "./operations.ts";
-export { composeSession } from "./session.ts";
 export { standupRunsOn, standupStepRole } from "./builders/standup.ts";
-export {
-  deriveZeropsThreadModel,
-  type ZeropsThreadModel,
-  type ZeropsThreadModelInput,
-} from "./deriveThreadModel.ts";
+export { deriveZeropsThreadModel } from "./deriveThreadModel.ts";
 export type {
   ZeropsBrowserRead,
   ZeropsCall,
-  ZeropsCallImage,
   ZeropsCallStatus,
   ZeropsEnvChange,
-  ZeropsVaultRequest,
   ZeropsOperation,
-  ZeropsOperationBrowserSummary,
   ZeropsOperationKind,
-  ZeropsOperationLink,
   ZeropsOperationPhase,
-  ZeropsOperationPullRequest,
   ZeropsOperationStep,
-  ZeropsOperationStepState,
   ZeropsReadResult,
-  ZeropsSessionView,
   ZeropsTimelineEntry,
-  ZeropsWorkAttempt,
 } from "./types.ts";
 export {
-  ORG_TOOL_PREFIX,
-  readZeropsProposal,
   type ZeropsAccessLevel,
-  type ZeropsAccessProposalParams,
   type ZeropsChiefMessageParams,
-  type ZeropsEnvProposalParams,
-  type ZeropsMcpAuthKind,
-  type ZeropsMcpCredentialField,
-  type ZeropsMcpProposalParams,
-  type ZeropsMcpScope,
-  type ZeropsMcpServerDefinition,
-  type ZeropsMcpTransport,
   type ZeropsMessageProposalParams,
   type ZeropsProposal,
-  type ZeropsProposalKind,
-  type ZeropsReleaseOfferParams,
-  type ZeropsServiceCreateParams,
 } from "./proposal.ts";

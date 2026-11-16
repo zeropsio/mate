@@ -5,7 +5,7 @@ import type { ComponentPropsWithoutRef, ReactNode } from "react";
 
 import type { ThreadToastData } from "./toast";
 
-export type StackedThreadToastOptions = {
+type StackedThreadToastOptions = {
   type: "error" | "warning" | "success" | "info" | "loading";
   title: ReactNode;
   description?: ReactNode;

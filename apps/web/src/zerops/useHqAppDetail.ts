@@ -141,7 +141,7 @@ export function useHqAppRecipes(appIds: ReadonlyArray<string>): ReadonlyMap<stri
   }, [details]);
 }
 
-export interface HqAppReleases {
+interface HqAppReleases {
   readonly releases: ReadonlyMap<string, ReadonlyArray<Release>>;
   readonly repos: ReadonlyMap<string, ReadonlyArray<RepoListEntry>>;
   /** Each application's changes: the open ones and the latest settled, newest first. */

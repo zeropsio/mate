@@ -116,7 +116,7 @@ export type EnvironmentCreationOutcome =
       readonly uncertain?: true;
     };
 
-export interface RunEnvironmentCreationInput {
+interface RunEnvironmentCreationInput {
   readonly clientId: string;
   readonly steps: ReadonlyArray<EnvironmentCreationStep>;
   readonly platform: EnvironmentCreationPlatform;

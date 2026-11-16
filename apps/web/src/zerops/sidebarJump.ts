@@ -17,7 +17,7 @@ import { create } from "zustand";
 import type { SidebarJumpIndex } from "../components/zerops/JumpBox.logic";
 import { onAccountLifetimeClose } from "./accountLifetime";
 
-export interface SidebarJumpState {
+interface SidebarJumpState {
   /** Null until a menu drew once for this account. */
   readonly index: SidebarJumpIndex | null;
   /** The menu can show a find: it is on screen, or comes back to show it. */

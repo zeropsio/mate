@@ -107,7 +107,7 @@ export function arrivalHeadline(mate: Named, kind: ArrivalKind): string {
 }
 
 /** What the view knows beyond the Mate for its sentence. */
-export interface ArrivalSentenceContext {
+interface ArrivalSentenceContext {
   /** Coming up past its cap, on the verdict that says so (`comingSentence`). */
   readonly late?: boolean | undefined;
   /** A colleague's view: the name of who added it, where it is known. */
@@ -568,7 +568,7 @@ export function arrivalSteps(
 }
 
 /** A Mate's arrival as the kit's one progress row (`Progress`): words in place of the step list. */
-export interface ArrivalRow {
+interface ArrivalRow {
   /** Each step's words, in order. */
   readonly steps: ReadonlyArray<string>;
   /** The step it is on: the first not done; the last once every one is. */

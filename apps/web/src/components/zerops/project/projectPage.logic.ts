@@ -24,7 +24,7 @@ import {
 } from "../projects/projectCard.logic";
 
 /** How many changes not live yet the page lists before its card's foot lists the rest. */
-export const PAGE_CHANGES = 6;
+const PAGE_CHANGES = 6;
 
 /** How many recent changes the page holds for *All changes*. */
 export const CHANGES_HELD = 40;
@@ -102,7 +102,7 @@ const ON_MAIN_NOT_LIVE = "On main, not live yet";
 const ON_STAGE_READY = "On stage, ready for production";
 const ON_MAIN_READY = "On main, ready for production";
 /** Where production is deployed outside Mate: on `main`, and nothing here says more of it. */
-export const ON_MAIN = "On main";
+const ON_MAIN = "On main";
 
 /**
  * A merged change's place as its group's label, in the line's words: on the stage or on `main`,
@@ -197,7 +197,7 @@ export function linesProductionFirst(lines: ReadonlyArray<PlaceLine>): ReadonlyA
 }
 
 /** The rows a project's page lists of its changes, and how many of those not live yet it holds back. */
-export interface PageChangeRows {
+interface PageChangeRows {
   readonly open: ReadonlyArray<CardChange>;
   readonly groups: ReadonlyArray<ChangeGroup>;
   readonly live: ReadonlyArray<ChangeGroup>;

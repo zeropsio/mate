@@ -74,7 +74,7 @@ export type ProjectAccessSlot = (
 export type AccessChoice = GivenLevel | NonNullable<PersonChange["end"]>;
 
 /** Where a person's own Team page is, by membership id: the chip's face leads there. */
-export type PersonPageLink = (clientUserId: string) => boolean;
+type PersonPageLink = (clientUserId: string) => boolean;
 
 /** Someone picked in *Add access*, at the level ticked for them. */
 export interface AccessPick {
@@ -82,7 +82,7 @@ export interface AccessPick {
   readonly level: GivenLevel;
 }
 
-export interface ProjectAccessChipsProps {
+interface ProjectAccessChipsProps {
   readonly view: ProjectPeopleView;
   /** The section's name, and the list's. */
   readonly label?: string;
@@ -103,7 +103,7 @@ export interface ProjectAccessChipsProps {
 }
 
 /** A badge's level: a chip's, or `owner` on a project someone owns. */
-export type BadgeLevel = ChipLevel | "owner";
+type BadgeLevel = ChipLevel | "owner";
 
 const BADGE_ICON: Readonly<Record<BadgeLevel, typeof LockOpenIcon>> = {
   owner: CrownIcon,

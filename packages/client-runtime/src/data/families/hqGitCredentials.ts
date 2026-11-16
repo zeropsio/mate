@@ -10,7 +10,7 @@ export const gitCredentialsId = (key: GitCredentialsKey): string =>
   JSON.stringify([key.orgId, key.appId]);
 export const gitCredentialsScope = (key: GitCredentialsKey): ScopeKey =>
   `hq:${key.orgId}:git-credentials:${gitCredentialsId(key)}`;
-export interface GitCredentialRequest {
+interface GitCredentialRequest {
   readonly requestId: string;
   readonly credential: GitCredential | null;
 }

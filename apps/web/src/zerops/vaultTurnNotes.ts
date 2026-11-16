@@ -57,18 +57,6 @@ export function recordVaultWrite(projectId: string, change: VaultChange): void {
   }));
 }
 
-/** A write the platform refused: nothing to tell. */
-export function forgetVaultWrite(projectId: string, change: VaultChange): void {
-  useVaultTurnStore.setState((state) => ({
-    own: {
-      ...state.own,
-      [projectId]: (state.own[projectId] ?? NO_CHANGES).filter(
-        (held) => vaultChangeIdOf(held) !== vaultChangeIdOf(change),
-      ),
-    },
-  }));
-}
-
 /** Changes no longer to tell in a conversation: sent with a message, or set aside. */
 function hide(threadKey: string, projectId: string, changes: ReadonlyArray<VaultChange>): void {
   const values = new Set(changes.map(vaultValueIdOf));
@@ -86,7 +74,7 @@ function hide(threadKey: string, projectId: string, changes: ReadonlyArray<Vault
   }));
 }
 
-export interface VaultTurnNotes {
+interface VaultTurnNotes {
   /** What the next message tells, oldest first: the composer's chips. */
   readonly changes: ReadonlyArray<VaultChange>;
   /** The note that rides with it, or `null` with nothing to tell. */

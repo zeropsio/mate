@@ -159,7 +159,7 @@ export interface MarkLoopHost {
 }
 
 /** The one loop every mark on a page shares, and what moves it. */
-export interface MarkLoop {
+interface MarkLoop {
   readonly register: (
     root: SVGSVGElement,
     parts: LiveMarkParts,

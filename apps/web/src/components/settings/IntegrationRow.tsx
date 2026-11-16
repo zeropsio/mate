@@ -42,7 +42,7 @@ export type IntegrationState =
   | { readonly kind: "off"; readonly words: string }
   | { readonly kind: "none" };
 
-export function IntegrationStatus({ state }: { readonly state: IntegrationState }) {
+function IntegrationStatus({ state }: { readonly state: IntegrationState }) {
   switch (state.kind) {
     case "checking":
       return (

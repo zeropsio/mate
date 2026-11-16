@@ -19,7 +19,7 @@ import type { HqPlacement } from "./hq/placement.ts";
 export type { RoleMateVisibility };
 
 /** As much of a project as this decision needs. */
-export interface MateAccessProject {
+interface MateAccessProject {
   readonly id: string;
   readonly clientId?: string | undefined;
   readonly userRoles?:
@@ -35,7 +35,7 @@ export interface MateAccessProject {
 }
 
 /** As much of the viewer's org membership as this decision needs. */
-export interface MateAccessViewer {
+interface MateAccessViewer {
   /** The org this membership is in. */
   readonly id: string;
   /** The `clientUser` id — what a project's `userRoles` names. */
@@ -130,7 +130,7 @@ export function resolveMateProjectRole(input: {
  *
  * Handing a Mate over is an organization owner's or admin's (`handsOverMates`).
  */
-export interface MateVerbs {
+interface MateVerbs {
   readonly delete: boolean;
   readonly rename: boolean;
 }
@@ -173,7 +173,7 @@ export function mateOnlyOwnerOpensIt(ownerName?: string | undefined): string {
 export const ZEROPS_READ_ONLY_DOOR_REASON = "zerops_read_only";
 
 /** A member row, as much of it as naming an owner needs. */
-export interface MateOwnerCandidate {
+interface MateOwnerCandidate {
   /** The `clientUser` id — what a project's `userRoles` names. */
   readonly id: string;
   readonly user?:

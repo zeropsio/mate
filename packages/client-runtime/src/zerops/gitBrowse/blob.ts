@@ -24,10 +24,10 @@ export const lineCount = (content: string) => {
 
 export const isMarkdownPath = (path: string) => /\.(?:md|markdown)$/iu.test(path);
 /** Images the browser shows from their bytes (the kinds `raw` sends as images). */
-export const isImagePath = (path: string) => /\.(?:png|jpe?g|gif|webp)$/iu.test(path);
+const isImagePath = (path: string) => /\.(?:png|jpe?g|gif|webp)$/iu.test(path);
 
 /** What a file view draws for a file. */
-export type FileShape =
+type FileShape =
   | { readonly kind: "text"; readonly content: string; readonly cut: boolean }
   | { readonly kind: "image" }
   | { readonly kind: "binary" }

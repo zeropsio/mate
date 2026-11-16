@@ -20,7 +20,7 @@ export interface PlaceKey {
 
 export const placeKeyOf = ({ orgId, projectId }: PlaceKey) => `${orgId}/${projectId}`;
 
-export interface PlaceFlights {
+interface PlaceFlights {
   /** Our writes under way, by `writeKey`. */
   readonly flights: Readonly<Record<string, AddressWrite>>;
   /** Why the last write of a control failed, by `writeKey`. */

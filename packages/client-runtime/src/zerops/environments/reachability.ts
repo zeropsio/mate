@@ -125,7 +125,7 @@ export const environmentLinkable = (verdict: Reachability): boolean =>
  * says nothing (MU-1, MU-3). Both versions are judged by `mateServerCompatibility`, the one
  * comparison against the floor.
  */
-export const floorVerdict = (
+const floorVerdict = (
   descriptor: DescriptorFacts,
 ): Extract<Reachability, { readonly kind: "update-required" | "update-unavailable" }> =>
   descriptor.update !== null && mateServerCompatibility(descriptor.update.latest) === "supported"
@@ -280,7 +280,7 @@ export type ReachabilityAction =
 export const askAgainLabel = (actions: ReadonlyArray<string>): "Try again" | "Try now" | null =>
   actions.includes("try-again") ? "Try again" : actions.includes("try-now") ? "Try now" : null;
 
-export interface ReachabilityPhrase {
+interface ReachabilityPhrase {
   /** The cause only; null when the verdict needs no words (a ready Mate). */
   readonly text: string | null;
   readonly actions: ReadonlyArray<ReachabilityAction>;

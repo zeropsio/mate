@@ -7,7 +7,7 @@ import { useEffect, useMemo } from "react";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 export const ZEROPS_WORKSPACE_ROOT = "/var/www";
 export const checkoutPathFor = (hostname: string): string => `${ZEROPS_WORKSPACE_ROOT}/${hostname}`;
-export interface ZeropsGitRemoteAnswer {
+interface ZeropsGitRemoteAnswer {
   readonly reachable: boolean;
   readonly detail: string | undefined;
   /**

@@ -28,7 +28,7 @@ export type TeamPlatform = Pick<
 >;
 
 /** Reads the member list and this member's grants again; settles however the reads end. */
-export type TeamReadBack = (orgId: string, clientUserId: string) => Promise<void>;
+type TeamReadBack = (orgId: string, clientUserId: string) => Promise<void>;
 
 const FORBIDDEN = "Only an organization owner or admin can change the team.";
 const GONE = "They're no longer in this organization.";

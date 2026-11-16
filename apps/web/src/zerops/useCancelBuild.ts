@@ -11,7 +11,7 @@ import { useAccountOperations } from "./accountOperations";
 import { useAccountData } from "./ZeropsAccountData";
 import { submitZeropsWrite } from "./zeropsWrite";
 
-export interface CancelBuild {
+interface CancelBuild {
   readonly cancel: () => Promise<void>;
   readonly cancelling: boolean;
   /** Why the last one failed; `null` when none did. */

@@ -48,7 +48,7 @@ export type GitWorkRow =
   | { readonly kind: "plain"; readonly title: string; readonly tone: ServiceStatusToneId };
 
 /** "1 file not committed yet" — the container's own fact, which outranks a calm state. */
-export function uncommittedWords(count: number): string {
+function uncommittedWords(count: number): string {
   return `${String(count)} ${count === 1 ? "file" : "files"} not committed yet`;
 }
 
@@ -249,7 +249,7 @@ export function lineWork(
 }
 
 /** Work on disk, under its bead's title: it is no change the project lists. */
-export const NOT_A_CHANGE_YET = "Not a change yet";
+const NOT_A_CHANGE_YET = "Not a change yet";
 
 /**
  * Where a landed change went, in the words the project's change rows say it (`cardChanges`): in a

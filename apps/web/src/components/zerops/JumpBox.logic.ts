@@ -234,7 +234,7 @@ export interface JumpHit {
   readonly snippet: string;
 }
 
-export type JumpQuery =
+type JumpQuery =
   | { readonly mode: "find"; readonly text: string }
   | { readonly mode: "write"; readonly name: string };
 
@@ -269,7 +269,7 @@ export interface JumpGroup {
 }
 
 /** How many of each a group lists: one kind of thing never pushes the rest out of sight. */
-export const JUMP_LIMITS = {
+const JUMP_LIMITS = {
   /** Before anything is typed. */
   firstMates: 6,
   mates: 5,
@@ -327,7 +327,7 @@ const NOBODY: ReadonlySet<string> = new Set();
 const NO_PAGES = (): ReadonlyArray<JumpPage> => [];
 
 /** What a place is found by: its name with its project's, as its row says it, and what it runs. */
-export function stopFoundBy(stop: JumpStop, text: string): boolean {
+function stopFoundBy(stop: JumpStop, text: string): boolean {
   return (
     contains(`${stop.projectName} · ${stop.title}`, text) ||
     contains(`${stop.projectName} ${stop.title} ${stop.line}`, text)
@@ -470,7 +470,7 @@ function saidIn(
   return [...said.values()].slice(0, JUMP_LIMITS.conversations);
 }
 
-export interface HighlightPart {
+interface HighlightPart {
   readonly text: string;
   readonly match: boolean;
   /** Where the part starts in the text: its key among the others. */
@@ -539,7 +539,7 @@ export function snippetAround(text: string, query: string): string {
  */
 export type JumpWriteAction = "send" | "answer" | "open-and-send" | "open" | "wait" | "none";
 
-export interface JumpWritePlan {
+interface JumpWritePlan {
   readonly hint: string;
   readonly action: JumpWriteAction;
 }
@@ -637,7 +637,7 @@ export function jumpWritePlan(input: {
 }
 
 /** What a key does in the box, where the box answers it rather than its list. */
-export type JumpKeyAction = "send" | "back-to-list" | "back-to-find" | "choose" | "hold";
+type JumpKeyAction = "send" | "back-to-list" | "back-to-find" | "choose" | "hold";
 
 export function jumpKey(input: {
   readonly key: string;

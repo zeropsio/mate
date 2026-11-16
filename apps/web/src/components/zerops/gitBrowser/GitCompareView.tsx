@@ -25,7 +25,7 @@ type CompareProps = Pick<
 > & { readonly changes: ReadonlyArray<PickerChange> };
 
 /** What the compare says, the commits head adds, and the files it changed, each a jump below. */
-export function GitCompareSummary({
+function GitCompareSummary({
   compare,
   onJump,
   ...row

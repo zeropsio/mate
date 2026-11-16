@@ -12,10 +12,10 @@ import type { HqError } from "../../zerops/hq/client.ts";
 import type { StreamFault } from "../streamMachine.ts";
 
 /** `session-ended`: HQ no longer takes the session. `scope-denied`: the person may not read this. */
-export type AccessEnded = "session-ended" | "scope-denied";
+type AccessEnded = "session-ended" | "scope-denied";
 
 /** What HQ answered, as each path holds it: a call's error, a scope's frame, a stream's fault. */
-export type HqAnswer =
+type HqAnswer =
   | Pick<HqError, "kind" | "code">
   | Pick<HqScopeFailure, "disposition" | "code">
   | Pick<StreamFault, "outcome" | "code">;

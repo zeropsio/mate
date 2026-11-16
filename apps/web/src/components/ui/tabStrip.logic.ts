@@ -1,5 +1,5 @@
 /** A tab's or the strip's horizontal extent, in one coordinate space. */
-export interface HorizontalExtent {
+interface HorizontalExtent {
   readonly left: number;
   readonly right: number;
 }

@@ -22,7 +22,6 @@ import {
   type CrewSeam,
   type MateTaskMessage,
   type MateTaskSource,
-  type MessageId,
   type OrchestrationLatestTurn,
   type TurnId,
   type RunRecord,
@@ -113,7 +112,7 @@ export function workEntryIsVisibleInGroup(
   );
 }
 
-export interface TimelineEndState {
+interface TimelineEndState {
   readonly isAtEnd?: boolean;
   readonly contentLength?: number;
   readonly scroll?: number;
@@ -261,7 +260,7 @@ export function normalizeCompactToolLabel(value: string): string {
 
 type ToolGroupAction = "read" | "edit" | "command" | "code-search" | "search" | "other";
 
-export function workLogEntryIsLocalCodeSearch(entry: WorkLogEntry): boolean {
+function workLogEntryIsLocalCodeSearch(entry: WorkLogEntry): boolean {
   return (
     entry.itemType === "web_search" &&
     /\bgrep\b/i.test(normalizeCompactToolLabel(entry.toolTitle ?? entry.label))
@@ -291,63 +290,7 @@ export function toolGroupAction(entry: WorkLogEntry): ToolGroupAction {
   return "other";
 }
 
-function toolGroupActionCount(
-  action: ToolGroupAction,
-  entries: ReadonlyArray<WorkLogEntry>,
-): number {
-  if (action !== "edit") return entries.length;
-
-  const changedFiles = new Set<string>();
-  let editsWithoutFileDetails = 0;
-  for (const entry of entries) {
-    if (!entry.changedFiles || entry.changedFiles.length === 0) {
-      editsWithoutFileDetails += 1;
-      continue;
-    }
-    for (const file of entry.changedFiles) changedFiles.add(file);
-  }
-  return changedFiles.size + editsWithoutFileDetails;
-}
-
-function toolGroupActionLabel(action: ToolGroupAction, count: number): string {
-  switch (action) {
-    case "read":
-      return `Read ${count} ${count === 1 ? "file" : "files"}`;
-    case "edit":
-      return `Changed ${count} ${count === 1 ? "file" : "files"}`;
-    case "command":
-      return `Ran ${count} ${count === 1 ? "command" : "commands"}`;
-    case "search":
-      return `Searched the web ${count} ${count === 1 ? "time" : "times"}`;
-    case "code-search":
-      return `Searched code ${count} ${count === 1 ? "time" : "times"}`;
-    case "other":
-      return `Used ${count} ${count === 1 ? "tool" : "tools"}`;
-  }
-}
-
-/** Immediate, provider-neutral fallback while generated tool summaries are disabled or unavailable. */
-export function summarizeToolGroup(entries: ReadonlyArray<WorkLogEntry>): string {
-  const summaryEntries = omitSupersededLifecycleMarkers(entries, (entry) => entry);
-  const groupedEntries = new Map<ToolGroupAction, WorkLogEntry[]>();
-  for (const entry of summaryEntries) {
-    const action = toolGroupAction(entry);
-    const group = groupedEntries.get(action);
-    if (group) group.push(entry);
-    else groupedEntries.set(action, [entry]);
-  }
-  const labels = [...groupedEntries].map(([action, actionEntries]) =>
-    toolGroupActionLabel(action, toolGroupActionCount(action, actionEntries)),
-  );
-  const sentenceLabels = labels.map((label, index) =>
-    index === 0 ? label : label.charAt(0).toLowerCase() + label.slice(1),
-  );
-  if (sentenceLabels.length < 2) return sentenceLabels[0] ?? "";
-  if (sentenceLabels.length === 2) return sentenceLabels.join(" and ");
-  return `${sentenceLabels.slice(0, -1).join(", ")}, and ${sentenceLabels.at(-1)}`;
-}
-
-export function omitSupersededLifecycleMarkers<T>(
+function omitSupersededLifecycleMarkers<T>(
   entries: readonly T[],
   workEntryFor: (entry: T) => WorkLogEntry,
 ): T[] {
@@ -639,7 +582,7 @@ type MessagesTimelineRowBody =
       status: RunStatus | null;
       /**
        * What the run came to, for its worked line's effort after its time
-       * ("2 commands · 1 file read", `useRunEffortWords`, which follows a
+       * ("2 commands · 1 file read", `useRunEffort`, which follows a
        * change merged since); null while it runs.
        */
       outcome: OutcomeModel | null;
@@ -1120,7 +1063,7 @@ export function carriedRowGrowth(row: {
 }
 
 /** A background row's facts: what ran, how it ended, whose (`background`). */
-export interface BackgroundOpener {
+interface BackgroundOpener {
   readonly key: string;
   readonly entries: ReadonlyArray<WorkLogEntry>;
   readonly tasks: number;
@@ -1285,7 +1228,7 @@ export function helperFinishesOf(model: AgentPanelModel): HelperFinish[] {
  * option was its advice, not what the person answered (Nova, 2026-09-28: the
  * mark stood in the person's own bubble).
  */
-export function answerWords(answer: string): string {
+function answerWords(answer: string): string {
   const words = answer.replace(/\s*\(recommended\)\s*$/iu, "").trim();
   return words.length > 0 ? words : answer;
 }
@@ -1441,14 +1384,11 @@ function epoch(iso: string | undefined): number | null {
  * yet its call returned — and, by the thread's provider, whether a call that
  * names no response goes stale by timing (`batchesByTiming`).
  */
-export interface BatchReading extends BatchRule {
+interface BatchReading extends BatchRule {
   readonly returned: ReadonlySet<string>;
 }
 
-export function batchReadingOf(
-  entries: ReadonlyArray<TimelineEntry>,
-  rule: BatchRule,
-): BatchReading {
+function batchReadingOf(entries: ReadonlyArray<TimelineEntry>, rule: BatchRule): BatchReading {
   const returned = new Set<string>();
   for (const entry of entries) {
     if (entry.kind !== "work" && entry.kind !== "generic-call") continue;
@@ -1521,7 +1461,7 @@ function batchCallOf(
  * stale, each with when it went stale. Read over a whole run, so a call left
  * open before the person wrote into it goes stale too.
  */
-export function stretchBatch(
+function stretchBatch(
   stretch: Pick<Stretch, "entries">,
   reading: BatchReading,
 ): LiveBatch<BatchEntry> {

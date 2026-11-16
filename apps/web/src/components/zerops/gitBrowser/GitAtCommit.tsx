@@ -18,7 +18,7 @@ export function GitNoCommit({ pending }: { readonly pending?: boolean | undefine
 }
 
 /** A read not answered yet: reading, or waiting for HQ before it can. */
-export function GitReading({ busy, words }: { readonly busy: boolean; readonly words: string }) {
+function GitReading({ busy, words }: { readonly busy: boolean; readonly words: string }) {
   return (
     <p className="text-sm text-muted-foreground" role="status">
       {busy ? words : "Waiting for HQ…"}

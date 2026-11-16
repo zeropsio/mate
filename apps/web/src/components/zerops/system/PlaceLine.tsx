@@ -18,7 +18,7 @@ import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { SINCE_WORD, type PlaceLine as PlaceLineData } from "../projects/projectCard.logic";
 import { placeLineView } from "./PlaceLine.logic";
 
-export type PlaceLineDensity = "compact" | "row" | "header";
+type PlaceLineDensity = "compact" | "row" | "header";
 
 /**
  * Props: `line` (one of `placeLines(…)` / `useApplicationPlaces(groupId).places`); `groupId` (its

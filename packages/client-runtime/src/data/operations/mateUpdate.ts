@@ -32,7 +32,7 @@ export interface MateRestartTarget {
   readonly mate?: string | undefined;
 }
 /** What the press's answer said: absent when the answer was lost. */
-export interface MateUpdateAnswer {
+interface MateUpdateAnswer {
   /** The boot that answered: a reboot is judged against it. */
   readonly bootId?: string | undefined;
 }
@@ -48,7 +48,7 @@ interface Pressed {
   readonly restart?: MateRestartTarget | undefined;
 }
 /** `unconfirmed`: the Mate is back but its reading cannot say yet, for a bounded wait to end. */
-export type UpdateVerdict = Settlement | "unconfirmed" | null;
+type UpdateVerdict = Settlement | "unconfirmed" | null;
 
 /** zcp writes `v9.226.0`; the press named `9.226.0`. */
 const zcpVersionText = (version: string) => version.replace(/^v(?=\d)/u, "");

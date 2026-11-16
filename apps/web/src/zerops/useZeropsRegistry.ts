@@ -19,7 +19,7 @@ import { useMemo } from "react";
 import { hqNavigationAtom } from "../state/zerops";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
-export interface ZeropsRegistryState {
+interface ZeropsRegistryState {
   readonly registry: ZeropsRegistry;
   /** True until the organization in view's structure is known. */
   readonly loading: boolean;

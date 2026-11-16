@@ -243,7 +243,7 @@ const standUpHoldReason = (mateName: string) =>
   `${mateName} is standing up development. You can write once it has started.`;
 
 /** An agent an automated Mate can run: one no person signs in to, on and ready. */
-export function automatedAgentUsable(providers: ReadonlyArray<ServerProvider>): boolean {
+function automatedAgentUsable(providers: ReadonlyArray<ServerProvider>): boolean {
   return providers.some(
     (provider) =>
       agentIdForDriverKind(provider.driver) === undefined &&

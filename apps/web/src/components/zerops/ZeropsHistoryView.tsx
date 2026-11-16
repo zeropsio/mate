@@ -40,7 +40,7 @@ export interface HistoryNames {
   readonly mateNames?: ReadonlyMap<string, string> | undefined;
 }
 
-export interface ZeropsHistoryRequest {
+interface ZeropsHistoryRequest {
   /** The application the repository is HQ's of: where its commits open in the Git browser. */
   readonly appId: string;
   /** The repository, as the recipe names it — never guessed from a hostname. */
