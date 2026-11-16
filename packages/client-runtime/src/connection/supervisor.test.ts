@@ -182,11 +182,15 @@ const makeHarness = Effect.fn("TestConnectionHarness.make")(function* (options?:
     return PREPARED_CONNECTION;
   });
 
+  /** Whether each attempt, in order, was let to dial its socket ahead of its ticket. */
+  const dialsAhead: Array<boolean> = [];
   const connect = Effect.fn("TestConnectionDriver.connect")(function* (
     entry: ConnectionCatalogEntry,
     reportProgress: (progress: ConnectionDriver.ConnectionDriverProgress) => Effect.Effect<void>,
     queue?: (queued: boolean) => Effect.Effect<void>,
+    driverOptions?: { readonly ahead?: boolean },
   ) {
+    dialsAhead.push(driverOptions?.ahead === true);
     const target = entry.target;
     yield* reportProgress({ stage: "preparing" });
     const prepared = yield* prepare(target);
@@ -249,6 +253,7 @@ const makeHarness = Effect.fn("TestConnectionHarness.make")(function* (options?:
 
   return {
     dependencies,
+    dialsAhead,
     prepareCount,
     sessionCount,
     releaseCount,
@@ -936,6 +941,101 @@ describe("EnvironmentSupervisor", () => {
       expect(yield* Ref.get(harness.releaseCount)).toBe(1);
       expect(Option.isNone(yield* SubscriptionRef.get(supervisor.prepared))).toBe(true);
     }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  // witness: packages/client-runtime/src/connection/supervisor.ts | Ref.getAndSet(attempted, true) → Ref.get(attempted)
+  it.effect(
+    "only a connection's first attempt may dial its socket ahead of its ticket: a retry after a failure asks for its ticket first",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness({
+          prepare: (attempt) =>
+            attempt === 1
+              ? Effect.fail(transient("The Mate did not answer."))
+              : Effect.succeed(PREPARED_CONNECTION),
+        });
+        const supervisor = yield* EnvironmentSupervisor.make(TARGET_ENTRY, {
+          initiallyDesired: true,
+        }).pipe(Effect.provide(harness.dependencies));
+
+        yield* awaitState(supervisor.state, (state) => state.phase === "backoff");
+        yield* TestClock.adjust("2 seconds");
+        yield* awaitState(supervisor.state, (state) => state.phase === "connected");
+        expect(harness.dialsAhead).toEqual([true, false]);
+      }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  // witness: packages/client-runtime/src/connection/supervisor.ts | const first = !(yield* Ref.getAndSet(attempted, true)); → const first = attempt === 1 && lastFailure === null;
+  it.effect(
+    "a retry the person asks for, the ladder set back to its first rung, asks for its ticket first all the same",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness({
+          prepare: (attempt) =>
+            attempt === 1
+              ? Effect.fail(transient("The Mate did not answer."))
+              : Effect.succeed(PREPARED_CONNECTION),
+        });
+        const supervisor = yield* EnvironmentSupervisor.make(TARGET_ENTRY, {
+          initiallyDesired: true,
+        }).pipe(Effect.provide(harness.dependencies));
+
+        yield* awaitState(supervisor.state, (state) => state.phase === "backoff");
+        yield* supervisor.retryNow;
+        yield* awaitState(supervisor.state, (state) => state.phase === "connected");
+        expect(harness.dialsAhead).toEqual([true, false]);
+      }),
+  );
+
+  // witness: packages/client-runtime/src/connection/supervisor.ts | yield* Ref.set(attempted, false); → yield* Effect.void;
+  it.effect(
+    "a connection let go and asked for again dials ahead on its first attempt, as a new one does",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness();
+        const supervisor = yield* EnvironmentSupervisor.make(TARGET_ENTRY, {
+          initiallyDesired: true,
+        }).pipe(Effect.provide(harness.dependencies));
+
+        yield* awaitState(supervisor.state, (state) => state.phase === "connected");
+        yield* supervisor.disconnect;
+        yield* awaitState(supervisor.state, (state) => state.phase === "available");
+        yield* supervisor.connect;
+        yield* awaitState(supervisor.state, (state) => state.phase === "connected");
+        expect(harness.dialsAhead).toEqual([true, true]);
+      }),
+  );
+
+  // witness: packages/client-runtime/src/connection/supervisor.ts | Ref.getAndSet(attempted, true)); → Ref.get(attempted));
+  it.effect(
+    "a replacement opened beside the live connection never dials ahead: the Mate has one socket of this client's until the swap",
+    () =>
+      Effect.gen(function* () {
+        const tokenLifetimeMs = DPOP_ACCESS_TOKEN_REFRESH_SKEW_MS * 2;
+        const harness = yield* makeHarness({
+          prepare: (attempt) =>
+            Effect.succeed({
+              ...PREPARED_CONNECTION,
+              target: RELAY_TARGET,
+              httpAuthorization: {
+                _tag: "Dpop",
+                accessToken: `access-token-${attempt}`,
+                expiresAtEpochMs: tokenLifetimeMs * attempt,
+              },
+            }),
+        });
+        const supervisor = yield* EnvironmentSupervisor.make(RELAY_ENTRY, {
+          initiallyDesired: true,
+        }).pipe(Effect.provide(harness.dependencies));
+
+        yield* awaitState(supervisor.state, (state) => state.phase === "connected");
+        yield* TestClock.adjust(DPOP_ACCESS_TOKEN_REFRESH_SKEW_MS);
+        yield* awaitState(
+          supervisor.state,
+          (state) => state.phase === "connected" && state.generation === 2,
+        );
+        expect(harness.dialsAhead).toEqual([true, false]);
+      }).pipe(Effect.provide(TestClock.layer())),
   );
 
   it.effect("time waiting for the browser's socket queue does not count against setup", () =>

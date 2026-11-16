@@ -54,6 +54,8 @@ const LATE_PING_TICK_MILLIS = 10_000;
 const SENT_BYTES_A_TICK = 64 * 1024;
 /** A Mate closed a ticket's socket: it took the ticket's access back, or refused it (`ws.ts`). */
 const MATE_ACCESS_ENDED_CLOSE = 4401;
+/** A WebSocket's `readyState` once its handshake is done. */
+const SOCKET_OPEN = 1;
 
 export interface RpcSession {
   readonly client: WsRpcProtocolClient;
@@ -85,9 +87,20 @@ export interface RpcSessionOptions extends ServerConfigSubscriptionInput {
 export class RpcSessionFactory extends Context.Service<
   RpcSessionFactory,
   {
+    /**
+     * `dialed` is the connection's own socket when its handshake was started ahead of its ticket
+     * (`dial`), at `connection.socketUrl`: used once, in place of a new one. The ticket is its
+     * first frame all the same.
+     */
     readonly connect: (
       connection: PreparedConnection,
+      dialed?: Socket.WebSocketLike,
     ) => Effect.Effect<RpcSession, ConnectionAttemptError, Scope.Scope>;
+    /**
+     * Starts a socket's handshake at an address, and nothing else: nothing is sent on it. Whoever
+     * dials hands it to `connect` or closes it (`driver.ts`).
+     */
+    readonly dial?: (socketUrl: string) => Socket.WebSocketLike;
   }
 >()("@t3tools/client-runtime/rpc/session/RpcSessionFactory") {}
 
@@ -163,7 +176,10 @@ export const make = Effect.fn("RpcSessionFactory.make")(function* (
   const webSocketConstructor = yield* Socket.WebSocketConstructor;
   const { pingTimeoutPaused: _pingTimeoutPaused, ...serverConfigInput } = options;
 
-  const connect = Effect.fnUntraced(function* (connection: PreparedConnection) {
+  const connect = Effect.fnUntraced(function* (
+    connection: PreparedConnection,
+    dialed?: Socket.WebSocketLike,
+  ) {
     yield* Effect.annotateCurrentSpan({
       "connection.environment.id": connection.environmentId,
     });
@@ -202,12 +218,19 @@ export const make = Effect.fn("RpcSessionFactory.make")(function* (
       readonly socket: ReturnType<typeof webSocketConstructor>;
       waiting: number;
     } | null = null;
+    /** The socket dialed ahead for this connection, until it is used. */
+    let ahead = dialed;
     const constructor: typeof webSocketConstructor = (url, protocols) => {
-      const socket = webSocketConstructor(url, protocols);
+      // The attempt's own socket, its handshake begun beside its ticket request: the same
+      // address, nothing sent on it yet.
+      const socket = ahead ?? webSocketConstructor(url, protocols);
+      ahead = undefined;
       sending = { socket, waiting: 0 };
       if (firstFrame === undefined) return socket;
-      // Registered before the protocol's own listeners: the ticket is the connection's first frame.
-      socket.addEventListener("open", () => socket.send(firstFrame), { once: true });
+      // Before anything the protocol sends: the ticket is the connection's first frame. On a
+      // socket already open that is now; else registered before the protocol's own listeners.
+      if (socket.readyState === SOCKET_OPEN) socket.send(firstFrame);
+      else socket.addEventListener("open", () => socket.send(firstFrame), { once: true });
       socket.addEventListener(
         "close",
         (event) => {
@@ -425,7 +448,10 @@ export const make = Effect.fn("RpcSessionFactory.make")(function* (
     } satisfies RpcSession;
   });
 
-  return RpcSessionFactory.of({ connect });
+  return RpcSessionFactory.of({
+    connect,
+    dial: (socketUrl) => webSocketConstructor(socketUrl),
+  });
 });
 
 export const layerWithOptions = (options: RpcSessionOptions) =>
