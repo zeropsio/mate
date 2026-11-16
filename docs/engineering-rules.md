@@ -54,15 +54,23 @@ that repository, or from GitHub.
 - **A design that cannot work by its nature stops.** When a source or credential the behaviour
   needs does not exist, say so and let a maintainer choose: provide what is missing, solve it
   another way, or drop the case. Never ship a mechanism that is right only sometimes.
-- **The smallest thing that is correct.** Prefer deleting and simplifying on existing foundations.
-  Each new mechanism (abstraction, flag, cache, timer, retry layer) is justified in one line of the
-  commit message. Current requirements only.
+- **No borrowed duties.** A duty never moves onto a part, credential or person whose primary job
+  it is not (for example any member's token proving a fact for an operation nobody started). Like a
+  cache or a polling loop it is never automatic and never proposed as a solution; at most a
+  maintainer is told it exists as a conscious last-resort hack. Where the source a behaviour needs
+  is missing, it is a gap: the rule above.
+- **The smallest thing that is correct.** The smallest model that makes correct behaviour
+  unsurprising; no machinery without a concrete constraint. Prefer deleting and simplifying on
+  existing foundations. Each new mechanism (abstraction, flag, cache, timer, retry layer) is
+  justified in one line of the commit message. Current requirements only; remove shallow wrappers
+  that add caller knowledge.
 - **Delete, don't disable.** No commented-out code, no "just in case" flag, no shim. Stale code,
   docs and rules are deleted, never shortened, marked superseded or kept for reference: history is
   git.
 - **Follow the chain, leave no orphans.** Removing or changing something cleans up every reference
   (variables, parameters, view data, imports, config keys) in the same change. Nothing written but
-  never read, no uncalled function, no component without a live consumer.
+  never read, no uncalled function, no component without a live consumer: delete them in the same
+  change, never polish them.
 - **No compatibility code for our own data and deployments.** No branch for old rows or old state,
   no backfill job, no code for old and new instances running side by side. When a change gives
   existing data a shape the new code does not accept, its description lists that data and the new
@@ -75,41 +83,8 @@ that repository, or from GitHub.
 ## 4. Tests
 
 Which suites run, and when, is each repository's own decision; its `AGENTS.md` says. What may
-become a test is the same everywhere.
-
-- **A test is a sentence.** A unit is a package whose `SENTENCES.md` lists `<id> — <sentence>`
-  lines: product sentences, or wire, persistence or security invariants. One test per id, every
-  test names one id, and a new test needs a new line a maintainer can refuse. A suite that is not a
-  unit gets no new case unless a maintainer asks for it; an area becomes units only on a
-  maintainer's word.
-- **One witness per case.** Above the case stands `witness: <product file> | <old> → <new>`: a
-  one-line change of product code that turns the case red on an assertion, never on a compile
-  error. The commit that adds the case shows that red once in its body.
-- **A case earns its place** by catching a plausible bug that would hurt a person or another part
-  of the system: a flipped condition, a dropped field, a wrong order or bound. Its sentence names
-  that break. Sabotage (returning nothing, panicking) is no witness. When an existing case already
-  fails on the witness, the new case is a duplicate and is not added.
-- **Nothing in product code exists for a test.** No branch, parameter, export or flag whose only
-  reader is a test or its witness. A behaviour that can be tested only end to end is a design
-  defect: move the decision into a function the product itself calls.
-- **Inputs and expectations.** Literals or recordings go in; expected values come from the spec or
-  the task, never from running the code. Never assert copy, pixels, class names, mock call counts,
-  unread state, harness glue, or the behaviour of a library or the platform.
-- **Where a test lives follows the code:** a decision is tested on literals; our own store on the
-  repository's one store fixture; a seam to something we do not own on recordings of the real
-  thing; the composed system by a short, capped list of live journeys.
-- **A unit's tests stay inside the process:** no started process, listener, network call, external
-  tool, sleep or wall-clock read. Concurrency is forced by a held lock or a receipt.
-- **Recordings** are written only against the real system, carry the steps that reproduce them and
-  are decoded through the consumer's real schema. One that no longer decodes is recorded again,
-  never edited.
-- **A bug** first fixes the missing or wrong sentence. A test the bug slipped past is replaced, not
-  joined.
-- **A removed test is named** in a commit trailer: `Drops-test-file: <path>` for a whole file, or
-  `Drops-test: <title> — <class>` with the class one of `copy`, `duplicate`, `fake-input`, `mock`,
-  `dead`, `library`, `trivia`, `harness` or `reworded`; `reworded` also needs a replacement case
-  carrying the same witness.
-- **No new test machinery** (harness, fixture server, check) without a maintainer's word.
+become a test, where it lives and how it is witnessed and removed is the same everywhere:
+[testing rules](testing-rules.md), read before adding, changing, removing or running a test.
 
 ## 5. Verify and deliver
 
@@ -122,6 +97,21 @@ become a test is the same everywhere.
   after that check has passed.
 - **A refusal is not routed around.** No other identity, credential, organisation or target than
   the task gave: stop the dependent step and ask.
+- **When something that is not your code fails** (accounts, APIs, credentials, infrastructure,
+  tools), classify by evidence, then act. Before each attempt write "hypothesis: … / test: …" on
+  one line. Never repeat an identical action expecting a different result, except class B.
+  - **A — yours** (something you started, or a wrong path, ID or variable in your command): fix and
+    continue; each attempt changes something.
+  - **B — transient** (timeout, 5xx, 429, "at capacity", connection reset, DNS SERVFAIL): same
+    action up to three times, pausing ~10 s, 30 s, 90 s; still failing → D.
+  - **C — refused** (401/403, 404, 409, 422, "not found", "permission denied", missing credential):
+    read the whole error body, name the account, credential and target in use (never a secret's
+    value), confirm with one read-only call. Your mistake → A; otherwise → D.
+  - **Unknown:** at most three distinct hypotheses, each tested once by the cheapest read-only probe.
+  - **D — park:** stop only dependent steps, finish every independent one, end with
+    `BLOCKED: <step> — <exact error> — <class> — tried: <hypotheses> — need: <one concrete
+    question>`. Whatever this section forbids, and substitute infrastructure, is never worked
+    around: it goes to D.
 
 ## 6. Knowledge and secrets
 

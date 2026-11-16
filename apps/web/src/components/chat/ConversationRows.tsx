@@ -61,7 +61,7 @@ export interface ConversationSpeaker {
  * which put it outside the column the composer draws — and, inside a card,
  * past the card's own border.
  */
-function LineMark({
+export function LineMark({
   children,
   className,
 }: {

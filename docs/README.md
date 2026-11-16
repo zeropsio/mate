@@ -3,6 +3,8 @@
 ## Canonical homes
 
 - [Engineering rules](engineering-rules.md): the rules every change follows, shared with zcp and HQ.
+- [Testing rules](testing-rules.md): what may become a test, shared with zcp and HQ; this
+  repository's [testing map](internals/testing.md).
 - Conceptual architecture: private `zeropsio/mate-hq:docs/architecture/README.md`. Public
   product contracts here and in the zcp spec remain self-contained.
 - [Fork boundaries](internals/zerops/fork.md)
