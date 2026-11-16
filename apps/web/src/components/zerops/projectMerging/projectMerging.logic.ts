@@ -1,5 +1,5 @@
 /**
- * Who merges a project's changes, as its page says and sets it: the row's one line, the people an
+ * Who merges a project's changes and releases it, as its page says and sets it: the row's one line, the people an
  * Owner or Admin picks from, the draft they edit, and whether it can be saved. The rule itself is
  * HQ's, mirrored in `@t3tools/shared/zeropsPermissions`; nothing here decides who merges.
  *
@@ -15,7 +15,7 @@ import { roleAtLeast, ZEROPS_ACTIVE_MEMBER_STATUS } from "@t3tools/shared/zerops
 import { githubName } from "../gitMirror.logic";
 
 /** What the section is called, above its card and as its choice's name. */
-export const MERGING_TITLE = "Who can merge";
+export const MERGING_TITLE = "Who can merge and release";
 
 /** The people a project names beside the Owner and Admins; `null`: it limits nothing. */
 export type MergersPeople = ReadonlyArray<string> | null;
@@ -81,11 +81,11 @@ export function openMains(
 /** What the Merging row adds under its line where a limit stands and GitHub's `main` is open. */
 export const OPEN_MAIN_LINE = "GitHub's main is still open";
 
-/** The Merging row's line: where the setting stands. */
+/** The Merging row's line: where the setting stands. The same people merge and release. */
 export function mergingLine(people: MergersPeople): string {
-  if (people === null) return "Everyone working here can merge";
-  if (people.length === 0) return "Only the Owner and Admins merge";
-  return `Owner, Admins and ${String(people.length)} ${people.length === 1 ? "person" : "people"} merge`;
+  if (people === null) return "Everyone working here can merge and release";
+  if (people.length === 0) return "Only the Owner and Admins merge and release";
+  return `Owner, Admins and ${String(people.length)} ${people.length === 1 ? "person" : "people"} merge and release`;
 }
 
 /**
