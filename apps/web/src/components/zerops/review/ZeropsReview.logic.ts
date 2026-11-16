@@ -558,14 +558,19 @@ export function isField(target: EventTarget | null): boolean {
 // ---------------------------------------------------------------------------
 
 /** States where a change still waits on its press. */
-const WAITING_ON_PRESS: ReadonlySet<ReviewState> = new Set(["ready", "behind-clean"]);
+const WAITING_ON_PRESS: ReadonlySet<ReviewState> = new Set([
+  "ready",
+  "github-checks-failed",
+  "behind-clean",
+]);
 
 /**
  * Whether the verdict's why is said under the line: not for a change ready to merge nor a
- * release ready to go, whose line already says all of it.
+ * release ready to go, whose line already says all of it — nor for one whose GitHub checks
+ * failed, where the checks line under the title says it once, with the way to them.
  */
 export function whySaid(verdict: ReviewVerdict, draft: boolean): boolean {
-  if (verdict.state === "release-ready") return false;
+  if (verdict.state === "release-ready" || verdict.state === "github-checks-failed") return false;
   return verdict.state !== "ready" || draft;
 }
 

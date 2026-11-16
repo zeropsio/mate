@@ -40,6 +40,7 @@ import { isSlashCommand } from "@t3tools/shared/userAsk";
 
 import { ASK_TO_MERGE, TAKE_ASK_BACK } from "./changeStanding.ts";
 import { pullRequestBlocked } from "./gitTab.ts";
+import { GITHUB_CHECKS_FAILED, githubChecksFailed } from "./reviewVerdict.ts";
 import { productionProjectOf, type EnvironmentPlace } from "./groupRows.ts";
 import { mergeabilityKindOf, type MergeabilityKind } from "./changeMergeability.ts";
 import { movedCount, type Moved } from "./releaseCompare.ts";
@@ -734,7 +735,9 @@ export function changeState(pull: {
   readonly mateGone?: true | undefined;
   readonly kind: FlowPullRequestKind;
   readonly title: string;
-  readonly pullRequest?: { readonly state: string } | undefined;
+  readonly pullRequest?:
+    | { readonly state: string; readonly checks?: string | undefined }
+    | undefined;
   /** `main` moved on past the commit it was cut from, and it still merges (`FlowPullRequest.behind`). */
   readonly behind?: boolean | undefined;
   readonly baseBranch?: string | undefined;
@@ -753,6 +756,9 @@ export function changeState(pull: {
   }
   // Its Mate has not described it as it is: nothing asks for its merge yet.
   if (!changeAsksForReview(pull)) return { word: "Draft", tone: "off" };
+  // GitHub's checks failed on its latest push: its review says so in the same amber
+  // (`changeMergeVerdict`'s `github-checks-failed`), and no row reads "Ready to merge" over it.
+  if (githubChecksFailed(pull)) return { word: GITHUB_CHECKS_FAILED, tone: "attention" };
   // It still merges, on top of changes it was not checked with: its review says the same, in the
   // same amber (`changeMergeVerdict`'s `behind-clean`) — a row never read "Ready to merge" over it.
   if (pull.behind === true) {

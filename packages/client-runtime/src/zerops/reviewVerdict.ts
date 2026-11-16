@@ -69,6 +69,7 @@ export type ReviewTone = "ok" | "attention" | "failed" | "busy" | "done" | "quie
 
 export type ReviewState =
   | "ready"
+  | "github-checks-failed"
   | "behind-clean"
   | "behind"
   | "conflict"
@@ -159,6 +160,12 @@ export interface ReviewPrimary {
    * width it will have, so nothing in the foot moves once it can be pressed.
    */
   readonly shortcut?: true;
+  /**
+   * Not the press the review recommends: the verdict's fix is, and stands highlighted beside it.
+   * It can still be pressed — GitHub's failed checks may be no fault of the change — but it is
+   * drawn plainly and never `safe`.
+   */
+  readonly plain?: true;
 }
 
 /** A quiet word in the foot beside the one button: a change's *Close without merging…*. */
@@ -475,8 +482,6 @@ export interface ReviewGithubChecks {
   readonly words: string;
   /** Its checks' page on GitHub. */
   readonly url: string;
-  /** For failing checks, handing them to the Mate that pushed it. */
-  readonly fix: ReviewFix | undefined;
 }
 
 /** Handing a change whose Mate is gone to another Mate, as the caller holds it. */
@@ -763,6 +768,31 @@ function sentences(...parts: ReadonlyArray<string | undefined>): string {
   return parts.filter((part) => part !== undefined && part.length > 0).join(" ");
 }
 
+/** What a change whose GitHub checks failed says of itself, in its review and on every row. */
+export const GITHUB_CHECKS_FAILED = "GitHub's checks failed";
+
+/**
+ * Whether GitHub's checks failed on the latest push of a change whose pull request is open: its
+ * review's verdict (`changeMergeVerdict`), and no row says "Ready to merge" over it.
+ */
+export function githubChecksFailed(pull: {
+  readonly pullRequest?:
+    | { readonly state: string; readonly checks?: string | undefined }
+    | undefined;
+}): boolean {
+  return pull.pullRequest?.state === "open" && pull.pullRequest.checks === "failing";
+}
+
+/** GitHub's checks on an open change's pull request and their page there, where GitHub reported them. */
+function githubChecksAt(
+  pull: ChangeReviewInput["pull"],
+): Pick<ReviewGithubChecks, "state" | "url"> | undefined {
+  const pullRequest = pull.pullRequest;
+  if (pull.merged || pull.state === "closed" || pullRequest?.state !== "open") return undefined;
+  if (pullRequest.checks === undefined || pullRequest.url === undefined) return undefined;
+  return { state: pullRequest.checks, url: `${pullRequest.url.replace(/\/+$/u, "")}/checks` };
+}
+
 /**
  * The change's own verdict, before anything was pressed: whether it can merge now, and why not. Every
  * door that merges a change asks it first — the review's Merge and *Put it live* alike — and the
@@ -899,6 +929,29 @@ export function changeMergeVerdict(
         title: "Checking whether it merges cleanly",
         why: "Merge waits until it's checked",
         fix: undefined,
+      },
+    };
+  }
+
+  // GitHub's checks failed on what would merge: said before anything a clean merge says, a draft
+  // included. It still merges — a check may fail for no fault of the change — but the review
+  // recommends handing them to its Mate, never the merge.
+  const github = githubChecksAt(pull);
+  if (github?.state === "failing") {
+    return {
+      enabled: true,
+      verdict: {
+        state: "github-checks-failed",
+        tone: "attention",
+        title: GITHUB_CHECKS_FAILED,
+        why: `It still merges cleanly into ${base}`,
+        fix: {
+          verb: "fix them",
+          problem: {
+            what: `GitHub's checks failed on the latest push of change #${String(pull.number)} (${github.url})`,
+            ask: "Look at the failed checks on GitHub, fix what they found, and push again.",
+          },
+        },
       },
     };
   }
@@ -1041,6 +1094,7 @@ function heldReview(
   secondary: ReviewSecondary | undefined,
 ): ReviewModel & { readonly standing: ReviewStandingModel } {
   const asking = input.asking ?? { kind: "idle" };
+  const checksFailed = verdict.state === "github-checks-failed";
   const people = facts.mergers?.people ?? [];
   const toAsk = mergersLine(people, facts.nameOf);
   // A name may end in its own full stop ("Sam R."): the sentence adds none after it.
@@ -1065,8 +1119,10 @@ function heldReview(
       primary: {
         label: ASK_TO_MERGE,
         enabled: asking.kind !== "running",
-        // A second try is the person's deliberate press, never ⌘↵'s.
-        safe: asking.kind === "idle",
+        // A second try is the person's deliberate press, never ⌘↵'s — nor is asking for the merge
+        // of a change whose checks on GitHub failed.
+        safe: asking.kind === "idle" && !checksFailed,
+        ...(checksFailed ? { plain: true as const } : {}),
       },
       secondary,
       standing: { key: "to-ask", asks: true },
@@ -1341,9 +1397,10 @@ function changeReviewModel(
       return heldReview(input, verdict, standing, facts, secondary);
     return { verdict, consequence: MERGE_NOT_OFFERED, primary: undefined, secondary };
   }
-  // Behind main is amber, and a change whose files could not be read was never shown: both
-  // still pressable, never pressed for the person.
-  const safeOnceRead = verdictOf.enabled && verdict.state !== "behind-clean";
+  // Behind main is amber, GitHub's checks failed, and a change whose files could not be read was
+  // never shown: all still pressable, never pressed for the person.
+  const checksFailed = verdict.state === "github-checks-failed";
+  const safeOnceRead = verdictOf.enabled && verdict.state !== "behind-clean" && !checksFailed;
   // Its files, or HQ's rule's facts, still to come: Merge keeps the width it will have.
   const waiting = input.readout === "reading" || input.offered === undefined;
   return {
@@ -1365,6 +1422,7 @@ function changeReviewModel(
       enabled,
       safe: safeOnceRead && input.readout === "read" && !waiting,
       ...(safeOnceRead && waiting ? { shortcut: true } : {}),
+      ...(checksFailed ? { plain: true as const } : {}),
     },
     secondary,
     standing: merging,
@@ -1411,42 +1469,19 @@ function orphanOf(input: ChangeReviewInput): ReviewOrphan | undefined {
   return { text, options };
 }
 
-/** GitHub's checks on an open change's pull request, where GitHub reported them. */
+/**
+ * GitHub's checks on an open change's pull request, as the line under its title says them: the
+ * evidence and the way to it. Failed ones are handed to its Mate by the verdict's own fix.
+ */
 function githubChecksOf(input: ChangeReviewInput): ReviewGithubChecks | undefined {
-  const { pull } = input;
-  const pullRequest = pull.pullRequest;
-  if (pull.merged || pull.state === "closed" || pullRequest?.state !== "open") return undefined;
-  if (pullRequest.checks === undefined || pullRequest.url === undefined) return undefined;
-  const url = `${pullRequest.url.replace(/\/+$/u, "")}/checks`;
-  switch (pullRequest.checks) {
-    case "failing":
-      return {
-        state: "failing",
-        words: "GitHub's checks failed on its latest push",
-        url,
-        fix: {
-          verb: "fix them",
-          problem: {
-            what: `GitHub's checks failed on the latest push of change #${String(pull.number)} (${url})`,
-            ask: "Look at the failed checks on GitHub, fix what they found, and push again.",
-          },
-        },
-      };
-    case "pending":
-      return {
-        state: "pending",
-        words: "GitHub's checks are running on its latest push",
-        url,
-        fix: undefined,
-      };
-    case "passing":
-      return {
-        state: "passing",
-        words: "GitHub's checks passed on its latest push",
-        url,
-        fix: undefined,
-      };
-  }
+  const github = githubChecksAt(input.pull);
+  if (github === undefined) return undefined;
+  const words = {
+    failing: `${GITHUB_CHECKS_FAILED} on its latest push`,
+    pending: "GitHub's checks are running on its latest push",
+    passing: "GitHub's checks passed on its latest push",
+  } as const;
+  return { ...github, words: words[github.state] };
 }
 
 /** One review policy for every client. */
