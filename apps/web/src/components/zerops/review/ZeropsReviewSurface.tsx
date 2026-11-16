@@ -68,6 +68,7 @@ import {
   type ReleaseChangeRow,
   type ReviewFrame,
   type ReviewKind,
+  tryItEverything,
   tryItWords,
 } from "./ZeropsReview.logic";
 
@@ -153,6 +154,8 @@ export interface ZeropsReviewSurfaceProps {
   readonly notice?: ReactNode;
   /** "Ask Nova to resolve it": the fix, where there is a Mate of the person's to ask. */
   readonly fix?: ReviewButton | undefined;
+  /** Whose move the fix is where the Mate is a colleague's: said where the press would stand. */
+  readonly fixNote?: string | undefined;
   /** The sections, in reading order. */
   readonly children?: ReactNode;
   /** The foot's note, under the buttons: what happens next, or why the button is held. */
@@ -224,6 +227,7 @@ export function ZeropsReviewSurface({
   whySaid = true,
   notice,
   fix,
+  fixNote,
   children,
   consequence,
   consequenceRoom,
@@ -342,7 +346,7 @@ export function ZeropsReviewSurface({
           </p>
         )}
         {subtitle === undefined ? notice : null}
-        {subtitle === undefined && (whySaid || fix !== undefined) ? (
+        {subtitle === undefined && (whySaid || fix !== undefined || fixNote !== undefined) ? (
           <div className="rv-why" data-tone={verdict.tone}>
             {whySaid ? <span>{verdict.why}</span> : null}
             {whySaid && verdict.copyWhy === true ? (
@@ -354,6 +358,9 @@ export function ZeropsReviewSurface({
               <Button onClick={fix.onPress} size="sm" variant="link">
                 {fix.label}
               </Button>
+            )}
+            {fix !== undefined || fixNote === undefined ? null : (
+              <span className="rv-why-whose">{fixNote}</span>
             )}
           </div>
         ) : null}
@@ -694,9 +701,12 @@ export function useReviewFold(initiallyOpen = false): ReviewFoldState & {
 export function ReviewTry({
   mateName,
   previews,
+  everything = false,
 }: {
   readonly mateName: string;
   readonly previews: ReadonlyArray<{ readonly service: string; readonly url: string }>;
+  /** Its Mate holds more than one open change: the preview shows all of its work. */
+  readonly everything?: boolean | undefined;
 }) {
   return (
     <ReviewSection title="Try it">
@@ -719,6 +729,7 @@ export function ReviewTry({
           );
         })}
       </div>
+      {everything ? <p className="rv-try-note">{tryItEverything(mateName)}</p> : null}
     </ReviewSection>
   );
 }

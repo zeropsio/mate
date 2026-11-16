@@ -263,7 +263,10 @@ export {
 export { stageMarks, stageRead, stageStandings } from "./stageMarks.ts";
 export { cannotTellWhatRuns, changesCountWords, serviceNames } from "./projectAttention.ts";
 export {
+  answerCommentsLabel,
+  answerCommentsRequest,
   changeAskLabel,
+  commentsToAnswer,
   changeAskPrompt,
   changeHandedPrompt,
   changeConversationCount,
