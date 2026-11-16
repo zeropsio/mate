@@ -2555,7 +2555,7 @@ describe("ZeropsApiClient — inviting people and setting their grants", () => {
     ).rejects.toMatchObject({ code: "userAlreadyConnectedToCompany" });
   });
 
-  it("Inviting a new address sends its name and the membership offered", async () => {
+  it("Inviting a new address sends its name, the membership offered and Mate as the app", async () => {
     const stub = recordingFetch(() => jsonResponse(200, {}));
     const invite = {
       email: "eva@example.com",
@@ -2568,10 +2568,11 @@ describe("ZeropsApiClient — inviting people and setting their grants", () => {
     };
     await clientWith(stub).inviteOrganizationUser("org-1", invite);
     expect(sent(stub)).toEqual(["POST /client/org-1/user"]);
-    expect(JSON.parse(stub.requests[0]?.body ?? "{}")).toEqual(invite);
+    // Mate names itself, so the invitation e-mail links back to Mate's sign-in.
+    expect(JSON.parse(stub.requests[0]?.body ?? "{}")).toEqual({ ...invite, app: "MATE" });
   });
 
-  it("Inviting an existing account connects it by its user id", async () => {
+  it("Inviting an existing account connects it by its user id, naming Mate as the app", async () => {
     const stub = recordingFetch(() =>
       jsonResponse(200, { id: "cu-eva", email: "eva@example.com" }),
     );
@@ -2584,7 +2585,7 @@ describe("ZeropsApiClient — inviting people and setting their grants", () => {
     };
     await clientWith(stub).connectOrganizationUser("org-1", invite);
     expect(sent(stub)).toEqual(["PUT /client/org-1/user/connect"]);
-    expect(JSON.parse(stub.requests[0]?.body ?? "{}")).toEqual(invite);
+    expect(JSON.parse(stub.requests[0]?.body ?? "{}")).toEqual({ ...invite, app: "MATE" });
   });
 
   it("A member's grants are read, and written back whole", async () => {

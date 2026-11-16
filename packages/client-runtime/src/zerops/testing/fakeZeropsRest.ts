@@ -222,7 +222,12 @@ export function makeFakeZeropsRest(): FakeZeropsRest {
           .map((membership) => ({
             ...membership,
             userId: user.id,
-            user: { id: user.id, email: user.email, fullName: user.fullName },
+            user: {
+              id: user.id,
+              email: user.email,
+              fullName: user.fullName,
+              createdByApp: user.createdByApp ?? null,
+            },
           })),
       );
       return json(200, { clientUserList });
@@ -406,7 +411,10 @@ export function makeFakeZeropsRest(): FakeZeropsRest {
         return json(200, { items: [], totalHits: 0 });
       case "GET /user/info": {
         const account = bearer === undefined ? undefined : accounts.get(bearer);
-        return account === undefined ? failure(401, "unauthorized") : json(200, account.user);
+        // Zerops names the app every account was made in; null for one made before it did.
+        return account === undefined
+          ? failure(401, "unauthorized")
+          : json(200, { createdByApp: null, ...account.user });
       }
     }
     return failure(404, "routeNotFound");
