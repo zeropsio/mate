@@ -83,7 +83,7 @@ import {
 } from "./workSteps.logic";
 import type { LiveJobs } from "./liveJobs.logic";
 import { engineCardEffort, heldLines, withPagedEffort } from "../../zerops/engineCardPaging.logic";
-import { chatItemHasLine, selectChatItems, slotModelOf } from "./runCard.logic";
+import { chatItemHasLine, runEndedWell, selectChatItems, slotModelOf } from "./runCard.logic";
 import { type MirrorAskPlace, mirrorAskRowId } from "../zerops/mirror/mirrorAsk.logic";
 import type { OriginAskPlace } from "../zerops/origin/originAsk.logic";
 import { vaultAskOf } from "../zerops/vault/vaultRequest.logic";
@@ -494,6 +494,12 @@ export interface RunStatus {
   readonly away?: string;
   /** Live while the usage limit that cut it holds: it waits in its card for the reset. */
   readonly paused?: RunPause;
+  /**
+   * Its end was no finish of its own, whatever calm face it wears since: a usage limit cut it —
+   * lifted or not — or its engine recorded anything but a completed run, an end this build does
+   * not know included. `runEndedWell` never reads it as ended well.
+   */
+  readonly unfinished?: true;
 }
 
 /** The usage limit a card waits on: when it resets, and whose it is as its record names it. */
@@ -684,6 +690,8 @@ type MessagesTimelineRowBody =
        * (`jobs:` rows): each job as it stands now, running or reported.
        */
       jobs?: ReadonlyArray<BackgroundJob>;
+      /** Its run ended well (`runEndedWell`): what failed of its jobs says so in no red (K9). */
+      quiet?: true;
     }
   | {
       /** Something stopped the Mate: an error it could not work past. */
@@ -3173,6 +3181,8 @@ export function deriveMessagesTimelineRows(input: {
       (paging?.counts.answered ?? false) ||
       answer !== null ||
       items.some((item) => item.kind === "note" && item.message.text.trim().length > 0);
+    // How its engine recorded the end of the card's last run, where it has one.
+    const endKind = engineCard?.runs.at(-1)?.end?.kind;
     const status: RunStatus = {
       // A run that waits on what it started, or for the limit to reset, is not over.
       live: turn.live || waiting || waitsOnLimit,
@@ -3186,6 +3196,9 @@ export function deriveMessagesTimelineRows(input: {
       startedAt: first.startedAt,
       endedAt: waiting || waitsOnLimit ? null : last.endedAt,
       ...(turn.brokeOff === null || waiting ? {} : { brokeOff: turn.brokeOff }),
+      ...(cutByLimit || (endKind !== undefined && endKind !== "completed")
+        ? { unfinished: true as const }
+        : {}),
       ...(turn.interruption === undefined ? {} : { interruption: turn.interruption }),
       ...waited,
       waitedMs: waited.waitedMs + limitWaitMs,
@@ -3380,6 +3393,7 @@ export function deriveMessagesTimelineRows(input: {
             helpers: false,
             title: jobs.at(-1)?.title ?? null,
             jobs,
+            ...(runEndedWell(status) ? { quiet: true as const } : {}),
           });
         }
       }

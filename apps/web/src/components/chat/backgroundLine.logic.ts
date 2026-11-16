@@ -29,6 +29,7 @@ export interface BackgroundLineModel {
   readonly words: string;
   /** Where it ran, after the words — none where the words say it. */
   readonly where: string | null;
+  /** A failure of it still stands, in red: none once its run ended well, its word kept (K9). */
   readonly failed: boolean;
   /** One task: its line names it, and it opens onto its report alone. */
   readonly single: boolean;
@@ -61,11 +62,14 @@ function capitalized(value: string): string {
 /**
  * The line over its items. One task says itself — "Run the soak test failed"
  * — and opens onto its report alone; several are counted by state, each count
- * only ever rising, and open onto each, a failure first.
+ * only ever rising, and open onto each, a failure first. `quiet`: its run
+ * ended well (`runEndedWell`), so what failed of it says so in the same
+ * words, in no red (K9).
  */
 export function backgroundLineOf(
   items: ReadonlyArray<BackgroundItem>,
   helpers: boolean,
+  quiet = false,
 ): BackgroundLineModel {
   const failed = items.filter((item) => item.state === "failed").length;
   const running = items.filter((item) => item.state === "running").length;
@@ -85,7 +89,7 @@ export function backgroundLineOf(
     return {
       words: only.state === "running" ? only.title : `${only.title} ${STATE_WORD[only.state]}`,
       where: inline ? `${at} · ${only.report}` : at,
-      failed: only.state === "failed",
+      failed: !quiet && only.state === "failed",
       single: true,
       items: only.report === null || inline ? [] : [only],
     };
@@ -106,7 +110,7 @@ export function backgroundLineOf(
           ? `${items.length} ${noun} running`
           : `${items.length} ${noun}: ${counts.join(", ")}`,
     where: null,
-    failed: failed > 0,
+    failed: !quiet && failed > 0,
     single: false,
     // A failure first: it is what the person came to read.
     items: [
