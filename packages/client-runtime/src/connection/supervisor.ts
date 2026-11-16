@@ -313,6 +313,12 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
   const intent = yield* Ref.make(initialIntent);
   const signals = yield* Queue.unbounded<SupervisorSignal>();
   const resetRetryState = yield* Ref.make(false);
+  /**
+   * Whether an attempt has run since the connection was last asked for. Only the first may dial
+   * its socket ahead of its ticket (`driver.ts`): a retry, whoever asks for it, a reconnect and a
+   * replacement beside the live socket ask for their ticket first.
+   */
+  const attempted = yield* Ref.make(false);
   const credentialGeneration = options?.credentialGeneration ?? Effect.succeed(0);
   // Set while a probe of the live session runs, and kept when it fails or times
   // out: something asked whether the connection still works and it closed or
@@ -399,6 +405,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
     lastFailure: ConnectionAttemptError | null,
     publishProgress: boolean,
   ) {
+    const first = !(yield* Ref.getAndSet(attempted, true));
     return yield* driver.connect(
       entry,
       (progress) =>
@@ -411,6 +418,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
           if (publishProgress) yield* reportProgress(attempt, generation, lastFailure, progress);
         }),
       (queued) => SubscriptionRef.update(setup, (current) => ({ ...current, queued })),
+      { ahead: first },
     );
   });
 
@@ -1138,6 +1146,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
       if (!currentIntent.desired) {
         resetRetryLadder();
         latestFailure = null;
+        yield* Ref.set(attempted, false);
         yield* clearLease;
         yield* setState(availableState(currentIntent, generation));
         yield* waitForSignal;

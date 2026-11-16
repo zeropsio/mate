@@ -44,6 +44,12 @@ export class ConnectionResolver extends Context.Service<
     readonly prepare: (
       entry: ConnectionCatalogEntry,
     ) => Effect.Effect<PreparedConnection, ConnectionAttemptError>;
+    /**
+     * Where the entry's socket will be, where that is known before it is prepared: a Mate's, at
+     * the address it is registered at, which its descriptor passed at. Null for any other, and
+     * no promise: only `prepare` says where the attempt connects.
+     */
+    readonly socketUrlAhead?: (entry: ConnectionCatalogEntry) => string | null;
   }
 >()("@t3tools/client-runtime/connection/resolver/ConnectionResolver") {}
 
@@ -250,6 +256,20 @@ const encodeTicketFrame = Schema.encodeSync(
 );
 
 /**
+ * Where a Mate's socket is, for the origin HQ's ticket names: the one address an attempt connects
+ * to, and so the only one a socket dialed ahead of its ticket (`driver.ts`) can be used at.
+ */
+function zeropsMateSocketAddress(
+  origin: string,
+  clientMetadata: AuthClientPresentationMetadata | undefined,
+): { readonly httpBaseUrl: string; readonly socketUrl: string } {
+  const httpBaseUrl = zeropsMateBaseUrl(origin);
+  const url = socketUrlFromWsBaseUrl(httpBaseUrl.replace(/^http/u, "ws"));
+  appendClientConnectionParams(url, clientMetadata, "direct");
+  return { httpBaseUrl, socketUrl: url.toString() };
+}
+
+/**
  * A Mate through HQ (spec-mate §3.8): a new ticket on every attempt — a reconnect is a new ticket —
  * and the socket at the origin HQ names, the ticket its first frame. Nothing is kept between
  * attempts, so a used or expired ticket is never presented again.
@@ -263,14 +283,15 @@ const makeZeropsMateBroker = Effect.fn("clientRuntime.connection.broker.makeZero
     ) {
       const mate = { orgId: target.orgId, projectId: target.projectId };
       const issued = yield* issuer.issue(mate);
-      const httpBaseUrl = zeropsMateBaseUrl(issued.origin);
-      const url = socketUrlFromWsBaseUrl(httpBaseUrl.replace(/^http/u, "ws"));
-      appendClientConnectionParams(url, presentation.metadata, "direct");
+      const { httpBaseUrl, socketUrl } = zeropsMateSocketAddress(
+        issued.origin,
+        presentation.metadata,
+      );
       return {
         environmentId: target.environmentId,
         label: target.label,
         httpBaseUrl,
-        socketUrl: url.toString(),
+        socketUrl,
         firstFrame: encodeTicketFrame({ ticket: issued.ticket }),
         grant: { seconds: issued.grantSeconds, ask: issuer.extend(mate) },
         httpAuthorization: { _tag: "Bearer", token: issued.ticket },
@@ -286,6 +307,7 @@ export const make = Effect.gen(function* () {
   const bearer = yield* makeBearerBroker();
   const ssh = yield* makeSshBroker();
   const zeropsMate = yield* makeZeropsMateBroker();
+  const presentation = yield* ClientCapabilities.ClientPresentation;
 
   const prepare = Effect.fn("clientRuntime.connection.broker.prepare")(function* (
     entry: ConnectionCatalogEntry,
@@ -309,7 +331,18 @@ export const make = Effect.gen(function* () {
     }
   });
 
-  return ConnectionResolver.of({ prepare });
+  const socketUrlAhead = (entry: ConnectionCatalogEntry): string | null => {
+    const target = entry.target;
+    if (target._tag !== "ZeropsMateConnectionTarget") return null;
+    try {
+      return zeropsMateSocketAddress(new URL(target.httpBaseUrl).origin, presentation.metadata)
+        .socketUrl;
+    } catch {
+      return null;
+    }
+  };
+
+  return ConnectionResolver.of({ prepare, socketUrlAhead });
 });
 
 export const layer = Layer.effect(ConnectionResolver, make);

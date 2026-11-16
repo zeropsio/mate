@@ -9,7 +9,8 @@
  * 5 s before its 502 — each such attempt holding the lock, and everything behind it, for as long.
  *
  * An attempt is admitted for the part that takes the lock only: from creating its socket to the
- * socket opening or failing (the driver asks for its ticket before, and synchronizes after).
+ * socket opening or failing (the driver asks for its ticket before, or beside it on the route's
+ * first attempt (`driver.ts`), and synchronizes after).
  * Whether an attempt is the route's is judged now, not when it was asked for:
  * - The route's attempt starts at once, queued or not, and every other attempt still connecting
  *   is told to give way (its ticket's `signal` aborts): closing a socket still CONNECTING frees
