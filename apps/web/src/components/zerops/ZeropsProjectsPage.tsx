@@ -132,6 +132,7 @@ import { useZeropsData } from "~/zerops/zeropsDataContext";
 import { submitZeropsWrite } from "~/zerops/zeropsWrite";
 import type { AuthGateState } from "~/environments/primary/auth";
 import {
+  activityMomentOf,
   activityOfNow,
   listedMateFace,
   mateReviewWaits,
@@ -159,6 +160,8 @@ import {
   type ZeropsMembership,
   firstDeployLine,
   type FirstDeploy,
+  activityRanking,
+  inActivityOrder,
   matePoseOf,
   zeropsProjectOf,
   viewerOwnsMate,
@@ -1020,7 +1023,7 @@ export function ZeropsProjectsContent({
   const { open: sharedBirths, readyProjectIds } = useSharedBirthState();
   // Whether HQ's structure is known: only then does a Mate it places nowhere have no record.
   const hqKnown = useAtomValue(hqPlacementsAtom) !== null;
-  const groupTree = useProjectsInventory(
+  const listedTree = useProjectsInventory(
     candidates,
     projectOrder,
     placedSharedBirths(
@@ -1036,6 +1039,21 @@ export function ZeropsProjectsContent({
   const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);
   // Each Mate as its menu row reads it: HQ's word of it, or its socket's.
   const activityOf = useMateRowActivity(useMatesActivity());
+  // *Last activity* stands the projects by when their Mates last did something, which the
+  // listing does not hold: it comes newest first and is put in that order here. The ranking is
+  // its key, so the tree is put in order again when a project moves, not on a working Mate's
+  // every step.
+  const activityRankingKey =
+    projectOrder.order === "activity"
+      ? activityRanking(listedTree, (item) => activityMomentOf(activityOf(item))).join("\n")
+      : "";
+  const groupTree = useMemo(
+    () =>
+      activityRankingKey === ""
+        ? listedTree
+        : inActivityOrder(listedTree, activityRankingKey.split("\n")),
+    [listedTree, activityRankingKey],
+  );
   // Whom HQ holds linked: a Mate's face is awake as its menu row's is (`listedMateFace`).
   const hqMates = useMatesLinkedInHq();
   // Whether a Mate's conversations are read: one with none says nothing was asked yet.

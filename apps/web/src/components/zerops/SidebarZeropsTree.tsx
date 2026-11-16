@@ -67,8 +67,10 @@ import { RunShimmer } from "../chat/RunShimmer";
 import { useWarmIntent } from "../chat/warmTimeline";
 import {
   assignCandidateMateTints,
+  activityRanking,
   buildCanonicalGroupTree,
   groupFlow,
+  inActivityOrder,
   hasMate,
   mateEnvironmentsEmptyReason,
   mateShapeOf,
@@ -154,6 +156,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MateAutomatedMark } from "./MateAutomatedMark";
 import { MateOwnerMark } from "./MateOwnerMark";
 import {
+  activityMomentOf,
   activityOfNow,
   mateRunOf,
   mateAwake,
@@ -1217,22 +1220,33 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     ...candidates.filter((candidate) => !mateByProject.has(candidate.project.id)),
     ...mates,
   ];
-  const view = buildCanonicalGroupTree(everyEnvironment, {
+  const tree = buildCanonicalGroupTree(everyEnvironment, {
     apps: appsWithWork,
     rank: rankZeropsCandidateForListing,
     order: projectOrder.order,
     ...(projectOrder.customOrder === undefined ? {} : { customOrder: projectOrder.customOrder }),
     births,
   });
-  // One list in the person's order (Name, Creation date or Custom): no project moves for its work,
-  // and none rests apart as an "other" (the owner, 2026-10-11, of the "other projects" fold: "I'd
-  // get rid of" it). The overview's cards stand in the same order.
-  const orderedGroups = view.groups.map((entry) => ({
+  const byActivity = projectOrder.order === "activity";
+  const view = byActivity
+    ? inActivityOrder(
+        tree,
+        activityRanking(tree, (item) => activityMomentOf(getActivity?.(item))),
+      )
+    : tree;
+  // One list in the person's order, and none rests apart as an "other" (the owner, 2026-10-11, of
+  // the "other projects" fold: "I'd get rid of" it). The overview's cards stand in the same order.
+  // A project moves for its work only where the person chose *Last activity*, and not while the
+  // pointer is over the list: there the projects hold still like a project's Mates (`inPlace`).
+  const listedGroups = view.groups.map((entry) => ({
     ...entry,
+    key: entry.group.groupId,
     environments: entry.environments.flatMap(({ item, role }) =>
       item === undefined ? [] : [{ item, role }],
     ),
   }));
+  if (!byActivity) drawnOrders.current.delete(PROJECTS_LIST);
+  const orderedGroups = byActivity ? inPlace(PROJECTS_LIST, listedGroups) : listedGroups;
   // Every project the order holds, drawn or not: what a move is written into,
   // and what choosing *Custom* elsewhere starts from.
   const onScreen = orderedGroups.map(({ group }) => group.groupId);
@@ -2704,6 +2718,9 @@ function MenuSkeleton({ className }: { readonly className?: string | undefined }
 /** A Mate's row and the gap under it, and what stands above and below the list (sidebarGeometry.css). */
 /** How long Option is held alone before the Mate rows' times give way to their numbers. */
 const OPTION_NUMBERS_MS = 300;
+
+/** The projects' own list among the ones `inPlace` holds, beside each project's Mates by its group id. */
+const PROJECTS_LIST = "projects";
 
 const MENU_ROW_PITCH_PX = 72;
 const MENU_CHROME_PX = 151;

@@ -18,6 +18,10 @@
  * on screen as its starting point, and moving a project from any other order
  * chooses it — the person asked for that project to stand somewhere else, and
  * no other order would keep it there.
+ *
+ * *Last activity* puts the project whose Mates last did something first. It
+ * moves projects as their Mates work, so a list under the pointer holds still
+ * until the pointer leaves it: nothing jumps out from under a click.
  */
 import * as Schema from "effect/Schema";
 import type { ZeropsProjectOrder } from "@t3tools/client-runtime/zerops";
@@ -32,18 +36,19 @@ export const PROJECT_CUSTOM_ORDER_STORAGE_KEY = "mate:zerops:project-custom-orde
 /** Newest first unless the viewer chose otherwise (the owner, 2026-09-24). */
 const DEFAULT_PROJECT_ORDER: ZeropsProjectOrder = "newest";
 
-export const ProjectOrderSchema = Schema.Literals(["newest", "name", "custom"]);
+export const ProjectOrderSchema = Schema.Literals(["newest", "name", "activity", "custom"]);
 export const ProjectCustomOrderSchema = Schema.Array(Schema.String);
 
 const NO_CUSTOM_ORDER: ReadonlyArray<string> = [];
 
-/** The three orders, in the words both surfaces offer them. */
+/** The four orders, in the words both surfaces offer them. */
 export const PROJECT_ORDER_CHOICES: ReadonlyArray<{
   readonly value: ZeropsProjectOrder;
   readonly label: string;
 }> = [
   { value: "name", label: "Name" },
   { value: "newest", label: "Creation date" },
+  { value: "activity", label: "Last activity" },
   { value: "custom", label: "Custom" },
 ];
 

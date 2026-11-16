@@ -194,12 +194,13 @@ describe("SidebarZeropsAccountMenu", () => {
         "u",
       ).test(html);
 
-    it("offers Name, Creation date and Custom, in the words the projects page uses", () => {
+    it("offers Name, Creation date, Last activity and Custom, in the words the projects page uses", () => {
       const html = renderMenu();
       expect(html).toContain(">Order<");
       for (const [order, label] of [
         ["name", "Name"],
         ["newest", "Creation date"],
+        ["activity", "Last activity"],
         ["custom", "Custom"],
       ]) {
         expect(html).toContain(`data-zerops-account-order="${order}"`);
@@ -207,13 +208,15 @@ describe("SidebarZeropsAccountMenu", () => {
       }
     });
 
-    it.each(["name", "newest", "custom"] as const)(
+    it.each(["name", "newest", "activity", "custom"] as const)(
       "checks %s when it is the order chosen",
       (order) => {
         setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, order, ProjectOrderSchema);
         const html = renderMenu();
         expect(checked(html, order)).toBe(true);
-        for (const other of ["name", "newest", "custom"].filter((entry) => entry !== order)) {
+        for (const other of ["name", "newest", "activity", "custom"].filter(
+          (entry) => entry !== order,
+        )) {
           expect(checked(html, other)).toBe(false);
         }
       },

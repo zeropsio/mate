@@ -241,6 +241,7 @@ function activity(input: {
     subject: input.subject,
     snippet: input.snippet,
     at: hoursAgo(input.hours),
+    hasWork: true,
     unread: input.unread ?? false,
     pausedUntil: input.pausedUntil,
     threadKey: `env-${id}:thread-${id}`,
@@ -2002,7 +2003,7 @@ writeCollapsedProjects(
   ),
 );
 const order = params.get("order");
-if (order === "custom" || order === "name" || order === "newest") {
+if (order === "custom" || order === "name" || order === "newest" || order === "activity") {
   setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, order, ProjectOrderSchema);
 }
 useComposerDraftStore
