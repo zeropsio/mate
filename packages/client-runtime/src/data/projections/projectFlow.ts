@@ -336,27 +336,3 @@ export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFl
         },
       )),
 };
-
-/** @deprecated Project DTOs retained until web/mobile migrate their consumers. */
-export const projectFlow: Projection<ProjectFlowKey, ZeropsProjectFlow | undefined> = {
-  ...canonicalProjectFlow,
-  name: "projectFlow",
-  equals: sameValue,
-  derive: (read, key) => {
-    const flow = canonicalProjectFlow.derive(read, key);
-    if (flow === undefined) return undefined;
-    const stops = zeropsStops({
-      declarations: flow.declarations,
-      environments: flow.environmentInputs,
-      unread: flow.unreadEnvironments,
-    });
-    return {
-      ...flow,
-      declarations: stops.declarations,
-      environmentInputs: stops.environments,
-      environments: flow.environments.flatMap(({ id: _id, target, ...row }) =>
-        target.kind === "zerops" ? [{ ...row, projectId: target.projectId }] : [],
-      ),
-    };
-  },
-};
