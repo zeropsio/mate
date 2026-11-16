@@ -52,6 +52,8 @@ import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
+import * as Duration from "effect/Duration";
+import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -100,6 +102,14 @@ import {
   type ZcpProcess,
   type ZcpStatus,
 } from "./zeropsSetupSteps.ts";
+
+/**
+ * How long a verdict's hand-over waits for its run to reach the agent or end: a session that opens
+ * takes seconds; past this the run answers on the conversation itself.
+ */
+const HAND_OVER_WAIT = Duration.seconds(60);
+
+const isDispatchError = Schema.is(OrchestrationDispatchCommandError);
 
 /** How many of the latest stand-up calls are held: a section, its carry, and retries before. */
 const STAND_UP_CALLS_HELD = 8;
@@ -880,7 +890,9 @@ export const makeZeropsSetup = Effect.gen(function* () {
    * carrying every row as zcp wrote it, admitted like any run (D6). Once per verdict: its wake key
    * is the verdict's (`verdictWakeKey`), and a run it started already answers as gone. The
    * conversation keeps its own agent; one with none gets the caller's (`standUpAgents`), else one
-   * Mate signs nobody in to that is ready, or an automated Mate's.
+   * Mate signs nobody in to that is ready, or an automated Mate's. Refused (false) before anything
+   * is armed where no agent may run it for the caller; once armed, answered by the run: it reached
+   * the agent (true), or it ended before it did — a failure carrying the run's own reason.
    */
   const sendVerdict = (userId: ZeropsUserId, startedAt: string, verdict: StandUpVerdict) =>
     Effect.gen(function* () {
@@ -888,29 +900,37 @@ export const makeZeropsSetup = Effect.gen(function* () {
       if (main === "unknown") return false;
       const conversationId = main?.conversationId ?? ConversationId.make(yield* crypto.uuidV4());
       const key = verdictWakeKey(startedAt, verdict);
-      if (
-        (yield* engine.runOf({ wakeId: standUpWakeIdOf(conversationId, "standup", key) })) !==
-        undefined
-      )
-        return true;
-      if (main?.agent === null || main?.agent === undefined) {
-        const hq = yield* reads.hq;
-        const automated = hq.kind === "linked" && hq.mate.automated === true;
-        const allProviders = yield* reads.providers;
-        const providers = automated
-          ? allProviders.filter(
-              (provider) => provider.instanceId === AUTOMATED_MODEL_SELECTION.instanceId,
-            )
-          : allProviders;
+      const wakeId = standUpWakeIdOf(conversationId, "standup", key);
+      if ((yield* engine.runOf({ wakeId })) !== undefined) return true;
+      const hq = yield* reads.hq;
+      const automated = hq.kind === "linked" && hq.mate.automated === true;
+      const allProviders = yield* reads.providers;
+      const providers = automated
+        ? allProviders.filter(
+            (provider) => provider.instanceId === AUTOMATED_MODEL_SELECTION.instanceId,
+          )
+        : allProviders;
+      const mayRun = automated
+        ? []
+        : standUpAgents(yield* reads.agents, yield* reads.signers, userId);
+      const own = main?.agent ?? null;
+      if (own !== null) {
+        // Its own agent, as the run's admission will judge it for the caller.
+        const agentId = agentIdForProviderInstance(own.instanceId);
+        const runs =
+          automated ||
+          (agentId === undefined
+            ? pickReadyAgentWithoutSignIn(providers, ProviderInstanceId.make(own.instanceId))
+                ?.instanceId === own.instanceId
+            : mayRun.includes(agentId));
+        if (!runs) return false;
+      } else {
         const readyHere = pickReadyAgentWithoutSignIn(providers);
-        const agentId = automated
-          ? undefined
-          : standUpAgents(yield* reads.agents, yield* reads.signers, userId)[0];
         let chosen: ModelSelection;
         if (automated) {
           chosen = yield* reads.automatedModel;
-        } else if (agentId !== undefined) {
-          chosen = standUpModelSelection(agentId, undefined, yield* projectDefault);
+        } else if (mayRun[0] !== undefined) {
+          chosen = standUpModelSelection(mayRun[0], undefined, yield* projectDefault);
         } else if (readyHere !== undefined) {
           chosen = standUpModelSelectionOn(readyHere, undefined, yield* projectDefault);
         } else {
@@ -922,6 +942,8 @@ export const makeZeropsSetup = Effect.gen(function* () {
         if (!(yield* engine.assignAgent(conversationId, agentOf(selection, providers))))
           return false;
       }
+      // Subscribed before it is armed, so its run's first move is heard.
+      const moved = yield* subscribeChanges([engine.changes]);
       yield* engine.wake({
         conversationId,
         kind: "standup",
@@ -930,11 +952,30 @@ export const makeZeropsSetup = Effect.gen(function* () {
         text: verdictAsk(verdict),
         dueAt: yield* Clock.currentTimeMillis,
       });
-      yield* Effect.logInfo("zerops setup: zcp's failed verdict went to the agent", {
-        conversationId,
-      });
-      return true;
-    });
+      const outcome = yield* Effect.gen(function* () {
+        while (true) {
+          const run = yield* engine.runOf({ wakeId });
+          if (run?.reachedAgent === true) return { reached: true as const };
+          if (run?.end != null) return { reached: false as const, end: run.end };
+          yield* moved;
+        }
+      }).pipe(Effect.timeoutOption(HAND_OVER_WAIT));
+      // Still on its way at the deadline: armed, its run answers on the conversation itself.
+      if (Option.isNone(outcome) || outcome.value.reached) {
+        yield* Effect.logInfo("zerops setup: zcp's failed verdict went to the agent", {
+          conversationId,
+        });
+        return true;
+      }
+      const end = outcome.value.end;
+      return yield* Effect.fail(
+        new OrchestrationDispatchCommandError({
+          message: `The agent's turn ended before it started: ${
+            "reason" in end && typeof end.reason === "string" ? end.reason : end.kind
+          }`,
+        }),
+      );
+    }).pipe(Effect.scoped);
 
   const retry = (userId: ZeropsUserId) =>
     attempts
@@ -963,12 +1004,13 @@ export const makeZeropsSetup = Effect.gen(function* () {
         }),
       )
       .pipe(
-        Effect.mapError(
-          (cause) =>
-            new OrchestrationDispatchCommandError({
-              message: "The setup could not be started again.",
-              cause,
-            }),
+        Effect.mapError((cause) =>
+          isDispatchError(cause)
+            ? cause
+            : new OrchestrationDispatchCommandError({
+                message: "The setup could not be started again.",
+                cause,
+              }),
         ),
       );
 
