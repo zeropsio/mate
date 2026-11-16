@@ -94,11 +94,14 @@ export function releaseMessage(version: string, notes: string): string {
   return `chore(release): mate ${version}\n\n${notes}`;
 }
 
+// A release's range can name tens of thousands of paths (a vendored tree leaving the repository
+// did): more than execFileSync's default megabyte.
 const git = (cwd: string, ...args: ReadonlyArray<string>) =>
   NodeChildProcess.execFileSync("git", args, {
     cwd,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "inherit"],
+    maxBuffer: 256 * 1024 * 1024,
   }).trim();
 
 interface PublishedRelease {
