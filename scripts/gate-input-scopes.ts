@@ -27,7 +27,6 @@ export const retainedTestFile = /(?:\.test\.tsx?|\.scenario\.ts)$/u;
 
 // Test and scenario code whose time must come from the harness or scenario clock.
 export const testClockFile = (path: string): boolean =>
-  !path.startsWith(".repos/") &&
   /(?:\.test\.ts|\.scenario\.ts)$|(?:^|\/)test\/scenarios\/.+\.ts$/u.test(path);
 export const testClockLedger = "scripts/test-clock-exceptions.json";
 
@@ -41,9 +40,7 @@ export const scenarioCapInput = (path: string): boolean =>
 
 // Test and fixture code whose wire-shaped input `scripts/check-test-inputs.ts` counts.
 export const testInputFile = (path: string): boolean =>
-  !path.startsWith(".repos/") &&
-  /\.tsx?$/u.test(path) &&
-  (retainedTestFile.test(path) || /(?:^|\/)__fixtures__\//u.test(path));
+  /\.tsx?$/u.test(path) && (retainedTestFile.test(path) || /(?:^|\/)__fixtures__\//u.test(path));
 
 /** A case's witness line, `// witness: <owner path> | <old> → <new>`; an empty new text deletes. */
 export interface Witness {
@@ -71,7 +68,7 @@ const witnessMarker = "// witness: ";
 export function witnessOwners(root: string): Map<string, Set<string>> {
   const result = NodeChildProcess.spawnSync(
     "git",
-    ["grep", "--untracked", "--null", "-I", "-F", "-e", witnessMarker, "--", ":!.repos"],
+    ["grep", "--untracked", "--null", "-I", "-F", "-e", witnessMarker],
     { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
   );
   if (result.status !== 0 && result.status !== 1)

@@ -144,11 +144,12 @@ To answer a question, go to the home:
 
 ## Where code lives
 
-- `apps/server` — for Effect, read `.repos/effect-smol/LLMS.md`.
+- `apps/server` — for Effect, read `.repos/effect-smol/LLMS.md` (see `.repos/` below when missing).
 - `packages/contracts` — schemas only, no heavy runtime logic.
 - `packages/shared` — subpath exports, no barrel.
-- `.repos/` — vendored read-only references: prefer their patterns, never edit/import from them;
-  `vpr sync:repos` when bumping a matching dependency.
+- `.repos/` — read-only reference repos (Effect, Alchemy), gitignored and absent in a fresh checkout:
+  `vpr sync:repos` fetches them as shallow clones at the pinned versions, again after bumping a
+  matching dependency. Prefer their patterns, never edit/import from them.
 - Owned product code and path zones: `fork.md` §3.
 
 ## Taste

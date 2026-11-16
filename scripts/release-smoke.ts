@@ -15,7 +15,7 @@ const workspaceFiles = [
   "pnpm-workspace.yaml",
   ...NodeChildProcess.execFileSync(
     "git",
-    ["ls-files", "-z", "--", "package.json", ":(glob)**/package.json", ":(exclude).repos/**"],
+    ["ls-files", "-z", "--", "package.json", ":(glob)**/package.json"],
     { cwd: repoRoot, encoding: "utf8" },
   )
     .split("\0")
