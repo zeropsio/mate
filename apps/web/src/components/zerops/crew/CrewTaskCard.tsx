@@ -26,7 +26,7 @@ import { createContext, use, useMemo } from "react";
 
 import type { CrewCard } from "../../chat/conversation.logic";
 import { crewTaskCardModel } from "./CrewTaskCard.logic";
-import { CrewSeamLine } from "./CrewSeamLine";
+import { CrewRestartLine, CrewSeamLine } from "./CrewSeamLine";
 
 export interface CrewTimeline {
   /** The timeline row of the stint's first card, while the conversation is loaded from its start. */
@@ -99,21 +99,25 @@ export function CrewTaskCard({ id, card }: { readonly id: string; readonly card:
 export function CrewSeamActivity({
   seam,
   words,
+  asEvent = false,
 }: {
   readonly seam: CrewSeam;
   readonly words: string;
+  /** Among the conversation's rows, a restart is said as an event; in a card, across it. */
+  readonly asEvent?: boolean;
 }) {
   const crew = use(CrewTimelineContext);
   const previous = seam.seam === "stint" ? seam.previousThreadId : null;
   const mateName = crew?.mateName ?? "the Mate";
   const titleOf = (taskId: string) => crew?.tasks.find((task) => task.id === taskId)?.title ?? null;
+  const link =
+    previous === null || crew === null
+      ? undefined
+      : { label: CREW_PREVIOUS_STINT_LINK, onOpen: () => crew.onOpenThread(previous) };
+  if (asEvent && seam.seam === "stint") return <CrewRestartLine link={link} text={words} />;
   return (
     <CrewSeamLine
-      link={
-        previous === null || crew === null
-          ? undefined
-          : { label: CREW_PREVIOUS_STINT_LINK, onOpen: () => crew.onOpenThread(previous) }
-      }
+      link={link}
       text={
         seam.seam === "landed"
           ? crewWentInWord(titleOf(seam.taskId), mateName)

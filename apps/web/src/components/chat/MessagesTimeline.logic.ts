@@ -1127,6 +1127,9 @@ export function rowGap(
   // What runs alongside hangs from the record; the record starts its card,
   // as a run's line with no chat does.
   if (row.kind === "working") return "tight";
+  // A restart heads the turn under it as an event does: under the day's line it is a part of
+  // what that line dates, never a second seam a turn's air away from it.
+  if (isRestartRow(row) && previous.kind === "seam") return "part";
   // A seam opens the turn under it: a turn's air above it, a part's under it.
   if (row.kind === "seam" || row.kind === "crew-seam") {
     return previous.kind === "seam" || previous.kind === "crew-seam"
@@ -2188,6 +2191,48 @@ function localDayKey(iso: string): string | null {
   if (!Number.isFinite(ms)) return null;
   const date = new Date(ms);
   return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+}
+
+/** Where a crewmate's conversation went on in a new session (engine `session-rotated`). */
+export function isRestartRow(row: MessagesTimelineRow): boolean {
+  return row.kind === "crew-seam" && row.seam.seam === "stint";
+}
+
+/** A line across the conversation that says when, or that it started afresh, and nothing else. */
+function isBareLine(row: MessagesTimelineRow): boolean {
+  return row.kind === "seam" || isRestartRow(row);
+}
+
+/**
+ * The rows a stack of bare lines drops: lines nothing stands between say what the last of each
+ * kind says. A crewmate's earlier conversations come in as restarts with nothing drawn between
+ * them, and they stood as a ladder of the same line — "Nov 6", "It started afresh" three times, a
+ * time, "It started afresh" again. Of a stack its last restart stays, and of its dates the last
+ * day, else the last time; where the import cut and where the person left off stay as they are.
+ */
+export function bareLineDrops(rows: ReadonlyArray<MessagesTimelineRow>): ReadonlySet<number> {
+  const drops = new Set<number>();
+  let start = 0;
+  while (start < rows.length) {
+    if (!isBareLine(rows[start]!)) {
+      start += 1;
+      continue;
+    }
+    let end = start;
+    while (end < rows.length && isBareLine(rows[end]!)) end += 1;
+    const stack = Array.from({ length: end - start }, (_, offset) => start + offset);
+    const restarts = stack.filter((index) => isRestartRow(rows[index]!));
+    for (const index of restarts.slice(0, -1)) drops.add(index);
+    const seamOf = (index: number) => {
+      const row = rows[index]!;
+      return row.kind === "seam" ? row.seam : null;
+    };
+    const dates = stack.filter((index) => seamOf(index) === "day" || seamOf(index) === "gap");
+    const kept = dates.findLast((index) => seamOf(index) === "day") ?? dates.at(-1);
+    for (const index of dates) if (index !== kept) drops.add(index);
+    start = end;
+  }
+  return drops;
 }
 
 /** A crew seam's line, placed where the engine drew it. */
@@ -3626,6 +3671,14 @@ export function deriveMessagesTimelineRows(input: {
       createdAt: rows.at(-1)?.createdAt ?? "",
       noticeId,
     });
+  }
+  const drops = bareLineDrops(rows);
+  if (drops.size > 0) {
+    const before = (index: number) => [...drops].filter((dropped) => dropped < index).length;
+    for (const [at, [start, end]] of cardRanges.entries()) {
+      cardRanges[at] = [start - before(start), end - before(end)];
+    }
+    for (const index of [...drops].toSorted((a, b) => b - a)) rows.splice(index, 1);
   }
   const cards = new Map<number, CardSlice>();
   const whole = new Set<number>();
