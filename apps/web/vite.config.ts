@@ -462,6 +462,72 @@ const PRODUCTION_HQ_ORIGIN = "https://mate-hq.zerops.io";
 const PRODUCTION_ZEROPS_API_ORIGIN = "https://api.app-prg1.zerops.io";
 const ALFA_HQ_ORIGIN = "https://hq-31d9-8080.prg1.zerops.app";
 
+/**
+ * The design harness pages (`design*.html`: every state of a surface over fixtures, no account and
+ * no Mate) as the build's entries in place of the app, where `VITE_DESIGN_HARNESS=1` asks for
+ * them: `zerops.yml`'s `harness` setup, a place people open to look at states. Every other build
+ * ships the app alone; the dev server serves these pages without being told.
+ */
+const designHarnessPages =
+  process.env.VITE_DESIGN_HARNESS === "1"
+    ? NodeFS.readdirSync(import.meta.dirname)
+        .filter((name) => /^design[\w-]*\.html$/u.test(name))
+        .toSorted()
+    : [];
+
+/**
+ * The harness build's own front page, in place of the app's: every harness page by its title, so
+ * the place has one address to open. Plain HTML, the browser's own light and dark.
+ */
+function designHarnessIndexPlugin(pages: ReadonlyArray<string>): Plugin {
+  const escaped = (text: string) =>
+    text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+  const titled = pages.map((page) => {
+    const source = NodeFS.readFileSync(NodePath.join(import.meta.dirname, page), "utf8");
+    const title = /<title>([^<]*)<\/title>/u.exec(source)?.[1] ?? page;
+    return { page, title: title.replace(/^Mate — /u, "").replace(/ harness$/u, "") };
+  });
+  const rows = titled
+    .toSorted((left, right) => left.title.localeCompare(right.title))
+    .map(
+      ({ page, title }) =>
+        `<li><a href="./${page}">${escaped(title)}</a> <code>${page}</code></li>`,
+    )
+    .join("\n      ");
+  const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Mate — design harness</title>
+    <style>
+      body { font: 15px/1.5 system-ui, sans-serif; max-width: 44rem; margin: 3rem auto; padding: 0 1rem; }
+      h1 { font-size: 1.4rem; }
+      p, code { color: GrayText; }
+      li { margin: 0.3rem 0; }
+      code { font-size: 0.8rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Mate — design harness</h1>
+    <p>Every state of each surface over made-up data. No account and no Mate; nothing here is real.</p>
+    <ul>
+      ${rows}
+    </ul>
+  </body>
+</html>
+`;
+  return {
+    name: "t3code:design-harness-index",
+    apply: "build",
+    generateBundle() {
+      this.emitFile({ type: "asset", fileName: "index.html", source: html });
+    },
+  };
+}
+
 export default defineConfig(({ command }) => {
   process.env.VITE_HQ_ORIGIN ||= command === "build" ? PRODUCTION_HQ_ORIGIN : ALFA_HQ_ORIGIN;
   return {
@@ -472,6 +538,7 @@ export default defineConfig(({ command }) => {
       preconnectPlugin(),
       devCompressionPlugin(),
       ...(process.env.T3CODE_WEB_ANALYZE === "1" ? [bundleCompositionPlugin()] : []),
+      ...(designHarnessPages.length === 0 ? [] : [designHarnessIndexPlugin(designHarnessPages)]),
       ...(base === "/" && ["app-shell", "retire"].includes(configuredAppShellWorker)
         ? [appShellWorkerPlugin(configuredAppShellWorker), appShellFilesPlugin()]
         : []),
@@ -579,11 +646,19 @@ export default defineConfig(({ command }) => {
       manifest: true,
       sourcemap: buildSourcemap,
       rolldownOptions: {
-        output: {
-          // Shared startup modules belong to one fetch, rather than a request for each icon/helper.
-          // The tag follows the actual static graph and leaves demanded surfaces outside it.
-          codeSplitting: { groups: [{ name: "startup", tags: ["$initial" as const] }] },
-        },
+        ...(designHarnessPages.length === 0
+          ? {}
+          : {
+              input: designHarnessPages.map((page) => NodePath.resolve(import.meta.dirname, page)),
+            }),
+        // Shared startup modules belong to one fetch, rather than a request for each icon/helper.
+        // The tag follows the actual static graph and leaves demanded surfaces outside it. With the
+        // harness pages each entry starts on its own: one startup chunk would hold every page's
+        // entry and run the app's on a harness page.
+        output:
+          designHarnessPages.length === 0
+            ? { codeSplitting: { groups: [{ name: "startup", tags: ["$initial" as const] }] } }
+            : {},
       },
     },
     test: {
