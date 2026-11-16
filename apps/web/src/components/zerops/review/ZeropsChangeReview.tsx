@@ -29,6 +29,7 @@ import {
   changeStanding,
   MERGE_CHECK_LATE_MS,
   recipeReach,
+  REVIEW_RELEASE_LABEL,
   shownMergeAsk,
   waitingForProduction,
   type ChangeReadout,
@@ -567,6 +568,22 @@ function ChangeReviewData({
       appId={target.groupId}
       stages={flow === undefined ? NO_STAGES : mainStagesOf(flow).map((entry) => entry.name)}
       productionOutside={flow?.outside !== undefined}
+      nothingLive={
+        flow !== undefined &&
+        flow.declarationsRead &&
+        flow.release.git === undefined &&
+        flow.outside === undefined &&
+        flow.unreadEnvironments.length === 0 &&
+        flow.environmentInputs.length === 0
+      }
+      mayRelease={
+        flow?.release.permission === undefined
+          ? undefined
+          : flow.release.permission.allowed || flow.release.permission.refusedBy !== "hq"
+      }
+      onReviewRelease={() => {
+        openReview({ kind: "release", groupId: target.groupId });
+      }}
       release={offerStale ? undefined : flow?.release.gate}
       mate={
         mate === undefined
@@ -759,6 +776,18 @@ export interface ChangeReviewViewProps {
   readonly release: ReleaseGate | undefined;
   /** The release production runs. */
   readonly live: string | undefined;
+  /**
+   * Whether HQ's rule lets the person release: `false` only where it refused them, and no
+   * sentence then says "until you release"; absent while HQ has not said.
+   */
+  readonly mayRelease?: boolean | undefined;
+  /** Opens the next release's review: the merged review's quiet press, for whoever may release. */
+  readonly onReviewRelease?: (() => void) | undefined;
+  /**
+   * HQ has told the project's environments and it has none of any kind: a merge only keeps the
+   * work for what is built next, and its note says so.
+   */
+  readonly nothingLive?: boolean | undefined;
   /** The project's name: the top line's "Sage · Tea Shop". */
   readonly project?: string | undefined;
   /** The change's application at HQ: where its code opens in the Git browser; absent, it opens nowhere. */
@@ -901,6 +930,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     production,
     stage: (props.stages ?? NO_STAGES).length > 0,
     productionOutside,
+    nothingLive: props.nothingLive,
   };
   // HQ's merge check still to come, said as a wait and, once past the usual, as late — on time.
   const checkingSince = useCheckingSince(
@@ -943,6 +973,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       live: props.live,
     },
     release: props.release,
+    mayRelease: props.mayRelease,
     recipe:
       pull.kind === "recipe" && read?.filesKnown === true
         ? recipeReach({
@@ -1106,8 +1137,16 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
                     warning: receipt?.warning,
                     recipe: pull.kind === "recipe",
                     productionOutside,
+                    mayRelease: props.mayRelease,
                   }),
                 )
+      }
+      noteAction={
+        model.reviewRelease !== true ||
+        question !== undefined ||
+        props.onReviewRelease === undefined
+          ? undefined
+          : { label: REVIEW_RELEASE_LABEL, onPress: props.onReviewRelease }
       }
       noteKey={standing?.key}
       asked={over || asked ? undefined : standing?.asked}
@@ -1127,6 +1166,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
                   warning: receipt?.warning,
                   recipe: pull.kind === "recipe",
                   productionOutside,
+                  mayRelease: props.mayRelease,
                 }),
               )
       }
