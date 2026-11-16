@@ -4,12 +4,17 @@
  * the column holds only what is there.
  */
 import { useAtomValue } from "@effect/atom-react";
-import type { EnvironmentId, StandUpHeadline } from "@t3tools/contracts";
+import {
+  standUpVerdictHandsOver,
+  type EnvironmentId,
+  type StandUpHeadline,
+} from "@t3tools/contracts";
 import { AsyncResult } from "effect/reactivity";
 import { useCallback, useState, type ReactNode } from "react";
 
 import { zeropsEnvironmentsAtom } from "../../../state/zerops";
-import { useMateOfEnvironment } from "../../../zerops/accountEnvironments";
+import { useEnvironmentSessionState } from "../../../state/session";
+import { resolveRemoteOperateAccess } from "../../settings/ProviderSettingsPanel.logic";
 import { zeropsFeeds } from "../../../zerops/feeds";
 import { useAtomCommand } from "../../../state/use-atom-command";
 import { zeropsCommands } from "../../../state/zeropsCommands";
@@ -76,8 +81,9 @@ const HEADLINE: Readonly<Record<StandUpHeadline, string>> = {
 
 /**
  * A Mate's stand-up as zcp's verdict says it, read from the Mate's own socket by a signed-in
- * person: its headline, a row per pooled service, and on a failed one its one action — the
- * verdict handed to an agent turn (the setup's retry). Nothing where zcp wrote no verdict: a tier
+ * person: its headline, a row per pooled service, and — once zcp says it failed and nothing still
+ * builds, for a person who may operate the Mate — its one action: the verdict handed to an agent
+ * turn (the setup's retry, without the setup document's settlement). Nothing where zcp wrote no verdict: a tier
  * without a pooled part stands up as before.
  */
 export function SetupStandUp({
@@ -97,6 +103,14 @@ export function SetupStandUp({
   );
 }
 
+type HandOverAnswer = "sending" | "went" | "refused" | "unreachable";
+
+const ANSWER: Readonly<Record<Exclude<HandOverAnswer, "sending">, string>> = {
+  went: "The agent has the verdict.",
+  refused: "Not handed over: no agent of yours is signed in to take it.",
+  unreachable: "The Mate did not answer. Try again.",
+};
+
 function SetupStandUpOf({
   environmentId,
   name,
@@ -105,46 +119,47 @@ function SetupStandUpOf({
   readonly name: string;
 }) {
   const reading = useAtomValue(zeropsFeeds.standUpVerdict(environmentId));
-  const mate = useMateOfEnvironment(environmentId);
-  const send = useAtomCommand(zeropsCommands.standUpRetry, "stand-up verdict to agent");
-  const [answer, setAnswer] = useState<"sending" | "went" | "refused" | "unreachable" | null>(null);
+  const session = useEnvironmentSessionState(environmentId);
+  const mayOperate =
+    resolveRemoteOperateAccess({
+      session: session.data,
+      isPending: session.isPending,
+      hasError: session.hasError,
+    }) === "granted";
+  const send = useAtomCommand(zeropsCommands.standUpHandOver, "stand-up verdict to agent");
+  const verdict =
+    reading.state === "known" && reading.value.verdict !== null ? reading.value.verdict : null;
+  // An answer is the verdict's it was given for: a changed verdict starts with none.
+  const shown = verdict === null ? "" : JSON.stringify(verdict);
+  const [answer, setAnswer] = useState<{ readonly for: string; readonly is: HandOverAnswer }>();
+  const current = answer?.for === shown ? answer.is : undefined;
   const handOver = useCallback(async () => {
-    if (answer === "sending") return;
-    if (mate?.orgId == null || mate.origin === null) {
-      setAnswer("unreachable");
-      return;
-    }
-    setAnswer("sending");
-    const result = await send({
-      environmentId,
-      input: { orgId: mate.orgId, origin: mate.origin },
+    if (current === "sending") return;
+    setAnswer({ for: shown, is: "sending" });
+    const result = await send({ environmentId, input: {} });
+    setAnswer({
+      for: shown,
+      is: !AsyncResult.isSuccess(result) ? "unreachable" : result.value ? "went" : "refused",
     });
-    setAnswer(!AsyncResult.isSuccess(result) ? "unreachable" : result.value ? "went" : "refused");
-  }, [answer, environmentId, mate, send]);
-  if (reading.state !== "known" || reading.value.verdict === null) return null;
-  const { verdict } = reading.value;
-  const failed = verdict.headline === "failed";
+  }, [current, environmentId, send, shown]);
+  if (verdict === null) return null;
   return (
     <SetupRow
       action={
-        failed && answer !== "went" ? (
+        mayOperate && standUpVerdictHandsOver(verdict) && current !== "went" ? (
           <SectionAction onClick={() => void handOver()}>Hand to agent</SectionAction>
         ) : undefined
       }
-      busy={answer === "sending"}
+      busy={current === "sending"}
       label={`Stand-up · ${name}`}
       rows
       surface="project-setup-standup"
     >
       <p data-zerops-standup-headline={verdict.headline}>{HEADLINE[verdict.headline]}</p>
       <StandupVerdictRows verdict={verdict} />
-      {answer === "went" ? (
-        <p className="text-muted-foreground">The agent has the verdict.</p>
-      ) : answer === "refused" ? (
-        <p className="text-muted-foreground">No agent of yours can take it: sign one in.</p>
-      ) : answer === "unreachable" ? (
-        <p className="text-muted-foreground">The Mate did not answer. Try again.</p>
-      ) : null}
+      {current === undefined || current === "sending" ? null : (
+        <p className="text-muted-foreground">{ANSWER[current]}</p>
+      )}
     </SetupRow>
   );
 }

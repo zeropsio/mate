@@ -491,6 +491,13 @@ export const StandUpVerdict = Schema.Struct({
 export type StandUpVerdict = typeof StandUpVerdict.Type;
 
 /**
+ * Whether a verdict is handed to an agent: zcp says the stand-up failed and no row still builds —
+ * the run has ended. The Mate's server answers the hand-over by it; a client offers it by it.
+ */
+export const standUpVerdictHandsOver = (verdict: StandUpVerdict): boolean =>
+  verdict.headline === "failed" && !verdict.rows.some((row) => row.state === "building");
+
+/**
  * The verdict as the Mate's server reads it now (`subscribeZeropsStandUpVerdict`): `null` where
  * zcp wrote none — a tier without a pooled part, or a zcp from before the verdict.
  */

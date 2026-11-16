@@ -56,8 +56,8 @@ const VERDICT_ROW: Record<
 };
 
 /**
- * zcp's stand-up verdict, a row per pooled service in the stand-up's row look: its state, a failed
- * one's cause, and each row's next step where zcp gives one — zcp's own words, verbatim.
+ * zcp's stand-up verdict, a row per pooled service in the stand-up's row look: its state, its
+ * cause where zcp gives one, and its next step where zcp gives one — zcp's own words, verbatim.
  */
 export function StandupVerdictRows({ verdict }: { readonly verdict: StandUpVerdict }) {
   const next = verdict.rows.filter((row) => row.next !== "");
@@ -69,11 +69,11 @@ export function StandupVerdictRows({ verdict }: { readonly verdict: StandUpVerdi
           return (
             <DetailRow
               key={row.hostname}
-              long={row.state === "failed" ? "word" : "title"}
+              long={row.cause !== "" ? "word" : "title"}
               time={null}
               title={row.hostname}
               tone={tone}
-              word={row.state === "failed" && row.cause !== "" ? row.cause : word}
+              word={row.cause !== "" ? row.cause : word}
             />
           );
         })}

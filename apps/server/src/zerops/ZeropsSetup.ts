@@ -38,6 +38,7 @@ import {
   type ServerProvider,
   type StandUpVerdict,
   type StandUpVerdictReading,
+  standUpVerdictHandsOver,
   wakeId as standUpWakeIdOf,
   type ZeropsAgentAuthSnapshot,
   type ZeropsAgentId,
@@ -90,6 +91,7 @@ import {
   standUpCommandIds,
   standUpDecision,
   verdictAsk,
+  verdictWakeKey,
   standUpAgents,
   type GitAccess,
   type SetupDocument,
@@ -677,6 +679,8 @@ export const makeZeropsSetup = Effect.gen(function* () {
       });
       // zcp stands the pooled parts up itself: the server starts none, now or later.
       if (decision.kind === "zcp") {
+        // The persona chosen at Add is the Mate's whoever stands it up.
+        yield* takePersona;
         if (resuming === undefined) return yield* settle("none");
         yield* settleTaken(resuming.commandId);
         return true;
@@ -872,47 +876,56 @@ export const makeZeropsSetup = Effect.gen(function* () {
   }
 
   /**
-   * zcp's failed verdict handed to an agent: one turn in the Mate's conversation, for `userId`, on
-   * an agent they may run (`standUpAgents`) — else one Mate signs nobody in to that is ready, or
-   * an automated Mate's — carrying every row as zcp wrote it. Admitted like any run (D6).
+   * zcp's failed verdict handed to an agent: one turn in the Mate's conversation, for `userId`,
+   * carrying every row as zcp wrote it, admitted like any run (D6). Once per verdict: its wake key
+   * is the verdict's (`verdictWakeKey`), and a run it started already answers as gone. The
+   * conversation keeps its own agent; one with none gets the caller's (`standUpAgents`), else one
+   * Mate signs nobody in to that is ready, or an automated Mate's.
    */
-  const sendVerdict = (userId: ZeropsUserId, verdict: StandUpVerdict) =>
+  const sendVerdict = (userId: ZeropsUserId, startedAt: string, verdict: StandUpVerdict) =>
     Effect.gen(function* () {
-      const hq = yield* reads.hq;
-      const automated = hq.kind === "linked" && hq.mate.automated === true;
-      const allProviders = yield* reads.providers;
-      const providers = automated
-        ? allProviders.filter(
-            (provider) => provider.instanceId === AUTOMATED_MODEL_SELECTION.instanceId,
-          )
-        : allProviders;
       const main = yield* engineConversation();
       if (main === "unknown") return false;
-      const mainSelection = selectionOf(main);
-      const readyHere = pickReadyAgentWithoutSignIn(
-        providers,
-        mainSelection?.modelSelection.instanceId,
-      );
-      const agentId = automated
-        ? undefined
-        : standUpAgents(yield* reads.agents, yield* reads.signers, userId)[0];
-      let chosen: ModelSelection;
-      if (automated) {
-        chosen = yield* reads.automatedModel;
-      } else if (agentId !== undefined) {
-        chosen = standUpModelSelection(agentId, mainSelection, yield* projectDefault);
-      } else if (readyHere !== undefined) {
-        chosen = standUpModelSelectionOn(readyHere, mainSelection, yield* projectDefault);
-      } else {
-        return false;
-      }
       const conversationId = main?.conversationId ?? ConversationId.make(yield* crypto.uuidV4());
-      const selection = unstarted(main) ? selectionWithPreferredEffort(providers, chosen) : chosen;
-      if (!(yield* engine.assignAgent(conversationId, agentOf(selection, providers)))) return false;
+      const key = verdictWakeKey(startedAt, verdict);
+      if (
+        (yield* engine.runOf({ wakeId: standUpWakeIdOf(conversationId, "standup", key) })) !==
+        undefined
+      )
+        return true;
+      if (main?.agent === null || main?.agent === undefined) {
+        const hq = yield* reads.hq;
+        const automated = hq.kind === "linked" && hq.mate.automated === true;
+        const allProviders = yield* reads.providers;
+        const providers = automated
+          ? allProviders.filter(
+              (provider) => provider.instanceId === AUTOMATED_MODEL_SELECTION.instanceId,
+            )
+          : allProviders;
+        const readyHere = pickReadyAgentWithoutSignIn(providers);
+        const agentId = automated
+          ? undefined
+          : standUpAgents(yield* reads.agents, yield* reads.signers, userId)[0];
+        let chosen: ModelSelection;
+        if (automated) {
+          chosen = yield* reads.automatedModel;
+        } else if (agentId !== undefined) {
+          chosen = standUpModelSelection(agentId, undefined, yield* projectDefault);
+        } else if (readyHere !== undefined) {
+          chosen = standUpModelSelectionOn(readyHere, undefined, yield* projectDefault);
+        } else {
+          return false;
+        }
+        const selection = unstarted(main)
+          ? selectionWithPreferredEffort(providers, chosen)
+          : chosen;
+        if (!(yield* engine.assignAgent(conversationId, agentOf(selection, providers))))
+          return false;
+      }
       yield* engine.wake({
         conversationId,
         kind: "standup",
-        key: `mate-standup-verdict-${yield* crypto.uuidV4()}`,
+        key,
         principal: { kind: "standup", startedBy: userId },
         text: verdictAsk(verdict),
         dueAt: yield* Clock.currentTimeMillis,
@@ -927,9 +940,12 @@ export const makeZeropsSetup = Effect.gen(function* () {
     attempts
       .withPermit(
         Effect.gen(function* () {
-          const verdict = (yield* status)?.standup?.verdict;
-          if (verdict !== undefined)
-            return verdict.headline === "failed" ? yield* sendVerdict(userId, verdict) : false;
+          const standup = (yield* status)?.standup;
+          const verdict = standup?.verdict;
+          if (standup !== undefined && verdict !== undefined)
+            return standUpVerdictHandsOver(verdict)
+              ? yield* sendVerdict(userId, standup.startedAt, verdict)
+              : false;
           const stored = yield* recordOf;
           const held = yield* seenOnEngine(stored);
           if (stored === undefined || held?.source !== "server:failed" || held.userId !== userId)

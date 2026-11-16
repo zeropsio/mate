@@ -23,6 +23,8 @@ import {
   type ZeropsAgentId,
   type ZeropsUserId,
 } from "@t3tools/contracts";
+import * as Hash from "effect/Hash";
+
 import { turnRefusal } from "@t3tools/shared/zeropsAgentAuth";
 
 import type { ProjectSigners } from "./ZeropsProjectSigners.ts";
@@ -295,6 +297,14 @@ export const parseZcpStatus = (raw: unknown): ZcpStatus | undefined => {
           },
   };
 };
+
+/**
+ * The wake key of a verdict's hand-over: the same for the same verdict of the same run (its
+ * section's start and its rows), so pressing again arms no second turn; a new run's or a changed
+ * verdict's is new.
+ */
+export const verdictWakeKey = (startedAt: string, verdict: StandUpVerdict): string =>
+  `mate-standup-verdict-${startedAt}-${(Hash.string(JSON.stringify(verdict)) >>> 0).toString(16)}`;
 
 /**
  * zcp's failed verdict as the ask an agent turn carries: every row as zcp wrote it — a failed
