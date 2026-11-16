@@ -20,8 +20,6 @@ import { ReleaseRollout, TierStop } from "@t3tools/shared/hqRelease";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import type { HqOffered } from "./client.ts";
-
 /** A job of an environment, as HQ's record holds it. */
 export const HqJob = Schema.Struct({
   id: Schema.String,

@@ -35,10 +35,8 @@ import { type GroupEnvironment, type GroupEnvironmentTier } from "./groupEnviron
 import { deployedCommit, type EnvironmentServiceState, type GroupRowTone } from "./groupRows.ts";
 import type { ZeropsEnvironmentRole } from "./groups.ts";
 import {
-  type HqEnvironment,
   type CanonicalHqEnvironment,
   type HqJob,
-  canonicalEnvironmentsOf,
   type UnreadEnvironment,
   jobFailed,
   jobInFlight,
