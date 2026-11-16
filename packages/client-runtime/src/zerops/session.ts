@@ -121,19 +121,14 @@ function parseSelection(value: unknown): ZeropsSelection | null {
   if (!value || typeof value !== "object") return null;
   const selection = value as Partial<ZeropsSelection>;
   if (typeof selection.userId !== "string" || !selection.userId) return null;
-  if (
-    selection.clientUserId !== undefined &&
-    selection.clientUserId !== null &&
-    typeof selection.clientUserId !== "string"
-  )
-    return null;
+  if (selection.clientUserId !== null && typeof selection.clientUserId !== "string") return null;
   if (selection.clientId !== null && typeof selection.clientId !== "string") return null;
   if (selection.projectId !== null && typeof selection.projectId !== "string") return null;
   return {
     userId: selection.userId,
-    clientUserId: selection.clientUserId ?? null,
-    clientId: selection.clientId ?? null,
-    projectId: selection.projectId ?? null,
+    clientUserId: selection.clientUserId,
+    clientId: selection.clientId,
+    projectId: selection.projectId,
   };
 }
 

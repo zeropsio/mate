@@ -16,8 +16,6 @@ interface ZeropsOrganizationSelectionInput {
   readonly preferredClientId: string | null;
   /** The exact membership remembered by this client. */
   readonly storedClientUserId: string | null;
-  /** Backward-compatible fallback for selections saved before clientUserId. */
-  readonly storedClientId: string | null;
 }
 
 export function resolveActiveZeropsOrganization(
@@ -35,12 +33,6 @@ export function resolveActiveZeropsOrganization(
       (organization) => organization.membershipId === input.storedClientUserId,
     );
     if (storedMembership) return storedMembership;
-  }
-  if (input.storedClientId) {
-    const storedClient = organizations.find(
-      (organization) => organization.id === input.storedClientId,
-    );
-    if (storedClient) return storedClient;
   }
   return organizations.length === 1 ? (organizations[0] ?? null) : null;
 }
