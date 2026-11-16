@@ -442,7 +442,10 @@ export {
   type ProjectAttentionKind,
 } from "./projectAttention.ts";
 export {
+  answerCommentsLabel,
+  answerCommentsRequest,
   changeAskLabel,
+  commentsToAnswer,
   changeAskPrompt,
   changeHandedPrompt,
   changeConversationCount,

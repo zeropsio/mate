@@ -650,6 +650,13 @@ export function tryItWords(
 }
 
 /**
+ * What "Try it" says under its pills where its Mate holds more than one open change: its preview
+ * runs all of its work, never this change alone.
+ */
+export const tryItEverything = (mateName: string): string =>
+  `Shows everything ${mateName} is working on`;
+
+/**
  * "Try it"'s previews: a Mate's parts (`mateParts`, the reader every surface shows them from), each
  * part with a public preview by its real hostname. A change of one repository offers that pair's
  * parts; where no part's dev is that repository — a pool-era Mate, whose parts' devs are pools — it
