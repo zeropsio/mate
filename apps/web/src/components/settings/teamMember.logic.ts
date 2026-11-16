@@ -40,7 +40,8 @@ import { ROLE_CODE_WORDS } from "./teamSettings.logic";
 /**
  * Each preset as its card says it: what the person can do in Mate, true to what Zerops gives the
  * role — an owner everything; an admin every project and inviting below admin, never billing; a
- * Developer (`NO_ACCESS` that creates projects) the projects given them and their own; a Guest
+ * Developer (`NO_ACCESS` that creates projects) the projects given them and their own, merging and
+ * releasing there unless the project limits who does (`mergers`); a Guest
  * (`NO_ACCESS`) only the projects given them, read only, starting nothing.
  */
 export const PRESET_WORDS: Readonly<
@@ -53,7 +54,8 @@ export const PRESET_WORDS: Readonly<
   },
   developer: {
     label: "Developer",
-    description: "Works in the projects you give them and starts projects of their own.",
+    description:
+      "Works in the projects you give them and starts projects of their own. Can merge and release, unless the project limits it.",
   },
   guest: {
     label: "Guest",
