@@ -16,7 +16,7 @@ const INPUT = {
 };
 
 describe("buildZeropsRegistrationBody", () => {
-  it("sends what the platform requires, and claims a pool project by default", () => {
+  it("sends what the platform requires, claims a pool project by default, and names Mate as the app", () => {
     // Measured 2026-08-28: a complete body with no `token` is refused with
     // `cloudflareCaptchaVerificationFailed`, so there is no captcha-less path.
     expect(buildZeropsRegistrationBody(INPUT)).toEqual({
@@ -27,6 +27,7 @@ describe("buildZeropsRegistrationBody", () => {
       languageId: "en",
       claimZcpPool: true,
       token: "cf-token",
+      app: "MATE",
     });
   });
 

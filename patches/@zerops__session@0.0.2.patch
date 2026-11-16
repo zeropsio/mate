@@ -1,0 +1,54 @@
+diff --git a/session.client.d.ts b/session.client.d.ts
+index 40e918e09ecda6105e9e7029c306492f2a490486..fb01e4b38957a8f61cc586ed8b80cb53b8b052f9 100644
+--- a/session.client.d.ts
++++ b/session.client.d.ts
+@@ -105,5 +105,5 @@ export interface SessionClientOptions {
+  */
+ export declare function createSessionClient(options: SessionClientOptions): ZeropsSessionClient;
+ /** hq's embedded page: `back` is the app's page, for the ways out and as the only target of hq's messages. */
+-export declare function embedUrl(hqOrigin: string, page: 'login' | 'registration' | 'sudo', back: string, scheme?: 'light' | 'dark', signUp?: SignUpParams): string;
++export declare function embedUrl(hqOrigin: string, page: 'login' | 'registration' | 'sudo', back: string, scheme?: 'light' | 'dark', signUp?: SignUpParams, app?: string): string;
+ //# sourceMappingURL=session.client.d.ts.map
+\ No newline at end of file
+diff --git a/session.client.js b/session.client.js
+index 4a22eb5085d5f4fa45ee197f6e5a296ad3ee02c0..71296b6614dc248ccef0215e1566417616fc7290 100644
+--- a/session.client.js
++++ b/session.client.js
+@@ -98,6 +98,9 @@ export function createSessionClient(options) {
+         const url = new URL(hqOrigin + path);
+         url.searchParams.set('redirect', win.location.href);
+         url.searchParams.set('bounce', String(bounce.next()));
++        if (options.appCode) {
++            url.searchParams.set('app', options.appCode);
++        }
+         if (signInOptions.intent === 'register') {
+             addSignUp(url, signInOptions.signUp);
+         }
+@@ -138,8 +141,8 @@ export function createSessionClient(options) {
+     };
+     const overlaySignIn = async (client, signInOptions) => {
+         const src = signInOptions.intent === 'register'
+-            ? embedUrl(hqOrigin, 'registration', win.location.href, signInOptions.scheme, signInOptions.signUp)
+-            : embedUrl(hqOrigin, 'login', win.location.href, signInOptions.scheme);
++            ? embedUrl(hqOrigin, 'registration', win.location.href, signInOptions.scheme, signInOptions.signUp, options.appCode)
++            : embedUrl(hqOrigin, 'login', win.location.href, signInOptions.scheme, undefined, options.appCode);
+         const session = await framed(src, signInOptions, (stops) => nextSession(client, signInOptions.signal, stops));
+         return session ?? toHq(signInOptions);
+     };
+@@ -296,12 +299,15 @@ export function createSessionClient(options) {
+ }
+ const view = (auth) => auth ? toView(auth) : null;
+ /** hq's embedded page: `back` is the app's page, for the ways out and as the only target of hq's messages. */
+-export function embedUrl(hqOrigin, page, back, scheme, signUp) {
++export function embedUrl(hqOrigin, page, back, scheme, signUp, app) {
+     const url = new URL(`${hqOrigin}/embed/${page}`);
+     url.searchParams.set('back', back);
+     if (scheme) {
+         url.searchParams.set('scheme', scheme);
+     }
++    if (app) {
++        url.searchParams.set('app', app);
++    }
+     addSignUp(url, signUp);
+     return url.toString();
+ }
