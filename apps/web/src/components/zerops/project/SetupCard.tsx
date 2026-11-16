@@ -5,11 +5,16 @@
  */
 import { useAtomValue } from "@effect/atom-react";
 import {
+  OrchestrationDispatchCommandError,
   standUpVerdictHandsOver,
   type EnvironmentId,
   type StandUpHeadline,
 } from "@t3tools/contracts";
+import * as Cause from "effect/Cause";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import { AsyncResult } from "effect/reactivity";
+import type { AtomCommandResult } from "@t3tools/client-runtime/state/runtime";
 import { useCallback, useState, type ReactNode } from "react";
 
 import { zeropsEnvironmentsAtom } from "../../../state/zerops";
@@ -103,13 +108,29 @@ export function SetupStandUp({
   );
 }
 
-type HandOverAnswer = "sending" | "went" | "refused" | "unreachable";
+type HandOverAnswer =
+  | { readonly kind: "sending" | "went" | "refused" | "unreachable" }
+  /** The Mate armed the turn and it ended before it reached the agent, in the Mate's words. */
+  | { readonly kind: "failed"; readonly words: string };
 
-const ANSWER: Readonly<Record<Exclude<HandOverAnswer, "sending">, string>> = {
+const ANSWER: Readonly<Record<"went" | "refused" | "unreachable", string>> = {
   went: "The agent has the verdict.",
   refused: "Not handed over: no agent of yours is signed in to take it.",
   unreachable: "The Mate did not answer. Try again.",
 };
+
+const isDispatchError = Schema.is(OrchestrationDispatchCommandError);
+
+/** What the Mate answered a hand-over: its run reached the agent, was refused, or ended first. */
+function handOverAnswer(result: AtomCommandResult<boolean, unknown>): HandOverAnswer {
+  if (AsyncResult.isSuccess(result)) return { kind: result.value ? "went" : "refused" };
+  const error = AsyncResult.isFailure(result)
+    ? Cause.findErrorOption(result.cause)
+    : Option.none<unknown>();
+  return Option.isSome(error) && isDispatchError(error.value)
+    ? { kind: "failed", words: error.value.message }
+    : { kind: "unreachable" };
+}
 
 function SetupStandUpOf({
   environmentId,
@@ -134,31 +155,29 @@ function SetupStandUpOf({
   const [answer, setAnswer] = useState<{ readonly for: string; readonly is: HandOverAnswer }>();
   const current = answer?.for === shown ? answer.is : undefined;
   const handOver = useCallback(async () => {
-    if (current === "sending") return;
-    setAnswer({ for: shown, is: "sending" });
-    const result = await send({ environmentId, input: {} });
-    setAnswer({
-      for: shown,
-      is: !AsyncResult.isSuccess(result) ? "unreachable" : result.value ? "went" : "refused",
-    });
+    if (current?.kind === "sending") return;
+    setAnswer({ for: shown, is: { kind: "sending" } });
+    setAnswer({ for: shown, is: handOverAnswer(await send({ environmentId, input: {} })) });
   }, [current, environmentId, send, shown]);
   if (verdict === null) return null;
   return (
     <SetupRow
       action={
-        mayOperate && standUpVerdictHandsOver(verdict) && current !== "went" ? (
+        mayOperate && standUpVerdictHandsOver(verdict) && current?.kind !== "went" ? (
           <SectionAction onClick={() => void handOver()}>Hand to agent</SectionAction>
         ) : undefined
       }
-      busy={current === "sending"}
+      busy={current?.kind === "sending"}
       label={`Stand-up · ${name}`}
       rows
       surface="project-setup-standup"
     >
       <p data-zerops-standup-headline={verdict.headline}>{HEADLINE[verdict.headline]}</p>
       <StandupVerdictRows verdict={verdict} />
-      {current === undefined || current === "sending" ? null : (
-        <p className="text-muted-foreground">{ANSWER[current]}</p>
+      {current === undefined || current.kind === "sending" ? null : (
+        <p className="text-muted-foreground">
+          {current.kind === "failed" ? current.words : ANSWER[current.kind]}
+        </p>
       )}
     </SetupRow>
   );
