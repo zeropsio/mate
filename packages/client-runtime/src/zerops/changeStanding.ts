@@ -63,7 +63,7 @@ const MERGERS_SAID = 2;
 /**
  * Who a change waits for where its application limits who merges, as a sentence's object: the
  * people it names, as the member list calls them — "Ada K.", "Ada K. or Sam R.", "Ada K., Sam R.
- * or another person who merges here" — and "an Owner or Admin" where it names nobody, or nobody
+ * or others" — and "an Owner or Admin" where it names nobody, or nobody
  * the list knows.
  */
 export function mergersWho(
@@ -73,7 +73,7 @@ export function mergersWho(
   const named = people.flatMap((userId) => nameOf(userId) ?? []);
   const said = named.slice(0, MERGERS_SAID);
   if (said.length === 0) return "an Owner or Admin";
-  if (people.length > said.length) return `${said.join(", ")} or another person who merges here`;
+  if (people.length > said.length) return `${said.join(", ")} or others`;
   return said.join(" or ");
 }
 
