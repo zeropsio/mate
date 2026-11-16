@@ -867,8 +867,7 @@ export const HAND_REFUSALS = [
 /**
  * Why HQ does not merge: the head moved since it was shown; the change conflicts with `main`, would
  * change nothing, is on `main` already, shares no history with it, has nothing pushed; `main` kept
- * moving; the change is merged or closed; or it builds on another change that is still open
- * (`builds_on_open`, the refusal naming them in `buildsOn`). A change mirrored to a pull request merges on GitHub:
+ * moving; or the change is merged or closed. A change mirrored to a pull request merges on GitHub:
  * GitHub's rules (branch protection, required checks) held it back, GitHub refused it otherwise, or
  * did not answer; its pull request was moved to merge into another branch, is not open yet, or was
  * closed there; or GitHub merged it and HQ has not followed yet.
@@ -882,7 +881,6 @@ export const MERGE_REFUSALS = [
   "no_change",
   "main_moved",
   "change_not_open",
-  "builds_on_open",
   "github_blocked",
   "github_refused",
   "github_unreachable",

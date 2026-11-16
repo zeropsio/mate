@@ -110,10 +110,18 @@ export const TAKE_ASK_BACK = "Take back";
 export const ASKED = "Asked";
 
 /**
- * What a person who merges reads where Merge would be, of a change that builds on the open
- * change `under`: that one merges first.
+ * What a person who merges reads under Merge, of a change that builds on other open ones: its
+ * merge puts them on `main` too — "Merging this also merges #11.", "… #11 and #12.". Nothing is
+ * held by it.
  */
-export const mergeFirstWords = (under: number): string => `Merge #${String(under)} first.`;
+export function alsoMergesWords(buildsOn: ReadonlyArray<number>): string {
+  const numbers = buildsOn.map((number) => `#${String(number)}`);
+  const listed =
+    numbers.length <= 1
+      ? (numbers[0] ?? "")
+      : `${numbers.slice(0, -1).join(", ")} and ${numbers.at(-1) ?? ""}`;
+  return `Merging this also merges ${listed}.`;
+}
 
 /**
  * The ask a surface shows of a change: what HQ's navigation holds (`held`), under this surface's
@@ -130,17 +138,14 @@ export function shownMergeAsk(
 }
 
 /**
- * The few words a row, tag or chip says of a ready change's standing. A change that builds on
- * another open one says that first, whoever looks: it merges after it.
+ * The few words a row, tag or chip says of a ready change's standing. What it builds on is its
+ * review's to say: nothing is held by it.
  */
 export function standingWord(
-  pull: Pick<FlowPullRequest, "buildsOn">,
   standing: ChangeStanding,
   mergers: { readonly people: ReadonlyArray<string> } | null | undefined,
   nameOf: (userId: string) => string | undefined,
 ): string {
-  const under = pull.buildsOn?.[0];
-  if (under !== undefined) return `After #${String(under)}`;
   switch (standing.kind) {
     case "to-merge":
       return "Ready to merge";
