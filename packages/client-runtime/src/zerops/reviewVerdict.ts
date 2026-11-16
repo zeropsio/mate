@@ -28,7 +28,23 @@ import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 import type { AppDeployRollout } from "./hq/deployHandover.logic.ts";
 import type { MergeabilityKind } from "./changeMergeability.ts";
 import type { GroupEnvironmentTier } from "./groupEnvironments.ts";
-import { hqRefusalWords, MERGE_TOO_LARGE } from "./hq/refusals.ts";
+import {
+  ASK_TO_MERGE,
+  ASKED,
+  askerName,
+  mergeFirstWords,
+  mergersLine,
+  mergersWho,
+  standingWord,
+  TAKE_ASK_BACK,
+  type ChangeStanding,
+} from "./changeStanding.ts";
+import {
+  hqRefusalWords,
+  MERGE_BUILDS_ON_OPEN,
+  MERGE_TOO_LARGE,
+  mergeLimitWords,
+} from "./hq/refusals.ts";
 import type { FlowPullRequestKind } from "./projectFlow.ts";
 import type { RecipeReach } from "./recipeReach.ts";
 import type { RecipeTier } from "./recipeTier.ts";
@@ -68,6 +84,7 @@ export type ReviewState =
   | "merge-unchecked"
   | "merging"
   | "merge-refused"
+  | "ask-refused"
   | "merged"
   | "close-confirm"
   | "closing"
@@ -293,6 +310,8 @@ export interface ChangeReviewInput {
     readonly closedByMate?: true | undefined;
     /** HQ's word that it closed it because this change's landing carried all of it (`landedWith`). */
     readonly landedWith?: number | undefined;
+    /** The other open changes it merges after, nearest first (`FlowPullRequest.buildsOn`). */
+    readonly buildsOn?: ReadonlyArray<number> | undefined;
     /**
      * Its pull request on GitHub, where its repository is there: `merged` while the change is still
      * open means GitHub merged it and HQ's `main` has not taken the merge yet. `checks` are GitHub's
@@ -377,12 +396,57 @@ export interface ChangeReviewInput {
    * `undefined` while HQ has not said, and Merge waits for it.
    */
   readonly offered: { readonly merge: boolean; readonly close: boolean } | undefined;
+  /**
+   * Whose press the change waits for where its application limits who merges
+   * (`ReviewStandingInput`); absent, it reads as where nothing is limited.
+   */
+  readonly standing?: ReviewStandingInput | undefined;
   readonly press?: ReviewPress | undefined;
+  /** Asking for the merge, or taking the ask back, as pressed. */
+  readonly asking?: ReviewAskPress | undefined;
   readonly close?: ReviewClose | undefined;
   /** The application's Mates a change whose Mate is gone may be handed to. */
   readonly heirs?: ReadonlyArray<{ readonly projectId: string; readonly name: string }> | undefined;
   readonly hand?: ReviewHand | undefined;
   readonly now: number;
+}
+
+/**
+ * Where a change stands for the person looking (`changeStanding`), with what names the people
+ * who merge: the application's limit and the member list's names.
+ */
+export interface ReviewStandingInput {
+  readonly standing: ChangeStanding;
+  /** Who merges where the application limits it; absent where it limits nothing. */
+  readonly mergers?: { readonly people: ReadonlyArray<string> } | null | undefined;
+  readonly nameOf: (userId: string) => string | undefined;
+  /** Whether HQ offers the person asking for the merge (`ask_merge_change`). */
+  readonly mayAsk: boolean;
+}
+
+/** Asking for a merge, or taking the ask back, as the caller holds the press. */
+export type ReviewAskPress =
+  | { readonly kind: "idle" }
+  | { readonly kind: "running"; readonly verb: "ask" | "take-back" }
+  | { readonly kind: "refused"; readonly verb: "ask" | "take-back"; readonly reason: string };
+
+/**
+ * What a ready change's review says of whose press it waits for, where its application limits who
+ * merges or it builds on another open change: beside the verdict, the one button and the note.
+ */
+export interface ReviewStandingModel {
+  /** One name per standing: the foot's words swap in place when it moves. */
+  readonly key: string;
+  /** The one button asks the people who merge, instead of merging. */
+  readonly asks?: true | undefined;
+  /** Said where the button would stand once somebody asked: "Asked". */
+  readonly settled?: string | undefined;
+  /** The quiet press that takes the person's own ask back. */
+  readonly takeBack?: ReviewSecondary | undefined;
+  /** Said to a person who merges, near Merge: who asked them, and when. */
+  readonly asked?: string | undefined;
+  /** The open change that merges first: Merge is held, and the note leads to its review. */
+  readonly mergeFirst?: number | undefined;
 }
 
 /** Why HQ said it cannot judge whether a change merges, by HQ's code. */
@@ -423,6 +487,7 @@ export interface ReviewOrphan {
 }
 
 export interface ChangeReviewModel extends ReviewModel {
+  readonly standing?: ReviewStandingModel | undefined;
   readonly orphan?: ReviewOrphan | undefined;
   readonly githubChecks?: ReviewGithubChecks | undefined;
 }
@@ -902,7 +967,85 @@ function whereShouldItRun(input: ChangeReviewInput): ReviewQuestion | undefined 
   };
 }
 
-function changeReviewModel(input: ChangeReviewInput): ReviewModel {
+/** `Dana L. asked 2 hours ago.` — `You asked just now.` for the person's own. */
+function askedSentence(
+  standing: Extract<ChangeStanding, { readonly by: string }>,
+  nameOf: (userId: string) => string | undefined,
+  now: number,
+): string {
+  const age = reviewAge(standing.at, now)?.toLowerCase();
+  return `${askerName(standing, nameOf)} asked${age === undefined ? "" : ` ${age}`}.`;
+}
+
+/**
+ * A ready change before the people who merge, read by a person the application's limit holds: the
+ * one button asks them, and once somebody asked, the note says who waits for whom. Each note keeps
+ * the other's room, so the buttons never move as the ask is made or taken back. A refusal is said
+ * under the title, as a refused merge is, and leaves the note as it was.
+ */
+function heldReview(
+  input: ChangeReviewInput,
+  verdict: ReviewVerdict,
+  standing: Extract<ChangeStanding, { readonly kind: "to-ask" | "waiting" }>,
+  facts: ReviewStandingInput,
+  secondary: ReviewSecondary | undefined,
+): ReviewModel & { readonly standing: ReviewStandingModel } {
+  const asking = input.asking ?? { kind: "idle" };
+  const people = facts.mergers?.people ?? [];
+  const under = input.pull.buildsOn?.[0];
+  const toAsk = sentences(
+    under === undefined ? undefined : `It merges after #${String(under)}.`,
+    mergersLine(people, facts.nameOf),
+  );
+  // A name may end in its own full stop ("Sam R."): the sentence adds none after it.
+  const who = mergersWho(people, facts.nameOf);
+  const waitsFor = `It's waiting for ${who}${who.endsWith(".") ? "" : "."}`;
+  const refused: ReviewVerdict | undefined =
+    asking.kind !== "refused"
+      ? undefined
+      : {
+          state: "ask-refused",
+          tone: "attention",
+          title: asking.verb === "ask" ? "Not asked" : "Not taken back",
+          why: asking.reason,
+          fix: undefined,
+        };
+  if (standing.kind === "to-ask") {
+    return {
+      verdict: refused ?? verdict,
+      consequence: toAsk,
+      // The note it becomes at the press: the person's own ask, made now.
+      consequenceRoom: `You asked just now. ${waitsFor}`,
+      primary: {
+        label: ASK_TO_MERGE,
+        enabled: asking.kind !== "running",
+        // A second try is the person's deliberate press, never ⌘↵'s.
+        safe: asking.kind === "idle",
+      },
+      secondary,
+      standing: { key: "to-ask", asks: true },
+    };
+  }
+  return {
+    verdict: refused ?? verdict,
+    consequence: `${askedSentence(standing, facts.nameOf, input.now)} ${waitsFor}`,
+    consequenceRoom: toAsk,
+    primary: undefined,
+    secondary,
+    standing: {
+      key: "waiting",
+      settled: ASKED,
+      // Taking it back is the asker's: whoever merges answers it by merging.
+      ...(standing.mine
+        ? { takeBack: { label: TAKE_ASK_BACK, enabled: asking.kind !== "running" } }
+        : {}),
+    },
+  };
+}
+
+function changeReviewModel(
+  input: ChangeReviewInput,
+): ReviewModel & { readonly standing?: ReviewStandingModel | undefined } {
   const { pull } = input;
   const base = pull.baseBranch;
   const press = input.press ?? { kind: "idle" };
@@ -1005,7 +1148,36 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
   }
 
   const verdictOf = changeMergeVerdict(input);
-  const { verdict } = verdictOf;
+  // Whose press it waits for is said of a change that asks for its merge: one that merges, and
+  // that its Mate described. A draft, a conflict or a check still running keeps its own words.
+  const asksForMerge = verdictOf.enabled && pull.ready !== false;
+  const facts = asksForMerge ? input.standing : undefined;
+  const under = asksForMerge ? pull.buildsOn?.[0] : undefined;
+  const verdict: ReviewVerdict =
+    asksForMerge && verdictOf.verdict.state === "ready"
+      ? {
+          ...verdictOf.verdict,
+          title: standingWord(
+            pull,
+            facts?.standing ?? { kind: "to-merge" },
+            facts?.mergers,
+            facts?.nameOf ?? (() => undefined),
+          ),
+        }
+      : verdictOf.verdict;
+  // Said to a person who merges, near Merge, from the ask until the change is merged.
+  const askedOfMe: ReviewStandingModel | undefined =
+    facts?.standing.kind !== "asked-of-me"
+      ? undefined
+      : {
+          key: "asked-of-me",
+          asked: [
+            `${askerName(facts.standing, facts.nameOf)} asked you to merge this`,
+            reviewAge(facts.standing.at, input.now)?.toLowerCase(),
+          ]
+            .filter((part) => part !== undefined)
+            .join(" · "),
+        };
   if (verdict.state === "empty") {
     return {
       verdict,
@@ -1064,15 +1236,26 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
       },
       consequence: squash,
       primary: { label: "Merge", enabled: false, safe: false },
+      standing: askedOfMe,
     };
   }
   if (press.kind === "refused") {
+    // The limit on who merges, met at the press: who merges, by name, where the limit is known.
+    const limited =
+      press.code === "not_app_merger" && input.standing?.mergers != null
+        ? mergeLimitWords(input.standing.mergers.people, input.standing.nameOf)
+        : undefined;
+    // Built on a change still open: which one, where HQ's refusal left it to the change to say.
+    const first =
+      press.code === MERGE_BUILDS_ON_OPEN && pull.buildsOn?.[0] !== undefined
+        ? mergeFirstWords(pull.buildsOn[0])
+        : undefined;
     return {
       verdict: {
         state: "merge-refused",
         tone: "attention",
         title: "Not merged",
-        why: press.reason,
+        why: limited ?? first ?? press.reason,
         fix: problemsFix(press.problems ?? []) ?? verdict.fix,
         // A file above HQ's merge limit: the Mate merges main into the change by hand.
         ...(press.code === MERGE_TOO_LARGE ? { copyWhy: true as const } : {}),
@@ -1081,11 +1264,30 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
       // A second try is the person's deliberate press, never ⌘↵'s.
       primary: { label: "Merge", enabled, safe: false },
       secondary,
+      standing: askedOfMe,
     };
   }
-  // A verb this person cannot finish is not offered (guide 0.8): the foot says what it takes.
+  // A verb this person cannot finish is not offered (guide 0.8): the foot says what it takes —
+  // or, where the application's limit on who merges holds them, offers the ask for it.
   if (input.offered?.merge === false) {
+    const standing = facts?.standing;
+    if (
+      facts !== undefined &&
+      standing !== undefined &&
+      (standing.kind === "waiting" || (standing.kind === "to-ask" && facts.mayAsk))
+    )
+      return heldReview(input, verdict, standing, facts, secondary);
     return { verdict, consequence: MERGE_NOT_OFFERED, primary: undefined, secondary };
+  }
+  // Built on a change still open: that one merges first, and Merge waits for it.
+  if (under !== undefined) {
+    return {
+      verdict,
+      consequence: mergeFirstWords(under),
+      primary: { label: "Merge", enabled: false, safe: false },
+      secondary,
+      standing: { ...askedOfMe, key: "merge-first", mergeFirst: under },
+    };
   }
   // Behind main is amber, and a change whose files could not be read was never shown: both
   // still pressable, never pressed for the person.
@@ -1113,6 +1315,7 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
       ...(safeOnceRead && waiting ? { shortcut: true } : {}),
     },
     secondary,
+    standing: askedOfMe,
   };
 }
 

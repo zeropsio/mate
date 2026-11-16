@@ -42,7 +42,10 @@ export const flowAnswer: Projection<string, FlowWriteAnswer | null> = {
     const deploys = result?.deploys;
     const intent = record.intent;
     if (intent.kind === "ask-merge" || intent.kind === "take-back-merge-ask")
-      return { deploys: undefined, mergeAsk: result?.mergeAsk ?? null };
+      return {
+        deploys: undefined,
+        ...(result?.mergeAsk === undefined ? {} : { mergeAsk: result.mergeAsk }),
+      };
     if (intent.kind === "release" || intent.kind === "roll-back") {
       const tag = result?.tag ?? receipt.operationId;
       return { tag, deploys, rollout: { appId: intent.appId, cause: "release", ref: tag } };

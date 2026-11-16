@@ -4,6 +4,8 @@
  * its review, the menu, the composer's top, the project's page — says it by this one rule, so no
  * surface tells a person who cannot merge to review or merge it.
  */
+import type { HqMergeAsk } from "@t3tools/shared/hqChanges";
+
 import type { FlowPullRequest } from "./projectFlow.ts";
 
 /**
@@ -75,6 +77,22 @@ export function mergersWho(
   return said.join(" or ");
 }
 
+/**
+ * Who merges where an application limits it, said calmly to a person it holds: the people it
+ * names — "Ada K. merges here.", "Ada K. and Sam R. merge here.", "Ada K., Sam R. and others
+ * merge here." — and the organization's Owner and Admins where it names nobody, or nobody the
+ * member list knows.
+ */
+export function mergersLine(
+  people: ReadonlyArray<string>,
+  nameOf: (userId: string) => string | undefined,
+): string {
+  const said = people.flatMap((userId) => nameOf(userId) ?? []).slice(0, MERGERS_SAID);
+  if (said.length === 0) return "The organization's Owner and Admins merge here.";
+  if (people.length > said.length) return `${said.join(", ")} and others merge here.`;
+  return said.length === 1 ? `${said[0]} merges here.` : `${said.join(" and ")} merge here.`;
+}
+
 /** Who asked, as a sentence's subject: "You", the name the member list has, or "Someone". */
 export function askerName(
   standing: Extract<ChangeStanding, { readonly by: string }>,
@@ -88,6 +106,28 @@ export function askerName(
 export const ASK_TO_MERGE = "Ask to merge";
 /** The press that takes an ask back. */
 export const TAKE_ASK_BACK = "Take back";
+/** What stands where the press was, once somebody asked. */
+export const ASKED = "Asked";
+
+/**
+ * What a person who merges reads where Merge would be, of a change that builds on the open
+ * change `under`: that one merges first.
+ */
+export const mergeFirstWords = (under: number): string => `Merge #${String(under)} first.`;
+
+/**
+ * The ask a surface shows of a change: what HQ's navigation holds (`held`), under this surface's
+ * own ask or its taking back once HQ answered it — the answer is the ask as it stands (`now`,
+ * `null` for none), until the navigation says anything else than it said at the answer (`over`).
+ */
+export function shownMergeAsk(
+  held: HqMergeAsk | undefined,
+  answer: { readonly over: HqMergeAsk | undefined; readonly now: HqMergeAsk | null } | null,
+): HqMergeAsk | undefined {
+  if (answer === null) return held;
+  const unmoved = held?.by === answer.over?.by && held?.at === answer.over?.at;
+  return unmoved ? (answer.now ?? undefined) : held;
+}
 
 /**
  * The few words a row, tag or chip says of a ready change's standing. A change that builds on

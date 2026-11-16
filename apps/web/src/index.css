@@ -14140,6 +14140,11 @@ a.message-file:focus-visible {
   height: 15px;
   color: var(--zerops-status-ok);
 }
+/* Standing where a button stood a moment ago ("Asked", after Ask to merge): the button's own
+   height, so the row keeps its own. */
+.rv-settled[data-in-place] {
+  height: 32px;
+}
 /* One row per service: its name, its state, and its deploy's door at the row's end. */
 .rv-where {
   display: grid;
@@ -14230,6 +14235,29 @@ a.message-file:focus-visible {
 }
 .rv-conseq[data-tone="failed"] {
   color: var(--zerops-status-failed-text);
+}
+/* Who asked the person to press the one button, over the note of what pressing does: one fact in
+   the text's own colour, hugging the note it belongs with. */
+.rv-asked {
+  margin: 0 0 -8px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+}
+/* A standing that moved while the review stays open (a merge asked for, the ask taken back): the
+   words that come ease in where the old ones stood, and nothing in the foot moves. */
+@media (prefers-reduced-motion: no-preference) {
+  .rv-conseq > [data-swap],
+  .rv-settled[data-swap],
+  .rv-vt[data-swap] {
+    animation: rv-swap-in 200ms var(--ease-out-strong);
+  }
+}
+@keyframes rv-swap-in {
+  from {
+    opacity: 0;
+  }
 }
 
 /* What happens in production: one card, the steps in HQ's order — a mark, a title and one line

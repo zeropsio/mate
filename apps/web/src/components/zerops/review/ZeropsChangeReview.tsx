@@ -10,7 +10,10 @@ import { HqProblems } from "./HqProblems";
  * nobody wrote.
  *
  * Merge squashes it in HQ with the head the review shows, and *Close without merging…* asks
- * before it closes it — each where HQ offers it to the person (`useChangeOffers`). After
+ * before it closes it — each where HQ offers it to the person (`useChangeOffers`). Where the
+ * project limits who merges, a person it holds asks them instead (*Ask to merge*), reads who it
+ * waits for once asked, and may take their own ask back; a person who merges reads who asked
+ * (`changeStanding`). After
  * Merge the review stays: it says what happened and where production waits for a code change.
  * Production has its own release review. A recipe change is never released: its review
  * says, from the files it changed, what its merge does to the environments made from it.
@@ -23,13 +26,16 @@ import {
   changeHandedPrompt,
   changeRemarks,
   changeReview,
+  changeStanding,
   MERGE_CHECK_LATE_MS,
   recipeReach,
+  shownMergeAsk,
   waitingForProduction,
   type ChangeReadout,
   type ChangeReviewInput,
   type MergeCheckRefusal,
   type ReviewGithubChecks,
+  type ReviewAskPress,
   type ReviewClose,
   type ReviewHand,
   type ReviewPress,
@@ -41,9 +47,10 @@ import {
   type ReleaseGate,
 } from "@t3tools/client-runtime/zerops";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
+import type { HqMergeAsk } from "@t3tools/shared/hqChanges";
 import { useRouter } from "@tanstack/react-router";
 import { ArrowUpRightIcon, CheckIcon } from "lucide-react";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { Badge } from "~/components/ui/badge";
 import { Button, InlineButton } from "~/components/ui/button";
@@ -359,6 +366,27 @@ function ChangeReviewData({
     const outcome = await verbs.close(target.groupId, change, pull.headSha ?? null);
     setClosing(outcome.ok ? { kind: "done" } : { kind: "refused", reason: outcome.reason });
   };
+  // Asking the people who merge, and taking the ask back: HQ's answer is the ask as it stands,
+  // shown at once, until its navigation says anything else than it said at the answer.
+  const [askPress, setAskPress] = useState<ReviewAskPress>({ kind: "idle" });
+  const [askAnswer, setAskAnswer] = useState<{
+    readonly over: HqMergeAsk | undefined;
+    readonly now: HqMergeAsk | null;
+  } | null>(null);
+  const shownAsk = shownMergeAsk(pull.mergeAsk, askAnswer);
+  const askOrTakeBack = async (verb: "ask" | "take-back") => {
+    setAskPress({ kind: "running", verb });
+    const over = pull.mergeAsk;
+    const outcome = await (verb === "ask"
+      ? verbs.askMerge(target.groupId, change)
+      : verbs.takeBackAsk(target.groupId, change));
+    if (!outcome.ok) {
+      setAskPress({ kind: "refused", verb, reason: outcome.reason });
+      return;
+    }
+    if (outcome.mergeAsk !== undefined) setAskAnswer({ over, now: outcome.mergeAsk });
+    setAskPress({ kind: "idle" });
+  };
   const [hand, setHand] = useState<ReviewHand>({ kind: "idle" });
   // Handed over, the Mate it went to is told in its conversation that the change is its own now.
   const handTo = async (mateProjectId: string) => {
@@ -489,6 +517,24 @@ function ChangeReviewData({
     [comments.state, me, nameOf, mateNameOf],
   );
   const runRef = run.threadRef;
+  const shownPull = useMemo(
+    () => (shownAsk === pull.mergeAsk ? pull : { ...pull, mergeAsk: shownAsk }),
+    [pull, shownAsk],
+  );
+  // The open change it merges after, by the title the flow has of it.
+  const underNumber = pull.buildsOn?.[0];
+  const under = useMemo(
+    () =>
+      underNumber === undefined
+        ? undefined
+        : {
+            number: underNumber,
+            title: flow?.pullRequests.find(
+              (other) => other.repository === pull.repository && other.number === underNumber,
+            )?.title,
+          },
+    [flow?.pullRequests, pull.repository, underNumber],
+  );
   // The sheet slides in once it can say all of it: its description, files and commits, how it
   // merges, whether HQ offers Merge — or after a moment, each part still read standing in its shape.
   useReviewHold(readout.kind === "reading" || reviewOffers === undefined);
@@ -535,6 +581,15 @@ function ChangeReviewData({
       comments={comments}
       remarks={remarks}
       offers={reviewOffers}
+      me={me}
+      nameOf={nameOf}
+      asking={askPress}
+      onAskMerge={() => {
+        void askOrTakeBack("ask");
+      }}
+      onTakeBack={() => {
+        void askOrTakeBack("take-back");
+      }}
       press={press}
       closing={closing}
       heirs={heirs}
@@ -617,7 +672,8 @@ function ChangeReviewData({
             }
       }
       pictures={pictures}
-      pull={pull}
+      pull={shownPull}
+      under={under}
       readout={readout}
       mergeCheck={detail.mergeCheck}
       titleId={titleId}
@@ -662,6 +718,19 @@ export interface ChangeReviewViewProps {
    * where it does; `undefined` while HQ has not said, when Merge waits.
    */
   readonly offers: ZeropsChangeOffers | undefined;
+  /** The person looking, by their Zerops user id: whose ask to merge is their own. */
+  readonly me?: string | undefined;
+  /** What the organization's member list calls a person: who asked, and who merges. */
+  readonly nameOf?: ((userId: string) => string | undefined) | undefined;
+  /** Asking for the merge, or taking the ask back, as pressed. */
+  readonly asking?: ReviewAskPress | undefined;
+  readonly onAskMerge?: (() => void) | undefined;
+  readonly onTakeBack?: (() => void) | undefined;
+  /**
+   * The open change it merges after (`buildsOn`'s first), with its title where the flow has it:
+   * said under the title, a press opening its review.
+   */
+  readonly under?: { readonly number: number; readonly title: string | undefined } | undefined;
   /** Merge, as pressed: running, refused in HQ's words, or done. */
   readonly press: ReviewPress;
   /** Closing without merging: asked, then pressed. */
@@ -801,6 +870,9 @@ function GithubChecksLine({
 /** Where a change merges: every change here merges into `main`. */
 const MERGES_INTO = { words: "main" } as const;
 
+/** Nobody named: the member list is not read, or the harness names nobody. */
+const NO_NAMES = (): string | undefined => undefined;
+
 export function ChangeReviewView(props: ChangeReviewViewProps) {
   const { pull, readout, mate, press, closing } = props;
   const read = readout.kind === "read" ? readout.value : undefined;
@@ -879,6 +951,17 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
           })
         : undefined,
     offered: props.offers,
+    // Whose press it waits for, once HQ's rule has said whether the person merges here.
+    standing:
+      props.offers === undefined
+        ? undefined
+        : {
+            standing: changeStanding(pull, { merges: props.offers.merges, userId: props.me }),
+            mergers: props.offers.mergers,
+            nameOf: props.nameOf ?? NO_NAMES,
+            mayAsk: props.offers.ask,
+          },
+    asking: props.asking,
     press,
     close: closing,
     heirs: props.heirs,
@@ -921,6 +1004,14 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
   const fromRelease = props.back !== undefined;
   const primary = fromRelease ? undefined : model.primary;
   const secondary = model.secondary;
+  // Whose press it waits for, where the project limits who merges or it builds on another change.
+  const standing = fromRelease ? undefined : model.standing;
+  // The note is the standing's own: who merges, who it waits for, or which change merges first.
+  const standingNote =
+    standing !== undefined &&
+    (standing.asks === true || standing.settled !== undefined || standing.mergeFirst !== undefined);
+  const askRunning = props.asking?.kind === "running" ? props.asking.verb : undefined;
+  const noteId = useId();
   // The ask to close it, where the review offers it: asked, the quiet word keeps it open instead.
   const closeOffer = asked || fromRelease ? undefined : secondary;
   const onPage = props.frame === "page";
@@ -928,7 +1019,11 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
   // top line. Where closing is what the review is for — nothing to merge, its Mate gone — and on a
   // page, which has no top line, it stays in the foot.
   const closeInMenu =
-    closeOffer !== undefined && !onPage && primary !== undefined && model.orphan === undefined;
+    closeOffer !== undefined &&
+    !onPage &&
+    // Once asked, "Asked" stands where the button stood: closing stays where it was.
+    (primary !== undefined || standing?.settled !== undefined) &&
+    model.orphan === undefined;
   const busy = model.verdict.state === "merging" || model.verdict.state === "closing";
   const files = useReviewFold();
   const checks = useReviewFold();
@@ -959,7 +1054,9 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
   const question = model.question === undefined || questionClosed ? undefined : model.question;
   // Why Merge is not this person's, in HQ's rule's words, where it says.
   const notOffered =
-    !over && !asked && props.offers?.merge === false ? props.offers.why.merge : undefined;
+    !over && !asked && !standingNote && props.offers?.merge === false
+      ? props.offers.why.merge
+      : undefined;
   const wait =
     question === undefined && notOffered === undefined ? model.consequenceWaits : undefined;
   // A Mate's several changes in one repository read apart by their branches.
@@ -997,9 +1094,31 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
           ? [question.text, ...question.options.map((option) => option.hint)].join(" ")
           : notOffered !== undefined
             ? notOffered
+            : standingNote
+              ? model.consequence
+              : mergeFoot({
+                  state: model.verdict.state,
+                  consequence: model.consequence,
+                  stages: props.stages ?? NO_STAGES,
+                  live: props.live,
+                  warning: receipt?.warning,
+                  recipe: pull.kind === "recipe",
+                  productionOutside,
+                })
+      }
+      consequenceId={noteId}
+      noteKey={standing?.key}
+      asked={over || asked ? undefined : standing?.asked}
+      consequenceBusy={wait !== undefined}
+      consequenceTone={wait === "late" ? "attention" : undefined}
+      consequenceRoom={
+        question !== undefined || model.consequenceRoom === undefined
+          ? undefined
+          : standingNote
+            ? model.consequenceRoom
             : mergeFoot({
                 state: model.verdict.state,
-                consequence: model.consequence,
+                consequence: model.consequenceRoom,
                 stages: props.stages ?? NO_STAGES,
                 live: props.live,
                 warning: receipt?.warning,
@@ -1007,20 +1126,15 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
                 productionOutside,
               })
       }
-      consequenceBusy={wait !== undefined}
-      consequenceTone={wait === "late" ? "attention" : undefined}
-      consequenceRoom={
-        question !== undefined || model.consequenceRoom === undefined
+      noteAction={
+        standing?.mergeFirst === undefined
           ? undefined
-          : mergeFoot({
-              state: model.verdict.state,
-              consequence: model.consequenceRoom,
-              stages: props.stages ?? NO_STAGES,
-              live: props.live,
-              warning: receipt?.warning,
-              recipe: pull.kind === "recipe",
-              productionOutside,
-            })
+          : {
+              label: `Open #${String(standing.mergeFirst)}`,
+              onPress: () => {
+                if (standing.mergeFirst !== undefined) props.onOpenChange?.(standing.mergeFirst);
+              },
+            }
       }
       // Beside the one button the quiet way out stands where a release's Cancel does, and leaves
       // the change open; with nothing to press, × closes the sheet.
@@ -1030,7 +1144,10 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
           : over
             ? "Close"
             : primary === undefined
-              ? undefined
+              ? // Asked, with nothing left to press: the way out stays where it stood.
+                standing?.settled === undefined
+                ? undefined
+                : "Close"
               : busy
                 ? "Close"
                 : "Keep it open"
@@ -1053,6 +1170,20 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
         <span>
           #{pull.number}
           {branch === undefined ? null : ` · ${branch}`}
+          {props.under === undefined || over ? null : (
+            <>
+              {" · Builds on "}
+              <InlineButton
+                data-zerops-surface="change-builds-on"
+                onClick={() => {
+                  if (props.under !== undefined) props.onOpenChange?.(props.under.number);
+                }}
+              >
+                #{props.under.number}
+                {props.under.title === undefined ? null : ` ${props.under.title}`}
+              </InlineButton>
+            </>
+          )}
         </span>
       }
       elsewhere={
@@ -1102,13 +1233,20 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
           ? undefined
           : {
               ...primary,
-              busy,
+              busy: busy || askRunning === "ask",
               label:
                 model.verdict.state === "merging"
                   ? "Merging"
                   : model.verdict.state === "closing"
                     ? "Closing"
-                    : primary.label,
+                    : askRunning === "ask"
+                      ? "Asking"
+                      : primary.label,
+              // Built on a change still open: the note says which merges first.
+              held:
+                standing?.mergeFirst === undefined
+                  ? undefined
+                  : { by: noteId, words: model.consequence },
               // A change on GitHub merges there (squash), and HQ takes the merge from it.
               text:
                 primary.label !== "Merge"
@@ -1118,7 +1256,19 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
                     : undefined,
               onPress: () => {
                 if (asked) props.onClosing("press");
+                else if (standing?.asks === true) props.onAskMerge?.();
                 else props.onMerge();
+              },
+            }
+      }
+      undo={
+        standing?.takeBack === undefined || asked
+          ? undefined
+          : {
+              label: askRunning === "take-back" ? "Taking back…" : standing.takeBack.label,
+              enabled: standing.takeBack.enabled,
+              onPress: () => {
+                props.onTakeBack?.();
               },
             }
       }
@@ -1132,7 +1282,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
               },
             }
       }
-      settled={fromRelease ? "Merged" : undefined}
+      settled={fromRelease ? "Merged" : asked || over ? undefined : standing?.settled}
       status={model.verdict.state === "merged" ? <span>{model.verdict.why}</span> : undefined}
       notice={
         github === undefined ? undefined : (

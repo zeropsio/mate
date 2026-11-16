@@ -159,6 +159,15 @@ export interface ZeropsReviewSurfaceProps {
   readonly consequence: string;
   /** The note that will stand once what is loading has loaded: the foot keeps its room. */
   readonly consequenceRoom?: string | undefined;
+  /** The note's own id, where the one button is held by what it says (`ReviewPrimaryButton.held`). */
+  readonly consequenceId?: string | undefined;
+  /**
+   * What the foot's words are of, where they swap in place while the review stays open (a change
+   * asked for its merge, the ask taken back): once it has moved, the words that come ease in.
+   */
+  readonly noteKey?: string | undefined;
+  /** A fact said over the note, to the person the button is for: who asked them to press it. */
+  readonly asked?: string | undefined;
   /** The note's tone where it says why the button is held, or what stopped. */
   readonly consequenceTone?: "attention" | "failed" | undefined;
   /** The note is a wait under way: said beside the busy mark. */
@@ -171,6 +180,8 @@ export interface ZeropsReviewSurfaceProps {
   readonly ask?: ReviewButton | undefined;
   /** A quiet word beside the way out that does not close the sheet: "Keep it open". */
   readonly secondary?: (ReviewButton & { readonly enabled: boolean }) | undefined;
+  /** The quiet press that takes back what the person did here: "Take back". */
+  readonly undo?: (ReviewButton & { readonly enabled: boolean }) | undefined;
   readonly primary?: ReviewPrimaryButton | undefined;
   /**
    * The one question after a merge, in the buttons' place: the foot swaps in place and the body
@@ -218,12 +229,16 @@ export function ZeropsReviewSurface({
   children,
   consequence,
   consequenceRoom,
+  consequenceId,
+  noteKey,
+  asked,
   consequenceTone,
   consequenceBusy = false,
   noteAction,
   dismiss,
   ask,
   secondary,
+  undo,
   primary,
   answers,
   settled,
@@ -236,6 +251,11 @@ export function ZeropsReviewSurface({
   const buttonsRow = useRef<HTMLDivElement | null>(null);
   const pressed = useHeldButtons(held, buttonsRow);
   const { copyToClipboard, isCopied } = useCopyToClipboard({ target: "the refusal" });
+  // Where the foot's words stood as the review opened: only what replaces them eases in.
+  const [openedAt] = useState(noteKey);
+  const [moved, setMoved] = useState(false);
+  if (!moved && noteKey !== openedAt) setMoved(true);
+  const swap = moved ? "" : undefined;
   const line: Array<{ readonly key: string; readonly node: ReactNode }> = [];
   if (meta !== undefined && meta !== null) line.push({ key: "meta", node: meta });
   if (elsewhere !== undefined && elsewhere !== null)
@@ -243,9 +263,9 @@ export function ZeropsReviewSurface({
   if (code !== undefined && code !== null) line.push({ key: "code", node: code });
   if (verdictInLine) {
     line.push({
-      key: "verdict",
+      key: noteKey === undefined ? "verdict" : `verdict ${noteKey}`,
       node: (
-        <span className="rv-vt">
+        <span className="rv-vt" data-swap={swap}>
           {verdict.tone === "busy" ? <Spinner size="sm" tone="muted" /> : null}
           {verdict.title}
         </span>
@@ -348,6 +368,8 @@ export function ZeropsReviewSurface({
       settled === undefined &&
       ask === undefined &&
       secondary === undefined &&
+      undo === undefined &&
+      asked === undefined &&
       noteAction === undefined &&
       (dismiss === undefined || frame === "page") &&
       consequence === "" ? null : (
@@ -357,7 +379,9 @@ export function ZeropsReviewSurface({
               answers
             ) : (
               <>
-                {(dismiss === undefined || frame === "page") && secondary === undefined ? null : (
+                {(dismiss === undefined || frame === "page") &&
+                secondary === undefined &&
+                undo === undefined ? null : (
                   <div className="rv-btns-quiet">
                     {dismiss === undefined || frame === "page" ? null : (
                       <Button
@@ -378,6 +402,16 @@ export function ZeropsReviewSurface({
                         {secondary.label}
                       </Button>
                     )}
+                    {undo === undefined ? null : (
+                      <Button
+                        data-review-undo=""
+                        disabled={!undo.enabled}
+                        onClick={undo.onPress}
+                        variant="ghost"
+                      >
+                        {undo.label}
+                      </Button>
+                    )}
                   </div>
                 )}
                 {ask === undefined && settled === undefined && primary === undefined ? null : (
@@ -388,7 +422,12 @@ export function ZeropsReviewSurface({
                       </Button>
                     )}
                     {settled === undefined ? null : (
-                      <span className="rv-settled">
+                      <span
+                        className="rv-settled"
+                        data-in-place={noteKey === undefined ? undefined : ""}
+                        data-swap={swap}
+                        key={noteKey}
+                      >
                         <CheckIcon aria-hidden="true" />
                         {settled}
                       </span>
@@ -409,21 +448,25 @@ export function ZeropsReviewSurface({
               </>
             )}
           </div>
+          {asked === undefined ? null : <p className="rv-asked">{asked}</p>}
           {consequence === "" &&
           noteAction === undefined &&
           consequenceRoom === undefined ? null : (
             <p
-              aria-live={consequenceBusy ? "polite" : undefined}
+              aria-live={consequenceBusy || noteKey !== undefined ? "polite" : undefined}
               className="rv-conseq"
               data-room={consequenceRoom === undefined ? undefined : ""}
               data-tone={consequenceTone}
+              id={consequenceId}
             >
               {consequence === "" ? null : consequenceBusy ? (
                 <Badge dot tone="info" wrap>
                   {consequence}
                 </Badge>
               ) : (
-                <span>{consequence}</span>
+                <span data-swap={swap} key={noteKey}>
+                  {consequence}
+                </span>
               )}
               {consequenceRoom === undefined ? null : (
                 <span aria-hidden="true" className="rv-conseq-room">
