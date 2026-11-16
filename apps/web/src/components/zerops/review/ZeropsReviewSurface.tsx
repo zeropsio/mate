@@ -98,6 +98,11 @@ export interface ReviewPrimaryButton extends ReviewButton {
   readonly safe: boolean;
   /** Its keys shown before it takes them (`ReviewPrimary.shortcut`). */
   readonly shortcut?: true | undefined;
+  /**
+   * Not the press the review recommends (`ReviewPrimary.plain`): drawn plainly, with the fix
+   * highlighted beside it in the foot instead of a link under the title.
+   */
+  readonly plain?: true | undefined;
   /** Pressed and running: the label says so, and it takes no second press. */
   readonly busy?: boolean;
   readonly icon?: "tag" | "rollback" | "globe" | undefined;
@@ -257,6 +262,12 @@ export function ZeropsReviewSurface({
   const [moved, setMoved] = useState(false);
   if (!moved && noteKey !== openedAt) setMoved(true);
   const swap = moved ? "" : undefined;
+  // Where the fix is the press the review recommends, it stands highlighted in the foot, once: no
+  // link under the title, and the foot's one ask of the Mate — the soft one steps aside, so the
+  // buttons keep their one row.
+  const leadingFix = primary?.plain === true ? fix : undefined;
+  const linkedFix = leadingFix === undefined ? fix : undefined;
+  const softAsk = leadingFix === undefined ? ask : undefined;
   const line: Array<{ readonly key: string; readonly node: ReactNode }> = [];
   if (meta !== undefined && meta !== null) line.push({ key: "meta", node: meta });
   if (elsewhere !== undefined && elsewhere !== null)
@@ -346,7 +357,7 @@ export function ZeropsReviewSurface({
           </p>
         )}
         {subtitle === undefined ? notice : null}
-        {subtitle === undefined && (whySaid || fix !== undefined || fixNote !== undefined) ? (
+        {subtitle === undefined && (whySaid || linkedFix !== undefined || fixNote !== undefined) ? (
           <div className="rv-why" data-tone={verdict.tone}>
             {whySaid ? <span>{verdict.why}</span> : null}
             {whySaid && verdict.copyWhy === true ? (
@@ -354,9 +365,9 @@ export function ZeropsReviewSurface({
                 {isCopied ? "Copied" : "Copy"}
               </Button>
             ) : null}
-            {fix === undefined ? null : (
-              <Button onClick={fix.onPress} size="sm" variant="link">
-                {fix.label}
+            {linkedFix === undefined ? null : (
+              <Button onClick={linkedFix.onPress} size="sm" variant="link">
+                {linkedFix.label}
               </Button>
             )}
             {fix !== undefined || fixNote === undefined ? null : (
@@ -418,11 +429,11 @@ export function ZeropsReviewSurface({
                     )}
                   </div>
                 )}
-                {ask === undefined && settled === undefined && primary === undefined ? null : (
+                {softAsk === undefined && settled === undefined && primary === undefined ? null : (
                   <div className="rv-btns-main">
-                    {ask === undefined ? null : (
-                      <Button data-review-ask="" onClick={ask.onPress} variant="secondary">
-                        {ask.label}
+                    {softAsk === undefined ? null : (
+                      <Button data-review-ask="" onClick={softAsk.onPress} variant="secondary">
+                        {softAsk.label}
                       </Button>
                     )}
                     {settled === undefined ? null : (
@@ -446,6 +457,11 @@ export function ZeropsReviewSurface({
                         </TooltipTrigger>
                         <TooltipPopup>{primary.held.words}</TooltipPopup>
                       </Tooltip>
+                    )}
+                    {leadingFix === undefined ? null : (
+                      <Button data-review-fix="" onClick={leadingFix.onPress}>
+                        {leadingFix.label}
+                      </Button>
                     )}
                   </div>
                 )}
@@ -539,6 +555,7 @@ function ReviewPrimary({
         onPress();
         primary.onPress();
       }}
+      variant={primary.plain === true ? "secondary" : "primary"}
     >
       {primary.icon === "tag" ? <TagIcon aria-hidden="true" /> : null}
       {primary.icon === "rollback" ? <RotateCcwIcon aria-hidden="true" /> : null}

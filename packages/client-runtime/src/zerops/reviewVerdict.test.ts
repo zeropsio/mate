@@ -1328,10 +1328,19 @@ describe("changeReview: Close without merging, the review its one confirmation (
       state: "failing",
       words: "GitHub's checks failed on its latest push",
       url: `${url}/checks`,
-      fix: { verb: "fix them" },
     });
-    // Failing checks the repository does not require hold no merge.
-    expect(failing.primary?.enabled).toBe(true);
+    // The verdict's own press hands them over: the line keeps the evidence.
+    expect(failing.verdict.fix).toMatchObject({ verb: "fix them" });
+    // The owner, 2026-11-16: "why does this allow me to merge when its bad on github?" They are
+    // the change's verdict, never a line beside "Ready to merge".
+    expect(failing.verdict).toMatchObject({
+      state: "github-checks-failed",
+      tone: "attention",
+      title: "GitHub's checks failed",
+    });
+    // Failing checks the repository does not require hold no merge: it stays pressable, as a
+    // plain press that ⌘↵ never takes.
+    expect(failing.primary).toMatchObject({ enabled: true, safe: false, plain: true });
     expect(
       changeReview(
         change({ pull: pull({ pullRequest: { state: "open", url, checks: "pending" } }) }),

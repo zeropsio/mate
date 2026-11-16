@@ -18,8 +18,9 @@
  *   by the command itself (K4);
  * - what it thought: the quietest, 13 px faint italics, two lines of it.
  * What went wrong wears a red mark while it is still broken, and turns quiet
- * once a later step undid it — never a pink row (K9); what merely happened (a
- * context condensed, a change landed) a caption between hairlines.
+ * once a later step undid it, or once its run ended well — never a pink row
+ * (K9); what merely happened (a context condensed, a change landed) a caption
+ * between hairlines.
  *
  * Closed, the card is its summary line: who worked, for how long, what the
  * effort came to, and "Show work". Open — while the run goes on, and once
@@ -232,6 +233,7 @@ import {
   type RunScrollEvent,
   type RunScrollFollow,
   recoveredFailures,
+  runEndedWell,
   nowLineFace,
   nowLineOf,
   nowLineWords,
@@ -1311,12 +1313,16 @@ function RunsNow() {
   );
 }
 
-/** Whether a failure still stands, or a later step undid it (K9). */
+/**
+ * Whether a failure still stands, or stands quiet: a later step undid it, or
+ * its run ended well (K9, `recoveredFailures`).
+ */
 type Failure = "broken" | "undone";
 
 /**
  * A failure's mark, in place of its kind's: red while it is still broken,
- * quiet once a later step undid it — red always means still broken (K9).
+ * quiet once a later step undid it or its run ended well — red always means
+ * still broken (K9).
  */
 function FailedMark({ failure }: { readonly failure: Failure }) {
   return (
@@ -1857,7 +1863,7 @@ function StepBubble({
   undone = false,
 }: {
   readonly step: WorkStep;
-  /** It failed, and a later step undid it: quiet, not red (K9). */
+  /** It failed, and a later step undid it or its run ended well: quiet, not red (K9). */
   readonly undone?: boolean;
 }) {
   const inSlot = use(InSlotContext);
@@ -2762,9 +2768,17 @@ function TaskReport({ entry }: { readonly entry: WorkLogEntry }) {
 }
 
 /** A background task or a helper reporting back, where its result reached the run; its report under it. */
-function TaskBubble({ entry }: { readonly entry: WorkLogEntry }) {
+function TaskBubble({
+  entry,
+  undone = false,
+}: {
+  readonly entry: WorkLogEntry;
+  /** A background job that failed, in a run that ended well: quiet, not red (K9). */
+  readonly undone?: boolean;
+}) {
   const disclosure = useDisclosure();
   const failed = workEntryDisplayIndicatesToolFailure(entry);
+  const failure: Failure | null = !failed ? null : undone ? "undone" : "broken";
   const words = `${taskTitle(entry)} ${failed ? "failed" : "finished"}`;
   const where = entry.agentRole !== undefined ? "helper" : "ran in the background";
   const reported = Boolean(entry.detail?.trim());
@@ -2776,11 +2790,11 @@ function TaskBubble({ entry }: { readonly entry: WorkLogEntry }) {
   );
   return (
     <CallRow
-      failure={failed ? "broken" : null}
+      failure={failure}
       kind="task"
       mark={
-        failed ? (
-          <FailedMark failure="broken" />
+        failure !== null ? (
+          <FailedMark failure={failure} />
         ) : (
           <DidMark icon={entry.agentRole !== undefined ? BotIcon : SquareTerminalIcon} />
         )
@@ -3185,8 +3199,8 @@ function PersonPictures({ pictures }: { readonly pictures: ReadonlyArray<ChatIma
 }
 
 /**
- * A record's item as its line of the chat; `undone` the failures a later step
- * undid (`recoveredFailures`), which stand quiet.
+ * A record's item as its line of the chat; `undone` the failures that stand
+ * quiet (`recoveredFailures`): a later step undid them, or their run ended well.
  */
 function itemLine(item: RecordItem, undone: ReadonlySet<string>): ChatLine {
   switch (item.kind) {
@@ -3248,7 +3262,11 @@ function itemLine(item: RecordItem, undone: ReadonlySet<string>): ChatLine {
     case "helpers":
       return { key: item.key, bubble: <HelpersBubble entry={item.entry} />, call: true };
     case "task":
-      return { key: item.key, bubble: <TaskBubble entry={item.entry} />, call: true };
+      return {
+        key: item.key,
+        bubble: <TaskBubble entry={item.entry} undone={undone.has(item.key)} />,
+        call: true,
+      };
     case "plan":
       return { key: item.key, bubble: <PlanBubble plan={item.plan} />, call: true };
     case "strip":
@@ -4632,8 +4650,11 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   // The work stands over the line while the run goes on, while it stays open
   // for a reader, and while it folds away into the line.
   const above = shows.work === "above";
-  // What a later step undid, read once per record, not once per redraw.
-  const undone = useMemo(() => recoveredFailures(row.items), [row.items]);
+  // The failures that stand quiet (K9) — what a later step undid, and, once the run ended well,
+  // every command, call and background job of it that failed — read once per record, not once
+  // per redraw. While it runs, and where it ended any other way, they stay red.
+  const endedWell = runEndedWell(row.status);
+  const undone = useMemo(() => recoveredFailures(row.items, endedWell), [row.items, endedWell]);
   // The live slot (pass 35): what the Mate is doing this moment, each thing
   // as the row it becomes; it plops into the history once it ended and
   // stood its minimum. Only the run's last record, while it runs, has one.
@@ -6548,6 +6569,8 @@ function positionOf(scroll: HTMLElement): RunScrollPosition {
  * sent to the background, on its own card, or what woke the run under it —
  * what runs, what finished, what failed — and, opened, each task once, a
  * failure first, with what it reported; never the line's own words again.
+ * Red is a failure that still stands (`line.failed`): a run that ended well
+ * says what failed of its jobs in the same words, as quiet as the rest (K9).
  */
 export function BackgroundLine({ line }: { readonly line: BackgroundLineModel }) {
   const hold = useHoldReading();
@@ -6620,7 +6643,9 @@ export function BackgroundLine({ line }: { readonly line: BackgroundLineModel })
                   {item.title}
                   <span
                     className={
-                      item.state === "failed" ? "text-status-failed-text" : "text-muted-foreground"
+                      failed && item.state === "failed"
+                        ? "text-status-failed-text"
+                        : "text-muted-foreground"
                     }
                   >
                     {` · ${backgroundItemWord(item)}`}

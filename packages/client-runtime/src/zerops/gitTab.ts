@@ -53,7 +53,7 @@ import { isPoolOrSandboxServiceType } from "./infrastructureType.ts";
 import type { Known } from "./knowledge/index.ts";
 import { branchLabel } from "./mateIdentity.ts";
 import type { FlowPullRequest } from "./projectFlow.ts";
-import { REVIEW_LABEL } from "./reviewVerdict.ts";
+import { GITHUB_CHECKS_FAILED, githubChecksFailed, REVIEW_LABEL } from "./reviewVerdict.ts";
 import { poolPairsIn, servicePairs, type PoolPair } from "./servicePairs.ts";
 import type { ZeropsTopologyService } from "./topology.ts";
 
@@ -419,6 +419,8 @@ function gitVerdict(input: {
   readonly pullRequestNumber: number | undefined;
   /** Whether HQ would take the merge. Not whether it is a good idea. */
   readonly mergeability: MergeabilityKind;
+  /** GitHub's checks failed on the change's latest push (`githubChecksFailed`). */
+  readonly checksFailed: boolean;
   readonly baseBranch: string;
   readonly trouble: string;
 }): GitVerdict | undefined {
@@ -446,7 +448,7 @@ function gitVerdict(input: {
       // there — held to it by a test that reads them all. The words are the
       // plain state a change row says after its Mate's name ("Ready to merge").
       return {
-        ...inReview(input.mergeability, input.baseBranch),
+        ...inReview(input.mergeability, input.baseBranch, input.checksFailed),
         ask:
           input.pullRequestNumber === undefined
             ? undefined
@@ -494,10 +496,17 @@ function gitVerdict(input: {
  * for one nothing stops: no signal about it is not a good signal, the same
  * quiet its own page gives it.
  */
-function inReview(mergeability: MergeabilityKind, baseBranch: string): Omit<GitVerdict, "ask"> {
+function inReview(
+  mergeability: MergeabilityKind,
+  baseBranch: string,
+  checksFailed: boolean,
+): Omit<GitVerdict, "ask"> {
   switch (mergeability) {
     case "mergeable":
-      return { tone: "off", text: "Ready to merge" };
+      // Never "Ready to merge" over failed checks: its row and its review say the same.
+      return checksFailed
+        ? { tone: "attention", text: GITHUB_CHECKS_FAILED }
+        : { tone: "off", text: "Ready to merge" };
     case "empty":
       return { tone: "off", text: "Nothing to merge" };
     case "checking":
@@ -641,6 +650,7 @@ export function gitBlock(input: {
     pullRequestNumber: change?.number,
     // Read only in review, which has a change.
     mergeability: change?.mergeability ?? "checking",
+    checksFailed: change !== undefined && githubChecksFailed(change),
     baseBranch,
     trouble,
   });

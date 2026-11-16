@@ -35,6 +35,10 @@
  *   at a row since gone, or at `?leftrow=<row id>`; `?crew` for a crew
  *   thread's send, whose message and card the engine writes a moment after
  *   it); `?long=<n>` for that many turns above any script's run, the list long and virtual;
+ * - `?script=failures` a run holding failures nothing undid — a listing that
+ *   matched nothing, a job the Mate stopped, one that reported it failed —
+ *   which stand red while it runs and quiet once it ended well (K9);
+ *   `?ends=stopped` ends any run by the person's Stop instead, with no answer;
  * - `?speed=<x>` plays faster or slower, `?at=<s>` starts that far in;
  * - `?theme=dark`; `?provider=claudeAgent` reads no call stale by timing.
  *
@@ -99,6 +103,8 @@ const SPEED = Number(params.get("speed") ?? 1);
 const START_AT = Number(params.get("at") ?? 0);
 const SCRIPT = params.get("script") ?? "main";
 const PROVIDER = params.get("provider") ?? "codex";
+/** `?ends=stopped`: the person's Stop ends the run where it would have settled, with no answer. */
+const STOPPED = params.get("ends") === "stopped";
 /** How much taller the composer stands with the draft the person sends (`send`). */
 const DRAFT = Number(params.get("draft") ?? 0);
 /** How long the card stands on its head alone after a send, before the run's first thing. */
@@ -202,6 +208,15 @@ type Item =
       readonly start: number;
       readonly end: number;
       readonly page: string;
+    }
+  | {
+      /** A background job reporting at `start` that it failed: `of` the command that sent it. */
+      readonly id: string;
+      readonly kind: "job";
+      readonly start: number;
+      readonly job: string;
+      readonly words: string;
+      readonly of?: string;
     };
 
 /** A batch deploy's service: the pipeline its own version runs, and where it broke if it did. */
@@ -694,6 +709,57 @@ const INTERRUPT: Run = {
     words: "could the desserts get a darker background?",
     thought: "The person asks for a darker background behind the desserts.",
   },
+};
+
+/**
+ * Failures nothing undid, in a run that goes on past them and answers: a
+ * listing that matched nothing, the watcher the Mate sent to the background
+ * and stopped itself, and a job from before that reported it failed.
+ */
+const FAILURES: Run = {
+  ask: "Fail the build when the bundle grows past 250 kB.",
+  items: [
+    {
+      id: "t1",
+      kind: "thought",
+      start: 0.3,
+      end: 1.2,
+      text: "A watcher keeps the bundle fresh while I write the check.",
+    },
+    {
+      id: "c1",
+      kind: "command",
+      start: 1.5,
+      end: 1.9,
+      words: "Watch the build",
+      code: "pnpm build --watch",
+      background: "bg-watch",
+    },
+    {
+      id: "c2",
+      kind: "command",
+      start: 2.4,
+      end: 2.9,
+      words: "List the source maps",
+      code: "ls dist/*.map 2>/dev/null",
+      fails: true,
+    },
+    { id: "e1", kind: "edit", start: 3.4, end: 3.7, name: "scripts/check-size.js" },
+    {
+      id: "c3",
+      kind: "command",
+      start: 4.2,
+      end: 5,
+      words: "Check the bundle's size",
+      code: "node scripts/check-size.js --max 250kb",
+      output: "dist 212 kB of 250 kB",
+    },
+    { id: "j1", kind: "job", start: 5.6, job: "bg-watch", of: "c1", words: "Watch the build" },
+    { id: "j2", kind: "job", start: 8.6, job: "bg-tail", words: "Tail the worker log" },
+  ],
+  write: 9.4,
+  end: 10.5,
+  answer: "The build now fails past 250 kB: the bundle stands at 212 kB.",
 };
 
 const THOUGHT3 =
@@ -1282,6 +1348,7 @@ const RUN: Run =
     smooth: SMOOTH,
     ten: TEN,
     send: SEND,
+    failures: FAILURES,
   }[SCRIPT] ?? MAIN;
 
 /** The turn the person's message starts, in the interrupt script. */
@@ -1748,6 +1815,23 @@ function entriesAt(t: number): TimelineEntry[] {
       case "browser":
         entries.push(operationEntry(item, t));
         break;
+      case "job":
+        entries.push(
+          work(item.id, item.start, {
+            tone: "info",
+            label: item.words,
+            toolTitle: item.words,
+            toolCallId: undefined as never,
+            sourceActivityKind: "task.completed",
+            toolLifecycleStatus: "failed",
+            taskId: item.job,
+            taskType: "local_bash",
+            ...(item.of === undefined ? {} : { taskToolUseId: `call-${item.of}` }),
+            detail: `Background command "${item.words}" failed with exit code 143`,
+            updatedAt: iso(item.start),
+          }),
+        );
+        break;
     }
   }
   if (RUN.interrupt !== undefined && t >= RUN.interrupt.at) {
@@ -1759,7 +1843,7 @@ function entriesAt(t: number): TimelineEntry[] {
       entries.push(message("t2-thought", "reasoning", at + 0.5, text, shown < 1, TURN2));
     }
   }
-  if (t >= RUN.write) {
+  if (t >= RUN.write && !STOPPED) {
     const shown = Math.min(1, (t - RUN.write) / Math.max(0.1, RUN.end - RUN.write));
     entries.push(
       message(
@@ -2058,7 +2142,11 @@ function Pane() {
             }
           : {
               turnId: TURN,
-              state: ended ? ("completed" as const) : ("running" as const),
+              state: ended
+                ? STOPPED
+                  ? ("interrupted" as const)
+                  : ("completed" as const)
+                : ("running" as const),
               startedAt: iso(RUN.from ?? RUN.sendAt ?? 0),
               completedAt: ended ? iso(RUN.end) : null,
             },

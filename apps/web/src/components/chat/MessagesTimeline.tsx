@@ -3510,7 +3510,11 @@ function RecordTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "record"
 function BackgroundTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "background" }> }) {
   return (
     <BackgroundLine
-      line={backgroundLineOf(backgroundRowItems({ ...row, key: row.id }), row.helpers)}
+      line={backgroundLineOf(
+        backgroundRowItems({ ...row, key: row.id }),
+        row.helpers,
+        row.quiet === true,
+      )}
     />
   );
 }

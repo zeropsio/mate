@@ -34,6 +34,7 @@ import {
 import type { BackgroundWork } from "@t3tools/contracts";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 
+import { workEntryDisplayIndicatesToolFailure } from "../../session-logic";
 import { formatTimeRange, spokenUpcomingTimestamp } from "../../timestampFormat";
 import type { ChatMessage } from "../../types";
 import type { StepKind, WorkStep } from "./workSteps.logic";
@@ -1378,23 +1379,60 @@ function stepSignatures(step: WorkStep): ReadonlyArray<string> {
 }
 
 /**
- * The failures a later step undid (K9): a command or a call that failed and
- * passed when the Mate ran it again — the same command, or the same words —
- * a platform operation that failed and then went through on the same
- * service, and a dev server found down and then found running. Red always means still broken, so these turn quiet; the rest stay
- * red. One walk back from the run's end, whatever its length: a two-hour
- * run's card redraws on every word of a thought.
+ * Whether a run is over and ended well, by the verdict its settled line and its face are drawn
+ * from (`RunStatus.face`, `stretchFace`): it finished by itself with nothing of it left broken —
+ * not failed, not stopped, not cut off by the person's message, not broken off, not cut by a
+ * usage limit, and by its engine's record nothing but completed (`RunStatus.unfinished`). A run
+ * still going, and one whose line nobody drew, did not: nothing says how it ended.
  */
-export function recoveredFailures(items: ReadonlyArray<RecordItem>): ReadonlySet<string> {
+export function runEndedWell(status: RunStatus | null): boolean {
+  return (
+    status !== null &&
+    !status.live &&
+    // A refused attempt wears a calm face, and is no finish all the same.
+    status.brokeOff === undefined &&
+    status.unfinished !== true &&
+    (status.face === "idle" || status.face === "produced")
+  );
+}
+
+/**
+ * The failures that stand quiet (K9). Red always means still broken, so a failure turns quiet
+ * once a later step undid it: a command or a call that failed and passed when the Mate ran it
+ * again — the same command, or the same words — a platform operation that failed and then went
+ * through on the same service, and a dev server found down and then found running. And once its
+ * run `endedWell` (`runEndedWell`), every command, call and background job of it that failed and
+ * nothing undid: a shell line whose last command found nothing, a job the Mate stopped itself —
+ * the run went on past them and finished, and no agent's word tells them from a real failure.
+ * A platform operation keeps its own rule whatever the run's end, and so does a helper. The rest
+ * stay red. One walk back from the run's end, whatever its length: a two-hour run's card redraws
+ * on every word of a thought.
+ */
+export function recoveredFailures(
+  items: ReadonlyArray<RecordItem>,
+  endedWell = false,
+): ReadonlySet<string> {
   const undone = new Set<string>();
   // Walking back from the end: what passed later, by what it did.
   const passedLater = new Set<string>();
   for (let index = items.length - 1; index >= 0; index -= 1) {
     const item = items[index]!;
+    // A background job reporting in that it failed, in a run that ended well; never a helper.
+    if (item.kind === "task") {
+      if (
+        endedWell &&
+        item.entry.agentRole === undefined &&
+        // As its row reads it (`TaskBubble`).
+        workEntryDisplayIndicatesToolFailure(item.entry)
+      )
+        undone.add(item.key);
+      continue;
+    }
     if (item.kind !== "step") continue;
     const signatures = stepSignatures(item.step);
     if (item.step.state === "failed") {
-      if (signatures.some((signature) => passedLater.has(signature))) undone.add(item.key);
+      if (endedWell || signatures.some((signature) => passedLater.has(signature)))
+        undone.add(item.key);
     } else if (item.step.state === "done") {
       for (const signature of signatures) passedLater.add(signature);
     }
