@@ -24,6 +24,7 @@ describe("a release the merge limit holds", () => {
 });
 
 describe("releaseGateOf", () => {
+  // witness: apps/web/src/zerops/appOffers.ts | ...(offer.kind === "refused" ? { refusedBy: "hq" as const } : {}), →
   it.each([
     { name: "an application HQ never named", can: undefined, gate: undefined },
     { name: "HQ's offer", can: { release: { allow: true } as const }, gate: { allowed: true } },
@@ -32,8 +33,7 @@ describe("releaseGateOf", () => {
       can: { release: { allow: false, reason: "not_releaser" } as const },
       gate: {
         allowed: false,
-        reason:
-          "To release, this project needs a Zerops project, and you need more than Read access to its production.",
+        reason: "You need more than Read access to production to release.",
         refusedBy: "hq",
       },
     },
