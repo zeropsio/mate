@@ -30,6 +30,7 @@ import {
   draftSends,
   MERGING_TITLE,
   mergingDraft,
+  everyoneLine,
   mergingLine,
   mergingNow,
   mergingPeople,
@@ -51,14 +52,18 @@ const NONE_OPEN: ReadonlyArray<OpenMain> = [];
 export function ProjectMergingRow({
   merging,
   open = NONE_OPEN,
+  builders,
   onManage,
 }: {
   readonly merging: Pick<AppMergers, "people" | "older" | "editable">;
   /** The project's repositories whose `main` is open on GitHub (`openMains`). */
   readonly open?: ReadonlyArray<OpenMain> | undefined;
+  /** How many people work in the project (`buildersCount`); none while it is not read. */
+  readonly builders?: number | null | undefined;
   readonly onManage: (from: HTMLElement) => void;
 }) {
   const { people, older, editable } = merging;
+  const everyone = everyoneLine(people, builders);
   // Said to whoever can close it, and only where a limit stands for it to undo.
   const stillOpen = editable === true && people != null && open.length > 0;
   return (
@@ -80,6 +85,11 @@ export function ProjectMergingRow({
           <Skeleton className="h-5 w-48" />
         ) : (
           <span className="text-sm text-foreground">{mergingLine(people)}</span>
+        )}
+        {everyone === undefined ? null : (
+          <span className="text-line text-muted-foreground" data-zerops-merging-everyone="">
+            {everyone}
+          </span>
         )}
         {stillOpen ? (
           <span className="text-line text-warning-foreground" data-zerops-merging-open-main="">
