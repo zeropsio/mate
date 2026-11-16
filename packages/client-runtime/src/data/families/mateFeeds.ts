@@ -2,6 +2,7 @@
 import type {
   CrewFiles,
   CrewSnapshot,
+  StandUpVerdictReading,
   TerminalSummary,
   ZeropsAgentAuthSnapshot,
   ZeropsLifecycle,
@@ -24,6 +25,8 @@ export interface MateFeedValues {
   readonly mateClientSession: import("@t3tools/contracts").AuthSessionState;
   readonly mateLifecycle: ZeropsLifecycle;
   readonly mateAgentAuth: ZeropsAgentAuthSnapshot;
+  /** zcp's stand-up verdict as the Mate reads it (`subscribeZeropsStandUpVerdict`). */
+  readonly mateStandUpVerdict: StandUpVerdictReading;
   readonly mateCrew: CrewSnapshot;
   readonly mateCrewFiles: CrewFiles;
   readonly mateTerminal: ReadonlyArray<TerminalSummary>;
@@ -74,6 +77,7 @@ export const MATE_FEED_FAMILIES = {
   mateClientSession: spec("mateClientSession", "realtime"),
   mateLifecycle: spec("mateLifecycle", "realtime"),
   mateAgentAuth: spec("mateAgentAuth", "realtime"),
+  mateStandUpVerdict: spec("mateStandUpVerdict", "realtime"),
   mateCrew: spec("mateCrew", "realtime"),
   mateCrewFiles: spec("mateCrewFiles", "sampled"),
   mateTerminal: spec("mateTerminal", "realtime"),

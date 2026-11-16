@@ -15,6 +15,9 @@ const agentAuth = Atom.family((environmentId: EnvironmentId) =>
 const crew = Atom.family((environmentId: EnvironmentId) =>
   mateFeedAtom({ family: "mateCrew", environmentId, input: {} }),
 );
+const standUpVerdict = Atom.family((environmentId: EnvironmentId) =>
+  mateFeedAtom({ family: "mateStandUpVerdict", environmentId, input: {} }),
+);
 export const zeropsFeeds = {
   lifecycle: (target: {
     readonly environmentId: EnvironmentId;
@@ -28,4 +31,6 @@ export const zeropsFeeds = {
     readonly environmentId: EnvironmentId;
     readonly input: Record<string, never>;
   }) => crew(target.environmentId),
+  /** zcp's stand-up verdict, from the Mate's signed-in socket. */
+  standUpVerdict: (environmentId: EnvironmentId) => standUpVerdict(environmentId),
 };
