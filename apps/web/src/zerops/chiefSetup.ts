@@ -7,8 +7,6 @@
  * Its state is this tab's memory: it survives leaving the page, not a reload.
  */
 import { useRoleOffers } from "./usePlatformCapabilities";
-import { shownProjectsAtom } from "@t3tools/client-runtime/data";
-import { useAtomValue } from "@effect/atom-react";
 import { randomUUID } from "~/lib/utils";
 import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
 import { useCallback, useEffect, useMemo, useRef } from "react";
@@ -25,14 +23,13 @@ import {
 import { configuredHq } from "./accountHq";
 import { onAccountLifetimeClose } from "./accountLifetime";
 import { HQ_UNFOLLOWED, useAccountOperationsOptional } from "./accountOperations";
-import { chiefNames, chiefOffered, chiefSetupEntry, chiefSetupLine, othersChiefs } from "./chief";
+import { chiefNames, chiefSetupEntry, chiefSetupLine } from "./chief";
 import { beginCreation, tryCreationAgain, useCreation } from "./creations";
 import { useMatePresses } from "./matePress";
 import type { NewProjectAsk } from "./newProjectBirth";
 import { useHqOwnChief, useOwnChief } from "./ownChief";
 import { useOrgOffers } from "./useHqOffers";
 import { useRunNewProject } from "./useRunNewProject";
-import { useZeropsRegistry } from "./useZeropsRegistry";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 import { sharedBirthPresentation, useOwnChiefBirth } from "./sharedBirths";
 
@@ -77,8 +74,10 @@ export function useChiefSetup(): ChiefSetupState {
 }
 
 /**
- * Both navigation entries share the same current HQ verdict and setup state, and the viewer's role:
- * a Chief is a project of their own, so a role that may not create projects is offered none.
+ * Whether the account menu offers *Set up Chief*: to a person who may set one up and has none,
+ * however many projects the organization holds — from HQ's current verdict, the setup state and
+ * the viewer's role: a Chief is a project of their own, so a role that may not create projects is
+ * offered none.
  */
 export function useChiefSetupEntry(): boolean {
   const own = useHqOwnChief();
@@ -86,18 +85,6 @@ export function useChiefSetupEntry(): boolean {
   const offered = useRoleOffers().setUpChief;
   const birth = useOwnChiefBirth();
   return birth === undefined && offered && chiefSetupEntry(own, setup.phase);
-}
-
-/**
- * Whether the account menu offers *Set up Chief* (`chiefOffered`): to a person who may set one up
- * and has none, once the organization holds a second project.
- */
-export function useChiefOffer(): boolean {
-  const entry = useChiefSetupEntry();
-  const { registry, loading } = useZeropsRegistry();
-  const roster = useAtomValue(shownProjectsAtom).projects;
-  const chiefs = useMemo(() => othersChiefs(roster, null), [roster]);
-  return chiefOffered({ entry, apps: loading ? undefined : registry.groups, chiefs });
 }
 
 /** Where setting up a Chief stands, as the menu's top row says it (`chiefSetupLine`). */
