@@ -723,6 +723,14 @@ export function activityOfNow(
 }
 
 /**
+ * When the Mate last did something, wall ms: what *Last activity* orders its project by. Nothing
+ * where its conversation holds no work, whose date is only the chat's own.
+ */
+export function activityMomentOf(activity: ZeropsAgentActivity | undefined): number | undefined {
+  return activity?.hasWork === true ? Date.parse(activity.at) : undefined;
+}
+
+/**
  * An engine Mate's activity off its own conversation row (`ConversationRow`, which HQ relays in
  * the overview's `conversations`): the engine already says what the conversation is on, so the
  * row's state is the kind — nothing is resolved again from turn and session literals.

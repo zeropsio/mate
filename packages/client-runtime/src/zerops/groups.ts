@@ -367,10 +367,13 @@ export interface CanonicalGroupTree {
  * ungroups the same way, newest first; `name` is today's order, display name
  * then id; `custom` is the viewer's own arrangement of the groups
  * (`customOrder`), the ungrouped left newest first — a person arranges their
- * projects, not the loose environments under them. There is no default:
- * every caller states which one a viewer sees.
+ * projects, not the loose environments under them; `activity` is by when a
+ * group's Mates last did something, which no listing holds: the tree stands
+ * newest first, and the surface that reads its Mates puts it in that order
+ * (`inActivityOrder`). There is no default: every caller states which one a
+ * viewer sees.
  */
-export type ZeropsProjectOrder = "newest" | "name" | "custom";
+export type ZeropsProjectOrder = "newest" | "name" | "custom" | "activity";
 
 export interface CanonicalGroupsOptions {
   readonly order: ZeropsProjectOrder;
@@ -642,7 +645,7 @@ export function deriveCanonicalGroups(
     } satisfies CanonicalGroup;
   });
 
-  if (options.order === "newest" || options.order === "custom") {
+  if (options.order !== "name") {
     const bornByGroupId = new Map(groups.map((group) => [group.groupId, groupBornAt(group)]));
     const placed = new Map(
       (options.order === "custom" ? (options.customOrder ?? []) : []).map((groupId, index) => [

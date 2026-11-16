@@ -104,7 +104,9 @@ export {
   type ServiceDeployment,
 } from "./runEnvironmentCreation.ts";
 export {
+  activityRanking,
   buildCanonicalGroupTree,
+  inActivityOrder,
   type CanonicalGroupTreeView,
   type CanonicalGroupTreeEnvironment,
   type ZeropsProjectCarrier,

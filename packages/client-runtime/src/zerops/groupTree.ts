@@ -98,3 +98,47 @@ export function buildCanonicalGroupTree<T extends ZeropsProjectCarrier>(
 
   return { groups, ungrouped, empty: groups.length === 0 };
 }
+
+/**
+ * The groups and ungrouped projects whose members ever did something, latest first, by group id
+ * and by project id: what `inActivityOrder` puts the tree in. A group stands at the latest of its
+ * members. `activeAt` answers in wall ms, `undefined` for a member that never did anything.
+ */
+export function activityRanking<T extends ZeropsProjectCarrier>(
+  view: CanonicalGroupTreeView<T>,
+  activeAt: (item: T) => number | undefined,
+): ReadonlyArray<string> {
+  const moments = new Map<string, number>();
+  const note = (id: string, at: number | undefined) => {
+    if (at === undefined || Number.isNaN(at)) return;
+    const known = moments.get(id);
+    if (known === undefined || at > known) moments.set(id, at);
+  };
+  for (const { group, environments } of view.groups) {
+    for (const { item } of environments)
+      if (item !== undefined) note(group.groupId, activeAt(item));
+  }
+  for (const item of view.ungrouped) note(item.project.id, activeAt(item));
+  return [...moments].toSorted(([, left], [, right]) => right - left).map(([id]) => id);
+}
+
+/**
+ * The tree in *Last activity* order (`ZeropsProjectOrder`'s `activity`): as `ranking` stands them.
+ * The ones it leaves out keep the tree's own order, newest first, after them.
+ */
+export function inActivityOrder<
+  T extends ZeropsProjectCarrier,
+  V extends CanonicalGroupTreeView<T>,
+>(view: V, ranking: ReadonlyArray<string>): V {
+  const places = new Map(ranking.map((id, at) => [id, at]));
+  const placeOf = (id: string) => places.get(id) ?? ranking.length;
+  return {
+    ...view,
+    groups: view.groups.toSorted(
+      (left, right) => placeOf(left.group.groupId) - placeOf(right.group.groupId),
+    ),
+    ungrouped: view.ungrouped.toSorted(
+      (left, right) => placeOf(left.project.id) - placeOf(right.project.id),
+    ),
+  };
+}
