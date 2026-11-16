@@ -158,6 +158,57 @@ const editedOf = (
   return files.size + (edits.size - named.size);
 };
 
+/**
+ * A page of a run's items, as `runPage` reads it; `card` is the runs its card draws together,
+ * where a failed call counts for `tools`.
+ *
+ * Its inner read of the tools that failed is of the card's runs' items: a `+` before its
+ * `conversation_id` and `kind` keeps SQLite from answering it off the conversation's index,
+ * which walks every call the conversation ever made, once per read (0.4–1 s a run on a long
+ * conversation, 20 ms without). The rows read are the same.
+ */
+export const runItemsRead = (
+  sql: SqlClient.SqlClient,
+  conversation: ConversationId,
+  runId: RunId,
+  options: {
+    readonly beforeSeq?: number;
+    readonly afterSeq?: number;
+    readonly only?: "outcome";
+    readonly tools?: ReadonlyArray<string>;
+    readonly limit: number;
+  },
+  card: ReadonlyArray<string>,
+) => {
+  const resulted =
+    options.tools === undefined
+      ? sql`json_extract(body_json, '$.result') IS NOT NULL`
+      : sql`(EXISTS (SELECT 1 FROM json_each(${encodeNames(options.tools)}) AS named
+            WHERE json_extract(body_json, '$.result.toolName') GLOB named.value)
+          OR json_extract(body_json, '$.result.toolName') IN (
+            SELECT json_extract(failed.body_json, '$.result.toolName') FROM engine_item failed
+            WHERE +failed.conversation_id = ${conversation}
+              AND failed.run_id IN (SELECT value FROM json_each(${encodeNames(card)}))
+              AND +failed.kind = 'call' AND json_extract(failed.body_json, '$.state') = 'failed'))`;
+  return sql<ItemRow>`
+    SELECT * FROM engine_item WHERE conversation_id = ${conversation} AND run_id = ${runId}
+      ${options.beforeSeq === undefined ? sql`` : sql`AND opened_seq < ${options.beforeSeq}`}
+      ${options.afterSeq === undefined ? sql`` : sql`AND opened_seq > ${options.afterSeq}`}
+      ${
+        options.only === "outcome"
+          ? sql`AND (kind = 'work' OR (kind = 'call' AND (
+              ${resulted}
+              OR json_extract(body_json, '$.step') = 'look'
+              OR item_id IN (
+                SELECT json_extract(body_json, '$.call') FROM engine_item
+                WHERE conversation_id = ${conversation} AND run_id = ${runId}
+                  AND kind = 'work'))))`
+          : sql``
+      }
+    ORDER BY opened_seq ${options.afterSeq !== undefined ? sql`ASC` : sql`DESC`} LIMIT ${options.limit + 1}
+  `;
+};
+
 export const makeRecords = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
 
@@ -679,33 +730,7 @@ export const makeRecords = Effect.gen(function* () {
             : ((yield* groups(conversation)).find((group) => group.runs.includes(runId))?.runs ?? [
                 runId,
               ]);
-        const resulted =
-          options.tools === undefined
-            ? sql`json_extract(body_json, '$.result') IS NOT NULL`
-            : sql`(EXISTS (SELECT 1 FROM json_each(${encodeNames(options.tools)}) AS named
-                  WHERE json_extract(body_json, '$.result.toolName') GLOB named.value)
-                OR json_extract(body_json, '$.result.toolName') IN (
-                  SELECT json_extract(failed.body_json, '$.result.toolName') FROM engine_item failed
-                  WHERE failed.conversation_id = ${conversation}
-                    AND failed.run_id IN (SELECT value FROM json_each(${encodeNames(card)}))
-                    AND failed.kind = 'call' AND json_extract(failed.body_json, '$.state') = 'failed'))`;
-        const rows = yield* sql<ItemRow>`
-          SELECT * FROM engine_item WHERE conversation_id = ${conversation} AND run_id = ${runId}
-            ${options.beforeSeq === undefined ? sql`` : sql`AND opened_seq < ${options.beforeSeq}`}
-            ${options.afterSeq === undefined ? sql`` : sql`AND opened_seq > ${options.afterSeq}`}
-            ${
-              options.only === "outcome"
-                ? sql`AND (kind = 'work' OR (kind = 'call' AND (
-                    ${resulted}
-                    OR json_extract(body_json, '$.step') = 'look'
-                    OR item_id IN (
-                      SELECT json_extract(body_json, '$.call') FROM engine_item
-                      WHERE conversation_id = ${conversation} AND run_id = ${runId}
-                        AND kind = 'work'))))`
-                : sql``
-            }
-          ORDER BY opened_seq ${forward ? sql`ASC` : sql`DESC`} LIMIT ${options.limit + 1}
-        `;
+        const rows = yield* runItemsRead(sql, conversation, runId, options, card);
         const page = forward
           ? rows.slice(0, options.limit)
           : rows.slice(0, options.limit).toReversed();
