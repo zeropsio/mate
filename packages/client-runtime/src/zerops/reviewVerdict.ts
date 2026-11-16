@@ -935,9 +935,11 @@ export function changeMergeVerdict(
 
   // GitHub's checks failed on what would merge: said before anything a clean merge says, a draft
   // included. It still merges — a check may fail for no fault of the change — but the review
-  // recommends handing them to its Mate, never the merge.
+  // recommends handing them to its Mate, never the merge. One behind `main` as well is brought up
+  // to it by the same ask, and its merge still says what it lands on (`mergeSentence`).
   const github = githubChecksAt(pull);
   if (github?.state === "failing") {
+    const behind = pull.behind;
     return {
       enabled: true,
       verdict: {
@@ -948,8 +950,8 @@ export function changeMergeVerdict(
         fix: {
           verb: "fix them",
           problem: {
-            what: `GitHub's checks failed on the latest push of change #${String(pull.number)} (${github.url})`,
-            ask: "Look at the failed checks on GitHub, fix what they found, and push again.",
+            what: `GitHub's checks failed on the latest push of change #${String(pull.number)} (${github.url})${behind ? `, and it is behind ${base}` : ""}`,
+            ask: `${behind ? `Merge ${base} into it, look` : "Look"} at the failed checks on GitHub, fix what they found, and push again.`,
           },
         },
       },
@@ -1314,7 +1316,8 @@ function changeReviewModel(
   const squash = sentences(
     mergeSentence(
       pull,
-      verdict.state === "behind-clean",
+      // Failed checks are said before "Behind main": its merge lands on unchecked changes all the same.
+      verdict.state === "behind-clean" || (verdict.state === "github-checks-failed" && pull.behind),
       input.readout === "failed",
       nothingLive(input),
     ),
