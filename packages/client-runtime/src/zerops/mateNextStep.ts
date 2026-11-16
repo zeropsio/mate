@@ -184,7 +184,12 @@ export function mateNextStep(input: {
     const kind = merges(entry) ? reads.get(entry)?.standing.kind : undefined;
     return kind === "to-merge" ? undefined : kind;
   };
-  const asked = listed.filter((entry) => standingOf(entry) === "waiting");
+  // A comment its person has not read hands a change they asked for back to them.
+  const commentOf = (entry: FlowPullRequest) =>
+    merges(entry) ? reads.get(entry)?.comment : undefined;
+  const asked = listed.filter(
+    (entry) => standingOf(entry) === "waiting" && commentOf(entry) === undefined,
+  );
   const ready = listed.filter((entry) => standingOf(entry) === "to-ask");
   const waiting = listed.filter(merges).length - asked.length;
   // The person cannot merge here (`ViewerMerges` "held"), whatever stops each change.
@@ -213,9 +218,11 @@ export function mateNextStep(input: {
       kind: "review",
       pull,
       title:
-        lead === "asked-of-me"
-          ? `${reads.get(pull)?.asker ?? "Someone"} asks you to merge ${name}'s change`
-          : who,
+        commentOf(pull) !== undefined
+          ? `${commentOf(pull) ?? ""} on ${name}'s change`
+          : lead === "asked-of-me"
+            ? `${reads.get(pull)?.asker ?? "Someone"} asks you to merge ${name}'s change`
+            : who,
       detail: pull.title,
       lines: [],
       more: 0,
@@ -232,7 +239,7 @@ export function mateNextStep(input: {
       const line = { pull: entry, label: sidebarChangeLabel(entry, pullRequests) };
       if (!merges(entry)) return { ...line, verdict: notMerging(entry, input) };
       const kind = standingOf(entry);
-      const says = reads.get(entry)?.word;
+      const says = commentOf(entry) ?? reads.get(entry)?.word;
       return {
         ...line,
         ...(kind === undefined ? {} : { standing: kind }),

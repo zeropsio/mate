@@ -441,6 +441,8 @@ export const HqNavigationChange = Schema.Struct({
   ready: Schema.Boolean,
   /** The pull request it is mirrored to on GitHub; absent where none. */
   pullRequest: HqChange.fields.pullRequest,
+  /** The newest comment a person left on it; absent while it has none. */
+  lastComment: HqChange.fields.lastComment,
   /** Somebody asked for it to be merged; absent where nobody did. */
   mergeAsk: HqChange.fields.mergeAsk,
   /** The other open changes of its repository it merges after; absent where none. */

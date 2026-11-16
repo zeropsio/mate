@@ -173,12 +173,20 @@ export interface ChangeStandingRead {
   readonly who: string;
   /** Who asked, as a sentence's subject (`askerName`), where somebody did. */
   readonly asker?: string | undefined;
+  /**
+   * A comment somebody else left on this change of the person's own Mate, which they have not
+   * read yet (`commentWaits`): "Sam R. commented", "A comment on GitHub". It hands the change back
+   * to them — it waits on them again, whatever its standing — until they open its review.
+   */
+  readonly comment?: string | undefined;
 }
 
 /** A change's {@link ChangeStandingRead}, by the application it is of. */
 export type ChangeStandingOf = (
   appId: string | undefined,
-  pull: Pick<FlowPullRequest, "mergeAsk">,
+  pull: Partial<
+    Pick<FlowPullRequest, "mergeAsk" | "lastComment" | "mateProjectId" | "repository" | "number">
+  >,
 ) => ChangeStandingRead;
 
 /** What decides a standing: per application whether the person merges and who does, and names. */
@@ -192,6 +200,8 @@ export interface ChangeStandingFacts {
   };
   /** What the member list calls each person, by their Zerops user id. */
   readonly names: { readonly [userId: string]: string };
+  /** The Mates that are the person's own, by their Zerops project: whose changes are theirs. */
+  readonly own?: { readonly [mateProjectId: string]: true } | undefined;
 }
 
 /**
@@ -200,7 +210,17 @@ export interface ChangeStandingFacts {
  */
 export function changeStandingOf(
   facts: ChangeStandingFacts,
-  viewer: { readonly userId: string | undefined; readonly name?: string | undefined },
+  viewer: {
+    readonly userId: string | undefined;
+    readonly name?: string | undefined;
+    /**
+     * When the person last opened a change's review, by application, repository and number;
+     * absent, or `undefined` for one never opened: what was commented since is unread.
+     */
+    readonly seenAt?:
+      | ((appId: string, repository: string, number: number) => string | undefined)
+      | undefined;
+  },
 ): ChangeStandingOf {
   const nameOf = (userId: string) =>
     facts.names[userId] ?? (userId === viewer.userId ? viewer.name : undefined);
@@ -211,6 +231,18 @@ export function changeStandingOf(
       userId: viewer.userId,
     });
     const mergers = app === undefined || app.people === null ? null : { people: app.people };
+    const { lastComment, mateProjectId, repository, number } = pull;
+    const commented =
+      lastComment !== undefined &&
+      mateProjectId !== undefined &&
+      commentWaits(lastComment, {
+        own: facts.own?.[mateProjectId] === true,
+        userId: viewer.userId,
+        seenAt:
+          appId === undefined || repository === undefined || number === undefined
+            ? undefined
+            : viewer.seenAt?.(appId, repository, number),
+      });
     return {
       standing,
       word: standingWord(standing, mergers, nameOf),
@@ -218,8 +250,38 @@ export function changeStandingOf(
       ...(standing.kind === "asked-of-me" || standing.kind === "waiting"
         ? { asker: askerName(standing, nameOf) }
         : {}),
+      ...(commented && lastComment !== undefined
+        ? { comment: commentWord(lastComment, nameOf) }
+        : {}),
     };
   };
+}
+
+/**
+ * Whether a comment waits on the person: somebody else left it on a change of their own Mate,
+ * after they last opened its review. Their own comment, and one on a colleague's change, do not.
+ */
+export function commentWaits(
+  comment: NonNullable<FlowPullRequest["lastComment"]>,
+  viewer: {
+    /** The change is of the person's own Mate. */
+    readonly own: boolean;
+    readonly userId: string | undefined;
+    /** When they last opened its review; `undefined`: never, here. */
+    readonly seenAt: string | undefined;
+  },
+): boolean {
+  if (!viewer.own || (comment.by !== undefined && comment.by === viewer.userId)) return false;
+  return viewer.seenAt === undefined || Date.parse(comment.at) > Date.parse(viewer.seenAt);
+}
+
+/** Who commented, in a row's few words: "Sam R. commented", or that it came from GitHub. */
+export function commentWord(
+  comment: NonNullable<FlowPullRequest["lastComment"]>,
+  nameOf: (userId: string) => string | undefined,
+): string {
+  if (comment.by === undefined) return "A comment on GitHub";
+  return `${nameOf(comment.by) ?? "Someone"} commented`;
 }
 
 /** The press that opens a change the person only waits on: nothing is asked of them there. */
@@ -246,4 +308,42 @@ export function standingPressLabel(
 ): string {
   const kind = typeof standing === "string" ? standing : standing?.kind;
   return kind === "to-ask" ? ASK_TO_MERGE : kind === "waiting" ? VIEW_CHANGE : review;
+}
+
+/** A project's Mate as HQ says whose it is: the person looking's own, or somebody's at all. */
+export interface MateWhose {
+  /** HQ names the person looking as its person. */
+  readonly mine?: boolean | undefined;
+  /** HQ names an owner of it; an automated Mate has none. */
+  readonly owned?: boolean | undefined;
+}
+
+/** Whether a project is the person's: they own a Mate in it. The overview's *Mine* is this. */
+export function viewerOwnsMate(mates: ReadonlyArray<MateWhose>): boolean {
+  return mates.some((mate) => mate.mine === true);
+}
+
+/**
+ * Whether something a person is allowed to do in a project — release it — waits on them: being
+ * permitted is not being asked. It does where the project is theirs (they own a Mate in it), where
+ * the project limits who merges and releases and names them, or where nobody else can: its limit
+ * names nobody, or no person owns a Mate in it, and they are the organization's Owner or Admin.
+ * Anywhere else it is somebody else's move, and the person only sees that it is ready.
+ */
+export function releaseWaitsOnViewer(input: {
+  /** The project's Mates, each as HQ says whose it is. */
+  readonly mates: ReadonlyArray<MateWhose>;
+  /** The people its limit on who merges and releases names; absent where it limits nothing. */
+  readonly mergers: ReadonlyArray<string> | null | undefined;
+  /** The person looking, by their Zerops user id. */
+  readonly userId: string | undefined;
+  /** They are the organization's Owner or Admin. */
+  readonly manages: boolean;
+}): boolean {
+  const { mates, mergers, userId } = input;
+  if (viewerOwnsMate(mates)) return true;
+  if (mergers != null && userId !== undefined && mergers.includes(userId)) return true;
+  const nobodyElse =
+    (mergers != null && mergers.length === 0) || !mates.some((mate) => mate.owned === true);
+  return input.manages && nobodyElse;
 }
