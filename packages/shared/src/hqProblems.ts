@@ -62,8 +62,6 @@ export const HqRefusal = Schema.Struct({
   /** A merge's file limit in bytes and the largest file above it (`too_large`). */
   limit: added(Schema.Number),
   size: added(Schema.Number),
-  /** The open changes a refused merge builds on, the one to merge first leading (`builds_on_open`). */
-  buildsOn: added(Schema.Array(Schema.Number)),
 });
 export type HqRefusal = typeof HqRefusal.Type;
 

@@ -159,8 +159,6 @@ export interface ZeropsReviewSurfaceProps {
   readonly consequence: string;
   /** The note that will stand once what is loading has loaded: the foot keeps its room. */
   readonly consequenceRoom?: string | undefined;
-  /** The note's own id, where the one button is held by what it says (`ReviewPrimaryButton.held`). */
-  readonly consequenceId?: string | undefined;
   /**
    * What the foot's words are of, where they swap in place while the review stays open (a change
    * asked for its merge, the ask taken back): once it has moved, the words that come ease in.
@@ -229,7 +227,6 @@ export function ZeropsReviewSurface({
   children,
   consequence,
   consequenceRoom,
-  consequenceId,
   noteKey,
   asked,
   consequenceTone,
@@ -457,7 +454,6 @@ export function ZeropsReviewSurface({
               className="rv-conseq"
               data-room={consequenceRoom === undefined ? undefined : ""}
               data-tone={consequenceTone}
-              id={consequenceId}
             >
               {consequence === "" ? null : consequenceBusy ? (
                 <Badge dot tone="info" wrap>

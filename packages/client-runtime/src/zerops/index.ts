@@ -498,7 +498,7 @@ export {
   TAKE_ASK_BACK,
   askerName,
   changeStanding,
-  mergeFirstWords,
+  alsoMergesWords,
   mergersLine,
   mergersWho,
   shownMergeAsk,

@@ -114,12 +114,10 @@ import { fileSize } from "../gitBrowse/blob.ts";
 import { heldType } from "../gitBrowse/raw.ts";
 
 import { type FetchImplementation, type ZeropsAccess } from "../api.ts";
-import { mergeFirstWords } from "../changeStanding.ts";
 import type { CanonicalHqEnvironment } from "./environments.ts";
 import {
   hqDisagreesOn,
   hqRefusalWords,
-  MERGE_BUILDS_ON_OPEN,
   MERGE_TOO_LARGE,
   mergeTooLargeWords,
   SIGN_IN_CANNOT_MINT,
@@ -962,9 +960,6 @@ async function errorOf(response: Response, { gitSetup, merge }: CallAsk): Promis
     merge && code === MERGE_TOO_LARGE
       ? mergeTooLargeWords(refusal?.limit, refusal?.size)
       : undefined;
-  // A merge HQ refused for a change built on one still open: which one merges first, where it said.
-  const under = merge && reason === MERGE_BUILDS_ON_OPEN ? refusal?.buildsOn?.[0] : undefined;
-  const mergeFirst = under === undefined ? undefined : mergeFirstWords(under);
   return new HqError({
     kind: "refused",
     code,
@@ -975,7 +970,6 @@ async function errorOf(response: Response, { gitSetup, merge }: CallAsk): Promis
       probeMessage ??
       githubSaid ??
       tooLarge ??
-      mergeFirst ??
       hqRefusalWords({
         code,
         reason,
