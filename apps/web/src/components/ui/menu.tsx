@@ -224,9 +224,9 @@ const RADIO_ITEM_VARIANT: Record<MenuRadioItemVariant, string> = {
   check:
     "grid min-h-8 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] grid-cols-[1rem_minmax(0,1fr)] items-center gap-2 rounded-sm py-1 ps-2 pe-4 text-sm text-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground sm:min-h-7 pointer-coarse:min-h-10 sm:pointer-coarse:min-h-10 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4",
   segment:
-    // Each as wide as its words, the room left shared out: "Creation date"
-    // never cut to fit beside "Name".
-    "flex min-h-6 flex-auto items-center justify-center whitespace-nowrap rounded-md px-2 font-medium text-muted-foreground text-xs pointer-coarse:min-h-8 data-checked:bg-popover data-checked:text-foreground data-checked:shadow-xs data-checked:ring-1 data-checked:ring-border data-highlighted:text-foreground",
+    // Half the track, two to a row (`MenuSwitch`): four choices keep their
+    // words whole within the menu's width, "Creation date" never cut.
+    "flex min-h-6 items-center justify-center whitespace-nowrap rounded-md px-2 font-medium text-muted-foreground text-xs pointer-coarse:min-h-8 data-checked:bg-popover data-checked:text-foreground data-checked:shadow-xs data-checked:ring-1 data-checked:ring-border data-highlighted:text-foreground",
 };
 
 function MenuRadioItem({
@@ -276,8 +276,9 @@ function MenuRadioItem({
 
 /**
  * A radio group laid out as a switch: its label, then its choices on one
- * track, the chosen one raised — for a setting a person sets once and
- * leaves, where a list of rows would take a row a choice. Its items are
+ * track, two to a row, the chosen one raised — for a setting a person sets
+ * once and leaves, where a list of rows would take a row a choice. The
+ * columns line up from one switch to the next. Its items are
  * `MenuRadioItem`s with `variant="segment"`, still menu items to the keys and
  * to a screen reader.
  */
@@ -297,7 +298,9 @@ function MenuSwitch({
       <MenuPrimitive.GroupLabel className="w-11 shrink-0 text-muted-foreground text-xs">
         {label}
       </MenuPrimitive.GroupLabel>
-      <div className="flex min-w-0 flex-1 gap-0.5 rounded-lg bg-foreground/6 p-0.5">{children}</div>
+      <div className="grid min-w-0 flex-1 grid-cols-2 gap-0.5 rounded-lg bg-foreground/6 p-0.5">
+        {children}
+      </div>
     </MenuPrimitive.RadioGroup>
   );
 }

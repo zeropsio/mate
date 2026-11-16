@@ -174,7 +174,7 @@ export function SidebarZeropsAccount({
   }, [heldAtFirst, menuFilled]);
   const nameHeld = heldAtFirst && !menuFilled && !waitedOut;
   const menu = (
-    <MenuPopup align={collapsed ? "start" : "end"} className="w-92" side="top">
+    <MenuPopup align={collapsed ? "start" : "end"} className="w-72" side="top">
       <SidebarZeropsAccountMenu
         account={account}
         activeOrganization={activeOrganization}
