@@ -591,6 +591,8 @@ export {
   askerName,
   changeStanding,
   changeStandingOf,
+  commentWaits,
+  commentWord,
   mergersLine,
   mergersWho,
   shownMergeAsk,
@@ -598,10 +600,13 @@ export {
   standingWaits,
   standingWord,
   viewerMerges,
+  viewerOwnsMate,
+  releaseWaitsOnViewer,
   type ChangeStanding,
   type ChangeStandingFacts,
   type ChangeStandingOf,
   type ChangeStandingRead,
+  type MateWhose,
   type ViewerMerges,
 } from "./changeStanding.ts";
 export {

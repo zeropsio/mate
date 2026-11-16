@@ -206,6 +206,16 @@ export const HqMergeAsk = Schema.Struct({
 });
 export type HqMergeAsk = typeof HqMergeAsk.Type;
 
+/**
+ * The newest comment on an open change that its own Mate did not write: when, and the Zerops user
+ * who wrote it in Mate — `by` absent for one that came from GitHub.
+ */
+export const HqLastComment = Schema.Struct({
+  at: Instant,
+  by: Schema.optionalKey(Schema.String),
+});
+export type HqLastComment = typeof HqLastComment.Type;
+
 export const HqChange = Schema.Struct({
   recipeValidation: Schema.optionalKey(HqRecipeValidation),
   problems: Schema.optionalKey(Schema.Array(HqProblem)),
@@ -273,6 +283,11 @@ export const HqChange = Schema.Struct({
   ready: Schema.Boolean,
   /** HQ's latest own push on its branch ({@link HqCorePush}); absent where HQ never moved it. */
   corePush: Schema.optionalKey(HqCorePush),
+  /**
+   * On an open change: the newest comment a person left on it ({@link HqLastComment}). Absent
+   * while it has none, on a merged or closed change, and from an older HQ.
+   */
+  lastComment: Schema.optionalKey(HqLastComment),
   /**
    * On an open change: somebody asked for it to be merged ({@link HqMergeAsk}). Absent where
    * nobody asked, on a merged or closed change, and from an older HQ.

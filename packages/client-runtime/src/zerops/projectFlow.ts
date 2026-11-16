@@ -29,6 +29,7 @@ import {
   changeUrl,
   type HqChange,
   type HqCorePush,
+  type HqLastComment,
   type HqMergeAsk,
   repoUrl,
 } from "@t3tools/shared/hqChanges";
@@ -153,6 +154,8 @@ export interface FlowPullRequest {
   readonly pullRequest?: HqPullRequest | undefined;
   /** Somebody asked for it to be merged (`HqChange.mergeAsk`); absent where nobody did. */
   readonly mergeAsk?: HqMergeAsk | undefined;
+  /** The newest comment a person left on it (`HqChange.lastComment`); absent while it has none. */
+  readonly lastComment?: HqLastComment | undefined;
   /**
    * The other open changes of its repository it merges after, nearest first
    * (`HqChange.buildsOn`); absent where it builds on none.
@@ -281,10 +284,11 @@ export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest
 
 /** What only an open change carries of who waits on whom: its ask to merge, what it builds on. */
 function standingFacts(
-  change: Pick<HqChange, "state" | "mergeAsk" | "buildsOn">,
-): Pick<FlowPullRequest, "mergeAsk" | "buildsOn"> {
+  change: Pick<HqChange, "state" | "mergeAsk" | "buildsOn" | "lastComment">,
+): Pick<FlowPullRequest, "mergeAsk" | "buildsOn" | "lastComment"> {
   if (change.state !== "open") return {};
   return {
+    ...(change.lastComment === undefined ? {} : { lastComment: change.lastComment }),
     ...(change.mergeAsk === undefined ? {} : { mergeAsk: change.mergeAsk }),
     ...(change.buildsOn === undefined || change.buildsOn.length === 0
       ? {}
@@ -734,6 +738,9 @@ export function changeState(pull: {
   readonly kind: FlowPullRequestKind;
   readonly title: string;
   readonly pullRequest?: { readonly state: string } | undefined;
+  /** `main` moved on past the commit it was cut from, and it still merges (`FlowPullRequest.behind`). */
+  readonly behind?: boolean | undefined;
+  readonly baseBranch?: string | undefined;
 }): ChangeState | undefined {
   // GitHub merged its pull request; HQ's main takes the merge next. Nothing is left to do with it.
   if (pull.pullRequest?.state === "merged") return { word: "Merged on GitHub", tone: "off" };
@@ -749,6 +756,11 @@ export function changeState(pull: {
   }
   // Its Mate has not described it as it is: nothing asks for its merge yet.
   if (!changeAsksForReview(pull)) return { word: "Draft", tone: "off" };
+  // It still merges, on top of changes it was not checked with: its review says the same, in the
+  // same amber (`changeMergeVerdict`'s `behind-clean`) — a row never read "Ready to merge" over it.
+  if (pull.behind === true) {
+    return { word: `Behind ${pull.baseBranch ?? FALLBACK_BASE}`, tone: "attention" };
+  }
   return { word: READY_TO_MERGE, tone: "off" };
 }
 
@@ -760,12 +772,13 @@ export function changeState(pull: {
  */
 export function changeStateFor(
   pull: Parameters<typeof changeState>[0],
-  standing: { readonly word: string } | undefined,
+  standing: { readonly word: string; readonly comment?: string | undefined } | undefined,
 ): ChangeState | undefined {
   const state = changeState(pull);
+  // A comment its person has not read is the news of a change nothing stops: it is theirs again.
   return standing === undefined || state?.word !== READY_TO_MERGE
     ? state
-    : { word: standing.word, tone: state.tone };
+    : { word: standing.comment ?? standing.word, tone: state.tone };
 }
 
 /** How a change merges, in merge's own terms: whether it can land, and what it is waiting on. */
