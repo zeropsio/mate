@@ -3,6 +3,7 @@ import * as Socket from "effect/socket/Socket";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import { ZeropsConnections } from "./zerops/ZeropsConnections.ts";
 import { isAllowedWebSocketOrigin } from "./auth/origin.ts";
+import { withStreamWindows } from "./RpcStreamWindow.ts";
 import { RpcUpdateAdmission } from "./RpcUpdateAdmission.ts";
 import { ZeropsSetup } from "./zerops/ZeropsSetup.ts";
 import { actingIn, hqKeyOf, ZeropsHqLink } from "./zerops/ZeropsHqLink.ts";
@@ -97,7 +98,7 @@ import { makeProviderInstallation } from "./provider/providerInstallation.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
-import { terminalOutputStream, withTerminalOutputWindow } from "./terminal/OutputProtocol.ts";
+import { terminalOutputStream, terminalOutputWindows } from "./terminal/OutputProtocol.ts";
 import { resolveAssetContext } from "./engineSessionDirectory.ts";
 import { resolveImageAsset } from "./assets/ImageAsset.ts";
 import { issueAssetUrl } from "./assets/AssetAccess.ts";
@@ -140,7 +141,7 @@ import { CrewEngine } from "./zerops/crew/CrewEngine.ts";
 import * as ZeropsCrewProposals from "./zerops/ZeropsCrewProposals.ts";
 import { registerCrewRpc } from "./zerops/crew/registerCrewRpc.ts";
 import { ENGINE_MOVED, MateEngine } from "./engine/MateEngine.ts";
-import { registerEngineRpc } from "./engine/registerEngineRpc.ts";
+import { engineStreamWindows, registerEngineRpc } from "./engine/registerEngineRpc.ts";
 import { registerZeropsRpc } from "./zerops/registerZeropsRpc.ts";
 import { ZeropsMateAttention } from "./zerops/ZeropsMateAttention.ts";
 import * as UsageLimitSources from "./usage/UsageLimitSources.ts";
@@ -2165,10 +2166,13 @@ export const websocketRpcRouteLayer = HttpRouter.add(
         : Effect.succeed(false);
     const rpcWebSocketHttpEffect = yield* Effect.gen(function* () {
       const { protocol, httpEffect } = yield* RpcServer.makeProtocolWithHttpEffectWebsocket;
-      // Terminal output streams run ahead of the client's acks inside a small
-      // window, so each chunk no longer costs a round trip.
+      // Terminal output and a conversation's opening run ahead of the client's acks, each inside
+      // its window, so a chunk of theirs no longer costs a round trip.
       yield* RpcServer.make(WsRpcGroup, WS_RPC_SERVER_OPTIONS).pipe(
-        Effect.provideService(RpcServer.Protocol, withTerminalOutputWindow(protocol)),
+        Effect.provideService(
+          RpcServer.Protocol,
+          withStreamWindows(protocol, { ...terminalOutputWindows, ...engineStreamWindows }),
+        ),
         Effect.provide(
           Layer.merge(
             rpcScopeAuthorizationLayer(currentScopes, acting, administers),

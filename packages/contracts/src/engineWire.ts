@@ -355,7 +355,9 @@ export type EngineReadEarlierInput = typeof EngineReadEarlierInput.Type;
  * results the client draws a closed card from; a name ending in `*` names every tool it begins —
  * and for every tool a call failed with in the runs its card draws with it: its failure, and the
  * calls that may have recovered from it. A server before `tools` ignores it and reads every
- * result, drawn the same.
+ * result, drawn the same. Such a page carries its results whole up to `outcomeResultBytes`, as
+ * an opening's `outcome` frames do, as far as the page's budget carries; a server before that
+ * cuts each at an item's budget, and the client reads it (`engine.readDetail`).
  */
 export const EngineReadRunInput = Schema.Struct({
   ...protocol,

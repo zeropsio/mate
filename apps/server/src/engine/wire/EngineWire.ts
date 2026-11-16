@@ -84,6 +84,7 @@ import {
   frameSizer,
   liveFrames,
   sliceUtf8,
+  wholeOutcomeResults,
 } from "./budget.ts";
 import { makeRecords } from "./records.ts";
 import type { MessagePictures } from "../ports.ts";
@@ -447,18 +448,26 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
       >,
       count: number,
       budget: number,
+      /** What the page takes of the room its budget leaves, from its records as they were read. */
+      widen?: (
+        page: Extract<EnginePage, { readonly _tag: "Page" }>,
+        raw: Parameters<typeof fitRecords>[0],
+        room: number,
+      ) => EnginePage,
     ) =>
       Effect.gen(function* () {
         let n = count;
         for (;;) {
           const got = yield* read(n);
-          const page: EnginePage = {
+          const page: Extract<EnginePage, { readonly _tag: "Page" }> = {
             _tag: "Page",
             ...fitRecords(got.records),
             window: got.window,
             more: got.more,
           };
-          if (bytesOf(page) <= budget || n <= 1) return page;
+          const bytes = bytesOf(page);
+          if (bytes <= budget || n <= 1)
+            return widen === undefined ? page : widen(page, got.records, budget - bytes);
           n = Math.max(1, Math.floor(n / 2));
         }
       }).pipe(Effect.catch(wireError(UNREADABLE)));
@@ -872,7 +881,9 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
           // The opening is one message, as it always was: a window within its budget. Outcomes
           // never ride in it: megabytes in one message hold the socket's other frames back, pongs
           // among them, and decode as one task. A reset stays ahead of them: it forgets what the
-          // subscriber held, and would forget them too.
+          // subscriber held, and would forget them too. `synchronized` is in the last message: the
+          // socket sends the opening ahead of the client's acknowledgements up to the message
+          // carrying it (`engineStreamWindows`).
           const resets = opening.filter((frame) => frame.type === "reset");
           const opened =
             outcomes.length === 0
@@ -1023,6 +1034,14 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
           ENGINE_WIRE_BUDGETS.runPageItems,
         ),
         ENGINE_WIRE_BUDGETS.runPageBytes,
+        // A closed card decodes a result whole: one cut here cost a request of its own before
+        // the conversation drew (six of them on a window whose opening ran out of its budget).
+        input.only === "outcome"
+          ? (page, raw, room) => ({
+              ...page,
+              items: wholeOutcomeResults(page.items, raw.items, room),
+            })
+          : undefined,
       );
     };
 
