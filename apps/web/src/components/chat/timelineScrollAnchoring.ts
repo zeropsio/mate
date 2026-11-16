@@ -268,7 +268,7 @@ export const TIMELINE_PLACING_DEADLINE_MS = 400;
 /**
  * How long a conversation stays hidden while one of its rows still reads what it shows (an
  * approved domain's records, read once its card is drawn): it would grow under the reader once
- * shown. The opening's own beat (`OPENING_WAIT_LINE_MS`); past it, it shows as it stands.
+ * shown. The opening's own beat (1 s); past it, it shows as it stands.
  */
 export const TIMELINE_ROW_READ_DEADLINE_MS = 1_000;
 

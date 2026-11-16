@@ -53,7 +53,7 @@ export function resolveThreadRouteRenderState(input: {
 /**
  * How long a listed conversation's opening waits for its messages before the conversation opens
  * from its list entry (its header, its own "Loading messages…", a composer ready). Three times the
- * beat after which the opening says its line (`OPENING_WAIT_LINE_MS`): a reload's list entry and
+ * beat (1 s) after which the opening says its line: a reload's list entry and
  * messages come over the Mate's one socket, so messages not here by then are not coming soon — a
  * Mate stopped, a connection blocked — and the person gets a composer rather than a stage.
  */

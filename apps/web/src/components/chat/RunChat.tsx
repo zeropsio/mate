@@ -3559,7 +3559,7 @@ function NowLine({
   readonly status: RunStatus;
   readonly now: TurnHeaderActivity | null;
   readonly answering: boolean;
-  /** What the run came to: its effort, on the worked line (`useRunEffortWords`). */
+  /** What the run came to: its effort, on the worked line (`useRunEffort`). */
   readonly outcome: OutcomeModel | null;
   /**
    * The card's head (the owner, 2026-10-11): one line at the card's top in every state, the same

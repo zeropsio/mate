@@ -582,7 +582,7 @@ type MessagesTimelineRowBody =
       status: RunStatus | null;
       /**
        * What the run came to, for its worked line's effort after its time
-       * ("2 commands · 1 file read", `useRunEffortWords`, which follows a
+       * ("2 commands · 1 file read", `useRunEffort`, which follows a
        * change merged since); null while it runs.
        */
       outcome: OutcomeModel | null;

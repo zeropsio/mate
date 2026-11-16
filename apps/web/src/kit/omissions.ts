@@ -19,12 +19,6 @@ export const KIT_OMISSIONS: readonly KitOmission[] = [
     reason: "Hooks and a stored-state read: behaviour, no look.",
   },
   {
-    name: "useComboboxFilter, NumberFieldPrimitive, FieldControl, FieldValidity",
-    source: "apps/web/src/components/ui",
-    reason:
-      "Primitives and hooks the shown components are built from; they have no look of their own.",
-  },
-  {
     name: "SidebarRail",
     source: "apps/web/src/components/ui/sidebar.tsx",
     reason:
