@@ -16,7 +16,6 @@ import {
 import {
   CrewProposalError,
   EnvironmentAuthorizationError,
-  type ExecutionEnvironmentCapabilities,
   type ModelSelection,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
@@ -39,14 +38,14 @@ export type CrewProposeWith =
  * where this viewer may run that chat (D6, the same lock as asking the Mate).
  */
 export function crewProposeWith(input: {
-  /** The Mate's server's capabilities; `undefined` while they are not read. */
-  readonly capabilities: ExecutionEnvironmentCapabilities | undefined;
+  /** The Mate's server's config is read. */
+  readonly serverRead: boolean;
   /** The Mate's chat's model; `undefined` while it has none. */
   readonly modelSelection: ModelSelection | undefined;
   readonly lock: CrewLock | null;
   readonly mateName: string;
 }): CrewProposeWith {
-  if (input.capabilities === undefined) return { kind: "reading" };
+  if (!input.serverRead) return { kind: "reading" };
   if (input.modelSelection === undefined)
     return { kind: "unavailable", words: crewSuggestUnavailableWords(input.mateName, "no-chat") };
   if (input.lock !== null)

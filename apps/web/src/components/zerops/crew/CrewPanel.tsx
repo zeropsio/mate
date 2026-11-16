@@ -106,7 +106,7 @@ export function CrewPanel({
       onSignIn={(lock) => onSignIn(lock.agentId)}
       // A proposal runs on the agent of that same chat, for the viewer who may run it.
       proposeWith={crewProposeWith({
-        capabilities: serverConfig?.environment.capabilities,
+        serverRead: serverConfig !== undefined,
         modelSelection: askChat?.modelSelection,
         lock: askLock,
         mateName: mate?.name ?? "the Mate",
