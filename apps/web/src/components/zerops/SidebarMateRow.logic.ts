@@ -1054,7 +1054,7 @@ function mateRowState(activity: ZeropsAgentActivity, face: MateMarkState): MateR
  * | its change waits on the viewer           | the change mark and its title, in ink      |
  * | nobody signed in                         | the sign-in                                |
  * | an unsent draft                          | *Draft* and its words                      |
- * | a colleague's open change                | "<title> · in review", muted               |
+ * | a colleague's open change                | "<title> · open", muted                    |
  * | finished, its result unseen               | its last words, in ink                     |
  * | otherwise                                | its last words, muted; else what was asked |
  */
@@ -1225,23 +1225,24 @@ export interface MateAutomationLine {
 }
 
 /**
- * "2 changes in review": a Mate's open changes waiting at once — an automated Mate's, one per task
+ * "2 changes open": a Mate's open changes waiting at once — an automated Mate's, one per task
  * — where one says its title.
  */
 export function changesInReview(count: number): string {
-  return `${String(count)} changes in review`;
+  return `${String(count)} changes open`;
 }
 
 /**
- * The line of a Mate's open change: its title — after it "· in review" where the review is not
- * the viewer's — or, where several wait, how many.
+ * The line of a Mate's open change: its title — after it "· open" where the change is not the
+ * viewer's to merge, as the menu's tag says of it — or, where several wait, how many. Never "in
+ * review": nothing says anybody is reading it.
  */
 export function changeLineWords(
   change: Extract<MateRowSecond, { readonly kind: "change" }>,
 ): string {
   if ((change.count ?? 1) > 1) return changesInReview(change.count ?? 1);
   if (change.says !== undefined) return `${change.title} · ${change.says}`;
-  return change.mine ? change.title : `${change.title} · in review`;
+  return change.mine ? change.title : `${change.title} · open`;
 }
 
 /**
