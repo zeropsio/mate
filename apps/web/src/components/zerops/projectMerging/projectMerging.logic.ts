@@ -89,6 +89,19 @@ export function mergingLine(people: MergersPeople): string {
 }
 
 /**
+ * What the Merging row adds under "Everyone…" where nothing is limited and more than one person
+ * works in the project: how many people that is, so its reach is plain without opening anything.
+ */
+export function everyoneLine(
+  people: MergersPeople | undefined,
+  builders: number | null | undefined,
+) {
+  return people === null && builders != null && builders > 1
+    ? `${String(builders)} people work here`
+    : undefined;
+}
+
+/**
  * What the page shows of who merges: HQ's navigation, under this page's own write once HQ answered
  * it — its answer is the limit as it stands, until the navigation says anything else than it said
  * at the answer.

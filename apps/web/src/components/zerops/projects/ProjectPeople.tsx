@@ -74,6 +74,7 @@ import {
 } from "./projectPeople.logic";
 import {
   accessTable,
+  buildersCount,
   cellChange,
   columnPeople,
   everywhereChanges,
@@ -447,6 +448,13 @@ export function ProjectPeopleRow({
   const { base } = useAccessReads(projects);
   const view = useMemo(() => accessTable({ ...base, projects }), [base, projects]);
   return <ProjectPeopleRowView onManage={onManage} view={view} />;
+}
+
+/** How many people work in a project (`buildersCount`), for the rows beside the People row. */
+export function useProjectBuilders(groupId: string): number | null {
+  const projects = useGroupProjects(groupId);
+  const { base } = useAccessReads(projects);
+  return useMemo(() => buildersCount(accessTable({ ...base, projects })), [base, projects]);
 }
 
 export function ProjectPeopleRowView({
