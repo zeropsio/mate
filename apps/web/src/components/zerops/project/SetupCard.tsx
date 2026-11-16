@@ -3,9 +3,28 @@
  * access, spend — each its own card under its label. A setup with nothing to say is not drawn, so
  * the column holds only what is there.
  */
-import type { ReactNode } from "react";
+import { useAtomValue } from "@effect/atom-react";
+import {
+  OrchestrationDispatchCommandError,
+  standUpVerdictHandsOver,
+  type EnvironmentId,
+  type StandUpHeadline,
+} from "@t3tools/contracts";
+import * as Cause from "effect/Cause";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
+import { AsyncResult } from "effect/reactivity";
+import type { AtomCommandResult } from "@t3tools/client-runtime/state/runtime";
+import { useCallback, useState, type ReactNode } from "react";
 
-import { SectionLabel } from "../system";
+import { zeropsEnvironmentsAtom } from "../../../state/zerops";
+import { useEnvironmentSessionState } from "../../../state/session";
+import { resolveRemoteOperateAccess } from "../../settings/ProviderSettingsPanel.logic";
+import { zeropsFeeds } from "../../../zerops/feeds";
+import { useAtomCommand } from "../../../state/use-atom-command";
+import { zeropsCommands } from "../../../state/zeropsCommands";
+import { StandupVerdictRows } from "../../chat/StandupDetail";
+import { SectionAction, SectionLabel } from "../system";
 
 export function SetupCard({ children }: { readonly children: ReactNode }) {
   return (
@@ -55,5 +74,111 @@ export function SetupRow({
         {children}
       </div>
     </section>
+  );
+}
+
+const HEADLINE: Readonly<Record<StandUpHeadline, string>> = {
+  building: "Building",
+  ready: "Ready to work — leases available",
+  done: "Done",
+  failed: "Failed",
+};
+
+/**
+ * A Mate's stand-up as zcp's verdict says it, read from the Mate's own socket by a signed-in
+ * person: its headline, a row per pooled service, and — once zcp says it failed and nothing still
+ * builds, for a person who may operate the Mate — its one action: the verdict handed to an agent
+ * turn (the setup's retry, without the setup document's settlement). Nothing where zcp wrote no verdict: a tier
+ * without a pooled part stands up as before.
+ */
+export function SetupStandUp({
+  projectId,
+  name,
+}: {
+  /** The Mate's Zerops project. */
+  readonly projectId: string;
+  readonly name: string;
+}) {
+  // Its socket, where this tab holds one: the verdict is read only from the Mate itself.
+  const environmentId = useAtomValue(zeropsEnvironmentsAtom).find(
+    (environment) => environment.zeropsProjectId === projectId,
+  )?.environmentId;
+  return environmentId === undefined ? null : (
+    <SetupStandUpOf environmentId={environmentId} name={name} />
+  );
+}
+
+type HandOverAnswer =
+  | { readonly kind: "sending" | "went" | "refused" | "unreachable" }
+  /** The Mate armed the turn and it ended before it reached the agent, in the Mate's words. */
+  | { readonly kind: "failed"; readonly words: string };
+
+const ANSWER: Readonly<Record<"went" | "refused" | "unreachable", string>> = {
+  went: "The agent has the verdict.",
+  refused: "Not handed over: no agent of yours is signed in to take it.",
+  unreachable: "The Mate did not answer. Try again.",
+};
+
+const isDispatchError = Schema.is(OrchestrationDispatchCommandError);
+
+/** What the Mate answered a hand-over: its run reached the agent, was refused, or ended first. */
+function handOverAnswer(result: AtomCommandResult<boolean, unknown>): HandOverAnswer {
+  if (AsyncResult.isSuccess(result)) return { kind: result.value ? "went" : "refused" };
+  const error = AsyncResult.isFailure(result)
+    ? Cause.findErrorOption(result.cause)
+    : Option.none<unknown>();
+  return Option.isSome(error) && isDispatchError(error.value)
+    ? { kind: "failed", words: error.value.message }
+    : { kind: "unreachable" };
+}
+
+function SetupStandUpOf({
+  environmentId,
+  name,
+}: {
+  readonly environmentId: EnvironmentId;
+  readonly name: string;
+}) {
+  const reading = useAtomValue(zeropsFeeds.standUpVerdict(environmentId));
+  const session = useEnvironmentSessionState(environmentId);
+  const mayOperate =
+    resolveRemoteOperateAccess({
+      session: session.data,
+      isPending: session.isPending,
+      hasError: session.hasError,
+    }) === "granted";
+  const send = useAtomCommand(zeropsCommands.standUpHandOver, "stand-up verdict to agent");
+  const verdict =
+    reading.state === "known" && reading.value.verdict !== null ? reading.value.verdict : null;
+  // An answer is the verdict's it was given for: a changed verdict starts with none.
+  const shown = verdict === null ? "" : JSON.stringify(verdict);
+  const [answer, setAnswer] = useState<{ readonly for: string; readonly is: HandOverAnswer }>();
+  const current = answer?.for === shown ? answer.is : undefined;
+  const handOver = useCallback(async () => {
+    if (current?.kind === "sending") return;
+    setAnswer({ for: shown, is: { kind: "sending" } });
+    setAnswer({ for: shown, is: handOverAnswer(await send({ environmentId, input: {} })) });
+  }, [current, environmentId, send, shown]);
+  if (verdict === null) return null;
+  return (
+    <SetupRow
+      action={
+        mayOperate && standUpVerdictHandsOver(verdict) && current?.kind !== "went" ? (
+          <SectionAction onClick={() => void handOver()}>Hand to agent</SectionAction>
+        ) : undefined
+      }
+      busy={current?.kind === "sending"}
+      label={`Stand-up · ${name}`}
+      rows
+      surface="project-setup-standup"
+    >
+      <p data-zerops-standup-headline={verdict.headline}>{HEADLINE[verdict.headline]}</p>
+      <StandupVerdictRows verdict={verdict} />
+      {current === undefined || current.kind === "sending" ? null : (
+        <p className="text-muted-foreground">
+          {current.kind === "failed" ? current.words : ANSWER[current.kind]}
+        </p>
+      )}
+    </SetupRow>
   );
 }

@@ -4,7 +4,9 @@
  */
 import type { StandupReading } from "@t3tools/client-runtime/zerops/activity/standupReading";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
-import type { EnvironmentId } from "@t3tools/contracts";
+import type { EnvironmentId, StandUpRow, StandUpVerdict } from "@t3tools/contracts";
+import type { ServiceStatusToneId } from "@t3tools/shared/brand";
+import { Fragment } from "react";
 
 import { useStandupReading } from "../../zerops/activity/useStandupReading";
 import { DetailRow, spanOf } from "./DetailRow";
@@ -43,4 +45,39 @@ export function StandupDetail({
 }) {
   const reading = useStandupReading(operation, environmentId, turnRuns);
   return <StandupRows reading={reading} />;
+}
+
+const VERDICT_ROW: Record<
+  StandUpRow["state"],
+  { readonly tone: ServiceStatusToneId; readonly word: string }
+> = {
+  building: { tone: "busy", word: "Building" },
+  done: { tone: "ok", word: "Done" },
+  failed: { tone: "failed", word: "Failed" },
+};
+
+/**
+ * zcp's stand-up verdict, a row per pooled service in the stand-up's row look: its state, then its
+ * cause and its next step where zcp gives them, whole and wrapped — zcp's own words, verbatim.
+ */
+export function StandupVerdictRows({ verdict }: { readonly verdict: StandUpVerdict }) {
+  return (
+    <ul className="grid gap-px">
+      {verdict.rows.map((row) => {
+        const { tone, word } = VERDICT_ROW[row.state];
+        return (
+          <Fragment key={row.hostname}>
+            <DetailRow time={null} title={row.hostname} tone={tone} word={word} />
+            {row.cause === "" && row.next === "" ? null : (
+              <li className="whitespace-pre-wrap break-words pb-1 pl-6 text-muted-foreground">
+                {row.cause}
+                {row.cause !== "" && row.next !== "" ? "\n" : null}
+                {row.next === "" ? null : `Next: ${row.next}`}
+              </li>
+            )}
+          </Fragment>
+        );
+      })}
+    </ul>
+  );
 }

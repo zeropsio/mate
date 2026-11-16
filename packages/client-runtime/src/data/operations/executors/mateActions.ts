@@ -9,6 +9,7 @@ import {
   CrewProposalError,
   ZeropsAgentLoginError,
   TerminalError,
+  OrchestrationDispatchCommandError,
   type EnvironmentId,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
@@ -44,6 +45,8 @@ const isCrewCommandError = Schema.is(CrewCommandError);
 const isCrewProposalError = Schema.is(CrewProposalError);
 const isLoginError = Schema.is(ZeropsAgentLoginError);
 const isTerminalError = Schema.is(TerminalError);
+/** The Mate's own answer that a command could not go through (a stand-up's hand-over ended). */
+const isDispatchError = Schema.is(OrchestrationDispatchCommandError);
 /** Values named here identify the action without retaining credentials or editor text. */
 const mateActionTarget = (input: unknown): Readonly<Record<string, string>> => {
   const result: Record<string, string> = {};
@@ -197,7 +200,8 @@ export function makeMateActions(options: {
           (isCrewCommandError(sourceError.value) ||
             isCrewProposalError(sourceError.value) ||
             isLoginError(sourceError.value) ||
-            isTerminalError(sourceError.value));
+            isTerminalError(sourceError.value) ||
+            isDispatchError(sourceError.value));
         const fault = refused
           ? {
               outcome: "definitive-refusal" as const,
