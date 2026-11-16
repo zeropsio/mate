@@ -157,3 +157,93 @@ export function standingWord(
       return `Waiting for ${mergersWho(mergers?.people ?? [], nameOf)}`;
   }
 }
+
+/**
+ * A ready change's standing for the person looking and the few words that say it
+ * (`standingWord`), as one surface hands it to the next: read once, said alike everywhere.
+ */
+export interface ChangeStandingRead {
+  readonly standing: ChangeStanding;
+  /**
+   * "Ready to merge", "Ready", "Waiting for Ada K. or Sam R.", "Dana L. asks to merge". Never what
+   * it builds on: nothing is held by that, and only its review says it.
+   */
+  readonly word: string;
+  /** Who merges there, as a sentence's object (`mergersWho`): "Ada K. or Sam R.". */
+  readonly who: string;
+  /** Who asked, as a sentence's subject (`askerName`), where somebody did. */
+  readonly asker?: string | undefined;
+}
+
+/** A change's {@link ChangeStandingRead}, by the application it is of. */
+export type ChangeStandingOf = (
+  appId: string | undefined,
+  pull: Pick<FlowPullRequest, "mergeAsk">,
+) => ChangeStandingRead;
+
+/** What decides a standing: per application whether the person merges and who does, and names. */
+export interface ChangeStandingFacts {
+  readonly apps: {
+    readonly [appId: string]: {
+      readonly merges: ViewerMerges;
+      /** The people its limit names; `null` where it limits nothing. */
+      readonly people: ReadonlyArray<string> | null;
+    };
+  };
+  /** What the member list calls each person, by their Zerops user id. */
+  readonly names: { readonly [userId: string]: string };
+}
+
+/**
+ * The one reader of a change's standing every surface shares: an application the facts do not
+ * hold reads as one without a limit, so a surface says today's words until HQ has said otherwise.
+ */
+export function changeStandingOf(
+  facts: ChangeStandingFacts,
+  viewer: { readonly userId: string | undefined; readonly name?: string | undefined },
+): ChangeStandingOf {
+  const nameOf = (userId: string) =>
+    facts.names[userId] ?? (userId === viewer.userId ? viewer.name : undefined);
+  return (appId, pull) => {
+    const app = appId === undefined ? undefined : facts.apps[appId];
+    const standing = changeStanding(pull, {
+      merges: app?.merges ?? "no",
+      userId: viewer.userId,
+    });
+    const mergers = app === undefined || app.people === null ? null : { people: app.people };
+    return {
+      standing,
+      word: standingWord(standing, mergers, nameOf),
+      who: mergersWho(mergers?.people ?? [], nameOf),
+      ...(standing.kind === "asked-of-me" || standing.kind === "waiting"
+        ? { asker: askerName(standing, nameOf) }
+        : {}),
+    };
+  };
+}
+
+/** The press that opens a change the person only waits on: nothing is asked of them there. */
+export const VIEW_CHANGE = "View";
+
+/**
+ * Whether a standing asks the person for nothing: they asked, and it waits on the people who
+ * merge. Its surfaces say so quietly — no call to action, a plain way in.
+ */
+export function standingWaits(
+  standing: ChangeStanding | ChangeStanding["kind"] | undefined,
+): boolean {
+  return (typeof standing === "string" ? standing : standing?.kind) === "waiting";
+}
+
+/**
+ * The verb a row's press says for a change that asks, by its standing: *Ask to merge* where the
+ * person cannot merge and nobody asked, *View* where it waits on the people who merge, else the
+ * surface's own *Review* (`review`).
+ */
+export function standingPressLabel(
+  standing: ChangeStanding | ChangeStanding["kind"] | undefined,
+  review: string,
+): string {
+  const kind = typeof standing === "string" ? standing : standing?.kind;
+  return kind === "to-ask" ? ASK_TO_MERGE : kind === "waiting" ? VIEW_CHANGE : review;
+}
