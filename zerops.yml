@@ -175,6 +175,40 @@ zerops:
               Cache-Control: "'public, max-age=31536000, immutable' always"
               X-Content-Type-Options: "'nosniff' always"
 
+  # The design harness, for looking at states without an account or a Mate:
+  # every `apps/web/design*.html` page over its fixtures, and a front page that
+  # lists them, in place of the app (`VITE_DESIGN_HARNESS`, `vite.config.ts`).
+  # It talks to no HQ and signs nobody in; it ships no service worker. Deploy
+  # it from a checkout with `zcli push -P <project id> -S <service id> --setup harness`.
+  - setup: harness
+    build:
+      base: ubuntu/nodejs@24
+      buildCommands:
+        - npm install -g --prefix "$HOME/.local" pnpm@11.10.0
+        - $HOME/.local/bin/pnpm install --frozen-lockfile --filter "@t3tools/web..."
+        - $HOME/.local/bin/pnpm --filter @t3tools/web build
+      deployFiles:
+        - apps/web/~dist
+      envVariables:
+        VITE_DESIGN_HARNESS: "1"
+        ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+        PUPPETEER_SKIP_DOWNLOAD: "1"
+        CI: "1"
+    run:
+      base: alpine/static@1.0
+      routing:
+        root: dist
+        headers:
+          - for: "/*"
+            values:
+              Cache-Control: "'no-cache' always"
+              X-Content-Type-Options: "'nosniff' always"
+              X-Robots-Tag: "'noindex' always"
+          - for: "/assets/*"
+            values:
+              Cache-Control: "'public, max-age=31536000, immutable' always"
+              X-Content-Type-Options: "'nosniff' always"
+
   # The web client's development in a Mate: its dev pool, one leased container
   # per branch. The image bakes the web client's dependencies into /var/www,
   # installed from the manifests and lockfile alone (`build.addToRunPrepare`),

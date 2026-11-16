@@ -141,6 +141,7 @@ import {
   livePauseStageId,
   earlierTurnsAnchor,
   helperFinishesOf,
+  isRestartRow,
   historicalInsertions,
   normalizeCompactToolLabel,
   resolveAssistantMessageCopyState,
@@ -2923,7 +2924,7 @@ function rowInset(row: TimelineRow): string {
   if (
     row.kind === "queued-message" ||
     row.kind === "seam" ||
-    row.kind === "crew-seam" ||
+    (row.kind === "crew-seam" && !isRestartRow(row)) ||
     row.kind === "after-work"
   ) {
     return "";
@@ -3156,7 +3157,9 @@ function TimelineRowBody({ row }: { row: TimelineRow }) {
       {row.kind === "mirror-request" ? <MirrorRequestTimelineRow row={row} /> : null}
       {row.kind === "proposal" ? <ProposalTimelineRow row={row} /> : null}
       {row.kind === "seam" ? <SeamTimelineRow row={row} /> : null}
-      {row.kind === "crew-seam" ? <CrewSeamActivity seam={row.seam} words={row.words} /> : null}
+      {row.kind === "crew-seam" ? (
+        <CrewSeamActivity asEvent seam={row.seam} words={row.words} />
+      ) : null}
       {row.kind === "proposed-plan" ? <ProposedPlanTimelineRow row={row} /> : null}
       {row.kind === "queued-message" ? <QueuedMessageTimelineRow row={row} /> : null}
     </>

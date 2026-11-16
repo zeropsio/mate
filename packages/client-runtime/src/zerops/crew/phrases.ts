@@ -1175,8 +1175,13 @@ export function crewSessionWord(reason: string | undefined): string {
       return "Its budget changed — it carries on";
     case "task":
       return "It started afresh for unrelated work";
+    case "chief":
+      return "Your organization's Chief changed — it carries on";
     default:
-      return "It started afresh";
+      // A reason this build has no words for (`unknown`), or a restart imported from a crewmate's
+      // earlier conversations: what happened, plainly, since a bare "It started afresh" said too
+      // little to tell.
+      return "It started a new session — the conversation carries on";
   }
 }
 
