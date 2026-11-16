@@ -362,7 +362,18 @@ export interface ChangeReviewInput {
     readonly production: boolean;
     readonly stage: boolean;
     readonly productionOutside?: boolean | undefined;
+    /**
+     * HQ has told the project's environments and it has none: no stage, no production of any
+     * kind, none deployed elsewhere. A merge then only keeps the work for what is built next.
+     */
+    readonly nothingLive?: boolean | undefined;
   };
+  /**
+   * Whether HQ's rule lets the person release (`ZeropsReleaseOffer.permission`): `false` only
+   * where it refused them, and the sentences then never say "until you release". Absent while
+   * HQ has not said.
+   */
+  readonly mayRelease?: boolean | undefined;
   /**
    * The environments this person may add now: those the recipe on `main` holds, the application
    * lacks in any state (a production being made or failed is held), and HQ offers the person
@@ -487,6 +498,11 @@ export interface ReviewOrphan {
 
 export interface ChangeReviewModel extends ReviewModel {
   readonly standing?: ReviewStandingModel | undefined;
+  /**
+   * Once merged, where a release is offered and the person may release: the note's quiet press
+   * opens the release's review.
+   */
+  readonly reviewRelease?: true | undefined;
   readonly orphan?: ReviewOrphan | undefined;
   readonly githubChecks?: ReviewGithubChecks | undefined;
 }
@@ -596,11 +612,37 @@ function closeReview(
   }
 }
 
-/** `Adds this change to main.` — its commits are the Commits fold's to count, not the foot's. */
-function mergeSentence(pull: ChangeReviewInput["pull"], behind: boolean, unshown: boolean): string {
+/**
+ * `Adds this change to main.` — its commits are the Commits fold's to count, not the foot's. Where
+ * the project runs nothing yet (`nextWork`), what `main` is for: the next work builds on it.
+ */
+function mergeSentence(
+  pull: ChangeReviewInput["pull"],
+  behind: boolean,
+  unshown: boolean,
+  nextWork = false,
+): string {
   const unseen = unshown ? " without its files shown" : "";
   const onTop = behind ? ", on top of changes it wasn't checked with" : "";
-  return `Adds this change to ${pull.baseBranch}${unseen}${onTop}.`;
+  const builds = nextWork && !unshown && !behind ? ", where the next work builds on it" : "";
+  return `Adds this change to ${pull.baseBranch}${unseen}${onTop}${builds}.`;
+}
+
+/** A code change in a project HQ has told runs nothing yet: no stage, no production anywhere. */
+const nothingLive = (input: ChangeReviewInput): boolean =>
+  input.pull.kind !== "recipe" && input.downstream.nothingLive === true;
+
+/**
+ * Who a release waits for, after "until": the person where they may release, and never them
+ * where HQ's rule refused them — the people who merge and release, by name, where the project's
+ * limit is what holds them (`named`), else nobody in particular.
+ */
+function releaseWaitsFor(input: ChangeReviewInput, named: boolean): string {
+  if (input.mayRelease !== false) return "you release";
+  const facts = input.standing;
+  const held = facts?.standing.kind === "to-ask" || facts?.standing.kind === "waiting";
+  if (!named || facts === undefined || !held) return "it is released";
+  return `${mergersWho(facts.mergers?.people ?? [], facts.nameOf)} releases it`;
 }
 
 /** What any recipe change does, which is all that can be said of one before its files are read. */
@@ -695,19 +737,26 @@ function recipeNext(reach: RecipeReach | undefined, base: string): string {
 }
 
 /**
- * Where production is deployed outside Mate, what a merge's foot says of it, before and after the
- * merge, in place of "until you release": only that it is elsewhere. Whether and when a merge
- * reaches it is that deploy's own business, which nobody here knows.
+ * Where production is deployed outside Mate, what a merged change's foot says of it, in place of
+ * "until you release": only that it is elsewhere. Whether and when a merge reaches it is that
+ * deploy's own business, which nobody here knows.
  */
 export const PRODUCTION_DEPLOYED_OUTSIDE = "Production is deployed outside Mate.";
+/**
+ * The same, before the merge is pressed: it promises no release and never that nothing goes live —
+ * whatever deploys production may take `main` as it is.
+ */
+export const PRODUCTION_OUTSIDE_DECIDES =
+  "Production runs outside Mate, so what goes live is decided there.";
 
 /** What happens once `main` has it, as far as anything downstream goes. */
 function afterMain(input: ChangeReviewInput): string | undefined {
   if (input.pull.kind === "recipe") return recipeSentence(input.recipe);
-  if (input.downstream.production) return "Production isn't touched until you release.";
-  if (input.downstream.productionOutside === true) return PRODUCTION_DEPLOYED_OUTSIDE;
+  if (input.downstream.production)
+    return `Production isn't touched until ${releaseWaitsFor(input, false)}.`;
+  if (input.downstream.productionOutside === true) return PRODUCTION_OUTSIDE_DECIDES;
   if (input.downstream.stage) return `The stage picks it up from ${input.pull.baseBranch}.`;
-  return undefined;
+  return nothingLive(input) ? "Nothing goes live." : undefined;
 }
 
 function sentences(...parts: ReadonlyArray<string | undefined>): string {
@@ -1042,7 +1091,7 @@ function heldReview(
 
 function changeReviewModel(
   input: ChangeReviewInput,
-): ReviewModel & { readonly standing?: ReviewStandingModel | undefined } {
+): ReviewModel & Pick<ChangeReviewModel, "standing" | "reviewRelease"> {
   const { pull } = input;
   const base = pull.baseBranch;
   const press = input.press ?? { kind: "idle" };
@@ -1074,13 +1123,14 @@ function changeReviewModel(
             ? "the stage picks it up"
             : undefined;
     const live = input.waiting?.live;
+    const until = releaseWaitsFor(input, true);
     const consequence = recipe
       ? recipeSentence(input.recipe)
       : input.downstream.production
         ? (nothing ??
           (live === undefined
-            ? "Production isn't touched until you release."
-            : `Production still serves ${live} until you release.`))
+            ? `Production isn't touched until ${until}.`
+            : `Production still serves ${live} until ${until}.`))
         : input.downstream.productionOutside === true
           ? PRODUCTION_DEPLOYED_OUTSIDE
           : input.downstream.stage
@@ -1098,9 +1148,16 @@ function changeReviewModel(
       consequence,
       // A merge is a finished act: it says what waits for production, and the release opens from its
       // own doors — never this button, where a second ⌘↵ would reach production (the owner,
-      // 2026-10-05). The one question after a first merge is all it may still ask.
+      // 2026-10-05). The one question after a first merge is all it may still ask; the release's
+      // review is a quiet press beside the sentence that names it, for whoever may release.
       primary: undefined,
       question: recipe ? undefined : whereShouldItRun(input),
+      ...(!recipe &&
+      input.downstream.production &&
+      input.release?.allowed === true &&
+      input.mayRelease !== false
+        ? { reviewRelease: true as const }
+        : {}),
     };
   }
 
@@ -1199,7 +1256,12 @@ function changeReviewModel(
     input.readout !== "unread" &&
     input.offered?.merge === true;
   const squash = sentences(
-    mergeSentence(pull, verdict.state === "behind-clean", input.readout === "failed"),
+    mergeSentence(
+      pull,
+      verdict.state === "behind-clean",
+      input.readout === "failed",
+      nothingLive(input),
+    ),
     afterMain(input),
   );
   // HQ's merge check, still to come: its own wait, said once it is past the usual.

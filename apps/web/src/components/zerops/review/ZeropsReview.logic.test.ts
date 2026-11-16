@@ -602,31 +602,32 @@ describe("the sheet's line under a change's title", () => {
 });
 
 describe("the sheet's footnote: what happens next", () => {
+  // witness: apps/web/src/components/zerops/review/ZeropsReview.logic.ts | stages.length === 1 ? "runs" : "run" → stages.length === 1 ? "run" : "runs"
   it.each([
     [
       "a change ready to merge, with a stage and a production",
       { state: "ready", stages: ["stage"], live: "v2.3.1" },
-      "Lands on main; Stage deploys it. Production keeps v2.3.1 until you release.",
+      "Adds it to main; Stage runs it. Production keeps v2.3.1 until you release.",
     ],
     [
       "nothing released yet",
       { state: "ready", stages: ["stage"], live: undefined },
-      "Lands on main; Stage deploys it.",
+      "Adds it to main; Stage runs it.",
     ],
     [
       "behind main but clean",
       { state: "behind-clean", stages: ["staging"], live: "v1.0.0" },
-      "Lands on main; Staging deploys it. Production keeps v1.0.0 until you release.",
+      "Adds it to main; Staging runs it. Production keeps v1.0.0 until you release.",
     ],
     [
       "several stages follow main: each deploys it",
       { state: "ready", stages: ["stage", "staging", "demo"], live: "v2" },
-      "Lands on main; Stage, Staging and Demo deploy it. Production keeps v2 until you release.",
+      "Adds it to main; Stage, Staging and Demo run it. Production keeps v2 until you release.",
     ],
     [
       "a stage HQ names after its project: by its title, as its row reads it",
       { state: "ready", stages: ["demo-app-stage"], live: undefined },
-      "Lands on main; Stage deploys it.",
+      "Adds it to main; Stage runs it.",
     ],
     [
       "no stage: the review's own words",
@@ -762,6 +763,7 @@ describe("a change's receipt: each part's preview", () => {
     ]);
   });
 
+  // witness: apps/web/src/components/zerops/review/ZeropsReview.logic.ts | return input.warning === undefined ? foot : `${input.warning} ${foot}`; → return foot;
   it("Merge warns on a stale, uncommitted or failed preview and never blocks", () => {
     const gaps = changeReceipt({
       receipt: receipt(
@@ -786,7 +788,7 @@ describe("a change's receipt: each part's preview", () => {
         warning: gaps?.warning,
       }),
     ).toBe(
-      "Not tried at this change: web (older commit), api (uncommitted), worker (failed), auth (not verified). Lands on main; Stage deploys it.",
+      "Not tried at this change: web (older commit), api (uncommitted), worker (failed), auth (not verified). Adds it to main; Stage runs it.",
     );
     const tried = changeReceipt({ receipt: receipt(part("web"), part("api")), head: HEAD });
     expect(tried?.warning).toBeUndefined();

@@ -484,6 +484,7 @@ export {
   type ReviewPress,
   type ReviewPrimary,
   PRODUCTION_DEPLOYED_OUTSIDE,
+  PRODUCTION_OUTSIDE_DECIDES,
   type ReviewQuestion,
   type ReviewSecondary,
   type ReviewState,
