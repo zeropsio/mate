@@ -187,9 +187,11 @@ export function waitingChanges(
   mateProjectId: string,
   standingOf?: (pull: FlowPullRequest) => ChangeStandingRead,
 ): ReadonlyArray<FlowPullRequest> {
-  return mateChangesForReview(flow, mateProjectId).filter(
-    (pull) => !standingWaits(standingOf?.(pull).standing),
-  );
+  return mateChangesForReview(flow, mateProjectId).filter((pull) => {
+    const read = standingOf?.(pull);
+    // One somebody commented on since is theirs to read again.
+    return !standingWaits(read?.standing) || read?.comment !== undefined;
+  });
 }
 
 /** Production's slot, then every stage's — the order the project's card says them in. */

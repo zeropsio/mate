@@ -732,7 +732,10 @@ export function cardMateReading(input: {
     input.review === undefined ? undefined : rowStanding(input.review, input.standing);
   const lift: MateLift | undefined = !mine
     ? undefined
-    : input.review !== undefined && standing !== "waiting" && view.state !== "working"
+    : input.review !== undefined &&
+        // One the viewer asked for waits on the people who merge — until somebody comments on it.
+        (standing !== "waiting" || input.standing?.comment !== undefined) &&
+        view.state !== "working"
       ? { kind: "review", pull: input.review, ...(standing === undefined ? {} : { standing }) }
       : view.state === "needs"
         ? input.status === "planReady"
@@ -746,7 +749,7 @@ export function cardMateReading(input: {
   // A change lifted for review is named by its title, as its menu row names it: the Mate's last
   // words may be of another moment (a limit it hit).
   if (lift?.kind === "review") {
-    const says = input.standing?.word;
+    const says = input.standing?.comment ?? input.standing?.word;
     return {
       text:
         (input.reviews ?? 1) > 1
@@ -913,6 +916,8 @@ export interface CardChange {
    * (`rowStanding`): its `words` say it, and its row's press is *Ask to merge* or a plain *View*.
    */
   readonly standing?: RowStanding | undefined;
+  /** Its `words` are a comment its person has not read ("Sam R. commented"): said on its row. */
+  readonly commented?: true | undefined;
 }
 
 const newestFirst = (left: string | undefined, right: string | undefined) =>
@@ -925,6 +930,8 @@ const newestFirst = (left: string | undefined, right: string | undefined) =>
 export interface CardStage {
   readonly runs: ReadonlyArray<string>;
   readonly deploying: ReadonlyArray<string>;
+  /** The commits whose deploy to it failed (`StageStandings.failed`); absent reads as none. */
+  readonly failed?: ReadonlyArray<string> | undefined;
   readonly mainHeads: ReadonlyMap<string, string>;
 }
 
@@ -1035,6 +1042,9 @@ export function cardChanges(input: {
         at: pull.updatedAt,
         ...(setup ? { setup: true as const } : {}),
         ...(standing === undefined ? {} : { standing }),
+        ...(read?.comment !== undefined && state.words === read.comment
+          ? { commented: true as const }
+          : {}),
       };
     });
   const merged = input.merged
@@ -1069,14 +1079,17 @@ export function cardChanges(input: {
                 ? { kind: "on-stage" }
                 : on(stage?.deploying)
                   ? { kind: "deploying-to-stage" }
-                  : input.production && input.releases.length > 0
-                    ? { kind: "waits-for-production" }
-                    : { kind: "merged" };
+                  : on(stage?.failed)
+                    ? { kind: "failed-on-stage" }
+                    : input.production && input.releases.length > 0
+                      ? { kind: "waits-for-production" }
+                      : { kind: "merged" };
       return {
         pull,
         open: false,
         words: mergedChangeWords(where),
-        tone: "off",
+        // Merged and not where it should run next: the one merged row that is not calm.
+        tone: where.kind === "failed-on-stage" ? "failed" : "off",
         at: pull.mergedAt,
         where,
       };

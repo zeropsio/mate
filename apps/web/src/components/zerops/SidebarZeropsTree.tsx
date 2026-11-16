@@ -3,6 +3,7 @@ import { KeptGitQuestions } from "./KeptGitQuestions";
 import { shownHqListNavigationAtom } from "@t3tools/client-runtime/data";
 import { useAutomatedKey } from "~/zerops/useAutomationSettings";
 import { useAddMateOffer, useOrgOffers } from "../../zerops/useHqOffers";
+import { useAddMateDoor } from "../../zerops/addMateDoor";
 import { useDeleteApplicationDialog } from "../../zerops/deleteApplicationDialog";
 import { groupDeletionTarget, projectDeleteOffered } from "./ZeropsDeleteApplicationDialog.logic";
 import { useNewMateGate } from "../../zerops/useNewMateGates";
@@ -168,6 +169,7 @@ import { mateFace } from "~/zerops/mateFace.logic";
 import { useMateFaceWatch } from "~/zerops/useMateMoments";
 import { useStopDeploymentsShown } from "~/zerops/projectFlows";
 import { useChangeStandingOf } from "~/zerops/useChangeStandingOf";
+import { useReleaseOnViewer } from "~/zerops/useReleaseOnViewer";
 import { useStopDeploymentDemand } from "~/zerops/accountForge";
 import { findInventoryProjectRef, InventoryContext } from "~/zerops/inventoryContext";
 import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
@@ -770,6 +772,8 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   // Whose press each open change waits for where its application limits who merges
   // (`changeStanding`): stable until who merges there, or a name, changes.
   const standingOf = useChangeStandingOf();
+  // Whether a project's offered release is the person's move (`releaseWaitsOnViewer`).
+  const releaseOnViewer = useReleaseOnViewer();
   const placements = useAtomValue(hqPlacementsAtom);
   const appsWithWork =
     placements === null || structureView.structure === null
@@ -893,6 +897,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   const addMateOffer = useAddMateOffer();
   const orgOffer = useOrgOffers();
   const addMateGate = useNewMateGate();
+  const addMateDoor = useAddMateDoor();
   const treeRef = useRef<HTMLElement>(null);
   // The menu's fill: rows that take the loading rows' place fade in where they stand, once
   // (`fadeFillOver`). Rows drawn by the first commit, or put back, are simply there.
@@ -1633,7 +1638,8 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             ...stages.map(({ stop }) => stop.id),
             ...(productionStop === undefined ? [] : [productionStop.id]),
           ].map((projectId) => <StopDemand key={projectId} projectId={projectId} />);
-    // What waits for the viewer's review, oldest first as the flow lists it: each shown Mate's
+    // What the Review mark stands for, oldest first as the flow lists it — counted where it is the
+    // viewer's own Mate's or was asked of them (`reviewTagOf`): each shown Mate's
     // change that asks, each change of no Mate here that asks, then the work its crews have ready
     // for the viewer's Land — code only (`changeInMateReview`): a recipe change waits on the
     // project's page, so the header, the composer's top and the menu count alike. A change whose Mate still works asks for no review yet
@@ -1672,8 +1678,10 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             among: flowPulls,
             groupId: id,
             by: entry === undefined ? undefined : byOf(entry.item),
-            // Whose review it waits on, as the menu's Mine holds it: unknown reads as theirs.
-            mine: entry === undefined || entry.mine,
+            // Whose it is, as the menu's Mine holds it: unknown reads as theirs, and so does a
+            // Mate no person owns — nobody else is asked for it. A colleague's is theirs to
+            // merge or to ask for: listed, never counted for the viewer.
+            mine: entry === undefined || entry.mine || getOwner?.(entry.item) === undefined,
             // One that asks says whose press it waits for; one in progress asks nobody's yet.
             standing: inProgress.has(pull) ? undefined : standingHere(pull),
           });
@@ -1813,6 +1821,8 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
                     waiting: projectFlow.main.notLive,
                     atLeast: projectFlow.main.notLiveAtLeast,
                     changeCount: projectFlow.main.changeCount,
+                    // Offered, and somebody else's to make: its mark asks the person nothing.
+                    ...(releaseOnViewer(id) ? {} : { quiet: true as const }),
                   }
                 : undefined,
           });
@@ -2238,8 +2248,10 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             },
           }
         : undefined,
+      // Offered, or — refused to a person who works with a Mate here — drawn disabled with whom
+      // to ask; a person who only reads sees none (`addMateDoor`).
       onAddMate:
-        addMateOffer(group.groupId).kind === "allowed"
+        addMateDoor(group.groupId).kind === "offered" || addMateDoor(group.groupId).kind === "off"
           ? () => {
               onAddMate?.(group.groupId);
             }
@@ -2250,11 +2262,15 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
               onAddAutomatedMates(group.groupId);
             }
           : undefined,
-      addMateWhy: addMateGate({
-        group,
-        environments:
-          orderedGroups.find((entry) => entry.group.groupId === group.groupId)?.environments ?? [],
-      }),
+      addMateWhy: ((door) =>
+        door.kind === "off"
+          ? door.why
+          : addMateGate({
+              group,
+              environments:
+                orderedGroups.find((entry) => entry.group.groupId === group.groupId)
+                  ?.environments ?? [],
+            }))(addMateDoor(group.groupId)),
       onOpen:
         onOpenGroup === undefined
           ? onBrowseProjects
