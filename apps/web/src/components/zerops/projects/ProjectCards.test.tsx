@@ -72,7 +72,7 @@ vi.mock("~/zerops/ZeropsSessionProvider", async (original) => ({
 }));
 vi.mock("~/zerops/chiefSetup", async (original) => ({
   ...(await original<typeof import("~/zerops/chiefSetup")>()),
-  useChiefOffer: () => undefined,
+  useChiefSetupEntry: () => undefined,
 }));
 vi.mock("~/components/ui/sidebar", async (original) => ({
   ...(await original<typeof import("~/components/ui/sidebar")>()),

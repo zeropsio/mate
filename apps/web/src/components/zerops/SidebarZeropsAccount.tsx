@@ -9,8 +9,8 @@
  * places fold into its menu where a name is cheaper than a glyph.
  *
  * The viewer's photo, name and role ("Acme · Owner"), then one ··· whose menu holds Show and
- * Order, the organization, the places and Sign out — and, once it is useful, the one quiet offer of
- * a Chief (`chiefOffered`). On the rail the photo alone opens it.
+ * Order, the organization, the places and Sign out — and the one quiet offer of a Chief
+ * (`useChiefSetupEntry`). On the rail the photo alone opens it.
  */
 
 import { useAtomValue } from "@effect/atom-react";
@@ -53,7 +53,7 @@ import {
   useProjectOrder,
 } from "~/zerops/projectOrderPreference";
 import { MATE_SCOPE_CHOICES, useMateScope } from "~/zerops/mateScope";
-import { useChiefOffer } from "~/zerops/chiefSetup";
+import { useChiefSetupEntry } from "~/zerops/chiefSetup";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { useViewerCalled, useViewerCalledPending } from "~/zerops/useZeropsMateOwners";
 import { fadeFillIn, MENU_HOLDS_FOR_HQ_MS, useLoadFilled } from "~/lib/loadFills";
@@ -122,7 +122,7 @@ export interface SidebarZeropsAccountProps {
    */
   readonly namePending?: boolean;
   /**
-   * *Set up Chief*, where the account menu offers it (`chiefOffered`): its icon, the caller's, and
+   * *Set up Chief*, where the account menu offers it (`useChiefSetupEntry`): its icon, the caller's, and
    * what a press opens.
    */
   readonly chief?: { readonly icon: ReactNode; readonly onSetUp: () => void } | undefined;
@@ -418,8 +418,8 @@ export function SidebarZeropsAccountMenu({
       )}
 
       <MenuSeparator />
-      {/* A Chief is optional: offered here once, quietly, while it is useful and the person may
-          set one up; once it exists it is the menu's top row instead. */}
+      {/* A Chief is optional: offered here once, quietly, while the person may set one up and
+          has none; once it exists it is the menu's top row instead. */}
       {chief === undefined ? null : (
         <MenuItem data-zerops-account-chief="" onClick={chief.onSetUp}>
           {chief.icon}
@@ -502,7 +502,7 @@ export function SidebarZeropsAccountRow({
   });
   const [signingOut, setSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
-  const chiefOffer = useChiefOffer();
+  const chiefOffer = useChiefSetupEntry();
   const signedInUser = session?.status === "signed-in" ? session.user : null;
   const invitations = useMemo(
     () => (signedInUser ? zeropsInvitationsFromUser(signedInUser) : []),

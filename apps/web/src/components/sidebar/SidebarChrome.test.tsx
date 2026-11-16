@@ -90,8 +90,8 @@ vi.mock("~/zerops/ZeropsSessionProvider", () => ({
   }),
 }));
 
-// Whether the account menu offers a Chief is `chiefOffered`'s; this foot offers none.
-vi.mock("~/zerops/chiefSetup", () => ({ useChiefOffer: () => false }));
+// Whether the account menu offers a Chief is `useChiefSetupEntry`'s; this foot offers none.
+vi.mock("~/zerops/chiefSetup", () => ({ useChiefSetupEntry: () => false }));
 
 import { SidebarChromeHeader, SidebarCornerMark, SidebarUtilityMenu } from "./SidebarChrome";
 

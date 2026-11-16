@@ -3,7 +3,7 @@
  * owner works with a coding agent that reaches every project. Its project carries
  * {@link CHIEF_TAG}, and HQ's person facts say whose it is (`chief`): the viewer's own is the
  * menu's top row, apart from the projects, once it exists or is being set up; before that the
- * account menu offers it (`chiefOffered`), and its empty conversation asks about the organization.
+ * account menu offers it, and its empty conversation asks about the organization.
  * Another person's Chief appears nowhere.
  */
 export const CHIEF_TAG = "chief";
@@ -35,47 +35,12 @@ export function hqOwnChief(
   return mine ?? (read ? null : undefined);
 }
 
-/**
- * Whether the account menu offers *Set up Chief*: a Chief is optional, offered once and quietly,
- * only to a person who may set one up and has none (`entry`, `chiefSetupEntry` and their role),
- * and only once it is useful — the organization holds a second project (an HQ app) besides any
- * person's Chief. Nothing while the projects are not read (`apps` undefined).
- */
-export function chiefOffered(input: {
-  readonly entry: boolean;
-  readonly apps:
-    | ReadonlyArray<{ readonly projects: ReadonlyArray<{ readonly projectId: string }> }>
-    | undefined;
-  /** Every project tagged a Chief's (`othersChiefs`): never counted as a project. */
-  readonly chiefs: ReadonlySet<string>;
-}): boolean {
-  if (!input.entry || input.apps === undefined) return false;
-  const projects = input.apps.filter((app) =>
-    app.projects.some(({ projectId }) => !input.chiefs.has(projectId)),
-  );
-  return projects.length >= 2;
-}
-
 /** Navigation to setup is offered before creation; the destination owns its permission check. */
 export function chiefSetupEntry(
   own: OwnChief,
   setup: "idle" | "running" | "failed" | "done",
 ): boolean {
   return own === null && setup === "idle";
-}
-
-/**
- * The Chiefs the viewer sees nowhere: every project tagged a Chief's but their own, and every one
- * while whose is not known, so none is drawn and then taken back.
- */
-export function othersChiefs(
-  projects: Iterable<{ readonly id: string; readonly tagList?: ReadonlyArray<string> | undefined }>,
-  own: OwnChief,
-): ReadonlySet<string> {
-  const hidden = new Set<string>();
-  for (const project of projects)
-    if (isChief(project) && project.id !== own) hidden.add(project.id);
-  return hidden;
 }
 
 /** The viewer's own Chief among the listed projects: the menu's top row, as HQ names it. */
