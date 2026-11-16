@@ -786,6 +786,17 @@ export interface HqApi {
    * person; its branch stays, that Mate's from then on.
    */
   readonly handChange: (link: ChangeLink, mateProjectId: string) => Promise<HqChange>;
+  /**
+   * Asks the people who merge the change's application to merge it, as a person its limit on who
+   * merges holds (`POST …/changes/:repo/:n/merge-ask`): HQ answers the change carrying its
+   * `mergeAsk`, the first one kept where it was asked already.
+   */
+  readonly askMerge?: (link: ChangeLink) => Promise<HqChange>;
+  /**
+   * Takes an ask to merge back (`DELETE …/changes/:repo/:n/merge-ask`), as whoever asked or
+   * whoever merges: HQ answers the change without it, as it is where nothing was asked.
+   */
+  readonly takeBackMergeAsk?: (link: ChangeLink) => Promise<HqChange>;
   /** A picture of a change, read as the person (`attachmentPath`). */
   readonly changeAttachment: (link: AttachmentLink, signal?: AbortSignal) => Promise<Blob>;
   /**
@@ -1959,6 +1970,36 @@ export function makeHqApi(input: {
           ),
         () => changeIn(link, "closed"),
         ["change_not_open"],
+      ),
+    askMerge: (link) =>
+      confirmed(
+        async () =>
+          readChange(
+            await authorized(
+              `${changePath(link)}/merge-ask`,
+              { method: "POST", body: JSON.stringify({}) },
+              true,
+            ),
+          ),
+        async () => {
+          const held = await changeIn(link, "open");
+          return held?.mergeAsk === undefined ? undefined : held;
+        },
+      ),
+    takeBackMergeAsk: (link) =>
+      confirmed(
+        async () =>
+          readChange(
+            await authorized(
+              `${changePath(link)}/merge-ask`,
+              { method: "DELETE", body: JSON.stringify({}) },
+              true,
+            ),
+          ),
+        async () => {
+          const held = await changeIn(link, "open");
+          return held?.mergeAsk === undefined ? held : undefined;
+        },
       ),
     handChange: (link, mateProjectId) =>
       confirmed(

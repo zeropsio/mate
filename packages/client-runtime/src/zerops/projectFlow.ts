@@ -37,6 +37,7 @@ import type { HqNavigationChange } from "@t3tools/shared/hqStream";
 import { RECIPE_PROPOSAL_TITLE, RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { isSlashCommand } from "@t3tools/shared/userAsk";
 
+import { ASK_TO_MERGE, TAKE_ASK_BACK } from "./changeStanding.ts";
 import { pullRequestBlocked } from "./gitTab.ts";
 import { productionProjectOf, type EnvironmentPlace } from "./groupRows.ts";
 import { mergeabilityKindOf, type MergeabilityKind } from "./changeMergeability.ts";
@@ -875,11 +876,12 @@ export function releaseContentsSentence(summary: ReleaseContentsSummary): string
 /** A verb the person runs on the flow, as the surfaces key its progress. */
 export type FlowVerb =
   /**
-   * A change of the application `groupId`, merged or closed without merging in HQ, or one whose
-   * Mate is gone handed to another of its Mates.
+   * A change of the application `groupId`, merged or closed without merging in HQ, one whose
+   * Mate is gone handed to another of its Mates, or its merge asked of the people who merge
+   * (`ask-merge`) and that ask taken back.
    */
   | {
-      readonly kind: "merge" | "close" | "hand";
+      readonly kind: "merge" | "close" | "hand" | "ask-merge" | "take-back-ask";
       readonly groupId: string;
       readonly repository: string;
       readonly number: number;
@@ -907,6 +909,8 @@ export function flowVerbKey(verb: FlowVerb): string {
     case "merge":
     case "close":
     case "hand":
+    case "ask-merge":
+    case "take-back-ask":
       return `${verb.kind} ${verb.groupId}/${verb.repository}#${verb.number}`;
     case "release":
       return `release ${verb.groupId}`;
@@ -937,5 +941,9 @@ export function flowVerbLabel(
       return running ? "Redeploying…" : "Run again";
     case "add-service":
       return running ? "Adding…" : "Add";
+    case "ask-merge":
+      return running ? "Asking…" : ASK_TO_MERGE;
+    case "take-back-ask":
+      return running ? "Taking back…" : TAKE_ASK_BACK;
   }
 }

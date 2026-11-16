@@ -2,7 +2,7 @@ import type { HqProblem } from "@t3tools/shared/hqProblems";
 import type { ReleaseServicePlan } from "@t3tools/shared/hqRelease";
 /**
  * The verbs that move an application's flow — release, roll back, merge, close, hand a change over,
- * run a deploy again, add a service — each the account's operation, which the organization's official HQ executes as
+ * ask for a merge or take the ask back, run a deploy again, add a service — each the account's operation, which the organization's official HQ executes as
  * the person (`flowWrites.ts`). A verb stays pending from its press until HQ's records show its
  * end, or HQ's link can no longer follow it: a second press meanwhile is answered that the first is
  * on its way, and nothing is sent twice. What HQ refused is said where the verbs are, until the
@@ -16,7 +16,7 @@ import {
   hqRefusalWords,
   type AppDeployRollout,
 } from "@t3tools/client-runtime/zerops/hq";
-import type { ChangeLink } from "@t3tools/shared/hqChanges";
+import type { ChangeLink, HqMergeAsk } from "@t3tools/shared/hqChanges";
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { useCallback, useContext, useMemo, useSyncExternalStore } from "react";
@@ -41,6 +41,11 @@ export type FlowVerbOutcome =
       readonly deploys?: HqDeployAnswer | undefined;
       /** The rollout its deploys are of: what an answer that handed planning over follows. */
       readonly rollout?: AppDeployRollout | undefined;
+      /**
+       * After an ask to merge or its taking back: the ask as HQ answered it stands, `null` where
+       * nobody asks. The review shows it at once, before HQ's navigation brings the change.
+       */
+      readonly mergeAsk?: HqMergeAsk | null | undefined;
     }
   | {
       readonly ok: false;
@@ -86,6 +91,19 @@ export interface FlowVerbs {
     groupId: string,
     change: { readonly repository: string; readonly number: number },
     mateProjectId: string,
+  ) => Promise<FlowVerbOutcome>;
+  /**
+   * A ready change's merge asked of the people who merge its application, by a person its limit
+   * on who merges holds; a repeat keeps the first ask.
+   */
+  readonly askMerge: (
+    groupId: string,
+    change: { readonly repository: string; readonly number: number },
+  ) => Promise<FlowVerbOutcome>;
+  /** That ask taken back, by whoever asked. */
+  readonly takeBackAsk: (
+    groupId: string,
+    change: { readonly repository: string; readonly number: number },
   ) => Promise<FlowVerbOutcome>;
   /**
    * "Run again": the environment `projectId`'s newest deploy of `service`, at `sha`, asked again;
@@ -207,7 +225,13 @@ export function useFlowVerbs(): FlowVerbs {
       }
       if (says) publish(board, { trouble: null });
       const answer = registry.get(data.project(flowAnswer, requestId));
-      return { ok: true, tag: answer?.tag, deploys: answer?.deploys, rollout: answer?.rollout };
+      return {
+        ok: true,
+        tag: answer?.tag,
+        deploys: answer?.deploys,
+        rollout: answer?.rollout,
+        mergeAsk: answer?.mergeAsk,
+      };
     },
     [board, data, operations, orgId, registry],
   );
@@ -304,6 +328,36 @@ export function useFlowVerbs(): FlowVerbs {
     [run],
   );
 
+  const askMerge = useCallback(
+    (
+      groupId: string,
+      change: { readonly repository: string; readonly number: number },
+    ): Promise<FlowVerbOutcome> => {
+      const link: ChangeLink = { appId: groupId, repo: change.repository, number: change.number };
+      return run(
+        { kind: "ask-merge", groupId, ...change },
+        (orgId) => ({ kind: "ask-merge", orgId, link }),
+        false,
+      );
+    },
+    [run],
+  );
+
+  const takeBackAsk = useCallback(
+    (
+      groupId: string,
+      change: { readonly repository: string; readonly number: number },
+    ): Promise<FlowVerbOutcome> => {
+      const link: ChangeLink = { appId: groupId, repo: change.repository, number: change.number };
+      return run(
+        { kind: "take-back-ask", groupId, ...change },
+        (orgId) => ({ kind: "take-back-merge-ask", orgId, link }),
+        false,
+      );
+    },
+    [run],
+  );
+
   const redeploy = useCallback(
     (
       flow: ZeropsProjectFlow,
@@ -357,7 +411,31 @@ export function useFlowVerbs(): FlowVerbs {
   );
 
   return useMemo(
-    () => ({ pending, trouble, release, rollBack, merge, close, hand, redeploy, addService }),
-    [addService, close, hand, merge, pending, redeploy, release, rollBack, trouble],
+    () => ({
+      pending,
+      trouble,
+      release,
+      rollBack,
+      merge,
+      close,
+      hand,
+      askMerge,
+      takeBackAsk,
+      redeploy,
+      addService,
+    }),
+    [
+      addService,
+      askMerge,
+      close,
+      hand,
+      merge,
+      pending,
+      redeploy,
+      release,
+      rollBack,
+      takeBackAsk,
+      trouble,
+    ],
   );
 }

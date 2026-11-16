@@ -6,6 +6,7 @@
  *
  * @module data/projections/flowAnswer
  */
+import type { HqMergeAsk } from "@t3tools/shared/hqChanges";
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 
 import type { AppDeployRollout } from "../../zerops/hq/deployHandover.logic.ts";
@@ -19,6 +20,11 @@ export interface FlowWriteAnswer {
   readonly deploys: HqDeployAnswer | undefined;
   /** The rollout its deploys are of, in its application: what a handed-over answer follows. */
   readonly rollout?: AppDeployRollout;
+  /**
+   * Where the change's ask to merge stands after an ask or its taking back, as HQ answered:
+   * `null` where nobody asks. Absent for every other write.
+   */
+  readonly mergeAsk?: HqMergeAsk | null;
 }
 
 export const flowAnswer: Projection<string, FlowWriteAnswer | null> = {
@@ -35,6 +41,8 @@ export const flowAnswer: Projection<string, FlowWriteAnswer | null> = {
       | undefined;
     const deploys = result?.deploys;
     const intent = record.intent;
+    if (intent.kind === "ask-merge" || intent.kind === "take-back-merge-ask")
+      return { deploys: undefined, mergeAsk: result?.mergeAsk ?? null };
     if (intent.kind === "release" || intent.kind === "roll-back") {
       const tag = result?.tag ?? receipt.operationId;
       return { tag, deploys, rollout: { appId: intent.appId, cause: "release", ref: tag } };
