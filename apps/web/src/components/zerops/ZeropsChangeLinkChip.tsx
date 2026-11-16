@@ -146,7 +146,7 @@ export function ZeropsChangeLinkChip({
     pull === undefined
       ? undefined
       : pull.merged
-        ? { word: "Landed", tone: "ok" as const, kind: "landed" as const }
+        ? { word: "Merged", tone: "ok" as const, kind: "landed" as const }
         : landedWith !== undefined
           ? {
               word: `Merged as part of #${String(landedWith)}`,
@@ -210,7 +210,7 @@ export function ZeropsChangeLinkChip({
       <span className="font-medium">{words ?? line}</span>
       {state === undefined ? null : (
         <span className="sr-only">
-          {`, ${state.word}${landedSince ? ", landed since this message" : ""}`}
+          {`, ${state.word}${landedSince ? ", merged since this message" : ""}`}
         </span>
       )}
     </a>

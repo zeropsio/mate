@@ -2,6 +2,7 @@ import { ownerAtAdd } from "@t3tools/client-runtime/zerops/projectAccess";
 import { shownHqListNavigationAtom } from "@t3tools/client-runtime/data";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { useAddMateOffer } from "../../zerops/useHqOffers";
+import { useAddMateDoor } from "../../zerops/addMateDoor";
 import { useNewMateGate } from "../../zerops/useNewMateGates";
 import { placementNotice } from "./projects/placementNotice.logic";
 import { overviewPaints } from "./projects/projectsView.logic";
@@ -45,7 +46,7 @@ import {
   shownHqProjectPeopleAtom,
   shownMateVisibilitiesAtom,
 } from "@t3tools/client-runtime/data";
-import { useViewerWaits } from "~/zerops/useSidebarWaiting";
+import { useOfferedReleases, useViewerWaits } from "~/zerops/useSidebarWaiting";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { useApplicationEnvironmentFacts } from "~/zerops/useAddEnvironment";
 import { hqPlacementsAtom, hqPlacementStatusAtom } from "~/state/zerops";
@@ -160,6 +161,7 @@ import {
   type FirstDeploy,
   matePoseOf,
   zeropsProjectOf,
+  viewerOwnsMate,
 } from "@t3tools/client-runtime/zerops";
 import type { MatePart } from "@t3tools/client-runtime/zerops/mateParts";
 import { invalidateZerops } from "~/zerops/accountInvalidations";
@@ -213,7 +215,6 @@ import { ZeropsProjectRenameMenu } from "./ZeropsProjectRenameMenu";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
 import { useMateActions } from "~/zerops/useMateActions";
 import { useMateOffers, useOrgOffers } from "~/zerops/useHqOffers";
-import { hqOfferWords } from "@t3tools/client-runtime/zerops/hq";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { configuredHq } from "~/zerops/accountHq";
 import { useEnvironmentSetup } from "~/zerops/useEnvironmentSetup";
@@ -1691,9 +1692,11 @@ export function ZeropsProjectsContent({
   // Why Add a Mate stands off, where that is known before the press (`newMateGate`): HQ refusing
   // the person a Mate here, or the project's setup files not ready for another.
   const addMateGate = useNewMateGate();
+  const addMateDoor = useAddMateDoor();
   const addMateWhy = (groupId: string): string | null => {
-    const offer = addMateOffer(groupId);
-    if (offer.kind === "refused") return hqOfferWords(offer) ?? null;
+    // Refused to a person who works with a Mate here: whom to ask (`addMateDoor`).
+    const door = addMateDoor(groupId);
+    if (door.kind === "off") return door.why;
     const entry = groupTree.groups.find((candidate) => candidate.group.groupId === groupId);
     if (entry === undefined) return null;
     return addMateGate({
@@ -2094,6 +2097,7 @@ export function ZeropsProjectsContent({
   // (`useViewerWaits`) — a Mate of theirs that asks, its changes for their review, its sign-in, a
   // release they may make — and theirs is what HQ records as theirs.
   const waiting = useViewerWaits({ text: true });
+  const offeredReleases = useOfferedReleases();
   const personFacts = useAtomValue(shownHqPersonFactsAtom);
   const filterFacts = useMemo(() => {
     const groupOf = new Map(
@@ -2114,7 +2118,8 @@ export function ZeropsProjectsContent({
         const groupId = groupOf.get(candidate.project.id);
         return groupId !== undefined &&
           hasMate(candidate) &&
-          personFacts[candidate.project.id]?.mine === true
+          // The one rule of "the project is theirs", which a release waiting on them reads too.
+          viewerOwnsMate([{ mine: personFacts[candidate.project.id]?.mine }])
           ? [groupId]
           : [];
       }),
@@ -2817,12 +2822,17 @@ export function ZeropsProjectsContent({
         }
         // As the project's own page offers it: always there, standing off with why where HQ says
         // one — never coming and going with what the platform says of its Mates.
-        addMate={({ group }) => ({
-          onAdd: () => {
-            requestEnvironment(group.groupId, "dev");
-          },
-          why: creationRunning ? PUT_LIVE_AFTER_CREATION : addMateWhy(group.groupId),
-        })}
+        // A person who only reads is offered none (`addMateDoor`): not theirs to want.
+        addMate={({ group }) =>
+          addMateDoor(group.groupId).kind === "none"
+            ? undefined
+            : {
+                onAdd: () => {
+                  requestEnvironment(group.groupId, "dev");
+                },
+                why: creationRunning ? PUT_LIVE_AFTER_CREATION : addMateWhy(group.groupId),
+              }
+        }
         // A broken production waits on the viewer: their own Mate in the project is asked to fix
         // it, as the menu's production chip asks; with none of theirs there, its page says why.
         placeFix={(entry) => {
@@ -2890,12 +2900,16 @@ export function ZeropsProjectsContent({
           }))
         }
         renderProductionRun={({ group }) => <ProductionRun groupId={group.groupId} />}
-        // The release waits on the viewer where the one list says it (`releaseOffered`), the menu's
-        // count with it.
+        // The release is offered where the one gate says it (`releaseOffered`); it waits on the
+        // viewer where the one list holds it, the menu's count with it — else its card says only
+        // that it is ready for production.
         renderReleaseVerb={({ group }) =>
-          projectReleaseWait(waiting.items, group.groupId) === undefined ? null : (
+          offeredReleases.some((release) => release.groupId === group.groupId) ? (
             <ZeropsReleaseVerb groupId={group.groupId} label={REVIEW_RELEASE_LABEL} offered />
-          )
+          ) : null
+        }
+        releaseOnViewer={({ group }) =>
+          projectReleaseWait(waiting.items, group.groupId) !== undefined
         }
         placementNotice={placementNotice(
           placementStatus,

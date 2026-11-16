@@ -199,7 +199,12 @@ const NAMES = { ada: "Ada K.", sam: "Sam R.", dana: "Dana L." };
 const MERGERS = { people: ["ada", "sam"] };
 /** Dana L., who cannot merge in Tea, and Ada K., who does. */
 const AS_DANA = changeStandingOf(
-  { apps: { [TEA]: { merges: "held", ...MERGERS } }, names: NAMES },
+  {
+    apps: { [TEA]: { merges: "held", ...MERGERS } },
+    names: NAMES,
+    // Nova is hers: a comment on its change is for her.
+    own: { [NOVA_PROJECT]: true },
+  },
   { userId: "dana" },
 );
 const AS_ADA = changeStandingOf(
@@ -207,7 +212,13 @@ const AS_ADA = changeStandingOf(
   { userId: "ada" },
 );
 
-const teaChange = (number: number, title: string, asked: boolean): FlowPullRequest => ({
+const teaChange = (
+  number: number,
+  title: string,
+  asked: boolean,
+  /** Somebody commented on it since its person last opened its review. */
+  commentedBy?: string,
+): FlowPullRequest => ({
   repository: "appdev",
   number,
   title,
@@ -224,6 +235,9 @@ const teaChange = (number: number, title: string, asked: boolean): FlowPullReque
   updatedAt: `2026-11-16T09:0${String(number % 10)}:00Z`,
   ready: true,
   ...(asked ? { mergeAsk: { by: "dana", at: "2026-11-16T09:30:00Z" } } : {}),
+  ...(commentedBy === undefined
+    ? {}
+    : { lastComment: { at: "2026-11-16T10:00:00Z", by: commentedBy } }),
 });
 
 /** The strip of Nova's `changes` in Tea, as the conversation's own rule makes it for who looks. */
@@ -280,6 +294,11 @@ const STANDINGS: ReadonlyArray<{
     state: "asked-of-me",
     name: "Merges here · Dana L. asked",
     strip: standingStrip([teaChange(21, GIFT, true)], AS_ADA),
+  },
+  {
+    state: "commented",
+    name: "Cannot merge here · asked, then Ada K. commented",
+    strip: standingStrip([teaChange(21, GIFT, true, "ada")], AS_DANA),
   },
   {
     state: "to-ask-several",

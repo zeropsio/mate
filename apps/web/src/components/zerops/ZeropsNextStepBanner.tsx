@@ -316,7 +316,8 @@ export function ZeropsNextStepStrip({
           onReview(strip.target, event.currentTarget);
         }}
         size="xs"
-        variant={standingWaits(strip.standing) ? "ghost" : "secondary"}
+        // Quiet only where nothing on the strip asks the person: a comment to read is not that.
+        variant={strip.quiet === true ? "ghost" : "secondary"}
       >
         {standingPressLabel(strip.standing, REVIEW_LABEL)}
       </Button>

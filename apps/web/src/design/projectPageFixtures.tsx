@@ -79,6 +79,8 @@ const PAGE_PARAMS = new URLSearchParams(location.search);
  * `?viewer=limited` or `?viewer=asked`: Tea Shop limits who merges — Ada K. and Sam R. do.
  * `limited` looks as Dana L., who cannot merge there: one change ready for her ask, one she asked
  * for. `asked` looks as Ada K., whom Dana L. asked to merge one. Without it nobody is limited.
+ * `?viewer=owner` looks as an Owner who owns no Mate in the projects: their releases are ready
+ * for production, and wait on their own people.
  */
 export const HARNESS_VIEWER = PAGE_PARAMS.get("viewer");
 const HARNESS_MERGERS = { people: ["ada", "sam"] };

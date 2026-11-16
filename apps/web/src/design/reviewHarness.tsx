@@ -11,6 +11,10 @@
  * ask, changes they asked for, one of each — and Harbor as Ada K. does, with a change Dana L.
  * asked her to merge. Under the menu, each project's tags again as the conversation's header
  * draws them (`HeaderReviewDoor`).
+ *
+ * Grove holds only a colleague's changes (listed, quiet, never counted); Pier a change Dana L.
+ * asked for that Ada K. then commented on (hers to read again); Moor a release that is offered to
+ * the person looking and is somebody else's to make.
  */
 import { EnvironmentId } from "@t3tools/contracts";
 import { changeStandingOf, type FlowPullRequest } from "@t3tools/client-runtime/zerops";
@@ -86,8 +90,11 @@ const asDana = changeStandingOf(
       tea: { merges: "held", ...LIMITED },
       kettle: { merges: "held", ...LIMITED },
       saucer: { merges: "held", ...LIMITED },
+      pier: { merges: "held", ...LIMITED },
     },
     names: NAMES,
+    // The harness' changes are of her own Mates: a comment on one is for her.
+    own: { "mate-appdev": true },
   },
   { userId: "dana" },
 );
@@ -107,8 +114,16 @@ const limitedItem = (
   number: number,
   title: string,
   asked: boolean,
+  /** Somebody commented on it since she last opened its review. */
+  commentedBy?: string,
 ): ProjectReviewItem => {
-  const change = { ...pull("appdev", number, title), ...(asked ? { mergeAsk: ASKED } : {}) };
+  const change = {
+    ...pull("appdev", number, title),
+    ...(asked ? { mergeAsk: ASKED } : {}),
+    ...(commentedBy === undefined
+      ? {}
+      : { lastComment: { at: "2026-11-16T10:00:00Z", by: commentedBy } }),
+  };
   return changeReviewItem({
     pull: change,
     among: [],
@@ -118,6 +133,16 @@ const limitedItem = (
     standing: standingOf(groupId, change),
   });
 };
+
+/** A colleague's change, in a project that limits nothing: theirs to merge. */
+const colleagueItem = (number: number, title: string): ProjectReviewItem =>
+  changeReviewItem({
+    pull: pull("appdev", number, title),
+    among: [],
+    groupId: "grove",
+    by: { ...WREN, ownerName: "Sam R." },
+    mine: false,
+  });
 
 const LIMITED_PROJECTS: ReadonlyArray<Project> = [
   {
@@ -162,6 +187,33 @@ const LIMITED_PROJECTS: ReadonlyArray<Project> = [
     ],
     release: undefined,
   },
+  {
+    id: "grove",
+    name: "Grove",
+    mate: "Wren",
+    tint: "olive",
+    items: [
+      colleagueItem(51, "Plant list with photos"),
+      colleagueItem(52, "Opening hours in the footer"),
+    ],
+    release: undefined,
+  },
+  {
+    id: "pier",
+    name: "Pier",
+    mate: "Nova",
+    tint: "violet",
+    items: [limitedItem(asDana, "pier", NOVA, 41, "Ferry times on the home page", true, "ada")],
+    release: undefined,
+  },
+  {
+    id: "moor",
+    name: "Moor",
+    mate: "Wren",
+    tint: "olive",
+    items: [],
+    release: { waiting: 2, atLeast: false, quiet: true },
+  },
 ];
 
 interface Project {
@@ -170,7 +222,9 @@ interface Project {
   readonly mate: string;
   readonly tint: "violet" | "coral" | "olive";
   readonly items: ReadonlyArray<ProjectReviewItem>;
-  readonly release: { readonly waiting: number; readonly atLeast: boolean } | undefined;
+  readonly release:
+    | { readonly waiting: number; readonly atLeast: boolean; readonly quiet?: true }
+    | undefined;
 }
 
 function Row({ project }: { readonly project: Project }) {

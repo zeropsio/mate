@@ -81,6 +81,7 @@ import {
   crowdTitle,
   HARNESS_ASK,
   HARNESS_STANDING,
+  HARNESS_VIEWER,
   HarnessLineMine,
   harnessProjectPage,
 } from "./projectPageFixtures";
@@ -1660,6 +1661,9 @@ function HarnessPage() {
                   <Button size="sm">Review release</Button>
                 )
               }
+              // `?viewer=owner`: an Owner who owns no Mate in these projects — each release is
+              // offered to them and is its people's to make (`releaseWaitsOnViewer`).
+              releaseOnViewer={() => HARNESS_VIEWER !== "owner"}
               // Harbor Radio's production is down and Nell, the viewer's, would fix it; Watchlist's
               // failed release has no Mate of theirs, so its wait opens the place.
               placeFix={(entry) => ({

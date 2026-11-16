@@ -161,9 +161,7 @@ export function OverviewCardMate({
   const says =
     change === undefined || stands === undefined || !changeReviewable(change)
       ? undefined
-      : stands.word === READY_TO_MERGE
-        ? undefined
-        : stands.word;
+      : (stands.comment ?? (stands.word === READY_TO_MERGE ? undefined : stands.word));
   const reviewWaits = mateReviewWaits(flow, projectId, standingHere);
   // How many of its changes wait so: an automated Mate holds one per task, several at once.
   const inReview = mateReviewCount(flow, projectId, standingHere);

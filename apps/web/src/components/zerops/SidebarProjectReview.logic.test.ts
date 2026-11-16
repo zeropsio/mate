@@ -110,13 +110,14 @@ describe("a change as a review item", () => {
 });
 
 describe("what a review item says under its title", () => {
+  // witness: apps/web/src/components/zerops/SidebarProjectReview.logic.ts | parts.push(item.standing === "waiting" ? (item.says ?? "open") : "open"); → parts.push("in review");
   it.each([
     { case: "the viewer's Mate", by: VIRA, mine: true, says: "Vira · #12" },
     {
-      case: "a colleague's Mate, in review",
+      case: "a colleague's Mate, open",
       by: { ...VIRA, ownerName: "Theo" },
       mine: false,
-      says: "Vira · Theo's · #12 · in review",
+      says: "Vira · Theo's · #12 · open",
     },
     {
       case: "a colleague's Mate whose review waits on the viewer",

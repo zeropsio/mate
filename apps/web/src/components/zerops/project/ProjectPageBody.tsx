@@ -29,7 +29,11 @@ import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "../
 import { Skeleton } from "../../ui/skeleton";
 import { EmptyState } from "../../ui/empty";
 import { GitDeliveryStatus } from "../GitDeliveryStatus";
-import { ENVIRONMENT_NOT_ADDED, PRODUCTION_OUTSIDE_MATE } from "@t3tools/client-runtime/zerops";
+import {
+  ENVIRONMENT_NOT_ADDED,
+  PRODUCTION_OUTSIDE_MATE,
+  READY_TO_MERGE,
+} from "@t3tools/client-runtime/zerops";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { ComingMateFace, drawn, matesOf, type FlowMateEntry } from "../projects/flowSteps";
 import {
@@ -53,7 +57,6 @@ import type {
 import {
   ChangeList,
   ChangeRow,
-  changeReviewable,
   changeRowLine,
   lineChangeKey,
   lineMarkOf,
@@ -179,6 +182,7 @@ export function ProjectPageBody<T>({
   entry,
   props,
   addMateWhy,
+  addMateHidden = false,
   onAddMate,
   facts,
   setup,
@@ -187,6 +191,8 @@ export function ProjectPageBody<T>({
   readonly props: ZeropsProjectsFlowProps<T>;
   /** Why the project takes no Mate now, known before the press. */
   readonly addMateWhy: string | null;
+  /** The person only reads here: *Add a Mate* is not theirs to want, and is not drawn. */
+  readonly addMateHidden?: boolean;
   readonly onAddMate: () => void;
   readonly facts: ProjectPageFacts;
   readonly setup: ProjectPageSetup;
@@ -238,6 +244,7 @@ export function ProjectPageBody<T>({
           <ProjectWaits entry={entry} standingOf={standingHere} waits={waits} />
           <ProjectPlaces entry={entry} facts={facts} lines={lines} props={props} />
           <ProjectMates
+            addMateHidden={addMateHidden}
             addMateWhy={addMateWhy}
             entry={entry}
             onAddMate={onAddMate}
@@ -417,9 +424,12 @@ function ProjectWaits<T>({
             const stands = (pull: Pick<FlowPullRequest, "mergeAsk">) => {
               const read = standingOf(pull);
               return read.standing.kind === "to-merge"
-                ? { line: changeRowLine(wait.mate.name, READY_FOR_REVIEW), standing: undefined }
+                ? {
+                    line: changeRowLine(wait.mate.name, read.comment ?? READY_FOR_REVIEW),
+                    standing: undefined,
+                  }
                 : {
-                    line: changeRowLine(wait.mate.name, read.word),
+                    line: changeRowLine(wait.mate.name, read.comment ?? read.word),
                     standing: read.standing.kind,
                   };
             };
@@ -911,6 +921,7 @@ function ProjectMates<T>({
   props,
   waiting,
   addMateWhy,
+  addMateHidden,
   onAddMate,
 }: {
   readonly entry: ProjectsFlowGroup<T>;
@@ -919,6 +930,7 @@ function ProjectMates<T>({
   readonly waiting: ReadonlySet<string>;
   /** Why the project takes no Mate now, known before the press. */
   readonly addMateWhy: string | null;
+  readonly addMateHidden: boolean;
   readonly onAddMate: () => void;
 }) {
   const mates = matesOf(entry);
@@ -950,12 +962,14 @@ function ProjectMates<T>({
       </SectionLabel>
       <MateCards>
         {mates.map(draw)}
-        <AddMateCard
-          alone={mates.length === 0}
-          line={mates.length === 0 ? NO_MATES_YET : ADD_MATE_GIVES}
-          onAdd={onAddMate}
-          why={addMateWhy}
-        />
+        {addMateHidden ? null : (
+          <AddMateCard
+            alone={mates.length === 0}
+            line={mates.length === 0 ? NO_MATES_YET : ADD_MATE_GIVES}
+            onAdd={onAddMate}
+            why={addMateWhy}
+          />
+        )}
       </MateCards>
     </section>
   );
@@ -1158,10 +1172,7 @@ function ProjectChanges<T>({
     const setupFile = change.pull.kind === "recipe" && !change.open;
     // One the person reviews says so by its verb alone; one that waits for somebody else's
     // press, or for theirs to ask, says whose in its words.
-    const stops =
-      change.open && (!changeReviewable(change.pull) || change.standing !== undefined)
-        ? change.words
-        : undefined;
+    const stops = change.open && change.words !== READY_TO_MERGE ? change.words : undefined;
     return (
       <ChangeRow
         at={change.at}

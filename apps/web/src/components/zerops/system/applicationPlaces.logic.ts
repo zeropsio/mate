@@ -190,6 +190,7 @@ export function applicationStage(read: ZeropsProjectFlow | undefined):
     stage: {
       runs: [...standings.runs.values()].filter((sha) => sha !== undefined),
       deploying: [...standings.deploying.values()],
+      failed: [...standings.failed.values()],
       mainHeads,
     },
     runsRelease:

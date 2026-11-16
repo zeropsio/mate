@@ -20,7 +20,12 @@ import {
   type SyntheticEvent,
 } from "react";
 
-import { REVIEW_LABEL, standingPressLabel, standingWaits } from "@t3tools/client-runtime/zerops";
+import {
+  REVIEW_LABEL,
+  standingPressLabel,
+  standingWaits,
+  VIEW_CHANGE,
+} from "@t3tools/client-runtime/zerops";
 import { usePutLiveRun } from "~/zerops/putLive";
 import { putLiveMark } from "~/zerops/putLive.logic";
 import { useOpenReview } from "~/zerops/review";
@@ -35,6 +40,7 @@ import {
   releaseCount,
   releaseTagTip,
   reviewItemByline,
+  reviewItemTheirs,
   reviewListWithLeaving,
   reviewMarkOf,
   reviewPopoverTitle,
@@ -242,6 +248,7 @@ export function ProjectReviewMarks({
         <span
           aria-label={`Release: ${releaseTagTip(release)}`}
           className="menu-mark menu-mark-release"
+          data-quiet={release.quiet === true ? "" : undefined}
           data-zerops-surface="sidebar-project-release-mark"
           onClick={(event) => {
             event.stopPropagation();
@@ -282,6 +289,8 @@ function ReleaseTag({
             aria-label={`Release: ${tip}`}
             className="menu-tag menu-tag-release"
             data-phase={phase}
+            // Somebody else's to make: a door still, asking the person nothing.
+            data-quiet={release.quiet === true ? "" : undefined}
             data-zerops-surface="sidebar-project-release"
             inert={phase === "exit"}
             onClick={(event) => {
@@ -366,7 +375,9 @@ function ReviewTag({
         </TooltipTrigger>
         {only === undefined ? null : (
           <TooltipPopup side="bottom">
-            {only.says === undefined ? only.title : `${only.title} · ${only.says}`}
+            {(only.comment ?? only.says) === undefined
+              ? only.title
+              : `${only.title} · ${only.comment ?? only.says ?? ""}`}
           </TooltipPopup>
         )}
       </Tooltip>
@@ -598,14 +609,21 @@ function ReviewListItem({
   const Mark = item.target.kind === "crew-task" ? UsersIcon : GitPullRequestIcon;
   // Its verb by where it stands for the person: Review, Ask to merge, or — where it waits on the
   // people who merge — a plain way in, on a row as quiet as a colleague's.
-  const verb = standingPressLabel(item.standing, REVIEW_LABEL);
-  const waits = standingWaits(item.standing);
+  // A colleague's own change is theirs to merge or to ask for: the same plain way in.
+  // One somebody commented on is the person's to read: its way in is not the quiet one.
+  const waits =
+    (standingWaits(item.standing) && item.comment === undefined) || reviewItemTheirs(item);
+  const verb =
+    waits || standingWaits(item.standing)
+      ? VIEW_CHANGE
+      : standingPressLabel(item.standing, REVIEW_LABEL);
   return (
     <button
       aria-describedby={bylineId}
       aria-label={`${verb} ${item.title}`}
       className="menu-tagpop-item"
-      data-mine={item.mine && !waits ? "" : undefined}
+      // In full where it is the viewer's move; paler where it is somebody else's.
+      data-mine={waits ? undefined : ""}
       data-standing={item.standing}
       data-zerops-change={item.key}
       data-zerops-surface="sidebar-project-change"

@@ -1,9 +1,9 @@
 /**
  * A change's state in words, the same on every page and panel that draws a `ChangeRow`: an open
- * change by what stops it ("Ready to merge", "Draft", "Needs a rebase", "Mate gone"); a merged one
- * by where it went — live in the release that took it, on stage, deploying to stage, waiting for
- * production, or merged where there is no production to wait for, or where production follows
- * `main` and nothing waits.
+ * change by what stops it ("Ready to merge", "Draft", "Conflicts with main", "Behind main", "Mate
+ * gone"); a merged one by where it went — live in the release that took it, on stage, deploying to
+ * stage, not on stage because its deploy there failed, waiting for production, or merged where
+ * there is no production to wait for, or where production follows `main` and nothing waits.
  *
  * Pure: no React.
  */
@@ -71,6 +71,8 @@ export type MergedChangeWhere =
     }
   | { readonly kind: "on-stage" }
   | { readonly kind: "deploying-to-stage" }
+  /** The stage's deploy of it failed: it is merged, and the stage does not run it. */
+  | { readonly kind: "failed-on-stage" }
   /** Production runs a release, and none took it yet. */
   | { readonly kind: "waits-for-production" }
   /** Nowhere to wait: no production, or production runs no release yet (its own line says so). */
@@ -92,6 +94,8 @@ export function mergedChangeWords(where: MergedChangeWhere): string {
       return "On stage";
     case "deploying-to-stage":
       return "Deploying to stage…";
+    case "failed-on-stage":
+      return "Didn't reach Stage";
     case "waits-for-production":
       return "Merged · waits for production";
     case "merged":
