@@ -1,5 +1,5 @@
 /** Inventory presentation decorates the shared grouping with the current Mate connection rows. */
-import { canonicalInventoryGroups, type InventoryGroupsView } from "@t3tools/client-runtime/data";
+import { inventoryGroups, type InventoryGroupsView } from "@t3tools/client-runtime/data";
 import {
   rankZeropsCandidateForListing,
   type ZeropsPlacedBirth,
@@ -21,7 +21,7 @@ export function useProjectsInventory(
   const { activeOrganization } = useZeropsSession();
   const { organizationRef } = useZeropsData();
   const tree = useProjection(
-    canonicalInventoryGroups,
+    inventoryGroups,
     activeOrganization === null
       ? null
       : {

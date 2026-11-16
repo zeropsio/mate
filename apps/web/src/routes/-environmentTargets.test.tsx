@@ -7,7 +7,7 @@ import type { AccountEnvironments } from "@t3tools/client-runtime/zerops/account
 import {
   makeMateAdapter,
   NOT_READ_INVENTORY,
-  shownCanonicalHqListNavigationAtom,
+  shownHqListNavigationAtom,
   type AccountStore,
   type MateAdapter,
   type MateLinkValue,
@@ -1389,7 +1389,7 @@ describe("the route's wait on HQ", () => {
       fault: { outcome: "definitive-refusal", message: "HQ refused" },
       jitter: 0,
     });
-    const menu = hqOutage(atoms.get(shownCanonicalHqListNavigationAtom), "locale", 0);
+    const menu = hqOutage(atoms.get(shownHqListNavigationAtom), "locale", 0);
     expect(menu?.again, "ASSERTION: the menu says HQ refused, with Try again").toBe(true);
     expect(look(ENV_A)).toEqual({
       kind: "wait",

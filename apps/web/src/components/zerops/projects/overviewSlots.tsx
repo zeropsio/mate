@@ -94,7 +94,7 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
     return fixProblemOf({
       chip,
       failure: releases.kind === "answered" ? releases.failure : undefined,
-      down: prodStop === undefined ? [] : (down.get(prodStop.projectId) ?? []),
+      down: prodStop === undefined ? [] : (down.get(prodStop.id) ?? []),
     });
   };
 
@@ -109,7 +109,7 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
     const read = flows.get(entry.group.groupId);
     const releases = read?.releasesKnown === true ? read.releases : [];
     return {
-      projectId: production.stop.projectId,
+      projectId: production.stop.id,
       rollBack: productionBroken(entry) ? undefined : rollBackTarget(releases),
       history: historyOffered({
         releases: releases.length,

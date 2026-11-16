@@ -69,6 +69,7 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
+import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as TestClock from "effect/testing/TestClock";
@@ -1475,10 +1476,21 @@ const withWsRpcClient = <A, E, R>(
     Effect.provide(wsRpcProtocolLayer(wsUrl, onMessage, ticket)),
   );
 
+/** A message as the socket carries it: its kind and, of a stream's chunk, each frame's type. */
+const decodeSocketMessage = Schema.decodeUnknownSync(
+  Schema.fromJsonString(
+    Schema.Struct({
+      _tag: Schema.String,
+      values: Schema.optionalKey(Schema.Array(Schema.Struct({ type: Schema.String }))),
+    }),
+  ),
+);
+
 const withFirstWsAckHeld = (
   wsUrl: string,
   held: Deferred.Deferred<void>,
   release: Deferred.Deferred<void>,
+  onMessage?: (message: string) => void,
 ) => {
   let holdNextAck = true;
   return Layer.effect(RpcClient.Protocol)(
@@ -1498,7 +1510,7 @@ const withFirstWsAckHeld = (
         },
       }),
     ),
-  ).pipe(Layer.provide(wsRpcProtocolLayer(wsUrl)));
+  ).pipe(Layer.provide(wsRpcProtocolLayer(wsUrl, onMessage)));
 };
 
 const appendAuthorizationToWsUrl = (url: string, sessionCookieHeader: string) => {
@@ -2584,6 +2596,66 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCryptoLayer.layer))("server rout
               "ASSERTION: Settings can group the native archived row under its project",
             );
           }),
+        );
+        yield* w.shutdown;
+      }).pipe(Effect.provide(layerLoopbackTest())),
+  );
+
+  // Each message of an opening waited for the client's acknowledgement of the one before it: a
+  // conversation of N messages cost N round trips to the Mate (5 at the median, 29 seen).
+  // witness: apps/server/src/ws.ts | withStreamWindows(protocol, { ...terminalOutputWindows, ...engineStreamWindows }), → withStreamWindows(protocol, terminalOutputWindows),
+  it.effect(
+    "a conversation's opening reaches the client in full before it has acknowledged the first message",
+    () =>
+      Effect.gen(function* () {
+        const w = yield* makeEngineWorld({ driver: "claudeAgent" });
+        yield* w.boot;
+        yield* w.tell({
+          _tag: "AssignAgent",
+          agent: {
+            instanceId: "claudeAgent",
+            driver: "claudeAgent",
+            model: "m1",
+            profile: { kind: "mate" },
+          },
+        });
+        for (const service of ["api", "worker"]) {
+          yield* w.tell({ _tag: "Send", text: `Deploy the ${service}` });
+          yield* w.agent((agent, thread) =>
+            agent.zerops(thread, "zerops_deploy", { targetService: service }, service, "{}"),
+          );
+          yield* w.agent((agent, thread) => agent.finish(thread));
+        }
+        yield* buildAppUnderTest({ config: {}, layers: { mateEngine: yield* w.engine } });
+        const ackHeld = yield* Deferred.make<void>();
+        const releaseAck = yield* Deferred.make<void>();
+        // The socket's own messages: the opening's, then the answer to a call made after them.
+        const answered = yield* Deferred.make<void>();
+        const opening: Array<ReadonlyArray<string>> = [];
+        const onMessage = (message: string) => {
+          const heard = decodeSocketMessage(message);
+          if (heard._tag === "Chunk") opening.push((heard.values ?? []).map((frame) => frame.type));
+          if (heard._tag === "Exit") Deferred.doneUnsafe(answered, Effect.void);
+        };
+        const wsUrl = yield* getWsServerUrl("/ws");
+        yield* makeWsRpcClient.pipe(
+          Effect.flatMap((client) =>
+            Effect.gen(function* () {
+              yield* client[WS_METHODS.subscribeEngineConversation]({
+                protocol: MATE_ENGINE_PROTOCOLS[0]!,
+                conversationId: imageConversation,
+                outcomes: { tools: ["zerops_deploy"] },
+              }).pipe(Stream.runDrain, Effect.forkScoped);
+              yield* Deferred.await(ackHeld);
+              yield* client[WS_METHODS.engineGetArchivedShellSnapshot]({
+                protocol: MATE_ENGINE_PROTOCOLS[0]!,
+              }).pipe(Effect.forkScoped);
+              yield* Deferred.await(answered);
+              assert.deepEqual(opening, [["outcome"], ["outcome"], ["snapshot", "synchronized"]]);
+              yield* Deferred.succeed(releaseAck, undefined);
+            }).pipe(Effect.scoped),
+          ),
+          Effect.provide(withFirstWsAckHeld(wsUrl, ackHeld, releaseAck, onMessage)),
         );
         yield* w.shutdown;
       }).pipe(Effect.provide(layerLoopbackTest())),

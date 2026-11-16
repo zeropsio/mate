@@ -1,5 +1,5 @@
 import { unreadEnvironmentsWords } from "@t3tools/client-runtime/zerops/hq";
-import { canonicalAppEnvironments, canonicalHqNavigation } from "@t3tools/client-runtime/data";
+import { appEnvironments, hqNavigation } from "@t3tools/client-runtime/data";
 import {
   environmentSlots,
   productionRunsOf,
@@ -440,9 +440,9 @@ function UndrawnGroupDetail({ groupId }: { readonly groupId: string }) {
   const orgId = useAccountOrgId();
   const navigate = useNavigate();
   const failure = useFlowNavigation(orgId).readFailure;
-  const navigation = useProjection(canonicalHqNavigation, orgId, NO_ROUTE_NAVIGATION);
+  const navigation = useProjection(hqNavigation, orgId, NO_ROUTE_NAVIGATION);
   const read = useProjection(
-    canonicalAppEnvironments,
+    appEnvironments,
     orgId === null ? null : { orgId, appId: groupId },
     NO_ROUTE_ENVIRONMENTS,
   );

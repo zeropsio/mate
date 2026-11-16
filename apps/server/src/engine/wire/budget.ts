@@ -236,6 +236,30 @@ export const fitOutcomeItem = (item: Item): Item => {
   return { ...whole, result: item.result };
 };
 
+/**
+ * A page of what closed cards draw (`engine.readRun`, `only: "outcome"`), its results whole as an
+ * opening's `outcome` frames carry them, as far as the `room` its budget leaves carries: each is
+ * then drawn with no read of its own (`engine.readDetail`). `raw` are the page's items as stored,
+ * in its order.
+ */
+export const wholeOutcomeResults = (
+  fitted: ReadonlyArray<Item>,
+  raw: ReadonlyArray<Item>,
+  room: number,
+): ReadonlyArray<Item> => {
+  let left = room;
+  return fitted.map((item, index) => {
+    // With no room left nothing more is measured: a long page's results are megabytes to size.
+    if (left <= 0 || item.kind !== "call" || item.cut?.part !== "result") return item;
+    const whole = fitOutcomeItem(raw[index]!);
+    if (whole.kind !== "call" || whole.cut !== undefined) return item;
+    const more = bytesOf(whole) - bytesOf(item);
+    if (more > left) return item;
+    left -= more;
+    return whole;
+  });
+};
+
 type Changes = Extract<EngineConversationFrame, { readonly type: "changes" }>;
 
 /**

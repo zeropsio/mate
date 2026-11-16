@@ -4,7 +4,7 @@
  * dialog follows HQ until it answers — closed once HQ takes the name, open with its refusal — and says
  * what a rename does: Mate shows the new name, and its environments in Zerops keep theirs.
  */
-import type { ZeropsGroup } from "@t3tools/client-runtime/zerops";
+import type { CanonicalGroup } from "@t3tools/client-runtime/zerops";
 import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -31,7 +31,7 @@ vi.mock("../../zerops/useRenameGroup", () => ({
   useRenameGroup: () => ({ rename: mock.rename, retry: mock.retry }),
 }));
 
-const GROUP = { groupId: "app-1", name: "Shop", nameSource: "hq" } as unknown as ZeropsGroup;
+const GROUP = { groupId: "app-1", name: "Shop", nameSource: "hq" } as unknown as CanonicalGroup;
 
 const mounted: ReactTestRenderer[] = [];
 
@@ -43,7 +43,7 @@ afterEach(() => {
 });
 
 /** The dialog over a rename HQ answers when the test says. */
-function mount(group: ZeropsGroup = GROUP) {
+function mount(group: CanonicalGroup = GROUP) {
   let settle = {
     take: (_failures: ReadonlyArray<unknown> = []) => {},
     refuse: (_cause: unknown) => {},
@@ -80,7 +80,7 @@ describe("ZeropsRenameProjectDialog", () => {
       initialValue: "",
     },
   ])("$name, and renames", ({ nameSource, initialValue }) => {
-    mount({ ...GROUP, nameSource } as ZeropsGroup);
+    mount({ ...GROUP, nameSource } as CanonicalGroup);
     expect(mock.dialog).toMatchObject({ initialValue, title: "Rename the project" });
   });
 

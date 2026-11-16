@@ -34,8 +34,8 @@ import {
   shownHqStatusAtom,
   shownProjectsAtom,
   type HqNavigationPeople,
-  type CanonicalHqNavigationRead,
-  shownCanonicalHqMenuNavigationAtom,
+  type HqNavigationRead,
+  shownHqMenuNavigationAtom,
 } from "@t3tools/client-runtime/data";
 
 import { sameValue } from "../lib/sameValue";
@@ -83,8 +83,8 @@ export const zeropsSessionAtom = Atom.make<ZeropsSessionView | null>(null).pipe(
  * HQ's navigation of the organization in view (`@t3tools/client-runtime/data` `hqNavigation`): its
  * applications and where HQ places each project, as the account's store holds them.
  */
-export const hqNavigationAtom = shownCanonicalHqMenuNavigationAtom;
-export type HqNavigationView = CanonicalHqNavigationRead & { readonly orgId: string | null };
+export const hqNavigationAtom = shownHqMenuNavigationAtom;
+export type HqNavigationView = HqNavigationRead & { readonly orgId: string | null };
 
 /**
  * How many tasks wait for an application's automated Mates to be free, as HQ's navigation says

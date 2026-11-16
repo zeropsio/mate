@@ -4,7 +4,7 @@ import {
   makeAccountStore,
   hqMateOverviewAtom,
   mateAttentionAtom,
-  canonicalHqNavigation,
+  hqNavigation,
   recordedEnvironment,
 } from "@t3tools/client-runtime/data";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
@@ -81,7 +81,7 @@ function mountAccount() {
     const reads = get(accountReadsAtom);
     return reads?.orgId == null
       ? null
-      : get(reads.data.project(canonicalHqNavigation, reads.orgId)).structure;
+      : get(reads.data.project(hqNavigation, reads.orgId)).structure;
   });
   const stop = registry.subscribe(navigation, () => {}, { immediate: true });
   const seed = (orgId: string, rawEnvironments: ReadonlyArray<unknown>) => {

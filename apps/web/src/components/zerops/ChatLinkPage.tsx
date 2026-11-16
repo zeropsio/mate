@@ -4,7 +4,7 @@
  * once HQ's away budget has passed (the data layer then says why it was not sent), and again only on
  * a press, after a refusal. One take per document: the page opened again shows its answer.
  */
-import { canonicalHqNavigation, HQ_AWAY_BUDGET_MS } from "@t3tools/client-runtime/data";
+import { hqNavigation, HQ_AWAY_BUDGET_MS } from "@t3tools/client-runtime/data";
 import { HQ_NOT_OPEN } from "@t3tools/client-runtime/zerops/hq";
 import type { HqChatLink } from "@t3tools/shared/hqChatLinks";
 import { Atom } from "effect/reactivity";
@@ -40,7 +40,7 @@ export function ChatLinkPage() {
   const [code] = useState(takeChatLinkCode);
   const orgId = useAccountOrgId();
   const organization = useZeropsSession().activeOrganization;
-  const live = useProjection(canonicalHqNavigation, orgId, NONE)?.link.kind === "live";
+  const live = useProjection(hqNavigation, orgId, NONE)?.link.kind === "live";
   const operations = useAccountOperationsOptional();
   const [taking, setTaking] = useState<Taking>(answer);
   const [waited, setWaited] = useState(false);

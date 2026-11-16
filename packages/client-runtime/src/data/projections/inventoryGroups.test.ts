@@ -11,11 +11,7 @@ import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
 import { linkKeys } from "../model.ts";
 import { hqAppFamily, hqAppsScope } from "../families/hqNavigation.ts";
 import { makeAccountStore, readsOfState } from "../store.ts";
-import {
-  canonicalInventoryGroups,
-  inventoryGroups,
-  type InventoryGroupsKey,
-} from "./inventoryGroups.ts";
+import { inventoryGroups, type InventoryGroupsKey } from "./inventoryGroups.ts";
 
 const key: InventoryGroupsKey = {
   organization: {
@@ -60,7 +56,7 @@ describe("Projects inventory grouping", () => {
     seedHqNavigation(f.store, "org", { structure });
     expect(f.read().groups.map(({ group }) => group.groupId)).toEqual(["empty", "shop"]);
     expect(
-      f.read().groups.find(({ group }) => group.groupId === "shop")?.environments[0]?.item.project
+      f.read().groups.find(({ group }) => group.groupId === "shop")?.environments[0]?.item?.project
         .id,
     ).toBe("mate");
     f.registry.dispose();
@@ -118,7 +114,7 @@ it("An HQ environment arriving after first paint appears once under its applicat
   const registry = AtomRegistry.make();
   const f = { registry, store: makeAccountStore(registry) };
   const derive = () =>
-    canonicalInventoryGroups.derive(readsOfState(f.store.state()), {
+    inventoryGroups.derive(readsOfState(f.store.state()), {
       ...key,
       projectIds: ["mate", "project-stage"],
     });
@@ -161,7 +157,7 @@ it("An HQ environment arriving after first paint appears once under its applicat
   });
   expect(legacy.ungrouped).toEqual([]);
   expect(
-    legacy.groups.flatMap(({ environments }) => environments.map(({ item }) => item.project.id)),
+    legacy.groups.flatMap(({ environments }) => environments.map(({ item }) => item?.project.id)),
   ).toEqual(["project-stage"]);
   const after = derive().groups[0]!;
   expect(
@@ -184,7 +180,7 @@ it("An HQ environment arriving after first paint appears once under its applicat
     ),
   ).toEqual(["environment-stage"]);
   expect(
-    canonicalInventoryGroups.derive(readsOfState(f.store.state()), {
+    inventoryGroups.derive(readsOfState(f.store.state()), {
       ...key,
       organization: { ...key.organization, organizationId: ZeropsOrganizationId.make("other") },
     }).groups,
@@ -272,12 +268,12 @@ it.each(["unknown", "absent", "undecodable", "empty", "partial"] as const)(
       });
     }
     const tree = f.read();
-    expect(tree.groups[0]?.environments.map(({ item, role }) => [item.project.id, role])).toEqual([
+    expect(tree.groups[0]?.environments.map(({ item, role }) => [item?.project.id, role])).toEqual([
       ["mate", "dev"],
       ["project-stage", "stage"],
       ["project-prod", "prod"],
     ]);
-    expect(tree.groups[0]?.group.production?.project.id).toBe("project-prod");
+    expect(tree.groups[0]?.group.production?.project?.id).toBe("project-prod");
     expect(tree.ungrouped).toEqual([]);
     f.registry.dispose();
   },
@@ -297,12 +293,12 @@ it.each(["stage", "production"] as const)(
       },
     });
     const tree = f.read();
-    expect(tree.groups[0]?.environments.map(({ item }) => item.project.id)).toEqual([
+    expect(tree.groups[0]?.environments.map(({ item }) => item?.project.id)).toEqual([
       "mate",
       ...(kind === "stage" ? ["project-prod", "project-stage"] : ["project-stage", "project-prod"]),
     ]);
     expect(
-      tree.groups[0]?.environments.find(({ item }) => item.project.id === "project-prod")?.role,
+      tree.groups[0]?.environments.find(({ item }) => item?.project.id === "project-prod")?.role,
     ).toBe(kind === "stage" ? "stage" : "prod");
     expect(tree.ungrouped).toEqual([]);
     f.registry.dispose();

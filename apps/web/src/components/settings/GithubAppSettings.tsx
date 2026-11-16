@@ -21,7 +21,7 @@
  */
 import { useAtomValue } from "@effect/atom-react";
 import {
-  shownCanonicalHqListNavigationAtom,
+  shownHqListNavigationAtom,
   type TaskSourceSettingValue,
 } from "@t3tools/client-runtime/data";
 import type { HqGithubManifestRequest, HqGithubManifestView } from "@t3tools/shared/hqGithub";
@@ -97,7 +97,7 @@ export function GithubAppSettings({
   const { read, write, manifest, install, again, forget } = useGithubApp();
   const { activeOrganization, user } = useZeropsSession();
   const nameOf = usePersonNames(activeOrganization?.id);
-  const navigation = useAtomValue(shownCanonicalHqListNavigationAtom);
+  const navigation = useAtomValue(shownHqListNavigationAtom);
   const applicationOf = useCallback<ApplicationNameOf>(
     (applicationId) => navigation.structure?.apps.find((app) => app.id === applicationId)?.name,
     [navigation],

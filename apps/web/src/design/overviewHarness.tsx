@@ -19,7 +19,7 @@ import type {
   GroupFlowMate,
   GroupFlowProduction,
   GroupFlowStop,
-  ZeropsGroup,
+  CanonicalGroup,
 } from "@t3tools/client-runtime/zerops";
 import { mateParts } from "@t3tools/client-runtime/zerops/mateParts";
 import { MATE_SHAPE_OF_TINT, type MateMarkState, type MateTintId } from "@t3tools/shared/brand";
@@ -173,7 +173,7 @@ const version = (label: string) => ({
 
 function stop(projectId: string, name: string, over: Partial<GroupFlowStop> = {}): GroupFlowStop {
   return {
-    projectId,
+    id: projectId,
     name,
     state: "deployed",
     version: undefined,
@@ -209,14 +209,14 @@ function project(input: {
   readonly canPutLive?: boolean;
   readonly merged?: Project["merged"];
 }): Project {
-  const group: ZeropsGroup = {
+  const group: CanonicalGroup = {
     groupId: input.id,
     name: input.name,
     nameSource: "hq",
     environments: [],
     pending: [],
     production: undefined,
-  } as unknown as ZeropsGroup;
+  } as unknown as CanonicalGroup;
   const flow: GroupFlow = {
     groupId: input.id,
     mates: [
@@ -1167,7 +1167,7 @@ for (const { entry } of PROJECTS) {
         ? [
             {
               kind: "production" as const,
-              projectId: production.stop.projectId,
+              projectId: production.stop.id,
               name: production.stop.name,
               version: production.stop.version?.label,
               addresses: production.stop.addresses,
@@ -1176,7 +1176,7 @@ for (const { entry } of PROJECTS) {
         : []),
       ...stages.map((stage) => ({
         kind: "stage" as const,
-        projectId: stage.projectId,
+        projectId: stage.id,
         name: stage.name,
         version: stage.version?.label,
         addresses: stage.addresses,

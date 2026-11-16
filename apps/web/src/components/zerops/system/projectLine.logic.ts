@@ -203,7 +203,7 @@ function lineStage(input: Pick<ProjectLineInput, "flow" | "places">) {
   const line =
     stop === undefined
       ? undefined
-      : input.places.find((each) => each.kind === "stage" && each.projectId === stop.projectId);
+      : input.places.find((each) => each.kind === "stage" && each.projectId === stop.id);
   return { stop, line };
 }
 

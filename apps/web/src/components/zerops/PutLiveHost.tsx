@@ -4,7 +4,7 @@
  * A run makes production with what the project already says — its name after the project, its recipe, no agent — and releases to it once HQ holds it;
  * its project's production draws where it got (`ProductionRun`).
  */
-import { buildZeropsGroupTree } from "@t3tools/client-runtime/zerops";
+import { buildCanonicalGroupTree } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useAtomValue } from "@effect/atom-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -97,7 +97,7 @@ function useGroupEntry(groupId: string) {
   const hqStructure = useAtomValue(hqNavigationAtom);
   return useMemo(
     () =>
-      buildZeropsGroupTree(heldCandidates(listing).rows, {
+      buildCanonicalGroupTree(heldCandidates(listing).rows, {
         order: "name",
         births: placedPressesIn(presses, activeOrganization?.id),
         apps: emptyApplications(hqStructure, activeOrganization?.id),

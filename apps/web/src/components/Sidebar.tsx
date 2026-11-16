@@ -2,7 +2,7 @@ import { ownChiefCandidateAtom } from "~/zerops/useZeropsCandidates";
 import {
   shownHqMateDirectoryAtom,
   isListedMateEnvironment,
-  shownCanonicalHqListNavigationAtom,
+  shownHqListNavigationAtom,
 } from "@t3tools/client-runtime/data";
 import { useAtomValue } from "@effect/atom-react";
 import {
@@ -1463,10 +1463,7 @@ export default function Sidebar() {
   const timestampFormat = useClientSettings((s) => s.timestampFormat);
   // HQ away: the menu draws the structure it last read and, past HQ's budget, says since when
   // (SPEC §6.2.3); the Mates' conversations go on without HQ.
-  const zeropsHqOutage = useHqOutage(
-    useAtomValue(shownCanonicalHqListNavigationAtom),
-    timestampFormat,
-  );
+  const zeropsHqOutage = useHqOutage(useAtomValue(shownHqListNavigationAtom), timestampFormat);
   const zeropsRetry = useAccountDataOptional()?.retry;
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
   const { archiveThread } = useThreadActions();

@@ -3,13 +3,13 @@
  * a picker candidate, a connection state, a health probe — re-hung on the
  * group tree.
  *
- * `deriveZeropsGroups` answers "what groups exist"; this answers "and what do I
+ * `deriveCanonicalGroups` answers "what groups exist"; this answers "and what do I
  * already know about each member". It is generic over the carrier so web's
  * candidate presentation, mobile's row and a bare project all work without
  * this module knowing any of them — and so the tree is built once, not once
  * per client.
  *
- * Ordering and naming are entirely `deriveZeropsGroups`; nothing is decided
+ * Ordering and naming are entirely `deriveCanonicalGroups`; nothing is decided
  * twice here.
  *
  * @module groupTree
@@ -17,19 +17,10 @@
 
 import type { ZeropsProject } from "./api.ts";
 import {
-  canonicalEnvironmentsOf,
-  type HqEnvironment,
-  type CanonicalHqEnvironment,
-} from "./hq/environments.ts";
-import {
   deriveCanonicalGroups,
   type CanonicalGroupsOptions,
-  zeropsGroup,
   type CanonicalGroup,
   type CanonicalGroupEnvironment,
-  type DeriveZeropsGroupsOptions,
-  type ZeropsEnvironmentRole,
-  type ZeropsGroup,
 } from "./groups.ts";
 
 /** Anything the client holds that knows which project it is about. */
@@ -40,38 +31,20 @@ export interface ZeropsProjectCarrier {
 export type CanonicalGroupTreeEnvironment<T> = CanonicalGroupEnvironment & {
   readonly item: T | undefined;
 };
-export interface CanonicalGroupTreeView<T> extends Omit<ZeropsGroupTreeView<T>, "groups"> {
+
+export interface CanonicalGroupTreeView<T> {
   readonly groups: ReadonlyArray<{
+    /** Its members still being created are `group.pending`: the client holds no carrier for them. */
     readonly group: CanonicalGroup;
     readonly environments: ReadonlyArray<CanonicalGroupTreeEnvironment<T>>;
   }>;
-}
-
-export interface ZeropsGroupTreeEnvironment<T> {
-  readonly role: ZeropsEnvironmentRole | undefined;
-  readonly item: T;
-}
-
-export interface ZeropsGroupTreeGroup<T> {
-  /** Its members still being created are `group.pending`: the client holds no carrier for them. */
-  readonly group: ZeropsGroup;
-  readonly environments: ReadonlyArray<ZeropsGroupTreeEnvironment<T>>;
-}
-
-export interface ZeropsGroupTreeView<T> {
-  readonly groups: ReadonlyArray<ZeropsGroupTreeGroup<T>>;
   /** Projects with no group tag — every project that predates this feature. */
   readonly ungrouped: ReadonlyArray<T>;
   /** True when there is nothing but ungrouped projects — the "make your first group" state. */
   readonly empty: boolean;
 }
 
-export interface BuildZeropsGroupTreeOptions<T> extends Omit<DeriveZeropsGroupsOptions, "apps"> {
-  readonly apps?: ReadonlyArray<{
-    readonly id: string;
-    readonly name: string;
-    readonly environments?: ReadonlyArray<HqEnvironment | CanonicalHqEnvironment> | undefined;
-  }>;
+export interface BuildCanonicalGroupTreeOptions<T> extends CanonicalGroupsOptions {
   /**
    * A primary sort key applied to the ungrouped list ahead of the name —
    * lower ranks first. Groups are untouched: a group's own membership
@@ -80,33 +53,6 @@ export interface BuildZeropsGroupTreeOptions<T> extends Omit<DeriveZeropsGroupsO
    * the project picker's tiers and why they only move on the user's own
    * action.
    */
-  readonly rank?: (item: T) => number;
-}
-
-/** The existing project-carrier API opts into the same codec as the HQ boundary. */
-function canonicalGroupsOptions<T>(
-  options: BuildZeropsGroupTreeOptions<T>,
-): CanonicalGroupsOptions {
-  const { apps, ...restOptions } = options;
-  return {
-    ...restOptions,
-    ...(apps === undefined
-      ? {}
-      : {
-          apps: apps.map((app) => {
-            const { environments, ...rest } = app;
-            return {
-              ...rest,
-              ...(Object.hasOwn(app, "environments")
-                ? { environments: canonicalEnvironmentsOf(environments) }
-                : {}),
-            };
-          }),
-        }),
-  };
-}
-
-export interface BuildCanonicalGroupTreeOptions<T> extends CanonicalGroupsOptions {
   readonly rank?: ((item: T) => number) | undefined;
 }
 
@@ -151,30 +97,4 @@ export function buildCanonicalGroupTree<T extends ZeropsProjectCarrier>(
       : [...ungroupedItems].sort((left, right) => options.rank!(left) - options.rank!(right));
 
   return { groups, ungrouped, empty: groups.length === 0 };
-}
-
-/** @deprecated Project-carrier DTO for unmigrated clients. */
-export function buildZeropsGroupTree<T extends ZeropsProjectCarrier>(
-  items: ReadonlyArray<T>,
-  options: BuildZeropsGroupTreeOptions<T>,
-): ZeropsGroupTreeView<T> {
-  return zeropsGroupTree(
-    buildCanonicalGroupTree(items, {
-      ...canonicalGroupsOptions(options),
-      ...(options.rank === undefined ? {} : { rank: options.rank }),
-    }),
-  );
-}
-
-/** One compatibility projection for all project-carrier consumers. */
-export function zeropsGroupTree<T>(tree: CanonicalGroupTreeView<T>): ZeropsGroupTreeView<T> {
-  return {
-    ...tree,
-    groups: tree.groups.map(({ group, environments }) => ({
-      group: zeropsGroup(group),
-      environments: environments.flatMap(({ role, item }) =>
-        item === undefined ? [] : [{ role, item }],
-      ),
-    })),
-  };
 }

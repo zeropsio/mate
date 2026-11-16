@@ -665,7 +665,7 @@ export function groupFlowInputOf(input: {
         );
         return [
           {
-            projectId: row?.id ?? member.projectId,
+            id: row?.id ?? member.projectId,
             projectStatus: member.projectStatus,
             services: member.services,
             name: row?.name ?? member.name,
@@ -684,7 +684,7 @@ export function groupFlowInputOf(input: {
         if (target.kind === "zerops" && listedIds.has(target.projectId)) return [];
         return [
           {
-            projectId: row.id,
+            id: row.id,
             name: row.name,
             tier: row.tier,
             row,

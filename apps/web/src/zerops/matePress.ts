@@ -525,7 +525,7 @@ export function pressComingInput(
 
 /**
  * The creations this tab pressed in the organization in view, as the group tree places them
- * (`deriveZeropsGroups`' `births`): the projects page and the left menu read this one mapping, so
+ * (`deriveCanonicalGroups`' `births`): the projects page and the left menu read this one mapping, so
  * the two draw the same pending members. A press on a project already listed places nothing. The
  * creations this tab is still making come after them, placed from their ask (`placedNewProjects`).
  */

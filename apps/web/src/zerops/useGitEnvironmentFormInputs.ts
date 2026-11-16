@@ -4,7 +4,7 @@
  * projects page's Add stage / Add production open the sheet on it.
  */
 import { useAtomValue } from "@effect/atom-react";
-import { shownCanonicalHqListNavigationAtom } from "@t3tools/client-runtime/data";
+import { shownHqListNavigationAtom } from "@t3tools/client-runtime/data";
 import type { CanonicalHqNavigationEnvironment } from "@t3tools/shared/hqStream";
 
 import type { GitEnvironmentFormProps } from "../components/zerops/GitEnvironmentForm";
@@ -28,7 +28,7 @@ export function useGitEnvironmentFormInputs(
   orgId: string | null | undefined,
   appId: string | null,
 ): GitEnvironmentFormInputs | undefined {
-  const navigation = useAtomValue(shownCanonicalHqListNavigationAtom);
+  const navigation = useAtomValue(shownHqListNavigationAtom);
   const detail = useHqAppDetail(appId);
   const operations = useAccountOperationsOptional();
   const hqProjectId = orgId == null ? null : hqProjectIdOf(orgId);
@@ -64,7 +64,7 @@ export function useApplicationOfProject(projectId: string | undefined):
       readonly environments: ReadonlyArray<CanonicalHqNavigationEnvironment> | undefined;
     }
   | undefined {
-  const navigation = useAtomValue(shownCanonicalHqListNavigationAtom);
+  const navigation = useAtomValue(shownHqListNavigationAtom);
   if (projectId === undefined) return undefined;
   const app = navigation.structure?.apps.find((entry) =>
     entry.projects.some((project) => project.projectId === projectId),

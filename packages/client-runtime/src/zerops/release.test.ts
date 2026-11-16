@@ -1,7 +1,7 @@
 import { creationHandoff } from "../data/projections/creationHandoff.ts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { environmentRow, type EnvironmentRow } from "./groupRows.ts";
+import { environmentRowDisplay, type EnvironmentRow } from "./groupRows.ts";
 import {
   compareForRelease,
   flowReleaseOf,
@@ -486,8 +486,7 @@ describe("the release a stop is named by", () => {
   });
 
   it("names the stop by the tag, keeps the first labelled service's commit, drops its tagger", () => {
-    const row: EnvironmentRow = environmentRow({
-      projectId: "p-prod",
+    const row: EnvironmentRow = environmentRowDisplay({
       name: "production",
       tier: "production",
       sources: "release",

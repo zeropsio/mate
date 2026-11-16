@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  environmentsOf,
+  canonicalEnvironmentsOf,
   deliveryEnvironmentsOf,
   jobFailed,
   jobInFlight,
@@ -30,7 +30,6 @@ const job = (id: string, service: string | null, state: HqJob["state"]): HqJob =
 });
 
 const STAGE: HqEnvironment = {
-  projectId: "p-stage",
   tier: "stage",
   name: "stage",
   sources: ["main"],
@@ -100,112 +99,10 @@ describe("a job's state", () => {
   });
 });
 
-describe("environmentsOf", () => {
-  it("keeps operation evidence and steps through the environment decode", () => {
-    const environment = {
-      ...STAGE,
-      jobs: [
-        {
-          ...job("1", "app", "unresolved"),
-          evidence: {
-            phase: "closed",
-            nextActor: "person",
-            nextAction: "Inspect the original version in Zerops",
-            processes: [{ id: "p1", status: "FINISHED" }],
-            version: { id: "v1", status: "BUILDING" },
-          },
-          steps: [{ processes: [{ id: "p1", status: "RUNNING" }] }],
-          verifiedVersionId: null,
-        },
-      ],
-    };
-    expect(environmentsOf([environment])).toEqual([environment]);
-  });
-
-  it("reads an environment with its jobs", () => {
-    const environment = { ...STAGE, jobs: [job("1", "app", "live")] };
-    expect(environmentsOf([environment])).toEqual([environment]);
-  });
-
-  it("retains every environment when one accepted operation is unresolved", () => {
-    const stage = {
-      ...STAGE,
-      jobs: [
-        {
-          ...job("2", "app", "live"),
-          state: "unresolved",
-          reason: "A person must inspect the process in Zerops",
-        },
-        job("1", "app", "live"),
-      ],
-    };
-    const production = { ...STAGE, projectId: "p-prod", tier: "production" };
-    expect(environmentsOf([stage, production])).toEqual([stage, production]);
-  });
-
-  it("reads a production with where its newest release stands", () => {
-    const production: HqEnvironment = {
-      ...STAGE,
-      projectId: "p-prod",
-      tier: "production",
-      sources: ["release"],
-      release: {
-        id: "7",
-        tag: "v0.1.3",
-        planned: true,
-        ended: false,
-        endedAt: null,
-        landed: false,
-        leftOut: [{ service: "api", sha: A, job: "5", reason: "a job of aaaaaaa is under way" }],
-      },
-    };
-    expect(environmentsOf([production])).toEqual([production]);
-  });
-
-  // Review (client #4): a Core older than this client tells neither where a release stands nor
-  // whether it is bringing an environment up. Its environments are still read — what it does not
-  // say is not known, never on its way and never coming up.
-  it("reads an environment from a Core that tells no release and no birth", () => {
-    const { release: _release, birth: _birth, ...older } = STAGE;
-    expect(environmentsOf([older])).toEqual([older]);
-  });
-
-  // Review (delta #9): a Core from before `landed` names a release's end without saying whether it
-  // landed: its environments are still read, and nothing is said to have landed.
-  it("reads a production's release from a Core that tells no landing", () => {
-    const { landed: _landed, ...release } = {
-      id: "7",
-      tag: "v0.1.3",
-      planned: true,
-      ended: true,
-      endedAt: "2026-10-03T10:00:00.000Z",
-      landed: false,
-      leftOut: [],
-    };
-    const production = { ...STAGE, projectId: "p-prod", tier: "production" as const, release };
-    expect(environmentsOf([production])?.[0]?.release).toEqual(release);
-  });
-
-  // HQ and the client ship together: a set in the shape before jobs is one this build cannot read.
-  it("does not read an environment HQ sent with deploys and no jobs", () => {
-    const { jobs: _, ...before } = STAGE;
-    expect(
-      environmentsOf([{ ...before, deploys: [{ service: "app", latest: null, live: null }] }]),
-    ).toBeUndefined();
-  });
-
-  it("does not read a job in a state this build does not know", () => {
-    expect(
-      environmentsOf([{ ...STAGE, jobs: [{ ...job("1", "app", "live"), state: "deploying" }] }]),
-    ).toBeUndefined();
-  });
-});
-
 describe("delivery environments", () => {
   it("reads Git push jobs by environment identity without inventing a project", () => {
-    const { projectId: _projectId, ...stage } = STAGE;
     const git = {
-      ...stage,
+      ...STAGE,
       can: {},
       id: "git-stage",
       target: { kind: "git", branch: "main", delivery: "direct" },
@@ -216,7 +113,6 @@ describe("delivery environments", () => {
       target: { kind: "git" },
       jobs: [],
     });
-    expect(environmentsOf([git])).toEqual([]);
   });
 });
 
@@ -227,6 +123,9 @@ it.each([undefined, null, 0, 1_305_166_613])(
       ...job("1", "app", "failed"),
       ...(sourceArchiveBytes === undefined ? {} : { sourceArchiveBytes }),
     };
-    expect(environmentsOf([{ ...STAGE, jobs: [measured] }])?.[0]?.jobs).toEqual([measured]);
+    const stage = { ...STAGE, id: "p-stage", target: { kind: "zerops", projectId: "p-stage" } };
+    expect(canonicalEnvironmentsOf([{ ...stage, jobs: [measured] }])?.[0]?.jobs).toEqual([
+      measured,
+    ]);
   },
 );

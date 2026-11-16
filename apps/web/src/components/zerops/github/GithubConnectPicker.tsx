@@ -16,7 +16,7 @@
  * (`footerEnd`: its *Not now*).
  */
 import { useAtomValue } from "@effect/atom-react";
-import { shownCanonicalHqListNavigationAtom } from "@t3tools/client-runtime/data";
+import { shownHqListNavigationAtom } from "@t3tools/client-runtime/data";
 import { OperationStopped } from "@t3tools/client-runtime/data";
 import { HqError } from "@t3tools/client-runtime/zerops/hq";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
@@ -113,7 +113,7 @@ export function GithubConnectPicker({
   const orgId = useAccountOrgId();
   const session = useZeropsSessionOptional();
   const nameOf = usePersonNames(orgId ?? undefined);
-  const navigation = useAtomValue(shownCanonicalHqListNavigationAtom);
+  const navigation = useAtomValue(shownHqListNavigationAtom);
   const projectNameOf = useCallback(
     (id: string) => navigation.structure?.apps.find((app) => app.id === id)?.name,
     [navigation],

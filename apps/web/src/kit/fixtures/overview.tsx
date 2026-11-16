@@ -1,5 +1,5 @@
 import {
-  buildZeropsGroupTree,
+  buildCanonicalGroupTree,
   groupFlow,
   type ZeropsProject,
 } from "@t3tools/client-runtime/zerops";
@@ -14,7 +14,7 @@ import { MateFace } from "~/components/zerops/primitives";
 
 /**
  * One project on the overview: two Mates and a stage, as `ProjectCards` draws it. Built from the
- * same pure pieces the page's own flow reads (`buildZeropsGroupTree`, `groupFlow`), with invented
+ * same pure pieces the page's own flow reads (`buildCanonicalGroupTree`, `groupFlow`), with invented
  * names and no account behind them.
  */
 interface KitItem {
@@ -47,9 +47,11 @@ const ASKS: Readonly<Record<string, string>> = {
 };
 
 function kitGroups(): ReadonlyArray<ProjectsFlowGroup<KitItem>> {
-  const tree = buildZeropsGroupTree(ITEMS, { order: "name" });
+  const tree = buildCanonicalGroupTree(ITEMS, { order: "name" });
   return tree.groups.map(({ group, environments }) => {
-    const members = environments.map(({ item: member }) => member);
+    const members = environments.flatMap(({ item: member }) =>
+      member === undefined ? [] : [member],
+    );
     const mates = members.filter((member) => member.mate);
     return {
       group,

@@ -1,9 +1,5 @@
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
-import {
-  canonicalProjectFlow,
-  inventoryContents,
-  readsOfState,
-} from "@t3tools/client-runtime/data";
+import { projectFlow, inventoryContents, readsOfState } from "@t3tools/client-runtime/data";
 import {
   makeZeropsApiOrigin,
   ZeropsAccountId,
@@ -49,7 +45,7 @@ import * as sessionContext from "~/zerops/sessionContext";
 import * as accountHq from "~/zerops/accountHq";
 import * as nowClock from "~/zerops/useNowMs";
 import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
-import type { CanonicalHqStructure } from "@t3tools/client-runtime/zerops/hq";
+import type { HqStructure } from "@t3tools/client-runtime/zerops/hq";
 import { create as createTree, type ReactTestRenderer } from "react-test-renderer";
 import { renderToStaticMarkup as renderMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -1465,7 +1461,7 @@ describe("environment route target dispatch", () => {
           },
         ],
         ungrouped: [],
-      } as CanonicalHqStructure;
+      } as HqStructure;
       const { store, seed } = mountHqNavigation(
         registry,
         "org",
@@ -1620,7 +1616,7 @@ it("Environment navigation keeps its identity when the target's project name cha
       store,
     );
     const answer = registry.get(
-      store.data.project(canonicalProjectFlow, {
+      store.data.project(projectFlow, {
         orgId: "org",
         appId: "shop",
         hqAddress: undefined,

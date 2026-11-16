@@ -20,7 +20,11 @@
  * changing under the person paints the view's last frame, never a loading pane.
  */
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
-import { buildZeropsGroupTree, generateBotName, newMateTint } from "@t3tools/client-runtime/zerops";
+import {
+  buildCanonicalGroupTree,
+  generateBotName,
+  newMateTint,
+} from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
@@ -134,15 +138,22 @@ function NewMateDialog({
   const hqStructure = useAtomValue(hqNavigationAtom);
   // The project as the menu draws it: a project being created counts, members listed or not, and
   // one HQ holds with nothing in it is the one its first Mate is added to.
-  const entry = useMemo(
-    () =>
-      buildZeropsGroupTree(candidates, {
-        order: "name",
-        births: placedPressesIn(presses, activeOrganization?.id),
-        apps: emptyApplications(hqStructure, activeOrganization?.id),
-      }).groups.find((candidate) => candidate.group.groupId === groupId),
-    [activeOrganization?.id, presses, candidates, groupId, hqStructure],
-  );
+  const entry = useMemo(() => {
+    const found = buildCanonicalGroupTree(candidates, {
+      order: "name",
+      births: placedPressesIn(presses, activeOrganization?.id),
+      apps: emptyApplications(hqStructure, activeOrganization?.id),
+    }).groups.find((candidate) => candidate.group.groupId === groupId);
+    // Its members the account lists: an environment HQ records with no listed project has no Mate.
+    return found === undefined
+      ? undefined
+      : {
+          group: found.group,
+          environments: found.environments.flatMap(({ item }) =>
+            item === undefined ? [] : [{ item }],
+          ),
+        };
+  }, [activeOrganization?.id, presses, candidates, groupId, hqStructure]);
   // The application's changes, open and landed, held while the door is drawn.
   const { changes } = useAppsChanges(useMemo(() => [groupId], [groupId]));
   const appChanges = changes.get(groupId);

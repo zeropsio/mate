@@ -1,9 +1,9 @@
 import { Checkbox } from "~/components/ui/checkbox";
 import {
-  canonicalAppEnvironments,
+  appEnvironments,
   hqEnvironmentOffers,
   listedProject,
-  type CanonicalAppEnvironmentsRead,
+  type AppEnvironmentsRead,
 } from "@t3tools/client-runtime/data";
 import { Atom } from "effect/reactivity";
 import { useAccountOrgId, useProjection } from "~/zerops/ZeropsAccountData";
@@ -78,7 +78,7 @@ export function GitStopDetailPage({
   const delivery = flows.get(appId)?.environments.find((row) => row.id === environment.id)?.git;
   const orgId = useAccountOrgId();
   const environments = useProjection(
-    canonicalAppEnvironments,
+    appEnvironments,
     orgId === null ? null : { orgId, appId },
     UNTOLD,
   ).environments;
@@ -371,7 +371,7 @@ function GitEnvironmentRemoval({
   );
 }
 
-const UNTOLD = Atom.make<CanonicalAppEnvironmentsRead>({
+const UNTOLD = Atom.make<AppEnvironmentsRead>({
   environments: undefined,
   unread: [],
 });
@@ -396,11 +396,7 @@ export function ProductionRemoval({
   readonly environmentId: string;
 }) {
   const orgId = useAccountOrgId();
-  const read = useProjection(
-    canonicalAppEnvironments,
-    orgId === null ? null : { orgId, appId },
-    UNTOLD,
-  );
+  const read = useProjection(appEnvironments, orgId === null ? null : { orgId, appId }, UNTOLD);
   const environment = read.environments?.find((row) => row.id === environmentId);
   if (environment === undefined || environment.tier !== "production") return null;
   return environment.target.kind === "git" ? (
@@ -410,7 +406,7 @@ export function ProductionRemoval({
   );
 }
 
-type ProductionEnvironment = NonNullable<CanonicalAppEnvironmentsRead["environments"]>[number];
+type ProductionEnvironment = NonNullable<AppEnvironmentsRead["environments"]>[number];
 function GitProductionRemoval({
   appId,
   environment,

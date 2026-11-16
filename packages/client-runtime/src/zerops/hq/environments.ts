@@ -20,8 +20,6 @@ import { ReleaseRollout, TierStop } from "@t3tools/shared/hqRelease";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import type { HqOffered } from "./client.ts";
-
 /** A job of an environment, as HQ's record holds it. */
 export const HqJob = Schema.Struct({
   id: Schema.String,
@@ -86,8 +84,8 @@ export const jobInFlight = (job: Pick<HqJob, "state">): boolean =>
 export const jobFailed = (job: Pick<HqJob, "state">): boolean =>
   job.state === "failed" || job.state === "refused";
 
+/** An environment's record without its identity: what `CanonicalHqEnvironment` adds its id and target to. */
 export const HqEnvironment = Schema.Struct({
-  projectId: Schema.String,
   tier: Schema.Literals(["stage", "production"]),
   name: Schema.String,
   /** The branches it follows: a stage `main`, a production `release`. */
@@ -122,8 +120,7 @@ export const HqEnvironment = Schema.Struct({
 });
 export type HqEnvironment = typeof HqEnvironment.Type;
 
-const { projectId: _projectId, ...payload } = HqEnvironment.fields;
-export const CanonicalHqEnvironment = hqEnvironmentCodec(payload);
+export const CanonicalHqEnvironment = hqEnvironmentCodec(HqEnvironment.fields);
 export type CanonicalHqEnvironment = typeof CanonicalHqEnvironment.Type;
 const readCanonicalEnvironments = Schema.decodeUnknownOption(Schema.Array(CanonicalHqEnvironment));
 
@@ -131,21 +128,6 @@ export function canonicalEnvironmentsOf(
   value: unknown,
 ): ReadonlyArray<CanonicalHqEnvironment> | undefined {
   return Option.getOrUndefined(readCanonicalEnvironments(value));
-}
-
-/** Temporary outward DTOs only address Zerops; Git has no project to project. */
-export function zeropsEnvironments(
-  environments: ReadonlyArray<CanonicalHqEnvironment & HqOffered>,
-): ReadonlyArray<HqEnvironment & HqOffered> {
-  return environments.flatMap(({ id: _id, target, projectId: _legacy, ...environment }) =>
-    target.kind === "zerops" ? [{ ...environment, projectId: target.projectId }] : [],
-  );
-}
-
-/** An application's environments as HQ sent them; `undefined` where it sent none it can read. */
-export function environmentsOf(value: unknown): ReadonlyArray<HqEnvironment> | undefined {
-  const environments = canonicalEnvironmentsOf(value);
-  return environments === undefined ? undefined : zeropsEnvironments(environments);
 }
 
 /** A service's deploys: its newest job, and the newest that went live. */

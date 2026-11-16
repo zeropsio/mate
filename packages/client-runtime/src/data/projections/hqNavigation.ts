@@ -20,8 +20,7 @@ import {
   type ApplicationFacts,
 } from "@t3tools/shared/zeropsOffers";
 
-import type { HqMate, HqStructure, CanonicalHqStructure } from "../../zerops/hq/client.ts";
-import { zeropsStructure } from "../../zerops/hq/structure.ts";
+import type { HqMate, HqStructure } from "../../zerops/hq/client.ts";
 import { canonicalEnvironmentsOf } from "../../zerops/hq/environments.ts";
 import {
   hqAppsScope,
@@ -87,32 +86,17 @@ export interface HqNavigationRead extends Pick<ScopeFreshness, "unavailableReaso
   readonly coreBuild: string | undefined;
 }
 
-export interface CanonicalHqNavigationRead extends Omit<HqNavigationRead, "structure"> {
-  readonly structure: CanonicalHqStructure | null;
-}
-
 export interface HqDeliveryNavigationRead extends HqNavigationRead {
   /** Additive delivery reader; protected facts, including Git, without invented project addresses. */
   readonly deliveryEnvironments: Readonly<Record<string, NonNullable<HqAppValue["environments"]>>>;
 }
-export type CanonicalHqDeliveryNavigationRead = CanonicalHqNavigationRead &
-  Pick<HqDeliveryNavigationRead, "deliveryEnvironments">;
 
-function compatibilityNavigation(
-  answer: CanonicalHqDeliveryNavigationRead,
-): HqDeliveryNavigationRead {
-  return {
-    ...answer,
-    structure: answer.structure === null ? null : zeropsStructure(answer.structure),
-  };
-}
-
-export const canonicalHqNavigation = {
-  name: "canonicalHqNavigation",
+export const hqNavigation = {
+  name: "hqNavigation",
   keyOf: (orgId) => orgId,
   derive: (read, orgId) => navigationOf(read, orgId, true),
   equals: sameValue,
-} satisfies Projection<string, CanonicalHqDeliveryNavigationRead>;
+} satisfies Projection<string, HqDeliveryNavigationRead>;
 
 /**
  * What the person may do with one of an application's environments: a Zerops one as the structure
@@ -131,7 +115,7 @@ export const hqEnvironmentOffers = {
     if (environment === undefined) return undefined;
     if (environment.target.kind === "git")
       return decided(livePermissionFacts(read, orgId), [], gitEnvironmentOffers);
-    return canonicalHqNavigation
+    return hqNavigation
       .derive(read, orgId)
       .structure?.apps.find((candidate) => candidate.id === appId)
       ?.environments?.find((candidate) => candidate.id === environmentId)?.can;
@@ -180,7 +164,7 @@ function mateOf(
 function environmentsOfApp(
   environments: HqAppValue["environments"],
   offers: (projectId: string, tier: "stage" | "production") => HqOffers | undefined,
-): Pick<CanonicalHqStructure["apps"][number], "environments"> {
+): Pick<HqStructure["apps"][number], "environments"> {
   if (environments === undefined) return {};
   // Legacy Zerops rows still go through their existing normalizer; Git and an outside production
   // have no outward project DTO.
@@ -206,7 +190,7 @@ function structureOf(
   read: ProjectionReads,
   orgId: string,
   organization: HqOrganizationValue | null,
-): CanonicalHqStructure | null {
+): HqStructure | null {
   if (
     read.coverage(hqAppsScope(orgId)) !== "complete" &&
     read.members(hqAppsScope(orgId)).ids.length === 0
@@ -299,7 +283,7 @@ function navigationOf(
   read: ProjectionReads,
   orgId: string,
   includePeople: boolean,
-): CanonicalHqDeliveryNavigationRead {
+): HqDeliveryNavigationRead {
   const scope = hqAppsScope(orgId);
   const { complete, reconnecting, unavailableReason } = scopeFreshness(read, scope);
   const organizationFact = read.fact("hqOrganization", orgId);
@@ -347,13 +331,6 @@ function navigationOf(
     ...(unavailableReason === undefined ? {} : { unavailableReason }),
   };
 }
-export const hqNavigation = {
-  name: "hqNavigation",
-  keyOf: (orgId) => orgId,
-  derive: (read, orgId) => compatibilityNavigation(canonicalHqNavigation.derive(read, orgId)),
-  equals: sameValue,
-} satisfies Projection<string, HqDeliveryNavigationRead>;
-
 /** Review facts share app-detail's order, access and demand; silence cannot manufacture a verdict. */
 export const hqAppGitTargets: Projection<
   { readonly orgId: string; readonly appId: string },
@@ -385,17 +362,10 @@ export const hqAppGitTargets: Projection<
   equals: sameValue,
 };
 /** Structure and navigation standing have no dependency on individual people. */
-export const canonicalHqMenuNavigation = {
-  name: "canonicalHqMenuNavigation",
-  keyOf: (orgId) => orgId,
-  derive: (read, orgId) => navigationOf(read, orgId, false),
-  equals: sameValue,
-} satisfies Projection<string, CanonicalHqDeliveryNavigationRead>;
-
 export const hqMenuNavigation = {
   name: "hqMenuNavigation",
   keyOf: (orgId) => orgId,
-  derive: (read, orgId) => compatibilityNavigation(canonicalHqMenuNavigation.derive(read, orgId)),
+  derive: (read, orgId) => navigationOf(read, orgId, false),
   equals: sameValue,
 } satisfies Projection<string, HqDeliveryNavigationRead>;
 

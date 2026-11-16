@@ -34,7 +34,8 @@ import {
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
   type HqMateOfferStates,
-  type CanonicalHqStructure,
+  type HqPresses,
+  type HqStructure,
 } from "@t3tools/client-runtime/zerops/hq";
 import { RESTARTING_PHRASE } from "@t3tools/client-runtime/zerops/environments";
 import type { CandidatePresence } from "@t3tools/client-runtime/zerops/projections";
@@ -368,7 +369,7 @@ function plainZeropsProject(
  */
 export function plainEvidenceOf(input: {
   readonly hqKnown: boolean;
-  readonly structure: CanonicalHqStructure | null;
+  readonly structure: HqStructure | null;
   /** Each press HQ holds a record of, by project (`hq_press`); none before HQ said. */
   readonly presses: Readonly<Record<string, unknown>> | null;
   /** The projects this tab is making or finishing. */
@@ -388,7 +389,7 @@ export function plainEvidenceOf(input: {
  * Every project HQ's structure holds any record of: placed in an application or none, a
  * birth bound to it, an environment, or one whose removal HQ has not finished.
  */
-export function hqRecordedProjects(structure: CanonicalHqStructure): ReadonlySet<string> {
+export function hqRecordedProjects(structure: HqStructure): ReadonlySet<string> {
   const recorded = new Set<string>();
   for (const mate of structure.ungrouped) recorded.add(mate.projectId);
   for (const app of structure.apps) {

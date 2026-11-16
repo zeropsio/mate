@@ -3,7 +3,7 @@
  * as HQ's structure lists them: what an ask's chip names, and what makes its press red.
  */
 import { useAtomValue } from "@effect/atom-react";
-import type { CanonicalHqStructure } from "@t3tools/client-runtime/zerops/hq";
+import type { HqStructure } from "@t3tools/client-runtime/zerops/hq";
 
 import { hqNavigationAtom } from "../state/zerops";
 
@@ -11,7 +11,7 @@ type EnvironmentTier = "stage" | "production";
 
 /** The tier of the environment `projectId` is; `null` for any other project, or before HQ says. */
 export function environmentTierOf(
-  structure: CanonicalHqStructure | null,
+  structure: HqStructure | null,
   projectId: string,
 ): EnvironmentTier | null {
   for (const app of structure?.apps ?? []) {

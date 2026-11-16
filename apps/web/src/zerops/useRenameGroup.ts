@@ -7,7 +7,7 @@
  * from the name the application had. HQ's refusal rejects and nothing else happens; a project
  * Zerops refuses is returned with why, and `retry` sends the same targets again.
  */
-import type { ZeropsGroup } from "@t3tools/client-runtime/zerops";
+import type { CanonicalGroup } from "@t3tools/client-runtime/zerops";
 import { readZeropsMembership } from "@t3tools/client-runtime/zerops";
 import { useCallback, useContext } from "react";
 
@@ -25,7 +25,7 @@ import { useZeropsSession } from "./ZeropsSessionProvider";
 
 /** The projects Zerops did not rename: none once the application and all its projects are. */
 export type RenameGroup = (
-  group: Pick<ZeropsGroup, "groupId" | "name" | "nameSource">,
+  group: Pick<CanonicalGroup, "groupId" | "name" | "nameSource">,
   name: string,
 ) => Promise<ReadonlyArray<ProjectRenameFailure>>;
 
@@ -47,7 +47,7 @@ export function useRenameGroup(): GroupRenaming {
   const renameProjects = useRenameProjects();
 
   const rename = useCallback(
-    async (group: Pick<ZeropsGroup, "groupId" | "name" | "nameSource">, name: string) => {
+    async (group: Pick<CanonicalGroup, "groupId" | "name" | "nameSource">, name: string) => {
       if (activeOrganization === null) throw new Error("No organization is open.");
       // Before HQ's write, from the name the application has: the targets stay as planned.
       const plan = planProjectRenames(

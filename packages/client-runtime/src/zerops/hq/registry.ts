@@ -13,7 +13,7 @@
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 
 import { canonicalEnvironmentsOf } from "./environments.ts";
-import type { HqStructure, CanonicalHqStructure } from "./client.ts";
+import type { HqStructure } from "./client.ts";
 import { isRoleProjectKind } from "./placement.ts";
 
 interface ZeropsRegistryProject {
@@ -33,7 +33,7 @@ export interface ZeropsRegistry {
 
 export const EMPTY_REGISTRY: ZeropsRegistry = { groups: [] };
 
-export function registryFromHq(structure: HqStructure | CanonicalHqStructure): ZeropsRegistry {
+export function registryFromHq(structure: HqStructure): ZeropsRegistry {
   return {
     groups: structure.apps.map((app) => {
       const environments = canonicalEnvironmentsOf(app.environments) ?? [];

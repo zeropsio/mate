@@ -12,35 +12,28 @@ import type { HqNavigationRollout } from "@t3tools/shared/hqStream";
 import {
   readDeliveryEnvironments,
   type UnreadEnvironment,
-  zeropsEnvironments,
-  type CanonicalHqEnvironment,
   type HqDeliveryEnvironment,
-  type HqEnvironment,
 } from "../../zerops/hq/environments.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import { sameValue } from "./equal.ts";
 
 export interface AppEnvironmentsRead {
   /** `undefined` until HQ told them. */
-  readonly environments: ReadonlyArray<HqEnvironment> | undefined;
+  readonly environments: ReadonlyArray<HqDeliveryEnvironment> | undefined;
   /** Environments HQ sent that this build cannot read: present, never an application without them. */
   readonly unread: ReadonlyArray<UnreadEnvironment>;
   /** Its recent rollouts, with the environments; absent from an older HQ. */
   readonly rollouts?: ReadonlyArray<HqNavigationRollout>;
-}
-
-export interface CanonicalAppEnvironmentsRead extends Omit<AppEnvironmentsRead, "environments"> {
-  readonly environments: ReadonlyArray<HqDeliveryEnvironment> | undefined;
   /** Its production where it is deployed outside Mate; absent where none stands, or while untold. */
   readonly outside?: HqOutsideEnvironment;
 }
 
-const UNTOLD: CanonicalAppEnvironmentsRead = {
+const UNTOLD: AppEnvironmentsRead = {
   environments: undefined,
   unread: [],
 };
 
-function environmentsRead(read: ProjectionReads, appId: string): CanonicalAppEnvironmentsRead {
+function environmentsRead(read: ProjectionReads, appId: string): AppEnvironmentsRead {
   const fact = read.fact("hqApp", appId);
   if (fact.kind !== "known") return UNTOLD;
   const { environments, rollouts } = fact.value;
@@ -54,53 +47,13 @@ function environmentsRead(read: ProjectionReads, appId: string): CanonicalAppEnv
   };
 }
 
-export const canonicalAppEnvironments: Projection<
-  { readonly orgId: string; readonly appId: string },
-  CanonicalAppEnvironmentsRead
-> = {
-  name: "canonicalAppEnvironments",
-  keyOf: ({ orgId, appId }) => `${orgId}/${appId}`,
-  derive: (read, { appId }) => environmentsRead(read, appId),
-  equals: sameValue,
-};
-
-const compatibilityRead = ({
-  outside: _outside,
-  ...answer
-}: CanonicalAppEnvironmentsRead): AppEnvironmentsRead => ({
-  ...answer,
-  environments:
-    answer.environments === undefined
-      ? undefined
-      : zeropsEnvironments(
-          answer.environments.filter(
-            (environment): environment is CanonicalHqEnvironment =>
-              environment.target.kind === "zerops",
-          ),
-        ),
-});
-
 export const appEnvironments: Projection<
   { readonly orgId: string; readonly appId: string },
   AppEnvironmentsRead
 > = {
   name: "appEnvironments",
   keyOf: ({ orgId, appId }) => `${orgId}/${appId}`,
-  derive: (read, key) => compatibilityRead(canonicalAppEnvironments.derive(read, key)),
-  equals: sameValue,
-};
-
-/** Each named application's environments, by its id: what a surface over several reads. */
-export const appsEnvironments: Projection<
-  { readonly orgId: string; readonly appIds: ReadonlyArray<string> },
-  Readonly<Record<string, AppEnvironmentsRead>>
-> = {
-  name: "appsEnvironments",
-  keyOf: ({ orgId, appIds }) => `${orgId}/${appIds.join(",")}`,
-  derive: (read, { appIds }) =>
-    Object.fromEntries(
-      appIds.map((appId) => [appId, compatibilityRead(environmentsRead(read, appId))]),
-    ),
+  derive: (read, { appId }) => environmentsRead(read, appId),
   equals: sameValue,
 };
 
@@ -113,7 +66,7 @@ export const environmentById: Projection<
   keyOf: ({ orgId, appId, id }) => `${orgId}/${appId}/${id}`,
   equals: sameValue,
   derive: (read, key) =>
-    canonicalAppEnvironments
+    appEnvironments
       .derive(read, key)
       .environments?.find((environment) => environment.id === key.id),
 };

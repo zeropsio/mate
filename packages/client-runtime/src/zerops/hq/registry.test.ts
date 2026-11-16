@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 
+import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
 import { registryFromHq } from "./registry.ts";
 
 describe("registryFromHq", () => {
@@ -51,7 +52,8 @@ it.each([
     state: "partial",
     environments: [
       {
-        projectId: "stage",
+        id: HqEnvironmentId.make("stage"),
+        target: { kind: "zerops" as const, projectId: ProjectId.make("stage") },
         tier: "stage" as const,
         name: "Stage",
         sources: ["main"],

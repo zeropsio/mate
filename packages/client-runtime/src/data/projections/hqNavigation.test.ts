@@ -1,4 +1,4 @@
-import { canonicalProjectFlow } from "./projectFlow.ts";
+import { projectFlow } from "./projectFlow.ts";
 import { hqProjectPeople } from "./hqProjectPeople.ts";
 import { ZeropsUserId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
@@ -419,7 +419,7 @@ describe("hqNavigation", () => {
       "Stage",
     ]);
     expect(
-      canonicalProjectFlow.derive(readsOfState(next), {
+      projectFlow.derive(readsOfState(next), {
         orgId: ORG,
         appId: "shop",
         hqAddress: undefined,
@@ -934,7 +934,7 @@ describe("release offers from navigation", () => {
         },
       ],
     }).state;
-    const flow = canonicalProjectFlow.derive(readsOfState(next), {
+    const flow = projectFlow.derive(readsOfState(next), {
       orgId: ORG,
       appId: "shop",
       hqAddress: undefined,
@@ -979,7 +979,7 @@ it("Navigation projects recorded release change titles and counts without app de
       },
     ],
   }).state;
-  const flow = canonicalProjectFlow.derive(readsOfState(next), {
+  const flow = projectFlow.derive(readsOfState(next), {
     orgId: ORG,
     appId: "shop",
     hqAddress: undefined,

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { Deployment } from "./flow/deployment.ts";
 import { groupFlow } from "./groupFlow.ts";
-import { deployedVersion, environmentRow } from "./groupRows.ts";
+import { deployedVersion, environmentRowDisplay } from "./groupRows.ts";
 import type { HqJob } from "./hq/environments.ts";
 import type { Shown } from "./knowledge/known.ts";
 import type { EnvironmentBirth } from "@t3tools/shared/hqDeploys";
@@ -480,11 +480,10 @@ describe("listedStopComing — a production, read the way the menu reads it", ()
       merged: [],
       stops: [
         {
-          projectId: "p-xyz-prod",
+          id: "p-xyz-prod",
           name: "xyz - production",
           tier: "production",
-          row: environmentRow({
-            projectId: "p-xyz-prod",
+          row: environmentRowDisplay({
             name: "xyz - production",
             tier: "production",
             sources: "release",

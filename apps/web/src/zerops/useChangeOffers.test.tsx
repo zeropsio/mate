@@ -6,6 +6,7 @@ import { accountReadsAtom, type AccountStore } from "@t3tools/client-runtime/dat
 import { liveProjects, membershipInputs } from "@t3tools/client-runtime/data/fixtures";
 import { RegistryContext } from "@effect/atom-react";
 import type { HqStructure } from "@t3tools/client-runtime/zerops/hq";
+import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
 import { AtomRegistry } from "effect/reactivity";
 import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
@@ -33,7 +34,8 @@ function Probe({ use }: { readonly use: () => unknown }) {
 }
 
 const environment = (projectId: string, tier: "stage" | "production", order: number) => ({
-  projectId,
+  id: HqEnvironmentId.make(projectId),
+  target: { kind: "zerops" as const, projectId: ProjectId.make(projectId) },
   tier,
   name: tier,
   sources: [tier === "stage" ? "main" : "release"],

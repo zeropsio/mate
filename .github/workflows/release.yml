@@ -81,11 +81,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-        with:
-          sparse-checkout: |
-            /*
-            !/.repos/
-          sparse-checkout-cone-mode: false
 
       - name: Restore pnpm metadata
         uses: actions/cache/restore@v4
@@ -327,11 +322,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-        with:
-          sparse-checkout: |
-            /*
-            !/.repos/
-          sparse-checkout-cone-mode: false
 
       - name: Download verified release assets
         uses: actions/download-artifact@v4

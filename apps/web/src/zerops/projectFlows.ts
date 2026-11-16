@@ -7,10 +7,10 @@
 import { useAtomValue } from "@effect/atom-react";
 import {
   accountReadsAtom,
-  canonicalAppEnvironments,
+  appEnvironments,
   shownHqAppChangesAtom,
-  type CanonicalAppEnvironmentsRead,
-  canonicalProjectFlow,
+  type AppEnvironmentsRead,
+  projectFlow,
   projectApplications,
 } from "@t3tools/client-runtime/data";
 import type { CanonicalHqEnvironment } from "@t3tools/client-runtime/zerops/hq";
@@ -98,7 +98,7 @@ export interface ProjectFlows {
 }
 
 const EMPTY_FLOWS: ReadonlyMap<string, ZeropsProjectFlow> = new Map();
-type RuntimeEnvironmentsRead = Omit<CanonicalAppEnvironmentsRead, "environments"> & {
+type RuntimeEnvironmentsRead = Omit<AppEnvironmentsRead, "environments"> & {
   readonly environments: ReadonlyArray<CanonicalHqEnvironment> | undefined;
 };
 const NO_ENVIRONMENTS: Readonly<Record<string, RuntimeEnvironmentsRead>> = {};
@@ -144,7 +144,7 @@ export function useAppsEnvironments(
     return Atom.make((get) =>
       Object.fromEntries(
         key.split("\n").map((appId) => {
-          const answer = get(account.data.project(canonicalAppEnvironments, { orgId, appId }));
+          const answer = get(account.data.project(appEnvironments, { orgId, appId }));
           // Runtime consumers retain canonical identity while excluding Git push jobs.
           return [
             appId,
@@ -291,10 +291,7 @@ export function useFlowNavigation(orgId: string | null) {
 
 export function useCompactProjectFlows(
   apps: FlowApps,
-  reviews?: ReadonlyMap<
-    string,
-    NonNullable<Parameters<typeof canonicalProjectFlow.derive>[1]["review"]>
-  >,
+  reviews?: ReadonlyMap<string, NonNullable<Parameters<typeof projectFlow.derive>[1]["review"]>>,
 ): ProjectFlows {
   const account = useAtomValue(accountReadsAtom);
   const session = useZeropsSession();
@@ -324,7 +321,7 @@ export function useCompactProjectFlows(
         for (const appId of ids) {
           if (appKey !== null && !appKey.split("\n").includes(appId)) continue;
           const flow = get(
-            account.data.project(canonicalProjectFlow, {
+            account.data.project(projectFlow, {
               orgId: account.orgId,
               appId,
               hqAddress,

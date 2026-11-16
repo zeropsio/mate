@@ -49,7 +49,6 @@ describe("Test input guard", () => {
     ["packages/client-runtime/src/data/__fixtures__/hqProjectPeople.ts", true],
     ["packages/client-runtime/src/data/projections/hqProjectPeople.ts", false],
     ["packages/test-recordings/mate-hq/navigation-project.signed-in.json", false],
-    [".repos/effect-smol/packages/effect/test/Schema.test.ts", false],
   ])("Only test and fixture sources are scanned: %s", (path, scanned) => {
     expect(testInputFile(path)).toBe(scanned);
   });

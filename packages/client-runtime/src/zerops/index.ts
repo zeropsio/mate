@@ -52,7 +52,7 @@ export {
   withZeropsMateTag,
   type BirthPlacement,
   type ZeropsEnvironmentRole,
-  type ZeropsGroup,
+  type ZeropsGroupEnvironment,
   type ZeropsGroupPendingMember,
   type ZeropsMembership,
   type ZeropsMateFace,
@@ -106,7 +106,8 @@ export {
 export {
   buildCanonicalGroupTree,
   type CanonicalGroupTreeView,
-  buildZeropsGroupTree,
+  type CanonicalGroupTreeEnvironment,
+  type ZeropsProjectCarrier,
 } from "./groupTree.ts";
 export { rankZeropsCandidateForListing } from "./listingOrder.ts";
 export {
@@ -179,11 +180,14 @@ export {
   appRecipeOf,
   deployWord,
   canonicalEnvironmentRowInputsOf,
+  canonicalGroupStopsOf,
+  type CanonicalGroupEnvironmentRowInput,
+  type CanonicalGroupEnvironmentDeclaration,
+  type CanonicalGroupStops,
   releaseDeploys,
   type AppRecipe,
   type GroupEnvironmentRowInput,
   type GroupStopProject,
-  type GroupStops,
   type ReleaseCreation,
   type ReleaseCreationFailure,
   type ReleaseDeployFailure,
@@ -386,7 +390,6 @@ export {
   deployedVersion,
   canonicalEnvironmentRow,
   type CanonicalEnvironmentRow,
-  environmentRow,
   type DeployedVersion,
   type EnvironmentRow,
   type EnvironmentServiceState,

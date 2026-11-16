@@ -1,12 +1,11 @@
 import {
-  canonicalHqListNavigation,
+  hqListNavigation,
   hqMateDirectory,
   hqListedMateIdentities,
   hqListedMates,
   organizationMateListProjects,
   EMPTY_MATE_DIRECTORY,
 } from "./projections/hqMateDirectory.ts";
-import { zeropsStructure } from "../zerops/hq/structure.ts";
 import type { RoleMateVisibility } from "../zerops/mateAccess.ts";
 import { mateVisibility } from "./projections/mateVisibility.ts";
 import { mateHealth } from "./projections/mateHealth.ts";
@@ -71,8 +70,7 @@ import { mateLinks, mateOfEnvironment, type MateLinksRead } from "./projections/
 import {
   hqAppChanges,
   hqNavigation,
-  canonicalHqMenuNavigation,
-  type CanonicalHqNavigationRead,
+  hqMenuNavigation,
   hqPersonFacts,
   hqStatus,
   type HqNavigationRead,
@@ -790,26 +788,17 @@ export const shownAttentionProjectsAtom = Atom.make((get): ReadonlyArray<string>
   ),
 );
 
-export const shownCanonicalHqMenuNavigationAtom = Atom.make(
-  (get): CanonicalHqNavigationRead & { readonly orgId: string | null } => {
+export const shownHqMenuNavigationAtom = Atom.make(
+  (get): HqNavigationRead & { readonly orgId: string | null } => {
     const account = get(accountReadsAtom);
     return account?.orgId == null
       ? { ...NOT_READ_HQ, structure: null, orgId: null }
       : {
-          ...get(account.data.project(canonicalHqMenuNavigation, account.orgId)),
+          ...get(account.data.project(hqMenuNavigation, account.orgId)),
           orgId: account.orgId,
         };
   },
 );
-
-/** Compatibility readers share the canonical menu derivation. */
-export const shownHqMenuNavigationAtom = Atom.make((get) => {
-  const navigation = get(shownCanonicalHqMenuNavigationAtom);
-  return {
-    ...navigation,
-    structure: navigation.structure === null ? null : zeropsStructure(navigation.structure),
-  };
-});
 
 /** The mounted account's HQ identities; names and faces share no platform listing dependency. */
 export const shownHqMateIdentitiesAtom = Atom.make(
@@ -835,21 +824,14 @@ export const shownMateListProjectsAtom = Atom.make((get) => {
         orgId: account.orgId,
       };
 });
-export const shownCanonicalHqListNavigationAtom = Atom.make((get) => {
+export const shownHqListNavigationAtom = Atom.make((get) => {
   const account = get(accountReadsAtom);
   return account?.orgId == null
     ? { ...NOT_READ_HQ, structure: null, orgId: null }
     : {
-        ...get(account.data.project(canonicalHqListNavigation, account.orgId)),
+        ...get(account.data.project(hqListNavigation, account.orgId)),
         orgId: account.orgId,
       };
-});
-export const shownHqListNavigationAtom = Atom.make((get) => {
-  const navigation = get(shownCanonicalHqListNavigationAtom);
-  return {
-    ...navigation,
-    structure: navigation.structure === null ? null : zeropsStructure(navigation.structure),
-  };
 });
 export const shownHqListedMateIdentitiesAtom = Atom.make(
   (get): Readonly<Record<string, HqMateIdentity>> => {

@@ -34,7 +34,7 @@ import {
   hqIndexWord,
   listedProjectAtom,
   rosterAnswered,
-  shownCanonicalHqListNavigationAtom,
+  shownHqListNavigationAtom,
   type HqIndexWord,
   type ProjectValue,
 } from "@t3tools/client-runtime/data";
@@ -301,7 +301,7 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
     resolveEnvironment(machines, index, environmentId) === undefined;
   // What the menu says of HQ now, from the same reads and clock the menu's header says it from.
   const outage = useHqOutage(
-    useAtomValue(onHq ? shownCanonicalHqListNavigationAtom : HQ_ANSWERING),
+    useAtomValue(onHq ? shownHqListNavigationAtom : HQ_ANSWERING),
     useClientSettings((settings) => settings.timestampFormat),
     onHq,
   );

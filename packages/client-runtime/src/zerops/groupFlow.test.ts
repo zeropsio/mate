@@ -16,7 +16,7 @@ import {
   type GroupFlowPending,
   type GroupFlowStopInput,
 } from "./groupFlow.ts";
-import { deployedVersion, environmentRow, type EnvironmentRow } from "./groupRows.ts";
+import { deployedVersion, environmentRowDisplay, type EnvironmentRow } from "./groupRows.ts";
 import type { Shown } from "./knowledge/known.ts";
 import { nameStopByRelease } from "./release.ts";
 import type { FlowPullRequest } from "./projectFlow.ts";
@@ -82,8 +82,7 @@ function declared(input: {
   readonly appVersionName?: string;
   readonly status?: HqJob["state"];
 }): EnvironmentRow {
-  return environmentRow({
-    projectId: input.projectId,
+  return environmentRowDisplay({
     name: input.name,
     tier: input.tier,
     sources: input.tier === "production" ? "release" : ["main"],
@@ -133,7 +132,7 @@ const FSADFDASFSA = group({
   merged: [pull({ number: 4, title: "Mate: weatherdev", merged: true, mateProjectId: "p-juno" })],
   stops: [
     {
-      projectId: "p-prod",
+      id: "p-prod",
       name: "production",
       tier: "production",
       // The deploy half's REST read names a commit; the platform says nothing is active.
@@ -165,7 +164,7 @@ const SM_FIXTURE = group({
   pullRequests: [pull()],
   stops: [
     {
-      projectId: "p-stage",
+      id: "p-stage",
       name: "stage",
       tier: "stage",
       row: declared({
@@ -212,7 +211,7 @@ const ZEROPS_MATE = group({
   ],
   stops: [
     {
-      projectId: "p-zm-stage",
+      id: "p-zm-stage",
       name: "zerops-mate - stage",
       tier: "stage",
       row: undefined,
@@ -293,7 +292,7 @@ describe("groupFlow", () => {
     ]);
     expect(flow.stages).toEqual([
       {
-        projectId: "p-stage",
+        id: "p-stage",
         name: "stage",
         state: "deployed",
         version: deployedVersion(STAGE_SHA),
@@ -365,7 +364,7 @@ describe("groupFlow", () => {
     const flow = groupFlow(ZEROPS_MATE);
     expect(flow.stages).toEqual([
       {
-        projectId: "p-zm-stage",
+        id: "p-zm-stage",
         name: "zerops-mate - stage",
         state: "empty",
         version: undefined,
@@ -400,7 +399,7 @@ describe("groupFlow", () => {
     stops: [
       ...FSADFDASFSA.stops,
       {
-        projectId: "p-stage",
+        id: "p-stage",
         name: "stage",
         tier: "stage" as const,
         row: declared({
@@ -1010,7 +1009,7 @@ describe("groupFlow — creations under way", () => {
     const stage = creating({ projectId: "p-new-stage", kind: "stage", name: "Todo - stage" });
     const flow = groupFlow({ ...SM_FIXTURE, pending: [stage, creating()] });
     expect(flow.creatingStages).toEqual([stage]);
-    expect(flow.stages.map((entry) => entry.projectId)).toEqual(["p-stage"]);
+    expect(flow.stages.map((entry) => entry.id)).toEqual(["p-stage"]);
 
     const listed = groupFlow({
       ...SM_FIXTURE,
@@ -1025,7 +1024,7 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
   const MINUTE = 60_000;
   const at = (msAgo: number) => DateTime.formatIso(DateTime.makeUnsafe(NOW - msAgo));
   const stageStop = (over: Partial<GroupFlowStopInput> = {}): GroupFlowStopInput => ({
-    projectId: "p-pantry-stage",
+    id: "p-pantry-stage",
     name: "Pantry - stage",
     tier: "stage",
     projectStatus: "ACTIVE",
@@ -1040,8 +1039,7 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
       Partial<HqJob> & { readonly state: HqJob["state"]; readonly msAgo: number }
     >
   ): EnvironmentRow =>
-    environmentRow({
-      projectId: "p-pantry-stage",
+    environmentRowDisplay({
       name: "Pantry - stage",
       tier: "stage",
       sources: ["main"],
@@ -1055,8 +1053,7 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
     { keyHeld: true, keyInvalid: true, keyGap: true },
     { keyHeld: true, keyInvalid: false, keyGap: false },
   ])("reads HQ's key, held $keyHeld and invalid $keyInvalid, as a gap: $keyGap", (key) => {
-    const row = environmentRow({
-      projectId: "p-pantry-stage",
+    const row = environmentRowDisplay({
       name: "Pantry - stage",
       tier: "stage",
       sources: ["main"],
@@ -1368,14 +1365,13 @@ it("A listed environment replaces its target's creation while another project ke
     group({
       stops: [
         {
-          projectId: "environment-stage",
+          id: "environment-stage",
           name: "Stage",
           tier: "stage",
           addresses: [],
           deployment: undefined,
           row: {
-            ...environmentRow({
-              projectId: "project-stage",
+            ...environmentRowDisplay({
               name: "Stage",
               tier: "stage",
               sources: ["main"],
@@ -1392,9 +1388,7 @@ it("A listed environment replaces its target's creation while another project ke
       ],
     }),
   );
-  expect(flow.stages.map(({ projectId, name }) => [projectId, name])).toEqual([
-    ["environment-stage", "Stage"],
-  ]);
+  expect(flow.stages.map(({ id, name }) => [id, name])).toEqual([["environment-stage", "Stage"]]);
   expect(flow.creatingStages.map(({ projectId, name }) => [projectId, name])).toEqual([
     ["environment-stage", "Still coming"],
   ]);
@@ -1423,7 +1417,7 @@ it("a Git production's blocker reaches group flow without a runtime read or Rele
     group({
       stops: [
         {
-          projectId: "",
+          id: "",
           name: "Production",
           tier: "production",
           row,

@@ -30,7 +30,7 @@ import {
   type EnvironmentCreationStepProgress,
   type RecipeRuntime,
   type ZeropsEnvironmentRole,
-  type ZeropsGroup,
+  type CanonicalGroup,
   type ZeropsAgentType,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
@@ -67,7 +67,7 @@ import { useZeropsData } from "./zeropsDataContext";
 
 /** One environment to stand up in a group, as the surface that asked for it knows it. */
 interface EnvironmentCreationRequest {
-  readonly group: Pick<ZeropsGroup, "groupId" | "name">;
+  readonly group: Pick<CanonicalGroup, "groupId" | "name">;
   /** The group's environments, whose agents a new one offers the same of. */
   readonly environments: ReadonlyArray<{ readonly item: ZeropsCandidate }>;
   readonly role: ZeropsEnvironmentRole;

@@ -600,13 +600,13 @@ function StopReads<T>({ entry }: { readonly entry: ProjectsFlowGroup<T> }) {
   return (
     <div className="ov-reads">
       {stops.map((stop) => (
-        <span className="ov-read" data-zerops-row-stop={stop.projectId} key={stop.projectId}>
+        <span className="ov-read" data-zerops-row-stop={stop.id} key={stop.id}>
           {stop.readFailed === true ? (
             <span>
               {stop.name} · {stopLine(stop).word}
             </span>
           ) : null}
-          <StopReadAgain projectId={stop.projectId} />
+          <StopReadAgain projectId={stop.id} />
         </span>
       ))}
     </div>

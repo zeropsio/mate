@@ -9,7 +9,7 @@ import {
   PROJECT_ROUTINGS_LISTING,
   type PlaceAddresses,
 } from "@t3tools/client-runtime/data";
-import type { ZeropsGroup } from "@t3tools/client-runtime/zerops";
+import type { CanonicalGroup } from "@t3tools/client-runtime/zerops";
 import { useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
 import { useRef } from "react";
@@ -54,7 +54,7 @@ export function CardGroupMenu({
   actions,
   production,
 }: {
-  readonly group: Pick<ZeropsGroup, "groupId" | "name" | "nameSource">;
+  readonly group: Pick<CanonicalGroup, "groupId" | "name" | "nameSource">;
   /** The project's own verbs, as the page offers them. */
   readonly actions: ReadonlyArray<ZeropsMenuEntry>;
   readonly production: CardProductionVerbs | undefined;

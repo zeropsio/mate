@@ -60,7 +60,7 @@ export function useProjectOrderPreference(): readonly [
   return useLocalStorage(PROJECT_ORDER_STORAGE_KEY, DEFAULT_PROJECT_ORDER, ProjectOrderSchema);
 }
 
-/** What `buildZeropsGroupTree` is given: the order, and in *Custom* the arrangement. */
+/** What `buildCanonicalGroupTree` is given: the order, and in *Custom* the arrangement. */
 export interface ProjectOrderOptions {
   readonly order: ZeropsProjectOrder;
   readonly customOrder?: ReadonlyArray<string>;

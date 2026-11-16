@@ -3,7 +3,7 @@
  * planned from the full held set — a project the grant withholds is a member still — before HQ's
  * write, and HQ's refusal leaves every project as it was.
  */
-import type { ZeropsGroup, ZeropsProject } from "@t3tools/client-runtime/zerops";
+import type { CanonicalGroup, ZeropsProject } from "@t3tools/client-runtime/zerops";
 import { createElement } from "react";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -49,7 +49,7 @@ vi.mock("./ZeropsInventoryProvider", () => ({
 }));
 vi.mock("./useRenameProjects", () => ({ useRenameProjects: () => mock.renameProjects }));
 
-const GROUP = { groupId: "app-1", name: "SPN", nameSource: "hq" } as unknown as ZeropsGroup;
+const GROUP = { groupId: "app-1", name: "SPN", nameSource: "hq" } as unknown as CanonicalGroup;
 
 const inApp = (id: string, name: string) =>
   ({

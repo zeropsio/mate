@@ -9,7 +9,7 @@
  * what a group's header says about itself.
  */
 
-import type { ZeropsEnvironmentRole, ZeropsGroup } from "@t3tools/client-runtime/zerops";
+import type { ZeropsEnvironmentRole, CanonicalGroup } from "@t3tools/client-runtime/zerops";
 
 /**
  * How a role is written in a sentence — "Add production", "Acme Docs -
@@ -56,7 +56,7 @@ export function environmentRoleTag(role: ZeropsEnvironmentRole | undefined): str
  * holds no application without a name, so this is a read problem: the tree
  * marks it rather than pretending `7k2m9qx4vb1c` is a title.
  */
-export function groupNameUnread(group: Pick<ZeropsGroup, "nameSource">): boolean {
+export function groupNameUnread(group: Pick<CanonicalGroup, "nameSource">): boolean {
   return group.nameSource === "unread";
 }
 

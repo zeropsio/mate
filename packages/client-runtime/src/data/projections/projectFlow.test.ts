@@ -4,11 +4,12 @@ import { mountRoster } from "../../zerops/testing/accountRoster.ts";
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
 import { membershipInputs } from "../__fixtures__/membership.ts";
 import { hqAppFamily, hqAppsScope } from "../families/hqNavigation.ts";
+import { hqMateScope } from "../families/hqMate.ts";
 import { hqAppDetailScope } from "../families/hqAppDetail.ts";
 import { inventoryPlacements } from "./inventory.ts";
-import { canonicalHqNavigation } from "./hqNavigation.ts";
+import { hqNavigation } from "./hqNavigation.ts";
 import { environmentSlots } from "../../zerops/groupEnvironments.ts";
-import type { OperationReceipt } from "../model.ts";
+import { linkKeys, type OperationReceipt } from "../model.ts";
 import { makeAccountStore, readsOfState } from "../store.ts";
 import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
 import { hqOffer } from "@t3tools/shared/hqOffers";
@@ -17,7 +18,8 @@ import {
   type CanonicalHqEnvironment,
   type HqJob,
 } from "../../zerops/hq/environments.ts";
-import { canonicalProjectFlow } from "./projectFlow.ts";
+import { environmentById } from "./appEnvironments.ts";
+import { projectFlow } from "./projectFlow.ts";
 import { productionRelease } from "../../zerops/projectFlow.ts";
 
 const key = {
@@ -63,7 +65,8 @@ function fixture(
             {
               name: "production",
               tier: "production",
-              projectId: "prod",
+              id: HqEnvironmentId.make("prod"),
+              target: { kind: "zerops", projectId: ProjectId.make("prod") },
               sources: ["release"],
               order: 1,
               keyHeld: true,
@@ -76,7 +79,7 @@ function fixture(
       ],
     },
   });
-  return { registry, store };
+  return { registry, store, read: () => projectFlow.derive(readsOfState(store.state()), key) };
 }
 
 describe("Projects compact flow", () => {
@@ -114,9 +117,7 @@ describe("Projects compact flow", () => {
       value: { name: "Shop partial" },
     });
     expect(
-      canonicalProjectFlow
-        .derive(read, key)
-        ?.environments.map(({ id, target }) => ({ id, target })),
+      projectFlow.derive(read, key)?.environments.map(({ id, target }) => ({ id, target })),
     ).toEqual([{ id: "prod", target: { kind: "zerops", projectId: "prod" } }]);
     f.registry.dispose();
   });
@@ -152,7 +153,7 @@ describe("Projects compact flow", () => {
         },
       })),
     });
-    const atom = f.store.data.project(canonicalProjectFlow, key);
+    const atom = f.store.data.project(projectFlow, key);
     const changes: Array<{ readonly read: boolean; readonly environments: number }> = [];
     const stop = f.registry.subscribe(
       atom,
@@ -190,7 +191,7 @@ describe("Projects compact flow", () => {
       expect(flow.environments).toEqual([]);
       expect(changes.every((change) => change.read)).toBe(true);
       expect(changes.at(-1)?.environments).toBe(0);
-      const can = canonicalHqNavigation.derive(read, "org").structure?.apps[0]?.can;
+      const can = hqNavigation.derive(read, "org").structure?.apps[0]?.can;
       const rows = environmentSlots({
         environments: flow.environments,
         devstages: [],
@@ -299,7 +300,7 @@ describe("Projects compact flow", () => {
         })),
       });
       try {
-        return canonicalProjectFlow
+        return projectFlow
           .derive(readsOfState(f.store.state()), key)
           ?.codeRepos?.map(({ name }) => name);
       } finally {
@@ -312,6 +313,92 @@ describe("Projects compact flow", () => {
       "nextstoredev",
     ]);
     expect(codeRepos({ stage: null, production: null })).toEqual([]);
+  });
+
+  it("shows production's actual version while recipes and release history are unread", () => {
+    const f = fixture();
+    expect(f.read()?.environments[0]?.version.label).toBe("v1.2.3");
+    expect(f.read()?.environments[0]?.name).toBe("Production");
+    expect(f.read()?.releasesKnown).toBe(false);
+    expect(f.read()?.recipeRead).toBe(false);
+    expect(f.read()?.changesKnown).toBe(true);
+    f.registry.dispose();
+  });
+  it("keeps an unaffected application's projected value on an unrelated attention update", () => {
+    const f = fixture();
+    const atom = f.store.data.project(projectFlow, key);
+    const release = f.registry.mount(atom);
+    const before = f.registry.get(atom);
+    const scope = hqMateScope("org", "other");
+    f.store.dispatch({
+      kind: "stream",
+      key: scope,
+      now: 0,
+      event: { kind: "demand", demanded: true },
+    });
+    f.store.dispatch({ kind: "baseline-begin", scope, generation: 0 });
+    f.store.dispatch({
+      kind: "baseline-commit",
+      scope,
+      generation: 0,
+      via: "hq-stream",
+      members: ["other"],
+      rows: [
+        {
+          family: "hqMate",
+          id: "other",
+          revision: { kind: "hq", incarnation: "seed", revision: 100 },
+          value: {
+            presence: { online: true, since: "2026-10-08T00:00:00Z", overview: "none" },
+            overview: null,
+            attention: null,
+            attentionState: "none",
+          },
+        },
+      ],
+    });
+    expect(f.registry.get(atom)).toBe(before);
+    release();
+    f.registry.dispose();
+  });
+  it("retains the known flow during HQ recovery and withholds the release action", () => {
+    const f = fixture();
+    f.store.dispatch({
+      kind: "stream",
+      key: linkKeys.hq("org"),
+      now: 0,
+      event: {
+        kind: "fault",
+        jitter: 0,
+        fault: { outcome: "transient", message: "503" },
+      },
+    });
+    expect(f.read()?.environments[0]?.version.label).toBe("v1.2.3");
+    expect(f.read()?.release.gate).toEqual({
+      allowed: false,
+      reason: "HQ is not answering right now.",
+    });
+    f.registry.dispose();
+  });
+  it("A withheld production explains changed access in the release gate and runtime notice's words.", () => {
+    const f = fixture();
+    f.store.dispatch({ kind: "access", family: "project", id: "prod", access: "denied" });
+    expect(f.read()?.release.gate).toEqual({
+      allowed: false,
+      reason: "Your access to this project changed.",
+    });
+    f.registry.dispose();
+  });
+
+  it("purges a denied production's protected version without erasing another application", () => {
+    const f = fixture();
+    f.store.dispatch({ kind: "access", family: "project", id: "prod", access: "denied" });
+    expect(f.read()?.environments[0]?.version.label).toBeUndefined();
+    expect(f.read()?.release.gate.allowed).toBe(false);
+    expect(
+      projectFlow.derive(readsOfState(f.store.state()), { ...key, appId: "other" }),
+    ).toBeDefined();
+    f.registry.dispose();
   });
 });
 
@@ -382,10 +469,42 @@ function seedRuntime(
     },
   });
 }
+it("An environment's id never opens a Zerops project.", () => {
+  const registry = AtomRegistry.make();
+  const store = mountRoster(registry, "org", [
+    { id: "git-id-is-a-real-project", name: "Decoy", status: "ACTIVE" },
+    { id: "project-stage", name: "Shop - Stage", status: "ACTIVE" },
+  ]);
+  seedRuntime(store);
+  const reads = readsOfState(store.state());
+  const projectsRead: string[] = [];
+  const tracked: typeof reads = {
+    ...reads,
+    fact: (family, id) => {
+      if (family === "project") projectsRead.push(id);
+      return reads.fact(family, id);
+    },
+  };
+  const flow = projectFlow.derive(tracked, key)!;
+  expect([...new Set(projectsRead)]).toEqual(["project-stage"]);
+  expect(flow.environments.map((row) => ({ id: row.id, target: row.target }))).toEqual([
+    { id: "git-id-is-a-real-project", target: { kind: "git", branch: "main", delivery: "direct" } },
+    { id: "environment-stage", target: { kind: "zerops", projectId: "project-stage" } },
+  ]);
+  expect(flow.environments.every((row) => !Object.hasOwn(row, "projectId"))).toBe(true);
+  expect(
+    environmentById.derive(tracked, { ...key, id: HqEnvironmentId.make("environment-stage") })
+      ?.target,
+  ).toEqual({ kind: "zerops", projectId: "project-stage" });
+  expect(
+    environmentById.derive(tracked, { ...key, id: HqEnvironmentId.make("project-stage") }),
+  ).toBeUndefined();
+  registry.dispose();
+});
 it("One repository's two runtime services share one environment identity and retain their own jobs.", () => {
   const registry = AtomRegistry.make();
   const store = makeAccountStore(registry);
-  const read = () => canonicalProjectFlow.derive(readsOfState(store.state()), key);
+  const read = () => projectFlow.derive(readsOfState(store.state()), key);
   expect(read()).toBeUndefined();
   seedRuntime(store, [runtimeEnvironment]);
   expect(read()?.environments.map((row) => row.id)).toEqual(["environment-stage"]);
@@ -437,8 +556,8 @@ describe("the version names the account's store states", () => {
       { id: "s2", activeAppVersion: { id: "v-1", name: null, source: "GIT" } },
       { id: "s3" },
     ]);
-    const services = canonicalProjectFlow.derive(readsOfState(f.store.state()), key)
-      ?.environmentInputs[0]?.services;
+    const services = projectFlow.derive(readsOfState(f.store.state()), key)?.environmentInputs[0]
+      ?.services;
     expect(services?.map(({ serviceId, appVersionName }) => [serviceId, appVersionName])).toEqual([
       ["s1", "main 3f9c1b2"],
       ["s2", undefined],
@@ -453,8 +572,8 @@ describe("the version names the account's store states", () => {
       { id: "s2", activeAppVersion: null },
       { id: "s3" },
     ]);
-    const services = canonicalProjectFlow.derive(readsOfState(f.store.state()), key)
-      ?.environmentInputs[0]?.services;
+    const services = projectFlow.derive(readsOfState(f.store.state()), key)?.environmentInputs[0]
+      ?.services;
     expect(services?.map(({ serviceId, activeVersionId }) => [serviceId, activeVersionId])).toEqual(
       [
         ["s1", "v-1"],
@@ -517,7 +636,7 @@ describe("what a Mate is told of production", () => {
       },
     ]);
     deliverReleases(f.store);
-    const flow = canonicalProjectFlow.derive(readsOfState(f.store.state()), key);
+    const flow = projectFlow.derive(readsOfState(f.store.state()), key);
     expect(productionRelease(flow)).toEqual({
       tag: "v0.2.0",
       taggedAt: "2026-10-16T19:44:40Z",
@@ -535,7 +654,7 @@ it.each(
   "An accepted $kind keeps $target production releasing until HQ publishes its rollout",
   ({ kind, target }) => {
     const f = fixture();
-    const atom = f.store.data.project(canonicalProjectFlow, key);
+    const atom = f.store.data.project(projectFlow, key);
     const read = () => f.registry.get(atom)!.release;
     const intent =
       kind === "release"
@@ -656,6 +775,40 @@ it.each(
       read().inFlight,
       "ASSERTION: HQ's completed rollout ends the accepted-flight bridge",
     ).toBeUndefined();
+    f.registry.dispose();
+  },
+);
+
+it.each(["failed", "cancelled"] as const)(
+  "An accepted release stops holding production when HQ reports it %s",
+  (outcome) => {
+    const f = fixture();
+    const intent = {
+      kind: "release" as const,
+      orgId: "org",
+      appId: "shop",
+      tag: "v1.2.4",
+      groupHead: "a".repeat(40),
+      entries: [],
+    };
+    const receipt: OperationReceipt = {
+      requestId: "release-request",
+      operationId: "v1.2.4",
+      executor: "hq",
+      affected: [],
+      handles: [],
+      acceptance: { kind: "accepted" },
+      outcome: { kind: "pending" },
+    };
+    f.store.dispatch({ kind: "operation-recorded", requestId: receipt.requestId, intent });
+    f.store.dispatch({ kind: "operation-receipt", receipt });
+    expect(f.read()?.release.inFlight).toBe("v1.2.4");
+    f.store.dispatch({
+      kind: "operation-receipt",
+      receipt: { ...receipt, outcome: { kind: outcome, evidence: "HQ ended the release." } },
+    });
+    expect(f.read()?.release.inFlight).toBeUndefined();
+    expect(f.store.state().indexes.get("accepted-release:shop")?.size).toBe(0);
     f.registry.dispose();
   },
 );

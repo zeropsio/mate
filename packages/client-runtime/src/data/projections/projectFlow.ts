@@ -2,13 +2,7 @@
 import { ProjectId } from "@t3tools/contracts";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import { changePermission } from "@t3tools/shared/zeropsPermissions";
-import {
-  canonicalGroupStopsOf,
-  codeRepositoriesOf,
-  zeropsStops,
-  type CanonicalGroupStops,
-} from "../../zerops/groupDeploys.ts";
-import type { CanonicalEnvironmentRow } from "../../zerops/groupRows.ts";
+import { canonicalGroupStopsOf, codeRepositoriesOf } from "../../zerops/groupDeploys.ts";
 import { flowReleaseOf, appRecipeOf, summarizeEnvironmentServices } from "../../zerops/index.ts";
 import { nameUnderApp } from "../../zerops/groups.ts";
 import { readyGitPreflight } from "../../zerops/release.ts";
@@ -20,7 +14,7 @@ import { hqAppsScope } from "../families/hqNavigation.ts";
 import { linkKeys } from "../model.ts";
 import { acceptedReleaseOf } from "../operations/receipts.ts";
 import type { Projection } from "../store.ts";
-import { canonicalAppEnvironments } from "./appEnvironments.ts";
+import { appEnvironments } from "./appEnvironments.ts";
 import { hqAppDetail } from "./hqAppDetail.ts";
 import { platformAccess } from "./platformAccess.ts";
 import { projectServices } from "./services.ts";
@@ -107,13 +101,7 @@ interface ProjectFlowKey {
     | undefined;
 }
 
-export interface CanonicalProjectFlow extends Omit<
-  ZeropsProjectFlow,
-  "declarations" | "environments" | "environmentInputs"
-> {
-  readonly declarations: CanonicalGroupStops["declarations"];
-  readonly environments: ReadonlyArray<CanonicalEnvironmentRow>;
-  readonly environmentInputs: CanonicalGroupStops["environments"];
+export interface CanonicalProjectFlow extends ZeropsProjectFlow {
   /**
    * The repositories a Mate ships code to (`codeRepositoriesOf`), as HQ lists them; `undefined`
    * until HQ said its repositories and the recipe's stage and production.
@@ -122,8 +110,8 @@ export interface CanonicalProjectFlow extends Omit<
   /** The Mate tier as `main` holds it: what pairs a Mate's dev with each part's preview; `undefined` while unread. */
   readonly mateTier: string | undefined;
 }
-export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFlow | undefined> = {
-  name: "canonicalProjectFlow",
+export const projectFlow: Projection<ProjectFlowKey, CanonicalProjectFlow | undefined> = {
+  name: "projectFlow",
   keyOf: (key) =>
     JSON.stringify({
       ...key,
@@ -158,7 +146,7 @@ export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFl
         tier?.state === "present" ? [tier.importYaml] : [],
       ),
     );
-    const { environments, unread, rollouts, outside } = canonicalAppEnvironments.derive(read, key);
+    const { environments, unread, rollouts, outside } = appEnvironments.derive(read, key);
     const projectIds = [
       ...new Set(
         (environments ?? []).flatMap((environment) =>
@@ -243,7 +231,7 @@ export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFl
       groups: [{ groupId: appId }],
       navigationOffers: { [appId]: app.releaseOffer },
       acceptedReleases: new Map(acceptedRelease === undefined ? [] : [[appId, acceptedRelease]]),
-      stops: new Map(stops === undefined ? [] : [[appId, zeropsStops(stops)]]),
+      stops: new Map(stops === undefined ? [] : [[appId, stops]]),
       rolloutNotes: new Map(rollouts === undefined ? [] : [[appId, rollouts]]),
       releases: new Map(detail.releases === undefined ? [] : [[appId, detail.releases]]),
       repos: new Map(detail.repos === undefined ? [] : [[appId, detail.repos]]),

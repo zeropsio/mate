@@ -4,8 +4,8 @@ import { GitStopDetailPage } from "./GitStopDetail";
 import { HqEnvironmentId, type ProjectId } from "@t3tools/contracts";
 import { unreadEnvironmentsWords } from "@t3tools/client-runtime/zerops/hq";
 import {
-  canonicalAppEnvironments,
-  canonicalHqNavigation,
+  appEnvironments,
+  hqNavigation,
   environmentById,
   type VaultView,
 } from "@t3tools/client-runtime/data";
@@ -232,9 +232,9 @@ export function ZeropsStopDetailPage({
     key === null || id === undefined ? null : { ...key, id },
     NO_ROUTE_ENVIRONMENT,
   );
-  const read = useProjection(canonicalAppEnvironments, key, NO_ROUTE_ENVIRONMENTS);
+  const read = useProjection(appEnvironments, key, NO_ROUTE_ENVIRONMENTS);
   const inventory = useZeropsInventory();
-  const navigation = useProjection(canonicalHqNavigation, orgId, NO_ROUTE_NAVIGATION);
+  const navigation = useProjection(hqNavigation, orgId, NO_ROUTE_NAVIGATION);
   const status = useFlowNavigation(orgId);
   const unread = unreadFlowWords({
     failure: status.readFailure,
@@ -364,11 +364,9 @@ function ZeropsProjectStopDetailPage({
   const orgId = useAccountOrgId();
   // HQ's findings on the application: navigation re-reads them on the commit that writes or
   // clears one, and says `[]` once none is left.
-  const appProblems = useProjection(
-    canonicalHqNavigation,
-    orgId,
-    NO_ROUTE_NAVIGATION,
-  )?.structure?.apps.find((app) => app.id === groupId)?.problems;
+  const appProblems = useProjection(hqNavigation, orgId, NO_ROUTE_NAVIGATION)?.structure?.apps.find(
+    (app) => app.id === groupId,
+  )?.problems;
   // Closed on every place's page as it opens: the drawer is this page's, never carried across.
   const [vaultOpen, setVaultOpen] = useState(false);
   // Its vault as the drawer reads it, held while the page is drawn: the aside's card says it at a

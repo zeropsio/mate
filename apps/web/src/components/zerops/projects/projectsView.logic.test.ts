@@ -100,7 +100,7 @@ function flowOf(over: Partial<GroupFlowInput> = {}): GroupFlow {
 }
 
 const PRODUCTION = {
-  projectId: "p-prod",
+  id: "p-prod",
   name: "production",
   tier: "production" as const,
   row: undefined,
@@ -418,7 +418,7 @@ describe("a stop's line", () => {
     label: "e014b0e",
   };
   const stop = (over: Partial<GroupFlowStop>): GroupFlowStop => ({
-    projectId: "p-stage",
+    id: "p-stage",
     name: "stage",
     state: "deployed",
     version,
@@ -757,7 +757,7 @@ describe("groupFlowInputOf", () => {
         talked: true,
       },
     ]);
-    expect(input.stops.map((stop) => [stop.projectId, stop.tier, stop.addresses])).toEqual([
+    expect(input.stops.map((stop) => [stop.id, stop.tier, stop.addresses])).toEqual([
       ["p-stage", "stage", [{ service: "app", url: "https://app-1.prg1.zerops.app" }]],
     ]);
     // Unread: nothing waits, and no release is offered.
@@ -850,11 +850,11 @@ describe("groupFlowInputOf", () => {
       deployments: new Map(),
       pending: [],
     });
-    expect(input.stops.map(({ projectId, name, tier }) => [projectId, name, tier])).toEqual([
+    expect(input.stops.map(({ id, name, tier }) => [id, name, tier])).toEqual([
       ["stage-unregistered", "Unregistered stage", "stage"],
       ["environment-p-stage", "p-stage", "stage"],
     ]);
-    expect(groupFlow(input).stages.map(({ projectId }) => projectId)).toEqual([
+    expect(groupFlow(input).stages.map(({ id }) => id)).toEqual([
       "stage-unregistered",
       "environment-p-stage",
     ]);
@@ -1035,7 +1035,7 @@ describe("projectRowLine — a project row's second line", () => {
     ["a deploy runs on a stage", { state: "deploying" }, "Deploying fixture-stage…"],
   ] as const)("under way: %s", (_name, over, text) => {
     const stage: GroupFlowStop = {
-      projectId: "fixture-stage",
+      id: "fixture-stage",
       name: "fixture-stage",
       version: undefined,
       source: "main",

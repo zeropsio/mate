@@ -267,27 +267,6 @@ export type CanonicalGroupEnvironment =
       readonly role: "stage" | "prod";
       readonly project: ZeropsProject | undefined;
     };
-export interface CanonicalGroup extends Omit<ZeropsGroup, "environments" | "production"> {
-  readonly environments: ReadonlyArray<CanonicalGroupEnvironment>;
-  readonly production: CanonicalGroupEnvironment | undefined;
-}
-export interface CanonicalGroupTree extends Omit<ZeropsGroupTree, "groups"> {
-  readonly groups: ReadonlyArray<CanonicalGroup>;
-}
-
-/** Legacy consumers keep their project carriers; no project is invented for a target. */
-export function zeropsGroup(group: CanonicalGroup): ZeropsGroup {
-  const environments = group.environments.flatMap(({ project, role }) =>
-    project === undefined ? [] : [{ project, role }],
-  );
-  const production = environments.filter((entry) => entry.role === "prod");
-  return {
-    ...group,
-    environments,
-    production: production.length === 1 ? production[0] : undefined,
-  };
-}
-
 export interface ZeropsGroupEnvironment {
   readonly project: ZeropsProject;
   readonly role: ZeropsEnvironmentRole | undefined;
@@ -354,12 +333,12 @@ export interface ZeropsGroupPendingMember {
   readonly failed?: boolean | undefined;
 }
 
-export interface ZeropsGroup {
+export interface CanonicalGroup {
   readonly groupId: string;
   /** Its application's name in HQ, else the creation's under way, else — unread — its id. */
   readonly name: string;
   readonly nameSource: ZeropsGroupNameSource;
-  readonly environments: ReadonlyArray<ZeropsGroupEnvironment>;
+  readonly environments: ReadonlyArray<CanonicalGroupEnvironment>;
   /**
    * Members still being created, oldest first: a creation the platform accepted
    * whose project no group of the listing holds yet. Once one does, the listed
@@ -371,11 +350,11 @@ export interface ZeropsGroup {
    * claims the role. Two claimants is a conflict the user has to resolve, and
    * silently picking one would hide it.
    */
-  readonly production: ZeropsGroupEnvironment | undefined;
+  readonly production: CanonicalGroupEnvironment | undefined;
 }
 
-export interface ZeropsGroupTree {
-  readonly groups: ReadonlyArray<ZeropsGroup>;
+export interface CanonicalGroupTree {
+  readonly groups: ReadonlyArray<CanonicalGroup>;
   /** Projects HQ places in no application. */
   readonly ungrouped: ReadonlyArray<ZeropsProject>;
 }
@@ -393,7 +372,7 @@ export interface ZeropsGroupTree {
  */
 export type ZeropsProjectOrder = "newest" | "name" | "custom";
 
-export interface DeriveZeropsGroupsOptions {
+export interface CanonicalGroupsOptions {
   readonly order: ZeropsProjectOrder;
   /**
    * `custom` only: group ids in the order the viewer put them. A group it
@@ -409,10 +388,6 @@ export interface DeriveZeropsGroupsOptions {
    * same, empty — what a New project that stopped before its Mate leaves, for a Mate to be added
    * to it (2026-10-03).
    */
-  readonly apps?: ReadonlyArray<{ readonly id: string; readonly name: string }>;
-}
-
-export interface CanonicalGroupsOptions extends Omit<DeriveZeropsGroupsOptions, "apps"> {
   readonly apps?: ReadonlyArray<{
     readonly id: string;
     readonly name: string;
@@ -696,18 +671,4 @@ export function deriveCanonicalGroups(
   }
 
   return { groups, ungrouped };
-}
-
-/** @deprecated Converted consumers use deriveCanonicalGroups with HQ environments. */
-export function deriveZeropsGroups(
-  projects: ReadonlyArray<ZeropsProject>,
-  options: DeriveZeropsGroupsOptions,
-): ZeropsGroupTree {
-  const tree = deriveCanonicalGroups(projects, {
-    ...options,
-    ...(options.apps === undefined
-      ? {}
-      : { apps: options.apps.map(({ id, name }) => ({ id, name })) }),
-  });
-  return { ...tree, groups: tree.groups.map(zeropsGroup) };
 }

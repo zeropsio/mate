@@ -8,7 +8,7 @@ import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
 import { hqMateIdentities } from "./hqMateIdentity.ts";
 import { hqMateOverview, hqMates } from "./hqMates.ts";
-import { canonicalHqMenuNavigation } from "./hqNavigation.ts";
+import { hqMenuNavigation } from "./hqNavigation.ts";
 import { organizationProjects } from "./projects.ts";
 
 export type MyChief =
@@ -107,11 +107,11 @@ export const organizationMateListProjects = {
   equals: sameValue,
 } satisfies Projection<string, ReturnType<typeof organizationProjects.derive>>;
 
-export const canonicalHqListNavigation = {
-  name: "canonicalHqListNavigation",
+export const hqListNavigation = {
+  name: "hqListNavigation",
   keyOf: (orgId) => orgId,
   derive: (read, orgId) => {
-    const navigation = canonicalHqMenuNavigation.derive(read, orgId);
+    const navigation = hqMenuNavigation.derive(read, orgId);
     const directory = hqMateDirectory.derive(read, orgId);
     const chiefIds = new Set(directory.chiefProjectIds);
     const structure = navigation.structure;
@@ -136,7 +136,7 @@ export const canonicalHqListNavigation = {
     };
   },
   equals: sameValue,
-} satisfies Projection<string, ReturnType<typeof canonicalHqMenuNavigation.derive>>;
+} satisfies Projection<string, ReturnType<typeof hqMenuNavigation.derive>>;
 
 export const hqListedMateIdentities: typeof hqMateIdentities = {
   name: "hqListedMateIdentities",

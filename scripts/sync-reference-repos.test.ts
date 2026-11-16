@@ -99,7 +99,7 @@ it.layer(NodeServices.layer)("sync-reference-repos", (it) => {
       const rootDir = yield* fs.makeTempDirectoryScoped({
         prefix: "sync-reference-repos-read-error-",
       });
-      const sourcePath = path.join(rootDir, effectSmol.versionSourcePath);
+      const sourcePath = path.join(rootDir, "pnpm-workspace.yaml");
 
       const error = yield* resolveReferenceRepoRef(effectSmol, rootDir, false).pipe(Effect.flip);
 
@@ -121,17 +121,16 @@ it.layer(NodeServices.layer)("sync-reference-repos", (it) => {
       const rootDir = yield* fs.makeTempDirectoryScoped({
         prefix: "sync-reference-repos-parse-error-",
       });
-      const sourcePath = path.join(rootDir, alchemyEffect.versionSourcePath);
-      yield* fs.makeDirectory(path.dirname(sourcePath), { recursive: true });
-      yield* fs.writeFileString(sourcePath, "{");
+      const sourcePath = path.join(rootDir, "pnpm-workspace.yaml");
+      yield* fs.writeFileString(sourcePath, "catalog: [\n");
 
-      const error = yield* resolveReferenceRepoRef(alchemyEffect, rootDir, false).pipe(Effect.flip);
+      const error = yield* resolveReferenceRepoRef(effectSmol, rootDir, false).pipe(Effect.flip);
 
       if (error._tag !== "ReferenceRepoVersionSourceError") {
         assert.fail(`Unexpected error: ${error._tag}`);
       }
       assert.equal(error.operation, "parse");
-      assert.equal(error.repoId, alchemyEffect.id);
+      assert.equal(error.repoId, effectSmol.id);
       assert.equal(error.sourcePath, sourcePath);
       assert.ok(error.cause !== undefined);
       assert.ok(!error.message.includes(String((error.cause as Error).message)));
@@ -145,40 +144,33 @@ it.layer(NodeServices.layer)("sync-reference-repos", (it) => {
       const rootDir = yield* fs.makeTempDirectoryScoped({
         prefix: "sync-reference-repos-resolution-error-",
       });
-      const sourcePath = path.join(rootDir, alchemyEffect.versionSourcePath);
-      yield* fs.makeDirectory(path.dirname(sourcePath), { recursive: true });
-      yield* fs.writeFileString(sourcePath, '{"dependencies":{}}');
+      const sourcePath = path.join(rootDir, "pnpm-workspace.yaml");
+      yield* fs.writeFileString(sourcePath, "catalog: {}\n");
 
-      const error = yield* resolveReferenceRepoRef(alchemyEffect, rootDir, false).pipe(Effect.flip);
+      const error = yield* resolveReferenceRepoRef(effectSmol, rootDir, false).pipe(Effect.flip);
 
       if (error._tag !== "ReferenceRepoVersionResolutionError") {
         assert.fail(`Unexpected error: ${error._tag}`);
       }
-      assert.equal(error.repoId, alchemyEffect.id);
+      assert.equal(error.repoId, effectSmol.id);
       assert.equal(error.sourcePath, sourcePath);
-      assert.deepStrictEqual(error.packageVersionPath, ["dependencies", "alchemy"]);
+      assert.deepStrictEqual(error.packageVersionPath, ["catalog", "effect"]);
       assert.ok(!("cause" in error));
     }),
   );
 
-  it.effect("resolves the alchemy-effect tag from the relay package", () =>
+  it.effect("uses the pinned alchemy-effect ref without reading a version source", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
       const rootDir = yield* fs.makeTempDirectoryScoped({
         prefix: "sync-reference-repos-alchemy-version-",
       });
-      yield* fs.makeDirectory(path.join(rootDir, "infra", "relay"), { recursive: true });
-      yield* fs.writeFileString(
-        path.join(rootDir, "infra", "relay", "package.json"),
-        '{"dependencies":{"alchemy":"2.0.0-beta.49"}}',
-      );
 
-      assert.equal(yield* resolveReferenceRepoRef(alchemyEffect, rootDir, false), "v2.0.0-beta.49");
+      assert.equal(yield* resolveReferenceRepoRef(alchemyEffect, rootDir, false), "v2.0.0-beta.78");
     }),
   );
 
-  it.effect("plans an add for a missing subtree and a pull for an existing subtree", () =>
+  it.effect("plans a shallow, tagless clone of the resolved ref", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
@@ -190,55 +182,19 @@ it.layer(NodeServices.layer)("sync-reference-repos", (it) => {
         "catalog:\n  effect: 4.0.0-beta.73\n",
       );
 
-      const addPlan = yield* planReferenceRepoSync(effectSmol, rootDir, false);
-      assert.equal(addPlan.action, "add");
-      assert.deepStrictEqual(addPlan.args, [
-        "subtree",
-        "add",
-        "--prefix=.repos/effect-smol",
+      const plan = yield* planReferenceRepoSync(effectSmol, rootDir, false);
+      assert.equal(plan.ref, "effect@4.0.0-beta.73");
+      assert.deepStrictEqual(plan.cloneArgs, [
+        "clone",
+        "--quiet",
+        "--depth=1",
+        "--no-tags",
+        "--single-branch",
+        "--branch=effect@4.0.0-beta.73",
         "https://github.com/Effect-TS/effect.git",
-        "effect@4.0.0-beta.73",
-        "--squash",
       ]);
-
-      yield* fs.makeDirectory(path.join(rootDir, effectSmol.prefix), { recursive: true });
-      assert.equal((yield* planReferenceRepoSync(effectSmol, rootDir, false)).action, "pull");
     }),
   );
-
-  it.effect("runs the planned git subtree command through the process service", () => {
-    const commands: Array<{ readonly command: string; readonly args: ReadonlyArray<string> }> = [];
-
-    return Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      const rootDir = yield* fs.makeTempDirectoryScoped({
-        prefix: "sync-reference-repos-run-",
-      });
-      yield* fs.writeFileString(
-        path.join(rootDir, "pnpm-workspace.yaml"),
-        "catalog:\n  effect: 4.0.0-beta.73\n",
-      );
-
-      yield* syncReferenceRepos({ rootDir, repoId: "effect-smol" }).pipe(
-        Effect.provide(mockSpawnerLayer(commands)),
-      );
-
-      assert.deepStrictEqual(commands, [
-        {
-          command: "git",
-          args: [
-            "subtree",
-            "add",
-            "--prefix=.repos/effect-smol",
-            "https://github.com/Effect-TS/effect.git",
-            "effect@4.0.0-beta.73",
-            "--squash",
-          ],
-        },
-      ]);
-    });
-  });
 
   it.effect("rejects unknown repo selectors", () =>
     Effect.gen(function* () {
@@ -274,25 +230,25 @@ it.layer(NodeServices.layer)("sync-reference-repos", (it) => {
         Effect.provide(
           mockSpawnerLayer(
             commands,
-            mockHandle({ exitCode: 23, stderr: "subtree failed secret-token-value\n" }),
+            mockHandle({ exitCode: 23, stderr: "clone failed secret-token-value\n" }),
           ),
         ),
         Effect.flip,
       );
 
-      if (error._tag !== "ReferenceRepoGitSubtreeError") {
+      if (error._tag !== "ReferenceRepoGitError") {
         assert.fail(`Unexpected error: ${error._tag}`);
       }
       assert.equal(error.operation, "exit");
       assert.equal(error.repoId, effectSmol.id);
-      assert.equal(error.action, "add");
+      assert.equal(error.command, "clone");
       assert.equal(error.repository, effectSmol.repository);
       assert.equal(error.ref, "effect@4.0.0-beta.73");
-      assert.equal(error.rootDir, rootDir);
+      assert.equal(error.cwd, rootDir);
       assert.equal(error.argumentCount, commands[0]?.args.length);
       assert.equal(error.exitCode, 23);
       assert.equal(error.stdoutLength, 5);
-      assert.equal(error.stderrLength, 34);
+      assert.equal(error.stderrLength, 32);
       assert.notProperty(error, "args");
       assert.notProperty(error, "stderr");
       assert.notInclude(error.message, "secret-token-value");

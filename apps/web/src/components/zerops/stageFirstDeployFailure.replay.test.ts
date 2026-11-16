@@ -48,7 +48,7 @@ function said(deploy: HqJob, status = "ACTIVE", born = false) {
     merged: [],
     stops: [
       {
-        projectId: "stage",
+        id: "stage",
         name: "Acme - stage",
         tier: "stage",
         row,

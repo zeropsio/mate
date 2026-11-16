@@ -9,7 +9,7 @@ import type { MateAttention } from "@t3tools/contracts";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
 
 import { canonicalEnvironmentsOf } from "../../zerops/hq/environments.ts";
-import type { HqStructure, CanonicalHqStructure } from "../../zerops/hq/client.ts";
+import type { HqStructure } from "../../zerops/hq/client.ts";
 import { hqMateScope } from "../families/hqMate.ts";
 import { hqMateAttentionScope } from "../families/mateAttention.ts";
 import {
@@ -42,7 +42,7 @@ type Unoffered<T> = T extends string | number | boolean | null | undefined
       : T;
 
 export interface SeededHq {
-  readonly structure?: Unoffered<HqStructure> | Unoffered<CanonicalHqStructure>;
+  readonly structure?: Unoffered<HqStructure>;
   readonly lifecycle?: ReadonlyArray<HqLifecycleRecord>;
   /** Each Mate HQ relays, by project. */
   readonly mates?: Readonly<Record<string, MateLiveView>>;

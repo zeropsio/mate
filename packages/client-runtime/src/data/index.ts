@@ -11,9 +11,11 @@ export { makeHqWire } from "./adapters/hqWire.ts";
 export type { HqWire } from "./adapters/hq.ts";
 export type { HqPressValue } from "./families/hqNavigation.ts";
 export {
-  canonicalHqNavigation,
-  type CanonicalHqNavigationRead,
+  hqAppChanges,
+  hqAppGitTargets,
+  type HqDeliveryNavigationRead,
   hqEnvironmentOffers,
+  hqMenuNavigation,
   hqNavigation,
   type HqNavigationPeople,
   type HqNavigationRead,
@@ -34,10 +36,9 @@ export {
 export { discussionDemand } from "./families/hqDiscussion.ts";
 export type { ZeropsWire } from "./adapters/zerops.ts";
 export {
-  canonicalAppEnvironments,
-  environmentById,
-  type CanonicalAppEnvironmentsRead,
   appEnvironments,
+  environmentById,
+  type AppEnvironmentsRead,
 } from "./projections/appEnvironments.ts";
 export {
   hqAppDetail,
@@ -213,7 +214,6 @@ export {
   shownHqMatesAnsweredAtom,
   shownHqNavigationAtom,
   shownHqMenuNavigationAtom,
-  shownCanonicalHqMenuNavigationAtom,
   shownHqAppChangesAtom,
   shownHqPersonFactsAtom,
   shownHqStatusAtom,
@@ -536,14 +536,15 @@ export {
 } from "./projections/projectFlowJoin.ts";
 
 export {
-  canonicalProjectFlow,
+  projectFlow,
   type CanonicalProjectFlow,
   projectApplications,
   projectSummary,
 } from "./projections/projectFlow.ts";
 
 export {
-  canonicalInventoryGroups,
+  inventoryGroups,
+  type InventoryGroupsKey,
   type InventoryGroupsView,
 } from "./projections/inventoryGroups.ts";
 
@@ -628,13 +629,18 @@ export { deliveryAnswerSaid, deliveryAnswerFollowing } from "../zerops/hq/deploy
 export { deliveryEnvironmentsOf } from "../zerops/hq/environments.ts";
 
 export {
+  hqMateDirectory,
+  hqListNavigation,
+  hqListedMateIdentities,
+  hqListedMates,
+  organizationMateListProjects,
   isListedMateProject,
   isListedMateEnvironment,
   type HqMateDirectory,
 } from "./projections/hqMateDirectory.ts";
 export {
   shownHqMateDirectoryAtom,
-  shownCanonicalHqListNavigationAtom,
+  shownHqListNavigationAtom,
   shownHqListedMateIdentitiesAtom,
   shownHqListedMatesAtom,
   shownMateListProjectsAtom,

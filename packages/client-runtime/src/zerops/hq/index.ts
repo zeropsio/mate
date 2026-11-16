@@ -11,7 +11,7 @@ export {
   type HqBackupUsage,
   type HqKeys,
   type HqParts,
-  type CanonicalHqStructure,
+  type HqSocket,
   type HqStructure,
   type HqAppContents,
   type OpenHqSocket,
@@ -41,13 +41,19 @@ export {
   type HqMateOfferStates,
   type HqPlacement,
 } from "./placement.ts";
-export { pressElsewhere, type HqPresses, type PressElsewhere } from "./pressElsewhere.ts";
-export { canonicalHqStructureOf, type HqMates } from "./structure.ts";
+export {
+  pressElsewhere,
+  type HqPressHold,
+  type HqPresses,
+  type PressElsewhere,
+} from "./pressElsewhere.ts";
+export { hqStructureOf, type HqMates } from "./structure.ts";
 export {
   CanonicalHqEnvironment,
   UNREAD_ENVIRONMENT_LINE,
   unreadEnvironmentsWords,
   type UnreadEnvironment,
+  jobFailed,
   jobInFlight,
   type HqJob,
 } from "./environments.ts";
