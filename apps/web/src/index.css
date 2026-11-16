@@ -10035,6 +10035,13 @@ button.ov-change {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* What the pills open, where it is more than this change: quiet, under them. */
+.rv-try-note {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--muted-foreground);
+}
 /* One pill per part: whose preview, then the part. */
 .rv-tries {
   display: flex;
@@ -13130,6 +13137,10 @@ a.message-file:focus-visible {
 .rv-why > [data-slot="button"] {
   margin: -3px 0 -3px -8px;
 }
+/* Whose move the fix is, where the press is not the reader's: quiet beside the reason. */
+.rv-why-whose {
+  color: var(--muted-foreground);
+}
 
 /* The review as a page: the same column, flush with the page's own edges; the foot's card stands
    8 out from the text, and stays in view. */
@@ -13867,6 +13878,13 @@ a.message-file:focus-visible {
   font-size: 13px;
   line-height: 18px;
   color: var(--zerops-status-failed-text);
+}
+/* Whom a comment reaches, or why there is no box to write one in: quiet, under the conversation. */
+.rv-say-note {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--muted-foreground);
 }
 
 /* The commits: one line each, what it did, then its age and hash on the column's right edge. */

@@ -21,12 +21,15 @@ import { HqProblems } from "./HqProblems";
  * `ChangeReviewView` is the picture with every read handed in, so the harness shows each state.
  */
 import {
+  answerCommentsLabel,
+  answerCommentsRequest,
   changeAskPrompt,
   changeCommitRows,
   changeHandedPrompt,
   changeRemarks,
   changeReview,
   changeStanding,
+  commentsToAnswer,
   MERGE_CHECK_LATE_MS,
   recipeReach,
   REVIEW_RELEASE_LABEL,
@@ -82,7 +85,11 @@ import { useLinkedChange } from "~/zerops/useLinkedChange";
 import { useNowMs, useSecondsNowMs, useWakeAt } from "~/zerops/useNowMs";
 import { useFixMates } from "~/zerops/fixMates";
 import { useZeropsReviewMates } from "~/zerops/useZeropsReviewMates";
-import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
+import {
+  useHqPersonNames,
+  useHqProjectPerson,
+  zeropsMateOwnerOf,
+} from "~/zerops/useZeropsMateOwners";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 
 import { useReviewDeploys } from "../ZeropsDeployAnswer";
@@ -508,6 +515,9 @@ function ChangeReviewData({
   const session = useZeropsSessionOptional();
   const nameOf = useHqPersonNames(session?.activeOrganization?.id);
   const me = session?.user?.id;
+  // Whose Mate wrote it, where it is a colleague's: whom a comment reaches, and whose move a fix is.
+  const mateOwner = zeropsMateOwnerOf(useHqProjectPerson(pull.mateProjectId)?.owner, me);
+  const colleague = mateOwner === undefined || mateOwner.isViewer ? undefined : mateOwner.called;
   // A Mate's words brought over from HQ, as the application names its Mates.
   const mateNameOf = useCallback((projectId: string) => mates.get(projectId)?.name, [mates]);
   const remarks = useMemo(
@@ -591,8 +601,12 @@ function ChangeReviewData({
               name: mateNames.get(pull.mateProjectId) ?? "the Mate",
               tint: undefined,
               mine,
+              owner: colleague,
             }
-          : { name: mate.name, tint: mate.tint, shape: mate.shape, mine }
+          : { name: mate.name, tint: mate.tint, shape: mate.shape, mine, owner: colleague }
+      }
+      mateOpenChanges={
+        flow?.pullRequests.filter((other) => other.mateProjectId === pull.mateProjectId).length
       }
       now={now}
       comments={comments}
@@ -722,7 +736,11 @@ export interface ChangeReviewViewProps {
     readonly tint: MateTintId | undefined;
     readonly shape?: MateShapeId | undefined;
     readonly mine: boolean;
+    /** Its owner, as HQ names them, where the Mate is a colleague's. */
+    readonly owner?: string | undefined;
   };
+  /** How many open changes its Mate holds, this one included; absent while the flow is not read. */
+  readonly mateOpenChanges?: number | undefined;
   /** What HQ recorded of it: its files and their sizes, its commits, how it merges. */
   readonly readout: ReadoutPart<ChangeReadout>;
   /** HQ's answer that it cannot judge whether it merges (`useZeropsChangeDetail`'s). */
@@ -1070,6 +1088,37 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     box?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [asking]);
   const canAsk = mine !== undefined && props.offers?.comment === true && !over && !fromRelease;
+  // A colleague's Mate: the fix is its owner's to ask for, and the line says so where the press
+  // would stand — for a change something holds back (a conflict, a draft, behind main).
+  const fixNote =
+    !over &&
+    !fromRelease &&
+    mine === undefined &&
+    mate.owner !== undefined &&
+    (fix !== undefined || pull.ready === false)
+      ? // In the words of the press its owner reads: "resolve it", "update it" — a draft, "describe it".
+        `Only ${mate.owner} can ask ${mate.name} to ${fix?.verb ?? "describe it"}.`
+      : undefined;
+  // What others said since its Mate's newest commit, for its owner to hand it in one press.
+  const pushedAt =
+    listed.kind !== "read"
+      ? undefined
+      : listed.value.reduce<string | undefined>(
+          (newest, commit) =>
+            newest === undefined || Date.parse(commit.at) > Date.parse(newest) ? commit.at : newest,
+          undefined,
+        );
+  const toAnswer =
+    mine === undefined || over || fromRelease
+      ? []
+      : commentsToAnswer({ remarks: props.remarks, pushedAt });
+  // Comments that wait for the person open the conversation by themselves, once: the press that
+  // hands them to the Mate stands under them.
+  const [answerShown, setAnswerShown] = useState(false);
+  if (toAnswer.length > 0 && !answerShown) {
+    setAnswerShown(true);
+    talk.show();
+  }
   const github = model.githubChecks;
   // HQ's merge check still to come is the foot's wait, beside the Merge it holds: the line under
   // the title keeps to the facts.
@@ -1188,6 +1237,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       }
       face={mate.tint === undefined ? undefined : { tint: mate.tint, shape: mate.shape }}
       frame={props.frame}
+      fixNote={fixNote}
       fix={
         fix === undefined || mine === undefined
           ? undefined
@@ -1401,7 +1451,11 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
         reading={pull.description === undefined && readout.kind === "reading"}
       />
       {props.previews === undefined || props.previews.length === 0 ? null : (
-        <ReviewTry mateName={mate.name} previews={props.previews} />
+        <ReviewTry
+          everything={!over && (props.mateOpenChanges ?? 0) > 1}
+          mateName={mate.name}
+          previews={props.previews}
+        />
       )}
       {receipt === undefined ? null : (
         <ReviewSection aside={String(receipt.parts.length)} title="Parts">
@@ -1467,7 +1521,19 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
           asker={
             mine === undefined ? undefined : { name: mine.name, tint: mine.tint, shape: mine.shape }
           }
+          answer={
+            mine === undefined || toAnswer.length === 0
+              ? undefined
+              : {
+                  label: answerCommentsLabel(mine.name),
+                  onPress: () => {
+                    props.onFix(answerCommentsRequest({ number: pull.number, remarks: toAnswer }));
+                  },
+                }
+          }
           commentable={props.offers?.comment === true}
+          readOnly={props.offers?.read === true && !props.offers.comment}
+          reaches={mine === undefined ? mate.owner : undefined}
           comments={props.comments}
           count={pull.commentCount}
           draftKey={`${pull.url ?? pull.repository}#${String(pull.number)}`}
