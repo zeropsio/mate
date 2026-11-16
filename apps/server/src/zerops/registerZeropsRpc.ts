@@ -58,6 +58,7 @@ type ZeropsRpcTag =
   | typeof WS_METHODS.subscribeZeropsLifecycle
   | typeof WS_METHODS.subscribeZeropsAgentAuth
   | typeof WS_METHODS.subscribeZeropsHealth
+  | typeof WS_METHODS.subscribeZeropsStandUpVerdict
   | typeof WS_METHODS.subscribeZeropsAttention
   | typeof WS_METHODS.subscribeZeropsBrowserStream
   | typeof WS_METHODS.subscribeZeropsMacStream
@@ -514,6 +515,11 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
       ),
     [WS_METHODS.subscribeZeropsHealth]: (_input) => zeropsMateAttention.healthChanges,
     [WS_METHODS.subscribeZeropsAttention]: (_input) => zeropsMateAttention.changes,
+    // A server with no setup of its own (outside Zerops) has no verdict to say.
+    [WS_METHODS.subscribeZeropsStandUpVerdict]: (_input) =>
+      deps.zeropsSetup === undefined
+        ? Stream.make({ verdict: null })
+        : deps.zeropsSetup.verdictChanges,
     [WS_METHODS.subscribeZeropsBrowserStream]: (input) =>
       Stream.unwrap(zeropsBrowserStream.subscribe).pipe(
         Stream.filter((event) => input.callFrames === true || event.type !== "call-result"),

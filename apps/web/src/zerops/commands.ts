@@ -6,6 +6,8 @@ import {
 /**
  * The reviewed set of Zerops commands a client may issue.
  *
+ * - `standUpHandOver` — server scope: `AuthOrchestrationOperateScope`; zcp's failed stand-up
+ *   verdict handed to an agent turn (`zerops.standUp.retry`), offered only with that scope.
  * - `agentLoginStart` — server scope: `AuthTerminalOperateScope`.
  * - `agentLoginCancel` — server scope: `AuthTerminalOperateScope`.
  * - `agentLoginSubmitCode` — server scope: `AuthTerminalOperateScope`; types
@@ -40,6 +42,9 @@ export function createZeropsCommandAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
 ) {
   const standUpRetry = mateSetupRetryCommand(runtime);
+  // The same retry handing zcp's failed verdict to an agent: its outcome is the Mate's answer,
+  // not the setup document's stand-up step, which stays failed.
+  const standUpHandOver = mateActionCommand(runtime, "standUpRetry");
   const agentAuthCheck = mateAuthCheckCommand(runtime);
   const agentLoginStart = mateActionCommand(runtime, "agentLoginStart");
 
@@ -58,6 +63,7 @@ export function createZeropsCommandAtoms<R, E>(
 
   return {
     standUpRetry,
+    standUpHandOver,
     agentAuthCheck,
     agentLoginStart,
     agentLoginCancel,
