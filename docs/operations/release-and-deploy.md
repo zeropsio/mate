@@ -2,6 +2,12 @@
 
 How mate reaches users. Each step names the file that owns its detail.
 
+- **CI.** CI runs lint/format, typecheck and build on `main`, `kh-next`, `kh-bisect/**` and pull
+  requests (a newer push cancels older runs except on `main`; `kh-next` is the integration branch
+  that fast-forwards `main`). Test suites and test machinery run only on a manual dispatch of CI or a
+  `kh-bisect/**` manifest naming them; browser scenario shards only on a manual dispatch of the
+  non-blocking `Signal` workflow, where a failure gets one same-commit rerun to tell a flake from a
+  regression.
 - **Hosted web client.** `main` deploys https://mate.zerops.io through `zerops.yml`'s `prod` setup.
   Keep `main` releasable; one hard line: never break signing in with a Zerops account.
 - **Staging web.** `zerops.yml`'s `staging` setup builds a test target's web (alfa, the standing

@@ -1,6 +1,7 @@
 ---
 name: ios-simulator-browser
 description: Stream an explicit iOS Simulator through pinned serve-sim into the T3 Code in-app browser or another agent browser. Use on Apple Silicon macOS when the user should watch simulator verification live or when browser-visible simulator evidence is needed.
+disable-model-invocation: true
 ---
 
 # iOS Simulator Browser

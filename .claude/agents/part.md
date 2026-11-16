@@ -1,6 +1,7 @@
 ---
 name: part
 description: Builds one independent part of a pass the lead has split up, in the worktree and on the branch the lead names, from a self-contained brief. Not for a tweak or a one-surface change — the lead does those itself.
+model: claude-opus-5-5
 effort: high
 ---
 

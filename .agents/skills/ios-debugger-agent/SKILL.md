@@ -1,6 +1,7 @@
 ---
 name: ios-debugger-agent
 description: Build, launch, inspect, and drive iOS apps with the repository-configured XcodeBuildMCP server. Use on macOS for iOS Simulator builds, focused native test runs, semantic UI automation, screenshots, logs, or debugging, including T3 Code Mobile verification.
+disable-model-invocation: true
 ---
 
 # iOS Debugger Agent
