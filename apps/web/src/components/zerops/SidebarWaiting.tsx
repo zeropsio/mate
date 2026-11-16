@@ -34,6 +34,7 @@ import { MateFace } from "./primitives";
 import {
   releaseWaitingLine,
   WAITING_VERBS,
+  waitingVerb,
   waitingCountWords,
   waitingTitle,
   type WaitingItem,
@@ -343,14 +344,14 @@ function WaitingEntry({
           ) : item.kind === "change" ? (
             item.mate.change === undefined ? (
               <OpenButton
-                label={WAITING_VERBS.change}
+                label={waitingVerb(item)}
                 mate={item.mate}
                 onClose={onClose}
                 verbs={verbs}
               />
             ) : (
               <ReviewButton
-                label={WAITING_VERBS.change}
+                label={waitingVerb(item)}
                 onClose={onClose}
                 target={{
                   kind: "change",

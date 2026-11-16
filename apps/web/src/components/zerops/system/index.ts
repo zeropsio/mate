@@ -1,5 +1,11 @@
 export { ChangeList, ChangeRow, CutText } from "./ChangeRow";
-export { changeReviewable, changeRowLine, openChangeWords } from "./ChangeRow.logic";
+export {
+  changeReviewable,
+  changeRowLine,
+  openChangeWords,
+  rowStanding,
+  type RowStanding,
+} from "./ChangeRow.logic";
 export { Crumbs, usePageTrail, type Crumb } from "./Crumbs";
 export { GrowsInPlace } from "./GrowsInPlace";
 export { MateRow, MateRowTime } from "./MateRow";

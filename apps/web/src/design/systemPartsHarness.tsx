@@ -26,6 +26,7 @@ import type {
   PlaceLine as PlaceLineData,
 } from "~/components/zerops/projects/projectCard.logic";
 import { placeServiceRows } from "~/components/zerops/place/place.logic";
+import { mergedChangeWords } from "~/components/zerops/system/ChangeRow.logic";
 import {
   ChangeList,
   ChangeRow,

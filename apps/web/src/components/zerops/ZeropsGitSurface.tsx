@@ -35,6 +35,7 @@ import { useZeropsInventory } from "../../zerops/ZeropsInventoryProvider";
 import { useZeropsSessionOptional } from "../../zerops/ZeropsSessionProvider";
 import { useGitMirrorApps } from "../../zerops/useGitMirrorApps";
 import { useGitTargetOperations } from "../../zerops/useGitTargetOperations";
+import { useChangeStandingOf } from "../../zerops/useChangeStandingOf";
 import { useNowMs } from "../../zerops/useNowMs";
 import { GitMirrorDialog } from "./GitMirrorDialog";
 import { mirrorAuthorityLine, repoState } from "./gitMirror.logic";
@@ -130,6 +131,12 @@ export function ZeropsGitSurface({
   );
   const groupFlow = project?.groupFlow;
   const tint = mate?.tint;
+  // Whose press each open change waits for where the application limits who merges.
+  const standingOf = useChangeStandingOf();
+  const standingHere = useCallback(
+    (pull: FlowPullRequest) => standingOf(groupId, pull),
+    [groupId, standingOf],
+  );
   const line = useMemo(
     () =>
       groupFlow === undefined || project === undefined || mateProjectId === undefined
@@ -139,13 +146,17 @@ export function ZeropsGitSurface({
             places: project.places,
             changes:
               projectFlow?.changesKnown === true
-                ? pageChanges({ flow: groupFlow, read: projectFlow })
+                ? pageChanges({
+                    flow: groupFlow,
+                    read: projectFlow,
+                    standingOf: standingHere,
+                  })
                 : undefined,
             next: project.next,
             mate: { projectId: mateProjectId, tint },
             waits,
           }),
-    [groupFlow, mateProjectId, project, projectFlow, tint, waits],
+    [groupFlow, mateProjectId, project, projectFlow, standingHere, tint, waits],
   );
   const landedWords = useCallback(
     (change: FlowPullRequest) =>
@@ -200,6 +211,7 @@ export function ZeropsGitSurface({
         github={github}
         isOwner={isOwner}
         landedWords={landedWords}
+        standingOf={standingHere}
         line={line}
         mateFace={mateFace}
         mateName={mateName}

@@ -7,6 +7,7 @@
  */
 import {
   changesCountWords,
+  ASK_TO_MERGE,
   REVIEW_LABEL,
   REVIEW_RELEASE_LABEL,
 } from "@t3tools/client-runtime/zerops";
@@ -23,6 +24,11 @@ export interface WaitingChange {
   readonly repository: string;
   readonly number: number;
   readonly title: string;
+  /**
+   * The person cannot merge in its application and nobody asked yet (`changeStanding` `to-ask`):
+   * what waits on them is their ask to merge, never a review.
+   */
+  readonly ask?: true | undefined;
 }
 
 export interface WaitingMate {
@@ -105,10 +111,12 @@ export function waitingPhrase(item: WaitingItem): string {
   switch (item.kind) {
     case "plan":
       return `Approve ${name}'s plan`;
-    case "change":
+    case "change": {
+      const verb = waitingVerb(item);
       return changes !== undefined && changes > 1
-        ? `Review ${name}'s ${String(changes)} changes`
-        : `Review ${name}'s change`;
+        ? `${verb} ${name}'s ${String(changes)} changes`
+        : `${verb} ${name}'s change`;
+    }
     case "failed":
       return `Help ${name}`;
     case "question":
@@ -128,7 +136,17 @@ export const WAITING_VERBS = {
   "sign-in": "Sign in",
 } as const satisfies Record<WaitingItem["kind"], string>;
 
-export type WaitingVerb = (typeof WAITING_VERBS)[WaitingItem["kind"]];
+export type WaitingVerb = (typeof WAITING_VERBS)[WaitingItem["kind"]] | typeof ASK_TO_MERGE;
+
+/**
+ * A wait's verb for the person looking: its kind's (`WAITING_VERBS`), and *Ask to merge* for a
+ * change of an application they cannot merge in — it waits on their ask, never on their review.
+ */
+export function waitingVerb(item: WaitingItem): WaitingVerb {
+  return item.kind === "change" && item.mate.change?.ask === true
+    ? ASK_TO_MERGE
+    : WAITING_VERBS[item.kind];
+}
 
 /** The row's line: the first two things, and how many more wait. */
 export function waitingSummary(items: ReadonlyArray<WaitingItem>): {

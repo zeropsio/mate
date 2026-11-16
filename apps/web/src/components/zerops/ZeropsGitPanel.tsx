@@ -265,6 +265,7 @@ function WorkRow({
       }
       open={row.open}
       pull={row.pull}
+      standing={row.standing}
       tone={row.tone}
       verb={verb}
     />

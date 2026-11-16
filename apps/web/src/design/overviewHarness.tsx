@@ -13,13 +13,16 @@
  * Fixtures only. Nothing here ships — `design-overview.html` is not `index.html`, and no route
  * imports this module.
  */
-import type {
-  FlowPullRequest,
-  GroupFlow,
-  GroupFlowMate,
-  GroupFlowProduction,
-  GroupFlowStop,
-  CanonicalGroup,
+import {
+  REVIEW_LABEL,
+  standingPressLabel,
+  standingWaits,
+  type FlowPullRequest,
+  type GroupFlow,
+  type GroupFlowMate,
+  type GroupFlowProduction,
+  type GroupFlowStop,
+  type CanonicalGroup,
 } from "@t3tools/client-runtime/zerops";
 import { mateParts } from "@t3tools/client-runtime/zerops/mateParts";
 import { MATE_SHAPE_OF_TINT, type MateMarkState, type MateTintId } from "@t3tools/shared/brand";
@@ -46,7 +49,8 @@ import { MateOwnerMark } from "~/components/zerops/MateOwnerMark";
 import { ownerMark } from "~/components/zerops/SidebarMateRow.logic";
 import { GitPullRequestIcon } from "lucide-react";
 import { CardMateLiftActions } from "~/components/zerops/projects/ProjectCards";
-import { MateCard } from "~/components/zerops/system/MateCard";
+import { rowStanding } from "~/components/zerops/system/ChangeRow.logic";
+import { changesReadyLine, MateCard } from "~/components/zerops/system/MateCard";
 import { PlaceDoors } from "~/components/zerops/place/PlaceDoors";
 import { MateRow, MateRowTime } from "~/components/zerops/system/MateRow";
 import { PageHeader } from "~/components/zerops/system/PageHeader";
@@ -69,11 +73,14 @@ import {
   type ProjectsFlowGroup,
 } from "~/components/zerops/projects/ZeropsProjectsFlow";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
+import { ChangeStandingContext } from "~/zerops/useChangeStandingOf";
 import "../index.css";
 import { showHarnessPlaces } from "./placeSitesFixtures";
 import {
   CROWD_MATES,
   crowdTitle,
+  HARNESS_ASK,
+  HARNESS_STANDING,
   HarnessLineMine,
   harnessProjectPage,
 } from "./projectPageFixtures";
@@ -291,6 +298,12 @@ const inReview = (number: number, title: string, mateProjectId: string) => ({
   review: false,
 });
 
+/** A change somebody asked the people who merge for (`HARNESS_ASK`). */
+const asked = (entry: ReturnType<typeof inReview>) => ({
+  ...entry,
+  pull: { ...entry.pull, mergeAsk: HARNESS_ASK },
+});
+
 const JUNO_ASKS = mate("juno", "Juno", "sky", {
   face: "needs",
   status: "input",
@@ -395,7 +408,10 @@ const PROJECTS: ReadonlyArray<Project> = [
     ],
     pullRequests: [
       inReview(51, "Gift cards at checkout", "raya-t"),
-      inReview(52, "Tea of the month banner", "vale-t"),
+      // `?viewer=limited|asked`: Dana L. asked the people who merge here for this one.
+      HARNESS_STANDING === null
+        ? inReview(52, "Tea of the month banner", "vale-t")
+        : asked(inReview(52, "Tea of the month banner", "vale-t")),
     ],
     production: {
       kind: "ready-to-release",
@@ -1458,11 +1474,19 @@ function HarnessPage() {
                 />
               )}
               renderMate={(entry, options) => {
+                // Whose press its change waits for, as `OverviewCardMate` reads it.
+                const stands =
+                  options.review === undefined || HARNESS_STANDING === null
+                    ? undefined
+                    : HARNESS_STANDING(PAGE ?? "tea", options.review);
+                const press =
+                  options.review === undefined ? undefined : rowStanding(options.review, stands);
                 const read = cardMateReading({
                   view: entry.view,
                   status: entry.status,
                   mine: mineOf(entry),
                   review: options.review,
+                  standing: stands,
                 });
                 // On a card its wait stands in Waiting on you: the row is never lifted.
                 const reading = options.quiet === true ? { ...read, lift: undefined } : read;
@@ -1476,9 +1500,9 @@ function HarnessPage() {
                       data-zerops-surface="card-mate-review"
                       onClick={() => acted.push(`review:${entry.id}`)}
                       size="xs"
-                      variant="secondary"
+                      variant={standingWaits(press) ? "ghost" : "secondary"}
                     >
-                      Review
+                      {standingPressLabel(press, REVIEW_LABEL)}
                     </Button>
                   );
                 const lifted =
@@ -1536,7 +1560,19 @@ function HarnessPage() {
                   return (
                     <MateCard
                       actions={reading.lift?.kind === "review" ? null : lifted}
-                      changes={own ? { count: 1, mine: true } : undefined}
+                      changes={
+                        own
+                          ? {
+                              count: 1,
+                              mine: !standingWaits(press),
+                              ...(press === undefined
+                                ? {}
+                                : {
+                                    says: press === "to-ask" ? changesReadyLine(1) : stands?.word,
+                                  }),
+                            }
+                          : undefined
+                      }
                       doors={
                         <PlaceDoors
                           look="card"
@@ -1676,6 +1712,8 @@ const router = createRouter({
 Object.assign(window, { __overviewRouter: router });
 createRoot(document.getElementById("design")!).render(
   <StrictMode>
-    <RouterProvider router={router} />
+    <ChangeStandingContext value={HARNESS_STANDING}>
+      <RouterProvider router={router} />
+    </ChangeStandingContext>
   </StrictMode>,
 );

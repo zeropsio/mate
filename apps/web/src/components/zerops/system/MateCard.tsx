@@ -28,11 +28,21 @@ export function MateCards({ children }: { readonly children: ReactNode }) {
 interface MateCardChanges {
   readonly count: number;
   readonly mine: boolean;
+  /**
+   * Its line where the change is not the viewer's to review (`changeStanding`): "1 change ready",
+   * "Waiting for Ada K. or Sam R.", "Dana L. asks to merge". Absent: `changesWaitLine`.
+   */
+  readonly says?: string | undefined;
 }
 
 /** How a card says its changes wait: the page's list names them. */
 function changesWaitLine(count: number): string {
   return count === 1 ? "1 change to review" : `${count} changes to review`;
+}
+
+/** The same to a person who cannot merge them: ready, for their ask to merge. */
+export function changesReadyLine(count: number): string {
+  return count === 1 ? "1 change ready" : `${count} changes ready`;
 }
 
 /**
@@ -99,7 +109,7 @@ export function MateCard({
             >
               <span className="mc-change">
                 <GitPullRequestIcon aria-hidden="true" className="menu-change-mark" />
-                {changesWaitLine(changes.count)}
+                {changes.says ?? changesWaitLine(changes.count)}
               </span>
             </FaceCardLine>
           </span>
