@@ -1908,6 +1908,9 @@ export class ZeropsApiClient {
    *
    * The value lives in this call alone: it is in the import's body and in no
    * answer, no log and no error.
+   *
+   * Before the import the project admits the container over SSH (`#admitContainerSsh`): the one
+   * writer of the project's `sshIsolation` (`zeropsio/zcp:docs/spec-mate.md` §2.8).
    */
   async importDevelopmentContainer(
     input: {
@@ -1973,6 +1976,8 @@ export class ZeropsApiClient {
 
       const serviceName = nextZcpServiceName(services.map((service) => service.name));
       this.#assertGeneration(generation);
+      await this.#admitContainerSsh(input.projectId, serviceName, signal, beforeWrite);
+      this.#assertGeneration(generation);
       importRequested = true;
       const answered = await this.importServicesIntoProject(
         input.projectId,
@@ -2029,6 +2034,37 @@ export class ZeropsApiClient {
    * The value leaves only in the answer; `minted` names the key this call made, never an earlier
    * press's.
    */
+  /**
+   * The project's `sshIsolation` becomes `vpn service@<container>`: people on the VPN and the
+   * container may SSH into every service, nothing else may — what the platform's own
+   * development-container import set and a plain service import does not. Its entry is the
+   * platform's own, made by the project's creation, so it is updated, never added; read from
+   * `GET /project/{id}/env`, which lists it once the creation has run (measured 2026-11-16; the
+   * search index trails it). Equal already, nothing is written, so a press tried again writes
+   * nothing twice.
+   */
+  async #admitContainerSsh(
+    projectId: string,
+    serviceName: string,
+    signal: AbortSignal | undefined,
+    beforeWrite: (() => Promise<void>) | undefined,
+  ): Promise<void> {
+    const content = `vpn service@${serviceName}`;
+    const body = await this.#request<{ readonly items?: ReadonlyArray<ZeropsServiceEnvVar> }>(
+      `/project/${projectId}/env`,
+      { signal: signal ?? null },
+    );
+    const entry = body.items?.find((variable) => variable.key === "sshIsolation");
+    if (entry === undefined)
+      throw new Error("Its project is still being created. Try again in a minute.");
+    if (entry.content === content) return;
+    await this.updateProjectVariable(
+      entry.id,
+      { key: "sshIsolation", content, sensitive: false },
+      beforeWrite,
+    );
+  }
+
   async #establishMateKey(
     input: {
       readonly clientId: string;
