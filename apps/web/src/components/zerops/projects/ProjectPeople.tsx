@@ -461,7 +461,13 @@ export function ProjectPeopleRowView({
   const more = people.length - FACES_SHOWN;
   return (
     <SetupRow
-      action={<SectionAction onClick={onManage}>Manage</SectionAction>}
+      action={
+        // Whoever cannot change it reads it, as Merging's row offers: *View*, never a *Manage*
+        // that opens on a table they may not touch.
+        <SectionAction onClick={onManage}>
+          {view.kind === "table" && !view.editable ? "View" : "Manage"}
+        </SectionAction>
+      }
       busy={view.kind === "reading"}
       label="Who has access"
       surface="project-people"
