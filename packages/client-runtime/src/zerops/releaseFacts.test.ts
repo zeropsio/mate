@@ -216,20 +216,22 @@ describe("a finished release keeps the facts it was made with", () => {
     ),
   );
 
+  // witness: packages/client-runtime/src/zerops/reviewVerdict.ts | roll back to ${replaces.tag} from production's page → roll back to ${replaces.tag} from production's menu
   it.each(second.map((step) => [step.name, step] as const))(
     "a second release, %s: replaces v0.1.0, and rolls back to it",
     (_name, step) => {
       expect(step.model.meta.join(" · ")).toBe("replaces v0.1.0 · 1 change");
       expect(step.facts.where).toEqual([{ service: "app", line: "gets v0.1.1" }]);
       expect(step.model.ifWrong).toBe(
-        "Roll back to v0.1.0 from production's menu. It gets its own review.",
+        "Roll back to v0.1.0 from production's page. It gets its own review.",
       );
     },
   );
 
+  // witness: packages/client-runtime/src/zerops/reviewVerdict.ts | roll back to ${replaces.tag} from production's page → roll back to ${replaces.tag} from production's menu
   it("a second release, released: the foot names the release to roll back to", () => {
     expect(second.at(-1)?.model.consequence).toBe(
-      "Production runs v0.1.1. If it misbehaves, roll back to v0.1.0 from production's menu.",
+      "Production runs v0.1.1. If it misbehaves, roll back to v0.1.0 from production's page.",
     );
   });
 });
@@ -267,6 +269,7 @@ describe("what a release replaces: the first only when nothing was released befo
     expect(current("v0.1.2", moment(live), releases).replaces).toEqual(replaces);
   });
 
+  // witness: packages/client-runtime/src/zerops/reviewVerdict.ts | "roll back from production's page" → "roll back from production's menu"
   it("a release after a mixed production: says what is true, and keeps the roll back", () => {
     const earlier = [
       row("v0.1.1", "deploy-failed", { failedEntries: [{ service: "app", commit: HEAD }] }),
@@ -283,10 +286,10 @@ describe("what a release replaces: the first only when nothing was released befo
     );
     for (const step of steps) {
       expect(step.model.meta.join(" · ")).toBe("replaces what production runs · 1 change");
-      expect(step.model.ifWrong).toBe("Roll back from production's menu. It gets its own review.");
+      expect(step.model.ifWrong).toBe("Roll back from production's page. It gets its own review.");
     }
     expect(steps.at(-1)?.model.consequence).toBe(
-      "Production runs v0.1.2. If it misbehaves, roll back from production's menu.",
+      "Production runs v0.1.2. If it misbehaves, roll back from production's page.",
     );
   });
 });
@@ -460,6 +463,7 @@ describe("a release HQ ended without landing says so: no clock ends it", () => {
     });
   });
 
+  // witness: packages/client-runtime/src/zerops/reviewVerdict.ts | roll back to ${replaces.tag} from production's page → roll back to ${replaces.tag} from production's menu
   it("a failed release whose deploy moved nothing offers no roll back; one that moved some does", () => {
     const failed = row("v0.1.1", "deploy-failed", {
       failedEntries: [{ service: "app", commit: HEAD }],
@@ -478,7 +482,7 @@ describe("a release HQ ended without landing says so: no clock ends it", () => {
       },
     ]).at(-1);
     expect(moved?.model.ifWrong).toBe(
-      "Roll back to v0.1.0 from production's menu. It gets its own review.",
+      "Roll back to v0.1.0 from production's page. It gets its own review.",
     );
   });
 });

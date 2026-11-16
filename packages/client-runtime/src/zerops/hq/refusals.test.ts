@@ -154,6 +154,7 @@ describe("hqRefusalWords — HQ's refusal, in the person's words", () => {
 
   // A merge refused (`MERGE_REFUSALS`): what stopped it, so the person knows whether pressing again
   // can help — only where main moved meanwhile.
+  // witness: packages/client-runtime/src/zerops/hq/refusals.ts | GitHub refused to merge its pull request. See its pull request on GitHub. → GitHub refused to merge its PR. See its PR on GitHub.
   it.each([
     ["head_moved", "Its Mate pushed to it since you opened it. Review it again."],
     ["conflict", "It no longer merges cleanly into main."],
@@ -164,9 +165,9 @@ describe("hqRefusalWords — HQ's refusal, in the person's words", () => {
     ["main_moved", "Other changes kept landing on main meanwhile. Try again."],
     [
       "github_blocked",
-      "GitHub won't merge its PR yet: the repository's rules or required checks hold it back. See its PR on GitHub.",
+      "GitHub won't merge its pull request yet: the repository's rules or required checks hold it back. See its pull request on GitHub.",
     ],
-    ["github_refused", "GitHub refused to merge its PR. See its PR on GitHub."],
+    ["github_refused", "GitHub refused to merge its pull request. See its pull request on GitHub."],
   ])("says %s as it stands", (reason, words) => {
     expect(hqRefusalWords({ code: "conflict", reason })).toBe(words);
   });
@@ -292,7 +293,7 @@ describe("who merges where a project limits it", () => {
     );
   });
 
-  // witness: packages/client-runtime/src/zerops/hq/refusals.ts | if (people.length === 0) return `Only ${OWNER_AND_ADMINS} merge here.`; →
+  // witness: packages/client-runtime/src/zerops/hq/refusals.ts | if (people.length === 0) return `Only ${OWNER_AND_ADMINS} ${verb} here.`; →
   it("With nobody named, only the organization's Owner and Admins merge", () => {
     expect(mergeLimitWords([], nameOf)).toBe(
       "Only the organization's Owner and Admins merge here.",
