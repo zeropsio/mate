@@ -300,6 +300,17 @@ export {
   type ReviewVerdict,
 } from "./reviewVerdict.ts";
 export {
+  ASK_TO_MERGE,
+  TAKE_ASK_BACK,
+  askerName,
+  changeStanding,
+  mergersWho,
+  standingWord,
+  viewerMerges,
+  type ChangeStanding,
+  type ViewerMerges,
+} from "./changeStanding.ts";
+export {
   holdReleaseFacts,
   releaseFacts,
   releaseFailure,
