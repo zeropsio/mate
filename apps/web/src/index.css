@@ -3499,6 +3499,12 @@ code {
     box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 30%, transparent);
   }
 
+  /* Every change in it waits on the people who merge (`reviewTagOf`): it asks the person nothing,
+     and says so in the quiet ink its mark wears while a Mate still works. */
+  .menu-tag-review[data-quiet] {
+    color: var(--sidebar-muted-foreground);
+  }
+
   /* Release: the solid primary — what waits for production is the row's one loud word. */
   .menu-tag-release {
     background-color: var(--primary);
@@ -3967,6 +3973,18 @@ code {
     background: color-mix(in oklab, var(--color-black) 14%, transparent);
   }
 
+  /* Only changes that wait on the people who merge stand behind it: the door asks nothing, so it
+     drops the blue for the Review tag's own quiet ground — the card's, in a hairline. */
+  .chat-header-review .menu-tags:has(> .menu-tag[data-quiet]:only-child) {
+    background: var(--card);
+    box-shadow: inset 0 0 0 1px var(--border);
+    color: var(--muted-foreground);
+  }
+
+  .chat-header-review .menu-tag[data-quiet]:only-child .menu-tag-count {
+    background: color-mix(in oklab, currentColor 12%, transparent);
+  }
+
   @media (hover: hover) and (pointer: fine) {
     .chat-header-review .menu-tag:hover {
       background: color-mix(in oklab, var(--color-black) 14%, transparent);
@@ -4378,6 +4396,10 @@ code {
 
   .menu-row-tags .menu-tag-release {
     font-weight: 600;
+  }
+
+  .menu-row-tags .menu-tag[data-quiet] {
+    color: var(--sidebar-muted-foreground);
   }
 
   .menu-row-tags .menu-tag-count {

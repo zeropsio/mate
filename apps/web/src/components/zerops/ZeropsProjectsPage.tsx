@@ -122,6 +122,7 @@ import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
 import { useProjectCreations } from "~/zerops/useProjectCreations";
 import { useZeropsFirstBuilds } from "~/zerops/useZeropsFirstBuilds";
 import { drawnMateProjects, useVisibleProjectAccess } from "~/zerops/useVisibleProjectAccess";
+import { useChangeStandingOf } from "~/zerops/useChangeStandingOf";
 import { useNowMs } from "~/zerops/useNowMs";
 import { mateUpdateStatus } from "~/zerops/mateUpdate";
 import { useMateUpdateStates } from "~/zerops/useMateUpdate";
@@ -1733,6 +1734,8 @@ export function ZeropsProjectsContent({
   const projectFlow = useCompactProjectFlows("every");
   const verbs = useFlowVerbs();
   const deployments = useStopDeploymentsShown();
+  // Whose press each change waits for where its application limits who merges.
+  const standingOf = useChangeStandingOf();
   // What HQ's rule shows this person of each project's changes: a project listed to them whose
   // changes it does not says so in their steps, never "None yet".
 
@@ -1750,6 +1753,7 @@ export function ZeropsProjectsContent({
       reviewWaits: mateReviewWaits(
         groupId === undefined ? undefined : projectFlow.flows.get(groupId),
         candidate.project.id,
+        (pull) => standingOf(groupId, pull),
       ),
       mine: projectPeople[candidate.project.id]?.waitsOnViewer === true,
       // Waking while it comes up and arrives, as its row in the menu.

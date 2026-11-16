@@ -3,9 +3,19 @@
  * Mate's changes waiting for review (one change, two, three, and five: the newest three and "and 2
  * more"), and what it asks: an approval, a question and a vault value.
  *
- * Served by the dev server at `/design-composer-top.html` (`?theme=dark`; `?n=2` or `?ask=question`
- * shows one state alone). Fixtures only: nothing here ships, and no route imports this module.
+ * Then the same strip where the Mate's application limits who merges (Ada K. and Sam R. do), as
+ * the rule itself reads it (`mateNextStep`): to Dana L., who cannot merge there — a change ready
+ * for her ask, one she asked for, several of each — and to Ada K., whom Dana L. asked.
+ *
+ * Served by the dev server at `/design-composer-top.html` (`?theme=dark`; `?n=2`, `?ask=question`
+ * or `?standing=to-ask` shows one state alone). Fixtures only: nothing here ships, and no route
+ * imports this module.
  */
+import {
+  changeStandingOf,
+  mateNextStep,
+  type FlowPullRequest,
+} from "@t3tools/client-runtime/zerops";
 import { ApprovalRequestId } from "@t3tools/contracts";
 import { type ReactNode, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
@@ -25,6 +35,7 @@ import {
   vaultAskView,
 } from "~/components/zerops/vault/vaultRequest.logic";
 import {
+  zeropsComposerTop,
   ZeropsNextStepStrip,
   type ZeropsNextStepStripModel,
 } from "~/components/zerops/ZeropsNextStepBanner";
@@ -36,6 +47,7 @@ const params = new URLSearchParams(location.search);
 const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const ONLY = params.get("n");
 const ONLY_ASK = params.get("ask");
+const ONLY_STANDING = params.get("standing");
 
 const FACE = <MateFace size={24} state="needs" tint="sky" />;
 const nothing = async () => undefined;
@@ -181,6 +193,114 @@ function stripOf(count: number): ZeropsNextStepStripModel {
   };
 }
 
+const TEA = "tea";
+const NOVA_PROJECT = "p-nova";
+const NAMES = { ada: "Ada K.", sam: "Sam R.", dana: "Dana L." };
+const MERGERS = { people: ["ada", "sam"] };
+/** Dana L., who cannot merge in Tea, and Ada K., who does. */
+const AS_DANA = changeStandingOf(
+  { apps: { [TEA]: { merges: "held", ...MERGERS } }, names: NAMES },
+  { userId: "dana" },
+);
+const AS_ADA = changeStandingOf(
+  { apps: { [TEA]: { merges: "yes", ...MERGERS } }, names: NAMES },
+  { userId: "ada" },
+);
+
+const teaChange = (number: number, title: string, asked: boolean): FlowPullRequest => ({
+  repository: "appdev",
+  number,
+  title,
+  kind: "code",
+  mateProjectId: NOVA_PROJECT,
+  url: undefined,
+  mergeability: "mergeable",
+  behind: false,
+  merged: false,
+  mergedAt: undefined,
+  headSha: "abc",
+  baseBranch: "main",
+  line: `appdev #${String(number)}`,
+  updatedAt: `2026-11-16T09:0${String(number % 10)}:00Z`,
+  ready: true,
+  ...(asked ? { mergeAsk: { by: "dana", at: "2026-11-16T09:30:00Z" } } : {}),
+});
+
+/** The strip of Nova's `changes` in Tea, as the conversation's own rule makes it for who looks. */
+function standingStrip(
+  changes: ReadonlyArray<FlowPullRequest>,
+  standingOf: typeof AS_DANA,
+): ZeropsNextStepStripModel {
+  const step = mateNextStep({
+    pullRequests: changes,
+    mateProjectId: NOVA_PROJECT,
+    mateName: "Nova",
+    standingOf: (pull) => standingOf(TEA, pull),
+  });
+  if (step.kind !== "review") throw new Error("the harness' changes ask for no review");
+  const { strip } = zeropsComposerTop({
+    nextStep: {
+      kind: "review",
+      step,
+      tint: "violet",
+      shape: "clover",
+      target: {
+        kind: "change",
+        groupId: TEA,
+        repository: step.pull.repository,
+        number: step.pull.number,
+      },
+    },
+    pending: { question: false, approval: false, working: false },
+  });
+  if (strip === null) throw new Error("the harness' strip was put away");
+  return strip;
+}
+
+const GIFT = "Add a gift note to the checkout";
+const DAYS = "Show delivery days on the cart";
+const LIST = "Tidy the tea list on small screens";
+
+const STANDINGS: ReadonlyArray<{
+  readonly state: string;
+  readonly name: string;
+  readonly strip: ZeropsNextStepStripModel;
+}> = [
+  {
+    state: "to-ask",
+    name: "Cannot merge here · one change ready",
+    strip: standingStrip([teaChange(21, GIFT, false)], AS_DANA),
+  },
+  {
+    state: "waiting",
+    name: "Cannot merge here · asked",
+    strip: standingStrip([teaChange(21, GIFT, true)], AS_DANA),
+  },
+  {
+    state: "asked-of-me",
+    name: "Merges here · Dana L. asked",
+    strip: standingStrip([teaChange(21, GIFT, true)], AS_ADA),
+  },
+  {
+    state: "to-ask-several",
+    name: "Cannot merge here · two ready, one asked",
+    strip: standingStrip(
+      [teaChange(21, GIFT, true), teaChange(22, DAYS, false), teaChange(23, LIST, false)],
+      AS_DANA,
+    ),
+  },
+  {
+    state: "waiting-several",
+    name: "Cannot merge here · asked for both",
+    strip: standingStrip([teaChange(21, GIFT, true), teaChange(22, DAYS, true)], AS_DANA),
+  },
+  {
+    state: "asked-of-me-several",
+    name: "Merges here · two changes, Dana L. asked for one",
+    strip: standingStrip([teaChange(21, GIFT, false), teaChange(22, DAYS, true)], AS_ADA),
+  },
+];
+
 function Composer({
   name,
   state,
@@ -207,9 +327,10 @@ function Composer({
 }
 
 function Harness() {
-  const counts = ONLY_ASK !== null ? [] : ONLY === null ? [1, 2, 3, 5] : [Number(ONLY)];
-  const asks =
-    ONLY !== null ? [] : ASKS.filter(({ name }) => ONLY_ASK === null || name === ONLY_ASK);
+  const one = ONLY !== null || ONLY_ASK !== null || ONLY_STANDING !== null;
+  const counts = ONLY !== null ? [Number(ONLY)] : one ? [] : [1, 2, 3, 5];
+  const asks = ASKS.filter(({ name }) => (one ? name === ONLY_ASK : true));
+  const standings = STANDINGS.filter(({ state }) => (one ? state === ONLY_STANDING : true));
   return (
     <TooltipProvider>
       <div className="flex min-h-screen flex-col items-center gap-10 bg-background p-10 text-foreground">
@@ -221,6 +342,14 @@ function Harness() {
             top={
               <ZeropsNextStepStrip onMore={() => {}} onReview={() => {}} strip={stripOf(count)} />
             }
+          />
+        ))}
+        {standings.map(({ state, name, strip }) => (
+          <Composer
+            key={state}
+            name={name}
+            state={state}
+            top={<ZeropsNextStepStrip onMore={() => {}} onReview={() => {}} strip={strip} />}
           />
         ))}
         {asks.map(({ name, top }) => (
