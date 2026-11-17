@@ -16,6 +16,7 @@ import {
 } from "@t3tools/contracts";
 
 import type { Envelope, EventDraft } from "./command.ts";
+import { awaitsAfter } from "./mateAsks.ts";
 import {
   KEPT_ENDED_RUNS,
   contentDigest,
@@ -292,11 +293,13 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         };
       });
       if (body.kind === "person" && body.delivery.state !== "steered") {
+        // An answer to a message it sent takes that message off what it waits on.
+        const answered = { ...counted, awaits: awaitsAfter(counted.awaits, body) };
         // Only a message waiting for its own run is newer work; another Mate's is never the
         // person writing, so it holds back no resume or continuation of theirs.
         return body.delivery.state === "queued" && body.mateMessage === undefined
-          ? { ...counted, lastPersonSeq: event.seq }
-          : counted;
+          ? { ...answered, lastPersonSeq: event.seq }
+          : answered;
       }
       // A steered message joins the run, open with it: its steer's outcome may still change it.
       return {
@@ -360,6 +363,8 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
           : 0;
       return {
         ...touched,
+        // A message it sent another Mate: waited on until its answer comes.
+        awaits: awaitsAfter(touched.awaits, event.body),
         reportsDue: touched.reportsDue + reports,
         items: without(touched.items, event.itemId),
         closedItems:

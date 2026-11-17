@@ -52,6 +52,7 @@ import {
   type RunEnd,
   ZeropsUserId,
   mateMessageItemOf,
+  mateMessageNamesOf,
   mateMessageSenderName,
 } from "@t3tools/contracts";
 import type { KeyLinkUp } from "@t3tools/shared/mateLink";
@@ -107,16 +108,16 @@ export class ZeropsMateMessages extends Context.Service<
 
 /**
  * What the asked Mate's agent hears of a message: the shared contract's words. Its sender's
- * project is named only where HQ names both it and the Mate; with one of them empty the other is
- * the sender's name, "Another Mate" with neither.
+ * project is named only where both it and the Mate are named, HQ's one name split into the two
+ * where it gives no project's; with one of them empty the other is the sender's name, "Another
+ * Mate" with neither.
  */
 export const toldOf = (message: MateMessage): string => {
   const name = mateMessageSenderName(message.from);
-  const project = message.from.projectName.trim();
+  // HQ's one name ("Frontend Legacy - Mavi") is the Mate and its project (`mateMessageNamesOf`).
+  const { mate, project } = mateMessageNamesOf(message.from);
   const sender =
-    project === "" || message.from.mateName.trim() === ""
-      ? name
-      : `${name} (the Mate of the project "${project}")`;
+    project === "" || mate === "" ? name : `${name} (the Mate of the project "${project}")`;
   if (message.kind === "answer") {
     return [
       `${sender} answered the message you sent it:`,

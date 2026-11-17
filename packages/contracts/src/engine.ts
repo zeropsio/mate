@@ -854,6 +854,10 @@ export const ConversationRowState = forwardCompatibleUnion({
 });
 export type ConversationRowState = typeof ConversationRowState.Type;
 
+/** Another Mate a row names: its project, and its own name (HQ's, cut at its project's). */
+export const MateRowRef = Schema.Struct({ projectId: Schema.String, mateName: Schema.String });
+export type MateRowRef = typeof MateRowRef.Type;
+
 /** The menu row, the face, HQ's relayed row. */
 export const ConversationRow = Schema.Struct({
   conversationId: ConversationId,
@@ -871,10 +875,21 @@ export const ConversationRow = Schema.Struct({
       turnState: Schema.optionalKey(RunTurnState),
     }),
   ),
+  /**
+   * The latest ask's first line, whoever asked: the person's, or another Mate's message, its words
+   * then read "<Mate>: …" (an answer "<Mate> answered: …").
+   */
   subject: Schema.NullOr(Schema.String),
+  /** The Mate whose message the subject is, by its project and its own name; absent: the person's. */
+  subjectFrom: Schema.optionalKey(MateRowRef),
   snippet: Schema.NullOr(Schema.String),
   at: Millis,
   askedAt: Schema.NullOr(Millis),
+  /**
+   * The Mates whose answer to a message this conversation sent has not come yet, oldest first:
+   * they answer, the person has nothing to do. Absent: none.
+   */
+  awaits: Schema.optionalKey(Schema.Array(MateRowRef)),
   /** How freely its agent works, once a person set it; absent: the workspace's mode. */
   runtimeMode: Schema.optionalKey(forwardCompatibleLiterals(RuntimeMode.literals)),
   /** The pool container its agent leased, which it works in; absent: none. */

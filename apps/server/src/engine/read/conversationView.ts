@@ -21,6 +21,7 @@ import {
   RunTrigger,
   WORK_ALIVE,
   type BackgroundWorkItem,
+  type MateMessageItem,
   type ConversationAgent,
   type RunState,
   type RuntimeMode,
@@ -31,6 +32,7 @@ import { userAskOf } from "@t3tools/shared/userAsk";
 
 import { Conversations } from "../Conversations.ts";
 import { isUsageWake } from "../domain/evolve.ts";
+import type { AwaitedAnswer } from "../domain/mateAsks.ts";
 
 /** How many of the person's newest messages the last ask looks through: past this many commands
  * in a row it is none. */
@@ -109,9 +111,18 @@ export interface ConversationView {
   /**
    * The same, among the messages the person typed: a request a page sent for them (`fromPanel`)
    * or a follow-up on a task (`taskMessage`) is a word on the conversation, never its subject —
-   * what the menu row and the header name it by.
+   * what the person last asked; decisions read it.
    */
   readonly lastAsked: ConversationView["lastPerson"];
+  /**
+   * The latest ask whoever made it: `lastAsked`, or another Mate's message after it, with that
+   * Mate (`mateMessage`): what the menu row and the header name the conversation by.
+   */
+  readonly lastSaid:
+    | (NonNullable<ConversationView["lastPerson"]> & { readonly mateMessage?: MateMessageItem })
+    | null;
+  /** The messages it sent other Mates that no answer met yet, oldest first. */
+  readonly awaits: ReadonlyArray<AwaitedAnswer>;
   /** The agent's latest words, once said whole. */
   readonly lastAgent: { readonly text: string; readonly at: number } | null;
   /** The newest call of the run on, while it runs. */
@@ -261,6 +272,9 @@ export const readConversationView = (conversationId: ConversationId) =>
                   text: body.text,
                   at: row.at,
                   ...(body.kind === "person" ? { attachments: body.attachments } : {}),
+                  ...(body.kind === "person" && body.mateMessage !== undefined
+                    ? { mateMessage: body.mateMessage }
+                    : {}),
                 }
               : null,
           );
@@ -279,6 +293,25 @@ export const readConversationView = (conversationId: ConversationId) =>
         }
         return null;
       });
+    // The latest typed ask and the person's own, in one read: another Mate's messages are asks
+    // too, never the person's. Only where the person's lies past the window is it read again.
+    const lastAsks = Effect.gen(function* () {
+      const rows = yield* items({ kind: "person", opening: true, typed: true }, ASK_WINDOW);
+      let said: ConversationView["lastSaid"] = null;
+      for (const row of rows) {
+        const ask = yield* textOf(row);
+        if (ask === null || userAskOf(ask) === null) continue;
+        said ??= ask;
+        if (ask.mateMessage === undefined) {
+          const { mateMessage: _mate, ...person } = ask;
+          return { said, asked: person };
+        }
+      }
+      return {
+        said,
+        asked: rows.length < ASK_WINDOW ? null : yield* lastAskOf({ typed: true }),
+      };
+    });
     const call = activeRun === null ? undefined : yield* item({ kind: "call", open: true });
     const callBody =
       call === undefined || call.run_id !== activeRun?.id
@@ -316,6 +349,7 @@ export const readConversationView = (conversationId: ConversationId) =>
             },
           ],
     );
+    const asks = yield* lastAsks;
     const usageResumes = Object.values(state.wakes).flatMap((wake) =>
       isUsageWake(wake.kind) && wake.joins !== null ? [wake.joins] : [],
     );
@@ -342,7 +376,9 @@ export const readConversationView = (conversationId: ConversationId) =>
         })),
       ),
       lastPerson: yield* lastAskOf({}),
-      lastAsked: yield* lastAskOf({ typed: true }),
+      lastAsked: asks.asked,
+      lastSaid: asks.said,
+      awaits: state.awaits,
       lastAgent: yield* textOf(yield* item({ kind: "note", open: false, by: "mate" })),
       liveCall:
         callBody?.kind === "call" && call !== undefined

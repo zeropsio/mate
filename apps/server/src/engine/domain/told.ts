@@ -35,10 +35,18 @@ export const STEERED_NOTE =
  * The words a running turn takes from the person: the note after them, so the agent answers
  * where the person reads. A slash command goes alone, as `toldWith` keeps it.
  */
-export function steeredWith(told: string): string {
+export function steeredWith(told: string, mate?: string): string {
   if (isSlashCommand(told)) return told;
-  return told.trim().length === 0 ? STEERED_NOTE : `${told}\n\n${STEERED_NOTE}`;
+  const note = mate === undefined ? STEERED_NOTE : `${STEERED_NOTE}\n${mateRunNote(mate)}`;
+  return told.trim().length === 0 ? note : `${told}\n\n${note}`;
 }
+
+/**
+ * What the agent also hears of the person's words steered into a run another Mate's message
+ * started: they are the person's, answered here, while the turn's end still goes back to that Mate.
+ */
+export const mateRunNote = (mate: string): string =>
+  `<zerops-note>Your person wrote this while you work on ${mate}'s message: answer them here. Your answer at the end of this turn still goes back to ${mate}, so finish with it written for ${mate}.</zerops-note>`;
 
 /**
  * The person's words with the context in front of them, or the words exactly as they were when

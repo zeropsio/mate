@@ -1,6 +1,7 @@
 /**
  * The menu row (`ConversationRow`): what the sidebar, the face and HQ's relayed row read of a
- * conversation, from its view. Its subject is the person's latest message's first line, its
+ * conversation, from its view. Its subject is the latest ask's first line (the person's, or another
+ * Mate's message said as its), its
  * snippet the agent's latest words, its state the run's — and a run a restart cut says why and
  * whether it carries on. Pure; texts masked and cut to what a row shows.
  *
@@ -12,6 +13,9 @@ import {
   type BackgroundWork,
   type ConversationRow,
   type ConversationRowState,
+  type MateMessageItem,
+  type MateRowRef,
+  mateMessageSenderName,
   type RunEnd,
 } from "@t3tools/contracts";
 import { maskSecrets, messagePreviewText } from "@t3tools/shared/messagePreview";
@@ -211,13 +215,38 @@ const latestOf = (view: ConversationView): ViewRun | null =>
     );
 
 /**
- * The agent's words that answer the person's latest ask: none where they came before it — a Stop
- * before the Mate said anything left the row reading "now" over its answer to the ask before.
+ * The agent's words that answer the latest ask, the person's or another Mate's: none where they
+ * came before it — a Stop before the Mate said anything left the row reading "now" over its answer
+ * to the ask before.
  */
 const answerOf = (view: ConversationView): ConversationView["lastAgent"] =>
-  view.lastAgent !== null && view.lastAsked !== null && view.lastAgent.at < view.lastAsked.at
+  view.lastAgent !== null && view.lastSaid !== null && view.lastAgent.at < view.lastSaid.at
     ? null
     : view.lastAgent;
+
+/**
+ * An ask's line as whoever made it said it: the person's as they wrote it, another Mate's message
+ * as "<Mate>: …", and an answer that woke the asker as "<Mate> answered: …".
+ */
+export const attributedLine = (line: string, from: MateMessageItem | undefined): string => {
+  if (from === undefined) return line;
+  const name = mateMessageSenderName(from.from);
+  return from.kind === "answer" ? `${name} answered: ${line}` : `${name}: ${line}`;
+};
+
+const saidLineOf = (said: NonNullable<ConversationView["lastSaid"]>): string | null => {
+  const line = subjectOf(said);
+  return line === null ? null : rowText(attributedLine(line, said.mateMessage));
+};
+
+/** The Mate whose message a row's subject is, by its project and its own name. */
+const saidByOf = (said: NonNullable<ConversationView["lastSaid"]>): MateRowRef | undefined =>
+  said.mateMessage === undefined
+    ? undefined
+    : {
+        projectId: said.mateMessage.from.projectId,
+        mateName: mateMessageSenderName(said.mateMessage.from),
+      };
 
 /** The menu row of a conversation, at the revision its environment and epoch give it. */
 export const conversationRowOf = (
@@ -226,6 +255,8 @@ export const conversationRowOf = (
 ): ConversationRow => {
   const latest = latestOf(view);
   const state = rowStateOf(view);
+  const said = view.lastSaid;
+  const saidBy = said === null ? undefined : saidByOf(said);
   const asked =
     view.openRequests.find((request) => request.runId === view.activeRun?.id) ??
     (state.kind === "waiting" && isCardAsk(state.on) ? cardAsk(view) : undefined);
@@ -245,10 +276,16 @@ export const conversationRowOf = (
             endedAt: latest.endedAt,
             turnState: turnStateOf(latest),
           },
-    subject: view.lastAsked === null ? null : subjectOf(view.lastAsked),
+    subject: said === null ? null : saidLineOf(said),
+    ...(saidBy === undefined ? {} : { subjectFrom: saidBy }),
     snippet: rowText(answerOf(view)?.text),
     at: view.updatedAt,
     askedAt: asked?.at ?? null,
+    ...(view.awaits.length === 0
+      ? {}
+      : {
+          awaits: view.awaits.map(({ projectId, mateName }) => ({ projectId, mateName })),
+        }),
     ...(view.runtimeMode == null ? {} : { runtimeMode: view.runtimeMode }),
     ...(view.lease == null ? {} : { lease: view.lease }),
     ...(view.archived ? { archived: true as const } : {}),

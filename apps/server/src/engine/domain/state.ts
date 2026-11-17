@@ -33,14 +33,16 @@ import type {
   WakeId,
 } from "@t3tools/contracts";
 
+import type { AwaitedAnswer } from "./mateAsks.ts";
+
 /** How many ended runs the state keeps. */
 export const KEPT_ENDED_RUNS = 16;
 
 /**
- * Bumped whenever the shape changes: a snapshot of another version is ignored and refolded. 17
- * keeps the pool container the conversation's agent leased (`lease`).
+ * Bumped whenever the shape changes: a snapshot of another version is ignored and refolded. 18
+ * keeps the messages it sent other Mates that no answer met yet (`awaits`).
  */
-export const STATE_VERSION = 17;
+export const STATE_VERSION = 18;
 
 export interface RunRecord {
   readonly id: RunId;
@@ -260,6 +262,8 @@ export interface ConversationState {
   readonly turns: Readonly<Record<string, RunId>>;
   /** Sequence of the latest person message (a sent or steered one). */
   readonly lastPersonSeq: number;
+  /** The messages it sent other Mates that no answer met yet, oldest first (`mateAsks`). */
+  readonly awaits: ReadonlyArray<AwaitedAnswer>;
   readonly session: SessionRecord | null;
   /** The close the engine asked of the session; nothing goes into it meanwhile. */
   readonly closing: {
@@ -330,6 +334,7 @@ export const initialState = (conversationId: ConversationId): ConversationState 
   endedRuns: [],
   turns: {},
   lastPersonSeq: 0,
+  awaits: [],
   session: null,
   closing: null,
   rotatingFrom: null,
