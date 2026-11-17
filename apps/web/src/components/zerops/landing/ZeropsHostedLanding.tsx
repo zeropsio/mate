@@ -37,10 +37,9 @@ export function ZeropsHostedLanding() {
     useZeropsSession();
   const [nativeState, setNativeState] = useState<ZeropsNativeSignInState>({ kind: "idle" });
   const generation = useRef(0);
-  const prompt = useSyncExternalStore(
-    zeropsHq?.subscribe ?? noPrompts,
-    zeropsHq?.state ?? (() => CLOSED),
-  );
+  const promptNow = zeropsHq?.state ?? (() => CLOSED);
+  // A server render reads the prompt as the browser would: nothing differs before hydration.
+  const prompt = useSyncExternalStore(zeropsHq?.subscribe ?? noPrompts, promptNow, promptNow);
   if (status === "signed-in") return <ZeropsProjectsPage />;
   if (status === "loading")
     return <ZeropsFrameWait label="Checking your Zerops account…" signedIn={false} />;
