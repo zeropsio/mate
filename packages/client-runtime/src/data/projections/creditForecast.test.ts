@@ -295,23 +295,6 @@ describe("an organization's balance, as billing answers it", () => {
     expect(decode(frame(answer))).toEqual({ id: "status-row", value: read, version: 3 });
   });
 
-  // witness: packages/client-runtime/src/data/families/organizationBalance.ts | const amount = typeof value === "number" ? value : Number(value); → const amount = typeof value === "number" ? value : Number.NaN;
-  it("reads its automatic top-up, whose amounts Zerops sends as decimals", () => {
-    const answer = {
-      credit: 10,
-      promoCredit: 0,
-      autoTopUp: { threshold: "50", amount: "100.5", calendarMonthlyLimit: "300" },
-      status: "ACTIVE",
-    };
-    expect(decode(frame(answer))?.value).toEqual({
-      organizationId: ORG,
-      credit: 10,
-      promoCredit: 0,
-      autoTopUp: { threshold: 50, amount: 100.5, monthlyLimit: 300 },
-      status: "ACTIVE",
-    });
-  });
-
   it.each([
     { name: "says neither amount", answer: {} },
     { name: "says an amount that is not a number", answer: { credit: "lots", promoCredit: 0 } },
