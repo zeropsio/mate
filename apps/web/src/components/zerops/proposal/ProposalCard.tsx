@@ -121,7 +121,8 @@ export function ProposalCard(props: ProposalCardProps) {
       ? (props.chiefTarget ?? { kind: "unknown" as const })
       : undefined;
   const where = proposalAskWhere(proposal, tier, props.homeProjectId ?? null);
-  const phase = stage === "running" ? props.restartPhase : undefined;
+  // An approval whose end a reload hid still shows its restarts, read off the vault.
+  const phase = stage === "running" || stage === "unseen" ? props.restartPhase : undefined;
   const state: ReturnType<typeof proposalAskState> =
     phase?.kind === "restarting"
       ? { kind: "working", words: phase.words, pressed: "main" }
