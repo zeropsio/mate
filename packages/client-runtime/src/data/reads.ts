@@ -9,7 +9,7 @@ import {
 import type { RoleMateVisibility } from "../zerops/mateAccess.ts";
 import { mateVisibility } from "./projections/mateVisibility.ts";
 import { mateHealth } from "./projections/mateHealth.ts";
-import { sharedBirths, type SharedBirthState } from "./projections/birthProgress.ts";
+import { settleClaims, sharedBirths, type SharedBirthState } from "./projections/birthProgress.ts";
 /**
  * What a screen, and the account runtime's derivations outside React, may reach of the account's
  * data: the store's reads and the hold on a detail — never its writer. An app sets
@@ -18,6 +18,9 @@ import { sharedBirths, type SharedBirthState } from "./projections/birthProgress
  * @module data/reads
  */
 import { hqMateIdentities, type HqMateIdentity } from "./projections/hqMateIdentity.ts";
+import * as Clock from "effect/Clock";
+import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import { Atom, type AtomRegistry } from "effect/reactivity";
 
 import type { ZeropsOrganization } from "../zerops/api.ts";
@@ -133,7 +136,21 @@ export const sharedBirthsAtom = Atom.family((personId: string) => {
   });
   return Atom.make((get): SharedBirthState => {
     get(demand);
-    return get(source);
+    // A step in flight reads as one until its bounded wait ends: this read wakes itself then.
+    const nowMs = Effect.runSync(Clock.currentTimeMillis);
+    const settled = settleClaims(get(source), nowMs);
+    if (settled.wakeAt !== undefined) {
+      const refresh = () => get.refreshSelf();
+      const timer = Effect.runFork(
+        Effect.sleep(Math.max(0, settled.wakeAt - nowMs)).pipe(
+          Effect.andThen(Effect.sync(refresh)),
+        ),
+      );
+      get.addFinalizer(() => {
+        Effect.runFork(Fiber.interrupt(timer));
+      });
+    }
+    return settled.state;
   }).pipe(Atom.withLabel(`data:shared-births:${personId}`));
 });
 

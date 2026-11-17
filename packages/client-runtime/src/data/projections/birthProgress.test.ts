@@ -696,14 +696,16 @@ describe("shared birth progress", () => {
 
   it("a lost project answer advances only when exactly one unheld project of the original name arrives", () => {
     const lost = { ...initial, birth: { ...initial.birth, attempts: { create: attempt } } };
-    expect(birthProgressOf(lost).next).toEqual({ kind: "unknown" });
+    expect(birthProgressOf(lost).next).toEqual({ kind: "unknown", claimedAt: attempt.at });
     const arrived = { ...lost, projects: [{ id: "p1", name: "Shop - Ada" }] };
     expect(birthProgressOf(arrived).next).toEqual({ kind: "bind", projectId: "p1" });
     expect(birthProgressOf({ ...arrived, heldProjects: new Set(["p1"]) }).next).toEqual({
       kind: "unknown",
+      claimedAt: attempt.at,
     });
     expect(birthProgressOf({ ...arrived, projectsCurrent: false }).next).toEqual({
       kind: "unknown",
+      claimedAt: attempt.at,
     });
     expect(
       birthProgressOf({
@@ -727,6 +729,7 @@ describe("shared birth progress", () => {
     });
     expect(birthProgressOf(withRefusal("2026-11-05T09:59:59.000Z")).next).toEqual({
       kind: "unknown",
+      claimedAt: attempt.at,
     });
     expect(
       birthProgressOf({ ...initial, birth: { id: "birth", face: "", madeBy: "ada", intent: plan } })
@@ -746,7 +749,10 @@ describe("shared birth progress", () => {
       next: { kind: "create" },
       reason: "Key unavailable.",
     });
-    expect(birthProgressOf(unsent("2026-11-05T09:59:59.000Z")).next).toEqual({ kind: "unknown" });
+    expect(birthProgressOf(unsent("2026-11-05T09:59:59.000Z")).next).toEqual({
+      kind: "unknown",
+      claimedAt: attempt.at,
+    });
   });
 
   it("an accepted import failure blocks another import and retains the platform reason", () => {
@@ -828,7 +834,7 @@ describe("shared birth progress", () => {
       birth: { ...initial.birth, projectId: "p1", attempts: { create: attempt, import: attempt } },
       projects: [{ id: "p1", name: "Shop - Ada" }],
     };
-    expect(birthProgressOf(lost).next).toEqual({ kind: "unknown" });
+    expect(birthProgressOf(lost).next).toEqual({ kind: "unknown", claimedAt: attempt.at });
     expect(birthProgressOf({ ...lost, service: { id: "s1", status: "ACTIVE" } })).toMatchObject({
       phase: "container-starting",
       next: { kind: "record-import", receipt: "s1" },
