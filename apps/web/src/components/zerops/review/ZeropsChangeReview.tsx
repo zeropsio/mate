@@ -54,7 +54,7 @@ import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import type { HqMergeAsk } from "@t3tools/shared/hqChanges";
 import { useRouter } from "@tanstack/react-router";
 import { ArrowUpRightIcon, CheckIcon } from "lucide-react";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { Badge } from "~/components/ui/badge";
 import { Button, InlineButton } from "~/components/ui/button";
@@ -162,6 +162,7 @@ type ChangeTarget = Extract<ReviewTarget, { readonly kind: "change" }>;
 
 export function ZeropsChangeReview({
   frame = "dialog",
+  trail,
   target,
   titleId,
   onClose,
@@ -169,6 +170,8 @@ export function ZeropsChangeReview({
 }: {
   /** In a dialog over the conversation, or as the change's own page. */
   readonly frame?: ReviewFrame;
+  /** The page's trail, over its title (`ZeropsReviewSurface`'s). */
+  readonly trail?: ReactNode;
   readonly target: ChangeTarget;
   readonly titleId: string | undefined;
   readonly onClose: () => void;
@@ -232,6 +235,7 @@ export function ZeropsChangeReview({
         back={back}
         consequence="Nothing is merged from here until the change is read."
         frame={frame}
+        trail={trail}
         kind={KIND}
         kindLabel={reviewKindLine(KIND)}
         onClose={onClose}
@@ -274,6 +278,7 @@ export function ZeropsChangeReview({
       flow={flow}
       hqAddress={flows.hqAddress}
       frame={frame}
+      trail={trail}
       back={back}
       onOpenPage={onOpenPage}
       onClose={onClose}
@@ -289,6 +294,7 @@ function ChangeReviewData({
   flow,
   hqAddress,
   frame,
+  trail,
   onOpenPage,
   back,
   pull,
@@ -302,6 +308,7 @@ function ChangeReviewData({
   /** The organization's official HQ, whose addresses name its changes. */
   readonly hqAddress: string | undefined;
   readonly frame: ReviewFrame;
+  readonly trail: ReactNode;
   readonly onOpenPage: (() => void) | undefined;
   readonly back: ReviewButton | undefined;
   readonly pull: FlowPullRequest;
@@ -577,6 +584,7 @@ function ChangeReviewData({
         else addEnvironment(target.groupId, tier);
       }}
       frame={frame}
+      trail={trail}
       hqAddress={hqAddress}
       back={back}
       onOpenPage={onOpenPage}
@@ -737,6 +745,8 @@ const NO_OTHERS: ReadonlyArray<Pick<FlowPullRequest, "number" | "title">> = [];
 export interface ChangeReviewViewProps {
   /** A dialog over the conversation, or the change's own page. */
   readonly frame?: ReviewFrame | undefined;
+  /** The page's trail, over its title. */
+  readonly trail?: ReactNode;
   readonly pull: FlowPullRequest;
   /** The Mate that wrote it — its name, its face, and whether it is the person's own. */
   readonly mate: {
@@ -1235,6 +1245,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       }
       face={mate.tint === undefined ? undefined : { tint: mate.tint, shape: mate.shape }}
       frame={props.frame}
+      trail={props.trail}
       fixNote={fixNote}
       fix={
         fix === undefined || mine === undefined

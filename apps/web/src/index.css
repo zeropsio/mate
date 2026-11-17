@@ -13271,6 +13271,13 @@ a.message-file:focus-visible {
   padding: 0 0 16px;
   border: 0;
 }
+/* The page's trail heads its title, 8 over it: one group with the title, the head's line under.
+   On a phone it stands in the frame's bar instead. */
+.rv-head > .rv-trail {
+  display: flex;
+  min-width: 0;
+  margin-bottom: 4px;
+}
 .rv-page .rv-body {
   padding: 20px 0 0;
   overflow: visible;

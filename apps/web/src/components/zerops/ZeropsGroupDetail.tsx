@@ -325,9 +325,12 @@ export function ZeropsChangeDetailPage({
   const trail = usePageTrail({ project: { groupId, name: groupName }, here: `#${String(number)}` });
   const titleId = useId();
   return (
-    <ZeropsHostedFrame breadcrumb={<Crumbs trail={trail} />} width="column">
+    // The trail heads the review's title, as a project's page heads its own: no bar of its own
+    // over it, which in the panel stood a second strip under the panel's tabs.
+    <ZeropsHostedFrame bar={false} width="column">
       <ZeropsChangeReview
         frame="page"
+        trail={<Crumbs trail={trail} />}
         onClose={STAYS}
         target={{ kind: "change", groupId, repository, number }}
         titleId={titleId}

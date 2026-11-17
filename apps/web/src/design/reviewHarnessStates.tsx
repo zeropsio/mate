@@ -628,6 +628,7 @@ function Change({
       environments={environments}
       onAddEnvironment={noop}
       frame={frame}
+      trail={frame === "page" ? HARNESS_TRAIL : undefined}
       hqAddress={HARNESS_HQ}
       initiallyOpen={open}
       productionOutside={productionOutside}
@@ -673,6 +674,17 @@ function Change({
     />
   );
 }
+
+/** The page's trail, as the app draws it over a change's title. */
+const HARNESS_TRAIL = (
+  <WorkspaceBreadcrumb ariaLabel="Zerops breadcrumb" className="min-w-0">
+    <WorkspaceBreadcrumbItem>Overview</WorkspaceBreadcrumbItem>
+    <WorkspaceBreadcrumbSeparator />
+    <WorkspaceBreadcrumbItem>Beviro</WorkspaceBreadcrumbItem>
+    <WorkspaceBreadcrumbSeparator />
+    <WorkspaceBreadcrumbItem>#2</WorkspaceBreadcrumbItem>
+  </WorkspaceBreadcrumb>
+);
 
 /** A Mate's change mirrored to GitHub, its checks there as GitHub reports them on its head. */
 const WREN = { name: "Wren", tint: "sky", mine: true } as const;
@@ -2690,16 +2702,7 @@ export function ReviewPageStage({
     <section className="flex flex-col gap-2" data-review-harness-state={label}>
       <span className="px-2 text-xs font-medium text-muted-foreground">{label}</span>
       <div className="h-dvh overflow-hidden rounded-xl border border-border">
-        <ZeropsHostedFrame
-          breadcrumb={
-            <WorkspaceBreadcrumb ariaLabel="Zerops breadcrumb" className="min-w-0">
-              <WorkspaceBreadcrumbItem>Projects</WorkspaceBreadcrumbItem>
-              <WorkspaceBreadcrumbSeparator />
-              <WorkspaceBreadcrumbItem>Snap</WorkspaceBreadcrumbItem>
-            </WorkspaceBreadcrumb>
-          }
-          width="column"
-        >
+        <ZeropsHostedFrame bar={false} width="column">
           {children}
         </ZeropsHostedFrame>
       </div>

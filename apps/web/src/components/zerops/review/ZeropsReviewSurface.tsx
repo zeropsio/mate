@@ -60,6 +60,7 @@ import {
   type GitLink,
 } from "../gitBrowser/GitBrowserLink";
 import { MateFace } from "../primitives";
+import { InPhoneBar } from "../system/PhoneBar";
 import { ZeropsDeployAnswer, type DeployWhereRow } from "../ZeropsDeployAnswer";
 import {
   changeFileLetter,
@@ -130,6 +131,11 @@ export interface ZeropsReviewSurfaceProps {
   readonly where?: { readonly words: string; readonly production?: boolean } | undefined;
   /** The rare ways, behind ⋯ in the top line; none where there is none. */
   readonly menu?: ReadonlyArray<ReviewMenuItem> | undefined;
+  /**
+   * The page's trail — Overview / Tea Shop / #7 — over its title, on a page only: it heads the
+   * title, so it hugs it, and on a phone it is the frame's bar.
+   */
+  readonly trail?: ReactNode;
   readonly title: string;
   /** The title as it is drawn, where it sets a name apart; `title` is its text. */
   readonly titleWords?: ReactNode;
@@ -219,6 +225,7 @@ export function ZeropsReviewSurface({
   face,
   where,
   menu,
+  trail,
   title,
   titleWords,
   titleId,
@@ -325,6 +332,11 @@ export function ZeropsReviewSurface({
         </div>
       )}
       <header className="rv-head" data-review-kind={kind}>
+        {frame !== "page" || trail === undefined ? null : (
+          <InPhoneBar>
+            <div className="rv-trail">{trail}</div>
+          </InPhoneBar>
+        )}
         <Title className="rv-title" id={titleId} title={title}>
           {titleWords ?? title}
         </Title>
