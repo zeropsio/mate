@@ -125,7 +125,6 @@ import {
   BoxIcon,
   CircleAlertIcon,
   CloudOffIcon,
-  EyeIcon,
   GitPullRequestIcon,
   PauseIcon,
   SquareIcon,
@@ -824,6 +823,8 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   // again (the owner, 2026-09-19). Per account, so it never leaves the device.
   // Past five projects each starts folded, its one line, until its person opens it
   // (`projectFolded`, the owner, 2026-10-11): what they opened or folded is kept.
+  // The Platform projects' rows moving under their line, as a project's Mates under its row.
+  const [platformMotion, setPlatformMotion] = useState<ProjectFoldMotion | undefined>(undefined);
   const [projectFolds, setProjectFolds] = useState<ProjectFolds>(() => ({
     closed: readCollapsedProjects(),
     opened: readOpenedProjects(),
@@ -2473,72 +2474,56 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         {ungroupedPlan.render()}
       </section>
     );
-  // Under the Mates: what only Platform holds, counted on one quiet line until the person asks
-  // for it, then by name where that line stood, its label the way back.
+  // Under the Mates: what only Platform holds, on one quiet line that never moves, its rows opening
+  // under it once the person asks for them.
   const platformRows = [
     ...new Map(view.ungrouped.filter(platformOnly).map((item) => [item.project.id, item])),
   ];
-  const platformFold =
-    showPlatformProjects ||
-    platformRows.length === 0 ||
-    onShowPlatformProjects === undefined ? null : (
-      <div
-        className={cn(
-          "menu-fold text-muted-foreground",
-          hiddenMates === 0 || onShowEveryone === undefined ? "mt-5" : "mt-1",
-        )}
-        data-zerops-surface="sidebar-platform-projects-fold"
-      >
-        <span className="flex justify-center">
-          <EyeIcon aria-hidden="true" className="size-3.75" />
-        </span>
-        <span className="flex min-w-0 items-center gap-1.5">
-          <span className="truncate">{`${String(platformRows.length)} Platform ${platformRows.length === 1 ? "project" : "projects"}`}</span>
-          <span aria-hidden="true">·</span>
-          <button
-            className="menu-show-everyone"
-            data-zerops-surface="sidebar-show-platform-projects"
-            onClick={() => {
-              onShowPlatformProjects(true);
-            }}
-            type="button"
-          >
-            Show
-          </button>
-        </span>
-      </div>
-    );
   const platformSection =
-    !showPlatformProjects || platformRows.length === 0 ? null : (
-      <section className="flex flex-col gap-1.5" data-zerops-platform-projects="true">
+    platformRows.length === 0 ||
+    (onShowPlatformProjects === undefined && !showPlatformProjects) ? null : (
+      <section className="flex flex-col" data-zerops-platform-projects="true">
         <span
           className="menu-ungrouped flex items-center gap-1.5"
           data-zerops-surface="sidebar-platform-label"
         >
-          <span>Platform projects</span>
+          <span className="truncate">{`${String(platformRows.length)} Platform ${platformRows.length === 1 ? "project" : "projects"}`}</span>
           {onShowPlatformProjects === undefined ? null : (
             <>
               <span aria-hidden="true">·</span>
               <button
+                aria-expanded={showPlatformProjects}
                 className="menu-show-everyone"
-                data-zerops-surface="sidebar-hide-platform-projects"
+                data-zerops-surface="sidebar-platform-projects-toggle"
                 onClick={() => {
-                  onShowPlatformProjects(false);
+                  setPlatformMotion(showPlatformProjects ? "closing" : "opening");
+                  onShowPlatformProjects(!showPlatformProjects);
                 }}
                 type="button"
               >
-                Hide
+                {showPlatformProjects ? "Hide" : "Show"}
               </button>
             </>
           )}
         </span>
-        {platformRows.map(([projectId, item]) => (
-          <PlatformProjectRow
-            key={projectId}
-            name={projectNameInApp(item.project)}
-            projectId={projectId}
-          />
-        ))}
+        {showPlatformProjects || platformMotion === "closing" ? (
+          <SidebarProjectFold
+            motion={platformMotion}
+            onOpened={bringUnfoldedIntoView}
+            onSettled={() => {
+              setPlatformMotion(undefined);
+            }}
+            open={showPlatformProjects}
+          >
+            {platformRows.map(([projectId, item]) => (
+              <PlatformProjectRow
+                key={projectId}
+                name={projectNameInApp(item.project)}
+                projectId={projectId}
+              />
+            ))}
+          </SidebarProjectFold>
+        ) : null}
       </section>
     );
   jumpIndex.current = {
@@ -2572,29 +2557,25 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       {/* Every project, one list: none folds behind "N other projects" (the owner, 2026-10-11). */}
       {groupSections}
       {ungroupedSection}
+      {/* What the list leaves out, each on the same quiet line under it: the Mates *Mine* hides,
+          then the projects only Platform holds. */}
       {hiddenMates === 0 || onShowEveryone === undefined ? null : (
-        <div
-          className="menu-fold mt-5 text-muted-foreground"
+        <span
+          className="menu-ungrouped flex items-center gap-1.5"
           data-zerops-surface="sidebar-hidden-mates"
         >
-          <span className="flex justify-center">
-            <EyeIcon aria-hidden="true" className="size-3.75" />
-          </span>
-          <span className="flex min-w-0 items-center gap-1.5">
-            <span className="truncate">{`${String(hiddenMates)} ${hiddenMates === 1 ? "Mate" : "Mates"} hidden`}</span>
-            <span aria-hidden="true">·</span>
-            <button
-              className="menu-show-everyone"
-              data-zerops-surface="sidebar-show-everyone"
-              onClick={onShowEveryone}
-              type="button"
-            >
-              Show everyone
-            </button>
-          </span>
-        </div>
+          <span className="truncate">{`${String(hiddenMates)} ${hiddenMates === 1 ? "Mate" : "Mates"} hidden`}</span>
+          <span aria-hidden="true">·</span>
+          <button
+            className="menu-show-everyone"
+            data-zerops-surface="sidebar-show-everyone"
+            onClick={onShowEveryone}
+            type="button"
+          >
+            Show everyone
+          </button>
+        </span>
       )}
-      {platformFold}
       {platformSection}
 
       {/* Rows already held, and the listing not all read: they may not be all
@@ -2675,13 +2656,13 @@ function scrollingAncestor(element: HTMLElement | null): HTMLElement | null {
 }
 
 /**
- * A group just opened at the list's end lands its Mates below the view: scrolled up to them, as
- * the menu scrolls elsewhere (smooth, unless motion is reduced); where they already stand in view
- * the list stays (`unfoldScroll`).
+ * A group, or the Platform projects, just opened at the list's end lands its rows below the view:
+ * scrolled up to them, as the menu scrolls elsewhere (smooth, unless motion is reduced); where they
+ * already stand in view the list stays (`unfoldScroll`).
  */
 function bringUnfoldedIntoView(rows: HTMLElement): void {
   const scroller = scrollingAncestor(rows);
-  const group = rows.closest("[data-zerops-group]");
+  const group = rows.closest("[data-zerops-group], [data-zerops-platform-projects]");
   if (scroller === null || group === null) return;
   const by = unfoldScroll({
     view: scroller.getBoundingClientRect(),
@@ -3322,8 +3303,8 @@ function PlatformProjectRow({
             target="_blank"
           />
         }
-        // Its name stands in the Mates' names' column: their 36 px face to this 32 px mark.
-        title={<span className="ps-1 text-sidebar-muted-foreground">{name}</span>}
+        size="lg-line"
+        title={<span className="text-sidebar-muted-foreground">{name}</span>}
       />
     </div>
   );

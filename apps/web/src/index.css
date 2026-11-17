@@ -4598,7 +4598,8 @@ code {
     color: var(--sidebar-muted-foreground);
   }
 
-  /* Mates in no project, after the projects: one quiet word above them. */
+  /* A quiet line in the list: the word above Mates in no project, and each line of what the
+     list leaves out under it (Mates hidden, Platform projects). */
   .menu-ungrouped {
     padding: 14px 8px 4px;
     font-size: 12px;
@@ -4613,20 +4614,6 @@ code {
      and a smaller corner than the Mate's row above it. */
   .menu-line {
     border-radius: 10px;
-  }
-
-  /* A fold — "3 quiet Mates", "2 other projects", "4 Mates hidden" — a 36 px
-     row, its chevrons in the faces' 36 px column, 14/20 muted. */
-  .menu-fold {
-    display: grid;
-    grid-template-columns: 36px minmax(0, 1fr);
-    column-gap: 12px;
-    align-items: center;
-    height: 36px;
-    padding: 0 8px;
-    border-radius: 10px;
-    font-size: 14px;
-    line-height: 20px;
   }
 
   /* An unsent draft no Mate's row holds: a one-line row on the Mates' grid — the pen in the faces'
@@ -4644,7 +4631,8 @@ code {
     line-height: 20px;
   }
 
-  /* *Show everyone*: the one word on the hidden line that does something. */
+  /* The verb on a line of what the list leaves out (*Show everyone*, *Show* / *Hide*): the one
+     word on it that does something. */
   .menu-show-everyone {
     color: var(--sidebar-foreground);
     font-weight: 500;

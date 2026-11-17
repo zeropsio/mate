@@ -16,7 +16,8 @@ import { cn } from "~/lib/utils";
  * Sizes follow what the row leads with:
  * - `sm` — a setting, an address: no mark or a 20 px one, 14 px words;
  * - `md` — a person, a service: a 32 px mark;
- * - `lg` — the menu's Mates and projects: a 36 px face, 15 px names and 14 px lines.
+ * - `lg` — the menu's Mates and projects: a 36 px face, 15 px names and 14 px lines;
+ * - `lg-line` — a one-line row among them: their 36 px column and 15 px names, one line tall.
  */
 const rowVariants = cva("group/row relative flex min-w-0 gap-3 text-left outline-none", {
   defaultVariants: { size: "md", pressable: false },
@@ -25,6 +26,7 @@ const rowVariants = cva("group/row relative flex min-w-0 gap-3 text-left outline
       sm: "min-h-11 rounded-lg px-3 py-2.5",
       md: "min-h-12 rounded-xl px-2.5 py-2",
       lg: "min-h-15.75 rounded-xl px-2.5 py-2.75",
+      "lg-line": "min-h-12 rounded-xl px-2.5 py-1.5",
     },
     /**
      * The whole row opens something: `true` lights its own ground under the pointer; `band` leaves
@@ -44,24 +46,28 @@ const LEAD_CLASS: Record<RowSize, string> = {
   sm: "size-5",
   md: "size-8",
   lg: "size-9",
+  "lg-line": "size-9",
 };
 
 const HEAD_CLASS: Record<RowSize, string> = {
   sm: "h-5 text-sm leading-5",
   md: "h-5 text-sm leading-5",
   lg: "h-5.5 text-[15px] leading-5.25",
+  "lg-line": "h-5.5 text-[15px] leading-5.25",
 };
 
 const BADGES_CLASS: Record<RowSize, string> = {
   sm: "h-5",
   md: "h-5",
   lg: "h-5.5",
+  "lg-line": "h-5.5",
 };
 
 const LINE_CLASS: Record<RowSize, string> = {
   sm: "text-xs leading-4",
   md: "text-line leading-5",
   lg: "text-prose leading-5.5",
+  "lg-line": "text-prose leading-5.5",
 };
 
 interface RowProps
