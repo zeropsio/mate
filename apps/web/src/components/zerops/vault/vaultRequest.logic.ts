@@ -39,6 +39,21 @@ export interface VaultAsk {
   readonly reason: string | null;
   /** When it was asked: a write since then gives it. */
   readonly askedAt: string;
+  /**
+   * The application's stage or production it goes to (`zerops_propose_env secret=true`): written
+   * with the person's own access to that project. Absent: the Mate's own vault.
+   */
+  readonly environment?: VaultAskEnvironment;
+  /** The services there the card restarts once it is saved, so they run the new value. */
+  readonly restart?: ReadonlyArray<VaultAskRestart>;
+}
+
+/** The stage or production an ask's vault is in. */
+export interface VaultAskEnvironment {
+  readonly kind: "stage" | "production";
+  readonly projectId: string;
+  /** As Mate's menu names it: "Production", a stage by its own name. */
+  readonly name: string;
 }
 
 /** The ask an operation is: a request zcp took and found the key missing for; `null` otherwise. */
@@ -59,6 +74,10 @@ export function vaultAskOf(operation: ZeropsOperation): VaultAsk | null {
     sensitive: request.sensitive,
     reason: request.reason ?? null,
     askedAt: operation.anchorAt,
+    ...(request.environment === undefined ? {} : { environment: request.environment }),
+    ...(request.restart === undefined || request.restart.length === 0
+      ? {}
+      : { restart: request.restart }),
   };
 }
 
@@ -140,6 +159,14 @@ const sameScope = (left: VaultAsk["scope"], right: VaultAskActivityPayload["scop
     ? right.kind === "shared"
     : right.kind === "service" && right.hostname === left.hostname;
 
+/** The same vault: the same scope, in the same project (the Mate's own, or one stage or production). */
+const sameVault = (
+  left: Pick<VaultAsk, "scope" | "environment">,
+  right: Pick<VaultAskActivityPayload, "scope" | "environment">,
+): boolean =>
+  sameScope(left.scope, right.scope) &&
+  left.environment?.projectId === right.environment?.projectId;
+
 /**
  * The engine's record of the ask a call made: the first ask of that key and vault recorded since
  * the call began. Every ask is the engine's (zcp only answers the call), so a call with none has
@@ -155,7 +182,7 @@ export function engineVaultAskFor(
     if (activity.kind !== VAULT_ASK_ACTIVITY_KIND) continue;
     const payload = activity.payload as VaultAskActivityPayload;
     const at = Date.parse(activity.createdAt);
-    if (payload.key !== ask.key || !sameScope(ask.scope, payload.scope) || at < since) continue;
+    if (payload.key !== ask.key || !sameVault(ask, payload) || at < since) continue;
     if (found === null || at < found.at) found = { at, payload };
   }
   return found?.payload ?? null;
@@ -199,6 +226,9 @@ export function vaultAskResult(
   engine: VaultAskActivityPayload["state"],
   view: VaultView,
 ): VaultAskResultRow | null {
+  // A value for stage or production restarts its readers from its own card, and `view` is the
+  // Mate's own vault.
+  if (ask.environment !== undefined) return null;
   if (engine !== "saved" || view.status === "unread") return null;
   const held = askScope(view, ask)?.values.find((value) => value.key === ask.key);
   const restart = (held?.readers ?? [])
@@ -239,6 +269,10 @@ export function openVaultAsk(
       sensitive: payload.sensitive,
       reason: payload.reason,
       askedAt: oldest.createdAt,
+      ...(payload.environment === undefined ? {} : { environment: payload.environment }),
+      ...(payload.restart === undefined || payload.restart.length === 0
+        ? {}
+        : { restart: payload.restart }),
     },
   };
 }
@@ -247,8 +281,11 @@ export function openVaultAsk(
 // The card, in both its homes: the conversation, and above the composer
 // ---------------------------------------------------------------------------
 
-/** A press on the card that is still under way in this tab. */
-export type VaultAskPress = "save" | "useGiven" | "notNow";
+/**
+ * A press on the card that is still under way in this tab; `restart`, the services a value for
+ * stage or production restarts once it is saved.
+ */
+export type VaultAskPress = "save" | "restart" | "useGiven" | "notNow";
 
 /**
  * What the card reads. What the person said lives in the engine's record (`record`: saved or
@@ -267,6 +304,11 @@ export interface VaultAskSource {
   readonly nameOf: (subject: string) => string | undefined;
   /** A time as the conversation's clock says it. */
   readonly clock: (atMs: number) => string;
+  /**
+   * Why this person cannot give a value for stage or production (they cannot change that project);
+   * `null` where they can, or while it is not known.
+   */
+  readonly readOnly?: string | null;
 }
 
 export interface VaultAskView {
@@ -285,6 +327,8 @@ export interface VaultAskView {
   /** The main press, which a failure's Try again repeats; `null` offers Not now alone. */
   readonly main: { readonly label: string; readonly does: "save" | "useGiven" } | null;
   readonly warning: string | null;
+  /** A value for stage or production: always kept hidden, and offered generated. */
+  readonly elsewhere: boolean;
 }
 
 const SAVE = { label: "Save to vault", does: "save" } as const;
@@ -296,6 +340,8 @@ const USE_GIVEN = { label: "Use that one", does: "useGiven" } as const;
  * name it would hide, a service it no longer has, or open to take the value.
  */
 export function vaultAskView(source: VaultAskSource): VaultAskView {
+  if (source.ask.environment !== undefined)
+    return environmentAskView(source, source.ask.environment);
   const { ask, mateName, record, vault } = source;
   const shared = ask.scope.kind === "shared";
   const host = ask.scope.kind === "service" ? ask.scope.hostname : null;
@@ -306,6 +352,7 @@ export function vaultAskView(source: VaultAskSource): VaultAskView {
     title: `Add ${vaultAskLabel(ask)} to ${vaultName}`,
     why: ask.reason,
     warning: vaultAskWarning(ask, mateName),
+    elsewhere: false,
   } as const;
   const none = { kind: "none" } as const;
   const by =
@@ -374,11 +421,119 @@ export function vaultAskView(source: VaultAskSource): VaultAskView {
 }
 
 /**
+ * The card for a secret asked for in the application's stage or production: titled by its name
+ * ("Add AUTH_SECRET"), its chip the environment (Production in the risk colour), written hidden with
+ * the person's own access to that project, then the services that read it restarted — the one
+ * press says which ("Save and restart api"). A value written there since it was asked restarts
+ * them and tells the Mate. Only someone who can change that project gives it.
+ */
+function environmentAskView(
+  source: VaultAskSource,
+  environment: VaultAskEnvironment,
+): VaultAskView {
+  const { ask, mateName, record, vault } = source;
+  const host = ask.scope.kind === "service" ? ask.scope.hostname : null;
+  const place = `${environment.name}, for ${host ?? "every app"}`;
+  const restart = (ask.restart ?? []).map((service) => service.hostname);
+  const restarting = restart.length === 0 ? null : namesWords(restart);
+  const frame = {
+    where: { scope: environment.kind, detail: host ?? "every app" },
+    title: `Add ${ask.key}`,
+    why: ask.reason,
+    warning: vaultAskWarning(ask, mateName),
+    elsewhere: true,
+  } as const;
+  const none = { kind: "none" } as const;
+  const by =
+    record.answer?.by.kind === "person" ? (source.nameOf(record.answer.by.subject) ?? null) : null;
+
+  if (record.state === "saved") {
+    const fact = [`In ${place} · hidden`, by === null ? null : `set by ${by}`];
+    return {
+      ...frame,
+      state: {
+        kind: "done",
+        words: fact.filter((part) => part !== null).join(" · "),
+        told: `${mateName} hears: ${ask.key} is saved in ${environment.name}`,
+      },
+      body: none,
+      main: null,
+    };
+  }
+  if (record.state === "declined") {
+    const at = record.answer === null ? null : source.clock(record.answer.at);
+    return {
+      ...frame,
+      state: { kind: "notNow", words: notNowWords(by, at) },
+      body: none,
+      main: null,
+    };
+  }
+  if (record.state === "closed") {
+    const words = `${mateName} isn't waiting on this any more.`;
+    return { ...frame, state: { kind: "replaced", words }, body: none, main: null };
+  }
+
+  const settledInVault = vault.kind === "reserved" || vault.kind === "unplaced";
+  const body: VaultAskView["body"] =
+    vault.kind === "filled"
+      ? { kind: "given", words: `Added in ${environment.name} since ${mateName} asked` }
+      : settledInVault
+        ? none
+        : { kind: "field", ready: vault.kind === "open" };
+  const main: VaultAskView["main"] =
+    vault.kind === "filled"
+      ? { label: restarting === null ? "Use that one" : `Restart ${restarting}`, does: "useGiven" }
+      : settledInVault
+        ? null
+        : {
+            label:
+              restarting === null
+                ? `Save to ${environment.name}`
+                : `Save and restart ${restarting}`,
+            does: "save",
+          };
+  const open = { ...frame, body, main };
+
+  if (source.pending !== null) {
+    const words =
+      source.pending === "save"
+        ? `Saving to ${environment.name}…`
+        : source.pending === "restart"
+          ? `Restarting ${restarting ?? "it"}…`
+          : `Telling ${mateName}…`;
+    const working: AskState =
+      source.pending === "notNow"
+        ? { kind: "working", words: NOT_NOW, pressed: "notNow" }
+        : { kind: "working", words, pressed: "main" };
+    return { ...open, state: working };
+  }
+  if (source.refusal !== null) return { ...open, state: { kind: "failed", words: source.refusal } };
+  if (vault.kind === "reserved") {
+    const words = `${ask.key} is a name ${mateName} keeps for itself, so the vault won't list it.`;
+    return { ...open, state: { kind: "failed", words } };
+  }
+  if (vault.kind === "unplaced") {
+    const words = `${host ?? "That service"} isn't in ${environment.name} any more.`;
+    return { ...open, state: { kind: "failed", words } };
+  }
+  if (source.readOnly !== undefined && source.readOnly !== null) {
+    return {
+      ...open,
+      body: none,
+      main: null,
+      state: { kind: "othersToAnswer", words: source.readOnly },
+    };
+  }
+  return { ...open, state: { kind: "waiting" } };
+}
+
+/**
  * Which conversation row holds the card of an ask the engine recorded at `askedAt`: the latest
  * call that asked for that key and vault before then (`useAskReveal` takes the last row it holds).
  */
 export function vaultAskRowHolds(
-  ask: Pick<VaultAsk, "key" | "scope" | "askedAt">,
+  ask: Pick<VaultAsk, "key" | "scope" | "askedAt" | "environment">,
 ): (row: { readonly kind: string; readonly operation?: unknown }) => boolean {
   const until = Date.parse(ask.askedAt);
   return (row) => {
@@ -388,6 +543,7 @@ export function vaultAskRowHolds(
       asked !== null &&
       asked.key === ask.key &&
       sameScope(asked.scope, ask.scope) &&
+      asked.environment?.projectId === ask.environment?.projectId &&
       Date.parse(asked.askedAt) <= until
     );
   };

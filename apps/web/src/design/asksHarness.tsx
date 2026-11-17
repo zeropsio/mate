@@ -299,6 +299,98 @@ function Provide({ density }: { readonly density: AskDensity }) {
   );
 }
 
+// ── provide for production: a secret the release reads ───────────────────────────────────────
+
+const ELSEWHERE_STATES = [
+  ["waiting", "Waiting on you"],
+  ["saving", "Saving"],
+  ["restarting", "Restarting"],
+  ["done", "Done"],
+  ["notNow", "Not now"],
+  ["failed", "Restart failed"],
+  ["readOnly", "Not yours to give"],
+] as const;
+type ElsewhereState = (typeof ELSEWHERE_STATES)[number][0];
+
+const PRODUCTION_ASK = asked({
+  key: "AUTH_SECRET",
+  label: "Auth secret",
+  reason: "v0.1.1 signs sessions with it, and production has none, so every page returns 500.",
+  environment: { kind: "production", projectId: "proj-production", name: "Production" },
+  restart: [{ serviceId: "svc-app", hostname: "app" }],
+});
+
+const SAVED_IN_PRODUCTION: VaultAskSource["vault"] = {
+  kind: "filled",
+  held: {
+    id: "env-auth-secret",
+    key: "AUTH_SECRET",
+    sensitive: true,
+    value: null,
+    createdAt: new Date(VAULT_FIXTURE_NOW - 60_000).toISOString(),
+    changedAt: new Date(VAULT_FIXTURE_NOW - 60_000).toISOString(),
+    madeByZerops: false,
+    readers: [],
+  },
+};
+
+function elsewhereSource(state: ElsewhereState): VaultAskSource {
+  return {
+    ask: PRODUCTION_ASK,
+    mateName: MATE,
+    record:
+      state === "done"
+        ? { state: "saved", answer: ALES }
+        : state === "notNow"
+          ? { state: "declined", answer: ALES }
+          : { state: "open", answer: null },
+    // The restart that failed came after the save: the value is in Production already.
+    vault: state === "failed" ? SAVED_IN_PRODUCTION : vaultAskState(VAULT_FIXTURE, PRODUCTION_ASK),
+    pending: state === "saving" ? "save" : state === "restarting" ? "restart" : null,
+    refusal:
+      state === "failed"
+        ? "It's saved in Production, but app didn't restart: the service is busy with another process."
+        : null,
+    nameOf: (subject) => (subject === "user-ales" ? "Aleš" : undefined),
+    clock: () => "15:11",
+    readOnly: state === "readOnly" ? "Only someone who can change Production can add it." : null,
+  };
+}
+
+function ProvideElsewhere({ density }: { readonly density: AskDensity }) {
+  const [state, setState] = useState<ElsewhereState>("waiting");
+  const source = elsewhereSource(state);
+  return (
+    <Specimen
+      chips={
+        <States
+          label="Provide for production"
+          onChange={setState}
+          states={ELSEWHERE_STATES}
+          value={state}
+        />
+      }
+      density={density}
+      name="Provide for production: a secret the release reads"
+    >
+      <VaultAsk
+        ask={source.ask}
+        askId="provide-production"
+        density={density}
+        face={FACE}
+        key={state}
+        mateName={MATE}
+        onNotNow={NOTHING}
+        onSave={async () => true}
+        onShowInConversation={density === "compact" ? NOTHING : undefined}
+        onUseGiven={NOTHING}
+        vault={source.vault}
+        view={vaultAskView(source)}
+      />
+    </Specimen>
+  );
+}
+
 // ── connect, as steps ────────────────────────────────────────────────────────────────────────
 
 const CONNECT_STATES = [
@@ -827,6 +919,7 @@ function Harness() {
           </header>
           <Approve density={density} />
           <Provide density={density} />
+          <ProvideElsewhere density={density} />
           <Connect density={density} />
           <Reveal density={density} />
           <Choose density={density} />

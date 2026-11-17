@@ -3,16 +3,19 @@
  * a masked field with "Keep hidden", Save to vault and Not now. The same ask in both its homes —
  * `full` in the conversation where it was asked, `compact` above the composer while the Mate is
  * stopped on it. The value goes from the field to the vault write as the person and nowhere else.
+ * A secret for the application's stage or production is always kept hidden and can be generated
+ * on the card, for a value nobody holds yet.
  * Props only: the container reads the engine's record and the vault, and writes and answers.
  */
 import type { VaultScopeRef, VaultWrite } from "@t3tools/client-runtime/data";
 import { CircleAlertIcon } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
-import { NOT_NOW } from "../../ask/ask.logic";
+import { NOT_NOW, isProduction } from "../../ask/ask.logic";
 import { AskCard, AskFooter, type AskDensity } from "../../ask/AskCard";
 import { AskSecretField } from "../../ask/AskSecret";
 import { Button } from "../../ui/button";
+import { generateVaultValue } from "./vault.logic";
 import {
   type VaultAsk,
   type VaultAskState,
@@ -52,13 +55,23 @@ export function VaultAsk(props: VaultAskProps) {
 
   const save = async () => {
     if (open === null || value === "" || working) return;
-    const write = vaultAskWrite(ask, open.held, value, hiddenAlready || keepHidden);
+    const write = vaultAskWrite(
+      ask,
+      open.held,
+      value,
+      view.elsewhere || hiddenAlready || keepHidden,
+    );
     if (await props.onSave(open.ref, write)) setValue("");
   };
   const press = () => (view.main?.does === "useGiven" ? props.onUseGiven() : void save());
   const canPress = view.main?.does === "useGiven" || (field?.ready === true && value !== "");
   const size = density === "compact" ? "sm" : "md";
-  const note = field === null ? undefined : "Goes to the vault, not the chat";
+  const note =
+    field === null
+      ? undefined
+      : ask.environment === undefined
+        ? "Goes to the vault, not the chat"
+        : `Goes to ${ask.environment.name}, not the chat`;
   const warning =
     view.warning === null || field === null ? null : (
       <p
@@ -75,8 +88,13 @@ export function VaultAsk(props: VaultAskProps) {
         <AskSecretField
           density={density}
           disabled={!field.ready || working}
-          keepHidden={{ value: keepHidden, onChange: setKeepHidden, already: hiddenAlready }}
-          label={vaultAskLabel(ask)}
+          keepHidden={
+            view.elsewhere
+              ? undefined
+              : { value: keepHidden, onChange: setKeepHidden, already: hiddenAlready }
+          }
+          label={view.elsewhere ? ask.key : vaultAskLabel(ask)}
+          onGenerate={view.elsewhere ? () => setValue(generateVaultValue()) : undefined}
           onEnter={() => void save()}
           onValue={setValue}
           value={value}
@@ -108,6 +126,7 @@ export function VaultAsk(props: VaultAskProps) {
             )
           }
           density={density}
+          destructive={isProduction(view.where)}
           main={
             view.main === null
               ? null

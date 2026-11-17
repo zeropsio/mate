@@ -4,12 +4,16 @@
  * the Mate is stopped on it. Both read the engine's record of the ask (open, saved, declined: who
  * and when) and its project's vault, held while a card is drawn so it reads with the Vault panel
  * closed. Save to vault writes the value as the person's vault write, then answers the ask saved
- * (only the outcome reaches the engine); Not now answers it declined. Nothing the person said is
- * kept here: a press under way and its refusal are the only things this tab holds.
+ * (only the outcome reaches the engine); Not now answers it declined. A secret asked for in the
+ * application's stage or production (`zerops_propose_env secret=true`) is the same ask in that
+ * project: its vault read and written with the person's own access there, then the services that
+ * read it restarted through their own restart, before the engine hears saved. Nothing the person
+ * said is kept here: a press under way and its refusal are the only things this tab holds.
  */
 import {
   NOT_READ_VAULT,
   type VaultAskActivityPayload,
+  projectOperator,
   vaultAtom,
 } from "@t3tools/client-runtime/data";
 import {
@@ -27,7 +31,7 @@ import { useThreadDetail } from "~/state/entities";
 import { threadEnvironment } from "~/state/threads";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { formatDayAwareTimestamp } from "~/timestampFormat";
-import { useDetailDemand } from "~/zerops/ZeropsAccountData";
+import { useDetailDemand, useProjection } from "~/zerops/ZeropsAccountData";
 import { usePersonNames } from "~/zerops/useZeropsMateOwners";
 import { useKnownMate } from "~/zerops/useZeropsMates";
 import { useZeropsEnvironmentProject } from "~/zerops/useZeropsEnvironmentProject";
@@ -49,6 +53,7 @@ import {
 } from "./vaultRequest.logic";
 
 const UNREAD = Atom.make(NOT_READ_VAULT);
+const UNDECIDED = Atom.make<boolean | undefined>(undefined);
 
 type Activities = Parameters<typeof engineVaultAskFor>[0];
 const activitiesOf = (detail: { readonly activities?: unknown } | null): Activities =>
@@ -183,7 +188,16 @@ function VaultAskHome({
   readonly threadRef: ScopedThreadRef;
 }) {
   const { requestId, ask, record } = asked;
-  const project = useZeropsEnvironmentProject(environmentId);
+  const home = useZeropsEnvironmentProject(environmentId);
+  // The vault the value goes to: the Mate's own, or its application's stage or production.
+  const elsewhere = ask.environment;
+  const project = useMemo(
+    () =>
+      home === undefined || elsewhere === undefined
+        ? home
+        : { orgId: home.orgId, projectId: elsewhere.projectId },
+    [home, elsewhere],
+  );
   const mate = useKnownMate(environmentId);
   const mateName = mate?.name ?? "This Mate";
   const projectId = project?.projectId ?? null;
@@ -191,7 +205,17 @@ function VaultAskHome({
   useDetailDemand("serviceVariable", undefined, projectId);
   useDetailDemand("process", "history", projectId);
   const view = useAtomValue(projectId === null ? UNREAD : vaultAtom(projectId));
-  const { write } = useVaultWriter(project, view);
+  const { run, write } = useVaultWriter(project, view);
+  // Stage or production is given only by someone who can change it.
+  const operates = useProjection(
+    projectOperator,
+    elsewhere === undefined ? null : (project ?? null),
+    UNDECIDED,
+  );
+  const readOnly =
+    elsewhere !== undefined && operates === false
+      ? `Only someone who can change ${elsewhere.name} can add it.`
+      : null;
   const nameOf = usePersonNames(project?.orgId);
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const answerVaultAsk = useAtomCommand(threadEnvironment.answerVaultAsk, {
@@ -228,22 +252,45 @@ function VaultAskHome({
     },
     [],
   );
+  /**
+   * Restarts the services a value for stage or production names, one after another, so they run
+   * it; `null` once all did, else which did not and why. The Mate's own vault restarts nothing.
+   */
+  const restartReaders = useCallback(async (): Promise<string | null> => {
+    const restart = ask.restart ?? [];
+    if (elsewhere === undefined || project === undefined || restart.length === 0) return null;
+    setPending("restart");
+    for (const service of restart) {
+      const outcome = await run({
+        kind: "service-restart",
+        orgId: project.orgId,
+        projectId: project.projectId,
+        serviceId: service.serviceId,
+      });
+      if (!outcome.ok) {
+        return `It's saved in ${elsewhere.name}, but ${service.hostname} didn't restart: ${outcome.message ?? "Zerops did not do it."}`;
+      }
+    }
+    return null;
+  }, [ask.restart, elsewhere, project, run]);
+  /** The Mate hears saved once the value runs: restarted where it names readers. */
+  const savedAndTold = useCallback(async (): Promise<string | null> => {
+    const notRestarted = await restartReaders();
+    if (notRestarted !== null) return notRestarted;
+    if (elsewhere !== undefined) setPending("useGiven");
+    const refused = await answer("saved");
+    return refused === null ? null : `It's saved, but ${mateName} wasn't told: ${refused}`;
+  }, [answer, elsewhere, mateName, restartReaders]);
   const onSave = useCallback(
     (scope: Parameters<typeof write>[0], vaultWrite: Parameters<typeof write>[1]) =>
       press("save", async () => {
         const { outcome } = await write(scope, vaultWrite);
         if (!outcome.ok) return outcome.message ?? "Zerops did not take it.";
-        const refused = await answer("saved");
-        return refused === null
-          ? null
-          : `It's in the vault, but ${mateName} wasn't told: ${refused}`;
+        return savedAndTold();
       }),
-    [answer, mateName, press, write],
+    [press, savedAndTold, write],
   );
-  const onUseGiven = useCallback(
-    () => void press("useGiven", () => answer("saved")),
-    [answer, press],
-  );
+  const onUseGiven = useCallback(() => void press("useGiven", savedAndTold), [press, savedAndTold]);
   const onNotNow = useCallback(
     () => void press("notNow", () => answer("declined")),
     [answer, press],
@@ -275,6 +322,7 @@ function VaultAskHome({
         refusal,
         nameOf,
         clock: (at) => formatDayAwareTimestamp(new Date(at).toISOString(), timestampFormat),
+        readOnly,
       })}
     />
   );

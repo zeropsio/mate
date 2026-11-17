@@ -33,14 +33,18 @@ interface AskSecretFieldProps {
   readonly onEnter: () => void;
   readonly disabled: boolean;
   /** "Keep hidden", where the person chooses how it is stored; absent where it is always hidden. */
-  readonly keepHidden?: {
-    readonly value: boolean;
-    readonly onChange: (keepHidden: boolean) => void;
-    /** Kept hidden already where it is stored: not the person's to make plain here. */
-    readonly already: boolean;
-  };
+  readonly keepHidden?:
+    | {
+        readonly value: boolean;
+        readonly onChange: (keepHidden: boolean) => void;
+        /** Kept hidden already where it is stored: not the person's to make plain here. */
+        readonly already: boolean;
+      }
+    | undefined;
   /** Where it goes, under the field ("Sent as Authorization"). */
   readonly hint?: string | undefined;
+  /** Fills the field with a new random value, for a secret nobody has yet (a signing secret). */
+  readonly onGenerate?: (() => void) | undefined;
 }
 
 /**
@@ -80,6 +84,11 @@ export function AskSecretField(props: AskSecretFieldProps) {
       >
         {shown ? <EyeOffIcon /> : <EyeIcon />}
       </Button>
+      {props.onGenerate === undefined ? null : (
+        <Button disabled={props.disabled} onClick={props.onGenerate} size="sm" variant="secondary">
+          Generate
+        </Button>
+      )}
     </div>
   );
   const { keepHidden: hidden } = props;
