@@ -42,7 +42,6 @@ import {
   ZeropsUserId,
   mateMessageItemOf,
   mateMessageSenderName,
-  mateMessageSenderProject,
 } from "@t3tools/contracts";
 import type { KeyLinkUp } from "@t3tools/shared/mateLink";
 import { resolvePrimaryConversation } from "@t3tools/shared/primaryConversation";
@@ -89,19 +88,27 @@ export class ZeropsMateMessages extends Context.Service<
   }
 >()("t3/zerops/ZeropsMateMessages") {}
 
-/** What the asked Mate's agent hears of a message: the shared contract's words, exactly. */
+/**
+ * What the asked Mate's agent hears of a message: the shared contract's words. Its sender's
+ * project is named only where HQ names both it and the Mate; with one of them empty the other is
+ * the sender's name, "Another Mate" with neither.
+ */
 export const toldOf = (message: MateMessage): string => {
   const name = mateMessageSenderName(message.from);
-  const project = mateMessageSenderProject(message.from);
+  const project = message.from.projectName.trim();
+  const sender =
+    project === "" || message.from.mateName.trim() === ""
+      ? name
+      : `${name} (the Mate of the project "${project}")`;
   if (message.kind === "answer") {
     return [
-      `${name} (the Mate of the project "${project}") answered the message you sent it:`,
+      `${sender} answered the message you sent it:`,
       message.words,
       "Carry on with what you asked it for. Tell your person what matters to them.",
     ].join("\n\n");
   }
   return [
-    `${name} (the Mate of the project "${project}"), another Mate of the person you work for, sends you this message:`,
+    `${sender}, another Mate of the person you work for, sends you this message:`,
     message.words,
     ...(message.attachment === undefined
       ? []

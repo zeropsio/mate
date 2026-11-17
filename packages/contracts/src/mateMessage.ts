@@ -76,7 +76,3 @@ export const mateMessageItemOf = (message: MateMessage): MateMessageItem => ({
 /** How a message names its sender: its Mate's name, else its project's, else "Another Mate". */
 export const mateMessageSenderName = (from: MateMessageFrom): string =>
   from.mateName.trim() || from.projectName.trim() || "Another Mate";
-
-/** Its sender's project, else its Mate's name, else "Another Mate". */
-export const mateMessageSenderProject = (from: MateMessageFrom): string =>
-  from.projectName.trim() || from.mateName.trim() || "Another Mate";
