@@ -543,20 +543,20 @@ function ExistingMateComingPage({
   // only the destination's placement readiness starts the wake and hand-off.
   const [handing, setHanding] = useState(false);
   if (up && !handing) setHanding(true);
-  // A Mate that came up here lands on a conversation that draws it only once the account's
-  // directory names it there (`zeropsMates`): until then its sign-in stands here, where it is drawn
-  // already — a stranger's empty conversation otherwise (run 2, 2026-10-16) — for a short wait at
-  // most. Any other Mate opens as soon as its conversation can.
+  // Its conversation draws it — its empty state, its sign-in, its header and its stage's face —
+  // only once the account's directory names it there (`zeropsMates`): until then what stands here
+  // keeps standing — a stranger's empty conversation (run 2, 2026-10-16), or a blank one on a
+  // cold load, otherwise — for a short wait at most.
   const directory = useZeropsMateDirectory();
   const namedThere =
     environmentId !== null && zeropsMateAt(directory, environmentId).kind === "mate";
   const [nameWaitOver, setNameWaitOver] = useState(false);
   useEffect(() => {
-    if (!handing || !cameUp || namedThere) return;
+    if (!handing || namedThere) return;
     const timer = setTimeout(() => setNameWaitOver(true), HAND_OVER_NAME_WAIT_MS);
     return () => clearTimeout(timer);
-  }, [cameUp, handing, namedThere]);
-  const lands = !cameUp || namedThere || nameWaitOver;
+  }, [handing, namedThere]);
+  const lands = namedThere || nameWaitOver;
   const handingOver = useMateHandOver((state) => state.handingOver);
   const liveActivity = useZeropsThreadActivity(threadRef);
   // The draft of the conversation it opens on, which the held room lays out at its height.
@@ -1005,12 +1005,13 @@ function ExistingMateComingPage({
                 ),
               };
 
+  // Opening it, its link silent or saying just that: the opening stage stands until its
+  // conversation takes its place — through its sign-in or stand-up being read, which that
+  // conversation paints, never a view of the same words or nothing in between.
   const opening =
     shown === undefined &&
     view?.kind === "reaching" &&
-    phaseAhead === null &&
     empty.standUpFailure === undefined &&
-    !empty.signInRequired &&
     (linkVoice.surface === "none" || linkVoice.opening === true);
 
   // Its face: awake while it is linked, or while the page only waits on a container that runs —
