@@ -9,9 +9,13 @@
  * @module hq/structure
  */
 import type { MateLiveView } from "@t3tools/shared/hqMates";
+import { HqNavigationEnvironments } from "@t3tools/shared/hqStream";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 
 import type { HqAppContents, HqBirth, HqStructure } from "./client.ts";
-import { canonicalEnvironmentsOf } from "./environments.ts";
+
+const readEnvironments = Schema.decodeUnknownOption(HqNavigationEnvironments);
 
 type HqApp = HqStructure["apps"][number];
 type HqUngrouped = HqStructure["ungrouped"];
@@ -72,7 +76,8 @@ function appOf(value: HqApp): HqApp {
     readonly births?: unknown;
     readonly contents?: unknown;
   };
-  const environments = sent === undefined ? undefined : canonicalEnvironmentsOf(sent);
+  const environments =
+    sent === undefined ? undefined : Option.getOrUndefined(readEnvironments(sent));
   return {
     ...app,
     projects: app.projects,

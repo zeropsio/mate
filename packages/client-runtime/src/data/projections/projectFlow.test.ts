@@ -13,11 +13,9 @@ import { linkKeys, type OperationReceipt } from "../model.ts";
 import { makeAccountStore, readsOfState } from "../store.ts";
 import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
 import { hqOffer } from "@t3tools/shared/hqOffers";
-import {
-  canonicalEnvironmentsOf,
-  type CanonicalHqEnvironment,
-  type HqJob,
-} from "../../zerops/hq/environments.ts";
+import { HqNavigationEnvironments } from "@t3tools/shared/hqStream";
+import * as Schema from "effect/Schema";
+import { type CanonicalHqEnvironment, type HqJob } from "../../zerops/hq/environments.ts";
 import { environmentById } from "./appEnvironments.ts";
 import { projectFlow } from "./projectFlow.ts";
 import { productionRelease } from "../../zerops/projectFlow.ts";
@@ -72,6 +70,8 @@ function fixture(
               keyHeld: true,
               keyInvalid: false,
               jobs: [],
+              release: null,
+              birth: null,
             },
           ],
         },
@@ -432,6 +432,8 @@ const runtimeEnvironment: CanonicalHqEnvironment = {
   keyHeld: true,
   keyInvalid: false,
   jobs: [job("api", SHA, "job-api"), job("worker", OTHER_SHA, "job-worker")],
+  release: null,
+  birth: null,
 };
 const gitEnvironment: CanonicalHqEnvironment = {
   ...runtimeEnvironment,
@@ -439,8 +441,6 @@ const gitEnvironment: CanonicalHqEnvironment = {
   target: { kind: "git", branch: "main", delivery: "direct" },
   order: 1,
   name: "Git",
-  birth: null,
-  release: null,
   jobs: [],
 };
 function seedRuntime(
@@ -766,7 +766,7 @@ it.each(
     const published = readsOfState(f.store.state()).fact("hqApp", "shop");
     expect(
       published.kind === "known"
-        ? canonicalEnvironmentsOf(published.value.environments)
+        ? Schema.decodeUnknownSync(HqNavigationEnvironments)(published.value.environments)
         : undefined,
     ).toEqual([expect.objectContaining({ release: expect.objectContaining({ ended: true }) })]);
     expect(f.store.state().indexes.get("accepted-release:shop")?.size).toBe(0);

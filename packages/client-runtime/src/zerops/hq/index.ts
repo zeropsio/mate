@@ -49,7 +49,7 @@ export {
 } from "./pressElsewhere.ts";
 export { hqStructureOf, type HqMates } from "./structure.ts";
 export {
-  CanonicalHqEnvironment,
+  type CanonicalHqEnvironment,
   UNREAD_ENVIRONMENT_LINE,
   unreadEnvironmentsWords,
   type UnreadEnvironment,

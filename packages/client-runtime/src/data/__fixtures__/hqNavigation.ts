@@ -8,7 +8,8 @@ import { hqLifecycleScope, lifecycleReceipt } from "../families/hqLifecycle.ts";
 import type { MateAttention } from "@t3tools/contracts";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
 
-import { canonicalEnvironmentsOf } from "../../zerops/hq/environments.ts";
+import { HqNavigationEnvironments } from "@t3tools/shared/hqStream";
+import * as Schema from "effect/Schema";
 import type { HqStructure } from "../../zerops/hq/client.ts";
 import { hqMateScope } from "../families/hqMate.ts";
 import { hqMateAttentionScope } from "../families/mateAttention.ts";
@@ -184,9 +185,7 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
           births: app.births ?? [],
           ...(app.intake === undefined ? {} : { intake: app.intake }),
           ...(app.mergers === undefined ? {} : { mergers: app.mergers }),
-          environments: canonicalEnvironmentsOf(
-            app.environments ?? [],
-          ) as HqAppValue["environments"],
+          environments: Schema.decodeUnknownSync(HqNavigationEnvironments)(app.environments ?? []),
           changes: seed.changes?.[app.id] ?? [],
           releaseOffer: seed.releaseOffers?.[app.id] ?? null,
         },

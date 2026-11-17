@@ -322,9 +322,16 @@ export const HqNavigationMate = Schema.Struct({
 export const HqNavigationJob = Schema.Struct({
   id: Schema.String,
   kind: HqDeployOutcome.fields.kind,
+  /** The service it deploys, by its hostname; none for a delta. */
   service: HqDeployOutcome.fields.service,
   sha: HqDeployOutcome.fields.sha,
+  /**
+   * queued → submitting → building → live, failed (the build's own, final until a person asks
+   * again), refused (what did not go through at its one try), skipped (what HQ chose not to
+   * submit, and why), unresolved (a person must inspect the original handle), or superseded (a newer one came while it waited).
+   */
   state: HqDeployOutcome.fields.state,
+  /** The event that asked for it. */
   cause: Schema.Literals([
     "merge",
     "release",
@@ -335,15 +342,20 @@ export const HqNavigationJob = Schema.Struct({
     "import",
     "migrated",
   ]),
+  /** What the event names: a merge's squash commit on main, a release's tag; none else. */
   ref: Schema.NullOr(Schema.String),
+  /** HQ's words for how it ended. */
   reason: HqDeployOutcome.fields.reason,
   sourceArchiveBytes: HqDeployOutcome.fields.sourceArchiveBytes,
+  /** The platform's version and job it is followed by: its log. */
   appVersionId: Schema.NullOr(Schema.String),
   processId: HqDeployOutcome.fields.processId,
   evidence: HqDeployOutcome.fields.evidence,
   steps: HqDeployOutcome.fields.steps,
   verifiedVersionId: HqDeployOutcome.fields.verifiedVersionId,
+  /** Who asked for it, where a person did; none while only HQ asked. */
   requestedBy: Schema.NullOr(Schema.String),
+  /** When it was asked for, and when it ended; ISO 8601. */
   at: Schema.String,
   endedAt: Schema.NullOr(Schema.String),
   supersededBy: Schema.NullOr(Schema.String),
@@ -383,9 +395,13 @@ export const HqNavigationEnvironment = Schema.Struct({
   ...HqEnvironmentIdentity.fields,
   tier: Schema.Literals(["stage", "production"]),
   name: Schema.String,
+  /** The branches it follows: a stage `main`, a production `release`. */
   sources: Schema.Array(Schema.String),
+  /** Its place among the application's environments, in the order they were declared: from 1. */
   order: Schema.Number,
+  /** Whether HQ holds its deploy token; the token itself is never answered. */
   keyHeld: Schema.Boolean,
+  /** Whether the token held no longer answers, or reaches more than its project. */
   keyInvalid: Schema.Boolean,
   /**
    * The Zerops id of the deploy token HQ keeps, never its value: the client deletes it on Zerops
@@ -393,10 +409,15 @@ export const HqNavigationEnvironment = Schema.Struct({
    * none: the client deletes nothing and says so.
    */
   keyId: Schema.optionalKey(Schema.String),
+  /** True only when HQ proves it created this production target; absent: no claim. */
   deleteProjectOnRemoval: Schema.optionalKey(Schema.Boolean),
+  /** Its newest jobs, newest first, and each service's newest live one where it is older. */
   jobs: Schema.Array(HqNavigationJob),
+  /** A production's: where its application's newest release stands there; none before one, and for a stage. */
   release: Schema.NullOr(ReleaseRollout),
+  /** Whether HQ is still bringing it up; none where HQ did not. */
   birth: Schema.NullOr(EnvironmentBirth),
+  /** The services HQ stopped because its tier no longer declares them (`TierStop`); absent: none known. */
   tierStops: Schema.optionalKey(Schema.Array(TierStop)),
 });
 export type HqNavigationEnvironment = typeof HqNavigationEnvironment.Type;

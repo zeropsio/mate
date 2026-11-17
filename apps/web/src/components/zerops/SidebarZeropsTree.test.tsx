@@ -4781,6 +4781,8 @@ describe("the menu's release offer", () => {
                 jobs: [],
                 keyHeld: true,
                 keyInvalid: false,
+                release: null,
+                birth: null,
               },
               {
                 name: "production",
@@ -4792,6 +4794,8 @@ describe("the menu's release offer", () => {
                 jobs: [],
                 keyHeld: true,
                 keyInvalid: false,
+                release: null,
+                birth: null,
               },
             ],
           },

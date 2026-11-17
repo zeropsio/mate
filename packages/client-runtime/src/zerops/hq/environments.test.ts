@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  canonicalEnvironmentsOf,
   deliveryEnvironmentsOf,
   jobFailed,
   jobInFlight,
@@ -115,17 +114,3 @@ describe("delivery environments", () => {
     });
   });
 });
-
-it.each([undefined, null, 0, 1_305_166_613])(
-  "environment reads preserve each job's source archive measurement: %j",
-  (sourceArchiveBytes) => {
-    const measured = {
-      ...job("1", "app", "failed"),
-      ...(sourceArchiveBytes === undefined ? {} : { sourceArchiveBytes }),
-    };
-    const stage = { ...STAGE, id: "p-stage", target: { kind: "zerops", projectId: "p-stage" } };
-    expect(canonicalEnvironmentsOf([{ ...stage, jobs: [measured] }])?.[0]?.jobs).toEqual([
-      measured,
-    ]);
-  },
-);

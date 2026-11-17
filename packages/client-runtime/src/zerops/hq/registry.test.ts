@@ -61,6 +61,8 @@ it.each([
         keyHeld: true,
         keyInvalid: false,
         jobs: [],
+        release: null,
+        birth: null,
       },
     ],
     expected: [

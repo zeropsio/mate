@@ -1,5 +1,5 @@
 import * as Schema from "effect/Schema";
-import { HqGitNavigationEnvironment } from "@t3tools/shared/hqStream";
+import { HqGitNavigationEnvironment, HqNavigationEnvironments } from "@t3tools/shared/hqStream";
 import { gitEnvironment, gitRemote, gitPreflight } from "../data/__fixtures__/hqWire.ts";
 import { gitDeliveryOf } from "./gitDelivery.ts";
 import { ProjectId } from "@t3tools/contracts";
@@ -12,7 +12,7 @@ import {
   releaseDeploys,
 } from "./groupDeploys.ts";
 import { canonicalEnvironmentRow } from "./groupRows.ts";
-import { canonicalEnvironmentsOf, type HqEnvironment } from "./hq/environments.ts";
+import type { HqEnvironment } from "./hq/environments.ts";
 
 const API = "3f9c1b2e5d7a4c6f8e0b1d2a3c4f5e6d7a8b9c0d";
 const OLD = "1111111111111111111111111111111111111111";
@@ -85,13 +85,13 @@ describe("the word beside the dot", () => {
 });
 
 it("HQ's environment identity keys its row while its target joins the Zerops project.", () => {
-  const environments = canonicalEnvironmentsOf([
+  const environments = Schema.decodeUnknownSync(HqNavigationEnvironments)([
     {
       ...environment({ tier: "stage", name: "Stage" }),
       id: "environment-stage",
       target: { kind: "zerops", projectId: "project-stage" },
     },
-  ])!;
+  ]);
   const inputs = canonicalEnvironmentRowInputsOf({
     environments,
     projectNames: new Map([[ProjectId.make("project-stage"), "Project name"]]),

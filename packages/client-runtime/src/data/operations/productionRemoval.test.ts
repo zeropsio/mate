@@ -2,14 +2,13 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { AtomRegistry } from "effect/reactivity";
 import * as Schema from "effect/Schema";
-import { HqNavigationEnvironment } from "@t3tools/shared/hqStream";
+import { HqNavigationEnvironment, HqNavigationEnvironments } from "@t3tools/shared/hqStream";
 import { liveZerops, ORG } from "../__fixtures__/account.ts";
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
 import { operationResult } from "../model.ts";
 import { operationProgress } from "../projections/operation.ts";
 import { makeAccountStore, readsOfState } from "../store.ts";
 import { HqError } from "../../zerops/hq/client.ts";
-import { canonicalEnvironmentsOf } from "../../zerops/hq/environments.ts";
 import { makeOperations } from "./coordinator.ts";
 import { makeHqExecutor, type HqWrites } from "./executors/hq.ts";
 
@@ -139,12 +138,12 @@ describe("production removal receipts", () => {
       deleteProjectOnRemoval: true,
     };
     const navigation = decodeEnvironment(source);
-    expect(canonicalEnvironmentsOf([navigation])?.[0]?.deleteProjectOnRemoval).toBe(true);
+    const readEnvironments = Schema.decodeUnknownSync(HqNavigationEnvironments);
+    expect(readEnvironments([navigation])[0]?.deleteProjectOnRemoval).toBe(true);
     expect(
-      canonicalEnvironmentsOf([{ ...source, deleteProjectOnRemoval: false }])?.[0]
-        ?.deleteProjectOnRemoval,
+      readEnvironments([{ ...source, deleteProjectOnRemoval: false }])[0]?.deleteProjectOnRemoval,
     ).toBe(false);
     const { deleteProjectOnRemoval: _fate, ...older } = source;
-    expect(canonicalEnvironmentsOf([older])?.[0]?.deleteProjectOnRemoval).toBeUndefined();
+    expect(readEnvironments([older])[0]?.deleteProjectOnRemoval).toBeUndefined();
   });
 });

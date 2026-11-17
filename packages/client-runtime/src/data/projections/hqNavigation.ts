@@ -9,7 +9,7 @@
  * @module data/projections/hqNavigation
  */
 import type { HqOffers } from "@t3tools/shared/hqOffers";
-import { HQ_NAVIGATION_PROTOCOL } from "@t3tools/shared/hqStream";
+import { HQ_NAVIGATION_PROTOCOL, type HqNavigationEnvironment } from "@t3tools/shared/hqStream";
 import {
   applicationOffers,
   environmentOffers,
@@ -21,7 +21,6 @@ import {
 } from "@t3tools/shared/zeropsOffers";
 
 import type { HqMate, HqStructure } from "../../zerops/hq/client.ts";
-import { canonicalEnvironmentsOf } from "../../zerops/hq/environments.ts";
 import {
   hqAppsScope,
   hqPressesScope,
@@ -167,20 +166,17 @@ function environmentsOfApp(
 ): Pick<HqStructure["apps"][number], "environments"> {
   if (environments === undefined) return {};
   // Git and an outside production have no outward project DTO.
-  const read = canonicalEnvironmentsOf(
-    environments.filter((row) => row.target.kind !== "git" && row.target.kind !== "outside"),
-  );
-  return read === undefined
-    ? {}
-    : {
-        environments: read.map((environment) => {
-          const can =
-            environment.target.kind === "zerops"
-              ? offers(environment.target.projectId, environment.tier)
-              : undefined;
-          return can === undefined ? environment : { ...environment, can };
-        }),
-      };
+  return {
+    environments: environments
+      .filter((row): row is HqNavigationEnvironment => row.target.kind === "zerops")
+      .map((environment) => {
+        const can =
+          environment.target.kind === "zerops"
+            ? offers(environment.target.projectId, environment.tier)
+            : undefined;
+        return can === undefined ? environment : { ...environment, can };
+      }),
+  };
 }
 
 const offered = (can: HqOffers | undefined) => (can === undefined ? {} : { can });

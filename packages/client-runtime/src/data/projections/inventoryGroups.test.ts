@@ -129,6 +129,8 @@ it("An HQ environment arriving after first paint appears once under its applicat
     keyHeld: true,
     keyInvalid: false,
     jobs: [],
+    release: null,
+    birth: null,
   };
   const seed = {
     structure: {
@@ -198,6 +200,8 @@ const stage = {
   keyHeld: true,
   keyInvalid: false,
   jobs: [],
+  release: null,
+  birth: null,
 };
 const placed = [
   { projectId: "mate", name: "Ada", kind: "mate", mate: { face: "face" } },
