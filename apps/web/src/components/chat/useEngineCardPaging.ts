@@ -15,7 +15,7 @@ import type { ScopedThreadRef } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 import { use, useCallback, useMemo } from "react";
 
-import { TimelineRowCtx } from "../components/chat/timelineContext";
+import { TimelineRowCtx } from "./timelineContext";
 import type { ScrollPages } from "./engineCardPaging.logic";
 
 const NO_CARDS = Atom.make<Readonly<Record<string, EngineCardPaging>>>({});

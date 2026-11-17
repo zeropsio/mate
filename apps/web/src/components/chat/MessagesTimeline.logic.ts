@@ -83,7 +83,7 @@ import {
   type WorkStep,
 } from "./workSteps.logic";
 import type { LiveJobs } from "./liveJobs.logic";
-import { engineCardEffort, heldLines, withPagedEffort } from "../../zerops/engineCardPaging.logic";
+import { engineCardEffort, heldLines, withPagedEffort } from "./engineCardPaging.logic";
 import { chatItemHasLine, runEndedWell, selectChatItems, slotModelOf } from "./runCard.logic";
 import { type MirrorAskPlace, mirrorAskRowId } from "../zerops/mirror/mirrorAsk.logic";
 import type { OriginAskPlace } from "../zerops/origin/originAsk.logic";

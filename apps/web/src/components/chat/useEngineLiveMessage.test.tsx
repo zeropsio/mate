@@ -10,16 +10,16 @@ import {
   CARD_THREAD,
   CARD_RECORDS,
   useCardTimelineInput,
-} from "../components/chat/engineCard.test-fixtures";
+} from "./engineCard.test-fixtures";
 import { useEngineCardSnapshots } from "./useEngineCardPaging";
-import { RunChat } from "../components/chat/RunChat";
+import { RunChat } from "./RunChat";
 import {
   createMessagesTimelineRowsCache,
   deriveMessagesTimelineRows,
   computeStableMessagesTimelineRows,
   type StableMessagesTimelineRowsState,
-} from "../components/chat/MessagesTimeline.logic";
-import { TimelineRowActivityCtx } from "../components/chat/timelineContext";
+} from "./MessagesTimeline.logic";
+import { TimelineRowActivityCtx } from "./timelineContext";
 import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
 import { EnvironmentId } from "@t3tools/contracts";
 import { RegistryContext } from "@effect/atom-react";
@@ -34,8 +34,8 @@ import { AtomRegistry } from "effect/reactivity";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
-import { TimelineRowCtx, type TimelineRowSharedState } from "../components/chat/timelineContext";
-import type { ChatMessage } from "../types";
+import { TimelineRowCtx, type TimelineRowSharedState } from "./timelineContext";
+import type { ChatMessage } from "../../types";
 import {
   useEngineLiveMessage,
   useEngineLiveMessages,

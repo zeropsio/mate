@@ -26,7 +26,7 @@ import { useMateRepositories } from "../zerops/useMateRepositories";
 import { useThreadLeases } from "../zerops/useThreadLeases";
 import { terminalStartCwd } from "../zerops/terminalCwd.logic";
 import { useHqProjectPerson, zeropsMateOwnerOf } from "../zerops/useZeropsMateOwners";
-import { useEngineRunCards } from "../zerops/useEngineCardPaging";
+import { useEngineRunCards } from "./chat/useEngineCardPaging";
 import { useQuestionAttachments } from "./chat/useQuestionAttachments";
 import { agentContext } from "@t3tools/client-runtime/data";
 import { Loading } from "./ui/loading";

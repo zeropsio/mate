@@ -112,14 +112,6 @@
     "expires": "surface:web-derivation"
   },
   {
-    "path": "apps/web/src/zerops/engineCardPaging.logic.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/chat/conversation.logic",
-    "owner": "web derivation (W3)",
-    "reason": "verdict or words in a surface's logic file: moves down",
-    "expires": "surface:web-derivation"
-  },
-  {
     "path": "apps/web/src/zerops/liveStep.ts",
     "kind": "ImportDeclaration",
     "fingerprint": "components/chat/conversation.logic",
@@ -285,30 +277,6 @@
     "fingerprint": "components/zerops/ZeropsDeleteApplicationDialog.logic",
     "owner": "web derivation (W3)",
     "reason": "verdict or words in a surface's logic file: moves down",
-    "expires": "surface:web-derivation"
-  },
-  {
-    "path": "apps/web/src/zerops/useEngineCardPaging.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/chat/timelineContext",
-    "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
-    "expires": "surface:web-derivation"
-  },
-  {
-    "path": "apps/web/src/zerops/useEngineLiveMessage.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/chat/runCard.logic",
-    "owner": "web derivation (W3)",
-    "reason": "verdict or words in a surface's logic file: moves down",
-    "expires": "surface:web-derivation"
-  },
-  {
-    "path": "apps/web/src/zerops/useEngineLiveMessage.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/chat/timelineContext",
-    "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
     "expires": "surface:web-derivation"
   },
   {

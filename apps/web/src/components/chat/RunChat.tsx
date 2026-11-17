@@ -184,8 +184,8 @@ import {
   type BackgroundLineModel,
 } from "./backgroundLine.logic";
 import { useRunEffort } from "./runResultFacts";
-import { pageReached, type ScrollPages } from "~/zerops/engineCardPaging.logic";
-import { useEngineCardPages } from "~/zerops/useEngineCardPaging";
+import { pageReached, type ScrollPages } from "./engineCardPaging.logic";
+import { useEngineCardPages } from "./useEngineCardPaging";
 import { glideStep, glidesTo, keepsFoot, movesAsPerson } from "./runMotion.logic";
 import { easeRooms, forgetScrollTop, noteScrollTop, type Rooms, unclamp } from "./runRoom";
 import { RIDE_MS, type Travel, type Travels, createTravels } from "./runTravel";
@@ -277,7 +277,7 @@ import {
   useEngineLiveMessage,
   useEngineLiveMessages,
   useEngineLiveNow,
-} from "../../zerops/useEngineLiveMessage";
+} from "./useEngineLiveMessage";
 import {
   TimelineRowActivityCtx,
   TimelineRowCtx,

@@ -1,6 +1,6 @@
 import { RegistryContext } from "@effect/atom-react";
-import { useEngineCardSnapshots } from "../../zerops/useEngineCardPaging";
-import { useEngineLiveStructure } from "../../zerops/useEngineLiveMessage";
+import { useEngineCardSnapshots } from "./useEngineCardPaging";
+import { useEngineLiveStructure } from "./useEngineLiveMessage";
 import { deriveMessagesTimelineRows, helperFinishesOf } from "./MessagesTimeline.logic";
 import {
   callItem,

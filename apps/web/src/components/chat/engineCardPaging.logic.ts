@@ -16,7 +16,7 @@ import {
   type ActivityKind,
   type OutcomeActivity,
   type OutcomeModel,
-} from "../components/chat/conversation.logic";
+} from "./conversation.logic";
 import { classifyZeropsCall } from "@t3tools/client-runtime/zerops/model";
 
 /** A call's step as the worked line counts it; a generic or MCP call by its tool. */

@@ -9,13 +9,13 @@
  */
 import { useAtomValue } from "@effect/atom-react";
 import type { ScopedThreadRef } from "@t3tools/contracts";
-import type { TimelineEntry } from "../session-logic";
-import { messageHasText } from "../components/chat/runCard.logic";
+import type { TimelineEntry } from "../../session-logic";
+import { messageHasText } from "./runCard.logic";
 import { mateEngineHostAtom } from "@t3tools/client-runtime/data";
 import { use, useCallback, useMemo, useSyncExternalStore } from "react";
 
-import { TimelineRowCtx } from "../components/chat/timelineContext";
-import type { ChatMessage } from "../types";
+import { TimelineRowCtx } from "./timelineContext";
+import type { ChatMessage } from "../../types";
 
 const unwatched = () => () => {};
 

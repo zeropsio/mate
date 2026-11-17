@@ -185,8 +185,8 @@ import {
   type MateStandUpStopped,
 } from "~/zerops/mateStandUp";
 import { useMateStandUpAskLine } from "~/zerops/useMateStandUp";
-import { useEngineLiveMessage, useEngineLiveStructure } from "~/zerops/useEngineLiveMessage";
-import { useEngineCardSnapshots, useEngineRunCards } from "~/zerops/useEngineCardPaging";
+import { useEngineLiveMessage, useEngineLiveStructure } from "./useEngineLiveMessage";
+import { useEngineCardSnapshots, useEngineRunCards } from "./useEngineCardPaging";
 import { ZeropsMateEmptyState } from "../zerops/ZeropsMateEmptyState";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
 import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";

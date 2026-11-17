@@ -13,8 +13,8 @@ import { deriveZeropsThreadModel } from "@t3tools/client-runtime/zerops/model";
 import type { Item } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { activityCounts, isActivityWork } from "../components/chat/conversation.logic";
-import { deriveWorkLogEntries, zeropsCallToWorkLogEntry } from "../session-logic";
+import { activityCounts, isActivityWork } from "./conversation.logic";
+import { deriveWorkLogEntries, zeropsCallToWorkLogEntry } from "../../session-logic";
 import { effortOfCounts, heldLines, pageReached } from "./engineCardPaging.logic";
 
 const key = { environmentId: "env-ada", conversationId: "thread-ada" };
