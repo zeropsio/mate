@@ -36,8 +36,27 @@ export function serviceCreateCardTitle(services: ReadonlyArray<string>): string 
 export function plannedServiceWords(settings: Readonly<Record<string, unknown>>): string | null {
   const type = typeof settings.type === "string" ? settings.type.trim() : "";
   if (type === "") return null;
+  const shape = plannedShapeWords(type, settings);
   const words = serviceTypeWords(type);
-  return settings.mode === "HA" ? `${words}, highly available` : words;
+  return shape === undefined ? words : `${words}, ${shape}`;
+}
+
+/**
+ * How a planned service runs, where its settings say: highly available (a `:ha` type or the legacy
+ * `mode: HA`), one copy (a `:single` type, `NON_HA`, or one container at most), or the copies a
+ * runtime starts on. Nothing where its settings leave it to Zerops.
+ */
+function plannedShapeWords(
+  type: string,
+  settings: Readonly<Record<string, unknown>>,
+): string | undefined {
+  if (settings.mode === "HA" || /:ha(?:@|$)/u.test(type)) return "highly available";
+  if (settings.mode === "NON_HA" || /:single(?:@|$)/u.test(type)) return "one copy";
+  const least = typeof settings.minContainers === "number" ? settings.minContainers : undefined;
+  const most = typeof settings.maxContainers === "number" ? settings.maxContainers : undefined;
+  if (most === 1) return "one copy";
+  if (least === undefined || least < 2) return undefined;
+  return most === least ? `${least} copies` : `at least ${least} copies`;
 }
 
 /** HQ's plan as the create card reads it. */
