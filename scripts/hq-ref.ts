@@ -17,18 +17,18 @@ export function readHqRef(root: string): string {
 }
 
 /** A promotable web tree must be compatible with an HQ already on production's source branch. */
-export function requireHqMain(ref: string, checkout: string): void {
-  const main = NodeChildProcess.spawnSync("git", ["-C", checkout, "rev-parse", "HEAD"], {
+export function requireHqMain(ref: string, checkout: string, tip = "HEAD"): void {
+  const main = NodeChildProcess.spawnSync("git", ["-C", checkout, "rev-parse", tip], {
     encoding: "utf8",
   });
-  const tip = main.status === 0 ? main.stdout.trim() : "unavailable";
+  const sha = main.status === 0 ? main.stdout.trim() : "unavailable";
   const ancestry = NodeChildProcess.spawnSync(
     "git",
-    ["-C", checkout, "merge-base", "--is-ancestor", ref, tip],
+    ["-C", checkout, "merge-base", "--is-ancestor", ref, sha],
     { encoding: "utf8" },
   );
   if (ancestry.status !== 0)
-    throw new Error(`mate-hq pin ${ref} is not contained in mate-hq main ${tip}`);
+    throw new Error(`mate-hq pin ${ref} is not contained in mate-hq main ${sha}`);
 }
 
 if (import.meta.main) {
