@@ -8,6 +8,11 @@ How mate reaches users. Each step names the file that owns its detail.
   `kh-bisect/**` manifest naming them; browser scenario shards only on a manual dispatch of the
   non-blocking `Signal` workflow, where a failure gets one same-commit rerun to tell a flake from a
   regression.
+- **Landing.** `node scripts/land.ts` lands the checked-out commit on `main`: under a lock shared
+  by every worktree it rebases onto `origin/main`, checks that `.mate-hq-ref` is on mate-hq's
+  `main`, runs `scripts/gate-changed.ts` and fast-forward pushes, printing `LANDED <sha>`. It needs
+  `MATE_HQ_CHECKOUT` set to a mate-hq clone; a refusal (`land: <reason>`, exit 1) pushes nothing.
+  The push to `main` deploys the hosted web client.
 - **Hosted web client.** `main` deploys https://mate.zerops.io through `zerops.yml`'s `prod` setup.
   Keep `main` releasable; one hard line: never break signing in with a Zerops account.
 - **Staging web.** `zerops.yml`'s `staging` setup builds a test target's web (alfa, the standing
