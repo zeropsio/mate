@@ -187,6 +187,7 @@ import {
   sharedBirthPresentation,
   useSharedBirthState,
 } from "~/zerops/sharedBirths";
+import { chatViewReady } from "../ChatViewBoundary";
 
 /** How long a Mate that is up waits here for the directory to name it before its conversation opens anyway. */
 export const HAND_OVER_NAME_WAIT_MS = 15_000;
@@ -538,6 +539,8 @@ function ExistingMateComingPage({
   });
   if (page?.kind === "coming" && !cameUp) setCameUp(true);
   const up = arrivalDecision === "conversation";
+  // Its environment's conversations read, none of its own to hand over to: opening it starts one.
+  const noConversation = arrivalDecision === "create-conversation";
 
   // Preload the destination immediately. The shared opening stage keeps its face across the route;
   // only the destination's placement readiness starts the wake and hand-off.
@@ -552,10 +555,10 @@ function ExistingMateComingPage({
     environmentId !== null && zeropsMateAt(directory, environmentId).kind === "mate";
   const [nameWaitOver, setNameWaitOver] = useState(false);
   useEffect(() => {
-    if (!handing || namedThere) return;
+    if (!(handing || noConversation) || namedThere) return;
     const timer = setTimeout(() => setNameWaitOver(true), HAND_OVER_NAME_WAIT_MS);
     return () => clearTimeout(timer);
-  }, [handing, namedThere]);
+  }, [handing, namedThere, noConversation]);
   const lands = namedThere || nameWaitOver;
   const handingOver = useMateHandOver((state) => state.handingOver);
   const liveActivity = useZeropsThreadActivity(threadRef);
@@ -579,7 +582,7 @@ function ExistingMateComingPage({
       };
       // Keep this stage on screen until the destination can render it; a route's loading
       // fallback would otherwise hide it before the conversation's stage takes its place.
-      await router.preloadRoute(destination);
+      await Promise.all([router.preloadRoute(destination), chatViewReady()]);
       if (!current) return;
       takeMateConversation(projectId)?.(threadRef);
       navigating = true;
@@ -599,15 +602,28 @@ function ExistingMateComingPage({
     };
   }, [cameUp, environmentId, handing, handingOver, lands, navigate, projectId, router, threadRef]);
 
-  // Its environment's conversations read, none of its own to hand over to (an older server):
-  // opening it starts one, as its row would — once, telling what its door asked.
-  const noConversation = arrivalDecision === "create-conversation";
+  // None of its own to hand over to (a new Mate before its first message, an older server): opening
+  // it starts one, as its row would — once, telling what its door asked, and like a hand-over only
+  // once the directory names it there, which the new conversation draws it by (a blank stage
+  // otherwise, measured 0.3 s on a cold load).
   const opened = useRef(false);
   useEffect(() => {
-    if (!noConversation || candidate === undefined || opened.current) return;
-    opened.current = true;
-    openMate(candidate, takeMateConversation(projectId));
-  }, [candidate, noConversation, openMate, projectId]);
+    if (!noConversation || !lands || candidate === undefined || opened.current) return;
+    let current = true;
+    void chatViewReady().then(() => {
+      if (!current || opened.current) return;
+      opened.current = true;
+      openMate(candidate, takeMateConversation(projectId));
+    });
+    return () => {
+      current = false;
+    };
+  }, [candidate, lands, noConversation, openMate, projectId]);
+  // Up: its conversation's code is fetched while this stage stands.
+  const upNow = page?.kind === "up";
+  useEffect(() => {
+    if (upNow) void chatViewReady();
+  }, [upNow]);
 
   // Its link, made as the projects screen's Connect would, where the person's session allows: a
   // Mate on its way, by its target; a new one, once its container answers and no socket to it is

@@ -29,6 +29,18 @@ export function preloadChatView(): void {
 }
 
 /**
+ * Resolves once the conversation's code is here, loaded or failed (a failure reaches the route's
+ * error view when it mounts): a view that hands over to a conversation keeps standing until then,
+ * so the route never lands on the boundary's empty room.
+ */
+export function chatViewReady(): Promise<void> {
+  return loadChatView().then(
+    () => undefined,
+    () => undefined,
+  );
+}
+
+/**
  * The conversation's lazy code inside the inset. Only its chunk is waited on here — `waiting`
  * stands meanwhile, the thread route's own stage, so one stage hands over to the conversation —
  * and no Suspense boundary sits around the conversation: what it waits on itself still reaches
