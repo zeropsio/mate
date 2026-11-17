@@ -392,6 +392,9 @@ export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
       yield* fault("settle");
 
       const agent = json(domain.rowAgent(next));
+      // A step that recorded nothing (a no-op command) is no activity: the conversation keeps the
+      // time it last moved, which its row's `at` and the menu's order read.
+      const moved = events.length > 0 || step.effects.length > 0 ? 1 : 0;
       const snapshot = Math.floor(newHead / snapshotEvery) > Math.floor(head / snapshotEvery);
       if (snapshot) {
         const snapshotJson = jsonText({ v: domain.stateVersion, state: next });
@@ -404,7 +407,9 @@ export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
           )
           ON CONFLICT (conversation_id) DO UPDATE SET head_seq = excluded.head_seq,
             snapshot_json = excluded.snapshot_json, snapshot_seq = excluded.snapshot_seq,
-            updated_at = excluded.updated_at, agent_json = excluded.agent_json
+            updated_at = CASE WHEN ${moved} = 1 THEN excluded.updated_at
+              ELSE engine_conversation.updated_at END,
+            agent_json = excluded.agent_json
         `;
       } else {
         yield* sql`
@@ -412,7 +417,9 @@ export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
             conversation_id, owner_kind, head_seq, updated_at, agent_json
           ) VALUES (${c}, ${domain.kind}, ${newHead}, ${now}, ${agent})
           ON CONFLICT (conversation_id) DO UPDATE SET head_seq = excluded.head_seq,
-            updated_at = excluded.updated_at, agent_json = excluded.agent_json
+            updated_at = CASE WHEN ${moved} = 1 THEN excluded.updated_at
+              ELSE engine_conversation.updated_at END,
+            agent_json = excluded.agent_json
         `;
       }
       yield* fault("snapshot");

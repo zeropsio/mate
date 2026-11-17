@@ -124,8 +124,8 @@ export interface ConversationView {
     | (NonNullable<ConversationView["lastPerson"]> & { readonly mateMessage?: MateMessageItem })
     | null;
   /**
-   * The messages it sent other Mates that no answer met yet, oldest first: while no later run of
-   * it ended, and for at most `MATE_ANSWER_WAIT_MS`.
+   * The messages it sent other Mates that no answer met yet, oldest first: while no later run a
+   * person's or a Mate's message started ended, and for at most `MATE_ANSWER_WAIT_MS`.
    */
   readonly awaits: ReadonlyArray<AwaitedAnswer>;
   /** The agent's latest words, once said whole. */
@@ -298,17 +298,17 @@ export const readConversationView = (conversationId: ConversationId) =>
         }
         return null;
       });
-    // The person's latest typed ask, and another Mate's latest message, one row: whichever came
-    // later is the latest ask. A Mate's message always has words, so it always asks.
+    // The person's latest typed ask, and another Mate's latest message: whichever came later is
+    // the latest ask. A Mate's message always has words, so it always asks.
     const lastAsks = Effect.gen(function* () {
       const asked = yield* lastAskOf({ typed: true });
-      const [mate] = yield* sql<{ readonly body_json: string; readonly at: number }>`
-        SELECT body_json, at FROM engine_item
-        WHERE conversation_id = ${conversationId} AND kind = 'person'
-          AND json_extract(body_json, '$.mateMessage') IS NOT NULL
-          AND json_extract(body_json, '$.delivery.state') IS NOT 'steered'
-        ORDER BY opened_seq DESC LIMIT 1
-      `;
+      // The fold keeps which item it is: one row by its id, never a scan.
+      const [mate] =
+        state.lastMateItem === null
+          ? []
+          : yield* sql<{ readonly body_json: string; readonly at: number }>`
+              SELECT body_json, at FROM engine_item WHERE item_id = ${state.lastMateItem}
+            `;
       const fromMate = yield* textOf(mate);
       const said: ConversationView["latestAsk"] =
         fromMate !== null && (asked === null || fromMate.at > asked.at) ? fromMate : asked;
@@ -381,11 +381,8 @@ export const readConversationView = (conversationId: ConversationId) =>
       lastPerson: yield* lastAskOf({}),
       lastAsked: asks.asked,
       latestAsk: asks.said,
-      // Waited on while no later run of it ended, and for at most a day.
-      awaits: state.awaits.filter(
-        (awaited) =>
-          (ended?.ordinal ?? 0) <= awaited.ordinal && now - awaited.at < MATE_ANSWER_WAIT_MS,
-      ),
+      // Waited on for at most a day; the fold drops one a later run a message started outlived.
+      awaits: state.awaits.filter((awaited) => now - awaited.at < MATE_ANSWER_WAIT_MS),
       lastAgent: yield* textOf(yield* item({ kind: "note", open: false, by: "mate" })),
       liveCall:
         callBody?.kind === "call" && call !== undefined

@@ -37,6 +37,8 @@ export interface MateAsks {
   readonly awaits: ReadonlyArray<AwaitedAnswer>;
   /** The messages whose answer it heard, newest last. */
   readonly answered: ReadonlyArray<string>;
+  /** The item of the latest message another Mate sent it, ask or answer: the row reads it alone. */
+  readonly lastMateItem: string | null;
 }
 
 const SentResult = Schema.Struct({
@@ -80,6 +82,7 @@ const sentMessageOf = (body: ItemBody): Omit<AwaitedAnswer, "ordinal" | "at"> | 
 
 /** The answer to `id` was heard: it is waited on no more, and remembered. */
 export const answerHeard = (asks: MateAsks, id: string): MateAsks => ({
+  ...asks,
   awaits: asks.awaits.some((awaited) => awaited.id === id)
     ? asks.awaits.filter((awaited) => awaited.id !== id)
     : asks.awaits,
@@ -88,15 +91,21 @@ export const answerHeard = (asks: MateAsks, id: string): MateAsks => ({
     : [...asks.answered, id].slice(-KEPT_ANSWERED),
 });
 
-/** What the conversation keeps once `body` was said in its run `sent`: an ask added, one answered. */
+/**
+ * What the conversation keeps once `body`, item `itemId`, was said in its run `sent`: an ask added,
+ * one answered, another Mate's latest message.
+ */
 export const asksAfter = (
   asks: MateAsks,
   body: ItemBody,
+  itemId: string,
   sent: { readonly ordinal: number; readonly at: number },
 ): MateAsks => {
   if (body.kind === "person") {
-    const reply = body.mateMessage?.kind === "answer" ? body.mateMessage.inReplyTo : undefined;
-    return reply === undefined ? asks : answerHeard(asks, reply);
+    if (body.mateMessage === undefined) return asks;
+    const heard = { ...asks, lastMateItem: itemId };
+    const reply = body.mateMessage.kind === "answer" ? body.mateMessage.inReplyTo : undefined;
+    return reply === undefined ? heard : answerHeard(heard, reply);
   }
   const message = sentMessageOf(body);
   if (message === undefined || asks.answered.includes(message.id)) return asks;
@@ -108,3 +117,17 @@ export const asksAfter = (
     ].slice(-KEPT_AWAITS),
   };
 };
+
+/**
+ * The awaited answers once `ended` ended: a run a person's or a Mate's message started after an ask
+ * outlives it — a continuation, a usage resume or the agent's own turn on the asking run does not.
+ */
+export const outlivedBy = (
+  awaits: ReadonlyArray<AwaitedAnswer>,
+  ended: { readonly ordinal: number; readonly trigger: { readonly kind: string } } | undefined,
+): ReadonlyArray<AwaitedAnswer> =>
+  ended === undefined ||
+  ended.trigger.kind !== "person" ||
+  !awaits.some((awaited) => awaited.ordinal < ended.ordinal)
+    ? awaits
+    : awaits.filter((awaited) => awaited.ordinal >= ended.ordinal);

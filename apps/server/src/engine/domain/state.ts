@@ -39,10 +39,11 @@ import type { AwaitedAnswer } from "./mateAsks.ts";
 export const KEPT_ENDED_RUNS = 16;
 
 /**
- * Bumped whenever the shape changes: a snapshot of another version is ignored and refolded. 18
- * keeps the messages it sent other Mates that no answer met yet (`awaits`, `answered`).
+ * Bumped whenever the shape changes: a snapshot of another version is ignored and refolded. 19
+ * keeps the messages it sent other Mates that no answer met yet (`awaits`), the answers heard
+ * (`answered`) and its latest Mate message's item (`lastMateItem`).
  */
-export const STATE_VERSION = 18;
+export const STATE_VERSION = 19;
 
 export interface RunRecord {
   readonly id: RunId;
@@ -266,6 +267,8 @@ export interface ConversationState {
   readonly awaits: ReadonlyArray<AwaitedAnswer>;
   /** The messages to other Mates whose answer it heard, newest last (`mateAsks`). */
   readonly answered: ReadonlyArray<string>;
+  /** The item of the latest message another Mate sent it, ask or answer (`mateAsks`). */
+  readonly lastMateItem: string | null;
   readonly session: SessionRecord | null;
   /** The close the engine asked of the session; nothing goes into it meanwhile. */
   readonly closing: {
@@ -338,6 +341,7 @@ export const initialState = (conversationId: ConversationId): ConversationState 
   lastPersonSeq: 0,
   awaits: [],
   answered: [],
+  lastMateItem: null,
   session: null,
   closing: null,
   rotatingFrom: null,

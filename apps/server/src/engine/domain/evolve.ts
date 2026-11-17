@@ -16,7 +16,7 @@ import {
 } from "@t3tools/contracts";
 
 import type { Envelope, EventDraft } from "./command.ts";
-import { answerHeard, asksAfter } from "./mateAsks.ts";
+import { answerHeard, asksAfter, outlivedBy } from "./mateAsks.ts";
 import {
   KEPT_ENDED_RUNS,
   contentDigest,
@@ -240,6 +240,8 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         endedRuns: kept,
         pausedUntil: pauseAfter(event.end, state.pausedUntil),
         usageProbeMs: event.end.kind === "usage-limit" ? state.usageProbeMs : null,
+        // A later run a message started ended: what was asked before it is waited on no more.
+        awaits: outlivedBy(state.awaits, state.runs[event.runId]),
       };
     }
     case "RunRequeued":
@@ -296,7 +298,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         // An answer to a message it sent takes that message off what it waits on.
         const answered = {
           ...counted,
-          ...asksAfter(counted, body, {
+          ...asksAfter(counted, body, event.itemId, {
             ordinal: event.runId === null ? 0 : (counted.runs[event.runId]?.ordinal ?? 0),
             at: event.at,
           }),
@@ -370,7 +372,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
       return {
         ...touched,
         // A message it sent another Mate: waited on until its answer comes.
-        ...asksAfter(touched, event.body, {
+        ...asksAfter(touched, event.body, event.itemId, {
           ordinal: event.runId === null ? 0 : (touched.runs[event.runId]?.ordinal ?? 0),
           at: event.at,
         }),

@@ -8,7 +8,8 @@ export const UPDATE_DRAIN_MESSAGE =
 
 /**
  * Only inputs that settle or stop accepted work may cross a closed admission fence: a lease's
- * binding is the record of what a running turn's agent did.
+ * binding is the record of what a running turn's agent did, and an answer heard elsewhere settles
+ * a wait the conversation already holds.
  */
 export const allowedDuringUpdate = (tag: CommandTag): boolean => {
   switch (tag) {
@@ -23,6 +24,8 @@ export const allowedDuringUpdate = (tag: CommandTag): boolean => {
     case "Recovered":
     case "BindLease":
     case "UnbindLease":
+    // An answer to another Mate's message heard elsewhere: bookkeeping, never new work.
+    case "ForgetMateAnswer":
       return true;
     default:
       return false;
