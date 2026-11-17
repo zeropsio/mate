@@ -64,6 +64,15 @@ describe("a Mate's one Stop", () => {
       turnId: "nova/r/4",
       shows: { kind: "none" },
     },
+    // witness: apps/web/src/zerops/conversationStop.logic.ts | press !== null && press.turnId === turnId → press !== null && press.turnId !== null && press.turnId === turnId
+    {
+      name: "a Stop pressed before any turn reads as stopping until one starts",
+      press: pressed(null),
+      stopping: false,
+      working: true,
+      turnId: null,
+      shows: { kind: "stopping" },
+    },
   ])("$name", ({ press, stopping, working, turnId, shows }) => {
     expect(conversationStop({ press, stopping, working, turnId })).toEqual(shows);
   });
