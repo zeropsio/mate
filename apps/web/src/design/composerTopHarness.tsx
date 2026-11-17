@@ -8,7 +8,7 @@
  * for her ask, one she asked for, several of each — and to Ada K., whom Dana L. asked.
  *
  * Then what is being done to a change, as the same rule says it (`changeActOf`): its merge on its
- * way, merged, refused, and its Mate fixing it while it works.
+ * way, merged, refused, ended unconfirmed, and its Mate fixing it while it works.
  *
  * Served by the dev server at `/design-composer-top.html` (`?theme=dark`; `?n=2`, `?ask=question`,
  * `?standing=to-ask` or `?act=merging` shows one state alone). Fixtures only: nothing here ships, and no route
@@ -362,6 +362,11 @@ const ACTS: ReadonlyArray<{
         reason: hqRefusalWords({ code: "conflict", reason: "head_moved" }),
       }),
     ),
+  },
+  {
+    state: "unconfirmed",
+    name: "Merge ended with no word from HQ · the way back",
+    strip: standingStrip([teaChange(21, GIFT, false)], actingOn(21, { kind: "merge-unconfirmed" })),
   },
   {
     state: "fixing",

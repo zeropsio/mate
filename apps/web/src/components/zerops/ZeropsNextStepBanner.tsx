@@ -60,7 +60,7 @@ import {
 import { useAskMateToFix, type FixProblem } from "../../zerops/fixRequest";
 import { useHeldBehindReview } from "../../zerops/heldBehindReview";
 import { useOpenReview, useReviewShown, type ReviewTarget } from "../../zerops/review";
-import { useChangeStandingOf } from "../../zerops/useChangeStandingOf";
+import { changeActIn, useChangeActs } from "../../zerops/changeActs";
 import { useZeropsMateNextStep, type ZeropsMateNextStep } from "../../zerops/useZeropsMateNextStep";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { Button } from "../ui/button";
@@ -175,14 +175,15 @@ export function zeropsComposerTop(input: {
   readonly dismissed?: string | undefined;
   readonly pending: ZeropsNextStepPending;
 }): ZeropsComposerTop {
-  const { nextStep, dismissed, pending } = input;
-  // The Mate at work on a change it lists — asked from its review — is what it says, not a hold.
-  const fixing =
-    nextStep.kind === "review" &&
-    (nextStep.step.act?.kind === "fixing" ||
-      nextStep.step.lines.some((line) => line.act?.kind === "fixing"));
-  const held = pending.question || pending.approval || (pending.working && !fixing);
-  if (nextStep.kind === "unknown") return { strip: null, reserved: !held };
+  const { dismissed, pending } = input;
+  // While the Mate works, the strip gives way — but for the change it is fixing, asked from its
+  // review: that one stays, alone, saying so, as the header keeps it (`headerReviewItems`).
+  const nextStep =
+    pending.working && input.nextStep.kind === "review"
+      ? onlyFixing(input.nextStep)
+      : input.nextStep;
+  const held = pending.question || pending.approval || (pending.working && nextStep === null);
+  if (nextStep === null || nextStep.kind === "unknown") return { strip: null, reserved: !held };
   if (held || nextStep.kind === "none") return { strip: null, reserved: false };
   const strip = composerStrip(nextStep);
   return dismissed === composerStripKey(strip)
@@ -190,9 +191,38 @@ export function zeropsComposerTop(input: {
     : { strip, reserved: false };
 }
 
-function composerStrip(
-  nextStep: Extract<ZeropsMateNextStep, { kind: "review" }>,
-): ZeropsNextStepStripModel {
+type ReviewNextStep = Extract<ZeropsMateNextStep, { kind: "review" }>;
+
+/** The next step cut to the change its Mate is fixing, where it lists one; none where it does not. */
+function onlyFixing(nextStep: ReviewNextStep): ReviewNextStep | null {
+  const { step } = nextStep;
+  if (step.act?.kind === "fixing") return nextStep;
+  const lines = step.lines.filter((line) => line.act?.kind === "fixing");
+  const [line] = lines;
+  if (line?.act === undefined) return null;
+  if (lines.length > 1) {
+    const title = `${line.act.kind === "fixing" ? line.act.mateName : "This Mate"} is fixing ${String(lines.length)} changes`;
+    return { ...nextStep, step: { ...step, title, lines, more: 0, quiet: true } };
+  }
+  const { pull, act } = line;
+  return {
+    ...nextStep,
+    step: {
+      kind: "review",
+      pull,
+      title: changeActWords(act, pull.number).title,
+      detail: pull.title,
+      lines: [],
+      more: 0,
+      waiting: 0,
+      quiet: true,
+      act,
+    },
+    target: { ...nextStep.target, repository: pull.repository, number: pull.number },
+  };
+}
+
+function composerStrip(nextStep: ReviewNextStep): ZeropsNextStepStripModel {
   return {
     title: nextStep.step.title,
     detail: nextStep.step.detail,
@@ -312,7 +342,7 @@ export function ZeropsNextStepStrip({
             >
               {actLooks(line.act)
                 ? VIEW_CHANGE
-                : line.act?.kind === "merge-failed"
+                : actHandsBack(line.act)
                   ? REVIEW_LABEL
                   : line.fix === undefined
                     ? standingPressLabel(line.standing, REVIEW_LABEL)
@@ -366,7 +396,7 @@ export function ZeropsNextStepStrip({
         >
           {actLooks(strip.act)
             ? VIEW_CHANGE
-            : strip.act?.kind === "merge-failed"
+            : actHandsBack(strip.act)
               ? REVIEW_LABEL
               : standingPressLabel(strip.standing, REVIEW_LABEL)}
         </Button>
@@ -382,6 +412,11 @@ export function ZeropsNextStepStrip({
  */
 function actLooks(act: ChangeAct | undefined): boolean {
   return changeActBusy(act);
+}
+
+/** A merge that ended unmerged, or with no word of how: the review is the way back. */
+function actHandsBack(act: ChangeAct | undefined): boolean {
+  return act?.kind === "merge-failed" || act?.kind === "merge-unconfirmed";
 }
 
 /**
@@ -483,7 +518,6 @@ export function useZeropsNextStepStrip(
   const { strip: live, reserved } = zeropsComposerTop({ nextStep, dismissed, pending });
   // Its one change merging: once HQ's records take it off the open changes, the strip stays,
   // saying how the merge ended — "#7 merged" for a beat, then it folds away.
-  const standingOf = useChangeStandingOf();
   const reviewShown = useReviewShown();
   const merging =
     live !== null && (live.lines ?? []).length === 0 && live.act?.kind === "merging"
@@ -500,9 +534,25 @@ export function useZeropsNextStepStrip(
     ((live !== null && merging === null) || lastMerging.threadKey !== threadKey)
   )
     setLastMerging(null);
+  const lastStrip =
+    lastMerging === null ? null : (JSON.parse(lastMerging.strip) as ZeropsNextStepStripModel);
+  // Only that change's act: what is being done to it, once it left the open changes.
+  const lastActs = useChangeActs(
+    lastStrip === null
+      ? { appId: undefined }
+      : {
+          appId: lastStrip.target.groupId,
+          repository: lastStrip.target.repository,
+          number: lastStrip.target.number,
+        },
+  );
   const farewell =
-    live === null && lastMerging !== null && !pending.question && !pending.approval
-      ? mergeFarewell(JSON.parse(lastMerging.strip) as ZeropsNextStepStripModel, standingOf)
+    live === null &&
+    lastStrip !== null &&
+    !pending.question &&
+    !pending.approval &&
+    !pending.working
+      ? mergeFarewell(lastStrip, changeActIn(lastActs, lastStrip.target.groupId, lastStrip.target))
       : null;
   const strip = farewell !== null && dismissed !== composerStripKey(farewell) ? farewell : live;
   const leavingSoon = strip === farewell && farewell?.act?.kind !== "merging";
@@ -605,17 +655,18 @@ const FAREWELL_MS = 1600;
  */
 function mergeFarewell(
   strip: ZeropsNextStepStripModel,
-  standingOf: ReturnType<typeof useChangeStandingOf>,
+  act: ChangeAct | undefined,
 ): ZeropsNextStepStripModel | null {
-  const { groupId, repository, number } = strip.target;
-  const act = standingOf(groupId, { repository, number }).act;
   if (
     act === undefined ||
-    (act.kind !== "merging" && act.kind !== "merged" && act.kind !== "merge-failed")
+    (act.kind !== "merging" &&
+      act.kind !== "merged" &&
+      act.kind !== "merge-failed" &&
+      act.kind !== "merge-unconfirmed")
   )
     return null;
   if (act.kind === "merging") return strip;
-  const words = changeActWords(act, number);
+  const words = changeActWords(act, strip.target.number);
   return {
     ...strip,
     act,
