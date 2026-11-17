@@ -6,6 +6,7 @@
  *
  * @module zerops/model/mateMessage
  */
+import { mateMessageNamesOf } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
@@ -88,14 +89,19 @@ export function readMateMessageSentData(payload: unknown): MateMessageSent | und
   return Option.getOrUndefined(decodeSentValue(data.mateMessageSent));
 }
 
-/** The Mate a message went to, by its name: its project's where HQ holds none. */
-export const sentToName = (sent: MateMessageSent): string =>
-  sent.to.mateName.trim() || sent.to.projectName.trim() || "another Mate";
+/**
+ * The Mate a message went to, by its own name: HQ's one name split where the menu named neither
+ * (`mateMessageNamesOf`), its project's where HQ holds no Mate's.
+ */
+export const sentToName = (sent: MateMessageSent): string => {
+  const { mate, project } = mateMessageNamesOf(sent.to);
+  return mate || project || "another Mate";
+};
 
 /** The call's line: "Asked Fen (Acme Docs)". */
 export function mateMessageAskedLine(sent: MateMessageSent): string {
   const name = sentToName(sent);
-  const project = sent.to.projectName.trim();
+  const { project } = mateMessageNamesOf(sent.to);
   return project === "" || project === name ? `Asked ${name}` : `Asked ${name} (${project})`;
 }
 

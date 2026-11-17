@@ -46,6 +46,7 @@ import {
   type MateRunFacts,
 } from "@t3tools/client-runtime/zerops";
 import {
+  MATE_ANSWER_WAIT_MS,
   ThreadId,
   type BackgroundWork,
   type ConversationRow,
@@ -849,11 +850,18 @@ export function rowAgentActivity(
     ...(question === undefined || question.length === 0 ? {} : { question }),
     ...(errorLine === undefined ? {} : { errorLine: maskSecrets(errorLine) }),
     ...(state.kind === "waiting" && state.on === "vault" ? { asksFor: "key" as const } : {}),
-    ...(row.awaits === undefined || row.awaits.length === 0
-      ? {}
-      : { awaitsAnswer: row.awaits.map((awaited) => awaited.mateName) }),
+    // Shown for a day at most, however long the row stands unchanged.
+    ...awaitsAnswerOf(row, nowMs),
   };
 }
+
+/** The Mates a row still waits on, sent less than `MATE_ANSWER_WAIT_MS` ago. */
+const awaitsAnswerOf = (row: ConversationRow, nowMs: number) => {
+  const names = (row.awaits ?? []).flatMap((awaited) =>
+    nowMs - awaited.since < MATE_ANSWER_WAIT_MS ? [awaited.mateName] : [],
+  );
+  return names.length === 0 ? {} : { awaitsAnswer: names };
+};
 
 /**
  * What a Mate at rest waits on of other Mates, in a row's quiet words ("Waiting for Fia's answer");

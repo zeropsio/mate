@@ -469,10 +469,10 @@ export function mateRowView(
   // words: said at rest, in the state's ink, with no amber.
   const asked = (tone: "muted" | "ink-2"): MateRowReply =>
     activity.question === undefined ? said(tone) : { kind: "words", text: activity.question, tone };
-  // At rest on another Mate's answer: said quietly, never as the person's to give.
-  const awaited = (): MateRowReply => {
+  // At rest on another Mate's answer: said in the state's ink, never as the person's to give.
+  const awaited = (tone: "muted" | "ink-2"): MateRowReply => {
     const text = answerAwaitedWords(activity);
-    return text === undefined ? undefined : { kind: "words", text, tone: "muted" };
+    return text === undefined ? undefined : { kind: "words", text, tone };
   };
   const age: MateRowSlot = ask === undefined ? { kind: "none" } : { kind: "age" };
   const state = mateRowState(activity, face);
@@ -571,7 +571,7 @@ export function mateRowView(
             },
       );
     case "unread":
-      return view(awaited() ?? asked("ink-2"));
+      return view(awaited("ink-2") ?? asked("ink-2"));
     case "paused": {
       const text =
         activity.limitProvider !== undefined || activity.errorLine === undefined
@@ -589,7 +589,7 @@ export function mateRowView(
       );
     }
     case "idle":
-      return view(awaited() ?? asked("muted"));
+      return view(awaited("muted") ?? asked("muted"));
   }
 }
 
