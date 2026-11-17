@@ -10,19 +10,22 @@
  */
 import {
   HqNavigationApp,
-  HqNavigationEnvironment,
-  HqGitNavigationEnvironment,
   HqNavigationProject,
   HqNavigationPress,
   HqNavigationStatus,
   HqPersonFacts as HqPersonFactsSchema,
   HqNavigationMate,
 } from "@t3tools/shared/hqStream";
-import { HqOutsideEnvironment } from "@t3tools/shared/hqEnvironment";
+import type { HqOutsideEnvironment } from "@t3tools/shared/hqEnvironment";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import { readHqParts, type HqParts } from "../../zerops/hq/client.ts";
+import {
+  readDeliveryEnvironments,
+  type HqDeliveryEnvironment,
+  type UnreadEnvironment,
+} from "../../zerops/hq/environments.ts";
 import type { ScopeKey } from "../model.ts";
 import { navigationRecord } from "./navigationRecord.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
@@ -73,22 +76,11 @@ const Birth = Schema.Struct({
   projectId: Schema.optionalKey(Schema.NullOr(Schema.String)),
   importProcessId: Schema.optionalKey(Schema.String),
 });
-// Each target with its own job contract: a Git environment's pushes, the outside production, which
-// has none, and a Zerops environment's deploys.
-const DeliveryEnvironments = Schema.Array(
-  Schema.Union([
-    HqGitNavigationEnvironment,
-    HqOutsideEnvironment,
-    HqNavigationEnvironment.check(
-      Schema.makeFilter((row) =>
-        row.target.kind === "zerops" ? undefined : "Expected Zerops deploy jobs",
-      ),
-    ),
-  ]),
-);
+// The environments arrive raw: the family reads each on its own (`readDeliveryEnvironments`), so
+// one this build cannot read is said beside the readable ones, never taking them down.
 const App = navigationRecord({
   ...HqNavigationApp.fields,
-  environments: DeliveryEnvironments,
+  environments: Schema.Array(Schema.Unknown),
   births: Schema.Array(Birth),
 });
 const PersonFacts = navigationRecord(HqPersonFactsSchema.fields);
@@ -99,7 +91,12 @@ const Project = navigationRecord({
   person: PersonFacts,
 });
 
-export type HqAppValue = typeof App.Type;
+export type HqAppValue = Omit<typeof App.Type, "environments"> & {
+  /** The readable environments in HQ's order, the outside production among them; absent while unsaid. */
+  readonly environments?: ReadonlyArray<HqDeliveryEnvironment | HqOutsideEnvironment>;
+  /** The environments HQ sent that this build cannot read; absent when none. */
+  readonly unreadEnvironments?: ReadonlyArray<UnreadEnvironment>;
+};
 export type PlacementValue = typeof Project.Type;
 export type HqPersonFacts = typeof PersonFacts.Type;
 
@@ -141,7 +138,23 @@ const decodeOrganization = (raw: unknown): Option.Option<HqOrganizationValue> =>
     return viewer === undefined ? organization : { ...organization, viewer };
   });
 const decodeStatus = Schema.decodeUnknownOption(HqNavigationStatus);
-const decodeApp = Schema.decodeUnknownOption(App);
+const decodeAppRecord = Schema.decodeUnknownOption(App);
+const idOfSent = (row: unknown): unknown =>
+  typeof row === "object" && row !== null ? Reflect.get(row, "id") : undefined;
+const decodeApp = (raw: unknown): Option.Option<HqAppValue> =>
+  Option.map(decodeAppRecord(raw), ({ environments, ...app }): HqAppValue => {
+    if (environments === undefined) return app;
+    const sent = readDeliveryEnvironments(environments);
+    const order = environments.map(idOfSent);
+    const readable = [...sent.environments, ...(sent.outside === undefined ? [] : [sent.outside])];
+    // The outside production is read apart: put back in HQ's order.
+    readable.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+    return {
+      ...app,
+      environments: readable,
+      ...(sent.unread.length === 0 ? {} : { unreadEnvironments: sent.unread }),
+    };
+  });
 const decodeProject = Schema.decodeUnknownOption(Project);
 const decodePress = Schema.decodeUnknownOption(HqNavigationPress);
 
@@ -192,7 +205,13 @@ export const hqAppFamily: FamilySpec<"hqApp"> = {
   // Incomplete newer data never erases the environments HQ already proved.
   keepUnsaid: (held, row) =>
     row.environments === undefined && held?.environments !== undefined
-      ? { ...row, environments: held.environments }
+      ? {
+          ...row,
+          environments: held.environments,
+          ...(held.unreadEnvironments === undefined
+            ? {}
+            : { unreadEnvironments: held.unreadEnvironments }),
+        }
       : row,
   hq: {
     scope: "navigation",

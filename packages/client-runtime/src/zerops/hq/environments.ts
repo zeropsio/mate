@@ -102,6 +102,7 @@ const legible = (record: unknown, key: string): string | null => {
  * Each environment is read on its own: one this build cannot read is listed as unread beside the
  * ones it can, never taking them down. The application's outside production is its production with
  * nothing to deploy, read apart from the ones it delivers to (`outside`; absent where none stands).
+ * The `hqApp` family calls it once per record HQ sends; readers take the family's typed value.
  */
 export function readDeliveryEnvironments(value: unknown): {
   readonly environments: ReadonlyArray<HqDeliveryEnvironment>;
@@ -130,10 +131,4 @@ export function readDeliveryEnvironments(value: unknown): {
     });
   }
   return { environments, unread, ...(outside === undefined ? {} : { outside }) };
-}
-
-export function deliveryEnvironmentsOf(
-  value: unknown,
-): ReadonlyArray<HqDeliveryEnvironment> | undefined {
-  return Array.isArray(value) ? readDeliveryEnvironments(value).environments : undefined;
 }

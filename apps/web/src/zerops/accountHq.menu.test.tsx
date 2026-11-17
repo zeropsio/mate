@@ -133,7 +133,6 @@ async function mountMenu(
   let socket: Socket | undefined;
   let zeropsSocket: Socket | undefined;
   let stage = wire !== undefined;
-  let partialStage = false;
   let jobFinished = false;
   let addressEnabled = false;
   let selected: unknown;
@@ -249,9 +248,7 @@ async function mountMenu(
               ? [
                   {
                     id: "preview",
-                    ...(partialStage
-                      ? { projectId: "preview" }
-                      : { target: { kind: "zerops", projectId: "preview" } }),
+                    target: { kind: "zerops", projectId: "preview" },
                     tier: "stage",
                     name: "stage",
                     sources: ["main"],
@@ -905,11 +902,6 @@ async function mountMenu(
       name = value;
     },
     publish: () => socket!.publish(),
-    partial: (value: boolean, nextName: string) => {
-      partialStage = value;
-      name = nextName;
-      socket!.publish("scope-values");
-    },
     disconnect: () => {
       hqOffline = true;
       socket!.emit("close", "", 1006);
@@ -1200,68 +1192,6 @@ describe("B: environment identity compatibility", () => {
 
   it("Old clients keep their Zerops environments after HQ gains environment identities.", () =>
     compatibility("modern"));
-
-  it("A partial modern environment is refused without erasing known environments.", async () => {
-    const fixture = await mountMenu(false, true, false, true, true);
-    const rows = () =>
-      rendered.tree!.root.findAll(
-        (node) => node.type === "button" && node.props["data-zerops-environment-id"] !== undefined,
-      );
-    const names = () => rows().map((row) => text(row.findAllByType("span")[0]!));
-    const heading = () => rendered.tree!.root.findAllByType("h1").map(text);
-    const ready = fixture.whenStage();
-    await fixture.tab.run(() => fixture.addStage());
-    await ready;
-    await fixture.tab.run(() => {});
-    expect(names()).toEqual(["Preview"]);
-    const partial = fixture.whenReady("Shop partial");
-    await fixture.tab.run(() => fixture.partial(true, "Shop partial"));
-    await partial;
-    await fixture.tab.run(() => {});
-    expect(heading()[0]).toBe("Shop partial");
-    expect(names()).toEqual(["Preview"]);
-    const restored = fixture.whenReady("Shop");
-    await fixture.tab.run(() => fixture.partial(false, "Shop"));
-    await restored;
-    await fixture.tab.run(() => {});
-    expect(heading()[0]).toBe("Shop");
-    const retry = fixture.whenRecovering();
-    const socket = fixture.whenSockets(2);
-    await fixture.tab.run(() => fixture.disconnect());
-    const retryAt = await retry;
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(Math.max(0, retryAt - Date.now()));
-    });
-    await socket;
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(STREAM_POLICY.reconnectGraceMs);
-    });
-    await fixture.tab.run(() => {});
-    const outage = () =>
-      rendered.tree!.root.findAll(
-        (node) =>
-          typeof node.type === "string" &&
-          node.props["data-zerops-surface"] === "sidebar-hq-outage",
-      );
-    expect(outage()).toHaveLength(1);
-    const again = fixture.whenReady("Shop");
-    await fixture.tab.run(() => fixture.reconnect());
-    await again;
-    await fixture.tab.run(() => {});
-    expect(outage()).toHaveLength(0);
-    expect(names()).toEqual(["Preview"]);
-    await fixture.tab.run(() => rows()[0]!.props.onClick());
-    expect(rendered.routes.at(-1)).toEqual({
-      to: "/group/$groupId/$projectId",
-      params: { groupId: "shop", projectId: "preview" },
-    });
-    expect(
-      rendered
-        .tree!.root.findAllByType("main")
-        .some((node) => text(node).includes("stage-existing")),
-    ).toBe(true);
-    expect(fixture.unexpected.filter((entry) => !entry.startsWith("unmapped "))).toEqual([]);
-  });
 
   it("An environment arriving after first paint appears once with its target's service version.", async () => {
     const fixture = await mountMenu(false, false, false, false, true);

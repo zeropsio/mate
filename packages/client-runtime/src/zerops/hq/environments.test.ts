@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  deliveryEnvironmentsOf,
   jobFailed,
   jobInFlight,
   jobsByService,
+  readDeliveryEnvironments,
   type HqEnvironment,
   type HqJob,
 } from "./environments.ts";
@@ -107,7 +107,7 @@ describe("delivery environments", () => {
       target: { kind: "git", branch: "main", delivery: "direct" },
       jobs: [],
     };
-    expect(deliveryEnvironmentsOf([git])?.[0]).toMatchObject({
+    expect(readDeliveryEnvironments([git]).environments[0]).toMatchObject({
       id: "git-stage",
       target: { kind: "git" },
       jobs: [],

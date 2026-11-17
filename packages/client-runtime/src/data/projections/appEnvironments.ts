@@ -9,11 +9,7 @@
 import type { HqEnvironmentId } from "@t3tools/contracts";
 import type { HqOutsideEnvironment } from "@t3tools/shared/hqEnvironment";
 import type { HqNavigationRollout } from "@t3tools/shared/hqStream";
-import {
-  readDeliveryEnvironments,
-  type UnreadEnvironment,
-  type HqDeliveryEnvironment,
-} from "../../zerops/hq/environments.ts";
+import type { UnreadEnvironment, HqDeliveryEnvironment } from "../../zerops/hq/environments.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import { sameValue } from "./equal.ts";
 
@@ -33,16 +29,25 @@ const UNTOLD: AppEnvironmentsRead = {
   unread: [],
 };
 
+const isOutside = (
+  environment: HqDeliveryEnvironment | HqOutsideEnvironment,
+): environment is HqOutsideEnvironment => environment.target.kind === "outside";
+
 function environmentsRead(read: ProjectionReads, appId: string): AppEnvironmentsRead {
   const fact = read.fact("hqApp", appId);
   if (fact.kind !== "known") return UNTOLD;
-  const { environments, rollouts } = fact.value;
+  const { environments, unreadEnvironments, rollouts } = fact.value;
   if (environments === undefined) return UNTOLD;
-  const sent = readDeliveryEnvironments(environments);
+  const delivered: HqDeliveryEnvironment[] = [];
+  let outside: HqOutsideEnvironment | undefined;
+  for (const environment of environments) {
+    if (isOutside(environment)) outside = environment;
+    else delivered.push(environment);
+  }
   return {
-    environments: sent.environments,
-    unread: sent.unread,
-    ...(sent.outside === undefined ? {} : { outside: sent.outside }),
+    environments: delivered,
+    unread: unreadEnvironments ?? [],
+    ...(outside === undefined ? {} : { outside }),
     ...(rollouts === undefined ? {} : { rollouts }),
   };
 }

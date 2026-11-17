@@ -627,7 +627,6 @@ export { makeOutcomePresentation, presentOutcomes } from "./notices/outcomes.ts"
 
 export { type HqGitCandidateIntent } from "./operations/hqGitTargets.ts";
 export { deliveryAnswerSaid, deliveryAnswerFollowing } from "../zerops/hq/deployAnswer.ts";
-export { deliveryEnvironmentsOf } from "../zerops/hq/environments.ts";
 
 export {
   hqMateDirectory,

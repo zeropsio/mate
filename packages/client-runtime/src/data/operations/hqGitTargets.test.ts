@@ -16,6 +16,7 @@ import { makeOperations } from "./coordinator.ts";
 import { makeHqExecutor, type HqWrites } from "./executors/hq.ts";
 import { linkKeys, type OperationReceipt } from "../model.ts";
 import { HqError } from "../../zerops/hq/client.ts";
+import { readDeliveryEnvironments } from "../../zerops/hq/environments.ts";
 
 const TOKEN = "candidate-token-marker";
 const intent = {
@@ -480,7 +481,6 @@ it.effect(
 it("the public data entry exposes the single delivery answer and environment readers", () => {
   expect(typeof data.deliveryAnswerSaid).toBe("function");
   expect(typeof data.deliveryAnswerFollowing).toBe("function");
-  expect(typeof data.deliveryEnvironmentsOf).toBe("function");
   const job = gitEnvironment.jobs[0]!;
   const answer = {
     jobs: [{ ...job, environment: "Production", job: job.id, behind: null }],
@@ -492,7 +492,7 @@ it("the public data entry exposes the single delivery answer and environment rea
   expect(data.deliveryAnswerFollowing(answer, new Map([[job.id, job]])).jobs[0]?.sha).toBe(
     "b".repeat(40),
   );
-  expect(data.deliveryEnvironmentsOf([gitEnvironment])?.[0]?.id).toBe("git-production");
+  expect(readDeliveryEnvironments([gitEnvironment]).environments[0]?.id).toBe("git-production");
 });
 
 it.effect(
