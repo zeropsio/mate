@@ -114,14 +114,6 @@
   {
     "path": "apps/web/src/zerops/liveStep.ts",
     "kind": "ImportDeclaration",
-    "fingerprint": "components/chat/conversation.logic",
-    "owner": "web derivation (W3)",
-    "reason": "verdict or words in a surface's logic file: moves down",
-    "expires": "surface:web-derivation"
-  },
-  {
-    "path": "apps/web/src/zerops/liveStep.ts",
-    "kind": "ImportDeclaration",
     "fingerprint": "components/chat/nowLineCalm.logic",
     "owner": "web derivation (W3)",
     "reason": "verdict or words in a surface's logic file: moves down",

@@ -21,7 +21,7 @@ import * as Arr from "effect/Array";
 import * as Schema from "effect/Schema";
 import { shallow } from "zustand/vanilla/shallow";
 import { isBackgroundTaskActivity } from "@t3tools/client-runtime/state/subagentRuntime";
-import { spilledResultIdIn } from "./components/chat/spilledOutput.logic";
+import { spilledResultIdIn } from "./zerops/runSteps/spilledOutput";
 import { sameValue } from "./lib/sameValue";
 import {
   commandDetailRepeatsCommand,
@@ -403,6 +403,18 @@ export function workLogEntryIsToolLike(entry: WorkLogEntry): boolean {
     return true;
   }
   return entry.itemType !== undefined && isToolLifecycleItemType(entry.itemType);
+}
+
+/** A work entry that is a tool call on the way — the log's steps. A task is none: it runs one. */
+export function isActivityWork(entry: WorkLogEntry): boolean {
+  return (
+    entry.agentSpawn === undefined &&
+    entry.sourceActivityKind?.startsWith("task.") !== true &&
+    entry.questionAnswer === undefined &&
+    entry.sourceActivityKind !== "context-compaction" &&
+    entry.tone !== "error" &&
+    workLogEntryIsToolLike(entry)
+  );
 }
 
 /** Heuristic: providers often emit successful lifecycle status while error text lives in `detail` / `command`. */

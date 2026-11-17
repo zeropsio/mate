@@ -13,7 +13,8 @@ import { deriveZeropsThreadModel } from "@t3tools/client-runtime/zerops/model";
 import type { Item } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { activityCounts, isActivityWork } from "./conversation.logic";
+import { isActivityWork } from "../../session-logic";
+import { activityCounts } from "./conversation.logic";
 import { deriveWorkLogEntries, zeropsCallToWorkLogEntry } from "../../session-logic";
 import { effortOfCounts, heldLines, pageReached } from "./engineCardPaging.logic";
 

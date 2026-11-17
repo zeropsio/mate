@@ -13,7 +13,7 @@
  *
  * Pure.
  *
- * @module spilledOutput.logic
+ * @module spilledOutput
  */
 
 /** What a spilled file holds, by the path a read names. */

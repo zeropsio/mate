@@ -29,6 +29,7 @@ import {
 } from "@t3tools/contracts";
 
 import {
+  isActivityWork,
   workEntryDisplayIndicatesToolFailure,
   workEntryIndicatesToolNeutralStatus,
   type TimelineEntry,
@@ -37,6 +38,7 @@ import {
 } from "../../session-logic";
 import { type ChatMessage, type ProposedPlan } from "../../types";
 import type { ZeropsMateIdentity } from "../../zerops/mateIdentities";
+import { isQuestionToolCall } from "~/zerops/runSteps/toolCalls";
 import type { ConversationSpeaker } from "./ConversationRows";
 import type { QueuedComposerMessage } from "../../queuedMessageStore";
 import {
@@ -46,9 +48,7 @@ import {
   deriveOutcome,
   outcomeDraws,
   turnsAfter,
-  isActivityWork,
   isImageOnlyPlaceholder,
-  isQuestionToolCall,
   isResumePrompt,
   isUserMessageEntry,
   messageReceipt,

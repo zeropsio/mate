@@ -14,9 +14,13 @@
 import { mateMessageAskedLine } from "@t3tools/client-runtime/zerops/model";
 
 import type { WorkLogEntry } from "../../session-logic";
-import { lookedAt, namedToolCall, toolCallWords } from "./conversation.logic";
+import {
+  spilledOutputOf,
+  spilledOutputPhrase,
+  type SpilledOutput,
+} from "~/zerops/runSteps/spilledOutput";
+import { lookedAt, namedToolCall, toolCallWords } from "~/zerops/runSteps/toolCalls";
 import { jobLost, type LiveJobs } from "./liveJobs.logic";
-import { spilledOutputOf, spilledOutputPhrase, type SpilledOutput } from "./spilledOutput.logic";
 
 export type StepKind = "command" | "look" | "read" | "edit" | "search" | "web" | "tool";
 

@@ -26,15 +26,16 @@ import {
 import { deriveZeropsThreadModel } from "@t3tools/client-runtime/zerops/model";
 import { maskSecrets } from "@t3tools/shared/messagePreview";
 
-import { isActivityWork, isQuestionToolCall } from "../components/chat/conversation.logic";
 import { NOW_LINE_DWELL_MS } from "../components/chat/nowLineCalm.logic";
 import { nowLineWords, severalWords, type NowLine } from "../components/chat/runCard.logic";
 import { stepOf } from "../components/chat/workSteps.logic";
 import {
   deriveWorkLogEntries,
+  isActivityWork,
   zeropsCallToWorkLogEntry,
   type WorkLogEntry,
 } from "../session-logic";
+import { isQuestionToolCall } from "./runSteps/toolCalls";
 
 /** A live step as a row says it: its words, or a command's code where it has none. */
 export interface LiveStepWords {

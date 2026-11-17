@@ -3,6 +3,7 @@ import { CREW_CARD_OPENER } from "@t3tools/shared/userAsk";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { TimelineEntry, WorkLogEntry } from "../../session-logic";
+import { namedToolCall, toolCallWords } from "~/zerops/runSteps/toolCalls";
 import {
   reduceZeropsOperations,
   type ZeropsCall,
@@ -22,7 +23,6 @@ import {
   LAST_WORDS_GRACE_MS,
   latestFinishedWordsAt,
   messageReceipt,
-  namedToolCall,
   incidentsAtRest,
   incidentsStanding,
   incidentToneNow,
@@ -34,7 +34,6 @@ import {
   readSlashCommand,
   readsAsAnswer,
   splitBatchDeploy,
-  toolCallWords,
   stretchFace,
   stretchIncidents,
   stretchOperations,
