@@ -178,10 +178,15 @@ export function useWaitsOf<T extends ZeropsCandidate>(input: {
       });
       if (step.kind !== "review") return undefined;
       // What waits on the person first: one somebody asked them to merge, one theirs to ask for —
-      // never one they already asked for, which the list is not about.
+      // never one they already asked for, or one whose merge is on its way, which the list is not
+      // about (`mateNextStep`'s `waiting` counts neither).
       const waits =
-        step.lines.find((line) => line.verdict === undefined && line.standing !== "waiting")
-          ?.pull ?? step.pull;
+        step.lines.find(
+          (line) =>
+            line.verdict === undefined &&
+            line.standing !== "waiting" &&
+            (line.act === undefined || line.act.kind === "merge-failed"),
+        )?.pull ?? step.pull;
       return {
         groupId,
         repository: waits.repository,
