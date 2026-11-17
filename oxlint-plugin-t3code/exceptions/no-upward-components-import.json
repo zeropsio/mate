@@ -4,7 +4,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "components/ui/button",
     "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "reason": "UI kit value used below the surfaces: the helper moves down",
     "expires": "surface:web-derivation"
   },
   {
@@ -12,7 +12,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "components/ui/dialog",
     "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "reason": "UI kit value used below the surfaces: the helper moves down",
     "expires": "surface:web-derivation"
   },
   {
@@ -36,7 +36,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "components/ui/button",
     "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "reason": "UI kit value used below the surfaces: the helper moves down",
     "expires": "surface:web-derivation"
   },
   {
@@ -44,7 +44,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "components/ui/failure",
     "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "reason": "UI kit value used below the surfaces: the helper moves down",
     "expires": "surface:web-derivation"
   },
   {
@@ -60,7 +60,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "components/ui/loading",
     "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "reason": "UI kit value used below the surfaces: the helper moves down",
     "expires": "surface:web-derivation"
   },
   {
@@ -108,7 +108,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "components/ui/toast",
     "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "reason": "UI kit value used below the surfaces: the helper moves down",
     "expires": "surface:web-derivation"
   },
   {
@@ -124,7 +124,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "components/ui/toast",
     "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "reason": "UI kit value used below the surfaces: the helper moves down",
     "expires": "surface:web-derivation"
   },
   {
@@ -140,7 +140,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "components/zerops/ZeropsOperationCard",
     "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "reason": "view type: moves to the module that produces it",
     "expires": "surface:web-derivation"
   },
   {
@@ -148,7 +148,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "components/zerops/operation/BatchServiceRows",
     "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "reason": "view type: moves to the module that produces it",
     "expires": "surface:web-derivation"
   },
   {
@@ -156,7 +156,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "components/zerops/operation/subject",
     "owner": "web derivation (W3)",
-    "reason": "verdict or words in a surface's logic file: moves down",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
     "expires": "surface:web-derivation"
   },
   {
@@ -172,7 +172,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "components/threadSidebarWidth",
     "owner": "web derivation (W3)",
-    "reason": "verdict or words in a surface's logic file: moves down",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
     "expires": "surface:web-derivation"
   },
   {
@@ -204,7 +204,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "components/ui/toast",
     "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "reason": "UI kit value used below the surfaces: the helper moves down",
     "expires": "surface:web-derivation"
   },
   {
@@ -228,7 +228,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "components/zerops/projects/projectsView.logic",
     "owner": "web derivation (W3)",
-    "reason": "view type: moves to the module that produces it",
+    "reason": "verdict or words in a surface's logic file: moves down",
     "expires": "surface:web-derivation"
   },
   {
@@ -308,7 +308,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "components/zerops/primitives/MateFace",
     "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "reason": "view type: moves to the module that produces it",
     "expires": "surface:web-derivation"
   },
   {
@@ -316,7 +316,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "components/zerops/primitives/MateFace",
     "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "reason": "view type: moves to the module that produces it",
     "expires": "surface:web-derivation"
   },
   {
@@ -348,7 +348,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "components/ui/toast",
     "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "reason": "UI kit value used below the surfaces: the helper moves down",
     "expires": "surface:web-derivation"
   },
   {
@@ -428,7 +428,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "components/ui/button",
     "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "reason": "UI kit value used below the surfaces: the helper moves down",
     "expires": "surface:web-derivation"
   },
   {
@@ -436,7 +436,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "components/ui/toast",
     "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "reason": "UI kit value used below the surfaces: the helper moves down",
     "expires": "surface:web-derivation"
   },
   {
@@ -444,7 +444,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "components/ui/toastHelpers",
     "owner": "web derivation (W3)",
-    "reason": "verdict or words in a surface's logic file: moves down",
+    "reason": "UI kit value used below the surfaces: the helper moves down",
     "expires": "surface:web-derivation"
   },
   {
@@ -484,7 +484,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "components/chat/timelineContext",
     "owner": "web derivation (W3)",
-    "reason": "verdict or words in a surface's logic file: moves down",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
     "expires": "surface:web-derivation"
   },
   {
@@ -500,7 +500,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "components/chat/timelineContext",
     "owner": "web derivation (W3)",
-    "reason": "verdict or words in a surface's logic file: moves down",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
     "expires": "surface:web-derivation"
   },
   {
@@ -508,7 +508,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "components/zerops/ZeropsEnvironmentCreationDialog",
     "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "reason": "view type: moves to the module that produces it",
     "expires": "surface:web-derivation"
   },
   {
@@ -612,7 +612,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "components/zerops/ZeropsProjectMenu",
     "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "reason": "view type: moves to the module that produces it",
     "expires": "surface:web-derivation"
   },
   {
@@ -668,7 +668,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "components/ui/toast",
     "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "reason": "UI kit value used below the surfaces: the helper moves down",
     "expires": "surface:web-derivation"
   },
   {
@@ -676,7 +676,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "components/zerops/SidebarComingEnds",
     "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "reason": "view type: moves to the module that produces it",
     "expires": "surface:web-derivation"
   },
   {
@@ -684,7 +684,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "components/zerops/SidebarMateMenu",
     "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "reason": "view type: moves to the module that produces it",
     "expires": "surface:web-derivation"
   },
   {
@@ -692,7 +692,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "components/zerops/ZeropsProjectMenu",
     "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "reason": "view type: moves to the module that produces it",
     "expires": "surface:web-derivation"
   },
   {
@@ -716,7 +716,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "components/ui/toast",
     "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "reason": "UI kit value used below the surfaces: the helper moves down",
     "expires": "surface:web-derivation"
   },
   {
@@ -740,7 +740,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "components/zerops/review/reviewReads",
     "owner": "web derivation (W3)",
-    "reason": "verdict or words in a surface's logic file: moves down",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
     "expires": "surface:web-derivation"
   },
   {

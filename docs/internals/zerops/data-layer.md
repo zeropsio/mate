@@ -83,6 +83,21 @@ a denied scope purges that scope's facts; neither keeps them. A stream closed `4
 the session. A Mate's socket closed `4401` asks HQ for a new ticket at once, and only HQ's answer
 says what follows: a Mate's close code never signs anyone out.
 
+## Where a verdict lives
+
+A verdict is a domain answer: who owns, who may act, what is offered, where a change stands, what a
+Mate is doing and whom it waits on. Each is computed once, in the layer its inputs come from: over
+the account store, a projection in `packages/client-runtime/src/data/projections`; over values, a
+pure rule in `packages/client-runtime/src/zerops` or `packages/shared/src`; over what only this tab
+holds (a press it runs, a draft), a module in `apps/web/src/zerops` beside that state.
+`apps/web/src/zerops` otherwise only wires verdicts to the tab: atoms, hooks, the tab's stores.
+A `*.logic.ts` under `apps/web/src/components` shapes one surface's view from verdicts it is handed:
+order, folding, tones, sizes, that surface's own words. It decides nothing a second surface needs;
+an answer or a sentence two surfaces need is a verdict and moves down, with its words.
+Imports run one way: `components/` → `apps/web/src/zerops` → `packages/client-runtime` →
+`packages/shared`, never back. `t3code/no-upward-components-import` holds the web half; its ledger
+only shrinks.
+
 ## Writes and evidence
 
 Record an operation and its identity before sending. Acceptance, reflection in observed facts and
