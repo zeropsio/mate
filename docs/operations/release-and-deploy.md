@@ -56,4 +56,9 @@ How mate reaches users. Each step names the file that owns its detail.
 - **Unreleased server build in a running container.** `eval/scripts/mate-dev-push.sh {zcp|mate|all}`
   in a `zeropsio/zcp` checkout; `MATE_REPO` names this checkout when it is not at the script's
   default. It needs the project VPN and an explicit `EVAL_REMOTE_HOST`.
-  It is not a release: a unit restart keeps the dev build, a container restart pulls the release back.
+  It is not a release: without a dev pin a dev Mate build stays only until a release newer than its
+  base is known. `zcp mate pin --for <duration> --reason <text>` keeps every dev build in the
+  container (24 h by default, at most 7 days, the reason is required); `zcp mate pin --end` removes
+  it and `zcp mate pin` shows it. A container restart replaces a dev zcp with the latest release
+  whatever the pin says, but the pin, kept across the restart, still covers a dev Mate; a redeploy
+  loses the bundles and the pin (`zeropsio/zcp:docs/spec-mate.md` §2.1a, §2.6).
