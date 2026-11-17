@@ -27,7 +27,6 @@ import {
 import {
   attentionWatch,
   observedEnvironments,
-  overviewWatch,
   watchMates,
   type MatesBaseline,
   type WatchedMate,
@@ -40,9 +39,8 @@ const NO_ATTENTION_READ: Readonly<Record<string, MateAttentionRead>> = {};
 const NO_ATTENTION = Atom.make(NO_ATTENTION_READ);
 
 /**
- * Notifications for every Mate the person may observe, off its attention (`matesAttention`), or for
- * a Mate from before it, off HQ's overview of it: no socket to a Mate is needed for its chats to
- * ring. What is known of a Mate when its word comes to be of now is its baseline; while its word is
+ * Notifications for every Mate the person may observe, off its attention (`matesAttention`): no
+ * socket to a Mate is needed for its chats to ring. What is known of a Mate when its word comes to be of now is its baseline; while its word is
  * not of now — its link or HQ's broke — nothing of it rings, and the next look is a baseline again,
  * so nothing that happened meanwhile is replayed. Its count is the dock's badge.
  */
@@ -63,13 +61,9 @@ export function ThreadNotificationCoordinator() {
       const titled = (threadId: string) =>
         overview?.threads?.list.find((digest) => digest.id === threadId)?.title ?? "";
       const look =
-        read !== undefined && read.attention !== null
-          ? read.live
-            ? attentionWatch(read.attention, titled)
-            : undefined
-          : overview !== undefined
-            ? overviewWatch(overview)
-            : undefined;
+        read !== undefined && read.attention !== null && read.live
+          ? attentionWatch(read.attention, titled)
+          : undefined;
       if (look !== undefined) mates.set(projectId, look);
     }
     return mates;

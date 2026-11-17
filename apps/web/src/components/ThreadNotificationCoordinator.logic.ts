@@ -1,8 +1,7 @@
 /**
  * What rings, over the Mates the person may observe: a pure fold the coordinator runs on every
- * change of what is known of them. A Mate that publishes its attention rings off it — what it waits
- * on its person for, the turns it finished — while that word is of now; one from before it, off
- * HQ's overview of its chats while HQ's view is current.
+ * change of what is known of them. A Mate rings off its attention — what it waits on its person
+ * for, the turns it finished — while that word is of now.
  *
  * @module ThreadNotificationCoordinator.logic
  */
@@ -48,34 +47,8 @@ interface ThreadRing {
   readonly status: MateThreadKind;
 }
 
-/** A thread no longer on its way: none of what a turn does, nor waits on the person for. */
-const SETTLED: ReadonlySet<MateThreadKind> = new Set(["failed", "planReady", "monitoring", "idle"]);
-
 /** What the person is waited on for: a question, an approval or a failure, once per turn. */
 const ATTENTION: ReadonlySet<MateThreadKind> = new Set(["input", "approval", "failed"]);
-
-/** A Mate from before the attention value, off HQ's overview of its chats. */
-export function overviewWatch(view: MateLiveView): WatchedMate | undefined {
-  if (view.identity === undefined || view.threads === undefined) return undefined;
-  return {
-    environmentId: view.identity.environmentId,
-    threads: view.threads.list.map((digest) => {
-      const completedAt = Date.parse(digest.completedAt ?? "");
-      return {
-        id: digest.id,
-        title: digest.title,
-        status: digest.kind,
-        attention: ATTENTION.has(digest.kind) ? `${digest.turnId ?? ""}:${digest.kind}` : null,
-        completedAt:
-          SETTLED.has(digest.kind) &&
-          digest.turnState === "completed" &&
-          Number.isFinite(completedAt)
-            ? completedAt
-            : null,
-      };
-    }),
-  };
-}
 
 /**
  * A Mate off its attention: each chat waiting on its person, and each finished turn of a resting
