@@ -38,6 +38,10 @@ How mate reaches users. Each step names the file that owns its detail.
 - **Mate server release.** `node scripts/release-mate.ts` (`--minor` when the client's compatibility
   floor rises, `--dry-run` prints the plan). It calls GitHub through `gh`; set `MATE_GH` to use a
   wrapper that holds the release token instead. zcp installs the latest stable release in containers by itself.
+  A `main` commit may be released once its newest `ci.yml` run on `main` has completed with every
+  required job green (`checkJobIds` in `scripts/ci-blame.ts`, the checks Release Smoke's verdict
+  demands); a red informative job (tests, smokes, mobile) does not hold it. A missing run, a run
+  still in progress and a required job not green are each refused with their own words.
   A source that changed no server artifact input since the last release (the sources the published
   artifact's sourcemaps name, plus the build tooling in `scripts/lib/server-artifact-inputs.ts`)
   cuts no release: the script prints `nothing to release` and exits 0; version-only edits never count.

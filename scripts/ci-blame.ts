@@ -27,7 +27,9 @@ const jobNames = {
   test_mobile: "Test Mobile",
   mobile_native_static_analysis: "Mobile Native Static Analysis",
 };
+// The required jobs: Release Smoke's verdict demands `success` from each, and a release needs them green.
 export const checkJobIds = ["check", "check_guards", "check_types", "check_build"] as const;
+export const checkJobNames = checkJobIds.map((id) => jobNames[id]);
 // Test suites run only when someone asks for them: a manual dispatch or a kh-bisect manifest.
 const testJobIds = new Set([
   "state_smoke",

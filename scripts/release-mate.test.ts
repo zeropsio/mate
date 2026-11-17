@@ -10,7 +10,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { describe, expect, it } from "@effect/vitest";
 
 import {
-  greenSource,
+  ciRefusal,
   bumpVersion,
   highestTag,
   nextVersion,
@@ -184,30 +184,44 @@ it.each([
   { status: "completed", conclusion: "failure", green: false },
   { status: "in_progress", conclusion: null, green: false },
 ])(
-  "a pinned source requires its own completed successful main CI: $status $conclusion",
+  "a pinned source requires its own completed main CI with green required jobs: $status $conclusion",
   ({ status, conclusion, green }) => {
+    const jobs = () => [
+      { name: "Check", conclusion: "success" },
+      { name: "Check Guards", conclusion: "success" },
+      { name: "Check Types", conclusion },
+      { name: "Check Build", conclusion: "success" },
+    ];
     expect(
-      greenSource([{ head_sha: "source", head_branch: "main", status, conclusion }], "source"),
+      ciRefusal([{ id: 1, head_sha: "source", head_branch: "main", status }], "source", jobs) ===
+        undefined,
     ).toBe(green);
     expect(
-      greenSource([{ head_sha: "other", head_branch: "main", status, conclusion }], "source"),
+      ciRefusal([{ id: 1, head_sha: "other", head_branch: "main", status }], "source", jobs) ===
+        undefined,
     ).toBe(false);
     expect(
-      greenSource([{ head_sha: "source", head_branch: "feature", status, conclusion }], "source"),
+      ciRefusal([{ id: 1, head_sha: "source", head_branch: "feature", status }], "source", jobs) ===
+        undefined,
     ).toBe(false);
   },
 );
 
 it("a failed or pending rerun does not reuse an older green approval", () => {
   expect(
-    greenSource(
+    ciRefusal(
       [
-        { head_sha: "source", head_branch: "main", status: "in_progress", conclusion: null },
-        { head_sha: "source", head_branch: "main", status: "completed", conclusion: "success" },
+        { id: 2, head_sha: "source", head_branch: "main", status: "in_progress" },
+        { id: 1, head_sha: "source", head_branch: "main", status: "completed" },
       ],
       "source",
+      () =>
+        ["Check", "Check Guards", "Check Types", "Check Build"].map((name) => ({
+          name,
+          conclusion: "success",
+        })),
     ),
-  ).toBe(false);
+  ).toBeDefined();
 });
 
 it("release CI grants the permissions requested by its reusable workflow", () => {

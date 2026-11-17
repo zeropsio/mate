@@ -23,6 +23,7 @@ import * as NodePath from "node:path";
 import * as NodeSqlite from "node:sqlite";
 import * as Effect from "effect/Effect";
 import { readReleaseSource, VERSIONED_RELEASE_PACKAGES } from "@t3tools/shared/releaseSource";
+import { checkJobNames } from "./ci-blame.ts";
 import { serverArtifactInputs } from "./lib/server-artifact-inputs.ts";
 
 /** The release workflow checks server == desktop and tag == server; web moves with them. */
@@ -227,15 +228,38 @@ const serverChangesSince = (repo: string, tag: string, from: string, to: string)
 };
 
 interface WorkflowRun {
+  readonly id: number;
   readonly head_sha: string;
   readonly head_branch: string;
   readonly status: string;
+}
+
+interface WorkflowJob {
+  readonly name: string;
   readonly conclusion: string | null;
 }
 
-export function greenSource(runs: ReadonlyArray<WorkflowRun>, sha: string): boolean {
+/**
+ * Why a source may not release, or undefined: its newest main CI run completed with every required
+ * job (`checkJobNames`) green. The run's own conclusion also counts informative jobs, so it is not
+ * read; a skipped required job is not green, as in Release Smoke's verdict.
+ */
+export function ciRefusal(
+  runs: ReadonlyArray<WorkflowRun>,
+  sha: string,
+  jobsOf: (run: WorkflowRun) => ReadonlyArray<WorkflowJob>,
+): string | undefined {
   const latest = runs.find((run) => run.head_sha === sha && run.head_branch === "main");
-  return latest?.status === "completed" && latest.conclusion === "success";
+  if (latest === undefined) return `source ${sha} has no main CI run`;
+  if (latest.status !== "completed") return `source ${sha} main CI is still ${latest.status}`;
+  const jobs = jobsOf(latest);
+  const red = checkJobNames.flatMap((name) => {
+    const conclusion = jobs.find((job) => job.name === name)?.conclusion;
+    return conclusion === "success" ? [] : [`${name} ${conclusion ?? "missing"}`];
+  });
+  return red.length === 0
+    ? undefined
+    : `source ${sha} main CI has required jobs not green: ${red.join(", ")}`;
 }
 
 interface Manifest {
@@ -245,7 +269,7 @@ interface Manifest {
 }
 
 interface ReleaseWorkflowRun extends WorkflowRun {
-  readonly id: number;
+  readonly conclusion: string | null;
   readonly run_attempt: number;
   readonly html_url: string;
 }
@@ -389,8 +413,14 @@ async function main(args: ReadonlySet<string>): Promise<void> {
         repo,
         `repos/${REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${source}&branch=main&per_page=10`,
       );
-      if (!greenSource(runs.workflow_runs, source))
-        throw new Error(`source ${source} has no green main CI`);
+      const refusal = ciRefusal(runs.workflow_runs, source, (run) =>
+        github<WorkflowJob[]>(
+          repo,
+          `repos/${REPOSITORY}/actions/runs/${run.id}/jobs?per_page=100`,
+          "[.jobs[] | {name, conclusion}]",
+        ),
+      );
+      if (refusal !== undefined) throw new Error(refusal);
     }
     const releases: PublishedRelease[] = [];
     for (let page = 1; ; page++) {
