@@ -105,8 +105,9 @@ export interface ConversationView {
     readonly attachments?: ReadonlyArray<{ readonly type: string; readonly mimeType?: string }>;
   } | null;
   /**
-   * The same, among the messages the person typed: a request a page sent for them (`fromPanel`)
-   * or a follow-up on a task (`taskMessage`) is a word on the conversation, never its subject —
+   * The same, among the messages the person typed: a request a page sent for them (`fromPanel`),
+   * a follow-up on a task (`taskMessage`) or another Mate's message (`mateMessage`) is a word on
+   * the conversation, never its subject —
    * what the menu row and the header name it by.
    */
   readonly lastAsked: ConversationView["lastPerson"];
@@ -240,7 +241,7 @@ export const readConversationView = (conversationId: ConversationId) =>
           ${where.open === undefined ? sql`` : sql`AND state = ${where.open ? "open" : "closed"}`}
           ${where.by === undefined ? sql`` : sql`AND json_extract(by_json, '$.kind') = ${where.by}`}
           ${where.opening === undefined ? sql`` : sql`AND json_extract(body_json, '$.delivery.state') IS NOT 'steered'`}
-          ${where.typed === undefined ? sql`` : sql`AND json_extract(body_json, '$.fromPanel') IS NULL AND json_extract(body_json, '$.taskMessage') IS NULL`}
+          ${where.typed === undefined ? sql`` : sql`AND json_extract(body_json, '$.fromPanel') IS NULL AND json_extract(body_json, '$.taskMessage') IS NULL AND json_extract(body_json, '$.mateMessage') IS NULL`}
         ORDER BY opened_seq DESC LIMIT ${limit}
       `;
     const item = (where: Parameters<typeof items>[0]) =>

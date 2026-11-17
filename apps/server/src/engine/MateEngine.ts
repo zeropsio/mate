@@ -260,14 +260,16 @@ export interface MateEngineService {
    */
   readonly generation: (conversationId: ConversationId) => Effect.Effect<number | undefined>;
   /**
-   * The latest run a wake started, the one a provider turn belongs to, or a task's latest in its
-   * conversation (a person may have run more there since), ended or not.
+   * The latest run a wake started, the one a provider turn belongs to, a task's latest in its
+   * conversation (a person may have run more there since), or the latest a Mate's message started
+   * there (a continuation of it included), ended or not.
    */
   readonly runOf: (
     find:
       | { readonly wakeId: WakeId }
       | { readonly providerTurnId: string }
-      | { readonly conversationId: ConversationId; readonly taskId: string },
+      | { readonly conversationId: ConversationId; readonly taskId: string }
+      | { readonly conversationId: ConversationId; readonly messageId: string },
   ) => Effect.Effect<
     | {
         readonly runId: RunId;
@@ -280,6 +282,11 @@ export interface MateEngineService {
          * sent, or every send refused undelivered), or a send may have (`unknown`).
          */
         readonly reachedAgent: boolean | "unknown";
+        /**
+         * A Mate message's runs only: the agent's last words in them, said whole — what its asker
+         * hears back. Absent: it said none.
+         */
+        readonly lastWords?: string;
       }
     | undefined
   >;

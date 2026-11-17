@@ -66,6 +66,8 @@ import * as ZeropsCommitAuthorModule from "./ZeropsCommitAuthor.ts";
 import * as ZeropsWorkingCopyModule from "./ZeropsWorkingCopy.ts";
 import * as ZeropsTaskLedgerModule from "./ZeropsTaskLedger.ts";
 import * as ZeropsTasksModule from "./ZeropsTasks.ts";
+import * as ZeropsMateMessagesModule from "./ZeropsMateMessages.ts";
+import * as ZeropsMateMessageLedgerModule from "./ZeropsMateMessageLedger.ts";
 import * as ZeropsTurnAdmissionModule from "./ZeropsTurnAdmission.ts";
 import * as ZeropsCrewProposalsModule from "./ZeropsCrewProposals.ts";
 
@@ -229,6 +231,18 @@ const ZeropsHqLinkLive = Layer.unwrap(
       Layer.provide(ZeropsTaskLedgerModule.layer),
       Layer.provide(ZeropsCommitAuthorModule.layer),
       Layer.provide(ZeropsWorkingCopyModule.layer),
+    ),
+  ),
+  // The messages the person's other Mates send, worked on the very engine the merge runs and
+  // admitted through the same gate.
+  Layer.provide(
+    ZeropsMateMessagesModule.layer.pipe(
+      Layer.provide(ZeropsMateMessageLedgerModule.layer),
+      Layer.provide(ZeropsTurnAdmissionLive),
+      Layer.provide(ZeropsAgentLoginModule.layer),
+      Layer.provide(ZeropsAgentAuthLive),
+      Layer.provide(ZeropsLoginsLive),
+      Layer.provide(ZeropsProjectSignersModule.layer),
     ),
   ),
   Layer.provide(MateEngineLive),

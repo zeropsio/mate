@@ -35,6 +35,7 @@ import { ToolPresentation } from "./providerRuntime.ts";
 import { callFields } from "./engineCall.ts";
 import { CrewSeam, CrewTaskId } from "./zeropsCrew.ts";
 import { MATE_TASK_BODY_MAX, MateTaskMessage, MateTaskSource } from "./mateTask.ts";
+import { MateMessageItem } from "./mateMessage.ts";
 import { CREW_SESSION_REASONS, CrewHandle } from "./zeropsCrewStates.ts";
 
 // ── ids ──────────────────────────────────────────────────────────────────────────────────────
@@ -171,7 +172,7 @@ export const CREW_OWNER_ID: ConversationId = ConversationId.make("crew/main");
 /** Whose authority a run or an answer carries (D6). */
 export const Principal = forwardCompatibleUnion({
   key: "kind",
-  known: ["person", "crew", "standup", "task", "engine", "unknown"],
+  known: ["person", "crew", "standup", "task", "mate", "engine", "unknown"],
   members: [
     Schema.Struct({ kind: Schema.Literal("person"), subject: Schema.String }),
     Schema.Struct({ kind: Schema.Literal("crew"), startedBy: Schema.String }),
@@ -181,6 +182,16 @@ export const Principal = forwardCompatibleUnion({
      * keyboard, and its runs go on the organization's key, never on a person's sign-in.
      */
     Schema.Struct({ kind: Schema.Literal("task"), taskId: Schema.String }),
+    /**
+     * A message another Mate of the same person sent (`MateMessage`, by HQ's id): nobody is at the
+     * keyboard, and its run spends the agent login only where that login's signer is
+     * `ownerUserId`, the owner HQ named for this Mate when it took the message.
+     */
+    Schema.Struct({
+      kind: Schema.Literal("mate"),
+      messageId: Schema.String,
+      ownerUserId: Schema.String,
+    }),
     Schema.Struct({ kind: Schema.Literal("engine") }),
   ],
   fallback: unknownKind,
@@ -526,6 +537,11 @@ const itemBodyFields = {
      * they said it. Its words are what the agent got; absent: not a task's follow-up.
      */
     taskMessage: Schema.optionalKey(MateTaskMessage),
+    /**
+     * Sent by another Mate of the same person (`MateMessageItem`): drawn as that Mate's row, never
+     * as the person's. Its words are the sending Mate's; absent: not a Mate's message.
+     */
+    mateMessage: Schema.optionalKey(MateMessageItem),
     delivery: Schema.Struct({
       /** `unknown`: a restart cut its send mid-flight; it may or may not have arrived. */
       state: forwardCompatibleLiterals(["queued", "delivered", "steered", "refused", "unknown"]),
