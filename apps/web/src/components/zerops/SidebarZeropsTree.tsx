@@ -648,8 +648,13 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
    * Absent, none is.
    */
   readonly platformProject?: ((candidate: T) => boolean) | undefined;
-  /** The account menu's *Platform projects*: each drawn under the Mates, a plain row to Platform. */
+  /** The Platform projects asked for: each drawn under the Mates, a plain row to Platform. */
   readonly showPlatformProjects?: boolean | undefined;
+  /**
+   * Shows or hides the Platform projects, from the line under the list that counts them or from
+   * their section's label. Absent, neither is drawn.
+   */
+  readonly onShowPlatformProjects?: ((shown: boolean) => void) | undefined;
   /**
    * Lists every Mate again — the account menu's *Everyone* — from the line that says how many
    * *Mine* hides. Absent, the line is not drawn.
@@ -768,6 +773,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   shown,
   platformProject,
   showPlatformProjects = false,
+  onShowPlatformProjects,
   onShowEveryone,
   getCrew,
 }: SidebarZeropsTreeProps<T>) {
@@ -2467,15 +2473,64 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         {ungroupedPlan.render()}
       </section>
     );
-  // Under the Mates, where the account menu shows them: what only Platform holds, by name.
-  const platformRows = showPlatformProjects
-    ? [...new Map(view.ungrouped.filter(platformOnly).map((item) => [item.project.id, item]))]
-    : [];
+  // Under the Mates: what only Platform holds, counted on one quiet line until the person asks
+  // for it, then by name where that line stood, its label the way back.
+  const platformRows = [
+    ...new Map(view.ungrouped.filter(platformOnly).map((item) => [item.project.id, item])),
+  ];
+  const platformFold =
+    showPlatformProjects ||
+    platformRows.length === 0 ||
+    onShowPlatformProjects === undefined ? null : (
+      <div
+        className={cn(
+          "menu-fold text-muted-foreground",
+          hiddenMates === 0 || onShowEveryone === undefined ? "mt-5" : "mt-1",
+        )}
+        data-zerops-surface="sidebar-platform-projects-fold"
+      >
+        <span className="flex justify-center">
+          <EyeIcon aria-hidden="true" className="size-3.75" />
+        </span>
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate">{`${String(platformRows.length)} Platform ${platformRows.length === 1 ? "project" : "projects"}`}</span>
+          <span aria-hidden="true">·</span>
+          <button
+            className="menu-show-everyone"
+            data-zerops-surface="sidebar-show-platform-projects"
+            onClick={() => {
+              onShowPlatformProjects(true);
+            }}
+            type="button"
+          >
+            Show
+          </button>
+        </span>
+      </div>
+    );
   const platformSection =
-    platformRows.length === 0 ? null : (
+    !showPlatformProjects || platformRows.length === 0 ? null : (
       <section className="flex flex-col gap-1.5" data-zerops-platform-projects="true">
-        <span className="menu-ungrouped" data-zerops-surface="sidebar-platform-label">
-          Platform projects
+        <span
+          className="menu-ungrouped flex items-center gap-1.5"
+          data-zerops-surface="sidebar-platform-label"
+        >
+          <span>Platform projects</span>
+          {onShowPlatformProjects === undefined ? null : (
+            <>
+              <span aria-hidden="true">·</span>
+              <button
+                className="menu-show-everyone"
+                data-zerops-surface="sidebar-hide-platform-projects"
+                onClick={() => {
+                  onShowPlatformProjects(false);
+                }}
+                type="button"
+              >
+                Hide
+              </button>
+            </>
+          )}
         </span>
         {platformRows.map(([projectId, item]) => (
           <PlatformProjectRow
@@ -2517,7 +2572,6 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       {/* Every project, one list: none folds behind "N other projects" (the owner, 2026-10-11). */}
       {groupSections}
       {ungroupedSection}
-      {platformSection}
       {hiddenMates === 0 || onShowEveryone === undefined ? null : (
         <div
           className="menu-fold mt-5 text-muted-foreground"
@@ -2540,6 +2594,8 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
           </span>
         </div>
       )}
+      {platformFold}
+      {platformSection}
 
       {/* Rows already held, and the listing not all read: they may not be all
           the Mates there are, so the notice stays under them (§3.4). */}

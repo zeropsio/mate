@@ -1971,8 +1971,12 @@ export default function Sidebar() {
   const showEveryoneMates = useCallback(() => setZeropsMateScope("everyone"), [setZeropsMateScope]);
   const zeropsPersonFacts = useAtomValue(shownHqPersonFactsAtom);
   // A project only Platform holds is never one of the Mates: the tree draws it as a plain row to
-  // its page there, and only when the account menu shows Platform projects.
-  const [zeropsPlatformProjects] = usePlatformProjects();
+  // its page there, only once the person asked for them from the line under the list.
+  const [zeropsPlatformProjects, setZeropsPlatformProjects] = usePlatformProjects();
+  const showZeropsPlatformProjects = useCallback(
+    (shown: boolean) => setZeropsPlatformProjects(shown ? "shown" : "hidden"),
+    [setZeropsPlatformProjects],
+  );
   const zeropsPlacementKnown = useAtomValue(hqPlacementKnownAtom);
   const zeropsPlatformProject = useCallback(
     (candidate: (typeof zeropsCandidates)[number]) =>
@@ -3203,6 +3207,7 @@ export default function Sidebar() {
               shown={zeropsShown}
               platformProject={zeropsPlatformProject}
               showPlatformProjects={zeropsPlatformProjects === "shown"}
+              onShowPlatformProjects={showZeropsPlatformProjects}
               timestampFormat={timestampFormat}
               onOpenGroup={openGroup}
               getActivity={zeropsRowActivity}

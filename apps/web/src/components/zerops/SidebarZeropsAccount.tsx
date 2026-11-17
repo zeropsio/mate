@@ -53,7 +53,6 @@ import {
   useProjectOrder,
 } from "~/zerops/projectOrderPreference";
 import { MATE_SCOPE_CHOICES, useMateScope } from "~/zerops/mateScope";
-import { usePlatformProjects } from "~/zerops/platformProjects";
 import { useChiefSetupEntry } from "~/zerops/chiefSetup";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { useViewerCalled, useViewerCalledPending } from "~/zerops/useZeropsMateOwners";
@@ -62,7 +61,6 @@ import { useSidebar } from "../ui/sidebar";
 import {
   Menu,
   MenuGroupLabel,
-  MenuCheckboxItem,
   MenuItem,
   MenuItemText,
   MenuPopup,
@@ -315,7 +313,6 @@ export function SidebarZeropsAccountMenu({
   const choices = sidebarAccountOrganizationChoices(organizations);
   const projectOrder = useProjectOrder();
   const [mateScope, setMateScope] = useMateScope();
-  const [platformProjects, setPlatformProjects] = usePlatformProjects();
   return (
     <>
       <div className="flex items-center gap-3 px-2 py-2" data-zerops-account-identity="true">
@@ -369,19 +366,6 @@ export function SidebarZeropsAccountMenu({
             {choice.label}
           </MenuRadioItem>
         ))}
-        {/* What the list shows, too: the projects only Platform holds, left out unless asked
-            for (`platformProjects.ts`), raised on the same track while shown. */}
-        <MenuCheckboxItem
-          checked={platformProjects === "shown"}
-          closeOnClick={false}
-          data-zerops-account-platform-projects=""
-          onCheckedChange={(checked) => {
-            setPlatformProjects(checked ? "shown" : "hidden");
-          }}
-          variant="segment"
-        >
-          Platform projects
-        </MenuCheckboxItem>
       </MenuSwitch>
       <MenuSwitch
         label="Order"

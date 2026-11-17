@@ -157,25 +157,8 @@ function MenuCheckboxItem({
   variant = "default",
   ...props
 }: MenuPrimitive.CheckboxItem.Props & {
-  variant?: "default" | "switch" | "segment";
+  variant?: "default" | "switch";
 }) {
-  // On a `MenuSwitch` track, under its choices: the whole track's width, raised while on.
-  if (variant === "segment")
-    return (
-      <MenuPrimitive.CheckboxItem
-        checked={checked}
-        className={cn(
-          "col-span-full cursor-pointer outline-none data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-disabled:opacity-64",
-          SEGMENT_ITEM,
-          className,
-        )}
-        data-slot="menu-checkbox-item"
-        data-variant="segment"
-        {...props}
-      >
-        {children}
-      </MenuPrimitive.CheckboxItem>
-    );
   return (
     <MenuPrimitive.CheckboxItem
       checked={checked}
@@ -236,17 +219,14 @@ function MenuRadioGroup(props: MenuPrimitive.RadioGroup.Props) {
  */
 type MenuRadioItemVariant = "fill" | "check" | "segment";
 
-/** A choice on a `MenuSwitch` track: its words, raised while chosen. */
-const SEGMENT_ITEM =
-  "flex min-h-6 items-center justify-center whitespace-nowrap rounded-md px-2 font-medium text-muted-foreground text-xs pointer-coarse:min-h-8 data-checked:bg-popover data-checked:text-foreground data-checked:shadow-xs data-checked:ring-1 data-checked:ring-border data-highlighted:text-foreground";
-
 const RADIO_ITEM_VARIANT: Record<MenuRadioItemVariant, string> = {
   fill: "[&_svg]:-mx-0.5 flex min-h-8 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] items-center rounded-sm px-2 py-1 text-sm text-foreground data-checked:bg-foreground/[0.08] data-highlighted:bg-accent data-highlighted:text-accent-foreground sm:min-h-7 pointer-coarse:min-h-10 sm:pointer-coarse:min-h-10 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4",
   check:
     "grid min-h-8 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] grid-cols-[1rem_minmax(0,1fr)] items-center gap-2 rounded-sm py-1 ps-2 pe-4 text-sm text-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground sm:min-h-7 pointer-coarse:min-h-10 sm:pointer-coarse:min-h-10 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4",
-  // Half the track, two to a row (`MenuSwitch`): four choices keep their
-  // words whole within the menu's width, "Creation date" never cut.
-  segment: SEGMENT_ITEM,
+  segment:
+    // Half the track, two to a row (`MenuSwitch`): four choices keep their
+    // words whole within the menu's width, "Creation date" never cut.
+    "flex min-h-6 items-center justify-center whitespace-nowrap rounded-md px-2 font-medium text-muted-foreground text-xs pointer-coarse:min-h-8 data-checked:bg-popover data-checked:text-foreground data-checked:shadow-xs data-checked:ring-1 data-checked:ring-border data-highlighted:text-foreground",
 };
 
 function MenuRadioItem({
@@ -300,8 +280,7 @@ function MenuRadioItem({
  * once and leaves, where a list of rows would take a row a choice. The
  * columns line up from one switch to the next. Its items are
  * `MenuRadioItem`s with `variant="segment"`, still menu items to the keys and
- * to a screen reader; a `MenuCheckboxItem` with `variant="segment"` after them
- * is a toggle across the whole track, for what the setting adds on or off.
+ * to a screen reader.
  */
 function MenuSwitch({
   label,
