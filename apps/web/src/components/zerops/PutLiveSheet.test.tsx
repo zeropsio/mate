@@ -43,6 +43,7 @@ function render(
             recipe,
           })}
           onPutLive={handlers.onPutLive ?? (() => {})}
+          onShape={() => {}}
           onSeeCode={handlers.onSeeCode}
         />
       </Dialog>,

@@ -14466,6 +14466,73 @@ a.message-file:focus-visible {
   color: var(--muted-foreground);
   text-wrap: pretty;
 }
+/* Who production is for, asked in its stop: two answers, the chosen one tinted. */
+.put-live-ask {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+.put-live-ask-t {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+  color: var(--foreground);
+}
+.put-live-shape {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid color-mix(in oklab, var(--border) 55%, transparent);
+  border-radius: var(--zerops-card-radius);
+  cursor: pointer;
+  transition:
+    background-color 150ms var(--ease-out-strong),
+    border-color 150ms var(--ease-out-strong);
+}
+.put-live-shape:hover {
+  background: color-mix(in oklab, var(--accent) 50%, transparent);
+}
+.put-live-shape[data-chosen] {
+  border-color: color-mix(in oklab, var(--primary) 40%, transparent);
+  background: color-mix(in oklab, var(--primary) 5%, transparent);
+}
+.put-live-shape:has([data-disabled]) {
+  cursor: default;
+}
+/* An answer's room while the setup files are read, at the height its words take, no words. */
+.put-live-shape-held {
+  display: block;
+  height: 76px;
+  border-radius: var(--zerops-card-radius);
+  background: var(--muted);
+}
+.put-live-shape-held + .put-live-shape-held {
+  margin-top: 2px;
+}
+.put-live-shape-held[data-long] {
+  height: 112px;
+}
+.put-live-shape-body {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+.put-live-shape-t {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+  color: var(--foreground);
+}
+.put-live-shape-m {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
 .put-live-skel {
   display: block;
   height: 12px;

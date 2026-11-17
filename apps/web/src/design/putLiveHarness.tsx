@@ -1,12 +1,15 @@
 /**
  * *Put it live* in the composer's own frame: the change waiting, with Put it live as its one
  * button while the project has no production; the run as one wait row, step by step; the live
- * card; a run that stopped. `?sheet=1` opens the sheet over them.
+ * card; a run that stopped. `?sheet=1` opens the sheet over them: `&shape=small` or
+ * `&shape=available` with who production is for answered, `&recipe=loading` while the setup files
+ * are read, `&busy=1` pressed.
  *
  * Served by the dev server at `/design-put-live.html` (`?theme=dark`). Fixtures only: nothing
  * here ships, and no route imports this module.
  */
-import { type ReactNode, StrictMode } from "react";
+import type { ProductionShape } from "@t3tools/shared/hqRelease";
+import { type ReactNode, StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import { PutLiveRow } from "~/components/zerops/ProductionRun";
@@ -15,12 +18,41 @@ import { ZeropsNextStepStrip } from "~/components/zerops/ZeropsNextStepBanner";
 import { Dialog } from "~/components/ui/dialog";
 import { TooltipProvider } from "~/components/ui/tooltip";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
-import { putLiveSheet, type PutLiveRun } from "~/zerops/putLive.logic";
+import {
+  putLiveServices,
+  putLiveShapes,
+  putLiveSheet,
+  putLiveSheetUnderWay,
+  type PutLiveRun,
+} from "~/zerops/putLive.logic";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
 const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const SHEET = params.get("sheet") === "1";
+const ASKED_SHAPE = params.get("shape");
+const SHAPE: ProductionShape | undefined =
+  ASKED_SHAPE === "small" || ASKED_SHAPE === "available" ? ASKED_SHAPE : undefined;
+const RECIPE_READING = params.get("recipe") === "loading";
+const BUSY = params.get("busy") === "1";
+
+/** An invented production tier, highly available as recipes write it. */
+const TIER = [
+  "services:",
+  "  - hostname: app",
+  "    type: bun@1.4",
+  "    buildFromGit: https://hq.example.test/git/o-1/g-1/app.git",
+  "    zeropsSetup: app",
+  "    minContainers: 2",
+  "  - hostname: db",
+  "    type: postgresql:ha@18",
+  "    profile: oltp-staging",
+  "  - hostname: cache",
+  "    type: valkey:ha@7.2",
+  "  - hostname: storage",
+  "    type: object-storage",
+  "    objectStorageSize: 1",
+].join("\n");
 const NOW = Date.now();
 
 const TITLE = "Cookbook: add, browse and search dishes by ingredient";
@@ -99,6 +131,28 @@ function Composer({ name, top }: { readonly name: string; readonly top: ReactNod
 }
 
 function Harness() {
+  const [shape, setShape] = useState<ProductionShape | undefined>(SHAPE);
+  const model = putLiveSheet({
+    project: "Cookbook",
+    changes: [
+      {
+        title: TITLE,
+        description: [
+          "A small, phone-friendly shop front backed by PostgreSQL.",
+          "",
+          "## What it does",
+          "- **Add** a recipe with a title, ingredients and steps",
+          "- **Browse** every recipe, listed A to Z",
+          "- **Search by ingredient**: several, separated with commas",
+          "- Tick off ingredients while you cook",
+        ].join("\n"),
+      },
+    ],
+    recipe: RECIPE_READING ? "loading" : "present",
+    creates: putLiveServices(TIER),
+    shapes: putLiveShapes(TIER),
+    shape,
+  });
   return (
     <TooltipProvider>
       <div className="flex min-h-screen flex-col items-center gap-10 bg-background p-10 text-foreground">
@@ -135,30 +189,8 @@ function Harness() {
       </div>
       <Dialog onOpenChange={noop} open={SHEET}>
         <PutLiveSheet
-          model={putLiveSheet({
-            project: "Cookbook",
-            changes: [
-              {
-                title: TITLE,
-                description: [
-                  "A small, phone-friendly shop front backed by PostgreSQL.",
-                  "",
-                  "## What it does",
-                  "- **Add** a recipe with a title, ingredients and steps",
-                  "- **Browse** every recipe, listed A to Z",
-                  "- **Search by ingredient**: several, separated with commas",
-                  "- Tick off ingredients while you cook",
-                ].join("\n"),
-              },
-            ],
-            recipe: "present",
-            creates: [
-              { hostname: "app", kind: "Bun 1.4" },
-              { hostname: "db", kind: "PostgreSQL 18" },
-              { hostname: "cache", kind: "Valkey 9.0" },
-              { hostname: "storage", kind: "Object storage" },
-            ],
-          })}
+          model={BUSY ? putLiveSheetUnderWay(model, { pressedHere: true }) : model}
+          onShape={setShape}
           onSetUpYourself={noop}
           onPutLive={noop}
           onSeeCode={noop}

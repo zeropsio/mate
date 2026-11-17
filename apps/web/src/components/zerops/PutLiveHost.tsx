@@ -1,7 +1,8 @@
 /**
  * *Put it live* over whatever is on screen (`putLive.ts`): the sheet when a door asks for it, and
  * each project's run, driven from here so it outlives the sheet and the view the person moves to.
- * A run makes production with what the project already says — its name after the project, its recipe, no agent — and releases to it once HQ holds it;
+ * A run makes production with what the project already says — its name after the project, its recipe, no agent — and the one thing it cannot know,
+ * who production is for (its core package and how HQ creates its services) — and releases to it once HQ holds it;
  * its project's production draws where it got (`ProductionRun`).
  */
 import { buildCanonicalGroupTree } from "@t3tools/client-runtime/zerops";
@@ -15,6 +16,7 @@ import { placedPressesIn, useMatePresses } from "~/zerops/matePress";
 import { useCompactProjectFlows, useProjectFlows } from "~/zerops/projectFlows";
 import { putLiveRunsIn, usePutLive, usePutLiveRun, type PutLiveAsk } from "~/zerops/putLive";
 import {
+  putLiveCorePackage,
   putLiveCreation,
   putLiveDeadline,
   putLiveFactsOf,
@@ -23,6 +25,7 @@ import {
   putLiveReviewed,
   putLiveServices,
   putLiveSettle,
+  putLiveShapes,
   putLiveSheet,
   putLiveSheetUnderWay,
   putLiveVaultReviewed,
@@ -31,6 +34,7 @@ import {
   type PutLiveEvent,
   type PutLiveRun,
 } from "~/zerops/putLive.logic";
+import type { ProductionShape } from "@t3tools/shared/hqRelease";
 import { useOpenReview } from "~/zerops/review";
 import { useReleasePlanWait, useReleaseServicePlan } from "~/zerops/useReleaseServicePlan";
 import { useReleaseVault } from "~/zerops/useReleaseVault";
@@ -132,6 +136,8 @@ function PutLiveSheetContainer({
   const running = usePutLiveRun(ask.groupId);
   // Whether the run under way is the one this sheet's button started.
   const [pressed, setPressed] = useState(false);
+  // Who production is for: never picked for the person.
+  const [shape, setShape] = useState<ProductionShape | undefined>(undefined);
   const orgId = useZeropsSession().activeOrganization?.id;
   const project = entry?.group.name ?? "The project";
   // Asked from the project: what is merged goes live, newest first — once the flow is read.
@@ -148,11 +154,17 @@ function PutLiveSheetContainer({
     () => (recipe.tier === undefined ? undefined : putLiveServices(recipe.tier.yaml)),
     [recipe.tier],
   );
+  const shapes = useMemo(
+    () => (recipe.tier === undefined ? undefined : putLiveShapes(recipe.tier.yaml)),
+    [recipe.tier],
+  );
   const model = putLiveSheet({
     project,
     changes: merged,
     recipe: recipe.state,
     creates,
+    shapes,
+    shape,
   });
   const seeCode = merged?.length === 1 ? merged[0] : undefined;
   return (
@@ -174,6 +186,7 @@ function PutLiveSheetContainer({
             }
           : undefined
       }
+      onShape={setShape}
       onPutLive={() => {
         if (orgId === undefined) return;
         setPressed(true);
@@ -183,6 +196,7 @@ function PutLiveSheetContainer({
           groupId: ask.groupId,
           project,
           approves: model.where.creates?.map((service) => service.hostname),
+          shape,
         });
       }}
       onSeeCode={
@@ -229,10 +243,12 @@ function PutLiveDriver({ run }: { readonly run: PutLiveRun }) {
     run.phase === "creating" &&
     flow !== undefined &&
     putLiveNext(run, putLiveFactsOf(flow)).kind === "release";
+  // HQ creates what the person said production is for, and keeps it for production's later releases.
   const review = useReleaseServicePlan(
     flow,
     offered ? flow?.release.suggestion : undefined,
     offered,
+    run.shape,
   );
   const reviewWait = useReleasePlanWait(offered && review.view.kind === "pending");
   // What the release reads that production's vault lacks: a production that would crash on it is
@@ -328,6 +344,7 @@ function PutLiveDriver({ run }: { readonly run: PutLiveRun }) {
           withAgent: false,
           recipe: recipe.tier,
           ...(people.userRoles.length === 0 ? {} : { userRoles: people.userRoles }),
+          ...(run.shape === undefined ? {} : { corePackage: putLiveCorePackage(run.shape) }),
         },
         // Production counts from the moment its project exists, while its services are awaited.
         onProjectAccepted: (productionId: string) => {

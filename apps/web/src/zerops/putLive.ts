@@ -15,6 +15,7 @@ import { useCallback } from "react";
 import { create } from "zustand";
 
 import { onAccountLifetimeClose, onAccountLifetimeOpen } from "./accountLifetime";
+import type { ProductionShape } from "@t3tools/shared/hqRelease";
 import { putLiveStep, startPutLive, type PutLiveEvent, type PutLiveRun } from "./putLive.logic";
 import {
   forgetPutLiveProduction,
@@ -44,6 +45,8 @@ interface PutLiveState {
     readonly project: string;
     /** The services the pressed sheet named: what its press approves production to get. */
     readonly approves?: ReadonlyArray<string> | undefined;
+    /** Who the person said production is for: its core package and what its release creates. */
+    readonly shape?: ProductionShape | undefined;
   }) => void;
   readonly step: (groupId: string, event: PutLiveEvent) => void;
   /** A run said from the project's flow (`putLiveResumed`), kept from here; never one under way. */

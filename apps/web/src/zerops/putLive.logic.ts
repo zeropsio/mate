@@ -19,7 +19,7 @@ import {
   type HqReleaseReview,
   type ReleaseVaultView,
 } from "@t3tools/client-runtime/data";
-import type { ReleaseServicePlan } from "@t3tools/shared/hqRelease";
+import type { ProductionShape, ReleaseServicePlan } from "@t3tools/shared/hqRelease";
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import {
@@ -30,7 +30,9 @@ import {
   type ReleaseFailure,
   type ReleaseGate,
   isPlatformSubdomain,
+  recipeTierRunning,
   recipeTierServiceTypes,
+  type ZeropsCorePackage,
 } from "@t3tools/client-runtime/zerops";
 
 import { serviceTypeWords } from "~/components/zerops/vault/vaultGroups.logic";
@@ -92,6 +94,12 @@ export interface PutLiveRun {
    * release to create (`putLiveReviewed`). A run without them creates nothing unseen.
    */
   readonly approves?: ReadonlyArray<string> | undefined;
+  /**
+   * Who the person said production is for: the core package its project is born on and the shape
+   * HQ creates its services in (`putLiveCorePackage`). A run without one makes it as the setup
+   * files say.
+   */
+  readonly shape?: ProductionShape | undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -129,6 +137,13 @@ export interface PutLiveSheetModel {
      * that creates services nobody saw). `undefined` while the setup files are read.
      */
     readonly creates: ReadonlyArray<PutLiveService> | undefined;
+    /**
+     * Who production is for, asked before anything is made: each answer with what it makes. Empty
+     * where there is nothing to make it from; `undefined` while the setup files are read.
+     */
+    readonly shapes: ReadonlyArray<PutLiveShapeChoice> | undefined;
+    /** The answer picked; none is picked for the person. */
+    readonly shape: ProductionShape | undefined;
   };
   /** Stage, offered for later — never asked now. */
   readonly later: string;
@@ -137,6 +152,15 @@ export interface PutLiveSheetModel {
   readonly hold: string | undefined;
   /** Pressed here: the run is under way and the button says so (`putLiveSheetUnderWay`). */
   readonly busy?: true | undefined;
+}
+
+/** One answer to who production is for, and what it makes, in the person's words. */
+export interface PutLiveShapeChoice {
+  readonly shape: ProductionShape;
+  readonly title: string;
+  readonly line: string;
+  /** How many copies run and on which core package: the difference in what it costs, truly said. */
+  readonly meta: string;
 }
 
 /** A service the press creates in production: its hostname, and what it runs in people's words. */
@@ -188,6 +212,7 @@ function plain(text: string): string {
 
 export const PUT_LIVE_LATER = "Want somewhere to test first? Add a stage later from the project.";
 const RECIPE_READING = "Reading how the project runs…";
+export const CHOOSE_SHAPE = "Choose who it's for";
 export const SETUP_MISSING =
   "The project has no setup files for production yet: ask the Mate to add them.";
 export const SETUP_UNREADABLE = "The project's setup files can't be read right now.";
@@ -218,11 +243,17 @@ export function putLiveSheet(input: {
   readonly recipe: "loading" | "present" | "absent" | "unreadable";
   /** The services the recipe creates in production; `undefined` while it is read. */
   readonly creates?: ReadonlyArray<PutLiveService> | undefined;
+  /** Who production may be for, from the recipe (`putLiveShapes`); `undefined` while it is read. */
+  readonly shapes?: ReadonlyArray<PutLiveShapeChoice> | undefined;
+  readonly shape?: ProductionShape | undefined;
 }): PutLiveSheetModel {
   const { changes } = input;
+  const shapes = input.recipe === "loading" ? undefined : (input.shapes ?? []);
   const where = {
     ...PUT_LIVE_WHERE,
     creates: input.recipe === "loading" ? undefined : (input.creates ?? []),
+    shapes,
+    shape: input.shape,
   };
   if (changes === undefined)
     return {
@@ -253,7 +284,9 @@ export function putLiveSheet(input: {
       first === undefined
         ? MERGE_FIRST
         : input.recipe === "present"
-          ? undefined
+          ? shapes !== undefined && shapes.length > 0 && input.shape === undefined
+            ? CHOOSE_SHAPE
+            : undefined
           : input.recipe === "loading"
             ? RECIPE_READING
             : input.recipe === "absent"
@@ -289,6 +322,8 @@ export function startPutLive(input: {
   readonly at?: number | undefined;
   /** The services the sheet named when it was pressed. */
   readonly approves?: ReadonlyArray<string> | undefined;
+  /** Who the person said production is for. */
+  readonly shape?: ProductionShape | undefined;
 }): PutLiveRun {
   return {
     orgId: input.orgId,
@@ -297,6 +332,7 @@ export function startPutLive(input: {
     phase: "creating",
     ...(input.at === undefined ? {} : { stepAt: input.at }),
     ...(input.approves === undefined ? {} : { approves: input.approves }),
+    ...(input.shape === undefined ? {} : { shape: input.shape }),
   };
 }
 
@@ -809,6 +845,66 @@ export function putLiveServices(yaml: string): ReadonlyArray<PutLiveService> {
     kind: type === undefined ? hostname : putLiveServiceKind(type),
   }));
 }
+
+/** HA services Zerops runs on three containers each (PostgreSQL, Valkey and the rest). */
+const HA_COPIES = 3;
+const COPIES_FOR_CUSTOMERS = 2;
+
+/**
+ * The two answers to who production is for, from its setup files: each says what it makes and
+ * how many copies run, and on which core package — the honest difference in cost, since no price
+ * list the client can read exists (a resource's price depends on what autoscaling gives it).
+ * Trying it out runs one copy of each part; for real customers the services the files make highly
+ * available stay so, and each runtime runs on at least two copies.
+ */
+export function putLiveShapes(yaml: string): ReadonlyArray<PutLiveShapeChoice> {
+  const running = recipeTierRunning(yaml) ?? [];
+  if (running.length === 0) return [];
+  const kinds = new Map(putLiveServices(yaml).map(({ hostname, kind }) => [hostname, kind]));
+  const resilient = running.filter((service) => !service.runtime && service.highlyAvailable);
+  const forCustomers = running.reduce(
+    (sum, service) =>
+      sum +
+      (service.runtime
+        ? Math.max(service.copies, COPIES_FOR_CUSTOMERS)
+        : service.highlyAvailable
+          ? HA_COPIES
+          : 1),
+    0,
+  );
+  const runtimes = running.filter((service) => service.runtime).length;
+  const app =
+    runtimes === 0
+      ? undefined
+      : `${runtimes === 1 ? "the app runs" : "each part of the app runs"} on at least two copies that scale with traffic`;
+  const kept =
+    resilient.length === 0
+      ? undefined
+      : `${LIST.format(resilient.map(({ hostname }) => kinds.get(hostname) ?? hostname))} ${resilient.length === 1 ? "keeps" : "keep"} running if a server fails`;
+  const said = [kept, app].filter((part) => part !== undefined).join("; ");
+  return [
+    {
+      shape: "small",
+      title: "Trying it out",
+      line: "One copy of each part, at the smallest size.",
+      meta: `${copies(running.length)} · free Lightweight package`,
+    },
+    {
+      shape: "available",
+      title: "For real customers",
+      line: said === "" ? "As the project's setup files describe it." : `${capitalise(said)}.`,
+      meta: `${copies(forCustomers)} · paid Serious package`,
+    },
+  ];
+}
+
+/** The core package production's project is born on, by who it is for. */
+export const putLiveCorePackage = (shape: ProductionShape): ZeropsCorePackage =>
+  shape === "available" ? "SERIOUS" : "LIGHT";
+
+const LIST = new Intl.ListFormat("en-GB", { style: "long", type: "conjunction" });
+const copies = (count: number) => `${count} running ${count === 1 ? "copy" : "copies"}`;
+const capitalise = (words: string) => words.charAt(0).toLocaleUpperCase("en-GB") + words.slice(1);
 
 function putLiveServiceKind(type: string): string {
   const words = serviceTypeWords(type.replace(/^(?:alpine|ubuntu)\//u, ""));

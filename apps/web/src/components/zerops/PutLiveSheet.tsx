@@ -5,13 +5,17 @@
  * one button. It asks nothing it already knows: production's name, its recipe and its first
  * version are decided, and the release follows production by itself (`putLive.logic.ts`). The
  * press approves the services it names: HQ refuses a release that creates services nobody saw.
+ * What it cannot know it asks, once: who production is for — nothing picked for the person, the
+ * button waiting for the answer.
  */
+import type { ProductionShape } from "@t3tools/shared/hqRelease";
 import { GitMergeIcon, GlobeIcon } from "lucide-react";
-import { useRef } from "react";
+import { useId, useRef } from "react";
 
 import type { PutLiveService, PutLiveSheetModel } from "~/zerops/putLive.logic";
 
 import { Button } from "../ui/button";
+import { Radio, RadioGroup } from "../ui/radio-group";
 import {
   DialogClose,
   DialogDescription,
@@ -33,9 +37,12 @@ export function PutLiveSheet({
   onPutLive,
   onSeeCode,
   onSetUpYourself,
+  onShape,
 }: {
   readonly model: PutLiveSheetModel;
   readonly onPutLive: () => void;
+  /** The person's answer to who production is for. */
+  readonly onShape: (shape: ProductionShape) => void;
   /** Opens the change's review, where its code is read. */
   readonly onSeeCode: (() => void) | undefined;
   /**
@@ -45,6 +52,7 @@ export function PutLiveSheet({
   readonly onSetUpYourself?: (() => void) | undefined;
 }) {
   const press = useRef<HTMLButtonElement>(null);
+  const asked = useId();
   const { what, where } = model;
   return (
     <DialogPopup
@@ -113,6 +121,44 @@ export function PutLiveSheet({
                 </p>
               ) : where.creates.length === 0 ? null : (
                 <p className="put-live-stop-l">{createsLine(where.creates)}</p>
+              )}
+              {where.shapes === undefined ? (
+                // Who it is for, still read: both answers' room held.
+                <div aria-hidden="true" className="put-live-ask">
+                  <p className="put-live-ask-t">Who is it for?</p>
+                  <span className="put-live-shape-held" />
+                  <span className="put-live-shape-held" data-long="" />
+                </div>
+              ) : where.shapes.length === 0 ? null : (
+                <div className="put-live-ask">
+                  <p className="put-live-ask-t" id={asked}>
+                    Who is it for?
+                  </p>
+                  <RadioGroup
+                    aria-labelledby={asked}
+                    disabled={model.busy === true}
+                    onValueChange={(value) => {
+                      const chosen = where.shapes?.find((choice) => choice.shape === value);
+                      if (chosen !== undefined) onShape(chosen.shape);
+                    }}
+                    value={where.shape ?? null}
+                  >
+                    {where.shapes.map((choice) => (
+                      <label
+                        className="put-live-shape"
+                        data-chosen={choice.shape === where.shape || undefined}
+                        key={choice.shape}
+                      >
+                        <Radio className="mt-0.5" value={choice.shape} />
+                        <span className="put-live-shape-body">
+                          <span className="put-live-shape-t">{choice.title}</span>
+                          <span className="put-live-stop-l">{choice.line}</span>
+                          <span className="put-live-shape-m">{choice.meta}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </RadioGroup>
+                </div>
               )}
             </div>
           </li>
