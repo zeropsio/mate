@@ -108,6 +108,7 @@ export type {
   VaultImpact,
   VaultNotLive,
   VaultReader,
+  VaultRestarts,
   VaultScope,
   VaultScopeRef,
   VaultValue,
@@ -122,7 +123,12 @@ export {
   type ReleaseVaultKey,
   type ReleaseVaultView,
 } from "./projections/releaseVault.ts";
-export { vaultChangesSince, vaultImpact, vaultNote } from "./projections/vaultChanges.ts";
+export {
+  vaultChangesSince,
+  vaultImpact,
+  vaultNote,
+  vaultRestarts,
+} from "./projections/vaultChanges.ts";
 export { agentContext, fitContextLine } from "./projections/agentContext.ts";
 export { projectVariablesScope } from "./families/projectVariables.ts";
 export { serviceRuns, type ZeropsServiceDeployedVersion } from "./projections/serviceRuns.ts";

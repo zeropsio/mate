@@ -49,6 +49,9 @@ const START_ACTIONS: ReadonlySet<string> = new Set([
 ]);
 const DEPLOY_ACTIONS: ReadonlySet<string> = new Set(["stack.build", "stack.deploy"]);
 
+/** The statuses of a service whose containers run now (`SERVICE_` prefix dropped). */
+const RUNNING: ReadonlySet<string> = new Set(["ACTIVE", "RUNNING"]);
+
 /** A managed service's platform rows that say who it is, not what an app connects with. */
 const isIdentityNoise = (key: string) =>
   key === "projectId" || key === "serviceId" || key.startsWith("ZEROPS_");
@@ -290,6 +293,7 @@ export const vault: Projection<VaultKey, VaultView> = {
         .sort(byKey),
       reads: [],
       startedAt: null,
+      running: false,
     };
     const serviceScope = ({ service, ref, values }: (typeof services)[number]): VaultScope => {
       const scopeRef: VaultScopeRef = { kind: "service", serviceId: ref.serviceId };
@@ -307,6 +311,7 @@ export const vault: Projection<VaultKey, VaultView> = {
           refs: refsOf(world, ref, key),
         })),
         startedAt: ref.kind === "runtime" ? (startedAt.get(ref.serviceId) ?? null) : null,
+        running: ref.kind === "runtime" && RUNNING.has(service.status.replace(/^SERVICE_/u, "")),
       };
     };
     const runtimes = services.filter(({ ref }) => ref.kind === "runtime").map(serviceScope);

@@ -56,6 +56,7 @@ it("a chat's vault note renders changes, without rendering source status", async
           editable: true,
           reads: [],
           startedAt: null,
+          running: false,
           values: [
             {
               id: "v1",

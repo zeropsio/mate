@@ -40,6 +40,7 @@ const SHARED: VaultScope = {
   values: [],
   reads: [],
   startedAt: null,
+  running: false,
 };
 
 const viewOf = (

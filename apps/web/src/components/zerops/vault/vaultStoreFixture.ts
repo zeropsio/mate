@@ -59,6 +59,7 @@ const runtime = (host: Host, type: string, values: ReadonlyArray<VaultValue> = [
   values,
   reads: [],
   startedAt: ago(DAY),
+  running: true,
 });
 
 export const VAULT_STORE_FIXTURE: VaultView = {
@@ -100,6 +101,7 @@ export const VAULT_STORE_FIXTURE: VaultView = {
       ],
       reads: [],
       startedAt: null,
+      running: false,
     },
     runtime("mailpit", "go@1", [
       value("MP_SMTP_AUTH_ACCEPT_ANY", { value: "1", readers: [reader("mailpit")] }),
@@ -128,6 +130,7 @@ export const VAULT_STORE_FIXTURE: VaultView = {
       ],
       reads: [],
       startedAt: null,
+      running: false,
     },
   ],
   notLive: [],

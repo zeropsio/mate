@@ -67,6 +67,12 @@ export interface VaultScope {
    * `null` where none is known.
    */
   readonly startedAt: string | null;
+  /**
+   * A runtime service that runs now (its status active or running): a changed value reaches it
+   * only through a restart. False for one that runs nothing (stopped, waiting for its first
+   * deploy, failed), which reads the value when it next starts, and for Shared and managed ones.
+   */
+  readonly running: boolean;
 }
 
 export interface VaultValue {
@@ -200,4 +206,16 @@ export interface VaultChange {
   readonly sensitive: boolean;
   readonly at: string;
   readonly impact: VaultImpact;
+  /** The services the person's client restarted after the write, so they run it. */
+  readonly restarted?: ReadonlyArray<{ readonly serviceId: string; readonly hostname: string }>;
+}
+
+/**
+ * What restarts after writes to one vault, one restart per service however many values changed:
+ * the running services that read them, and the readers that run nothing now, which read them when
+ * they next start.
+ */
+export interface VaultRestarts {
+  readonly restart: ReadonlyArray<{ readonly serviceId: string; readonly hostname: string }>;
+  readonly notRunning: ReadonlyArray<{ readonly serviceId: string; readonly hostname: string }>;
 }

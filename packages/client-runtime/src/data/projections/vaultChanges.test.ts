@@ -40,6 +40,7 @@ const scope = (patch: Partial<VaultScope> & Pick<VaultScope, "ref" | "id">): Vau
   values: [],
   reads: [],
   startedAt: null,
+  running: patch.kind === "runtime",
   ...patch,
 });
 

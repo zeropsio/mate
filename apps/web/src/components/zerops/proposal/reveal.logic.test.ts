@@ -60,6 +60,7 @@ const scope = (
     values,
     reads: [],
     startedAt: null,
+    running: false,
   }) as VaultScope;
 
 const view = (status: VaultView["status"], scopes: ReadonlyArray<VaultScope>): VaultView => ({

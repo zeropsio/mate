@@ -6,14 +6,17 @@
  *
  * Beside a Mate's conversation it is the Mate's project, and each write the person makes is kept
  * for the Mate's next message (`recordVaultWrite`); on an environment's own page (stage, prod) it
- * is that environment's project, and the person restarts what a change needs.
+ * is that environment's project. Either way a save restarts the running services that read what
+ * it wrote, once each (`readerRestarts.ts`).
  */
 import type { EnvironmentId } from "@t3tools/contracts";
 import {
   NOT_READ_VAULT,
   vaultAtom,
   vaultImpact,
+  vaultRestarts,
   type VaultChange,
+  type VaultRestarts,
   type VaultScopeRef,
   type VaultView,
   type VaultWrite,
@@ -21,7 +24,7 @@ import {
 import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/reactivity";
 import { FileCodeIcon } from "lucide-react";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 
 import { useActiveProjectTarget, type ActiveProjectTarget } from "~/hooks/useActiveProjectTarget";
 import { useRightPanelStore } from "~/rightPanelStore";
@@ -40,6 +43,7 @@ import {
   type VaultWriteOutcome,
 } from "./VaultPanel";
 import { vaultOutcome } from "./vaultOutcome.logic";
+import { restartInTurn } from "./readerRestarts";
 
 const NO_PENDING: ReadonlyMap<string, VaultPending> = new Map();
 const NO_RESTARTS: ReadonlySet<string> = new Set();
@@ -164,13 +168,48 @@ export function ProjectVaultPanel({
     retryDetail({ family: "serviceVariable", ownerId: projectId });
     retryDetail({ family: "process", listing: "history", ownerId: projectId });
   }, [projectId, retryDetail]);
+  // The changes of the save under way, told again once their readers restarted.
+  const saved = useRef<VaultChange[]>([]);
   const onWrite = useCallback(
     async (scope: VaultScopeRef, write: VaultWrite): Promise<VaultWriteOutcome> => {
       const { outcome, change } = await writeVault(scope, write);
-      if (change !== null) onWritten?.(change);
+      if (change !== null) {
+        saved.current.push(change);
+        onWritten?.(change);
+      }
       return outcome;
     },
     [onWritten, writeVault],
+  );
+  const restartsOf = useCallback(
+    (scope: VaultScopeRef, writes: ReadonlyArray<VaultWrite>): VaultRestarts => {
+      saved.current = [];
+      return vaultRestarts(
+        shown,
+        writes
+          .filter((write) => !hidesOnly(shown, scope, write))
+          .map((write) => ({ scope, write })),
+      );
+    },
+    [shown],
+  );
+  const onRestartReaders = useCallback(
+    async (plan: VaultRestarts) => {
+      if (project === undefined)
+        return {
+          restarted: [],
+          failed: {
+            hostname: plan.restart.map((service) => service.hostname).join(", "),
+            reason: "this environment's project is not known yet",
+            left: plan.restart,
+          },
+        };
+      const ended = await restartInTurn(run, project, plan.restart);
+      if (ended.restarted.length > 0)
+        for (const change of saved.current) onWritten?.({ ...change, restarted: ended.restarted });
+      return ended;
+    },
+    [onWritten, project, run],
   );
   const onRestart = useCallback(
     async (serviceId: string): Promise<void> => {
@@ -189,8 +228,10 @@ export function ProjectVaultPanel({
       actor={actor}
       impactOf={(scope, write) => vaultImpact(shown, scope, write)}
       onRestart={onRestart}
+      onRestartReaders={onRestartReaders}
       onRetry={onRetry}
       onWrite={onWrite}
+      restartsOf={restartsOf}
       pending={NO_PENDING}
       restarting={NO_RESTARTS}
       view={shown}
@@ -199,6 +240,18 @@ export function ProjectVaultPanel({
       {...(reveal === undefined ? {} : { onReveal: reveal.reveal })}
     />
   );
+}
+
+/**
+ * A write that only hides a plain value, its value unchanged: what the apps run stays the same, so
+ * nothing restarts for it.
+ */
+function hidesOnly(view: VaultView, scope: VaultScopeRef, write: VaultWrite): boolean {
+  if (write.kind !== "update") return false;
+  const held = view.scopes
+    .find((each) => each.id === (scope.kind === "shared" ? "shared" : scope.serviceId))
+    ?.values.find((value) => value.id === write.id);
+  return held !== undefined && held.value !== null && held.value === write.value;
 }
 
 /** A Mate's conversation's vault: its environment's project; each write is told to the Mate. */

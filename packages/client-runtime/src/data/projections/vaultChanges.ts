@@ -9,6 +9,7 @@ import type {
   VaultChange,
   VaultImpact,
   VaultReader,
+  VaultRestarts,
   VaultScope,
   VaultScopeRef,
   VaultValue,
@@ -100,6 +101,75 @@ function impactOn(view: VaultView, ref: VaultScopeRef, write: VaultWrite): Vault
   };
 }
 
+/** Whether a run entry of a runtime is one of its zerops.yml entries (not a name it has by itself). */
+const isEntryOf = (scope: VaultScope | undefined, key: string) =>
+  scope?.reads.some((entry) => entry.key === key) ?? false;
+
+/**
+ * The runtimes a value written under `key` in `ref` reaches: those whose zerops.yml entries
+ * reference it, else — nothing referencing it — every one that has it by its own name, as the
+ * platform hands a Shared value to every service and a service's own to that service, unless an
+ * entry, or the service's own value over Shared, of that name shadows it.
+ */
+function readersToRestart(
+  view: VaultView,
+  ref: VaultScopeRef,
+  write: VaultWrite,
+): ReadonlyArray<ServiceName> {
+  const scope = scopeIn(view, ref);
+  const held =
+    write.kind === "add"
+      ? scope?.values.find((each) => each.key === write.key)
+      : scope?.values.find((each) => each.id === write.id);
+  if (held !== undefined) {
+    const referencing = held.readers.filter((reader) =>
+      reader.via.some((key) => isEntryOf(scopeIn(view, serviceRef(reader.serviceId)), key)),
+    );
+    return servicesOf(referencing.length > 0 ? referencing : held.readers);
+  }
+  const referencing = wouldRead(view, ref, write.key);
+  if (referencing.length > 0) return referencing;
+  return servicesOf(
+    view.scopes
+      .filter(
+        (each) =>
+          each.kind === "runtime" &&
+          each.hostname !== null &&
+          (ref.kind === "shared" || each.id === ref.serviceId) &&
+          !isEntryOf(each, write.key) &&
+          !(ref.kind === "shared" && each.values.some((value) => value.key === write.key)),
+      )
+      .map((each) => ({ serviceId: each.id, hostname: each.hostname ?? each.id })),
+  );
+}
+
+const serviceRef = (serviceId: string): VaultScopeRef => ({ kind: "service", serviceId });
+
+/**
+ * What restarts after writes to one project's vault, read off the view before them: each service
+ * that reads a written value once, however many changed — a running one restarts, one that runs
+ * nothing is named instead — plus the services a caller names (the Mate's own list for a stage or
+ * production value), which are restarted unless the view knows they run nothing.
+ */
+export function vaultRestarts(
+  view: VaultView,
+  writes: ReadonlyArray<{ readonly scope: VaultScopeRef; readonly write: VaultWrite }>,
+  named: ReadonlyArray<ServiceName> = [],
+): VaultRestarts {
+  const readers = servicesOf([
+    ...writes.flatMap(({ scope, write }) => readersToRestart(view, scope, write)),
+    ...named,
+  ]);
+  const runs = (service: ServiceName) => {
+    const held = scopeIn(view, serviceRef(service.serviceId));
+    return held === undefined || held.running;
+  };
+  return {
+    restart: readers.filter(runs),
+    notRunning: readers.filter((service) => !runs(service)),
+  };
+}
+
 const after = (left: string | null, right: string) =>
   left !== null && Date.parse(left) > Date.parse(right);
 
@@ -163,6 +233,21 @@ const reads = (list: ReadonlyArray<ServiceName>) =>
   `${names(list)} ${list.length === 1 ? "reads" : "read"} it`;
 
 function impactText(change: VaultChange): string {
+  const restarted = change.restarted ?? [];
+  if (restarted.length === 0) return impactBefore(change);
+  if (change.kind === "removed")
+    return change.impact.literal.length > 0
+      ? `restarted ${names(restarted)}; ${impactBefore(change)}`
+      : `restarted ${names(restarted)}, which now ${restarted.length === 1 ? "runs" : "run"} Shared's ${change.key}`;
+  const left = change.impact.restart.filter(
+    (service) => !restarted.some((each) => each.serviceId === service.serviceId),
+  );
+  const done = `restarted ${names(restarted)}, which ${restarted.length === 1 ? "runs" : "run"} it`;
+  return left.length === 0 ? done : `${done}; ${reads(left)} — restart ${names(left)}`;
+}
+
+/** What a change means before anything restarted. */
+function impactBefore(change: VaultChange): string {
   const { impact, key } = change;
   if (change.kind === "removed") {
     if (impact.literal.length > 0)

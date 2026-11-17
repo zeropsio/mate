@@ -12,6 +12,7 @@
 import { Section } from "../../ui/section";
 import type {
   VaultImpact,
+  VaultRestarts,
   VaultRevealed,
   VaultScope,
   VaultScopeRef,
@@ -36,6 +37,12 @@ import {
   vaultRowKey,
 } from "./vault.logic";
 import { VaultAddCard, VaultReview, VaultTextEditor } from "./VaultEditors";
+import {
+  notRestartedWords,
+  restartedWords,
+  restartingWords,
+  type RestartsEnded,
+} from "./readerRestarts";
 import {
   serviceWords,
   vaultGroups,
@@ -78,6 +85,13 @@ export interface VaultPanelBodyProps {
   readonly restarting: ReadonlySet<string>;
   readonly impactOf: (scope: VaultScopeRef, write: VaultWrite) => VaultImpact;
   readonly onWrite: (scope: VaultScopeRef, write: VaultWrite) => Promise<VaultWriteOutcome>;
+  /**
+   * What a save restarts, read before it: the running services that read what it writes, once
+   * each however many values change, and the readers that run nothing now. None restart without it.
+   */
+  readonly restartsOf?: (scope: VaultScopeRef, writes: ReadonlyArray<VaultWrite>) => VaultRestarts;
+  /** Restarts them after the save, in turn; says which restarted and which did not, and why. */
+  readonly onRestartReaders?: (plan: VaultRestarts) => Promise<RestartsEnded>;
   readonly onRestart: (serviceId: string) => Promise<void>;
   /** A link to an app's deploy config, drawn by whoever knows the workspace; none without one. */
   readonly renderDeployConfig?: (hostname: string) => ReactNode;
@@ -108,8 +122,14 @@ interface Local {
   /** Writes this panel sent and has not heard back about, by row key. */
   readonly sending: ReadonlySet<string>;
   readonly refused: ReadonlyMap<string, string>;
-  /** Rows that just saved: their check, then their impact line until it times out. */
-  readonly settled: ReadonlyMap<string, { readonly at: number; readonly line: string | null }>;
+  /**
+   * Rows that just saved: their check, then their impact line until it times out — held while
+   * the services that read them restart.
+   */
+  readonly settled: ReadonlyMap<
+    string,
+    { readonly at: number; readonly line: string | null; readonly held?: boolean }
+  >;
 }
 
 const EMPTY_LOCAL: Local = { sending: new Set(), refused: new Map(), settled: new Map() };
@@ -137,10 +157,9 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
   // A settled row's check and impact line go on their own, each at its instant: one timer, armed
   // at the earliest still ahead, then at the next.
   useEffect(() => {
-    const instants = [...local.settled.values()].flatMap((entry) => [
-      entry.at + SETTLE_MS,
-      entry.at + IMPACT_MS,
-    ]);
+    const instants = [...local.settled.values()].flatMap((entry) =>
+      entry.held === true ? [entry.at + SETTLE_MS] : [entry.at + SETTLE_MS, entry.at + IMPACT_MS],
+    );
     let timer: ReturnType<typeof setTimeout> | undefined;
     const arm = () => {
       const now = Date.now();
@@ -151,7 +170,9 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
         setClock(at);
         setLocal((current) => {
           const settled = new Map(
-            [...current.settled].filter(([, entry]) => at - entry.at < IMPACT_MS),
+            [...current.settled].filter(
+              ([, entry]) => entry.held === true || at - entry.at < IMPACT_MS,
+            ),
           );
           return settled.size === current.settled.size ? current : { ...current, settled };
         });
@@ -186,9 +207,53 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
     return { kind: "idle" };
   };
 
-  const write = async (scope: VaultScope, change: VaultWrite): Promise<boolean> => {
+  /** Says one line on each saved row: restarting while held, then how the restarts ended. */
+  const settleRows = (rowKeys: ReadonlyArray<string>, line: string | null, held: boolean) => {
+    if (rowKeys.length === 0) return;
+    setLocal((current) => {
+      const at = Date.now();
+      setClock(at);
+      const settled = new Map(current.settled);
+      for (const rowKey of rowKeys) {
+        const before = settled.get(rowKey);
+        // A restart that ends keeps the row's check moment; its line times out from now.
+        settled.set(rowKey, { at: held ? (before?.at ?? at) : at, line, held });
+      }
+      return { ...current, settled };
+    });
+  };
+
+  /** Restarts what a save's values reach, then says on the saved rows how it ended. */
+  const restartAfter = async (plan: VaultRestarts, rowKeys: ReadonlyArray<string>) => {
+    if (props.onRestartReaders === undefined || plan.restart.length === 0) return;
+    settleRows(rowKeys, restartingWords(plan.restart), true);
+    const { restarted, failed } = await props.onRestartReaders(plan);
+    const said =
+      failed === null
+        ? restartedWords(restarted, plan.notRunning)
+        : [restartedWords(restarted, []), notRestartedWords(failed)]
+            .filter((part): part is string => part !== null)
+            .join(" · ");
+    settleRows(rowKeys, said === null ? null : `Saved · ${said}`, false);
+  };
+
+  /** The line a saved row says before any restart: what runs nothing, else what reads it. */
+  const savedLine = (impact: VaultImpact, plan: VaultRestarts | undefined) =>
+    plan === undefined
+      ? impactLine(impact)
+      : plan.restart.length > 0
+        ? restartingWords(plan.restart)
+        : (restartedWords([], plan.notRunning) ?? (impact.unread ? impactLine(impact) : null));
+
+  const write = async (
+    scope: VaultScope,
+    change: VaultWrite,
+    /** Restart its readers once it is saved; a batch restarts once, after all its writes. */
+    restart = true,
+  ): Promise<boolean> => {
     const rowKey = vaultRowKey(scope.id, change.key);
     const impact = props.impactOf(scope.ref, change);
+    const plan = props.restartsOf?.(scope.ref, [change]);
     setLocal((current) => {
       const refused = new Map(current.refused);
       refused.delete(rowKey);
@@ -208,7 +273,8 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
       if (outcome.ok) {
         if (change.kind !== "remove") {
           const at = Date.now();
-          settled.set(rowKey, { at, line: impactLine(impact) });
+          const held = restart && plan !== undefined && plan.restart.length > 0;
+          settled.set(rowKey, { at, line: savedLine(impact, plan), held });
           setClock(at);
         }
       } else {
@@ -216,6 +282,8 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
       }
       return { sending, refused, settled };
     });
+    if (outcome.ok && restart && plan !== undefined)
+      void restartAfter(plan, change.kind === "remove" ? [] : [rowKey]);
     return outcome.ok;
   };
 
@@ -419,10 +487,16 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
           mateName={props.actor === "mate" ? mateName : null}
           onApply={(writes) => {
             setApplying(true);
+            // One restart per service for the whole edit, read before any of it is written.
+            const plan = props.restartsOf?.(editScope.ref, writes);
             void (async () => {
-              for (const change of writes) await write(editScope, change);
+              const saved: string[] = [];
+              for (const change of writes)
+                if ((await write(editScope, change, false)) && change.kind !== "remove")
+                  saved.push(vaultRowKey(editScope.id, change.key));
               setApplying(false);
               setMode({ kind: "list" });
+              if (plan !== undefined) await restartAfter(plan, saved);
             })();
           }}
           onBack={() => setMode({ kind: "text", scopeId: mode.scopeId, text: mode.text })}

@@ -25,6 +25,7 @@ const VAULT: VaultView = {
       editable: false,
       reads: [],
       startedAt: null,
+      running: false,
       values: [
         {
           id: "v-pass",
