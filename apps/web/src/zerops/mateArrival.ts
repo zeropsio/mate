@@ -32,7 +32,7 @@ import {
 import { TAKING_LONGER_LINE } from "@t3tools/client-runtime/data";
 import type { MateMarkState } from "@t3tools/shared/brand";
 
-import { formatWorkingTime } from "../components/zerops/SidebarZeropsTree.logic";
+import { formatWorkingTime } from "../timestampFormat";
 import {
   signInPhrase,
   signInPhraseWords,

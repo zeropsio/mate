@@ -3,19 +3,6 @@
  * at it, when one has gone quiet, and what a key does on its row.
  */
 
-/**
- * How long a working Mate has been at it, as its row's clock reads: minutes
- * and seconds for the first hour, then hours and minutes. It ticks, so it
- * counts up from the turn's start rather than saying how long ago that was.
- */
-export function formatWorkingTime(elapsedMs: number): string {
-  const seconds = Math.max(0, Math.floor(elapsedMs / 1000));
-  if (seconds < 3600)
-    return `${String(Math.floor(seconds / 60))}:${String(seconds % 60).padStart(2, "0")}`;
-  const minutes = Math.floor(seconds / 60);
-  return `${String(Math.floor(minutes / 60))}h ${String(minutes % 60).padStart(2, "0")}m`;
-}
-
 /** A week: a Mate untouched for longer folds into its project's quiet Mates. */
 export const QUIET_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 

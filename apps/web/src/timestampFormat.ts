@@ -394,3 +394,16 @@ export function formatExpiresInLabel(isoDate: string, nowMs: number = Date.now()
   if (seconds > 0) tail.push(`${seconds}s`);
   return tail.length > 0 ? `Expires in ${days}d ${tail.join(" ")}` : `Expires in ${days}d`;
 }
+
+/**
+ * How long a working Mate has been at it, as its row's clock reads: minutes
+ * and seconds for the first hour, then hours and minutes. It ticks, so it
+ * counts up from the turn's start rather than saying how long ago that was.
+ */
+export function formatWorkingTime(elapsedMs: number): string {
+  const seconds = Math.max(0, Math.floor(elapsedMs / 1000));
+  if (seconds < 3600)
+    return `${String(Math.floor(seconds / 60))}:${String(seconds % 60).padStart(2, "0")}`;
+  const minutes = Math.floor(seconds / 60);
+  return `${String(Math.floor(minutes / 60))}h ${String(minutes % 60).padStart(2, "0")}m`;
+}

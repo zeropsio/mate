@@ -40,7 +40,7 @@ import { MATE_STAND_UP_MESSAGE } from "~/zerops/mateStandUp";
 import { backgroundWorkWords, nowLineWords } from "../chat/runCard.logic";
 import { STOPPING_WORDS } from "~/zerops/conversationStop.logic";
 
-import { formatWorkingTime } from "./SidebarZeropsTree.logic";
+import { formatWorkingTime } from "~/timestampFormat";
 
 /**
  * The props a Mate's row is handed read anew on each draw of the menu — whose it is, whether it

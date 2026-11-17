@@ -52,11 +52,10 @@ import { createLiveStepPacer, type ShownLiveSteps, type LiveStepWords } from "~/
 import { environmentActivitiesAtom } from "~/zerops/mateActivityAtoms";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 
-import { formatRelativeTimeLabel } from "../../../timestampFormat";
+import { formatRelativeTimeLabel, formatWorkingTime } from "../../../timestampFormat";
 import { compactSidebarTimeLabel } from "../../Sidebar.logic";
 import { Menu, MenuTrigger } from "../../ui/menu";
 import { MateFace } from "../primitives";
-import { formatWorkingTime } from "../SidebarZeropsTree.logic";
 import { crewmateMenuModel, type CrewmateMenuItemId } from "./CrewmateMenu.logic";
 import { CrewmateMenuPopup } from "./CrewmateMenu";
 import { CrewDots, CrewPress, CrewTextButton, CrewTip, useArrived } from "./CrewParts";

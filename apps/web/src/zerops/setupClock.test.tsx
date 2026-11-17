@@ -8,7 +8,7 @@ import {
   mateBornLineText,
   pendingBornLine,
 } from "../components/zerops/SidebarMateRow.logic";
-import { formatWorkingTime } from "../components/zerops/SidebarZeropsTree.logic";
+import { formatWorkingTime } from "../timestampFormat";
 import { ZeropsBirthLine } from "../components/zerops/ZeropsBirthProgress";
 import { arrivalSteps, onSetupClock } from "./mateArrival";
 import { placedPressesIn, pressComing, pressSince, type MatePress } from "./matePress";

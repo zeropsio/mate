@@ -28,7 +28,7 @@ import {
   birthStepToProcessStep,
 } from "./ZeropsBirthProgress.logic";
 import { ProcessSteps } from "./primitives";
-import { formatWorkingTime } from "./SidebarZeropsTree.logic";
+import { formatWorkingTime } from "~/timestampFormat";
 
 const SEGMENT_TONE_CLASS: Readonly<Record<ServiceStatusToneId, string>> = {
   ok: "bg-[var(--zerops-status-ok)]",

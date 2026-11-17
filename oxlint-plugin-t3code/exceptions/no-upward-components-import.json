@@ -130,14 +130,6 @@
   {
     "path": "apps/web/src/zerops/mateArrival.ts",
     "kind": "ImportDeclaration",
-    "fingerprint": "components/zerops/SidebarZeropsTree.logic",
-    "owner": "web derivation (W3)",
-    "reason": "verdict or words in a surface's logic file: moves down",
-    "expires": "surface:web-derivation"
-  },
-  {
-    "path": "apps/web/src/zerops/mateArrival.ts",
-    "kind": "ImportDeclaration",
     "fingerprint": "components/zerops/ZeropsAgentSignIn.logic",
     "owner": "web derivation (W3)",
     "reason": "verdict or words in a surface's logic file: moves down",
