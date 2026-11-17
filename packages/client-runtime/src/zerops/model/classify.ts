@@ -101,6 +101,21 @@ function classifyZeropsMount(input: Record<string, unknown> | undefined): Zerops
   return readString(input?.action) === "status" ? "hidden" : "card";
 }
 
+/**
+ * A call asking the person for a secret in the application's stage or production
+ * (`zerops_propose_env secret=true`): a vault ask, its card the same as `zerops_env action=request`'s.
+ */
+export function isEnvironmentSecretAsk(
+  toolName: string,
+  input: Record<string, unknown> | undefined,
+): boolean {
+  const secret = input?.secret;
+  return (
+    toolName === "zerops_propose_env" &&
+    (secret === true || (typeof secret === "string" && secret.toLowerCase() === "true"))
+  );
+}
+
 const CARD_ZEROPS_TOOLS: ReadonlySet<string> = new Set([
   "zerops_deploy",
   "zerops_deploy_batch",
@@ -137,7 +152,10 @@ export function classifyZeropsCall(
   if (status === "failed") {
     return "card";
   }
-  if (readZeropsProposal(toolName, resultText) !== undefined) {
+  if (
+    readZeropsProposal(toolName, resultText) !== undefined ||
+    isEnvironmentSecretAsk(toolName, input)
+  ) {
     return "card";
   }
   if (toolName.startsWith(ORG_TOOL_PREFIX)) {

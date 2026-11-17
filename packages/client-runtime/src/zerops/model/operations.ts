@@ -15,6 +15,7 @@ import {
   isBootstrapRouteMenuStart,
   isBootstrapSessionCall,
   isBootstrapStartWithRoute,
+  isEnvironmentSecretAsk,
 } from "./classify.ts";
 import { compareAnchors } from "./order.ts";
 import { ORG_TOOL_PREFIX, readZeropsProposal } from "./proposal.ts";
@@ -144,6 +145,9 @@ function determineKind(call: ZeropsCall): ZeropsOperationKind {
   }
   if (call.toolName === "zerops_workflow" && isBootstrapSessionCall(call.input)) {
     return "bootstrap";
+  }
+  if (isEnvironmentSecretAsk(call.toolName, call.input)) {
+    return "env";
   }
   if (readZeropsProposal(call.toolName, call.resultText) !== undefined) {
     return "proposal";

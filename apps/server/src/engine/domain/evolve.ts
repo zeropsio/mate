@@ -420,7 +420,15 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
                 : { asked: event.ask.questions }
               : {}),
             ...(event.ask.kind === "vault"
-              ? { vault: { key: event.ask.key, scope: event.ask.scope } }
+              ? {
+                  vault: {
+                    key: event.ask.key,
+                    scope: event.ask.scope,
+                    ...(event.ask.environment === undefined
+                      ? {}
+                      : { environment: event.ask.environment }),
+                  },
+                }
               : {}),
             ...(event.ask.kind === "origin"
               ? { origin: { url: event.ask.url, repo: event.ask.repo } }

@@ -1437,24 +1437,31 @@ const settleMirrors = (b: StepBuilder, repo: string): void => {
   }
 };
 
-/** Whether a card still asks the person for `ask`'s value in `ask`'s vault. */
-const vaultAskOpen = (state: ConversationState, ask: Pick<VaultAsk, "key" | "scope">): boolean =>
+/** Whether a card still asks the person for `ask`'s value in `ask`'s vault, in its environment. */
+const vaultAskOpen = (
+  state: ConversationState,
+  ask: Pick<VaultAsk, "key" | "scope" | "environment">,
+): boolean =>
   Object.values(state.requests).some(
     ({ vault }) =>
       vault !== undefined &&
       vault.key === ask.key &&
+      vault.environment?.projectId === ask.environment?.projectId &&
       vault.scope.kind === ask.scope.kind &&
       (vault.scope.kind === "shared" ||
         (ask.scope.kind === "service" && vault.scope.hostname === ask.scope.hostname)),
   );
 
-/** Where an asked value goes, as people and the agent read it: `Shared/KEY`, `api/KEY`. */
-const vaultPlace = (ask: Pick<VaultAsk, "key" | "scope">): string =>
-  `${ask.scope.kind === "shared" ? "Shared" : ask.scope.hostname}/${ask.key}`;
+/**
+ * Where an asked value goes, as people and the agent read it: `Shared/KEY`, `api/KEY`, or in the
+ * application's stage or production `Production · Shared/KEY`.
+ */
+const vaultPlace = (ask: Pick<VaultAsk, "key" | "scope" | "environment">): string =>
+  `${ask.environment === undefined ? "" : `${ask.environment.name} · `}${ask.scope.kind === "shared" ? "Shared" : ask.scope.hostname}/${ask.key}`;
 
 /** The agent's line on a value it asked for: where it went, or that it was not given. Never a value. */
 export const vaultAnswerWords = (
-  ask: Pick<VaultAsk, "key" | "scope">,
+  ask: Pick<VaultAsk, "key" | "scope" | "environment">,
   outcome: VaultOutcome,
 ): string =>
   `Secret request for ${ask.key}: ${outcome === "saved" ? `saved to ${vaultPlace(ask)}` : "declined"}.`;
@@ -2623,7 +2630,9 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       // reaches it.
       for (const request of Object.values(b.state.requests)) {
         const vault = request.vault;
-        if (vault === undefined || !signal.keys.includes(vault.key)) continue;
+        // A set stores in the Mate's own project: an ask for stage or production stays open.
+        if (vault === undefined || vault.environment !== undefined) continue;
+        if (!signal.keys.includes(vault.key)) continue;
         const { scope } = vault;
         const sameVault =
           scope.kind === "shared"

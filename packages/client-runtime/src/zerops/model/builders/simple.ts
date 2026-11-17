@@ -6,6 +6,7 @@ import { NO_RESTARTS, readRestart, restartReadout } from "../../../data/projecti
 import { readString } from "../../cards/decode.ts";
 import { decodeProcessOutcome, type ZeropsProcessOutcome } from "../../cards/payloads.ts";
 import { envChangeWords, operationClosing } from "../../operations/phrases.ts";
+import { isEnvironmentSecretAsk } from "../classify.ts";
 import type { ZeropsCall, ZeropsEnvChange, ZeropsVaultRequest } from "../types.ts";
 import {
   type BuiltCardFields,
@@ -53,7 +54,12 @@ export function buildSimpleFields(
   const decoded = decodeCall(call);
   const errorInfo = errorInfoFor(call, decoded);
   const callPhase = phaseFor(call.status);
-  const envChange = kind === "env" ? readEnvChange(call.input, decoded.document) : undefined;
+  const envChange =
+    kind !== "env"
+      ? undefined
+      : isEnvironmentSecretAsk(call.toolName, call.input)
+        ? readEnvironmentSecretAsk(call.input, decoded.document)
+        : readEnvChange(call.input, decoded.document);
   // The service it names, the one it observes: none where it names none.
   const named =
     envChange === undefined
@@ -241,6 +247,61 @@ function readVaultRequest(
     ...(label === undefined ? {} : { label }),
     alreadySet: already !== undefined,
   };
+}
+
+/**
+ * A secret asked for in the application's stage or production (`zerops_propose_env secret=true`):
+ * a request like `zerops_env`'s, its key and vault from the input (`scope`, `service`), always
+ * hidden, and from zcp's answer the environment it goes to and the services the card restarts.
+ */
+function readEnvironmentSecretAsk(
+  input: Record<string, unknown> | undefined,
+  document: Record<string, unknown> | undefined,
+): ZeropsEnvChange {
+  const service = readInputString(input, "service");
+  const scope = readInputString(input, "scope") === "service" ? "service" : "project";
+  const key = readInputString(input, "key");
+  const answered = readObject(document?.requested);
+  const reason = readInputString(input, "reason");
+  const label =
+    typeof answered?.label === "string" && answered.label !== "" ? answered.label : undefined;
+  const environment = readEnvironment(answered?.environment);
+  const restart = Array.isArray(answered?.restart)
+    ? answered.restart.flatMap((entry: unknown) => {
+        const service = readObject(entry);
+        return typeof service?.serviceId === "string" && typeof service.hostname === "string"
+          ? [{ serviceId: service.serviceId, hostname: service.hostname }]
+          : [];
+      })
+    : [];
+  return {
+    action: "request",
+    scope,
+    ...(scope === "project" || service === undefined ? {} : { service }),
+    ...(key === undefined
+      ? {}
+      : {
+          request: {
+            key,
+            sensitive: true,
+            ...(reason === undefined ? {} : { reason }),
+            ...(label === undefined ? {} : { label }),
+            alreadySet: false,
+            ...(environment === undefined ? {} : { environment }),
+            ...(restart.length === 0 ? {} : { restart }),
+          },
+        }),
+  };
+}
+
+function readEnvironment(value: unknown): ZeropsVaultRequest["environment"] {
+  const environment = readObject(value);
+  const kind = environment?.kind;
+  return (kind === "stage" || kind === "production") &&
+    typeof environment?.projectId === "string" &&
+    typeof environment.name === "string"
+    ? { kind, projectId: environment.projectId, name: environment.name }
+    : undefined;
 }
 
 function readObject(value: unknown): Record<string, unknown> | undefined {

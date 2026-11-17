@@ -692,6 +692,12 @@ export interface VaultAskActivityPayload {
   readonly scope: Extract<RequestAsk, { readonly kind: "vault" }>["scope"];
   readonly sensitive: boolean;
   readonly reason: string | null;
+  /** The application's stage or production its vault is in; absent for the Mate's own. */
+  readonly environment?: NonNullable<
+    Extract<RequestAsk, { readonly kind: "vault" }>["environment"]
+  >;
+  /** The services there its card restarts once it is saved. */
+  readonly restart?: NonNullable<Extract<RequestAsk, { readonly kind: "vault" }>["restart"]>;
   readonly state: "open" | "saved" | "declined" | "closed";
   readonly answer: { readonly by: Principal; readonly at: number } | null;
 }
@@ -714,6 +720,8 @@ function vaultAskActivity(
     scope: ask.scope,
     sensitive: ask.sensitive,
     reason: ask.reason,
+    ...(ask.environment === undefined ? {} : { environment: ask.environment }),
+    ...(ask.restart === undefined ? {} : { restart: ask.restart }),
     state: VAULT_ASK_STATES[request.state] ?? "closed",
     answer: request.answer === undefined ? null : { by: request.answer.by, at: request.answer.at },
   };

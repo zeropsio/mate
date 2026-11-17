@@ -171,8 +171,11 @@ export interface OpenRequest {
   readonly asked?: ReadonlyArray<unknown>;
   /** A question asked by message: what it asks, by question id, to word the answer's message. */
   readonly questions?: ReadonlyArray<{ readonly id: string; readonly question: string }>;
-  /** A value asked of the person: its key and vault, to word the agent's line on the answer. */
-  readonly vault?: Pick<VaultAsk, "key" | "scope">;
+  /**
+   * A value asked of the person: its key and vault, and the stage or production that vault is in,
+   * to word the agent's line on the answer.
+   */
+  readonly vault?: Pick<VaultAsk, "key" | "scope" | "environment">;
   /** An origin asked of the person: its address and HQ repository, to word the agent's line. */
   readonly origin?: Pick<OriginAsk, "url" | "repo">;
   /** A repository asked to be connected to GitHub: its name, to word the agent's line. */

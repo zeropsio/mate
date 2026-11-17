@@ -13,6 +13,11 @@ import type { ItemBody, RequestAsk } from "@t3tools/contracts";
 
 /** zcp's tool that asks (`action=request`). */
 export const VAULT_REQUEST_TOOL = "zerops_env";
+/**
+ * zcp's tool that asks for a secret in the application's stage or production (`secret=true`): its
+ * answer is the same `requested`, naming the environment and the services the card restarts.
+ */
+export const ENVIRONMENT_SECRET_TOOL = "zerops_propose_env";
 
 /** A name the vault stores a value under (zcp's `ops.ValidateEnvKey`). */
 const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/u;
@@ -24,6 +29,8 @@ export const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 type VaultScope = Extract<RequestAsk, { kind: "vault" }>["scope"];
+type VaultEnvironment = NonNullable<Extract<RequestAsk, { kind: "vault" }>["environment"]>;
+type VaultRestart = NonNullable<Extract<RequestAsk, { kind: "vault" }>["restart"]>;
 
 /** zcp's answer to a closed call of `tool`; `null` for every other call, or one that is not JSON. */
 export function zcpAnswerOfCall(body: ItemBody, tool: string): Record<string, unknown> | null {
@@ -46,10 +53,43 @@ const vaultOf = (scope: unknown, serviceHostname: unknown): VaultScope | null =>
       ? { kind: "service", hostname: serviceHostname }
       : null;
 
+/** The stage or production an answer names; `null` for none or one it cannot place. */
+const environmentOf = (value: unknown): VaultEnvironment | null => {
+  if (!isRecord(value)) return null;
+  const { kind, projectId, name } = value;
+  return (kind === "stage" || kind === "production") &&
+    typeof projectId === "string" &&
+    projectId !== "" &&
+    typeof name === "string" &&
+    name !== ""
+    ? { kind, projectId, name }
+    : null;
+};
+
+/** The services an answer names to restart, each whole. */
+const restartOf = (value: unknown): VaultRestart =>
+  Array.isArray(value)
+    ? value.flatMap((service: unknown) =>
+        isRecord(service) &&
+        typeof service.serviceId === "string" &&
+        service.serviceId !== "" &&
+        typeof service.hostname === "string" &&
+        service.hostname !== ""
+          ? [{ serviceId: service.serviceId, hostname: service.hostname }]
+          : [],
+      )
+    : [];
+
 /** The ask a closed call made of the person; `null` for every other call, or a malformed answer. */
 export function vaultAskOfCall(body: ItemBody): Extract<RequestAsk, { kind: "vault" }> | null {
-  const requested = zcpAnswerOfCall(body, VAULT_REQUEST_TOOL)?.requested;
+  const own = zcpAnswerOfCall(body, VAULT_REQUEST_TOOL)?.requested;
+  const elsewhere = own === undefined ? zcpAnswerOfCall(body, ENVIRONMENT_SECRET_TOOL) : null;
+  const requested = own ?? elsewhere?.requested;
   if (!isRecord(requested)) return null;
+  // A secret for stage or production goes nowhere without the environment it names.
+  const environment = elsewhere === null ? null : environmentOf(requested.environment);
+  if (elsewhere !== null && environment === null) return null;
+  const restart = environment === null ? [] : restartOf(requested.restart);
   const { key, scope, serviceHostname, sensitive, label } = requested;
   // `why`, from a zcp that names the value; `reason`, from one before it.
   const reason = requested.why ?? requested.reason;
@@ -65,6 +105,8 @@ export function vaultAskOfCall(body: ItemBody): Extract<RequestAsk, { kind: "vau
     sensitive,
     reason: why === "" ? null : why,
     ...(named === "" ? {} : { label: named }),
+    ...(environment === null ? {} : { environment }),
+    ...(restart.length === 0 ? {} : { restart }),
   };
 }
 

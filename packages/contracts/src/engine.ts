@@ -736,6 +736,21 @@ export const RequestAsk = forwardCompatibleUnion({
       reason: Schema.NullOr(Schema.String),
       /** What it is, in people's words ("Stripe secret key"); absent from an older zcp. */
       label: Schema.optionalKey(Schema.String),
+      /**
+       * The application's stage or production it goes to (`zerops_propose_env secret=true`): its
+       * vault is written with the person's own access to that project. Absent: the Mate's own.
+       */
+      environment: Schema.optionalKey(
+        Schema.Struct({
+          kind: Schema.Literals(["stage", "production"]),
+          projectId: Schema.String,
+          name: Schema.String,
+        }),
+      ),
+      /** The services there the card restarts once it is saved, so they run the new value. */
+      restart: Schema.optionalKey(
+        Schema.Array(Schema.Struct({ serviceId: Schema.String, hostname: Schema.String })),
+      ),
     }),
     /**
      * A repository the agent asks the person about: its address, the HQ repository the pair will

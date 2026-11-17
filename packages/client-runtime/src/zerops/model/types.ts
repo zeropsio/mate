@@ -274,6 +274,17 @@ export interface ZeropsVaultRequest {
   readonly label?: string;
   /** zcp found the key in that vault already: nothing was asked. */
   readonly alreadySet: boolean;
+  /**
+   * The application's stage or production the value goes to (`zerops_propose_env secret=true`),
+   * as zcp's answer names it; absent for the Mate's own project.
+   */
+  readonly environment?: {
+    readonly kind: "stage" | "production";
+    readonly projectId: string;
+    readonly name: string;
+  };
+  /** The services there the card restarts once it is saved. */
+  readonly restart?: ReadonlyArray<{ readonly serviceId: string; readonly hostname: string }>;
 }
 
 /**
