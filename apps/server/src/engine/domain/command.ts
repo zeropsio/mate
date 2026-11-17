@@ -25,6 +25,7 @@ import type {
   ItemActor,
   ItemBody,
   KnownEngineEvent,
+  MateMessageItem,
   MateTaskMessage,
   MateTaskSource,
   Principal,
@@ -231,6 +232,17 @@ export type Command =
       readonly taskMessage?: MateTaskMessage;
       /** HQ's id of the task its brief or follow-up is for (the person item's `taskId`). */
       readonly taskId?: string;
+      /**
+       * A message another Mate of the same person sent (the person item's `mateMessage`): it opens
+       * a run of its own behind whatever is on, never steered into one, and lifts no usage pause:
+       * the person did not write.
+       */
+      readonly mateMessage?: MateMessageItem;
+      /**
+       * What the agent hears in place of `text` and its context: a Mate's message framed for its
+       * agent. The person item keeps `text`, the sending Mate's own words.
+       */
+      readonly told?: string;
     }
   | { readonly _tag: "Stop"; readonly runId?: RunId }
   /** The person asks the work a usage limit holds to try the provider now. */

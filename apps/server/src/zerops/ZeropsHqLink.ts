@@ -34,6 +34,10 @@ import type { AdmissionLive, TicketFrame } from "./ZeropsTicketDoor.ts";
  *   `ZeropsTasks`, whose reports go up as `task-state` — the latest task's first on every link —
  *   and only on a link whose HQ said in its state that the Mate is automated. A task's frame told
  *   before HQ's first state on a link is held until it comes ({@link HQ_TASK_HOLD}). The
+ *   messages the person's other Mates send (`message`), held the same way, are worked by
+ *   `ZeropsMateMessages`, which answers `message-taken` once it kept one, and whose ends go up
+ *   as `message-ended`, every one HQ has not acknowledged (`message-ack`) told again on each
+ *   link once its signers are applied. The
  *   operator's command (`command`) is run aside (`zeropsLinkCommand.ts`) and its `command-result`
  *   goes up the link stated when it ends, or nowhere. An older
  *   HQ's `access` frame is read past like any frame this build cannot decode, and a ticket that
@@ -137,8 +141,10 @@ import { ZeropsMateKey, type ZeropsMateKeyReader } from "./ZeropsMateKey.ts";
 import type { ZeropsKeyRefusal } from "./ZeropsKeyRefusal.ts";
 import { ZeropsAutomation } from "./ZeropsAutomation.ts";
 import { ZeropsTasks } from "./ZeropsTasks.ts";
+import { ZeropsMateMessages } from "./ZeropsMateMessages.ts";
 import { makeLinkCommands } from "./zeropsLinkCommand.ts";
 import {
+  MATE_MESSAGES_PROTOCOL,
   type MateTaskReport,
   type SessionSubject,
   TrimmedNonEmptyString,
@@ -196,7 +202,7 @@ type KeyVerdict = { readonly refusal: string } | { readonly unresolved: true };
 /** The close code HQ supersedes a link with: the Mate's own newer link took over. */
 const SUPERSEDED = 4409;
 /** `1001` and `1012`: HQ is going away or restarting (a rolling deploy); the Mate relinks to its other container. */
-const PLANNED_HANDOVER: ReadonlyArray<number> = [1001, 1012];
+const PLANNED_HANDOVER: ReadonlySet<number> = new Set([1001, 1012]);
 /** `1006`: the socket went away without a close frame (a dropped network); the code is the Mate's own, never HQ's. */
 const ABNORMAL = 1006;
 
@@ -330,6 +336,8 @@ export interface ZeropsHqLinkOptions {
   readonly automation?: Pick<ZeropsAutomation["Service"], "heard" | "keysHeard">;
   /** Works the tasks HQ hands an automated Mate, and says how each stands (`ZeropsTasks`). */
   readonly tasks?: ZeropsTasks["Service"];
+  /** Works the messages the person's other Mates send, and says how each ended (`ZeropsMateMessages`). */
+  readonly messages?: ZeropsMateMessages["Service"];
   /**
    * Runs the operator's command HQ sent and says how it went (`zeropsLinkCommand.ts`); none: the
    * frame is passed by.
@@ -655,6 +663,7 @@ export const makeZeropsHqLink = (
           automated ? send({ type: "task-state", report }) : Effect.void,
         );
       const tasks = options.tasks ? yield* options.tasks.open(reportTask) : undefined;
+      const messages = options.messages ? yield* options.messages.open(send) : undefined;
       let requestSerial = 0;
       const policyRequests = new Map<string, Deferred.Deferred<void>>();
       // The answer reaches the holder in frame order, beside the state frames, so the later one wins.
@@ -793,6 +802,12 @@ export const makeZeropsHqLink = (
             return tasks === undefined
               ? Effect.void
               : onceStated(tasks.stop(frame.taskId, frame.reason, frame.requeued === true));
+          case "message":
+            return messages === undefined
+              ? Effect.void
+              : onceStated(messages.receive(frame.message));
+          case "message-ack":
+            return messages?.ack(frame.id) ?? Effect.void;
           case "ticket":
             // Taken here, in the order heard; answered aside, since the answer waits on the
             // registry's lock, which must not hold back pings, close-session or the frames after
@@ -895,6 +910,10 @@ export const makeZeropsHqLink = (
               onceAnswered(health),
               ...(usage ? [onceAnswered(usage.run)] : []),
               reporting,
+              // Ends HQ has not acknowledged, once the signers it kept are applied.
+              ...(messages === undefined
+                ? []
+                : [onceAnswered(Deferred.await(seeded).pipe(Effect.andThen(messages.run)))]),
               keyRefusals,
               carrying,
             ],
@@ -965,7 +984,7 @@ export const makeZeropsHqLink = (
           }
           const planned =
             close?.code === SUPERSEDED ||
-            (close?.code !== undefined && PLANNED_HANDOVER.includes(close.code));
+            (close?.code !== undefined && PLANNED_HANDOVER.has(close.code));
           if (ran.opened && ran.stated) warned = undefined;
           // HQ closed the link for something other than the key (a malformed hello, `1007`): the
           // standing cannot say why, so the container's log does.
@@ -1088,6 +1107,8 @@ export interface OverviewSources {
   readonly setupMarker?: Effect.Effect<boolean>;
   /** That it runs HQ's `command` frame (`LINK_COMMAND_PROTOCOL`); none where it cannot. */
   readonly command?: { readonly protocol: number };
+  /** That it takes its person's other Mates' messages (`MATE_MESSAGES_PROTOCOL`); none where it cannot. */
+  readonly messages?: { readonly protocol: number };
 }
 
 /**
@@ -1121,6 +1142,7 @@ export const mateOverviewFeed = (
           ...(sources.engine === undefined ? {} : { engine: sources.engine }),
           ...(sources.setupMarker === undefined ? {} : { setupMarker: yield* sources.setupMarker }),
           ...(sources.command === undefined ? {} : { command: sources.command }),
+          ...(sources.messages === undefined ? {} : { messages: sources.messages }),
           ...(sources.providers === undefined
             ? {}
             : {
@@ -1218,6 +1240,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
         ),
         // Here `runExecCommand` runs: the link exists only in a Zerops environment.
         command: { protocol: LINK_COMMAND_PROTOCOL },
+        messages: { protocol: MATE_MESSAGES_PROTOCOL },
       });
       const mateState =
         zerops.mateStateFile === undefined
@@ -1255,6 +1278,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
         })).heard,
         automation: yield* ZeropsAutomation,
         tasks: yield* ZeropsTasks,
+        messages: yield* ZeropsMateMessages,
         command: yield* makeLinkCommands,
         autoUpdatePolicy: yield* MateAutoUpdatePolicy,
         attention: attention.changes,

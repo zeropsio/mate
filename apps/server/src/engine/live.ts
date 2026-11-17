@@ -68,6 +68,10 @@ const decodeAgent = Schema.decodeUnknownEffect(Schema.fromJsonString(Conversatio
 const decodeEnd = Schema.decodeUnknownEffect(Schema.fromJsonString(RunEnd));
 const decodeSource = Schema.decodeUnknownEffect(RunEndSource);
 const decodePrincipal = Schema.decodeUnknownEffect(Schema.fromJsonString(Principal));
+/** A note's words, read past the rest of its body. */
+const decodeNoteText = Schema.decodeUnknownOption(
+  Schema.fromJsonString(Schema.Struct({ text: Schema.String })),
+);
 
 interface CallDataRow {
   readonly item_id: string;
@@ -331,6 +335,28 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
             ),
           );
 
+    /** The agent's last words said whole in the runs a Mate's message started; none when none. */
+    const messageWords = (find: {
+      readonly conversationId: ConversationId;
+      readonly messageId: string;
+    }) =>
+      sql<{ readonly body_json: string }>`
+        SELECT item.body_json FROM engine_item AS item
+        JOIN engine_run AS run ON run.run_id = item.run_id
+        WHERE item.conversation_id = ${find.conversationId} AND item.kind = 'note'
+          AND item.state = 'closed' AND json_extract(item.by_json, '$.kind') = 'mate'
+          AND json_extract(run.principal_json, '$.kind') = 'mate'
+          AND json_extract(run.principal_json, '$.messageId') = ${find.messageId}
+        ORDER BY item.opened_seq DESC LIMIT 1
+      `.pipe(
+        Effect.map((rows) => {
+          const row = rows[0];
+          if (row === undefined) return undefined;
+          const body = Option.getOrUndefined(decodeNoteText(row.body_json));
+          return body === undefined || body.text.trim() === "" ? undefined : body.text;
+        }),
+      );
+
     const runOf: MateEngineService["runOf"] = (find) =>
       ("wakeId" in find
         ? sql<RunEndRow>`
@@ -344,11 +370,19 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
             WHERE provider_turn_id = ${find.providerTurnId}
             ORDER BY ordinal DESC LIMIT 1
           `
-          : sql<RunEndRow>`
+          : "taskId" in find
+            ? sql<RunEndRow>`
             SELECT run_id, end_json, end_source, started_at, principal_json FROM engine_run
             WHERE conversation_id = ${find.conversationId}
               AND json_extract(principal_json, '$.kind') = 'task'
               AND json_extract(principal_json, '$.taskId') = ${find.taskId}
+            ORDER BY ordinal DESC LIMIT 1
+          `
+            : sql<RunEndRow>`
+            SELECT run_id, end_json, end_source, started_at, principal_json FROM engine_run
+            WHERE conversation_id = ${find.conversationId}
+              AND json_extract(principal_json, '$.kind') = 'mate'
+              AND json_extract(principal_json, '$.messageId') = ${find.messageId}
             ORDER BY ordinal DESC LIMIT 1
           `
       ).pipe(
@@ -360,13 +394,15 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
             source: row.end_source === null ? Effect.succeed(null) : decodeSource(row.end_source),
             principal: decodePrincipal(row.principal_json),
             reachedAgent: reachedAgent(row),
+            lastWords: "messageId" in find ? messageWords(find) : Effect.succeed(undefined),
           }).pipe(
-            Effect.map(({ end, source, principal, reachedAgent }) => ({
+            Effect.map(({ end, source, principal, reachedAgent, lastWords }) => ({
               runId: RunId.make(row.run_id),
               end,
               source,
               principal,
               reachedAgent,
+              ...(lastWords === undefined ? {} : { lastWords }),
             })),
           );
         }),

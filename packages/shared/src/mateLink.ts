@@ -41,6 +41,8 @@ import {
   IsoDateTime,
   MateAttention,
   MateHealth,
+  MateMessage,
+  MateMessageEnd,
   MatePersona,
   MateTask,
   MateTaskMessage,
@@ -119,6 +121,11 @@ export const OverviewIdentity = Schema.Struct({
   setupMarker: Schema.optionalKey(Schema.Boolean),
   /** That it runs HQ's `command` frame, by the protocol of that frame; absent: HQ sends none. */
   command: Schema.optionalKey(Schema.Struct({ protocol: Schema.Int })),
+  /**
+   * That it takes its person's other Mates' messages (`message` frames), by their protocol
+   * (`MATE_MESSAGES_PROTOCOL`); absent: HQ sends none.
+   */
+  messages: Schema.optionalKey(Schema.Struct({ protocol: Schema.Int })),
 });
 export type OverviewIdentity = typeof OverviewIdentity.Type;
 
@@ -406,6 +413,15 @@ const TaskStopDown = Schema.Struct({
 });
 
 /**
+ * A message from another Mate of the same person (`MateMessage`): sent once when it is sent, and
+ * again on each later link, after `state` and `signers`, until the Mate says `message-taken`.
+ */
+const MessageDown = Schema.Struct({ type: Schema.Literal("message"), message: MateMessage });
+
+/** HQ recorded the Mate's `message-ended` for `id`: the Mate stops telling it. */
+const MessageAckDown = Schema.Struct({ type: Schema.Literal("message-ack"), id: Schema.String });
+
+/**
  * The organization's API keys an automated Mate's agents run on, by the variable its provider
  * reads (`NEBIUS_API_KEY`, `OPENCODE_KEY_PROVIDERS`); sent on each link to an automated Mate only,
  * and again when one changes. An empty list: none set.
@@ -541,6 +557,19 @@ export const KeyLinkUp = Schema.Union([
   }),
   ...LinkCommandResultUp.members,
   Schema.Struct({ type: Schema.Literal("key-refused") }),
+  /** The Mate durably recorded the message: HQ keeps the first, and stops sending it. */
+  Schema.Struct({ type: Schema.Literal("message-taken"), id: Schema.String }),
+  /**
+   * The run the message started ended, or the Mate will not work it (`declined`). An ask's carries
+   * the run's last answer, at most `MATE_MESSAGE_ANSWER_MAX` characters and "…"; an answer's none.
+   * Told again on each new link, once `signers` was applied, until HQ's `message-ack`.
+   */
+  Schema.Struct({
+    type: Schema.Literal("message-ended"),
+    id: Schema.String,
+    end: MateMessageEnd,
+    words: Schema.optionalKey(Schema.String),
+  }),
 ]);
 export type KeyLinkUp = typeof KeyLinkUp.Type;
 
@@ -590,6 +619,8 @@ export const KeyLinkDown = Schema.Union([
   TaskDown,
   TaskMessageDown,
   TaskStopDown,
+  MessageDown,
+  MessageAckDown,
   ProviderKeysDown,
   LinkCommandDown,
 ]);

@@ -91,6 +91,11 @@ import { ZeropsSignerStanding } from "./ZeropsSignerStanding.ts";
  *
  * - `task`: a task from outside an automated Mate took (`ZeropsTasks`), by
  *   HQ's id: it runs for nobody, on the organization's key only.
+ * - `mate`: a message another Mate of the same person sent
+ *   (`ZeropsMateMessages`), by HQ's id: it runs only on a login whose recorded
+ *   signer is `ownerUserId`, the owner HQ named when the Mate took it. HQ checks
+ *   both Mates are that person's as it delivers the message, so nothing more is
+ *   asked of it here.
  *
  * `crew` has no session HQ would end: on a login its person signed, it is
  * admitted only while HQ says that person may still run turns here (X3); on a
@@ -102,7 +107,8 @@ export type TurnPrincipal =
   | { readonly kind: "session"; readonly subject: SessionSubject }
   | { readonly kind: "crew"; readonly startedBy: ZeropsUserId }
   | { readonly kind: "standup"; readonly startedBy: ZeropsUserId }
-  | { readonly kind: "task"; readonly taskId: string };
+  | { readonly kind: "task"; readonly taskId: string }
+  | { readonly kind: "mate"; readonly messageId: string; readonly ownerUserId: ZeropsUserId };
 
 /**
  * A run for somebody away refused because HQ could not say their standing now: the engine asks
@@ -128,8 +134,16 @@ export const isUndetermined = (refusal: OrchestrationDispatchCommandError): bool
 
 /** The Zerops user a principal stands for, or `undefined` when it names none. */
 export function principalUserId(principal: TurnPrincipal): ZeropsUserId | undefined {
-  if (principal.kind === "task") return undefined;
-  return principal.kind === "session" ? zeropsUserIdOf(principal.subject) : principal.startedBy;
+  switch (principal.kind) {
+    case "task":
+      return undefined;
+    case "mate":
+      return principal.ownerUserId;
+    case "session":
+      return zeropsUserIdOf(principal.subject);
+    default:
+      return principal.startedBy;
+  }
 }
 
 /** The sentence a refused turn reports. */
