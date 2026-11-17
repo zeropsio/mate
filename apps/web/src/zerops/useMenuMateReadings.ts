@@ -1,5 +1,4 @@
 import { lastKnownMateWords, MATE_AWAY_GRACE_MS } from "./lastKnownMate.logic";
-import { attentionActivity } from "./mateActivity";
 import { useProjectsActivityRead } from "./activity/useProjectActivity";
 /**
  * How the left menu reads each Mate it draws: what its row says (`useMateRowActivity` — its
@@ -19,16 +18,15 @@ import { Atom } from "effect/reactivity";
 import {
   accountReadsAtom,
   mateLink as mateLinkProjection,
-  hqMateOverviewAtom,
   hqMatePresenceAtom,
-  mateAttentionAtom,
   shownAttentionProjectsAtom,
 } from "@t3tools/client-runtime/data";
 import { useCallback, useMemo, useState } from "react";
 
 import { environmentsWithSnapshotAtom } from "../state/shell";
 import { hqMainChatsAtom } from "../state/zerops";
-import { overviewAgentActivity, type ZeropsAgentActivity } from "./agentActivity";
+import { restingActivity, type ZeropsAgentActivity } from "./agentActivity";
+import { mateActivityAtom } from "./mateActivityAtoms";
 import type { MatesActivity } from "./useZeropsAgentActivity";
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { mateArrival, mateComingDeadlines, type MateComing } from "@t3tools/client-runtime/data";
@@ -130,26 +128,15 @@ const matesLinkedInHqAtom = Atom.make((get) => {
 );
 
 /**
- * What HQ last told of a Mate, as its menu row reads it, at rest — the conversation its row stands
- * for and what it is on; undefined where HQ holds no overview of it, or it has no main chat yet.
+ * A Mate's one answer, at rest — what its menu row reads (`mateActivityAtom`), with nothing only
+ * true now, its time that answer's own; undefined where that answer is.
  */
 export function useToldActivity(projectId: string): ZeropsAgentActivity | undefined {
-  const told = useAtomValue(hqMateOverviewAtom(projectId)) ?? undefined;
-  const read = useAtomValue(mateAttentionAtom(projectId));
-  return useMemo(() => {
-    if (told === undefined) return undefined;
-    if (read.attention === null) return overviewAgentActivity(told, false, {});
-    return attentionActivity({
-      attention: read.attention,
-      live: false,
-      unseen: read.unseen,
-      environmentId: read.attention.source.environmentId,
-      overview: told,
-      shells: [],
-      followed: false,
-      lastVisitedAtById: {},
-    });
-  }, [told, read]);
+  const activity = useAtomValue(mateActivityAtom(projectId));
+  return useMemo(
+    () => (activity === undefined ? undefined : restingActivity(activity)),
+    [activity],
+  );
 }
 
 export function useLastKnownMateWords(
