@@ -162,6 +162,11 @@ export function viewerThreadKind(
     : "idle";
 }
 
+/** Whether a Mate in this status asks its person: an approval, a question or a plan to accept. */
+export function asksPerson(kind: ThreadStatusKind): boolean {
+  return kind === "approval" || kind === "input" || kind === "planReady";
+}
+
 /**
  * The face a Mate wears for a thread status. Identity v1 §04 gives the mark
  * four waking states and the resolver has ten kinds, so this is the one place

@@ -20,6 +20,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
+import { asksPerson } from "@t3tools/shared/threadStatus";
 import { PanelLeftOpenIcon } from "lucide-react";
 import { useMemo, type ComponentProps, type ReactNode } from "react";
 
@@ -130,11 +131,7 @@ export function useRailTiles<T extends ZeropsCandidate>(input: {
               ? null
               : ownerBadge({ kind: "person", mark: ownerMark(owner) }, false),
           mine: owner === undefined || owner.isViewer,
-          asksViewer:
-            mine &&
-            (activity?.kind === "approval" ||
-              activity?.kind === "input" ||
-              activity?.kind === "planReady"),
+          asksViewer: mine && activity !== undefined && asksPerson(activity.kind),
           at: activity?.at,
           working: activity?.kind === "working",
           runSince: activity?.runSince,

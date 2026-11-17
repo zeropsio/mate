@@ -104,7 +104,9 @@ import {
   type ZeropsPublicRoute,
   type ReleaseFailure,
   formatRunClock,
+  mateWaitsOnOwner,
 } from "@t3tools/client-runtime/zerops";
+import { asksPerson } from "@t3tools/shared/threadStatus";
 import { birthFaceOf } from "@t3tools/client-runtime/zerops/hq";
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import { useAtomValue } from "@effect/atom-react";
@@ -2028,10 +2030,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     if (!open) drawingFolded.current.set(id, activeConversation ?? null);
     const readings = ordered.map(({ item }) => {
       const live = getActivity?.(item);
-      const asks =
-        live !== undefined &&
-        (live.kind === "approval" || live.kind === "input" || live.kind === "planReady") &&
-        waitsOnViewer(item.project.id);
+      const asks = live !== undefined && asksPerson(live.kind) && waitsOnViewer(item.project.id);
       return {
         projectId: item.project.id,
         // Its own question, or its crew's — never work waiting to land, which Review holds.
@@ -3733,21 +3732,14 @@ function useMateRowState<T extends RosterCandidate>({
     asker: mateAsker(owner),
   });
   const asks =
-    activity !== undefined &&
-    (activity.question !== undefined ||
-      activity.kind === "approval" ||
-      activity.kind === "input" ||
-      activity.kind === "planReady");
+    activity !== undefined && (activity.question !== undefined || asksPerson(activity.kind));
   // A colleague's Mate waiting on its person says whom it waits on, never their question. A Mate
   // nobody owns yet waits on nobody in particular: its question stands.
-  const waitsOn =
-    hqPeople?.waitsOnViewer === false &&
-    owner !== undefined &&
-    !owner.isViewer &&
-    activity !== undefined &&
-    (activity.kind === "approval" || activity.kind === "input" || activity.kind === "planReady")
-      ? owner.called
-      : undefined;
+  const waitsOn = mateWaitsOnOwner({
+    waitsOnViewer: hqPeople?.waitsOnViewer,
+    owner,
+    kind: activity?.kind,
+  });
   // What is read of the organization's key: an automated Mate at rest may wait for it.
   const automatedKey = useAutomatedKey();
   const automated = mateAutomation(candidate.project.hq?.mate, automatedKey, inReview);

@@ -3,6 +3,7 @@ import { restartWords } from "./restartWords";
 import { usageLimitWords } from "./noticeWords";
 import { formatUpcomingTimestamp } from "../timestampFormat";
 import type { AgentAdmissionAttention } from "@t3tools/client-runtime/data";
+import { asksPerson } from "@t3tools/shared/threadStatus";
 import type { ZeropsAgentActivity } from "./agentActivity";
 
 export type MateStatus = {
@@ -42,11 +43,7 @@ export function mateStatus(
     return { kind: "sign-in", severity: admission.severity, admission };
   }
 
-  if (
-    activity?.kind === "approval" ||
-    activity?.kind === "input" ||
-    activity?.kind === "planReady"
-  ) {
+  if (activity !== undefined && asksPerson(activity.kind)) {
     return {
       kind: "answer",
       severity: "attention",

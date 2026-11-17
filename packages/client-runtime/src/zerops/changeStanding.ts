@@ -6,6 +6,7 @@
  */
 import type { ChangeAct } from "./changeAct.ts";
 import type { HqMergeAsk } from "@t3tools/shared/hqChanges";
+import { asksPerson, type ThreadStatusKind } from "@t3tools/shared/threadStatus";
 
 import type { FlowPullRequest } from "./projectFlow.ts";
 
@@ -361,4 +362,24 @@ export function releaseWaitsOnViewer(input: {
   const nobodyElse =
     (mergers != null && mergers.length === 0) || !mates.some((mate) => mate.owned === true);
   return input.manages && nobodyElse;
+}
+
+/**
+ * Whom a Mate that asks waits on when that is not the person looking: its owner's name where HQ
+ * says the Mate waits on somebody else (`waitsOnViewer === false`), it has an owner who is not the
+ * person looking, and it asks its person. Undefined anywhere else, the activity unread included.
+ */
+export function mateWaitsOnOwner(input: {
+  readonly waitsOnViewer: boolean | undefined;
+  readonly owner: { readonly isViewer: boolean; readonly called: string } | undefined;
+  readonly kind: ThreadStatusKind | undefined;
+}): string | undefined {
+  const { waitsOnViewer, owner, kind } = input;
+  return waitsOnViewer === false &&
+    owner !== undefined &&
+    !owner.isViewer &&
+    kind !== undefined &&
+    asksPerson(kind)
+    ? owner.called
+    : undefined;
 }

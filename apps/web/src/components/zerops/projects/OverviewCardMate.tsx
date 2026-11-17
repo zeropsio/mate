@@ -9,6 +9,7 @@ import { useAutomatedKey } from "~/zerops/useAutomationSettings";
 import {
   mateArrivingUntil,
   matePoseOf,
+  mateWaitsOnOwner,
   READY_TO_MERGE,
   readZeropsMembership,
   REVIEW_LABEL,
@@ -16,6 +17,7 @@ import {
   standingWaits,
   type FlowPullRequest,
 } from "@t3tools/client-runtime/zerops";
+import { asksPerson } from "@t3tools/shared/threadStatus";
 import type { MatePart } from "@t3tools/client-runtime/zerops/mateParts";
 import { mateOwnerRecords } from "@t3tools/client-runtime/zerops/mateAccess";
 import {
@@ -277,20 +279,12 @@ export function OverviewCardMate({
     outsideHq,
     mine: people?.waitsOnViewer,
     // A colleague's Mate waiting on its person says whom it waits on, never their question.
-    waitsOn:
-      people?.waitsOnViewer === false &&
-      owner !== undefined &&
-      !owner.isViewer &&
-      activity !== undefined &&
-      (activity.kind === "approval" || activity.kind === "input" || activity.kind === "planReady")
-        ? owner.called
-        : undefined,
-    asks:
-      activity !== undefined &&
-      (activity.question !== undefined ||
-        activity.kind === "approval" ||
-        activity.kind === "input" ||
-        activity.kind === "planReady"),
+    waitsOn: mateWaitsOnOwner({
+      waitsOnViewer: people?.waitsOnViewer,
+      owner,
+      kind: activity?.kind,
+    }),
+    asks: activity !== undefined && (activity.question !== undefined || asksPerson(activity.kind)),
     change:
       change === undefined
         ? undefined

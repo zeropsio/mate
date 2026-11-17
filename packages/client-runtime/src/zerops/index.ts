@@ -400,6 +400,7 @@ export {
   standingWord,
   viewerMerges,
   viewerOwnsMate,
+  mateWaitsOnOwner,
   releaseWaitsOnViewer,
   type ChangeStanding,
   type ChangeStandingFacts,
