@@ -16,7 +16,7 @@ import {
   type ZeropsProjectFlow,
 } from "~/zerops/projectFlows";
 import { useProjectsInventory } from "~/zerops/projectsInventory";
-import { useProjectsPageRows } from "~/zerops/projectsPageRows";
+import { useProjectsPageRows } from "../projects/projectsPageRows";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import type { PlaceLine } from "../projects/projectCard.logic";
 import { useReleaseOffer } from "../ZeropsReleaseVerb";

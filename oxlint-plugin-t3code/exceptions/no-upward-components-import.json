@@ -264,30 +264,6 @@
     "expires": "surface:web-derivation"
   },
   {
-    "path": "apps/web/src/zerops/projectsPageRows.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/zerops/ZeropsGroupTree.logic",
-    "owner": "web derivation (W3)",
-    "reason": "verdict or words in a surface's logic file: moves down",
-    "expires": "surface:web-derivation"
-  },
-  {
-    "path": "apps/web/src/zerops/projectsPageRows.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/zerops/projects/ZeropsProjectsFlow",
-    "owner": "web derivation (W3)",
-    "reason": "view type: moves to the module that produces it",
-    "expires": "surface:web-derivation"
-  },
-  {
-    "path": "apps/web/src/zerops/projectsPageRows.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/zerops/projects/projectsView.logic",
-    "owner": "web derivation (W3)",
-    "reason": "verdict or words in a surface's logic file: moves down",
-    "expires": "surface:web-derivation"
-  },
-  {
     "path": "apps/web/src/zerops/proposalRecord.ts",
     "kind": "ImportDeclaration",
     "fingerprint": "components/zerops/proposal/proposal.logic",

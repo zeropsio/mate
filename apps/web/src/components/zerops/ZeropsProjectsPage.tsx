@@ -11,7 +11,7 @@ import { isChief } from "~/zerops/chief";
 import { roleOffers } from "@t3tools/client-runtime/data";
 import { usePlatformCapabilities } from "~/zerops/usePlatformCapabilities";
 import { useOpenMate } from "~/zerops/useOpenMate";
-import { useProjectsPageRows } from "~/zerops/projectsPageRows";
+import { useProjectsPageRows } from "./projects/projectsPageRows";
 import { useProjectsInventory } from "~/zerops/projectsInventory";
 import { removeFailedZeropsProject } from "./removeFailedZeropsProject";
 import { creationHandoff } from "@t3tools/client-runtime/data";

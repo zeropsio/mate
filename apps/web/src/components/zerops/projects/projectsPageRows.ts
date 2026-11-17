@@ -1,4 +1,4 @@
-import { mateStatus, mateStatusWords } from "./mateStatus.logic";
+import { mateStatus, mateStatusWords } from "~/zerops/mateStatus.logic";
 /** Projects presentation joins each row's keyed owner evidence, independently of its neighbors. */
 import { useAtomValue } from "@effect/atom-react";
 import {
@@ -12,8 +12,8 @@ import { Atom } from "effect/reactivity";
 import { useMemo } from "react";
 import { sameValue } from "~/lib/sameValue";
 import { environmentsWithSnapshotAtom } from "~/state/shell";
-import type { ProjectsFlowGroup } from "~/components/zerops/projects/ZeropsProjectsFlow";
-import { groupNameUnread } from "~/components/zerops/ZeropsGroupTree.logic";
+import type { ProjectsFlowGroup } from "./ZeropsProjectsFlow";
+import { groupNameUnread } from "../ZeropsGroupTree.logic";
 import {
   changesUnknownOf,
   flowStepsAwaiting,
@@ -21,10 +21,10 @@ import {
   groupMemberFactsOf,
   lastMergedCode,
   rowMateActivitiesOf,
-} from "~/components/zerops/projects/projectsView.logic";
-import { mateActivityAtom } from "./mateActivityAtoms";
-import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
-import type { ProjectFlows, useStopDeploymentsShown } from "./projectFlows";
+} from "./projectsView.logic";
+import { mateActivityAtom } from "~/zerops/mateActivityAtoms";
+import type { ZeropsCandidatePresentation } from "~/zerops/useZeropsCandidates";
+import type { ProjectFlows, useStopDeploymentsShown } from "~/zerops/projectFlows";
 
 type Row = ProjectsFlowGroup<ZeropsCandidatePresentation>;
 interface ProjectsRowsInput {

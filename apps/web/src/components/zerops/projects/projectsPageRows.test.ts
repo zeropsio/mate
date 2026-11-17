@@ -2,10 +2,10 @@ import { Atom, AtomRegistry } from "effect/reactivity";
 import { ThreadId } from "@t3tools/contracts";
 import { buildCanonicalGroupTree } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it, vi } from "vite-plus/test";
-import type { ZeropsAgentActivity } from "./agentActivity";
-import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
+import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
+import type { ZeropsCandidatePresentation } from "~/zerops/useZeropsCandidates";
 
-vi.mock("./mateActivityAtoms", async () => {
+vi.mock("~/zerops/mateActivityAtoms", async () => {
   const { Atom } = await import("effect/reactivity");
   return {
     mateActivityAtom: Atom.family(() => Atom.make<ZeropsAgentActivity | undefined>(undefined)),
@@ -15,7 +15,7 @@ vi.mock("~/state/shell", async () => {
   const { Atom } = await import("effect/reactivity");
   return { environmentsWithSnapshotAtom: Atom.make(new Set()) };
 });
-import { mateActivityAtom } from "./mateActivityAtoms";
+import { mateActivityAtom } from "~/zerops/mateActivityAtoms";
 import { projectsRowsAtom } from "./projectsPageRows";
 
 const candidate = (id: string): ZeropsCandidatePresentation => ({
@@ -80,7 +80,7 @@ describe("Projects keyed rows", () => {
 import { accountReadsAtom, makeAccountStore } from "@t3tools/client-runtime/data";
 import { seedHqNavigation } from "@t3tools/client-runtime/data/fixtures";
 import { EnvironmentId } from "@t3tools/contracts";
-import { projectRowLine } from "~/components/zerops/projects/projectsView.logic";
+import { projectRowLine } from "./projectsView.logic";
 
 function pageRow(input: ZeropsAgentActivity | undefined, signedOut = false) {
   const registry = AtomRegistry.make();
