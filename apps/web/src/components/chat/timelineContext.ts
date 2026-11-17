@@ -22,6 +22,7 @@ import type { ConversationNotice } from "./ConversationRows";
 import type { ConversationSpeaker, ServerUsagePause, PauseBlock } from "./ConversationRows";
 import type { DockModel } from "./conversationDock.logic";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
+import type { MateMentionMatcher } from "../../zerops/mateMentions";
 
 export interface TimelineRowSharedState {
   /** The child measures its fold; the list owns outer scroll and row placement. Absent in standalone cards. */
@@ -48,6 +49,8 @@ export interface TimelineRowSharedState {
   resolvedTheme: "light" | "dark";
   workspaceRoot: string | undefined;
   skills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
+  /** The person's other Mates their own messages draw as chips where they name one; absent in a crewmate's. */
+  mateMentions?: MateMentionMatcher | null;
   activeThreadEnvironmentId: EnvironmentId;
   onRunShellCommand: ((command: string) => void) | undefined;
   onImageExpand: (preview: ExpandedImagePreview) => void;

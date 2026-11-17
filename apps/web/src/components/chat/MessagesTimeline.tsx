@@ -176,6 +176,7 @@ import {
 import { cn } from "~/lib/utils";
 import { useUiStateStore } from "~/uiStateStore";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
+import { mateMentionMatcher, useMentionableMates } from "~/zerops/mateMentions";
 import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
 import {
   isMateStandUpAsk,
@@ -195,6 +196,7 @@ import {
   textContainsInlineTerminalContextLabels,
 } from "./userMessageTerminalContexts";
 import { SkillInlineText } from "./SkillInlineText";
+import { MateMentionsContext } from "./MateMentionChip";
 import { LAST_WORDS_GRACE_MS, latestFinishedWordsAt } from "./conversation.logic";
 import { PublishedPage } from "./PublishedPage";
 import { TurnReport } from "./TurnReport";
@@ -1931,6 +1933,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const mate = whoLivesHere.kind === "mate" ? whoLivesHere.mate : undefined;
   const crewmate = crew?.crewmate ?? null;
   const nobody = whoLivesHere.kind === "nobody";
+  // The person's other Mates their messages name with `@`: one matcher for the list, none in a
+  // crewmate's conversation, where `@` names none.
+  const mentionableMates = useMentionableMates(mate?.projectId, crew === null);
+  const mateMentions = useMemo(() => mateMentionMatcher(mentionableMates), [mentionableMates]);
   const speaker = useMemo(
     () => conversationSpeaker({ crewmate, mate: mate ?? null, nobody }),
     [crewmate, mate, nobody],
@@ -2020,6 +2026,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       resolvedTheme,
       workspaceRoot,
       skills,
+      mateMentions,
       activeThreadEnvironmentId,
       onRunShellCommand,
       onImageExpand,
@@ -2058,6 +2065,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       resolvedTheme,
       workspaceRoot,
       skills,
+      mateMentions,
       activeThreadEnvironmentId,
       onRunShellCommand,
       onImageExpand,
@@ -4458,12 +4466,24 @@ const CollapsibleUserMessageBody = memo(function CollapsibleUserMessageBody(prop
   );
 });
 
-const UserMessageBody = memo(function UserMessageBody(props: {
+interface UserMessageBodyProps {
   text: string;
   terminalContexts: ParsedTerminalContextEntry[];
   skills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
   markdownCwd: string | undefined;
-}) {
+}
+
+/** A person's words: each `@Name` of one of their other Mates draws as that Mate. */
+const UserMessageBody = memo(function UserMessageBody(props: UserMessageBodyProps) {
+  const { mateMentions } = use(TimelineRowCtx);
+  return (
+    <MateMentionsContext value={mateMentions ?? null}>
+      <UserMessageWords {...props} />
+    </MateMentionsContext>
+  );
+});
+
+function UserMessageWords(props: UserMessageBodyProps) {
   const ctx = use(TimelineRowCtx);
   const renderInlineMarkdownSegment = (text: string, key: string) => {
     const leadingWhitespace = /^\s+/.exec(text)?.[0] ?? "";
@@ -4634,7 +4654,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
       headingLevelOffset={MESSAGE_HEADING_LEVEL}
     />
   );
-});
+}
 
 function UserMessageReviewCommentCard({ comment }: { comment: ReviewCommentContext }) {
   const ctx = use(TimelineRowCtx);
