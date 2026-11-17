@@ -167,6 +167,8 @@ function hqOf(answer: () => Promise<unknown>) {
     handChange: call("handChange"),
     setChief: call("setChief"),
     decideProposal: call("decideProposal"),
+    askReadAccess: () => Promise.reject(new Error("not faked")),
+    closeReadAccess: () => Promise.reject(new Error("not faked")),
   } satisfies HqWrites;
   return { writes, calls };
 }

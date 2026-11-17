@@ -575,12 +575,12 @@ export interface HqApi {
    * The integration tokens a member minted that keep Zerops refusing their removal, as HQ offers
    * them to an Owner or Admin (`GET /api/members/:userId/take-over`).
    */
-  readonly takeOverList?: (userId: string) => Promise<HqTakeOverList>;
+  readonly takeOverList: (userId: string) => Promise<HqTakeOverList>;
   /**
    * Replaces one of them with a token minted with the person's own access token, then deletes it
    * (`POST /api/members/:userId/take-over/:tokenId`); a Mate's key goes to `ownerUserId` when given.
    */
-  readonly takeOver?: (
+  readonly takeOver: (
     userId: string,
     tokenId: string,
     ownerUserId: string | undefined,
@@ -715,13 +715,13 @@ export interface HqApi {
   ) => Promise<HqOutsideTarget | null>;
   /** The person's active Git password metadata; passwords are returned only on issue. */
   /** Reads metadata only; provisioning records authority separately. */
-  readonly observeCredential?: (projectId: string) => Promise<ObserveCredential>;
+  readonly observeCredential: (projectId: string) => Promise<ObserveCredential>;
   /** The organization's open read access requests: every one to an Admin or Owner, else their own. */
-  readonly readAccessRequests?: () => Promise<ReadonlyArray<ReadAccessRequest>>;
+  readonly readAccessRequests: () => Promise<ReadonlyArray<ReadAccessRequest>>;
   /** Asks for read access to an environment; asking again answers the request still open. */
-  readonly askReadAccess?: (projectId: string) => Promise<ReadAccessRequest>;
+  readonly askReadAccess: (projectId: string) => Promise<ReadAccessRequest>;
   /** An Admin or Owner closes an open request; HQ writes nothing at Zerops. */
-  readonly closeReadAccess?: (id: string, outcome: ReadAccessOutcome) => Promise<void>;
+  readonly closeReadAccess: (id: string, outcome: ReadAccessOutcome) => Promise<void>;
   /**
    * Binds the verified person establishing the native ZCP key; no hash reconnects an existing Mate.
    * HQ answers the observe metadata as it stands after it (mate-hq spec/protocol.md §S16c).

@@ -11,7 +11,6 @@ import {
 } from "../families/hqReadAccess.ts";
 import type { AccountStore } from "../store.ts";
 import { makeSettingsReads, type SettingRead } from "./hqSettingsReads.ts";
-import { hqNeedsUpdate } from "../../zerops/hq/refusals.ts";
 import { streamOf } from "../reducer.ts";
 
 export function makeReadAccessRequests(options: {
@@ -28,8 +27,8 @@ export function makeReadAccessRequests(options: {
     id: readAccessId(key),
     scope: readAccessScope(key),
     link: readAccessLink(key),
-    read: () => api.readAccessRequests?.(),
-    unsupported: hqNeedsUpdate("ask for read access"),
+    read: () => api.readAccessRequests(),
+    unsupported: "HQ could not read the read access requests.",
   });
   return {
     demand: (key: ReadAccessKey): (() => void) => (closed ? () => {} : reads.demand(spec(key))),

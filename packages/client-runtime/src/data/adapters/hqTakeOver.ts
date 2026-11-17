@@ -16,7 +16,6 @@ import { makeOperations } from "../operations/coordinator.ts";
 import { makeTakeOverExecutor, type TakeOverWrites } from "../operations/executors/hqTakeOver.ts";
 import type { AccountStore } from "../store.ts";
 import { commitOwn, makeSettingsReads, type SettingRead } from "./hqSettingsReads.ts";
-import { hqNeedsUpdate } from "../../zerops/hq/refusals.ts";
 
 type TakeOverApi = TakeOverWrites & Pick<HqApi, "takeOverList">;
 
@@ -33,8 +32,8 @@ export function makeTakeOver(options: {
     id: takeOverId(key),
     scope: takeOverScope(key),
     link: takeOverLink(key),
-    read: () => api.takeOverList?.(key.userId),
-    unsupported: hqNeedsUpdate("take over a member's tokens"),
+    read: () => api.takeOverList(key.userId),
+    unsupported: "HQ could not read this member's tokens.",
   });
   const operations = makeOperations({
     store,

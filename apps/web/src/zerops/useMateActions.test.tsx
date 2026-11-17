@@ -716,6 +716,8 @@ function mount(
           setChief: unused,
           decideProposal: unused,
           handOver: unused,
+          askReadAccess: () => Promise.reject(new Error("not faked")),
+          closeReadAccess: () => Promise.reject(new Error("not faked")),
         }),
       }),
     },

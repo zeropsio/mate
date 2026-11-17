@@ -5,11 +5,8 @@
 import * as Effect from "effect/Effect";
 import { HqError, type HqApi } from "../../../zerops/hq/client.ts";
 import type { OperationExecutor } from "../coordinator.ts";
-import { hqNeedsUpdate } from "../../../zerops/hq/refusals.ts";
 
 export type TakeOverWrites = Pick<HqApi, "takeOver">;
-
-const UPDATE_HQ = hqNeedsUpdate("take over a member's tokens");
 
 export function makeTakeOverExecutor(options: {
   readonly api: TakeOverWrites;
@@ -25,7 +22,6 @@ export function makeTakeOverExecutor(options: {
         if (intent.kind !== "take-over-token")
           return yield* Effect.fail(refused("This action is unavailable."));
         const { takeOver } = options.api;
-        if (takeOver === undefined) return yield* Effect.fail(refused(UPDATE_HQ));
         const result = yield* Effect.tryPromise({
           try: () => takeOver(intent.userId, intent.tokenId, intent.ownerUserId),
           catch: (cause) =>

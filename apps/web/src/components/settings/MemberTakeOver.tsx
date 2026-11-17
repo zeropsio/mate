@@ -114,7 +114,7 @@ export function MemberTakeOverView({
   readonly onAgain: () => void;
 }) {
   const { list, action, last } = read;
-  if (list.state === "unsupported" || list.state === "withheld") return null;
+  if (list.state === "withheld") return null;
   const working = action.kind === "working";
   return (
     <section aria-label="Before removing" className="tm-section">

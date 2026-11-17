@@ -69,6 +69,8 @@ function operationsOf(store: AccountStore, api: Partial<HqWrites>, zerops = fake
         handChange: asked("handChange"),
         setChief: asked("setChief"),
         decideProposal: asked("decideProposal"),
+        askReadAccess: () => Promise.reject(new Error("not faked")),
+        closeReadAccess: () => Promise.reject(new Error("not faked")),
         ...api,
       };
     },
