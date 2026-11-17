@@ -3,9 +3,10 @@
  * region P).
  *
  * Pure: it takes the inventory's `Known` reads and derives one row per zcp container, with no
- * socket phase or health mixed in. A row whose project's service listing is not known, or is
- * partial with no zcp container read, has presence `unknown`: the inventory has not said whether
- * a container is there. Such a row sits in the `unavailable` bucket only because that bucket
+ * socket phase or health mixed in. A row whose project's service listing is not read yet (unread,
+ * reading, or partial with no zcp container read) has presence `unknown`: the inventory has not
+ * said whether a container is there. A refused read is an answer: the project's one known row says
+ * its services could not be read. An unknown row sits in the `unavailable` bucket only because that bucket
  * offers no verb; it carries no reason and no missing container, so nothing negative can be read
  * off it, and a surface reads its presence before its group. Which rows are connected is the
  * caller's join with its environments.
@@ -72,7 +73,10 @@ export function projectCandidates(
 ): ReadonlyArray<CandidateRow> {
   if (project.status !== "ACTIVE")
     return known(deriveZeropsCandidates(project, [], NO_CONNECTIONS));
-  const services = readServices(servicesOf());
+  const listing = servicesOf();
+  if (listing.state === "failed")
+    return known(deriveZeropsCandidates(project, null, NO_CONNECTIONS, undefined, facts));
+  const services = readServices(listing);
   if (services === null) {
     return [{ key: project.id, project, group: "unavailable", presence: "unknown" }];
   }

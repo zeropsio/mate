@@ -90,17 +90,6 @@ describe("selectCandidates", () => {
     readonly row: object;
   }>([
     {
-      name: "a services read that failed leaves presence unknown",
-      services: {
-        state: "failed",
-        failure: { kind: "transport", detail: "gateway" },
-        atMs: 30,
-        attempt: 1,
-        retryAtMs: 90,
-      },
-      row: { key: "project-1", presence: "unknown" },
-    },
-    {
       name: "a partial services listing with no zcp container read leaves presence unknown",
       services: known([], "partial"),
       row: { key: "project-1", presence: "unknown" },
