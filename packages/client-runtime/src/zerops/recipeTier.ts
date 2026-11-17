@@ -436,6 +436,7 @@ export function recipeTierServices(yaml: string): ReadonlyArray<RecipeTierServic
 export function recipeTierRunning(yaml: string):
   | ReadonlyArray<{
       readonly hostname: string;
+      readonly type: string;
       readonly runtime: boolean;
       readonly highlyAvailable: boolean;
       readonly copies: number;
@@ -450,6 +451,7 @@ export function recipeTierRunning(yaml: string):
     return [
       {
         hostname: item.hostname,
+        type,
         runtime: roleOf(item) !== "managed",
         highlyAvailable: type.includes(":ha") || ownScalar(item, "mode") === "HA",
         copies: Number.isFinite(copies) && copies >= 1 ? copies : 1,

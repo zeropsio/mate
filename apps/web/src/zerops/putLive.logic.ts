@@ -849,9 +849,17 @@ export function putLiveServices(yaml: string): ReadonlyArray<PutLiveService> {
   }));
 }
 
-/** HA services Zerops runs on three containers each (PostgreSQL, Valkey and the rest). */
-const HA_COPIES = 3;
 const COPIES_FOR_CUSTOMERS = 2;
+
+/**
+ * The containers a highly available managed service runs on: three, a count its variant fixes (zcp's
+ * platform knowledge, `themes/model.md`: `:single` = 1, `:ha` = 3; the published schema pins
+ * Elasticsearch's at 3). Storage's highly available variants are left uncounted: what the sources
+ * say of them disagrees, so the sheet claims no number for them.
+ */
+function highlyAvailableCopies(type: string): number | undefined {
+  return /^(?:seaweedfs|shared-storage)\b/u.test(type) ? undefined : 3;
+}
 
 /**
  * The two answers to who production is for, from its setup files: each says what it makes and
@@ -865,16 +873,15 @@ export function putLiveShapes(yaml: string): ReadonlyArray<PutLiveShapeChoice> {
   if (running.length === 0) return [];
   const kinds = new Map(putLiveServices(yaml).map(({ hostname, kind }) => [hostname, kind]));
   const resilient = running.filter((service) => !service.runtime && service.highlyAvailable);
-  const forCustomers = running.reduce(
-    (sum, service) =>
-      sum +
-      (service.runtime
-        ? Math.max(service.copies, COPIES_FOR_CUSTOMERS)
-        : service.highlyAvailable
-          ? HA_COPIES
-          : 1),
-    0,
+  const counted = running.map((service) =>
+    service.runtime
+      ? Math.max(service.copies, COPIES_FOR_CUSTOMERS)
+      : service.highlyAvailable
+        ? highlyAvailableCopies(service.type)
+        : 1,
   );
+  const forCustomers = counted.reduce<number>((sum, copies) => sum + (copies ?? 0), 0);
+  const uncounted = counted.some((copies) => copies === undefined);
   const runtimes = running.filter((service) => service.runtime).length;
   const app =
     runtimes === 0
@@ -896,7 +903,7 @@ export function putLiveShapes(yaml: string): ReadonlyArray<PutLiveShapeChoice> {
       shape: "available",
       title: "For real customers",
       line: said === "" ? "As the project's setup files describe it." : `${capitalise(said)}.`,
-      meta: `${copies(forCustomers)} · paid Serious package`,
+      meta: `${uncounted ? "At least " : ""}${copies(forCustomers)} · paid Serious package`,
     },
   ];
 }
