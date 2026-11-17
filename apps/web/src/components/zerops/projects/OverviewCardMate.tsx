@@ -31,7 +31,7 @@ import {
 } from "@t3tools/client-runtime/data";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { CircleAlertIcon, GitPullRequestIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import { Atom } from "effect/reactivity";
 import { useAccountOrgId, useProjection } from "~/zerops/ZeropsAccountData";
 
@@ -61,7 +61,9 @@ import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { MateAutomatedMark } from "../MateAutomatedMark";
 import { MateOwnerMark } from "../MateOwnerMark";
 import { MateFace } from "../primitives";
+import { useCrewRows } from "../crew/SidebarCrewMinis";
 import {
+  crewMayTakeLine,
   mateBornLine,
   mateBornLineText,
   mateComingRowView,
@@ -272,6 +274,8 @@ export function OverviewCardMate({
   // What is read of the organization's key: an automated Mate at rest may wait for it.
   const automatedKey = useAutomatedKey();
   const automated = mateAutomation(candidate.project.hq?.mate, automatedKey, inReview);
+  const asks =
+    activity !== undefined && (activity.question !== undefined || asksPerson(activity.kind));
   const second = mateRowSecond({
     view,
     askLine,
@@ -284,7 +288,7 @@ export function OverviewCardMate({
       owner,
       kind: activity?.kind,
     }),
-    asks: activity !== undefined && (activity.question !== undefined || asksPerson(activity.kind)),
+    asks,
     change:
       change === undefined
         ? undefined
@@ -298,6 +302,14 @@ export function OverviewCardMate({
   });
   // Its time: a free automated Mate's, when its last task ended (`mateRowTime`).
   const time = mateRowTime({ slot: view.slot, at: activity?.at, automated });
+  // What its crew needs of the viewer takes its line as it takes its menu row's, in the same ink
+  // (`crewMayTakeLine`): where the Mate asks the viewer nothing itself and says nothing more urgent.
+  const crewMates = useMemo(() => [{ projectId, mine, read: undefined }], [projectId, mine]);
+  const crewNeed = useCrewRows(crewMates).get(projectId)?.need;
+  const crewLine =
+    crewNeed !== undefined && !(asks && mine) && crewMayTakeLine(second, view)
+      ? { text: crewNeed.words, tone: "ink" as const }
+      : undefined;
   // A Mate still coming up, or that never came, says only that: nothing of it is lifted.
   const said =
     view.coming !== undefined
@@ -310,12 +322,14 @@ export function OverviewCardMate({
           standing: stands,
           reviews: inReview,
           read: conversationsRead,
-          line: cardSecondWords({
-            second,
-            reply: view.reply,
-            askLine,
-            pausedUntil: (at) => formatUpcomingTimestamp(at, timestampFormat),
-          }),
+          line:
+            crewLine ??
+            cardSecondWords({
+              second,
+              reply: view.reply,
+              askLine,
+              pausedUntil: (at) => formatUpcomingTimestamp(at, timestampFormat),
+            }),
         });
   const reading: CardMateReading = quiet ? { ...said, lift: undefined } : said;
   const askMate = useAskMate();

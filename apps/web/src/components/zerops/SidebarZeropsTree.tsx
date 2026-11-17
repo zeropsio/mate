@@ -321,6 +321,7 @@ import {
   type MateBornLine,
   type MateRowAskLine,
   type MateRowReply,
+  crewMayTakeLine,
   type MateRowSecond,
   type MateRowState,
   type MateRowView as MateRowReading,
@@ -4743,16 +4744,6 @@ function MateNameMarks({ mateProjectId }: { readonly mateProjectId: string }) {
   if (review === undefined || !mates.has(mateProjectId)) return null;
   const items = review.items.filter((item) => item.mateProjectId === mateProjectId);
   return <ProjectReviewMarks {...review} items={items} release={undefined} />;
-}
-
-/**
- * Whether a crew's need may take its Mate's line: where the Mate's own line is its words or its
- * step, the person's ask, or nothing — never over an error, a sign-in, a Mate coming up, going,
- * or outside HQ.
- */
-function crewMayTakeLine(second: MateRowSecond, view: MateRowReading): boolean {
-  if (second.kind === "ask" || second.kind === "none") return true;
-  return second.kind === "reply" && second.tone !== "failed" && view.reply?.kind !== "held";
 }
 
 /** The one line under a Mate's name, as `mateRowSecond` chose it. */

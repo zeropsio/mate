@@ -1394,3 +1394,13 @@ export function mateRowSecond(input: {
   // A result the viewer has not seen is for them: in ink, beside the unread dot.
   return said(view.state === "unread" ? "ink" : "muted");
 }
+
+/**
+ * Whether a crew's need may take its Mate's line, in the menu's row and on its card alike:
+ * where the Mate's own line is its words or its step, the person's ask, or nothing — never over
+ * an error, a sign-in, a Mate coming up, going, or outside HQ.
+ */
+export function crewMayTakeLine(second: MateRowSecond, view: MateRowView): boolean {
+  if (second.kind === "ask" || second.kind === "none") return true;
+  return second.kind === "reply" && second.tone !== "failed" && view.reply?.kind !== "held";
+}
