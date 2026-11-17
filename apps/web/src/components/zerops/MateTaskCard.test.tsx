@@ -7,7 +7,10 @@ import type { FlowPullRequest } from "@t3tools/client-runtime/zerops";
 
 import type { TaskSession } from "~/zerops/taskSession.logic";
 
-vi.mock("~/zerops/review", () => ({ useOpenReview: () => () => undefined }));
+vi.mock("~/zerops/review", () => ({
+  useOpenReview: () => () => undefined,
+  useReviewShown: () => false,
+}));
 
 import { MateTaskCardView, MateTaskMessageRow, MateTaskStatusView } from "./MateTaskCard";
 import { changeReviewItem, HeaderReviewDoor } from "./SidebarProjectReview";
