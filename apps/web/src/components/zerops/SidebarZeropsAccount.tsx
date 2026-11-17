@@ -369,6 +369,19 @@ export function SidebarZeropsAccountMenu({
             {choice.label}
           </MenuRadioItem>
         ))}
+        {/* What the list shows, too: the projects only Platform holds, left out unless asked
+            for (`platformProjects.ts`), raised on the same track while shown. */}
+        <MenuCheckboxItem
+          checked={platformProjects === "shown"}
+          closeOnClick={false}
+          data-zerops-account-platform-projects=""
+          onCheckedChange={(checked) => {
+            setPlatformProjects(checked ? "shown" : "hidden");
+          }}
+          variant="segment"
+        >
+          Platform projects
+        </MenuCheckboxItem>
       </MenuSwitch>
       <MenuSwitch
         label="Order"
@@ -390,18 +403,6 @@ export function SidebarZeropsAccountMenu({
           </MenuRadioItem>
         ))}
       </MenuSwitch>
-      {/* The projects only Platform holds: left out unless asked for (`platformProjects.ts`). */}
-      <MenuCheckboxItem
-        checked={platformProjects === "shown"}
-        closeOnClick={false}
-        data-zerops-account-platform-projects=""
-        onCheckedChange={(checked) => {
-          setPlatformProjects(checked ? "shown" : "hidden");
-        }}
-        variant="switch"
-      >
-        Platform projects
-      </MenuCheckboxItem>
 
       {choices.length === 0 && invitations.length === 0 ? null : (
         <>
