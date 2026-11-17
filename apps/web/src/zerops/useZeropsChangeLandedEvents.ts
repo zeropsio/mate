@@ -40,7 +40,10 @@ import {
   useHqAddress,
 } from "./projectFlows";
 import { useHqAppDetailHold, useHqAppDetails } from "./useHqAppDetail";
-import { useHeldZeropsDetailCandidates } from "./useZeropsCandidates";
+import {
+  useHeldZeropsDetailCandidates,
+  useZeropsDetailListingPending,
+} from "./useZeropsCandidates";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 const NONE: ReadonlyArray<ChangeLandedEvent> = [];
@@ -134,23 +137,31 @@ export function useZeropsChangeLandedEvents(
 }
 
 /**
- * Whether HQ has said what the conversation of the Mate that lives in `environmentId` shows from
- * its application's flow — its changes landing, its releases ending: once HQ answered (or refused)
- * the application's detail, at once for a Mate in no application and outside a Zerops session,
- * never while the listing has not named the Mate. Until then its rows may still join the
- * conversation, and its list places it out of sight a moment longer (`MessagesTimeline`'s
- * `flowRead`).
+ * Whether what the conversation of the Mate that lives in `environmentId` shows from its
+ * application's flow — its changes landing, its releases ending — is as read as it will be soon.
+ * Its list waits a moment for it, out of sight (`MessagesTimeline`'s `flowRead`), only where a flow
+ * row can still come: the listing still on its way, or the Mate in an application whose detail HQ
+ * is reading now. HQ's answer or refusal, its link refused or down, a listing that has answered
+ * without naming the Mate, a Mate in no application and a page outside a Zerops session wait for
+ * nothing.
  */
 export function useZeropsFlowRead(environmentId: string | null | undefined): boolean {
   const signedIn = useZeropsSession().status === "signed-in";
+  const listingPending = useZeropsDetailListingPending();
   const mate = useMateOfEnvironment(environmentId);
   const groupId = mate === undefined ? undefined : readZeropsMembership(mate.project).groupId;
   const appIds = useMemo(() => (groupId == null ? NO_APPS : [groupId]), [groupId]);
   const detail = useHqAppDetails(appIds)[groupId ?? ""];
   if (!signedIn || environmentId == null) return true;
-  if (mate === undefined) return false;
+  if (mate === undefined) return !listingPending;
   if (groupId == null) return true;
-  return detail !== undefined && (detail.read === "read" || detail.failure !== null);
+  return (
+    detail !== undefined &&
+    (detail.read === "read" ||
+      detail.failure !== null ||
+      detail.unavailableReason !== undefined ||
+      (!detail.live && detail.downSince !== undefined))
+  );
 }
 
 /**

@@ -245,6 +245,19 @@ export function useHeldZeropsDetailCandidates() {
   return useAtomValue(heldDetailCandidateRowsAtom);
 }
 
+const detailListingPendingAtom = Atom.make((get) => {
+  const { state } = get(detailCandidateListingAtom);
+  return state === "unread" || state === "reading";
+});
+
+/**
+ * Whether the listing a detail route reads is still on its way: until it has answered, a Mate it
+ * does not name yet may still be in it.
+ */
+export function useZeropsDetailListingPending(): boolean {
+  return useAtomValue(detailListingPendingAtom);
+}
+
 export function useZeropsCandidates() {
   return useCandidateRead(candidateListingAtom);
 }

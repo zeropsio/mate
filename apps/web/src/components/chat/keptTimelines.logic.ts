@@ -24,6 +24,7 @@ const nothing = () => undefined;
  * A list out of sight answers nothing the pane asks of the open one: where
  * its end is, a gesture, an anchor; and it says none of the open one's own
  * failures (`endNotice`) or notices (`notices`), which are that conversation's alone.
+ * Nor does it wait for the open one's project flow (`flowRead`): nobody sees it placed.
  */
 function outOfSight(timeline: TimelineProps): TimelineProps {
   const { cancelPositionRestoreRef: _restore, ...rest } = timeline;
@@ -35,6 +36,7 @@ function outOfSight(timeline: TimelineProps): TimelineProps {
     onPersonInput: nothing,
     onManualNavigation: nothing,
     onAnchorReady: nothing,
+    flowRead: true,
   };
 }
 

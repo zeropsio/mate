@@ -116,6 +116,7 @@ import { ProposedPlanCard } from "./ProposedPlanCard";
 import {
   describeTimelineAnchor,
   judgeTimelinePlacing,
+  TIMELINE_ROW_READ_DEADLINE_MS,
   type RememberedTimelinePosition,
   readTimelineFirstLineInset,
   readTimelinePosition,
@@ -931,8 +932,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // Rows still reading what they show keep the conversation out of sight while it is placed.
   const [rowReads] = useState(makeTimelineRowReads);
   // So does its project's flow still being read: a landing read after the conversation stood
-  // joined its end and moved the page under the person (owner, 2026-11-17).
-  useLayoutEffect(() => (flowRead ? undefined : rowReads.hold()), [flowRead, rowReads]);
+  // joined its end and moved the page under the person (owner, 2026-11-17). Read by the placing
+  // loop each frame, and waited for at most the opening's beat from when this placement began —
+  // never from a run of the loop, which a streaming first answer starts again with every row.
+  const flowReadRef = useRef(flowRead);
+  useLayoutEffect(() => {
+    flowReadRef.current = flowRead;
+  }, [flowRead]);
+  const placingBeganRef = useRef<{ readonly key: string; readonly at: number } | null>(null);
   const [minimapHasPersistentGutter, setMinimapHasPersistentGutter] = useState(false);
   const [minimapHitStripWidth, setMinimapHitStripWidth] = useState(0);
   const [minimapCurrentIndex, setMinimapCurrentIndex] = useState<number | null>(null);
@@ -2256,11 +2263,20 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     // A kept conversation still mounts/places while warming, but navigation
     // releases an already placed notice anchor before its hidden layout changes.
     if (!showsList || (!shown && listPlaced)) {
+      if (!showsList) placingBeganRef.current = null;
       noticeResizeRef.current = null;
       if (noticeReadingPosition !== undefined) setNoticeReadingPosition(undefined);
       return;
     }
     if (!listReady) return;
+    if (!listPlaced && placingBeganRef.current?.key !== routeThreadKey)
+      placingBeganRef.current = { key: routeThreadKey, at: performance.now() };
+    const placingBegan = placingBeganRef.current;
+    const flowReading = () =>
+      !listPlaced &&
+      !flowReadRef.current &&
+      placingBegan !== null &&
+      performance.now() - placingBegan.at < TIMELINE_ROW_READ_DEADLINE_MS;
     const insetChanged = previousContentInsetEndAdjustmentRef.current !== contentInsetEndAdjustment;
     previousContentInsetEndAdjustmentRef.current = contentInsetEndAdjustment;
     if (followingEnd || anchoredEndSpace) {
@@ -2375,7 +2391,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           listReady,
           offBy: target === null ? null : viewport.scrollTop - target,
           elapsedMs: performance.now() - placingSince,
-          rowsReading: rowReads.reading(),
+          rowsReading: rowReads.reading() || flowReading(),
           rowsSettling: rowReads.settling(),
         },
         stableFrames,
