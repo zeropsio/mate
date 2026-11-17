@@ -1,5 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -139,7 +140,13 @@ const cacheFixture = Effect.gen(function* () {
       return { stdout, stderr: "", exitCode: 0 };
     });
   const options = { cwd, directory, ruleNames: [RULE_NAME], runLint };
-  return { fs, state, options, cacheDirectory, cached: { ...options, cacheDirectory } };
+  return {
+    fs,
+    state,
+    options,
+    cacheDirectory,
+    cached: { ...options, cacheDirectory, now: yield* Clock.currentTimeMillis },
+  };
 });
 
 it.layer(restyleLayer)("guard exception driver", (it) => {
@@ -264,7 +271,7 @@ it.layer(restyleLayer)("guard exception driver", (it) => {
               }),
             );
           const options = { cwd, directory, ruleNames: ["no-restyle"], runLint };
-          const cached = { ...options, cacheDirectory };
+          const cached = { ...options, cacheDirectory, now: yield* Clock.currentTimeMillis };
           const initial = yield* checkGuardExceptions(cached);
           assert.equal(initial.problemCount, 0);
           assert.equal(initial.exitCode, 0);
@@ -467,7 +474,12 @@ it.layer(restyleLayer)("guard exception driver", (it) => {
         const error = yield* checkGuardExceptions({ ...fixture.cached, runLint }).pipe(Effect.flip);
         assert.equal(error._tag, "GuardExceptionDriverError");
         assert.match(error.message, /lint inputs changed during guard scan/u);
-        assert.equal(yield* fixture.fs.exists(fixture.cacheDirectory), false);
+        assert.deepStrictEqual(
+          (yield* fixture.fs.readDirectory(fixture.cacheDirectory, { recursive: true })).filter(
+            (name) => name.endsWith(".json"),
+          ),
+          [],
+        );
         const result = yield* checkGuardExceptions(fixture.cached);
         assert.deepStrictEqual(result, yield* checkGuardExceptions(fixture.options));
       }),
@@ -529,7 +541,12 @@ it.layer(restyleLayer)("guard exception driver", (it) => {
         assert.equal(cached._tag, "GuardExceptionDriverError");
         assert.equal(cached.message, uncached.message);
         assert.match(cached.message, /missing a valid finding marker/u);
-        assert.equal(yield* fixture.fs.exists(fixture.cacheDirectory), false);
+        assert.deepStrictEqual(
+          (yield* fixture.fs.readDirectory(fixture.cacheDirectory, { recursive: true })).filter(
+            (name) => name.endsWith(".json"),
+          ),
+          [],
+        );
       }),
     ),
   );
@@ -545,13 +562,16 @@ it.layer(restyleLayer)("guard exception driver", (it) => {
             { concurrency: "unbounded" },
           );
           assert.deepStrictEqual(first, second);
-          const records = yield* fixture.fs.readDirectory(fixture.cacheDirectory);
+          const contexts = yield* fixture.fs.readDirectory(fixture.cacheDirectory);
+          assert.equal(contexts.length, 1);
+          const contextDirectory = `${fixture.cacheDirectory}/${contexts[0]}`;
+          const records = yield* fixture.fs.readDirectory(contextDirectory);
           assert.equal(records.length, 2);
           assert.ok(records.every((name) => name.endsWith(".json")));
           for (const record of records) {
-            const text = yield* fixture.fs.readFileString(`${fixture.cacheDirectory}/${record}`);
+            const text = yield* fixture.fs.readFileString(`${contextDirectory}/${record}`);
             yield* fixture.fs.writeFileString(
-              `${fixture.cacheDirectory}/${record}`,
+              `${contextDirectory}/${record}`,
               text.replace("source:apps/web/src/one.ts", "corrupted-fingerprint"),
             );
           }
@@ -559,7 +579,7 @@ it.layer(restyleLayer)("guard exception driver", (it) => {
           assert.deepStrictEqual(repaired, first);
           assert.deepStrictEqual(fixture.state.scans.at(-1), ["apps/web/src/one.ts"]);
           for (const record of records)
-            yield* fixture.fs.writeFileString(`${fixture.cacheDirectory}/${record}`, "{broken");
+            yield* fixture.fs.writeFileString(`${contextDirectory}/${record}`, "{broken");
           const result = yield* checkGuardExceptions(fixture.cached);
           assert.equal(fixture.state.scans.length, 4);
           assert.deepStrictEqual(result, yield* checkGuardExceptions(fixture.options));

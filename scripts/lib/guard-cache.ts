@@ -605,21 +605,67 @@ export const readGuardCache = (
   }
 };
 
+// A context's entries are reused only while some worktree runs that lint toolchain; one idle this
+// long is taken as dead and removed when the next new context is born.
+const STALE_CONTEXT_MS = 3 * 24 * 60 * 60 * 1000;
+
+const removeStaleContexts = (root: string, context: string, now: number): void => {
+  for (const entry of NodeFS.readdirSync(root, { withFileTypes: true })) {
+    // Only real child directories: a symlink or a file is never followed or removed.
+    if (!entry.isDirectory() || entry.name === context) continue;
+    const directory = NodePath.join(root, entry.name);
+    try {
+      if (now - NodeFS.lstatSync(directory).mtimeMs > STALE_CONTEXT_MS)
+        NodeFS.rmSync(directory, { recursive: true, force: true });
+    } catch {
+      // Another run removed it first, or it cannot be removed: it stays for the next sweep.
+    }
+  }
+};
+
+/**
+ * Returns the directory holding one lint context's entries and marks it in use (its mtime becomes
+ * `now`, epoch milliseconds). The run that creates a context's directory removes sibling contexts idle for three days:
+ * a new context is the event that retires old ones. Never throws: the verdict never depends on the
+ * cache, so an unusable directory only makes reads miss and writes go unstored.
+ */
+export const openGuardCacheContext = (root: string, context: string, now: number): string => {
+  const directory = NodePath.join(root, context);
+  try {
+    const created = NodeFS.mkdirSync(directory, { recursive: true }) !== undefined;
+    // A number given to utimes is seconds since the epoch.
+    NodeFS.utimesSync(directory, now / 1000, now / 1000);
+    if (created) removeStaleContexts(root, context, now);
+  } catch {
+    // The cache is optional: reads of an unusable directory miss and writes report not stored.
+  }
+  return directory;
+};
+
+/** Stores one entry; false when the filesystem refused it. Never throws and never retries. */
 export const writeGuardCache = (
   directory: string,
   key: string,
   findings: ReadonlyArray<CachedGuardFinding>,
-): void => {
-  NodeFS.mkdirSync(directory, { recursive: true });
+): boolean => {
   const temporary = NodePath.join(directory, `${key}.${NodeCrypto.randomUUID()}.tmp`);
   try {
+    NodeFS.mkdirSync(directory, { recursive: true });
     NodeFS.writeFileSync(
       temporary,
       JSON.stringify({ key, findings, digest: recordDigest(key, findings) }),
       { flag: "wx" },
     );
     NodeFS.renameSync(temporary, NodePath.join(directory, `${key}.json`));
+    return true;
+  } catch {
+    // Not stored: a later run misses this entry and lints the file again.
+    return false;
   } finally {
-    NodeFS.rmSync(temporary, { force: true });
+    try {
+      NodeFS.rmSync(temporary, { force: true });
+    } catch {
+      // The directory is gone or unusable, so no temporary file was left in it.
+    }
   }
 };

@@ -13,6 +13,7 @@ import {
   reconcileExceptions,
   type ExceptionFinding,
 } from "@t3tools/oxlint-plugin-t3code/exceptions";
+import * as Clock from "effect/Clock";
 import * as Console from "effect/Console";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
@@ -32,6 +33,7 @@ import {
   hashGuardContext,
   hashGuardSource,
   makeGuardSourceHasher,
+  openGuardCacheContext,
   readGuardCache,
   writeGuardCache,
   type CachedGuardFinding,
@@ -77,15 +79,24 @@ export interface GuardExceptionCheckResult {
   readonly exitCode: 0 | 1;
 }
 
-interface GuardExceptionCheckOptions<E, R> {
+interface GuardCacheCounts {
+  readonly hits: number;
+  readonly misses: number;
+  readonly notStored: number;
+}
+
+type GuardExceptionCheckOptions<E, R> = {
   readonly cwd: string;
   readonly directory: string;
   readonly ruleNames?: ReadonlyArray<string>;
   readonly baseline?: ReadonlyMap<string, ReadonlyArray<ExceptionEntry>>;
-  readonly cacheDirectory?: string;
-  readonly onCache?: (counts: { readonly hits: number; readonly misses: number }) => void;
+  readonly onCache?: (counts: GuardCacheCounts) => void;
   readonly runLint: (request: GuardLintRequest) => Effect.Effect<GuardLintOutput, E, R>;
-}
+} & (
+  | { readonly cacheDirectory?: undefined; readonly now?: undefined }
+  // The cache root, and the run's clock that marks the run's context directory in use.
+  | { readonly cacheDirectory: string; readonly now: number }
+);
 
 class GuardExceptionDriverError extends Data.TaggedClass("GuardExceptionDriverError")<{
   readonly ruleName: string;
@@ -547,6 +558,7 @@ const collectGuardFindings = <E, R>(
         });
       },
     );
+    const cacheDirectory = openGuardCacheContext(options.cacheDirectory, context, options.now);
     const files = yield* tryDriverOperation(
       "guard exceptions",
       "failed to read selected source files",
@@ -572,13 +584,12 @@ const collectGuardFindings = <E, R>(
             path,
             content,
             key,
-            cached: readGuardCache(options.cacheDirectory!, key, ruleNames),
+            cached: readGuardCache(cacheDirectory, key, ruleNames),
           };
         });
       },
     );
     const misses = files.filter((file) => file.cached === undefined);
-    options.onCache?.({ hits: files.length - misses.length, misses: misses.length });
     const fresh =
       misses.length === 0
         ? new Map<string, ReadonlyArray<ExceptionFinding>>()
@@ -623,19 +634,26 @@ const collectGuardFindings = <E, R>(
         }
       });
     }
-    yield* tryDriverOperation("guard exceptions", "failed to publish guard cache", () => {
-      for (const path of byFile.keys()) {
-        if (!misses.some((file) => file.path === path))
-          throw new Error(`Unexpected lint finding ${path}`);
-      }
-      for (const file of misses) {
-        if (hashGuardSource(NodePath.join(options.cwd, file.path)) !== file.content) {
-          throw new Error(`Source changed during guard scan: ${file.path}`);
+    const notStored = yield* tryDriverOperation(
+      "guard exceptions",
+      "failed to publish guard cache",
+      () => {
+        for (const path of byFile.keys()) {
+          if (!misses.some((file) => file.path === path))
+            throw new Error(`Unexpected lint finding ${path}`);
         }
-      }
-      for (const file of misses)
-        writeGuardCache(options.cacheDirectory!, file.key, byFile.get(file.path) ?? []);
-    });
+        for (const file of misses) {
+          if (hashGuardSource(NodePath.join(options.cwd, file.path)) !== file.content) {
+            throw new Error(`Source changed during guard scan: ${file.path}`);
+          }
+        }
+        // Only the scan's integrity is fatal here; an entry the filesystem refuses is not stored.
+        return misses.filter(
+          (file) => !writeGuardCache(cacheDirectory, file.key, byFile.get(file.path) ?? []),
+        ).length;
+      },
+    );
+    options.onCache?.({ hits: files.length - misses.length, misses: misses.length, notStored });
     const findings = new Map<string, Array<ExceptionFinding>>(
       ruleNames.map((ruleName) => [ruleName, []]),
     );
@@ -744,13 +762,16 @@ export const checkGuardExceptionsCommand = Command.make(
         "failed to load Git ratchet baseline",
         () => loadRatchetBaseline(DEFAULT_REPO_ROOT, base),
       );
-      let counts: { readonly hits: number; readonly misses: number } | undefined;
+      let counts: GuardCacheCounts | undefined;
       const result = yield* checkGuardExceptions({
         cwd: DEFAULT_REPO_ROOT,
         directory,
         baseline,
         ...(cache
-          ? { cacheDirectory: NodePath.join(NodeOS.homedir(), ".cache", "mate-guard") }
+          ? {
+              cacheDirectory: NodePath.join(NodeOS.homedir(), ".cache", "mate-guard"),
+              now: yield* Clock.currentTimeMillis,
+            }
           : {}),
         onCache: (value) => {
           counts = value;
@@ -759,7 +780,11 @@ export const checkGuardExceptionsCommand = Command.make(
         runLint: spawnGuardLint,
       });
       if (counts !== undefined)
-        yield* Console.log(`guard cache: ${counts.hits} hits, ${counts.misses} misses`);
+        yield* Console.log(
+          `guard cache: ${counts.hits} hits, ${counts.misses} misses${
+            counts.notStored > 0 ? `, ${counts.notStored} not stored` : ""
+          }`,
+        );
       for (const report of result.reports) {
         yield* Console.log(report);
       }
