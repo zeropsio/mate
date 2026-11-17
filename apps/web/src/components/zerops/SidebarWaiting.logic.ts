@@ -65,7 +65,8 @@ export type WaitingItem =
 
 /**
  * What a Mate waiting on the viewer waits for, by the one resolver's kind (R5): asking comes
- * before its change, since the change waits on the answer.
+ * before its change, since the change waits on the answer. The one order: the waiting list and the
+ * project card's lift (`cardMateReading`) both read it.
  */
 export function waitingKindOf(input: {
   readonly activityKind: ThreadStatusKind | undefined;

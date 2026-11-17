@@ -49,9 +49,11 @@ import {
 } from "../SidebarMateRow.logic";
 import { NOT_IN_HQ_LINE } from "../ZeropsProjectRow.logic";
 import {
+  waitingKindOf,
   waitingVerb,
   type WaitingChange,
   type WaitingItem,
+  type WaitingKind,
   type WaitingMate,
   type WaitingRelease,
   type WaitingVerb,
@@ -661,7 +663,10 @@ export function releaseProductionRuns(
   return releases.find((release) => release.standing === "live" && release.tag !== inFlight)?.tag;
 }
 
-/** What a Mate waiting on the viewer is lifted onto a card with, and its buttons. */
+/**
+ * What a Mate waiting on the viewer is lifted onto a card with, and its buttons — one, by the
+ * menu's order (`waitingKindOf`): its error, its plan, its question, then its change.
+ */
 export type MateLift =
   /** Approve plan, and Change it… */
   | { readonly kind: "plan" }
@@ -689,8 +694,9 @@ export interface CardMateReading {
 
 /**
  * What a Mate's card row says: the words its menu row says (`mateRowView`), the question in ink
- * and an error in red; lifted with its buttons only where it waits on the viewer — its plan, its
- * question, its error, or its change waiting for their review.
+ * and an error in red; lifted with its buttons only where it waits on the viewer — its error, its
+ * plan, its question, or its change waiting for their review, in that order, the one the menu's
+ * waiting list ranks by (`waitingKindOf`).
  */
 export function cardMateReading(input: {
   readonly view: Pick<MateRowView, "state" | "ask" | "reply">;
@@ -730,20 +736,38 @@ export function cardMateReading(input: {
   const tone = said.tone === "failed" ? "failed" : said.tone === "ink" ? "ink" : "muted";
   const standing =
     input.review === undefined ? undefined : rowStanding(input.review, input.standing);
-  const lift: MateLift | undefined = !mine
-    ? undefined
-    : input.review !== undefined &&
-        // One the viewer asked for waits on the people who merge — until somebody comments on it.
-        (standing !== "waiting" || input.standing?.comment !== undefined) &&
-        view.state !== "working"
-      ? { kind: "review", pull: input.review, ...(standing === undefined ? {} : { standing }) }
-      : view.state === "needs"
-        ? input.status === "planReady"
-          ? { kind: "plan" }
-          : { kind: "question" }
-        : view.state === "failed"
-          ? { kind: "fix" }
-          : undefined;
+  const reviewLifts =
+    input.review !== undefined &&
+    // One the viewer asked for waits on the people who merge — until somebody comments on it.
+    (standing !== "waiting" || input.standing?.comment !== undefined) &&
+    view.state !== "working";
+  const waits = reviewLifts || view.state === "needs" || view.state === "failed";
+  // What waits is ranked by the menu's one order (`waitingKindOf`); `sign-in` it never returns.
+  const liftOf = (kind: WaitingKind): MateLift | undefined => {
+    switch (kind) {
+      case "failed":
+        return { kind: "fix" };
+      case "plan":
+        return { kind: "plan" };
+      case "question":
+        return { kind: "question" };
+      case "change":
+        return input.review === undefined
+          ? undefined
+          : { kind: "review", pull: input.review, ...(standing === undefined ? {} : { standing }) };
+      case "sign-in":
+        return undefined;
+    }
+  };
+  const lift =
+    !mine || !waits
+      ? undefined
+      : liftOf(
+          waitingKindOf({
+            activityKind: view.state === "failed" ? "failed" : input.status,
+            reviewWaits: reviewLifts,
+          }),
+        );
   if (lift === undefined && input.line !== undefined)
     return { text: input.line.text, tone: input.line.tone, lift };
   // A change lifted for review is named by its title, as its menu row names it: the Mate's last
