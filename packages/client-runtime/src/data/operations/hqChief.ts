@@ -75,7 +75,7 @@ export type HqChiefIntent = Extract<
 export const PROPOSAL_DECIDED_ELSEWHERE = "conflict";
 
 /**
- * The code a reveal's refusal carries where no retry records it: an older HQ with no reveals to
- * record it at, or one that refuses the person. Updating HQ, or someone else, changes that.
+ * The code a reveal's refusal carries where no retry records it: HQ refuses the person. Someone HQ
+ * lets record it can.
  */
 export const REVEAL_UNRECORDABLE = "reveal_unrecordable";
