@@ -679,10 +679,15 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     () => new Map(notices.map((notice) => [notice.id, notice] as const)),
     [notices],
   );
+  // A crewmate's conversation (`CrewTimelineContext`, given for a crew thread
+  // only) is empty while it holds nothing but seams.
+  const crew = use(CrewTimelineContext);
+  const inCrewmate = crew !== null;
   const rawRows = useMemo(
     () =>
       deriveMessagesTimelineRows({
         cache: rowsCache,
+        crewmate: inCrewmate,
         ...(runCards === null ? {} : { runCards }),
         limit,
         away: away ?? null,
@@ -708,6 +713,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         mirrorAsks,
       }),
     [
+      inCrewmate,
       cardPaging,
       liveLines,
       originAsks,
@@ -788,9 +794,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         .at(-1) ?? null,
     [stableRows],
   );
-  // A crewmate's conversation (`CrewTimelineContext`, given for a crew thread
-  // only) is empty while it holds nothing but seams.
-  const crew = use(CrewTimelineContext);
 
   // Loading earlier turns keeps the row the person was reading where it
   // stood. The list keeps the first row in sight in place, and at the top of

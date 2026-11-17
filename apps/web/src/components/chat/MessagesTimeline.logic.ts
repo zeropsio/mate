@@ -2470,6 +2470,11 @@ export function livePauseStageId(
 }
 
 export function deriveMessagesTimelineRows(input: {
+  /**
+   * A crewmate's conversation: an answer to its message to another Mate goes to its Mate's main
+   * conversation (the crew is its only door), so it never waits on one here.
+   */
+  readonly crewmate?: boolean;
   readonly limit?: MateLimit;
   /** The Mate is out of reach: a live card says so and its clock stands (`MateAway`). */
   readonly away?: MateAway | null;
@@ -2694,6 +2699,12 @@ export function deriveMessagesTimelineRows(input: {
     briefTasks.add(taskId);
     briefIds.add(entry.id);
   }
+  // One row per Mate's message: an earlier send of it the conversation took back draws none.
+  const lastOfMateMessage = new Map<string, string>();
+  for (const entry of entries) {
+    const fromMate = entry.kind === "message" ? entry.message.mateMessage : undefined;
+    if (fromMate !== undefined) lastOfMateMessage.set(fromMate.id, entry.id);
+  }
   const personRow = (
     entry: MessageEntry,
     index: number,
@@ -2714,6 +2725,7 @@ export function deriveMessagesTimelineRows(input: {
     }
     const fromMate = entry.message.mateMessage;
     if (fromMate !== undefined) {
+      if (lastOfMateMessage.get(fromMate.id) !== entry.id) return null;
       return {
         kind: "mate-message",
         id: entry.id,
@@ -3672,7 +3684,7 @@ export function deriveMessagesTimelineRows(input: {
       createdAt: rows.at(-1)?.createdAt ?? "",
       state: afterTurnWork,
     });
-  } else if (!input.isWorking) {
+  } else if (!input.isWorking && input.crewmate !== true) {
     // Nothing at work: a message sent to another Mate that has no answer yet is what it waits on.
     const awaited = awaitedMateAnswers(entries);
     if (awaited.length > 0) {
