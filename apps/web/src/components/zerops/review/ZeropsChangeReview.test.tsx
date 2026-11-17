@@ -1235,27 +1235,35 @@ describe("ZeropsChangeReview: a change its project's flow does not hold yet", ()
     },
   );
 
-  it("asks the conversation of the change's branch to update it", async () => {
+  it("asks the conversation of the change's branch to resolve it, about the change at its head", async () => {
     asks.fixers = [{ mateProjectId: "p-wren" }];
-    // main moved on past its merge base: behind, and still merging cleanly.
+    // main changed the same file under it: it no longer merges cleanly.
     detail.readout = {
       kind: "read",
       value: changeReadoutOfRecord(
-        { ...API_CHANGE, mergeability: "clean", behind: true },
-        review({ mergeBase: "b".repeat(40), files: [changed("src/api.ts")] }),
+        { ...API_CHANGE, mergeability: "conflict", behind: true },
+        review({
+          mergeBase: "b".repeat(40),
+          files: [changed("src/api.ts")],
+          conflictPaths: ["src/api.ts"],
+        }),
       ),
     };
     await reviewed(
       async (host) => {
-        await pressed(host, "Ask the Mate to update it");
+        await pressed(host, "Ask the Mate to resolve it");
         expect(asks.fix).toEqual([
           [
             "p-wren",
             {
-              what: "Change #1 is behind main",
-              ask: "Merge main into it, check it still works, and deliver it again.",
+              what: "Change #1 conflicts with main in api.ts",
+              ask: "Merge main into it, resolve the conflicts, and deliver it again.",
             },
-            { branch: "badge", repositoryUrl: "https://hq.example.test/git/group-orchard/apidev" },
+            {
+              branch: "badge",
+              repositoryUrl: "https://hq.example.test/git/group-orchard/apidev",
+              about: { kind: "change", repo: "apidev", number: 1, head: API_CHANGE.head },
+            },
           ],
         ]);
       },
