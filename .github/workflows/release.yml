@@ -34,42 +34,44 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 2
-          sparse-checkout: packages/shared/src
+          sparse-checkout: |
+            /package.json
+            /scripts/ci-blame.ts
+            /packages/shared/src/
+          sparse-checkout-cone-mode: false
 
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+
+      # scripts/ci-blame.ts owns the verdict release-mate.ts applies before it cuts the tag.
       - name: Check exact-SHA CI verification
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          ci_verification() {
-            local sha="$1"
-            GH_VERIFIED_SHA="$sha" gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${sha}&status=success&per_page=100" --paginate --jq '
-              .workflow_runs[]
-              | select(.head_sha == env.GH_VERIFIED_SHA)
-              | select(.path == ".github/workflows/ci.yml")
-              | select(.head_branch == "main")
-              | select(.status == "completed" and .conclusion == "success")
-              | .id'
-          }
           verified_sha="$GITHUB_SHA"
-          verified=$(ci_verification "$verified_sha")
-          if [[ -z "$verified" ]]; then
-            if parent=$(git rev-parse --verify "${GITHUB_SHA}^1" 2>/dev/null) &&
-              packages=$(git show "${parent}:packages/shared/src/versionedReleasePackages.json" 2>/dev/null); then
-              if git diff --no-renames --name-only -z "$parent" "$GITHUB_SHA" |
-                jq -e --raw-input --slurp --argjson packages "$packages" '
-                  split("\u0000") | map(select(length > 0))
-                  | all(.[]; . as $path | $packages | index($path) != null)' > /dev/null; then
-                verified_sha="$parent"
-                verified=$(ci_verification "$verified_sha")
+          verified=false
+          if node scripts/ci-blame.ts --release-verdict "$verified_sha"; then
+            verified=true
+          elif parent=$(git rev-parse --verify "${GITHUB_SHA}^1" 2>/dev/null) &&
+            packages=$(git show "${parent}:packages/shared/src/versionedReleasePackages.json" 2>/dev/null); then
+            if git diff --no-renames --name-only -z "$parent" "$GITHUB_SHA" |
+              jq -e --raw-input --slurp --argjson packages "$packages" '
+                split("\u0000") | map(select(length > 0))
+                | all(.[]; . as $path | $packages | index($path) != null)' > /dev/null; then
+              verified_sha="$parent"
+              if node scripts/ci-blame.ts --release-verdict "$verified_sha"; then
+                verified=true
               fi
             fi
           fi
-          if [[ -z "$verified" ]]; then
+          if [[ "$verified" != true ]]; then
             echo "No completed successful CI run on main for ${GITHUB_SHA} or its version-only first parent; run CI on this commit first." >&2
             exit 1
           fi
-          echo "CI verified ${verified_sha} for release ${GITHUB_SHA} (run IDs: ${verified//$'\n'/, })."
+          echo "CI verified ${verified_sha} for release ${GITHUB_SHA}."
 
   build:
     name: Build and verify bundle

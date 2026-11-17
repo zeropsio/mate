@@ -1,4 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off globalConsole:off -- CI selection reports its committed decisions.
+import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
@@ -31,6 +32,74 @@ const jobNames = {
 // The required jobs: Release Smoke's verdict demands `success` from each, and a release needs them green.
 export const checkJobIds = ["check", "check_guards", "check_types", "check_build"] as const;
 export const checkJobNames = checkJobIds.map((id) => jobNames[id]);
+
+export interface WorkflowRun {
+  readonly id: number;
+  readonly head_sha: string;
+  readonly head_branch: string;
+  readonly status: string;
+}
+
+export interface WorkflowJob {
+  readonly name: string;
+  readonly conclusion: string | null;
+}
+
+/**
+ * Why a source may not release, or undefined: its newest main CI run completed with every required
+ * job (`checkJobNames`) green. The run's own conclusion also counts informative jobs, so it is not
+ * read; a skipped required job is not green, as in Release Smoke's verdict.
+ */
+export function ciRefusal(
+  runs: ReadonlyArray<WorkflowRun>,
+  sha: string,
+  jobsOf: (run: WorkflowRun) => ReadonlyArray<WorkflowJob>,
+): string | undefined {
+  const latest = runs.find((run) => run.head_sha === sha && run.head_branch === "main");
+  if (latest === undefined) return `source ${sha} has no main CI run`;
+  if (latest.status !== "completed") return `source ${sha} main CI is still ${latest.status}`;
+  const jobs = jobsOf(latest);
+  const red = checkJobNames.flatMap((name) => {
+    const conclusion = jobs.find((job) => job.name === name)?.conclusion;
+    return conclusion === "success" ? [] : [`${name} ${conclusion ?? "missing"}`];
+  });
+  return red.length === 0
+    ? undefined
+    : `source ${sha} main CI has required jobs not green: ${red.join(", ")}`;
+}
+
+// The release workflow asks the rule release-mate.ts applies before it cuts a tag.
+// A failed API call throws after the CLI wrote its error to stderr: never a green verdict.
+function releaseVerdict(sha: string): boolean {
+  const repository = process.env.GITHUB_REPOSITORY;
+  if (!/^[0-9a-f]{40}$/u.test(sha)) throw new Error(`--release-verdict needs a full sha: ${sha}`);
+  if (!repository) throw new Error("--release-verdict needs GITHUB_REPOSITORY");
+  const api = <T>(endpoint: string, jq?: string): T =>
+    JSON.parse(
+      NodeChildProcess.execFileSync(
+        process.env.MATE_GH || "gh",
+        ["api", endpoint, ...(jq ? ["--jq", jq] : [])],
+        { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] },
+      ),
+    ) as T;
+  const runs = api<{ workflow_runs: WorkflowRun[] }>(
+    `repos/${repository}/actions/workflows/ci.yml/runs?head_sha=${sha}&branch=main&per_page=10`,
+  ).workflow_runs;
+  let verified: WorkflowRun | undefined;
+  const refusal = ciRefusal(runs, sha, (run) => {
+    verified = run;
+    return api<WorkflowJob[]>(
+      `repos/${repository}/actions/runs/${run.id}/jobs?per_page=100`,
+      "[.jobs[] | {name, conclusion}]",
+    );
+  });
+  if (refusal !== undefined) {
+    console.error(refusal);
+    return false;
+  }
+  console.log(`releasable ${sha}: run ${verified!.id}`);
+  return true;
+}
 // Test suites run only when someone asks for them: a manual dispatch or a kh-bisect manifest.
 const testJobIds = new Set([
   "state_smoke",
@@ -283,6 +352,8 @@ if (
     const outputs = Object.entries(changes).map(([area, selected]) => `${area}=${selected}`);
     console.log(`CI selection: ${JSON.stringify(manifest)}`);
     NodeFS.appendFileSync(process.env.GITHUB_OUTPUT!, outputs.join("\n") + "\n");
+  } else if (process.argv[2] === "--release-verdict") {
+    if (!releaseVerdict(process.argv[3] ?? "")) process.exitCode = 1;
   } else {
     const path = ".ci-blame-jobs";
     const manifest = NodeFS.existsSync(path) ? NodeFS.readFileSync(path, "utf8") : undefined;

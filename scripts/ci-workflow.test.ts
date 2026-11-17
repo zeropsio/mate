@@ -5,7 +5,7 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeVM from "node:vm";
 import { parse as parseYaml } from "yaml";
-import { blameMatrices, ciSelectionManifest, stateSmokeMatrix } from "./ci-blame.ts";
+import { blameMatrices, checkJobNames, ciSelectionManifest, stateSmokeMatrix } from "./ci-blame.ts";
 import { stateSmokePlan } from "./state-smoke.ts";
 
 const parse = (source: string) => {
@@ -261,15 +261,10 @@ it.each([
       );
       for (const step of installs) {
         const env = { ...workflow.env, ...job.env, ...step.env };
-        if (name === "check") {
-          expect(env.PNPM_CONFIG_TRUST_LOCKFILE).toBe(
-            "${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}",
-          );
-          env.PNPM_CONFIG_TRUST_LOCKFILE = String(mainPush);
-        }
-        // The hosted install that follows reuses this verdict like every other consumer.
+        if (name === "check") expect(env.PNPM_CONFIG_TRUST_LOCKFILE).toBe("false");
+        // The main push's cache install reuses Check's verdict like every other consumer.
         if (name === "cache" && step.run === "vp install --frozen-lockfile") {
-          expect(env.PNPM_CONFIG_TRUST_LOCKFILE).toBe("false");
+          expect(env.PNPM_CONFIG_TRUST_LOCKFILE).toBe("true");
         }
         consumers.push(env);
         if (env.PNPM_CONFIG_TRUST_LOCKFILE !== "true") verifying.push(name);
@@ -278,7 +273,7 @@ it.each([
     expect(
       verifying,
       "ASSERTION: exactly one Check owns the registry-backed lockfile policy verification",
-    ).toEqual([mainPush ? "cache" : "check"]);
+    ).toEqual(["check"]);
     for (const env of consumers)
       expect(
         env.PNPM_CONFIG_FROZEN_LOCKFILE,
@@ -1355,93 +1350,6 @@ it("tag release CI retains final verification with the preparation job's read pe
   expect(release.jobs.release.needs).toEqual(["build", "verify"]);
 });
 
-it.each(
-  ["push", "workflow_dispatch"].flatMap((event) => {
-    const green = {
-      id: 7,
-      name: "CI final · main",
-      path: ".github/workflows/ci.yml",
-      head_sha: "abc",
-      head_branch: "main",
-      status: "completed",
-      conclusion: "success",
-    };
-    return [
-      { event, case: "no verdict", runs: [], approved: false },
-      { event, case: "main", runs: [green], approved: true },
-      { event, case: "renamed CI", runs: [{ ...green, name: "CI" }], approved: true },
-      ...[
-        { head_branch: "feature" },
-        { head_branch: "kh-bisect/abc" },
-        { head_branch: null },
-        { head_sha: "other" },
-        { path: ".github/workflows/other.yml" },
-        { status: "in_progress" },
-        { conclusion: "failure" },
-      ].map((override) => ({
-        event,
-        case: JSON.stringify(override),
-        runs: [{ ...green, ...override }],
-        approved: false,
-      })),
-      {
-        event,
-        case: "green after unrelated run",
-        runs: [{ ...green, path: ".github/workflows/other.yml" }, green],
-        approved: true,
-      },
-    ];
-  }),
-)("release verification approves=$approved for $event: $case", ({ event, runs, approved }) => {
-  const release = parse(
-    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/release.yml"), "utf8"),
-  );
-  expect(
-    release.jobs.verify,
-    "ASSERTION: release must read a prior exact-SHA CI verdict",
-  ).toBeDefined();
-  const step = release.jobs.verify.steps.find(
-    (step: { name: string }) => step.name === "Check exact-SHA CI verification",
-  );
-  expect(step.env.GH_TOKEN).toBe("${{ github.token }}");
-  const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-release-verdict-"));
-  try {
-    const called = NodePath.join(directory, "called");
-    NodeFS.writeFileSync(
-      NodePath.join(directory, "runs.json"),
-      JSON.stringify({ workflow_runs: runs }),
-    );
-    NodeFS.writeFileSync(
-      NodePath.join(directory, "gh"),
-      '#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALLED"\njq "${5}" "$RUNS"\n',
-      { mode: 0o755 },
-    );
-    const result = NodeChildProcess.spawnSync("bash", ["-c", step.run], {
-      cwd: root,
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        PATH: `${directory}:${process.env.PATH}`,
-        GITHUB_SHA: "abc",
-        GITHUB_EVENT_NAME: event,
-        GITHUB_REPOSITORY: "zeropsio/mate",
-        CALLED: called,
-        RUNS: NodePath.join(directory, "runs.json"),
-      },
-    });
-    expect(
-      result.status,
-      "ASSERTION: a tag without a version-only parent requires its own completed successful CI on main",
-    ).toBe(approved ? 0 : 1);
-    expect(NodeFS.readFileSync(called, "utf8")).toContain(
-      "repos/zeropsio/mate/actions/runs?head_sha=abc&status=success&per_page=100 --paginate --jq",
-    );
-    if (!approved) expect(result.stderr).toContain("run CI on this commit first");
-  } finally {
-    NodeFS.rmSync(directory, { recursive: true, force: true });
-  }
-});
-
 it.each([
   { case: "green tag SHA", green: "tag", otherFile: true, editedWhitelist: false, approved: true },
   { case: "green parent and version-only diff", green: "parent", otherFile: false, approved: true },
@@ -1491,6 +1399,11 @@ it.each([
       );
       NodeFS.mkdirSync(NodePath.dirname(whitelist), { recursive: true });
       NodeFS.writeFileSync(whitelist, JSON.stringify(files));
+      NodeFS.mkdirSync(NodePath.join(directory, "scripts"));
+      NodeFS.copyFileSync(
+        NodePath.join(root, "scripts/ci-blame.ts"),
+        NodePath.join(directory, "scripts/ci-blame.ts"),
+      );
       git("add", ".");
       git("commit", "--quiet", "-m", "verified source");
       const parent = git("rev-parse", "HEAD");
@@ -1528,8 +1441,12 @@ it.each([
         }),
       );
       NodeFS.writeFileSync(
+        NodePath.join(directory, "jobs.json"),
+        JSON.stringify(checkJobNames.map((name) => ({ name, conclusion: "success" }))),
+      );
+      NodeFS.writeFileSync(
         NodePath.join(directory, "gh"),
-        '#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALLED"\njq "${5}" "$RUNS"\n',
+        '#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALLED"\ncase "$2" in */jobs*) cat "$JOBS" ;; *) cat "$RUNS" ;; esac\n',
         { mode: 0o755 },
       );
       const result = NodeChildProcess.spawnSync("bash", ["-c", step.run], {
@@ -1538,10 +1455,12 @@ it.each([
         env: {
           ...process.env,
           PATH: `${directory}:${process.env.PATH}`,
+          MATE_GH: "gh",
           GITHUB_SHA: tag,
           GITHUB_EVENT_NAME: "push",
           GITHUB_REPOSITORY: "zeropsio/mate",
           RUNS: NodePath.join(directory, "runs.json"),
+          JOBS: NodePath.join(directory, "jobs.json"),
           CALLED: NodePath.join(directory, "called"),
         },
       });
@@ -1551,7 +1470,7 @@ it.each([
       ).toBe(approved ? 0 : 1);
       if (approved)
         expect(result.stdout).toBe(
-          `CI verified ${green === "tag" ? tag : parent} for release ${tag} (run IDs: 7).\n`,
+          `releasable ${green === "tag" ? tag : parent}: run 7\nCI verified ${green === "tag" ? tag : parent} for release ${tag}.\n`,
         );
       else expect(result.stderr).toContain("run CI on this commit first");
     } finally {

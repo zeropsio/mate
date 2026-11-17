@@ -387,7 +387,7 @@ jobs:
           key: *hosted_modules_key
           lookup-only: true
 
-      # A main push always installs: the Linux install is main's lockfile policy check.
+      # A main push always installs to refresh the caches; Check owns the lockfile policy verdict.
       - name: Restore pnpm store
         uses: actions/cache/restore@v4
         with: *pnpm_store
@@ -401,11 +401,11 @@ jobs:
             pnpm-metadata-${{ runner.os }}-pnpm11-
 
       - name: Install dependencies
-        # The cache Check owns main's policy verification.
+        # Check owns the policy verdict on every event; this install trusts the lockfile.
         env:
           PNPM_CONFIG_FROZEN_LOCKFILE: "true"
           PNPM_CONFIG_CACHE_DIR: ${{ runner.temp }}/pnpm-metadata
-          PNPM_CONFIG_TRUST_LOCKFILE: "false"
+          PNPM_CONFIG_TRUST_LOCKFILE: "true"
         run: &full_dependencies vp install --frozen-lockfile
 
       - name: Save pnpm store
@@ -526,7 +526,7 @@ jobs:
         env:
           PNPM_CONFIG_FROZEN_LOCKFILE: "true"
           PNPM_CONFIG_CACHE_DIR: ${{ runner.temp }}/pnpm-metadata
-          PNPM_CONFIG_TRUST_LOCKFILE: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
+          PNPM_CONFIG_TRUST_LOCKFILE: "false"
         run: *full_dependencies
 
       - name: Check

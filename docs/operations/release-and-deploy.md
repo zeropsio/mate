@@ -49,7 +49,9 @@ How mate reaches users. Each step names the file that owns its detail.
   A `main` commit may be released once its newest `ci.yml` run on `main` has completed with every
   required job green (`checkJobIds` in `scripts/ci-blame.ts`, the checks Release Smoke's verdict
   demands); a red informative job (tests, smokes, mobile) does not hold it. A missing run, a run
-  still in progress and a required job not green are each refused with their own words.
+  still in progress and a required job not green are each refused with their own words. The
+  release workflow asks the same verdict (`node scripts/ci-blame.ts --release-verdict`), and the
+  lockfile policy check is part of `Check`.
   A source that changed no server artifact input since the last release (the sources the published
   artifact's sourcemaps name, plus the build tooling in `scripts/lib/server-artifact-inputs.ts`)
   cuts no release: the script prints `nothing to release` and exits 0; version-only edits never count.

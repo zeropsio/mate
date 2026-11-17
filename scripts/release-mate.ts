@@ -23,7 +23,7 @@ import * as NodePath from "node:path";
 import * as NodeSqlite from "node:sqlite";
 import * as Effect from "effect/Effect";
 import { readReleaseSource, VERSIONED_RELEASE_PACKAGES } from "@t3tools/shared/releaseSource";
-import { checkJobNames } from "./ci-blame.ts";
+import { ciRefusal, type WorkflowJob, type WorkflowRun } from "./ci-blame.ts";
 import { serverArtifactInputs } from "./lib/server-artifact-inputs.ts";
 
 /** The release workflow checks server == desktop and tag == server; web moves with them. */
@@ -226,41 +226,6 @@ const serverChangesSince = (repo: string, tag: string, from: string, to: string)
     NodeFS.rmSync(dir, { recursive: true, force: true });
   }
 };
-
-interface WorkflowRun {
-  readonly id: number;
-  readonly head_sha: string;
-  readonly head_branch: string;
-  readonly status: string;
-}
-
-interface WorkflowJob {
-  readonly name: string;
-  readonly conclusion: string | null;
-}
-
-/**
- * Why a source may not release, or undefined: its newest main CI run completed with every required
- * job (`checkJobNames`) green. The run's own conclusion also counts informative jobs, so it is not
- * read; a skipped required job is not green, as in Release Smoke's verdict.
- */
-export function ciRefusal(
-  runs: ReadonlyArray<WorkflowRun>,
-  sha: string,
-  jobsOf: (run: WorkflowRun) => ReadonlyArray<WorkflowJob>,
-): string | undefined {
-  const latest = runs.find((run) => run.head_sha === sha && run.head_branch === "main");
-  if (latest === undefined) return `source ${sha} has no main CI run`;
-  if (latest.status !== "completed") return `source ${sha} main CI is still ${latest.status}`;
-  const jobs = jobsOf(latest);
-  const red = checkJobNames.flatMap((name) => {
-    const conclusion = jobs.find((job) => job.name === name)?.conclusion;
-    return conclusion === "success" ? [] : [`${name} ${conclusion ?? "missing"}`];
-  });
-  return red.length === 0
-    ? undefined
-    : `source ${sha} main CI has required jobs not green: ${red.join(", ")}`;
-}
 
 interface Manifest {
   readonly version?: string;

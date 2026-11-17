@@ -9,8 +9,8 @@ import { Effect, FileSystem, Path, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { describe, expect, it } from "@effect/vitest";
 
+import { ciRefusal } from "./ci-blame.ts";
 import {
-  ciRefusal,
   bumpVersion,
   highestTag,
   nextVersion,
