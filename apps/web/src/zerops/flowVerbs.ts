@@ -199,18 +199,18 @@ export function useFlowVerbs(): FlowVerbs {
       if (board.pending.has(key)) return refused(VERB_ALREADY_RUNNING);
       publish(board, { pending: new Set(board.pending).add(key) });
       // A change's press, for every door to it: on its way, then its operation, then its end.
-      recordChangePress(registry, operations, verb, { pending: true, requestId: undefined, facts });
+      recordChangePress(registry, data, verb, { pending: true, requestId: undefined, facts });
       const done = () => {
         const next = new Set(board.pending);
         next.delete(key);
         publish(board, { pending: next });
-        recordChangePress(registry, operations, verb, { pending: false });
+        recordChangePress(registry, data, verb, { pending: false });
       };
       const { requestId, progress } = await operations.submit(intent(orgId)).catch((cause) => {
         done();
         throw cause;
       });
-      recordChangePress(registry, operations, verb, { requestId });
+      recordChangePress(registry, data, verb, { requestId });
       const reason =
         progress.stage === "refused"
           ? progress.reason

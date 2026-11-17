@@ -7,7 +7,7 @@
  * A surface reads only the changes it draws (`useChangeActs`'s scope): a chip its change, a card
  * its application, so a press elsewhere redraws nothing of it.
  *
- * Kept in memory for the account's operations. An ended merge's word goes when HQ's facts of the
+ * Kept in memory for the account's store. An ended merge's word goes when HQ's facts of the
  * change move since the press (`changeActStands`), or when its review is opened again.
  */
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
@@ -23,8 +23,7 @@ import {
 import { Atom, type AtomRegistry } from "effect/reactivity";
 import { useContext, useEffect } from "react";
 
-import { useAccountOperationsOptional, type AccountOperations } from "./accountOperations";
-import { useAccountDataOptional } from "./ZeropsAccountData";
+import { useAccountDataOptional } from "./accountData";
 
 type ChangeVerb = "merge" | "close" | "ask-merge";
 
@@ -55,13 +54,16 @@ export function changeActKey(groupId: string, repository: string, number: number
 const isChangeVerb = (kind: FlowVerb["kind"]): kind is ChangeVerb =>
   kind === "merge" || kind === "close" || kind === "ask-merge";
 
-const pressAtoms = new WeakMap<AccountOperations, Atom.Writable<PressMap>>();
+type Data = NonNullable<ReturnType<typeof useAccountDataOptional>>["data"];
 
-function pressesOf(operations: AccountOperations): Atom.Writable<PressMap> {
-  let atom = pressAtoms.get(operations);
+/** The presses of one account, by its store: a new account starts with none. */
+const pressAtoms = new WeakMap<Data, Atom.Writable<PressMap>>();
+
+function pressesOf(data: Data): Atom.Writable<PressMap> {
+  let atom = pressAtoms.get(data);
   if (atom === undefined) {
     atom = Atom.make<PressMap>(new Map()).pipe(Atom.keepAlive);
-    pressAtoms.set(operations, atom);
+    pressAtoms.set(data, atom);
   }
   return atom;
 }
@@ -72,13 +74,13 @@ function pressesOf(operations: AccountOperations): Atom.Writable<PressMap> {
  */
 export function recordChangePress(
   registry: AtomRegistry.AtomRegistry,
-  operations: AccountOperations,
+  data: Data,
   verb: FlowVerb,
   patch: Partial<ChangePress> | null,
 ): void {
   if (!isChangeVerb(verb.kind) || !("repository" in verb)) return;
   const kind = verb.kind;
-  const atom = pressesOf(operations);
+  const atom = pressesOf(data);
   const presses = registry.get(atom);
   const key = changeActKey(verb.groupId, verb.repository, verb.number);
   const entry = presses.get(key) ?? {};
@@ -101,25 +103,15 @@ function sameActs(left: ActMap, right: ActMap): boolean {
   return true;
 }
 
-type Data = NonNullable<ReturnType<typeof useAccountDataOptional>>["data"];
-
-const families = new WeakMap<
-  Atom.Writable<PressMap>,
-  WeakMap<Data, (scope: string) => Atom.Atom<ActMap>>
->();
+const families = new WeakMap<Data, (scope: string) => Atom.Atom<ActMap>>();
 
 /**
  * Acts by change key within `scope`: every change (""), an application's (`<groupId>/`), or one
  * change (its key).
  */
-function actsOf(operations: AccountOperations, data: Data): (scope: string) => Atom.Atom<ActMap> {
-  const presses = pressesOf(operations);
-  let byData = families.get(presses);
-  if (byData === undefined) {
-    byData = new WeakMap();
-    families.set(presses, byData);
-  }
-  let family = byData.get(data);
+function actsOf(data: Data): (scope: string) => Atom.Atom<ActMap> {
+  const presses = pressesOf(data);
+  let family = families.get(data);
   if (family === undefined) {
     family = Atom.family((scope: string) =>
       Atom.make((get): ActMap => {
@@ -149,7 +141,7 @@ function actsOf(operations: AccountOperations, data: Data): (scope: string) => A
         return acts;
       }).pipe(Atom.withEquality(sameActs)),
     );
-    byData.set(data, family);
+    families.set(data, family);
   }
   return family;
 }
@@ -166,7 +158,6 @@ export interface ChangeActScope {
 
 /** The acts of the changes in `scope` (every change where none is given); none outside an account. */
 export function useChangeActs(scope?: ChangeActScope): ActMap {
-  const operations = useAccountOperationsOptional();
   const data = useAccountDataOptional()?.data;
   const key =
     scope === undefined
@@ -176,11 +167,7 @@ export function useChangeActs(scope?: ChangeActScope): ActMap {
         : scope.repository === undefined || scope.number === undefined
           ? `${scope.appId}/`
           : changeActKey(scope.appId, scope.repository, scope.number);
-  const acts = useAtomValue(
-    operations === null || data === undefined || key === null
-      ? NO_ACTS
-      : actsOf(operations, data)(key),
-  );
+  const acts = useAtomValue(data === undefined || key === null ? NO_ACTS : actsOf(data)(key));
   // A surface drawn with a stand-in for the atoms (a markdown preview's) reads no acts.
   return acts instanceof Map ? acts : EMPTY_ACTS;
 }
@@ -211,10 +198,10 @@ export function useMergeEndForgottenOnOpen(
   repository: string,
   number: number,
 ): void {
-  const operations = useAccountOperationsOptional();
+  const data = useAccountDataOptional()?.data;
   const registry = useContext(RegistryContext);
   useEffect(() => {
-    if (operations === null) return;
-    recordChangePress(registry, operations, { kind: "merge", groupId, repository, number }, null);
-  }, [groupId, number, operations, registry, repository]);
+    if (data === undefined) return;
+    recordChangePress(registry, data, { kind: "merge", groupId, repository, number }, null);
+  }, [data, groupId, number, registry, repository]);
 }
