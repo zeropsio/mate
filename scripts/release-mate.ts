@@ -6,7 +6,8 @@
  * release, pushes only that tag, then waits for CI and bundle verification before
  * `releases/latest/download/stable.json` serves the new version with the checksum the release's
  * `SHA256SUMS` lists. A source that changed no input of the server artifact since the last release
- * prints `nothing to release` and cuts nothing.
+ * prints `nothing to release` and cuts nothing. A run that may cut a release holds the clone's
+ * release lock until it ends; a second such run is refused.
  *
  *   node scripts/release-mate.ts --from-sha S  release a green source commit
  *   node scripts/release-mate.ts --minor    the client's compatibility floor rises
@@ -18,6 +19,7 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
+import * as NodeSqlite from "node:sqlite";
 import * as Effect from "effect/Effect";
 import { readReleaseSource, VERSIONED_RELEASE_PACKAGES } from "@t3tools/shared/releaseSource";
 import { serverArtifactInputs } from "./lib/server-artifact-inputs.ts";
@@ -94,14 +96,11 @@ export function releaseMessage(version: string, notes: string): string {
   return `chore(release): mate ${version}\n\n${notes}`;
 }
 
-// A release's range can name tens of thousands of paths (a vendored tree leaving the repository
-// did): more than execFileSync's default megabyte.
 const git = (cwd: string, ...args: ReadonlyArray<string>) =>
   NodeChildProcess.execFileSync("git", args, {
     cwd,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "inherit"],
-    maxBuffer: 256 * 1024 * 1024,
   }).trim();
 
 interface PublishedRelease {
@@ -139,16 +138,6 @@ const sourceOf = (repo: string, ref: string) => {
   return source;
 };
 
-/** The changed paths that are server artifact inputs; an input is a file or a directory. */
-export function serverInputChanges(
-  changed: ReadonlyArray<string>,
-  inputs: ReadonlyArray<string>,
-): ReadonlyArray<string> {
-  return changed.filter((path) =>
-    inputs.some((input) => path === input || path.startsWith(`${input}/`)),
-  );
-}
-
 // A versioned package compares without its version, which alone never makes a release.
 const withoutVersion = (repo: string, ref: string, path: string) =>
   git(repo, "show", `${ref}:${path}`).replace(/"version": "[^"]*"/, "");
@@ -169,10 +158,23 @@ const serverChangesSince = (repo: string, tag: string, from: string, to: string)
     );
     NodeChildProcess.execFileSync("tar", ["-xzf", NodePath.join(dir, asset), "-C", dir]);
     const inputs = serverArtifactInputs(NodePath.join(dir, "package", "dist"));
-    const changed = git(repo, "diff", "--name-only", "--no-renames", from, to)
-      .split("\n")
+    // git matches the inputs: a literal pathspec naming a directory matches everything below it,
+    // so the read is bounded by the inputs, not by everything the range touched.
+    const changed = git(
+      repo,
+      "--literal-pathspecs",
+      "diff",
+      "--name-only",
+      "--no-renames",
+      "-z",
+      from,
+      to,
+      "--",
+      ...inputs,
+    )
+      .split("\0")
       .filter((path) => path !== "");
-    return serverInputChanges(changed, inputs).filter(
+    return changed.filter(
       (path) =>
         !VERSIONED_PACKAGES.includes(path) ||
         withoutVersion(repo, from, path) !== withoutVersion(repo, to, path),
@@ -271,6 +273,32 @@ async function waitForManifest(repo: string, version: string, releaseSHA: string
   );
 }
 
+// SQLite's busy result code: another connection holds the write lock.
+const SQLITE_BUSY = 5;
+
+/**
+ * The clone's release lock: a SQLite write transaction on a file in the git common dir, which the
+ * main checkout and its linked worktrees share. The kernel drops it when the process dies, so no
+ * stale lock outlives a run; another clone or machine is not covered. The caller keeps the handle
+ * referenced until it closes it: a collected handle closes the file and drops the lock.
+ */
+const takeReleaseLock = (repo: string): NodeSqlite.DatabaseSync => {
+  const path = NodePath.join(
+    git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir"),
+    "mate-release.lock",
+  );
+  const lock = new NodeSqlite.DatabaseSync(path);
+  try {
+    lock.exec("BEGIN IMMEDIATE");
+  } catch (error) {
+    lock.close();
+    if ((error as { errcode?: unknown }).errcode === SQLITE_BUSY)
+      throw new Error(`another release holds ${path}; nothing cut`);
+    throw error;
+  }
+  return lock;
+};
+
 async function main(args: ReadonlySet<string>): Promise<void> {
   const repo = git(process.cwd(), "rev-parse", "--show-toplevel");
   git(repo, "fetch", "--quiet", "origin", "main", "--tags");
@@ -292,129 +320,138 @@ async function main(args: ReadonlySet<string>): Promise<void> {
     throw new Error("--from-sha requires a full commit SHA");
   git(repo, "merge-base", "--is-ancestor", source, mainHead);
   const query = args.has("--would-release");
-  if (!query) {
-    const runs = github<{ workflow_runs: WorkflowRun[] }>(
-      repo,
-      `repos/${REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${source}&branch=main&per_page=10`,
-    );
-    if (!greenSource(runs.workflow_runs, source))
-      throw new Error(`source ${source} has no green main CI`);
-  }
-  const releases: PublishedRelease[] = [];
-  for (let page = 1; ; page++) {
-    const batch = github<PublishedRelease[]>(
-      repo,
-      `repos/${REPOSITORY}/releases?per_page=100&page=${page}`,
-      "[.[] | {tag_name, draft, prerelease}]",
-    );
-    releases.push(
-      ...batch.filter(
-        (release) =>
-          !release.draft && !release.prerelease && parseVersion(release.tag_name) !== undefined,
-      ),
-    );
-    if (batch.length < 100) break;
-  }
-  const lastTag = releases
-    .map((release) => release.tag_name)
-    .toSorted((a, b) => compare(parseVersion(a)!, parseVersion(b)!))
-    .at(-1);
-  const lastSource = lastTag === undefined ? undefined : sourceOf(repo, lastTag);
-  if (lastSource === source) {
-    if (query) {
-      console.log(`already released: ${lastTag} includes source ${source}`);
-      console.log("no-release");
-      return;
-    }
-    if (!args.has("--dry-run"))
-      await waitForManifest(
-        repo,
-        formatVersion(parseVersion(lastTag!)!),
-        git(repo, "rev-parse", `${lastTag}^{commit}`),
-      );
-    console.log(`already released: ${lastTag} includes source ${source}`);
-    return;
-  }
-  if (lastSource !== undefined) git(repo, "merge-base", "--is-ancestor", lastSource, source);
-  // Every release restarts every Mate; one whose artifact carries nothing new is not cut. A
-  // minor release changes what the artifact declares, so it is cut whatever else changed.
-  if (lastTag !== undefined && lastSource !== undefined && !args.has("--minor")) {
-    const changes = serverChangesSince(repo, lastTag, lastSource, source);
-    if (changes.length === 0) {
-      console.log(
-        `nothing to release: no server artifact input changed since ${lastTag} (source ${lastSource})`,
-      );
-      if (query) console.log("no-release");
-      return;
-    }
-    console.log(
-      `server artifact inputs changed since ${lastTag}: ${changes.length} (${changes.slice(0, 5).join(", ")}${changes.length > 5 ? ", …" : ""})`,
-    );
-  }
-  if (query) {
-    console.log("release");
-    return;
-  }
-  // A throwaway tree: the release never touches a checkout someone is working in.
-  const tree = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-release-"));
-  git(repo, "worktree", "add", "--quiet", "--detach", tree, source);
+  // One release at a time per clone: the lock is held until the run ends, the manifest wait included.
+  const lock = query || args.has("--dry-run") ? undefined : takeReleaseLock(repo);
   try {
-    const versions = VERSIONED_PACKAGES.map(
-      (file) =>
-        (JSON.parse(NodeFS.readFileSync(NodePath.join(tree, file), "utf8")) as { version: string })
-          .version,
-    );
-    const current = versions[0]!;
-    if (versions.some((version) => version !== current)) {
-      throw new Error(`the three versions differ: ${versions.join(", ")}`);
+    if (!query) {
+      const runs = github<{ workflow_runs: WorkflowRun[] }>(
+        repo,
+        `repos/${REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${source}&branch=main&per_page=10`,
+      );
+      if (!greenSource(runs.workflow_runs, source))
+        throw new Error(`source ${source} has no green main CI`);
     }
-    const published = highestTag(git(tree, "ls-remote", "--tags", "origin", "refs/tags/v*"));
-    const next = nextVersion(current, published, args.has("--minor") ? "minor" : "patch");
-    const range = lastSource === undefined ? "HEAD" : `${lastSource}..HEAD`;
-    const notes = releaseNotes(
-      git(tree, "log", "--first-parent", "--reverse", `--format=${NOTES_LOG_FORMAT}`, range),
-    );
-    if (notes === "")
-      throw new Error(`nothing reached main since the last release ${lastSource?.slice(0, 9)}`);
-    const message = releaseMessage(next, notes);
-    console.log(
-      `source: ${source} (main: ${mainHead}); previous published: ${lastTag ?? "none"}; tag-only release\n${current} → ${next} (published: ${published ?? "none"})\n\n${message}\n`,
-    );
-    // Historical green commits predate this gate and cannot safely publish detached releases.
-    const workflow = NodeFS.readFileSync(
-      NodePath.join(tree, ".github/workflows/release.yml"),
-      "utf8",
-    );
-    if (!workflow.includes("  verify:") || !workflow.includes("needs: [build, verify]")) {
-      throw new Error(
-        `source ${source} predates the release CI publication gate; choose a later green SHA`,
+    const releases: PublishedRelease[] = [];
+    for (let page = 1; ; page++) {
+      const batch = github<PublishedRelease[]>(
+        repo,
+        `repos/${REPOSITORY}/releases?per_page=100&page=${page}`,
+        "[.[] | {tag_name, draft, prerelease}]",
+      );
+      releases.push(
+        ...batch.filter(
+          (release) =>
+            !release.draft && !release.prerelease && parseVersion(release.tag_name) !== undefined,
+        ),
+      );
+      if (batch.length < 100) break;
+    }
+    const lastTag = releases
+      .map((release) => release.tag_name)
+      .toSorted((a, b) => compare(parseVersion(a)!, parseVersion(b)!))
+      .at(-1);
+    const lastSource = lastTag === undefined ? undefined : sourceOf(repo, lastTag);
+    if (lastSource === source) {
+      if (query) {
+        console.log(`already released: ${lastTag} includes source ${source}`);
+        console.log("no-release");
+        return;
+      }
+      if (!args.has("--dry-run"))
+        await waitForManifest(
+          repo,
+          formatVersion(parseVersion(lastTag!)!),
+          git(repo, "rev-parse", `${lastTag}^{commit}`),
+        );
+      console.log(`already released: ${lastTag} includes source ${source}`);
+      return;
+    }
+    if (lastSource !== undefined) git(repo, "merge-base", "--is-ancestor", lastSource, source);
+    // Every release restarts every Mate; one whose artifact carries nothing new is not cut. A
+    // minor release changes what the artifact declares, so it is cut whatever else changed.
+    if (lastTag !== undefined && lastSource !== undefined && !args.has("--minor")) {
+      const changes = serverChangesSince(repo, lastTag, lastSource, source);
+      if (changes.length === 0) {
+        console.log(
+          `nothing to release: no server artifact input changed since ${lastTag} (source ${lastSource})`,
+        );
+        if (query) console.log("no-release");
+        return;
+      }
+      console.log(
+        `server artifact inputs changed since ${lastTag}: ${changes.length} (${changes.slice(0, 5).join(", ")}${changes.length > 5 ? ", …" : ""})`,
       );
     }
-    if (args.has("--dry-run")) return;
-
-    for (const file of VERSIONED_PACKAGES) {
-      const path = NodePath.join(tree, file);
-      NodeFS.writeFileSync(path, bumpVersion(NodeFS.readFileSync(path, "utf8"), current, next));
+    if (query) {
+      console.log("release");
+      return;
     }
-    git(tree, "add", ...VERSIONED_PACKAGES);
-    // The release worktree shares installed tooling so the normal commit hooks can run.
-    NodeFS.symlinkSync(
-      NodePath.join(repo, "node_modules"),
-      NodePath.join(tree, "node_modules"),
-      "dir",
-    );
-    git(tree, "commit", "--quiet", "-m", message);
-    git(tree, "tag", "-a", `v${next}`, "-m", `mate ${next}`);
-    // Exactly this tag: the fork holds upstream's tags, which origin must never receive.
-    git(tree, "push", "--quiet", "origin", `refs/tags/v${next}`);
-    console.log(`pushed only v${next}; waiting for release CI and stable.json…`);
-    await waitForManifest(repo, next, git(tree, "rev-parse", "HEAD"));
-    console.log(`released: stable.json serves ${next}, its sha256 matches SHA256SUMS`);
+    // A throwaway tree: the release never touches a checkout someone is working in.
+    const tree = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-release-"));
+    git(repo, "worktree", "add", "--quiet", "--detach", tree, source);
+    try {
+      const versions = VERSIONED_PACKAGES.map(
+        (file) =>
+          (
+            JSON.parse(NodeFS.readFileSync(NodePath.join(tree, file), "utf8")) as {
+              version: string;
+            }
+          ).version,
+      );
+      const current = versions[0]!;
+      if (versions.some((version) => version !== current)) {
+        throw new Error(`the three versions differ: ${versions.join(", ")}`);
+      }
+      const published = highestTag(git(tree, "ls-remote", "--tags", "origin", "refs/tags/v*"));
+      const next = nextVersion(current, published, args.has("--minor") ? "minor" : "patch");
+      const range = lastSource === undefined ? "HEAD" : `${lastSource}..HEAD`;
+      const notes = releaseNotes(
+        git(tree, "log", "--first-parent", "--reverse", `--format=${NOTES_LOG_FORMAT}`, range),
+      );
+      if (notes === "")
+        throw new Error(`nothing reached main since the last release ${lastSource?.slice(0, 9)}`);
+      const message = releaseMessage(next, notes);
+      console.log(
+        `source: ${source} (main: ${mainHead}); previous published: ${lastTag ?? "none"}; tag-only release\n${current} → ${next} (published: ${published ?? "none"})\n\n${message}\n`,
+      );
+      // Historical green commits predate this gate and cannot safely publish detached releases.
+      const workflow = NodeFS.readFileSync(
+        NodePath.join(tree, ".github/workflows/release.yml"),
+        "utf8",
+      );
+      if (!workflow.includes("  verify:") || !workflow.includes("needs: [build, verify]")) {
+        throw new Error(
+          `source ${source} predates the release CI publication gate; choose a later green SHA`,
+        );
+      }
+      if (args.has("--dry-run")) return;
+
+      for (const file of VERSIONED_PACKAGES) {
+        const path = NodePath.join(tree, file);
+        NodeFS.writeFileSync(path, bumpVersion(NodeFS.readFileSync(path, "utf8"), current, next));
+      }
+      git(tree, "add", ...VERSIONED_PACKAGES);
+      // The release worktree shares installed tooling so the normal commit hooks can run.
+      NodeFS.symlinkSync(
+        NodePath.join(repo, "node_modules"),
+        NodePath.join(tree, "node_modules"),
+        "dir",
+      );
+      git(tree, "commit", "--quiet", "-m", message);
+      git(tree, "tag", "-a", `v${next}`, "-m", `mate ${next}`);
+      // Exactly this tag: the fork holds upstream's tags, which origin must never receive.
+      git(tree, "push", "--quiet", "origin", `refs/tags/v${next}`);
+      console.log(`pushed only v${next}; waiting for release CI and stable.json…`);
+      await waitForManifest(repo, next, git(tree, "rev-parse", "HEAD"));
+      console.log(`released: stable.json serves ${next}, its sha256 matches SHA256SUMS`);
+    } finally {
+      const modules = NodePath.join(tree, "node_modules");
+      if (NodeFS.existsSync(modules)) NodeFS.unlinkSync(modules);
+      git(tree, "restore", "--staged", "--worktree", ...VERSIONED_PACKAGES);
+      git(repo, "worktree", "remove", tree);
+    }
   } finally {
-    const modules = NodePath.join(tree, "node_modules");
-    if (NodeFS.existsSync(modules)) NodeFS.unlinkSync(modules);
-    git(tree, "restore", "--staged", "--worktree", ...VERSIONED_PACKAGES);
-    git(repo, "worktree", "remove", tree);
+    lock?.close();
   }
 }
 
