@@ -19,6 +19,8 @@ import {
   accountReadsAtom,
   mateLink as mateLinkProjection,
   hqMatePresenceAtom,
+  hqProjectPersonAtom,
+  mateAttentionAtom,
   shownAttentionProjectsAtom,
 } from "@t3tools/client-runtime/data";
 import { useCallback, useMemo, useState } from "react";
@@ -147,9 +149,9 @@ export function useLastKnownMateWords(
 }
 
 /**
- * Whether a Mate's conversations have been read — HQ told of them, or its connected environment's
- * shell arrived — so a Mate with none has nothing asked yet, and its row may say so without taking
- * it back.
+ * Whether a Mate's row may say "Nothing asked yet" without taking it back: HQ's overview names
+ * its chats, its attention value is known and HQ's person facts of its project are read — or its
+ * connected environment's shell arrived. Until then the row's line stays empty.
  */
 export function useMateConversationsRead(): (candidate: ZeropsCandidate) => boolean {
   const read = useAtomValue(environmentsWithSnapshotAtom);
@@ -166,13 +168,20 @@ export function useMateConversationsRead(): (candidate: ZeropsCandidate) => bool
 }
 
 /**
- * The Mates whose main chat HQ's overview names, as one key: it changes when one gains or loses
- * it, not on every word HQ relays.
+ * The Mates HQ told everything that outranks "Nothing asked yet" — its overview names their main
+ * chat, their attention value is known and their project's person facts are read — as one key: it
+ * changes when one gains or loses that, not on every word HQ relays.
  */
 const hqMatesWithMainAtom = Atom.make((get) => {
   const ids: string[] = [];
   for (const [projectId, mate] of Object.entries(get(hqMainChatsAtom))) {
-    if (mate.read) ids.push(projectId);
+    if (
+      mate.read &&
+      get(mateAttentionAtom(projectId)).attention !== null &&
+      get(hqProjectPersonAtom(projectId))?.everSignedIn !== undefined
+    ) {
+      ids.push(projectId);
+    }
   }
   return ids.join("\n");
 }).pipe(Atom.withLabel("hq-mates-with-main"));

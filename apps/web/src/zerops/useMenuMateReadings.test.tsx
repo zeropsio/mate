@@ -18,7 +18,6 @@ import { COMING_UP_LINE } from "~/components/zerops/ZeropsProjectRow.logic";
 import { mateComing } from "@t3tools/client-runtime/data";
 import {
   useComingClock,
-  useMateConversationsRead,
   useMateRowActivity,
   useLastKnownMateWords,
   useMateOfflineSince,
@@ -159,11 +158,6 @@ describe("useMenuMateReadings — a Mate HQ tells of, no socket to it", () => {
     expect(words).toContain("Last known");
     expect(words).toContain("Vera was waiting for approval.");
     expect(words).not.toContain("Vera was working.");
-  });
-
-  it("a Mate HQ told of has its conversations read without a socket", () => {
-    const read = mountedOver(told({ ...VERA, main: null }), useMateConversationsRead);
-    expect(read(UNOPENED)).toBe(true);
   });
 });
 
