@@ -14941,6 +14941,16 @@ a.message-file:focus-visible {
   }
 }
 
+/* An account's first run: the overview as a Mate's stage stands (`MateEmptyStateView`), its face
+   at the seat the first Mate's takes a press later. */
+.first-run {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: calc(100svh - 96px);
+  padding-top: max(0px, calc(50svh - 185px));
+}
+
 /* A stop's one way on, and a stage's press: centred under the sentence. */
 .arrival-acts {
   display: flex;
