@@ -371,6 +371,15 @@ export {
   type FlowVerb,
 } from "./projectFlow.ts";
 export {
+  changeActBusy,
+  changeActOf,
+  changeActWords,
+  worksOnChange,
+  type ChangeAct,
+  type ChangeActWords,
+  type ChangeVerbRead,
+} from "./changeAct.ts";
+export {
   ASKED,
   ASK_TO_MERGE,
   TAKE_ASK_BACK,

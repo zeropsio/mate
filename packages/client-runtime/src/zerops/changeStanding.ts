@@ -4,6 +4,7 @@
  * its review, the menu, the composer's top, the project's page — says it by this one rule, so no
  * surface tells a person who cannot merge to review or merge it.
  */
+import type { ChangeAct } from "./changeAct.ts";
 import type { HqMergeAsk } from "@t3tools/shared/hqChanges";
 
 import type { FlowPullRequest } from "./projectFlow.ts";
@@ -179,13 +180,21 @@ export interface ChangeStandingRead {
    * to them — it waits on them again, whatever its standing — until they open its review.
    */
   readonly comment?: string | undefined;
+  /**
+   * What is being done to it right now (`changeActOf`): its merge on its way or just ended, a close
+   * or an ask on its way. Every door to it says this before its standing.
+   */
+  readonly act?: ChangeAct | undefined;
 }
 
 /** A change's {@link ChangeStandingRead}, by the application it is of. */
 export type ChangeStandingOf = (
   appId: string | undefined,
   pull: Partial<
-    Pick<FlowPullRequest, "mergeAsk" | "lastComment" | "mateProjectId" | "repository" | "number">
+    Pick<
+      FlowPullRequest,
+      "mergeAsk" | "lastComment" | "mateProjectId" | "repository" | "number" | "headSha"
+    >
   >,
 ) => ChangeStandingRead;
 

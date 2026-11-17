@@ -37,6 +37,9 @@
  * @module mateNextStep
  */
 
+import type { ConversationWorkingOn } from "@t3tools/contracts";
+
+import { changeActBusy, changeActWords, worksOnChange, type ChangeAct } from "./changeAct.ts";
 import type { ChangeStanding, ChangeStandingRead } from "./changeStanding.ts";
 import {
   byNewest,
@@ -75,6 +78,8 @@ export interface MateNextStepLine {
    * to merge", "Ready", "Waiting for Ada K. or Sam R."; absent on today's words.
    */
   readonly says?: string | undefined;
+  /** What is being done to it now (`changeActOf`): said in place of its standing, its press quiet. */
+  readonly act?: ChangeAct | undefined;
 }
 
 /**
@@ -116,6 +121,11 @@ export type MateNextStep =
       /** The leading change's {@link MateNextStepStanding}, where it merges. */
       readonly standing?: MateNextStepStanding | undefined;
       /**
+       * What is being done to the leading change now, where one change is listed: its merge on its
+       * way ("Merging #7…"), just merged, refused ("Couldn't merge #7"), or its Mate fixing it.
+       */
+      readonly act?: ChangeAct | undefined;
+      /**
        * Nothing listed asks the person: every change merges and waits on the people who merge. The
        * strip says so quietly, with no press of its own.
        */
@@ -149,6 +159,8 @@ export function mateNextStep(input: {
    * application); absent, every change is theirs to review, as without a limit on who merges.
    */
   readonly standingOf?: ((pull: FlowPullRequest) => ChangeStandingRead) | undefined;
+  /** What the Mate's conversations work on (`mateWorkingOnAtom`): a change it fixes says so. */
+  readonly workingOn?: ReadonlyArray<ConversationWorkingOn> | undefined;
 }): MateNextStep {
   const { pullRequests, mateProjectId } = input;
   if (pullRequests === undefined || mateProjectId === undefined) return NONE;
@@ -179,6 +191,14 @@ export function mateNextStep(input: {
   if (pull === undefined) return NONE;
   const name = input.mateName ?? "This Mate";
   const reads = new Map(listed.map((entry) => [entry, input.standingOf?.(entry)]));
+  // What is being done to each now: a press on its way, else its Mate fixing it, else how its merge
+  // ended (`changeActOf`'s order). A change on its way waits on HQ or its Mate, never on the person.
+  const actOf = (entry: FlowPullRequest): ChangeAct | undefined => {
+    const pressed = reads.get(entry)?.act;
+    if (changeActBusy(pressed) || !worksOnChange(input.workingOn, entry)) return pressed;
+    return { kind: "fixing", mateName: name };
+  };
+  const busy = (entry: FlowPullRequest) => changeActBusy(actOf(entry));
   // A change that merges, by whose press it waits for; one that does not waits on its Mate or HQ.
   const standingOf = (entry: FlowPullRequest): MateNextStepStanding | undefined => {
     const kind = merges(entry) ? reads.get(entry)?.standing.kind : undefined;
@@ -191,7 +211,9 @@ export function mateNextStep(input: {
     (entry) => standingOf(entry) === "waiting" && commentOf(entry) === undefined,
   );
   const ready = listed.filter((entry) => standingOf(entry) === "to-ask");
-  const waiting = listed.filter(merges).length - asked.length;
+  const waiting = listed.filter(
+    (entry) => merges(entry) && !busy(entry) && !asked.includes(entry),
+  ).length;
   // The person cannot merge here (`ViewerMerges` "held"), whatever stops each change.
   const held = listed.some((entry) => {
     const kind = reads.get(entry)?.standing.kind;
@@ -210,24 +232,30 @@ export function mateNextStep(input: {
   const lead = standingOf(pull);
   const standing = {
     ...(lead === undefined ? {} : { standing: lead }),
-    ...(asked.length === listed.length ? { quiet: true as const } : {}),
+    ...(listed.every((entry) => asked.includes(entry) || busy(entry))
+      ? { quiet: true as const }
+      : {}),
   };
-  if (listed.length === 1 && merges(pull)) {
-    // The change goes by its title, on the line under this one.
+  const leadAct = actOf(pull);
+  if (listed.length === 1 && (merges(pull) || leadAct !== undefined)) {
+    // The change goes by its title, on the line under this one — or, refused, why.
     return {
       kind: "review",
       pull,
       title:
-        commentOf(pull) !== undefined
-          ? `${commentOf(pull) ?? ""} on ${name}'s change`
-          : lead === "asked-of-me"
-            ? `${reads.get(pull)?.asker ?? "Someone"} asks you to merge ${name}'s change`
-            : who,
-      detail: pull.title,
+        leadAct !== undefined
+          ? changeActWords(leadAct, pull.number).title
+          : commentOf(pull) !== undefined
+            ? `${commentOf(pull) ?? ""} on ${name}'s change`
+            : lead === "asked-of-me"
+              ? `${reads.get(pull)?.asker ?? "Someone"} asks you to merge ${name}'s change`
+              : who,
+      detail: leadAct?.kind === "merge-failed" ? leadAct.reason : pull.title,
       lines: [],
       more: 0,
       waiting,
       ...standing,
+      ...(leadAct === undefined ? {} : { act: leadAct }),
     };
   }
   return {
@@ -237,6 +265,8 @@ export function mateNextStep(input: {
     detail: pull.title,
     lines: listed.slice(0, MATE_NEXT_STEP_LINES).map((entry) => {
       const line = { pull: entry, label: sidebarChangeLabel(entry, pullRequests) };
+      const act = actOf(entry);
+      if (act !== undefined) return { ...line, act };
       if (!merges(entry)) return { ...line, verdict: notMerging(entry, input) };
       const kind = standingOf(entry);
       const says = commentOf(entry) ?? reads.get(entry)?.word;

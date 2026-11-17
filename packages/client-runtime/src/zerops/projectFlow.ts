@@ -23,6 +23,7 @@
  * @module projectFlow
  */
 
+import { changeActWords, type ChangeAct } from "./changeAct.ts";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import {
   type ChangeReceipt,
@@ -769,8 +770,19 @@ export function changeState(pull: {
  */
 export function changeStateFor(
   pull: Parameters<typeof changeState>[0],
-  standing: { readonly word: string; readonly comment?: string | undefined } | undefined,
+  standing:
+    | {
+        readonly word: string;
+        readonly comment?: string | undefined;
+        readonly act?: ChangeAct | undefined;
+      }
+    | undefined,
 ): ChangeState | undefined {
+  // What is being done to it now comes first: a merge on its way is no longer "Ready to merge".
+  if (standing?.act !== undefined) {
+    const { word, tone } = changeActWords(standing.act, pull.number);
+    return { word, tone };
+  }
   const state = changeState(pull);
   // A comment its person has not read is the news of a change nothing stops: it is theirs again.
   return standing === undefined || state?.word !== READY_TO_MERGE

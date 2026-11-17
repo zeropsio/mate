@@ -27,6 +27,7 @@ import { problemPresentation, problemsFix } from "./hq/problems.ts";
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 
 import type { AppDeployRollout } from "./hq/deployHandover.logic.ts";
+import { worksOnChange } from "./changeAct.ts";
 import type { MergeabilityKind } from "./changeMergeability.ts";
 import type { GroupEnvironmentTier } from "./groupEnvironments.ts";
 import {
@@ -1183,13 +1184,7 @@ function mateAtIt(
   model: ReviewModel & Pick<ChangeReviewModel, "standing" | "reviewRelease">,
 ): ReviewModel & Pick<ChangeReviewModel, "standing" | "reviewRelease"> {
   const { pull } = input;
-  const working = (input.mateWorkingOn ?? []).some(
-    (on) =>
-      on.kind === "change" &&
-      on.repo === pull.repository &&
-      on.number === pull.number &&
-      (on.head === undefined || on.head === pull.headSha),
-  );
+  const working = worksOnChange(input.mateWorkingOn, pull);
   const press = input.press ?? { kind: "idle" };
   const asking = input.asking ?? { kind: "idle" };
   if (!working || press.kind !== "idle" || asking.kind === "running") return model;
