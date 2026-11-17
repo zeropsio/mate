@@ -46,15 +46,16 @@ the dependent code are not repeated here.
   dig +short A "$ZONE"; dig +short AAAA "$ZONE"
   ```
 
-- **Putting a project's routings in place puts every waiting change live, anybody's; with none
-  waiting the platform refuses with `nothingToSync`**, domain and port routings alike
-  (2026-10-14). Dependency:
-  `packages/client-runtime/src/data/operations/executors/addressWrites.ts` (`putInPlace`). On a
-  project whose routings all read `isSynced` (the commands change nothing there):
+- **A public routing needs no publishing step: it is in place as soon as it is created, and its
+  rows carry no `isSynced`** (2026-11-17: the platform dropped `sync-public-*-routing`, and
+  app.zerops.io's bundle no longer calls it). Dependencies:
+  `packages/client-runtime/src/data/families/publicRouting.ts` (the row shape) and
+  `packages/client-runtime/src/data/projections/addresses.ts` (a domain's face from its DNS and
+  certificate states only):
 
   ```sh
-  for kind in http port; do curl -sS -X PUT -H "Authorization: Bearer $TOKEN" \
-    "$API/project/$PROJECT/sync-public-$kind-routing" | jq '.error.code'; done
+  curl -fsS -H "Authorization: Bearer $TOKEN" "$API/project/$PROJECT/public-http-routing" \
+    | jq '[.list[] | has("isSynced")] | any'
   ```
 
 - **Billing lists each project's own IPv4 add-on with its state and price** (`metricId`
