@@ -75,7 +75,11 @@ import {
   type KnownSurface,
   type Shown,
 } from "@t3tools/client-runtime/zerops/knowledge";
-import { heldCandidates, listsNoProject } from "@t3tools/client-runtime/zerops/projections";
+import {
+  heldCandidates,
+  listsNoProject,
+  STILL_READING_HOLD_MS,
+} from "@t3tools/client-runtime/zerops/projections";
 import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
 import { newMateView, useAddMate } from "~/zerops/newMate";
 import { useSetUpEnvironment } from "~/zerops/setUpEnvironment";
@@ -460,7 +464,8 @@ interface ProjectsListingNotice {
  * §3.4): a placeholder while they are unread or being read, the cause when the
  * read failed, "Still reading…" over a partial list, and nothing over a
  * current complete one, nor over one a lapse withholds, which the app's one banner
- * names. Copy, delay and affordance are `knownPresentation`'s.
+ * names. Copy, delay and affordance are `knownPresentation`'s; "Still reading…" waits the
+ * menu's hold (`STILL_READING_HOLD_MS`), so the re-read after a delete never flashes it.
  */
 export function projectsListingNotice(
   listing: Shown<ReadonlyArray<ZeropsCandidate>>,
@@ -486,10 +491,15 @@ export function projectsListingNotice(
         }
       : {}),
   });
-  if (presentation.message === null) return null;
+  const { message } = presentation;
+  if (message === null) return null;
+  const partial = listing.state === "known" && listing.coverage !== "complete";
   return {
     region: presentation.region,
-    message: presentation.message,
+    message:
+      partial && message.tone === "quiet"
+        ? { ...message, afterMs: STILL_READING_HOLD_MS }
+        : message,
     affordance: presentation.affordance,
   };
 }

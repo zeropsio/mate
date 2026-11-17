@@ -8,6 +8,7 @@ import {
 } from "@t3tools/client-runtime/zerops/data";
 import type { Invalidation, Known } from "@t3tools/client-runtime/zerops/knowledge";
 import { INVALIDATION_COALESCE_MS } from "@t3tools/client-runtime/zerops/knowledge/invalidation";
+import { STILL_READING_HOLD_MS } from "@t3tools/client-runtime/zerops/projections";
 import * as DateTime from "effect/DateTime";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -447,7 +448,7 @@ describe("the projects listing", () => {
   it("says it is still reading over a partial list, never nothing", () => {
     expect(projectsListingNotice(held("partial"), 0)).toEqual({
       region: "value",
-      message: { text: "Still reading…", afterMs: 0, tone: "quiet" },
+      message: { text: "Still reading…", afterMs: STILL_READING_HOLD_MS, tone: "quiet" },
       affordance: null,
     });
   });
