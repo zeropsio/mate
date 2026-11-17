@@ -21,6 +21,7 @@ import {
 } from "react";
 
 import {
+  changeActBusy,
   REVIEW_LABEL,
   standingPressLabel,
   standingWaits,
@@ -369,7 +370,13 @@ function ReviewTag({
             />
           }
         >
-          <GitMergeIcon aria-hidden="true" className="menu-tag-icon" />
+          {read.busy === true ? (
+            <span aria-hidden="true" className="menu-tag-icon">
+              <Spinner role="presentation" size="xs" />
+            </span>
+          ) : (
+            <GitMergeIcon aria-hidden="true" className="menu-tag-icon" />
+          )}
           <span className="menu-tag-word">{read.word}</span>
           <TagCount count={read.count} />
         </TooltipTrigger>
@@ -611,8 +618,12 @@ function ReviewListItem({
   // people who merge — a plain way in, on a row as quiet as a colleague's.
   // A colleague's own change is theirs to merge or to ask for: the same plain way in.
   // One somebody commented on is the person's to read: its way in is not the quiet one.
+  // One on its way — merging, closing, its Mate fixing it — is only to look at meanwhile.
   const waits =
-    (standingWaits(item.standing) && item.comment === undefined) || reviewItemTheirs(item);
+    (standingWaits(item.standing) && item.comment === undefined) ||
+    reviewItemTheirs(item) ||
+    changeActBusy(item.act) ||
+    item.act?.kind === "merged";
   const verb =
     waits || standingWaits(item.standing)
       ? VIEW_CHANGE

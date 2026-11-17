@@ -74,6 +74,7 @@ import { HeaderReviewDoor, HeaderReviewSeat } from "../zerops/SidebarProjectRevi
 import { doorSeatStood } from "~/zerops/bootFrame";
 import { headerReviewItems } from "../zerops/SidebarProjectReview.logic";
 import { useHeldBehindReview } from "~/zerops/heldBehindReview";
+import { useMateFixing } from "~/zerops/mateFixing";
 import { useRightPanelStore } from "~/rightPanelStore";
 import { RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY } from "~/rightPanelLayout";
 import { MateFaceAsMark } from "../zerops/primitives";
@@ -343,7 +344,9 @@ export const ChatHeader = memo(function ChatHeader({
   );
   // Held while a review stands open: a merge pressed there never slides the goal under the sheet.
   // The conversation's own word that its Mate works, which holds the composer's strip too.
-  const conversation = { mateWorks: useMateWorks(activeThreadEnvironmentId) };
+  // The change its Mate is fixing stays, saying so, as the composer's top says it.
+  const fixing = useMateFixing(mate?.chief === true ? undefined : mate?.projectId, mate?.name);
+  const conversation = { mateWorks: useMateWorks(activeThreadEnvironmentId), fixing };
   const reviewTags = useHeldBehindReview(
     headerReview === undefined ||
       (headerReviewItems(headerReview.items, mate?.projectId, conversation).length === 0 &&

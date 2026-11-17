@@ -4,8 +4,11 @@
  */
 import {
   ASK_TO_MERGE,
+  changeActBusy,
+  changeActWords,
   READY_TO_MERGE,
   REVIEW_LABEL,
+  type ChangeAct,
   type ChangeStanding,
   type ChangeStandingRead,
   type FlowPullRequest,
@@ -68,6 +71,11 @@ export interface ProjectReviewItem {
    * its line in place of its standing — until they open its review.
    */
   readonly comment?: string | undefined;
+  /**
+   * What is being done to it now (`changeActOf`): its merge or close on its way, its Mate fixing it
+   * — it asks the person nothing meanwhile, and says so — or its merge refused.
+   */
+  readonly act?: ChangeAct | undefined;
 }
 
 /** A change's row, as the menu keys it and the jump box finds it: `repository#number`. */
@@ -99,6 +107,7 @@ export function changeReviewItem(input: {
     ...(kind === undefined || kind === "to-merge" ? {} : { standing: kind }),
     ...(says === undefined || says === READY_TO_MERGE ? {} : { says }),
     ...(input.standing?.comment === undefined ? {} : { comment: input.standing.comment }),
+    ...(input.standing?.act === undefined ? {} : { act: input.standing.act }),
     key: changeRowKey(pull),
     target: {
       kind: "change",
@@ -144,6 +153,11 @@ export function reviewItemByline(item: ProjectReviewItem): string {
     if (by.ownerName !== undefined) parts.push(`${by.ownerName}'s`);
   }
   if (item.label.length > 0) parts.push(item.label);
+  const number = item.target.kind === "change" ? item.target.number : undefined;
+  if (item.act !== undefined && number !== undefined) {
+    parts.push(changeActWords(item.act, number).word);
+    return parts.join(" · ");
+  }
   // Its standing says whose press it waits for; a colleague's own is only open — theirs to merge
   // or to ask for, unless it already waits on the people who merge.
   if (item.comment !== undefined) parts.push(item.comment);
@@ -163,10 +177,30 @@ export function reviewItemByline(item: ProjectReviewItem): string {
 export function headerReviewItems(
   items: ReadonlyArray<ProjectReviewItem>,
   mateProjectId: string | undefined,
-  conversation: { readonly mateWorks: boolean } = { mateWorks: false },
+  conversation: {
+    readonly mateWorks: boolean;
+    /**
+     * The change its Mate is fixing (`worksOnChange`), by its review's target: it stays, saying so,
+     * while the Mate works on it, as the composer's top says it.
+     */
+    readonly fixing?:
+      | { readonly mateName: string; readonly is: (item: ProjectReviewItem) => boolean }
+      | undefined;
+  } = { mateWorks: false },
 ): ReadonlyArray<ProjectReviewItem> {
-  if (conversation.mateWorks) return [];
-  return items.filter((item) => item.mateProjectId === mateProjectId && item.inProgress !== true);
+  const own = items.filter((item) => item.mateProjectId === mateProjectId);
+  const { fixing } = conversation;
+  const fixed = (item: ProjectReviewItem): ProjectReviewItem =>
+    fixing === undefined || changeActBusy(item.act) || !fixing.is(item)
+      ? item
+      : { ...item, act: { kind: "fixing", mateName: fixing.mateName } };
+  if (conversation.mateWorks) {
+    return own.flatMap((item) => {
+      const next = fixed(item);
+      return next.act?.kind === "fixing" ? [next] : [];
+    });
+  }
+  return own.filter((item) => item.inProgress !== true).map(fixed);
 }
 
 /**
@@ -200,7 +234,11 @@ export function reviewTagLabel(
 /** The tag over changes the person asked for, every one: they wait on the people who merge. */
 const WAITING_LABEL = "Waiting";
 
-type StandingItem = Pick<ProjectReviewItem, "title" | "standing" | "mine" | "comment">;
+type StandingItem = Pick<ProjectReviewItem, "title" | "standing" | "mine" | "comment" | "act">;
+
+/** It is on its way — merging, closing, asked for, its Mate fixing it — or just merged. */
+const onItsWay = (item: Pick<ProjectReviewItem, "act">) =>
+  changeActBusy(item.act) || item.act?.kind === "merged";
 
 /**
  * Whether an item is a colleague's, and not the person's move: their Mate made it and nobody asked
@@ -216,7 +254,8 @@ export function reviewItemTheirs(item: Pick<ProjectReviewItem, "standing" | "min
  * (the person asked them), or a colleague's own.
  */
 function byStanding<Item extends StandingItem>(items: ReadonlyArray<Item>) {
-  const own = items.filter((item) => !reviewItemTheirs(item));
+  // One on its way asks the person nothing until it ends.
+  const own = items.filter((item) => !reviewItemTheirs(item) && !onItsWay(item));
   // A comment the person has not read hands a change they asked for back to them.
   const waits = (item: Item) => item.standing === "waiting" && item.comment === undefined;
   return {
@@ -224,6 +263,7 @@ function byStanding<Item extends StandingItem>(items: ReadonlyArray<Item>) {
     asks: own.filter((item) => item.standing === "to-ask"),
     comments: own.filter((item) => item.standing === "waiting" && item.comment !== undefined),
     waits: own.filter(waits),
+    busy: items.filter((item) => !reviewItemTheirs(item) && onItsWay(item)),
     theirs: items.filter(reviewItemTheirs),
   };
 }
@@ -237,6 +277,8 @@ export interface ReviewTagRead<Item extends StandingItem = ProjectReviewItem> {
   readonly word: string;
   /** Nothing in it asks the person: it is somebody else's move, and says so quietly. */
   readonly quiet: boolean;
+  /** Its word says what is on its way ("Merging…"): it wears the busy mark. */
+  readonly busy?: true | undefined;
   /** How many it counts, past one: what asks the person, else what it lists. */
   readonly count: number | undefined;
   /** How many it stands for, as a mark counts them. */
@@ -263,11 +305,16 @@ export function reviewTagOf<Item extends StandingItem>(
   items: ReadonlyArray<Item>,
   projectName: string,
 ): ReviewTagRead<Item> {
-  const { reviews, asks, comments, waits, theirs } = byStanding(items);
+  const { reviews, asks, comments, waits, busy, theirs } = byStanding(items);
   if (reviews.length > 0) {
     const counted = [...reviews, ...asks, ...comments];
+    const [only] = counted;
     return {
-      word: REVIEW_LABEL,
+      // One whose merge was refused: said so, its tag still the way back to its review.
+      word:
+        counted.length === 1 && only?.act?.kind === "merge-failed"
+          ? changeActWords(only.act, 0).word
+          : REVIEW_LABEL,
       quiet: false,
       count: countPast(counted.length),
       counted: counted.length,
@@ -275,6 +322,7 @@ export function reviewTagOf<Item extends StandingItem>(
       listed: [
         ...reviews.filter((item) => item.standing === "asked-of-me"),
         ...items.filter((item) => counted.includes(item) && item.standing !== "asked-of-me"),
+        ...busy,
         ...waits,
         ...theirs,
       ],
@@ -291,7 +339,7 @@ export function reviewTagOf<Item extends StandingItem>(
         asks.length === 1 && ask !== undefined
           ? `${ASK_TO_MERGE} ${ask.title}`
           : `${String(asks.length)} ready in ${projectName}`,
-      listed: [...comments, ...asks, ...waits, ...theirs],
+      listed: [...comments, ...asks, ...busy, ...waits, ...theirs],
     };
   }
   if (comments.length > 0) {
@@ -306,7 +354,23 @@ export function reviewTagOf<Item extends StandingItem>(
         comments.length === 1 && comment !== undefined
           ? `${comment.comment ?? "Comment"}: ${comment.title}`
           : `${String(comments.length)} with new comments in ${projectName}`,
-      listed: [...comments, ...waits, ...theirs],
+      listed: [...comments, ...busy, ...waits, ...theirs],
+    };
+  }
+  const [first] = busy;
+  if (first?.act !== undefined) {
+    // Only what is on its way, and what waits on others: what the first is doing, quietly, busy.
+    const listed = [...busy, ...waits, ...theirs];
+    const { word } = changeActWords(first.act, 0);
+    return {
+      word,
+      quiet: true,
+      busy: true,
+      count: countPast(busy.length),
+      counted: busy.length,
+      label:
+        busy.length === 1 ? `${word} ${first.title}` : `${word} ${String(busy.length)} changes`,
+      listed,
     };
   }
   const listed = [...waits, ...theirs];
@@ -376,11 +440,17 @@ export function reviewPopoverTitle(
   projectName: string,
 ): string {
   const count = items.length;
-  const { reviews, asks, comments, waits, theirs } = byStanding(items);
+  const { reviews, asks, comments, waits, busy, theirs } = byStanding(items);
   if (reviews.length === 0 && asks.length > 0) {
     return `${String(asks.length)} ready in ${projectName}`;
   }
-  if (reviews.length === 0 && comments.length === 0 && waits.length > 0 && theirs.length === 0) {
+  if (
+    reviews.length === 0 &&
+    comments.length === 0 &&
+    busy.length === 0 &&
+    waits.length > 0 &&
+    theirs.length === 0
+  ) {
     return `${String(waits.length)} waiting in ${projectName}`;
   }
   if (reviews.some((item) => item.target.kind !== "change")) {
