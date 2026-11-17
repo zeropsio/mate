@@ -157,8 +157,6 @@ export function useGitMirrorApps(shown = true): {
         }),
       ),
     };
-  // An HQ before the app list: none is said to be there.
-  else if (setting.state === "unsupported") apps = { kind: "ready", apps: [], installations: [] };
   else apps = { kind: "unknown" };
   return {
     apps,

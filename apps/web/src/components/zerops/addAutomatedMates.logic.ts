@@ -140,7 +140,6 @@ export function automatedSourcesWords(reads: AutomatedSourceReads): AutomatedSou
     return { kind: "reading" };
   if (settings.some((setting) => setting.state === "withheld" || setting.state === "failed"))
     return { kind: "withheld" };
-  // An HQ that predates a source has none of it.
   const held = <T>(setting: SettingValue<T>) =>
     setting.state === "known" ? setting.held : undefined;
   const parts: Array<string> = [];

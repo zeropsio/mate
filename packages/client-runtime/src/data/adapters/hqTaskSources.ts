@@ -40,7 +40,6 @@ import type { AccountStore } from "../store.ts";
 import { streamOf } from "../reducer.ts";
 import { commitOwn, makeSettingsReads, type SettingRead } from "./hqSettingsReads.ts";
 import { appTasksSignature, orgTasksSignature } from "./hqTaskBoardRefresh.ts";
-import { hqNeedsUpdate } from "../../zerops/hq/refusals.ts";
 
 type TaskSourceApi = TaskSourceWrites &
   Pick<
@@ -56,13 +55,6 @@ type TaskSourceApi = TaskSourceWrites &
     | "appTasks"
     | "github"
   >;
-
-/** What an HQ that predates these settings is asked. */
-export const TASK_SOURCES_UNSUPPORTED = hqNeedsUpdate(
-  "take tasks from Slack, Discord, webhooks and schedules",
-);
-/** What an HQ that predates the organization's GitHub app is asked. */
-export const GITHUB_UNSUPPORTED = hqNeedsUpdate("connect GitHub");
 
 /** A webhook's answer as a list holds it: never its secret. */
 const withoutSecret = ({ secret: _secret, ...view }: HqWebhookView): HqWebhookView => view;
@@ -82,30 +74,30 @@ export function makeTaskSourceSettings(options: {
     key: OrgSettingKey | AppSettingKey,
   ): SettingRead<TaskSourceSetting> {
     const appId = "appId" in key ? key.appId : "";
-    const read = (): Promise<unknown> | undefined => {
+    const read = (): Promise<unknown> => {
       switch (family) {
         case "hqSlack":
-          return api.slack?.();
+          return api.slack();
         case "hqSlackManifest":
-          return api.slackManifest?.().then((manifest) => JSON.stringify(manifest, null, 2));
+          return api.slackManifest().then((manifest) => JSON.stringify(manifest, null, 2));
         case "hqSlackChannels":
-          return api.slackChannels?.();
+          return api.slackChannels();
         case "hqDiscord":
-          return api.discord?.();
+          return api.discord();
         case "hqTaskLimits":
-          return api.taskLimits?.();
+          return api.taskLimits();
         case "hqGithub":
-          return api.github?.();
+          return api.github();
         case "hqAppSlack":
-          return api.appChannel?.(appId, "slack").then((channel) => ({ channel }));
+          return api.appChannel(appId, "slack").then((channel) => ({ channel }));
         case "hqAppDiscord":
-          return api.appChannel?.(appId, "discord").then((channel) => ({ channel }));
+          return api.appChannel(appId, "discord").then((channel) => ({ channel }));
         case "hqAppWebhooks":
-          return api.webhooks?.(appId).then((list) => list.map(withoutSecret));
+          return api.webhooks(appId).then((list) => list.map(withoutSecret));
         case "hqAppSchedules":
-          return api.schedules?.(appId);
+          return api.schedules(appId);
         case "hqAppTasks":
-          return api.appTasks?.(appId);
+          return api.appTasks(appId);
       }
     };
     return {
@@ -114,7 +106,10 @@ export function makeTaskSourceSettings(options: {
       scope: settingScope(family, key),
       link: settingLink(family, key),
       read: read as SettingRead<TaskSourceSetting>["read"],
-      unsupported: family === "hqGithub" ? GITHUB_UNSUPPORTED : TASK_SOURCES_UNSUPPORTED,
+      unsupported:
+        family === "hqGithub"
+          ? "HQ could not read the organization's GitHub apps."
+          : "HQ could not read where tasks come from.",
     };
   }
 
@@ -131,7 +126,7 @@ export function makeTaskSourceSettings(options: {
         const next = signature();
         if (next === seen) return;
         seen = next;
-        // A refused read (an HQ that predates it) waits for the person, never for navigation.
+        // A refused read waits for the person, never for navigation.
         if (streamOf(store.state(), spec.link).phase === "refused") return;
         reads.again(spec);
       });

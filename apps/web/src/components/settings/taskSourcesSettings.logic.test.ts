@@ -17,7 +17,6 @@ import {
   slackManifestApp,
   slackSignatureRefused,
   taskSourceProblem,
-  taskSourcesUnsupported,
   workingWords,
 } from "./taskSourcesSettings.logic";
 
@@ -28,7 +27,6 @@ describe("what a task source's section shows", () => {
     { case: "not read yet", setting: { state: "unread" } as const, shows: "reading" },
     { case: "being read", setting: { state: "reading" } as const, shows: "reading" },
     { case: "HQ withholds it", setting: { state: "withheld" } as const, shows: "withheld" },
-    { case: "this HQ predates it", setting: { state: "unsupported" } as const, shows: "hidden" },
     {
       case: "its read failed",
       setting: { state: "failed", words: "HQ could not be reached." } as const,
@@ -37,11 +35,6 @@ describe("what a task source's section shows", () => {
     { case: "read", setting: known({ connected: false }), shows: "known" },
   ])("$case: $shows", ({ setting, shows }) => {
     expect(sectionState(setting)).toBe(shows);
-  });
-
-  it("asks for an update once any of the organization's sources says HQ predates it", () => {
-    expect(taskSourcesUnsupported([{ state: "unsupported" }, known(1)])).toBe(true);
-    expect(taskSourcesUnsupported([{ state: "reading" }, known(1)])).toBe(false);
   });
 });
 

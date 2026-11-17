@@ -34,7 +34,6 @@ import {
   SchedulesSettingsView,
   SlackSettingsView,
   TaskLimitsView,
-  TaskSourcesUnsupported,
   WebhooksSettingsView,
 } from "~/components/settings/TaskSourcesSettings";
 import {
@@ -502,13 +501,12 @@ function Harness() {
             />
           </SettingsSection>
         </Panel>
-        <Panel title="Tasks from elsewhere — reading, and an older HQ">
+        <Panel title="Tasks from elsewhere — reading">
           <SettingsSection title="HQ">
             <SlackSettingsView controls={controls({ state: "reading" })} />
             <ul className="grid gap-3 px-3 pb-3 sm:px-4">
               <AppChannelView controls={controls({ state: "reading" })} source="slack" />
             </ul>
-            <TaskSourcesUnsupported />
           </SettingsSection>
         </Panel>
       </div>

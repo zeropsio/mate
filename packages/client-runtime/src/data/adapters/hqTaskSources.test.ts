@@ -16,11 +16,7 @@ import { makeAccountStore, readsOfState } from "../store.ts";
 import { streamOf } from "../reducer.ts";
 import { taskSourceSetting } from "../projections/hqTaskSources.ts";
 import type { HqGithubManifestView, HqGithubView } from "@t3tools/shared/hqGithub";
-import {
-  GITHUB_UNSUPPORTED,
-  makeTaskSourceSettings,
-  TASK_SOURCES_UNSUPPORTED,
-} from "./hqTaskSources.ts";
+import { makeTaskSourceSettings } from "./hqTaskSources.ts";
 
 const ORG = { orgId: "org" };
 const SHOP = { orgId: "org", appId: "shop" };
@@ -42,10 +38,44 @@ function waitFor(store: ReturnType<typeof makeAccountStore>, predicate: () => bo
   });
 }
 
-function rig(api: Parameters<typeof makeTaskSourceSettings>[0]["api"]) {
+type TaskSourceApi = Parameters<typeof makeTaskSourceSettings>[0]["api"];
+const notFaked = () => Promise.reject(new Error("not faked"));
+
+function rig(faked: Partial<TaskSourceApi>) {
   const registry = AtomRegistry.make();
   const store = makeAccountStore(registry);
   let id = 0;
+  const api: TaskSourceApi = {
+    slack: notFaked,
+    slackManifest: notFaked,
+    connectSlack: notFaked,
+    slackChannels: notFaked,
+    disconnectSlack: notFaked,
+    discord: notFaked,
+    connectDiscord: notFaked,
+    disconnectDiscord: notFaked,
+    appChannel: notFaked,
+    setAppChannel: notFaked,
+    stopAppChannel: notFaked,
+    webhooks: notFaked,
+    makeWebhook: notFaked,
+    deleteWebhook: notFaked,
+    schedules: notFaked,
+    makeSchedule: notFaked,
+    deleteSchedule: notFaked,
+    appTasks: notFaked,
+    stopAppTask: notFaked,
+    taskLimits: notFaked,
+    setTaskLimits: notFaked,
+    github: notFaked,
+    githubManifest: notFaked,
+    githubForget: notFaked,
+    githubInstall: notFaked,
+    githubAcceptInstallation: notFaked,
+    githubSuspendInstallation: notFaked,
+    githubResumeInstallation: notFaked,
+    ...faked,
+  };
   const host = makeTaskSourceSettings({ store, api, makeId: () => `request-${++id}` });
   const read = (family: TaskSourceSetting, appId?: string) =>
     taskSourceSetting.derive(readsOfState(store.state()), {
@@ -208,28 +238,6 @@ describe("the organization's Slack app", () => {
       words: "HQ did not take what was entered.",
     });
     expect(r.records()).not.toContain(BOT_TOKEN);
-    r.close();
-  });
-
-  it.each([
-    {
-      case: "HQ answers that it has no such address",
-      api: {
-        slack: async (): Promise<HqSlackView> => {
-          throw new HqError({ kind: "refused", code: "not_found", status: 404, message: "No." });
-        },
-      },
-    },
-    { case: "this client's HQ reads no Slack app", api: {} },
-  ])("an HQ that keeps no Slack app asks for an update: $case", async ({ api }) => {
-    const r = rig(api);
-    const read = waitFor(r.store, () => r.read("hqSlack").setting.state === "unsupported");
-    const release = r.host.demandOrg("hqSlack", ORG);
-    await read;
-    expect(r.read("hqSlack").setting).toEqual({ state: "unsupported" });
-    await r.host.write(ORG, { kind: "slack-disconnect" });
-    expect(r.read("hqSlack").action).toEqual({ kind: "failed", words: TASK_SOURCES_UNSUPPORTED });
-    release();
     r.close();
   });
 
@@ -687,52 +695,6 @@ describe("the organization's GitHub app", () => {
     expect(r.records()).not.toContain(STATE);
     r.close();
   });
-
-  it("asks for an HQ update where this client's HQ calls have no Accept and no install link", async () => {
-    const r = rig({ github: async () => waiting });
-    await r.host.write(ORG, { kind: "github-accept", installationId: 9 });
-    expect(r.read("hqGithub").action).toEqual({ kind: "failed", words: GITHUB_UNSUPPORTED });
-    expect(await r.host.githubInstall(ORG, 42, "https://mate.example/settings")).toBeNull();
-    r.close();
-  });
-
-  it("an older HQ answering the install link with a bare 404 asks for an HQ update and hands nothing to open", async () => {
-    const r = rig({
-      github: async () => app,
-      githubInstall: async () => {
-        throw new HqError({
-          kind: "refused",
-          code: "http_404",
-          status: 404,
-          message: "Not found.",
-        });
-      },
-    });
-    expect(await r.host.githubInstall(ORG, 42, "https://mate.example/settings")).toBeNull();
-    expect(r.read("hqGithub").action).toEqual({ kind: "failed", words: GITHUB_UNSUPPORTED });
-    r.close();
-  });
-
-  it.each([
-    {
-      case: "HQ answers that it has no such address",
-      api: {
-        github: async (): Promise<HqGithubView> => {
-          throw new HqError({ kind: "refused", code: "not_found", status: 404, message: "No." });
-        },
-      },
-    },
-    { case: "this client's HQ reads no GitHub app", api: {} },
-  ])("an HQ older than the GitHub app asks for an update: $case", async ({ api }) => {
-    const r = rig(api);
-    const read = waitFor(r.store, () => r.read("hqGithub").setting.state === "unsupported");
-    const release = r.host.demandOrg("hqGithub", ORG);
-    await read;
-    expect(await r.host.githubManifest(ORG, asked)).toBeNull();
-    expect(r.read("hqGithub").action).toEqual({ kind: "failed", words: GITHUB_UNSUPPORTED });
-    release();
-    r.close();
-  });
 });
 
 describe("an application's tasks", () => {
@@ -767,17 +729,6 @@ describe("an application's tasks", () => {
     await read;
     expect(asked).toEqual(["shop"]);
     expect(r.read("hqAppTasks", "shop").setting).toMatchObject({ state: "known", held: [task] });
-    release();
-    r.close();
-  });
-  it("says HQ is too old where it has no task board", async () => {
-    const r = rig({});
-    const read = waitFor(r.store, () =>
-      ["unsupported", "failed"].includes(r.read("hqAppTasks", "shop").setting.state),
-    );
-    const release = r.host.demandApp("hqAppTasks", SHOP);
-    await read;
-    expect(r.read("hqAppTasks", "shop").setting.state).toBe("unsupported");
     release();
     r.close();
   });
@@ -837,16 +788,6 @@ describe("a task's stop and the board's reads", () => {
   });
 
   it.each([
-    [
-      "asks for HQ to be updated where it has no stop of a task",
-      new HqError({
-        kind: "refused",
-        code: "http_404",
-        status: 404,
-        message: "HQ refused this (http_404).",
-      }),
-      "HQ needs an update to stop tasks from Mate.",
-    ],
     [
       "says only an Owner or Admin stops a task where HQ refuses the person",
       new HqError({

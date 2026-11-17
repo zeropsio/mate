@@ -393,7 +393,7 @@ export {
   type AutomationAction,
   type OrgAiKeysRead,
 } from "./projections/hqAutomation.ts";
-export { makeTaskSourceSettings, TASK_SOURCES_UNSUPPORTED } from "./adapters/hqTaskSources.ts";
+export { makeTaskSourceSettings } from "./adapters/hqTaskSources.ts";
 export type { AppSetting, OrgSetting } from "./families/hqTaskSources.ts";
 export type { TaskSourceWrite } from "./operations/hqTaskSources.ts";
 export {

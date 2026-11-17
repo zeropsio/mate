@@ -379,7 +379,7 @@ function useTaskBoard(
         ? { state: "known", board }
         : setting.state === "failed"
           ? { state: "failed", words: couldntRead("its tasks", setting.words) }
-          : setting.state === "withheld" || setting.state === "unsupported"
+          : setting.state === "withheld"
             ? { state: "none" }
             : { state: "reading", predicted: { ...predicted, ...landed.get(groupId) } },
     spend: limits.read.setting.state === "known" ? spendLine(limits.read.setting.held) : null,
@@ -676,7 +676,7 @@ export interface AutomationControls {
 /**
  * The task board as the section draws it: what HQ answered, or how its read stands (`reading`,
  * with how many rows navigation says each group will hold, so the board keeps its height when they
- * land; `none` where the reader may not read it or HQ predates it).
+ * land; `none` where the reader may not read it).
  */
 export interface BoardView {
   readonly read:

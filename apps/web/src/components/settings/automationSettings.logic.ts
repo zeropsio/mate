@@ -1,10 +1,10 @@
 /**
  * What Settings › Automation's GitHub section says, from what HQ answered of the organization's
  * GitHub apps: each app, whose it is, who set it up, where it is installed and what goes through
- * it; an HQ older than the apps, or a person who may not see them — and how a press of *Create
+ * it; a person who may not see them — and how a press of *Create
  * GitHub app* hands GitHub HQ's manifest.
  */
-import { couldntRead, hqNeedsUpdate } from "@t3tools/client-runtime/zerops/hq";
+import { couldntRead } from "@t3tools/client-runtime/zerops/hq";
 import type { SettingValue } from "@t3tools/client-runtime/data";
 import type {
   HqGithubApp,
@@ -19,7 +19,6 @@ export const APP_NAME_MAX = 34;
 
 export const GITHUB_ONE_LINE =
   "Everything Mate writes on GitHub appears as your organization's bot, never a person.";
-const GITHUB_OLDER_HQ = hqNeedsUpdate("connect GitHub");
 export const GITHUB_WHO_CAN = "Owners and Admins change this.";
 const WITHHELD = "Only the organization's Owner and Admins see this.";
 
@@ -87,7 +86,6 @@ export interface GithubAppRow {
 
 type GithubSection =
   | { readonly kind: "reading" }
-  | { readonly kind: "older" }
   | { readonly kind: "withheld" }
   | { readonly kind: "failed"; readonly words: string }
   /**
@@ -284,10 +282,10 @@ function githubAppRow(app: HqGithubApp): GithubAppRow {
 /** The section's state, from HQ's answer and whether the person is the organization's Owner or an Admin. */
 export function githubSection(setting: SettingValue<HqGithubView>, admin: boolean): GithubSection {
   switch (setting.state) {
-    case "unsupported":
-      return { kind: "older" };
     case "withheld":
       return { kind: "withheld" };
+    case "unsupported":
+      return { kind: "failed", words: "HQ could not read the organization's GitHub apps." };
     case "failed":
       return { kind: "failed", words: setting.words };
     case "unread":
@@ -359,8 +357,6 @@ export function githubStatus(section: GithubSection): string {
   switch (section.kind) {
     case "reading":
       return "Reading…";
-    case "older":
-      return GITHUB_OLDER_HQ;
     case "withheld":
       return WITHHELD;
     case "failed":

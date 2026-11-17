@@ -104,12 +104,6 @@ describe("Settings › Automation's GitHub section", () => {
       says: "Mate works in 2 GitHub accounts, as a bot of its own",
     },
     {
-      case: "an HQ older than the app",
-      setting: { state: "unsupported" },
-      admin: true,
-      says: "HQ needs an update to connect GitHub",
-    },
-    {
       case: "a person HQ shows nothing of it",
       setting: { state: "withheld" },
       admin: false,

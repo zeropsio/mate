@@ -15,31 +15,24 @@ import type {
 } from "@t3tools/shared/hqIntake";
 
 /**
- * What a section shows of its setting: `reading` in its final shape, `hidden` where this HQ
- * predates it (the one "HQ needs an update" line says so), `withheld` from a viewer HQ refuses, `failed`
- * with HQ's words and *Try again*, or what is `known`.
+ * What a section shows of its setting: `reading` in its final shape, `withheld` from a viewer HQ
+ * refuses, `failed` with HQ's words and *Try again*, or what is `known`.
  */
-type SectionState = "reading" | "hidden" | "withheld" | "failed" | "known";
+type SectionState = "reading" | "withheld" | "failed" | "known";
 
 export function sectionState(setting: SettingValue<unknown>): SectionState {
   switch (setting.state) {
     case "unread":
     case "reading":
       return "reading";
-    case "unsupported":
-      return "hidden";
     case "withheld":
       return "withheld";
+    case "unsupported":
     case "failed":
       return "failed";
     case "known":
       return "known";
   }
-}
-
-/** Whether HQ predates these settings: any of the organization's says so. */
-export function taskSourcesUnsupported(settings: ReadonlyArray<SettingValue<unknown>>): boolean {
-  return settings.some((setting) => setting.state === "unsupported");
 }
 
 export function slackLine(view: Pick<HqSlackView, "connected" | "workspace">): string {

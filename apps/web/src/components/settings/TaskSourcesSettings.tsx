@@ -3,19 +3,13 @@
  * organization's Owner and Admins: its Slack app — made from the manifest HQ gives, its tokens
  * pasted here and never shown back — its Discord application with who may use it, and the limits
  * on each task. Per application (a project's page shows them): the channel it takes tasks from
- * on each, its signed webhooks (the secret shown once, as it is made) and its schedules. An HQ
- * older than these says so in one line, and none of them is drawn.
+ * on each, its signed webhooks (the secret shown once, as it is made) and its schedules.
  *
  * Each part paints in its final shape while it is read (`IntakeRoom`): nothing it reads moves what
  * the person is about to press.
  */
 import { couldntRead } from "@t3tools/client-runtime/zerops/hq";
-import {
-  TASK_SOURCES_UNSUPPORTED,
-  type AppSetting,
-  type OrgSetting,
-  type SettingValue,
-} from "@t3tools/client-runtime/data";
+import type { AppSetting, OrgSetting, SettingValue } from "@t3tools/client-runtime/data";
 import type { HqDiscordView, HqSlackView, HqTaskLimitsView } from "@t3tools/shared/hqIntake";
 import {
   automatedModelOf,
@@ -88,7 +82,6 @@ import {
   slackManifestApp,
   slackSignatureRefused,
   taskSourceProblem,
-  taskSourcesUnsupported,
 } from "./taskSourcesSettings.logic";
 
 const DISCORD_PORTAL = "https://discord.com/developers/applications";
@@ -108,12 +101,6 @@ interface App {
 export function TaskSourcesSettings({ nameOf }: { readonly nameOf: NameOf }) {
   const slack = useOrgTaskSource("hqSlack");
   const discord = useOrgTaskSource("hqDiscord");
-  if (taskSourcesUnsupported([slack.read.setting, discord.read.setting]))
-    return (
-      <li className="px-4 py-3">
-        <TaskSourcesUnsupported />
-      </li>
-    );
   return (
     <>
       <SlackSettingsView controls={slack} nameOf={nameOf} />
@@ -125,25 +112,12 @@ export function TaskSourcesSettings({ nameOf }: { readonly nameOf: NameOf }) {
 /** Settings › Automation's limits on each task, under its list. */
 export function TaskLimitsSettings() {
   const limits = useOrgTaskSource("hqTaskLimits");
-  if (limits.read.setting.state === "unsupported") return null;
   return (
     <LimitsList>
       <AutomatedModelView controls={limits} />
       <TaskLimitsView controls={limits} />
       <MonthlyBudgetView controls={limits} />
     </LimitsList>
-  );
-}
-
-/** In these settings' place, where this HQ predates them. */
-export function TaskSourcesUnsupported() {
-  return (
-    <p
-      className="text-sm text-muted-foreground"
-      data-zerops-surface="settings-task-sources-unsupported"
-    >
-      {TASK_SOURCES_UNSUPPORTED}
-    </p>
   );
 }
 
@@ -232,7 +206,6 @@ function sourceLine<T>(
   }
   if (setting.state === "failed") return couldntRead(what, setting.words);
   if (setting.state === "withheld") return WITHHELD;
-  if (setting.state === "unsupported") return TASK_SOURCES_UNSUPPORTED;
   return purpose;
 }
 
@@ -1014,7 +987,7 @@ export function TaskLimitsView({ controls }: { readonly controls: Controls<"hqTa
 /**
  * What all the organization's automated Mates may spend in a calendar month (UTC), and what they
  * spent so far: once spent, HQ starts no task and stops those at work. Saved beside the limits per
- * task, which it keeps as HQ holds them. An HQ that predates it shows no row.
+ * task, which it keeps as HQ holds them.
  */
 export function MonthlyBudgetView({ controls }: { readonly controls: Controls<"hqTaskLimits"> }) {
   const { read, write } = controls;

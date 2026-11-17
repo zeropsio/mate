@@ -2,7 +2,6 @@
  * Automated work in Usage: the Automated Mates' mark beside people's faces, an automated Mate's
  * tasks under its row, and the month's automated spend against the organization's budget.
  */
-import { hqNeedsUpdate } from "@t3tools/client-runtime/zerops/hq";
 import type { TaskSourceSettingValue } from "@t3tools/client-runtime/data";
 import { Link } from "@tanstack/react-router";
 import { BotIcon } from "lucide-react";
@@ -125,9 +124,7 @@ export function UsageMateTaskRowsView({
   readonly since: string | null;
   readonly until: string;
 }) {
-  if (setting.state === "unsupported")
-    return <TaskNote nested={nested}>{hqNeedsUpdate("list each task")}</TaskNote>;
-  if (setting.state === "failed")
+  if (setting.state === "failed" || setting.state === "unsupported")
     return (
       <TaskNote nested={nested}>
         Tasks could not be read.{" "}

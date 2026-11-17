@@ -8,13 +8,11 @@
 import type { HqWebhookView } from "@t3tools/shared/hqIntake";
 import {
   settingId,
-  settingLink,
   settingRequestId,
   settingScope,
   taskStopRequestId,
   type TaskSourceSetting,
 } from "../families/hqTaskSources.ts";
-import { SETTING_UNSUPPORTED } from "../families/hqAutomation.ts";
 import type { FamilyValues } from "../model.ts";
 import type { TaskSourceWrite } from "../operations/hqTaskSources.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
@@ -98,16 +96,14 @@ export const taskSourceSetting: Projection<
         ? { state: "known", held: fact.value, stale: stream.fault !== null }
         : fact.kind === "withheld"
           ? { state: "withheld" }
-          : read.stream(settingLink(key.family, owner)).fault?.code === SETTING_UNSUPPORTED
-            ? { state: "unsupported" }
-            : stream.fault !== null
-              ? { state: "failed", words: stream.fault.message }
-              : {
-                  state:
-                    stream.phase === "baselining" || stream.phase === "connecting"
-                      ? "reading"
-                      : "unread",
-                };
+          : stream.fault !== null
+            ? { state: "failed", words: stream.fault.message }
+            : {
+                state:
+                  stream.phase === "baselining" || stream.phase === "connecting"
+                    ? "reading"
+                    : "unread",
+              };
     const reveal = key.family === "hqAppWebhooks" ? read.fact("hqWebhookReveal", id) : null;
     const revealed = reveal?.kind === "known" ? reveal.value.view : null;
     // This account's own record of its last write here: one never published is none made here.

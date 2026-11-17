@@ -9,7 +9,6 @@ import type { HqGithubManifestView } from "@t3tools/shared/hqGithub";
 import type { HqWebhookView } from "@t3tools/shared/hqIntake";
 import { HqError, type HqApi } from "../../../zerops/hq/client.ts";
 import type { OperationExecutor } from "../coordinator.ts";
-import { hqNeedsUpdate } from "../../../zerops/hq/refusals.ts";
 
 export type TaskSourceWrites = Pick<
   HqApi,
@@ -36,18 +35,12 @@ export type TaskSourceWrites = Pick<
 /** The secrets typed for one connection, by their field's name. */
 export type TypedSecrets = Readonly<Record<string, string>>;
 
-const UPDATE_HQ = hqNeedsUpdate("take tasks from Slack, Discord, webhooks and schedules");
-const UPDATE_HQ_GITHUB = hqNeedsUpdate("connect GitHub");
-/** What an HQ that predates a task's stop from Mate is asked. */
-const UPDATE_HQ_TASK_STOP = hqNeedsUpdate("stop tasks from Mate");
-
 /**
- * HQ's refusal of an install link, an Accept or a Suspend in words: an HQ without the
- * route (a bare `404`) needs updating, an installation or app HQ no longer holds is gone, and an app
+ * HQ's refusal of an install link, an Accept or a Suspend in words: an installation or app HQ no
+ * longer holds is gone, and an app
  * whose key GitHub no longer takes is gone. `undefined`: HQ's own words stand.
  */
 function installationRefusal(cause: HqError, of: "installation" | "app"): string | undefined {
-  if (cause.status === 404 && cause.code !== "not_found") return UPDATE_HQ_GITHUB;
   if (cause.code === "not_found")
     return of === "app"
       ? "That GitHub app is no longer in this organization."
@@ -58,12 +51,11 @@ function installationRefusal(cause: HqError, of: "installation" | "app"): string
 }
 
 /**
- * HQ's refusal of a task's stop in words: an HQ without the route (a bare `404`) needs updating,
- * a person who is no Owner or Admin may not, and a task that ended meanwhile has nothing to stop.
+ * HQ's refusal of a task's stop in words: a person who is no Owner or Admin may not, and a task
+ * that ended meanwhile has nothing to stop.
  * `undefined`: HQ's own words stand.
  */
 function taskStopRefusal(cause: HqError): string | undefined {
-  if (cause.status === 404 && cause.reason === undefined) return UPDATE_HQ_TASK_STOP;
   if (cause.status === 403) return "Only an Owner or Admin can stop a task.";
   if (cause.reason === "task_not_found") return "That task has ended already.";
   return undefined;
@@ -98,10 +90,9 @@ export function makeTaskSourceExecutor(options: {
           write.kind === "slack-connect" || write.kind === "discord-connect"
             ? options.takeSecrets(requestId)
             : undefined;
-        const call = (): Promise<unknown> | null => {
+        const call = (): Promise<unknown> => {
           switch (write.kind) {
             case "slack-connect": {
-              if (api.connectSlack === undefined) return null;
               // Both to connect; once connected, either alone replaces the one HQ holds.
               const botToken = secrets?.botToken;
               const signingSecret = secrets?.signingSecret;
@@ -113,9 +104,8 @@ export function makeTaskSourceExecutor(options: {
               });
             }
             case "slack-disconnect":
-              return api.disconnectSlack?.() ?? null;
+              return api.disconnectSlack();
             case "discord-connect": {
-              if (api.connectDiscord === undefined) return null;
               const botToken = secrets?.botToken;
               if (botToken === undefined) return Promise.reject(refused("Enter the token again."));
               return api.connectDiscord({
@@ -125,70 +115,52 @@ export function makeTaskSourceExecutor(options: {
               });
             }
             case "discord-disconnect":
-              return api.disconnectDiscord?.() ?? null;
+              return api.disconnectDiscord();
             case "channel":
-              return (
-                api.setAppChannel?.(appId, write.source, { channelId: write.channelId }) ?? null
-              );
+              return api.setAppChannel(appId, write.source, { channelId: write.channelId });
             case "channel-stop":
-              return api.stopAppChannel?.(appId, write.source) ?? null;
+              return api.stopAppChannel(appId, write.source);
             case "webhook-make":
-              return (
-                api.makeWebhook?.(appId, { name: write.name }).then((view) => {
-                  options.revealed(requestId, view);
-                }) ?? null
-              );
+              return api.makeWebhook(appId, { name: write.name }).then((view) => {
+                options.revealed(requestId, view);
+              });
             case "webhook-delete":
-              return api.deleteWebhook?.(appId, write.webhookId) ?? null;
+              return api.deleteWebhook(appId, write.webhookId);
             case "schedule-make":
-              return api.makeSchedule?.(appId, write.request) ?? null;
+              return api.makeSchedule(appId, write.request);
             case "schedule-delete":
-              return api.deleteSchedule?.(appId, write.scheduleId) ?? null;
+              return api.deleteSchedule(appId, write.scheduleId);
             case "task-limits":
-              return api.setTaskLimits?.(write.limits) ?? null;
+              return api.setTaskLimits(write.limits);
             case "task-stop":
-              return api.stopAppTask?.(appId, write.taskId) ?? null;
+              return api.stopAppTask(appId, write.taskId);
             case "github-manifest":
-              return (
-                api
-                  .githubManifest?.({
-                    owner: write.owner,
-                    name: write.name,
-                    returnTo: write.returnTo,
-                  })
-                  .then((view) => {
-                    options.manifested(requestId, view);
-                  }) ?? null
-              );
+              return api
+                .githubManifest({
+                  owner: write.owner,
+                  name: write.name,
+                  returnTo: write.returnTo,
+                })
+                .then((view) => {
+                  options.manifested(requestId, view);
+                });
             case "github-forget":
-              return api.githubForget?.(write.githubAppId) ?? null;
+              return api.githubForget(write.githubAppId);
             case "github-install":
-              return (
-                api
-                  .githubInstall?.(write.githubAppId, { returnTo: write.returnTo })
-                  .then((view) => {
-                    options.linked(requestId, view.url);
-                  }) ?? null
-              );
+              return api
+                .githubInstall(write.githubAppId, { returnTo: write.returnTo })
+                .then((view) => {
+                  options.linked(requestId, view.url);
+                });
             case "github-accept":
-              return api.githubAcceptInstallation?.(write.installationId) ?? null;
+              return api.githubAcceptInstallation(write.installationId);
             case "github-suspend":
-              return api.githubSuspendInstallation?.(write.installationId) ?? null;
+              return api.githubSuspendInstallation(write.installationId);
             case "github-resume":
-              return api.githubResumeInstallation?.(write.installationId) ?? null;
+              return api.githubResumeInstallation(write.installationId);
           }
         };
         const pending = call();
-        if (pending === null)
-          return yield* Effect.fail(
-            refused(
-              write.kind.startsWith("github-")
-                ? UPDATE_HQ_GITHUB
-                : write.kind === "task-stop"
-                  ? UPDATE_HQ_TASK_STOP
-                  : UPDATE_HQ,
-            ),
-          );
         const typed = Object.values(secrets ?? {}).filter((value) => value.length > 0);
         yield* Effect.tryPromise({
           try: () => pending,

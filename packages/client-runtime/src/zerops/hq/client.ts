@@ -591,83 +591,83 @@ export interface HqApi {
    */
   readonly takeChatLink?: (code: string) => Promise<HqChatLink>;
   /** Whether the organization's Slack app is connected, and to which workspace (`GET /api/org/slack`). */
-  readonly slack?: () => Promise<HqSlackView>;
+  readonly slack: () => Promise<HqSlackView>;
   /** The manifest the organization's Slack app is made from (`GET /api/org/slack/manifest`). */
-  readonly slackManifest?: () => Promise<unknown>;
+  readonly slackManifest: () => Promise<unknown>;
   /**
    * Connects the organization's Slack app by its bot token and signing secret, both sealed; once
    * connected, either alone replaces the one HQ holds.
    */
-  readonly connectSlack?: (request: HqSlackConnectRequest) => Promise<HqSlackView>;
+  readonly connectSlack: (request: HqSlackConnectRequest) => Promise<HqSlackView>;
   /** The channels the organization's Slack bot is in (`GET /api/org/slack/channels`). */
-  readonly slackChannels?: () => Promise<HqSlackChannels>;
-  readonly disconnectSlack?: () => Promise<void>;
+  readonly slackChannels: () => Promise<HqSlackChannels>;
+  readonly disconnectSlack: () => Promise<void>;
   /** The organization's Discord application, its interactions URL and allowlist (`GET /api/org/discord`). */
-  readonly discord?: () => Promise<HqDiscordView>;
+  readonly discord: () => Promise<HqDiscordView>;
   /** Connects the organization's Discord application; its bot token is sealed. */
-  readonly connectDiscord?: (request: HqDiscordConnectRequest) => Promise<HqDiscordView>;
-  readonly disconnectDiscord?: () => Promise<void>;
+  readonly connectDiscord: (request: HqDiscordConnectRequest) => Promise<HqDiscordView>;
+  readonly disconnectDiscord: () => Promise<void>;
   /**
    * The channel an application takes tasks from on Slack or Discord (`GET
    * /api/apps/:appId/{slack,discord}`), `null` for none.
    */
-  readonly appChannel?: (
+  readonly appChannel: (
     appId: string,
     source: "slack" | "discord",
   ) => Promise<HqChannelView | null>;
-  readonly setAppChannel?: (
+  readonly setAppChannel: (
     appId: string,
     source: "slack" | "discord",
     request: HqChannelRequest,
   ) => Promise<HqChannelView>;
-  readonly stopAppChannel?: (appId: string, source: "slack" | "discord") => Promise<void>;
+  readonly stopAppChannel: (appId: string, source: "slack" | "discord") => Promise<void>;
   /** An application's signed webhooks, never their secrets (`GET /api/apps/:appId/webhooks`). */
-  readonly webhooks?: (appId: string) => Promise<ReadonlyArray<HqWebhookView>>;
+  readonly webhooks: (appId: string) => Promise<ReadonlyArray<HqWebhookView>>;
   /** Makes a signed webhook: its answer carries the secret, this once. */
-  readonly makeWebhook?: (appId: string, request: HqWebhookRequest) => Promise<HqWebhookView>;
-  readonly deleteWebhook?: (appId: string, webhookId: string) => Promise<void>;
+  readonly makeWebhook: (appId: string, request: HqWebhookRequest) => Promise<HqWebhookView>;
+  readonly deleteWebhook: (appId: string, webhookId: string) => Promise<void>;
   /** An application's schedules (`GET /api/apps/:appId/schedules`). */
-  readonly schedules?: (appId: string) => Promise<ReadonlyArray<HqScheduleView>>;
-  readonly makeSchedule?: (appId: string, request: HqScheduleRequest) => Promise<HqScheduleView>;
-  readonly deleteSchedule?: (appId: string, scheduleId: string) => Promise<void>;
+  readonly schedules: (appId: string) => Promise<ReadonlyArray<HqScheduleView>>;
+  readonly makeSchedule: (appId: string, request: HqScheduleRequest) => Promise<HqScheduleView>;
+  readonly deleteSchedule: (appId: string, scheduleId: string) => Promise<void>;
   /**
    * An application's tasks: queued, at work, and the latest that ended (`GET
    * /api/apps/:appId/tasks`).
    */
-  readonly appTasks?: (appId: string) => Promise<ReadonlyArray<HqAppTask>>;
+  readonly appTasks: (appId: string) => Promise<ReadonlyArray<HqAppTask>>;
   /** Stops one of them (`POST /api/apps/:appId/tasks/:taskId/stop`). */
-  readonly stopAppTask?: (appId: string, taskId: string) => Promise<void>;
+  readonly stopAppTask: (appId: string, taskId: string) => Promise<void>;
   /** The organization's limits on each task (`GET /api/org/task-limits`). */
-  readonly taskLimits?: () => Promise<HqTaskLimitsView>;
-  readonly setTaskLimits?: (limits: HqTaskLimitsRequest) => Promise<HqTaskLimitsView>;
+  readonly taskLimits: () => Promise<HqTaskLimitsView>;
+  readonly setTaskLimits: (limits: HqTaskLimitsRequest) => Promise<HqTaskLimitsView>;
   /** The organization's GitHub apps, never their keys (`GET /api/org/github`). */
-  readonly github?: () => Promise<HqGithubView>;
+  readonly github: () => Promise<HqGithubView>;
   /**
    * The manifest GitHub makes another of the organization's apps from (`POST
    * /api/org/github/manifest`): the browser posts it to `postUrl` as a form, and GitHub's page
    * takes over. It never replaces an app the organization holds.
    */
-  readonly githubManifest?: (request: HqGithubManifestRequest) => Promise<HqGithubManifestView>;
+  readonly githubManifest: (request: HqGithubManifestRequest) => Promise<HqGithubManifestView>;
   /**
    * HQ forgets one of the organization's GitHub apps and its installations (`DELETE
    * /api/org/github/apps/:appId`); it stays on GitHub.
    */
-  readonly githubForget?: (githubAppId: number) => Promise<void>;
+  readonly githubForget: (githubAppId: number) => Promise<void>;
   /**
    * GitHub's page installing one of the organization's apps on another account or more
    * repositories, with a one-time state, so what is installed from it comes back accepted and
    * added by the caller (`POST /api/org/github/apps/:appId/install`).
    */
-  readonly githubInstall?: (
+  readonly githubInstall: (
     githubAppId: number,
     request: HqGithubInstallRequest,
   ) => Promise<HqGithubInstallView>;
   /** HQ acts on a waiting installation's repositories (`POST …/installations/:id/accept`). */
-  readonly githubAcceptInstallation?: (installationId: number) => Promise<void>;
+  readonly githubAcceptInstallation: (installationId: number) => Promise<void>;
   /** GitHub suspends an installation of the app (`POST …/installations/:id/suspend`). */
-  readonly githubSuspendInstallation?: (installationId: number) => Promise<void>;
+  readonly githubSuspendInstallation: (installationId: number) => Promise<void>;
   /** GitHub resumes an installation the app suspended (`POST …/installations/:id/resume`). */
-  readonly githubResumeInstallation?: (installationId: number) => Promise<void>;
+  readonly githubResumeInstallation: (installationId: number) => Promise<void>;
   /**
    * A repository mirrors to one an organization's GitHub app is installed on, with no token, through
    * the app `githubAppId` names (`PUT /api/apps/:appId/repos/:repo/remote/app`).

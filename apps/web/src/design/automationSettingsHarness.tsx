@@ -7,7 +7,7 @@
  * `two` (two apps, one on a person's account, an account waiting), `add` (two apps, Add a GitHub app
  * pressed), `remove` (the personal app's remove guard), `unsealed` / `unsealed-member` (an app
  * nobody sealed), `private`, `manage` (Discord connected, its Manage open), `slack-refused`
- * (Slack's signatures refused, its Replace open), `older` (an HQ older than the apps), `member`,
+ * (Slack's signatures refused, its Replace open), `member`,
  * `many-member`, `dialog` (the mirror dialog's repositories, each state), `model` (the automated
  * Mates' model picker open), `failed` (every read failed, each with its Try again).
  *
@@ -384,15 +384,13 @@ if (host) {
               ? { state: "failed", words: "HQ is not answering right now." }
               : view === "requested"
                 ? known({ apps: [{ ...ACME, installations: [] }] })
-                : view === "older"
-                  ? { state: "unsupported" }
-                  : view === "two" || view === "remove" || view === "add" || view === "many-member"
-                    ? known(TWO)
-                    : view === "unsealed" || view === "unsealed-member"
-                      ? known({ apps: [UNSEALED] })
-                      : view === "private"
-                        ? known({ apps: [{ ...ACME, public: false }] })
-                        : known(ONE)
+                : view === "two" || view === "remove" || view === "add" || view === "many-member"
+                  ? known(TWO)
+                  : view === "unsealed" || view === "unsealed-member"
+                    ? known({ apps: [UNSEALED] })
+                    : view === "private"
+                      ? known({ apps: [{ ...ACME, public: false }] })
+                      : known(ONE)
         }
       />
     </StrictMode>,
