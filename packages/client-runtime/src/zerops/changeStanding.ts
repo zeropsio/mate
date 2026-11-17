@@ -193,7 +193,13 @@ export type ChangeStandingOf = (
   pull: Partial<
     Pick<
       FlowPullRequest,
-      "mergeAsk" | "lastComment" | "mateProjectId" | "repository" | "number" | "headSha"
+      | "mergeAsk"
+      | "lastComment"
+      | "mateProjectId"
+      | "repository"
+      | "number"
+      | "headSha"
+      | "updatedAt"
     >
   >,
 ) => ChangeStandingRead;

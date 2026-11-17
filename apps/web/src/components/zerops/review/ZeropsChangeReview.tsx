@@ -68,6 +68,7 @@ import { useAskMateToFix, type FixProblem } from "~/zerops/fixRequest";
 import { useHqAppDetailHold, useHqAppFailure } from "~/zerops/useHqAppDetail";
 import { useAccountDataOptional } from "~/zerops/ZeropsAccountData";
 import { CHANGE_HEAD_PATIENCE_MS, changeReviewReadout } from "~/zerops/changeReviewReadout.logic";
+import { useMergeEndForgottenOnOpen } from "~/zerops/changeActs";
 import { useFlowVerbs } from "~/zerops/flowVerbs";
 import { useMateNames, useProjectFlows, type ZeropsProjectFlow } from "~/zerops/projectFlows";
 import { reviewTargetKey, useOpenReview, type ReviewTarget } from "~/zerops/review";
@@ -331,6 +332,8 @@ function ChangeReviewData({
   const openPutLive = useOpenPutLive();
   const question = useEnvironmentQuestionFacts(target.groupId, flow);
   const verbs = useFlowVerbs();
+  // Opened, the review says anew how a merge goes: what an earlier one ended in is forgotten.
+  useMergeEndForgottenOnOpen(target.groupId, pull.repository, pull.number);
   const mateNames = useMateNames();
   // What its Mate works on for a page, off its rows: this change says its Mate is at it.
   const mateWorkingOn = useAtomValue(mateWorkingOnAtom(pull.mateProjectId));
@@ -371,7 +374,11 @@ function ChangeReviewData({
     setOfferAtPress(offerKey);
     setPress({ kind: "running" });
     // The head the review shows: its files were read for it, and one pushed since HQ refuses.
-    const outcome = await verbs.merge(target.groupId, change, pull.headSha);
+    const outcome = await verbs.merge(
+      target.groupId,
+      { ...change, updatedAt: pull.updatedAt },
+      pull.headSha,
+    );
     setPress(
       outcome.ok
         ? { kind: "done", deploys: outcome.deploys, rollout: outcome.rollout }

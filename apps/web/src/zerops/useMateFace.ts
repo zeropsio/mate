@@ -41,7 +41,7 @@ export function useMateFaceFacts(
   const { changes } = useAppsChanges(
     useMemo(() => (groupId === undefined ? [] : [groupId]), [groupId]),
   );
-  const standingOf = useChangeStandingOf();
+  const standingOf = useChangeStandingOf({ appId: groupId });
   const deletingIds = useDeletingMates();
   const deleting = project !== undefined && mateDeleting(project, deletingIds);
   const nowMs = useNowMs();

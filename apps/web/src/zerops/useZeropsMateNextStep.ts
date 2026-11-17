@@ -90,7 +90,7 @@ export function useZeropsMateNextStep(
   );
   const appChanges = groupId === undefined ? undefined : changes.get(groupId);
   // Whose press each change waits for where the application limits who merges.
-  const standingOf = useChangeStandingOf();
+  const standingOf = useChangeStandingOf({ appId: groupId });
   // What its conversations work on: a change it is fixing says so in its line.
   const workingOn = useMateWorkingOn(projectId);
 

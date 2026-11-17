@@ -13,6 +13,7 @@
  */
 import {
   assignCandidateMateTints,
+  changeActBusy,
   hasMate,
   mateNextStep,
   mateShapeOf,
@@ -183,9 +184,7 @@ export function useWaitsOf<T extends ZeropsCandidate>(input: {
       const waits =
         step.lines.find(
           (line) =>
-            line.verdict === undefined &&
-            line.standing !== "waiting" &&
-            (line.act === undefined || line.act.kind === "merge-failed"),
+            line.verdict === undefined && line.standing !== "waiting" && !changeActBusy(line.act),
         )?.pull ?? step.pull;
       return {
         groupId,

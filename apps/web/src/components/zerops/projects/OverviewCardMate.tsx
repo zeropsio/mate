@@ -153,7 +153,7 @@ export function OverviewCardMate({
   const pose = matePoseOf(candidate, nowMs, deleting ? "deleting" : "up");
   // Whose press its change waits for where its application limits who merges (`changeStanding`):
   // one the viewer already asked for waits on the people who merge, not on them.
-  const standingOf = useChangeStandingOf();
+  const standingOf = useChangeStandingOf({ appId: groupId });
   const standingHere = (pull: FlowPullRequest) => standingOf(groupId, pull);
   const stands = change === undefined ? undefined : standingHere(change);
   // Said, and pressed, only of a change nothing stops: one that conflicts waits on its Mate.

@@ -237,14 +237,19 @@ export function mateNextStep(input: {
       : {}),
   };
   const leadAct = actOf(pull);
-  if (listed.length === 1 && (merges(pull) || leadAct !== undefined)) {
+  // One change listed, and something being done to it: its title says what.
+  const actTitle =
+    listed.length === 1 && leadAct !== undefined
+      ? changeActWords(leadAct, pull.number).title
+      : undefined;
+  if (listed.length === 1 && merges(pull)) {
     // The change goes by its title, on the line under this one — or, refused, why.
     return {
       kind: "review",
       pull,
       title:
-        leadAct !== undefined
-          ? changeActWords(leadAct, pull.number).title
+        actTitle !== undefined
+          ? actTitle
           : commentOf(pull) !== undefined
             ? `${commentOf(pull) ?? ""} on ${name}'s change`
             : lead === "asked-of-me"
@@ -261,17 +266,19 @@ export function mateNextStep(input: {
   return {
     kind: "review",
     pull,
-    title: held || listed.length === 1 ? who : `${who} of ${count(listed.length)}`,
+    title: actTitle ?? (held || listed.length === 1 ? who : `${who} of ${count(listed.length)}`),
     detail: pull.title,
     lines: listed.slice(0, MATE_NEXT_STEP_LINES).map((entry) => {
       const line = { pull: entry, label: sidebarChangeLabel(entry, pullRequests) };
+      // What is being done to it is said over its word; its word stays, so putting the strip away
+      // holds through it (`composerStripKey`).
       const act = actOf(entry);
-      if (act !== undefined) return { ...line, act };
-      if (!merges(entry)) return { ...line, verdict: notMerging(entry, input) };
+      const acted = act === undefined ? line : { ...line, act };
+      if (!merges(entry)) return { ...acted, verdict: notMerging(entry, input) };
       const kind = standingOf(entry);
       const says = commentOf(entry) ?? reads.get(entry)?.word;
       return {
-        ...line,
+        ...acted,
         ...(kind === undefined ? {} : { standing: kind }),
         // Where every line waits on the same people, the title has said so once.
         ...(says === undefined || says === READY_TO_MERGE || standing.quiet === true

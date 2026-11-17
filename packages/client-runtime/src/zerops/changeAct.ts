@@ -20,12 +20,17 @@ import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import type { OperationProgress } from "../data/projections/operation.ts";
 
 export type ChangeAct =
-  /** Its merge was pressed and HQ's records do not show it merged yet. */
+  /** Its merge was pressed and is on its way: HQ's records do not show its end yet. */
   | { readonly kind: "merging" }
   /** Its merge, pressed here, ended merged. */
   | { readonly kind: "merged" }
-  /** Its merge, pressed here at the head it still has, was refused or did not end merged. */
+  /** Its merge, pressed here, was refused, never sent, or ended without merging. */
   | { readonly kind: "merge-failed"; readonly reason: string }
+  /**
+   * Its merge, pressed here, ended without HQ saying how: a lost answer, an observation that ran
+   * out. Never a failure nobody reported — and never still merging, which nothing follows any more.
+   */
+  | { readonly kind: "merge-unconfirmed" }
   /** Closing it without merging is on its way. */
   | { readonly kind: "closing" }
   /** Its merge is being asked of the people who merge. */
@@ -38,12 +43,17 @@ export interface ChangeVerbRead {
   readonly pending: boolean;
   /** Its operation's progress, once it was recorded; absent before, or for a verb never pressed. */
   readonly progress?: OperationProgress | undefined;
-  /** The head it was pressed for: a refusal is about that head only. */
+}
+
+/** A change's facts as HQ gave them: its head and its last move. */
+export interface ChangeFacts {
   readonly head?: string | undefined;
+  readonly updatedAt?: string | undefined;
 }
 
 const MERGING: ChangeAct = { kind: "merging" };
 const MERGED: ChangeAct = { kind: "merged" };
+const UNCONFIRMED: ChangeAct = { kind: "merge-unconfirmed" };
 const CLOSING: ChangeAct = { kind: "closing" };
 const ASKING: ChangeAct = { kind: "asking" };
 
@@ -52,15 +62,13 @@ const NOT_MERGED = "HQ did not merge it.";
 
 /**
  * A change's act from its verbs' presses: a press on its way first (merge, then close, then ask),
- * then its Mate at work on it, then how its last merge ended — a refusal only while the change still
- * has the head the merge was pressed for: a push since is new work, and its review says anew.
+ * then its Mate at work on it, then how its last merge ended. Merging only while the merge is on its
+ * way: once it ended, HQ's word is merged, refused, or nothing — and nothing is said as such.
  */
 export function changeActOf(input: {
   readonly merge?: ChangeVerbRead | undefined;
   readonly close?: ChangeVerbRead | undefined;
   readonly ask?: ChangeVerbRead | undefined;
-  /** The change's head now. */
-  readonly head?: string | undefined;
   /** Its Mate works on it, by its name (`worksOnChange`). */
   readonly fixing?: string | undefined;
 }): ChangeAct | undefined {
@@ -71,26 +79,40 @@ export function changeActOf(input: {
   if (input.fixing !== undefined) return { kind: "fixing", mateName: input.fixing };
   const progress = merge?.progress;
   if (progress === undefined) return undefined;
-  const failed = (reason: string): ChangeAct | undefined =>
-    merge?.head !== undefined && input.head !== undefined && merge.head !== input.head
-      ? undefined
-      : { kind: "merge-failed", reason };
   switch (progress.stage) {
     case "done":
       if (progress.outcome === "succeeded") return MERGED;
-      return progress.outcome === "failed" ? failed(progress.reason ?? NOT_MERGED) : undefined;
+      return progress.outcome === "failed"
+        ? { kind: "merge-failed", reason: progress.reason ?? NOT_MERGED }
+        : undefined;
     case "refused":
-      return failed(progress.reason);
+      return { kind: "merge-failed", reason: progress.reason };
     case "unsent":
-      return failed(progress.reason ?? "HQ could not be reached.");
-    case "unresolved":
-      return failed(progress.reason ?? "HQ didn't say whether it merged.");
+      return { kind: "merge-failed", reason: progress.reason ?? "HQ could not be reached." };
     case "unknown":
       return undefined;
     default:
-      // Answered and not ended: still on its way.
-      return MERGING;
+      // Ended with no word of how — a lost answer, an observation that ran out: unknown, not failed.
+      return UNCONFIRMED;
   }
+}
+
+/**
+ * Whether an ended merge's word still stands for the change as it is now: a refusal or an unknown
+ * end is about the change as it was pressed, and goes once HQ's facts of it moved since — a push, a
+ * new check — where its review says anew.
+ */
+export function changeActStands(
+  act: ChangeAct | undefined,
+  pressed: ChangeFacts | undefined,
+  now: ChangeFacts,
+): ChangeAct | undefined {
+  if (act?.kind !== "merge-failed" && act?.kind !== "merge-unconfirmed") return act;
+  const moved = (at: string | undefined, then: string | undefined) =>
+    at !== undefined && then !== undefined && at !== then;
+  return moved(now.head, pressed?.head) || moved(now.updatedAt, pressed?.updatedAt)
+    ? undefined
+    : act;
 }
 
 /** Whether an act holds the change's next step: it waits on HQ or its Mate, never on the person. */
@@ -121,6 +143,8 @@ export function changeActWords(act: ChangeAct, number: number): ChangeActWords {
       return { title: `${n} merged`, word: "Merged", tone: "ok" };
     case "merge-failed":
       return { title: `Couldn't merge ${n}`, word: "Couldn't merge", tone: "attention" };
+    case "merge-unconfirmed":
+      return { title: `HQ didn't confirm ${n}'s merge`, word: "Not confirmed", tone: "attention" };
     case "closing":
       return { title: `Closing ${n}…`, word: "Closing…", tone: "busy" };
     case "asking":

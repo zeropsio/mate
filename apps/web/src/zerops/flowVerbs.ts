@@ -10,13 +10,7 @@ import type { ReleaseServicePlan } from "@t3tools/shared/hqRelease";
  */
 import { RegistryContext } from "@effect/atom-react";
 import { flowAnswer, releaseRequestOf, type FlowWriteIntent } from "@t3tools/client-runtime/data";
-import {
-  changeActOf,
-  flowVerbKey,
-  type ChangeAct,
-  type ChangeVerbRead,
-  type FlowVerb,
-} from "@t3tools/client-runtime/zerops";
+import { flowVerbKey, type ChangeFacts, type FlowVerb } from "@t3tools/client-runtime/zerops";
 import {
   HQ_WRITE_UNCERTAIN,
   hqRefusalWords,
@@ -27,11 +21,8 @@ import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { useCallback, useContext, useMemo, useSyncExternalStore } from "react";
 
-import {
-  useAccountOperations,
-  useAccountOperationsOptional,
-  type AccountOperations,
-} from "./accountOperations";
+import { useAccountOperations, type AccountOperations } from "./accountOperations";
+import { recordChangePress } from "./changeActs";
 import type { ZeropsProjectFlow } from "./projectFlows";
 import { useAccountDataOptional } from "./ZeropsAccountData";
 
@@ -87,7 +78,12 @@ export interface FlowVerbs {
    */
   readonly merge: (
     groupId: string,
-    change: { readonly repository: string; readonly number: number },
+    change: {
+      readonly repository: string;
+      readonly number: number;
+      /** Its last move as HQ gave it with the review: an ended merge's word holds while it does. */
+      readonly updatedAt?: string | undefined;
+    },
     expectedHead: string | undefined,
   ) => Promise<FlowVerbOutcome>;
   /** A change closed without merging, only at the head the person reviewed. */
@@ -143,18 +139,10 @@ const NO_GROUP_MAIN = hqRefusalWords({ code: "conflict", reason: "no_group_main"
 
 const refused = (reason: string): FlowVerbOutcome => ({ ok: false, reason });
 
-/** A verb's last press, by `flowVerbKey`: its operation, and the change's head it was pressed for. */
-interface VerbPress {
-  readonly requestId: string;
-  readonly head?: string | undefined;
-}
-
 /** The verbs on their way and the last refusal, for one account's operations. */
 interface Board {
   pending: ReadonlySet<string>;
   trouble: string | null;
-  /** Each verb's last press, kept for the account's lifetime: how it went is its operation's. */
-  presses: ReadonlyMap<string, VerbPress>;
   readonly listeners: Set<() => void>;
 }
 
@@ -163,16 +151,13 @@ const boards = new WeakMap<AccountOperations, Board>();
 function boardOf(operations: AccountOperations): Board {
   let board = boards.get(operations);
   if (board === undefined) {
-    board = { pending: new Set(), trouble: null, presses: new Map(), listeners: new Set() };
+    board = { pending: new Set(), trouble: null, listeners: new Set() };
     boards.set(operations, board);
   }
   return board;
 }
 
-function publish(
-  board: Board,
-  change: Partial<Pick<Board, "pending" | "trouble" | "presses">>,
-): void {
+function publish(board: Board, change: Partial<Pick<Board, "pending" | "trouble">>): void {
   Object.assign(board, change);
   for (const listener of board.listeners) listener();
 }
@@ -206,28 +191,26 @@ export function useFlowVerbs(): FlowVerbs {
       verb: FlowVerb,
       intent: (orgId: string) => FlowWriteIntent,
       says: boolean,
-      /** The change's head the press is for, where it is a change's. */
-      head?: string,
+      /** HQ's facts of the change the press is for, where it is a change's (`changeActs.ts`). */
+      facts?: ChangeFacts,
     ): Promise<FlowVerbOutcome> => {
       if (orgId === null || data === undefined) return refused(NOT_READ_YET);
       const key = flowVerbKey(verb);
       if (board.pending.has(key)) return refused(VERB_ALREADY_RUNNING);
       publish(board, { pending: new Set(board.pending).add(key) });
+      // A change's press, for every door to it: on its way, then its operation, then its end.
+      recordChangePress(registry, operations, verb, { pending: true, requestId: undefined, facts });
       const done = () => {
         const next = new Set(board.pending);
         next.delete(key);
         publish(board, { pending: next });
+        recordChangePress(registry, operations, verb, { pending: false });
       };
       const { requestId, progress } = await operations.submit(intent(orgId)).catch((cause) => {
         done();
         throw cause;
       });
-      publish(board, {
-        presses: new Map(board.presses).set(key, {
-          requestId,
-          ...(head === undefined ? {} : { head }),
-        }),
-      });
+      recordChangePress(registry, operations, verb, { requestId });
       const reason =
         progress.stage === "refused"
           ? progress.reason
@@ -310,17 +293,21 @@ export function useFlowVerbs(): FlowVerbs {
   const merge = useCallback(
     (
       groupId: string,
-      change: { readonly repository: string; readonly number: number },
+      change: {
+        readonly repository: string;
+        readonly number: number;
+        readonly updatedAt?: string | undefined;
+      },
       expectedHead: string | undefined,
     ): Promise<FlowVerbOutcome> => {
       // Only the head whose change was shown: one nobody saw is never merged, and HQ is not asked.
       if (expectedHead === undefined) return Promise.resolve(refused(HEAD_NOT_SHOWN));
       const link: ChangeLink = { appId: groupId, repo: change.repository, number: change.number };
       return run(
-        { kind: "merge", groupId, ...change },
+        { kind: "merge", groupId, repository: change.repository, number: change.number },
         (orgId) => ({ kind: "merge-change", orgId, link, expectedHead }),
         false,
-        expectedHead,
+        { head: expectedHead, updatedAt: change.updatedAt },
       );
     },
     [run],
@@ -469,62 +456,3 @@ export function useFlowVerbs(): FlowVerbs {
     ],
   );
 }
-
-/**
- * What is being done to each change now (`changeActOf`), from the account's verbs: a merge, a close
- * or an ask on its way, and how its last merge ended, as its operation says it. Null outside an
- * account (a design harness), where nothing is pressed. Its reader is new only when a verb starts
- * or ends: those are the moments an act changes.
- */
-export function useChangeActOf(): ChangeActOf | null {
-  const operations = useAccountOperationsOptional();
-  const board = operations === null ? null : boardOf(operations);
-  const subscribe = useCallback(
-    (listener: () => void) => {
-      if (board === null) return () => {};
-      board.listeners.add(listener);
-      return () => {
-        board.listeners.delete(listener);
-      };
-    },
-    [board],
-  );
-  const pending = useSyncExternalStore(subscribe, () => board?.pending ?? null);
-  const presses = useSyncExternalStore(subscribe, () => board?.presses ?? null);
-  return useMemo(() => {
-    if (operations === null || pending === null || presses === null) return null;
-    return (groupId, change) => {
-      const read = (kind: "merge" | "close" | "ask-merge"): ChangeVerbRead | undefined => {
-        const key = flowVerbKey({
-          kind,
-          groupId,
-          repository: change.repository,
-          number: change.number,
-        });
-        const press = presses.get(key);
-        if (press === undefined && !pending.has(key)) return undefined;
-        return {
-          pending: pending.has(key),
-          progress: press === undefined ? undefined : operations.readProgress(press.requestId),
-          head: press?.head,
-        };
-      };
-      return changeActOf({
-        merge: read("merge"),
-        close: read("close"),
-        ask: read("ask-merge"),
-        head: change.headSha,
-      });
-    };
-  }, [operations, pending, presses]);
-}
-
-/** A change's act, by its application, repository and number, at the head it has now. */
-export type ChangeActOf = (
-  groupId: string,
-  change: {
-    readonly repository: string;
-    readonly number: number;
-    readonly headSha?: string | undefined;
-  },
-) => ChangeAct | undefined;

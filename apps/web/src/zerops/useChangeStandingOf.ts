@@ -6,8 +6,8 @@
  *
  * Its answer moves only when what decides a standing does: who merges in an application
  * (`mergers`, the person's `can`), what the member list calls somebody, which Mates are the
- * person's own, for a comment's mark their opening a change's review, or a merge, close or ask
- * starting or ending (`useChangeActOf`). HQ's navigation moves
+ * person's own, for a comment's mark their opening a change's review, or what is being done to a
+ * change it reads (`useChangeActs`: only those in its scope). HQ's navigation moves
  * for much else — a Mate's word, a change's push — and none of that hands a list surface a new
  * reader.
  */
@@ -28,7 +28,7 @@ import { zeropsAccountDisplay } from "~/components/zerops/landing/ZeropsAccountC
 
 import { hqNavigationAtom, hqPeopleAtom, zeropsSessionAtom } from "../state/zerops";
 import { changeSeenKey, useChangesSeen } from "./changeSeen";
-import { useChangeActOf } from "./flowVerbs";
+import { changeActIn, useChangeActs, type ChangeActScope } from "./changeActs";
 import { useZeropsSessionOptional } from "./sessionContext";
 
 const NO_FACTS: ChangeStandingFacts = { apps: {}, names: {} };
@@ -75,7 +75,13 @@ export const changeStandingFactsAtom = Atom.make((get): ChangeStandingFacts => {
 export const ChangeStandingContext = createContext<ChangeStandingOf | null>(null);
 
 /** A change's standing and its word, by its application: stable while what decides it stands. */
-export function useChangeStandingOf(): ChangeStandingOf {
+export function useChangeStandingOf(
+  /**
+   * The changes it reads what is being done to (`useChangeActs`): an application's, or one change;
+   * every change where none is given. A change outside it reads no act.
+   */
+  scope?: ChangeActScope,
+): ChangeStandingOf {
   const given = useContext(ChangeStandingContext);
   const facts = useAtomValue(changeStandingFactsAtom);
   const viewer = useZeropsSessionOptional()?.user;
@@ -93,21 +99,14 @@ export function useChangeStandingOf(): ChangeStandingOf {
     [facts, userId, name, seen],
   );
   // What is being done to it now (`changeActOf`): a merge on its way says so on every door to it.
-  const actOf = useChangeActOf();
+  const acts = useChangeActs(scope);
   return useMemo(() => {
     const standing = given ?? read;
-    if (actOf === null) return standing;
+    if (acts.size === 0) return standing;
     return (appId, pull) => {
       const base = standing(appId, pull);
-      const act =
-        appId === undefined || pull.repository === undefined || pull.number === undefined
-          ? undefined
-          : actOf(appId, {
-              repository: pull.repository,
-              number: pull.number,
-              headSha: pull.headSha,
-            });
+      const act = changeActIn(acts, appId, pull);
       return act === undefined ? base : { ...base, act };
     };
-  }, [actOf, given, read]);
+  }, [acts, given, read]);
 }

@@ -88,7 +88,8 @@ export function ZeropsChangeLinkChip({
   const pull = held ?? (landed.kind === "read" ? landed.pull : undefined);
   // An open change nothing stops says whose press it waits for (`changeStanding`): "Ready" and
   // "Waiting for Ada K." to a person who cannot merge it, never "Ready to merge".
-  const standingOf = useChangeStandingOf();
+  // Only this change's act: a press on another redraws no chip of this one.
+  const standingOf = useChangeStandingOf({ appId, repository: link?.repo, number: link?.number });
   const follow = href === undefined ? null : (openInApp?.(href) ?? null);
   // Drawn from the url while HQ is still answering: the repository and the
   // number are in the address, so the chip does not have to arrive as a

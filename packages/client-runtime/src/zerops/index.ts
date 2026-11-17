@@ -373,10 +373,12 @@ export {
 export {
   changeActBusy,
   changeActOf,
+  changeActStands,
   changeActWords,
   worksOnChange,
   type ChangeAct,
   type ChangeActWords,
+  type ChangeFacts,
   type ChangeVerbRead,
 } from "./changeAct.ts";
 export {
