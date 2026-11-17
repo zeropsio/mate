@@ -8,13 +8,6 @@ export function createOrchestrationEnvironmentAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
 ) {
   return {
-    workflowScript: createEnvironmentRpcQueryAtomFamily(runtime, {
-      label: "environment-data:orchestration:workflow-script",
-      tag: ORCHESTRATION_WS_METHODS.getWorkflowScript,
-      // Scripts are immutable per run: cache generously.
-      staleTimeMs: 300_000,
-      idleTtlMs: 300_000,
-    }),
     threadSearch: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:orchestration:thread-search",
       tag: ORCHESTRATION_WS_METHODS.searchThreads,

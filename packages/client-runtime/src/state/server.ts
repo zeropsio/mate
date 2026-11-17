@@ -20,7 +20,6 @@ import { AsyncResult, Atom } from "effect/reactivity";
 import {
   createAtomCommandScheduler,
   createEnvironmentRpcCommand,
-  createEnvironmentRpcQueryAtomFamily,
   createEnvironmentRpcSubscriptionAtomFamily,
 } from "./runtime.ts";
 import { EnvironmentRegistry } from "../connection/registry.ts";
@@ -323,27 +322,10 @@ export function createServerEnvironmentAtoms<R, E>(
       label: "environment-data:provider:install-remove",
       tag: WS_METHODS.providerInstallRemove,
     }),
-    traceDiagnostics: createEnvironmentRpcQueryAtomFamily(runtime, {
-      label: "environment-data:server:trace-diagnostics",
-      tag: WS_METHODS.serverGetTraceDiagnostics,
-    }),
-    processDiagnostics: createEnvironmentRpcQueryAtomFamily(runtime, {
-      label: "environment-data:server:process-diagnostics",
-      tag: WS_METHODS.serverGetProcessDiagnostics,
-    }),
-    processResourceHistory: createEnvironmentRpcQueryAtomFamily(runtime, {
-      label: "environment-data:server:process-resource-history",
-      tag: WS_METHODS.serverGetProcessResourceHistory,
-    }),
     resourceTelemetry: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
       label: "environment-data:server:resource-telemetry",
       tag: WS_METHODS.subscribeResourceTelemetry,
       idleTtlMs: 0,
-    }),
-    resourceTelemetryHistory: createEnvironmentRpcQueryAtomFamily(runtime, {
-      label: "environment-data:server:resource-telemetry-history",
-      tag: WS_METHODS.serverGetResourceTelemetryHistory,
-      staleTimeMs: 5_000,
     }),
     // Mobile later: its existing presentation remains, but transcript usage no longer exists.
     usageSummary: (_target: {
