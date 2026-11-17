@@ -177,6 +177,12 @@ export function mateComingDeadlines(
 }
 
 /** Whether `at` is within `graceMs` of now; an unknown time or now counts as young. */
+/** A container made within its first build's grace, by a known time: its first build is due. */
+function buildDue(created: string | undefined, nowMs: number | undefined): boolean {
+  const ms = Date.parse(created ?? "");
+  return nowMs !== undefined && !Number.isNaN(ms) && nowMs - ms < FIRST_BUILD_GRACE_MS;
+}
+
 function youngAt(at: string | undefined, nowMs: number | undefined, graceMs: number): boolean {
   const ms = Date.parse(at ?? "");
   return nowMs === undefined || Number.isNaN(ms) || nowMs - ms < graceMs;
@@ -236,13 +242,16 @@ function comingWords(input: MateComingInput): MateComing | undefined {
   if (input.link?.reachability != null && isTerminalReachability(input.link.reachability))
     return undefined;
   // A missing deployment is affirmative platform evidence, not an overdue start. A live press or
-  // build still owns the first deployment; a clock never turns that work into a failed setup.
+  // build still owns the first deployment; a clock never turns that work into a failed setup. A
+  // container within its first build's grace has not had it read yet: its import ends READY_TO_DEPLOY
+  // a moment before its first build is listed (measured: "could not be added" for 0.4 s, then back).
   if (
     candidate?.service?.status === "READY_TO_DEPLOY" &&
     candidate.service.activeAppVersion === null &&
     press?.container !== true &&
     input.pressElsewhere !== "pressing" &&
-    input.firstBuild?.kind !== "running"
+    input.firstBuild?.kind !== "running" &&
+    !buildDue(candidate.service.created, input.nowMs)
   ) {
     return { kind: "failed", line: "Nothing is deployed yet.", verb: "redeploy" };
   }
