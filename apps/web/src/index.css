@@ -14644,6 +14644,11 @@ a.message-file:focus-visible {
   min-width: 0;
   margin-top: 10px;
 }
+/* A value production lacks, added in place: its field, Generate and Save on one row. */
+.rv-pstep-value {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+}
 .rv-pstep-more > p {
   margin: 0;
   font-size: 12px;

@@ -825,3 +825,65 @@ export function productionBusyWords(outside: ReadonlyArray<RunningLine>):
     more: rest.length === 0 ? "" : ` and ${String(rest.length)} more`,
   };
 }
+
+/** Where the person's write of a value production lacks stands. */
+export type ReleaseValueWrite =
+  | { readonly kind: "none" }
+  | { readonly kind: "saving" }
+  | { readonly kind: "saved" }
+  | { readonly kind: "failed"; readonly words: string };
+
+/** A value the release reads that production's vault lacks, as its step stands. */
+export interface ReleaseValueStep {
+  readonly id: string;
+  readonly key: string;
+  /** The service whose vault it goes in; `null` for production's Shared vault. */
+  readonly holder: string | null;
+  /** The services of the release that read it. */
+  readonly readers: ReadonlyArray<string>;
+  readonly write: ReleaseValueWrite;
+}
+
+/** The values the release still waits on: lacking, or written and not taken yet. */
+export const valuesLacking = (steps: ReadonlyArray<ReleaseValueStep>) =>
+  steps.filter((step) => step.write.kind !== "saved");
+
+/** Why the release waits on them: "Add AUTH_SECRET first"; past two, how many. */
+export function valuesHoldWords(lacking: ReadonlyArray<ReleaseValueStep>): string {
+  const keys = lacking.map((step) => step.key);
+  return keys.length > 2
+    ? `Add ${String(keys.length)} values first`
+    : `Add ${namesWords(keys)} first`;
+}
+
+/** A value step's title and line: who reads it and where it goes, or that it is there now. */
+export function valueStepWords(step: ReleaseValueStep): {
+  readonly title: Words;
+  readonly line: string;
+  readonly mark: ReleaseStepMark;
+  readonly tone: ReleaseSheetStep["tone"];
+} {
+  const vault =
+    step.holder === null ? "production's vault" : `${step.holder}'s vault in production`;
+  if (step.write.kind === "saved")
+    return {
+      title: ["Added ", code(step.key)],
+      line: `In ${vault} · hidden`,
+      mark: "done",
+      tone: "quiet",
+    };
+  if (step.write.kind === "failed")
+    return {
+      title: ["Add ", code(step.key)],
+      line: step.write.words.replace(/\.$/u, ""),
+      mark: "failed",
+      tone: "failed",
+    };
+  const reads = `${namesWords(step.readers)} ${step.readers.length === 1 ? "reads" : "read"} it`;
+  return {
+    title: ["Add ", code(step.key)],
+    line: `${reads} · ${vault} has none`,
+    mark: step.write.kind === "saving" ? "busy" : "attention",
+    tone: "quiet",
+  };
+}

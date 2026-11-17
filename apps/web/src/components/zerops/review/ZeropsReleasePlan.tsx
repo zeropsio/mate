@@ -6,19 +6,27 @@
  * stopped it on the step that stopped. Props only: the review hands every read in.
  */
 import type { DeployLogTarget } from "@t3tools/client-runtime/zerops/hq";
-import { CheckIcon, XIcon } from "lucide-react";
+import { CheckIcon, DicesIcon, XIcon } from "lucide-react";
 import type { RunningLine as Running } from "@t3tools/client-runtime/zerops/activity/runningNow";
 import { MOTION } from "@t3tools/shared/brand";
 import { Fragment, useLayoutEffect, useRef, useState, type ReactElement } from "react";
 
-import { InlineButton } from "~/components/ui/button";
+import { Button, InlineButton } from "~/components/ui/button";
+import { Input } from "~/components/ui/input";
 import { Spinner } from "~/components/ui/spinner";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { servicePlanImportYaml } from "~/zerops/releaseImport.logic";
 
 import { DeployLogDetails } from "../ZeropsDeployLog";
 import { RunningLine } from "../system";
-import type { ReleaseSheetStep, Words } from "./releaseSheet.logic";
+import { generateVaultValue } from "../vault/vault.logic";
+import {
+  valueStepWords,
+  type ReleaseSheetStep,
+  type ReleaseStepMark,
+  type ReleaseValueStep,
+  type Words,
+} from "./releaseSheet.logic";
 
 /** Words drawn, the names in them in code type. */
 export function WordsOf({ words }: { readonly words: Words }) {
@@ -55,8 +63,18 @@ export interface ReleaseStepLog {
   readonly target: DeployLogTarget;
 }
 
+/** The values the release reads that production's vault lacks, each a step before the deploys. */
+export interface ReleasePlanValues {
+  readonly steps: ReadonlyArray<ReleaseValueStep>;
+  /** Writes one, hidden, into production's vault; none where it is not the person's to write now. */
+  readonly onSave: ((id: string, value: string) => void) | undefined;
+  /** The id the release button's hold is read by: the first lacking value's title. */
+  readonly heldBy?: string | undefined;
+}
+
 interface ReleasePlanProps {
   readonly steps: ReadonlyArray<ReleaseSheetStep>;
+  readonly values?: ReleasePlanValues | undefined;
   /**
    * HQ has not said what happens to each service: a deploy keeps its name, its mark and its
    * place, and its line is still being `reading`, or `unsaid` where nothing reads it now.
@@ -82,6 +100,7 @@ interface ReleasePlanProps {
 
 export function ReleasePlan({
   steps,
+  values,
   unread,
   onCreate,
   onRenew,
@@ -92,7 +111,23 @@ export function ReleasePlan({
 }: ReleasePlanProps) {
   const creations = steps.filter((step) => step.kind === "create").length;
   const list = useRef<HTMLOListElement | null>(null);
-  const keys = steps.map((step) => step.key).join("\n");
+  // A value production lacks is added before anything deploys that reads it.
+  const at = steps.findIndex((step) => step.kind === "deploy" || step.kind === "live");
+  const before = at === -1 ? steps.length : at;
+  const items: ReadonlyArray<
+    | { readonly kind: "step"; readonly key: string; readonly step: ReleaseSheetStep }
+    | { readonly kind: "value"; readonly key: string; readonly value: ReleaseValueStep }
+  > = [
+    ...steps.slice(0, before).map((step) => ({ kind: "step" as const, key: step.key, step })),
+    ...(values?.steps ?? []).map((value) => ({
+      kind: "value" as const,
+      key: `value ${value.id}`,
+      value,
+    })),
+    ...steps.slice(before).map((step) => ({ kind: "step" as const, key: step.key, step })),
+  ];
+  const firstLacking = values?.steps.find((value) => value.write.kind !== "saved")?.id;
+  const keys = items.map((item) => item.key).join("\n");
   const stood = useRef<ReadonlySet<string> | undefined>(undefined);
   // A step the plan brings among those already standing (what production lacks is created first)
   // comes in, and the steps after it go down to their places from where they stood: none is cut
@@ -129,28 +164,130 @@ export function ReleasePlan({
       data-zerops-surface="release-plan"
       ref={list}
     >
-      {steps.map((step, index) => (
-        <PlanStep
-          createWords={creations > 1 ? "Create them now" : "Create it now"}
-          index={index}
-          key={step.key}
-          // What a deploy does to its service is the plan's to say; the rest is known without it.
-          unread={step.kind === "deploy" ? unread : undefined}
-          live={step.kind === "live" && step.mark === "done" ? live : undefined}
-          log={
-            step.kind === "deploy" && step.service !== undefined ? logOf?.(step.service) : undefined
-          }
-          onCreate={onCreate}
-          onRenew={onRenew}
-          renewing={renewing}
-          // A deploy under way says where its build stands; a creation's title and clock say all.
-          running={
-            step.kind === "deploy" && step.mark === "busy" ? running?.get(step.key) : undefined
-          }
-          step={step}
-        />
-      ))}
+      {items.map((item, index) => {
+        if (item.kind === "value")
+          return (
+            <ValueStep
+              index={index}
+              key={item.key}
+              onSave={values?.onSave}
+              step={item.value}
+              titleId={item.value.id === firstLacking ? values?.heldBy : undefined}
+            />
+          );
+        const { step } = item;
+        return (
+          <PlanStep
+            createWords={creations > 1 ? "Create them now" : "Create it now"}
+            index={index}
+            key={step.key}
+            // What a deploy does to its service is the plan's to say; the rest is known without it.
+            unread={step.kind === "deploy" ? unread : undefined}
+            live={step.kind === "live" && step.mark === "done" ? live : undefined}
+            log={
+              step.kind === "deploy" && step.service !== undefined
+                ? logOf?.(step.service)
+                : undefined
+            }
+            onCreate={onCreate}
+            onRenew={onRenew}
+            renewing={renewing}
+            // A deploy under way says where its build stands; a creation's title and clock say all.
+            running={
+              step.kind === "deploy" && step.mark === "busy" ? running?.get(step.key) : undefined
+            }
+            step={step}
+          />
+        );
+      })}
     </ol>
+  );
+}
+
+/** A step's mark: its number to do, or how it stands. */
+function StepMark({ mark, index }: { readonly mark: ReleaseStepMark; readonly index: number }) {
+  return (
+    <span className="rv-pmark" data-mark={mark}>
+      {mark === "done" ? (
+        <CheckIcon aria-label="Done" strokeWidth={2.5} />
+      ) : mark === "busy" ? (
+        <Spinner aria-label="Under way" />
+      ) : mark === "failed" ? (
+        <XIcon aria-label="Failed" strokeWidth={2.5} />
+      ) : mark === "attention" ? (
+        "!"
+      ) : (
+        index + 1
+      )}
+    </span>
+  );
+}
+
+/**
+ * A value production lacks, added in place: a field nobody reads back, a generated value or the
+ * person's own pasted, written hidden into production's vault with the person's own Zerops access
+ * — never through a Mate or HQ. Written before the release, the deploy starts with it.
+ */
+function ValueStep({
+  step,
+  index,
+  onSave,
+  titleId,
+}: {
+  readonly step: ReleaseValueStep;
+  readonly index: number;
+  readonly onSave: ReleasePlanValues["onSave"];
+  readonly titleId: string | undefined;
+}) {
+  const [draft, setDraft] = useState("");
+  const words = valueStepWords(step);
+  const saving = step.write.kind === "saving";
+  const save = () => {
+    if (onSave === undefined || draft === "" || saving) return;
+    onSave(step.id, draft);
+  };
+  return (
+    <li className="rv-pstep" data-release-step="value" data-step-mark={words.mark}>
+      <StepMark index={index} mark={words.mark} />
+      <p className="rv-pstep-t" id={titleId}>
+        <WordsOf words={words.title} />
+      </p>
+      <p className="rv-pstep-l" data-tone={words.tone}>
+        <span>{words.line}</span>
+      </p>
+      {step.write.kind === "saved" || onSave === undefined ? null : (
+        <div className="rv-pstep-more rv-pstep-value" data-zerops-surface="release-value">
+          <Input
+            aria-label={`${step.key}'s value`}
+            autoComplete="off"
+            disabled={saving}
+            font="mono"
+            onChange={(event) => setDraft(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") save();
+            }}
+            placeholder="Paste a value"
+            size="sm"
+            spellCheck={false}
+            type="password"
+            value={draft}
+          />
+          <Button
+            disabled={saving}
+            onClick={() => setDraft(generateVaultValue())}
+            size="sm"
+            variant="ghost"
+          >
+            <DicesIcon aria-hidden="true" />
+            Generate
+          </Button>
+          <Button disabled={draft === "" || saving} onClick={save} size="sm" variant="secondary">
+            {saving ? <Spinner size="xs" /> : null}
+            {step.write.kind === "failed" ? "Try again" : "Save"}
+          </Button>
+        </div>
+      )}
+    </li>
   );
 }
 
@@ -211,19 +348,7 @@ function PlanStep({
       data-step-mark={step.mark}
       data-unread={unread}
     >
-      <span className="rv-pmark" data-mark={step.mark}>
-        {step.mark === "done" ? (
-          <CheckIcon aria-label="Done" strokeWidth={2.5} />
-        ) : step.mark === "busy" ? (
-          <Spinner aria-label="Under way" />
-        ) : step.mark === "failed" ? (
-          <XIcon aria-label="Failed" strokeWidth={2.5} />
-        ) : step.mark === "attention" ? (
-          "!"
-        ) : (
-          index + 1
-        )}
-      </span>
+      <StepMark index={index} mark={step.mark} />
       <p className="rv-pstep-t">
         <WordsOf words={step.title} />
       </p>

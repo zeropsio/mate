@@ -84,7 +84,10 @@ import {
   NO_ANSWER_IN_TIME,
   releaseRequestOf,
   type HqAppDetailRead,
+  type ReleaseVaultGap,
 } from "@t3tools/client-runtime/data";
+import { useReleaseVault } from "~/zerops/useReleaseVault";
+import { vaultOutcome } from "../vault/vaultOutcome.logic";
 import { NOT_RENEWING } from "~/zerops/renewDeployKey.logic";
 import { releasePressKey, useReleasePresses } from "~/zerops/releasePresses";
 import { useRunningNow } from "~/zerops/activity/useRunningNow";
@@ -117,6 +120,7 @@ import {
   ReleasePlan,
   ReleasePlanSkeleton,
   WordsOf,
+  type ReleasePlanValues,
   type ReleaseStepLog,
 } from "./ZeropsReleasePlan";
 import { useReleaseSteps, ZeropsReleaseSteps } from "./ZeropsReleaseSteps";
@@ -132,11 +136,15 @@ import {
   releaseStepWords,
   releaseStopReason,
   releaseSubtitle,
+  valuesHoldWords,
+  valuesLacking,
   wordsNaming,
   type KeyRenewal,
   type ReleaseCreateOperation,
   type ReleaseProgress,
   type ReleaseSheetStep,
+  type ReleaseValueStep,
+  type ReleaseValueWrite,
 } from "./releaseSheet.logic";
 import {
   serviceCreateRunOf,
@@ -675,6 +683,99 @@ function ReleaseData({
         },
   );
 
+  // What the release reads that production's vault lacks (D9), added from its own step before the
+  // press, with the person's own Zerops access: the value never passes through a Mate or HQ, and
+  // the deploy starts with it.
+  const valuesAsked =
+    reviewing &&
+    outcome.kind === "offered" &&
+    flow.release.git === undefined &&
+    flow.release.permission?.allowed === true;
+  const releaseDeploys = useMemo(
+    () =>
+      reviewedPlan === undefined
+        ? flow.release.entries.map(({ service, commit }) => ({ service, sha: commit }))
+        : reviewedPlan.operations.flatMap((operation) =>
+            operation.kind === "deploy" ? [{ service: operation.service, sha: operation.sha }] : [],
+          ),
+    [flow.release.entries, reviewedPlan],
+  );
+  const releaseCreates = useMemo(
+    () => planCreations(reviewedPlan).map((operation) => operation.service),
+    [reviewedPlan],
+  );
+  const vaultRead = useReleaseVault({
+    appId: flow.groupId,
+    productionProjectId,
+    deploys: releaseDeploys,
+    creates: releaseCreates,
+    enabled: valuesAsked,
+  });
+  // A read that never ends is no answer: past the review's wait nothing is claimed.
+  const vaultWait = useReleasePlanWait(valuesAsked && vaultRead.state === "reading");
+  const [valueWrites, setValueWrites] =
+    useState<ReadonlyMap<string, ValueWriteHeld>>(NO_VALUE_WRITES);
+  const gaps = vaultRead.state === "known" ? vaultRead.gaps : NO_GAPS;
+  const saveValue = async (id: string, value: string) => {
+    const gap = gaps.find((each) => each.id === id) ?? valueWrites.get(id)?.gap;
+    if (gap === undefined || operations === null || orgId === null) return;
+    if (productionProjectId === undefined || valueWrites.get(id)?.write.kind === "saving") return;
+    const held = (write: ReleaseValueWrite) =>
+      setValueWrites((before) => new Map(before).set(id, { gap, write }));
+    held({ kind: "saving" });
+    try {
+      const orgOf = orgId;
+      const { requestId, progress } = await operations.submit({
+        kind: "vault-write",
+        orgId: orgOf,
+        projectId: productionProjectId,
+        scope: gap.scope,
+        write: { kind: "add", key: gap.key, value, sensitive: true },
+      });
+      const ended = vaultOutcome(progress) ??
+        vaultOutcome(await operations.untilEnd(requestId, orgOf)) ?? { ok: true };
+      held(
+        ended.ok
+          ? { kind: "saved" }
+          : { kind: "failed", words: ended.message ?? "Zerops did not take it" },
+      );
+    } catch (cause) {
+      held({
+        kind: "failed",
+        words: cause instanceof Error ? cause.message : "Zerops did not take it",
+      });
+    }
+  };
+  // A value written here stays said as added once production's vault holds it.
+  const valueSteps = useMemo(() => {
+    const lacking = new Map(gaps.map((gap) => [gap.id, gap]));
+    for (const [id, { gap, write }] of valueWrites)
+      if (write.kind === "saved" && !lacking.has(id)) lacking.set(id, gap);
+    return [...lacking.values()]
+      .sort((left, right) => left.key.localeCompare(right.key))
+      .map((gap): ReleaseValueStep => ({
+        id: gap.id,
+        key: gap.key,
+        holder: gap.holder,
+        readers: gap.readers,
+        write: valueWrites.get(gap.id)?.write ?? NOT_WRITTEN,
+      }));
+  }, [gaps, valueWrites]);
+  const values: ReleaseReviewViewProps["values"] =
+    vaultRead.state === "reading" && valuesAsked && vaultWait.stage !== "expired"
+      ? VALUES_READING
+      : valueSteps.length === 0
+        ? undefined
+        : {
+            state: "known",
+            steps: valueSteps,
+            onSave: valuesAsked
+              ? (id, value) => {
+                  void saveValue(id, value);
+                }
+              : undefined,
+          };
+
   // The press's own time, and this tab's first sight of the release live (`releasePresses`).
   const pressRecord = useReleasePresses((state) =>
     follows.tag === undefined
@@ -801,6 +902,7 @@ function ReleaseData({
 
   return (
     <ReleaseReviewView
+      values={values}
       servicePlan={shownPlan}
       servicePlanPending={planPending}
       servicePlanWait={planWait.stage === "expired" ? undefined : planWait.stage}
@@ -923,6 +1025,14 @@ function ReleaseData({
 }
 
 const NOTHING_CREATED: ReadonlyArray<ReleaseCreateOperation> = [];
+interface ValueWriteHeld {
+  readonly gap: ReleaseVaultGap;
+  readonly write: ReleaseValueWrite;
+}
+const NO_VALUE_WRITES: ReadonlyMap<string, ValueWriteHeld> = new Map();
+const NO_GAPS: ReadonlyArray<ReleaseVaultGap> = [];
+const NOT_WRITTEN: ReleaseValueWrite = { kind: "none" };
+const VALUES_READING = { state: "reading" } as const;
 const NO_JOBS: ReadonlyArray<{ readonly service: string; readonly job: HqJob }> = [];
 const NO_ANSWERED: ReadonlyArray<{
   readonly service: string;
@@ -1074,6 +1184,15 @@ function useOutsideCommits({
 
 export interface ReleaseReviewViewProps {
   readonly problems?: ReadonlyArray<HqProblem> | undefined;
+  /**
+   * What the release reads that production's vault lacks: `reading` while its code and
+   * production's vault are read (the plan holds its room, the button waits), then each value a
+   * step before the deploys, the button waiting on them; none where it cannot be told.
+   */
+  readonly values?:
+    | { readonly state: "reading" }
+    | ({ readonly state: "known" } & Omit<ReleasePlanValues, "heldBy">)
+    | undefined;
   /** Read from HQ for these exact immutable release inputs, never reconstructed in the browser. */
   readonly servicePlan?: ReleaseServicePlan | undefined;
   readonly servicePlanPending?: boolean | undefined;
@@ -1429,7 +1548,8 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
   const reading =
     offered &&
     ((!props.gate.allowed && props.gate.reason === RELEASE_CHECKING) ||
-      (props.gate.allowed && props.servicePlanPending === true));
+      (props.gate.allowed &&
+        (props.servicePlanPending === true || props.values?.state === "reading")));
   const blocked = offered && !reading && !props.gate.allowed;
   // Nothing to release is nothing to plan: no steps, no version to name.
   const nothing = blocked && model.verdict.tone === "done";
@@ -1593,6 +1713,12 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
             // The wait counted is the plan's: what can be released is the project's own read.
             wait: props.gate.allowed ? (props.servicePlanWait ?? "started") : "started",
           };
+  // What production's vault lacks is added first: the release waits on each, named.
+  const values = props.values?.state === "known" ? props.values : undefined;
+  const lacking = offered && values !== undefined ? valuesLacking(values.steps) : NO_VALUES;
+  const valuesId = useId();
+  const valuesHeld =
+    lacking.length === 0 ? undefined : { by: valuesId, words: valuesHoldWords(lacking) };
   const primary: ReviewPrimaryButton | undefined = offered
     ? {
         label: press1,
@@ -1601,10 +1727,11 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
           !reading &&
           checkedVersion?.error === undefined &&
           props.servicePlanFailure === undefined &&
-          early.kind !== "working",
+          early.kind !== "working" &&
+          lacking.length === 0,
         safe: false,
         held:
-          planState === undefined ? undefined : { by: stateId, words: planStateWords(planState) },
+          planState === undefined ? valuesHeld : { by: stateId, words: planStateWords(planState) },
         onPress: props.onRelease,
       }
     : wayOut;
@@ -1636,7 +1763,9 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
               words: inProductionWords(model.verdict.why, props.environmentName),
               ...(model.verdict.tone === "attention" ? { tone: "attention" as const } : {}),
             }
-          : { words: creates.length > 0 ? "Takes a few minutes" : RELEASE_TAKES };
+          : valuesHeld !== undefined
+            ? { words: valuesHeld.words }
+            : { words: creates.length > 0 ? "Takes a few minutes" : RELEASE_TAKES };
 
   // HQ's own note on what it asked for at the press, where it left one.
   const answer = useReviewDeploys(press);
@@ -1790,6 +1919,15 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
               renewing={renewal.kind === "working"}
               steps={renewal.kind === "renewed" ? keyRenewedSteps(steps) : steps}
               unread={!unread ? undefined : planState?.kind === "reading" ? "reading" : "unsaid"}
+              values={
+                values === undefined || unread
+                  ? undefined
+                  : {
+                      steps: values.steps,
+                      onSave: offered ? values.onSave : undefined,
+                      heldBy: valuesId,
+                    }
+              }
             />
           </GrowsInPlace>
           {answerNote === undefined ? null : <p className="rv-note">{answerNote}</p>}
@@ -1819,6 +1957,7 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
 }
 
 const NO_PROBLEMS: ReadonlyArray<HqProblem> = [];
+const NO_VALUES: ReadonlyArray<ReleaseValueStep> = [];
 const NO_OPERATIONS: ReadonlyArray<ReleaseCreateOperation> = [];
 const NO_CODE: ReturnType<typeof productionCode> = [];
 

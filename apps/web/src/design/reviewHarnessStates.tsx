@@ -47,7 +47,10 @@ import {
   RollbackReviewView,
   type RollbackList,
 } from "~/components/zerops/review/ZeropsReleaseReview";
-import type { ReleaseProgress } from "~/components/zerops/review/releaseSheet.logic";
+import type {
+  ReleaseProgress,
+  ReleaseValueWrite,
+} from "~/components/zerops/review/releaseSheet.logic";
 import { useReleaseSteps, ZeropsReleaseSteps } from "~/components/zerops/review/ZeropsReleaseSteps";
 import { ZeropsReviewDialog } from "~/components/zerops/review/ZeropsReviewDialog";
 import { ZeropsHostedFrame } from "~/components/zerops/landing/ZeropsHostedFrame";
@@ -851,6 +854,15 @@ const APP_ALONE = {
   ],
 } satisfies Partial<ReleaseProps>;
 const NO_CREATION = { run: { kind: "none" }, created: [], onCreate: noop } as const;
+/** A value the release's code reads that production's vault lacks, as its step stands. */
+const lackingValue = (write: ReleaseValueWrite) =>
+  ({
+    state: "known",
+    steps: [
+      { id: "shared\u0000AUTH_SECRET", key: "AUTH_SECRET", holder: null, readers: ["app"], write },
+    ],
+    onSave: noop,
+  }) as const;
 /** A release of three services, and HQ's plan of it: one deploy each. */
 const THREE = {
   services: ["app", "api", "worker"],
@@ -1417,6 +1429,46 @@ export const RELEASE_SHEETS: ReadonlyArray<ReleaseSheet> = [
         },
       },
     },
+  },
+  {
+    id: "release-value-lacking",
+    label: "Release · the code reads a value production's vault lacks: added first",
+    props: {
+      over: { ...APP_ALONE, servicePlan: DEPLOY_PLAN, values: lackingValue({ kind: "none" }) },
+    },
+  },
+  {
+    id: "release-value-saving",
+    label: "Release · the lacking value being saved",
+    props: {
+      over: { ...APP_ALONE, servicePlan: DEPLOY_PLAN, values: lackingValue({ kind: "saving" }) },
+    },
+  },
+  {
+    id: "release-value-failed",
+    label: "Release · Zerops did not take the value, with Try again",
+    props: {
+      over: {
+        ...APP_ALONE,
+        servicePlan: DEPLOY_PLAN,
+        values: lackingValue({
+          kind: "failed",
+          words: "You have no access to change this project's variables.",
+        }),
+      },
+    },
+  },
+  {
+    id: "release-value-saved",
+    label: "Release · the value added: the release goes on as before",
+    props: {
+      over: { ...APP_ALONE, servicePlan: DEPLOY_PLAN, values: lackingValue({ kind: "saved" }) },
+    },
+  },
+  {
+    id: "release-value-reading",
+    label: "Release · what production's vault lacks is still read",
+    props: { over: { ...APP_ALONE, servicePlan: DEPLOY_PLAN, values: { state: "reading" } } },
   },
   {
     id: "release-create-early-done",
