@@ -359,13 +359,15 @@ export const readConversationView = (conversationId: ConversationId) =>
     );
     const asks = yield* lastAsks;
     // What a page asked for in a run still on: the newest person message of those runs that names
-    // it, steered into one or opening it. Nothing is read while every run has ended.
+    // it, steered into one or opening it. Nothing is read while every run has ended. Read through
+    // the runs' own items (`engine_item_by_run`): the unary `+` keeps SQLite off
+    // `engine_item_by_kind`, which walks every person message the conversation ever had.
     const [about] =
       runs.length === 0
         ? []
         : yield* sql<{ readonly body_json: string }>`
             SELECT body_json FROM engine_item
-            WHERE conversation_id = ${conversationId} AND kind = 'person'
+            WHERE +conversation_id = ${conversationId} AND +kind = 'person'
               AND ${sql.in(
                 "run_id",
                 runs.map((run) => run.id),
