@@ -194,13 +194,14 @@ describe("changeReview: the verdict comes first (R2)", () => {
       },
     ],
     [
+      // A quiet fact, never a step: main moves every few minutes (the owner, 2026-11-17).
       "behind main, and it still merges cleanly",
       { pull: pull({ behind: true }) },
       {
-        state: "behind-clean",
-        tone: "attention",
-        title: "Behind main",
-        why: "main moved on since Nova branched · it still merges cleanly",
+        state: "ready",
+        tone: "quiet",
+        title: "Ready to merge",
+        why: "main moved on since Nova branched · it still merges cleanly · 1 commit",
       },
     ],
     [
@@ -316,12 +317,6 @@ describe("changeReview: the verdict comes first (R2)", () => {
       "resolve it",
       "Merge main into it, resolve the conflicts, and deliver it again.",
     ],
-    [
-      "a branch main moved past",
-      { pull: pull({ behind: true }) },
-      "update it",
-      "Merge main into it, check it still works, and deliver it again.",
-    ],
   ])("hands %s to the Mate, the problem written out", (_name, over, verb, ask) => {
     const fix = changeReview(change(over)).verdict.fix;
     expect(fix?.verb).toBe(verb);
@@ -363,11 +358,11 @@ describe("changeReview: the button says what will happen (R5)", () => {
       { enabled: false, safe: false },
     ],
     [
-      // Amber: still pressable, never pressed for the person — no focus, no ⌘↵.
+      // Behind main and clean merges as a ready change does: ⌘↵ takes it.
       "behind main but clean",
       { pull: pull({ behind: true }) },
-      "Adds this change to main, on top of changes it wasn't checked with. Production isn't touched until you release.",
-      { enabled: true, safe: false },
+      "Adds this change to main. Production isn't touched until you release.",
+      { enabled: true, safe: true },
     ],
   ])("%s", (_name, over, consequence, primary) => {
     const review = changeReview(change(over));
@@ -1612,17 +1607,6 @@ describe("changeReview: Merge takes only a head whose change was shown", () => {
     const review = changeReview(change({ readout }));
     expect(review.primary).toEqual({ label: "Merge", ...primary });
     expect(review.consequence).toBe(consequence);
-  });
-
-  it("keeps no keys for a change behind main while it is read: it never takes them", () => {
-    const review = changeReview(
-      change({
-        pull: pull({ behind: true }),
-        readout: "reading",
-      }),
-    );
-    expect(review.primary).toEqual({ label: "Merge", enabled: false, safe: false });
-    expect(review.consequence).toBe("Loading change details…");
   });
 
   it("keeps a blocked change's reason while its files are read", () => {
