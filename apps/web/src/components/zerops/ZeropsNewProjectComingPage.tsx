@@ -54,7 +54,11 @@ const NOBODY = {
 
 export function ZeropsNewProjectComingPage({ birthId }: { readonly birthId: string }) {
   const birth = useSharedBirths().find((entry) => entry.id === birthId);
-  return birth === undefined ? (
+  const made = useCreation(birthId);
+  // The creation this tab runs draws its own steps until its Mate's view takes the route: HQ
+  // listing its birth meanwhile changes nothing the person sees. The shared stage is for a birth
+  // nobody runs here, or one that stopped.
+  return birth === undefined || (made !== undefined && made.failed === null) ? (
     <LocalNewProjectComingPage birthId={birthId} />
   ) : (
     <SharedNewProjectComingPage birth={birth} />
