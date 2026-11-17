@@ -235,10 +235,16 @@ export const make = Effect.gen(function* () {
         ...(words === undefined ? {} : { words }),
       }))
       .pipe(
-        Effect.flatMap((entry) => {
+        Effect.tap((entry) => {
           const up = endedUp(id, entry);
           return up === undefined ? Effect.void : PubSub.publish(ends, up);
         }),
+        // An answer settled anyhow: the conversation that asked waits on it no more.
+        Effect.tap((entry) =>
+          entry.message?.kind === "answer" && entry.message.inReplyTo !== undefined
+            ? answerHeardIn(id, entry.askedFrom, entry.message.inReplyTo)
+            : Effect.void,
+        ),
         Effect.andThen(FiberMap.remove(deadlines, id)),
         Effect.andThen(Effect.logInfo("zerops mate messages: a message ended", { end })),
         Effect.catchTags({
@@ -249,6 +255,33 @@ export const make = Effect.gen(function* () {
             }),
         }),
       );
+
+  /**
+   * Tells the conversation whose call sent `askId` that its answer was heard, where that is not
+   * where the answer opened (declined, settled, placed in another conversation): its row waits on
+   * it no more. Under the answer's id, so one told twice is recorded once.
+   */
+  const answerHeardIn = (answerId: string, askedFrom: string | undefined, askId: string) =>
+    Effect.gen(function* () {
+      const conversation = askedFrom ?? (yield* engine.askedIn(askId));
+      if (conversation === undefined) return;
+      yield* engine.deliver(
+        ConversationId.make(conversation),
+        { _tag: "ForgetMateAnswer", messageId: askId },
+        CommandId.make(`mate-answer-heard:${answerId}`),
+        { kind: "engine" },
+      );
+    }).pipe(
+      Effect.catchTags({
+        DeliveryUnrecorded: (error) =>
+          Effect.logWarning(
+            "zerops mate messages: an answer's ask could not be told it was heard",
+            {
+              reason: error.message,
+            },
+          ),
+      }),
+    );
 
   /** Changes a message's entry; a change not kept is made again at the next look. */
   const keep = (id: string, change: (entry: MessageEntry) => MessageEntry) =>
@@ -305,8 +338,16 @@ export const make = Effect.gen(function* () {
     Effect.gen(function* () {
       let place = entry.target;
       if (place === undefined && message.kind === "answer" && message.inReplyTo !== undefined) {
-        place = (yield* engine.askedIn(message.inReplyTo)) ?? (yield* mainConversation);
-        if (place === undefined || !(yield* keep(id, (kept) => ({ ...kept, target: place! }))))
+        const askedFrom = yield* engine.askedIn(message.inReplyTo);
+        place = askedFrom ?? (yield* mainConversation);
+        if (
+          place === undefined ||
+          !(yield* keep(id, (kept) => ({
+            ...kept,
+            target: place!,
+            ...(askedFrom === undefined ? {} : { askedFrom }),
+          })))
+        )
           return undefined;
       }
       const usable = (view: ConversationView | undefined) =>
@@ -398,6 +439,13 @@ export const make = Effect.gen(function* () {
       }
       waitSaid.delete(id);
       yield* keep(id, ({ held: _held, ...kept }) => ({ ...kept, conversationId: place }));
+      // An answer placed elsewhere than the conversation that asked: that one waits on it no more.
+      if (
+        entry.askedFrom !== undefined &&
+        entry.askedFrom !== place &&
+        message.inReplyTo !== undefined
+      )
+        yield* answerHeardIn(id, entry.askedFrom, message.inReplyTo);
     }).pipe(
       Effect.catchTags({
         ViewUnreadable: () => Effect.void,

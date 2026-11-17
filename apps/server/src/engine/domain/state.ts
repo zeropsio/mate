@@ -40,7 +40,7 @@ export const KEPT_ENDED_RUNS = 16;
 
 /**
  * Bumped whenever the shape changes: a snapshot of another version is ignored and refolded. 18
- * keeps the messages it sent other Mates that no answer met yet (`awaits`).
+ * keeps the messages it sent other Mates that no answer met yet (`awaits`, `answered`).
  */
 export const STATE_VERSION = 18;
 
@@ -264,6 +264,8 @@ export interface ConversationState {
   readonly lastPersonSeq: number;
   /** The messages it sent other Mates that no answer met yet, oldest first (`mateAsks`). */
   readonly awaits: ReadonlyArray<AwaitedAnswer>;
+  /** The messages to other Mates whose answer it heard, newest last (`mateAsks`). */
+  readonly answered: ReadonlyArray<string>;
   readonly session: SessionRecord | null;
   /** The close the engine asked of the session; nothing goes into it meanwhile. */
   readonly closing: {
@@ -335,6 +337,7 @@ export const initialState = (conversationId: ConversationId): ConversationState 
   turns: {},
   lastPersonSeq: 0,
   awaits: [],
+  answered: [],
   session: null,
   closing: null,
   rotatingFrom: null,

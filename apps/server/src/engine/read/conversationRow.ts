@@ -220,7 +220,7 @@ const latestOf = (view: ConversationView): ViewRun | null =>
  * to the ask before.
  */
 const answerOf = (view: ConversationView): ConversationView["lastAgent"] =>
-  view.lastAgent !== null && view.lastSaid !== null && view.lastAgent.at < view.lastSaid.at
+  view.lastAgent !== null && view.latestAsk !== null && view.lastAgent.at < view.latestAsk.at
     ? null
     : view.lastAgent;
 
@@ -234,13 +234,13 @@ export const attributedLine = (line: string, from: MateMessageItem | undefined):
   return from.kind === "answer" ? `${name} answered: ${line}` : `${name}: ${line}`;
 };
 
-const saidLineOf = (said: NonNullable<ConversationView["lastSaid"]>): string | null => {
+const saidLineOf = (said: NonNullable<ConversationView["latestAsk"]>): string | null => {
   const line = subjectOf(said);
   return line === null ? null : rowText(attributedLine(line, said.mateMessage));
 };
 
 /** The Mate whose message a row's subject is, by its project and its own name. */
-const saidByOf = (said: NonNullable<ConversationView["lastSaid"]>): MateRowRef | undefined =>
+const saidByOf = (said: NonNullable<ConversationView["latestAsk"]>): MateRowRef | undefined =>
   said.mateMessage === undefined
     ? undefined
     : {
@@ -255,7 +255,7 @@ export const conversationRowOf = (
 ): ConversationRow => {
   const latest = latestOf(view);
   const state = rowStateOf(view);
-  const said = view.lastSaid;
+  const said = view.latestAsk;
   const saidBy = said === null ? undefined : saidByOf(said);
   const asked =
     view.openRequests.find((request) => request.runId === view.activeRun?.id) ??
@@ -284,7 +284,11 @@ export const conversationRowOf = (
     ...(view.awaits.length === 0
       ? {}
       : {
-          awaits: view.awaits.map(({ projectId, mateName }) => ({ projectId, mateName })),
+          awaits: view.awaits.map(({ projectId, mateName, at }) => ({
+            projectId,
+            mateName,
+            since: at,
+          })),
         }),
     ...(view.runtimeMode == null ? {} : { runtimeMode: view.runtimeMode }),
     ...(view.lease == null ? {} : { lease: view.lease }),

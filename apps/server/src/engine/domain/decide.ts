@@ -322,6 +322,13 @@ const handle = (b: StepBuilder, command: Command): void => {
     case "Unarchive":
       if (b.state.archived) b.emit({ _tag: "ConversationUnarchived", by: b.envelope.principal });
       return;
+    case "ForgetMateAnswer":
+      if (
+        b.state.awaits.some((awaited) => awaited.id === command.messageId) ||
+        !b.state.answered.includes(command.messageId)
+      )
+        b.emit({ _tag: "MateAnswerHeard", messageId: command.messageId });
+      return;
     case "BindLease":
       // Its first lease is where it works: another the agent acquires is only a container it uses.
       if (b.state.lease === null) b.emit({ _tag: "LeaseBound", lease: command.lease });
@@ -1729,16 +1736,18 @@ const steer = (b: StepBuilder, command: Extract<Command, { _tag: "Steer" }>): vo
 };
 
 /**
- * The Mate whose message started the run, by its own name: its person item's, or the run's it
- * continues; none for a run that is no Mate message's.
+ * The Mate whose ask started the run, by its own name: its person item's, or the run's it
+ * continues; none for a run that is no Mate's ask — an answer that woke its asker goes back to
+ * nobody.
  */
 const mateSenderOf = (state: ConversationState, run: RunRecord): string | undefined => {
   if (run.principal.kind !== "mate") return undefined;
   const seen = new Set<string>();
   for (let at: RunRecord | undefined = run; at !== undefined && !seen.has(at.id);) {
     seen.add(at.id);
-    const from = at.personBody?.mateMessage?.from;
-    if (from !== undefined) return mateMessageSenderName(from);
+    const message = at.personBody?.mateMessage;
+    if (message !== undefined)
+      return message.kind === "answer" ? undefined : mateMessageSenderName(message.from);
     at = at.joins === null ? undefined : state.runs[at.joins];
   }
   return "another Mate";

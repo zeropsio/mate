@@ -57,9 +57,9 @@ const view = (patch: Partial<ConversationView> = {}): ConversationView => ({
         : patch.lastPerson
       : patch.lastAsked,
   // The latest ask whoever made it: the person's, unless a test says another Mate asked since.
-  lastSaid:
-    patch.lastSaid !== undefined
-      ? patch.lastSaid
+  latestAsk:
+    patch.latestAsk !== undefined
+      ? patch.latestAsk
       : patch.lastAsked === undefined
         ? patch.lastPerson === undefined
           ? { text: "Deploy the api\nthen tell me", at: 100 }

@@ -14,6 +14,9 @@ import * as Schema from "effect/Schema";
 /** The protocol a Mate that takes messages advertises in its overview (`identity.messages`). */
 export const MATE_MESSAGES_PROTOCOL = 1;
 
+/** How long a conversation shows it waits for another Mate's answer at most. */
+export const MATE_ANSWER_WAIT_MS = 24 * 60 * 60_000;
+
 /** The most of a run's answer an ended ask carries back, in characters, before "…". */
 export const MATE_MESSAGE_ANSWER_MAX = 8000;
 

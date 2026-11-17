@@ -76,7 +76,7 @@ const titleOf = (text: string | undefined): string | null => {
  * A conversation's title from its latest ask, whoever made it: another Mate's message reads
  * "<Mate>: …", an answer that woke it "<Mate> answered: …".
  */
-const saidTitleOf = (said: ConversationView["lastSaid"]): string | null => {
+const saidTitleOf = (said: ConversationView["latestAsk"]): string | null => {
   const line = titleOf(said?.text);
   return line === null ? null : attributedLine(line, said?.mateMessage);
 };
@@ -185,7 +185,7 @@ export const engineShellOf = (view: ConversationView): OrchestrationThreadShell 
       ? view.activeRun !== null || view.queued.length > 0
         ? (titleOf(view.lastAsked?.text) ?? "Tasks")
         : "Tasks"
-      : saidTitleOf(view.lastSaid);
+      : saidTitleOf(view.latestAsk);
   // Each message as V1's shell previews it (`threadMessagePreviewFromSource`).
   const agentText = agent === null ? null : messagePreviewText(summaryOf(view, agent.text));
   const personText = person === null ? null : userAskPreviewText(person);
