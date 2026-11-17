@@ -1,4 +1,5 @@
 import { mateArrival } from "@t3tools/client-runtime/data";
+import type { BirthLineProgress } from "@t3tools/client-runtime/zerops/birthProgress";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -9,7 +10,6 @@ import {
 } from "../components/zerops/SidebarMateRow.logic";
 import { formatWorkingTime } from "../components/zerops/SidebarZeropsTree.logic";
 import { ZeropsBirthLine } from "../components/zerops/ZeropsBirthProgress";
-import type { BirthLineProgress } from "../components/zerops/ZeropsBirthProgress.logic";
 import { arrivalSteps, onSetupClock } from "./mateArrival";
 import { placedPressesIn, pressComing, pressSince, type MatePress } from "./matePress";
 

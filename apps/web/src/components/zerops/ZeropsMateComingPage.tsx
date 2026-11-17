@@ -82,6 +82,7 @@ import {
   birthCopyServices,
   birthRuntimesFacts,
   type BirthCopyService,
+  type BirthLineProgress,
 } from "@t3tools/client-runtime/zerops/birthProgress";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/gui";
@@ -174,7 +175,6 @@ import { PanelLayoutControls } from "../chat/PanelLayoutControls";
 import { EllipsisIcon } from "lucide-react";
 import { useZeropsThreadActivity } from "~/zerops/useZeropsAgentActivity";
 import { useComposerDraftStore } from "~/composerDraftStore";
-import type { BirthLineProgress } from "./ZeropsBirthProgress.logic";
 import { Progress } from "../ui/progress";
 import {
   MateEmptyStateView,

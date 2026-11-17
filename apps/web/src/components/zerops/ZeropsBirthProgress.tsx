@@ -8,6 +8,10 @@
  * clock `useZeropsBirthProgress` ticks once a second — nothing here derives
  * anything on its own (R5).
  */
+import type {
+  BirthLineProgress,
+  BirthLineStep,
+} from "@t3tools/client-runtime/zerops/birthProgress";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 import { cn } from "~/lib/utils";
@@ -22,8 +26,6 @@ import {
   BIRTH_STEP_TONE,
   birthLineDetailStep,
   birthStepToProcessStep,
-  type BirthLineProgress,
-  type BirthLineStep,
 } from "./ZeropsBirthProgress.logic";
 import { ProcessSteps } from "./primitives";
 import { formatWorkingTime } from "./SidebarZeropsTree.logic";

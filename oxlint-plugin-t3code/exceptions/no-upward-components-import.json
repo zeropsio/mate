@@ -184,14 +184,6 @@
     "expires": "surface:web-derivation"
   },
   {
-    "path": "apps/web/src/zerops/mateArrival.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/zerops/ZeropsBirthProgress.logic",
-    "owner": "web derivation (W3)",
-    "reason": "verdict or words in a surface's logic file: moves down",
-    "expires": "surface:web-derivation"
-  },
-  {
     "path": "apps/web/src/zerops/mateFace.logic.ts",
     "kind": "ImportDeclaration",
     "fingerprint": "components/zerops/primitives/MateFace",
@@ -227,14 +219,6 @@
     "path": "apps/web/src/zerops/matePress.ts",
     "kind": "ImportDeclaration",
     "fingerprint": "components/zerops/ZeropsProjectRow.logic",
-    "owner": "web derivation (W3)",
-    "reason": "verdict or words in a surface's logic file: moves down",
-    "expires": "surface:web-derivation"
-  },
-  {
-    "path": "apps/web/src/zerops/newProjectBirth.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/zerops/ZeropsBirthProgress.logic",
     "owner": "web derivation (W3)",
     "reason": "verdict or words in a surface's logic file: moves down",
     "expires": "surface:web-derivation"

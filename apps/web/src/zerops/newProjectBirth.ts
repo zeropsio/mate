@@ -46,6 +46,8 @@ import {
 import {
   birthRuntimesFacts,
   deriveBirthProgress,
+  type BirthLineProgress,
+  type BirthLineStep,
 } from "@t3tools/client-runtime/zerops/birthProgress";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import type { HqEndpoint } from "@t3tools/client-runtime/zerops/hq";
@@ -55,10 +57,6 @@ import {
   withProjectGrant,
 } from "@t3tools/client-runtime/zerops/projectAccess";
 
-import type {
-  BirthLineProgress,
-  BirthLineStep,
-} from "../components/zerops/ZeropsBirthProgress.logic";
 import { COMING_UP_LINE, NOT_SET_UP_LINE } from "../components/zerops/ZeropsProjectRow.logic";
 import { HQ_UNFOLLOWED } from "./accountOperations";
 import type { ArrivalSubstep } from "./mateArrival";

@@ -1,12 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import type { BirthStep } from "@t3tools/client-runtime/zerops/birthProgress";
+import { formatBirthElapsed, type BirthStep } from "@t3tools/client-runtime/zerops/birthProgress";
 
 import {
   BIRTH_STEP_TONE,
   birthLineDetailStep,
   birthStepToProcessStep,
-  formatBirthElapsed,
 } from "./ZeropsBirthProgress.logic";
 
 function step(partial: Partial<BirthStep> & Pick<BirthStep, "id" | "state">): BirthStep {

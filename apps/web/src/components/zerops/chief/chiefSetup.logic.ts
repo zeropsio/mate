@@ -11,9 +11,8 @@
  * same project, never a second; past it, HQ is asked again — a second ask answers the same
  * registration.
  */
+import type { BirthLineStep } from "@t3tools/client-runtime/zerops/birthProgress";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-
-import type { BirthLineStep } from "../ZeropsBirthProgress.logic";
 
 export type ChiefSetupStep = "project" | "hq";
 

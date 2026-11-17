@@ -133,6 +133,27 @@ export interface BirthProgress {
   readonly runtimes?: BirthRuntimesProgress;
 }
 
+/**
+ * A step the line draws: one of a Mate's birth (`BirthStep`), or one its project takes before
+ * them (`newProjectBirth.ts`) — the line draws a step, whoever's it is.
+ */
+export type BirthLineStep = Omit<BirthStep, "id"> & { readonly id: string };
+
+/** What the line draws: a Mate's birth (`BirthProgress`), with its project's steps before it or not. */
+export type BirthLineProgress = Omit<BirthProgress, "steps" | "active" | "failed"> & {
+  readonly steps: ReadonlyArray<BirthLineStep>;
+  readonly active: BirthLineStep | null;
+  readonly failed: BirthLineStep | null;
+};
+
+/** `m:ss`, tabular-nums; a tick landing before the start reads as the floor, never negative. */
+export function formatBirthElapsed(ms: number): string {
+  const totalSeconds = Math.floor(Math.max(0, ms) / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
 interface BirthRuntimeProgress {
   readonly hostname: string;
   readonly role: RecipeRuntimeRole;

@@ -18,7 +18,11 @@
  *
  * Pure: the words, the face and the steps; the views draw them.
  */
-import type { BirthRuntimeFact } from "@t3tools/client-runtime/zerops/birthProgress";
+import {
+  formatBirthElapsed,
+  type BirthLineStep,
+  type BirthRuntimeFact,
+} from "@t3tools/client-runtime/zerops/birthProgress";
 import { enrollmentRefusalWords, NO_HQ_WORDS } from "@t3tools/client-runtime/zerops/hq";
 import {
   standUpFailureWords,
@@ -28,10 +32,6 @@ import {
 import { TAKING_LONGER_LINE } from "@t3tools/client-runtime/data";
 import type { MateMarkState } from "@t3tools/shared/brand";
 
-import {
-  formatBirthElapsed,
-  type BirthLineStep,
-} from "../components/zerops/ZeropsBirthProgress.logic";
 import { formatWorkingTime } from "../components/zerops/SidebarZeropsTree.logic";
 import {
   signInPhrase,
