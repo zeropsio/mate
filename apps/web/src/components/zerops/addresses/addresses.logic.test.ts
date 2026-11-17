@@ -12,7 +12,6 @@ import {
   keepsWorking,
   normalizeDomain,
   normalizeRange,
-  othersWaiting,
   placeRunsNothing,
   portFaceWords,
   portProblem,
@@ -178,8 +177,6 @@ describe("a refused write says why in a sentence", () => {
 
 describe("how far an address is", () => {
   it.each([
-    ["going-live", "Adding", "busy"],
-    ["changing", "Changing", "busy"],
     ["removing", "Removing", "busy"],
     ["dns", "Waiting for your DNS", "warn"],
     ["elsewhere", "Points elsewhere", "warn"],
@@ -191,7 +188,6 @@ describe("how far an address is", () => {
   });
 
   it.each([
-    ["going-live", "Opening"],
     ["changing", "Changing"],
     ["removing", "Closing"],
     ["live", "Open"],
@@ -266,7 +262,7 @@ describe("our own writes", () => {
       },
     ]);
     const added = place.domains.find((domain) => domain.domainName === "new.com");
-    expect(added?.face).toBe("going-live");
+    expect(added?.face).toBe("adding");
     expect(added?.targets[0]?.serviceName).toBe("app");
     expect(place.domains.find((domain) => domain.domainName === "www.shop.com")?.face).toBe(
       "removing",
@@ -288,7 +284,7 @@ describe("our own writes", () => {
       },
       { kind: "close-port", projectId: "p1", portRoutingId: "port-db" },
     ]);
-    expect(place.ports.find((port) => port.publicPort === 7000)?.face).toBe("going-live");
+    expect(place.ports.find((port) => port.publicPort === 7000)?.face).toBe("opening");
     expect(place.ports.find((port) => port.id === "port-db")?.face).toBe("removing");
   });
 
@@ -298,64 +294,6 @@ describe("our own writes", () => {
     ]);
     expect(place.zerops.find((address) => address.serviceId === "svc-app")?.on).toBe(false);
     expect(place.zerops.find((address) => address.serviceId === "svc-api")?.on).toBe(true);
-  });
-
-  it("a waiting port on the same number but the other IP type is someone else's", () => {
-    const ports = [
-      { ...ADDRESSES_FIXTURE.ports[0]!, id: "port-v4", publicIpType: "IP_V4", publicPort: 7000 },
-      { ...ADDRESSES_FIXTURE.ports[0]!, id: "port-v6", publicIpType: "IP_V6", publicPort: 7000 },
-    ];
-    const waiting = [
-      { id: "port-v4", label: "Port 7000 → db · port 6432" },
-      { id: "port-v6", label: "Port 7000 → db · port 6432" },
-    ];
-    expect(
-      othersWaiting(
-        waiting,
-        [
-          {
-            kind: "open-port",
-            projectId: "p1",
-            serviceId: "svc-db",
-            publicIpType: "IP_V6",
-            publicPort: 7000,
-            internalPort: 6432,
-            internalProtocol: "tcp",
-            firewallPolicy: "BLACKLIST",
-            firewallIpRanges: [],
-          },
-        ],
-        ports,
-      ).map((change) => change.id),
-    ).toEqual(["port-v4"]);
-  });
-
-  it("someone else's waiting change is told apart from ours", () => {
-    const waiting = [
-      { id: "rt-api", label: "api.shop.com → api · port 8080" },
-      { id: "rt-new", label: "new.com, www.new.com → app · port 3000" },
-      { id: "rt-shop", label: "Removing www.shop.com" },
-    ];
-    expect(
-      othersWaiting(waiting, [
-        {
-          kind: "add-domain",
-          projectId: "p1",
-          domains: ["new.com", "www.new.com"],
-          serviceId: "svc-app",
-          port: 3000,
-        },
-        {
-          kind: "remove-domain",
-          projectId: "p1",
-          routingId: "rt-shop",
-          domainName: "www.shop.com",
-          keep: ["shop.com"],
-          locations: [],
-          sslEnabled: true,
-        },
-      ]).map((change) => change.id),
-    ).toEqual(["rt-api"]);
   });
 });
 
@@ -429,7 +367,6 @@ describe("removing a domain", () => {
 describe("an environment with nothing deployed", () => {
   const { ips } = ADDRESSES_FIXTURE;
   const empty = { ...ADDRESSES_FIXTURE, nothingDeployed: true, domains: [], ports: [] };
-  const waiting = [{ id: "rt-1", label: "shop.example → app · port 3000" }];
   it.each([
     { case: "production holding nothing", kind: "production", place: empty, alone: true },
     { case: "a stage holding nothing", kind: "stage", place: empty, alone: true },
@@ -450,18 +387,6 @@ describe("an environment with nothing deployed", () => {
       case: "its own IPv4",
       kind: "production",
       place: { ...empty, ips: { ...ips, ownV4: "198.51.100.7" } },
-      alone: false,
-    },
-    {
-      case: "a domain change on its way",
-      kind: "production",
-      place: { ...empty, waitingDomains: waiting },
-      alone: false,
-    },
-    {
-      case: "a port change on its way",
-      kind: "production",
-      place: { ...empty, waitingPorts: waiting },
       alone: false,
     },
   ] as const)(

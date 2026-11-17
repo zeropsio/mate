@@ -2,8 +2,7 @@
  * Zerops public port routings: each port a project opens straight to the internet on its own IP
  * address (a database client's way in), with who may connect. Observed by one registration pair
  * for the whole organization, as the domain routings are: the `listStream` hears a port opened or
- * gone, the `updateStream` its changes. A routing changed but not put in place yet serves as it
- * did; one removed serves until the project's port routings are put in place again.
+ * gone, the `updateStream` its changes.
  *
  * The organization's search is refused to a viewer without organization read (as the domain
  * routings' is, read 2026-10-14): that refusal is this scope's alone.
@@ -29,12 +28,6 @@ export interface PublicPortRoutingValue {
   /** `WHITELIST`: only the ranges may connect; `BLACKLIST`: everyone but them. */
   readonly firewallPolicy: string;
   readonly firewallIpRanges: ReadonlyArray<string>;
-  /** Whether it is in place as it reads. */
-  readonly isSynced: boolean;
-  /** Removed, and gone once the project's port routings are put in place again. */
-  readonly deleteOnSync?: boolean;
-  /** Whether it was ever put in place: one never synced serves nothing yet. */
-  readonly everSynced?: boolean;
   /** When Zerops last changed it: a write's end is read only from what came after it. */
   readonly lastUpdate?: string;
 }
@@ -58,9 +51,6 @@ const Row = Schema.Struct({
   internalProtocol: Schema.String,
   firewallPolicy: Said(Schema.String),
   firewallIpRanges: Said(Schema.Array(Schema.String)),
-  isSynced: Schema.Boolean,
-  deleteOnSync: Said(Schema.Boolean),
-  lastSync: Said(Schema.String),
   lastUpdate: Said(Schema.String),
   _version: Schema.optionalKey(Schema.Union([Schema.Finite, Schema.Null])),
 });
@@ -100,11 +90,6 @@ export const publicPortRoutingFamily: FamilySpec<"publicPortRouting"> = {
             // No policy said is nobody kept out: the platform's own default.
             firewallPolicy: firewallPolicy ?? "BLACKLIST",
             firewallIpRanges: firewallIpRanges ?? [],
-            isSynced: row.isSynced,
-            ...(row.deleteOnSync == null ? {} : { deleteOnSync: row.deleteOnSync }),
-            ...(row.lastSync === undefined
-              ? {}
-              : { everSynced: row.lastSync !== null && row.lastSync !== "" }),
             ...(row.lastUpdate == null ? {} : { lastUpdate: row.lastUpdate }),
           },
         }),

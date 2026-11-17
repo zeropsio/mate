@@ -359,7 +359,6 @@ const CARDS: ReadonlyArray<{
   /** HQ did not keep the person's last decision. */
   readonly refusal?: string;
   readonly readOnlyReason?: string;
-  readonly domainAlso?: string;
   readonly domainState?: ProposalCardProps["domainState"];
   readonly domainRecords?: ProposalCardProps["domainRecords"];
   readonly approveBlocked?: string;
@@ -406,11 +405,6 @@ const CARDS: ReadonlyArray<{
     chiefTarget: { kind: "chief", projectId: "p-chief" },
   },
   { proposal: DOMAIN, stage: "open" },
-  {
-    proposal: { ...DOMAIN, id: "domain-also" },
-    stage: "open",
-    domainAlso: "Approving also puts in place: Removing api.contoso.com.",
-  },
   { proposal: { ...DOMAIN, id: "domain-running" }, stage: "running" },
   {
     proposal: { ...DOMAIN, id: "domain-dns" },
@@ -459,7 +453,6 @@ function Card(card: (typeof CARDS)[number]) {
       chiefTarget={card.chiefTarget}
       decidedAt={stage === "open" ? null : "15:02"}
       decidedBy={stage === "open" ? null : "Aleš"}
-      domainAlso={card.domainAlso}
       domainState={card.domainState}
       domainRecords={card.domainRecords}
       failure={failure}

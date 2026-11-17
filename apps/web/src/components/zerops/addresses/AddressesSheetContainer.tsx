@@ -28,7 +28,7 @@ import { useProjectSitesOfGroup } from "~/zerops/projectPartsShown";
 import { useDetailDemand, useProjection } from "~/zerops/ZeropsAccountData";
 
 import { Dialog, DialogPopup } from "../../ui/dialog";
-import { addressPlaces, othersWaiting, withOwnWrites, type AddressWrite } from "./addresses.logic";
+import { addressPlaces, withOwnWrites, type AddressWrite } from "./addresses.logic";
 import { AddressesSheetBody, type OwnIpv4Offer } from "./AddressesSheet";
 import {
   NO_PLACE_FLIGHTS,
@@ -95,8 +95,6 @@ const NOT_READ = Atom.make<PlaceAddresses>({
   ports: [],
   webTargets: [],
   portTargets: [],
-  waitingDomains: [],
-  waitingPorts: [],
   readsProject: false,
   nothingDeployed: false,
 });
@@ -174,13 +172,6 @@ function AddressesSheetContainer({
   );
   const { own, busy, trouble, unsure, write } = useAddressWriter(key);
   const place = useMemo(() => withOwnWrites(read, own), [own, read]);
-  const others = useMemo(
-    () => ({
-      domains: othersWaiting(read.waitingDomains, own),
-      ports: othersWaiting(read.waitingPorts, own, read.ports),
-    }),
-    [own, read.ports, read.waitingDomains, read.waitingPorts],
-  );
   const here = places.find((each) => each.projectId === projectId);
   const placeName = here?.name ?? facts.name ?? "This project";
   const projectName = sites?.projectName ?? placeName;
@@ -205,7 +196,6 @@ function AddressesSheetContainer({
             .open({ orgId, projectId: next, ...(groupId === undefined ? {} : { groupId }) })
         }
         onWrite={write}
-        othersWaiting={others}
         place={place}
         placeName={placeName}
         places={places}

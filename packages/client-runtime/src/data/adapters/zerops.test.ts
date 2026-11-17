@@ -1975,7 +1975,6 @@ describe("the organization's routings refused to the viewer", () => {
                   list: [
                     {
                       id: "r1",
-                      isSynced: true,
                       sslEnabled: true,
                       domains: [{ domainName: "shop.example.com" }],
                       locations: [{ path: "/", port: 80, serviceStackId: "s1" }],

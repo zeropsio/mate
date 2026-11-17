@@ -29,8 +29,6 @@ export function placeAddresses(domains: ReadonlyArray<string> | "reading"): Plac
     ports: [],
     webTargets: [],
     portTargets: [],
-    waitingDomains: [],
-    waitingPorts: [],
     readsProject: false,
     nothingDeployed: false,
   };

@@ -102,7 +102,6 @@ type ZeropsOperationsClient = Pick<
   | "mintIntegrationToken"
   | "regenerateIntegrationToken"
   | "createPublicHttpRouting"
-  | "syncPublicHttpRouting"
   | "updatePublicHttpRouting"
   | "deletePublicHttpRouting"
   | "checkPublicHttpRoutingDns"
@@ -110,7 +109,6 @@ type ZeropsOperationsClient = Pick<
   | "createPublicPortRouting"
   | "updatePublicPortRouting"
   | "deletePublicPortRouting"
-  | "syncPublicPortRouting"
   | "requestProjectPublicIp"
   | "listOrganizationMembers"
   | "addProjectVariable"
@@ -294,12 +292,10 @@ export function makeZeropsExecutor(input: {
       updatePublicHttpRouting: (id, routing) => client.updatePublicHttpRouting(id, routing),
       deletePublicHttpRouting: (id) => client.deletePublicHttpRouting(id),
       checkPublicHttpRoutingDns: (id) => client.checkPublicHttpRoutingDns(id),
-      syncPublicHttpRouting: (projectId) => client.syncPublicHttpRouting(projectId),
       disableSubdomainAccess: (serviceId) => client.disableSubdomainAccess(serviceId),
       createPublicPortRouting: (serviceId, port) => client.createPublicPortRouting(serviceId, port),
       updatePublicPortRouting: (id, port) => client.updatePublicPortRouting(id, port),
       deletePublicPortRouting: (id) => client.deletePublicPortRouting(id),
-      syncPublicPortRouting: (projectId) => client.syncPublicPortRouting(projectId),
       requestProjectPublicIp: (projectId) => client.requestProjectPublicIp(projectId),
     });
     const people = appAccessExecutor(
@@ -409,8 +405,6 @@ export function makeZeropsExecutor(input: {
               return addresses.removeDomain(requestId, intent);
             case "check-domain-dns":
               return addresses.checkDomainDns(requestId, intent);
-            case "publish-domains":
-              return addresses.publishDomains(requestId, intent);
             case "disable-subdomain-access":
               return addresses.disableSubdomainAccess(requestId, intent);
             case "open-port":
@@ -419,8 +413,6 @@ export function makeZeropsExecutor(input: {
               return addresses.changePort(requestId, intent);
             case "close-port":
               return addresses.closePort(requestId, intent);
-            case "publish-ports":
-              return addresses.publishPorts(requestId, intent);
             case "request-ipv4":
               return addresses.requestIpv4(requestId, intent);
             case "check-invitee":
@@ -558,7 +550,6 @@ export function makeZeropsExecutor(input: {
           source.regenerateIntegrationToken(token, signal, check),
         createPublicHttpRouting: (id, routing, signal) =>
           source.createPublicHttpRouting(id, routing, signal, check),
-        syncPublicHttpRouting: (id, signal) => source.syncPublicHttpRouting(id, signal, check),
         updatePublicHttpRouting: (id, routing, signal) =>
           source.updatePublicHttpRouting(id, routing, signal, check),
         deletePublicHttpRouting: (id, signal) => source.deletePublicHttpRouting(id, signal, check),
@@ -570,7 +561,6 @@ export function makeZeropsExecutor(input: {
         updatePublicPortRouting: (id, port, signal) =>
           source.updatePublicPortRouting(id, port, signal, check),
         deletePublicPortRouting: (id, signal) => source.deletePublicPortRouting(id, signal, check),
-        syncPublicPortRouting: (id, signal) => source.syncPublicPortRouting(id, signal, check),
         requestProjectPublicIp: (id, signal) => source.requestProjectPublicIp(id, signal, check),
         deleteIntegrationToken: (target, signal) =>
           source.deleteIntegrationToken(target, signal, check),

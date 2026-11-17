@@ -184,7 +184,7 @@ describe("projectPublicAccessAtom", () => {
       publication: "none",
       subdomainAccess: false,
       routing: false,
-      isSynced: false,
+      sslStatus: "WAITING_FOR_DNS",
       routes: [],
       pending: [],
     },
@@ -192,7 +192,7 @@ describe("projectPublicAccessAtom", () => {
       publication: "pending",
       subdomainAccess: false,
       routing: true,
-      isSynced: false,
+      sslStatus: "WAITING_FOR_DNS",
       routes: [],
       pending: ["https://shop.example.com"],
     },
@@ -200,13 +200,13 @@ describe("projectPublicAccessAtom", () => {
       publication: "serving",
       subdomainAccess: false,
       routing: true,
-      isSynced: true,
+      sslStatus: "ACTIVE",
       routes: ["https://shop.example.com"],
       pending: [],
     },
   ])(
     "reads $publication publication from the mounted account's routing evidence",
-    ({ subdomainAccess, routing, isSynced, routes, pending }) => {
+    ({ subdomainAccess, routing, sslStatus, routes, pending }) => {
       const registry = AtomRegistry.make();
       const store = makeAccountStore(registry);
       const atom = projectPublicAccessAtom("p1");
@@ -254,9 +254,8 @@ describe("projectPublicAccessAtom", () => {
                 revision: zeropsVersion(1),
                 value: {
                   projectId: "p1",
-                  isSynced,
                   sslEnabled: true,
-                  domains: [{ domainName: "shop.example.com" }],
+                  domains: [{ domainName: "shop.example.com", sslStatus }],
                   locations: [{ path: "/", port: 80, serviceStackId: "app" }],
                 },
               },

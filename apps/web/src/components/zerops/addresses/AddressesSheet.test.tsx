@@ -37,7 +37,6 @@ async function mount(over: Partial<AddressesSheetBodyProps> = {}): Promise<Mount
     places: [],
     onPlace: () => {},
     place: ADDRESSES_FIXTURE,
-    othersWaiting: { domains: [], ports: [] },
     ipv4: { state: "known", price: 3, enabled: false },
     busy: new Set(),
     trouble: new Map(),
@@ -201,48 +200,6 @@ describe("the addresses sheet", () => {
         firewallIpRanges: ["2001:db8::1/128"],
       },
     ]);
-  });
-
-  it("someone else's waiting change is named before ours puts it live", async () => {
-    const { container, writes } = await mount({
-      place: ONE_SERVICE,
-      othersWaiting: {
-        domains: [{ id: "rt-api", label: "api.shop.com → api · port 8080" }],
-        ports: [],
-      },
-    });
-    await press(button(container, "Add a domain"));
-    const form = container.querySelector('[data-addresses-form="add-domain"]')!;
-    await type(form.querySelector<HTMLInputElement>("input")!, "https://Docs.Shop.com/");
-    await press(button(form, "Add docs.shop.com"));
-    expect(writes).toEqual([]);
-    expect(text(form)).toContain("Adding docs.shop.com also puts live a change made elsewhere");
-    expect(text(form)).toContain("api.shop.com → api · port 8080");
-    await press(button(form, "Put both live"));
-    expect(writes).toEqual([
-      {
-        kind: "add-domain",
-        projectId: "p1",
-        domains: ["docs.shop.com"],
-        serviceId: "svc-app",
-        port: 3000,
-      },
-    ]);
-  });
-
-  it("offers to put someone else's waiting changes live when nothing of ours is under way", async () => {
-    const waiting = {
-      domains: [{ id: "rt-api", label: "api.shop.com → api · port 8080" }],
-      ports: [],
-    };
-    const idle = await mount({ othersWaiting: waiting });
-    await press(button(idle.container, "Put it live"));
-    expect(idle.writes).toEqual([{ kind: "publish-domains", projectId: "p1" }]);
-    await act(async () => root?.unmount());
-
-    const busy = await mount({ othersWaiting: waiting, busy: new Set(["add-domain"]) });
-    expect(text(part(busy.container, "domains"))).toContain("It goes live with your change.");
-    expect(() => button(busy.container, "Put it live")).toThrow();
   });
 
   it("adding a two-label domain offers its www twin", async () => {
@@ -471,26 +428,6 @@ describe("the addresses sheet", () => {
     expect(container.querySelector('[data-addresses-form="add-domain"]')).not.toBeNull();
   });
 
-  it("the ask before putting others' changes live goes once they are live", async () => {
-    const waiting = {
-      domains: [{ id: "rt-api", label: "api.shop.com → api · port 8080" }],
-      ports: [],
-    };
-    const { container, writes, rerender } = await mount({
-      place: ONE_SERVICE,
-      othersWaiting: waiting,
-      startAdding: true,
-    });
-    const form = container.querySelector('[data-addresses-form="add-domain"]')!;
-    await type(form.querySelector<HTMLInputElement>("input")!, "docs.shop.com");
-    await press(button(form, "Add docs.shop.com"));
-    expect(text(form)).toContain("also puts live a change made elsewhere");
-    await rerender({ othersWaiting: { domains: [], ports: [] }, startAdding: true });
-    expect(text(form)).not.toContain("made elsewhere");
-    await press(button(form, "Add docs.shop.com"));
-    expect(writes).toMatchObject([{ kind: "add-domain", domains: ["docs.shop.com"] }]);
-  });
-
   it("changes wait until the place's addresses are read", async () => {
     const { container } = await mount({ place: { ...ADDRESSES_FIXTURE, state: "reading" } });
     expect(text(container)).toContain("Changes wait until it's read.");
@@ -573,7 +510,7 @@ describe("the addresses sheet", () => {
           routingId: "own:new.com",
           domainName: "new.com",
           routingDomains: ["new.com"],
-          face: "going-live",
+          face: "adding",
         },
       ],
     };

@@ -9,9 +9,8 @@ export const RECORDED_ROUTING = {
   id: "replacement-routing",
   projectId: ROUTING_PROJECT,
   _version: 1,
-  isSynced: true,
   sslEnabled: true,
-  domains: [{ domainName: "appstage-demo.prg1.zerops.app" }],
+  domains: [{ domainName: "appstage-demo.prg1.zerops.app", sslStatus: "ACTIVE" }],
   locations: [{ path: "/", port: 80, serviceStackId: ROUTING_SERVICE }],
 };
 export const RECORDED_SERVICE = {

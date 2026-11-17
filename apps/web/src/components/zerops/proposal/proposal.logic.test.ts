@@ -18,7 +18,6 @@ import {
   chiefAsk,
   chiefMessageTarget,
   decisionFromHq,
-  domainProposalAlso,
   domainProposalState,
   envProposalWrite,
   furtherDecision,
@@ -378,8 +377,6 @@ const place = (
   ports: [],
   webTargets: [],
   portTargets: [],
-  waitingDomains: [],
-  waitingPorts: [],
   readsProject: false,
   nothingDeployed: false,
   ...over,
@@ -399,11 +396,6 @@ describe("domainProposalState", () => {
         tone: "waiting",
         words: "Waiting for your DNS. Add contoso.com's records at your DNS provider.",
       },
-    ],
-    [
-      "a domain being put in place says so",
-      both("going-live"),
-      { tone: "working", words: "Putting contoso.com in place…" },
     ],
     [
       "a domain whose DNS points elsewhere says what to change",
@@ -490,24 +482,6 @@ describe("domainProposalRecords", () => {
     ],
   ])("%s", (_title, addresses) => {
     expect(domainProposalRecords(addresses, domain)).toBeUndefined();
-  });
-});
-
-describe("domainProposalAlso", () => {
-  it.each<[string, PlaceAddresses, string | undefined]>([
-    ["no other change waits: approving puts in place only this", place([]), undefined],
-    [
-      "another change waiting goes live with it, named before the person approves",
-      place([], {
-        waitingDomains: [
-          { id: "w1", label: "shop.com → app · port 3000" },
-          { id: "w2", label: "Removing api.shop.com" },
-        ],
-      }),
-      "Approving also puts in place: shop.com → app · port 3000, Removing api.shop.com.",
-    ],
-  ])("%s", (_title, addresses, words) => {
-    expect(domainProposalAlso(addresses)).toBe(words);
   });
 });
 

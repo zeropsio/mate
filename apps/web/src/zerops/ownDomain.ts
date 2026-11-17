@@ -22,8 +22,6 @@ const NOT_READ = Atom.make<PlaceAddresses>({
   ports: [],
   webTargets: [],
   portTargets: [],
-  waitingDomains: [],
-  waitingPorts: [],
   readsProject: false,
   nothingDeployed: false,
 });

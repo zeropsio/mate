@@ -13,7 +13,6 @@ import {
   type DomainFace,
   type PlaceAddresses,
   type PlaceIps,
-  type WaitingChange,
 } from "@t3tools/client-runtime/data";
 
 import type { ZeropsWrite } from "~/zerops/zeropsWrite";
@@ -28,8 +27,6 @@ export type AddressWrite = Extract<
       | "add-domain"
       | "remove-domain"
       | "check-domain-dns"
-      | "publish-domains"
-      | "publish-ports"
       | "enable-subdomain-access"
       | "disable-subdomain-access"
       | "open-port"
@@ -56,8 +53,6 @@ export function writeKey(write: AddressWrite): string {
     case "change-port":
     case "close-port":
       return `port:${write.portRoutingId}`;
-    case "publish-domains":
-    case "publish-ports":
     case "request-ipv4":
       return write.kind;
   }
@@ -218,8 +213,7 @@ export function addressTrouble(code: string | undefined, write?: AddressWrite): 
 export type FaceTone = "ok" | "warn" | "busy" | "fail";
 
 const DOMAIN_FACE: Readonly<Record<DomainFace, { word: string; tone: FaceTone }>> = {
-  "going-live": { word: "Adding", tone: "busy" },
-  changing: { word: "Changing", tone: "busy" },
+  adding: { word: "Adding", tone: "busy" },
   removing: { word: "Removing", tone: "busy" },
   dns: { word: "Waiting for your DNS", tone: "warn" },
   elsewhere: { word: "Points elsewhere", tone: "warn" },
@@ -233,7 +227,7 @@ export function domainFaceWords(face: DomainFace): { word: string; tone: FaceTon
 }
 
 const PORT_FACE: Readonly<Record<DirectPort["face"], { word: string; tone: FaceTone }>> = {
-  "going-live": { word: "Opening", tone: "busy" },
+  opening: { word: "Opening", tone: "busy" },
   changing: { word: "Changing", tone: "busy" },
   removing: { word: "Closing", tone: "busy" },
   live: { word: "Open", tone: "ok" },
@@ -483,47 +477,6 @@ export function keepsWorking(
     .map((domain) => domain.domainName);
 }
 
-/** Domain names a waiting change's label names (`"a.com, www.a.com → app · port 3000"`). */
-const namesIn = (change: WaitingChange) =>
-  change.label
-    .replace(/^Removing /u, "")
-    .split(" → ")[0]!
-    .split(", ")
-    .map((name) => name.trim());
-
-/**
- * The waiting changes that are not ours: what putting ours live would put live with it. Ours are
- * the routings and ports our writes in flight touch, and the domains they add.
- */
-export function othersWaiting(
-  waiting: ReadonlyArray<WaitingChange>,
-  own: ReadonlyArray<AddressWrite>,
-  /** The place's ports, which say what a waiting port change opens. */
-  ports: ReadonlyArray<Pick<DirectPort, "id" | "publicIpType" | "publicPort">> = [],
-): ReadonlyArray<WaitingChange> {
-  const ids = new Set<string>();
-  const names = new Set<string>();
-  for (const write of own) {
-    if (write.kind === "remove-domain") ids.add(write.routingId);
-    if (write.kind === "change-port" || write.kind === "close-port") ids.add(write.portRoutingId);
-    if (write.kind === "add-domain") for (const name of write.domains) names.add(name);
-  }
-  const opening = own.filter((write) => write.kind === "open-port");
-  return waiting.filter(
-    (change) =>
-      !ids.has(change.id) &&
-      !namesIn(change).some((name) => names.has(name)) &&
-      !opening.some((write) => {
-        const port = ports.find((each) => each.id === change.id);
-        return (
-          port !== undefined &&
-          port.publicPort === write.publicPort &&
-          port.publicIpType === write.publicIpType
-        );
-      }),
-  );
-}
-
 const byName = (left: AddressDomain, right: AddressDomain) =>
   left.domainName.localeCompare(right.domainName, "en");
 
@@ -560,7 +513,7 @@ export function withOwnWrites(
               },
             ],
             sslEnabled: true,
-            face: "going-live",
+            face: "adding",
             url: `https://${name}`,
             resolvedIps: [],
             nameServers: [],
@@ -590,7 +543,7 @@ export function withOwnWrites(
           internalProtocol: write.internalProtocol,
           firewallPolicy: write.firewallPolicy,
           ranges: write.firewallIpRanges,
-          face: "going-live",
+          face: "opening",
         });
         break;
       case "disable-subdomain-access":
@@ -674,14 +627,11 @@ export function removeWrite(
 /**
  * Whether a place's addresses say only "Nothing runs in <place> yet.": production or a stage with
  * nothing deployed, and nothing of its addresses to see or remove — no domain (one may be added
- * before the first release), no port opened, no own IPv4, no change on its way. A Mate's own
- * project never: its workspace runs without a deploy.
+ * before the first release), no port opened, no own IPv4. A Mate's own project never: its
+ * workspace runs without a deploy.
  */
 export function placeRunsNothing(
-  place: Pick<
-    PlaceAddresses,
-    "nothingDeployed" | "domains" | "ports" | "ips" | "waitingDomains" | "waitingPorts"
-  >,
+  place: Pick<PlaceAddresses, "nothingDeployed" | "domains" | "ports" | "ips">,
   kind: PlaceChoice["kind"] | undefined,
 ): boolean {
   return (
@@ -689,9 +639,7 @@ export function placeRunsNothing(
     (kind === "production" || kind === "stage") &&
     place.domains.length === 0 &&
     place.ports.length === 0 &&
-    place.ips.ownV4 === undefined &&
-    place.waitingDomains.length === 0 &&
-    place.waitingPorts.length === 0
+    place.ips.ownV4 === undefined
   );
 }
 

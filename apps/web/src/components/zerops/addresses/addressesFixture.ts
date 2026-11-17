@@ -87,8 +87,6 @@ export const ADDRESSES_FIXTURE: PlaceAddresses = {
     { serviceId: "svc-api", serviceName: "api", port: 8080, protocol: "tcp" },
   ],
   portTargets: [{ serviceId: "svc-db", serviceName: "db", port: 6432, protocol: "tcp" }],
-  waitingDomains: [],
-  waitingPorts: [],
   readsProject: false,
   nothingDeployed: false,
 };

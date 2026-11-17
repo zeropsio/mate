@@ -1,10 +1,8 @@
 /**
  * The addresses sheet's small shared pieces: a section and the groups in it, a row, a state's
  * pill, the stages of an address's way to answering, a tile for a value that stands alone, a copy
- * button, what went wrong under the control it belongs to, and the ask before a write puts
- * somebody else's waiting change live with it.
+ * button, and what went wrong under the control it belongs to.
  */
-import type { WaitingChange } from "@t3tools/client-runtime/data";
 import { CheckIcon, CopyIcon, TriangleAlertIcon, XIcon } from "lucide-react";
 import { Children, useEffect, useRef, useState, type ReactNode, type Ref } from "react";
 
@@ -40,14 +38,14 @@ export interface SheetContext {
    * still the one shown: an answer never closes what the person opened meanwhile.
    */
   readonly settle: (asked: object) => void;
-  /** The place is still being read: what waits to go live may be unknown, so nothing is sent. */
+  /** The place is still being read: nothing is sent until it is. */
   readonly hold: boolean;
   readonly nowMs: number;
 }
 
 /**
  * A section: its title with the one thing it lets the person add at its end edge, and one short
- * line saying what its addresses are for; what waits elsewhere, then the form its action opens,
+ * line saying what its addresses are for; then the form its action opens,
  * above its rows, where the press was; its groups in one container, a hairline between two; and
  * what belongs to no row below them.
  */
@@ -56,7 +54,6 @@ export function SheetSection({
   caption,
   action,
   part,
-  notice,
   lead,
   children,
   after,
@@ -68,7 +65,6 @@ export function SheetSection({
   readonly apart?: boolean;
   readonly action?: ReactNode;
   readonly part: string;
-  readonly notice?: ReactNode;
   /** The form the section's action opens, right under its title. */
   readonly lead?: ReactNode;
   readonly children?: ReactNode;
@@ -80,7 +76,6 @@ export function SheetSection({
       {caption === undefined ? null : (
         <p className="-mt-1.5 max-w-xl text-muted-foreground text-xs">{caption}</p>
       )}
-      {notice}
       {lead}
       {groups.length === 0 ? null : apart ? (
         <div className="grid gap-2">
@@ -416,95 +411,5 @@ export function Confirm({
         </AlertDescription>
       </Alert>
     </div>
-  );
-}
-
-/** Somebody else's waiting changes a write would put live, by what they do. */
-export function OthersList({
-  others,
-  kind,
-  placeName,
-}: {
-  readonly others: ReadonlyArray<WaitingChange>;
-  readonly kind: "domain" | "port";
-  readonly placeName: string;
-}) {
-  return (
-    <>
-      <ul className="grid gap-0.5" data-addresses-others="">
-        {others.map((change) => (
-          <li className="font-medium text-foreground" key={change.id}>
-            {change.label}
-          </li>
-        ))}
-      </ul>
-      <p>
-        {others.length === 1 ? "It was made elsewhere and isn't live yet. " : ""}
-        {others.length > 1 ? "They were made elsewhere and aren't live yet. " : ""}
-        Zerops puts every waiting {kind} change of {placeName} live together, so Mate asks first.
-      </p>
-    </>
-  );
-}
-
-/** "Adding shop.com also puts live a change made elsewhere". */
-export const guardTitle = (doing: string, others: number) =>
-  `${doing} also puts live ${others === 1 ? "a change" : `${others} changes`} made elsewhere`;
-
-/** The guard's press: what the write does, and that the others go live with it. */
-export const guardPress = (verb: string | null, others: number) => {
-  const all = others === 1 ? "both" : "them all";
-  return verb === null ? `Put ${all} live` : `${verb} it and put ${all} live`;
-};
-
-/** Changes made elsewhere that wait to go live, and the press that puts them live. */
-export function WaitingNotice({
-  others: waiting,
-  kind,
-  placeName,
-  busy,
-  held,
-  trouble,
-  onPublish,
-}: {
-  readonly others: ReadonlyArray<WaitingChange>;
-  readonly kind: "domain" | "port";
-  readonly placeName: string;
-  readonly busy: boolean;
-  /** The place is still being read: nothing is sent. */
-  readonly held: boolean;
-  readonly trouble: string | undefined;
-  /** `undefined` while a change of ours is under way: they go live with it. */
-  readonly onPublish: (() => void) | undefined;
-}) {
-  return (
-    <Card size="sm" variant="inset">
-      <div className="font-medium text-sm">
-        {waiting.length === 1
-          ? "A change made elsewhere waits to go live"
-          : "Changes made elsewhere wait to go live"}
-      </div>
-      <ul className="m-0 grid list-none gap-0.5 p-0 text-muted-foreground text-sm">
-        {waiting.map((change) => (
-          <li key={change.id}>{change.label}</li>
-        ))}
-      </ul>
-      {onPublish === undefined ? (
-        <p className="text-muted-foreground text-xs">
-          {waiting.length === 1 ? "It goes" : "They go"} live with your change.
-        </p>
-      ) : (
-        <div className="flex flex-wrap items-center gap-2.5">
-          <Button disabled={busy || held} onClick={onPublish} size="sm" variant="secondary">
-            {busy ? <Spinner aria-hidden="true" /> : null}
-            {waiting.length === 1 ? "Put it live" : "Put them live"}
-          </Button>
-          <span className="text-muted-foreground text-xs">
-            Zerops puts every waiting {kind} change of {placeName} live together.
-          </span>
-        </div>
-      )}
-      <Trouble text={trouble} />
-    </Card>
   );
 }

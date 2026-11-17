@@ -87,7 +87,6 @@ export {
   type PlaceAddresses,
   type PlaceIps,
   type ServicePortChoice,
-  type WaitingChange,
   type ZeropsAddress,
 } from "./projections/addresses.ts";
 export { creditScope } from "./families/organizationCredit.ts";

@@ -2335,34 +2335,6 @@ describe("ZeropsApiClient.writeProject — the TagWriter's one PUT", () => {
   });
 });
 
-describe("ZeropsApiClient — a project's public HTTP routing", () => {
-  it("makes one routing, with SSL, and syncs the project's routings as one process", async () => {
-    const stub = recordingFetch((request) =>
-      request.method === "PUT"
-        ? jsonResponse(200, { id: "proc-sync" })
-        : jsonResponse(200, { id: "r1" }),
-    );
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-    await client.createPublicHttpRouting("hq1", {
-      domains: ["abc.zerops.app"],
-      locations: [{ path: "/", port: 8080, serviceStackId: "svc-hq" }],
-    });
-    await expect(client.syncPublicHttpRouting("hq1")).resolves.toEqual({ processId: "proc-sync" });
-    expect(
-      stub.requests.map((request) => `${request.method} ${new URL(request.url).pathname}`),
-    ).toEqual([
-      "POST /api/rest/public/project/hq1/public-http-routing",
-      "PUT /api/rest/public/project/hq1/sync-public-http-routing",
-    ]);
-    expect(JSON.parse(stub.requests[0]!.body!)).toEqual({
-      sslEnabled: true,
-      domains: ["abc.zerops.app"],
-      locations: [{ path: "/", port: 8080, serviceStackId: "svc-hq" }],
-    });
-  });
-});
-
 describe("ZeropsApiClient.deleteProject", () => {
   it("deletes the project as a project write", async () => {
     const stub = recordingFetch(() =>

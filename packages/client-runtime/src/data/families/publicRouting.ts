@@ -43,17 +43,11 @@ export interface PublicRoutingDomain {
 export interface PublicRoutingValue {
   /** The project it routes for; a project's own listing may not say. */
   readonly projectId?: string;
-  /** Whether it is in place; one not synced yet serves nothing. */
-  readonly isSynced: boolean;
   /**
    * A person's own domains can be changed; each service's zerops.app address is a routing the
    * platform keeps, `false` here. A row that does not say is not counted as either.
    */
   readonly isEditable?: boolean;
-  /** Removed, and gone once the project's routings are put in place again. */
-  readonly deleteOnSync?: boolean;
-  /** Whether it was ever put in place: a routing never synced is new, not changed. */
-  readonly everSynced?: boolean;
   /** When Zerops last changed it: a write's end is read only from what came after it. */
   readonly lastUpdate?: string;
   readonly sslEnabled: boolean;
@@ -77,10 +71,7 @@ const Said = <S extends Schema.Top>(schema: S) =>
 const Row = Schema.Struct({
   id: Schema.String,
   projectId: Schema.optionalKey(Schema.String),
-  isSynced: Said(Schema.Boolean),
   isEditable: Said(Schema.Boolean),
-  deleteOnSync: Said(Schema.Boolean),
-  lastSync: Said(Schema.String),
   lastUpdate: Said(Schema.String),
   sslEnabled: Schema.Boolean,
   domains: Schema.Array(
@@ -104,21 +95,6 @@ const Row = Schema.Struct({
   _version: Schema.optionalKey(Schema.Union([Schema.Finite, Schema.Null])),
 });
 const decodeRow = Schema.decodeUnknownOption(Row);
-
-/**
- * Whether a routing that does not say if it is in place is: its domains say — each certificate
- * active, or for a routing without SSL each domain's DNS checked. Some organizations' listings
- * leave the flag out of a routing that serves; dropping the row made its address read as being
- * turned on for ever, and the place as coming up.
- */
-function inPlace(sslEnabled: boolean, domains: (typeof Row.Type)["domains"]): boolean {
-  return (
-    domains.length > 0 &&
-    domains.every((domain) =>
-      sslEnabled ? domain.sslStatus === "ACTIVE" : domain.dnsCheckStatus === "OK",
-    )
-  );
-}
 
 /** A domain as its row says it, each unsaid part left out. */
 function domainOf(domain: (typeof Row.Type)["domains"][number]): PublicRoutingDomain {
@@ -167,10 +143,7 @@ export const publicRoutingFamily: FamilySpec<"publicRouting"> = {
           id,
           _version,
           projectId,
-          isSynced,
           isEditable,
-          deleteOnSync,
-          lastSync,
           lastUpdate,
           sslEnabled,
           domains,
@@ -180,10 +153,7 @@ export const publicRoutingFamily: FamilySpec<"publicRouting"> = {
           version: _version ?? null,
           value: {
             ...(projectId === undefined ? {} : { projectId }),
-            isSynced: isSynced ?? inPlace(sslEnabled, domains),
             ...(isEditable == null ? {} : { isEditable }),
-            ...(deleteOnSync == null ? {} : { deleteOnSync }),
-            ...(lastSync === undefined ? {} : { everSynced: lastSync !== null && lastSync !== "" }),
             ...(lastUpdate == null ? {} : { lastUpdate }),
             sslEnabled,
             domains: domains.map(domainOf),
@@ -220,11 +190,9 @@ export const publicRoutingFamily: FamilySpec<"publicRouting"> = {
           const held = previous.fact("process", row.id);
           return (
             (held.kind !== "known" || runsStill(held.value.status)) &&
-            [
-              "stack.enableSubdomainAccess",
-              "stack.disableSubdomainAccess",
-              "project.syncPublicHttpRouting",
-            ].includes(row.value.actionName)
+            ["stack.enableSubdomainAccess", "stack.disableSubdomainAccess"].includes(
+              row.value.actionName,
+            )
           );
         },
         path: ({ ownerId }) => `/project/${encodeURIComponent(ownerId ?? "")}/public-http-routing`,

@@ -3,11 +3,8 @@
  * project. Its own domains and how far each is from answering, each service's zerops.app address
  * and its switch, the project's IP addresses, and the ports it opens straight to the internet with
  * who may connect. Joined from the organization's routings, port routings and services and the
- * project's row; never a read of its own.
- *
- * A domain or port change waits until the project's routings of that kind are put in place, and
- * putting one in place puts every waiting one there too, anybody's (read 2026-10-14): `waiting`
- * names them, so a surface asks before it puts somebody else's change live.
+ * project's row; never a read of its own. A routing is in place once Zerops answers its write:
+ * nothing publishes it after.
  *
  * @module data/projections/addresses
  */
@@ -28,18 +25,16 @@ import { projectServices } from "./services.ts";
 
 /**
  * How far a domain is from answering, in the order a new one goes through:
- * - `going-live`: added, waiting to be put in place;
- * - `changing`: in place before, an edit of its routing waiting;
- * - `removing`: removed, waiting to be put in place;
- * - `dns`: in place, the person's DNS not pointing here yet (checking, or pointing nowhere);
- * - `elsewhere`: in place, the DNS check found it at another address;
+ * - `adding`: our own add, sent and not in the routings yet;
+ * - `removing`: our own removal, sent and still in the routings;
+ * - `dns`: the person's DNS not pointing here yet (checking, or pointing nowhere);
+ * - `elsewhere`: the DNS check found it at another address;
  * - `certificate`: the DNS is right, its certificate on its way;
  * - `certificate-failed`: the certificate could not be installed;
  * - `live`: it answers.
  */
 export type DomainFace =
-  | "going-live"
-  | "changing"
+  | "adding"
   | "removing"
   | "dns"
   | "elsewhere"
@@ -123,16 +118,10 @@ export interface DirectPort {
   /** `WHITELIST`: only `ranges` may connect; `BLACKLIST`: everyone but them. */
   readonly firewallPolicy: string;
   readonly ranges: ReadonlyArray<string>;
-  readonly face: "going-live" | "changing" | "removing" | "live";
+  /** Open, or our own write to it sent and not in the routings yet (`opening`, …). */
+  readonly face: "opening" | "changing" | "removing" | "live";
   /** Where a client connects, `[ipv6]:port` or `ipv4:port`; absent while the IP is not read. */
   readonly address?: string;
-}
-
-/** A change waiting to be put in place: putting any change of its kind live puts it live too. */
-export interface WaitingChange {
-  readonly id: string;
-  /** What it does, in a person's words: "shop.com → app · port 3000", "Removing api.shop.com". */
-  readonly label: string;
 }
 
 /** A service port a domain may point at, or one that may be opened straight to the internet. */
@@ -156,10 +145,6 @@ export interface PlaceAddresses {
   readonly webTargets: ReadonlyArray<ServicePortChoice>;
   /** Ports that may be opened straight to the internet, by service. */
   readonly portTargets: ReadonlyArray<ServicePortChoice>;
-  /** Domain changes waiting to be put in place, anybody's. */
-  readonly waitingDomains: ReadonlyArray<WaitingChange>;
-  /** Port changes waiting to be put in place, anybody's. */
-  readonly waitingPorts: ReadonlyArray<WaitingChange>;
   /** The organization's routings are refused to the viewer: demand the project's own listing. */
   readonly readsProject: boolean;
   /**
@@ -208,13 +193,12 @@ function foundElsewhere(domain: PublicRoutingDomain, ips: PlaceIps): boolean {
   return found.some((ip) => !ours.has(ip));
 }
 
+/** A routed domain's face, from its DNS check and certificate alone. */
 export function domainFace(
   routing: PublicRoutingValue,
   domain: PublicRoutingDomain,
   ips: PlaceIps,
 ): DomainFace {
-  if (routing.deleteOnSync === true) return "removing";
-  if (!routing.isSynced) return routing.everSynced === true ? "changing" : "going-live";
   if (domain.sslError !== undefined) return "certificate-failed";
   if (domain.dnsCheckStatus !== "OK")
     return domain.dnsCheckStatus === "FAILED" && foundElsewhere(domain, ips) ? "elsewhere" : "dns";
@@ -223,12 +207,6 @@ export function domainFace(
   return domain.sslStatus === "ACTIVE" || domain.sslStatus === "BEING_RENEWED"
     ? "live"
     : "certificate";
-}
-
-function portFace(port: PublicPortRoutingValue): DirectPort["face"] {
-  if (port.deleteOnSync === true) return "removing";
-  if (!port.isSynced) return port.everSynced === true ? "changing" : "going-live";
-  return "live";
 }
 
 /** Where a client connects to an open port. */
@@ -378,46 +356,16 @@ function domainsOf(
     .sort((left, right) => left.domainName.localeCompare(right.domainName, "en"));
 }
 
-const targetLabel = (target: AddressTarget | undefined) =>
-  target === undefined ? "" : ` → ${target.serviceName} · port ${target.port}`;
-
-function waitingDomainsOf(
-  routings: ReadonlyArray<{ readonly id: string; readonly value: PublicRoutingValue }>,
-  names: ReadonlyMap<string, string>,
-): ReadonlyArray<WaitingChange> {
-  return routings
-    .filter(({ value }) => value.isEditable === true && !value.isSynced)
-    .map(({ id, value }) => {
-      const domains = value.domains.map(({ domainName }) => domainName).join(", ");
-      const first = value.locations[0];
-      const target =
-        first === undefined
-          ? undefined
-          : {
-              serviceId: first.serviceStackId,
-              serviceName: names.get(first.serviceStackId) ?? first.serviceStackId,
-              port: first.port,
-              path: first.path,
-            };
-      return {
-        id,
-        label:
-          value.deleteOnSync === true ? `Removing ${domains}` : `${domains}${targetLabel(target)}`,
-      };
-    });
-}
-
 function portsOf(
   read: ProjectionReads,
   { orgId, projectId }: ProjectKey,
   names: ReadonlyMap<string, string>,
   ips: PlaceIps,
-): Pick<PlaceAddresses, "portsState" | "ports" | "waitingPorts"> {
+): Pick<PlaceAddresses, "portsState" | "ports"> {
   const scope = portRoutingsScope(orgId);
   if (scopeFreshness(read, scope).unavailableReason !== undefined)
-    return { portsState: "failed", ports: [], waitingPorts: [] };
-  if (read.coverage(scope) === "unknown")
-    return { portsState: "reading", ports: [], waitingPorts: [] };
+    return { portsState: "failed", ports: [] };
+  if (read.coverage(scope) === "unknown") return { portsState: "reading", ports: [] };
   const rows: { id: string; value: PublicPortRoutingValue }[] = [];
   for (const id of read.index("portRoutingProject", projectId)) {
     const fact = read.fact("publicPortRouting", id);
@@ -439,23 +387,11 @@ function portsOf(
       internalProtocol: value.internalProtocol,
       firewallPolicy: value.firewallPolicy,
       ranges: value.firewallIpRanges,
-      face: portFace(value),
+      face: "live" as const,
       ...(address === undefined ? {} : { address }),
     };
   });
-  return {
-    portsState: "ready",
-    ports,
-    waitingPorts: ports
-      .filter((port) => port.face !== "live")
-      .map((port) => ({
-        id: port.id,
-        label:
-          port.face === "removing"
-            ? `Closing port ${port.publicPort}`
-            : `Port ${port.publicPort} → ${port.serviceName} · port ${port.internalPort}`,
-      })),
-  };
+  return { portsState: "ready", ports };
 }
 
 const NOTHING = {
@@ -466,8 +402,6 @@ const NOTHING = {
   ports: [],
   webTargets: [],
   portTargets: [],
-  waitingDomains: [],
-  waitingPorts: [],
   nothingDeployed: false,
 } satisfies Omit<PlaceAddresses, "state" | "readsProject">;
 
@@ -506,7 +440,6 @@ export const addresses: Projection<ProjectKey, PlaceAddresses> = {
           .filter((port) => port.portRouting === true)
           .map((port) => choice(service, port)),
       ),
-      waitingDomains: waitingDomainsOf(routings.rows, names),
       readsProject,
       nothingDeployed:
         runtimes.length > 0 && runtimes.every((service) => service.activeAppVersion === null),

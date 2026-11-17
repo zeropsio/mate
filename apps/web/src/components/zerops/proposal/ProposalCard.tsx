@@ -61,8 +61,6 @@ export interface ProposalCardProps {
   readonly onSetUpChief?: (() => void) | undefined;
   /** Why the person's last decision was not kept, in HQ's or the platform's words. */
   readonly refusal?: string | undefined;
-  /** `domain.add`, undecided: the other changes approving it puts in place. */
-  readonly domainAlso?: string | undefined;
   /** `domain.add`, approved: how far its domains are from answering, once the project shows them. */
   readonly domainState?: DomainProposalState | undefined;
   /** `domain.add`, approved: the records its domains still need at the DNS provider. */
@@ -175,11 +173,6 @@ export function ProposalCard(props: ProposalCardProps) {
           recipient: props.recipient,
           chiefTarget: stage === "open" ? chiefTarget : undefined,
         })}
-        {stage === "open" && props.domainAlso !== undefined ? (
-          <p className="text-caption text-muted-foreground" data-proposal-also>
-            {props.domainAlso}
-          </p>
-        ) : null}
         {stage === "open" && props.refusal !== undefined ? (
           <p className="text-caption text-destructive-foreground" role="alert">
             {props.refusal}

@@ -236,7 +236,7 @@ export function stopComing(input: {
 /** Address progress requires a publication in the shared public-access projection. */
 export function addressComing(input: {
   readonly addresses: number;
-  /** An unsynced routing or enabled subdomain awaiting its routing, never an available port. */
+  /** A routing not serving yet, or a subdomain on awaiting its routing; never an open port. */
   readonly pending: boolean | undefined;
 }): boolean {
   return input.pending === true && input.addresses === 0;

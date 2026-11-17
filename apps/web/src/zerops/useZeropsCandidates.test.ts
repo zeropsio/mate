@@ -148,9 +148,13 @@ describe("allCandidateListingAtom public access", () => {
                   revision: zeropsVersion(1),
                   value: {
                     projectId: PROJECT.id,
-                    isSynced: synced,
                     sslEnabled: true,
-                    domains: [{ domainName: "stage.example.com" }],
+                    domains: [
+                      {
+                        domainName: "stage.example.com",
+                        sslStatus: synced ? "ACTIVE" : "WAITING_FOR_DNS",
+                      },
+                    ],
                     locations: [{ path: "/", port: 80, serviceStackId: "app" }],
                   },
                 },

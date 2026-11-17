@@ -247,15 +247,6 @@ describe("ProposalCard", () => {
     expect(buttons(container)).toEqual(["Add the domains", "Not now"]);
   });
 
-  it("names the other changes approving a domain puts in place, before the person approves", async () => {
-    const { container } = await mount({
-      proposal: domain,
-      domainAlso: "Approving also puts in place: Removing api.shop.com.",
-    });
-    expect(container.textContent).toContain("Approving also puts in place: Removing api.shop.com.");
-    expect(buttons(container)).toEqual(["Add the domains", "Not now"]);
-  });
-
   it.each<[ProposalStage]>([["done"], ["unseen"]])(
     "an approved domain says how far it is from answering and opens the project's addresses: %s",
     async (stage) => {

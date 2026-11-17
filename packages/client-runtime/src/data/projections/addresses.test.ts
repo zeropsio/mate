@@ -118,10 +118,7 @@ const domain = (patch: Partial<PublicRoutingDomain> = {}): PublicRoutingDomain =
 
 const routing = (patch: Partial<PublicRoutingValue> = {}): PublicRoutingValue => ({
   projectId: "p1",
-  isSynced: true,
   isEditable: true,
-  deleteOnSync: false,
-  everSynced: true,
   sslEnabled: true,
   domains: [domain()],
   locations: [{ path: "/", port: 3000, serviceStackId: "s1" }],
@@ -137,9 +134,6 @@ const port = (patch: Partial<PublicPortRoutingValue> = {}): PublicPortRoutingVal
   internalProtocol: "tcp",
   firewallPolicy: "WHITELIST",
   firewallIpRanges: ["2001:db8::20/128"],
-  isSynced: true,
-  deleteOnSync: false,
-  everSynced: true,
   ...patch,
 });
 
@@ -183,24 +177,6 @@ describe("how far a domain is from answering", () => {
     readonly domain: Partial<PublicRoutingDomain>;
     readonly face: string;
   }>([
-    {
-      name: "a domain added and not put in place yet is going live",
-      routing: { isSynced: false, everSynced: false },
-      domain: { dnsCheckStatus: "PENDING", sslStatus: "INACTIVE" },
-      face: "going-live",
-    },
-    {
-      name: "an edit of a routing in place, waiting, reads as changing",
-      routing: { isSynced: false },
-      domain: {},
-      face: "changing",
-    },
-    {
-      name: "a removed domain reads as removing until it is gone",
-      routing: { isSynced: false, deleteOnSync: true },
-      domain: {},
-      face: "removing",
-    },
     {
       name: "a domain whose DNS is still being checked waits for the person's DNS",
       routing: {},
@@ -381,8 +357,6 @@ describe("one place's addresses", () => {
         address: `[${V6}]:16432`,
       },
     ]);
-    expect(shown.waitingDomains).toEqual([]);
-    expect(shown.waitingPorts).toEqual([]);
   });
 
   // The live audit (2026-10-28): Larkspur's empty production offered an IPv4 to buy and a port
@@ -428,30 +402,6 @@ describe("one place's addresses", () => {
     expect(shown.webTargets).toEqual([
       { serviceId: "s1", serviceName: "app", port: 8080, protocol: "tcp" },
     ]);
-  });
-
-  it("somebody else's waiting changes are named, so putting ours live asks first", () => {
-    const shown = place({
-      routings: {
-        r1: routing(),
-        r3: routing({
-          isSynced: false,
-          everSynced: false,
-          domains: [domain({ domainName: "api.shop.com" })],
-        }),
-        r4: routing({
-          isSynced: false,
-          deleteOnSync: true,
-          domains: [domain({ domainName: "old.shop.com" })],
-        }),
-      },
-      ports: { pr2: port({ isSynced: false, everSynced: false, publicPort: 16500 }) },
-    });
-    expect(shown.waitingDomains).toEqual([
-      { id: "r3", label: "api.shop.com → app · port 3000" },
-      { id: "r4", label: "Removing old.shop.com" },
-    ]);
-    expect(shown.waitingPorts).toEqual([{ id: "pr2", label: "Port 16500 → db · port 6432" }]);
   });
 
   it("a port opened on an IPv4 the project lacks has no address to connect to", () => {

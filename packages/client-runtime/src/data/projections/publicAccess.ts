@@ -1,8 +1,9 @@
 /**
- * One project's public face: every address it answers at now, the ones put in place but not
- * serving yet, and the services that could be published. Joined from the organization's services
- * (each one's subdomain switch and ports), the project's subdomain host, and the organization's
- * routings — never a read of its own. A routing not synced yet is pending, never live.
+ * One project's public face: every address it answers at now, the ones routed but not serving
+ * yet, and the services that could be published. Joined from the organization's services (each
+ * one's subdomain switch and ports), the project's subdomain host, and the organization's
+ * routings — never a read of its own. A routing serves once its domains do: each certificate
+ * active, or for a routing without SSL each domain's DNS checked; until then it is pending.
  *
  * A viewer the organization's routing search refuses reads the project's own listing instead:
  * `readsProject` asks the surface showing it to demand that listing.
@@ -35,7 +36,7 @@ export interface PublicAccess {
   readonly state: "ready" | "reading" | "failed";
   /** The addresses that serve now, by service then port. */
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
-  /** The addresses put in place that do not serve yet. */
+  /** The addresses routed that do not serve yet. */
   readonly pending: ReadonlyArray<ZeropsPublicRoute>;
   readonly offers: ReadonlyArray<ZeropsRouteOffer>;
   /** The organization's routings are refused to the viewer: demand the project's own listing. */
@@ -108,6 +109,18 @@ export function projectRoutings(
     : { kind: "reading", readsProject: false };
 }
 
+/** Whether a routing serves: its domains say, the platform's rows saying nothing else of it. */
+function serves(routing: PublicRoutingValue): boolean {
+  return (
+    routing.domains.length > 0 &&
+    routing.domains.every((domain) =>
+      routing.sslEnabled
+        ? domain.sslStatus === "ACTIVE" || domain.sslStatus === "BEING_RENEWED"
+        : domain.dnsCheckStatus === "OK",
+    )
+  );
+}
+
 function addressesOf(
   project: ZeropsProject,
   services: ReadonlyArray<ServiceValue>,
@@ -133,8 +146,8 @@ function addressesOf(
           url,
           host: url.replace(/^https?:\/\//u, ""),
         };
-        // An address its routing has not put in place serves nothing yet, whatever else says so.
-        if (routing.isSynced) {
+        // An address whose routing does not serve yet serves nothing, whatever else says so.
+        if (serves(routing)) {
           if (!pending.has(url)) live.set(url, route);
         } else {
           live.delete(url);

@@ -5,12 +5,7 @@
  * closing one asking first. Who may connect is checked before
  * anything is sent: an IPv6 port takes only IPv6 ranges, a bare address is that address alone.
  */
-import type {
-  DirectPort,
-  PlaceAddresses,
-  ServicePortChoice,
-  WaitingChange,
-} from "@t3tools/client-runtime/data";
+import type { DirectPort, PlaceAddresses, ServicePortChoice } from "@t3tools/client-runtime/data";
 import { EllipsisIcon, PlusIcon, ShieldIcon, XIcon } from "lucide-react";
 import { useId, useState } from "react";
 
@@ -38,9 +33,6 @@ import {
   CopyButton,
   Face,
   GroupBody,
-  guardPress,
-  guardTitle,
-  OthersList,
   RealName,
   RowMeta,
   SheetGroup,
@@ -48,7 +40,6 @@ import {
   SheetSection,
   Trouble,
   useRevealed,
-  WaitingNotice,
   type SheetContext,
 } from "./AddressesSheetBits";
 
@@ -66,20 +57,14 @@ const whoOf = (port: DirectPort): Who =>
 export function AddressesDirect({
   ctx,
   place,
-  othersWaiting,
   mode,
   setMode,
 }: {
   readonly ctx: SheetContext;
   readonly place: PlaceAddresses;
-  readonly othersWaiting: ReadonlyArray<WaitingChange>;
   readonly mode: DirectMode;
   readonly setMode: (mode: DirectMode) => void;
 }) {
-  const oursUnderWay =
-    ctx.busy.has("open-port") ||
-    ctx.busy.has("publish-ports") ||
-    [...ctx.busy].some((key) => key.startsWith("port:"));
   const changing =
     mode.kind === "change-port" ? place.ports.find((port) => port.id === mode.portId) : undefined;
   const opening = mode.kind === "open-port";
@@ -106,7 +91,6 @@ export function AddressesDirect({
             ctx={ctx}
             onDone={() => setMode({ kind: "list" })}
             onTaken={() => ctx.settle(mode)}
-            othersWaiting={othersWaiting}
             ownV4={place.ips.ownV4 !== undefined}
             port={undefined}
             ports={place.ports}
@@ -115,23 +99,6 @@ export function AddressesDirect({
         ) : (
           <Trouble text={ctx.trouble.get("open-port")} />
         )
-      }
-      notice={
-        read && othersWaiting.length > 0 ? (
-          <WaitingNotice
-            busy={ctx.busy.has("publish-ports")}
-            held={ctx.hold}
-            kind="port"
-            onPublish={
-              oursUnderWay
-                ? undefined
-                : () => void ctx.onWrite({ kind: "publish-ports", projectId: ctx.projectId })
-            }
-            others={othersWaiting}
-            placeName={ctx.placeName}
-            trouble={ctx.trouble.get("publish-ports")}
-          />
-        ) : null
       }
       part="direct"
       title="Direct connections"
@@ -150,7 +117,6 @@ export function AddressesDirect({
                     ctx={ctx}
                     onDone={() => setMode({ kind: "list" })}
                     onTaken={() => ctx.settle(mode)}
-                    othersWaiting={othersWaiting}
                     ownV4={place.ips.ownV4 !== undefined}
                     port={port}
                     ports={place.ports}
@@ -159,14 +125,7 @@ export function AddressesDirect({
                 </div>
               </SheetGroup>
             ) : (
-              <PortRow
-                ctx={ctx}
-                key={port.id}
-                mode={mode}
-                othersWaiting={othersWaiting}
-                port={port}
-                setMode={setMode}
-              />
+              <PortRow ctx={ctx} key={port.id} mode={mode} port={port} setMode={setMode} />
             ),
           )}
           {place.ports.length > 0 || opening ? null : (
@@ -187,13 +146,11 @@ function PortRow({
   port,
   mode,
   setMode,
-  othersWaiting,
 }: {
   readonly ctx: SheetContext;
   readonly port: DirectPort;
   readonly mode: DirectMode;
   readonly setMode: (mode: DirectMode) => void;
-  readonly othersWaiting: ReadonlyArray<WaitingChange>;
 }) {
   const key = `port:${port.id}`;
   const asking = mode.kind === "close-port" && mode.portId === port.id;
@@ -280,11 +237,7 @@ function PortRow({
               busy={ctx.busy.has(key)}
               disabled={ctx.hold}
               cancel="Keep it open"
-              confirm={
-                othersWaiting.length === 0
-                  ? `Close port ${port.publicPort}`
-                  : guardPress("Close", othersWaiting.length)
-              }
+              confirm={`Close port ${port.publicPort}`}
               destructive
               onCancel={() => setMode({ kind: "list" })}
               onConfirm={() => {
@@ -294,16 +247,9 @@ function PortRow({
                     if (taken) ctx.settle(mode);
                   });
               }}
-              title={
-                othersWaiting.length === 0
-                  ? `Close port ${port.publicPort}?`
-                  : guardTitle(`Closing port ${port.publicPort}`, othersWaiting.length)
-              }
+              title={`Close port ${port.publicPort}?`}
             >
               <p>Anything connecting through it gets nothing from now on.</p>
-              {othersWaiting.length === 0 ? null : (
-                <OthersList kind="port" others={othersWaiting} placeName={ctx.placeName} />
-              )}
             </Confirm>
           ) : null}
         </GroupBody>
@@ -322,7 +268,6 @@ function PortForm({
   ports,
   targets,
   ownV4,
-  othersWaiting,
   onDone,
   onTaken,
 }: {
@@ -331,7 +276,6 @@ function PortForm({
   readonly ports: ReadonlyArray<DirectPort>;
   readonly targets: ReadonlyArray<ServicePortChoice>;
   readonly ownV4: boolean;
-  readonly othersWaiting: ReadonlyArray<WaitingChange>;
   readonly onDone: () => void;
   readonly onTaken: () => void;
 }) {
@@ -359,7 +303,6 @@ function PortForm({
     port === undefined || port.ranges.length === 0 ? [""] : port.ranges,
   );
   const [problems, setProblems] = useState<ReadonlyArray<string>>([]);
-  const [guarding, setGuarding] = useState(false);
   const key = port === undefined ? "open-port" : `port:${port.id}`;
   const busy = ctx.busy.has(key);
 
@@ -377,10 +320,6 @@ function PortForm({
     if (internal === undefined || serviceId === undefined) found.push("Choose a service.");
     setProblems(found);
     if (found.length > 0 || internal === undefined || serviceId === undefined) return;
-    if (othersWaiting.length > 0 && !guarding) {
-      setGuarding(true);
-      return;
-    }
     const write = {
       projectId: ctx.projectId,
       serviceId,
@@ -401,7 +340,6 @@ function PortForm({
           : { kind: "change-port", portRoutingId: port.id, ...write },
       )
       .then((taken) => {
-        setGuarding(false);
         if (taken) onTaken();
       });
   };
@@ -420,7 +358,6 @@ function PortForm({
               const next = [...ranges];
               next[index] = event.target.value;
               setRanges(next);
-              setGuarding(false);
             }}
             placeholder={ipType === "IP_V6" ? "e.g. 2001:db8::1" : "e.g. 198.51.100.20"}
             spellCheck={false}
@@ -576,34 +513,15 @@ function PortForm({
         </ul>
       )}
       <Trouble text={ctx.trouble.get(key)} />
-      {guarding && othersWaiting.length > 0 ? (
-        <Confirm
-          busy={busy}
-          disabled={ctx.hold}
-          cancel="Cancel"
-          confirm={guardPress(null, othersWaiting.length)}
-          onCancel={() => setGuarding(false)}
-          onConfirm={submit}
-          title={guardTitle(
-            port === undefined
-              ? `Opening port ${publicPort.trim()}`
-              : `Changing port ${port.publicPort}`,
-            othersWaiting.length,
-          )}
-        >
-          <OthersList kind="port" others={othersWaiting} placeName={ctx.placeName} />
-        </Confirm>
-      ) : (
-        <div className="flex flex-wrap items-center gap-2">
-          <Button disabled={busy || ctx.hold} size="sm" type="submit">
-            {busy ? <Spinner aria-hidden="true" /> : null}
-            {press}
-          </Button>
-          <Button onClick={onDone} size="sm" type="button" variant="ghost">
-            Cancel
-          </Button>
-        </div>
-      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button disabled={busy || ctx.hold} size="sm" type="submit">
+          {busy ? <Spinner aria-hidden="true" /> : null}
+          {press}
+        </Button>
+        <Button onClick={onDone} size="sm" type="button" variant="ghost">
+          Cancel
+        </Button>
+      </div>
     </Card>
   );
 }

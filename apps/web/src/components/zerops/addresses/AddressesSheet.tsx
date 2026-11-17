@@ -9,7 +9,7 @@
  * already shown on it (`withOwnWrites`), and one callback that writes. The container holds the
  * reads and the operations (`AddressesSheetContainer`).
  */
-import type { PlaceAddresses, WaitingChange } from "@t3tools/client-runtime/data";
+import type { PlaceAddresses } from "@t3tools/client-runtime/data";
 import { ChevronDownIcon, CreditCardIcon, XIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
@@ -54,11 +54,6 @@ export interface AddressesSheetBodyProps {
   readonly places: ReadonlyArray<PlaceChoice>;
   readonly onPlace: (projectId: string) => void;
   readonly place: PlaceAddresses;
-  /** Changes waiting to go live that are not ours, by kind. */
-  readonly othersWaiting: {
-    readonly domains: ReadonlyArray<WaitingChange>;
-    readonly ports: ReadonlyArray<WaitingChange>;
-  };
   readonly ipv4: OwnIpv4Offer;
   readonly busy: ReadonlySet<string>;
   readonly trouble: ReadonlyMap<string, string>;
@@ -133,7 +128,6 @@ export function AddressesSheetBody(props: AddressesSheetBodyProps) {
               onOwnIpv4={
                 props.place.ips.ownV4 === undefined ? () => setMode({ kind: "ipv4" }) : undefined
               }
-              othersWaiting={props.othersWaiting.domains}
               place={props.place}
               setMode={setMode}
             />
@@ -143,7 +137,6 @@ export function AddressesSheetBody(props: AddressesSheetBodyProps) {
               shown={
                 props.place.ports.length > 0 ||
                 props.place.ips.ownV4 !== undefined ||
-                props.othersWaiting.ports.length > 0 ||
                 isDirect(mode) ||
                 mode.kind === "ipv4" ||
                 props.busy.has("request-ipv4") ||
@@ -153,13 +146,7 @@ export function AddressesSheetBody(props: AddressesSheetBodyProps) {
                 (props.ipv4.state !== "reading" && props.ipv4.enabled === true)
               }
             >
-              <AddressesDirect
-                ctx={ctx}
-                mode={direct}
-                othersWaiting={props.othersWaiting.ports}
-                place={props.place}
-                setMode={setMode}
-              />
+              <AddressesDirect ctx={ctx} mode={direct} place={props.place} setMode={setMode} />
               <IpSection
                 ctx={ctx}
                 ipv4={props.ipv4}

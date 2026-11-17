@@ -1,7 +1,7 @@
 /**
  * The addresses sheet over the window at the owner's size, from the board's sample world
- * (`addressesFixture.ts`): `?task=` opens it on a flow — `add` (Put it on your domain), `others`
- * (someone else's change waits), `own` (the project has its own IPv4), `settled` (one live domain,
+ * (`addressesFixture.ts`): `?task=` opens it on a flow — `add` (Put it on your domain), `own`
+ * (the project has its own IPv4), `settled` (one live domain,
  * a service on two web ports, no open port), `fresh` (no domain yet, one
  * Zerops address off), `faces` (a domain in each state short of live: its DNS at Cloudflare, at
  * nobody, pointing elsewhere, a wildcard, a certificate on its way, one refused, and a name whose
@@ -17,7 +17,6 @@ import { createRoot } from "react-dom/client";
 
 import {
   addressTrouble,
-  othersWaiting,
   withOwnWrites,
   writeKey,
   type AddressWrite,
@@ -32,9 +31,6 @@ const params = new URLSearchParams(location.search);
 const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const TASK = params.get("task") ?? "";
 const FAIL = params.get("fail") === "1";
-
-const WAITING =
-  TASK === "others" ? [{ id: "rt-api", label: "api.shop.com → api · port 8080" }] : [];
 
 const waiting = (
   routingId: string,
@@ -75,7 +71,6 @@ const FACES: ReadonlyArray<AddressDomain> = [
 const PLACE: PlaceAddresses = {
   ...ADDRESSES_FIXTURE,
   ips: TASK === "own" ? { ...ADDRESSES_FIXTURE.ips, ownV4: "203.0.113.24" } : ADDRESSES_FIXTURE.ips,
-  waitingDomains: WAITING,
   // `?task=empty`: production set up with nothing deployed there.
   nothingDeployed: TASK === "empty",
   ...(TASK === "faces" ? { domains: FACES } : {}),
@@ -144,7 +139,6 @@ function Harness() {
           onClose={() => {}}
           onPlace={() => {}}
           onWrite={onWrite}
-          othersWaiting={{ domains: othersWaiting(WAITING, own), ports: [] }}
           place={withOwnWrites(PLACE, own)}
           placeName="Production"
           places={[

@@ -1,15 +1,14 @@
 /**
  * A place's addresses written at Zerops, as the addresses sheet asks: a domain added or removed,
  * its DNS looked up again, a service's zerops.app address turned off, a port opened, changed or
- * closed, the project's own IPv4 asked for, and a project's waiting changes put in place.
+ * closed, and the project's own IPv4 asked for.
  *
- * A domain or port write is followed by putting the project's routings of its kind in place, a
- * process that puts every waiting one there too: that process's end is the write's, its project's
- * process history held until then. A write no process follows — none to follow, or found after a
- * lost answer — is done once the routings show it in place, the project's routings held until
- * then. What the routings show of a write is its handle (`address:`), as the vault's are: put in
- * place or still waiting, it is how a lost answer is found again, never by asking again. Nothing
- * is said from a listing not read in full.
+ * A domain or port write is in place once Zerops answers it: nothing publishes it after (Zerops
+ * dropped publishing public routings; its own app sends none since). It is done once the routings
+ * show it, the project's routings held until then. A write a process follows (a zerops.app address
+ * turned off, an IPv4 asked for) ends with that process, its project's process history held until
+ * then. What the facts show of a write is its handle (`address:`), as the vault's are: how a lost
+ * answer is found again, never by asking again. Nothing is said from a listing not read in full.
  *
  * @module data/operations/addressWrites
  */
@@ -57,12 +56,10 @@ declare module "../model.ts" {
       readonly sslEnabled: boolean;
     };
     readonly "check-domain-dns": InProject & { readonly routingId: string };
-    readonly "publish-domains": InProject;
     readonly "disable-subdomain-access": InProject & { readonly serviceId: string };
     readonly "open-port": InProject & PortRoutingWrite;
     readonly "change-port": InProject & PortRoutingWrite & { readonly portRoutingId: string };
     readonly "close-port": InProject & { readonly portRoutingId: string };
-    readonly "publish-ports": InProject;
     readonly "request-ipv4": InProject;
   }
 }
@@ -70,20 +67,14 @@ declare module "../model.ts" {
 type AddressKind =
   | "add-domain"
   | "remove-domain"
-  | "publish-domains"
   | "disable-subdomain-access"
   | "open-port"
   | "change-port"
   | "close-port"
-  | "publish-ports"
   | "request-ipv4";
 
 /** The kinds whose writes are the project's domain routings. */
-const DOMAIN_KINDS: ReadonlySet<AddressKind> = new Set([
-  "add-domain",
-  "remove-domain",
-  "publish-domains",
-]);
+const DOMAIN_KINDS: ReadonlySet<AddressKind> = new Set(["add-domain", "remove-domain"]);
 
 type Rows<V> = ReadonlyArray<{ readonly id: string; readonly value: V }>;
 
@@ -123,43 +114,27 @@ function leftListing(read: ProjectionReads, scopes: ReadonlyArray<ScopeKey>, id:
 const sameSet = (left: ReadonlyArray<string>, right: ReadonlyArray<string>) =>
   left.length === right.length && left.every((item) => right.includes(item));
 
-const removing = (value: { readonly deleteOnSync?: boolean }) => value.deleteOnSync === true;
-
-/** A write the routings show: its handle, and whether it is in place yet. */
-interface Shown {
-  readonly handle: string;
-  readonly live: boolean;
-}
-
 /**
- * What the facts show of a write, and when Zerops last changed each fact it was read from
- * (`stamps`): an end is read only from what came after the write's process.
+ * What the facts show of a write — its handles, none while they show nothing of it — and when
+ * Zerops last changed each fact it was read from (`stamps`): an end is read only from what came
+ * after the write's process.
  */
 interface Evidence {
-  readonly shown: ReadonlyArray<Shown>;
+  readonly shown: ReadonlyArray<string>;
   readonly stamps: ReadonlyArray<string | undefined>;
 }
 
-/** A routing being removed until a listing no longer holds it; `null` while none is complete. */
-function going(
-  handle: string,
-  fact: { readonly kind: string; readonly value?: { readonly deleteOnSync?: boolean } },
-  left: boolean | null,
-): ReadonlyArray<Shown> | null {
-  if (left === null) return null;
-  if (left) return [{ handle, live: true }];
-  return fact.kind === "known" && fact.value !== undefined && removing(fact.value)
-    ? [{ handle, live: false }]
-    : [];
-}
-
-/** The evidence of a removal: how far it went, from the routing as it last read. */
+/** A routing removed once a complete listing no longer holds it; `null` while none is complete. */
 function removal(
-  shown: ReadonlyArray<Shown> | null,
+  handle: string,
   fact: { readonly kind: string; readonly value?: { readonly lastUpdate?: string } },
+  left: boolean | null,
 ): Evidence | null {
-  if (shown === null) return null;
-  return { shown, stamps: fact.kind === "known" ? [fact.value?.lastUpdate] : [] };
+  if (left === null) return null;
+  return {
+    shown: left ? [handle] : [],
+    stamps: fact.kind === "known" ? [fact.value?.lastUpdate] : [],
+  };
 }
 
 /**
@@ -174,7 +149,6 @@ const SHOWS: {
     if (routings === null) return null;
     const ours = routings.filter(
       ({ value }) =>
-        !removing(value) &&
         sameSet(
           value.domains.map(({ domainName }) => domainName),
           intent.domains,
@@ -184,10 +158,7 @@ const SHOWS: {
         ),
     );
     return {
-      shown: ours.map(({ id, value }) => ({
-        handle: `address:routing:${id}`,
-        live: value.isSynced,
-      })),
+      shown: ours.map(({ id }) => `address:routing:${id}`),
       stamps: ours.map(({ value }) => value.lastUpdate),
     };
   },
@@ -195,16 +166,13 @@ const SHOWS: {
     const fact = read.fact("publicRouting", intent.routingId);
     if (intent.keep.length === 0)
       return removal(
-        going(
-          `address:gone:${intent.routingId}`,
-          fact,
-          leftListing(
-            read,
-            [routingsScope(intent.orgId), projectRoutingsScope(intent.orgId, intent.projectId)],
-            intent.routingId,
-          ),
-        ),
+        `address:gone:${intent.routingId}`,
         fact,
+        leftListing(
+          read,
+          [routingsScope(intent.orgId), projectRoutingsScope(intent.orgId, intent.projectId)],
+          intent.routingId,
+        ),
       );
     if (fact.kind !== "known") return null;
     return {
@@ -212,29 +180,16 @@ const SHOWS: {
         fact.value.domains.map(({ domainName }) => domainName),
         intent.keep,
       )
-        ? [{ handle: `address:kept:${intent.routingId}`, live: fact.value.isSynced }]
+        ? [`address:kept:${intent.routingId}`]
         : [],
       stamps: [fact.value.lastUpdate],
-    };
-  },
-  "publish-domains": (read, intent) => {
-    const routings = routingsIn(read, intent.orgId, intent.projectId);
-    if (routings === null) return null;
-    const held = routings.filter(({ value }) => value.isEditable === true && !value.isSynced);
-    return {
-      shown:
-        held.length > 0 ? [] : [{ handle: `address:published:${intent.projectId}`, live: true }],
-      stamps: held.map(({ value }) => value.lastUpdate),
     };
   },
   "disable-subdomain-access": (read, intent) => {
     const service = read.fact("service", intent.serviceId);
     if (service.kind !== "known") return null;
     return {
-      shown:
-        service.value.subdomainAccess === false
-          ? [{ handle: `address:closed:${intent.serviceId}`, live: true }]
-          : [],
+      shown: service.value.subdomainAccess === false ? [`address:closed:${intent.serviceId}`] : [],
       stamps: [service.value.lastUpdate],
     };
   },
@@ -243,13 +198,12 @@ const SHOWS: {
     if (ports === null) return null;
     const ours = ports.filter(
       ({ value }) =>
-        !removing(value) &&
         value.publicPort === intent.publicPort &&
         value.publicIpType === intent.publicIpType &&
         value.serviceStackId === intent.serviceId,
     );
     return {
-      shown: ours.map(({ id, value }) => ({ handle: `address:port:${id}`, live: value.isSynced })),
+      shown: ours.map(({ id }) => `address:port:${id}`),
       stamps: ours.map(({ value }) => value.lastUpdate),
     };
   },
@@ -264,12 +218,7 @@ const SHOWS: {
         port.internalProtocol === intent.internalProtocol &&
         port.firewallPolicy === intent.firewallPolicy &&
         sameSet(port.firewallIpRanges, intent.firewallIpRanges)
-          ? [
-              {
-                handle: `address:port:${intent.portRoutingId}`,
-                live: port.isSynced && !removing(port),
-              },
-            ]
+          ? [`address:port:${intent.portRoutingId}`]
           : [],
       stamps: [port.lastUpdate],
     };
@@ -277,34 +226,17 @@ const SHOWS: {
   "close-port": (read, intent) => {
     const fact = read.fact("publicPortRouting", intent.portRoutingId);
     return removal(
-      going(
-        `address:gone:${intent.portRoutingId}`,
-        fact,
-        leftListing(read, [portRoutingsScope(intent.orgId)], intent.portRoutingId),
-      ),
+      `address:gone:${intent.portRoutingId}`,
       fact,
+      leftListing(read, [portRoutingsScope(intent.orgId)], intent.portRoutingId),
     );
-  },
-  "publish-ports": (read, intent) => {
-    const ports = portsIn(read, intent.orgId, intent.projectId);
-    if (ports === null) return null;
-    const held = ports.filter(({ value }) => !value.isSynced);
-    return {
-      shown:
-        held.length > 0
-          ? []
-          : [{ handle: `address:published-ports:${intent.projectId}`, live: true }],
-      stamps: held.map(({ value }) => value.lastUpdate),
-    };
   },
   "request-ipv4": (read, intent) => {
     const project = read.fact("project", intent.projectId);
     if (project.kind !== "known") return null;
     return {
       shown:
-        typeof project.value.publicIpV4 === "string"
-          ? [{ handle: `address:ipv4:${intent.projectId}`, live: true }]
-          : [],
+        typeof project.value.publicIpV4 === "string" ? [`address:ipv4:${intent.projectId}`] : [],
       stamps: [project.value.lastUpdate],
     };
   },
@@ -331,16 +263,14 @@ function changedSinceEnd(
   );
 }
 
-/** What the person is told when the process that puts it in place fails. */
+/** What the person is told when the process that follows it fails. */
 const FAILED: { readonly [K in AddressKind]: string } = {
   "add-domain": "Zerops couldn't put the domain in place.",
   "remove-domain": "Zerops couldn't remove the domain.",
-  "publish-domains": "Zerops couldn't put the waiting domain changes in place.",
   "disable-subdomain-access": "Zerops couldn't close the address.",
   "open-port": "Zerops couldn't open the port.",
   "change-port": "Zerops couldn't change the port.",
   "close-port": "Zerops couldn't close the port.",
-  "publish-ports": "Zerops couldn't put the waiting port changes in place.",
   "request-ipv4": "Zerops couldn't give the project its own IPv4.",
 };
 
@@ -354,7 +284,7 @@ function addressKind<K extends AddressKind>(kind: K): OperationKind<K> {
     reflected: (read, intent) => (shows(read, intent)?.shown.length ?? 0) > 0,
     settledBy: (read, intent, receipt): Settlement | null => {
       const evidence = shows(read, intent);
-      if (evidence?.shown.some(({ live }) => live) === true) return { kind: "succeeded" };
+      if ((evidence?.shown.length ?? 0) > 0) return { kind: "succeeded" };
       if (!followsProcess(receipt)) return null;
       const end = settledByProcess(read, receipt, () => FAILED[kind]);
       if (end?.kind !== "succeeded") return end;
@@ -371,18 +301,16 @@ function addressKind<K extends AddressKind>(kind: K): OperationKind<K> {
         ? { family: "publicRouting", listing: PROJECT_ROUTINGS_LISTING, ownerId: projectOf(intent) }
         : null;
     },
-    effectHandles: (read, intent) => shows(read, intent)?.shown.map(({ handle }) => handle) ?? null,
+    effectHandles: (read, intent) => shows(read, intent)?.shown ?? null,
   };
 }
 
 export const addDomain = addressKind("add-domain");
 export const removeDomain = addressKind("remove-domain");
-export const publishDomains = addressKind("publish-domains");
 export const disableSubdomainAccess = addressKind("disable-subdomain-access");
 export const openPort = addressKind("open-port");
 const changePort = addressKind("change-port");
 export const closePort = addressKind("close-port");
-export const publishPorts = addressKind("publish-ports");
 export const requestIpv4 = addressKind("request-ipv4");
 
 /** Looking a domain up again: Zerops's answer is its end; the next check's row is its evidence. */
@@ -396,11 +324,9 @@ export const ADDRESS_WRITE_KINDS = [
   addDomain,
   removeDomain,
   checkDomainDns,
-  publishDomains,
   disableSubdomainAccess,
   openPort,
   changePort,
   closePort,
-  publishPorts,
   requestIpv4,
 ] as const;

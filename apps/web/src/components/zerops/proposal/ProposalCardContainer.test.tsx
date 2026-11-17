@@ -238,7 +238,6 @@ const domainOffer = { proposal: domainProposal } as ZeropsOperation;
 
 const production = (
   domains: ReadonlyArray<Pick<AddressDomain, "domainName" | "face">>,
-  waitingDomains: PlaceAddresses["waitingDomains"] = [],
 ): PlaceAddresses => ({
   state: "ready",
   domains: domains.map((domain) => ({
@@ -257,8 +256,6 @@ const production = (
   ports: [],
   webTargets: [],
   portTargets: [],
-  waitingDomains,
-  waitingPorts: [],
   readsProject: false,
   nothingDeployed: false,
 });
@@ -315,15 +312,6 @@ describe("the Chief's proposal to put a project on a domain", () => {
     await press("Approve");
     expect(source.run).not.toHaveBeenCalled();
     expect(document.body.textContent).toContain("You can't see Contoso - production's addresses.");
-  });
-
-  it("names somebody else's waiting change that approving puts in place too", async () => {
-    operation = domainOffer;
-    source.addresses = production([], [{ id: "w1", label: "Removing api.contoso.com" }]);
-    await draw();
-    expect(document.body.textContent).toContain(
-      "Approving also puts in place: Removing api.contoso.com.",
-    );
   });
 
   it("an approved domain waits for the person's DNS, and Open addresses opens that project's addresses", async () => {

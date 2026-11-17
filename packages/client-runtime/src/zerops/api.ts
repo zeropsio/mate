@@ -2703,10 +2703,7 @@ export class ZeropsApiClient {
     return { processId: typeof process?.id === "string" ? process.id : undefined };
   }
 
-  /**
-   * `POST /project/{id}/public-http-routing` — routes the domains to the locations, with SSL. It
-   * serves nothing until the project's routings are synced (`syncPublicHttpRouting`).
-   */
+  /** `POST /project/{id}/public-http-routing` — routes the domains to the locations, with SSL. */
   async createPublicHttpRouting(
     projectId: string,
     routing: {
@@ -2734,27 +2731,7 @@ export class ZeropsApiClient {
     );
   }
 
-  /** `PUT /project/{id}/sync-public-http-routing` — puts the project's routings in place: a process. */
-  async syncPublicHttpRouting(
-    projectId: string,
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<{ readonly processId: string | undefined }> {
-    const process = await this.#request<{ readonly id?: unknown }>(
-      `/project/${projectId}/sync-public-http-routing`,
-      { method: "PUT", signal: signal ?? null },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-    return { processId: typeof process?.id === "string" ? process.id : undefined };
-  }
-
-  /**
-   * `PUT /public-http-routing/{id}` — the routing's domains and locations, replaced whole. It
-   * serves as before until the project's routings are synced.
-   */
+  /** `PUT /public-http-routing/{id}` — the routing's domains and locations, replaced whole. */
   async updatePublicHttpRouting(
     routingId: string,
     routing: {
@@ -2779,10 +2756,7 @@ export class ZeropsApiClient {
     );
   }
 
-  /**
-   * `DELETE /public-http-routing/{id}` — marks the routing removed (`deleteOnSync`): it serves
-   * until the project's routings are synced, and a restore takes it back until then.
-   */
+  /** `DELETE /public-http-routing/{id}` — removes the routing. */
   async deletePublicHttpRouting(
     routingId: string,
     signal?: AbortSignal,
@@ -2814,10 +2788,7 @@ export class ZeropsApiClient {
     );
   }
 
-  /**
-   * `POST /service-stack/{id}/public-port-routing` — opens a port of the service on the project's
-   * IP. It serves nothing until the project's port routings are synced.
-   */
+  /** `POST /service-stack/{id}/public-port-routing` — opens a port of the service on the project's IP. */
   async createPublicPortRouting(
     serviceId: string,
     port: ZeropsPortRoutingWrite,
@@ -2838,7 +2809,7 @@ export class ZeropsApiClient {
     );
   }
 
-  /** `PUT /public-port-routing/{id}` — the port's routing replaced whole, waiting to be synced. */
+  /** `PUT /public-port-routing/{id}` — the port's routing replaced whole. */
   async updatePublicPortRouting(
     portRoutingId: string,
     port: ZeropsPortRoutingWrite,
@@ -2859,7 +2830,7 @@ export class ZeropsApiClient {
     );
   }
 
-  /** `DELETE /public-port-routing/{id}` — marks it removed until the project's port routings sync. */
+  /** `DELETE /public-port-routing/{id}` — closes the port. */
   async deletePublicPortRouting(
     portRoutingId: string,
     signal?: AbortSignal,
@@ -2873,23 +2844,6 @@ export class ZeropsApiClient {
         ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
       },
     );
-  }
-
-  /** `PUT /project/{id}/sync-public-port-routing` — puts the project's port routings in place. */
-  async syncPublicPortRouting(
-    projectId: string,
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<{ readonly processId: string | undefined }> {
-    const process = await this.#request<{ readonly id?: unknown }>(
-      `/project/${projectId}/sync-public-port-routing`,
-      { method: "PUT", signal: signal ?? null },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-    return { processId: typeof process?.id === "string" ? process.id : undefined };
   }
 
   /**

@@ -4,14 +4,12 @@
  * records to add at the person's DNS provider as that provider's form takes them, ticked off as
  * the platform finds them; the https certificate Zerops gets next; and going live. A place with
  * no domain yet shows the field to type one into, with the same three steps pictured. Removing a
- * domain asks first, and a write that would put somebody else's waiting change live names it
- * before it does.
+ * domain asks first.
  */
 import type {
   AddressDomain,
   PlaceAddresses,
   ServicePortChoice,
-  WaitingChange,
 } from "@t3tools/client-runtime/data";
 import {
   ArrowUpRightIcon,
@@ -53,16 +51,12 @@ import {
 import {
   Confirm,
   GroupBody,
-  guardPress,
-  guardTitle,
   Journey,
-  OthersList,
   SheetGroup,
   SheetSection,
   Stage,
   Trouble,
   useRevealed,
-  WaitingNotice,
   type SheetContext,
 } from "./AddressesSheetBits";
 import { DnsRecords } from "./DnsRecords";
@@ -95,12 +89,11 @@ function targetLabel(
   return several ? `${target.serviceName} · port ${target.port}` : target.serviceName;
 }
 
-const NEEDS_RECORDS = new Set<AddressDomain["face"]>(["going-live", "dns", "elsewhere"]);
+const NEEDS_RECORDS = new Set<AddressDomain["face"]>(["adding", "dns", "elsewhere"]);
 
 export function AddressesDomains({
   ctx,
   place,
-  othersWaiting,
   mode,
   setMode,
   onOwnIpv4,
@@ -108,7 +101,6 @@ export function AddressesDomains({
 }: {
   readonly ctx: SheetContext;
   readonly place: PlaceAddresses;
-  readonly othersWaiting: ReadonlyArray<WaitingChange>;
   readonly mode: WebMode;
   readonly setMode: (mode: WebMode) => void;
   /** Takes the person to *Get your own IPv4*, an "Other way" of a domain's records. */
@@ -119,10 +111,6 @@ export function AddressesDomains({
    */
   readonly inviting: boolean;
 }) {
-  const oursUnderWay =
-    ctx.busy.has("add-domain") ||
-    ctx.busy.has("publish-domains") ||
-    [...ctx.busy].some((key) => key.startsWith("remove:"));
   const asked = mode.kind === "add-domain";
   // Our own add under way is drawn as a domain at once, and goes again where Zerops refuses it:
   // the place has a domain only once one is there, so the form it was typed into stays as it is.
@@ -157,29 +145,11 @@ export function AddressesDomains({
             focused={asked}
             onDone={first ? undefined : () => setMode({ kind: "list" })}
             onTaken={() => ctx.settle(mode)}
-            othersWaiting={othersWaiting}
             targets={place.webTargets}
           />
         ) : (
           <Trouble text={ctx.trouble.get("add-domain")} />
         )
-      }
-      notice={
-        othersWaiting.length > 0 ? (
-          <WaitingNotice
-            busy={ctx.busy.has("publish-domains")}
-            held={ctx.hold}
-            kind="domain"
-            onPublish={
-              oursUnderWay
-                ? undefined
-                : () => void ctx.onWrite({ kind: "publish-domains", projectId: ctx.projectId })
-            }
-            others={othersWaiting}
-            placeName={ctx.placeName}
-            trouble={ctx.trouble.get("publish-domains")}
-          />
-        ) : null
       }
       part="domains"
       title="Your domains"
@@ -192,7 +162,6 @@ export function AddressesDomains({
           key={group[0]!.routingId}
           mode={mode}
           onOwnIpv4={onOwnIpv4}
-          othersWaiting={othersWaiting}
           setMode={setMode}
           targets={place.webTargets}
         />
@@ -218,7 +187,6 @@ function RoutingGroup({
   targets,
   mode,
   setMode,
-  othersWaiting,
   onOwnIpv4,
 }: {
   readonly ctx: SheetContext;
@@ -227,7 +195,6 @@ function RoutingGroup({
   readonly targets: ReadonlyArray<ServicePortChoice>;
   readonly mode: WebMode;
   readonly setMode: (mode: WebMode) => void;
-  readonly othersWaiting: ReadonlyArray<WaitingChange>;
   readonly onOwnIpv4: (() => void) | undefined;
 }) {
   const waiting = group.filter((domain) => NEEDS_RECORDS.has(domain.face));
@@ -251,7 +218,6 @@ function RoutingGroup({
           group={group}
           key={domain.domainName}
           mode={mode}
-          othersWaiting={othersWaiting}
           setMode={setMode}
           targets={targets}
         />
@@ -285,7 +251,6 @@ function DomainRow({
   targets,
   mode,
   setMode,
-  othersWaiting,
 }: {
   readonly ctx: SheetContext;
   readonly domain: AddressDomain;
@@ -294,7 +259,6 @@ function DomainRow({
   readonly targets: ReadonlyArray<ServicePortChoice>;
   readonly mode: WebMode;
   readonly setMode: (mode: WebMode) => void;
-  readonly othersWaiting: ReadonlyArray<WaitingChange>;
 }) {
   const waitsFor = removeWaitsFor(domain, group);
   const face = domainFaceWords(domain.face);
@@ -383,11 +347,7 @@ function DomainRow({
               busy={ctx.busy.has(key)}
               disabled={ctx.hold}
               cancel="Cancel"
-              confirm={
-                othersWaiting.length === 0
-                  ? `Remove ${domain.domainName}`
-                  : guardPress("Remove", othersWaiting.length)
-              }
+              confirm={`Remove ${domain.domainName}`}
               destructive
               onCancel={() => setMode({ kind: "list" })}
               onConfirm={() => {
@@ -396,19 +356,12 @@ function DomainRow({
                   if (taken) ctx.settle(mode);
                 });
               }}
-              title={
-                othersWaiting.length === 0
-                  ? `Remove ${domain.domainName}?`
-                  : guardTitle(`Removing ${domain.domainName}`, othersWaiting.length)
-              }
+              title={`Remove ${domain.domainName}?`}
             >
               <p>
                 It stops answering right away. Its DNS records can stay; remove them at your DNS
                 provider when you like.
               </p>
-              {othersWaiting.length === 0 ? null : (
-                <OthersList kind="domain" others={othersWaiting} placeName={ctx.placeName} />
-              )}
             </Confirm>
           ) : null}
         </GroupBody>
@@ -709,7 +662,6 @@ function AddDomainForm({
   ctx,
   existing,
   targets,
-  othersWaiting,
   first,
   focused,
   onDone,
@@ -718,7 +670,6 @@ function AddDomainForm({
   readonly ctx: SheetContext;
   readonly existing: ReadonlyArray<string>;
   readonly targets: ReadonlyArray<ServicePortChoice>;
-  readonly othersWaiting: ReadonlyArray<WaitingChange>;
   /** The place's first domain: the form says what it is for and what follows. */
   readonly first: boolean;
   /** Opened by a press: the field takes the caret, and the form comes into view. */
@@ -733,7 +684,6 @@ function AddDomainForm({
   const [twin, setTwin] = useState(true);
   // What the person chose among several services; nothing until they do.
   const [target, setTarget] = useState("");
-  const [guarding, setGuarding] = useState(false);
   const name = normalizeDomain(typed);
   const problem = domainProblem(name, existing, ctx.placeName);
   const offered = wwwTwin(name);
@@ -747,10 +697,6 @@ function AddDomainForm({
   const ready = name !== "" && problem === null && chosen !== undefined;
   const add = () => {
     if (!ready) return;
-    if (othersWaiting.length > 0 && !guarding) {
-      setGuarding(true);
-      return;
-    }
     void ctx
       .onWrite({
         kind: "add-domain",
@@ -760,14 +706,12 @@ function AddDomainForm({
         port: chosen.port,
       })
       .then((taken) => {
-        setGuarding(false);
         if (!taken) return;
         // Where the form stays, it is ready for the next domain.
         setTyped("");
         onTaken();
       });
   };
-  const named = domains.join(" and ");
   return (
     <Card
       data-addresses-form="add-domain"
@@ -817,7 +761,6 @@ function AddDomainForm({
             id={`${id}-domain`}
             onChange={(event) => {
               setTyped(event.target.value);
-              setGuarding(false);
             }}
             placeholder="yourshop.com"
             spellCheck={false}
@@ -862,36 +805,22 @@ function AddDomainForm({
         </label>
       )}
       <Trouble text={ctx.trouble.get("add-domain")} />
-      {guarding && othersWaiting.length > 0 ? (
-        <Confirm
-          busy={busy}
-          disabled={ctx.hold}
-          cancel="Cancel"
-          confirm={guardPress(null, othersWaiting.length)}
-          onCancel={() => setGuarding(false)}
-          onConfirm={add}
-          title={guardTitle(`Adding ${named}`, othersWaiting.length)}
-        >
-          <OthersList kind="domain" others={othersWaiting} placeName={ctx.placeName} />
-        </Confirm>
-      ) : (
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-          <Button disabled={!ready || busy || ctx.hold} size="sm" type="submit">
-            {busy ? <Spinner aria-hidden="true" /> : null}
-            {name === "" || problem !== null ? "Add domain" : `Add ${name}`}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+        <Button disabled={!ready || busy || ctx.hold} size="sm" type="submit">
+          {busy ? <Spinner aria-hidden="true" /> : null}
+          {name === "" || problem !== null ? "Add domain" : `Add ${name}`}
+        </Button>
+        {onDone === undefined ? null : (
+          <Button onClick={onDone} size="sm" type="button" variant="ghost">
+            Cancel
           </Button>
-          {onDone === undefined ? null : (
-            <Button onClick={onDone} size="sm" type="button" variant="ghost">
-              Cancel
-            </Button>
-          )}
-          {first ? null : (
-            <span className="ms-1 text-muted-foreground text-xs">
-              Next you get the records to add where you bought it.
-            </span>
-          )}
-        </div>
-      )}
+        )}
+        {first ? null : (
+          <span className="ms-1 text-muted-foreground text-xs">
+            Next you get the records to add where you bought it.
+          </span>
+        )}
+      </div>
     </Card>
   );
 }

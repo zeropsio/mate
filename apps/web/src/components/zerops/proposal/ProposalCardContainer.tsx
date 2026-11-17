@@ -62,7 +62,6 @@ import { RevealAsk } from "./RevealAskContainer";
 import {
   chiefAsk,
   chiefMessageTarget,
-  domainProposalAlso,
   domainProposalRecords,
   domainProposalState,
   envProposalWrite,
@@ -118,8 +117,6 @@ const UNREAD_ADDRESSES = Atom.make<PlaceAddresses>({
   ports: [],
   webTargets: [],
   portTargets: [],
-  waitingDomains: [],
-  waitingPorts: [],
   readsProject: false,
   nothingDeployed: false,
 });
@@ -518,7 +515,6 @@ function Proposal({
   return (
     <ProposalCard
       approveBlocked={approveBlocked}
-      domainAlso={proposal.kind === "domain.add" ? domainProposalAlso(place) : undefined}
       domainState={
         proposal.kind === "domain.add" ? domainProposalState(place, proposal) : undefined
       }

@@ -373,8 +373,7 @@ export function proposalTitle(proposal: ZeropsProposal): string {
 /** How far each face is from answering: the furthest behind speaks for the proposal's domains. */
 const FACE_ORDER: ReadonlyArray<DomainFace> = [
   "removing",
-  "going-live",
-  "changing",
+  "adding",
   "dns",
   "elsewhere",
   "certificate-failed",
@@ -427,8 +426,7 @@ export function domainProposalState(
   switch (behind.face) {
     case "removing":
       return { tone: "waiting", words: `${name} is being removed.` };
-    case "going-live":
-    case "changing":
+    case "adding":
       return { tone: "working", words: `Putting ${name} in place…` };
     case "dns":
       return {
@@ -455,15 +453,6 @@ export function domainProposalState(
       };
     }
   }
-}
-
-/**
- * What approving a domain puts in place besides it: putting the project's domains in place puts
- * every waiting change there too, anybody's. Undefined where none waits.
- */
-export function domainProposalAlso(place: PlaceAddresses): string | undefined {
-  if (place.waitingDomains.length === 0) return undefined;
-  return `Approving also puts in place: ${place.waitingDomains.map((each) => each.label).join(", ")}.`;
 }
 
 /** Where a proposal acts, in the vault's and the menu's words; a message's Mate is drawn instead. */

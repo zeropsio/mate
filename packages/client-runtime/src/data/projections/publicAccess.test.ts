@@ -40,14 +40,17 @@ const navigation = (app: { readonly subdomainAccess: boolean } = { subdomainAcce
     ],
   });
 
-const routing = (patch: Partial<PublicRoutingValue> = {}): PublicRoutingValue => ({
-  projectId: "p1",
-  isSynced: true,
-  sslEnabled: true,
-  domains: [{ domainName: "shop.example.com" }],
-  locations: [{ path: "/", port: 80, serviceStackId: "s1" }],
-  ...patch,
-});
+/** A routing that serves: each of its domains' certificates active unless a test says. */
+const routing = (patch: Partial<PublicRoutingValue> = {}): PublicRoutingValue => {
+  const value = {
+    projectId: "p1",
+    sslEnabled: true,
+    domains: [{ domainName: "shop.example.com" }],
+    locations: [{ path: "/", port: 80, serviceStackId: "s1" }],
+    ...patch,
+  };
+  return { ...value, domains: value.domains.map((domain) => ({ sslStatus: "ACTIVE", ...domain })) };
+};
 
 /** A scope's attempt baselined with these routings, and live. */
 const baselined = (
@@ -117,39 +120,6 @@ describe("publicAccess", () => {
       },
     },
     {
-      name: "a routing not synced yet is pending, never a live address",
-      inputs: [
-        ...navigation(),
-        ...baselined(routingsScope(ORG), {
-          r0: routing({ domains: [{ domainName: SUBDOMAIN.host }] }),
-          r1: routing({ isSynced: false }),
-        }),
-      ],
-      expected: {
-        state: "ready",
-        routes: [SUBDOMAIN],
-        pending: [DOMAIN],
-        offers: [],
-        readsProject: false,
-      },
-    },
-    {
-      name: "a subdomain whose routing is not synced yet is pending, though its service says on",
-      inputs: [
-        ...navigation(),
-        ...baselined(routingsScope(ORG), {
-          r1: routing({ isSynced: false, domains: [{ domainName: SUBDOMAIN.host }] }),
-        }),
-      ],
-      expected: {
-        state: "ready",
-        routes: [],
-        pending: [SUBDOMAIN],
-        offers: [],
-        readsProject: false,
-      },
-    },
-    {
       name: "a routing the listing let go serves nothing",
       inputs: [
         ...navigation(),
@@ -193,20 +163,6 @@ describe("publicAccess", () => {
         state: "ready",
         routes: [DOMAIN],
         pending: [],
-        offers: [],
-        readsProject: false,
-      },
-    },
-    {
-      name: "a service whose domain is being put in place is never offered to the internet",
-      inputs: [
-        ...navigation({ subdomainAccess: false }),
-        ...baselined(routingsScope(ORG), { r1: routing({ isSynced: false }) }),
-      ],
-      expected: {
-        state: "ready",
-        routes: [],
-        pending: [DOMAIN],
         offers: [],
         readsProject: false,
       },
