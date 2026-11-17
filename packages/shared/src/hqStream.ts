@@ -177,8 +177,8 @@ export type HqCoreProtocol = typeof HqCoreProtocol.Type;
 export const HqScopeReady = Schema.Struct({
   /**
    * The Core's protocol and capability declarations ({@link HqCoreProtocol}), on every `scope-ready`.
-   * The client reads each declaration on its own, so one it does not know reads as unsupported
-   * rather than refusing the frame.
+   * The client reads each declaration on its own, so an unreadable `protocol` reads as absent (HQ
+   * needs an update) rather than refusing the frame.
    */
   core: Schema.Record(Schema.String, Schema.Unknown),
   type: Schema.Literal("scope-ready"),

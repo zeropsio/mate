@@ -627,7 +627,6 @@ export function hqNavigationLink(options: {
                           message.incarnation,
                           core.build ?? null,
                           core.protocol ?? null,
-                          core.agentUsage ?? null,
                         ]),
                         revision: message.revision,
                       },
@@ -636,11 +635,6 @@ export function hqNavigationLink(options: {
                   removals: [],
                 });
               }
-              if (
-                message.scope.kind === "navigation" &&
-                demands.scopes().some((scope) => detailOf(scope)?.wire.kind === "agentUsage")
-              )
-                wakeAttempt?.();
               store.dispatch({ kind: "hq-ready", scopes: entry.generations });
               for (const { scope } of entry.generations)
                 yield* signal(scope, { kind: "baseline-committed" });
