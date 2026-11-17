@@ -720,8 +720,8 @@
         }
         // As many loading rows as the menu drew last time in the organization this browser has
         // open (`mate:menu-rows:v2` by organization, as `MenuSkeleton` reads it), no more than a
-        // screen holds: the app's first frame draws the same rows.
-        let rows = 1;
+        // screen holds, none where nothing is remembered: the app's first frame draws the same rows.
+        let rows = 0;
         try {
           const owner = JSON.parse(
             window.localStorage.getItem("zerops-mate.zerops-session-owner.v1") ?? "null",
@@ -737,7 +737,7 @@
             if (Number.isInteger(count) && count >= 0) rows = count;
           }
         } catch {
-          rows = 1;
+          rows = 0;
         }
         root.dataset.bootMenuRows = String(
           Math.min(rows, Math.max(1, Math.ceil((window.innerHeight - 151) / 72))),
@@ -797,7 +797,7 @@
         (() => {
           const list = document.getElementById("boot-shell-menu-loading");
           const row = list?.firstElementChild;
-          const rows = Number(document.documentElement.dataset.bootMenuRows ?? "1");
+          const rows = Number(document.documentElement.dataset.bootMenuRows ?? "0");
           if (!list || !row) return;
           if (rows === 0) row.remove();
           for (let at = 1; at < rows; at += 1) list.append(row.cloneNode(true));

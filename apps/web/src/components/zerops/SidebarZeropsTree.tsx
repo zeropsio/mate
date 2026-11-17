@@ -1189,6 +1189,9 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   // Its rows wait in the loading rows' place while the menu holds them (`hold`).
   if (hold) return <MenuSkeleton className={className} />;
 
+  // A whole list that draws no Mate row: the next load's loading rows stand in for none.
+  if (nothing !== undefined && rowsOrgId !== null) rememberMenuRows(rowsOrgId, 0);
+
   // No project at all: nothing to list, and nothing to say — the one thing to
   // do is *New project*, the top row's +.
   if (nothing === "no-projects") return null;
@@ -2733,8 +2736,13 @@ const PROJECTS_LIST = "projects";
 const MENU_ROW_PITCH_PX = 72;
 const MENU_CHROME_PX = 151;
 
+/**
+ * As many loading rows as the menu drew last in the organization, no more than a screen holds;
+ * none where nothing is remembered: an organization seen for the first time (a new account's
+ * first sign-in) may have no Mate, and a row stood in for none is taken back.
+ */
 function loadingMenuRows(orgId: string | undefined): number {
-  const remembered = (orgId === undefined ? null : readMenuRowsMemory(orgId)) ?? 1;
+  const remembered = (orgId === undefined ? null : readMenuRowsMemory(orgId)) ?? 0;
   if (typeof window === "undefined") return remembered;
   return Math.min(
     remembered,
