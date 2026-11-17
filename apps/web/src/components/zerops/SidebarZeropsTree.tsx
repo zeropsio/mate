@@ -2558,26 +2558,30 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       {/* Every project, one list: none folds behind "N other projects" (the owner, 2026-10-11). */}
       {groupSections}
       {ungroupedSection}
-      {/* What the list leaves out, each on the same quiet line under it: the Mates *Mine* hides,
-          then the projects only Platform holds. */}
-      {hiddenMates === 0 || onShowEveryone === undefined ? null : (
-        <span
-          className="menu-ungrouped flex items-center gap-1.5"
-          data-zerops-surface="sidebar-hidden-mates"
-        >
-          <span className="truncate">{`${String(hiddenMates)} ${hiddenMates === 1 ? "Mate" : "Mates"} hidden`}</span>
-          <span aria-hidden="true">·</span>
-          <button
-            className="menu-show-everyone"
-            data-zerops-surface="sidebar-show-everyone"
-            onClick={onShowEveryone}
-            type="button"
-          >
-            Show everyone
-          </button>
-        </span>
+      {/* What the list leaves out, each on the same quiet line under it, set apart from the
+          Mates as one group: the Mates *Mine* hides, then the projects only Platform holds. */}
+      {(hiddenMates === 0 || onShowEveryone === undefined) && platformSection === null ? null : (
+        <div className="mt-3 flex flex-col" data-zerops-surface="sidebar-left-out">
+          {hiddenMates === 0 || onShowEveryone === undefined ? null : (
+            <span
+              className="menu-ungrouped flex items-center gap-1.5"
+              data-zerops-surface="sidebar-hidden-mates"
+            >
+              <span className="truncate">{`${String(hiddenMates)} ${hiddenMates === 1 ? "Mate" : "Mates"} hidden`}</span>
+              <span aria-hidden="true">·</span>
+              <button
+                className="menu-show-everyone"
+                data-zerops-surface="sidebar-show-everyone"
+                onClick={onShowEveryone}
+                type="button"
+              >
+                Show everyone
+              </button>
+            </span>
+          )}
+          {platformSection}
+        </div>
       )}
-      {platformSection}
 
       {/* Rows already held, and the listing not all read: they may not be all
           the Mates there are, so the notice stays under them (§3.4). */}
