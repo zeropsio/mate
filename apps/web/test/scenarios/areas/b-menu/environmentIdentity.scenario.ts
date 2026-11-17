@@ -148,7 +148,7 @@ describe("B: environment identity compatibility", () => {
       () =>
         Effect.gen(function* () {
           const f = yield* environmentFixtureWith();
-          const wire = environmentIdentityWire("modern", {
+          const wire = environmentIdentityWire({
             "Shop-stage": {
               id: "independent-preview",
               target: { kind: "zerops", projectId: "Shop-stage" },
@@ -191,8 +191,7 @@ describe("B: environment identity compatibility", () => {
       "Unknown and unavailable environment routes never read a project by environment id.",
       () =>
         Effect.gen(function* () {
-          const wire = environmentIdentityWire("modern");
-          const s = yield* menuScenario([wire.install]);
+          const s = yield* menuScenario();
           yield* s.given.project("Ada", { mate: true, app: "Shop" });
           yield* s.stage("preview", "Shop");
           yield* s.given.signedIn;

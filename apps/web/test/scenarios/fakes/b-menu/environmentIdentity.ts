@@ -6,7 +6,6 @@ const Frame = Schema.fromJsonString(Schema.Unknown);
 const decodeFrame = Schema.decodeUnknownOption(Frame);
 const encodeFrame = Schema.encodeSync(Frame);
 
-export type EnvironmentWire = "legacy" | "modern" | "partial";
 export type EnvironmentBinding =
   | {
       readonly id: string;
@@ -23,11 +22,8 @@ export type EnvironmentBinding =
 
 /** Vary actual Core navigation/detail frames, never populate its database with Git targets. */
 export function environmentIdentityWire(
-  initial: EnvironmentWire,
   bindings: Readonly<Record<string, EnvironmentBinding>> = {},
 ) {
-  let wire = initial;
-  const frames: string[] = [];
   const transform = (value: unknown): unknown => {
     if (Array.isArray(value)) return value.map(transform);
     if (value === null || typeof value !== "object") return value;
@@ -36,14 +32,11 @@ export function environmentIdentityWire(
       (record.tier === "stage" || record.tier === "production") &&
       Array.isArray(record.sources)
     ) {
-      const { id: _id, target, ...rest } = record;
+      const target = record.target;
       const projectId =
         target !== null && typeof target === "object" && "projectId" in target
           ? target.projectId
           : undefined;
-      const legacy = { ...rest, projectId };
-      if (wire === "legacy") return legacy;
-      if (wire === "partial") return { ...legacy, id: record.id };
       const binding = typeof projectId === "string" ? bindings[projectId] : undefined;
       return binding === undefined ? record : { ...record, ...binding };
     }
@@ -54,17 +47,8 @@ export function environmentIdentityWire(
   const map = (encoded: string) => {
     const decoded = decodeFrame(encoded);
     if (Option.isNone(decoded)) return encoded;
-    const mapped = encodeFrame(transform(decoded.value));
-    frames.push(mapped);
-    return mapped;
+    return encodeFrame(transform(decoded.value));
   };
   const install: ScenarioExtension = (drivers) => drivers.hq.mapFrames(map);
-  return {
-    map,
-    install,
-    frames,
-    set: (next: EnvironmentWire) => {
-      wire = next;
-    },
-  };
+  return { install };
 }
