@@ -49,6 +49,8 @@ export interface ProjectReviewItem {
   readonly mine: boolean;
   /** The Mate it is of, by its Zerops project: its row marks it after its name. */
   readonly mateProjectId?: string | undefined;
+  /** A change's head as HQ gave it: what its Mate fixing it is about (`worksOnChange`). */
+  readonly head?: string | undefined;
   /**
    * Its Mate still works (`changeShowsReview`): it asks for no review yet, and its mark stays,
    * quieter, so the change is always findable.
@@ -120,6 +122,7 @@ export function changeReviewItem(input: {
     label: several ? `${pull.repository} ${number}` : number,
     mine: input.mine,
     mateProjectId: pull.mateProjectId,
+    ...(pull.headSha === undefined ? {} : { head: pull.headSha }),
   };
 }
 
@@ -312,7 +315,8 @@ export function reviewTagOf<Item extends StandingItem>(
     return {
       // One whose merge was refused: said so, its tag still the way back to its review.
       word:
-        counted.length === 1 && only?.act?.kind === "merge-failed"
+        counted.length === 1 &&
+        (only?.act?.kind === "merge-failed" || only?.act?.kind === "merge-unconfirmed")
           ? changeActWords(only.act, 0).word
           : REVIEW_LABEL,
       quiet: false,
@@ -365,7 +369,8 @@ export function reviewTagOf<Item extends StandingItem>(
     return {
       word,
       quiet: true,
-      busy: true,
+      // Merged is said, not worked on: no busy mark beside it.
+      ...(changeActBusy(first.act) ? { busy: true as const } : {}),
       count: countPast(busy.length),
       counted: busy.length,
       label:

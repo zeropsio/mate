@@ -29,7 +29,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { usePutLiveRun } from "~/zerops/putLive";
 import { putLiveMark } from "~/zerops/putLive.logic";
-import { useOpenReview } from "~/zerops/review";
+import { useOpenReview, useReviewShown } from "~/zerops/review";
 import { gatedPortal } from "../ui/portal-gate";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
@@ -113,6 +113,7 @@ export function ProjectReviewTags({
   projectName,
   items,
   release,
+  reserve = false,
 }: {
   readonly groupId: string;
   readonly projectName: string;
@@ -120,6 +121,8 @@ export function ProjectReviewTags({
   readonly items: ReadonlyArray<ProjectReviewItem>;
   /** HQ offers the viewer the release (`releaseOffered`): what waits for production. */
   readonly release: ReleaseWaiting | undefined;
+  /** Its Review tag holds the width of every word it may take (`RESERVED_WORDS`). */
+  readonly reserve?: boolean;
 }): ReactNode {
   const review = usePresence(items.length > 0 ? items : undefined);
   const offer = usePresence(release);
@@ -133,7 +136,12 @@ export function ProjectReviewTags({
       onPointerDown={stopPress}
     >
       {review.shown === undefined ? null : (
-        <ReviewTag items={review.shown} phase={review.phase} projectName={projectName} />
+        <ReviewTag
+          items={review.shown}
+          phase={review.phase}
+          projectName={projectName}
+          reserve={reserve}
+        />
       )}
       {offer.shown === undefined ? null : (
         <ReleaseTag groupId={groupId} phase={offer.phase} release={offer.shown} />
@@ -156,16 +164,22 @@ export function HeaderReviewDoor({
   readonly review: Parameters<typeof ProjectReviewTags>[0];
   readonly held: boolean;
 }): ReactNode {
+  const reviewShown = useReviewShown();
   return (
     <span
       aria-hidden={held || undefined}
       className={held ? "chat-header-review invisible" : "chat-header-review"}
       inert={held}
     >
-      <ProjectReviewTags {...review} />
+      {/* Under an open review a merge pressed there changes its word: its seat is held as wide as
+          the widest word it may take meanwhile, so nothing beside it moves. */}
+      <ProjectReviewTags {...review} reserve={reviewShown} />
     </span>
   );
 }
+
+/** The words the header's tag may take while a review stands open over it (`changeActWords`). */
+const RESERVED_WORDS = ["Merging…", "Couldn't merge", "Not confirmed", "Closing…", "Fixing…"];
 
 /**
  * The door's seat while the menu that draws it is still being read: as wide as the door stood on
@@ -315,10 +329,12 @@ function ReviewTag({
   items,
   projectName,
   phase,
+  reserve,
 }: {
   readonly items: ReadonlyArray<ProjectReviewItem>;
   readonly projectName: string;
   readonly phase: Phase;
+  readonly reserve: boolean;
 }) {
   const openReview = useOpenReview();
   const [open, setOpen] = useState(false);
@@ -377,7 +393,9 @@ function ReviewTag({
           ) : (
             <GitMergeIcon aria-hidden="true" className="menu-tag-icon" />
           )}
-          <span className="menu-tag-word">{read.word}</span>
+          <span className="menu-tag-word">
+            {reserve ? <ReservedWord word={read.word} /> : read.word}
+          </span>
           <TagCount count={read.count} />
         </TooltipTrigger>
         {only === undefined ? null : (
@@ -431,6 +449,20 @@ function ReviewTag({
         </PopoverPrimitive.Positioner>
       </TagPortal>
     </PopoverPrimitive.Root>
+  );
+}
+
+/** A word in a seat as wide as the widest it may take (`RESERVED_WORDS`), at the seat's start. */
+function ReservedWord({ word }: { readonly word: string }) {
+  return (
+    <span className="inline-grid">
+      <span className="col-start-1 row-start-1">{word}</span>
+      {RESERVED_WORDS.filter((other) => other !== word).map((other) => (
+        <span aria-hidden="true" className="invisible col-start-1 row-start-1" key={other}>
+          {other}
+        </span>
+      ))}
+    </span>
   );
 }
 

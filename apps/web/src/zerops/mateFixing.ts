@@ -5,6 +5,7 @@
  */
 import { useAtomValue } from "@effect/atom-react";
 import { mateWorkingOnAtom } from "@t3tools/client-runtime/data";
+import { worksOnChange } from "@t3tools/client-runtime/zerops";
 import type { ConversationWorkingOn } from "@t3tools/contracts";
 import { useMemo } from "react";
 
@@ -21,8 +22,8 @@ export function useMateWorkingOn(
 }
 
 /**
- * Whether its Mate works on a review's change, by its repository and number: a header's item
- * carries no head, and the Mate's run is what it says while the Mate works.
+ * Whether its Mate works on a review's change: by its repository and number at the head the item
+ * holds, as its review reads it (`worksOnChange`).
  */
 export function useMateFixing(
   mateProjectId: string | undefined,
@@ -30,7 +31,10 @@ export function useMateFixing(
 ):
   | {
       readonly mateName: string;
-      readonly is: (item: { readonly target: ReviewTarget }) => boolean;
+      readonly is: (item: {
+        readonly target: ReviewTarget;
+        readonly head?: string | undefined;
+      }) => boolean;
     }
   | undefined {
   const workingOn = useMateWorkingOn(mateProjectId);
@@ -40,14 +44,13 @@ export function useMateFixing(
         ? undefined
         : {
             mateName: mateName ?? "This Mate",
-            is: ({ target }) =>
+            is: ({ target, head }) =>
               target.kind === "change" &&
-              workingOn.some(
-                (on) =>
-                  on.kind === "change" &&
-                  on.repo === target.repository &&
-                  on.number === target.number,
-              ),
+              worksOnChange(workingOn, {
+                repository: target.repository,
+                number: target.number,
+                headSha: head,
+              }),
           },
     [mateName, workingOn],
   );
