@@ -257,6 +257,9 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
      never centred on its own, so what arrives below grows it downward. index.html's splash
      places its mark at the same height. */
   --spacing-status-page: 22vh;
+  /* Where HQ's sign-in in the landing's card hangs from: as high as centres HQ's login (its card
+     about 744px, the byline under it) on the screen, never above 24px, and fixed like the above. */
+  --spacing-status-frame: max(1.5rem, calc(50dvh - 25rem));
 }
 
 @theme inline {

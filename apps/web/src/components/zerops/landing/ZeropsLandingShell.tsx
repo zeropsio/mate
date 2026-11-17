@@ -2,19 +2,21 @@
  * The Zerops entry surface, presentational only: one composition in the
  * middle of the page — the live mark, a title, a card — plus the way in the
  * card holds, and the byline at the foot. No bar: the mark is the brand here. Every decision arrives as a prop,
- * so this file renders without a session, a router or a network.
+ * so this file renders without a session, a router or a network. Where HQ's bridge serves Mate, the
+ * sign-in is HQ's page in the card alone (`ZeropsHqSignInFrame`).
  *
  * The reusable frame may keep a way out to upstream's manual connect flow.
  * The outer mate account gate deliberately omits it: signed-out users see one
  * product and one next action, while the legacy pairing route stays separate.
  */
 
-import { useLayoutEffect, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { bootFrameSlot, showAppFrame } from "~/zerops/bootFrame";
 import { useWaitLine } from "~/zerops/useWaitLine";
 import { BOOT_WAIT_LINE_MS } from "~/zerops/waitLine.logic";
+import { cn } from "~/lib/utils";
 
 import { Button, InlineButton } from "../../ui/button";
 import { Spinner } from "../../ui/spinner";
@@ -43,9 +45,7 @@ export function ZeropsLandingShell({
           <p className="text-sm text-muted-foreground">{description}</p>
         </div>
 
-        <div className="rounded-3xl border border-border/55 bg-card/20 px-6 py-6 shadow-sm/5">
-          {children}
-        </div>
+        <div className={cn(LANDING_CARD, "px-6 py-6")}>{children}</div>
 
         {onManualConnect === undefined ? null : (
           <p className="text-center text-xs text-muted-foreground">
@@ -55,6 +55,57 @@ export function ZeropsLandingShell({
             </InlineButton>
           </p>
         )}
+      </div>
+    </ZeropsHostedFrame>
+  );
+}
+
+// Solid, as app.zerops.io's card is: HQ's page in it is transparent, and over a see-through card
+// its form hardly stands off the page.
+const LANDING_CARD = "rounded-3xl border border-border/55 bg-card shadow-sm/5";
+
+/**
+ * HQ's sign-in in the landing's card, the whole composition: HQ's page draws the heading, Mate's mark
+ * and name and whether it logs in or signs up, as the person moves between them there. The card is
+ * as tall as HQ's page says, at once, and the page fades in once HQ says it shows.
+ */
+export function ZeropsHqSignInFrame({
+  src,
+  shown,
+  height,
+}: {
+  /** HQ's page; null while the session package asks HQ whether it may be framed here. */
+  readonly src: string | null;
+  readonly shown: boolean;
+  readonly height: number;
+}) {
+  const frame = useRef<HTMLIFrameElement>(null);
+  // Chromium refuses HQ's passkey prompt to a page without focus, and the keyboard works there.
+  useEffect(() => {
+    if (shown) frame.current?.focus();
+  }, [shown]);
+  return (
+    <ZeropsHostedFrame bar={false} centered tall footer={<ZeropsByline />}>
+      {/* HQ's page pads its own content: the frame takes the card's whole width, and the card its
+          height. HQ's page is transparent; the card's corners hold whatever it paints. */}
+      <div className={cn(LANDING_CARD, "w-full max-w-md self-start overflow-hidden py-2")}>
+        <div className="relative" style={{ height }}>
+          {shown ? null : <Spinner size="lg" className="absolute inset-0 m-auto" />}
+          {src === null ? null : (
+            // The address is HQ's, built by the session package from this build's own settings.
+            <iframe
+              ref={frame}
+              className={cn(
+                "size-full transition-opacity duration-200",
+                shown ? "opacity-100" : "opacity-0",
+              )}
+              src={src}
+              title="Sign in with Zerops"
+              allow="publickey-credentials-get; publickey-credentials-create; clipboard-write"
+              scrolling="no"
+            />
+          )}
+        </div>
       </div>
     </ZeropsHostedFrame>
   );

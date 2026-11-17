@@ -250,7 +250,7 @@ function makeSession(storage: ZeropsStorageAdapter) {
             browser.document.documentElement?.classList.contains("dark") ? "dark" : "light",
           reload: () => browser.location.reload(),
         });
-  /** HQ's sign-in opens by itself where it shows over the page: a device login's popup needs a click. */
+  /** HQ's sign-in opens by itself where it shows in the landing: a device login's popup needs a click. */
   const promptSignIn = () => {
     if (prompts !== null && hq?.mode() !== "device-login") prompts.signIn();
   };
@@ -319,7 +319,7 @@ function makeSession(storage: ZeropsStorageAdapter) {
   /**
    * Every change HQ's session goes through, in any app or tab, reaches the machine as a stored
    * session would. A session that ends under an open account, unless by this tab's sign-out,
-   * opens HQ's sign-in over the landing.
+   * opens HQ's sign-in in the landing.
    */
   const watchHq = () => {
     if (hq === null) return () => undefined;

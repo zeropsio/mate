@@ -1,0 +1,47 @@
+diff --git a/session.client.d.ts b/session.client.d.ts
+index 5da18b0..539a53d 100644
+--- a/session.client.d.ts
++++ b/session.client.d.ts
+@@ -15,6 +15,7 @@ export interface SignUpParams {
+  */
+ export interface EmbedParams extends SignUpParams {
+     chrome?: 'none';
++    app?: string;
+ }
+ export interface SignInOptions {
+     intent?: 'register';
+diff --git a/session.client.js b/session.client.js
+index 7a6204b..7bbd023 100644
+--- a/session.client.js
++++ b/session.client.js
+@@ -98,6 +98,9 @@ export function createSessionClient(options) {
+         const url = new URL(hqOrigin + path);
+         url.searchParams.set('redirect', win.location.href);
+         url.searchParams.set('bounce', String(bounce.next()));
++        if (options.appCode) {
++            url.searchParams.set('app', options.appCode);
++        }
+         if (signInOptions.intent === 'register') {
+             addSignUp(url, signInOptions.signUp);
+         }
+@@ -139,8 +142,8 @@ export function createSessionClient(options) {
+     };
+     const overlaySignIn = async (client, signInOptions) => {
+         const src = signInOptions.intent === 'register'
+-            ? embedUrl(hqOrigin, 'registration', win.location.href, signInOptions.scheme, { ...signInOptions.signUp, chrome: signInOptions.chrome })
+-            : embedUrl(hqOrigin, 'login', win.location.href, signInOptions.scheme, { chrome: signInOptions.chrome });
++            ? embedUrl(hqOrigin, 'registration', win.location.href, signInOptions.scheme, { ...signInOptions.signUp, chrome: signInOptions.chrome, app: options.appCode })
++            : embedUrl(hqOrigin, 'login', win.location.href, signInOptions.scheme, { chrome: signInOptions.chrome, app: options.appCode });
+         const session = await framed(src, signInOptions, (stops) => nextSession(client, signInOptions.signal, stops));
+         return session ?? toHq(signInOptions);
+     };
+@@ -310,6 +313,9 @@ export function embedUrl(hqOrigin, page, back, scheme, params = {}) {
+     if (params.chrome === 'none') {
+         url.searchParams.set('chrome', 'none');
+     }
++    if (params.app) {
++        url.searchParams.set('app', params.app);
++    }
+     return url.toString();
+ }
+ function addSignUp(url, { promo, zcp, ref } = {}) {

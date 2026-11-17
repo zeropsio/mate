@@ -37,6 +37,7 @@ export function ZeropsHostedFrame({
   actions,
   bar = true,
   centered = false,
+  tall = false,
   footer,
   width = "wide",
   children,
@@ -54,6 +55,11 @@ export function ZeropsHostedFrame({
   readonly bar?: boolean;
   /** A single card in the middle of the page (sign-in, the callback) rather than a page. */
   readonly centered?: boolean;
+  /**
+   * The centred card is as tall as most screens (HQ's sign-in in its frame): hung from as high as
+   * centres HQ's login and the byline on the screen, so it fits where it can, and grows downward.
+   */
+  readonly tall?: boolean;
   /** One quiet line at the foot of a centred page — the byline. */
   readonly footer?: ReactNode;
   readonly width?: WorkspacePageWidth;
@@ -116,7 +122,14 @@ export function ZeropsHostedFrame({
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
             {/* Hung from a fixed height, never centred on its own: a card that grows grows
                 downward, and the boot's splash mark (index.html) stands where its mark lands. */}
-            <div className="flex flex-1 justify-center px-6 pt-status-page pb-6">{children}</div>
+            <div
+              className={cn(
+                "flex flex-1 justify-center px-6 pb-6",
+                tall ? "pt-status-frame" : "pt-status-page",
+              )}
+            >
+              {children}
+            </div>
             {footer === undefined ? null : (
               <footer className="flex shrink-0 justify-center px-6 pb-6">{footer}</footer>
             )}
