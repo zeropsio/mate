@@ -176,6 +176,10 @@ export function vaultWorldOf(read: ProjectionReads, { orgId, projectId }: VaultK
       : coverage.includes("unknown")
         ? "unread"
         : "ready";
+  // Refused is final until access changes; recovering and stale are tried again by themselves.
+  const refused = [linkKeys.zerops(orgId), sharedScope, variablesScope].some(
+    (key) => read.stream(key).phase === "refused",
+  );
   const projectFact = read.fact("projectVariables", projectId);
   // An absence proves nothing until both answers are whole: nothing is "unread" or "missing".
   const whole =
@@ -227,7 +231,7 @@ export function vaultWorldOf(read: ProjectionReads, { orgId, projectId }: VaultK
     ),
     services: services.map(({ ref }) => ref),
   };
-  return { status, whole, sharedValues, services, world };
+  return { status, refused, whole, sharedValues, services, world };
 }
 
 export const vault: Projection<VaultKey, VaultView> = {

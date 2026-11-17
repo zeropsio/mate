@@ -270,16 +270,45 @@ export interface MissingRef {
 }
 
 /**
+ * Names Zerops makes on a service or a project itself, whether or not it has made them yet: a
+ * production never deployed may not list them, and they are never a value for a person to add.
+ */
+const PLATFORM_NAMES: ReadonlySet<string> = new Set([
+  "hostname",
+  "serviceId",
+  "serviceName",
+  "projectId",
+  "projectName",
+  "appVersionId",
+  "containerId",
+  "envIsolation",
+  "sshIsolation",
+  "PATH",
+]);
+const isPlatformName = (key: string) =>
+  PLATFORM_NAMES.has(key) || key.startsWith("zeropsSubdomain") || key.startsWith("ZEROPS_");
+
+/** Zerops' own rule for a variable's name: no other can be added. */
+const KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/u;
+
+/**
  * Where a name nothing holds would stand: on the runtime a `${host_KEY}` names, or in Shared for a
  * plain name. `null` where no person can add it: a name of a database or of the platform's own
- * services is what Zerops makes there.
+ * services, or one Zerops makes itself, is Zerops' to make; a name Zerops refuses cannot be added.
  */
 function holderOf(world: RefWorld, name: string): MissingRef | null {
   const at = name.indexOf("_");
   const host =
     at <= 0 ? undefined : world.services.find((service) => service.hostname === name.slice(0, at));
-  if (host === undefined) return { key: name, holder: null };
-  return host.kind === "runtime" ? { key: name.slice(at + 1), holder: host } : null;
+  const missing: MissingRef | null =
+    host === undefined
+      ? { key: name, holder: null }
+      : host.kind === "runtime"
+        ? { key: name.slice(at + 1), holder: host }
+        : null;
+  return missing === null || isPlatformName(missing.key) || !KEY_PATTERN.test(missing.key)
+    ? null
+    : missing;
 }
 
 /** The names a template reaches from a service that resolve to nothing, as `reach` follows them. */
@@ -293,7 +322,8 @@ function walkMissing(
   into: Map<string, MissingRef>,
 ): void {
   for (const name of parseRefs(template)) {
-    if (name === entryKey) continue;
+    // `${BUILD_KEY}` is the build's `KEY`, carried into the run: what a build makes is not a value.
+    if (name === entryKey || name.startsWith("BUILD_")) continue;
     const target = lookup(world, service, name);
     if (target.kind === "entry") {
       const id = `entry\u0000${service.serviceId}\u0000${target.key}`;
@@ -321,7 +351,9 @@ function walkMissing(
  * reads nothing here; a database's names are Zerops' to make.
  *
  * `build` are its build entries: a build reads its own entries, the service's values and Shared,
- * and `${RUNTIME_KEY}` is the run's `KEY`.
+ * and `${RUNTIME_KEY}` is the run's `KEY`; in the run, `${BUILD_KEY}` is the build's, never a value.
+ * Names Zerops makes itself (`hostname`, `zeropsSubdomain`…) and names it would refuse are never
+ * missing.
  */
 export function missingOf(
   world: RefWorld,
