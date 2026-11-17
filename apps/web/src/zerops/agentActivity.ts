@@ -850,7 +850,7 @@ export function rowAgentActivity(
     ...(question === undefined || question.length === 0 ? {} : { question }),
     ...(errorLine === undefined ? {} : { errorLine: maskSecrets(errorLine) }),
     ...(state.kind === "waiting" && state.on === "vault" ? { asksFor: "key" as const } : {}),
-    // Shown for a day at most, however long the row stands unchanged.
+    // Shown for a day at most, as of each time the row is read again.
     ...awaitsAnswerOf(row, nowMs),
   };
 }
