@@ -44,7 +44,7 @@ import { useAppsChanges, useMateNames } from "~/zerops/projectFlows";
 import { newProjectView, recipeManaged, recipeRuntimes, runAdd } from "~/zerops/newProjectBirth";
 import { useEnvironmentCreation } from "~/zerops/useEnvironmentCreation";
 import { useOpenMate } from "~/zerops/useOpenMate";
-import { useSignInWaits } from "~/zerops/useSignInWaits";
+import { useAwaitsYourSignIn } from "~/zerops/useSignInWaits";
 import { useTakenBotNames, useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsAgentAuth } from "~/zerops/useZeropsFeeds";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
@@ -166,7 +166,7 @@ function NewMateDialog({
   });
   // Who sets the project up and writes its recipe: its Mates, listed and coming — one waiting for
   // the viewer's sign-in says so.
-  const signInOf = useSignInWaits(candidates);
+  const awaitsYourSignIn = useAwaitsYourSignIn(candidates);
   const mates = useMemo(
     () =>
       entry === undefined
@@ -174,9 +174,9 @@ function NewMateDialog({
         : newMateDoorMates({
             environments: entry.environments,
             pending: entry.group.pending,
-            awaitsYourSignIn: (item) => signInOf(item) !== undefined,
+            awaitsYourSignIn,
           }),
-    [entry, signInOf],
+    [awaitsYourSignIn, entry],
   );
   const openMate = useOpenMate();
   // A proposal only: the dialog refuses it until every Mate's name is read, and names the clash

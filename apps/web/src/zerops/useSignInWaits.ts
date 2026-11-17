@@ -6,15 +6,17 @@
 import { useAtomValue } from "@effect/atom-react";
 import {
   accountReadsAtom,
+  hqMatePresenceAtom,
   hqProjectPersonAtom,
   mateAdmissionSummary,
 } from "@t3tools/client-runtime/data";
 import { hasMate, projectNameInApp, readZeropsMembership } from "@t3tools/client-runtime/zerops";
+import { mateOwnerRecords } from "@t3tools/client-runtime/zerops/mateAccess";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { Atom } from "effect/reactivity";
 import { useCallback, useMemo } from "react";
 
-import { signInAwaitedBy } from "~/components/zerops/SidebarMateRow.logic";
+import { signInAwaitedBy, waitsForViewerSignIn } from "~/components/zerops/SidebarMateRow.logic";
 import { sameValue } from "~/lib/sameValue";
 
 import { mateDeleting, useDeletingMates } from "./deletingMates";
@@ -61,6 +63,59 @@ function signInWaitsAtom(
     }
     return Object.keys(waits).length === 0 ? NO_SIGN_INS : waits;
   }).pipe(Atom.withEquality(sameValue));
+}
+
+/**
+ * The Mates whose agent nobody signed in yet and whose sign-in is the viewer's, by HQ's facts — what
+ * their rows say as "Waiting for your sign-in" (`waitsForViewerSignIn`), whether this page has a
+ * link to them or not: *Add a Mate* says that is why the project takes no other Mate yet.
+ */
+function firstSignInsAtom(candidates: ReadonlyArray<ZeropsCandidate>, viewer: string | undefined) {
+  return Atom.make((get): ReadonlySet<string> => {
+    if (viewer === undefined) return NO_FIRST_SIGN_INS;
+    const waits = new Set<string>();
+    for (const candidate of candidates) {
+      if (!hasMate(candidate)) continue;
+      const projectId = candidate.project.id;
+      const people = get(hqProjectPersonAtom(projectId));
+      const signers = people?.everSignedIn;
+      const tags = readZeropsMembership(candidate.project);
+      if (
+        waitsForViewerSignIn({
+          records: mateOwnerRecords(candidate.project, people?.owned),
+          admission: null,
+          asked: false,
+          hqSigners:
+            signers === undefined ? undefined : Object.keys(signers).length > 0 ? "some" : "none",
+          overview: get(hqMatePresenceAtom(projectId))?.overview,
+          ownerUserId: people?.owner?.userId,
+          standUpBy: tags.standUp?.by,
+          madeBy: tags.madeBy,
+          viewer,
+        })
+      )
+        waits.add(projectId);
+    }
+    return waits.size === 0 ? NO_FIRST_SIGN_INS : waits;
+  }).pipe(Atom.withEquality(sameValue));
+}
+
+const NO_FIRST_SIGN_INS: ReadonlySet<string> = new Set();
+
+/** Whether a Mate waits for the viewer's own sign-in, by its live admission or by HQ's facts. */
+export function useAwaitsYourSignIn(
+  candidates: ReadonlyArray<ZeropsCandidate>,
+): (candidate: ZeropsCandidate) => boolean {
+  const viewer = useZeropsSessionOptional()?.user?.id;
+  const signInOf = useSignInWaits(candidates);
+  const first = useAtomValue(
+    useMemo(() => firstSignInsAtom(candidates, viewer), [candidates, viewer]),
+  );
+  return useCallback(
+    (candidate: ZeropsCandidate) =>
+      first.has(candidate.project.id) || signInOf(candidate) !== undefined,
+    [first, signInOf],
+  );
 }
 
 /** `signInWaitsAtom`, for the candidates a surface holds. */

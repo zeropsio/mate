@@ -263,6 +263,17 @@ export function mateOwnerView(input: {
   };
 }
 
+/**
+ * Whether its row says "Waiting for your sign-in" (`mateOwnerView`): the same verdict, for a door
+ * that says why it waits — read from HQ's facts, so it holds wherever the row does, its link open
+ * or not.
+ */
+export function waitsForViewerSignIn(
+  input: Omit<Parameters<typeof mateOwnerView>[0], "owner" | "linked">,
+): boolean {
+  return mateOwnerView({ ...input, owner: undefined }).signInLine === WAITING_FOR_YOUR_SIGN_IN;
+}
+
 /** What a Mate's face can wear on its corner: a person's picture, or nobody's empty seat. */
 export type BadgeSeat = Exclude<OwnerSeat, { readonly kind: "unnamed" }>;
 

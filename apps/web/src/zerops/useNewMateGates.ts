@@ -18,7 +18,7 @@ import { projectNameInApp } from "@t3tools/client-runtime/zerops";
 import { InventoryContext } from "./inventoryContext";
 import { useAppsChanges } from "./projectFlows";
 import { useHqAppDetails } from "./useHqAppDetail";
-import { useSignInWaits } from "./useSignInWaits";
+import { useAwaitsYourSignIn } from "./useSignInWaits";
 import { heldRecipeState } from "./useZeropsGroupRecipe";
 import { useZeropsCandidates } from "./useZeropsCandidates";
 
@@ -50,7 +50,9 @@ export function useNewMateGate(): (entry: NewMateGateEntry) => string | null {
   );
   // A lone Mate waiting for the viewer's sign-in is why, in its own words, as its row says it.
   const { listing } = useZeropsCandidates();
-  const signInOf = useSignInWaits(useMemo(() => heldCandidates(listing).rows, [listing]));
+  const awaitsYourSignIn = useAwaitsYourSignIn(
+    useMemo(() => heldCandidates(listing).rows, [listing]),
+  );
   return useCallback(
     ({ group, environments }) => {
       const detail = details[group.groupId];
@@ -61,12 +63,12 @@ export function useNewMateGate(): (entry: NewMateGateEntry) => string | null {
         mates: newMateDoorMates({
           environments,
           pending: group.pending,
-          awaitsYourSignIn: (item) => signInOf(item) !== undefined,
+          awaitsYourSignIn,
         }),
         changes: changes.get(group.groupId)?.pullRequests,
         mateName: (projectId) => mateNames.get(projectId),
       });
     },
-    [changes, details, mateNames, signInOf],
+    [awaitsYourSignIn, changes, details, mateNames],
   );
 }
