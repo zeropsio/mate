@@ -95,12 +95,6 @@ describe("conversationsListed", () => {
       rows: null,
       listed: false,
     },
-    {
-      title: "a Mate serving no engine: its shell lists them",
-      route: { kind: "older" } as const,
-      rows: null,
-      listed: true,
-    },
     { title: "an engine Mate before its rows are held", route: ENGINE, rows: null, listed: false },
     {
       title: "an engine Mate whose rows still read their first baseline",

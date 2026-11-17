@@ -15,7 +15,7 @@ import { EMPTY_ENVIRONMENT_THREAD_STATE, type EnvironmentThreadState } from "./t
 import { EnvironmentSupervisor } from "../connection/supervisor.ts";
 import { engineRouteOf, mateEngineHostAtom, type EngineRoute } from "../data/engineHost.ts";
 import { engineThreadChanges } from "../data/engineThreadChanges.ts";
-import { MATE_OLDER_WORDS, NATIVE_UPDATE_WORDS } from "../data/projections/mateEngine.ts";
+import { NATIVE_UPDATE_WORDS } from "../data/projections/mateEngine.ts";
 import * as Option from "effect/Option";
 
 export { requestOlderThreadTurns } from "../data/olderTurns.ts";
@@ -46,12 +46,6 @@ function engineThreadStateChanges(
     ),
   );
 }
-
-/** A Mate from before the engine: only its update brings its conversation here. */
-const OLDER_MATE_THREAD_STATE: EnvironmentThreadState = {
-  ...EMPTY_ENVIRONMENT_THREAD_STATE,
-  error: Option.some(MATE_OLDER_WORDS),
-};
 
 function threadStateChanges(
   registry: AtomRegistry.AtomRegistry,
@@ -89,9 +83,7 @@ function threadStateChanges(
           Stream.switchMap((route) =>
             route === "update"
               ? Stream.succeed(NEWER_ENGINE_THREAD_STATE)
-              : route === "older"
-                ? Stream.succeed(OLDER_MATE_THREAD_STATE)
-                : engineThreadStateChanges(registry, environmentId, threadId),
+              : engineThreadStateChanges(registry, environmentId, threadId),
           ),
         );
       }),

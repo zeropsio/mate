@@ -40,7 +40,6 @@ import { EngineOperationFailed } from "./operations/executors/mateEngine.ts";
 import type { EngineAcceptance } from "./operations/mateEngine.ts";
 import {
   ENGINE_UPDATE_WORDS,
-  MATE_OLDER_WORDS,
   engineResendId,
   engineSteerTarget,
   engineStopTarget,
@@ -69,20 +68,18 @@ export function viaEngine(
   return Effect.gen(function* () {
     const supervisor = yield* EnvironmentSupervisor;
     const prepared = yield* SubscriptionRef.get(supervisor.prepared);
-    if (Option.isNone(prepared))
+    const route = Option.isSome(prepared)
+      ? engineRouteOf(prepared.value)
+      : { kind: "unknown" as const };
+    if (route.kind === "unknown")
       return yield* Effect.fail(
         new EnvironmentRpcUnavailableError({
           environmentId: environmentId as never,
           message: "This Mate is not connected yet.",
         }),
       );
-    const route = engineRouteOf(prepared.value);
-    if (route.kind === "update" || route.kind === "older")
-      return yield* Effect.fail(
-        new MateEngineUnsupported({
-          message: route.kind === "update" ? ENGINE_UPDATE_WORDS : MATE_OLDER_WORDS,
-        }),
-      );
+    if (route.kind === "update")
+      return yield* Effect.fail(new MateEngineUnsupported({ message: ENGINE_UPDATE_WORDS }));
     const host = registry.get(mateEngineHostAtom);
     if (host === null)
       return yield* Effect.fail(

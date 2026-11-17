@@ -1,7 +1,7 @@
 /**
  * The account's engine conversations: one host per account store — its subscriptions, its
  * operations and its streamed text — and the route a Mate's conversation takes, decided at the
- * door from the protocol its descriptor names: the engine, or an update of the app or the Mate.
+ * door from the protocol its descriptor names: the engine, or an update of the app.
  *
  * @module data/engineHost
  */
@@ -111,12 +111,10 @@ export type EngineRoute =
   | { readonly kind: "unknown" }
   | { readonly kind: "engine"; readonly protocol: number }
   /** The Mate serves only a newer protocol: the person updates the app. */
-  | { readonly kind: "update" }
-  /** The Mate serves no engine (a build from before it): the person updates the Mate. */
-  | { readonly kind: "older" };
+  | { readonly kind: "update" };
 
 export function engineRouteOf(prepared: Pick<PreparedConnection, "mateEngine">): EngineRoute {
-  if (prepared.mateEngine === undefined) return { kind: "older" };
+  if (prepared.mateEngine === undefined) return { kind: "unknown" };
   const protocol = engineProtocol(prepared.mateEngine);
   return protocol === null ? { kind: "update" } : { kind: "engine", protocol };
 }

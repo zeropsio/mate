@@ -12,7 +12,7 @@ import * as Fiber from "effect/Fiber";
 import type { EnvironmentRegistry } from "../../connection/registry.ts";
 import { EnvironmentSupervisor } from "../../connection/supervisor.ts";
 import { engineRouteOf } from "../engineHost.ts";
-import { ENGINE_UPDATE_WORDS, MATE_OLDER_WORDS } from "../projections/mateEngine.ts";
+import { ENGINE_UPDATE_WORDS } from "../projections/mateEngine.ts";
 import { request } from "../../rpc/client.ts";
 import { archiveScope } from "../families/mateArchive.ts";
 import type { AccountStore } from "../store.ts";
@@ -38,10 +38,10 @@ export const makeArchiveWire = (registry: EnvironmentRegistry["Service"]): Archi
           const route = Option.isSome(prepared)
             ? engineRouteOf(prepared.value)
             : { kind: "unknown" as const };
-          if (route.kind === "update" || route.kind === "older")
+          if (route.kind === "update")
             return yield* Effect.fail({
               outcome: "definitive-refusal",
-              message: route.kind === "update" ? ENGINE_UPDATE_WORDS : MATE_OLDER_WORDS,
+              message: ENGINE_UPDATE_WORDS,
             } satisfies StreamFault);
           if (route.kind === "unknown")
             return yield* Effect.fail({

@@ -1593,9 +1593,6 @@ export const ENGINE_UPDATE_WORDS = UPDATE_WORDS;
 /** The same news on the phone: only an update of the app fixes it. */
 export const NATIVE_UPDATE_WORDS =
   "This Mate speaks a newer conversation protocol. Update the app to keep talking to it.";
-/** A Mate from before the engine: only its update fixes it. */
-export const MATE_OLDER_WORDS =
-  "This Mate is older than this app. Update the Mate to talk to it here.";
 
 /**
  * The conversation's last words as its row says them, over the V1 thread the engine took over:

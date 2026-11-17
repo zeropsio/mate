@@ -12,7 +12,6 @@ import { EMPTY_ENVIRONMENT_THREAD_STATE } from "../../state/threadState.ts";
 import { engineRouteOf, mateEngineHostAtom, type EngineRoute } from "../engineHost.ts";
 import {
   ENGINE_UPDATE_WORDS,
-  MATE_OLDER_WORDS,
   engineRows,
   engineHeldTurns,
   engineThread,
@@ -36,8 +35,8 @@ import { streamOf, type Row } from "../reducer.ts";
 import type { StreamState } from "../streamMachine.ts";
 /**
  * Whether the list naming a Mate's conversations has answered whole, by where its door says they
- * are read: before it says, no list has; a Mate serving no engine lists them in its shell; an
- * engine Mate in its conversation rows, once their first baseline answered (and through a later
+ * are read: before it says, no list has; a Mate this build cannot talk to lists them in its shell;
+ * an engine Mate in its conversation rows, once their first baseline answered (and through a later
  * outage of them, holding what they said).
  */
 export function conversationsListed(
@@ -337,17 +336,12 @@ export function createAccountConversationAtoms<R, E>(
                 ),
               );
         }
-        case "older":
-          return AsyncResult.success<State>({
-            ...EMPTY_ENVIRONMENT_THREAD_STATE,
-            error: Option.some(MATE_OLDER_WORDS),
-          });
       }
     }),
   );
   /**
    * Whether the list naming an environment's conversations has answered whole — what lets a route
-   * read a conversation's absence off it: the shell, for a Mate serving no engine; its engine
+   * read a conversation's absence off it: the shell, for a Mate this build cannot talk to; its engine
    * conversation rows' first baseline, for one that does (the shell lacks its conversations until
    * they are laid over it); neither before its door has said which.
    */

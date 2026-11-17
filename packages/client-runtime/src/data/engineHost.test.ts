@@ -5,11 +5,6 @@ import { engineRouteOf } from "./engineHost.ts";
 describe("where a Mate's conversation is read", () => {
   it.each([
     {
-      name: "the Mate's update when its door names no engine",
-      mateEngine: undefined,
-      route: { kind: "older" },
-    },
-    {
       name: "the engine when its door names this build's protocol",
       mateEngine: 1,
       route: { kind: "engine", protocol: 1 },
