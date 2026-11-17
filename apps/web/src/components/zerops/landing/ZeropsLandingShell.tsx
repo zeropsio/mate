@@ -84,8 +84,9 @@ export function ZeropsHqSignInFrame({
   }, [shown]);
   return (
     <ZeropsHostedFrame bar={false} centered tall footer={<ZeropsByline />}>
-      {/* HQ's page pads its own content: the frame takes the card's whole width, and the card its height. */}
-      <div className={cn(LANDING_CARD, "w-full max-w-md self-start py-2")}>
+      {/* HQ's page pads its own content: the frame takes the card's whole width, and the card its
+          height. HQ's page is transparent; the card's corners hold whatever it paints. */}
+      <div className={cn(LANDING_CARD, "w-full max-w-md self-start overflow-hidden py-2")}>
         <div className="relative" style={{ height }}>
           {shown ? null : <Spinner size="lg" className="absolute inset-0 m-auto" />}
           {src === null ? null : (
