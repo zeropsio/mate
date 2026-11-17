@@ -38,6 +38,14 @@ export interface ZeropsEnvProposalParams {
   readonly key: string;
   readonly value: string;
   readonly secret: boolean;
+  /**
+   * In an application's stage or production: the running services the card restarts once the
+   * value is set (a service's own value's service, then the readers the Mate named), as zcp read
+   * them when it proposed. Absent from an older zcp.
+   */
+  readonly restart?: ReadonlyArray<{ readonly serviceId: string; readonly hostname: string }>;
+  /** The named readers that ran nothing then: they read the value when they next start. */
+  readonly notRunning?: ReadonlyArray<string>;
 }
 
 export interface ZeropsMessageProposalParams {
@@ -226,6 +234,8 @@ const EnvProposal = Schema.Struct({
     key: Words,
     value: Schema.String,
     secret: Schema.Boolean,
+    restart: Schema.optionalKey(Schema.Array(Schema.Struct({ serviceId: Words, hostname: Words }))),
+    notRunning: Schema.optionalKey(Schema.Array(Words)),
   }),
 });
 
@@ -445,7 +455,17 @@ function shaped(proposal: DecodedProposal, params: unknown): ZeropsProposal | un
       // A service's value names its service: without it, there is nowhere to write it.
       if (blank(params.key) || (params.scope === "service" && proposal.serviceId === undefined))
         return undefined;
-      return { ...head, kind: "env.set", projectId: proposal.projectId, params: { ...params } };
+      const { restart, notRunning, ...value } = params;
+      return {
+        ...head,
+        kind: "env.set",
+        projectId: proposal.projectId,
+        params: {
+          ...value,
+          ...(restart === undefined ? {} : { restart: restart.map((each) => ({ ...each })) }),
+          ...(notRunning === undefined ? {} : { notRunning: [...notRunning] }),
+        },
+      };
     }
     case "mate.message": {
       const { to, words, attachment } = proposal.params;

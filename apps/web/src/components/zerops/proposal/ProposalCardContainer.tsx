@@ -17,6 +17,9 @@ import {
   PROJECT_ROUTINGS_LISTING,
   addresses,
   vaultAtom,
+  vaultRestarts,
+  type VaultChange,
+  type VaultRestarts,
   hqProjectPerson,
   projectOperator,
   initialStream,
@@ -55,6 +58,14 @@ import { formatDayAwareTimestamp } from "~/timestampFormat";
 import { useAddressesSheet } from "~/zerops/addressesSheet";
 import { useVaultWriter } from "../vault/VaultPanelContainer";
 import type { VaultWriteOutcome } from "../vault/VaultPanel";
+import {
+  notRestartedWords,
+  restartInTurn,
+  restartedWords,
+  restartingWords,
+  unrestartedWords,
+  type RestartsEnded,
+} from "../vault/readerRestarts";
 import { McpProposalCardContainer } from "./McpProposalCardContainer";
 import { ReleaseOfferAsk, ServiceCreateAsk } from "./ProductionAskContainers";
 import { ProposalCard } from "./ProposalCard";
@@ -247,6 +258,7 @@ function Proposal({
     [home, proposal],
   );
   const { run, write } = useVaultWriter(vaultProject, view);
+  const runOperation = run;
   // A domain's project's addresses: what approving it puts in place besides it, then how far it
   // is from answering.
   const domainPlace = useMemo(
@@ -346,6 +358,23 @@ function Proposal({
   const [busy, setBusy] = useState(false);
 
   const envWrite = proposal.kind === "env.set" ? envProposalWrite(view, proposal) : null;
+  // What setting it restarts, read off the vault before the write: the running services that read
+  // it and the ones zcp named, once each; the readers that run nothing now are named instead.
+  const envRestarts = useMemo((): VaultRestarts | null => {
+    if (proposal.kind !== "env.set" || envWrite === null || "refused" in envWrite) return null;
+    const plan = vaultRestarts(view, [envWrite], proposal.params.restart ?? []);
+    const named = (proposal.params.notRunning ?? [])
+      .filter((hostname) => !plan.notRunning.some((each) => each.hostname === hostname))
+      .map((hostname) => ({ serviceId: hostname, hostname }));
+    return { restart: plan.restart, notRunning: [...plan.notRunning, ...named] };
+  }, [envWrite, proposal, view]);
+  // An approved value's restarts, from the write on: the plan it was approved with, the vault
+  // change the Mate hears of, those restarted and how the last attempt ended.
+  const [restartRun, setRestartRun] = useState<{
+    readonly plan: VaultRestarts;
+    readonly change: VaultChange | null;
+    readonly ended: RestartsEnded | null;
+  } | null>(null);
   const approveBlocked =
     home === undefined
       ? "Reading your organization…"
@@ -372,11 +401,15 @@ function Proposal({
     [viewer],
   );
   const ended = useCallback(
-    (outcome: VaultWriteOutcome) =>
+    (outcome: VaultWriteOutcome & { readonly words?: string | undefined }) =>
       void record(
         mine(
           outcome.ok
-            ? { state: "done", at: new Date().toISOString() }
+            ? {
+                state: "done",
+                at: new Date().toISOString(),
+                ...(outcome.words === undefined ? {} : { words: outcome.words }),
+              }
             : {
                 state: "failed",
                 at: new Date().toISOString(),
@@ -402,6 +435,40 @@ function Proposal({
     askMate(projectId, words, { send: true, ids });
     const notSent = handOverWords(recipient, await went);
     return notSent === null ? { ok: true } : { ok: false, code: null, message: notSent };
+  };
+
+  /**
+   * Restarts an approved value's readers in turn, after earlier attempts: done once each restarted,
+   * saying so (and naming what runs nothing); else the failed one, for Try again or finishing
+   * without it. The Mate's note says which restarted.
+   */
+  const restartReaders = async (
+    run: NonNullable<typeof restartRun>,
+    services: VaultRestarts["restart"],
+  ) => {
+    if (vaultProject === undefined || proposal.kind !== "env.set") return;
+    const before = run.ended?.restarted ?? [];
+    setRestartRun({ ...run, ended: { restarted: before, failed: null } });
+    const now = await restartInTurn(runOperation, vaultProject, services);
+    const restarted = [...before, ...now.restarted];
+    if (run.change !== null && restarted.length > 0)
+      recordVaultWrite(proposal.projectId, { ...run.change, restarted });
+    if (now.failed !== null) {
+      setRestartRun({ ...run, ended: { restarted, failed: now.failed } });
+      return;
+    }
+    // The card says restarting until the decision it records arrives: no frame says it is writing.
+    ended({ ok: true, words: restartedWords(restarted, run.plan.notRunning) ?? undefined });
+  };
+  const finishUnrestarted = () => {
+    if (restartRun?.ended?.failed == null) return;
+    const { restarted, failed } = restartRun.ended;
+    ended({
+      ok: true,
+      words: [restartedWords(restarted, restartRun.plan.notRunning), unrestartedWords(failed.left)]
+        .filter((part): part is string => part !== null)
+        .join(" · "),
+    });
   };
 
   /** Records the person's decision at HQ: false, saying why, where HQ did not keep it. */
@@ -444,10 +511,19 @@ function Proposal({
             ended({ ok: false, code: null, message: envWrite?.refused ?? "Nothing to write." });
             return;
           }
+          const plan = envRestarts ?? { restart: [], notRunning: [] };
           const { outcome, change } = await write(envWrite.scope, envWrite.write);
           // The project's own Mate hears of it with its next message, as of a write in its panel.
           if (change !== null) recordVaultWrite(proposal.projectId, change);
-          ended(outcome);
+          if (!outcome.ok || plan.restart.length === 0) {
+            ended(
+              outcome.ok
+                ? { ...outcome, words: restartedWords([], plan.notRunning) ?? undefined }
+                : outcome,
+            );
+            return;
+          }
+          await restartReaders({ plan, change, ended: null }, plan.restart);
           return;
         }
         case "mate.message":
@@ -538,6 +614,40 @@ function Proposal({
         decision === undefined ? null : formatDayAwareTimestamp(decision.at, timestampFormat)
       }
       decidedBy={decision?.by === undefined ? null : (nameOf(decision.by) ?? null)}
+      doneWords={decision?.state === "done" ? decision.words : undefined}
+      restarts={
+        envRestarts === null
+          ? undefined
+          : {
+              restart: envRestarts.restart.map((each) => each.hostname),
+              notRunning: envRestarts.notRunning.map((each) => each.hostname),
+            }
+      }
+      restartPhase={
+        restartRun === null
+          ? undefined
+          : restartRun.ended?.failed == null
+            ? {
+                kind: "restarting",
+                words: restartingWords(
+                  restartRun.plan.restart.filter(
+                    (each) =>
+                      !(restartRun.ended?.restarted ?? []).some(
+                        (done) => done.serviceId === each.serviceId,
+                      ),
+                  ),
+                ),
+              }
+            : {
+                kind: "failed",
+                words: `${proposal.kind === "env.set" ? proposal.params.key : "It"} is in the vault, but ${notRestartedWords(restartRun.ended.failed)}`,
+                onTryAgain: () => {
+                  const failed = restartRun.ended?.failed;
+                  if (failed != null) void restartReaders(restartRun, failed.left);
+                },
+                onFinish: finishUnrestarted,
+              }
+      }
       homeProjectId={home?.projectId ?? null}
       readOnlyReason={readOnlyReason}
       failure={decision?.state === "failed" ? decision.message : undefined}

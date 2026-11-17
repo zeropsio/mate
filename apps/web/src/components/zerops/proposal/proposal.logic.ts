@@ -48,7 +48,12 @@ import { releaseOfferTitle, serviceCreateTitle } from "./productionAsk.logic";
  */
 export type ProposalDecision = (
   | { readonly state: "running"; readonly at: string }
-  | { readonly state: "done"; readonly at: string }
+  | {
+      readonly state: "done";
+      readonly at: string;
+      /** What else it did, said after its own line: "app restarted". */
+      readonly words?: string;
+    }
   | { readonly state: "failed"; readonly at: string; readonly message: string }
   | { readonly state: "declined"; readonly at: string }
 ) & { readonly by?: string };
@@ -111,7 +116,9 @@ export function decisionFromHq(record: HqProposalDecision): ProposalDecision {
     case null:
       return { state: "running", at, by };
     case "done":
-      return { state: "done", at, by };
+      return record.words === null || record.words.trim() === ""
+        ? { state: "done", at, by }
+        : { state: "done", at, by, words: record.words };
     case "failed":
       return { state: "failed", at, by, message: record.words ?? FAILED_WORDS };
   }
@@ -123,7 +130,9 @@ export function hqWriteOf(decision: ProposalDecision, projectId: string): HqProp
     case "running":
       return { projectId, decision: "approved" };
     case "done":
-      return { projectId, decision: "approved", outcome: "done" };
+      return decision.words === undefined
+        ? { projectId, decision: "approved", outcome: "done" }
+        : { projectId, decision: "approved", outcome: "done", words: decision.words };
     case "failed":
       return { projectId, decision: "approved", outcome: "failed", words: decision.message };
     case "declined":
@@ -797,6 +806,8 @@ export function proposalAskState(input: {
   /** Who decided it, by name, and when, as the conversation's clock says it. */
   readonly by: string | null;
   readonly at: string | null;
+  /** What else a done one did, after its own line ("app restarted"). */
+  readonly doneWords?: string | undefined;
 }): AskState {
   const { proposal, stage, by, at } = input;
   switch (stage) {
@@ -807,7 +818,8 @@ export function proposalAskState(input: {
     case "running":
       return { kind: "working", words: proposalOutcomeWords(proposal, "running"), pressed: "main" };
     case "done": {
-      const words = proposalOutcomeWords(proposal, "done").replace(/\.$/u, "");
+      const own = proposalOutcomeWords(proposal, "done").replace(/\.$/u, "");
+      const words = input.doneWords === undefined ? own : `${own} · ${input.doneWords}`;
       return { kind: "done", words: answeredWords(words, by, at), told: null };
     }
     case "failed":

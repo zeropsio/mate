@@ -59,6 +59,7 @@ const FAIL = params.get("fail") === "1";
 const MENU = Number(params.get("menu") ?? 435);
 const ONLY_MCP = params.get("only") === "mcp";
 const ONLY_PRODUCTION = params.get("only") === "production";
+const ONLY_RESTART = params.get("only") === "restart";
 
 const LINEAR: McpProposal = {
   id: "mcp-linear",
@@ -265,6 +266,81 @@ const PLAIN: ZeropsProposal = {
   params: { scope: "service", key: "LOG_LEVEL", value: "debug", secret: false },
 };
 
+/** A plain value for production that its readers run only once restarted. */
+const AUTH_HOSTS: ZeropsProposal = {
+  id: "auth-hosts",
+  kind: "env.set",
+  summary: "Set AUTH_HOSTS on app in Production",
+  reason: "Sign-in refuses the new domain until it is listed here.",
+  projectId: "p-prod",
+  projectName: "Production",
+  serviceId: "s-app",
+  serviceName: "app",
+  params: {
+    scope: "service",
+    key: "AUTH_HOSTS",
+    value: "shop.example.com",
+    secret: false,
+    restart: [{ serviceId: "s-app", hostname: "app" }],
+  },
+};
+
+const SHARED_URL: ZeropsProposal = {
+  id: "shared-url",
+  kind: "env.set",
+  summary: "Set PUBLIC_URL in Production",
+  reason: "Links in e-mails still point at the old domain.",
+  projectId: "p-prod",
+  projectName: "Production",
+  params: {
+    scope: "project",
+    key: "PUBLIC_URL",
+    value: "https://shop.example.com",
+    secret: false,
+    restart: [
+      { serviceId: "s-app", hostname: "app" },
+      { serviceId: "s-api", hostname: "api" },
+    ],
+    notRunning: ["worker"],
+  },
+};
+
+const RESTART_CARDS: typeof CARDS = [
+  { proposal: AUTH_HOSTS, stage: "open", restarts: { restart: ["app"], notRunning: [] } },
+  {
+    proposal: SHARED_URL,
+    stage: "open",
+    restarts: { restart: ["app", "api"], notRunning: ["worker"] },
+  },
+  {
+    proposal: { ...AUTH_HOSTS, id: "auth-hosts-restarting" },
+    stage: "running",
+    restartPhase: { kind: "restarting", words: "Restarting app…" },
+  },
+  {
+    proposal: { ...AUTH_HOSTS, id: "auth-hosts-failed" },
+    stage: "running",
+    restartPhase: {
+      kind: "failed",
+      words:
+        "AUTH_HOSTS is in the vault, but app didn't restart: Service stack is in a state that does not allow this action",
+      onTryAgain: () => undefined,
+      onFinish: () => undefined,
+    },
+  },
+  { proposal: { ...AUTH_HOSTS, id: "auth-hosts-done" }, stage: "done", doneWords: "app restarted" },
+  {
+    proposal: { ...SHARED_URL, id: "shared-url-done" },
+    stage: "done",
+    doneWords: "app and api restarted · worker reads it when it next starts",
+  },
+  {
+    proposal: { ...AUTH_HOSTS, id: "auth-hosts-unrestarted" },
+    stage: "done",
+    doneWords: "app runs the previous value until it restarts",
+  },
+];
+
 const MESSAGE: ZeropsProposal = {
   id: "message",
   kind: "mate.message",
@@ -362,6 +438,9 @@ const CARDS: ReadonlyArray<{
   readonly domainState?: ProposalCardProps["domainState"];
   readonly domainRecords?: ProposalCardProps["domainRecords"];
   readonly approveBlocked?: string;
+  readonly restarts?: ProposalCardProps["restarts"];
+  readonly restartPhase?: ProposalCardProps["restartPhase"];
+  readonly doneWords?: string;
 }> = [
   { proposal: ACCESS, stage: "open" },
   {
@@ -455,7 +534,10 @@ function Card(card: (typeof CARDS)[number]) {
       decidedBy={stage === "open" ? null : "Aleš"}
       domainState={card.domainState}
       domainRecords={card.domainRecords}
+      doneWords={card.doneWords}
       failure={failure}
+      restartPhase={card.restartPhase}
+      restarts={card.restarts}
       onOpenAddresses={card.proposal.kind === "domain.add" ? () => undefined : undefined}
       readOnlyReason={card.readOnlyReason}
       mateName="Fen"
@@ -477,7 +559,11 @@ function Card(card: (typeof CARDS)[number]) {
       stage={stage}
       // The secret and the domain act on Contoso's production: its chip and press are red.
       tier={
-        card.proposal.id === "secret" || card.proposal.kind === "domain.add" ? "production" : null
+        card.proposal.id === "secret" ||
+        card.proposal.kind === "domain.add" ||
+        card.proposal.projectId === "p-prod"
+          ? "production"
+          : null
       }
     />
   );
@@ -579,8 +665,19 @@ function Harness() {
       <div className="min-w-0 flex-1 overflow-y-auto px-5 py-8">
         <MateFaceAsMark value>
           <div className="mx-auto grid w-full max-w-3xl gap-3">
-            {ONLY_MCP || ONLY_REVEAL ? null : <ProductionAsks />}
-            {(ONLY_MCP || ONLY_PRODUCTION ? [] : REVEALS).map((fixture) => (
+            {ONLY_RESTART
+              ? RESTART_CARDS.map((card) => (
+                  <div
+                    className="min-w-0 px-1 py-0.5"
+                    data-harness-state={`${card.proposal.id}:${card.stage}`}
+                    key={card.proposal.id}
+                  >
+                    <Card {...card} />
+                  </div>
+                ))
+              : null}
+            {ONLY_MCP || ONLY_REVEAL || ONLY_RESTART ? null : <ProductionAsks />}
+            {(ONLY_MCP || ONLY_PRODUCTION || ONLY_RESTART ? [] : REVEALS).map((fixture) => (
               <div
                 className="min-w-0 px-1 py-0.5"
                 data-harness-state={`reveal:${fixture.name}`}
@@ -589,20 +686,22 @@ function Harness() {
                 <Reveal {...fixture} />
               </div>
             ))}
-            {(ONLY_REVEAL || ONLY_PRODUCTION ? [] : MCP_CARDS).map((card) => (
+            {(ONLY_REVEAL || ONLY_PRODUCTION || ONLY_RESTART ? [] : MCP_CARDS).map((card) => (
               <div className="min-w-0 px-1 py-0.5" data-harness-state={card.id} key={card.id}>
                 <McpCard {...card} />
               </div>
             ))}
-            {(ONLY_MCP || ONLY_REVEAL || ONLY_PRODUCTION ? [] : CARDS).map((card) => (
-              <div
-                className="min-w-0 px-1 py-0.5"
-                data-harness-state={`${card.proposal.id}:${card.stage}`}
-                key={card.proposal.id}
-              >
-                <Card {...card} />
-              </div>
-            ))}
+            {(ONLY_MCP || ONLY_REVEAL || ONLY_PRODUCTION || ONLY_RESTART ? [] : CARDS).map(
+              (card) => (
+                <div
+                  className="min-w-0 px-1 py-0.5"
+                  data-harness-state={`${card.proposal.id}:${card.stage}`}
+                  key={card.proposal.id}
+                >
+                  <Card {...card} />
+                </div>
+              ),
+            )}
           </div>
         </MateFaceAsMark>
       </div>

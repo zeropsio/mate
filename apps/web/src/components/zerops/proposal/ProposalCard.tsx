@@ -13,6 +13,7 @@ import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { CheckIcon, ChevronRightIcon, CircleAlertIcon } from "lucide-react";
 import { useState } from "react";
 
+import { namesWords } from "../../ask/ask.logic";
 import { AskCard, AskFooter } from "../../ask/AskCard";
 import { MateMark } from "../../MateMark";
 import { DnsRecords } from "../addresses/DnsRecords";
@@ -81,7 +82,33 @@ export interface ProposalCardProps {
   /** Who decided it, by name, and when, as HQ's decision record says. */
   readonly decidedBy?: string | null;
   readonly decidedAt?: string | null;
+  /** A done one's further words, as HQ keeps them: "app restarted". */
+  readonly doneWords?: string | undefined;
+  /**
+   * `env.set`: the running services it restarts once set, and those that run nothing now — said
+   * before the press, so the person knows what it restarts.
+   */
+  readonly restarts?:
+    | { readonly restart: ReadonlyArray<string>; readonly notRunning: ReadonlyArray<string> }
+    | undefined;
+  /**
+   * `env.set`, approved and written: its readers restarting, or a restart that failed — Try again
+   * restarts the rest, Finish without restart settles it saying what runs the previous value.
+   */
+  readonly restartPhase?:
+    | { readonly kind: "restarting"; readonly words: string }
+    | {
+        readonly kind: "failed";
+        readonly words: string;
+        readonly onTryAgain: () => void;
+        readonly onFinish: () => void;
+      }
+    | undefined;
 }
+
+/** Readers that run nothing now, said before the press: nothing restarts them. */
+const notRunningWords = (hosts: ReadonlyArray<string>): string =>
+  `${namesWords(hosts)} ${hosts.length === 1 ? "runs" : "run"} nothing now, so ${hosts.length === 1 ? "it reads" : "they read"} it when ${hosts.length === 1 ? "it next starts" : "they next start"}.`;
 
 /** A secret value is never drawn: the card says it is hidden. */
 const HIDDEN_VALUE = "••••••••";
@@ -94,20 +121,30 @@ export function ProposalCard(props: ProposalCardProps) {
       ? (props.chiefTarget ?? { kind: "unknown" as const })
       : undefined;
   const where = proposalAskWhere(proposal, tier, props.homeProjectId ?? null);
-  const state = proposalAskState({
-    proposal,
-    stage,
-    failure: props.failure,
-    readOnlyReason: props.readOnlyReason,
-    by: props.decidedBy ?? null,
-    at: props.decidedAt ?? null,
-  });
+  const phase = stage === "running" ? props.restartPhase : undefined;
+  const state: ReturnType<typeof proposalAskState> =
+    phase?.kind === "restarting"
+      ? { kind: "working", words: phase.words, pressed: "main" }
+      : phase?.kind === "failed"
+        ? { kind: "failed", words: phase.words }
+        : proposalAskState({
+            proposal,
+            stage,
+            failure: props.failure,
+            readOnlyReason: props.readOnlyReason,
+            by: props.decidedBy ?? null,
+            at: props.decidedAt ?? null,
+            doneWords: props.doneWords,
+          });
+  const restartNames = props.restarts?.restart ?? [];
   const title =
     stage === "open" && proposal.kind === "chief.message" && chiefTarget?.kind === "none"
       ? "This Mate has no Chief to ask."
       : stage === "open" && proposal.kind === "chief.message" && chiefTarget?.kind === "unknown"
         ? "Finding this Mate's Chief…"
-        : proposalTitle(proposal);
+        : stage === "open" && restartNames.length > 0
+          ? `${proposalTitle(proposal)}, then restart ${namesWords(restartNames)}`
+          : proposalTitle(proposal);
   const main =
     props.onSetUpChief !== undefined
       ? { label: "Set up Chief", onPress: props.onSetUpChief }
@@ -120,7 +157,16 @@ export function ProposalCard(props: ProposalCardProps) {
           };
   const decided = stage === "done" || stage === "unseen";
   const action =
-    stage === "done" && props.onOpenRecipient !== undefined ? (
+    phase?.kind === "failed" ? (
+      <>
+        <Button onClick={phase.onTryAgain} variant="secondary">
+          Try again
+        </Button>
+        <Button onClick={phase.onFinish} variant="ghost">
+          Finish without restart
+        </Button>
+      </>
+    ) : stage === "done" && props.onOpenRecipient !== undefined ? (
       proposal.kind === "mate.message" ? (
         <Button onClick={props.onOpenRecipient} variant="secondary">
           Open {props.recipient?.name ?? proposal.params.to.mateName}
@@ -173,6 +219,11 @@ export function ProposalCard(props: ProposalCardProps) {
           recipient: props.recipient,
           chiefTarget: stage === "open" ? chiefTarget : undefined,
         })}
+        {stage === "open" && (props.restarts?.notRunning.length ?? 0) > 0 ? (
+          <p className="text-caption text-muted-foreground" data-proposal-not-running>
+            {notRunningWords(props.restarts?.notRunning ?? [])}
+          </p>
+        ) : null}
         {stage === "open" && props.refusal !== undefined ? (
           <p className="text-caption text-destructive-foreground" role="alert">
             {props.refusal}
