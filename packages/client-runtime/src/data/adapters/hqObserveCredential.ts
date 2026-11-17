@@ -23,7 +23,6 @@ export function makeObserveCredential(options: {
     scope: observeCredentialScope(key),
     link: `hq:observe-credential-${encodeURIComponent(observeCredentialId(key))}`,
     read: () => api.observeCredential(key.projectId),
-    unsupported: "HQ could not read this project's observe authorization.",
   });
   const following = new Map<string, { count: number; readonly stop: () => void }>();
   return {

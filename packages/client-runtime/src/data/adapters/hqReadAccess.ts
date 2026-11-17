@@ -28,7 +28,6 @@ export function makeReadAccessRequests(options: {
     scope: readAccessScope(key),
     link: readAccessLink(key),
     read: () => api.readAccessRequests(),
-    unsupported: "HQ could not read the read access requests.",
   });
   return {
     demand: (key: ReadAccessKey): (() => void) => (closed ? () => {} : reads.demand(spec(key))),

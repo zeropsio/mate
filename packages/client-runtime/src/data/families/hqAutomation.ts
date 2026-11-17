@@ -26,12 +26,6 @@ export const intakeRevealScope = (key: IntakeKey): ScopeKey =>
 export const aiKeysLink = (key: AiKeysKey): LinkKey =>
   `hq:ai-keys-${encodeURIComponent(aiKeysId(key))}`;
 
-/**
- * A setting's read fault where HQ keeps no such setting — an HQ with no such address, or a client
- * whose HQ has no such call.
- */
-export const SETTING_UNSUPPORTED = "unsupported";
-
 export const aiKeyRequestScope = (key: AiKeysKey): ScopeKey =>
   `hq:${key.orgId}:ai-key-request:${aiKeysId(key)}`;
 

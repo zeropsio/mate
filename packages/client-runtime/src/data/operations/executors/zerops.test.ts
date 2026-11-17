@@ -216,7 +216,7 @@ it.effect.each([
           const createMate = async () => {
             throw new Error("No Mate record is written here.");
           };
-          if (change === "unsupported") return { createMate };
+          if (change === "unsupported") return null;
           return {
             createMate,
             establishZcpAuthorization: async (projectId, context) => {

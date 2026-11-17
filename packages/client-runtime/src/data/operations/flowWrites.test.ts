@@ -173,6 +173,22 @@ function hqOf(answer: () => Promise<unknown>) {
     decideProposal: call("decideProposal"),
     askReadAccess: () => Promise.reject(new Error("not faked")),
     closeReadAccess: () => Promise.reject(new Error("not faked")),
+    establishZcpAuthorization: () => Promise.reject(new Error("not faked")),
+    takeChatLink: () => Promise.reject(new Error("not faked")),
+    recordReveal: () => Promise.reject(new Error("not faked")),
+    repoRemoteViaApp: () => Promise.reject(new Error("not faked")),
+    followRepoUpstream: () => Promise.reject(new Error("not faked")),
+    unfollowRepoUpstream: () => Promise.reject(new Error("not faked")),
+    deleteRepo: () => Promise.reject(new Error("not faked")),
+    setRepoCap: () => Promise.reject(new Error("not faked")),
+    gitTargetWrite: () => Promise.reject(new Error("not faked")),
+    gitTargetReceipt: () => Promise.reject(new Error("not faked")),
+    lifecycleWrite: () => Promise.reject(new Error("not faked")),
+    lifecycleReceipt: () => Promise.reject(new Error("not faked")),
+    updateMate: () => Promise.reject(new Error("not faked")),
+    setAutoUpdatePolicy: () => Promise.reject(new Error("not faked")),
+    savePersonaTemplate: () => Promise.reject(new Error("not faked")),
+    deletePersonaTemplate: () => Promise.reject(new Error("not faked")),
   } satisfies HqWrites;
   return { writes, calls };
 }

@@ -5,17 +5,12 @@
  * (`answered`). Each read started has its number, which
  * the committed value's revision carries: a write's answer names the last read started before it
  * (`started`), so whoever waits for the write to show knows the read that can show it.
- *
- * An HQ with no such address (a bare `404`), or a client whose HQ has no such call, keeps no such setting:
- * the read is refused with `SETTING_UNSUPPORTED`, which nothing retries.
  */
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Queue from "effect/Queue";
 import * as Result from "effect/Result";
-import { HqError, hqRouteMissing } from "../../zerops/hq/client.ts";
-import { SETTING_UNSUPPORTED } from "../families/hqAutomation.ts";
 import type { Family, FamilyValues, LinkKey, ScopeKey } from "../model.ts";
 import { sameValue } from "../projections/equal.ts";
 import { streamOf } from "../reducer.ts";
@@ -29,10 +24,8 @@ export interface SettingRead<F extends Family> {
   readonly id: string;
   readonly scope: ScopeKey;
   readonly link: LinkKey;
-  /** HQ's answer; `undefined` where this client's HQ has no such call. */
-  readonly read: () => Promise<FamilyValues[F]> | undefined;
-  /** What the refusal says where HQ keeps no such setting. */
-  readonly unsupported: string;
+  /** HQ's answer. */
+  readonly read: () => Promise<FamilyValues[F]>;
 }
 
 interface Reading {
@@ -98,23 +91,8 @@ export function makeSettingsReads(store: AccountStore) {
                     if (factOf(spec)?.content.kind !== "value" || made.again) {
                       made.again = false;
                       const number = ++made.started;
-                      const unsupported = new HqError({
-                        kind: "refused",
-                        code: SETTING_UNSUPPORTED,
-                        message: spec.unsupported,
-                      });
                       const answer = yield* Effect.result(
-                        Effect.tryPromise({
-                          try: () => spec.read() ?? Promise.reject(unsupported),
-                          catch: (cause) =>
-                            cause === unsupported || hqRouteMissing(cause)
-                              ? ({
-                                  outcome: "definitive-refusal",
-                                  message: spec.unsupported,
-                                  code: SETTING_UNSUPPORTED,
-                                } satisfies StreamFault)
-                              : credentialFailure(cause),
-                        }),
+                        Effect.tryPromise({ try: () => spec.read(), catch: credentialFailure }),
                       );
                       if (closed || readings.get(key) !== made) return yield* Effect.never;
                       if (streamOf(store.state(), spec.scope).generation !== generation) {

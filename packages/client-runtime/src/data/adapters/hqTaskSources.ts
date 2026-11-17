@@ -106,10 +106,6 @@ export function makeTaskSourceSettings(options: {
       scope: settingScope(family, key),
       link: settingLink(family, key),
       read: read as SettingRead<TaskSourceSetting>["read"],
-      unsupported:
-        family === "hqGithub"
-          ? "HQ could not read the organization's GitHub apps."
-          : "HQ could not read where tasks come from.",
     };
   }
 

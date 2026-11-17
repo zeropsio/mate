@@ -1,4 +1,5 @@
 import type { HqDeliveryNavigationJob } from "@t3tools/shared/hqStream";
+import type { HqGitOperationReceipt } from "@t3tools/shared/hqGitTargets";
 import { gitRemote, gitAdoption, gitEnvironment } from "../__fixtures__/hqWire.ts";
 import { HqEnvironmentId } from "@t3tools/contracts";
 import * as data from "@t3tools/client-runtime/data";
@@ -14,7 +15,7 @@ import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
 import { operationProgress } from "../projections/operation.ts";
 import { makeOperations } from "./coordinator.ts";
 import { makeHqExecutor, type HqWrites } from "./executors/hq.ts";
-import { linkKeys, type OperationReceipt } from "../model.ts";
+import { linkKeys } from "../model.ts";
 import { HqError } from "../../zerops/hq/client.ts";
 import { readDeliveryEnvironments } from "../../zerops/hq/environments.ts";
 
@@ -27,7 +28,7 @@ const intent = {
   repo: "web",
   url: "https://github.com/o/web.git",
 } as const;
-const answer = (requestId: string): OperationReceipt => ({
+const answer = (requestId: string): HqGitOperationReceipt => ({
   requestId,
   operationId: requestId,
   executor: "hq",
@@ -197,7 +198,7 @@ describe("Git target operations through the existing HQ executor", () => {
   );
   it.effect("a delayed owner receipt is accepted only for the original operation identity", () =>
     Effect.gen(function* () {
-      let reply: OperationReceipt | null = { ...answer("other"), operationId: "other" };
+      let reply: HqGitOperationReceipt | null = { ...answer("other"), operationId: "other" };
       const f = setup({
         send: async () => {
           throw new HqError({ kind: "uncertain", code: "lost", message: "Answer lost" });

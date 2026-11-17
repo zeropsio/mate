@@ -12,8 +12,6 @@ import {
 import type { AccountStore } from "../store.ts";
 import { makeSettingsReads, type SettingRead } from "./hqSettingsReads.ts";
 
-const READ_FAILED = "HQ could not read the organization's activity.";
-
 export function makeActivity(options: {
   readonly store: AccountStore;
   readonly api: Pick<HqApi, "activity">;
@@ -26,7 +24,6 @@ export function makeActivity(options: {
     scope: activityScope(key),
     link: activityLink(key),
     read: () => options.api.activity(key.before),
-    unsupported: READ_FAILED,
   });
   return {
     /** Reads the page while demanded; the returned call releases it. */

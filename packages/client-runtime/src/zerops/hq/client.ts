@@ -362,17 +362,6 @@ export class HqError extends Error {
 }
 
 /**
- * HQ has no such address: a `404` that names no reason of its own, as an HQ older than the route
- * answers. One that does — an application gone (`app_not_found`) — is HQ's answer about the
- * thing, never about its age.
- */
-export const hqRouteMissing = (cause: unknown): boolean =>
-  cause instanceof HqError &&
-  cause.status === 404 &&
-  cause.reason === undefined &&
-  (cause.code === "http_404" || cause.code === "not_found");
-
-/**
  * A write that asked for deploys, and where HQ answered they stand (`@t3tools/shared/hqDeploys`);
  * none where its answer was lost and HQ's records were read back for it — HQ's stream brings the
  * jobs either way.
@@ -589,7 +578,7 @@ export interface HqApi {
    * Takes a chat account link HQ said to the person's Slack or Discord account: that account is
    * theirs in the organization from now on (`POST /api/chat-links`).
    */
-  readonly takeChatLink?: (code: string) => Promise<HqChatLink>;
+  readonly takeChatLink: (code: string) => Promise<HqChatLink>;
   /** Whether the organization's Slack app is connected, and to which workspace (`GET /api/org/slack`). */
   readonly slack: () => Promise<HqSlackView>;
   /** The manifest the organization's Slack app is made from (`GET /api/org/slack/manifest`). */
@@ -672,7 +661,7 @@ export interface HqApi {
    * A repository mirrors to one an organization's GitHub app is installed on, with no token, through
    * the app `githubAppId` names (`PUT /api/apps/:appId/repos/:repo/remote/app`).
    */
-  readonly repoRemoteViaApp?: (
+  readonly repoRemoteViaApp: (
     appId: string,
     repo: string,
     request: HqRepoRemoteViaAppRequest,
@@ -681,20 +670,20 @@ export interface HqApi {
    * A repository's code kept in HQ while it follows a GitHub repository, with no token
    * (`PUT /api/apps/:appId/repos/:repo/upstream`).
    */
-  readonly followRepoUpstream?: (
+  readonly followRepoUpstream: (
     appId: string,
     repo: string,
     request: FollowRepoUpstreamRequest,
   ) => Promise<void>;
   /** Its Mates no longer fetch the followed GitHub repository (`DELETE …/upstream`). */
-  readonly unfollowRepoUpstream?: (appId: string, repo: string) => Promise<void>;
+  readonly unfollowRepoUpstream: (appId: string, repo: string) => Promise<void>;
   /** The repository and its code are deleted from Mate (`DELETE /api/apps/:appId/repos/:repo`). */
-  readonly deleteRepo?: (appId: string, repo: string) => Promise<void>;
+  readonly deleteRepo: (appId: string, repo: string) => Promise<void>;
   /**
    * A repository's Git storage cap set, in whole GiB (`PUT /api/apps/:appId/repos/:repo/storage`):
    * HQ's answer is its storage as it stands after.
    */
-  readonly setRepoCap?: (appId: string, repo: string, capGiB: number) => Promise<HqRepoStorage>;
+  readonly setRepoCap: (appId: string, repo: string, capGiB: number) => Promise<HqRepoStorage>;
   /**
    * Who merges the application's changes (`PUT /api/apps/:appId/mergers`): the organization's Owner
    * and Admins and these people, or — `null` — whoever may push. HQ's answer is the limit as it
@@ -726,7 +715,7 @@ export interface HqApi {
    * Binds the verified person establishing the native ZCP key; no hash reconnects an existing Mate.
    * HQ answers the observe metadata as it stands after it (mate-hq spec/protocol.md §S16c).
    */
-  readonly establishZcpAuthorization?: (
+  readonly establishZcpAuthorization: (
     projectId: string,
     context: { readonly keyHash?: string },
   ) => Promise<ObserveCredential>;

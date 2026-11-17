@@ -33,7 +33,6 @@ export function makeTakeOver(options: {
     scope: takeOverScope(key),
     link: takeOverLink(key),
     read: () => api.takeOverList(key.userId),
-    unsupported: "HQ could not read this member's tokens.",
   });
   const operations = makeOperations({
     store,

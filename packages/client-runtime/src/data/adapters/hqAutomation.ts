@@ -43,7 +43,6 @@ export function makeAutomationSettings(options: {
     scope: aiKeysScope(key),
     link: aiKeysLink(key),
     read: () => api.aiKeys(),
-    unsupported: "HQ could not read the organization's keys.",
   });
   const demandKeys = (key: AiKeysKey): (() => void) =>
     closed ? () => {} : reads.demand(keysRead(key));
