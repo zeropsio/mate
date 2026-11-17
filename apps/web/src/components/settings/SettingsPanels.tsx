@@ -127,7 +127,7 @@ import {
 } from "../ui/alert-dialog";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
-import { stackedThreadToast, toastManager } from "../ui/toast";
+import { stackedThreadToast, toastManager } from "~/lib/toasts";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ThemeLibrary } from "./ThemeSettings";
 import { WORKTREE_SUBMODULES_LABELS } from "../BranchToolbar.logic";

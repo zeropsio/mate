@@ -58,7 +58,7 @@ vi.mock("../../hooks/useTheme", () => ({ useTheme: () => state.theme }));
 vi.mock("./themeEditorStore", () => ({
   useThemeEditorStore: (select: (store: typeof state) => unknown) => select(state),
 }));
-vi.mock("../ui/toast", () => ({
+vi.mock("~/lib/toasts", () => ({
   toastManager: { add: vi.fn() },
   stackedThreadToast: (value: unknown) => value,
 }));

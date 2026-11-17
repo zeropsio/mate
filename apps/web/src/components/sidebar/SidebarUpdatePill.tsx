@@ -5,7 +5,7 @@ import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { cn } from "../../lib/utils";
 import { ensureLocalApi } from "../../localApi";
 import { useDesktopUpdateState } from "../../state/desktopUpdate";
-import { stackedThreadToast, toastManager } from "../ui/toast";
+import { stackedThreadToast, toastManager } from "~/lib/toasts";
 import {
   canCheckForUpdate,
   getArm64IntelBuildWarningDescription,

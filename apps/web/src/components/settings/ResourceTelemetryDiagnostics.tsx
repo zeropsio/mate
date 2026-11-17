@@ -51,7 +51,7 @@ import { Button } from "../ui/button";
 import { ScrollArea } from "../ui/scroll-area";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { toastManager } from "../ui/toast";
+import { toastManager } from "~/lib/toasts";
 import {
   resourceHistoryBarHeight,
   resourceHistoryCpuScaleMax,

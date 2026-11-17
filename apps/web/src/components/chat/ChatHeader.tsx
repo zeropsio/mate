@@ -44,7 +44,7 @@ import { type DraftId } from "~/composerDraftStore";
 import { Button } from "../ui/button";
 import { ChiefOverviewButton } from "../zerops/chief/ChiefOverviewButton";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { toastManager } from "../ui/toast";
+import { toastManager } from "~/lib/toasts";
 import ProjectScriptsControl, {
   type NewProjectScriptInput,
   type ProjectScriptActionResult,

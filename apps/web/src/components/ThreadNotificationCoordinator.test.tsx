@@ -130,7 +130,7 @@ vi.mock("../threadNotifications", async (importOriginal) => ({
 vi.mock("../zerops/mutedMates", () => ({
   useMutedMates: () => ({ muted: state.muted, toggle: vi.fn() }),
 }));
-vi.mock("./ui/toast", () => ({
+vi.mock("~/lib/toasts", () => ({
   toastManager: { add: state.add, close: state.close },
 }));
 

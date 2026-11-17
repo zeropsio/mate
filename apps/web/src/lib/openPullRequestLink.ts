@@ -3,7 +3,7 @@ import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import * as Schema from "effect/Schema";
 import { type MouseEvent, useCallback } from "react";
 
-import { stackedThreadToast, toastManager } from "../components/ui/toast";
+import { stackedThreadToast, toastManager } from "~/lib/toasts";
 import { readLocalApi } from "../localApi";
 
 export class PullRequestLinkOpenError extends Schema.TaggedError<PullRequestLinkOpenError>()(

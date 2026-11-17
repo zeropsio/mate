@@ -8,7 +8,7 @@ import { resolveThreadRouteTarget } from "../threadRoutes";
 import { releaseProjectDraftUploads } from "../lib/composerDraftUploads";
 import { projectEnvironment } from "../state/projects";
 import { useMateCommand } from "../zerops/accountEnvironments";
-import { stackedThreadToast, toastManager } from "../components/ui/toast";
+import { stackedThreadToast, toastManager } from "~/lib/toasts";
 
 /**
  * Removes a project whose clone never landed. The server clears the empty

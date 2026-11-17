@@ -17,7 +17,7 @@ const boundary = vi.hoisted(() => ({
   addToast: vi.fn(() => "removal-toast"),
   updateToast: vi.fn(),
 }));
-vi.mock("~/components/ui/toast", () => ({
+vi.mock("~/lib/toasts", () => ({
   toastManager: { add: boundary.addToast, update: boundary.updateToast },
 }));
 vi.mock("~/zerops/accountOperations", () => ({

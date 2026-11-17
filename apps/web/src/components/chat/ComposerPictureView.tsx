@@ -33,7 +33,7 @@ import { pictureFitSize } from "~/lib/imageCompression";
 import { drawPictureMarks, pictureMarkMetrics } from "~/lib/pictureDrawing";
 import { randomUUID } from "~/lib/utils";
 import { Switch } from "../ui/switch";
-import { toastManager } from "../ui/toast";
+import { toastManager } from "~/lib/toasts";
 
 type Mode = "mark" | "crop";
 type CropHandle = "nw" | "ne" | "sw" | "se" | "n" | "s" | "e" | "w";

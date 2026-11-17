@@ -48,7 +48,7 @@ vi.mock("./zeropsContainers", () => ({
   intendContainer: () => true,
   readContainerInitAt: async () => null,
 }));
-vi.mock("~/components/ui/toast", () => ({
+vi.mock("~/lib/toasts", () => ({
   toastManager: { add: (toast: { type: string; title: string }) => mock.toasts.push(toast) },
 }));
 

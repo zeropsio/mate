@@ -53,7 +53,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { ScrollArea } from "../ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Toggle } from "../ui/toggle";
-import { toastManager } from "../ui/toast";
+import { toastManager } from "~/lib/toasts";
 import {
   buildKeybindingRows,
   buildKeybindingCommandOptions,

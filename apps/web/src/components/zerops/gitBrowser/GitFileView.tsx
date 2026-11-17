@@ -23,7 +23,7 @@ import {
   useFileLineReveal,
 } from "~/components/files/useFileLineReveal";
 import { Button } from "~/components/ui/button";
-import { toastManager } from "~/components/ui/toast";
+import { toastManager } from "~/lib/toasts";
 import { Toggle } from "~/components/ui/toggle";
 import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { useTheme } from "~/hooks/useTheme";

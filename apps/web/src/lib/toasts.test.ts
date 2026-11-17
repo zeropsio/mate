@@ -1,6 +1,6 @@
 import { assert, describe, it } from "vite-plus/test";
 
-import { hiddenToastActionProps, stackedThreadToast } from "./toastHelpers";
+import { hiddenToastActionProps, stackedThreadToast } from "./toasts";
 
 describe("hiddenToastActionProps", () => {
   it("is a defined update payload so Base UI can replace a previous action", () => {

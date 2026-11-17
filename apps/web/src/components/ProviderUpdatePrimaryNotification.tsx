@@ -24,7 +24,7 @@ import {
   shouldShowPrimaryProviderUpdateToast,
   type ProviderUpdateToastView,
 } from "./ProviderUpdateLaunchNotification.logic";
-import { hiddenToastActionProps, stackedThreadToast, toastManager } from "./ui/toast";
+import { hiddenToastActionProps, stackedThreadToast, toastManager } from "~/lib/toasts";
 import { useAtomCommand } from "../state/use-atom-command";
 
 const seenProviderUpdateNotificationKeys = new Set<string>();

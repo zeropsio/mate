@@ -42,7 +42,7 @@ import {
   MenuSeparator,
   MenuTrigger,
 } from "../ui/menu";
-import { stackedThreadToast, toastManager } from "../ui/toast";
+import { stackedThreadToast, toastManager } from "~/lib/toasts";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { CrewmateMenu } from "../zerops/crew/CrewmateMenu";
 import { crewFaces } from "../zerops/crew/SidebarCrewLine.logic";

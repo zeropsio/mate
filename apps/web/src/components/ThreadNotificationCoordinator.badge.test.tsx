@@ -41,7 +41,7 @@ vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => state.navigate,
   useParams: () => ({}),
 }));
-vi.mock("./ui/toast", () => ({ toastManager: { add: state.toast } }));
+vi.mock("~/lib/toasts", () => ({ toastManager: { add: state.toast } }));
 vi.mock("../state/zerops", () => ({ hqMatesAtom: "hq-mates" }));
 // Each Mate's attention, where a test gives one; else it rings off HQ's overview of it.
 vi.mock("../zerops/ZeropsAccountData", () => ({

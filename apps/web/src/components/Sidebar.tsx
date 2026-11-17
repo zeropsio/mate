@@ -167,7 +167,7 @@ import {
   type ProviderInstanceEntry,
 } from "../providerInstances";
 import { useThreadRunningTerminalIds } from "../state/terminalSessions";
-import { stackedThreadToast, toastManager } from "./ui/toast";
+import { stackedThreadToast, toastManager } from "~/lib/toasts";
 import { Button } from "./ui/button";
 import { Menu, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "./ui/menu";
 import {

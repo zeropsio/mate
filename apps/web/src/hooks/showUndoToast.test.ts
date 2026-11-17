@@ -2,7 +2,7 @@ import { AsyncResult } from "effect/reactivity";
 import * as Cause from "effect/Cause";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { toastManager } from "../components/ui/toast";
+import { toastManager } from "~/lib/toasts";
 import { showUndoToast, undoLatestThreadAction } from "./showUndoToast";
 import * as ThreadUndo from "./threadUndo";
 

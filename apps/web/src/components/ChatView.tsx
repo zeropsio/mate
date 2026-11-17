@@ -314,7 +314,7 @@ import { undoLatestThreadAction } from "../hooks/showUndoToast";
 import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
 import { ArrowDownIcon, PaperclipIcon, XIcon } from "lucide-react";
 import { cn, randomHex } from "~/lib/utils";
-import { stackedThreadToast, toastManager } from "./ui/toast";
+import { stackedThreadToast, toastManager } from "~/lib/toasts";
 import { decodeProjectScriptKeybindingRule } from "~/lib/projectScriptKeybindings";
 import { type NewProjectScriptInput } from "./ProjectScriptsControl";
 import {

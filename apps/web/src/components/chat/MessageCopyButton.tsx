@@ -2,7 +2,7 @@ import { memo, useRef } from "react";
 import { CopyIcon, CheckIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
-import { anchoredToastManager } from "../ui/toast";
+import { anchoredToastManager } from "~/lib/toasts";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 const ANCHORED_TOAST_TIMEOUT_MS = 1000;

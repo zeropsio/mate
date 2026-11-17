@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 
 import { type SlowRpcAckRequest, useSlowRpcAckRequests } from "../rpc/requestLatencyState";
-import { toastManager } from "./ui/toast";
+import { toastManager } from "~/lib/toasts";
 
 function describeSlowRequests(requests: ReadonlyArray<SlowRpcAckRequest>): string {
   const count = requests.length;

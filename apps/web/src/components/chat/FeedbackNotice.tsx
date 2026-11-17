@@ -5,7 +5,7 @@ import {
 import { MessageSquareIcon } from "lucide-react";
 
 import { writeTextToClipboard } from "../../hooks/useCopyToClipboard";
-import { toastManager } from "../ui/toast";
+import { toastManager } from "~/lib/toasts";
 import type { ConversationNotice } from "./ConversationRows";
 
 /** `/feedback` in a Codex conversation, as its row at the conversation's end: sending, sent, failed. */

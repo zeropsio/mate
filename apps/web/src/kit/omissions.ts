@@ -9,11 +9,6 @@ export const KIT_OMISSIONS: readonly KitOmission[] = [
       "No look of its own: it removes the floating layers below it while something covers the page.",
   },
   {
-    name: "stackedThreadToast",
-    source: "apps/web/src/components/ui/toastHelpers.ts",
-    reason: "Builds a toast for a conversation; it needs a thread from the data layer.",
-  },
-  {
     name: "useSidebar, useOptionalSidebar, readSidebarOpen",
     source: "apps/web/src/components/ui/sidebar.tsx",
     reason: "Hooks and a stored-state read: behaviour, no look.",

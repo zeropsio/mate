@@ -312,7 +312,7 @@ function ComposerCommandMenuLayer(props: { anchor: HTMLElement | null; children:
 }
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { toastManager } from "../ui/toast";
+import { toastManager } from "~/lib/toasts";
 import { CircleAlertIcon, Maximize2Icon, Minimize2Icon } from "lucide-react";
 import { hasProviderSetup, providerAvailability } from "./providerAvailability.logic";
 import { AvailabilityDot, UnavailableAgentControl, availabilityName } from "./AgentAvailability";

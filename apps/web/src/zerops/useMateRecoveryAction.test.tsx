@@ -34,7 +34,7 @@ vi.mock("./zeropsContainers", () => ({
   readContainerInitAt: async () => undefined,
   intendContainer: () => {},
 }));
-vi.mock("~/components/ui/toast", () => ({ toastManager: { add: () => {} } }));
+vi.mock("~/lib/toasts", () => ({ toastManager: { add: () => {} } }));
 
 vi.mock("@tanstack/react-router", async (actual) => ({
   ...(await actual<typeof import("@tanstack/react-router")>()),

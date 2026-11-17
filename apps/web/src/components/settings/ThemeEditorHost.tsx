@@ -7,7 +7,7 @@ import {
   type ThemeAppearance,
   type ThemeDefinition,
 } from "../../themePalette";
-import { stackedThreadToast, toastManager } from "../ui/toast";
+import { stackedThreadToast, toastManager } from "~/lib/toasts";
 import { XIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import { Loading } from "../ui/loading";

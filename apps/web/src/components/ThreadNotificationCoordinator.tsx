@@ -31,7 +31,7 @@ import {
   type MatesBaseline,
   type WatchedMate,
 } from "./ThreadNotificationCoordinator.logic";
-import { toastManager } from "./ui/toast";
+import { toastManager } from "~/lib/toasts";
 import { threadStatusToneTextClass } from "./Sidebar.logic";
 import { cn } from "~/lib/utils";
 

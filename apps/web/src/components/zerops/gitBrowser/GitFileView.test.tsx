@@ -47,7 +47,7 @@ vi.mock("~/hooks/useCopyToClipboard", () => ({
     return true;
   },
 }));
-vi.mock("~/components/ui/toast", () => ({ toastManager: { add: () => undefined } }));
+vi.mock("~/lib/toasts", () => ({ toastManager: { add: () => undefined } }));
 vi.mock("~/zerops/useGitRaw", () => ({
   useGitRaw: () => ({
     view: { state: "unread", busy: false },

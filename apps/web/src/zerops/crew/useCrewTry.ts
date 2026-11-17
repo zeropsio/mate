@@ -24,7 +24,7 @@ import type { CrewCommand, EnvironmentId } from "@t3tools/contracts";
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import { ServiceBrowserLinkContext } from "../../components/ServiceBrowserLink";
-import { stackedThreadToast, toastManager } from "../../components/ui/toast";
+import { stackedThreadToast, toastManager } from "~/lib/toasts";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useZeropsTopology } from "../useZeropsFeeds";
 import { crewCommands } from "./crewCommands";

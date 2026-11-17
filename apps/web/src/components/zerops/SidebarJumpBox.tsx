@@ -44,7 +44,7 @@ import { useMateWrite } from "~/zerops/useMateWrite";
 import { useOpenMate } from "~/zerops/useOpenMate";
 import { useMatesActivity } from "~/zerops/useZeropsAgentActivity";
 
-import { stackedThreadToast, toastManager } from "../ui/toast";
+import { stackedThreadToast, toastManager } from "~/lib/toasts";
 import {
   chooseJumpItem,
   JumpBoxView,

@@ -21,8 +21,7 @@ import { useEnvironmentProjectClones } from "../state/projectClones";
 import { sourceControlEnvironment } from "../state/sourceControl";
 import { type DraftId, useComposerDraftStore } from "../composerDraftStore";
 import { useMateCommand, useMateHeld } from "../zerops/accountEnvironments";
-import { toastManager } from "./ui/toast";
-import { stackedThreadToast } from "./ui/toastHelpers";
+import { toastManager, stackedThreadToast } from "~/lib/toasts";
 
 /**
  * One toast per clone in flight, on every environment this browser keeps a

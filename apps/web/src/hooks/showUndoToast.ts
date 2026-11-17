@@ -4,7 +4,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 
-import { stackedThreadToast, toastManager } from "../components/ui/toast";
+import { stackedThreadToast, toastManager } from "~/lib/toasts";
 import type * as ThreadUndo from "./threadUndo";
 
 // Undo toasts still on screen, oldest first, so the `thread.undo` shortcut

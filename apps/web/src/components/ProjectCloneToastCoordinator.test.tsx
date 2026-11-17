@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import { bindAccountEnvironments } from "../zerops/accountEnvironments";
 import { ProjectCloneToastCoordinator } from "./ProjectCloneToastCoordinator";
-import { toastManager } from "./ui/toast";
+import { toastManager } from "~/lib/toasts";
 
 const reads = vi.hoisted(() => ({
   followed: [] as unknown[],

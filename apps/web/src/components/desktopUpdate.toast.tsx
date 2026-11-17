@@ -5,7 +5,7 @@ import {
   getDesktopUpdateDownloadedVersion,
   getDesktopUpdateReleaseUrl,
 } from "./desktopUpdate.logic";
-import { toastManager } from "./ui/toast";
+import { toastManager } from "~/lib/toasts";
 import { InlineButton } from "~/components/ui/button";
 
 type DesktopUpdateShell = Pick<DesktopBridge, "openExternal">;

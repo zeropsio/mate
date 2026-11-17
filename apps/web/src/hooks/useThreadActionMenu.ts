@@ -12,7 +12,7 @@ import {
   buildThreadActionMenuItems,
   type ThreadActionMenuId,
 } from "../components/threadActionMenu.logic";
-import { stackedThreadToast, toastManager } from "../components/ui/toast";
+import { stackedThreadToast, toastManager } from "~/lib/toasts";
 import { threadEnvironment } from "../state/threads";
 import { useAtomCommand } from "../state/use-atom-command";
 import { readEnvironmentSupportsTitleRegeneration, readThreadShell } from "../state/entities";

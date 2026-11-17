@@ -1,7 +1,7 @@
 import { useRef } from "react";
 
 import { Button } from "~/components/ui/button";
-import { anchoredToastManager, toastManager } from "~/components/ui/toast";
+import { anchoredToastManager, toastManager } from "~/lib/toasts";
 
 import { defineKitSection } from "../kitSection";
 import { Specimen, SpecimenBlock, SpecimenGrid } from "../Specimen";

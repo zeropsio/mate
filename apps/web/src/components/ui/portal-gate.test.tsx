@@ -17,7 +17,8 @@ import { Menu, MenuTrigger, MenuPopup, MenuItem } from "./menu";
 import { Popover, PopoverTrigger, PopoverPopup } from "./popover";
 import { Select, SelectTrigger, SelectPopup, SelectItem } from "./select";
 import { Sheet, SheetPopup, SheetTitle } from "./sheet";
-import { ToastProvider, toastManager } from "./toast";
+import { ToastProvider } from "./toast";
+import { toastManager } from "~/lib/toasts";
 import { Tooltip, TooltipTrigger, TooltipPopup } from "./tooltip";
 import { gatedPortal, PortalGate } from "./portal-gate";
 

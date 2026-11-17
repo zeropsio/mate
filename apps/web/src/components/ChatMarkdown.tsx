@@ -84,7 +84,7 @@ import { Button } from "./ui/button";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "./ui/collapsible";
 import { ScrollArea } from "./ui/scroll-area";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "./ui/menu";
-import { stackedThreadToast, toastManager } from "./ui/toast";
+import { stackedThreadToast, toastManager } from "~/lib/toasts";
 import {
   PreferredEditorEnvironmentRequiredError,
   useOpenInPreferredEditor,

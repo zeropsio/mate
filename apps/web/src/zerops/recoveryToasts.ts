@@ -1,5 +1,4 @@
-import { toastManager } from "~/components/ui/toast";
-import { stackedThreadToast } from "~/components/ui/toastHelpers";
+import { toastManager, stackedThreadToast } from "~/lib/toasts";
 
 /** What the shell shows of one outcome: a floating notification, never a region in the page. */
 export interface RecoveryToast {

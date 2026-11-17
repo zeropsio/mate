@@ -22,7 +22,7 @@ import { primaryServerKeybindingsAtom } from "../state/server";
 import { environmentShell } from "../state/shell";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
 import { buildThreadRouteParams, resolveThreadRouteTarget } from "../threadRoutes";
-import { toastManager } from "./ui/toast";
+import { toastManager } from "~/lib/toasts";
 
 /**
  * Mod+Shift+T puts the last closed right-panel tab back, in its own

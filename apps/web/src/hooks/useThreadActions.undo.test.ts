@@ -11,7 +11,7 @@ import { useThreadActions } from "./useThreadActions";
 import { projectMateLimit } from "@t3tools/client-runtime/data";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { threadEnvironment } from "../state/threads";
-import { toastManager } from "../components/ui/toast";
+import { toastManager } from "~/lib/toasts";
 import { zeropsFeeds } from "../zerops/feeds";
 
 const commands = vi.hoisted(() => ({
