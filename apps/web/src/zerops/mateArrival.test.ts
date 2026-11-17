@@ -2,7 +2,7 @@ import { deriveBirthProgress, type BirthFacts } from "@t3tools/client-runtime/ze
 import { parseMateSetup } from "@t3tools/client-runtime/zerops/mateSetup";
 import { describe, expect, it } from "vite-plus/test";
 
-import { signInPhrase } from "~/components/zerops/ZeropsAgentSignIn.logic";
+import { signInPhrase } from "@t3tools/client-runtime/zerops/agentSignIn";
 
 import {
   arrivalFace,

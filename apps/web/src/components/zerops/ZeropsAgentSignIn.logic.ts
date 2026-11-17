@@ -12,6 +12,10 @@
  * says for where the login stands.
  */
 import { agentAuthAction } from "@t3tools/client-runtime/zerops/agentLogin";
+import {
+  AGENT_SIGN_IN_CARDS,
+  ZEROPS_AGENT_NAMES,
+} from "@t3tools/client-runtime/zerops/agentSignIn";
 import type {
   ZeropsAgentAuth,
   ZeropsAgentId,
@@ -20,85 +24,11 @@ import type {
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
-export const ZEROPS_AGENT_NAMES = {
-  "claude-code": "Claude Code",
-  codex: "Codex",
-} as const satisfies Record<ZeropsAgentId, string>;
-
-/** Each agent as the sign-in introduces it: its name, whose account it needs, its provider's page. */
-export const AGENT_SIGN_IN_CARDS = {
-  "claude-code": {
-    name: "Claude Code",
-    account: "With your Claude account",
-    site: "Claude",
-    brand: "Claude",
-  },
-  codex: { name: "Codex", account: "With your ChatGPT account", site: "OpenAI", brand: "ChatGPT" },
-} as const satisfies Record<
-  ZeropsAgentId,
-  {
-    readonly name: string;
-    readonly account: string;
-    readonly site: string;
-    /** The subscription it signs in with, as its person knows it. */
-    readonly brand: string;
-  }
->;
-
-/** A piece of the words that tell a person they will sign a Mate in: plain, or an agent's brand. */
-export interface SignInPhrasePart {
-  readonly text: string;
-  /** The agent whose subscription this names, whose logo it wears. */
-  readonly agentId?: ZeropsAgentId;
-}
-
-/**
- * The person's own step wherever it is told ahead — the arrival's steps, the add dialogs' *What
- * happens next*: what they sign the Mate in with, every subscription the sign-in offers named by
- * its brand, in the sign-in's own order (the owner, 2026-09-30).
- */
-export function signInPhrase(mateName: string): ReadonlyArray<SignInPhrasePart> {
-  const brands = AGENT_ORDER.flatMap((agentId, index): ReadonlyArray<SignInPhrasePart> => [
-    ...(index === 0 ? [] : [{ text: index === AGENT_ORDER.length - 1 ? " or " : ", " }]),
-    { text: AGENT_SIGN_IN_CARDS[agentId].brand, agentId },
-  ]);
-  return [{ text: `You sign ${mateName} in with your ` }, ...brands, { text: " subscription" }];
-}
-
-/** The words of {@link signInPhrase}, whole. */
-export const signInPhraseWords = (parts: ReadonlyArray<SignInPhrasePart>): string =>
-  parts.map((part) => part.text).join("");
-
 /** What the one agent the project's other Mates are signed in with is called on its card. */
 export const USUAL_AGENT_WORD = "Usual";
 
 /** Why the card says so. */
 export const USUAL_AGENT_TITLE = "The agent this project's other Mates are signed in with";
-
-const AGENT_ORDER: ReadonlyArray<ZeropsAgentId> = ["claude-code", "codex"];
-
-const isAgentId = (value: string): value is ZeropsAgentId =>
-  (AGENT_ORDER as ReadonlyArray<string>).includes(value);
-
-/**
- * The project's usual agent: the one its other Mates are signed in with (`agentSelection.ts`, one
- * list per Mate). Where they use both, the one more of them use; a tie goes to the first in the
- * agents' own order. `null` where none of them is signed in with anything.
- */
-export function usualAgentOf(perMate: ReadonlyArray<ReadonlyArray<string>>): ZeropsAgentId | null {
-  const counts = new Map<ZeropsAgentId, number>();
-  for (const agents of perMate) {
-    for (const agent of new Set(agents)) {
-      if (isAgentId(agent)) counts.set(agent, (counts.get(agent) ?? 0) + 1);
-    }
-  }
-  let usual: ZeropsAgentId | null = null;
-  for (const agent of AGENT_ORDER) {
-    const count = counts.get(agent) ?? 0;
-    if (count > 0 && (usual === null || count > (counts.get(usual) ?? 0))) usual = agent;
-  }
-  return usual;
-}
 
 const RUNNING_PHASES: ReadonlySet<ZeropsAgentLoginState["phase"]> = new Set([
   "starting",

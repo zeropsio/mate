@@ -37,7 +37,7 @@ import {
   signInPhrase,
   signInPhraseWords,
   type SignInPhrasePart,
-} from "~/components/zerops/ZeropsAgentSignIn.logic";
+} from "@t3tools/client-runtime/zerops/agentSignIn";
 
 import { mateFaceFor } from "./agentActivity";
 import { mateComingHeadlineClauses } from "./mateComing";

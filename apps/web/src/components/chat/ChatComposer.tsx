@@ -31,7 +31,7 @@ import { USAGE_LIMITS_COMMAND } from "@t3tools/shared/usageLimits";
 import { isZeropsInstanceRunnable } from "@t3tools/client-runtime/data";
 import { useAgentLoginCancel } from "../../zerops/useAgentLoginCancel";
 import { useZeropsAgentSignInDialog } from "../../zerops/useZeropsAgentSignInDialog";
-import { ZEROPS_AGENT_NAMES } from "../zerops/ZeropsAgentSignIn.logic";
+import { ZEROPS_AGENT_NAMES } from "@t3tools/client-runtime/zerops/agentSignIn";
 import { ZeropsAgentPickerPanel } from "../zerops/ZeropsAgentPickerPanel";
 import { automatedMateEntries, automatedRunsOnLine } from "../../zerops/automatedMate.logic";
 import { CrewRunsOnControl } from "../zerops/crew/CrewRunsOnControl";

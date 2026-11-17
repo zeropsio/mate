@@ -11,12 +11,11 @@ import {
   openAgentOf,
   signInAgents,
   signInBeingFinished,
-  signInPhrase,
   SIGN_IN_FAILED_LINE,
-  usualAgentOf,
   replacedSignInLine,
   startsAtOnce,
 } from "./ZeropsAgentSignIn.logic";
+import { signInPhrase, usualAgentOf } from "@t3tools/client-runtime/zerops/agentSignIn";
 
 const at = (iso: string): DateTime.Utc => Option.getOrThrow(DateTime.make(iso));
 

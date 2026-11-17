@@ -9,8 +9,10 @@
  * (`ZeropsAgentSignIn.logic.ts`, `ZeropsGroupTree.logic.ts`):
  * the component renders exactly what this resolves, nothing more.
  */
-import { AGENT_OWNERSHIP_RECOVERY_LABEL } from "@t3tools/client-runtime/zerops/agentSignIn";
-import { ZEROPS_AGENT_NAMES } from "./ZeropsAgentSignIn.logic";
+import {
+  AGENT_OWNERSHIP_RECOVERY_LABEL,
+  ZEROPS_AGENT_NAMES,
+} from "@t3tools/client-runtime/zerops/agentSignIn";
 import type {
   ZeropsAgentAuthUnknown,
   ZeropsAgentAvailability,

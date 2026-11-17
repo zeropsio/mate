@@ -16,7 +16,11 @@
  */
 import { crewPossessive } from "@t3tools/client-runtime/zerops/crew/phrases";
 
-import { signInPhrase, signInPhraseWords, type SignInPhrasePart } from "./ZeropsAgentSignIn.logic";
+import {
+  signInPhrase,
+  signInPhraseWords,
+  type SignInPhrasePart,
+} from "@t3tools/client-runtime/zerops/agentSignIn";
 import type { NewMateRecipe } from "./ZeropsEnvironmentCreationDialog.logic";
 import { KEEP_TAB_OPEN_LINE } from "~/zerops/mateArrival";
 

@@ -63,7 +63,6 @@ import { appChunk } from "~/lib/appChunks";
 import { ArrivalSpinner } from "./ZeropsArrivalSteps";
 import {
   abbreviatedCode,
-  AGENT_SIGN_IN_CARDS,
   agentSignInSteps,
   agentSignInWords,
   currentAttempt,
@@ -80,6 +79,7 @@ import {
   USUAL_AGENT_WORD,
   type AgentSignInSteps,
 } from "./ZeropsAgentSignIn.logic";
+import { AGENT_SIGN_IN_CARDS } from "@t3tools/client-runtime/zerops/agentSignIn";
 
 const TerminalViewport = lazy(
   appChunk(() =>

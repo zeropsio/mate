@@ -15,7 +15,7 @@ import {
   type RuntimesLine,
 } from "~/zerops/mateArrival";
 
-import type { SignInPhrasePart } from "./ZeropsAgentSignIn.logic";
+import type { SignInPhrasePart } from "@t3tools/client-runtime/zerops/agentSignIn";
 
 const SERVICE_STATE_WORDS: Readonly<Record<ArrivalService["state"], string>> = {
   ok: "running",

@@ -18,7 +18,7 @@ import type { ZeropsAgentId } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 import { useEffect, useMemo, useState } from "react";
 
-import { usualAgentOf } from "../components/zerops/ZeropsAgentSignIn.logic";
+import { usualAgentOf } from "@t3tools/client-runtime/zerops/agentSignIn";
 import { useZeropsCandidates } from "./useZeropsCandidates";
 import { useAccountDataOptional, useProjection } from "./ZeropsAccountData";
 
