@@ -22,7 +22,7 @@ export interface AppEnvironmentsRead {
   readonly environments: ReadonlyArray<HqDeliveryEnvironment> | undefined;
   /** Environments HQ sent that this build cannot read: present, never an application without them. */
   readonly unread: ReadonlyArray<UnreadEnvironment>;
-  /** Its recent rollouts, with the environments; absent from an older HQ. */
+  /** Its recent rollouts, with the environments. */
   readonly rollouts?: ReadonlyArray<HqNavigationRollout>;
   /** Its production where it is deployed outside Mate; absent where none stands, or while untold. */
   readonly outside?: HqOutsideEnvironment;

@@ -71,7 +71,7 @@ export const HqJob = Schema.Struct({
   at: Schema.String,
   endedAt: Schema.NullOr(Schema.String),
   supersededBy: Schema.NullOr(Schema.String),
-  /** A delta's: the services it creates, by hostname. Absent from an older HQ, and for a deploy. */
+  /** A delta's: the services it creates, by hostname. Absent for a deploy. */
   services: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 export type HqJob = typeof HqJob.Type;
@@ -98,7 +98,7 @@ export const HqEnvironment = Schema.Struct({
   keyInvalid: Schema.Boolean,
   /** The Zerops id of the token held, never its value; absent where HQ records none. */
   keyId: Schema.optionalKey(Schema.String),
-  /** True only when HQ proves it created this production target. Older HQs make no claim. */
+  /** True only when HQ proves it created this production target; absent: no claim. */
   deleteProjectOnRemoval: Schema.optionalKey(Schema.Boolean),
   /** Its newest jobs, newest first, and each service's newest live one where it is older. */
   jobs: Schema.Array(HqJob),

@@ -151,12 +151,12 @@ export interface HqNewMate extends HqMateRecord {
   readonly standUp?: boolean;
   /**
    * It is made automated (`LinkedMate.automated`): it takes tasks from outside and runs on the
-   * organization's API key. Set at its making, never changed; an older HQ ignores it.
+   * organization's API key. Set at its making, never changed.
    */
   readonly automated?: true;
   /**
    * The persona its stand-up runs with: its server takes it at its stand-up when it holds none.
-   * HQ keeps it only with a stand-up ask; an older HQ ignores it.
+   * HQ keeps it only with a stand-up ask.
    */
   readonly standupPersona?: MatePersona;
 }
@@ -179,11 +179,11 @@ export interface HqMate extends Partial<HqMateRecord> {
   readonly importProcessId?: string | undefined;
   readonly signers?: Readonly<Record<string, ZeropsUserId>>;
   /**
-   * Who made it — whoever set its record up: a Mate recorded before HQ kept it is null; an older
-   * HQ says nothing.
+   * Who made it — whoever set its record up: a Mate recorded before HQ kept it is null; absent:
+   * not read yet.
    */
   readonly madeBy?: string | null | undefined;
-  /** Who asked for its stand-up, with its record: nobody is null; an older HQ says nothing. */
+  /** Who asked for its stand-up, with its record: nobody is null; absent: not read yet. */
   readonly standupRequestedBy?: string | null | undefined;
   /** Who signed each of its agents' logins in, as its overview says; absent where HQ holds none. */
   readonly logins?: OverviewLogins;
@@ -191,10 +191,10 @@ export interface HqMate extends Partial<HqMateRecord> {
   readonly runsWithoutSignIn?: boolean;
   /**
    * It takes tasks from outside and runs on the organization's API key, never on a person's
-   * sign-in (`HqNavigationMate.automated`); absent from an older HQ: not one.
+   * sign-in (`HqNavigationMate.automated`); absent: not one.
    */
   readonly automated?: boolean | undefined;
-  /** The task an automated Mate is on, or none; absent from an older HQ. */
+  /** The task an automated Mate is on, or none. */
   readonly task?: HqNavigationMateTask | null | undefined;
   /** Zerops refused its key and HQ dropped it, until a hand-over admits a new one. */
   readonly keyRefused?: true | undefined;
@@ -250,18 +250,21 @@ export interface HqStructure {
     >;
     /** What the person may do with it: its changes, its deploys, its release (`applicationOffers`). */
     readonly can?: HqOffers;
-    /** Absent from an older HQ: projected projects cannot establish emptiness. */
+    /**
+     * Absent while HQ's record of the application is not read whole: projected projects cannot
+     * establish emptiness.
+     */
     readonly contents?: HqAppContents;
     /**
      * Its stage and production with their deploys (`hq/environments.ts`); absent where HQ sent none
      * this build can read.
      */
     readonly environments?: ReadonlyArray<CanonicalHqEnvironment & HqOffered>;
-    /** The Mates on their way into it whose attach has not landed; absent from an older HQ. */
+    /** The Mates on their way into it whose attach has not landed. */
     readonly births?: ReadonlyArray<HqBirth>;
     /**
      * Where its automated Mates take tasks from, and how many wait for one to be free; null:
-     * nowhere; absent from an older HQ.
+     * nowhere.
      */
     readonly intake?: HqNavigationIntake | null;
     /**

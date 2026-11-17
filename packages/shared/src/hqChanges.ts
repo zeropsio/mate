@@ -285,17 +285,17 @@ export const HqChange = Schema.Struct({
   corePush: Schema.optionalKey(HqCorePush),
   /**
    * On an open change: the newest comment a person left on it ({@link HqLastComment}). Absent
-   * while it has none, on a merged or closed change, and from an older HQ.
+   * while it has none, and on a merged or closed change.
    */
   lastComment: Schema.optionalKey(HqLastComment),
   /**
    * On an open change: somebody asked for it to be merged ({@link HqMergeAsk}). Absent where
-   * nobody asked, on a merged or closed change, and from an older HQ.
+   * nobody asked, and on a merged or closed change.
    */
   mergeAsk: Schema.optionalKey(HqMergeAsk),
   /**
    * On an open change: the other open changes of its repository its head holds, nearest first, so
-   * it merges after them. Absent where it builds on none, and from an older HQ.
+   * it merges after them. Absent where it builds on none.
    */
   buildsOn: Schema.optionalKey(Schema.Array(ChangeNumber)),
   /**
@@ -640,13 +640,12 @@ export const MateChange = Schema.Struct({
   draftReason: Schema.optionalKey(HqDraftReason),
   /**
    * On an open change: whether it asks for review, described at its head ({@link HqChange}
-   * `ready`); a draft otherwise. Absent on a merged or closed one, and from an older HQ.
+   * `ready`); a draft otherwise. Absent on a merged or closed one.
    */
   ready: Schema.optionalKey(Schema.Boolean),
   /**
    * On an open change: how it merges into `main` and whether `main` moved past its merge base, as
-   * HQ last judged it ({@link HqChange} `mergeability`, `behind`). Absent on a merged or closed one,
-   * and from an older HQ.
+   * HQ last judged it ({@link HqChange} `mergeability`, `behind`). Absent on a merged or closed one.
    */
   mergeability: Schema.optionalKey(MergeabilityKind),
   behind: Schema.optionalKey(Schema.Boolean),
@@ -670,13 +669,12 @@ export const MateChanges = Schema.Struct({
   changes: Schema.Array(MateChange),
   /**
    * For a Mate in an application: this HQ keeps a Mate's open change per branch it names beside its
-   * default change ({@link OpenChangeRequest}). Absent from an older HQ, which keeps one open change
-   * per Mate and repository off any task, and for a Mate in no application.
+   * default change ({@link OpenChangeRequest}). Absent for a Mate in no application.
    */
   openPerBranch: Schema.optionalKey(Schema.Literal(true)),
   /**
    * For a Mate in an application that limits who merges and releases: the person it works for may
-   * be unable to merge. Absent where nothing is limited, and from an older HQ.
+   * be unable to merge. Absent where nothing is limited or it is in no application.
    */
   mergeLimited: Schema.optionalKey(Schema.Literal(true)),
 });

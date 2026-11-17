@@ -250,12 +250,12 @@ export const hqScopeKey = (scope: HqScope): string => {
 export const HqPersonFacts = Schema.Struct({
   mine: Schema.Boolean,
   ownerUserId: Schema.NullOr(Schema.String),
-  /** This Mate's person's registered Chief; absent from an older HQ. */
+  /** The viewer's own Chief, on Mates the viewer owns. */
   chiefProjectId: Schema.optionalKey(Schema.NullOr(Schema.String)),
   waitsOnViewer: Schema.Boolean,
   /** Today's overview does not prove result identities: unknown until source attention arrives. */
   unseen: Schema.NullOr(Schema.Int),
-  /** The project is a Chief: the viewer's own, or another person's. Absent from an older HQ. */
+  /** The project is a Chief: the viewer's own, or another person's. */
   chief: Schema.optionalKey(Schema.Literals(["mine", "another"])),
 });
 export type HqPersonFacts = typeof HqPersonFacts.Type;
@@ -277,7 +277,7 @@ export const HqNavigationMateTask = Schema.Struct({
   stopping: Schema.optionalKey(Schema.Literal(true)),
   /**
    * Its Mate finished it and its change waits for review: the Mate holds it until the change is
-   * merged or closed. Absent: at work, waiting, stopping, or ended (`ended`), or an older HQ.
+   * merged or closed. Absent: at work, waiting, stopping, or ended (`ended`).
    */
   done: Schema.optionalKey(Schema.Literal(true)),
   /** The pull request its change is mirrored to on GitHub; absent where none. */
@@ -291,10 +291,10 @@ export const HqNavigationMateTask = Schema.Struct({
   endedAt: Schema.optionalKey(Schema.String),
   /**
    * Why HQ stopped it, for a stopped task: this month's budget spent, or its question unanswered
-   * for three days. Absent: a person or its Mate stopped it, or an older HQ.
+   * for three days. Absent: a person or its Mate stopped it.
    */
   why: Schema.optionalKey(Schema.Literals(["budget", "unanswered"])),
-  /** When its Mate took it; absent from an older HQ. */
+  /** The time its Mate accepted it. */
   startedAt: Schema.optionalKey(Schema.String),
   /** What it cost and how long it worked so far, as its Mate last reported. */
   spentUsd: Schema.optionalKey(Schema.Number),
@@ -308,7 +308,7 @@ export const HqNavigationMate = Schema.Struct({
   birthId: Schema.optionalKey(Schema.String),
   /** The accepted setup import, retained after its browser press ends. */
   importProcessId: Schema.optionalKey(Schema.String),
-  /** An automated Mate (`LinkedMate.automated`); absent from an older HQ: not one. */
+  /** An automated Mate (`LinkedMate.automated`); absent: not one. */
   automated: Schema.optionalKey(Schema.Boolean),
   /**
    * Zerops refused the Mate's key and HQ has admitted none since: it cannot connect until somebody
@@ -347,7 +347,7 @@ export const HqNavigationJob = Schema.Struct({
   at: Schema.String,
   endedAt: Schema.NullOr(Schema.String),
   supersededBy: Schema.NullOr(Schema.String),
-  /** A delta's: the services it creates, by hostname. Absent from an older HQ, and for a deploy. */
+  /** A delta's: the services it creates, by hostname. Absent for a deploy. */
   services: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 export type HqNavigationJob = typeof HqNavigationJob.Type;
@@ -514,18 +514,17 @@ export const HqNavigationApp = Schema.Struct({
   births: Schema.Array(Schema.Unknown),
   /**
    * Where the application's automated Mates take tasks from (`HqIntake`), and how many wait for
-   * one of them to be free; null: nowhere. Absent from an older HQ.
+   * one of them to be free; null: nowhere.
    */
   intake: Schema.optionalKey(Schema.NullOr(HqNavigationIntake)),
   /**
-   * Who merges its changes, where it limits that (`HqMergers`): the organization's Owner and
-   * Admins, and the people it names. Absent, or null: whoever may push merges. An older HQ never
-   * sends it.
+   * Who merges its changes, present only where it limits that (`HqMergers`): the organization's
+   * Owner and Admins, and the people it names. Absent, or null: whoever may push merges.
    */
   mergers: Schema.optionalKey(Schema.NullOr(HqMergers)),
   /**
-   * Its recent rollouts, newest first, to whoever reads its environments. Absent from an older HQ,
-   * and a rollout not listed: not known, never planned.
+   * Its recent rollouts, newest first, to whoever reads its environments. A rollout not listed: not
+   * known, never planned.
    */
   rollouts: Schema.optionalKey(Schema.Array(HqNavigationRollout)),
   /** Its stages and productions the person's token does not reach; absent: none. */
