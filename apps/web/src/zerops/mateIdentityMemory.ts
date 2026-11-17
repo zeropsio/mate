@@ -53,6 +53,22 @@ export function readMateMemory(
   }
 }
 
+/**
+ * What the last visit remembered of the Mate of `projectId`: the one in `environmentId` where the
+ * caller knows it, else the project's only one. A page that names its Mate by project paints it on
+ * its first frame from this, before HQ answers.
+ */
+export function rememberedMateOf(
+  memory: MateMemory,
+  projectId: string,
+  environmentId?: string | undefined,
+): HqMateIdentity | undefined {
+  const atEnvironment = environmentId === undefined ? undefined : memory[environmentId];
+  if (atEnvironment?.projectId === projectId) return atEnvironment;
+  const ofProject = Object.values(memory).filter((identity) => identity.projectId === projectId);
+  return ofProject.length === 1 ? ofProject[0] : undefined;
+}
+
 export function writeMateMemory(
   memory: MateMemory,
   storage: Pick<Storage, "setItem"> | undefined = accountStorage(),

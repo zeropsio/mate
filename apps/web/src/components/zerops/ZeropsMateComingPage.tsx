@@ -109,6 +109,7 @@ import {
   zeropsMateIdentityOf,
   type ZeropsMateIdentity,
 } from "~/zerops/mateIdentities";
+import { readMateMemory, rememberedMateOf } from "~/zerops/mateIdentityMemory";
 import { useZeropsMateDirectory } from "~/zerops/useZeropsMates";
 import { takeMateConversation } from "~/zerops/mateOpening";
 import {
@@ -392,30 +393,39 @@ function ExistingMateComingPage({
   // The person's own Chief, by HQ's word or before HQ names it.
   const ownChief = useOwnChief();
 
-  // HQ names it as the menu does. Before registration, its creation or press names it.
+  // HQ names it as the menu does; before HQ answers, the last visit's memory of it does, as it does
+  // the menu's row and the conversation's header. Before registration, its creation or press names
+  // it. Nothing names it: no name and no face — never one the next frame replaces.
   const identity = useAtomValue(shownHqMateIdentitiesAtom)[projectId];
-  const hqStructure = useAtomValue(shownHqMenuNavigationAtom).structure;
+  const hqNavigation = useAtomValue(shownHqMenuNavigationAtom);
+  const hqStructure = hqNavigation.structure;
+  const hqAnswered = hqNavigation.read === "read";
+  const rememberedAt = link.environmentId;
+  const remembered = useMemo(
+    () => rememberedMateOf(readMateMemory(), projectId, rememberedAt),
+    [projectId, rememberedAt],
+  );
   const tints = useMemo(() => assignCandidateMateTints(held.rows), [held.rows]);
   const mate = useMemo((): ZeropsMateIdentity => {
-    if (identity !== undefined)
-      return {
-        ...(candidate === undefined ? {} : zeropsMateIdentityOf(candidate, tints)),
-        ...identity,
-        projectId,
-        connected: candidate?.group === "connected",
-      };
-    if (candidate !== undefined) {
-      // Listed before HQ records it: the face picked at its Add — its creation's or its press's,
-      // else its open birth's at HQ — never its name's slate in between.
-      const picked =
-        creation?.face ?? press?.placement?.face ?? birthFaceOf(hqStructure, projectId);
+    const connected = candidate?.group === "connected";
+    const body = candidate === undefined ? undefined : zeropsMateIdentityOf(candidate, tints);
+    const named = identity ?? remembered;
+    if (named !== undefined) return { ...body, ...named, projectId, connected };
+    // Listed before HQ records it: the face picked at its Add — its creation's or its press's,
+    // else its open birth's at HQ — never its name's slate in between.
+    const picked = creation?.face ?? press?.placement?.face ?? birthFaceOf(hqStructure, projectId);
+    const app = creation?.name ?? press?.placement?.groupName;
+    // The listing's own name and face are HQ's once HQ placed it, and all there is once HQ answered
+    // without naming it. Before that they are a guess HQ's answer replaces ("<Project> · <Mate>"
+    // in a hashed tint): only what this tab made names it then.
+    const listingNames = candidate?.project.hq !== undefined || hqAnswered;
+    if (candidate !== undefined && body !== undefined && (listingNames || app !== undefined)) {
       const listed = {
-        ...zeropsMateIdentityOf(candidate, tints),
+        ...body,
         ...(picked === undefined ? {} : { tint: picked.tint, shape: picked.shape }),
       };
       // Listed before HQ places it: no application to cut its name under, but its creation or its
       // press knows it, so its name is its own all along.
-      const app = creation?.name ?? press?.placement?.groupName;
       if (readZeropsMembership(candidate.project).groupId !== undefined || app === undefined)
         return listed;
       // Its headline keeps saying where it comes up: the listing knows no application yet.
@@ -425,20 +435,39 @@ function ExistingMateComingPage({
         project: listed.project ?? app,
       };
     }
-    // A retained project label is not a Mate identity; only explicit Mate naming survives here.
-    const face = creation?.face ?? press?.placement?.face ?? NO_FACE;
+    // A retained project label is not a Mate identity; only explicit Mate naming survives here —
+    // with none, its name is empty and its views hold its face's seat (`shownMate`). A listed row
+    // lends only its body: its service, whether it runs, its arrival's clock.
+    const face = picked ?? NO_FACE;
     return {
+      ...(body === undefined
+        ? {}
+        : { serviceId: body.serviceId, running: body.running, arrivingUntil: body.arrivingUntil }),
       name: creation?.botName ?? press?.placement?.displayName ?? "",
       projectId,
       tint: face.tint,
       shape: face.shape,
-      project: creation?.name ?? press?.placement?.groupName,
+      project: app,
       projectUrl: zeropsProjectUrl(projectId),
-      connected: false,
+      connected,
       // This tab made it: the person looking asked for its stand-up.
       ...(creation !== undefined && viewer !== undefined ? { standUp: { by: viewer } } : {}),
     };
-  }, [identity, press, candidate, creation, projectId, tints, viewer, hqStructure]);
+  }, [
+    identity,
+    remembered,
+    press,
+    candidate,
+    creation,
+    projectId,
+    tints,
+    viewer,
+    hqStructure,
+    hqAnswered,
+  ]);
+  // Who its stage draws: nobody while nothing names it — the face's seat held empty, never a face
+  // its name's arrival replaces.
+  const shownMate = mate.name === "" ? null : mate;
   const isChief = mate.chief === true || ownChief === projectId;
 
   // Up: its main conversation, read live, and its agents' sign-in — what the conversation paints
@@ -1015,7 +1044,7 @@ function ExistingMateComingPage({
   const keyRefusedView =
     keyRefused === null ? null : (
       <MateEmptyStateView
-        mate={named}
+        mate={shownMate}
         phase={null}
         signIn={null}
         signInRequired={false}
@@ -1107,18 +1136,18 @@ function ExistingMateComingPage({
             <ConversationOpeningStage
               ready={false}
               name={named.name}
-              mate={named}
+              mate={shownMate}
               activity={liveActivity ?? toldActivity}
               refusal={linkVoice.surface === "none" ? undefined : linkVoice.refusal}
               timestampFormat={timestampFormat}
             />
           ) : view === null ? null : (
-            <ConversationOpeningStage ready={false} name={named.name} mate={named}>
+            <ConversationOpeningStage ready={false} name={named.name} mate={shownMate}>
               <MateEmptyStateView
                 coming={view}
                 // Handed over to from the creation's view, whose headline held the focus.
                 focusOnArrival={made !== undefined}
-                mate={{ ...(shown === undefined ? named : mate), connected: stageAwake }}
+                mate={shownMate === null ? null : { ...shownMate, connected: stageAwake }}
                 phase={handingArrival ? empty.phase : phaseAhead}
                 standUpFailure={empty.standUpFailure}
                 signIn={handingArrival ? empty.signIn : null}
