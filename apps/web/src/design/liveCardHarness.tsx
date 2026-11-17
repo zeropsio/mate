@@ -1843,7 +1843,9 @@ function messageMateEntry(
         zerops: { toolName: "zerops_message_mate", ...(returned ? { resultText } : {}) },
       },
       // As the engine's projection hands it on: its project named from the navigation.
-      ...(returned ? { mateMessageSent: { id: SENT_ID, to: FEN, delivery: "now" } } : {}),
+      ...(returned
+        ? { mateMessageSent: { id: SENT_ID, to: FEN, delivery: "now", words: item.words } }
+        : {}),
       toolLifecycleStatus: returned ? "completed" : "inProgress",
       sourceActivityKind: returned ? "tool.completed" : "tool.started",
       ...(returned ? { updatedAt: iso(item.end) } : {}),

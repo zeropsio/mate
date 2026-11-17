@@ -1,4 +1,4 @@
-import { Children, cloneElement, isValidElement, type ReactNode } from "react";
+import { Children, cloneElement, Fragment, isValidElement, use, type ReactNode } from "react";
 import type { ServerProviderSkill } from "@t3tools/contracts";
 import { formatProviderSkillDisplayName } from "@t3tools/client-runtime/providerSkills";
 
@@ -9,40 +9,57 @@ import {
   SKILL_CHIP_ICON_SVG,
 } from "../composerInlineChip";
 import { cn } from "~/lib/utils";
+import { MateMentionsContext, renderMateMentions } from "./MateMentionChip";
 
 const SKILL_TOKEN_REGEX =
   /(^|\s)\p{Sc}(?![0-9][0-9_]*(?:[kKmMbBtT]|[eE][0-9]+)?(?:\s|$))(?=[a-zA-Z0-9:_-]*[a-zA-Z])([a-zA-Z0-9][a-zA-Z0-9:_-]*)(?=\s|$)/gu;
 
 type InlineSkill = Pick<ServerProviderSkill, "name" | "displayName">;
 
+/**
+ * Words with each `$skill` drawn as its chip, and, in a person's bubble (`MateMentionsContext`),
+ * each `@Name` of one of their Mates drawn as that Mate.
+ */
 export function SkillInlineText(props: { text: string; skills: ReadonlyArray<InlineSkill> }) {
+  const mates = use(MateMentionsContext);
+  if (mates === null) return <>{skillText(props.text, props.skills)}</>;
+  return (
+    <>
+      {renderMateMentions(props.text, mates, (text, key) => (
+        <Fragment key={key}>{skillText(text, props.skills)}</Fragment>
+      ))}
+    </>
+  );
+}
+
+function skillText(text: string, skills: ReadonlyArray<InlineSkill>): ReactNode {
   const nodes: ReactNode[] = [];
   let cursor = 0;
 
-  for (const match of props.text.matchAll(SKILL_TOKEN_REGEX)) {
+  for (const match of text.matchAll(SKILL_TOKEN_REGEX)) {
     const prefix = match[1] ?? "";
     const name = match[2] ?? "";
     const start = (match.index ?? 0) + prefix.length;
     const rawText = `$${name}`;
-    const skill = props.skills.find((candidate) => candidate.name === name);
+    const skill = skills.find((candidate) => candidate.name === name);
     if (!skill) {
       continue;
     }
 
     if (start > cursor) {
-      nodes.push(props.text.slice(cursor, start));
+      nodes.push(text.slice(cursor, start));
     }
     nodes.push(<SkillChip key={`${start}:${name}`} skill={skill} rawText={rawText} />);
     cursor = (match.index ?? 0) + match[0].length;
   }
 
   if (cursor === 0) {
-    return <>{props.text}</>;
+    return text;
   }
-  if (cursor < props.text.length) {
-    nodes.push(props.text.slice(cursor));
+  if (cursor < text.length) {
+    nodes.push(text.slice(cursor));
   }
-  return <>{nodes}</>;
+  return nodes;
 }
 
 export function renderSkillInlineMarkdownChildren(

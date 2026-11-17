@@ -44,6 +44,8 @@ const MessageEntry = Schema.Struct({
    * again, under the same command id, never to another conversation.
    */
   target: Schema.optionalKey(Schema.String),
+  /** An answer's: the conversation whose call sent its ask, where it is told the answer was heard. */
+  askedFrom: Schema.optionalKey(Schema.String),
   /**
    * How many sends the conversation took back for now (a temporary refusal, an admission that
    * refused its run before it began): each next one goes under a command id of its own.

@@ -6,6 +6,7 @@
  *
  * @module engine/read/conversationView
  */
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -21,6 +22,8 @@ import {
   RunTrigger,
   WORK_ALIVE,
   type BackgroundWorkItem,
+  MATE_ANSWER_WAIT_MS,
+  type MateMessageItem,
   type ConversationAgent,
   type RunState,
   type RuntimeMode,
@@ -31,6 +34,7 @@ import { userAskOf } from "@t3tools/shared/userAsk";
 
 import { Conversations } from "../Conversations.ts";
 import { isUsageWake } from "../domain/evolve.ts";
+import type { AwaitedAnswer } from "../domain/mateAsks.ts";
 
 /** How many of the person's newest messages the last ask looks through: past this many commands
  * in a row it is none. */
@@ -109,9 +113,21 @@ export interface ConversationView {
   /**
    * The same, among the messages the person typed: a request a page sent for them (`fromPanel`)
    * or a follow-up on a task (`taskMessage`) is a word on the conversation, never its subject —
-   * what the menu row and the header name it by.
+   * what the person last asked; decisions read it.
    */
   readonly lastAsked: ConversationView["lastPerson"];
+  /**
+   * The latest ask whoever made it: `lastAsked`, or another Mate's message after it, with that
+   * Mate (`mateMessage`): what the menu row and the header name the conversation by.
+   */
+  readonly latestAsk:
+    | (NonNullable<ConversationView["lastPerson"]> & { readonly mateMessage?: MateMessageItem })
+    | null;
+  /**
+   * The messages it sent other Mates that no answer met yet, oldest first: while no later run a
+   * person's or a Mate's message started ended, and for at most `MATE_ANSWER_WAIT_MS`.
+   */
+  readonly awaits: ReadonlyArray<AwaitedAnswer>;
   /** The agent's latest words, once said whole. */
   readonly lastAgent: { readonly text: string; readonly at: number } | null;
   /** The newest call of the run on, while it runs. */
@@ -261,6 +277,9 @@ export const readConversationView = (conversationId: ConversationId) =>
                   text: body.text,
                   at: row.at,
                   ...(body.kind === "person" ? { attachments: body.attachments } : {}),
+                  ...(body.kind === "person" && body.mateMessage !== undefined
+                    ? { mateMessage: body.mateMessage }
+                    : {}),
                 }
               : null,
           );
@@ -279,6 +298,22 @@ export const readConversationView = (conversationId: ConversationId) =>
         }
         return null;
       });
+    // The person's latest typed ask, and another Mate's latest message: whichever came later is
+    // the latest ask. A Mate's message always has words, so it always asks.
+    const lastAsks = Effect.gen(function* () {
+      const asked = yield* lastAskOf({ typed: true });
+      // The fold keeps which item it is: one row by its id, never a scan.
+      const [mate] =
+        state.lastMateItem === null
+          ? []
+          : yield* sql<{ readonly body_json: string; readonly at: number }>`
+              SELECT body_json, at FROM engine_item WHERE item_id = ${state.lastMateItem}
+            `;
+      const fromMate = yield* textOf(mate);
+      const said: ConversationView["latestAsk"] =
+        fromMate !== null && (asked === null || fromMate.at > asked.at) ? fromMate : asked;
+      return { said, asked };
+    });
     const call = activeRun === null ? undefined : yield* item({ kind: "call", open: true });
     const callBody =
       call === undefined || call.run_id !== activeRun?.id
@@ -316,6 +351,8 @@ export const readConversationView = (conversationId: ConversationId) =>
             },
           ],
     );
+    const asks = yield* lastAsks;
+    const now = yield* Clock.currentTimeMillis;
     const usageResumes = Object.values(state.wakes).flatMap((wake) =>
       isUsageWake(wake.kind) && wake.joins !== null ? [wake.joins] : [],
     );
@@ -342,7 +379,10 @@ export const readConversationView = (conversationId: ConversationId) =>
         })),
       ),
       lastPerson: yield* lastAskOf({}),
-      lastAsked: yield* lastAskOf({ typed: true }),
+      lastAsked: asks.asked,
+      latestAsk: asks.said,
+      // Waited on for at most a day; the fold drops one a later run a message started outlived.
+      awaits: state.awaits.filter((awaited) => now - awaited.at < MATE_ANSWER_WAIT_MS),
       lastAgent: yield* textOf(yield* item({ kind: "note", open: false, by: "mate" })),
       liveCall:
         callBody?.kind === "call" && call !== undefined

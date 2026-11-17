@@ -52,6 +52,7 @@ import {
   type RunEnd,
   ZeropsUserId,
   mateMessageItemOf,
+  mateMessageNamesOf,
   mateMessageSenderName,
 } from "@t3tools/contracts";
 import type { KeyLinkUp } from "@t3tools/shared/mateLink";
@@ -107,16 +108,16 @@ export class ZeropsMateMessages extends Context.Service<
 
 /**
  * What the asked Mate's agent hears of a message: the shared contract's words. Its sender's
- * project is named only where HQ names both it and the Mate; with one of them empty the other is
- * the sender's name, "Another Mate" with neither.
+ * project is named only where both it and the Mate are named, HQ's one name split into the two
+ * where it gives no project's; with one of them empty the other is the sender's name, "Another
+ * Mate" with neither.
  */
 export const toldOf = (message: MateMessage): string => {
   const name = mateMessageSenderName(message.from);
-  const project = message.from.projectName.trim();
+  // HQ's one name ("Frontend Legacy - Mavi") is the Mate and its project (`mateMessageNamesOf`).
+  const { mate, project } = mateMessageNamesOf(message.from);
   const sender =
-    project === "" || message.from.mateName.trim() === ""
-      ? name
-      : `${name} (the Mate of the project "${project}")`;
+    project === "" || mate === "" ? name : `${name} (the Mate of the project "${project}")`;
   if (message.kind === "answer") {
     return [
       `${sender} answered the message you sent it:`,
@@ -234,10 +235,19 @@ export const make = Effect.gen(function* () {
         ...(words === undefined ? {} : { words }),
       }))
       .pipe(
-        Effect.flatMap((entry) => {
+        Effect.tap((entry) => {
           const up = endedUp(id, entry);
           return up === undefined ? Effect.void : PubSub.publish(ends, up);
         }),
+        // An answer settled anyhow: the conversation that asked waits on it no more — told only
+        // where it did not open there, which already said so.
+        Effect.tap((entry) =>
+          entry.message?.kind === "answer" &&
+          entry.message.inReplyTo !== undefined &&
+          (entry.conversationId === undefined || entry.conversationId !== entry.askedFrom)
+            ? answerHeardIn(id, entry.askedFrom, entry.message.inReplyTo)
+            : Effect.void,
+        ),
         Effect.andThen(FiberMap.remove(deadlines, id)),
         Effect.andThen(Effect.logInfo("zerops mate messages: a message ended", { end })),
         Effect.catchTags({
@@ -248,6 +258,37 @@ export const make = Effect.gen(function* () {
             }),
         }),
       );
+
+  /**
+   * Tells the conversation whose call sent `askId` that its answer was heard, where that is not
+   * where the answer opened (declined, settled, placed in another conversation): its row waits on
+   * it no more. Under the answer's id, so one told twice is recorded once.
+   */
+  const answerHeardIn = (answerId: string, askedFrom: string | undefined, askId: string) =>
+    Effect.gen(function* () {
+      const conversation = askedFrom ?? (yield* engine.askedIn(askId));
+      if (conversation === undefined) return;
+      const result = yield* engine.deliver(
+        ConversationId.make(conversation),
+        { _tag: "ForgetMateAnswer", messageId: askId },
+        CommandId.make(`mate-answer-heard:${answerId}`),
+        { kind: "engine" },
+      );
+      if (result._tag === "Rejected")
+        yield* Effect.logWarning("zerops mate messages: an answer's ask refused to hear it", {
+          reason: result.rejection.reason,
+        });
+    }).pipe(
+      Effect.catchTags({
+        DeliveryUnrecorded: (error) =>
+          Effect.logWarning(
+            "zerops mate messages: an answer's ask could not be told it was heard",
+            {
+              reason: error.message,
+            },
+          ),
+      }),
+    );
 
   /** Changes a message's entry; a change not kept is made again at the next look. */
   const keep = (id: string, change: (entry: MessageEntry) => MessageEntry) =>
@@ -303,16 +344,25 @@ export const make = Effect.gen(function* () {
   const placeOf = (id: string, entry: MessageEntry, message: MateMessage) =>
     Effect.gen(function* () {
       let place = entry.target;
+      let askedFrom = entry.askedFrom;
       if (place === undefined && message.kind === "answer" && message.inReplyTo !== undefined) {
-        place = (yield* engine.askedIn(message.inReplyTo)) ?? (yield* mainConversation);
-        if (place === undefined || !(yield* keep(id, (kept) => ({ ...kept, target: place! }))))
+        askedFrom = yield* engine.askedIn(message.inReplyTo);
+        place = askedFrom ?? (yield* mainConversation);
+        if (
+          place === undefined ||
+          !(yield* keep(id, (kept) => ({
+            ...kept,
+            target: place!,
+            ...(askedFrom === undefined ? {} : { askedFrom }),
+          })))
+        )
           return undefined;
       }
       const usable = (view: ConversationView | undefined) =>
         view !== undefined && !view.archived && view.agent?.profile.kind !== "crewmate";
       if (place !== undefined) {
         const view = yield* engine.conversation(ConversationId.make(place));
-        if (usable(view)) return { place, view: view! };
+        if (usable(view)) return { place, view: view!, askedFrom };
       }
       const main = yield* mainConversation;
       if (main === undefined) return undefined;
@@ -321,7 +371,7 @@ export const make = Effect.gen(function* () {
       if (entry.target !== undefined && entry.target !== main) {
         if (!(yield* keep(id, (kept) => ({ ...kept, target: main })))) return undefined;
       }
-      return { place: main, view: view! };
+      return { place: main, view: view!, askedFrom };
     });
 
   /** A message not in the engine yet: put there once its owner's login may run it. */
@@ -336,7 +386,7 @@ export const make = Effect.gen(function* () {
       if (yield* waitedOut(entry)) return yield* settle(id, "declined");
       const found = yield* placeOf(id, entry, message);
       if (found === undefined) return;
-      const { place, view } = found;
+      const { place, view, askedFrom } = found;
       const conversationId = ConversationId.make(place);
       // Taken back while background work lived in the session: sent again once it ended, or once
       // the conversation runs on another session.
@@ -397,6 +447,9 @@ export const make = Effect.gen(function* () {
       }
       waitSaid.delete(id);
       yield* keep(id, ({ held: _held, ...kept }) => ({ ...kept, conversationId: place }));
+      // An answer placed elsewhere than the conversation that asked: that one waits on it no more.
+      if (askedFrom !== undefined && askedFrom !== place && message.inReplyTo !== undefined)
+        yield* answerHeardIn(id, askedFrom, message.inReplyTo);
     }).pipe(
       Effect.catchTags({
         ViewUnreadable: () => Effect.void,

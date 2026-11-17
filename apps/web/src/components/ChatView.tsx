@@ -241,6 +241,7 @@ import { mateVoiceSpeaks } from "@t3tools/client-runtime/zerops/environments";
 import { useMateVoice } from "../zerops/mateVoiceContext";
 import { useReviveFailedMate } from "../zerops/mateRestart";
 import { useZeropsMate, useZeropsMateDirectory } from "../zerops/useZeropsMates";
+import { mateMentionNotes, useMentionableMates } from "../zerops/mateMentions";
 import { mirrorAskPlaces, mirrorAskPlacesKey } from "./zerops/mirror/mirrorAsk.logic";
 import { MirrorAskWatch } from "./zerops/mirror/MirrorAskWatch";
 import { originAskPlaces, originAskPlacesKey } from "./zerops/origin/originAsk.logic";
@@ -432,6 +433,7 @@ import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { type TimelinePersonInput } from "./chat/MessagesTimeline";
 import { KeptTimelines } from "./chat/KeptTimelines";
+import { OpenMateProvider } from "./zerops/MateMessageRow";
 import { useStableHandlers } from "../hooks/useStableHandlers";
 import {
   ConversationOpeningArrival,
@@ -3259,26 +3261,38 @@ function ConversationView(props: ChatViewProps) {
   const vaultTurn = useVaultTurnNotes(activeThreadEnvironmentId, activeThreadKey, agentSpokeAt);
   // What the Mate hears of an MCP server the person added from its proposal card.
   const mcpTurn = useMcpTurnNotes(activeThreadEnvironmentId);
-  // Fitted to the bound a send takes: a vault change a line, the rest counted and told later.
-  const turnContext = useMemo(() => {
-    const context = agentContext(
-      [
-        ...agentTurnNotes(changeLandedEvents, agentSpokeAt),
-        ...productionTurnNotes(productionLive, agentSpokeAt, releasesEnded),
-        ...mcpTurn.lines,
-      ],
+  // The person's other Mates, named with `@`: the Mate hears which Mate is meant and how to ask it.
+  // A crewmate's chat is written to the crewmate, and names none.
+  const ownMate = useZeropsMate(environmentId);
+  const mentionableMates = useMentionableMates(
+    ownMate.kind === "mate" ? ownMate.mate.projectId : undefined,
+    (activeThreadShell?.crew ?? null) === null,
+  );
+  // Fitted to the bound a send takes: the Mates the words name first, then a vault change a line,
+  // the rest counted and told later.
+  const turnContextFor = useCallback(
+    (text: string) => {
+      const context = agentContext(
+        [
+          ...agentTurnNotes(changeLandedEvents, agentSpokeAt),
+          ...productionTurnNotes(productionLive, agentSpokeAt, releasesEnded),
+          ...mcpTurn.lines,
+        ],
+        vaultTurn.changes,
+        mateMentionNotes(text, mentionableMates),
+      );
+      return { notes: context.lines, vaultChanges: context.told };
+    },
+    [
+      agentSpokeAt,
+      changeLandedEvents,
+      mcpTurn.lines,
+      mentionableMates,
+      productionLive,
+      releasesEnded,
       vaultTurn.changes,
-    );
-    return { notes: context.lines, vaultChanges: context.told };
-  }, [
-    agentSpokeAt,
-    changeLandedEvents,
-    mcpTurn.lines,
-    productionLive,
-    releasesEnded,
-    vaultTurn.changes,
-  ]);
-  const agentNotes = turnContext.notes;
+    ],
+  );
   // The Mate hears of every landing; this conversation shows the ones it named.
   const conversationLandedEvents = useZeropsConversationLandings(
     changeLandedEvents,
@@ -6833,14 +6847,15 @@ function ConversationView(props: ChatViewProps) {
     ) {
       const queueRefused = composerRef.current?.validateProviderInput(promptForSend);
       if (queueRefused) return declined(queueRefused);
+      const queuedContext = turnContextFor(promptForSend);
       useQueuedMessageStore.getState().enqueue(activeThreadKey, {
         prompt: promptForSend,
         images: [...composerImages],
         files: [...composerFiles],
         terminalContexts: [...composerTerminalContexts],
         reviewComments: [...composerReviewComments],
-        agentNotes: [...agentNotes],
-        vaultChanges: [...turnContext.vaultChanges],
+        agentNotes: [...queuedContext.notes],
+        vaultChanges: [...queuedContext.vaultChanges],
         submissionIntent,
         // A requested send keeps its ids, and with them whose it is (`ComposerSendIds.fromPanel`).
         ...(sendIds === undefined ? {} : { sendIds }),
@@ -7367,15 +7382,16 @@ function ConversationView(props: ChatViewProps) {
       if (backgroundThreadRef) {
         beginBackgroundDraftSubmissionByRef(backgroundThreadRef);
       }
+      const sendContext = queuedMessage ? null : turnContextFor(outgoingMessageText);
       const turnAgentNotes = agentNotesFor(
         outgoingMessageText,
-        queuedMessage ? (queuedMessage.agentNotes ?? []) : agentNotes,
+        sendContext === null ? (queuedMessage?.agentNotes ?? []) : sendContext.notes,
       );
       const toldVault =
         turnAgentNotes.length > 0
-          ? queuedMessage
-            ? (queuedMessage.vaultChanges ?? [])
-            : turnContext.vaultChanges
+          ? sendContext === null
+            ? (queuedMessage?.vaultChanges ?? [])
+            : sendContext.vaultChanges
           : [];
       turnStartAttempted = true;
       if (queuedMessage && activeThreadKey) {
@@ -8819,97 +8835,99 @@ function ConversationView(props: ChatViewProps) {
                   the next conversation's own from the press. One seen a
                   moment ago is kept, hidden, and shows its rows in place;
                   another's come in as they are placed. */}
-              <KeptTimelines
-                open={routeThreadKey}
-                warm={warmTimelineAsk}
-                insetMeasured={timelineInsetMeasured}
-                insetRemembered={rememberedInset !== undefined}
-                crewTimeline={crewTimeline}
-                timeline={{
-                  agentPanelModel,
-                  onOpenAgents: addAgentsSurface,
-                  working: dockModel,
-                  afterTurnWork: activeBackgroundLiveness,
-                  endNotice,
-                  onDismissEndNotice: dismissEndNotice,
-                  liveJobs,
-                  isWorking,
-                  workingStepLabel,
-                  isCompacting,
-                  originAsks,
-                  mirrorAsks,
-                  isStopping,
-                  activeTurnStartedAt: activeWorkStartedAt,
-                  listRef: legendListRef,
-                  timelineEntries: conversationEntries,
-                  latestTurn: activeLatestTurn,
-                  runningTurnId: activeRunningTurnId,
-                  activeThreadEnvironmentId: activeThread.environmentId,
-                  routeThreadKey,
-                  keepsDraftMessage:
-                    draftArrival.fromItsDraft ||
-                    (routeKind === "draft" &&
-                      timelineMessages.some((message) => message.role === "user")),
-                  provider:
-                    activeThread.session?.providerName ??
-                    conversationProviderStatus?.driver ??
-                    null,
-                  ...(activeProject ? { onRunShellCommand: runShellCommand } : {}),
-                  onImageExpand: onExpandTimelineImage,
-                  markdownCwd: gitCwd ?? undefined,
-                  resolvedTheme,
-                  timestampFormat,
-                  workspaceRoot: activeWorkspaceRoot,
-                  skills: activeProviderStatus
-                    ? resolveProviderSkillsForCwd(activeProviderStatus, gitCwd)
-                    : EMPTY_PROVIDER_SKILLS,
-                  anchorMessageId: timelineAnchorMessageId,
-                  onAnchorReady: onTimelineAnchorReady,
-                  contentInsetEndAdjustment: zeropsArrivalHoldsComposer ? 0 : timelineInsetEnd,
-                  askRoomEnd: zeropsArrivalHoldsComposer ? 0 : composerAskRoom,
-                  liveFollowEnabled: timelineLiveFollowEnabled,
-                  onIsAtEndChange,
-                  onPersonInput: onTimelinePersonInput,
-                  onManualNavigation: cancelTimelineLiveFollowForUserNavigation,
-                  cancelPositionRestoreRef,
-                  hideEmptyPlaceholder:
-                    isDraftHeroState ||
-                    threadDetailLoading ||
-                    conversationContentPending({
-                      messageCount: activeThread?.messages.length ?? 0,
-                      shell: activeThreadShell ?? null,
-                    }),
-                  loading: threadDetailLoading && !isDraftHeroState,
-                  syncing: threadSyncPhase !== null || threadDetailLoading,
-                  queuedMessages,
-                  notices: noticesOverComposer ? EMPTY_CONVERSATION_NOTICES : conversationNotices,
-                  usagePause: activeThreadShell?.usagePause ?? null,
-                  limit,
-                  away: mateAway,
-                  interruption: activeServerThread?.session?.interruption ?? null,
-                  onRestartContinue:
-                    isWorking || isSendBusy || queueBlockedByPendingRequest || !admission.canSend
-                      ? null
-                      : handed.restartContinue,
-                  onUsageContinue:
-                    isWorking || isSendBusy || queueBlockedByPendingRequest
-                      ? null
-                      : handed.usageContinue,
-                  usageContinueTries: engineConversation,
-                  onWithdrawHeldMessage: engineConversation ? handed.withdrawHeldMessage : null,
-                  asker: mateAsker(admissionOwner),
-                  onSteerQueuedMessage,
-                  queueBlockedByAnswer: queueBlockedByPendingRequest,
-                  steerQueuedMessageShortcutLabel: shortcutLabelForCommand(
-                    keybindings,
-                    "thread.steerQueuedMessage",
-                    { context: { terminalFocus: false } },
-                  ),
-                  onRemoveQueuedMessage,
-                  topFadeEnabled: true,
-                  loadEarlier: loadEarlierTurns,
-                }}
-              />
+              <OpenMateProvider>
+                <KeptTimelines
+                  open={routeThreadKey}
+                  warm={warmTimelineAsk}
+                  insetMeasured={timelineInsetMeasured}
+                  insetRemembered={rememberedInset !== undefined}
+                  crewTimeline={crewTimeline}
+                  timeline={{
+                    agentPanelModel,
+                    onOpenAgents: addAgentsSurface,
+                    working: dockModel,
+                    afterTurnWork: activeBackgroundLiveness,
+                    endNotice,
+                    onDismissEndNotice: dismissEndNotice,
+                    liveJobs,
+                    isWorking,
+                    workingStepLabel,
+                    isCompacting,
+                    originAsks,
+                    mirrorAsks,
+                    isStopping,
+                    activeTurnStartedAt: activeWorkStartedAt,
+                    listRef: legendListRef,
+                    timelineEntries: conversationEntries,
+                    latestTurn: activeLatestTurn,
+                    runningTurnId: activeRunningTurnId,
+                    activeThreadEnvironmentId: activeThread.environmentId,
+                    routeThreadKey,
+                    keepsDraftMessage:
+                      draftArrival.fromItsDraft ||
+                      (routeKind === "draft" &&
+                        timelineMessages.some((message) => message.role === "user")),
+                    provider:
+                      activeThread.session?.providerName ??
+                      conversationProviderStatus?.driver ??
+                      null,
+                    ...(activeProject ? { onRunShellCommand: runShellCommand } : {}),
+                    onImageExpand: onExpandTimelineImage,
+                    markdownCwd: gitCwd ?? undefined,
+                    resolvedTheme,
+                    timestampFormat,
+                    workspaceRoot: activeWorkspaceRoot,
+                    skills: activeProviderStatus
+                      ? resolveProviderSkillsForCwd(activeProviderStatus, gitCwd)
+                      : EMPTY_PROVIDER_SKILLS,
+                    anchorMessageId: timelineAnchorMessageId,
+                    onAnchorReady: onTimelineAnchorReady,
+                    contentInsetEndAdjustment: zeropsArrivalHoldsComposer ? 0 : timelineInsetEnd,
+                    askRoomEnd: zeropsArrivalHoldsComposer ? 0 : composerAskRoom,
+                    liveFollowEnabled: timelineLiveFollowEnabled,
+                    onIsAtEndChange,
+                    onPersonInput: onTimelinePersonInput,
+                    onManualNavigation: cancelTimelineLiveFollowForUserNavigation,
+                    cancelPositionRestoreRef,
+                    hideEmptyPlaceholder:
+                      isDraftHeroState ||
+                      threadDetailLoading ||
+                      conversationContentPending({
+                        messageCount: activeThread?.messages.length ?? 0,
+                        shell: activeThreadShell ?? null,
+                      }),
+                    loading: threadDetailLoading && !isDraftHeroState,
+                    syncing: threadSyncPhase !== null || threadDetailLoading,
+                    queuedMessages,
+                    notices: noticesOverComposer ? EMPTY_CONVERSATION_NOTICES : conversationNotices,
+                    usagePause: activeThreadShell?.usagePause ?? null,
+                    limit,
+                    away: mateAway,
+                    interruption: activeServerThread?.session?.interruption ?? null,
+                    onRestartContinue:
+                      isWorking || isSendBusy || queueBlockedByPendingRequest || !admission.canSend
+                        ? null
+                        : handed.restartContinue,
+                    onUsageContinue:
+                      isWorking || isSendBusy || queueBlockedByPendingRequest
+                        ? null
+                        : handed.usageContinue,
+                    usageContinueTries: engineConversation,
+                    onWithdrawHeldMessage: engineConversation ? handed.withdrawHeldMessage : null,
+                    asker: mateAsker(admissionOwner),
+                    onSteerQueuedMessage,
+                    queueBlockedByAnswer: queueBlockedByPendingRequest,
+                    steerQueuedMessageShortcutLabel: shortcutLabelForCommand(
+                      keybindings,
+                      "thread.steerQueuedMessage",
+                      { context: { terminalFocus: false } },
+                    ),
+                    onRemoveQueuedMessage,
+                    topFadeEnabled: true,
+                    loadEarlier: loadEarlierTurns,
+                  }}
+                />
+              </OpenMateProvider>
 
               {/* The way back to the end, once the person has scrolled away from
                   it: a round button floating over the timeline, always drawn and
@@ -9086,6 +9104,7 @@ function ConversationView(props: ChatViewProps) {
                               }
                               idlePlaceholder={crewComposerPlaceholder ?? composerPlaceholders.idle}
                               mentionCrewmates={crewMentions}
+                              mentionMates={mentionableMates}
                               top={threadDetailLoading ? null : (cloneTop ?? composerTop)}
                               vaultChanges={vaultTurn.changes}
                               onDismissVaultChange={vaultTurn.dismiss}

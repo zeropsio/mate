@@ -121,6 +121,8 @@ const view = (
   openRequests: [],
   lastPerson: null,
   lastAsked: null,
+  latestAsk: null,
+  awaits: [],
   lastAgent: null,
   liveCall: null,
   background: null,

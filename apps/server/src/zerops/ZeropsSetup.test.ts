@@ -438,6 +438,8 @@ const engineView = (id: string): ConversationView => ({
   openRequests: [],
   lastPerson: null,
   lastAsked: null,
+  latestAsk: null,
+  awaits: [],
   lastAgent: null,
   liveCall: null,
   background: null,

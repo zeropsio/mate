@@ -51,6 +51,7 @@ import {
   type TurnHandle,
   type UserInputAttachments,
   isCardAsk,
+  mateMessageSenderName,
   ItemId,
   LeaseAlias,
   LeaseReleaseResult,
@@ -320,6 +321,13 @@ const handle = (b: StepBuilder, command: Command): void => {
       return askLeaseRelease(b);
     case "Unarchive":
       if (b.state.archived) b.emit({ _tag: "ConversationUnarchived", by: b.envelope.principal });
+      return;
+    case "ForgetMateAnswer":
+      if (
+        b.state.awaits.some((awaited) => awaited.id === command.messageId) ||
+        !b.state.answered.includes(command.messageId)
+      )
+        b.emit({ _tag: "MateAnswerHeard", messageId: command.messageId });
       return;
     case "BindLease":
       // Its first lease is where it works: another the agent acquires is only a container it uses.
@@ -1721,9 +1729,28 @@ const steer = (b: StepBuilder, command: Extract<Command, { _tag: "Steer" }>): vo
   ) {
     throw new Rejected("steer-unsupported");
   }
-  // The agent hears the note after the words: it answers where the person reads (`steeredWith`).
-  const told = steeredWith(toldWith(command.text, command.context));
+  // The agent hears the note after the words: it answers where the person reads (`steeredWith`);
+  // in a run another Mate's message started, that the turn's end still goes back to that Mate.
+  const told = steeredWith(toldWith(command.text, command.context), mateSenderOf(b.state, run));
   steerInto(b, run, session.id, command.text, attachments, told);
+};
+
+/**
+ * The Mate whose ask started the run, by its own name: its person item's, or the run's it
+ * continues; none for a run that is no Mate's ask — an answer that woke its asker goes back to
+ * nobody.
+ */
+const mateSenderOf = (state: ConversationState, run: RunRecord): string | undefined => {
+  if (run.principal.kind !== "mate") return undefined;
+  const seen = new Set<string>();
+  for (let at: RunRecord | undefined = run; at !== undefined && !seen.has(at.id);) {
+    seen.add(at.id);
+    const message = at.personBody?.mateMessage;
+    if (message !== undefined)
+      return message.kind === "answer" ? undefined : mateMessageSenderName(message.from);
+    at = at.joins === null ? undefined : state.runs[at.joins];
+  }
+  return "another Mate";
 };
 
 /**

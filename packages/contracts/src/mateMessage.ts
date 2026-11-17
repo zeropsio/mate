@@ -14,6 +14,9 @@ import * as Schema from "effect/Schema";
 /** The protocol a Mate that takes messages advertises in its overview (`identity.messages`). */
 export const MATE_MESSAGES_PROTOCOL = 1;
 
+/** How long a conversation shows it waits for another Mate's answer at most. */
+export const MATE_ANSWER_WAIT_MS = 24 * 60 * 60_000;
+
 /** The most of a run's answer an ended ask carries back, in characters, before "…". */
 export const MATE_MESSAGE_ANSWER_MAX = 8000;
 
@@ -73,6 +76,25 @@ export const mateMessageItemOf = (message: MateMessage): MateMessageItem => ({
   ...(message.end === undefined ? {} : { end: message.end }),
 });
 
+/**
+ * A Mate's own name and its project's, as HQ names them. HQ names a Mate by its project's whole
+ * name ("Frontend Legacy - Mavi") and leaves `projectName` empty: the Mate is then what follows
+ * the last " - ", its project what comes before. Either is `""` where nothing names it.
+ */
+export const mateMessageNamesOf = (
+  who: Pick<MateMessageFrom, "mateName" | "projectName">,
+): { readonly mate: string; readonly project: string } => {
+  const mate = who.mateName.trim();
+  const project = who.projectName.trim();
+  if (project !== "") return { mate, project };
+  const cut = mate.lastIndexOf(" - ");
+  if (cut <= 0) return { mate, project };
+  const own = mate.slice(cut + 3).trim();
+  return own === "" ? { mate, project } : { mate: own, project: mate.slice(0, cut).trim() };
+};
+
 /** How a message names its sender: its Mate's name, else its project's, else "Another Mate". */
-export const mateMessageSenderName = (from: MateMessageFrom): string =>
-  from.mateName.trim() || from.projectName.trim() || "Another Mate";
+export const mateMessageSenderName = (from: MateMessageFrom): string => {
+  const { mate, project } = mateMessageNamesOf(from);
+  return mate || project || "Another Mate";
+};

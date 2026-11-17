@@ -658,7 +658,13 @@ type MessagesTimelineRowBody =
    * The conversation's quiet end while a message this Mate sent another waits for its answer: the
    * Mates it waits on, by name. It keeps no run live, and reads the same after a reload.
    */
-  | { kind: "mate-wait"; id: string; createdAt: string; names: ReadonlyArray<string> }
+  | {
+      kind: "mate-wait";
+      id: string;
+      createdAt: string;
+      /** The messages it sent another Mate that no answer met yet, oldest first. */
+      awaited: ReadonlyArray<AwaitedMateAnswer>;
+    }
   /** What a task's asker wrote where they asked, opening its conversation: theirs, never the brief. */
   | {
       kind: "task-ask";
@@ -1139,22 +1145,45 @@ function turnAfter(previous: MessagesTimelineRow): RowGap {
   return isMateProse(previous) ? "turn-after-words" : "turn";
 }
 
+/** A message this conversation sent another Mate that no answer met yet (`awaitedMateAnswers`). */
+export interface AwaitedMateAnswer {
+  /** HQ's id of the message. */
+  readonly id: string;
+  /** The asked Mate's project: its face, its live state and its conversation are found by it. */
+  readonly projectId: string;
+  /** The asked Mate as the menu names it ("Fia"). */
+  readonly name: string;
+  /** What it asked, where the call's input holds it. */
+  readonly words: string | undefined;
+  /** When it was asked. */
+  readonly askedAt: string;
+}
+
 /**
- * The Mates whose answer this conversation waits for, oldest ask first: each message it sent
+ * The answers this conversation waits for, oldest ask first: each message it sent
  * (`zerops_message_mate`, as its result says) that no message in it answers yet
  * (`mateMessage.inReplyTo`).
  */
-export function awaitedMateAnswers(entries: ReadonlyArray<TimelineEntry>): ReadonlyArray<string> {
+export function awaitedMateAnswers(
+  entries: ReadonlyArray<TimelineEntry>,
+): ReadonlyArray<AwaitedMateAnswer> {
   const answered = new Set<string>();
   for (const entry of entries) {
     const reply = entry.kind === "message" ? entry.message.mateMessage?.inReplyTo : undefined;
     if (reply !== undefined) answered.add(reply);
   }
-  const awaited: string[] = [];
+  const awaited: AwaitedMateAnswer[] = [];
   for (const entry of entries) {
     if (entry.kind !== "work" && entry.kind !== "generic-call") continue;
     const sent = entry.entry.mateMessageSent;
-    if (sent !== undefined && !answered.has(sent.id)) awaited.push(sentToName(sent));
+    if (sent === undefined || answered.has(sent.id)) continue;
+    awaited.push({
+      id: sent.id,
+      projectId: sent.to.projectId,
+      name: sentToName(sent),
+      words: sent.words,
+      askedAt: entry.entry.createdAt,
+    });
   }
   return awaited;
 }
@@ -3692,7 +3721,7 @@ export function deriveMessagesTimelineRows(input: {
         kind: "mate-wait",
         id: "mate-wait",
         createdAt: rows.at(-1)?.createdAt ?? "",
-        names: awaited,
+        awaited,
       });
     }
   }

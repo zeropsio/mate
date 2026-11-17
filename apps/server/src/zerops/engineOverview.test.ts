@@ -83,6 +83,16 @@ const view = (patch: Partial<ConversationView> = {}): ConversationView => ({
         ? { text: "Deploy the api", at: T("2026-10-07T10:00:00.000Z") }
         : patch.lastPerson
       : patch.lastAsked,
+  // The latest ask whoever made it: the person's, unless a test says another Mate asked since.
+  latestAsk:
+    patch.latestAsk !== undefined
+      ? patch.latestAsk
+      : patch.lastAsked === undefined
+        ? patch.lastPerson === undefined
+          ? { text: "Deploy the api", at: T("2026-10-07T10:00:00.000Z") }
+          : patch.lastPerson
+        : patch.lastAsked,
+  awaits: [],
   lastAgent: { text: "On it.", at: T("2026-10-07T10:04:00.000Z") },
   liveCall: null,
   background: null,

@@ -308,6 +308,11 @@ export type Command =
   /** The agent leased a pool container: the conversation is bound to it, unless it has a lease. */
   | { readonly _tag: "BindLease"; readonly lease: ThreadLease }
   /**
+   * The Zerops side's: the answer to a message this conversation sent another Mate was settled
+   * where it did not open here (`MateAnswerHeard`); nothing where it no longer waits on it.
+   */
+  | { readonly _tag: "ForgetMateAnswer"; readonly messageId: string }
+  /**
    * A lease ended — released, lost, no longer held, or acquired again by another conversation: the
    * conversation's is unbound when it is `ended`.
    */

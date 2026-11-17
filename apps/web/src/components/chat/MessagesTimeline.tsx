@@ -176,6 +176,7 @@ import {
 import { cn } from "~/lib/utils";
 import { useUiStateStore } from "~/uiStateStore";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
+import { mateMentionMatcher, useMentionableMates } from "~/zerops/mateMentions";
 import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
 import {
   isMateStandUpAsk,
@@ -195,6 +196,7 @@ import {
   textContainsInlineTerminalContextLabels,
 } from "./userMessageTerminalContexts";
 import { SkillInlineText } from "./SkillInlineText";
+import { MateMentionsContext } from "./MateMentionChip";
 import { LAST_WORDS_GRACE_MS, latestFinishedWordsAt } from "./conversation.logic";
 import { PublishedPage } from "./PublishedPage";
 import { TurnReport } from "./TurnReport";
@@ -242,7 +244,7 @@ import {
 import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
 import { CrewSeamActivity, CrewTaskCard, CrewTimelineContext } from "../zerops/crew/CrewTaskCard";
 import { MateTaskCard, MateTaskMessageRow } from "../zerops/MateTaskCard";
-import { MateAnswerWaitLine, MateMessageRow } from "../zerops/MateMessageRow";
+import { MateAnswerWait, MateMessageRow } from "../zerops/MateMessageRow";
 import { useRightPanelStore } from "~/rightPanelStore";
 import { CrewmateEmptyState } from "../zerops/crew/CrewmateEmptyState";
 import { ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
@@ -1931,6 +1933,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const mate = whoLivesHere.kind === "mate" ? whoLivesHere.mate : undefined;
   const crewmate = crew?.crewmate ?? null;
   const nobody = whoLivesHere.kind === "nobody";
+  // The person's other Mates their messages name with `@`: one matcher for the list, none in a
+  // crewmate's conversation, where `@` names none.
+  const mentionableMates = useMentionableMates(mate?.projectId, crew === null);
+  const mateMentions = useMemo(() => mateMentionMatcher(mentionableMates), [mentionableMates]);
   const speaker = useMemo(
     () => conversationSpeaker({ crewmate, mate: mate ?? null, nobody }),
     [crewmate, mate, nobody],
@@ -2020,6 +2026,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       resolvedTheme,
       workspaceRoot,
       skills,
+      mateMentions,
       activeThreadEnvironmentId,
       onRunShellCommand,
       onImageExpand,
@@ -2058,6 +2065,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       resolvedTheme,
       workspaceRoot,
       skills,
+      mateMentions,
       activeThreadEnvironmentId,
       onRunShellCommand,
       onImageExpand,
@@ -2929,7 +2937,10 @@ function rowInset(row: TimelineRow): string {
     row.kind === "queued-message" ||
     row.kind === "seam" ||
     (row.kind === "crew-seam" && !isRestartRow(row)) ||
-    row.kind === "after-work"
+    row.kind === "after-work" ||
+    // Another Mate's message and the wait for its answer are cards, edge to edge with the run's.
+    row.kind === "mate-message" ||
+    row.kind === "mate-wait"
   ) {
     return "";
   }
@@ -3153,8 +3164,16 @@ function TimelineRowBody({ row }: { row: TimelineRow }) {
       {row.kind === "task-message" ? <MateTaskMessageRow message={row.message} /> : null}
       {/* Another Mate's message opens the run it started as that Mate's; while this Mate waits for
           an answer to its own, the conversation's end says whose. */}
-      {row.kind === "mate-message" ? <MateMessageRow item={row.item} text={row.text} /> : null}
-      {row.kind === "mate-wait" ? <MateAnswerWaitLine names={row.names} /> : null}
+      {row.kind === "mate-message" ? (
+        <MateMessageRow
+          item={row.item}
+          markdownCwd={ctx.markdownCwd}
+          skills={ctx.skills}
+          text={row.text}
+          threadRef={ctx.threadRef ?? undefined}
+        />
+      ) : null}
+      {row.kind === "mate-wait" ? <MateAnswerWait awaited={row.awaited} /> : null}
       {row.kind === "background" ? <BackgroundTimelineRow row={row} /> : null}
       {row.kind === "error" ? <ErrorTimelineRow row={row} /> : null}
       {row.kind === "pause" ? <PauseTimelineRow row={row} /> : null}
@@ -3806,7 +3825,7 @@ function MessageAuthorHeading({ children }: { children: string }) {
   return <h3 className="sr-only select-none">{children}</h3>;
 }
 
-function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
+export function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
   const resources = useMemo(
     () => selectMessageImageResources(row.message.attachments),
@@ -4447,12 +4466,24 @@ const CollapsibleUserMessageBody = memo(function CollapsibleUserMessageBody(prop
   );
 });
 
-const UserMessageBody = memo(function UserMessageBody(props: {
+interface UserMessageBodyProps {
   text: string;
   terminalContexts: ParsedTerminalContextEntry[];
   skills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
   markdownCwd: string | undefined;
-}) {
+}
+
+/** A person's words: each `@Name` of one of their other Mates draws as that Mate. */
+const UserMessageBody = memo(function UserMessageBody(props: UserMessageBodyProps) {
+  const { mateMentions } = use(TimelineRowCtx);
+  return (
+    <MateMentionsContext value={mateMentions ?? null}>
+      <UserMessageWords {...props} />
+    </MateMentionsContext>
+  );
+});
+
+function UserMessageWords(props: UserMessageBodyProps) {
   const ctx = use(TimelineRowCtx);
   const renderInlineMarkdownSegment = (text: string, key: string) => {
     const leadingWhitespace = /^\s+/.exec(text)?.[0] ?? "";
@@ -4623,7 +4654,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
       headingLevelOffset={MESSAGE_HEADING_LEVEL}
     />
   );
-});
+}
 
 function UserMessageReviewCommentCard({ comment }: { comment: ReviewCommentContext }) {
   const ctx = use(TimelineRowCtx);

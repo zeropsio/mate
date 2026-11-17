@@ -42,6 +42,7 @@ import type {
 import type { EngineWireShape } from "./wire/EngineWire.ts";
 
 export {
+  attributedLine,
   brokeOffLine,
   conversationRowOf,
   restartLine,

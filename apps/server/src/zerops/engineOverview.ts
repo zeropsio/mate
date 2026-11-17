@@ -35,6 +35,7 @@ import { messagePreviewText } from "@t3tools/shared/messagePreview";
 import { userAskPreviewText } from "@t3tools/shared/userAsk";
 
 import {
+  attributedLine,
   brokeOffLine,
   conversationRowOf,
   rowStateOf,
@@ -69,6 +70,15 @@ const titleOf = (text: string | undefined): string | null => {
     if (words !== null) return words;
   }
   return null;
+};
+
+/**
+ * A conversation's title from its latest ask, whoever made it: another Mate's message reads
+ * "<Mate>: …", an answer that woke it "<Mate> answered: …".
+ */
+const saidTitleOf = (said: ConversationView["latestAsk"]): string | null => {
+  const line = titleOf(said?.text);
+  return line === null ? null : attributedLine(line, said?.mateMessage);
 };
 
 /**
@@ -167,14 +177,15 @@ export const engineShellOf = (view: ConversationView): OrchestrationThreadShell 
       : undefined;
   const person = view.lastPerson;
   const agent = view.lastAgent;
-  // Its title, from what the person typed: a page's request for them never names it. The tasks'
-  // one conversation is named by the task at work (its brief's first line), and Tasks between.
+  // Its title, from the latest ask: what the person typed (a page's request for them never names
+  // it) or another Mate's message, said as its. The tasks' one conversation is named by the task
+  // at work (its brief's first line), and Tasks between.
   const personLine =
     view.conversationId === TASKS_CONVERSATION_ID
       ? view.activeRun !== null || view.queued.length > 0
         ? (titleOf(view.lastAsked?.text) ?? "Tasks")
         : "Tasks"
-      : titleOf(view.lastAsked?.text);
+      : saidTitleOf(view.latestAsk);
   // Each message as V1's shell previews it (`threadMessagePreviewFromSource`).
   const agentText = agent === null ? null : messagePreviewText(summaryOf(view, agent.text));
   const personText = person === null ? null : userAskPreviewText(person);

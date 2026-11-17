@@ -854,6 +854,10 @@ export const ConversationRowState = forwardCompatibleUnion({
 });
 export type ConversationRowState = typeof ConversationRowState.Type;
 
+/** Another Mate a row names: its project, and its own name (HQ's, cut at its project's). */
+export const MateRowRef = Schema.Struct({ projectId: Schema.String, mateName: Schema.String });
+export type MateRowRef = typeof MateRowRef.Type;
+
 /** The menu row, the face, HQ's relayed row. */
 export const ConversationRow = Schema.Struct({
   conversationId: ConversationId,
@@ -871,10 +875,22 @@ export const ConversationRow = Schema.Struct({
       turnState: Schema.optionalKey(RunTurnState),
     }),
   ),
+  /**
+   * The latest ask's first line, whoever asked: the person's, or another Mate's message, its words
+   * then read "<Mate>: …" (an answer "<Mate> answered: …").
+   */
   subject: Schema.NullOr(Schema.String),
+  /** The Mate whose message the subject is, by its project and its own name; absent: the person's. */
+  subjectFrom: Schema.optionalKey(MateRowRef),
   snippet: Schema.NullOr(Schema.String),
   at: Millis,
   askedAt: Schema.NullOr(Millis),
+  /**
+   * The Mates whose answer to a message this conversation sent has not come yet, oldest first,
+   * each since it was sent: they answer, the person has nothing to do. Shown for at most
+   * `MATE_ANSWER_WAIT_MS`. Absent: none.
+   */
+  awaits: Schema.optionalKey(Schema.Array(Schema.Struct({ ...MateRowRef.fields, since: Millis }))),
   /** How freely its agent works, once a person set it; absent: the workspace's mode. */
   runtimeMode: Schema.optionalKey(forwardCompatibleLiterals(RuntimeMode.literals)),
   /** The pool container its agent leased, which it works in; absent: none. */
@@ -1173,6 +1189,12 @@ export const RuntimeModeSet = event("RuntimeModeSet", { runtimeMode: RuntimeMode
 export const ConversationArchived = event("ConversationArchived", { by: Principal });
 export const ConversationUnarchived = event("ConversationUnarchived", { by: Principal });
 /**
+ * The answer to a message this conversation sent another Mate (`MateMessage`, by HQ's id) was
+ * settled where this conversation did not see it open (another conversation, declined): it waits
+ * on it no more.
+ */
+export const MateAnswerHeard = event("MateAnswerHeard", { messageId: Schema.String });
+/**
  * The pool container the conversation's agent leased (zcp's `zerops_lease`): the person's views of
  * the conversation's work (Git tab, diff, terminal) show it from now on; its sessions stay where
  * they open. Only its first lease binds it.
@@ -1357,6 +1379,7 @@ const knownEvents = [
   RuntimeModeSet,
   ConversationArchived,
   ConversationUnarchived,
+  MateAnswerHeard,
   LeaseBound,
   LeaseUnbound,
   LeaseReleaseSettled,

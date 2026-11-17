@@ -11,7 +11,7 @@ import {
 } from "@t3tools/contracts";
 import type { ComposerPathSearchTarget } from "@t3tools/client-runtime/state/threads";
 import type { DataMentionEntry } from "@t3tools/client-runtime/zerops/dataConsole";
-import type { MateTintId } from "@t3tools/shared/brand";
+import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import {
   BlocksIcon,
   DatabaseIcon,
@@ -76,6 +76,17 @@ export type ComposerCommandItem =
       type: "crewmate";
       handle: string;
       tint: MateTintId;
+      label: string;
+      description: string;
+    }
+  | {
+      /** Another of the person's Mates, by its face, name and project: a pick writes `@Name`. */
+      id: string;
+      type: "mate";
+      projectId: string;
+      name: string;
+      tint: MateTintId;
+      shape: MateShapeId;
       label: string;
       description: string;
     };
@@ -204,6 +215,9 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
       ) : null}
       {props.item.type === "crewmate" ? (
         <MateFace size={16} state="idle" tint={props.item.tint} />
+      ) : null}
+      {props.item.type === "mate" ? (
+        <MateFace size={16} state="idle" tint={props.item.tint} shape={props.item.shape} />
       ) : null}
       <span className="flex min-w-0 flex-1 items-center gap-2">
         <span className="min-w-0 max-w-[45%] shrink-0 truncate font-sans text-xs font-medium">
