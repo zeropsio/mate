@@ -27,8 +27,10 @@ import { Button } from "../../ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../../ui/input-group";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
 import { Skeleton } from "../../ui/skeleton";
+import { Spinner } from "../../ui/spinner";
 import {
   impactLine,
+  joinNames,
   notLiveLine,
   notLiveTarget,
   OWN_VAULTS_LABEL,
@@ -146,6 +148,10 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
   const [applying, setApplying] = useState(false);
   const [local, setLocal] = useState<Local>(EMPTY_LOCAL);
   const [restartingLocal, setRestartingLocal] = useState<ReadonlySet<string>>(() => new Set());
+  // A removal's restarts, said on the panel since its row is gone: held while they run.
+  const [notice, setNotice] = useState<{ readonly line: string; readonly held: boolean } | null>(
+    null,
+  );
   const scroller = useRef<HTMLDivElement>(null);
   const [scrolled, setScrolled] = useState(false);
 
@@ -182,6 +188,12 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
     arm();
     return () => clearTimeout(timer);
   }, [local.settled]);
+
+  useEffect(() => {
+    if (notice === null || notice.held) return;
+    const timer = setTimeout(() => setNotice(null), IMPACT_MS);
+    return () => clearTimeout(timer);
+  }, [notice]);
 
   useEffect(() => {
     if (flash === null) return;
@@ -223,18 +235,28 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
     });
   };
 
-  /** Restarts what a save's values reach, then says on the saved rows how it ended. */
-  const restartAfter = async (plan: VaultRestarts, rowKeys: ReadonlyArray<string>) => {
+  /**
+   * Restarts what a save's values reach, then says on the saved rows how it ended — a removal,
+   * whose row is gone, on the panel.
+   */
+  const restartAfter = async (
+    plan: VaultRestarts,
+    rowKeys: ReadonlyArray<string>,
+    removed: string | null = null,
+  ) => {
     if (props.onRestartReaders === undefined || plan.restart.length === 0) return;
-    settleRows(rowKeys, restartingWords(plan.restart), true);
+    if (removed === null) settleRows(rowKeys, restartingWords(plan.restart), true);
+    else setNotice({ line: `Removed ${removed} · ${restartingWords(plan.restart)}`, held: true });
     const { restarted, failed } = await props.onRestartReaders(plan);
     const said =
       failed === null
-        ? restartedWords(restarted, plan.notRunning)
+        ? restartedWords(restarted, plan.notRunning, plan.deploying)
         : [restartedWords(restarted, []), notRestartedWords(failed)]
             .filter((part): part is string => part !== null)
             .join(" · ");
-    settleRows(rowKeys, said === null ? null : `Saved · ${said}`, false);
+    if (removed !== null)
+      setNotice({ line: `Removed ${removed} · ${said ?? "done"}`, held: false });
+    else settleRows(rowKeys, said === null ? null : `Saved · ${said}`, false);
   };
 
   /** The line a saved row says before any restart: what runs nothing, else what reads it. */
@@ -243,7 +265,8 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
       ? impactLine(impact)
       : plan.restart.length > 0
         ? restartingWords(plan.restart)
-        : (restartedWords([], plan.notRunning) ?? (impact.unread ? impactLine(impact) : null));
+        : (restartedWords([], plan.notRunning, plan.deploying) ??
+          (impact.unread ? impactLine(impact) : null));
 
   const write = async (
     scope: VaultScope,
@@ -283,7 +306,11 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
       return { sending, refused, settled };
     });
     if (outcome.ok && restart && plan !== undefined)
-      void restartAfter(plan, change.kind === "remove" ? [] : [rowKey]);
+      void restartAfter(
+        plan,
+        change.kind === "remove" ? [] : [rowKey],
+        change.kind === "remove" ? change.key : null,
+      );
     return outcome.ok;
   };
 
@@ -496,7 +523,15 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
                   saved.push(vaultRowKey(editScope.id, change.key));
               setApplying(false);
               setMode({ kind: "list" });
-              if (plan !== undefined) await restartAfter(plan, saved);
+              const removed = writes.flatMap((change) =>
+                change.kind === "remove" ? [change.key] : [],
+              );
+              if (plan !== undefined)
+                await restartAfter(
+                  plan,
+                  saved,
+                  saved.length === 0 && removed.length > 0 ? joinNames(removed) : null,
+                );
             })();
           }}
           onBack={() => setMode({ kind: "text", scopeId: mode.scopeId, text: mode.text })}
@@ -552,6 +587,16 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
             scopes={writable}
           />
         ) : null}
+        {notice === null ? null : (
+          <p
+            className="flex items-center gap-1.5 px-1 text-caption text-muted-foreground"
+            data-vault-notice
+            role="status"
+          >
+            {notice.held ? <Spinner size="xs" /> : null}
+            {notice.line}
+          </p>
+        )}
         {q === "" && mode.kind === "list" ? (
           <VaultLines
             actor={props.actor}

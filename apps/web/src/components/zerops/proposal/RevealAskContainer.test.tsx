@@ -26,6 +26,7 @@ const VAULT: VaultView = {
       reads: [],
       startedAt: null,
       running: false,
+      deploying: false,
       values: [
         {
           id: "v-pass",

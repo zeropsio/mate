@@ -127,6 +127,7 @@ export {
   vaultChangesSince,
   vaultImpact,
   vaultNote,
+  vaultRemovalBreaks,
   vaultRestarts,
 } from "./projections/vaultChanges.ts";
 export { agentContext, fitContextLine } from "./projections/agentContext.ts";

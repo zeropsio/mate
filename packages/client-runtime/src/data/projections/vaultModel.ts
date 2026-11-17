@@ -73,6 +73,11 @@ export interface VaultScope {
    * deploy, failed), which reads the value when it next starts, and for Shared and managed ones.
    */
   readonly running: boolean;
+  /**
+   * A runtime service with a build or deploy under way: its containers start after it, with the
+   * values as they are then, so nothing restarts it for a change.
+   */
+  readonly deploying: boolean;
 }
 
 export interface VaultValue {
@@ -212,10 +217,11 @@ export interface VaultChange {
 
 /**
  * What restarts after writes to one vault, one restart per service however many values changed:
- * the running services that read them, and the readers that run nothing now, which read them when
- * they next start.
+ * the running services that read them; the readers that run nothing now, which read them when
+ * they next start; and those whose deploy is under way, which start with them after it.
  */
 export interface VaultRestarts {
   readonly restart: ReadonlyArray<{ readonly serviceId: string; readonly hostname: string }>;
   readonly notRunning: ReadonlyArray<{ readonly serviceId: string; readonly hostname: string }>;
+  readonly deploying: ReadonlyArray<{ readonly serviceId: string; readonly hostname: string }>;
 }

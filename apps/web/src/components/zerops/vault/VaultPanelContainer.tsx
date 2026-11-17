@@ -168,30 +168,46 @@ export function ProjectVaultPanel({
     retryDetail({ family: "serviceVariable", ownerId: projectId });
     retryDetail({ family: "process", listing: "history", ownerId: projectId });
   }, [projectId, retryDetail]);
-  // The changes of the save under way, told again once their readers restarted.
-  const saved = useRef<VaultChange[]>([]);
+  // Beside a Mate the vault is its own project, where a restart stops the agent's dev servers:
+  // a save restarts only the services whose entries reference what it wrote.
+  const byName = actor !== "mate";
+  // Each saved change waiting on its readers' restarts, told again to the Mate as they restart.
+  const waiting = useRef<
+    ReadonlyArray<{
+      readonly change: VaultChange;
+      readonly services: ReadonlySet<string>;
+      readonly restarted: VaultRestarts["restart"];
+    }>
+  >([]);
   const onWrite = useCallback(
     async (scope: VaultScopeRef, write: VaultWrite): Promise<VaultWriteOutcome> => {
+      const readers = hidesOnly(shown, scope, write)
+        ? []
+        : vaultRestarts(shown, [{ scope, write }], [], { byName }).restart;
       const { outcome, change } = await writeVault(scope, write);
       if (change !== null) {
-        saved.current.push(change);
         onWritten?.(change);
+        if (readers.length > 0)
+          waiting.current = [
+            ...waiting.current.slice(-49),
+            { change, services: new Set(readers.map((each) => each.serviceId)), restarted: [] },
+          ];
       }
       return outcome;
     },
-    [onWritten, writeVault],
+    [byName, onWritten, shown, writeVault],
   );
   const restartsOf = useCallback(
-    (scope: VaultScopeRef, writes: ReadonlyArray<VaultWrite>): VaultRestarts => {
-      saved.current = [];
-      return vaultRestarts(
+    (scope: VaultScopeRef, writes: ReadonlyArray<VaultWrite>): VaultRestarts =>
+      vaultRestarts(
         shown,
         writes
           .filter((write) => !hidesOnly(shown, scope, write))
           .map((write) => ({ scope, write })),
-      );
-    },
-    [shown],
+        [],
+        { byName },
+      ),
+    [byName, shown],
   );
   const onRestartReaders = useCallback(
     async (plan: VaultRestarts) => {
@@ -199,14 +215,26 @@ export function ProjectVaultPanel({
         return {
           restarted: [],
           failed: {
-            hostname: plan.restart.map((service) => service.hostname).join(", "),
+            hostname: plan.restart[0]?.hostname ?? "",
             reason: "this environment's project is not known yet",
             left: plan.restart,
           },
         };
       const ended = await restartInTurn(run, project, plan.restart);
-      if (ended.restarted.length > 0)
-        for (const change of saved.current) onWritten?.({ ...change, restarted: ended.restarted });
+      // Every change any of them read hears which restarted, a batch's each one.
+      waiting.current = waiting.current.flatMap((entry) => {
+        const now = ended.restarted.filter((service) => entry.services.has(service.serviceId));
+        if (now.length === 0) return [entry];
+        const next = {
+          change: entry.change,
+          services: new Set(
+            [...entry.services].filter((id) => !now.some((service) => service.serviceId === id)),
+          ),
+          restarted: [...entry.restarted, ...now],
+        };
+        onWritten?.({ ...entry.change, restarted: next.restarted });
+        return next.services.size === 0 ? [] : [next];
+      });
       return ended;
     },
     [onWritten, project, run],
@@ -214,14 +242,10 @@ export function ProjectVaultPanel({
   const onRestart = useCallback(
     async (serviceId: string): Promise<void> => {
       if (project === undefined) return;
-      await run({
-        kind: "service-restart",
-        orgId: project.orgId,
-        projectId: project.projectId,
-        serviceId,
-      });
+      const hostname = shown.scopes.find((scope) => scope.id === serviceId)?.hostname ?? serviceId;
+      await restartInTurn(run, project, [{ serviceId, hostname }]);
     },
-    [project, run],
+    [project, run, shown],
   );
   return (
     <VaultPanelBody

@@ -105,16 +105,23 @@ function impactOn(view: VaultView, ref: VaultScopeRef, write: VaultWrite): Vault
 const isEntryOf = (scope: VaultScope | undefined, key: string) =>
   scope?.reads.some((entry) => entry.key === key) ?? false;
 
+/** Whether a reader reads a value through one of its zerops.yml entries, not only by its name. */
+const throughEntry = (view: VaultView, reader: VaultReader) =>
+  reader.via.some((key) => isEntryOf(scopeIn(view, serviceRef(reader.serviceId)), key));
+
 /**
- * The runtimes a value written under `key` in `ref` reaches: those whose zerops.yml entries
- * reference it, else — nothing referencing it — every one that has it by its own name, as the
- * platform hands a Shared value to every service and a service's own to that service, unless an
- * entry, or the service's own value over Shared, of that name shadows it.
+ * The runtimes a write to `ref` restarts. Those whose zerops.yml entries reference the value, else
+ * — nothing referencing it, and `byName` — every one that has it by its own name, as the platform
+ * hands a Shared value to every service and a service's own to that service, unless an entry, or
+ * the service's own value over Shared, of that name shadows it. A removal restarts no reader that
+ * references it through an entry — it would start on the literal `${KEY}` — unless a service's own
+ * value gives way to Shared's of that key.
  */
 function readersToRestart(
   view: VaultView,
   ref: VaultScopeRef,
   write: VaultWrite,
+  byName: boolean,
 ): ReadonlyArray<ServiceName> {
   const scope = scopeIn(view, ref);
   const held =
@@ -122,13 +129,18 @@ function readersToRestart(
       ? scope?.values.find((each) => each.key === write.key)
       : scope?.values.find((each) => each.id === write.id);
   if (held !== undefined) {
-    const referencing = held.readers.filter((reader) =>
-      reader.via.some((key) => isEntryOf(scopeIn(view, serviceRef(reader.serviceId)), key)),
-    );
-    return servicesOf(referencing.length > 0 ? referencing : held.readers);
+    const referencing = held.readers.filter((reader) => throughEntry(view, reader));
+    const named = byName ? held.readers.filter((reader) => !throughEntry(view, reader)) : [];
+    if (write.kind !== "remove")
+      return servicesOf(referencing.length > 0 || !byName ? referencing : held.readers);
+    const fallsBack =
+      ref.kind === "service" &&
+      (scopeIn(view, { kind: "shared" })?.values.some((each) => each.key === write.key) ?? false);
+    return servicesOf(fallsBack ? held.readers : named);
   }
+  if (write.kind === "remove") return [];
   const referencing = wouldRead(view, ref, write.key);
-  if (referencing.length > 0) return referencing;
+  if (referencing.length > 0 || !byName) return referencing;
   return servicesOf(
     view.scopes
       .filter(
@@ -146,27 +158,50 @@ function readersToRestart(
 const serviceRef = (serviceId: string): VaultScopeRef => ({ kind: "service", serviceId });
 
 /**
+ * The runtimes a removal leaves starting on the literal `${KEY}`: those that reference the value
+ * through an entry, while nothing of that key takes its place. What its confirm warns of.
+ */
+export function vaultRemovalBreaks(
+  view: VaultView,
+  ref: VaultScopeRef,
+  valueId: string,
+): ReadonlyArray<ServiceName> {
+  const held = scopeIn(view, ref)?.values.find((each) => each.id === valueId);
+  if (held === undefined) return [];
+  const fallsBack =
+    ref.kind === "service" &&
+    (scopeIn(view, { kind: "shared" })?.values.some((each) => each.key === held.key) ?? false);
+  return fallsBack ? [] : servicesOf(held.readers.filter((reader) => throughEntry(view, reader)));
+}
+
+/**
  * What restarts after writes to one project's vault, read off the view before them: each service
- * that reads a written value once, however many changed — a running one restarts, one that runs
- * nothing is named instead — plus the services a caller names (the Mate's own list for a stage or
- * production value), which are restarted unless the view knows they run nothing.
+ * that reads a written value once, however many changed — a running one restarts; one that runs
+ * nothing, or one the view does not know, is named instead; one whose deploy is under way starts
+ * with it — plus the services a caller names (the Mate's own list for a stage or production
+ * value), held to the same. `byName` false (the Mate's own project, where a restart stops the
+ * agent's dev servers) restarts only the services whose entries reference what changed.
  */
 export function vaultRestarts(
   view: VaultView,
   writes: ReadonlyArray<{ readonly scope: VaultScopeRef; readonly write: VaultWrite }>,
   named: ReadonlyArray<ServiceName> = [],
+  options: { readonly byName?: boolean } = {},
 ): VaultRestarts {
+  const byName = options.byName ?? true;
   const readers = servicesOf([
-    ...writes.flatMap(({ scope, write }) => readersToRestart(view, scope, write)),
+    ...writes.flatMap(({ scope, write }) => readersToRestart(view, scope, write, byName)),
     ...named,
   ]);
-  const runs = (service: ServiceName) => {
-    const held = scopeIn(view, serviceRef(service.serviceId));
-    return held === undefined || held.running;
-  };
+  const held = (service: ServiceName) => scopeIn(view, serviceRef(service.serviceId));
   return {
-    restart: readers.filter(runs),
-    notRunning: readers.filter((service) => !runs(service)),
+    restart: readers.filter(
+      (service) => held(service)?.running === true && held(service)?.deploying !== true,
+    ),
+    notRunning: readers.filter((service) => held(service)?.running !== true),
+    deploying: readers.filter(
+      (service) => held(service)?.running === true && held(service)?.deploying === true,
+    ),
   };
 }
 

@@ -9,7 +9,7 @@
  */
 import { isZcpService } from "../../zerops/containerAddress.ts";
 import { isManagedDataService, isRuntimeService } from "../../zerops/topology.ts";
-import { historyScope } from "../families/process.ts";
+import { historyScope, runsStill } from "../families/process.ts";
 import { projectVariablesScope, type VariableRow } from "../families/projectVariables.ts";
 import { serviceVariablesScope, type ServiceVariableValue } from "../families/serviceVariables.ts";
 import { servicesScope, type ServiceValue } from "../families/service.ts";
@@ -82,6 +82,8 @@ const newest = (left: string | null, right: string | undefined): string | null =
  */
 function startsOf(read: ProjectionReads, projectId: string, services: ReadonlyArray<ServiceValue>) {
   const startedAt = new Map<string, string>();
+  // A build or deploy under way: its containers start after it, with the values as they are then.
+  const deploying = new Set<string>();
   let deployedAt: string | null = null;
   for (const service of services) {
     const activated = service.activeAppVersion?.activationDate ?? undefined;
@@ -93,6 +95,8 @@ function startsOf(read: ProjectionReads, projectId: string, services: ReadonlyAr
     const fact = read.fact("process", id);
     if (fact.kind !== "known") continue;
     const process = fact.value;
+    if (runsStill(process.status) && DEPLOY_ACTIONS.has(process.actionName))
+      for (const serviceId of process.serviceStackIds) deploying.add(serviceId);
     if (process.status !== "FINISHED" || !START_ACTIONS.has(process.actionName)) continue;
     if (DEPLOY_ACTIONS.has(process.actionName)) deployedAt = newest(deployedAt, process.finished);
     for (const serviceId of process.serviceStackIds) {
@@ -100,7 +104,7 @@ function startsOf(read: ProjectionReads, projectId: string, services: ReadonlyAr
       if (at !== null) startedAt.set(serviceId, at);
     }
   }
-  return { startedAt, deployedAt };
+  return { startedAt, deployedAt, deploying };
 }
 
 type ServiceKind = RefService["kind"];
@@ -246,7 +250,7 @@ export const vault: Projection<VaultKey, VaultView> = {
       projectId,
     });
     const readers = readersOf(world);
-    const { startedAt, deployedAt } = startsOf(
+    const { startedAt, deployedAt, deploying } = startsOf(
       read,
       projectId,
       services.map(({ service }) => service),
@@ -294,6 +298,7 @@ export const vault: Projection<VaultKey, VaultView> = {
       reads: [],
       startedAt: null,
       running: false,
+      deploying: false,
     };
     const serviceScope = ({ service, ref, values }: (typeof services)[number]): VaultScope => {
       const scopeRef: VaultScopeRef = { kind: "service", serviceId: ref.serviceId };
@@ -312,6 +317,7 @@ export const vault: Projection<VaultKey, VaultView> = {
         })),
         startedAt: ref.kind === "runtime" ? (startedAt.get(ref.serviceId) ?? null) : null,
         running: ref.kind === "runtime" && RUNNING.has(service.status.replace(/^SERVICE_/u, "")),
+        deploying: ref.kind === "runtime" && deploying.has(ref.serviceId),
       };
     };
     const runtimes = services.filter(({ ref }) => ref.kind === "runtime").map(serviceScope);

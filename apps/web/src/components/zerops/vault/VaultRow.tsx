@@ -12,6 +12,8 @@ import type {
   VaultView,
   VaultWrite,
 } from "@t3tools/client-runtime/data";
+import { vaultRemovalBreaks } from "@t3tools/client-runtime/data";
+import { namesWords } from "../../ask/ask.logic";
 import {
   ChevronDownIcon,
   CheckIcon,
@@ -303,6 +305,8 @@ function RowBody(props: VaultRowProps) {
     ? draft !== "" && draft !== revealed
     : draft !== (value.value ?? "");
   const restarts = value.readers.filter((reader) => reader.state === "restart");
+  // The apps a removal leaves on the literal `${KEY}`: its confirm says so, and none restarts.
+  const breaks = guard ? vaultRemovalBreaks(props.view, scope.ref, value.id) : [];
   const { copyToClipboard, isCopied } = useCopyToClipboard();
 
   // A value not set yet whose name says secret is saved hidden.
@@ -503,6 +507,12 @@ function RowBody(props: VaultRowProps) {
               )}
             />
           </p>
+          {breaks.length === 0 ? null : (
+            <p data-vault-remove-breaks>
+              Removing it breaks {namesWords(breaks.map((service) => service.hostname))} until it's
+              replaced, so nothing restarts {breaks.length === 1 ? "it" : "them"} now.
+            </p>
+          )}
           <div className="flex justify-end gap-1.5">
             <Button onClick={remove} size="sm" variant="destructive">
               Remove anyway

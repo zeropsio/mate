@@ -88,6 +88,7 @@ export const VAULT_FIXTURE: VaultView = {
       reads: [],
       startedAt: null,
       running: false,
+      deploying: false,
     },
     {
       ref: APPDEV,
@@ -146,6 +147,7 @@ export const VAULT_FIXTURE: VaultView = {
       ],
       startedAt: ago(DAY),
       running: true,
+      deploying: false,
     },
     {
       ref: { kind: "service", serviceId: "svc-appstage" },
@@ -175,6 +177,7 @@ export const VAULT_FIXTURE: VaultView = {
       ],
       startedAt: ago(DAY),
       running: true,
+      deploying: false,
     },
     {
       ref: DB,
@@ -197,6 +200,7 @@ export const VAULT_FIXTURE: VaultView = {
       reads: [],
       startedAt: null,
       running: false,
+      deploying: false,
     },
   ],
   notLive: [
