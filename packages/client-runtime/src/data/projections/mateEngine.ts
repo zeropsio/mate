@@ -64,7 +64,11 @@ import {
 } from "../families/mateEngine.ts";
 import type { ProjectionReads, Projection } from "../store.ts";
 import { crewSeamWords, crewSessionWord } from "../../zerops/crew/phrases.ts";
-import { mateMessageAskedLine, readMateMessageSent } from "../../zerops/model/mateMessage.ts";
+import {
+  mateMessageAskedLine,
+  readMateMessageSent,
+  type MateMessageSent,
+} from "../../zerops/model/mateMessage.ts";
 import { sameValue } from "./equal.ts";
 
 const iso = (ms: number | null | undefined) =>
@@ -158,6 +162,21 @@ interface EngineMessage extends OrchestrationMessage {
   readonly heldRunId?: string;
 }
 
+/**
+ * A Mate's project by its name as the person's navigation holds it: HQ names none on a Mate's
+ * message (`projectName` is empty), so the rows name it from what the menu already reads.
+ */
+type ProjectNameOf = (projectId: string) => string | undefined;
+
+/** A Mate's message with its sender's project named, where the navigation knows it. */
+const withProjectName = (item: MateMessageItem, projectNameOf: ProjectNameOf): MateMessageItem =>
+  item.from.projectName.trim() !== ""
+    ? item
+    : {
+        ...item,
+        from: { ...item.from, projectName: projectNameOf(item.from.projectId) ?? "" },
+      };
+
 /** Whether a run ended without ever starting: its message never reached the agent. */
 type NeverStarted = (runId: string | null) => boolean;
 
@@ -167,6 +186,7 @@ function messageOf(
   neverStarted: NeverStarted = () => false,
   queued: (runId: string) => boolean = () => false,
   refusedAtAdmission: NeverStarted = () => false,
+  projectNameOf: ProjectNameOf = () => undefined,
 ): EngineMessage | null {
   const base = {
     turnId: cardOf(item.runId) as OrchestrationMessage["turnId"],
@@ -189,7 +209,9 @@ function messageOf(
         ...(item.task === undefined ? {} : { task: item.task }),
         ...(item.taskAsk === undefined ? {} : { taskAsk: item.taskAsk }),
         ...(item.taskMessage === undefined ? {} : { taskMessage: item.taskMessage }),
-        ...(item.mateMessage === undefined ? {} : { mateMessage: item.mateMessage }),
+        ...(item.mateMessage === undefined
+          ? {}
+          : { mateMessage: withProjectName(item.mateMessage, projectNameOf) }),
         ...(item.taskId === undefined ? {} : { taskId: item.taskId }),
         attachments: item.attachments.filter(
           (attachment): attachment is Extract<ChatAttachment, { type: "image" | "file" }> =>
@@ -292,14 +314,22 @@ const helperOf = (item: Item) =>
  * same way V1 does (`shows`) and its Zerops result; a record with no facts of its own is named
  * by its tool.
  */
-function callData(item: Extract<Item, { kind: "call" }>): Record<string, unknown> {
+function callData(
+  item: Extract<Item, { kind: "call" }>,
+  sent: MateMessageSent | undefined,
+): Record<string, unknown> {
   const named =
     item.shows ??
     ({
       toolName: item.tool.name,
       ...(item.tool.server === undefined ? {} : { server: item.tool.server }),
     } as Record<string, unknown>);
-  return item.result === undefined ? { ...named } : { ...named, zerops: item.result };
+  return {
+    ...named,
+    ...(item.result === undefined ? {} : { zerops: item.result }),
+    // A message sent to another Mate, its project named: its row and the wait for its answer.
+    ...(sent === undefined ? {} : { mateMessageSent: sent }),
+  };
 }
 
 /**
@@ -319,9 +349,14 @@ function callActivities(
   cardOf: CardOf,
   /** The work it started was stopped: its call ended failed only as the stop broke it off. */
   workStopped = false,
+  projectNameOf: ProjectNameOf = () => undefined,
 ): ReadonlyArray<OrchestrationThreadActivity> {
   // A message sent to another Mate is named by whom it went to, as its result says.
-  const sent = readMateMessageSent(item.result?.toolName, item.result?.resultText);
+  const said = readMateMessageSent(item.result?.toolName, item.result?.resultText);
+  const sent =
+    said === undefined || said.to.projectName.trim() !== ""
+      ? said
+      : { ...said, to: { ...said.to, projectName: projectNameOf(said.to.projectId) ?? "" } };
   const title =
     sent === undefined
       ? (item.words ?? item.presentation?.title ?? item.tool.name)
@@ -332,7 +367,7 @@ function callActivities(
       (item.tool.server === undefined ? "dynamic_tool_call" : "mcp_tool_call"),
     toolCallId: item.id,
     ...(item.input === undefined || inputNotArrived(item.input) ? {} : { detail: item.input }),
-    data: callData(item),
+    data: callData(item, sent),
     ...(item.presentation === undefined ? {} : { presentation: item.presentation }),
     ...helperOf(item),
   };
@@ -988,6 +1023,12 @@ export function engineThreadOf(
     const run = runId === null ? undefined : runById.get(runId);
     return run !== undefined && run.state === "ended" && run.startedAt === null;
   };
+  // Not read yet, or none: the row names the Mate alone until the navigation names its project.
+  const projectNameOf: ProjectNameOf = (projectId) => {
+    const placement = read.fact("placement", projectId);
+    if (placement.kind !== "known") return undefined;
+    return placement.value.name?.trim() || undefined;
+  };
   // Only admission ends a run failed before anything of it ran.
   const refusedAtAdmission: NeverStarted = (runId) =>
     neverStarted(runId) && runById.get(runId!)?.end?.kind === "failed";
@@ -1006,11 +1047,12 @@ export function engineThreadOf(
       neverStarted,
       (runId) => runById.get(runId)?.state === "queued",
       refusedAtAdmission,
+      projectNameOf,
     );
     if (message !== null) messages.push(message);
     switch (item.kind) {
       case "call":
-        activities.push(...callActivities(item, cardOf, stoppedCalls.has(item.id)));
+        activities.push(...callActivities(item, cardOf, stoppedCalls.has(item.id), projectNameOf));
         break;
       case "work":
         activities.push(...workActivities(item, cardOf));
