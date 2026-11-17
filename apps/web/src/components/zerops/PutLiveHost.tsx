@@ -20,6 +20,8 @@ import {
   putLiveFactsOf,
   putLiveLandedAt,
   putLiveNext,
+  putLiveReviewed,
+  putLiveServices,
   putLiveSettle,
   putLiveSheet,
   putLiveSheetUnderWay,
@@ -29,6 +31,7 @@ import {
   type PutLiveRun,
 } from "~/zerops/putLive.logic";
 import { useOpenReview } from "~/zerops/review";
+import { useReleasePlanWait, useReleaseServicePlan } from "~/zerops/useReleaseServicePlan";
 import { useAddEnvironment, useEnvironmentOffers } from "~/zerops/useAddEnvironment";
 import { useEnvironmentCreation } from "~/zerops/useEnvironmentCreation";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
@@ -139,10 +142,15 @@ function PutLiveSheetContainer({
             .toSorted((left, right) => (right.mergedAt ?? "").localeCompare(left.mergedAt ?? "")),
     [flow],
   );
+  const creates = useMemo(
+    () => (recipe.tier === undefined ? undefined : putLiveServices(recipe.tier.yaml)),
+    [recipe.tier],
+  );
   const model = putLiveSheet({
     project,
     changes: merged,
     recipe: recipe.state,
+    creates,
   });
   const seeCode = merged?.length === 1 ? merged[0] : undefined;
   return (
@@ -167,7 +175,13 @@ function PutLiveSheetContainer({
       onPutLive={() => {
         if (orgId === undefined) return;
         setPressed(true);
-        start({ orgId, groupId: ask.groupId, project });
+        // The press approves what the sheet named, and nothing else (`putLiveReviewed`).
+        start({
+          orgId,
+          groupId: ask.groupId,
+          project,
+          approves: model.where.creates?.map((service) => service.hostname),
+        });
       }}
       onSeeCode={
         seeCode === undefined
@@ -205,6 +219,20 @@ function PutLiveDriver({ run }: { readonly run: PutLiveRun }) {
   // Production gets the project's people at their level there, as a stage added from it does.
   const people = useDraftPeople(run.groupId, "production");
   const flow = useProjectFlows(useMemo(() => [run.groupId], [run.groupId])).flows.get(run.groupId);
+  const forget = usePutLive((state) => state.forget);
+  const openReview = useOpenReview();
+  // Production takes its first release: HQ's review of it says what it creates there, which the
+  // press approved only where the sheet named it (`putLiveReviewed`). Its wait is the review's own.
+  const offered =
+    run.phase === "creating" &&
+    flow !== undefined &&
+    putLiveNext(run, putLiveFactsOf(flow)).kind === "release";
+  const review = useReleaseServicePlan(
+    flow,
+    offered ? flow?.release.suggestion : undefined,
+    offered,
+  );
+  const reviewWait = useReleasePlanWait(offered && review.view.kind === "pending");
   // Its wait for the release is bounded: the run is read again once its patience runs out, even
   // where nothing else changes.
   const deadline = putLiveDeadline(run);
@@ -288,6 +316,32 @@ function PutLiveDriver({ run }: { readonly run: PutLiveRun }) {
     if (flow === undefined) return;
     const next = putLiveNext(run, putLiveFactsOf(flow), Math.max(woken, Date.now()));
     if (next.kind === "wait") return;
+    if (next.kind === "release") {
+      const decided = putLiveReviewed({
+        review: review.view,
+        refused: flow.release.permission?.allowed === false,
+        expired: reviewWait.stage === "expired",
+        approves: run.approves,
+      });
+      if (decided.kind === "wait") return;
+      if (decided.kind === "review") {
+        // What the press did not approve is the person's, in the release's own review: the run
+        // ends there, production made, and nothing says it failed.
+        sent.current = key;
+        forget(groupId);
+        openReview({ kind: "release", groupId });
+        return;
+      }
+      send(
+        () => verbs.release(flow, undefined, decided.plan),
+        (outcome) =>
+          outcome.ok
+            ? { kind: "released", tag: outcome.tag ?? flow.release.suggestion }
+            : failed(outcome.reason),
+        "again",
+      );
+      return;
+    }
     sent.current = key;
     if (next.kind === "failed") {
       step(groupId, { kind: "failed", words: next.words, action: next.action });
@@ -299,17 +353,23 @@ function PutLiveDriver({ run }: { readonly run: PutLiveRun }) {
     }
     if (next.kind === "live") {
       step(groupId, { kind: "live", at: putLiveLandedAt(run, putLiveFactsOf(flow), Date.now()) });
-      return;
     }
-    send(
-      () => verbs.release(flow),
-      (outcome) =>
-        outcome.ok
-          ? { kind: "released", tag: outcome.tag ?? flow.release.suggestion }
-          : failed(outcome.reason),
-      "again",
-    );
-  }, [create, entry, flow, key, people, recipe, run, step, verbs, woken]);
+  }, [
+    create,
+    entry,
+    flow,
+    forget,
+    key,
+    openReview,
+    people,
+    recipe,
+    review.view,
+    reviewWait.stage,
+    run,
+    step,
+    verbs,
+    woken,
+  ]);
 
   return null;
 }

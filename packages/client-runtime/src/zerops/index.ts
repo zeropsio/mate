@@ -59,7 +59,13 @@ export {
   type ZeropsPlacedBirth,
   type ZeropsProjectOrder,
 } from "./groups.ts";
-export { mateTier, recipeTierServices, type RecipeRuntime, type RecipeTier } from "./recipeTier.ts";
+export {
+  mateTier,
+  recipeTierServices,
+  recipeTierServiceTypes,
+  type RecipeRuntime,
+  type RecipeTier,
+} from "./recipeTier.ts";
 export { recipeReach, type RecipeReach } from "./recipeReach.ts";
 export { unionAgents } from "./agentSelection.ts";
 export {

@@ -14405,6 +14405,86 @@ a.message-file:focus-visible {
 
 /* What happens in production: one card, the steps in HQ's order — a mark, a title and one line
    each, joined down their marks. Before the press they are the plan; after it they tick in place. */
+/* Put it live's route (`PutLiveSheet`): what goes live, then where, on the release plan's card
+   and marks (`.rv-plan`, `.rv-pmark`); its rows wrap, a change's title being the person's words. */
+.put-live-route {
+  display: grid;
+  padding: 2px 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  list-style: none;
+  background: color-mix(in oklab, var(--foreground) 2%, transparent);
+}
+.put-live-stop {
+  position: relative;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  column-gap: 14px;
+  padding: 14px 16px;
+}
+.put-live-stop + .put-live-stop::before {
+  position: absolute;
+  top: 0;
+  right: 16px;
+  left: 52px;
+  height: 1px;
+  background: var(--border);
+  content: "";
+}
+/* From one stop's mark to the next one's. */
+.put-live-stop:not(:last-child)::after {
+  position: absolute;
+  top: 41px;
+  bottom: -7px;
+  left: 26px;
+  width: 2px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--foreground) 12%, transparent);
+  content: "";
+}
+.put-live-mark {
+  display: flex;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  margin-top: -1px;
+  border: 1.5px solid color-mix(in oklab, var(--foreground) 22%, transparent);
+  border-radius: 999px;
+  color: var(--muted-foreground);
+}
+.put-live-mark svg {
+  width: 12px;
+  height: 12px;
+}
+.put-live-stop-body {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+.put-live-stop-t {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  color: var(--foreground);
+  text-wrap: pretty;
+}
+.put-live-stop-l {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--muted-foreground);
+  text-wrap: pretty;
+}
+.put-live-skel {
+  display: block;
+  height: 12px;
+  margin-block: 3px;
+  border-radius: 4px;
+  background: var(--muted);
+}
 .rv-plan {
   display: grid;
   margin: 0;

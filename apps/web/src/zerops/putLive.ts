@@ -42,6 +42,8 @@ interface PutLiveState {
     readonly orgId: string;
     readonly groupId: string;
     readonly project: string;
+    /** The services the pressed sheet named: what its press approves production to get. */
+    readonly approves?: ReadonlyArray<string> | undefined;
   }) => void;
   readonly step: (groupId: string, event: PutLiveEvent) => void;
   /** A run said from the project's flow (`putLiveResumed`), kept from here; never one under way. */

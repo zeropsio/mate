@@ -152,6 +152,12 @@ function Harness() {
               },
             ],
             recipe: "present",
+            creates: [
+              { hostname: "app", kind: "Bun 1.4" },
+              { hostname: "db", kind: "PostgreSQL 18" },
+              { hostname: "cache", kind: "Valkey 9.0" },
+              { hostname: "storage", kind: "Object storage" },
+            ],
           })}
           onSetUpYourself={noop}
           onPutLive={noop}

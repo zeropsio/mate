@@ -427,6 +427,20 @@ export function recipeTierServices(yaml: string): ReadonlyArray<RecipeTierServic
 }
 
 /**
+ * Each service of the tier with the `type` it declares (`postgresql@18`), as written: what a
+ * production's first release creates, named before it is pressed.
+ */
+export function recipeTierServiceTypes(
+  yaml: string,
+): ReadonlyArray<{ readonly hostname: string; readonly type: string | undefined }> | undefined {
+  const tier = parseTier(yaml);
+  if (tier === undefined) return undefined;
+  return tier.items.flatMap((item) =>
+    item.hostname === undefined ? [] : [{ hostname: item.hostname, type: ownScalar(item, "type") }],
+  );
+}
+
+/**
  * The hostnames of the tier's zcp services, by their own `type`: a Mate's tier declares none, its
  * press bringing the one container a project holds (audit D2).
  */

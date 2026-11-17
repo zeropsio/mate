@@ -1,16 +1,19 @@
 /**
- * The *Put it live* sheet (G7): what goes live — the change's title and a few plain lines, one
- * line each (three wrapped paragraphs of the description pushed Where down: a run 2 follow-up), with
- * the way to its code — where it goes, stage left for later, and one button. It asks nothing it
- * already knows: production's name, its recipe and its first version are decided, and the release
- * follows production by itself (`putLive.logic.ts`).
+ * The *Put it live* sheet (G7): one route on the release plan's card — what goes live, then where.
+ * The change by its title and what it brings by name (the review reads it whole), with the way to
+ * its code; production, what it gets, and the way to set it up yourself; stage left for later, and
+ * one button. It asks nothing it already knows: production's name, its recipe and its first
+ * version are decided, and the release follows production by itself (`putLive.logic.ts`). The
+ * press approves the services it names: HQ refuses a release that creates services nobody saw.
  */
+import { GitMergeIcon, GlobeIcon } from "lucide-react";
 import { useRef } from "react";
 
-import type { PutLiveSheetModel } from "~/zerops/putLive.logic";
+import type { PutLiveService, PutLiveSheetModel } from "~/zerops/putLive.logic";
 
 import { Button } from "../ui/button";
 import {
+  DialogClose,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -19,8 +22,11 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 
-/** A quiet way out beside the words: a link Button, its text on the words' edge. */
-const QUIET_WAY_OUT = "-ms-2 self-start";
+const LIST = new Intl.ListFormat("en-GB", { style: "long", type: "conjunction" });
+
+/** "Bun 1.4, PostgreSQL 18 and Object storage · billed by Zerops". */
+const createsLine = (services: ReadonlyArray<PutLiveService>) =>
+  `${LIST.format(services.map((service) => service.kind))} · billed by Zerops`;
 
 export function PutLiveSheet({
   model,
@@ -39,6 +45,7 @@ export function PutLiveSheet({
   readonly onSetUpYourself?: (() => void) | undefined;
 }) {
   const press = useRef<HTMLButtonElement>(null);
+  const { what, where } = model;
   return (
     <DialogPopup
       className="max-w-md"
@@ -53,47 +60,64 @@ export function PutLiveSheet({
         </DialogDescription>
       </DialogHeader>
       <DialogPanel>
-        <div className="flex flex-col gap-6">
-          <section aria-label="What goes live" className="flex flex-col gap-1">
-            <h3 className="text-muted-foreground text-xs">What goes live</h3>
-            {model.what === undefined ? (
-              // What is merged, still read: its title's box held, no words it takes back.
-              <p aria-hidden="true" className="flex h-5 items-center">
-                <span className="h-3.5 w-48 rounded-sm bg-muted" />
-              </p>
-            ) : (
-              <>
-                <p className="font-medium text-foreground text-sm">{model.what.title}</p>
-                {model.what.lines.length === 0 ? null : (
-                  <ul className="flex flex-col gap-0.5 text-muted-foreground text-sm">
-                    {model.what.lines.map((line) => (
-                      // One line each: the review reads it whole, and the sheet's question is where.
-                      <li className="truncate" key={line}>
-                        {line}
-                      </li>
-                    ))}
-                  </ul>
+        <ol className="put-live-route">
+          <li aria-label="What goes live" className="put-live-stop">
+            <span aria-hidden="true" className="put-live-mark">
+              <GitMergeIcon />
+            </span>
+            <div className="put-live-stop-body">
+              {what === undefined ? (
+                // What is merged, still read: its title's room held, no words it takes back.
+                <p aria-hidden="true" className="put-live-stop-t">
+                  <span className="put-live-skel w-48" />
+                </p>
+              ) : (
+                <>
+                  <p className="put-live-stop-t line-clamp-2">{what.title}</p>
+                  {what.lines.length === 0 ? null : (
+                    <p className="put-live-stop-l line-clamp-2">{what.lines.join(" · ")}</p>
+                  )}
+                </>
+              )}
+              {onSeeCode === undefined ? null : (
+                <Button className="-ms-2 self-start" onClick={onSeeCode} size="xs" variant="link">
+                  See the code
+                </Button>
+              )}
+            </div>
+          </li>
+          <li aria-label="Where" className="put-live-stop">
+            <span aria-hidden="true" className="put-live-mark">
+              <GlobeIcon />
+            </span>
+            <div className="put-live-stop-body">
+              <div className="flex items-start justify-between gap-3">
+                <p className="put-live-stop-t">{where.name}</p>
+                {onSetUpYourself === undefined ? null : (
+                  <Button
+                    aria-label="Set up production yourself…"
+                    className="-me-2 shrink-0"
+                    onClick={onSetUpYourself}
+                    size="xs"
+                    variant="link"
+                  >
+                    Set up yourself…
+                  </Button>
                 )}
-              </>
-            )}
-            {onSeeCode === undefined ? null : (
-              <Button className={QUIET_WAY_OUT} onClick={onSeeCode} size="sm" variant="link">
-                See the code
-              </Button>
-            )}
-          </section>
-          <section aria-label="Where" className="flex flex-col gap-1">
-            <h3 className="text-muted-foreground text-xs">Where</h3>
-            <p className="font-medium text-foreground text-sm">{model.where.name}</p>
-            <p className="text-muted-foreground text-sm">{model.where.line}</p>
-          </section>
-          <p className="text-muted-foreground text-sm">{model.later}</p>
-          {onSetUpYourself === undefined ? null : (
-            <Button className={QUIET_WAY_OUT} onClick={onSetUpYourself} size="sm" variant="link">
-              Set up production yourself…
-            </Button>
-          )}
-        </div>
+              </div>
+              <p className="put-live-stop-l">{where.line}</p>
+              {where.creates === undefined ? (
+                // The setup files, still read: the line's room held.
+                <p aria-hidden="true" className="put-live-stop-l">
+                  <span className="put-live-skel w-56" />
+                </p>
+              ) : where.creates.length === 0 ? null : (
+                <p className="put-live-stop-l">{createsLine(where.creates)}</p>
+              )}
+            </div>
+          </li>
+        </ol>
+        <p className="text-muted-foreground text-xs">{model.later}</p>
       </DialogPanel>
       <DialogFooter>
         {model.hold === undefined ? null : (
@@ -101,9 +125,10 @@ export function PutLiveSheet({
             {model.hold}
           </p>
         )}
+        <DialogClose render={<Button variant="ghost" />}>Cancel</DialogClose>
         <Button
-          aria-busy={model.what === undefined || model.busy === true || undefined}
-          disabled={model.hold !== undefined || model.what === undefined || model.busy === true}
+          aria-busy={what === undefined || model.busy === true || undefined}
+          disabled={model.hold !== undefined || what === undefined || model.busy === true}
           onClick={onPutLive}
           ref={press}
         >

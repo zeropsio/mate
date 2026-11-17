@@ -14,7 +14,8 @@
  * Pure: what is offered, what the sheet says, and where a run goes next, from the facts the
  * surfaces read. The writes are the host's (`PutLiveHost`).
  */
-import { creationHandoff } from "@t3tools/client-runtime/data";
+import { creationHandoff, type HqReleaseReview } from "@t3tools/client-runtime/data";
+import type { ReleaseServicePlan } from "@t3tools/shared/hqRelease";
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import {
@@ -25,7 +26,10 @@ import {
   type ReleaseFailure,
   type ReleaseGate,
   isPlatformSubdomain,
+  recipeTierServiceTypes,
 } from "@t3tools/client-runtime/zerops";
+
+import { serviceTypeWords } from "~/components/zerops/vault/vaultGroups.logic";
 
 /** Where a run stands: one step at a time, never two at once. */
 export type PutLivePhase = "creating" | "releasing" | "live" | "failed";
@@ -79,6 +83,11 @@ export interface PutLiveRun {
   readonly stepAt?: number | undefined;
   /** The release a followed roll back goes back to: it is said as that, never as going live. */
   readonly rollsBackTo?: string | undefined;
+  /**
+   * The services the pressed sheet named, by hostname: what the press approves production's first
+   * release to create (`putLiveReviewed`). A run without them creates nothing unseen.
+   */
+  readonly approves?: ReadonlyArray<string> | undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -107,7 +116,16 @@ export interface PutLiveSheetModel {
    * while what is merged is read, the sheet standing in for it and its button waiting.
    */
   readonly what: { readonly title: string; readonly lines: ReadonlyArray<string> } | undefined;
-  readonly where: { readonly name: string; readonly line: string };
+  readonly where: {
+    readonly name: string;
+    readonly line: string;
+    /**
+     * What production gets, from the project's setup files: each service the press creates,
+     * billed by Zerops — the press approves them, so the sheet names them (HQ refuses a release
+     * that creates services nobody saw). `undefined` while the setup files are read.
+     */
+    readonly creates: ReadonlyArray<PutLiveService> | undefined;
+  };
   /** Stage, offered for later — never asked now. */
   readonly later: string;
   readonly button: string;
@@ -117,11 +135,19 @@ export interface PutLiveSheetModel {
   readonly busy?: true | undefined;
 }
 
+/** A service the press creates in production: its hostname, and what it runs in people's words. */
+export interface PutLiveService {
+  readonly hostname: string;
+  /** "PostgreSQL 18", "Bun 1.4", "Object storage". */
+  readonly kind: string;
+}
+
 const MAX_LINES = 3;
 
 /**
- * At most three plain lines of what a change does, from its description: its bullets first, else
- * its sentences — no headings, pictures, code or Markdown marks.
+ * At most three plain lines of what a change does, from its description: its bullets first — each
+ * by the name it leads with ("Tea finder — pick a blend by mood…" → "Tea finder"), the
+ * review saying the rest — else its sentences; no headings, pictures, code or Markdown marks.
  */
 export function putLiveLines(description: string | undefined): ReadonlyArray<string> {
   if (description === undefined) return [];
@@ -139,7 +165,8 @@ export function putLiveLines(description: string | undefined): ReadonlyArray<str
     const bullet = /^(?:[-*+]|\d+[.)])\s+(.*)$/u.exec(line);
     const text = plain(bullet === null ? line : (bullet[1] ?? ""));
     if (text === "") continue;
-    (bullet === null ? lines : bullets).push(text);
+    if (bullet === null) lines.push(text);
+    else bullets.push(/^(.{2,48}?)(?:\s[—–-]\s|:\s)/u.exec(text)?.[1] ?? text);
   }
   return (bullets.length > 0 ? bullets : lines).slice(0, MAX_LINES);
 }
@@ -185,13 +212,19 @@ export function putLiveSheet(input: {
     | undefined;
   /** The production recipe, as read (`useZeropsGroupRecipe`). */
   readonly recipe: "loading" | "present" | "absent" | "unreadable";
+  /** The services the recipe creates in production; `undefined` while it is read. */
+  readonly creates?: ReadonlyArray<PutLiveService> | undefined;
 }): PutLiveSheetModel {
   const { changes } = input;
+  const where = {
+    ...PUT_LIVE_WHERE,
+    creates: input.recipe === "loading" ? undefined : (input.creates ?? []),
+  };
   if (changes === undefined)
     return {
       title: `Put ${input.project} live`,
       what: undefined,
-      where: PUT_LIVE_WHERE,
+      where,
       later: PUT_LIVE_LATER,
       button: "Put it live",
       hold: undefined,
@@ -209,7 +242,7 @@ export function putLiveSheet(input: {
   return {
     title: `Put ${input.project} live`,
     what,
-    where: PUT_LIVE_WHERE,
+    where,
     later: PUT_LIVE_LATER,
     button: "Put it live",
     hold:
@@ -250,6 +283,8 @@ export function startPutLive(input: {
   readonly project: string;
   /** When it was pressed. */
   readonly at?: number | undefined;
+  /** The services the sheet named when it was pressed. */
+  readonly approves?: ReadonlyArray<string> | undefined;
 }): PutLiveRun {
   return {
     orgId: input.orgId,
@@ -257,6 +292,7 @@ export function startPutLive(input: {
     project: input.project,
     phase: "creating",
     ...(input.at === undefined ? {} : { stepAt: input.at }),
+    ...(input.approves === undefined ? {} : { approves: input.approves }),
   };
 }
 
@@ -752,4 +788,61 @@ export function putLiveResumed(input: {
       },
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// What the press approves
+// ---------------------------------------------------------------------------
+
+/**
+ * The services production's recipe creates, as the sheet names them before the press: each type in
+ * the words the release's plan says it by ("PostgreSQL 18", "Valkey 9.0", "File storage"), a
+ * runtime by its language and version ("Bun 1.4"), never its base image.
+ */
+export function putLiveServices(yaml: string): ReadonlyArray<PutLiveService> {
+  return (recipeTierServiceTypes(yaml) ?? []).map(({ hostname, type }) => ({
+    hostname,
+    kind: type === undefined ? hostname : putLiveServiceKind(type),
+  }));
+}
+
+function putLiveServiceKind(type: string): string {
+  const words = serviceTypeWords(type.replace(/^(?:alpine|ubuntu)\//u, ""));
+  const at = words.indexOf(" · ");
+  return (at === -1 ? words : words.slice(at + 3)).replace(/ app\b/u, "");
+}
+
+/** What a run does with HQ's review of production's first release. */
+export type PutLiveReviewed =
+  | { readonly kind: "wait" }
+  /** Everything it creates is what the press approved: released with the plan, its approval. */
+  | { readonly kind: "release"; readonly plan: ReleaseServicePlan }
+  /**
+   * It creates something the sheet never named, HQ refused the review, or its read ran out: the
+   * person approves it in the release's own review — the run ends there, never as a failure.
+   */
+  | { readonly kind: "review" };
+
+/**
+ * One press approves what its sheet named (the owner, 2026-11-17): HQ refuses a release that
+ * creates services without a reviewed plan, so the run releases with HQ's plan only while every
+ * service the plan creates is one the pressed sheet named; anything else is the person's to
+ * approve, in the release's review.
+ */
+export function putLiveReviewed(input: {
+  readonly review: HqReleaseReview;
+  /** HQ said this person may not release: nothing to wait for. */
+  readonly refused: boolean;
+  /** The bounded wait for HQ's review ran out (`useReleasePlanWait`). */
+  readonly expired: boolean;
+  readonly approves: ReadonlyArray<string> | undefined;
+}): PutLiveReviewed {
+  const { review } = input;
+  if (input.refused || review.kind === "failed") return { kind: "review" };
+  if (review.kind === "pending") return input.expired ? { kind: "review" } : { kind: "wait" };
+  const approved = new Set(input.approves ?? []);
+  const unseen = review.plan.operations.some(
+    (operation) => operation.kind === "create" && !approved.has(operation.service),
+  );
+  return unseen ? { kind: "review" } : { kind: "release", plan: review.plan };
 }
