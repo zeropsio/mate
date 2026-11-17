@@ -29,6 +29,8 @@ interface ComposerPromptHistoryMessage {
   readonly task?: unknown;
   /** A task's follow-up (`ChatMessage.taskMessage`): someone else said it, so it is not history. */
   readonly taskMessage?: unknown;
+  /** Another Mate's message (`ChatMessage.mateMessage`): that Mate wrote it, so it is not history. */
+  readonly mateMessage?: unknown;
 }
 
 interface ComposerPromptHistoryEntry {
@@ -171,7 +173,8 @@ export function buildComposerPromptHistoryEntries(
       message.role !== "user" ||
       message.crewCard !== undefined ||
       message.task !== undefined ||
-      message.taskMessage !== undefined
+      message.taskMessage !== undefined ||
+      message.mateMessage !== undefined
     )
       continue;
     const prompt = recallableComposerPrompt(message.text);

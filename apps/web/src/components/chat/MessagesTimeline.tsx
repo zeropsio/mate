@@ -242,6 +242,7 @@ import {
 import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
 import { CrewSeamActivity, CrewTaskCard, CrewTimelineContext } from "../zerops/crew/CrewTaskCard";
 import { MateTaskCard, MateTaskMessageRow } from "../zerops/MateTaskCard";
+import { MateAnswerWaitLine, MateMessageRow } from "../zerops/MateMessageRow";
 import { useRightPanelStore } from "~/rightPanelStore";
 import { CrewmateEmptyState } from "../zerops/crew/CrewmateEmptyState";
 import { ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
@@ -3147,6 +3148,10 @@ function TimelineRowBody({ row }: { row: TimelineRow }) {
         <TaskCardTimelineRow source={row.source} taskId={row.taskId} text={row.text} />
       ) : null}
       {row.kind === "task-message" ? <MateTaskMessageRow message={row.message} /> : null}
+      {/* Another Mate's message opens the run it started as that Mate's; while this Mate waits for
+          an answer to its own, the conversation's end says whose. */}
+      {row.kind === "mate-message" ? <MateMessageRow item={row.item} text={row.text} /> : null}
+      {row.kind === "mate-wait" ? <MateAnswerWaitLine names={row.names} /> : null}
       {row.kind === "background" ? <BackgroundTimelineRow row={row} /> : null}
       {row.kind === "error" ? <ErrorTimelineRow row={row} /> : null}
       {row.kind === "pause" ? <PauseTimelineRow row={row} /> : null}
