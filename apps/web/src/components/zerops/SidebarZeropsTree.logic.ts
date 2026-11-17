@@ -172,11 +172,12 @@ export function projectHeadingMenu(input: {
     ...(input.onAddresses === undefined ? [] : [item("Addresses", input.onAddresses)]),
     ...(input.onInvite === undefined ? [] : [item("Invite people", input.onInvite)]),
     separator,
-    ...(reorder === undefined
+    // Only the moves its place allows: the top project has no Move up, an only one neither.
+    ...(reorder === undefined || (!reorder.canMoveUp && !reorder.canMoveDown)
       ? []
       : [
-          item("Move up", () => reorder.onMove("up"), !reorder.canMoveUp),
-          item("Move down", () => reorder.onMove("down"), !reorder.canMoveDown),
+          ...(reorder.canMoveUp ? [item("Move up", () => reorder.onMove("up"))] : []),
+          ...(reorder.canMoveDown ? [item("Move down", () => reorder.onMove("down"))] : []),
           separator,
         ]),
     ...input.setUp.map(({ label, act }) => item(label, act)),

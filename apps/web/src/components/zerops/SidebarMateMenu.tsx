@@ -154,46 +154,36 @@ export function MateMenuItems({
         </MenuItem>
       )}
       {/* One per service, by its name: a frontend and a backend are two apps (the owner,
-          2026-10-11: "there are multiple services, backend, frontend, how do you know?"). */}
-      {apps.length === 0 ? (
-        <MenuItem data-zerops-mate-menu="open-app" disabled>
-          Open app
+          2026-10-11: "there are multiple services, backend, frontend, how do you know?").
+          A context menu leaves out what cannot act now and has nothing to say why: a new Mate's
+          menu listed four greyed items (no app yet, no link, nothing read) among 22. */}
+      {apps.map((app) => (
+        <MenuItem
+          data-zerops-mate-menu="open-app"
+          key={app.service}
+          render={<a href={app.url} rel="noreferrer" target="_blank" />}
+        >
+          Open {app.service}
+          {hint("↗")}
         </MenuItem>
-      ) : (
-        apps.map((app) => (
-          <MenuItem
-            data-zerops-mate-menu="open-app"
-            key={app.service}
-            render={<a href={app.url} rel="noreferrer" target="_blank" />}
-          >
-            Open {app.service}
-            {hint("↗")}
-          </MenuItem>
-        ))
+      ))}
+      {actions.copyLink === undefined ? null : (
+        <MenuItem data-zerops-mate-menu="copy-link" onClick={actions.copyLink}>
+          Copy link
+        </MenuItem>
       )}
-      <MenuItem
-        data-zerops-mate-menu="copy-link"
-        disabled={actions.copyLink === undefined}
-        onClick={actions.copyLink}
-      >
-        Copy link
-      </MenuItem>
       <MenuSeparator />
-      <MenuItem
-        data-zerops-mate-menu="mute"
-        disabled={actions.toggleMute === undefined}
-        onClick={actions.toggleMute}
-      >
-        {actions.muted ? "Unmute notifications" : "Mute notifications"}
-      </MenuItem>
-      <MenuItem
-        data-zerops-mate-menu="unread"
-        disabled={actions.toggleUnread === undefined}
-        onClick={actions.toggleUnread}
-      >
-        {unread ? "Mark as read" : "Mark as unread"}
-        {hint("E")}
-      </MenuItem>
+      {actions.toggleMute === undefined ? null : (
+        <MenuItem data-zerops-mate-menu="mute" onClick={actions.toggleMute}>
+          {actions.muted ? "Unmute notifications" : "Mute notifications"}
+        </MenuItem>
+      )}
+      {actions.toggleUnread === undefined ? null : (
+        <MenuItem data-zerops-mate-menu="unread" onClick={actions.toggleUnread}>
+          {unread ? "Mark as read" : "Mark as unread"}
+          {hint("E")}
+        </MenuItem>
+      )}
       {actions.rename === undefined ? null : (
         <MenuItem data-zerops-mate-menu="rename" onClick={onRename}>
           Rename
@@ -241,11 +231,13 @@ export function MateMenuItems({
 }
 
 function MateVerbs({ verbs }: { readonly verbs: ReadonlyArray<ZeropsMenuAction> }) {
-  if (verbs.length === 0) return null;
+  // A verb that cannot act now stays only where it says why.
+  const shown = verbs.filter((entry) => entry.disabled !== true || entry.why !== undefined);
+  if (shown.length === 0) return null;
   return (
     <>
       <MenuSeparator />
-      {verbs.map((entry) => (
+      {shown.map((entry) => (
         <MenuItem
           data-zerops-mate-menu={entry.id}
           disabled={entry.disabled === true}

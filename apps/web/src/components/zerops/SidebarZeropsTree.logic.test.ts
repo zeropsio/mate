@@ -176,20 +176,18 @@ describe("projectHeadingMenu — a project heading's ···", () => {
       items: ["Add a project Mate", "Open project", "—", "All projects"],
     },
     {
-      case: "moves, the first one up and the last one down off",
+      case: "the first project moves only down",
       over: {
         reorder: { canMoveUp: false, canMoveDown: true, onMove: () => {} },
       },
-      items: [
-        "Fold",
-        "Add a project Mate",
-        "Open project",
-        "—",
-        "Move up (off)",
-        "Move down",
-        "—",
-        "All projects",
-      ],
+      items: ["Fold", "Add a project Mate", "Open project", "—", "Move down", "—", "All projects"],
+    },
+    {
+      case: "an only project has no moves",
+      over: {
+        reorder: { canMoveUp: false, canMoveDown: false, onMove: () => {} },
+      },
+      items: ["Fold", "Add a project Mate", "Open project", "—", "All projects"],
     },
     {
       case: "a project with a place has its Addresses after Open project",
