@@ -3,8 +3,8 @@
  * ordered by its own source revision. It arrives on two paths into this one family — straight from
  * a Mate the person has open (`adapters/mateAttention.ts`, `mate-direct`), and relayed by HQ for
  * every Mate HQ places (its `attention` scope, `hq-stream`) — and the reducer keeps whichever is
- * newer by that revision: never by a clock, never by which path is live. A Mate from before the
- * attention value relays none; its family holds nothing for it.
+ * newer by that revision: never by a clock, never by which path is live. While a Mate has said
+ * none, its family holds nothing for it.
  *
  * @module data/families/mateAttention
  */

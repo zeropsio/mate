@@ -77,7 +77,7 @@ import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 
 import { MateLiveView } from "@t3tools/shared/hqMates";
 import * as Schema from "effect/Schema";
-import { overviewAgentActivity } from "~/zerops/agentActivity";
+import { restingActivity, threadAgentActivity } from "~/zerops/agentActivity";
 
 import { DraftId, useComposerDraftStore } from "~/composerDraftStore";
 
@@ -210,22 +210,26 @@ describe("a Mate on its card", () => {
           identity: { environmentId: "env-Ada", serverVersion: "0.14.35", update: null },
           main: { ...main, ...patch },
         });
+      // The Mate's answer at rest, read off its main chat as HQ last told it.
+      const rested = (patch: object) => {
+        const told = record(patch).main!;
+        return restingActivity(
+          threadAgentActivity({ ...told, environmentId: EnvironmentId.make("env-Ada") }, undefined),
+          told.updatedAt,
+        );
+      };
       try {
-        activityReading.value = overviewAgentActivity(record({}), false, {});
+        activityReading.value = rested({});
         let markup = card(undefined);
         expect(markup).toContain("Ada hit the Claude limit.");
-        activityReading.value = overviewAgentActivity(
-          record({
-            session: { status: "ready", lastError: null },
-            latestTurn: { ...main.latestTurn, turnId: "finished", state: "completed" },
-            latestMessagePreview: {
-              role: "assistant",
-              text: "Checkout is redesigned and verified.",
-            },
-          }),
-          false,
-          {},
-        );
+        activityReading.value = rested({
+          session: { status: "ready", lastError: null },
+          latestTurn: { ...main.latestTurn, turnId: "finished", state: "completed" },
+          latestMessagePreview: {
+            role: "assistant",
+            text: "Checkout is redesigned and verified.",
+          },
+        });
         markup = card(undefined);
         expect(markup).toContain("Checkout is redesigned and verified.");
         expect(markup).not.toContain("Ada hit the Claude limit.");

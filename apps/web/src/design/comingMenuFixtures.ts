@@ -18,10 +18,8 @@ import type { ZeropsPlacedBirth } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { HqMate, HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { EnvironmentId, ThreadId, ZeropsUserId } from "@t3tools/contracts";
-import { MateLiveView } from "@t3tools/shared/hqMates";
-import * as Schema from "effect/Schema";
 
-import { overviewAgentActivity, type ZeropsAgentActivity } from "~/zerops/agentActivity";
+import { restingActivity, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { mateArrival, type MateComing } from "@t3tools/client-runtime/data";
 
 export const COMING_PHASES = [
@@ -140,36 +138,8 @@ const QUINN_AT_WORK = words("acme-quinn", {
   liveStep: { words: "Setting up the project" },
 });
 
-/** Quinn as HQ last told it, stored while it slept: its first job asked, no words back yet. */
-const QUINN_STORED = Schema.decodeUnknownSync(MateLiveView)({
-  presence: { online: false, since: minutesAgo(1), overview: "stored" },
-  identity: { environmentId: "env-acme-quinn", serverVersion: "0.11.90", update: null },
-  main: {
-    id: "thread-acme-quinn",
-    title: "Stand up development of the project.",
-    hasPendingApprovals: false,
-    hasPendingUserInput: false,
-    hasActionableProposedPlan: false,
-    interactionMode: "default",
-    backgroundLiveness: null,
-    session: { status: "running", lastError: null },
-    latestTurn: {
-      turnId: "turn-acme-quinn",
-      state: "running",
-      requestedAt: minutesAgo(1),
-      startedAt: minutesAgo(1),
-      completedAt: null,
-    },
-    latestUserMessageAt: minutesAgo(1),
-    updatedAt: minutesAgo(1),
-    latestUserMessagePreview: { text: "Stand up development of the project." },
-    latestMessagePreview: { role: "user", text: "Stand up development of the project." },
-    planProgress: null,
-    pendingQuestion: null,
-    usagePause: null,
-    liveStep: null,
-  },
-});
+/** Quinn as last told, at rest while it sleeps: its first job asked, no words back yet. */
+const QUINN_REMEMBERED = restingActivity(QUINN_AT_WORK);
 
 const BORN_AT = Date.now() - 90_000;
 
@@ -241,7 +211,7 @@ export function comingMenu(phase: ComingPhase): ComingMenu {
     phase === "working" || phase === "blinking"
       ? QUINN_AT_WORK
       : phase === "remembered"
-        ? overviewAgentActivity(QUINN_STORED, false, {})
+        ? QUINN_REMEMBERED
         : undefined;
   return {
     candidates: [FEN, ADA, ...(quinn === undefined ? [] : [quinn])],

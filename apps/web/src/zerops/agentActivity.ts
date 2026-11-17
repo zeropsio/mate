@@ -1,27 +1,22 @@
 /**
- * What each Mate is up to, one answer per environment.
+ * The reading of one chat, and the faces of an answer. A Mate's one answer — which chat speaks for
+ * it, and whether that word is of now — is `mateActivity.ts`'s; it calls these readers.
  *
- * The environment's answer is its main chat's (`resolvePrimaryConversation`),
- * and that chat's status is the agent's: run through `resolveThreadStatus`,
- * the one status resolver, and `threadStatusPill`, the one phrase producer
- * (R5), so a Mate's row, a Mate's card and a thread's row can never disagree
- * about what "working" looks like. The face comes from the same status
- * (`mateMarkStateForThreadStatus`), and the subject — what it is on, or was
- * last on — is the running plan step while a turn runs and the server
- * reports one, else the last task as the person put it (the shell's
- * server-kept preview of the ask that started the latest run — a follow-up
- * sent into a running turn is not the task; a server from before it told the
- * two apart keeps their last ask), which stays up while the Mate is idle: a
- * row that only ever said "Idle" told nobody which Mate this is.
- * The chat's title is the fallback for a server that keeps no preview — it
- * names the chat's first task, forever. The snippet is the Mate's last words,
- * off the same shell. `threadAgentActivity` gives the same answer for any one
- * chat, so the header of a second chat speaks for that chat.
- * Nothing is decided here; it is all read off the one resolver.
+ * A chat's reading (`threadAgentActivity` off its shell, `rowAgentActivity` off an engine Mate's
+ * own row of it) runs its status through `resolveThreadStatus`, the one status resolver, and
+ * `threadStatusPill`, the one phrase producer (R5), so a Mate's row, a Mate's card and a thread's
+ * row can never disagree about what "working" looks like. The face comes from the same status
+ * (`mateMarkStateForThreadStatus`), and the subject — what it is on, or was last on — is the
+ * running plan step while a turn runs and reports one, else the last task as the person put it
+ * (the shell's server-kept preview of the ask that started the latest run — a follow-up sent into
+ * a running turn is not the task, else the last ask), which stays up while the Mate is idle: a
+ * row that only ever said "Idle" told nobody which Mate this is. The chat's title is the fallback
+ * where the shell holds no preview — it names the chat's first task, forever. The snippet is the
+ * Mate's last words, off the same shell.
  *
- * Read off a chat's shell where this page holds one, or off HQ's overview of a Mate's main chat
- * (`@t3tools/shared/mateLink`), which carries the fields a row reads and no more
- * (`AgentActivityThread`). A Mate with neither has no entry, and the caller draws it asleep.
+ * The faces of an answer — at rest (`restingActivity`), its mark (`mateFaceOf`), the words a row
+ * draws of it — read a given answer and decide nothing of their own. A Mate with no answer has no
+ * entry, and the caller draws it asleep.
  */
 import { isMateStandUpAsk } from "./mateStandUp";
 import {
@@ -39,7 +34,6 @@ import {
 import {
   mateNextStep,
   matePose,
-  resolvePrimaryConversation,
   type ChangeStandingRead,
   type FlowPullRequest,
   type MatePoseFacts,
@@ -135,7 +129,7 @@ export interface ZeropsAgentActivity {
    * What the Mate is on, or was last on: the running plan step while it
    * works, else the last task as the person asked it — idle included, so the
    * line under the name keeps saying what this Mate is about. The
-   * conversation's title only on a server that keeps no preview. Absent for
+   * conversation's title only where the shell holds no preview. Absent for
    * a conversation nobody has spoken into yet.
    */
   readonly subject: string | undefined;
@@ -156,7 +150,7 @@ export interface ZeropsAgentActivity {
   /**
    * The Mate's last words, quoted under the task — the reply to what the
    * subject asks. Absent while the person's message is the last thing said
-   * (the subject already says it), and on a server that keeps no preview.
+   * (the subject already says it), and where the shell holds no preview.
    */
   readonly snippet: string | undefined;
   /**
@@ -447,8 +441,7 @@ export function agentActivitySnippet(
 ): string | undefined {
   const preview = thread.latestMessagePreview;
   if (preview === undefined || preview === null || preview.role !== "assistant") return undefined;
-  // A server from before previews were masked still hands over what was pasted, and one from
-  // before they were plain words hands over markdown: a row is one line of words.
+  // A row is one line of words, never a secret: the preview is masked and made plain here.
   return maskSecrets(messageWords(preview.text));
 }
 
@@ -499,8 +492,8 @@ export function agentActivitySubject(
     if (step !== undefined && step.length > 0) return maskSecrets(step);
   }
   // The last task, as the person put it — never a command to the harness or
-  // the client's own placeholder for an image-only message, which a server
-  // from before it knew better may still hand over as the latest words.
+  // the client's own placeholder for an image-only message, either of which
+  // a preview may hold as the latest words.
   const asked = thread.latestUserMessagePreview;
   if (asked !== undefined && asked !== null && isPersonsWords(asked.text)) {
     return maskSecrets(asked.text);
@@ -604,8 +597,7 @@ function agentActivityWaitsOnHelpers(
 
 /**
  * The step it is on, in its run card's words (`liveStep.ts`), while it
- * works and its server relays one. A server from before it relays none: the
- * row holds its dots.
+ * works and a step is relayed. With none relayed the row holds its dots.
  */
 function agentActivityLiveStep(
   thread: Pick<AgentActivityThread, "liveStep">,
@@ -619,7 +611,7 @@ function agentActivityLiveStep(
 /**
  * The question it waits on the person to answer, while that is what it
  * waits on — an approval waiting first is no question. Quoted by the server
- * the way a preview is; a server from before it relays none.
+ * the way a preview is; absent where none is relayed.
  */
 function agentActivityQuestion(
   thread: Pick<AgentActivityThread, "pendingQuestion">,
@@ -645,35 +637,6 @@ export function agentActivityErrorLine(
     .find((line) => line.length > 0);
   if (first === undefined) return {};
   return { errorLine: maskSecrets(first) };
-}
-
-export function deriveZeropsAgentActivity(
-  threads: ReadonlyArray<EnvironmentThreadShell>,
-  lastVisitedAtById: Readonly<Record<string, string>>,
-  limits?: ReadonlyMap<string, MateLimit>,
-): ReadonlyMap<EnvironmentId, ZeropsAgentActivity> {
-  const shellsByEnvironment = new Map<EnvironmentId, Array<EnvironmentThreadShell>>();
-  for (const thread of threads) {
-    const shells = shellsByEnvironment.get(thread.environmentId);
-    if (shells) shells.push(thread);
-    else shellsByEnvironment.set(thread.environmentId, [thread]);
-  }
-
-  const activity = new Map<EnvironmentId, ZeropsAgentActivity>();
-  for (const [environmentId, shells] of shellsByEnvironment) {
-    const { primary } = resolvePrimaryConversation(shells);
-    if (primary === undefined) continue;
-    activity.set(
-      environmentId,
-      threadAgentActivity(
-        primary,
-        lastVisitedAtById[scopedThreadKey(scopeThreadRef(environmentId, primary.id))],
-        undefined,
-        limits?.get(scopedThreadKey(scopeThreadRef(environmentId, primary.id))),
-      ),
-    );
-  }
-  return activity;
 }
 
 /**
@@ -871,42 +834,4 @@ export function answerAwaitedWords(activity: ZeropsAgentActivity | undefined): s
   if (activity?.awaitsAnswer === undefined || activity.usageLimited) return undefined;
   if (activity.kind !== "idle" && activity.kind !== "done") return undefined;
   return mateAnswerWaitLine(activity.awaitsAnswer);
-}
-
-/**
- * A Mate's activity from HQ's overview of it: its main chat read as its shell is — an engine Mate's
- * off its own row (`rowAgentActivity`) — with this device's visit, at rest unless HQ's word is
- * live (`restingActivity`). Undefined where HQ holds no overview of it, or it has no main chat yet.
- */
-export function overviewAgentActivity(
-  mate: MateLiveView,
-  live: boolean,
-  lastVisitedAtById: Readonly<Record<string, string>>,
-  limits?: ReadonlyMap<string, MateLimit> | undefined,
-): ZeropsAgentActivity | undefined {
-  if (mate.identity === undefined || !mate.main) return undefined;
-  const { environmentId } = mate.identity;
-  const main = mate.main;
-  const key = scopedThreadKey(scopeThreadRef(environmentId, main.id));
-  // An engine Mate's own row of its main conversation, where it sends rows; its shell fields else.
-  const row = mate.conversations?.find((each) => (each.conversationId as string) === main.id);
-  const activity =
-    row === undefined
-      ? threadAgentActivity(
-          { ...main, environmentId },
-          lastVisitedAtById[key],
-          undefined,
-          limits?.get(key),
-        )
-      : rowAgentActivity(
-          row,
-          environmentId,
-          lastVisitedAtById[key],
-          undefined,
-          limits?.get(key),
-          main,
-        );
-  return live
-    ? activity
-    : restingActivity(activity, row === undefined ? main.updatedAt : isoOf(row.at));
 }

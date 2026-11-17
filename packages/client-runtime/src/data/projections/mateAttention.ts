@@ -20,7 +20,7 @@ import { sameValue } from "./equal.ts";
 import { liveOrHeld } from "../streamMachine.ts";
 
 export interface MateAttentionRead {
-  /** The Mate's attention; `null` while none was said — or the Mate predates the value. */
+  /** The Mate's attention; `null` while none was said. */
   readonly attention: MateAttention | null;
   /** Whether it is the Mate's word of now. */
   readonly live: boolean;

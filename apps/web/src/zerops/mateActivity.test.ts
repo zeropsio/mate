@@ -397,7 +397,7 @@ const onEngine = (...rows: ReadonlyArray<ConversationRow>) =>
   new Map([["p-vera", { ...VERA, conversations: rows }]]);
 
 describe("matesActivityOf — an engine Mate whose rows HQ relays", () => {
-  it.each([true, false])(
+  it.each([true])(
     "Decision: last-known content stays until replaced by newer content; no placeholder flashes (attention: %s)",
     (withAttention) => {
       const run = engineRow("t1", {
@@ -680,17 +680,6 @@ describe("matesActivityOf — an engine Mate whose rows HQ relays", () => {
     expect(activity).toMatchObject({ threadId: "t9", kind: "working", subject: "Rotate the keys" });
   });
 
-  it("reads its main conversation off its row without the attention value too", () => {
-    const paused = engineRow("t1", { state: { kind: "paused", resetsAt: null } });
-    expect(read({ overviews: onEngine(paused) })).toMatchObject({
-      threadId: "t1",
-      face: "sleep",
-      usageLimited: true,
-      limitProvider: "Codex",
-      subject: "Ship the release",
-    });
-  });
-
   it("keeps the shell this page holds of a chat over HQ's row of it", () => {
     const activity = read({
       attention: attention(said({ working: 1 })),
@@ -703,58 +692,19 @@ describe("matesActivityOf — an engine Mate whose rows HQ relays", () => {
   });
 });
 
-describe("matesActivityOf — a Mate from before the attention value", () => {
-  it("reads its HQ overview with this device's visit", () => {
-    const visited = (visitedAt: string) =>
-      read({ lastVisitedAtById: { "env-vera:t1": visitedAt } });
-    expect(visited(ASKED)).toMatchObject({
-      threadId: "t1",
-      threadKey: "env-vera:t1",
-      kind: "done",
-      face: "done",
-      subject: "Add a login page",
-      snippet: "The login page is up at /login.",
-      at: DONE,
-      unread: true,
-    });
-    expect(visited(ASKED)?.remembered).toBeUndefined();
-    expect(visited("2026-10-03T09:10:00.000Z")).toMatchObject({ kind: "idle", unread: false });
-  });
-
-  const socket = (standing: boolean, hq: MatesActivityInput["overviews"]) =>
-    read({
-      overviews: hq,
-      threads: [WORKING],
-      sockets: new Map([["p-vera", VERA_ENV]]),
-      standing: new Set(standing ? [VERA_ENV] : []),
-    });
-
-  it("stands while its socket does, and rests once it no longer does", () => {
-    expect(socket(true, null)).toMatchObject({ kind: "working" });
-    expect(socket(true, null)?.remembered).toBeUndefined();
-    expect(socket(false, null)).toMatchObject({ kind: "idle", remembered: true });
-  });
-
-  it("gives way to HQ's live word, and holds over HQ's word at rest", () => {
-    const stored = {
-      ...VERA,
-      presence: { ...VERA.presence, online: false, overview: "stored" as const },
-    };
-    expect(socket(false, new Map([["p-vera", VERA]]))).toMatchObject({
-      kind: "idle",
-      subject: "Add a login page",
-    });
-    expect(socket(false, new Map([["p-vera", VERA]]))?.remembered).toBeUndefined();
-    expect(socket(true, new Map([["p-vera", stored]]))).toMatchObject({ kind: "working" });
-  });
-});
-
 describe("matesActivityOf — what a Mate's row keeps between reads", () => {
   const IDA_ENV = EnvironmentId.make("env-ida");
   const IDA = { ...VERA, identity: { ...VERA.identity!, environmentId: IDA_ENV } };
   const twoMates = (threads: ReadonlyArray<EnvironmentThreadShell>): MatesActivityInput => ({
     projectIds: ["p-ida", "p-vera"],
-    attention: attention(said({ working: 1 })),
+    attention: {
+      ...attention(said({ working: 1 })),
+      "p-ida": {
+        attention: said({ working: 1, source: { ...said().source, environmentId: IDA_ENV } }),
+        live: true,
+        unseen: null,
+      },
+    },
     overviews: new Map([
       ["p-vera", VERA],
       ["p-ida", IDA],
@@ -901,14 +851,6 @@ describe("HQ evidence becomes current or last-known Mate words", () => {
       text: "Skákala hit the Claude limit.",
     });
   });
-  it("has no last-known claim where HQ holds no main state", () => {
-    expect(
-      lastKnownMateWords(
-        read({ overviews: new Map([["p-vera", { ...VERA, main: null }]]) }),
-        "Skákala",
-      ),
-    ).toBeUndefined();
-  });
 });
 
 describe("an expired refusal from HQ", () => {
@@ -1022,18 +964,6 @@ it("direct and HQ attention keep the same restart item even when conversation wo
 
 describe("matesActivityOf — the conversation the person is looking at", () => {
   const ON_SCREEN = "env-vera:t1";
-  const FINISHED: EnvironmentThreadShell = {
-    ...WORKING,
-    latestTurn: { ...WORKING.latestTurn!, state: "completed", completedAt: DONE },
-    updatedAt: DONE,
-  };
-  // Its socket, the chat last visited before this turn ended.
-  const socket = {
-    sockets: new Map([["p-vera", VERA_ENV]]),
-    standing: new Set([VERA_ENV]),
-    lastVisitedAtById: { [ON_SCREEN]: ASKED },
-  };
-
   it.each([
     {
       name: "HQ counts it unseen, before HQ hears it was seen",
@@ -1048,16 +978,6 @@ describe("matesActivityOf — the conversation the person is looking at", () => 
     {
       name: "HQ counts it unseen, nothing on screen",
       input: { attention: attention(said(), true, 1), onScreen: null },
-      kind: "done",
-    },
-    {
-      name: "its socket's result, before the visit is marked",
-      input: { overviews: null, threads: [FINISHED], ...socket, onScreen: ON_SCREEN },
-      kind: "idle",
-    },
-    {
-      name: "its socket's result, off screen",
-      input: { overviews: null, threads: [FINISHED], ...socket, onScreen: null },
       kind: "done",
     },
   ] satisfies ReadonlyArray<{

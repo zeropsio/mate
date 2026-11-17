@@ -11,7 +11,7 @@ import {
   TurnId,
   type ThreadLiveStep,
 } from "@t3tools/contracts";
-import { MateLiveView } from "@t3tools/shared/hqMates";
+import type { MateLiveView } from "@t3tools/shared/hqMates";
 import { SECRET_MASK } from "@t3tools/shared/messagePreview";
 import * as Schema from "effect/Schema";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -22,20 +22,17 @@ import {
   agentActivityErrorLine,
   agentActivitySnippet,
   agentActivitySubject,
-  deriveZeropsAgentActivity,
   listedMateFace,
   mateFaceFor,
   mateFaceOf,
   mateReviewCount,
   mateReviewWaits,
-  overviewAgentActivity,
   restingActivity,
   rowAgentActivity,
   threadAgentActivity,
 } from "./agentActivity";
 
 const FEN = EnvironmentId.make("env-fen");
-const OTTO = EnvironmentId.make("env-otto");
 
 function shell(overrides: Partial<EnvironmentThreadShell> = {}): EnvironmentThreadShell {
   return {
@@ -311,46 +308,18 @@ describe("mateFaceOf — the face a Mate wears wherever it is drawn", () => {
   );
 });
 
-describe("deriveZeropsAgentActivity", () => {
-  it("answers per environment from its one conversation, through the one resolver", () => {
-    const activity = deriveZeropsAgentActivity(
-      [RUNNING, shell({ id: ThreadId.make("thread-2"), environmentId: OTTO })],
-      {},
-    );
-    expect(activity.get(FEN)).toMatchObject({
-      threadId: ThreadId.make("thread-1"),
-      kind: "working",
-      status: { kind: "working", label: "Working", pulse: true },
-      face: "working",
-      subject: "Add the login page",
-    });
-    // Idle has no phrase of its own — the face says it — but the subject stays:
-    // the line under the name keeps saying what this Mate is about.
-    expect(activity.get(OTTO)).toMatchObject({
-      kind: "idle",
-      status: null,
-      face: "idle",
-      subject: "Add the login page",
-    });
-  });
-
-  it("knows nothing about an environment with no conversation", () => {
-    expect(deriveZeropsAgentActivity([], {}).size).toBe(0);
-  });
-
+describe("a Mate's main chat, read through the one resolver", () => {
   it("prefers the running plan step as the subject when the server reports one", () => {
     const stepping = shell({
       ...RUNNING,
       planProgress: { step: "Wire the session cookie", completedSteps: 2, totalSteps: 5 },
     });
-    expect(deriveZeropsAgentActivity([stepping], {}).get(FEN)?.subject).toBe(
-      "Wire the session cookie",
-    );
+    expect(threadAgentActivity(stepping, undefined).subject).toBe("Wire the session cookie");
   });
 
   it("wears the needs-you face and says so when a conversation waits on an approval", () => {
     const waiting = shell({ hasPendingApprovals: true });
-    expect(deriveZeropsAgentActivity([waiting], {}).get(FEN)).toMatchObject({
+    expect(threadAgentActivity(waiting, undefined)).toMatchObject({
       kind: "approval",
       status: { kind: "approval", label: "Approval" },
       face: "needs",
@@ -369,11 +338,10 @@ describe("deriveZeropsAgentActivity", () => {
         assistantMessageId: null,
       },
     });
-    const key = `${FEN}:thread-1`;
-    const unseen = deriveZeropsAgentActivity([completed], { [key]: "2026-09-05T10:04:00.000Z" });
-    expect(unseen.get(FEN)).toMatchObject({ kind: "done", status: { kind: "done" }, face: "done" });
-    const seen = deriveZeropsAgentActivity([completed], { [key]: "2026-09-05T10:06:00.000Z" });
-    expect(seen.get(FEN)).toMatchObject({
+    const unseen = threadAgentActivity(completed, "2026-09-05T10:04:00.000Z");
+    expect(unseen).toMatchObject({ kind: "done", status: { kind: "done" }, face: "done" });
+    const seen = threadAgentActivity(completed, "2026-09-05T10:06:00.000Z");
+    expect(seen).toMatchObject({
       kind: "idle",
       status: null,
       subject: "Add the login page",
@@ -402,7 +370,6 @@ describe("threadAgentActivity", () => {
       },
     };
 
-    expect(deriveZeropsAgentActivity([main, logs], {}).get(FEN)?.threadId).toBe("main");
     expect(threadAgentActivity(logs, undefined)).toMatchObject({
       threadId: "logs",
       kind: "working",
@@ -687,19 +654,17 @@ describe("agentActivitySnippet", () => {
   });
 
   it("rides along on the activity", () => {
-    const activity = deriveZeropsAgentActivity(
-      [
-        shell({
-          latestMessagePreview: {
-            role: "assistant",
-            text: "Deployed.",
-            createdAt: "2026-09-05T10:05:00.000Z",
-          },
-        }),
-      ],
-      {},
+    const activity = threadAgentActivity(
+      shell({
+        latestMessagePreview: {
+          role: "assistant",
+          text: "Deployed.",
+          createdAt: "2026-09-05T10:05:00.000Z",
+        },
+      }),
+      undefined,
     );
-    expect(activity.get(FEN)?.snippet).toBe("Deployed.");
+    expect(activity.snippet).toBe("Deployed.");
   });
 });
 
@@ -877,11 +842,8 @@ describe("what a Mate's row says without words", () => {
     { case: "a completion seen since", visited: "2026-09-05T10:06:00.000Z", unread: false },
     { case: "never visited on this device", visited: undefined, unread: false },
   ])("is unread for $case", ({ visited, unread }) => {
-    const activity = deriveZeropsAgentActivity(
-      [shell({ latestTurn: COMPLETED })],
-      visited === undefined ? {} : { [key]: visited },
-    );
-    expect(activity.get(FEN)?.unread).toBe(unread);
+    const activity = threadAgentActivity(shell({ latestTurn: COMPLETED }), visited);
+    expect(activity.unread).toBe(unread);
   });
 
   it("sleeps through a usage limit and says when it wakes", () => {
@@ -897,10 +859,10 @@ describe("what a Mate's row says without words", () => {
         autoResume: true,
       },
     });
-    const activity = deriveZeropsAgentActivity([paused], {}).get(FEN);
+    const activity = threadAgentActivity(paused, undefined);
     expect(activity?.face).toBe("sleep");
     expect(activity?.pausedUntil).toBe("2026-09-05T14:20:00.000Z");
-    expect(deriveZeropsAgentActivity([RUNNING], {}).get(FEN)?.pausedUntil).toBeUndefined();
+    expect(threadAgentActivity(RUNNING, undefined).pausedUntil).toBeUndefined();
     vi.useRealTimers();
   });
 
@@ -917,7 +879,7 @@ describe("what a Mate's row says without words", () => {
         updatedAt: "2026-09-05T10:05:00.000Z",
       },
     });
-    const activity = deriveZeropsAgentActivity([refused], {}).get(FEN);
+    const activity = threadAgentActivity(refused, undefined);
     expect(activity?.face).toBe("sleep");
     expect(activity?.usageLimited).toBe(true);
     expect(activity?.pausedUntil).toBeUndefined();
@@ -925,7 +887,7 @@ describe("what a Mate's row says without words", () => {
   });
 
   it("names its conversation by the key a draft is kept under", () => {
-    expect(deriveZeropsAgentActivity([RUNNING], {}).get(FEN)?.threadKey).toBe(key);
+    expect(threadAgentActivity(RUNNING, undefined).threadKey).toBe(key);
   });
 });
 
@@ -940,7 +902,7 @@ describe("the task as the person asked it", () => {
       },
       planProgress: { step: "Run the build", completedSteps: 2, totalSteps: 5 },
     });
-    const activity = deriveZeropsAgentActivity([working], {}).get(FEN);
+    const activity = threadAgentActivity(working, undefined);
     expect(activity?.subject).toBe("Run the build");
     expect(activity?.task).toBe("Add a /status page");
   });
@@ -1131,41 +1093,6 @@ describe("the question a needs-you row says", () => {
     },
   ])("$name", ({ thread, question }) => {
     expect(threadAgentActivity(thread, undefined).question).toBe(question);
-  });
-});
-
-const mateLiveView = Schema.decodeUnknownSync(MateLiveView);
-
-describe("overviewAgentActivity", () => {
-  const told = (main: unknown) =>
-    mateLiveView({
-      presence: { online: false, since: "2026-10-03T09:00:00.000Z", overview: "stored" },
-      identity: { environmentId: "env-vera", serverVersion: "0.11.90", update: null },
-      main,
-    });
-
-  it("keys the main chat HQ names under its environment — its draft's key — where it names one", () => {
-    const main = {
-      id: "t1",
-      title: "Add a login page",
-      hasPendingApprovals: false,
-      hasPendingUserInput: false,
-      hasActionableProposedPlan: false,
-      interactionMode: "default",
-      backgroundLiveness: null,
-      session: null,
-      latestTurn: null,
-      latestUserMessageAt: null,
-      updatedAt: "2026-10-03T09:00:00.000Z",
-      latestUserMessagePreview: null,
-      latestMessagePreview: null,
-      planProgress: null,
-      pendingQuestion: null,
-      usagePause: null,
-      liveStep: null,
-    };
-    expect(overviewAgentActivity(told(main), false, {})?.threadKey).toBe("env-vera:t1");
-    expect(overviewAgentActivity(told(null), false, {})).toBeUndefined();
   });
 });
 

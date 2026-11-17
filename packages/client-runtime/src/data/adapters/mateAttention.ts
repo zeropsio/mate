@@ -7,8 +7,7 @@ import { mateSourceLink } from "./mateSource.ts";
  * same family HQ's relay writes, and the reducer keeps the newer.
  *
  * The wire's session ending, or its stream failing, ends the attempt with a classified fault; a
- * Mate without the method (one from before the attention value) is `unsupported`, and HQ's relay
- * of its overview stays its word.
+ * Mate without the method is `unsupported`, and HQ's relay of its attention stays its word.
  *
  * @module data/adapters/mateAttention
  */

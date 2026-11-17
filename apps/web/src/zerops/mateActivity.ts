@@ -14,9 +14,8 @@
  * following stays where the run was when the person left (a row read "Thinking" through a 49-step
  * run): HQ's live word of the same chat outranks it.
  *
- * A Mate from before the attention value is read as it always was, off its socket's reading while
- * that socket stands, else off HQ's overview of it, live while HQ holds its link (`legacyActivity`);
- * that path goes with the old overview shape.
+ * A Mate whose attention is not known has no entry, and the caller draws it as a Mate nothing is
+ * known of yet; its first attention value fills it.
  */
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
@@ -34,8 +33,6 @@ import {
 
 import { threadStatusPill } from "../components/Sidebar.logic";
 import {
-  deriveZeropsAgentActivity,
-  overviewAgentActivity,
   restingActivity,
   rowAgentActivity,
   threadAgentActivity,
@@ -169,35 +166,25 @@ function readMatesActivity(input: MatesActivityInput): Map<string, ZeropsAgentAc
     else shells.push(thread);
   }
   const lastVisitedAtById = visitsOf(input);
-  const sockets = deriveZeropsAgentActivity(input.threads, lastVisitedAtById, input.limits);
   const activity = new Map<string, ZeropsAgentActivity>();
   for (const projectId of input.projectIds) {
     const read = input.attention[projectId];
     const overview = input.overviews?.get(projectId);
     const said = read?.attention ?? null;
+    if (said === null || read === undefined) continue;
     const environmentId = mateEnvironmentOf(input, projectId);
     if (environmentId === undefined) continue;
-    const shells = shellsByEnvironment.get(environmentId) ?? [];
-    const entry =
-      said === null || read === undefined
-        ? legacyActivity({
-            ...input,
-            lastVisitedAtById,
-            environmentId,
-            overview,
-            socket: sockets.get(environmentId),
-          })
-        : attentionActivity({
-            attention: said,
-            live: read.live,
-            unseen: read.unseen,
-            environmentId,
-            overview,
-            shells,
-            followed: input.standing.has(environmentId),
-            lastVisitedAtById,
-            limits: input.limits,
-          });
+    const entry = attentionActivity({
+      attention: said,
+      live: read.live,
+      unseen: read.unseen,
+      environmentId,
+      overview,
+      shells: shellsByEnvironment.get(environmentId) ?? [],
+      followed: input.standing.has(environmentId),
+      lastVisitedAtById,
+      limits: input.limits,
+    });
     if (entry !== undefined) activity.set(projectId, entry);
   }
   return activity;
@@ -393,29 +380,6 @@ export function socketStands(phase: EnvironmentConnectionPhase, stoodBefore: boo
   return (
     phase === "connected" || phase === "reconnecting" || (phase === "connecting" && stoodBefore)
   );
-}
-
-/**
- * A Mate from before the attention value: its socket's reading of its main chat while the socket
- * stands, else HQ's last overview of it — live while HQ last held its link — else that reading, at
- * rest.
- */
-function legacyActivity(input: {
-  readonly limits?: ReadonlyMap<string, MateLimit>;
-  readonly environmentId: EnvironmentId;
-  readonly overview: MateLiveView | undefined;
-  readonly socket: ZeropsAgentActivity | undefined;
-  readonly standing: ReadonlySet<EnvironmentId>;
-  readonly lastVisitedAtById: Readonly<Record<string, string>>;
-}): ZeropsAgentActivity | undefined {
-  const { overview, socket } = input;
-  if (overview?.identity !== undefined && overview.main !== undefined) {
-    const live = overview.presence.overview === "live";
-    if (live || socket === undefined)
-      return overviewAgentActivity(overview, live, input.lastVisitedAtById, input.limits);
-  }
-  if (socket === undefined) return undefined;
-  return input.standing.has(input.environmentId) ? socket : restingActivity(socket);
 }
 
 /**
