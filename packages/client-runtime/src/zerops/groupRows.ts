@@ -315,7 +315,7 @@ export function environmentRowDisplay(input: {
  * A row keyed by HQ's environment identity. It carries no `projectId`: a Zerops project is its
  * target's, and an environment delivered to Git has none (`zeropsProjectOf`).
  */
-export type CanonicalEnvironmentRow = EnvironmentRow & Omit<HqEnvironmentIdentity, "projectId">;
+export type CanonicalEnvironmentRow = EnvironmentRow & HqEnvironmentIdentity;
 
 /** What places an environment: its tier, and where HQ delivers it. */
 export type EnvironmentPlace = Pick<HqEnvironmentIdentity, "target"> & {

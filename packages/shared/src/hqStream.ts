@@ -3,7 +3,7 @@ import { MateAttention as HqAttentionValue } from "@t3tools/contracts";
 import { HqProblem } from "./hqProblems.ts";
 import * as Schema from "effect/Schema";
 import * as Struct from "effect/Struct";
-import { hqEnvironmentCodec, HqDirectGitTarget } from "./hqEnvironment.ts";
+import { HqDirectGitTarget, HqEnvironmentIdentity } from "./hqEnvironment.ts";
 import { AgentUsageScope, AGENT_USAGE_REPORT_PROTOCOL } from "@t3tools/contracts";
 import { usageCanonical } from "./agentUsage.ts";
 import { MatePresence } from "./hqMates.ts";
@@ -404,14 +404,14 @@ export const HqNavigationEnvironment = Schema.Struct({
 export type HqNavigationEnvironment = typeof HqNavigationEnvironment.Type;
 /** @deprecated Use CanonicalHqNavigationEnvironments at the HQ read boundary. */
 export const HqNavigationEnvironments = Schema.Array(HqNavigationEnvironment);
-/** Canonical readers normalize older HQ rows at this boundary only. */
-export const CanonicalHqNavigationEnvironment = hqEnvironmentCodec(
-  Struct.omit(HqNavigationEnvironment.fields, ["projectId"]),
-);
+export const CanonicalHqNavigationEnvironment = Schema.Struct({
+  ...Struct.omit(HqNavigationEnvironment.fields, ["projectId"]),
+  ...HqEnvironmentIdentity.fields,
+});
 export type CanonicalHqNavigationEnvironment = typeof CanonicalHqNavigationEnvironment.Type;
 /** Explicit Git records are additive; existing canonical Zerops reader types remain stable. */
 export const HqGitNavigationEnvironment = Schema.Struct({
-  ...CanonicalHqNavigationEnvironment.to.fields,
+  ...CanonicalHqNavigationEnvironment.fields,
   target: HqDirectGitTarget,
   jobs: Schema.Array(HqPushNavigationJob),
 });

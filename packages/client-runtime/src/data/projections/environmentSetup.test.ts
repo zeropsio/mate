@@ -12,6 +12,8 @@ const ORG = "org";
 const apps = hqAppsScope(ORG);
 const revision = { kind: "hq", incarnation: "i", revision: 1 } as const;
 const environment = {
+  id: "stage",
+  target: { kind: "zerops", projectId: "stage" },
   projectId: "stage",
   tier: "stage",
   name: "stage",

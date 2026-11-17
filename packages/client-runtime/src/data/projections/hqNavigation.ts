@@ -166,10 +166,9 @@ function environmentsOfApp(
   offers: (projectId: string, tier: "stage" | "production") => HqOffers | undefined,
 ): Pick<HqStructure["apps"][number], "environments"> {
   if (environments === undefined) return {};
-  // Legacy Zerops rows still go through their existing normalizer; Git and an outside production
-  // have no outward project DTO.
+  // Git and an outside production have no outward project DTO.
   const read = canonicalEnvironmentsOf(
-    environments.filter((row) => row.target?.kind !== "git" && row.target?.kind !== "outside"),
+    environments.filter((row) => row.target.kind !== "git" && row.target.kind !== "outside"),
   );
   return read === undefined
     ? {}

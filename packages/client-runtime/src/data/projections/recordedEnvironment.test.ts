@@ -8,6 +8,8 @@ import { makeAccountStore, readsOfState } from "../store.ts";
 import { recordedEnvironment } from "./recordedEnvironment.ts";
 
 const ENVIRONMENT = {
+  id: "p-stage",
+  target: { kind: "zerops", projectId: "p-stage" },
   projectId: "p-stage",
   tier: "stage",
   name: "stage",

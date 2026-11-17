@@ -14,7 +14,7 @@ import { HqGitNavigationEnvironment } from "@t3tools/shared/hqStream";
  *
  * @module hq/environments
  */
-import { HqOutsideEnvironment, hqEnvironmentCodec } from "@t3tools/shared/hqEnvironment";
+import { HqEnvironmentIdentity, HqOutsideEnvironment } from "@t3tools/shared/hqEnvironment";
 import { EnvironmentBirth, HqDeployEvidence, HqDeployOutcome } from "@t3tools/shared/hqDeploys";
 import { ReleaseRollout, TierStop } from "@t3tools/shared/hqRelease";
 import * as Option from "effect/Option";
@@ -120,7 +120,10 @@ export const HqEnvironment = Schema.Struct({
 });
 export type HqEnvironment = typeof HqEnvironment.Type;
 
-export const CanonicalHqEnvironment = hqEnvironmentCodec(HqEnvironment.fields);
+export const CanonicalHqEnvironment = Schema.Struct({
+  ...HqEnvironment.fields,
+  ...HqEnvironmentIdentity.fields,
+});
 export type CanonicalHqEnvironment = typeof CanonicalHqEnvironment.Type;
 const readCanonicalEnvironments = Schema.decodeUnknownOption(Schema.Array(CanonicalHqEnvironment));
 
@@ -154,7 +157,7 @@ export function jobsByService(
   return services;
 }
 
-/** Additive delivery reader: Git uses its push schema; older Zerops rows normalize once. */
+/** Additive delivery reader: Git uses its push schema, Zerops its deploy jobs. */
 export type HqDeliveryEnvironment = CanonicalHqEnvironment | HqGitNavigationEnvironment;
 const readDeliveryEnvironment = Schema.decodeUnknownOption(
   Schema.Union([

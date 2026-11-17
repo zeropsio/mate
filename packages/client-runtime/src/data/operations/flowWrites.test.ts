@@ -111,6 +111,8 @@ const stageJobs = (store: AccountStore, jobs: ReadonlyArray<unknown>) =>
           births: [],
           environments: [
             {
+              id: "stage",
+              target: { kind: "zerops", projectId: "stage" },
               projectId: "stage",
               tier: "stage",
               name: "stage",

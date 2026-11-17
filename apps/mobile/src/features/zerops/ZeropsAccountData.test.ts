@@ -101,78 +101,75 @@ function mountAccount() {
 beforeEach(() => hooks.reset());
 
 describe("ZeropsAccountData on mobile", () => {
-  describe.each(["old HQ", "canonical HQ"])("%s", (version) => {
-    it("Mobile reads HQ environment targets without changing runtime connection or thread identities.", () => {
-      const account = mountAccount();
-      const thread: EnvironmentThreadShell = {
+  it("Mobile reads HQ environment targets without changing runtime connection or thread identities.", () => {
+    const account = mountAccount();
+    const thread: EnvironmentThreadShell = {
+      environmentId: EnvironmentId.make("connection-1"),
+      projectId: ProjectId.make("workspace-1"),
+      id: ThreadId.make("thread-1"),
+      title: "Retained conversation",
+      modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      latestTurn: null,
+      createdAt: "2026-10-13T00:00:00.000Z",
+      updatedAt: "2026-10-13T00:00:00.000Z",
+      archivedAt: null,
+      session: null,
+      latestUserMessageAt: null,
+      hasPendingApprovals: false,
+      hasPendingUserInput: false,
+      hasActionableProposedPlan: false,
+      settledOverride: null,
+      settledAt: null,
+    };
+    const threadList = () =>
+      buildThreadListV2Items({
+        threads: [thread],
         environmentId: EnvironmentId.make("connection-1"),
-        projectId: ProjectId.make("workspace-1"),
-        id: ThreadId.make("thread-1"),
-        title: "Retained conversation",
-        modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
-        runtimeMode: "full-access",
-        interactionMode: "default",
-        branch: null,
-        worktreePath: null,
-        latestTurn: null,
-        createdAt: "2026-10-13T00:00:00.000Z",
-        updatedAt: "2026-10-13T00:00:00.000Z",
-        archivedAt: null,
-        session: null,
-        latestUserMessageAt: null,
-        hasPendingApprovals: false,
-        hasPendingUserInput: false,
-        hasActionableProposedPlan: false,
-        settledOverride: null,
-        settledAt: null,
-      };
-      const threadList = () =>
-        buildThreadListV2Items({
-          threads: [thread],
-          environmentId: EnvironmentId.make("connection-1"),
-          projectRefs: [{ environmentId: thread.environmentId, projectId: thread.projectId }],
-          searchQuery: "",
-        }).items.map(({ thread: row }) => [row.environmentId, row.projectId, row.id]);
-      const expectedThreadIds = [["connection-1", "workspace-1", "thread-1"]];
-      expect(threadList()).toEqual(expectedThreadIds);
-      account.render("org-1");
-      expect(account.registry.get(account.navigation)).toBeNull();
-      const environmentId = version === "old HQ" ? "zerops-1" : "hq-environment-1";
-      account.seed("org-1", [
-        {
-          ...environmentPayload,
-          ...(version === "old HQ"
-            ? { projectId: "zerops-1" }
-            : { id: environmentId, target: { kind: "zerops", projectId: "zerops-1" } }),
-        },
-      ]);
-      expect(account.registry.get(account.navigation)?.apps[0]?.environments).toEqual([
-        expect.objectContaining({
-          id: environmentId,
-          target: { kind: "zerops", projectId: "zerops-1" },
-          jobs: [],
+        projectRefs: [{ environmentId: thread.environmentId, projectId: thread.projectId }],
+        searchQuery: "",
+      }).items.map(({ thread: row }) => [row.environmentId, row.projectId, row.id]);
+    const expectedThreadIds = [["connection-1", "workspace-1", "thread-1"]];
+    expect(threadList()).toEqual(expectedThreadIds);
+    account.render("org-1");
+    expect(account.registry.get(account.navigation)).toBeNull();
+    const environmentId = "hq-environment-1";
+    account.seed("org-1", [
+      {
+        ...environmentPayload,
+        id: environmentId,
+        target: { kind: "zerops", projectId: "zerops-1" },
+      },
+    ]);
+    expect(account.registry.get(account.navigation)?.apps[0]?.environments).toEqual([
+      expect.objectContaining({
+        id: environmentId,
+        target: { kind: "zerops", projectId: "zerops-1" },
+        jobs: [],
+      }),
+    ]);
+    const join = (projectId: string) =>
+      account.registry.get(
+        account.store.data.project(recordedEnvironment, {
+          orgId: "org-1",
+          appId: "org-1-app",
+          projectId,
         }),
-      ]);
-      const join = (projectId: string) =>
-        account.registry.get(
-          account.store.data.project(recordedEnvironment, {
-            orgId: "org-1",
-            appId: "org-1-app",
-            projectId,
-          }),
-        );
-      expect(join("zerops-1")).toEqual({ kind: "recorded", name: "Production", keyed: true });
-      if (version === "canonical HQ") expect(join(environmentId)).toEqual({ kind: "waiting" });
-      account.render("org-2");
-      expect(account.registry.get(account.navigation)).toBeNull();
-      expect(threadList()).toEqual(expectedThreadIds);
-      account.render("org-1");
-      expect(account.registry.get(account.navigation)?.apps[0]?.environments).toHaveLength(1);
-      expect(threadList()).toEqual(expectedThreadIds);
-      expect(account.show.mock.calls).toEqual([["org-1"], ["org-2"], ["org-1"]]);
-      account.stop();
-      account.registry.dispose();
-    });
+      );
+    expect(join("zerops-1")).toEqual({ kind: "recorded", name: "Production", keyed: true });
+    expect(join(environmentId)).toEqual({ kind: "waiting" });
+    account.render("org-2");
+    expect(account.registry.get(account.navigation)).toBeNull();
+    expect(threadList()).toEqual(expectedThreadIds);
+    account.render("org-1");
+    expect(account.registry.get(account.navigation)?.apps[0]?.environments).toHaveLength(1);
+    expect(threadList()).toEqual(expectedThreadIds);
+    expect(account.show.mock.calls).toEqual([["org-1"], ["org-2"], ["org-1"]]);
+    account.stop();
+    account.registry.dispose();
   });
   it("Mobile retains the Zerops environments when a git environment has no legacy projectId.", () => {
     const account = mountAccount();
@@ -197,15 +194,6 @@ describe("ZeropsAccountData on mobile", () => {
     const stop = account.registry.subscribe(accountReadsAtom, (reads) => heard.push(reads?.orgId));
     account.render("org-2");
     expect(account.registry.get(account.navigation)).toBeNull();
-    account.seed("org-2", [{ ...environmentPayload, projectId: "other-project" }]);
-    expect(environments()).toEqual([
-      {
-        ...environmentPayload,
-        projectId: "other-project",
-        id: "other-project",
-        target: { kind: "zerops", projectId: "other-project" },
-      },
-    ]);
     account.render("org-1");
     expect(environments()).toEqual([zerops]);
     expect(heard).toEqual(["org-2", "org-1"]);

@@ -496,7 +496,9 @@ it("the mounted compact flow joins delayed navigation evidence before menus and 
   expect(
     appEnvironments
       .derive(reads, { orgId: "org", appId: "shop" })
-      .environments?.map((entry) => entry.projectId),
+      .environments?.map((entry) =>
+        entry.target.kind === "zerops" ? entry.target.projectId : undefined,
+      ),
   ).toEqual(["real-stage"]);
   expect(
     environmentById.derive(reads, { orgId: "org", appId: "shop", id: admitted.id })?.jobs[0]?.state,

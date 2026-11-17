@@ -425,7 +425,6 @@ function job(service: string, sha: string, id: string): HqJob {
 const runtimeEnvironment: CanonicalHqEnvironment = {
   id: HqEnvironmentId.make("environment-stage"),
   target: { kind: "zerops", projectId: ProjectId.make("project-stage") },
-  projectId: ProjectId.make("wrong-legacy"),
   tier: "stage",
   name: "Stage",
   sources: ["main"],

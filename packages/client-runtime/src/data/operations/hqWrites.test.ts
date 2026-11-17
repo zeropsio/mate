@@ -553,6 +553,8 @@ describe("keep-deploy-key", () => {
   it.effect("keeps a token whose handoff was lost, adopted once HQ shows the key held", () =>
     Effect.gen(function* () {
       const environment = (keyHeld: boolean) => ({
+        id: "p-stage",
+        target: { kind: "zerops", projectId: "p-stage" },
         projectId: "p-stage",
         tier: "stage",
         name: "stage",

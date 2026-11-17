@@ -542,9 +542,7 @@ function ReleaseData({
   // A failed release is anybody's to fix: the person's own Mate in the project, the one they
   // used last (S6, `fixMates.ts`).
   const [fixer] = useFixMates(
-    flow.release.git === undefined
-      ? { projectId: production?.projectId ?? flow.groupId, groupId: flow.groupId }
-      : undefined,
+    flow.release.git === undefined ? { projectId: flow.groupId, groupId: flow.groupId } : undefined,
   );
 
   // A branch production releases only what HQ just found ready on its remote branch: the review
@@ -2227,9 +2225,8 @@ function RollbackData({
         };
   };
   // A roll back that hasn't landed is anybody's to look into, as a release's (S6, `fixMates.ts`).
-  const production = flow.environmentInputs.find((entry) => entry.tier === "production");
   const [fixer] = useFixMates({
-    projectId: production?.projectId ?? flow.groupId,
+    projectId: flow.groupId,
     groupId: flow.groupId,
   });
   const rollBack = async () => {

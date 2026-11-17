@@ -92,7 +92,7 @@ async function mountMenu(
   deviceLogin = false,
   fullSidebar = false,
   flowPage = false,
-  wire?: "legacy" | "modern",
+  wire?: "modern",
   addressCase = false,
 ) {
   vi.stubEnv("VITE_HQ_ORIGIN", "https://hq.example.test");
@@ -214,8 +214,7 @@ async function mountMenu(
     endedAt: "2026-10-06T12:01:00Z",
     supersededBy: null,
   };
-  const identity = (id: string) =>
-    wire === "legacy" ? { projectId: id } : { id, target: { kind: "zerops", projectId: id } };
+  const identity = (id: string) => ({ id, target: { kind: "zerops", projectId: id } });
   const environment = (id: string, tier: "stage" | "production") => ({
     ...identity(id),
     tier,
@@ -1151,7 +1150,7 @@ describe("A: sign-in, session and organizations", () => {
 });
 
 describe("B: environment identity compatibility", () => {
-  async function compatibility(wire: "legacy" | "modern") {
+  async function compatibility(wire: "modern") {
     const fixture = await mountMenu(false, false, false, false, true, wire);
     const rows = () =>
       rendered.tree!.root.findAll(
@@ -1199,8 +1198,6 @@ describe("B: environment identity compatibility", () => {
     expect(fixture.unexpected.filter((entry) => !entry.startsWith("unmapped "))).toEqual([]);
   }
 
-  it("Old HQ and new hosted web keep sign-in and environment navigation working.", () =>
-    compatibility("legacy"));
   it("Old clients keep their Zerops environments after HQ gains environment identities.", () =>
     compatibility("modern"));
 

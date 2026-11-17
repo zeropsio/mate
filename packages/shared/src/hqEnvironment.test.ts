@@ -1,8 +1,6 @@
 import * as Environment from "./hqEnvironment.ts";
-import { expect, expectTypeOf, it } from "@effect/vitest";
+import { expect, it } from "@effect/vitest";
 import * as Schema from "effect/Schema";
-import type { EnvironmentId, HqEnvironmentId, ProjectId } from "@t3tools/contracts";
-import { HqEnvironmentIdentity } from "./hqEnvironment.ts";
 import { CanonicalHqNavigationEnvironment, CanonicalHqNavigationEnvironments } from "./hqStream.ts";
 
 const read = Schema.decodeUnknownSync(CanonicalHqNavigationEnvironment);
@@ -19,29 +17,6 @@ const payload = {
   birth: null,
 };
 
-it("An older HQ's environment decodes with a Zerops target and its existing identity.", () => {
-  expectTypeOf<HqEnvironmentId>().not.toExtend<ProjectId>();
-  expectTypeOf<HqEnvironmentId>().not.toExtend<EnvironmentId>();
-  expectTypeOf<CanonicalHqNavigationEnvironment["projectId"]>().toEqualTypeOf<
-    ProjectId | undefined
-  >();
-  expectTypeOf<CanonicalHqNavigationEnvironment["id"]>().toEqualTypeOf<HqEnvironmentId>();
-  expectTypeOf<
-    Extract<CanonicalHqNavigationEnvironment["target"], { kind: "zerops" }>["projectId"]
-  >().toEqualTypeOf<ProjectId>();
-  expect(Schema.decodeUnknownSync(HqEnvironmentIdentity)({ projectId: "project" })).toEqual({
-    projectId: "project",
-    id: "project",
-    target: { kind: "zerops", projectId: "project" },
-  });
-  expect(read({ ...payload, projectId: "project" })).toEqual({
-    ...payload,
-    projectId: "project",
-    id: "project",
-    target: { kind: "zerops", projectId: "project" },
-  });
-});
-
 it.each([
   { kind: "zerops", projectId: "destination" },
   { kind: "git", branch: "production", delivery: "direct" },
@@ -56,7 +31,7 @@ it("A modern environment's target is never inferred from its identity or legacy 
     { kind: "zerops", projectId: "destination" },
     { kind: "git", branch: "production", delivery: "direct" },
   ]) {
-    const value = { ...payload, id: "identity", projectId: "contradiction", target };
+    const value = { ...payload, id: "identity", target };
     expect(read(value)).toEqual(value);
   }
   for (const identity of [
@@ -75,11 +50,11 @@ it("A modern environment's target is never inferred from its identity or legacy 
     { id: "identity", target: { kind: "git", branch: "main", delivery: "unknown" } },
     { id: "identity", target: { kind: "unknown" } },
   ]) {
-    expect(() => read({ ...payload, projectId: "legacy", ...identity })).toThrow();
+    expect(() => read({ ...payload, ...identity })).toThrow();
     expect(() =>
       readList([
-        { ...payload, projectId: "valid" },
-        { ...payload, projectId: "legacy", ...identity },
+        { ...payload, id: "valid", target: { kind: "zerops", projectId: "valid" } },
+        { ...payload, ...identity },
       ]),
     ).toThrow();
   }

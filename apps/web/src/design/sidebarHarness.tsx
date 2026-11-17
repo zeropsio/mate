@@ -707,7 +707,7 @@ const behindPull = (input: Partial<FlowPullRequest> & { number: number; mateProj
   pull({ mergeability: "conflicting", ...input });
 
 function environment(
-  input: Partial<Omit<EnvironmentRow, "version" | "versionRepository" | "projectId">> & {
+  input: Partial<Omit<EnvironmentRow, "version" | "versionRepository">> & {
     projectId: string;
     /** The Zerops app-version name, parsed the way the product parses it. */
     appVersionName?: string | undefined;

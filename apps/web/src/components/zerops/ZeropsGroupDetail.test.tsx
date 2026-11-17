@@ -1445,7 +1445,6 @@ describe("environment route target dispatch", () => {
                 : [
                     {
                       id,
-                      projectId: ProjectId.make("different-project-address"),
                       target: { kind: "git", branch: "main", delivery: "direct" },
                       tier: "production",
                       name: "Production",

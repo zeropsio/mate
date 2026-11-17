@@ -234,7 +234,7 @@ export function renderFlow(props: Partial<ZeropsProjectsFlowProps<Item>> = {}): 
 
 /** Equal addresses model deployed Zerops rows; identity witnesses supply unequal addresses themselves. */
 export function environmentRow(
-  input: Omit<Parameters<typeof canonicalEnvironmentRow>[0], "id" | "target" | "projectId"> & {
+  input: Omit<Parameters<typeof canonicalEnvironmentRow>[0], "id" | "target"> & {
     readonly projectId: string;
   },
 ) {

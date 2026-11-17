@@ -1,6 +1,5 @@
 import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
-import * as SchemaTransformation from "effect/SchemaTransformation";
 
 /** A branch name, not a full ref; mate/ is reserved for the later PR-head writer. */
 export const HqGitBranch = Schema.String.check(
@@ -88,33 +87,10 @@ export type HqEnvironmentAttachment = typeof HqEnvironmentAttachment.Type;
 export const RemoveGitEnvironmentRequest = Schema.Struct({ environmentId: HqEnvironmentId });
 export type RemoveGitEnvironmentRequest = typeof RemoveGitEnvironmentRequest.Type;
 
-const identity = Schema.Struct({
+export const HqEnvironmentIdentity = Schema.Struct({
   id: HqEnvironmentId,
   target: HqEnvironmentTarget,
-  /** @deprecated Project addresses belong to the Zerops target. */
-  projectId: Schema.optionalKey(ProjectId),
 });
-
-const legacyInput = Schema.Unknown.pipe(
-  Schema.decodeTo(
-    Schema.Unknown,
-    SchemaTransformation.transform<unknown, unknown>({
-      decode: (raw) => {
-        // Presence, including malformed values, prevents legacy inference.
-        if (typeof raw !== "object" || raw === null || "id" in raw || "target" in raw) return raw;
-        if (!("projectId" in raw)) return raw;
-        return { ...raw, id: raw.projectId, target: { kind: "zerops", projectId: raw.projectId } };
-      },
-      encode: (raw) => raw,
-    }),
-  ),
-);
-
-/** Payload fields keep their own defaults/codecs; identity is normalized once for every reader. */
-export const hqEnvironmentCodec = <Fields extends Schema.Struct.Fields>(fields: Fields) =>
-  legacyInput.pipe(Schema.decodeTo(Schema.Struct({ ...fields, ...identity.fields })));
-
-export const HqEnvironmentIdentity = hqEnvironmentCodec({});
 export type HqEnvironmentIdentity = typeof HqEnvironmentIdentity.Type;
 
 export type EnvironmentTier = "stage" | "production";

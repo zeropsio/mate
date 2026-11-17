@@ -23,6 +23,8 @@ const environment = (
   keyId: string | undefined,
   keyInvalid = false,
 ) => ({
+  id: projectId,
+  target: { kind: "zerops", projectId },
   projectId,
   tier,
   name: tier,

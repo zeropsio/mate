@@ -123,6 +123,8 @@ describe("production removal receipts", () => {
 
   it("Production removal preserves HQ's project fate through the environment reader", () => {
     const source = {
+      id: "p1",
+      target: { kind: "zerops", projectId: "p1" },
       projectId: "p1",
       tier: "production",
       name: "Production",
